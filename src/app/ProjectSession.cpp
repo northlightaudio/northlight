@@ -7,6 +7,7 @@
 #include <algorithm>
 #include <cmath>
 #include <cstring>
+#include <map>
 #include <optional>
 
 namespace aural
@@ -502,12 +503,22 @@ int ProjectSession::recoverPartialRecordings()
     if (!folder.isDirectory())
         return 0;
     int recovered = 0;
+    std::map<juce::String, core::Id> newTracks; // recording base -> the track made for its takes
     undo_.beginGroup("Recover recordings");
     for (const auto& partial : folder.findChildFiles(juce::File::findFiles, false, "*.partial.wav"))
     {
         const auto path = partial.getFullPathName().toStdString();
         if (!engine::WavWriter::repair(path))
+        {
+            // Not even a header (killed right after the file was opened): nothing to
+            // keep. Anything else unreadable is set aside rather than offered forever.
+            if (partial.getSize() < 44)
+                partial.deleteFile();
+            else
+                partial.moveFileTo(
+                    partial.getSiblingFile(partial.getFileName().replace(partialSuffix, ".discarded.wav")));
             continue;
+        }
         const auto info = engine::readWavInfo(path);
         if (!info.has_value() || info->lengthSamples <= 0)
         {
@@ -541,9 +552,16 @@ int ProjectSession::recoverPartialRecordings()
         }
         if (clip.length <= 0)
             continue;
-        if (meta.has_value() && project_.findTrack(meta->trackId) != nullptr)
+        // The original track if it still exists, else one new track per recording
+        // (all its takes together), made on the first take.
+        core::Id target = meta.has_value() && project_.findTrack(meta->trackId) != nullptr ? meta->trackId
+                                                                                           : core::invalidId;
+        if (target == core::invalidId)
+            if (const auto made = newTracks.find(name.base); made != newTracks.end())
+                target = made->second;
+        if (target != core::invalidId)
         {
-            undo_.execute(project_, std::make_unique<core::AddClip>(meta->trackId, clip));
+            undo_.execute(project_, std::make_unique<core::AddClip>(target, clip));
         }
         else
         {
@@ -552,7 +570,10 @@ int ProjectSession::recoverPartialRecordings()
                                               ? meta->trackName
                                               : recoveredFile.getFileNameWithoutExtension().toStdString());
             track.clips.push_back(clip);
-            undo_.execute(project_, std::make_unique<core::AddTrack>(track));
+            auto add = std::make_unique<core::AddTrack>(track);
+            const auto* raw = add.get();
+            undo_.execute(project_, std::move(add));
+            newTracks[name.base] = raw->trackId();
         }
         ++recovered;
     }

@@ -229,3 +229,28 @@ TEST_CASE_METHOD(SessionFixture,
     CHECK(files("*.discarded.wav").size() == 1);
     CHECK(files("*.recording.json").isEmpty());
 }
+
+TEST_CASE_METHOD(SessionFixture,
+                 "Takes of one lost recording share a new track, and an empty partial is removed",
+                 "[app][session][recover]")
+{
+    // No track 7 in this project: the first take makes a "Recovered" track and the
+    // second joins it. The third file never got a header (killed right after open).
+    writePartial("Bass-20261019-101010-1",
+                 0,
+                 400,
+                 R"({"format":"aural.recording/1","trackId":7,"trackName":"Bass","startPosition":0,)"
+                 R"("loopStart":1000,"sampleRate":48000.0,"latencySamples":0})");
+    writePartial("Bass-20261019-101010-1", 1, 300, {});
+    REQUIRE(media.getChildFile("Bass-20261019-101010-1-take3.partial.wav").create().wasOk());
+    CHECK(session->countPartialRecordings() == 3);
+    CHECK(session->recoverPartialRecordings() == 2);
+    const auto& tracks = session->project().tracks;
+    REQUIRE(tracks.size() == 1);
+    CHECK(tracks[0].name == "Recovered: Bass");
+    REQUIRE(tracks[0].clips.size() == 2);
+    CHECK(tracks[0].clips[0].start == 0);
+    CHECK(tracks[0].clips[1].start == 1000);
+    CHECK(session->countPartialRecordings() == 0);
+    CHECK(files("*.recording.json").isEmpty());
+}
