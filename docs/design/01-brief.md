@@ -37,6 +37,8 @@ Three words to test any screen against:
 
 1. **Hierarchy by contrast, not by borders.** Surfaces step up in lightness; dividers
    are rare and faint. A screen should read as three or four planes, not twenty boxes.
+   Panels are flat; only controls have depth (section 2.4), so the hand gets a cue
+   without the chrome becoming a costume.
 2. **Track colour is the organising colour.** Clips, headers, mixer strip caps, meters'
    identity and the piano roll all carry the track's colour. The accent colour is
    reserved for interaction: selection, focus, active toggles.
@@ -80,6 +82,10 @@ completeness.
   neutral surfaces stepping up by lightness, a single cool accent for interaction, a
   warm record red, and a twelve-hue track palette tuned to read on the dark base.
   Defined in [02-design-system.md](02-design-system.md).
+- **Material direction** (decided after the workshop board): tactile controls on
+  flat panels. Buttons, keys, caps and knobs are lit from above with a short shadow;
+  faders run in grooves; meters are LED-segmented in a well; readouts glow. Nothing
+  else does.
 - **Type direction**: one humanist sans for the UI (Inter) and one monospace for
   numerics (JetBrains Mono). No display face.
 

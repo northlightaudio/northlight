@@ -118,13 +118,40 @@ Radii: `sm` 3 for buttons, fields and clips; `md` 6 for menus, cards and popups;
 `lg` 10 for floating windows' content area; `pill` for badges and the segmented
 control's thumb.
 
-## 2.4 Elevation
+## 2.4 Elevation and material
 
-Inside the main window there are no shadows; planes are expressed by surface steps.
+**Panels are flat; controls are tactile.** This is design language B from the
+workshop board on the mockup canvas. Planes (canvas, surfaces, panels, cards, strips,
+lanes, clips) are expressed by surface steps alone and carry no shadows, bevels,
+textures or gradients. Controls, the things a hand would touch, get a consistent
+lighting model from the `material` tokens so they read as physical without the
+panels turning into hardware:
+
+| Element | Treatment (tokens in `material.*`) |
+|---|---|
+| Button, toggle, key, M/S/R square, combo | Vertical gradient `controlTop` to `controlBottom`, 1 px `controlHighlight` along the top edge, `controlShadow` below. Pressed: `pressedInset` and the gradient reversed. |
+| Active toggle | As above plus the semantic colour's glow: `glowAccent`, `glowRecord`, `glowSolo`, `glowMonitor`. Hard-on arm and record buttons use a solid vertical gradient of the colour (lighter at the top) with `capHighlight` on top. |
+| Fader track | A groove: `groove` fill, `grooveInset` shadow, 1 px `grooveLip` under it. |
+| Fader cap | `capTop` to `capBottom` gradient, `capHighlight` top edge, `capShadow`; the track-colour line gets a 4 px glow of its own colour. |
+| Knob | Rim `knobRim` 3 px with the value arc on it; body a radial gradient `knobBodyLight` (offset to the upper left) to `knobBodyDark`; a faint `knobHighlight` arc at the top; the indicator line `textPrimary`. |
+| Meter | A well: `meterWell` with `meterWellInset`; the signal is LED-segmented at `ledPitchPx` with `ledGapPx` dark gaps, zone colours unchanged; peak hold and clip as before. |
+| Numeric readouts (time, dB, tempo) | A readout well `readoutWell` with `grooveInset`; text in `readoutText` with `readoutGlow`; `readoutRecord` while recording. Values in fields that are typed into keep the plain Text field look. |
+| Scrollbars, tabs, menus, tooltips, sheets, toasts, badges, checkboxes, sliders' tracks | Unchanged: flat per their component spec. |
+
+Rules that keep it from sliding into C: no textures or noise, no bevels on panels, no
+screw heads, no engraved text, no gradients wider than a control, no glow on anything
+that is not an active state or a readout, shadows never longer than 3 px inside the
+window. Reduce-motion and high-contrast variants keep the geometry and drop the glows.
+
 Popups (menus, tooltips, combo lists, colour swatches) float with
 `elevation.popup`: an 8 px blurred shadow at 50% and a `lineStrong` border.
 Secondary windows (plugin, audio setup, browser) are native windows with the same
 surface tokens and no inner chrome.
+
+Rendering: gradients and inset shadows are cheap in Direct2D; blurred glows are
+not. Glows are pre-rendered once per scale into cached images per colour and drawn
+as 9-slice bitmaps, never computed per frame. The LED meter is a single
+`repeating` fill, not per-segment rectangles.
 
 ## 2.5 Iconography
 
@@ -179,8 +206,10 @@ control; it is only drawn for keyboard focus, never for pointer clicks.
 
 - Sizes: `control` 28 default, 24 compact, 32 large. Horizontal padding `md` 12;
   icon-only buttons are square.
-- **Secondary** (default): `surface2` fill, `textPrimary` label, radius `sm`. Hover
-  `surface3`. Pressed `surfacePressed`. Disabled: `surface1` fill, `textDisabled`.
+- **Secondary** (default): the control material (section 2.4: `controlTop` to
+  `controlBottom` gradient, top highlight, 1 px shadow), `textPrimary` label, radius
+  `sm`. Hover: gradient one step lighter. Pressed: `pressedInset`, gradient reversed.
+  Disabled: flat `surface1` fill, `textDisabled`, no highlight or shadow.
 - **Primary**: `accent` fill, `textOnAccent` label. Hover `accentHover`, pressed
   `accentPressed`. At most one per view.
 - **Ghost**: no fill, `textSecondary` label; hover `surface2` fill and `textPrimary`.
@@ -191,10 +220,12 @@ control; it is only drawn for keyboard focus, never for pointer clicks.
 
 ### Toggle button
 
-Same geometry as Button. On state: `accentSubtle` fill, `accent` text and 1 px
-`accent` inset outline. Semantic toggles (M, S, R, monitor) use their own colour in
-the same pattern: on = colour at 20% fill, colour text, colour outline; "hard on"
-for arm is a solid `arm` fill with `textOnColour` so an armed track is unmistakable.
+Same geometry and material as Button. On state: `accentSubtle` fill, `accent` text,
+1 px `accent` inset outline and `glowAccent`. Semantic toggles (M, S, R, monitor)
+use their own colour in the same pattern with their own glow; "hard on" for arm
+and solo is a solid vertical gradient of the colour (lighter at the top) with
+`capHighlight` and the colour's glow, label in `textOnColour`, so an armed track
+is unmistakable.
 
 ### Segmented control
 
@@ -220,6 +251,10 @@ A text field that also drags: pointer down and vertical drag changes the value
 (1 px = 1 step; Shift = fine, 0.1 step; Ctrl = coarse, 10 steps), double-click to
 type, Enter commits, Esc reverts, scroll wheel over a focused field steps. Value in
 `value` (mono) 12/500, unit in `textSecondary` after a thin space. Right aligned.
+Readout variant (time displays, fader dB, tempo, loudness): a readout well
+(`readoutWell`, `grooveInset`) with the value in `readoutText` and `readoutGlow`,
+`readoutRecord` while recording; while being typed into it reverts to the plain
+Text field look so the caret and selection are legible.
 
 ### Checkbox
 
@@ -236,24 +271,29 @@ arrows step, Shift+arrows fine, Home/End. Double-click resets to default.
 
 ### Fader (vertical, mixer)
 
-Track 4 px `surface2`, `faderTravel` 200 px, with a 0 dB tick (`lineStrong`, 8 px
-wide) and a scale (`caption`, `textTertiary`) at +6, 0, -6, -12, -24, -48, -inf on
-the left. Cap `faderCap` 36×14, `surface3` fill, radius `sm`, a 1 px track-colour
-line across its centre, hover `textSecondary` outline, drag shows the dB value in a
-tooltip. Law: Logic-style, 0 dB at 75% travel, +6 dB max. Double-click to 0 dB.
+Track: a 4 px groove (`groove`, `grooveInset`, `grooveLip`), `faderTravel` 200 px,
+with a 0 dB tick (`lineStrong`, 8 px wide) and a scale (`caption`, `textTertiary`)
+at +6, 0, -6, -12, -24, -48, -inf on the left. Cap `faderCap` 36×14 in the cap
+material (`capTop` to `capBottom`, `capHighlight`, `capShadow`), radius `sm`, a
+1 px track-colour line across its centre with a 4 px glow of the same colour,
+hover: highlight brightens, drag shows the dB value in a tooltip. Law: Logic-style, 0 dB at 75% travel, +6 dB max. Double-click to 0 dB.
 Shift drag = fine. Keyboard as Slider.
 
 ### Knob (pan, send level, plugin parameters)
 
-28 px (`size.knob`) ring: track `surface2` 3 px, value arc `accent` (pan: arc from
-centre, label L/R; level: from the start), indicator line `textPrimary`. Value shown
-as text below in `value` 12 mono when space allows, else in a tooltip while dragging.
+28 px (`size.knob`): a 3 px rim `knobRim` carrying the value arc in `accent` (pan:
+arc from centre, label L/R; level: from the start); inside it a body with the radial
+gradient `knobBodyLight` (offset upper-left) to `knobBodyDark`, a 1 px dark edge and
+a faint `knobHighlight` arc at the top; indicator line `textPrimary`. Value shown as
+text below in `value` 12 mono when space allows, else in a tooltip while dragging.
 Vertical drag; double-click resets. Keyboard as Slider.
 
 ### Meter
 
-Vertical bar `meterWidth` 6 px per channel, `meterGap` 2 px between channels, track
-`meterTrack`, zones per `meter.zones` painted as solid segments (no gradient blur),
+Vertical bar `meterWidth` 6 px per channel, `meterGap` 2 px between channels, in a
+well (`meterWell`, `meterWellInset`); the signal is LED-segmented at `ledPitchPx`
+with `ledGapPx` dark gaps, zones per `meter.zones` painted as solid colour runs (no
+gradient blur between zones),
 peak-hold line 1 px `meterPeakHold` with `peakHoldMs`, clip indicator: a 6×6 square
 above the bar that turns `meterClip` and stays until clicked (`clipHoldMs` for the
 auto variant on the master). Scale ticks `caption` `textTertiary` at

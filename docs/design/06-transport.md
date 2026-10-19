@@ -13,7 +13,8 @@ always visible and always truthful about what the engine is doing.
 Left to right, `space.md` gaps inside groups and `space.xl` between groups:
 
 1. **Transport buttons** (32 px, `controlLarge`): Go to start, Play, Stop, Record.
-   Icon buttons with 20 px icons. Play toggles to Pause while playing (**Decision**:
+   Keys in the control material (section 2.4) with 20 px icons; the active one
+   glows. Play toggles to Pause while playing (**Decision**:
    Space is play/stop, not play/pause; Pause exists for Shift+Space). Record is a
    `record`-coloured icon at rest; while recording the button is solid `record` with
    `textOnColour` and the time display turns `record`.
