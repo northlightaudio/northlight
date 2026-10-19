@@ -3,7 +3,7 @@
 Living document. The intended architecture is in [PLAN.md](PLAN.md), section 3; this
 file records what is actually built and the decisions made along the way.
 
-## Current state (Phase 4 complete, Phase 5 next)
+## Current state (Phase 5, in progress)
 
 ```
 aural.exe
@@ -26,6 +26,11 @@ aural.exe
                   No JUCE.
   src/plugins     Built-in processors (gain, EQ, compressor, limiter) behind the
                   insert interface. No JUCE.
+  src/hosting     PluginRegistry (known plugins, blocklist, scan times; no JUCE),
+                  PluginScanner (drives aural_plugin_scan per file), HostedPlugin
+                  (a VST3 instance behind the insert interface), HostFactory
+                  (built-ins + hosted types for the engine)
+  aural_plugin_scan  the out-of-process scanner (one plugin file per run)
   src/engine/rt   Real-time guard and allocation hook, SpscQueue, SnapshotPublisher,
                   CallbackStats, ScopedFlushDenormals
   src/audio       Pure:  AudioSettings, LatencyDetector, PassThrough
@@ -334,6 +339,34 @@ their own editors.
 3 s short-term windows on the master mix; integrated loudness with gating belongs to
 the export stage.
 
+### Plugin hosting (Phase 5, in progress)
+
+Hosted plugins are inserts like the built-ins: the model insert's type is
+`vst3:<identifier>` and `hosting::HostFactory` creates a `hosting::HostedPlugin`
+(a `juce::AudioPluginInstance` behind `engine::InsertProcessor`) for it, so the
+renderer, the insert cache and the mixer need no special case. A hosted plugin owns
+its parameters: `parameters()` is empty, its own editor (or JUCE's generic one)
+edits it in a `ui::PluginWindow` on the live instance, and the model keeps an
+opaque base64 `state` blob that the cache restores once when the instance is
+created and `ProjectSession::save` captures from every live instance. The chain is
+a stereo pair, so `prepare` asks the plugin for a stereo main bus in and out and
+disables its other buses; sidechains come later in the phase. `process` wraps the
+two channel pointers in a `juce::AudioBuffer` (no allocation) and an empty MIDI
+buffer; latency is read after `prepareToPlay` for delay compensation.
+
+Scanning is out of process from day one: `aural_plugin_scan <file>` loads one
+file and prints its `PluginDescription`s as XML, and `hosting::PluginScanner` runs
+it per candidate on a background thread with a timeout, reading its output as it
+goes. A crash, hang or garbage result blocklists the file (with the reason) until
+the user clears the list; a clean result replaces what the registry held for that
+file. `hosting::PluginRegistry` (JUCE-free, `plugins.json` beside the user
+settings) records each file's modification time, so a rescan only inspects files
+that are new or changed; the mixer's Add menu lists the registry and offers a
+full rescan, and `--scan-plugins` does the same unattended. Plugin instances are
+created on the message thread (during a snapshot compile) and destroyed there
+too (the cache prunes from the session's timer); a plugin window is closed before
+its insert leaves the model so the editor never outlives the instance.
+
 ### Metronome, count-in, loop and punch
 
 `engine::ClickGenerator` adds a 30 ms decaying sine burst on every beat (1.5 kHz on
@@ -437,4 +470,7 @@ launches; `JUCE_MODAL_LOOPS_PERMITTED` stays 0.
 | 2026-10-19 | Insert parameters are atomics on a persistent instance, not part of the snapshot | Recreating a filter on every edit would reset its state and click; pushing values into atomics keeps the instance and its memory while the snapshot stays immutable. Sample-accurate parameter changes come with automation in Phase 9. |
 | 2026-10-19 | Built-ins live in src/plugins behind the engine's insert interface | The engine must not depend on any particular processor, and VST3 hosting (Phase 5) implements the same interface; the app injects the factory. |
 | 2026-10-19 | Fader groups are commands over channel values, not engine state | The engine already consumes plain channel gains; a group only needs to move several of them together, and doing that in a command keeps the snapshot unchanged and undo exact. Relative (ratio) moves preserve the members' balance, which is what a fader group is for. |
+| 2026-10-19 | Plugin scanning runs in a separate executable, one file per process | A plugin that crashes or hangs while being inspected must not take the DAW with it; a process per file isolates the damage, lets a timeout kill it, and leaves the file blocklisted with the reason. |
+| 2026-10-19 | A hosted plugin's state is an opaque blob the plugin owns | Mirroring every plugin parameter into the model would fight the plugin's own editor and presets; capturing its state on save and restoring it on load is what every host does and keeps the model small. Automation (Phase 9) adds parameter access on top. |
+| 2026-10-19 | Insert chains are stereo pairs; plugins get a stereo main bus and no sidechain yet | The engine's channels are stereo and the chain interface is two pointers; asking every plugin for stereo in and out keeps hosting simple and correct for effects. Sidechain routing needs a graph change and comes later in Phase 5. |
 | 2026-10-19 | The limiter has no lookahead | Lookahead adds latency that needs delay compensation across the graph, which Phase 5 brings with plugin hosting; until then a fast-release limiter with a hard ceiling is honest about what it does. |

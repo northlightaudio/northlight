@@ -3,7 +3,7 @@
 A native, high-performance digital audio workstation for Windows. ASIO, VST3 hosting,
 multitrack recording, and a UI that is designed before it is built.
 
-Status: **Phase 4 (mixer and routing) complete; Phase 5 (VST3 hosting) next**. See
+Status: **Phase 5 (VST3 hosting), in progress**. See
 [docs/PLAN.md](docs/PLAN.md) for the roadmap and
 [docs/architecture.md](docs/architecture.md) for what is built.
 
@@ -108,6 +108,10 @@ inserts (built-in gain, EQ, compressor, limiter with an editor window each), pan
 mute, solo, phase, fader and meters, plus the master with LUFS; **+ Bus** adds a bus.
 A strip's **Group** button puts it in a fader group: grouped faders move together
 (keeping their balance) and mute and solo act on the whole group.
+**Inserts ▸ Add** lists the built-ins and every VST3 plugin found by **Scan for
+plugins...** (the standard VST3 folders, each file inspected in a separate process
+so a bad plugin cannot crash Aural); a hosted plugin opens its own editor window
+and its state is saved with the project.
 Recordings go next to the project file in a `<project> Media` folder, or to
 `Documents\Aural\Recordings` for an unsaved project, each with a small
 `.recording.json` beside it while it is in progress. If the app dies while
@@ -121,7 +125,7 @@ Ctrl+Shift+S to save as).
 For unattended checks: `Aural.exe --import <file> [--import <file>] --play`, and
 `Aural.exe --record <inputs> [--loop <from> <to>] [--no-count-in] --stop-after <seconds>`; `--mixer`
 opens the mixer panel and `--insert <type>` adds a built-in (for example `aural.eq`) to
-every track and opens its editor. `--recover` recovers unfinished recordings without
+every track and opens its editor. `--scan-plugins` runs a full plugin scan; `--recover` recovers unfinished recordings without
 the prompt and `--save <file>` writes the project (so a check can read the placed
 clips); `--save` runs two seconds after a preceding `--stop-after`, else half a
 second after launch.
