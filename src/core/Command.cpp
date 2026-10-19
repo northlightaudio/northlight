@@ -1,6 +1,7 @@
 #include "core/Command.h"
 
 #include <algorithm>
+#include <cmath>
 #include <stdexcept>
 #include <utility>
 
@@ -250,6 +251,292 @@ void RemoveBus::revert(Project& p)
         if (auto* c = p.findChannel(d.channel))
             c->sends.insert(
                 c->sends.begin() + static_cast<std::ptrdiff_t>(std::min(d.index, c->sends.size())), d.send);
+}
+
+// ----- MIDI ----------------------------------------------------------------------------------
+
+namespace
+{
+MidiClip& requireMidiClip(Track& t, Id id)
+{
+    auto* c = t.findMidiClip(id);
+    if (c == nullptr)
+        throw std::logic_error("command references a MIDI clip that does not exist");
+    return *c;
+}
+
+MidiNote& requireNote(MidiClip& c, Id id)
+{
+    auto* n = c.findNote(id);
+    if (n == nullptr)
+        throw std::logic_error("command references a note that does not exist");
+    return *n;
+}
+
+void clampNote(MidiNote& n)
+{
+    n.note = std::clamp(n.note, 0, 127);
+    n.velocity = std::clamp(n.velocity, 1, 127);
+    n.start = std::max<SamplePosition>(0, n.start);
+    n.length = std::max<SamplePosition>(1, n.length);
+}
+} // namespace
+
+SetTrackMidiInput::SetTrackMidiInput(Id trackId, std::string deviceName)
+    : trackId_(trackId), value_(std::move(deviceName))
+{
+}
+void SetTrackMidiInput::apply(Project& p)
+{
+    auto& t = requireTrack(p, trackId_);
+    previous_ = t.midiInput;
+    t.midiInput = value_;
+}
+void SetTrackMidiInput::revert(Project& p)
+{
+    requireTrack(p, trackId_).midiInput = previous_;
+}
+
+AddMidiClip::AddMidiClip(Id trackId, MidiClip clip) : trackId_(trackId), clip_(std::move(clip)) {}
+void AddMidiClip::apply(Project& p)
+{
+    auto& t = requireTrack(p, trackId_);
+    if (clip_.id == invalidId)
+        clip_.id = p.allocateId();
+    for (auto& n : clip_.notes)
+    {
+        if (n.id == invalidId)
+            n.id = p.allocateId();
+        clampNote(n);
+    }
+    clip_.start = std::max<SamplePosition>(0, clip_.start);
+    clip_.length = std::max<SamplePosition>(0, clip_.length);
+    clip_.sortNotes();
+    t.midiClips.push_back(clip_);
+    t.sortMidiClips();
+}
+void AddMidiClip::revert(Project& p)
+{
+    auto& t = requireTrack(p, trackId_);
+    std::erase_if(t.midiClips, [this](const MidiClip& c) { return c.id == clip_.id; });
+}
+
+RemoveMidiClip::RemoveMidiClip(Id trackId, Id clipId) : trackId_(trackId), clipId_(clipId) {}
+void RemoveMidiClip::apply(Project& p)
+{
+    auto& t = requireTrack(p, trackId_);
+    removed_ = requireMidiClip(t, clipId_);
+    std::erase_if(t.midiClips, [this](const MidiClip& c) { return c.id == clipId_; });
+}
+void RemoveMidiClip::revert(Project& p)
+{
+    auto& t = requireTrack(p, trackId_);
+    t.midiClips.push_back(removed_);
+    t.sortMidiClips();
+}
+
+MoveMidiClip::MoveMidiClip(Id fromTrackId, Id clipId, Id toTrackId, SamplePosition newStart)
+    : fromTrackId_(fromTrackId), clipId_(clipId), toTrackId_(toTrackId), newStart_(newStart)
+{
+}
+void MoveMidiClip::apply(Project& p)
+{
+    auto& from = requireTrack(p, fromTrackId_);
+    auto& to = requireTrack(p, toTrackId_);
+    if (!to.isMidi())
+        throw std::logic_error("a MIDI clip can only live on a MIDI track");
+    MidiClip clip = requireMidiClip(from, clipId_);
+    previousStart_ = clip.start;
+    clip.start = std::max<SamplePosition>(0, newStart_);
+    std::erase_if(from.midiClips, [this](const MidiClip& c) { return c.id == clipId_; });
+    to.midiClips.push_back(clip);
+    to.sortMidiClips();
+}
+void MoveMidiClip::revert(Project& p)
+{
+    auto& to = requireTrack(p, toTrackId_);
+    MidiClip clip = requireMidiClip(to, clipId_);
+    clip.start = previousStart_;
+    std::erase_if(to.midiClips, [this](const MidiClip& c) { return c.id == clipId_; });
+    auto& from = requireTrack(p, fromTrackId_);
+    from.midiClips.push_back(clip);
+    from.sortMidiClips();
+}
+
+TrimMidiClip::TrimMidiClip(Id trackId, Id clipId, SamplePosition start, SamplePosition length)
+    : trackId_(trackId), clipId_(clipId), start_(start), length_(length)
+{
+}
+void TrimMidiClip::apply(Project& p)
+{
+    auto& t = requireTrack(p, trackId_);
+    auto& c = requireMidiClip(t, clipId_);
+    previous_ = c;
+    const auto newStart = std::max<SamplePosition>(0, start_);
+    const auto shift = c.start - newStart; // notes move the other way to stay put
+    for (auto& n : c.notes)
+        n.start += shift;
+    c.start = newStart;
+    c.length = std::max<SamplePosition>(0, length_);
+    t.sortMidiClips();
+}
+void TrimMidiClip::revert(Project& p)
+{
+    auto& t = requireTrack(p, trackId_);
+    requireMidiClip(t, clipId_) = previous_;
+    t.sortMidiClips();
+}
+
+SplitMidiClip::SplitMidiClip(Id trackId, Id clipId, SamplePosition at)
+    : trackId_(trackId), clipId_(clipId), at_(at)
+{
+}
+void SplitMidiClip::apply(Project& p)
+{
+    auto& t = requireTrack(p, trackId_);
+    auto& c = requireMidiClip(t, clipId_);
+    if (at_ <= c.start || at_ >= c.end())
+        throw std::logic_error("split point is not inside the clip");
+    original_ = c;
+    const auto offset = at_ - c.start; // the split, clip-relative
+    if (right_.id == invalidId)
+        right_.id = p.allocateId();
+    right_.name = c.name;
+    right_.start = at_;
+    right_.length = c.end() - at_;
+    right_.notes.clear();
+    std::vector<MidiNote> left;
+    for (const auto& n : c.notes)
+    {
+        if (n.start >= offset)
+        {
+            MidiNote moved = n;
+            moved.start -= offset;
+            right_.notes.push_back(moved);
+        }
+        else
+        {
+            MidiNote kept = n;
+            kept.length = std::min(kept.length, offset - kept.start); // cut at the split
+            left.push_back(kept);
+        }
+    }
+    c.notes = std::move(left);
+    c.length = offset;
+    t.midiClips.push_back(right_);
+    t.sortMidiClips();
+}
+void SplitMidiClip::revert(Project& p)
+{
+    auto& t = requireTrack(p, trackId_);
+    std::erase_if(t.midiClips, [this](const MidiClip& c) { return c.id == right_.id; });
+    requireMidiClip(t, clipId_) = original_;
+    t.sortMidiClips();
+}
+
+DuplicateMidiClip::DuplicateMidiClip(Id trackId, Id clipId, SamplePosition at)
+    : trackId_(trackId), clipId_(clipId), at_(at)
+{
+}
+void DuplicateMidiClip::apply(Project& p)
+{
+    auto& t = requireTrack(p, trackId_);
+    const auto& c = requireMidiClip(t, clipId_);
+    const bool fresh = copy_.id == invalidId;
+    const auto keep = copy_;
+    copy_ = c;
+    copy_.id = fresh ? p.allocateId() : keep.id;
+    for (size_t i = 0; i < copy_.notes.size(); ++i)
+        copy_.notes[i].id = fresh || i >= keep.notes.size() ? p.allocateId() : keep.notes[i].id;
+    copy_.start = at_ >= 0 ? at_ : c.end();
+    t.midiClips.push_back(copy_);
+    t.sortMidiClips();
+}
+void DuplicateMidiClip::revert(Project& p)
+{
+    auto& t = requireTrack(p, trackId_);
+    std::erase_if(t.midiClips, [this](const MidiClip& c) { return c.id == copy_.id; });
+}
+
+AddNote::AddNote(Id trackId, Id clipId, MidiNote note) : trackId_(trackId), clipId_(clipId), note_(note) {}
+void AddNote::apply(Project& p)
+{
+    auto& c = requireMidiClip(requireTrack(p, trackId_), clipId_);
+    if (note_.id == invalidId)
+        note_.id = p.allocateId();
+    clampNote(note_);
+    c.notes.push_back(note_);
+    c.sortNotes();
+}
+void AddNote::revert(Project& p)
+{
+    auto& c = requireMidiClip(requireTrack(p, trackId_), clipId_);
+    std::erase_if(c.notes, [this](const MidiNote& n) { return n.id == note_.id; });
+}
+
+RemoveNote::RemoveNote(Id trackId, Id clipId, Id noteId) : trackId_(trackId), clipId_(clipId), noteId_(noteId)
+{
+}
+void RemoveNote::apply(Project& p)
+{
+    auto& c = requireMidiClip(requireTrack(p, trackId_), clipId_);
+    removed_ = requireNote(c, noteId_);
+    std::erase_if(c.notes, [this](const MidiNote& n) { return n.id == noteId_; });
+}
+void RemoveNote::revert(Project& p)
+{
+    auto& c = requireMidiClip(requireTrack(p, trackId_), clipId_);
+    c.notes.push_back(removed_);
+    c.sortNotes();
+}
+
+SetNote::SetNote(Id trackId, Id clipId, MidiNote value) : trackId_(trackId), clipId_(clipId), value_(value) {}
+void SetNote::apply(Project& p)
+{
+    auto& c = requireMidiClip(requireTrack(p, trackId_), clipId_);
+    auto& n = requireNote(c, value_.id);
+    previous_ = n;
+    n = value_;
+    clampNote(n);
+    c.sortNotes();
+}
+void SetNote::revert(Project& p)
+{
+    auto& c = requireMidiClip(requireTrack(p, trackId_), clipId_);
+    requireNote(c, value_.id) = previous_;
+    c.sortNotes();
+}
+
+QuantiseNotes::QuantiseNotes(
+    Id trackId, Id clipId, std::vector<Id> noteIds, SamplePosition grid, float strength)
+    : trackId_(trackId), clipId_(clipId), noteIds_(std::move(noteIds)), grid_(grid), strength_(strength)
+{
+}
+void QuantiseNotes::apply(Project& p)
+{
+    auto& c = requireMidiClip(requireTrack(p, trackId_), clipId_);
+    previous_.clear();
+    const float strength = std::clamp(strength_, 0.0f, 1.0f);
+    for (auto& n : c.notes)
+    {
+        if (!noteIds_.empty() && std::find(noteIds_.begin(), noteIds_.end(), n.id) == noteIds_.end())
+            continue;
+        previous_.emplace_back(n.id, n.start);
+        const auto absolute = c.start + n.start;
+        const auto target = snapToGrid(absolute, grid_);
+        const auto moved =
+            absolute + static_cast<SamplePosition>(std::llround((target - absolute) * strength));
+        n.start = std::max<SamplePosition>(0, moved - c.start);
+    }
+    c.sortNotes();
+}
+void QuantiseNotes::revert(Project& p)
+{
+    auto& c = requireMidiClip(requireTrack(p, trackId_), clipId_);
+    for (const auto& [id, start] : previous_)
+        if (auto* n = c.findNote(id))
+            n->start = start;
+    c.sortNotes();
 }
 
 // ----- markers -------------------------------------------------------------------------------

@@ -219,6 +219,168 @@ private:
     std::vector<std::pair<Id, bool>> previous_;
 };
 
+// ----- MIDI ----------------------------------------------------------------------------------
+
+class SetTrackMidiInput final : public Command
+{
+public:
+    SetTrackMidiInput(Id trackId, std::string deviceName);
+    std::string name() const override { return "Set MIDI input"; }
+    void apply(Project&) override;
+    void revert(Project&) override;
+
+private:
+    Id trackId_;
+    std::string value_, previous_;
+};
+
+class AddMidiClip final : public Command
+{
+public:
+    AddMidiClip(Id trackId, MidiClip clip); // ids (clip and notes) allocated on apply if invalid
+    std::string name() const override { return "Add MIDI clip"; }
+    void apply(Project&) override;
+    void revert(Project&) override;
+    Id clipId() const noexcept { return clip_.id; }
+
+private:
+    Id trackId_;
+    MidiClip clip_;
+};
+
+class RemoveMidiClip final : public Command
+{
+public:
+    RemoveMidiClip(Id trackId, Id clipId);
+    std::string name() const override { return "Remove MIDI clip"; }
+    void apply(Project&) override;
+    void revert(Project&) override;
+
+private:
+    Id trackId_, clipId_;
+    MidiClip removed_;
+};
+
+class MoveMidiClip final : public Command
+{
+public:
+    MoveMidiClip(Id fromTrackId, Id clipId, Id toTrackId, SamplePosition newStart);
+    std::string name() const override { return "Move MIDI clip"; }
+    void apply(Project&) override;
+    void revert(Project&) override;
+
+private:
+    Id fromTrackId_, clipId_, toTrackId_;
+    SamplePosition newStart_, previousStart_ = 0;
+};
+
+// New start and length; the notes keep their place on the timeline (a start
+// change shifts their clip-relative offsets the other way).
+class TrimMidiClip final : public Command
+{
+public:
+    TrimMidiClip(Id trackId, Id clipId, SamplePosition start, SamplePosition length);
+    std::string name() const override { return "Trim MIDI clip"; }
+    void apply(Project&) override;
+    void revert(Project&) override;
+
+private:
+    Id trackId_, clipId_;
+    SamplePosition start_, length_;
+    MidiClip previous_;
+};
+
+// Splits at a timeline position inside the clip; a note across the split is cut
+// at it (the left part keeps it, shortened).
+class SplitMidiClip final : public Command
+{
+public:
+    SplitMidiClip(Id trackId, Id clipId, SamplePosition at);
+    std::string name() const override { return "Split MIDI clip"; }
+    void apply(Project&) override;
+    void revert(Project&) override;
+    Id rightClipId() const noexcept { return right_.id; }
+
+private:
+    Id trackId_, clipId_;
+    SamplePosition at_;
+    MidiClip original_, right_;
+};
+
+class DuplicateMidiClip final : public Command
+{
+public:
+    DuplicateMidiClip(Id trackId, Id clipId, SamplePosition at = -1);
+    std::string name() const override { return "Duplicate MIDI clip"; }
+    void apply(Project&) override;
+    void revert(Project&) override;
+    Id newClipId() const noexcept { return copy_.id; }
+
+private:
+    Id trackId_, clipId_;
+    SamplePosition at_;
+    MidiClip copy_;
+};
+
+class AddNote final : public Command
+{
+public:
+    AddNote(Id trackId, Id clipId, MidiNote note); // id allocated on apply if invalid
+    std::string name() const override { return "Add note"; }
+    void apply(Project&) override;
+    void revert(Project&) override;
+    Id noteId() const noexcept { return note_.id; }
+
+private:
+    Id trackId_, clipId_;
+    MidiNote note_;
+};
+
+class RemoveNote final : public Command
+{
+public:
+    RemoveNote(Id trackId, Id clipId, Id noteId);
+    std::string name() const override { return "Remove note"; }
+    void apply(Project&) override;
+    void revert(Project&) override;
+
+private:
+    Id trackId_, clipId_, noteId_;
+    MidiNote removed_;
+};
+
+// Pitch, velocity, start and length together (a move, a resize, a velocity edit).
+class SetNote final : public Command
+{
+public:
+    SetNote(Id trackId, Id clipId, MidiNote value);
+    std::string name() const override { return "Edit note"; }
+    void apply(Project&) override;
+    void revert(Project&) override;
+
+private:
+    Id trackId_, clipId_;
+    MidiNote value_, previous_;
+};
+
+// Moves note starts towards the nearest grid line (timeline grid, anchored at
+// zero) by `strength` (1 = exactly on the grid); lengths are kept.
+class QuantiseNotes final : public Command
+{
+public:
+    QuantiseNotes(Id trackId, Id clipId, std::vector<Id> noteIds, SamplePosition grid, float strength = 1.0f);
+    std::string name() const override { return "Quantise"; }
+    void apply(Project&) override;
+    void revert(Project&) override;
+
+private:
+    Id trackId_, clipId_;
+    std::vector<Id> noteIds_;
+    SamplePosition grid_;
+    float strength_;
+    std::vector<std::pair<Id, SamplePosition>> previous_;
+};
+
 // ----- markers -------------------------------------------------------------------------------
 
 class AddMarker final : public Command

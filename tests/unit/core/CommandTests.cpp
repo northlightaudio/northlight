@@ -519,3 +519,112 @@ TEST_CASE("Markers and regions are added, moved, renamed, removed and kept in or
     }
     CHECK(p.markers.empty());
 }
+
+TEST_CASE("MIDI clips and notes are added, moved, trimmed, split, edited, quantised and undone",
+          "[core][command][midi]")
+{
+    Project p;
+    Track t;
+    t.name = "Keys";
+    t.kind = TrackKind::midi;
+    UndoStack stack;
+    stack.execute(p, std::make_unique<AddTrack>(t));
+    const Id track = p.tracks[0].id;
+    CHECK(p.tracks[0].isMidi());
+    stack.execute(p, std::make_unique<SetTrackMidiInput>(track, "Keystation"));
+    CHECK(p.tracks[0].midiInput == "Keystation");
+
+    MidiClip clip;
+    clip.name = "riff";
+    clip.start = 1000;
+    clip.length = 2000;
+    clip.notes.push_back({invalidId, 60, 100, 500, 400});
+    clip.notes.push_back({invalidId, 64, 90, 0, 300});
+    auto add = std::make_unique<AddMidiClip>(track, clip);
+    const auto* addPtr = add.get();
+    stack.execute(p, std::move(add));
+    const Id clipId = addPtr->clipId();
+    REQUIRE(p.tracks[0].midiClips.size() == 1);
+    const auto& stored = p.tracks[0].midiClips[0];
+    REQUIRE(stored.notes.size() == 2);
+    CHECK(stored.notes[0].note == 64); // sorted by start
+    CHECK(stored.notes[0].id != invalidId);
+    CHECK(stored.notes[1].id != stored.notes[0].id);
+    CHECK(p.length() == 3000);
+    const Id c4 = stored.notes[1].id;
+
+    // Notes: edit, add, remove, quantise.
+    stack.execute(p, std::make_unique<SetNote>(track, clipId, MidiNote{c4, 200, 0, 50, 0}));
+    CHECK(p.tracks[0].midiClips[0].notes[1].id == c4);         // re-sorted: 0 then 50
+    CHECK(p.tracks[0].midiClips[0].findNote(c4)->note == 127); // clamped
+    CHECK(p.tracks[0].midiClips[0].findNote(c4)->velocity == 1);
+    CHECK(p.tracks[0].midiClips[0].findNote(c4)->length == 1);
+    stack.undo(p);
+    CHECK(p.tracks[0].midiClips[0].findNote(c4)->start == 500);
+    auto addNote = std::make_unique<AddNote>(track, clipId, MidiNote{invalidId, 67, 80, 1010, 100});
+    const auto* addNotePtr = addNote.get();
+    stack.execute(p, std::move(addNote));
+    const Id g4 = addNotePtr->noteId();
+    REQUIRE(p.tracks[0].midiClips[0].notes.size() == 3);
+    // Quantise to a 500-sample grid: 1000 + 1010 = 2010 -> 2000 -> clip-relative 1000.
+    stack.execute(p, std::make_unique<QuantiseNotes>(track, clipId, std::vector<Id>{g4}, 500));
+    CHECK(p.tracks[0].midiClips[0].findNote(g4)->start == 1000);
+    stack.undo(p);
+    CHECK(p.tracks[0].midiClips[0].findNote(g4)->start == 1010);
+    stack.execute(
+        p, std::make_unique<QuantiseNotes>(track, clipId, std::vector<Id>{}, 500, 0.5f)); // all, halfway
+    CHECK(p.tracks[0].midiClips[0].findNote(g4)->start == 1005);
+    stack.undo(p);
+    stack.execute(p, std::make_unique<RemoveNote>(track, clipId, g4));
+    CHECK(p.tracks[0].midiClips[0].notes.size() == 2);
+    stack.undo(p);
+    CHECK(p.tracks[0].midiClips[0].notes.size() == 3);
+
+    // Trim keeps the notes on the timeline.
+    stack.execute(p, std::make_unique<TrimMidiClip>(track, clipId, 1200, 1500));
+    CHECK(p.tracks[0].midiClips[0].start == 1200);
+    CHECK(p.tracks[0].midiClips[0].findNote(c4)->start == 300); // was 500 from 1000
+    stack.undo(p);
+    CHECK(p.tracks[0].midiClips[0].findNote(c4)->start == 500);
+
+    // Split at 1400: the 64 (0..300) stays left; the 60 (500..900) and 67 (1010..) go right.
+    auto split = std::make_unique<SplitMidiClip>(track, clipId, 1400);
+    const auto* splitPtr = split.get();
+    stack.execute(p, std::move(split));
+    REQUIRE(p.tracks[0].midiClips.size() == 2);
+    CHECK(p.tracks[0].midiClips[0].length == 400);
+    CHECK(p.tracks[0].midiClips[0].notes.size() == 1);
+    CHECK(p.tracks[0].midiClips[1].id == splitPtr->rightClipId());
+    CHECK(p.tracks[0].midiClips[1].start == 1400);
+    REQUIRE(p.tracks[0].midiClips[1].notes.size() == 2);
+    CHECK(p.tracks[0].midiClips[1].notes[0].start == 100); // 500 - 400
+    stack.undo(p);
+    REQUIRE(p.tracks[0].midiClips.size() == 1);
+    CHECK(p.tracks[0].midiClips[0].notes.size() == 3);
+
+    // A note across a split is cut at it.
+    stack.execute(p, std::make_unique<SplitMidiClip>(track, clipId, 1700)); // inside the 60 (1500..1900)
+    CHECK(p.tracks[0].midiClips[0].findNote(c4)->length == 200);
+    stack.undo(p);
+
+    // Duplicate and move; a MIDI clip cannot land on an audio track.
+    auto dup = std::make_unique<DuplicateMidiClip>(track, clipId);
+    const auto* dupPtr = dup.get();
+    stack.execute(p, std::move(dup));
+    REQUIRE(p.tracks[0].midiClips.size() == 2);
+    CHECK(p.tracks[0].midiClips[1].start == 3000);
+    CHECK(p.tracks[0].midiClips[1].notes[0].id != p.tracks[0].midiClips[0].notes[0].id);
+    Track audio;
+    audio.name = "Audio";
+    stack.execute(p, std::make_unique<AddTrack>(audio));
+    CHECK_THROWS(MoveMidiClip(track, dupPtr->newClipId(), p.tracks[1].id, 0).apply(p));
+    stack.execute(p, std::make_unique<MoveMidiClip>(track, dupPtr->newClipId(), track, 5000));
+    CHECK(p.tracks[0].midiClips[1].start == 5000);
+    stack.execute(p, std::make_unique<RemoveMidiClip>(track, dupPtr->newClipId()));
+    CHECK(p.tracks[0].midiClips.size() == 1);
+
+    while (stack.undo(p))
+    {
+    }
+    CHECK(p.tracks.empty());
+}

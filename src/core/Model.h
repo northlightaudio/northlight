@@ -34,6 +34,40 @@ struct AudioClip
     bool operator==(const AudioClip&) const = default;
 };
 
+// A note inside a MIDI clip. Times are in samples relative to the clip's start.
+struct MidiNote
+{
+    Id id = invalidId;
+    int note = 60;      // 0..127
+    int velocity = 100; // 1..127
+    SamplePosition start = 0;
+    SamplePosition length = 0;
+    SamplePosition end() const noexcept { return start + length; }
+    bool operator==(const MidiNote&) const = default;
+};
+
+// A clip of notes on a MIDI track.
+struct MidiClip
+{
+    Id id = invalidId;
+    std::string name;
+    SamplePosition start = 0;
+    SamplePosition length = 0;
+    std::vector<MidiNote> notes; // kept sorted by start
+
+    SamplePosition end() const noexcept { return start + length; }
+    MidiNote* findNote(Id noteId) noexcept;
+    const MidiNote* findNote(Id noteId) const noexcept;
+    void sortNotes();
+    bool operator==(const MidiClip&) const = default;
+};
+
+enum class TrackKind
+{
+    audio, // audio clips, an audio input
+    midi,  // MIDI clips, a MIDI input, an instrument in its chain
+};
+
 enum class MonitorMode
 {
     off,       // never hear the input through the track
@@ -104,14 +138,21 @@ struct Channel
 
 struct Track : Channel
 {
+    TrackKind kind = TrackKind::audio;
     int inputChannel = -1; // device input channel index (callback order), -1 = none
+    std::string midiInput; // MIDI input device name; empty = every enabled input
     bool armed = false;    // records when the transport records
     MonitorMode monitor = MonitorMode::automatic;
-    std::vector<AudioClip> clips; // kept sorted by start
+    std::vector<AudioClip> clips;    // kept sorted by start
+    std::vector<MidiClip> midiClips; // kept sorted by start
 
     AudioClip* findClip(Id clipId) noexcept;
     const AudioClip* findClip(Id clipId) const noexcept;
     void sortClips();
+    MidiClip* findMidiClip(Id clipId) noexcept;
+    const MidiClip* findMidiClip(Id clipId) const noexcept;
+    void sortMidiClips();
+    bool isMidi() const noexcept { return kind == TrackKind::midi; }
     bool operator==(const Track&) const = default;
 };
 

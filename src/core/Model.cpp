@@ -122,6 +122,51 @@ const Channel* Project::findChannel(Id channelId) const noexcept
     return findBus(channelId);
 }
 
+MidiNote* MidiClip::findNote(Id noteId) noexcept
+{
+    for (auto& n : notes)
+        if (n.id == noteId)
+            return &n;
+    return nullptr;
+}
+
+const MidiNote* MidiClip::findNote(Id noteId) const noexcept
+{
+    for (const auto& n : notes)
+        if (n.id == noteId)
+            return &n;
+    return nullptr;
+}
+
+void MidiClip::sortNotes()
+{
+    std::stable_sort(
+        notes.begin(), notes.end(), [](const MidiNote& a, const MidiNote& b) { return a.start < b.start; });
+}
+
+MidiClip* Track::findMidiClip(Id clipId) noexcept
+{
+    for (auto& c : midiClips)
+        if (c.id == clipId)
+            return &c;
+    return nullptr;
+}
+
+const MidiClip* Track::findMidiClip(Id clipId) const noexcept
+{
+    for (const auto& c : midiClips)
+        if (c.id == clipId)
+            return &c;
+    return nullptr;
+}
+
+void Track::sortMidiClips()
+{
+    std::stable_sort(midiClips.begin(),
+                     midiClips.end(),
+                     [](const MidiClip& a, const MidiClip& b) { return a.start < b.start; });
+}
+
 Group* Project::findGroup(Id groupId) noexcept
 {
     for (auto& g : groups)
@@ -242,6 +287,9 @@ SamplePosition Project::length() const noexcept
     SamplePosition end = 0;
     for (const auto& t : tracks)
         for (const auto& c : t.clips)
+            end = std::max(end, c.end());
+    for (const auto& t : tracks)
+        for (const auto& c : t.midiClips)
             end = std::max(end, c.end());
     return end;
 }

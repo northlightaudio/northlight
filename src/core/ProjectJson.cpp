@@ -123,10 +123,30 @@ json trackToJson(const Track& t)
                                                          : "auto";
     json j;
     channelToJson(j, t);
+    if (t.kind == TrackKind::midi)
+        j["kind"] = "midi";
     j["input"] = t.inputChannel;
+    if (!t.midiInput.empty())
+        j["midiInput"] = t.midiInput;
     j["armed"] = t.armed;
     j["monitor"] = monitor;
     j["clips"] = std::move(clips);
+    if (!t.midiClips.empty())
+    {
+        json midiClips = json::array();
+        for (const auto& c : t.midiClips)
+        {
+            json notes = json::array();
+            for (const auto& n : c.notes)
+                notes.push_back(json::array({n.id, n.note, n.velocity, n.start, n.length}));
+            midiClips.push_back(json{{"id", c.id},
+                                     {"name", c.name},
+                                     {"start", c.start},
+                                     {"length", c.length},
+                                     {"notes", std::move(notes)}});
+        }
+        j["midiClips"] = std::move(midiClips);
+    }
     return j;
 }
 
@@ -148,6 +168,30 @@ Track trackFromJson(const json& j)
 {
     Track t;
     channelFromJson(j, t);
+    t.kind = j.value("kind", std::string{"audio"}) == "midi" ? TrackKind::midi : TrackKind::audio;
+    t.midiInput = j.value("midiInput", std::string{});
+    if (const auto it = j.find("midiClips"); it != j.end() && it->is_array())
+    {
+        for (const auto& cj : *it)
+        {
+            MidiClip c;
+            c.id = cj.value("id", invalidId);
+            c.name = cj.value("name", std::string{});
+            c.start = cj.value("start", SamplePosition{0});
+            c.length = cj.value("length", SamplePosition{0});
+            if (const auto notes = cj.find("notes"); notes != cj.end() && notes->is_array())
+                for (const auto& nj : *notes)
+                    if (nj.is_array() && nj.size() == 5)
+                        c.notes.push_back(MidiNote{nj[0].get<Id>(),
+                                                   nj[1].get<int>(),
+                                                   nj[2].get<int>(),
+                                                   nj[3].get<SamplePosition>(),
+                                                   nj[4].get<SamplePosition>()});
+            c.sortNotes();
+            t.midiClips.push_back(std::move(c));
+        }
+        t.sortMidiClips();
+    }
     t.inputChannel = j.value("input", -1);
     t.armed = j.value("armed", false);
     const auto monitor = j.value("monitor", std::string{"auto"});
@@ -265,6 +309,12 @@ std::optional<Project> projectFromJson(const std::string& text, std::string* err
             maxId = std::max(maxId, t.id);
             for (const auto& c : t.clips)
                 maxId = std::max(maxId, c.id);
+            for (const auto& c : t.midiClips)
+            {
+                maxId = std::max(maxId, c.id);
+                for (const auto& n : c.notes)
+                    maxId = std::max(maxId, n.id);
+            }
         }
         for (const auto& b : p.buses)
         {
@@ -292,6 +342,12 @@ std::optional<Project> projectFromJson(const std::string& text, std::string* err
             fresh(t.id);
             for (auto& c : t.clips)
                 fresh(c.id);
+            for (auto& c : t.midiClips)
+            {
+                fresh(c.id);
+                for (auto& n : c.notes)
+                    fresh(n.id);
+            }
             for (auto& i : t.inserts)
                 fresh(i.id);
         }
