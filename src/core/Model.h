@@ -61,6 +61,20 @@ struct Insert
 };
 
 // What tracks and buses share: the fader section and routing.
+// The loudest a channel fader goes (+6 dB); group moves clamp to it.
+constexpr float maxChannelGain = 1.99526f;
+
+// A fader group: its members' faders move together (keeping their balance) and
+// mute and solo act on all of them. Groups are a model-level link applied by
+// commands; the engine only sees the resulting channel values.
+struct Group
+{
+    Id id = invalidId;
+    std::string name;
+    std::uint32_t colour = 0; // 0xAARRGGBB, 0 = default
+    bool operator==(const Group&) const = default;
+};
+
 struct Channel
 {
     Id id = invalidId;
@@ -72,6 +86,7 @@ struct Channel
     bool phaseInvert = false;
     std::uint32_t colour = 0; // 0xAARRGGBB, 0 = default
     Id outputBus = invalidId; // invalidId routes to the master
+    Id group = invalidId;     // fader group membership
     std::vector<Send> sends;
     std::vector<Insert> inserts; // processed in order, pre-fader
 
@@ -122,6 +137,7 @@ struct Project
     TimeSignature timeSignature;
     std::vector<Track> tracks;
     std::vector<Bus> buses;
+    std::vector<Group> groups;
     Master master;
     Id nextId = 1;
 
@@ -136,6 +152,11 @@ struct Project
     // A track or a bus, by id.
     Channel* findChannel(Id channelId) noexcept;
     const Channel* findChannel(Id channelId) const noexcept;
+    Group* findGroup(Id groupId) noexcept;
+    const Group* findGroup(Id groupId) const noexcept;
+    int groupIndex(Id groupId) const noexcept;
+    // Every track and bus in the group, in mixer order.
+    std::vector<Channel*> groupMembers(Id groupId) noexcept;
 
     // Length of the longest track in samples.
     SamplePosition length() const noexcept;

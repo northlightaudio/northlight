@@ -3,7 +3,7 @@
 Living document. The intended architecture is in [PLAN.md](PLAN.md), section 3; this
 file records what is actually built and the decisions made along the way.
 
-## Current state (Phase 4, in progress)
+## Current state (Phase 4 complete, Phase 5 next)
 
 ```
 aural.exe
@@ -17,7 +17,7 @@ aural.exe
                   TrackHeader (input, arm, monitor), MixerView (strips, master,
                   inserts menu), InsertEditor (generic parameter window)
   src/core        Project model (tracks and buses on a shared Channel, sends,
-                  master, clips), Command + UndoStack, JSON project files,
+                  fader groups, master, clips), Command + UndoStack, JSON files,
                   bars/beats helpers. No JUCE.
   src/engine      AudioEngine façade, Snapshot compiler + MediaCache + InsertCache,
                   Transport, Renderer, WorkerPool, AudioSource (memory + streaming),
@@ -300,7 +300,16 @@ order: tracks, then buses, then the master (`trackMeterSlot`, `busMeterSlot`,
 menu, inserts menu, pan, mute/solo/phase, fader in dB, stereo meter) and the master
 strip with momentary and short-term LUFS, in a panel under the arrange view (Mixer
 button, Ctrl+M). Every control issues a `core::Command`; the view refreshes from the
-project. Fader groups are the remaining Phase 4 item.
+project.
+
+Fader groups are `core::Group`s (name, colour) that tracks and buses point at
+through `Channel::group`. They are a model-level link applied by commands, not an
+engine concept: `SetGroupGain` scales every member's gain by one ratio (a fader move
+in dB applied to all, keeping their balance, clamped at the fader's top), and
+`SetGroupMute` / `SetGroupSolo` set every member; each stores the members' own
+previous values so undo restores them individually. The strip's Group button picks
+a group, makes a new one (joining it in the same undo step) or removes it, and a
+grouped strip's fader, M and S issue the group commands instead of its own.
 
 ### Inserts and the built-in processors
 
@@ -427,4 +436,5 @@ launches; `JUCE_MODAL_LOOPS_PERMITTED` stays 0.
 | 2026-10-19 | Meters as peak-hold plus last-block RMS in atomics | The UI needs a peak that cannot be missed between frames and a level that falls naturally; holding the peak until read and letting the UI apply ballistics gives both without any queue. LUFS needs K-weighting and a 400 ms window and is a separate pass. |
 | 2026-10-19 | Insert parameters are atomics on a persistent instance, not part of the snapshot | Recreating a filter on every edit would reset its state and click; pushing values into atomics keeps the instance and its memory while the snapshot stays immutable. Sample-accurate parameter changes come with automation in Phase 9. |
 | 2026-10-19 | Built-ins live in src/plugins behind the engine's insert interface | The engine must not depend on any particular processor, and VST3 hosting (Phase 5) implements the same interface; the app injects the factory. |
+| 2026-10-19 | Fader groups are commands over channel values, not engine state | The engine already consumes plain channel gains; a group only needs to move several of them together, and doing that in a command keeps the snapshot unchanged and undo exact. Relative (ratio) moves preserve the members' balance, which is what a fader group is for. |
 | 2026-10-19 | The limiter has no lookahead | Lookahead adds latency that needs delay compensation across the graph, which Phase 5 brings with plugin hosting; until then a fast-release limiter with a hard ceiling is honest about what it does. |

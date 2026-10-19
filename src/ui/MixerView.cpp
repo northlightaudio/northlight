@@ -5,6 +5,9 @@
 #include "ui/InsertEditor.h"
 
 #include <cmath>
+#include <cstdint>
+#include <iterator>
+#include <string>
 
 namespace aural::ui
 {
@@ -12,7 +15,11 @@ namespace aural::ui
 namespace
 {
 constexpr double minFaderDb = -60.0;
-constexpr double maxFaderDb = 6.0;
+constexpr double maxFaderDb = 6.0; // matches core::maxChannelGain
+
+// Colours handed to new fader groups in turn.
+constexpr std::uint32_t groupColours[] = {
+    0xff4f8fe8u, 0xffe8a84fu, 0xff5fc96fu, 0xffd65f9eu, 0xff9b6fe8u, 0xff4fc9c9u};
 constexpr int meterHz = 30;
 
 float dbToGain(double db) noexcept
@@ -140,8 +147,15 @@ public:
         { return t.containsIgnoreCase("inf") ? minFaderDb : t.getDoubleValue(); };
         fader_.onValueChange = [this]
         {
-            if (!updating_)
-                owner_.onCommand(std::make_unique<core::SetTrackGain>(id_, dbToGain(fader_.getValue())));
+            if (updating_)
+                return;
+            const float gain = dbToGain(fader_.getValue());
+            // In a group the move is relative: every member scales by the same ratio.
+            // A member sitting at -inf has no ratio, so it moves alone.
+            if (group_ != core::invalidId && currentGain_ > 1.0e-6f)
+                owner_.onCommand(std::make_unique<core::SetGroupGain>(group_, gain / currentGain_));
+            else
+                owner_.onCommand(std::make_unique<core::SetTrackGain>(id_, gain));
         };
         addAndMakeVisible(fader_);
 
@@ -154,24 +168,32 @@ public:
             b.onClick = [this, &b, makeCommand]
             {
                 if (!updating_)
-                    owner_.onCommand(makeCommand(id_, b.getToggleState()));
+                    owner_.onCommand(makeCommand(id_, group_, b.getToggleState()));
             };
             addAndMakeVisible(b);
         };
         toggle(mute_,
                "M",
                theme_.colours.warning,
-               [](core::Id id, bool on) -> std::unique_ptr<core::Command>
-               { return std::make_unique<core::SetTrackMute>(id, on); });
+               [](core::Id id, core::Id group, bool on) -> std::unique_ptr<core::Command>
+               {
+                   if (group != core::invalidId)
+                       return std::make_unique<core::SetGroupMute>(group, on);
+                   return std::make_unique<core::SetTrackMute>(id, on);
+               });
         toggle(solo_,
                "S",
                theme_.colours.success,
-               [](core::Id id, bool on) -> std::unique_ptr<core::Command>
-               { return std::make_unique<core::SetTrackSolo>(id, on); });
+               [](core::Id id, core::Id group, bool on) -> std::unique_ptr<core::Command>
+               {
+                   if (group != core::invalidId)
+                       return std::make_unique<core::SetGroupSolo>(group, on);
+                   return std::make_unique<core::SetTrackSolo>(id, on);
+               });
         toggle(phase_,
                "\xC3\x98",
                theme_.colours.accent,
-               [](core::Id id, bool on) -> std::unique_ptr<core::Command>
+               [](core::Id id, core::Id, bool on) -> std::unique_ptr<core::Command>
                { return std::make_unique<core::SetPhaseInvert>(id, on); });
         phase_.setButtonText(juce::String::fromUTF8("\xC3\x98"));
 
@@ -194,6 +216,9 @@ public:
         inserts_.setButtonText("Inserts");
         inserts_.onClick = [this] { showInsertsMenu(); };
         addAndMakeVisible(inserts_);
+        groupButton_.setTooltip("Fader group");
+        groupButton_.onClick = [this] { showGroupMenu(); };
+        addAndMakeVisible(groupButton_);
         addAndMakeVisible(meter_);
     }
 
@@ -211,7 +236,15 @@ public:
         name_.setText(channel.name.empty() ? (isBus ? "Bus" : "Track") : channel.name,
                       juce::dontSendNotification);
         pan_.setValue(channel.pan, juce::dontSendNotification);
+        currentGain_ = channel.gain;
         fader_.setValue(gainToDb(channel.gain), juce::dontSendNotification);
+        group_ = channel.group;
+        const auto* group = project.findGroup(channel.group);
+        groupButton_.setButtonText(group != nullptr ? juce::String(group->name) : juce::String("Group"));
+        groupButton_.setColour(juce::TextButton::buttonColourId,
+                               group != nullptr && group->colour != 0
+                                   ? juce::Colour(group->colour).withAlpha(0.35f)
+                                   : theme_.colours.surface);
         mute_.setToggleState(channel.mute, juce::dontSendNotification);
         solo_.setToggleState(channel.solo, juce::dontSendNotification);
         phase_.setToggleState(channel.phaseInvert, juce::dontSendNotification);
@@ -265,6 +298,8 @@ public:
         area.removeFromTop(theme_.spacing.xs);
         inserts_.setBounds(area.removeFromTop(22));
         area.removeFromTop(theme_.spacing.xs);
+        groupButton_.setBounds(area.removeFromTop(22));
+        area.removeFromTop(theme_.spacing.xs);
         pan_.setBounds(area.removeFromTop(40).withSizeKeepingCentre(40, 40));
         area.removeFromTop(theme_.spacing.xs);
         auto buttons = area.removeFromTop(22);
@@ -281,6 +316,52 @@ public:
     }
 
 private:
+    void showGroupMenu()
+    {
+        if (owner_.project_ == nullptr)
+            return;
+        const auto& project = *owner_.project_;
+        juce::PopupMenu menu;
+        std::vector<std::function<void()>> actions;
+        int item = 1;
+        menu.addItem(item++, "None", true, group_ == core::invalidId);
+        actions.push_back(
+            [this] { owner_.onCommand(std::make_unique<core::SetChannelGroup>(id_, core::invalidId)); });
+        for (const auto& g : project.groups)
+        {
+            menu.addItem(item++, g.name, true, g.id == group_);
+            const core::Id groupId = g.id;
+            actions.push_back([this, groupId]
+                              { owner_.onCommand(std::make_unique<core::SetChannelGroup>(id_, groupId)); });
+        }
+        menu.addSeparator();
+        menu.addItem(item++, "New group");
+        actions.push_back(
+            [this]
+            {
+                if (owner_.project_ == nullptr)
+                    return;
+                const auto n = owner_.project_->groups.size();
+                core::Group g;
+                g.name = "Group " + std::to_string(n + 1);
+                g.colour = groupColours[n % std::size(groupColours)];
+                owner_.onCommand(std::make_unique<core::AddGroup>(g, std::vector<core::Id>{id_}));
+            });
+        if (group_ != core::invalidId)
+        {
+            menu.addItem(item++, "Remove group");
+            const core::Id groupId = group_;
+            actions.push_back([this, groupId]
+                              { owner_.onCommand(std::make_unique<core::RemoveGroup>(groupId)); });
+        }
+        menu.showMenuAsync(juce::PopupMenu::Options().withTargetComponent(groupButton_),
+                           [actions](int chosen)
+                           {
+                               if (chosen > 0 && static_cast<size_t>(chosen) <= actions.size())
+                                   actions[static_cast<size_t>(chosen - 1)]();
+                           });
+    }
+
     void showInsertsMenu()
     {
         if (owner_.project_ == nullptr)
@@ -393,6 +474,8 @@ private:
     MixerView& owner_;
     const Theme& theme_;
     core::Id id_ = core::invalidId;
+    core::Id group_ = core::invalidId;
+    float currentGain_ = 1.0f;
     bool isBus_ = false;
     int meterSlot_ = -1;
     int sendCount_ = 0;
@@ -402,7 +485,7 @@ private:
     std::vector<core::Id> busIds_;
     juce::Label name_;
     juce::Slider pan_, fader_;
-    juce::TextButton mute_, solo_, phase_, sends_, inserts_;
+    juce::TextButton mute_, solo_, phase_, sends_, inserts_, groupButton_;
     juce::ComboBox output_;
     StereoMeter meter_;
 };

@@ -47,6 +47,8 @@ void channelToJson(json& j, const Channel& c)
         j["colour"] = c.colour;
     if (c.outputBus != invalidId)
         j["output"] = c.outputBus;
+    if (c.group != invalidId)
+        j["group"] = c.group;
     if (!c.sends.empty())
     {
         json sends = json::array();
@@ -75,6 +77,7 @@ void channelFromJson(const json& j, Channel& c)
     c.phaseInvert = j.value("phaseInvert", false);
     c.colour = j.value("colour", std::uint32_t{0});
     c.outputBus = j.value("output", invalidId);
+    c.group = j.value("group", invalidId);
     if (const auto it = j.find("sends"); it != j.end() && it->is_array())
         for (const auto& s : *it)
             c.sends.push_back(Send{s.value("bus", invalidId), s.value("level", 1.0f), s.value("pre", false)});
@@ -149,6 +152,14 @@ std::string projectToJson(const Project& p, bool pretty)
     json buses = json::array();
     for (const auto& b : p.buses)
         buses.push_back(busToJson(b));
+    json groups = json::array();
+    for (const auto& g : p.groups)
+    {
+        json gj{{"id", g.id}, {"name", g.name}};
+        if (g.colour != 0)
+            gj["colour"] = g.colour;
+        groups.push_back(std::move(gj));
+    }
 
     const json j{
         {"format", "aural.project"},
@@ -161,6 +172,7 @@ std::string projectToJson(const Project& p, bool pretty)
         {"nextId", p.nextId},
         {"master", json{{"gain", p.master.gain}}},
         {"buses", std::move(buses)},
+        {"groups", std::move(groups)},
         {"tracks", std::move(tracks)}};
     return pretty ? j.dump(2) : j.dump();
 }
@@ -201,6 +213,11 @@ std::optional<Project> projectFromJson(const std::string& text, std::string* err
         if (const auto it = j.find("buses"); it != j.end() && it->is_array())
             for (const auto& b : *it)
                 p.buses.push_back(busFromJson(b));
+        if (const auto it = j.find("groups"); it != j.end() && it->is_array())
+            for (const auto& g : *it)
+                p.groups.push_back(Group{g.value("id", invalidId),
+                                         g.value("name", std::string{}),
+                                         g.value("colour", std::uint32_t{0})});
         if (const auto it = j.find("master"); it != j.end() && it->is_object())
             p.master.gain = it->value("gain", 1.0f);
 
@@ -221,6 +238,8 @@ std::optional<Project> projectFromJson(const std::string& text, std::string* err
         for (const auto& t : p.tracks)
             for (const auto& i : t.inserts)
                 maxId = std::max(maxId, i.id);
+        for (const auto& g : p.groups)
+            maxId = std::max(maxId, g.id);
         p.nextId = std::max(p.nextId, maxId + 1);
         return p;
     }

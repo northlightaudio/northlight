@@ -249,6 +249,152 @@ void RemoveBus::revert(Project& p)
             c->sends.push_back(send);
 }
 
+// ----- fader groups ----------------------------------------------------------------------------
+
+namespace
+{
+Group& requireGroup(Project& p, Id id)
+{
+    auto* g = p.findGroup(id);
+    if (g == nullptr)
+        throw std::logic_error("command references a group that does not exist");
+    return *g;
+}
+} // namespace
+
+AddGroup::AddGroup(Group group, std::vector<Id> members)
+    : group_(std::move(group)), members_(std::move(members))
+{
+}
+
+void AddGroup::apply(Project& p)
+{
+    for (const auto id : members_)
+        requireChannel(p, id);
+    if (group_.id == invalidId)
+        group_.id = p.allocateId();
+    p.groups.push_back(group_);
+    previousGroups_.clear();
+    for (const auto id : members_)
+    {
+        auto& c = requireChannel(p, id);
+        previousGroups_.emplace_back(id, c.group);
+        c.group = group_.id;
+    }
+}
+
+void AddGroup::revert(Project& p)
+{
+    for (const auto& [id, previous] : previousGroups_)
+        if (auto* c = p.findChannel(id))
+            c->group = previous;
+    const int i = p.groupIndex(group_.id);
+    if (i >= 0)
+        p.groups.erase(p.groups.begin() + i);
+}
+
+RemoveGroup::RemoveGroup(Id groupId) : groupId_(groupId) {}
+
+void RemoveGroup::apply(Project& p)
+{
+    index_ = p.groupIndex(groupId_);
+    if (index_ < 0)
+        throw std::logic_error("command references a group that does not exist");
+    removed_ = p.groups[static_cast<size_t>(index_)];
+    members_.clear();
+    for (auto* c : p.groupMembers(groupId_))
+    {
+        members_.push_back(c->id);
+        c->group = invalidId;
+    }
+    p.groups.erase(p.groups.begin() + index_);
+}
+
+void RemoveGroup::revert(Project& p)
+{
+    const int at = std::clamp(index_, 0, static_cast<int>(p.groups.size()));
+    p.groups.insert(p.groups.begin() + at, removed_);
+    for (const auto id : members_)
+        if (auto* c = p.findChannel(id))
+            c->group = groupId_;
+}
+
+SetChannelGroup::SetChannelGroup(Id channelId, Id groupId) : channelId_(channelId), value_(groupId) {}
+
+void SetChannelGroup::apply(Project& p)
+{
+    auto& c = requireChannel(p, channelId_);
+    if (value_ != invalidId)
+        requireGroup(p, value_);
+    previous_ = c.group;
+    c.group = value_;
+}
+
+void SetChannelGroup::revert(Project& p)
+{
+    requireChannel(p, channelId_).group = previous_;
+}
+
+SetGroupGain::SetGroupGain(Id groupId, float ratio) : groupId_(groupId), ratio_(ratio) {}
+
+void SetGroupGain::apply(Project& p)
+{
+    requireGroup(p, groupId_);
+    previous_.clear();
+    for (auto* c : p.groupMembers(groupId_))
+    {
+        previous_.emplace_back(c->id, c->gain);
+        c->gain = std::clamp(c->gain * ratio_, 0.0f, maxChannelGain);
+    }
+}
+
+void SetGroupGain::revert(Project& p)
+{
+    for (const auto& [id, gain] : previous_)
+        if (auto* c = p.findChannel(id))
+            c->gain = gain;
+}
+
+SetGroupMute::SetGroupMute(Id groupId, bool mute) : groupId_(groupId), value_(mute) {}
+
+void SetGroupMute::apply(Project& p)
+{
+    requireGroup(p, groupId_);
+    previous_.clear();
+    for (auto* c : p.groupMembers(groupId_))
+    {
+        previous_.emplace_back(c->id, c->mute);
+        c->mute = value_;
+    }
+}
+
+void SetGroupMute::revert(Project& p)
+{
+    for (const auto& [id, mute] : previous_)
+        if (auto* c = p.findChannel(id))
+            c->mute = mute;
+}
+
+SetGroupSolo::SetGroupSolo(Id groupId, bool solo) : groupId_(groupId), value_(solo) {}
+
+void SetGroupSolo::apply(Project& p)
+{
+    requireGroup(p, groupId_);
+    previous_.clear();
+    for (auto* c : p.groupMembers(groupId_))
+    {
+        previous_.emplace_back(c->id, c->solo);
+        c->solo = value_;
+    }
+}
+
+void SetGroupSolo::revert(Project& p)
+{
+    for (const auto& [id, solo] : previous_)
+        if (auto* c = p.findChannel(id))
+            c->solo = solo;
+}
+
 SetOutputBus::SetOutputBus(Id channelId, Id busId) : channelId_(channelId), value_(busId) {}
 void SetOutputBus::apply(Project& p)
 {

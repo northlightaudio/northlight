@@ -114,6 +114,44 @@ const Channel* Project::findChannel(Id channelId) const noexcept
     return findBus(channelId);
 }
 
+Group* Project::findGroup(Id groupId) noexcept
+{
+    for (auto& g : groups)
+        if (g.id == groupId)
+            return &g;
+    return nullptr;
+}
+
+const Group* Project::findGroup(Id groupId) const noexcept
+{
+    for (const auto& g : groups)
+        if (g.id == groupId)
+            return &g;
+    return nullptr;
+}
+
+int Project::groupIndex(Id groupId) const noexcept
+{
+    for (size_t i = 0; i < groups.size(); ++i)
+        if (groups[i].id == groupId)
+            return static_cast<int>(i);
+    return -1;
+}
+
+std::vector<Channel*> Project::groupMembers(Id groupId) noexcept
+{
+    std::vector<Channel*> members;
+    if (groupId == invalidId)
+        return members;
+    for (auto& t : tracks)
+        if (t.group == groupId)
+            members.push_back(&t);
+    for (auto& b : buses)
+        if (b.group == groupId)
+            members.push_back(&b);
+    return members;
+}
+
 SamplePosition Project::length() const noexcept
 {
     SamplePosition end = 0;

@@ -115,6 +115,99 @@ private:
     std::vector<std::pair<Id, Send>> detachedSends_; // channel id, removed send
 };
 
+// ----- fader groups ----------------------------------------------------------------------------
+
+class AddGroup final : public Command
+{
+public:
+    // The group's id is allocated on apply if it is invalidId. `members` join it
+    // in the same step (and leave it again on undo).
+    explicit AddGroup(Group group, std::vector<Id> members = {});
+    std::string name() const override { return "Add group"; }
+    void apply(Project&) override;
+    void revert(Project&) override;
+    Id groupId() const noexcept { return group_.id; }
+
+private:
+    Group group_;
+    std::vector<Id> members_;
+    std::vector<std::pair<Id, Id>> previousGroups_;
+};
+
+// Removing a group releases its members (restored on undo).
+class RemoveGroup final : public Command
+{
+public:
+    explicit RemoveGroup(Id groupId);
+    std::string name() const override { return "Remove group"; }
+    void apply(Project&) override;
+    void revert(Project&) override;
+
+private:
+    Id groupId_;
+    Group removed_;
+    int index_ = -1;
+    std::vector<Id> members_;
+};
+
+// Puts a track or bus in a group (invalidId = none).
+class SetChannelGroup final : public Command
+{
+public:
+    SetChannelGroup(Id channelId, Id groupId);
+    std::string name() const override { return "Set group"; }
+    void apply(Project&) override;
+    void revert(Project&) override;
+
+private:
+    Id channelId_, value_, previous_ = invalidId;
+};
+
+// Scales every member's gain by `ratio` (a fader move in dB applied to all),
+// clamped to maxChannelGain; undo restores each member's own value.
+class SetGroupGain final : public Command
+{
+public:
+    SetGroupGain(Id groupId, float ratio);
+    std::string name() const override { return "Set group gain"; }
+    void apply(Project&) override;
+    void revert(Project&) override;
+
+private:
+    Id groupId_;
+    float ratio_;
+    std::vector<std::pair<Id, float>> previous_;
+};
+
+// Mutes or solos every member; undo restores each member's own state.
+class SetGroupMute final : public Command
+{
+public:
+    SetGroupMute(Id groupId, bool mute);
+    std::string name() const override { return "Set group mute"; }
+    void apply(Project&) override;
+    void revert(Project&) override;
+
+private:
+    Id groupId_;
+    bool value_;
+    std::vector<std::pair<Id, bool>> previous_;
+};
+
+class SetGroupSolo final : public Command
+{
+public:
+    SetGroupSolo(Id groupId, bool solo);
+    std::string name() const override { return "Set group solo"; }
+    void apply(Project&) override;
+    void revert(Project&) override;
+
+private:
+    Id groupId_;
+    bool value_;
+    std::vector<std::pair<Id, bool>> previous_;
+};
+
 // Routes a track or bus to a bus (invalidId = master).
 class SetOutputBus final : public Command
 {

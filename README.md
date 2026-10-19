@@ -3,7 +3,7 @@
 A native, high-performance digital audio workstation for Windows. ASIO, VST3 hosting,
 multitrack recording, and a UI that is designed before it is built.
 
-Status: **Phase 4 (mixer and routing), in progress**. See
+Status: **Phase 4 (mixer and routing) complete; Phase 5 (VST3 hosting) next**. See
 [docs/PLAN.md](docs/PLAN.md) for the roadmap and
 [docs/architecture.md](docs/architecture.md) for what is built.
 
@@ -106,6 +106,8 @@ With **Loop** on, each pass through the region becomes a new take on the track.
 **Mixer** (Ctrl+M) opens strips for every track and bus with output routing, sends,
 inserts (built-in gain, EQ, compressor, limiter with an editor window each), pan,
 mute, solo, phase, fader and meters, plus the master with LUFS; **+ Bus** adds a bus.
+A strip's **Group** button puts it in a fader group: grouped faders move together
+(keeping their balance) and mute and solo act on the whole group.
 Recordings go next to the project file in a `<project> Media` folder, or to
 `Documents\Aural\Recordings` for an unsaved project, each with a small
 `.recording.json` beside it while it is in progress. If the app dies while

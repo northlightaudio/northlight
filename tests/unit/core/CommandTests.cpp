@@ -259,3 +259,68 @@ TEST_CASE("A new command after undo discards the redo history", "[core][command]
     CHECK_FALSE(stack.canRedo());
     CHECK(p.tempoBpm == 90.0);
 }
+
+TEST_CASE("A fader group moves its members together, keeping their balance", "[core][command][group]")
+{
+    Project p = projectWithTrack();
+    Track second;
+    second.name = "Second";
+    second.gain = 0.5f;
+    p.tracks.push_back(second);
+    p.tracks.back().id = p.allocateId();
+    Bus bus;
+    bus.gain = 0.25f;
+    p.buses.push_back(bus);
+    p.buses.back().id = p.allocateId();
+    UndoStack stack;
+    const Id a = p.tracks[0].id, b = p.tracks[1].id, c = p.buses[0].id;
+
+    auto add = std::make_unique<AddGroup>(Group{invalidId, "Rhythm", 0}, std::vector<Id>{a});
+    const auto* addPtr = add.get();
+    stack.execute(p, std::move(add));
+    const Id group = addPtr->groupId();
+    REQUIRE(p.findGroup(group) != nullptr);
+    CHECK(p.tracks[0].group == group); // joined in the same step
+    stack.execute(p, std::make_unique<SetChannelGroup>(c, group));
+    CHECK(p.groupMembers(group).size() == 2); // b stays out
+
+    stack.execute(p, std::make_unique<SetGroupGain>(group, 0.5f));
+    CHECK(p.tracks[0].gain == 0.5f);
+    CHECK(p.tracks[1].gain == 0.5f); // untouched
+    CHECK(p.buses[0].gain == 0.125f);
+    stack.execute(p, std::make_unique<SetGroupGain>(group, 100.0f)); // clamps at the fader's top
+    CHECK(p.tracks[0].gain == maxChannelGain);
+    CHECK(p.buses[0].gain == maxChannelGain);
+    stack.undo(p);
+    CHECK(p.tracks[0].gain == 0.5f);
+    CHECK(p.buses[0].gain == 0.125f);
+
+    stack.execute(p, std::make_unique<SetGroupMute>(group, true));
+    stack.execute(p, std::make_unique<SetGroupSolo>(group, true));
+    CHECK(p.tracks[0].mute);
+    CHECK(p.buses[0].solo);
+    CHECK_FALSE(p.tracks[1].mute);
+    stack.undo(p);
+    stack.undo(p);
+    CHECK_FALSE(p.tracks[0].mute);
+    CHECK_FALSE(p.buses[0].solo);
+
+    // Removing the group releases the members; undo puts them back.
+    stack.execute(p, std::make_unique<RemoveGroup>(group));
+    CHECK(p.groups.empty());
+    CHECK(p.tracks[0].group == invalidId);
+    CHECK(p.buses[0].group == invalidId);
+    stack.undo(p);
+    REQUIRE(p.groups.size() == 1);
+    CHECK(p.tracks[0].group == group);
+    CHECK(p.buses[0].group == group);
+
+    while (stack.undo(p))
+    {
+    }
+    CHECK(p.groups.empty());
+    CHECK(p.tracks[0].group == invalidId);
+
+    CHECK_THROWS(SetChannelGroup(b, 999).apply(p));
+    CHECK_THROWS(SetGroupGain(999, 1.0f).apply(p));
+}
