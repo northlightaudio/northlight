@@ -1,0 +1,1 @@
+Bundled typefaces go here: Inter-Variable.ttf and JetBrainsMono-Variable.ttf (open licences, see docs/design/02-design-system.md section 2.2). The build copies this folder beside the executable; ui::Theme loads them and falls back to the system faces when they are missing.

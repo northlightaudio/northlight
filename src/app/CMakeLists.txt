@@ -28,9 +28,14 @@ target_link_libraries(aural_app_session PUBLIC
     aural_audio_device
     aural_juce)
 
-# The scanner lives beside the app so the app finds it.
+# The scanner lives beside the app so the app finds it, and so do the assets:
+# the token file (docs/design/tokens.json is the source) and the bundled fonts
+# and icons under assets/.
 add_custom_command(TARGET aural POST_BUILD
-    COMMAND ${CMAKE_COMMAND} -E copy_if_different $<TARGET_FILE:aural_plugin_scan> $<TARGET_FILE_DIR:aural>)
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different $<TARGET_FILE:aural_plugin_scan> $<TARGET_FILE_DIR:aural>
+    COMMAND ${CMAKE_COMMAND} -E make_directory "$<TARGET_FILE_DIR:aural>/assets"
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different "${CMAKE_SOURCE_DIR}/docs/design/tokens.json" "$<TARGET_FILE_DIR:aural>/assets/tokens.json"
+    COMMAND ${CMAKE_COMMAND} -E copy_directory "${CMAKE_SOURCE_DIR}/assets" "$<TARGET_FILE_DIR:aural>/assets")
 add_dependencies(aural aural_plugin_scan)
 
 target_sources(aural PRIVATE

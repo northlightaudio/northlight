@@ -20,10 +20,13 @@ public:
 
     void initialise(const juce::String& commandLine) override
     {
+        settings_ = std::make_unique<UserSettings>();
+        // The design tokens: shipped beside the app, with the user's tokens.json
+        // beside the settings file applied on top.
+        ui::Theme::initialise(settings_->file().getSiblingFile("tokens.json"));
         lookAndFeel_ = std::make_unique<ui::AuralLookAndFeel>(ui::Theme::dark());
         juce::LookAndFeel::setDefaultLookAndFeel(lookAndFeel_.get());
 
-        settings_ = std::make_unique<UserSettings>();
         audio_ = std::make_unique<audio::AudioDeviceLayer>(*settings_);
         session_ =
             std::make_unique<ProjectSession>(*audio_, settings_->file().getSiblingFile("plugins.json"));

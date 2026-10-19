@@ -706,12 +706,34 @@ dependency for serialisation and the format is trivially diffable.
 
 ### UI
 
-`ui::Theme` is a plain struct of tokens (colours, spacing, radii, type sizes, control
-sizes). `ui::AuralLookAndFeel` derives from `LookAndFeel_V4`, sets every colour id
-from the theme and overrides the drawing of buttons, toggles, combo boxes, popup menu
-backgrounds, linear sliders and scrollbars. Views keep a reference to the theme and
-never hard-code a colour or a pixel size. All dialogs are secondary windows or async
-launches; `JUCE_MODAL_LOOPS_PERMITTED` stays 0.
+`ui::Theme` loads the design tokens (docs/design/tokens.json, section 2 of the
+design spec): colours, the track palette, fonts, spacing, radii, sizes, motion,
+meter zones, elevation and the tactile `material` layer. The build embeds the
+file as the defaults and ships a copy under `assets/` beside the executable
+(read at start, so a newer token file needs no rebuild); a `tokens.json` beside
+the user's settings file overrides any keys it holds. Bundled typefaces (Inter,
+JetBrains Mono under `assets/fonts`) are loaded as system typefaces when
+present and fall back to Segoe UI and Consolas when not; `Theme::font()` and
+the named helpers (`body()`, `label()`, `value()`, `timeLarge()`...) give views
+the scale. The pre-token field names (`colours.background`, `sizes.controlHeight`)
+are kept as aliases until every screen is restyled. `ui::AuralLookAndFeel` draws
+every stock control to the component specs (buttons by variant through component
+properties: secondary, primary, ghost, danger; toggles with the semantic M/S/R/
+monitor colours and a "hard on" arm; combos, fields, checkboxes, sliders with
+bipolar fills, scrollbars, tabs, menus with icon columns and shortcut hints,
+tooltips, progress bars, table headers) and the tactile layer (control-face
+gradients with a highlight and shadow, a reversed gradient and inset when pressed,
+glows for active toggles rendered once per size and colour into cached images).
+Focus rings are drawn only for keyboard navigation (the window reports Tab and
+arrow presses; any click turns them off). Dedicated components under
+`ui/components` cover what stock controls cannot: `Fader` (0 dB at 75% of the
+travel, +6 dB at the top, a grooved track and a lit cap), `Knob` (ring with a
+radial body), `Meter` (zone segments as LEDs in a well, peak hold, clip squares),
+`SegmentedControl` (sliding thumb), `NumericField` (drag, type, wheel),
+`PanelHeader`, `ToastStack` (bottom-left notifications, persistent for warnings
+and errors) and `Sheet` (a dialog without a modal loop). A CTest
+(`scripts/check-ui-tokens.ps1`) fails when `src/ui` carries a literal colour;
+`JUCE_MODAL_LOOPS_PERMITTED` stays 0.
 
 ## Decisions log
 
@@ -728,7 +750,9 @@ launches; `JUCE_MODAL_LOOPS_PERMITTED` stays 0.
 | 2026-10-19 | Calibration signal is a 10 ms windowed chirp found by cross-correlation | Single-sample impulses are smeared by converter filters and easily lost in noise; a chirp survives band-limiting and its autocorrelation peak is one sample wide, so the match is sample-accurate on real hardware. Matching on magnitude tolerates polarity-inverting cables. |
 | 2026-10-19 | Calibration capture buffer handed between threads by an atomic phase, not a queue | The data is one block of a second of audio moved once per trial; a lock-free queue adds nothing. The audio thread only touches the buffer in `running`, the message thread only in `idle`/`done`, and `audioDeviceStopped` resets to `idle` so a device restart cannot leave the buffer owned by a dead thread. |
 | 2026-10-19 | Measured latency is stored with the device, rate and buffer size it was measured at | Round trip changes with all three; a stale number silently misplaces recordings. The UI shows "not measured for this configuration" rather than a wrong value. |
-| 2026-10-19 | Theme tokens are a C++ struct for now, not a loaded JSON file | The Figma token export does not exist yet. The struct is the contract; Phase 7 adds the loader without touching the views. |
+| 2026-10-19 | Theme tokens are a C++ struct for now, not a loaded JSON file (superseded: Phase 7 made the struct a loader for docs/design/tokens.json) | The Figma token export does not exist yet. The struct is the contract; Phase 7 adds the loader without touching the views. |
+| 2026-10-19 | The token file is embedded at build time and also shipped beside the app | The app and the tests must never depend on a file being found; embedding gives that, and the shipped copy lets a designer try a token change without a rebuild. The user's override holds only the keys it changes, so a new default reaches them. |
+| 2026-10-19 | Glows are rendered once per size and colour into images | A blurred glow per frame is the one expensive thing in the tactile layer; drawing a cached image keeps meters and toggles cheap, and reduce-motion drops the glows entirely. |
 | 2026-10-19 | Timeline positions are samples at the project rate, not beats | Sample-accurate placement and recording with no rounding; tempo is a display concern until automation and tempo maps arrive (Phase 9). |
 | 2026-10-19 | Snapshot retirement by epoch rather than an RT garbage queue | The RT thread advertising the epoch it uses lets the controller free old snapshots without the RT thread ever touching a queue or a free list, and handles the "RT thread never ran" case (nothing is retained). |
 | 2026-10-19 | nlohmann::json via FetchContent for project files | Header-only, so it needs no package manager; the project file is small enough that parse speed is irrelevant. |

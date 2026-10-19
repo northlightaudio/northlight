@@ -8,7 +8,8 @@ add_executable(aural_juce_tests
     ProjectSessionTests.cpp
     HostedPluginTests.cpp
     ClapPluginTests.cpp
-    BounceTests.cpp)
+    BounceTests.cpp
+    ThemeTests.cpp)
 
 target_link_libraries(aural_juce_tests PRIVATE
     aural_options
@@ -18,6 +19,7 @@ target_link_libraries(aural_juce_tests PRIVATE
     aural_plugins
     aural_app_session
     aural_hosting
+    aural_ui
     aural_juce
     Catch2::Catch2WithMain)
 
