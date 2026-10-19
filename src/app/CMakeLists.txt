@@ -22,8 +22,14 @@ target_link_libraries(aural_app_session PUBLIC
     aural_core
     aural_engine
     aural_plugins
+    aural_hosting
     aural_audio_device
     aural_juce)
+
+# The scanner lives beside the app so the app finds it.
+add_custom_command(TARGET aural POST_BUILD
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different $<TARGET_FILE:aural_plugin_scan> $<TARGET_FILE_DIR:aural>)
+add_dependencies(aural aural_plugin_scan)
 
 target_sources(aural PRIVATE
     Main.cpp

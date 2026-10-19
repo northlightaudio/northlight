@@ -14,7 +14,9 @@ add_library(aural_ui STATIC
     MixerView.h
     MixerView.cpp
     InsertEditor.h
-    InsertEditor.cpp)
+    InsertEditor.cpp
+    PluginWindow.h
+    PluginWindow.cpp)
 
 target_include_directories(aural_ui PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/..")
-target_link_libraries(aural_ui PUBLIC aural_core aural_plugins aural_audio_device aural_juce)
+target_link_libraries(aural_ui PUBLIC aural_core aural_plugins aural_hosting aural_audio_device aural_juce)

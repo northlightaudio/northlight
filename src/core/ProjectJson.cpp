@@ -60,8 +60,12 @@ void channelToJson(json& j, const Channel& c)
     {
         json inserts = json::array();
         for (const auto& i : c.inserts)
-            inserts.push_back(
-                json{{"id", i.id}, {"type", i.type}, {"bypass", i.bypass}, {"params", i.params}});
+        {
+            json ij{{"id", i.id}, {"type", i.type}, {"bypass", i.bypass}, {"params", i.params}};
+            if (!i.state.empty())
+                ij["state"] = i.state;
+            inserts.push_back(std::move(ij));
+        }
         j["inserts"] = std::move(inserts);
     }
 }
@@ -88,6 +92,7 @@ void channelFromJson(const json& j, Channel& c)
             insert.id = i.value("id", invalidId);
             insert.type = i.value("type", std::string{});
             insert.bypass = i.value("bypass", false);
+            insert.state = i.value("state", std::string{});
             if (const auto params = i.find("params"); params != i.end() && params->is_array())
                 for (const auto& v : *params)
                     insert.params.push_back(v.get<float>());

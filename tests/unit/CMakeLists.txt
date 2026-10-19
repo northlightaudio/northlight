@@ -21,7 +21,8 @@ add_executable(aural_unit_tests
     engine/MixerTests.cpp
     plugins/BuiltInTests.cpp
     engine/LoudnessTests.cpp
-    engine/WriterTests.cpp)
+    engine/WriterTests.cpp
+    hosting/PluginRegistryTests.cpp)
 
 target_link_libraries(aural_unit_tests PRIVATE
     aural_options
@@ -31,6 +32,7 @@ target_link_libraries(aural_unit_tests PRIVATE
     aural_core
     aural_engine
     aural_plugins
+    aural_hosting_core
     Catch2::Catch2WithMain)
 
 include(Catch)

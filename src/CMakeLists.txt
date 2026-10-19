@@ -48,6 +48,7 @@ target_compile_definitions(aural_juce INTERFACE
 add_subdirectory(core)
 add_subdirectory(engine)
 add_subdirectory(plugins)
+add_subdirectory(hosting)
 add_subdirectory(audio)
 add_subdirectory(ui)
 add_subdirectory(app)

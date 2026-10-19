@@ -18,9 +18,19 @@ namespace
 constexpr int garbageTimerMilliseconds = 250;
 }
 
-ProjectSession::ProjectSession(audio::AudioDeviceLayer& audio)
-    : audio_(audio), loader_(disk_), engine_(loader_, inserts_)
+ProjectSession::ProjectSession(audio::AudioDeviceLayer& audio, juce::File registryFile)
+    : audio_(audio), loader_(disk_), registryFile_(std::move(registryFile)), scanner_(registry_),
+      inserts_(registry_), engine_(loader_, inserts_)
 {
+    if (registryFile_.existsAsFile())
+        if (auto loaded = hosting::PluginRegistry::fromJson(registryFile_.loadFileAsString().toStdString()))
+            registry_ = std::move(*loaded);
+    scanner_.onProgress = [this] { sendChangeMessage(); };
+    scanner_.onFinished = [this]
+    {
+        saveRegistry();
+        publish(); // inserts that were "missing" may load now
+    };
     audio_.callback().setEngine(&engine_);
     audio_.addChangeListener(this);
     matchDeviceSampleRate();
@@ -31,6 +41,7 @@ ProjectSession::ProjectSession(audio::AudioDeviceLayer& audio)
 ProjectSession::~ProjectSession()
 {
     stopTimer();
+    scanner_.cancel();
     audio_.removeChangeListener(this);
     // The device must not call into a dead engine: detach, then let the layer stop
     // the device (it shuts down after this object in the application).
@@ -116,6 +127,7 @@ std::string ProjectSession::open(const juce::File& file)
 
 std::string ProjectSession::save(const juce::File& file)
 {
+    captureInsertStates();
     const auto text = core::projectToJson(project_);
     if (!file.replaceWithText(juce::String(text)))
         return "could not write " + file.getFullPathName().toStdString();
@@ -586,6 +598,37 @@ int ProjectSession::recoverPartialRecordings()
         publish();
     }
     return recovered;
+}
+
+// ----- plugins -------------------------------------------------------------------------------
+
+void ProjectSession::scanPlugins(bool all)
+{
+    scanner_.start(all);
+    sendChangeMessage();
+}
+
+void ProjectSession::saveRegistry()
+{
+    if (registryFile_.getFullPathName().isEmpty())
+        return;
+    registryFile_.getParentDirectory().createDirectory();
+    registryFile_.replaceWithText(juce::String(registry_.toJson()));
+}
+
+void ProjectSession::captureInsertStates()
+{
+    const auto capture = [this](core::Channel& channel)
+    {
+        for (auto& insert : channel.inserts)
+            if (const auto live = engine_.insertInstance(insert.id))
+                if (const auto state = live->state(); !state.empty())
+                    insert.state = state;
+    };
+    for (auto& t : project_.tracks)
+        capture(t);
+    for (auto& b : project_.buses)
+        capture(b);
 }
 
 // ----- internals ---------------------------------------------------------------------------

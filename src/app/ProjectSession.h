@@ -6,7 +6,9 @@
 #include "core/Model.h"
 #include "engine/AudioEngine.h"
 #include "engine/DiskThread.h"
-#include "plugins/BuiltIns.h"
+#include "hosting/HostFactory.h"
+#include "hosting/PluginRegistry.h"
+#include "hosting/PluginScanner.h"
 
 #include <juce_events/juce_events.h>
 #include <juce_gui_basics/juce_gui_basics.h>
@@ -28,13 +30,27 @@ namespace aural
 class ProjectSession final : public juce::ChangeBroadcaster, private juce::ChangeListener, private juce::Timer
 {
 public:
-    explicit ProjectSession(audio::AudioDeviceLayer& audio);
+    // `registryFile` holds the plugin registry (an empty File keeps it in memory).
+    explicit ProjectSession(audio::AudioDeviceLayer& audio, juce::File registryFile = {});
     ~ProjectSession() override;
 
     const core::Project& project() const noexcept { return project_; }
     engine::AudioEngine& engine() noexcept { return engine_; }
     audio::JuceMediaLoader& mediaLoader() noexcept { return loader_; }
-    const plugins::BuiltInFactory& insertFactory() const noexcept { return inserts_; }
+    const hosting::HostFactory& insertFactory() const noexcept { return inserts_; }
+    const hosting::PluginRegistry& pluginRegistry() const noexcept { return registry_; }
+    // The live processor behind a model insert (for its editor), if any.
+    std::shared_ptr<engine::InsertProcessor> liveInsert(core::Id insertId) const
+    {
+        return engine_.insertInstance(insertId);
+    }
+
+    // ----- plugins ----------------------------------------------------------------
+    // Scans the VST3 folders in the background (changed files only unless `all`);
+    // the registry is saved when it finishes and listeners are notified as it goes.
+    void scanPlugins(bool all = false);
+    bool isScanningPlugins() const noexcept { return scanner_.isScanning(); }
+    std::string pluginScanStatus() const { return scanner_.status(); }
     audio::PeakStore& peakStore() noexcept { return peaks_; }
 
     // ----- editing ----------------------------------------------------------------
@@ -119,11 +135,17 @@ private:
     void publish();
     void matchDeviceSampleRate();
     void finishRecording(engine::AudioEngine::FinishedRecording finished);
+    void saveRegistry();
+    // Pulls each hosted plugin's current state into the model before a save.
+    void captureInsertStates();
 
     audio::AudioDeviceLayer& audio_;
     engine::DiskThread disk_;
     audio::JuceMediaLoader loader_;
-    plugins::BuiltInFactory inserts_;
+    juce::File registryFile_;
+    hosting::PluginRegistry registry_;
+    hosting::PluginScanner scanner_;
+    hosting::HostFactory inserts_;
     engine::AudioEngine engine_;
     audio::PeakStore peaks_;
     core::Project project_;

@@ -82,6 +82,9 @@ public:
 
         mixer_.onCommand = [this](std::unique_ptr<core::Command> command)
         { session_.execute(std::move(command)); };
+        mixer_.setHost(&session_.insertFactory());
+        mixer_.liveInsert = [this](core::Id insertId) { return session_.liveInsert(insertId); };
+        mixer_.onScanPlugins = [this] { session_.scanPlugins(true); };
         addChildComponent(mixer_);
 
         positionLabel_.setJustificationType(juce::Justification::centred);
@@ -400,6 +403,8 @@ private:
             warning = session_.sampleRateWarning();
         if (warning.isEmpty() && !session_.lastRecordingMessage().empty())
             warning = juce::String(session_.lastRecordingMessage());
+        if (session_.isScanningPlugins())
+            warning = juce::String::fromUTF8(session_.pluginScanStatus().c_str());
         if (!lastImportError_.isEmpty())
             warning = lastImportError_;
         if (session_.projectFile().getFullPathName().isNotEmpty())

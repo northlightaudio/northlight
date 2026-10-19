@@ -25,7 +25,8 @@ public:
 
         settings_ = std::make_unique<UserSettings>();
         audio_ = std::make_unique<audio::AudioDeviceLayer>(*settings_);
-        session_ = std::make_unique<ProjectSession>(*audio_);
+        session_ =
+            std::make_unique<ProjectSession>(*audio_, settings_->file().getSiblingFile("plugins.json"));
         mainWindow_ = std::make_unique<MainWindow>(getApplicationName(), *audio_, *session_);
 
         // Open the device after the window is up so a slow driver does not delay
@@ -114,6 +115,8 @@ public:
                 stopAfterSeconds = tokens.getReference(++i).text.getIntValue();
                 juce::Timer::callAfterDelay(stopAfterSeconds * 1000, [this] { session_->stop(); });
             }
+            else if (arg == "--scan-plugins")
+                session_->scanPlugins(true);
             else if (arg == "--recover")
                 session_->recoverPartialRecordings(); // without the prompt, for unattended checks
             else if (arg == "--save" && i + 1 < tokens.size())

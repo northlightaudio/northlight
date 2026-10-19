@@ -82,6 +82,11 @@ public:
     // Peak/RMS per channel, slots as laid out by the snapshot compiler
     // (trackMeterSlot / busMeterSlot / masterMeterSlot). The UI takes readings.
     rt::MeterBlock& meters() noexcept { return meters_; }
+    // The live processor behind a model insert, if one exists (controller thread).
+    std::shared_ptr<InsertProcessor> insertInstance(core::Id insertId) const
+    {
+        return inserts_.find(insertId);
+    }
     // Momentary and short-term loudness of the master (BS.1770).
     LoudnessMeter::Reading loudness() const noexcept { return loudness_.reading(); }
     core::SamplePosition position() const noexcept { return position_.load(std::memory_order_relaxed); }

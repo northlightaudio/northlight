@@ -57,6 +57,7 @@ struct Insert
     std::string type;
     bool bypass = false;
     std::vector<float> params;
+    std::string state; // opaque (base64) for processors that own their state
     bool operator==(const Insert&) const = default;
 };
 

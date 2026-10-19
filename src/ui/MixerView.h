@@ -4,6 +4,8 @@
 #include "core/Model.h"
 #include "engine/Loudness.h"
 #include "engine/Meters.h"
+#include "hosting/HostFactory.h"
+#include "ui/PluginWindow.h"
 #include "ui/Theme.h"
 
 #include <juce_gui_basics/juce_gui_basics.h>
@@ -28,6 +30,12 @@ public:
     void setProject(const core::Project* project);
 
     std::function<void(std::unique_ptr<core::Command>)> onCommand;
+    // The live processor for an insert id (a hosted plugin's editor needs it).
+    std::function<std::shared_ptr<engine::InsertProcessor>(core::Id insertId)> liveInsert;
+    // "Scan for plugins..." in the inserts menu.
+    std::function<void()> onScanPlugins;
+    // Names and the plugin list for the inserts menu; may be null (built-ins only).
+    void setHost(const hosting::HostFactory* host) noexcept { host_ = host; }
 
     void paint(juce::Graphics& g) override;
     void resized() override;
@@ -46,6 +54,7 @@ private:
     void rebuildStrips();
     void layoutStrips();
     void addBus();
+    std::string insertDisplayName(const std::string& type) const;
 
     const Theme& theme_ = Theme::dark();
     rt::MeterBlock& meters_;
@@ -57,6 +66,8 @@ private:
     juce::Component stripsHolder_;
     juce::TextButton addBusButton_{"+ Bus"};
     std::vector<std::unique_ptr<EditorWindow>> editors_;
+    std::vector<std::unique_ptr<PluginWindow>> pluginWindows_;
+    const hosting::HostFactory* host_ = nullptr;
 };
 
 } // namespace aural::ui

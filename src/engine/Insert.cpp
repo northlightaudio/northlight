@@ -31,6 +31,8 @@ std::shared_ptr<InsertProcessor> InsertCache::get(const core::Insert& insert)
         if (created == nullptr)
             return nullptr;
         created->prepare(sampleRate_, maxBlockSize_);
+        if (!insert.state.empty())
+            created->setState(insert.state);
         instance = std::move(created);
         instances_[insert.id] = instance;
     }
@@ -39,6 +41,12 @@ std::shared_ptr<InsertProcessor> InsertCache::get(const core::Insert& insert)
         instance->setParameter(i, insert.params[static_cast<size_t>(i)]);
     instance->setBypassed(insert.bypass);
     return instance;
+}
+
+std::shared_ptr<InsertProcessor> InsertCache::find(core::Id insertId) const
+{
+    const auto it = instances_.find(insertId);
+    return it != instances_.end() ? it->second : nullptr;
 }
 
 void InsertCache::prune()

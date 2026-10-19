@@ -55,6 +55,12 @@ public:
     // Samples of delay the processor adds (for delay compensation, Phase 5).
     virtual int latencySamples() const noexcept { return 0; }
 
+    // Opaque state for processors that own their parameters (hosted plugins):
+    // restored once when the instance is created, captured when the project is
+    // saved. Built-ins keep everything in the model's parameter list.
+    virtual std::string state() const { return {}; }
+    virtual void setState(const std::string&) {}
+
 private:
     std::atomic<bool> bypass_{false};
 };
@@ -81,8 +87,11 @@ public:
     void prepare(double sampleRate, int maxBlockSize);
 
     // The instance for a model insert, created (and prepared) on first sight;
-    // nullptr when the type is unknown. Parameters and bypass are applied.
+    // nullptr when the type is unknown. Parameters and bypass are applied; the
+    // model's state blob only on creation.
     std::shared_ptr<InsertProcessor> get(const core::Insert& insert);
+    // The live instance for an insert id, if one exists.
+    std::shared_ptr<InsertProcessor> find(core::Id insertId) const;
 
     // Drops instances no snapshot references any more.
     void prune();

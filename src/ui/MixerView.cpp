@@ -1,6 +1,7 @@
 #include "ui/MixerView.h"
 
 #include "engine/Snapshot.h"
+#include "hosting/HostedPlugin.h"
 #include "plugins/BuiltIns.h"
 #include "ui/InsertEditor.h"
 
@@ -391,13 +392,14 @@ private:
             sub.addItem(item++, "Remove");
             actions.push_back([this, insertId]
                               { owner_.onCommand(std::make_unique<core::RemoveInsert>(id_, insertId)); });
-            menu.addSubMenu(juce::String(plugins::BuiltInFactory::displayName(insert.type)) +
+            menu.addSubMenu(juce::String::fromUTF8(owner_.insertDisplayName(insert.type).c_str()) +
                                 (insert.bypass ? "  (bypassed)" : ""),
                             sub);
         }
         if (!channel->inserts.empty())
             menu.addSeparator();
         juce::PopupMenu add;
+        // Built-ins first, then every scanned plugin by name, then the scanner.
         for (const auto& type : plugins::BuiltInFactory().typeNames())
         {
             add.addItem(item++, plugins::BuiltInFactory::displayName(type));
@@ -410,6 +412,34 @@ private:
                     owner_.onCommand(std::make_unique<core::AddInsert>(id_, insert));
                 });
         }
+        if (owner_.host_ != nullptr && !owner_.host_->registry().plugins().empty())
+        {
+            add.addSeparator();
+            for (const auto& plugin : owner_.host_->registry().plugins())
+            {
+                add.addItem(item++,
+                            juce::String::fromUTF8(plugin.name.c_str()) +
+                                (plugin.manufacturer.empty()
+                                     ? juce::String()
+                                     : "  (" + juce::String::fromUTF8(plugin.manufacturer.c_str()) + ")"));
+                const auto type = hosting::PluginRegistry::typeFor(plugin);
+                actions.push_back(
+                    [this, type]
+                    {
+                        core::Insert insert;
+                        insert.type = type;
+                        owner_.onCommand(std::make_unique<core::AddInsert>(id_, insert));
+                    });
+            }
+        }
+        add.addSeparator();
+        add.addItem(item++, "Scan for plugins...");
+        actions.push_back(
+            [this]
+            {
+                if (owner_.onScanPlugins)
+                    owner_.onScanPlugins();
+            });
         menu.addSubMenu("Add", add);
         menu.showMenuAsync(juce::PopupMenu::Options().withTargetComponent(inserts_),
                            [actions](int result)
@@ -604,10 +634,21 @@ private:
 
 // ----- view ---------------------------------------------------------------------------------
 
+std::string MixerView::insertDisplayName(const std::string& type) const
+{
+    return host_ != nullptr ? host_->displayName(type) : plugins::BuiltInFactory::displayName(type);
+}
+
 void MixerView::openInsertEditor(core::Id channelId, core::Id insertId)
 {
     for (auto& w : editors_)
         if (w->editor().insertId() == insertId)
+        {
+            w->toFront(true);
+            return;
+        }
+    for (auto& w : pluginWindows_)
+        if (w->insertId() == insertId)
         {
             w->toFront(true);
             return;
@@ -619,6 +660,29 @@ void MixerView::openInsertEditor(core::Id channelId, core::Id insertId)
         channel != nullptr ? const_cast<core::Channel*>(channel)->findInsert(insertId) : nullptr;
     if (insert == nullptr)
         return;
+
+    // A hosted plugin shows its own editor on its live instance.
+    if (hosting::PluginRegistry::isHostedType(insert->type))
+    {
+        const auto live = liveInsert ? liveInsert(insertId) : nullptr;
+        auto* hosted = dynamic_cast<hosting::HostedPlugin*>(live.get());
+        if (hosted == nullptr)
+            return; // not loaded (missing plugin): nothing to show
+        const juce::String title = juce::String::fromUTF8(channel->name.c_str()) + " - " +
+                                   juce::String::fromUTF8(insertDisplayName(insert->type).c_str());
+        auto window = std::make_unique<PluginWindow>(channelId, insertId, hosted->instance(), title);
+        juce::Component::SafePointer<MixerView> safe(this);
+        window->onClose = [safe, insertId]
+        {
+            if (safe != nullptr)
+                std::erase_if(safe->pluginWindows_,
+                              [insertId](const auto& w) { return w->insertId() == insertId; });
+        };
+        window->centreAroundComponent(getTopLevelComponent(), window->getWidth(), window->getHeight());
+        pluginWindows_.push_back(std::move(window));
+        return;
+    }
+
     const auto processor = plugins::BuiltInFactory().create(insert->type);
     if (processor == nullptr)
         return;
@@ -653,6 +717,7 @@ MixerView::MixerView(rt::MeterBlock& meters, std::function<engine::LoudnessMeter
 MixerView::~MixerView()
 {
     stopTimer();
+    pluginWindows_.clear();
     editors_.clear();
 }
 
@@ -662,6 +727,16 @@ void MixerView::setProject(const core::Project* project)
     rebuildStrips();
 
     // Open editors follow the model (undo, a removed insert closes its window).
+    // A plugin window must go before its instance, which the engine drops once no
+    // snapshot references it (after this call).
+    std::erase_if(pluginWindows_,
+                  [this](const auto& w)
+                  {
+                      const auto* channel =
+                          project_ != nullptr ? project_->findChannel(w->channelId()) : nullptr;
+                      return channel == nullptr ||
+                             const_cast<core::Channel*>(channel)->findInsert(w->insertId()) == nullptr;
+                  });
     std::erase_if(editors_,
                   [this](const auto& w)
                   {
