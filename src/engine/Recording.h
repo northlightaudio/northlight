@@ -2,6 +2,7 @@
 
 #include "core/Model.h"
 #include "engine/WavFile.h"
+#include "engine/rt/SpscQueue.h"
 
 #include <atomic>
 #include <condition_variable>
@@ -22,6 +23,11 @@
 // rings into float WAV files, rewriting the headers every second so a crash loses
 // at most that much. When the session stops, the writer finishes the files and the
 // controller places the clips (latency-compensated) on the tracks.
+//
+// Loop recording: every time the transport wraps while capturing, the audio thread
+// marks a take boundary (the cumulative captured count plus the new timeline
+// start); the writer closes the current file at that sample and opens the next
+// take's file, so each pass through the loop becomes its own clip.
 
 namespace aural::engine
 {
@@ -47,6 +53,20 @@ private:
     std::atomic<std::uint64_t> read_{0};
 };
 
+// Where a recorded file belongs on the timeline after latency compensation: the
+// capture started `latency` samples after the audio actually happened, so the clip
+// moves earlier by that much; anything that would land before zero is trimmed off
+// the front of the source instead.
+struct RecordingPlacement
+{
+    core::SamplePosition start = 0;
+    core::SamplePosition sourceOffset = 0;
+    core::SamplePosition length = 0;
+};
+RecordingPlacement placeRecording(core::SamplePosition captureStart,
+                                  std::int64_t samplesWritten,
+                                  core::SamplePosition latency) noexcept;
+
 class RecordSession
 {
 public:
@@ -54,10 +74,16 @@ public:
     {
         core::Id trackId = core::invalidId;
         int inputChannel = 0; // index into the active device inputs
-        std::string path;     // file the writer records to
+        std::string path;     // file the writer records to (first take)
         std::unique_ptr<RecordRing> ring;
         std::atomic<std::uint64_t> dropped{0};
         std::int64_t captured = 0; // audio thread only
+    };
+
+    struct TakeMark
+    {
+        std::int64_t capturedBefore = 0; // samples captured (per input) before the new take
+        core::SamplePosition start = 0;  // timeline position the new take begins at
     };
 
     // ringSeconds of buffering per input; the writer must drain faster than that.
@@ -76,7 +102,13 @@ public:
                  int numInputs,
                  int numSamples,
                  core::SamplePosition position) noexcept;
+    // A loop wrap: the next captured sample starts a new take at `start`.
+    void markTake(core::SamplePosition start) noexcept;
     void finish() noexcept { finished_.store(true, std::memory_order_release); }
+    std::int64_t capturedSamples() const noexcept { return captured_; }
+
+    // Writer thread.
+    bool popTakeMark(TakeMark& mark) noexcept { return takeMarks_.pop(mark); }
 
     // ----- any thread -----
     bool isFinished() const noexcept { return finished_.load(std::memory_order_acquire); }
@@ -92,6 +124,8 @@ private:
     std::vector<std::unique_ptr<Input>> inputs_;
     std::atomic<core::SamplePosition> startPosition_{-1};
     std::atomic<bool> finished_{false};
+    std::int64_t captured_ = 0; // audio thread only
+    rt::SpscQueue<TakeMark> takeMarks_{256};
 };
 
 // One writer thread per engine. begin() takes a session the engine is capturing
@@ -106,6 +140,8 @@ public:
         std::string path;
         std::int64_t samplesWritten = 0;
         std::uint64_t dropped = 0;
+        core::SamplePosition startPosition = 0; // timeline position of the first sample
+        int takeIndex = 0;                      // 0 for the first pass
         bool ok = true;
     };
 
@@ -125,11 +161,24 @@ public:
     static constexpr int drainIntervalMilliseconds = 10;
 
 private:
+    struct InputState
+    {
+        std::unique_ptr<WavWriter> writer;
+        std::int64_t written = 0; // across all takes
+        int takeIndex = 0;
+        core::SamplePosition takeStart = 0; // timeline start of the open take
+        size_t nextMark = 0;                // index into marks_
+    };
+
     void run();
     void drain(bool final);
+    bool writeTo(size_t inputIndex, const float* samples, int count);
+    void closeTake(size_t inputIndex, std::vector<Result>& into);
+    static std::string takePath(const std::string& firstPath, int takeIndex);
 
     RecordSession* session_ = nullptr;
-    std::vector<std::unique_ptr<WavWriter>> writers_;
+    std::vector<InputState> inputs_;
+    std::vector<RecordSession::TakeMark> marks_;
     std::vector<Result> results_;
     std::vector<float> chunk_;
     std::atomic<bool> writing_{false};

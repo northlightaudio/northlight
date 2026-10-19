@@ -64,6 +64,24 @@ int RecordRing::pop(float* dest, int maxSamples) noexcept
     return static_cast<int>(count);
 }
 
+// ----- placement -------------------------------------------------------------------------------
+
+RecordingPlacement placeRecording(core::SamplePosition captureStart,
+                                  std::int64_t samplesWritten,
+                                  core::SamplePosition latency) noexcept
+{
+    RecordingPlacement p;
+    p.start = captureStart - latency;
+    p.length = samplesWritten;
+    if (p.start < 0)
+    {
+        p.sourceOffset = -p.start;
+        p.length = std::max<core::SamplePosition>(0, p.length - p.sourceOffset);
+        p.start = 0;
+    }
+    return p;
+}
+
 // ----- session ---------------------------------------------------------------------------------
 
 RecordSession::RecordSession(double sampleRate, double ringSeconds)
@@ -99,6 +117,12 @@ void RecordSession::capture(const float* const* inputs,
             input->dropped.fetch_add(static_cast<std::uint64_t>(numSamples), std::memory_order_relaxed);
         input->captured += numSamples;
     }
+    captured_ += numSamples;
+}
+
+void RecordSession::markTake(core::SamplePosition start) noexcept
+{
+    takeMarks_.push(TakeMark{captured_, start}); // a full queue drops the mark: the take just continues
 }
 
 std::uint64_t RecordSession::totalDropped() const noexcept
@@ -127,19 +151,21 @@ bool RecordWriter::begin(RecordSession& session)
     if (isWriting())
         return false;
 
-    std::vector<std::unique_ptr<WavWriter>> writers;
+    std::vector<InputState> states;
     for (const auto& input : session.inputs())
     {
-        auto writer = std::make_unique<WavWriter>();
-        if (!writer->open(input->path, 1, session.sampleRate()))
+        InputState state;
+        state.writer = std::make_unique<WavWriter>();
+        if (!state.writer->open(input->path, 1, session.sampleRate()))
             return false;
-        writers.push_back(std::move(writer));
+        states.push_back(std::move(state));
     }
 
     {
         const std::lock_guard<std::mutex> lock(mutex_);
         session_ = &session;
-        writers_ = std::move(writers);
+        inputs_ = std::move(states);
+        marks_.clear();
         results_.clear();
         chunk_.resize(1 << 16);
         writing_.store(true, std::memory_order_release);
@@ -156,19 +182,79 @@ std::vector<RecordWriter::Result> RecordWriter::takeResults()
     return out;
 }
 
+std::string RecordWriter::takePath(const std::string& firstPath, int takeIndex)
+{
+    const std::string suffix = ".partial.wav";
+    const std::string stem = firstPath.size() > suffix.size() && firstPath.ends_with(suffix)
+                                 ? firstPath.substr(0, firstPath.size() - suffix.size())
+                                 : firstPath;
+    return stem + "-take" + std::to_string(takeIndex + 1) + suffix;
+}
+
+void RecordWriter::closeTake(size_t inputIndex, std::vector<Result>& into)
+{
+    auto& state = inputs_[inputIndex];
+    const auto& input = *session_->inputs()[inputIndex];
+    Result r;
+    r.trackId = input.trackId;
+    r.path = state.writer->path();
+    r.samplesWritten = state.writer->samplesWritten();
+    r.dropped = input.dropped.load(std::memory_order_relaxed);
+    r.startPosition = state.takeIndex == 0 ? session_->startPosition() : state.takeStart;
+    r.takeIndex = state.takeIndex;
+    r.ok = state.writer->close();
+    into.push_back(std::move(r));
+}
+
+// Writes `count` samples for one input, splitting files at take marks.
+bool RecordWriter::writeTo(size_t inputIndex, const float* samples, int count)
+{
+    auto& state = inputs_[inputIndex];
+    while (count > 0)
+    {
+        if (state.nextMark < marks_.size() && marks_[state.nextMark].capturedBefore <= state.written)
+        {
+            // The take boundary is here: finish this file and start the next.
+            const auto mark = marks_[state.nextMark++];
+            closeTake(inputIndex, results_);
+            state.takeIndex += 1;
+            state.takeStart = mark.start;
+            state.writer = std::make_unique<WavWriter>();
+            if (!state.writer->open(takePath(session_->inputs()[inputIndex]->path, state.takeIndex),
+                                    1,
+                                    session_->sampleRate()))
+                return false;
+            continue;
+        }
+        int toWrite = count;
+        if (state.nextMark < marks_.size())
+            toWrite = static_cast<int>(
+                std::min<std::int64_t>(toWrite, marks_[state.nextMark].capturedBefore - state.written));
+        if (!state.writer->writeInterleaved(samples, toWrite))
+            return false;
+        state.written += toWrite;
+        samples += toWrite;
+        count -= toWrite;
+    }
+    return true;
+}
+
 void RecordWriter::drain(bool final)
 {
+    RecordSession::TakeMark mark;
+    while (session_->popTakeMark(mark))
+        marks_.push_back(mark);
+
     const auto& inputs = session_->inputs();
     for (size_t i = 0; i < inputs.size(); ++i)
     {
         auto& ring = *inputs[i]->ring;
-        auto& writer = *writers_[i];
         for (;;)
         {
             const int got = ring.pop(chunk_.data(), static_cast<int>(chunk_.size()));
             if (got == 0)
                 break;
-            if (!writer.writeInterleaved(chunk_.data(), got))
+            if (!writeTo(i, chunk_.data(), got))
                 break;
             if (!final && got < static_cast<int>(chunk_.size()))
                 break;
@@ -194,8 +280,8 @@ void RecordWriter::run()
             const auto now = std::chrono::steady_clock::now();
             if (now - lastHeader >= std::chrono::milliseconds(headerUpdateMilliseconds))
             {
-                for (auto& w : writers_)
-                    w->updateHeader();
+                for (auto& state : inputs_)
+                    state.writer->updateHeader();
                 lastHeader = now;
             }
             if (session_->isFinished())
@@ -206,22 +292,11 @@ void RecordWriter::run()
             std::this_thread::sleep_for(std::chrono::milliseconds(drainIntervalMilliseconds));
         }
 
-        std::vector<Result> results;
-        const auto& inputs = session_->inputs();
-        for (size_t i = 0; i < inputs.size(); ++i)
-        {
-            Result r;
-            r.trackId = inputs[i]->trackId;
-            r.path = inputs[i]->path;
-            r.samplesWritten = writers_[i]->samplesWritten();
-            r.dropped = inputs[i]->dropped.load(std::memory_order_relaxed);
-            r.ok = writers_[i]->close();
-            results.push_back(std::move(r));
-        }
+        for (size_t i = 0; i < inputs_.size(); ++i)
+            closeTake(i, results_);
         {
             const std::lock_guard<std::mutex> lock(mutex_);
-            results_ = std::move(results);
-            writers_.clear();
+            inputs_.clear();
             session_ = nullptr;
             writing_.store(false, std::memory_order_release);
         }

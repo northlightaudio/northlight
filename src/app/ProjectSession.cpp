@@ -264,13 +264,13 @@ std::string ProjectSession::startRecording()
 void ProjectSession::finishRecording(engine::AudioEngine::FinishedRecording finished)
 {
     const auto latency = recordingLatencySamples();
-    const auto start = finished.session->startPosition();
-    std::uint64_t dropped = 0;
+    std::uint64_t dropped = 0; // per input the count is cumulative over takes: take the largest
+    int takes = 0;
 
     undo_.beginGroup("Record");
     for (const auto& r : finished.results)
     {
-        dropped += r.dropped;
+        dropped = std::max(dropped, r.dropped);
         if (!r.ok || r.samplesWritten <= 0)
             continue;
         juce::File partial{juce::String(r.path)};
@@ -278,19 +278,20 @@ void ProjectSession::finishRecording(engine::AudioEngine::FinishedRecording fini
         if (!partial.moveFileTo(final))
             final = partial;
 
+        // Each loop pass is its own take, placed at the loop start; later takes sit
+        // on top of earlier ones on the same track.
+        const auto placement = engine::placeRecording(r.startPosition, r.samplesWritten, latency);
         core::AudioClip clip;
         clip.name = final.getFileNameWithoutExtension().toStdString();
         clip.mediaPath = final.getFullPathName().toStdString();
-        clip.start = std::max<core::SamplePosition>(0, start) - latency;
-        clip.length = r.samplesWritten;
-        if (clip.start < 0)
-        {
-            clip.sourceOffset = -clip.start;
-            clip.length = std::max<core::SamplePosition>(0, clip.length - clip.sourceOffset);
-            clip.start = 0;
-        }
+        clip.start = placement.start;
+        clip.sourceOffset = placement.sourceOffset;
+        clip.length = placement.length;
         if (clip.length > 0 && project_.findTrack(r.trackId) != nullptr)
+        {
             undo_.execute(project_, std::make_unique<core::AddClip>(r.trackId, clip));
+            takes = std::max(takes, r.takeIndex + 1);
+        }
     }
     undo_.endGroup();
     modified_ = true;
@@ -298,8 +299,9 @@ void ProjectSession::finishRecording(engine::AudioEngine::FinishedRecording fini
     if (dropped > 0)
         recordingMessage_ = "Recording lost " + std::to_string(dropped) + " samples to disk overruns";
     else
-        recordingMessage_ = "Recorded " + std::to_string(finished.results.size()) + " track(s), placed " +
-                            std::to_string(latency) + " samples early for latency";
+        recordingMessage_ = "Recorded " + std::to_string(finished.session->inputs().size()) + " track(s)" +
+                            (takes > 1 ? ", " + std::to_string(takes) + " takes" : std::string{}) +
+                            ", placed " + std::to_string(latency) + " samples early for latency";
     publish();
 }
 

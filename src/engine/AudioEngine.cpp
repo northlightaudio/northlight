@@ -223,12 +223,17 @@ void AudioEngine::process(
         const bool countingIn = transport_.playing && transport_.countInRemaining > 0;
         if (countingIn)
             count = static_cast<int>(std::min<core::SamplePosition>(count, transport_.countInRemaining));
-        else if (transport_.playing && recordSession_ != nullptr && transport_.punchIsValid())
+        else if (transport_.playing && recordSession_ != nullptr)
         {
-            // Stop the segment at the next punch edge ahead of the position.
-            for (const auto edge : {transport_.punchIn, transport_.punchOut})
-                if (edge > transport_.position && edge - transport_.position < count)
-                    count = static_cast<int>(edge - transport_.position);
+            // Stop the segment at the next punch edge or loop end ahead of the
+            // position, so capture ranges and take boundaries fall on exact samples.
+            if (transport_.punchIsValid())
+                for (const auto edge : {transport_.punchIn, transport_.punchOut})
+                    if (edge > transport_.position && edge - transport_.position < count)
+                        count = static_cast<int>(edge - transport_.position);
+            if (transport_.loopIsValid() && transport_.loopEnd > transport_.position &&
+                transport_.loopEnd - transport_.position < count)
+                count = static_cast<int>(transport_.loopEnd - transport_.position);
         }
 
         for (int ch = 0; ch < outChannels; ++ch)
@@ -236,6 +241,7 @@ void AudioEngine::process(
         for (int ch = 0; ch < inChannels; ++ch)
             inPieces[ch] = inputs != nullptr && inputs[ch] != nullptr ? inputs[ch] + done : nullptr;
 
+        const auto segmentStart = transport_.position;
         const bool capturing = recordSession_ != nullptr && !countingIn && transport_.playing &&
                                transport_.insidePunch(transport_.position);
         if (capturing)
@@ -263,6 +269,10 @@ void AudioEngine::process(
         }
         if (countingIn)
             transport_.countInRemaining -= count;
+        // A loop wrap while capturing starts a new take at the loop start.
+        if (capturing && transport_.loopIsValid() && transport_.position == transport_.loopStart &&
+            segmentStart + count == transport_.loopEnd)
+            recordSession_->markTake(transport_.loopStart);
         done += count;
     }
 
