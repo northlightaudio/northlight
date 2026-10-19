@@ -179,8 +179,8 @@ void Renderer::renderTrack(const TrackNode& track,
                 monoPanGains(track.pan, panLeft, panRight);
             else
                 stereoPanGains(track.pan, panLeft, panRight);
-            const float gainLeft = clip.gain * track.gain * panLeft;
-            const float gainRight = clip.gain * track.gain * panRight;
+            const float gainLeft = clip.gain * panLeft;
+            const float gainRight = clip.gain * panRight;
 
             float* sl = track.scratchLeft.data();
             float* sr = track.scratchRight.data();
@@ -205,7 +205,8 @@ void Renderer::renderTrack(const TrackNode& track,
         }
     }
 
-    // Input monitoring: the device input through the track's gain and pan.
+    // Input monitoring: the device input through the track's pan (the fader follows
+    // in the summing stage).
     if (monitorsInput(track, context.playing, context.recording) && track.inputChannel < context.numInputs &&
         context.inputs != nullptr)
     {
@@ -214,21 +215,94 @@ void Renderer::renderTrack(const TrackNode& track,
         {
             float panLeft = 1.0f, panRight = 1.0f;
             monoPanGains(track.pan, panLeft, panRight);
-            const float gainLeft = track.gain * panLeft;
-            const float gainRight = track.gain * panRight;
             for (int i = 0; i < numSamples; ++i)
             {
-                left[i] += in[i] * gainLeft;
-                right[i] += in[i] * gainRight;
+                left[i] += in[i] * panLeft;
+                right[i] += in[i] * panRight;
             }
         }
     }
+
+    if (track.phaseInvert)
+        for (int i = 0; i < numSamples; ++i)
+        {
+            left[i] = -left[i];
+            right[i] = -right[i];
+        }
 }
 
 void Renderer::trackJob(void* context, int index) noexcept
 {
     const auto& job = *static_cast<const SpanJob*>(context);
     renderTrack(job.snapshot->tracks[static_cast<size_t>(index)], job.position, job.numSamples, *job.context);
+}
+
+void Renderer::routeChannel(const Snapshot& snapshot,
+                            const ChannelNode& channel,
+                            const RenderContext& context,
+                            float* masterLeft,
+                            float* masterRight,
+                            int numSamples) noexcept
+{
+    const float* pre = channel.outLeft.data();
+    const float* preR = channel.outRight.data();
+    const auto target = [&](int bus, float*& l, float*& r)
+    {
+        if (bus >= 0 && static_cast<size_t>(bus) < snapshot.buses.size())
+        {
+            l = snapshot.buses[static_cast<size_t>(bus)].sumLeft.data();
+            r = snapshot.buses[static_cast<size_t>(bus)].sumRight.data();
+        }
+        else
+        {
+            l = masterLeft;
+            r = masterRight;
+        }
+    };
+
+    if (!channel.audible)
+    {
+        if (context.meters != nullptr)
+            context.meters->silence(channel.meterSlot);
+        return;
+    }
+
+    float* outL = nullptr;
+    float* outR = nullptr;
+    target(channel.outputBus, outL, outR);
+    const float gain = channel.gain;
+    for (int i = 0; i < numSamples; ++i)
+    {
+        outL[i] += pre[i] * gain;
+        outR[i] += preR[i] * gain;
+    }
+
+    for (const auto& send : channel.sends)
+    {
+        float* sl = nullptr;
+        float* sr = nullptr;
+        target(send.bus, sl, sr);
+        const float level = send.preFader ? send.level : send.level * gain;
+        for (int i = 0; i < numSamples; ++i)
+        {
+            sl[i] += pre[i] * level;
+            sr[i] += preR[i] * level;
+        }
+    }
+
+    if (context.meters != nullptr)
+    {
+        // Post-fader level: measured from the pre-fader buffer scaled by the gain,
+        // reusing the buffer in place now that it has been routed.
+        float* l = channel.outLeft.data();
+        float* r = channel.outRight.data();
+        for (int i = 0; i < numSamples; ++i)
+        {
+            l[i] *= gain;
+            r[i] *= gain;
+        }
+        context.meters->measure(channel.meterSlot, l, r, numSamples);
+    }
 }
 
 void Renderer::renderSpan(const Snapshot& snapshot,
@@ -251,19 +325,40 @@ void Renderer::renderSpan(const Snapshot& snapshot,
             trackJob(&job, t);
     }
 
-    // Sum in track order: the result does not depend on which thread did what.
-    for (const auto& track : snapshot.tracks)
+    // Summing in fixed order: the result does not depend on which thread did what.
+    for (const auto& bus : snapshot.buses)
     {
-        if (!track.audible)
-            continue;
-        const float* tl = track.outLeft.data();
-        const float* tr = track.outRight.data();
+        std::fill(bus.sumLeft.data(), bus.sumLeft.data() + numSamples, 0.0f);
+        std::fill(bus.sumRight.data(), bus.sumRight.data() + numSamples, 0.0f);
+    }
+    for (const auto& track : snapshot.tracks)
+        routeChannel(snapshot, track, context, left, right, numSamples);
+
+    for (int index : snapshot.busOrder)
+    {
+        const auto& bus = snapshot.buses[static_cast<size_t>(index)];
+        // The bus's pre-fader output: its summed inputs through balance and phase.
+        float panLeft = 1.0f, panRight = 1.0f;
+        stereoPanGains(bus.pan, panLeft, panRight);
+        const float sign = bus.phaseInvert ? -1.0f : 1.0f;
+        float* outL = bus.outLeft.data();
+        float* outR = bus.outRight.data();
         for (int i = 0; i < numSamples; ++i)
         {
-            left[i] += tl[i];
-            right[i] += tr[i];
+            outL[i] = bus.sumLeft[static_cast<size_t>(i)] * panLeft * sign;
+            outR[i] = bus.sumRight[static_cast<size_t>(i)] * panRight * sign;
         }
+        routeChannel(snapshot, bus, context, left, right, numSamples);
     }
+
+    const float master = snapshot.masterGain;
+    for (int i = 0; i < numSamples; ++i)
+    {
+        left[i] *= master;
+        right[i] *= master;
+    }
+    if (context.meters != nullptr)
+        context.meters->measure(snapshot.masterMeterSlot, left, right, numSamples);
 }
 
 } // namespace aural::engine

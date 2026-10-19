@@ -2,6 +2,7 @@
 # stream reading with resampling. Separate from aural_unit_tests so the pure tests
 # stay JUCE-free and fast to link.
 add_executable(aural_juce_tests
+    ../unit/NoAssertDialogs.cpp
     JuceStreamReaderTests.cpp
     AudioCallbackTests.cpp)
 

@@ -1,6 +1,7 @@
 #pragma once
 
 #include "engine/Click.h"
+#include "engine/Meters.h"
 #include "engine/Snapshot.h"
 #include "engine/Transport.h"
 #include "engine/WorkerPool.h"
@@ -8,12 +9,14 @@
 #include <vector>
 
 // Renders one block of a Snapshot at the transport position into stereo outputs.
-// Tracks render in parallel on the worker pool into their own buffers and are
-// summed in track order, so the output is identical whatever the worker count.
-// Input monitoring (a track's device input heard through its gain and pan) is part
-// of the track render, so it works while stopped as well as while playing.
-// Phase 2/3: every track mixes straight to the master; sends, buses and inserts
-// arrive with the mixer in Phase 4. Real-time: render() allocates nothing.
+//
+// Per span: tracks render in parallel on the worker pool into their pre-fader
+// buffers (clips, monitored input, pan, phase); then the summing stage, on the
+// callback thread, applies each track's fader, routes it to its bus or the master
+// and feeds its sends, walks the buses in dependency order doing the same, applies
+// the master gain, and publishes peak/RMS for every channel. Summing order is
+// fixed, so the output is identical whatever the worker count. Inserts arrive with
+// the built-in plugins. Real-time: render() allocates nothing.
 
 namespace aural::engine
 {
@@ -22,9 +25,10 @@ struct RenderContext
 {
     const float* const* inputs = nullptr; // active device inputs, callback order
     int numInputs = 0;
-    bool playing = false;   // clips play and the position advances
-    bool recording = false; // armed tracks in automatic monitor mode hear their input
-    bool countIn = false;   // the count-in before a recording: clicks only, position holds
+    bool playing = false;             // clips play and the position advances
+    bool recording = false;           // armed tracks in automatic monitor mode hear their input
+    bool countIn = false;             // the count-in before a recording: clicks only, position holds
+    rt::MeterBlock* meters = nullptr; // may be null (tests)
 };
 
 class Renderer
@@ -55,8 +59,8 @@ public:
     static bool monitorsInput(const TrackNode& track, bool playing, bool recording) noexcept;
 
     // Renders one track's clips (and monitored input) over
-    // [position, position + numSamples) into the track's own buffers. Real-time; one
-    // job of the parallel batch.
+    // [position, position + numSamples) into the track's pre-fader buffers.
+    // Real-time; one job of the parallel batch.
     static void renderTrack(const TrackNode& track,
                             core::SamplePosition position,
                             int numSamples,
@@ -79,6 +83,14 @@ private:
                     float* right,
                     int numSamples,
                     WorkerPool* pool) noexcept;
+
+    // Applies a channel's fader and routes its post-fader signal and sends.
+    static void routeChannel(const Snapshot& snapshot,
+                             const ChannelNode& channel,
+                             const RenderContext& context,
+                             float* masterLeft,
+                             float* masterRight,
+                             int numSamples) noexcept;
 
     void renderClicks(const Snapshot& snapshot,
                       const TransportState& transport,

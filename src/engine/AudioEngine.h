@@ -1,6 +1,7 @@
 #pragma once
 
 #include "core/Model.h"
+#include "engine/Meters.h"
 #include "engine/Recording.h"
 #include "engine/Renderer.h"
 #include "engine/Snapshot.h"
@@ -77,6 +78,9 @@ public:
     bool isRunning() const noexcept { return running_.load(std::memory_order_acquire); }
 
     // ----- any thread ---------------------------------------------------------------
+    // Peak/RMS per channel, slots as laid out by the snapshot compiler
+    // (trackMeterSlot / busMeterSlot / masterMeterSlot). The UI takes readings.
+    rt::MeterBlock& meters() noexcept { return meters_; }
     core::SamplePosition position() const noexcept { return position_.load(std::memory_order_relaxed); }
     bool isPlaying() const noexcept { return playing_.load(std::memory_order_relaxed); }
     bool isRecording() const noexcept { return recording_.load(std::memory_order_relaxed); }
@@ -113,6 +117,7 @@ private:
     WorkerPool pool_;
     Renderer renderer_;
     RecordWriter writer_;
+    rt::MeterBlock meters_;
 
     TransportState transport_;               // real-time thread only
     RecordSession* recordSession_ = nullptr; // real-time thread only

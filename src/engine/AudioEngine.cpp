@@ -254,6 +254,7 @@ void AudioEngine::process(
         context.playing = transport_.playing && !countingIn;
         context.recording = recordSession_ != nullptr;
         context.countIn = countingIn;
+        context.meters = &meters_;
 
         if (snapshot != nullptr)
         {

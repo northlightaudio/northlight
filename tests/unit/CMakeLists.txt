@@ -1,4 +1,5 @@
 add_executable(aural_unit_tests
+    NoAssertDialogs.cpp
     rt/RealtimeGuardTests.cpp
     audio/AudioSettingsTests.cpp
     audio/LatencyDetectorTests.cpp
@@ -16,7 +17,8 @@ add_executable(aural_unit_tests
     engine/ClickTests.cpp
     engine/StressTests.cpp
     engine/ResamplingTests.cpp
-    engine/TakeTests.cpp)
+    engine/TakeTests.cpp
+    engine/MixerTests.cpp)
 
 target_link_libraries(aural_unit_tests PRIVATE
     aural_options

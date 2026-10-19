@@ -11,10 +11,16 @@
 
 // The compiled, immutable form of a Project that the real-time thread renders.
 // Built on the controller thread by compileSnapshot(); published through
-// rt::SnapshotPublisher; never mutated afterwards, except for the per-track work
-// buffers, which belong to whichever real-time thread renders that track in the
+// rt::SnapshotPublisher; never mutated afterwards, except for the per-channel work
+// buffers, which belong to whichever real-time thread renders that channel in the
 // current block (the buffer pool is sized here, at compile time, so rendering never
 // allocates).
+//
+// Signal flow (PLAN.md 3.2, Phase 4 scope): tracks render in parallel into their own
+// pre-fader buffers; the summing stage applies the fader and routes each channel to
+// its output bus (or the master) and its sends; buses follow in dependency order;
+// the master gain is last. Mute and solo-in-place are resolved at compile time into
+// `audible`.
 
 namespace aural::engine
 {
@@ -31,19 +37,43 @@ struct ClipNode
     core::SamplePosition end() const noexcept { return start + length; }
 };
 
-struct TrackNode
+struct SendNode
+{
+    int bus = -1; // index into Snapshot::buses
+    float level = 1.0f;
+    bool preFader = false;
+};
+
+// What tracks and buses share once compiled.
+struct ChannelNode
 {
     core::Id id = core::invalidId;
     float gain = 1.0f;
     float pan = 0.0f;
-    bool audible = true;   // mute/solo already resolved
+    bool phaseInvert = false;
+    bool audible = true; // mute/solo-in-place already resolved
+    int outputBus = -1;  // index into Snapshot::buses, -1 = master
+    int meterSlot = -1;
+    std::vector<SendNode> sends;
+
+    // Pre-fader stereo output for one span (the parallel render writes it).
+    mutable std::vector<float> outLeft, outRight;
+};
+
+struct TrackNode : ChannelNode
+{
     int inputChannel = -1; // device input (callback order) or -1
     bool armed = false;
     core::MonitorMode monitor = core::MonitorMode::automatic;
     std::vector<ClipNode> clips; // sorted by start
 
-    // Work buffers for one block: the track's stereo output and clip read scratch.
-    mutable std::vector<float> outLeft, outRight, scratchLeft, scratchRight;
+    mutable std::vector<float> scratchLeft, scratchRight; // clip read scratch
+};
+
+struct BusNode : ChannelNode
+{
+    // What its inputs summed into it this span (before the bus's own fader).
+    mutable std::vector<float> sumLeft, sumRight;
 };
 
 struct Snapshot
@@ -57,6 +87,10 @@ struct Snapshot
     double tempoBpm = 120.0;
     core::TimeSignature timeSignature;
     std::vector<TrackNode> tracks;
+    std::vector<BusNode> buses; // in project order
+    std::vector<int> busOrder;  // bus indices in dependency order (feeders before fed)
+    float masterGain = 1.0f;
+    int masterMeterSlot = -1;
 };
 
 // Caches loaded media by path across snapshot compiles so a re-publish after an edit
@@ -98,5 +132,20 @@ private:
 };
 
 std::unique_ptr<Snapshot> compileSnapshot(const core::Project& project, MediaCache& media);
+
+// Meter slot layout used by the compiler: tracks in project order, then buses in
+// project order, then the master.
+inline int trackMeterSlot(int trackIndex) noexcept
+{
+    return trackIndex;
+}
+inline int busMeterSlot(const core::Project& project, int busIndex) noexcept
+{
+    return static_cast<int>(project.tracks.size()) + busIndex;
+}
+inline int masterMeterSlot(const core::Project& project) noexcept
+{
+    return static_cast<int>(project.tracks.size() + project.buses.size());
+}
 
 } // namespace aural::engine
