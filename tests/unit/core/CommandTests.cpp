@@ -451,3 +451,30 @@ TEST_CASE("Clips split, join, duplicate, fade and crossfade with undo", "[core][
     CHECK(stack.redo(p));
     CHECK(p.tracks[0].clips.size() == 1);
 }
+
+TEST_CASE("Shifting clips after a position moves the later ones and pins at zero", "[core][command][edit]")
+{
+    Project p = projectWithTrack();
+    UndoStack stack;
+    const Id t = p.tracks[0].id;
+    for (const SamplePosition start : {100, 500, 900})
+    {
+        AudioClip c;
+        c.mediaPath = "x.wav";
+        c.start = start;
+        c.length = 100;
+        stack.execute(p, std::make_unique<AddClip>(t, c));
+    }
+    stack.execute(p, std::make_unique<ShiftClips>(t, 500, -300));
+    CHECK(p.tracks[0].clips[0].start == 100);
+    CHECK(p.tracks[0].clips[1].start == 200);
+    CHECK(p.tracks[0].clips[2].start == 600);
+    stack.execute(p, std::make_unique<ShiftClips>(t, 0, -150));
+    CHECK(p.tracks[0].clips[0].start == 0); // pinned
+    CHECK(p.tracks[0].clips[1].start == 50);
+    stack.undo(p);
+    CHECK(p.tracks[0].clips[0].start == 100);
+    stack.undo(p);
+    CHECK(p.tracks[0].clips[1].start == 500);
+    CHECK(p.tracks[0].clips[2].start == 900);
+}

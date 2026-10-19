@@ -56,6 +56,11 @@ public:
 
     // ----- editing ----------------------------------------------------------------
     void execute(std::unique_ptr<core::Command> command);
+    // Several commands as one undo step (a drag that moved many clips).
+    void executeGroup(const std::string& name, std::vector<std::unique_ptr<core::Command>> commands);
+    // Sets a clip's gain so its loudest sample peaks at `targetDb` (reads the
+    // source). Returns an error message or empty.
+    std::string normaliseClip(core::Id trackId, core::Id clipId, float targetDb = -0.3f);
     void undo();
     void redo();
     bool canUndo() const noexcept { return undo_.canUndo(); }

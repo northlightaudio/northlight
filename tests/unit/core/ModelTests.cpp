@@ -65,3 +65,21 @@ TEST_CASE("Compound time signatures count the denominator note value", "[core][m
     CHECK(samplesPerBeat(sr, 120.0, sig) == 12000.0);
     CHECK(samplesToBarsBeats(6 * 12000, sr, 120.0, sig) == BarsBeats{2, 1, 0});
 }
+
+TEST_CASE("The editing grid picks the finest division that fits and snaps to the nearest line",
+          "[core][grid]")
+{
+    const TimeSignature four{4, 4};
+    // 120 bpm at 48 kHz: a beat is 24000 samples. At 100 samples per pixel an
+    // eighth of a beat (3000 samples) is 30 px: fine enough for a 16 px minimum.
+    CHECK(gridSamples(48000.0, 120.0, four, 100.0, 16) == 3000);
+    // At 1000 samples per pixel an eighth is 3 px, a quarter 6, a half 12, a beat 24.
+    CHECK(gridSamples(48000.0, 120.0, four, 1000.0, 16) == 24000);
+    // Zoomed far out, whole bars (96000) are 9.6 px at 10000/px: two bars.
+    CHECK(gridSamples(48000.0, 120.0, four, 10000.0, 16) == 192000);
+    CHECK(snapToGrid(1499, 1000) == 1000);
+    CHECK(snapToGrid(1500, 1000) == 2000);
+    CHECK(snapToGrid(2999, 1000) == 3000);
+    CHECK(snapToGrid(123, 1) == 123);
+    CHECK(snapToGrid(123, 0) == 123);
+}

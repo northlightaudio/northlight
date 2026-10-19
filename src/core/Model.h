@@ -181,6 +181,16 @@ struct BarsBeats
 };
 
 double samplesPerBeat(double sampleRate, double tempoBpm, TimeSignature signature) noexcept;
+
+// Editing grid. gridSamples picks the finest musical division (bar, beat, half,
+// quarter, eighth of a beat) that is at least `minPixels` wide at the zoom;
+// snapToGrid rounds to the nearest line (the grid starts at zero).
+SamplePosition gridSamples(double sampleRate,
+                           double tempoBpm,
+                           TimeSignature signature,
+                           double samplesPerPixel,
+                           int minPixels) noexcept;
+SamplePosition snapToGrid(SamplePosition position, SamplePosition grid) noexcept;
 BarsBeats samplesToBarsBeats(SamplePosition position,
                              double sampleRate,
                              double tempoBpm,

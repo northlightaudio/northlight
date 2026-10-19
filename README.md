@@ -3,7 +3,7 @@
 A native, high-performance digital audio workstation for Windows. ASIO, VST3 hosting,
 multitrack recording, and a UI that is designed before it is built.
 
-Status: **Phase 5 (VST3 hosting), in progress**. See
+Status: **Phase 6 (editing), in progress**. See
 [docs/PLAN.md](docs/PLAN.md) for the roadmap and
 [docs/architecture.md](docs/architecture.md) for what is built.
 
@@ -124,6 +124,14 @@ recording, the next launch offers to repair the unfinished files and put them ba
 on their tracks where they were captured (or on "Recovered" tracks when the project
 has changed), or set them aside. Recording needs the device at the project's sample
 rate.
+**Editing** in the arrange view: click a clip to select it (Shift adds, Ctrl
+toggles), drag on empty space to lasso, drag a clip to move it (across tracks too),
+drag its edge to trim, drag the handle at a top corner for a fade, Ctrl+drag up or
+down for clip gain. Moves and trims snap to the grid (**G** toggles). **Delete**
+removes (with ripple on, **E**, later clips close the gap), **Ctrl+D** duplicates,
+**S** splits at the playhead, **J** joins, **X** crossfades overlapping neighbours,
+**Ctrl+Shift+N** normalises, **Left/Right** nudge by a grid step, **Ctrl+A** selects
+all, **Escape** clears the selection.
 Projects are `.aural` files: **New**, **Open...**, **Save** (Ctrl+N / Ctrl+O / Ctrl+S,
 Ctrl+Shift+S to save as).
 

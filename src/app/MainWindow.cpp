@@ -117,6 +117,15 @@ public:
         { session_.execute(std::make_unique<core::SetTrackMonitor>(id, mode)); };
         tracks_.onImportFiles = [this](const std::vector<juce::File>& files, core::SamplePosition at)
         { importFiles(files, at); };
+        tracks_.onEdit = [this](std::vector<std::unique_ptr<core::Command>> commands, const std::string& name)
+        { session_.executeGroup(name, std::move(commands)); };
+        tracks_.onNormalise = [this](core::Id trackId, core::Id clipId)
+        {
+            const auto error = session_.normaliseClip(trackId, clipId);
+            lastImportError_ = error.empty() ? juce::String() : "Normalise: " + juce::String(error);
+            refresh();
+        };
+        tracks_.playheadForEdits = [this] { return session_.position(); };
         tracks_.setAcceptedExtensions(session_.mediaLoader().supportedExtensions());
         addAndMakeVisible(tracks_);
 
@@ -191,6 +200,8 @@ public:
 
     bool keyPressed(const juce::KeyPress& key) override
     {
+        if (tracks_.handleEditKey(key))
+            return true;
         if (key == juce::KeyPress::spaceKey)
         {
             session_.togglePlay();

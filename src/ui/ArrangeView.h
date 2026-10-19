@@ -1,6 +1,7 @@
 #pragma once
 
 #include "audio/PeakStore.h"
+#include "core/Command.h"
 #include "core/Model.h"
 #include "ui/Theme.h"
 #include "ui/TrackHeader.h"
@@ -15,12 +16,22 @@
 namespace aural::ui
 {
 
-// The arrange view, Phase 2 scope: tracks as rows, clips with waveforms drawn from
-// the peak cache, a bars/beats and time ruler, a playhead that follows playback,
+// The arrange view: tracks as rows, clips with waveforms drawn from the peak
+// cache, a bars/beats and time ruler, a playhead that follows playback,
 // horizontal zoom (Ctrl+wheel, around the pointer), vertical scroll (wheel) and
-// horizontal scroll (Shift+wheel / scrollbar),
-// and audio files dropped onto it become tracks at the drop position. Click the
-// ruler or empty track space to locate. Editing arrives in Phase 6.
+// horizontal scroll (Shift+wheel / scrollbar), and audio files dropped onto it
+// become tracks at the drop position. Click the ruler or empty track space to
+// locate; drag in the ruler to set the loop/punch region.
+//
+// Editing (Phase 6): click selects a clip (Shift adds, Ctrl toggles), drag on
+// empty space lassos, drag a clip body moves the selection (across tracks too),
+// drag a clip's edge trims it, drag the handle at a clip's top corner sets its
+// fade, Ctrl+drag a body vertically sets its gain. Moves and trims snap to the
+// grid (G toggles). Keys: Delete removes (E toggles ripple: later clips close the
+// gap), Ctrl+D duplicates, S splits at the playhead, J joins, X crossfades
+// overlapping neighbours, Ctrl+Shift+N normalises, Left/Right nudge by a grid
+// step, Ctrl+A selects all, Escape clears the selection. Every edit is issued as
+// commands through onEdit (one undo step each).
 class ArrangeView final : public juce::Component,
                           public juce::FileDragAndDropTarget,
                           private juce::ChangeListener,
@@ -51,11 +62,35 @@ public:
     // Extensions the drop target accepts, e.g. "*.wav;*.flac".
     void setAcceptedExtensions(const juce::String& wildcards);
 
+    // ----- editing ----------------------------------------------------------------
+    // An edit: the commands that make it, as one undo step with this name.
+    std::function<void(std::vector<std::unique_ptr<core::Command>>, const std::string&)> onEdit;
+    std::function<void(core::Id trackId, core::Id clipId)> onNormalise;
+    // The playhead position the split key uses (the engine's, not the heard one).
+    std::function<core::SamplePosition()> playheadForEdits;
+    // Editing keys (the window forwards every key here first). True when handled.
+    bool handleEditKey(const juce::KeyPress& key);
+    bool snapEnabled() const noexcept { return snap_; }
+    bool rippleEnabled() const noexcept { return ripple_; }
+    void setSnapEnabled(bool on);
+    void setRippleEnabled(bool on);
+
+    struct ClipRef
+    {
+        core::Id track = core::invalidId;
+        core::Id clip = core::invalidId;
+        bool operator==(const ClipRef&) const = default;
+    };
+    const std::vector<ClipRef>& selection() const noexcept { return selection_; }
+    void selectAll();
+    void clearSelection();
+
     void paint(juce::Graphics& g) override;
     void resized() override;
     void mouseDown(const juce::MouseEvent& e) override;
     void mouseDrag(const juce::MouseEvent& e) override;
     void mouseUp(const juce::MouseEvent& e) override;
+    void mouseMove(const juce::MouseEvent& e) override;
     void mouseWheelMove(const juce::MouseEvent& e, const juce::MouseWheelDetails& wheel) override;
 
     bool isInterestedInFileDrag(const juce::StringArray& files) override;
@@ -69,6 +104,22 @@ private:
     static constexpr int rowHeight = 72;
     static constexpr int scrollbarHeight = 12;
     static constexpr int scrollbarWidth = 12;
+    static constexpr int edgeZone = 8;    // px at a clip's ends that trim
+    static constexpr int fadeHandle = 10; // px square at a clip's top corners
+    static constexpr int gridMinPixels = 16;
+
+    enum class Drag
+    {
+        none,
+        region,
+        lasso,
+        move,
+        trimLeft,
+        trimRight,
+        fadeIn,
+        fadeOut,
+        gain,
+    };
 
     void changeListenerCallback(juce::ChangeBroadcaster*) override;
     void scrollBarMoved(juce::ScrollBar*, double newRangeStart) override;
@@ -91,6 +142,39 @@ private:
                   const core::Track& track,
                   const core::AudioClip& clip,
                   juce::Rectangle<int> lane);
+    void drawEditOverlay(juce::Graphics& g);
+
+    // ----- editing helpers --------------------------------------------------------
+    int rowAtY(int y) const noexcept; // track index or -1
+    juce::Rectangle<int> rowBounds(int row) const noexcept;
+    juce::Rectangle<int> clipBounds(const core::AudioClip& clip, int row) const noexcept;
+    struct Hit
+    {
+        int row = -1;
+        const core::Track* track = nullptr;
+        const core::AudioClip* clip = nullptr;
+        Drag zone = Drag::none; // move, trimLeft, trimRight, fadeIn, fadeOut
+    };
+    Hit hitTest(juce::Point<int> p) const noexcept;
+    bool isSelected(core::Id track, core::Id clip) const noexcept;
+    void select(const ClipRef& ref, bool add);
+    core::SamplePosition grid() const noexcept;
+    core::SamplePosition snapped(core::SamplePosition s) const noexcept;
+    const core::AudioClip* findClip(const ClipRef& ref, const core::Track** track = nullptr) const noexcept;
+    void emit(std::vector<std::unique_ptr<core::Command>> commands, const std::string& name);
+    void finishMove();
+    void finishTrim();
+    void finishFade();
+    void finishGain();
+    void finishLasso();
+    void deleteSelection();
+    void duplicateSelection();
+    void splitAtPlayhead();
+    void joinSelection();
+    void crossfadeSelection();
+    void nudgeSelection(int direction);
+    void normaliseSelection();
+    juce::MouseCursor cursorFor(Drag zone) const noexcept;
 
     const Theme& theme_ = Theme::dark();
     audio::PeakStore& peaks_;
@@ -100,7 +184,6 @@ private:
     bool recording_ = false;
     core::SamplePosition regionStart_ = 0, regionEnd_ = 0;
     bool loop_ = false, punch_ = false;
-    bool draggingRegion_ = false;
     core::SamplePosition dragAnchor_ = 0;
     std::vector<std::unique_ptr<TrackHeader>> headers_;
     std::vector<std::string> inputNames_;
@@ -112,6 +195,24 @@ private:
     bool updatingScrollbar_ = false;
     juce::StringArray acceptedExtensions_;
     bool dragOver_ = false;
+
+    // editing state
+    std::vector<ClipRef> selection_;
+    bool snap_ = true;
+    bool ripple_ = false;
+    Drag drag_ = Drag::none;
+    ClipRef dragClip_;             // the clip under the pointer when the drag began
+    core::AudioClip dragOriginal_; // its state then
+    juce::Point<int> dragStart_;   // pointer at mouse down
+    core::SamplePosition dragStartSample_ = 0;
+    int dragStartRow_ = -1;
+    core::SamplePosition moveDelta_ = 0; // preview: move
+    int rowDelta_ = 0;
+    core::SamplePosition trimStart_ = 0, trimLength_ = 0, trimOffset_ = 0; // preview: trim
+    core::SamplePosition fadePreview_ = 0;                                 // preview: fade length
+    float gainPreview_ = 1.0f;                                             // preview: gain
+    juce::Rectangle<int> lasso_;
+    bool draggedFar_ = false;
 };
 
 } // namespace aural::ui

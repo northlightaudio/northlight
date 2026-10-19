@@ -9,6 +9,7 @@
 #include <cstring>
 #include <map>
 #include <optional>
+#include <vector>
 
 namespace aural
 {
@@ -55,6 +56,48 @@ void ProjectSession::execute(std::unique_ptr<core::Command> command)
     undo_.execute(project_, std::move(command));
     modified_ = true;
     publish();
+}
+
+void ProjectSession::executeGroup(const std::string& name,
+                                  std::vector<std::unique_ptr<core::Command>> commands)
+{
+    if (commands.empty())
+        return;
+    undo_.beginGroup(name);
+    for (auto& command : commands)
+        undo_.execute(project_, std::move(command));
+    undo_.endGroup();
+    modified_ = true;
+    publish();
+}
+
+std::string ProjectSession::normaliseClip(core::Id trackId, core::Id clipId, float targetDb)
+{
+    const auto* track = project_.findTrack(trackId);
+    const auto* clip = track != nullptr ? track->findClip(clipId) : nullptr;
+    if (clip == nullptr)
+        return "no such clip";
+    std::string error;
+    const auto source = loader_.load(clip->mediaPath, project_.sampleRate, error);
+    if (source == nullptr)
+        return error.empty() ? "could not read " + clip->mediaPath : error;
+    float peak = 0.0f;
+    std::vector<float> chunk(8192);
+    const auto end = std::min<std::int64_t>(clip->sourceOffset + clip->length, source->lengthSamples());
+    for (int ch = 0; ch < source->numChannels(); ++ch)
+        for (std::int64_t at = clip->sourceOffset; at < end; at += static_cast<std::int64_t>(chunk.size()))
+        {
+            const auto n =
+                static_cast<int>(std::min<std::int64_t>(static_cast<std::int64_t>(chunk.size()), end - at));
+            source->read(ch, at, chunk.data(), n);
+            for (int i = 0; i < n; ++i)
+                peak = std::max(peak, std::abs(chunk[static_cast<size_t>(i)]));
+        }
+    if (peak <= 0.0f)
+        return "the clip is silent";
+    const float target = std::pow(10.0f, targetDb / 20.0f);
+    execute(std::make_unique<core::SetClipGain>(trackId, clipId, target / peak));
+    return {};
 }
 
 void ProjectSession::undo()

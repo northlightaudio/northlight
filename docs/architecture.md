@@ -3,7 +3,7 @@
 Living document. The intended architecture is in [PLAN.md](PLAN.md), section 3; this
 file records what is actually built and the decisions made along the way.
 
-## Current state (Phase 5, in progress)
+## Current state (Phase 6, in progress)
 
 ```
 aural.exe
@@ -342,6 +342,32 @@ their own editors.
 3 s short-term windows on the master mix; integrated loudness with gating belongs to
 the export stage.
 
+### Editing (Phase 6, in progress)
+
+Clips carry linear fade-in and fade-out lengths that the renderer applies per
+sample, so overlapping clips with matching fades crossfade at a constant sum. The
+editing commands are `SplitClip` (the left part keeps the id and the fade-in, the
+right part takes the fade-out and continues the source), `JoinClips` (contiguous
+clips of one source become one), `DuplicateClip`, `CrossfadeClips` (fades over the
+overlap), `SetClipFades`, `SetClipGain` and `ShiftClips` (every clip from a
+position on moves by a delta: ripple editing). `core::gridSamples` picks the
+finest musical division (bar down to an eighth of a beat) that is at least 16 px
+wide at the zoom and `snapToGrid` rounds to it; both are pure and unit-tested.
+
+`ui::ArrangeView` does the interaction and keeps the selection (a list of track
+and clip ids, pruned when the project changes): click selects (Shift adds, Ctrl
+toggles), a drag on empty space lassos, dragging a clip body moves the whole
+selection (the dragged clip's start snaps, the rest follow by the same delta, rows
+can change, nothing lands before zero), dragging an edge trims (the left edge is
+limited by the source start), the handle at a top corner sets a fade, Ctrl+drag
+sets the clip gain. Every edit is previewed from the view's own drag state and
+committed on release as a list of commands that `ProjectSession::executeGroup`
+runs as one undo step. Keys (the window forwards them to the view first): Delete
+(with ripple on, later clips close the gap), Ctrl+D duplicate, S split at the
+playhead (selected clips, or all under it), J join, X crossfade overlapping
+neighbours, Ctrl+Shift+N normalise (the session reads the source's peak and sets
+the gain), Left/Right nudge by a grid step, Ctrl+A, Escape, G snap, E ripple.
+
 ### Plugin hosting (Phase 5, in progress)
 
 Hosted plugins are inserts like the built-ins: the model insert's type is
@@ -519,6 +545,8 @@ launches; `JUCE_MODAL_LOOPS_PERMITTED` stays 0.
 | 2026-10-19 | Insert parameters are atomics on a persistent instance, not part of the snapshot | Recreating a filter on every edit would reset its state and click; pushing values into atomics keeps the instance and its memory while the snapshot stays immutable. Sample-accurate parameter changes come with automation in Phase 9. |
 | 2026-10-19 | Built-ins live in src/plugins behind the engine's insert interface | The engine must not depend on any particular processor, and VST3 hosting (Phase 5) implements the same interface; the app injects the factory. |
 | 2026-10-19 | Fader groups are commands over channel values, not engine state | The engine already consumes plain channel gains; a group only needs to move several of them together, and doing that in a command keeps the snapshot unchanged and undo exact. Relative (ratio) moves preserve the members' balance, which is what a fader group is for. |
+| 2026-10-19 | Edits are previewed in the view and committed as command groups | The view owns the drag state and draws the preview itself, so a drag issues no commands until release; the release becomes one undo step however many clips it touched. The model never sees a half-finished edit. |
+| 2026-10-19 | Fades are linear | Linear fades crossfade at constant sum for correlated material (the common editing case: the same take split and rejoined); an equal-power option can come with the design pass. |
 | 2026-10-19 | Plugin scanning runs in a separate executable, one file per process | A plugin that crashes or hangs while being inspected must not take the DAW with it; a process per file isolates the damage, lets a timeout kill it, and leaves the file blocklisted with the reason. |
 | 2026-10-19 | A hosted plugin's state is an opaque blob the plugin owns | Mirroring every plugin parameter into the model would fight the plugin's own editor and presets; capturing its state on save and restoring it on load is what every host does and keeps the model small. Automation (Phase 9) adds parameter access on top. |
 | 2026-10-19 | Insert chains are stereo pairs; plugins get a stereo main bus and no sidechain yet | The engine's channels are stereo and the chain interface is two pointers; asking every plugin for stereo in and out keeps hosting simple and correct for effects. Sidechain routing needs a graph change and comes later in Phase 5. |

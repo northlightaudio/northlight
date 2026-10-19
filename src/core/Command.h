@@ -627,6 +627,22 @@ private:
     SamplePosition previousOut_ = 0, previousIn_ = 0;
 };
 
+// Moves every clip starting at or after `from` by `delta` (ripple editing);
+// clips that would start before zero are pinned at zero. Undo moves them back.
+class ShiftClips final : public Command
+{
+public:
+    ShiftClips(Id trackId, SamplePosition from, SamplePosition delta);
+    std::string name() const override { return "Shift clips"; }
+    void apply(Project&) override;
+    void revert(Project&) override;
+
+private:
+    Id trackId_;
+    SamplePosition from_, delta_;
+    std::vector<std::pair<Id, SamplePosition>> previous_; // clip id, start before
+};
+
 class SetClipGain final : public Command
 {
 public:

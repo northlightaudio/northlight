@@ -954,6 +954,31 @@ void CrossfadeClips::revert(Project& p)
     requireClip(t, rightId_).fadeIn = previousIn_;
 }
 
+ShiftClips::ShiftClips(Id trackId, SamplePosition from, SamplePosition delta)
+    : trackId_(trackId), from_(from), delta_(delta)
+{
+}
+void ShiftClips::apply(Project& p)
+{
+    auto& t = requireTrack(p, trackId_);
+    previous_.clear();
+    for (auto& c : t.clips)
+        if (c.start >= from_)
+        {
+            previous_.emplace_back(c.id, c.start);
+            c.start = std::max<SamplePosition>(0, c.start + delta_);
+        }
+    t.sortClips();
+}
+void ShiftClips::revert(Project& p)
+{
+    auto& t = requireTrack(p, trackId_);
+    for (const auto& [id, start] : previous_)
+        if (auto* c = t.findClip(id))
+            c->start = start;
+    t.sortClips();
+}
+
 SetClipGain::SetClipGain(Id trackId, Id clipId, float gain) : trackId_(trackId), clipId_(clipId), value_(gain)
 {
 }
