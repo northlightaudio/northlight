@@ -3,7 +3,8 @@
 A native, high-performance digital audio workstation for Windows. ASIO, VST3 hosting,
 multitrack recording, and a UI that is designed before it is built.
 
-Status: **Phase 0 (foundation)**. See [docs/PLAN.md](docs/PLAN.md) for the roadmap.
+Status: **Phase 1 (audio device layer)**. See [docs/PLAN.md](docs/PLAN.md) for the
+roadmap and [docs/architecture.md](docs/architecture.md) for what is built.
 
 ## Building
 
@@ -56,6 +57,7 @@ VST3 SDK ships inside JUCE.
 | Option | Default | Meaning |
 |---|---|---|
 | `AURAL_BUILD_TESTS` | ON | Build the Catch2 unit tests |
+| `AURAL_BUILD_HARDWARE_TESTS` | ON | Build the manual hardware test tools (never run by CTest) |
 | `AURAL_RT_CHECKS` | ON (OFF in `windows-release`) | Hook operator new/delete to catch allocations on real-time threads |
 | `AURAL_WARNINGS_AS_ERRORS` | OFF (ON in `ci`) | `/WX` |
 | `AURAL_ASIO_SDK_DIR` | empty | Path to the ASIO SDK root |
@@ -66,13 +68,37 @@ VST3 SDK ships inside JUCE.
 cmake/            CMake helpers
 docs/             Plan, architecture notes, real-time rules, coding standards, design
 scripts/          Developer scripts
-src/app/          Application entry point and main window
+src/app/          Application entry point, main window, user settings file
+src/audio/        Device layer (ASIO/WASAPI), audio callback, loopback calibration
 src/engine/rt/    Real-time safety guard (grows into the engine in Phase 2)
+src/ui/           Theme tokens, LookAndFeel, Audio Setup screen
 tests/unit/       Catch2 unit tests
+tests/hardware/   Manual tools that need a real audio device
 ```
 
 The full intended layout is in [docs/PLAN.md](docs/PLAN.md), section 9. Directories are
 added when their first code lands.
+
+## Using the Phase 1 build
+
+Launch `Aural.exe` and click **Audio Setup...** in the toolbar. Pick the driver type
+(ASIO, or one of the Windows Audio modes), the device, sample rate, buffer size and the
+channels to enable. With **Pass inputs through to outputs** on you hear the inputs on
+the outputs; the Latency section shows the driver's reported input and output latency.
+
+To measure the real round trip, connect one output to one input with a cable, choose
+that pair under **Loopback** and click **Calibrate**. The result is stored per device,
+sample rate and buffer size and is used to place recorded audio in Phase 3.
+
+Settings live in `%APPDATA%\Aural\Aural.settings`. `Aural.exe --audio-setup` opens the
+Audio Setup window on launch.
+
+The same can be done from the command line with the hardware tool:
+
+```powershell
+.\build\windows-debug\tests\hardware\aural_loopback_tool_artefacts\Debug\aural_loopback_tool.exe --list
+.\build\windows-debug\tests\hardware\aural_loopback_tool_artefacts\Debug\aural_loopback_tool.exe --type ASIO --device "Focusrite USB ASIO" --buffer 64 --out 0 --in 0
+```
 
 ## Documentation
 
