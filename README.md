@@ -111,7 +111,8 @@ A strip's **Group** button puts it in a fader group: grouped faders move togethe
 **Inserts ▸ Add** lists the built-ins and every VST3 plugin found by **Scan for
 plugins...** (the standard VST3 folders, each file inspected in a separate process
 so a bad plugin cannot crash Aural); a hosted plugin opens its own editor window
-and its state is saved with the project.
+and its state is saved with the project. Insert latency is compensated across
+tracks, buses and sends, and recordings allow for it.
 Recordings go next to the project file in a `<project> Media` folder, or to
 `Documents\Aural\Recordings` for an unsaved project, each with a small
 `.recording.json` beside it while it is in progress. If the app dies while

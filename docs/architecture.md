@@ -354,6 +354,21 @@ disables its other buses; sidechains come later in the phase. `process` wraps th
 two channel pointers in a `juce::AudioBuffer` (no allocation) and an empty MIDI
 buffer; latency is read after `prepareToPlay` for delay compensation.
 
+Delay compensation is solved at compile time over the routing graph. Every
+channel's chain latency is the sum of its non-bypassed inserts' reported latency;
+a track's output lags the timeline by its chain, a bus's by its slowest input plus
+its chain (buses are solved in the same dependency order the renderer sums them
+in), and the master by its slowest input. Each edge (a channel's output, each of
+its sends) gets a fixed stereo `engine::DelayLine` of the difference between what
+its destination waits for and what the source already lags, and the renderer reads
+a delayed copy for edges that need one. The lines live in an `engine::DelayCache`
+keyed by edge and persist across recompiles, so a fader move never empties one;
+only a changed delay resets a line. `AudioEngine::outputLatencySamples()` is the
+master's lag, which the session adds to the recording offset (a take played
+against the compensated output lands that much later), and a plugin that changes
+its latency after prepare is noticed on the session's poll and the graph re-solved.
+The transport display does not yet subtract the lag.
+
 Scanning is out of process from day one: `aural_plugin_scan <file>` loads one
 file and prints its `PluginDescription`s as XML, and `hosting::PluginScanner` runs
 it per candidate on a background thread with a timeout, reading its output as it
@@ -473,4 +488,5 @@ launches; `JUCE_MODAL_LOOPS_PERMITTED` stays 0.
 | 2026-10-19 | Plugin scanning runs in a separate executable, one file per process | A plugin that crashes or hangs while being inspected must not take the DAW with it; a process per file isolates the damage, lets a timeout kill it, and leaves the file blocklisted with the reason. |
 | 2026-10-19 | A hosted plugin's state is an opaque blob the plugin owns | Mirroring every plugin parameter into the model would fight the plugin's own editor and presets; capturing its state on save and restoring it on load is what every host does and keeps the model small. Automation (Phase 9) adds parameter access on top. |
 | 2026-10-19 | Insert chains are stereo pairs; plugins get a stereo main bus and no sidechain yet | The engine's channels are stereo and the chain interface is two pointers; asking every plugin for stereo in and out keeps hosting simple and correct for effects. Sidechain routing needs a graph change and comes later in Phase 5. |
+| 2026-10-19 | Delay compensation per graph edge, solved at compile, lines cached across compiles | Delaying edges rather than nodes handles a source that feeds several destinations with different needs (a send to a latent bus and a direct output); solving at compile keeps the real-time path a fixed delay per edge; caching the lines by edge is what makes a recompile on every edit inaudible. |
 | 2026-10-19 | The limiter has no lookahead | Lookahead adds latency that needs delay compensation across the graph, which Phase 5 brings with plugin hosting; until then a fast-release limiter with a hard ceiling is honest about what it does. |
