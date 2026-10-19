@@ -61,6 +61,8 @@ struct ChannelNode
     std::vector<InsertProcessor*> inserts;                   // in chain order
     std::vector<float> insertMix;                            // wet/dry per slot (1 = all wet)
     std::vector<DelayLine*> insertDry;                       // aligns the dry path to a latent insert
+    std::vector<int> insertKeyTrack;                         // per slot: sidechain source track index or -1
+    std::vector<int> insertKeyBus;                           // per slot: sidechain source bus index or -1
     std::vector<std::shared_ptr<InsertProcessor>> keepAlive; // controller-side ownership
     mutable std::vector<float> dryLeft, dryRight;            // the dry copy for a mixed slot
     int chainLatency = 0;                                    // samples the inserts add
@@ -101,6 +103,10 @@ struct Snapshot
     std::vector<TrackNode> tracks;
     std::vector<BusNode> buses; // in project order
     std::vector<int> busOrder;  // bus indices in dependency order (feeders before fed)
+    // Tracks grouped so that a track whose insert keys from another track renders
+    // after it: each level runs in parallel, the levels in order. One level when
+    // nothing is sidechained.
+    std::vector<std::vector<int>> trackLevels;
     float masterGain = 1.0f;
     int masterMeterSlot = -1;
     int outputLatency = 0; // samples the master output lags the timeline (plugin delay compensation)

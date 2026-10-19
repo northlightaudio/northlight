@@ -393,6 +393,43 @@ private:
             actions.push_back(
                 [this, insertId, index]
                 { owner_.onCommand(std::make_unique<core::MoveInsert>(id_, insertId, index + 1)); });
+            // Key (sidechain) source, for inserts that take one: tracks for anyone,
+            // buses too when this channel is a bus.
+            const auto live = owner_.liveInsert ? owner_.liveInsert(insertId) : nullptr;
+            if (live != nullptr && live->acceptsSidechain())
+            {
+                juce::PopupMenu key;
+                key.addItem(item++, "None", true, insert.sidechain == core::invalidId);
+                actions.push_back(
+                    [this, insertId]
+                    {
+                        owner_.onCommand(
+                            std::make_unique<core::SetInsertSidechain>(id_, insertId, core::invalidId));
+                    });
+                const auto& project = *owner_.project_;
+                const auto offer = [&](const core::Channel& source, const juce::String& prefix)
+                {
+                    if (source.id == id_)
+                        return;
+                    key.addItem(item++,
+                                prefix + juce::String::fromUTF8(source.name.c_str()),
+                                true,
+                                insert.sidechain == source.id);
+                    const core::Id sourceId = source.id;
+                    actions.push_back(
+                        [this, insertId, sourceId]
+                        {
+                            owner_.onCommand(
+                                std::make_unique<core::SetInsertSidechain>(id_, insertId, sourceId));
+                        });
+                };
+                for (const auto& t : project.tracks)
+                    offer(t, "");
+                if (isBus_)
+                    for (const auto& b : project.buses)
+                        offer(b, "Bus: ");
+                sub.addSubMenu("Sidechain", key);
+            }
             sub.addItem(item++, "Remove");
             actions.push_back([this, insertId]
                               { owner_.onCommand(std::make_unique<core::RemoveInsert>(id_, insertId)); });

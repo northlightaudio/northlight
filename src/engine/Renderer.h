@@ -63,7 +63,8 @@ public:
     // Renders one track's clips (and monitored input) over
     // [position, position + numSamples) into the track's pre-fader buffers.
     // Real-time; one job of the parallel batch.
-    static void renderTrack(const TrackNode& track,
+    static void renderTrack(const Snapshot& snapshot,
+                            const TrackNode& track,
                             core::SamplePosition position,
                             int numSamples,
                             const RenderContext& context) noexcept;
@@ -75,10 +76,16 @@ private:
         const RenderContext* context;
         core::SamplePosition position;
         int numSamples;
+        const std::vector<int>* tracks; // the level being rendered
     };
     static void trackJob(void* context, int index) noexcept;
-    // Runs a channel's insert chain in place, blending each slot's wet/dry mix.
-    static void processChain(const ChannelNode& channel, float* left, float* right, int numSamples) noexcept;
+    // Runs a channel's insert chain in place, blending each slot's wet/dry mix and
+    // feeding keyed slots their source's pre-fader signal.
+    static void processChain(const Snapshot& snapshot,
+                             const ChannelNode& channel,
+                             float* left,
+                             float* right,
+                             int numSamples) noexcept;
 
     void renderSpan(const Snapshot& snapshot,
                     const RenderContext& context,

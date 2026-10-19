@@ -372,6 +372,19 @@ plugin browser (`ui::PluginBrowser`, from the mixer's Plugins... button or
 with reasons, and offers a scan for changes, a full rescan and clearing the
 blocklist.
 
+Sidechains: an insert slot can key from another channel (`Insert::sidechain`,
+`SetInsertSidechain`, the inserts menu's Sidechain submenu, offered when the live
+processor `acceptsSidechain()`). The key is the source's pre-fader signal (its
+chain output; the fader does not matter, mute does, since a muted channel renders
+silence). A track may key from a track; a bus from a track or from a bus. To make
+the source ready in time the compiler groups tracks into levels (a keyed track
+renders in a later level than its source; levels run in parallel one after the
+other, and a cycle drops the keys that block it) and adds bus-to-bus key edges to
+the bus ordering (a key that would form a cycle with the routing is dropped). The
+built-in compressor keys its detector from the sidechain; a hosted plugin with a
+second input bus gets it enabled as a stereo key bus and is driven with four
+channels (silence on the key when no source is set).
+
 Delay compensation is solved at compile time over the routing graph. Every
 channel's chain latency is the sum of its non-bypassed inserts' reported latency;
 a track's output lags the timeline by its chain, a bus's by its slowest input plus
@@ -508,4 +521,5 @@ launches; `JUCE_MODAL_LOOPS_PERMITTED` stays 0.
 | 2026-10-19 | A hosted plugin's state is an opaque blob the plugin owns | Mirroring every plugin parameter into the model would fight the plugin's own editor and presets; capturing its state on save and restoring it on load is what every host does and keeps the model small. Automation (Phase 9) adds parameter access on top. |
 | 2026-10-19 | Insert chains are stereo pairs; plugins get a stereo main bus and no sidechain yet | The engine's channels are stereo and the chain interface is two pointers; asking every plugin for stereo in and out keeps hosting simple and correct for effects. Sidechain routing needs a graph change and comes later in Phase 5. |
 | 2026-10-19 | Delay compensation per graph edge, solved at compile, lines cached across compiles | Delaying edges rather than nodes handles a source that feeds several destinations with different needs (a send to a latent bus and a direct output); solving at compile keeps the real-time path a fixed delay per edge; caching the lines by edge is what makes a recompile on every edit inaudible. |
+| 2026-10-19 | Sidechain keys are pre-fader and tracks render in dependency levels | A key should not change when the source's fader moves, and a keyed track must see its source finished in the same block; levels keep the parallel render for everything unkeyed and cost nothing when no sidechain is set. Bus sources for track inserts would need one block of latency and are not offered. |
 | 2026-10-19 | The limiter has no lookahead (superseded the same day: lookahead added once delay compensation landed) | Lookahead adds latency that needs delay compensation across the graph, which Phase 5 brings with plugin hosting; until then a fast-release limiter with a hard ceiling is honest about what it does. |

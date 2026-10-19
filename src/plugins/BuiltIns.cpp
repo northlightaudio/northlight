@@ -310,8 +310,18 @@ public:
         envelopeDb_ = minusInfinityDb;
     }
 
-    // Peak detector in the log domain, stereo-linked, feed-forward.
+    // Peak detector in the log domain, stereo-linked, feed-forward. With a
+    // sidechain the detector listens to the key signal instead of the audio.
+    bool acceptsSidechain() const noexcept override { return true; }
     void process(float* left, float* right, int numSamples) noexcept override
+    {
+        processWithSidechain(left, right, left, right, numSamples);
+    }
+    void processWithSidechain(float* left,
+                              float* right,
+                              const float* keyLeft,
+                              const float* keyRight,
+                              int numSamples) noexcept override
     {
         if (isBypassed())
             return;
@@ -326,7 +336,7 @@ public:
 
         for (int i = 0; i < numSamples; ++i)
         {
-            const float input = std::max(std::abs(left[i]), std::abs(right[i]));
+            const float input = std::max(std::abs(keyLeft[i]), std::abs(keyRight[i]));
             const float inputDb = gainToDb(input);
             const float a = inputDb > envelopeDb_ ? attack : release;
             envelopeDb_ = a * envelopeDb_ + (1.0f - a) * inputDb;

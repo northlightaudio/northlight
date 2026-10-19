@@ -30,6 +30,12 @@ public:
     void setParameter(int, float) noexcept override {}
     float parameter(int) const noexcept override { return 0.0f; }
     void process(float* left, float* right, int numSamples) noexcept override;
+    bool acceptsSidechain() const noexcept override { return sidechain_.load(std::memory_order_acquire); }
+    void processWithSidechain(float* left,
+                              float* right,
+                              const float* keyLeft,
+                              const float* keyRight,
+                              int numSamples) noexcept override;
     // Read live: a plugin may change it (lookahead settings) after prepare.
     int latencySamples() const noexcept override
     {
@@ -59,8 +65,12 @@ private:
     std::string typeName_;
     std::vector<engine::ParameterInfo> noParameters_;
     std::unique_ptr<juce::AudioPluginInstance> instance_;
+    void run(float* left, float* right, const float* keyLeft, const float* keyRight, int numSamples) noexcept;
+
     juce::MidiBuffer midi_;
+    std::vector<float> keyLeft_, keyRight_; // the sidechain bus's channels for one block
     std::atomic<bool> prepared_{false};
+    std::atomic<bool> sidechain_{false}; // the plugin's second input bus is live
 };
 
 } // namespace aural::hosting

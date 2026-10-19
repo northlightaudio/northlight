@@ -360,6 +360,20 @@ private:
     float value_, previous_ = 1.0f;
 };
 
+// The sidechain (key) source of one insert slot: a track or bus id, invalidId
+// for none. Resolved at compile time; an impossible source is ignored there.
+class SetInsertSidechain final : public Command
+{
+public:
+    SetInsertSidechain(Id channelId, Id insertId, Id sourceId);
+    std::string name() const override { return "Set insert sidechain"; }
+    void apply(Project&) override;
+    void revert(Project&) override;
+
+private:
+    Id channelId_, insertId_, value_, previous_ = invalidId;
+};
+
 class SetInsertBypass final : public Command
 {
 public:

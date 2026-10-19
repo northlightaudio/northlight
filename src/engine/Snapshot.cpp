@@ -108,6 +108,14 @@ compileSnapshot(const core::Project& project, MediaCache& media, InsertCache& in
     routing.solo.resize(static_cast<size_t>(trackCount + busCount));
     routing.mute.resize(static_cast<size_t>(trackCount + busCount));
 
+    // Sidechain edges between buses order them like sends do; a key source that
+    // would form a cycle is dropped at compile time (the insert runs unkeyed).
+    std::vector<std::vector<int>> busKeySources(static_cast<size_t>(busCount)); // per bus: source bus indices
+    for (int b = 0; b < busCount; ++b)
+        for (const auto& i : project.buses[static_cast<size_t>(b)].inserts)
+            if (const int source = project.busIndex(i.sidechain); source >= 0 && source != b)
+                busKeySources[static_cast<size_t>(b)].push_back(source);
+
     const auto channelOf = [&](int index, const core::Channel& c)
     {
         routing.output[static_cast<size_t>(index)] = project.busIndex(c.outputBus);
@@ -143,6 +151,10 @@ compileSnapshot(const core::Project& project, MediaCache& media, InsertCache& in
         std::erase_if(routing.sendTargets[channel],
                       [&](int target) { return target == b || reaches(b, target); });
     }
+    // A key source bus the keyed bus feeds (directly or through others) would have
+    // to render both before and after it: drop that key.
+    for (int b = 0; b < busCount; ++b)
+        std::erase_if(busKeySources[static_cast<size_t>(b)], [&](int source) { return reaches(source, b); });
 
     // Bus order: feeders before the buses they feed (Kahn on the now-acyclic graph).
     {
@@ -154,6 +166,8 @@ compileSnapshot(const core::Project& project, MediaCache& media, InsertCache& in
                 ++indegree[static_cast<size_t>(routing.output[channel])];
             for (int target : routing.sendTargets[channel])
                 ++indegree[static_cast<size_t>(target)];
+            indegree[static_cast<size_t>(b)] +=
+                static_cast<int>(busKeySources[static_cast<size_t>(b)].size());
         }
         std::vector<int> ready;
         for (int b = 0; b < busCount; ++b)
@@ -174,6 +188,10 @@ compileSnapshot(const core::Project& project, MediaCache& media, InsertCache& in
                 relax(routing.output[channel]);
             for (int target : routing.sendTargets[channel])
                 relax(target);
+            for (int keyed = 0; keyed < busCount; ++keyed)
+                for (int source : busKeySources[static_cast<size_t>(keyed)])
+                    if (source == b)
+                        relax(keyed);
         }
         // Any bus left out (should not happen after cycle breaking) renders last.
         for (int b = 0; b < busCount; ++b)
@@ -211,7 +229,7 @@ compileSnapshot(const core::Project& project, MediaCache& media, InsertCache& in
     }
 
     DelayCache localDelays; // used only when the caller keeps no cache
-    const auto fillChannel = [&](ChannelNode& node, const core::Channel& c, int index, int slot)
+    const auto fillChannel = [&](ChannelNode& node, const core::Channel& c, int index, int slot, bool isBus)
     {
         node.id = c.id;
         node.gain = c.gain;
@@ -245,6 +263,21 @@ compileSnapshot(const core::Project& project, MediaCache& media, InsertCache& in
                     node.keepAliveDelays.push_back(std::move(line));
                 }
                 node.insertDry.push_back(dry);
+                // The key source: a track for anyone; a bus only for a bus insert,
+                // and only one that survived the ordering above.
+                int keyTrack = project.trackIndex(i.sidechain);
+                int keyBus = -1;
+                if (keyTrack < 0 && isBus)
+                {
+                    const int source = project.busIndex(i.sidechain);
+                    const auto& allowed = busKeySources[static_cast<size_t>(routing.busOfChannel(index))];
+                    if (source >= 0 && std::find(allowed.begin(), allowed.end(), source) != allowed.end())
+                        keyBus = source;
+                }
+                if (!isBus && keyTrack == index)
+                    keyTrack = -1; // a track keying from itself: meaningless
+                node.insertKeyTrack.push_back(instance->acceptsSidechain() ? keyTrack : -1);
+                node.insertKeyBus.push_back(instance->acceptsSidechain() ? keyBus : -1);
                 node.keepAlive.push_back(std::move(instance));
             }
         node.outLeft.assign(n, 0.0f);
@@ -261,7 +294,7 @@ compileSnapshot(const core::Project& project, MediaCache& media, InsertCache& in
     {
         const auto& track = project.tracks[static_cast<size_t>(t)];
         TrackNode node;
-        fillChannel(node, track, t, trackMeterSlot(t));
+        fillChannel(node, track, t, trackMeterSlot(t), false);
         node.inputChannel = track.inputChannel;
         node.armed = track.armed;
         node.monitor = track.monitor;
@@ -287,10 +320,52 @@ compileSnapshot(const core::Project& project, MediaCache& media, InsertCache& in
     for (int b = 0; b < busCount; ++b)
     {
         BusNode node;
-        fillChannel(node, project.buses[static_cast<size_t>(b)], trackCount + b, busMeterSlot(project, b));
+        fillChannel(
+            node, project.buses[static_cast<size_t>(b)], trackCount + b, busMeterSlot(project, b), true);
         node.sumLeft.assign(n, 0.0f);
         node.sumRight.assign(n, 0.0f);
         snapshot->buses.push_back(std::move(node));
+    }
+
+    // ----- track levels (sidechain order) ---------------------------------------------
+    // A track keyed from another renders after it. Levels are assigned until every
+    // track is placed; a cycle (A keys B, B keys A) drops the keys that block it.
+    {
+        std::vector<int> level(static_cast<size_t>(trackCount), -1);
+        int placed = 0;
+        while (placed < trackCount)
+        {
+            std::vector<int> current;
+            for (int t = 0; t < trackCount; ++t)
+            {
+                if (level[static_cast<size_t>(t)] >= 0)
+                    continue;
+                bool ready = true;
+                for (const int source : snapshot->tracks[static_cast<size_t>(t)].insertKeyTrack)
+                    if (source >= 0 && level[static_cast<size_t>(source)] < 0)
+                        ready = false;
+                if (ready)
+                    current.push_back(t);
+            }
+            if (current.empty())
+            {
+                // Stuck: every remaining track waits on another remaining one. Drop
+                // those keys and place them all in this level.
+                for (int t = 0; t < trackCount; ++t)
+                    if (level[static_cast<size_t>(t)] < 0)
+                    {
+                        for (auto& source : snapshot->tracks[static_cast<size_t>(t)].insertKeyTrack)
+                            if (source >= 0 && level[static_cast<size_t>(source)] < 0)
+                                source = -1;
+                        current.push_back(t);
+                    }
+            }
+            const int thisLevel = static_cast<int>(snapshot->trackLevels.size());
+            for (const int t : current)
+                level[static_cast<size_t>(t)] = thisLevel;
+            placed += static_cast<int>(current.size());
+            snapshot->trackLevels.push_back(std::move(current));
+        }
     }
 
     // ----- delay compensation ---------------------------------------------------------

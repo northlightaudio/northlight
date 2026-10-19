@@ -142,7 +142,8 @@ void Renderer::renderClicks(const Snapshot& snapshot,
                   right);
 }
 
-void Renderer::renderTrack(const TrackNode& track,
+void Renderer::renderTrack(const Snapshot& snapshot,
+                           const TrackNode& track,
                            core::SamplePosition position,
                            int numSamples,
                            const RenderContext& context) noexcept
@@ -230,18 +231,40 @@ void Renderer::renderTrack(const TrackNode& track,
             right[i] = -right[i];
         }
 
-    processChain(track, left, right, numSamples);
+    processChain(snapshot, track, left, right, numSamples);
 }
 
-void Renderer::processChain(const ChannelNode& channel, float* left, float* right, int numSamples) noexcept
+void Renderer::processChain(
+    const Snapshot& snapshot, const ChannelNode& channel, float* left, float* right, int numSamples) noexcept
 {
     for (size_t k = 0; k < channel.inserts.size(); ++k)
     {
         auto* insert = channel.inserts[k];
         const float mix = k < channel.insertMix.size() ? channel.insertMix[k] : 1.0f;
+        // The key signal: the source channel's pre-fader output, already rendered
+        // (tracks by level, buses by order).
+        const float* keyL = nullptr;
+        const float* keyR = nullptr;
+        if (const int t = k < channel.insertKeyTrack.size() ? channel.insertKeyTrack[k] : -1; t >= 0)
+        {
+            keyL = snapshot.tracks[static_cast<size_t>(t)].outLeft.data();
+            keyR = snapshot.tracks[static_cast<size_t>(t)].outRight.data();
+        }
+        else if (const int b = k < channel.insertKeyBus.size() ? channel.insertKeyBus[k] : -1; b >= 0)
+        {
+            keyL = snapshot.buses[static_cast<size_t>(b)].outLeft.data();
+            keyR = snapshot.buses[static_cast<size_t>(b)].outRight.data();
+        }
+        const auto run = [&](float* l, float* r)
+        {
+            if (keyL != nullptr)
+                insert->processWithSidechain(l, r, keyL, keyR, numSamples);
+            else
+                insert->process(l, r, numSamples);
+        };
         if (mix >= 1.0f)
         {
-            insert->process(left, right, numSamples);
+            run(left, right);
             continue;
         }
         float* dryL = channel.dryLeft.data();
@@ -254,14 +277,14 @@ void Renderer::processChain(const ChannelNode& channel, float* left, float* righ
             std::copy(right, right + numSamples, dryR);
         }
         if (mix > 0.0f)
-            insert->process(left, right, numSamples);
+            run(left, right);
         else
         {
             // Fully dry: the insert still runs (its meters and state keep moving),
             // but on a copy, so the chain only sees the dry path.
             std::copy(dryL, dryL + numSamples, left);
             std::copy(dryR, dryR + numSamples, right);
-            insert->process(dryL, dryR, numSamples); // scratch, discarded
+            run(dryL, dryR); // scratch, discarded
             continue;
         }
         const float dryGain = 1.0f - mix;
@@ -276,7 +299,12 @@ void Renderer::processChain(const ChannelNode& channel, float* left, float* righ
 void Renderer::trackJob(void* context, int index) noexcept
 {
     const auto& job = *static_cast<const SpanJob*>(context);
-    renderTrack(job.snapshot->tracks[static_cast<size_t>(index)], job.position, job.numSamples, *job.context);
+    const int track = (*job.tracks)[static_cast<size_t>(index)];
+    renderTrack(*job.snapshot,
+                job.snapshot->tracks[static_cast<size_t>(track)],
+                job.position,
+                job.numSamples,
+                *job.context);
 }
 
 void Renderer::routeChannel(const Snapshot& snapshot,
@@ -357,14 +385,15 @@ void Renderer::routeChannel(const Snapshot& snapshot,
 
     if (context.meters != nullptr)
     {
-        // Post-fader level: measured from the pre-fader buffer scaled by the gain,
-        // reusing the buffer in place now that it has been routed.
-        float* l = channel.outLeft.data();
-        float* r = channel.outRight.data();
+        // Post-fader level: the pre-fader buffer scaled by the gain, into the delay
+        // scratch (free again now that every edge is routed). The pre-fader buffer
+        // itself stays intact: it is what sidechained inserts read.
+        float* l = channel.delayScratchLeft.data();
+        float* r = channel.delayScratchRight.data();
         for (int i = 0; i < numSamples; ++i)
         {
-            l[i] *= gain;
-            r[i] *= gain;
+            l[i] = pre[i] * gain;
+            r[i] = preR[i] * gain;
         }
         context.meters->measure(channel.meterSlot, l, r, numSamples);
     }
@@ -378,16 +407,17 @@ void Renderer::renderSpan(const Snapshot& snapshot,
                           int numSamples,
                           WorkerPool* pool) noexcept
 {
-    const auto trackCount = static_cast<int>(snapshot.tracks.size());
-    SpanJob job{&snapshot, &context, position, numSamples};
-    if (pool != nullptr && pool->numWorkers() > 0)
+    // Tracks render in parallel within a level; levels in order so a keyed track
+    // sees its source finished.
+    for (const auto& level : snapshot.trackLevels)
     {
-        pool->run(trackCount, &trackJob, &job);
-    }
-    else
-    {
-        for (int t = 0; t < trackCount; ++t)
-            trackJob(&job, t);
+        SpanJob job{&snapshot, &context, position, numSamples, &level};
+        const int count = static_cast<int>(level.size());
+        if (pool != nullptr && pool->numWorkers() > 0)
+            pool->run(count, &trackJob, &job);
+        else
+            for (int i = 0; i < count; ++i)
+                trackJob(&job, i);
     }
 
     // Summing in fixed order: the result does not depend on which thread did what.
@@ -413,7 +443,7 @@ void Renderer::renderSpan(const Snapshot& snapshot,
             outL[i] = bus.sumLeft[static_cast<size_t>(i)] * panLeft * sign;
             outR[i] = bus.sumRight[static_cast<size_t>(i)] * panRight * sign;
         }
-        processChain(bus, outL, outR, numSamples);
+        processChain(snapshot, bus, outL, outR, numSamples);
         routeChannel(snapshot, bus, context, left, right, numSamples);
     }
 

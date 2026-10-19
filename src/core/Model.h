@@ -57,8 +57,9 @@ struct Insert
     std::string type;
     bool bypass = false;
     std::vector<float> params;
-    std::string state; // opaque (base64) for processors that own their state
-    float mix = 1.0f;  // wet/dry: 1 = fully processed, 0 = the input passes untouched
+    std::string state;        // opaque (base64) for processors that own their state
+    float mix = 1.0f;         // wet/dry: 1 = fully processed, 0 = the input passes untouched
+    Id sidechain = invalidId; // a track (or, on a bus, a bus) whose pre-fader signal feeds the key input
     bool operator==(const Insert&) const = default;
 };
 

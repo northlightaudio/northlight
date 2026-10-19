@@ -346,3 +346,25 @@ TEST_CASE("An insert's wet/dry mix is set, clamped and undone", "[core][command]
     stack.undo(p);
     CHECK(p.tracks[0].inserts[0].mix == 1.0f);
 }
+
+TEST_CASE("An insert's sidechain source is set to an existing channel and undone", "[core][command]")
+{
+    Project p = projectWithTrack();
+    Track other;
+    other.name = "Kick";
+    UndoStack stack;
+    stack.execute(p, std::make_unique<AddTrack>(other));
+    const Id track = p.tracks[0].id, kick = p.tracks[1].id;
+    Insert insert;
+    insert.type = "aural.compressor";
+    auto add = std::make_unique<AddInsert>(track, insert);
+    const auto* addPtr = add.get();
+    stack.execute(p, std::move(add));
+    const Id id = addPtr->insertId();
+    CHECK(p.tracks[0].inserts[0].sidechain == invalidId);
+    stack.execute(p, std::make_unique<SetInsertSidechain>(track, id, kick));
+    CHECK(p.tracks[0].inserts[0].sidechain == kick);
+    CHECK_THROWS(SetInsertSidechain(track, id, 999).apply(p));
+    stack.undo(p);
+    CHECK(p.tracks[0].inserts[0].sidechain == invalidId);
+}

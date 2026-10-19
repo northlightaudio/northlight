@@ -606,6 +606,23 @@ void SetInsertMix::revert(Project& p)
     requireInsert(requireChannel(p, channelId_), insertId_).mix = previous_;
 }
 
+SetInsertSidechain::SetInsertSidechain(Id channelId, Id insertId, Id sourceId)
+    : channelId_(channelId), insertId_(insertId), value_(sourceId)
+{
+}
+void SetInsertSidechain::apply(Project& p)
+{
+    auto& i = requireInsert(requireChannel(p, channelId_), insertId_);
+    if (value_ != invalidId && p.findChannel(value_) == nullptr)
+        throw std::logic_error("sidechain source does not exist");
+    previous_ = i.sidechain;
+    i.sidechain = value_;
+}
+void SetInsertSidechain::revert(Project& p)
+{
+    requireInsert(requireChannel(p, channelId_), insertId_).sidechain = previous_;
+}
+
 SetInsertBypass::SetInsertBypass(Id channelId, Id insertId, bool bypass)
     : channelId_(channelId), insertId_(insertId), value_(bypass)
 {

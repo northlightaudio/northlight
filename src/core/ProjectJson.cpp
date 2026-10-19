@@ -66,6 +66,8 @@ void channelToJson(json& j, const Channel& c)
                 ij["state"] = i.state;
             if (i.mix != 1.0f)
                 ij["mix"] = i.mix;
+            if (i.sidechain != invalidId)
+                ij["sidechain"] = i.sidechain;
             inserts.push_back(std::move(ij));
         }
         j["inserts"] = std::move(inserts);
@@ -96,6 +98,7 @@ void channelFromJson(const json& j, Channel& c)
             insert.bypass = i.value("bypass", false);
             insert.state = i.value("state", std::string{});
             insert.mix = i.value("mix", 1.0f);
+            insert.sidechain = i.value("sidechain", invalidId);
             if (const auto params = i.find("params"); params != i.end() && params->is_array())
                 for (const auto& v : *params)
                     insert.params.push_back(v.get<float>());

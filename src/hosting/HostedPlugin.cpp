@@ -25,32 +25,75 @@ void HostedPlugin::prepare(double sampleRate, int maxBlockSize)
     if (prepared_.exchange(false, std::memory_order_acq_rel))
         instance_->releaseResources();
 
-    // The chain is stereo: ask for a stereo main bus each way and leave any other
-    // bus (sidechain, auxiliary outputs) disabled. A plugin that refuses keeps its
-    // own layout; the processing below only ever touches the first two channels.
-    juce::AudioProcessor::BusesLayout layout;
-    if (instance_->getBusCount(true) > 0)
-        layout.inputBuses.add(juce::AudioChannelSet::stereo());
-    for (int i = 1; i < instance_->getBusCount(true); ++i)
-        layout.inputBuses.add(juce::AudioChannelSet::disabled());
-    if (instance_->getBusCount(false) > 0)
-        layout.outputBuses.add(juce::AudioChannelSet::stereo());
-    for (int i = 1; i < instance_->getBusCount(false); ++i)
-        layout.outputBuses.add(juce::AudioChannelSet::disabled());
-    if (!instance_->checkBusesLayoutSupported(layout) || !instance_->setBusesLayout(layout))
+    // The chain is stereo: ask for a stereo main bus each way, a stereo second
+    // input bus when the plugin has one (its sidechain), and leave any other bus
+    // (auxiliary outputs) disabled. A plugin that refuses keeps its own layout;
+    // the processing below only ever touches the first two channels of each.
+    const auto tryLayout = [&](bool withSidechain)
+    {
+        juce::AudioProcessor::BusesLayout layout;
+        for (int b = 0; b < instance_->getBusCount(true); ++b)
+            layout.inputBuses.add(b == 0 || (b == 1 && withSidechain) ? juce::AudioChannelSet::stereo()
+                                                                      : juce::AudioChannelSet::disabled());
+        for (int b = 0; b < instance_->getBusCount(false); ++b)
+            layout.outputBuses.add(b == 0 ? juce::AudioChannelSet::stereo()
+                                          : juce::AudioChannelSet::disabled());
+        return instance_->checkBusesLayoutSupported(layout) && instance_->setBusesLayout(layout);
+    };
+    bool sidechain = false;
+    if (instance_->getBusCount(true) >= 2 && tryLayout(true))
+        sidechain = true;
+    else if (!tryLayout(false))
         instance_->enableAllBuses();
+    // Only a layout of exactly main stereo plus stereo key is driven as a sidechain.
+    sidechain = sidechain && instance_->getTotalNumInputChannels() == 4 &&
+                instance_->getTotalNumOutputChannels() == 2;
 
     instance_->setNonRealtime(false);
     instance_->setRateAndBufferSizeDetails(sampleRate, maxBlockSize);
     instance_->prepareToPlay(sampleRate, maxBlockSize);
     midi_.ensureSize(1024);
+    keyLeft_.assign(static_cast<size_t>(maxBlockSize), 0.0f);
+    keyRight_.assign(static_cast<size_t>(maxBlockSize), 0.0f);
+    sidechain_.store(sidechain, std::memory_order_release);
     prepared_.store(true, std::memory_order_release);
 }
 
 void HostedPlugin::process(float* left, float* right, int numSamples) noexcept
 {
+    run(left, right, nullptr, nullptr, numSamples);
+}
+
+void HostedPlugin::processWithSidechain(
+    float* left, float* right, const float* keyLeft, const float* keyRight, int numSamples) noexcept
+{
+    run(left, right, keyLeft, keyRight, numSamples);
+}
+
+void HostedPlugin::run(
+    float* left, float* right, const float* keyLeft, const float* keyRight, int numSamples) noexcept
+{
     if (isBypassed() || !prepared_.load(std::memory_order_acquire))
         return;
+    if (sidechain_.load(std::memory_order_acquire) && numSamples <= static_cast<int>(keyLeft_.size()))
+    {
+        // Main pair plus the key pair; the key is silence when no source is set.
+        if (keyLeft != nullptr && keyRight != nullptr)
+        {
+            std::copy(keyLeft, keyLeft + numSamples, keyLeft_.data());
+            std::copy(keyRight, keyRight + numSamples, keyRight_.data());
+        }
+        else
+        {
+            std::fill(keyLeft_.begin(), keyLeft_.begin() + numSamples, 0.0f);
+            std::fill(keyRight_.begin(), keyRight_.begin() + numSamples, 0.0f);
+        }
+        float* pointers[4] = {left, right, keyLeft_.data(), keyRight_.data()};
+        juce::AudioBuffer<float> buffer(pointers, 4, numSamples);
+        midi_.clear();
+        instance_->processBlock(buffer, midi_);
+        return;
+    }
     const int channels =
         juce::jmax(instance_->getTotalNumInputChannels(), instance_->getTotalNumOutputChannels());
     if (channels <= 0)

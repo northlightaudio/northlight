@@ -85,6 +85,8 @@ public:
     // Samples the master output lags the timeline because of insert latency
     // (plugin delay compensation aligns every path to the slowest).
     int outputLatencySamples() const noexcept { return outputLatency_.load(std::memory_order_relaxed); }
+    // The current snapshot, for tests that check what the compiler produced.
+    const Snapshot* snapshotForTest() const noexcept { return publisher_.currentForController(); }
     // True when an insert's latency changed since the last setProject(): recompile.
     bool insertLatencyChanged() const noexcept { return inserts_.latencyChanged(); }
     // The live processor behind a model insert, if one exists (controller thread).

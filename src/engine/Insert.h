@@ -52,6 +52,15 @@ public:
     // Real-time. Processes the stereo pair in place.
     virtual void process(float* left, float* right, int numSamples) noexcept = 0;
 
+    // Sidechain (key) input. A processor that accepts one gets the source's
+    // signal alongside its own; the default ignores it.
+    virtual bool acceptsSidechain() const noexcept { return false; }
+    virtual void
+    processWithSidechain(float* left, float* right, const float*, const float*, int numSamples) noexcept
+    {
+        process(left, right, numSamples);
+    }
+
     // Samples of delay the processor adds (for delay compensation, Phase 5).
     virtual int latencySamples() const noexcept { return 0; }
 
