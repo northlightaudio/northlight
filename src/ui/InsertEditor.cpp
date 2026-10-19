@@ -5,11 +5,22 @@
 namespace aural::ui
 {
 
-InsertEditor::InsertEditor(core::Id channelId, core::Id insertId, const engine::InsertProcessor& processor)
-    : channelId_(channelId), insertId_(insertId), infos_(processor.parameters())
+InsertEditor::InsertEditor(core::Id channelId,
+                           core::Id insertId,
+                           const engine::InsertProcessor& processor,
+                           const std::string& title,
+                           bool embedded)
+    : channelId_(channelId), insertId_(insertId), infos_(processor.parameters()), embedded_(embedded)
 {
     setOpaque(true);
-    title_.setText(plugins::BuiltInFactory::displayName(processor.typeName()), juce::dontSendNotification);
+    title_.setText(
+        juce::String::fromUTF8(
+            (title.empty() ? plugins::BuiltInFactory::displayName(processor.typeName()) : title).c_str()),
+        juce::dontSendNotification);
+    title_.setVisible(!embedded_);
+    bypass_.setVisible(!embedded_);
+    mixLabel_.setVisible(!embedded_);
+    mix_.setVisible(!embedded_);
     title_.setFont(juce::FontOptions{theme_.type.title});
     title_.setColour(juce::Label::textColourId, theme_.colours.textPrimary);
     addAndMakeVisible(title_);
@@ -83,7 +94,7 @@ InsertEditor::InsertEditor(core::Id channelId, core::Id insertId, const engine::
         addAndMakeVisible(*slider);
         sliders_.push_back(std::move(slider));
     }
-    setSize(preferredWidth, preferredHeight(static_cast<int>(infos_.size())));
+    setSize(preferredWidth, preferredHeight(static_cast<int>(infos_.size()), embedded_));
 }
 
 void InsertEditor::setInsert(const core::Insert& insert)
@@ -103,13 +114,16 @@ void InsertEditor::paint(juce::Graphics& g)
 void InsertEditor::resized()
 {
     auto area = getLocalBounds().reduced(theme_.spacing.lg, theme_.spacing.md);
-    auto header = area.removeFromTop(theme_.sizes.controlHeight);
-    bypass_.setBounds(header.removeFromRight(90));
-    title_.setBounds(header);
-    area.removeFromTop(theme_.spacing.sm);
-    auto mixRow = area.removeFromTop(30);
-    mixLabel_.setBounds(mixRow.removeFromLeft(100));
-    mix_.setBounds(mixRow);
+    if (!embedded_)
+    {
+        auto header = area.removeFromTop(theme_.sizes.controlHeight);
+        bypass_.setBounds(header.removeFromRight(90));
+        title_.setBounds(header);
+        area.removeFromTop(theme_.spacing.sm);
+        auto mixRow = area.removeFromTop(30);
+        mixLabel_.setBounds(mixRow.removeFromLeft(100));
+        mix_.setBounds(mixRow);
+    }
     for (size_t i = 0; i < sliders_.size(); ++i)
     {
         auto row = area.removeFromTop(30);

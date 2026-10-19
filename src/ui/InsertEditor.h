@@ -20,7 +20,13 @@ namespace aural::ui
 class InsertEditor final : public juce::Component
 {
 public:
-    InsertEditor(core::Id channelId, core::Id insertId, const engine::InsertProcessor& processor);
+    // `title` overrides the built-in display name (a hosted plugin's name);
+    // `embedded` hides the bypass and mix row (the plugin window's bar has them).
+    InsertEditor(core::Id channelId,
+                 core::Id insertId,
+                 const engine::InsertProcessor& processor,
+                 const std::string& title = {},
+                 bool embedded = false);
 
     // Refreshes the controls from the model insert (after undo, for instance).
     void setInsert(const core::Insert& insert);
@@ -35,7 +41,10 @@ public:
     void paint(juce::Graphics& g) override;
     void resized() override;
 
-    static int preferredHeight(int parameterCount) noexcept { return 56 + 30 + parameterCount * 30 + 16; }
+    static int preferredHeight(int parameterCount, bool embedded = false) noexcept
+    {
+        return (embedded ? 24 : 56 + 30) + parameterCount * 30 + 16;
+    }
     static constexpr int preferredWidth = 420;
 
 private:
@@ -43,6 +52,7 @@ private:
     core::Id channelId_, insertId_;
     std::vector<engine::ParameterInfo> infos_;
     bool updating_ = false;
+    bool embedded_ = false;
     juce::Label title_;
     juce::ToggleButton bypass_{"Bypass"};
     juce::Label mixLabel_;

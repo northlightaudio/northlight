@@ -779,7 +779,8 @@ void MixerView::openInsertEditor(core::Id channelId, core::Id insertId)
             else
             {
                 // No GUI: the generic parameter editor over the model insert.
-                auto generic = std::make_unique<InsertEditor>(channelId, insertId, *clap);
+                auto generic =
+                    std::make_unique<InsertEditor>(channelId, insertId, *clap, clap->displayName(), true);
                 generic->onCommand = [this](std::unique_ptr<core::Command> c)
                 {
                     if (onCommand)
