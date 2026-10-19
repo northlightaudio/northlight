@@ -416,6 +416,8 @@ These need an answer before or during the phase noted.
 2. **Licensing of Aural itself** (Phase 0). Proprietary, GPL, or dual? Affects the
    time-stretch library choice and whether Tracktion is viable.
 3. **CLAP hosting** (Phase 5). Recommended yes; small cost on top of VST3.
+   **Decided 2026-10-19: yes.** Hosted directly against the CLAP C ABI (JUCE does
+   not host CLAP), behind the same insert interface, as "clap:<id>" types.
 4. **MIDI in v1** (end of Phase 7). Audio-only is a legitimate v1; MIDI roughly adds a
    month.
 5. **Plugin sandboxing** (post-v1). Decide after seeing beta crash reports.

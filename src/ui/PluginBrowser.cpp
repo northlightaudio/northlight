@@ -10,6 +10,7 @@ namespace
 enum Column
 {
     nameColumn = 1,
+    formatColumn,
     manufacturerColumn,
     categoryColumn,
     versionColumn,
@@ -28,9 +29,16 @@ PluginBrowser::PluginBrowser(const hosting::PluginRegistry& registry) : registry
     search_.setTextToShowWhenEmpty("Search", theme_.colours.textSecondary);
     search_.onTextChange = [this] { applyFilter(); };
     addAndMakeVisible(search_);
+    kind_.addItem("All", 1);
+    kind_.addItem("Effects", 2);
+    kind_.addItem("Instruments", 3);
+    kind_.setSelectedId(1, juce::dontSendNotification);
+    kind_.onChange = [this] { applyFilter(); };
+    addAndMakeVisible(kind_);
 
     auto& header = table_.getHeader();
     header.addColumn("Name", nameColumn, 200, 80, 400);
+    header.addColumn("Format", formatColumn, 60, 50, 90);
     header.addColumn("Manufacturer", manufacturerColumn, 140, 60, 300);
     header.addColumn("Category", categoryColumn, 110, 60, 200);
     header.addColumn("Version", versionColumn, 70, 50, 120);
@@ -82,11 +90,12 @@ void PluginBrowser::refresh()
 {
     all_.clear();
     for (const auto& p : registry_.plugins())
-        all_.push_back(Row{p.name, p.manufacturer, p.category, p.version, p.path, false});
+        all_.push_back(
+            Row{p.name, p.manufacturer, p.category, p.version, p.path, p.format, false, p.isInstrument});
     for (const auto& [path, reason] : registry_.blocked())
     {
         const auto file = juce::File(juce::String::fromUTF8(path.c_str())).getFileNameWithoutExtension();
-        all_.push_back(Row{file.toStdString(), "", "blocked: " + reason, "", path, true});
+        all_.push_back(Row{file.toStdString(), "", "blocked: " + reason, "", path, "", true, false});
     }
     summary_.setText(juce::String(registry_.plugins().size()) + " plugin(s), " +
                          juce::String(registry_.blocked().size()) + " blocked",
@@ -99,10 +108,17 @@ void PluginBrowser::applyFilter()
 {
     const auto needle = search_.getText().trim();
     rows_.clear();
+    const int kind = kind_.getSelectedId();
     for (const auto& row : all_)
+    {
+        if (!row.blocked && kind == 2 && row.instrument)
+            continue;
+        if (!row.blocked && kind == 3 && !row.instrument)
+            continue;
         if (containsIgnoreCase(row.name, needle) || containsIgnoreCase(row.manufacturer, needle) ||
-            containsIgnoreCase(row.category, needle))
+            containsIgnoreCase(row.category, needle) || containsIgnoreCase(row.format, needle))
             rows_.push_back(row);
+    }
     table_.updateContent();
     table_.repaint();
 }
@@ -127,6 +143,9 @@ void PluginBrowser::paintCell(juce::Graphics& g, int row, int column, int width,
     const std::string* text = &r.name;
     switch (column)
     {
+        case formatColumn:
+            text = &r.format;
+            break;
         case manufacturerColumn:
             text = &r.manufacturer;
             break;
@@ -167,6 +186,8 @@ void PluginBrowser::resized()
     rescanButton_.setBounds(top.removeFromRight(100));
     top.removeFromRight(theme_.spacing.sm);
     scanButton_.setBounds(top.removeFromRight(130));
+    top.removeFromRight(theme_.spacing.sm);
+    kind_.setBounds(top.removeFromRight(110));
     top.removeFromRight(theme_.spacing.sm);
     search_.setBounds(top);
     area.removeFromTop(theme_.spacing.sm);

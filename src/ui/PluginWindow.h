@@ -2,10 +2,10 @@
 
 #include "core/Command.h"
 #include "core/Model.h"
-#include "hosting/HostedPlugin.h"
+#include "engine/Insert.h"
+#include "hosting/PluginPresets.h"
 #include "ui/Theme.h"
 
-#include <juce_audio_processors/juce_audio_processors.h>
 #include <juce_gui_basics/juce_gui_basics.h>
 
 #include <functional>
@@ -14,20 +14,23 @@
 namespace aural::ui
 {
 
-// A floating window for a hosted plugin's own editor (or JUCE's generic one when
-// the plugin has none), with a bar above it for bypass, wet/dry mix and "pin"
-// (always on top) and a presets menu. The window never outlives the plugin instance: the owner closes
-// it when the insert leaves the model.
+// A floating window for a hosted plugin's editor (VST3 or CLAP, or a generic one
+// when the plugin has none), with a bar above it for bypass, wet/dry mix, a
+// presets menu and "pin" (always on top). The window never outlives the plugin
+// instance: it shares ownership of the processor, and the owner closes it when the
+// insert leaves the model.
 class PluginWindow final : public juce::DocumentWindow
 {
 public:
-    // `keepAlive` is the live processor (the HostedPlugin): the window shares its
-    // ownership so the plugin cannot be freed under its open editor, whatever the
-    // engine's cache does meanwhile.
+    // `keepAlive` is the live processor: the window shares its ownership so the
+    // plugin cannot be freed under its open editor. `editor` is the plugin's own
+    // editor component (any format); `presets` serves the Presets menu.
     PluginWindow(core::Id channelId,
                  core::Id insertId,
                  std::shared_ptr<engine::InsertProcessor> keepAlive,
-                 hosting::HostedPlugin& plugin,
+                 hosting::PluginPresets& presets,
+                 std::unique_ptr<juce::Component> editor,
+                 bool resizable,
                  const juce::String& title,
                  bool pinned);
     ~PluginWindow() override;
@@ -37,6 +40,8 @@ public:
 
     // Refreshes the bar from the model insert (bypass, mix).
     void setInsert(const core::Insert& insert);
+    // The editor changed size (a plugin resized itself): follow it.
+    void editorSizeChanged(int width, int height);
 
     std::function<void(std::unique_ptr<core::Command>)> onCommand;
     std::function<void()> onClose;          // called (asynchronously) after the close button

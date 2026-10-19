@@ -113,6 +113,22 @@ bool PluginScanner::inspect(const juce::File& scanner,
     }
     for (const auto* child : xml->getChildIterator())
     {
+        if (child->hasTagName("CLAP"))
+        {
+            PluginInfo info;
+            info.format = "CLAP";
+            info.id = child->getStringAttribute("id").toStdString();
+            info.name = child->getStringAttribute("name").toStdString();
+            info.manufacturer = child->getStringAttribute("vendor").toStdString();
+            info.category = child->getStringAttribute("category").toStdString();
+            info.version = child->getStringAttribute("version").toStdString();
+            info.path = child->getStringAttribute("file").toStdString();
+            info.isInstrument = child->getIntAttribute("instrument") != 0;
+            info.numInputs = 2;
+            info.numOutputs = 2;
+            found.push_back(info);
+            continue;
+        }
         juce::PluginDescription description;
         if (description.loadFromXml(*child))
             found.push_back(toInfo(description));
@@ -146,7 +162,9 @@ void PluginScanner::run()
     for (const auto& extra : extraPaths_)
         paths.add(juce::File(juce::String::fromUTF8(extra.c_str())));
 
-    // Listing only looks at names; nothing is loaded here.
+    // Listing only looks at names; nothing is loaded here. CLAP files live in the
+    // common CLAP folders (and the extra paths); they are scanned by the same
+    // process.
     struct Job
     {
         juce::File file;
@@ -162,6 +180,19 @@ void PluginScanner::run()
     // leaves nothing dangling.
     auto planning = std::make_shared<Planning>();
     planning->candidates = format.searchPathsForPlugins(paths, true, false);
+    juce::FileSearchPath clapPaths;
+    clapPaths.add(
+        juce::File::getSpecialLocation(juce::File::commonApplicationDataDirectory).getChildFile("CLAP"));
+    clapPaths.add(juce::File("C:\\Program Files\\Common Files\\CLAP"));
+    clapPaths.add(juce::File::getSpecialLocation(juce::File::userApplicationDataDirectory)
+                      .getChildFile("Programs")
+                      .getChildFile("Common")
+                      .getChildFile("CLAP"));
+    for (const auto& extra : extraPaths_)
+        clapPaths.add(juce::File(juce::String::fromUTF8(extra.c_str())));
+    for (int i = 0; i < clapPaths.getNumPaths(); ++i)
+        for (const auto& file : clapPaths[i].findChildFiles(juce::File::findFiles, true, "*.clap"))
+            planning->candidates.addIfNotAlreadyThere(file.getFullPathName());
     {
         // The registry belongs to the message thread: decide there which files
         // need a look, so the scan thread never touches it.

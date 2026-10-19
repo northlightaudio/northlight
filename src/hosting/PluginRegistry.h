@@ -17,7 +17,8 @@ namespace aural::hosting
 
 struct PluginInfo
 {
-    std::string id; // the format's identifier string; the insert type is "vst3:" + id
+    std::string format = "VST3"; // "VST3" or "CLAP"
+    std::string id;              // the format's identifier string; the insert type is "<format>:" + id
     std::string name;
     std::string manufacturer;
     std::string category;
@@ -35,11 +36,16 @@ class PluginRegistry
 {
 public:
     static constexpr const char* typePrefix = "vst3:";
+    static constexpr const char* clapPrefix = "clap:";
 
     const std::vector<PluginInfo>& plugins() const noexcept { return plugins_; }
     const PluginInfo* find(const std::string& id) const noexcept;
     const PluginInfo* findByType(const std::string& insertType) const noexcept;
-    static std::string typeFor(const PluginInfo& info) { return typePrefix + info.id; }
+    static std::string typeFor(const PluginInfo& info)
+    {
+        return (info.format == "CLAP" ? clapPrefix : typePrefix) + info.id;
+    }
+    static bool isClapType(const std::string& insertType) noexcept;
     static bool isHostedType(const std::string& insertType) noexcept;
 
     // Replaces everything known about a file with what a scan of it found.

@@ -11,7 +11,55 @@
 #include <juce_audio_processors/juce_audio_processors.h>
 #include <juce_events/juce_events.h>
 
+#include <clap/clap.h>
+
 #include <cstdio>
+#include <cstring>
+
+namespace
+{
+// A .clap is a DLL with a clap_entry: list its factory's descriptors as
+// <CLAP .../> elements of the same document.
+bool scanClap(const juce::String& path, juce::XmlElement& root)
+{
+    juce::DynamicLibrary library;
+    if (!library.open(path))
+        return false;
+    const auto* entry = static_cast<const clap_plugin_entry_t*>(library.getFunction("clap_entry"));
+    if (entry == nullptr || !clap_version_is_compatible(entry->clap_version) ||
+        !entry->init(path.toRawUTF8()))
+        return false;
+    if (const auto* factory =
+            static_cast<const clap_plugin_factory_t*>(entry->get_factory(CLAP_PLUGIN_FACTORY_ID)))
+    {
+        const uint32_t count = factory->get_plugin_count(factory);
+        for (uint32_t i = 0; i < count; ++i)
+        {
+            const auto* d = factory->get_plugin_descriptor(factory, i);
+            if (d == nullptr || d->id == nullptr)
+                continue;
+            auto* e = root.createNewChildElement("CLAP");
+            e->setAttribute("id", d->id);
+            e->setAttribute("name", d->name != nullptr ? d->name : d->id);
+            e->setAttribute("vendor", d->vendor != nullptr ? d->vendor : "");
+            e->setAttribute("version", d->version != nullptr ? d->version : "");
+            e->setAttribute("file", path);
+            juce::String category;
+            bool instrument = false;
+            for (const char* const* f = d->features; f != nullptr && *f != nullptr; ++f)
+            {
+                if (std::strcmp(*f, CLAP_PLUGIN_FEATURE_INSTRUMENT) == 0)
+                    instrument = true;
+                category << (category.isEmpty() ? "" : "|") << *f;
+            }
+            e->setAttribute("category", category);
+            e->setAttribute("instrument", instrument ? 1 : 0);
+        }
+    }
+    entry->deinit();
+    return true;
+}
+} // namespace
 
 int main(int argc, char* argv[])
 {
@@ -23,16 +71,18 @@ int main(int argc, char* argv[])
     const juce::ScopedJuceInitialiser_GUI juceInit; // VST3 inspection wants a message manager
     juce::VST3PluginFormat format;
     const juce::String path = juce::String::fromUTF8(argv[1]);
-    if (!format.fileMightContainThisPluginType(path))
-    {
-        std::printf("\n<<AURAL-SCAN>>\n<plugins/>\n<<END-AURAL-SCAN>>\n");
-        return 0;
-    }
-    juce::OwnedArray<juce::PluginDescription> found;
-    format.findAllTypesForFile(found, path);
     juce::XmlElement root("plugins");
-    for (const auto* description : found)
-        root.addChildElement(description->createXml().release());
+    if (path.endsWithIgnoreCase(".clap"))
+    {
+        scanClap(path, root);
+    }
+    else if (format.fileMightContainThisPluginType(path))
+    {
+        juce::OwnedArray<juce::PluginDescription> found;
+        format.findAllTypesForFile(found, path);
+        for (const auto* description : found)
+            root.addChildElement(description->createXml().release());
+    }
     const auto text = root.toString(juce::XmlElement::TextFormat().singleLine().withoutHeader());
     std::printf("\n<<AURAL-SCAN>>\n%s\n<<END-AURAL-SCAN>>\n", text.toRawUTF8());
     std::fflush(stdout);

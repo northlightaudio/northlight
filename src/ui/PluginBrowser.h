@@ -36,8 +36,9 @@ public:
 private:
     struct Row
     {
-        std::string name, manufacturer, category, version, path;
+        std::string name, manufacturer, category, version, path, format;
         bool blocked = false;
+        bool instrument = false;
     };
 
     int getNumRows() override;
@@ -49,6 +50,7 @@ private:
     const hosting::PluginRegistry& registry_;
     std::vector<Row> all_, rows_;
     juce::TextEditor search_;
+    juce::ComboBox kind_; // all / effects / instruments
     juce::TableListBox table_{"plugins", this};
     juce::TextButton scanButton_{"Scan for changes"}, rescanButton_{"Rescan all"},
         clearButton_{"Clear blocklist"};

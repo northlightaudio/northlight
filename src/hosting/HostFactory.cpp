@@ -1,6 +1,7 @@
 #include "hosting/HostFactory.h"
 
 #include "engine/rt/RealtimeGuard.h"
+#include "hosting/ClapPlugin.h"
 #include "hosting/HostedPlugin.h"
 
 namespace aural::hosting
@@ -45,6 +46,14 @@ std::unique_ptr<engine::InsertProcessor> HostFactory::create(const std::string& 
     const auto* info = registry_.findByType(typeName);
     if (info == nullptr)
         return fail("plugin not in the registry (rescan?)");
+    if (PluginRegistry::isClapType(typeName))
+    {
+        std::string error;
+        auto clap = HostedClapPlugin::create(typeName, info->path, info->id, error);
+        if (clap == nullptr)
+            return fail(error);
+        return clap;
+    }
     juce::PluginDescription description;
     description.name = juce::String::fromUTF8(info->name.c_str());
     description.manufacturerName = juce::String::fromUTF8(info->manufacturer.c_str());

@@ -1,6 +1,7 @@
 #pragma once
 
 #include "engine/Insert.h"
+#include "hosting/PluginPresets.h"
 
 #include <juce_audio_processors/juce_audio_processors.h>
 
@@ -21,7 +22,7 @@ namespace aural::hosting
 // stay disabled. Bypass crossfades to the plugin's own bypassed path
 // (processBlockBypassed keeps the latency), so toggling it never re-solves the
 // graph or freezes a tail.
-class HostedPlugin final : public engine::InsertProcessor
+class HostedPlugin final : public engine::InsertProcessor, public PluginPresets
 {
 public:
     // Which channel layout the plugin accepted (decided once, at creation).
@@ -68,17 +69,19 @@ public:
     const juce::AudioPluginInstance& instance() const noexcept { return *instance_; }
 
     // ----- presets (message thread) -----------------------------------------------
+    std::string displayName() const override { return instance_->getPluginDescription().name.toStdString(); }
     // The plugin's built-in programs (empty when it has none worth listing).
-    std::vector<std::string> factoryPrograms() const;
-    int currentProgram() const;
-    void setProgram(int index);
+    std::vector<std::string> factoryPrograms() const override;
+    int currentProgram() const override;
+    void setProgram(int index) override;
     // .vstpreset files: the standard user folder for this plugin
     // (Documents/VST3 Presets/<manufacturer>/<plugin>), its files, and load/save.
-    bool supportsPresetFiles() const;
-    juce::File userPresetFolder() const;
-    std::vector<juce::File> userPresetFiles() const;
-    bool loadPresetFile(const juce::File& file);
-    bool savePresetFile(const juce::File& file) const;
+    bool supportsPresetFiles() const override;
+    juce::File userPresetFolder() const override;
+    std::vector<juce::File> userPresetFiles() const override;
+    bool loadPresetFile(const juce::File& file) override;
+    bool savePresetFile(const juce::File& file) const override;
+    std::string presetFileExtension() const override { return "vstpreset"; }
 
 private:
     std::string typeName_;

@@ -18,7 +18,9 @@ add_library(aural_ui STATIC
     PluginWindow.h
     PluginWindow.cpp
     PluginBrowser.h
-    PluginBrowser.cpp)
+    PluginBrowser.cpp
+    ClapEditor.h
+    ClapEditor.cpp)
 
 target_include_directories(aural_ui PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/..")
 target_link_libraries(aural_ui PUBLIC aural_core aural_plugins aural_hosting aural_audio_device aural_juce)

@@ -45,6 +45,13 @@ FetchContent_Declare(JUCE
 # JUCE's own warning flags are applied per-target via juce::juce_recommended_warning_flags.
 FetchContent_MakeAvailable(JUCE)
 
+# The CLAP headers (MIT) for hosting CLAP plugins against the C ABI; pinned to a tag.
+FetchContent_Declare(clap
+    GIT_REPOSITORY https://github.com/free-audio/clap.git
+    GIT_TAG        1.2.9
+    GIT_SHALLOW    TRUE)
+FetchContent_MakeAvailable(clap)
+
 # Project file serialisation (header-only).
 FetchContent_Declare(nlohmann_json
     GIT_REPOSITORY https://github.com/nlohmann/json.git

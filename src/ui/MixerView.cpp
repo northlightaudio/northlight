@@ -1,8 +1,10 @@
 #include "ui/MixerView.h"
 
 #include "engine/Snapshot.h"
+#include "hosting/ClapPlugin.h"
 #include "hosting/HostedPlugin.h"
 #include "plugins/BuiltIns.h"
+#include "ui/ClapEditor.h"
 #include "ui/InsertEditor.h"
 
 #include <cmath>
@@ -482,7 +484,8 @@ private:
                             juce::String::fromUTF8(plugin.name.c_str()) +
                                 (plugin.manufacturer.empty()
                                      ? juce::String()
-                                     : "  (" + juce::String::fromUTF8(plugin.manufacturer.c_str()) + ")"));
+                                     : "  (" + juce::String::fromUTF8(plugin.manufacturer.c_str()) + ")") +
+                                "  [" + juce::String(plugin.format) + "]");
                 const auto type = hosting::PluginRegistry::typeFor(plugin);
                 actions.push_back(
                     [this, type]
@@ -737,15 +740,67 @@ void MixerView::openInsertEditor(core::Id channelId, core::Id insertId)
     if (hosting::PluginRegistry::isHostedType(insert->type))
     {
         const auto live = liveInsert ? liveInsert(insertId) : nullptr;
-        auto* hosted = dynamic_cast<hosting::HostedPlugin*>(live.get());
-        if (hosted == nullptr)
+        auto* vst3 = dynamic_cast<hosting::HostedPlugin*>(live.get());
+        auto* clap = dynamic_cast<hosting::HostedClapPlugin*>(live.get());
+        if (vst3 == nullptr && clap == nullptr)
             return; // not loaded (missing plugin): nothing to show
         const juce::String title = juce::String::fromUTF8(channel->name.c_str()) + " - " +
                                    juce::String::fromUTF8(insertDisplayName(insert->type).c_str());
         const auto setting = [this](const std::string& key)
         { return loadSetting ? loadSetting(key) : std::string{}; };
         const bool pinned = setting("plugins.pin") == "1";
-        auto window = std::make_unique<PluginWindow>(channelId, insertId, live, *hosted, title, pinned);
+
+        // The editor component for the format: the VST3's own (or JUCE's generic
+        // one), or the CLAP GUI embedded in a native child window.
+        std::unique_ptr<juce::Component> editor;
+        bool resizable = false;
+        hosting::PluginPresets* presets = nullptr;
+        ClapEditor* clapEditor = nullptr;
+        if (vst3 != nullptr)
+        {
+            auto& instance = vst3->instance();
+            juce::AudioProcessorEditor* raw =
+                instance.hasEditor() ? instance.createEditorAndMakeActive() : nullptr;
+            if (raw == nullptr)
+                raw = new juce::GenericAudioProcessorEditor(instance);
+            resizable = raw->isResizable();
+            editor.reset(raw);
+            presets = vst3;
+        }
+        else
+        {
+            if (clap->hasEditor())
+            {
+                auto owned = std::make_unique<ClapEditor>(*clap);
+                clapEditor = owned.get();
+                resizable = owned->isResizable();
+                editor = std::move(owned);
+            }
+            else
+            {
+                // No GUI: the generic parameter editor over the model insert.
+                auto generic = std::make_unique<InsertEditor>(channelId, insertId, *clap);
+                generic->onCommand = [this](std::unique_ptr<core::Command> c)
+                {
+                    if (onCommand)
+                        onCommand(std::move(c));
+                };
+                generic->setInsert(*insert);
+                editor = std::move(generic);
+            }
+            presets = clap;
+        }
+        auto window = std::make_unique<PluginWindow>(
+            channelId, insertId, live, *presets, std::move(editor), resizable, title, pinned);
+        if (clapEditor != nullptr)
+        {
+            juce::Component::SafePointer<PluginWindow> weak(window.get());
+            clapEditor->onPluginResized = [weak](int w, int h)
+            {
+                if (weak != nullptr)
+                    weak->editorSizeChanged(w, h);
+            };
+        }
         juce::Component::SafePointer<MixerView> safe(this);
         window->onClose = [safe, insertId]
         {

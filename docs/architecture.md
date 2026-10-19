@@ -454,6 +454,33 @@ built-in compressor keys its detector from the sidechain; a hosted plugin with a
 second input bus gets it enabled as a stereo key bus and is driven with four
 channels (silence on the key when no source is set).
 
+CLAP plugins are hosted directly against the CLAP C ABI (JUCE does not host
+CLAP) by `hosting::HostedClapPlugin`, behind the same insert interface, as
+`clap:<id>` types; `HostFactory` picks the format from the type prefix, so the
+chain, the cache, the window and the browser know nothing format-specific. The
+host object implements log, thread-check, params, state, latency, audio-ports,
+note-ports (no dialects yet), gui and timer-support. Main-thread calls (init,
+activate, state, params flush while idle, gui) run on the message thread;
+audio-thread calls (start/stop_processing, process) on the real-time thread, or on
+the message thread while no audio runs, when the thread check vouches for it.
+Parameter changes from the host are queued on an SPSC queue and become sample-0
+events of the next block, or go through `params.flush` when the plugin is idle;
+the plugin's own parameter events update the host's view. Audio goes through
+preallocated `clap_audio_buffer` arrays in place (main stereo port; a second
+input port is the key), events through preallocated lists: nothing allocates on
+the real-time thread (tested under the hook). State is `clap.state` over a byte
+vector, base64 in the project like VST3 state; presets are that blob in a
+`.clappreset` file under `Documents/CLAP Presets/<vendor>/<plugin>`. The GUI
+(`clap.gui`, win32) is embedded by `ui::ClapEditor`: a plain child window of the
+JUCE window that JUCE keeps positioned over the component becomes the plugin's
+parent, so the GUI sits under the window's bar; the plugin's resize requests are
+honoured and `set_scale` carries the display scale. The scanner inspects `.clap`
+files in the same child process (entry, factory, descriptors) and the registry
+records each plugin's format; the browser shows it and filters effects from
+instruments. A test effect (`AuralTestGain.clap`, built with the tests) exercises
+the host end to end; no third-party CLAP plugin is installed on this machine, so
+the GUI path is verified only by construction.
+
 Delay compensation is solved at compile time over the routing graph. Every
 channel's chain latency is the sum of its non-bypassed inserts' reported latency;
 a track's output lags the timeline by its chain, a bus's by its slowest input plus
@@ -599,6 +626,7 @@ launches; `JUCE_MODAL_LOOPS_PERMITTED` stays 0.
 | 2026-10-19 | Routing cycles are refused at the command layer | Letting the compiler silently rewire a cycle shows the user one graph and plays another; refusing the edit (and not offering it) keeps the mixer honest. |
 | 2026-10-19 | Edits are previewed in the view and committed as command groups | The view owns the drag state and draws the preview itself, so a drag issues no commands until release; the release becomes one undo step however many clips it touched. The model never sees a half-finished edit. |
 | 2026-10-19 | Fades are linear | Linear fades crossfade at constant sum for correlated material (the common editing case: the same take split and rejoined); an equal-power option can come with the design pass. |
+| 2026-10-19 | CLAP is hosted against the C ABI, VST3 through JUCE, both behind one insert interface | JUCE does not host CLAP, and the insert interface already hides the format from the chain, the cache and the UI; a "clap:" type beside "vst3:" needed no change in the engine. The thread rules are the spec's, answered truthfully by the thread-check extension because plugins assert on it. |
 | 2026-10-19 | Plugin scanning runs in a separate executable, one file per process | A plugin that crashes or hangs while being inspected must not take the DAW with it; a process per file isolates the damage, lets a timeout kill it, and leaves the file blocklisted with the reason. |
 | 2026-10-19 | A hosted plugin's state is an opaque blob the plugin owns | Mirroring every plugin parameter into the model would fight the plugin's own editor and presets; capturing its state on save and restoring it on load is what every host does and keeps the model small. Automation (Phase 9) adds parameter access on top. |
 | 2026-10-19 | Insert chains are stereo pairs; plugins get a stereo main bus and no sidechain yet | The engine's channels are stereo and the chain interface is two pointers; asking every plugin for stereo in and out keeps hosting simple and correct for effects. Sidechain routing needs a graph change and comes later in Phase 5. |

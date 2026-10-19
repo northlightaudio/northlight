@@ -6,7 +6,8 @@ add_executable(aural_juce_tests
     JuceStreamReaderTests.cpp
     AudioCallbackTests.cpp
     ProjectSessionTests.cpp
-    HostedPluginTests.cpp)
+    HostedPluginTests.cpp
+    ClapPluginTests.cpp)
 
 target_link_libraries(aural_juce_tests PRIVATE
     aural_options
@@ -25,6 +26,17 @@ add_executable(aural_scan_stub ScanStub.cpp)
 target_link_libraries(aural_scan_stub PRIVATE aural_options)
 set_target_properties(aural_scan_stub PROPERTIES WIN32_EXECUTABLE FALSE)
 add_dependencies(aural_juce_tests aural_scan_stub)
+
+# A CLAP effect built here so the CLAP host is tested without a third-party
+# plugin: a .clap next to the tests (a CLAP is a DLL with that extension).
+add_library(aural_test_clap SHARED ../clap_test_plugin/TestClapPlugin.cpp)
+target_link_libraries(aural_test_clap PRIVATE aural_options clap)
+set_target_properties(aural_test_clap PROPERTIES
+    PREFIX ""
+    OUTPUT_NAME "AuralTestGain"
+    SUFFIX ".clap"
+    RUNTIME_OUTPUT_DIRECTORY $<TARGET_FILE_DIR:aural_juce_tests>)
+add_dependencies(aural_juce_tests aural_test_clap)
 
 # The scanner beside the tests, where PluginScanner looks for it.
 add_custom_command(TARGET aural_juce_tests POST_BUILD

@@ -27,14 +27,24 @@ const PluginInfo* PluginRegistry::find(const std::string& id) const noexcept
 
 bool PluginRegistry::isHostedType(const std::string& insertType) noexcept
 {
-    return insertType.starts_with(typePrefix);
+    return insertType.starts_with(typePrefix) || insertType.starts_with(clapPrefix);
+}
+
+bool PluginRegistry::isClapType(const std::string& insertType) noexcept
+{
+    return insertType.starts_with(clapPrefix);
 }
 
 const PluginInfo* PluginRegistry::findByType(const std::string& insertType) const noexcept
 {
     if (!isHostedType(insertType))
         return nullptr;
-    return find(insertType.substr(std::char_traits<char>::length(typePrefix)));
+    const auto id = insertType.substr(std::char_traits<char>::length(typePrefix)); // both prefixes are 5 long
+    const std::string format = isClapType(insertType) ? "CLAP" : "VST3";
+    for (const auto& p : plugins_)
+        if (p.id == id && p.format == format)
+            return &p;
+    return nullptr;
 }
 
 void PluginRegistry::setFileResults(const std::string& path,
@@ -88,7 +98,8 @@ std::string PluginRegistry::toJson() const
 {
     json plugins = json::array();
     for (const auto& p : plugins_)
-        plugins.push_back(json{{"id", p.id},
+        plugins.push_back(json{{"format", p.format},
+                               {"id", p.id},
                                {"name", p.name},
                                {"manufacturer", p.manufacturer},
                                {"category", p.category},
@@ -133,7 +144,8 @@ std::optional<PluginRegistry> PluginRegistry::fromJson(const std::string& text, 
         PluginRegistry r;
         if (const auto it = j.find("plugins"); it != j.end() && it->is_array())
             for (const auto& p : *it)
-                r.plugins_.push_back(PluginInfo{p.value("id", std::string{}),
+                r.plugins_.push_back(PluginInfo{p.value("format", std::string{"VST3"}),
+                                                p.value("id", std::string{}),
                                                 p.value("name", std::string{}),
                                                 p.value("manufacturer", std::string{}),
                                                 p.value("category", std::string{}),
