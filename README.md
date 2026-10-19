@@ -3,7 +3,7 @@
 A native, high-performance digital audio workstation for Windows. ASIO, VST3 hosting,
 multitrack recording, and a UI that is designed before it is built.
 
-Status: **Phase 2 (engine core and playback)**. See
+Status: **Phase 3 (multitrack recording), in progress**. See
 [docs/PLAN.md](docs/PLAN.md) for the roadmap and
 [docs/architecture.md](docs/architecture.md) for what is built.
 
@@ -95,7 +95,18 @@ stream from disk; everything is resampled to the project rate (the device rate o
 an empty project). Waveform peaks are built in the background and cached next to
 each media file as `<file>.<rate>.aural-peaks`.
 
-For unattended checks: `Aural.exe --import <file> [--import <file>] --play`.
+To record, pick an input in a track's header, arm it with **R** (the **I** button
+cycles input monitoring off / auto / on) and press **Rec** or Ctrl+R; **Stop** or the
+space bar ends the take. Clips land on the track shifted back by the measured
+round-trip latency (or the driver's reported latency when no calibration matches).
+Recordings go next to the project file in a `<project> Media` folder, or to
+`Documents\Aural\Recordings` for an unsaved project. If the app dies while recording,
+the next launch repairs the unfinished files and adds them as "Recovered" tracks.
+Projects are `.aural` files: **New**, **Open...**, **Save** (Ctrl+N / Ctrl+O / Ctrl+S,
+Ctrl+Shift+S to save as).
+
+For unattended checks: `Aural.exe --import <file> [--import <file>] --play`, and
+`Aural.exe --record <inputs> --stop-after <seconds>`.
 
 ### Audio setup
 

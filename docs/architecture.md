@@ -3,21 +3,23 @@
 Living document. The intended architecture is in [PLAN.md](PLAN.md), section 3; this
 file records what is actually built and the decisions made along the way.
 
-## Current state (Phase 2)
+## Current state (Phase 3, in progress)
 
 ```
 aural.exe
-  src/app         JUCEApplication; MainWindow (transport bar, import, undo/redo,
-                  placeholder track list, device summary, Audio Setup window);
+  src/app         JUCEApplication; MainWindow (transport + record bar, file and
+                  import buttons, undo/redo, device summary, Audio Setup window);
                   ProjectSession (the open Project + UndoStack + AudioEngine +
-                  DiskThread); UserSettings (per-user properties file)
+                  DiskThread + PeakStore; recording flow and recovery);
+                  UserSettings (per-user properties file)
   src/ui          Theme (design tokens), AuralLookAndFeel (dark, token-driven),
-                  AudioSetupView, ArrangeView (tracks, waveforms, zoom, scroll)
+                  AudioSetupView, ArrangeView (tracks, waveforms, zoom, scroll),
+                  TrackHeader (input, arm, monitor)
   src/core        Project/Track/AudioClip model, Command + UndoStack, JSON project
                   files, bars/beats helpers. No JUCE.
   src/engine      AudioEngine façade, Snapshot compiler + MediaCache, Transport,
                   Renderer, WorkerPool, AudioSource (memory + streaming), DiskThread,
-                  Peaks. No JUCE.
+                  Peaks, Recording (record rings + writer thread), WavFile. No JUCE.
   src/engine/rt   Real-time guard and allocation hook, SpscQueue, SnapshotPublisher,
                   CallbackStats, ScopedFlushDenormals
   src/audio       Pure:  AudioSettings, LatencyDetector, PassThrough
@@ -30,7 +32,9 @@ aural_unit_tests.exe
   tests/unit/core    Model, every command's undo/redo, JSON round trips
   tests/unit/engine  Queue/publisher, offline engine harness (sample-exact
                      playback, loop, solo/mute, pan, snapshot swaps under the RT
-                     hook), streaming source against a live disk thread, peaks
+                     hook), streaming source against a live disk thread, peaks,
+                     worker pool, callback stats, recording (sample-exact capture,
+                     device stop mid-record, WAV repair, monitoring)
 
 aural_loopback_tool.exe
   tests/hardware     Console tool: list devices, open one, run the loopback
@@ -168,6 +172,33 @@ Horizontal zoom is Ctrl+wheel around the pointer; the wheel scrolls tracks and
 Shift+wheel (or the scrollbar) scrolls time; clicking locates; audio files dropped
 on the view become tracks at the drop position. Clip editing is Phase 6.
 
+### Recording
+
+The recording path follows PLAN.md 3.4. A track has an input channel (an index
+into the device's active inputs), an armed flag and a monitor mode. Starting a
+recording builds an `engine::RecordSession` on the controller thread with one
+`RecordRing` (four seconds of samples) and one target file per armed track, hands it
+to the `RecordWriter` thread (which opens the float WAVs) and then to the real-time
+thread through the transport command queue. Every block, the real-time thread
+pushes each captured input into its ring and the transport plays; the writer drains
+the rings every 10 ms and rewrites the WAV headers every second, so a crash loses at
+most a second of header bookkeeping and nothing of the audio. Overruns (a full ring)
+drop the block and count it rather than block.
+
+Stop, locate or a device stop end the session on the real-time side; once the
+writer has closed the files the session polls `collectRecording()`, renames the
+`.partial.wav` files to `.wav` and adds the clips in one undo step, shifted back by
+`recordingLatencySamples()`: the loopback calibration when it matches the device
+configuration, otherwise the driver's reported input plus output latency. At
+startup and on open, `recoverPartialRecordings()` repairs any `.partial.wav` left in
+the media folder from the file size (`WavWriter::repair`) and imports it as a
+"Recovered" track.
+
+Input monitoring is part of the track render: a track in monitor mode "on" always
+hears its input through its gain and pan; "automatic" hears it while armed and the
+transport is not playing back (stopped or recording); "off" never. The Phase 1
+pass-through in Audio Setup is still available as a global monitor and adds on top.
+
 ### Phase 2 milestone
 
 32 stereo WAVs on 32 tracks on the Universal Audio Volt at 48 kHz / 64 samples:
@@ -234,3 +265,7 @@ launches; `JUCE_MODAL_LOOPS_PERMITTED` stays 0.
 | 2026-10-19 | Per-track buffers live in the snapshot, not in a global pool | The snapshot already knows every track and is built on the controller thread, so sizing the buffers there needs no separate pool manager and no RT-side bookkeeping; a snapshot of 32 tracks costs about 4 MB. The engine caps a render call at 8192 samples and splits larger device blocks. |
 | 2026-10-19 | Workers woken by a counting semaphore, completion by spinning | A semaphore release is the cheapest non-blocking wake available on Windows; the callback thread spins on the remaining-jobs count because the wait is bounded by one track's render on a time-critical thread. Work stealing and a dependency graph come with buses in Phase 4. |
 | 2026-10-19 | Callback load as a histogram of deadline fractions | Percentiles from a fixed histogram need no sorting and no allocation, and a fraction of the deadline is the figure a user actually wants: 50% means half the headroom is gone whatever the buffer size. |
+| 2026-10-19 | Recordings are 32-bit float mono WAV per track input | Float matches the engine's pipeline exactly and never clips; one file per input keeps placement and recovery trivial. Stereo inputs become two tracks for now; linked stereo tracks come with the mixer. |
+| 2026-10-19 | The record session lives outside the snapshot | A snapshot swap (any edit while recording) must not disturb the rings or restart capture; the session is handed to the real-time thread once and ended by a transport command, so editing during a take is safe. |
+| 2026-10-19 | Crash safety by periodic header rewrite plus repair from file size | The standard DAW approach: a valid file at every second boundary, and the trailing data recovered by trusting the file size. A journal or a second file would add complexity without saving more audio. |
+| 2026-10-19 | Recordings placed by calibration when it matches, else reported latency | The measurement is the truth when it exists for this device/rate/buffer; falling back to the driver's figures keeps placement roughly right instead of silently wrong. |
