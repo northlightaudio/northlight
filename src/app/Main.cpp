@@ -48,6 +48,7 @@ public:
     //   --loop <from> <to>   set and enable the loop region, in seconds
     //   --no-count-in        record without the count-in
     //   --midi-track         add a MIDI track (built-in synth) with a short clip
+    //   --midi-track-with <type>  the same with the given instrument type instead
     //   --piano-roll         open the piano roll on the first MIDI clip
     void applyLaunchFlags(const juce::String& commandLine)
     {
@@ -90,10 +91,23 @@ public:
             }
             else if (arg == "--no-count-in")
                 session_->setCountInBars(0);
-            else if (arg == "--midi-track")
+            else if (arg == "--midi-track" || (arg == "--midi-track-with" && i + 1 < tokens.size()))
             {
-                // A MIDI track with the built-in synth and a four-note clip.
+                // A MIDI track with the built-in synth (or the given instrument type)
+                // and a four-note clip.
                 const auto trackId = session_->addMidiTrack();
+                if (arg == "--midi-track-with")
+                {
+                    const auto type = tokens.getReference(++i).text.unquoted().toStdString();
+                    if (const auto* track = session_->project().findTrack(trackId);
+                        track != nullptr && !track->inserts.empty())
+                        session_->execute(
+                            std::make_unique<core::RemoveInsert>(trackId, track->inserts[0].id));
+                    core::Insert instrument;
+                    instrument.type = type;
+                    instrument.params = plugins::defaultParameters(type);
+                    session_->execute(std::make_unique<core::AddInsert>(trackId, instrument));
+                }
                 const auto beat = static_cast<core::SamplePosition>(
                     core::samplesPerBeat(session_->project().sampleRate,
                                          session_->project().tempoBpm,
