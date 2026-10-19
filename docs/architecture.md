@@ -403,8 +403,10 @@ minus the lag).
 
 Scanning is out of process from day one: `aural_plugin_scan <file>` loads one
 file and prints its `PluginDescription`s as XML, and `hosting::PluginScanner` runs
-it per candidate on a background thread with a timeout, reading its output as it
-goes. A crash, hang or garbage result blocklists the file (with the reason) until
+it per candidate on a background thread with a timeout: the child's output is
+drained on a helper thread (a JUCE child-process read blocks until the child
+exits, so the waiting thread holds the deadline and kills a hung child, which
+unblocks the reader). A crash, hang or garbage result blocklists the file (with the reason) until
 the user clears the list; a clean result replaces what the registry held for that
 file. `hosting::PluginRegistry` (JUCE-free, `plugins.json` beside the user
 settings) records each file's modification time, so a rescan only inspects files

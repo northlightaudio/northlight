@@ -19,9 +19,17 @@ target_link_libraries(aural_juce_tests PRIVATE
     aural_juce
     Catch2::Catch2WithMain)
 
+# A scanner stand-in that crashes, hangs or talks nonsense on request (mode from
+# the environment), driven through PluginScanner::inspect with its path.
+add_executable(aural_scan_stub ScanStub.cpp)
+target_link_libraries(aural_scan_stub PRIVATE aural_options)
+set_target_properties(aural_scan_stub PROPERTIES WIN32_EXECUTABLE FALSE)
+add_dependencies(aural_juce_tests aural_scan_stub)
+
 # The scanner beside the tests, where PluginScanner looks for it.
 add_custom_command(TARGET aural_juce_tests POST_BUILD
-    COMMAND ${CMAKE_COMMAND} -E copy_if_different $<TARGET_FILE:aural_plugin_scan> $<TARGET_FILE_DIR:aural_juce_tests>)
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different $<TARGET_FILE:aural_plugin_scan> $<TARGET_FILE_DIR:aural_juce_tests>
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different $<TARGET_FILE:aural_scan_stub> $<TARGET_FILE_DIR:aural_juce_tests>)
 add_dependencies(aural_juce_tests aural_plugin_scan)
 
 include(Catch)

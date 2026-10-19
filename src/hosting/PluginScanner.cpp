@@ -1,7 +1,7 @@
 #include "hosting/PluginScanner.h"
 
-#include <chrono>
 #include <cstdlib>
+#include <thread>
 
 namespace aural::hosting
 {
@@ -76,32 +76,27 @@ bool PluginScanner::inspect(const juce::File& scanner,
         error = "could not start the scanner";
         return false;
     }
-    // Read while it runs so a chatty plugin cannot fill the pipe and block.
-    juce::MemoryOutputStream output;
-    const auto deadline = std::chrono::steady_clock::now() + std::chrono::milliseconds(timeoutMs);
-    char chunk[4096];
-    for (;;)
+    // ChildProcess reads block until the child exits (or the request is filled),
+    // so the output is drained on a helper thread while this one waits with the
+    // deadline; a kill on timeout ends the child and unblocks the reader. The
+    // reader also keeps a chatty plugin from filling the pipe and stalling.
+    juce::String output;
+    std::thread reader([&process, &output] { output = process.readAllProcessOutput(); });
+    const bool finished = process.waitForProcessToFinish(timeoutMs);
+    if (!finished)
+        process.kill();
+    reader.join();
+    if (!finished)
     {
-        const int got = process.readProcessOutput(chunk, sizeof(chunk));
-        if (got > 0)
-            output.write(chunk, static_cast<size_t>(got));
-        else if (!process.isRunning())
-            break;
-        else if (std::chrono::steady_clock::now() > deadline)
-        {
-            process.kill();
-            error = "timed out";
-            return false;
-        }
-        else
-            juce::Thread::sleep(5);
+        error = "timed out";
+        return false;
     }
     if (process.getExitCode() != 0)
     {
         error = "the scanner process failed (exit code " + std::to_string(process.getExitCode()) + ")";
         return false;
     }
-    const auto xml = juce::XmlDocument::parse(output.toString());
+    const auto xml = juce::XmlDocument::parse(output);
     if (xml == nullptr || !xml->hasTagName("plugins"))
     {
         error = "the scanner produced no result";

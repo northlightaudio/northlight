@@ -8,6 +8,7 @@
 
 #include <atomic>
 #include <cmath>
+#include <cstdlib>
 #include <numbers>
 #include <vector>
 
@@ -185,4 +186,39 @@ TEST_CASE("A hosted plugin lists its programs and round-trips a .vstpreset file"
     CHECK_FALSE(hosted->loadPresetFile(
         juce::File::getSpecialLocation(juce::File::tempDirectory).getChildFile("aural-missing.vstpreset")));
     file.deleteFile();
+}
+
+TEST_CASE("A scanner that crashes, hangs or talks nonsense fails the file so it is blocklisted",
+          "[hosting][scan]")
+{
+    const juce::ScopedJuceInitialiser_GUI juceInit;
+    // The stub stands in for the scanner and misbehaves as the environment says.
+    const auto stub = juce::File::getSpecialLocation(juce::File::currentExecutableFile)
+                          .getSiblingFile("aural_scan_stub.exe");
+    REQUIRE(stub.existsAsFile());
+    const auto target =
+        juce::File::getSpecialLocation(juce::File::tempDirectory).getChildFile("stub-target.vst3");
+    REQUIRE(target.replaceWithText("x"));
+    const auto mode = [](const char* value) { _putenv_s("AURAL_SCAN_STUB_MODE", value); };
+
+    std::vector<hosting::PluginInfo> found;
+    std::string error;
+    mode("crash");
+    CHECK_FALSE(hosting::PluginScanner::inspect(stub, target, found, error, 20000));
+    CHECK(error.find("failed") != std::string::npos);
+    mode("hang");
+    CHECK_FALSE(hosting::PluginScanner::inspect(stub, target, found, error, 500));
+    CHECK(error == "timed out");
+    mode("junk");
+    CHECK_FALSE(hosting::PluginScanner::inspect(stub, target, found, error, 20000));
+    CHECK(error.find("no result") != std::string::npos);
+    mode("ok");
+    CHECK(hosting::PluginScanner::inspect(stub, target, found, error, 20000));
+    CHECK(found.empty());
+    mode("");
+
+    hosting::PluginRegistry registry;
+    registry.block(target.getFullPathName().toStdString(), "timed out");
+    CHECK(registry.isBlocked(target.getFullPathName().toStdString()));
+    CHECK_FALSE(registry.needsScan(target.getFullPathName().toStdString(), 1));
 }
