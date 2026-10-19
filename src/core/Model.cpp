@@ -6,6 +6,14 @@
 namespace aural::core
 {
 
+Send* Channel::findSend(Id busId) noexcept
+{
+    for (auto& s : sends)
+        if (s.bus == busId)
+            return &s;
+    return nullptr;
+}
+
 AudioClip* Track::findClip(Id clipId) noexcept
 {
     for (auto& c : clips)
@@ -50,6 +58,44 @@ int Project::trackIndex(Id trackId) const noexcept
         if (tracks[i].id == trackId)
             return static_cast<int>(i);
     return -1;
+}
+
+Bus* Project::findBus(Id busId) noexcept
+{
+    for (auto& b : buses)
+        if (b.id == busId)
+            return &b;
+    return nullptr;
+}
+
+const Bus* Project::findBus(Id busId) const noexcept
+{
+    for (const auto& b : buses)
+        if (b.id == busId)
+            return &b;
+    return nullptr;
+}
+
+int Project::busIndex(Id busId) const noexcept
+{
+    for (size_t i = 0; i < buses.size(); ++i)
+        if (buses[i].id == busId)
+            return static_cast<int>(i);
+    return -1;
+}
+
+Channel* Project::findChannel(Id channelId) noexcept
+{
+    if (auto* t = findTrack(channelId))
+        return t;
+    return findBus(channelId);
+}
+
+const Channel* Project::findChannel(Id channelId) const noexcept
+{
+    if (const auto* t = findTrack(channelId))
+        return t;
+    return findBus(channelId);
 }
 
 SamplePosition Project::length() const noexcept

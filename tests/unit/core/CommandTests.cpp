@@ -165,6 +165,66 @@ TEST_CASE("Clips can be added, moved between tracks, trimmed and removed with un
     CHECK(p.tracks[0].clips.empty());
 }
 
+TEST_CASE("Buses, routing and sends are added, changed and undone", "[core][command]")
+{
+    Project p = projectWithTrack();
+    UndoStack stack;
+    const Id track = p.tracks[0].id;
+
+    Bus reverb;
+    reverb.name = "Reverb";
+    auto add = std::make_unique<AddBus>(reverb);
+    const auto* addPtr = add.get();
+    stack.execute(p, std::move(add));
+    const Id bus = addPtr->busId();
+    REQUIRE(p.buses.size() == 1);
+    CHECK(p.findBus(bus) != nullptr);
+    CHECK(p.findChannel(bus) == p.findBus(bus));
+    CHECK(p.findChannel(track) == p.findTrack(track));
+
+    stack.execute(p, std::make_unique<SetOutputBus>(track, bus));
+    stack.execute(p, std::make_unique<SetSend>(track, bus, 0.5f, true));
+    stack.execute(p, std::make_unique<SetSend>(track, bus, 0.25f, false)); // update
+    stack.execute(p, std::make_unique<SetPhaseInvert>(track, true));
+    stack.execute(p, std::make_unique<SetColour>(track, 0xff336699u));
+    stack.execute(p, std::make_unique<SetTrackGain>(bus, 0.7f)); // fader commands work on buses
+    stack.execute(p, std::make_unique<SetMasterGain>(0.9f));
+    CHECK(p.tracks[0].outputBus == bus);
+    REQUIRE(p.tracks[0].sends.size() == 1);
+    CHECK(p.tracks[0].sends[0] == Send{bus, 0.25f, false});
+    CHECK(p.tracks[0].phaseInvert);
+    CHECK(p.tracks[0].colour == 0xff336699u);
+    CHECK(p.buses[0].gain == 0.7f);
+    CHECK(p.master.gain == 0.9f);
+
+    // Removing the bus detaches the routing and the send; undo restores both.
+    stack.execute(p, std::make_unique<RemoveBus>(bus));
+    CHECK(p.buses.empty());
+    CHECK(p.tracks[0].outputBus == invalidId);
+    CHECK(p.tracks[0].sends.empty());
+    stack.undo(p);
+    REQUIRE(p.buses.size() == 1);
+    CHECK(p.tracks[0].outputBus == bus);
+    REQUIRE(p.tracks[0].sends.size() == 1);
+
+    stack.execute(p, std::make_unique<RemoveSend>(track, bus));
+    CHECK(p.tracks[0].sends.empty());
+    stack.undo(p);
+    CHECK(p.tracks[0].sends.size() == 1);
+
+    while (stack.undo(p))
+    {
+    }
+    CHECK(p.buses.empty());
+    CHECK(p.tracks[0].outputBus == invalidId);
+    CHECK(p.tracks[0].sends.empty());
+    CHECK_FALSE(p.tracks[0].phaseInvert);
+    CHECK(p.tracks[0].colour == 0);
+    CHECK(p.master.gain == 1.0f);
+
+    CHECK_THROWS(SetOutputBus(track, 999).apply(p));
+}
+
 TEST_CASE("A group of commands undoes as one step", "[core][command]")
 {
     Project p = projectWithTrack();

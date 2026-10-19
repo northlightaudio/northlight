@@ -84,6 +84,119 @@ private:
     int index_ = -1;
 };
 
+class AddBus final : public Command
+{
+public:
+    AddBus(Bus bus, int index = -1);
+    std::string name() const override { return "Add bus"; }
+    void apply(Project&) override;
+    void revert(Project&) override;
+    Id busId() const noexcept { return bus_.id; }
+
+private:
+    Bus bus_;
+    int index_;
+};
+
+// Removing a bus also detaches everything routed or sent to it (restored on undo).
+class RemoveBus final : public Command
+{
+public:
+    explicit RemoveBus(Id busId);
+    std::string name() const override { return "Remove bus"; }
+    void apply(Project&) override;
+    void revert(Project&) override;
+
+private:
+    Id busId_;
+    Bus removed_;
+    int index_ = -1;
+    std::vector<std::pair<Id, Id>> detachedOutputs_; // channel id, previous output bus
+    std::vector<std::pair<Id, Send>> detachedSends_; // channel id, removed send
+};
+
+// Routes a track or bus to a bus (invalidId = master).
+class SetOutputBus final : public Command
+{
+public:
+    SetOutputBus(Id channelId, Id busId);
+    std::string name() const override { return "Set output"; }
+    void apply(Project&) override;
+    void revert(Project&) override;
+
+private:
+    Id channelId_, value_, previous_ = invalidId;
+};
+
+// Adds or updates a send from a track or bus to a bus.
+class SetSend final : public Command
+{
+public:
+    SetSend(Id channelId, Id busId, float level, bool preFader);
+    std::string name() const override { return "Set send"; }
+    void apply(Project&) override;
+    void revert(Project&) override;
+
+private:
+    Id channelId_;
+    Send value_;
+    bool existed_ = false;
+    Send previous_;
+};
+
+class RemoveSend final : public Command
+{
+public:
+    RemoveSend(Id channelId, Id busId);
+    std::string name() const override { return "Remove send"; }
+    void apply(Project&) override;
+    void revert(Project&) override;
+
+private:
+    Id channelId_, busId_;
+    bool existed_ = false;
+    Send previous_;
+};
+
+class SetPhaseInvert final : public Command
+{
+public:
+    SetPhaseInvert(Id channelId, bool invert);
+    std::string name() const override { return "Invert phase"; }
+    void apply(Project&) override;
+    void revert(Project&) override;
+
+private:
+    Id channelId_;
+    bool value_, previous_ = false;
+};
+
+class SetColour final : public Command
+{
+public:
+    SetColour(Id channelId, std::uint32_t colour);
+    std::string name() const override { return "Set colour"; }
+    void apply(Project&) override;
+    void revert(Project&) override;
+
+private:
+    Id channelId_;
+    std::uint32_t value_, previous_ = 0;
+};
+
+class SetMasterGain final : public Command
+{
+public:
+    explicit SetMasterGain(float gain);
+    std::string name() const override { return "Set master gain"; }
+    void apply(Project&) override;
+    void revert(Project&) override;
+
+private:
+    float value_, previous_ = 1.0f;
+};
+
+// The fader-section commands below take a track or bus id.
 class SetTrackName final : public Command
 {
 public:

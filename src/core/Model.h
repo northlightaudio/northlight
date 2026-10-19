@@ -39,7 +39,17 @@ enum class MonitorMode
     on,        // always hear the input
 };
 
-struct Track
+// An aux send from a track or bus into a bus.
+struct Send
+{
+    Id bus = invalidId;
+    float level = 1.0f;    // linear
+    bool preFader = false; // taps before the channel gain (after pan and phase)
+    bool operator==(const Send&) const = default;
+};
+
+// What tracks and buses share: the fader section and routing.
+struct Channel
 {
     Id id = invalidId;
     std::string name;
@@ -47,6 +57,17 @@ struct Track
     float pan = 0.0f;  // -1 left .. +1 right
     bool mute = false;
     bool solo = false;
+    bool phaseInvert = false;
+    std::uint32_t colour = 0; // 0xAARRGGBB, 0 = default
+    Id outputBus = invalidId; // invalidId routes to the master
+    std::vector<Send> sends;
+
+    Send* findSend(Id busId) noexcept;
+    bool operator==(const Channel&) const = default;
+};
+
+struct Track : Channel
+{
     int inputChannel = -1; // device input channel index (callback order), -1 = none
     bool armed = false;    // records when the transport records
     MonitorMode monitor = MonitorMode::automatic;
@@ -56,6 +77,17 @@ struct Track
     const AudioClip* findClip(Id clipId) const noexcept;
     void sortClips();
     bool operator==(const Track&) const = default;
+};
+
+struct Bus : Channel
+{
+    bool operator==(const Bus&) const = default;
+};
+
+struct Master
+{
+    float gain = 1.0f;
+    bool operator==(const Master&) const = default;
 };
 
 struct TimeSignature
@@ -74,6 +106,8 @@ struct Project
     double tempoBpm = 120.0;
     TimeSignature timeSignature;
     std::vector<Track> tracks;
+    std::vector<Bus> buses;
+    Master master;
     Id nextId = 1;
 
     Id allocateId() noexcept { return nextId++; }
@@ -81,6 +115,12 @@ struct Project
     Track* findTrack(Id trackId) noexcept;
     const Track* findTrack(Id trackId) const noexcept;
     int trackIndex(Id trackId) const noexcept; // -1 when absent
+    Bus* findBus(Id busId) noexcept;
+    const Bus* findBus(Id busId) const noexcept;
+    int busIndex(Id busId) const noexcept;
+    // A track or a bus, by id.
+    Channel* findChannel(Id channelId) noexcept;
+    const Channel* findChannel(Id channelId) const noexcept;
 
     // Length of the longest track in samples.
     SamplePosition length() const noexcept;

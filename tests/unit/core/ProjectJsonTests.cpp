@@ -29,8 +29,23 @@ Project sampleProject()
     u.inputChannel = 2;
     u.armed = true;
     u.monitor = MonitorMode::on;
+    u.phaseInvert = true;
+    u.colour = 0xffaa5500u;
+    u.outputBus = 5;
+    u.sends.push_back({6, 0.3f, true});
     p.tracks.push_back(u);
-    p.nextId = 5;
+    Bus drums;
+    drums.id = 5;
+    drums.name = "Drum bus";
+    drums.gain = 0.9f;
+    drums.sends.push_back({6, 0.5f, false});
+    p.buses.push_back(drums);
+    Bus verb;
+    verb.id = 6;
+    verb.name = "Reverb";
+    p.buses.push_back(verb);
+    p.master.gain = 0.8f;
+    p.nextId = 7;
     return p;
 }
 } // namespace

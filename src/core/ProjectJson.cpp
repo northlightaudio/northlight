@@ -33,6 +33,45 @@ AudioClip clipFromJson(const json& j)
     return c;
 }
 
+void channelToJson(json& j, const Channel& c)
+{
+    j["id"] = c.id;
+    j["name"] = c.name;
+    j["gain"] = c.gain;
+    j["pan"] = c.pan;
+    j["mute"] = c.mute;
+    j["solo"] = c.solo;
+    if (c.phaseInvert)
+        j["phaseInvert"] = true;
+    if (c.colour != 0)
+        j["colour"] = c.colour;
+    if (c.outputBus != invalidId)
+        j["output"] = c.outputBus;
+    if (!c.sends.empty())
+    {
+        json sends = json::array();
+        for (const auto& s : c.sends)
+            sends.push_back(json{{"bus", s.bus}, {"level", s.level}, {"pre", s.preFader}});
+        j["sends"] = std::move(sends);
+    }
+}
+
+void channelFromJson(const json& j, Channel& c)
+{
+    c.id = j.value("id", invalidId);
+    c.name = j.value("name", std::string{});
+    c.gain = j.value("gain", 1.0f);
+    c.pan = j.value("pan", 0.0f);
+    c.mute = j.value("mute", false);
+    c.solo = j.value("solo", false);
+    c.phaseInvert = j.value("phaseInvert", false);
+    c.colour = j.value("colour", std::uint32_t{0});
+    c.outputBus = j.value("output", invalidId);
+    if (const auto it = j.find("sends"); it != j.end() && it->is_array())
+        for (const auto& s : *it)
+            c.sends.push_back(Send{s.value("bus", invalidId), s.value("level", 1.0f), s.value("pre", false)});
+}
+
 json trackToJson(const Track& t)
 {
     json clips = json::array();
@@ -41,27 +80,33 @@ json trackToJson(const Track& t)
     const char* monitor = t.monitor == MonitorMode::off  ? "off"
                           : t.monitor == MonitorMode::on ? "on"
                                                          : "auto";
-    return json{{"id", t.id},
-                {"name", t.name},
-                {"gain", t.gain},
-                {"pan", t.pan},
-                {"mute", t.mute},
-                {"solo", t.solo},
-                {"input", t.inputChannel},
-                {"armed", t.armed},
-                {"monitor", monitor},
-                {"clips", std::move(clips)}};
+    json j;
+    channelToJson(j, t);
+    j["input"] = t.inputChannel;
+    j["armed"] = t.armed;
+    j["monitor"] = monitor;
+    j["clips"] = std::move(clips);
+    return j;
+}
+
+json busToJson(const Bus& b)
+{
+    json j;
+    channelToJson(j, b);
+    return j;
+}
+
+Bus busFromJson(const json& j)
+{
+    Bus b;
+    channelFromJson(j, b);
+    return b;
 }
 
 Track trackFromJson(const json& j)
 {
     Track t;
-    t.id = j.value("id", invalidId);
-    t.name = j.value("name", std::string{});
-    t.gain = j.value("gain", 1.0f);
-    t.pan = j.value("pan", 0.0f);
-    t.mute = j.value("mute", false);
-    t.solo = j.value("solo", false);
+    channelFromJson(j, t);
     t.inputChannel = j.value("input", -1);
     t.armed = j.value("armed", false);
     const auto monitor = j.value("monitor", std::string{"auto"});
@@ -81,6 +126,9 @@ std::string projectToJson(const Project& p, bool pretty)
     json tracks = json::array();
     for (const auto& t : p.tracks)
         tracks.push_back(trackToJson(t));
+    json buses = json::array();
+    for (const auto& b : p.buses)
+        buses.push_back(busToJson(b));
 
     const json j{
         {"format", "aural.project"},
@@ -91,6 +139,8 @@ std::string projectToJson(const Project& p, bool pretty)
         {"timeSignature",
          json{{"numerator", p.timeSignature.numerator}, {"denominator", p.timeSignature.denominator}}},
         {"nextId", p.nextId},
+        {"master", json{{"gain", p.master.gain}}},
+        {"buses", std::move(buses)},
         {"tracks", std::move(tracks)}};
     return pretty ? j.dump(2) : j.dump();
 }
@@ -128,6 +178,11 @@ std::optional<Project> projectFromJson(const std::string& text, std::string* err
         if (const auto it = j.find("tracks"); it != j.end() && it->is_array())
             for (const auto& t : *it)
                 p.tracks.push_back(trackFromJson(t));
+        if (const auto it = j.find("buses"); it != j.end() && it->is_array())
+            for (const auto& b : *it)
+                p.buses.push_back(busFromJson(b));
+        if (const auto it = j.find("master"); it != j.end() && it->is_object())
+            p.master.gain = it->value("gain", 1.0f);
 
         // Guarantee ids stay unique even if the file's nextId is stale.
         Id maxId = 0;
@@ -137,6 +192,8 @@ std::optional<Project> projectFromJson(const std::string& text, std::string* err
             for (const auto& c : t.clips)
                 maxId = std::max(maxId, c.id);
         }
+        for (const auto& b : p.buses)
+            maxId = std::max(maxId, b.id);
         p.nextId = std::max(p.nextId, maxId + 1);
         return p;
     }

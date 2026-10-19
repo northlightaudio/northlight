@@ -116,6 +116,22 @@ Track& requireTrack(Project& p, Id id)
     return *t;
 }
 
+Channel& requireChannel(Project& p, Id id)
+{
+    auto* c = p.findChannel(id);
+    if (c == nullptr)
+        throw std::logic_error("command references a channel that does not exist");
+    return *c;
+}
+
+Bus& requireBus(Project& p, Id id)
+{
+    auto* b = p.findBus(id);
+    if (b == nullptr)
+        throw std::logic_error("command references a bus that does not exist");
+    return *b;
+}
+
 AudioClip& requireClip(Track& t, Id id)
 {
     auto* c = t.findClip(id);
@@ -166,64 +182,230 @@ void RemoveTrack::revert(Project& p)
     p.tracks.insert(p.tracks.begin() + at, removed_);
 }
 
+AddBus::AddBus(Bus bus, int index) : bus_(std::move(bus)), index_(index) {}
+
+void AddBus::apply(Project& p)
+{
+    if (bus_.id == invalidId)
+        bus_.id = p.allocateId();
+    const int at =
+        index_ < 0 || index_ > static_cast<int>(p.buses.size()) ? static_cast<int>(p.buses.size()) : index_;
+    index_ = at;
+    p.buses.insert(p.buses.begin() + at, bus_);
+}
+
+void AddBus::revert(Project& p)
+{
+    const int i = p.busIndex(bus_.id);
+    if (i >= 0)
+        p.buses.erase(p.buses.begin() + i);
+}
+
+RemoveBus::RemoveBus(Id busId) : busId_(busId) {}
+
+void RemoveBus::apply(Project& p)
+{
+    index_ = p.busIndex(busId_);
+    if (index_ < 0)
+        throw std::logic_error("command references a bus that does not exist");
+    removed_ = p.buses[static_cast<size_t>(index_)];
+    detachedOutputs_.clear();
+    detachedSends_.clear();
+    const auto detach = [&](Channel& c)
+    {
+        if (c.outputBus == busId_)
+        {
+            detachedOutputs_.emplace_back(c.id, c.outputBus);
+            c.outputBus = invalidId;
+        }
+        for (auto it = c.sends.begin(); it != c.sends.end();)
+        {
+            if (it->bus == busId_)
+            {
+                detachedSends_.emplace_back(c.id, *it);
+                it = c.sends.erase(it);
+            }
+            else
+                ++it;
+        }
+    };
+    for (auto& t : p.tracks)
+        detach(t);
+    for (auto& b : p.buses)
+        if (b.id != busId_)
+            detach(b);
+    p.buses.erase(p.buses.begin() + index_);
+}
+
+void RemoveBus::revert(Project& p)
+{
+    const int at = std::clamp(index_, 0, static_cast<int>(p.buses.size()));
+    p.buses.insert(p.buses.begin() + at, removed_);
+    for (const auto& [channelId, output] : detachedOutputs_)
+        if (auto* c = p.findChannel(channelId))
+            c->outputBus = output;
+    for (const auto& [channelId, send] : detachedSends_)
+        if (auto* c = p.findChannel(channelId))
+            c->sends.push_back(send);
+}
+
+SetOutputBus::SetOutputBus(Id channelId, Id busId) : channelId_(channelId), value_(busId) {}
+void SetOutputBus::apply(Project& p)
+{
+    auto& c = requireChannel(p, channelId_);
+    if (value_ != invalidId)
+        requireBus(p, value_);
+    previous_ = c.outputBus;
+    c.outputBus = value_;
+}
+void SetOutputBus::revert(Project& p)
+{
+    requireChannel(p, channelId_).outputBus = previous_;
+}
+
+SetSend::SetSend(Id channelId, Id busId, float level, bool preFader)
+    : channelId_(channelId), value_{busId, level, preFader}
+{
+}
+void SetSend::apply(Project& p)
+{
+    auto& c = requireChannel(p, channelId_);
+    requireBus(p, value_.bus);
+    if (auto* existing = c.findSend(value_.bus))
+    {
+        existed_ = true;
+        previous_ = *existing;
+        *existing = value_;
+    }
+    else
+    {
+        existed_ = false;
+        c.sends.push_back(value_);
+    }
+}
+void SetSend::revert(Project& p)
+{
+    auto& c = requireChannel(p, channelId_);
+    if (existed_)
+    {
+        if (auto* existing = c.findSend(value_.bus))
+            *existing = previous_;
+    }
+    else
+        std::erase_if(c.sends, [this](const Send& s) { return s.bus == value_.bus; });
+}
+
+RemoveSend::RemoveSend(Id channelId, Id busId) : channelId_(channelId), busId_(busId) {}
+void RemoveSend::apply(Project& p)
+{
+    auto& c = requireChannel(p, channelId_);
+    existed_ = false;
+    if (auto* existing = c.findSend(busId_))
+    {
+        existed_ = true;
+        previous_ = *existing;
+        std::erase_if(c.sends, [this](const Send& s) { return s.bus == busId_; });
+    }
+}
+void RemoveSend::revert(Project& p)
+{
+    if (existed_)
+        requireChannel(p, channelId_).sends.push_back(previous_);
+}
+
+SetPhaseInvert::SetPhaseInvert(Id channelId, bool invert) : channelId_(channelId), value_(invert) {}
+void SetPhaseInvert::apply(Project& p)
+{
+    auto& c = requireChannel(p, channelId_);
+    previous_ = c.phaseInvert;
+    c.phaseInvert = value_;
+}
+void SetPhaseInvert::revert(Project& p)
+{
+    requireChannel(p, channelId_).phaseInvert = previous_;
+}
+
+SetColour::SetColour(Id channelId, std::uint32_t colour) : channelId_(channelId), value_(colour) {}
+void SetColour::apply(Project& p)
+{
+    auto& c = requireChannel(p, channelId_);
+    previous_ = c.colour;
+    c.colour = value_;
+}
+void SetColour::revert(Project& p)
+{
+    requireChannel(p, channelId_).colour = previous_;
+}
+
+SetMasterGain::SetMasterGain(float gain) : value_(gain) {}
+void SetMasterGain::apply(Project& p)
+{
+    previous_ = p.master.gain;
+    p.master.gain = value_;
+}
+void SetMasterGain::revert(Project& p)
+{
+    p.master.gain = previous_;
+}
+
 SetTrackName::SetTrackName(Id trackId, std::string name) : trackId_(trackId), value_(std::move(name)) {}
 void SetTrackName::apply(Project& p)
 {
-    auto& t = requireTrack(p, trackId_);
+    auto& t = requireChannel(p, trackId_);
     previous_ = t.name;
     t.name = value_;
 }
 void SetTrackName::revert(Project& p)
 {
-    requireTrack(p, trackId_).name = previous_;
+    requireChannel(p, trackId_).name = previous_;
 }
 
 SetTrackGain::SetTrackGain(Id trackId, float gain) : trackId_(trackId), value_(gain) {}
 void SetTrackGain::apply(Project& p)
 {
-    auto& t = requireTrack(p, trackId_);
+    auto& t = requireChannel(p, trackId_);
     previous_ = t.gain;
     t.gain = value_;
 }
 void SetTrackGain::revert(Project& p)
 {
-    requireTrack(p, trackId_).gain = previous_;
+    requireChannel(p, trackId_).gain = previous_;
 }
 
 SetTrackPan::SetTrackPan(Id trackId, float pan) : trackId_(trackId), value_(pan) {}
 void SetTrackPan::apply(Project& p)
 {
-    auto& t = requireTrack(p, trackId_);
+    auto& t = requireChannel(p, trackId_);
     previous_ = t.pan;
     t.pan = value_;
 }
 void SetTrackPan::revert(Project& p)
 {
-    requireTrack(p, trackId_).pan = previous_;
+    requireChannel(p, trackId_).pan = previous_;
 }
 
 SetTrackMute::SetTrackMute(Id trackId, bool mute) : trackId_(trackId), value_(mute) {}
 void SetTrackMute::apply(Project& p)
 {
-    auto& t = requireTrack(p, trackId_);
+    auto& t = requireChannel(p, trackId_);
     previous_ = t.mute;
     t.mute = value_;
 }
 void SetTrackMute::revert(Project& p)
 {
-    requireTrack(p, trackId_).mute = previous_;
+    requireChannel(p, trackId_).mute = previous_;
 }
 
 SetTrackSolo::SetTrackSolo(Id trackId, bool solo) : trackId_(trackId), value_(solo) {}
 void SetTrackSolo::apply(Project& p)
 {
-    auto& t = requireTrack(p, trackId_);
+    auto& t = requireChannel(p, trackId_);
     previous_ = t.solo;
     t.solo = value_;
 }
 void SetTrackSolo::revert(Project& p)
 {
-    requireTrack(p, trackId_).solo = previous_;
+    requireChannel(p, trackId_).solo = previous_;
 }
 
 SetTrackInput::SetTrackInput(Id trackId, int inputChannel) : trackId_(trackId), value_(inputChannel) {}
