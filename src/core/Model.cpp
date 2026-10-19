@@ -160,6 +160,47 @@ std::vector<Channel*> Project::groupMembers(Id groupId) noexcept
     return members;
 }
 
+Marker* Project::findMarker(Id markerId) noexcept
+{
+    for (auto& m : markers)
+        if (m.id == markerId)
+            return &m;
+    return nullptr;
+}
+
+const Marker* Project::findMarker(Id markerId) const noexcept
+{
+    for (const auto& m : markers)
+        if (m.id == markerId)
+            return &m;
+    return nullptr;
+}
+
+void Project::sortMarkers()
+{
+    std::stable_sort(markers.begin(),
+                     markers.end(),
+                     [](const Marker& a, const Marker& b) { return a.position < b.position; });
+}
+
+const Marker* Project::markerBefore(SamplePosition position) const noexcept
+{
+    const Marker* best = nullptr;
+    for (const auto& m : markers)
+        if (m.position < position && (best == nullptr || m.position > best->position))
+            best = &m;
+    return best;
+}
+
+const Marker* Project::markerAfter(SamplePosition position) const noexcept
+{
+    const Marker* best = nullptr;
+    for (const auto& m : markers)
+        if (m.position > position && (best == nullptr || m.position < best->position))
+            best = &m;
+    return best;
+}
+
 bool Project::busReaches(Id fromBus, Id toBus) const noexcept
 {
     if (fromBus == invalidId || toBus == invalidId)

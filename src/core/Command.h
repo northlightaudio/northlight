@@ -219,6 +219,48 @@ private:
     std::vector<std::pair<Id, bool>> previous_;
 };
 
+// ----- markers -------------------------------------------------------------------------------
+
+class AddMarker final : public Command
+{
+public:
+    explicit AddMarker(Marker marker); // the id is allocated on apply if invalid
+    std::string name() const override { return "Add marker"; }
+    void apply(Project&) override;
+    void revert(Project&) override;
+    Id markerId() const noexcept { return marker_.id; }
+
+private:
+    Marker marker_;
+};
+
+class RemoveMarker final : public Command
+{
+public:
+    explicit RemoveMarker(Id markerId);
+    std::string name() const override { return "Remove marker"; }
+    void apply(Project&) override;
+    void revert(Project&) override;
+
+private:
+    Id markerId_;
+    Marker removed_;
+};
+
+// Position, length and name together (a move, a resize or a rename).
+class SetMarker final : public Command
+{
+public:
+    SetMarker(Id markerId, SamplePosition position, SamplePosition length, std::string name);
+    std::string name() const override { return "Edit marker"; }
+    void apply(Project&) override;
+    void revert(Project&) override;
+
+private:
+    Id markerId_;
+    Marker value_, previous_;
+};
+
 // Routes a track or bus to a bus (invalidId = master).
 class SetOutputBus final : public Command
 {

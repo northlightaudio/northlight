@@ -32,6 +32,11 @@ namespace aural::ui
 // overlapping neighbours, Ctrl+Shift+N normalises, Left/Right nudge by a grid
 // step, Ctrl+A selects all, Escape clears the selection. Every edit is issued as
 // commands through onEdit (one undo step each).
+//
+// Markers and regions live in the ruler's lower row: M adds a marker at the
+// playhead, Shift+M a region from the loop region, comma and full stop jump to
+// the previous and next marker, a click on a flag selects it (and locates), a
+// drag moves it (snapped), a double-click renames it, Delete removes it.
 class ArrangeView final : public juce::Component,
                           public juce::FileDragAndDropTarget,
                           private juce::ChangeListener,
@@ -119,6 +124,7 @@ private:
         fadeIn,
         fadeOut,
         gain,
+        marker,
     };
 
     void changeListenerCallback(juce::ChangeBroadcaster*) override;
@@ -174,6 +180,15 @@ private:
     void crossfadeSelection();
     void nudgeSelection(int direction);
     void normaliseSelection();
+    // Markers.
+    const core::Marker* markerAtRulerPoint(juce::Point<int> p) const noexcept;
+    juce::Rectangle<int> markerFlagBounds(const core::Marker& marker) const noexcept;
+    void drawMarkers(juce::Graphics& g, juce::Rectangle<int> timeRow);
+    void addMarkerAtPlayhead(bool region);
+    void jumpToMarker(int direction);
+    void renameMarker(core::Id markerId);
+    void finishMarkerDrag();
+    void mouseDoubleClick(const juce::MouseEvent& e) override;
     juce::MouseCursor cursorFor(Drag zone) const noexcept;
 
     const Theme& theme_ = Theme::dark();
@@ -213,6 +228,9 @@ private:
     float gainPreview_ = 1.0f;                                             // preview: gain
     juce::Rectangle<int> lasso_;
     bool draggedFar_ = false;
+    core::Id selectedMarker_ = core::invalidId;
+    core::Marker dragMarker_;                // the marker being dragged, as it was
+    core::SamplePosition markerPreview_ = 0; // its position during the drag
 };
 
 } // namespace aural::ui

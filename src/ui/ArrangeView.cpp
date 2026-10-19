@@ -35,6 +35,8 @@ void ArrangeView::setProject(const core::Project* project)
 {
     project_ = project;
     std::erase_if(selection_, [this](const ClipRef& ref) { return findClip(ref) == nullptr; });
+    if (project_ == nullptr || project_->findMarker(selectedMarker_) == nullptr)
+        selectedMarker_ = core::invalidId;
     rebuildHeaders();
     updateScrollbar();
     repaint();
@@ -236,11 +238,27 @@ void ArrangeView::mouseDown(const juce::MouseEvent& e)
         return;
     if (e.y < rulerHeight)
     {
-        // Drag in the ruler to set the loop/punch region; a plain click locates.
+        // A marker flag: select it, locate to it, and a drag moves it. Elsewhere
+        // a drag sets the loop/punch region and a plain click locates.
+        if (const auto* marker = markerAtRulerPoint(e.getPosition()))
+        {
+            selectedMarker_ = marker->id;
+            selection_.clear();
+            dragMarker_ = *marker;
+            markerPreview_ = marker->position;
+            dragStartSample_ = sampleForX(e.x);
+            drag_ = Drag::marker;
+            if (onLocate)
+                onLocate(marker->position);
+            repaint();
+            return;
+        }
+        selectedMarker_ = core::invalidId;
         drag_ = Drag::region;
         dragAnchor_ = sampleForX(e.x);
         return;
     }
+    selectedMarker_ = core::invalidId;
 
     dragStart_ = e.getPosition();
     dragStartSample_ = sampleForX(e.x);
@@ -298,6 +316,9 @@ void ArrangeView::mouseDrag(const juce::MouseEvent& e)
         case Drag::region:
             regionStart_ = std::min(dragAnchor_, at);
             regionEnd_ = std::max(dragAnchor_, at);
+            break;
+        case Drag::marker:
+            markerPreview_ = snapped(dragMarker_.position + (at - dragStartSample_));
             break;
         case Drag::lasso:
             lasso_ = juce::Rectangle<int>::leftTopRightBottom(std::min(dragStart_.x, x),
@@ -429,6 +450,10 @@ void ArrangeView::mouseUp(const juce::MouseEvent& e)
             else
                 std::erase(selection_, dragClip_); // Ctrl+click without a drag toggles
             break;
+        case Drag::marker:
+            if (draggedFar_)
+                finishMarkerDrag();
+            break;
         case Drag::none:
             break;
     }
@@ -555,6 +580,8 @@ void ArrangeView::drawRuler(juce::Graphics& g, juce::Rectangle<int> area)
         g.drawText(
             label, x + 3, timeRow.getY() + 1, 70, timeRow.getHeight() - 8, juce::Justification::centredLeft);
     }
+
+    drawMarkers(g, timeRow);
 }
 
 // ----- drag and drop ------------------------------------------------------------------------
@@ -772,6 +799,32 @@ void ArrangeView::paint(juce::Graphics& g)
         g.drawText("Import an audio file to create a track",
                    getLocalBounds().withTrimmedTop(rulerHeight),
                    juce::Justification::centred);
+    }
+
+    // Marker lines through the lanes (the flags sit in the ruler).
+    if (project_ != nullptr)
+    {
+        g.saveState();
+        g.reduceClipRegion(
+            headerWidth, rulerHeight, getWidth() - headerWidth - scrollbarWidth, lanesHeight());
+        for (const auto& m : project_->markers)
+        {
+            const auto position =
+                drag_ == Drag::marker && m.id == dragMarker_.id ? markerPreview_ : m.position;
+            const int x = xForSample(position);
+            const bool selected = m.id == selectedMarker_;
+            g.setColour((selected ? c.warning : c.textSecondary).withAlpha(0.6f));
+            g.fillRect(x, rulerHeight, 1, lanesHeight());
+            if (m.isRegion())
+            {
+                const int x1 = xForSample(position + m.length);
+                g.setColour(c.textSecondary.withAlpha(0.06f));
+                g.fillRect(x, rulerHeight, std::max(1, x1 - x), lanesHeight());
+                g.setColour(c.textSecondary.withAlpha(0.35f));
+                g.fillRect(x1, rulerHeight, 1, lanesHeight());
+            }
+        }
+        g.restoreState();
     }
 
     drawEditOverlay(g);
@@ -1133,7 +1186,31 @@ bool ArrangeView::handleEditKey(const juce::KeyPress& key)
     { return key == juce::KeyPress(ch, juce::ModifierKeys::commandModifier, 0); };
     if (key == juce::KeyPress::deleteKey || key == juce::KeyPress::backspaceKey)
     {
+        if (selectedMarker_ != core::invalidId && project_ != nullptr &&
+            project_->findMarker(selectedMarker_))
+        {
+            std::vector<std::unique_ptr<core::Command>> commands;
+            commands.push_back(std::make_unique<core::RemoveMarker>(selectedMarker_));
+            selectedMarker_ = core::invalidId;
+            emit(std::move(commands), "Remove marker");
+            return true;
+        }
         deleteSelection();
+        return true;
+    }
+    if (plain('m'))
+    {
+        addMarkerAtPlayhead(false);
+        return true;
+    }
+    if (key == juce::KeyPress('m', juce::ModifierKeys::shiftModifier, 0) || key == juce::KeyPress('M'))
+    {
+        addMarkerAtPlayhead(true);
+        return true;
+    }
+    if (plain(',') || plain('.'))
+    {
+        jumpToMarker(plain(',') ? -1 : 1);
         return true;
     }
     if (ctrl('d'))
@@ -1271,6 +1348,143 @@ void ArrangeView::drawEditOverlay(juce::Graphics& g)
         }
     }
     g.restoreState();
+}
+
+// ----- markers -------------------------------------------------------------------------------
+
+juce::Rectangle<int> ArrangeView::markerFlagBounds(const core::Marker& marker) const noexcept
+{
+    const auto position =
+        drag_ == Drag::marker && marker.id == dragMarker_.id ? markerPreview_ : marker.position;
+    const int x = xForSample(position);
+    const int width = marker.isRegion() ? std::max(14, xForSample(position + marker.length) - x)
+                                        : 14 + static_cast<int>(marker.name.size()) * 6;
+    return {x, rulerHeight / 2 + 2, std::max(14, std::min(width, 200)), rulerHeight / 2 - 4};
+}
+
+const core::Marker* ArrangeView::markerAtRulerPoint(juce::Point<int> p) const noexcept
+{
+    if (project_ == nullptr || p.y < rulerHeight / 2)
+        return nullptr;
+    // Later markers draw on top: test them first.
+    for (auto it = project_->markers.rbegin(); it != project_->markers.rend(); ++it)
+        if (markerFlagBounds(*it).contains(p))
+            return &*it;
+    return nullptr;
+}
+
+void ArrangeView::drawMarkers(juce::Graphics& g, juce::Rectangle<int> timeRow)
+{
+    if (project_ == nullptr)
+        return;
+    const auto& c = theme_.colours;
+    g.saveState();
+    g.reduceClipRegion(
+        headerWidth, timeRow.getY(), getWidth() - headerWidth - scrollbarWidth, timeRow.getHeight());
+    g.setFont(juce::FontOptions{theme_.type.caption});
+    for (const auto& m : project_->markers)
+    {
+        const auto flag = markerFlagBounds(m).withY(timeRow.getY() + 2).withHeight(timeRow.getHeight() - 4);
+        if (flag.getRight() < headerWidth || flag.getX() > getWidth())
+            continue;
+        const bool selected = m.id == selectedMarker_;
+        const auto fill = selected ? c.warning : c.accent;
+        g.setColour(fill.withAlpha(m.isRegion() ? 0.35f : 0.8f));
+        g.fillRoundedRectangle(flag.toFloat(), 3.0f);
+        g.setColour(fill);
+        g.fillRect(flag.getX(), flag.getY(), 2, flag.getHeight());
+        g.setColour(selected ? c.textPrimary : c.accentText);
+        g.drawText(juce::String::fromUTF8(m.name.c_str()),
+                   flag.reduced(4, 0),
+                   juce::Justification::centredLeft,
+                   true);
+    }
+    g.restoreState();
+}
+
+void ArrangeView::addMarkerAtPlayhead(bool region)
+{
+    if (project_ == nullptr)
+        return;
+    const auto at = playheadForEdits ? playheadForEdits() : playhead_;
+    core::Marker marker;
+    if (region && regionEnd_ > regionStart_)
+    {
+        marker.position = regionStart_;
+        marker.length = regionEnd_ - regionStart_;
+        marker.name = "Region " + std::to_string(project_->markers.size() + 1);
+    }
+    else
+    {
+        marker.position = at;
+        marker.name = "Marker " + std::to_string(project_->markers.size() + 1);
+    }
+    std::vector<std::unique_ptr<core::Command>> commands;
+    commands.push_back(std::make_unique<core::AddMarker>(marker));
+    emit(std::move(commands), region ? "Add region" : "Add marker");
+}
+
+void ArrangeView::jumpToMarker(int direction)
+{
+    if (project_ == nullptr || !onLocate)
+        return;
+    const auto at = playheadForEdits ? playheadForEdits() : playhead_;
+    const auto* target = direction < 0 ? project_->markerBefore(at) : project_->markerAfter(at);
+    if (target == nullptr)
+    {
+        if (direction < 0)
+            onLocate(0);
+        return;
+    }
+    selectedMarker_ = target->id;
+    onLocate(target->position);
+    repaint();
+}
+
+void ArrangeView::finishMarkerDrag()
+{
+    if (project_ == nullptr || project_->findMarker(dragMarker_.id) == nullptr ||
+        markerPreview_ == dragMarker_.position)
+        return;
+    std::vector<std::unique_ptr<core::Command>> commands;
+    commands.push_back(std::make_unique<core::SetMarker>(
+        dragMarker_.id, markerPreview_, dragMarker_.length, dragMarker_.name));
+    emit(std::move(commands), "Move marker");
+}
+
+void ArrangeView::renameMarker(core::Id markerId)
+{
+    const auto* marker = project_ != nullptr ? project_->findMarker(markerId) : nullptr;
+    if (marker == nullptr)
+        return;
+    auto* window = new juce::AlertWindow(
+        marker->isRegion() ? "Rename region" : "Rename marker", "", juce::MessageBoxIconType::NoIcon);
+    window->addTextEditor("name", juce::String::fromUTF8(marker->name.c_str()), "Name");
+    window->addButton("OK", 1, juce::KeyPress(juce::KeyPress::returnKey));
+    window->addButton("Cancel", 0, juce::KeyPress(juce::KeyPress::escapeKey));
+    juce::Component::SafePointer<ArrangeView> safe(this);
+    const core::Marker copy = *marker;
+    window->enterModalState(true,
+                            juce::ModalCallbackFunction::create(
+                                [safe, copy, window](int result)
+                                {
+                                    if (result == 1 && safe != nullptr)
+                                    {
+                                        const auto name = window->getTextEditorContents("name").toStdString();
+                                        std::vector<std::unique_ptr<core::Command>> commands;
+                                        commands.push_back(std::make_unique<core::SetMarker>(
+                                            copy.id, copy.position, copy.length, name));
+                                        safe->emit(std::move(commands), "Rename marker");
+                                    }
+                                }),
+                            true);
+}
+
+void ArrangeView::mouseDoubleClick(const juce::MouseEvent& e)
+{
+    if (e.y < rulerHeight)
+        if (const auto* marker = markerAtRulerPoint(e.getPosition()))
+            renameMarker(marker->id);
 }
 
 } // namespace aural::ui

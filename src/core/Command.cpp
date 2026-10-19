@@ -252,6 +252,67 @@ void RemoveBus::revert(Project& p)
                 c->sends.begin() + static_cast<std::ptrdiff_t>(std::min(d.index, c->sends.size())), d.send);
 }
 
+// ----- markers -------------------------------------------------------------------------------
+
+namespace
+{
+Marker& requireMarker(Project& p, Id id)
+{
+    auto* m = p.findMarker(id);
+    if (m == nullptr)
+        throw std::logic_error("command references a marker that does not exist");
+    return *m;
+}
+} // namespace
+
+AddMarker::AddMarker(Marker marker) : marker_(std::move(marker)) {}
+void AddMarker::apply(Project& p)
+{
+    if (marker_.id == invalidId)
+        marker_.id = p.allocateId();
+    marker_.position = std::max<SamplePosition>(0, marker_.position);
+    marker_.length = std::max<SamplePosition>(0, marker_.length);
+    p.markers.push_back(marker_);
+    p.sortMarkers();
+}
+void AddMarker::revert(Project& p)
+{
+    std::erase_if(p.markers, [this](const Marker& m) { return m.id == marker_.id; });
+}
+
+RemoveMarker::RemoveMarker(Id markerId) : markerId_(markerId) {}
+void RemoveMarker::apply(Project& p)
+{
+    removed_ = requireMarker(p, markerId_);
+    std::erase_if(p.markers, [this](const Marker& m) { return m.id == markerId_; });
+}
+void RemoveMarker::revert(Project& p)
+{
+    p.markers.push_back(removed_);
+    p.sortMarkers();
+}
+
+SetMarker::SetMarker(Id markerId, SamplePosition position, SamplePosition length, std::string name)
+    : markerId_(markerId)
+{
+    value_.id = markerId;
+    value_.position = std::max<SamplePosition>(0, position);
+    value_.length = std::max<SamplePosition>(0, length);
+    value_.name = std::move(name);
+}
+void SetMarker::apply(Project& p)
+{
+    auto& m = requireMarker(p, markerId_);
+    previous_ = m;
+    m = value_;
+    p.sortMarkers();
+}
+void SetMarker::revert(Project& p)
+{
+    requireMarker(p, markerId_) = previous_;
+    p.sortMarkers();
+}
+
 // ----- fader groups ----------------------------------------------------------------------------
 
 namespace

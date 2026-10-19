@@ -478,3 +478,44 @@ TEST_CASE("Shifting clips after a position moves the later ones and pins at zero
     CHECK(p.tracks[0].clips[1].start == 500);
     CHECK(p.tracks[0].clips[2].start == 900);
 }
+
+TEST_CASE("Markers and regions are added, moved, renamed, removed and kept in order",
+          "[core][command][markers]")
+{
+    Project p;
+    UndoStack stack;
+    auto add = std::make_unique<AddMarker>(Marker{invalidId, "Verse", 48000, 0});
+    const auto* addPtr = add.get();
+    stack.execute(p, std::move(add));
+    const Id verse = addPtr->markerId();
+    stack.execute(p, std::make_unique<AddMarker>(Marker{invalidId, "Intro", 0, 24000}));
+    REQUIRE(p.markers.size() == 2);
+    CHECK(p.markers[0].name == "Intro"); // sorted by position
+    CHECK(p.markers[0].isRegion());
+    CHECK(p.markers[0].end() == 24000);
+    CHECK_FALSE(p.markers[1].isRegion());
+
+    stack.execute(p, std::make_unique<SetMarker>(verse, -5, 0, "Verse 1")); // clamps at zero, re-sorts
+    CHECK(p.markers[1].id == verse); // equal positions keep their order: Intro stays first
+    CHECK(p.markers[1].name == "Verse 1");
+    CHECK(p.markers[1].position == 0);
+    stack.undo(p);
+    CHECK(p.markers[1].id == verse);
+    CHECK(p.markers[1].position == 48000);
+
+    CHECK(p.markerBefore(48000)->name == "Intro");
+    CHECK(p.markerAfter(0)->id == verse);
+    CHECK(p.markerAfter(48000) == nullptr);
+    CHECK(p.markerBefore(0) == nullptr);
+
+    stack.execute(p, std::make_unique<RemoveMarker>(verse));
+    CHECK(p.markers.size() == 1);
+    stack.undo(p);
+    REQUIRE(p.markers.size() == 2);
+    CHECK(p.findMarker(verse) != nullptr);
+    CHECK_THROWS(RemoveMarker(999).apply(p));
+    while (stack.undo(p))
+    {
+    }
+    CHECK(p.markers.empty());
+}

@@ -179,6 +179,15 @@ std::string projectToJson(const Project& p, bool pretty)
         groups.push_back(std::move(gj));
     }
 
+    json markers = json::array();
+    for (const auto& m : p.markers)
+    {
+        json mj{{"id", m.id}, {"name", m.name}, {"position", m.position}};
+        if (m.length > 0)
+            mj["length"] = m.length;
+        markers.push_back(std::move(mj));
+    }
+
     const json j{
         {"format", "aural.project"},
         {"version", Project::schemaVersion},
@@ -191,6 +200,7 @@ std::string projectToJson(const Project& p, bool pretty)
         {"master", json{{"gain", p.master.gain}}},
         {"buses", std::move(buses)},
         {"groups", std::move(groups)},
+        {"markers", std::move(markers)},
         {"tracks", std::move(tracks)}};
     return pretty ? j.dump(2) : j.dump();
 }
@@ -236,6 +246,13 @@ std::optional<Project> projectFromJson(const std::string& text, std::string* err
                 p.groups.push_back(Group{g.value("id", invalidId),
                                          g.value("name", std::string{}),
                                          g.value("colour", std::uint32_t{0})});
+        if (const auto it = j.find("markers"); it != j.end() && it->is_array())
+            for (const auto& m : *it)
+                p.markers.push_back(Marker{m.value("id", invalidId),
+                                           m.value("name", std::string{}),
+                                           m.value("position", SamplePosition{0}),
+                                           m.value("length", SamplePosition{0})});
+        p.sortMarkers();
         if (const auto it = j.find("master"); it != j.end() && it->is_object())
             p.master.gain = it->value("gain", 1.0f);
 
@@ -260,6 +277,8 @@ std::optional<Project> projectFromJson(const std::string& text, std::string* err
                 maxId = std::max(maxId, i.id);
         for (const auto& g : p.groups)
             maxId = std::max(maxId, g.id);
+        for (const auto& m : p.markers)
+            maxId = std::max(maxId, m.id);
         p.nextId = std::max(p.nextId, maxId + 1);
         std::vector<Id> seen;
         const auto fresh = [&](Id& id)
@@ -284,6 +303,8 @@ std::optional<Project> projectFromJson(const std::string& text, std::string* err
         }
         for (auto& g : p.groups)
             fresh(g.id);
+        for (auto& m : p.markers)
+            fresh(m.id);
         return p;
     }
     catch (const json::exception& e)

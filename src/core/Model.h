@@ -126,6 +126,18 @@ struct Master
     bool operator==(const Master&) const = default;
 };
 
+// A named point on the timeline, or a region when it has a length.
+struct Marker
+{
+    Id id = invalidId;
+    std::string name;
+    SamplePosition position = 0;
+    SamplePosition length = 0; // 0 = a marker; > 0 = a region
+    SamplePosition end() const noexcept { return position + length; }
+    bool isRegion() const noexcept { return length > 0; }
+    bool operator==(const Marker&) const = default;
+};
+
 struct TimeSignature
 {
     int numerator = 4;
@@ -144,6 +156,7 @@ struct Project
     std::vector<Track> tracks;
     std::vector<Bus> buses;
     std::vector<Group> groups;
+    std::vector<Marker> markers; // kept sorted by position
     Master master;
     Id nextId = 1;
 
@@ -160,6 +173,12 @@ struct Project
     const Channel* findChannel(Id channelId) const noexcept;
     Group* findGroup(Id groupId) noexcept;
     const Group* findGroup(Id groupId) const noexcept;
+    Marker* findMarker(Id markerId) noexcept;
+    const Marker* findMarker(Id markerId) const noexcept;
+    void sortMarkers();
+    // The nearest marker strictly before / after a position (null when none).
+    const Marker* markerBefore(SamplePosition position) const noexcept;
+    const Marker* markerAfter(SamplePosition position) const noexcept;
     int groupIndex(Id groupId) const noexcept;
     // Every track and bus in the group, in mixer order.
     std::vector<Channel*> groupMembers(Id groupId) noexcept;
