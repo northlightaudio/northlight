@@ -46,6 +46,8 @@ AuralLookAndFeel::AuralLookAndFeel(const Theme& theme) : theme_(theme)
     setColour(juce::Slider::backgroundColourId, c.surfaceRaised);
     setColour(juce::Slider::trackColourId, c.accent);
     setColour(juce::Slider::thumbColourId, c.textPrimary);
+    setColour(juce::Slider::rotarySliderFillColourId, c.accent);
+    setColour(juce::Slider::rotarySliderOutlineColourId, c.borderStrong);
     setColour(juce::Slider::textBoxTextColourId, c.textPrimary);
     setColour(juce::Slider::textBoxBackgroundColourId, c.surfaceRaised);
     setColour(juce::Slider::textBoxOutlineColourId, c.border);

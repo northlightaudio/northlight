@@ -30,6 +30,8 @@ public:
 
     // If unfinished recordings are in the media folder, asks whether to recover them.
     void offerRecovery();
+    // Shows the mixer panel.
+    void showMixer();
 
 private:
     class Content;

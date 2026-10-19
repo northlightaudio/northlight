@@ -6,6 +6,7 @@
 #include "core/Model.h"
 #include "ui/ArrangeView.h"
 #include "ui/AudioSetupView.h"
+#include "ui/MixerView.h"
 #include "ui/Theme.h"
 
 namespace aural
@@ -35,8 +36,11 @@ juce::String formatPosition(const core::Project& project, core::SamplePosition p
 class MainWindow::Content final : public juce::Component, private juce::ChangeListener, private juce::Timer
 {
 public:
+    friend class MainWindow;
+
     Content(MainWindow& owner, audio::AudioDeviceLayer& audio, ProjectSession& session)
-        : owner_(owner), audio_(audio), session_(session), tracks_(session.peakStore())
+        : owner_(owner), audio_(audio), session_(session), tracks_(session.peakStore()),
+          mixer_(session.engine().meters())
     {
         setSize(1280, 800);
         setWantsKeyboardFocus(true);
@@ -72,6 +76,13 @@ public:
         recordButton_.setColour(juce::TextButton::buttonOnColourId, theme_.colours.danger);
         recordButton_.setColour(juce::TextButton::textColourOnId, theme_.colours.textPrimary);
         button(audioSetupButton_, "Audio Setup...", [this] { owner_.showAudioSetup(); });
+        button(mixerButton_, "Mixer", [this] { toggleMixer(); });
+        mixerButton_.setColour(juce::TextButton::buttonOnColourId, theme_.colours.accent);
+        mixerButton_.setColour(juce::TextButton::textColourOnId, theme_.colours.accentText);
+
+        mixer_.onCommand = [this](std::unique_ptr<core::Command> command)
+        { session_.execute(std::move(command)); };
+        addChildComponent(mixer_);
 
         positionLabel_.setJustificationType(juce::Justification::centred);
         positionLabel_.setFont(juce::FontOptions{theme_.type.title});
@@ -138,6 +149,8 @@ public:
         };
         audioSetupButton_.setBounds(bar.removeFromRight(110).withSizeKeepingCentre(110, h));
         bar.removeFromRight(gap);
+        mixerButton_.setBounds(bar.removeFromRight(60).withSizeKeepingCentre(60, h));
+        bar.removeFromRight(gap);
 
         place(newButton_, 48);
         place(openButton_, 62);
@@ -158,7 +171,10 @@ public:
         auto status = getLocalBounds().removeFromBottom(statusHeight).reduced(theme_.spacing.md, 0);
         deviceSummary_.setBounds(status);
 
-        tracks_.setBounds(getLocalBounds().withTrimmedTop(toolbarHeight).withTrimmedBottom(statusHeight));
+        auto body = getLocalBounds().withTrimmedTop(toolbarHeight).withTrimmedBottom(statusHeight);
+        if (mixer_.isVisible())
+            mixer_.setBounds(body.removeFromBottom(std::max(240, body.getHeight() * 2 / 5)));
+        tracks_.setBounds(body);
     }
 
     bool keyPressed(const juce::KeyPress& key) override
@@ -176,6 +192,11 @@ public:
         if (key == juce::KeyPress('z', juce::ModifierKeys::commandModifier, 0))
         {
             session_.undo();
+            return true;
+        }
+        if (key == juce::KeyPress('m', juce::ModifierKeys::commandModifier, 0))
+        {
+            toggleMixer();
             return true;
         }
         if (key == juce::KeyPress('r', juce::ModifierKeys::commandModifier, 0))
@@ -244,6 +265,19 @@ private:
             playButton_.setToggleState(playing, juce::dontSendNotification);
             recordButton_.setToggleState(recording, juce::dontSendNotification);
         }
+    }
+
+    void toggleMixer()
+    {
+        mixer_.setVisible(!mixer_.isVisible());
+        mixerButton_.setToggleState(mixer_.isVisible(), juce::dontSendNotification);
+        resized();
+    }
+
+    void showMixer()
+    {
+        if (!mixer_.isVisible())
+            toggleMixer();
     }
 
     void toggleRecord()
@@ -337,6 +371,7 @@ private:
             tracks_.setInputNames(std::move(names));
         }
         tracks_.setProject(&session_.project());
+        mixer_.setProject(&session_.project());
         tracks_.setRegion(
             session_.regionStart(), session_.regionEnd(), session_.loopEnabled(), session_.punchEnabled());
         undoButton_.setEnabled(session_.canUndo());
@@ -438,9 +473,10 @@ private:
     const ui::Theme& theme_ = ui::Theme::dark();
     juce::TextButton newButton_, openButton_, saveButton_, importButton_, undoButton_, redoButton_,
         returnButton_, playButton_, recordButton_, clickButton_, countInButton_, loopButton_, punchButton_,
-        audioSetupButton_;
+        audioSetupButton_, mixerButton_;
     juce::Label positionLabel_, deviceSummary_;
     ui::ArrangeView tracks_;
+    ui::MixerView mixer_;
     std::unique_ptr<juce::FileChooser> chooser_;
     juce::String lastImportError_;
     juce::String baseStatus_, statusWarning_;
@@ -528,6 +564,12 @@ void MainWindow::showAudioSetup()
 void MainWindow::closeAudioSetup()
 {
     audioSetupWindow_.reset();
+}
+
+void MainWindow::showMixer()
+{
+    if (auto* content = dynamic_cast<Content*>(getContentComponent()))
+        content->showMixer();
 }
 
 void MainWindow::offerRecovery()

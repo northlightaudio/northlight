@@ -83,6 +83,8 @@ public:
             }
             else if (arg == "--no-count-in")
                 session_->setCountInBars(0);
+            else if (arg == "--mixer")
+                mainWindow_->showMixer();
             else if (arg == "--stop-after" && i + 1 < tokens.size())
             {
                 const int seconds = tokens.getReference(++i).text.getIntValue();

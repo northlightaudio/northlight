@@ -1,0 +1,503 @@
+#include "ui/MixerView.h"
+
+#include "engine/Snapshot.h"
+
+#include <cmath>
+
+namespace aural::ui
+{
+
+namespace
+{
+constexpr double minFaderDb = -60.0;
+constexpr double maxFaderDb = 6.0;
+constexpr int meterHz = 30;
+
+float dbToGain(double db) noexcept
+{
+    return db <= minFaderDb + 0.05 ? 0.0f : static_cast<float>(std::pow(10.0, db / 20.0));
+}
+
+double gainToDb(float gain) noexcept
+{
+    return gain <= 0.0f ? minFaderDb : juce::jlimit(minFaderDb, maxFaderDb, 20.0 * std::log10(gain));
+}
+
+juce::String dbText(double db)
+{
+    return db <= minFaderDb + 0.05 ? juce::String("-inf") : juce::String(db, 1);
+}
+
+// A stereo bar meter with peak hold and a slow fall, fed from MeterBlock readings.
+class StereoMeter final : public juce::Component
+{
+public:
+    explicit StereoMeter(const Theme& theme) : theme_(theme) {}
+
+    void push(const rt::MeterBlock::Reading& r)
+    {
+        const auto decay = [](float& level, float target)
+        { level = target > level ? target : level * 0.85f; };
+        decay(rmsL_, r.rmsLeft);
+        decay(rmsR_, r.rmsRight);
+        decay(peakL_, r.peakLeft);
+        decay(peakR_, r.peakRight);
+        if (r.peakLeft >= 1.0f || r.peakRight >= 1.0f)
+            clipFrames_ = meterHz;
+        else if (clipFrames_ > 0)
+            --clipFrames_;
+        repaint();
+    }
+
+    void paint(juce::Graphics& g) override
+    {
+        const auto& c = theme_.colours;
+        auto bounds = getLocalBounds().toFloat();
+        g.setColour(c.surfaceRaised);
+        g.fillRoundedRectangle(bounds, 2.0f);
+        const float gap = 2.0f;
+        auto left = bounds.removeFromLeft(bounds.getWidth() * 0.5f - gap * 0.5f);
+        bounds.removeFromLeft(gap);
+        drawBar(g, left, rmsL_, peakL_);
+        drawBar(g, bounds, rmsR_, peakR_);
+        if (clipFrames_ > 0)
+        {
+            g.setColour(c.meterClip);
+            g.fillRect(getLocalBounds().removeFromTop(4));
+        }
+    }
+
+private:
+    static float fraction(float level)
+    {
+        const double db = level > 0.0f ? 20.0 * std::log10(level) : -100.0;
+        return static_cast<float>(juce::jlimit(0.0, 1.0, (db + 60.0) / 66.0));
+    }
+
+    void drawBar(juce::Graphics& g, juce::Rectangle<float> area, float rms, float peak)
+    {
+        const auto& c = theme_.colours;
+        const float h = area.getHeight();
+        const auto rmsFraction = fraction(rms);
+        auto fill = area.withTop(area.getBottom() - h * rmsFraction);
+        g.setColour(rms > 0.5f ? c.meterHot : c.meter);
+        g.fillRect(fill);
+        const auto peakY = area.getBottom() - h * fraction(peak);
+        g.setColour(peak > 0.5f ? c.meterHot : c.meter);
+        g.fillRect(area.getX(), peakY - 1.0f, area.getWidth(), 2.0f);
+        // 0 dBFS line (at 60/66 of the height).
+        g.setColour(c.borderStrong);
+        const float zeroY = area.getBottom() - h * (60.0f / 66.0f);
+        g.fillRect(area.getX(), zeroY, area.getWidth(), 1.0f);
+    }
+
+    const Theme& theme_;
+    float rmsL_ = 0.0f, rmsR_ = 0.0f, peakL_ = 0.0f, peakR_ = 0.0f;
+    int clipFrames_ = 0;
+};
+} // namespace
+
+// ----- strip --------------------------------------------------------------------------------
+
+class MixerView::Strip final : public juce::Component
+{
+public:
+    Strip(MixerView& owner, const Theme& theme) : owner_(owner), theme_(theme), meter_(theme)
+    {
+        name_.setFont(juce::FontOptions{theme_.type.caption});
+        name_.setJustificationType(juce::Justification::centred);
+        name_.setMinimumHorizontalScale(0.7f);
+        name_.setEditable(false, true, false);
+        name_.onTextChange = [this]
+        {
+            if (!updating_)
+                owner_.onCommand(std::make_unique<core::SetTrackName>(id_, name_.getText().toStdString()));
+        };
+        addAndMakeVisible(name_);
+
+        pan_.setSliderStyle(juce::Slider::RotaryHorizontalVerticalDrag);
+        pan_.setRange(-1.0, 1.0, 0.01);
+        pan_.setDoubleClickReturnValue(true, 0.0);
+        pan_.setTextBoxStyle(juce::Slider::NoTextBox, true, 0, 0);
+        pan_.setTooltip("Pan");
+        pan_.onValueChange = [this]
+        {
+            if (!updating_)
+                owner_.onCommand(
+                    std::make_unique<core::SetTrackPan>(id_, static_cast<float>(pan_.getValue())));
+        };
+        addAndMakeVisible(pan_);
+
+        fader_.setSliderStyle(juce::Slider::LinearVertical);
+        fader_.setRange(minFaderDb, maxFaderDb, 0.1);
+        fader_.setSkewFactorFromMidPoint(-12.0);
+        fader_.setDoubleClickReturnValue(true, 0.0);
+        fader_.setTextBoxStyle(juce::Slider::TextBoxBelow, false, 56, 18);
+        fader_.textFromValueFunction = [](double v) { return dbText(v); };
+        fader_.valueFromTextFunction = [](const juce::String& t)
+        { return t.containsIgnoreCase("inf") ? minFaderDb : t.getDoubleValue(); };
+        fader_.onValueChange = [this]
+        {
+            if (!updating_)
+                owner_.onCommand(std::make_unique<core::SetTrackGain>(id_, dbToGain(fader_.getValue())));
+        };
+        addAndMakeVisible(fader_);
+
+        const auto toggle = [this](juce::TextButton& b, const char* text, juce::Colour on, auto makeCommand)
+        {
+            b.setButtonText(text);
+            b.setClickingTogglesState(true);
+            b.setColour(juce::TextButton::buttonOnColourId, on);
+            b.setColour(juce::TextButton::textColourOnId, theme_.colours.accentText);
+            b.onClick = [this, &b, makeCommand]
+            {
+                if (!updating_)
+                    owner_.onCommand(makeCommand(id_, b.getToggleState()));
+            };
+            addAndMakeVisible(b);
+        };
+        toggle(mute_,
+               "M",
+               theme_.colours.warning,
+               [](core::Id id, bool on) -> std::unique_ptr<core::Command>
+               { return std::make_unique<core::SetTrackMute>(id, on); });
+        toggle(solo_,
+               "S",
+               theme_.colours.success,
+               [](core::Id id, bool on) -> std::unique_ptr<core::Command>
+               { return std::make_unique<core::SetTrackSolo>(id, on); });
+        toggle(phase_,
+               "\xC3\x98",
+               theme_.colours.accent,
+               [](core::Id id, bool on) -> std::unique_ptr<core::Command>
+               { return std::make_unique<core::SetPhaseInvert>(id, on); });
+        phase_.setButtonText(juce::String::fromUTF8("\xC3\x98"));
+
+        output_.setTooltip("Output");
+        output_.onChange = [this]
+        {
+            if (updating_)
+                return;
+            const int index = output_.getSelectedId() - 2; // id 1 = master
+            const core::Id bus = index >= 0 && static_cast<size_t>(index) < busIds_.size()
+                                     ? busIds_[static_cast<size_t>(index)]
+                                     : core::invalidId;
+            owner_.onCommand(std::make_unique<core::SetOutputBus>(id_, bus));
+        };
+        addAndMakeVisible(output_);
+
+        sends_.setButtonText("Sends");
+        sends_.onClick = [this] { showSendsMenu(); };
+        addAndMakeVisible(sends_);
+        addAndMakeVisible(meter_);
+    }
+
+    core::Id id() const noexcept { return id_; }
+    int meterSlot() const noexcept { return meterSlot_; }
+
+    void setChannel(const core::Channel& channel, bool isBus, const core::Project& project, int slot)
+    {
+        const juce::ScopedValueSetter<bool> guard(updating_, true);
+        id_ = channel.id;
+        isBus_ = isBus;
+        meterSlot_ = slot;
+        colour_ = channel.colour != 0 ? juce::Colour(channel.colour)
+                                      : (isBus ? theme_.colours.warning : theme_.colours.accent);
+        name_.setText(channel.name.empty() ? (isBus ? "Bus" : "Track") : channel.name,
+                      juce::dontSendNotification);
+        pan_.setValue(channel.pan, juce::dontSendNotification);
+        fader_.setValue(gainToDb(channel.gain), juce::dontSendNotification);
+        mute_.setToggleState(channel.mute, juce::dontSendNotification);
+        solo_.setToggleState(channel.solo, juce::dontSendNotification);
+        phase_.setToggleState(channel.phaseInvert, juce::dontSendNotification);
+
+        busIds_.clear();
+        output_.clear(juce::dontSendNotification);
+        output_.addItem("Master", 1);
+        int id = 2;
+        for (const auto& b : project.buses)
+        {
+            if (b.id == channel.id)
+                continue; // a bus cannot feed itself
+            busIds_.push_back(b.id);
+            output_.addItem(b.name.empty() ? "Bus" : b.name, id++);
+        }
+        int selected = 1;
+        for (size_t i = 0; i < busIds_.size(); ++i)
+            if (busIds_[i] == channel.outputBus)
+                selected = static_cast<int>(i) + 2;
+        output_.setSelectedId(selected, juce::dontSendNotification);
+
+        sendCount_ = static_cast<int>(channel.sends.size());
+        sends_.setButtonText(sendCount_ > 0 ? "Sends (" + juce::String(sendCount_) + ")" : "Sends");
+        sends_.setEnabled(!busIds_.empty());
+        repaint();
+    }
+
+    void pushMeter(const rt::MeterBlock::Reading& r) { meter_.push(r); }
+
+    void paint(juce::Graphics& g) override
+    {
+        const auto& c = theme_.colours;
+        g.fillAll(c.surface);
+        g.setColour(c.border);
+        g.fillRect(getLocalBounds().removeFromRight(1));
+        g.setColour(colour_);
+        g.fillRect(getLocalBounds().removeFromTop(4));
+    }
+
+    void resized() override
+    {
+        auto area = getLocalBounds().reduced(theme_.spacing.xs);
+        area.removeFromTop(4);
+        name_.setBounds(area.removeFromTop(18));
+        area.removeFromTop(theme_.spacing.xs);
+        output_.setBounds(area.removeFromTop(22));
+        area.removeFromTop(theme_.spacing.xs);
+        sends_.setBounds(area.removeFromTop(22));
+        area.removeFromTop(theme_.spacing.xs);
+        pan_.setBounds(area.removeFromTop(40).withSizeKeepingCentre(40, 40));
+        area.removeFromTop(theme_.spacing.xs);
+        auto buttons = area.removeFromTop(22);
+        const int bw = (buttons.getWidth() - 2 * theme_.spacing.xs) / 3;
+        mute_.setBounds(buttons.removeFromLeft(bw));
+        buttons.removeFromLeft(theme_.spacing.xs);
+        solo_.setBounds(buttons.removeFromLeft(bw));
+        buttons.removeFromLeft(theme_.spacing.xs);
+        phase_.setBounds(buttons);
+        area.removeFromTop(theme_.spacing.sm);
+        meter_.setBounds(area.removeFromRight(14).withTrimmedBottom(20));
+        area.removeFromRight(theme_.spacing.xs);
+        fader_.setBounds(area);
+    }
+
+private:
+    void showSendsMenu()
+    {
+        if (owner_.project_ == nullptr)
+            return;
+        const auto* channel = owner_.project_->findChannel(id_);
+        if (channel == nullptr)
+            return;
+        juce::PopupMenu menu;
+        int item = 1;
+        std::vector<std::function<void()>> actions;
+        for (const core::Id busId : busIds_)
+        {
+            const auto* bus = owner_.project_->findBus(busId);
+            const auto* send = const_cast<core::Channel*>(channel)->findSend(busId);
+            const juce::String busName =
+                bus != nullptr && !bus->name.empty() ? juce::String(bus->name) : "Bus";
+            juce::PopupMenu sub;
+            const bool has = send != nullptr;
+            const float level = has ? send->level : 0.0f;
+            sub.addItem(item++, "Off", true, !has);
+            actions.push_back([this, busId]
+                              { owner_.onCommand(std::make_unique<core::RemoveSend>(id_, busId)); });
+            for (const double db : {-12.0, -6.0, 0.0})
+            {
+                const float value = dbToGain(db);
+                sub.addItem(
+                    item++, juce::String(db, 0) + " dB", true, has && std::abs(level - value) < 0.01f);
+                actions.push_back(
+                    [this, busId, value, has, send]
+                    {
+                        owner_.onCommand(std::make_unique<core::SetSend>(
+                            id_, busId, value, has && send != nullptr ? send->preFader : false));
+                    });
+            }
+            sub.addSeparator();
+            sub.addItem(item++, "Pre-fader", has, has && send->preFader);
+            actions.push_back(
+                [this, busId, has, level, send]
+                {
+                    if (has && send != nullptr)
+                        owner_.onCommand(std::make_unique<core::SetSend>(id_, busId, level, !send->preFader));
+                });
+            menu.addSubMenu(busName + (has ? "  (" + dbText(gainToDb(level)) + " dB)" : ""), sub);
+        }
+        menu.showMenuAsync(juce::PopupMenu::Options().withTargetComponent(sends_),
+                           [actions](int result)
+                           {
+                               if (result >= 1 && static_cast<size_t>(result) <= actions.size())
+                                   actions[static_cast<size_t>(result) - 1]();
+                           });
+    }
+
+    MixerView& owner_;
+    const Theme& theme_;
+    core::Id id_ = core::invalidId;
+    bool isBus_ = false;
+    int meterSlot_ = -1;
+    int sendCount_ = 0;
+    bool updating_ = false;
+    juce::Colour colour_;
+    std::vector<core::Id> busIds_;
+    juce::Label name_;
+    juce::Slider pan_, fader_;
+    juce::TextButton mute_, solo_, phase_, sends_;
+    juce::ComboBox output_;
+    StereoMeter meter_;
+};
+
+// ----- master -------------------------------------------------------------------------------
+
+class MixerView::MasterStrip final : public juce::Component
+{
+public:
+    MasterStrip(MixerView& owner, const Theme& theme) : owner_(owner), theme_(theme), meter_(theme)
+    {
+        name_.setText("Master", juce::dontSendNotification);
+        name_.setFont(juce::FontOptions{theme_.type.caption});
+        name_.setJustificationType(juce::Justification::centred);
+        addAndMakeVisible(name_);
+        fader_.setSliderStyle(juce::Slider::LinearVertical);
+        fader_.setRange(minFaderDb, maxFaderDb, 0.1);
+        fader_.setSkewFactorFromMidPoint(-12.0);
+        fader_.setDoubleClickReturnValue(true, 0.0);
+        fader_.setTextBoxStyle(juce::Slider::TextBoxBelow, false, 56, 18);
+        fader_.textFromValueFunction = [](double v) { return dbText(v); };
+        fader_.valueFromTextFunction = [](const juce::String& t)
+        { return t.containsIgnoreCase("inf") ? minFaderDb : t.getDoubleValue(); };
+        fader_.onValueChange = [this]
+        {
+            if (!updating_)
+                owner_.onCommand(std::make_unique<core::SetMasterGain>(dbToGain(fader_.getValue())));
+        };
+        addAndMakeVisible(fader_);
+        addAndMakeVisible(meter_);
+    }
+
+    void setMaster(const core::Master& master)
+    {
+        const juce::ScopedValueSetter<bool> guard(updating_, true);
+        fader_.setValue(gainToDb(master.gain), juce::dontSendNotification);
+    }
+
+    void pushMeter(const rt::MeterBlock::Reading& r) { meter_.push(r); }
+
+    void paint(juce::Graphics& g) override
+    {
+        g.fillAll(theme_.colours.surfaceRaised);
+        g.setColour(theme_.colours.border);
+        g.fillRect(getLocalBounds().removeFromLeft(1));
+    }
+
+    void resized() override
+    {
+        auto area = getLocalBounds().reduced(theme_.spacing.xs);
+        area.removeFromTop(4);
+        name_.setBounds(area.removeFromTop(18));
+        area.removeFromTop(theme_.spacing.sm);
+        meter_.setBounds(area.removeFromRight(18).withTrimmedBottom(20));
+        area.removeFromRight(theme_.spacing.xs);
+        fader_.setBounds(area);
+    }
+
+private:
+    MixerView& owner_;
+    const Theme& theme_;
+    bool updating_ = false;
+    juce::Label name_;
+    juce::Slider fader_;
+    StereoMeter meter_;
+};
+
+// ----- view ---------------------------------------------------------------------------------
+
+MixerView::MixerView(rt::MeterBlock& meters) : meters_(meters)
+{
+    setOpaque(true);
+    viewport_.setViewedComponent(&stripsHolder_, false);
+    viewport_.setScrollBarsShown(false, true);
+    addAndMakeVisible(viewport_);
+    master_ = std::make_unique<MasterStrip>(*this, theme_);
+    addAndMakeVisible(*master_);
+    addBusButton_.onClick = [this] { addBus(); };
+    addAndMakeVisible(addBusButton_);
+    startTimerHz(meterHz);
+}
+
+MixerView::~MixerView()
+{
+    stopTimer();
+}
+
+void MixerView::setProject(const core::Project* project)
+{
+    project_ = project;
+    rebuildStrips();
+}
+
+void MixerView::addBus()
+{
+    if (!onCommand)
+        return;
+    core::Bus bus;
+    bus.name = "Bus " + std::to_string(project_ != nullptr ? project_->buses.size() + 1 : 1);
+    onCommand(std::make_unique<core::AddBus>(bus));
+}
+
+void MixerView::rebuildStrips()
+{
+    const size_t count = project_ != nullptr ? project_->tracks.size() + project_->buses.size() : 0;
+    while (strips_.size() > count)
+        strips_.pop_back();
+    while (strips_.size() < count)
+    {
+        auto strip = std::make_unique<Strip>(*this, theme_);
+        stripsHolder_.addAndMakeVisible(*strip);
+        strips_.push_back(std::move(strip));
+    }
+    if (project_ != nullptr)
+    {
+        size_t i = 0;
+        for (size_t t = 0; t < project_->tracks.size(); ++t, ++i)
+            strips_[i]->setChannel(
+                project_->tracks[t], false, *project_, engine::trackMeterSlot(static_cast<int>(t)));
+        for (size_t b = 0; b < project_->buses.size(); ++b, ++i)
+            strips_[i]->setChannel(
+                project_->buses[b], true, *project_, engine::busMeterSlot(*project_, static_cast<int>(b)));
+        master_->setMaster(project_->master);
+    }
+    layoutStrips();
+}
+
+void MixerView::layoutStrips()
+{
+    const int height = viewport_.getHeight();
+    stripsHolder_.setSize(std::max(1, static_cast<int>(strips_.size()) * stripWidth), std::max(1, height));
+    int x = 0;
+    for (auto& strip : strips_)
+    {
+        strip->setBounds(x, 0, stripWidth, height);
+        x += stripWidth;
+    }
+}
+
+void MixerView::timerCallback()
+{
+    for (auto& strip : strips_)
+        strip->pushMeter(meters_.take(strip->meterSlot()));
+    if (project_ != nullptr)
+        master_->pushMeter(meters_.take(engine::masterMeterSlot(*project_)));
+}
+
+void MixerView::paint(juce::Graphics& g)
+{
+    g.fillAll(theme_.colours.background);
+    g.setColour(theme_.colours.border);
+    g.fillRect(getLocalBounds().removeFromTop(1));
+}
+
+void MixerView::resized()
+{
+    auto area = getLocalBounds().withTrimmedTop(1);
+    auto header = area.removeFromTop(theme_.sizes.controlHeight + theme_.spacing.sm);
+    addBusButton_.setBounds(header.reduced(theme_.spacing.sm, theme_.spacing.xs).removeFromLeft(72));
+    master_->setBounds(area.removeFromRight(stripWidth + 16));
+    viewport_.setBounds(area);
+    layoutStrips();
+}
+
+} // namespace aural::ui
