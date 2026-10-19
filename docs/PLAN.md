@@ -314,8 +314,8 @@ Status 2026-10-19: device I/O (inputs, output, hot-plug), model, commands and JS
 note scheduling with note-offs on stop/jump/loop, the built-in synth, VST3 and
 CLAP instruments, MIDI recording with takes and latency placement, MIDI clips in
 the arrange view and the piano roll are built and tested offline (see
-architecture.md). Open: multi-output instruments (aux outputs as mixer channels),
-MIDI output to external devices, audible note preview in the piano roll.
+architecture.md). Multi-output instruments feed aux tracks. Open: MIDI output to
+external devices, audible note preview in the piano roll.
 
 ### Phase 9 — Automation, stretch, polish (4 weeks)
 

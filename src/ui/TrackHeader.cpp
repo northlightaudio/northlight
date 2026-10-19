@@ -64,6 +64,10 @@ void TrackHeader::setTrack(const core::Track& track,
     const juce::ScopedValueSetter<bool> guard(updating_, true);
     trackId_ = track.id;
     midi_ = track.isMidi();
+    aux_ = track.isAux();
+    input_.setVisible(!aux_);
+    arm_.setVisible(!aux_);
+    monitorButton_.setVisible(!aux_);
     name_.setText(track.name, juce::dontSendNotification);
     name_.setColour(juce::Label::textColourId,
                     track.mute ? theme_.colours.textDisabled : theme_.colours.textPrimary);

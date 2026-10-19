@@ -125,6 +125,11 @@ json trackToJson(const Track& t)
     channelToJson(j, t);
     if (t.kind == TrackKind::midi)
         j["kind"] = "midi";
+    else if (t.kind == TrackKind::aux)
+    {
+        j["kind"] = "aux";
+        j["aux"] = json{{"track", t.auxTrack}, {"insert", t.auxInsert}, {"output", t.auxOutput}};
+    }
     j["input"] = t.inputChannel;
     if (!t.midiInput.empty())
         j["midiInput"] = t.midiInput;
@@ -168,7 +173,14 @@ Track trackFromJson(const json& j)
 {
     Track t;
     channelFromJson(j, t);
-    t.kind = j.value("kind", std::string{"audio"}) == "midi" ? TrackKind::midi : TrackKind::audio;
+    const auto kind = j.value("kind", std::string{"audio"});
+    t.kind = kind == "midi" ? TrackKind::midi : kind == "aux" ? TrackKind::aux : TrackKind::audio;
+    if (const auto aux = j.find("aux"); aux != j.end() && aux->is_object())
+    {
+        t.auxTrack = aux->value("track", invalidId);
+        t.auxInsert = aux->value("insert", invalidId);
+        t.auxOutput = aux->value("output", 0);
+    }
     t.midiInput = j.value("midiInput", std::string{});
     if (const auto it = j.find("midiClips"); it != j.end() && it->is_array())
     {

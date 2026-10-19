@@ -34,13 +34,16 @@ public:
         unsupported,
     };
     // Negotiates the main bus (stereo, else mono) and a stereo key on the second
-    // input bus; disables the rest. Returns what was accepted.
-    static Layout negotiateLayout(juce::AudioPluginInstance& instance, bool& sidechain);
+    // input bus; disables the rest, except that an instrument (no input bus) keeps
+    // every further stereo output bus it has as an aux output. Returns what was
+    // accepted and how many aux pairs.
+    static Layout negotiateLayout(juce::AudioPluginInstance& instance, bool& sidechain, int& auxOutputs);
 
     HostedPlugin(std::string typeName,
                  std::unique_ptr<juce::AudioPluginInstance> instance,
                  Layout layout,
-                 bool sidechain);
+                 bool sidechain,
+                 int auxOutputs = 0);
     ~HostedPlugin() override;
     Layout layout() const noexcept { return layout_; }
 
@@ -51,6 +54,12 @@ public:
     void setParameter(int, float) noexcept override {}
     float parameter(int) const noexcept override { return 0.0f; }
     bool ownsParameters() const noexcept override { return true; }
+    int auxOutputCount() const noexcept override { return auxOutputs_; }
+    const float* auxOutput(int index, int channel) const noexcept override
+    {
+        const auto i = static_cast<size_t>(index) * 2 + static_cast<size_t>(channel & 1);
+        return index >= 0 && index < auxOutputs_ && i < aux_.size() ? aux_[i].data() : nullptr;
+    }
     void process(float* left, float* right, int numSamples) noexcept override;
     bool acceptsSidechain() const noexcept override { return sidechain_.load(std::memory_order_acquire); }
     // Instruments (and MIDI effects): the block's events go into the plugin's
@@ -105,6 +114,9 @@ private:
     const engine::MidiEventList* pendingMidi_ = nullptr; // this block's events, while running
     std::vector<float> keyLeft_, keyRight_;              // the sidechain bus's channels for one block
     std::vector<float> mono_;                            // the summed pair for a mono plugin
+    int auxOutputs_ = 0;                                 // extra stereo output buses (instruments)
+    std::vector<std::vector<float>> aux_;                // their channels, two per pair
+    std::vector<float*> pointers_;                       // the buffer's channel pointers
     std::vector<float> dryLeft_, dryRight_;              // the input, for the bypass crossfade
     float bypassMix_ = 0.0f;                             // 0 = processed, 1 = bypassed (real-time)
     float bypassStep_ = 0.0f;                            // per-sample ramp (10 ms)

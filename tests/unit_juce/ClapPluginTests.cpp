@@ -495,6 +495,45 @@ TEST_CASE("A bypassed latent CLAP plugin keeps its delay, so a parallel path sta
     CHECK(stray < 0.01f);
 }
 
+TEST_CASE("A multi-output CLAP instrument's second port feeds an aux track", "[hosting][clap][aux]")
+{
+    const juce::ScopedJuceInitialiser_GUI juceInit;
+    REQUIRE(testClap().existsAsFile());
+    const auto registry = testRegistry();
+    hosting::HostFactory factory(registry);
+    NoMedia loader;
+    engine::AudioEngine engine(loader, factory, 0);
+    engine.prepare(48000.0, 64);
+    core::Project p;
+    core::Track keys;
+    keys.id = 1;
+    keys.kind = core::TrackKind::midi;
+    core::Insert instrument;
+    instrument.id = 10;
+    instrument.type = "clap:io.leafshade.aural.testgain.multiout";
+    keys.inserts.push_back(instrument);
+    core::Track aux;
+    aux.id = 2;
+    aux.kind = core::TrackKind::aux;
+    aux.auxTrack = 1;
+    aux.auxInsert = 10;
+    aux.auxOutput = 1;
+    p.tracks = {keys, aux};
+    p.nextId = 100;
+    engine.setProject(p);
+    const auto live = engine.insertInstance(10);
+    REQUIRE(live != nullptr);
+    CHECK(live->auxOutputCount() == 1);
+    std::vector<float> l(64), r(64);
+    float* outputs[] = {l.data(), r.data()};
+    engine.play();
+    for (int block = 0; block < 4; ++block)
+        engine.process(outputs, 2, 64);
+    // The plugin writes 0.25 into its second port; the main port is silent (no input).
+    CHECK(l[10] == Approx(0.25f).margin(0.01f));
+    CHECK(r[10] == Approx(0.25f).margin(0.01f));
+}
+
 TEST_CASE("Host parameter changes reach a CLAP plugin while the device is stopped", "[hosting][clap][flush]")
 {
     const juce::ScopedJuceInitialiser_GUI juceInit;

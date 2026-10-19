@@ -8,9 +8,10 @@
 namespace aural::hosting
 {
 
-HostedPlugin::Layout HostedPlugin::negotiateLayout(juce::AudioPluginInstance& instance, bool& sidechain)
+HostedPlugin::Layout
+HostedPlugin::negotiateLayout(juce::AudioPluginInstance& instance, bool& sidechain, int& auxOutputs)
 {
-    const auto tryLayout = [&](const juce::AudioChannelSet& main, bool withSidechain)
+    const auto tryLayout = [&](const juce::AudioChannelSet& main, bool withSidechain, int aux)
     {
         juce::AudioProcessor::BusesLayout layout;
         for (int b = 0; b < instance.getBusCount(true); ++b)
@@ -18,20 +19,33 @@ HostedPlugin::Layout HostedPlugin::negotiateLayout(juce::AudioPluginInstance& in
                                   : (b == 1 && withSidechain) ? juce::AudioChannelSet::stereo()
                                                               : juce::AudioChannelSet::disabled());
         for (int b = 0; b < instance.getBusCount(false); ++b)
-            layout.outputBuses.add(b == 0 ? main : juce::AudioChannelSet::disabled());
+            layout.outputBuses.add(b == 0     ? main
+                                   : b <= aux ? juce::AudioChannelSet::stereo()
+                                              : juce::AudioChannelSet::disabled());
         return instance.checkBusesLayoutSupported(layout) && instance.setBusesLayout(layout);
     };
     sidechain = false;
-    if (instance.getBusCount(true) >= 2 && tryLayout(juce::AudioChannelSet::stereo(), true) &&
+    auxOutputs = 0;
+    if (instance.getBusCount(true) >= 2 && tryLayout(juce::AudioChannelSet::stereo(), true, 0) &&
         instance.getTotalNumInputChannels() == 4 && instance.getTotalNumOutputChannels() == 2)
     {
         sidechain = true;
         return Layout::stereo;
     }
-    if (tryLayout(juce::AudioChannelSet::stereo(), false) && instance.getTotalNumInputChannels() <= 2 &&
+    // An instrument: as many further stereo output buses as it accepts, so a
+    // multi-output instrument's pairs can feed aux tracks.
+    if (instance.getBusCount(true) == 0 && instance.getBusCount(false) >= 2)
+        for (int aux = instance.getBusCount(false) - 1; aux >= 1; --aux)
+            if (tryLayout(juce::AudioChannelSet::stereo(), false, aux) &&
+                instance.getTotalNumOutputChannels() == 2 + 2 * aux)
+            {
+                auxOutputs = aux;
+                return Layout::stereo;
+            }
+    if (tryLayout(juce::AudioChannelSet::stereo(), false, 0) && instance.getTotalNumInputChannels() <= 2 &&
         instance.getTotalNumOutputChannels() == 2)
         return Layout::stereo;
-    if (tryLayout(juce::AudioChannelSet::mono(), false) && instance.getTotalNumInputChannels() <= 1 &&
+    if (tryLayout(juce::AudioChannelSet::mono(), false, 0) && instance.getTotalNumInputChannels() <= 1 &&
         instance.getTotalNumOutputChannels() == 1)
         return Layout::mono;
     return Layout::unsupported;
@@ -40,8 +54,9 @@ HostedPlugin::Layout HostedPlugin::negotiateLayout(juce::AudioPluginInstance& in
 HostedPlugin::HostedPlugin(std::string typeName,
                            std::unique_ptr<juce::AudioPluginInstance> instance,
                            Layout layout,
-                           bool sidechain)
-    : typeName_(std::move(typeName)), instance_(std::move(instance)), layout_(layout)
+                           bool sidechain,
+                           int auxOutputs)
+    : typeName_(std::move(typeName)), instance_(std::move(instance)), layout_(layout), auxOutputs_(auxOutputs)
 {
     sidechain_.store(sidechain, std::memory_order_release);
     acceptsMidi_ = instance_->acceptsMidi();
@@ -68,6 +83,11 @@ void HostedPlugin::prepare(double sampleRate, int maxBlockSize)
     keyLeft_.assign(static_cast<size_t>(maxBlockSize), 0.0f);
     keyRight_.assign(static_cast<size_t>(maxBlockSize), 0.0f);
     mono_.assign(static_cast<size_t>(maxBlockSize), 0.0f);
+    aux_.assign(static_cast<size_t>(auxOutputs_) * 2,
+                std::vector<float>(static_cast<size_t>(maxBlockSize), 0.0f));
+    pointers_.assign(2 + aux_.size(), nullptr);
+    for (size_t i = 0; i < aux_.size(); ++i)
+        pointers_[2 + i] = aux_[i].data();
     dryLeft_.assign(static_cast<size_t>(maxBlockSize), 0.0f);
     dryRight_.assign(static_cast<size_t>(maxBlockSize), 0.0f);
     bypassStep_ = 1.0f / static_cast<float>(std::max(1.0, sampleRate * 0.010));
@@ -165,8 +185,9 @@ void HostedPlugin::run(
             processBuffer(buffer, true);
             return;
         }
-        float* pointers[2] = {left, right};
-        juce::AudioBuffer<float> buffer(pointers, 2, numSamples);
+        pointers_[0] = left;
+        pointers_[1] = right;
+        juce::AudioBuffer<float> buffer(pointers_.data(), static_cast<int>(pointers_.size()), numSamples);
         processBuffer(buffer, true);
         return;
     }
@@ -206,8 +227,10 @@ void HostedPlugin::run(
     }
     else
     {
-        float* pointers[2] = {left, right};
-        juce::AudioBuffer<float> buffer(pointers, 2, numSamples);
+        // The main pair, then the aux pairs of a multi-output instrument.
+        pointers_[0] = left;
+        pointers_[1] = right;
+        juce::AudioBuffer<float> buffer(pointers_.data(), static_cast<int>(pointers_.size()), numSamples);
         processBuffer(buffer, false);
     }
 

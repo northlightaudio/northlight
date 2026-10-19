@@ -454,6 +454,34 @@ private:
                         offer(b, "Bus: ");
                 sub.addSubMenu("Sidechain", key);
             }
+            // Extra outputs of a multi-output instrument: one aux track per pair.
+            if (live != nullptr && live->auxOutputCount() > 0 && !isBus_)
+            {
+                juce::PopupMenu outputs;
+                const auto& project = *owner_.project_;
+                for (int output = 1; output <= live->auxOutputCount(); ++output)
+                {
+                    bool exists = false;
+                    for (const auto& t : project.tracks)
+                        if (t.isAux() && t.auxTrack == id_ && t.auxInsert == insertId &&
+                            t.auxOutput == output)
+                            exists = true;
+                    outputs.addItem(item++, "Track for output " + juce::String(output + 1), !exists, exists);
+                    const std::string name = channel->name;
+                    actions.push_back(
+                        [this, insertId, output, name]
+                        {
+                            core::Track aux;
+                            aux.kind = core::TrackKind::aux;
+                            aux.name = name + " out " + std::to_string(output + 1);
+                            aux.auxTrack = id_;
+                            aux.auxInsert = insertId;
+                            aux.auxOutput = output;
+                            owner_.onCommand(std::make_unique<core::AddTrack>(aux));
+                        });
+                }
+                sub.addSubMenu("Outputs", outputs);
+            }
             sub.addItem(item++, "Remove");
             actions.push_back([this, insertId]
                               { owner_.onCommand(std::make_unique<core::RemoveInsert>(id_, insertId)); });

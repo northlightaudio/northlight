@@ -85,6 +85,12 @@ public:
         process(left, right, numSamples);
     }
 
+    // Extra stereo outputs (a multi-output instrument): after a process call the
+    // pairs beyond the main one are read here, index 0 = the first extra pair,
+    // channel 0/1; valid until the next process call on the real-time thread.
+    virtual int auxOutputCount() const noexcept { return 0; }
+    virtual const float* auxOutput(int, int) const noexcept { return nullptr; }
+
     // Samples of delay the processor adds (for delay compensation, Phase 5).
     virtual int latencySamples() const noexcept { return 0; }
 

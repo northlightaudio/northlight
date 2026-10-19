@@ -42,10 +42,19 @@ public:
     void setParameter(int, float) noexcept override {}
     float parameter(int) const noexcept override { return 0.0f; }
     bool acceptsMidi() const noexcept override { return true; }
+    // One extra pair: a constant 0.5 on the left and -0.5 on the right while a note
+    // is held, so an aux track can be told apart from the main output.
+    int auxOutputCount() const noexcept override { return 1; }
+    const float* auxOutput(int index, int channel) const noexcept override
+    {
+        return index == 0 ? (channel == 0 ? auxLeft_.data() : auxRight_.data()) : nullptr;
+    }
     void process(float* l, float* r, int n) noexcept override
     {
         std::fill(l, l + n, 0.0f);
         std::fill(r, r + n, 0.0f);
+        std::fill(auxLeft_.begin(), auxLeft_.end(), 0.5f);
+        std::fill(auxRight_.begin(), auxRight_.end(), -0.5f);
     }
     void processMidi(const engine::MidiEventList& events, float* l, float* r, int n) noexcept override
     {
@@ -66,6 +75,7 @@ public:
 private:
     std::string type_ = "test.midi";
     std::vector<engine::ParameterInfo> none_;
+    std::vector<float> auxLeft_ = std::vector<float>(8192), auxRight_ = std::vector<float>(8192);
 };
 
 class MidiFactory final : public engine::InsertFactory
@@ -332,6 +342,44 @@ TEST_CASE("MIDI takes pair note-ons with their offs, end held notes at the take 
     CHECK(second.clip.length == 500);
     // No notes: no clip.
     CHECK(engine::buildMidiTakes({off(1, 60, 10, 0)}, spans, 0).empty());
+}
+
+TEST_CASE("An aux track carries an instrument's extra output pair through its own chain",
+          "[engine][midi][aux]")
+{
+    core::MidiClip clip;
+    clip.start = 0;
+    clip.length = 1000;
+    auto p = keysProject(clip);
+    // The aux track comes first in the project: it must still render after its source.
+    core::Track aux;
+    aux.id = 5;
+    aux.kind = core::TrackKind::aux;
+    aux.name = "Keys out 2";
+    aux.auxTrack = 1;
+    aux.auxInsert = 2;
+    aux.auxOutput = 1;
+    aux.gain = 0.5f;
+    p.tracks.insert(p.tracks.begin(), aux);
+    Harness h;
+    h.engine.setProject(p);
+    h.engine.play();
+    h.render(2);
+    // The main track's instrument writes nothing to its main output here; the aux
+    // track adds the extra pair through its own fader (0.5).
+    CHECK(h.left[10] == Approx(0.25f).margin(0.01f));
+    CHECK(h.right[10] == Approx(-0.25f).margin(0.01f));
+    const auto* snapshot = h.engine.snapshotForTest();
+    REQUIRE(snapshot != nullptr);
+    REQUIRE(snapshot->trackLevels.size() == 2);
+    CHECK(snapshot->trackLevels[0] == std::vector<int>{1}); // the source first
+    CHECK(snapshot->trackLevels[1] == std::vector<int>{0});
+
+    // A source that goes away leaves the aux track silent, not crashing.
+    p.tracks[1].inserts.clear();
+    h.engine.setProject(p);
+    h.render(2);
+    CHECK(h.left[10] == Approx(0.0f));
 }
 
 TEST_CASE("The built-in synth makes sound for a note and goes quiet after it", "[engine][midi][synth]")

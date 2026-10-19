@@ -129,3 +129,33 @@ TEST_CASE("Wrongly typed fields are reported rather than crashing", "[core][json
     CHECK_FALSE(p.has_value());
     CHECK(error.starts_with("malformed project"));
 }
+
+TEST_CASE("An aux track's source survives a JSON round trip", "[core][json][aux]")
+{
+    Project p;
+    Track keys;
+    keys.id = 1;
+    keys.kind = TrackKind::midi;
+    Insert synth;
+    synth.id = 2;
+    synth.type = "vst3:some-instrument";
+    keys.inserts.push_back(synth);
+    Track aux;
+    aux.id = 3;
+    aux.kind = TrackKind::aux;
+    aux.name = "Keys out 2";
+    aux.auxTrack = 1;
+    aux.auxInsert = 2;
+    aux.auxOutput = 1;
+    p.tracks = {keys, aux};
+    p.nextId = 10;
+    const auto text = projectToJson(p);
+    const auto back = projectFromJson(text);
+    REQUIRE(back.has_value());
+    REQUIRE(back->tracks.size() == 2);
+    CHECK(back->tracks[1].isAux());
+    CHECK(back->tracks[1].auxTrack == 1);
+    CHECK(back->tracks[1].auxInsert == 2);
+    CHECK(back->tracks[1].auxOutput == 1);
+    CHECK(*back == p);
+}

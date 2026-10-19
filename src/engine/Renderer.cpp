@@ -169,14 +169,10 @@ void Renderer::renderTrack(const Snapshot& snapshot,
         track.runtime != nullptr ? track.runtime->targetPan.load(std::memory_order_relaxed) : track.pan;
     const float pan0 = track.runtime != nullptr && track.runtime->panPrimed ? track.runtime->pan : pan1;
 
-    if (track.isMidi)
+    // A stereo source (an instrument, an aux output): the pan is a balance and the
+    // polarity applies after the chain.
+    const auto finishStereo = [&]
     {
-        // A MIDI track: its events for the span go to the first insert that takes
-        // MIDI (the instrument); the rest of the chain follows as on any channel,
-        // and the pan (a stereo balance, the instrument's output being stereo)
-        // and the polarity apply after it.
-        scheduleMidi(track, position, numSamples, context);
-        processChain(snapshot, track, left, right, numSamples, &track.events);
         float panLeft0 = 1.0f, panRight0 = 1.0f, panLeft1 = 1.0f, panRight1 = 1.0f;
         stereoPanGains(pan0, panLeft0, panRight0);
         stereoPanGains(pan1, panLeft1, panRight1);
@@ -194,6 +190,32 @@ void Renderer::renderTrack(const Snapshot& snapshot,
             track.runtime->pan = pan1;
             track.runtime->panPrimed = true;
         }
+    };
+    if (track.isAux)
+    {
+        // An aux track: the instrument's extra pair, rendered already (the source
+        // track is in an earlier level), then this track's own chain.
+        const auto* instrument = track.auxInsert;
+        const float* auxL = instrument != nullptr && track.auxOutput < instrument->auxOutputCount()
+                                ? instrument->auxOutput(track.auxOutput, 0)
+                                : nullptr;
+        const float* auxR = auxL != nullptr ? instrument->auxOutput(track.auxOutput, 1) : nullptr;
+        if (auxL != nullptr && auxR != nullptr)
+        {
+            std::copy(auxL, auxL + numSamples, left);
+            std::copy(auxR, auxR + numSamples, right);
+        }
+        processChain(snapshot, track, left, right, numSamples);
+        finishStereo();
+        return;
+    }
+    if (track.isMidi)
+    {
+        // A MIDI track: its events for the span go to the first insert that takes
+        // MIDI (the instrument); the rest of the chain follows as on any channel.
+        scheduleMidi(track, position, numSamples, context);
+        processChain(snapshot, track, left, right, numSamples, &track.events);
+        finishStereo();
         return;
     }
 

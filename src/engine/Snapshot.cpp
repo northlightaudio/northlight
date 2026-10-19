@@ -328,7 +328,8 @@ std::unique_ptr<Snapshot> compileSnapshot(const core::Project& project,
         TrackNode node;
         fillChannel(node, track, t, trackMeterSlot(t), false);
         node.isMidi = track.isMidi();
-        node.inputChannel = track.inputChannel;
+        node.isAux = track.isAux();
+        node.inputChannel = track.isAux() ? -1 : track.inputChannel;
         node.armed = track.armed;
         node.monitor = track.monitor;
         if (node.isMidi)
@@ -389,7 +390,29 @@ std::unique_ptr<Snapshot> compileSnapshot(const core::Project& project,
         snapshot->buses.push_back(std::move(node));
     }
 
-    // ----- track levels (sidechain order) ---------------------------------------------
+    // ----- aux tracks: the instrument they read -------------------------------------
+    for (int t = 0; t < trackCount; ++t)
+    {
+        const auto& track = project.tracks[static_cast<size_t>(t)];
+        auto& node = snapshot->tracks[static_cast<size_t>(t)];
+        if (!track.isAux())
+            continue;
+        const int source = project.trackIndex(track.auxTrack);
+        if (source < 0 || source == t)
+            continue;
+        const auto* sourceTrack = project.findTrack(track.auxTrack);
+        if (sourceTrack == nullptr || sourceTrack->findInsert(track.auxInsert) == nullptr)
+            continue;
+        if (auto instance = inserts.find(track.auxInsert))
+        {
+            node.auxSourceTrack = source;
+            node.auxInsert = instance.get();
+            node.auxOutput = std::max(0, track.auxOutput - 1);
+            node.keepAliveAux = std::move(instance);
+        }
+    }
+
+    // ----- track levels (sidechain and aux order) --------------------------------------
     // A track keyed from another renders after it. Levels are assigned until every
     // track is placed; a cycle (A keys B, B keys A) drops the keys that block it.
     {
@@ -406,6 +429,9 @@ std::unique_ptr<Snapshot> compileSnapshot(const core::Project& project,
                 for (const int source : snapshot->tracks[static_cast<size_t>(t)].insertKeyTrack)
                     if (source >= 0 && level[static_cast<size_t>(source)] < 0)
                         ready = false;
+                if (const int source = snapshot->tracks[static_cast<size_t>(t)].auxSourceTrack;
+                    source >= 0 && level[static_cast<size_t>(source)] < 0)
+                    ready = false;
                 if (ready)
                     current.push_back(t);
             }
@@ -419,6 +445,12 @@ std::unique_ptr<Snapshot> compileSnapshot(const core::Project& project,
                         for (auto& source : snapshot->tracks[static_cast<size_t>(t)].insertKeyTrack)
                             if (source >= 0 && level[static_cast<size_t>(source)] < 0)
                                 source = -1;
+                        if (auto& aux = snapshot->tracks[static_cast<size_t>(t)].auxSourceTrack;
+                            aux >= 0 && level[static_cast<size_t>(aux)] < 0)
+                        {
+                            aux = -1;
+                            snapshot->tracks[static_cast<size_t>(t)].auxInsert = nullptr;
+                        }
                         current.push_back(t);
                     }
             }

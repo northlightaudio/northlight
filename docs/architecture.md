@@ -626,8 +626,14 @@ sample-exact), hosted VST3 plugins that accept MIDI (the events go into the JUCE
 MIDI buffer as raw bytes) and CLAP plugins with a note input port (CLAP note
 events, or MIDI 1.0 events when that is the only dialect the port takes, after
 the block's parameter events). The test CLAP plugin has a note port that marks
-the audio at each note so the host's timing is tested. Multi-output instruments
-are not yet routed: extra output buses stay disabled and the main pair is taken.
+the audio at each note so the host's timing is tested. A multi-output instrument
+keeps its further stereo output buses (VST3) or ports (CLAP) and exposes them as
+`InsertProcessor::auxOutput` pairs; an aux track (`TrackKind::aux`, with the
+source track, insert and output number) carries one such pair through its own
+chain, fader, pan and sends, and renders in a later level than its source like a
+keyed track. The mixer's insert menu offers "Outputs" on an instrument with
+extra pairs, one aux track per pair; a source that goes away leaves the aux
+track silent.
 
 Recording: an armed MIDI track joins the record session (`addMidiTrack`); the
 engine stamps each live event it delivers to that track with its timeline

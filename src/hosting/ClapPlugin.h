@@ -88,6 +88,19 @@ public:
                      float* right,
                      int numSamples) noexcept override;
     int latencySamples() const noexcept override { return latency_.load(std::memory_order_relaxed); }
+    // The output ports beyond the main one (the scratch the host drains them into).
+    int auxOutputCount() const noexcept override
+    {
+        return std::max(0, static_cast<int>(outPorts_.size()) - 1);
+    }
+    const float* auxOutput(int index, int channel) const noexcept override
+    {
+        const auto p = static_cast<size_t>(index) + 1;
+        if (index < 0 || p >= outPorts_.size() || outPorts_[p].pointers.empty())
+            return nullptr;
+        const auto& port = outPorts_[p];
+        return port.pointers[static_cast<size_t>(channel) % port.pointers.size()];
+    }
     bool needsRestart() const noexcept override { return restartRequested_.load(std::memory_order_acquire); }
     std::string state() const override;
     void setState(const std::string& state) override;

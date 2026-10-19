@@ -899,6 +899,17 @@ void ArrangeView::paint(juce::Graphics& g)
                 drawClip(g, track, clip, row);
             for (const auto& clip : track.midiClips)
                 drawMidiClip(g, track, clip, row);
+            if (track.isAux())
+            {
+                const auto* source = project_->findTrack(track.auxTrack);
+                g.setColour(c.textDisabled);
+                g.setFont(juce::FontOptions{theme_.type.caption});
+                g.drawText("Output " + juce::String(track.auxOutput + 1) + " of " +
+                               (source != nullptr ? juce::String::fromUTF8(source->name.c_str())
+                                                  : juce::String("a removed track")),
+                           row.withLeft(headerWidth + 8),
+                           juce::Justification::centredLeft);
+            }
 
             // The TrackHeader component covers the lane's left edge, so clips scrolled
             // left disappear under it. Armed tracks get a tinted lane.

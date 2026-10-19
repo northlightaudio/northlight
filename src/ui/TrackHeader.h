@@ -48,6 +48,7 @@ private:
     bool recording_ = false;
     bool armed_ = false;
     bool midi_ = false;
+    bool aux_ = false;
     std::vector<std::string> midiNames_;
     juce::Label name_;
     juce::ComboBox input_;

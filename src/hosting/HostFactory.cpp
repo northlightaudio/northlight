@@ -74,10 +74,11 @@ std::unique_ptr<engine::InsertProcessor> HostFactory::create(const std::string& 
     if (instance == nullptr)
         return fail(error.toStdString());
     bool sidechain = false;
-    const auto layout = HostedPlugin::negotiateLayout(*instance, sidechain);
+    int auxOutputs = 0;
+    const auto layout = HostedPlugin::negotiateLayout(*instance, sidechain, auxOutputs);
     if (layout == HostedPlugin::Layout::unsupported)
         return fail("the plugin accepts neither a stereo nor a mono layout");
-    return std::make_unique<HostedPlugin>(typeName, std::move(instance), layout, sidechain);
+    return std::make_unique<HostedPlugin>(typeName, std::move(instance), layout, sidechain, auxOutputs);
 }
 
 } // namespace aural::hosting

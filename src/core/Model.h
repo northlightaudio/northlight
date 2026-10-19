@@ -66,6 +66,7 @@ enum class TrackKind
 {
     audio, // audio clips, an audio input
     midi,  // MIDI clips, a MIDI input, an instrument in its chain
+    aux,   // an instrument's extra output pair, taken from another track
 };
 
 enum class MonitorMode
@@ -139,6 +140,11 @@ struct Channel
 struct Track : Channel
 {
     TrackKind kind = TrackKind::audio;
+    // An aux track (kind == aux) carries one extra stereo output of an instrument
+    // on another track: output 1 is the first beyond the main pair.
+    Id auxTrack = invalidId;
+    Id auxInsert = invalidId;
+    int auxOutput = 0;
     int inputChannel = -1; // device input channel index (callback order), -1 = none
     std::string midiInput; // MIDI input device name; empty = every enabled input
     bool armed = false;    // records when the transport records
@@ -153,6 +159,7 @@ struct Track : Channel
     const MidiClip* findMidiClip(Id clipId) const noexcept;
     void sortMidiClips();
     bool isMidi() const noexcept { return kind == TrackKind::midi; }
+    bool isAux() const noexcept { return kind == TrackKind::aux; }
     bool operator==(const Track&) const = default;
 };
 
