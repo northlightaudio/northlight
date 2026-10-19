@@ -36,7 +36,10 @@ struct TrackNode
     core::Id id = core::invalidId;
     float gain = 1.0f;
     float pan = 0.0f;
-    bool audible = true;         // mute/solo already resolved
+    bool audible = true;   // mute/solo already resolved
+    int inputChannel = -1; // device input (callback order) or -1
+    bool armed = false;
+    core::MonitorMode monitor = core::MonitorMode::automatic;
     std::vector<ClipNode> clips; // sorted by start
 
     // Work buffers for one block: the track's stereo output and clip read scratch.

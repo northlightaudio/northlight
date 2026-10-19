@@ -89,6 +89,29 @@ TEST_CASE("Track property commands revert to the previous value", "[core][comman
     CHECK(p.tracks[0].name == "Guitar");
 }
 
+TEST_CASE("Track input, arm and monitor commands revert", "[core][command]")
+{
+    Project p = projectWithTrack();
+    UndoStack stack;
+    const Id id = p.tracks[0].id;
+    CHECK(p.tracks[0].inputChannel == -1);
+    CHECK(p.tracks[0].monitor == MonitorMode::automatic);
+
+    stack.execute(p, std::make_unique<SetTrackInput>(id, 3));
+    stack.execute(p, std::make_unique<SetTrackArmed>(id, true));
+    stack.execute(p, std::make_unique<SetTrackMonitor>(id, MonitorMode::on));
+    CHECK(p.tracks[0].inputChannel == 3);
+    CHECK(p.tracks[0].armed);
+    CHECK(p.tracks[0].monitor == MonitorMode::on);
+
+    while (stack.undo(p))
+    {
+    }
+    CHECK(p.tracks[0].inputChannel == -1);
+    CHECK_FALSE(p.tracks[0].armed);
+    CHECK(p.tracks[0].monitor == MonitorMode::automatic);
+}
+
 TEST_CASE("Clips can be added, moved between tracks, trimmed and removed with undo", "[core][command]")
 {
     Project p = projectWithTrack();

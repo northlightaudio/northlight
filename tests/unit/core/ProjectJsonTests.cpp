@@ -26,6 +26,9 @@ Project sampleProject()
     u.id = 4;
     u.name = "Bass";
     u.solo = true;
+    u.inputChannel = 2;
+    u.armed = true;
+    u.monitor = MonitorMode::on;
     p.tracks.push_back(u);
     p.nextId = 5;
     return p;

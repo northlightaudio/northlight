@@ -226,6 +226,42 @@ void SetTrackSolo::revert(Project& p)
     requireTrack(p, trackId_).solo = previous_;
 }
 
+SetTrackInput::SetTrackInput(Id trackId, int inputChannel) : trackId_(trackId), value_(inputChannel) {}
+void SetTrackInput::apply(Project& p)
+{
+    auto& t = requireTrack(p, trackId_);
+    previous_ = t.inputChannel;
+    t.inputChannel = value_;
+}
+void SetTrackInput::revert(Project& p)
+{
+    requireTrack(p, trackId_).inputChannel = previous_;
+}
+
+SetTrackArmed::SetTrackArmed(Id trackId, bool armed) : trackId_(trackId), value_(armed) {}
+void SetTrackArmed::apply(Project& p)
+{
+    auto& t = requireTrack(p, trackId_);
+    previous_ = t.armed;
+    t.armed = value_;
+}
+void SetTrackArmed::revert(Project& p)
+{
+    requireTrack(p, trackId_).armed = previous_;
+}
+
+SetTrackMonitor::SetTrackMonitor(Id trackId, MonitorMode mode) : trackId_(trackId), value_(mode) {}
+void SetTrackMonitor::apply(Project& p)
+{
+    auto& t = requireTrack(p, trackId_);
+    previous_ = t.monitor;
+    t.monitor = value_;
+}
+void SetTrackMonitor::revert(Project& p)
+{
+    requireTrack(p, trackId_).monitor = previous_;
+}
+
 // ----- clips ------------------------------------------------------------------------------
 
 AddClip::AddClip(Id trackId, AudioClip clip) : trackId_(trackId), clip_(std::move(clip)) {}

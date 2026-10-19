@@ -233,7 +233,8 @@ void AudioCallback::audioDeviceIOCallbackWithContext(const float* const* inputCh
         currentGain_ = gainEnd;
 
         if (auto* engine = engine_.load(std::memory_order_acquire))
-            engine->process(outputChannelData, numOutputChannels, numSamples);
+            engine->process(
+                inputChannelData, numInputChannels, outputChannelData, numOutputChannels, numSamples);
         else
             renderSilence(outputChannelData, numOutputChannels, numSamples);
 

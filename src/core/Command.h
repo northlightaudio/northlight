@@ -136,6 +136,45 @@ private:
     bool value_, previous_ = false;
 };
 
+class SetTrackInput final : public Command
+{
+public:
+    SetTrackInput(Id trackId, int inputChannel);
+    std::string name() const override { return "Set track input"; }
+    void apply(Project&) override;
+    void revert(Project&) override;
+
+private:
+    Id trackId_;
+    int value_, previous_ = -1;
+};
+
+class SetTrackArmed final : public Command
+{
+public:
+    SetTrackArmed(Id trackId, bool armed);
+    std::string name() const override { return "Arm track"; }
+    void apply(Project&) override;
+    void revert(Project&) override;
+
+private:
+    Id trackId_;
+    bool value_, previous_ = false;
+};
+
+class SetTrackMonitor final : public Command
+{
+public:
+    SetTrackMonitor(Id trackId, MonitorMode mode);
+    std::string name() const override { return "Set track monitoring"; }
+    void apply(Project&) override;
+    void revert(Project&) override;
+
+private:
+    Id trackId_;
+    MonitorMode value_, previous_ = MonitorMode::automatic;
+};
+
 class SetTrackSolo final : public Command
 {
 public:

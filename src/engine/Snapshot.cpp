@@ -50,6 +50,9 @@ std::unique_ptr<Snapshot> compileSnapshot(const core::Project& project, MediaCac
         node.gain = t.gain;
         node.pan = t.pan;
         node.audible = !t.mute && (!anySolo || t.solo);
+        node.inputChannel = t.inputChannel;
+        node.armed = t.armed;
+        node.monitor = t.monitor;
         node.clips.reserve(t.clips.size());
         for (const auto& c : t.clips)
         {

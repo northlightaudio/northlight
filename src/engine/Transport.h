@@ -29,6 +29,7 @@ struct TransportCommand
         stop,
         locate,
         setLoop,
+        record, // start capturing the pending record session and play
     };
 
     Type type = Type::stop;
@@ -38,6 +39,7 @@ struct TransportCommand
 
     static TransportCommand play() noexcept { return {Type::play, 0, 0, false}; }
     static TransportCommand stop() noexcept { return {Type::stop, 0, 0, false}; }
+    static TransportCommand record() noexcept { return {Type::record, 0, 0, false}; }
     static TransportCommand locate(core::SamplePosition p) noexcept { return {Type::locate, p, 0, false}; }
     static TransportCommand
     setLoop(core::SamplePosition start, core::SamplePosition end, bool enabled) noexcept
@@ -52,6 +54,7 @@ inline void applyTransportCommand(TransportState& state, const TransportCommand&
     switch (command.type)
     {
         case TransportCommand::Type::play:
+        case TransportCommand::Type::record:
             state.playing = true;
             break;
         case TransportCommand::Type::stop:

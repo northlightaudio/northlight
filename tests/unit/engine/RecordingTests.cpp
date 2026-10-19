@@ -1,0 +1,330 @@
+#include "core/Model.h"
+#include "engine/AudioEngine.h"
+#include "engine/AudioSource.h"
+#include "engine/Recording.h"
+#include "engine/WavFile.h"
+#include "engine/rt/RealtimeGuard.h"
+
+#include <catch2/catch_approx.hpp>
+#include <catch2/catch_test_macros.hpp>
+
+#include <atomic>
+#include <chrono>
+#include <cstdio>
+#include <filesystem>
+#include <memory>
+#include <thread>
+#include <vector>
+
+using namespace aural;
+using Catch::Approx;
+
+namespace
+{
+std::string tempPath(const char* name)
+{
+    const auto dir = std::filesystem::temp_directory_path() / "aural-tests";
+    std::filesystem::create_directories(dir);
+    const auto path = (dir / name).string();
+    std::remove(path.c_str());
+    return path;
+}
+
+class NoMediaLoader final : public engine::MediaLoader
+{
+public:
+    std::shared_ptr<engine::AudioSource> load(const std::string&, double, std::string& error) override
+    {
+        error = "no media in this test";
+        return nullptr;
+    }
+};
+
+void waitForWriter(engine::AudioEngine& engine)
+{
+    for (int i = 0; i < 2000 && !engine.hasRecordingToCollect(); ++i)
+        std::this_thread::sleep_for(std::chrono::milliseconds(2));
+}
+} // namespace
+
+TEST_CASE("WAV files round-trip float samples and report their header", "[engine][wav]")
+{
+    const auto path = tempPath("roundtrip.wav");
+    std::vector<float> a(1000), b(1000);
+    for (int i = 0; i < 1000; ++i)
+    {
+        a[static_cast<size_t>(i)] = static_cast<float>(i) / 1000.0f;
+        b[static_cast<size_t>(i)] = -a[static_cast<size_t>(i)];
+    }
+    {
+        engine::WavWriter writer;
+        REQUIRE(writer.open(path, 2, 48000.0));
+        const float* channels[] = {a.data(), b.data()};
+        REQUIRE(writer.write(channels, 600));
+        REQUIRE(writer.write(channels + 0, 0));
+        const float* rest[] = {a.data() + 600, b.data() + 600};
+        REQUIRE(writer.write(rest, 400));
+        CHECK(writer.samplesWritten() == 1000);
+        REQUIRE(writer.close());
+    }
+    const auto info = engine::readWavInfo(path);
+    REQUIRE(info.has_value());
+    CHECK(info->numChannels == 2);
+    CHECK(info->sampleRate == 48000.0);
+    CHECK(info->lengthSamples == 1000);
+    CHECK(info->isFloat);
+
+    std::vector<std::vector<float>> channels;
+    REQUIRE(engine::readWavSamples(path, channels));
+    REQUIRE(channels.size() == 2);
+    CHECK(channels[0] == a);
+    CHECK(channels[1] == b);
+}
+
+TEST_CASE("A file left without a final header is repaired from its size", "[engine][wav]")
+{
+    const auto path = tempPath("crashed.wav");
+    std::vector<float> samples(1500, 0.25f);
+    {
+        engine::WavWriter writer;
+        REQUIRE(writer.open(path, 1, 44100.0));
+        const float* channels[] = {samples.data()};
+        REQUIRE(writer.write(channels, 1000));
+        REQUIRE(writer.updateHeader()); // the periodic update: header says 1000
+        // Simulate frames written after the last update, then a crash: append raw data.
+        REQUIRE(writer.close());
+    }
+    {
+        std::FILE* f = std::fopen(path.c_str(), "ab");
+        REQUIRE(f != nullptr);
+        std::fwrite(samples.data(), sizeof(float), 500, f);
+        const char partial[2] = {0, 0}; // a torn frame at the very end
+        std::fwrite(partial, 1, 2, f);
+        std::fclose(f);
+    }
+    CHECK(engine::readWavInfo(path)->lengthSamples == 1000);
+    REQUIRE(engine::WavWriter::repair(path));
+    CHECK(engine::readWavInfo(path)->lengthSamples == 1500);
+    std::vector<std::vector<float>> channels;
+    REQUIRE(engine::readWavSamples(path, channels));
+    CHECK(channels[0].size() == 1500);
+    CHECK(channels[0][1499] == 0.25f);
+}
+
+TEST_CASE("Record ring moves samples from producer to consumer in order and reports overruns",
+          "[engine][record]")
+{
+    engine::RecordRing ring(2048);
+    std::vector<float> in(1000);
+    for (size_t i = 0; i < in.size(); ++i)
+        in[i] = static_cast<float>(i);
+    CHECK(ring.push(in.data(), 1000));
+    CHECK(ring.push(in.data(), 1000));
+    CHECK_FALSE(ring.push(in.data(), 100)); // only 48 free
+    CHECK(ring.available() == 2000);
+
+    std::vector<float> out(1500);
+    CHECK(ring.pop(out.data(), 1500) == 1500);
+    CHECK(out[0] == 0.0f);
+    CHECK(out[999] == 999.0f);
+    CHECK(out[1000] == 0.0f);
+    CHECK(out[1499] == 499.0f);
+    CHECK(ring.push(in.data(), 1000)); // wraps around
+    CHECK(ring.pop(out.data(), 1500) == 1500);
+    CHECK(out[0] == 500.0f);
+    CHECK(out[499] == 999.0f);
+    CHECK(out[500] == 0.0f);
+    CHECK(ring.pop(out.data(), 1500) == 0);
+}
+
+TEST_CASE("Recording captures armed inputs sample-exactly from the record position", "[engine][record]")
+{
+    NoMediaLoader loader;
+    engine::AudioEngine engine(loader, 0);
+    engine.prepare(48000.0, 64);
+    core::Project p;
+    core::Track t;
+    t.id = 1;
+    p.tracks.push_back(t);
+    engine.setProject(p);
+
+    auto session = std::make_unique<engine::RecordSession>(48000.0, 0.5);
+    const auto pathA = tempPath("rec-a.wav");
+    const auto pathB = tempPath("rec-b.wav");
+    session->addInput(1, 0, pathA);
+    session->addInput(1, 2, pathB); // input 2 is beyond what the device offers: silence
+
+    std::vector<float> in0(64), in1(64);
+    const float* inputs[] = {in0.data(), in1.data()};
+    std::vector<float> l(64), r(64);
+    float* outputs[] = {l.data(), r.data()};
+
+    engine.locate(1000);
+    engine.process(inputs, 2, outputs, 2, 64); // applies the locate while stopped
+    CHECK(engine.position() == 1000);
+
+    std::string error;
+    REQUIRE(engine.startRecording(std::move(session), error));
+    CHECK(error.empty());
+
+    // 100 blocks of a ramp on input 0; the record command applies in the first one.
+    std::int64_t sample = 0;
+    for (int block = 0; block < 100; ++block)
+    {
+        for (int i = 0; i < 64; ++i)
+        {
+            in0[static_cast<size_t>(i)] = static_cast<float>(sample + i) / 10000.0f;
+            in1[static_cast<size_t>(i)] = 1.0f;
+        }
+        engine.process(inputs, 2, outputs, 2, 64);
+        sample += 64;
+    }
+    CHECK(engine.isRecording());
+    CHECK(engine.isPlaying());
+    CHECK(engine.position() == 1000 + 6400);
+
+    engine.stop();
+    engine.process(inputs, 2, outputs, 2, 64);
+    CHECK_FALSE(engine.isRecording());
+    CHECK_FALSE(engine.isPlaying());
+
+    waitForWriter(engine);
+    auto finished = engine.collectRecording();
+    REQUIRE(finished.has_value());
+    CHECK(finished->session->startPosition() == 1000);
+    CHECK(finished->session->totalDropped() == 0);
+    REQUIRE(finished->results.size() == 2);
+    CHECK(finished->results[0].trackId == 1);
+    CHECK(finished->results[0].samplesWritten == 6400);
+    CHECK(finished->results[0].ok);
+    CHECK(finished->results[1].samplesWritten == 6400);
+
+    std::vector<std::vector<float>> channels;
+    REQUIRE(engine::readWavSamples(pathA, channels));
+    REQUIRE(channels[0].size() == 6400);
+    for (int i = 0; i < 6400; ++i)
+        REQUIRE(channels[0][static_cast<size_t>(i)] == static_cast<float>(i) / 10000.0f);
+    REQUIRE(engine::readWavSamples(pathB, channels));
+    CHECK(channels[0][100] == 0.0f);
+    CHECK_FALSE(engine.hasRecordingToCollect());
+}
+
+TEST_CASE("Stopping the device mid-recording finishes the files", "[engine][record]")
+{
+    NoMediaLoader loader;
+    engine::AudioEngine engine(loader, 0);
+    engine.prepare(48000.0, 64);
+    engine.setProject(core::Project{});
+    auto session = std::make_unique<engine::RecordSession>(48000.0, 0.5);
+    session->addInput(1, 0, tempPath("rec-c.wav"));
+    std::string error;
+    REQUIRE(engine.startRecording(std::move(session), error));
+
+    std::vector<float> in0(64, 0.5f);
+    const float* inputs[] = {in0.data()};
+    std::vector<float> l(64), r(64);
+    float* outputs[] = {l.data(), r.data()};
+    for (int block = 0; block < 10; ++block)
+        engine.process(inputs, 1, outputs, 2, 64);
+
+    engine.release(); // device stopped
+    CHECK_FALSE(engine.isRecording());
+    waitForWriter(engine);
+    auto finished = engine.collectRecording();
+    REQUIRE(finished.has_value());
+    CHECK(finished->results[0].samplesWritten == 640);
+}
+
+TEST_CASE("Input monitoring follows the monitor mode and transport state", "[engine][monitor]")
+{
+    engine::TrackNode track;
+    track.inputChannel = 0;
+    track.armed = true;
+    track.monitor = core::MonitorMode::automatic;
+    CHECK(engine::Renderer::monitorsInput(track, false, false));
+    CHECK_FALSE(engine::Renderer::monitorsInput(track, true, false)); // playback: hear the tape
+    CHECK(engine::Renderer::monitorsInput(track, true, true));
+    track.armed = false;
+    CHECK_FALSE(engine::Renderer::monitorsInput(track, false, false));
+    track.monitor = core::MonitorMode::on;
+    CHECK(engine::Renderer::monitorsInput(track, true, false));
+    track.monitor = core::MonitorMode::off;
+    track.armed = true;
+    CHECK_FALSE(engine::Renderer::monitorsInput(track, false, false));
+    track.monitor = core::MonitorMode::on;
+    track.inputChannel = -1;
+    CHECK_FALSE(engine::Renderer::monitorsInput(track, false, false));
+}
+
+TEST_CASE("A monitored input is heard through the track gain and pan while stopped", "[engine][monitor]")
+{
+    NoMediaLoader loader;
+    engine::AudioEngine engine(loader, 0);
+    engine.prepare(48000.0, 64);
+    core::Project p;
+    core::Track t;
+    t.id = 1;
+    t.inputChannel = 1;
+    t.monitor = core::MonitorMode::on;
+    t.gain = 0.5f;
+    t.pan = -1.0f; // hard left
+    p.tracks.push_back(t);
+    engine.setProject(p);
+
+    std::vector<float> in0(64, 1.0f), in1(64, 0.8f);
+    const float* inputs[] = {in0.data(), in1.data()};
+    std::vector<float> l(64), r(64);
+    float* outputs[] = {l.data(), r.data()};
+    engine.process(inputs, 2, outputs, 2, 64);
+    CHECK_FALSE(engine.isPlaying());
+    CHECK(l[10] == Approx(0.4f).margin(1e-6f));
+    CHECK(r[10] == Approx(0.0f).margin(1e-6f));
+}
+
+#if defined(AURAL_RT_CHECKS)
+namespace
+{
+std::atomic<int> recordViolations{0};
+void countRecordViolation(const rt::Violation&) noexcept
+{
+    recordViolations.fetch_add(1, std::memory_order_relaxed);
+}
+} // namespace
+
+TEST_CASE("Capturing and monitoring do not allocate on the real-time thread", "[engine][record][rt]")
+{
+    NoMediaLoader loader;
+    engine::AudioEngine engine(loader, 0);
+    engine.prepare(48000.0, 64);
+    core::Project p;
+    core::Track t;
+    t.id = 1;
+    t.inputChannel = 0;
+    t.monitor = core::MonitorMode::on;
+    p.tracks.push_back(t);
+    engine.setProject(p);
+    auto session = std::make_unique<engine::RecordSession>(48000.0, 0.5);
+    session->addInput(1, 0, tempPath("rec-rt.wav"));
+    std::string error;
+    REQUIRE(engine.startRecording(std::move(session), error));
+
+    std::vector<float> in0(64, 0.1f);
+    const float* inputs[] = {in0.data()};
+    std::vector<float> l(64), r(64);
+    float* outputs[] = {l.data(), r.data()};
+
+    const auto previous = rt::setViolationHandler(&countRecordViolation);
+    recordViolations = 0;
+    {
+        rt::ScopedRealtimeSection section;
+        for (int block = 0; block < 200; ++block)
+            engine.process(inputs, 1, outputs, 2, 64);
+        engine.stop();
+        engine.process(inputs, 1, outputs, 2, 64);
+    }
+    rt::setViolationHandler(previous);
+    CHECK(recordViolations == 0);
+    waitForWriter(engine);
+    CHECK(engine.collectRecording().has_value());
+}
+#endif

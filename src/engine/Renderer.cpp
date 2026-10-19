@@ -33,8 +33,25 @@ void Renderer::stereoPanGains(float pan, float& left, float& right) noexcept
     right = p >= 0.0f ? 1.0f : 1.0f + p;
 }
 
+bool Renderer::monitorsInput(const TrackNode& track, bool playing, bool recording) noexcept
+{
+    if (track.inputChannel < 0)
+        return false;
+    switch (track.monitor)
+    {
+        case core::MonitorMode::off:
+            return false;
+        case core::MonitorMode::on:
+            return true;
+        case core::MonitorMode::automatic:
+            return track.armed && (!playing || recording);
+    }
+    return false;
+}
+
 void Renderer::render(const Snapshot& snapshot,
                       TransportState& transport,
+                      const RenderContext& context,
                       float* const* outputs,
                       int numOutputs,
                       int numSamples,
@@ -44,8 +61,7 @@ void Renderer::render(const Snapshot& snapshot,
     for (int ch = 0; ch < numOutputs; ++ch)
         if (outputs[ch] != nullptr)
             std::fill(outputs[ch], outputs[ch] + numSamples, 0.0f);
-
-    if (!transport.playing || numSamples <= 0)
+    if (numSamples <= 0)
         return;
 
     float* left = mixLeft_.data();
@@ -53,24 +69,32 @@ void Renderer::render(const Snapshot& snapshot,
     std::fill(left, left + numSamples, 0.0f);
     std::fill(right, right + numSamples, 0.0f);
 
-    // Split the block at the loop end so position never crosses it.
-    int done = 0;
-    while (done < numSamples)
+    if (!transport.playing)
     {
-        int span = numSamples - done;
-        if (transport.loopIsValid())
+        // Stopped: no clip playback, but monitored inputs are still heard.
+        renderSpan(snapshot, context, transport.position, left, right, numSamples, pool);
+    }
+    else
+    {
+        // Split the block at the loop end so position never crosses it.
+        int done = 0;
+        while (done < numSamples)
         {
-            // Playing from before the loop runs into it normally; only the loop end wraps.
-            if (transport.position >= transport.loopEnd)
+            int span = numSamples - done;
+            if (transport.loopIsValid())
+            {
+                // Playing from before the loop runs into it normally; only the loop end wraps.
+                if (transport.position >= transport.loopEnd)
+                    transport.position = transport.loopStart;
+                const auto toLoopEnd = transport.loopEnd - transport.position;
+                span = static_cast<int>(std::min<core::SamplePosition>(span, toLoopEnd));
+            }
+            renderSpan(snapshot, context, transport.position, left + done, right + done, span, pool);
+            transport.position += span;
+            done += span;
+            if (transport.loopIsValid() && transport.position >= transport.loopEnd)
                 transport.position = transport.loopStart;
-            const auto toLoopEnd = transport.loopEnd - transport.position;
-            span = static_cast<int>(std::min<core::SamplePosition>(span, toLoopEnd));
         }
-        renderSpan(snapshot, transport.position, left + done, right + done, span, pool);
-        transport.position += span;
-        done += span;
-        if (transport.loopIsValid() && transport.position >= transport.loopEnd)
-            transport.position = transport.loopStart;
     }
 
     if (numOutputs >= 2)
@@ -87,7 +111,10 @@ void Renderer::render(const Snapshot& snapshot,
     }
 }
 
-void Renderer::renderTrack(const TrackNode& track, core::SamplePosition position, int numSamples) noexcept
+void Renderer::renderTrack(const TrackNode& track,
+                           core::SamplePosition position,
+                           int numSamples,
+                           const RenderContext& context) noexcept
 {
     numSamples = std::min(numSamples, static_cast<int>(track.outLeft.size()));
     float* left = track.outLeft.data();
@@ -97,49 +124,71 @@ void Renderer::renderTrack(const TrackNode& track, core::SamplePosition position
     if (!track.audible)
         return;
 
-    const core::SamplePosition spanEnd = position + numSamples;
-    for (const auto& clip : track.clips)
+    if (context.playing)
     {
-        if (clip.source == nullptr || clip.length <= 0)
-            continue;
-        if (clip.start >= spanEnd)
-            break; // clips are sorted by start
-        if (clip.end() <= position)
-            continue;
-
-        const auto from = std::max(position, clip.start);
-        const auto to = std::min(spanEnd, clip.end());
-        const auto count = static_cast<int>(to - from);
-        const auto offset = static_cast<int>(from - position);
-        const auto sourcePos = clip.sourceOffset + (from - clip.start);
-
-        float panLeft = 1.0f, panRight = 1.0f;
-        const bool mono = clip.source->numChannels() == 1;
-        if (mono)
-            monoPanGains(track.pan, panLeft, panRight);
-        else
-            stereoPanGains(track.pan, panLeft, panRight);
-        const float gainLeft = clip.gain * track.gain * panLeft;
-        const float gainRight = clip.gain * track.gain * panRight;
-
-        float* sl = track.scratchLeft.data();
-        float* sr = track.scratchRight.data();
-        clip.source->read(0, sourcePos, sl, count);
-        if (mono)
+        const core::SamplePosition spanEnd = position + numSamples;
+        for (const auto& clip : track.clips)
         {
-            for (int i = 0; i < count; ++i)
+            if (clip.source == nullptr || clip.length <= 0)
+                continue;
+            if (clip.start >= spanEnd)
+                break; // clips are sorted by start
+            if (clip.end() <= position)
+                continue;
+
+            const auto from = std::max(position, clip.start);
+            const auto to = std::min(spanEnd, clip.end());
+            const auto count = static_cast<int>(to - from);
+            const auto offset = static_cast<int>(from - position);
+            const auto sourcePos = clip.sourceOffset + (from - clip.start);
+
+            float panLeft = 1.0f, panRight = 1.0f;
+            const bool mono = clip.source->numChannels() == 1;
+            if (mono)
+                monoPanGains(track.pan, panLeft, panRight);
+            else
+                stereoPanGains(track.pan, panLeft, panRight);
+            const float gainLeft = clip.gain * track.gain * panLeft;
+            const float gainRight = clip.gain * track.gain * panRight;
+
+            float* sl = track.scratchLeft.data();
+            float* sr = track.scratchRight.data();
+            clip.source->read(0, sourcePos, sl, count);
+            if (mono)
             {
-                left[offset + i] += sl[i] * gainLeft;
-                right[offset + i] += sl[i] * gainRight;
+                for (int i = 0; i < count; ++i)
+                {
+                    left[offset + i] += sl[i] * gainLeft;
+                    right[offset + i] += sl[i] * gainRight;
+                }
+            }
+            else
+            {
+                clip.source->read(1, sourcePos, sr, count);
+                for (int i = 0; i < count; ++i)
+                {
+                    left[offset + i] += sl[i] * gainLeft;
+                    right[offset + i] += sr[i] * gainRight;
+                }
             }
         }
-        else
+    }
+
+    // Input monitoring: the device input through the track's gain and pan.
+    if (monitorsInput(track, context.playing, context.recording) && track.inputChannel < context.numInputs &&
+        context.inputs != nullptr)
+    {
+        const float* in = context.inputs[track.inputChannel];
+        if (in != nullptr)
         {
-            clip.source->read(1, sourcePos, sr, count);
-            for (int i = 0; i < count; ++i)
+            float panLeft = 1.0f, panRight = 1.0f;
+            monoPanGains(track.pan, panLeft, panRight);
+            const float gainLeft = track.gain * panLeft;
+            const float gainRight = track.gain * panRight;
+            for (int i = 0; i < numSamples; ++i)
             {
-                left[offset + i] += sl[i] * gainLeft;
-                right[offset + i] += sr[i] * gainRight;
+                left[i] += in[i] * gainLeft;
+                right[i] += in[i] * gainRight;
             }
         }
     }
@@ -148,10 +197,11 @@ void Renderer::renderTrack(const TrackNode& track, core::SamplePosition position
 void Renderer::trackJob(void* context, int index) noexcept
 {
     const auto& job = *static_cast<const SpanJob*>(context);
-    renderTrack(job.snapshot->tracks[static_cast<size_t>(index)], job.position, job.numSamples);
+    renderTrack(job.snapshot->tracks[static_cast<size_t>(index)], job.position, job.numSamples, *job.context);
 }
 
 void Renderer::renderSpan(const Snapshot& snapshot,
+                          const RenderContext& context,
                           core::SamplePosition position,
                           float* left,
                           float* right,
@@ -159,7 +209,7 @@ void Renderer::renderSpan(const Snapshot& snapshot,
                           WorkerPool* pool) noexcept
 {
     const auto trackCount = static_cast<int>(snapshot.tracks.size());
-    SpanJob job{&snapshot, position, numSamples};
+    SpanJob job{&snapshot, &context, position, numSamples};
     if (pool != nullptr && pool->numWorkers() > 0)
     {
         pool->run(trackCount, &trackJob, &job);

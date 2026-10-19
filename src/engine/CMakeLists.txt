@@ -37,6 +37,10 @@ add_library(aural_engine STATIC
     Peaks.h
     Peaks.cpp
     WorkerPool.h
-    WorkerPool.cpp)
+    WorkerPool.cpp
+    WavFile.h
+    WavFile.cpp
+    Recording.h
+    Recording.cpp)
 
 target_link_libraries(aural_engine PUBLIC aural_rt aural_core)

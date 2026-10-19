@@ -32,6 +32,13 @@ struct AudioClip
     bool operator==(const AudioClip&) const = default;
 };
 
+enum class MonitorMode
+{
+    off,       // never hear the input through the track
+    automatic, // hear the input while the track is armed and the transport is not playing back
+    on,        // always hear the input
+};
+
 struct Track
 {
     Id id = invalidId;
@@ -40,6 +47,9 @@ struct Track
     float pan = 0.0f;  // -1 left .. +1 right
     bool mute = false;
     bool solo = false;
+    int inputChannel = -1; // device input channel index (callback order), -1 = none
+    bool armed = false;    // records when the transport records
+    MonitorMode monitor = MonitorMode::automatic;
     std::vector<AudioClip> clips; // kept sorted by start
 
     AudioClip* findClip(Id clipId) noexcept;

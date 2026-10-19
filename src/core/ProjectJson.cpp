@@ -38,12 +38,18 @@ json trackToJson(const Track& t)
     json clips = json::array();
     for (const auto& c : t.clips)
         clips.push_back(clipToJson(c));
+    const char* monitor = t.monitor == MonitorMode::off  ? "off"
+                          : t.monitor == MonitorMode::on ? "on"
+                                                         : "auto";
     return json{{"id", t.id},
                 {"name", t.name},
                 {"gain", t.gain},
                 {"pan", t.pan},
                 {"mute", t.mute},
                 {"solo", t.solo},
+                {"input", t.inputChannel},
+                {"armed", t.armed},
+                {"monitor", monitor},
                 {"clips", std::move(clips)}};
 }
 
@@ -56,6 +62,12 @@ Track trackFromJson(const json& j)
     t.pan = j.value("pan", 0.0f);
     t.mute = j.value("mute", false);
     t.solo = j.value("solo", false);
+    t.inputChannel = j.value("input", -1);
+    t.armed = j.value("armed", false);
+    const auto monitor = j.value("monitor", std::string{"auto"});
+    t.monitor = monitor == "off"  ? MonitorMode::off
+                : monitor == "on" ? MonitorMode::on
+                                  : MonitorMode::automatic;
     if (const auto it = j.find("clips"); it != j.end() && it->is_array())
         for (const auto& c : *it)
             t.clips.push_back(clipFromJson(c));
