@@ -54,6 +54,8 @@ struct Snapshot
 
     std::uint64_t epoch = 0; // set by the publisher
     double sampleRate = 48000.0;
+    double tempoBpm = 120.0;
+    core::TimeSignature timeSignature;
     std::vector<TrackNode> tracks;
 };
 

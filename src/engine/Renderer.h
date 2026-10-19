@@ -1,5 +1,6 @@
 #pragma once
 
+#include "engine/Click.h"
 #include "engine/Snapshot.h"
 #include "engine/Transport.h"
 #include "engine/WorkerPool.h"
@@ -23,6 +24,7 @@ struct RenderContext
     int numInputs = 0;
     bool playing = false;   // clips play and the position advances
     bool recording = false; // armed tracks in automatic monitor mode hear their input
+    bool countIn = false;   // the count-in before a recording: clicks only, position holds
 };
 
 class Renderer
@@ -78,8 +80,16 @@ private:
                     int numSamples,
                     WorkerPool* pool) noexcept;
 
+    void renderClicks(const Snapshot& snapshot,
+                      const TransportState& transport,
+                      core::SamplePosition start,
+                      float* left,
+                      float* right,
+                      int numSamples) noexcept;
+
     int maxBlockSize_ = 0;
     std::vector<float> mixLeft_, mixRight_;
+    ClickGenerator click_;
 };
 
 } // namespace aural::engine

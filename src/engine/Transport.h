@@ -18,7 +18,25 @@ struct TransportState
     core::SamplePosition loopStart = 0;
     core::SamplePosition loopEnd = 0; // exclusive
 
+    // Metronome click while playing (and during the count-in).
+    bool metronome = false;
+    float metronomeGain = 0.5f;
+
+    // Count-in: clicks for this many more samples before the position advances and
+    // capture begins.
+    core::SamplePosition countInRemaining = 0;
+
+    // Punch: when enabled, recording captures only inside [punchIn, punchOut).
+    bool punchEnabled = false;
+    core::SamplePosition punchIn = 0;
+    core::SamplePosition punchOut = 0;
+
     bool loopIsValid() const noexcept { return loopEnabled && loopEnd > loopStart; }
+    bool punchIsValid() const noexcept { return punchEnabled && punchOut > punchIn; }
+    bool insidePunch(core::SamplePosition p) const noexcept
+    {
+        return !punchIsValid() || (p >= punchIn && p < punchOut);
+    }
 };
 
 struct TransportCommand
@@ -29,36 +47,58 @@ struct TransportCommand
         stop,
         locate,
         setLoop,
-        record, // start capturing the pending record session and play
+        record,       // start capturing the pending record session (after any count-in) and play
+        setMetronome, // enabled + gain in `value`
+        setPunch,
     };
 
     Type type = Type::stop;
-    core::SamplePosition position = 0; // locate target, or loop start
-    core::SamplePosition end = 0;      // loop end (exclusive)
-    bool enabled = false;              // loop on/off
+    core::SamplePosition position = 0; // locate target, loop/punch start, or count-in samples for record
+    core::SamplePosition end = 0;      // loop/punch end (exclusive)
+    bool enabled = false;              // loop/punch/metronome on/off
+    double value = 0.0;                // metronome gain
 
-    static TransportCommand play() noexcept { return {Type::play, 0, 0, false}; }
-    static TransportCommand stop() noexcept { return {Type::stop, 0, 0, false}; }
-    static TransportCommand record() noexcept { return {Type::record, 0, 0, false}; }
-    static TransportCommand locate(core::SamplePosition p) noexcept { return {Type::locate, p, 0, false}; }
+    static TransportCommand play() noexcept { return {Type::play, 0, 0, false, 0.0}; }
+    static TransportCommand stop() noexcept { return {Type::stop, 0, 0, false, 0.0}; }
+    static TransportCommand record(core::SamplePosition countInSamples = 0) noexcept
+    {
+        return {Type::record, countInSamples, 0, false, 0.0};
+    }
+    static TransportCommand locate(core::SamplePosition p) noexcept
+    {
+        return {Type::locate, p, 0, false, 0.0};
+    }
     static TransportCommand
     setLoop(core::SamplePosition start, core::SamplePosition end, bool enabled) noexcept
     {
-        return {Type::setLoop, start, end, enabled};
+        return {Type::setLoop, start, end, enabled, 0.0};
+    }
+    static TransportCommand setMetronome(bool enabled, double gain) noexcept
+    {
+        return {Type::setMetronome, 0, 0, enabled, gain};
+    }
+    static TransportCommand setPunch(core::SamplePosition in, core::SamplePosition out, bool enabled) noexcept
+    {
+        return {Type::setPunch, in, out, enabled, 0.0};
     }
 };
 
-// Applies a command to the state. Real-time safe.
+// Applies a command to the state. Real-time safe. The engine handles `record`
+// itself (it also starts the capture session) before calling this.
 inline void applyTransportCommand(TransportState& state, const TransportCommand& command) noexcept
 {
     switch (command.type)
     {
         case TransportCommand::Type::play:
+            state.playing = true;
+            break;
         case TransportCommand::Type::record:
             state.playing = true;
+            state.countInRemaining = command.position > 0 ? command.position : 0;
             break;
         case TransportCommand::Type::stop:
             state.playing = false;
+            state.countInRemaining = 0;
             break;
         case TransportCommand::Type::locate:
             state.position = command.position < 0 ? 0 : command.position;
@@ -67,6 +107,15 @@ inline void applyTransportCommand(TransportState& state, const TransportCommand&
             state.loopStart = command.position;
             state.loopEnd = command.end;
             state.loopEnabled = command.enabled;
+            break;
+        case TransportCommand::Type::setMetronome:
+            state.metronome = command.enabled;
+            state.metronomeGain = static_cast<float>(command.value);
+            break;
+        case TransportCommand::Type::setPunch:
+            state.punchIn = command.position;
+            state.punchOut = command.end;
+            state.punchEnabled = command.enabled;
             break;
     }
 }

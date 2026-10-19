@@ -69,9 +69,19 @@ void Renderer::render(const Snapshot& snapshot,
     std::fill(left, left + numSamples, 0.0f);
     std::fill(right, right + numSamples, 0.0f);
 
-    if (!transport.playing)
+    if (context.countIn)
+    {
+        // Count-in: monitored inputs and the click, from the bars before the position.
+        RenderContext held = context;
+        held.playing = false;
+        renderSpan(snapshot, held, transport.position, left, right, numSamples, pool);
+        renderClicks(
+            snapshot, transport, transport.position - transport.countInRemaining, left, right, numSamples);
+    }
+    else if (!transport.playing)
     {
         // Stopped: no clip playback, but monitored inputs are still heard.
+        click_.reset();
         renderSpan(snapshot, context, transport.position, left, right, numSamples, pool);
     }
     else
@@ -90,6 +100,7 @@ void Renderer::render(const Snapshot& snapshot,
                 span = static_cast<int>(std::min<core::SamplePosition>(span, toLoopEnd));
             }
             renderSpan(snapshot, context, transport.position, left + done, right + done, span, pool);
+            renderClicks(snapshot, transport, transport.position, left + done, right + done, span);
             transport.position += span;
             done += span;
             if (transport.loopIsValid() && transport.position >= transport.loopEnd)
@@ -109,6 +120,26 @@ void Renderer::render(const Snapshot& snapshot,
         for (int i = 0; i < numSamples; ++i)
             outputs[0][i] = 0.5f * (left[i] + right[i]);
     }
+}
+
+void Renderer::renderClicks(const Snapshot& snapshot,
+                            const TransportState& transport,
+                            core::SamplePosition start,
+                            float* left,
+                            float* right,
+                            int numSamples) noexcept
+{
+    if (!transport.metronome)
+        return;
+    const double spb = core::samplesPerBeat(snapshot.sampleRate, snapshot.tempoBpm, snapshot.timeSignature);
+    click_.render(start,
+                  numSamples,
+                  snapshot.sampleRate,
+                  spb,
+                  snapshot.timeSignature.numerator,
+                  transport.metronomeGain,
+                  left,
+                  right);
 }
 
 void Renderer::renderTrack(const TrackNode& track,

@@ -37,6 +37,8 @@ std::unique_ptr<Snapshot> compileSnapshot(const core::Project& project, MediaCac
     AURAL_ASSERT_NOT_REALTIME("compileSnapshot");
     auto snapshot = std::make_unique<Snapshot>();
     snapshot->sampleRate = project.sampleRate;
+    snapshot->tempoBpm = project.tempoBpm;
+    snapshot->timeSignature = project.timeSignature;
 
     bool anySolo = false;
     for (const auto& t : project.tracks)

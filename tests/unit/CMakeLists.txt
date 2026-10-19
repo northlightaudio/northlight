@@ -12,7 +12,8 @@ add_executable(aural_unit_tests
     engine/PeaksTests.cpp
     engine/CallbackStatsTests.cpp
     engine/WorkerPoolTests.cpp
-    engine/RecordingTests.cpp)
+    engine/RecordingTests.cpp
+    engine/ClickTests.cpp)
 
 target_link_libraries(aural_unit_tests PRIVATE
     aural_options

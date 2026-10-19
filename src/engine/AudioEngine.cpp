@@ -63,7 +63,19 @@ void AudioEngine::setLoop(core::SamplePosition start, core::SamplePosition end, 
     send(TransportCommand::setLoop(start, end, enabled));
 }
 
-bool AudioEngine::startRecording(std::unique_ptr<RecordSession> session, std::string& error)
+void AudioEngine::setMetronome(bool enabled, float gain)
+{
+    send(TransportCommand::setMetronome(enabled, gain));
+}
+
+void AudioEngine::setPunch(core::SamplePosition in, core::SamplePosition out, bool enabled)
+{
+    send(TransportCommand::setPunch(in, out, enabled));
+}
+
+bool AudioEngine::startRecording(std::unique_ptr<RecordSession> session,
+                                 std::string& error,
+                                 core::SamplePosition countInSamples)
 {
     AURAL_ASSERT_NOT_REALTIME("AudioEngine::startRecording");
     if (session == nullptr || session->inputs().empty())
@@ -88,7 +100,7 @@ bool AudioEngine::startRecording(std::unique_ptr<RecordSession> session, std::st
     }
     activeRecord_ = std::move(session);
     pendingRecord_.store(activeRecord_.get(), std::memory_order_release);
-    send(TransportCommand::record());
+    send(TransportCommand::record(countInSamples));
     return true;
 }
 
@@ -158,7 +170,7 @@ void AudioEngine::applyCommand(const TransportCommand& command) noexcept
             if (auto* session = pendingRecord_.exchange(nullptr, std::memory_order_acq_rel))
             {
                 recordSession_ = session;
-                transport_.playing = true;
+                applyTransportCommand(transport_, command); // playing + count-in
                 recording_.store(true, std::memory_order_relaxed);
             }
             break;
@@ -185,49 +197,69 @@ void AudioEngine::process(
     for (int i = 0; i < maxCommandsPerBlock && commands_.pop(command); ++i)
         applyCommand(command);
 
-    const bool recording = recordSession_ != nullptr;
-    if (recording)
-        recordSession_->capture(inputs, numInputs, numSamples, transport_.position);
+    const Snapshot* snapshot = publisher_.acquire();
+    constexpr int maxChannels = 64;
+    float* outPieces[maxChannels];
+    const float* inPieces[maxChannels];
+    const int outChannels = std::min(numOutputs, maxChannels);
+    const int inChannels = std::min(numInputs, maxChannels);
 
-    RenderContext context;
-    context.inputs = inputs;
-    context.numInputs = numInputs;
-    context.playing = transport_.playing;
-    context.recording = recording;
-
-    if (const Snapshot* snapshot = publisher_.acquire())
+    // The block is processed in segments so that the count-in end and the punch
+    // boundaries fall exactly on sample positions, and so that no segment exceeds
+    // the renderer's maximum.
+    int done = 0;
+    while (done < numSamples)
     {
-        // Device blocks larger than the renderer's maximum are rendered in pieces.
-        constexpr int maxChannels = 64;
-        float* outPieces[maxChannels];
-        const float* inPieces[maxChannels];
-        const int outChannels = std::min(numOutputs, maxChannels);
-        const int inChannels = std::min(numInputs, maxChannels);
-        int done = 0;
-        while (done < numSamples)
+        int count = std::min(numSamples - done, std::max(1, renderer_.maxBlockSize()));
+        const bool countingIn = transport_.playing && transport_.countInRemaining > 0;
+        if (countingIn)
+            count = static_cast<int>(std::min<core::SamplePosition>(count, transport_.countInRemaining));
+        else if (transport_.playing && recordSession_ != nullptr && transport_.punchIsValid())
         {
-            const int count = std::min(numSamples - done, renderer_.maxBlockSize());
-            for (int ch = 0; ch < outChannels; ++ch)
-                outPieces[ch] = outputs[ch] != nullptr ? outputs[ch] + done : nullptr;
-            for (int ch = 0; ch < inChannels; ++ch)
-                inPieces[ch] = inputs[ch] != nullptr ? inputs[ch] + done : nullptr;
-            context.inputs = inChannels > 0 ? inPieces : nullptr;
-            context.numInputs = inChannels;
-            renderer_.render(*snapshot, transport_, context, outPieces, outChannels, count, &pool_);
-            done += count;
+            // Stop the segment at the next punch edge ahead of the position.
+            for (const auto edge : {transport_.punchIn, transport_.punchOut})
+                if (edge > transport_.position && edge - transport_.position < count)
+                    count = static_cast<int>(edge - transport_.position);
         }
-    }
-    else
-    {
-        for (int ch = 0; ch < numOutputs; ++ch)
-            if (outputs[ch] != nullptr)
-                std::fill(outputs[ch], outputs[ch] + numSamples, 0.0f);
-        if (transport_.playing)
-            transport_.position += numSamples;
+
+        for (int ch = 0; ch < outChannels; ++ch)
+            outPieces[ch] = outputs[ch] != nullptr ? outputs[ch] + done : nullptr;
+        for (int ch = 0; ch < inChannels; ++ch)
+            inPieces[ch] = inputs != nullptr && inputs[ch] != nullptr ? inputs[ch] + done : nullptr;
+
+        const bool capturing = recordSession_ != nullptr && !countingIn && transport_.playing &&
+                               transport_.insidePunch(transport_.position);
+        if (capturing)
+            recordSession_->capture(
+                inChannels > 0 ? inPieces : nullptr, inChannels, count, transport_.position);
+
+        RenderContext context;
+        context.inputs = inChannels > 0 ? inPieces : nullptr;
+        context.numInputs = inChannels;
+        context.playing = transport_.playing && !countingIn;
+        context.recording = recordSession_ != nullptr;
+        context.countIn = countingIn;
+
+        if (snapshot != nullptr)
+        {
+            renderer_.render(*snapshot, transport_, context, outPieces, outChannels, count, &pool_);
+        }
+        else
+        {
+            for (int ch = 0; ch < outChannels; ++ch)
+                if (outPieces[ch] != nullptr)
+                    std::fill(outPieces[ch], outPieces[ch] + count, 0.0f);
+            if (context.playing)
+                transport_.position += count;
+        }
+        if (countingIn)
+            transport_.countInRemaining -= count;
+        done += count;
     }
 
     position_.store(transport_.position, std::memory_order_relaxed);
     playing_.store(transport_.playing, std::memory_order_relaxed);
+    countingIn_.store(transport_.playing && transport_.countInRemaining > 0, std::memory_order_relaxed);
 }
 
 } // namespace aural::engine

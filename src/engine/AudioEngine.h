@@ -47,6 +47,8 @@ public:
     void stop();
     void locate(core::SamplePosition position);
     void setLoop(core::SamplePosition start, core::SamplePosition end, bool enabled);
+    void setMetronome(bool enabled, float gain);
+    void setPunch(core::SamplePosition in, core::SamplePosition out, bool enabled);
 
     // Recording. The session lists the inputs to capture and the files to write;
     // the writer opens them here, then the real-time thread starts capturing at the
@@ -57,7 +59,10 @@ public:
         std::unique_ptr<RecordSession> session;
         std::vector<RecordWriter::Result> results;
     };
-    bool startRecording(std::unique_ptr<RecordSession> session, std::string& error);
+    // countInSamples of click (metronome on or not, the clicks play) precede capture.
+    bool startRecording(std::unique_ptr<RecordSession> session,
+                        std::string& error,
+                        core::SamplePosition countInSamples = 0);
     bool hasRecordingToCollect() const noexcept;
     std::optional<FinishedRecording> collectRecording();
 
@@ -75,6 +80,7 @@ public:
     core::SamplePosition position() const noexcept { return position_.load(std::memory_order_relaxed); }
     bool isPlaying() const noexcept { return playing_.load(std::memory_order_relaxed); }
     bool isRecording() const noexcept { return recording_.load(std::memory_order_relaxed); }
+    bool isCountingIn() const noexcept { return countingIn_.load(std::memory_order_relaxed); }
     std::uint64_t droppedCommands() const noexcept
     {
         return droppedCommands_.load(std::memory_order_relaxed);
@@ -116,6 +122,7 @@ private:
     std::atomic<core::SamplePosition> position_{0};
     std::atomic<bool> playing_{false};
     std::atomic<bool> recording_{false};
+    std::atomic<bool> countingIn_{false};
     std::atomic<bool> running_{false};
     std::atomic<double> deviceSampleRate_{0.0};
     std::atomic<std::uint64_t> droppedCommands_{0};

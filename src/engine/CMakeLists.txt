@@ -41,6 +41,8 @@ add_library(aural_engine STATIC
     WavFile.h
     WavFile.cpp
     Recording.h
-    Recording.cpp)
+    Recording.cpp
+    Click.h
+    Click.cpp)
 
 target_link_libraries(aural_engine PUBLIC aural_rt aural_core)
