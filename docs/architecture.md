@@ -402,6 +402,27 @@ playhead (selected clips, or all under it), J join, X crossfade overlapping
 neighbours, Ctrl+Shift+N normalise (the session reads the source's peak and sets
 the gain), Left/Right nudge by a grid step, Ctrl+A, Escape, G snap, E ripple.
 
+Markers and regions are `core::Marker`s (name, position, length; a length of
+zero is a marker) kept sorted on the project, with `AddMarker`, `RemoveMarker`
+and `SetMarker` (position, length and name together) as commands and
+`markerBefore`/`markerAfter` for navigation. The arrange view draws them as
+flags in the ruler's time row and as lines (regions as shaded spans) through the
+lanes: M adds a marker at the playhead, Shift+M a region from the loop region,
+comma and full stop jump to the previous and next marker, a click on a flag
+selects and locates, a drag moves it (snapped), a double-click renames it in a
+small dialog, Delete removes the selected one.
+
+Bounce (`app::BounceJob`): the mix or one file per track (stems, the others
+muted), over the whole project or a range (the loop region), to 32-bit float
+stereo WAV at the project rate. Each render runs its own `AudioEngine` over a copy
+of the project (with the live plugin states captured first), built on the message
+thread because plugin instances must be created there, with media loaded whole
+(`JuceMediaLoader` in memory-only mode: streaming would outrun the disk thread
+offline). The blocks render on a background thread; the first
+`outputLatencySamples()` of output are dropped and that much is rendered past the
+end so the file starts and ends exactly on the range; the result carries the
+integrated loudness of the mix. Export... on the toolbar offers the three.
+
 ### Plugin hosting (Phase 5, in progress)
 
 Hosted plugins are inserts like the built-ins: the model insert's type is

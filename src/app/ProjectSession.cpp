@@ -6,6 +6,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <cstdio>
 #include <cstring>
 #include <map>
 #include <optional>
@@ -682,6 +683,43 @@ int ProjectSession::recoverPartialRecordings()
         publish();
     }
     return recovered;
+}
+
+// ----- bounce --------------------------------------------------------------------------------
+
+std::string ProjectSession::startBounce(BounceJob::Options options)
+{
+    if (isBouncing())
+        return "a bounce is already running";
+    if (project_.tracks.empty())
+        return "nothing to bounce";
+    captureInsertStates(); // the offline engines restore the live plugin states
+    stop();
+    bounce_ = std::make_unique<BounceJob>(project_, inserts_, std::move(options));
+    bounce_->onFinished = [this](const BounceJob::Result& result)
+    {
+        if (!result.error.empty())
+            bounceMessage_ = "Bounce failed: " + result.error;
+        else if (result.cancelled)
+            bounceMessage_ = "Bounce cancelled";
+        else
+        {
+            const double seconds = static_cast<double>(result.length) / project_.sampleRate;
+            const int minutes = static_cast<int>(seconds) / 60;
+            const int rest = static_cast<int>(seconds) % 60;
+            char lufs[32];
+            std::snprintf(lufs, sizeof(lufs), "%.1f", static_cast<double>(result.integratedLufs));
+            bounceMessage_ =
+                "Bounced " + std::to_string(result.files.size()) + " file(s), " + std::to_string(minutes) +
+                ":" + (rest < 10 ? "0" : "") + std::to_string(rest) +
+                (result.files.size() == 1 ? std::string(", ") + lufs + " LUFS integrated" : std::string{});
+        }
+        sendChangeMessage();
+    };
+    bounceMessage_ = "Bouncing...";
+    bounce_->start();
+    sendChangeMessage();
+    return {};
 }
 
 // ----- plugins -------------------------------------------------------------------------------

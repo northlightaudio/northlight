@@ -1,5 +1,6 @@
 #pragma once
 
+#include "Bounce.h"
 #include "audio/JuceMediaLoader.h"
 #include "audio/PeakStore.h"
 #include "core/Command.h"
@@ -44,6 +45,15 @@ public:
     {
         return engine_.insertInstance(insertId);
     }
+
+    // ----- bounce -----------------------------------------------------------------
+    // Renders the mix (or stems) offline on a background thread. Returns an error
+    // or empty; progress and the result are reported through the job.
+    std::string startBounce(BounceJob::Options options);
+    bool isBouncing() const noexcept { return bounce_ != nullptr && bounce_->isRunning(); }
+    float bounceProgress() const noexcept { return bounce_ != nullptr ? bounce_->progress() : 0.0f; }
+    // The last bounce's outcome, as a sentence for the status bar.
+    const std::string& lastBounceMessage() const noexcept { return bounceMessage_; }
 
     // ----- plugins ----------------------------------------------------------------
     // Scans the VST3 folders in the background (changed files only unless `all`);
@@ -162,6 +172,8 @@ private:
     juce::File projectFile_;
     bool modified_ = false;
     std::string recordingMessage_;
+    std::string bounceMessage_;
+    std::unique_ptr<BounceJob> bounce_;
     bool gestureOpen_ = false;
     bool metronome_ = false;
     int countInBars_ = 1;

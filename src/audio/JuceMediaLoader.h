@@ -18,7 +18,9 @@ namespace aural::audio
 class JuceMediaLoader final : public engine::MediaLoader
 {
 public:
-    explicit JuceMediaLoader(engine::DiskThread& disk);
+    // With `alwaysInMemory` every file is loaded whole (offline rendering, which
+    // would outrun the disk thread's streaming).
+    explicit JuceMediaLoader(engine::DiskThread& disk, bool alwaysInMemory = false);
 
     // Files longer than this (at the target rate) are streamed from disk.
     static constexpr double memoryThresholdSeconds = 30.0;
@@ -41,6 +43,7 @@ public:
 
 private:
     engine::DiskThread& disk_;
+    bool alwaysInMemory_ = false;
     juce::AudioFormatManager formats_;
 };
 

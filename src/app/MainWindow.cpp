@@ -60,6 +60,7 @@ public:
             addAndMakeVisible(b);
         };
         button(importButton_, "Import...", [this] { importAudio(); });
+        button(exportButton_, "Export...", [this] { exportMenu(); });
         button(undoButton_, "Undo", [this] { session_.undo(); });
         button(redoButton_, "Redo", [this] { session_.redo(); });
         button(newButton_, "New", [this] { newProject(); });
@@ -182,6 +183,7 @@ public:
         place(openButton_, 62);
         place(saveButton_, 48);
         place(importButton_, 96);
+        place(exportButton_, 80);
         place(undoButton_, 52);
         place(redoButton_, 52);
         bar.removeFromLeft(theme_.spacing.sm);
@@ -364,6 +366,73 @@ private:
             });
     }
 
+    // Export: the mix, the loop region, or stems, rendered offline.
+    void exportMenu()
+    {
+        juce::PopupMenu menu;
+        menu.addItem(1, "Mix to WAV...");
+        menu.addItem(2, "Loop region to WAV...", session_.regionEnd() > session_.regionStart());
+        menu.addItem(3, "Stems to folder...");
+        juce::Component::SafePointer<Content> safe(this);
+        menu.showMenuAsync(juce::PopupMenu::Options().withTargetComponent(exportButton_),
+                           [safe](int choice)
+                           {
+                               if (safe != nullptr && choice > 0)
+                                   safe->startExport(choice);
+                           });
+    }
+
+    void startExport(int choice)
+    {
+        const auto documents = juce::File::getSpecialLocation(juce::File::userDocumentsDirectory);
+        const auto base = session_.projectFile().getFullPathName().isNotEmpty()
+                              ? session_.projectFile().getFileNameWithoutExtension()
+                              : juce::String("Untitled");
+        if (choice == 3)
+        {
+            chooser_ =
+                std::make_unique<juce::FileChooser>("Stems folder", documents.getChildFile(base + " Stems"));
+            chooser_->launchAsync(
+                juce::FileBrowserComponent::saveMode | juce::FileBrowserComponent::canSelectDirectories,
+                [this](const juce::FileChooser& fc)
+                {
+                    const auto folder = fc.getResult();
+                    if (folder == juce::File())
+                        return;
+                    BounceJob::Options options;
+                    options.output = folder;
+                    options.stems = true;
+                    const auto error = session_.startBounce(options);
+                    lastImportError_ = error.empty() ? juce::String() : "Export: " + juce::String(error);
+                    refresh();
+                });
+            return;
+        }
+        chooser_ = std::make_unique<juce::FileChooser>(
+            "Export mix", documents.getChildFile(base + (choice == 2 ? " loop" : "") + ".wav"), "*.wav");
+        chooser_->launchAsync(
+            juce::FileBrowserComponent::saveMode | juce::FileBrowserComponent::canSelectFiles |
+                juce::FileBrowserComponent::warnAboutOverwriting,
+            [this, choice](const juce::FileChooser& fc)
+            {
+                auto file = fc.getResult();
+                if (file == juce::File())
+                    return;
+                if (!file.hasFileExtension("wav"))
+                    file = file.withFileExtension("wav");
+                BounceJob::Options options;
+                options.output = file;
+                if (choice == 2)
+                {
+                    options.start = session_.regionStart();
+                    options.end = session_.regionEnd();
+                }
+                const auto error = session_.startBounce(options);
+                lastImportError_ = error.empty() ? juce::String() : "Export: " + juce::String(error);
+                refresh();
+            });
+    }
+
     void saveProject(bool saveAs)
     {
         if (!saveAs && session_.projectFile().getFullPathName().isNotEmpty())
@@ -439,6 +508,10 @@ private:
             warning = juce::String(session_.lastRecordingMessage());
         if (session_.isScanningPlugins())
             warning = juce::String::fromUTF8(session_.pluginScanStatus().c_str());
+        if (session_.isBouncing())
+            warning = "Bouncing " + juce::String(static_cast<int>(session_.bounceProgress() * 100.0f)) + "%";
+        else if (!session_.lastBounceMessage().empty())
+            warning = juce::String::fromUTF8(session_.lastBounceMessage().c_str());
         if (!lastImportError_.isEmpty())
             warning = lastImportError_;
         if (session_.projectFile().getFullPathName().isNotEmpty())
@@ -511,9 +584,9 @@ private:
     ProjectSession& session_;
     UserSettings& settings_;
     const ui::Theme& theme_ = ui::Theme::dark();
-    juce::TextButton newButton_, openButton_, saveButton_, importButton_, undoButton_, redoButton_,
-        returnButton_, playButton_, recordButton_, clickButton_, countInButton_, loopButton_, punchButton_,
-        audioSetupButton_, mixerButton_;
+    juce::TextButton newButton_, openButton_, saveButton_, importButton_, exportButton_, undoButton_,
+        redoButton_, returnButton_, playButton_, recordButton_, clickButton_, countInButton_, loopButton_,
+        punchButton_, audioSetupButton_, mixerButton_;
     juce::Label positionLabel_, deviceSummary_;
     ui::ArrangeView tracks_;
     ui::MixerView mixer_;

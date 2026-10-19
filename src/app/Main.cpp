@@ -121,6 +121,14 @@ public:
                 session_->scanPlugins(true);
             else if (arg == "--plugins")
                 mainWindow_->showPluginBrowser();
+            else if (arg == "--marker" && i + 1 < tokens.size())
+            {
+                core::Marker marker;
+                marker.position = static_cast<core::SamplePosition>(
+                    tokens.getReference(++i).text.getDoubleValue() * session_->project().sampleRate);
+                marker.name = "Marker " + std::to_string(session_->project().markers.size() + 1);
+                session_->execute(std::make_unique<core::AddMarker>(marker));
+            }
             else if (arg == "--recover")
                 session_->recoverPartialRecordings(); // without the prompt, for unattended checks
             else if (arg == "--save" && i + 1 < tokens.size())

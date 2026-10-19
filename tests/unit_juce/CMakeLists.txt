@@ -7,7 +7,8 @@ add_executable(aural_juce_tests
     AudioCallbackTests.cpp
     ProjectSessionTests.cpp
     HostedPluginTests.cpp
-    ClapPluginTests.cpp)
+    ClapPluginTests.cpp
+    BounceTests.cpp)
 
 target_link_libraries(aural_juce_tests PRIVATE
     aural_options

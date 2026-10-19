@@ -34,7 +34,8 @@ std::int64_t JuceMediaLoader::Info::lengthAt(double rate) const noexcept
     return static_cast<std::int64_t>(std::llround(static_cast<double>(lengthSamples) * rate / sampleRate));
 }
 
-JuceMediaLoader::JuceMediaLoader(engine::DiskThread& disk) : disk_(disk)
+JuceMediaLoader::JuceMediaLoader(engine::DiskThread& disk, bool alwaysInMemory)
+    : disk_(disk), alwaysInMemory_(alwaysInMemory)
 {
     formats_.registerBasicFormats();
 }
@@ -86,7 +87,7 @@ JuceMediaLoader::load(const std::string& path, double targetSampleRate, std::str
 
     const double rate = targetSampleRate > 0.0 ? targetSampleRate : reader->sampleRate;
     const double seconds = static_cast<double>(reader->lengthInSamples) / reader->sampleRate;
-    if (seconds > memoryThresholdSeconds)
+    if (seconds > memoryThresholdSeconds && !alwaysInMemory_)
     {
         auto source = std::make_shared<engine::StreamingAudioSource>(
             std::make_unique<JuceStreamReader>(std::move(reader), rate));

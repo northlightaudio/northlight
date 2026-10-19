@@ -12,7 +12,9 @@ add_library(aural_app_session STATIC
     UserSettings.h
     UserSettings.cpp
     ProjectSession.h
-    ProjectSession.cpp)
+    ProjectSession.cpp
+    Bounce.h
+    Bounce.cpp)
 
 target_include_directories(aural_app_session PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/..")
 target_link_libraries(aural_app_session PUBLIC

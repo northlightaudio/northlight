@@ -131,7 +131,13 @@ down for clip gain. Moves and trims snap to the grid (**G** toggles). **Delete**
 removes (with ripple on, **E**, later clips close the gap), **Ctrl+D** duplicates,
 **S** splits at the playhead, **J** joins, **X** crossfades overlapping neighbours,
 **Ctrl+Shift+N** normalises, **Left/Right** nudge by a grid step, **Ctrl+A** selects
-all, **Escape** clears the selection.
+all, **Escape** clears the selection. **M** drops a marker at the playhead and
+**Shift+M** a region from the loop region; **,** and **.** jump between markers; click
+a marker's flag in the ruler to select it, drag it to move it, double-click to
+rename it, **Delete** to remove it.
+**Export...** bounces the mix (or the loop region) to a float WAV at the project
+rate, or every track to a stems folder, offline, compensated for insert latency;
+the status line shows the progress and the integrated loudness of the result.
 Projects are `.aural` files: **New**, **Open...**, **Save** (Ctrl+N / Ctrl+O / Ctrl+S,
 Ctrl+Shift+S to save as).
 
@@ -139,7 +145,7 @@ For unattended checks: `Aural.exe --import <file> [--import <file>] --play` (or
 `--open <project>`), and
 `Aural.exe --record <inputs> [--loop <from> <to>] [--no-count-in] --stop-after <seconds>`; `--mixer`
 opens the mixer panel and `--insert <type>` adds a built-in (for example `aural.eq`) to
-every track and opens its editor. `--scan-plugins` runs a full plugin scan and `--plugins` opens the browser; `--recover` recovers unfinished recordings without
+every track and opens its editor. `--scan-plugins` runs a full plugin scan, `--plugins` opens the browser, `--marker <seconds>` drops a marker; `--recover` recovers unfinished recordings without
 the prompt and `--save <file>` writes the project (so a check can read the placed
 clips); `--save` runs two seconds after a preceding `--stop-after`, else half a
 second after launch.
