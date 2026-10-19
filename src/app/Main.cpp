@@ -48,6 +48,7 @@ public:
     //   --loop <from> <to>   set and enable the loop region, in seconds
     //   --no-count-in        record without the count-in
     //   --midi-track         add a MIDI track (built-in synth) with a short clip
+    //   --piano-roll         open the piano roll on the first MIDI clip
     void applyLaunchFlags(const juce::String& commandLine)
     {
         const auto tokens = juce::ArgumentList("Aural", commandLine).arguments;
@@ -104,6 +105,16 @@ public:
                 for (int n = 0; n < 4; ++n)
                     clip.notes.push_back({core::invalidId, 60 + n * 2, 100, beat * n, beat / 2});
                 session_->execute(std::make_unique<core::AddMidiClip>(trackId, clip));
+            }
+            else if (arg == "--piano-roll")
+            {
+                // Opens the piano roll on the first MIDI clip.
+                for (const auto& track : session_->project().tracks)
+                    if (!track.midiClips.empty())
+                    {
+                        mainWindow_->openPianoRoll(track.id, track.midiClips.front().id);
+                        break;
+                    }
             }
             else if (arg == "--mixer")
                 mainWindow_->showMixer();

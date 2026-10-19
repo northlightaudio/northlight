@@ -8,6 +8,7 @@
 #include "ui/ArrangeView.h"
 #include "ui/AudioSetupView.h"
 #include "ui/MixerView.h"
+#include "ui/PianoRoll.h"
 #include "ui/PluginBrowser.h"
 #include "ui/Theme.h"
 
@@ -130,6 +131,8 @@ public:
         { importFiles(files, at); };
         tracks_.onEdit = [this](std::vector<std::unique_ptr<core::Command>> commands, const std::string& name)
         { session_.executeGroup(name, std::move(commands)); };
+        tracks_.onOpenMidiClip = [this](core::Id trackId, core::Id clipId)
+        { owner_.openPianoRoll(trackId, clipId); };
         tracks_.onNormalise = [this](core::Id trackId, core::Id clipId)
         {
             const auto error = session_.normaliseClip(trackId, clipId);
@@ -292,6 +295,8 @@ private:
             tracks_.setMonitoringStates(monitoring, session_.isRecording());
         }
         const bool recording = session_.isRecording();
+        if (ticks_ % 3 == 0)
+            owner_.refreshPianoRollPlayhead();
         // What is heard lags the engine by the delay compensation on the master:
         // the playhead and the display follow the sound, not the engine.
         const auto heard =
@@ -485,6 +490,7 @@ private:
         }
         tracks_.setProject(&session_.project());
         mixer_.setProject(&session_.project());
+        owner_.refreshPianoRoll();
         tracks_.setRegion(
             session_.regionStart(), session_.regionEnd(), session_.loopEnabled(), session_.punchEnabled());
         undoButton_.setEnabled(session_.canUndo());
@@ -648,6 +654,84 @@ private:
     ui::PluginBrowser* browser_ = nullptr;
 };
 
+// The piano roll window: one clip at a time, following the model through the
+// session's change messages (the main window refreshes it with the rest).
+class MainWindow::PianoRollWindow final : public juce::DocumentWindow
+{
+public:
+    PianoRollWindow(MainWindow& owner, ProjectSession& session)
+        : juce::DocumentWindow("Piano Roll",
+                               ui::Theme::dark().colours.background,
+                               juce::DocumentWindow::closeButton | juce::DocumentWindow::minimiseButton |
+                                   juce::DocumentWindow::maximiseButton),
+          owner_(owner), session_(session)
+    {
+        setUsingNativeTitleBar(true);
+        auto* roll = new ui::PianoRoll();
+        roll_ = roll;
+        roll->onEdit =
+            [&session](std::vector<std::unique_ptr<core::Command>> commands, const std::string& name)
+        { session.executeGroup(name, std::move(commands)); };
+        roll->setSize(960, 520);
+        setContentOwned(roll, true);
+        setResizable(true, false);
+        setResizeLimits(480, 300, 10000, 10000);
+        centreAroundComponent(&owner, getWidth(), getHeight());
+        setVisible(true);
+    }
+
+    void show(core::Id trackId, core::Id clipId)
+    {
+        roll_->setClip(&session_.project(), trackId, clipId);
+        const auto* track = session_.project().findTrack(trackId);
+        const auto* clip = track != nullptr ? track->findMidiClip(clipId) : nullptr;
+        setName(clip != nullptr ? "Piano Roll - " + juce::String::fromUTF8(track->name.c_str()) + " / " +
+                                      juce::String::fromUTF8(clip->name.c_str())
+                                : juce::String("Piano Roll"));
+        toFront(true);
+        roll_->grabKeyboardFocus();
+    }
+
+    void refresh()
+    {
+        roll_->setClip(&session_.project(), roll_->trackId(), roll_->clipId());
+        roll_->setPlayhead(session_.position());
+    }
+
+    ui::PianoRoll& roll() noexcept { return *roll_; }
+
+    void closeButtonPressed() override
+    {
+        juce::Component::SafePointer<MainWindow> owner(&owner_);
+        juce::MessageManager::callAsync(
+            [owner]
+            {
+                if (owner != nullptr)
+                    owner->closePianoRoll();
+            });
+    }
+
+    bool keyPressed(const juce::KeyPress& key) override
+    {
+        if (key == juce::KeyPress::escapeKey && roll_->selection().empty())
+        {
+            closeButtonPressed();
+            return true;
+        }
+        if (key == juce::KeyPress::spaceKey)
+        {
+            session_.togglePlay();
+            return true;
+        }
+        return roll_->handleEditKey(key) || juce::DocumentWindow::keyPressed(key);
+    }
+
+private:
+    MainWindow& owner_;
+    ProjectSession& session_;
+    ui::PianoRoll* roll_ = nullptr;
+};
+
 class MainWindow::AudioSetupWindow final : public juce::DocumentWindow
 {
 public:
@@ -709,6 +793,7 @@ MainWindow::MainWindow(const juce::String& name,
 
 MainWindow::~MainWindow()
 {
+    pianoRollWindow_.reset();
     pluginBrowserWindow_.reset();
     audioSetupWindow_.reset();
 }
@@ -723,6 +808,30 @@ void MainWindow::showPluginBrowser()
 void MainWindow::closePluginBrowser()
 {
     pluginBrowserWindow_.reset();
+}
+
+void MainWindow::openPianoRoll(core::Id trackId, core::Id clipId)
+{
+    if (pianoRollWindow_ == nullptr)
+        pianoRollWindow_ = std::make_unique<PianoRollWindow>(*this, session_);
+    pianoRollWindow_->show(trackId, clipId);
+}
+
+void MainWindow::closePianoRoll()
+{
+    pianoRollWindow_.reset();
+}
+
+void MainWindow::refreshPianoRoll()
+{
+    if (pianoRollWindow_ != nullptr)
+        pianoRollWindow_->refresh();
+}
+
+void MainWindow::refreshPianoRollPlayhead()
+{
+    if (pianoRollWindow_ != nullptr)
+        pianoRollWindow_->roll().setPlayhead(session_.position());
 }
 
 void MainWindow::refreshPluginBrowser()

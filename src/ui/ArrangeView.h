@@ -10,6 +10,7 @@
 
 #include <functional>
 #include <memory>
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -86,8 +87,11 @@ public:
     {
         core::Id track = core::invalidId;
         core::Id clip = core::invalidId;
+        bool midi = false; // a MIDI clip (Track::midiClips) rather than an audio clip
         bool operator==(const ClipRef&) const = default;
     };
+    // Double-click on a MIDI clip: open it in the piano roll.
+    std::function<void(core::Id trackId, core::Id clipId)> onOpenMidiClip;
     const std::vector<ClipRef>& selection() const noexcept { return selection_; }
     void selectAll();
     void clearSelection();
@@ -150,19 +154,35 @@ private:
                   const core::Track& track,
                   const core::AudioClip& clip,
                   juce::Rectangle<int> lane);
+    void drawMidiClip(juce::Graphics& g,
+                      const core::Track& track,
+                      const core::MidiClip& model,
+                      juce::Rectangle<int> lane);
     void drawEditOverlay(juce::Graphics& g);
 
     // ----- editing helpers --------------------------------------------------------
     int rowAtY(int y) const noexcept; // track index or -1
     juce::Rectangle<int> rowBounds(int row) const noexcept;
     juce::Rectangle<int> clipBounds(const core::AudioClip& clip, int row) const noexcept;
+    juce::Rectangle<int>
+    spanBounds(core::SamplePosition start, core::SamplePosition length, int row) const noexcept;
     struct Hit
     {
         int row = -1;
         const core::Track* track = nullptr;
         const core::AudioClip* clip = nullptr;
+        const core::MidiClip* midiClip = nullptr;
         Drag zone = Drag::none; // move, trimLeft, trimRight, fadeIn, fadeOut
     };
+    // A selected clip's span (audio or MIDI), if it still exists.
+    struct Span
+    {
+        core::SamplePosition start = 0, length = 0;
+        core::SamplePosition end() const noexcept { return start + length; }
+    };
+    std::optional<Span> spanOf(const ClipRef& ref) const noexcept;
+    const core::MidiClip* findMidiClip(const ClipRef& ref) const noexcept;
+    bool isSelected(const ClipRef& ref) const noexcept;
     Hit hitTest(juce::Point<int> p) const noexcept;
     bool isSelected(core::Id track, core::Id clip) const noexcept;
     void select(const ClipRef& ref, bool add);

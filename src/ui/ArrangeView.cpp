@@ -34,7 +34,7 @@ ArrangeView::~ArrangeView()
 void ArrangeView::setProject(const core::Project* project)
 {
     project_ = project;
-    std::erase_if(selection_, [this](const ClipRef& ref) { return findClip(ref) == nullptr; });
+    std::erase_if(selection_, [this](const ClipRef& ref) { return !spanOf(ref).has_value(); });
     if (project_ == nullptr || project_->findMarker(selectedMarker_) == nullptr)
         selectedMarker_ = core::invalidId;
     rebuildHeaders();
@@ -277,6 +277,29 @@ void ArrangeView::mouseDown(const juce::MouseEvent& e)
     dragStartSample_ = sampleForX(e.x);
     const auto hit = hitTest(e.getPosition());
     dragStartRow_ = hit.row;
+    if (hit.midiClip != nullptr)
+    {
+        const ClipRef ref{hit.track->id, hit.midiClip->id, true};
+        drag_ = hit.zone;
+        if (e.mods.isShiftDown() || e.mods.isCtrlDown())
+            select(ref, true);
+        else if (!isSelected(ref))
+        {
+            selection_.clear();
+            select(ref, true);
+        }
+        dragClip_ = ref;
+        dragOriginal_ = core::AudioClip{};
+        dragOriginal_.start = hit.midiClip->start;
+        dragOriginal_.length = hit.midiClip->length;
+        moveDelta_ = 0;
+        rowDelta_ = 0;
+        trimStart_ = hit.midiClip->start;
+        trimLength_ = hit.midiClip->length;
+        trimOffset_ = 0;
+        repaint();
+        return;
+    }
     if (hit.clip == nullptr)
     {
         // Empty lane: a drag lassos, a click locates (and clears the selection).
@@ -349,25 +372,39 @@ void ArrangeView::mouseDrag(const juce::MouseEvent& e)
             int lowestRow = dragStartRow_, highestRow = dragStartRow_;
             if (project_ != nullptr)
                 for (const auto& ref : selection_)
-                    for (size_t t = 0; t < project_->tracks.size(); ++t)
-                        if (project_->tracks[t].id == ref.track)
-                            if (const auto* c = project_->tracks[t].findClip(ref.clip))
-                            {
-                                earliest = std::min(earliest, c->start);
-                                lowestRow = std::min(lowestRow, static_cast<int>(t));
-                                highestRow = std::max(highestRow, static_cast<int>(t));
-                            }
+                    if (const auto span = spanOf(ref))
+                    {
+                        const int t = project_->trackIndex(ref.track);
+                        earliest = std::min(earliest, span->start);
+                        lowestRow = std::min(lowestRow, t);
+                        highestRow = std::max(highestRow, t);
+                    }
             moveDelta_ = std::max(moveDelta_, -earliest);
             const int row = rowAtY(e.y);
             const int trackCount = project_ != nullptr ? static_cast<int>(project_->tracks.size()) : 0;
-            rowDelta_ = row >= 0 ? row - dragStartRow_ : rowDelta_;
-            rowDelta_ = std::clamp(rowDelta_, -lowestRow, std::max(0, trackCount - 1 - highestRow));
+            int wantedRows = row >= 0 ? row - dragStartRow_ : rowDelta_;
+            wantedRows = std::clamp(wantedRows, -lowestRow, std::max(0, trackCount - 1 - highestRow));
+            // A clip only lands on a track of its own kind (MIDI on MIDI, audio on audio).
+            bool kindsMatch = project_ != nullptr;
+            if (kindsMatch)
+                for (const auto& ref : selection_)
+                {
+                    const int from = project_->trackIndex(ref.track);
+                    if (from < 0)
+                        continue;
+                    const auto& target = project_->tracks[static_cast<size_t>(from + wantedRows)];
+                    if (target.isMidi() != ref.midi)
+                        kindsMatch = false;
+                }
+            if (kindsMatch)
+                rowDelta_ = wantedRows;
             break;
         }
         case Drag::trimLeft:
         {
             const auto sourceStart =
-                dragOriginal_.start - dragOriginal_.sourceOffset; // where source sample 0 sits
+                dragClip_.midi ? core::SamplePosition{0}
+                               : dragOriginal_.start - dragOriginal_.sourceOffset; // source sample 0
             const auto newStart = std::clamp(
                 snapped(at), std::max<core::SamplePosition>(0, sourceStart), dragOriginal_.end() - 1);
             trimStart_ = newStart;
@@ -767,6 +804,74 @@ void ArrangeView::drawClip(juce::Graphics& g,
     g.drawText(label, visible.reduced(fadeHandle + 2, 2), juce::Justification::topLeft, true);
 }
 
+void ArrangeView::drawMidiClip(juce::Graphics& g,
+                               const core::Track& track,
+                               const core::MidiClip& model,
+                               juce::Rectangle<int> lane)
+{
+    const auto& c = theme_.colours;
+    const ClipRef ref{track.id, model.id, true};
+    core::MidiClip clip = model;
+    const bool editing = drag_ != Drag::none && dragClip_ == ref;
+    if (editing && (drag_ == Drag::trimLeft || drag_ == Drag::trimRight))
+    {
+        clip.start = trimStart_;
+        clip.length = trimLength_;
+    }
+    const bool selected = isSelected(ref);
+    const bool moving = drag_ == Drag::move && selected && draggedFar_;
+    const int x0 = xForSample(clip.start);
+    const int x1 = std::max(x0 + 2, xForSample(clip.end()));
+    if (x1 < headerWidth || x0 > getWidth())
+        return;
+    const auto block = juce::Rectangle<int>(x0, lane.getY() + 4, x1 - x0, lane.getHeight() - 8);
+    const auto visible =
+        block.getIntersection(lane.withLeft(headerWidth).withRight(getWidth() - scrollbarWidth));
+    if (visible.isEmpty())
+        return;
+    const float dim = moving ? 0.4f : 1.0f;
+    g.setColour(c.success.withAlpha((track.mute ? 0.12f : selected ? 0.4f : 0.25f) * dim));
+    g.fillRoundedRectangle(block.toFloat(), theme_.radius.sm);
+
+    // Notes: a bar per note, pitch on a range that fits the clip's notes.
+    if (!model.notes.empty())
+    {
+        int low = 127, high = 0;
+        for (const auto& n : model.notes)
+        {
+            low = std::min(low, n.note);
+            high = std::max(high, n.note);
+        }
+        low = std::max(0, low - 2);
+        high = std::min(127, high + 2);
+        const auto inner = block.reduced(1, fadeHandle + 2).withTrimmedBottom(2);
+        const float rowH = static_cast<float>(inner.getHeight()) / static_cast<float>(high - low + 1);
+        g.setColour((track.mute ? c.textDisabled : c.success).withAlpha(dim));
+        for (const auto& n : model.notes)
+        {
+            // Only the part inside the clip shows (trimmed clips keep their notes).
+            const auto start = model.start + n.start; // notes keep their timeline place while trimming
+            const auto nx0 = xForSample(std::max(start, clip.start));
+            const auto nx1 = xForSample(std::min(start + n.length, clip.end()));
+            if (nx1 <= nx0 || start >= clip.end() || start + n.length <= clip.start)
+                continue;
+            const float y = static_cast<float>(inner.getY()) + static_cast<float>(high - n.note) * rowH;
+            g.fillRect(static_cast<float>(nx0),
+                       y,
+                       static_cast<float>(std::max(1, nx1 - nx0)),
+                       std::max(1.0f, rowH - 1.0f));
+        }
+    }
+    g.setColour(selected ? c.textPrimary : c.success);
+    g.drawRoundedRectangle(block.toFloat().reduced(0.5f), theme_.radius.sm, selected ? 2.0f : 1.0f);
+    g.setColour(c.textPrimary);
+    g.setFont(juce::FontOptions{theme_.type.caption});
+    g.drawText(juce::String::fromUTF8(clip.name.c_str()) + "  " + juce::String(model.notes.size()) + " notes",
+               visible.reduced(4, 2),
+               juce::Justification::topLeft,
+               true);
+}
+
 void ArrangeView::paint(juce::Graphics& g)
 {
     const auto& c = theme_.colours;
@@ -792,6 +897,8 @@ void ArrangeView::paint(juce::Graphics& g)
 
             for (const auto& clip : track.clips)
                 drawClip(g, track, clip, row);
+            for (const auto& clip : track.midiClips)
+                drawMidiClip(g, track, clip, row);
 
             // The TrackHeader component covers the lane's left edge, so clips scrolled
             // left disappear under it. Armed tracks get a tinted lane.
@@ -891,10 +998,42 @@ juce::Rectangle<int> ArrangeView::rowBounds(int row) const noexcept
 
 juce::Rectangle<int> ArrangeView::clipBounds(const core::AudioClip& clip, int row) const noexcept
 {
+    return spanBounds(clip.start, clip.length, row);
+}
+
+juce::Rectangle<int>
+ArrangeView::spanBounds(core::SamplePosition start, core::SamplePosition length, int row) const noexcept
+{
     const auto lane = rowBounds(row);
-    const int x0 = xForSample(clip.start);
-    const int x1 = std::max(x0 + 2, xForSample(clip.end()));
+    const int x0 = xForSample(start);
+    const int x1 = std::max(x0 + 2, xForSample(start + length));
     return {x0, lane.getY() + 4, x1 - x0, lane.getHeight() - 8};
+}
+
+std::optional<ArrangeView::Span> ArrangeView::spanOf(const ClipRef& ref) const noexcept
+{
+    if (ref.midi)
+    {
+        if (const auto* m = findMidiClip(ref))
+            return Span{m->start, m->length};
+        return std::nullopt;
+    }
+    if (const auto* a = findClip(ref))
+        return Span{a->start, a->length};
+    return std::nullopt;
+}
+
+const core::MidiClip* ArrangeView::findMidiClip(const ClipRef& ref) const noexcept
+{
+    if (project_ == nullptr || !ref.midi)
+        return nullptr;
+    const auto* t = project_->findTrack(ref.track);
+    return t != nullptr ? t->findMidiClip(ref.clip) : nullptr;
+}
+
+bool ArrangeView::isSelected(const ClipRef& ref) const noexcept
+{
+    return std::find(selection_.begin(), selection_.end(), ref) != selection_.end();
 }
 
 ArrangeView::Hit ArrangeView::hitTest(juce::Point<int> p) const noexcept
@@ -906,6 +1045,18 @@ ArrangeView::Hit ArrangeView::hitTest(juce::Point<int> p) const noexcept
     if (hit.row < 0)
         return hit;
     hit.track = &project_->tracks[static_cast<size_t>(hit.row)];
+    // MIDI clips: move and trim only.
+    for (auto it = hit.track->midiClips.rbegin(); it != hit.track->midiClips.rend(); ++it)
+    {
+        const auto bounds = spanBounds(it->start, it->length, hit.row);
+        if (!bounds.contains(p))
+            continue;
+        hit.midiClip = &*it;
+        hit.zone = p.x < bounds.getX() + edgeZone        ? Drag::trimLeft
+                   : p.x >= bounds.getRight() - edgeZone ? Drag::trimRight
+                                                         : Drag::move;
+        return hit;
+    }
     // Later clips draw on top, so they win the hit.
     for (auto it = hit.track->clips.rbegin(); it != hit.track->clips.rend(); ++it)
     {
@@ -938,7 +1089,7 @@ void ArrangeView::select(const ClipRef& ref, bool add)
 {
     if (!add)
         selection_.clear();
-    if (!isSelected(ref.track, ref.clip))
+    if (!isSelected(ref))
         selection_.push_back(ref);
 }
 
@@ -947,8 +1098,12 @@ void ArrangeView::selectAll()
     selection_.clear();
     if (project_ != nullptr)
         for (const auto& t : project_->tracks)
+        {
             for (const auto& c : t.clips)
                 selection_.push_back({t.id, c.id});
+            for (const auto& m : t.midiClips)
+                selection_.push_back({t.id, m.id, true});
+        }
     repaint();
 }
 
@@ -986,7 +1141,7 @@ core::SamplePosition ArrangeView::snapped(core::SamplePosition s) const noexcept
 
 const core::AudioClip* ArrangeView::findClip(const ClipRef& ref, const core::Track** track) const noexcept
 {
-    if (project_ == nullptr)
+    if (project_ == nullptr || ref.midi)
         return nullptr;
     const auto* t = project_->findTrack(ref.track);
     if (t == nullptr)
@@ -1016,6 +1171,9 @@ void ArrangeView::finishLasso()
         for (const auto& c : project_->tracks[t].clips)
             if (c.end() > from && c.start < to)
                 select({project_->tracks[t].id, c.id}, true);
+        for (const auto& m : project_->tracks[t].midiClips)
+            if (m.end() > from && m.start < to)
+                select({project_->tracks[t].id, m.id, true}, true);
     }
 }
 
@@ -1028,14 +1186,19 @@ void ArrangeView::finishMove()
     for (const auto& ref : selection_)
     {
         const int from = project_->trackIndex(ref.track);
-        const auto* clip = findClip(ref);
-        if (from < 0 || clip == nullptr)
+        const auto span = spanOf(ref);
+        if (from < 0 || !span.has_value())
             continue;
         const int to = std::clamp(from + rowDelta_, 0, static_cast<int>(project_->tracks.size()) - 1);
         const auto& target = project_->tracks[static_cast<size_t>(to)];
-        commands.push_back(std::make_unique<core::MoveClip>(
-            ref.track, ref.clip, target.id, std::max<core::SamplePosition>(0, clip->start + moveDelta_)));
-        moved.push_back({target.id, ref.clip});
+        if (target.isMidi() != ref.midi)
+            continue; // a clip stays on its own kind of track
+        const auto start = std::max<core::SamplePosition>(0, span->start + moveDelta_);
+        if (ref.midi)
+            commands.push_back(std::make_unique<core::MoveMidiClip>(ref.track, ref.clip, target.id, start));
+        else
+            commands.push_back(std::make_unique<core::MoveClip>(ref.track, ref.clip, target.id, start));
+        moved.push_back({target.id, ref.clip, ref.midi});
     }
     selection_ = moved; // the selection follows the clips to their new tracks
     emit(std::move(commands), commands.size() > 1 ? "Move clips" : "Move clip");
@@ -1043,11 +1206,15 @@ void ArrangeView::finishMove()
 
 void ArrangeView::finishTrim()
 {
-    if (findClip(dragClip_) == nullptr)
+    if (!spanOf(dragClip_).has_value())
         return;
     std::vector<std::unique_ptr<core::Command>> commands;
-    commands.push_back(std::make_unique<core::TrimClip>(
-        dragClip_.track, dragClip_.clip, trimStart_, trimLength_, trimOffset_));
+    if (dragClip_.midi)
+        commands.push_back(
+            std::make_unique<core::TrimMidiClip>(dragClip_.track, dragClip_.clip, trimStart_, trimLength_));
+    else
+        commands.push_back(std::make_unique<core::TrimClip>(
+            dragClip_.track, dragClip_.clip, trimStart_, trimLength_, trimOffset_));
     emit(std::move(commands), "Trim clip");
 }
 
@@ -1095,6 +1262,9 @@ void ArrangeView::deleteSelection()
             if (ripple_)
                 commands.push_back(std::make_unique<core::ShiftClips>(t.id, c->end(), -c->length));
         }
+        for (const auto& m : t.midiClips)
+            if (isSelected({t.id, m.id, true}))
+                commands.push_back(std::make_unique<core::RemoveMidiClip>(t.id, m.id));
     }
     selection_.clear();
     emit(std::move(commands), ripple_ ? "Ripple delete" : "Delete clips");
@@ -1104,8 +1274,12 @@ void ArrangeView::duplicateSelection()
 {
     std::vector<std::unique_ptr<core::Command>> commands;
     for (const auto& ref : selection_)
-        if (findClip(ref) != nullptr)
+    {
+        if (ref.midi && findMidiClip(ref) != nullptr)
+            commands.push_back(std::make_unique<core::DuplicateMidiClip>(ref.track, ref.clip));
+        else if (findClip(ref) != nullptr)
             commands.push_back(std::make_unique<core::DuplicateClip>(ref.track, ref.clip));
+    }
     emit(std::move(commands), "Duplicate clips");
 }
 
@@ -1117,9 +1291,14 @@ void ArrangeView::splitAtPlayhead()
     std::vector<std::unique_ptr<core::Command>> commands;
     // Selected clips under the playhead; with nothing selected, every clip there.
     for (const auto& t : project_->tracks)
+    {
         for (const auto& c : t.clips)
             if (at > c.start && at < c.end() && (selection_.empty() || isSelected(t.id, c.id)))
                 commands.push_back(std::make_unique<core::SplitClip>(t.id, c.id, at));
+        for (const auto& m : t.midiClips)
+            if (at > m.start && at < m.end() && (selection_.empty() || isSelected({t.id, m.id, true})))
+                commands.push_back(std::make_unique<core::SplitMidiClip>(t.id, m.id, at));
+    }
     emit(std::move(commands), "Split clips");
 }
 
@@ -1177,9 +1356,15 @@ void ArrangeView::nudgeSelection(int direction)
     const auto step = grid() * direction;
     std::vector<std::unique_ptr<core::Command>> commands;
     for (const auto& ref : selection_)
-        if (const auto* c = findClip(ref))
-            commands.push_back(std::make_unique<core::MoveClip>(
-                ref.track, ref.clip, ref.track, std::max<core::SamplePosition>(0, c->start + step)));
+        if (const auto span = spanOf(ref))
+        {
+            const auto start = std::max<core::SamplePosition>(0, span->start + step);
+            if (ref.midi)
+                commands.push_back(
+                    std::make_unique<core::MoveMidiClip>(ref.track, ref.clip, ref.track, start));
+            else
+                commands.push_back(std::make_unique<core::MoveClip>(ref.track, ref.clip, ref.track, start));
+        }
     emit(std::move(commands), "Nudge clips");
 }
 
@@ -1347,13 +1532,12 @@ void ArrangeView::drawEditOverlay(juce::Graphics& g)
         for (const auto& ref : selection_)
         {
             const int from = project_->trackIndex(ref.track);
-            const auto* clip = findClip(ref);
-            if (from < 0 || clip == nullptr)
+            const auto span = spanOf(ref);
+            if (from < 0 || !span.has_value())
                 continue;
             const int to = std::clamp(from + rowDelta_, 0, static_cast<int>(project_->tracks.size()) - 1);
-            core::AudioClip ghost = *clip;
-            ghost.start = std::max<core::SamplePosition>(0, clip->start + moveDelta_);
-            const auto bounds = clipBounds(ghost, to);
+            const auto bounds =
+                spanBounds(std::max<core::SamplePosition>(0, span->start + moveDelta_), span->length, to);
             g.setColour(c.accent.withAlpha(0.25f));
             g.fillRoundedRectangle(bounds.toFloat(), theme_.radius.sm);
             g.setColour(c.textPrimary);
@@ -1496,8 +1680,14 @@ void ArrangeView::renameMarker(core::Id markerId)
 void ArrangeView::mouseDoubleClick(const juce::MouseEvent& e)
 {
     if (e.y < rulerHeight)
+    {
         if (const auto* marker = markerAtRulerPoint(e.getPosition()))
             renameMarker(marker->id);
+        return;
+    }
+    const auto hit = hitTest(e.getPosition());
+    if (hit.midiClip != nullptr && onOpenMidiClip)
+        onOpenMidiClip(hit.track->id, hit.midiClip->id);
 }
 
 } // namespace aural::ui

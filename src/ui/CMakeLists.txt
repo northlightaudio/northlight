@@ -9,6 +9,8 @@ add_library(aural_ui STATIC
     AudioSetupView.cpp
     ArrangeView.h
     ArrangeView.cpp
+    PianoRoll.h
+    PianoRoll.cpp
     TrackHeader.h
     TrackHeader.cpp
     MixerView.h

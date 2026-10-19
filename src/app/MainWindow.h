@@ -43,19 +43,26 @@ public:
     // The plugin browser (scan results, blocklist, scan controls).
     void showPluginBrowser();
     void closePluginBrowser();
+    // The piano roll on a MIDI clip (one window, retargeted).
+    void openPianoRoll(core::Id trackId, core::Id clipId);
+    void closePianoRoll();
 
 private:
     class Content;
     class AudioSetupWindow;
     class PluginBrowserWindow;
+    class PianoRollWindow;
 
     void refreshPluginBrowser();
+    void refreshPianoRoll();
+    void refreshPianoRollPlayhead();
 
     audio::AudioDeviceLayer& audio_;
     ProjectSession& session_;
     UserSettings& settings_;
     std::unique_ptr<AudioSetupWindow> audioSetupWindow_;
     std::unique_ptr<PluginBrowserWindow> pluginBrowserWindow_;
+    std::unique_ptr<PianoRollWindow> pianoRollWindow_;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(MainWindow)
 };

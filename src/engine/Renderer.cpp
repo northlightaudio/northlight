@@ -164,19 +164,38 @@ void Renderer::renderTrack(const Snapshot& snapshot,
     // envelopes, tails and latency buffers moving, and its key output stays live
     // for sidechains. The routing stage is what keeps it out of the mix.
 
-    if (track.isMidi)
-    {
-        // A MIDI track: its events for the span go to the first insert that takes
-        // MIDI (the instrument); the rest of the chain follows as on any channel.
-        scheduleMidi(track, position, numSamples, context);
-        processChain(snapshot, track, left, right, numSamples, &track.events);
-        return;
-    }
-
     // The pan this block ramps from and to (the runtime outlives snapshots).
     const float pan1 =
         track.runtime != nullptr ? track.runtime->targetPan.load(std::memory_order_relaxed) : track.pan;
     const float pan0 = track.runtime != nullptr && track.runtime->panPrimed ? track.runtime->pan : pan1;
+
+    if (track.isMidi)
+    {
+        // A MIDI track: its events for the span go to the first insert that takes
+        // MIDI (the instrument); the rest of the chain follows as on any channel,
+        // and the pan (a stereo balance, the instrument's output being stereo)
+        // and the polarity apply after it.
+        scheduleMidi(track, position, numSamples, context);
+        processChain(snapshot, track, left, right, numSamples, &track.events);
+        float panLeft0 = 1.0f, panRight0 = 1.0f, panLeft1 = 1.0f, panRight1 = 1.0f;
+        stereoPanGains(pan0, panLeft0, panRight0);
+        stereoPanGains(pan1, panLeft1, panRight1);
+        const float stepL = (panLeft1 - panLeft0) / static_cast<float>(numSamples);
+        const float stepR = (panRight1 - panRight0) / static_cast<float>(numSamples);
+        const float sign = track.phaseInvert ? -1.0f : 1.0f;
+        for (int i = 0; i < numSamples; ++i)
+        {
+            const float t = static_cast<float>(i + 1);
+            left[i] *= sign * (panLeft0 + stepL * t);
+            right[i] *= sign * (panRight0 + stepR * t);
+        }
+        if (track.runtime != nullptr)
+        {
+            track.runtime->pan = pan1;
+            track.runtime->panPrimed = true;
+        }
+        return;
+    }
 
     if (context.playing)
     {

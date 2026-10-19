@@ -485,7 +485,8 @@ private:
                                 (plugin.manufacturer.empty()
                                      ? juce::String()
                                      : "  (" + juce::String::fromUTF8(plugin.manufacturer.c_str()) + ")") +
-                                "  [" + juce::String(plugin.format) + "]");
+                                "  [" + juce::String(plugin.format) +
+                                (plugin.isInstrument ? ", instrument" : "") + "]");
                 const auto type = hosting::PluginRegistry::typeFor(plugin);
                 actions.push_back(
                     [this, type]
