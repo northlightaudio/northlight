@@ -52,9 +52,15 @@ void styleValue(juce::Label& label, const Theme& theme)
 class AudioSetupView::ChannelListModel final : public juce::ListBoxModel
 {
 public:
-    explicit ChannelListModel(const Theme& theme) : theme_(theme) {}
+    // `numbered`: rows read "1: name" (device channels) rather than the name alone.
+    explicit ChannelListModel(const Theme& theme, bool numbered = true) : theme_(theme), numbered_(numbered)
+    {
+    }
 
     std::function<void()> onChanged;
+    // Which row changed last (for lists keyed by name rather than index).
+    int lastChangedRow() const noexcept { return lastChanged_; }
+    bool isEnabled(size_t row) const noexcept { return row < enabled_.size() && enabled_[row]; }
 
     void setChannels(std::vector<std::string> names, const std::vector<int>& enabledIndices)
     {
@@ -92,12 +98,14 @@ public:
             toggle = new juce::ToggleButton();
         }
         const auto index = static_cast<size_t>(row);
-        toggle->setButtonText(juce::String(row + 1) + ": " + names_[index]);
+        toggle->setButtonText(numbered_ ? juce::String(row + 1) + ": " + names_[index]
+                                        : juce::String::fromUTF8(names_[index].c_str()));
         toggle->setToggleState(enabled_[index], juce::dontSendNotification);
         toggle->onClick = [this, index, toggle]
         {
             if (index < enabled_.size())
                 enabled_[index] = toggle->getToggleState();
+            lastChanged_ = static_cast<int>(index);
             if (onChanged)
                 onChanged();
         };
@@ -106,6 +114,8 @@ public:
 
 private:
     const Theme& theme_;
+    bool numbered_ = true;
+    int lastChanged_ = -1;
     std::vector<std::string> names_;
     std::vector<bool> enabled_;
 };
@@ -199,6 +209,27 @@ AudioSetupView::AudioSetupView(audio::AudioDeviceLayer& audio) : audio_(audio), 
         addAndMakeVisible(*list);
     }
 
+    // MIDI
+    midiInputsModel_ = std::make_unique<ChannelListModel>(theme_, false);
+    midiInputsModel_->onChanged = [this] { midiChanged(); };
+    for (auto* label : {&midiInputsLabel_, &midiOutputLabel_})
+    {
+        styleCaption(*label, theme_);
+        addAndMakeVisible(*label);
+    }
+    midiInputsLabel_.setText("Inputs", juce::dontSendNotification);
+    midiOutputLabel_.setText("Output", juce::dontSendNotification);
+    midiInputsList_.setModel(midiInputsModel_.get());
+    midiInputsList_.setRowHeight(theme_.sizes.rowHeight);
+    midiInputsList_.setOutlineThickness(1);
+    addAndMakeVisible(midiInputsList_);
+    midiOutputBox_.onChange = [this]
+    {
+        if (!updating_)
+            midiChanged();
+    };
+    addAndMakeVisible(midiOutputBox_);
+
     // Latency
     for (auto* label : {&reportedLatencyLabel_, &measuredLatencyLabel_, &loopbackLabel_})
     {
@@ -285,6 +316,7 @@ AudioSetupView::~AudioSetupView()
     audio_.removeChangeListener(this);
     inputsList_.setModel(nullptr);
     outputsList_.setModel(nullptr);
+    midiInputsList_.setModel(nullptr);
 }
 
 // ----- painting and layout ------------------------------------------------------------------
@@ -309,6 +341,7 @@ void AudioSetupView::paint(juce::Graphics& g)
 
     drawSection(deviceSection_, "Device");
     drawSection(channelsSection_, "Channels");
+    drawSection(midiSection_, "MIDI");
     drawSection(latencySection_, "Latency");
     drawSection(monitoringSection_, "Monitoring");
 }
@@ -330,12 +363,15 @@ void AudioSetupView::resized()
     const int deviceH = titleH + deviceRows * (rowH + gap) + sp.lg;
     const int latencyH = titleH + 4 * (rowH + gap) + sp.lg;
     const int monitoringH = titleH + 2 * (rowH + gap) + sp.lg;
+    const int midiH = titleH + 3 * (rowH + gap) + sp.lg;
 
     deviceSection_ = bounds.removeFromTop(deviceH);
     bounds.removeFromTop(sp.md);
     monitoringSection_ = bounds.removeFromBottom(monitoringH);
     bounds.removeFromBottom(sp.md);
     latencySection_ = bounds.removeFromBottom(latencyH);
+    bounds.removeFromBottom(sp.md);
+    midiSection_ = bounds.removeFromBottom(midiH);
     bounds.removeFromBottom(sp.md);
     channelsSection_ = bounds;
 
@@ -383,6 +419,19 @@ void AudioSetupView::resized()
         inputsList_.setBounds(left);
         outputsLabel_.setBounds(area.removeFromTop(rowH));
         outputsList_.setBounds(area);
+    }
+
+    // MIDI: the inputs as a toggle list on the left, the output choice on the right.
+    {
+        auto area = midiSection_.reduced(sp.lg).withTrimmedTop(titleH);
+        auto left = area.removeFromLeft((area.getWidth() - sp.lg) / 2);
+        area.removeFromLeft(sp.lg);
+        midiInputsLabel_.setBounds(left.removeFromTop(rowH));
+        midiInputsList_.setBounds(left);
+        auto row = area.removeFromTop(rowH);
+        midiOutputLabel_.setBounds(row.removeFromLeft(labelW));
+        area.removeFromTop(gap);
+        midiOutputBox_.setBounds(area.removeFromTop(rowH));
     }
 
     // Latency
@@ -545,6 +594,34 @@ void AudioSetupView::refreshFromDevice()
     outputsList_.updateContent();
     inputsList_.repaint();
     outputsList_.repaint();
+
+    // MIDI
+    midiInputs_ = audio_.midi().inputs();
+    midiOutputs_ = audio_.midi().outputs();
+    {
+        std::vector<std::string> names;
+        std::vector<int> enabled;
+        for (size_t i = 0; i < midiInputs_.size(); ++i)
+        {
+            names.push_back(midiInputs_[i].name +
+                            (midiInputs_[i].enabled && !midiInputs_[i].open ? " (could not open)" : ""));
+            if (midiInputs_[i].enabled)
+                enabled.push_back(static_cast<int>(i));
+        }
+        midiInputsModel_->setChannels(std::move(names), enabled);
+        midiInputsList_.updateContent();
+        midiInputsList_.repaint();
+        midiOutputBox_.clear(juce::dontSendNotification);
+        midiOutputBox_.addItem("(none)", 1);
+        midiOutputBox_.setSelectedId(1, juce::dontSendNotification);
+        for (size_t i = 0; i < midiOutputs_.size(); ++i)
+        {
+            midiOutputBox_.addItem(juce::String::fromUTF8(midiOutputs_[i].name.c_str()),
+                                   static_cast<int>(i) + 2);
+            if (midiOutputs_[i].enabled)
+                midiOutputBox_.setSelectedId(static_cast<int>(i) + 2, juce::dontSendNotification);
+        }
+    }
 
     refreshLatency(status);
     refreshCalibrationChoices(status);
@@ -722,6 +799,25 @@ void AudioSetupView::channelsChanged()
     s.inputChannels = inputsModel_->enabledIndices();
     s.outputChannels = outputsModel_->enabledIndices();
     applySettings(s);
+}
+
+void AudioSetupView::midiChanged()
+{
+    if (updating_)
+        return;
+    const int row = midiInputsModel_->lastChangedRow();
+    if (row >= 0 && static_cast<size_t>(row) < midiInputs_.size() &&
+        midiInputsModel_->isEnabled(static_cast<size_t>(row)) !=
+            midiInputs_[static_cast<size_t>(row)].enabled)
+    {
+        audio_.midi().setInputEnabled(midiInputs_[static_cast<size_t>(row)].name,
+                                      midiInputsModel_->isEnabled(static_cast<size_t>(row)));
+        return;
+    }
+    const int index = midiOutputBox_.getSelectedId() - 2;
+    audio_.midi().setOutput(index >= 0 && static_cast<size_t>(index) < midiOutputs_.size()
+                                ? midiOutputs_[static_cast<size_t>(index)].name
+                                : std::string{});
 }
 
 void AudioSetupView::applySettings(const audio::AudioSettings& settings)

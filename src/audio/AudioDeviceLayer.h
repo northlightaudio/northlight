@@ -4,6 +4,7 @@
 #include "audio/AudioSettings.h"
 #include "audio/LatencyCalibrator.h"
 #include "audio/LatencyDetector.h"
+#include "audio/MidiDeviceLayer.h"
 
 #include <juce_audio_devices/juce_audio_devices.h>
 
@@ -21,7 +22,8 @@
 //   - recovers from device loss (unplugged interface, driver reset) by reopening the
 //     preferred device when it returns and falling back to the system default
 //     meanwhile,
-//   - owns the real-time AudioCallback and the LatencyCalibrator.
+//   - owns the real-time AudioCallback, the LatencyCalibrator and the MIDI
+//     device layer (whose device choices are persisted with the audio settings).
 //
 // Listeners (the Audio Setup screen) register as juce::ChangeListener and re-read
 // status() whenever anything changes.
@@ -110,6 +112,7 @@ public:
 
     // ----- collaborators --------------------------------------------------------
     AudioCallback& callback() noexcept { return callback_; }
+    MidiDeviceLayer& midi() noexcept { return midi_; }
     LatencyCalibrator& calibrator() noexcept { return calibrator_; }
     juce::AudioDeviceManager& manager() noexcept { return manager_; }
 
@@ -126,6 +129,7 @@ private:
     AudioSettingsStore& store_;
     juce::AudioDeviceManager manager_;
     AudioCallback callback_;
+    MidiDeviceLayer midi_;
     LatencyCalibrator calibrator_;
     AudioSettings settings_;
     std::string message_;

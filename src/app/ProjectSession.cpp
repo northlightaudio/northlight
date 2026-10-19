@@ -3,6 +3,7 @@
 #include "audio/AudioDeviceLayer.h"
 #include "core/ProjectJson.h"
 #include "engine/WavFile.h"
+#include "plugins/BuiltIns.h"
 
 #include <algorithm>
 #include <cmath>
@@ -35,6 +36,7 @@ ProjectSession::ProjectSession(audio::AudioDeviceLayer& audio, juce::File regist
         publish();
     };
     audio_.callback().setEngine(&engine_);
+    audio_.midi().setEngine(&engine_);
     audio_.addChangeListener(this);
     matchDeviceSampleRate();
     publish();
@@ -49,6 +51,7 @@ ProjectSession::~ProjectSession()
     // The device must not call into a dead engine: detach, then let the layer stop
     // the device (it shuts down after this object in the application).
     audio_.callback().setEngine(nullptr);
+    audio_.midi().setEngine(nullptr);
 }
 
 // ----- editing --------------------------------------------------------------------------
@@ -150,6 +153,26 @@ void ProjectSession::redo()
         modified_ = true;
         publish();
     }
+}
+
+core::Id ProjectSession::addMidiTrack()
+{
+    int count = 0;
+    for (const auto& t : project_.tracks)
+        if (t.isMidi())
+            ++count;
+    core::Track track;
+    track.kind = core::TrackKind::midi;
+    track.name = "MIDI " + std::to_string(count + 1);
+    track.armed = true;
+    core::Insert synth;
+    synth.type = plugins::types::synth;
+    synth.params = plugins::defaultParameters(synth.type);
+    track.inserts.push_back(synth);
+    auto command = std::make_unique<core::AddTrack>(track);
+    const auto* raw = command.get();
+    execute(std::move(command));
+    return raw->trackId();
 }
 
 std::string ProjectSession::importAudioFile(const juce::File& file, core::SamplePosition at)
@@ -620,10 +643,12 @@ int ProjectSession::discardPartialRecordings()
 bool ProjectSession::isTrackMonitoring(const core::Track& track) const
 {
     engine::TrackNode node;
+    node.isMidi = track.isMidi();
     node.inputChannel = track.inputChannel;
     node.armed = track.armed;
     node.monitor = track.monitor;
-    return engine::Renderer::monitorsInput(node, engine_.isPlaying(), engine_.isRecording());
+    return node.isMidi ? engine::Renderer::monitorsMidi(node, engine_.isPlaying(), engine_.isRecording())
+                       : engine::Renderer::monitorsInput(node, engine_.isPlaying(), engine_.isRecording());
 }
 
 int ProjectSession::recoverPartialRecordings()

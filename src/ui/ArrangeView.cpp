@@ -48,6 +48,14 @@ void ArrangeView::setInputNames(std::vector<std::string> names)
     rebuildHeaders();
 }
 
+void ArrangeView::setMidiInputNames(std::vector<std::string> names)
+{
+    if (names == midiInputNames_)
+        return;
+    midiInputNames_ = std::move(names);
+    rebuildHeaders();
+}
+
 void ArrangeView::rebuildHeaders()
 {
     const size_t count = project_ != nullptr ? project_->tracks.size() : 0;
@@ -60,6 +68,11 @@ void ArrangeView::rebuildHeaders()
         {
             if (onTrackInputChanged)
                 onTrackInputChanged(id, channel);
+        };
+        header->onMidiInputChanged = [this](core::Id id, const std::string& name)
+        {
+            if (onTrackMidiInputChanged)
+                onTrackMidiInputChanged(id, name);
         };
         header->onArmChanged = [this](core::Id id, bool armed)
         {
@@ -75,7 +88,7 @@ void ArrangeView::rebuildHeaders()
         headers_.push_back(std::move(header));
     }
     for (size_t i = 0; i < count; ++i)
-        headers_[i]->setTrack(project_->tracks[i], inputNames_);
+        headers_[i]->setTrack(project_->tracks[i], inputNames_, midiInputNames_);
     layoutHeaders();
 }
 

@@ -53,6 +53,7 @@ public:
     void setRegion(core::SamplePosition start, core::SamplePosition end, bool loop, bool punch);
     // Names of the device's active inputs, in callback order, for the track headers.
     void setInputNames(std::vector<std::string> names);
+    void setMidiInputNames(std::vector<std::string> names);
     // Live state per track (same order as the project's tracks): whether the input is
     // being heard, and whether a recording is in progress.
     void setMonitoringStates(const std::vector<bool>& monitoring, bool recording);
@@ -60,6 +61,7 @@ public:
     std::function<void(core::SamplePosition)> onLocate;
     std::function<void(core::SamplePosition, core::SamplePosition)> onRegionChanged;
     std::function<void(core::Id, int)> onTrackInputChanged;
+    std::function<void(core::Id, const std::string&)> onTrackMidiInputChanged;
     std::function<void(core::Id, bool)> onTrackArmChanged;
     std::function<void(core::Id, core::MonitorMode)> onTrackMonitorChanged;
     // Files dropped on the view, with the timeline position under the pointer.
@@ -202,6 +204,7 @@ private:
     core::SamplePosition dragAnchor_ = 0;
     std::vector<std::unique_ptr<TrackHeader>> headers_;
     std::vector<std::string> inputNames_;
+    std::vector<std::string> midiInputNames_;
     double samplesPerPixel_ = 48000.0 / 40.0; // 40 px per second at 48 kHz
     core::SamplePosition scroll_ = 0;         // first visible sample
     juce::ScrollBar scrollbar_{false};

@@ -47,6 +47,7 @@ public:
     //   --stop-after <s>     stop the transport after s seconds
     //   --loop <from> <to>   set and enable the loop region, in seconds
     //   --no-count-in        record without the count-in
+    //   --midi-track         add a MIDI track (built-in synth) with a short clip
     void applyLaunchFlags(const juce::String& commandLine)
     {
         const auto tokens = juce::ArgumentList("Aural", commandLine).arguments;
@@ -88,6 +89,22 @@ public:
             }
             else if (arg == "--no-count-in")
                 session_->setCountInBars(0);
+            else if (arg == "--midi-track")
+            {
+                // A MIDI track with the built-in synth and a four-note clip.
+                const auto trackId = session_->addMidiTrack();
+                const auto beat = static_cast<core::SamplePosition>(
+                    core::samplesPerBeat(session_->project().sampleRate,
+                                         session_->project().tempoBpm,
+                                         session_->project().timeSignature));
+                core::MidiClip clip;
+                clip.name = "Riff";
+                clip.start = 0;
+                clip.length = beat * 4;
+                for (int n = 0; n < 4; ++n)
+                    clip.notes.push_back({core::invalidId, 60 + n * 2, 100, beat * n, beat / 2});
+                session_->execute(std::make_unique<core::AddMidiClip>(trackId, clip));
+            }
             else if (arg == "--mixer")
                 mainWindow_->showMixer();
             else if (arg == "--insert" && i + 1 < tokens.size())

@@ -56,6 +56,11 @@ struct AudioSettings
 
     std::optional<LatencyCalibration> calibration;
 
+    // MIDI: the input device names that are enabled (nullopt = every input), and
+    // the output device name (empty = none).
+    std::optional<std::vector<std::string>> midiInputs;
+    std::string midiOutput;
+
     // True when the stored calibration was made with the given device configuration.
     bool calibrationMatches(const std::string& type,
                             const std::string& device,

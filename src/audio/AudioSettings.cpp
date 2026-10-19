@@ -23,6 +23,34 @@ constexpr const char* keyCalRate = "audio.calibration.sampleRate";
 constexpr const char* keyCalBuffer = "audio.calibration.bufferSize";
 constexpr const char* keyCalType = "audio.calibration.deviceType";
 constexpr const char* keyCalDevice = "audio.calibration.deviceName";
+constexpr const char* keyMidiInputs = "midi.inputs";
+constexpr const char* keyMidiOutput = "midi.output";
+constexpr char nameSeparator = '\t'; // device names never contain a tab
+
+std::string joinNames(const std::vector<std::string>& names)
+{
+    std::string out;
+    for (size_t i = 0; i < names.size(); ++i)
+    {
+        if (i > 0)
+            out += nameSeparator;
+        out += names[i];
+    }
+    return out;
+}
+
+std::vector<std::string> splitNames(const std::string& text)
+{
+    std::vector<std::string> out;
+    if (text.empty())
+        return out;
+    std::stringstream stream(text);
+    std::string item;
+    while (std::getline(stream, item, nameSeparator))
+        if (!item.empty())
+            out.push_back(item);
+    return out;
+}
 
 std::string joinChannels(const std::vector<int>& channels)
 {
@@ -133,6 +161,9 @@ AudioSettings::KeyValues AudioSettings::toKeyValues() const
         out[keyOutputChannels] = joinChannels(*outputChannels);
     out[keyMasterGain] = formatDouble(static_cast<double>(masterGain));
     out[keyPassThrough] = passThroughEnabled ? "1" : "0";
+    if (midiInputs.has_value())
+        out[keyMidiInputs] = joinNames(*midiInputs);
+    out[keyMidiOutput] = midiOutput;
     if (calibration.has_value())
     {
         out[keyCalSamples] = std::to_string(calibration->roundTripSamples);
@@ -158,6 +189,9 @@ AudioSettings AudioSettings::fromKeyValues(const KeyValues& values)
         s.outputChannels = splitChannels(*text);
     s.masterGain = static_cast<float>(getDouble(values, keyMasterGain, 1.0));
     s.passThroughEnabled = getBool(values, keyPassThrough, true);
+    if (const auto* text = find(values, keyMidiInputs))
+        s.midiInputs = splitNames(*text);
+    s.midiOutput = getString(values, keyMidiOutput);
 
     if (find(values, keyCalSamples) != nullptr)
     {

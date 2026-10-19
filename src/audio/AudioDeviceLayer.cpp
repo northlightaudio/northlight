@@ -81,11 +81,20 @@ double AudioDeviceLayer::Status::outputLatencyMilliseconds() const noexcept
 AudioDeviceLayer::AudioDeviceLayer(AudioSettingsStore& store) : store_(store), calibrator_(callback_)
 {
     manager_.addChangeListener(this);
+    midi_.onChanged = [this]
+    {
+        settings_.midiInputs = midi_.enabledInputNames();
+        settings_.midiOutput = midi_.outputName();
+        save();
+        sendChangeMessage();
+    };
+    midi_.addChangeListener(this);
 }
 
 AudioDeviceLayer::~AudioDeviceLayer()
 {
     shutdown();
+    midi_.removeChangeListener(this);
     manager_.removeChangeListener(this);
 }
 
@@ -123,6 +132,7 @@ void AudioDeviceLayer::initialise()
 
     initialised_ = true;
     hadDevice_ = manager_.getCurrentAudioDevice() != nullptr;
+    midi_.initialise(settings_.midiInputs, settings_.midiOutput);
     startTimer(healthTimerMilliseconds);
     sendChangeMessage();
 }
@@ -133,6 +143,7 @@ void AudioDeviceLayer::shutdown()
         return;
     stopTimer();
     calibrator_.cancel();
+    midi_.shutdown();
     manager_.removeAudioCallback(&callback_);
     manager_.closeAudioDevice();
     initialised_ = false;
@@ -345,8 +356,13 @@ void AudioDeviceLayer::setMessage(std::string message)
     message_ = std::move(message);
 }
 
-void AudioDeviceLayer::changeListenerCallback(juce::ChangeBroadcaster* /*source*/)
+void AudioDeviceLayer::changeListenerCallback(juce::ChangeBroadcaster* source)
 {
+    if (source == &midi_)
+    {
+        sendChangeMessage(); // a MIDI device came or went: listeners re-read the lists
+        return;
+    }
     // AudioDeviceManager sends this on device open/close, device-list changes and
     // driver-initiated restarts (ASIO reset requests, sample-rate changes).
     if (initialised_ && manager_.getCurrentAudioDevice() == nullptr && hadDevice_)

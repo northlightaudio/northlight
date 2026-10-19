@@ -13,7 +13,8 @@ namespace aural::ui
 {
 
 // The Audio Setup screen: driver type, device, sample rate, buffer size, channel
-// enables, reported and measured latency, calibration and the ASIO control panel.
+// enables, MIDI inputs and output, reported and measured latency, calibration and
+// the ASIO control panel.
 //
 // The view is a thin reflection of AudioDeviceLayer: every control change is turned
 // into an AudioSettings and applied; every change message from the layer refreshes
@@ -22,9 +23,9 @@ class AudioSetupView final : public juce::Component, private juce::ChangeListene
 {
 public:
     static constexpr int preferredWidth = 860;
-    static constexpr int preferredHeight = 860;
+    static constexpr int preferredHeight = 960;
     static constexpr int minimumWidth = 700;
-    static constexpr int minimumHeight = 720;
+    static constexpr int minimumHeight = 820;
 
     explicit AudioSetupView(audio::AudioDeviceLayer& audio);
     ~AudioSetupView() override;
@@ -47,6 +48,7 @@ private:
     void deviceChanged();
     void formatChanged();
     void channelsChanged();
+    void midiChanged();
     void applySettings(const audio::AudioSettings& settings);
 
     void calibrateClicked();
@@ -72,6 +74,13 @@ private:
     std::unique_ptr<ChannelListModel> inputsModel_, outputsModel_;
     juce::ListBox inputsList_, outputsList_;
 
+    // MIDI
+    juce::Label midiInputsLabel_, midiOutputLabel_;
+    std::unique_ptr<ChannelListModel> midiInputsModel_;
+    juce::ListBox midiInputsList_;
+    juce::ComboBox midiOutputBox_;
+    std::vector<audio::MidiDeviceLayer::Device> midiInputs_, midiOutputs_;
+
     // Latency
     juce::Label reportedLatencyLabel_, reportedLatencyValue_;
     juce::Label measuredLatencyLabel_, measuredLatencyValue_;
@@ -90,7 +99,7 @@ private:
     // Status
     juce::Label statusLabel_;
 
-    juce::Rectangle<int> deviceSection_, channelsSection_, latencySection_, monitoringSection_;
+    juce::Rectangle<int> deviceSection_, channelsSection_, midiSection_, latencySection_, monitoringSection_;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(AudioSetupView)
 };

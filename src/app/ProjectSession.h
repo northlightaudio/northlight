@@ -82,6 +82,9 @@ public:
     // Adds a track with the file as a clip starting at `at`. Returns an error
     // message or empty on success.
     std::string importAudioFile(const juce::File& file, core::SamplePosition at);
+    // Adds a MIDI track with the built-in synth as its instrument, armed and
+    // listening to every input. Returns the new track's id.
+    core::Id addMidiTrack();
 
     // ----- files ------------------------------------------------------------------
     void newProject();

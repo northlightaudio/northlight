@@ -19,13 +19,18 @@ class TrackHeader final : public juce::Component
 public:
     TrackHeader();
 
-    void setTrack(const core::Track& track, const std::vector<std::string>& inputNames);
+    // `inputNames`: the audio inputs (callback order); `midiInputNames`: the open
+    // MIDI inputs. A MIDI track's selector lists the latter plus "All inputs".
+    void setTrack(const core::Track& track,
+                  const std::vector<std::string>& inputNames,
+                  const std::vector<std::string>& midiInputNames = {});
     // Live indicators: input being heard (green dot by the monitor button) and a
     // recording in progress (the arm button reads REC while armed).
     void setLiveState(bool monitoring, bool recording);
     core::Id trackId() const noexcept { return trackId_; }
 
     std::function<void(core::Id, int)> onInputChanged;
+    std::function<void(core::Id, const std::string&)> onMidiInputChanged; // empty = all
     std::function<void(core::Id, bool)> onArmChanged;
     std::function<void(core::Id, core::MonitorMode)> onMonitorChanged;
 
@@ -42,6 +47,8 @@ private:
     bool monitoring_ = false;
     bool recording_ = false;
     bool armed_ = false;
+    bool midi_ = false;
+    std::vector<std::string> midiNames_;
     juce::Label name_;
     juce::ComboBox input_;
     juce::TextButton arm_{"R"}, monitorButton_{"I"};

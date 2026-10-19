@@ -20,6 +20,8 @@ add_library(aural_audio_device STATIC
     AudioDeviceLayer.cpp
     LatencyCalibrator.h
     LatencyCalibrator.cpp
+    MidiDeviceLayer.h
+    MidiDeviceLayer.cpp
     JuceMediaLoader.h
     JuceMediaLoader.cpp
     JuceStreamReader.h

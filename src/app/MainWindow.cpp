@@ -59,7 +59,9 @@ public:
             b.onClick = std::move(action);
             addAndMakeVisible(b);
         };
-        button(importButton_, "Import...", [this] { importAudio(); });
+        button(importButton_, "Import", [this] { importAudio(); });
+        button(midiTrackButton_, "+MIDI", [this] { session_.addMidiTrack(); });
+        midiTrackButton_.setTooltip("Add a MIDI track with the built-in synth");
         button(exportButton_, "Export...", [this] { exportMenu(); });
         button(undoButton_, "Undo", [this] { session_.undo(); });
         button(redoButton_, "Redo", [this] { session_.redo(); });
@@ -84,7 +86,8 @@ public:
         punchButton_.setColour(juce::TextButton::textColourOnId, theme_.colours.textPrimary);
         recordButton_.setColour(juce::TextButton::buttonOnColourId, theme_.colours.danger);
         recordButton_.setColour(juce::TextButton::textColourOnId, theme_.colours.textPrimary);
-        button(audioSetupButton_, "Audio Setup...", [this] { owner_.showAudioSetup(); });
+        button(audioSetupButton_, "Setup...", [this] { owner_.showAudioSetup(); });
+        audioSetupButton_.setTooltip("Audio and MIDI setup");
         button(mixerButton_, "Mixer", [this] { toggleMixer(); });
         mixerButton_.setColour(juce::TextButton::buttonOnColourId, theme_.colours.accent);
         mixerButton_.setColour(juce::TextButton::textColourOnId, theme_.colours.accentText);
@@ -117,6 +120,8 @@ public:
         { session_.setRegion(start, end); };
         tracks_.onTrackInputChanged = [this](core::Id id, int channel)
         { session_.execute(std::make_unique<core::SetTrackInput>(id, channel)); };
+        tracks_.onTrackMidiInputChanged = [this](core::Id id, const std::string& name)
+        { session_.execute(std::make_unique<core::SetTrackMidiInput>(id, name)); };
         tracks_.onTrackArmChanged = [this](core::Id id, bool armed)
         { session_.execute(std::make_unique<core::SetTrackArmed>(id, armed)); };
         tracks_.onTrackMonitorChanged = [this](core::Id id, core::MonitorMode mode)
@@ -174,7 +179,7 @@ public:
             c.setBounds(bar.removeFromLeft(width).withSizeKeepingCentre(width, h));
             bar.removeFromLeft(gap);
         };
-        audioSetupButton_.setBounds(bar.removeFromRight(110).withSizeKeepingCentre(110, h));
+        audioSetupButton_.setBounds(bar.removeFromRight(76).withSizeKeepingCentre(76, h));
         bar.removeFromRight(gap);
         mixerButton_.setBounds(bar.removeFromRight(60).withSizeKeepingCentre(60, h));
         bar.removeFromRight(gap);
@@ -182,7 +187,8 @@ public:
         place(newButton_, 48);
         place(openButton_, 62);
         place(saveButton_, 48);
-        place(importButton_, 80);
+        place(importButton_, 60);
+        place(midiTrackButton_, 54);
         place(exportButton_, 70);
         place(undoButton_, 52);
         place(redoButton_, 52);
@@ -475,6 +481,7 @@ private:
                                     ? all[static_cast<size_t>(channel)]
                                     : "Input " + std::to_string(channel + 1));
             tracks_.setInputNames(std::move(names));
+            tracks_.setMidiInputNames(audio_.midi().openInputNames());
         }
         tracks_.setProject(&session_.project());
         mixer_.setProject(&session_.project());
@@ -584,9 +591,9 @@ private:
     ProjectSession& session_;
     UserSettings& settings_;
     const ui::Theme& theme_ = ui::Theme::dark();
-    juce::TextButton newButton_, openButton_, saveButton_, importButton_, exportButton_, undoButton_,
-        redoButton_, returnButton_, playButton_, recordButton_, clickButton_, countInButton_, loopButton_,
-        punchButton_, audioSetupButton_, mixerButton_;
+    juce::TextButton newButton_, openButton_, saveButton_, importButton_, midiTrackButton_, exportButton_,
+        undoButton_, redoButton_, returnButton_, playButton_, recordButton_, clickButton_, countInButton_,
+        loopButton_, punchButton_, audioSetupButton_, mixerButton_;
     juce::Label positionLabel_, deviceSummary_;
     ui::ArrangeView tracks_;
     ui::MixerView mixer_;

@@ -15,7 +15,18 @@ TrackHeader::TrackHeader()
     input_.setTextWhenNothingSelected("No input");
     input_.onChange = [this]
     {
-        if (!updating_ && onInputChanged)
+        if (updating_)
+            return;
+        if (midi_)
+        {
+            const int index = input_.getSelectedId() - 2; // id 1 = all inputs
+            if (onMidiInputChanged)
+                onMidiInputChanged(trackId_,
+                                   index >= 0 && static_cast<size_t>(index) < midiNames_.size()
+                                       ? midiNames_[static_cast<size_t>(index)]
+                                       : std::string{});
+        }
+        else if (onInputChanged)
             onInputChanged(trackId_, input_.getSelectedId() - 2); // id 1 = none
     };
     addAndMakeVisible(input_);
@@ -46,23 +57,48 @@ TrackHeader::TrackHeader()
     addAndMakeVisible(monitorButton_);
 }
 
-void TrackHeader::setTrack(const core::Track& track, const std::vector<std::string>& inputNames)
+void TrackHeader::setTrack(const core::Track& track,
+                           const std::vector<std::string>& inputNames,
+                           const std::vector<std::string>& midiInputNames)
 {
     const juce::ScopedValueSetter<bool> guard(updating_, true);
     trackId_ = track.id;
+    midi_ = track.isMidi();
     name_.setText(track.name, juce::dontSendNotification);
     name_.setColour(juce::Label::textColourId,
                     track.mute ? theme_.colours.textDisabled : theme_.colours.textPrimary);
 
     input_.clear(juce::dontSendNotification);
-    input_.addItem("No input", 1);
-    for (size_t i = 0; i < inputNames.size(); ++i)
-        input_.addItem(juce::String(static_cast<int>(i) + 1) + ": " + inputNames[i], static_cast<int>(i) + 2);
-    input_.setSelectedId(track.inputChannel >= 0 &&
-                                 static_cast<size_t>(track.inputChannel) < inputNames.size()
-                             ? track.inputChannel + 2
-                             : 1,
-                         juce::dontSendNotification);
+    if (midi_)
+    {
+        midiNames_ = midiInputNames;
+        input_.addItem("All MIDI inputs", 1);
+        int selected = 1;
+        for (size_t i = 0; i < midiNames_.size(); ++i)
+        {
+            input_.addItem(midiNames_[i], static_cast<int>(i) + 2);
+            if (midiNames_[i] == track.midiInput)
+                selected = static_cast<int>(i) + 2;
+        }
+        if (!track.midiInput.empty() && selected == 1) // chosen but not present now
+        {
+            input_.addItem(track.midiInput + " (absent)", static_cast<int>(midiNames_.size()) + 2);
+            selected = static_cast<int>(midiNames_.size()) + 2;
+        }
+        input_.setSelectedId(selected, juce::dontSendNotification);
+    }
+    else
+    {
+        input_.addItem("No input", 1);
+        for (size_t i = 0; i < inputNames.size(); ++i)
+            input_.addItem(juce::String(static_cast<int>(i) + 1) + ": " + inputNames[i],
+                           static_cast<int>(i) + 2);
+        input_.setSelectedId(track.inputChannel >= 0 &&
+                                     static_cast<size_t>(track.inputChannel) < inputNames.size()
+                                 ? track.inputChannel + 2
+                                 : 1,
+                             juce::dontSendNotification);
+    }
 
     arm_.setToggleState(track.armed, juce::dontSendNotification);
     armed_ = track.armed;
@@ -92,6 +128,11 @@ void TrackHeader::paint(juce::Graphics& g)
 {
     const auto& c = theme_.colours;
     g.fillAll(recording_ && armed_ ? c.surface.overlaidWith(c.danger.withAlpha(0.12f)) : c.surface);
+    if (midi_) // a MIDI track: a thin accent stripe at the left edge
+    {
+        g.setColour(c.accent.withAlpha(0.8f));
+        g.fillRect(getLocalBounds().removeFromLeft(3));
+    }
     g.setColour(c.border);
     g.fillRect(getLocalBounds().removeFromBottom(1));
     g.fillRect(getLocalBounds().removeFromRight(1));

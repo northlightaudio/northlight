@@ -42,6 +42,26 @@ TEST_CASE("Fully populated audio settings round-trip through key/values", "[audi
     CHECK(restored.calibration->roundTripMilliseconds() < 9.92);
 }
 
+TEST_CASE("MIDI device choices round-trip, with an explicit empty input list kept apart from all",
+          "[audio][settings]")
+{
+    AudioSettings s;
+    s.midiInputs = std::vector<std::string>{"Keystation 49", "MPK mini"};
+    s.midiOutput = "loopMIDI Port";
+    const auto values = s.toKeyValues();
+    CHECK(values.at("midi.inputs") == "Keystation 49\tMPK mini");
+    CHECK(values.at("midi.output") == "loopMIDI Port");
+    const auto restored = AudioSettings::fromKeyValues(values);
+    CHECK(restored == s);
+
+    AudioSettings none;
+    none.midiInputs = std::vector<std::string>{};
+    const auto noneValues = none.toKeyValues();
+    REQUIRE(noneValues.contains("midi.inputs"));
+    CHECK(AudioSettings::fromKeyValues(noneValues).midiInputs == std::vector<std::string>{});
+    CHECK_FALSE(AudioSettings::fromKeyValues({}).midiInputs.has_value()); // all inputs
+}
+
 TEST_CASE("An explicitly empty channel list is distinct from device default", "[audio][settings]")
 {
     AudioSettings s;
