@@ -3,8 +3,9 @@
 A native, high-performance digital audio workstation for Windows. ASIO, VST3 hosting,
 multitrack recording, and a UI that is designed before it is built.
 
-Status: **Phase 1 (audio device layer)**. See [docs/PLAN.md](docs/PLAN.md) for the
-roadmap and [docs/architecture.md](docs/architecture.md) for what is built.
+Status: **Phase 2 (engine core and playback), in progress**. See
+[docs/PLAN.md](docs/PLAN.md) for the roadmap and
+[docs/architecture.md](docs/architecture.md) for what is built.
 
 ## Building
 
@@ -68,9 +69,11 @@ VST3 SDK ships inside JUCE.
 cmake/            CMake helpers
 docs/             Plan, architecture notes, real-time rules, coding standards, design
 scripts/          Developer scripts
-src/app/          Application entry point, main window, user settings file
-src/audio/        Device layer (ASIO/WASAPI), audio callback, loopback calibration
-src/engine/rt/    Real-time safety guard (grows into the engine in Phase 2)
+src/app/          Application entry point, main window, project session, settings
+src/audio/        Device layer (ASIO/WASAPI), audio callback, calibration, media loading
+src/core/         Project model, commands/undo, JSON project files (no JUCE)
+src/engine/       Engine: snapshots, transport, renderer, streaming (no JUCE)
+src/engine/rt/    Real-time safety guard, SPSC queue, snapshot publisher
 src/ui/           Theme tokens, LookAndFeel, Audio Setup screen
 tests/unit/       Catch2 unit tests
 tests/hardware/   Manual tools that need a real audio device
@@ -79,7 +82,17 @@ tests/hardware/   Manual tools that need a real audio device
 The full intended layout is in [docs/PLAN.md](docs/PLAN.md), section 9. Directories are
 added when their first code lands.
 
-## Using the Phase 1 build
+## Using the current build
+
+Click **Import Audio...** to put files on tracks (one track per file, starting at 0),
+**Play** or the space bar to play, **|<** or Return to go back to the start, and
+click the ruler to locate. Undo/redo are Ctrl+Z / Ctrl+Y. Files longer than 30 s
+stream from disk; everything is resampled to the project rate (the device rate of
+an empty project).
+
+For unattended checks: `Aural.exe --import <file> [--import <file>] --play`.
+
+### Audio setup
 
 Launch `Aural.exe` and click **Audio Setup...** in the toolbar. Pick the driver type
 (ASIO, or one of the Windows Audio modes), the device, sample rate, buffer size and the

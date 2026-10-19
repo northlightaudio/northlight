@@ -3,24 +3,32 @@
 Living document. The intended architecture is in [PLAN.md](PLAN.md), section 3; this
 file records what is actually built and the decisions made along the way.
 
-## Current state (Phase 1)
+## Current state (Phase 2, in progress)
 
 ```
 aural.exe
-  src/app         JUCEApplication; MainWindow (toolbar with device summary + "Audio
-                  Setup..." button, placeholder body); UserSettings (the per-user
-                  properties file, implements audio::AudioSettingsStore)
+  src/app         JUCEApplication; MainWindow (transport bar, import, undo/redo,
+                  placeholder track list, device summary, Audio Setup window);
+                  ProjectSession (the open Project + UndoStack + AudioEngine +
+                  DiskThread); UserSettings (per-user properties file)
   src/ui          Theme (design tokens), AuralLookAndFeel (dark, token-driven),
-                  AudioSetupView (the Audio Setup screen)
+                  AudioSetupView, TrackListView (Phase 2 placeholder arrange view)
+  src/core        Project/Track/AudioClip model, Command + UndoStack, JSON project
+                  files, bars/beats helpers. No JUCE.
+  src/engine      AudioEngine façade, Snapshot compiler + MediaCache, Transport,
+                  Renderer, AudioSource (memory + streaming), DiskThread. No JUCE.
+  src/engine/rt   Real-time guard and allocation hook, SpscQueue, SnapshotPublisher
   src/audio       Pure:  AudioSettings, LatencyDetector, PassThrough
-                  JUCE:  AudioDeviceLayer, AudioCallback, LatencyCalibrator
-  src/engine/rt   Real-time guard: thread-local RT flag, violation handler,
-                  debug operator new/delete hook
+                  JUCE:  AudioDeviceLayer, AudioCallback, LatencyCalibrator,
+                         JuceMediaLoader, JuceStreamReader
 
 aural_unit_tests.exe
   tests/unit/rt      Catch2 tests for the guard
   tests/unit/audio   Settings serialisation, latency detection, pass-through
-                     (including an allocation check under the RT hook)
+  tests/unit/core    Model, every command's undo/redo, JSON round trips
+  tests/unit/engine  Queue/publisher, offline engine harness (sample-exact
+                     playback, loop, solo/mute, pan, snapshot swaps under the RT
+                     hook), streaming source against a live disk thread
 
 aural_loopback_tool.exe
   tests/hardware     Console tool: list devices, open one, run the loopback
@@ -35,11 +43,13 @@ Build targets:
 | `aural_rt` | STATIC | `aural_options` |
 | `aural_rt_checks` | OBJECT | `aural_rt`; holds the global `operator new` override so it is linked into executables rather than discarded from a static lib |
 | `aural_juce` | STATIC | The JUCE modules, compiled once; re-exports their include paths and settings (see decisions log) |
+| `aural_core` | STATIC | `aural_options`, nlohmann_json (private); the model |
+| `aural_engine` | STATIC | `aural_rt`, `aural_core`; the engine, JUCE-free |
 | `aural_audio` | STATIC | `aural_rt`; pure audio code with no JUCE dependency |
-| `aural_audio_device` | STATIC | `aural_audio`, `aural_juce`; the device layer |
-| `aural_ui` | STATIC | `aural_audio_device`, `aural_juce` |
-| `aural` | GUI app | `aural_ui`, `aural_audio_device`, `aural_juce`, `aural_rt_checks` |
-| `aural_unit_tests` | console app | Catch2, `aural_audio`, `aural_rt`, `aural_rt_checks` |
+| `aural_audio_device` | STATIC | `aural_audio`, `aural_engine`, `aural_juce`; the device layer and media loading |
+| `aural_ui` | STATIC | `aural_core`, `aural_audio_device`, `aural_juce` |
+| `aural` | GUI app | `aural_ui`, `aural_audio_device`, `aural_engine`, `aural_core`, `aural_juce`, `aural_rt_checks` |
+| `aural_unit_tests` | console app | Catch2, `aural_audio`, `aural_core`, `aural_engine`, `aural_rt`, `aural_rt_checks` |
 | `aural_loopback_tool` | console app | `aural_audio_device`, `aural_juce`, `aural_rt_checks` |
 
 ### Audio device layer
@@ -67,11 +77,64 @@ is not left in silence, while still polling for the preferred device.
 
 `audio::AudioCallback` is the only `juce::AudioIODeviceCallback`. Its first two
 statements are `rt::ScopedRealtimeSection` and `juce::ScopedNoDenormals` (FTZ/DAZ).
-Phase 1 behaviour: copy input channel `i % numInputs` to output `i` with a per-block
-linear gain ramp (`renderPassThrough`), or silence when pass-through is off. Control
-values are atomics; peak meters are atomics the UI drains. Nothing in the callback
-allocates, locks or posts messages; the debug build's allocation hook is live for the
-whole callback.
+It then calls `engine::AudioEngine::process` to render the project and adds the
+input pass-through on top (`renderPassThrough` in accumulate mode) when monitoring
+is on. Control values are atomics; peak meters are atomics the UI drains. Nothing in
+the callback allocates, locks or posts messages; the debug build's allocation hook is
+live for the whole callback. `audioDeviceAboutToStart`/`audioDeviceStopped` bracket
+the engine's `prepare`/`release`, which is where the renderer's scratch is sized.
+
+### Core model
+
+`core::Project` is plain structs: tracks hold clips, clips reference media by path
+and sit on the timeline in samples at the project rate. Every edit is a
+`core::Command` with `apply`/`revert`; `core::UndoStack` owns the history and can
+group commands into one step. `projectToJson`/`projectFromJson` read and write the
+versioned `aural.project` format. Bars/beats are a display conversion
+(`samplesToBarsBeats`) with a constant tempo for now.
+
+### Engine
+
+`engine::AudioEngine` is the façade with a controller side and a real-time side.
+The controller compiles the project into an immutable `Snapshot` (`compileSnapshot`:
+tracks with mute/solo resolved, clips bound to `AudioSource`s through `MediaCache`)
+and publishes it through `rt::SnapshotPublisher`; transport changes travel through
+an `rt::SpscQueue<TransportCommand>`. The real-time `process()` drains the command
+queue (bounded per block), acquires the current snapshot and calls `Renderer::render`,
+then publishes position and playing state as atomics.
+
+`Renderer` mixes every audible track to a stereo master: clip gain times track gain,
+constant-power pan for mono sources and a balance law for stereo. The block is split
+at the loop end so the loop wraps sample-accurately, as many times per block as the
+loop length requires. Sends, buses, inserts and the worker pool arrive in Phase 4;
+the single-threaded renderer is the baseline they are measured against.
+
+`SnapshotPublisher` retires superseded snapshots on the controller side and frees
+them only once the real-time thread advertises a newer epoch (or when no real-time
+thread is running). Snapshots hold `shared_ptr`s to their sources, so media lives as
+long as any snapshot references it; `MediaCache::prune` drops the rest.
+
+### Media and streaming
+
+`MediaLoader` is the engine's loading interface; `audio::JuceMediaLoader` implements
+it. Files up to 30 s are decoded into a `MemoryAudioSource` (resampled on load);
+longer ones become a `StreamingAudioSource` over a `JuceStreamReader` (resampled
+chunk by chunk on the disk thread). `engine::DiskThread` is the single disk I/O
+thread: it services each streaming source's ring window, keeping a read-ahead in
+front of the position the real-time thread last read and rebuilding the window
+after a locate. The real-time `read` never blocks: outside the window it returns
+silence and counts an underrun.
+
+### Session and UI
+
+`ProjectSession` ties the pieces together on the message thread: it owns the
+project, the undo stack, the disk thread, the loader and the engine, republishes the
+snapshot after every command, imports files as new tracks, saves/opens JSON project
+files and drives the transport. An empty project adopts the device sample rate; a
+project with media keeps its own and the mismatch is shown. `MainWindow` has the
+transport bar (space to play/stop, Return/Home to return to start, Ctrl+Z/Y), import,
+and `TrackListView`, a placeholder for the arrange view that draws tracks, clips and
+the playhead on a fixed time scale and locates on click.
 
 ### Loopback calibration
 
@@ -121,3 +184,9 @@ launches; `JUCE_MODAL_LOOPS_PERMITTED` stays 0.
 | 2026-10-19 | Calibration capture buffer handed between threads by an atomic phase, not a queue | The data is one block of a second of audio moved once per trial; a lock-free queue adds nothing. The audio thread only touches the buffer in `running`, the message thread only in `idle`/`done`, and `audioDeviceStopped` resets to `idle` so a device restart cannot leave the buffer owned by a dead thread. |
 | 2026-10-19 | Measured latency is stored with the device, rate and buffer size it was measured at | Round trip changes with all three; a stale number silently misplaces recordings. The UI shows "not measured for this configuration" rather than a wrong value. |
 | 2026-10-19 | Theme tokens are a C++ struct for now, not a loaded JSON file | The Figma token export does not exist yet. The struct is the contract; Phase 7 adds the loader without touching the views. |
+| 2026-10-19 | Timeline positions are samples at the project rate, not beats | Sample-accurate placement and recording with no rounding; tempo is a display concern until automation and tempo maps arrive (Phase 9). |
+| 2026-10-19 | Snapshot retirement by epoch rather than an RT garbage queue | The RT thread advertising the epoch it uses lets the controller free old snapshots without the RT thread ever touching a queue or a free list, and handles the "RT thread never ran" case (nothing is retained). |
+| 2026-10-19 | nlohmann::json via FetchContent for project files | Header-only, so it needs no package manager; the project file is small enough that parse speed is irrelevant. |
+| 2026-10-19 | Streaming window guarded by position, with a grace period on seeks | A full lock-free ring with per-sample ownership would be over-engineered for one reader and one writer; a guard distance behind the read position plus a few ms of quiescence after emptying the window gives the same safety with trivial code. |
+| 2026-10-19 | Files under 30 s load into memory, longer ones stream | Short clips are the common case for recording takes and one-shots, and memory avoids any disk latency; long material streams so project size is not bounded by RAM. |
+| 2026-10-19 | Device sample rate vs project rate: empty projects follow the device, others warn | Silently resampling a whole project on a device change would hide a real problem; warning keeps the user in control until per-project rate conversion lands. |
