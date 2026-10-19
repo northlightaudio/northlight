@@ -182,17 +182,17 @@ public:
         place(newButton_, 48);
         place(openButton_, 62);
         place(saveButton_, 48);
-        place(importButton_, 96);
-        place(exportButton_, 80);
+        place(importButton_, 80);
+        place(exportButton_, 70);
         place(undoButton_, 52);
         place(redoButton_, 52);
         bar.removeFromLeft(theme_.spacing.sm);
         place(returnButton_, 36);
         place(playButton_, 60);
         place(recordButton_, 48);
-        place(positionLabel_, 176);
+        place(positionLabel_, 160);
         place(clickButton_, 50);
-        place(countInButton_, 80);
+        place(countInButton_, 72);
         place(loopButton_, 50);
         place(punchButton_, 54);
 
