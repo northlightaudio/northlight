@@ -88,9 +88,10 @@ scale and a second column for sends):
 
 ## Pop-out window
 
-"Mixer" view toggle long-press or the dock tab's menu opens the mixer in its own
-window with the same layout and a 240 px minimum height; the dock tab then shows
-"Mixer (window)".
+The mixer is a panel under the panel model in section 3: ⤢ in its header, dragging
+its tab out, or Shift+F2 opens it in its own window with the same layout and a
+240 px minimum height. The fader section grows to use the window height up to the
+200 px travel.
 
 ## Empty state
 

@@ -37,6 +37,71 @@ plugin editors, audio setup and the plugin browser. The shell has five zones:
 Splitters between B/C and B/D per the Splitter component. Dock and side panel
 remember their size and open state per user, not per project.
 
+## Panel model: fixed shell, detachable panels
+
+**Decision**: v1 has a fixed shell with detachable panels, not a free docking system.
+Every secondary view is a *panel* that one of three *hosts* owns at a time; the user
+can move a panel between hosts but cannot split hosts or nest them. The model is
+built so a full docking layout could be added later without rewriting the panels.
+
+Panels (each a component with a stable id, title, icon and minimum size):
+
+| Panel | Default host | Notes |
+|---|---|---|
+| Mixer | Dock | Pop-out keeps the strip layout; 240 px min height |
+| Editor (insert chain / clip) | Dock | Follows the selection in whichever host it is in |
+| Piano Roll | Dock | Phase 8 |
+| Diagnostics | Dock | |
+| Browser | Side panel | |
+| Inspector | Side panel | |
+| Audio Setup | Floating | Never docks; a settings window, not a work panel |
+| Plugin browser (window form) | Floating | The same panel as Browser, pinned floating by the app menu |
+| Plugin editors | Floating | Always their own windows (native plugin GUIs); never dock |
+
+Hosts:
+
+- **Dock** (bottom): tabs across the top, one panel visible at a time, resizable
+  height, snaps closed.
+- **Side panel** (right): same, resizable width.
+- **Floating window**: one panel per window, native title bar, remembers size and
+  position per panel, optional always-on-top (pin icon in the panel header), appears
+  on the taskbar as a child of the main window.
+
+Panel header: every hosted panel has a 32 px header row (the dock and side panel
+draw it as the tab row; a floating window draws it under its native title bar) with
+the panel's icon and title on the left and, on the right, the icon buttons
+**Detach** (⤢, "Open in window") or **Attach** (⤡, "Return to dock" / "Return to
+side panel"), and **Close**. Where a panel can live in both the dock and the side
+panel (Editor, Browser), the attach button's menu offers both.
+
+Interactions:
+
+- Detach: click ⤢, or drag a tab out of the tab row past 24 px; the panel lifts into
+  a floating window under the pointer at its last floating size (default 60% of the
+  main window). The tab disappears from the host; if it was the only tab the host
+  snaps closed.
+- Attach: click ⤡ in the floating window, or drag the floating window's header onto
+  the dock or side panel; the host highlights with `dropTarget` while a valid drop is
+  over it; releasing inserts the tab at the pointer position.
+- Keyboard: the panel's view shortcut (F2 Mixer, F3 Editor, F4 Browser, F5
+  Inspector, F6 Piano Roll, F7 Diagnostics) shows the panel in its current host and
+  focuses it; Shift+Fn toggles it between docked and floating.
+- Closing a floating panel returns it to its default host, hidden, so it is never
+  lost; the view toggle in the header lights only while the panel is visible
+  somewhere.
+- Multi-monitor: floating windows remember which monitor they were on and reopen
+  there if it is present, else on the main window's monitor.
+
+Persistence: a per-user layout file (`layout.json` beside the settings) records each
+panel's host, order, visibility, dock height, side panel width and floating window
+bounds. Projects do not carry layout. "Reset layout" in the View menu restores the
+defaults. Two named presets, "Mix" (mixer floating, dock closed, side panel closed)
+and "Edit" (defaults), are shipped; user-named presets are deferred past Phase 7.
+
+Out of scope for v1 (keep possible): splitting a host into two tab groups, docking
+to the top or left, tabbing a floating window with another, saving named layouts
+per project.
+
 ## Layout rules
 
 - Minimum window 1280×720. Below 1440 wide the side panel defaults closed; below 900
@@ -104,5 +169,9 @@ allowed; the status bar then shows the `warning` dot. Specified in section 8.
   sizes above; the header, status bar and ruler heights are exact.
 - Dock and side panel open, close and resize with the 180 ms transition and remember
   state across restarts.
+- Every panel in the table can be detached and reattached by button, by drag and by
+  Shift+Fn; the drop highlight appears over a valid host; layout survives a restart;
+  closing a floating panel does not lose it; the "Mix" preset opens the mixer on a
+  second monitor when one was recorded.
 - The empty state and first-run sheet match the descriptions.
 - No zone draws a border where a surface change already separates it.

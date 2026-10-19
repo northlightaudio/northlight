@@ -80,7 +80,7 @@ Defaults; all rebindable in Preferences. Shown in tooltips and menus.
 | New / open / save / save as | Ctrl+N / Ctrl+O / Ctrl+S / Ctrl+Shift+S |
 | Import audio | Ctrl+I |
 | Export (bounce) | Ctrl+E |
-| Mixer / editor / browser / inspector | F2 / F3 / F4 / F5 |
+| Mixer / editor / browser / inspector / piano roll / diagnostics | F2 / F3 / F4 / F5 / F6 / F7 (Shift+Fn detaches or reattaches) |
 | Audio setup / plugins / preferences | Ctrl+, (preferences), Ctrl+Shift+A, Ctrl+Shift+P |
 | Add audio / instrument track / bus | Ctrl+T / Ctrl+Shift+T / Ctrl+B |
 | Rename selected | F2 when a track or clip is selected (overrides mixer toggle) |
