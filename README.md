@@ -3,7 +3,7 @@
 A native, high-performance digital audio workstation for Windows. ASIO, VST3 hosting,
 multitrack recording, and a UI that is designed before it is built.
 
-Status: **Phase 3 (multitrack recording), in progress**. See
+Status: **Phase 4 (mixer and routing), in progress**. See
 [docs/PLAN.md](docs/PLAN.md) for the roadmap and
 [docs/architecture.md](docs/architecture.md) for what is built.
 
@@ -103,6 +103,8 @@ round-trip latency (or the driver's reported latency when no calibration matches
 take, dragging in the ruler sets a region that **Loop** repeats and **Punch**
 records into (rolling from one bar before it).
 With **Loop** on, each pass through the region becomes a new take on the track.
+**Mixer** (Ctrl+M) opens strips for every track and bus with output routing, sends,
+pan, mute, solo, phase, fader and meters, plus the master; **+ Bus** adds a bus.
 Recordings go next to the project file in a `<project> Media` folder, or to
 `Documents\Aural\Recordings` for an unsaved project. If the app dies while recording,
 the next launch offers to repair the unfinished files and add them as "Recovered"
@@ -111,7 +113,8 @@ Projects are `.aural` files: **New**, **Open...**, **Save** (Ctrl+N / Ctrl+O / C
 Ctrl+Shift+S to save as).
 
 For unattended checks: `Aural.exe --import <file> [--import <file>] --play`, and
-`Aural.exe --record <inputs> [--loop <from> <to>] [--no-count-in] --stop-after <seconds>`.
+`Aural.exe --record <inputs> [--loop <from> <to>] [--no-count-in] --stop-after <seconds>`; `--mixer`
+opens the mixer panel.
 The offline recording soak is `aural_record_soak --inputs 16 --minutes 30 --speed 8`.
 
 ### Audio setup

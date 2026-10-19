@@ -3,7 +3,7 @@
 Living document. The intended architecture is in [PLAN.md](PLAN.md), section 3; this
 file records what is actually built and the decisions made along the way.
 
-## Current state (Phase 3, in progress)
+## Current state (Phase 4, in progress)
 
 ```
 aural.exe
@@ -14,9 +14,10 @@ aural.exe
                   UserSettings (per-user properties file)
   src/ui          Theme (design tokens), AuralLookAndFeel (dark, token-driven),
                   AudioSetupView, ArrangeView (tracks, waveforms, zoom, scroll),
-                  TrackHeader (input, arm, monitor)
-  src/core        Project/Track/AudioClip model, Command + UndoStack, JSON project
-                  files, bars/beats helpers. No JUCE.
+                  TrackHeader (input, arm, monitor), MixerView (strips, master)
+  src/core        Project model (tracks and buses on a shared Channel, sends,
+                  master, clips), Command + UndoStack, JSON project files,
+                  bars/beats helpers. No JUCE.
   src/engine      AudioEngine façade, Snapshot compiler + MediaCache, Transport,
                   Renderer, WorkerPool, AudioSource (memory + streaming), DiskThread,
                   Peaks, Recording (record rings + writer thread), WavFile, Click
@@ -244,6 +245,36 @@ two inputs were recorded and placed, a one-bar count-in delayed capture by exact
 two seconds, and a process killed mid-take left partial files that the next launch
 offered and recovered.
 
+### Mixer and routing
+
+Tracks and buses share `core::Channel`: fader gain, pan, mute, solo, phase invert,
+colour, an output bus (or the master) and aux sends (level, pre/post fader). The
+snapshot compiler resolves this into `ChannelNode`s: bus cycles are broken (the
+earlier bus in project order loses its forward edge and goes to the master), buses
+get a dependency order (feeders first), and solo-in-place becomes a per-channel
+`audible` flag: with any solo, a channel is heard if it is soloed, feeds a soloed
+channel or is fed by one; mute always wins.
+
+Rendering per span: tracks render pre-fader in parallel (clips with clip gain and
+pan, monitored input through pan, phase invert). The summing stage on the callback
+thread then applies each track's fader, adds it to its output bus accumulator or the
+master mix, feeds its sends (pre-fader taps the pre-fader buffer, post-fader scales
+it by the gain), walks the buses in dependency order (balance pan and phase on the
+summed input, then the same fader/route/send step), and finally applies the master
+gain. The order is fixed, so the mix is bit-identical whatever the worker count.
+
+`rt::MeterBlock` holds one slot per channel plus the master: the real-time thread
+writes post-fader peak (held until read) and RMS after every span; the mixer takes
+readings at 30 Hz and draws them with its own ballistics. Slots follow project
+order: tracks, then buses, then the master (`trackMeterSlot`, `busMeterSlot`,
+`masterMeterSlot`).
+
+`ui::MixerView` shows one strip per track and bus (name, output selector, sends
+menu, pan, mute/solo/phase, fader in dB, stereo meter) and the master strip, in a
+panel under the arrange view (Mixer button, Ctrl+M). Every control issues a
+`core::Command`; the view refreshes from the project. Inserts (the built-in gain,
+EQ, compressor and limiter), groups and LUFS metering are the rest of Phase 4.
+
 ### Metronome, count-in, loop and punch
 
 `engine::ClickGenerator` adds a 30 ms decaying sine burst on every beat (1.5 kHz on
@@ -338,3 +369,7 @@ launches; `JUCE_MODAL_LOOPS_PERMITTED` stays 0.
 | 2026-10-19 | Takes are split by the writer at marks from the audio thread, into one file per pass | The audio thread must not open files; marking the cumulative sample count is one lock-free push, and the writer, which already owns the files, cuts them exactly there. One file per take keeps every take a plain clip. |
 | 2026-10-19 | Crash recovery asks before importing | A recovered take is usually wanted, but silently adding tracks to whatever project opens next (possibly an unrelated one) would surprise; the prompt keeps it a one-click choice and sets aside what is declined rather than deleting it. |
 | 2026-10-19 | 16-input soak is offline, not on hardware | The Volt has four inputs and the engine's record path is identical for synthetic and device inputs after the callback; the offline soak exercises rings, writer and header rewrites at eight times real time, which is a stricter disk test than real time. |
+| 2026-10-19 | Tracks and buses share one Channel type and one set of fader commands | The fader section, routing and sends are identical on both; one command per property keeps undo uniform and the mixer draws both with the same strip. |
+| 2026-10-19 | Solo-in-place propagates both up and down the routing | Soloing a bus should play everything feeding it and soloing a track should keep its bus and the master alive; resolving this at compile time keeps the real-time summing a plain flag check. |
+| 2026-10-19 | Bus summing on the callback thread, tracks in parallel | Bus count is small and their dependency order is serial anyway; parallelising tracks (the many, heavy nodes) captures the benefit without a dependency-aware scheduler. Buses join the pool when inserts make them heavy. |
+| 2026-10-19 | Meters as peak-hold plus last-block RMS in atomics | The UI needs a peak that cannot be missed between frames and a level that falls naturally; holding the peak until read and letting the UI apply ballistics gives both without any queue. LUFS needs K-weighting and a 400 ms window and is a separate pass. |
