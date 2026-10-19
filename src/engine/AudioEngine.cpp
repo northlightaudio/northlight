@@ -101,7 +101,20 @@ bool AudioEngine::startRecording(std::unique_ptr<RecordSession> session,
     }
     activeRecord_ = std::move(session);
     pendingRecord_.store(activeRecord_.get(), std::memory_order_release);
-    send(TransportCommand::record(countInSamples));
+    if (!commands_.push(TransportCommand::record(countInSamples)))
+    {
+        // The command queue is full (the UI is flooding it): nothing will ever start
+        // this session, so end it now rather than leave it pending forever.
+        pendingRecord_.store(nullptr, std::memory_order_release);
+        activeRecord_->finish();
+        while (writer_.isWriting())
+            std::this_thread::sleep_for(std::chrono::milliseconds(1));
+        writer_.takeResults();
+        activeRecord_.reset();
+        droppedCommands_.fetch_add(1, std::memory_order_relaxed);
+        error = "the engine is busy; try again";
+        return false;
+    }
     return true;
 }
 
@@ -225,6 +238,17 @@ void AudioEngine::process(
     {
         int count = std::min(numSamples - done, std::max(1, renderer_.maxBlockSize()));
         const bool countingIn = transport_.playing && transport_.countInRemaining > 0;
+
+        // Playing at or past the loop end (a locate there, or the loop enabled while
+        // outside it): wrap before capturing so the take is placed where its audio
+        // belongs, marking a new take if one is already in progress.
+        if (transport_.playing && !countingIn && transport_.loopIsValid() &&
+            transport_.position >= transport_.loopEnd)
+        {
+            transport_.position = transport_.loopStart;
+            if (recordSession_ != nullptr && recordSession_->capturedSamples() > 0)
+                recordSession_->markTake(transport_.loopStart);
+        }
         if (countingIn)
             count = static_cast<int>(std::min<core::SamplePosition>(count, transport_.countInRemaining));
         else if (transport_.playing && recordSession_ != nullptr)

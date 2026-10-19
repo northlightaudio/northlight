@@ -98,6 +98,7 @@ void RecordSession::addInput(core::Id trackId, int inputChannel, std::string pat
     input->inputChannel = inputChannel;
     input->path = std::move(path);
     input->ring = std::make_unique<RecordRing>(ringCapacity_);
+    input->gaps = std::make_unique<rt::SpscQueue<Gap>>(1024);
     inputs_.push_back(std::move(input));
 }
 
@@ -114,7 +115,10 @@ void RecordSession::capture(const float* const* inputs,
                                    ? inputs[input->inputChannel]
                                    : nullptr;
         if (!input->ring->push(samples, numSamples))
+        {
             input->dropped.fetch_add(static_cast<std::uint64_t>(numSamples), std::memory_order_relaxed);
+            input->gaps->push(Gap{input->captured, numSamples}); // a full gap queue: the file runs short
+        }
         input->captured += numSamples;
     }
     captured_ += numSamples;
@@ -168,6 +172,7 @@ bool RecordWriter::begin(RecordSession& session)
         marks_.clear();
         results_.clear();
         chunk_.resize(1 << 16);
+        zeros_.assign(1 << 12, 0.0f);
         writing_.store(true, std::memory_order_release);
     }
     wake_.notify_all();
@@ -197,24 +202,42 @@ void RecordWriter::closeTake(size_t inputIndex, std::vector<Result>& into)
     const auto& input = *session_->inputs()[inputIndex];
     Result r;
     r.trackId = input.trackId;
-    r.path = state.writer->path();
-    r.samplesWritten = state.writer->samplesWritten();
+    r.path = state.writer != nullptr ? state.writer->path() : std::string{};
+    r.samplesWritten = state.writer != nullptr ? state.writer->samplesWritten() : 0;
     r.dropped = input.dropped.load(std::memory_order_relaxed);
+    r.samplesLost = state.lost;
     r.startPosition = state.takeIndex == 0 ? session_->startPosition() : state.takeStart;
     r.takeIndex = state.takeIndex;
-    r.ok = state.writer->close();
+    const bool closed = state.writer != nullptr && state.writer->close();
+    r.ok = closed && !state.failed;
     into.push_back(std::move(r));
 }
 
-// Writes `count` samples for one input, splitting files at take marks.
-bool RecordWriter::writeTo(size_t inputIndex, const float* samples, int count)
+void RecordWriter::fail(size_t inputIndex, int lostNow)
 {
     auto& state = inputs_[inputIndex];
-    while (count > 0)
+    state.failed = true;
+    state.lost += lostNow;
+}
+
+// Applies every take mark and gap that falls at the current written position.
+// Returns false after a failure.
+bool RecordWriter::applyEventsAt(size_t inputIndex)
+{
+    auto& state = inputs_[inputIndex];
+    for (;;)
     {
-        if (state.nextMark < marks_.size() && marks_[state.nextMark].capturedBefore <= state.written)
+        const bool gapHere =
+            state.nextGap < state.gaps.size() && state.gaps[state.nextGap].capturedBefore <= state.written;
+        // On the final flush a mark with no samples after it (a loop wrap at the very
+        // end) does not open an empty take; it still does when a gap's zeros follow.
+        const bool markHere = state.nextMark < marks_.size() &&
+                              marks_[state.nextMark].capturedBefore <= state.written &&
+                              (!flushing_ || state.nextGap < state.gaps.size());
+        if (markHere)
         {
-            // The take boundary is here: finish this file and start the next.
+            // The take boundary is here: finish this file and start the next. A mark
+            // and a gap at the same sample: the new take starts, then the silence.
             const auto mark = marks_[state.nextMark++];
             closeTake(inputIndex, results_);
             state.takeIndex += 1;
@@ -223,15 +246,57 @@ bool RecordWriter::writeTo(size_t inputIndex, const float* samples, int count)
             if (!state.writer->open(takePath(session_->inputs()[inputIndex]->path, state.takeIndex),
                                     1,
                                     session_->sampleRate()))
+            {
+                fail(inputIndex, 0);
                 return false;
+            }
             continue;
         }
-        int toWrite = count;
+        if (gapHere)
+        {
+            const auto gap = state.gaps[state.nextGap++];
+            // Zeros stand in for the dropped block; they pass through writeSamples so a
+            // mark inside the span (none expected) would still split correctly.
+            int remaining = gap.count;
+            while (remaining > 0)
+            {
+                const int n = std::min(remaining, static_cast<int>(zeros_.size()));
+                if (!writeSamples(inputIndex, zeros_.data(), n))
+                    return false;
+                remaining -= n;
+            }
+            continue;
+        }
+        return true;
+    }
+}
+
+// Writes samples up to the next event boundary, repeatedly.
+bool RecordWriter::writeSamples(size_t inputIndex, const float* samples, int count)
+{
+    auto& state = inputs_[inputIndex];
+    while (count > 0)
+    {
+        std::int64_t boundary = state.written + count;
         if (state.nextMark < marks_.size())
-            toWrite = static_cast<int>(
-                std::min<std::int64_t>(toWrite, marks_[state.nextMark].capturedBefore - state.written));
+            boundary = std::min(boundary, marks_[state.nextMark].capturedBefore);
+        if (state.nextGap < state.gaps.size())
+            boundary = std::min(boundary, state.gaps[state.nextGap].capturedBefore);
+        const auto toWrite = static_cast<int>(std::max<std::int64_t>(0, boundary - state.written));
+        if (toWrite == 0)
+        {
+            if (!applyEventsAt(inputIndex))
+            {
+                state.lost += count;
+                return false;
+            }
+            continue;
+        }
         if (!state.writer->writeInterleaved(samples, toWrite))
+        {
+            fail(inputIndex, count);
             return false;
+        }
         state.written += toWrite;
         samples += toWrite;
         count -= toWrite;
@@ -239,23 +304,54 @@ bool RecordWriter::writeTo(size_t inputIndex, const float* samples, int count)
     return true;
 }
 
+// Writes `count` samples for one input (count may be 0 to flush pending events).
+bool RecordWriter::writeTo(size_t inputIndex, const float* samples, int count)
+{
+    auto& state = inputs_[inputIndex];
+    if (state.failed)
+    {
+        state.lost += count;
+        return false;
+    }
+    if (!applyEventsAt(inputIndex))
+    {
+        state.lost += count;
+        return false;
+    }
+    return writeSamples(inputIndex, samples, count);
+}
+
 void RecordWriter::drain(bool final)
 {
-    RecordSession::TakeMark mark;
-    while (session_->popTakeMark(mark))
-        marks_.push_back(mark);
-
     const auto& inputs = session_->inputs();
     for (size_t i = 0; i < inputs.size(); ++i)
     {
         auto& ring = *inputs[i]->ring;
         for (;;)
         {
+            // Samples first, then the events that may refer to them: the audio thread
+            // pushes a mark or gap before the samples that follow it, so once those
+            // samples are visible the event is too. The other order could write a
+            // take's first block into the previous file.
             const int got = ring.pop(chunk_.data(), static_cast<int>(chunk_.size()));
+            RecordSession::TakeMark mark;
+            while (session_->popTakeMark(mark))
+                marks_.push_back(mark);
+            RecordSession::Gap gap;
+            while (session_->popGap(i, gap))
+                inputs_[i].gaps.push_back(gap);
+
             if (got == 0)
+            {
+                if (final)
+                {
+                    flushing_ = true;
+                    writeTo(i, chunk_.data(), 0); // trailing events (a drop at the very end)
+                    flushing_ = false;
+                }
                 break;
-            if (!writeTo(i, chunk_.data(), got))
-                break;
+            }
+            writeTo(i, chunk_.data(), got);
             if (!final && got < static_cast<int>(chunk_.size()))
                 break;
         }
@@ -280,8 +376,9 @@ void RecordWriter::run()
             const auto now = std::chrono::steady_clock::now();
             if (now - lastHeader >= std::chrono::milliseconds(headerUpdateMilliseconds))
             {
-                for (auto& state : inputs_)
-                    state.writer->updateHeader();
+                for (size_t i = 0; i < inputs_.size(); ++i)
+                    if (!inputs_[i].failed && !inputs_[i].writer->updateHeader())
+                        fail(i, 0);
                 lastHeader = now;
             }
             if (session_->isFinished())

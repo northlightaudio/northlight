@@ -70,12 +70,22 @@ RecordingPlacement placeRecording(core::SamplePosition captureStart,
 class RecordSession
 {
 public:
+    // A block the ring could not take: the writer inserts `count` zeros at
+    // `capturedBefore` so file sample numbers stay equal to captured sample numbers
+    // and later take boundaries land where they should.
+    struct Gap
+    {
+        std::int64_t capturedBefore = 0;
+        int count = 0;
+    };
+
     struct Input
     {
         core::Id trackId = core::invalidId;
         int inputChannel = 0; // index into the active device inputs
         std::string path;     // file the writer records to (first take)
         std::unique_ptr<RecordRing> ring;
+        std::unique_ptr<rt::SpscQueue<Gap>> gaps;
         std::atomic<std::uint64_t> dropped{0};
         std::int64_t captured = 0; // audio thread only
     };
@@ -109,6 +119,7 @@ public:
 
     // Writer thread.
     bool popTakeMark(TakeMark& mark) noexcept { return takeMarks_.pop(mark); }
+    bool popGap(size_t input, Gap& gap) noexcept { return inputs_[input]->gaps->pop(gap); }
 
     // ----- any thread -----
     bool isFinished() const noexcept { return finished_.load(std::memory_order_acquire); }
@@ -139,10 +150,11 @@ public:
         core::Id trackId = core::invalidId;
         std::string path;
         std::int64_t samplesWritten = 0;
-        std::uint64_t dropped = 0;
+        std::uint64_t dropped = 0;              // ring overruns, written as silence
+        std::int64_t samplesLost = 0;           // samples that never reached disk (write failure)
         core::SamplePosition startPosition = 0; // timeline position of the first sample
         int takeIndex = 0;                      // 0 for the first pass
-        bool ok = true;
+        bool ok = true;                         // false after any open, write or header failure
     };
 
     RecordWriter();
@@ -164,15 +176,22 @@ private:
     struct InputState
     {
         std::unique_ptr<WavWriter> writer;
-        std::int64_t written = 0; // across all takes
+        std::int64_t written = 0; // across all takes (file sample == captured sample)
         int takeIndex = 0;
         core::SamplePosition takeStart = 0; // timeline start of the open take
         size_t nextMark = 0;                // index into marks_
+        std::vector<RecordSession::Gap> gaps;
+        size_t nextGap = 0;
+        bool failed = false;   // an open, write or header update failed: nothing more is written
+        std::int64_t lost = 0; // samples discarded after the failure
     };
 
     void run();
     void drain(bool final);
     bool writeTo(size_t inputIndex, const float* samples, int count);
+    bool writeSamples(size_t inputIndex, const float* samples, int count);
+    bool applyEventsAt(size_t inputIndex);
+    void fail(size_t inputIndex, int lostNow);
     void closeTake(size_t inputIndex, std::vector<Result>& into);
     static std::string takePath(const std::string& firstPath, int takeIndex);
 
@@ -181,6 +200,8 @@ private:
     std::vector<RecordSession::TakeMark> marks_;
     std::vector<Result> results_;
     std::vector<float> chunk_;
+    std::vector<float> zeros_;
+    bool flushing_ = false; // inside the final flush of trailing events
     std::atomic<bool> writing_{false};
     std::atomic<bool> stop_{false};
     std::mutex mutex_;
