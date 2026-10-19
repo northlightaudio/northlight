@@ -153,8 +153,9 @@ void Renderer::renderTrack(const Snapshot& snapshot,
     float* right = track.outRight.data();
     std::fill(left, left + numSamples, 0.0f);
     std::fill(right, right + numSamples, 0.0f);
-    if (!track.audible)
-        return;
+    // An inaudible (muted, un-soloed) track still renders: its inserts keep their
+    // envelopes, tails and latency buffers moving, and its key output stays live
+    // for sidechains. The routing stage is what keeps it out of the mix.
 
     if (context.playing)
     {
@@ -249,15 +250,19 @@ void Renderer::processChain(
         // (tracks by level, buses by order).
         const float* keyL = nullptr;
         const float* keyR = nullptr;
+        // A source that is muted (or un-soloed) still renders, but its key is
+        // silence: mute wins.
         if (const int t = k < channel.insertKeyTrack.size() ? channel.insertKeyTrack[k] : -1; t >= 0)
         {
-            keyL = snapshot.tracks[static_cast<size_t>(t)].outLeft.data();
-            keyR = snapshot.tracks[static_cast<size_t>(t)].outRight.data();
+            const auto& source = snapshot.tracks[static_cast<size_t>(t)];
+            keyL = source.audible ? source.outLeft.data() : snapshot.silence.data();
+            keyR = source.audible ? source.outRight.data() : snapshot.silence.data();
         }
         else if (const int b = k < channel.insertKeyBus.size() ? channel.insertKeyBus[k] : -1; b >= 0)
         {
-            keyL = snapshot.buses[static_cast<size_t>(b)].outLeft.data();
-            keyR = snapshot.buses[static_cast<size_t>(b)].outRight.data();
+            const auto& source = snapshot.buses[static_cast<size_t>(b)];
+            keyL = source.audible ? source.outLeft.data() : snapshot.silence.data();
+            keyR = source.audible ? source.outRight.data() : snapshot.silence.data();
         }
         const auto run = [&](float* l, float* r)
         {
@@ -334,14 +339,10 @@ void Renderer::routeChannel(const Snapshot& snapshot,
         }
     };
 
-    if (!channel.audible)
-    {
-        if (context.meters != nullptr)
-            context.meters->silence(channel.meterSlot);
-        return;
-    }
-
-    // An edge with compensation reads a delayed copy of the channel's output.
+    // An edge with compensation reads a delayed copy of the channel's output. The
+    // lines run even for an inaudible channel so that unmuting does not replay
+    // stale audio; only the sum into the destination is skipped.
+    const bool audible = channel.audible;
     const auto delayed = [&](DelayLine* delay, const float*& l, const float*& r)
     {
         if (delay == nullptr)
@@ -364,11 +365,12 @@ void Renderer::routeChannel(const Snapshot& snapshot,
         const float* l = nullptr;
         const float* r = nullptr;
         delayed(channel.outputDelay, l, r);
-        for (int i = 0; i < numSamples; ++i)
-        {
-            outL[i] += l[i] * gain;
-            outR[i] += r[i] * gain;
-        }
+        if (audible)
+            for (int i = 0; i < numSamples; ++i)
+            {
+                outL[i] += l[i] * gain;
+                outR[i] += r[i] * gain;
+            }
     }
 
     for (const auto& send : channel.sends)
@@ -380,11 +382,19 @@ void Renderer::routeChannel(const Snapshot& snapshot,
         const float* r = nullptr;
         delayed(send.delay, l, r);
         const float level = send.preFader ? send.level : send.level * gain;
-        for (int i = 0; i < numSamples; ++i)
-        {
-            sl[i] += l[i] * level;
-            sr[i] += r[i] * level;
-        }
+        if (audible)
+            for (int i = 0; i < numSamples; ++i)
+            {
+                sl[i] += l[i] * level;
+                sr[i] += r[i] * level;
+            }
+    }
+
+    if (!audible)
+    {
+        if (context.meters != nullptr)
+            context.meters->silence(channel.meterSlot);
+        return;
     }
 
     if (context.meters != nullptr)

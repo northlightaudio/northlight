@@ -111,6 +111,8 @@ struct Snapshot
     float masterGain = 1.0f;
     int masterMeterSlot = -1;
     int outputLatency = 0; // samples the master output lags the timeline (plugin delay compensation)
+    std::vector<DelayLine*> allDelays; // every compensation and dry line, for a flush on locate
+    std::vector<float> silence;        // maxBlockSamples zeros: the key of an inaudible source
 };
 
 // Caches loaded media by path across snapshot compiles so a re-publish after an edit

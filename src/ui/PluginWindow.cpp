@@ -212,11 +212,12 @@ private:
 
 PluginWindow::PluginWindow(core::Id channelId,
                            core::Id insertId,
+                           std::shared_ptr<engine::InsertProcessor> keepAlive,
                            hosting::HostedPlugin& plugin,
                            const juce::String& title,
                            bool pinned)
     : juce::DocumentWindow(title, Theme::dark().colours.background, juce::DocumentWindow::closeButton),
-      channelId_(channelId), insertId_(insertId)
+      keepAlive_(std::move(keepAlive)), channelId_(channelId), insertId_(insertId)
 {
     setUsingNativeTitleBar(true);
     auto& instance = plugin.instance();

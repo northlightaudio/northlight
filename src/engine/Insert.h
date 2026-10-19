@@ -107,6 +107,8 @@ public:
 
     // Drops instances no snapshot references any more.
     void prune();
+    // Forgets every instance (snapshots keep theirs alive until they retire).
+    void clear();
 
 private:
     const InsertFactory& factory_;

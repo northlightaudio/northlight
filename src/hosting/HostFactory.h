@@ -6,6 +6,7 @@
 
 #include <juce_audio_processors/juce_audio_processors.h>
 
+#include <map>
 #include <memory>
 #include <string>
 #include <vector>
@@ -31,12 +32,17 @@ public:
     std::string displayName(const std::string& typeName) const;
     // The last error from create(), for the UI.
     const std::string& lastError() const noexcept { return lastError_; }
+    // Errors by type for plugins that failed to load; a failed type is not retried
+    // until clearFailures() (after a rescan), so a recompile does not reload DLLs.
+    const std::map<std::string, std::string>& failures() const noexcept { return failures_; }
+    void clearFailures() { failures_.clear(); }
 
 private:
     const PluginRegistry& registry_;
     plugins::BuiltInFactory builtIns_;
     juce::AudioPluginFormatManager formats_;
     mutable std::string lastError_;
+    mutable std::map<std::string, std::string> failures_;
 };
 
 } // namespace aural::hosting

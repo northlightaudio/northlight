@@ -28,6 +28,6 @@ int main(int, char*[])
         std::printf("this is not xml\n");
         return 0;
     }
-    std::printf("<plugins/>\n");
+    std::printf("loading noise from the plugin\n<<AURAL-SCAN>>\n<plugins/>\n<<END-AURAL-SCAN>>\n");
     return 0;
 }

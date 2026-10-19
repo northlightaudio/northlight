@@ -418,7 +418,7 @@ public:
         const float ceiling = dbToGain(parameter(ceilingDb));
         const float release =
             std::exp(-1.0f / (static_cast<float>(sampleRate_) * parameter(releaseMs) * 0.001f));
-        const int lookahead = lookaheadSamples();
+        const int lookahead = capacity_ > 0 ? lookaheadSamples() : 0; // nothing allocated before prepare
         if (lookahead != length_)
             reset(lookahead); // a changed lookahead restarts the pipeline (no allocation)
 
@@ -492,7 +492,7 @@ private:
 
     void reset(int length) noexcept
     {
-        length_ = std::clamp(length, 0, capacity_ - 2);
+        length_ = std::clamp(length, 0, std::max(0, capacity_ - 2));
         head_ = 0;
         pos_ = 0;
         dequeFront_ = 0;

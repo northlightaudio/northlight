@@ -7,9 +7,42 @@
 namespace aural::hosting
 {
 
-HostedPlugin::HostedPlugin(std::string typeName, std::unique_ptr<juce::AudioPluginInstance> instance)
-    : typeName_(std::move(typeName)), instance_(std::move(instance))
+HostedPlugin::Layout HostedPlugin::negotiateLayout(juce::AudioPluginInstance& instance, bool& sidechain)
 {
+    const auto tryLayout = [&](const juce::AudioChannelSet& main, bool withSidechain)
+    {
+        juce::AudioProcessor::BusesLayout layout;
+        for (int b = 0; b < instance.getBusCount(true); ++b)
+            layout.inputBuses.add(b == 0                      ? main
+                                  : (b == 1 && withSidechain) ? juce::AudioChannelSet::stereo()
+                                                              : juce::AudioChannelSet::disabled());
+        for (int b = 0; b < instance.getBusCount(false); ++b)
+            layout.outputBuses.add(b == 0 ? main : juce::AudioChannelSet::disabled());
+        return instance.checkBusesLayoutSupported(layout) && instance.setBusesLayout(layout);
+    };
+    sidechain = false;
+    if (instance.getBusCount(true) >= 2 && tryLayout(juce::AudioChannelSet::stereo(), true) &&
+        instance.getTotalNumInputChannels() == 4 && instance.getTotalNumOutputChannels() == 2)
+    {
+        sidechain = true;
+        return Layout::stereo;
+    }
+    if (tryLayout(juce::AudioChannelSet::stereo(), false) && instance.getTotalNumInputChannels() <= 2 &&
+        instance.getTotalNumOutputChannels() == 2)
+        return Layout::stereo;
+    if (tryLayout(juce::AudioChannelSet::mono(), false) && instance.getTotalNumInputChannels() <= 1 &&
+        instance.getTotalNumOutputChannels() == 1)
+        return Layout::mono;
+    return Layout::unsupported;
+}
+
+HostedPlugin::HostedPlugin(std::string typeName,
+                           std::unique_ptr<juce::AudioPluginInstance> instance,
+                           Layout layout,
+                           bool sidechain)
+    : typeName_(std::move(typeName)), instance_(std::move(instance)), layout_(layout)
+{
+    sidechain_.store(sidechain, std::memory_order_release);
 }
 
 HostedPlugin::~HostedPlugin()
@@ -25,37 +58,18 @@ void HostedPlugin::prepare(double sampleRate, int maxBlockSize)
     if (prepared_.exchange(false, std::memory_order_acq_rel))
         instance_->releaseResources();
 
-    // The chain is stereo: ask for a stereo main bus each way, a stereo second
-    // input bus when the plugin has one (its sidechain), and leave any other bus
-    // (auxiliary outputs) disabled. A plugin that refuses keeps its own layout;
-    // the processing below only ever touches the first two channels of each.
-    const auto tryLayout = [&](bool withSidechain)
-    {
-        juce::AudioProcessor::BusesLayout layout;
-        for (int b = 0; b < instance_->getBusCount(true); ++b)
-            layout.inputBuses.add(b == 0 || (b == 1 && withSidechain) ? juce::AudioChannelSet::stereo()
-                                                                      : juce::AudioChannelSet::disabled());
-        for (int b = 0; b < instance_->getBusCount(false); ++b)
-            layout.outputBuses.add(b == 0 ? juce::AudioChannelSet::stereo()
-                                          : juce::AudioChannelSet::disabled());
-        return instance_->checkBusesLayoutSupported(layout) && instance_->setBusesLayout(layout);
-    };
-    bool sidechain = false;
-    if (instance_->getBusCount(true) >= 2 && tryLayout(true))
-        sidechain = true;
-    else if (!tryLayout(false))
-        instance_->enableAllBuses();
-    // Only a layout of exactly main stereo plus stereo key is driven as a sidechain.
-    sidechain = sidechain && instance_->getTotalNumInputChannels() == 4 &&
-                instance_->getTotalNumOutputChannels() == 2;
-
+    // The layout was negotiated when the instance was created (see negotiateLayout).
     instance_->setNonRealtime(false);
     instance_->setRateAndBufferSizeDetails(sampleRate, maxBlockSize);
     instance_->prepareToPlay(sampleRate, maxBlockSize);
     midi_.ensureSize(1024);
     keyLeft_.assign(static_cast<size_t>(maxBlockSize), 0.0f);
     keyRight_.assign(static_cast<size_t>(maxBlockSize), 0.0f);
-    sidechain_.store(sidechain, std::memory_order_release);
+    mono_.assign(static_cast<size_t>(maxBlockSize), 0.0f);
+    dryLeft_.assign(static_cast<size_t>(maxBlockSize), 0.0f);
+    dryRight_.assign(static_cast<size_t>(maxBlockSize), 0.0f);
+    bypassStep_ = 1.0f / static_cast<float>(std::max(1.0, sampleRate * 0.010));
+    bypassMix_ = isBypassed() ? 1.0f : 0.0f;
     prepared_.store(true, std::memory_order_release);
 }
 
@@ -70,12 +84,74 @@ void HostedPlugin::processWithSidechain(
     run(left, right, keyLeft, keyRight, numSamples);
 }
 
+void HostedPlugin::processBuffer(juce::AudioBuffer<float>& buffer, bool bypassed) noexcept
+{
+    midi_.clear();
+    if (bypassed)
+        instance_->processBlockBypassed(buffer, midi_); // the plugin's own bypass keeps its latency
+    else
+        instance_->processBlock(buffer, midi_);
+}
+
 void HostedPlugin::run(
     float* left, float* right, const float* keyLeft, const float* keyRight, int numSamples) noexcept
 {
-    if (isBypassed() || !prepared_.load(std::memory_order_acquire))
+    if (!prepared_.load(std::memory_order_acquire) || layout_ == Layout::unsupported ||
+        numSamples > static_cast<int>(dryLeft_.size()))
         return;
-    if (sidechain_.load(std::memory_order_acquire) && numSamples <= static_cast<int>(keyLeft_.size()))
+
+    // Bypass: ramp between the processed and the bypassed signal over 10 ms. While
+    // the ramp runs the plugin processes normally and the input (through the
+    // plugin's own bypassed path once settled) is faded in; settled bypass runs
+    // processBlockBypassed only, so the latency and the tail stay consistent.
+    const float target = isBypassed() ? 1.0f : 0.0f;
+    const bool settled = bypassMix_ == target;
+    if (settled && target == 1.0f)
+    {
+        // Fully bypassed.
+        if (layout_ == Layout::mono)
+        {
+            for (int i = 0; i < numSamples; ++i)
+                mono_[static_cast<size_t>(i)] = 0.5f * (left[i] + right[i]);
+            float* pointers[1] = {mono_.data()};
+            juce::AudioBuffer<float> buffer(pointers, 1, numSamples);
+            processBuffer(buffer, true);
+            std::copy(mono_.begin(), mono_.begin() + numSamples, left);
+            std::copy(mono_.begin(), mono_.begin() + numSamples, right);
+            return;
+        }
+        if (sidechain_.load(std::memory_order_acquire))
+        {
+            std::fill(keyLeft_.begin(), keyLeft_.begin() + numSamples, 0.0f);
+            std::fill(keyRight_.begin(), keyRight_.begin() + numSamples, 0.0f);
+            float* pointers[4] = {left, right, keyLeft_.data(), keyRight_.data()};
+            juce::AudioBuffer<float> buffer(pointers, 4, numSamples);
+            processBuffer(buffer, true);
+            return;
+        }
+        float* pointers[2] = {left, right};
+        juce::AudioBuffer<float> buffer(pointers, 2, numSamples);
+        processBuffer(buffer, true);
+        return;
+    }
+
+    if (!settled)
+    {
+        std::copy(left, left + numSamples, dryLeft_.data());
+        std::copy(right, right + numSamples, dryRight_.data());
+    }
+
+    if (layout_ == Layout::mono)
+    {
+        for (int i = 0; i < numSamples; ++i)
+            mono_[static_cast<size_t>(i)] = 0.5f * (left[i] + right[i]);
+        float* pointers[1] = {mono_.data()};
+        juce::AudioBuffer<float> buffer(pointers, 1, numSamples);
+        processBuffer(buffer, false);
+        std::copy(mono_.begin(), mono_.begin() + numSamples, left);
+        std::copy(mono_.begin(), mono_.begin() + numSamples, right);
+    }
+    else if (sidechain_.load(std::memory_order_acquire))
     {
         // Main pair plus the key pair; the key is silence when no source is set.
         if (keyLeft != nullptr && keyRight != nullptr)
@@ -90,26 +166,27 @@ void HostedPlugin::run(
         }
         float* pointers[4] = {left, right, keyLeft_.data(), keyRight_.data()};
         juce::AudioBuffer<float> buffer(pointers, 4, numSamples);
-        midi_.clear();
-        instance_->processBlock(buffer, midi_);
-        return;
+        processBuffer(buffer, false);
     }
-    const int channels =
-        juce::jmax(instance_->getTotalNumInputChannels(), instance_->getTotalNumOutputChannels());
-    if (channels <= 0)
-        return;
-    // Two channels of external data: AudioBuffer keeps the pointers in its own
-    // preallocated space, so this is allocation-free. A plugin that ended up with
-    // more channels than two (it refused the stereo layout) gets its extra channels
-    // pointed at silence it may overwrite.
-    if (channels > 2)
-        return; // it refused the stereo layout; see prepare()
-    float* pointers[2] = {left, right};
-    juce::AudioBuffer<float> buffer(pointers, channels, numSamples);
-    midi_.clear();
-    instance_->processBlock(buffer, midi_);
-    if (channels == 1)
-        juce::FloatVectorOperations::copy(right, left, numSamples);
+    else
+    {
+        float* pointers[2] = {left, right};
+        juce::AudioBuffer<float> buffer(pointers, 2, numSamples);
+        processBuffer(buffer, false);
+    }
+
+    if (!settled)
+    {
+        // Crossfade towards the target: mix 1 is the dry input (the plugin's
+        // bypassed path takes over once the ramp has settled).
+        for (int i = 0; i < numSamples; ++i)
+        {
+            bypassMix_ = target > bypassMix_ ? std::min(target, bypassMix_ + bypassStep_)
+                                             : std::max(target, bypassMix_ - bypassStep_);
+            left[i] = left[i] * (1.0f - bypassMix_) + dryLeft_[static_cast<size_t>(i)] * bypassMix_;
+            right[i] = right[i] * (1.0f - bypassMix_) + dryRight_[static_cast<size_t>(i)] * bypassMix_;
+        }
+    }
 }
 
 std::vector<std::string> HostedPlugin::factoryPrograms() const

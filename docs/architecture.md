@@ -256,6 +256,11 @@ files in the media folder and asks whether to recover them or set them aside as
 track still exists) at its capture position, later takes at the loop start, shifted
 by the recorded latency; without a sidecar it lands at zero on a "Recovered" track.
 
+A muted or un-soloed track still renders its clips and inserts (envelopes, tails
+and latency buffers keep moving; its key output stays live for sidechains, though
+a muted source's key reads as silence); the routing stage is what keeps it out of
+the mix.
+
 Input monitoring is part of the track render: a track in monitor mode "on" always
 hears its input through its gain and pan; "automatic" hears it while armed and the
 transport is not playing back (stopped or recording); "off" never. The Phase 1
@@ -377,11 +382,20 @@ renderer, the insert cache and the mixer need no special case. A hosted plugin o
 its parameters: `parameters()` is empty, its own editor (or JUCE's generic one)
 edits it in a `ui::PluginWindow` on the live instance, and the model keeps an
 opaque base64 `state` blob that the cache restores once when the instance is
-created and `ProjectSession::save` captures from every live instance. The chain is
-a stereo pair, so `prepare` asks the plugin for a stereo main bus in and out and
-disables its other buses; sidechains come later in the phase. `process` wraps the
-two channel pointers in a `juce::AudioBuffer` (no allocation) and an empty MIDI
-buffer; latency is read after `prepareToPlay` for delay compensation.
+created and `ProjectSession::save` captures from every live instance. The channel
+layout is negotiated once, when the instance is created: a stereo main bus in and
+out (plus a stereo key on the second input bus when the plugin has one), else a
+mono main bus (the pair is summed into it and its output goes to both sides), else
+the load fails with an error the user sees and the type is not retried until the
+next scan. `process` wraps the channel pointers in a `juce::AudioBuffer` (no
+allocation) and an empty MIDI buffer; latency is read live for delay
+compensation. Bypass crossfades over 10 ms between the processed signal and the
+input, then runs the plugin's own bypassed path (`processBlockBypassed`, which
+keeps the latency), so a tail never freezes and the graph is not re-solved. A
+plugin window shares ownership of the instance it edits, so the engine's cache
+dropping the instance can never free it under an open editor, and editors are
+closed before a project is replaced; a removal captures the live plugin state
+into the model first so undo brings back what the user had.
 
 Each insert slot has a wet/dry `mix` (model, command, JSON): the renderer keeps a
 dry copy of the slot's input, held back by the insert's latency through a cached
@@ -419,8 +433,15 @@ in), and the master by its slowest input. Each edge (a channel's output, each of
 its sends) gets a fixed stereo `engine::DelayLine` of the difference between what
 its destination waits for and what the source already lags, and the renderer reads
 a delayed copy for edges that need one. The lines live in an `engine::DelayCache`
-keyed by edge and persist across recompiles, so a fader move never empties one;
-only a changed delay resets a line. `AudioEngine::outputLatencySamples()` is the
+keyed by edge and persist across recompiles, so a fader move never empties one. A
+line a published snapshot can reference is never resized: a changed delay gets a
+fresh line pre-filled with the old one's most recent samples (the audio in flight
+continues) and the old line retires with its snapshot. Lines run for muted and
+un-soloed channels too (only the sum into the destination is skipped), so
+unmuting replays nothing stale, and every line is flushed when the transport
+locates. Latency counts whether or not a slot is bypassed, because a bypassed
+processor still delays by it (plugins through `processBlockBypassed`, the limiter
+through its lookahead): toggling bypass never re-solves the graph. `AudioEngine::outputLatencySamples()` is the
 master's lag, which the session adds to the recording offset (a take played
 against the compensated output lands that much later), and a plugin that changes
 its latency after prepare is noticed on the session's poll and the graph re-solved.

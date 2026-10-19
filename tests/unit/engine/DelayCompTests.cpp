@@ -209,13 +209,13 @@ TEST_CASE("A send and the direct output of one track stay aligned at the master"
     CHECK(h.left[7] == Approx(2.0f * centre)); // direct (held 7) plus via the bus
     CHECK(h.left[0] == Approx(0.0f));
 
-    // Bypassing the bus insert removes its latency and the compensation with it.
+    // Bypassing the bus insert keeps its latency (a bypassed processor still
+    // delays by it), so the graph is not re-solved and nothing moves.
     p.buses[0].inserts[0].bypass = true;
     h.engine.setProject(p);
     h.engine.locate(0);
     h.engine.process(h.outputs, 2, blockSize);
-    CHECK(h.engine.outputLatencySamples() == 0);
-    CHECK(h.left[0] == Approx(2.0f * centre));
+    CHECK(h.engine.outputLatencySamples() == 7);
 }
 
 TEST_CASE("Compensation delay lines survive a recompile", "[engine][delay]")
@@ -276,4 +276,76 @@ TEST_CASE("A partly dry insert keeps its dry half aligned with the wet half", "[
     h.engine.process(h.outputs, 2, blockSize);
     CHECK(h.left[10] == Approx(centre));
     CHECK(h.engine.outputLatencySamples() == 10);
+}
+
+TEST_CASE("A changed edge delay gets a fresh line that continues the old audio", "[engine][delay]")
+{
+    // Track 2's compensation line holds an impulse in flight when track 1's insert
+    // changes its latency; the new line (longer) must carry it on, and the old
+    // line, still referenced by the retired snapshot, must be left untouched.
+    Harness h;
+    core::Project p;
+    p.tracks.push_back(impulseTrack(1, "test.delay10"));
+    p.tracks.push_back(impulseTrack(2));
+    h.engine.setProject(p);
+    h.engine.play();
+    std::vector<float> l(8), r(8);
+    float* out[2] = {l.data(), r.data()};
+    h.engine.process(out, 2, 8); // the impulse is now 8 samples into a 10-sample line
+    const auto* before = h.engine.snapshotForTest()->tracks[1].outputDelay;
+    REQUIRE(before != nullptr);
+    CHECK(before->delay() == 10);
+
+    auto live = std::dynamic_pointer_cast<LatentInsert>(h.engine.insertInstance(101));
+    REQUIRE(live != nullptr);
+    live->setLatency(40);
+    REQUIRE(h.engine.insertLatencyChanged());
+    h.engine.setProject(p);
+    const auto* after = h.engine.snapshotForTest()->tracks[1].outputDelay;
+    REQUIRE(after != nullptr);
+    CHECK(after != before);       // a different line
+    CHECK(before->delay() == 10); // the old one was not resized
+    CHECK(after->delay() == 40);
+    // Track 2's impulse continues: it was due at 10 on the old line and is now due
+    // at 40 (the test insert only reports the new latency; its own delay stays 10,
+    // so track 1's impulse still arrives at 10).
+    h.engine.process(out, 2, 8);               // samples 8..15
+    CHECK(l[2] == Approx(centre));             // track 1 at sample 10
+    h.engine.process(h.outputs, 2, blockSize); // samples 16..79
+    CHECK(h.left[24] == Approx(centre));       // track 2 at 40 = 16 + 24
+    CHECK(h.left[0] == Approx(0.0f));
+}
+
+TEST_CASE("Compensation lines keep running on a muted channel and flush on locate", "[engine][delay]")
+{
+    Harness h;
+    core::Project p;
+    p.tracks.push_back(impulseTrack(1, "test.delay10"));
+    auto second = impulseTrack(2);
+    second.mute = true;
+    p.tracks.push_back(second);
+    h.engine.setProject(p);
+    h.engine.play();
+    h.engine.process(h.outputs, 2, blockSize); // muted: its impulse enters and leaves the line silently
+    CHECK(h.left[10] == Approx(centre));       // only track 1
+    // Unmute: nothing stale comes out (the impulse passed through while muted).
+    p.tracks[1].mute = false;
+    h.engine.setProject(p);
+    h.engine.process(h.outputs, 2, blockSize);
+    for (int i = 0; i < blockSize; ++i)
+        CHECK(h.left[static_cast<size_t>(i)] == Approx(0.0f));
+
+    // Locate back to 0 and render 4 samples: track 2's impulse is 4 samples into
+    // its compensation line, track 1's 4 samples into its insert's own delay.
+    h.engine.locate(0);
+    std::vector<float> l(4), r(4);
+    float* out[2] = {l.data(), r.data()};
+    h.engine.process(out, 2, 4);
+    // Locate elsewhere (no clips there): the compensation line is flushed, so
+    // track 2's impulse never comes out; the insert's internal delay is the
+    // plugin's own business and still delivers track 1's at 6.
+    h.engine.locate(1000);
+    h.engine.process(h.outputs, 2, blockSize);
+    CHECK(h.left[6] == Approx(centre)); // without the flush this would be two impulses
+    CHECK(h.left[10] == Approx(0.0f));
 }

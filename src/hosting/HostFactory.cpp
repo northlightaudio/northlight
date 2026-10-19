@@ -31,12 +31,20 @@ std::unique_ptr<engine::InsertProcessor> HostFactory::create(const std::string& 
     lastError_.clear();
     if (!PluginRegistry::isHostedType(typeName))
         return builtIns_.create(typeName);
-    const auto* info = registry_.findByType(typeName);
-    if (info == nullptr)
+    if (const auto failed = failures_.find(typeName); failed != failures_.end())
     {
-        lastError_ = "plugin not in the registry (rescan?)";
+        lastError_ = failed->second;
         return nullptr;
     }
+    const auto fail = [&](std::string message)
+    {
+        lastError_ = message;
+        failures_[typeName] = std::move(message);
+        return std::unique_ptr<engine::InsertProcessor>{};
+    };
+    const auto* info = registry_.findByType(typeName);
+    if (info == nullptr)
+        return fail("plugin not in the registry (rescan?)");
     juce::PluginDescription description;
     description.name = juce::String::fromUTF8(info->name.c_str());
     description.manufacturerName = juce::String::fromUTF8(info->manufacturer.c_str());
@@ -55,11 +63,12 @@ std::unique_ptr<engine::InsertProcessor> HostFactory::create(const std::string& 
     juce::String error;
     auto instance = formats_.createPluginInstance(description, 48000.0, 512, error);
     if (instance == nullptr)
-    {
-        lastError_ = error.toStdString();
-        return nullptr;
-    }
-    return std::make_unique<HostedPlugin>(typeName, std::move(instance));
+        return fail(error.toStdString());
+    bool sidechain = false;
+    const auto layout = HostedPlugin::negotiateLayout(*instance, sidechain);
+    if (layout == HostedPlugin::Layout::unsupported)
+        return fail("the plugin accepts neither a stereo nor a mono layout");
+    return std::make_unique<HostedPlugin>(typeName, std::move(instance), layout, sidechain);
 }
 
 } // namespace aural::hosting

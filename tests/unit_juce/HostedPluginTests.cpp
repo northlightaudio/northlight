@@ -4,6 +4,7 @@
 #include "hosting/PluginRegistry.h"
 #include "hosting/PluginScanner.h"
 
+#include <catch2/catch_approx.hpp>
 #include <catch2/catch_test_macros.hpp>
 
 #include <atomic>
@@ -13,6 +14,7 @@
 #include <vector>
 
 using namespace aural;
+using Catch::Approx;
 
 // These tests use whatever VST3 plugin is installed in the system folder. On a
 // machine without one they report what they skipped and pass.
@@ -127,12 +129,27 @@ TEST_CASE("A hosted plugin loads, processes a block in place and round-trips its
     }
     CHECK(energy > 0.0f);
 
-    // Bypassed: the input passes untouched.
-    std::fill(l.begin(), l.end(), 0.5f);
+    // Bypass toggled while processing: a 10 ms crossfade, then the plugin's own
+    // bypassed path; everything stays finite and the latency does not change.
+    const int latencyBefore = processor->latencySamples();
+    CHECK(hosted->layout() != hosting::HostedPlugin::Layout::unsupported);
     processor->setBypassed(true);
-    processor->process(l.data(), r.data(), 256);
-    CHECK(l[100] == 0.5f);
+    for (int block = 0; block < 10; ++block)
+    {
+        std::fill(l.begin(), l.end(), 0.5f);
+        std::fill(r.begin(), r.end(), 0.5f);
+        processor->process(l.data(), r.data(), 256);
+        for (int i = 0; i < 256; ++i)
+            REQUIRE(std::isfinite(l[static_cast<size_t>(i)]));
+    }
+    CHECK(processor->latencySamples() == latencyBefore);
+    if (latencyBefore == 0)
+        CHECK(l[100] == Approx(0.5f).margin(1.0e-3f)); // settled bypass passes the input
     processor->setBypassed(false);
+    for (int block = 0; block < 10; ++block)
+        processor->process(l.data(), r.data(), 256);
+    for (int i = 0; i < 256; ++i)
+        REQUIRE(std::isfinite(l[static_cast<size_t>(i)]));
 
     const auto state = processor->state();
     CHECK_FALSE(state.empty());

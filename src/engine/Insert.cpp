@@ -50,6 +50,13 @@ std::shared_ptr<InsertProcessor> InsertCache::find(core::Id insertId) const
     return it != instances_.end() ? it->second : nullptr;
 }
 
+void InsertCache::clear()
+{
+    AURAL_ASSERT_NOT_REALTIME("InsertCache::clear");
+    instances_.clear();
+    latencyAtCompile_.clear();
+}
+
 bool InsertCache::latencyChanged() const noexcept
 {
     for (const auto& [id, instance] : instances_)

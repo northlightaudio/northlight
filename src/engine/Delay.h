@@ -18,12 +18,19 @@ namespace aural::engine
 {
 
 // A stereo fixed delay. setDelay() on the controller thread (allocates when the
-// length changes); process() on the real-time thread.
+// length changes) before the line is shared with a snapshot; process() and
+// reset() on the real-time thread. A line a published snapshot can reference is
+// never resized: the cache replaces it instead.
 class DelayLine
 {
 public:
     void setDelay(int samples);
     int delay() const noexcept { return delay_; }
+    // Real-time: clears the memory (a locate must not replay old audio).
+    void reset() noexcept;
+    // Controller, before sharing: copies the most recent samples held by `other`
+    // so a line that replaces another continues its audio instead of splicing.
+    void continueFrom(const DelayLine& other) noexcept;
 
     // Writes the delayed input to out (in and out may not overlap). A zero delay
     // copies.
@@ -45,13 +52,18 @@ struct DelayKey
 };
 
 // One delay line per graph edge, kept across compiles. Controller thread only.
+// A changed delay gets a fresh line (pre-filled from the old one), and the old
+// line retires with the snapshots that reference it.
 class DelayCache
 {
 public:
-    // The line for an edge, created on first sight, set to `delaySamples`.
+    // The line for an edge: the existing one when its delay matches, else a new
+    // one of `delaySamples` continuing the old audio.
     std::shared_ptr<DelayLine> get(const DelayKey& key, int delaySamples);
     // Drops lines no snapshot references any more.
     void prune();
+    // Forgets everything (a new project); live snapshots keep their own references.
+    void clear() { lines_.clear(); }
     size_t size() const noexcept { return lines_.size(); }
 
 private:

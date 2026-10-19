@@ -45,13 +45,49 @@ void DelayLine::process(
     position_ = p;
 }
 
+void DelayLine::reset() noexcept
+{
+    std::fill(left_.begin(), left_.end(), 0.0f);
+    std::fill(right_.begin(), right_.end(), 0.0f);
+    position_ = 0;
+}
+
+void DelayLine::continueFrom(const DelayLine& other) noexcept
+{
+    // The other line's memory holds its last `delay` inputs; replay the most
+    // recent min(ours, theirs) of them into our ring so the oldest of ours is the
+    // oldest we can still honour and the newest is the newest input.
+    const int n = std::min(delay_, other.delay_);
+    if (n <= 0)
+        return;
+    for (int k = n; k >= 1; --k)
+    {
+        // The sample written k steps ago sits at (other.position_ - k) mod their length.
+        int src = other.position_ - k;
+        while (src < 0)
+            src += other.delay_;
+        int dst = position_ - k;
+        while (dst < 0)
+            dst += delay_;
+        left_[static_cast<size_t>(dst)] = other.left_[static_cast<size_t>(src)];
+        right_[static_cast<size_t>(dst)] = other.right_[static_cast<size_t>(src)];
+    }
+}
+
 std::shared_ptr<DelayLine> DelayCache::get(const DelayKey& key, int delaySamples)
 {
     AURAL_ASSERT_NOT_REALTIME("DelayCache::get");
+    delaySamples = std::max(0, delaySamples);
     auto& line = lines_[key];
-    if (line == nullptr)
-        line = std::make_shared<DelayLine>();
-    line->setDelay(delaySamples);
+    if (line != nullptr && line->delay() == delaySamples)
+        return line;
+    // Never resize a line a snapshot may be reading: make a new one and let the
+    // old retire with its snapshot.
+    auto fresh = std::make_shared<DelayLine>();
+    fresh->setDelay(delaySamples);
+    if (line != nullptr)
+        fresh->continueFrom(*line);
+    line = fresh;
     return line;
 }
 

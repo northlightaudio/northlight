@@ -48,6 +48,8 @@ public:
 
     // Opens (or fronts) the parameter editor window for an insert.
     void openInsertEditor(core::Id channelId, core::Id insertId);
+    // Closes every editor window (before a project is replaced).
+    void closeEditors();
 
 private:
     class Strip;

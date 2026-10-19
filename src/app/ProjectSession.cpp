@@ -30,7 +30,8 @@ ProjectSession::ProjectSession(audio::AudioDeviceLayer& audio, juce::File regist
     scanner_.onFinished = [this]
     {
         saveRegistry();
-        publish(); // inserts that were "missing" may load now
+        inserts_.clearFailures(); // a plugin that failed before may load now
+        publish();
     };
     audio_.callback().setEngine(&engine_);
     audio_.addChangeListener(this);
@@ -53,6 +54,13 @@ ProjectSession::~ProjectSession()
 
 void ProjectSession::execute(std::unique_ptr<core::Command> command)
 {
+    // A removal copies the model insert into the command for undo: pull the live
+    // plugin state into the model first, so undo brings back what the user had,
+    // not what the last save held.
+    if (dynamic_cast<core::RemoveInsert*>(command.get()) != nullptr ||
+        dynamic_cast<core::RemoveTrack*>(command.get()) != nullptr ||
+        dynamic_cast<core::RemoveBus*>(command.get()) != nullptr)
+        captureInsertStates();
     undo_.execute(project_, std::move(command));
     modified_ = true;
     publish();
@@ -146,6 +154,7 @@ std::string ProjectSession::importAudioFile(const juce::File& file, core::Sample
 
 void ProjectSession::newProject()
 {
+    engine_.resetCaches(); // another project's ids must not reuse these instances
     project_ = core::Project{};
     undo_.clear();
     projectFile_ = juce::File();
@@ -156,6 +165,7 @@ void ProjectSession::newProject()
 
 std::string ProjectSession::open(const juce::File& file)
 {
+    engine_.resetCaches();
     std::string error;
     const auto loaded = core::projectFromJson(file.loadFileAsString().toStdString(), &error);
     if (!loaded.has_value())

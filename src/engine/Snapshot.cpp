@@ -95,6 +95,7 @@ compileSnapshot(const core::Project& project, MediaCache& media, InsertCache& in
     snapshot->timeSignature = project.timeSignature;
     snapshot->masterGain = project.master.gain;
     snapshot->masterMeterSlot = masterMeterSlot(project);
+    snapshot->silence.assign(static_cast<size_t>(Snapshot::maxBlockSamples), 0.0f);
 
     const auto trackCount = static_cast<int>(project.tracks.size());
     const auto busCount = static_cast<int>(project.buses.size());
@@ -248,7 +249,11 @@ compileSnapshot(const core::Project& project, MediaCache& media, InsertCache& in
         for (const auto& i : c.inserts)
             if (auto instance = inserts.get(i))
             {
-                const int latency = i.bypass ? 0 : std::max(0, instance->latencySamples());
+                // Latency counts whether or not the slot is bypassed: a bypassed
+                // processor still delays by it (plugins through processBlockBypassed,
+                // the limiter through its lookahead), so toggling bypass never
+                // re-solves the graph.
+                const int latency = std::max(0, instance->latencySamples());
                 node.chainLatency += latency;
                 node.inserts.push_back(instance.get());
                 node.insertMix.push_back(std::clamp(i.mix, 0.0f, 1.0f));
@@ -260,6 +265,7 @@ compileSnapshot(const core::Project& project, MediaCache& media, InsertCache& in
                     auto line = (delays != nullptr ? *delays : localDelays)
                                     .get(DelayKey{i.id, core::invalidId, true}, latency);
                     dry = line.get();
+                    snapshot->allDelays.push_back(dry);
                     node.keepAliveDelays.push_back(std::move(line));
                 }
                 node.insertDry.push_back(dry);
@@ -414,6 +420,8 @@ compileSnapshot(const core::Project& project, MediaCache& media, InsertCache& in
                     bus >= 0 ? project.buses[static_cast<size_t>(bus)].id : core::invalidId;
                 auto shared = cache.get(DelayKey{id, destination, send}, needed);
                 auto* raw = needed > 0 ? shared.get() : nullptr;
+                if (raw != nullptr)
+                    snapshot->allDelays.push_back(raw);
                 node.keepAliveDelays.push_back(std::move(shared));
                 return raw;
             };

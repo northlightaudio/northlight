@@ -714,7 +714,7 @@ void MixerView::openInsertEditor(core::Id channelId, core::Id insertId)
         const auto setting = [this](const std::string& key)
         { return loadSetting ? loadSetting(key) : std::string{}; };
         const bool pinned = setting("plugins.pin") == "1";
-        auto window = std::make_unique<PluginWindow>(channelId, insertId, *hosted, title, pinned);
+        auto window = std::make_unique<PluginWindow>(channelId, insertId, live, *hosted, title, pinned);
         juce::Component::SafePointer<MixerView> safe(this);
         window->onClose = [safe, insertId]
         {
@@ -790,6 +790,11 @@ MixerView::MixerView(rt::MeterBlock& meters, std::function<engine::LoudnessMeter
 MixerView::~MixerView()
 {
     stopTimer();
+    closeEditors();
+}
+
+void MixerView::closeEditors()
+{
     pluginWindows_.clear();
     editors_.clear();
 }

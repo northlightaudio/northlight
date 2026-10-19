@@ -96,7 +96,16 @@ bool PluginScanner::inspect(const juce::File& scanner,
         error = "the scanner process failed (exit code " + std::to_string(process.getExitCode()) + ")";
         return false;
     }
-    const auto xml = juce::XmlDocument::parse(output);
+    // Only the block between the sentinels is the result; a plugin may print
+    // anything else while it loads.
+    const int from = output.indexOf("<<AURAL-SCAN>>");
+    const int to = output.indexOf("<<END-AURAL-SCAN>>");
+    if (from < 0 || to < from)
+    {
+        error = "the scanner produced no result";
+        return false;
+    }
+    const auto xml = juce::XmlDocument::parse(output.substring(from + 14, to));
     if (xml == nullptr || !xml->hasTagName("plugins"))
     {
         error = "the scanner produced no result";
@@ -168,6 +177,16 @@ void PluginScanner::run()
                                   : registry_.needsScan(path.toStdString(), modified))
                         planning->jobs.push_back({file, modified});
                 }
+                // Files the registry knows that are gone from disk are forgotten.
+                std::vector<std::string> gone;
+                for (const auto& [path, time] : registry_.scannedFiles())
+                    if (!juce::File(juce::String::fromUTF8(path.c_str())).exists())
+                        gone.push_back(path);
+                for (const auto& [path, reason] : registry_.blocked())
+                    if (!juce::File(juce::String::fromUTF8(path.c_str())).exists())
+                        gone.push_back(path);
+                for (const auto& path : gone)
+                    registry_.removeFile(path);
                 planning->ready.signal();
             });
         while (!planning->ready.wait(50))

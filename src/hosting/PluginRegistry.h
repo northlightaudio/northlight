@@ -55,6 +55,7 @@ public:
     void block(const std::string& path, const std::string& reason);
     bool isBlocked(const std::string& path) const noexcept;
     const std::map<std::string, std::string>& blocked() const noexcept { return blocked_; }
+    const std::map<std::string, std::int64_t>& scannedFiles() const noexcept { return scannedFiles_; }
     void clearBlocklist();
 
     std::string toJson() const;

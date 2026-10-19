@@ -136,6 +136,13 @@ std::optional<AudioEngine::FinishedRecording> AudioEngine::collectRecording()
     return finished;
 }
 
+void AudioEngine::resetCaches()
+{
+    AURAL_ASSERT_NOT_REALTIME("AudioEngine::resetCaches");
+    inserts_.clear();
+    delays_.clear();
+}
+
 void AudioEngine::collectGarbage()
 {
     AURAL_ASSERT_NOT_REALTIME("AudioEngine::collectGarbage");
@@ -203,6 +210,7 @@ void AudioEngine::applyCommand(const TransportCommand& command) noexcept
             if (recordSession_ != nullptr)
                 endRecordingOnRt();
             applyTransportCommand(transport_, command);
+            flushDelays_ = true; // the compensation lines hold audio from before the jump
             break;
         default:
             applyTransportCommand(transport_, command);
@@ -227,6 +235,12 @@ void AudioEngine::process(
     }
 
     const Snapshot* snapshot = publisher_.acquire();
+    if (flushDelays_ && snapshot != nullptr)
+    {
+        for (auto* line : snapshot->allDelays)
+            line->reset();
+        flushDelays_ = false;
+    }
     constexpr int maxChannels = 64;
     float* outPieces[maxChannels];
     const float* inPieces[maxChannels];

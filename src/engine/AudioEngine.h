@@ -70,6 +70,9 @@ public:
 
     // Frees retired snapshots and unreferenced media. Call periodically (a UI timer).
     void collectGarbage();
+    // Forgets cached insert instances and delay lines (a different project may
+    // reuse the same ids). Live snapshots keep their own references.
+    void resetCaches();
 
     // Device lifecycle. prepare() is called before the device starts delivering
     // blocks (allocates), release() after it has stopped.
@@ -129,6 +132,7 @@ private:
     MediaCache media_;
     InsertCache inserts_;
     DelayCache delays_;
+    bool flushDelays_ = false; // real-time thread only: a locate happened
     std::atomic<int> outputLatency_{0};
     rt::SnapshotPublisher<Snapshot> publisher_;
     rt::SpscQueue<TransportCommand> commands_{commandQueueCapacity};

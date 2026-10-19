@@ -330,6 +330,7 @@ private:
         if (session_.isRecording())
             return;
         session_.stop();
+        mixer_.closeEditors();
         session_.newProject();
         lastImportError_.clear();
         refresh();
@@ -349,6 +350,7 @@ private:
                 if (file == juce::File())
                     return;
                 session_.stop();
+                mixer_.closeEditors();
                 const auto error = session_.open(file);
                 lastImportError_ = error.empty() ? juce::String() : "Cannot open: " + juce::String(error);
                 refresh();
