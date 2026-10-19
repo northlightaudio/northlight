@@ -1,0 +1,140 @@
+#pragma once
+
+#include "audio/AudioCallback.h"
+#include "audio/AudioSettings.h"
+#include "audio/LatencyCalibrator.h"
+#include "audio/LatencyDetector.h"
+
+#include <juce_audio_devices/juce_audio_devices.h>
+
+#include <optional>
+#include <string>
+#include <vector>
+
+// The audio device layer: a thin, message-thread-only wrapper around
+// juce::AudioDeviceManager that
+//
+//   - enumerates ASIO and WASAPI device types and their devices,
+//   - opens a device with a chosen sample rate, buffer size and channel set,
+//   - persists what the user chose through AudioSettingsStore,
+//   - reports driver latency and run-time status,
+//   - recovers from device loss (unplugged interface, driver reset) by reopening the
+//     preferred device when it returns and falling back to the system default
+//     meanwhile,
+//   - owns the real-time AudioCallback and the LatencyCalibrator.
+//
+// Listeners (the Audio Setup screen) register as juce::ChangeListener and re-read
+// status() whenever anything changes.
+
+namespace aural::audio
+{
+
+class AudioDeviceLayer final : public juce::ChangeBroadcaster,
+                               private juce::ChangeListener,
+                               private juce::Timer
+{
+public:
+    explicit AudioDeviceLayer(AudioSettingsStore& store);
+    ~AudioDeviceLayer() override;
+
+    // Loads the saved settings and opens that device, or the system default when
+    // nothing is saved or the saved device is unavailable.
+    void initialise();
+    // Closes the device. Settings are saved as they change, not here.
+    void shutdown();
+
+    // ----- enumeration ------------------------------------------------------------
+    struct DeviceType
+    {
+        std::string name;
+        bool separateInputsAndOutputs = false;
+    };
+    std::vector<DeviceType> deviceTypes();
+
+    struct DeviceNames
+    {
+        std::vector<std::string> outputs;
+        std::vector<std::string> inputs; // same as outputs for ASIO
+        int defaultOutput = -1;
+        int defaultInput = -1;
+    };
+    DeviceNames deviceNames(const std::string& type);
+
+    // Capabilities of the device that is currently open (empty when none is).
+    std::vector<double> availableSampleRates() const;
+    std::vector<int> availableBufferSizes() const;
+    std::vector<std::string> inputChannelNames() const;
+    std::vector<std::string> outputChannelNames() const;
+
+    // ----- state --------------------------------------------------------------------
+    struct Status
+    {
+        bool open = false;
+        bool running = false;
+        std::string deviceType;
+        std::string outputDevice;
+        std::string inputDevice;
+        double sampleRate = 0.0;
+        int bufferSize = 0;
+        int inputLatencySamples = 0;
+        int outputLatencySamples = 0;
+        std::vector<int> activeInputs;  // device channel indices, in callback order
+        std::vector<int> activeOutputs; // device channel indices, in callback order
+        bool hasControlPanel = false;
+        int xruns = 0;
+        std::string message; // last error or recovery note, empty when all is well
+
+        double inputLatencyMilliseconds() const noexcept;
+        double outputLatencyMilliseconds() const noexcept;
+    };
+    Status status() const;
+
+    // What the user asked for (persisted). May differ from status() after a fallback.
+    const AudioSettings& settings() const noexcept { return settings_; }
+
+    // The stored calibration, if it was made with the currently open configuration.
+    std::optional<LatencyCalibration> currentCalibration() const;
+
+    // ----- changes ----------------------------------------------------------------
+    // Opens the device described by `settings`. On success the settings are saved and
+    // nullopt is returned; on failure the error is returned and the previous device is
+    // reopened where possible.
+    std::optional<std::string> apply(const AudioSettings& settings);
+
+    void setMasterGain(float linearGain);
+    void setPassThroughEnabled(bool enabled);
+    void storeCalibration(const LatencyMeasurement& measurement);
+    void clearCalibration();
+
+    bool showControlPanel();
+
+    // ----- collaborators --------------------------------------------------------
+    AudioCallback& callback() noexcept { return callback_; }
+    LatencyCalibrator& calibrator() noexcept { return calibrator_; }
+    juce::AudioDeviceManager& manager() noexcept { return manager_; }
+
+private:
+    void changeListenerCallback(juce::ChangeBroadcaster* source) override;
+    void timerCallback() override;
+
+    juce::String open(const AudioSettings& settings);
+    juce::String openDefault();
+    void save();
+    void setMessage(std::string message);
+    void handleDeviceLost();
+
+    AudioSettingsStore& store_;
+    juce::AudioDeviceManager manager_;
+    AudioCallback callback_;
+    LatencyCalibrator calibrator_;
+    AudioSettings settings_;
+    std::string message_;
+    bool initialised_ = false;
+    bool hadDevice_ = false;
+    int recoveryAttempts_ = 0;
+    int recoveryAttemptsBeforeFallback_ = 0;
+
+    JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(AudioDeviceLayer)
+};
+
+} // namespace aural::audio

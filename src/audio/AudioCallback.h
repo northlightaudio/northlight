@@ -1,0 +1,134 @@
+#pragma once
+
+#include <juce_audio_devices/juce_audio_devices.h>
+
+#include <atomic>
+#include <cstdint>
+#include <span>
+#include <vector>
+
+// The audio device callback. Phase 1: pass selected inputs to the outputs with a
+// master gain, and host the loopback calibration capture. Phase 2 replaces the
+// pass-through with the engine graph but keeps the entry discipline:
+//
+//   1. enter aural::rt::ScopedRealtimeSection (allocation hook becomes live)
+//   2. set FTZ/DAZ (juce::ScopedNoDenormals)
+//   3. only then touch audio
+//
+// Everything the callback reads from other threads is an atomic or a buffer whose
+// ownership is handed over through the calibration phase state machine below. The
+// callback never allocates, locks or posts messages.
+
+namespace aural::audio
+{
+
+class AudioCallback final : public juce::AudioIODeviceCallback
+{
+public:
+    AudioCallback();
+    ~AudioCallback() override;
+
+    // ----- control (any thread) -------------------------------------------------
+    void setMasterGain(float linearGain) noexcept;
+    float masterGain() const noexcept;
+    void setPassThroughEnabled(bool enabled) noexcept;
+    bool isPassThroughEnabled() const noexcept;
+
+    // ----- observation (any thread) ---------------------------------------------
+    std::uint64_t callbackCount() const noexcept;
+    bool isDeviceRunning() const noexcept;
+    int numActiveInputs() const noexcept;
+    int numActiveOutputs() const noexcept;
+    double currentSampleRate() const noexcept;
+
+    // Peak absolute sample since the last call; the caller resets by reading.
+    float takeInputPeak() noexcept;
+    float takeOutputPeak() noexcept;
+
+    // Set by audioDeviceError; cleared by the reader.
+    bool takeErrorFlag() noexcept;
+
+    // ----- loopback calibration ---------------------------------------------------
+    // Driven from the message thread by LatencyCalibrator. The phase is a tiny state
+    // machine that hands the capture buffer between the two threads:
+    //
+    //   idle    -> (prepare + start, message thread) -> running
+    //   running -> (capture full, audio thread)       -> done
+    //   running -> (abort requested, audio thread)    -> idle
+    //   done    -> (finish, message thread)           -> idle
+    //   any     -> (device stopped)                   -> idle
+    //
+    // The message thread touches the buffers only in idle or done; the audio thread
+    // only in running.
+    enum class CalibrationPhase
+    {
+        idle,
+        running,
+        done,
+    };
+
+    struct CalibrationPlan
+    {
+        std::vector<float> reference; // test signal, written to outputChannel from emitSample
+        int captureLength = 0;        // samples to record from inputChannel
+        int emitSample = 0;           // output position at which the reference starts
+        int inputChannel = 0;         // index into the active input channels
+        int outputChannel = 0;        // index into the active output channels
+        float level = 0.5f;           // linear gain applied to the reference
+    };
+
+    CalibrationPhase calibrationPhase() const noexcept;
+
+    // Only valid in idle. Allocates (message thread).
+    bool prepareCalibration(CalibrationPlan plan);
+    // idle -> running. Returns false if not idle.
+    bool startCalibration() noexcept;
+    // Asks the audio thread to drop a running calibration at its next block.
+    void requestCalibrationAbort() noexcept;
+    // Only valid in done: the recorded input, captureLength samples long.
+    std::span<const float> calibrationCapture() const noexcept;
+    const CalibrationPlan& calibrationPlan() const noexcept { return plan_; }
+    // done -> idle.
+    void finishCalibration() noexcept;
+
+    // ----- juce::AudioIODeviceCallback --------------------------------------------
+    void audioDeviceIOCallbackWithContext(const float* const* inputChannelData,
+                                          int numInputChannels,
+                                          float* const* outputChannelData,
+                                          int numOutputChannels,
+                                          int numSamples,
+                                          const juce::AudioIODeviceCallbackContext& context) override;
+    void audioDeviceAboutToStart(juce::AudioIODevice* device) override;
+    void audioDeviceStopped() override;
+    void audioDeviceError(const juce::String& errorMessage) override;
+
+private:
+    void renderCalibration(const float* const* inputs,
+                           int numInputs,
+                           float* const* outputs,
+                           int numOutputs,
+                           int numSamples) noexcept;
+
+    std::atomic<float> targetGain_{1.0f};
+    float currentGain_ = 1.0f; // audio thread only
+    std::atomic<bool> passThrough_{true};
+
+    std::atomic<std::uint64_t> callbackCount_{0};
+    std::atomic<bool> running_{false};
+    std::atomic<int> numInputs_{0};
+    std::atomic<int> numOutputs_{0};
+    std::atomic<double> sampleRate_{0.0};
+    std::atomic<float> inputPeak_{0.0f};
+    std::atomic<float> outputPeak_{0.0f};
+    std::atomic<bool> errorFlag_{false};
+
+    std::atomic<CalibrationPhase> calibrationPhase_{CalibrationPhase::idle};
+    std::atomic<bool> abortRequested_{false};
+    CalibrationPlan plan_;
+    std::vector<float> capture_;
+    int capturePosition_ = 0; // audio thread while running
+
+    JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(AudioCallback)
+};
+
+} // namespace aural::audio

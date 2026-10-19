@@ -10,3 +10,15 @@ add_library(aural_audio STATIC
 
 target_include_directories(aural_audio PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/..")
 target_link_libraries(aural_audio PUBLIC aural_options aural_rt)
+
+# Device layer: wraps juce::AudioDeviceManager, owns the real-time callback and the
+# loopback calibrator.
+add_library(aural_audio_device STATIC
+    AudioCallback.h
+    AudioCallback.cpp
+    AudioDeviceLayer.h
+    AudioDeviceLayer.cpp
+    LatencyCalibrator.h
+    LatencyCalibrator.cpp)
+
+target_link_libraries(aural_audio_device PUBLIC aural_audio aural_juce)
