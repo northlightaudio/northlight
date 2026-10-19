@@ -63,11 +63,11 @@ constexpr int blockSize = 64;
 struct Harness
 {
     SyntheticLoader loader;
-    engine::AudioEngine engine{loader};
+    engine::AudioEngine engine;
     std::vector<float> left = std::vector<float>(blockSize), right = std::vector<float>(blockSize);
     float* outputs[2] = {left.data(), right.data()};
 
-    Harness() { engine.prepare(48000.0, blockSize); }
+    explicit Harness(int workers = 0) : engine(loader, workers) { engine.prepare(48000.0, blockSize); }
 
     // Renders one block and returns the timeline position it started at.
     core::SamplePosition block()
@@ -323,6 +323,66 @@ TEST_CASE("Media is cached across republishes and pruned when unused", "[engine]
     CHECK(h.loader.loads == 3); // reloaded after pruning
 }
 
+TEST_CASE("Parallel rendering is bit-identical to serial rendering", "[engine][pool]")
+{
+    core::Project p;
+    for (core::Id i = 1; i <= 24; ++i)
+    {
+        core::Track t;
+        t.id = i;
+        t.gain = 0.5f + static_cast<float>(i) / 48.0f;
+        t.pan = static_cast<float>(i % 5) / 2.0f - 1.0f;
+        t.clips.push_back({100 + i,
+                           "",
+                           i % 2 ? "ramp:3000" : "stereo:3000",
+                           static_cast<core::SamplePosition>(i * 7),
+                           3000,
+                           0,
+                           0.8f});
+        t.clips.push_back({200 + i, "", "ramp:3000", 4000, 3000, 5, 1.0f});
+        p.tracks.push_back(t);
+    }
+    p.tracks[3].mute = true;
+
+    Harness serial(0), parallel(3);
+    CHECK(parallel.engine.workerThreads() == 3);
+    serial.engine.setProject(p);
+    parallel.engine.setProject(p);
+    serial.engine.setLoop(0, 7100, true);
+    parallel.engine.setLoop(0, 7100, true);
+    serial.engine.play();
+    parallel.engine.play();
+
+    bool identical = true;
+    for (int block = 0; block < 300; ++block)
+    {
+        serial.block();
+        parallel.block();
+        for (size_t i = 0; i < blockSize; ++i)
+            identical =
+                identical && serial.left[i] == parallel.left[i] && serial.right[i] == parallel.right[i];
+    }
+    CHECK(identical);
+    CHECK(serial.engine.position() == parallel.engine.position());
+}
+
+TEST_CASE("Device blocks larger than the renderer maximum are rendered in pieces", "[engine]")
+{
+    SyntheticLoader loader;
+    engine::AudioEngine engine(loader, 0);
+    engine.prepare(48000.0, 20000); // capped at Snapshot::maxBlockSamples internally
+    engine.setProject(oneClipProject("ramp:1000", 0, 1000));
+    engine.play();
+
+    std::vector<float> left(20000), right(20000);
+    float* outs[] = {left.data(), right.data()};
+    engine.process(outs, 2, 20000);
+    CHECK(engine.position() == 20000);
+    const float centre = std::cos(3.14159265f / 4.0f);
+    CHECK(left[500] == Approx(0.5f * centre).margin(1e-6f));
+    CHECK(left[8192 + 10] == 0.0f);
+}
+
 #if defined(AURAL_RT_CHECKS)
 namespace
 {
@@ -336,7 +396,7 @@ void countEngineViolation(const rt::Violation&) noexcept
 TEST_CASE("Processing under the real-time guard does not allocate, even across snapshot swaps",
           "[engine][rt]")
 {
-    Harness h;
+    Harness h(2);
     core::Project p;
     for (core::Id i = 1; i <= 32; ++i)
     {

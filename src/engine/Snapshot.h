@@ -11,7 +11,10 @@
 
 // The compiled, immutable form of a Project that the real-time thread renders.
 // Built on the controller thread by compileSnapshot(); published through
-// rt::SnapshotPublisher; never mutated afterwards.
+// rt::SnapshotPublisher; never mutated afterwards, except for the per-track work
+// buffers, which belong to whichever real-time thread renders that track in the
+// current block (the buffer pool is sized here, at compile time, so rendering never
+// allocates).
 
 namespace aural::engine
 {
@@ -35,10 +38,17 @@ struct TrackNode
     float pan = 0.0f;
     bool audible = true;         // mute/solo already resolved
     std::vector<ClipNode> clips; // sorted by start
+
+    // Work buffers for one block: the track's stereo output and clip read scratch.
+    mutable std::vector<float> outLeft, outRight, scratchLeft, scratchRight;
 };
 
 struct Snapshot
 {
+    // Largest block a snapshot can render in one call; the engine splits bigger
+    // device blocks.
+    static constexpr int maxBlockSamples = 8192;
+
     std::uint64_t epoch = 0; // set by the publisher
     double sampleRate = 48000.0;
     std::vector<TrackNode> tracks;

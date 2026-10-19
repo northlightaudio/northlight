@@ -18,6 +18,9 @@ ArrangeView::ArrangeView(audio::PeakStore& peaks) : peaks_(peaks)
     scrollbar_.setAutoHide(false);
     scrollbar_.addListener(this);
     addAndMakeVisible(scrollbar_);
+    verticalScrollbar_.setAutoHide(false);
+    verticalScrollbar_.addListener(this);
+    addAndMakeVisible(verticalScrollbar_);
     peaks_.addChangeListener(this);
 }
 
@@ -25,6 +28,7 @@ ArrangeView::~ArrangeView()
 {
     peaks_.removeChangeListener(this);
     scrollbar_.removeListener(this);
+    verticalScrollbar_.removeListener(this);
 }
 
 void ArrangeView::setProject(const core::Project* project)
@@ -70,7 +74,21 @@ core::SamplePosition ArrangeView::sampleForX(int x) const noexcept
 
 core::SamplePosition ArrangeView::visibleSamples() const noexcept
 {
-    return static_cast<core::SamplePosition>(std::max(1, getWidth() - headerWidth) * samplesPerPixel_);
+    return static_cast<core::SamplePosition>(std::max(1, getWidth() - headerWidth - scrollbarWidth) *
+                                             samplesPerPixel_);
+}
+
+int ArrangeView::contentHeight() const noexcept
+{
+    return project_ != nullptr ? static_cast<int>(project_->tracks.size()) * rowHeight : 0;
+}
+
+void ArrangeView::setVerticalScroll(int firstRowPixel)
+{
+    const int maxScroll = std::max(0, contentHeight() - lanesHeight());
+    verticalScroll_ = std::clamp(firstRowPixel, 0, maxScroll);
+    updateScrollbar();
+    repaint();
 }
 
 core::SamplePosition ArrangeView::contentLength() const noexcept
@@ -105,13 +123,19 @@ void ArrangeView::updateScrollbar()
     const juce::ScopedValueSetter<bool> guard(updatingScrollbar_, true);
     scrollbar_.setRangeLimits(0.0, static_cast<double>(contentLength()));
     scrollbar_.setCurrentRange(static_cast<double>(scroll_), static_cast<double>(visibleSamples()));
+    verticalScrollbar_.setRangeLimits(0.0, static_cast<double>(std::max(contentHeight(), lanesHeight())));
+    verticalScrollbar_.setCurrentRange(static_cast<double>(verticalScroll_),
+                                       static_cast<double>(lanesHeight()));
 }
 
-void ArrangeView::scrollBarMoved(juce::ScrollBar*, double newRangeStart)
+void ArrangeView::scrollBarMoved(juce::ScrollBar* bar, double newRangeStart)
 {
     if (updatingScrollbar_)
         return;
-    scroll_ = static_cast<core::SamplePosition>(newRangeStart);
+    if (bar == &verticalScrollbar_)
+        verticalScroll_ = static_cast<int>(newRangeStart);
+    else
+        scroll_ = static_cast<core::SamplePosition>(newRangeStart);
     repaint();
 }
 
@@ -122,16 +146,19 @@ void ArrangeView::changeListenerCallback(juce::ChangeBroadcaster*)
 
 void ArrangeView::resized()
 {
-    scrollbar_.setBounds(
-        headerWidth, getHeight() - scrollbarHeight, getWidth() - headerWidth, scrollbarHeight);
-    updateScrollbar();
+    scrollbar_.setBounds(headerWidth,
+                         getHeight() - scrollbarHeight,
+                         getWidth() - headerWidth - scrollbarWidth,
+                         scrollbarHeight);
+    verticalScrollbar_.setBounds(getWidth() - scrollbarWidth, rulerHeight, scrollbarWidth, lanesHeight());
+    setVerticalScroll(verticalScroll_);
 }
 
 // ----- input -------------------------------------------------------------------------------
 
 void ArrangeView::mouseDown(const juce::MouseEvent& e)
 {
-    if (e.x < headerWidth || e.y >= getHeight() - scrollbarHeight)
+    if (e.x < headerWidth || e.x >= getWidth() - scrollbarWidth || e.y >= getHeight() - scrollbarHeight)
         return;
     if (onLocate)
         onLocate(sampleForX(e.x));
@@ -145,10 +172,16 @@ void ArrangeView::mouseWheelMove(const juce::MouseEvent& e, const juce::MouseWhe
         setZoom(samplesPerPixel_ * factor, std::max(headerWidth, e.x));
         return;
     }
+    // Plain wheel scrolls tracks, Shift+wheel (or a horizontal wheel) scrolls time.
+    const bool horizontal = e.mods.isShiftDown() || wheel.deltaX != 0.0f;
     const float delta = wheel.deltaX != 0.0f ? wheel.deltaX : wheel.deltaY;
-    if (delta != 0.0f)
+    if (delta == 0.0f)
+        return;
+    if (horizontal)
         setScroll(scroll_ -
                   static_cast<core::SamplePosition>(delta * static_cast<float>(visibleSamples()) * 0.5f));
+    else
+        setVerticalScroll(verticalScroll_ - static_cast<int>(delta * static_cast<float>(rowHeight) * 3.0f));
 }
 
 // ----- painting ------------------------------------------------------------------------------
@@ -160,9 +193,63 @@ void ArrangeView::drawRuler(juce::Graphics& g, juce::Rectangle<int> area)
     g.fillRect(area);
     g.setColour(c.border);
     g.fillRect(area.withTrimmedTop(area.getHeight() - 1));
+    g.setFont(juce::FontOptions{theme_.type.caption});
 
-    // Tick every 1, 2, 5, 10, 30 or 60 s depending on zoom, aiming for ~90 px.
     const double rate = sampleRate();
+    const auto barsRow = area.removeFromTop(area.getHeight() / 2);
+    const auto timeRow = area;
+
+    // Bars and beats: label every 1, 2, 4, 8... bars so labels are ~80 px apart;
+    // beat ticks appear once a beat is at least 12 px wide.
+    if (project_ != nullptr)
+    {
+        const double spb = core::samplesPerBeat(rate, project_->tempoBpm, project_->timeSignature);
+        const int beatsPerBar = std::max(1, project_->timeSignature.numerator);
+        const double barPixels = spb * beatsPerBar / samplesPerPixel_;
+        int barStep = 1;
+        while (barPixels * barStep < 80.0)
+            barStep *= 2;
+        const bool showBeats = spb / samplesPerPixel_ >= 12.0;
+
+        const auto firstBar = static_cast<std::int64_t>(static_cast<double>(scroll_) / (spb * beatsPerBar));
+        for (std::int64_t bar = firstBar;; ++bar)
+        {
+            const auto barStart =
+                static_cast<core::SamplePosition>(std::llround(static_cast<double>(bar) * spb * beatsPerBar));
+            const int x = xForSample(barStart);
+            if (x > getWidth())
+                break;
+            const bool labelled = bar % barStep == 0;
+            if (x >= headerWidth)
+            {
+                g.setColour(labelled ? c.textSecondary : c.borderStrong);
+                g.fillRect(x, barsRow.getBottom() - (labelled ? 10 : 5), 1, labelled ? 10 : 5);
+                if (labelled)
+                {
+                    g.setColour(c.textPrimary);
+                    g.drawText(juce::String(bar + 1),
+                               x + 3,
+                               barsRow.getY() + 1,
+                               60,
+                               barsRow.getHeight() - 2,
+                               juce::Justification::centredLeft);
+                }
+            }
+            if (showBeats)
+                for (int beat = 1; beat < beatsPerBar; ++beat)
+                {
+                    const int bx =
+                        xForSample(barStart + static_cast<core::SamplePosition>(std::llround(beat * spb)));
+                    if (bx >= headerWidth && bx <= getWidth())
+                    {
+                        g.setColour(c.borderStrong);
+                        g.fillRect(bx, barsRow.getBottom() - 4, 1, 4);
+                    }
+                }
+        }
+    }
+
+    // Time: tick every 0.1 .. 300 s depending on zoom, aiming for ~90 px.
     const double secondsPerPixel = samplesPerPixel_ / rate;
     double step = 1.0;
     for (double candidate : {0.1, 0.25, 0.5, 1.0, 2.0, 5.0, 10.0, 30.0, 60.0, 120.0, 300.0})
@@ -171,8 +258,6 @@ void ArrangeView::drawRuler(juce::Graphics& g, juce::Rectangle<int> area)
         if (candidate / secondsPerPixel >= 90.0)
             break;
     }
-
-    g.setFont(juce::FontOptions{theme_.type.caption});
     const double firstSecond = std::floor(static_cast<double>(scroll_) / rate / step) * step;
     for (double t = firstSecond;; t += step)
     {
@@ -182,14 +267,65 @@ void ArrangeView::drawRuler(juce::Graphics& g, juce::Rectangle<int> area)
         if (x < headerWidth)
             continue;
         g.setColour(c.borderStrong);
-        g.fillRect(x, area.getBottom() - 8, 1, 8);
+        g.fillRect(x, timeRow.getBottom() - 8, 1, 8);
         g.setColour(c.textSecondary);
         const juce::String label = step < 1.0  ? juce::String(t, 2) + " s"
                                    : t >= 60.0 ? juce::String(static_cast<int>(t) / 60) + ":" +
                                                      juce::String(static_cast<int>(t) % 60).paddedLeft('0', 2)
                                                : juce::String(static_cast<int>(t)) + " s";
-        g.drawText(label, x + 3, area.getY() + 2, 70, area.getHeight() - 8, juce::Justification::centredLeft);
+        g.drawText(
+            label, x + 3, timeRow.getY() + 1, 70, timeRow.getHeight() - 8, juce::Justification::centredLeft);
     }
+}
+
+// ----- drag and drop ------------------------------------------------------------------------
+
+void ArrangeView::setAcceptedExtensions(const juce::String& wildcards)
+{
+    acceptedExtensions_.clear();
+    for (const auto& pattern : juce::StringArray::fromTokens(wildcards, ";", ""))
+        acceptedExtensions_.add(pattern.trim().fromLastOccurrenceOf("*", false, false).toLowerCase());
+}
+
+bool ArrangeView::isInterestedInFileDrag(const juce::StringArray& files)
+{
+    for (const auto& f : files)
+    {
+        const auto extension = juce::File(f).getFileExtension().toLowerCase();
+        if (acceptedExtensions_.isEmpty() || acceptedExtensions_.contains(extension))
+            return true;
+    }
+    return false;
+}
+
+void ArrangeView::fileDragEnter(const juce::StringArray&, int, int)
+{
+    dragOver_ = true;
+    repaint();
+}
+
+void ArrangeView::fileDragExit(const juce::StringArray&)
+{
+    dragOver_ = false;
+    repaint();
+}
+
+void ArrangeView::filesDropped(const juce::StringArray& files, int x, int)
+{
+    dragOver_ = false;
+    repaint();
+    if (!onImportFiles)
+        return;
+    std::vector<juce::File> accepted;
+    for (const auto& f : files)
+    {
+        const juce::File file(f);
+        if (acceptedExtensions_.isEmpty() ||
+            acceptedExtensions_.contains(file.getFileExtension().toLowerCase()))
+            accepted.push_back(file);
+    }
+    if (!accepted.empty())
+        onImportFiles(accepted, sampleForX(std::max(headerWidth, x)));
 }
 
 void ArrangeView::drawClip(juce::Graphics& g,
@@ -204,7 +340,8 @@ void ArrangeView::drawClip(juce::Graphics& g,
         return;
 
     const auto block = juce::Rectangle<int>(x0, lane.getY() + 4, x1 - x0, lane.getHeight() - 8);
-    const auto visible = block.getIntersection(lane.withLeft(headerWidth));
+    const auto visible =
+        block.getIntersection(lane.withLeft(headerWidth).withRight(getWidth() - scrollbarWidth));
     if (visible.isEmpty())
         return;
 
@@ -251,12 +388,19 @@ void ArrangeView::paint(juce::Graphics& g)
 
     drawRuler(g, getLocalBounds().removeFromTop(rulerHeight));
 
-    int y = rulerHeight;
+    int y = rulerHeight - verticalScroll_;
     if (project_ != nullptr)
     {
+        g.saveState();
+        g.reduceClipRegion(0, rulerHeight, getWidth() - scrollbarWidth, lanesHeight());
         for (const auto& track : project_->tracks)
         {
-            const juce::Rectangle<int> row(0, y, getWidth(), rowHeight);
+            if (y + rowHeight < rulerHeight || y > getHeight())
+            {
+                y += rowHeight;
+                continue;
+            }
+            const juce::Rectangle<int> row(0, y, getWidth() - scrollbarWidth, rowHeight);
             g.setColour(c.border);
             g.fillRect(row.withTrimmedTop(rowHeight - 1));
 
@@ -277,6 +421,7 @@ void ArrangeView::paint(juce::Graphics& g)
                        true);
             y += rowHeight;
         }
+        g.restoreState();
     }
 
     if (project_ == nullptr || project_->tracks.empty())
@@ -293,6 +438,12 @@ void ArrangeView::paint(juce::Graphics& g)
     {
         g.setColour(playing_ ? c.success : c.textPrimary);
         g.fillRect(px, 0, 2, getHeight() - scrollbarHeight);
+    }
+
+    if (dragOver_)
+    {
+        g.setColour(c.accent);
+        g.drawRect(getLocalBounds(), 2);
     }
 }
 

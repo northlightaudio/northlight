@@ -64,6 +64,9 @@ public:
         addAndMakeVisible(deviceSummary_);
 
         tracks_.onLocate = [this](core::SamplePosition p) { session_.locate(p); };
+        tracks_.onImportFiles = [this](const std::vector<juce::File>& files, core::SamplePosition at)
+        { importFiles(files, at); };
+        tracks_.setAcceptedExtensions(session_.mediaLoader().supportedExtensions());
         addAndMakeVisible(tracks_);
 
         audio_.addChangeListener(this);
@@ -156,6 +159,8 @@ private:
 
     void timerCallback() override
     {
+        if (++ticks_ % 15 == 0)
+            updateStatusText();
         tracks_.setPlayhead(session_.position(), session_.isPlaying());
         positionLabel_.setText(formatPosition(session_.project(), session_.position()),
                                juce::dontSendNotification);
@@ -193,11 +198,34 @@ private:
             warning = session_.sampleRateWarning();
         if (!lastImportError_.isEmpty())
             warning = lastImportError_;
-        if (warning.isNotEmpty())
-            text << emDash << warning;
+        baseStatus_ = text;
+        statusWarning_ = warning;
+        updateStatusText();
+    }
+
+    // Appends the live load figures (p50/p99/max of callback time against the
+    // deadline, overruns and driver-reported dropouts) to the status line.
+    void updateStatusText()
+    {
+        juce::String text = baseStatus_;
+        const auto stats = audio_.callback().stats().summary();
+        if (stats.callbacks > 0)
+        {
+            text << separator << "load p50 " << juce::String(stats.p50 * 100.0, 1) << "%  p99 "
+                 << juce::String(stats.p99 * 100.0, 1) << "%  max " << juce::String(stats.max * 100.0, 1)
+                 << "%";
+            if (stats.overruns > 0)
+                text << separator << juce::String(stats.overruns) << " overruns";
+            const int xruns = audio_.status().xruns;
+            if (xruns > 0)
+                text << separator << juce::String(xruns) << " dropouts";
+        }
+        if (statusWarning_.isNotEmpty())
+            text << emDash << statusWarning_;
         deviceSummary_.setText(text, juce::dontSendNotification);
         deviceSummary_.setColour(juce::Label::textColourId,
-                                 warning.isEmpty() ? theme_.colours.textSecondary : theme_.colours.warning);
+                                 statusWarning_.isEmpty() ? theme_.colours.textSecondary
+                                                          : theme_.colours.warning);
     }
 
     void importAudio()
@@ -212,16 +240,24 @@ private:
         chooser_->launchAsync(chooserFlags,
                               [this](const juce::FileChooser& fc)
                               {
-                                  lastImportError_.clear();
-                                  for (const auto& file : fc.getResults())
-                                  {
-                                      const auto error = session_.importAudioFile(file, 0);
-                                      if (!error.empty())
-                                          lastImportError_ = file.getFileName() + ": " + juce::String(error);
-                                  }
-                                  refresh();
-                                  grabKeyboardFocus();
+                                  std::vector<juce::File> files;
+                                  for (const auto& f : fc.getResults())
+                                      files.push_back(f);
+                                  importFiles(files, 0);
                               });
+    }
+
+    void importFiles(const std::vector<juce::File>& files, core::SamplePosition at)
+    {
+        lastImportError_.clear();
+        for (const auto& file : files)
+        {
+            const auto error = session_.importAudioFile(file, at);
+            if (!error.empty())
+                lastImportError_ = file.getFileName() + ": " + juce::String(error);
+        }
+        refresh();
+        grabKeyboardFocus();
     }
 
     MainWindow& owner_;
@@ -233,7 +269,9 @@ private:
     ui::ArrangeView tracks_;
     std::unique_ptr<juce::FileChooser> chooser_;
     juce::String lastImportError_;
+    juce::String baseStatus_, statusWarning_;
     bool lastPlaying_ = false;
+    int ticks_ = 0;
 };
 
 // Non-modal secondary window hosting the Audio Setup view. Closing it asks the main

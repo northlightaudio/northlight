@@ -7,7 +7,10 @@
 namespace aural::engine
 {
 
-AudioEngine::AudioEngine(MediaLoader& loader) : media_(loader) {}
+AudioEngine::AudioEngine(MediaLoader& loader, int workerThreads)
+    : media_(loader), pool_(workerThreads < 0 ? WorkerPool::recommendedWorkerCount() : workerThreads)
+{
+}
 
 // ----- controller -----------------------------------------------------------------------
 
@@ -75,7 +78,19 @@ void AudioEngine::process(float* const* outputs, int numOutputs, int numSamples)
 
     if (const Snapshot* snapshot = publisher_.acquire())
     {
-        renderer_.render(*snapshot, transport_, outputs, numOutputs, numSamples);
+        // Device blocks larger than the renderer's maximum are rendered in pieces.
+        constexpr int maxOutputs = 64;
+        float* pieces[maxOutputs];
+        const int channels = std::min(numOutputs, maxOutputs);
+        int done = 0;
+        while (done < numSamples)
+        {
+            const int count = std::min(numSamples - done, renderer_.maxBlockSize());
+            for (int ch = 0; ch < channels; ++ch)
+                pieces[ch] = outputs[ch] != nullptr ? outputs[ch] + done : nullptr;
+            renderer_.render(*snapshot, transport_, pieces, channels, count, &pool_);
+            done += count;
+        }
     }
     else
     {

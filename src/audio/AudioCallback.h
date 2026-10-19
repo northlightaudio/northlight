@@ -1,6 +1,7 @@
 #pragma once
 
 #include "engine/AudioEngine.h"
+#include "engine/rt/CallbackStats.h"
 
 #include <juce_audio_devices/juce_audio_devices.h>
 
@@ -54,6 +55,10 @@ public:
 
     // Set by audioDeviceError; cleared by the reader.
     bool takeErrorFlag() noexcept;
+
+    // Callback time as a fraction of each block's deadline; reset when the device
+    // starts.
+    const rt::CallbackStats& stats() const noexcept { return stats_; }
 
     // ----- loopback calibration ---------------------------------------------------
     // Driven from the message thread by LatencyCalibrator. The phase is a tiny state
@@ -122,6 +127,8 @@ private:
     std::atomic<bool> passThrough_{true};
 
     std::atomic<std::uint64_t> callbackCount_{0};
+    rt::CallbackStats stats_;
+    double secondsPerSample_ = 0.0; // audio thread only
     std::atomic<bool> running_{false};
     std::atomic<int> numInputs_{0};
     std::atomic<int> numOutputs_{0};

@@ -4,7 +4,9 @@ add_library(aural_rt STATIC
     rt/RealtimeGuard.h
     rt/RealtimeGuard.cpp
     rt/SpscQueue.h
-    rt/SnapshotPublisher.h)
+    rt/SnapshotPublisher.h
+    rt/CallbackStats.h
+    rt/Denormals.h)
 
 target_include_directories(aural_rt PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/..")
 target_link_libraries(aural_rt PUBLIC aural_options)
@@ -33,6 +35,8 @@ add_library(aural_engine STATIC
     DiskThread.h
     DiskThread.cpp
     Peaks.h
-    Peaks.cpp)
+    Peaks.cpp
+    WorkerPool.h
+    WorkerPool.cpp)
 
 target_link_libraries(aural_engine PUBLIC aural_rt aural_core)

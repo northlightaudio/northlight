@@ -7,15 +7,19 @@
 #include <juce_gui_basics/juce_gui_basics.h>
 
 #include <functional>
+#include <vector>
 
 namespace aural::ui
 {
 
 // The arrange view, Phase 2 scope: tracks as rows, clips with waveforms drawn from
-// the peak cache, a ruler, a playhead that follows playback, horizontal zoom
-// (Ctrl+wheel, around the pointer) and scroll (wheel / Shift+wheel / scrollbar).
-// Click the ruler or empty track space to locate. Editing arrives in Phase 6.
+// the peak cache, a bars/beats and time ruler, a playhead that follows playback,
+// horizontal zoom (Ctrl+wheel, around the pointer), vertical scroll (wheel) and
+// horizontal scroll (Shift+wheel / scrollbar),
+// and audio files dropped onto it become tracks at the drop position. Click the
+// ruler or empty track space to locate. Editing arrives in Phase 6.
 class ArrangeView final : public juce::Component,
+                          public juce::FileDragAndDropTarget,
                           private juce::ChangeListener,
                           private juce::ScrollBar::Listener
 {
@@ -27,17 +31,27 @@ public:
     void setPlayhead(core::SamplePosition position, bool playing);
 
     std::function<void(core::SamplePosition)> onLocate;
+    // Files dropped on the view, with the timeline position under the pointer.
+    std::function<void(const std::vector<juce::File>&, core::SamplePosition)> onImportFiles;
+    // Extensions the drop target accepts, e.g. "*.wav;*.flac".
+    void setAcceptedExtensions(const juce::String& wildcards);
 
     void paint(juce::Graphics& g) override;
     void resized() override;
     void mouseDown(const juce::MouseEvent& e) override;
     void mouseWheelMove(const juce::MouseEvent& e, const juce::MouseWheelDetails& wheel) override;
 
+    bool isInterestedInFileDrag(const juce::StringArray& files) override;
+    void fileDragEnter(const juce::StringArray& files, int x, int y) override;
+    void fileDragExit(const juce::StringArray& files) override;
+    void filesDropped(const juce::StringArray& files, int x, int y) override;
+
 private:
-    static constexpr int rulerHeight = 24;
+    static constexpr int rulerHeight = 40; // bars/beats row over a time row
     static constexpr int headerWidth = 160;
     static constexpr int rowHeight = 72;
     static constexpr int scrollbarHeight = 12;
+    static constexpr int scrollbarWidth = 12;
 
     void changeListenerCallback(juce::ChangeBroadcaster*) override;
     void scrollBarMoved(juce::ScrollBar*, double newRangeStart) override;
@@ -49,7 +63,10 @@ private:
     core::SamplePosition contentLength() const noexcept;
     void setZoom(double samplesPerPixel, int anchorX);
     void setScroll(core::SamplePosition firstVisible);
+    void setVerticalScroll(int firstRowPixel);
     void updateScrollbar();
+    int contentHeight() const noexcept;
+    int lanesHeight() const noexcept { return getHeight() - rulerHeight - scrollbarHeight; }
     void drawRuler(juce::Graphics& g, juce::Rectangle<int> area);
     void drawClip(juce::Graphics& g,
                   const core::Track& track,
@@ -64,7 +81,11 @@ private:
     double samplesPerPixel_ = 48000.0 / 40.0; // 40 px per second at 48 kHz
     core::SamplePosition scroll_ = 0;         // first visible sample
     juce::ScrollBar scrollbar_{false};
+    juce::ScrollBar verticalScrollbar_{true};
+    int verticalScroll_ = 0; // pixels
     bool updatingScrollbar_ = false;
+    juce::StringArray acceptedExtensions_;
+    bool dragOver_ = false;
 };
 
 } // namespace aural::ui

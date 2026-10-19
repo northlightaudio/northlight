@@ -4,6 +4,7 @@
 #include "engine/Renderer.h"
 #include "engine/Snapshot.h"
 #include "engine/Transport.h"
+#include "engine/WorkerPool.h"
 #include "engine/rt/SnapshotPublisher.h"
 #include "engine/rt/SpscQueue.h"
 
@@ -27,7 +28,10 @@ namespace aural::engine
 class AudioEngine
 {
 public:
-    explicit AudioEngine(MediaLoader& loader);
+    // workerThreads < 0 picks WorkerPool::recommendedWorkerCount().
+    explicit AudioEngine(MediaLoader& loader, int workerThreads = -1);
+
+    int workerThreads() const noexcept { return pool_.numWorkers(); }
 
     // ----- controller thread ------------------------------------------------------
     // Compiles and publishes the project. Media errors are available afterwards.
@@ -71,6 +75,7 @@ private:
     MediaCache media_;
     rt::SnapshotPublisher<Snapshot> publisher_;
     rt::SpscQueue<TransportCommand> commands_{commandQueueCapacity};
+    WorkerPool pool_;
     Renderer renderer_;
 
     TransportState transport_; // real-time thread only

@@ -62,6 +62,11 @@ std::unique_ptr<Snapshot> compileSnapshot(const core::Project& project, MediaCac
             clip.source = clip.keepAlive.get();
             node.clips.push_back(std::move(clip));
         }
+        const auto n = static_cast<size_t>(Snapshot::maxBlockSamples);
+        node.outLeft.assign(n, 0.0f);
+        node.outRight.assign(n, 0.0f);
+        node.scratchLeft.assign(n, 0.0f);
+        node.scratchRight.assign(n, 0.0f);
         snapshot->tracks.push_back(std::move(node));
     }
     return snapshot;

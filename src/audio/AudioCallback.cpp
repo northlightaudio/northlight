@@ -4,6 +4,7 @@
 #include "engine/rt/RealtimeGuard.h"
 
 #include <algorithm>
+#include <chrono>
 #include <cmath>
 
 namespace aural::audio
@@ -166,6 +167,8 @@ void AudioCallback::audioDeviceAboutToStart(juce::AudioIODevice* device)
     numOutputs_.store(device->getActiveOutputChannels().countNumberOfSetBits(), std::memory_order_relaxed);
     sampleRate_.store(device->getCurrentSampleRate(), std::memory_order_relaxed);
     currentGain_ = targetGain_.load(std::memory_order_relaxed);
+    secondsPerSample_ = device->getCurrentSampleRate() > 0.0 ? 1.0 / device->getCurrentSampleRate() : 0.0;
+    stats_.reset();
     inputPeak_.store(0.0f, std::memory_order_relaxed);
     outputPeak_.store(0.0f, std::memory_order_relaxed);
     // AudioDeviceManager splits oversized blocks, so the device buffer size bounds
@@ -204,6 +207,7 @@ void AudioCallback::audioDeviceIOCallbackWithContext(const float* const* inputCh
     rt::ScopedRealtimeSection realtime;
     juce::ScopedNoDenormals noDenormals; // FTZ/DAZ for the rest of the callback
 
+    const auto startedAt = std::chrono::steady_clock::now();
     callbackCount_.fetch_add(1, std::memory_order_relaxed);
 
     auto phase = calibrationPhase_.load(std::memory_order_acquire);
@@ -245,6 +249,12 @@ void AudioCallback::audioDeviceIOCallbackWithContext(const float* const* inputCh
     }
 
     raisePeak(outputPeak_, blockPeak(outputChannelData, numOutputChannels, numSamples));
+
+    const double elapsed =
+        std::chrono::duration<double>(std::chrono::steady_clock::now() - startedAt).count();
+    const double deadline = secondsPerSample_ * numSamples;
+    if (deadline > 0.0)
+        stats_.record(elapsed / deadline);
 }
 
 void AudioCallback::renderCalibration(
