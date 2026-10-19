@@ -3,7 +3,7 @@
 Living document. The intended architecture is in [PLAN.md](PLAN.md), section 3; this
 file records what is actually built and the decisions made along the way.
 
-## Current state (Phase 6, in progress)
+## Current state (Phase 6 complete, Phase 7 next)
 
 ```
 aural.exe
@@ -376,7 +376,7 @@ integrated loudness per BS.1770-4: the 400 ms window at every 100 ms hop is kept
 demand (absolute gate -70 LUFS, relative gate 10 LU under the mean of the rest).
 Play from stop restarts it.
 
-### Editing (Phase 6, in progress)
+### Editing (Phase 6)
 
 Clips carry linear fade-in and fade-out lengths that the renderer applies per
 sample, so overlapping clips with matching fades crossfade at a constant sum. The
@@ -423,7 +423,7 @@ offline). The blocks render on a background thread; the first
 end so the file starts and ends exactly on the range; the result carries the
 integrated loudness of the mix. Export... on the toolbar offers the three.
 
-### Plugin hosting (Phase 5, in progress)
+### Plugin hosting (Phase 5)
 
 Hosted plugins are inserts like the built-ins: the model insert's type is
 `vst3:<identifier>` and `hosting::HostFactory` creates a `hosting::HostedPlugin`
