@@ -1,0 +1,14 @@
+# The project model, commands/undo and project file serialisation. No JUCE: this is
+# tested without a message loop and reused by the scanner process later.
+add_library(aural_core STATIC
+    Model.h
+    Model.cpp
+    Command.h
+    Command.cpp
+    ProjectJson.h
+    ProjectJson.cpp)
+
+target_include_directories(aural_core PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/..")
+target_link_libraries(aural_core
+    PUBLIC aural_options
+    PRIVATE nlohmann_json::nlohmann_json)

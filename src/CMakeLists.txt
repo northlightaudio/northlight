@@ -45,6 +45,7 @@ target_include_directories(aural_juce INTERFACE
 target_compile_definitions(aural_juce INTERFACE
     $<TARGET_PROPERTY:aural_juce,COMPILE_DEFINITIONS>)
 
+add_subdirectory(core)
 add_subdirectory(engine)
 add_subdirectory(audio)
 add_subdirectory(ui)

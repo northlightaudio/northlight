@@ -45,6 +45,15 @@ FetchContent_Declare(JUCE
 # JUCE's own warning flags are applied per-target via juce::juce_recommended_warning_flags.
 FetchContent_MakeAvailable(JUCE)
 
+# Project file serialisation (header-only).
+FetchContent_Declare(nlohmann_json
+    GIT_REPOSITORY https://github.com/nlohmann/json.git
+    GIT_TAG        v3.12.0
+    GIT_SHALLOW    TRUE)
+set(JSON_BuildTests OFF CACHE INTERNAL "")
+set(JSON_Install OFF CACHE INTERNAL "")
+FetchContent_MakeAvailable(nlohmann_json)
+
 if(AURAL_BUILD_TESTS)
     FetchContent_Declare(Catch2
         GIT_REPOSITORY https://github.com/catchorg/Catch2.git
