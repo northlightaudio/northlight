@@ -5,6 +5,7 @@
 #include "engine/WavFile.h"
 
 #include <algorithm>
+#include <cmath>
 
 namespace aural
 {
@@ -162,6 +163,44 @@ std::string ProjectSession::sampleRateWarning() const
            " Hz; playback will be pitched.";
 }
 
+// ----- metronome, loop, punch ------------------------------------------------------------------
+
+void ProjectSession::setMetronome(bool enabled)
+{
+    metronome_ = enabled;
+    engine_.setMetronome(enabled, 0.5f);
+    sendChangeMessage();
+}
+
+void ProjectSession::setCountInBars(int bars)
+{
+    countInBars_ = std::clamp(bars, 0, 4);
+    sendChangeMessage();
+}
+
+void ProjectSession::setRegion(core::SamplePosition start, core::SamplePosition end)
+{
+    regionStart_ = std::max<core::SamplePosition>(0, std::min(start, end));
+    regionEnd_ = std::max(start, end);
+    engine_.setLoop(regionStart_, regionEnd_, loop_);
+    engine_.setPunch(regionStart_, regionEnd_, punch_);
+    sendChangeMessage();
+}
+
+void ProjectSession::setLoopEnabled(bool enabled)
+{
+    loop_ = enabled;
+    engine_.setLoop(regionStart_, regionEnd_, loop_);
+    sendChangeMessage();
+}
+
+void ProjectSession::setPunchEnabled(bool enabled)
+{
+    punch_ = enabled;
+    engine_.setPunch(regionStart_, regionEnd_, punch_);
+    sendChangeMessage();
+}
+
 // ----- recording ---------------------------------------------------------------------------
 
 juce::File ProjectSession::mediaFolder() const
@@ -204,8 +243,18 @@ std::string ProjectSession::startRecording()
     if (session->inputs().empty())
         return "arm a track and give it an input first";
 
+    const double barSamples =
+        core::samplesPerBeat(project_.sampleRate, project_.tempoBpm, project_.timeSignature) *
+        std::max(1, project_.timeSignature.numerator);
+    const auto countIn = static_cast<core::SamplePosition>(std::llround(barSamples * countInBars_));
+
+    // Punching in: roll from one bar before the region so the take has a run-up.
+    if (punch_ && regionEnd_ > regionStart_)
+        engine_.locate(
+            std::max<core::SamplePosition>(0, regionStart_ - static_cast<core::SamplePosition>(barSamples)));
+
     std::string error;
-    if (!engine_.startRecording(std::move(session), error))
+    if (!engine_.startRecording(std::move(session), error, countIn))
         return error;
     recordingMessage_.clear();
     sendChangeMessage();

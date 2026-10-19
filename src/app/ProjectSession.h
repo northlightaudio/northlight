@@ -62,6 +62,23 @@ public:
     bool isPlaying() const noexcept { return engine_.isPlaying(); }
     core::SamplePosition position() const noexcept { return engine_.position(); }
 
+    // ----- metronome, loop, punch ---------------------------------------------------
+    void setMetronome(bool enabled);
+    bool metronomeEnabled() const noexcept { return metronome_; }
+    // Bars of click before a recording starts (0 = none).
+    void setCountInBars(int bars);
+    int countInBars() const noexcept { return countInBars_; }
+    // The loop/punch region on the timeline (shared by both).
+    void setRegion(core::SamplePosition start, core::SamplePosition end);
+    core::SamplePosition regionStart() const noexcept { return regionStart_; }
+    core::SamplePosition regionEnd() const noexcept { return regionEnd_; }
+    void setLoopEnabled(bool enabled);
+    bool loopEnabled() const noexcept { return loop_; }
+    // Punch: capture only inside the region; recording starts one bar before it.
+    void setPunchEnabled(bool enabled);
+    bool punchEnabled() const noexcept { return punch_; }
+    bool isCountingIn() const noexcept { return engine_.isCountingIn(); }
+
     // ----- recording ----------------------------------------------------------------
     // Starts recording every armed track that has an input, from the current
     // position. Returns an error message or empty. stop() ends the recording; the
@@ -101,6 +118,11 @@ private:
     juce::File projectFile_;
     bool modified_ = false;
     std::string recordingMessage_;
+    bool metronome_ = false;
+    int countInBars_ = 1;
+    core::SamplePosition regionStart_ = 0, regionEnd_ = 0;
+    bool loop_ = false;
+    bool punch_ = false;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(ProjectSession)
 };

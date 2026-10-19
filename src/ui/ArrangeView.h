@@ -32,10 +32,14 @@ public:
 
     void setProject(const core::Project* project);
     void setPlayhead(core::SamplePosition position, bool playing, bool recording);
+    // The loop/punch region, drawn in the ruler and over the lanes; set by dragging
+    // in the ruler.
+    void setRegion(core::SamplePosition start, core::SamplePosition end, bool loop, bool punch);
     // Names of the device's active inputs, in callback order, for the track headers.
     void setInputNames(std::vector<std::string> names);
 
     std::function<void(core::SamplePosition)> onLocate;
+    std::function<void(core::SamplePosition, core::SamplePosition)> onRegionChanged;
     std::function<void(core::Id, int)> onTrackInputChanged;
     std::function<void(core::Id, bool)> onTrackArmChanged;
     std::function<void(core::Id, core::MonitorMode)> onTrackMonitorChanged;
@@ -47,6 +51,8 @@ public:
     void paint(juce::Graphics& g) override;
     void resized() override;
     void mouseDown(const juce::MouseEvent& e) override;
+    void mouseDrag(const juce::MouseEvent& e) override;
+    void mouseUp(const juce::MouseEvent& e) override;
     void mouseWheelMove(const juce::MouseEvent& e, const juce::MouseWheelDetails& wheel) override;
 
     bool isInterestedInFileDrag(const juce::StringArray& files) override;
@@ -89,6 +95,10 @@ private:
     core::SamplePosition playhead_ = 0;
     bool playing_ = false;
     bool recording_ = false;
+    core::SamplePosition regionStart_ = 0, regionEnd_ = 0;
+    bool loop_ = false, punch_ = false;
+    bool draggingRegion_ = false;
+    core::SamplePosition dragAnchor_ = 0;
     std::vector<std::unique_ptr<TrackHeader>> headers_;
     std::vector<std::string> inputNames_;
     double samplesPerPixel_ = 48000.0 / 40.0; // 40 px per second at 48 kHz

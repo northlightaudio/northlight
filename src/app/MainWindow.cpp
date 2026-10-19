@@ -56,6 +56,19 @@ public:
         button(returnButton_, "|<", [this] { session_.returnToStart(); });
         button(playButton_, "Play", [this] { session_.togglePlay(); });
         button(recordButton_, "Rec", [this] { toggleRecord(); });
+        button(clickButton_, "Click", [this] { session_.setMetronome(!session_.metronomeEnabled()); });
+        button(countInButton_,
+               "Count-in 1",
+               [this] { session_.setCountInBars((session_.countInBars() + 1) % 3); });
+        button(loopButton_, "Loop", [this] { session_.setLoopEnabled(!session_.loopEnabled()); });
+        button(punchButton_, "Punch", [this] { session_.setPunchEnabled(!session_.punchEnabled()); });
+        for (auto* b : {&clickButton_, &loopButton_, &punchButton_})
+        {
+            b->setColour(juce::TextButton::buttonOnColourId, theme_.colours.accent);
+            b->setColour(juce::TextButton::textColourOnId, theme_.colours.accentText);
+        }
+        punchButton_.setColour(juce::TextButton::buttonOnColourId, theme_.colours.danger);
+        punchButton_.setColour(juce::TextButton::textColourOnId, theme_.colours.textPrimary);
         recordButton_.setColour(juce::TextButton::buttonOnColourId, theme_.colours.danger);
         recordButton_.setColour(juce::TextButton::textColourOnId, theme_.colours.textPrimary);
         button(audioSetupButton_, "Audio Setup...", [this] { owner_.showAudioSetup(); });
@@ -71,6 +84,8 @@ public:
         addAndMakeVisible(deviceSummary_);
 
         tracks_.onLocate = [this](core::SamplePosition p) { session_.locate(p); };
+        tracks_.onRegionChanged = [this](core::SamplePosition start, core::SamplePosition end)
+        { session_.setRegion(start, end); };
         tracks_.onTrackInputChanged = [this](core::Id id, int channel)
         { session_.execute(std::make_unique<core::SetTrackInput>(id, channel)); };
         tracks_.onTrackArmChanged = [this](core::Id id, bool armed)
@@ -131,7 +146,11 @@ public:
         place(returnButton_, 40);
         place(playButton_, 64);
         place(recordButton_, 54);
-        place(positionLabel_, 220);
+        place(positionLabel_, 200);
+        place(clickButton_, 54);
+        place(countInButton_, 86);
+        place(loopButton_, 54);
+        place(punchButton_, 60);
 
         audioSetupButton_.setBounds(bar.removeFromRight(130).withSizeKeepingCentre(130, h));
 
@@ -213,6 +232,7 @@ private:
             lastPlaying_ = playing;
             lastRecording_ = recording;
             playButton_.setButtonText(playing ? "Stop" : "Play");
+            recordButton_.setButtonText(session_.isCountingIn() ? "..." : "Rec");
             playButton_.setToggleState(playing, juce::dontSendNotification);
             recordButton_.setToggleState(recording, juce::dontSendNotification);
         }
@@ -309,9 +329,15 @@ private:
             tracks_.setInputNames(std::move(names));
         }
         tracks_.setProject(&session_.project());
+        tracks_.setRegion(
+            session_.regionStart(), session_.regionEnd(), session_.loopEnabled(), session_.punchEnabled());
         undoButton_.setEnabled(session_.canUndo());
         redoButton_.setEnabled(session_.canRedo());
         saveButton_.setEnabled(!session_.isRecording());
+        clickButton_.setToggleState(session_.metronomeEnabled(), juce::dontSendNotification);
+        countInButton_.setButtonText("Count-in " + juce::String(session_.countInBars()));
+        loopButton_.setToggleState(session_.loopEnabled(), juce::dontSendNotification);
+        punchButton_.setToggleState(session_.punchEnabled(), juce::dontSendNotification);
 
         juce::String text;
         if (!s.open)
@@ -403,7 +429,8 @@ private:
     ProjectSession& session_;
     const ui::Theme& theme_ = ui::Theme::dark();
     juce::TextButton newButton_, openButton_, saveButton_, importButton_, undoButton_, redoButton_,
-        returnButton_, playButton_, recordButton_, audioSetupButton_;
+        returnButton_, playButton_, recordButton_, clickButton_, countInButton_, loopButton_, punchButton_,
+        audioSetupButton_;
     juce::Label positionLabel_, deviceSummary_;
     ui::ArrangeView tracks_;
     std::unique_ptr<juce::FileChooser> chooser_;

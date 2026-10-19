@@ -213,12 +213,54 @@ void ArrangeView::resized()
 
 // ----- input -------------------------------------------------------------------------------
 
+void ArrangeView::setRegion(core::SamplePosition start, core::SamplePosition end, bool loop, bool punch)
+{
+    regionStart_ = start;
+    regionEnd_ = end;
+    loop_ = loop;
+    punch_ = punch;
+    repaint();
+}
+
 void ArrangeView::mouseDown(const juce::MouseEvent& e)
 {
     if (e.x < headerWidth || e.x >= getWidth() - scrollbarWidth || e.y >= getHeight() - scrollbarHeight)
         return;
+    if (e.y < rulerHeight)
+    {
+        // Drag in the ruler to set the loop/punch region; a plain click locates.
+        draggingRegion_ = true;
+        dragAnchor_ = sampleForX(e.x);
+        return;
+    }
     if (onLocate)
         onLocate(sampleForX(e.x));
+}
+
+void ArrangeView::mouseDrag(const juce::MouseEvent& e)
+{
+    if (!draggingRegion_)
+        return;
+    const auto current = sampleForX(std::clamp(e.x, headerWidth, getWidth() - scrollbarWidth));
+    regionStart_ = std::min(dragAnchor_, current);
+    regionEnd_ = std::max(dragAnchor_, current);
+    repaint();
+}
+
+void ArrangeView::mouseUp(const juce::MouseEvent& e)
+{
+    if (!draggingRegion_)
+        return;
+    draggingRegion_ = false;
+    if (e.mouseWasDraggedSinceMouseDown())
+    {
+        if (onRegionChanged)
+            onRegionChanged(regionStart_, regionEnd_);
+    }
+    else if (onLocate)
+    {
+        onLocate(dragAnchor_);
+    }
 }
 
 void ArrangeView::mouseWheelMove(const juce::MouseEvent& e, const juce::MouseWheelDetails& wheel)
@@ -483,6 +525,24 @@ void ArrangeView::paint(juce::Graphics& g)
         g.drawText("Import an audio file to create a track",
                    getLocalBounds().withTrimmedTop(rulerHeight),
                    juce::Justification::centred);
+    }
+
+    // Loop/punch region over the ruler and the lanes.
+    if (regionEnd_ > regionStart_)
+    {
+        const int x0 = std::max(headerWidth, xForSample(regionStart_));
+        const int x1 = std::min(getWidth() - scrollbarWidth, xForSample(regionEnd_));
+        if (x1 > x0)
+        {
+            const auto colour = punch_ ? c.danger : loop_ ? c.accent : c.textSecondary;
+            g.setColour(colour.withAlpha(loop_ || punch_ ? 0.35f : 0.2f));
+            g.fillRect(x0, 0, x1 - x0, rulerHeight - 1);
+            g.setColour(colour.withAlpha(0.08f));
+            g.fillRect(x0, rulerHeight, x1 - x0, lanesHeight());
+            g.setColour(colour);
+            g.fillRect(x0, 0, 1, getHeight() - scrollbarHeight);
+            g.fillRect(x1 - 1, 0, 1, getHeight() - scrollbarHeight);
+        }
     }
 
     const int px = xForSample(playhead_);
