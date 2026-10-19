@@ -102,14 +102,17 @@ round-trip latency (or the driver's reported latency when no calibration matches
 **Click** turns the metronome on, **Count-in** cycles 0/1/2 bars of click before a
 take, dragging in the ruler sets a region that **Loop** repeats and **Punch**
 records into (rolling from one bar before it).
+With **Loop** on, each pass through the region becomes a new take on the track.
 Recordings go next to the project file in a `<project> Media` folder, or to
 `Documents\Aural\Recordings` for an unsaved project. If the app dies while recording,
-the next launch repairs the unfinished files and adds them as "Recovered" tracks.
+the next launch offers to repair the unfinished files and add them as "Recovered"
+tracks, or set them aside.
 Projects are `.aural` files: **New**, **Open...**, **Save** (Ctrl+N / Ctrl+O / Ctrl+S,
 Ctrl+Shift+S to save as).
 
 For unattended checks: `Aural.exe --import <file> [--import <file>] --play`, and
-`Aural.exe --record <inputs> --stop-after <seconds>`.
+`Aural.exe --record <inputs> [--loop <from> <to>] [--no-count-in] --stop-after <seconds>`.
+The offline recording soak is `aural_record_soak --inputs 16 --minutes 30 --speed 8`.
 
 ### Audio setup
 

@@ -37,9 +37,16 @@ aural_unit_tests.exe
                      worker pool, callback stats, recording (sample-exact capture,
                      device stop mid-record, WAV repair, monitoring)
 
-aural_loopback_tool.exe
-  tests/hardware     Console tool: list devices, open one, run the loopback
-                     calibration. Built, never run by CTest.
+aural_juce_tests.exe
+  tests/unit_juce    JUCE-linked tests that need no device: stream reader
+                     resampling, AudioCallback driving the engine through a fake
+                     juce::AudioIODevice
+
+aural_loopback_tool.exe, aural_record_soak.exe
+  tests/hardware     Console tools: list devices / loopback calibration; the
+                     offline recording soak (N inputs for M minutes through the
+                     record path, verified sample-exactly). Built, never run by
+                     CTest.
 ```
 
 Build targets:
@@ -198,19 +205,44 @@ the rings every 10 ms and rewrites the WAV headers every second, so a crash lose
 most a second of header bookkeeping and nothing of the audio. Overruns (a full ring)
 drop the block and count it rather than block.
 
+Loop recording: when the transport wraps while capturing, the real-time thread
+marks a take boundary (the cumulative captured count plus the loop start) through a
+lock-free queue; the writer closes the file at that sample and opens
+`<name>-take<n>.partial.wav`. Every pass through the loop becomes its own clip at
+the loop start, later takes on top of earlier ones on the same track (take lanes
+with their own rows come with the editing phase).
+
 Stop, locate or a device stop end the session on the real-time side; once the
 writer has closed the files the session polls `collectRecording()`, renames the
-`.partial.wav` files to `.wav` and adds the clips in one undo step, shifted back by
-`recordingLatencySamples()`: the loopback calibration when it matches the device
-configuration, otherwise the driver's reported input plus output latency. At
-startup and on open, `recoverPartialRecordings()` repairs any `.partial.wav` left in
-the media folder from the file size (`WavWriter::repair`) and imports it as a
-"Recovered" track.
+`.partial.wav` files to `.wav` and adds the clips in one undo step. Placement is
+`engine::placeRecording`: shifted back by `recordingLatencySamples()` (the loopback
+calibration when it matches the device configuration, otherwise the driver's
+reported input plus output latency), trimming the front of anything that would
+land before zero. At startup and on open, the main window counts `.partial.wav`
+files in the media folder and asks whether to recover them (repair from the file
+size with `WavWriter::repair`, import as "Recovered" tracks) or set them aside as
+`.discarded.wav`.
 
 Input monitoring is part of the track render: a track in monitor mode "on" always
 hears its input through its gain and pan; "automatic" hears it while armed and the
 transport is not playing back (stopped or recording); "off" never. The Phase 1
 pass-through in Audio Setup is still available as a global monitor and adds on top.
+Hardware (driver-side direct) monitoring is not controlled from Aural: JUCE's ASIO
+wrapper does not expose the input-monitor message, so an interface's own direct
+monitoring is used by setting the track to "off". The header shows a green dot
+while a track's input is being heard and the arm button reads REC during a take.
+
+### Phase 3 milestone
+
+The plan's milestone is 16 inputs for 30 minutes with no dropouts, then a kill and
+recovery. The Volt has four inputs, so the 16-input run is the offline soak
+(`aural_record_soak --inputs 16 --minutes 30 --speed 8`): synthetic inputs through
+the real record path (rings, writer thread, header rewrites) at eight times real
+time, every file verified sample-exactly afterwards. On the development machine it
+passed with zero ring overruns (see the hand-over note for the figures). On the Volt,
+two inputs were recorded and placed, a one-bar count-in delayed capture by exactly
+two seconds, and a process killed mid-take left partial files that the next launch
+offered and recovered.
 
 ### Metronome, count-in, loop and punch
 
@@ -303,3 +335,6 @@ launches; `JUCE_MODAL_LOOPS_PERMITTED` stays 0.
 | 2026-10-19 | One streaming window per clip, not per file | Two clips of one long file (or a loop longer than the window) share nothing but the decoded file; a shared window seeks back and forth and plays silence. A private window per clip costs one file handle and a few MB each, cached by clip id so edits do not reset it. |
 | 2026-10-19 | Own Hermite resampler instead of juce::LagrangeInterpolator | The Lagrange interpolator carries a ~2.5-sample lookback delay and sequential state, which misaligned imported media and made chunked seeks awkward. A stateless resampler evaluated at exact positions is simpler and sample-aligned; a windowed-sinc converter for offline bounces is still planned for Phase 9. |
 | 2026-10-19 | Loops shorter than 64 samples are refused | Every loop pass inside a block costs a render span and a worker wake; a one-sample loop would issue hundreds per block for no musical purpose. |
+| 2026-10-19 | Takes are split by the writer at marks from the audio thread, into one file per pass | The audio thread must not open files; marking the cumulative sample count is one lock-free push, and the writer, which already owns the files, cuts them exactly there. One file per take keeps every take a plain clip. |
+| 2026-10-19 | Crash recovery asks before importing | A recovered take is usually wanted, but silently adding tracks to whatever project opens next (possibly an unrelated one) would surprise; the prompt keeps it a one-click choice and sets aside what is declined rather than deleting it. |
+| 2026-10-19 | 16-input soak is offline, not on hardware | The Volt has four inputs and the engine's record path is identical for synthetic and device inputs after the callback; the offline soak exercises rings, writer and header rewrites at eight times real time, which is a stricter disk test than real time. |
