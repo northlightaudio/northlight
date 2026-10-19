@@ -124,7 +124,7 @@ private:
     std::atomic<engine::AudioEngine*> engine_{nullptr};
     std::atomic<float> targetGain_{1.0f};
     float currentGain_ = 1.0f; // audio thread only
-    std::atomic<bool> passThrough_{true};
+    std::atomic<bool> passThrough_{false};
 
     std::atomic<std::uint64_t> callbackCount_{0};
     rt::CallbackStats stats_;

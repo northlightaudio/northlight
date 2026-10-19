@@ -90,7 +90,7 @@ TEST_CASE("Missing and malformed keys fall back to defaults", "[audio][settings]
     CHECK(s.sampleRate == 0.0);
     CHECK(s.bufferSize == 0);
     CHECK(s.masterGain == 1.0f);
-    CHECK(s.passThroughEnabled);
+    CHECK_FALSE(s.passThroughEnabled); // off by default: feedback otherwise
     REQUIRE(s.inputChannels.has_value());
     CHECK(*s.inputChannels == std::vector<int>{1, 3});
     CHECK_FALSE(s.calibration.has_value());

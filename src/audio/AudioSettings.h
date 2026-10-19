@@ -52,7 +52,10 @@ struct AudioSettings
 
     // Pass-through monitoring (Phase 1 only; replaced by the mixer in Phase 4).
     float masterGain = 1.0f; // linear
-    bool passThroughEnabled = true;
+    // Off by default: with a microphone on an input and speakers on the output,
+    // pass-through on first launch is immediate feedback. The user opts in from
+    // Audio Setup; tracks monitor through their own monitor mode instead.
+    bool passThroughEnabled = false;
 
     std::optional<LatencyCalibration> calibration;
 

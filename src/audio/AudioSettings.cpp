@@ -188,7 +188,7 @@ AudioSettings AudioSettings::fromKeyValues(const KeyValues& values)
     if (const auto* text = find(values, keyOutputChannels))
         s.outputChannels = splitChannels(*text);
     s.masterGain = static_cast<float>(getDouble(values, keyMasterGain, 1.0));
-    s.passThroughEnabled = getBool(values, keyPassThrough, true);
+    s.passThroughEnabled = getBool(values, keyPassThrough, false);
     if (const auto* text = find(values, keyMidiInputs))
         s.midiInputs = splitNames(*text);
     s.midiOutput = getString(values, keyMidiOutput);

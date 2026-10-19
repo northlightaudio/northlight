@@ -25,7 +25,7 @@ LATENCY
   Loopback      [LINE 1 ▾] → [INPUT 1 ▾]
 
 MONITORING
-  [✓] Pass inputs through to outputs   Level ──────o──  -6.0 dB
+  [ ] Pass inputs through to outputs   Level ──────o──  -6.0 dB
   Input ▁▃▅▇▆▅▃▁        Output ▁▃▅▇▆▅▃▁
 
 ● Running · ASIO · 2 in / 2 out · 0 dropouts
@@ -40,6 +40,12 @@ MONITORING
 - Calibrate runs as an inline progress ("Playing click… 3/5") with the measured
   result appearing in `textPrimary` and the reported value dimming to
   `textSecondary` once a measurement exists; Clear resets.
+- Pass-through is **off by default** and is never turned on by the app: a
+  microphone on an input and speakers on the output would feed back the moment the
+  device opens. The checkbox carries the hint "Hear the selected inputs directly.
+  Use headphones." and, when turned on while any input meter is live, a one-time
+  toast warns about feedback. Track monitoring uses each track's monitor mode
+  instead.
 - Status line at the bottom in `timeSmall` mono with a `success`/`warning`/`danger`
   dot.
 - Device loss: the status line turns `warning` with "Device unavailable, retrying…";
