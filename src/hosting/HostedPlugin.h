@@ -50,6 +50,7 @@ public:
     void prepare(double sampleRate, int maxBlockSize) override;
     void setParameter(int, float) noexcept override {}
     float parameter(int) const noexcept override { return 0.0f; }
+    bool ownsParameters() const noexcept override { return true; }
     void process(float* left, float* right, int numSamples) noexcept override;
     bool acceptsSidechain() const noexcept override { return sidechain_.load(std::memory_order_acquire); }
     // Instruments (and MIDI effects): the block's events go into the plugin's

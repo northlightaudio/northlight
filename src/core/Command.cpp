@@ -27,6 +27,11 @@ public:
     }
     void add(std::unique_ptr<Command> c) { commands_.push_back(std::move(c)); }
     bool empty() const noexcept { return commands_.empty(); }
+    void touchedParameters(std::vector<ParameterTouch>& out) const override
+    {
+        for (const auto& c : commands_)
+            c->touchedParameters(out);
+    }
 
 private:
     std::string name_;
@@ -984,6 +989,8 @@ void SetInsertSidechain::apply(Project& p)
     auto& i = requireInsert(requireChannel(p, channelId_), insertId_);
     if (value_ != invalidId && p.findChannel(value_) == nullptr)
         throw std::logic_error("sidechain source does not exist");
+    if (p.keyWouldCycle(channelId_, value_))
+        throw std::logic_error("sidechain source would form a feedback loop");
     previous_ = i.sidechain;
     i.sidechain = value_;
 }

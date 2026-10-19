@@ -1,5 +1,6 @@
 #pragma once
 
+#include "core/Command.h"
 #include "core/Model.h"
 #include "engine/Loudness.h"
 #include "engine/Meters.h"
@@ -99,6 +100,10 @@ public:
     // Live values: pushed to the running graph without a recompile (the renderer
     // ramps gains and pans; insert parameters are atomics on the instance).
     void applyLiveValues(const core::Project& project);
+    // Pushes the model's value of the given insert parameters to their instances,
+    // whether or not the processor owns its parameters (a command touched them).
+    void pushInsertParameters(const core::Project& project,
+                              const std::vector<core::Command::ParameterTouch>& touches);
     // The meter slot of the master in the current snapshot.
     int masterMeterSlot() const noexcept { return masterMeterSlot_.load(std::memory_order_relaxed); }
     // Restarts the integrated loudness measurement.
@@ -110,6 +115,8 @@ public:
     const Snapshot* snapshotForTest() const noexcept { return publisher_.currentForController(); }
     // True when an insert's latency changed since the last setProject(): recompile.
     bool insertLatencyChanged() const noexcept { return inserts_.latencyChanged(); }
+    // A hosted plugin asked to be recreated: setProject() makes the replacement.
+    bool insertRestartRequested() const noexcept { return inserts_.restartRequested(); }
     // The live processor behind a model insert, if one exists (controller thread).
     std::shared_ptr<InsertProcessor> insertInstance(core::Id insertId) const
     {

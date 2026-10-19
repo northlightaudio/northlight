@@ -37,6 +37,10 @@ public:
     std::function<void(std::unique_ptr<core::Command>)> onCommand;
     std::function<void(const std::string& name)> onGestureBegin;
     std::function<void()> onGestureEnd;
+    // A parameter drag began/ended (by index): a hosted plugin gets its gesture
+    // events through these.
+    std::function<void(int)> onParameterGestureBegin;
+    std::function<void(int)> onParameterGestureEnd;
 
     void paint(juce::Graphics& g) override;
     void resized() override;

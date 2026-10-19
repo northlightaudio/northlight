@@ -487,27 +487,74 @@ CLAP) by `hosting::HostedClapPlugin`, behind the same insert interface, as
 `clap:<id>` types; `HostFactory` picks the format from the type prefix, so the
 chain, the cache, the window and the browser know nothing format-specific. The
 host object implements log, thread-check, params, state, latency, audio-ports,
-note-ports (no dialects yet), gui and timer-support. Main-thread calls (init,
-activate, state, params flush while idle, gui) run on the message thread;
-audio-thread calls (start/stop_processing, process) on the real-time thread, or on
-the message thread while no audio runs, when the thread check vouches for it.
-Parameter changes from the host are queued on an SPSC queue and become sample-0
-events of the next block, or go through `params.flush` when the plugin is idle;
-the plugin's own parameter events update the host's view. Audio goes through
-preallocated `clap_audio_buffer` arrays in place (main stereo port; a second
-input port is the key), events through preallocated lists: nothing allocates on
-the real-time thread (tested under the hook). State is `clap.state` over a byte
-vector, base64 in the project like VST3 state; presets are that blob in a
-`.clappreset` file under `Documents/CLAP Presets/<vendor>/<plugin>`. The GUI
-(`clap.gui`, win32) is embedded by `ui::ClapEditor`: a plain child window of the
-JUCE window that JUCE keeps positioned over the component becomes the plugin's
-parent, so the GUI sits under the window's bar; the plugin's resize requests are
-honoured and `set_scale` carries the display scale. The scanner inspects `.clap`
-files in the same child process (entry, factory, descriptors) and the registry
-records each plugin's format; the browser shows it and filters effects from
-instruments. A test effect (`AuralTestGain.clap`, built with the tests) exercises
-the host end to end; no third-party CLAP plugin is installed on this machine, so
-the GUI path is verified only by construction.
+note-ports (CLAP and MIDI 1.0 dialects), gui and timer-support. The library and
+its entry point are shared by every instance of one file and released with the
+last (a per-instance init/deinit would break plugins that count them).
+
+Ports are negotiated once, at creation: every audio port's channel count and
+in-place pair are read; the main input must be mono (fed the summed pair) or
+stereo, the main output mono (copied to both sides) or stereo, a stereo second
+input port is the key, and every other port is fed or drained through silent
+scratch so the plugin always sees exactly the buffer and channel counts it
+declared (a four-channel main port is refused with a message, never indexed
+past). The output is in place on the chain's pair only when the plugin pairs the
+ports (`in_place_pair`); otherwise it gets its own output buffers. The input is
+copied before every call: a process error passes it through, and bypass
+crossfades to the dry signal delayed by the plugin's latency (a ring of history
+fed every block) so a bypassed lookahead plugin stays where the graph's
+compensation expects it; a failed activation reports zero latency.
+
+Threads follow the spec: main-thread calls (init, activate, state, gui, rescans)
+on the message thread; audio-thread calls (start/stop_processing, process) on the
+real-time thread. Host parameter changes and gestures (the generic editor's
+drags send `PARAM_GESTURE_BEGIN/END`) are queued on an SPSC queue and become
+sample-0 events of the next block; while the engine is not running the session's
+poll flushes them through `params.flush` (as an audio-thread call under the
+pretend flag when the plugin is active, after leaving the processing state),
+so a value set with the device stopped reaches the plugin and its state. The
+poll also services every live instance's requests made from the audio thread
+(`request_callback`, latency changes, GUI closures); a `request_callback` from
+the message thread is answered through an async message that checks the
+instance is still alive. `params.rescan` while active never reallocates the
+tables the audio thread walks: values and texts are refreshed in place, and a
+change of the parameter set (or `RESCAN_ALL`, legal only when inactive) becomes
+a restart request. `request_restart` (and an audio-port rescan) is honoured by
+the insert cache: the next compile creates a fresh instance with the old one's
+state and the snapshot takes it, so the real-time thread never sees a
+deactivation; a plugin window on the old instance closes. The plugin's own
+parameter events update the host's view.
+
+A hosted plugin owns its parameters: the model's parameter list is not pushed on
+compiles or on live commands, only the parameters a command touched (set, undo,
+redo) reach the instance, and the model's list is brought up to date from the
+instance before such a command so undo restores the real previous value. A
+preset loaded from the plugin's own menu therefore survives fader moves, edits
+elsewhere and a save/reload. State is `clap.state` over a byte vector, base64 in
+the project like VST3 state; presets are that blob in a `.clappreset` file under
+`Documents/CLAP Presets/<vendor>/<plugin>`. The GUI (`clap.gui`, win32) is
+embedded by `ui::ClapEditor`: a plain child window of the JUCE window that JUCE
+keeps positioned over the component becomes the plugin's parent, so the GUI sits
+under the window's bar; `can_resize` is asked only once the GUI exists, the
+plugin's resize requests are honoured, `set_scale` carries the display scale,
+and a GUI the plugin closes itself (`host.gui.closed`) is destroyed by the host
+when the plugin did not, and its window goes. The scanner inspects `.clap` files
+in the same child process (entry, factory, descriptors) from
+`%COMMONPROGRAMFILES%\CLAP`, the per-user folder and every `%CLAP_PATH%` entry; a
+file whose entry refuses to initialise is blocklisted with the reason rather than
+recorded as empty; the registry records each plugin's format and the browser
+filters effects from instruments. The test file (`AuralTestGain.clap`, built with
+the tests) holds five plugins: the stereo in-place effect with a key and a note
+port, a four-channel one (refused), a two-output one (drained), one without an
+in-place pair that swaps its channels (separate buffers), and one that asks for
+callbacks, rescans and restarts from the audio thread. No third-party CLAP plugin
+is installed on this machine, so the GUI path is verified only by construction.
+
+Sidechain keys are refused (and greyed in the menu) when they would form a loop
+through outputs, sends or other keys (`Project::keyWouldCycle`). A channel heard
+only through a send still meters what it sends. `DelayLine::continueFrom` reads
+the line it replaces on the controller thread while the real-time thread may be
+writing it: at worst one block of the new line's first delay samples is
+mis-ordered, which is inaudible against the splice it avoids and accepted as is.
 
 Delay compensation is solved at compile time over the routing graph. Every
 channel's chain latency is the sum of its non-bypassed inserts' reported latency;
@@ -719,6 +766,9 @@ launches; `JUCE_MODAL_LOOPS_PERMITTED` stays 0.
 | 2026-10-19 | Insert chains are stereo pairs; plugins get a stereo main bus and no sidechain yet | The engine's channels are stereo and the chain interface is two pointers; asking every plugin for stereo in and out keeps hosting simple and correct for effects. Sidechain routing needs a graph change and comes later in Phase 5. |
 | 2026-10-19 | Delay compensation per graph edge, solved at compile, lines cached across compiles | Delaying edges rather than nodes handles a source that feeds several destinations with different needs (a send to a latent bus and a direct output); solving at compile keeps the real-time path a fixed delay per edge; caching the lines by edge is what makes a recompile on every edit inaudible. |
 | 2026-10-19 | Sidechain keys are pre-fader and tracks render in dependency levels | A key should not change when the source's fader moves, and a keyed track must see its source finished in the same block; levels keep the parallel render for everything unkeyed and cost nothing when no sidechain is set. Bus sources for track inserts would need one block of latency and are not offered. |
+| 2026-10-19 | A CLAP restart is a fresh instance through the next snapshot, never a deactivation in place | The real-time thread may be inside process() at any moment while the instance is in a snapshot; recreating it with its state carried over reuses the path every other edit takes and needs no RT-side handshake. |
+| 2026-10-19 | Hosted plugins own their parameters; the model's list reaches them only when a command touches it | Pushing the whole list on every compile or fader move reverted presets loaded from the plugin's own menu; mirroring the instance into the model before a touching command keeps undo exact without making the model the authority. |
+| 2026-10-19 | CLAP parameter flushes while the device is stopped go through the session's poll, not a message | The flush is an audio-thread call while the plugin is active; the poll knows whether the engine is running and leaves the queue to process() when it is, which is what keeps one consumer on the queue. |
 | 2026-10-19 | MIDI note-offs on stop, locate and loop wrap come from the track's own continuity check, not from transport commands | The renderer sees every span's start position; comparing it with where the previous span ended catches every discontinuity (a locate, a wrap, play from elsewhere, a stop) in one place, so no transport path can forget to end a note. |
 | 2026-10-19 | MIDI events are a fixed list per track per span, sized at compile | An instrument reads the span's events with the audio in one call; building the list in the track's render job keeps it off the shared path and allocation-free, and the instrument sees the events in time order. |
 | 2026-10-19 | Recorded MIDI is placed by the output-side latency only | A played note arrives when it is played, but the player plays to what they hear, which lags by the output path; subtracting the input side too (as for audio) would place MIDI early. |

@@ -24,6 +24,14 @@ public:
     // recompile (gains, pans, insert parameters and bypass): the session pushes
     // the new values instead of publishing a new snapshot.
     virtual bool isLive() const noexcept { return false; }
+    // The insert parameters this command sets (or restores on undo), so the
+    // session can push exactly those to processors that own their parameters.
+    struct ParameterTouch
+    {
+        Id insertId = invalidId;
+        int parameter = 0;
+    };
+    virtual void touchedParameters(std::vector<ParameterTouch>&) const {}
 };
 
 class UndoStack
@@ -41,6 +49,9 @@ public:
 
     bool canUndo() const noexcept { return !undo_.empty(); }
     bool canRedo() const noexcept { return !redo_.empty(); }
+    // The command a successful undo() moved to the redo side, and vice versa.
+    const Command* redoTop() const noexcept { return redo_.empty() ? nullptr : redo_.back().get(); }
+    const Command* undoTop() const noexcept { return undo_.empty() ? nullptr : undo_.back().get(); }
     std::string undoName() const;
     std::string redoName() const;
     void clear();
@@ -556,6 +567,10 @@ public:
     std::string name() const override { return "Set parameter"; }
     void apply(Project&) override;
     void revert(Project&) override;
+    void touchedParameters(std::vector<ParameterTouch>& out) const override
+    {
+        out.push_back({insertId_, parameter_});
+    }
 
 private:
     Id channelId_, insertId_;

@@ -182,9 +182,14 @@ void AudioEngine::applyLiveValues(const core::Project& project)
         for (const auto& i : c.inserts)
             if (const auto instance = inserts_.find(i.id))
             {
-                const auto count = static_cast<int>(instance->parameters().size());
-                for (int k = 0; k < count && static_cast<size_t>(k) < i.params.size(); ++k)
-                    instance->setParameter(k, i.params[static_cast<size_t>(k)]);
+                // A processor that owns its parameters (a hosted plugin) only gets
+                // the ones a command touched (pushInsertParameters).
+                if (!instance->ownsParameters())
+                {
+                    const auto count = static_cast<int>(instance->parameters().size());
+                    for (int k = 0; k < count && static_cast<size_t>(k) < i.params.size(); ++k)
+                        instance->setParameter(k, i.params[static_cast<size_t>(k)]);
+                }
                 instance->setBypassed(i.bypass);
             }
     };
@@ -193,6 +198,28 @@ void AudioEngine::applyLiveValues(const core::Project& project)
     for (const auto& b : project.buses)
         channel(b);
     runtimes_.master()->targetGain.store(project.master.gain, std::memory_order_relaxed);
+}
+
+void AudioEngine::pushInsertParameters(const core::Project& project,
+                                       const std::vector<core::Command::ParameterTouch>& touches)
+{
+    AURAL_ASSERT_NOT_REALTIME("AudioEngine::pushInsertParameters");
+    for (const auto& touch : touches)
+    {
+        const auto instance = inserts_.find(touch.insertId);
+        if (instance == nullptr)
+            continue;
+        const core::Insert* insert = nullptr;
+        for (const auto& t : project.tracks)
+            if (const auto* i = t.findInsert(touch.insertId))
+                insert = i;
+        for (const auto& b : project.buses)
+            if (const auto* i = b.findInsert(touch.insertId))
+                insert = i;
+        if (insert != nullptr && touch.parameter >= 0 &&
+            static_cast<size_t>(touch.parameter) < insert->params.size())
+            instance->setParameter(touch.parameter, insert->params[static_cast<size_t>(touch.parameter)]);
+    }
 }
 
 void AudioEngine::collectGarbage()

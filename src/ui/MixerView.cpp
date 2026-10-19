@@ -433,9 +433,11 @@ private:
                 {
                     if (source.id == id_)
                         return;
+                    // A source this channel feeds (directly, through buses or through
+                    // another key) would make a loop: shown, but greyed.
                     key.addItem(item++,
                                 prefix + juce::String::fromUTF8(source.name.c_str()),
-                                true,
+                                !project.keyWouldCycle(id_, source.id),
                                 insert.sidechain == source.id);
                     const core::Id sourceId = source.id;
                     actions.push_back(
@@ -787,6 +789,18 @@ void MixerView::openInsertEditor(core::Id channelId, core::Id insertId)
                     if (onCommand)
                         onCommand(std::move(c));
                 };
+                generic->onGestureBegin = [this](const std::string& name)
+                {
+                    if (onGestureBegin)
+                        onGestureBegin(name);
+                };
+                generic->onGestureEnd = [this]
+                {
+                    if (onGestureEnd)
+                        onGestureEnd();
+                };
+                generic->onParameterGestureBegin = [live](int index) { live->beginParameterGesture(index); };
+                generic->onParameterGestureEnd = [live](int index) { live->endParameterGesture(index); };
                 generic->setInsert(*insert);
                 editor = std::move(generic);
             }
@@ -794,6 +808,7 @@ void MixerView::openInsertEditor(core::Id channelId, core::Id insertId)
         }
         auto window = std::make_unique<PluginWindow>(
             channelId, insertId, live, *presets, std::move(editor), resizable, title, pinned);
+        juce::Component::SafePointer<MixerView> safe(this);
         if (clapEditor != nullptr)
         {
             juce::Component::SafePointer<PluginWindow> weak(window.get());
@@ -802,8 +817,23 @@ void MixerView::openInsertEditor(core::Id channelId, core::Id insertId)
                 if (weak != nullptr)
                     weak->editorSizeChanged(w, h);
             };
+            clapEditor->onResizableKnown = [weak](bool canResize)
+            {
+                if (weak != nullptr)
+                    weak->setResizable(canResize, false);
+            };
+            clapEditor->onPluginClosed = [safe, insertId]
+            {
+                // From the editor's timer: drop the window on the next message.
+                juce::MessageManager::callAsync(
+                    [safe, insertId]
+                    {
+                        if (safe != nullptr)
+                            std::erase_if(safe->pluginWindows_,
+                                          [insertId](const auto& w) { return w->insertId() == insertId; });
+                    });
+            };
         }
-        juce::Component::SafePointer<MixerView> safe(this);
         window->onClose = [safe, insertId]
         {
             if (safe != nullptr)
@@ -916,6 +946,11 @@ void MixerView::setProject(const core::Project* project)
                 channel != nullptr ? const_cast<core::Channel*>(channel)->findInsert(w->insertId()) : nullptr;
             if (insert == nullptr)
                 return true;
+            // A restarted plugin is a new instance: the window on the old one closes.
+            if (liveInsert)
+                if (const auto live = liveInsert(w->insertId());
+                    live != nullptr && live.get() != w->instance())
+                    return true;
             w->setInsert(*insert);
             return false;
         });

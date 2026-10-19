@@ -230,6 +230,13 @@ struct Project
     // Whether routing channel `channelId` to `busId` (as output or send) would
     // form a cycle: the bus is the channel itself or already feeds it.
     bool wouldCycle(Id channelId, Id busId) const noexcept;
+    // Whether audio leaving `fromChannel` reaches `toChannel` through outputs,
+    // sends and sidechain keys (a key edge runs from the source to the keyed
+    // channel), including from == to.
+    bool channelReaches(Id fromChannel, Id toChannel) const noexcept;
+    // Whether keying an insert on `channelId` from `sourceId` would form a cycle:
+    // the source is the channel itself or already hears it.
+    bool keyWouldCycle(Id channelId, Id sourceId) const noexcept;
 
     // Length of the longest track in samples.
     SamplePosition length() const noexcept;

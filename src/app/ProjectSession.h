@@ -66,6 +66,9 @@ public:
 
     // ----- editing ----------------------------------------------------------------
     void execute(std::unique_ptr<core::Command> command);
+    // See the implementation: the model's parameter list of a plugin that owns its
+    // parameters follows the instance before a command touches one of them.
+    void mirrorOwnedParameters(const std::vector<core::Command::ParameterTouch>& touches);
     // Several commands as one undo step (a drag that moved many clips).
     void executeGroup(const std::string& name, std::vector<std::unique_ptr<core::Command>> commands);
     // A gesture (a fader drag): every command until endGesture() is one undo step.

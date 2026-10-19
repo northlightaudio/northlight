@@ -272,6 +272,53 @@ bool Project::busReaches(Id fromBus, Id toBus) const noexcept
     return false;
 }
 
+bool Project::channelReaches(Id fromChannel, Id toChannel) const noexcept
+{
+    if (fromChannel == invalidId || toChannel == invalidId)
+        return false;
+    std::vector<Id> stack{fromChannel};
+    std::vector<Id> seen;
+    while (!stack.empty())
+    {
+        const Id id = stack.back();
+        stack.pop_back();
+        if (id == toChannel)
+            return true;
+        if (std::find(seen.begin(), seen.end(), id) != seen.end())
+            continue;
+        seen.push_back(id);
+        const auto* c = findChannel(id);
+        if (c == nullptr)
+            continue;
+        if (c->outputBus != invalidId)
+            stack.push_back(c->outputBus);
+        for (const auto& s : c->sends)
+            stack.push_back(s.bus);
+        // Key edges: every channel with an insert keyed from this one hears it.
+        const auto keyed = [&](const Channel& other)
+        {
+            for (const auto& i : other.inserts)
+                if (i.sidechain == id)
+                {
+                    stack.push_back(other.id);
+                    return;
+                }
+        };
+        for (const auto& t : tracks)
+            keyed(t);
+        for (const auto& b : buses)
+            keyed(b);
+    }
+    return false;
+}
+
+bool Project::keyWouldCycle(Id channelId, Id sourceId) const noexcept
+{
+    if (sourceId == invalidId)
+        return false;
+    return channelId == sourceId || channelReaches(channelId, sourceId);
+}
+
 bool Project::wouldCycle(Id channelId, Id busId) const noexcept
 {
     if (busId == invalidId)

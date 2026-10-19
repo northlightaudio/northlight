@@ -365,6 +365,29 @@ TEST_CASE("An insert's sidechain source is set to an existing channel and undone
     stack.execute(p, std::make_unique<SetInsertSidechain>(track, id, kick));
     CHECK(p.tracks[0].inserts[0].sidechain == kick);
     CHECK_THROWS(SetInsertSidechain(track, id, 999).apply(p));
+    // A loop: keying the track from itself, or from a bus it feeds (directly or
+    // through another key), is refused.
+    CHECK_THROWS(SetInsertSidechain(track, id, track).apply(p));
+    Bus bus;
+    bus.name = "Drums";
+    stack.execute(p, std::make_unique<AddBus>(bus));
+    const Id drums = p.buses[0].id;
+    stack.execute(p, std::make_unique<SetOutputBus>(track, drums));
+    CHECK(p.keyWouldCycle(track, drums));
+    CHECK_THROWS(SetInsertSidechain(track, id, drums).apply(p));
+    // The kick feeds the track's key, which feeds the bus: keying the kick from
+    // the bus would loop; without that key it would not.
+    CHECK(p.keyWouldCycle(kick, drums));
+    stack.execute(p, std::make_unique<SetInsertSidechain>(track, id, invalidId));
+    CHECK_FALSE(p.keyWouldCycle(kick, drums));
+    // The kick keyed from the track: now the track must not be keyed from the kick.
+    Insert kickInsert;
+    kickInsert.type = "aural.compressor";
+    stack.execute(p, std::make_unique<AddInsert>(kick, kickInsert));
+    const Id kickInsertId = p.tracks[1].inserts[0].id;
+    stack.execute(p, std::make_unique<SetInsertSidechain>(kick, kickInsertId, track));
+    CHECK(p.channelReaches(track, kick)); // through the key edge
+    CHECK(p.keyWouldCycle(track, kick));
     stack.undo(p);
     CHECK(p.tracks[0].inserts[0].sidechain == invalidId);
 }

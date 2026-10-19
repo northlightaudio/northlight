@@ -67,6 +67,8 @@ void ClapEditor::open()
         setSize(w, h);
         if (onPluginResized)
             onPluginResized(w, h);
+        if (onResizableKnown)
+            onResizableKnown(plugin_.editorIsResizable());
         startTimerHz(20);
     }
 #endif
@@ -81,6 +83,15 @@ void ClapEditor::resized()
 
 void ClapEditor::timerCallback()
 {
+    if (opened_ && !plugin_.isEditorOpen())
+    {
+        // Closed from the plugin's side (host.gui.closed): tell the window once.
+        opened_ = false;
+        stopTimer();
+        if (onPluginClosed)
+            onPluginClosed();
+        return;
+    }
     int w = 0, h = 0;
     if (plugin_.takeResizeRequest(w, h) && w > 0 && h > 0)
     {

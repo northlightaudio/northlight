@@ -8,6 +8,104 @@
 namespace aural::hosting
 {
 
+namespace
+{
+constexpr size_t bypassRingSize = 1 << 16; // samples of dry history kept for a bypassed plugin
+constexpr size_t eventCapacity = 2048;
+constexpr size_t pendingCapacity = 2048;
+} // namespace
+
+// ----- the module: one library and entry point per file -------------------------------------
+
+struct HostedClapPlugin::Module
+{
+    std::string path;
+    juce::DynamicLibrary library;
+    const clap_plugin_entry_t* entry = nullptr;
+    bool initialised = false;
+
+    ~Module()
+    {
+        // Last instance of this file gone: the entry point goes with it.
+        if (initialised)
+            entry->deinit();
+    }
+};
+
+std::shared_ptr<HostedClapPlugin::Module> HostedClapPlugin::acquireModule(const std::string& path,
+                                                                          std::string& error)
+{
+    static std::mutex mutex;
+    static std::map<std::string, std::weak_ptr<Module>> modules;
+    const std::lock_guard<std::mutex> lock(mutex);
+    if (const auto it = modules.find(path); it != modules.end())
+        if (auto existing = it->second.lock())
+            return existing;
+
+    auto module = std::make_shared<Module>();
+    module->path = path;
+    if (!module->library.open(juce::String::fromUTF8(path.c_str())))
+    {
+        error = "could not load " + path;
+        return nullptr;
+    }
+    module->entry = static_cast<const clap_plugin_entry_t*>(module->library.getFunction("clap_entry"));
+    if (module->entry == nullptr)
+    {
+        error = "not a CLAP plugin (no clap_entry)";
+        return nullptr;
+    }
+    if (!clap_version_is_compatible(module->entry->clap_version))
+    {
+        error = "incompatible CLAP version";
+        return nullptr;
+    }
+    if (!module->entry->init(path.c_str()))
+    {
+        error = "the plugin's entry point refused to initialise";
+        return nullptr;
+    }
+    module->initialised = true;
+    modules[path] = module;
+    return module;
+}
+
+// ----- live instances -----------------------------------------------------------------------
+
+std::mutex& HostedClapPlugin::liveMutex()
+{
+    static std::mutex mutex;
+    return mutex;
+}
+
+std::vector<HostedClapPlugin*>& HostedClapPlugin::liveInstances()
+{
+    static std::vector<HostedClapPlugin*> instances;
+    return instances;
+}
+
+bool HostedClapPlugin::isLive(const HostedClapPlugin* plugin)
+{
+    const std::lock_guard<std::mutex> lock(liveMutex());
+    const auto& live = liveInstances();
+    return std::find(live.begin(), live.end(), plugin) != live.end();
+}
+
+void HostedClapPlugin::serviceAll(bool engineRunning)
+{
+    AURAL_ASSERT_NOT_REALTIME("HostedClapPlugin::serviceAll");
+    std::vector<HostedClapPlugin*> snapshot;
+    {
+        const std::lock_guard<std::mutex> lock(liveMutex());
+        snapshot = liveInstances();
+    }
+    for (auto* plugin : snapshot)
+    {
+        plugin->engineRunning_.store(engineRunning, std::memory_order_release);
+        plugin->onMainThread();
+    }
+}
+
 // ----- host-side timers (the timer-support extension) ----------------------------------------
 
 class HostedClapPlugin::Timer final : public juce::Timer
@@ -48,6 +146,7 @@ bool HostedClapPlugin::OutEvents::tryPush(const clap_output_events_t* list,
 {
     // Parameter changes the plugin makes (its own GUI, automation it generates)
     // update the host's view of the value; everything else is accepted and dropped.
+    // The tables are never reallocated while the plugin is active (see rescan).
     auto* self = static_cast<OutEvents*>(list->ctx);
     if (event->space_id == CLAP_CORE_EVENT_SPACE_ID && event->type == CLAP_EVENT_PARAM_VALUE &&
         self->owner != nullptr)
@@ -73,6 +172,8 @@ std::unique_ptr<HostedClapPlugin> HostedClapPlugin::create(const std::string& ty
     plugin->typeName_ = typeName;
     if (!plugin->initialise(path, pluginId, error))
         return nullptr;
+    const std::lock_guard<std::mutex> lock(liveMutex());
+    liveInstances().push_back(plugin.get());
     return plugin;
 }
 
@@ -83,29 +184,10 @@ HostedClapPlugin& HostedClapPlugin::self(const clap_host_t* host) noexcept
 
 bool HostedClapPlugin::initialise(const std::string& path, const std::string& pluginId, std::string& error)
 {
-    if (!library_.open(juce::String::fromUTF8(path.c_str())))
-    {
-        error = "could not load " + path;
+    module_ = acquireModule(path, error);
+    if (module_ == nullptr)
         return false;
-    }
-    entry_ = static_cast<const clap_plugin_entry_t*>(library_.getFunction("clap_entry"));
-    if (entry_ == nullptr)
-    {
-        error = "not a CLAP plugin (no clap_entry)";
-        return false;
-    }
-    if (!clap_version_is_compatible(entry_->clap_version))
-    {
-        error = "incompatible CLAP version";
-        return false;
-    }
-    if (!entry_->init(path.c_str()))
-    {
-        error = "the plugin's entry point refused to initialise";
-        entry_ = nullptr;
-        return false;
-    }
-    factory_ = static_cast<const clap_plugin_factory_t*>(entry_->get_factory(CLAP_PLUGIN_FACTORY_ID));
+    factory_ = static_cast<const clap_plugin_factory_t*>(module_->entry->get_factory(CLAP_PLUGIN_FACTORY_ID));
     if (factory_ == nullptr)
     {
         error = "the plugin has no plugin factory";
@@ -178,15 +260,13 @@ bool HostedClapPlugin::initialise(const std::string& path, const std::string& pl
     if (gui_ != nullptr && !gui_->is_api_supported(plugin_, CLAP_WINDOW_API_WIN32, false))
         gui_ = nullptr; // only an embedded win32 GUI is hosted
 
-    // Ports: the main stereo pair in and out, a second input port as the key.
-    if (audioPorts_ != nullptr)
+    if (!readPorts(error))
     {
-        inputPorts_ = static_cast<int>(audioPorts_->count(plugin_, true));
-        outputPorts_ = static_cast<int>(audioPorts_->count(plugin_, false));
-        clap_audio_port_info_t info{};
-        if (inputPorts_ >= 2 && audioPorts_->get(plugin_, 1, true, &info))
-            hasSidechain_ = info.channel_count == 2;
+        plugin_->destroy(plugin_);
+        plugin_ = nullptr;
+        return false;
     }
+
     // Notes: the first note input port, in its preferred dialect.
     notePorts_ =
         static_cast<const clap_plugin_note_ports_t*>(plugin_->get_extension(plugin_, CLAP_EXT_NOTE_PORTS));
@@ -201,20 +281,81 @@ bool HostedClapPlugin::initialise(const std::string& path, const std::string& pl
         }
     }
     readParameters();
-    pending_ = std::make_unique<rt::SpscQueue<ParamChange>>(1024);
+    pending_ = std::make_unique<rt::SpscQueue<ParamChange>>(pendingCapacity);
     in_.list.ctx = &in_;
     in_.list.size = &InEvents::size;
     in_.list.get = &InEvents::get;
-    in_.events.resize(1024);
+    in_.events.resize(eventCapacity);
     out_.owner = this;
     out_.list.ctx = &out_;
     out_.list.try_push = &OutEvents::tryPush;
     return true;
 }
 
+bool HostedClapPlugin::readPorts(std::string& error)
+{
+    inPorts_.clear();
+    outPorts_.clear();
+    if (audioPorts_ != nullptr)
+    {
+        const auto read = [&](bool isInput, std::vector<Port>& ports)
+        {
+            const uint32_t count = audioPorts_->count(plugin_, isInput);
+            for (uint32_t i = 0; i < count; ++i)
+            {
+                clap_audio_port_info_t info{};
+                if (!audioPorts_->get(plugin_, i, isInput, &info))
+                    return false;
+                Port port;
+                port.id = info.id;
+                port.channels = static_cast<int>(info.channel_count);
+                port.inPlacePair = info.in_place_pair;
+                ports.push_back(std::move(port));
+            }
+            return true;
+        };
+        if (!read(true, inPorts_) || !read(false, outPorts_))
+        {
+            error = "the plugin did not describe its audio ports";
+            return false;
+        }
+    }
+    if (outPorts_.empty())
+    {
+        error = "the plugin has no audio output";
+        return false;
+    }
+    mainInChannels_ = inPorts_.empty() ? 0 : inPorts_[0].channels;
+    mainOutChannels_ = outPorts_[0].channels;
+    if (mainInChannels_ > 2 || mainInChannels_ < 0)
+    {
+        error = "the plugin's main input has " + std::to_string(mainInChannels_) +
+                " channels; only mono and stereo are supported";
+        return false;
+    }
+    if (mainOutChannels_ != 1 && mainOutChannels_ != 2)
+    {
+        error = "the plugin's main output has " + std::to_string(mainOutChannels_) +
+                " channels; only mono and stereo are supported";
+        return false;
+    }
+    hasSidechain_ = inPorts_.size() >= 2 && inPorts_[1].channels == 2;
+    // In place only when the plugin pairs its main ports (either side may say so)
+    // and both are the chain's stereo pair.
+    aliasMain_ = !inPorts_.empty() && mainInChannels_ == 2 && mainOutChannels_ == 2 &&
+                 (outPorts_[0].inPlacePair == inPorts_[0].id || inPorts_[0].inPlacePair == outPorts_[0].id);
+    inBuffers_.assign(inPorts_.size(), clap_audio_buffer_t{});
+    outBuffers_.assign(outPorts_.size(), clap_audio_buffer_t{});
+    return true;
+}
+
 HostedClapPlugin::~HostedClapPlugin()
 {
     AURAL_ASSERT_NOT_REALTIME("HostedClapPlugin::~HostedClapPlugin");
+    {
+        const std::lock_guard<std::mutex> lock(liveMutex());
+        std::erase(liveInstances(), this);
+    }
     if (plugin_ != nullptr)
     {
         closeEditor();
@@ -226,12 +367,13 @@ HostedClapPlugin::~HostedClapPlugin()
         }
         plugin_->destroy(plugin_);
     }
-    if (entry_ != nullptr)
-        entry_->deinit();
+    // module_ releases the library (and the entry point with the last instance).
 }
 
 void HostedClapPlugin::readParameters()
 {
+    // Only while the plugin cannot be processing: the audio thread walks these
+    // tables (OutEvents::tryPush).
     infos_.clear();
     paramInfos_.clear();
     if (params_ == nullptr)
@@ -254,11 +396,18 @@ void HostedClapPlugin::readParameters()
         infos_.push_back(p);
     }
     values_ = std::vector<std::atomic<float>>(paramInfos_.size());
+    refreshValues();
+}
+
+void HostedClapPlugin::refreshValues()
+{
+    if (params_ == nullptr)
+        return;
     for (size_t i = 0; i < paramInfos_.size(); ++i)
     {
         double value = paramInfos_[i].default_value;
-        params_->get_value(plugin_, paramInfos_[i].id, &value);
-        values_[i].store(static_cast<float>(value), std::memory_order_relaxed);
+        if (params_->get_value(plugin_, paramInfos_[i].id, &value))
+            values_[i].store(static_cast<float>(value), std::memory_order_relaxed);
     }
 }
 
@@ -280,13 +429,36 @@ void HostedClapPlugin::prepare(double sampleRate, int maxBlockSize)
     keyRight_.assign(n, 0.0f);
     dryLeft_.assign(n, 0.0f);
     dryRight_.assign(n, 0.0f);
-    inChannels0_.assign(2, nullptr);
-    inChannels1_ = {keyLeft_.data(), keyRight_.data()};
-    outChannels0_.assign(2, nullptr);
+    monoIn_.assign(n, 0.0f);
+    outLeft_.assign(n, 0.0f);
+    outRight_.assign(n, 0.0f);
+    bypassRingLeft_.assign(bypassRingSize, 0.0f);
+    bypassRingRight_.assign(bypassRingSize, 0.0f);
+    bypassWrite_ = 0;
+    // Scratch for every port the chain does not feed or take: silent inputs, drained
+    // outputs. The main ports and the key get their pointers per block.
+    const auto allocate = [&](Port& port, bool isMain, bool isKey)
+    {
+        port.scratch.clear();
+        port.pointers.assign(static_cast<size_t>(std::max(0, port.channels)), nullptr);
+        if (isMain || isKey)
+            return;
+        port.scratch.assign(static_cast<size_t>(std::max(0, port.channels)), std::vector<float>(n, 0.0f));
+        for (size_t c = 0; c < port.scratch.size(); ++c)
+            port.pointers[c] = port.scratch[c].data();
+    };
+    for (size_t i = 0; i < inPorts_.size(); ++i)
+        allocate(inPorts_[i], i == 0, i == 1 && hasSidechain_);
+    for (size_t i = 0; i < outPorts_.size(); ++i)
+        allocate(outPorts_[i], i == 0, false);
     bypassStep_ = 1.0f / static_cast<float>(std::max(1.0, sampleRate * 0.010));
     bypassMix_ = isBypassed() ? 1.0f : 0.0f;
+    restartRequested_.store(false, std::memory_order_release);
     if (!plugin_->activate(plugin_, sampleRate, 1, static_cast<uint32_t>(maxBlock_)))
-        return; // stays inactive: process() passes audio through
+    {
+        latency_.store(0, std::memory_order_relaxed); // passing through: no delay to compensate
+        return;                                       // stays inactive: process() passes audio through
+    }
     activated_.store(true, std::memory_order_release);
     refreshLatency();
 }
@@ -328,9 +500,26 @@ void HostedClapPlugin::setParameter(int index, float value) noexcept
     const auto& info = paramInfos_[static_cast<size_t>(index)];
     const double clamped = std::clamp(static_cast<double>(value), info.min_value, info.max_value);
     values_[static_cast<size_t>(index)].store(static_cast<float>(clamped), std::memory_order_relaxed);
-    pending_->push(ParamChange{info.id, info.cookie, clamped});
-    if (!processing_.load(std::memory_order_acquire))
-        flushRequested_.store(true, std::memory_order_release);
+    pending_->push(ParamChange{ParamChange::Kind::value, info.id, info.cookie, clamped});
+    flushRequested_.store(true, std::memory_order_release); // delivered by process(), else by the poll
+}
+
+void HostedClapPlugin::beginParameterGesture(int index) noexcept
+{
+    if (index < 0 || static_cast<size_t>(index) >= paramInfos_.size())
+        return;
+    const auto& info = paramInfos_[static_cast<size_t>(index)];
+    pending_->push(ParamChange{ParamChange::Kind::gestureBegin, info.id, info.cookie, 0.0});
+    flushRequested_.store(true, std::memory_order_release);
+}
+
+void HostedClapPlugin::endParameterGesture(int index) noexcept
+{
+    if (index < 0 || static_cast<size_t>(index) >= paramInfos_.size())
+        return;
+    const auto& info = paramInfos_[static_cast<size_t>(index)];
+    pending_->push(ParamChange{ParamChange::Kind::gestureEnd, info.id, info.cookie, 0.0});
+    flushRequested_.store(true, std::memory_order_release);
 }
 
 float HostedClapPlugin::parameter(int index) const noexcept
@@ -340,10 +529,104 @@ float HostedClapPlugin::parameter(int index) const noexcept
     return values_[static_cast<size_t>(index)].load(std::memory_order_relaxed);
 }
 
-void HostedClapPlugin::runEvents(const clap_input_events_t& in, const clap_output_events_t& out) noexcept
+void HostedClapPlugin::collectEvents(const engine::MidiEventList* midi) noexcept
 {
-    (void)in;
-    (void)out;
+    // Pending host parameter changes and gestures become sample-0 events.
+    in_.count = 0;
+    ParamChange change;
+    while (in_.count < in_.events.size() && pending_->pop(change))
+    {
+        auto& slot = in_.events[in_.count++];
+        if (change.kind == ParamChange::Kind::value)
+        {
+            auto& e = slot.param;
+            e.header.size = sizeof(clap_event_param_value_t);
+            e.header.time = 0;
+            e.header.space_id = CLAP_CORE_EVENT_SPACE_ID;
+            e.header.type = CLAP_EVENT_PARAM_VALUE;
+            e.header.flags = 0;
+            e.param_id = change.id;
+            e.cookie = change.cookie;
+            e.note_id = -1;
+            e.port_index = -1;
+            e.channel = -1;
+            e.key = -1;
+            e.value = change.value;
+        }
+        else
+        {
+            auto& e = slot.gesture;
+            e.header.size = sizeof(clap_event_param_gesture_t);
+            e.header.time = 0;
+            e.header.space_id = CLAP_CORE_EVENT_SPACE_ID;
+            e.header.type = static_cast<uint16_t>(change.kind == ParamChange::Kind::gestureBegin
+                                                      ? CLAP_EVENT_PARAM_GESTURE_BEGIN
+                                                      : CLAP_EVENT_PARAM_GESTURE_END);
+            e.header.flags = 0;
+            e.param_id = change.id;
+        }
+    }
+    flushRequested_.store(false, std::memory_order_release);
+    // Then the block's notes, in time order (the list arrives sorted).
+    if (midi == nullptr || !hasNoteInput_)
+        return;
+    for (const auto& m : *midi)
+    {
+        if (in_.count >= in_.events.size())
+            break;
+        auto& slot = in_.events[in_.count++];
+        if (noteDialectClap_ && m.type != engine::MidiEvent::Type::controller)
+        {
+            auto& e = slot.note;
+            e.header.size = sizeof(clap_event_note_t);
+            e.header.time = static_cast<uint32_t>(std::max(0, m.sampleOffset));
+            e.header.space_id = CLAP_CORE_EVENT_SPACE_ID;
+            e.header.type =
+                static_cast<uint16_t>(m.type == engine::MidiEvent::Type::noteOn    ? CLAP_EVENT_NOTE_ON
+                                      : m.type == engine::MidiEvent::Type::noteOff ? CLAP_EVENT_NOTE_OFF
+                                                                                   : CLAP_EVENT_NOTE_CHOKE);
+            e.header.flags = 0;
+            e.note_id = -1;
+            e.port_index = 0;
+            e.channel = m.type == engine::MidiEvent::Type::allNotesOff ? -1 : static_cast<int16_t>(m.channel);
+            e.key = m.type == engine::MidiEvent::Type::allNotesOff ? -1 : static_cast<int16_t>(m.note);
+            e.velocity = m.type == engine::MidiEvent::Type::noteOn ? m.velocity / 127.0 : 0.0;
+        }
+        else
+        {
+            auto& e = slot.midi;
+            e.header.size = sizeof(clap_event_midi_t);
+            e.header.time = static_cast<uint32_t>(std::max(0, m.sampleOffset));
+            e.header.space_id = CLAP_CORE_EVENT_SPACE_ID;
+            e.header.type = CLAP_EVENT_MIDI;
+            e.header.flags = 0;
+            e.port_index = 0;
+            const auto channel = static_cast<uint8_t>(m.channel & 15);
+            switch (m.type)
+            {
+                case engine::MidiEvent::Type::noteOn:
+                    e.data[0] = static_cast<uint8_t>(0x90 | channel);
+                    e.data[1] = m.note;
+                    e.data[2] = m.velocity;
+                    break;
+                case engine::MidiEvent::Type::noteOff:
+                    e.data[0] = static_cast<uint8_t>(0x80 | channel);
+                    e.data[1] = m.note;
+                    e.data[2] = m.velocity;
+                    break;
+                case engine::MidiEvent::Type::controller:
+                    e.data[0] = static_cast<uint8_t>(0xB0 | channel);
+                    e.data[1] = m.note;
+                    e.data[2] = m.velocity;
+                    break;
+                case engine::MidiEvent::Type::allNotesOff:
+                    e.data[0] = static_cast<uint8_t>(0xB0 | channel);
+                    e.data[1] = 123;
+                    e.data[2] = 0;
+                    break;
+            }
+        }
+    }
 }
 
 // ----- processing -------------------------------------------------------------------------------
@@ -375,152 +658,179 @@ bool HostedClapPlugin::run(
     if (!activated_.load(std::memory_order_acquire) || numSamples > maxBlock_)
         return false;
     ensureProcessing(true);
+    collectEvents(pendingMidi_);
 
-    // Pending host parameter changes become sample-0 events of this block.
-    in_.count = 0;
-    ParamChange change;
-    while (in_.count < in_.events.size() && pending_->pop(change))
+    // The input is kept: the bypass path and the error path need it, and an
+    // in-place plugin overwrites it.
+    const auto n = static_cast<size_t>(numSamples);
+    std::copy(left, left + numSamples, dryLeft_.data());
+    std::copy(right, right + numSamples, dryRight_.data());
+    // The dry history for bypass, delayed by the latency so a bypassed plugin
+    // keeps the delay the graph compensates for.
+    const size_t delay = std::min<size_t>(
+        static_cast<size_t>(std::max(0, latency_.load(std::memory_order_relaxed))), bypassRingSize - 1);
+    for (size_t i = 0; i < n; ++i)
     {
-        auto& e = in_.events[in_.count++].param;
-        e.header.size = sizeof(clap_event_param_value_t);
-        e.header.time = 0;
-        e.header.space_id = CLAP_CORE_EVENT_SPACE_ID;
-        e.header.type = CLAP_EVENT_PARAM_VALUE;
-        e.header.flags = 0;
-        e.param_id = change.id;
-        e.cookie = change.cookie;
-        e.note_id = -1;
-        e.port_index = -1;
-        e.channel = -1;
-        e.key = -1;
-        e.value = change.value;
+        bypassRingLeft_[bypassWrite_] = left[i];
+        bypassRingRight_[bypassWrite_] = right[i];
+        bypassWrite_ = (bypassWrite_ + 1) & (bypassRingSize - 1);
     }
-    // Then the block's notes, in time order (the list arrives sorted).
-    if (pendingMidi_ != nullptr && hasNoteInput_)
-        for (const auto& m : *pendingMidi_)
+    const auto delayedDry = [&](size_t i, bool rightSide)
+    {
+        const size_t index = (bypassWrite_ + bypassRingSize - n + i - delay) & (bypassRingSize - 1);
+        return rightSide ? bypassRingRight_[index] : bypassRingLeft_[index];
+    };
+
+    // Buffers: the main input is the chain's pair (or its sum for a mono port), the
+    // key goes on port 1, every other port sees silent scratch; the main output is
+    // the pair itself when the plugin pairs the ports, else a separate pair (or a
+    // mono scratch) copied back afterwards.
+    if (!inPorts_.empty())
+    {
+        auto& main = inPorts_[0];
+        if (mainInChannels_ == 2)
         {
-            if (in_.count >= in_.events.size())
-                break;
-            auto& slot = in_.events[in_.count++];
-            if (noteDialectClap_ && m.type != engine::MidiEvent::Type::controller)
-            {
-                auto& e = slot.note;
-                e.header.size = sizeof(clap_event_note_t);
-                e.header.time = static_cast<uint32_t>(std::max(0, m.sampleOffset));
-                e.header.space_id = CLAP_CORE_EVENT_SPACE_ID;
-                e.header.type = static_cast<uint16_t>(
-                    m.type == engine::MidiEvent::Type::noteOn    ? CLAP_EVENT_NOTE_ON
-                    : m.type == engine::MidiEvent::Type::noteOff ? CLAP_EVENT_NOTE_OFF
-                                                                 : CLAP_EVENT_NOTE_CHOKE);
-                e.header.flags = 0;
-                e.note_id = -1;
-                e.port_index = 0;
-                e.channel =
-                    m.type == engine::MidiEvent::Type::allNotesOff ? -1 : static_cast<int16_t>(m.channel);
-                e.key = m.type == engine::MidiEvent::Type::allNotesOff ? -1 : static_cast<int16_t>(m.note);
-                e.velocity = m.type == engine::MidiEvent::Type::noteOn ? m.velocity / 127.0 : 0.0;
-            }
-            else
-            {
-                auto& e = slot.midi;
-                e.header.size = sizeof(clap_event_midi_t);
-                e.header.time = static_cast<uint32_t>(std::max(0, m.sampleOffset));
-                e.header.space_id = CLAP_CORE_EVENT_SPACE_ID;
-                e.header.type = CLAP_EVENT_MIDI;
-                e.header.flags = 0;
-                e.port_index = 0;
-                const auto channel = static_cast<uint8_t>(m.channel & 15);
-                switch (m.type)
-                {
-                    case engine::MidiEvent::Type::noteOn:
-                        e.data[0] = static_cast<uint8_t>(0x90 | channel);
-                        e.data[1] = m.note;
-                        e.data[2] = m.velocity;
-                        break;
-                    case engine::MidiEvent::Type::noteOff:
-                        e.data[0] = static_cast<uint8_t>(0x80 | channel);
-                        e.data[1] = m.note;
-                        e.data[2] = m.velocity;
-                        break;
-                    case engine::MidiEvent::Type::controller:
-                        e.data[0] = static_cast<uint8_t>(0xB0 | channel);
-                        e.data[1] = m.note;
-                        e.data[2] = m.velocity;
-                        break;
-                    case engine::MidiEvent::Type::allNotesOff:
-                        e.data[0] = static_cast<uint8_t>(0xB0 | channel);
-                        e.data[1] = 123;
-                        e.data[2] = 0;
-                        break;
-                }
-            }
+            main.pointers[0] = left;
+            main.pointers[1] = right;
         }
-
-    const float target = isBypassed() ? 1.0f : 0.0f;
-    const bool settled = bypassMix_ == target;
-    if (!settled || target == 1.0f)
-    {
-        std::copy(left, left + numSamples, dryLeft_.data());
-        std::copy(right, right + numSamples, dryRight_.data());
+        else if (mainInChannels_ == 1)
+        {
+            for (size_t i = 0; i < n; ++i)
+                monoIn_[i] = 0.5f * (left[i] + right[i]);
+            main.pointers[0] = monoIn_.data();
+        }
     }
-
-    // Buffers: in-place on the chain's pair, the key on port 1 when present.
-    if (keyLeft != nullptr && keyRight != nullptr)
+    if (hasSidechain_)
     {
-        std::copy(keyLeft, keyLeft + numSamples, keyLeft_.data());
-        std::copy(keyRight, keyRight + numSamples, keyRight_.data());
+        if (keyLeft != nullptr && keyRight != nullptr)
+        {
+            std::copy(keyLeft, keyLeft + numSamples, keyLeft_.data());
+            std::copy(keyRight, keyRight + numSamples, keyRight_.data());
+        }
+        else
+        {
+            std::fill(keyLeft_.begin(), keyLeft_.begin() + numSamples, 0.0f);
+            std::fill(keyRight_.begin(), keyRight_.begin() + numSamples, 0.0f);
+        }
+        inPorts_[1].pointers[0] = keyLeft_.data();
+        inPorts_[1].pointers[1] = keyRight_.data();
+    }
+    auto& mainOut = outPorts_[0];
+    if (mainOutChannels_ == 2)
+    {
+        mainOut.pointers[0] = aliasMain_ ? left : outLeft_.data();
+        mainOut.pointers[1] = aliasMain_ ? right : outRight_.data();
     }
     else
+        mainOut.pointers[0] = outLeft_.data();
+    for (size_t p = 0; p < inPorts_.size(); ++p)
     {
-        std::fill(keyLeft_.begin(), keyLeft_.begin() + numSamples, 0.0f);
-        std::fill(keyRight_.begin(), keyRight_.begin() + numSamples, 0.0f);
+        auto& port = inPorts_[p];
+        inBuffers_[p] =
+            clap_audio_buffer_t{port.pointers.data(), nullptr, static_cast<uint32_t>(port.channels), 0, 0};
+        // Scratch ports are silent: say so, so the plugin can skip them.
+        if (!port.scratch.empty())
+            inBuffers_[p].constant_mask = port.channels >= 64 ? ~0ull : ((1ull << port.channels) - 1);
     }
-    inChannels0_[0] = left;
-    inChannels0_[1] = right;
-    outChannels0_[0] = left;
-    outChannels0_[1] = right;
-    inputs_[0] = clap_audio_buffer_t{inChannels0_.data(), nullptr, 2, 0, 0};
-    inputs_[1] = clap_audio_buffer_t{inChannels1_.data(), nullptr, 2, 0, 0};
-    outputs_[0] = clap_audio_buffer_t{outChannels0_.data(), nullptr, 2, 0, 0};
+    for (size_t p = 0; p < outPorts_.size(); ++p)
+        outBuffers_[p] = clap_audio_buffer_t{
+            outPorts_[p].pointers.data(), nullptr, static_cast<uint32_t>(outPorts_[p].channels), 0, 0};
 
     clap_process_t process{};
     process.steady_time = -1;
     process.frames_count = static_cast<uint32_t>(numSamples);
     process.transport = nullptr;
-    process.audio_inputs = inputs_;
-    process.audio_inputs_count = static_cast<uint32_t>(std::min(inputPorts_, hasSidechain_ ? 2 : 1));
-    process.audio_outputs = outputs_;
-    process.audio_outputs_count = outputPorts_ > 0 ? 1 : 0;
+    process.audio_inputs = inBuffers_.data();
+    process.audio_inputs_count = static_cast<uint32_t>(inBuffers_.size());
+    process.audio_outputs = outBuffers_.data();
+    process.audio_outputs_count = static_cast<uint32_t>(outBuffers_.size());
     process.in_events = &in_.list;
     process.out_events = &out_.list;
     const auto status = plugin_->process(plugin_, &process);
     if (status == CLAP_PROCESS_ERROR)
     {
+        // Pass the input through untouched.
         std::copy(dryLeft_.begin(), dryLeft_.begin() + numSamples, left);
         std::copy(dryRight_.begin(), dryRight_.begin() + numSamples, right);
         return false;
     }
+    // The plugin's output onto the chain's pair.
+    if (mainOutChannels_ == 1)
+    {
+        std::copy(outLeft_.begin(), outLeft_.begin() + numSamples, left);
+        std::copy(outLeft_.begin(), outLeft_.begin() + numSamples, right);
+    }
+    else if (!aliasMain_)
+    {
+        std::copy(outLeft_.begin(), outLeft_.begin() + numSamples, left);
+        std::copy(outRight_.begin(), outRight_.begin() + numSamples, right);
+    }
 
-    // Bypass: a 10 ms crossfade to the dry input, then the dry input alone (the
-    // plugin keeps processing so its state follows the audio).
+    // Bypass: a 10 ms crossfade to the delayed dry input, then that alone (the
+    // plugin keeps processing so its state follows the audio, and the delay keeps
+    // the graph's compensation right).
+    const float target = isBypassed() ? 1.0f : 0.0f;
+    const bool settled = bypassMix_ == target;
     if (settled && target == 1.0f)
     {
-        std::copy(dryLeft_.begin(), dryLeft_.begin() + numSamples, left);
-        std::copy(dryRight_.begin(), dryRight_.begin() + numSamples, right);
+        for (size_t i = 0; i < n; ++i)
+        {
+            left[i] = delayedDry(i, false);
+            right[i] = delayedDry(i, true);
+        }
         return true;
     }
     if (!settled)
-        for (int i = 0; i < numSamples; ++i)
+        for (size_t i = 0; i < n; ++i)
         {
             bypassMix_ = target > bypassMix_ ? std::min(target, bypassMix_ + bypassStep_)
                                              : std::max(target, bypassMix_ - bypassStep_);
-            left[i] = left[i] * (1.0f - bypassMix_) + dryLeft_[static_cast<size_t>(i)] * bypassMix_;
-            right[i] = right[i] * (1.0f - bypassMix_) + dryRight_[static_cast<size_t>(i)] * bypassMix_;
+            left[i] = left[i] * (1.0f - bypassMix_) + delayedDry(i, false) * bypassMix_;
+            right[i] = right[i] * (1.0f - bypassMix_) + delayedDry(i, true) * bypassMix_;
         }
     return true;
 }
 
 // ----- main-thread housekeeping -----------------------------------------------------------------
+
+void HostedClapPlugin::requestMainThread() noexcept
+{
+    // From the main thread: service soon (a message); from the audio thread: the
+    // session's poll picks it up. The message checks the instance is still alive.
+    callbackRequested_.store(true, std::memory_order_release);
+    if (juce::MessageManager::getInstanceWithoutCreating() != nullptr && !rt::isRealtimeThread())
+    {
+        auto* instance = this;
+        juce::MessageManager::callAsync(
+            [instance]
+            {
+                if (isLive(instance))
+                    instance->onMainThread();
+            });
+    }
+}
+
+void HostedClapPlugin::flushPendingOnMainThread()
+{
+    // Spec: params.flush is a main-thread call while the plugin is inactive, an
+    // audio-thread call while active but not processing. The engine not running
+    // is what guarantees the latter.
+    if (params_ == nullptr)
+        return;
+    if (!activated_.load(std::memory_order_acquire))
+    {
+        collectEvents(nullptr);
+        params_->flush(plugin_, &in_.list, &out_.list);
+        return;
+    }
+    if (engineRunning_.load(std::memory_order_acquire))
+        return;              // the next process() delivers the queue
+    ensureProcessing(false); // the device stopped mid-run: leave the processing state first
+    pretendAudioThread_.store(true, std::memory_order_release);
+    collectEvents(nullptr);
+    params_->flush(plugin_, &in_.list, &out_.list);
+    pretendAudioThread_.store(false, std::memory_order_release);
+}
 
 void HostedClapPlugin::onMainThread()
 {
@@ -531,29 +841,16 @@ void HostedClapPlugin::onMainThread()
         plugin_->on_main_thread(plugin_);
     if (latencyDirty_.load(std::memory_order_acquire))
         refreshLatency();
-    if (flushRequested_.exchange(false, std::memory_order_acq_rel) && params_ != nullptr &&
-        !processing_.load(std::memory_order_acquire))
+    if (flushRequested_.load(std::memory_order_acquire))
+        flushPendingOnMainThread();
+    if (guiClosedByPlugin_.exchange(false, std::memory_order_acq_rel))
     {
-        // Not processing: deliver the pending changes through params.flush.
-        in_.count = 0;
-        ParamChange change;
-        while (in_.count < in_.events.size() && pending_->pop(change))
-        {
-            auto& e = in_.events[in_.count++].param;
-            e.header.size = sizeof(clap_event_param_value_t);
-            e.header.time = 0;
-            e.header.space_id = CLAP_CORE_EVENT_SPACE_ID;
-            e.header.type = CLAP_EVENT_PARAM_VALUE;
-            e.header.flags = 0;
-            e.param_id = change.id;
-            e.cookie = change.cookie;
-            e.note_id = -1;
-            e.port_index = -1;
-            e.channel = -1;
-            e.key = -1;
-            e.value = change.value;
-        }
-        params_->flush(plugin_, &in_.list, &out_.list);
+        // The plugin closed its own window: without was_destroyed the GUI still
+        // exists and the host must destroy it.
+        if (editorOpen_.load(std::memory_order_acquire) && gui_ != nullptr &&
+            !guiWasDestroyed_.load(std::memory_order_acquire))
+            gui_->destroy(plugin_);
+        editorOpen_.store(false, std::memory_order_release);
     }
 }
 
@@ -616,12 +913,7 @@ void HostedClapPlugin::setState(const std::string& state)
     clap_istream_t stream{&source, &ByteSource::read};
     state_->load(plugin_, &stream);
     // The plugin's values may have changed under the host's view.
-    for (size_t i = 0; i < paramInfos_.size() && params_ != nullptr; ++i)
-    {
-        double value = 0.0;
-        if (params_->get_value(plugin_, paramInfos_[i].id, &value))
-            values_[i].store(static_cast<float>(value), std::memory_order_relaxed);
-    }
+    refreshValues();
 }
 
 // ----- presets ----------------------------------------------------------------------------------
@@ -677,7 +969,7 @@ bool HostedClapPlugin::savePresetFile(const juce::File& file) const
 bool HostedClapPlugin::openEditor(void* parentHwnd, double scale, int& width, int& height)
 {
     AURAL_ASSERT_NOT_REALTIME("HostedClapPlugin::openEditor");
-    if (gui_ == nullptr || editorOpen_)
+    if (gui_ == nullptr || editorOpen_.load(std::memory_order_acquire))
         return false;
     if (!gui_->create(plugin_, CLAP_WINDOW_API_WIN32, false))
         return false;
@@ -697,7 +989,8 @@ bool HostedClapPlugin::openEditor(void* parentHwnd, double scale, int& width, in
         return false;
     }
     gui_->show(plugin_);
-    editorOpen_ = true;
+    guiClosedByPlugin_.store(false, std::memory_order_release);
+    editorOpen_.store(true, std::memory_order_release);
     width = static_cast<int>(w);
     height = static_cast<int>(h);
     return true;
@@ -705,16 +998,16 @@ bool HostedClapPlugin::openEditor(void* parentHwnd, double scale, int& width, in
 
 void HostedClapPlugin::closeEditor()
 {
-    if (!editorOpen_ || gui_ == nullptr)
+    if (!editorOpen_.load(std::memory_order_acquire) || gui_ == nullptr)
         return;
     gui_->hide(plugin_);
     gui_->destroy(plugin_);
-    editorOpen_ = false;
+    editorOpen_.store(false, std::memory_order_release);
 }
 
 void HostedClapPlugin::editorResized(int width, int height)
 {
-    if (editorOpen_ && gui_ != nullptr && width > 0 && height > 0)
+    if (editorOpen_.load(std::memory_order_acquire) && gui_ != nullptr && width > 0 && height > 0)
         gui_->set_size(plugin_, static_cast<uint32_t>(width), static_cast<uint32_t>(height));
 }
 
@@ -729,7 +1022,7 @@ bool HostedClapPlugin::takeResizeRequest(int& width, int& height)
 
 bool HostedClapPlugin::editorIsResizable() const noexcept
 {
-    return gui_ != nullptr && gui_->can_resize(plugin_);
+    return gui_ != nullptr && editorOpen_.load(std::memory_order_acquire) && gui_->can_resize(plugin_);
 }
 
 // ----- host callbacks ---------------------------------------------------------------------------
@@ -760,20 +1053,17 @@ const void* HostedClapPlugin::hostGetExtension(const clap_host_t* host, const ch
 
 void HostedClapPlugin::hostRequestRestart(const clap_host_t* host) noexcept
 {
+    // Honoured by the insert cache: a fresh instance with this one's state takes
+    // its place in the next snapshot (the real-time thread never sees a
+    // deactivation).
     self(host).restartRequested_.store(true, std::memory_order_release);
-    self(host).callbackRequested_.store(true, std::memory_order_release);
 }
 
 void HostedClapPlugin::hostRequestProcess(const clap_host_t*) noexcept {}
 
 void HostedClapPlugin::hostRequestCallback(const clap_host_t* host) noexcept
 {
-    auto& s = self(host);
-    s.callbackRequested_.store(true, std::memory_order_release);
-    if (juce::MessageManager::getInstanceWithoutCreating() != nullptr && !rt::isRealtimeThread())
-    {
-        juce::MessageManager::callAsync([&s] { s.onMainThread(); });
-    }
+    self(host).requestMainThread();
 }
 
 void HostedClapPlugin::hostLog(const clap_host_t*, clap_log_severity, const char*) noexcept {}
@@ -789,11 +1079,52 @@ bool HostedClapPlugin::hostIsAudioThread(const clap_host_t* host) noexcept
     return rt::isRealtimeThread() || self(host).pretendAudioThread_.load(std::memory_order_acquire);
 }
 
-void HostedClapPlugin::hostParamsRescan(const clap_host_t* host, clap_param_rescan_flags) noexcept
+void HostedClapPlugin::hostParamsRescan(const clap_host_t* host, clap_param_rescan_flags flags) noexcept
 {
+    // Main thread (spec). While the plugin is active the audio thread may be
+    // walking the parameter tables, so they are never reallocated then: values
+    // and texts are refreshed in place, anything that changes the set of
+    // parameters (or RESCAN_ALL, which is only legal when inactive) becomes a
+    // restart, which the cache answers with a fresh instance.
     auto& s = self(host);
-    if (hostIsMainThread(host))
+    if (!hostIsMainThread(host) || s.params_ == nullptr)
+        return;
+    if (!s.activated_.load(std::memory_order_acquire))
+    {
         s.readParameters();
+        return;
+    }
+    const bool sameCount = s.params_->count(s.plugin_) == static_cast<uint32_t>(s.paramInfos_.size());
+    if ((flags & CLAP_PARAM_RESCAN_ALL) != 0 || !sameCount)
+    {
+        s.restartRequested_.store(true, std::memory_order_release);
+        return;
+    }
+    if ((flags & (CLAP_PARAM_RESCAN_INFO | CLAP_PARAM_RESCAN_TEXT)) != 0)
+        for (uint32_t i = 0; i < static_cast<uint32_t>(s.paramInfos_.size()); ++i)
+        {
+            clap_param_info_t info{};
+            if (!s.params_->get_info(s.plugin_, i, &info) || info.id != s.paramInfos_[i].id)
+            {
+                s.restartRequested_.store(true, std::memory_order_release); // the set changed after all
+                return;
+            }
+            auto& stored = s.paramInfos_[i];
+            std::memcpy(stored.name, info.name, sizeof(stored.name));
+            std::memcpy(stored.module, info.module, sizeof(stored.module));
+            stored.flags = info.flags;
+            stored.min_value = info.min_value;
+            stored.max_value = info.max_value;
+            stored.default_value = info.default_value;
+            stored.cookie = info.cookie;
+            auto& p = s.infos_[i];
+            p.name = info.name;
+            p.minimum = static_cast<float>(info.min_value);
+            p.maximum = static_cast<float>(info.max_value);
+            p.defaultValue = static_cast<float>(info.default_value);
+        }
+    if ((flags & CLAP_PARAM_RESCAN_VALUES) != 0)
+        s.refreshValues();
 }
 
 void HostedClapPlugin::hostParamsClear(const clap_host_t*, clap_id, clap_param_clear_flags) noexcept {}
@@ -801,7 +1132,7 @@ void HostedClapPlugin::hostParamsClear(const clap_host_t*, clap_id, clap_param_c
 void HostedClapPlugin::hostParamsRequestFlush(const clap_host_t* host) noexcept
 {
     self(host).flushRequested_.store(true, std::memory_order_release);
-    hostRequestCallback(host);
+    self(host).requestMainThread();
 }
 
 void HostedClapPlugin::hostStateMarkDirty(const clap_host_t*) noexcept {}
@@ -809,7 +1140,7 @@ void HostedClapPlugin::hostStateMarkDirty(const clap_host_t*) noexcept {}
 void HostedClapPlugin::hostLatencyChanged(const clap_host_t* host) noexcept
 {
     self(host).latencyDirty_.store(true, std::memory_order_release);
-    hostRequestCallback(host);
+    self(host).requestMainThread();
 }
 
 bool HostedClapPlugin::hostAudioPortsIsRescanFlagSupported(const clap_host_t*, uint32_t) noexcept
@@ -817,7 +1148,11 @@ bool HostedClapPlugin::hostAudioPortsIsRescanFlagSupported(const clap_host_t*, u
     return false;
 }
 
-void HostedClapPlugin::hostAudioPortsRescan(const clap_host_t*, uint32_t) noexcept {}
+void HostedClapPlugin::hostAudioPortsRescan(const clap_host_t* host, uint32_t) noexcept
+{
+    // A port change needs a new negotiation: a fresh instance does it.
+    self(host).restartRequested_.store(true, std::memory_order_release);
+}
 
 uint32_t HostedClapPlugin::hostNotePortsSupportedDialects(const clap_host_t*) noexcept
 {
@@ -847,9 +1182,12 @@ bool HostedClapPlugin::hostGuiRequestHide(const clap_host_t*) noexcept
     return false;
 }
 
-void HostedClapPlugin::hostGuiClosed(const clap_host_t* host, bool) noexcept
+void HostedClapPlugin::hostGuiClosed(const clap_host_t* host, bool wasDestroyed) noexcept
 {
-    self(host).editorOpen_ = false;
+    auto& s = self(host);
+    s.guiWasDestroyed_.store(wasDestroyed, std::memory_order_relaxed);
+    s.guiClosedByPlugin_.store(true, std::memory_order_release);
+    s.requestMainThread();
 }
 
 bool HostedClapPlugin::hostTimerRegister(const clap_host_t* host,

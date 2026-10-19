@@ -3,6 +3,7 @@
 #include "audio/AudioDeviceLayer.h"
 #include "core/ProjectJson.h"
 #include "engine/WavFile.h"
+#include "hosting/ClapPlugin.h"
 #include "plugins/BuiltIns.h"
 
 #include <algorithm>
@@ -66,6 +67,9 @@ void ProjectSession::execute(std::unique_ptr<core::Command> command)
         dynamic_cast<core::RemoveBus*>(command.get()) != nullptr)
         captureInsertStates();
     const bool live = command->isLive();
+    std::vector<core::Command::ParameterTouch> touches;
+    command->touchedParameters(touches);
+    mirrorOwnedParameters(touches);
     undo_.execute(project_, std::move(command));
     modified_ = true;
     if (live)
@@ -73,6 +77,7 @@ void ProjectSession::execute(std::unique_ptr<core::Command> command)
         // A gain, pan or parameter: the running graph takes the new value
         // (ramped) without a recompile.
         engine_.applyLiveValues(project_);
+        engine_.pushInsertParameters(project_, touches);
         sendChangeMessage();
     }
     else
@@ -101,11 +106,19 @@ void ProjectSession::executeGroup(const std::string& name,
     if (commands.empty())
         return;
     undo_.beginGroup(name);
+    std::vector<core::Command::ParameterTouch> touches;
     for (auto& command : commands)
+    {
+        std::vector<core::Command::ParameterTouch> own;
+        command->touchedParameters(own);
+        mirrorOwnedParameters(own);
+        touches.insert(touches.end(), own.begin(), own.end());
         undo_.execute(project_, std::move(command));
+    }
     undo_.endGroup();
     modified_ = true;
     publish();
+    engine_.pushInsertParameters(project_, touches);
 }
 
 std::string ProjectSession::normaliseClip(core::Id trackId, core::Id clipId, float targetDb)
@@ -143,6 +156,11 @@ void ProjectSession::undo()
     {
         modified_ = true;
         publish();
+        // Parameters the undone command restored reach plugins that own theirs.
+        std::vector<core::Command::ParameterTouch> touches;
+        if (const auto* undone = undo_.redoTop())
+            undone->touchedParameters(touches);
+        engine_.pushInsertParameters(project_, touches);
     }
 }
 
@@ -152,6 +170,38 @@ void ProjectSession::redo()
     {
         modified_ = true;
         publish();
+        std::vector<core::Command::ParameterTouch> touches;
+        if (const auto* redone = undo_.undoTop())
+            redone->touchedParameters(touches);
+        engine_.pushInsertParameters(project_, touches);
+    }
+}
+
+void ProjectSession::mirrorOwnedParameters(const std::vector<core::Command::ParameterTouch>& touches)
+{
+    // A processor that owns its parameters (a hosted plugin) is the truth for
+    // their values; before a command sets one, the model's list is brought up to
+    // date from the instance so the command records the real previous value and
+    // undo restores it.
+    for (const auto& touch : touches)
+    {
+        const auto instance = engine_.insertInstance(touch.insertId);
+        if (instance == nullptr || !instance->ownsParameters())
+            continue;
+        core::Insert* insert = nullptr;
+        for (auto& t : project_.tracks)
+            if (auto* i = t.findInsert(touch.insertId))
+                insert = i;
+        for (auto& b : project_.buses)
+            if (auto* i = b.findInsert(touch.insertId))
+                insert = i;
+        if (insert == nullptr)
+            continue;
+        const auto count = instance->parameters().size();
+        if (insert->params.size() < count)
+            insert->params.resize(count, 0.0f);
+        for (size_t k = 0; k < count; ++k)
+            insert->params[k] = instance->parameter(static_cast<int>(k));
     }
 }
 
@@ -853,8 +903,11 @@ void ProjectSession::timerCallback()
 void ProjectSession::poll()
 {
     engine_.collectGarbage();
-    if (engine_.insertLatencyChanged())
-        publish(); // a plugin changed its latency: re-solve the compensation
+    // CLAP plugins' main-thread requests (callbacks, latency, flushes while the
+    // device is stopped, GUI closures).
+    hosting::HostedClapPlugin::serviceAll(engine_.isRunning());
+    if (engine_.insertLatencyChanged() || engine_.insertRestartRequested())
+        publish(); // a plugin changed its latency or asked for a restart: new snapshot
     if (engine_.hasRecordingToCollect())
         if (auto finished = engine_.collectRecording())
             finishRecording(std::move(*finished));

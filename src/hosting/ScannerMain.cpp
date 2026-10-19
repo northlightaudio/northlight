@@ -24,11 +24,26 @@ bool scanClap(const juce::String& path, juce::XmlElement& root)
 {
     juce::DynamicLibrary library;
     if (!library.open(path))
+    {
+        root.setAttribute("error", "the library could not be loaded");
         return false;
+    }
     const auto* entry = static_cast<const clap_plugin_entry_t*>(library.getFunction("clap_entry"));
-    if (entry == nullptr || !clap_version_is_compatible(entry->clap_version) ||
-        !entry->init(path.toRawUTF8()))
+    if (entry == nullptr)
+    {
+        root.setAttribute("error", "not a CLAP plugin (no clap_entry)");
         return false;
+    }
+    if (!clap_version_is_compatible(entry->clap_version))
+    {
+        root.setAttribute("error", "incompatible CLAP version");
+        return false;
+    }
+    if (!entry->init(path.toRawUTF8()))
+    {
+        root.setAttribute("error", "the plugin's entry point refused to initialise");
+        return false;
+    }
     if (const auto* factory =
             static_cast<const clap_plugin_factory_t*>(entry->get_factory(CLAP_PLUGIN_FACTORY_ID)))
     {

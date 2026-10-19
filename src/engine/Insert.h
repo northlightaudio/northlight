@@ -47,6 +47,19 @@ public:
     // Any thread.
     virtual void setParameter(int index, float value) noexcept = 0;
     virtual float parameter(int index) const noexcept = 0;
+    // A parameter drag in the generic editor: a hosted plugin turns these into its
+    // gesture events (one undo step, automation touch). Defaults do nothing.
+    virtual void beginParameterGesture(int) noexcept {}
+    virtual void endParameterGesture(int) noexcept {}
+    // True when the processor's own state (presets, its editor) is the authority
+    // for its parameters: the cache then pushes the model's parameter list only
+    // when a command changes it, never on a compile, so a preset loaded from the
+    // plugin's menu is not reverted by the next edit elsewhere.
+    virtual bool ownsParameters() const noexcept { return false; }
+    // True when the processor must be recreated (a plugin asked for a restart or
+    // changed its parameter set): the cache replaces it, carrying the state over,
+    // and the next snapshot takes the new instance.
+    virtual bool needsRestart() const noexcept { return false; }
     void setBypassed(bool bypass) noexcept { bypass_.store(bypass, std::memory_order_relaxed); }
     bool isBypassed() const noexcept { return bypass_.load(std::memory_order_relaxed); }
 
@@ -115,6 +128,9 @@ public:
     // Whether any instance reports a different latency than it had when last
     // compiled (a plugin changed its lookahead): the snapshot needs recompiling.
     bool latencyChanged() const noexcept;
+    // Whether any instance asked to be recreated: the snapshot needs recompiling
+    // (get() then makes the replacement).
+    bool restartRequested() const noexcept;
 
     // Drops instances no snapshot references any more.
     void prune();

@@ -21,6 +21,10 @@ public:
     ~ClapEditor() override;
 
     std::function<void(int width, int height)> onPluginResized;
+    // The plugin's GUI reported whether it can be resized (known once it is open).
+    std::function<void(bool)> onResizableKnown;
+    // The plugin closed its own window: the host window should go too.
+    std::function<void()> onPluginClosed;
     bool isResizable() const noexcept { return plugin_.editorIsResizable(); }
 
     void parentHierarchyChanged() override;

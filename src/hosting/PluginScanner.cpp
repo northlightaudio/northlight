@@ -111,6 +111,13 @@ bool PluginScanner::inspect(const juce::File& scanner,
         error = "the scanner produced no result";
         return false;
     }
+    // A file the scanner could open but that refused to initialise is failed with
+    // the reason (and blocklisted), not recorded as holding no plugins.
+    if (xml->hasAttribute("error"))
+    {
+        error = xml->getStringAttribute("error").toStdString();
+        return false;
+    }
     for (const auto* child : xml->getChildIterator())
     {
         if (child->hasTagName("CLAP"))
@@ -180,15 +187,20 @@ void PluginScanner::run()
     // leaves nothing dangling.
     auto planning = std::make_shared<Planning>();
     planning->candidates = format.searchPathsForPlugins(paths, true, false);
+    // The CLAP folders: %COMMONPROGRAMFILES%\CLAP, the per-user one under the local
+    // (not roaming) application data, and every entry of %CLAP_PATH%.
     juce::FileSearchPath clapPaths;
-    clapPaths.add(
-        juce::File::getSpecialLocation(juce::File::commonApplicationDataDirectory).getChildFile("CLAP"));
-    clapPaths.add(juce::File("C:\\Program Files\\Common Files\\CLAP"));
-    // The per-user CLAP folder is under the local (not roaming) application data.
+    const auto commonFiles = juce::SystemStats::getEnvironmentVariable("COMMONPROGRAMFILES", "");
+    clapPaths.add(commonFiles.isNotEmpty() ? juce::File(commonFiles).getChildFile("CLAP")
+                                           : juce::File("C:\\Program Files\\Common Files\\CLAP"));
     clapPaths.add(juce::File::getSpecialLocation(juce::File::windowsLocalAppData)
                       .getChildFile("Programs")
                       .getChildFile("Common")
                       .getChildFile("CLAP"));
+    for (const auto& entry :
+         juce::StringArray::fromTokens(juce::SystemStats::getEnvironmentVariable("CLAP_PATH", ""), ";", "\""))
+        if (entry.trim().isNotEmpty())
+            clapPaths.add(juce::File(entry.trim()));
     for (const auto& extra : extraPaths_)
         clapPaths.add(juce::File(juce::String::fromUTF8(extra.c_str())));
     for (int i = 0; i < clapPaths.getNumPaths(); ++i)

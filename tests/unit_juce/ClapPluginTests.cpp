@@ -1,3 +1,9 @@
+#include "app/ProjectSession.h"
+#include "audio/AudioDeviceLayer.h"
+#include "audio/AudioSettings.h"
+#include "engine/AudioEngine.h"
+#include "engine/AudioSource.h"
+#include "engine/Insert.h"
 #include "engine/Midi.h"
 #include "engine/rt/RealtimeGuard.h"
 #include "hosting/ClapPlugin.h"
@@ -9,7 +15,9 @@
 #include <catch2/catch_test_macros.hpp>
 
 #include <atomic>
+#include <chrono>
 #include <cmath>
+#include <thread>
 #include <vector>
 
 using namespace aural;
@@ -42,7 +50,7 @@ TEST_CASE("The scanner lists a CLAP file's plugins with their format", "[hosting
     std::vector<hosting::PluginInfo> found;
     std::string error;
     REQUIRE(hosting::PluginScanner::inspect(scanner, testClap(), found, error));
-    REQUIRE(found.size() == 1);
+    REQUIRE(found.size() == 5);
     CHECK(found[0].format == "CLAP");
     CHECK(found[0].id == "io.leafshade.aural.testgain");
     CHECK(found[0].name == "Aural Test Gain");
@@ -213,3 +221,373 @@ TEST_CASE("Processing a CLAP plugin allocates nothing on the real-time thread", 
     CHECK(clapViolations == 0);
 }
 #endif
+
+namespace
+{
+// A registry holding every plugin of the test CLAP, and a factory over it.
+hosting::PluginRegistry testRegistry()
+{
+    hosting::PluginRegistry registry;
+    std::vector<hosting::PluginInfo> infos;
+    for (const char* id : {"io.leafshade.aural.testgain",
+                           "io.leafshade.aural.testgain.quad",
+                           "io.leafshade.aural.testgain.multiout",
+                           "io.leafshade.aural.testgain.noinplace",
+                           "io.leafshade.aural.testgain.callback"})
+    {
+        hosting::PluginInfo info;
+        info.format = "CLAP";
+        info.id = id;
+        info.name = id;
+        info.path = testClap().getFullPathName().toStdString();
+        infos.push_back(info);
+    }
+    registry.setFileResults(testClap().getFullPathName().toStdString(), 1, infos);
+    return registry;
+}
+
+// The test plugin's state: one double (its gain), base64 like the host stores it.
+std::string gainState(double gain)
+{
+    return juce::Base64::toBase64(&gain, sizeof(gain)).toStdString();
+}
+
+class NoMedia final : public engine::MediaLoader
+{
+public:
+    std::shared_ptr<engine::AudioSource> load(const std::string&, double, std::string& error) override
+    {
+        error = "no media";
+        return nullptr;
+    }
+};
+} // namespace
+
+TEST_CASE("Every port layout the plugin declares is honoured or refused, never indexed past",
+          "[hosting][clap][ports]")
+{
+    const juce::ScopedJuceInitialiser_GUI juceInit;
+    REQUIRE(testClap().existsAsFile());
+    const auto registry = testRegistry();
+    hosting::HostFactory factory(registry);
+
+    SECTION("a four-channel main port is refused with a message the user can read")
+    {
+        auto quad = factory.create("clap:io.leafshade.aural.testgain.quad");
+        CHECK(quad == nullptr);
+        CHECK(factory.lastError().find("channels") != std::string::npos);
+    }
+    SECTION("a second output port is drained to scratch and the main pair still processes")
+    {
+        auto processor = factory.create("clap:io.leafshade.aural.testgain.multiout");
+        INFO(factory.lastError());
+        REQUIRE(processor != nullptr);
+        auto* clap = dynamic_cast<hosting::HostedClapPlugin*>(processor.get());
+        REQUIRE(clap != nullptr);
+        CHECK(clap->outputPortCount() == 2);
+        CHECK(clap->inputPortCount() == 1);
+        CHECK(clap->outputIsInPlace());
+        processor->prepare(48000.0, 256);
+        std::vector<float> l(256, 0.0f), r(256, 0.0f);
+        l[0] = r[0] = 1.0f;
+        processor->process(l.data(), r.data(), 256);
+        CHECK(l[32] == Approx(1.0f)); // the plugin processed (an error would pass through)
+        CHECK(l[0] == 0.0f);
+        CHECK(r[32] == Approx(1.0f));
+    }
+    SECTION("a plugin without an in-place pair gets its own output buffers")
+    {
+        auto processor = factory.create("clap:io.leafshade.aural.testgain.noinplace");
+        INFO(factory.lastError());
+        REQUIRE(processor != nullptr);
+        auto* clap = dynamic_cast<hosting::HostedClapPlugin*>(processor.get());
+        REQUIRE(clap != nullptr);
+        CHECK_FALSE(clap->outputIsInPlace());
+        processor->prepare(48000.0, 64);
+        std::vector<float> l(64, 1.0f), r(64, 0.5f);
+        processor->process(l.data(), r.data(), 64);
+        // Swapped: an aliased left would have been overwritten before the right read it.
+        CHECK(l[10] == Approx(0.5f));
+        CHECK(r[10] == Approx(1.0f));
+    }
+    SECTION("the plain plugin is paired in place")
+    {
+        auto processor = factory.create("clap:io.leafshade.aural.testgain");
+        REQUIRE(processor != nullptr);
+        auto* clap = dynamic_cast<hosting::HostedClapPlugin*>(processor.get());
+        REQUIRE(clap != nullptr);
+        CHECK(clap->outputIsInPlace());
+        CHECK(clap->mainInputChannels() == 2);
+        CHECK(clap->mainOutputChannels() == 2);
+    }
+}
+
+TEST_CASE("Two instances of one CLAP file share its entry point", "[hosting][clap][entry]")
+{
+    const juce::ScopedJuceInitialiser_GUI juceInit;
+    REQUIRE(testClap().existsAsFile());
+    const auto registry = testRegistry();
+    hosting::HostFactory factory(registry);
+    auto first = factory.create("clap:io.leafshade.aural.testgain");
+    REQUIRE(first != nullptr);
+    // The test plugin refuses a second entry init: a per-instance init would fail here.
+    auto second = factory.create("clap:io.leafshade.aural.testgain.noinplace");
+    INFO(factory.lastError());
+    REQUIRE(second != nullptr);
+    first.reset(); // the survivor keeps the entry alive
+    second->prepare(48000.0, 64);
+    std::vector<float> l(64, 1.0f), r(64, 0.0f);
+    second->process(l.data(), r.data(), 64);
+    CHECK(r[5] == Approx(1.0f));
+    second.reset();
+    auto third = factory.create("clap:io.leafshade.aural.testgain"); // a fresh init after deinit
+    INFO(factory.lastError());
+    CHECK(third != nullptr);
+}
+
+TEST_CASE("A rescan of values from a callback requested on the audio thread is serviced while processing",
+          "[hosting][clap][rescan]")
+{
+    const juce::ScopedJuceInitialiser_GUI juceInit;
+    REQUIRE(testClap().existsAsFile());
+    std::string error;
+    auto plugin = hosting::HostedClapPlugin::create("clap:io.leafshade.aural.testgain.callback",
+                                                    testClap().getFullPathName().toStdString(),
+                                                    "io.leafshade.aural.testgain.callback",
+                                                    error);
+    INFO(error);
+    REQUIRE(plugin != nullptr);
+    REQUIRE(plugin->parameters().size() == 2);
+    plugin->prepare(48000.0, 64);
+    CHECK(plugin->parameter(0) == Approx(1.0f));
+    plugin->setParameter(1, 1.0f); // Trigger: ask for a callback from process()
+
+    // The audio thread processes under the RT hook while the main thread polls.
+    const auto previous = rt::setViolationHandler(&countClapViolation);
+    clapViolations = 0;
+    std::atomic<bool> stop{false};
+    std::vector<float> l(64, 0.1f), r(64, 0.1f);
+    std::thread audio(
+        [&]
+        {
+            rt::ScopedRealtimeSection section; // everything inside is checked
+            while (!stop.load(std::memory_order_acquire))
+            {
+                plugin->process(l.data(), r.data(), 64);
+                for (int spin = 0; spin < 2000; ++spin) // a block's worth of time, without a wait
+                    std::atomic_signal_fence(std::memory_order_seq_cst);
+            }
+        });
+    bool serviced = false;
+    for (int i = 0; i < 500 && !serviced; ++i)
+    {
+        hosting::HostedClapPlugin::serviceAll(true); // the session's poll
+        serviced = plugin->parameter(0) == Approx(0.5f);
+        std::this_thread::sleep_for(std::chrono::milliseconds(1));
+    }
+    stop.store(true, std::memory_order_release);
+    audio.join();
+    rt::setViolationHandler(previous);
+    CHECK(serviced); // the callback ran and the rescan refreshed the host's view
+    CHECK(clapViolations == 0);
+    CHECK(plugin->parameters().size() == 2); // the tables were not rebuilt under the audio thread
+    CHECK_FALSE(plugin->needsRestart());
+}
+
+TEST_CASE("A restart request, or a rescan of everything while active, is answered with a fresh instance",
+          "[hosting][clap][restart]")
+{
+    const juce::ScopedJuceInitialiser_GUI juceInit;
+    REQUIRE(testClap().existsAsFile());
+    const auto registry = testRegistry();
+    hosting::HostFactory factory(registry);
+    engine::InsertCache cache(factory);
+    cache.prepare(48000.0, 64);
+    core::Insert insert;
+    insert.id = 7;
+    insert.type = "clap:io.leafshade.aural.testgain.callback";
+    auto first = cache.get(insert);
+    REQUIRE(first != nullptr);
+    std::vector<float> l(64, 0.1f), r(64, 0.1f);
+    first->setParameter(0, 0.7f);
+    first->process(l.data(), r.data(), 64); // delivers the value
+    CHECK(first->parameter(0) == Approx(0.7f));
+
+    SECTION("request_restart from process()")
+    {
+        first->setParameter(1, 2.0f);
+        first->process(l.data(), r.data(), 64);
+        CHECK(first->needsRestart());
+        CHECK(cache.restartRequested());
+        auto second = cache.get(insert); // what the next compile does
+        REQUIRE(second != nullptr);
+        CHECK(second.get() != first.get());
+        CHECK(second->parameter(0) == Approx(0.7f)); // the state carried over
+        CHECK_FALSE(second->needsRestart());
+        CHECK_FALSE(cache.restartRequested());
+        first->process(l.data(), r.data(), 64); // the old instance still runs for old snapshots
+    }
+    SECTION("rescan(ALL) from the plugin's callback")
+    {
+        first->setParameter(1, 3.0f);
+        first->process(l.data(), r.data(), 64); // asks for the callback
+        hosting::HostedClapPlugin::serviceAll(false);
+        CHECK(first->needsRestart());
+        auto second = cache.get(insert);
+        REQUIRE(second != nullptr);
+        CHECK(second.get() != first.get());
+        CHECK(second->parameter(0) == Approx(0.7f));
+    }
+}
+
+TEST_CASE("A bypassed latent CLAP plugin keeps its delay, so a parallel path stays aligned",
+          "[hosting][clap][bypass][pdc]")
+{
+    const juce::ScopedJuceInitialiser_GUI juceInit;
+    REQUIRE(testClap().existsAsFile());
+    const auto registry = testRegistry();
+    hosting::HostFactory factory(registry);
+    NoMedia loader;
+    engine::AudioEngine engine(loader, factory, 0);
+    engine.prepare(48000.0, 64);
+    // Two tracks monitor device input 0: A through the bypassed plugin (latency
+    // 32), B plain. The graph delays B to match; A's bypass must keep the delay.
+    core::Project p;
+    core::Track a, b;
+    a.id = 1;
+    a.inputChannel = 0;
+    a.monitor = core::MonitorMode::on;
+    core::Insert plugin;
+    plugin.id = 10;
+    plugin.type = "clap:io.leafshade.aural.testgain";
+    plugin.bypass = true;
+    a.inserts.push_back(plugin);
+    b.id = 2;
+    b.inputChannel = 0;
+    b.monitor = core::MonitorMode::on;
+    p.tracks = {a, b};
+    p.nextId = 100;
+    engine.setProject(p);
+    CHECK(engine.outputLatencySamples() == 32);
+
+    std::vector<float> in(64, 0.0f), l(64), r(64);
+    const float* inputs[] = {in.data()};
+    float* outputs[] = {l.data(), r.data()};
+    // Settle the bypass crossfade (10 ms) with silence first.
+    for (int block = 0; block < 20; ++block)
+        engine.process(inputs, 1, outputs, 2, 64);
+    in[0] = 1.0f; // an impulse at the start of the next block
+    std::vector<float> out;
+    for (int block = 0; block < 4; ++block)
+    {
+        engine.process(inputs, 1, outputs, 2, 64);
+        out.insert(out.end(), l.begin(), l.end());
+        std::fill(in.begin(), in.end(), 0.0f);
+    }
+    const float centre = std::cos(3.14159265f / 4.0f);
+    // Both paths arrive together, 32 samples late: one impulse of twice the height.
+    CHECK(out[32] == Approx(2.0f * centre).margin(0.02f));
+    CHECK(out[0] == Approx(0.0f).margin(0.001f));
+    float stray = 0.0f;
+    for (size_t i = 0; i < out.size(); ++i)
+        if (i != 32)
+            stray = std::max(stray, std::abs(out[i]));
+    CHECK(stray < 0.01f);
+}
+
+TEST_CASE("Host parameter changes reach a CLAP plugin while the device is stopped", "[hosting][clap][flush]")
+{
+    const juce::ScopedJuceInitialiser_GUI juceInit;
+    REQUIRE(testClap().existsAsFile());
+    std::string error;
+    auto plugin = hosting::HostedClapPlugin::create("clap:io.leafshade.aural.testgain",
+                                                    testClap().getFullPathName().toStdString(),
+                                                    "io.leafshade.aural.testgain",
+                                                    error);
+    REQUIRE(plugin != nullptr);
+    plugin->prepare(48000.0, 64);
+    plugin->setParameter(0, 0.25f);
+    // No process() runs: the poll flushes while the engine is not running.
+    hosting::HostedClapPlugin::serviceAll(false);
+    CHECK(plugin->state() == gainState(0.25));
+    // While the engine runs the poll leaves the queue to process().
+    plugin->setParameter(0, 0.75f);
+    hosting::HostedClapPlugin::serviceAll(true);
+    CHECK(plugin->state() == gainState(0.25));
+    std::vector<float> l(64, 0.0f), r(64, 0.0f);
+    plugin->process(l.data(), r.data(), 64);
+    CHECK(plugin->state() == gainState(0.75));
+}
+
+namespace
+{
+class MemoryStore final : public audio::AudioSettingsStore
+{
+public:
+    audio::AudioSettings loadAudioSettings() override { return settings_; }
+    void saveAudioSettings(const audio::AudioSettings& settings) override { settings_ = settings; }
+
+private:
+    audio::AudioSettings settings_;
+};
+} // namespace
+
+TEST_CASE("A preset loaded from the plugin's side survives a fader move and a save and reload",
+          "[hosting][clap][session][presets]")
+{
+    const juce::ScopedJuceInitialiser_GUI juceInit;
+    REQUIRE(testClap().existsAsFile());
+    const auto folder = juce::File::getSpecialLocation(juce::File::tempDirectory)
+                            .getChildFile("aural-clap-session")
+                            .getChildFile(juce::Uuid().toString());
+    REQUIRE(folder.createDirectory().wasOk());
+    const auto registryFile = folder.getChildFile("plugins.json");
+    REQUIRE(registryFile.replaceWithText(juce::String(testRegistry().toJson())));
+    MemoryStore store;
+    audio::AudioDeviceLayer audio{store};
+    {
+        ProjectSession session(audio, registryFile);
+        REQUIRE(session.save(folder.getChildFile("song.aural")).empty());
+        core::Track t;
+        t.id = 1;
+        t.name = "Keys";
+        session.execute(std::make_unique<core::AddTrack>(t));
+        core::Insert insert;
+        insert.id = 5;
+        insert.type = "clap:io.leafshade.aural.testgain";
+        session.execute(std::make_unique<core::AddInsert>(1, insert));
+        session.engine().prepare(48000.0, 64);
+        const auto live = session.liveInsert(5);
+        REQUIRE(live != nullptr);
+        // The user loads a preset from the plugin's own menu: the host only sees the state.
+        live->setState(gainState(0.5));
+        CHECK(live->parameter(0) == Approx(0.5f));
+        // A fader move is a live command: it must not push the model's stale gain.
+        session.execute(std::make_unique<core::SetTrackGain>(1, 0.5f));
+        CHECK(live->parameter(0) == Approx(0.5f));
+        // An edit elsewhere recompiles: still no stomp.
+        session.execute(std::make_unique<core::SetTrackName>(1, "Pads"));
+        CHECK(session.liveInsert(5)->parameter(0) == Approx(0.5f));
+        // The generic editor's own edit does reach the plugin, and undo restores it.
+        session.execute(std::make_unique<core::SetInsertParameter>(1, 5, 0, 0.8f));
+        std::vector<float> l(64, 0.0f), r(64, 0.0f);
+        float* outputs[] = {l.data(), r.data()};
+        session.engine().process(outputs, 2, 64); // delivers the queued value
+        CHECK(session.liveInsert(5)->state() == gainState(static_cast<double>(0.8f)));
+        session.undo();
+        session.engine().process(outputs, 2, 64);
+        CHECK(session.liveInsert(5)->state() == gainState(static_cast<double>(0.5f)));
+        CHECK(session.liveInsert(5)->parameter(0) == Approx(0.5f));
+        REQUIRE(session.save(folder.getChildFile("song.aural")).empty());
+    }
+    {
+        ProjectSession reopened(audio, registryFile);
+        REQUIRE(reopened.open(folder.getChildFile("song.aural")).empty());
+        reopened.engine().prepare(48000.0, 64);
+        const auto live = reopened.liveInsert(5);
+        REQUIRE(live != nullptr);
+        CHECK(live->parameter(0) == Approx(0.5f));
+        CHECK(live->state() == gainState(0.5));
+    }
+    folder.deleteRecursively();
+}

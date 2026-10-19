@@ -37,6 +37,8 @@ public:
 
     core::Id channelId() const noexcept { return channelId_; }
     core::Id insertId() const noexcept { return insertId_; }
+    // The instance the editor is on; a replaced instance closes the window.
+    const engine::InsertProcessor* instance() const noexcept { return keepAlive_.get(); }
 
     // Refreshes the bar from the model insert (bypass, mix).
     void setInsert(const core::Insert& insert);

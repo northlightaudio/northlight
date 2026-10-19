@@ -23,36 +23,62 @@ namespace aural::hosting
 
 // A CLAP plugin behind the engine's insert interface, hosted directly against the
 // CLAP C ABI (JUCE does not host CLAP). One instance per insert slot; the .clap
-// library is loaded once per instance and released with it.
+// library and its entry point are shared by every instance of the same file and
+// released with the last one.
 //
 // Threads, as the CLAP spec divides them: main-thread calls (init, activate, state,
-// params flush when idle, gui) happen on the message thread; audio-thread calls
-// (start/stop_processing, process) on the real-time thread, or on the message
-// thread while no audio runs (the host's thread-check then answers "audio thread"
-// for that stretch, which the spec allows as long as nothing runs concurrently).
-// Parameter changes from the host travel as events: queued on an SPSC queue and
-// delivered in the next process() call, or flushed through clap.params when the
-// plugin is not processing.
+// params flush when inactive, gui, rescans) happen on the message thread; audio-
+// thread calls (start/stop_processing, process, params flush while active but not
+// processing) on the real-time thread, or on the message thread while no audio
+// runs (the host's thread-check then answers "audio thread" for that stretch,
+// which the spec allows as long as nothing runs concurrently). Parameter changes
+// and gestures from the host travel as events: queued on an SPSC queue and
+// delivered in the next process() call, or flushed through clap.params from the
+// session's poll while the engine is not running. Requests the plugin makes from
+// the audio thread (callback, restart, latency, flush) are serviced by that poll;
+// a restart is honoured by the insert cache creating a fresh instance (with the
+// old one's state) that the next snapshot takes, so the real-time thread never
+// sees a deactivation.
+//
+// Ports: every audio port is read once at creation. The main input (port 0) must
+// be mono or stereo (mono is fed the summed pair), the main output likewise (mono
+// goes to both sides); a stereo second input port is the key; every other port is
+// fed or drained through silent scratch so the plugin always sees exactly the
+// buffer counts and channel counts it declared. The output is in place on the
+// chain's pair only when the plugin pairs the ports (in_place_pair).
 class HostedClapPlugin final : public engine::InsertProcessor, public PluginPresets
 {
 public:
     // Loads the library and creates the plugin with the given id. Returns null
-    // (with `error` set) when the file is not a CLAP, the id is unknown, or the
-    // plugin refuses to initialise.
+    // (with `error` set) when the file is not a CLAP, the id is unknown, the
+    // plugin refuses to initialise, or its main ports are neither mono nor stereo.
     static std::unique_ptr<HostedClapPlugin> create(const std::string& typeName,
                                                     const std::string& path,
                                                     const std::string& pluginId,
                                                     std::string& error);
     ~HostedClapPlugin() override;
 
+    // Main-thread service for every live instance (the session's poll): pending
+    // callbacks, latency refreshes, GUI closures and, while the engine is not
+    // running, parameter flushes.
+    static void serviceAll(bool engineRunning);
+
     // ----- engine::InsertProcessor ------------------------------------------------
     const std::string& typeName() const noexcept override { return typeName_; }
     const std::vector<engine::ParameterInfo>& parameters() const noexcept override { return infos_; }
+    bool ownsParameters() const noexcept override { return true; }
     void prepare(double sampleRate, int maxBlockSize) override;
     void setParameter(int index, float value) noexcept override;
     float parameter(int index) const noexcept override;
+    void beginParameterGesture(int index) noexcept override;
+    void endParameterGesture(int index) noexcept override;
     void process(float* left, float* right, int numSamples) noexcept override;
     bool acceptsSidechain() const noexcept override { return hasSidechain_; }
+    void processWithSidechain(float* left,
+                              float* right,
+                              const float* keyLeft,
+                              const float* keyRight,
+                              int numSamples) noexcept override;
     // A plugin with a note input port (an instrument, a MIDI effect) gets the
     // block's events as CLAP note events, or MIDI 1.0 events when that is the
     // only dialect it takes.
@@ -61,12 +87,8 @@ public:
                      float* left,
                      float* right,
                      int numSamples) noexcept override;
-    void processWithSidechain(float* left,
-                              float* right,
-                              const float* keyLeft,
-                              const float* keyRight,
-                              int numSamples) noexcept override;
     int latencySamples() const noexcept override { return latency_.load(std::memory_order_relaxed); }
+    bool needsRestart() const noexcept override { return restartRequested_.load(std::memory_order_acquire); }
     std::string state() const override;
     void setState(const std::string& state) override;
 
@@ -90,24 +112,34 @@ public:
     // GUI refused.
     bool openEditor(void* parentHwnd, double scale, int& width, int& height);
     void closeEditor();
-    bool isEditorOpen() const noexcept { return editorOpen_; }
+    bool isEditorOpen() const noexcept { return editorOpen_.load(std::memory_order_acquire); }
     // Called by the window when the host resized the plugin's area.
     void editorResized(int width, int height);
     // The plugin asked for a new size (from the gui extension); the window polls this.
     bool takeResizeRequest(int& width, int& height);
+    // Valid once the editor is open (the spec allows can_resize only after create).
     bool editorIsResizable() const noexcept;
 
     const clap_plugin_descriptor_t* descriptor() const noexcept { return descriptor_; }
+    // The negotiated main-port layout, for tests and diagnostics.
+    int mainInputChannels() const noexcept { return mainInChannels_; }
+    int mainOutputChannels() const noexcept { return mainOutChannels_; }
+    bool outputIsInPlace() const noexcept { return aliasMain_; }
+    int inputPortCount() const noexcept { return static_cast<int>(inPorts_.size()); }
+    int outputPortCount() const noexcept { return static_cast<int>(outPorts_.size()); }
 
 private:
     HostedClapPlugin() = default;
     bool initialise(const std::string& path, const std::string& pluginId, std::string& error);
+    bool readPorts(std::string& error);
     void readParameters();
+    void refreshValues();
     void refreshLatency();
-    void runEvents(const clap_input_events_t& in, const clap_output_events_t& out) noexcept;
     bool run(float* left, float* right, const float* keyLeft, const float* keyRight, int numSamples) noexcept;
     void ensureProcessing(bool on) noexcept;
     void onMainThread();
+    void flushPendingOnMainThread();
+    void requestMainThread() noexcept;
 
     // ----- the clap_host we hand the plugin ---------------------------------------
     static HostedClapPlugin& self(const clap_host_t* host) noexcept;
@@ -135,17 +167,34 @@ private:
     static bool hostTimerRegister(const clap_host_t* host, uint32_t periodMs, clap_id* timerId) noexcept;
     static bool hostTimerUnregister(const clap_host_t* host, clap_id timerId) noexcept;
 
+    // ----- the shared library and entry point, one per file -----------------------
+    struct Module;
+    static std::shared_ptr<Module> acquireModule(const std::string& path, std::string& error);
+
+    // ----- live instances (main thread), for servicing and safe async calls -------
+    static std::mutex& liveMutex();
+    static std::vector<HostedClapPlugin*>& liveInstances();
+    static bool isLive(const HostedClapPlugin* plugin);
+
     // ----- event lists over preallocated storage ----------------------------------
     struct ParamChange
     {
-        clap_id id;
-        void* cookie;
-        double value;
+        enum class Kind : std::uint8_t
+        {
+            value,
+            gestureBegin,
+            gestureEnd,
+        };
+        Kind kind = Kind::value;
+        clap_id id = 0;
+        void* cookie = nullptr;
+        double value = 0.0;
     };
     union EventSlot
     {
         clap_event_header_t header;
         clap_event_param_value_t param;
+        clap_event_param_gesture_t gesture;
         clap_event_note_t note;
         clap_event_midi_t midi;
     };
@@ -163,12 +212,25 @@ private:
         clap_output_events_t list{};
         HostedClapPlugin* owner = nullptr;
     };
+    // Fills in_ from the pending queue (and the block's notes); audio thread, or
+    // the main thread while nothing processes.
+    void collectEvents(const engine::MidiEventList* midi) noexcept;
+
+    // An audio port and the scratch that stands in for it when the chain has
+    // nothing to put there.
+    struct Port
+    {
+        clap_id id = 0;
+        int channels = 0;
+        clap_id inPlacePair = CLAP_INVALID_ID;
+        std::vector<std::vector<float>> scratch; // per channel, maxBlock samples
+        std::vector<float*> pointers;
+    };
 
     class Timer;
 
     std::string typeName_, name_, vendor_, version_;
-    juce::DynamicLibrary library_;
-    const clap_plugin_entry_t* entry_ = nullptr;
+    std::shared_ptr<Module> module_;
     const clap_plugin_factory_t* factory_ = nullptr;
     const clap_plugin_descriptor_t* descriptor_ = nullptr;
     const clap_plugin_t* plugin_ = nullptr;
@@ -196,18 +258,29 @@ private:
     std::unique_ptr<rt::SpscQueue<ParamChange>> pending_; // host -> audio thread
     InEvents in_;
     OutEvents out_;
-    bool hasSidechain_ = false;
+
+    // Ports and the buffers handed to process().
+    std::vector<Port> inPorts_, outPorts_;
+    std::vector<clap_audio_buffer_t> inBuffers_, outBuffers_;
+    int mainInChannels_ = 0, mainOutChannels_ = 0;
+    bool aliasMain_ = false;    // output port 0 is processed in place on input port 0
+    bool hasSidechain_ = false; // input port 1 is a stereo key
     bool hasNoteInput_ = false;
     bool noteDialectClap_ = true;                        // else MIDI 1.0 events
     const engine::MidiEventList* pendingMidi_ = nullptr; // this block's events, while running
-    int inputPorts_ = 0, outputPorts_ = 0;
-    std::vector<float> keyLeft_, keyRight_, dryLeft_, dryRight_;
-    std::vector<float*> inChannels0_, inChannels1_, outChannels0_;
-    clap_audio_buffer_t inputs_[2]{}, outputs_[1]{};
+    std::vector<float> keyLeft_, keyRight_;              // the key port's channels
+    std::vector<float> dryLeft_, dryRight_;              // the input, for bypass and the error path
+    std::vector<float> monoIn_, outLeft_, outRight_;     // a mono main input, a separate main output
+    // The dry signal delayed by the plugin's latency, for bypass: a ring fed every
+    // block so switching into bypass finds the history it needs.
+    std::vector<float> bypassRingLeft_, bypassRingRight_;
+    size_t bypassWrite_ = 0;
     float bypassMix_ = 0.0f, bypassStep_ = 0.0f;
+
     std::atomic<bool> activated_{false};
     std::atomic<bool> processing_{false}; // start_processing has been called (audio side)
     std::atomic<bool> pretendAudioThread_{false};
+    std::atomic<bool> engineRunning_{false}; // set by serviceAll: the audio thread may be processing
     std::atomic<int> latency_{0};
     std::atomic<bool> latencyDirty_{false};
     std::atomic<bool> flushRequested_{false};
@@ -215,7 +288,9 @@ private:
     std::atomic<bool> restartRequested_{false};
     double sampleRate_ = 48000.0;
     int maxBlock_ = 0;
-    bool editorOpen_ = false;
+    std::atomic<bool> editorOpen_{false};
+    std::atomic<bool> guiClosedByPlugin_{false};
+    std::atomic<bool> guiWasDestroyed_{false};
     std::atomic<bool> resizeRequested_{false};
     std::atomic<uint32_t> requestedWidth_{0}, requestedHeight_{0};
     std::map<clap_id, std::unique_ptr<Timer>> timers_;

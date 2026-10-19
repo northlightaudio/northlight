@@ -74,13 +74,17 @@ InsertEditor::InsertEditor(core::Id channelId,
         const int index = static_cast<int>(i);
         slider->onDragStart = [this, index]
         {
+            if (onParameterGestureBegin)
+                onParameterGestureBegin(index);
             if (onGestureBegin)
                 onGestureBegin(infos_[static_cast<size_t>(index)].name);
         };
-        slider->onDragEnd = [this]
+        slider->onDragEnd = [this, index]
         {
             if (onGestureEnd)
                 onGestureEnd();
+            if (onParameterGestureEnd)
+                onParameterGestureEnd(index);
         };
         slider->onValueChange = [this, index]
         {

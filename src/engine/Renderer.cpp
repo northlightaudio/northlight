@@ -545,12 +545,13 @@ void Renderer::routeChannel(const Snapshot& snapshot,
         channel.runtime->gainPrimed = true;
     }
 
-    if (!audible)
+    if (!audible && !channel.sendsAudible)
     {
         if (context.meters != nullptr)
             context.meters->silence(channel.meterSlot, numSamples);
         return;
     }
+    // A channel heard only through a send still shows what it sends.
 
     if (context.meters != nullptr)
     {
