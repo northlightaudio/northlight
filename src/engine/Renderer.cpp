@@ -157,6 +157,11 @@ void Renderer::renderTrack(const Snapshot& snapshot,
     // envelopes, tails and latency buffers moving, and its key output stays live
     // for sidechains. The routing stage is what keeps it out of the mix.
 
+    // The pan this block ramps from and to (the runtime outlives snapshots).
+    const float pan1 =
+        track.runtime != nullptr ? track.runtime->targetPan.load(std::memory_order_relaxed) : track.pan;
+    const float pan0 = track.runtime != nullptr && track.runtime->panPrimed ? track.runtime->pan : pan1;
+
     if (context.playing)
     {
         const core::SamplePosition spanEnd = position + numSamples;
@@ -175,14 +180,22 @@ void Renderer::renderTrack(const Snapshot& snapshot,
             const auto offset = static_cast<int>(from - position);
             const auto sourcePos = clip.sourceOffset + (from - clip.start);
 
-            float panLeft = 1.0f, panRight = 1.0f;
+            // Pan ramps from where the last block left it to the target over this
+            // block (per sample, so a pan move glides).
+            float panLeft0 = 1.0f, panRight0 = 1.0f, panLeft1 = 1.0f, panRight1 = 1.0f;
             const bool mono = clip.source->numChannels() == 1;
             if (mono)
-                monoPanGains(track.pan, panLeft, panRight);
+            {
+                monoPanGains(pan0, panLeft0, panRight0);
+                monoPanGains(pan1, panLeft1, panRight1);
+            }
             else
-                stereoPanGains(track.pan, panLeft, panRight);
-            const float gainLeft = clip.gain * panLeft;
-            const float gainRight = clip.gain * panRight;
+            {
+                stereoPanGains(pan0, panLeft0, panRight0);
+                stereoPanGains(pan1, panLeft1, panRight1);
+            }
+            const float stepL = (panLeft1 - panLeft0) / static_cast<float>(numSamples);
+            const float stepR = (panRight1 - panRight0) / static_cast<float>(numSamples);
 
             float* sl = track.scratchLeft.data();
             float* sr = track.scratchRight.data();
@@ -205,8 +218,9 @@ void Renderer::renderTrack(const Snapshot& snapshot,
                     f = static_cast<float>(pos) / static_cast<float>(clip.fadeIn);
                 if (pos >= fadeOutStart && clip.fadeOut > 0)
                     f *= static_cast<float>(clip.length - pos) / static_cast<float>(clip.fadeOut);
-                left[offset + i] += sl[i] * gainLeft * f;
-                right[offset + i] += sr[i] * gainRight * f;
+                const float t = static_cast<float>(offset + i + 1);
+                left[offset + i] += sl[i] * clip.gain * (panLeft0 + stepL * t) * f;
+                right[offset + i] += sr[i] * clip.gain * (panRight0 + stepR * t) * f;
             }
         }
     }
@@ -219,14 +233,23 @@ void Renderer::renderTrack(const Snapshot& snapshot,
         const float* in = context.inputs[track.inputChannel];
         if (in != nullptr)
         {
-            float panLeft = 1.0f, panRight = 1.0f;
-            monoPanGains(track.pan, panLeft, panRight);
+            float panLeft0 = 1.0f, panRight0 = 1.0f, panLeft1 = 1.0f, panRight1 = 1.0f;
+            monoPanGains(pan0, panLeft0, panRight0);
+            monoPanGains(pan1, panLeft1, panRight1);
+            const float stepL = (panLeft1 - panLeft0) / static_cast<float>(numSamples);
+            const float stepR = (panRight1 - panRight0) / static_cast<float>(numSamples);
             for (int i = 0; i < numSamples; ++i)
             {
-                left[i] += in[i] * panLeft;
-                right[i] += in[i] * panRight;
+                const float t = static_cast<float>(i + 1);
+                left[i] += in[i] * (panLeft0 + stepL * t);
+                right[i] += in[i] * (panRight0 + stepR * t);
             }
         }
+    }
+    if (track.runtime != nullptr)
+    {
+        track.runtime->pan = pan1;
+        track.runtime->panPrimed = true;
     }
 
     if (track.phaseInvert)
@@ -360,7 +383,14 @@ void Renderer::routeChannel(const Snapshot& snapshot,
     float* outL = nullptr;
     float* outR = nullptr;
     target(channel.outputBus, outL, outR);
-    const float gain = channel.gain;
+    // The fader ramps from where it was to the target across the block.
+    const float gain1 = channel.runtime != nullptr
+                            ? channel.runtime->targetGain.load(std::memory_order_relaxed)
+                            : channel.gain;
+    const float gain0 =
+        channel.runtime != nullptr && channel.runtime->gainPrimed ? channel.runtime->gain : gain1;
+    const float gainStep = (gain1 - gain0) / static_cast<float>(numSamples);
+    const auto gainAt = [&](int i) { return gain0 + gainStep * static_cast<float>(i + 1); };
     {
         const float* l = nullptr;
         const float* r = nullptr;
@@ -368,8 +398,9 @@ void Renderer::routeChannel(const Snapshot& snapshot,
         if (audible)
             for (int i = 0; i < numSamples; ++i)
             {
-                outL[i] += l[i] * gain;
-                outR[i] += r[i] * gain;
+                const float g = gainAt(i);
+                outL[i] += l[i] * g;
+                outR[i] += r[i] * g;
             }
     }
 
@@ -381,19 +412,24 @@ void Renderer::routeChannel(const Snapshot& snapshot,
         const float* l = nullptr;
         const float* r = nullptr;
         delayed(send.delay, l, r);
-        const float level = send.preFader ? send.level : send.level * gain;
-        if (audible)
+        if (channel.sendsAudible)
             for (int i = 0; i < numSamples; ++i)
             {
+                const float level = send.preFader ? send.level : send.level * gainAt(i);
                 sl[i] += l[i] * level;
                 sr[i] += r[i] * level;
             }
+    }
+    if (channel.runtime != nullptr)
+    {
+        channel.runtime->gain = gain1;
+        channel.runtime->gainPrimed = true;
     }
 
     if (!audible)
     {
         if (context.meters != nullptr)
-            context.meters->silence(channel.meterSlot);
+            context.meters->silence(channel.meterSlot, numSamples);
         return;
     }
 
@@ -406,8 +442,9 @@ void Renderer::routeChannel(const Snapshot& snapshot,
         float* r = channel.delayScratchRight.data();
         for (int i = 0; i < numSamples; ++i)
         {
-            l[i] = pre[i] * gain;
-            r[i] = preR[i] * gain;
+            const float g = gainAt(i);
+            l[i] = pre[i] * g;
+            r[i] = preR[i] * g;
         }
         context.meters->measure(channel.meterSlot, l, r, numSamples);
     }
@@ -446,26 +483,50 @@ void Renderer::renderSpan(const Snapshot& snapshot,
     for (int index : snapshot.busOrder)
     {
         const auto& bus = snapshot.buses[static_cast<size_t>(index)];
-        // The bus's pre-fader output: its summed inputs through balance and phase.
-        float panLeft = 1.0f, panRight = 1.0f;
-        stereoPanGains(bus.pan, panLeft, panRight);
+        // The bus's pre-fader output: its summed inputs through balance (ramped)
+        // and phase.
+        const float pan1 =
+            bus.runtime != nullptr ? bus.runtime->targetPan.load(std::memory_order_relaxed) : bus.pan;
+        const float pan0 = bus.runtime != nullptr && bus.runtime->panPrimed ? bus.runtime->pan : pan1;
+        float panLeft0 = 1.0f, panRight0 = 1.0f, panLeft1 = 1.0f, panRight1 = 1.0f;
+        stereoPanGains(pan0, panLeft0, panRight0);
+        stereoPanGains(pan1, panLeft1, panRight1);
+        const float stepL = (panLeft1 - panLeft0) / static_cast<float>(numSamples);
+        const float stepR = (panRight1 - panRight0) / static_cast<float>(numSamples);
         const float sign = bus.phaseInvert ? -1.0f : 1.0f;
         float* outL = bus.outLeft.data();
         float* outR = bus.outRight.data();
         for (int i = 0; i < numSamples; ++i)
         {
-            outL[i] = bus.sumLeft[static_cast<size_t>(i)] * panLeft * sign;
-            outR[i] = bus.sumRight[static_cast<size_t>(i)] * panRight * sign;
+            const float t = static_cast<float>(i + 1);
+            outL[i] = bus.sumLeft[static_cast<size_t>(i)] * (panLeft0 + stepL * t) * sign;
+            outR[i] = bus.sumRight[static_cast<size_t>(i)] * (panRight0 + stepR * t) * sign;
+        }
+        if (bus.runtime != nullptr)
+        {
+            bus.runtime->pan = pan1;
+            bus.runtime->panPrimed = true;
         }
         processChain(snapshot, bus, outL, outR, numSamples);
         routeChannel(snapshot, bus, context, left, right, numSamples);
     }
 
-    const float master = snapshot.masterGain;
+    const float master1 = snapshot.master != nullptr
+                              ? snapshot.master->targetGain.load(std::memory_order_relaxed)
+                              : snapshot.masterGain;
+    const float master0 =
+        snapshot.master != nullptr && snapshot.master->primed ? snapshot.master->gain : master1;
+    const float masterStep = (master1 - master0) / static_cast<float>(numSamples);
     for (int i = 0; i < numSamples; ++i)
     {
-        left[i] *= master;
-        right[i] *= master;
+        const float g = master0 + masterStep * static_cast<float>(i + 1);
+        left[i] *= g;
+        right[i] *= g;
+    }
+    if (snapshot.master != nullptr)
+    {
+        snapshot.master->gain = master1;
+        snapshot.master->primed = true;
     }
     if (context.meters != nullptr)
         context.meters->measure(snapshot.masterMeterSlot, left, right, numSamples);

@@ -308,9 +308,28 @@ order: tracks, then buses, then the master (`trackMeterSlot`, `busMeterSlot`,
 
 `ui::MixerView` shows one strip per track and bus (name, output selector, sends
 menu, inserts menu, pan, mute/solo/phase, fader in dB, stereo meter) and the master
-strip with momentary and short-term LUFS, in a panel under the arrange view (Mixer
-button, Ctrl+M). Every control issues a `core::Command`; the view refreshes from the
-project.
+strip with momentary, short-term and integrated LUFS, in a panel under the arrange
+view (Mixer button, Ctrl+M). Every control issues a `core::Command`; the view
+refreshes from the project.
+
+Live values and smoothing: a fader, pan, master or insert-parameter command is
+"live" (`Command::isLive`). The session applies it to the model (undo) and pushes
+the model's values into the running graph (`AudioEngine::applyLiveValues`) instead
+of recompiling: channel gains and pans are targets in a per-channel
+`engine::ChannelRuntime` (kept in a `RuntimeCache` across compiles, like insert
+instances and delay lines) that the renderer ramps towards across every block, so
+a move glides instead of stepping; insert parameters and bypass are atomics on the
+instance. A slider drag is a gesture (`beginGesture`/`endGesture`): every command
+until release lands in one undo step. Structural edits (routing, inserts added or
+moved, clips) still recompile the snapshot. Routing cycles are refused at the
+command layer (`Project::wouldCycle`, reachability over outputs and sends,
+including a bus to itself) and the output selector and sends menu do not offer
+them; the compiler keeps its cycle breaking as a defence. Solo-in-place resolves
+audibility per path: a channel lit only because it sends to a soloed bus keeps
+the send and loses its direct output (`ChannelNode::audible` versus
+`sendsAudible`), so soloing a send-fed reverb plays the reverb alone. The meters'
+RMS integrates over the whole period between UI reads; the master's slot comes
+from the engine's current snapshot, not the UI's model.
 
 Fader groups are `core::Group`s (name, colour) that tracks and buses point at
 through `Channel::group`. They are a model-level link applied by commands, not an
@@ -332,6 +351,12 @@ each compile pushes the current parameter values and bypass. The renderer runs a
 track's chain after its pan and phase (still in the parallel track render) and a
 bus's chain after its balance and phase, both pre-fader.
 
+Every built-in shares a base that handles bypass as a 10 ms crossfade between the
+processed signal and the input, keeps the processor running while bypassed so its
+state follows the audio, and for the limiter passes the bypassed signal through
+the lookahead delay so the latency the graph was solved with holds. The EQ ramps
+its biquad coefficients across the block when a parameter changes.
+
 `src/plugins` holds the built-ins behind `plugins::BuiltInFactory`: Gain (ramped),
 EQ (high-pass, low shelf, peaking mid, high shelf as RBJ biquads), Compressor
 (log-domain peak detector, soft knee, makeup) and Limiter (a lookahead limiter: the
@@ -343,9 +368,13 @@ compensation). `ui::InsertEditor` is a generic
 window with a slider per parameter, used for every built-in; hosted plugins bring
 their own editors.
 
-`engine::LoudnessMeter` implements BS.1770 K-weighting with 400 ms momentary and
-3 s short-term windows on the master mix; integrated loudness with gating belongs to
-the export stage.
+`engine::LoudnessMeter` implements BS.1770 K-weighting (the RLB stage with the
+standard's unnormalised numerator, so a full-scale 997 Hz sine in one channel reads
+-3.01 LUFS) with 400 ms momentary and 3 s short-term windows on the master mix, and
+integrated loudness per BS.1770-4: the 400 ms window at every 100 ms hop is kept
+(two hours' worth, preallocated) and the controller computes the gated mean on
+demand (absolute gate -70 LUFS, relative gate 10 LU under the mean of the rest).
+Play from stop restarts it.
 
 ### Editing (Phase 6, in progress)
 
@@ -566,6 +595,8 @@ launches; `JUCE_MODAL_LOOPS_PERMITTED` stays 0.
 | 2026-10-19 | Insert parameters are atomics on a persistent instance, not part of the snapshot | Recreating a filter on every edit would reset its state and click; pushing values into atomics keeps the instance and its memory while the snapshot stays immutable. Sample-accurate parameter changes come with automation in Phase 9. |
 | 2026-10-19 | Built-ins live in src/plugins behind the engine's insert interface | The engine must not depend on any particular processor, and VST3 hosting (Phase 5) implements the same interface; the app injects the factory. |
 | 2026-10-19 | Fader groups are commands over channel values, not engine state | The engine already consumes plain channel gains; a group only needs to move several of them together, and doing that in a command keeps the snapshot unchanged and undo exact. Relative (ratio) moves preserve the members' balance, which is what a fader group is for. |
+| 2026-10-19 | Live values travel as targets the renderer ramps to; structural edits recompile | A fader move must glide, not step, and must not rebuild the graph on every mouse-move; per-channel runtime state that outlives snapshots gives both, and the same state later carries automation. |
+| 2026-10-19 | Routing cycles are refused at the command layer | Letting the compiler silently rewire a cycle shows the user one graph and plays another; refusing the edit (and not offering it) keeps the mixer honest. |
 | 2026-10-19 | Edits are previewed in the view and committed as command groups | The view owns the drag state and draws the preview itself, so a drag issues no commands until release; the release becomes one undo step however many clips it touched. The model never sees a half-finished edit. |
 | 2026-10-19 | Fades are linear | Linear fades crossfade at constant sum for correlated material (the common editing case: the same take split and rejoined); an equal-power option can come with the design pass. |
 | 2026-10-19 | Plugin scanning runs in a separate executable, one file per process | A plugin that crashes or hangs while being inspected must not take the DAW with it; a process per file isolates the damage, lets a timeout kill it, and leaves the file blocklisted with the reason. |

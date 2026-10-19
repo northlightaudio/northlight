@@ -24,12 +24,17 @@ namespace aural::ui
 class MixerView final : public juce::Component, private juce::Timer
 {
 public:
-    MixerView(rt::MeterBlock& meters, std::function<engine::LoudnessMeter::Reading()> loudness);
+    MixerView(rt::MeterBlock& meters,
+              std::function<engine::LoudnessMeter::Reading()> loudness,
+              std::function<int()> masterMeterSlot);
     ~MixerView() override;
 
     void setProject(const core::Project* project);
 
     std::function<void(std::unique_ptr<core::Command>)> onCommand;
+    // A slider drag starts and ends a gesture: its commands make one undo step.
+    std::function<void(const std::string& name)> onGestureBegin;
+    std::function<void()> onGestureEnd;
     // The live processor for an insert id (a hosted plugin's editor needs it).
     std::function<std::shared_ptr<engine::InsertProcessor>(core::Id insertId)> liveInsert;
     // "Scan for plugins..." in the inserts menu; "Plugins..." in the header.
@@ -65,6 +70,7 @@ private:
     const Theme& theme_ = Theme::dark();
     rt::MeterBlock& meters_;
     std::function<engine::LoudnessMeter::Reading()> loudness_;
+    std::function<int()> masterMeterSlot_;
     const core::Project* project_ = nullptr;
     std::vector<std::unique_ptr<Strip>> strips_;
     std::unique_ptr<MasterStrip> master_;

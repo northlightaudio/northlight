@@ -14,6 +14,14 @@ Send* Channel::findSend(Id busId) noexcept
     return nullptr;
 }
 
+const Insert* Channel::findInsert(Id insertId) const noexcept
+{
+    for (const auto& i : inserts)
+        if (i.id == insertId)
+            return &i;
+    return nullptr;
+}
+
 Insert* Channel::findInsert(Id insertId) noexcept
 {
     for (auto& i : inserts)
@@ -150,6 +158,42 @@ std::vector<Channel*> Project::groupMembers(Id groupId) noexcept
         if (b.group == groupId)
             members.push_back(&b);
     return members;
+}
+
+bool Project::busReaches(Id fromBus, Id toBus) const noexcept
+{
+    if (fromBus == invalidId || toBus == invalidId)
+        return false;
+    std::vector<Id> stack{fromBus};
+    std::vector<Id> seen;
+    while (!stack.empty())
+    {
+        const Id bus = stack.back();
+        stack.pop_back();
+        if (bus == toBus)
+            return true;
+        if (std::find(seen.begin(), seen.end(), bus) != seen.end())
+            continue;
+        seen.push_back(bus);
+        const auto* b = findBus(bus);
+        if (b == nullptr)
+            continue;
+        if (b->outputBus != invalidId)
+            stack.push_back(b->outputBus);
+        for (const auto& s : b->sends)
+            stack.push_back(s.bus);
+    }
+    return false;
+}
+
+bool Project::wouldCycle(Id channelId, Id busId) const noexcept
+{
+    if (busId == invalidId)
+        return false;
+    if (channelId == busId)
+        return true;
+    // Only a bus can be on a cycle: a track has no inputs.
+    return findBus(channelId) != nullptr && busReaches(busId, channelId);
 }
 
 SamplePosition Project::length() const noexcept

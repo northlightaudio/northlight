@@ -43,18 +43,19 @@ public:
         auto& s = slots_[static_cast<size_t>(slot)];
         raise(s.peakLeft, peakL);
         raise(s.peakRight, peakR);
-        s.rmsLeft.store(static_cast<float>(std::sqrt(sumL / numSamples)), std::memory_order_relaxed);
-        s.rmsRight.store(static_cast<float>(std::sqrt(sumR / numSamples)), std::memory_order_relaxed);
+        // Energy accumulates until the UI takes it, so the RMS covers the whole
+        // period between frames rather than the last span only.
+        s.sumLeft.fetch_add(static_cast<float>(sumL), std::memory_order_relaxed);
+        s.sumRight.fetch_add(static_cast<float>(sumR), std::memory_order_relaxed);
+        s.count.fetch_add(numSamples, std::memory_order_relaxed);
     }
 
     // Real-time: a silent span (muted channel) so the RMS falls to zero.
-    void silence(int slot) noexcept
+    void silence(int slot, int numSamples) noexcept
     {
-        if (slot < 0 || slot >= maxSlots)
+        if (slot < 0 || slot >= maxSlots || numSamples <= 0)
             return;
-        auto& s = slots_[static_cast<size_t>(slot)];
-        s.rmsLeft.store(0.0f, std::memory_order_relaxed);
-        s.rmsRight.store(0.0f, std::memory_order_relaxed);
+        slots_[static_cast<size_t>(slot)].count.fetch_add(numSamples, std::memory_order_relaxed);
     }
 
     // UI thread: returns the reading and resets the peak hold.
@@ -66,15 +67,22 @@ public:
         auto& s = slots_[static_cast<size_t>(slot)];
         r.peakLeft = s.peakLeft.exchange(0.0f, std::memory_order_relaxed);
         r.peakRight = s.peakRight.exchange(0.0f, std::memory_order_relaxed);
-        r.rmsLeft = s.rmsLeft.load(std::memory_order_relaxed);
-        r.rmsRight = s.rmsRight.load(std::memory_order_relaxed);
+        const int count = s.count.exchange(0, std::memory_order_relaxed);
+        const float sumL = s.sumLeft.exchange(0.0f, std::memory_order_relaxed);
+        const float sumR = s.sumRight.exchange(0.0f, std::memory_order_relaxed);
+        if (count > 0)
+        {
+            r.rmsLeft = std::sqrt(std::max(0.0f, sumL) / static_cast<float>(count));
+            r.rmsRight = std::sqrt(std::max(0.0f, sumR) / static_cast<float>(count));
+        }
         return r;
     }
 
 private:
     struct Slot
     {
-        std::atomic<float> peakLeft{0.0f}, peakRight{0.0f}, rmsLeft{0.0f}, rmsRight{0.0f};
+        std::atomic<float> peakLeft{0.0f}, peakRight{0.0f}, sumLeft{0.0f}, sumRight{0.0f};
+        std::atomic<int> count{0};
     };
 
     static void raise(std::atomic<float>& target, float candidate) noexcept

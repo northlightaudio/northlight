@@ -85,6 +85,13 @@ public:
     // Peak/RMS per channel, slots as laid out by the snapshot compiler
     // (trackMeterSlot / busMeterSlot / masterMeterSlot). The UI takes readings.
     rt::MeterBlock& meters() noexcept { return meters_; }
+    // Live values: pushed to the running graph without a recompile (the renderer
+    // ramps gains and pans; insert parameters are atomics on the instance).
+    void applyLiveValues(const core::Project& project);
+    // The meter slot of the master in the current snapshot.
+    int masterMeterSlot() const noexcept { return masterMeterSlot_.load(std::memory_order_relaxed); }
+    // Restarts the integrated loudness measurement.
+    void resetIntegratedLoudness() noexcept { loudness_.resetIntegrated(); }
     // Samples the master output lags the timeline because of insert latency
     // (plugin delay compensation aligns every path to the slowest).
     int outputLatencySamples() const noexcept { return outputLatency_.load(std::memory_order_relaxed); }
@@ -132,6 +139,8 @@ private:
     MediaCache media_;
     InsertCache inserts_;
     DelayCache delays_;
+    RuntimeCache runtimes_;
+    std::atomic<int> masterMeterSlot_{-1};
     bool flushDelays_ = false; // real-time thread only: a locate happened
     std::atomic<int> outputLatency_{0};
     rt::SnapshotPublisher<Snapshot> publisher_;

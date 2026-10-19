@@ -4,6 +4,7 @@
 #include "engine/AudioSource.h"
 #include "engine/Delay.h"
 #include "engine/Insert.h"
+#include "engine/Runtime.h"
 
 #include <cstdint>
 #include <map>
@@ -55,8 +56,12 @@ struct ChannelNode
     float gain = 1.0f;
     float pan = 0.0f;
     bool phaseInvert = false;
-    bool audible = true; // mute/solo-in-place already resolved
-    int outputBus = -1;  // index into Snapshot::buses, -1 = master
+    bool audible = true;               // the direct output is heard (mute/solo-in-place resolved)
+    bool sendsAudible = true;          // the sends are heard (a channel lit only through a send to a
+                                       // soloed bus keeps its sends and loses its direct output)
+    ChannelRuntime* runtime = nullptr; // ramped gain and pan; outlives the snapshot
+    std::shared_ptr<ChannelRuntime> keepAliveRuntime;
+    int outputBus = -1; // index into Snapshot::buses, -1 = master
     int meterSlot = -1;
     std::vector<SendNode> sends;
     std::vector<InsertProcessor*> inserts;                   // in chain order
@@ -109,6 +114,8 @@ struct Snapshot
     // nothing is sidechained.
     std::vector<std::vector<int>> trackLevels;
     float masterGain = 1.0f;
+    MasterRuntime* master = nullptr; // ramped master gain
+    std::shared_ptr<MasterRuntime> keepAliveMaster;
     int masterMeterSlot = -1;
     int outputLatency = 0; // samples the master output lags the timeline (plugin delay compensation)
     std::vector<DelayLine*> allDelays; // every compensation and dry line, for a flush on locate
@@ -158,7 +165,8 @@ private:
 std::unique_ptr<Snapshot> compileSnapshot(const core::Project& project,
                                           MediaCache& media,
                                           InsertCache& inserts,
-                                          DelayCache* delays = nullptr);
+                                          DelayCache* delays = nullptr,
+                                          RuntimeCache* runtimes = nullptr);
 
 // Meter slot layout used by the compiler: tracks in project order, then buses in
 // project order, then the master.

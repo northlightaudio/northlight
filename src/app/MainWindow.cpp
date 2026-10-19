@@ -45,7 +45,10 @@ public:
             ProjectSession& session,
             UserSettings& settings)
         : owner_(owner), audio_(audio), session_(session), settings_(settings), tracks_(session.peakStore()),
-          mixer_(session.engine().meters(), [&session] { return session.engine().loudness(); })
+          mixer_(
+              session.engine().meters(),
+              [&session] { return session.engine().loudness(); },
+              [&session] { return session.engine().masterMeterSlot(); })
     {
         setSize(1280, 800);
         setWantsKeyboardFocus(true);
@@ -87,6 +90,8 @@ public:
 
         mixer_.onCommand = [this](std::unique_ptr<core::Command> command)
         { session_.execute(std::move(command)); };
+        mixer_.onGestureBegin = [this](const std::string& name) { session_.beginGesture(name); };
+        mixer_.onGestureEnd = [this] { session_.endGesture(); };
         mixer_.setHost(&session_.insertFactory());
         mixer_.liveInsert = [this](core::Id insertId) { return session_.liveInsert(insertId); };
         mixer_.onScanPlugins = [this] { session_.scanPlugins(true); };

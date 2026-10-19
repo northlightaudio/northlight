@@ -29,6 +29,8 @@ public:
     core::Id insertId() const noexcept { return insertId_; }
 
     std::function<void(std::unique_ptr<core::Command>)> onCommand;
+    std::function<void(const std::string& name)> onGestureBegin;
+    std::function<void()> onGestureEnd;
 
     void paint(juce::Graphics& g) override;
     void resized() override;

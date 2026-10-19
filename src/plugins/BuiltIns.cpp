@@ -57,13 +57,83 @@ public:
         return values_[static_cast<size_t>(index)].load(std::memory_order_relaxed);
     }
 
+    // Bypass is a 10 ms crossfade between the processed signal and what the
+    // processor passes when bypassed (its input, or for a latent processor its
+    // input delayed by the latency). The processor keeps running while bypassed
+    // so its state (filter memory, envelopes) follows the audio and un-bypassing
+    // does not click.
+    void prepare(double sampleRate, int maxBlockSize) final
+    {
+        sampleRate_ = sampleRate;
+        dryLeft_.assign(static_cast<size_t>(std::max(1, maxBlockSize)), 0.0f);
+        dryRight_.assign(static_cast<size_t>(std::max(1, maxBlockSize)), 0.0f);
+        bypassStep_ = 1.0f / static_cast<float>(std::max(1.0, sampleRate * 0.010));
+        bypassMix_ = isBypassed() ? 1.0f : 0.0f;
+        prepareAudio(sampleRate, maxBlockSize);
+    }
+
+    void process(float* left, float* right, int numSamples) noexcept final
+    {
+        const int capacity = static_cast<int>(dryLeft_.size());
+        if (capacity == 0)
+            return; // process before prepare: nothing is allocated
+        // Longer blocks than prepare() announced are taken in pieces.
+        for (int done = 0; done < numSamples; done += capacity)
+            processChunk(left + done, right + done, std::min(capacity, numSamples - done));
+    }
+
+    void processChunk(float* left, float* right, int numSamples) noexcept
+    {
+        const float target = isBypassed() ? 1.0f : 0.0f;
+        if (bypassMix_ == target && target == 1.0f)
+        {
+            processBypassed(left, right, numSamples);
+            return;
+        }
+        std::copy(left, left + numSamples, dryLeft_.data());
+        std::copy(right, right + numSamples, dryRight_.data());
+        processAudio(left, right, numSamples);
+        if (bypassMix_ == target)
+            return;
+        // The bypassed signal for the ramp is the dry input (a latent processor's
+        // bypassed path only differs by its delay, which the ramp hides).
+        for (int i = 0; i < numSamples; ++i)
+        {
+            bypassMix_ = target > bypassMix_ ? std::min(target, bypassMix_ + bypassStep_)
+                                             : std::max(target, bypassMix_ - bypassStep_);
+            left[i] = left[i] * (1.0f - bypassMix_) + dryLeft_[static_cast<size_t>(i)] * bypassMix_;
+            right[i] = right[i] * (1.0f - bypassMix_) + dryRight_[static_cast<size_t>(i)] * bypassMix_;
+        }
+    }
+
+    // The key input goes through the same bypass handling: it is parked for
+    // processAudio to pick up (null = no key, use the audio itself).
+    void processWithSidechain(
+        float* left, float* right, const float* keyLeft, const float* keyRight, int numSamples) noexcept final
+    {
+        keyLeft_ = keyLeft;
+        keyRight_ = keyRight;
+        process(left, right, numSamples);
+        keyLeft_ = keyRight_ = nullptr;
+    }
+
 protected:
+    virtual void prepareAudio(double sampleRate, int maxBlockSize) = 0;
+    virtual void processAudio(float* left, float* right, int numSamples) noexcept = 0;
+    // Settled bypass: by default the input passes untouched (zero latency).
+    virtual void processBypassed(float*, float*, int) noexcept {}
+
     double sampleRate_ = 48000.0;
+    const float* keyLeft_ = nullptr;
+    const float* keyRight_ = nullptr;
 
 private:
     std::string typeName_;
     std::vector<engine::ParameterInfo> infos_;
     std::vector<std::atomic<float>> values_;
+    std::vector<float> dryLeft_, dryRight_;
+    float bypassMix_ = 0.0f;
+    float bypassStep_ = 0.0f;
 };
 
 // ----- gain -----------------------------------------------------------------------------------
@@ -73,15 +143,11 @@ class Gain final : public Base
 public:
     Gain() : Base(types::gain, {{"Gain", "dB", -60.0f, 24.0f, 0.0f, false}}) {}
 
-    void prepare(double sampleRate, int) override
-    {
-        sampleRate_ = sampleRate;
-        current_ = dbToGain(parameter(0));
-    }
+    void prepareAudio(double, int) override { current_ = dbToGain(parameter(0)); }
 
-    void process(float* left, float* right, int numSamples) noexcept override
+    void processAudio(float* left, float* right, int numSamples) noexcept override
     {
-        const float target = isBypassed() ? 1.0f : dbToGain(parameter(0));
+        const float target = dbToGain(parameter(0));
         // Ramp across the block so gain changes never click.
         const float step = (target - current_) / static_cast<float>(std::max(1, numSamples));
         float g = current_;
@@ -120,6 +186,16 @@ struct Biquad
     {
         b0 = 1.0f;
         b1 = b2 = a1 = a2 = 0.0f;
+    }
+
+    // Coefficients t of the way from `from` to `to`; the memory is kept.
+    void blend(const Biquad& from, const Biquad& to, float t) noexcept
+    {
+        b0 = from.b0 + (to.b0 - from.b0) * t;
+        b1 = from.b1 + (to.b1 - from.b1) * t;
+        b2 = from.b2 + (to.b2 - from.b2) * t;
+        a1 = from.a1 + (to.a1 - from.a1) * t;
+        a2 = from.a2 + (to.a2 - from.a2) * t;
     }
 
     void setPeaking(double sampleRate, double hz, double q, double gainDb) noexcept
@@ -222,21 +298,26 @@ public:
     {
     }
 
-    void prepare(double sampleRate, int) override
+    void prepareAudio(double, int) override
     {
-        sampleRate_ = sampleRate;
         for (auto& f : filters_)
             f.reset();
         lastParams_.fill(std::nanf(""));
     }
 
-    void process(float* left, float* right, int numSamples) noexcept override
+    void processAudio(float* left, float* right, int numSamples) noexcept override
     {
-        if (isBypassed())
-            return;
-        updateCoefficients();
+        // A coefficient change ramps across the block (linear interpolation of
+        // the biquad coefficients) instead of switching between samples.
+        const bool ramp = updateCoefficients();
         for (int i = 0; i < numSamples; ++i)
         {
+            if (ramp)
+            {
+                const float t = static_cast<float>(i + 1) / static_cast<float>(numSamples);
+                for (size_t f = 0; f < 8; ++f)
+                    filters_[f].blend(previous_[f], targets_[f], t);
+            }
             float l = left[i], r = right[i];
             for (int f = 0; f < 4; ++f)
             {
@@ -249,7 +330,9 @@ public:
     }
 
 private:
-    void updateCoefficients() noexcept
+    // Recomputes the target coefficients when a parameter changed. Returns true
+    // when this block should ramp from the previous coefficients to the targets.
+    bool updateCoefficients() noexcept
     {
         std::array<float, 8> params{};
         bool changed = false;
@@ -259,11 +342,14 @@ private:
             changed = changed || params[static_cast<size_t>(i)] != lastParams_[static_cast<size_t>(i)];
         }
         if (!changed)
-            return;
+            return false;
+        const bool first = std::isnan(lastParams_[0]);
         lastParams_ = params;
+        for (size_t f = 0; f < 8; ++f)
+            previous_[f] = filters_[f];
         for (int ch = 0; ch < 2; ++ch)
         {
-            auto* f = filters_.data() + ch * 4;
+            auto* f = targets_.data() + ch * 4;
             if (params[highPassHz] > 0.0f)
                 f[0].setHighPass(sampleRate_, params[highPassHz]);
             else
@@ -272,9 +358,18 @@ private:
             f[2].setPeaking(sampleRate_, params[midHz], params[midQ], params[midDb]);
             f[3].setHighShelf(sampleRate_, params[highHz], params[highDb]);
         }
+        if (first)
+        {
+            // Nothing to ramp from on the first block: jump.
+            for (size_t f = 0; f < 8; ++f)
+                filters_[f].blend(targets_[f], targets_[f], 1.0f);
+            return false;
+        }
+        return true;
     }
 
-    std::array<Biquad, 8> filters_; // 4 per channel
+    std::array<Biquad, 8> filters_; // 4 per channel, the live coefficients
+    std::array<Biquad, 8> previous_, targets_;
     std::array<float, 8> lastParams_{};
 };
 
@@ -304,27 +399,22 @@ public:
     {
     }
 
-    void prepare(double sampleRate, int) override
-    {
-        sampleRate_ = sampleRate;
-        envelopeDb_ = minusInfinityDb;
-    }
+    void prepareAudio(double, int) override { envelopeDb_ = minusInfinityDb; }
 
     // Peak detector in the log domain, stereo-linked, feed-forward. With a
     // sidechain the detector listens to the key signal instead of the audio.
     bool acceptsSidechain() const noexcept override { return true; }
-    void process(float* left, float* right, int numSamples) noexcept override
+    void processAudio(float* left, float* right, int numSamples) noexcept override
     {
-        processWithSidechain(left, right, left, right, numSamples);
+        processKeyed(left,
+                     right,
+                     keyLeft_ != nullptr ? keyLeft_ : left,
+                     keyRight_ != nullptr ? keyRight_ : right,
+                     numSamples);
     }
-    void processWithSidechain(float* left,
-                              float* right,
-                              const float* keyLeft,
-                              const float* keyRight,
-                              int numSamples) noexcept override
+    void processKeyed(
+        float* left, float* right, const float* keyLeft, const float* keyRight, int numSamples) noexcept
     {
-        if (isBypassed())
-            return;
         const float threshold = parameter(thresholdDb);
         const float r = parameter(ratio);
         const float knee = parameter(kneeDb);
@@ -397,10 +487,9 @@ public:
     // at time t is the mean over the last L samples of the running minimum of the
     // needed gain over [t, t + L] (released), which is never above what sample t
     // needs and ramps smoothly instead of stepping.
-    void prepare(double sampleRate, int) override
+    void prepareAudio(double, int) override
     {
-        sampleRate_ = sampleRate;
-        capacity_ = static_cast<int>(std::ceil(sampleRate * maxLookaheadMs * 0.001)) + 2;
+        capacity_ = static_cast<int>(std::ceil(sampleRate_ * maxLookaheadMs * 0.001)) + 2;
         delayL_.assign(static_cast<size_t>(capacity_), 0.0f);
         delayR_.assign(static_cast<size_t>(capacity_), 0.0f);
         needed_.assign(static_cast<size_t>(capacity_), 1.0f);
@@ -411,10 +500,17 @@ public:
 
     int latencySamples() const noexcept override { return lookaheadSamples(); }
 
-    void process(float* left, float* right, int numSamples) noexcept override
+    // Bypassed: the signal still goes through the lookahead delay (the latency
+    // the graph was solved with) with unity gain.
+    void processBypassed(float* left, float* right, int numSamples) noexcept override
     {
-        if (isBypassed())
-            return;
+        bypassedRun_ = true;
+        processAudio(left, right, numSamples);
+        bypassedRun_ = false;
+    }
+
+    void processAudio(float* left, float* right, int numSamples) noexcept override
+    {
         const float ceiling = dbToGain(parameter(ceilingDb));
         const float release =
             std::exp(-1.0f / (static_cast<float>(sampleRate_) * parameter(releaseMs) * 0.001f));
@@ -426,6 +522,8 @@ public:
         {
             for (int i = 0; i < numSamples; ++i)
             {
+                if (bypassedRun_)
+                    continue;
                 const float peak = std::max(std::abs(left[i]), std::abs(right[i]));
                 const float needed = peak > ceiling ? ceiling / peak : 1.0f;
                 gain_ = needed < gain_ ? needed : release * gain_ + (1.0f - release);
@@ -443,7 +541,7 @@ public:
         {
             // 1. The gain this input sample needs, into the window ring (modulo capacity).
             const float peak = std::max(std::abs(left[i]), std::abs(right[i]));
-            const float needed = peak > ceiling ? ceiling / peak : 1.0f;
+            const float needed = bypassedRun_ ? 1.0f : (peak > ceiling ? ceiling / peak : 1.0f);
             needed_[static_cast<size_t>(head_)] = needed;
             // A monotonic deque of ring indices with increasing needed gain: the
             // front is the window minimum. Drop what left the window, then every
@@ -474,8 +572,8 @@ public:
             const float outR = delayR_[slot] * gain;
             delayL_[slot] = left[i];
             delayR_[slot] = right[i];
-            left[i] = std::clamp(outL, -ceiling, ceiling);
-            right[i] = std::clamp(outR, -ceiling, ceiling);
+            left[i] = bypassedRun_ ? outL : std::clamp(outL, -ceiling, ceiling);
+            right[i] = bypassedRun_ ? outR : std::clamp(outR, -ceiling, ceiling);
             if (++pos_ == L)
                 pos_ = 0;
             if (++head_ == capacity_)
@@ -522,6 +620,7 @@ private:
         return a;
     }
 
+    bool bypassedRun_ = false; // processBypassed: unity gain, no clamp
     int capacity_ = 0;
     int length_ = 0;
     int head_ = 0; // needed_ / minima_ ring position (modulo capacity_)

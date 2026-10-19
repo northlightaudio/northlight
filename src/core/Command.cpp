@@ -218,15 +218,15 @@ void RemoveBus::apply(Project& p)
             detachedOutputs_.emplace_back(c.id, c.outputBus);
             c.outputBus = invalidId;
         }
-        for (auto it = c.sends.begin(); it != c.sends.end();)
+        for (size_t i = 0; i < c.sends.size();)
         {
-            if (it->bus == busId_)
+            if (c.sends[i].bus == busId_)
             {
-                detachedSends_.emplace_back(c.id, *it);
-                it = c.sends.erase(it);
+                detachedSends_.push_back({c.id, c.sends[i], i});
+                c.sends.erase(c.sends.begin() + static_cast<std::ptrdiff_t>(i));
             }
             else
-                ++it;
+                ++i;
         }
     };
     for (auto& t : p.tracks)
@@ -244,9 +244,12 @@ void RemoveBus::revert(Project& p)
     for (const auto& [channelId, output] : detachedOutputs_)
         if (auto* c = p.findChannel(channelId))
             c->outputBus = output;
-    for (const auto& [channelId, send] : detachedSends_)
-        if (auto* c = p.findChannel(channelId))
-            c->sends.push_back(send);
+    // In recorded order the indices are ascending per channel, so inserting at
+    // each one restores the original order.
+    for (const auto& d : detachedSends_)
+        if (auto* c = p.findChannel(d.channel))
+            c->sends.insert(
+                c->sends.begin() + static_cast<std::ptrdiff_t>(std::min(d.index, c->sends.size())), d.send);
 }
 
 // ----- fader groups ----------------------------------------------------------------------------
@@ -401,6 +404,8 @@ void SetOutputBus::apply(Project& p)
     auto& c = requireChannel(p, channelId_);
     if (value_ != invalidId)
         requireBus(p, value_);
+    if (p.wouldCycle(channelId_, value_))
+        throw std::logic_error("routing would form a cycle");
     previous_ = c.outputBus;
     c.outputBus = value_;
 }
@@ -417,6 +422,8 @@ void SetSend::apply(Project& p)
 {
     auto& c = requireChannel(p, channelId_);
     requireBus(p, value_.bus);
+    if (p.wouldCycle(channelId_, value_.bus))
+        throw std::logic_error("send would form a cycle");
     if (auto* existing = c.findSend(value_.bus))
     {
         existed_ = true;
@@ -514,6 +521,17 @@ void AddInsert::apply(Project& p)
     auto& c = requireChannel(p, channelId_);
     if (insert_.id == invalidId)
         insert_.id = p.allocateId();
+    else
+    {
+        // A caller-supplied id must be unused: two inserts sharing one would share
+        // one processor instance.
+        for (const auto& t : p.tracks)
+            if (t.findInsert(insert_.id) != nullptr)
+                throw std::logic_error("insert id already in use");
+        for (const auto& b : p.buses)
+            if (b.findInsert(insert_.id) != nullptr)
+                throw std::logic_error("insert id already in use");
+    }
     const int at = index_ < 0 || index_ > static_cast<int>(c.inserts.size())
                        ? static_cast<int>(c.inserts.size())
                        : index_;
@@ -579,6 +597,7 @@ void SetInsertParameter::apply(Project& p)
     auto& i = requireInsert(requireChannel(p, channelId_), insertId_);
     if (parameter_ < 0)
         throw std::logic_error("negative parameter index");
+    previousSize_ = i.params.size();
     if (static_cast<size_t>(parameter_) >= i.params.size())
         i.params.resize(static_cast<size_t>(parameter_) + 1, 0.0f);
     previous_ = i.params[static_cast<size_t>(parameter_)];
@@ -589,6 +608,8 @@ void SetInsertParameter::revert(Project& p)
     auto& i = requireInsert(requireChannel(p, channelId_), insertId_);
     if (static_cast<size_t>(parameter_) < i.params.size())
         i.params[static_cast<size_t>(parameter_)] = previous_;
+    if (i.params.size() > previousSize_)
+        i.params.resize(previousSize_);
 }
 
 SetInsertMix::SetInsertMix(Id channelId, Id insertId, float mix)

@@ -97,6 +97,7 @@ struct Channel
 
     Send* findSend(Id busId) noexcept;
     Insert* findInsert(Id insertId) noexcept;
+    const Insert* findInsert(Id insertId) const noexcept;
     int insertIndex(Id insertId) const noexcept;
     bool operator==(const Channel&) const = default;
 };
@@ -162,6 +163,13 @@ struct Project
     int groupIndex(Id groupId) const noexcept;
     // Every track and bus in the group, in mixer order.
     std::vector<Channel*> groupMembers(Id groupId) noexcept;
+
+    // Whether audio leaving bus `fromBus` can reach bus `toBus` through outputs
+    // and sends (including fromBus == toBus). Used to refuse routing cycles.
+    bool busReaches(Id fromBus, Id toBus) const noexcept;
+    // Whether routing channel `channelId` to `busId` (as output or send) would
+    // form a cycle: the bus is the channel itself or already feeds it.
+    bool wouldCycle(Id channelId, Id busId) const noexcept;
 
     // Length of the longest track in samples.
     SamplePosition length() const noexcept;

@@ -130,6 +130,16 @@ public:
         pan_.setDoubleClickReturnValue(true, 0.0);
         pan_.setTextBoxStyle(juce::Slider::NoTextBox, true, 0, 0);
         pan_.setTooltip("Pan");
+        pan_.onDragStart = [this]
+        {
+            if (owner_.onGestureBegin)
+                owner_.onGestureBegin("Pan");
+        };
+        pan_.onDragEnd = [this]
+        {
+            if (owner_.onGestureEnd)
+                owner_.onGestureEnd();
+        };
         pan_.onValueChange = [this]
         {
             if (!updating_)
@@ -146,6 +156,16 @@ public:
         fader_.textFromValueFunction = [](double v) { return dbText(v); };
         fader_.valueFromTextFunction = [](const juce::String& t)
         { return t.containsIgnoreCase("inf") ? minFaderDb : t.getDoubleValue(); };
+        fader_.onDragStart = [this]
+        {
+            if (owner_.onGestureBegin)
+                owner_.onGestureBegin("Fader");
+        };
+        fader_.onDragEnd = [this]
+        {
+            if (owner_.onGestureEnd)
+                owner_.onGestureEnd();
+        };
         fader_.onValueChange = [this]
         {
             if (updating_)
@@ -256,8 +276,8 @@ public:
         int id = 2;
         for (const auto& b : project.buses)
         {
-            if (b.id == channel.id)
-                continue; // a bus cannot feed itself
+            if (project.wouldCycle(channel.id, b.id))
+                continue; // itself, or a bus that already feeds this one
             busIds_.push_back(b.id);
             output_.addItem(b.name.empty() ? "Bus" : b.name, id++);
         }
@@ -502,6 +522,8 @@ private:
         std::vector<std::function<void()>> actions;
         for (const core::Id busId : busIds_)
         {
+            if (owner_.project_->wouldCycle(id_, busId))
+                continue; // a send there would feed this channel back into itself
             const auto* bus = owner_.project_->findBus(busId);
             const auto* send = const_cast<core::Channel*>(channel)->findSend(busId);
             const juce::String busName =
@@ -509,6 +531,7 @@ private:
             juce::PopupMenu sub;
             const bool has = send != nullptr;
             const float level = has ? send->level : 0.0f;
+            const bool pre = has && send->preFader; // captured by value: the menu fires later
             sub.addItem(item++, "Off", true, !has);
             actions.push_back([this, busId]
                               { owner_.onCommand(std::make_unique<core::RemoveSend>(id_, busId)); });
@@ -518,19 +541,16 @@ private:
                 sub.addItem(
                     item++, juce::String(db, 0) + " dB", true, has && std::abs(level - value) < 0.01f);
                 actions.push_back(
-                    [this, busId, value, has, send]
-                    {
-                        owner_.onCommand(std::make_unique<core::SetSend>(
-                            id_, busId, value, has && send != nullptr ? send->preFader : false));
-                    });
+                    [this, busId, value, pre]
+                    { owner_.onCommand(std::make_unique<core::SetSend>(id_, busId, value, pre)); });
             }
             sub.addSeparator();
-            sub.addItem(item++, "Pre-fader", has, has && send->preFader);
+            sub.addItem(item++, "Pre-fader", has, pre);
             actions.push_back(
-                [this, busId, has, level, send]
+                [this, busId, has, level, pre]
                 {
-                    if (has && send != nullptr)
-                        owner_.onCommand(std::make_unique<core::SetSend>(id_, busId, level, !send->preFader));
+                    if (has)
+                        owner_.onCommand(std::make_unique<core::SetSend>(id_, busId, level, !pre));
                 });
             menu.addSubMenu(busName + (has ? "  (" + dbText(gainToDb(level)) + " dB)" : ""), sub);
         }
@@ -585,6 +605,16 @@ public:
         fader_.textFromValueFunction = [](double v) { return dbText(v); };
         fader_.valueFromTextFunction = [](const juce::String& t)
         { return t.containsIgnoreCase("inf") ? minFaderDb : t.getDoubleValue(); };
+        fader_.onDragStart = [this]
+        {
+            if (owner_.onGestureBegin)
+                owner_.onGestureBegin("Fader");
+        };
+        fader_.onDragEnd = [this]
+        {
+            if (owner_.onGestureEnd)
+                owner_.onGestureEnd();
+        };
         fader_.onValueChange = [this]
         {
             if (!updating_)
@@ -606,7 +636,8 @@ public:
     {
         const auto text = [](float lufs)
         { return lufs <= -99.0f ? juce::String("-inf") : juce::String(lufs, 1); };
-        lufs_.setText("M " + text(r.momentaryLufs) + "\nS " + text(r.shortTermLufs),
+        lufs_.setText("M " + text(r.momentaryLufs) + "\nS " + text(r.shortTermLufs) + "\nI " +
+                          text(r.integratedLufs),
                       juce::dontSendNotification);
     }
 
@@ -759,6 +790,16 @@ void MixerView::openInsertEditor(core::Id channelId, core::Id insertId)
         if (onCommand)
             onCommand(std::move(c));
     };
+    editor->onGestureBegin = [this](const std::string& name)
+    {
+        if (onGestureBegin)
+            onGestureBegin(name);
+    };
+    editor->onGestureEnd = [this]
+    {
+        if (onGestureEnd)
+            onGestureEnd();
+    };
     editor->setInsert(*insert);
     const juce::String title = juce::String(channel->name) + " - " +
                                juce::String(plugins::BuiltInFactory::displayName(insert->type));
@@ -767,8 +808,10 @@ void MixerView::openInsertEditor(core::Id channelId, core::Id insertId)
     editors_.push_back(std::move(window));
 }
 
-MixerView::MixerView(rt::MeterBlock& meters, std::function<engine::LoudnessMeter::Reading()> loudness)
-    : meters_(meters), loudness_(std::move(loudness))
+MixerView::MixerView(rt::MeterBlock& meters,
+                     std::function<engine::LoudnessMeter::Reading()> loudness,
+                     std::function<int()> masterMeterSlot)
+    : meters_(meters), loudness_(std::move(loudness)), masterMeterSlot_(std::move(masterMeterSlot))
 {
     setOpaque(true);
     viewport_.setViewedComponent(&stripsHolder_, false);
@@ -886,7 +929,8 @@ void MixerView::timerCallback()
     for (auto& strip : strips_)
         strip->pushMeter(meters_.take(strip->meterSlot()));
     if (project_ != nullptr)
-        master_->pushMeter(meters_.take(engine::masterMeterSlot(*project_)));
+        master_->pushMeter(
+            meters_.take(masterMeterSlot_ ? masterMeterSlot_() : engine::masterMeterSlot(*project_)));
     if (loudness_)
         master_->pushLoudness(loudness_());
 }

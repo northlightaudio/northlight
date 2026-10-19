@@ -20,6 +20,10 @@ public:
     virtual std::string name() const = 0;
     virtual void apply(Project& project) = 0;
     virtual void revert(Project& project) = 0;
+    // A live command changes a value the engine takes from the model without a
+    // recompile (gains, pans, insert parameters and bypass): the session pushes
+    // the new values instead of publishing a new snapshot.
+    virtual bool isLive() const noexcept { return false; }
 };
 
 class UndoStack
@@ -112,7 +116,13 @@ private:
     Bus removed_;
     int index_ = -1;
     std::vector<std::pair<Id, Id>> detachedOutputs_; // channel id, previous output bus
-    std::vector<std::pair<Id, Send>> detachedSends_; // channel id, removed send
+    struct DetachedSend
+    {
+        Id channel;
+        Send send;
+        size_t index; // where it sat in the channel's sends
+    };
+    std::vector<DetachedSend> detachedSends_;
 };
 
 // ----- fader groups ----------------------------------------------------------------------------
@@ -168,6 +178,7 @@ private:
 class SetGroupGain final : public Command
 {
 public:
+    bool isLive() const noexcept override { return true; }
     SetGroupGain(Id groupId, float ratio);
     std::string name() const override { return "Set group gain"; }
     void apply(Project&) override;
@@ -280,6 +291,7 @@ private:
 class SetMasterGain final : public Command
 {
 public:
+    bool isLive() const noexcept override { return true; }
     explicit SetMasterGain(float gain);
     std::string name() const override { return "Set master gain"; }
     void apply(Project&) override;
@@ -335,6 +347,7 @@ private:
 class SetInsertParameter final : public Command
 {
 public:
+    bool isLive() const noexcept override { return true; }
     SetInsertParameter(Id channelId, Id insertId, int parameter, float value);
     std::string name() const override { return "Set parameter"; }
     void apply(Project&) override;
@@ -344,6 +357,7 @@ private:
     Id channelId_, insertId_;
     int parameter_;
     float value_, previous_ = 0.0f;
+    size_t previousSize_ = 0; // the params vector may have grown on apply
 };
 
 // Wet/dry mix of one insert slot (0..1).
@@ -377,6 +391,7 @@ private:
 class SetInsertBypass final : public Command
 {
 public:
+    bool isLive() const noexcept override { return true; }
     SetInsertBypass(Id channelId, Id insertId, bool bypass);
     std::string name() const override { return "Bypass insert"; }
     void apply(Project&) override;
@@ -404,6 +419,7 @@ private:
 class SetTrackGain final : public Command
 {
 public:
+    bool isLive() const noexcept override { return true; }
     SetTrackGain(Id trackId, float gain);
     std::string name() const override { return "Set track gain"; }
     void apply(Project&) override;
@@ -417,6 +433,7 @@ private:
 class SetTrackPan final : public Command
 {
 public:
+    bool isLive() const noexcept override { return true; }
     SetTrackPan(Id trackId, float pan);
     std::string name() const override { return "Set track pan"; }
     void apply(Project&) override;

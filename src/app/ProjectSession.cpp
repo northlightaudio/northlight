@@ -61,9 +61,34 @@ void ProjectSession::execute(std::unique_ptr<core::Command> command)
         dynamic_cast<core::RemoveTrack*>(command.get()) != nullptr ||
         dynamic_cast<core::RemoveBus*>(command.get()) != nullptr)
         captureInsertStates();
+    const bool live = command->isLive();
     undo_.execute(project_, std::move(command));
     modified_ = true;
-    publish();
+    if (live)
+    {
+        // A gain, pan or parameter: the running graph takes the new value
+        // (ramped) without a recompile.
+        engine_.applyLiveValues(project_);
+        sendChangeMessage();
+    }
+    else
+        publish();
+}
+
+void ProjectSession::beginGesture(const std::string& name)
+{
+    if (gestureOpen_)
+        undo_.endGroup();
+    undo_.beginGroup(name);
+    gestureOpen_ = true;
+}
+
+void ProjectSession::endGesture()
+{
+    if (!gestureOpen_)
+        return;
+    undo_.endGroup();
+    gestureOpen_ = false;
 }
 
 void ProjectSession::executeGroup(const std::string& name,
@@ -194,6 +219,8 @@ std::string ProjectSession::save(const juce::File& file)
 
 void ProjectSession::play()
 {
+    if (!engine_.isPlaying())
+        engine_.resetIntegratedLoudness();
     engine_.play();
 }
 

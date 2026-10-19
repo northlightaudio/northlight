@@ -61,6 +61,16 @@ InsertEditor::InsertEditor(core::Id channelId, core::Id insertId, const engine::
         slider->setTextValueSuffix(info.unit.empty() ? juce::String() : " " + juce::String(info.unit));
         slider->setValue(info.defaultValue, juce::dontSendNotification);
         const int index = static_cast<int>(i);
+        slider->onDragStart = [this, index]
+        {
+            if (onGestureBegin)
+                onGestureBegin(infos_[static_cast<size_t>(index)].name);
+        };
+        slider->onDragEnd = [this]
+        {
+            if (onGestureEnd)
+                onGestureEnd();
+        };
         slider->onValueChange = [this, index]
         {
             if (!updating_ && onCommand)

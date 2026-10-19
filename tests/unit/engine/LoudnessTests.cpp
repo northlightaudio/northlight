@@ -29,16 +29,35 @@ void feedSine(LoudnessMeter& meter, double hz, float amplitude, double seconds, 
 }
 } // namespace
 
-TEST_CASE("A 1 kHz stereo sine at -20 dBFS reads about -20 LUFS", "[engine][loudness]")
+TEST_CASE("A 997 Hz stereo sine at -23 dBFS reads -23 LUFS within 0.1 LU", "[engine][loudness]")
 {
-    // BS.1770 is calibrated so a full-scale 1 kHz sine on both channels reads about
-    // +3 LUFS (two channels sum); at -20 dBFS peak that is -20 - 3 + 3 = -20 LUFS.
+    // BS.1770 is calibrated so a full-scale 997 Hz sine in one channel reads
+    // -3.01 LUFS; on both channels that is 0 LUFS, so -23 dBFS on both is -23 LUFS.
     LoudnessMeter meter;
     meter.prepare(48000.0);
-    feedSine(meter, 1000.0, 0.1f, 4.0);
+    const float amplitude = std::pow(10.0f, -23.0f / 20.0f);
+    feedSine(meter, 997.0, amplitude, 6.0);
     const auto r = meter.reading();
-    CHECK(r.momentaryLufs == Approx(-20.0f).margin(0.5f));
-    CHECK(r.shortTermLufs == Approx(-20.0f).margin(0.5f));
+    CHECK(r.momentaryLufs == Approx(-23.0f).margin(0.1f));
+    CHECK(r.shortTermLufs == Approx(-23.0f).margin(0.1f));
+    CHECK(r.integratedLufs == Approx(-23.0f).margin(0.1f));
+}
+
+TEST_CASE("Integrated loudness gates out silence and quiet passages", "[engine][loudness]")
+{
+    LoudnessMeter meter;
+    meter.prepare(48000.0);
+    const float loud = std::pow(10.0f, -23.0f / 20.0f);
+    feedSine(meter, 997.0, loud, 3.0);
+    feedSine(meter, 997.0, 0.0f, 3.0);        // digital silence: under the absolute gate
+    feedSine(meter, 997.0, loud * 0.1f, 3.0); // -43 LUFS: more than 10 LU under, gated out
+    feedSine(meter, 997.0, loud, 3.0);
+    // Windows straddling the loud-to-quiet edges pass the gates and pull the mean a
+    // little under the loud level, as the standard intends.
+    CHECK(meter.reading().integratedLufs == Approx(-23.0f).margin(0.3f));
+    meter.resetIntegrated();
+    feedSine(meter, 997.0, loud * 0.5f, 3.0); // the next hop clears the blocks
+    CHECK(meter.reading().integratedLufs == Approx(-29.0f).margin(0.2f));
 }
 
 TEST_CASE("K-weighting lifts high frequencies and drops lows", "[engine][loudness]")

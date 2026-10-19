@@ -58,6 +58,9 @@ public:
     void execute(std::unique_ptr<core::Command> command);
     // Several commands as one undo step (a drag that moved many clips).
     void executeGroup(const std::string& name, std::vector<std::unique_ptr<core::Command>> commands);
+    // A gesture (a fader drag): every command until endGesture() is one undo step.
+    void beginGesture(const std::string& name);
+    void endGesture();
     // Sets a clip's gain so its loudest sample peaks at `targetDb` (reads the
     // source). Returns an error message or empty.
     std::string normaliseClip(core::Id trackId, core::Id clipId, float targetDb = -0.3f);
@@ -159,6 +162,7 @@ private:
     juce::File projectFile_;
     bool modified_ = false;
     std::string recordingMessage_;
+    bool gestureOpen_ = false;
     bool metronome_ = false;
     int countInBars_ = 1;
     core::SamplePosition regionStart_ = 0, regionEnd_ = 0;

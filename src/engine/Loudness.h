@@ -22,6 +22,7 @@ public:
     {
         float momentaryLufs = -100.0f;
         float shortTermLufs = -100.0f;
+        float integratedLufs = -100.0f;
     };
 
     static constexpr int momentaryMs = 400;
@@ -40,6 +41,8 @@ public:
         hops_.assign(static_cast<size_t>(shortTermMs / hopMs), 0.0);
         hopIndex_ = 0;
         hopSum_ = 0.0;
+        blocks_.assign(static_cast<size_t>(maxBlocks), 0.0f);
+        blockCount_.store(0, std::memory_order_relaxed);
         hopCount_ = 0;
         momentary_.store(-100.0f, std::memory_order_relaxed);
         shortTerm_.store(-100.0f, std::memory_order_relaxed);
@@ -69,7 +72,9 @@ public:
     // Any thread.
     Reading reading() const noexcept
     {
-        return {momentary_.load(std::memory_order_relaxed), shortTerm_.load(std::memory_order_relaxed)};
+        return {momentary_.load(std::memory_order_relaxed),
+                shortTerm_.load(std::memory_order_relaxed),
+                integratedLufs()};
     }
 
 private:
@@ -110,9 +115,11 @@ private:
         const double K = std::tan(std::numbers::pi * f0 / fs);
         const double a0 = 1.0 + K / Q + K * K;
         Biquad f;
-        f.b0 = 1.0 / a0;
-        f.b1 = -2.0 / a0;
-        f.b2 = 1.0 / a0;
+        // BS.1770 gives b = {1, -2, 1} with only the a's normalised: the filter has
+        // +0.04 dB in the pass band and the -0.691 offset accounts for that.
+        f.b0 = 1.0;
+        f.b1 = -2.0;
+        f.b2 = 1.0;
         f.a1 = 2.0 * (K * K - 1.0) / a0;
         f.a2 = (1.0 - K / Q + K * K) / a0;
         return f;
@@ -130,9 +137,64 @@ private:
         };
         const auto lufs = [](double meanSquare)
         { return meanSquare > 1e-12 ? static_cast<float>(-0.691 + 10.0 * std::log10(meanSquare)) : -100.0f; };
-        momentary_.store(lufs(average(momentaryMs / hopMs)), std::memory_order_relaxed);
+        const double momentaryMean = average(momentaryMs / hopMs);
+        momentary_.store(lufs(momentaryMean), std::memory_order_relaxed);
         shortTerm_.store(lufs(average(shortTermMs / hopMs)), std::memory_order_relaxed);
+        // Gating blocks for the integrated measure: the 400 ms window at every hop.
+        if (resetRequested_.exchange(false, std::memory_order_acq_rel))
+        {
+            blockCount_.store(0, std::memory_order_relaxed);
+            hopsSinceReset_ = 0;
+        }
+        // Only full 400 ms windows of material since the reset count as blocks.
+        if (++hopsSinceReset_ < momentaryMs / hopMs)
+            return;
+        const int stored = blockCount_.load(std::memory_order_relaxed);
+        if (stored < maxBlocks)
+        {
+            blocks_[static_cast<size_t>(stored)] = static_cast<float>(momentaryMean);
+            blockCount_.store(stored + 1, std::memory_order_release);
+        }
     }
+
+public:
+    // Controller: restarts the integrated measurement (the next hop clears it).
+    void resetIntegrated() noexcept { resetRequested_.store(true, std::memory_order_release); }
+
+    // Controller: integrated loudness per BS.1770-4 over the blocks since the last
+    // reset: blocks under -70 LUFS are dropped (absolute gate), then blocks more
+    // than 10 LU under the mean of the rest (relative gate). -100 when nothing
+    // passes the gates.
+    float integratedLufs() const noexcept
+    {
+        const int n = std::min(maxBlocks, blockCount_.load(std::memory_order_acquire));
+        const auto lufsOf = [](double meanSquare)
+        { return meanSquare > 1e-12 ? -0.691 + 10.0 * std::log10(meanSquare) : -100.0; };
+        double sum = 0.0;
+        int count = 0;
+        for (int i = 0; i < n; ++i)
+            if (const double ms = blocks_[static_cast<size_t>(i)]; lufsOf(ms) > -70.0)
+            {
+                sum += ms;
+                ++count;
+            }
+        if (count == 0)
+            return -100.0f;
+        const double relative = lufsOf(sum / count) - 10.0;
+        sum = 0.0;
+        count = 0;
+        for (int i = 0; i < n; ++i)
+            if (const double ms = blocks_[static_cast<size_t>(i)];
+                lufsOf(ms) > relative && lufsOf(ms) > -70.0)
+            {
+                sum += ms;
+                ++count;
+            }
+        return count == 0 ? -100.0f : static_cast<float>(lufsOf(sum / count));
+    }
+
+private:
+    static constexpr int maxBlocks = 72000; // two hours of 100 ms hops
 
     double sampleRate_ = 48000.0;
     int hopSamples_ = 0;
@@ -143,6 +205,10 @@ private:
     int hopCount_ = 0;
     std::atomic<float> momentary_{-100.0f};
     std::atomic<float> shortTerm_{-100.0f};
+    std::vector<float> blocks_; // mean square of the 400 ms window at each hop since the reset
+    std::atomic<int> blockCount_{0};
+    int hopsSinceReset_ = 0;
+    std::atomic<bool> resetRequested_{false};
 };
 
 } // namespace aural::engine

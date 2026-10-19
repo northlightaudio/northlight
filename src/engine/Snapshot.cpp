@@ -85,8 +85,11 @@ struct Routing
 };
 } // namespace
 
-std::unique_ptr<Snapshot>
-compileSnapshot(const core::Project& project, MediaCache& media, InsertCache& inserts, DelayCache* delays)
+std::unique_ptr<Snapshot> compileSnapshot(const core::Project& project,
+                                          MediaCache& media,
+                                          InsertCache& inserts,
+                                          DelayCache* delays,
+                                          RuntimeCache* runtimes)
 {
     AURAL_ASSERT_NOT_REALTIME("compileSnapshot");
     auto snapshot = std::make_unique<Snapshot>();
@@ -94,6 +97,11 @@ compileSnapshot(const core::Project& project, MediaCache& media, InsertCache& in
     snapshot->tempoBpm = project.tempoBpm;
     snapshot->timeSignature = project.timeSignature;
     snapshot->masterGain = project.master.gain;
+    RuntimeCache localRuntimes;
+    RuntimeCache& runtimeCache = runtimes != nullptr ? *runtimes : localRuntimes;
+    snapshot->keepAliveMaster = runtimeCache.master();
+    snapshot->master = snapshot->keepAliveMaster.get();
+    snapshot->master->targetGain.store(project.master.gain, std::memory_order_relaxed);
     snapshot->masterMeterSlot = masterMeterSlot(project);
     snapshot->silence.assign(static_cast<size_t>(Snapshot::maxBlockSamples), 0.0f);
 
@@ -202,31 +210,43 @@ compileSnapshot(const core::Project& project, MediaCache& media, InsertCache& in
     }
 
     // ----- solo-in-place --------------------------------------------------------------
-    // With any solo, a channel is heard if it is soloed, feeds a soloed channel
-    // (upstream), or is fed by one (downstream). Mute always wins.
+    // With any solo, a channel's direct output is heard if it is soloed, is fed by a
+    // soloed channel (downstream), or feeds a lit bus through its output. Its sends
+    // are heard if any of that holds or a send of its reaches a lit bus: a channel
+    // lit only by a send to a soloed reverb keeps the send and loses the dry output.
+    // Mute always wins. Buses resolve fed-first (reverse order), so a bus's lit
+    // state is known before the channels that feed it.
     const bool anySolo = std::any_of(routing.solo.begin(), routing.solo.end(), [](bool s) { return s; });
-    std::vector<bool> lit(static_cast<size_t>(trackCount + busCount), !anySolo);
+    std::vector<bool> outputLit(static_cast<size_t>(trackCount + busCount), !anySolo);
+    std::vector<bool> anyLit(static_cast<size_t>(trackCount + busCount), !anySolo);
     if (anySolo)
     {
         std::vector<bool> downstreamOfSolo(static_cast<size_t>(busCount), false);
         for (int c = 0; c < trackCount + busCount; ++c)
             if (routing.solo[static_cast<size_t>(c)])
-            {
-                lit[static_cast<size_t>(c)] = true;
                 routing.downstream(c, downstreamOfSolo);
-            }
-        for (int b = 0; b < busCount; ++b)
-            if (downstreamOfSolo[static_cast<size_t>(b)])
-                lit[static_cast<size_t>(routing.channelOfBus(b))] = true;
-        for (int c = 0; c < trackCount + busCount; ++c)
+        // reach[c]: a soloed channel sits downstream of c (through outputs or sends).
+        std::vector<bool> reach(static_cast<size_t>(trackCount + busCount), false);
+        const auto resolve = [&](int c)
         {
-            std::vector<bool> below(static_cast<size_t>(busCount), false);
-            routing.downstream(c, below);
-            for (int b = 0; b < busCount; ++b)
-                if (below[static_cast<size_t>(b)] &&
-                    routing.solo[static_cast<size_t>(routing.channelOfBus(b))])
-                    lit[static_cast<size_t>(c)] = true;
-        }
+            const auto index = static_cast<size_t>(c);
+            const int output = routing.output[index];
+            const bool outputReaches =
+                output >= 0 && reach[static_cast<size_t>(routing.channelOfBus(output))];
+            bool sendReaches = false;
+            for (int target : routing.sendTargets[index])
+                sendReaches = sendReaches || reach[static_cast<size_t>(routing.channelOfBus(target))];
+            reach[index] = routing.solo[index] || outputReaches || sendReaches;
+            const bool self =
+                routing.solo[index] ||
+                (c >= trackCount && downstreamOfSolo[static_cast<size_t>(routing.busOfChannel(c))]);
+            outputLit[index] = self || outputReaches;
+            anyLit[index] = self || outputReaches || sendReaches;
+        };
+        for (auto it = snapshot->busOrder.rbegin(); it != snapshot->busOrder.rend(); ++it)
+            resolve(routing.channelOfBus(*it));
+        for (int t = 0; t < trackCount; ++t)
+            resolve(t);
     }
 
     DelayCache localDelays; // used only when the caller keeps no cache
@@ -236,7 +256,12 @@ compileSnapshot(const core::Project& project, MediaCache& media, InsertCache& in
         node.gain = c.gain;
         node.pan = c.pan;
         node.phaseInvert = c.phaseInvert;
-        node.audible = !routing.mute[static_cast<size_t>(index)] && lit[static_cast<size_t>(index)];
+        node.audible = !routing.mute[static_cast<size_t>(index)] && outputLit[static_cast<size_t>(index)];
+        node.sendsAudible = !routing.mute[static_cast<size_t>(index)] && anyLit[static_cast<size_t>(index)];
+        node.keepAliveRuntime = runtimeCache.get(c.id);
+        node.runtime = node.keepAliveRuntime.get();
+        node.runtime->targetGain.store(c.gain, std::memory_order_relaxed);
+        node.runtime->targetPan.store(c.pan, std::memory_order_relaxed);
         node.outputBus = routing.output[static_cast<size_t>(index)];
         node.meterSlot = slot;
         for (const auto& s : c.sends)

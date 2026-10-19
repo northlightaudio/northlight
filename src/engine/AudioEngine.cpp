@@ -34,8 +34,9 @@ AudioEngine::~AudioEngine()
 void AudioEngine::setProject(const core::Project& project)
 {
     AURAL_ASSERT_NOT_REALTIME("AudioEngine::setProject");
-    auto snapshot = compileSnapshot(project, media_, inserts_, &delays_);
+    auto snapshot = compileSnapshot(project, media_, inserts_, &delays_, &runtimes_);
     outputLatency_.store(snapshot->outputLatency, std::memory_order_relaxed);
+    masterMeterSlot_.store(snapshot->masterMeterSlot, std::memory_order_relaxed);
     publisher_.publish(std::move(snapshot));
     collectGarbage();
 }
@@ -141,6 +142,33 @@ void AudioEngine::resetCaches()
     AURAL_ASSERT_NOT_REALTIME("AudioEngine::resetCaches");
     inserts_.clear();
     delays_.clear();
+    runtimes_.clear();
+}
+
+void AudioEngine::applyLiveValues(const core::Project& project)
+{
+    AURAL_ASSERT_NOT_REALTIME("AudioEngine::applyLiveValues");
+    const auto channel = [&](const core::Channel& c)
+    {
+        if (const auto runtime = runtimes_.find(c.id))
+        {
+            runtime->targetGain.store(c.gain, std::memory_order_relaxed);
+            runtime->targetPan.store(c.pan, std::memory_order_relaxed);
+        }
+        for (const auto& i : c.inserts)
+            if (const auto instance = inserts_.find(i.id))
+            {
+                const auto count = static_cast<int>(instance->parameters().size());
+                for (int k = 0; k < count && static_cast<size_t>(k) < i.params.size(); ++k)
+                    instance->setParameter(k, i.params[static_cast<size_t>(k)]);
+                instance->setBypassed(i.bypass);
+            }
+    };
+    for (const auto& t : project.tracks)
+        channel(t);
+    for (const auto& b : project.buses)
+        channel(b);
+    runtimes_.master()->targetGain.store(project.master.gain, std::memory_order_relaxed);
 }
 
 void AudioEngine::collectGarbage()
@@ -150,6 +178,7 @@ void AudioEngine::collectGarbage()
     media_.prune();
     inserts_.prune();
     delays_.prune();
+    runtimes_.prune();
 }
 
 void AudioEngine::prepare(double sampleRate, int maxBlockSize)

@@ -239,7 +239,9 @@ std::optional<Project> projectFromJson(const std::string& text, std::string* err
         if (const auto it = j.find("master"); it != j.end() && it->is_object())
             p.master.gain = it->value("gain", 1.0f);
 
-        // Guarantee ids stay unique even if the file's nextId is stale.
+        // Guarantee ids stay unique even if the file's nextId is stale, and give a
+        // duplicated clip or insert id (a hand-edited or corrupted file) a fresh one
+        // rather than letting two objects share one processor or clip identity.
         Id maxId = 0;
         for (const auto& t : p.tracks)
         {
@@ -259,6 +261,29 @@ std::optional<Project> projectFromJson(const std::string& text, std::string* err
         for (const auto& g : p.groups)
             maxId = std::max(maxId, g.id);
         p.nextId = std::max(p.nextId, maxId + 1);
+        std::vector<Id> seen;
+        const auto fresh = [&](Id& id)
+        {
+            if (id == invalidId || std::find(seen.begin(), seen.end(), id) != seen.end())
+                id = p.allocateId();
+            seen.push_back(id);
+        };
+        for (auto& t : p.tracks)
+        {
+            fresh(t.id);
+            for (auto& c : t.clips)
+                fresh(c.id);
+            for (auto& i : t.inserts)
+                fresh(i.id);
+        }
+        for (auto& b : p.buses)
+        {
+            fresh(b.id);
+            for (auto& i : b.inserts)
+                fresh(i.id);
+        }
+        for (auto& g : p.groups)
+            fresh(g.id);
         return p;
     }
     catch (const json::exception& e)
