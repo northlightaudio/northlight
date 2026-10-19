@@ -3,6 +3,7 @@
 #include "core/Model.h"
 
 #include <atomic>
+#include <cstdint>
 #include <map>
 #include <memory>
 
@@ -34,6 +35,16 @@ struct MasterRuntime
 };
 
 // One runtime per channel id, kept across compiles. Controller thread only.
+// What a MIDI track's instrument currently holds, and where the last span ended,
+// so a stop, a jump or a loop wrap can end the notes still sounding. Real-time
+// thread only (the track's own render job).
+struct MidiRuntime
+{
+    std::uint8_t held[128]{};          // 1 while sounding
+    core::SamplePosition lastEnd = -1; // where the previous playing span ended
+    bool wasPlaying = false;
+};
+
 class RuntimeCache
 {
 public:
@@ -49,6 +60,13 @@ public:
         const auto it = channels_.find(channelId);
         return it != channels_.end() ? it->second : nullptr;
     }
+    std::shared_ptr<MidiRuntime> midi(core::Id trackId)
+    {
+        auto& r = midi_[trackId];
+        if (r == nullptr)
+            r = std::make_shared<MidiRuntime>();
+        return r;
+    }
     std::shared_ptr<MasterRuntime> master()
     {
         if (master_ == nullptr)
@@ -59,15 +77,18 @@ public:
     void prune()
     {
         std::erase_if(channels_, [](const auto& entry) { return entry.second.use_count() == 1; });
+        std::erase_if(midi_, [](const auto& entry) { return entry.second.use_count() == 1; });
     }
     void clear()
     {
         channels_.clear();
+        midi_.clear();
         master_.reset();
     }
 
 private:
     std::map<core::Id, std::shared_ptr<ChannelRuntime>> channels_;
+    std::map<core::Id, std::shared_ptr<MidiRuntime>> midi_;
     std::shared_ptr<MasterRuntime> master_;
 };
 

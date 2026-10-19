@@ -31,6 +31,11 @@ struct RenderContext
     bool countIn = false;              // the count-in before a recording: clicks only, position holds
     rt::MeterBlock* meters = nullptr;  // may be null (tests)
     LoudnessMeter* loudness = nullptr; // master loudness, may be null
+    // Live MIDI input for this block (offsets within it) with each event's source
+    // index in a parallel array; null when there is none. The engine hands it to
+    // the first span of a block only.
+    const MidiEventList* liveMidi = nullptr;
+    const int* liveMidiSources = nullptr;
 };
 
 class Renderer
@@ -59,6 +64,15 @@ public:
 
     // Whether a track hears its input given the transport state.
     static bool monitorsInput(const TrackNode& track, bool playing, bool recording) noexcept;
+    // The same for a MIDI track's live input (no device channel needed).
+    static bool monitorsMidi(const TrackNode& track, bool playing, bool recording) noexcept;
+    // Collects a MIDI track's events for [position, position + numSamples): its
+    // clips while playing, the live input while it monitors, and the note-offs a
+    // stop, jump or loop wrap demands, into track.events (sorted).
+    static void scheduleMidi(const TrackNode& track,
+                             core::SamplePosition position,
+                             int numSamples,
+                             const RenderContext& context) noexcept;
 
     // Renders one track's clips (and monitored input) over
     // [position, position + numSamples) into the track's pre-fader buffers.
@@ -85,7 +99,8 @@ private:
                              const ChannelNode& channel,
                              float* left,
                              float* right,
-                             int numSamples) noexcept;
+                             int numSamples,
+                             const MidiEventList* midi = nullptr) noexcept;
 
     void renderSpan(const Snapshot& snapshot,
                     const RenderContext& context,

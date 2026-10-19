@@ -7,6 +7,7 @@
 #include "engine/Runtime.h"
 
 #include <cstdint>
+#include <functional>
 #include <map>
 #include <memory>
 #include <string>
@@ -80,12 +81,33 @@ struct ChannelNode
     mutable std::vector<float> outLeft, outRight;
 };
 
+struct MidiNoteNode
+{
+    core::SamplePosition start = 0; // timeline position
+    core::SamplePosition end = 0;   // exclusive, clipped to the clip
+    int note = 60;
+    int velocity = 100;
+};
+
+struct MidiClipNode
+{
+    core::SamplePosition start = 0, length = 0;
+    std::vector<MidiNoteNode> notes; // sorted by start
+    core::SamplePosition end() const noexcept { return start + length; }
+};
+
 struct TrackNode : ChannelNode
 {
+    bool isMidi = false;
     int inputChannel = -1; // device input (callback order) or -1
+    int midiSource = -1;   // live MIDI: -1 = every input, else the engine's index for the device
     bool armed = false;
     core::MonitorMode monitor = core::MonitorMode::automatic;
-    std::vector<ClipNode> clips; // sorted by start
+    std::vector<ClipNode> clips;         // sorted by start
+    std::vector<MidiClipNode> midiClips; // sorted by start
+    MidiRuntime* midi = nullptr;         // held notes; set for MIDI tracks
+    std::shared_ptr<MidiRuntime> keepAliveMidi;
+    mutable MidiEventList events{1024}; // this span's events for the instrument
 
     mutable std::vector<float> scratchLeft, scratchRight; // clip read scratch
 };
@@ -166,7 +188,8 @@ std::unique_ptr<Snapshot> compileSnapshot(const core::Project& project,
                                           MediaCache& media,
                                           InsertCache& inserts,
                                           DelayCache* delays = nullptr,
-                                          RuntimeCache* runtimes = nullptr);
+                                          RuntimeCache* runtimes = nullptr,
+                                          const std::function<int(const std::string&)>& midiSources = {});
 
 // Meter slot layout used by the compiler: tracks in project order, then buses in
 // project order, then the master.

@@ -37,6 +37,11 @@ bool Renderer::monitorsInput(const TrackNode& track, bool playing, bool recordin
 {
     if (track.inputChannel < 0)
         return false;
+    return monitorsMidi(track, playing, recording);
+}
+
+bool Renderer::monitorsMidi(const TrackNode& track, bool playing, bool recording) noexcept
+{
     switch (track.monitor)
     {
         case core::MonitorMode::off:
@@ -87,6 +92,7 @@ void Renderer::render(const Snapshot& snapshot,
     else
     {
         // Split the block at the loop end so position never crosses it.
+        RenderContext spanContext = context;
         int done = 0;
         while (done < numSamples)
         {
@@ -99,10 +105,11 @@ void Renderer::render(const Snapshot& snapshot,
                 const auto toLoopEnd = transport.loopEnd - transport.position;
                 span = static_cast<int>(std::min<core::SamplePosition>(span, toLoopEnd));
             }
-            renderSpan(snapshot, context, transport.position, left + done, right + done, span, pool);
+            renderSpan(snapshot, spanContext, transport.position, left + done, right + done, span, pool);
             renderClicks(snapshot, transport, transport.position, left + done, right + done, span);
             transport.position += span;
             done += span;
+            spanContext.liveMidi = nullptr; // delivered once, in the first span
             if (transport.loopIsValid() && transport.position >= transport.loopEnd)
                 transport.position = transport.loopStart;
         }
@@ -156,6 +163,15 @@ void Renderer::renderTrack(const Snapshot& snapshot,
     // An inaudible (muted, un-soloed) track still renders: its inserts keep their
     // envelopes, tails and latency buffers moving, and its key output stays live
     // for sidechains. The routing stage is what keeps it out of the mix.
+
+    if (track.isMidi)
+    {
+        // A MIDI track: its events for the span go to the first insert that takes
+        // MIDI (the instrument); the rest of the chain follows as on any channel.
+        scheduleMidi(track, position, numSamples, context);
+        processChain(snapshot, track, left, right, numSamples, &track.events);
+        return;
+    }
 
     // The pan this block ramps from and to (the runtime outlives snapshots).
     const float pan1 =
@@ -262,9 +278,88 @@ void Renderer::renderTrack(const Snapshot& snapshot,
     processChain(snapshot, track, left, right, numSamples);
 }
 
-void Renderer::processChain(
-    const Snapshot& snapshot, const ChannelNode& channel, float* left, float* right, int numSamples) noexcept
+void Renderer::scheduleMidi(const TrackNode& track,
+                            core::SamplePosition position,
+                            int numSamples,
+                            const RenderContext& context) noexcept
 {
+    auto& events = track.events;
+    events.clear();
+    auto* held = track.midi;
+    if (held == nullptr)
+        return;
+
+    // A discontinuity (stop, jump, loop wrap, or play from elsewhere): everything
+    // still sounding ends at the top of the span.
+    const bool discontinuous = context.playing ? held->lastEnd != position : held->wasPlaying;
+    if (discontinuous)
+        for (int n = 0; n < 128; ++n)
+            if (held->held[n] != 0)
+            {
+                events.noteOff(0, n);
+                held->held[n] = 0;
+            }
+    held->wasPlaying = context.playing;
+    held->lastEnd = context.playing ? position + numSamples : -1;
+
+    if (context.playing)
+    {
+        const core::SamplePosition spanEnd = position + numSamples;
+        for (const auto& clip : track.midiClips)
+        {
+            if (clip.start >= spanEnd)
+                break;
+            if (clip.end() <= position)
+                continue;
+            for (const auto& note : clip.notes)
+            {
+                if (note.start >= spanEnd)
+                    break;
+                const bool startsHere = note.start >= position;
+                if (startsHere)
+                {
+                    events.noteOn(static_cast<int>(note.start - position), note.note, note.velocity);
+                    held->held[note.note] = 1;
+                }
+                // Only a note that is sounding ends (one the transport started inside
+                // never began).
+                if (note.end < spanEnd && (startsHere || held->held[note.note] != 0) && note.end >= position)
+                {
+                    events.noteOff(static_cast<int>(note.end - position), note.note);
+                    held->held[note.note] = 0;
+                }
+            }
+        }
+    }
+
+    // Live input while the track monitors, from its chosen device (or any).
+    if (context.liveMidi != nullptr && monitorsMidi(track, context.playing, context.recording))
+        for (size_t i = 0; i < context.liveMidi->size(); ++i)
+        {
+            if (track.midiSource >= 0 && context.liveMidiSources != nullptr &&
+                context.liveMidiSources[i] != track.midiSource)
+                continue;
+            MidiEvent e = (*context.liveMidi)[i];
+            e.sampleOffset = std::clamp(e.sampleOffset, 0, numSamples - 1);
+            events.push(e);
+            if (e.type == MidiEvent::Type::noteOn && e.velocity > 0)
+                held->held[e.note & 127] = 1;
+            else if (e.type == MidiEvent::Type::noteOff || e.type == MidiEvent::Type::noteOn)
+                held->held[e.note & 127] = 0;
+            else if (e.type == MidiEvent::Type::allNotesOff)
+                std::fill(std::begin(held->held), std::end(held->held), std::uint8_t{0});
+        }
+    events.sortByTime();
+}
+
+void Renderer::processChain(const Snapshot& snapshot,
+                            const ChannelNode& channel,
+                            float* left,
+                            float* right,
+                            int numSamples,
+                            const MidiEventList* midi) noexcept
+{
+    bool midiDelivered = false;
     for (size_t k = 0; k < channel.inserts.size(); ++k)
     {
         auto* insert = channel.inserts[k];
@@ -289,7 +384,12 @@ void Renderer::processChain(
         }
         const auto run = [&](float* l, float* r)
         {
-            if (keyL != nullptr)
+            if (midi != nullptr && !midiDelivered && insert->acceptsMidi())
+            {
+                midiDelivered = true;
+                insert->processMidi(*midi, l, r, numSamples);
+            }
+            else if (keyL != nullptr)
                 insert->processWithSidechain(l, r, keyL, keyR, numSamples);
             else
                 insert->process(l, r, numSamples);

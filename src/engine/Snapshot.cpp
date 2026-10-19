@@ -89,7 +89,8 @@ std::unique_ptr<Snapshot> compileSnapshot(const core::Project& project,
                                           MediaCache& media,
                                           InsertCache& inserts,
                                           DelayCache* delays,
-                                          RuntimeCache* runtimes)
+                                          RuntimeCache* runtimes,
+                                          const std::function<int(const std::string&)>& midiSources)
 {
     AURAL_ASSERT_NOT_REALTIME("compileSnapshot");
     auto snapshot = std::make_unique<Snapshot>();
@@ -326,9 +327,37 @@ std::unique_ptr<Snapshot> compileSnapshot(const core::Project& project,
         const auto& track = project.tracks[static_cast<size_t>(t)];
         TrackNode node;
         fillChannel(node, track, t, trackMeterSlot(t), false);
+        node.isMidi = track.isMidi();
         node.inputChannel = track.inputChannel;
         node.armed = track.armed;
         node.monitor = track.monitor;
+        if (node.isMidi)
+        {
+            if (runtimes != nullptr)
+            {
+                node.keepAliveMidi = runtimes->midi(track.id);
+                node.midi = node.keepAliveMidi.get();
+            }
+            node.midiSource =
+                midiSources != nullptr && !track.midiInput.empty() ? midiSources(track.midiInput) : -1;
+            for (const auto& c : track.midiClips)
+            {
+                MidiClipNode clip;
+                clip.start = c.start;
+                clip.length = c.length;
+                for (const auto& source : c.notes)
+                {
+                    MidiNoteNode note;
+                    note.start = c.start + source.start;
+                    note.end = std::min(c.start + source.end(), c.end());
+                    note.note = source.note;
+                    note.velocity = source.velocity;
+                    if (note.end > note.start && note.start < c.end())
+                        clip.notes.push_back(note);
+                }
+                node.midiClips.push_back(std::move(clip));
+            }
+        }
         node.clips.reserve(track.clips.size());
         for (const auto& c : track.clips)
         {

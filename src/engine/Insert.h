@@ -1,6 +1,7 @@
 #pragma once
 
 #include "core/Model.h"
+#include "engine/Midi.h"
 
 #include <atomic>
 #include <cstdint>
@@ -57,6 +58,16 @@ public:
     virtual bool acceptsSidechain() const noexcept { return false; }
     virtual void
     processWithSidechain(float* left, float* right, const float*, const float*, int numSamples) noexcept
+    {
+        process(left, right, numSamples);
+    }
+
+    // Instruments (and MIDI effects) take the block's events alongside the audio:
+    // the buffers hold what came before in the chain (silence at the head of a
+    // MIDI track) and the processor replaces or adds to them. The default ignores
+    // the events. Offsets are within the block, in time order.
+    virtual bool acceptsMidi() const noexcept { return false; }
+    virtual void processMidi(const MidiEventList&, float* left, float* right, int numSamples) noexcept
     {
         process(left, right, numSamples);
     }

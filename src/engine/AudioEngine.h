@@ -3,6 +3,7 @@
 #include "core/Model.h"
 #include "engine/Loudness.h"
 #include "engine/Meters.h"
+#include "engine/Midi.h"
 #include "engine/Recording.h"
 #include "engine/Renderer.h"
 #include "engine/Snapshot.h"
@@ -14,6 +15,7 @@
 #include <atomic>
 #include <map>
 #include <memory>
+#include <mutex>
 #include <optional>
 #include <string>
 #include <vector>
@@ -85,6 +87,15 @@ public:
     // Peak/RMS per channel, slots as laid out by the snapshot compiler
     // (trackMeterSlot / busMeterSlot / masterMeterSlot). The UI takes readings.
     rt::MeterBlock& meters() noexcept { return meters_; }
+    // ----- MIDI -------------------------------------------------------------------
+    // Live MIDI from a device (any non-real-time thread): `source` names the input
+    // it came from (empty = unknown). The event reaches the MIDI tracks listening
+    // to that input in the next block, at its sample offset clamped to the block.
+    void pushMidiInput(const MidiEvent& event, const std::string& source);
+    // The engine's index for an input name (registering it the first time), the
+    // value TrackNode::midiSource filters on.
+    int midiSourceIndex(const std::string& name);
+
     // Live values: pushed to the running graph without a recompile (the renderer
     // ramps gains and pans; insert parameters are atomics on the instance).
     void applyLiveValues(const core::Project& project);
@@ -140,6 +151,18 @@ private:
     InsertCache inserts_;
     DelayCache delays_;
     RuntimeCache runtimes_;
+    struct QueuedMidi
+    {
+        MidiEvent event;
+        int source = -1;
+    };
+    static constexpr size_t midiQueueCapacity = 4096;
+    rt::SpscQueue<QueuedMidi> midiIn_{midiQueueCapacity}; // producer side under midiMutex_
+    MidiEventList liveMidi_{midiQueueCapacity};
+    std::vector<int> liveMidiSources_ = std::vector<int>(midiQueueCapacity);
+    size_t liveMidiCount_ = 0;
+    std::vector<std::string> midiSourceNames_; // index = source
+    std::mutex midiMutex_;
     std::atomic<int> masterMeterSlot_{-1};
     bool flushDelays_ = false; // real-time thread only: a locate happened
     std::atomic<int> outputLatency_{0};

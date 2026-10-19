@@ -34,7 +34,12 @@ AudioEngine::~AudioEngine()
 void AudioEngine::setProject(const core::Project& project)
 {
     AURAL_ASSERT_NOT_REALTIME("AudioEngine::setProject");
-    auto snapshot = compileSnapshot(project, media_, inserts_, &delays_, &runtimes_);
+    auto snapshot = compileSnapshot(project,
+                                    media_,
+                                    inserts_,
+                                    &delays_,
+                                    &runtimes_,
+                                    [this](const std::string& name) { return midiSourceIndex(name); });
     outputLatency_.store(snapshot->outputLatency, std::memory_order_relaxed);
     masterMeterSlot_.store(snapshot->masterMeterSlot, std::memory_order_relaxed);
     publisher_.publish(std::move(snapshot));
@@ -135,6 +140,25 @@ std::optional<AudioEngine::FinishedRecording> AudioEngine::collectRecording()
     finished.results = writer_.takeResults();
     finished.session = std::move(activeRecord_);
     return finished;
+}
+
+int AudioEngine::midiSourceIndex(const std::string& name)
+{
+    AURAL_ASSERT_NOT_REALTIME("AudioEngine::midiSourceIndex");
+    const std::lock_guard<std::mutex> lock(midiMutex_);
+    for (size_t i = 0; i < midiSourceNames_.size(); ++i)
+        if (midiSourceNames_[i] == name)
+            return static_cast<int>(i);
+    midiSourceNames_.push_back(name);
+    return static_cast<int>(midiSourceNames_.size() - 1);
+}
+
+void AudioEngine::pushMidiInput(const MidiEvent& event, const std::string& source)
+{
+    AURAL_ASSERT_NOT_REALTIME("AudioEngine::pushMidiInput");
+    const int index = source.empty() ? -1 : midiSourceIndex(source);
+    const std::lock_guard<std::mutex> lock(midiMutex_); // several device threads share the queue
+    midiIn_.push(QueuedMidi{event, index});
 }
 
 void AudioEngine::resetCaches()
@@ -270,6 +294,13 @@ void AudioEngine::process(
             line->reset();
         flushDelays_ = false;
     }
+    // Live MIDI for this block: everything queued since the last one.
+    liveMidi_.clear();
+    liveMidiCount_ = 0;
+    QueuedMidi queued;
+    while (midiIn_.pop(queued))
+        if (liveMidi_.push(queued.event))
+            liveMidiSources_[liveMidiCount_++] = queued.source;
     constexpr int maxChannels = 64;
     float* outPieces[maxChannels];
     const float* inPieces[maxChannels];
@@ -330,6 +361,11 @@ void AudioEngine::process(
         context.countIn = countingIn;
         context.meters = &meters_;
         context.loudness = &loudness_;
+        if (done == 0 && !liveMidi_.empty())
+        {
+            context.liveMidi = &liveMidi_;
+            context.liveMidiSources = liveMidiSources_.data();
+        }
 
         if (snapshot != nullptr)
         {

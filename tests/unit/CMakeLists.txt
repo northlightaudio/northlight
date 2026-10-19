@@ -26,6 +26,7 @@ add_executable(aural_unit_tests
     engine/SidechainTests.cpp
     engine/FadeTests.cpp
     engine/InsertChainTests.cpp
+    engine/MidiTests.cpp
     hosting/PluginRegistryTests.cpp)
 
 target_link_libraries(aural_unit_tests PRIVATE

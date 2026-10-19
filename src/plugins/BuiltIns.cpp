@@ -79,7 +79,21 @@ public:
             return; // process before prepare: nothing is allocated
         // Longer blocks than prepare() announced are taken in pieces.
         for (int done = 0; done < numSamples; done += capacity)
+        {
+            chunkStart_ = done;
             processChunk(left + done, right + done, std::min(capacity, numSamples - done));
+        }
+        chunkStart_ = 0;
+    }
+
+    // MIDI goes through the same bypass handling as the key input: parked for
+    // processAudio (an instrument reads it with offsets relative to chunkStart_).
+    void
+    processMidi(const engine::MidiEventList& events, float* left, float* right, int numSamples) noexcept final
+    {
+        midi_ = &events;
+        process(left, right, numSamples);
+        midi_ = nullptr;
     }
 
     void processChunk(float* left, float* right, int numSamples) noexcept
@@ -126,6 +140,8 @@ protected:
     double sampleRate_ = 48000.0;
     const float* keyLeft_ = nullptr;
     const float* keyRight_ = nullptr;
+    const engine::MidiEventList* midi_ = nullptr;
+    int chunkStart_ = 0; // offset of the current chunk within the block
 
 private:
     std::string typeName_;
@@ -632,11 +648,259 @@ private:
     std::vector<float> delayL_, delayR_, needed_, smoothed_;
     std::vector<int> minima_;
 };
+// ----- synth ----------------------------------------------------------------------------------
+
+// A small polyphonic subtractive synth: a polyBLEP saw/square per voice through a
+// state-variable low-pass, with an ADSR on the amplitude. Sixteen voices, the
+// oldest stolen. Mono, written to both channels. Enough to audition a part.
+class Synth final : public Base
+{
+public:
+    static constexpr int maxVoices = 16;
+    Synth()
+        : Base(types::synth,
+               {{"Level", "dB", -60.0f, 12.0f, -12.0f, false},
+                {"Shape", "", 0.0f, 1.0f, 0.0f, false}, // saw .. square
+                {"Cutoff", "Hz", 40.0f, 20000.0f, 6000.0f, true},
+                {"Resonance", "", 0.0f, 1.0f, 0.2f, false},
+                {"Attack", "ms", 1.0f, 2000.0f, 5.0f, true},
+                {"Decay", "ms", 1.0f, 2000.0f, 200.0f, true},
+                {"Sustain", "", 0.0f, 1.0f, 0.7f, false},
+                {"Release", "ms", 1.0f, 4000.0f, 200.0f, true}})
+    {
+    }
+
+    bool acceptsMidi() const noexcept override { return true; }
+
+private:
+    enum class Stage : std::uint8_t
+    {
+        off,
+        attack,
+        decay,
+        sustain,
+        release
+    };
+    struct Voice
+    {
+        Stage stage = Stage::off;
+        int note = -1;
+        float velocity = 0.0f;
+        double phase = 0.0;
+        double increment = 0.0;
+        float env = 0.0f;
+        float low = 0.0f, band = 0.0f; // filter state
+        std::uint32_t age = 0;
+    };
+
+    void prepareAudio(double, int) override
+    {
+        for (auto& v : voices_)
+            v = Voice{};
+        age_ = 0;
+    }
+
+    void noteOn(int note, int velocity) noexcept
+    {
+        Voice* voice = nullptr;
+        for (auto& v : voices_) // the same note retriggers its voice
+            if (v.note == note && v.stage != Stage::off)
+                voice = &v;
+        if (voice == nullptr)
+            for (auto& v : voices_)
+                if (v.stage == Stage::off)
+                {
+                    voice = &v;
+                    break;
+                }
+        if (voice == nullptr) // steal the oldest
+        {
+            voice = &voices_[0];
+            for (auto& v : voices_)
+                if (v.age < voice->age)
+                    voice = &v;
+        }
+        const double frequency = 440.0 * std::pow(2.0, (note - 69) / 12.0);
+        voice->note = note;
+        voice->velocity = static_cast<float>(velocity) / 127.0f;
+        voice->increment = frequency / sampleRate_;
+        if (voice->stage == Stage::off)
+        {
+            voice->phase = 0.0;
+            voice->env = 0.0f;
+            voice->low = voice->band = 0.0f;
+        }
+        voice->stage = Stage::attack;
+        voice->age = age_++;
+    }
+
+    void noteOff(int note) noexcept
+    {
+        for (auto& v : voices_)
+            if (v.note == note && v.stage != Stage::off && v.stage != Stage::release)
+                v.stage = Stage::release;
+    }
+
+    void allNotesOff() noexcept
+    {
+        for (auto& v : voices_)
+            if (v.stage != Stage::off)
+                v.stage = Stage::release;
+    }
+
+    void handle(const engine::MidiEvent& e) noexcept
+    {
+        switch (e.type)
+        {
+            case engine::MidiEvent::Type::noteOn:
+                if (e.velocity > 0)
+                    noteOn(e.note, e.velocity);
+                else
+                    noteOff(e.note);
+                break;
+            case engine::MidiEvent::Type::noteOff:
+                noteOff(e.note);
+                break;
+            case engine::MidiEvent::Type::allNotesOff:
+                allNotesOff();
+                break;
+            case engine::MidiEvent::Type::controller:
+                if (e.note == 123 || e.note == 120) // all notes / all sound off
+                    allNotesOff();
+                break;
+        }
+    }
+
+    // PolyBLEP: the band-limited step correction around a discontinuity.
+    static float polyBlep(double t, double dt) noexcept
+    {
+        if (t < dt)
+        {
+            const double x = t / dt;
+            return static_cast<float>(x + x - x * x - 1.0);
+        }
+        if (t > 1.0 - dt)
+        {
+            const double x = (t - 1.0) / dt;
+            return static_cast<float>(x * x + x + x + 1.0);
+        }
+        return 0.0f;
+    }
+
+    void processAudio(float* left, float* right, int numSamples) noexcept override
+    {
+        const float level = dbToGain(parameter(0));
+        const float shape = parameter(1);
+        const float cutoff = parameter(2);
+        const float resonance = parameter(3);
+        const float sr = static_cast<float>(sampleRate_);
+        const float attackStep = 1.0f / std::max(1.0f, parameter(4) * 0.001f * sr);
+        const float decayStep = 1.0f / std::max(1.0f, parameter(5) * 0.001f * sr);
+        const float sustain = parameter(6);
+        const float releaseStep = 1.0f / std::max(1.0f, parameter(7) * 0.001f * sr);
+        // Chamberlin SVF coefficients (stable below about a quarter of the rate).
+        const float f = 2.0f * std::sin(3.14159265f * std::min(cutoff, sr * 0.2f) / sr);
+        const float q = 2.0f * (1.0f - resonance * 0.95f);
+
+        // Events partition the chunk; the voices run between them.
+        size_t next = 0;
+        const engine::MidiEventList* events = midi_;
+        int at = 0;
+        while (at < numSamples)
+        {
+            int until = numSamples;
+            while (events != nullptr && next < events->size())
+            {
+                const auto& e = (*events)[next];
+                const int offset = std::clamp(e.sampleOffset - chunkStart_, 0, numSamples);
+                if (offset > at)
+                {
+                    until = std::min(until, offset);
+                    break;
+                }
+                handle(e);
+                ++next;
+            }
+            for (int i = at; i < until; ++i)
+            {
+                float sum = 0.0f;
+                for (auto& v : voices_)
+                {
+                    if (v.stage == Stage::off)
+                        continue;
+                    switch (v.stage)
+                    {
+                        case Stage::attack:
+                            v.env += attackStep;
+                            if (v.env >= 1.0f)
+                            {
+                                v.env = 1.0f;
+                                v.stage = Stage::decay;
+                            }
+                            break;
+                        case Stage::decay:
+                            v.env -= decayStep;
+                            if (v.env <= sustain)
+                            {
+                                v.env = sustain;
+                                v.stage = Stage::sustain;
+                            }
+                            break;
+                        case Stage::sustain:
+                            v.env = sustain;
+                            break;
+                        case Stage::release:
+                            v.env -= releaseStep;
+                            if (v.env <= 0.0f)
+                            {
+                                v.env = 0.0f;
+                                v.stage = Stage::off;
+                                v.note = -1;
+                                continue;
+                            }
+                            break;
+                        case Stage::off:
+                            continue;
+                    }
+                    const double dt = v.increment;
+                    float saw = static_cast<float>(2.0 * v.phase - 1.0) - polyBlep(v.phase, dt);
+                    float osc = saw;
+                    if (shape > 0.0f)
+                    {
+                        double t2 = v.phase + 0.5;
+                        if (t2 >= 1.0)
+                            t2 -= 1.0;
+                        const float saw2 = static_cast<float>(2.0 * t2 - 1.0) - polyBlep(t2, dt);
+                        osc = saw * (1.0f - shape) + (saw - saw2) * shape;
+                    }
+                    v.phase += dt;
+                    if (v.phase >= 1.0)
+                        v.phase -= 1.0;
+                    // SVF low-pass.
+                    v.low += f * v.band;
+                    const float high = osc - v.low - q * v.band;
+                    v.band += f * high;
+                    sum += v.low * v.env * v.velocity;
+                }
+                left[i] = right[i] = sum * level * 0.5f;
+            }
+            at = until;
+        }
+    }
+
+    Voice voices_[maxVoices];
+    std::uint32_t age_ = 0;
+};
 } // namespace
 
 std::vector<std::string> BuiltInFactory::typeNames() const
 {
-    return {types::gain, types::eq, types::compressor, types::limiter};
+    return {types::gain, types::eq, types::compressor, types::limiter, types::synth};
+}
+
+bool BuiltInFactory::isInstrument(const std::string& typeName)
+{
+    return typeName == types::synth;
 }
 
 std::unique_ptr<engine::InsertProcessor> BuiltInFactory::create(const std::string& typeName) const
@@ -650,6 +914,8 @@ std::unique_ptr<engine::InsertProcessor> BuiltInFactory::create(const std::strin
         return std::make_unique<Compressor>();
     if (typeName == types::limiter)
         return std::make_unique<Limiter>();
+    if (typeName == types::synth)
+        return std::make_unique<Synth>();
     return nullptr;
 }
 
@@ -663,6 +929,8 @@ std::string BuiltInFactory::displayName(const std::string& typeName)
         return "Compressor";
     if (typeName == types::limiter)
         return "Limiter";
+    if (typeName == types::synth)
+        return "Synth";
     return typeName;
 }
 
