@@ -3,7 +3,7 @@
 A native, high-performance digital audio workstation for Windows. ASIO, VST3 hosting,
 multitrack recording, and a UI that is designed before it is built.
 
-Status: **Phase 2 (engine core and playback), in progress**. See
+Status: **Phase 2 (engine core and playback)**. See
 [docs/PLAN.md](docs/PLAN.md) for the roadmap and
 [docs/architecture.md](docs/architecture.md) for what is built.
 
@@ -86,8 +86,11 @@ added when their first code lands.
 
 Click **Import Audio...** to put files on tracks (one track per file, starting at 0),
 **Play** or the space bar to play, **|<** or Return to go back to the start, and
-click in the arrange view to locate. Ctrl+wheel zooms around the pointer; the wheel
-or the scrollbar scrolls. Undo/redo are Ctrl+Z / Ctrl+Y. Files longer than 30 s
+click in the arrange view to locate, or drop audio files onto it to add tracks at the
+drop position. Ctrl+wheel zooms around the pointer; the wheel scrolls tracks and
+Shift+wheel or the scrollbars scroll. The status bar shows the audio callback load
+(p50/p99/max of the deadline) and any overruns or dropouts. Undo/redo are Ctrl+Z /
+Ctrl+Y. Files longer than 30 s
 stream from disk; everything is resampled to the project rate (the device rate of
 an empty project). Waveform peaks are built in the background and cached next to
 each media file as `<file>.<rate>.aural-peaks`.

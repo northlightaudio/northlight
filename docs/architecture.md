@@ -3,7 +3,7 @@
 Living document. The intended architecture is in [PLAN.md](PLAN.md), section 3; this
 file records what is actually built and the decisions made along the way.
 
-## Current state (Phase 2, in progress)
+## Current state (Phase 2)
 
 ```
 aural.exe
@@ -16,9 +16,10 @@ aural.exe
   src/core        Project/Track/AudioClip model, Command + UndoStack, JSON project
                   files, bars/beats helpers. No JUCE.
   src/engine      AudioEngine façade, Snapshot compiler + MediaCache, Transport,
-                  Renderer, AudioSource (memory + streaming), DiskThread, Peaks.
-                  No JUCE.
-  src/engine/rt   Real-time guard and allocation hook, SpscQueue, SnapshotPublisher
+                  Renderer, WorkerPool, AudioSource (memory + streaming), DiskThread,
+                  Peaks. No JUCE.
+  src/engine/rt   Real-time guard and allocation hook, SpscQueue, SnapshotPublisher,
+                  CallbackStats, ScopedFlushDenormals
   src/audio       Pure:  AudioSettings, LatencyDetector, PassThrough
                   JUCE:  AudioDeviceLayer, AudioCallback, LatencyCalibrator,
                          JuceMediaLoader, JuceStreamReader, PeakStore
@@ -107,8 +108,20 @@ then publishes position and playing state as atomics.
 `Renderer` mixes every audible track to a stereo master: clip gain times track gain,
 constant-power pan for mono sources and a balance law for stereo. The block is split
 at the loop end so the loop wraps sample-accurately, as many times per block as the
-loop length requires. Sends, buses, inserts and the worker pool arrive in Phase 4;
-the single-threaded renderer is the baseline they are measured against.
+loop length requires. Each `TrackNode` carries its own stereo output and scratch
+buffers, allocated when the snapshot is compiled (the buffer pool, sized at compile
+time), so tracks are independent jobs: `WorkerPool::run` hands them out through an
+atomic counter to the worker threads and the callback thread alike, and the sums
+happen afterwards in track order, which makes the output bit-identical whatever the
+worker count. Workers are time-critical threads that block on a semaphore between
+batches and run each job inside a real-time section with denormals flushed; the
+callback thread wakes them with one semaphore release (never blocking) and spins on
+the completion count. Sends, buses and inserts arrive in Phase 4 as more job kinds
+in the same batch structure.
+
+`rt::CallbackStats` records every callback's duration as a fraction of its deadline
+into a lock-free histogram; the status bar shows p50/p99/max, overruns (callbacks
+over their deadline) and the driver's dropout count.
 
 `SnapshotPublisher` retires superseded snapshots on the controller side and frees
 them only once the real-time thread advertises a newer epoch (or when no real-time
@@ -148,11 +161,19 @@ rate so peaks line up with clip positions), caches them beside the media as
 change on the message thread when a build finishes. The view asks for peaks while
 painting and simply draws a flat block until they arrive.
 
-`ui::ArrangeView` draws the ruler (tick spacing chosen from the zoom), one row per
-track with its clips, a waveform column per pixel from the peaks, and the playhead,
-which pages the view forward during playback. Horizontal zoom is Ctrl+wheel around
-the pointer; scroll is the wheel or the scrollbar; clicking locates. Clip editing
-is Phase 6.
+`ui::ArrangeView` draws a two-row ruler (bars with beat ticks over time, spacing
+chosen from the zoom), one row per track with its clips, a waveform column per pixel
+from the peaks, and the playhead, which pages the view forward during playback.
+Horizontal zoom is Ctrl+wheel around the pointer; the wheel scrolls tracks and
+Shift+wheel (or the scrollbar) scrolls time; clicking locates; audio files dropped
+on the view become tracks at the drop position. Clip editing is Phase 6.
+
+### Phase 2 milestone
+
+32 stereo WAVs on 32 tracks on the Universal Audio Volt at 48 kHz / 64 samples:
+the debug build (allocation hook live) ran with no real-time violation, no overruns
+and no dropouts; the RelWithDebInfo build measured p50 3.9%, p99 3.9%, max 19% of
+the 1.33 ms deadline on the development machine (Ryzen 9 class, 15 workers).
 
 ### Loopback calibration
 
@@ -210,3 +231,6 @@ launches; `JUCE_MODAL_LOOPS_PERMITTED` stays 0.
 | 2026-10-19 | Device sample rate vs project rate: empty projects follow the device, others warn | Silently resampling a whole project on a device change would hide a real problem; warning keeps the user in control until per-project rate conversion lands. |
 | 2026-10-19 | Peaks are mipmapped by four from 256 samples per bin and cached beside the media | Six levels cover from 5 ms to about 5 s per bin, so every zoom level reads a few bins per pixel; caching next to the file means a project reopened from another folder still finds its peaks, and the cache is small (about 2% of 16-bit audio). |
 | 2026-10-19 | Peaks are built at the project rate, not the file rate | Clip positions and lengths are project-rate samples, so peaks in the same units need no scaling in the view; the cost is one cache per rate a file is used at. |
+| 2026-10-19 | Per-track buffers live in the snapshot, not in a global pool | The snapshot already knows every track and is built on the controller thread, so sizing the buffers there needs no separate pool manager and no RT-side bookkeeping; a snapshot of 32 tracks costs about 4 MB. The engine caps a render call at 8192 samples and splits larger device blocks. |
+| 2026-10-19 | Workers woken by a counting semaphore, completion by spinning | A semaphore release is the cheapest non-blocking wake available on Windows; the callback thread spins on the remaining-jobs count because the wait is bounded by one track's render on a time-critical thread. Work stealing and a dependency graph come with buses in Phase 4. |
+| 2026-10-19 | Callback load as a histogram of deadline fractions | Percentiles from a fixed histogram need no sorting and no allocation, and a fraction of the deadline is the figure a user actually wants: 50% means half the headroom is gone whatever the buffer size. |
