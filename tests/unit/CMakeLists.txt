@@ -5,7 +5,9 @@ add_executable(aural_unit_tests
     audio/PassThroughTests.cpp
     core/ModelTests.cpp
     core/CommandTests.cpp
-    core/ProjectJsonTests.cpp)
+    core/ProjectJsonTests.cpp
+    engine/RtPrimitivesTests.cpp
+    engine/EngineTests.cpp)
 
 target_link_libraries(aural_unit_tests PRIVATE
     aural_options
@@ -13,6 +15,7 @@ target_link_libraries(aural_unit_tests PRIVATE
     aural_rt_checks
     aural_audio
     aural_core
+    aural_engine
     Catch2::Catch2WithMain)
 
 include(Catch)
