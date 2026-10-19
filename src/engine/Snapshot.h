@@ -33,6 +33,7 @@ struct ClipNode
     core::SamplePosition length = 0;
     core::SamplePosition sourceOffset = 0;
     float gain = 1.0f;
+    core::SamplePosition fadeIn = 0, fadeOut = 0; // linear, in samples
     const AudioSource* source = nullptr;          // null when the media failed to load
     std::shared_ptr<const AudioSource> keepAlive; // controller-side ownership only
 

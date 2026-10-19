@@ -368,3 +368,86 @@ TEST_CASE("An insert's sidechain source is set to an existing channel and undone
     stack.undo(p);
     CHECK(p.tracks[0].inserts[0].sidechain == invalidId);
 }
+
+TEST_CASE("Clips split, join, duplicate, fade and crossfade with undo", "[core][command][edit]")
+{
+    Project p = projectWithTrack();
+    UndoStack stack;
+    const Id t = p.tracks[0].id;
+    AudioClip clip;
+    clip.name = "take";
+    clip.mediaPath = "take.wav";
+    clip.start = 1000;
+    clip.length = 600;
+    clip.sourceOffset = 50;
+    clip.fadeIn = 20;
+    clip.fadeOut = 30;
+    auto add = std::make_unique<AddClip>(t, clip);
+    const Id id = add->clipId() == invalidId ? invalidId : add->clipId();
+    stack.execute(p, std::move(add));
+    const Id left = p.tracks[0].clips[0].id;
+    (void)id;
+
+    // Split: the left keeps the id and the fade-in; the right takes the fade-out.
+    auto split = std::make_unique<SplitClip>(t, left, 1400);
+    const auto* splitPtr = split.get();
+    stack.execute(p, std::move(split));
+    const Id right = splitPtr->rightClipId();
+    REQUIRE(p.tracks[0].clips.size() == 2);
+    CHECK(p.tracks[0].clips[0].id == left);
+    CHECK(p.tracks[0].clips[0].length == 400);
+    CHECK(p.tracks[0].clips[0].fadeIn == 20);
+    CHECK(p.tracks[0].clips[0].fadeOut == 0);
+    CHECK(p.tracks[0].clips[1].id == right);
+    CHECK(p.tracks[0].clips[1].start == 1400);
+    CHECK(p.tracks[0].clips[1].length == 200);
+    CHECK(p.tracks[0].clips[1].sourceOffset == 450);
+    CHECK(p.tracks[0].clips[1].fadeIn == 0);
+    CHECK(p.tracks[0].clips[1].fadeOut == 30);
+    CHECK_THROWS(SplitClip(t, left, 1000).apply(p)); // not strictly inside
+
+    // Join puts it back together.
+    CHECK(JoinClips::canJoin(p.tracks[0].clips[0], p.tracks[0].clips[1]));
+    stack.execute(p, std::make_unique<JoinClips>(t, left, right));
+    REQUIRE(p.tracks[0].clips.size() == 1);
+    CHECK(p.tracks[0].clips[0].length == 600);
+    CHECK(p.tracks[0].clips[0].fadeOut == 30);
+    stack.undo(p); // join
+    REQUIRE(p.tracks[0].clips.size() == 2);
+    stack.undo(p); // split
+    REQUIRE(p.tracks[0].clips.size() == 1);
+    CHECK(p.tracks[0].clips[0].length == 600);
+    CHECK(p.tracks[0].clips[0].fadeOut == 30);
+
+    // Duplicate lands right after the original.
+    auto dup = std::make_unique<DuplicateClip>(t, left);
+    const auto* dupPtr = dup.get();
+    stack.execute(p, std::move(dup));
+    const Id copy = dupPtr->newClipId();
+    REQUIRE(p.tracks[0].clips.size() == 2);
+    CHECK(p.tracks[0].clips[1].id == copy);
+    CHECK(p.tracks[0].clips[1].start == 1600);
+    CHECK(p.tracks[0].clips[1].mediaPath == "take.wav");
+    CHECK_FALSE(
+        JoinClips::canJoin(p.tracks[0].clips[0], p.tracks[0].clips[1])); // the source does not continue
+
+    // Fades clamp to the clip; a crossfade needs an overlap.
+    stack.execute(p, std::make_unique<SetClipFades>(t, copy, 5000, 10));
+    CHECK(p.tracks[0].clips[1].fadeIn == 600);
+    CHECK(p.tracks[0].clips[1].fadeOut == 10);
+    CHECK_THROWS(CrossfadeClips(t, left, copy).apply(p));
+    stack.execute(p, std::make_unique<MoveClip>(t, copy, t, 1500)); // now overlapping by 100
+    stack.execute(p, std::make_unique<CrossfadeClips>(t, left, copy));
+    CHECK(p.tracks[0].clips[0].fadeOut == 100);
+    CHECK(p.tracks[0].clips[1].fadeIn == 100);
+    stack.undo(p);
+    CHECK(p.tracks[0].clips[0].fadeOut == 30);
+    CHECK(p.tracks[0].clips[1].fadeIn == 600);
+
+    while (stack.undo(p))
+    {
+    }
+    CHECK(p.tracks[0].clips.empty());
+    CHECK(stack.redo(p));
+    CHECK(p.tracks[0].clips.size() == 1);
+}

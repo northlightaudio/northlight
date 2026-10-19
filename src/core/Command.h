@@ -549,6 +549,84 @@ private:
     SamplePosition previousStart_ = 0, previousLength_ = 0, previousOffset_ = 0;
 };
 
+// Fade lengths in samples, clamped to the clip.
+class SetClipFades final : public Command
+{
+public:
+    SetClipFades(Id trackId, Id clipId, SamplePosition fadeIn, SamplePosition fadeOut);
+    std::string name() const override { return "Set clip fades"; }
+    void apply(Project&) override;
+    void revert(Project&) override;
+
+private:
+    Id trackId_, clipId_;
+    SamplePosition fadeIn_, fadeOut_, previousIn_ = 0, previousOut_ = 0;
+};
+
+// Splits a clip at a timeline position strictly inside it. The left part keeps
+// the id (and loses its fade-out); the right part gets a new id (and the fade-out).
+class SplitClip final : public Command
+{
+public:
+    SplitClip(Id trackId, Id clipId, SamplePosition at);
+    std::string name() const override { return "Split clip"; }
+    void apply(Project&) override;
+    void revert(Project&) override;
+    Id rightClipId() const noexcept { return right_.id; }
+
+private:
+    Id trackId_, clipId_;
+    SamplePosition at_;
+    AudioClip original_, right_;
+};
+
+// Joins two clips that are contiguous on the timeline and in the same source
+// (a split undone by hand): the left grows, the right goes.
+class JoinClips final : public Command
+{
+public:
+    JoinClips(Id trackId, Id leftClipId, Id rightClipId);
+    std::string name() const override { return "Join clips"; }
+    void apply(Project&) override;
+    void revert(Project&) override;
+    static bool canJoin(const AudioClip& left, const AudioClip& right) noexcept;
+
+private:
+    Id trackId_, leftId_, rightId_;
+    AudioClip previousLeft_, removedRight_;
+};
+
+// A copy of the clip placed right after it (or at `at` when given).
+class DuplicateClip final : public Command
+{
+public:
+    DuplicateClip(Id trackId, Id clipId, SamplePosition at = -1);
+    std::string name() const override { return "Duplicate clip"; }
+    void apply(Project&) override;
+    void revert(Project&) override;
+    Id newClipId() const noexcept { return copy_.id; }
+
+private:
+    Id trackId_, clipId_;
+    SamplePosition at_;
+    AudioClip copy_;
+};
+
+// Crossfades two overlapping clips on one track over their overlap: the earlier
+// fades out, the later fades in.
+class CrossfadeClips final : public Command
+{
+public:
+    CrossfadeClips(Id trackId, Id leftClipId, Id rightClipId);
+    std::string name() const override { return "Crossfade clips"; }
+    void apply(Project&) override;
+    void revert(Project&) override;
+
+private:
+    Id trackId_, leftId_, rightId_;
+    SamplePosition previousOut_ = 0, previousIn_ = 0;
+};
+
 class SetClipGain final : public Command
 {
 public:

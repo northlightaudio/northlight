@@ -24,6 +24,7 @@ add_executable(aural_unit_tests
     engine/WriterTests.cpp
     engine/DelayCompTests.cpp
     engine/SidechainTests.cpp
+    engine/FadeTests.cpp
     hosting/PluginRegistryTests.cpp)
 
 target_link_libraries(aural_unit_tests PRIVATE

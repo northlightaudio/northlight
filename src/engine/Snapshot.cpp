@@ -306,6 +306,8 @@ compileSnapshot(const core::Project& project, MediaCache& media, InsertCache& in
             clip.length = c.length;
             clip.sourceOffset = c.sourceOffset;
             clip.gain = c.gain;
+            clip.fadeIn = std::clamp<core::SamplePosition>(c.fadeIn, 0, c.length);
+            clip.fadeOut = std::clamp<core::SamplePosition>(c.fadeOut, 0, c.length);
             clip.keepAlive = media.getForClip(c.mediaPath, project.sampleRate, c.id);
             clip.source = clip.keepAlive.get();
             node.clips.push_back(std::move(clip));

@@ -186,22 +186,26 @@ void Renderer::renderTrack(const Snapshot& snapshot,
             float* sl = track.scratchLeft.data();
             float* sr = track.scratchRight.data();
             clip.source->read(0, sourcePos, sl, count);
-            if (mono)
-            {
-                for (int i = 0; i < count; ++i)
-                {
-                    left[offset + i] += sl[i] * gainLeft;
-                    right[offset + i] += sl[i] * gainRight;
-                }
-            }
-            else
-            {
+            if (!mono)
                 clip.source->read(1, sourcePos, sr, count);
-                for (int i = 0; i < count; ++i)
-                {
-                    left[offset + i] += sl[i] * gainLeft;
-                    right[offset + i] += sr[i] * gainRight;
-                }
+            else
+                sr = sl;
+
+            // Fades: a linear ramp over the first fadeIn and last fadeOut samples
+            // of the clip (overlapping clips with matching fades crossfade at
+            // constant sum). Only the spans inside a fade pay for the ramp.
+            const auto clipPos = from - clip.start; // position of sl[0] within the clip
+            const auto fadeOutStart = clip.length - clip.fadeOut;
+            for (int i = 0; i < count; ++i)
+            {
+                float f = 1.0f;
+                const auto pos = clipPos + i;
+                if (pos < clip.fadeIn)
+                    f = static_cast<float>(pos) / static_cast<float>(clip.fadeIn);
+                if (pos >= fadeOutStart && clip.fadeOut > 0)
+                    f *= static_cast<float>(clip.length - pos) / static_cast<float>(clip.fadeOut);
+                left[offset + i] += sl[i] * gainLeft * f;
+                right[offset + i] += sr[i] * gainRight * f;
             }
         }
     }

@@ -27,6 +27,8 @@ struct AudioClip
     SamplePosition length = 0;       // samples on the timeline
     SamplePosition sourceOffset = 0; // first source sample used, in source samples
     float gain = 1.0f;               // linear
+    SamplePosition fadeIn = 0;       // samples of linear fade at the start
+    SamplePosition fadeOut = 0;      // and at the end (overlapping clips crossfade this way)
 
     SamplePosition end() const noexcept { return start + length; }
     bool operator==(const AudioClip&) const = default;

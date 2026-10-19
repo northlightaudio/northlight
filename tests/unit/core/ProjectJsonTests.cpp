@@ -20,7 +20,7 @@ Project sampleProject()
     t.pan = 0.1f;
     t.mute = true;
     t.clips.push_back({2, "kick", "media/kick.wav", 0, 44100, 0, 1.0f});
-    t.clips.push_back({3, "snare", "media/snare.wav", 88200, 22050, 100, 0.5f});
+    t.clips.push_back({3, "snare", "media/snare.wav", 88200, 22050, 100, 0.5f, 441, 882});
     p.tracks.push_back(t);
     Track u;
     u.id = 4;

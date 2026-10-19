@@ -11,13 +11,18 @@ using json = nlohmann::json;
 
 json clipToJson(const AudioClip& c)
 {
-    return json{{"id", c.id},
-                {"name", c.name},
-                {"media", c.mediaPath},
-                {"start", c.start},
-                {"length", c.length},
-                {"sourceOffset", c.sourceOffset},
-                {"gain", c.gain}};
+    json j{{"id", c.id},
+           {"name", c.name},
+           {"media", c.mediaPath},
+           {"start", c.start},
+           {"length", c.length},
+           {"sourceOffset", c.sourceOffset},
+           {"gain", c.gain}};
+    if (c.fadeIn > 0)
+        j["fadeIn"] = c.fadeIn;
+    if (c.fadeOut > 0)
+        j["fadeOut"] = c.fadeOut;
+    return j;
 }
 
 AudioClip clipFromJson(const json& j)
@@ -30,6 +35,8 @@ AudioClip clipFromJson(const json& j)
     c.length = j.value("length", SamplePosition{0});
     c.sourceOffset = j.value("sourceOffset", SamplePosition{0});
     c.gain = j.value("gain", 1.0f);
+    c.fadeIn = j.value("fadeIn", SamplePosition{0});
+    c.fadeOut = j.value("fadeOut", SamplePosition{0});
     return c;
 }
 

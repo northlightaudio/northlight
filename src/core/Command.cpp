@@ -826,6 +826,134 @@ void TrimClip::revert(Project& p)
     t.sortClips();
 }
 
+SetClipFades::SetClipFades(Id trackId, Id clipId, SamplePosition fadeIn, SamplePosition fadeOut)
+    : trackId_(trackId), clipId_(clipId), fadeIn_(fadeIn), fadeOut_(fadeOut)
+{
+}
+void SetClipFades::apply(Project& p)
+{
+    auto& c = requireClip(requireTrack(p, trackId_), clipId_);
+    previousIn_ = c.fadeIn;
+    previousOut_ = c.fadeOut;
+    c.fadeIn = std::clamp<SamplePosition>(fadeIn_, 0, c.length);
+    c.fadeOut = std::clamp<SamplePosition>(fadeOut_, 0, c.length);
+}
+void SetClipFades::revert(Project& p)
+{
+    auto& c = requireClip(requireTrack(p, trackId_), clipId_);
+    c.fadeIn = previousIn_;
+    c.fadeOut = previousOut_;
+}
+
+SplitClip::SplitClip(Id trackId, Id clipId, SamplePosition at) : trackId_(trackId), clipId_(clipId), at_(at)
+{
+}
+void SplitClip::apply(Project& p)
+{
+    auto& t = requireTrack(p, trackId_);
+    auto& c = requireClip(t, clipId_);
+    if (at_ <= c.start || at_ >= c.end())
+        throw std::logic_error("split point is not inside the clip");
+    original_ = c;
+    if (right_.id == invalidId)
+        right_.id = p.allocateId();
+    right_.name = c.name;
+    right_.mediaPath = c.mediaPath;
+    right_.start = at_;
+    right_.length = c.end() - at_;
+    right_.sourceOffset = c.sourceOffset + (at_ - c.start);
+    right_.gain = c.gain;
+    right_.fadeIn = 0;
+    right_.fadeOut = std::min(c.fadeOut, right_.length);
+    c.length = at_ - c.start;
+    c.fadeOut = 0;
+    c.fadeIn = std::min(c.fadeIn, c.length);
+    t.clips.push_back(right_);
+    t.sortClips();
+}
+void SplitClip::revert(Project& p)
+{
+    auto& t = requireTrack(p, trackId_);
+    std::erase_if(t.clips, [this](const AudioClip& c) { return c.id == right_.id; });
+    requireClip(t, clipId_) = original_;
+    t.sortClips();
+}
+
+bool JoinClips::canJoin(const AudioClip& left, const AudioClip& right) noexcept
+{
+    return left.mediaPath == right.mediaPath && right.start == left.end() &&
+           right.sourceOffset == left.sourceOffset + left.length && left.gain == right.gain;
+}
+JoinClips::JoinClips(Id trackId, Id leftClipId, Id rightClipId)
+    : trackId_(trackId), leftId_(leftClipId), rightId_(rightClipId)
+{
+}
+void JoinClips::apply(Project& p)
+{
+    auto& t = requireTrack(p, trackId_);
+    auto& left = requireClip(t, leftId_);
+    const auto& right = requireClip(t, rightId_);
+    if (!canJoin(left, right))
+        throw std::logic_error("clips are not contiguous in the same source");
+    previousLeft_ = left;
+    removedRight_ = right;
+    left.length += right.length;
+    left.fadeOut = right.fadeOut;
+    std::erase_if(t.clips, [this](const AudioClip& c) { return c.id == rightId_; });
+}
+void JoinClips::revert(Project& p)
+{
+    auto& t = requireTrack(p, trackId_);
+    requireClip(t, leftId_) = previousLeft_;
+    t.clips.push_back(removedRight_);
+    t.sortClips();
+}
+
+DuplicateClip::DuplicateClip(Id trackId, Id clipId, SamplePosition at)
+    : trackId_(trackId), clipId_(clipId), at_(at)
+{
+}
+void DuplicateClip::apply(Project& p)
+{
+    auto& t = requireTrack(p, trackId_);
+    const auto& c = requireClip(t, clipId_);
+    const Id keep = copy_.id;
+    copy_ = c;
+    copy_.id = keep == invalidId ? p.allocateId() : keep;
+    copy_.start = at_ >= 0 ? at_ : c.end();
+    t.clips.push_back(copy_);
+    t.sortClips();
+}
+void DuplicateClip::revert(Project& p)
+{
+    auto& t = requireTrack(p, trackId_);
+    std::erase_if(t.clips, [this](const AudioClip& c) { return c.id == copy_.id; });
+}
+
+CrossfadeClips::CrossfadeClips(Id trackId, Id leftClipId, Id rightClipId)
+    : trackId_(trackId), leftId_(leftClipId), rightId_(rightClipId)
+{
+}
+void CrossfadeClips::apply(Project& p)
+{
+    auto& t = requireTrack(p, trackId_);
+    auto& left = requireClip(t, leftId_);
+    auto& right = requireClip(t, rightId_);
+    const auto overlap = std::min(left.end(), right.end()) - std::max(left.start, right.start);
+    if (right.start <= left.start || overlap <= 0)
+        throw std::logic_error("clips do not overlap left to right");
+    previousOut_ = left.fadeOut;
+    previousIn_ = right.fadeIn;
+    left.fadeOut = std::min(overlap, left.length);
+    right.fadeIn = std::min(overlap, right.length);
+}
+void CrossfadeClips::revert(Project& p)
+{
+    auto& t = requireTrack(p, trackId_);
+    requireClip(t, leftId_).fadeOut = previousOut_;
+    requireClip(t, rightId_).fadeIn = previousIn_;
+}
+
 SetClipGain::SetClipGain(Id trackId, Id clipId, float gain) : trackId_(trackId), clipId_(clipId), value_(gain)
 {
 }
