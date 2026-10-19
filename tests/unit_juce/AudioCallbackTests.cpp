@@ -1,11 +1,17 @@
 #include "audio/AudioCallback.h"
 #include "engine/AudioEngine.h"
+#include "plugins/BuiltIns.h"
 
 #include <catch2/catch_approx.hpp>
 #include <catch2/catch_test_macros.hpp>
 
 #include <memory>
 #include <vector>
+
+namespace
+{
+const aural::plugins::BuiltInFactory builtIns;
+} // namespace
 
 using namespace aural;
 using Catch::Approx;
@@ -61,7 +67,7 @@ private:
 TEST_CASE("AudioCallback drives the engine through a device's start, blocks and stop", "[audio][callback]")
 {
     NoMediaLoader loader;
-    engine::AudioEngine engine(loader, 0);
+    engine::AudioEngine engine(loader, builtIns, 0);
     core::Project p;
     core::Track t;
     t.id = 1;

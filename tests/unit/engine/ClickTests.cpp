@@ -3,6 +3,7 @@
 #include "engine/Click.h"
 #include "engine/Recording.h"
 #include "engine/WavFile.h"
+#include "plugins/BuiltIns.h"
 
 #include <catch2/catch_approx.hpp>
 #include <catch2/catch_test_macros.hpp>
@@ -14,6 +15,11 @@
 #include <memory>
 #include <thread>
 #include <vector>
+
+namespace
+{
+const aural::plugins::BuiltInFactory builtIns;
+} // namespace
 
 using namespace aural;
 using Catch::Approx;
@@ -90,7 +96,7 @@ TEST_CASE("Clicks land on beats, accented on bar starts, and work before zero", 
 TEST_CASE("The metronome plays while the transport runs and stays silent when off", "[engine][click]")
 {
     NoMediaLoader loader;
-    engine::AudioEngine engine(loader, 0);
+    engine::AudioEngine engine(loader, builtIns, 0);
     engine.prepare(48000.0, 64);
     core::Project p;
     p.tempoBpm = 120.0; // 24000 samples per beat
@@ -116,7 +122,7 @@ TEST_CASE("The metronome plays while the transport runs and stays silent when of
 TEST_CASE("A count-in holds the position and delays capture", "[engine][record][click]")
 {
     NoMediaLoader loader;
-    engine::AudioEngine engine(loader, 0);
+    engine::AudioEngine engine(loader, builtIns, 0);
     engine.prepare(48000.0, 64);
     engine.setProject(core::Project{});
     engine.setMetronome(true, 0.5f);
@@ -152,7 +158,7 @@ TEST_CASE("A count-in holds the position and delays capture", "[engine][record][
 TEST_CASE("Punch in and out bound the captured range exactly", "[engine][record]")
 {
     NoMediaLoader loader;
-    engine::AudioEngine engine(loader, 0);
+    engine::AudioEngine engine(loader, builtIns, 0);
     engine.prepare(48000.0, 64);
     engine.setProject(core::Project{});
     engine.setPunch(1000, 1500, true);

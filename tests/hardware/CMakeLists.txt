@@ -18,4 +18,5 @@ target_link_libraries(aural_record_soak PRIVATE
     aural_options
     aural_rt
     aural_rt_checks
-    aural_engine)
+    aural_engine
+    aural_plugins)

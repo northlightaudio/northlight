@@ -34,7 +34,7 @@ class AudioEngine
 {
 public:
     // workerThreads < 0 picks WorkerPool::recommendedWorkerCount().
-    explicit AudioEngine(MediaLoader& loader, int workerThreads = -1);
+    AudioEngine(MediaLoader& loader, const InsertFactory& inserts, int workerThreads = -1);
     ~AudioEngine();
 
     int workerThreads() const noexcept { return pool_.numWorkers(); }
@@ -112,6 +112,7 @@ private:
     void endRecordingOnRt() noexcept;
 
     MediaCache media_;
+    InsertCache inserts_;
     rt::SnapshotPublisher<Snapshot> publisher_;
     rt::SpscQueue<TransportCommand> commands_{commandQueueCapacity};
     WorkerPool pool_;

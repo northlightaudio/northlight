@@ -2,6 +2,7 @@
 
 #include "core/Model.h"
 #include "engine/AudioSource.h"
+#include "engine/Insert.h"
 
 #include <cstdint>
 #include <map>
@@ -55,6 +56,8 @@ struct ChannelNode
     int outputBus = -1;  // index into Snapshot::buses, -1 = master
     int meterSlot = -1;
     std::vector<SendNode> sends;
+    std::vector<InsertProcessor*> inserts;                   // in chain order
+    std::vector<std::shared_ptr<InsertProcessor>> keepAlive; // controller-side ownership
 
     // Pre-fader stereo output for one span (the parallel render writes it).
     mutable std::vector<float> outLeft, outRight;
@@ -131,7 +134,8 @@ private:
     std::map<std::string, std::string> errors_;
 };
 
-std::unique_ptr<Snapshot> compileSnapshot(const core::Project& project, MediaCache& media);
+std::unique_ptr<Snapshot>
+compileSnapshot(const core::Project& project, MediaCache& media, InsertCache& inserts);
 
 // Meter slot layout used by the compiler: tracks in project order, then buses in
 // project order, then the master.

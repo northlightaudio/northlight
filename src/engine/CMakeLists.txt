@@ -45,6 +45,8 @@ add_library(aural_engine STATIC
     Recording.cpp
     Click.h
     Click.cpp
-    Resampling.h)
+    Resampling.h
+    Insert.h
+    Insert.cpp)
 
 target_link_libraries(aural_engine PUBLIC aural_rt aural_core)

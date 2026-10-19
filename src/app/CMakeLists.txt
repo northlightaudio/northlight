@@ -25,6 +25,7 @@ target_link_libraries(aural PRIVATE
     aural_rt_checks
     aural_core
     aural_engine
+    aural_plugins
     aural_audio_device
     aural_ui
     aural_juce)

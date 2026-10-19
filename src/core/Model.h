@@ -48,6 +48,18 @@ struct Send
     bool operator==(const Send&) const = default;
 };
 
+// A processor in a channel's insert chain. `type` names a built-in
+// ("aural.eq") or, later, a hosted plugin; `params` are its parameter values in the
+// processor's own order.
+struct Insert
+{
+    Id id = invalidId;
+    std::string type;
+    bool bypass = false;
+    std::vector<float> params;
+    bool operator==(const Insert&) const = default;
+};
+
 // What tracks and buses share: the fader section and routing.
 struct Channel
 {
@@ -61,8 +73,11 @@ struct Channel
     std::uint32_t colour = 0; // 0xAARRGGBB, 0 = default
     Id outputBus = invalidId; // invalidId routes to the master
     std::vector<Send> sends;
+    std::vector<Insert> inserts; // processed in order, pre-fader
 
     Send* findSend(Id busId) noexcept;
+    Insert* findInsert(Id insertId) noexcept;
+    int insertIndex(Id insertId) const noexcept;
     bool operator==(const Channel&) const = default;
 };
 

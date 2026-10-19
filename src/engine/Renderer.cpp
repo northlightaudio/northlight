@@ -229,6 +229,9 @@ void Renderer::renderTrack(const TrackNode& track,
             left[i] = -left[i];
             right[i] = -right[i];
         }
+
+    for (auto* insert : track.inserts)
+        insert->process(left, right, numSamples);
 }
 
 void Renderer::trackJob(void* context, int index) noexcept
@@ -348,6 +351,8 @@ void Renderer::renderSpan(const Snapshot& snapshot,
             outL[i] = bus.sumLeft[static_cast<size_t>(i)] * panLeft * sign;
             outR[i] = bus.sumRight[static_cast<size_t>(i)] * panRight * sign;
         }
+        for (auto* insert : bus.inserts)
+            insert->process(outL, outR, numSamples);
         routeChannel(snapshot, bus, context, left, right, numSamples);
     }
 

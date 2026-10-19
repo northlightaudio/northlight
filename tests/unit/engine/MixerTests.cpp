@@ -2,6 +2,7 @@
 #include "engine/AudioEngine.h"
 #include "engine/AudioSource.h"
 #include "engine/Snapshot.h"
+#include "plugins/BuiltIns.h"
 
 #include <catch2/catch_approx.hpp>
 #include <catch2/catch_test_macros.hpp>
@@ -9,6 +10,11 @@
 #include <cmath>
 #include <memory>
 #include <vector>
+
+namespace
+{
+const aural::plugins::BuiltInFactory builtIns;
+} // namespace
 
 using namespace aural;
 using Catch::Approx;
@@ -32,7 +38,7 @@ const float centre = std::cos(3.14159265f / 4.0f); // constant-power centre pan
 struct Harness
 {
     ConstantLoader loader;
-    engine::AudioEngine engine{loader, 0};
+    engine::AudioEngine engine{loader, builtIns, 0};
     std::vector<float> left = std::vector<float>(blockSize), right = std::vector<float>(blockSize);
     float* outputs[2] = {left.data(), right.data()};
     Harness() { engine.prepare(48000.0, blockSize); }

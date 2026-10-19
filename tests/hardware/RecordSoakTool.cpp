@@ -12,6 +12,7 @@
 #include "engine/Recording.h"
 #include "engine/WavFile.h"
 #include "engine/rt/RealtimeGuard.h"
+#include "plugins/BuiltIns.h"
 
 #include <chrono>
 #include <cstdio>
@@ -21,6 +22,11 @@
 #include <string>
 #include <thread>
 #include <vector>
+
+namespace
+{
+const aural::plugins::BuiltInFactory builtIns;
+} // namespace
 
 namespace
 {
@@ -77,7 +83,7 @@ int main(int argc, char* argv[])
                 folder.string().c_str());
 
     NoMediaLoader loader;
-    aural::engine::AudioEngine engine(loader, 0);
+    aural::engine::AudioEngine engine(loader, builtIns, 0);
     engine.prepare(sampleRate, blockSize);
     aural::core::Project project;
     for (int k = 0; k < inputs; ++k)

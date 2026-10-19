@@ -11,6 +11,7 @@ target_link_libraries(aural_juce_tests PRIVATE
     aural_rt
     aural_rt_checks
     aural_audio_device
+    aural_plugins
     aural_juce
     Catch2::Catch2WithMain)
 

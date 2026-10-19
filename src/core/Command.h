@@ -196,6 +196,76 @@ private:
     float value_, previous_ = 1.0f;
 };
 
+class AddInsert final : public Command
+{
+public:
+    // Inserts at `index` (or the end when index < 0); the id is allocated on apply.
+    AddInsert(Id channelId, Insert insert, int index = -1);
+    std::string name() const override { return "Add insert"; }
+    void apply(Project&) override;
+    void revert(Project&) override;
+    Id insertId() const noexcept { return insert_.id; }
+
+private:
+    Id channelId_;
+    Insert insert_;
+    int index_;
+};
+
+class RemoveInsert final : public Command
+{
+public:
+    RemoveInsert(Id channelId, Id insertId);
+    std::string name() const override { return "Remove insert"; }
+    void apply(Project&) override;
+    void revert(Project&) override;
+
+private:
+    Id channelId_, insertId_;
+    Insert removed_;
+    int index_ = -1;
+};
+
+class MoveInsert final : public Command
+{
+public:
+    MoveInsert(Id channelId, Id insertId, int newIndex);
+    std::string name() const override { return "Move insert"; }
+    void apply(Project&) override;
+    void revert(Project&) override;
+
+private:
+    Id channelId_, insertId_;
+    int newIndex_, previousIndex_ = -1;
+};
+
+class SetInsertParameter final : public Command
+{
+public:
+    SetInsertParameter(Id channelId, Id insertId, int parameter, float value);
+    std::string name() const override { return "Set parameter"; }
+    void apply(Project&) override;
+    void revert(Project&) override;
+
+private:
+    Id channelId_, insertId_;
+    int parameter_;
+    float value_, previous_ = 0.0f;
+};
+
+class SetInsertBypass final : public Command
+{
+public:
+    SetInsertBypass(Id channelId, Id insertId, bool bypass);
+    std::string name() const override { return "Bypass insert"; }
+    void apply(Project&) override;
+    void revert(Project&) override;
+
+private:
+    Id channelId_, insertId_;
+    bool value_, previous_ = false;
+};
+
 // The fader-section commands below take a track or bus id.
 class SetTrackName final : public Command
 {

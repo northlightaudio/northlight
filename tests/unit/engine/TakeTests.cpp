@@ -2,6 +2,7 @@
 #include "engine/AudioEngine.h"
 #include "engine/Recording.h"
 #include "engine/WavFile.h"
+#include "plugins/BuiltIns.h"
 
 #include <catch2/catch_test_macros.hpp>
 
@@ -11,6 +12,11 @@
 #include <memory>
 #include <thread>
 #include <vector>
+
+namespace
+{
+const aural::plugins::BuiltInFactory builtIns;
+} // namespace
 
 using namespace aural;
 
@@ -61,7 +67,7 @@ TEST_CASE("Recording placement shifts clips earlier by the latency and trims at 
 TEST_CASE("Loop recording splits each pass into its own take file at the exact sample", "[engine][record]")
 {
     NoMediaLoader loader;
-    engine::AudioEngine engine(loader, 0);
+    engine::AudioEngine engine(loader, builtIns, 0);
     engine.prepare(48000.0, 64);
     engine.setProject(core::Project{});
     engine.setLoop(1000, 1500, true);

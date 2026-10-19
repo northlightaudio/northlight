@@ -85,7 +85,8 @@ struct Routing
 };
 } // namespace
 
-std::unique_ptr<Snapshot> compileSnapshot(const core::Project& project, MediaCache& media)
+std::unique_ptr<Snapshot>
+compileSnapshot(const core::Project& project, MediaCache& media, InsertCache& inserts)
 {
     AURAL_ASSERT_NOT_REALTIME("compileSnapshot");
     auto snapshot = std::make_unique<Snapshot>();
@@ -225,6 +226,12 @@ std::unique_ptr<Snapshot> compileSnapshot(const core::Project& project, MediaCac
             if (bus >= 0 && std::find(allowed.begin(), allowed.end(), bus) != allowed.end())
                 node.sends.push_back(SendNode{bus, s.level, s.preFader});
         }
+        for (const auto& i : c.inserts)
+            if (auto instance = inserts.get(i))
+            {
+                node.inserts.push_back(instance.get());
+                node.keepAlive.push_back(std::move(instance));
+            }
         node.outLeft.assign(n, 0.0f);
         node.outRight.assign(n, 0.0f);
     };

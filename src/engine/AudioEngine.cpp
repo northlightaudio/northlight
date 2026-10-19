@@ -9,8 +9,9 @@
 namespace aural::engine
 {
 
-AudioEngine::AudioEngine(MediaLoader& loader, int workerThreads)
-    : media_(loader), pool_(workerThreads < 0 ? WorkerPool::recommendedWorkerCount() : workerThreads)
+AudioEngine::AudioEngine(MediaLoader& loader, const InsertFactory& inserts, int workerThreads)
+    : media_(loader), inserts_(inserts),
+      pool_(workerThreads < 0 ? WorkerPool::recommendedWorkerCount() : workerThreads)
 {
 }
 
@@ -33,7 +34,7 @@ AudioEngine::~AudioEngine()
 void AudioEngine::setProject(const core::Project& project)
 {
     AURAL_ASSERT_NOT_REALTIME("AudioEngine::setProject");
-    publisher_.publish(compileSnapshot(project, media_));
+    publisher_.publish(compileSnapshot(project, media_, inserts_));
     collectGarbage();
 }
 
@@ -125,12 +126,14 @@ void AudioEngine::collectGarbage()
     AURAL_ASSERT_NOT_REALTIME("AudioEngine::collectGarbage");
     publisher_.collect(isRunning());
     media_.prune();
+    inserts_.prune();
 }
 
 void AudioEngine::prepare(double sampleRate, int maxBlockSize)
 {
     AURAL_ASSERT_NOT_REALTIME("AudioEngine::prepare");
     renderer_.prepare(maxBlockSize);
+    inserts_.prepare(sampleRate, std::min(maxBlockSize, Snapshot::maxBlockSamples));
     deviceSampleRate_.store(sampleRate, std::memory_order_relaxed);
     running_.store(true, std::memory_order_release);
 }

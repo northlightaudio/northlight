@@ -14,6 +14,22 @@ Send* Channel::findSend(Id busId) noexcept
     return nullptr;
 }
 
+Insert* Channel::findInsert(Id insertId) noexcept
+{
+    for (auto& i : inserts)
+        if (i.id == insertId)
+            return &i;
+    return nullptr;
+}
+
+int Channel::insertIndex(Id insertId) const noexcept
+{
+    for (size_t i = 0; i < inserts.size(); ++i)
+        if (inserts[i].id == insertId)
+            return static_cast<int>(i);
+    return -1;
+}
+
 AudioClip* Track::findClip(Id clipId) noexcept
 {
     for (auto& c : clips)

@@ -348,6 +348,118 @@ void SetMasterGain::revert(Project& p)
     p.master.gain = previous_;
 }
 
+namespace
+{
+Insert& requireInsert(Channel& c, Id id)
+{
+    auto* i = c.findInsert(id);
+    if (i == nullptr)
+        throw std::logic_error("command references an insert that does not exist");
+    return *i;
+}
+} // namespace
+
+AddInsert::AddInsert(Id channelId, Insert insert, int index)
+    : channelId_(channelId), insert_(std::move(insert)), index_(index)
+{
+}
+void AddInsert::apply(Project& p)
+{
+    auto& c = requireChannel(p, channelId_);
+    if (insert_.id == invalidId)
+        insert_.id = p.allocateId();
+    const int at = index_ < 0 || index_ > static_cast<int>(c.inserts.size())
+                       ? static_cast<int>(c.inserts.size())
+                       : index_;
+    index_ = at;
+    c.inserts.insert(c.inserts.begin() + at, insert_);
+}
+void AddInsert::revert(Project& p)
+{
+    auto& c = requireChannel(p, channelId_);
+    std::erase_if(c.inserts, [this](const Insert& i) { return i.id == insert_.id; });
+}
+
+RemoveInsert::RemoveInsert(Id channelId, Id insertId) : channelId_(channelId), insertId_(insertId) {}
+void RemoveInsert::apply(Project& p)
+{
+    auto& c = requireChannel(p, channelId_);
+    index_ = c.insertIndex(insertId_);
+    if (index_ < 0)
+        throw std::logic_error("command references an insert that does not exist");
+    removed_ = c.inserts[static_cast<size_t>(index_)];
+    c.inserts.erase(c.inserts.begin() + index_);
+}
+void RemoveInsert::revert(Project& p)
+{
+    auto& c = requireChannel(p, channelId_);
+    const int at = std::clamp(index_, 0, static_cast<int>(c.inserts.size()));
+    c.inserts.insert(c.inserts.begin() + at, removed_);
+}
+
+MoveInsert::MoveInsert(Id channelId, Id insertId, int newIndex)
+    : channelId_(channelId), insertId_(insertId), newIndex_(newIndex)
+{
+}
+void MoveInsert::apply(Project& p)
+{
+    auto& c = requireChannel(p, channelId_);
+    previousIndex_ = c.insertIndex(insertId_);
+    if (previousIndex_ < 0)
+        throw std::logic_error("command references an insert that does not exist");
+    Insert moved = c.inserts[static_cast<size_t>(previousIndex_)];
+    c.inserts.erase(c.inserts.begin() + previousIndex_);
+    const int at = std::clamp(newIndex_, 0, static_cast<int>(c.inserts.size()));
+    c.inserts.insert(c.inserts.begin() + at, moved);
+}
+void MoveInsert::revert(Project& p)
+{
+    auto& c = requireChannel(p, channelId_);
+    const int current = c.insertIndex(insertId_);
+    if (current < 0)
+        return;
+    Insert moved = c.inserts[static_cast<size_t>(current)];
+    c.inserts.erase(c.inserts.begin() + current);
+    const int at = std::clamp(previousIndex_, 0, static_cast<int>(c.inserts.size()));
+    c.inserts.insert(c.inserts.begin() + at, moved);
+}
+
+SetInsertParameter::SetInsertParameter(Id channelId, Id insertId, int parameter, float value)
+    : channelId_(channelId), insertId_(insertId), parameter_(parameter), value_(value)
+{
+}
+void SetInsertParameter::apply(Project& p)
+{
+    auto& i = requireInsert(requireChannel(p, channelId_), insertId_);
+    if (parameter_ < 0)
+        throw std::logic_error("negative parameter index");
+    if (static_cast<size_t>(parameter_) >= i.params.size())
+        i.params.resize(static_cast<size_t>(parameter_) + 1, 0.0f);
+    previous_ = i.params[static_cast<size_t>(parameter_)];
+    i.params[static_cast<size_t>(parameter_)] = value_;
+}
+void SetInsertParameter::revert(Project& p)
+{
+    auto& i = requireInsert(requireChannel(p, channelId_), insertId_);
+    if (static_cast<size_t>(parameter_) < i.params.size())
+        i.params[static_cast<size_t>(parameter_)] = previous_;
+}
+
+SetInsertBypass::SetInsertBypass(Id channelId, Id insertId, bool bypass)
+    : channelId_(channelId), insertId_(insertId), value_(bypass)
+{
+}
+void SetInsertBypass::apply(Project& p)
+{
+    auto& i = requireInsert(requireChannel(p, channelId_), insertId_);
+    previous_ = i.bypass;
+    i.bypass = value_;
+}
+void SetInsertBypass::revert(Project& p)
+{
+    requireInsert(requireChannel(p, channelId_), insertId_).bypass = previous_;
+}
+
 SetTrackName::SetTrackName(Id trackId, std::string name) : trackId_(trackId), value_(std::move(name)) {}
 void SetTrackName::apply(Project& p)
 {

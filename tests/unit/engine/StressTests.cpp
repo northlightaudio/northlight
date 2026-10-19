@@ -4,6 +4,7 @@
 #include "engine/StreamingAudioSource.h"
 #include "engine/WorkerPool.h"
 #include "engine/rt/SnapshotPublisher.h"
+#include "plugins/BuiltIns.h"
 
 #include <catch2/catch_test_macros.hpp>
 
@@ -159,6 +160,8 @@ TEST_CASE("Two clips of one streamed file get their own windows and play without
 {
     StreamingLoader loader;
     engine::MediaCache media(loader);
+    const plugins::BuiltInFactory builtIns;
+    engine::InsertCache insertCache(builtIns);
     core::Project p;
     core::Track t;
     t.id = 1;
@@ -166,12 +169,12 @@ TEST_CASE("Two clips of one streamed file get their own windows and play without
     t.clips.push_back({11, "b", "big.wav", 0, 100000, 150000, 1.0f}); // reads source 150000..
     p.tracks.push_back(t);
 
-    auto snapshot = engine::compileSnapshot(p, media);
+    auto snapshot = engine::compileSnapshot(p, media, insertCache);
     REQUIRE(loader.instances.size() == 2);
     CHECK(snapshot->tracks[0].clips[0].source != snapshot->tracks[0].clips[1].source);
 
     // A recompile keeps the same instances (windows survive edits).
-    auto again = engine::compileSnapshot(p, media);
+    auto again = engine::compileSnapshot(p, media, insertCache);
     CHECK(loader.instances.size() == 2);
     CHECK(again->tracks[0].clips[0].source == snapshot->tracks[0].clips[0].source);
 

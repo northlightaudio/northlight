@@ -4,6 +4,7 @@
 #include "engine/Recording.h"
 #include "engine/WavFile.h"
 #include "engine/rt/RealtimeGuard.h"
+#include "plugins/BuiltIns.h"
 
 #include <catch2/catch_approx.hpp>
 #include <catch2/catch_test_macros.hpp>
@@ -15,6 +16,11 @@
 #include <memory>
 #include <thread>
 #include <vector>
+
+namespace
+{
+const aural::plugins::BuiltInFactory builtIns;
+} // namespace
 
 using namespace aural;
 using Catch::Approx;
@@ -140,7 +146,7 @@ TEST_CASE("Record ring moves samples from producer to consumer in order and repo
 TEST_CASE("Recording captures armed inputs sample-exactly from the record position", "[engine][record]")
 {
     NoMediaLoader loader;
-    engine::AudioEngine engine(loader, 0);
+    engine::AudioEngine engine(loader, builtIns, 0);
     engine.prepare(48000.0, 64);
     core::Project p;
     core::Track t;
@@ -212,7 +218,7 @@ TEST_CASE("Recording captures armed inputs sample-exactly from the record positi
 TEST_CASE("Stopping the device mid-recording finishes the files", "[engine][record]")
 {
     NoMediaLoader loader;
-    engine::AudioEngine engine(loader, 0);
+    engine::AudioEngine engine(loader, builtIns, 0);
     engine.prepare(48000.0, 64);
     engine.setProject(core::Project{});
     auto session = std::make_unique<engine::RecordSession>(48000.0, 0.5);
@@ -259,7 +265,7 @@ TEST_CASE("Input monitoring follows the monitor mode and transport state", "[eng
 TEST_CASE("A monitored input is heard through the track gain and pan while stopped", "[engine][monitor]")
 {
     NoMediaLoader loader;
-    engine::AudioEngine engine(loader, 0);
+    engine::AudioEngine engine(loader, builtIns, 0);
     engine.prepare(48000.0, 64);
     core::Project p;
     core::Track t;
@@ -294,7 +300,7 @@ void countRecordViolation(const rt::Violation&) noexcept
 TEST_CASE("Capturing and monitoring do not allocate on the real-time thread", "[engine][record][rt]")
 {
     NoMediaLoader loader;
-    engine::AudioEngine engine(loader, 0);
+    engine::AudioEngine engine(loader, builtIns, 0);
     engine.prepare(48000.0, 64);
     core::Project p;
     core::Track t;

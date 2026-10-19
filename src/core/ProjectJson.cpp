@@ -54,6 +54,14 @@ void channelToJson(json& j, const Channel& c)
             sends.push_back(json{{"bus", s.bus}, {"level", s.level}, {"pre", s.preFader}});
         j["sends"] = std::move(sends);
     }
+    if (!c.inserts.empty())
+    {
+        json inserts = json::array();
+        for (const auto& i : c.inserts)
+            inserts.push_back(
+                json{{"id", i.id}, {"type", i.type}, {"bypass", i.bypass}, {"params", i.params}});
+        j["inserts"] = std::move(inserts);
+    }
 }
 
 void channelFromJson(const json& j, Channel& c)
@@ -70,6 +78,18 @@ void channelFromJson(const json& j, Channel& c)
     if (const auto it = j.find("sends"); it != j.end() && it->is_array())
         for (const auto& s : *it)
             c.sends.push_back(Send{s.value("bus", invalidId), s.value("level", 1.0f), s.value("pre", false)});
+    if (const auto it = j.find("inserts"); it != j.end() && it->is_array())
+        for (const auto& i : *it)
+        {
+            Insert insert;
+            insert.id = i.value("id", invalidId);
+            insert.type = i.value("type", std::string{});
+            insert.bypass = i.value("bypass", false);
+            if (const auto params = i.find("params"); params != i.end() && params->is_array())
+                for (const auto& v : *params)
+                    insert.params.push_back(v.get<float>());
+            c.inserts.push_back(std::move(insert));
+        }
 }
 
 json trackToJson(const Track& t)
@@ -193,7 +213,14 @@ std::optional<Project> projectFromJson(const std::string& text, std::string* err
                 maxId = std::max(maxId, c.id);
         }
         for (const auto& b : p.buses)
+        {
             maxId = std::max(maxId, b.id);
+            for (const auto& i : b.inserts)
+                maxId = std::max(maxId, i.id);
+        }
+        for (const auto& t : p.tracks)
+            for (const auto& i : t.inserts)
+                maxId = std::max(maxId, i.id);
         p.nextId = std::max(p.nextId, maxId + 1);
         return p;
     }

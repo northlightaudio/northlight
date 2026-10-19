@@ -2,6 +2,7 @@
 #include "engine/AudioEngine.h"
 #include "engine/AudioSource.h"
 #include "engine/rt/RealtimeGuard.h"
+#include "plugins/BuiltIns.h"
 
 #include <catch2/catch_approx.hpp>
 #include <catch2/catch_test_macros.hpp>
@@ -11,6 +12,11 @@
 #include <map>
 #include <memory>
 #include <vector>
+
+namespace
+{
+const aural::plugins::BuiltInFactory builtIns;
+} // namespace
 
 using namespace aural;
 using Catch::Approx;
@@ -67,7 +73,10 @@ struct Harness
     std::vector<float> left = std::vector<float>(blockSize), right = std::vector<float>(blockSize);
     float* outputs[2] = {left.data(), right.data()};
 
-    explicit Harness(int workers = 0) : engine(loader, workers) { engine.prepare(48000.0, blockSize); }
+    explicit Harness(int workers = 0) : engine(loader, builtIns, workers)
+    {
+        engine.prepare(48000.0, blockSize);
+    }
 
     // Renders one block and returns the timeline position it started at.
     core::SamplePosition block()
@@ -395,7 +404,7 @@ TEST_CASE("Parallel rendering is bit-identical to serial rendering", "[engine][p
 TEST_CASE("Device blocks larger than the renderer maximum are rendered in pieces", "[engine]")
 {
     SyntheticLoader loader;
-    engine::AudioEngine engine(loader, 0);
+    engine::AudioEngine engine(loader, builtIns, 0);
     engine.prepare(48000.0, 20000); // capped at Snapshot::maxBlockSamples internally
     engine.setProject(oneClipProject("ramp:1000", 0, 1000));
     engine.play();

@@ -16,7 +16,7 @@ constexpr int garbageTimerMilliseconds = 250;
 }
 
 ProjectSession::ProjectSession(audio::AudioDeviceLayer& audio)
-    : audio_(audio), loader_(disk_), engine_(loader_)
+    : audio_(audio), loader_(disk_), engine_(loader_, inserts_)
 {
     audio_.callback().setEngine(&engine_);
     audio_.addChangeListener(this);
