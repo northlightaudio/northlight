@@ -1,6 +1,7 @@
 #include "audio/JuceMediaLoader.h"
 
 #include "audio/JuceStreamReader.h"
+#include "engine/Resampling.h"
 #include "engine/rt/RealtimeGuard.h"
 
 #include <cmath>
@@ -12,13 +13,16 @@ namespace
 {
 std::vector<float> resample(const std::vector<float>& input, double ratio, std::int64_t outputLength)
 {
-    // ratio = source rate / target rate (the "speed" the interpolator reads input at).
-    std::vector<float> padded(input);
-    padded.resize(input.size() + 16, 0.0f); // the interpolator may look a few samples ahead
+    // ratio = source samples per target sample; every output maps to its exact
+    // source position (engine/Resampling.h), so there is no lookback delay.
     std::vector<float> output(static_cast<size_t>(outputLength), 0.0f);
-    juce::LagrangeInterpolator interpolator;
-    interpolator.reset();
-    interpolator.process(ratio, padded.data(), output.data(), static_cast<int>(outputLength));
+    engine::resampleHermite(input.data(),
+                            0,
+                            static_cast<std::int64_t>(input.size()),
+                            ratio,
+                            0,
+                            static_cast<int>(outputLength),
+                            output.data());
     return output;
 }
 } // namespace
@@ -86,8 +90,22 @@ JuceMediaLoader::load(const std::string& path, double targetSampleRate, std::str
     {
         auto source = std::make_shared<engine::StreamingAudioSource>(
             std::make_unique<JuceStreamReader>(std::move(reader), rate));
-        disk_.add(source);
-        disk_.poke();
+        // Each clip gets its own reader on the file, registered with the disk thread.
+        source->setInstanceFactory(
+            [this, file, rate]() -> std::unique_ptr<engine::StreamReader>
+            {
+                std::unique_ptr<juce::AudioFormatReader> another(formats_.createReaderFor(file));
+                if (another == nullptr)
+                    return nullptr;
+                return std::make_unique<JuceStreamReader>(std::move(another), rate);
+            },
+            [this](const std::shared_ptr<engine::StreamingAudioSource>& instance)
+            {
+                disk_.add(instance);
+                disk_.poke();
+            });
+        // The shared source itself is only a template; it is not registered, so
+        // nothing streams into it.
         return source;
     }
 

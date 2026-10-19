@@ -5,11 +5,12 @@
 #include <juce_audio_formats/juce_audio_formats.h>
 
 #include <memory>
-#include <vector>
 
 // Feeds a StreamingAudioSource from a juce::AudioFormatReader, resampling on the
-// disk thread when the file's rate differs from the target rate. Positions and
-// lengths seen by the engine are in target-rate samples.
+// disk thread (engine/Resampling.h) when the file's rate differs from the target
+// rate. Positions and lengths seen by the engine are in target-rate samples; every
+// read maps its output positions to exact source positions, so reads can land
+// anywhere with no state carried between them.
 
 namespace aural::audio
 {
@@ -30,12 +31,7 @@ private:
     double targetRate_ = 0.0;
     double ratio_ = 1.0; // source samples per target sample
     std::int64_t length_ = 0;
-
-    // Resampling state, disk thread only.
-    std::vector<juce::LagrangeInterpolator> interpolators_;
-    juce::AudioBuffer<float> sourceBuffer_;
-    std::int64_t nextSequentialTarget_ = -1;
-    double sourcePosition_ = 0.0;
+    juce::AudioBuffer<float> sourceBuffer_; // disk thread only
 };
 
 } // namespace aural::audio

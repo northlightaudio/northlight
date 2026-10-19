@@ -84,6 +84,15 @@ void StreamingAudioSource::read(int channel,
         std::copy_n(ring.data(), count - firstPart, dest + leading + firstPart);
 
     std::fill(dest + leading + count, dest + numSamples, 0.0f);
+
+    // The disk thread may have recycled the slots we just copied if it advanced the
+    // window past this range (a backwards jump that lands right at the guard
+    // edge). If so the copy may be torn: hand back silence instead.
+    if (validStart_.load(std::memory_order_acquire) > fileFrom)
+    {
+        std::fill(dest, dest + numSamples, 0.0f);
+        underruns_.fetch_add(1, std::memory_order_relaxed);
+    }
 }
 
 // ----- controller --------------------------------------------------------------------------------
@@ -91,6 +100,27 @@ void StreamingAudioSource::read(int channel,
 void StreamingAudioSource::prefetch(std::int64_t position) noexcept
 {
     wanted_.store(position, std::memory_order_release);
+}
+
+void StreamingAudioSource::setInstanceFactory(OpenReader openReader, OnInstance onInstance)
+{
+    openReader_ = std::move(openReader);
+    onInstance_ = std::move(onInstance);
+}
+
+std::shared_ptr<AudioSource> StreamingAudioSource::createInstance() const
+{
+    AURAL_ASSERT_NOT_REALTIME("StreamingAudioSource::createInstance");
+    if (!openReader_)
+        return nullptr;
+    auto reader = openReader_();
+    if (reader == nullptr)
+        return nullptr;
+    auto instance = std::make_shared<StreamingAudioSource>(std::move(reader), options_);
+    instance->setInstanceFactory(openReader_, onInstance_);
+    if (onInstance_)
+        onInstance_(instance);
+    return instance;
 }
 
 // ----- disk thread ----------------------------------------------------------------------------------

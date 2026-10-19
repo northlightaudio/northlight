@@ -10,6 +10,10 @@
 namespace aural::engine
 {
 
+// A loop shorter than this is refused: each wrap costs a render span, and a loop
+// of a handful of samples would issue thousands of them per block.
+constexpr core::SamplePosition minimumLoopSamples = 64;
+
 struct TransportState
 {
     core::SamplePosition position = 0;
@@ -104,18 +108,20 @@ inline void applyTransportCommand(TransportState& state, const TransportCommand&
             state.position = command.position < 0 ? 0 : command.position;
             break;
         case TransportCommand::Type::setLoop:
-            state.loopStart = command.position;
+            // Bounds are validated here so a bad region can never publish a negative
+            // position or wrap on every sample.
+            state.loopStart = command.position < 0 ? 0 : command.position;
             state.loopEnd = command.end;
-            state.loopEnabled = command.enabled;
+            state.loopEnabled = command.enabled && state.loopEnd - state.loopStart >= minimumLoopSamples;
             break;
         case TransportCommand::Type::setMetronome:
             state.metronome = command.enabled;
             state.metronomeGain = static_cast<float>(command.value);
             break;
         case TransportCommand::Type::setPunch:
-            state.punchIn = command.position;
+            state.punchIn = command.position < 0 ? 0 : command.position;
             state.punchOut = command.end;
-            state.punchEnabled = command.enabled;
+            state.punchEnabled = command.enabled && state.punchOut > state.punchIn;
             break;
     }
 }

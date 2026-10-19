@@ -197,6 +197,15 @@ void AudioEngine::process(
     for (int i = 0; i < maxCommandsPerBlock && commands_.pop(command); ++i)
         applyCommand(command);
 
+    if (renderer_.maxBlockSize() <= 0)
+    {
+        // prepare() has not run: nothing is allocated, so just keep the outputs quiet.
+        for (int ch = 0; ch < numOutputs; ++ch)
+            if (outputs[ch] != nullptr)
+                std::fill(outputs[ch], outputs[ch] + numSamples, 0.0f);
+        return;
+    }
+
     const Snapshot* snapshot = publisher_.acquire();
     constexpr int maxChannels = 64;
     float* outPieces[maxChannels];

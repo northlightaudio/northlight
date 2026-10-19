@@ -70,6 +70,12 @@ public:
     // recorded) when loading failed.
     std::shared_ptr<const AudioSource> get(const std::string& path, double sampleRate);
 
+    // The source a clip should play: a per-clip instance for sources that keep
+    // reader state (streaming), reused across recompiles so a clip's window
+    // survives edits; the shared source otherwise.
+    std::shared_ptr<const AudioSource>
+    getForClip(const std::string& path, double sampleRate, core::Id clipId);
+
     // Drops entries no snapshot references any more.
     void prune();
 
@@ -78,8 +84,16 @@ public:
     void clearErrors() { errors_.clear(); }
 
 private:
+    struct Instance
+    {
+        std::string path;
+        double sampleRate = 0.0;
+        std::shared_ptr<const AudioSource> source;
+    };
+
     MediaLoader& loader_;
     std::map<std::string, std::shared_ptr<const AudioSource>> sources_;
+    std::map<core::Id, Instance> instances_;
     std::map<std::string, std::string> errors_;
 };
 

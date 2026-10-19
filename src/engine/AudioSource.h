@@ -25,6 +25,11 @@ public:
     // zero-filling anything outside [0, lengthSamples). Channels beyond numChannels
     // read as channel (channel % numChannels) so mono sources fan out.
     virtual void read(int channel, std::int64_t sourceStart, float* dest, int numSamples) const noexcept = 0;
+
+    // A source that keeps per-reader state (a streaming window) returns a fresh
+    // instance for one clip here; a shareable source returns nullptr. Controller
+    // thread.
+    virtual std::shared_ptr<AudioSource> createInstance() const { return nullptr; }
 };
 
 // A source held entirely in memory. Phase 2's only source; disk streaming adds a

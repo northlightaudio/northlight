@@ -4,6 +4,7 @@
 
 #include <atomic>
 #include <cstdint>
+#include <functional>
 #include <memory>
 #include <vector>
 
@@ -14,6 +15,10 @@
 // wants next; the disk thread (DiskThread) calls service() to keep the window filled
 // ahead of that position, or to rebuild it after a locate. Reads that fall outside
 // the window return silence and count as underruns rather than blocking.
+//
+// One window serves one reader: every clip gets its own instance (createInstance,
+// through the factory the loader installs) so two clips of the same file, or a loop
+// longer than the window, never fight over where the window should be.
 //
 // Thread safety without locks:
 //   - validStart_/validEnd_ are written only by the disk thread (release) and read by
@@ -68,6 +73,14 @@ public:
     // Controller: hint where playback will start so the window is ready.
     void prefetch(std::int64_t position) noexcept;
 
+    // Installs how to open another reader on the same file and what to do with a
+    // new instance (register it with the disk thread). With a factory installed,
+    // createInstance() returns a private window per clip.
+    using OpenReader = std::function<std::unique_ptr<StreamReader>()>;
+    using OnInstance = std::function<void(const std::shared_ptr<StreamingAudioSource>&)>;
+    void setInstanceFactory(OpenReader openReader, OnInstance onInstance);
+    std::shared_ptr<AudioSource> createInstance() const override;
+
     std::uint64_t underruns() const noexcept { return underruns_.load(std::memory_order_relaxed); }
     bool hadReadError() const noexcept { return readError_.load(std::memory_order_relaxed); }
 
@@ -81,6 +94,8 @@ private:
 
     std::unique_ptr<StreamReader> reader_;
     Options options_;
+    OpenReader openReader_;
+    OnInstance onInstance_;
     int numChannels_ = 0;
     std::int64_t length_ = 0;
     double sampleRate_ = 0.0;

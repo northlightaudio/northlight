@@ -27,8 +27,28 @@ std::shared_ptr<const AudioSource> MediaCache::get(const std::string& path, doub
     return source;
 }
 
+std::shared_ptr<const AudioSource>
+MediaCache::getForClip(const std::string& path, double sampleRate, core::Id clipId)
+{
+    if (const auto it = instances_.find(clipId); it != instances_.end())
+    {
+        if (it->second.path == path && it->second.sampleRate == sampleRate)
+            return it->second.source;
+        instances_.erase(it);
+    }
+    auto shared = get(path, sampleRate);
+    if (shared == nullptr)
+        return nullptr;
+    auto instance = shared->createInstance();
+    if (instance == nullptr)
+        return shared;
+    instances_[clipId] = Instance{path, sampleRate, instance};
+    return instance;
+}
+
 void MediaCache::prune()
 {
+    std::erase_if(instances_, [](const auto& entry) { return entry.second.source.use_count() == 1; });
     std::erase_if(sources_, [](const auto& entry) { return entry.second.use_count() == 1; });
 }
 
@@ -63,7 +83,7 @@ std::unique_ptr<Snapshot> compileSnapshot(const core::Project& project, MediaCac
             clip.length = c.length;
             clip.sourceOffset = c.sourceOffset;
             clip.gain = c.gain;
-            clip.keepAlive = media.get(c.mediaPath, project.sampleRate);
+            clip.keepAlive = media.getForClip(c.mediaPath, project.sampleRate, c.id);
             clip.source = clip.keepAlive.get();
             node.clips.push_back(std::move(clip));
         }

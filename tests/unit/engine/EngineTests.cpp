@@ -277,18 +277,44 @@ TEST_CASE("Locate jumps the position and loop wraps sample-accurately", "[engine
     CHECK(h.engine.position() == 154 + 3 * 64);
 }
 
-TEST_CASE("A loop shorter than a block wraps several times per block", "[engine]")
+TEST_CASE("A loop just longer than a block wraps mid-block", "[engine]")
 {
     Harness h;
     h.engine.setProject(oneClipProject("ramp:1000", 0, 1000));
-    h.engine.setLoop(10, 20, true);
+    h.engine.setLoop(10, 80, true); // 70 samples
     h.engine.locate(10);
     h.engine.play();
-    h.block();
-    CHECK(h.engine.position() == 10 + (64 % 10));
+    h.block(); // 10..74
+    h.block(); // 74..80 then wraps: 10..68
+    CHECK(h.engine.position() == 68);
     const float centre = std::cos(3.14159265f / 4.0f);
-    for (int i = 0; i < 64; ++i)
-        CHECK(h.left[static_cast<size_t>(i)] == Approx((10 + i % 10) / 1000.0f * centre).margin(1e-6f));
+    for (int i = 0; i < 6; ++i)
+        CHECK(h.left[static_cast<size_t>(i)] == Approx((74 + i) / 1000.0f * centre).margin(1e-6f));
+    for (int i = 6; i < 64; ++i)
+        CHECK(h.left[static_cast<size_t>(i)] == Approx((10 + i - 6) / 1000.0f * centre).margin(1e-6f));
+}
+
+TEST_CASE("Loops shorter than the minimum or with bad bounds are refused", "[engine]")
+{
+    Harness h;
+    h.engine.setProject(oneClipProject("ramp:1000", 0, 1000));
+    h.engine.setLoop(10, 20, true); // too short: ignored
+    h.engine.locate(0);
+    h.engine.play();
+    h.block();
+    h.block();
+    CHECK(h.engine.position() == 128);
+
+    h.engine.setLoop(-500, 300, true); // negative start clamps to 0
+    h.block();
+    h.block();
+    h.block();
+    CHECK(h.engine.position() == (128 + 3 * 64) % 300);
+
+    h.engine.setLoop(400, 100, true); // inverted: ignored
+    h.engine.locate(1000);
+    h.block();
+    CHECK(h.engine.position() == 1064);
 }
 
 TEST_CASE("Missing media leaves the clip silent and is reported", "[engine]")
