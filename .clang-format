@@ -1,0 +1,46 @@
+# Aural C++ style. See docs/coding-standards.md for the rationale.
+BasedOnStyle: LLVM
+Standard: c++20
+
+IndentWidth: 4
+TabWidth: 4
+UseTab: Never
+ColumnLimit: 110
+
+BreakBeforeBraces: Allman
+AllowShortFunctionsOnASingleLine: Inline
+AllowShortIfStatementsOnASingleLine: Never
+AllowShortLoopsOnASingleLine: false
+AllowShortLambdasOnASingleLine: All
+
+PointerAlignment: Left
+ReferenceAlignment: Left
+SpaceAfterTemplateKeyword: true
+SpaceBeforeParens: ControlStatements
+
+AccessModifierOffset: -4
+NamespaceIndentation: None
+FixNamespaceComments: true
+IndentCaseLabels: true
+
+AlignConsecutiveAssignments: false
+AlignTrailingComments: true
+AlignAfterOpenBracket: Align
+BinPackArguments: false
+BinPackParameters: false
+
+IncludeBlocks: Regroup
+IncludeCategories:
+  - Regex: '^"'
+    Priority: 1
+  - Regex: '^<juce_'
+    Priority: 3
+  - Regex: '^<(catch2|nlohmann|spdlog)/'
+    Priority: 3
+  - Regex: '^<.*\.h>'
+    Priority: 4
+  - Regex: '^<'
+    Priority: 5
+SortIncludes: CaseSensitive
+
+InsertNewlineAtEOF: true

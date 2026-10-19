@@ -1,0 +1,25 @@
+# Build output
+/build/
+/out/
+/cmake-build-*/
+
+# IDE
+/.vs/
+/.vscode/
+/.idea/
+*.user
+*.suo
+CMakeUserPresets.json
+
+# Third-party SDKs are never committed (see docs/PLAN.md, section 2)
+/sdk/
+/external/asio*/
+/external/vst3*/
+
+# OS
+Thumbs.db
+.DS_Store
+
+# Logs and crash dumps
+*.log
+*.dmp
