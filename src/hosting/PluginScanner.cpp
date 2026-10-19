@@ -184,7 +184,8 @@ void PluginScanner::run()
     clapPaths.add(
         juce::File::getSpecialLocation(juce::File::commonApplicationDataDirectory).getChildFile("CLAP"));
     clapPaths.add(juce::File("C:\\Program Files\\Common Files\\CLAP"));
-    clapPaths.add(juce::File::getSpecialLocation(juce::File::userApplicationDataDirectory)
+    // The per-user CLAP folder is under the local (not roaming) application data.
+    clapPaths.add(juce::File::getSpecialLocation(juce::File::windowsLocalAppData)
                       .getChildFile("Programs")
                       .getChildFile("Common")
                       .getChildFile("CLAP"));
