@@ -34,7 +34,9 @@ AudioEngine::~AudioEngine()
 void AudioEngine::setProject(const core::Project& project)
 {
     AURAL_ASSERT_NOT_REALTIME("AudioEngine::setProject");
-    publisher_.publish(compileSnapshot(project, media_, inserts_));
+    auto snapshot = compileSnapshot(project, media_, inserts_, &delays_);
+    outputLatency_.store(snapshot->outputLatency, std::memory_order_relaxed);
+    publisher_.publish(std::move(snapshot));
     collectGarbage();
 }
 
@@ -140,6 +142,7 @@ void AudioEngine::collectGarbage()
     publisher_.collect(isRunning());
     media_.prune();
     inserts_.prune();
+    delays_.prune();
 }
 
 void AudioEngine::prepare(double sampleRate, int maxBlockSize)

@@ -86,7 +86,7 @@ struct Routing
 } // namespace
 
 std::unique_ptr<Snapshot>
-compileSnapshot(const core::Project& project, MediaCache& media, InsertCache& inserts)
+compileSnapshot(const core::Project& project, MediaCache& media, InsertCache& inserts, DelayCache* delays)
 {
     AURAL_ASSERT_NOT_REALTIME("compileSnapshot");
     auto snapshot = std::make_unique<Snapshot>();
@@ -229,11 +229,15 @@ compileSnapshot(const core::Project& project, MediaCache& media, InsertCache& in
         for (const auto& i : c.inserts)
             if (auto instance = inserts.get(i))
             {
+                if (!i.bypass)
+                    node.chainLatency += std::max(0, instance->latencySamples());
                 node.inserts.push_back(instance.get());
                 node.keepAlive.push_back(std::move(instance));
             }
         node.outLeft.assign(n, 0.0f);
         node.outRight.assign(n, 0.0f);
+        node.delayScratchLeft.assign(n, 0.0f);
+        node.delayScratchRight.assign(n, 0.0f);
     };
 
     // ----- tracks -----------------------------------------------------------------------
@@ -272,6 +276,68 @@ compileSnapshot(const core::Project& project, MediaCache& media, InsertCache& in
         node.sumLeft.assign(n, 0.0f);
         node.sumRight.assign(n, 0.0f);
         snapshot->buses.push_back(std::move(node));
+    }
+
+    // ----- delay compensation ---------------------------------------------------------
+    // Every destination (each bus, the master) waits for its slowest source: a
+    // source's output lags the timeline by what its own inputs lag plus its chain,
+    // and each edge into the destination is delayed by the difference. Buses are
+    // solved in dependency order, so a bus's inputs are known before its output.
+    {
+        const int master = busCount; // index of the master in the "in" table
+        std::vector<int> arrival(static_cast<size_t>(busCount + 1), 0); // slowest source so far
+        std::vector<int> trackOut(static_cast<size_t>(trackCount), 0);
+        std::vector<int> busOut(static_cast<size_t>(busCount), 0);
+        const auto destinationIndex = [&](int bus) { return bus >= 0 ? bus : master; };
+        const auto offer = [&](const ChannelNode& node, int out)
+        {
+            auto& slot = arrival[static_cast<size_t>(destinationIndex(node.outputBus))];
+            slot = std::max(slot, out);
+            for (const auto& send : node.sends)
+            {
+                auto& sendSlot = arrival[static_cast<size_t>(destinationIndex(send.bus))];
+                sendSlot = std::max(sendSlot, out);
+            }
+        };
+        for (int t = 0; t < trackCount; ++t)
+        {
+            trackOut[static_cast<size_t>(t)] = snapshot->tracks[static_cast<size_t>(t)].chainLatency;
+            offer(snapshot->tracks[static_cast<size_t>(t)], trackOut[static_cast<size_t>(t)]);
+        }
+        for (int b : snapshot->busOrder)
+        {
+            auto& bus = snapshot->buses[static_cast<size_t>(b)];
+            busOut[static_cast<size_t>(b)] = arrival[static_cast<size_t>(b)] + bus.chainLatency;
+            offer(bus, busOut[static_cast<size_t>(b)]);
+        }
+        snapshot->outputLatency = arrival[static_cast<size_t>(master)];
+
+        DelayCache local;
+        DelayCache& cache = delays != nullptr ? *delays : local;
+        const auto attach = [&](ChannelNode& node, core::Id id, int out)
+        {
+            const auto line = [&](int bus, bool send)
+            {
+                const int needed = arrival[static_cast<size_t>(destinationIndex(bus))] - out;
+                const core::Id destination =
+                    bus >= 0 ? project.buses[static_cast<size_t>(bus)].id : core::invalidId;
+                auto shared = cache.get(DelayKey{id, destination, send}, needed);
+                auto* raw = needed > 0 ? shared.get() : nullptr;
+                node.keepAliveDelays.push_back(std::move(shared));
+                return raw;
+            };
+            node.outputDelay = line(node.outputBus, false);
+            for (auto& send : node.sends)
+                send.delay = line(send.bus, true);
+        };
+        for (int t = 0; t < trackCount; ++t)
+            attach(snapshot->tracks[static_cast<size_t>(t)],
+                   project.tracks[static_cast<size_t>(t)].id,
+                   trackOut[static_cast<size_t>(t)]);
+        for (int b = 0; b < busCount; ++b)
+            attach(snapshot->buses[static_cast<size_t>(b)],
+                   project.buses[static_cast<size_t>(b)].id,
+                   busOut[static_cast<size_t>(b)]);
     }
     return snapshot;
 }

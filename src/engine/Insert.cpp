@@ -40,6 +40,7 @@ std::shared_ptr<InsertProcessor> InsertCache::get(const core::Insert& insert)
     for (int i = 0; i < count && static_cast<size_t>(i) < insert.params.size(); ++i)
         instance->setParameter(i, insert.params[static_cast<size_t>(i)]);
     instance->setBypassed(insert.bypass);
+    latencyAtCompile_[insert.id] = instance->latencySamples();
     return instance;
 }
 
@@ -49,9 +50,19 @@ std::shared_ptr<InsertProcessor> InsertCache::find(core::Id insertId) const
     return it != instances_.end() ? it->second : nullptr;
 }
 
+bool InsertCache::latencyChanged() const noexcept
+{
+    for (const auto& [id, instance] : instances_)
+        if (const auto it = latencyAtCompile_.find(id);
+            it != latencyAtCompile_.end() && it->second != instance->latencySamples())
+            return true;
+    return false;
+}
+
 void InsertCache::prune()
 {
     std::erase_if(instances_, [](const auto& entry) { return entry.second.use_count() == 1; });
+    std::erase_if(latencyAtCompile_, [this](const auto& entry) { return !instances_.contains(entry.first); });
 }
 
 } // namespace aural::engine

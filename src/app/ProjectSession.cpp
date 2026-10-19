@@ -229,10 +229,14 @@ juce::File ProjectSession::mediaFolder() const
 
 core::SamplePosition ProjectSession::recordingLatencySamples() const
 {
+    // What the player hears lags the timeline by the device round trip plus the
+    // plugin delay compensation on the master, so a take recorded against it
+    // lands that much later than it was played.
+    const auto graph = static_cast<core::SamplePosition>(engine_.outputLatencySamples());
     if (const auto calibration = audio_.currentCalibration())
-        return calibration->roundTripSamples;
+        return calibration->roundTripSamples + graph;
     const auto s = audio_.status();
-    return s.inputLatencySamples + s.outputLatencySamples;
+    return s.inputLatencySamples + s.outputLatencySamples + graph;
 }
 
 namespace
@@ -667,6 +671,8 @@ void ProjectSession::timerCallback()
 void ProjectSession::poll()
 {
     engine_.collectGarbage();
+    if (engine_.insertLatencyChanged())
+        publish(); // a plugin changed its latency: re-solve the compensation
     if (engine_.hasRecordingToCollect())
         if (auto finished = engine_.collectRecording())
             finishRecording(std::move(*finished));

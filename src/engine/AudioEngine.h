@@ -82,6 +82,11 @@ public:
     // Peak/RMS per channel, slots as laid out by the snapshot compiler
     // (trackMeterSlot / busMeterSlot / masterMeterSlot). The UI takes readings.
     rt::MeterBlock& meters() noexcept { return meters_; }
+    // Samples the master output lags the timeline because of insert latency
+    // (plugin delay compensation aligns every path to the slowest).
+    int outputLatencySamples() const noexcept { return outputLatency_.load(std::memory_order_relaxed); }
+    // True when an insert's latency changed since the last setProject(): recompile.
+    bool insertLatencyChanged() const noexcept { return inserts_.latencyChanged(); }
     // The live processor behind a model insert, if one exists (controller thread).
     std::shared_ptr<InsertProcessor> insertInstance(core::Id insertId) const
     {
@@ -121,6 +126,8 @@ private:
 
     MediaCache media_;
     InsertCache inserts_;
+    DelayCache delays_;
+    std::atomic<int> outputLatency_{0};
     rt::SnapshotPublisher<Snapshot> publisher_;
     rt::SpscQueue<TransportCommand> commands_{commandQueueCapacity};
     WorkerPool pool_;

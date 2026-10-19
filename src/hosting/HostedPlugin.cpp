@@ -42,7 +42,6 @@ void HostedPlugin::prepare(double sampleRate, int maxBlockSize)
     instance_->setRateAndBufferSizeDetails(sampleRate, maxBlockSize);
     instance_->prepareToPlay(sampleRate, maxBlockSize);
     midi_.ensureSize(1024);
-    latency_.store(instance_->getLatencySamples(), std::memory_order_relaxed);
     prepared_.store(true, std::memory_order_release);
 }
 

@@ -30,7 +30,11 @@ public:
     void setParameter(int, float) noexcept override {}
     float parameter(int) const noexcept override { return 0.0f; }
     void process(float* left, float* right, int numSamples) noexcept override;
-    int latencySamples() const noexcept override { return latency_.load(std::memory_order_relaxed); }
+    // Read live: a plugin may change it (lookahead settings) after prepare.
+    int latencySamples() const noexcept override
+    {
+        return prepared_.load(std::memory_order_acquire) ? instance_->getLatencySamples() : 0;
+    }
 
     std::string state() const override;
     void setState(const std::string& state) override;
@@ -43,7 +47,6 @@ private:
     std::vector<engine::ParameterInfo> noParameters_;
     std::unique_ptr<juce::AudioPluginInstance> instance_;
     juce::MidiBuffer midi_;
-    std::atomic<int> latency_{0};
     std::atomic<bool> prepared_{false};
 };
 

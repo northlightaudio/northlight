@@ -48,6 +48,8 @@ add_library(aural_engine STATIC
     Resampling.h
     Insert.h
     Insert.cpp
+    Delay.h
+    Delay.cpp
     Loudness.h)
 
 target_link_libraries(aural_engine PUBLIC aural_rt aural_core)

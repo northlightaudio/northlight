@@ -2,6 +2,7 @@
 
 #include "core/Model.h"
 #include "engine/AudioSource.h"
+#include "engine/Delay.h"
 #include "engine/Insert.h"
 
 #include <cstdint>
@@ -43,6 +44,7 @@ struct SendNode
     int bus = -1; // index into Snapshot::buses
     float level = 1.0f;
     bool preFader = false;
+    DelayLine* delay = nullptr; // compensation on this edge (null = none)
 };
 
 // What tracks and buses share once compiled.
@@ -58,6 +60,10 @@ struct ChannelNode
     std::vector<SendNode> sends;
     std::vector<InsertProcessor*> inserts;                   // in chain order
     std::vector<std::shared_ptr<InsertProcessor>> keepAlive; // controller-side ownership
+    int chainLatency = 0;                                    // samples the inserts add
+    DelayLine* outputDelay = nullptr;                        // compensation on the output edge
+    std::vector<std::shared_ptr<DelayLine>> keepAliveDelays;
+    mutable std::vector<float> delayScratchLeft, delayScratchRight; // a delayed copy for one edge
 
     // Pre-fader stereo output for one span (the parallel render writes it).
     mutable std::vector<float> outLeft, outRight;
@@ -94,6 +100,7 @@ struct Snapshot
     std::vector<int> busOrder;  // bus indices in dependency order (feeders before fed)
     float masterGain = 1.0f;
     int masterMeterSlot = -1;
+    int outputLatency = 0; // samples the master output lags the timeline (plugin delay compensation)
 };
 
 // Caches loaded media by path across snapshot compiles so a re-publish after an edit
@@ -134,8 +141,12 @@ private:
     std::map<std::string, std::string> errors_;
 };
 
-std::unique_ptr<Snapshot>
-compileSnapshot(const core::Project& project, MediaCache& media, InsertCache& inserts);
+// `delays` keeps compensation delay lines across compiles; without it each
+// snapshot gets fresh (empty) lines.
+std::unique_ptr<Snapshot> compileSnapshot(const core::Project& project,
+                                          MediaCache& media,
+                                          InsertCache& inserts,
+                                          DelayCache* delays = nullptr);
 
 // Meter slot layout used by the compiler: tracks in project order, then buses in
 // project order, then the master.

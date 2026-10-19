@@ -270,14 +270,34 @@ void Renderer::routeChannel(const Snapshot& snapshot,
         return;
     }
 
+    // An edge with compensation reads a delayed copy of the channel's output.
+    const auto delayed = [&](DelayLine* delay, const float*& l, const float*& r)
+    {
+        if (delay == nullptr)
+        {
+            l = pre;
+            r = preR;
+            return;
+        }
+        delay->process(
+            pre, preR, channel.delayScratchLeft.data(), channel.delayScratchRight.data(), numSamples);
+        l = channel.delayScratchLeft.data();
+        r = channel.delayScratchRight.data();
+    };
+
     float* outL = nullptr;
     float* outR = nullptr;
     target(channel.outputBus, outL, outR);
     const float gain = channel.gain;
-    for (int i = 0; i < numSamples; ++i)
     {
-        outL[i] += pre[i] * gain;
-        outR[i] += preR[i] * gain;
+        const float* l = nullptr;
+        const float* r = nullptr;
+        delayed(channel.outputDelay, l, r);
+        for (int i = 0; i < numSamples; ++i)
+        {
+            outL[i] += l[i] * gain;
+            outR[i] += r[i] * gain;
+        }
     }
 
     for (const auto& send : channel.sends)
@@ -285,11 +305,14 @@ void Renderer::routeChannel(const Snapshot& snapshot,
         float* sl = nullptr;
         float* sr = nullptr;
         target(send.bus, sl, sr);
+        const float* l = nullptr;
+        const float* r = nullptr;
+        delayed(send.delay, l, r);
         const float level = send.preFader ? send.level : send.level * gain;
         for (int i = 0; i < numSamples; ++i)
         {
-            sl[i] += pre[i] * level;
-            sr[i] += preR[i] * level;
+            sl[i] += l[i] * level;
+            sr[i] += r[i] * level;
         }
     }
 

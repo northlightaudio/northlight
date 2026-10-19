@@ -92,6 +92,9 @@ public:
     std::shared_ptr<InsertProcessor> get(const core::Insert& insert);
     // The live instance for an insert id, if one exists.
     std::shared_ptr<InsertProcessor> find(core::Id insertId) const;
+    // Whether any instance reports a different latency than it had when last
+    // compiled (a plugin changed its lookahead): the snapshot needs recompiling.
+    bool latencyChanged() const noexcept;
 
     // Drops instances no snapshot references any more.
     void prune();
@@ -101,6 +104,7 @@ private:
     double sampleRate_ = 48000.0;
     int maxBlockSize_ = 8192;
     std::map<core::Id, std::shared_ptr<InsertProcessor>> instances_;
+    std::map<core::Id, int> latencyAtCompile_;
 };
 
 } // namespace aural::engine
