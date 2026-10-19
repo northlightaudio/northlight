@@ -115,14 +115,18 @@ constant-power pan for mono sources and a balance law for stereo. The block is s
 at the loop end so the loop wraps sample-accurately, as many times per block as the
 loop length requires. Each `TrackNode` carries its own stereo output and scratch
 buffers, allocated when the snapshot is compiled (the buffer pool, sized at compile
-time), so tracks are independent jobs: `WorkerPool::run` hands them out through an
-atomic counter to the worker threads and the callback thread alike, and the sums
-happen afterwards in track order, which makes the output bit-identical whatever the
-worker count. Workers are time-critical threads that block on a semaphore between
-batches and run each job inside a real-time section with denormals flushed; the
-callback thread wakes them with one semaphore release (never blocking) and spins on
-the completion count. Sends, buses and inserts arrive in Phase 4 as more job kinds
-in the same batch structure.
+time), so tracks are independent jobs: `WorkerPool::run` hands them out through one
+atomic that packs the batch's job count with the next index (a worker compares an
+index only with the count it was taken with, so a late worker can never act on a
+newer batch), to the worker threads and the callback thread alike; the sums happen
+afterwards in track order, which makes the output bit-identical whatever the worker
+count. Workers are time-critical threads that block on a semaphore between batches
+and run each job inside a real-time section with denormals flushed; the callback
+thread wakes them with one counted semaphore release (never blocking, never more
+permits than workers), spins on the completion count with a short budget before
+yielding, and waits for every worker to leave the batch. The recommended worker
+count leaves two hardware threads free for the device and message threads. Sends,
+buses and inserts arrive in Phase 4 as more job kinds in the same batch structure.
 
 `rt::CallbackStats` records every callback's duration as a fraction of its deadline
 into a lock-free histogram; the status bar shows p50/p99/max, overruns (callbacks
@@ -138,11 +142,19 @@ long as any snapshot references it; `MediaCache::prune` drops the rest.
 `MediaLoader` is the engine's loading interface; `audio::JuceMediaLoader` implements
 it. Files up to 30 s are decoded into a `MemoryAudioSource` (resampled on load);
 longer ones become a `StreamingAudioSource` over a `JuceStreamReader` (resampled
-chunk by chunk on the disk thread). `engine::DiskThread` is the single disk I/O
-thread: it services each streaming source's ring window, keeping a read-ahead in
-front of the position the real-time thread last read and rebuilding the window
-after a locate. The real-time `read` never blocks: outside the window it returns
-silence and counts an underrun.
+chunk by chunk on the disk thread). Every clip of a streamed file gets its own
+window: the loader installs a factory on the source and `MediaCache::getForClip`
+creates one instance per clip id, kept across recompiles so an edit never empties a
+window. `engine::DiskThread` is the single disk I/O thread: it services each
+window, keeping a read-ahead in front of the position the real-time thread last
+read and rebuilding the window after a locate. The real-time `read` never blocks:
+outside the window it returns silence and counts an underrun, and it re-checks the
+window after copying so a backward jump can never hand out torn samples.
+
+Sample-rate conversion is `engine/Resampling.h`: 4-point Hermite interpolation
+evaluated at each output sample's exact source position. It is stateless, so reads
+can start anywhere, and it has no lookback delay, so imported media stays aligned
+to the sample.
 
 ### Session and UI
 
@@ -287,3 +299,7 @@ launches; `JUCE_MODAL_LOOPS_PERMITTED` stays 0.
 | 2026-10-19 | Recordings placed by calibration when it matches, else reported latency | The measurement is the truth when it exists for this device/rate/buffer; falling back to the driver's figures keeps placement roughly right instead of silently wrong. |
 | 2026-10-19 | Count-in and punch handled by segmenting the block on the real-time thread | A count-in that ends on a block boundary would be up to one buffer late (1.3 ms at 64 samples, 20 ms at 1024); segmenting keeps capture sample-accurate at any buffer size with no extra state. |
 | 2026-10-19 | One region serves both loop and punch | Two overlapping regions on a ruler are hard to read and rarely differ in practice; the toggles decide what the region means. Separate regions can come with the editing phase if users ask. |
+| 2026-10-19 | Worker pool batch state packed into one atomic | Review found that separate count/next fields let a worker waking late for batch A compare its stale index with batch B's count and run a job against a dead context. One 64-bit fetch_add makes index and count inseparable; counting wake permits keeps the semaphore within its limit however many spans a block issues. |
+| 2026-10-19 | One streaming window per clip, not per file | Two clips of one long file (or a loop longer than the window) share nothing but the decoded file; a shared window seeks back and forth and plays silence. A private window per clip costs one file handle and a few MB each, cached by clip id so edits do not reset it. |
+| 2026-10-19 | Own Hermite resampler instead of juce::LagrangeInterpolator | The Lagrange interpolator carries a ~2.5-sample lookback delay and sequential state, which misaligned imported media and made chunked seeks awkward. A stateless resampler evaluated at exact positions is simpler and sample-aligned; a windowed-sinc converter for offline bounces is still planned for Phase 9. |
+| 2026-10-19 | Loops shorter than 64 samples are refused | Every loop pass inside a block costs a render span and a worker wake; a one-sample loop would issue hundreds per block for no musical purpose. |
