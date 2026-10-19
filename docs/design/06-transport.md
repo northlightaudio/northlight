@@ -17,8 +17,11 @@ Left to right, `space.md` gaps inside groups and `space.xl` between groups:
    Space is play/stop, not play/pause; Pause exists for Shift+Space). Record is a
    `record`-coloured icon at rest; while recording the button is solid `record` with
    `textOnColour` and the time display turns `record`.
-2. **Mode toggles** (28 px toggle buttons with icon and short label): Loop, Punch,
-   Click, Count-in (label shows the bar count, "Count-in 1"; chevron menu for 0/1/2).
+2. **Mode toggles** (28×28 icon toggles, 8 px apart, each with a tooltip naming
+   the mode, its state and shortcut): Loop (two arrows cycling), Punch (in/out
+   brackets around a dot; on state uses `record` instead of `accent`), Click
+   (metronome), Count-in (metronome with the pendulum the other way and the bar
+   count as a 9 px figure in the corner; right-click or long-press for 0/1/2).
 3. **Time displays**: two `surface2` fields with radius `sm`, 28 px, `timeLarge`
    22 px mono for the primary (bars.beats.ticks) and `timeSmall` 13 px mono for the
    secondary (h:mm:ss.mmm, or samples, or timecode via right-click). Click a field to

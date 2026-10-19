@@ -26,6 +26,16 @@ design system first; the screen specs depend on them.
 | [11-accessibility-performance.md](11-accessibility-performance.md) | Contrast, focus, keyboard, screen reader names, DPI, frame budget and how it is measured |
 | [contrast.md](contrast.md) | Generated contrast table for every text and surface pair in the token file |
 
+## Mockups
+
+Static mockups rendered from this spec and `tokens.json` live on the "Aural UI
+Mockups" canvas (claude.ai artifact, private to the project owner): the shell with
+a populated arrange view, the mixer at full height, transport states, the plugin
+chain, window bar and browser, Audio Setup, the piano roll, a component sheet and
+the palette/type sheet. They are the visual reference for Phase 7 alongside the
+acceptance sections below; where a mockup and the text disagree, the text wins and
+the mockup gets fixed.
+
 ## How to read the screen specs
 
 Each screen spec has the same shape:

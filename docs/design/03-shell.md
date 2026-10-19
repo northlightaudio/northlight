@@ -56,10 +56,14 @@ Left to right, with `space.md` gaps between groups and `space.xl` between cluste
 3. Undo / Redo: icon buttons, disabled when nothing to undo; tooltip names the action
    ("Undo Move clip").
 4. Transport cluster: section 6.
-5. Right cluster: Snap (toggle button with a chevron menu for grid size), Ripple
-   (toggle), Zoom to fit (icon), then the three view toggles.
+5. Right cluster, all icon toggles 28×28 with tooltips: Snap (magnet icon with a
+   chevron that opens the grid menu; the tooltip reads "Snap: Adaptive"), Ripple,
+   Zoom to fit, a `lineStrong` divider, then Mixer, Editor and Browser as icon
+   toggles that light `accent` when their panel is open.
 
-Everything in the header has a keyboard shortcut shown in its tooltip.
+The header shows no text except the project name, the time displays and the
+tempo/signature values. Everything in the header has a keyboard shortcut shown in
+its tooltip.
 
 ## Status bar detail
 

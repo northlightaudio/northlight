@@ -132,7 +132,16 @@ surface tokens and no inner chrome.
   20 px variant for the transport.
 - Monochrome. `textSecondary` at rest, `textPrimary` on hover, `accent` when the
   action is active, `record` for record, `textDisabled` when disabled.
-- Icons never appear without a tooltip; text buttons are preferred where space allows.
+- **Icons first for actions and modes.** Toolbar actions and mode toggles (loop,
+  punch, metronome, count-in, snap, ripple, zoom, view toggles, bypass, pin) are
+  icon buttons with a tooltip that gives the name, state and shortcut. A toggle
+  that carries a small value (count-in bars, snap grid) overlays it as a 9 px
+  figure in the corner or adds a chevron. Text is used where it carries a value or
+  a name (time, tempo, device, track, plugin), for navigation (tabs, menu items),
+  for the conventional M/S/R letters, and for actions whose icon would be
+  ambiguous (Calibrate, Scan, Export) where a short label is clearer.
+- Icons never appear without a tooltip. An icon button is 28×28 (20 px icon in the
+  32 px transport buttons); related icons sit 8 px apart, groups 24 px apart.
 
 Required set (Phase 7 draws these as vector paths in `assets/icons`): play, stop,
 record, loop, punch, metronome, count-in, go-to-start, go-to-end, undo, redo, snap,
