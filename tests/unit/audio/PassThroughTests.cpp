@@ -37,6 +37,21 @@ TEST_CASE("A single input fans out to every output", "[audio][passthrough]")
     CHECK(out2 == in0);
 }
 
+TEST_CASE("Accumulating pass-through adds to existing output", "[audio][passthrough]")
+{
+    std::array<float, 3> in0{1.0f, 2.0f, 3.0f};
+    std::array<float, 3> out0{10.0f, 10.0f, 10.0f};
+    const float* ins[] = {in0.data()};
+    float* outs[] = {out0.data()};
+
+    renderPassThrough(ins, 1, outs, 1, 3, 0.5f, 0.5f, true);
+    CHECK(out0 == std::array<float, 3>{10.5f, 11.0f, 11.5f});
+
+    // No inputs: outputs are left alone rather than cleared.
+    renderPassThrough(nullptr, 0, outs, 1, 3, 1.0f, 1.0f, true);
+    CHECK(out0 == std::array<float, 3>{10.5f, 11.0f, 11.5f});
+}
+
 TEST_CASE("Gain ramps linearly across the block", "[audio][passthrough]")
 {
     std::array<float, 5> in0{1.0f, 1.0f, 1.0f, 1.0f, 1.0f};

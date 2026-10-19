@@ -19,6 +19,8 @@ add_library(aural_audio_device STATIC
     AudioDeviceLayer.h
     AudioDeviceLayer.cpp
     LatencyCalibrator.h
-    LatencyCalibrator.cpp)
+    LatencyCalibrator.cpp
+    JuceMediaLoader.h
+    JuceMediaLoader.cpp)
 
-target_link_libraries(aural_audio_device PUBLIC aural_audio aural_juce)
+target_link_libraries(aural_audio_device PUBLIC aural_audio aural_engine aural_juce)

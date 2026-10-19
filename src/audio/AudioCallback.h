@@ -1,5 +1,7 @@
 #pragma once
 
+#include "engine/AudioEngine.h"
+
 #include <juce_audio_devices/juce_audio_devices.h>
 
 #include <atomic>
@@ -7,9 +9,9 @@
 #include <span>
 #include <vector>
 
-// The audio device callback. Phase 1: pass selected inputs to the outputs with a
-// master gain, and host the loopback calibration capture. Phase 2 replaces the
-// pass-through with the engine graph but keeps the entry discipline:
+// The audio device callback. Renders the engine (when one is attached), adds the
+// Phase 1 input pass-through on top for monitoring, and hosts the loopback
+// calibration capture. The entry discipline:
 //
 //   1. enter aural::rt::ScopedRealtimeSection (allocation hook becomes live)
 //   2. set FTZ/DAZ (juce::ScopedNoDenormals)
@@ -29,6 +31,11 @@ public:
     ~AudioCallback() override;
 
     // ----- control (any thread) -------------------------------------------------
+    // Attaches the engine. Message thread, before the device starts; the engine must
+    // outlive the callback. The callback calls prepare()/release() around device
+    // start/stop and process() from every block.
+    void setEngine(engine::AudioEngine* engine) noexcept;
+
     void setMasterGain(float linearGain) noexcept;
     float masterGain() const noexcept;
     void setPassThroughEnabled(bool enabled) noexcept;
@@ -109,6 +116,7 @@ private:
                            int numOutputs,
                            int numSamples) noexcept;
 
+    std::atomic<engine::AudioEngine*> engine_{nullptr};
     std::atomic<float> targetGain_{1.0f};
     float currentGain_ = 1.0f; // audio thread only
     std::atomic<bool> passThrough_{true};

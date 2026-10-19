@@ -18,11 +18,13 @@ void renderPassThrough(const float* const* inputs,
                        int numOutputs,
                        int numSamples,
                        float gainStart,
-                       float gainEnd) noexcept
+                       float gainEnd,
+                       bool accumulate) noexcept
 {
     if (numInputs <= 0 || numSamples <= 0)
     {
-        renderSilence(outputs, numOutputs, numSamples);
+        if (!accumulate)
+            renderSilence(outputs, numOutputs, numSamples);
         return;
     }
 
@@ -37,15 +39,27 @@ void renderPassThrough(const float* const* inputs,
         const float* in = inputs[ch % numInputs];
         if (in == nullptr)
         {
-            std::fill(out, out + numSamples, 0.0f);
+            if (!accumulate)
+                std::fill(out, out + numSamples, 0.0f);
             continue;
         }
 
         float gain = gainStart;
-        for (int i = 0; i < numSamples; ++i)
+        if (accumulate)
         {
-            out[i] = in[i] * gain;
-            gain += step;
+            for (int i = 0; i < numSamples; ++i)
+            {
+                out[i] += in[i] * gain;
+                gain += step;
+            }
+        }
+        else
+        {
+            for (int i = 0; i < numSamples; ++i)
+            {
+                out[i] = in[i] * gain;
+                gain += step;
+            }
         }
     }
 }

@@ -11,7 +11,9 @@ target_sources(aural PRIVATE
     MainWindow.h
     MainWindow.cpp
     UserSettings.h
-    UserSettings.cpp)
+    UserSettings.cpp
+    ProjectSession.h
+    ProjectSession.cpp)
 
 target_compile_definitions(aural PRIVATE
     JUCE_APPLICATION_NAME_STRING="$<TARGET_PROPERTY:aural,JUCE_PRODUCT_NAME>"
@@ -21,6 +23,8 @@ target_link_libraries(aural PRIVATE
     aural_options
     aural_rt
     aural_rt_checks
+    aural_core
+    aural_engine
     aural_audio_device
     aural_ui
     aural_juce)

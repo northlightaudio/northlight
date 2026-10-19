@@ -40,6 +40,11 @@ AudioCallback::~AudioCallback() = default;
 
 // ----- control -------------------------------------------------------------------
 
+void AudioCallback::setEngine(engine::AudioEngine* engine) noexcept
+{
+    engine_.store(engine, std::memory_order_release);
+}
+
 void AudioCallback::setMasterGain(float linearGain) noexcept
 {
     targetGain_.store(std::clamp(linearGain, 0.0f, 8.0f), std::memory_order_relaxed);
@@ -163,6 +168,10 @@ void AudioCallback::audioDeviceAboutToStart(juce::AudioIODevice* device)
     currentGain_ = targetGain_.load(std::memory_order_relaxed);
     inputPeak_.store(0.0f, std::memory_order_relaxed);
     outputPeak_.store(0.0f, std::memory_order_relaxed);
+    // AudioDeviceManager splits oversized blocks, so the device buffer size bounds
+    // numSamples.
+    if (auto* engine = engine_.load(std::memory_order_acquire))
+        engine->prepare(device->getCurrentSampleRate(), device->getCurrentBufferSizeSamples());
     running_.store(true, std::memory_order_release);
 }
 
@@ -171,6 +180,8 @@ void AudioCallback::audioDeviceStopped()
     // Called after the device thread has stopped, so no callback runs concurrently:
     // a calibration in flight is simply dropped.
     running_.store(false, std::memory_order_release);
+    if (auto* engine = engine_.load(std::memory_order_acquire))
+        engine->release();
     calibrationPhase_.store(CalibrationPhase::idle, std::memory_order_release);
     abortRequested_.store(false, std::memory_order_relaxed);
     numInputs_.store(0, std::memory_order_relaxed);
@@ -217,6 +228,11 @@ void AudioCallback::audioDeviceIOCallbackWithContext(const float* const* inputCh
         const float gainStart = currentGain_;
         currentGain_ = gainEnd;
 
+        if (auto* engine = engine_.load(std::memory_order_acquire))
+            engine->process(outputChannelData, numOutputChannels, numSamples);
+        else
+            renderSilence(outputChannelData, numOutputChannels, numSamples);
+
         if (passThrough_.load(std::memory_order_relaxed))
             renderPassThrough(inputChannelData,
                               numInputChannels,
@@ -224,9 +240,8 @@ void AudioCallback::audioDeviceIOCallbackWithContext(const float* const* inputCh
                               numOutputChannels,
                               numSamples,
                               gainStart,
-                              gainEnd);
-        else
-            renderSilence(outputChannelData, numOutputChannels, numSamples);
+                              gainEnd,
+                              true);
     }
 
     raisePeak(outputPeak_, blockPeak(outputChannelData, numOutputChannels, numSamples));

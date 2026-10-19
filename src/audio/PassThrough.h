@@ -13,14 +13,17 @@ namespace aural::audio
 // across the block. Output channel i receives input channel (i % numInputs), so a
 // single input fans out to every output; with no inputs the outputs are cleared.
 // Null channel pointers (JUCE passes them for inactive channels) are treated as
-// silence on input and skipped on output.
+// silence on input and skipped on output. With `accumulate` the inputs are added to
+// whatever is already in the outputs (monitoring on top of playback) and outputs
+// are never cleared.
 void renderPassThrough(const float* const* inputs,
                        int numInputs,
                        float* const* outputs,
                        int numOutputs,
                        int numSamples,
                        float gainStart,
-                       float gainEnd) noexcept;
+                       float gainEnd,
+                       bool accumulate = false) noexcept;
 
 // Writes silence to every output channel.
 void renderSilence(float* const* outputs, int numOutputs, int numSamples) noexcept;

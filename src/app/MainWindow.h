@@ -12,13 +12,14 @@ class AudioDeviceLayer;
 namespace aural
 {
 
-// Top-level document window. Phase 1: a toolbar with the device summary and an
-// "Audio Setup" button over a placeholder body. The arrange view, transport and
-// mixer land here in Phases 2 and 4.
+class ProjectSession;
+
+// Top-level document window. Phase 2: a toolbar with transport, import and the
+// device summary, a placeholder track list, and the Audio Setup window.
 class MainWindow final : public juce::DocumentWindow
 {
 public:
-    MainWindow(const juce::String& name, audio::AudioDeviceLayer& audio);
+    MainWindow(const juce::String& name, audio::AudioDeviceLayer& audio, ProjectSession& session);
     ~MainWindow() override;
 
     void closeButtonPressed() override;
@@ -32,6 +33,7 @@ private:
     class AudioSetupWindow;
 
     audio::AudioDeviceLayer& audio_;
+    ProjectSession& session_;
     std::unique_ptr<AudioSetupWindow> audioSetupWindow_;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(MainWindow)

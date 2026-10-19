@@ -6,7 +6,9 @@ add_library(aural_ui STATIC
     AuralLookAndFeel.h
     AuralLookAndFeel.cpp
     AudioSetupView.h
-    AudioSetupView.cpp)
+    AudioSetupView.cpp
+    TrackListView.h
+    TrackListView.cpp)
 
 target_include_directories(aural_ui PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/..")
-target_link_libraries(aural_ui PUBLIC aural_audio_device aural_juce)
+target_link_libraries(aural_ui PUBLIC aural_core aural_audio_device aural_juce)
