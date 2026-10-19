@@ -99,6 +99,9 @@ To record, pick an input in a track's header, arm it with **R** (the **I** butto
 cycles input monitoring off / auto / on) and press **Rec** or Ctrl+R; **Stop** or the
 space bar ends the take. Clips land on the track shifted back by the measured
 round-trip latency (or the driver's reported latency when no calibration matches).
+**Click** turns the metronome on, **Count-in** cycles 0/1/2 bars of click before a
+take, dragging in the ruler sets a region that **Loop** repeats and **Punch**
+records into (rolling from one bar before it).
 Recordings go next to the project file in a `<project> Media` folder, or to
 `Documents\Aural\Recordings` for an unsaved project. If the app dies while recording,
 the next launch repairs the unfinished files and adds them as "Recovered" tracks.

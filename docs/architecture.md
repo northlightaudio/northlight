@@ -19,7 +19,8 @@ aural.exe
                   files, bars/beats helpers. No JUCE.
   src/engine      AudioEngine façade, Snapshot compiler + MediaCache, Transport,
                   Renderer, WorkerPool, AudioSource (memory + streaming), DiskThread,
-                  Peaks, Recording (record rings + writer thread), WavFile. No JUCE.
+                  Peaks, Recording (record rings + writer thread), WavFile, Click
+                  (metronome). No JUCE.
   src/engine/rt   Real-time guard and allocation hook, SpscQueue, SnapshotPublisher,
                   CallbackStats, ScopedFlushDenormals
   src/audio       Pure:  AudioSettings, LatencyDetector, PassThrough
@@ -199,6 +200,21 @@ hears its input through its gain and pan; "automatic" hears it while armed and t
 transport is not playing back (stopped or recording); "off" never. The Phase 1
 pass-through in Audio Setup is still available as a global monitor and adds on top.
 
+### Metronome, count-in, loop and punch
+
+`engine::ClickGenerator` adds a 30 ms decaying sine burst on every beat (1.5 kHz on
+bar starts, 1 kHz otherwise) at multiples of the beat length from zero, so the same
+code serves the count-in before the start position (negative timeline positions)
+and playback. The snapshot carries tempo and time signature.
+
+The transport holds a count-in length, a punch region and the loop region.
+`AudioEngine::process` cuts every block into segments at the count-in end and the
+punch edges (on top of the renderer's own split at the loop end): during the
+count-in the position holds, monitored inputs and clicks are heard and nothing is
+captured; capture starts and ends on the exact punch samples. The session rolls the
+transport to one bar before the punch-in so the take has a run-up. The loop and
+punch regions are one region in the session, set by dragging in the ruler.
+
 ### Phase 2 milestone
 
 32 stereo WAVs on 32 tracks on the Universal Audio Volt at 48 kHz / 64 samples:
@@ -269,3 +285,5 @@ launches; `JUCE_MODAL_LOOPS_PERMITTED` stays 0.
 | 2026-10-19 | The record session lives outside the snapshot | A snapshot swap (any edit while recording) must not disturb the rings or restart capture; the session is handed to the real-time thread once and ended by a transport command, so editing during a take is safe. |
 | 2026-10-19 | Crash safety by periodic header rewrite plus repair from file size | The standard DAW approach: a valid file at every second boundary, and the trailing data recovered by trusting the file size. A journal or a second file would add complexity without saving more audio. |
 | 2026-10-19 | Recordings placed by calibration when it matches, else reported latency | The measurement is the truth when it exists for this device/rate/buffer; falling back to the driver's figures keeps placement roughly right instead of silently wrong. |
+| 2026-10-19 | Count-in and punch handled by segmenting the block on the real-time thread | A count-in that ends on a block boundary would be up to one buffer late (1.3 ms at 64 samples, 20 ms at 1024); segmenting keeps capture sample-accurate at any buffer size with no extra state. |
+| 2026-10-19 | One region serves both loop and punch | Two overlapping regions on a ruler are hard to read and rarely differ in practice; the toggles decide what the region means. Separate regions can come with the editing phase if users ask. |
