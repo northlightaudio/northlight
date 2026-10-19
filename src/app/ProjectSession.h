@@ -62,6 +62,25 @@ public:
     bool isPlaying() const noexcept { return engine_.isPlaying(); }
     core::SamplePosition position() const noexcept { return engine_.position(); }
 
+    // ----- recording ----------------------------------------------------------------
+    // Starts recording every armed track that has an input, from the current
+    // position. Returns an error message or empty. stop() ends the recording; the
+    // files are finished on the disk thread and the clips placed (shifted back by the
+    // measured or reported round-trip latency) when they are ready.
+    std::string startRecording();
+    bool isRecording() const noexcept { return engine_.isRecording(); }
+    // The folder new recordings go to: next to the project file, or the user's
+    // Documents/Aural/Recordings when the project has not been saved.
+    juce::File mediaFolder() const;
+    // Latency used to place recordings: the loopback measurement when it matches
+    // the device configuration, otherwise the driver's reported input + output.
+    core::SamplePosition recordingLatencySamples() const;
+    // Repairs and imports any *.partial.wav left in the media folder by a crash.
+    // Returns how many were recovered.
+    int recoverPartialRecordings();
+    // Human-readable note about the last recording (dropouts, recovery), if any.
+    const std::string& lastRecordingMessage() const noexcept { return recordingMessage_; }
+
     // Non-empty when the device rate differs from the project rate.
     std::string sampleRateWarning() const;
 
@@ -70,6 +89,7 @@ private:
     void timerCallback() override;
     void publish();
     void matchDeviceSampleRate();
+    void finishRecording(engine::AudioEngine::FinishedRecording finished);
 
     audio::AudioDeviceLayer& audio_;
     engine::DiskThread disk_;
@@ -80,6 +100,7 @@ private:
     core::UndoStack undo_;
     juce::File projectFile_;
     bool modified_ = false;
+    std::string recordingMessage_;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(ProjectSession)
 };

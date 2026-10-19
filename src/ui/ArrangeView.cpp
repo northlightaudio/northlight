@@ -34,16 +34,67 @@ ArrangeView::~ArrangeView()
 void ArrangeView::setProject(const core::Project* project)
 {
     project_ = project;
+    rebuildHeaders();
     updateScrollbar();
     repaint();
 }
 
-void ArrangeView::setPlayhead(core::SamplePosition position, bool playing)
+void ArrangeView::setInputNames(std::vector<std::string> names)
 {
-    if (position == playhead_ && playing == playing_)
+    inputNames_ = std::move(names);
+    rebuildHeaders();
+}
+
+void ArrangeView::rebuildHeaders()
+{
+    const size_t count = project_ != nullptr ? project_->tracks.size() : 0;
+    while (headers_.size() > count)
+        headers_.pop_back();
+    while (headers_.size() < count)
+    {
+        auto header = std::make_unique<TrackHeader>();
+        header->onInputChanged = [this](core::Id id, int channel)
+        {
+            if (onTrackInputChanged)
+                onTrackInputChanged(id, channel);
+        };
+        header->onArmChanged = [this](core::Id id, bool armed)
+        {
+            if (onTrackArmChanged)
+                onTrackArmChanged(id, armed);
+        };
+        header->onMonitorChanged = [this](core::Id id, core::MonitorMode mode)
+        {
+            if (onTrackMonitorChanged)
+                onTrackMonitorChanged(id, mode);
+        };
+        addAndMakeVisible(*header);
+        headers_.push_back(std::move(header));
+    }
+    for (size_t i = 0; i < count; ++i)
+        headers_[i]->setTrack(project_->tracks[i], inputNames_);
+    layoutHeaders();
+}
+
+void ArrangeView::layoutHeaders()
+{
+    int y = rulerHeight - verticalScroll_;
+    for (auto& header : headers_)
+    {
+        const bool visible = y + rowHeight > rulerHeight && y < getHeight() - scrollbarHeight;
+        header->setVisible(visible);
+        header->setBounds(0, y, headerWidth, rowHeight);
+        y += rowHeight;
+    }
+}
+
+void ArrangeView::setPlayhead(core::SamplePosition position, bool playing, bool recording)
+{
+    if (position == playhead_ && playing == playing_ && recording == recording_)
         return;
     playhead_ = position;
     playing_ = playing;
+    recording_ = recording;
 
     // Follow playback: page forward when the playhead leaves the view.
     if (playing_)
@@ -88,6 +139,7 @@ void ArrangeView::setVerticalScroll(int firstRowPixel)
     const int maxScroll = std::max(0, contentHeight() - lanesHeight());
     verticalScroll_ = std::clamp(firstRowPixel, 0, maxScroll);
     updateScrollbar();
+    layoutHeaders();
     repaint();
 }
 
@@ -133,9 +185,14 @@ void ArrangeView::scrollBarMoved(juce::ScrollBar* bar, double newRangeStart)
     if (updatingScrollbar_)
         return;
     if (bar == &verticalScrollbar_)
+    {
         verticalScroll_ = static_cast<int>(newRangeStart);
+        layoutHeaders();
+    }
     else
+    {
         scroll_ = static_cast<core::SamplePosition>(newRangeStart);
+    }
     repaint();
 }
 
@@ -407,18 +464,13 @@ void ArrangeView::paint(juce::Graphics& g)
             for (const auto& clip : track.clips)
                 drawClip(g, track, clip, row);
 
-            // Header over the lane so clips scrolled left disappear under it.
-            g.setColour(c.surface);
-            g.fillRect(row.withWidth(headerWidth));
-            g.setColour(c.border);
-            g.fillRect(row.withWidth(1).withX(headerWidth - 1));
-            g.fillRect(row.withWidth(headerWidth).withTrimmedTop(rowHeight - 1));
-            g.setColour(track.mute ? c.textDisabled : c.textPrimary);
-            g.setFont(juce::FontOptions{theme_.type.body});
-            g.drawText(track.name,
-                       row.withWidth(headerWidth).reduced(theme_.spacing.sm, 0),
-                       juce::Justification::centredLeft,
-                       true);
+            // The TrackHeader component covers the lane's left edge, so clips scrolled
+            // left disappear under it. Armed tracks get a tinted lane.
+            if (track.armed)
+            {
+                g.setColour(c.danger.withAlpha(recording_ ? 0.12f : 0.06f));
+                g.fillRect(row.withLeft(headerWidth));
+            }
             y += rowHeight;
         }
         g.restoreState();
@@ -436,7 +488,7 @@ void ArrangeView::paint(juce::Graphics& g)
     const int px = xForSample(playhead_);
     if (px >= headerWidth)
     {
-        g.setColour(playing_ ? c.success : c.textPrimary);
+        g.setColour(recording_ ? c.danger : playing_ ? c.success : c.textPrimary);
         g.fillRect(px, 0, 2, getHeight() - scrollbarHeight);
     }
 

@@ -3,10 +3,13 @@
 #include "audio/PeakStore.h"
 #include "core/Model.h"
 #include "ui/Theme.h"
+#include "ui/TrackHeader.h"
 
 #include <juce_gui_basics/juce_gui_basics.h>
 
 #include <functional>
+#include <memory>
+#include <string>
 #include <vector>
 
 namespace aural::ui
@@ -28,9 +31,14 @@ public:
     ~ArrangeView() override;
 
     void setProject(const core::Project* project);
-    void setPlayhead(core::SamplePosition position, bool playing);
+    void setPlayhead(core::SamplePosition position, bool playing, bool recording);
+    // Names of the device's active inputs, in callback order, for the track headers.
+    void setInputNames(std::vector<std::string> names);
 
     std::function<void(core::SamplePosition)> onLocate;
+    std::function<void(core::Id, int)> onTrackInputChanged;
+    std::function<void(core::Id, bool)> onTrackArmChanged;
+    std::function<void(core::Id, core::MonitorMode)> onTrackMonitorChanged;
     // Files dropped on the view, with the timeline position under the pointer.
     std::function<void(const std::vector<juce::File>&, core::SamplePosition)> onImportFiles;
     // Extensions the drop target accepts, e.g. "*.wav;*.flac".
@@ -48,7 +56,7 @@ public:
 
 private:
     static constexpr int rulerHeight = 40; // bars/beats row over a time row
-    static constexpr int headerWidth = 160;
+    static constexpr int headerWidth = 220;
     static constexpr int rowHeight = 72;
     static constexpr int scrollbarHeight = 12;
     static constexpr int scrollbarWidth = 12;
@@ -65,6 +73,8 @@ private:
     void setScroll(core::SamplePosition firstVisible);
     void setVerticalScroll(int firstRowPixel);
     void updateScrollbar();
+    void rebuildHeaders();
+    void layoutHeaders();
     int contentHeight() const noexcept;
     int lanesHeight() const noexcept { return getHeight() - rulerHeight - scrollbarHeight; }
     void drawRuler(juce::Graphics& g, juce::Rectangle<int> area);
@@ -78,6 +88,9 @@ private:
     const core::Project* project_ = nullptr;
     core::SamplePosition playhead_ = 0;
     bool playing_ = false;
+    bool recording_ = false;
+    std::vector<std::unique_ptr<TrackHeader>> headers_;
+    std::vector<std::string> inputNames_;
     double samplesPerPixel_ = 48000.0 / 40.0; // 40 px per second at 48 kHz
     core::SamplePosition scroll_ = 0;         // first visible sample
     juce::ScrollBar scrollbar_{false};

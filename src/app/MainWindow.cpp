@@ -2,6 +2,7 @@
 
 #include "ProjectSession.h"
 #include "audio/AudioDeviceLayer.h"
+#include "core/Command.h"
 #include "core/Model.h"
 #include "ui/ArrangeView.h"
 #include "ui/AudioSetupView.h"
@@ -49,8 +50,14 @@ public:
         button(importButton_, "Import Audio...", [this] { importAudio(); });
         button(undoButton_, "Undo", [this] { session_.undo(); });
         button(redoButton_, "Redo", [this] { session_.redo(); });
+        button(newButton_, "New", [this] { newProject(); });
+        button(openButton_, "Open...", [this] { openProject(); });
+        button(saveButton_, "Save", [this] { saveProject(false); });
         button(returnButton_, "|<", [this] { session_.returnToStart(); });
         button(playButton_, "Play", [this] { session_.togglePlay(); });
+        button(recordButton_, "Rec", [this] { toggleRecord(); });
+        recordButton_.setColour(juce::TextButton::buttonOnColourId, theme_.colours.danger);
+        recordButton_.setColour(juce::TextButton::textColourOnId, theme_.colours.textPrimary);
         button(audioSetupButton_, "Audio Setup...", [this] { owner_.showAudioSetup(); });
 
         positionLabel_.setJustificationType(juce::Justification::centred);
@@ -64,6 +71,12 @@ public:
         addAndMakeVisible(deviceSummary_);
 
         tracks_.onLocate = [this](core::SamplePosition p) { session_.locate(p); };
+        tracks_.onTrackInputChanged = [this](core::Id id, int channel)
+        { session_.execute(std::make_unique<core::SetTrackInput>(id, channel)); };
+        tracks_.onTrackArmChanged = [this](core::Id id, bool armed)
+        { session_.execute(std::make_unique<core::SetTrackArmed>(id, armed)); };
+        tracks_.onTrackMonitorChanged = [this](core::Id id, core::MonitorMode mode)
+        { session_.execute(std::make_unique<core::SetTrackMonitor>(id, mode)); };
         tracks_.onImportFiles = [this](const std::vector<juce::File>& files, core::SamplePosition at)
         { importFiles(files, at); };
         tracks_.setAcceptedExtensions(session_.mediaLoader().supportedExtensions());
@@ -108,12 +121,16 @@ public:
             c.setBounds(bar.removeFromLeft(width).withSizeKeepingCentre(width, h));
             bar.removeFromLeft(gap);
         };
-        place(importButton_, 130);
-        place(undoButton_, 64);
-        place(redoButton_, 64);
+        place(newButton_, 54);
+        place(openButton_, 70);
+        place(saveButton_, 54);
+        place(importButton_, 120);
+        place(undoButton_, 58);
+        place(redoButton_, 58);
         bar.removeFromLeft(theme_.spacing.lg);
         place(returnButton_, 40);
-        place(playButton_, 72);
+        place(playButton_, 64);
+        place(recordButton_, 54);
         place(positionLabel_, 220);
 
         audioSetupButton_.setBounds(bar.removeFromRight(130).withSizeKeepingCentre(130, h));
@@ -141,6 +158,32 @@ public:
             session_.undo();
             return true;
         }
+        if (key == juce::KeyPress('r', juce::ModifierKeys::commandModifier, 0))
+        {
+            toggleRecord();
+            return true;
+        }
+        if (key == juce::KeyPress('s', juce::ModifierKeys::commandModifier, 0))
+        {
+            saveProject(false);
+            return true;
+        }
+        if (key ==
+            juce::KeyPress('s', juce::ModifierKeys::commandModifier | juce::ModifierKeys::shiftModifier, 0))
+        {
+            saveProject(true);
+            return true;
+        }
+        if (key == juce::KeyPress('o', juce::ModifierKeys::commandModifier, 0))
+        {
+            openProject();
+            return true;
+        }
+        if (key == juce::KeyPress('n', juce::ModifierKeys::commandModifier, 0))
+        {
+            newProject();
+            return true;
+        }
         if (key == juce::KeyPress('y', juce::ModifierKeys::commandModifier, 0) ||
             key == juce::KeyPress(
                        'z', juce::ModifierKeys::commandModifier | juce::ModifierKeys::shiftModifier, 0))
@@ -156,30 +199,120 @@ private:
     static constexpr int statusHeight = 28;
 
     void changeListenerCallback(juce::ChangeBroadcaster*) override { refresh(); }
-
     void timerCallback() override
     {
         if (++ticks_ % 15 == 0)
             updateStatusText();
-        tracks_.setPlayhead(session_.position(), session_.isPlaying());
+        const bool recording = session_.isRecording();
+        tracks_.setPlayhead(session_.position(), session_.isPlaying(), recording);
         positionLabel_.setText(formatPosition(session_.project(), session_.position()),
                                juce::dontSendNotification);
         const bool playing = session_.isPlaying();
-        if (playing != lastPlaying_)
+        if (playing != lastPlaying_ || recording != lastRecording_)
         {
             lastPlaying_ = playing;
+            lastRecording_ = recording;
             playButton_.setButtonText(playing ? "Stop" : "Play");
             playButton_.setToggleState(playing, juce::dontSendNotification);
+            recordButton_.setToggleState(recording, juce::dontSendNotification);
         }
+    }
+
+    void toggleRecord()
+    {
+        if (session_.isRecording())
+        {
+            session_.stop();
+            return;
+        }
+        const auto error = session_.startRecording();
+        if (!error.empty())
+        {
+            lastImportError_ = "Cannot record: " + juce::String(error);
+            refresh();
+        }
+    }
+
+    void newProject()
+    {
+        if (session_.isRecording())
+            return;
+        session_.stop();
+        session_.newProject();
+        lastImportError_.clear();
+        refresh();
+    }
+
+    void openProject()
+    {
+        if (session_.isRecording())
+            return;
+        chooser_ = std::make_unique<juce::FileChooser>(
+            "Open project", juce::File::getSpecialLocation(juce::File::userDocumentsDirectory), "*.aural");
+        chooser_->launchAsync(
+            juce::FileBrowserComponent::openMode | juce::FileBrowserComponent::canSelectFiles,
+            [this](const juce::FileChooser& fc)
+            {
+                const auto file = fc.getResult();
+                if (file == juce::File())
+                    return;
+                session_.stop();
+                const auto error = session_.open(file);
+                lastImportError_ = error.empty() ? juce::String() : "Cannot open: " + juce::String(error);
+                session_.recoverPartialRecordings();
+                refresh();
+                grabKeyboardFocus();
+            });
+    }
+
+    void saveProject(bool saveAs)
+    {
+        if (!saveAs && session_.projectFile().getFullPathName().isNotEmpty())
+        {
+            const auto error = session_.save(session_.projectFile());
+            lastImportError_ = error.empty() ? juce::String() : "Cannot save: " + juce::String(error);
+            refresh();
+            return;
+        }
+        chooser_ = std::make_unique<juce::FileChooser>(
+            "Save project",
+            juce::File::getSpecialLocation(juce::File::userDocumentsDirectory).getChildFile("Untitled.aural"),
+            "*.aural");
+        chooser_->launchAsync(
+            juce::FileBrowserComponent::saveMode | juce::FileBrowserComponent::canSelectFiles |
+                juce::FileBrowserComponent::warnAboutOverwriting,
+            [this](const juce::FileChooser& fc)
+            {
+                auto file = fc.getResult();
+                if (file == juce::File())
+                    return;
+                if (!file.hasFileExtension("aural"))
+                    file = file.withFileExtension("aural");
+                const auto error = session_.save(file);
+                lastImportError_ = error.empty() ? juce::String() : "Cannot save: " + juce::String(error);
+                refresh();
+                grabKeyboardFocus();
+            });
     }
 
     void refresh()
     {
+        const auto s = audio_.status();
+        {
+            // Names of the active inputs in callback order.
+            const auto all = audio_.inputChannelNames();
+            std::vector<std::string> names;
+            for (int channel : s.activeInputs)
+                names.push_back(channel >= 0 && static_cast<size_t>(channel) < all.size()
+                                    ? all[static_cast<size_t>(channel)]
+                                    : "Input " + std::to_string(channel + 1));
+            tracks_.setInputNames(std::move(names));
+        }
         tracks_.setProject(&session_.project());
         undoButton_.setEnabled(session_.canUndo());
         redoButton_.setEnabled(session_.canRedo());
+        saveButton_.setEnabled(!session_.isRecording());
 
-        const auto s = audio_.status();
         juce::String text;
         if (!s.open)
         {
@@ -196,8 +329,13 @@ private:
         juce::String warning = s.message;
         if (warning.isEmpty())
             warning = session_.sampleRateWarning();
+        if (warning.isEmpty() && !session_.lastRecordingMessage().empty())
+            warning = juce::String(session_.lastRecordingMessage());
         if (!lastImportError_.isEmpty())
             warning = lastImportError_;
+        if (session_.projectFile().getFullPathName().isNotEmpty())
+            text = session_.projectFile().getFileNameWithoutExtension() + (session_.isModified() ? "*" : "") +
+                   separator + text;
         baseStatus_ = text;
         statusWarning_ = warning;
         updateStatusText();
@@ -264,13 +402,15 @@ private:
     audio::AudioDeviceLayer& audio_;
     ProjectSession& session_;
     const ui::Theme& theme_ = ui::Theme::dark();
-    juce::TextButton importButton_, undoButton_, redoButton_, returnButton_, playButton_, audioSetupButton_;
+    juce::TextButton newButton_, openButton_, saveButton_, importButton_, undoButton_, redoButton_,
+        returnButton_, playButton_, recordButton_, audioSetupButton_;
     juce::Label positionLabel_, deviceSummary_;
     ui::ArrangeView tracks_;
     std::unique_ptr<juce::FileChooser> chooser_;
     juce::String lastImportError_;
     juce::String baseStatus_, statusWarning_;
     bool lastPlaying_ = false;
+    bool lastRecording_ = false;
     int ticks_ = 0;
 };
 

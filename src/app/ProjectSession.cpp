@@ -2,6 +2,9 @@
 
 #include "audio/AudioDeviceLayer.h"
 #include "core/ProjectJson.h"
+#include "engine/WavFile.h"
+
+#include <algorithm>
 
 namespace aural
 {
@@ -132,7 +135,7 @@ void ProjectSession::stop()
 
 void ProjectSession::togglePlay()
 {
-    if (engine_.isPlaying())
+    if (engine_.isPlaying() || engine_.isRecording())
         engine_.stop();
     else
         engine_.play();
@@ -157,6 +160,138 @@ std::string ProjectSession::sampleRateWarning() const
     return "The device runs at " + std::to_string(static_cast<int>(deviceRate)) +
            " Hz but the project is at " + std::to_string(static_cast<int>(project_.sampleRate)) +
            " Hz; playback will be pitched.";
+}
+
+// ----- recording ---------------------------------------------------------------------------
+
+juce::File ProjectSession::mediaFolder() const
+{
+    if (projectFile_.existsAsFile() || projectFile_.getFullPathName().isNotEmpty())
+        return projectFile_.getSiblingFile(projectFile_.getFileNameWithoutExtension() + " Media");
+    return juce::File::getSpecialLocation(juce::File::userDocumentsDirectory)
+        .getChildFile("Aural")
+        .getChildFile("Recordings");
+}
+
+core::SamplePosition ProjectSession::recordingLatencySamples() const
+{
+    if (const auto calibration = audio_.currentCalibration())
+        return calibration->roundTripSamples;
+    const auto s = audio_.status();
+    return s.inputLatencySamples + s.outputLatencySamples;
+}
+
+std::string ProjectSession::startRecording()
+{
+    if (engine_.isRecording())
+        return {};
+    const auto folder = mediaFolder();
+    if (!folder.createDirectory().wasOk())
+        return "could not create " + folder.getFullPathName().toStdString();
+
+    const auto stamp = juce::Time::getCurrentTime().formatted("%Y%m%d-%H%M%S");
+    auto session = std::make_unique<engine::RecordSession>(project_.sampleRate);
+    int index = 0;
+    for (const auto& t : project_.tracks)
+    {
+        if (!t.armed || t.inputChannel < 0)
+            continue;
+        const auto safeName = juce::File::createLegalFileName(juce::String(t.name)).trim();
+        const auto file = folder.getChildFile((safeName.isEmpty() ? juce::String("Track") : safeName) + "-" +
+                                              stamp + "-" + juce::String(++index) + ".partial.wav");
+        session->addInput(t.id, t.inputChannel, file.getFullPathName().toStdString());
+    }
+    if (session->inputs().empty())
+        return "arm a track and give it an input first";
+
+    std::string error;
+    if (!engine_.startRecording(std::move(session), error))
+        return error;
+    recordingMessage_.clear();
+    sendChangeMessage();
+    return {};
+}
+
+void ProjectSession::finishRecording(engine::AudioEngine::FinishedRecording finished)
+{
+    const auto latency = recordingLatencySamples();
+    const auto start = finished.session->startPosition();
+    std::uint64_t dropped = 0;
+
+    undo_.beginGroup("Record");
+    for (const auto& r : finished.results)
+    {
+        dropped += r.dropped;
+        if (!r.ok || r.samplesWritten <= 0)
+            continue;
+        juce::File partial{juce::String(r.path)};
+        juce::File final = partial.getSiblingFile(partial.getFileName().replace(".partial.wav", ".wav"));
+        if (!partial.moveFileTo(final))
+            final = partial;
+
+        core::AudioClip clip;
+        clip.name = final.getFileNameWithoutExtension().toStdString();
+        clip.mediaPath = final.getFullPathName().toStdString();
+        clip.start = std::max<core::SamplePosition>(0, start) - latency;
+        clip.length = r.samplesWritten;
+        if (clip.start < 0)
+        {
+            clip.sourceOffset = -clip.start;
+            clip.length = std::max<core::SamplePosition>(0, clip.length - clip.sourceOffset);
+            clip.start = 0;
+        }
+        if (clip.length > 0 && project_.findTrack(r.trackId) != nullptr)
+            undo_.execute(project_, std::make_unique<core::AddClip>(r.trackId, clip));
+    }
+    undo_.endGroup();
+    modified_ = true;
+
+    if (dropped > 0)
+        recordingMessage_ = "Recording lost " + std::to_string(dropped) + " samples to disk overruns";
+    else
+        recordingMessage_ = "Recorded " + std::to_string(finished.results.size()) + " track(s), placed " +
+                            std::to_string(latency) + " samples early for latency";
+    publish();
+}
+
+int ProjectSession::recoverPartialRecordings()
+{
+    const auto folder = mediaFolder();
+    if (!folder.isDirectory())
+        return 0;
+    int recovered = 0;
+    for (const auto& partial : folder.findChildFiles(juce::File::findFiles, false, "*.partial.wav"))
+    {
+        const auto path = partial.getFullPathName().toStdString();
+        if (!engine::WavWriter::repair(path))
+            continue;
+        const auto info = engine::readWavInfo(path);
+        if (!info.has_value() || info->lengthSamples <= 0)
+        {
+            partial.deleteFile();
+            continue;
+        }
+        const auto recoveredFile =
+            partial.getSiblingFile(partial.getFileName().replace(".partial.wav", ".recovered.wav"));
+        if (!partial.moveFileTo(recoveredFile))
+            continue;
+        core::Track track;
+        track.name = "Recovered: " + recoveredFile.getFileNameWithoutExtension().toStdString();
+        core::AudioClip clip;
+        clip.name = track.name;
+        clip.mediaPath = recoveredFile.getFullPathName().toStdString();
+        clip.length = info->lengthSamples;
+        track.clips.push_back(clip);
+        undo_.execute(project_, std::make_unique<core::AddTrack>(track));
+        ++recovered;
+    }
+    if (recovered > 0)
+    {
+        modified_ = true;
+        recordingMessage_ = "Recovered " + std::to_string(recovered) + " unfinished recording(s)";
+        publish();
+    }
+    return recovered;
 }
 
 // ----- internals ---------------------------------------------------------------------------
@@ -190,6 +325,9 @@ void ProjectSession::changeListenerCallback(juce::ChangeBroadcaster*)
 void ProjectSession::timerCallback()
 {
     engine_.collectGarbage();
+    if (engine_.hasRecordingToCollect())
+        if (auto finished = engine_.collectRecording())
+            finishRecording(std::move(*finished));
 }
 
 } // namespace aural
