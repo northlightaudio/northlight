@@ -329,9 +329,12 @@ bus's chain after its balance and phase, both pre-fader.
 
 `src/plugins` holds the built-ins behind `plugins::BuiltInFactory`: Gain (ramped),
 EQ (high-pass, low shelf, peaking mid, high shelf as RBJ biquads), Compressor
-(log-domain peak detector, soft knee, makeup) and Limiter (instantaneous gain with
-a fast release and a hard clip at the ceiling, so it adds no latency; a lookahead
-limiter waits for delay compensation in Phase 5). `ui::InsertEditor` is a generic
+(log-domain peak detector, soft knee, makeup) and Limiter (a lookahead limiter: the
+signal is delayed by the lookahead while the gain the coming samples need is
+known, taken as a running minimum over the window with release, smoothed by a
+moving average of the same length, so nothing crosses the ceiling and the gain
+ramps instead of stepping; it reports the lookahead as latency for delay
+compensation). `ui::InsertEditor` is a generic
 window with a slider per parameter, used for every built-in; hosted plugins bring
 their own editors.
 
@@ -489,4 +492,4 @@ launches; `JUCE_MODAL_LOOPS_PERMITTED` stays 0.
 | 2026-10-19 | A hosted plugin's state is an opaque blob the plugin owns | Mirroring every plugin parameter into the model would fight the plugin's own editor and presets; capturing its state on save and restoring it on load is what every host does and keeps the model small. Automation (Phase 9) adds parameter access on top. |
 | 2026-10-19 | Insert chains are stereo pairs; plugins get a stereo main bus and no sidechain yet | The engine's channels are stereo and the chain interface is two pointers; asking every plugin for stereo in and out keeps hosting simple and correct for effects. Sidechain routing needs a graph change and comes later in Phase 5. |
 | 2026-10-19 | Delay compensation per graph edge, solved at compile, lines cached across compiles | Delaying edges rather than nodes handles a source that feeds several destinations with different needs (a send to a latent bus and a direct output); solving at compile keeps the real-time path a fixed delay per edge; caching the lines by edge is what makes a recompile on every edit inaudible. |
-| 2026-10-19 | The limiter has no lookahead | Lookahead adds latency that needs delay compensation across the graph, which Phase 5 brings with plugin hosting; until then a fast-release limiter with a hard ceiling is honest about what it does. |
+| 2026-10-19 | The limiter has no lookahead (superseded the same day: lookahead added once delay compensation landed) | Lookahead adds latency that needs delay compensation across the graph, which Phase 5 brings with plugin hosting; until then a fast-release limiter with a hard ceiling is honest about what it does. |

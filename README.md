@@ -123,7 +123,8 @@ rate.
 Projects are `.aural` files: **New**, **Open...**, **Save** (Ctrl+N / Ctrl+O / Ctrl+S,
 Ctrl+Shift+S to save as).
 
-For unattended checks: `Aural.exe --import <file> [--import <file>] --play`, and
+For unattended checks: `Aural.exe --import <file> [--import <file>] --play` (or
+`--open <project>`), and
 `Aural.exe --record <inputs> [--loop <from> <to>] [--no-count-in] --stop-after <seconds>`; `--mixer`
 opens the mixer panel and `--insert <type>` adds a built-in (for example `aural.eq`) to
 every track and opens its editor. `--scan-plugins` runs a full plugin scan; `--recover` recovers unfinished recordings without

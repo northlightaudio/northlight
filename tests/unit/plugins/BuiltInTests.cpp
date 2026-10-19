@@ -149,6 +149,52 @@ TEST_CASE("The limiter never lets a sample over the ceiling", "[plugins][limiter
     CHECK(peak > ceiling * 0.9f); // it is actually working near the ceiling, not just attenuating
 }
 
+TEST_CASE("The limiter's lookahead delays the signal exactly and reports it as latency", "[plugins][limiter]")
+{
+    plugins::BuiltInFactory factory;
+    auto lim = factory.create(plugins::types::limiter);
+    lim->setParameter(2, 1.5f); // ms
+    lim->prepare(rate, 256);
+    CHECK(lim->latencySamples() == 72); // 1.5 ms at 48 kHz
+    // Quiet audio passes untouched, just late by the lookahead.
+    std::vector<float> l(256, 0.0f), r(256, 0.0f);
+    l[10] = 0.25f;
+    r[10] = -0.25f;
+    lim->process(l.data(), r.data(), 256);
+    CHECK(l[10] == 0.0f);
+    CHECK(l[82] == Approx(0.25f));
+    CHECK(r[82] == Approx(-0.25f));
+    lim->setParameter(2, 0.0f);
+    CHECK(lim->latencySamples() == 0);
+}
+
+TEST_CASE("With lookahead a sudden peak is already attenuated when it arrives", "[plugins][limiter]")
+{
+    plugins::BuiltInFactory factory;
+    auto lim = factory.create(plugins::types::limiter);
+    lim->setParameter(0, -6.0f);
+    lim->setParameter(1, 5.0f); // a short release so the tail recovers inside the buffer
+    lim->setParameter(2, 2.0f); // 96 samples
+    lim->prepare(rate, 512);
+    const float ceiling = std::pow(10.0f, -6.0f / 20.0f);
+    std::vector<float> l(2048, 0.1f), r(2048, 0.1f);
+    for (size_t i = 1000; i < 1200; ++i)
+        l[i] = r[i] = 1.0f; // a loud burst
+    lim->process(l.data(), r.data(), 2048);
+    float peak = 0.0f;
+    for (size_t i = 0; i < l.size(); ++i)
+        peak = std::max({peak, std::abs(l[i]), std::abs(r[i])});
+    CHECK(peak <= ceiling + 1e-6f);
+    // The burst leaves the delay at 1096; the gain started falling before that,
+    // so the sample just before the burst is already a little quieter than 0.1.
+    CHECK(l[1095] < 0.1f);
+    CHECK(l[1095] > 0.05f);
+    // Inside the burst the output sits right at the ceiling, not far below it.
+    CHECK(l[1150] == Approx(ceiling).margin(0.01f));
+    // Well after it, the release has brought the quiet part back to 0.1.
+    CHECK(l[2000] == Approx(0.1f).margin(0.01f));
+}
+
 #if defined(AURAL_RT_CHECKS)
 namespace
 {

@@ -6,7 +6,9 @@
 #include <array>
 #include <atomic>
 #include <cmath>
+#include <cstdint>
 #include <numbers>
+#include <vector>
 
 namespace aural::plugins
 {
@@ -366,19 +368,38 @@ public:
     {
         ceilingDb,
         releaseMs,
+        lookaheadMs,
     };
+
+    static constexpr float maxLookaheadMs = 10.0f;
 
     Limiter()
         : Base(types::limiter,
-               {{"Ceiling", "dB", -24.0f, 0.0f, -0.3f, false}, {"Release", "ms", 1.0f, 1000.0f, 50.0f, true}})
+               {{"Ceiling", "dB", -24.0f, 0.0f, -0.3f, false},
+                {"Release", "ms", 1.0f, 1000.0f, 50.0f, true},
+                {"Lookahead", "ms", 0.0f, maxLookaheadMs, 1.5f, false}})
     {
     }
 
+    // Lookahead: the signal is delayed by L samples while the gain the next L
+    // samples need is already known, so a peak is attenuated before it arrives and
+    // nothing crosses the ceiling. The gain applied to the sample leaving the delay
+    // at time t is the mean over the last L samples of the running minimum of the
+    // needed gain over [t, t + L] (released), which is never above what sample t
+    // needs and ramps smoothly instead of stepping.
     void prepare(double sampleRate, int) override
     {
         sampleRate_ = sampleRate;
-        gain_ = 1.0f;
+        capacity_ = static_cast<int>(std::ceil(sampleRate * maxLookaheadMs * 0.001)) + 2;
+        delayL_.assign(static_cast<size_t>(capacity_), 0.0f);
+        delayR_.assign(static_cast<size_t>(capacity_), 0.0f);
+        needed_.assign(static_cast<size_t>(capacity_), 1.0f);
+        minima_.assign(static_cast<size_t>(capacity_), 0);
+        smoothed_.assign(static_cast<size_t>(capacity_), 1.0f);
+        reset(lookaheadSamples());
     }
+
+    int latencySamples() const noexcept override { return lookaheadSamples(); }
 
     void process(float* left, float* right, int numSamples) noexcept override
     {
@@ -387,20 +408,120 @@ public:
         const float ceiling = dbToGain(parameter(ceilingDb));
         const float release =
             std::exp(-1.0f / (static_cast<float>(sampleRate_) * parameter(releaseMs) * 0.001f));
+        const int lookahead = lookaheadSamples();
+        if (lookahead != length_)
+            reset(lookahead); // a changed lookahead restarts the pipeline (no allocation)
+
+        if (length_ == 0)
+        {
+            for (int i = 0; i < numSamples; ++i)
+            {
+                const float peak = std::max(std::abs(left[i]), std::abs(right[i]));
+                const float needed = peak > ceiling ? ceiling / peak : 1.0f;
+                gain_ = needed < gain_ ? needed : release * gain_ + (1.0f - release);
+                if (gain_ > 1.0f)
+                    gain_ = 1.0f;
+                left[i] = std::clamp(left[i] * gain_, -ceiling, ceiling);
+                right[i] = std::clamp(right[i] * gain_, -ceiling, ceiling);
+            }
+            return;
+        }
+
+        const int L = length_;
+        const int window = L + 1; // the sample itself and the next L
         for (int i = 0; i < numSamples; ++i)
         {
+            // 1. The gain this input sample needs, into the window ring (modulo capacity).
             const float peak = std::max(std::abs(left[i]), std::abs(right[i]));
             const float needed = peak > ceiling ? ceiling / peak : 1.0f;
-            gain_ = needed < gain_ ? needed : release * gain_ + (1.0f - release) * 1.0f;
-            if (gain_ > 1.0f)
-                gain_ = 1.0f;
-            left[i] = std::clamp(left[i] * gain_, -ceiling, ceiling);
-            right[i] = std::clamp(right[i] * gain_, -ceiling, ceiling);
+            needed_[static_cast<size_t>(head_)] = needed;
+            // A monotonic deque of ring indices with increasing needed gain: the
+            // front is the window minimum. Drop what left the window, then every
+            // candidate this sample beats.
+            while (dequeCount_ > 0 && age(minima_[static_cast<size_t>(dequeFront_)]) >= window)
+                popFront();
+            while (dequeCount_ > 0 &&
+                   needed_[static_cast<size_t>(minima_[static_cast<size_t>(back())])] >= needed)
+                --dequeCount_;
+            minima_[static_cast<size_t>((dequeFront_ + dequeCount_) % capacity_)] = head_;
+            ++dequeCount_;
+
+            // 2. The window minimum applies to the sample leaving the delay; release
+            //    lets it recover between peaks.
+            const float minimum = needed_[static_cast<size_t>(minima_[static_cast<size_t>(dequeFront_)])];
+            released_ = minimum < released_ ? minimum : release * released_ + (1.0f - release);
+            if (released_ > 1.0f)
+                released_ = 1.0f;
+
+            // 3. Smooth: the mean of the last L released values (double sum, no drift).
+            const auto slot = static_cast<size_t>(pos_); // rings of length L
+            sum_ += static_cast<double>(released_) - static_cast<double>(smoothed_[slot]);
+            smoothed_[slot] = released_;
+            const float gain = std::min(1.0f, static_cast<float>(sum_ / L));
+
+            // 4. The sample written L samples ago leaves through the gain; this one enters.
+            const float outL = delayL_[slot] * gain;
+            const float outR = delayR_[slot] * gain;
+            delayL_[slot] = left[i];
+            delayR_[slot] = right[i];
+            left[i] = std::clamp(outL, -ceiling, ceiling);
+            right[i] = std::clamp(outR, -ceiling, ceiling);
+            if (++pos_ == L)
+                pos_ = 0;
+            if (++head_ == capacity_)
+                head_ = 0;
         }
     }
 
 private:
+    int lookaheadSamples() const noexcept
+    {
+        const auto ms = std::clamp(parameter(lookaheadMs), 0.0f, maxLookaheadMs);
+        return static_cast<int>(std::lround(sampleRate_ * ms * 0.001));
+    }
+
+    void reset(int length) noexcept
+    {
+        length_ = std::clamp(length, 0, capacity_ - 2);
+        head_ = 0;
+        pos_ = 0;
+        dequeFront_ = 0;
+        dequeCount_ = 0;
+        released_ = 1.0f;
+        sum_ = static_cast<double>(std::max(1, length_)); // L ones
+        gain_ = 1.0f;
+        std::fill(delayL_.begin(), delayL_.end(), 0.0f);
+        std::fill(delayR_.begin(), delayR_.end(), 0.0f);
+        std::fill(needed_.begin(), needed_.end(), 1.0f);
+        std::fill(smoothed_.begin(), smoothed_.end(), 1.0f);
+    }
+
+    int back() const noexcept { return (dequeFront_ + dequeCount_ - 1 + capacity_) % capacity_; }
+    void popFront() noexcept
+    {
+        if (++dequeFront_ == capacity_)
+            dequeFront_ = 0;
+        --dequeCount_;
+    }
+    // How many samples ago the needed_ ring index was written (0 = this sample).
+    int age(int index) const noexcept
+    {
+        int a = head_ - index;
+        if (a < 0)
+            a += capacity_;
+        return a;
+    }
+
+    int capacity_ = 0;
+    int length_ = 0;
+    int head_ = 0; // needed_ / minima_ ring position (modulo capacity_)
+    int pos_ = 0;  // delay and smoothing ring position (modulo length_)
+    int dequeFront_ = 0, dequeCount_ = 0;
+    float released_ = 1.0f;
+    double sum_ = 1.0;
     float gain_ = 1.0f;
+    std::vector<float> delayL_, delayR_, needed_, smoothed_;
+    std::vector<int> minima_;
 };
 } // namespace
 

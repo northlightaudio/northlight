@@ -56,6 +56,8 @@ public:
             const auto& arg = tokens.getReference(i);
             if (arg == "--audio-setup")
                 mainWindow_->showAudioSetup();
+            else if (arg == "--open" && i + 1 < tokens.size())
+                session_->open(tokens.getReference(++i).resolveAsFile());
             else if (arg == "--import" && i + 1 < tokens.size())
                 session_->importAudioFile(tokens.getReference(++i).resolveAsFile(), 0);
             else if (arg == "--play")
