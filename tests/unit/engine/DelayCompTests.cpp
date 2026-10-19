@@ -254,3 +254,26 @@ TEST_CASE("A changed insert latency is noticed so the session can recompile", "[
     CHECK_FALSE(h.engine.insertLatencyChanged());
     CHECK(h.engine.outputLatencySamples() == 20);
 }
+
+TEST_CASE("A partly dry insert keeps its dry half aligned with the wet half", "[engine][delay]")
+{
+    // mix 0.5 through a 10-sample delay insert: the dry copy is held back 10 too,
+    // so one impulse of full height comes out at 10, nothing at 0.
+    Harness h;
+    core::Project p;
+    auto a = impulseTrack(1, "test.delay10");
+    a.inserts[0].mix = 0.5f;
+    p.tracks.push_back(a);
+    h.play(p);
+    CHECK(h.left[0] == Approx(0.0f));
+    CHECK(h.left[10] == Approx(centre));
+
+    // Fully dry: the insert's latency still counts (it is still in the chain) but
+    // the signal is the input, delayed to match.
+    p.tracks[0].inserts[0].mix = 0.0f;
+    h.engine.setProject(p);
+    h.engine.locate(0);
+    h.engine.process(h.outputs, 2, blockSize);
+    CHECK(h.left[10] == Approx(centre));
+    CHECK(h.engine.outputLatencySamples() == 10);
+}

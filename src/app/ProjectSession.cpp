@@ -612,6 +612,13 @@ void ProjectSession::scanPlugins(bool all)
     sendChangeMessage();
 }
 
+void ProjectSession::clearPluginBlocklist()
+{
+    registry_.clearBlocklist();
+    saveRegistry();
+    sendChangeMessage();
+}
+
 void ProjectSession::saveRegistry()
 {
     if (registryFile_.getFullPathName().isEmpty())

@@ -19,6 +19,10 @@ public:
     audio::AudioSettings loadAudioSettings() override;
     void saveAudioSettings(const audio::AudioSettings& settings) override;
 
+    // Generic per-user values (window positions, UI preferences).
+    std::string value(const std::string& key, const std::string& fallback = {}) const;
+    void setValue(const std::string& key, const std::string& value);
+
     // Writes any pending changes to disk now.
     void flush();
 

@@ -670,7 +670,10 @@ void MixerView::openInsertEditor(core::Id channelId, core::Id insertId)
             return; // not loaded (missing plugin): nothing to show
         const juce::String title = juce::String::fromUTF8(channel->name.c_str()) + " - " +
                                    juce::String::fromUTF8(insertDisplayName(insert->type).c_str());
-        auto window = std::make_unique<PluginWindow>(channelId, insertId, hosted->instance(), title);
+        const auto setting = [this](const std::string& key)
+        { return loadSetting ? loadSetting(key) : std::string{}; };
+        const bool pinned = setting("plugins.pin") == "1";
+        auto window = std::make_unique<PluginWindow>(channelId, insertId, hosted->instance(), title, pinned);
         juce::Component::SafePointer<MixerView> safe(this);
         window->onClose = [safe, insertId]
         {
@@ -678,7 +681,30 @@ void MixerView::openInsertEditor(core::Id channelId, core::Id insertId)
                 std::erase_if(safe->pluginWindows_,
                               [insertId](const auto& w) { return w->insertId() == insertId; });
         };
-        window->centreAroundComponent(getTopLevelComponent(), window->getWidth(), window->getHeight());
+        window->onCommand = [safe](std::unique_ptr<core::Command> c)
+        {
+            if (safe != nullptr && safe->onCommand)
+                safe->onCommand(std::move(c));
+        };
+        window->onPinChanged = [safe](bool pin)
+        {
+            if (safe != nullptr && safe->saveSetting)
+                safe->saveSetting("plugins.pin", pin ? "1" : "0");
+        };
+        // Where this plugin's window was last left, per plugin type, if still on screen.
+        const std::string positionKey = "plugins.window." + insert->type;
+        const auto saved = juce::StringArray::fromTokens(juce::String(setting(positionKey)), ",", "");
+        const auto screen = juce::Desktop::getInstance().getDisplays().getTotalBounds(true);
+        if (saved.size() == 2 && screen.contains(saved[0].getIntValue() + 20, saved[1].getIntValue() + 20))
+            window->setTopLeftPosition(saved[0].getIntValue(), saved[1].getIntValue());
+        else
+            window->centreAroundComponent(getTopLevelComponent(), window->getWidth(), window->getHeight());
+        window->onMoved = [safe, positionKey](juce::Point<int> p)
+        {
+            if (safe != nullptr && safe->saveSetting)
+                safe->saveSetting(positionKey, std::to_string(p.x) + "," + std::to_string(p.y));
+        };
+        window->setInsert(*insert);
         pluginWindows_.push_back(std::move(window));
         return;
     }
@@ -711,6 +737,12 @@ MixerView::MixerView(rt::MeterBlock& meters, std::function<engine::LoudnessMeter
     addAndMakeVisible(*master_);
     addBusButton_.onClick = [this] { addBus(); };
     addAndMakeVisible(addBusButton_);
+    pluginsButton_.onClick = [this]
+    {
+        if (onOpenPluginBrowser)
+            onOpenPluginBrowser();
+    };
+    addAndMakeVisible(pluginsButton_);
     startTimerHz(meterHz);
 }
 
@@ -729,14 +761,18 @@ void MixerView::setProject(const core::Project* project)
     // Open editors follow the model (undo, a removed insert closes its window).
     // A plugin window must go before its instance, which the engine drops once no
     // snapshot references it (after this call).
-    std::erase_if(pluginWindows_,
-                  [this](const auto& w)
-                  {
-                      const auto* channel =
-                          project_ != nullptr ? project_->findChannel(w->channelId()) : nullptr;
-                      return channel == nullptr ||
-                             const_cast<core::Channel*>(channel)->findInsert(w->insertId()) == nullptr;
-                  });
+    std::erase_if(
+        pluginWindows_,
+        [this](const auto& w)
+        {
+            const auto* channel = project_ != nullptr ? project_->findChannel(w->channelId()) : nullptr;
+            const auto* insert =
+                channel != nullptr ? const_cast<core::Channel*>(channel)->findInsert(w->insertId()) : nullptr;
+            if (insert == nullptr)
+                return true;
+            w->setInsert(*insert);
+            return false;
+        });
     std::erase_if(editors_,
                   [this](const auto& w)
                   {
@@ -820,7 +856,10 @@ void MixerView::resized()
 {
     auto area = getLocalBounds().withTrimmedTop(1);
     auto header = area.removeFromTop(theme_.sizes.controlHeight + theme_.spacing.sm);
-    addBusButton_.setBounds(header.reduced(theme_.spacing.sm, theme_.spacing.xs).removeFromLeft(72));
+    auto headerRow = header.reduced(theme_.spacing.sm, theme_.spacing.xs);
+    addBusButton_.setBounds(headerRow.removeFromLeft(72));
+    headerRow.removeFromLeft(theme_.spacing.sm);
+    pluginsButton_.setBounds(headerRow.removeFromLeft(90));
     master_->setBounds(area.removeFromRight(stripWidth + 16));
     viewport_.setBounds(area);
     layoutStrips();

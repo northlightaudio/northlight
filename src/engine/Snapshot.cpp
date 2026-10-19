@@ -210,6 +210,7 @@ compileSnapshot(const core::Project& project, MediaCache& media, InsertCache& in
         }
     }
 
+    DelayCache localDelays; // used only when the caller keeps no cache
     const auto fillChannel = [&](ChannelNode& node, const core::Channel& c, int index, int slot)
     {
         node.id = c.id;
@@ -229,13 +230,27 @@ compileSnapshot(const core::Project& project, MediaCache& media, InsertCache& in
         for (const auto& i : c.inserts)
             if (auto instance = inserts.get(i))
             {
-                if (!i.bypass)
-                    node.chainLatency += std::max(0, instance->latencySamples());
+                const int latency = i.bypass ? 0 : std::max(0, instance->latencySamples());
+                node.chainLatency += latency;
                 node.inserts.push_back(instance.get());
+                node.insertMix.push_back(std::clamp(i.mix, 0.0f, 1.0f));
+                // A partly dry slot needs its dry copy held back by the insert's
+                // latency so the two halves line up.
+                DelayLine* dry = nullptr;
+                if (i.mix < 1.0f && latency > 0)
+                {
+                    auto line = (delays != nullptr ? *delays : localDelays)
+                                    .get(DelayKey{i.id, core::invalidId, true}, latency);
+                    dry = line.get();
+                    node.keepAliveDelays.push_back(std::move(line));
+                }
+                node.insertDry.push_back(dry);
                 node.keepAlive.push_back(std::move(instance));
             }
         node.outLeft.assign(n, 0.0f);
         node.outRight.assign(n, 0.0f);
+        node.dryLeft.assign(n, 0.0f);
+        node.dryRight.assign(n, 0.0f);
         node.delayScratchLeft.assign(n, 0.0f);
         node.delayScratchRight.assign(n, 0.0f);
     };
@@ -312,8 +327,7 @@ compileSnapshot(const core::Project& project, MediaCache& media, InsertCache& in
         }
         snapshot->outputLatency = arrival[static_cast<size_t>(master)];
 
-        DelayCache local;
-        DelayCache& cache = delays != nullptr ? *delays : local;
+        DelayCache& cache = delays != nullptr ? *delays : localDelays;
         const auto attach = [&](ChannelNode& node, core::Id id, int out)
         {
             const auto line = [&](int bus, bool send)

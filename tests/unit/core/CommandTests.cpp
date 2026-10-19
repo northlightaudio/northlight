@@ -324,3 +324,25 @@ TEST_CASE("A fader group moves its members together, keeping their balance", "[c
     CHECK_THROWS(SetChannelGroup(b, 999).apply(p));
     CHECK_THROWS(SetGroupGain(999, 1.0f).apply(p));
 }
+
+TEST_CASE("An insert's wet/dry mix is set, clamped and undone", "[core][command]")
+{
+    Project p = projectWithTrack();
+    UndoStack stack;
+    const Id track = p.tracks[0].id;
+    Insert insert;
+    insert.type = "aural.eq";
+    auto add = std::make_unique<AddInsert>(track, insert);
+    const auto* addPtr = add.get();
+    stack.execute(p, std::move(add));
+    const Id id = addPtr->insertId();
+    CHECK(p.tracks[0].inserts[0].mix == 1.0f);
+    stack.execute(p, std::make_unique<SetInsertMix>(track, id, 0.25f));
+    CHECK(p.tracks[0].inserts[0].mix == 0.25f);
+    stack.execute(p, std::make_unique<SetInsertMix>(track, id, 7.0f));
+    CHECK(p.tracks[0].inserts[0].mix == 1.0f); // clamped
+    stack.undo(p);
+    CHECK(p.tracks[0].inserts[0].mix == 0.25f);
+    stack.undo(p);
+    CHECK(p.tracks[0].inserts[0].mix == 1.0f);
+}

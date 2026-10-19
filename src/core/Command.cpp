@@ -591,6 +591,21 @@ void SetInsertParameter::revert(Project& p)
         i.params[static_cast<size_t>(parameter_)] = previous_;
 }
 
+SetInsertMix::SetInsertMix(Id channelId, Id insertId, float mix)
+    : channelId_(channelId), insertId_(insertId), value_(std::clamp(mix, 0.0f, 1.0f))
+{
+}
+void SetInsertMix::apply(Project& p)
+{
+    auto& i = requireInsert(requireChannel(p, channelId_), insertId_);
+    previous_ = i.mix;
+    i.mix = value_;
+}
+void SetInsertMix::revert(Project& p)
+{
+    requireInsert(requireChannel(p, channelId_), insertId_).mix = previous_;
+}
+
 SetInsertBypass::SetInsertBypass(Id channelId, Id insertId, bool bypass)
     : channelId_(channelId), insertId_(insertId), value_(bypass)
 {

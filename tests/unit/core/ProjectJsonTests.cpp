@@ -45,7 +45,7 @@ Project sampleProject()
     verb.name = "Reverb";
     p.buses.push_back(verb);
     p.groups.push_back(Group{7, "Rhythm", 0xff22aa66u});
-    p.buses[0].inserts.push_back(Insert{8, "vst3:VST3-abc", false, {}, "AAECAw=="});
+    p.buses[0].inserts.push_back(Insert{8, "vst3:VST3-abc", false, {}, "AAECAw==", 0.4f});
     p.nextId = 9;
     p.tracks[0].group = 7;
     p.buses[0].group = 7;

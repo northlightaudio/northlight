@@ -59,7 +59,10 @@ struct ChannelNode
     int meterSlot = -1;
     std::vector<SendNode> sends;
     std::vector<InsertProcessor*> inserts;                   // in chain order
+    std::vector<float> insertMix;                            // wet/dry per slot (1 = all wet)
+    std::vector<DelayLine*> insertDry;                       // aligns the dry path to a latent insert
     std::vector<std::shared_ptr<InsertProcessor>> keepAlive; // controller-side ownership
+    mutable std::vector<float> dryLeft, dryRight;            // the dry copy for a mixed slot
     int chainLatency = 0;                                    // samples the inserts add
     DelayLine* outputDelay = nullptr;                        // compensation on the output edge
     std::vector<std::shared_ptr<DelayLine>> keepAliveDelays;

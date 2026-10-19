@@ -1,12 +1,14 @@
 #include "MainWindow.h"
 
 #include "ProjectSession.h"
+#include "UserSettings.h"
 #include "audio/AudioDeviceLayer.h"
 #include "core/Command.h"
 #include "core/Model.h"
 #include "ui/ArrangeView.h"
 #include "ui/AudioSetupView.h"
 #include "ui/MixerView.h"
+#include "ui/PluginBrowser.h"
 #include "ui/Theme.h"
 
 namespace aural
@@ -38,8 +40,11 @@ class MainWindow::Content final : public juce::Component, private juce::ChangeLi
 public:
     friend class MainWindow;
 
-    Content(MainWindow& owner, audio::AudioDeviceLayer& audio, ProjectSession& session)
-        : owner_(owner), audio_(audio), session_(session), tracks_(session.peakStore()),
+    Content(MainWindow& owner,
+            audio::AudioDeviceLayer& audio,
+            ProjectSession& session,
+            UserSettings& settings)
+        : owner_(owner), audio_(audio), session_(session), settings_(settings), tracks_(session.peakStore()),
           mixer_(session.engine().meters(), [&session] { return session.engine().loudness(); })
     {
         setSize(1280, 800);
@@ -85,6 +90,10 @@ public:
         mixer_.setHost(&session_.insertFactory());
         mixer_.liveInsert = [this](core::Id insertId) { return session_.liveInsert(insertId); };
         mixer_.onScanPlugins = [this] { session_.scanPlugins(true); };
+        mixer_.onOpenPluginBrowser = [this] { owner_.showPluginBrowser(); };
+        mixer_.loadSetting = [this](const std::string& key) { return settings_.value(key); };
+        mixer_.saveSetting = [this](const std::string& key, const std::string& value)
+        { settings_.setValue(key, value); };
         addChildComponent(mixer_);
 
         positionLabel_.setJustificationType(juce::Justification::centred);
@@ -242,7 +251,11 @@ private:
     static constexpr int toolbarHeight = 44;
     static constexpr int statusHeight = 28;
 
-    void changeListenerCallback(juce::ChangeBroadcaster*) override { refresh(); }
+    void changeListenerCallback(juce::ChangeBroadcaster*) override
+    {
+        refresh();
+        owner_.refreshPluginBrowser();
+    }
     void timerCallback() override
     {
         if (++ticks_ % 15 == 0)
@@ -475,6 +488,7 @@ private:
     MainWindow& owner_;
     audio::AudioDeviceLayer& audio_;
     ProjectSession& session_;
+    UserSettings& settings_;
     const ui::Theme& theme_ = ui::Theme::dark();
     juce::TextButton newButton_, openButton_, saveButton_, importButton_, undoButton_, redoButton_,
         returnButton_, playButton_, recordButton_, clickButton_, countInButton_, loopButton_, punchButton_,
@@ -493,6 +507,46 @@ private:
 // Non-modal secondary window hosting the Audio Setup view. Closing it asks the main
 // window to destroy it on the next message-loop turn, never from inside its own
 // callback.
+class MainWindow::PluginBrowserWindow final : public juce::DocumentWindow
+{
+public:
+    PluginBrowserWindow(MainWindow& owner, ProjectSession& session)
+        : juce::DocumentWindow("Plugins",
+                               ui::Theme::dark().colours.background,
+                               juce::DocumentWindow::closeButton | juce::DocumentWindow::minimiseButton),
+          owner_(owner)
+    {
+        setUsingNativeTitleBar(true);
+        auto* browser = new ui::PluginBrowser(session.pluginRegistry());
+        browser_ = browser;
+        browser->onScan = [&session](bool all) { session.scanPlugins(all); };
+        browser->onClearBlocklist = [&session] { session.clearPluginBlocklist(); };
+        browser->setStatus(session.pluginScanStatus());
+        setContentOwned(browser, true);
+        setResizable(true, false);
+        setResizeLimits(480, 240, 4000, 4000);
+        centreAroundComponent(&owner, getWidth(), getHeight());
+        setVisible(true);
+    }
+
+    ui::PluginBrowser& browser() noexcept { return *browser_; }
+
+    void closeButtonPressed() override
+    {
+        juce::Component::SafePointer<MainWindow> owner(&owner_);
+        juce::MessageManager::callAsync(
+            [owner]
+            {
+                if (owner != nullptr)
+                    owner->closePluginBrowser();
+            });
+    }
+
+private:
+    MainWindow& owner_;
+    ui::PluginBrowser* browser_ = nullptr;
+};
+
 class MainWindow::AudioSetupWindow final : public juce::DocumentWindow
 {
 public:
@@ -537,12 +591,15 @@ private:
     MainWindow& owner_;
 };
 
-MainWindow::MainWindow(const juce::String& name, audio::AudioDeviceLayer& audio, ProjectSession& session)
+MainWindow::MainWindow(const juce::String& name,
+                       audio::AudioDeviceLayer& audio,
+                       ProjectSession& session,
+                       UserSettings& settings)
     : juce::DocumentWindow(name, ui::Theme::dark().colours.background, juce::DocumentWindow::allButtons),
-      audio_(audio), session_(session)
+      audio_(audio), session_(session), settings_(settings)
 {
     setUsingNativeTitleBar(true);
-    setContentOwned(new Content(*this, audio_, session_), true);
+    setContentOwned(new Content(*this, audio_, session_, settings_), true);
     setResizable(true, false);
     setResizeLimits(640, 400, 10000, 10000);
     centreWithSize(getWidth(), getHeight());
@@ -551,7 +608,28 @@ MainWindow::MainWindow(const juce::String& name, audio::AudioDeviceLayer& audio,
 
 MainWindow::~MainWindow()
 {
+    pluginBrowserWindow_.reset();
     audioSetupWindow_.reset();
+}
+
+void MainWindow::showPluginBrowser()
+{
+    if (pluginBrowserWindow_ == nullptr)
+        pluginBrowserWindow_ = std::make_unique<PluginBrowserWindow>(*this, session_);
+    pluginBrowserWindow_->toFront(true);
+}
+
+void MainWindow::closePluginBrowser()
+{
+    pluginBrowserWindow_.reset();
+}
+
+void MainWindow::refreshPluginBrowser()
+{
+    if (pluginBrowserWindow_ == nullptr)
+        return;
+    pluginBrowserWindow_->browser().setStatus(session_.pluginScanStatus());
+    pluginBrowserWindow_->browser().refresh();
 }
 
 void MainWindow::closeButtonPressed()

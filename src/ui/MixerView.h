@@ -32,8 +32,12 @@ public:
     std::function<void(std::unique_ptr<core::Command>)> onCommand;
     // The live processor for an insert id (a hosted plugin's editor needs it).
     std::function<std::shared_ptr<engine::InsertProcessor>(core::Id insertId)> liveInsert;
-    // "Scan for plugins..." in the inserts menu.
+    // "Scan for plugins..." in the inserts menu; "Plugins..." in the header.
     std::function<void()> onScanPlugins;
+    std::function<void()> onOpenPluginBrowser;
+    // Per-user values (plugin window positions, the pin preference); may be null.
+    std::function<std::string(const std::string& key)> loadSetting;
+    std::function<void(const std::string& key, const std::string& value)> saveSetting;
     // Names and the plugin list for the inserts menu; may be null (built-ins only).
     void setHost(const hosting::HostFactory* host) noexcept { host_ = host; }
 
@@ -65,6 +69,7 @@ private:
     juce::Viewport viewport_;
     juce::Component stripsHolder_;
     juce::TextButton addBusButton_{"+ Bus"};
+    juce::TextButton pluginsButton_{"Plugins..."};
     std::vector<std::unique_ptr<EditorWindow>> editors_;
     std::vector<std::unique_ptr<PluginWindow>> pluginWindows_;
     const hosting::HostFactory* host_ = nullptr;

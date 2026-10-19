@@ -346,6 +346,20 @@ private:
     float value_, previous_ = 0.0f;
 };
 
+// Wet/dry mix of one insert slot (0..1).
+class SetInsertMix final : public Command
+{
+public:
+    SetInsertMix(Id channelId, Id insertId, float mix);
+    std::string name() const override { return "Set insert mix"; }
+    void apply(Project&) override;
+    void revert(Project&) override;
+
+private:
+    Id channelId_, insertId_;
+    float value_, previous_ = 1.0f;
+};
+
 class SetInsertBypass final : public Command
 {
 public:

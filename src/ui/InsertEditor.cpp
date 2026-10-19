@@ -22,6 +22,24 @@ InsertEditor::InsertEditor(core::Id channelId, core::Id insertId, const engine::
     };
     addAndMakeVisible(bypass_);
 
+    mixLabel_.setText("Mix", juce::dontSendNotification);
+    mixLabel_.setFont(juce::FontOptions{theme_.type.body});
+    mixLabel_.setColour(juce::Label::textColourId, theme_.colours.textSecondary);
+    addAndMakeVisible(mixLabel_);
+    mix_.setSliderStyle(juce::Slider::LinearHorizontal);
+    mix_.setRange(0.0, 100.0, 1.0);
+    mix_.setTextValueSuffix(" %");
+    mix_.setTextBoxStyle(juce::Slider::TextBoxRight, false, 60, 20);
+    mix_.setDoubleClickReturnValue(true, 100.0);
+    mix_.setValue(100.0, juce::dontSendNotification);
+    mix_.onValueChange = [this]
+    {
+        if (!updating_ && onCommand)
+            onCommand(std::make_unique<core::SetInsertMix>(
+                channelId_, insertId_, static_cast<float>(mix_.getValue() / 100.0)));
+    };
+    addAndMakeVisible(mix_);
+
     for (size_t i = 0; i < infos_.size(); ++i)
     {
         const auto& info = infos_[i];
@@ -62,6 +80,7 @@ void InsertEditor::setInsert(const core::Insert& insert)
 {
     const juce::ScopedValueSetter<bool> guard(updating_, true);
     bypass_.setToggleState(insert.bypass, juce::dontSendNotification);
+    mix_.setValue(insert.mix * 100.0, juce::dontSendNotification);
     for (size_t i = 0; i < sliders_.size() && i < insert.params.size(); ++i)
         sliders_[i]->setValue(insert.params[i], juce::dontSendNotification);
 }
@@ -78,6 +97,9 @@ void InsertEditor::resized()
     bypass_.setBounds(header.removeFromRight(90));
     title_.setBounds(header);
     area.removeFromTop(theme_.spacing.sm);
+    auto mixRow = area.removeFromTop(30);
+    mixLabel_.setBounds(mixRow.removeFromLeft(100));
+    mix_.setBounds(mixRow);
     for (size_t i = 0; i < sliders_.size(); ++i)
     {
         auto row = area.removeFromTop(30);

@@ -50,6 +50,7 @@ public:
     // the registry is saved when it finishes and listeners are notified as it goes.
     void scanPlugins(bool all = false);
     bool isScanningPlugins() const noexcept { return scanner_.isScanning(); }
+    void clearPluginBlocklist();
     std::string pluginScanStatus() const { return scanner_.status(); }
     audio::PeakStore& peakStore() noexcept { return peaks_; }
 

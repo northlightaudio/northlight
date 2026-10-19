@@ -33,7 +33,7 @@ public:
     void paint(juce::Graphics& g) override;
     void resized() override;
 
-    static int preferredHeight(int parameterCount) noexcept { return 56 + parameterCount * 30 + 16; }
+    static int preferredHeight(int parameterCount) noexcept { return 56 + 30 + parameterCount * 30 + 16; }
     static constexpr int preferredWidth = 420;
 
 private:
@@ -43,6 +43,8 @@ private:
     bool updating_ = false;
     juce::Label title_;
     juce::ToggleButton bypass_{"Bypass"};
+    juce::Label mixLabel_;
+    juce::Slider mix_;
     std::vector<std::unique_ptr<juce::Label>> labels_;
     std::vector<std::unique_ptr<juce::Slider>> sliders_;
 };

@@ -37,6 +37,20 @@ void UserSettings::flush()
     properties_.saveIfNeeded();
 }
 
+std::string UserSettings::value(const std::string& key, const std::string& fallback) const
+{
+    return const_cast<juce::ApplicationProperties&>(properties_)
+        .getUserSettings()
+        ->getValue(juce::String(key), juce::String(fallback))
+        .toStdString();
+}
+
+void UserSettings::setValue(const std::string& key, const std::string& value)
+{
+    AURAL_ASSERT_NOT_REALTIME("UserSettings::setValue");
+    properties_.getUserSettings()->setValue(juce::String(key), juce::String(value));
+}
+
 audio::AudioSettings UserSettings::loadAudioSettings()
 {
     AURAL_ASSERT_NOT_REALTIME("UserSettings::loadAudioSettings");

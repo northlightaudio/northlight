@@ -27,7 +27,7 @@ public:
         audio_ = std::make_unique<audio::AudioDeviceLayer>(*settings_);
         session_ =
             std::make_unique<ProjectSession>(*audio_, settings_->file().getSiblingFile("plugins.json"));
-        mainWindow_ = std::make_unique<MainWindow>(getApplicationName(), *audio_, *session_);
+        mainWindow_ = std::make_unique<MainWindow>(getApplicationName(), *audio_, *session_, *settings_);
 
         // Open the device after the window is up so a slow driver does not delay
         // the first paint. The session is already attached to the callback.
@@ -119,6 +119,8 @@ public:
             }
             else if (arg == "--scan-plugins")
                 session_->scanPlugins(true);
+            else if (arg == "--plugins")
+                mainWindow_->showPluginBrowser();
             else if (arg == "--recover")
                 session_->recoverPartialRecordings(); // without the prompt, for unattended checks
             else if (arg == "--save" && i + 1 < tokens.size())

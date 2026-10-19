@@ -15,13 +15,17 @@ namespace aural
 {
 
 class ProjectSession;
+class UserSettings;
 
 // Top-level document window. Phase 2: a toolbar with transport, import and the
 // device summary, a placeholder track list, and the Audio Setup window.
 class MainWindow final : public juce::DocumentWindow
 {
 public:
-    MainWindow(const juce::String& name, audio::AudioDeviceLayer& audio, ProjectSession& session);
+    MainWindow(const juce::String& name,
+               audio::AudioDeviceLayer& audio,
+               ProjectSession& session,
+               UserSettings& settings);
     ~MainWindow() override;
 
     void closeButtonPressed() override;
@@ -36,14 +40,22 @@ public:
     void showMixer();
     // Shows the mixer and opens an insert's editor.
     void openInsertEditor(core::Id channelId, core::Id insertId);
+    // The plugin browser (scan results, blocklist, scan controls).
+    void showPluginBrowser();
+    void closePluginBrowser();
 
 private:
     class Content;
     class AudioSetupWindow;
+    class PluginBrowserWindow;
+
+    void refreshPluginBrowser();
 
     audio::AudioDeviceLayer& audio_;
     ProjectSession& session_;
+    UserSettings& settings_;
     std::unique_ptr<AudioSetupWindow> audioSetupWindow_;
+    std::unique_ptr<PluginBrowserWindow> pluginBrowserWindow_;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(MainWindow)
 };

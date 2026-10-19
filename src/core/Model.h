@@ -58,6 +58,7 @@ struct Insert
     bool bypass = false;
     std::vector<float> params;
     std::string state; // opaque (base64) for processors that own their state
+    float mix = 1.0f;  // wet/dry: 1 = fully processed, 0 = the input passes untouched
     bool operator==(const Insert&) const = default;
 };
 

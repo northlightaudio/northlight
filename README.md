@@ -111,8 +111,10 @@ A strip's **Group** button puts it in a fader group: grouped faders move togethe
 **Inserts ▸ Add** lists the built-ins and every VST3 plugin found by **Scan for
 plugins...** (the standard VST3 folders, each file inspected in a separate process
 so a bad plugin cannot crash Aural); a hosted plugin opens its own editor window
-and its state is saved with the project. Insert latency is compensated across
-tracks, buses and sends, and recordings allow for it.
+and its state is saved with the project; its window has bypass, a wet/dry mix and a
+pin (always on top), and remembers where you left it. **Plugins...** opens the
+browser (search, blocklist, scan). Every insert has a wet/dry mix. Insert latency is
+compensated across tracks, buses and sends, and recordings allow for it.
 Recordings go next to the project file in a `<project> Media` folder, or to
 `Documents\Aural\Recordings` for an unsaved project, each with a small
 `.recording.json` beside it while it is in progress. If the app dies while
@@ -127,7 +129,7 @@ For unattended checks: `Aural.exe --import <file> [--import <file>] --play` (or
 `--open <project>`), and
 `Aural.exe --record <inputs> [--loop <from> <to>] [--no-count-in] --stop-after <seconds>`; `--mixer`
 opens the mixer panel and `--insert <type>` adds a built-in (for example `aural.eq`) to
-every track and opens its editor. `--scan-plugins` runs a full plugin scan; `--recover` recovers unfinished recordings without
+every track and opens its editor. `--scan-plugins` runs a full plugin scan and `--plugins` opens the browser; `--recover` recovers unfinished recordings without
 the prompt and `--save <file>` writes the project (so a check can read the placed
 clips); `--save` runs two seconds after a preceding `--stop-after`, else half a
 second after launch.

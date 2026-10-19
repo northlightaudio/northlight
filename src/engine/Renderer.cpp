@@ -230,8 +230,47 @@ void Renderer::renderTrack(const TrackNode& track,
             right[i] = -right[i];
         }
 
-    for (auto* insert : track.inserts)
-        insert->process(left, right, numSamples);
+    processChain(track, left, right, numSamples);
+}
+
+void Renderer::processChain(const ChannelNode& channel, float* left, float* right, int numSamples) noexcept
+{
+    for (size_t k = 0; k < channel.inserts.size(); ++k)
+    {
+        auto* insert = channel.inserts[k];
+        const float mix = k < channel.insertMix.size() ? channel.insertMix[k] : 1.0f;
+        if (mix >= 1.0f)
+        {
+            insert->process(left, right, numSamples);
+            continue;
+        }
+        float* dryL = channel.dryLeft.data();
+        float* dryR = channel.dryRight.data();
+        if (auto* dry = k < channel.insertDry.size() ? channel.insertDry[k] : nullptr)
+            dry->process(left, right, dryL, dryR, numSamples);
+        else
+        {
+            std::copy(left, left + numSamples, dryL);
+            std::copy(right, right + numSamples, dryR);
+        }
+        if (mix > 0.0f)
+            insert->process(left, right, numSamples);
+        else
+        {
+            // Fully dry: the insert still runs (its meters and state keep moving),
+            // but on a copy, so the chain only sees the dry path.
+            std::copy(dryL, dryL + numSamples, left);
+            std::copy(dryR, dryR + numSamples, right);
+            insert->process(dryL, dryR, numSamples); // scratch, discarded
+            continue;
+        }
+        const float dryGain = 1.0f - mix;
+        for (int i = 0; i < numSamples; ++i)
+        {
+            left[i] = dryL[i] * dryGain + left[i] * mix;
+            right[i] = dryR[i] * dryGain + right[i] * mix;
+        }
+    }
 }
 
 void Renderer::trackJob(void* context, int index) noexcept
@@ -374,8 +413,7 @@ void Renderer::renderSpan(const Snapshot& snapshot,
             outL[i] = bus.sumLeft[static_cast<size_t>(i)] * panLeft * sign;
             outR[i] = bus.sumRight[static_cast<size_t>(i)] * panRight * sign;
         }
-        for (auto* insert : bus.inserts)
-            insert->process(outL, outR, numSamples);
+        processChain(bus, outL, outR, numSamples);
         routeChannel(snapshot, bus, context, left, right, numSamples);
     }
 

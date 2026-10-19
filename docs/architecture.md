@@ -357,6 +357,18 @@ disables its other buses; sidechains come later in the phase. `process` wraps th
 two channel pointers in a `juce::AudioBuffer` (no allocation) and an empty MIDI
 buffer; latency is read after `prepareToPlay` for delay compensation.
 
+Each insert slot has a wet/dry `mix` (model, command, JSON): the renderer keeps a
+dry copy of the slot's input, held back by the insert's latency through a cached
+delay line so the halves stay aligned, and blends it with the processed signal;
+at mix 0 the insert still runs on scratch (its meters and state keep moving) and
+the chain sees only the dry path. The generic insert editor and the plugin window's
+bar (bypass, mix, pin) both edit it. A plugin window remembers its position per
+plugin type and the pin (always-on-top) preference in the user settings. The
+plugin browser (`ui::PluginBrowser`, from the mixer's Plugins... button or
+`--plugins`) lists everything the registry knows with search, shows the blocklist
+with reasons, and offers a scan for changes, a full rescan and clearing the
+blocklist.
+
 Delay compensation is solved at compile time over the routing graph. Every
 channel's chain latency is the sum of its non-bypassed inserts' reported latency;
 a track's output lags the timeline by its chain, a bus's by its slowest input plus

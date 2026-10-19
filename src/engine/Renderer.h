@@ -77,6 +77,8 @@ private:
         int numSamples;
     };
     static void trackJob(void* context, int index) noexcept;
+    // Runs a channel's insert chain in place, blending each slot's wet/dry mix.
+    static void processChain(const ChannelNode& channel, float* left, float* right, int numSamples) noexcept;
 
     void renderSpan(const Snapshot& snapshot,
                     const RenderContext& context,
