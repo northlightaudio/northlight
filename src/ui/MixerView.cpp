@@ -1,6 +1,8 @@
 #include "ui/MixerView.h"
 
 #include "engine/Snapshot.h"
+#include "plugins/BuiltIns.h"
+#include "ui/InsertEditor.h"
 
 #include <cmath>
 
@@ -189,6 +191,9 @@ public:
         sends_.setButtonText("Sends");
         sends_.onClick = [this] { showSendsMenu(); };
         addAndMakeVisible(sends_);
+        inserts_.setButtonText("Inserts");
+        inserts_.onClick = [this] { showInsertsMenu(); };
+        addAndMakeVisible(inserts_);
         addAndMakeVisible(meter_);
     }
 
@@ -228,6 +233,8 @@ public:
                 selected = static_cast<int>(i) + 2;
         output_.setSelectedId(selected, juce::dontSendNotification);
 
+        insertCount_ = static_cast<int>(channel.inserts.size());
+        inserts_.setButtonText(insertCount_ > 0 ? "Inserts (" + juce::String(insertCount_) + ")" : "Inserts");
         sendCount_ = static_cast<int>(channel.sends.size());
         sends_.setButtonText(sendCount_ > 0 ? "Sends (" + juce::String(sendCount_) + ")" : "Sends");
         sends_.setEnabled(!busIds_.empty());
@@ -256,6 +263,8 @@ public:
         area.removeFromTop(theme_.spacing.xs);
         sends_.setBounds(area.removeFromTop(22));
         area.removeFromTop(theme_.spacing.xs);
+        inserts_.setBounds(area.removeFromTop(22));
+        area.removeFromTop(theme_.spacing.xs);
         pan_.setBounds(area.removeFromTop(40).withSizeKeepingCentre(40, 40));
         area.removeFromTop(theme_.spacing.xs);
         auto buttons = area.removeFromTop(22);
@@ -272,6 +281,63 @@ public:
     }
 
 private:
+    void showInsertsMenu()
+    {
+        if (owner_.project_ == nullptr)
+            return;
+        const auto* channel = owner_.project_->findChannel(id_);
+        if (channel == nullptr)
+            return;
+        juce::PopupMenu menu;
+        std::vector<std::function<void()>> actions;
+        int item = 1;
+        for (const auto& insert : channel->inserts)
+        {
+            juce::PopupMenu sub;
+            sub.addItem(item++, "Edit...");
+            const core::Id insertId = insert.id;
+            actions.push_back([this, insertId] { owner_.openInsertEditor(id_, insertId); });
+            sub.addItem(item++, "Bypass", true, insert.bypass);
+            const bool bypass = insert.bypass;
+            actions.push_back(
+                [this, insertId, bypass]
+                { owner_.onCommand(std::make_unique<core::SetInsertBypass>(id_, insertId, !bypass)); });
+            sub.addItem(item++, "Move up", channel->insertIndex(insertId) > 0);
+            const int index = channel->insertIndex(insertId);
+            actions.push_back(
+                [this, insertId, index]
+                { owner_.onCommand(std::make_unique<core::MoveInsert>(id_, insertId, index - 1)); });
+            sub.addItem(item++, "Remove");
+            actions.push_back([this, insertId]
+                              { owner_.onCommand(std::make_unique<core::RemoveInsert>(id_, insertId)); });
+            menu.addSubMenu(juce::String(plugins::BuiltInFactory::displayName(insert.type)) +
+                                (insert.bypass ? "  (bypassed)" : ""),
+                            sub);
+        }
+        if (!channel->inserts.empty())
+            menu.addSeparator();
+        juce::PopupMenu add;
+        for (const auto& type : plugins::BuiltInFactory().typeNames())
+        {
+            add.addItem(item++, plugins::BuiltInFactory::displayName(type));
+            actions.push_back(
+                [this, type]
+                {
+                    core::Insert insert;
+                    insert.type = type;
+                    insert.params = plugins::defaultParameters(type);
+                    owner_.onCommand(std::make_unique<core::AddInsert>(id_, insert));
+                });
+        }
+        menu.addSubMenu("Add", add);
+        menu.showMenuAsync(juce::PopupMenu::Options().withTargetComponent(inserts_),
+                           [actions](int result)
+                           {
+                               if (result >= 1 && static_cast<size_t>(result) <= actions.size())
+                                   actions[static_cast<size_t>(result) - 1]();
+                           });
+    }
+
     void showSendsMenu()
     {
         if (owner_.project_ == nullptr)
@@ -330,12 +396,13 @@ private:
     bool isBus_ = false;
     int meterSlot_ = -1;
     int sendCount_ = 0;
+    int insertCount_ = 0;
     bool updating_ = false;
     juce::Colour colour_;
     std::vector<core::Id> busIds_;
     juce::Label name_;
     juce::Slider pan_, fader_;
-    juce::TextButton mute_, solo_, phase_, sends_;
+    juce::TextButton mute_, solo_, phase_, sends_, inserts_;
     juce::ComboBox output_;
     StereoMeter meter_;
 };
@@ -403,7 +470,74 @@ private:
     StereoMeter meter_;
 };
 
+// ----- insert editor windows ------------------------------------------------------------------
+
+class MixerView::EditorWindow final : public juce::DocumentWindow
+{
+public:
+    EditorWindow(MixerView& owner, std::unique_ptr<InsertEditor> editor, const juce::String& title)
+        : juce::DocumentWindow(title, Theme::dark().colours.background, juce::DocumentWindow::closeButton),
+          owner_(owner), editor_(editor.get())
+    {
+        setUsingNativeTitleBar(true);
+        setContentOwned(editor.release(), true);
+        setResizable(false, false);
+        setVisible(true);
+    }
+
+    InsertEditor& editor() noexcept { return *editor_; }
+
+    void closeButtonPressed() override
+    {
+        juce::Component::SafePointer<MixerView> owner(&owner_);
+        const auto id = editor_->insertId();
+        juce::MessageManager::callAsync(
+            [owner, id]
+            {
+                if (owner != nullptr)
+                    std::erase_if(owner->editors_,
+                                  [id](const auto& w) { return w->editor().insertId() == id; });
+            });
+    }
+
+private:
+    MixerView& owner_;
+    InsertEditor* editor_;
+};
+
 // ----- view ---------------------------------------------------------------------------------
+
+void MixerView::openInsertEditor(core::Id channelId, core::Id insertId)
+{
+    for (auto& w : editors_)
+        if (w->editor().insertId() == insertId)
+        {
+            w->toFront(true);
+            return;
+        }
+    if (project_ == nullptr)
+        return;
+    const auto* channel = project_->findChannel(channelId);
+    const auto* insert =
+        channel != nullptr ? const_cast<core::Channel*>(channel)->findInsert(insertId) : nullptr;
+    if (insert == nullptr)
+        return;
+    const auto processor = plugins::BuiltInFactory().create(insert->type);
+    if (processor == nullptr)
+        return;
+    auto editor = std::make_unique<InsertEditor>(channelId, insertId, *processor);
+    editor->onCommand = [this](std::unique_ptr<core::Command> c)
+    {
+        if (onCommand)
+            onCommand(std::move(c));
+    };
+    editor->setInsert(*insert);
+    const juce::String title = juce::String(channel->name) + " - " +
+                               juce::String(plugins::BuiltInFactory::displayName(insert->type));
+    auto window = std::make_unique<EditorWindow>(*this, std::move(editor), title);
+    window->centreAroundComponent(getTopLevelComponent(), window->getWidth(), window->getHeight());
+    editors_.push_back(std::move(window));
+}
 
 MixerView::MixerView(rt::MeterBlock& meters) : meters_(meters)
 {
@@ -421,12 +555,29 @@ MixerView::MixerView(rt::MeterBlock& meters) : meters_(meters)
 MixerView::~MixerView()
 {
     stopTimer();
+    editors_.clear();
 }
 
 void MixerView::setProject(const core::Project* project)
 {
     project_ = project;
     rebuildStrips();
+
+    // Open editors follow the model (undo, a removed insert closes its window).
+    std::erase_if(editors_,
+                  [this](const auto& w)
+                  {
+                      const auto* channel =
+                          project_ != nullptr ? project_->findChannel(w->editor().channelId()) : nullptr;
+                      const auto* insert =
+                          channel != nullptr
+                              ? const_cast<core::Channel*>(channel)->findInsert(w->editor().insertId())
+                              : nullptr;
+                      if (insert == nullptr)
+                          return true;
+                      w->editor().setInsert(*insert);
+                      return false;
+                  });
 }
 
 void MixerView::addBus()

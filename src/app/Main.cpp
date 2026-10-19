@@ -3,6 +3,7 @@
 #include "UserSettings.h"
 #include "audio/AudioDeviceLayer.h"
 #include "core/Command.h"
+#include "plugins/BuiltIns.h"
 #include "ui/AuralLookAndFeel.h"
 
 #include <juce_gui_extra/juce_gui_extra.h>
@@ -85,6 +86,28 @@ public:
                 session_->setCountInBars(0);
             else if (arg == "--mixer")
                 mainWindow_->showMixer();
+            else if (arg == "--insert" && i + 1 < tokens.size())
+            {
+                // Adds a built-in insert to every track and opens the first one's editor.
+                const auto type = tokens.getReference(++i).text.toStdString();
+                core::Id first = core::invalidId, firstTrack = core::invalidId;
+                for (const auto& track : session_->project().tracks)
+                {
+                    core::Insert insert;
+                    insert.type = type;
+                    insert.params = plugins::defaultParameters(type);
+                    auto command = std::make_unique<core::AddInsert>(track.id, insert);
+                    const auto* raw = command.get();
+                    session_->execute(std::move(command));
+                    if (first == core::invalidId)
+                    {
+                        first = raw->insertId();
+                        firstTrack = track.id;
+                    }
+                }
+                if (first != core::invalidId)
+                    mainWindow_->openInsertEditor(firstTrack, first);
+            }
             else if (arg == "--stop-after" && i + 1 < tokens.size())
             {
                 const int seconds = tokens.getReference(++i).text.getIntValue();

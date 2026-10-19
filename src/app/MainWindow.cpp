@@ -572,6 +572,13 @@ void MainWindow::showMixer()
         content->showMixer();
 }
 
+void MainWindow::openInsertEditor(core::Id channelId, core::Id insertId)
+{
+    showMixer();
+    if (auto* content = dynamic_cast<Content*>(getContentComponent()))
+        content->mixer_.openInsertEditor(channelId, insertId);
+}
+
 void MainWindow::offerRecovery()
 {
     const int count = session_.countPartialRecordings();

@@ -33,9 +33,13 @@ public:
 
     static constexpr int stripWidth = 104;
 
+    // Opens (or fronts) the parameter editor window for an insert.
+    void openInsertEditor(core::Id channelId, core::Id insertId);
+
 private:
     class Strip;
     class MasterStrip;
+    class EditorWindow;
 
     void timerCallback() override;
     void rebuildStrips();
@@ -50,6 +54,7 @@ private:
     juce::Viewport viewport_;
     juce::Component stripsHolder_;
     juce::TextButton addBusButton_{"+ Bus"};
+    std::vector<std::unique_ptr<EditorWindow>> editors_;
 };
 
 } // namespace aural::ui

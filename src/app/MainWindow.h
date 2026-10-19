@@ -1,5 +1,7 @@
 #pragma once
 
+#include "core/Model.h"
+
 #include <juce_gui_extra/juce_gui_extra.h>
 
 #include <memory>
@@ -32,6 +34,8 @@ public:
     void offerRecovery();
     // Shows the mixer panel.
     void showMixer();
+    // Shows the mixer and opens an insert's editor.
+    void openInsertEditor(core::Id channelId, core::Id insertId);
 
 private:
     class Content;
