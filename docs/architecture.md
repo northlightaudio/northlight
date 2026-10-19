@@ -3,7 +3,7 @@
 Living document. The intended architecture is in [PLAN.md](PLAN.md), section 3; this
 file records what is actually built and the decisions made along the way.
 
-## Current state (Phase 6 complete, Phase 7 next)
+## Current state (Phase 6 complete; Phase 8 MIDI in progress; Phase 7 waits for the design spec)
 
 ```
 aural.exe
@@ -13,19 +13,23 @@ aural.exe
                   DiskThread + PeakStore; recording flow and recovery);
                   UserSettings (per-user properties file)
   src/ui          Theme (design tokens), AuralLookAndFeel (dark, token-driven),
-                  AudioSetupView, ArrangeView (tracks, waveforms, zoom, scroll),
-                  TrackHeader (input, arm, monitor), MixerView (strips, master,
-                  inserts menu), InsertEditor (generic parameter window)
-  src/core        Project model (tracks and buses on a shared Channel, sends,
-                  fader groups, master, clips), Command + UndoStack, JSON files,
+                  AudioSetupView (audio and MIDI devices), ArrangeView (tracks,
+                  waveforms, MIDI clips, zoom, scroll, editing), TrackHeader
+                  (input or MIDI input, arm, monitor), MixerView (strips, master,
+                  inserts menu), InsertEditor (generic parameter window),
+                  PianoRoll (one MIDI clip's notes and velocities)
+  src/core        Project model (audio and MIDI tracks and buses on a shared
+                  Channel, sends, fader groups, master, audio clips, MIDI clips
+                  and notes, markers), Command + UndoStack, JSON files,
                   bars/beats helpers. No JUCE.
   src/engine      AudioEngine façade, Snapshot compiler + MediaCache + InsertCache,
                   Transport, Renderer, WorkerPool, AudioSource (memory + streaming),
                   DiskThread, Peaks, Recording (record rings + writer thread),
-                  WavFile, Click (metronome), Insert interface, Meters, Loudness.
-                  No JUCE.
-  src/plugins     Built-in processors (gain, EQ, compressor, limiter) behind the
-                  insert interface. No JUCE.
+                  WavFile, Click (metronome), Insert interface, Meters, Loudness,
+                  Midi (event list per span; the renderer schedules clips and
+                  live input into instruments). No JUCE.
+  src/plugins     Built-in processors (gain, EQ, compressor, limiter) and the
+                  built-in synth behind the insert interface. No JUCE.
   src/hosting     PluginRegistry (known plugins, blocklist, scan times; no JUCE),
                   PluginScanner (drives aural_plugin_scan per file), HostedPlugin
                   (a VST3 instance behind the insert interface), HostFactory
@@ -34,8 +38,9 @@ aural.exe
   src/engine/rt   Real-time guard and allocation hook, SpscQueue, SnapshotPublisher,
                   CallbackStats, ScopedFlushDenormals
   src/audio       Pure:  AudioSettings, LatencyDetector, PassThrough
-                  JUCE:  AudioDeviceLayer, AudioCallback, LatencyCalibrator,
-                         JuceMediaLoader, JuceStreamReader, PeakStore
+                  JUCE:  AudioDeviceLayer, MidiDeviceLayer, AudioCallback,
+                         LatencyCalibrator, JuceMediaLoader, JuceStreamReader,
+                         PeakStore
 
 aural_unit_tests.exe
   tests/unit/rt      Catch2 tests for the guard
@@ -45,7 +50,9 @@ aural_unit_tests.exe
                      playback, loop, solo/mute, pan, snapshot swaps under the RT
                      hook), streaming source against a live disk thread, peaks,
                      worker pool, callback stats, recording (sample-exact capture,
-                     device stop mid-record, WAV repair, monitoring)
+                     device stop mid-record, WAV repair, monitoring), MIDI (note
+                     scheduling, stop/jump/loop note-offs, live input, the synth,
+                     MIDI capture and take building)
 
 aural_juce_tests.exe
   tests/unit_juce    JUCE-linked tests that need no device: stream reader
@@ -540,6 +547,65 @@ created on the message thread (during a snapshot compile) and destroyed there
 too (the cache prunes from the session's timer); a plugin window is closed before
 its insert leaves the model so the editor never outlives the instance.
 
+### MIDI and instruments (Phase 8)
+
+A track is audio or MIDI (`Track::kind`); a MIDI track has `midiClips` of
+`MidiNote`s (clip-relative start and length in samples, pitch, velocity) and a
+`midiInput` device name (empty = every enabled input). Commands cover clips
+(add, remove, move between MIDI tracks, trim with the notes keeping their
+timeline place, split, duplicate) and notes (add, remove, set, quantise to a grid
+with a strength); the JSON writes notes as compact arrays.
+
+The engine side is `engine::MidiEvent` / `MidiEventList` (a fixed-capacity list
+per track, sized at compile) and `InsertProcessor::acceptsMidi/processMidi`: the
+first insert in a MIDI track's chain that takes MIDI is its instrument and gets
+the span's events with its audio; the rest of the chain, the pan (a stereo
+balance applied after the instrument) and the fader follow as on any channel.
+`Renderer::scheduleMidi` collects the events for each span: note-ons and
+note-offs from the clips at exact sample offsets while playing, the live input
+(filtered by the track's device) while the track monitors (armed and not
+playing, or recording, or monitor on), and the note-offs a discontinuity
+demands. A `MidiRuntime` per track (held notes, where the previous span ended)
+outlives snapshots like the channel runtimes, so a stop, a locate, a loop wrap
+or play-from-elsewhere ends every held note at the top of the next span without
+the engine having to know why the position moved. Live MIDI enters through
+`AudioEngine::pushMidiInput` (device threads, a mutex on the producer side of an
+SPSC queue, drained once per block and delivered in the block's first segment)
+tagged with a per-device-name index the snapshot resolves for each track.
+
+Instruments: the built-in `aural.synth` (16 voices, polyBLEP saw/square,
+state-variable low-pass, ADSR; events partition the block so note timing is
+sample-exact), hosted VST3 plugins that accept MIDI (the events go into the JUCE
+MIDI buffer as raw bytes) and CLAP plugins with a note input port (CLAP note
+events, or MIDI 1.0 events when that is the only dialect the port takes, after
+the block's parameter events). The test CLAP plugin has a note port that marks
+the audio at each note so the host's timing is tested. Multi-output instruments
+are not yet routed: extra output buses stay disabled and the main pair is taken.
+
+Recording: an armed MIDI track joins the record session (`addMidiTrack`); the
+engine stamps each live event it delivers to that track with its timeline
+position and take index on the session's queue (a loop wrap marks a new take
+with the previous take's end), and `engine::buildMidiTakes` turns the collected
+events into one clip per track and take, pairing note-ons with their offs (a
+retrigger ends the first, a note still held ends at the take's end) and moving
+the take earlier by `ProjectSession::midiRecordingLatencySamples` (the device
+output latency plus the master's delay compensation: the player plays to what
+they hear, so the input side of the round trip does not apply). A MIDI-only
+recording needs no audio input and writes no files.
+
+Devices: `audio::MidiDeviceLayer` (owned by the audio device layer) opens the
+inputs the settings enable (every input by default), forwards their messages to
+the engine with the device name, keeps one chosen output open, and re-reads the
+device list on JUCE's hot-plug notification; devices are identified by name,
+which is what tracks and settings store. Audio Setup shows the inputs as toggles
+and the output as a menu. The UI: MIDI clips draw on their lanes with a bar per
+note and take part in the arrange editing that applies to them (select, move
+onto MIDI tracks only, trim, split, duplicate, nudge, delete); double-clicking
+one opens `ui::PianoRoll` in its own window (keyboard, bar/beat ruler on the
+timeline, grid at a chosen division, velocity lane; the keys match the arrange
+view's). `+MIDI` adds an armed MIDI track with the synth. Launch flags:
+`--midi-track`, `--piano-roll`.
+
 ### Metronome, count-in, loop and punch
 
 `engine::ClickGenerator` adds a 30 ms decaying sine burst on every beat (1.5 kHz on
@@ -653,4 +719,10 @@ launches; `JUCE_MODAL_LOOPS_PERMITTED` stays 0.
 | 2026-10-19 | Insert chains are stereo pairs; plugins get a stereo main bus and no sidechain yet | The engine's channels are stereo and the chain interface is two pointers; asking every plugin for stereo in and out keeps hosting simple and correct for effects. Sidechain routing needs a graph change and comes later in Phase 5. |
 | 2026-10-19 | Delay compensation per graph edge, solved at compile, lines cached across compiles | Delaying edges rather than nodes handles a source that feeds several destinations with different needs (a send to a latent bus and a direct output); solving at compile keeps the real-time path a fixed delay per edge; caching the lines by edge is what makes a recompile on every edit inaudible. |
 | 2026-10-19 | Sidechain keys are pre-fader and tracks render in dependency levels | A key should not change when the source's fader moves, and a keyed track must see its source finished in the same block; levels keep the parallel render for everything unkeyed and cost nothing when no sidechain is set. Bus sources for track inserts would need one block of latency and are not offered. |
+| 2026-10-19 | MIDI note-offs on stop, locate and loop wrap come from the track's own continuity check, not from transport commands | The renderer sees every span's start position; comparing it with where the previous span ended catches every discontinuity (a locate, a wrap, play from elsewhere, a stop) in one place, so no transport path can forget to end a note. |
+| 2026-10-19 | MIDI events are a fixed list per track per span, sized at compile | An instrument reads the span's events with the audio in one call; building the list in the track's render job keeps it off the shared path and allocation-free, and the instrument sees the events in time order. |
+| 2026-10-19 | Recorded MIDI is placed by the output-side latency only | A played note arrives when it is played, but the player plays to what they hear, which lags by the output path; subtracting the input side too (as for audio) would place MIDI early. |
+| 2026-10-19 | MIDI devices are identified by name | The name is what the user recognises and what a project can carry between machines; JUCE's identifier is stable but opaque. Two devices of one name are both opened and both heard. |
+| 2026-10-19 | A built-in synth ships with the engine | A MIDI track must make a sound without a third-party instrument, both for the user and for offline tests of the whole path (schedule, instrument, bounce). |
+| 2026-10-19 | Trimming a MIDI clip keeps its notes where they are on the timeline | Matches audio clips (the source stays put under the clip edges) and lets a trim be undone by trimming back without losing notes. |
 | 2026-10-19 | The limiter has no lookahead (superseded the same day: lookahead added once delay compensation landed) | Lookahead adds latency that needs delay compensation across the graph, which Phase 5 brings with plugin hosting; until then a fast-release limiter with a hard ceiling is honest about what it does. |

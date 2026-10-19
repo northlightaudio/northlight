@@ -3,7 +3,8 @@
 A native, high-performance digital audio workstation for Windows. ASIO, VST3 hosting,
 multitrack recording, and a UI that is designed before it is built.
 
-Status: **Phase 6 (editing) complete; Phase 7 (design fidelity pass) next**. See
+Status: **Phase 6 (editing) complete; Phase 8 (MIDI and instruments) in progress;
+Phase 7 (design fidelity pass) waits for the design spec**. See
 [docs/PLAN.md](docs/PLAN.md) for the roadmap and
 [docs/architecture.md](docs/architecture.md) for what is built.
 

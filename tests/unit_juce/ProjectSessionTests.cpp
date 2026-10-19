@@ -2,6 +2,7 @@
 #include "audio/AudioDeviceLayer.h"
 #include "audio/AudioSettings.h"
 #include "core/Command.h"
+#include "engine/Midi.h"
 #include "engine/WavFile.h"
 
 #include <catch2/catch_test_macros.hpp>
@@ -160,6 +161,43 @@ TEST_CASE_METHOD(SessionFixture,
     REQUIRE(clips.size() == 2);
     CHECK(clips[0].mediaPath != clips[1].mediaPath);
     CHECK(files("Guitar-*.wav").size() == 2);
+}
+
+TEST_CASE_METHOD(SessionFixture,
+                 "A performance on an armed MIDI track becomes a clip with its notes at their positions",
+                 "[app][session][record][midi]")
+{
+    const auto id = session->addMidiTrack(); // armed, every input, the built-in synth
+    const auto* track = session->project().findTrack(id);
+    REQUIRE(track != nullptr);
+    CHECK(track->isMidi());
+    CHECK(track->armed);
+    REQUIRE(track->inserts.size() == 1);
+    prepareDevice(48000.0);
+    REQUIRE(session->startRecording().empty());
+    runBlocks(2); // the record command applies in the first block: capture from 0
+    session->engine().pushMidiInput({0, engine::MidiEvent::Type::noteOn, 0, 64, 90}, "");
+    runBlocks(1); // on at 128
+    session->engine().pushMidiInput({0, engine::MidiEvent::Type::noteOff, 0, 64, 0}, "");
+    runBlocks(4); // off at 192, then the recording runs to 448
+    stopAndCollect();
+
+    track = session->project().findTrack(id);
+    REQUIRE(track != nullptr);
+    REQUIRE(track->midiClips.size() == 1);
+    const auto& clip = track->midiClips[0];
+    CHECK(clip.start == 0); // no device: nothing to compensate
+    CHECK(clip.length == 448);
+    REQUIRE(clip.notes.size() == 1);
+    CHECK(clip.notes[0].note == 64);
+    CHECK(clip.notes[0].velocity == 90);
+    CHECK(clip.notes[0].start == 128);
+    CHECK(clip.notes[0].length == 64);
+    CHECK(session->lastRecordingMessage().find("MIDI clip") != std::string::npos);
+    CHECK(files("*.wav").isEmpty()); // no audio was recorded
+    CHECK(session->canUndo());
+    session->undo();
+    CHECK(session->project().findTrack(id)->midiClips.empty());
 }
 
 TEST_CASE_METHOD(SessionFixture, "An empty take is deleted rather than placed", "[app][session][record]")

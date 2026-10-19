@@ -99,6 +99,59 @@ TEST_CASE("Bouncing the mix renders the range to a stereo float WAV, compensated
     b.deleteFile();
 }
 
+TEST_CASE("Bouncing a MIDI track renders its instrument", "[app][bounce][midi]")
+{
+    const juce::ScopedJuceInitialiser_GUI juceInit;
+    core::Project p;
+    core::Track keys;
+    keys.id = 1;
+    keys.name = "Keys";
+    keys.kind = core::TrackKind::midi;
+    core::Insert synth;
+    synth.id = 11;
+    synth.type = plugins::types::synth;
+    synth.params = plugins::defaultParameters(synth.type);
+    keys.inserts.push_back(synth);
+    core::MidiClip clip;
+    clip.id = 12;
+    clip.name = "note";
+    clip.start = 0;
+    clip.length = 48000;
+    clip.notes.push_back({13, 69, 110, 24000, 12000}); // A4 from 0.5 s for 0.25 s
+    keys.midiClips.push_back(clip);
+    p.tracks = {keys};
+    p.nextId = 100;
+
+    hosting::PluginRegistry registry;
+    hosting::HostFactory factory(registry);
+    const auto out =
+        juce::File::getSpecialLocation(juce::File::tempDirectory).getChildFile("bounce-midi.wav");
+    out.deleteFile();
+    BounceJob::Options options;
+    options.output = out;
+    BounceJob job(p, factory, options);
+    const auto result = job.runSynchronously();
+    INFO(result.error);
+    REQUIRE(result.error.empty());
+    CHECK(result.length == 48000);
+    std::vector<std::vector<float>> channels;
+    REQUIRE(engine::readWavSamples(out.getFullPathName().toStdString(), channels));
+    REQUIRE(channels.size() == 2);
+    REQUIRE(channels[0].size() == 48000);
+    const auto peakIn = [&](size_t from, size_t to)
+    {
+        float peak = 0.0f;
+        for (size_t i = from; i < to; ++i)
+            peak = std::max(peak, std::abs(channels[0][i]));
+        return peak;
+    };
+    CHECK(peakIn(0, 23990) == 0.0f);                         // silence before the note
+    CHECK(peakIn(25000, 35000) > 0.05f);                     // the note sounds
+    CHECK(peakIn(47000, 48000) < 1.0e-3f);                   // and has released by the end
+    CHECK(channels[1][30000] == Approx(channels[0][30000])); // the synth is mono, centred
+    out.deleteFile();
+}
+
 TEST_CASE("Bouncing stems writes one file per track with the others muted", "[app][bounce]")
 {
     const juce::ScopedJuceInitialiser_GUI juceInit;

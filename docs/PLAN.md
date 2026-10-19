@@ -310,6 +310,13 @@ phase that could reasonably be cut from v1 if audio-only is acceptable.
 
 **Milestone:** record a MIDI performance into a VST instrument, edit it, bounce it.
 
+Status 2026-10-19: device I/O (inputs, output, hot-plug), model, commands and JSON,
+note scheduling with note-offs on stop/jump/loop, the built-in synth, VST3 and
+CLAP instruments, MIDI recording with takes and latency placement, MIDI clips in
+the arrange view and the piano roll are built and tested offline (see
+architecture.md). Open: multi-output instruments (aux outputs as mixer channels),
+MIDI output to external devices, audible note preview in the piano roll.
+
 ### Phase 9 — Automation, stretch, polish (4 weeks)
 
 - Automation lanes (read/write/touch/latch) for every plugin and mixer parameter.
@@ -419,7 +426,8 @@ These need an answer before or during the phase noted.
    **Decided 2026-10-19: yes.** Hosted directly against the CLAP C ABI (JUCE does
    not host CLAP), behind the same insert interface, as "clap:<id>" types.
 4. **MIDI in v1** (end of Phase 7). Audio-only is a legitimate v1; MIDI roughly adds a
-   month.
+   month. **Started 2026-10-19** (Phase 8 brought forward while Phase 7 waits for
+   the design spec).
 5. **Plugin sandboxing** (post-v1). Decide after seeing beta crash reports.
 6. **Time-stretch library** (Phase 9). Rubber Band (best quality, GPL/commercial) vs
    Signalsmith (MIT, very good).
