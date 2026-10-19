@@ -134,6 +134,7 @@ void AudioEngine::prepare(double sampleRate, int maxBlockSize)
     AURAL_ASSERT_NOT_REALTIME("AudioEngine::prepare");
     renderer_.prepare(maxBlockSize);
     inserts_.prepare(sampleRate, std::min(maxBlockSize, Snapshot::maxBlockSamples));
+    loudness_.prepare(sampleRate);
     deviceSampleRate_.store(sampleRate, std::memory_order_relaxed);
     running_.store(true, std::memory_order_release);
 }
@@ -258,6 +259,7 @@ void AudioEngine::process(
         context.recording = recordSession_ != nullptr;
         context.countIn = countingIn;
         context.meters = &meters_;
+        context.loudness = &loudness_;
 
         if (snapshot != nullptr)
         {

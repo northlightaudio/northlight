@@ -19,7 +19,8 @@ add_executable(aural_unit_tests
     engine/ResamplingTests.cpp
     engine/TakeTests.cpp
     engine/MixerTests.cpp
-    plugins/BuiltInTests.cpp)
+    plugins/BuiltInTests.cpp
+    engine/LoudnessTests.cpp)
 
 target_link_libraries(aural_unit_tests PRIVATE
     aural_options

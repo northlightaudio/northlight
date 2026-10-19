@@ -418,6 +418,11 @@ public:
         name_.setFont(juce::FontOptions{theme_.type.caption});
         name_.setJustificationType(juce::Justification::centred);
         addAndMakeVisible(name_);
+        lufs_.setFont(juce::FontOptions{theme_.type.caption});
+        lufs_.setJustificationType(juce::Justification::centred);
+        lufs_.setColour(juce::Label::textColourId, theme_.colours.textSecondary);
+        lufs_.setTooltip("Loudness, LUFS: momentary (400 ms) and short-term (3 s)");
+        addAndMakeVisible(lufs_);
         fader_.setSliderStyle(juce::Slider::LinearVertical);
         fader_.setRange(minFaderDb, maxFaderDb, 0.1);
         fader_.setSkewFactorFromMidPoint(-12.0);
@@ -443,6 +448,14 @@ public:
 
     void pushMeter(const rt::MeterBlock::Reading& r) { meter_.push(r); }
 
+    void pushLoudness(const engine::LoudnessMeter::Reading& r)
+    {
+        const auto text = [](float lufs)
+        { return lufs <= -99.0f ? juce::String("-inf") : juce::String(lufs, 1); };
+        lufs_.setText("M " + text(r.momentaryLufs) + "\nS " + text(r.shortTermLufs),
+                      juce::dontSendNotification);
+    }
+
     void paint(juce::Graphics& g) override
     {
         g.fillAll(theme_.colours.surfaceRaised);
@@ -455,7 +468,8 @@ public:
         auto area = getLocalBounds().reduced(theme_.spacing.xs);
         area.removeFromTop(4);
         name_.setBounds(area.removeFromTop(18));
-        area.removeFromTop(theme_.spacing.sm);
+        lufs_.setBounds(area.removeFromTop(30));
+        area.removeFromTop(theme_.spacing.xs);
         meter_.setBounds(area.removeFromRight(18).withTrimmedBottom(20));
         area.removeFromRight(theme_.spacing.xs);
         fader_.setBounds(area);
@@ -465,7 +479,7 @@ private:
     MixerView& owner_;
     const Theme& theme_;
     bool updating_ = false;
-    juce::Label name_;
+    juce::Label name_, lufs_;
     juce::Slider fader_;
     StereoMeter meter_;
 };
@@ -539,7 +553,8 @@ void MixerView::openInsertEditor(core::Id channelId, core::Id insertId)
     editors_.push_back(std::move(window));
 }
 
-MixerView::MixerView(rt::MeterBlock& meters) : meters_(meters)
+MixerView::MixerView(rt::MeterBlock& meters, std::function<engine::LoudnessMeter::Reading()> loudness)
+    : meters_(meters), loudness_(std::move(loudness))
 {
     setOpaque(true);
     viewport_.setViewedComponent(&stripsHolder_, false);
@@ -632,6 +647,8 @@ void MixerView::timerCallback()
         strip->pushMeter(meters_.take(strip->meterSlot()));
     if (project_ != nullptr)
         master_->pushMeter(meters_.take(engine::masterMeterSlot(*project_)));
+    if (loudness_)
+        master_->pushLoudness(loudness_());
 }
 
 void MixerView::paint(juce::Graphics& g)

@@ -2,6 +2,7 @@
 
 #include "core/Command.h"
 #include "core/Model.h"
+#include "engine/Loudness.h"
 #include "engine/Meters.h"
 #include "ui/Theme.h"
 
@@ -21,7 +22,7 @@ namespace aural::ui
 class MixerView final : public juce::Component, private juce::Timer
 {
 public:
-    explicit MixerView(rt::MeterBlock& meters);
+    MixerView(rt::MeterBlock& meters, std::function<engine::LoudnessMeter::Reading()> loudness);
     ~MixerView() override;
 
     void setProject(const core::Project* project);
@@ -48,6 +49,7 @@ private:
 
     const Theme& theme_ = Theme::dark();
     rt::MeterBlock& meters_;
+    std::function<engine::LoudnessMeter::Reading()> loudness_;
     const core::Project* project_ = nullptr;
     std::vector<std::unique_ptr<Strip>> strips_;
     std::unique_ptr<MasterStrip> master_;

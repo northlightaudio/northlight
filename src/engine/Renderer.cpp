@@ -364,6 +364,8 @@ void Renderer::renderSpan(const Snapshot& snapshot,
     }
     if (context.meters != nullptr)
         context.meters->measure(snapshot.masterMeterSlot, left, right, numSamples);
+    if (context.loudness != nullptr)
+        context.loudness->processBlock(left, right, numSamples);
 }
 
 } // namespace aural::engine

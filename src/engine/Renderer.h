@@ -1,6 +1,7 @@
 #pragma once
 
 #include "engine/Click.h"
+#include "engine/Loudness.h"
 #include "engine/Meters.h"
 #include "engine/Snapshot.h"
 #include "engine/Transport.h"
@@ -25,10 +26,11 @@ struct RenderContext
 {
     const float* const* inputs = nullptr; // active device inputs, callback order
     int numInputs = 0;
-    bool playing = false;             // clips play and the position advances
-    bool recording = false;           // armed tracks in automatic monitor mode hear their input
-    bool countIn = false;             // the count-in before a recording: clicks only, position holds
-    rt::MeterBlock* meters = nullptr; // may be null (tests)
+    bool playing = false;              // clips play and the position advances
+    bool recording = false;            // armed tracks in automatic monitor mode hear their input
+    bool countIn = false;              // the count-in before a recording: clicks only, position holds
+    rt::MeterBlock* meters = nullptr;  // may be null (tests)
+    LoudnessMeter* loudness = nullptr; // master loudness, may be null
 };
 
 class Renderer

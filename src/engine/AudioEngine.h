@@ -1,6 +1,7 @@
 #pragma once
 
 #include "core/Model.h"
+#include "engine/Loudness.h"
 #include "engine/Meters.h"
 #include "engine/Recording.h"
 #include "engine/Renderer.h"
@@ -81,6 +82,8 @@ public:
     // Peak/RMS per channel, slots as laid out by the snapshot compiler
     // (trackMeterSlot / busMeterSlot / masterMeterSlot). The UI takes readings.
     rt::MeterBlock& meters() noexcept { return meters_; }
+    // Momentary and short-term loudness of the master (BS.1770).
+    LoudnessMeter::Reading loudness() const noexcept { return loudness_.reading(); }
     core::SamplePosition position() const noexcept { return position_.load(std::memory_order_relaxed); }
     bool isPlaying() const noexcept { return playing_.load(std::memory_order_relaxed); }
     bool isRecording() const noexcept { return recording_.load(std::memory_order_relaxed); }
@@ -119,6 +122,7 @@ private:
     Renderer renderer_;
     RecordWriter writer_;
     rt::MeterBlock meters_;
+    LoudnessMeter loudness_;
 
     TransportState transport_;               // real-time thread only
     RecordSession* recordSession_ = nullptr; // real-time thread only

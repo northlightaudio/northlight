@@ -40,7 +40,7 @@ public:
 
     Content(MainWindow& owner, audio::AudioDeviceLayer& audio, ProjectSession& session)
         : owner_(owner), audio_(audio), session_(session), tracks_(session.peakStore()),
-          mixer_(session.engine().meters())
+          mixer_(session.engine().meters(), [&session] { return session.engine().loudness(); })
     {
         setSize(1280, 800);
         setWantsKeyboardFocus(true);
