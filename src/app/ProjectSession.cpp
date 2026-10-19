@@ -305,6 +305,34 @@ void ProjectSession::finishRecording(engine::AudioEngine::FinishedRecording fini
     publish();
 }
 
+int ProjectSession::countPartialRecordings() const
+{
+    const auto folder = mediaFolder();
+    return folder.isDirectory() ? folder.getNumberOfChildFiles(juce::File::findFiles, "*.partial.wav") : 0;
+}
+
+int ProjectSession::discardPartialRecordings()
+{
+    const auto folder = mediaFolder();
+    int discarded = 0;
+    if (!folder.isDirectory())
+        return 0;
+    for (const auto& partial : folder.findChildFiles(juce::File::findFiles, false, "*.partial.wav"))
+        if (partial.moveFileTo(
+                partial.getSiblingFile(partial.getFileName().replace(".partial.wav", ".discarded.wav"))))
+            ++discarded;
+    return discarded;
+}
+
+bool ProjectSession::isTrackMonitoring(const core::Track& track) const
+{
+    engine::TrackNode node;
+    node.inputChannel = track.inputChannel;
+    node.armed = track.armed;
+    node.monitor = track.monitor;
+    return engine::Renderer::monitorsInput(node, engine_.isPlaying(), engine_.isRecording());
+}
+
 int ProjectSession::recoverPartialRecordings()
 {
     const auto folder = mediaFolder();

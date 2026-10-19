@@ -10,3 +10,12 @@ target_link_libraries(aural_loopback_tool PRIVATE
     aural_rt_checks
     aural_audio_device
     aural_juce)
+
+# Offline recording soak: N synthetic inputs for M minutes through the engine's
+# record path, verified sample-exactly. JUCE-free; run manually.
+add_executable(aural_record_soak RecordSoakTool.cpp)
+target_link_libraries(aural_record_soak PRIVATE
+    aural_options
+    aural_rt
+    aural_rt_checks
+    aural_engine)

@@ -28,6 +28,9 @@ public:
     void showAudioSetup();
     void closeAudioSetup();
 
+    // If unfinished recordings are in the media folder, asks whether to recover them.
+    void offerRecovery();
+
 private:
     class Content;
     class AudioSetupWindow;

@@ -92,9 +92,15 @@ public:
     // Latency used to place recordings: the loopback measurement when it matches
     // the device configuration, otherwise the driver's reported input + output.
     core::SamplePosition recordingLatencySamples() const;
-    // Repairs and imports any *.partial.wav left in the media folder by a crash.
-    // Returns how many were recovered.
+    // Unfinished recordings (*.partial.wav) left in the media folder by a crash.
+    int countPartialRecordings() const;
+    // Repairs and imports them as "Recovered" tracks. Returns how many.
     int recoverPartialRecordings();
+    // Sets them aside as *.discarded.wav so they are not offered again.
+    int discardPartialRecordings();
+    // Whether the track is hearing its input right now (monitor mode, arm and
+    // transport state combined).
+    bool isTrackMonitoring(const core::Track& track) const;
     // Human-readable note about the last recording (dropouts, recovery), if any.
     const std::string& lastRecordingMessage() const noexcept { return recordingMessage_; }
 

@@ -20,6 +20,9 @@ public:
     TrackHeader();
 
     void setTrack(const core::Track& track, const std::vector<std::string>& inputNames);
+    // Live indicators: input being heard (green dot by the monitor button) and a
+    // recording in progress (the arm button reads REC while armed).
+    void setLiveState(bool monitoring, bool recording);
     core::Id trackId() const noexcept { return trackId_; }
 
     std::function<void(core::Id, int)> onInputChanged;
@@ -36,6 +39,9 @@ private:
     core::Id trackId_ = core::invalidId;
     core::MonitorMode monitor_ = core::MonitorMode::automatic;
     bool updating_ = false;
+    bool monitoring_ = false;
+    bool recording_ = false;
+    bool armed_ = false;
     juce::Label name_;
     juce::ComboBox input_;
     juce::TextButton arm_{"R"}, monitorButton_{"I"};

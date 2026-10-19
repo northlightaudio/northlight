@@ -65,8 +65,19 @@ void TrackHeader::setTrack(const core::Track& track, const std::vector<std::stri
                          juce::dontSendNotification);
 
     arm_.setToggleState(track.armed, juce::dontSendNotification);
+    armed_ = track.armed;
     monitor_ = track.monitor;
     refreshMonitorButton();
+}
+
+void TrackHeader::setLiveState(bool monitoring, bool recording)
+{
+    if (monitoring == monitoring_ && recording == recording_)
+        return;
+    monitoring_ = monitoring;
+    recording_ = recording;
+    arm_.setButtonText(recording_ && armed_ ? "REC" : "R");
+    repaint();
 }
 
 void TrackHeader::refreshMonitorButton()
@@ -80,19 +91,24 @@ void TrackHeader::refreshMonitorButton()
 void TrackHeader::paint(juce::Graphics& g)
 {
     const auto& c = theme_.colours;
-    g.fillAll(c.surface);
+    g.fillAll(recording_ && armed_ ? c.surface.overlaidWith(c.danger.withAlpha(0.12f)) : c.surface);
     g.setColour(c.border);
     g.fillRect(getLocalBounds().removeFromBottom(1));
     g.fillRect(getLocalBounds().removeFromRight(1));
+
+    // Monitoring indicator: a dot in the top-right corner while the input is heard.
+    const auto dot = juce::Rectangle<float>(static_cast<float>(getWidth()) - 16.0f, 8.0f, 8.0f, 8.0f);
+    g.setColour(monitoring_ ? c.success : c.borderStrong);
+    g.fillEllipse(dot);
 }
 
 void TrackHeader::resized()
 {
     auto area = getLocalBounds().reduced(theme_.spacing.sm, theme_.spacing.xs);
-    name_.setBounds(area.removeFromTop(20));
+    name_.setBounds(area.removeFromTop(20).withTrimmedRight(16));
     area.removeFromTop(theme_.spacing.xs);
     auto row = area.removeFromTop(24);
-    arm_.setBounds(row.removeFromLeft(28));
+    arm_.setBounds(row.removeFromLeft(36));
     row.removeFromLeft(theme_.spacing.xs);
     monitorButton_.setBounds(row.removeFromLeft(52));
     row.removeFromLeft(theme_.spacing.xs);

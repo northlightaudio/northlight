@@ -31,8 +31,8 @@ public:
         // the first paint. The session is already attached to the callback.
         audio_->initialise();
 
-        // Recordings interrupted by a crash are repaired and brought back as tracks.
-        session_->recoverPartialRecordings();
+        // Recordings interrupted by a crash are offered back as tracks.
+        mainWindow_->offerRecovery();
 
         applyLaunchFlags(commandLine);
     }
@@ -43,6 +43,8 @@ public:
     //   --play               start the transport
     //   --record <n>         create n armed tracks on inputs 1..n and start recording
     //   --stop-after <s>     stop the transport after s seconds
+    //   --loop <from> <to>   set and enable the loop region, in seconds
+    //   --no-count-in        record without the count-in
     void applyLaunchFlags(const juce::String& commandLine)
     {
         const auto tokens = juce::ArgumentList("Aural", commandLine).arguments;
@@ -70,6 +72,17 @@ public:
                 // moment before recording.
                 juce::Timer::callAfterDelay(1500, [this] { session_->startRecording(); });
             }
+            else if (arg == "--loop" && i + 2 < tokens.size())
+            {
+                const double from = tokens.getReference(++i).text.getDoubleValue();
+                const double to = tokens.getReference(++i).text.getDoubleValue();
+                const double rate = session_->project().sampleRate;
+                session_->setRegion(static_cast<core::SamplePosition>(from * rate),
+                                    static_cast<core::SamplePosition>(to * rate));
+                session_->setLoopEnabled(true);
+            }
+            else if (arg == "--no-count-in")
+                session_->setCountInBars(0);
             else if (arg == "--stop-after" && i + 1 < tokens.size())
             {
                 const int seconds = tokens.getReference(++i).text.getIntValue();

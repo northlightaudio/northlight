@@ -37,6 +37,9 @@ public:
     void setRegion(core::SamplePosition start, core::SamplePosition end, bool loop, bool punch);
     // Names of the device's active inputs, in callback order, for the track headers.
     void setInputNames(std::vector<std::string> names);
+    // Live state per track (same order as the project's tracks): whether the input is
+    // being heard, and whether a recording is in progress.
+    void setMonitoringStates(const std::vector<bool>& monitoring, bool recording);
 
     std::function<void(core::SamplePosition)> onLocate;
     std::function<void(core::SamplePosition, core::SamplePosition)> onRegionChanged;

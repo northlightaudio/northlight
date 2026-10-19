@@ -76,6 +76,12 @@ void ArrangeView::rebuildHeaders()
     layoutHeaders();
 }
 
+void ArrangeView::setMonitoringStates(const std::vector<bool>& monitoring, bool recording)
+{
+    for (size_t i = 0; i < headers_.size(); ++i)
+        headers_[i]->setLiveState(i < monitoring.size() && monitoring[i], recording);
+}
+
 void ArrangeView::layoutHeaders()
 {
     int y = rulerHeight - verticalScroll_;

@@ -223,6 +223,13 @@ private:
     {
         if (++ticks_ % 15 == 0)
             updateStatusText();
+        if (ticks_ % 5 == 0)
+        {
+            std::vector<bool> monitoring;
+            for (const auto& track : session_.project().tracks)
+                monitoring.push_back(session_.isTrackMonitoring(track));
+            tracks_.setMonitoringStates(monitoring, session_.isRecording());
+        }
         const bool recording = session_.isRecording();
         tracks_.setPlayhead(session_.position(), session_.isPlaying(), recording);
         positionLabel_.setText(formatPosition(session_.project(), session_.position()),
@@ -280,9 +287,9 @@ private:
                 session_.stop();
                 const auto error = session_.open(file);
                 lastImportError_ = error.empty() ? juce::String() : "Cannot open: " + juce::String(error);
-                session_.recoverPartialRecordings();
                 refresh();
                 grabKeyboardFocus();
+                owner_.offerRecovery();
             });
     }
 
@@ -521,6 +528,32 @@ void MainWindow::showAudioSetup()
 void MainWindow::closeAudioSetup()
 {
     audioSetupWindow_.reset();
+}
+
+void MainWindow::offerRecovery()
+{
+    const int count = session_.countPartialRecordings();
+    if (count <= 0)
+        return;
+    juce::Component::SafePointer<MainWindow> safe(this);
+    juce::AlertWindow::showOkCancelBox(
+        juce::MessageBoxIconType::QuestionIcon,
+        "Recover recordings?",
+        juce::String(count) + " recording(s) were not finished (the app was closed while recording). "
+                              "Recover them as new tracks, or set them aside?",
+        "Recover",
+        "Set aside",
+        this,
+        juce::ModalCallbackFunction::create(
+            [safe](int result)
+            {
+                if (safe == nullptr)
+                    return;
+                if (result == 1)
+                    safe->session_.recoverPartialRecordings();
+                else
+                    safe->session_.discardPartialRecordings();
+            }));
 }
 
 } // namespace aural
