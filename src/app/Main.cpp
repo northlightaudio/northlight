@@ -49,6 +49,7 @@ public:
     void applyLaunchFlags(const juce::String& commandLine)
     {
         const auto tokens = juce::ArgumentList("Aural", commandLine).arguments;
+        int stopAfterSeconds = 0;
         for (int i = 0; i < tokens.size(); ++i)
         {
             const auto& arg = tokens.getReference(i);
@@ -110,8 +111,18 @@ public:
             }
             else if (arg == "--stop-after" && i + 1 < tokens.size())
             {
-                const int seconds = tokens.getReference(++i).text.getIntValue();
-                juce::Timer::callAfterDelay(seconds * 1000, [this] { session_->stop(); });
+                stopAfterSeconds = tokens.getReference(++i).text.getIntValue();
+                juce::Timer::callAfterDelay(stopAfterSeconds * 1000, [this] { session_->stop(); });
+            }
+            else if (arg == "--recover")
+                session_->recoverPartialRecordings(); // without the prompt, for unattended checks
+            else if (arg == "--save" && i + 1 < tokens.size())
+            {
+                // Saves two seconds after a --stop-after given before it (so the
+                // recording has been placed), otherwise half a second after launch.
+                const auto file = tokens.getReference(++i).resolveAsFile();
+                juce::Timer::callAfterDelay(stopAfterSeconds > 0 ? stopAfterSeconds * 1000 + 2000 : 500,
+                                            [this, file] { session_->save(file); });
             }
         }
     }

@@ -107,16 +107,22 @@ With **Loop** on, each pass through the region becomes a new take on the track.
 inserts (built-in gain, EQ, compressor, limiter with an editor window each), pan,
 mute, solo, phase, fader and meters, plus the master with LUFS; **+ Bus** adds a bus.
 Recordings go next to the project file in a `<project> Media` folder, or to
-`Documents\Aural\Recordings` for an unsaved project. If the app dies while recording,
-the next launch offers to repair the unfinished files and add them as "Recovered"
-tracks, or set them aside.
+`Documents\Aural\Recordings` for an unsaved project, each with a small
+`.recording.json` beside it while it is in progress. If the app dies while
+recording, the next launch offers to repair the unfinished files and put them back
+on their tracks where they were captured (or on "Recovered" tracks when the project
+has changed), or set them aside. Recording needs the device at the project's sample
+rate.
 Projects are `.aural` files: **New**, **Open...**, **Save** (Ctrl+N / Ctrl+O / Ctrl+S,
 Ctrl+Shift+S to save as).
 
 For unattended checks: `Aural.exe --import <file> [--import <file>] --play`, and
 `Aural.exe --record <inputs> [--loop <from> <to>] [--no-count-in] --stop-after <seconds>`; `--mixer`
 opens the mixer panel and `--insert <type>` adds a built-in (for example `aural.eq`) to
-every track and opens its editor.
+every track and opens its editor. `--recover` recovers unfinished recordings without
+the prompt and `--save <file>` writes the project (so a check can read the placed
+clips); `--save` runs two seconds after a preceding `--stop-after`, else half a
+second after launch.
 The offline recording soak is `aural_record_soak --inputs 16 --minutes 30 --speed 8`.
 
 ### Audio setup

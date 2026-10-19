@@ -208,7 +208,17 @@ thread through the transport command queue. Every block, the real-time thread
 pushes each captured input into its ring and the transport plays; the writer drains
 the rings every 10 ms and rewrites the WAV headers every second, so a crash loses at
 most a second of header bookkeeping and nothing of the audio. Overruns (a full ring)
-drop the block and count it rather than block.
+drop the block rather than block: the real-time thread records a gap (captured
+count plus length) through a lock-free queue and the writer fills it with zeros, so
+a file's sample number is always the captured sample number and the take
+boundaries after a dropout still land where they should. The writer pops samples
+before it pops marks and gaps, because the real-time thread pushes an event before
+the samples that follow it; the other order could write a take's first block into
+the previous file. An open, write or header failure marks that input failed: the
+writer stops touching it, counts the rest as lost and reports `ok = false` with
+`samplesLost`; the session repairs and keeps whatever did reach the disk. The WAV
+header saturates at 4 GB (about 6 h 12 m of float mono at 48 kHz); a longer take
+still records, but only the first 4 GB is readable until it is split.
 
 Loop recording: when the transport wraps while capturing, the real-time thread
 marks a take boundary (the cumulative captured count plus the loop start) through a
@@ -217,16 +227,29 @@ lock-free queue; the writer closes the file at that sample and opens
 the loop start, later takes on top of earlier ones on the same track (take lanes
 with their own rows come with the editing phase).
 
+Starting at or past the loop end (a locate there, or the loop enabled while
+outside it) wraps to the loop start before the first capture, so the take is
+placed where its audio belongs. `ProjectSession::startRecording` refuses to run
+without a device or while the device rate differs from the project rate (the
+files are stamped with the project rate), picks a base name no file in the media
+folder already shares, and writes `<base>.recording.json` beside each input before
+capture begins: track id and name, capture start, loop start, rate and the latency
+in force. If the transport command queue is full the engine ends the session at
+once and reports an error rather than leaving it pending.
+
 Stop, locate or a device stop end the session on the real-time side; once the
 writer has closed the files the session polls `collectRecording()`, renames the
-`.partial.wav` files to `.wav` and adds the clips in one undo step. Placement is
+`.partial.wav` files to `.wav` (never over an existing file), deletes empty takes,
+removes the sidecars and adds the clips in one undo step. Placement is
 `engine::placeRecording`: shifted back by `recordingLatencySamples()` (the loopback
 calibration when it matches the device configuration, otherwise the driver's
 reported input plus output latency), trimming the front of anything that would
 land before zero. At startup and on open, the main window counts `.partial.wav`
-files in the media folder and asks whether to recover them (repair from the file
-size with `WavWriter::repair`, import as "Recovered" tracks) or set them aside as
-`.discarded.wav`.
+files in the media folder and asks whether to recover them or set them aside as
+`.discarded.wav`. Recovery repairs each file from its size with
+`WavWriter::repair` and, with its sidecar, puts it back on its own track (if that
+track still exists) at its capture position, later takes at the loop start, shifted
+by the recorded latency; without a sidecar it lands at zero on a "Recovered" track.
 
 Input monitoring is part of the track render: a track in monitor mode "on" always
 hears its input through its gain and pan; "automatic" hears it while armed and the
@@ -394,6 +417,8 @@ launches; `JUCE_MODAL_LOOPS_PERMITTED` stays 0.
 | 2026-10-19 | Own Hermite resampler instead of juce::LagrangeInterpolator | The Lagrange interpolator carries a ~2.5-sample lookback delay and sequential state, which misaligned imported media and made chunked seeks awkward. A stateless resampler evaluated at exact positions is simpler and sample-aligned; a windowed-sinc converter for offline bounces is still planned for Phase 9. |
 | 2026-10-19 | Loops shorter than 64 samples are refused | Every loop pass inside a block costs a render span and a worker wake; a one-sample loop would issue hundreds per block for no musical purpose. |
 | 2026-10-19 | Takes are split by the writer at marks from the audio thread, into one file per pass | The audio thread must not open files; marking the cumulative sample count is one lock-free push, and the writer, which already owns the files, cuts them exactly there. One file per take keeps every take a plain clip. |
+| 2026-10-19 | Dropped record blocks become silence in the file, not a shorter file | A shorter file would shift every later sample and take boundary; silence of the right length keeps placement exact and the dropout audible and reportable. |
+| 2026-10-19 | A recording sidecar per input, written before capture | Only the session knows the track, start, loop and latency, and after a crash it is gone; a small JSON next to the file lets recovery place the take instead of guessing zero on a new track. |
 | 2026-10-19 | Crash recovery asks before importing | A recovered take is usually wanted, but silently adding tracks to whatever project opens next (possibly an unrelated one) would surprise; the prompt keeps it a one-click choice and sets aside what is declined rather than deleting it. |
 | 2026-10-19 | 16-input soak is offline, not on hardware | The Volt has four inputs and the engine's record path is identical for synthetic and device inputs after the callback; the offline soak exercises rings, writer and header rewrites at eight times real time, which is a stricter disk test than real time. |
 | 2026-10-19 | Tracks and buses share one Channel type and one set of fader commands | The fader section, routing and sends are identical on both; one command per property keeps undo uniform and the mixer draws both with the same strip. |
