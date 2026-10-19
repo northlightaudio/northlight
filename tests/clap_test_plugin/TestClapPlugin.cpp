@@ -1,8 +1,10 @@
 // A tiny CLAP effect built alongside the tests so the host can be exercised
 // without a third-party plugin: a stereo gain with one parameter, a latency of
 // 32 samples (it delays by that), an optional stereo key input that, when
-// present, replaces the audio (so a test can see what the host fed it), and a
-// state of one double. No GUI.
+// present, replaces the audio (so a test can see what the host fed it), a state
+// of one double, and a note input port: a note-on adds its velocity (0..1) to the
+// left output at its sample and a note-off subtracts one, so a test can read the
+// host's note timing from the audio. No GUI.
 
 #include <clap/clap.h>
 
@@ -157,6 +159,25 @@ bool audioPortsGet(const clap_plugin_t*, uint32_t index, bool isInput, clap_audi
 
 const clap_plugin_audio_ports_t audioPortsExtension = {&audioPortsCount, &audioPortsGet};
 
+uint32_t notePortsCount(const clap_plugin_t*, bool isInput)
+{
+    return isInput ? 1 : 0;
+}
+
+bool notePortsGet(const clap_plugin_t*, uint32_t index, bool isInput, clap_note_port_info_t* info)
+{
+    if (!isInput || index != 0)
+        return false;
+    *info = clap_note_port_info_t{};
+    info->id = 0;
+    info->supported_dialects = CLAP_NOTE_DIALECT_CLAP | CLAP_NOTE_DIALECT_MIDI;
+    info->preferred_dialect = CLAP_NOTE_DIALECT_CLAP;
+    std::strncpy(info->name, "Notes", sizeof(info->name) - 1);
+    return true;
+}
+
+const clap_plugin_note_ports_t notePortsExtension = {&notePortsCount, &notePortsGet};
+
 // ----- plugin -----------------------------------------------------------------------------------
 
 bool pluginInit(const clap_plugin_t*)
@@ -232,6 +253,28 @@ clap_process_status pluginProcess(const clap_plugin_t* p, const clap_process_t* 
         out[0][i] = dl * g;
         out[1][i] = dr * g;
     }
+    // Notes mark the left output (both dialects).
+    const auto* events = process->in_events;
+    const uint32_t count = events->size(events);
+    for (uint32_t i = 0; i < count; ++i)
+    {
+        const auto* header = events->get(events, i);
+        if (header->space_id != CLAP_CORE_EVENT_SPACE_ID || header->time >= n)
+            continue;
+        if (header->type == CLAP_EVENT_NOTE_ON)
+            out[0][header->time] +=
+                static_cast<float>(reinterpret_cast<const clap_event_note_t*>(header)->velocity);
+        else if (header->type == CLAP_EVENT_NOTE_OFF)
+            out[0][header->time] -= 1.0f;
+        else if (header->type == CLAP_EVENT_MIDI)
+        {
+            const auto* midi = reinterpret_cast<const clap_event_midi_t*>(header);
+            if ((midi->data[0] & 0xF0) == 0x90 && midi->data[2] > 0)
+                out[0][header->time] += static_cast<float>(midi->data[2]) / 127.0f;
+            else if ((midi->data[0] & 0xF0) == 0x80 || (midi->data[0] & 0xF0) == 0x90)
+                out[0][header->time] -= 1.0f;
+        }
+    }
     return CLAP_PROCESS_CONTINUE;
 }
 
@@ -245,6 +288,8 @@ const void* pluginGetExtension(const clap_plugin_t*, const char* id)
         return &latencyExtension;
     if (std::strcmp(id, CLAP_EXT_AUDIO_PORTS) == 0)
         return &audioPortsExtension;
+    if (std::strcmp(id, CLAP_EXT_NOTE_PORTS) == 0)
+        return &notePortsExtension;
     return nullptr;
 }
 

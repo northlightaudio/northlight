@@ -187,6 +187,19 @@ bool HostedClapPlugin::initialise(const std::string& path, const std::string& pl
         if (inputPorts_ >= 2 && audioPorts_->get(plugin_, 1, true, &info))
             hasSidechain_ = info.channel_count == 2;
     }
+    // Notes: the first note input port, in its preferred dialect.
+    notePorts_ =
+        static_cast<const clap_plugin_note_ports_t*>(plugin_->get_extension(plugin_, CLAP_EXT_NOTE_PORTS));
+    if (notePorts_ != nullptr && notePorts_->count(plugin_, true) > 0)
+    {
+        clap_note_port_info_t info{};
+        if (notePorts_->get(plugin_, 0, true, &info))
+        {
+            hasNoteInput_ =
+                (info.supported_dialects & (CLAP_NOTE_DIALECT_CLAP | CLAP_NOTE_DIALECT_MIDI)) != 0;
+            noteDialectClap_ = (info.supported_dialects & CLAP_NOTE_DIALECT_CLAP) != 0;
+        }
+    }
     readParameters();
     pending_ = std::make_unique<rt::SpscQueue<ParamChange>>(1024);
     in_.list.ctx = &in_;
@@ -346,6 +359,16 @@ void HostedClapPlugin::processWithSidechain(
     run(left, right, keyLeft, keyRight, numSamples);
 }
 
+void HostedClapPlugin::processMidi(const engine::MidiEventList& events,
+                                   float* left,
+                                   float* right,
+                                   int numSamples) noexcept
+{
+    pendingMidi_ = &events;
+    run(left, right, nullptr, nullptr, numSamples);
+    pendingMidi_ = nullptr;
+}
+
 bool HostedClapPlugin::run(
     float* left, float* right, const float* keyLeft, const float* keyRight, int numSamples) noexcept
 {
@@ -358,7 +381,7 @@ bool HostedClapPlugin::run(
     ParamChange change;
     while (in_.count < in_.events.size() && pending_->pop(change))
     {
-        auto& e = in_.events[in_.count++];
+        auto& e = in_.events[in_.count++].param;
         e.header.size = sizeof(clap_event_param_value_t);
         e.header.time = 0;
         e.header.space_id = CLAP_CORE_EVENT_SPACE_ID;
@@ -372,6 +395,66 @@ bool HostedClapPlugin::run(
         e.key = -1;
         e.value = change.value;
     }
+    // Then the block's notes, in time order (the list arrives sorted).
+    if (pendingMidi_ != nullptr && hasNoteInput_)
+        for (const auto& m : *pendingMidi_)
+        {
+            if (in_.count >= in_.events.size())
+                break;
+            auto& slot = in_.events[in_.count++];
+            if (noteDialectClap_ && m.type != engine::MidiEvent::Type::controller)
+            {
+                auto& e = slot.note;
+                e.header.size = sizeof(clap_event_note_t);
+                e.header.time = static_cast<uint32_t>(std::max(0, m.sampleOffset));
+                e.header.space_id = CLAP_CORE_EVENT_SPACE_ID;
+                e.header.type = static_cast<uint16_t>(
+                    m.type == engine::MidiEvent::Type::noteOn    ? CLAP_EVENT_NOTE_ON
+                    : m.type == engine::MidiEvent::Type::noteOff ? CLAP_EVENT_NOTE_OFF
+                                                                 : CLAP_EVENT_NOTE_CHOKE);
+                e.header.flags = 0;
+                e.note_id = -1;
+                e.port_index = 0;
+                e.channel =
+                    m.type == engine::MidiEvent::Type::allNotesOff ? -1 : static_cast<int16_t>(m.channel);
+                e.key = m.type == engine::MidiEvent::Type::allNotesOff ? -1 : static_cast<int16_t>(m.note);
+                e.velocity = m.type == engine::MidiEvent::Type::noteOn ? m.velocity / 127.0 : 0.0;
+            }
+            else
+            {
+                auto& e = slot.midi;
+                e.header.size = sizeof(clap_event_midi_t);
+                e.header.time = static_cast<uint32_t>(std::max(0, m.sampleOffset));
+                e.header.space_id = CLAP_CORE_EVENT_SPACE_ID;
+                e.header.type = CLAP_EVENT_MIDI;
+                e.header.flags = 0;
+                e.port_index = 0;
+                const auto channel = static_cast<uint8_t>(m.channel & 15);
+                switch (m.type)
+                {
+                    case engine::MidiEvent::Type::noteOn:
+                        e.data[0] = static_cast<uint8_t>(0x90 | channel);
+                        e.data[1] = m.note;
+                        e.data[2] = m.velocity;
+                        break;
+                    case engine::MidiEvent::Type::noteOff:
+                        e.data[0] = static_cast<uint8_t>(0x80 | channel);
+                        e.data[1] = m.note;
+                        e.data[2] = m.velocity;
+                        break;
+                    case engine::MidiEvent::Type::controller:
+                        e.data[0] = static_cast<uint8_t>(0xB0 | channel);
+                        e.data[1] = m.note;
+                        e.data[2] = m.velocity;
+                        break;
+                    case engine::MidiEvent::Type::allNotesOff:
+                        e.data[0] = static_cast<uint8_t>(0xB0 | channel);
+                        e.data[1] = 123;
+                        e.data[2] = 0;
+                        break;
+                }
+            }
+        }
 
     const float target = isBypassed() ? 1.0f : 0.0f;
     const bool settled = bypassMix_ == target;
@@ -456,7 +539,7 @@ void HostedClapPlugin::onMainThread()
         ParamChange change;
         while (in_.count < in_.events.size() && pending_->pop(change))
         {
-            auto& e = in_.events[in_.count++];
+            auto& e = in_.events[in_.count++].param;
             e.header.size = sizeof(clap_event_param_value_t);
             e.header.time = 0;
             e.header.space_id = CLAP_CORE_EVENT_SPACE_ID;
@@ -738,7 +821,7 @@ void HostedClapPlugin::hostAudioPortsRescan(const clap_host_t*, uint32_t) noexce
 
 uint32_t HostedClapPlugin::hostNotePortsSupportedDialects(const clap_host_t*) noexcept
 {
-    return 0;
+    return CLAP_NOTE_DIALECT_CLAP | CLAP_NOTE_DIALECT_MIDI;
 }
 
 void HostedClapPlugin::hostNotePortsRescan(const clap_host_t*, uint32_t) noexcept {}

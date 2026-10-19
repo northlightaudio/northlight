@@ -19,7 +19,8 @@ namespace aural::hosting
 // and captured when the project is saved. The chain is a stereo pair: the main bus
 // is set to stereo in and out (a mono-only plugin gets the pair summed and its
 // output on both sides), a second input bus becomes the stereo key, other buses
-// stay disabled. Bypass crossfades to the plugin's own bypassed path
+// stay disabled (an instrument has no input bus and its first output pair is
+// taken). Bypass crossfades to the plugin's own bypassed path
 // (processBlockBypassed keeps the latency), so toggling it never re-solves the
 // graph or freezes a tail.
 class HostedPlugin final : public engine::InsertProcessor, public PluginPresets
@@ -51,6 +52,13 @@ public:
     float parameter(int) const noexcept override { return 0.0f; }
     void process(float* left, float* right, int numSamples) noexcept override;
     bool acceptsSidechain() const noexcept override { return sidechain_.load(std::memory_order_acquire); }
+    // Instruments (and MIDI effects): the block's events go into the plugin's
+    // MIDI buffer at their offsets.
+    bool acceptsMidi() const noexcept override { return acceptsMidi_; }
+    void processMidi(const engine::MidiEventList& events,
+                     float* left,
+                     float* right,
+                     int numSamples) noexcept override;
     void processWithSidechain(float* left,
                               float* right,
                               const float* keyLeft,
@@ -91,12 +99,14 @@ private:
     void processBuffer(juce::AudioBuffer<float>& buffer, bool bypassed) noexcept;
 
     Layout layout_;
+    bool acceptsMidi_ = false;
     juce::MidiBuffer midi_;
-    std::vector<float> keyLeft_, keyRight_; // the sidechain bus's channels for one block
-    std::vector<float> mono_;               // the summed pair for a mono plugin
-    std::vector<float> dryLeft_, dryRight_; // the input, for the bypass crossfade
-    float bypassMix_ = 0.0f;                // 0 = processed, 1 = bypassed (real-time)
-    float bypassStep_ = 0.0f;               // per-sample ramp (10 ms)
+    const engine::MidiEventList* pendingMidi_ = nullptr; // this block's events, while running
+    std::vector<float> keyLeft_, keyRight_;              // the sidechain bus's channels for one block
+    std::vector<float> mono_;                            // the summed pair for a mono plugin
+    std::vector<float> dryLeft_, dryRight_;              // the input, for the bypass crossfade
+    float bypassMix_ = 0.0f;                             // 0 = processed, 1 = bypassed (real-time)
+    float bypassStep_ = 0.0f;                            // per-sample ramp (10 ms)
     std::atomic<bool> prepared_{false};
     std::atomic<bool> sidechain_{false}; // the plugin's second input bus is live
 };

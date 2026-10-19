@@ -1,3 +1,4 @@
+#include "engine/Midi.h"
 #include "engine/rt/RealtimeGuard.h"
 #include "hosting/ClapPlugin.h"
 #include "hosting/HostFactory.h"
@@ -144,6 +145,42 @@ TEST_CASE("A CLAP plugin loads, delays by its latency, takes parameters and keep
 }
 
 #if defined(AURAL_RT_CHECKS)
+TEST_CASE("A CLAP plugin with a note port gets the block's notes at their offsets", "[hosting][clap][midi]")
+{
+    const juce::ScopedJuceInitialiser_GUI juceInit;
+    REQUIRE(testClap().existsAsFile());
+    hosting::PluginRegistry registry;
+    hosting::PluginInfo info;
+    info.format = "CLAP";
+    info.id = "io.leafshade.aural.testgain";
+    info.name = "Aural Test Gain";
+    registry.setFileResults(testClap().getFullPathName().toStdString(), 1, {info});
+    hosting::HostFactory factory(registry);
+    auto processor = factory.create("clap:io.leafshade.aural.testgain");
+    REQUIRE(processor != nullptr);
+    CHECK(processor->acceptsMidi());
+    processor->prepare(48000.0, 256);
+
+    engine::MidiEventList events;
+    events.noteOn(10, 60, 127);
+    events.noteOn(40, 64, 64);
+    events.noteOff(100, 60);
+    events.allNotesOff(200);
+    std::vector<float> l(256, 0.0f), r(256, 0.0f);
+    processor->processMidi(events, l.data(), r.data(), 256);
+    CHECK(l[10] == Approx(1.0f));
+    CHECK(l[40] == Approx(64.0f / 127.0f).margin(0.01f));
+    CHECK(l[100] == Approx(-1.0f));
+    CHECK(l[0] == 0.0f);
+    CHECK(l[200] == 0.0f); // a choke is not a note-off marker
+    CHECK(r[10] == 0.0f);
+
+    // Without events the block is plain audio again.
+    std::fill(l.begin(), l.end(), 0.0f);
+    processor->process(l.data(), r.data(), 256);
+    CHECK(l[10] == 0.0f);
+}
+
 TEST_CASE("Processing a CLAP plugin allocates nothing on the real-time thread", "[hosting][clap][rt]")
 {
     const juce::ScopedJuceInitialiser_GUI juceInit;

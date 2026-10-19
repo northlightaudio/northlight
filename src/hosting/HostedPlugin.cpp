@@ -3,6 +3,7 @@
 #include "engine/rt/RealtimeGuard.h"
 
 #include <algorithm>
+#include <cstdint>
 
 namespace aural::hosting
 {
@@ -43,6 +44,7 @@ HostedPlugin::HostedPlugin(std::string typeName,
     : typeName_(std::move(typeName)), instance_(std::move(instance)), layout_(layout)
 {
     sidechain_.store(sidechain, std::memory_order_release);
+    acceptsMidi_ = instance_->acceptsMidi();
 }
 
 HostedPlugin::~HostedPlugin()
@@ -84,9 +86,43 @@ void HostedPlugin::processWithSidechain(
     run(left, right, keyLeft, keyRight, numSamples);
 }
 
+void HostedPlugin::processMidi(const engine::MidiEventList& events,
+                               float* left,
+                               float* right,
+                               int numSamples) noexcept
+{
+    pendingMidi_ = &events;
+    run(left, right, nullptr, nullptr, numSamples);
+    pendingMidi_ = nullptr;
+}
+
 void HostedPlugin::processBuffer(juce::AudioBuffer<float>& buffer, bool bypassed) noexcept
 {
     midi_.clear();
+    if (pendingMidi_ != nullptr)
+        for (const auto& e : *pendingMidi_)
+        {
+            // Raw bytes, so no MidiMessage is built (the buffer was sized in prepare).
+            std::uint8_t bytes[3] = {0, e.note, e.velocity};
+            switch (e.type)
+            {
+                case engine::MidiEvent::Type::noteOn:
+                    bytes[0] = static_cast<std::uint8_t>(0x90 | (e.channel & 15));
+                    break;
+                case engine::MidiEvent::Type::noteOff:
+                    bytes[0] = static_cast<std::uint8_t>(0x80 | (e.channel & 15));
+                    break;
+                case engine::MidiEvent::Type::controller:
+                    bytes[0] = static_cast<std::uint8_t>(0xB0 | (e.channel & 15));
+                    break;
+                case engine::MidiEvent::Type::allNotesOff:
+                    bytes[0] = static_cast<std::uint8_t>(0xB0 | (e.channel & 15));
+                    bytes[1] = 123;
+                    bytes[2] = 0;
+                    break;
+            }
+            midi_.addEvent(bytes, 3, e.sampleOffset);
+        }
     if (bypassed)
         instance_->processBlockBypassed(buffer, midi_); // the plugin's own bypass keeps its latency
     else

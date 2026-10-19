@@ -53,6 +53,14 @@ public:
     float parameter(int index) const noexcept override;
     void process(float* left, float* right, int numSamples) noexcept override;
     bool acceptsSidechain() const noexcept override { return hasSidechain_; }
+    // A plugin with a note input port (an instrument, a MIDI effect) gets the
+    // block's events as CLAP note events, or MIDI 1.0 events when that is the
+    // only dialect it takes.
+    bool acceptsMidi() const noexcept override { return hasNoteInput_; }
+    void processMidi(const engine::MidiEventList& events,
+                     float* left,
+                     float* right,
+                     int numSamples) noexcept override;
     void processWithSidechain(float* left,
                               float* right,
                               const float* keyLeft,
@@ -134,9 +142,16 @@ private:
         void* cookie;
         double value;
     };
+    union EventSlot
+    {
+        clap_event_header_t header;
+        clap_event_param_value_t param;
+        clap_event_note_t note;
+        clap_event_midi_t midi;
+    };
     struct InEvents
     {
-        std::vector<clap_event_param_value_t> events; // preallocated
+        std::vector<EventSlot> events; // preallocated
         uint32_t count = 0;
         static uint32_t size(const clap_input_events_t* list) noexcept;
         static const clap_event_header_t* get(const clap_input_events_t* list, uint32_t index) noexcept;
@@ -172,6 +187,7 @@ private:
     const clap_plugin_state_t* state_ = nullptr;
     const clap_plugin_latency_t* latency_ext_ = nullptr;
     const clap_plugin_audio_ports_t* audioPorts_ = nullptr;
+    const clap_plugin_note_ports_t* notePorts_ = nullptr;
     const clap_plugin_gui_t* gui_ = nullptr;
 
     std::vector<engine::ParameterInfo> infos_;
@@ -181,6 +197,9 @@ private:
     InEvents in_;
     OutEvents out_;
     bool hasSidechain_ = false;
+    bool hasNoteInput_ = false;
+    bool noteDialectClap_ = true;                        // else MIDI 1.0 events
+    const engine::MidiEventList* pendingMidi_ = nullptr; // this block's events, while running
     int inputPorts_ = 0, outputPorts_ = 0;
     std::vector<float> keyLeft_, keyRight_, dryLeft_, dryRight_;
     std::vector<float*> inChannels0_, inChannels1_, outChannels0_;
