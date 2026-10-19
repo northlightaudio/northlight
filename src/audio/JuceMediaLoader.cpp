@@ -1,5 +1,6 @@
 #include "audio/JuceMediaLoader.h"
 
+#include "audio/JuceStreamReader.h"
 #include "engine/rt/RealtimeGuard.h"
 
 #include <cmath>
@@ -29,7 +30,7 @@ std::int64_t JuceMediaLoader::Info::lengthAt(double rate) const noexcept
     return static_cast<std::int64_t>(std::llround(static_cast<double>(lengthSamples) * rate / sampleRate));
 }
 
-JuceMediaLoader::JuceMediaLoader()
+JuceMediaLoader::JuceMediaLoader(engine::DiskThread& disk) : disk_(disk)
 {
     formats_.registerBasicFormats();
 }
@@ -78,10 +79,16 @@ JuceMediaLoader::load(const std::string& path, double targetSampleRate, std::str
         error = "empty audio file";
         return nullptr;
     }
-    if (reader->lengthInSamples > (1 << 30))
+
+    const double rate = targetSampleRate > 0.0 ? targetSampleRate : reader->sampleRate;
+    const double seconds = static_cast<double>(reader->lengthInSamples) / reader->sampleRate;
+    if (seconds > memoryThresholdSeconds)
     {
-        error = "file too long to load into memory";
-        return nullptr;
+        auto source = std::make_shared<engine::StreamingAudioSource>(
+            std::make_unique<JuceStreamReader>(std::move(reader), rate));
+        disk_.add(source);
+        disk_.poke();
+        return source;
     }
 
     const auto length = static_cast<int>(reader->lengthInSamples);

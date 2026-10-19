@@ -1,15 +1,16 @@
 #pragma once
 
 #include "engine/AudioSource.h"
+#include "engine/DiskThread.h"
 
 #include <juce_audio_formats/juce_audio_formats.h>
 
 #include <optional>
 #include <string>
 
-// Loads audio files into MemoryAudioSource through JUCE's format readers (WAV, AIFF,
-// FLAC, OGG, MP3 where available), resampling to the target rate on load. Phase 2:
-// whole files in memory; the streaming source replaces this for long files.
+// Opens audio files through JUCE's format readers (WAV, AIFF, FLAC, OGG, MP3 where
+// available). Short files are decoded into memory (resampled on load); longer ones
+// become StreamingAudioSources fed by the disk thread (resampled as they stream).
 
 namespace aural::audio
 {
@@ -17,7 +18,10 @@ namespace aural::audio
 class JuceMediaLoader final : public engine::MediaLoader
 {
 public:
-    JuceMediaLoader();
+    explicit JuceMediaLoader(engine::DiskThread& disk);
+
+    // Files longer than this (at the target rate) are streamed from disk.
+    static constexpr double memoryThresholdSeconds = 30.0;
 
     std::shared_ptr<engine::AudioSource>
     load(const std::string& path, double targetSampleRate, std::string& error) override;
@@ -36,6 +40,7 @@ public:
     juce::String supportedExtensions() const; // e.g. "*.wav;*.flac"
 
 private:
+    engine::DiskThread& disk_;
     juce::AudioFormatManager formats_;
 };
 

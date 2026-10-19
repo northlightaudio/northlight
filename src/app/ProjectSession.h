@@ -4,6 +4,7 @@
 #include "core/Command.h"
 #include "core/Model.h"
 #include "engine/AudioEngine.h"
+#include "engine/DiskThread.h"
 
 #include <juce_events/juce_events.h>
 #include <juce_gui_basics/juce_gui_basics.h>
@@ -69,6 +70,7 @@ private:
     void matchDeviceSampleRate();
 
     audio::AudioDeviceLayer& audio_;
+    engine::DiskThread disk_;
     audio::JuceMediaLoader loader_;
     engine::AudioEngine engine_;
     core::Project project_;

@@ -11,7 +11,8 @@ namespace
 constexpr int garbageTimerMilliseconds = 250;
 }
 
-ProjectSession::ProjectSession(audio::AudioDeviceLayer& audio) : audio_(audio), engine_(loader_)
+ProjectSession::ProjectSession(audio::AudioDeviceLayer& audio)
+    : audio_(audio), loader_(disk_), engine_(loader_)
 {
     audio_.callback().setEngine(&engine_);
     audio_.addChangeListener(this);
@@ -145,6 +146,7 @@ void ProjectSession::returnToStart()
 void ProjectSession::locate(core::SamplePosition position)
 {
     engine_.locate(position);
+    disk_.poke(); // streamed clips rebuild their windows at the new position sooner
 }
 
 std::string ProjectSession::sampleRateWarning() const

@@ -27,6 +27,10 @@ add_library(aural_engine STATIC
     Renderer.h
     Renderer.cpp
     AudioEngine.h
-    AudioEngine.cpp)
+    AudioEngine.cpp
+    StreamingAudioSource.h
+    StreamingAudioSource.cpp
+    DiskThread.h
+    DiskThread.cpp)
 
 target_link_libraries(aural_engine PUBLIC aural_rt aural_core)

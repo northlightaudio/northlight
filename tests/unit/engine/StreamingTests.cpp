@@ -1,0 +1,210 @@
+#include "engine/DiskThread.h"
+#include "engine/StreamingAudioSource.h"
+#include "engine/rt/RealtimeGuard.h"
+
+#include <catch2/catch_test_macros.hpp>
+
+#include <atomic>
+#include <chrono>
+#include <memory>
+#include <thread>
+#include <vector>
+
+using namespace aural::engine;
+
+namespace
+{
+// A "file" whose sample i on channel c is (i + c * 1000000). Reads are counted.
+class RampReader final : public StreamReader
+{
+public:
+    RampReader(std::int64_t length, int channels) : length_(length), channels_(channels) {}
+    int numChannels() const noexcept override { return channels_; }
+    std::int64_t lengthSamples() const noexcept override { return length_; }
+    double sampleRate() const noexcept override { return 48000.0; }
+    bool read(std::int64_t start, int numSamples, float* const* dest) override
+    {
+        ++reads;
+        for (int c = 0; c < channels_; ++c)
+            for (int i = 0; i < numSamples; ++i)
+            {
+                const auto s = start + i;
+                dest[c][i] = s >= 0 && s < length_ ? static_cast<float>(s + c * 1000000) : 0.0f;
+            }
+        return true;
+    }
+    std::atomic<int> reads{0};
+
+private:
+    std::int64_t length_;
+    int channels_;
+};
+
+float expected(std::int64_t sample, int channel)
+{
+    return static_cast<float>(sample + channel * 1000000);
+}
+
+StreamingAudioSource::Options smallOptions()
+{
+    StreamingAudioSource::Options o;
+    o.ringSamples = 4096;
+    o.readAheadSamples = 2048;
+    o.chunkSamples = 1024;
+    o.guardSamples = 256;
+    o.seekGraceMilliseconds = 1;
+    return o;
+}
+} // namespace
+
+TEST_CASE("Streaming source serves sequential reads exactly once the window is filled", "[engine][stream]")
+{
+    auto reader = std::make_unique<RampReader>(100000, 2);
+    StreamingAudioSource source(std::move(reader), smallOptions());
+    source.prefetch(0);
+    while (source.service())
+    {
+    }
+    CHECK(source.windowStart() == 0);
+    CHECK(source.windowEnd() >= 2048);
+
+    std::vector<float> left(64), right(64);
+    std::int64_t position = 0;
+    for (int block = 0; block < 500; ++block)
+    {
+        source.read(0, position, left.data(), 64);
+        source.read(1, position, right.data(), 64);
+        for (int i = 0; i < 64; ++i)
+        {
+            REQUIRE(left[static_cast<size_t>(i)] == expected(position + i, 0));
+            REQUIRE(right[static_cast<size_t>(i)] == expected(position + i, 1));
+        }
+        position += 64;
+        while (source.service())
+        {
+        }
+    }
+    CHECK(source.underruns() == 0);
+    CHECK_FALSE(source.hadReadError());
+}
+
+TEST_CASE("Reads outside the window are silent underruns and a seek rebuilds the window", "[engine][stream]")
+{
+    StreamingAudioSource source(std::make_unique<RampReader>(100000, 1), smallOptions());
+    source.prefetch(0);
+    while (source.service())
+    {
+    }
+
+    std::vector<float> buffer(64, 1.0f);
+    source.read(0, 50000, buffer.data(), 64); // far outside
+    CHECK(source.underruns() == 1);
+    for (float s : buffer)
+        CHECK(s == 0.0f);
+
+    while (source.service())
+    {
+    }
+    CHECK(source.windowStart() == 50000);
+    source.read(0, 50000, buffer.data(), 64);
+    CHECK(source.underruns() == 1);
+    CHECK(buffer[0] == expected(50000, 0));
+    CHECK(buffer[63] == expected(50063, 0));
+}
+
+TEST_CASE("Reads straddling the file edges zero-fill without counting underruns", "[engine][stream]")
+{
+    StreamingAudioSource source(std::make_unique<RampReader>(1000, 1), smallOptions());
+    source.prefetch(0);
+    while (source.service())
+    {
+    }
+    CHECK(source.windowEnd() == 1000);
+
+    std::vector<float> buffer(64, 1.0f);
+    source.read(0, -10, buffer.data(), 64);
+    CHECK(buffer[9] == 0.0f);
+    CHECK(buffer[10] == expected(0, 0));
+    source.read(0, 980, buffer.data(), 64);
+    CHECK(buffer[19] == expected(999, 0));
+    CHECK(buffer[20] == 0.0f);
+    source.read(0, 5000, buffer.data(), 64);
+    CHECK(buffer[0] == 0.0f);
+    CHECK(source.underruns() == 0);
+}
+
+TEST_CASE("The disk thread keeps a paced reader fed with no underruns after the first fill",
+          "[engine][stream]")
+{
+    auto reader = std::make_unique<RampReader>(48000 * 20, 2);
+    auto* rawReader = reader.get();
+    auto source = std::make_shared<StreamingAudioSource>(std::move(reader), smallOptions());
+    DiskThread disk(1);
+    disk.add(source);
+    source->prefetch(0);
+    disk.poke();
+
+    // Wait for the initial window.
+    for (int i = 0; i < 200 && source->windowEnd() < 2048; ++i)
+        std::this_thread::sleep_for(std::chrono::milliseconds(1));
+    REQUIRE(source->windowEnd() >= 2048);
+
+    // Read at a realistic pace: 64 samples every ~1.3 ms, for one second of audio,
+    // checking every sample.
+    std::vector<float> left(64), right(64);
+    std::int64_t position = 0;
+    bool allCorrect = true;
+    const auto start = std::chrono::steady_clock::now();
+    for (int block = 0; block < 750; ++block)
+    {
+        source->read(0, position, left.data(), 64);
+        source->read(1, position, right.data(), 64);
+        for (int i = 0; i < 64; ++i)
+            allCorrect = allCorrect && left[static_cast<size_t>(i)] == expected(position + i, 0) &&
+                         right[static_cast<size_t>(i)] == expected(position + i, 1);
+        position += 64;
+        std::this_thread::sleep_until(start + std::chrono::microseconds(1333) * (block + 1));
+    }
+    CHECK(allCorrect);
+    CHECK(source->underruns() == 0);
+    CHECK(disk.totalUnderruns() == 0);
+    CHECK(rawReader->reads > 10);
+
+    // A locate far ahead: the window is rebuilt within a few service rounds.
+    source->prefetch(48000 * 10);
+    disk.poke();
+    for (int i = 0; i < 500 && source->windowStart() != 48000 * 10; ++i)
+        std::this_thread::sleep_for(std::chrono::milliseconds(1));
+    CHECK(source->windowStart() == 48000 * 10);
+}
+
+#if defined(AURAL_RT_CHECKS)
+namespace
+{
+std::atomic<int> streamViolations{0};
+void countStreamViolation(const aural::rt::Violation&) noexcept
+{
+    streamViolations.fetch_add(1, std::memory_order_relaxed);
+}
+} // namespace
+
+TEST_CASE("Streaming reads do not allocate on a real-time thread", "[engine][stream][rt]")
+{
+    StreamingAudioSource source(std::make_unique<RampReader>(100000, 2), smallOptions());
+    source.prefetch(0);
+    while (source.service())
+    {
+    }
+    std::vector<float> buffer(64);
+    const auto previous = aural::rt::setViolationHandler(&countStreamViolation);
+    streamViolations = 0;
+    {
+        aural::rt::ScopedRealtimeSection section;
+        source.read(0, 0, buffer.data(), 64);
+        source.read(1, 4000, buffer.data(), 64);  // wraps the ring
+        source.read(0, 90000, buffer.data(), 64); // underrun path
+    }
+    aural::rt::setViolationHandler(previous);
+    CHECK(streamViolations == 0);
+}
+#endif
