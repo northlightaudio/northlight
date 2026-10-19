@@ -3,9 +3,9 @@
 #include "ProjectSession.h"
 #include "audio/AudioDeviceLayer.h"
 #include "core/Model.h"
+#include "ui/ArrangeView.h"
 #include "ui/AudioSetupView.h"
 #include "ui/Theme.h"
-#include "ui/TrackListView.h"
 
 namespace aural
 {
@@ -35,7 +35,7 @@ class MainWindow::Content final : public juce::Component, private juce::ChangeLi
 {
 public:
     Content(MainWindow& owner, audio::AudioDeviceLayer& audio, ProjectSession& session)
-        : owner_(owner), audio_(audio), session_(session)
+        : owner_(owner), audio_(audio), session_(session), tracks_(session.peakStore())
     {
         setSize(1280, 800);
         setWantsKeyboardFocus(true);
@@ -230,7 +230,7 @@ private:
     const ui::Theme& theme_ = ui::Theme::dark();
     juce::TextButton importButton_, undoButton_, redoButton_, returnButton_, playButton_, audioSetupButton_;
     juce::Label positionLabel_, deviceSummary_;
-    ui::TrackListView tracks_;
+    ui::ArrangeView tracks_;
     std::unique_ptr<juce::FileChooser> chooser_;
     juce::String lastImportError_;
     bool lastPlaying_ = false;

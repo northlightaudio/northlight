@@ -8,7 +8,8 @@ add_executable(aural_unit_tests
     core/ProjectJsonTests.cpp
     engine/RtPrimitivesTests.cpp
     engine/EngineTests.cpp
-    engine/StreamingTests.cpp)
+    engine/StreamingTests.cpp
+    engine/PeaksTests.cpp)
 
 target_link_libraries(aural_unit_tests PRIVATE
     aural_options

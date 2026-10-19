@@ -31,6 +31,8 @@ add_library(aural_engine STATIC
     StreamingAudioSource.h
     StreamingAudioSource.cpp
     DiskThread.h
-    DiskThread.cpp)
+    DiskThread.cpp
+    Peaks.h
+    Peaks.cpp)
 
 target_link_libraries(aural_engine PUBLIC aural_rt aural_core)

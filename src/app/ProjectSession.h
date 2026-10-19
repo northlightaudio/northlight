@@ -1,6 +1,7 @@
 #pragma once
 
 #include "audio/JuceMediaLoader.h"
+#include "audio/PeakStore.h"
 #include "core/Command.h"
 #include "core/Model.h"
 #include "engine/AudioEngine.h"
@@ -32,6 +33,7 @@ public:
     const core::Project& project() const noexcept { return project_; }
     engine::AudioEngine& engine() noexcept { return engine_; }
     audio::JuceMediaLoader& mediaLoader() noexcept { return loader_; }
+    audio::PeakStore& peakStore() noexcept { return peaks_; }
 
     // ----- editing ----------------------------------------------------------------
     void execute(std::unique_ptr<core::Command> command);
@@ -73,6 +75,7 @@ private:
     engine::DiskThread disk_;
     audio::JuceMediaLoader loader_;
     engine::AudioEngine engine_;
+    audio::PeakStore peaks_;
     core::Project project_;
     core::UndoStack undo_;
     juce::File projectFile_;

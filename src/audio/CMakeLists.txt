@@ -23,6 +23,8 @@ add_library(aural_audio_device STATIC
     JuceMediaLoader.h
     JuceMediaLoader.cpp
     JuceStreamReader.h
-    JuceStreamReader.cpp)
+    JuceStreamReader.cpp
+    PeakStore.h
+    PeakStore.cpp)
 
 target_link_libraries(aural_audio_device PUBLIC aural_audio aural_engine aural_juce)
