@@ -87,7 +87,7 @@ bool AudioEngine::startRecording(std::unique_ptr<RecordSession> session,
                                  core::SamplePosition countInSamples)
 {
     AURAL_ASSERT_NOT_REALTIME("AudioEngine::startRecording");
-    if (session == nullptr || session->inputs().empty())
+    if (session == nullptr || (session->inputs().empty() && session->midiTracks().empty()))
     {
         error = "no armed tracks with an input";
         return false;
@@ -350,8 +350,25 @@ void AudioEngine::process(
         const bool capturing = recordSession_ != nullptr && !countingIn && transport_.playing &&
                                transport_.insidePunch(transport_.position);
         if (capturing)
+        {
             recordSession_->capture(
                 inChannels > 0 ? inPieces : nullptr, inChannels, count, transport_.position);
+            // Live MIDI on the recorded tracks (delivered in the first segment only).
+            if (done == 0 && !liveMidi_.empty() && snapshot != nullptr)
+                for (const auto& track : snapshot->tracks)
+                {
+                    if (!track.isMidi || !recordSession_->recordsMidi(track.id))
+                        continue;
+                    for (size_t i = 0; i < liveMidi_.size(); ++i)
+                    {
+                        if (track.midiSource >= 0 && liveMidiSources_[i] != track.midiSource)
+                            continue;
+                        MidiEvent e = liveMidi_[i];
+                        e.sampleOffset = std::clamp(e.sampleOffset, 0, count - 1);
+                        recordSession_->captureMidi(track.id, e, transport_.position + e.sampleOffset);
+                    }
+                }
+        }
 
         RenderContext context;
         context.inputs = inChannels > 0 ? inPieces : nullptr;

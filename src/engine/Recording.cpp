@@ -5,6 +5,7 @@
 #include <algorithm>
 #include <chrono>
 #include <cmath>
+#include <optional>
 
 namespace aural::engine
 {
@@ -122,11 +123,126 @@ void RecordSession::capture(const float* const* inputs,
         input->captured += numSamples;
     }
     captured_ += numSamples;
+    endPosition_.store(position + numSamples, std::memory_order_release);
+}
+
+void RecordSession::addMidiTrack(core::Id trackId)
+{
+    AURAL_ASSERT_NOT_REALTIME("RecordSession::addMidiTrack");
+    midiTracks_.push_back(trackId);
 }
 
 void RecordSession::markTake(core::SamplePosition start) noexcept
 {
     takeMarks_.push(TakeMark{captured_, start}); // a full queue drops the mark: the take just continues
+    midiMarks_.push(TakeSpan{start, endPosition_.load(std::memory_order_relaxed)});
+    ++take_;
+}
+
+void RecordSession::captureMidi(core::Id trackId,
+                                const MidiEvent& event,
+                                core::SamplePosition position) noexcept
+{
+    midi_.push(CapturedMidi{trackId, event, position, take_});
+}
+
+std::vector<RecordSession::TakeSpan> RecordSession::takeSpans()
+{
+    AURAL_ASSERT_NOT_REALTIME("RecordSession::takeSpans");
+    std::vector<TakeSpan> spans;
+    spans.push_back({std::max<core::SamplePosition>(0, startPosition()), 0});
+    TakeSpan mark;
+    while (midiMarks_.pop(mark))
+    {
+        spans.back().end = mark.end;
+        spans.push_back({mark.start, 0});
+    }
+    spans.back().end = std::max(spans.back().start, endPosition());
+    return spans;
+}
+
+std::vector<MidiTake> buildMidiTakes(const std::vector<RecordSession::CapturedMidi>& events,
+                                     const std::vector<RecordSession::TakeSpan>& spans,
+                                     core::SamplePosition latency)
+{
+    AURAL_ASSERT_NOT_REALTIME("buildMidiTakes");
+    struct Open
+    {
+        core::SamplePosition start;
+        int velocity;
+    };
+    struct Building
+    {
+        MidiTake take;
+        int index = 0;
+        std::optional<Open> held[128];
+    };
+    std::vector<Building> building;
+    const auto closeNote = [](Building& b, int note, core::SamplePosition at)
+    {
+        auto& o = b.held[note];
+        if (!o.has_value())
+            return;
+        b.take.clip.notes.push_back(
+            {core::invalidId, note, o->velocity, o->start, std::max<core::SamplePosition>(1, at - o->start)});
+        o.reset();
+    };
+    for (const auto& e : events)
+    {
+        if (e.take < 0 || static_cast<size_t>(e.take) >= spans.size())
+            continue;
+        Building* b = nullptr;
+        for (auto& candidate : building)
+            if (candidate.take.trackId == e.trackId && candidate.index == e.take)
+                b = &candidate;
+        if (b == nullptr)
+        {
+            building.emplace_back();
+            b = &building.back();
+            b->take.trackId = e.trackId;
+            b->index = e.take;
+        }
+        const int note = e.event.note & 127;
+        switch (e.event.type)
+        {
+            case MidiEvent::Type::noteOn:
+                closeNote(*b, note, e.position); // a retrigger ends the first
+                if (e.event.velocity > 0)
+                    b->held[note] = Open{e.position, e.event.velocity};
+                break;
+            case MidiEvent::Type::noteOff:
+                closeNote(*b, note, e.position);
+                break;
+            case MidiEvent::Type::allNotesOff:
+                for (int n = 0; n < 128; ++n)
+                    closeNote(*b, n, e.position);
+                break;
+            case MidiEvent::Type::controller:
+                break;
+        }
+    }
+    std::vector<MidiTake> takes;
+    for (auto& b : building)
+    {
+        const auto& span = spans[static_cast<size_t>(b.index)];
+        for (int n = 0; n < 128; ++n)
+            if (b.held[n].has_value())
+                closeNote(b, n, std::max(span.end, b.held[n]->start + 1));
+        if (b.take.clip.notes.empty())
+            continue;
+        // Timeline to clip-relative, the take moved earlier by the latency.
+        auto& clip = b.take.clip;
+        clip.start = std::max<core::SamplePosition>(0, span.start - latency);
+        clip.length = std::max<core::SamplePosition>(1, span.end - latency - clip.start);
+        for (auto& n : clip.notes)
+        {
+            n.start = std::max<core::SamplePosition>(0, n.start - latency - clip.start);
+            clip.length = std::max(clip.length, n.start + n.length);
+        }
+        clip.sortNotes();
+        takes.push_back(std::move(b.take));
+    }
+    return takes;
 }
 
 std::uint64_t RecordSession::totalDropped() const noexcept

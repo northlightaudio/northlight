@@ -320,6 +320,16 @@ core::SamplePosition ProjectSession::recordingLatencySamples() const
     return s.inputLatencySamples + s.outputLatencySamples + graph;
 }
 
+core::SamplePosition ProjectSession::midiRecordingLatencySamples() const
+{
+    // A MIDI note arrives as it is played, but the player plays to what they
+    // hear, which lags by the output path (device output and the master's delay
+    // compensation); the input side of the round trip does not apply.
+    const auto graph = static_cast<core::SamplePosition>(engine_.outputLatencySamples());
+    const auto s = audio_.status();
+    return s.outputLatencySamples + graph;
+}
+
 namespace
 {
 // Beside every recording's first file sits "<base>.recording.json" with what the
@@ -462,6 +472,11 @@ std::string ProjectSession::startRecording()
     int index = 0;
     for (const auto& t : project_.tracks)
     {
+        if (t.armed && t.isMidi())
+        {
+            session->addMidiTrack(t.id);
+            continue;
+        }
         if (!t.armed || t.inputChannel < 0)
             continue;
         const auto safeName = juce::File::createLegalFileName(juce::String(t.name)).trim();
@@ -480,7 +495,7 @@ std::string ProjectSession::startRecording()
             return "could not write to " + folder.getFullPathName().toStdString();
         session->addInput(t.id, t.inputChannel, file.getFullPathName().toStdString());
     }
-    if (session->inputs().empty())
+    if (session->inputs().empty() && session->midiTracks().empty())
         return "arm a track and give it an input first";
 
     if (punching)
@@ -547,6 +562,20 @@ void ProjectSession::finishRecording(engine::AudioEngine::FinishedRecording fini
             takes = std::max(takes, r.takeIndex + 1);
         }
     }
+    // MIDI takes: the captured events become clips, placed like the audio (the
+    // player heard the instrument late by the output path, and played to that).
+    std::vector<engine::RecordSession::CapturedMidi> events;
+    engine::RecordSession::CapturedMidi captured;
+    while (finished.session->popMidi(captured))
+        events.push_back(captured);
+    int midiClips = 0;
+    for (auto& take :
+         engine::buildMidiTakes(events, finished.session->takeSpans(), midiRecordingLatencySamples()))
+        if (project_.findTrack(take.trackId) != nullptr)
+        {
+            take.clip.name = "Take " + std::to_string(++midiClips);
+            undo_.execute(project_, std::make_unique<core::AddMidiClip>(take.trackId, take.clip));
+        }
     undo_.endGroup();
     modified_ = true;
     removeOrphanSidecars(mediaFolder());
@@ -558,6 +587,9 @@ void ProjectSession::finishRecording(engine::AudioEngine::FinishedRecording fini
     else if (dropped > 0)
         recordingMessage_ =
             "Recording has " + std::to_string(dropped) + " samples of silence from disk overruns";
+    else if (finished.session->inputs().empty())
+        recordingMessage_ = midiClips > 0 ? "Recorded " + std::to_string(midiClips) + " MIDI clip(s)"
+                                          : std::string("Recorded no MIDI: nothing was played");
     else
         recordingMessage_ = "Recorded " + std::to_string(finished.session->inputs().size()) + " track(s)" +
                             (takes > 1 ? ", " + std::to_string(takes) + " takes" : std::string{}) +

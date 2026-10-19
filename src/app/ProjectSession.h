@@ -129,6 +129,8 @@ public:
     // Latency used to place recordings: the loopback measurement when it matches
     // the device configuration, otherwise the driver's reported input + output.
     core::SamplePosition recordingLatencySamples() const;
+    // The same for MIDI: only the output side (the player plays to what they hear).
+    core::SamplePosition midiRecordingLatencySamples() const;
     // Unfinished recordings (*.partial.wav) left in the media folder by a crash.
     int countPartialRecordings() const;
     // Repairs them and puts each back where it was captured (its sidecar names the

@@ -3,6 +3,7 @@
 #include "engine/AudioSource.h"
 #include "engine/Insert.h"
 #include "engine/Midi.h"
+#include "engine/Recording.h"
 #include "engine/Snapshot.h"
 #include "plugins/BuiltIns.h"
 
@@ -201,6 +202,136 @@ TEST_CASE("Live MIDI input reaches an armed MIDI track's instrument in the same 
     const auto out = h.render(1); // stopped: monitoring is on while armed
     CHECK(out[7] == Approx(100.0f / 127.0f).margin(0.01f));
     CHECK(h.right[7] == Approx(72.0f).margin(0.01f));
+}
+
+TEST_CASE("Recording an armed MIDI track captures its live notes at their timeline positions, per take",
+          "[engine][midi][record]")
+{
+    core::MidiClip clip;
+    clip.start = 0;
+    clip.length = 10;
+    auto p = keysProject(clip);
+    p.tracks[0].armed = true;
+    core::Track other; // an un-armed MIDI track is not captured
+    other.id = 5;
+    other.kind = core::TrackKind::midi;
+    p.tracks.push_back(other);
+    Harness h;
+    h.engine.setProject(p);
+    h.engine.setLoop(0, 256, true);
+    auto session = std::make_unique<engine::RecordSession>(48000.0, 0.5);
+    session->addMidiTrack(1);
+    std::string error;
+    REQUIRE(h.engine.startRecording(std::move(session), error));
+    h.render(1); // the record command applies: capture from 0
+    h.engine.pushMidiInput({3, engine::MidiEvent::Type::noteOn, 0, 60, 100}, "");
+    h.render(1); // block [64, 128): on at 67
+    h.engine.pushMidiInput({0, engine::MidiEvent::Type::noteOff, 0, 60, 0}, "");
+    h.render(3); // off at 128; then the wrap at 256 starts take 2
+    h.engine.pushMidiInput({10, engine::MidiEvent::Type::noteOn, 0, 62, 90}, "");
+    h.render(1); // block [64, 128) of pass 2: on at 74
+    h.engine.stop();
+    h.render(1);
+    while (!h.engine.hasRecordingToCollect())
+        h.render(1);
+    auto finished = h.engine.collectRecording();
+    REQUIRE(finished.has_value());
+    std::vector<engine::RecordSession::CapturedMidi> events;
+    engine::RecordSession::CapturedMidi e;
+    while (finished->session->popMidi(e))
+        events.push_back(e);
+    REQUIRE(events.size() == 3);
+    CHECK(events[0].trackId == 1);
+    CHECK(events[0].position == 67);
+    CHECK(events[0].take == 0);
+    CHECK(events[1].position == 128);
+    CHECK(events[2].position == 74);
+    CHECK(events[2].take == 1); // after the wrap
+    const auto spans = finished->session->takeSpans();
+    REQUIRE(spans.size() == 2);
+    CHECK(spans[0].start == 0);
+    CHECK(spans[0].end == 256);
+    CHECK(spans[1].start == 0);
+    CHECK(spans[1].end == 128);
+
+    // Takes become clips: the second pass's note is still held when the
+    // recording stops, so it ends there; everything moves 10 samples early.
+    const auto takes = engine::buildMidiTakes(events, spans, 10);
+    REQUIRE(takes.size() == 2);
+    REQUIRE(takes[0].clip.notes.size() == 1);
+    CHECK(takes[0].clip.start == 0);
+    CHECK(takes[0].clip.length == 246);
+    CHECK(takes[0].clip.notes[0].start == 57);
+    CHECK(takes[0].clip.notes[0].length == 61);
+    CHECK(takes[0].clip.notes[0].velocity == 100);
+    REQUIRE(takes[1].clip.notes.size() == 1);
+    CHECK(takes[1].clip.start == 0);
+    CHECK(takes[1].clip.notes[0].start == 64);
+    CHECK(takes[1].clip.notes[0].note == 62);
+    CHECK(takes[1].clip.notes[0].length == 54);
+    CHECK(takes[1].clip.length == 118);
+}
+
+TEST_CASE("MIDI takes pair note-ons with their offs, end held notes at the take end and shift for latency",
+          "[engine][midi][record]")
+{
+    using Captured = engine::RecordSession::CapturedMidi;
+    const auto on = [](core::Id track, int note, int vel, core::SamplePosition at, int take)
+    {
+        return Captured{track,
+                        {0,
+                         engine::MidiEvent::Type::noteOn,
+                         0,
+                         static_cast<std::uint8_t>(note),
+                         static_cast<std::uint8_t>(vel)},
+                        at,
+                        take};
+    };
+    const auto off = [](core::Id track, int note, core::SamplePosition at, int take)
+    {
+        return Captured{
+            track, {0, engine::MidiEvent::Type::noteOff, 0, static_cast<std::uint8_t>(note), 0}, at, take};
+    };
+    const std::vector<Captured> events = {
+        on(1, 60, 100, 1100, 0),
+        off(1, 60, 1300, 0),    // take 0 [1000, 2000): a note of 200
+        on(1, 64, 80, 1250, 0), // held past the take: ends at its end
+        on(2, 48, 70, 1500, 0), // another track, same take
+        on(1, 67, 90, 2010, 1),
+        off(1, 67, 2050, 1), // take 1 [2000, 2500)
+        on(1, 67, 90, 2060, 1),
+        on(1, 67, 95, 2070, 1), // a retrigger ends the first
+        off(1, 67, 2090, 1),
+    };
+    const std::vector<engine::RecordSession::TakeSpan> spans = {{1000, 2000}, {2000, 2500}};
+    const auto takes = engine::buildMidiTakes(events, spans, 100);
+    REQUIRE(takes.size() == 3);
+    const auto& first = takes[0];
+    CHECK(first.trackId == 1);
+    CHECK(first.clip.start == 900);
+    CHECK(first.clip.length == 1000);
+    REQUIRE(first.clip.notes.size() == 2);
+    CHECK(first.clip.notes[0].start == 100);
+    CHECK(first.clip.notes[0].length == 200);
+    CHECK(first.clip.notes[1].note == 64);
+    CHECK(first.clip.notes[1].start == 250);
+    CHECK(first.clip.notes[1].length == 750); // held to the take's end
+    const auto& secondTrack = takes[1];
+    CHECK(secondTrack.trackId == 2);
+    CHECK(secondTrack.clip.notes.size() == 1);
+    const auto& second = takes[2];
+    CHECK(second.clip.start == 1900);
+    REQUIRE(second.clip.notes.size() == 3);
+    CHECK(second.clip.notes[0].start == 10);
+    CHECK(second.clip.notes[0].length == 40);
+    CHECK(second.clip.notes[1].start == 60);
+    CHECK(second.clip.notes[1].length == 10); // retriggered at 70
+    CHECK(second.clip.notes[2].start == 70);
+    CHECK(second.clip.notes[2].velocity == 95);
+    CHECK(second.clip.notes[2].length == 20);
+    CHECK(second.clip.length == 500);
+    // No notes: no clip.
+    CHECK(engine::buildMidiTakes({off(1, 60, 10, 0)}, spans, 0).empty());
 }
 
 TEST_CASE("The built-in synth makes sound for a note and goes quiet after it", "[engine][midi][synth]")

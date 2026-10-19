@@ -1,6 +1,7 @@
 #pragma once
 
 #include "core/Model.h"
+#include "engine/Midi.h"
 #include "engine/WavFile.h"
 #include "engine/rt/SpscQueue.h"
 
@@ -28,6 +29,10 @@
 // marks a take boundary (the cumulative captured count plus the new timeline
 // start); the writer closes the current file at that sample and opens the next
 // take's file, so each pass through the loop becomes its own clip.
+//
+// MIDI: an armed MIDI track's live events are stamped with their timeline
+// position and the take they fall in and queued for the controller, which turns
+// them into clips when the session is collected (buildMidiTakes).
 
 namespace aural::engine
 {
@@ -95,15 +100,36 @@ public:
         std::int64_t capturedBefore = 0; // samples captured (per input) before the new take
         core::SamplePosition start = 0;  // timeline position the new take begins at
     };
+    struct CapturedMidi
+    {
+        core::Id trackId = core::invalidId;
+        MidiEvent event;
+        core::SamplePosition position = 0; // timeline position of the event
+        int take = 0;                      // 0 for the first pass, +1 per loop wrap
+    };
+    struct TakeSpan
+    {
+        core::SamplePosition start = 0, end = 0; // timeline span of one take
+    };
 
     // ringSeconds of buffering per input; the writer must drain faster than that.
     RecordSession(double sampleRate, double ringSeconds = 4.0);
 
     // Controller, before the session is handed to the engine.
     void addInput(core::Id trackId, int inputChannel, std::string path);
+    // A MIDI track whose live input is captured (its source filter is the track's).
+    void addMidiTrack(core::Id trackId);
 
     double sampleRate() const noexcept { return sampleRate_; }
     const std::vector<std::unique_ptr<Input>>& inputs() const noexcept { return inputs_; }
+    const std::vector<core::Id>& midiTracks() const noexcept { return midiTracks_; }
+    bool recordsMidi(core::Id trackId) const noexcept
+    {
+        for (const auto id : midiTracks_)
+            if (id == trackId)
+                return true;
+        return false;
+    }
 
     // ----- audio thread -----
     // Called once per block while recording. `position` is the timeline position of
@@ -114,6 +140,15 @@ public:
                  core::SamplePosition position) noexcept;
     // A loop wrap: the next captured sample starts a new take at `start`.
     void markTake(core::SamplePosition start) noexcept;
+    // A live MIDI event on a recorded track, at its timeline position (after
+    // capture() for the block, which fixes the take). A full queue drops it.
+    void captureMidi(core::Id trackId, const MidiEvent& event, core::SamplePosition position) noexcept;
+    // Controller, once finished: the captured events in time order, and the
+    // takes' spans (index = take; drains the marks, so call it once).
+    bool popMidi(CapturedMidi& out) noexcept { return midi_.pop(out); }
+    std::vector<TakeSpan> takeSpans();
+    // Timeline position just after the last captured block.
+    core::SamplePosition endPosition() const noexcept { return endPosition_.load(std::memory_order_acquire); }
     void finish() noexcept { finished_.store(true, std::memory_order_release); }
     std::int64_t capturedSamples() const noexcept { return captured_; }
 
@@ -133,6 +168,11 @@ private:
     double sampleRate_;
     std::size_t ringCapacity_;
     std::vector<std::unique_ptr<Input>> inputs_;
+    std::vector<core::Id> midiTracks_;
+    rt::SpscQueue<CapturedMidi> midi_{16384};
+    rt::SpscQueue<TakeSpan> midiMarks_{256}; // a wrap: {new start, previous end}
+    int take_ = 0;                           // audio thread only
+    std::atomic<core::SamplePosition> endPosition_{-1};
     std::atomic<core::SamplePosition> startPosition_{-1};
     std::atomic<bool> finished_{false};
     std::int64_t captured_ = 0; // audio thread only
@@ -142,6 +182,19 @@ private:
 // One writer thread per engine. begin() takes a session the engine is capturing
 // into; the thread drains it until the session is finished and the rings are empty,
 // then closes the files and reports.
+// Turns a finished session's MIDI events into clips: one per track and take,
+// spanning the take, every note-on paired with its note-off (or ended at the
+// take's end), the whole thing moved `latency` samples earlier like an audio
+// take. Takes without notes make no clip.
+struct MidiTake
+{
+    core::Id trackId = core::invalidId;
+    core::MidiClip clip;
+};
+std::vector<MidiTake> buildMidiTakes(const std::vector<RecordSession::CapturedMidi>& events,
+                                     const std::vector<RecordSession::TakeSpan>& spans,
+                                     core::SamplePosition latency);
+
 class RecordWriter
 {
 public:
