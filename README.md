@@ -104,7 +104,8 @@ take, dragging in the ruler sets a region that **Loop** repeats and **Punch**
 records into (rolling from one bar before it).
 With **Loop** on, each pass through the region becomes a new take on the track.
 **Mixer** (Ctrl+M) opens strips for every track and bus with output routing, sends,
-pan, mute, solo, phase, fader and meters, plus the master; **+ Bus** adds a bus.
+inserts (built-in gain, EQ, compressor, limiter with an editor window each), pan,
+mute, solo, phase, fader and meters, plus the master with LUFS; **+ Bus** adds a bus.
 Recordings go next to the project file in a `<project> Media` folder, or to
 `Documents\Aural\Recordings` for an unsaved project. If the app dies while recording,
 the next launch offers to repair the unfinished files and add them as "Recovered"
@@ -114,7 +115,8 @@ Ctrl+Shift+S to save as).
 
 For unattended checks: `Aural.exe --import <file> [--import <file>] --play`, and
 `Aural.exe --record <inputs> [--loop <from> <to>] [--no-count-in] --stop-after <seconds>`; `--mixer`
-opens the mixer panel.
+opens the mixer panel and `--insert <type>` adds a built-in (for example `aural.eq`) to
+every track and opens its editor.
 The offline recording soak is `aural_record_soak --inputs 16 --minutes 30 --speed 8`.
 
 ### Audio setup

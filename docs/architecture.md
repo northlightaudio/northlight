@@ -14,14 +14,18 @@ aural.exe
                   UserSettings (per-user properties file)
   src/ui          Theme (design tokens), AuralLookAndFeel (dark, token-driven),
                   AudioSetupView, ArrangeView (tracks, waveforms, zoom, scroll),
-                  TrackHeader (input, arm, monitor), MixerView (strips, master)
+                  TrackHeader (input, arm, monitor), MixerView (strips, master,
+                  inserts menu), InsertEditor (generic parameter window)
   src/core        Project model (tracks and buses on a shared Channel, sends,
                   master, clips), Command + UndoStack, JSON project files,
                   bars/beats helpers. No JUCE.
-  src/engine      AudioEngine façade, Snapshot compiler + MediaCache, Transport,
-                  Renderer, WorkerPool, AudioSource (memory + streaming), DiskThread,
-                  Peaks, Recording (record rings + writer thread), WavFile, Click
-                  (metronome). No JUCE.
+  src/engine      AudioEngine façade, Snapshot compiler + MediaCache + InsertCache,
+                  Transport, Renderer, WorkerPool, AudioSource (memory + streaming),
+                  DiskThread, Peaks, Recording (record rings + writer thread),
+                  WavFile, Click (metronome), Insert interface, Meters, Loudness.
+                  No JUCE.
+  src/plugins     Built-in processors (gain, EQ, compressor, limiter) behind the
+                  insert interface. No JUCE.
   src/engine/rt   Real-time guard and allocation hook, SpscQueue, SnapshotPublisher,
                   CallbackStats, ScopedFlushDenormals
   src/audio       Pure:  AudioSettings, LatencyDetector, PassThrough
@@ -270,10 +274,33 @@ order: tracks, then buses, then the master (`trackMeterSlot`, `busMeterSlot`,
 `masterMeterSlot`).
 
 `ui::MixerView` shows one strip per track and bus (name, output selector, sends
-menu, pan, mute/solo/phase, fader in dB, stereo meter) and the master strip, in a
-panel under the arrange view (Mixer button, Ctrl+M). Every control issues a
-`core::Command`; the view refreshes from the project. Inserts (the built-in gain,
-EQ, compressor and limiter), groups and LUFS metering are the rest of Phase 4.
+menu, inserts menu, pan, mute/solo/phase, fader in dB, stereo meter) and the master
+strip with momentary and short-term LUFS, in a panel under the arrange view (Mixer
+button, Ctrl+M). Every control issues a `core::Command`; the view refreshes from the
+project. Fader groups are the remaining Phase 4 item.
+
+### Inserts and the built-in processors
+
+A channel's inserts are `core::Insert`s (type name, bypass, parameter values).
+`engine::InsertProcessor` is the processing interface: parameters are atomics the
+processor reads at the start of each block, `process` works in place on the stereo
+pair, and `prepare` allocates. `engine::InsertCache` keeps one prepared instance per
+model insert id across recompiles, so filter memory and envelopes survive edits;
+each compile pushes the current parameter values and bypass. The renderer runs a
+track's chain after its pan and phase (still in the parallel track render) and a
+bus's chain after its balance and phase, both pre-fader.
+
+`src/plugins` holds the built-ins behind `plugins::BuiltInFactory`: Gain (ramped),
+EQ (high-pass, low shelf, peaking mid, high shelf as RBJ biquads), Compressor
+(log-domain peak detector, soft knee, makeup) and Limiter (instantaneous gain with
+a fast release and a hard clip at the ceiling, so it adds no latency; a lookahead
+limiter waits for delay compensation in Phase 5). `ui::InsertEditor` is a generic
+window with a slider per parameter, used for every built-in; hosted plugins bring
+their own editors.
+
+`engine::LoudnessMeter` implements BS.1770 K-weighting with 400 ms momentary and
+3 s short-term windows on the master mix; integrated loudness with gating belongs to
+the export stage.
 
 ### Metronome, count-in, loop and punch
 
@@ -373,3 +400,6 @@ launches; `JUCE_MODAL_LOOPS_PERMITTED` stays 0.
 | 2026-10-19 | Solo-in-place propagates both up and down the routing | Soloing a bus should play everything feeding it and soloing a track should keep its bus and the master alive; resolving this at compile time keeps the real-time summing a plain flag check. |
 | 2026-10-19 | Bus summing on the callback thread, tracks in parallel | Bus count is small and their dependency order is serial anyway; parallelising tracks (the many, heavy nodes) captures the benefit without a dependency-aware scheduler. Buses join the pool when inserts make them heavy. |
 | 2026-10-19 | Meters as peak-hold plus last-block RMS in atomics | The UI needs a peak that cannot be missed between frames and a level that falls naturally; holding the peak until read and letting the UI apply ballistics gives both without any queue. LUFS needs K-weighting and a 400 ms window and is a separate pass. |
+| 2026-10-19 | Insert parameters are atomics on a persistent instance, not part of the snapshot | Recreating a filter on every edit would reset its state and click; pushing values into atomics keeps the instance and its memory while the snapshot stays immutable. Sample-accurate parameter changes come with automation in Phase 9. |
+| 2026-10-19 | Built-ins live in src/plugins behind the engine's insert interface | The engine must not depend on any particular processor, and VST3 hosting (Phase 5) implements the same interface; the app injects the factory. |
+| 2026-10-19 | The limiter has no lookahead | Lookahead adds latency that needs delay compensation across the graph, which Phase 5 brings with plugin hosting; until then a fast-release limiter with a hard ceiling is honest about what it does. |
