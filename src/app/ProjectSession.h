@@ -96,7 +96,8 @@ public:
     core::SamplePosition recordingLatencySamples() const;
     // Unfinished recordings (*.partial.wav) left in the media folder by a crash.
     int countPartialRecordings() const;
-    // Repairs and imports them as "Recovered" tracks. Returns how many.
+    // Repairs them and puts each back where it was captured (its sidecar names the
+    // track, start and latency), or on a new "Recovered" track without one.
     int recoverPartialRecordings();
     // Sets them aside as *.discarded.wav so they are not offered again.
     int discardPartialRecordings();
@@ -105,6 +106,9 @@ public:
     bool isTrackMonitoring(const core::Track& track) const;
     // Human-readable note about the last recording (dropouts, recovery), if any.
     const std::string& lastRecordingMessage() const noexcept { return recordingMessage_; }
+    // Collects finished recordings (placing their clips) and engine garbage. A timer
+    // calls this every 250 ms; tests call it directly.
+    void poll();
 
     // Non-empty when the device rate differs from the project rate.
     std::string sampleRateWarning() const;

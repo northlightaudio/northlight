@@ -4,7 +4,8 @@
 add_executable(aural_juce_tests
     ../unit/NoAssertDialogs.cpp
     JuceStreamReaderTests.cpp
-    AudioCallbackTests.cpp)
+    AudioCallbackTests.cpp
+    ProjectSessionTests.cpp)
 
 target_link_libraries(aural_juce_tests PRIVATE
     aural_options
@@ -12,6 +13,7 @@ target_link_libraries(aural_juce_tests PRIVATE
     aural_rt_checks
     aural_audio_device
     aural_plugins
+    aural_app_session
     aural_juce
     Catch2::Catch2WithMain)
 

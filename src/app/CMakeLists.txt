@@ -6,20 +6,16 @@ juce_add_gui_app(aural
     NEEDS_CURL          FALSE
     NEEDS_WEB_BROWSER   FALSE)
 
-target_sources(aural PRIVATE
-    Main.cpp
-    MainWindow.h
-    MainWindow.cpp
+# The project session and user settings as a library so the JUCE tests can drive
+# a session without the window.
+add_library(aural_app_session STATIC
     UserSettings.h
     UserSettings.cpp
     ProjectSession.h
     ProjectSession.cpp)
 
-target_compile_definitions(aural PRIVATE
-    JUCE_APPLICATION_NAME_STRING="$<TARGET_PROPERTY:aural,JUCE_PRODUCT_NAME>"
-    JUCE_APPLICATION_VERSION_STRING="$<TARGET_PROPERTY:aural,JUCE_VERSION>")
-
-target_link_libraries(aural PRIVATE
+target_include_directories(aural_app_session PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/..")
+target_link_libraries(aural_app_session PUBLIC
     aural_options
     aural_rt
     aural_rt_checks
@@ -27,5 +23,17 @@ target_link_libraries(aural PRIVATE
     aural_engine
     aural_plugins
     aural_audio_device
-    aural_ui
     aural_juce)
+
+target_sources(aural PRIVATE
+    Main.cpp
+    MainWindow.h
+    MainWindow.cpp)
+
+target_compile_definitions(aural PRIVATE
+    JUCE_APPLICATION_NAME_STRING="$<TARGET_PROPERTY:aural,JUCE_PRODUCT_NAME>"
+    JUCE_APPLICATION_VERSION_STRING="$<TARGET_PROPERTY:aural,JUCE_VERSION>")
+
+target_link_libraries(aural PRIVATE
+    aural_app_session
+    aural_ui)

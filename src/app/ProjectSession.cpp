@@ -6,6 +6,8 @@
 
 #include <algorithm>
 #include <cmath>
+#include <cstring>
+#include <optional>
 
 namespace aural
 {
@@ -220,13 +222,142 @@ core::SamplePosition ProjectSession::recordingLatencySamples() const
     return s.inputLatencySamples + s.outputLatencySamples;
 }
 
+namespace
+{
+// Beside every recording's first file sits "<base>.recording.json" with what the
+// writer cannot know and recovery needs: the track, where capture started, the loop
+// start for later takes and the latency the clip should be shifted back by.
+constexpr const char* sidecarSuffix = ".recording.json";
+constexpr const char* partialSuffix = ".partial.wav";
+
+struct RecordingName
+{
+    juce::String base; // "<track>-<stamp>-<n>" without any take suffix
+    int takeIndex = 0; // 0 for "<base>.partial.wav", n-1 for "<base>-take<n>.partial.wav"
+};
+
+RecordingName parseRecordingName(const juce::String& fileName)
+{
+    RecordingName name;
+    name.base = fileName.endsWith(partialSuffix)
+                    ? fileName.dropLastCharacters(static_cast<int>(std::strlen(partialSuffix)))
+                    : fileName;
+    const auto dash = name.base.lastIndexOf("-take");
+    if (dash >= 0)
+    {
+        const auto digits = name.base.substring(dash + 5);
+        if (digits.isNotEmpty() && digits.containsOnly("0123456789"))
+        {
+            name.takeIndex = std::max(0, digits.getIntValue() - 1);
+            name.base = name.base.substring(0, dash);
+        }
+    }
+    return name;
+}
+
+// A base name no existing file in the folder starts with (as "<base>.*" or
+// "<base>-take*"), so a new recording never lands on an old one.
+juce::String uniqueRecordingBase(const juce::File& folder, const juce::String& wanted)
+{
+    for (int attempt = 0;; ++attempt)
+    {
+        const auto candidate = attempt == 0 ? wanted : wanted + "-" + juce::String(attempt + 1);
+        if (folder.findChildFiles(juce::File::findFiles, false, candidate + ".*").isEmpty() &&
+            folder.findChildFiles(juce::File::findFiles, false, candidate + "-take*").isEmpty())
+            return candidate;
+    }
+}
+
+struct RecordingMeta
+{
+    core::Id trackId = core::invalidId;
+    std::string trackName;
+    core::SamplePosition startPosition = 0;
+    core::SamplePosition loopStart = -1; // where takes after the first start; -1 = no loop
+    double sampleRate = 0.0;
+    core::SamplePosition latencySamples = 0;
+};
+
+bool writeSidecar(const juce::File& file, const RecordingMeta& meta)
+{
+    auto* object = new juce::DynamicObject();
+    object->setProperty("format", "aural.recording/1");
+    object->setProperty("trackId", static_cast<juce::int64>(meta.trackId));
+    object->setProperty("trackName", juce::String(meta.trackName));
+    object->setProperty("startPosition", static_cast<juce::int64>(meta.startPosition));
+    object->setProperty("loopStart", static_cast<juce::int64>(meta.loopStart));
+    object->setProperty("sampleRate", meta.sampleRate);
+    object->setProperty("latencySamples", static_cast<juce::int64>(meta.latencySamples));
+    return file.replaceWithText(juce::JSON::toString(juce::var(object)));
+}
+
+std::optional<RecordingMeta> readSidecar(const juce::File& file)
+{
+    if (!file.existsAsFile())
+        return std::nullopt;
+    const auto v = juce::JSON::parse(file);
+    if (!v.isObject())
+        return std::nullopt;
+    RecordingMeta meta;
+    meta.trackId = static_cast<core::Id>(static_cast<juce::int64>(v.getProperty("trackId", -1)));
+    meta.trackName = v.getProperty("trackName", "").toString().toStdString();
+    meta.startPosition = static_cast<juce::int64>(v.getProperty("startPosition", 0));
+    meta.loopStart = static_cast<juce::int64>(v.getProperty("loopStart", -1));
+    meta.sampleRate = static_cast<double>(v.getProperty("sampleRate", 0.0));
+    meta.latencySamples = static_cast<juce::int64>(v.getProperty("latencySamples", 0));
+    return meta;
+}
+
+// Deletes sidecars whose recording files are all gone.
+void removeOrphanSidecars(const juce::File& folder)
+{
+    for (const auto& sidecar :
+         folder.findChildFiles(juce::File::findFiles, false, juce::String("*") + sidecarSuffix))
+    {
+        const auto base =
+            sidecar.getFileName().dropLastCharacters(static_cast<int>(std::strlen(sidecarSuffix)));
+        if (folder.findChildFiles(juce::File::findFiles, false, base + partialSuffix).isEmpty() &&
+            folder.findChildFiles(juce::File::findFiles, false, base + "-take*" + partialSuffix).isEmpty())
+            sidecar.deleteFile();
+    }
+}
+} // namespace
+
 std::string ProjectSession::startRecording()
 {
     if (engine_.isRecording())
         return {};
+    if (!engine_.isRunning())
+        return "no audio device is running";
+    // The session captures at the device rate and the files are stamped with the
+    // project rate: they must agree, or every take would play at the wrong speed.
+    const double deviceRate = engine_.deviceSampleRate();
+    if (deviceRate > 0.0 && deviceRate != project_.sampleRate)
+        return "the device runs at " + std::to_string(static_cast<int>(deviceRate)) +
+               " Hz but the project is at " + std::to_string(static_cast<int>(project_.sampleRate)) +
+               " Hz; set the device to the project rate before recording";
     const auto folder = mediaFolder();
     if (!folder.createDirectory().wasOk())
         return "could not create " + folder.getFullPathName().toStdString();
+
+    const double barSamples =
+        core::samplesPerBeat(project_.sampleRate, project_.tempoBpm, project_.timeSignature) *
+        std::max(1, project_.timeSignature.numerator);
+    const auto countIn = static_cast<core::SamplePosition>(std::llround(barSamples * countInBars_));
+    const bool punching = punch_ && regionEnd_ > regionStart_;
+    const bool looping = loop_ && regionEnd_ > regionStart_;
+
+    // Punching in: roll from one bar before the region so the take has a run-up.
+    // (Only once the session is known to start; the locate is harmless otherwise.)
+    const auto rollFrom =
+        punching
+            ? std::max<core::SamplePosition>(0, regionStart_ - static_cast<core::SamplePosition>(barSamples))
+            : engine_.position();
+    // Capture starts at the punch-in point, or wraps to the loop start first when
+    // playback is at or past the loop end.
+    core::SamplePosition captureStart = punching ? std::max(regionStart_, rollFrom) : rollFrom;
+    if (looping && captureStart >= regionEnd_)
+        captureStart = regionStart_;
 
     const auto stamp = juce::Time::getCurrentTime().formatted("%Y%m%d-%H%M%S");
     auto session = std::make_unique<engine::RecordSession>(project_.sampleRate);
@@ -236,26 +367,33 @@ std::string ProjectSession::startRecording()
         if (!t.armed || t.inputChannel < 0)
             continue;
         const auto safeName = juce::File::createLegalFileName(juce::String(t.name)).trim();
-        const auto file = folder.getChildFile((safeName.isEmpty() ? juce::String("Track") : safeName) + "-" +
-                                              stamp + "-" + juce::String(++index) + ".partial.wav");
+        const auto base = uniqueRecordingBase(folder,
+                                              (safeName.isEmpty() ? juce::String("Track") : safeName) + "-" +
+                                                  stamp + "-" + juce::String(++index));
+        const auto file = folder.getChildFile(base + partialSuffix);
+        RecordingMeta meta;
+        meta.trackId = t.id;
+        meta.trackName = t.name;
+        meta.startPosition = captureStart;
+        meta.loopStart = looping ? regionStart_ : -1;
+        meta.sampleRate = project_.sampleRate;
+        meta.latencySamples = recordingLatencySamples();
+        if (!writeSidecar(folder.getChildFile(base + sidecarSuffix), meta))
+            return "could not write to " + folder.getFullPathName().toStdString();
         session->addInput(t.id, t.inputChannel, file.getFullPathName().toStdString());
     }
     if (session->inputs().empty())
         return "arm a track and give it an input first";
 
-    const double barSamples =
-        core::samplesPerBeat(project_.sampleRate, project_.tempoBpm, project_.timeSignature) *
-        std::max(1, project_.timeSignature.numerator);
-    const auto countIn = static_cast<core::SamplePosition>(std::llround(barSamples * countInBars_));
-
-    // Punching in: roll from one bar before the region so the take has a run-up.
-    if (punch_ && regionEnd_ > regionStart_)
-        engine_.locate(
-            std::max<core::SamplePosition>(0, regionStart_ - static_cast<core::SamplePosition>(barSamples)));
+    if (punching)
+        engine_.locate(rollFrom);
 
     std::string error;
     if (!engine_.startRecording(std::move(session), error, countIn))
+    {
+        removeOrphanSidecars(folder);
         return error;
+    }
     recordingMessage_.clear();
     sendChangeMessage();
     return {};
@@ -265,16 +403,34 @@ void ProjectSession::finishRecording(engine::AudioEngine::FinishedRecording fini
 {
     const auto latency = recordingLatencySamples();
     std::uint64_t dropped = 0; // per input the count is cumulative over takes: take the largest
+    std::int64_t lost = 0;
     int takes = 0;
+    int failures = 0;
 
     undo_.beginGroup("Record");
     for (const auto& r : finished.results)
     {
         dropped = std::max(dropped, r.dropped);
-        if (!r.ok || r.samplesWritten <= 0)
-            continue;
+        lost += r.samplesLost;
         juce::File partial{juce::String(r.path)};
-        juce::File final = partial.getSiblingFile(partial.getFileName().replace(".partial.wav", ".wav"));
+        if (!r.ok)
+        {
+            ++failures;
+            // What did reach the disk is still good audio: repair the header (it may
+            // be stale) and keep it like any other take.
+            if (r.samplesWritten <= 0 || !engine::WavWriter::repair(r.path))
+            {
+                partial.deleteFile();
+                continue;
+            }
+        }
+        else if (r.samplesWritten <= 0)
+        {
+            partial.deleteFile(); // an empty take (stopped at a loop wrap, or punched out at once)
+            continue;
+        }
+        juce::File final = partial.getSiblingFile(partial.getFileName().replace(partialSuffix, ".wav"))
+                               .getNonexistentSibling(false);
         if (!partial.moveFileTo(final))
             final = partial;
 
@@ -295,9 +451,15 @@ void ProjectSession::finishRecording(engine::AudioEngine::FinishedRecording fini
     }
     undo_.endGroup();
     modified_ = true;
+    removeOrphanSidecars(mediaFolder());
 
-    if (dropped > 0)
-        recordingMessage_ = "Recording lost " + std::to_string(dropped) + " samples to disk overruns";
+    if (failures > 0)
+        recordingMessage_ = "Recording failed on " + std::to_string(failures) +
+                            " file(s): " + std::to_string(lost) +
+                            " samples never reached the disk; what did is placed";
+    else if (dropped > 0)
+        recordingMessage_ =
+            "Recording has " + std::to_string(dropped) + " samples of silence from disk overruns";
     else
         recordingMessage_ = "Recorded " + std::to_string(finished.session->inputs().size()) + " track(s)" +
                             (takes > 1 ? ", " + std::to_string(takes) + " takes" : std::string{}) +
@@ -319,8 +481,9 @@ int ProjectSession::discardPartialRecordings()
         return 0;
     for (const auto& partial : folder.findChildFiles(juce::File::findFiles, false, "*.partial.wav"))
         if (partial.moveFileTo(
-                partial.getSiblingFile(partial.getFileName().replace(".partial.wav", ".discarded.wav"))))
+                partial.getSiblingFile(partial.getFileName().replace(partialSuffix, ".discarded.wav"))))
             ++discarded;
+    removeOrphanSidecars(folder);
     return discarded;
 }
 
@@ -339,6 +502,7 @@ int ProjectSession::recoverPartialRecordings()
     if (!folder.isDirectory())
         return 0;
     int recovered = 0;
+    undo_.beginGroup("Recover recordings");
     for (const auto& partial : folder.findChildFiles(juce::File::findFiles, false, "*.partial.wav"))
     {
         const auto path = partial.getFullPathName().toStdString();
@@ -351,19 +515,49 @@ int ProjectSession::recoverPartialRecordings()
             continue;
         }
         const auto recoveredFile =
-            partial.getSiblingFile(partial.getFileName().replace(".partial.wav", ".recovered.wav"));
+            partial.getSiblingFile(partial.getFileName().replace(partialSuffix, ".recovered.wav"))
+                .getNonexistentSibling(false);
         if (!partial.moveFileTo(recoveredFile))
             continue;
-        core::Track track;
-        track.name = "Recovered: " + recoveredFile.getFileNameWithoutExtension().toStdString();
+
+        // With its sidecar the take goes back where it was captured, on its own
+        // track if that still exists; without one it lands at the start of a new
+        // track, which is at least audible.
+        const auto name = parseRecordingName(partial.getFileName());
+        const auto meta = readSidecar(folder.getChildFile(name.base + sidecarSuffix));
         core::AudioClip clip;
-        clip.name = track.name;
+        clip.name = recoveredFile.getFileNameWithoutExtension().toStdString();
         clip.mediaPath = recoveredFile.getFullPathName().toStdString();
         clip.length = info->lengthSamples;
-        track.clips.push_back(clip);
-        undo_.execute(project_, std::make_unique<core::AddTrack>(track));
+        if (meta.has_value())
+        {
+            const auto captureStart =
+                name.takeIndex > 0 && meta->loopStart >= 0 ? meta->loopStart : meta->startPosition;
+            const auto placement =
+                engine::placeRecording(captureStart, info->lengthSamples, meta->latencySamples);
+            clip.start = placement.start;
+            clip.sourceOffset = placement.sourceOffset;
+            clip.length = placement.length;
+        }
+        if (clip.length <= 0)
+            continue;
+        if (meta.has_value() && project_.findTrack(meta->trackId) != nullptr)
+        {
+            undo_.execute(project_, std::make_unique<core::AddClip>(meta->trackId, clip));
+        }
+        else
+        {
+            core::Track track;
+            track.name = "Recovered: " + (meta.has_value() && !meta->trackName.empty()
+                                              ? meta->trackName
+                                              : recoveredFile.getFileNameWithoutExtension().toStdString());
+            track.clips.push_back(clip);
+            undo_.execute(project_, std::make_unique<core::AddTrack>(track));
+        }
         ++recovered;
     }
+    undo_.endGroup();
+    removeOrphanSidecars(folder);
     if (recovered > 0)
     {
         modified_ = true;
@@ -402,6 +596,11 @@ void ProjectSession::changeListenerCallback(juce::ChangeBroadcaster*)
 }
 
 void ProjectSession::timerCallback()
+{
+    poll();
+}
+
+void ProjectSession::poll()
 {
     engine_.collectGarbage();
     if (engine_.hasRecordingToCollect())
