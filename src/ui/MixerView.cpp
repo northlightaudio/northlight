@@ -384,11 +384,15 @@ private:
             actions.push_back(
                 [this, insertId, bypass]
                 { owner_.onCommand(std::make_unique<core::SetInsertBypass>(id_, insertId, !bypass)); });
-            sub.addItem(item++, "Move up", channel->insertIndex(insertId) > 0);
             const int index = channel->insertIndex(insertId);
+            sub.addItem(item++, "Move up", index > 0);
             actions.push_back(
                 [this, insertId, index]
                 { owner_.onCommand(std::make_unique<core::MoveInsert>(id_, insertId, index - 1)); });
+            sub.addItem(item++, "Move down", index + 1 < static_cast<int>(channel->inserts.size()));
+            actions.push_back(
+                [this, insertId, index]
+                { owner_.onCommand(std::make_unique<core::MoveInsert>(id_, insertId, index + 1)); });
             sub.addItem(item++, "Remove");
             actions.push_back([this, insertId]
                               { owner_.onCommand(std::make_unique<core::RemoveInsert>(id_, insertId)); });
@@ -673,7 +677,7 @@ void MixerView::openInsertEditor(core::Id channelId, core::Id insertId)
         const auto setting = [this](const std::string& key)
         { return loadSetting ? loadSetting(key) : std::string{}; };
         const bool pinned = setting("plugins.pin") == "1";
-        auto window = std::make_unique<PluginWindow>(channelId, insertId, hosted->instance(), title, pinned);
+        auto window = std::make_unique<PluginWindow>(channelId, insertId, *hosted, title, pinned);
         juce::Component::SafePointer<MixerView> safe(this);
         window->onClose = [safe, insertId]
         {

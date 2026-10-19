@@ -142,3 +142,47 @@ TEST_CASE("A hosted plugin loads, processes a block in place and round-trips its
     CHECK(second->state().size() == state.size());
     CHECK(hosted->instance().getPluginDescription().name.toStdString() == info.name);
 }
+
+TEST_CASE("A hosted plugin lists its programs and round-trips a .vstpreset file",
+          "[hosting][plugin][presets]")
+{
+    const juce::ScopedJuceInitialiser_GUI juceInit;
+    const auto plugin = anyInstalledVst3();
+    if (plugin == juce::File() || !scannerFile().existsAsFile())
+    {
+        WARN("no VST3 plugin installed; skipping the preset test");
+        return;
+    }
+    std::vector<hosting::PluginInfo> found;
+    std::string error;
+    REQUIRE(hosting::PluginScanner::inspect(scannerFile(), plugin, found, error));
+    REQUIRE_FALSE(found.empty());
+    hosting::PluginRegistry registry;
+    registry.setFileResults(plugin.getFullPathName().toStdString(), 1, found);
+    hosting::HostFactory factory(registry);
+    auto processor = factory.create(hosting::PluginRegistry::typeFor(registry.plugins()[0]));
+    REQUIRE(processor != nullptr);
+    auto* hosted = dynamic_cast<hosting::HostedPlugin*>(processor.get());
+    REQUIRE(hosted != nullptr);
+    hosted->prepare(48000.0, 256);
+
+    const auto programs = hosted->factoryPrograms();
+    INFO("programs: " << programs.size());
+    if (!programs.empty())
+    {
+        hosted->setProgram(static_cast<int>(programs.size()) - 1);
+        CHECK(hosted->currentProgram() == static_cast<int>(programs.size()) - 1);
+    }
+    REQUIRE(hosted->supportsPresetFiles());
+    CHECK(hosted->userPresetFolder().getFullPathName().contains("VST3 Presets"));
+
+    const auto file =
+        juce::File::getSpecialLocation(juce::File::tempDirectory).getChildFile("aural-test.vstpreset");
+    file.deleteFile();
+    REQUIRE(hosted->savePresetFile(file));
+    CHECK(file.getSize() > 0);
+    CHECK(hosted->loadPresetFile(file));
+    CHECK_FALSE(hosted->loadPresetFile(
+        juce::File::getSpecialLocation(juce::File::tempDirectory).getChildFile("aural-missing.vstpreset")));
+    file.deleteFile();
+}

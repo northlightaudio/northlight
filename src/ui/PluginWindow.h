@@ -2,6 +2,7 @@
 
 #include "core/Command.h"
 #include "core/Model.h"
+#include "hosting/HostedPlugin.h"
 #include "ui/Theme.h"
 
 #include <juce_audio_processors/juce_audio_processors.h>
@@ -15,14 +16,14 @@ namespace aural::ui
 
 // A floating window for a hosted plugin's own editor (or JUCE's generic one when
 // the plugin has none), with a bar above it for bypass, wet/dry mix and "pin"
-// (always on top). The window never outlives the plugin instance: the owner closes
+// (always on top) and a presets menu. The window never outlives the plugin instance: the owner closes
 // it when the insert leaves the model.
 class PluginWindow final : public juce::DocumentWindow
 {
 public:
     PluginWindow(core::Id channelId,
                  core::Id insertId,
-                 juce::AudioPluginInstance& instance,
+                 hosting::HostedPlugin& plugin,
                  const juce::String& title,
                  bool pinned);
     ~PluginWindow() override;

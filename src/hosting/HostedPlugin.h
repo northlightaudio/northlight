@@ -42,6 +42,19 @@ public:
     juce::AudioPluginInstance& instance() noexcept { return *instance_; }
     const juce::AudioPluginInstance& instance() const noexcept { return *instance_; }
 
+    // ----- presets (message thread) -----------------------------------------------
+    // The plugin's built-in programs (empty when it has none worth listing).
+    std::vector<std::string> factoryPrograms() const;
+    int currentProgram() const;
+    void setProgram(int index);
+    // .vstpreset files: the standard user folder for this plugin
+    // (Documents/VST3 Presets/<manufacturer>/<plugin>), its files, and load/save.
+    bool supportsPresetFiles() const;
+    juce::File userPresetFolder() const;
+    std::vector<juce::File> userPresetFiles() const;
+    bool loadPresetFile(const juce::File& file);
+    bool savePresetFile(const juce::File& file) const;
+
 private:
     std::string typeName_;
     std::vector<engine::ParameterInfo> noParameters_;

@@ -363,7 +363,10 @@ delay line so the halves stay aligned, and blends it with the processed signal;
 at mix 0 the insert still runs on scratch (its meters and state keep moving) and
 the chain sees only the dry path. The generic insert editor and the plugin window's
 bar (bypass, mix, pin) both edit it. A plugin window remembers its position per
-plugin type and the pin (always-on-top) preference in the user settings. The
+plugin type and the pin (always-on-top) preference in the user settings, and its
+Presets menu lists the plugin's factory programs and the `.vstpreset` files under
+the standard user folder (`Documents/VST3 Presets/<manufacturer>/<plugin>`), with
+load and save through the format's preset extension. The
 plugin browser (`ui::PluginBrowser`, from the mixer's Plugins... button or
 `--plugins`) lists everything the registry knows with search, shows the blocklist
 with reasons, and offers a scan for changes, a full rescan and clearing the
@@ -382,7 +385,8 @@ only a changed delay resets a line. `AudioEngine::outputLatencySamples()` is the
 master's lag, which the session adds to the recording offset (a take played
 against the compensated output lands that much later), and a plugin that changes
 its latency after prepare is noticed on the session's poll and the graph re-solved.
-The transport display does not yet subtract the lag.
+The playhead and the position display follow the heard position (engine position
+minus the lag).
 
 Scanning is out of process from day one: `aural_plugin_scan <file>` loads one
 file and prints its `PluginDescription`s as XML, and `hosting::PluginScanner` runs

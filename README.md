@@ -112,7 +112,8 @@ A strip's **Group** button puts it in a fader group: grouped faders move togethe
 plugins...** (the standard VST3 folders, each file inspected in a separate process
 so a bad plugin cannot crash Aural); a hosted plugin opens its own editor window
 and its state is saved with the project; its window has bypass, a wet/dry mix and a
-pin (always on top), and remembers where you left it. **Plugins...** opens the
+pin (always on top), a Presets menu (factory programs and `.vstpreset` files), and
+remembers where you left it. **Plugins...** opens the
 browser (search, blocklist, scan). Every insert has a wet/dry mix. Insert latency is
 compensated across tracks, buses and sends, and recordings allow for it.
 Recordings go next to the project file in a `<project> Media` folder, or to

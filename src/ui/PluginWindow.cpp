@@ -1,5 +1,8 @@
 #include "ui/PluginWindow.h"
 
+#include <functional>
+#include <vector>
+
 namespace aural::ui
 {
 
@@ -8,7 +11,8 @@ namespace aural::ui
 class PluginWindow::Holder final : public juce::Component
 {
 public:
-    Holder(PluginWindow& window, juce::AudioProcessorEditor* editor) : window_(window), editor_(editor)
+    Holder(PluginWindow& window, hosting::HostedPlugin& plugin, juce::AudioProcessorEditor* editor)
+        : window_(window), plugin_(plugin), editor_(editor)
     {
         setOpaque(true);
         bypass_.setButtonText("Bypass");
@@ -54,8 +58,12 @@ public:
         };
         addAndMakeVisible(pin_);
 
+        presets_.setButtonText("Presets");
+        presets_.onClick = [this] { showPresetsMenu(); };
+        addAndMakeVisible(presets_);
+
         addAndMakeVisible(editor_);
-        setSize(std::max(editor_->getWidth(), 260), editor_->getHeight() + PluginWindow::barHeight);
+        setSize(std::max(editor_->getWidth(), 340), editor_->getHeight() + PluginWindow::barHeight);
     }
 
     ~Holder() override
@@ -64,6 +72,88 @@ public:
         // tells the plugin.
         removeChildComponent(editor_);
         delete editor_;
+    }
+
+    void showPresetsMenu()
+    {
+        juce::PopupMenu menu;
+        std::vector<std::function<void()>> actions;
+        int item = 1;
+        const auto programs = plugin_.factoryPrograms();
+        if (!programs.empty())
+        {
+            juce::PopupMenu factory;
+            const int current = plugin_.currentProgram();
+            for (size_t i = 0; i < programs.size(); ++i)
+            {
+                factory.addItem(item++,
+                                juce::String::fromUTF8(programs[i].c_str()),
+                                true,
+                                static_cast<int>(i) == current);
+                const int index = static_cast<int>(i);
+                actions.push_back([this, index] { plugin_.setProgram(index); });
+            }
+            menu.addSubMenu("Factory", factory);
+        }
+        if (plugin_.supportsPresetFiles())
+        {
+            const auto folder = plugin_.userPresetFolder();
+            const auto files = plugin_.userPresetFiles();
+            if (!files.empty())
+            {
+                juce::PopupMenu user;
+                for (const auto& file : files)
+                {
+                    user.addItem(
+                        item++,
+                        file.getRelativePathFrom(folder).upToLastOccurrenceOf(".vstpreset", false, false));
+                    actions.push_back([this, file] { plugin_.loadPresetFile(file); });
+                }
+                menu.addSubMenu("User", user);
+            }
+            if (!programs.empty() || !files.empty())
+                menu.addSeparator();
+            menu.addItem(item++, "Load preset file...");
+            actions.push_back([this] { choosePresetFile(false); });
+            menu.addItem(item++, "Save preset as...");
+            actions.push_back([this] { choosePresetFile(true); });
+        }
+        if (actions.empty())
+            menu.addItem(item++, "No presets", false);
+        menu.showMenuAsync(juce::PopupMenu::Options().withTargetComponent(presets_),
+                           [actions](int chosen)
+                           {
+                               if (chosen > 0 && static_cast<size_t>(chosen) <= actions.size())
+                                   actions[static_cast<size_t>(chosen - 1)]();
+                           });
+    }
+
+    void choosePresetFile(bool save)
+    {
+        const auto folder = plugin_.userPresetFolder();
+        folder.createDirectory();
+        chooser_ = std::make_unique<juce::FileChooser>(
+            save ? "Save preset" : "Load preset", folder.getChildFile("Preset.vstpreset"), "*.vstpreset");
+        const int mode =
+            save ? (juce::FileBrowserComponent::saveMode | juce::FileBrowserComponent::canSelectFiles |
+                    juce::FileBrowserComponent::warnAboutOverwriting)
+                 : (juce::FileBrowserComponent::openMode | juce::FileBrowserComponent::canSelectFiles);
+        juce::Component::SafePointer<Holder> safe(this);
+        chooser_->launchAsync(mode,
+                              [safe, save](const juce::FileChooser& fc)
+                              {
+                                  auto file = fc.getResult();
+                                  if (safe == nullptr || file == juce::File())
+                                      return;
+                                  if (save)
+                                  {
+                                      if (!file.hasFileExtension("vstpreset"))
+                                          file = file.withFileExtension("vstpreset");
+                                      safe->plugin_.savePresetFile(file);
+                                  }
+                                  else
+                                      safe->plugin_.loadPresetFile(file);
+                              });
     }
 
     void setPinned(bool pinned) { pin_.setToggleState(pinned, juce::dontSendNotification); }
@@ -86,6 +176,8 @@ public:
         auto bar = getLocalBounds().removeFromTop(PluginWindow::barHeight).reduced(theme_.spacing.sm, 4);
         bypass_.setBounds(bar.removeFromLeft(64));
         bar.removeFromLeft(theme_.spacing.sm);
+        presets_.setBounds(bar.removeFromLeft(66));
+        bar.removeFromLeft(theme_.spacing.sm);
         pin_.setBounds(bar.removeFromRight(44));
         bar.removeFromRight(theme_.spacing.sm);
         mixLabel_.setBounds(bar.removeFromLeft(28));
@@ -99,7 +191,7 @@ public:
     {
         if (child != editor_ || layingOut_)
             return;
-        const int w = std::max(editor_->getWidth(), 260);
+        const int w = std::max(editor_->getWidth(), 340);
         const int h = editor_->getHeight() + PluginWindow::barHeight;
         if (w != getWidth() || h != getHeight())
             window_.setContentComponentSize(w, h);
@@ -108,8 +200,10 @@ public:
 private:
     const Theme& theme_ = Theme::dark();
     PluginWindow& window_;
+    hosting::HostedPlugin& plugin_;
     juce::AudioProcessorEditor* editor_;
-    juce::TextButton bypass_, pin_;
+    juce::TextButton bypass_, pin_, presets_;
+    std::unique_ptr<juce::FileChooser> chooser_;
     juce::Label mixLabel_;
     juce::Slider mix_;
     bool updating_ = false;
@@ -118,19 +212,20 @@ private:
 
 PluginWindow::PluginWindow(core::Id channelId,
                            core::Id insertId,
-                           juce::AudioPluginInstance& instance,
+                           hosting::HostedPlugin& plugin,
                            const juce::String& title,
                            bool pinned)
     : juce::DocumentWindow(title, Theme::dark().colours.background, juce::DocumentWindow::closeButton),
       channelId_(channelId), insertId_(insertId)
 {
     setUsingNativeTitleBar(true);
+    auto& instance = plugin.instance();
     juce::AudioProcessorEditor* editor =
         instance.hasEditor() ? instance.createEditorAndMakeActive() : nullptr;
     if (editor == nullptr)
         editor = new juce::GenericAudioProcessorEditor(instance);
     const bool canResize = editor->isResizable();
-    auto holder = std::make_unique<Holder>(*this, editor);
+    auto holder = std::make_unique<Holder>(*this, plugin, editor);
     holder_ = holder.get();
     holder_->setPinned(pinned);
     setContentOwned(holder.release(), true);

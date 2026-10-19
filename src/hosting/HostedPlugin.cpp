@@ -2,6 +2,8 @@
 
 #include "engine/rt/RealtimeGuard.h"
 
+#include <algorithm>
+
 namespace aural::hosting
 {
 
@@ -65,6 +67,86 @@ void HostedPlugin::process(float* left, float* right, int numSamples) noexcept
     instance_->processBlock(buffer, midi_);
     if (channels == 1)
         juce::FloatVectorOperations::copy(right, left, numSamples);
+}
+
+std::vector<std::string> HostedPlugin::factoryPrograms() const
+{
+    AURAL_ASSERT_NOT_REALTIME("HostedPlugin::factoryPrograms");
+    std::vector<std::string> names;
+    const int count = instance_->getNumPrograms();
+    if (count <= 1)
+        return names; // JUCE reports one unnamed program for plugins without any
+    for (int i = 0; i < count; ++i)
+        names.push_back(instance_->getProgramName(i).toStdString());
+    return names;
+}
+
+int HostedPlugin::currentProgram() const
+{
+    return instance_->getCurrentProgram();
+}
+
+void HostedPlugin::setProgram(int index)
+{
+    AURAL_ASSERT_NOT_REALTIME("HostedPlugin::setProgram");
+    if (index >= 0 && index < instance_->getNumPrograms())
+        instance_->setCurrentProgram(index);
+}
+
+bool HostedPlugin::supportsPresetFiles() const
+{
+    return const_cast<juce::AudioPluginInstance&>(*instance_).getVST3Client() != nullptr;
+}
+
+juce::File HostedPlugin::userPresetFolder() const
+{
+    const auto description = instance_->getPluginDescription();
+    const auto safe = [](const juce::String& s) { return juce::File::createLegalFileName(s).trim(); };
+    return juce::File::getSpecialLocation(juce::File::userDocumentsDirectory)
+        .getChildFile("VST3 Presets")
+        .getChildFile(safe(description.manufacturerName).isEmpty() ? "Unknown"
+                                                                   : safe(description.manufacturerName))
+        .getChildFile(safe(description.name).isEmpty() ? "Plugin" : safe(description.name));
+}
+
+std::vector<juce::File> HostedPlugin::userPresetFiles() const
+{
+    std::vector<juce::File> files;
+    const auto folder = userPresetFolder();
+    if (!folder.isDirectory())
+        return files;
+    for (const auto& f : folder.findChildFiles(juce::File::findFiles, true, "*.vstpreset"))
+        files.push_back(f);
+    std::sort(files.begin(),
+              files.end(),
+              [](const juce::File& a, const juce::File& b)
+              { return a.getFullPathName().compareIgnoreCase(b.getFullPathName()) < 0; });
+    return files;
+}
+
+bool HostedPlugin::loadPresetFile(const juce::File& file)
+{
+    AURAL_ASSERT_NOT_REALTIME("HostedPlugin::loadPresetFile");
+    auto* client = instance_->getVST3Client();
+    if (client == nullptr)
+        return false;
+    juce::MemoryBlock data;
+    if (!file.loadFileAsData(data) || data.getSize() == 0)
+        return false;
+    return client->setPreset(data);
+}
+
+bool HostedPlugin::savePresetFile(const juce::File& file) const
+{
+    AURAL_ASSERT_NOT_REALTIME("HostedPlugin::savePresetFile");
+    auto* client = const_cast<juce::AudioPluginInstance&>(*instance_).getVST3Client();
+    if (client == nullptr)
+        return false;
+    const auto data = client->getPreset();
+    if (data.getSize() == 0)
+        return false;
+    file.getParentDirectory().createDirectory();
+    return file.replaceWithData(data.getData(), data.getSize());
 }
 
 std::string HostedPlugin::state() const

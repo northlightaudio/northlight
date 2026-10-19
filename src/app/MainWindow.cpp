@@ -268,9 +268,12 @@ private:
             tracks_.setMonitoringStates(monitoring, session_.isRecording());
         }
         const bool recording = session_.isRecording();
-        tracks_.setPlayhead(session_.position(), session_.isPlaying(), recording);
-        positionLabel_.setText(formatPosition(session_.project(), session_.position()),
-                               juce::dontSendNotification);
+        // What is heard lags the engine by the delay compensation on the master:
+        // the playhead and the display follow the sound, not the engine.
+        const auto heard =
+            std::max<core::SamplePosition>(0, session_.position() - session_.engine().outputLatencySamples());
+        tracks_.setPlayhead(heard, session_.isPlaying(), recording);
+        positionLabel_.setText(formatPosition(session_.project(), heard), juce::dontSendNotification);
         const bool playing = session_.isPlaying();
         if (playing != lastPlaying_ || recording != lastRecording_)
         {
