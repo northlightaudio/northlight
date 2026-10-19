@@ -86,9 +86,11 @@ added when their first code lands.
 
 Click **Import Audio...** to put files on tracks (one track per file, starting at 0),
 **Play** or the space bar to play, **|<** or Return to go back to the start, and
-click the ruler to locate. Undo/redo are Ctrl+Z / Ctrl+Y. Files longer than 30 s
+click in the arrange view to locate. Ctrl+wheel zooms around the pointer; the wheel
+or the scrollbar scrolls. Undo/redo are Ctrl+Z / Ctrl+Y. Files longer than 30 s
 stream from disk; everything is resampled to the project rate (the device rate of
-an empty project).
+an empty project). Waveform peaks are built in the background and cached next to
+each media file as `<file>.<rate>.aural-peaks`.
 
 For unattended checks: `Aural.exe --import <file> [--import <file>] --play`.
 

@@ -12,15 +12,16 @@ aural.exe
                   ProjectSession (the open Project + UndoStack + AudioEngine +
                   DiskThread); UserSettings (per-user properties file)
   src/ui          Theme (design tokens), AuralLookAndFeel (dark, token-driven),
-                  AudioSetupView, TrackListView (Phase 2 placeholder arrange view)
+                  AudioSetupView, ArrangeView (tracks, waveforms, zoom, scroll)
   src/core        Project/Track/AudioClip model, Command + UndoStack, JSON project
                   files, bars/beats helpers. No JUCE.
   src/engine      AudioEngine façade, Snapshot compiler + MediaCache, Transport,
-                  Renderer, AudioSource (memory + streaming), DiskThread. No JUCE.
+                  Renderer, AudioSource (memory + streaming), DiskThread, Peaks.
+                  No JUCE.
   src/engine/rt   Real-time guard and allocation hook, SpscQueue, SnapshotPublisher
   src/audio       Pure:  AudioSettings, LatencyDetector, PassThrough
                   JUCE:  AudioDeviceLayer, AudioCallback, LatencyCalibrator,
-                         JuceMediaLoader, JuceStreamReader
+                         JuceMediaLoader, JuceStreamReader, PeakStore
 
 aural_unit_tests.exe
   tests/unit/rt      Catch2 tests for the guard
@@ -28,7 +29,7 @@ aural_unit_tests.exe
   tests/unit/core    Model, every command's undo/redo, JSON round trips
   tests/unit/engine  Queue/publisher, offline engine harness (sample-exact
                      playback, loop, solo/mute, pan, snapshot swaps under the RT
-                     hook), streaming source against a live disk thread
+                     hook), streaming source against a live disk thread, peaks
 
 aural_loopback_tool.exe
   tests/hardware     Console tool: list devices, open one, run the loopback
@@ -133,8 +134,25 @@ snapshot after every command, imports files as new tracks, saves/opens JSON proj
 files and drives the transport. An empty project adopts the device sample rate; a
 project with media keeps its own and the mismatch is shown. `MainWindow` has the
 transport bar (space to play/stop, Return/Home to return to start, Ctrl+Z/Y), import,
-and `TrackListView`, a placeholder for the arrange view that draws tracks, clips and
-the playhead on a fixed time scale and locates on click.
+and `ArrangeView`.
+
+### Waveforms and the arrange view
+
+`engine::PeakData` holds mipmapped min/max peaks per channel: a base level of 256
+samples per bin and five coarser levels, each four times coarser. `lookup(channel,
+start, end)` picks the coarsest level whose bins still fit the span, so one pixel
+column costs a handful of bin reads at any zoom. `audio::PeakStore` builds peaks on a
+low-priority background thread (reading through `JuceStreamReader` at the project
+rate so peaks line up with clip positions), caches them beside the media as
+`<file>.<rate>.aural-peaks` while the cache is newer than the media, and broadcasts a
+change on the message thread when a build finishes. The view asks for peaks while
+painting and simply draws a flat block until they arrive.
+
+`ui::ArrangeView` draws the ruler (tick spacing chosen from the zoom), one row per
+track with its clips, a waveform column per pixel from the peaks, and the playhead,
+which pages the view forward during playback. Horizontal zoom is Ctrl+wheel around
+the pointer; scroll is the wheel or the scrollbar; clicking locates. Clip editing
+is Phase 6.
 
 ### Loopback calibration
 
@@ -190,3 +208,5 @@ launches; `JUCE_MODAL_LOOPS_PERMITTED` stays 0.
 | 2026-10-19 | Streaming window guarded by position, with a grace period on seeks | A full lock-free ring with per-sample ownership would be over-engineered for one reader and one writer; a guard distance behind the read position plus a few ms of quiescence after emptying the window gives the same safety with trivial code. |
 | 2026-10-19 | Files under 30 s load into memory, longer ones stream | Short clips are the common case for recording takes and one-shots, and memory avoids any disk latency; long material streams so project size is not bounded by RAM. |
 | 2026-10-19 | Device sample rate vs project rate: empty projects follow the device, others warn | Silently resampling a whole project on a device change would hide a real problem; warning keeps the user in control until per-project rate conversion lands. |
+| 2026-10-19 | Peaks are mipmapped by four from 256 samples per bin and cached beside the media | Six levels cover from 5 ms to about 5 s per bin, so every zoom level reads a few bins per pixel; caching next to the file means a project reopened from another folder still finds its peaks, and the cache is small (about 2% of 16-bit audio). |
+| 2026-10-19 | Peaks are built at the project rate, not the file rate | Clip positions and lengths are project-rate samples, so peaks in the same units need no scaling in the view; the cost is one cache per rate a file is used at. |
