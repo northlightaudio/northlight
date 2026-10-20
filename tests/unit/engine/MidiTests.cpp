@@ -915,3 +915,46 @@ TEST_CASE("An instrument's extra output is compensated for the instrument's late
     CHECK(peak == Approx(2.0f).margin(0.05f));
     CHECK(pulses == 1);
 }
+
+TEST_CASE("A long note still ends after many short notes, with the scheduler skipping ended notes",
+          "[engine][midi]")
+{
+    core::MidiClip clip;
+    clip.start = 0;
+    clip.length = 100000;
+    clip.notes.push_back({10, 40, 100, 0, 3000}); // held from 0 to 3000
+    for (int i = 0; i < 2000; ++i)                // then a dense run of short notes
+        clip.notes.push_back({static_cast<core::Id>(100 + i), 60, 100, 1 + i, 1});
+    Harness h;
+    h.engine.setProject(keysProject(clip));
+    h.engine.play();
+    const auto out = h.render(3000 / blockSize + 2);
+    CHECK(out[3000] == Approx(-1.0f).margin(0.01f)); // its note-off, on time
+    CHECK(h.engine.position() > 3000);
+}
+
+TEST_CASE("A recompile reuses each channel's work buffers; only a new channel gets its own",
+          "[engine][snapshot]")
+{
+    NoMedia loader;
+    engine::MediaCache media(loader);
+    engine::InsertCache inserts(midiFactory);
+    engine::RuntimeCache runtimes;
+    core::MidiClip clip;
+    auto p = keysProject(clip);
+    core::Bus bus;
+    bus.id = 7;
+    p.buses.push_back(bus);
+    const auto first = engine::compileSnapshot(p, media, inserts, nullptr, &runtimes);
+    const auto again = engine::compileSnapshot(p, media, inserts, nullptr, &runtimes);
+    CHECK(again->tracks[1].outLeft.data() == first->tracks[1].outLeft.data());
+    CHECK(again->buses[0].sumLeft.data() == first->buses[0].sumLeft.data());
+    CHECK(again->tracks[1].outLeft.size() == static_cast<size_t>(engine::Snapshot::maxBlockSamples));
+
+    core::Track added;
+    added.id = 9;
+    p.tracks.push_back(added);
+    const auto grown = engine::compileSnapshot(p, media, inserts, nullptr, &runtimes);
+    CHECK(grown->tracks[1].outLeft.data() == first->tracks[1].outLeft.data());
+    CHECK(grown->tracks[2].outLeft.data() != first->tracks[1].outLeft.data());
+}

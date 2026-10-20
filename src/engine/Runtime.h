@@ -58,9 +58,30 @@ struct MidiRuntime
     bool wasPlaying = false;
 };
 
+// A channel's work buffers for one span (output, dry copy, delayed copy, and a
+// fourth pair: a track's clip scratch or a bus's sum), in one allocation. Kept
+// across compiles like the runtimes, so a structural edit allocates only for
+// new channels. Snapshots share them: only the one being rendered writes.
+struct ChannelBuffers
+{
+    static constexpr int pairs = 4;
+    explicit ChannelBuffers(size_t blockSize) : blockSize(blockSize), storage(2 * pairs * blockSize, 0.0f) {}
+    float* buffer(int index) noexcept { return storage.data() + static_cast<size_t>(index) * blockSize; }
+    size_t blockSize;
+    std::vector<float> storage;
+};
+
 class RuntimeCache
 {
 public:
+    // The channel's buffers for blocks up to `blockSize` (new ones when it changed).
+    std::shared_ptr<ChannelBuffers> buffers(core::Id channelId, size_t blockSize)
+    {
+        auto& b = buffers_[channelId];
+        if (b == nullptr || b->blockSize != blockSize)
+            b = std::make_shared<ChannelBuffers>(blockSize);
+        return b;
+    }
     std::shared_ptr<ChannelRuntime> get(core::Id channelId)
     {
         auto& r = channels_[channelId];
@@ -102,6 +123,7 @@ public:
     void prune()
     {
         std::erase_if(channels_, [](const auto& entry) { return entry.second.use_count() == 1; });
+        std::erase_if(buffers_, [](const auto& entry) { return entry.second.use_count() == 1; });
         std::erase_if(midi_, [](const auto& entry) { return entry.second.use_count() == 1; });
         std::erase_if(automation_,
                       [](const auto& entry)
@@ -110,6 +132,7 @@ public:
     void clear()
     {
         channels_.clear();
+        buffers_.clear();
         midi_.clear();
         automation_.clear();
         master_.reset();
@@ -117,6 +140,7 @@ public:
 
 private:
     std::map<core::Id, std::shared_ptr<ChannelRuntime>> channels_;
+    std::map<core::Id, std::shared_ptr<ChannelBuffers>> buffers_;
     std::map<core::Id, std::shared_ptr<MidiRuntime>> midi_;
     std::map<core::Id, std::shared_ptr<AutomationRuntime>> automation_;
     std::shared_ptr<MasterRuntime> master_;

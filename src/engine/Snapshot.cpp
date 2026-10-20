@@ -3,8 +3,8 @@
 #include "engine/rt/RealtimeGuard.h"
 
 #include <algorithm>
-#include <map>
 #include <functional>
+#include <map>
 
 namespace aural::engine
 {
@@ -345,12 +345,16 @@ std::unique_ptr<Snapshot> compileSnapshot(const core::Project& project,
             node.keepAliveAutomation.push_back(std::move(runtime));
             node.automation.push_back(std::move(a));
         }
-        node.outLeft.assign(n, 0.0f);
-        node.outRight.assign(n, 0.0f);
-        node.dryLeft.assign(n, 0.0f);
-        node.dryRight.assign(n, 0.0f);
-        node.delayScratchLeft.assign(n, 0.0f);
-        node.delayScratchRight.assign(n, 0.0f);
+        // The work buffers, kept per channel across compiles (none allocated for a
+        // channel the last snapshot had).
+        node.keepAliveBuffers = runtimeCache.buffers(c.id, n);
+        auto& b = *node.keepAliveBuffers;
+        node.outLeft = {b.buffer(0), n};
+        node.outRight = {b.buffer(1), n};
+        node.dryLeft = {b.buffer(2), n};
+        node.dryRight = {b.buffer(3), n};
+        node.delayScratchLeft = {b.buffer(4), n};
+        node.delayScratchRight = {b.buffer(5), n};
     };
 
     // ----- tracks -----------------------------------------------------------------------
@@ -393,8 +397,16 @@ std::unique_ptr<Snapshot> compileSnapshot(const core::Project& project,
                     note.note = source.note;
                     note.velocity = source.velocity;
                     if (note.end > note.start && note.start < c.end())
+                    {
                         clip.notes.push_back(note);
+                        clip.longest = std::max(clip.longest, note.end - note.start);
+                    }
                 }
+                // The renderer searches by start.
+                std::stable_sort(clip.notes.begin(),
+                                 clip.notes.end(),
+                                 [](const MidiNoteNode& a, const MidiNoteNode& b)
+                                 { return a.start < b.start; });
                 node.midiClips.push_back(std::move(clip));
             }
         }
@@ -412,8 +424,8 @@ std::unique_ptr<Snapshot> compileSnapshot(const core::Project& project,
             clip.source = clip.keepAlive.get();
             node.clips.push_back(std::move(clip));
         }
-        node.scratchLeft.assign(n, 0.0f);
-        node.scratchRight.assign(n, 0.0f);
+        node.scratchLeft = {node.keepAliveBuffers->buffer(6), n};
+        node.scratchRight = {node.keepAliveBuffers->buffer(7), n};
         snapshot->tracks.push_back(std::move(node));
     }
 
@@ -424,8 +436,8 @@ std::unique_ptr<Snapshot> compileSnapshot(const core::Project& project,
         BusNode node;
         fillChannel(
             node, project.buses[static_cast<size_t>(b)], trackCount + b, busMeterSlot(project, b), true);
-        node.sumLeft.assign(n, 0.0f);
-        node.sumRight.assign(n, 0.0f);
+        node.sumLeft = {node.keepAliveBuffers->buffer(6), n};
+        node.sumRight = {node.keepAliveBuffers->buffer(7), n};
         snapshot->buses.push_back(std::move(node));
     }
 
@@ -546,7 +558,8 @@ std::unique_ptr<Snapshot> compileSnapshot(const core::Project& project,
                 track.isAux() && snapshot->tracks[static_cast<size_t>(t)].auxInsert != nullptr)
                 if (const auto it = latencyThrough.find(track.auxInsert); it != latencyThrough.end())
                     sourceLag = it->second;
-            trackOut[static_cast<size_t>(t)] = sourceLag + snapshot->tracks[static_cast<size_t>(t)].chainLatency;
+            trackOut[static_cast<size_t>(t)] =
+                sourceLag + snapshot->tracks[static_cast<size_t>(t)].chainLatency;
             offer(snapshot->tracks[static_cast<size_t>(t)], trackOut[static_cast<size_t>(t)]);
         }
         for (int b : snapshot->busOrder)

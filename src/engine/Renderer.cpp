@@ -438,8 +438,17 @@ void Renderer::scheduleMidi(const TrackNode& track,
                 break;
             if (clip.end() <= position)
                 continue;
-            for (const auto& note : clip.notes)
+            // Skip the notes that ended before this span (they started more than the
+            // longest note's length ago): the work per span stays with the notes near
+            // the playhead, however far into a long clip it is.
+            const auto first =
+                std::lower_bound(clip.notes.begin(),
+                                 clip.notes.end(),
+                                 position - clip.longest,
+                                 [](const MidiNoteNode& n, core::SamplePosition at) { return n.start < at; });
+            for (auto it = first; it != clip.notes.end(); ++it)
             {
+                const auto& note = *it;
                 if (note.start >= spanEnd)
                     break;
                 const bool startsHere = note.start >= position;

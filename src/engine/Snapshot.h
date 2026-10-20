@@ -60,6 +60,17 @@ struct AutomationNode
     AutomationRuntime* runtime = nullptr; // outlives the snapshot (the touch flag)
 };
 
+// One of a channel's work buffers: a view into its ChannelBuffers (the node
+// keeps those alive), with the vector calls the renderer uses.
+struct WorkBuffer
+{
+    float* ptr = nullptr;
+    size_t count = 0;
+    float* data() const noexcept { return ptr; }
+    size_t size() const noexcept { return count; }
+    float& operator[](size_t i) const noexcept { return ptr[i]; }
+};
+
 // What tracks and buses share once compiled.
 struct ChannelNode
 {
@@ -81,18 +92,19 @@ struct ChannelNode
     std::vector<int> insertKeyTrack;                         // per slot: sidechain source track index or -1
     std::vector<int> insertKeyBus;                           // per slot: sidechain source bus index or -1
     std::vector<std::shared_ptr<InsertProcessor>> keepAlive; // controller-side ownership
-    mutable std::vector<float> dryLeft, dryRight;            // the dry copy for a mixed slot
+    WorkBuffer dryLeft, dryRight;                            // the dry copy for a mixed slot
     int chainLatency = 0;                                    // samples the inserts add
     DelayLine* outputDelay = nullptr;                        // compensation on the output edge
     std::vector<std::shared_ptr<DelayLine>> keepAliveDelays;
-    mutable std::vector<float> delayScratchLeft, delayScratchRight; // a delayed copy for one edge
+    WorkBuffer delayScratchLeft, delayScratchRight; // a delayed copy for one edge
 
     // The lanes that play (empty when the channel's mode does not read).
     std::vector<AutomationNode> automation;
     std::vector<std::shared_ptr<AutomationRuntime>> keepAliveAutomation;
 
     // Pre-fader stereo output for one span (the parallel render writes it).
-    mutable std::vector<float> outLeft, outRight;
+    WorkBuffer outLeft, outRight;
+    std::shared_ptr<ChannelBuffers> keepAliveBuffers; // what the WorkBuffers view
 };
 
 struct MidiNoteNode
@@ -107,6 +119,8 @@ struct MidiClipNode
 {
     core::SamplePosition start = 0, length = 0;
     std::vector<MidiNoteNode> notes; // sorted by start
+    core::SamplePosition longest =
+        0; // the longest note: one that starts earlier than this before a span has ended
     core::SamplePosition end() const noexcept { return start + length; }
 };
 
@@ -137,13 +151,13 @@ struct TrackNode : ChannelNode
     std::shared_ptr<MidiRuntime> keepAliveMidi;
     mutable MidiEventList events{1024}; // this span's events for the instrument
 
-    mutable std::vector<float> scratchLeft, scratchRight; // clip read scratch
+    WorkBuffer scratchLeft, scratchRight; // clip read scratch
 };
 
 struct BusNode : ChannelNode
 {
     // What its inputs summed into it this span (before the bus's own fader).
-    mutable std::vector<float> sumLeft, sumRight;
+    WorkBuffer sumLeft, sumRight;
 };
 
 struct Snapshot
