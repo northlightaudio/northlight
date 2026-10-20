@@ -313,6 +313,7 @@ void ModuleCard::tick(double elapsedMs)
             ring_[static_cast<size_t>(head_)] = frames[i];
             head_ = (head_ + 1) % historyCapacity;
             count_ = std::min(historyCapacity, count_ + 1);
+            ++total_;
             in = std::max(in, frames[i].input);
             out = std::max(out, frames[i].output);
             gr = std::max(gr, frames[i].reduction);

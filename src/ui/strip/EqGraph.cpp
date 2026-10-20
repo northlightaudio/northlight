@@ -118,48 +118,48 @@ int EqGraph::bandAt(juce::Point<float> pt) const
 
 void EqGraph::rebuildCurve()
 {
+    // Each band's curve is recomputed only when that band's settings change (a
+    // drag moves one band), and the overall response is their sum in dB: the
+    // bands' sections multiply.
     const auto p = plot();
     const int columns = std::max(1, static_cast<int>(p.getWidth()));
     const double rate = card_.sampleRate();
-    std::vector<float> params(card_.params(), card_.params() + eq::count);
-    if (curveValid_ && params == lastParams_ && rate == lastRate_ &&
-        static_cast<int>(curveDb_.size()) == columns)
-        return;
-    lastParams_ = params;
-    lastRate_ = rate;
-    curveValid_ = true;
-    plugins::Biquad all[eq::maxSections];
-    eq::design(params.data(), rate, all);
-    curveDb_.assign(static_cast<size_t>(columns), 0.0f);
-    for (int b = 0; b < eq::bandCount; ++b)
-        bandDb_[static_cast<size_t>(b)].assign(static_cast<size_t>(columns), 0.0f);
-    std::array<std::array<plugins::Biquad, eq::maxSections>, eq::bandCount> perBand{};
-    for (int b = 0; b < eq::bandCount; ++b)
-        eq::design(params.data(), rate, perBand[static_cast<size_t>(b)].data(), b);
-    for (int col = 0; col < columns; ++col)
+    const float* params = card_.params();
+    const bool layout = !curveValid_ || rate != lastRate_ || static_cast<int>(curveDb_.size()) != columns;
+    bool changed = layout || params[eq::output] != lastOutput_;
+    for (int band = 0; band < eq::bandCount; ++band)
     {
-        const double hz = xToHz(p.getX() + static_cast<float>(col) + 0.5f, p);
-        if (hz >= rate * 0.5)
-        {
-            curveDb_[static_cast<size_t>(col)] = curveDb_[static_cast<size_t>(std::max(0, col - 1))];
+        std::array<float, 5> key{};
+        for (int f = 0; f < 5; ++f)
+            if (const int index = eq::paramIndex(band, static_cast<eq::Field>(f)); index >= 0)
+                key[static_cast<size_t>(f)] = params[index];
+        auto& curve = bandDb_[static_cast<size_t>(band)];
+        if (!layout && key == bandKeys_[static_cast<size_t>(band)])
             continue;
-        }
-        double magnitude = 1.0;
-        for (const auto& s : all)
-            if (!s.isIdentity())
-                magnitude *= s.magnitude(hz, rate);
-        curveDb_[static_cast<size_t>(col)] =
-            static_cast<float>(20.0 * std::log10(std::max(1.0e-9, magnitude))) + params[eq::output];
-        for (int b = 0; b < eq::bandCount; ++b)
+        bandKeys_[static_cast<size_t>(band)] = key;
+        changed = true;
+        plugins::Biquad sections[eq::maxSections];
+        eq::design(params, rate, sections, band);
+        curve.assign(static_cast<size_t>(columns), 0.0f);
+        for (int col = 0; col < columns; ++col)
         {
+            const double hz = std::min(xToHz(p.getX() + static_cast<float>(col) + 0.5f, p), rate * 0.499);
             double m = 1.0;
-            for (const auto& s : perBand[static_cast<size_t>(b)])
-                if (!s.isIdentity())
-                    m *= s.magnitude(hz, rate);
-            bandDb_[static_cast<size_t>(b)][static_cast<size_t>(col)] =
-                static_cast<float>(20.0 * std::log10(std::max(1.0e-9, m)));
+            for (const auto& section : sections)
+                if (!section.isIdentity())
+                    m *= section.magnitude(hz, rate);
+            curve[static_cast<size_t>(col)] = static_cast<float>(20.0 * std::log10(std::max(1.0e-9, m)));
         }
     }
+    curveValid_ = true;
+    lastRate_ = rate;
+    lastOutput_ = params[eq::output];
+    if (!changed)
+        return;
+    curveDb_.assign(static_cast<size_t>(columns), params[eq::output]);
+    for (const auto& curve : bandDb_)
+        for (int col = 0; col < columns; ++col)
+            curveDb_[static_cast<size_t>(col)] += curve[static_cast<size_t>(col)];
 }
 
 void EqGraph::update(double elapsedMs)

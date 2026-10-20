@@ -21,6 +21,28 @@ std::map<std::string, bool>& expandedTypes()
 }
 } // namespace
 
+namespace
+{
+bool measuring = false;
+std::vector<double>& tickIntervals()
+{
+    static std::vector<double> intervals;
+    return intervals;
+}
+} // namespace
+
+void ChannelStripView::startMeasuring()
+{
+    tickIntervals().clear();
+    measuring = true;
+}
+
+std::vector<double> ChannelStripView::takeTickIntervals()
+{
+    measuring = false;
+    return std::move(tickIntervals());
+}
+
 bool ChannelStripView::expanded(const std::string& type, bool on)
 {
     const auto& chosen = expandedTypes();
@@ -112,7 +134,8 @@ void ChannelStripView::setChannel(const core::Channel* channel)
             order.push_back(m.id);
     const core::Id id = channel != nullptr ? channel->id : core::invalidId;
     modules_ = channel != nullptr ? channel->strip : std::vector<core::Insert>{};
-    if (id != channelId_ || order != order_)
+    const bool rebuilt = id != channelId_ || order != order_;
+    if (rebuilt)
     {
         cards_.clear();
         channelId_ = id;
@@ -146,8 +169,17 @@ void ChannelStripView::setChannel(const core::Channel* channel)
             juce::String::fromUTF8(pre ? "Before inserts \xe2\x87\x84" : "After inserts \xe2\x87\x84"));
     }
     allOff_.setEnabled(std::any_of(cards_.begin(), cards_.end(), [](const auto& c) { return c->isOn(); }));
-    resized();
-    repaint();
+    // Lay out only when the cards changed shape (a card switched on opens);
+    // values repaint inside the cards that show them.
+    std::vector<int> widths;
+    for (const auto& card : cards_)
+        widths.push_back(card->layoutWidth());
+    if (widths != laidOutWidths_ || rebuilt)
+    {
+        laidOutWidths_ = std::move(widths);
+        resized();
+        repaint();
+    }
 }
 
 int ChannelStripView::preferredWidth() const
@@ -206,6 +238,8 @@ void ChannelStripView::timerCallback()
         wasShowing_ = false;
         return;
     }
+    if (measuring && wasShowing_)
+        tickIntervals().push_back(elapsed);
     wasShowing_ = true;
     for (const auto& card : cards_)
         card->tick(elapsed);

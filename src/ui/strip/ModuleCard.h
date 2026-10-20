@@ -96,6 +96,9 @@ public:
     void endGesture();
     // The level history, oldest first.
     int historySize() const noexcept { return count_; }
+    // Frames received since the card was made (the newest is number total - 1):
+    // displays group frames by this absolute count so their columns stay put.
+    std::uint64_t historyTotal() const noexcept { return total_; }
     const Frame& historyAt(int i) const noexcept
     {
         return ring_[static_cast<size_t>((head_ - count_ + i + historyCapacity) % historyCapacity)];
@@ -168,6 +171,7 @@ private:
     std::uint64_t cursor_ = 0;
     std::vector<Frame> ring_;
     int head_ = 0, count_ = 0;
+    std::uint64_t total_ = 0;
     float inDb_ = -120.0f, outDb_ = -120.0f, grDb_ = 0.0f, extraDb_ = -120.0f;
 };
 

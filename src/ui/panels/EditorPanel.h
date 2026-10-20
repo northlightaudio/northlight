@@ -86,6 +86,7 @@ private:
     Content strip_;
     strip::ChannelStripView stripView_;
     int insertsX_ = 0; // where the inserts section starts in the content
+    bool laidOutPreInserts_ = false;
     std::vector<std::unique_ptr<Card>> cards_;
     juce::TextButton add_{"+"};
     std::vector<core::Id> builtOrder_;

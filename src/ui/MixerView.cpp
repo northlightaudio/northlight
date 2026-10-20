@@ -1805,7 +1805,11 @@ void MixerView::setProject(const core::Project* project)
 {
     project_ = project;
     rebuildStrips();
+    refreshEditors();
+}
 
+void MixerView::refreshEditors()
+{
     // Open editors follow the model (undo, a removed insert closes its window).
     // A plugin window must go before its instance, which the engine drops once no
     // snapshot references it (after this call).

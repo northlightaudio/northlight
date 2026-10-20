@@ -94,14 +94,21 @@ ArrangeView::~ArrangeView()
     verticalScrollbar_.removeListener(this);
 }
 
-void ArrangeView::setProject(const core::Project* project)
+void ArrangeView::setProject(const core::Project* project, bool valuesOnly)
 {
+    if (valuesOnly && project == project_)
+    {
+        rebuildHeaders(); // the headers repaint what changed in them
+        if (automation_.anyShown())
+            automation_.repaint();
+        return;
+    }
     automation_.setProject(project);
     project_ = project;
     std::erase_if(selection_, [this](const ClipRef& ref) { return !spanOf(ref).has_value(); });
     if (project_ == nullptr || project_->findMarker(selectedMarker_) == nullptr)
         selectedMarker_ = core::invalidId;
-    if (project_ == nullptr || project_->findTrack(selectedTrack_) == nullptr)
+    if (project_ == nullptr || project_->findChannel(selectedTrack_) == nullptr) // a track or an FX track
         selectedTrack_ = core::invalidId;
     refreshMissingMedia();
     rebuildHeaders();

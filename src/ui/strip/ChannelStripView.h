@@ -41,6 +41,11 @@ public:
 
     static constexpr int captionHeight = 22;
 
+    // For the drag benchmark: the intervals between display ticks while the
+    // strip is showing, since measuring began.
+    static void startMeasuring();
+    static std::vector<double> takeTickIntervals();
+
 private:
     void timerCallback() override;
     void reorder(core::Id moduleId, juce::Point<int> screen, bool released);
@@ -66,6 +71,7 @@ private:
     bool wasShowing_ = false;
     juce::TextButton position_, allOff_, presets_;
     std::vector<core::Insert> modules_; // the channel's strip as last set (for saving a preset)
+    std::vector<int> laidOutWidths_;    // the cards' widths at the last layout
 };
 
 } // namespace aural::ui::strip

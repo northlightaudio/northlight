@@ -53,7 +53,9 @@ public:
     explicit ArrangeView(audio::PeakStore& peaks);
     ~ArrangeView() override;
 
-    void setProject(const core::Project* project);
+    // `valuesOnly`: only values moved (gains, pans, parameters): the headers
+    // update, nothing is re-laid out or repainted whole.
+    void setProject(const core::Project* project, bool valuesOnly = false);
     void setPlayhead(core::SamplePosition position, bool playing, bool recording);
     // The loop/punch region, drawn in the ruler and over the lanes; set by dragging
     // in the ruler.

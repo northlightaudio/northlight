@@ -75,6 +75,8 @@ public:
     //   --panel <name>       show a panel: mixer, editor, pianoRoll, diagnostics, browser, inspector
     //   --preferences [page] open Preferences (general, audio, recording, editing, plugins, shortcuts,
     //   diagnostics)
+    //   --benchmark-strip-drag <s>  drag the first track's strip EQ for s seconds, print the
+    //                        strip's display tick intervals, quit
     //   --benchmark-ui <s>   play and scroll for s seconds, print frame percentiles, quit
     //   --bus                add a bus
     //   --remove-bus         remove the last bus the way the mixer does
@@ -232,6 +234,8 @@ public:
                 mainWindow_->applyLayoutPreset(tokens.getReference(++i).text.unquoted());
             else if (arg == "--panel" && i + 1 < tokens.size())
                 mainWindow_->showPanel(tokens.getReference(++i).text.unquoted());
+            else if (arg == "--benchmark-strip-drag" && i + 1 < tokens.size())
+                mainWindow_->runStripDragBenchmark(tokens.getReference(++i).text.getIntValue());
             else if (arg == "--benchmark-ui" && i + 1 < tokens.size())
                 mainWindow_->runBenchmark(tokens.getReference(++i).text.getIntValue());
             else if (arg == "--preferences")

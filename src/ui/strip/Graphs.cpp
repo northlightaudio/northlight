@@ -58,22 +58,32 @@ void HistoryGraph::paint(juce::Graphics& g)
     const float top = style_.topDb, bottom = style_.bottomDb;
     drawDbGrid(g, theme, p, top, bottom);
 
-    // Columns, newest on the right.
+    // Columns, newest on the right. Each column is a fixed run of `perColumn`
+    // frames counted from the start of the history (not from the newest frame),
+    // so a column keeps its frames as the graph scrolls and the picture moves a
+    // whole column at a time instead of shimmering as frames regroup.
     const int columns = std::max(1, static_cast<int>(p.getWidth()));
     level_.assign(static_cast<size_t>(columns), 0.0f);
     output_.assign(static_cast<size_t>(columns), 0.0f);
     reduction_.assign(static_cast<size_t>(columns), 0.0f);
-    const double perColumn = style_.seconds * framesPerSecond / columns;
+    const auto perColumn =
+        static_cast<std::uint64_t>(std::max(1L, std::lround(style_.seconds * framesPerSecond / columns)));
     const int size = card_.historySize();
-    for (int col = 0; col < columns; ++col)
+    const auto total = card_.historyTotal();
+    const auto first = total - static_cast<std::uint64_t>(size); // absolute number of historyAt(0)
+    const auto newestBucket = total > 0 ? (total - 1) / perColumn : 0;
+    for (int col = 0; col < columns && total > 0; ++col)
     {
-        const int fromRight = columns - 1 - col;
-        const int newest = size - 1 - static_cast<int>(fromRight * perColumn);
-        const int oldest = size - 1 - static_cast<int>((fromRight + 1) * perColumn) + 1;
+        const auto fromRight = static_cast<std::uint64_t>(columns - 1 - col);
+        if (fromRight > newestBucket)
+            continue;
+        const auto bucket = newestBucket - fromRight;
         float l = 0.0f, o = 0.0f, r = 0.0f;
-        for (int i = std::max(0, std::min(oldest, newest)); i <= newest && i >= 0; ++i)
+        for (auto a = bucket * perColumn; a < (bucket + 1) * perColumn && a < total; ++a)
         {
-            const auto& f = card_.historyAt(i);
+            if (a < first)
+                continue;
+            const auto& f = card_.historyAt(static_cast<int>(a - first));
             l = std::max(l, style_.levelFromExtra ? f.extra : f.input);
             o = std::max(o, f.output);
             r = std::max(r, f.reduction);
@@ -82,10 +92,23 @@ void HistoryGraph::paint(juce::Graphics& g)
         output_[static_cast<size_t>(col)] = o;
         reduction_[static_cast<size_t>(col)] = r;
     }
+    // Meter ballistics across the columns: a level rises at once and falls at
+    // 30 dB a second, so the curves read as envelopes rather than as the raw
+    // 5 ms peaks (which are jagged at this scale).
+    const auto fall =
+        static_cast<float>(std::pow(10.0, -30.0 * static_cast<double>(perColumn) / framesPerSecond / 20.0));
+    for (int col = 1; col < columns; ++col)
+    {
+        auto& l = level_[static_cast<size_t>(col)];
+        auto& o = output_[static_cast<size_t>(col)];
+        l = std::max(l, level_[static_cast<size_t>(col - 1)] * fall);
+        o = std::max(o, output_[static_cast<size_t>(col - 1)] * fall);
+    }
     const auto x = [&](int col) { return p.getX() + static_cast<float>(col) + 0.5f; };
     const float bottomY = p.getBottom() - (style_.gateLane ? 5.0f : 0.0f);
     const auto yOf = [&](float linear) { return std::min(bottomY, dbToY(toDb(linear), top, bottom, p)); };
 
+    const juce::PathStrokeType lineStroke(1.5f, juce::PathStrokeType::curved, juce::PathStrokeType::rounded);
     // The level as an area.
     juce::Path levelArea;
     levelArea.startNewSubPath(p.getX(), bottomY);
@@ -118,7 +141,7 @@ void HistoryGraph::paint(juce::Graphics& g)
             g.fillPath(fill);
         }
         g.setColour(card_.colour().withAlpha(0.9f));
-        g.strokePath(line, juce::PathStrokeType(1.25f));
+        g.strokePath(line, lineStroke);
     }
 
     // Gain reduction hanging from the top (0 dB of reduction is the top edge).
@@ -153,15 +176,22 @@ void HistoryGraph::paint(juce::Graphics& g)
         }
     }
 
-    // The gate lane: open in the hue, closed dim.
+    // The gate lane: open in the hue, closed dim, drawn as runs (not a
+    // rectangle per pixel).
     if (style_.gateLane)
     {
-        for (int col = 0; col < columns; ++col)
+        int start = 0;
+        for (int col = 1; col <= columns; ++col)
         {
-            const bool open = reduction_[static_cast<size_t>(col)] < 1.0f && size > 0;
+            const bool open = reduction_[static_cast<size_t>(start)] < 1.0f && size > 0;
+            if (col < columns && (reduction_[static_cast<size_t>(col)] < 1.0f && size > 0) == open)
+                continue;
             g.setColour(open ? card_.colour().withAlpha(0.85f) : c.surface3);
-            g.fillRect(
-                juce::Rectangle<float>(p.getX() + static_cast<float>(col), p.getBottom() - 4.0f, 1.0f, 4.0f));
+            g.fillRect(juce::Rectangle<float>(p.getX() + static_cast<float>(start),
+                                              p.getBottom() - 4.0f,
+                                              static_cast<float>(col - start),
+                                              4.0f));
+            start = col;
         }
     }
 

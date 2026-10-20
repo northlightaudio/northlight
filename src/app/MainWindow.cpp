@@ -9,6 +9,7 @@
 #include "engine/Midi.h"
 #include "engine/Snapshot.h"
 #include "plugins/BuiltIns.h"
+#include "plugins/ChannelStrip.h"
 #include "plugins/FxTracks.h"
 #include "ui/ArrangeView.h"
 #include "ui/AudioSetupView.h"
@@ -29,6 +30,7 @@
 #include "ui/shell/HeaderBar.h"
 #include "ui/shell/Panels.h"
 #include "ui/shell/StatusBar.h"
+#include "ui/strip/ChannelStripView.h"
 
 #include <algorithm>
 #include <cmath>
@@ -344,6 +346,68 @@ public:
         frames_.clear();
         session_.returnToStart();
         session_.play();
+    }
+
+    // --benchmark-strip-drag: a knob drag on the first track's strip EQ (a
+    // parameter command every 8 ms, like a fast mouse) while the strip shows;
+    // prints the intervals between the strip's display ticks, then quits.
+    void runStripDragBenchmark(int seconds)
+    {
+        const auto& tracks = session_.project().tracks;
+        if (tracks.empty())
+            return;
+        const auto trackId = tracks.front().id;
+        core::Id eq = core::invalidId;
+        for (const auto& m : tracks.front().strip)
+            if (m.type == plugins::strip::types::eq)
+                eq = m.id;
+        if (eq == core::invalidId)
+            return;
+        tracks_.setSelectedTrack(trackId);
+        selectionChanged(trackId);
+        panels_.show(ui::PanelId::editor);
+        const double start = juce::Time::getMillisecondCounterHiRes() + 1000.0; // let it settle first
+        const double end = start + seconds * 1000.0;
+        dragBenchmark_ = std::make_unique<juce::TimedCallback>(
+            [this, trackId, eq, start, end]
+            {
+                const double now = juce::Time::getMillisecondCounterHiRes();
+                if (now < start)
+                    return;
+                if (!dragging_)
+                {
+                    dragging_ = true;
+                    ui::strip::ChannelStripView::startMeasuring();
+                    session_.beginGesture("Band 2 gain");
+                }
+                const int gain =
+                    plugins::strip::eq::paramIndex(plugins::strip::eq::band2, plugins::strip::eq::gain);
+                session_.execute(std::make_unique<core::SetInsertParameter>(
+                    trackId, eq, gain, static_cast<float>(12.0 * std::sin(now * 0.004))));
+                if (now < end)
+                    return;
+                session_.endGesture();
+                dragBenchmark_->stopTimer();
+                auto intervals = ui::strip::ChannelStripView::takeTickIntervals();
+                std::sort(intervals.begin(), intervals.end());
+                const auto at = [&](double q)
+                {
+                    return intervals.empty() ? 0.0
+                                             : intervals[std::min(intervals.size() - 1,
+                                                                  static_cast<size_t>(intervals.size() * q))];
+                };
+                juce::String report;
+                report << "benchmark-strip-drag: " << intervals.size() << " strip ticks in "
+                       << juce::String((end - start) / 1000.0, 1) << " s ("
+                       << juce::String(intervals.size() * 1000.0 / (end - start), 1)
+                       << " per second); interval ms p50 " << juce::String(at(0.5), 1) << " p95 "
+                       << juce::String(at(0.95), 1) << " max "
+                       << juce::String(intervals.empty() ? 0.0 : intervals.back(), 1) << "\n";
+                std::printf("%s", report.toRawUTF8());
+                std::fflush(stdout);
+                juce::MessageManager::callAsync([] { juce::JUCEApplication::getInstance()->quit(); });
+            });
+        dragBenchmark_->startTimer(8);
     }
 
     void benchmarkTick()
@@ -927,7 +991,55 @@ private:
     juce::File layoutFile() const { return settings_.file().getSiblingFile("layout.json"); }
 
     // ----- refresh -------------------------------------------------------------------------
-    void changeListenerCallback(juce::ChangeBroadcaster*) override { refresh(); }
+    void changeListenerCallback(juce::ChangeBroadcaster* source) override
+    {
+        // A knob or fader drag sends a command per mouse move. Those only move
+        // values, so the views refresh their values (no device queries, no
+        // relayout, no full repaints), no more than 20 times a second, and a
+        // parameter (a strip knob) refreshes only the editor windows that show
+        // parameters: the strip cards and insert cards follow the processors
+        // themselves. That leaves the message thread free for the analysers.
+        const auto change = source == &session_ ? session_.takeChange() : ProjectSession::Change::structure;
+        if (change != ProjectSession::Change::structure)
+        {
+            pendingParametersOnly_ = pendingParametersOnly_ && change == ProjectSession::Change::parameters;
+            const double now = juce::Time::getMillisecondCounterHiRes();
+            const double wait = 50.0 - (now - lastValuesRefreshMs_);
+            if (wait <= 0.0)
+                refreshValues();
+            else if (!valuesRefreshPending_)
+            {
+                valuesRefreshPending_ = true;
+                juce::Component::SafePointer<Content> safe(this);
+                juce::Timer::callAfterDelay(static_cast<int>(wait) + 1,
+                                            [safe]
+                                            {
+                                                if (safe == nullptr)
+                                                    return;
+                                                safe->valuesRefreshPending_ = false;
+                                                safe->refreshValues();
+                                            });
+            }
+            return;
+        }
+        refresh();
+    }
+
+    void refreshValues()
+    {
+        lastValuesRefreshMs_ = juce::Time::getMillisecondCounterHiRes();
+        const bool parametersOnly = pendingParametersOnly_;
+        pendingParametersOnly_ = true;
+        if (parametersOnly)
+        {
+            mixer_.refreshEditors();
+            return;
+        }
+        tracks_.setProject(&session_.project(), true);
+        mixer_.setProject(&session_.project());
+        editor_.setProject(&session_.project());
+        inspector_.setProject(&session_.project());
+    }
 
     void refresh()
     {
@@ -1981,6 +2093,11 @@ private:
     ProjectSession& session_;
     UserSettings& settings_;
     const ui::Theme& theme_ = ui::Theme::dark();
+    double lastValuesRefreshMs_ = 0.0;
+    bool pendingParametersOnly_ = true; // the values refresh due covers parameters only
+    std::unique_ptr<juce::TimedCallback> dragBenchmark_;
+    bool dragging_ = false;
+    bool valuesRefreshPending_ = false;
     ui::HeaderBar header_;
     ui::ArrangeView tracks_;
     ui::PanelHost dock_, side_;
@@ -2240,6 +2357,12 @@ void MainWindow::openPianoRoll(core::Id trackId, core::Id clipId)
         content->pianoRoll_.setClip(&session_.project(), trackId, clipId);
         content->panels_.show(ui::PanelId::pianoRoll);
     }
+}
+
+void MainWindow::runStripDragBenchmark(int seconds)
+{
+    if (auto* content = dynamic_cast<Content*>(getContentComponent()))
+        content->runStripDragBenchmark(seconds);
 }
 
 void MainWindow::showAutomation(core::Id trackId)

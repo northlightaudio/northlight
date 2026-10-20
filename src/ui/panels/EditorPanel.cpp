@@ -456,11 +456,22 @@ void EditorPanel::rebuild()
     else if (ch != nullptr)
         for (size_t i = 0; i < cards_.size(); ++i)
             cards_[i]->refresh(ch->inserts[i]);
-    add_.setVisible(ch != nullptr);
+    // Only a change of shape lays the panel out again (each card repaints
+    // what changed in it): a knob drag refreshes this many times a second.
+    const int stripWidth = stripView_.preferredWidth();
+    const bool stripShown = ch != nullptr && !ch->strip.empty();
+    const bool preInserts = ch != nullptr && ch->stripPreInserts;
     stripView_.setChannel(ch);
-    stripView_.setVisible(ch != nullptr && !ch->strip.empty());
-    resized();
-    repaint();
+    const bool shape = !same || add_.isVisible() != (ch != nullptr) || stripView_.isVisible() != stripShown ||
+                       stripWidth != stripView_.preferredWidth() || preInserts != laidOutPreInserts_;
+    add_.setVisible(ch != nullptr);
+    stripView_.setVisible(stripShown);
+    laidOutPreInserts_ = preInserts;
+    if (shape)
+    {
+        resized();
+        repaint();
+    }
 }
 
 void EditorPanel::timerCallback()

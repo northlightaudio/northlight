@@ -30,7 +30,7 @@ ProjectSession::ProjectSession(audio::AudioDeviceLayer& audio, juce::File regist
     if (registryFile_.existsAsFile())
         if (auto loaded = hosting::PluginRegistry::fromJson(registryFile_.loadFileAsString().toStdString()))
             registry_ = std::move(*loaded);
-    scanner_.onProgress = [this] { sendChangeMessage(); };
+    scanner_.onProgress = [this] { notify(Change::structure); };
     scanner_.onFinished = [this]
     {
         saveRegistry();
@@ -73,6 +73,21 @@ void giveChannelStrip(core::Command& command)
 }
 } // namespace
 
+void ProjectSession::notify(Change change)
+{
+    // structure < values < parameters: keep the widest.
+    if (static_cast<int>(change) < static_cast<int>(pending_))
+        pending_ = change;
+    sendChangeMessage();
+}
+
+ProjectSession::Change ProjectSession::takeChange() noexcept
+{
+    const auto change = pending_;
+    pending_ = Change::parameters;
+    return change;
+}
+
 void ProjectSession::execute(std::unique_ptr<core::Command> command)
 {
     giveChannelStrip(*command);
@@ -86,6 +101,7 @@ void ProjectSession::execute(std::unique_ptr<core::Command> command)
         dynamic_cast<core::RemoveBus*>(command.get()) != nullptr)
         captureInsertStates();
     const bool live = command->isLive();
+    const bool parametersOnly = dynamic_cast<core::SetInsertParameter*>(command.get()) != nullptr;
     std::vector<core::Command::ParameterTouch> touches;
     command->touchedParameters(touches);
     mirrorOwnedParameters(touches);
@@ -96,9 +112,12 @@ void ProjectSession::execute(std::unique_ptr<core::Command> command)
     {
         // A gain, pan or parameter: the running graph takes the new value
         // (ramped) without a recompile.
-        engine_.applyLiveValues(project_);
+        // A parameter goes to its processor alone; anything else re-pushes
+        // every channel's values.
+        if (!parametersOnly)
+            engine_.applyLiveValues(project_);
         engine_.pushInsertParameters(project_, touches);
-        sendChangeMessage();
+        notify(parametersOnly ? Change::parameters : Change::values);
     }
     else
         publish();
@@ -321,7 +340,7 @@ std::string ProjectSession::save(const juce::File& file)
     projectFile_ = file;
     modified_ = false;
     removeOwnAutosave();
-    sendChangeMessage();
+    notify(Change::structure);
     return {};
 }
 
@@ -681,7 +700,7 @@ void ProjectSession::setMetronome(bool enabled)
 {
     metronome_ = enabled;
     engine_.setMetronome(enabled, metronomeGain_);
-    sendChangeMessage();
+    notify(Change::structure);
 }
 
 void ProjectSession::setMetronomeLevel(float gain)
@@ -698,7 +717,7 @@ void ProjectSession::setPluginSearchPaths(std::vector<std::string> folders)
 void ProjectSession::setCountInBars(int bars)
 {
     countInBars_ = std::clamp(bars, 0, 4);
-    sendChangeMessage();
+    notify(Change::structure);
 }
 
 void ProjectSession::setRegion(core::SamplePosition start, core::SamplePosition end)
@@ -707,21 +726,21 @@ void ProjectSession::setRegion(core::SamplePosition start, core::SamplePosition 
     regionEnd_ = std::max(start, end);
     engine_.setLoop(regionStart_, regionEnd_, loop_);
     engine_.setPunch(regionStart_, regionEnd_, punch_);
-    sendChangeMessage();
+    notify(Change::structure);
 }
 
 void ProjectSession::setLoopEnabled(bool enabled)
 {
     loop_ = enabled;
     engine_.setLoop(regionStart_, regionEnd_, loop_);
-    sendChangeMessage();
+    notify(Change::structure);
 }
 
 void ProjectSession::setPunchEnabled(bool enabled)
 {
     punch_ = enabled;
     engine_.setPunch(regionStart_, regionEnd_, punch_);
-    sendChangeMessage();
+    notify(Change::structure);
 }
 
 // ----- recording ---------------------------------------------------------------------------
@@ -935,7 +954,7 @@ std::string ProjectSession::startRecording()
         return error;
     }
     recordingMessage_.clear();
-    sendChangeMessage();
+    notify(Change::structure);
     return {};
 }
 
@@ -1212,11 +1231,11 @@ std::string ProjectSession::startBounce(BounceJob::Options options)
                 ":" + (rest < 10 ? "0" : "") + std::to_string(rest) +
                 (result.files.size() == 1 ? std::string(", ") + lufs + " LUFS integrated" : std::string{});
         }
-        sendChangeMessage();
+        notify(Change::structure);
     };
     bounceMessage_ = "Bouncing...";
     bounce_->start();
-    sendChangeMessage();
+    notify(Change::structure);
     return {};
 }
 
@@ -1225,14 +1244,14 @@ std::string ProjectSession::startBounce(BounceJob::Options options)
 void ProjectSession::scanPlugins(bool all)
 {
     scanner_.start(all);
-    sendChangeMessage();
+    notify(Change::structure);
 }
 
 void ProjectSession::clearPluginBlocklist()
 {
     registry_.clearBlocklist();
     saveRegistry();
-    sendChangeMessage();
+    notify(Change::structure);
 }
 
 void ProjectSession::retryBlockedPlugin(const std::string& path)
@@ -1241,7 +1260,7 @@ void ProjectSession::retryBlockedPlugin(const std::string& path)
     saveRegistry();
     if (!scanner_.isScanning())
         scanner_.start(false);
-    sendChangeMessage();
+    notify(Change::structure);
 }
 
 void ProjectSession::saveRegistry()
@@ -1272,7 +1291,7 @@ void ProjectSession::captureInsertStates()
 void ProjectSession::publish()
 {
     engine_.setProject(project_);
-    sendChangeMessage();
+    notify(Change::structure);
 }
 
 void ProjectSession::matchDeviceSampleRate()
@@ -1292,7 +1311,7 @@ void ProjectSession::changeListenerCallback(juce::ChangeBroadcaster*)
     if (project_.sampleRate != before)
         publish();
     else
-        sendChangeMessage();
+        notify(Change::structure);
 }
 
 void ProjectSession::timerCallback()

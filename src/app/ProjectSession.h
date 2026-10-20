@@ -74,6 +74,16 @@ public:
 
     // ----- editing ----------------------------------------------------------------
     void execute(std::unique_ptr<core::Command> command);
+    // What the changes notified since the last call touched, so views can
+    // refresh only what shows it (a knob drag notifies many times a second).
+    // Clears it.
+    enum class Change
+    {
+        structure,  // anything: refresh everything
+        values,     // live values only (gain, pan, mute, bypass, parameters)
+        parameters, // insert and strip parameters only
+    };
+    Change takeChange() noexcept;
     // See the implementation: the model's parameter list of a plugin that owns its
     // parameters follows the instance before a command touches one of them.
     void mirrorOwnedParameters(const std::vector<core::Command::ParameterTouch>& touches);
@@ -249,6 +259,9 @@ private:
     void matchDeviceSampleRate();
     void finishRecording(engine::AudioEngine::FinishedRecording finished);
     void saveRegistry();
+    // Every change notification goes through here; a structural one marks the
+    // pending notification as more than values.
+    void notify(Change change);
     struct AutomationPass
     {
         core::Id channel = core::invalidId;
@@ -309,6 +322,7 @@ private:
     juce::String untitledStem_;  // the autosave name of an unsaved project
     double dirtySinceMs_ = 0.0;  // unsaved changes not yet autosaved, since
     double lastEditMs_ = 0.0;
+    Change pending_ = Change::parameters; // the widest change notified since the last take
     std::vector<AutomationPass> passes_;
     bool writePassesStarted_ = false;
     // What each hosted lane last sent, per insert and parameter (to tell an

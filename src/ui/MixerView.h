@@ -37,6 +37,8 @@ public:
     ~MixerView() override;
 
     void setProject(const core::Project* project);
+    // Only parameters changed: the open editor windows follow, the strips stay.
+    void refreshEditors();
     // The audio inputs (callback order) and the open MIDI inputs for the input combos.
     void setInputNames(std::vector<std::string> audio, std::vector<std::string> midi);
     // The selected channel (its strip gets the accent outline); clicks on a name

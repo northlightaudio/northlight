@@ -74,7 +74,9 @@ private:
     bool curveValid_ = false;
     std::vector<float> curveDb_;
     std::array<std::vector<float>, plugins::strip::eq::bandCount> bandDb_;
-    std::vector<float> lastParams_;
+    std::array<std::array<float, 5>, plugins::strip::eq::bandCount>
+        bandKeys_{}; // each band's settings as drawn
+    float lastOutput_ = 0.0f;
     double lastRate_ = 0.0;
 
     // The analyser.
