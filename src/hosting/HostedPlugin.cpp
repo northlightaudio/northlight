@@ -202,6 +202,16 @@ void HostedPlugin::processMidi(const engine::MidiEventList& events,
     pendingMidi_ = nullptr;
 }
 
+std::string HostedPlugin::parameterKey(int index) const
+{
+    if (index < 0 || static_cast<size_t>(index) >= parameterObjects_.size())
+        return {};
+    if (const auto* hosted = dynamic_cast<const juce::HostedAudioProcessorParameter*>(
+            parameterObjects_[static_cast<size_t>(index)]))
+        return "vst3:" + hosted->getParameterID().toStdString();
+    return InsertProcessor::parameterKey(index);
+}
+
 void HostedPlugin::processBuffer(juce::AudioBuffer<float>& buffer, bool bypassed) noexcept
 {
     midi_.clear();

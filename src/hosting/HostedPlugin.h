@@ -61,6 +61,8 @@ public:
     float parameter(int index) const noexcept override;
     bool takeParameterEdit(ParameterEdit& edit) noexcept override;
     bool ownsParameters() const noexcept override { return true; }
+    // The VST3 ParamID (through JUCE's parameter id): stable across versions.
+    std::string parameterKey(int index) const override;
     int auxOutputCount() const noexcept override { return auxOutputs_; }
     const float* auxOutput(int index, int channel) const noexcept override
     {

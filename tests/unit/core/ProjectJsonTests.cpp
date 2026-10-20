@@ -2,6 +2,8 @@
 
 #include <catch2/catch_test_macros.hpp>
 
+#include <map>
+
 using namespace aural::core;
 
 namespace
@@ -101,7 +103,7 @@ TEST_CASE("Invalid text, wrong format and future versions are rejected with a re
     CHECK(error == "not an Aural project file");
 
     CHECK_FALSE(projectFromJson(R"({"format":"aural.project","version":99})", &error).has_value());
-    CHECK(error == "unsupported project version 99");
+    CHECK(error == "made by a newer version of Aural (project version 99)");
 }
 
 TEST_CASE("Missing optional fields take defaults and nextId is repaired", "[core][json]")
@@ -202,4 +204,105 @@ TEST_CASE("MIDI tracks keep their target and channel; older project versions are
     std::string error;
     CHECK_FALSE(projectFromJson(R"({"format":"aural.project","version":1})", &error).has_value());
     CHECK(error.find("older version of Aural") != std::string::npos);
+}
+
+namespace
+{
+// A processor layout for the tests: keys and defaults by insert type.
+class TestKeys final : public ParameterKeys
+{
+public:
+    std::map<std::string, ParameterLayout> layouts;
+    ParameterLayout layout(const Insert& insert) const override
+    {
+        const auto it = layouts.find(insert.type);
+        return it == layouts.end() ? ParameterLayout{} : it->second;
+    }
+};
+
+Project keyedProject()
+{
+    Project p;
+    Track t;
+    t.id = p.allocateId();
+    Insert synth;
+    synth.id = p.allocateId();
+    synth.type = "test.synth";
+    synth.params = {0.1f, 0.2f, 0.3f}; // cutoff, drive, level
+    t.inserts.push_back(synth);
+    AutomationLane cutoff;
+    cutoff.id = p.allocateId();
+    cutoff.target = AutomationTarget::insertParameter;
+    cutoff.insert = synth.id;
+    cutoff.parameter = 0;
+    cutoff.points = {{0, 0.5f}};
+    AutomationLane drive = cutoff;
+    drive.id = p.allocateId();
+    drive.parameter = 1;
+    t.automation = {cutoff, drive};
+    p.tracks.push_back(t);
+    return p;
+}
+} // namespace
+
+TEST_CASE("Parameters and lanes follow their keys when a processor reorders, adds and removes parameters",
+          "[core][json][parameters]")
+{
+    TestKeys before;
+    before.layouts["test.synth"] = {{"cutoff", "drive", "level"}, {1.0f, 0.0f, 1.0f}};
+    const auto text = projectToJson(keyedProject(), true, &before);
+    CHECK(text.find("\"paramKeys\"") != std::string::npos);
+    CHECK(text.find("\"parameterKey\": \"drive\"") != std::string::npos);
+
+    // A later version: "drive" removed, "resonance" added, the order changed.
+    TestKeys after;
+    after.layouts["test.synth"] = {{"level", "resonance", "cutoff"}, {1.0f, 0.7f, 1.0f}};
+    auto loaded = projectFromJson(text);
+    REQUIRE(loaded.has_value());
+    CHECK(loaded->tracks[0].inserts[0].paramKeys.size() == 3); // kept until reconciled
+    CHECK(reconcileParameters(*loaded, after));
+    const auto& insert = loaded->tracks[0].inserts[0];
+    CHECK(insert.params == std::vector<float>{0.3f, 0.7f, 0.1f}); // level, the new default, cutoff
+    CHECK(insert.paramKeys.empty());
+    REQUIRE(loaded->tracks[0].automation.size() == 1);     // the drive lane went with its parameter
+    CHECK(loaded->tracks[0].automation[0].parameter == 2); // cutoff, now third
+    CHECK(loaded->tracks[0].automation[0].parameterKey.empty());
+    CHECK_FALSE(reconcileParameters(*loaded, after)); // settled
+}
+
+TEST_CASE("A processor not known yet keeps its keys through a re-save", "[core][json][parameters]")
+{
+    TestKeys before;
+    before.layouts["test.synth"] = {{"cutoff", "drive", "level"}, {1.0f, 0.0f, 1.0f}};
+    auto loaded = projectFromJson(projectToJson(keyedProject(), true, &before));
+    REQUIRE(loaded.has_value());
+    const TestKeys none; // the plugin is not installed here
+    CHECK_FALSE(reconcileParameters(*loaded, none));
+    auto again = projectFromJson(projectToJson(*loaded, true, &none));
+    REQUIRE(again.has_value());
+    CHECK(again->tracks[0].inserts[0].paramKeys == std::vector<std::string>{"cutoff", "drive", "level"});
+    CHECK(again->tracks[0].automation[1].parameterKey == "drive");
+}
+
+TEST_CASE("Parameters without keys are positional, padded with defaults or trimmed",
+          "[core][json][parameters]")
+{
+    auto p = keyedProject();
+    p.tracks[0].inserts[0].params = {0.1f, 0.2f}; // an older layout, one short
+    TestKeys keys;
+    keys.layouts["test.synth"] = {{"cutoff", "drive", "level"}, {1.0f, 0.0f, 0.9f}};
+    CHECK(reconcileParameters(p, keys));
+    CHECK(p.tracks[0].inserts[0].params == std::vector<float>{0.1f, 0.2f, 0.9f});
+    CHECK(p.tracks[0].automation.size() == 2);
+}
+
+TEST_CASE("A version 2 project is upgraded on load and saved as the current version", "[core][json]")
+{
+    auto text = projectToJson(keyedProject());
+    const auto at = text.find("\"version\": 3");
+    REQUIRE(at != std::string::npos);
+    text.replace(at, 12, "\"version\": 2");
+    const auto loaded = projectFromJson(text);
+    REQUIRE(loaded.has_value());
+    CHECK(projectToJson(*loaded).find("\"version\": 3") != std::string::npos);
 }

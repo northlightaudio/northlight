@@ -2,12 +2,48 @@
 
 #include <nlohmann/json.hpp>
 
+#include <algorithm>
+
 namespace aural::core
 {
 
 namespace
 {
 using json = nlohmann::json;
+
+// The key provider for the projectToJson call in progress (null: positions only).
+thread_local const ParameterKeys* savingKeys = nullptr;
+
+// The keys an insert is saved with: the processor's, else what the file had.
+std::vector<std::string> keysFor(const Insert& insert)
+{
+    if (savingKeys != nullptr)
+        if (auto layout = savingKeys->layout(insert); layout.keys.size() == insert.params.size())
+            return std::move(layout.keys);
+    return insert.paramKeys.size() == insert.params.size() ? insert.paramKeys : std::vector<std::string>{};
+}
+
+const Insert* findChannelInsert(const Channel& c, Id insertId)
+{
+    return const_cast<Channel&>(c).findInsert(insertId);
+}
+
+// Version upgrades, one step at a time from the file's version to the current
+// one. 2 -> 3 only adds optional fields, so it has nothing to rewrite.
+void migrate(json& j, int from)
+{
+    for (int version = from; version < Project::schemaVersion; ++version)
+    {
+        switch (version)
+        {
+            case 2:
+                break;
+            default:
+                break;
+        }
+    }
+    j["version"] = Project::schemaVersion;
+}
 
 json clipToJson(const AudioClip& c)
 {
@@ -71,6 +107,8 @@ void channelToJson(json& j, const Channel& c)
         for (const auto& i : list)
         {
             json ij{{"id", i.id}, {"type", i.type}, {"bypass", i.bypass}, {"params", i.params}};
+            if (auto keys = keysFor(i); !keys.empty())
+                ij["paramKeys"] = std::move(keys);
             if (!i.state.empty())
                 ij["state"] = i.state;
             if (i.mix != 1.0f)
@@ -104,6 +142,13 @@ void channelToJson(json& j, const Channel& c)
             {
                 lj["insert"] = lane.insert;
                 lj["parameter"] = lane.parameter;
+                std::string key = lane.parameterKey;
+                if (const auto* insert = findChannelInsert(c, lane.insert); insert != nullptr && key.empty())
+                    if (const auto keys = keysFor(*insert);
+                        lane.parameter >= 0 && static_cast<size_t>(lane.parameter) < keys.size())
+                        key = keys[static_cast<size_t>(lane.parameter)];
+                if (!key.empty())
+                    lj["parameterKey"] = std::move(key);
             }
             lanes.push_back(std::move(lj));
         }
@@ -142,6 +187,10 @@ void channelFromJson(const json& j, Channel& c)
             if (const auto params = i.find("params"); params != i.end() && params->is_array())
                 for (const auto& v : *params)
                     insert.params.push_back(v.get<float>());
+            if (const auto keys = i.find("paramKeys");
+                keys != i.end() && keys->is_array() && keys->size() == insert.params.size())
+                for (const auto& k : *keys)
+                    insert.paramKeys.push_back(k.get<std::string>());
             into.push_back(std::move(insert));
         }
     };
@@ -178,6 +227,7 @@ void channelFromJson(const json& j, Channel& c)
                                                       : AutomationTarget::gain;
                 lane.insert = l.value("insert", invalidId);
                 lane.parameter = l.value("parameter", 0);
+                lane.parameterKey = l.value("parameterKey", std::string{});
                 if (const auto points = l.find("points"); points != l.end() && points->is_array())
                     for (const auto& pt : *points)
                         if (pt.is_array() && pt.size() >= 2)
@@ -318,8 +368,13 @@ Track trackFromJson(const json& j)
 }
 } // namespace
 
-std::string projectToJson(const Project& p, bool pretty)
+std::string projectToJson(const Project& p, bool pretty, const ParameterKeys* keys)
 {
+    struct Scope
+    {
+        explicit Scope(const ParameterKeys* k) { savingKeys = k; }
+        ~Scope() { savingKeys = nullptr; }
+    } scope(keys);
     json tracks = json::array();
     for (const auto& t : p.tracks)
         tracks.push_back(trackToJson(t));
@@ -376,11 +431,12 @@ std::optional<Project> projectFromJson(const std::string& text, std::string* err
     if (j.value("format", std::string{}) != "aural.project")
         return fail("not an Aural project file");
     const int version = j.value("version", 0);
-    if (version < Project::schemaVersion)
+    if (version < Project::oldestReadableVersion)
         return fail("made by an older version of Aural (project version " + std::to_string(version) +
                     "), which this one no longer opens");
     if (version > Project::schemaVersion)
-        return fail("unsupported project version " + std::to_string(version));
+        return fail("made by a newer version of Aural (project version " + std::to_string(version) + ")");
+    migrate(j, version);
 
     try
     {
@@ -504,6 +560,76 @@ std::optional<Project> projectFromJson(const std::string& text, std::string* err
     {
         return fail(std::string("malformed project: ") + e.what());
     }
+}
+
+bool reconcileParameters(Project& project, const ParameterKeys& keys)
+{
+    bool changed = false;
+    const auto reconcileChannel = [&](Channel& channel)
+    {
+        std::vector<Insert*> inserts;
+        if (channel.hasInstrument())
+            inserts.push_back(&channel.instrument);
+        for (auto* list : {&channel.inserts, &channel.strip})
+            for (auto& insert : *list)
+                inserts.push_back(&insert);
+        for (auto* insert : inserts)
+        {
+            const auto layout = keys.layout(*insert);
+            if (layout.keys.empty() || layout.defaults.size() != layout.keys.size())
+                continue; // not known yet: keep what the file said
+            const auto indexOf = [&](const std::string& key) -> int
+            {
+                const auto it = std::find(layout.keys.begin(), layout.keys.end(), key);
+                return it == layout.keys.end() ? -1 : static_cast<int>(it - layout.keys.begin());
+            };
+            const auto fileKeys = insert->paramKeys;
+            if (!fileKeys.empty() || insert->params.size() != layout.keys.size())
+            {
+                std::vector<float> params = layout.defaults;
+                for (size_t i = 0; i < insert->params.size(); ++i)
+                {
+                    // By key when the file had keys, else by position (older files).
+                    const int to = fileKeys.empty() ? static_cast<int>(i) : indexOf(fileKeys[i]);
+                    if (to >= 0 && static_cast<size_t>(to) < params.size())
+                        params[static_cast<size_t>(to)] = insert->params[i];
+                }
+                insert->params = std::move(params);
+                insert->paramKeys.clear();
+                changed = true;
+            }
+            for (auto it = channel.automation.begin(); it != channel.automation.end();)
+            {
+                auto& lane = *it;
+                if (lane.target != AutomationTarget::insertParameter || lane.insert != insert->id)
+                {
+                    ++it;
+                    continue;
+                }
+                std::string key = lane.parameterKey;
+                if (key.empty() && !fileKeys.empty() && lane.parameter >= 0 &&
+                    static_cast<size_t>(lane.parameter) < fileKeys.size())
+                    key = fileKeys[static_cast<size_t>(lane.parameter)];
+                const int to = key.empty() ? lane.parameter : indexOf(key);
+                if (to < 0 || static_cast<size_t>(to) >= layout.keys.size())
+                {
+                    it = channel.automation.erase(it); // its parameter is gone
+                    changed = true;
+                    continue;
+                }
+                if (lane.parameter != to || !lane.parameterKey.empty())
+                    changed = true;
+                lane.parameter = to;
+                lane.parameterKey.clear();
+                ++it;
+            }
+        }
+    };
+    for (auto& t : project.tracks)
+        reconcileChannel(t);
+    for (auto& b : project.buses)
+        reconcileChannel(b);
+    return changed;
 }
 
 } // namespace aural::core

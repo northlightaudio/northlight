@@ -114,7 +114,9 @@ public:
                 // Writes the demo song to the file and opens it.
                 const auto file = tokens.getReference(++i).resolveAsFile();
                 file.getParentDirectory().createDirectory();
-                if (file.replaceWithText(juce::String(core::projectToJson(makeDemoSong()))))
+                const plugins::BuiltInParameterKeys builtInKeys;
+                if (file.replaceWithText(
+                        juce::String(core::projectToJson(makeDemoSong(), true, &builtInKeys))))
                     session_->open(file);
             }
             else if (arg == "--import" && i + 1 < tokens.size())

@@ -1,5 +1,6 @@
 #include "engine/rt/RealtimeGuard.h"
 #include "plugins/BuiltIns.h"
+#include "plugins/ChannelStrip.h"
 
 #include <catch2/catch_approx.hpp>
 #include <catch2/catch_test_macros.hpp>
@@ -7,6 +8,7 @@
 #include <atomic>
 #include <cmath>
 #include <numbers>
+#include <set>
 #include <vector>
 
 using namespace aural;
@@ -326,4 +328,27 @@ TEST_CASE("Delay: repeats at the time, falling by the feedback, crossing sides i
     CHECK(at(pr, 100.0) < 0.01f);
     CHECK(at(pr, 200.0) > 0.1f); // the second repeat on the other side
     CHECK(at(pl, 200.0) < 0.01f);
+}
+
+TEST_CASE("Every built-in names each parameter with a unique, non-empty key", "[plugins][parameters]")
+{
+    // Saved projects and automation find parameters by these keys: a duplicate
+    // would send a value to the wrong control after a reorder.
+    auto types = aural::plugins::BuiltInFactory().typeNames();
+    for (const auto& t : aural::plugins::strip::moduleTypes())
+        types.push_back(t);
+    for (const auto& type : types)
+    {
+        INFO(type);
+        const auto layout = aural::plugins::builtInParameterLayout(type);
+        REQUIRE_FALSE(layout.keys.empty());
+        CHECK(layout.keys.size() == layout.defaults.size());
+        std::set<std::string> seen;
+        for (const auto& key : layout.keys)
+        {
+            INFO(key);
+            CHECK_FALSE(key.empty());
+            CHECK(seen.insert(key).second);
+        }
+    }
 }

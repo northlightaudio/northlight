@@ -16,6 +16,7 @@
 #include <cmath>
 #include <cstdint>
 #include <map>
+#include <mutex>
 #include <numbers>
 #include <vector>
 
@@ -773,6 +774,24 @@ std::vector<float> defaultParameters(const std::string& typeName)
         for (const auto& p : processor->parameters())
             values.push_back(p.defaultValue);
     return values;
+}
+
+core::ParameterLayout builtInParameterLayout(const std::string& typeName)
+{
+    static std::mutex mutex;
+    static std::map<std::string, core::ParameterLayout> cache;
+    const std::scoped_lock lock(mutex);
+    if (const auto it = cache.find(typeName); it != cache.end())
+        return it->second;
+    core::ParameterLayout layout;
+    if (const auto processor = BuiltInFactory().create(typeName))
+        for (int i = 0; i < static_cast<int>(processor->parameters().size()); ++i)
+        {
+            layout.keys.push_back(processor->parameterKey(i));
+            layout.defaults.push_back(processor->parameters()[static_cast<size_t>(i)].defaultValue);
+        }
+    cache[typeName] = layout;
+    return layout;
 }
 
 } // namespace aural::plugins

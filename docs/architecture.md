@@ -865,6 +865,23 @@ channel, note-on velocities scaled by its volume (a muted feed passes only
 note-offs), and plays them through its chain; its pan (a stereo balance applied
 after the chain) and fader follow as on any channel. Projects from before
 instrument channels (version 1) are refused.
+
+**Parameter keys and file versions.** A processor's parameters are addressed by
+index in memory, but saved with stable keys: each insert writes `paramKeys`
+beside `params`, and each parameter lane writes `parameterKey`. A built-in's key
+is its parameter's `id`, or the parameter name lower-cased with punctuation as
+dashes (`InsertProcessor::parameterKey`); set an explicit `id` before renaming a
+parameter. A CLAP plugin's key is `clap:<clap_id>` and a VST3's `vst3:<ParamID>`,
+both stable across plugin versions. On load, `core::reconcileParameters` puts
+values where the processor wants them now (by key; a new parameter takes its
+default, a removed one is dropped) and moves each lane to its parameter's new
+index (a lane whose parameter is gone is removed). Built-ins resolve at once;
+hosted plugins resolve once the engine has made their instances, so the session
+reconciles twice (`ProjectSession::adoptLoadedParameters`). A plugin that is
+not installed keeps its keys, so a re-save loses nothing. Core knows no
+processor: the app supplies keys through `core::ParameterKeys`. The file's
+version upgrades step by step (`migrate` in ProjectJson.cpp) from
+`Project::oldestReadableVersion`; only files older than that are refused.
 `Renderer::scheduleMidi` collects the events for each span: note-ons and
 note-offs from the clips at exact sample offsets while playing, the live input
 (filtered by the track's device) while the track monitors (armed and not
@@ -1270,6 +1287,7 @@ machine for the benchmark.
 | 2026-10-20 | Paint times are recorded by the two heavy views, not by hooking every component | A scope at the top of `ArrangeView::paint` and `MixerView::paint` costs nothing elsewhere and covers what the budget is about; the frame interval (the timer's cadence) is tracked separately in the main window. |
 | 2026-10-20 | The mixer's section boxes are real slots and rows, not menus | Signal flow must be visible: an insert's bypass and order, a send's level and tap are on the strip, and the menus keep only what has no control of its own. |
 | 2026-10-20 | The arrange headers read meter copies from the mixer rather than taking from the meter block | `MeterBlock::take` resets the peak, so one consumer must own each slot; the mixer already takes every slot each frame and keeps the last readings for anyone else. |
+| 2026-10-20 | Parameters are saved with stable keys and reconciled on load | Saving by position silently moved every later value (and automation) whenever a processor gained a parameter, as Pulsar did; keys let processors change, and an upgrade chain replaces refusing older files. |
 | 2026-10-20 | Missing media is detected once per project change, not per paint | A file-exists check per clip per frame would stall painting on a slow volume; the set is rebuilt when the project changes. |
 | 2026-10-19 | Panels are owned by one of three hosts and never destroyed on close | A panel's component keeps its state (the mixer's open editors, the browser's filter) across moves and hides; closing a floating panel hides it and returns it to its default host, so a user cannot lose one. |
 | 2026-10-19 | Shift+M / Shift+S stay the track state; the marker region and split-at-selection take Alt | The spec assigns both pairs the same keys; mute and solo are the more frequent and match every other DAW, so the edits move. |

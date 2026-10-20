@@ -1,5 +1,6 @@
 #pragma once
 
+#include "core/ProjectJson.h"
 #include "engine/Insert.h"
 
 #include <memory>
@@ -65,6 +66,18 @@ enum Param
 
 // Default parameter values for a type, for creating a model insert.
 std::vector<float> defaultParameters(const std::string& typeName);
+// A built-in's parameter keys and defaults (empty for a type that is not a
+// built-in), for saving and reconciling projects. Cached; not real-time.
+core::ParameterLayout builtInParameterLayout(const std::string& typeName);
+// Keys for the built-ins alone (writing a project with no engine, e.g. the demo song).
+class BuiltInParameterKeys final : public core::ParameterKeys
+{
+public:
+    core::ParameterLayout layout(const core::Insert& insert) const override
+    {
+        return builtInParameterLayout(insert.type);
+    }
+};
 // A built-in's (or strip module's) parameter descriptions, made once per type
 // (empty for an unknown type). Not real-time safe.
 const std::vector<engine::ParameterInfo>& parameterInfo(const std::string& typeName);

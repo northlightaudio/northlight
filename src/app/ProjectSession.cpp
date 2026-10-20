@@ -47,6 +47,42 @@ ProjectSession::ProjectSession(audio::AudioDeviceLayer& audio, juce::File regist
     hostedAutomation_.startTimerHz(50);
 }
 
+// Parameter keys for saving and loading: a built-in's from its definition, a
+// hosted plugin's from its live instance (none until the engine has made it).
+class ProjectSession::SessionKeys final : public core::ParameterKeys
+{
+public:
+    explicit SessionKeys(const ProjectSession& session) : session_(session) {}
+    core::ParameterLayout layout(const core::Insert& insert) const override
+    {
+        if (auto builtIn = plugins::builtInParameterLayout(insert.type); !builtIn.keys.empty())
+            return builtIn;
+        core::ParameterLayout layout;
+        const auto live = session_.liveInsert(insert.id);
+        if (live == nullptr || live->typeName() != insert.type)
+            return layout;
+        for (int i = 0; i < static_cast<int>(live->parameters().size()); ++i)
+        {
+            layout.keys.push_back(live->parameterKey(i));
+            layout.defaults.push_back(live->parameters()[static_cast<size_t>(i)].defaultValue);
+        }
+        return layout;
+    }
+
+private:
+    const ProjectSession& session_;
+};
+
+void ProjectSession::adoptLoadedParameters()
+{
+    // Built-ins resolve at once; hosted plugins once the engine has made them.
+    const SessionKeys keys(*this);
+    core::reconcileParameters(project_, keys);
+    publish();
+    if (core::reconcileParameters(project_, keys))
+        publish();
+}
+
 ProjectSession::~ProjectSession()
 {
     stopTimer();
@@ -396,14 +432,15 @@ std::string ProjectSession::open(const juce::File& file)
     undo_.clear();
     projectFile_ = file;
     modified_ = false;
-    publish();
+    adoptLoadedParameters();
     return {};
 }
 
 std::string ProjectSession::save(const juce::File& file)
 {
     captureInsertStates();
-    const auto text = core::projectToJson(project_);
+    const SessionKeys keys(*this);
+    const auto text = core::projectToJson(project_, true, &keys);
     if (!file.replaceWithText(juce::String(text)))
         return "could not write " + file.getFullPathName().toStdString();
     projectFile_ = file;
@@ -460,7 +497,8 @@ std::string ProjectSession::saveAsTemplate(const juce::String& name)
     if (!folder.createDirectory().wasOk())
         return "could not create " + folder.getFullPathName().toStdString();
     const auto file = folder.getChildFile(clean + ".aural");
-    if (!file.replaceWithText(juce::String(core::projectToJson(layout))))
+    const SessionKeys keys(*this);
+    if (!file.replaceWithText(juce::String(core::projectToJson(layout, true, &keys))))
         return "could not write " + file.getFullPathName().toStdString();
     return {};
 }
@@ -482,7 +520,7 @@ std::string ProjectSession::newFromTemplate(const juce::File& file)
     projectFile_ = juce::File();
     modified_ = false;
     matchDeviceSampleRate();
-    publish();
+    adoptLoadedParameters();
     return {};
 }
 
@@ -614,7 +652,9 @@ bool ProjectSession::autosaveNow()
     // Written beside the target and moved over it, so a crash mid-write never
     // leaves a torn copy where the last good one was.
     const auto temp = target.getSiblingFile(target.getFileName() + ".tmp");
-    if (!temp.replaceWithText(juce::String(core::projectToJson(project_))) || !temp.moveFileTo(target))
+    const SessionKeys keys(*this);
+    if (!temp.replaceWithText(juce::String(core::projectToJson(project_, true, &keys))) ||
+        !temp.moveFileTo(target))
     {
         temp.deleteFile();
         return false;
@@ -709,7 +749,7 @@ std::string ProjectSession::restoreAutosave(const Autosave& autosave)
     modified_ = true; // not saved until the user saves it
     discardAutosave(autosave);
     edited();
-    publish();
+    adoptLoadedParameters();
     return {};
 }
 

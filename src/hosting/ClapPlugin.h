@@ -67,6 +67,13 @@ public:
     const std::string& typeName() const noexcept override { return typeName_; }
     const std::vector<engine::ParameterInfo>& parameters() const noexcept override { return infos_; }
     bool ownsParameters() const noexcept override { return true; }
+    // The plugin's own clap_id: stable across versions, unlike the enumeration order.
+    std::string parameterKey(int index) const override
+    {
+        return index >= 0 && static_cast<size_t>(index) < paramInfos_.size()
+                   ? "clap:" + std::to_string(paramInfos_[static_cast<size_t>(index)].id)
+                   : std::string{};
+    }
     void prepare(double sampleRate, int maxBlockSize) override;
     void setParameter(int index, float value) noexcept override;
     float parameter(int index) const noexcept override;

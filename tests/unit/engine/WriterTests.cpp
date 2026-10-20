@@ -6,6 +6,8 @@
 
 #include <catch2/catch_test_macros.hpp>
 
+#include <algorithm>
+
 #include <chrono>
 #include <cstdio>
 #include <filesystem>
@@ -124,8 +126,10 @@ TEST_CASE("A ring overrun becomes silence in the file so later samples keep thei
     REQUIRE(channels[0].size() == 2560);
     CHECK(channels[0][2048] == 0.75f); // the late block is exactly where it was captured
     CHECK(channels[0][2559] == 0.75f);
-    if (droppedAfterBurst > 0)
-        CHECK(channels[0][1536 + 10] == 0.0f); // a dropped block reads as silence
+    // Every dropped sample reads as silence; which blocks drop depends on when the
+    // writer drained, so count them rather than assume which.
+    const auto silent = std::count(channels[0].begin(), channels[0].begin() + 2048, 0.0f);
+    CHECK(static_cast<std::uint64_t>(silent) == static_cast<std::uint64_t>(droppedAfterBurst));
 }
 
 TEST_CASE("A take file that cannot be opened marks the input failed and counts the loss", "[engine][record]")

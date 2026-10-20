@@ -2,8 +2,33 @@
 
 #include "engine/rt/RealtimeGuard.h"
 
+#include <cctype>
+
 namespace aural::engine
 {
+
+std::string InsertProcessor::parameterKey(int index) const
+{
+    const auto& infos = parameters();
+    if (index < 0 || static_cast<size_t>(index) >= infos.size())
+        return {};
+    const auto& info = infos[static_cast<size_t>(index)];
+    if (!info.id.empty())
+        return info.id;
+    // From the name: lower case, runs of anything else become one '-'.
+    std::string key;
+    for (const char ch : info.name)
+    {
+        const auto c = static_cast<unsigned char>(ch);
+        if (std::isalnum(c) != 0)
+            key += static_cast<char>(std::tolower(c));
+        else if (!key.empty() && key.back() != '-')
+            key += '-';
+    }
+    while (!key.empty() && key.back() == '-')
+        key.pop_back();
+    return key;
+}
 
 void InsertCache::prepare(double sampleRate, int maxBlockSize)
 {

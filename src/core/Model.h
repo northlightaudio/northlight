@@ -101,6 +101,11 @@ struct Insert
     std::string state;        // opaque (base64) for processors that own their state
     float mix = 1.0f;         // wet/dry: 1 = fully processed, 0 = the input passes untouched
     Id sidechain = invalidId; // a track (or, on a bus, a bus) whose pre-fader signal feeds the key input
+    // The stable keys of `params` as a file named them, kept only until a
+    // processor of this type says where each one goes now (core
+    // reconcileParameters); a plugin that is not installed keeps them, so a
+    // re-save does not lose them. Empty: `params` is in the processor's order.
+    std::vector<std::string> paramKeys;
     bool operator==(const Insert&) const = default;
 };
 
@@ -157,6 +162,7 @@ struct AutomationLane
     Id insert = invalidId; // the insert or strip module, for an insert parameter
     int parameter = 0;
     std::vector<AutomationPoint> points; // sorted by position
+    std::string parameterKey; // as a file named the parameter, until it is resolved (see Insert::paramKeys)
 
     float valueAt(SamplePosition position) const noexcept
     {
@@ -319,7 +325,9 @@ struct TimeSignature
 struct Project
 {
     // 2: instruments moved to instrument channels; MIDI tracks aim at them.
-    static constexpr int schemaVersion = 2;
+    // 3: parameters and automation lanes carry stable keys; row heights.
+    static constexpr int schemaVersion = 3;
+    static constexpr int oldestReadableVersion = 2; // older files are refused
 
     std::string name = "Untitled";
     double sampleRate = 48000.0;

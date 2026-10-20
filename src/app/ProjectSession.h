@@ -264,6 +264,9 @@ private:
     void changeListenerCallback(juce::ChangeBroadcaster*) override;
     void timerCallback() override;
     void publish();
+    class SessionKeys;
+    // A project just read from a file: its parameters put where the processors want them, then published.
+    void adoptLoadedParameters();
     // Applies through the undo stack; false (and nothing changed) when the command
     // refers to something that is gone.
     bool applyChecked(std::unique_ptr<core::Command> command);

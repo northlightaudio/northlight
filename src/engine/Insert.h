@@ -34,6 +34,9 @@ struct ParameterInfo
     bool logarithmic = false; // frequencies and times feel better on a log scale
     // A stepped parameter's choices, by value (0, 1, ...); empty for a continuous one.
     std::vector<std::string> choices;
+    // A stable key for saved projects and automation; empty: derived from the
+    // name (see parameterKey). Set it before renaming a parameter.
+    std::string id;
 };
 
 class InsertProcessor
@@ -43,6 +46,11 @@ public:
 
     virtual const std::string& typeName() const noexcept = 0;
     virtual const std::vector<ParameterInfo>& parameters() const noexcept = 0;
+    // The stable key of a parameter, saved with projects so values and
+    // automation survive the processor reordering its parameters. Built-ins
+    // derive it from the parameter's id (or name); a hosted plugin uses its own
+    // parameter id. Not real-time.
+    virtual std::string parameterKey(int index) const;
 
     // Controller thread. Allocates and resets state.
     virtual void prepare(double sampleRate, int maxBlockSize) = 0;
