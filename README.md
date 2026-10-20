@@ -153,9 +153,10 @@ playing records it into the lane. Faders and knobs follow automation as it plays
 **Instruments**: an instrument lives on an instrument channel (its inserts, strip,
 sends and fader process the sound), and MIDI tracks play it: each holds the notes
 and aims at an instrument channel on a MIDI channel, so several MIDI tracks can
-play one instrument. Adding an instrument track makes the MIDI track and its
-channel together, and selecting the MIDI track shows its instrument below. New
-instrument tracks get **Aurora**, the bundled polysynth (two morphing oscillators
+play one instrument. Adding a MIDI track with a new instrument makes the MIDI
+track and its channel together (or the new MIDI track can play an instrument
+already in the project), and selecting the MIDI track shows its instrument below.
+The default instrument is **Aurora**, the bundled polysynth (two morphing oscillators
 with unison, a drivable multimode filter, two envelopes, an LFO, glide and
 Shimmer, with its own editor and eight presets); VST3 and CLAP instruments go in
 the same slot from the browser or the slot's menu. The **Instruments** panel (F8)

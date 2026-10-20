@@ -21,7 +21,7 @@ namespace aural::ui
 // as a rack unit, one per instrument channel: power, the instrument's name and
 // format, the channel and the MIDI tracks that play it, its outputs (the main
 // pair is the channel itself; each further pair is an output track, or a
-// dashed chip that makes one) and its editor. "+ Instrument track" makes an
+// dashed chip that makes one) and its editor. "+ Instrument" makes an
 // instrument channel and a MIDI track aimed at it. The owner gives the model, the live
 // instances and the registry, and takes commands back.
 class InstrumentRack final : public juce::Component
@@ -41,7 +41,7 @@ public:
     // An instrument was chosen (the owner remembers it as recent).
     std::function<void(const std::string& type)> onInserted;
 
-    // Makes a new instrument track playing `type` (from the panel's "+" or a
+    // Makes a new instrument channel playing `type`, and a MIDI track for it, (from the panel's "+" or a
     // plugin dropped on the panel).
     void addInstrumentTrack(const std::string& type);
 
@@ -62,7 +62,7 @@ private:
     juce::Component list_;
     std::vector<std::unique_ptr<Unit>> units_;
     std::vector<core::Id> builtFor_;
-    AddSlot add_{theme_, "Instrument track"};
+    AddSlot add_{theme_, "Instrument"};
 };
 
 } // namespace aural::ui

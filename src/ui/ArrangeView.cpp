@@ -71,8 +71,8 @@ ArrangeView::ArrangeView(audio::PeakStore& peaks)
     };
     addInstrument_.onClick = [this]
     {
-        if (onAddInstrumentTrack)
-            onAddInstrumentTrack();
+        if (onAddMidiTrack)
+            onAddMidiTrack({});
     };
     import_.onClick = [this]
     {
@@ -2859,21 +2859,50 @@ void ArrangeView::addTrackMenu()
 {
     juce::PopupMenu menu;
     menu.addItem(1, "Audio track");
-    menu.addItem(2, "Instrument track");
+    // A MIDI track plays an instrument channel: a new one, one already here, or
+    // nothing yet.
+    juce::PopupMenu midi;
+    auto instruments = buildPluginMenu(PluginKind::instrument, nullptr, {}, 1200);
+    midi.addSubMenu("With a new instrument", instruments.menu);
+    std::vector<core::Id> channels;
+    if (project_ != nullptr)
+        for (const auto& t : project_->tracks)
+            if (t.isInstrument())
+            {
+                if (channels.empty())
+                    midi.addSectionHeader("Playing");
+                juce::String text = juce::String::fromUTF8(t.name.c_str());
+                if (t.hasInstrument())
+                    text << "  ("
+                         << juce::String::fromUTF8(displayName_ ? displayName_(t.instrument.type).c_str()
+                                                                : t.instrument.type.c_str())
+                         << ")";
+                channels.push_back(t.id);
+                midi.addItem(1000 + static_cast<int>(channels.size()) - 1, text);
+            }
+    midi.addSeparator();
+    midi.addItem(999, "Playing nothing yet");
+    menu.addSubMenu("MIDI track", midi);
     juce::PopupMenu fx;
     addFxMenu(fx, 400);
     menu.addSubMenu("FX track", fx);
     menu.addItem(3, "Bus");
     juce::Component::SafePointer<ArrangeView> safe(this);
     menu.showMenuAsync(juce::PopupMenu::Options().withTargetComponent(&addTrack_),
-                       [safe](int choice)
+                       [safe, instruments, channels](int choice)
                        {
                            if (safe == nullptr)
                                return;
                            if (choice == 1 && safe->onAddAudioTrack)
                                safe->onAddAudioTrack();
-                           if (choice == 2 && safe->onAddInstrumentTrack)
-                               safe->onAddInstrumentTrack();
+                           if (const auto type = instruments.typeFor(choice);
+                               !type.empty() && safe->onAddMidiTrack)
+                               safe->onAddMidiTrack(type);
+                           if (choice == 999 && safe->onAddMidiTrackPlaying)
+                               safe->onAddMidiTrackPlaying(core::invalidId);
+                           if (choice >= 1000 && static_cast<size_t>(choice - 1000) < channels.size() &&
+                               safe->onAddMidiTrackPlaying)
+                               safe->onAddMidiTrackPlaying(channels[static_cast<size_t>(choice - 1000)]);
                            if (choice == 3 && safe->onAddBus)
                                safe->onAddBus();
                            if (choice >= 400 && choice < 450)

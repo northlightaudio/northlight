@@ -54,7 +54,7 @@ selected track in a ghosted overlay.
 - MIDI clip in the arrange: body as audio clips with a miniature of the notes instead
   of a waveform (pitch range auto-fit, 1 px per note minimum).
 
-## Instrument tracks
+## MIDI tracks and their instruments
 
 - Track header gains a MIDI input select (device + channel, "All") in place of the
   audio input, and the instrument's name as a chip under the name that opens its

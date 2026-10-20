@@ -694,7 +694,7 @@ public:
         }
         if (is('T', M::ctrlModifier | M::shiftModifier))
         {
-            addInstrumentTrack();
+            addMidiTrack({});
             return true;
         }
         if (is('B', M::ctrlModifier))
@@ -805,7 +805,13 @@ private:
         tracks_.onTrackSelected = [this](core::Id id) { selectionChanged(id); };
         tracks_.onSelectionChanged = [this] { selectionChanged(tracks_.selectedTrack()); };
         tracks_.onAddAudioTrack = [this] { addAudioTrack(); };
-        tracks_.onAddInstrumentTrack = [this] { addInstrumentTrack(); };
+        tracks_.onAddMidiTrack = [this](const std::string& type) { addMidiTrack(type); };
+        tracks_.onAddMidiTrackPlaying = [this](core::Id channel)
+        {
+            const auto id = session_.addMidiTrackPlaying(channel);
+            tracks_.setSelectedTrack(id);
+            selectionChanged(id);
+        };
         tracks_.onAddBus = [this] { addBus(); };
         tracks_.onImportRequested = [this] { importAudio(); };
         tracks_.onCommand = [this](std::unique_ptr<core::Command> c) { session_.execute(std::move(c)); };
@@ -1465,7 +1471,7 @@ private:
     {
         // An instrument goes to an instrument channel: the one selected, or the one
         // the selected MIDI track plays (a channel for it when it plays none);
-        // otherwise a new instrument track.
+        // otherwise a new MIDI track and instrument channel.
         if (session_.isInstrumentType(type))
         {
             const auto* track = session_.project().findTrack(trackId);
@@ -1585,9 +1591,13 @@ private:
         selectionChanged(id);
     }
 
-    void addInstrumentTrack()
+    // A MIDI track with a new instrument channel (the default instrument when
+    // `type` is empty).
+    void addMidiTrack(const std::string& type)
     {
-        const auto id = session_.addMidiTrack();
+        const auto id = session_.addMidiTrack(type);
+        if (!type.empty())
+            browser_.rememberRecent(type);
         tracks_.setSelectedTrack(id);
         selectionChanged(id);
     }
@@ -2009,7 +2019,7 @@ private:
         menu.addSeparator();
         menu.addItem(5, "Import audio...");
         menu.addItem(6, "Add audio track");
-        menu.addItem(7, "Add instrument track");
+        menu.addItem(7, "Add MIDI track");
         juce::PopupMenu fxTracks;
         const auto fxChoices = plugins::fxTrackEffects();
         for (size_t i = 0; i < fxChoices.size(); ++i)
@@ -2068,7 +2078,7 @@ private:
                         safe->addAudioTrack();
                         break;
                     case 7:
-                        safe->addInstrumentTrack();
+                        safe->addMidiTrack({});
                         break;
                     case 8:
                         safe->addBus();

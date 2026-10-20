@@ -357,7 +357,7 @@ InstrumentRack::InstrumentRack(const Theme& theme) : theme_(theme)
     viewport_.setScrollBarsShown(true, false);
     viewport_.setScrollBarThickness(theme_.sizes.scrollbar);
     addAndMakeVisible(viewport_);
-    add_.setTooltip("Add an instrument track: a MIDI track with the instrument you choose");
+    add_.setTooltip("Add an instrument channel with the instrument you choose, and a MIDI track to play it");
     add_.onClick = [this] { showAddMenu(add_); };
     list_.addAndMakeVisible(add_);
 }
@@ -437,7 +437,7 @@ void InstrumentRack::paint(juce::Graphics& g)
     {
         g.setFont(theme_.small());
         g.setColour(theme_.colours.textTertiary);
-        g.drawText("No instruments yet: add an instrument track to play one",
+        g.drawText("No instruments yet: add one here, or choose one for a MIDI track",
                    getLocalBounds().withTrimmedTop(unitHeight + 2 * theme_.spacing.md),
                    juce::Justification::centredTop);
     }

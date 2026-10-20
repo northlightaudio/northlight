@@ -110,6 +110,9 @@ public:
     // A MIDI track playing a new instrument channel (Aurora unless a type is
     // given); returns the MIDI track.
     core::Id addMidiTrack(const std::string& instrumentType = {});
+    // A MIDI track that plays an existing instrument channel (placed just above
+    // it), or plays nothing when `channel` is invalidId (placed at the end).
+    core::Id addMidiTrackPlaying(core::Id channel);
     // Whether an insert type is an instrument (a built-in synth or a scanned plugin
     // the registry calls one).
     bool isInstrumentType(const std::string& type) const;

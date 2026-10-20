@@ -90,13 +90,13 @@ private:
 };
 
 // Adds an instrument channel and, right above it, a MIDI track aimed at it (one
-// undo step): what "add an instrument track" makes. Ids are allocated on
+// undo step): what adding a MIDI track with a new instrument makes. Ids are allocated on
 // apply (kept for redo).
 class AddInstrumentTrack final : public Command
 {
 public:
     AddInstrumentTrack(Track instrumentChannel, Track midiTrack, int index = -1);
-    std::string name() const override { return "Add instrument track"; }
+    std::string name() const override { return "Add MIDI track and instrument"; }
     void apply(Project&) override;
     void revert(Project&) override;
     Id channelId() const noexcept { return channel_.id; }

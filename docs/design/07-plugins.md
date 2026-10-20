@@ -134,11 +134,15 @@ them apart by channel); a MIDI track's volume scales its notes' velocities, its
 mute stops new notes. Each further stereo output of an instrument is an **output
 track** with its own processing.
 
-Adding an instrument track makes both in one step: the MIDI track and, just under
-it, its instrument channel (named for the instrument). The insert menus list
+The "+" menu's **MIDI track** submenu offers: **With a new instrument** (any
+built-in or scanned instrument), which makes both in one step, the MIDI track and,
+just under it, its instrument channel (named for the instrument); **Playing** any
+instrument channel already in the project (the MIDI track goes just above it); or
+**Playing nothing yet**. Ctrl+Shift+T and the empty project's "Add MIDI track" make
+a MIDI track with a new Aurora channel. The insert menus list
 effects only; an instrument chosen from the browser goes to the selected
 instrument channel, the one the selected MIDI track plays (or a new channel for
-it, when it plays none), or a new instrument track.
+it, when it plays none), or a new MIDI track and instrument channel.
 
 - **Arrange**: a MIDI track's header has no meter, solo or automation; in their
   place a chip says what it plays ("→ Drums: Pulsar  ch 2"); a click (or "Plays..."
@@ -171,8 +175,8 @@ it, when it plays none), or a new instrument track.
   and a menu (open, select track, replace, remove). Each output pair is a chip:
   "1/2 Drums: Pulsar" for the main pair (the channel itself) and each pair with an
   output track (click selects it), a dashed "+ Track for 3/4" for a pair without
-  one (click makes it). "+ Instrument track" at the end makes the MIDI track and
-  its channel with the instrument chosen.
+  one (click makes it). "+ Instrument" at the end makes an instrument channel with
+  the instrument chosen and a MIDI track to play it.
 
 ## 7.4b Aurora
 

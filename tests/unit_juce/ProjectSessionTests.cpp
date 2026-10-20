@@ -164,6 +164,29 @@ TEST_CASE_METHOD(SessionFixture,
 }
 
 TEST_CASE_METHOD(SessionFixture,
+                 "A new MIDI track can play an instrument channel already there, or nothing",
+                 "[app][session][midi]")
+{
+    const auto first = session->addMidiTrack("aural.pulsar");
+    const auto channel = session->project().findTrack(first)->midiTarget;
+    const auto second = session->addMidiTrackPlaying(channel);
+    const auto& project = session->project();
+    const auto* track = project.findTrack(second);
+    REQUIRE(track != nullptr);
+    CHECK(track->isMidi());
+    CHECK(track->name == "MIDI 2");
+    CHECK(track->midiTarget == channel);
+    CHECK(track->strip.empty());
+    CHECK(project.trackIndex(second) + 1 == project.trackIndex(channel)); // just above the channel
+    CHECK(project.midiFeeds(channel).size() == 2);
+    CHECK(project.tracks.size() == 3); // no second channel
+
+    const auto lone = session->addMidiTrackPlaying(core::invalidId);
+    CHECK(session->project().findTrack(lone)->midiTarget == core::invalidId);
+    CHECK(session->project().trackIndex(lone) == 3); // at the end
+}
+
+TEST_CASE_METHOD(SessionFixture,
                  "A performance on an armed MIDI track becomes a clip with its notes at their positions",
                  "[app][session][record][midi]")
 {

@@ -122,7 +122,12 @@ public:
     void setSelectedTrack(core::Id trackId);
     core::Id selectedTrack() const noexcept { return selectedTrack_; }
     // The empty state's actions (03-shell.md).
-    std::function<void()> onAddAudioTrack, onAddInstrumentTrack, onImportRequested, onAddBus;
+    std::function<void()> onAddAudioTrack, onImportRequested, onAddBus;
+    // A MIDI track with a new instrument channel playing `type` (empty: the
+    // default instrument).
+    std::function<void(const std::string& type)> onAddMidiTrack;
+    // A MIDI track playing an existing instrument channel (invalidId: nothing).
+    std::function<void(core::Id channel)> onAddMidiTrackPlaying;
     const std::vector<ClipRef>& selection() const noexcept { return selection_; }
     // Single commands from the headers (mute, solo, gain, pan, name, colour, output,
     // reorder, delete) and their gestures.
@@ -440,7 +445,7 @@ private:
     bool draggedFar_ = false;
     core::Id selectedMarker_ = core::invalidId;
     core::Id selectedTrack_ = core::invalidId;
-    juce::TextButton addAudio_{"Add audio track"}, addInstrument_{"Add instrument track"},
+    juce::TextButton addAudio_{"Add audio track"}, addInstrument_{"Add MIDI track"},
         import_{"Import audio\xe2\x80\xa6"};
     void layoutEmptyState();
     void selectTrack(core::Id trackId);

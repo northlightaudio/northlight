@@ -82,7 +82,7 @@ Defaults; all rebindable in Preferences. Shown in tooltips and menus.
 | Export (bounce) | Ctrl+E |
 | Mixer / editor / browser / inspector / piano roll / diagnostics | F2 / F3 / F4 / F5 / F6 / F7 (Shift+Fn detaches or reattaches) |
 | Audio setup / plugins / preferences | Ctrl+, (preferences), Ctrl+Shift+A, Ctrl+Shift+P |
-| Add audio / instrument track / bus | Ctrl+T / Ctrl+Shift+T / Ctrl+B |
+| Add audio / MIDI track / bus | Ctrl+T / Ctrl+Shift+T / Ctrl+B |
 | Rename selected | F2 when a track or clip is selected (overrides mixer toggle) |
 | Tap tempo | T while the tempo field is focused |
 | Focus search | Ctrl+F (browser) |

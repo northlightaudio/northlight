@@ -257,7 +257,8 @@ void ProjectSession::mirrorOwnedParameters(const std::vector<core::Command::Para
 
 core::Id ProjectSession::addMidiTrack(const std::string& instrumentType)
 {
-    // An instrument track: the instrument channel and a MIDI track aimed at it.
+    // A MIDI track with a new instrument: the instrument channel and the MIDI
+    // track aimed at it, as one step.
     int count = 0;
     for (const auto& t : project_.tracks)
         if (t.isMidi())
@@ -275,6 +276,27 @@ core::Id ProjectSession::addMidiTrack(const std::string& instrumentType)
     const auto* raw = command.get();
     execute(std::move(command));
     return raw->midiTrackId();
+}
+
+core::Id ProjectSession::addMidiTrackPlaying(core::Id channel)
+{
+    int count = 0;
+    for (const auto& t : project_.tracks)
+        count += t.isMidi() ? 1 : 0;
+    core::Track midi;
+    midi.name = "MIDI " + std::to_string(count + 1);
+    midi.kind = core::TrackKind::midi;
+    midi.armed = true;
+    int index = -1;
+    if (const auto* target = project_.findTrack(channel); target != nullptr && target->isInstrument())
+    {
+        midi.midiTarget = channel;
+        index = project_.trackIndex(channel);
+    }
+    auto command = std::make_unique<core::AddTrack>(midi, index);
+    const auto* raw = command.get();
+    execute(std::move(command));
+    return raw->trackId();
 }
 
 std::string ProjectSession::importAudioFile(const juce::File& file, core::SamplePosition at)

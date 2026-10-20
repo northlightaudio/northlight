@@ -36,7 +36,7 @@ const Shortcut shortcuts[] = {
     {"Mixer, Editor, Browser, Inspector, Piano Roll, Diagnostics", "F2 to F7", "View"},
     {"Detach or reattach a panel", "Shift+F2 to Shift+F7", "View"},
     {"Mute / solo selected track", "Shift+M / Shift+S", "Tracks"},
-    {"Add audio / instrument track, bus", "Ctrl+T / Ctrl+Shift+T, Ctrl+B", "Tracks"},
+    {"Add audio / MIDI track, bus", "Ctrl+T / Ctrl+Shift+T, Ctrl+B", "Tracks"},
     {"Delete selection", "Delete, Backspace", "Editing"},
     {"Duplicate", "Ctrl+D", "Editing"},
     {"Split at playhead / at selection", "S / Alt+S", "Editing"},

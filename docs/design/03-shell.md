@@ -153,7 +153,7 @@ message.
 
 New project with no tracks: the arrange area shows the mark at 48 px in
 `textTertiary`, the heading "Start a project" in `heading`, and three ghost buttons in
-a row: "Add audio track", "Add instrument track", "Import audio…", plus a `small`
+a row: "Add audio track", "Add MIDI track", "Import audio…", plus a `small`
 hint "or drop audio files here". No other chrome changes.
 
 ## First run
