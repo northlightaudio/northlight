@@ -27,7 +27,10 @@
 //     real-time thread's wanted position, so a read that passed the window check
 //     cannot have its data replaced underneath it while appending.
 //   - A rebuild (seek) first empties the window, then waits a short grace period so
-//     any read already in flight (bounded by one block) has finished, then refills.
+//     any read already in flight (bounded by one block) has usually finished, then
+//     refills. "Usually" is not enough on a loaded machine (a preempted reader can
+//     outlast the grace), so a seek first bumps generation_, and a read that saw it
+//     change while copying returns silence.
 
 namespace aural::engine
 {
@@ -90,6 +93,7 @@ public:
 
 private:
     bool fill(std::int64_t from, int count);
+    void bumpGeneration() noexcept; // before a seek rewrites the ring
     std::int64_t clampToFile(std::int64_t position) const noexcept;
 
     std::unique_ptr<StreamReader> reader_;
@@ -105,6 +109,7 @@ private:
 
     std::atomic<std::int64_t> validStart_{0};
     std::atomic<std::int64_t> validEnd_{0};
+    std::atomic<std::uint64_t> generation_{0}; // bumped before ring slots a read may hold are rewritten
     mutable std::atomic<std::int64_t> wanted_{0};
     mutable std::atomic<std::uint64_t> underruns_{0};
     std::atomic<bool> readError_{false};

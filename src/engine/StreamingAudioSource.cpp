@@ -50,6 +50,7 @@ void StreamingAudioSource::read(int channel,
     // same answer, so publishing on every channel is harmless).
     wanted_.store(sourceStart, std::memory_order_release);
 
+    const auto generation = generation_.load(std::memory_order_acquire);
     const auto start = validStart_.load(std::memory_order_acquire);
     const auto end = validEnd_.load(std::memory_order_acquire);
     const std::int64_t requestEnd = sourceStart + numSamples;
@@ -85,10 +86,13 @@ void StreamingAudioSource::read(int channel,
 
     std::fill(dest + leading + count, dest + numSamples, 0.0f);
 
-    // The disk thread may have recycled the slots we just copied if it advanced the
-    // window past this range (a backwards jump that lands right at the guard
-    // edge). If so the copy may be torn: hand back silence instead.
-    if (validStart_.load(std::memory_order_acquire) > fileFrom)
+    // The disk thread may have recycled the slots we just copied: it advanced the
+    // window past this range, or a seek rebuilt it while this read was preempted.
+    // If so the copy may be torn: hand back silence instead. (The fence keeps the
+    // copy's loads before the generation check.)
+    std::atomic_thread_fence(std::memory_order_acquire);
+    if (generation_.load(std::memory_order_relaxed) != generation ||
+        validStart_.load(std::memory_order_relaxed) > fileFrom)
     {
         std::fill(dest, dest + numSamples, 0.0f);
         underruns_.fetch_add(1, std::memory_order_relaxed);
@@ -146,6 +150,13 @@ bool StreamingAudioSource::fill(std::int64_t from, int count)
     return true;
 }
 
+void StreamingAudioSource::bumpGeneration() noexcept
+{
+    // Seqlock writer: the new generation is visible before any ring write after it.
+    generation_.store(generation_.load(std::memory_order_relaxed) + 1, std::memory_order_relaxed);
+    std::atomic_thread_fence(std::memory_order_release);
+}
+
 bool StreamingAudioSource::service()
 {
     AURAL_ASSERT_NOT_REALTIME("StreamingAudioSource::service");
@@ -163,6 +174,7 @@ bool StreamingAudioSource::service()
     {
         // Seek: empty the window, let any in-flight read finish, then refill from
         // the wanted position.
+        bumpGeneration();
         validStart_.store(wanted, std::memory_order_release);
         validEnd_.store(wanted, std::memory_order_release);
         std::this_thread::sleep_for(std::chrono::milliseconds(options_.seekGraceMilliseconds));
