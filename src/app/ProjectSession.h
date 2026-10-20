@@ -7,6 +7,7 @@
 #include "core/Model.h"
 #include "engine/AudioEngine.h"
 #include "engine/DiskThread.h"
+#include "engine/pitch/VocalService.h"
 #include "hosting/HostFactory.h"
 #include "hosting/PluginRegistry.h"
 #include "hosting/PluginScanner.h"
@@ -43,6 +44,8 @@ public:
     const core::Project& project() const noexcept { return project_; }
     engine::AudioEngine& engine() noexcept { return engine_; }
     audio::JuceMediaLoader& mediaLoader() noexcept { return loader_; }
+    // Vocal pitch editing: analyses, and the renders the engine plays.
+    engine::VocalService& vocal() noexcept { return vocal_; }
     const hosting::HostFactory& insertFactory() const noexcept { return inserts_; }
     const hosting::PluginRegistry& pluginRegistry() const noexcept { return registry_; }
     // The live processor behind a model insert (for its editor), if any.
@@ -356,6 +359,19 @@ private:
     hosting::PluginScanner scanner_;
     hosting::HostFactory inserts_;
     engine::AudioEngine engine_;
+    // A render or an analysis finished (on the vocal worker): recompile so the
+    // clips play it. Declared before the service, so it outlives the worker.
+    struct VocalUpdates final : juce::AsyncUpdater
+    {
+        std::function<void()> onUpdate;
+        void handleAsyncUpdate() override
+        {
+            if (onUpdate)
+                onUpdate();
+        }
+    } vocalUpdates_;
+    audio::JuceMediaLoader vocalLoader_{disk_, true}; // whole files: the renderer reads anywhere
+    engine::VocalService vocal_{vocalLoader_};
     audio::PeakStore peaks_;
     core::Project project_;
     core::UndoStack undo_;

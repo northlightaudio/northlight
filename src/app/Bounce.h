@@ -4,6 +4,7 @@
 #include "core/Model.h"
 #include "engine/AudioEngine.h"
 #include "engine/DiskThread.h"
+#include "engine/pitch/VocalService.h"
 #include "hosting/HostFactory.h"
 
 #include <juce_core/juce_core.h>
@@ -71,6 +72,7 @@ private:
         core::Project project;
         std::unique_ptr<engine::DiskThread> disk;
         std::unique_ptr<audio::JuceMediaLoader> loader;
+        std::unique_ptr<engine::VocalService> vocal; // renders vocal edits inside the compile
         std::unique_ptr<engine::AudioEngine> engine;
         // Lanes on hosted plugins (they own their parameters, so the engine does
         // not play them): set from the render thread before each block.

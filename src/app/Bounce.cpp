@@ -24,6 +24,11 @@ BounceJob::BounceJob(const core::Project& project, const hosting::HostFactory& i
         render->disk = std::make_unique<engine::DiskThread>();
         render->loader = std::make_unique<audio::JuceMediaLoader>(*render->disk, true);
         render->engine = std::make_unique<engine::AudioEngine>(*render->loader, inserts_, 0);
+        render->vocal = std::make_unique<engine::VocalService>(*render->loader, true);
+        render->engine->setClipSourceHook(
+            [vocal = render->vocal.get()](
+                const core::AudioClip& clip, double rate, std::shared_ptr<const engine::AudioSource> base)
+            { return vocal->sourceFor(clip, rate, std::move(base)); });
         render->engine->prepare(render->project.sampleRate, options_.blockSize);
         render->engine->setProject(render->project); // plugin instances: message thread
         const auto collect = [&](const core::Channel& channel)

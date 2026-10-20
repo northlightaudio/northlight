@@ -38,6 +38,20 @@ ProjectSession::ProjectSession(audio::AudioDeviceLayer& audio, juce::File regist
         inserts_.clearFailures(); // a plugin that failed before may load now
         publish();
     };
+    vocal_.onChanged = [this] { vocalUpdates_.triggerAsyncUpdate(); };
+    vocalUpdates_.onUpdate = [this]
+    {
+        for (const auto& t : project_.tracks)
+            for (const auto& c : t.clips)
+                if (c.vocal.changesSound())
+                {
+                    engine_.setProject(project_);
+                    return;
+                }
+    };
+    engine_.setClipSourceHook(
+        [this](const core::AudioClip& clip, double rate, std::shared_ptr<const engine::AudioSource> base)
+        { return vocal_.sourceFor(clip, rate, std::move(base)); });
     audio_.callback().setEngine(&engine_);
     audio_.midi().setEngine(&engine_);
     audio_.addChangeListener(this);
