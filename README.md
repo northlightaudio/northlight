@@ -118,6 +118,13 @@ them. The strip runs after the inserts unless switched to before them.
 (lead and backing vocals, spoken word, acoustic and electric guitar, bass,
 piano, synth pad, kick, snare, drum bus, mix bus, reverb return) or one of your
 own (**Save as preset...**).
+**FX tracks** hold shared effects such as a reverb or delay that several
+channels feed through sends: **+ Bus ▸ FX track** in the mixer, **+ ▸ FX track**
+in the arrange view or **Project ▸ Add FX track** makes one with the built-in
+Reverb or Delay fully wet (or empty, for any plugin), and a track's right-click
+**Send to** menu ticks the FX tracks (and buses) it sends to, or makes a new FX
+track with a send in one step. FX tracks show as rows under the tracks in the
+arrange view (for their automation) and as strips in the mixer.
 A strip's **Group** button puts it in a fader group: grouped faders move together
 (keeping their balance) and mute and solo act on the whole group.
 **Inserts ▸ Add** lists the built-ins and every VST3 and CLAP plugin found by

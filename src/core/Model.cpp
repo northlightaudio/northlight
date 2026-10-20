@@ -14,6 +14,14 @@ Send* Channel::findSend(Id busId) noexcept
     return nullptr;
 }
 
+const Send* Channel::findSend(Id busId) const noexcept
+{
+    for (const auto& s : sends)
+        if (s.bus == busId)
+            return &s;
+    return nullptr;
+}
+
 const Insert* Channel::findInsert(Id insertId) const noexcept
 {
     for (const auto& i : inserts)

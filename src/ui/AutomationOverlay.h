@@ -42,6 +42,9 @@ public:
         std::function<juce::Rectangle<int>(int row)> rowBounds; // the whole row
         std::function<juce::Rectangle<int>()> lanesArea;        // right of the headers, under the ruler
         std::function<core::SamplePosition(core::SamplePosition)> snap;
+        // The rows: tracks, then FX tracks.
+        std::function<int()> rowCount;
+        std::function<const core::Channel*(int row)> channelAt;
     };
     Geometry geometry;
 
@@ -84,19 +87,19 @@ private:
     juce::Rectangle<int> laneArea(int row) const;
     juce::Rectangle<int> parameterChip(int row) const;
     juce::Rectangle<int> modeChip(int row) const;
-    juce::String keyName(const core::Track& track, const Key& key) const;
-    float toNorm(const core::Track& track, const Key& key, float value) const;
-    float fromNorm(const core::Track& track, const Key& key, float norm) const;
-    float staticValue(const core::Track& track, const Key& key) const;
-    juce::String valueText(const core::Track& track, const Key& key, float value) const;
-    const core::AutomationLane* laneFor(const core::Track& track, const Key& key) const;
+    juce::String keyName(const core::Channel& track, const Key& key) const;
+    float toNorm(const core::Channel& track, const Key& key, float value) const;
+    float fromNorm(const core::Channel& track, const Key& key, float norm) const;
+    float staticValue(const core::Channel& track, const Key& key) const;
+    juce::String valueText(const core::Channel& track, const Key& key, float value) const;
+    const core::AutomationLane* laneFor(const core::Channel& track, const Key& key) const;
     const std::vector<engine::ParameterInfo>* parametersOf(const core::Insert& insert) const;
-    const engine::ParameterInfo* infoFor(const core::Track& track, const Key& key) const;
-    int pointAt(const core::Track& track, int row, juce::Point<int> p) const;
-    void showParameterMenu(const core::Track& track, int row);
-    void showModeMenu(const core::Track& track, int row);
-    void showPointMenu(const core::Track& track, int row, int point);
-    void emitPoints(const core::Track& track,
+    const engine::ParameterInfo* infoFor(const core::Channel& track, const Key& key) const;
+    int pointAt(const core::Channel& track, int row, juce::Point<int> p) const;
+    void showParameterMenu(const core::Channel& track, int row);
+    void showModeMenu(const core::Channel& track, int row);
+    void showPointMenu(const core::Channel& track, int row, int point);
+    void emitPoints(const core::Channel& track,
                     const Key& key,
                     std::vector<core::AutomationPoint> points,
                     const std::string& name);

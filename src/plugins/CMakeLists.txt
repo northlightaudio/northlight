@@ -8,7 +8,9 @@ add_library(aural_plugins STATIC
     ChannelStrip.h
     ChannelStrip.cpp
     StripPresets.h
-    StripPresets.cpp)
+    StripPresets.cpp
+    FxTracks.h
+    FxTracks.cpp)
 
 target_include_directories(aural_plugins PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/..")
 target_link_libraries(aural_plugins PUBLIC aural_engine)

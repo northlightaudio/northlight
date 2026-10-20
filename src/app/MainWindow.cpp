@@ -9,6 +9,7 @@
 #include "engine/Midi.h"
 #include "engine/Snapshot.h"
 #include "plugins/BuiltIns.h"
+#include "plugins/FxTracks.h"
 #include "ui/ArrangeView.h"
 #include "ui/AudioSetupView.h"
 #include "ui/AuralLookAndFeel.h"
@@ -746,6 +747,8 @@ private:
         tracks_.onGestureBegin = [this](const std::string& name) { session_.beginGesture(name); };
         tracks_.onGestureEnd = [this] { session_.endGesture(); };
         tracks_.trackMeter = [this](int index) { return mixer_.lastReading(engine::trackMeterSlot(index)); };
+        tracks_.busMeter = [this](int index)
+        { return mixer_.lastReading(engine::busMeterSlot(session_.project(), index)); };
     }
 
     void wireMixer()
@@ -1816,71 +1819,87 @@ private:
         menu.addItem(5, "Import audio...");
         menu.addItem(6, "Add audio track");
         menu.addItem(7, "Add instrument track");
+        juce::PopupMenu fxTracks;
+        const auto fxChoices = plugins::fxTrackEffects();
+        for (size_t i = 0; i < fxChoices.size(); ++i)
+            fxTracks.addItem(300 + static_cast<int>(i), juce::String(fxChoices[i].name));
+        menu.addSubMenu("Add FX track", fxTracks);
         menu.addItem(8, "Add bus");
         menu.addSeparator();
         juce::PopupMenu exports;
         addExportItems(exports, 20);
         menu.addSubMenu("Export", exports);
         juce::Component::SafePointer<Content> safe(this);
-        menu.showMenuAsync(juce::PopupMenu::Options().withTargetComponent(&header_).withMinimumWidth(220),
-                           [safe, files, templateFiles](int choice)
-                           {
-                               if (safe == nullptr)
-                                   return;
-                               if (choice >= 200 && static_cast<size_t>(choice - 200) < templateFiles.size())
-                               {
-                                   safe->newFromTemplate(templateFiles[static_cast<size_t>(choice - 200)]);
-                                   return;
-                               }
-                               if (choice >= 100 && static_cast<size_t>(choice - 100) < files.size())
-                               {
-                                   safe->openFile(juce::File(files[static_cast<size_t>(choice - 100)]));
-                                   return;
-                               }
-                               switch (choice)
-                               {
-                                   case 1:
-                                       safe->newProject();
-                                       break;
-                                   case 2:
-                                       safe->openProject();
-                                       break;
-                                   case 3:
-                                       safe->saveProject(false);
-                                       break;
-                                   case 4:
-                                       safe->saveProject(true);
-                                       break;
-                                   case 5:
-                                       safe->importAudio();
-                                       break;
-                                   case 6:
-                                       safe->addAudioTrack();
-                                       break;
-                                   case 7:
-                                       safe->addInstrumentTrack();
-                                       break;
-                                   case 8:
-                                       safe->addBus();
-                                       break;
-                                   case 9:
-                                       safe->saveTemplate();
-                                       break;
-                                   case 10:
-                                       safe->gatherMedia();
-                                       break;
-                                   case 11:
-                                       safe->removeUnusedMedia();
-                                       break;
-                                   case 21:
-                                   case 22:
-                                   case 23:
-                                       safe->startExport(choice - 20);
-                                       break;
-                                   default:
-                                       break;
-                               }
-                           });
+        menu.showMenuAsync(
+            juce::PopupMenu::Options().withTargetComponent(&header_).withMinimumWidth(220),
+            [safe, files, templateFiles](int choice)
+            {
+                if (safe == nullptr)
+                    return;
+                if (choice >= 300 && choice < 320)
+                {
+                    const auto fx = plugins::fxTrackEffects();
+                    const auto i = static_cast<size_t>(choice - 300);
+                    if (i < fx.size())
+                        safe->session_.executeGroup(
+                            "Add FX track",
+                            plugins::addFxTrackCommands(safe->session_.project(), fx[i].type, fx[i].name));
+                    return;
+                }
+                if (choice >= 200 && static_cast<size_t>(choice - 200) < templateFiles.size())
+                {
+                    safe->newFromTemplate(templateFiles[static_cast<size_t>(choice - 200)]);
+                    return;
+                }
+                if (choice >= 100 && static_cast<size_t>(choice - 100) < files.size())
+                {
+                    safe->openFile(juce::File(files[static_cast<size_t>(choice - 100)]));
+                    return;
+                }
+                switch (choice)
+                {
+                    case 1:
+                        safe->newProject();
+                        break;
+                    case 2:
+                        safe->openProject();
+                        break;
+                    case 3:
+                        safe->saveProject(false);
+                        break;
+                    case 4:
+                        safe->saveProject(true);
+                        break;
+                    case 5:
+                        safe->importAudio();
+                        break;
+                    case 6:
+                        safe->addAudioTrack();
+                        break;
+                    case 7:
+                        safe->addInstrumentTrack();
+                        break;
+                    case 8:
+                        safe->addBus();
+                        break;
+                    case 9:
+                        safe->saveTemplate();
+                        break;
+                    case 10:
+                        safe->gatherMedia();
+                        break;
+                    case 11:
+                        safe->removeUnusedMedia();
+                        break;
+                    case 21:
+                    case 22:
+                    case 23:
+                        safe->startExport(choice - 20);
+                        break;
+                    default:
+                        break;
+                }
+            });
     }
 
     void snapMenu()

@@ -30,6 +30,7 @@ add_executable(aural_unit_tests
     engine/InsertChainTests.cpp
     engine/MidiTests.cpp
     engine/AutomationTests.cpp
+    engine/FxTrackTests.cpp
     hosting/PluginRegistryTests.cpp)
 
 target_link_libraries(aural_unit_tests PRIVATE

@@ -5,6 +5,7 @@
 #include "hosting/HostedPlugin.h"
 #include "plugins/BuiltIns.h"
 #include "plugins/ChannelStrip.h"
+#include "plugins/FxTracks.h"
 #include "ui/AuralLookAndFeel.h"
 #include "ui/ClapEditor.h"
 #include "ui/FrameStats.h"
@@ -675,7 +676,11 @@ public:
         const auto* track = isBus ? nullptr : project.findTrack(channel.id);
         midi_ = track != nullptr && track->isMidi();
         aux_ = track != nullptr && track->isAux();
-        colour_ = isBus ? theme_.track.forBus(channel.colour) : theme_.track.forTrack(channel.colour, index);
+        const auto* busModel = isBus ? project.findBus(channel.id) : nullptr;
+        fx_ = busModel != nullptr && busModel->fx;
+        colour_ = isBus ? (fx_ && channel.colour == 0 ? strip::paletteColour(theme_, "Teal")
+                                                      : theme_.track.forBus(channel.colour))
+                        : theme_.track.forTrack(channel.colour, index);
         fader_.setTrackColour(colour_);
         group_ = channel.group;
         const auto* group = project.findGroup(channel.group);
@@ -1360,6 +1365,7 @@ private:
     juce::Component insertsHolder_;
     StripRow stripRow_;
     bool automatedShown_ = false;
+    bool fx_ = false; // an FX track (a bus fed by sends)
     std::vector<std::unique_ptr<InsertSlot>> inserts_;
     std::vector<std::unique_ptr<SendRow>> sends_;
     AddRow addInsert_, addSend_;
@@ -1750,7 +1756,7 @@ MixerView::MixerView(rt::MeterBlock& meters,
     master_ = std::make_unique<MasterStrip>(*this, theme_);
     addAndMakeVisible(*master_);
     addBus_.getProperties().set(AuralLookAndFeel::propertyVariant, "ghost");
-    addBus_.setTooltip("Add a bus");
+    addBus_.setTooltip("Add a bus or an FX track");
     addBus_.onClick = [this] { addBus(); };
     stripsHolder_.addAndMakeVisible(addBus_);
     startTimerHz(meterHz);
@@ -1841,11 +1847,36 @@ void MixerView::setProject(const core::Project* project)
 
 void MixerView::addBus()
 {
-    if (!onCommand)
+    if (!onCommand || project_ == nullptr)
         return;
-    core::Bus bus;
-    bus.name = "Bus " + std::to_string(project_ != nullptr ? project_->buses.size() + 1 : 1);
-    onCommand(std::make_unique<core::AddBus>(bus));
+    // A group bus, or an FX track that channels feed through sends.
+    juce::PopupMenu menu;
+    menu.addItem(1, "Bus");
+    juce::PopupMenu fx;
+    const auto choices = plugins::fxTrackEffects();
+    for (size_t i = 0; i < choices.size(); ++i)
+        fx.addItem(10 + static_cast<int>(i), juce::String(choices[i].name));
+    menu.addSubMenu("FX track", fx);
+    juce::Component::SafePointer<MixerView> safe(this);
+    menu.showMenuAsync(juce::PopupMenu::Options().withTargetComponent(addBus_),
+                       [safe, choices](int choice)
+                       {
+                           if (safe == nullptr || safe->project_ == nullptr || !safe->onCommand)
+                               return;
+                           if (choice == 1)
+                           {
+                               core::Bus bus;
+                               bus.name = "Bus " + std::to_string(safe->project_->buses.size() + 1);
+                               safe->onCommand(std::make_unique<core::AddBus>(bus));
+                           }
+                           else if (choice >= 10 && static_cast<size_t>(choice - 10) < choices.size())
+                           {
+                               const auto& c = choices[static_cast<size_t>(choice - 10)];
+                               // Only the AddBus: the strip has no sends to make.
+                               safe->onCommand(std::make_unique<core::AddBus>(
+                                   plugins::makeFxTrack(*safe->project_, c.type, c.name)));
+                           }
+                       });
 }
 
 void MixerView::rebuildStrips()

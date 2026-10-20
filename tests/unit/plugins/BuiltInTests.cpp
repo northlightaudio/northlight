@@ -231,3 +231,99 @@ TEST_CASE("Built-in processing does not allocate on a real-time thread", "[plugi
     CHECK(pluginViolations == 0);
 }
 #endif
+
+namespace
+{
+// An impulse through a processor; the output (left, right) for `seconds`.
+std::pair<std::vector<float>, std::vector<float>> impulseResponse(engine::InsertProcessor& p, double seconds)
+{
+    const int n = static_cast<int>(rate * seconds);
+    std::vector<float> l(static_cast<size_t>(n), 0.0f), r(static_cast<size_t>(n), 0.0f);
+    l[0] = r[0] = 1.0f;
+    for (int done = 0; done < n; done += 256)
+        p.process(l.data() + done, r.data() + done, std::min(256, n - done));
+    return {l, r};
+}
+
+double energy(const std::vector<float>& x, size_t from, size_t to)
+{
+    double sum = 0.0;
+    for (size_t i = from; i < to && i < x.size(); ++i)
+        sum += static_cast<double>(x[i]) * x[i];
+    return sum;
+}
+} // namespace
+
+TEST_CASE("Reverb: a tail that decays at the decay time, stays finite and is stereo", "[plugins][reverb]")
+{
+    plugins::BuiltInFactory factory;
+    auto verb = factory.create(plugins::types::reverb);
+    REQUIRE(verb != nullptr);
+    verb->prepare(rate, 256);
+    verb->setParameter(plugins::reverb::mix, 100.0f);
+    verb->setParameter(plugins::reverb::preDelay, 0.0f);
+    verb->setParameter(plugins::reverb::decay, 1.0f);
+    verb->setParameter(plugins::reverb::damping, 20000.0f);
+    const auto [l, r] = impulseResponse(*verb, 2.5);
+    for (const float v : l)
+        REQUIRE(std::isfinite(v));
+    // Energy in 100 ms windows half a second apart falls by about 30 dB (60 dB per second).
+    const auto window = static_cast<size_t>(rate * 0.1);
+    const double early =
+        energy(l, static_cast<size_t>(rate * 0.3), static_cast<size_t>(rate * 0.3) + window) +
+        energy(r, static_cast<size_t>(rate * 0.3), static_cast<size_t>(rate * 0.3) + window);
+    const double late = energy(l, static_cast<size_t>(rate * 0.8), static_cast<size_t>(rate * 0.8) + window) +
+                        energy(r, static_cast<size_t>(rate * 0.8), static_cast<size_t>(rate * 0.8) + window);
+    REQUIRE(late > 0.0);
+    CHECK(10.0 * std::log10(early / late) == Approx(30.0).margin(8.0));
+    // Left and right differ (a stereo tail).
+    double difference = 0.0;
+    for (size_t i = 0; i < l.size(); ++i)
+        difference += std::abs(l[i] - r[i]);
+    CHECK(difference > 1.0);
+    // The longest, brightest, largest setting still decays (no runaway).
+    verb->setParameter(plugins::reverb::decay, 12.0f);
+    verb->setParameter(plugins::reverb::size, 100.0f);
+    const auto [l2, r2] = impulseResponse(*verb, 6.0);
+    double peakLate = 0.0;
+    for (size_t i = l2.size() - 4800; i < l2.size(); ++i)
+        peakLate = std::max(peakLate, static_cast<double>(std::abs(l2[i])));
+    CHECK(peakLate < 0.5);
+    // Mix 0 is dry.
+    verb->setParameter(plugins::reverb::mix, 0.0f);
+    CHECK(responseDb(*verb, 1000.0) == Approx(0.0f).margin(0.05f));
+}
+
+TEST_CASE("Delay: repeats at the time, falling by the feedback, crossing sides in ping-pong",
+          "[plugins][delay]")
+{
+    plugins::BuiltInFactory factory;
+    auto delay = factory.create(plugins::types::delay);
+    REQUIRE(delay != nullptr);
+    delay->setParameter(plugins::delay::time, 100.0f);
+    delay->setParameter(plugins::delay::feedback, 50.0f);
+    delay->setParameter(plugins::delay::tone, 20000.0f);
+    delay->setParameter(plugins::delay::mix, 100.0f);
+    delay->prepare(rate, 256); // the glide starts at the time
+    const auto [l, r] = impulseResponse(*delay, 0.5);
+    const auto at = [&](const std::vector<float>& x, double ms)
+    {
+        float peak = 0.0f;
+        const auto centre = static_cast<int>(rate * ms * 0.001);
+        for (int i = centre - 8; i <= centre + 8; ++i)
+            peak = std::max(peak, std::abs(x[static_cast<size_t>(i)]));
+        return peak;
+    };
+    CHECK(at(l, 50.0) < 0.01f); // nothing before the time
+    const float first = at(l, 100.0), second = at(l, 200.0);
+    CHECK(first > 0.5f);
+    CHECK(second / first == Approx(0.5f).margin(0.1f));
+
+    delay->setParameter(plugins::delay::pingPong, 1.0f);
+    delay->prepare(rate, 256);
+    const auto [pl, pr] = impulseResponse(*delay, 0.5);
+    CHECK(at(pl, 100.0) > 0.2f);
+    CHECK(at(pr, 100.0) < 0.01f);
+    CHECK(at(pr, 200.0) > 0.1f); // the second repeat on the other side
+    CHECK(at(pl, 200.0) < 0.01f);
+}

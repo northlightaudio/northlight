@@ -46,7 +46,7 @@ const std::vector<engine::ParameterInfo>* AutomationOverlay::parametersOf(const 
     return &plugins::parameterInfo(insert.type);
 }
 
-const engine::ParameterInfo* AutomationOverlay::infoFor(const core::Track& track, const Key& key) const
+const engine::ParameterInfo* AutomationOverlay::infoFor(const core::Channel& track, const Key& key) const
 {
     const auto* insert = track.findInsert(key.insert);
     if (insert == nullptr)
@@ -68,7 +68,7 @@ void AutomationOverlay::setProject(const core::Project* project)
     project_ = project;
     // Forget tracks that are gone.
     if (project_ != nullptr)
-        std::erase_if(shown_, [this](core::Id id) { return project_->findTrack(id) == nullptr; });
+        std::erase_if(shown_, [this](core::Id id) { return project_->findChannel(id) == nullptr; });
     repaint();
 }
 
@@ -95,14 +95,19 @@ void AutomationOverlay::setKey(core::Id trackId, Key key)
 
 int AutomationOverlay::rowOfTrack(core::Id trackId) const noexcept
 {
-    return project_ != nullptr ? project_->trackIndex(trackId) : -1;
+    if (project_ == nullptr || !geometry.rowCount)
+        return -1;
+    for (int i = 0; i < geometry.rowCount(); ++i)
+        if (geometry.channelAt(i)->id == trackId)
+            return i;
+    return -1;
 }
 
 int AutomationOverlay::rowAt(int y) const noexcept
 {
-    if (project_ == nullptr || !geometry.rowBounds)
+    if (project_ == nullptr || !geometry.rowBounds || !geometry.rowCount)
         return -1;
-    for (int i = 0; i < static_cast<int>(project_->tracks.size()); ++i)
+    for (int i = 0; i < geometry.rowCount(); ++i)
         if (geometry.rowBounds(i).getVerticalRange().contains(y))
             return i;
     return -1;
@@ -134,15 +139,15 @@ bool AutomationOverlay::hitTest(int x, int y)
     if (project_ == nullptr || shown_.empty() || !geometry.lanesArea || !geometry.lanesArea().contains(x, y))
         return false;
     const int row = rowAt(y);
-    return row >= 0 && shown_.contains(project_->tracks[static_cast<size_t>(row)].id);
+    return row >= 0 && shown_.contains(geometry.channelAt(row)->id);
 }
 
-const core::AutomationLane* AutomationOverlay::laneFor(const core::Track& track, const Key& key) const
+const core::AutomationLane* AutomationOverlay::laneFor(const core::Channel& track, const Key& key) const
 {
     return track.findLane(key.target, key.insert, key.parameter);
 }
 
-float AutomationOverlay::toNorm(const core::Track& track, const Key& key, float value) const
+float AutomationOverlay::toNorm(const core::Channel& track, const Key& key, float value) const
 {
     switch (key.target)
     {
@@ -168,7 +173,7 @@ float AutomationOverlay::toNorm(const core::Track& track, const Key& key, float 
     return 0.0f;
 }
 
-float AutomationOverlay::fromNorm(const core::Track& track, const Key& key, float norm) const
+float AutomationOverlay::fromNorm(const core::Channel& track, const Key& key, float norm) const
 {
     norm = juce::jlimit(0.0f, 1.0f, norm);
     switch (key.target)
@@ -194,7 +199,7 @@ float AutomationOverlay::fromNorm(const core::Track& track, const Key& key, floa
     return 0.0f;
 }
 
-float AutomationOverlay::staticValue(const core::Track& track, const Key& key) const
+float AutomationOverlay::staticValue(const core::Channel& track, const Key& key) const
 {
     switch (key.target)
     {
@@ -214,7 +219,7 @@ float AutomationOverlay::staticValue(const core::Track& track, const Key& key) c
     return 0.0f;
 }
 
-juce::String AutomationOverlay::keyName(const core::Track& track, const Key& key) const
+juce::String AutomationOverlay::keyName(const core::Channel& track, const Key& key) const
 {
     switch (key.target)
     {
@@ -235,7 +240,7 @@ juce::String AutomationOverlay::keyName(const core::Track& track, const Key& key
     return {};
 }
 
-juce::String AutomationOverlay::valueText(const core::Track& track, const Key& key, float value) const
+juce::String AutomationOverlay::valueText(const core::Channel& track, const Key& key, float value) const
 {
     switch (key.target)
     {
@@ -265,7 +270,7 @@ juce::String AutomationOverlay::valueText(const core::Track& track, const Key& k
     return {};
 }
 
-int AutomationOverlay::pointAt(const core::Track& track, int row, juce::Point<int> p) const
+int AutomationOverlay::pointAt(const core::Channel& track, int row, juce::Point<int> p) const
 {
     const auto key = keyFor(track.id);
     const auto* lane = laneFor(track, key);
@@ -297,9 +302,9 @@ void AutomationOverlay::paint(juce::Graphics& g)
     const auto lanes = geometry.lanesArea();
     juce::Graphics::ScopedSaveState save(g);
     g.reduceClipRegion(lanes);
-    for (int row = 0; row < static_cast<int>(project_->tracks.size()); ++row)
+    for (int row = 0; row < geometry.rowCount(); ++row)
     {
-        const auto& track = project_->tracks[static_cast<size_t>(row)];
+        const auto& track = *geometry.channelAt(row);
         if (!shown_.contains(track.id))
             continue;
         const auto rowArea = geometry.rowBounds(row).getIntersection(lanes);
@@ -436,7 +441,7 @@ void AutomationOverlay::mouseMove(const juce::MouseEvent& e)
     const int row = rowAt(e.y);
     int point = -1;
     if (row >= 0)
-        point = pointAt(project_->tracks[static_cast<size_t>(row)], row, e.getPosition());
+        point = pointAt(*geometry.channelAt(row), row, e.getPosition());
     const bool onChip =
         row >= 0 && (parameterChip(row).contains(e.getPosition()) || modeChip(row).contains(e.getPosition()));
     setMouseCursor(onChip       ? juce::MouseCursor::PointingHandCursor
@@ -461,7 +466,7 @@ void AutomationOverlay::mouseDown(const juce::MouseEvent& e)
     const int row = rowAt(e.y);
     if (row < 0 || project_ == nullptr)
         return;
-    const auto& track = project_->tracks[static_cast<size_t>(row)];
+    const auto& track = *geometry.channelAt(row);
     if (parameterChip(row).contains(e.getPosition()))
     {
         showParameterMenu(track, row);
@@ -512,7 +517,7 @@ void AutomationOverlay::mouseDrag(const juce::MouseEvent& e)
 {
     if (dragIndex_ < 0 || project_ == nullptr)
         return;
-    const auto* track = project_->findTrack(dragTrack_);
+    const auto* track = project_->findChannel(dragTrack_);
     if (track == nullptr)
         return;
     const int row = rowOfTrack(dragTrack_);
@@ -540,7 +545,7 @@ void AutomationOverlay::mouseUp(const juce::MouseEvent& e)
 {
     if (dragIndex_ < 0 || project_ == nullptr)
         return;
-    const auto* track = project_->findTrack(dragTrack_);
+    const auto* track = project_->findChannel(dragTrack_);
     const auto key = keyFor(dragTrack_);
     auto points = std::move(dragPoints_);
     const bool isNew = dragNew_;
@@ -557,7 +562,7 @@ void AutomationOverlay::mouseDoubleClick(const juce::MouseEvent& e)
     const int row = rowAt(e.y);
     if (row < 0 || project_ == nullptr)
         return;
-    const auto& track = project_->tracks[static_cast<size_t>(row)];
+    const auto& track = *geometry.channelAt(row);
     const auto key = keyFor(track.id);
     const auto* lane = laneFor(track, key);
     const int index = pointAt(track, row, e.getPosition());
@@ -568,7 +573,7 @@ void AutomationOverlay::mouseDoubleClick(const juce::MouseEvent& e)
     emitPoints(track, key, std::move(points), "Remove automation point");
 }
 
-void AutomationOverlay::emitPoints(const core::Track& track,
+void AutomationOverlay::emitPoints(const core::Channel& track,
                                    const Key& key,
                                    std::vector<core::AutomationPoint> points,
                                    const std::string& name)
@@ -597,7 +602,7 @@ void AutomationOverlay::emitPoints(const core::Track& track,
         onEdit(std::move(commands), name);
 }
 
-void AutomationOverlay::showParameterMenu(const core::Track& track, int row)
+void AutomationOverlay::showParameterMenu(const core::Channel& track, int row)
 {
     juce::PopupMenu menu;
     const auto current = keyFor(track.id);
@@ -664,7 +669,7 @@ void AutomationOverlay::showParameterMenu(const core::Track& track, int row)
                        });
 }
 
-void AutomationOverlay::showModeMenu(const core::Track& track, int row)
+void AutomationOverlay::showModeMenu(const core::Channel& track, int row)
 {
     juce::PopupMenu menu;
     const core::AutomationMode modes[] = {core::AutomationMode::off,
@@ -696,7 +701,7 @@ void AutomationOverlay::showModeMenu(const core::Track& track, int row)
                        });
 }
 
-void AutomationOverlay::showPointMenu(const core::Track& track, int row, int point)
+void AutomationOverlay::showPointMenu(const core::Channel& track, int row, int point)
 {
     juce::ignoreUnused(row);
     const auto key = keyFor(track.id);
@@ -713,7 +718,7 @@ void AutomationOverlay::showPointMenu(const core::Track& track, int row, int poi
                        {
                            if (safe == nullptr || choice <= 0 || safe->project_ == nullptr)
                                return;
-                           const auto* t = safe->project_->findTrack(trackId);
+                           const auto* t = safe->project_->findChannel(trackId);
                            if (t == nullptr)
                                return;
                            const auto* l = safe->laneFor(*t, key);

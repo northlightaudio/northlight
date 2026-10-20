@@ -218,6 +218,7 @@ struct Channel
     AutomationMode automationMode = AutomationMode::read;
 
     Send* findSend(Id busId) noexcept;
+    const Send* findSend(Id busId) const noexcept;
     // An insert or a strip module, by id.
     Insert* findInsert(Id insertId) noexcept;
     const Insert* findInsert(Id insertId) const noexcept;
@@ -262,8 +263,13 @@ struct Track : Channel
     bool operator==(const Track&) const = default;
 };
 
+// A bus is a group (tracks route their output into it) or an FX track: a
+// return that other channels feed through aux sends (a reverb or a delay shared
+// by several sources). Both mix the same way; an FX track also shows in the
+// arrange view as a row of its own, for its automation.
 struct Bus : Channel
 {
+    bool fx = false;
     bool operator==(const Bus&) const = default;
 };
 

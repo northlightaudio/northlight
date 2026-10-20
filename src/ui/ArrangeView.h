@@ -191,6 +191,8 @@ public:
     {
         automation_.displayName = std::move(name);
     }
+    // The meter reading of a bus (by index), for the FX track headers.
+    std::function<rt::MeterBlock::Reading(int busIndex)> busMeter;
     // The MIDI output device's name (empty when none is chosen), for the track menu.
     std::function<std::string()> midiOutputName;
     // A hosted plugin's parameters, for the automation lane menu.
@@ -274,6 +276,13 @@ private:
     void trackMenu(core::Id trackId, juce::Point<int> screen);
     void rulerMenu(juce::Point<int> screen);
     void addTrackMenu();
+    // FX tracks (buses flagged fx) show as rows under the tracks.
+    std::vector<const core::Bus*> fxTracks() const;
+    int rowCount() const noexcept;
+    const core::Channel* channelAtRow(int row) const;
+    void fxTrackMenu(core::Id busId, juce::Point<int> screen);
+    void addFxMenu(juce::PopupMenu& menu, int firstId) const;
+    void addFxTrack(int choice, int firstId, std::vector<core::Id> sendFrom);
     void reorderDrag(core::Id trackId, juce::Point<int> screen, bool released);
     void finishTimeSelection();
     void splitAtSelection();
@@ -351,6 +360,7 @@ private:
     bool loop_ = false, punch_ = false;
     core::SamplePosition dragAnchor_ = 0;
     std::vector<std::unique_ptr<TrackHeader>> headers_;
+    std::vector<std::unique_ptr<TrackHeader>> fxHeaders_; // one per FX track, after the tracks'
     std::vector<std::string> inputNames_;
     std::vector<std::string> midiInputNames_;
     double samplesPerPixel_ = 48000.0 / 40.0; // 40 px per second at 48 kHz

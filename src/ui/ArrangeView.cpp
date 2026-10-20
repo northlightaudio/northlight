@@ -1,5 +1,6 @@
 #include "ui/ArrangeView.h"
 
+#include "plugins/FxTracks.h"
 #include "ui/AuralLookAndFeel.h"
 #include "ui/FrameStats.h"
 #include "ui/Icons.h"
@@ -45,6 +46,8 @@ ArrangeView::ArrangeView(audio::PeakStore& peaks)
             headerWidth, rulerHeight, getWidth() - headerWidth - scrollbarWidth, lanesHeight());
     };
     automation_.geometry.snap = [this](core::SamplePosition s) { return snapped(s); };
+    automation_.geometry.rowCount = [this] { return rowCount(); };
+    automation_.geometry.channelAt = [this](int row) { return channelAtRow(row); };
     automation_.onEdit = [this](std::vector<std::unique_ptr<core::Command>> commands, const std::string& name)
     { emit(std::move(commands), name); };
     automation_.onShownChanged = [this](core::Id trackId, bool shown)
@@ -144,6 +147,11 @@ void ArrangeView::pushMeters()
     for (size_t i = 0; i < headers_.size(); ++i)
         if (headers_[i]->isVisible())
             headers_[i]->pushMeter(trackMeter(static_cast<int>(i)), elapsed);
+    if (busMeter && project_ != nullptr)
+        for (auto& header : fxHeaders_)
+            if (header->isVisible())
+                if (const int bus = project_->busIndex(header->trackId()); bus >= 0)
+                    header->pushMeter(busMeter(bus), elapsed);
 }
 
 void ArrangeView::layoutEmptyState()
@@ -248,6 +256,47 @@ void ArrangeView::rebuildHeaders()
         addAndMakeVisible(*header);
         headers_.push_back(std::move(header));
     }
+    // FX tracks: the same header, shown as a channel without an input or arm.
+    const auto fx = fxTracks();
+    while (fxHeaders_.size() > fx.size())
+        fxHeaders_.pop_back();
+    while (fxHeaders_.size() < fx.size())
+    {
+        auto header = std::make_unique<TrackHeader>(theme_);
+        header->onSelected = [this](core::Id id) { selectTrack(id); };
+        header->onCommand = [this](std::unique_ptr<core::Command> command)
+        {
+            if (onCommand)
+                onCommand(std::move(command));
+        };
+        header->onGestureBegin = [this](const std::string& name)
+        {
+            if (onGestureBegin)
+                onGestureBegin(name);
+        };
+        header->onGestureEnd = [this]
+        {
+            if (onGestureEnd)
+                onGestureEnd();
+        };
+        header->onContextMenu = [this](core::Id id, juce::Point<int> screen) { fxTrackMenu(id, screen); };
+        header->onAutomationToggled = [this](core::Id id, bool shown) { showAutomation(id, shown); };
+        addAndMakeVisible(*header);
+        fxHeaders_.push_back(std::move(header));
+    }
+    for (size_t i = 0; i < fx.size(); ++i)
+    {
+        core::Track shown;
+        static_cast<core::Channel&>(shown) = *fx[i];
+        shown.kind = core::TrackKind::aux; // no input, no arm
+        if (shown.colour == 0)
+            for (const auto& entry : theme_.track.palette)
+                if (entry.name == "Teal")
+                    shown.colour = entry.value.getARGB();
+        fxHeaders_[i]->setTrack(shown, static_cast<int>(count + i), *project_, inputNames_, midiInputNames_);
+        fxHeaders_[i]->setSelected(fx[i]->id == selectedTrack_);
+        fxHeaders_[i]->setAutomationShown(automation_.isShown(fx[i]->id));
+    }
     for (size_t i = 0; i < count; ++i)
     {
         const auto& track = project_->tracks[i];
@@ -270,13 +319,14 @@ void ArrangeView::setMonitoringStates(const std::vector<bool>& monitoring, bool 
 void ArrangeView::layoutHeaders()
 {
     int y = rulerHeight - verticalScroll_;
-    for (auto& header : headers_)
-    {
-        const bool visible = y + rowHeight > rulerHeight && y < getHeight() - scrollbarHeight;
-        header->setVisible(visible);
-        header->setBounds(0, y, headerWidth, rowHeight);
-        y += rowHeight;
-    }
+    for (auto* list : {&headers_, &fxHeaders_})
+        for (auto& header : *list)
+        {
+            const bool visible = y + rowHeight > rulerHeight && y < getHeight() - scrollbarHeight;
+            header->setVisible(visible);
+            header->setBounds(0, y, headerWidth, rowHeight);
+            y += rowHeight;
+        }
 }
 
 void ArrangeView::liveRecordingChanged()
@@ -340,9 +390,40 @@ core::SamplePosition ArrangeView::visibleSamples() const noexcept
                                              samplesPerPixel_);
 }
 
+std::vector<const core::Bus*> ArrangeView::fxTracks() const
+{
+    std::vector<const core::Bus*> list;
+    if (project_ != nullptr)
+        for (const auto& b : project_->buses)
+            if (b.fx)
+                list.push_back(&b);
+    return list;
+}
+
+int ArrangeView::rowCount() const noexcept
+{
+    if (project_ == nullptr)
+        return 0;
+    int fx = 0;
+    for (const auto& b : project_->buses)
+        fx += b.fx ? 1 : 0;
+    return static_cast<int>(project_->tracks.size()) + fx;
+}
+
+const core::Channel* ArrangeView::channelAtRow(int row) const
+{
+    if (project_ == nullptr || row < 0)
+        return nullptr;
+    if (static_cast<size_t>(row) < project_->tracks.size())
+        return &project_->tracks[static_cast<size_t>(row)];
+    const auto fx = fxTracks();
+    const auto i = static_cast<size_t>(row) - project_->tracks.size();
+    return i < fx.size() ? fx[i] : nullptr;
+}
+
 int ArrangeView::contentHeight() const noexcept
 {
-    return project_ != nullptr ? static_cast<int>(project_->tracks.size()) * rowHeight : 0;
+    return rowCount() * rowHeight;
 }
 
 void ArrangeView::setVerticalScroll(int firstRowPixel)
@@ -1515,6 +1596,38 @@ void ArrangeView::paint(juce::Graphics& g)
             y += rowHeight;
             ++row;
         }
+        // FX tracks: a lane with no clips, saying who feeds it.
+        for (const auto* fx : fxTracks())
+        {
+            const juce::Rectangle<int> lane(headerWidth, y, lanesArea.getWidth(), rowHeight);
+            if (lane.getBottom() >= rulerHeight && lane.getY() <= getHeight())
+            {
+                g.setColour(fx->id == selectedTrack_ ? c.laneSelected
+                                                     : (row % 2 == 1 ? c.laneAlt : c.canvas));
+                g.fillRect(lane);
+                g.setColour(c.lineSubtle);
+                g.fillRect(lane.withTrimmedTop(rowHeight - 1));
+                int senders = 0;
+                const auto counts = [&](const core::Channel& ch)
+                {
+                    for (const auto& send : ch.sends)
+                        senders += send.bus == fx->id ? 1 : 0;
+                };
+                for (const auto& t : project_->tracks)
+                    counts(t);
+                for (const auto& b : project_->buses)
+                    counts(b);
+                g.setColour(c.textTertiary);
+                g.setFont(theme_.caption());
+                g.drawText(senders == 0 ? juce::String("FX track: no sends yet (a track's menu, Send to)")
+                                        : "FX track: " + juce::String(senders) +
+                                              (senders == 1 ? " channel sends here" : " channels send here"),
+                           lane.reduced(theme_.spacing.sm, 0).withHeight(std::min(rowHeight, 24)),
+                           juce::Justification::centredLeft);
+            }
+            y += rowHeight;
+            ++row;
+        }
         drawGrid(g, lanesArea, false);
 
         // Loop and punch through the lanes at half the ruler's alpha; the time selection.
@@ -2367,48 +2480,85 @@ void ArrangeView::trackMenu(core::Id trackId, juce::Point<int> screen)
         }
         menu.addSubMenu("MIDI output", out);
     }
+    // Sends: tick a bus or FX track to send to it (post-fader, -6 dB), untick to stop.
+    {
+        juce::PopupMenu sends;
+        for (size_t b = 0; b < project_->buses.size(); ++b)
+        {
+            const auto& bus = project_->buses[b];
+            const bool sending = track->findSend(bus.id) != nullptr;
+            sends.addItem(500 + static_cast<int>(b),
+                          juce::String::fromUTF8(bus.name.c_str()) + (bus.fx ? "" : "  (bus)"),
+                          sending || !project_->wouldCycle(trackId, bus.id),
+                          sending);
+        }
+        sends.addSeparator();
+        juce::PopupMenu newFx;
+        addFxMenu(newFx, 450);
+        sends.addSubMenu("New FX track", newFx);
+        menu.addSubMenu("Send to", sends);
+    }
     menu.addItem(4, automation_.isShown(trackId) ? "Hide automation" : "Show automation");
     menu.addSeparator();
     menu.addItem(2, "Delete track");
     menu.addItem(3, "Add bus");
     juce::Component::SafePointer<ArrangeView> safe(this);
-    menu.showMenuAsync(juce::PopupMenu::Options().withTargetScreenArea({screen.x, screen.y, 1, 1}),
-                       [safe, trackId](int choice)
-                       {
-                           if (safe == nullptr || choice == 0)
-                               return;
-                           if (choice >= 300 && choice <= 316)
-                           {
-                               if (safe->onCommand)
-                                   safe->onCommand(std::make_unique<core::SetTrackMidiOutput>(
-                                       trackId, choice > 300, std::max(1, choice - 300)));
-                               return;
-                           }
-                           if (choice == 4)
-                           {
-                               safe->showAutomation(trackId, !safe->automation_.isShown(trackId));
-                               return;
-                           }
-                           const auto& palette = safe->theme_.track.palette;
-                           if (choice >= 100 && choice < 199 &&
-                               static_cast<size_t>(choice - 100) < palette.size())
-                           {
-                               if (safe->onCommand)
-                                   safe->onCommand(std::make_unique<core::SetColour>(
-                                       trackId, palette[static_cast<size_t>(choice - 100)].value.getARGB()));
-                               return;
-                           }
-                           if (choice == 199 && safe->onCommand)
-                               safe->onCommand(std::make_unique<core::SetColour>(trackId, 0u));
-                           if (choice == 1)
-                               for (auto& header : safe->headers_)
-                                   if (header->trackId() == trackId)
-                                       header->startRename();
-                           if (choice == 2 && safe->onCommand)
-                               safe->onCommand(std::make_unique<core::RemoveTrack>(trackId));
-                           if (choice == 3 && safe->onAddBus)
-                               safe->onAddBus();
-                       });
+    menu.showMenuAsync(
+        juce::PopupMenu::Options().withTargetScreenArea({screen.x, screen.y, 1, 1}),
+        [safe, trackId](int choice)
+        {
+            if (safe == nullptr || choice == 0)
+                return;
+            if (choice >= 450 && choice < 500)
+            {
+                safe->addFxTrack(choice, 450, {trackId});
+                return;
+            }
+            if (choice >= 500 && safe->project_ != nullptr &&
+                static_cast<size_t>(choice - 500) < safe->project_->buses.size())
+            {
+                const auto busId = safe->project_->buses[static_cast<size_t>(choice - 500)].id;
+                const auto* t = safe->project_->findTrack(trackId);
+                if (t != nullptr && safe->onCommand)
+                {
+                    if (t->findSend(busId) != nullptr)
+                        safe->onCommand(std::make_unique<core::RemoveSend>(trackId, busId));
+                    else
+                        safe->onCommand(std::make_unique<core::SetSend>(trackId, busId, 0.5f, false));
+                }
+                return;
+            }
+            if (choice >= 300 && choice <= 316)
+            {
+                if (safe->onCommand)
+                    safe->onCommand(std::make_unique<core::SetTrackMidiOutput>(
+                        trackId, choice > 300, std::max(1, choice - 300)));
+                return;
+            }
+            if (choice == 4)
+            {
+                safe->showAutomation(trackId, !safe->automation_.isShown(trackId));
+                return;
+            }
+            const auto& palette = safe->theme_.track.palette;
+            if (choice >= 100 && choice < 199 && static_cast<size_t>(choice - 100) < palette.size())
+            {
+                if (safe->onCommand)
+                    safe->onCommand(std::make_unique<core::SetColour>(
+                        trackId, palette[static_cast<size_t>(choice - 100)].value.getARGB()));
+                return;
+            }
+            if (choice == 199 && safe->onCommand)
+                safe->onCommand(std::make_unique<core::SetColour>(trackId, 0u));
+            if (choice == 1)
+                for (auto& header : safe->headers_)
+                    if (header->trackId() == trackId)
+                        header->startRename();
+            if (choice == 2 && safe->onCommand)
+                safe->onCommand(std::make_unique<core::RemoveTrack>(trackId));
+            if (choice == 3 && safe->onAddBus)
+                safe->onAddBus();
+        });
 }
 
 void ArrangeView::rulerMenu(juce::Point<int> screen)
@@ -2445,11 +2595,57 @@ void ArrangeView::rulerMenu(juce::Point<int> screen)
                        });
 }
 
+void ArrangeView::addFxMenu(juce::PopupMenu& menu, int firstId) const
+{
+    const auto choices = plugins::fxTrackEffects();
+    for (size_t i = 0; i < choices.size(); ++i)
+        menu.addItem(firstId + static_cast<int>(i), juce::String(choices[i].name));
+}
+
+void ArrangeView::addFxTrack(int choice, int firstId, std::vector<core::Id> sendFrom)
+{
+    const auto choices = plugins::fxTrackEffects();
+    const auto i = static_cast<size_t>(choice - firstId);
+    if (project_ == nullptr || i >= choices.size())
+        return;
+    emit(plugins::addFxTrackCommands(*project_, choices[i].type, choices[i].name, sendFrom),
+         sendFrom.empty() ? "Add FX track" : "Add FX track and send");
+}
+
+void ArrangeView::fxTrackMenu(core::Id busId, juce::Point<int> screen)
+{
+    if (project_ == nullptr || project_->findBus(busId) == nullptr)
+        return;
+    juce::PopupMenu menu;
+    menu.addItem(1, "Rename");
+    menu.addItem(2, automation_.isShown(busId) ? "Hide automation" : "Show automation");
+    menu.addSeparator();
+    menu.addItem(3, "Remove FX track");
+    juce::Component::SafePointer<ArrangeView> safe(this);
+    menu.showMenuAsync(juce::PopupMenu::Options().withTargetScreenArea({screen.x, screen.y, 1, 1}),
+                       [safe, busId](int choice)
+                       {
+                           if (safe == nullptr)
+                               return;
+                           if (choice == 1)
+                               for (auto& header : safe->fxHeaders_)
+                                   if (header->trackId() == busId)
+                                       header->startRename();
+                           if (choice == 2)
+                               safe->showAutomation(busId, !safe->automation_.isShown(busId));
+                           if (choice == 3 && safe->onCommand)
+                               safe->onCommand(std::make_unique<core::RemoveBus>(busId));
+                       });
+}
+
 void ArrangeView::addTrackMenu()
 {
     juce::PopupMenu menu;
     menu.addItem(1, "Audio track");
     menu.addItem(2, "Instrument track");
+    juce::PopupMenu fx;
+    addFxMenu(fx, 400);
+    menu.addSubMenu("FX track", fx);
     menu.addItem(3, "Bus");
     juce::Component::SafePointer<ArrangeView> safe(this);
     menu.showMenuAsync(juce::PopupMenu::Options().withTargetComponent(&addTrack_),
@@ -2463,6 +2659,8 @@ void ArrangeView::addTrackMenu()
                                safe->onAddInstrumentTrack();
                            if (choice == 3 && safe->onAddBus)
                                safe->onAddBus();
+                           if (choice >= 400 && choice < 450)
+                               safe->addFxTrack(choice, 400, {});
                        });
 }
 

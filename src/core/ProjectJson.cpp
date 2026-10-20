@@ -228,6 +228,8 @@ json busToJson(const Bus& b)
 {
     json j;
     channelToJson(j, b);
+    if (b.fx)
+        j["fx"] = true;
     return j;
 }
 
@@ -235,6 +237,7 @@ Bus busFromJson(const json& j)
 {
     Bus b;
     channelFromJson(j, b);
+    b.fx = j.value("fx", false);
     return b;
 }
 

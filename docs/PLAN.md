@@ -265,6 +265,9 @@ kill the process mid-record and recover the audio.
 **Milestone:** full signal flow from tracks through sends and buses to master with
 accurate metering.
 
+Added 2026-10-20: FX tracks (buses fed by sends, shown in the arrange view) with
+a built-in Reverb and Delay.
+
 Added 2026-10-20: a Cubase-style channel strip on every track and bus (gate,
 parametric EQ with analyser, compressor, de-esser, saturation, limiter), switched
 on in place and edited in the Editor panel with real-time displays; see

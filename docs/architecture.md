@@ -468,6 +468,23 @@ integrated loudness per BS.1770-4: the 400 ms window at every 100 ms hop is kept
 demand (absolute gate -70 LUFS, relative gate 10 LU under the mean of the rest).
 Play from stop restarts it.
 
+### FX tracks
+
+An FX track is a `core::Bus` with `fx` set: the mixing, sends (pre or post
+fader), delay compensation, solo and automation are a bus's, so nothing in the
+engine changed. The difference is presentation and creation:
+`plugins::addFxTrackCommands` makes one with its effect as the first insert
+(fully wet, since the dry signal stays on the senders), its id taken from the
+project's next id so sends in the same group can name it, plus a post-fader
+send at -6 dB from each given channel, run as one undo step. The arrange view
+shows FX tracks as rows after the tracks (`rowCount`/`channelAtRow`), each with
+a `TrackHeader` fed a copy of the bus as an aux-kind track (no input or arm), an
+empty lane counting its senders, its bus meter and the automation overlay
+(which now works on any channel row). The built-in Reverb (an eight-line
+feedback delay network after pre-delay, low cut and four diffusing allpasses,
+with damping and width) and Delay (gliding time, tone, ping-pong) were added so
+an FX track is useful without a plugin.
+
 ### Channel strip
 
 Every track and bus has a channel strip (design: [design/12-channel-strip.md](design/12-channel-strip.md)):

@@ -134,6 +134,18 @@ Rows at `trackRow` 56 default. Contents, left to right, inside `space.sm` paddin
 - Takes: stacked clips on the lane, each with a badge; the top one is audible. Lanes
   do not expand in v1 (**Decision**: take lanes as rows are a post-v1 feature).
 
+## FX tracks
+
+- FX tracks (buses fed by sends) follow the tracks as rows of the same height,
+  with the same header minus the input and arm (number, name, M, S, A, meter,
+  volume), Teal by default. The lane has no clips; a `caption` in `textTertiary`
+  says how many channels send there ("FX track: 3 channels send here").
+- Their header menu: Rename, Show/Hide automation, Remove FX track.
+- A track's menu has **Send to**: every bus and FX track, ticked where the track
+  already sends (untick removes the send), and **New FX track** (Reverb, Delay,
+  Empty) that adds one with a send from this track in one step.
+- **+ ▸ FX track** in the corner adds one without sends.
+
 ## Automation
 
 - The track header's **A** toggle (fifth of the row-one toggles, after monitor)

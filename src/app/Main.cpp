@@ -6,6 +6,7 @@
 #include "core/Command.h"
 #include "plugins/BuiltIns.h"
 #include "plugins/ChannelStrip.h"
+#include "plugins/FxTracks.h"
 #include "plugins/StripPresets.h"
 #include "ui/AuralLookAndFeel.h"
 #include "ui/PreferencesView.h"
@@ -84,6 +85,7 @@ public:
     //   --automation         add a volume lane to the first track and show it in the arrange view
     //   --master-gain <dB>   set the master fader (-120 = silent: an unattended check that
     //                        should not be heard; pre-fader displays still move)
+    //   --fx-track <reverb|delay|empty>  add an FX track with a send from every track
     //   --strip-preset <name> apply a factory channel strip preset to every track
     //   --strip <modules>    switch channel strip modules on for every track and show the
     //                        Editor panel: a comma list of gate, eq, compressor, deesser,
@@ -190,6 +192,21 @@ public:
                     session_->execute(std::make_unique<core::AddAutomationLane>(trackId, lane));
                     mainWindow_->showAutomation(trackId);
                 }
+            }
+            else if (arg == "--fx-track" && i + 1 < tokens.size())
+            {
+                // An FX track with the effect (reverb, delay, empty) and a send from every track.
+                const auto wanted = tokens.getReference(++i).text.unquoted().toLowerCase();
+                for (const auto& choice : plugins::fxTrackEffects())
+                    if (juce::String(choice.name).toLowerCase() == wanted)
+                    {
+                        std::vector<core::Id> senders;
+                        for (const auto& t : session_->project().tracks)
+                            senders.push_back(t.id);
+                        session_->executeGroup("Add FX track",
+                                               plugins::addFxTrackCommands(
+                                                   session_->project(), choice.type, choice.name, senders));
+                    }
             }
             else if (arg == "--strip-preset" && i + 1 < tokens.size())
             {
