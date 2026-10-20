@@ -399,22 +399,9 @@ void InstrumentRack::rebuild()
 
 void InstrumentRack::addInstrumentTrack(const std::string& type)
 {
-    if (!onCommand || project_ == nullptr)
-        return;
-    // The instrument channel and a MIDI track aimed at it, as one step.
-    int count = 0;
-    for (const auto& t : project_->tracks)
-        count += t.isMidi() ? 1 : 0;
-    core::Track channel;
-    channel.name = displayName ? displayName(type) : type;
-    channel.instrument.type = type;
-    channel.instrument.params = plugins::defaultParameters(type);
-    core::Track midi;
-    midi.name = "MIDI " + std::to_string(count + 1);
-    midi.armed = true;
-    onCommand(std::make_unique<core::AddInstrumentTrack>(channel, midi));
-    if (onInserted)
-        onInserted(type);
+    // The session builds the pair (one place names and sets them up).
+    if (onAddMidiTrack)
+        onAddMidiTrack(type);
 }
 
 void InstrumentRack::showAddMenu(juce::Component& target)

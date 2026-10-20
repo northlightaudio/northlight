@@ -27,10 +27,12 @@ public:
     }
     void add(std::unique_ptr<Command> c) { commands_.push_back(std::move(c)); }
     bool empty() const noexcept { return commands_.empty(); }
-    bool isCosmetic() const noexcept override
+    ChangeKind changeKind() const noexcept override
     {
-        return !commands_.empty() &&
-               std::all_of(commands_.begin(), commands_.end(), [](const auto& c) { return c->isCosmetic(); });
+        auto kind = ChangeKind::cosmetic;
+        for (const auto& c : commands_)
+            kind = std::max(kind, c->changeKind());
+        return kind;
     }
     void touchedParameters(std::vector<ParameterTouch>& out) const override
     {

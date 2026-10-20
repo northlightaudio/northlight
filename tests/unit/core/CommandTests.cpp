@@ -3,6 +3,7 @@
 
 #include <catch2/catch_test_macros.hpp>
 
+#include <functional>
 #include <memory>
 
 using namespace aural::core;
@@ -895,4 +896,191 @@ TEST_CASE("A row height is cosmetic, alone or grouped; other edits are not", "[c
     stack.execute(p, std::make_unique<SetTrackGain>(id, 0.5f));
     stack.endGroup();
     CHECK_FALSE(stack.undoTop()->isCosmetic());
+}
+
+namespace
+{
+// A project with something for every command to act on.
+Project everyCommandFixture()
+{
+    Project p;
+    Track audio;
+    audio.id = 1;
+    audio.name = "Audio";
+    audio.group = 6;
+    audio.clips.push_back({10, "a", "a.wav", 0, 1000, 0, 1.0f});
+    audio.clips.push_back({11, "b", "a.wav", 1000, 1000, 1000, 1.0f});
+    Insert gain;
+    gain.id = 20;
+    gain.type = "aural.gain";
+    gain.params = {0.5f};
+    Insert gain2 = gain;
+    gain2.id = 22;
+    audio.inserts = {gain, gain2};
+    audio.sends.push_back({5, 0.5f, false});
+    AutomationLane lane;
+    lane.id = 30;
+    lane.points = {{0, 1.0f}, {1000, 0.5f}};
+    audio.automation.push_back(lane);
+    Track midi;
+    midi.id = 2;
+    midi.name = "MIDI 1";
+    midi.kind = TrackKind::midi;
+    midi.midiTarget = 3;
+    MidiClip clip;
+    clip.id = 40;
+    clip.start = 0;
+    clip.length = 4000;
+    clip.notes = {{41, 60, 100, 10, 500}, {42, 64, 90, 1000, 500}};
+    midi.midiClips.push_back(clip);
+    Track channel;
+    channel.id = 3;
+    channel.name = "Keys";
+    channel.kind = TrackKind::instrument;
+    channel.instrument.id = 21;
+    channel.instrument.type = "aural.aurora";
+    p.tracks = {audio, midi, channel};
+    Bus hall;
+    hall.id = 5;
+    hall.name = "Hall";
+    hall.fx = true;
+    p.buses.push_back(hall);
+    p.groups.push_back(Group{6, "Group", 0});
+    p.markers.push_back(Marker{7, "Intro", 0, 0});
+    p.nextId = 100;
+    return p;
+}
+
+using MakeCommand = std::function<std::unique_ptr<Command>()>;
+
+template <typename C, typename... Args>
+std::pair<std::string, MakeCommand> make(std::string name, Args... args)
+{
+    return {std::move(name), [=] { return std::make_unique<C>(args...); }};
+}
+} // namespace
+
+TEST_CASE("Every command undoes to the exact project it started from and redoes to the same result",
+          "[core][undo]")
+{
+    Track instrumentChannel;
+    instrumentChannel.kind = TrackKind::instrument;
+    instrumentChannel.instrument.type = "aural.pulsar";
+    Track midiTrack;
+    midiTrack.kind = TrackKind::midi;
+    MidiClip newClip;
+    newClip.start = 5000;
+    newClip.length = 100;
+    newClip.notes = {{invalidId, 70, 100, 0, 50}};
+    Insert eq;
+    eq.type = "aural.eq";
+    Insert starbit;
+    starbit.type = "aural.starbit";
+    AutomationLane panLane;
+    panLane.target = AutomationTarget::pan;
+    panLane.points = {{0, 0.5f}};
+    const std::vector<std::pair<std::string, std::string>> renames{{"a.wav", "b.wav"}};
+
+    const std::vector<std::pair<std::string, MakeCommand>> commands = {
+        make<AddTrack>("AddTrack", Track{}),
+        make<AddInstrumentTrack>("AddInstrumentTrack", instrumentChannel, midiTrack),
+        make<SetMidiTarget>("SetMidiTarget", Id{2}, invalidId, 3),
+        make<RemoveTrack>("RemoveTrack audio", Id{1}),
+        make<RemoveTrack>("RemoveTrack instrument", Id{3}),
+        make<MoveTrack>("MoveTrack", Id{1}, 2),
+        make<AddBus>("AddBus", Bus{}),
+        make<RemoveBus>("RemoveBus", Id{5}),
+        make<RemoveGroup>("RemoveGroup", Id{6}),
+        make<SetChannelGroup>("SetChannelGroup", Id{3}, Id{6}),
+        make<SetGroupGain>("SetGroupGain", Id{6}, 0.5f),
+        make<SetGroupMute>("SetGroupMute", Id{6}, true),
+        make<SetGroupSolo>("SetGroupSolo", Id{6}, true),
+        make<SetTrackMidiInput>("SetTrackMidiInput", Id{2}, std::string("Keystation")),
+        make<SetTrackMidiOutput>("SetTrackMidiOutput", Id{2}, true, 3),
+        make<AddMidiClip>("AddMidiClip", Id{2}, newClip),
+        make<RemoveMidiClip>("RemoveMidiClip", Id{2}, Id{40}),
+        make<MoveMidiClip>("MoveMidiClip", Id{2}, Id{40}, Id{2}, SamplePosition{500}),
+        make<TrimMidiClip>("TrimMidiClip", Id{2}, Id{40}, SamplePosition{0}, SamplePosition{2000}),
+        make<SplitMidiClip>("SplitMidiClip", Id{2}, Id{40}, SamplePosition{800}),
+        make<DuplicateMidiClip>("DuplicateMidiClip", Id{2}, Id{40}, SamplePosition{-1}),
+        make<AddNote>("AddNote", Id{2}, Id{40}, MidiNote{invalidId, 67, 100, 0, 100}),
+        make<RemoveNote>("RemoveNote", Id{2}, Id{40}, Id{41}),
+        make<SetNote>("SetNote", Id{2}, Id{40}, MidiNote{41, 61, 90, 20, 100}),
+        make<QuantiseNotes>(
+            "QuantiseNotes", Id{2}, Id{40}, std::vector<Id>{41, 42}, SamplePosition{480}, 1.0f),
+        make<AddMarker>("AddMarker", Marker{invalidId, "B", 500, 0}),
+        make<RemoveMarker>("RemoveMarker", Id{7}),
+        make<SetMarker>("SetMarker", Id{7}, SamplePosition{100}, SamplePosition{0}, std::string("X")),
+        make<SetOutputBus>("SetOutputBus", Id{1}, Id{5}),
+        make<SetSend>("SetSend", Id{3}, Id{5}, 0.5f, true),
+        make<RemoveSend>("RemoveSend", Id{1}, Id{5}),
+        make<SetPhaseInvert>("SetPhaseInvert", Id{1}, true),
+        make<SetColour>("SetColour", Id{1}, std::uint32_t{0xff112233u}),
+        make<SetChannelHeight>("SetChannelHeight", Id{1}, 90),
+        make<SetMasterGain>("SetMasterGain", 0.5f),
+        make<AddInsert>("AddInsert", Id{1}, eq, 0),
+        make<RemoveInsert>("RemoveInsert", Id{1}, Id{20}),
+        make<SetInstrument>("SetInstrument", Id{3}, starbit),
+        make<MoveInsert>("MoveInsert", Id{1}, Id{20}, 1),
+        make<SetInsertParameter>("SetInsertParameter", Id{1}, Id{20}, 0, 0.9f),
+        make<SetInsertMix>("SetInsertMix", Id{1}, Id{20}, 0.5f),
+        make<SetInsertSidechain>("SetInsertSidechain", Id{1}, Id{20}, Id{3}),
+        make<SetInsertBypass>("SetInsertBypass", Id{1}, Id{20}, true),
+        make<SetStripPosition>("SetStripPosition", Id{1}, true),
+        make<AddAutomationLane>("AddAutomationLane", Id{1}, panLane),
+        make<RemoveAutomationLane>("RemoveAutomationLane", Id{1}, Id{30}),
+        make<SetAutomationPoints>("SetAutomationPoints",
+                                  Id{1},
+                                  Id{30},
+                                  std::vector<AutomationPoint>{{5, 0.2f}},
+                                  std::string("Edit automation")),
+        make<SetAutomationMode>("SetAutomationMode", Id{1}, AutomationMode::touch),
+        make<SetTrackName>("SetTrackName", Id{1}, std::string("Renamed")),
+        make<SetTrackGain>("SetTrackGain", Id{1}, 0.3f),
+        make<SetTrackPan>("SetTrackPan", Id{1}, -0.5f),
+        make<SetTrackMute>("SetTrackMute", Id{1}, true),
+        make<SetTrackInput>("SetTrackInput", Id{1}, 2),
+        make<SetTrackArmed>("SetTrackArmed", Id{1}, true),
+        make<SetTrackMonitor>("SetTrackMonitor", Id{1}, MonitorMode::on),
+        make<SetTrackSolo>("SetTrackSolo", Id{1}, true),
+        make<AddClip>("AddClip", Id{1}, AudioClip{invalidId, "c", "c.wav", 5000, 100, 0, 1.0f}),
+        make<RemoveClip>("RemoveClip", Id{1}, Id{10}),
+        make<MoveClip>("MoveClip", Id{1}, Id{10}, Id{1}, SamplePosition{5000}),
+        make<TrimClip>(
+            "TrimClip", Id{1}, Id{10}, SamplePosition{100}, SamplePosition{500}, SamplePosition{100}),
+        make<SetClipFades>("SetClipFades", Id{1}, Id{10}, SamplePosition{50}, SamplePosition{50}),
+        make<SplitClip>("SplitClip", Id{1}, Id{10}, SamplePosition{500}),
+        make<JoinClips>("JoinClips", Id{1}, Id{10}, Id{11}),
+        make<DuplicateClip>("DuplicateClip", Id{1}, Id{10}, SamplePosition{-1}),
+        make<ShiftClips>("ShiftClips", Id{1}, SamplePosition{0}, SamplePosition{100}),
+        make<SetClipGain>("SetClipGain", Id{1}, Id{10}, 0.5f),
+        make<SetMediaPaths>("SetMediaPaths", renames),
+        make<SetTimeSignature>("SetTimeSignature", 3, 4),
+        make<SetTempo>("SetTempo", 100.0),
+    };
+    for (const auto& [name, makeCommand] : commands)
+    {
+        INFO(name);
+        const Project before = everyCommandFixture();
+        Project p = before;
+        UndoStack stack;
+        REQUIRE_NOTHROW(stack.execute(p, makeCommand()));
+        const Project after = p;
+        CHECK_FALSE(after == before); // it did something
+        // Undo keeps nextId: an id handed out is never handed out again, so a
+        // redo (or anything after it) cannot collide with one the history holds.
+        const auto sameAsBefore = [&]
+        {
+            Project q = p;
+            CHECK(q.nextId >= before.nextId);
+            q.nextId = before.nextId;
+            return q == before;
+        };
+        REQUIRE(stack.undo(p));
+        CHECK(sameAsBefore());
+        REQUIRE(stack.redo(p));
+        CHECK(p == after); // the same ids come back
+        REQUIRE(stack.undo(p));
+        CHECK(sameAsBefore());
+    }
 }

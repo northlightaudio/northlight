@@ -113,6 +113,9 @@ public:
     // A MIDI track that plays an existing instrument channel (placed just above
     // it), or plays nothing when `channel` is invalidId (placed at the end).
     core::Id addMidiTrackPlaying(core::Id channel);
+    // A new instrument channel playing `type`, placed under the MIDI track, which
+    // is aimed at it (one step). Returns the channel's id, or invalidId.
+    core::Id playNewInstrument(core::Id midiTrack, const std::string& type);
     // Whether an insert type is an instrument (a built-in synth or a scanned plugin
     // the registry calls one).
     bool isInstrumentType(const std::string& type) const;
@@ -265,11 +268,29 @@ private:
     void timerCallback() override;
     void publish();
     class SessionKeys;
+    // The pieces every "new MIDI track / new instrument" path shares.
+    core::Track makeInstrumentChannel(const std::string& type) const;
+    std::string nextMidiTrackName() const;
     // A project just read from a file: its parameters put where the processors want them, then published.
     void adoptLoadedParameters();
     // Applies through the undo stack; false (and nothing changed) when the command
     // refers to something that is gone.
     bool applyChecked(std::unique_ptr<core::Command> command);
+    // The one way an edit is applied: the default strip for a new channel, an
+    // automation write while writing, the live plugin state captured before a
+    // removal, the undo stack, then the engine work its change kind needs
+    // (deferred to the end of an open Batch). False when the command was stale.
+    bool run(std::unique_ptr<core::Command> command, bool mayWriteAutomation = true);
+    // Does the engine work for the changes run since the last call: the widest
+    // change kind decides (compile, push values, push parameters, or nothing).
+    void finishChange(core::Command::ChangeKind kind,
+                      const std::vector<core::Command::ParameterTouch>& touches);
+    // Several runs as one undo step (when named) with the engine work done once,
+    // at the end of the outermost batch.
+    class Batch;
+    int batchDepth_ = 0;
+    std::optional<core::Command::ChangeKind> pendingKind_;
+    std::vector<core::Command::ParameterTouch> pendingTouches_;
     void matchDeviceSampleRate();
     void finishRecording(engine::AudioEngine::FinishedRecording finished);
     void saveRegistry();
@@ -287,7 +308,7 @@ private:
         std::vector<core::AutomationPoint> points;
         bool fromPlugin = false; // driven by the plugin's own controls: ended by its gesture, not ours
     };
-    bool recordAutomation(const core::Command& command, bool pushValue = true);
+    bool recordAutomation(const core::Command::AutomationWrite& write, bool pushValue = true);
     // An edit a hosted plugin made itself: recorded while writing.
     void handlePluginEdit(const core::Channel& channel,
                           const core::Insert& insert,

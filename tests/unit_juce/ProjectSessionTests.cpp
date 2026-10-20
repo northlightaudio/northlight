@@ -416,3 +416,45 @@ TEST_CASE_METHOD(SessionFixture,
     group.push_back(std::make_unique<core::SetTrackGain>(id, 0.5f));
     CHECK_NOTHROW(session->executeGroup("Stale", std::move(group)));
 }
+
+TEST_CASE_METHOD(SessionFixture,
+                 "Each edit, its undo and its redo do the engine work their change kind needs",
+                 "[app][session][undo]")
+{
+    const auto id = session->addMidiTrack();
+    const auto channel = session->project().findTrack(id)->midiTarget;
+    session->takeChange();
+    session->execute(std::make_unique<core::SetChannelHeight>(channel, 90)); // cosmetic
+    CHECK(session->takeChange() == ProjectSession::Change::values);
+    session->undo();
+    CHECK(session->takeChange() == ProjectSession::Change::values);        // not a recompile
+    session->execute(std::make_unique<core::SetTrackGain>(channel, 0.5f)); // a live value
+    CHECK(session->takeChange() == ProjectSession::Change::values);
+    session->undo();
+    CHECK(session->takeChange() == ProjectSession::Change::values);
+    session->redo();
+    CHECK(session->takeChange() == ProjectSession::Change::values);
+    session->execute(std::make_unique<core::SetTrackName>(channel, "Keys")); // structure
+    CHECK(session->takeChange() == ProjectSession::Change::structure);
+}
+
+TEST_CASE_METHOD(SessionFixture,
+                 "A MIDI track that plays nothing gets a new instrument channel under it, in one step",
+                 "[app][session][midi]")
+{
+    const auto midi = session->addMidiTrackPlaying(core::invalidId);
+    const auto steps = session->undoName();
+    const auto channel = session->playNewInstrument(midi, "aural.starbit");
+    REQUIRE(channel != core::invalidId);
+    const auto& project = session->project();
+    CHECK(project.findTrack(midi)->midiTarget == channel);
+    CHECK(project.trackIndex(channel) == project.trackIndex(midi) + 1);
+    CHECK(project.findTrack(channel)->instrument.type == "aural.starbit");
+    CHECK(project.findTrack(channel)->name == "Starbit");
+    CHECK_FALSE(project.findTrack(channel)->strip.empty()); // the channel strip, like any new channel
+    CHECK(session->undoName() == "Play a new instrument");
+    session->undo();
+    CHECK(session->project().findTrack(channel) == nullptr);
+    CHECK(session->project().findTrack(midi)->midiTarget == core::invalidId);
+    CHECK(session->undoName() == steps);
+}

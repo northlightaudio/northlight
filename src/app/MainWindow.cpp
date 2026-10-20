@@ -881,6 +881,7 @@ private:
             selectionChanged(trackId);
         };
         instruments_.onInserted = [this](const std::string& type) { browser_.rememberRecent(type); };
+        instruments_.onAddMidiTrack = [this](const std::string& type) { addMidiTrack(type); };
 
         inspector_.onCommand = [this](std::unique_ptr<core::Command> c) { session_.execute(std::move(c)); };
         inspector_.onGestureBegin = [this](const std::string& name) { session_.beginGesture(name); };
@@ -1448,21 +1449,8 @@ private:
     // the track at it (one undo step).
     void playNewInstrument(core::Id midiTrack, const std::string& type)
     {
-        const auto& project = session_.project();
-        const int at = project.trackIndex(midiTrack);
-        if (at < 0)
+        if (session_.playNewInstrument(midiTrack, type) == core::invalidId)
             return;
-        core::Track channel;
-        channel.id = project.nextId; // known now, so the target can name it
-        channel.kind = core::TrackKind::instrument;
-        channel.name = mixer_.insertDisplayName(type);
-        channel.instrument.type = type;
-        channel.instrument.params = plugins::defaultParameters(type);
-        const auto& midi = project.tracks[static_cast<size_t>(at)];
-        std::vector<std::unique_ptr<core::Command>> commands;
-        commands.push_back(std::make_unique<core::AddTrack>(channel, at + 1));
-        commands.push_back(std::make_unique<core::SetMidiTarget>(midiTrack, channel.id, midi.midiChannel));
-        session_.executeGroup("Play a new instrument", std::move(commands));
         browser_.rememberRecent(type);
         selectionChanged(midiTrack);
     }
@@ -1491,7 +1479,7 @@ private:
             else if (track != nullptr && track->isMidi())
                 playNewInstrument(track->id, type);
             else
-                instruments_.addInstrumentTrack(type);
+                addMidiTrack(type);
             return;
         }
         if (trackId == core::invalidId || session_.project().findChannel(trackId) == nullptr)

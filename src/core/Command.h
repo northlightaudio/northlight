@@ -3,6 +3,7 @@
 #include "core/Model.h"
 
 #include <memory>
+#include <optional>
 #include <string>
 #include <utility>
 #include <vector>
@@ -24,11 +25,40 @@ public:
     // A live command changes a value the engine takes from the model without a
     // recompile (gains, pans, insert parameters and bypass): the session pushes
     // the new values instead of publishing a new snapshot.
-    virtual bool isLive() const noexcept { return false; }
-    // A cosmetic command changes only what the views show (a row height): the
-    // engine reads nothing it touches, so the session neither recompiles nor
-    // pushes values.
-    virtual bool isCosmetic() const noexcept { return false; }
+    // What a command changes, from the least costly to the most: the session
+    // picks the engine work from it (and from a group's widest member).
+    //   cosmetic:   only what the views show (a row height); no engine work.
+    //   parameters: insert parameters; pushed to their processors.
+    //   values:     fader, pan, mute and bypass values the running graph reads
+    //               without a recompile; every channel's values are pushed.
+    //   structure:  anything else; a new snapshot is compiled.
+    enum class ChangeKind : std::uint8_t
+    {
+        cosmetic,
+        parameters,
+        values,
+        structure,
+    };
+    virtual ChangeKind changeKind() const noexcept { return ChangeKind::structure; }
+    bool isCosmetic() const noexcept { return changeKind() == ChangeKind::cosmetic; }
+    // A command that copies inserts for undo (removing or replacing them) needs
+    // the live plugin state pulled into the model first, so undo brings back
+    // what the user had rather than what the last save held.
+    virtual bool capturesInsertState() const noexcept { return false; }
+    // A new track or bus takes these strip modules when it has none (the
+    // session supplies its default strip). Before apply only.
+    virtual void setDefaultStrip(const std::vector<Insert>&) {}
+    // A value that, while the transport plays in a writing automation mode, is
+    // written into automation instead of set (a fader, pan or parameter move).
+    struct AutomationWrite
+    {
+        Id channel = invalidId;
+        AutomationTarget target = AutomationTarget::gain;
+        Id insert = invalidId;
+        int parameter = 0;
+        float value = 0.0f;
+    };
+    virtual std::optional<AutomationWrite> automationWrite() const noexcept { return std::nullopt; }
     // The insert parameters this command sets (or restores on undo), so the
     // session can push exactly those to processors that own their parameters.
     struct ParameterTouch
@@ -90,7 +120,7 @@ public:
     Id trackId() const noexcept { return track_.id; }
     // Gives the track these strip modules when it has none (the session supplies
     // the default strip; ids are allocated on apply). Before apply only.
-    void setDefaultStrip(const std::vector<Insert>& modules);
+    void setDefaultStrip(const std::vector<Insert>& modules) override;
 
 private:
     Track track_;
@@ -110,7 +140,7 @@ public:
     Id channelId() const noexcept { return channel_.id; }
     Id midiTrackId() const noexcept { return midi_.id; }
     // The channel strip for the instrument channel (the MIDI track has none).
-    void setDefaultStrip(const std::vector<Insert>& modules);
+    void setDefaultStrip(const std::vector<Insert>& modules) override;
 
 private:
     Track channel_, midi_;
@@ -149,6 +179,7 @@ class RemoveTrack final : public Command
 {
 public:
     explicit RemoveTrack(Id trackId);
+    bool capturesInsertState() const noexcept override { return true; }
     std::string name() const override { return "Remove track"; }
     void apply(Project&) override;
     void revert(Project&) override;
@@ -182,7 +213,7 @@ public:
     void apply(Project&) override;
     void revert(Project&) override;
     Id busId() const noexcept { return bus_.id; }
-    void setDefaultStrip(const std::vector<Insert>& modules);
+    void setDefaultStrip(const std::vector<Insert>& modules) override;
 
 private:
     Bus bus_;
@@ -194,6 +225,7 @@ class RemoveBus final : public Command
 {
 public:
     explicit RemoveBus(Id busId);
+    bool capturesInsertState() const noexcept override { return true; }
     Id busId() const noexcept { return busId_; }
     std::string name() const override { return "Remove bus"; }
     void apply(Project&) override;
@@ -267,7 +299,7 @@ private:
 class SetGroupGain final : public Command
 {
 public:
-    bool isLive() const noexcept override { return true; }
+    ChangeKind changeKind() const noexcept override { return ChangeKind::values; }
     SetGroupGain(Id groupId, float ratio);
     std::string name() const override { return "Set group gain"; }
     void apply(Project&) override;
@@ -601,7 +633,7 @@ private:
 class SetChannelHeight final : public Command
 {
 public:
-    bool isCosmetic() const noexcept override { return true; }
+    ChangeKind changeKind() const noexcept override { return ChangeKind::cosmetic; }
     SetChannelHeight(Id channelId, int height);
     std::string name() const override { return "Resize track"; }
     void apply(Project&) override;
@@ -615,7 +647,7 @@ private:
 class SetMasterGain final : public Command
 {
 public:
-    bool isLive() const noexcept override { return true; }
+    ChangeKind changeKind() const noexcept override { return ChangeKind::values; }
     explicit SetMasterGain(float gain);
     std::string name() const override { return "Set master gain"; }
     void apply(Project&) override;
@@ -644,6 +676,7 @@ private:
 class RemoveInsert final : public Command
 {
 public:
+    bool capturesInsertState() const noexcept override { return true; }
     RemoveInsert(Id channelId, Id insertId);
     std::string name() const override { return "Remove insert"; }
     void apply(Project&) override;
@@ -662,6 +695,7 @@ private:
 class SetInstrument final : public Command
 {
 public:
+    bool capturesInsertState() const noexcept override { return true; }
     SetInstrument(Id trackId, Insert instrument);
     std::string name() const override
     {
@@ -693,8 +727,12 @@ private:
 class SetInsertParameter final : public Command
 {
 public:
-    bool isLive() const noexcept override { return true; }
+    ChangeKind changeKind() const noexcept override { return ChangeKind::parameters; }
     SetInsertParameter(Id channelId, Id insertId, int parameter, float value);
+    std::optional<AutomationWrite> automationWrite() const noexcept override
+    {
+        return AutomationWrite{channelId_, AutomationTarget::insertParameter, insertId_, parameter_, value_};
+    }
     std::string name() const override { return "Set parameter"; }
     void apply(Project&) override;
     void revert(Project&) override;
@@ -745,7 +783,7 @@ private:
 class SetInsertBypass final : public Command
 {
 public:
-    bool isLive() const noexcept override { return true; }
+    ChangeKind changeKind() const noexcept override { return ChangeKind::values; }
     SetInsertBypass(Id channelId, Id insertId, bool bypass);
     std::string name() const override { return "Bypass insert"; }
     void apply(Project&) override;
@@ -889,8 +927,12 @@ private:
 class SetTrackGain final : public Command
 {
 public:
-    bool isLive() const noexcept override { return true; }
+    ChangeKind changeKind() const noexcept override { return ChangeKind::values; }
     SetTrackGain(Id trackId, float gain);
+    std::optional<AutomationWrite> automationWrite() const noexcept override
+    {
+        return AutomationWrite{trackId_, AutomationTarget::gain, invalidId, 0, value_};
+    }
     std::string name() const override { return "Set track gain"; }
     void apply(Project&) override;
     void revert(Project&) override;
@@ -905,8 +947,12 @@ private:
 class SetTrackPan final : public Command
 {
 public:
-    bool isLive() const noexcept override { return true; }
+    ChangeKind changeKind() const noexcept override { return ChangeKind::values; }
     SetTrackPan(Id trackId, float pan);
+    std::optional<AutomationWrite> automationWrite() const noexcept override
+    {
+        return AutomationWrite{trackId_, AutomationTarget::pan, invalidId, 0, value_};
+    }
     std::string name() const override { return "Set track pan"; }
     void apply(Project&) override;
     void revert(Project&) override;

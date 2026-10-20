@@ -406,8 +406,27 @@ fader, M/S/R toggle it. The default dock height is 480 so the fader has its
 full travel. Not in this pass: the 112 px wide strip mode, master inserts (the
 model's master has none), solo-safe.
 
+The command pipeline: every edit goes through `ProjectSession::run`, whether
+it comes alone (`execute`), as a named group (`executeGroup`), from a finished
+recording, a recovery or an automation pass. `run` asks the command, not its
+type, what it needs: `setDefaultStrip` (a new track or bus gets the channel
+strip), `automationWrite` (a fader, pan or parameter move recorded while
+writing), `capturesInsertState` (removing or replacing an insert pulls the live
+plugin state first), then applies it through the undo stack (a stale command,
+one whose track is gone, is dropped). The engine work follows its
+`Command::ChangeKind`: cosmetic (a row height: none), parameters (pushed to
+their processors), values (every channel's live values pushed) or structure (a
+new snapshot). A `ProjectSession::Batch` makes several runs one undo step and
+does the engine work once, for the widest kind among them; undo and redo use
+the undone command's kind. Undo groups nest (an inner group joins the open one).
+The paths that make a MIDI track with a new instrument (the "+" menu, the
+Instruments panel, the browser, "Plays... New instrument") all go through the
+session (`addMidiTrack`, `playNewInstrument`), which names and sets up the pair
+in one place. A test applies, undoes and redoes every command and compares the
+whole project each time.
+
 Live values and smoothing: a fader, pan, master or insert-parameter command is
-"live" (`Command::isLive`). The session applies it to the model (undo) and pushes
+live (`ChangeKind::values` or `parameters`). The session applies it to the model (undo) and pushes
 the model's values into the running graph (`AudioEngine::applyLiveValues`) instead
 of recompiling: channel gains and pans are targets in a per-channel
 `engine::ChannelRuntime` (kept in a `RuntimeCache` across compiles, like insert

@@ -40,6 +40,8 @@ public:
     std::function<void(core::Id trackId)> onSelectTrack;
     // An instrument was chosen (the owner remembers it as recent).
     std::function<void(const std::string& type)> onInserted;
+    // "+ Instrument": a new instrument channel playing `type` and a MIDI track for it.
+    std::function<void(const std::string& type)> onAddMidiTrack;
 
     // Makes a new instrument channel playing `type`, and a MIDI track for it, (from the panel's "+" or a
     // plugin dropped on the panel).

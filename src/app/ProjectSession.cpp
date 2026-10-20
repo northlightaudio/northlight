@@ -100,20 +100,6 @@ ProjectSession::~ProjectSession()
 
 // ----- editing --------------------------------------------------------------------------
 
-namespace
-{
-// Every new track and bus gets the channel strip (its modules off).
-void giveChannelStrip(core::Command& command)
-{
-    if (auto* addTrack = dynamic_cast<core::AddTrack*>(&command))
-        addTrack->setDefaultStrip(plugins::strip::defaultStrip());
-    else if (auto* addInstrument = dynamic_cast<core::AddInstrumentTrack*>(&command))
-        addInstrument->setDefaultStrip(plugins::strip::defaultStrip());
-    else if (auto* addBus = dynamic_cast<core::AddBus*>(&command))
-        addBus->setDefaultStrip(plugins::strip::defaultStrip());
-}
-} // namespace
-
 void ProjectSession::notify(Change change)
 {
     // structure < values < parameters: keep the widest.
@@ -129,44 +115,97 @@ ProjectSession::Change ProjectSession::takeChange() noexcept
     return change;
 }
 
-void ProjectSession::execute(std::unique_ptr<core::Command> command)
+class ProjectSession::Batch
 {
-    giveChannelStrip(*command);
-    if (recordAutomation(*command))
-        return; // written into automation, not into the static value
-    // A removal copies the model insert into the command for undo: pull the live
-    // plugin state into the model first, so undo brings back what the user had,
-    // not what the last save held.
-    if (dynamic_cast<core::RemoveInsert*>(command.get()) != nullptr ||
-        dynamic_cast<core::RemoveTrack*>(command.get()) != nullptr ||
-        dynamic_cast<core::RemoveBus*>(command.get()) != nullptr ||
-        dynamic_cast<core::SetInstrument*>(command.get()) != nullptr) // replacing or removing one
+public:
+    // A name makes the runs one undo step; without one they only share the
+    // engine work.
+    Batch(ProjectSession& session, const std::string& name) : session_(session), grouped_(!name.empty())
+    {
+        if (grouped_)
+            session_.undo_.beginGroup(name);
+        ++session_.batchDepth_;
+    }
+    ~Batch()
+    {
+        if (grouped_)
+            session_.undo_.endGroup();
+        if (--session_.batchDepth_ > 0 || !session_.pendingKind_.has_value())
+            return;
+        const auto kind = *session_.pendingKind_;
+        auto touches = std::move(session_.pendingTouches_);
+        session_.pendingKind_.reset();
+        session_.pendingTouches_.clear();
+        session_.finishChange(kind, touches);
+    }
+    Batch(const Batch&) = delete;
+    Batch& operator=(const Batch&) = delete;
+
+private:
+    ProjectSession& session_;
+    bool grouped_;
+};
+
+bool ProjectSession::run(std::unique_ptr<core::Command> command, bool mayWriteAutomation)
+{
+    command->setDefaultStrip(plugins::strip::defaultStrip()); // every new track and bus has the strip
+    if (mayWriteAutomation)
+        if (const auto write = command->automationWrite(); write.has_value() && recordAutomation(*write))
+            return true; // written into automation, not into the static value
+    if (command->capturesInsertState())
         captureInsertStates();
-    const bool live = command->isLive();
-    const bool cosmetic = command->isCosmetic();
-    const bool parametersOnly = dynamic_cast<core::SetInsertParameter*>(command.get()) != nullptr;
+    const auto kind = command->changeKind();
     std::vector<core::Command::ParameterTouch> touches;
     command->touchedParameters(touches);
     mirrorOwnedParameters(touches);
     if (!applyChecked(std::move(command)))
-        return;
+        return false;
     modified_ = true;
-    edited();
-    if (cosmetic)
-        notify(Change::values); // the views redraw; the engine is untouched
-    else if (live)
+    pendingKind_ = std::max(pendingKind_.value_or(core::Command::ChangeKind::cosmetic), kind);
+    pendingTouches_.insert(pendingTouches_.end(), touches.begin(), touches.end());
+    if (batchDepth_ == 0)
     {
-        // A gain, pan or parameter: the running graph takes the new value
-        // (ramped) without a recompile.
-        // A parameter goes to its processor alone; anything else re-pushes
-        // every channel's values.
-        if (!parametersOnly)
-            engine_.applyLiveValues(project_);
-        engine_.pushInsertParameters(project_, touches);
-        notify(parametersOnly ? Change::parameters : Change::values);
+        const auto pending = *pendingKind_;
+        auto pendingTouches = std::move(pendingTouches_);
+        pendingKind_.reset();
+        pendingTouches_.clear();
+        finishChange(pending, pendingTouches);
     }
-    else
-        publish();
+    return true;
+}
+
+void ProjectSession::finishChange(core::Command::ChangeKind kind,
+                                  const std::vector<core::Command::ParameterTouch>& touches)
+{
+    using Kind = core::Command::ChangeKind;
+    edited();
+    switch (kind)
+    {
+        case Kind::cosmetic:
+            notify(Change::values); // the views redraw; the engine is untouched
+            break;
+        case Kind::parameters:
+            // A parameter goes to its processor alone, without a recompile.
+            engine_.pushInsertParameters(project_, touches);
+            notify(Change::parameters);
+            break;
+        case Kind::values:
+            // A gain, pan or bypass: the running graph takes every channel's new
+            // values (ramped) without a recompile.
+            engine_.applyLiveValues(project_);
+            engine_.pushInsertParameters(project_, touches);
+            notify(Change::values);
+            break;
+        case Kind::structure:
+            publish();
+            engine_.pushInsertParameters(project_, touches);
+            break;
+    }
+}
+
+void ProjectSession::execute(std::unique_ptr<core::Command> command)
+{
+    run(std::move(command));
 }
 
 void ProjectSession::beginGesture(const std::string& name)
@@ -191,30 +230,10 @@ void ProjectSession::executeGroup(const std::string& name,
 {
     if (commands.empty())
         return;
-    const bool cosmetic = std::all_of(
-        commands.begin(), commands.end(), [](const auto& c) { return c != nullptr && c->isCosmetic(); });
-    undo_.beginGroup(name);
-    std::vector<core::Command::ParameterTouch> touches;
+    const Batch batch(*this, name);
     for (auto& command : commands)
-    {
-        giveChannelStrip(*command);
-        std::vector<core::Command::ParameterTouch> own;
-        command->touchedParameters(own);
-        mirrorOwnedParameters(own);
-        touches.insert(touches.end(), own.begin(), own.end());
-        if (!applyChecked(std::move(command)))
+        if (!run(std::move(command)))
             break; // the rest of the group was built on what this one would have done
-    }
-    undo_.endGroup();
-    modified_ = true;
-    edited();
-    if (cosmetic)
-    {
-        notify(Change::values);
-        return;
-    }
-    publish();
-    engine_.pushInsertParameters(project_, touches);
 }
 
 std::string ProjectSession::normaliseClip(core::Id trackId, core::Id clipId, float targetDb)
@@ -265,41 +284,26 @@ bool ProjectSession::applyChecked(std::unique_ptr<core::Command> command)
 
 void ProjectSession::undo()
 {
-    if (undo_.undo(project_))
-    {
-        modified_ = true;
-        edited();
-        if (const auto* undone = undo_.redoTop(); undone != nullptr && undone->isCosmetic())
-        {
-            notify(Change::values);
-            return;
-        }
-        publish();
-        // Parameters the undone command restored reach plugins that own theirs.
-        std::vector<core::Command::ParameterTouch> touches;
-        if (const auto* undone = undo_.redoTop())
-            undone->touchedParameters(touches);
-        engine_.pushInsertParameters(project_, touches);
-    }
+    if (!undo_.undo(project_))
+        return;
+    modified_ = true;
+    // The engine work the undone command's kind needs, with the parameters it
+    // restored (they reach plugins that own theirs).
+    const auto* undone = undo_.redoTop();
+    std::vector<core::Command::ParameterTouch> touches;
+    undone->touchedParameters(touches);
+    finishChange(undone->changeKind(), touches);
 }
 
 void ProjectSession::redo()
 {
-    if (undo_.redo(project_))
-    {
-        modified_ = true;
-        edited();
-        if (const auto* redone = undo_.undoTop(); redone != nullptr && redone->isCosmetic())
-        {
-            notify(Change::values);
-            return;
-        }
-        publish();
-        std::vector<core::Command::ParameterTouch> touches;
-        if (const auto* redone = undo_.undoTop())
-            redone->touchedParameters(touches);
-        engine_.pushInsertParameters(project_, touches);
-    }
+    if (!undo_.redo(project_))
+        return;
+    modified_ = true;
+    const auto* redone = undo_.undoTop();
+    std::vector<core::Command::ParameterTouch> touches;
+    redone->touchedParameters(touches);
+    finishChange(redone->changeKind(), touches);
 }
 
 void ProjectSession::mirrorOwnedParameters(const std::vector<core::Command::ParameterTouch>& touches)
@@ -333,36 +337,46 @@ void ProjectSession::mirrorOwnedParameters(const std::vector<core::Command::Para
     }
 }
 
+core::Track ProjectSession::makeInstrumentChannel(const std::string& type) const
+{
+    // Named for the instrument ("Pulsar"); a type with no name yet reads "Instrument".
+    core::Track channel;
+    channel.kind = core::TrackKind::instrument;
+    channel.name = inserts_.displayName(type);
+    if (channel.name.empty() || channel.name == type)
+        channel.name = "Instrument";
+    channel.instrument.type = type;
+    channel.instrument.params = plugins::defaultParameters(type);
+    return channel;
+}
+
+std::string ProjectSession::nextMidiTrackName() const
+{
+    int count = 0;
+    for (const auto& t : project_.tracks)
+        count += t.isMidi() ? 1 : 0;
+    return "MIDI " + std::to_string(count + 1);
+}
+
 core::Id ProjectSession::addMidiTrack(const std::string& instrumentType)
 {
     // A MIDI track with a new instrument: the instrument channel and the MIDI
     // track aimed at it, as one step.
-    int count = 0;
-    for (const auto& t : project_.tracks)
-        if (t.isMidi())
-            ++count;
     const auto type = instrumentType.empty() ? plugins::aurora::type : instrumentType;
-    core::Track channel;
-    channel.name = plugins::BuiltInFactory::isInstrument(type) ? plugins::BuiltInFactory::displayName(type)
-                                                               : std::string("Instrument");
-    channel.instrument.type = type;
-    channel.instrument.params = plugins::defaultParameters(type);
     core::Track midi;
-    midi.name = "MIDI " + std::to_string(count + 1);
+    midi.name = nextMidiTrackName();
     midi.armed = true;
-    auto command = std::make_unique<core::AddInstrumentTrack>(channel, midi);
-    const auto* raw = command.get();
-    execute(std::move(command));
+    auto command = std::make_unique<core::AddInstrumentTrack>(makeInstrumentChannel(type), midi);
+    const auto* raw = command.get(); // kept alive by the undo history
+    if (!run(std::move(command)))
+        return core::invalidId;
     return raw->midiTrackId();
 }
 
 core::Id ProjectSession::addMidiTrackPlaying(core::Id channel)
 {
-    int count = 0;
-    for (const auto& t : project_.tracks)
-        count += t.isMidi() ? 1 : 0;
     core::Track midi;
-    midi.name = "MIDI " + std::to_string(count + 1);
+    midi.name = nextMidiTrackName();
     midi.kind = core::TrackKind::midi;
     midi.armed = true;
     int index = -1;
@@ -373,8 +387,26 @@ core::Id ProjectSession::addMidiTrackPlaying(core::Id channel)
     }
     auto command = std::make_unique<core::AddTrack>(midi, index);
     const auto* raw = command.get();
-    execute(std::move(command));
+    if (!run(std::move(command)))
+        return core::invalidId;
     return raw->trackId();
+}
+
+core::Id ProjectSession::playNewInstrument(core::Id midiTrack, const std::string& type)
+{
+    const auto* midi = project_.findTrack(midiTrack);
+    if (midi == nullptr || !midi->isMidi())
+        return core::invalidId;
+    const int midiChannel = midi->midiChannel;
+    const Batch batch(*this, "Play a new instrument");
+    auto add =
+        std::make_unique<core::AddTrack>(makeInstrumentChannel(type), project_.trackIndex(midiTrack) + 1);
+    const auto* raw = add.get();
+    if (!run(std::move(add)))
+        return core::invalidId;
+    const auto channel = raw->trackId(); // allocated on apply
+    run(std::make_unique<core::SetMidiTarget>(midiTrack, channel, midiChannel));
+    return channel;
 }
 
 std::string ProjectSession::importAudioFile(const juce::File& file, core::SamplePosition at)
@@ -1075,7 +1107,8 @@ void ProjectSession::finishRecording(engine::AudioEngine::FinishedRecording fini
     int takes = 0;
     int failures = 0;
 
-    undo_.beginGroup("Record");
+    // One "Record" step; the engine work happens once, below.
+    auto batch = std::make_unique<Batch>(*this, "Record");
     for (const auto& r : finished.results)
     {
         dropped = std::max(dropped, r.dropped);
@@ -1113,7 +1146,7 @@ void ProjectSession::finishRecording(engine::AudioEngine::FinishedRecording fini
         clip.length = placement.length;
         if (clip.length > 0 && project_.findTrack(r.trackId) != nullptr)
         {
-            undo_.execute(project_, std::make_unique<core::AddClip>(r.trackId, clip));
+            run(std::make_unique<core::AddClip>(r.trackId, clip), false);
             takes = std::max(takes, r.takeIndex + 1);
         }
     }
@@ -1125,10 +1158,8 @@ void ProjectSession::finishRecording(engine::AudioEngine::FinishedRecording fini
         if (project_.findTrack(take.trackId) != nullptr)
         {
             take.clip.name = "Take " + std::to_string(++midiClips);
-            undo_.execute(project_, std::make_unique<core::AddMidiClip>(take.trackId, take.clip));
+            run(std::make_unique<core::AddMidiClip>(take.trackId, take.clip), false);
         }
-    undo_.endGroup();
-    modified_ = true;
     removeOrphanSidecars(mediaFolder());
 
     if (failures > 0)
@@ -1145,7 +1176,8 @@ void ProjectSession::finishRecording(engine::AudioEngine::FinishedRecording fini
         recordingMessage_ = "Recorded " + std::to_string(finished.session->inputs().size()) + " track(s)" +
                             (takes > 1 ? ", " + std::to_string(takes) + " takes" : std::string{}) +
                             ", placed " + std::to_string(latency) + " samples early for latency";
-    publish();
+    batch.reset(); // ends the step and publishes
+    notify(Change::structure);
 }
 
 void ProjectSession::updateLiveRecording(engine::LiveRecording& into)
@@ -1227,7 +1259,7 @@ int ProjectSession::recoverPartialRecordings()
         return 0;
     int recovered = 0;
     std::map<juce::String, core::Id> newTracks; // recording base -> the track made for its takes
-    undo_.beginGroup("Recover recordings");
+    std::optional<Batch> batch;                 // opened with the first recovery: one step, published once
     for (const auto& partial : folder.findChildFiles(juce::File::findFiles, false, "*.partial.wav"))
     {
         const auto path = partial.getFullPathName().toStdString();
@@ -1282,9 +1314,11 @@ int ProjectSession::recoverPartialRecordings()
         if (target == core::invalidId)
             if (const auto made = newTracks.find(name.base); made != newTracks.end())
                 target = made->second;
+        if (!batch.has_value())
+            batch.emplace(*this, "Recover recordings");
         if (target != core::invalidId)
         {
-            undo_.execute(project_, std::make_unique<core::AddClip>(target, clip));
+            run(std::make_unique<core::AddClip>(target, clip), false);
         }
         else
         {
@@ -1295,19 +1329,15 @@ int ProjectSession::recoverPartialRecordings()
             track.clips.push_back(clip);
             auto add = std::make_unique<core::AddTrack>(track);
             const auto* raw = add.get();
-            undo_.execute(project_, std::move(add));
-            newTracks[name.base] = raw->trackId();
+            if (run(std::move(add), false)) // a recovered track gets the channel strip like any other
+                newTracks[name.base] = raw->trackId();
         }
         ++recovered;
     }
-    undo_.endGroup();
+    batch.reset(); // ends the step and publishes
     removeOrphanSidecars(folder);
     if (recovered > 0)
-    {
-        modified_ = true;
         recordingMessage_ = "Recovered " + std::to_string(recovered) + " unfinished recording(s)";
-        publish();
-    }
     return recovered;
 }
 
@@ -1502,34 +1532,19 @@ float ProjectSession::staticValue(const core::Channel& channel, const Automation
     return 0.0f;
 }
 
-bool ProjectSession::recordAutomation(const core::Command& command, bool pushValue)
+bool ProjectSession::recordAutomation(const core::Command::AutomationWrite& write, bool pushValue)
 {
     if (!engine_.isPlaying())
         return false;
     AutomationPass key;
-    float value = 0.0f;
-    if (const auto* gain = dynamic_cast<const core::SetTrackGain*>(&command))
+    key.channel = write.channel;
+    key.target = write.target;
+    if (write.target == core::AutomationTarget::insertParameter)
     {
-        key.channel = gain->channelId();
-        key.target = core::AutomationTarget::gain;
-        value = gain->value();
+        key.insert = write.insert;
+        key.parameter = write.parameter;
     }
-    else if (const auto* pan = dynamic_cast<const core::SetTrackPan*>(&command))
-    {
-        key.channel = pan->channelId();
-        key.target = core::AutomationTarget::pan;
-        value = pan->value();
-    }
-    else if (const auto* param = dynamic_cast<const core::SetInsertParameter*>(&command))
-    {
-        key.channel = param->channelId();
-        key.target = core::AutomationTarget::insertParameter;
-        key.insert = param->insertId();
-        key.parameter = param->parameter();
-        value = param->value();
-    }
-    else
-        return false;
+    const float value = write.value;
     const auto* channel = project_.findChannel(key.channel);
     if (channel == nullptr || !writes(channel->automationMode))
         return false;
@@ -1719,7 +1734,9 @@ void ProjectSession::handlePluginEdit(const core::Channel& channel,
         if (const auto sent = hostedSent_.find({insert.id, edit.index});
             sent != hostedSent_.end() && std::abs(sent->second - edit.value) <= 1.0e-4f)
             return;
-        if (recordAutomation(core::SetInsertParameter(channel.id, insert.id, edit.index, edit.value), false))
+        if (recordAutomation(
+                *core::SetInsertParameter(channel.id, insert.id, edit.index, edit.value).automationWrite(),
+                false))
             for (auto& pass : passes_)
                 if (pass.insert == insert.id && pass.parameter == edit.index &&
                     pass.target == core::AutomationTarget::insertParameter)
@@ -1822,16 +1839,11 @@ void ProjectSession::playHostedAutomation()
 void ProjectSession::executeGroupWithoutRecording(std::vector<std::unique_ptr<core::Command>>& commands)
 {
     // Inside an open gesture (a pass committed by a loop wrap mid-drag) the
-    // commands join the gesture's step; otherwise they are a step of their own.
-    if (!gestureOpen_)
-        undo_.beginGroup("Write automation");
+    // commands join the gesture's step (groups nest); otherwise they are a step
+    // of their own.
+    const Batch batch(*this, "Write automation");
     for (auto& command : commands)
-        undo_.execute(project_, std::move(command));
-    if (!gestureOpen_)
-        undo_.endGroup();
-    modified_ = true;
-    edited();
-    publish();
+        run(std::move(command), false);
 }
 
 void ProjectSession::poll()
