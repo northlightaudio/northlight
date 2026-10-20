@@ -19,16 +19,86 @@ namespace aural::plugins
 
 namespace
 {
-// ----- gain -----------------------------------------------------------------------------------
+float peakOf(const float* left, const float* right, int numSamples) noexcept
+{
+    float peak = 0.0f;
+    for (int i = 0; i < numSamples; ++i)
+        peak = std::max(peak, std::max(std::abs(left[i]), std::abs(right[i])));
+    return peak;
+}
 
-class Gain final : public ProcessorBase
+// What every built-in shares: the feedback block its inline editor reads
+// (levels in and out, a block's gain reduction and a processor-specific
+// extra, and the before/after taps for an analyser), measured only while an
+// editor is watching. Bypassed, a watched built-in measures its input.
+class MeteredBuiltIn : public ProcessorBase
 {
 public:
-    Gain() : ProcessorBase(types::gain, {{"Gain", "dB", -60.0f, 24.0f, 0.0f, false}}) {}
+    MeteredBuiltIn(std::string typeName, std::vector<engine::ParameterInfo> infos, bool taps = false)
+        : ProcessorBase(std::move(typeName), std::move(infos)), feedback_(taps)
+    {
+    }
 
-    void prepareAudio(double, int) override { current_ = dbToGain(parameter(0)); }
+    engine::ProcessorFeedback* feedback() noexcept override { return &feedback_; }
 
-    void processAudio(float* left, float* right, int numSamples) noexcept override
+protected:
+    void prepareAudio(double sampleRate, int maxBlockSize) final
+    {
+        feedback_.prepare(sampleRate);
+        prepareBuiltIn(sampleRate, maxBlockSize);
+    }
+
+    void processAudio(float* left, float* right, int numSamples) noexcept final
+    {
+        const bool watched = feedback_.watched();
+        float in = 0.0f;
+        if (watched)
+        {
+            in = peakOf(left, right, numSamples);
+            feedback_.tap(0, left, right, numSamples);
+        }
+        blockReduction_ = 0.0f;
+        blockExtra_ = 0.0f;
+        processBuiltIn(left, right, numSamples);
+        if (watched)
+        {
+            feedback_.tap(1, left, right, numSamples);
+            feedback_.addBlock(in, peakOf(left, right, numSamples), blockReduction_, blockExtra_, numSamples);
+        }
+    }
+
+    void processBypassed(float* left, float* right, int numSamples) noexcept override
+    {
+        if (!feedback_.watched())
+            return;
+        const float peak = peakOf(left, right, numSamples);
+        feedback_.addBlock(peak, peak, 0.0f, 0.0f, numSamples);
+        feedback_.tap(0, left, right, numSamples);
+        feedback_.tap(1, left, right, numSamples);
+    }
+
+    virtual void prepareBuiltIn(double sampleRate, int maxBlockSize) = 0;
+    virtual void processBuiltIn(float* left, float* right, int numSamples) noexcept = 0;
+
+    // Set by processBuiltIn for the block's frame: the most gain reduction (dB)
+    // and the processor's extra (a detector level, linear).
+    float blockReduction_ = 0.0f;
+    float blockExtra_ = 0.0f;
+
+private:
+    engine::ProcessorFeedback feedback_;
+};
+
+// ----- gain -----------------------------------------------------------------------------------
+
+class Gain final : public MeteredBuiltIn
+{
+public:
+    Gain() : MeteredBuiltIn(types::gain, {{"Gain", "dB", -60.0f, 24.0f, 0.0f, false}}) {}
+
+    void prepareBuiltIn(double, int) override { current_ = dbToGain(parameter(0)); }
+
+    void processBuiltIn(float* left, float* right, int numSamples) noexcept override
     {
         const float target = dbToGain(parameter(0));
         // Ramp across the block so gain changes never click.
@@ -49,7 +119,7 @@ private:
 
 // ----- EQ -------------------------------------------------------------------------------------
 
-class Eq final : public ProcessorBase
+class Eq final : public MeteredBuiltIn
 {
 public:
     enum Param
@@ -65,26 +135,27 @@ public:
     };
 
     Eq()
-        : ProcessorBase(types::eq,
-                        {{"High-pass", "Hz", 0.0f, 1000.0f, 0.0f, true},
-                         {"Low freq", "Hz", 30.0f, 1000.0f, 120.0f, true},
-                         {"Low gain", "dB", -18.0f, 18.0f, 0.0f, false},
-                         {"Mid freq", "Hz", 100.0f, 10000.0f, 1000.0f, true},
-                         {"Mid gain", "dB", -18.0f, 18.0f, 0.0f, false},
-                         {"Mid Q", "", 0.3f, 10.0f, 1.0f, true},
-                         {"High freq", "Hz", 1500.0f, 18000.0f, 8000.0f, true},
-                         {"High gain", "dB", -18.0f, 18.0f, 0.0f, false}})
+        : MeteredBuiltIn(types::eq,
+                         {{"High-pass", "Hz", 0.0f, 1000.0f, 0.0f, true},
+                          {"Low freq", "Hz", 30.0f, 1000.0f, 120.0f, true},
+                          {"Low gain", "dB", -18.0f, 18.0f, 0.0f, false},
+                          {"Mid freq", "Hz", 100.0f, 10000.0f, 1000.0f, true},
+                          {"Mid gain", "dB", -18.0f, 18.0f, 0.0f, false},
+                          {"Mid Q", "", 0.3f, 10.0f, 1.0f, true},
+                          {"High freq", "Hz", 1500.0f, 18000.0f, 8000.0f, true},
+                          {"High gain", "dB", -18.0f, 18.0f, 0.0f, false}},
+                         true) // taps for the editor's analyser
     {
     }
 
-    void prepareAudio(double, int) override
+    void prepareBuiltIn(double, int) override
     {
         for (auto& f : filters_)
             f.reset();
         lastParams_.fill(std::nanf(""));
     }
 
-    void processAudio(float* left, float* right, int numSamples) noexcept override
+    void processBuiltIn(float* left, float* right, int numSamples) noexcept override
     {
         // A coefficient change ramps across the block (linear interpolation of
         // the biquad coefficients) instead of switching between samples.
@@ -154,7 +225,7 @@ private:
 
 // ----- compressor -------------------------------------------------------------------------------
 
-class Compressor final : public ProcessorBase
+class Compressor final : public MeteredBuiltIn
 {
 public:
     enum Param
@@ -168,22 +239,22 @@ public:
     };
 
     Compressor()
-        : ProcessorBase(types::compressor,
-                        {{"Threshold", "dB", -60.0f, 0.0f, -18.0f, false},
-                         {"Ratio", ":1", 1.0f, 20.0f, 4.0f, true},
-                         {"Attack", "ms", 0.1f, 200.0f, 10.0f, true},
-                         {"Release", "ms", 10.0f, 2000.0f, 100.0f, true},
-                         {"Knee", "dB", 0.0f, 24.0f, 6.0f, false},
-                         {"Makeup", "dB", 0.0f, 24.0f, 0.0f, false}})
+        : MeteredBuiltIn(types::compressor,
+                         {{"Threshold", "dB", -60.0f, 0.0f, -18.0f, false},
+                          {"Ratio", ":1", 1.0f, 20.0f, 4.0f, true},
+                          {"Attack", "ms", 0.1f, 200.0f, 10.0f, true},
+                          {"Release", "ms", 10.0f, 2000.0f, 100.0f, true},
+                          {"Knee", "dB", 0.0f, 24.0f, 6.0f, false},
+                          {"Makeup", "dB", 0.0f, 24.0f, 0.0f, false}})
     {
     }
 
-    void prepareAudio(double, int) override { envelopeDb_ = minusInfinityDb; }
+    void prepareBuiltIn(double, int) override { envelopeDb_ = minusInfinityDb; }
 
     // Peak detector in the log domain, stereo-linked, feed-forward. With a
     // sidechain the detector listens to the key signal instead of the audio.
     bool acceptsSidechain() const noexcept override { return true; }
-    void processAudio(float* left, float* right, int numSamples) noexcept override
+    void processBuiltIn(float* left, float* right, int numSamples) noexcept override
     {
         processKeyed(left,
                      right,
@@ -224,7 +295,10 @@ public:
             const float g = dbToGain(reductionDb) * makeup;
             left[i] *= g;
             right[i] *= g;
+            blockReduction_ = std::max(blockReduction_, -reductionDb);
         }
+        // The detector's level for the editor's curve.
+        blockExtra_ = dbToGain(envelopeDb_);
         reduction_.store(
             std::max(0.0f, -(envelopeDb_ > threshold ? (1.0f / r - 1.0f) * (envelopeDb_ - threshold) : 0.0f)),
             std::memory_order_relaxed);
@@ -240,7 +314,7 @@ private:
 // Brickwall by instantaneous gain computation with a fast release: no lookahead, so
 // it adds no latency (delay compensation arrives in Phase 5). Transients that
 // exceed the ceiling within one sample are clipped to it.
-class Limiter final : public ProcessorBase
+class Limiter final : public MeteredBuiltIn
 {
 public:
     enum Param
@@ -253,10 +327,10 @@ public:
     static constexpr float maxLookaheadMs = 10.0f;
 
     Limiter()
-        : ProcessorBase(types::limiter,
-                        {{"Ceiling", "dB", -24.0f, 0.0f, -0.3f, false},
-                         {"Release", "ms", 1.0f, 1000.0f, 50.0f, true},
-                         {"Lookahead", "ms", 0.0f, maxLookaheadMs, 1.5f, false}})
+        : MeteredBuiltIn(types::limiter,
+                         {{"Ceiling", "dB", -24.0f, 0.0f, -0.3f, false},
+                          {"Release", "ms", 1.0f, 1000.0f, 50.0f, true},
+                          {"Lookahead", "ms", 0.0f, maxLookaheadMs, 1.5f, false}})
     {
     }
 
@@ -266,7 +340,7 @@ public:
     // at time t is the mean over the last L samples of the running minimum of the
     // needed gain over [t, t + L] (released), which is never above what sample t
     // needs and ramps smoothly instead of stepping.
-    void prepareAudio(double, int) override
+    void prepareBuiltIn(double, int) override
     {
         capacity_ = static_cast<int>(std::ceil(sampleRate_ * maxLookaheadMs * 0.001)) + 2;
         delayL_.assign(static_cast<size_t>(capacity_), 0.0f);
@@ -288,7 +362,7 @@ public:
         bypassedRun_ = false;
     }
 
-    void processAudio(float* left, float* right, int numSamples) noexcept override
+    void processBuiltIn(float* left, float* right, int numSamples) noexcept override
     {
         const float ceiling = dbToGain(parameter(ceilingDb));
         const float release =
@@ -310,6 +384,7 @@ public:
                     gain_ = 1.0f;
                 left[i] = std::clamp(left[i] * gain_, -ceiling, ceiling);
                 right[i] = std::clamp(right[i] * gain_, -ceiling, ceiling);
+                blockReduction_ = std::max(blockReduction_, -gainToDb(gain_));
             }
             return;
         }
@@ -345,6 +420,8 @@ public:
             sum_ += static_cast<double>(released_) - static_cast<double>(smoothed_[slot]);
             smoothed_[slot] = released_;
             const float gain = std::min(1.0f, static_cast<float>(sum_ / L));
+            if (!bypassedRun_)
+                blockReduction_ = std::max(blockReduction_, -gainToDb(gain));
 
             // 4. The sample written L samples ago leaves through the gain; this one enters.
             const float outL = delayL_[slot] * gain;
@@ -418,21 +495,21 @@ private:
 // matrix, each with the gain that makes it fall 60 dB in the decay time and a
 // one-pole low-pass for damping. Even lines feed the left output, odd the
 // right. Memory is allocated in prepare for the largest size.
-class Reverb final : public ProcessorBase
+class Reverb final : public MeteredBuiltIn
 {
 public:
     static constexpr int lines = 8;
     static constexpr float maxPreDelayMs = 250.0f;
 
     Reverb()
-        : ProcessorBase(types::reverb,
-                        {{"Pre-delay", "ms", 0.0f, maxPreDelayMs, 20.0f, false},
-                         {"Decay", "s", 0.2f, 12.0f, 2.0f, true},
-                         {"Size", "%", 0.0f, 100.0f, 60.0f, false},
-                         {"Damping", "Hz", 1000.0f, 20000.0f, 6000.0f, true},
-                         {"Low cut", "Hz", 20.0f, 1000.0f, 120.0f, true},
-                         {"Width", "%", 0.0f, 100.0f, 100.0f, false},
-                         {"Mix", "%", 0.0f, 100.0f, 30.0f, false}})
+        : MeteredBuiltIn(types::reverb,
+                         {{"Pre-delay", "ms", 0.0f, maxPreDelayMs, 20.0f, false},
+                          {"Decay", "s", 0.2f, 12.0f, 2.0f, true},
+                          {"Size", "%", 0.0f, 100.0f, 60.0f, false},
+                          {"Damping", "Hz", 1000.0f, 20000.0f, 6000.0f, true},
+                          {"Low cut", "Hz", 20.0f, 1000.0f, 120.0f, true},
+                          {"Width", "%", 0.0f, 100.0f, 100.0f, false},
+                          {"Mix", "%", 0.0f, 100.0f, 30.0f, false}})
     {
     }
 
@@ -444,7 +521,7 @@ private:
 
     static float sizeScale(float percent) noexcept { return 0.4f + percent * 0.012f; } // 0.4 .. 1.6
 
-    void prepareAudio(double sampleRate, int) override
+    void prepareBuiltIn(double sampleRate, int) override
     {
         const double ratio = sampleRate / 44100.0;
         for (int i = 0; i < lines; ++i)
@@ -466,7 +543,7 @@ private:
         lowCut_.reset();
     }
 
-    void processAudio(float* left, float* right, int numSamples) noexcept override
+    void processBuiltIn(float* left, float* right, int numSamples) noexcept override
     {
         const auto rate = static_cast<float>(sampleRate_);
         const float wet = parameter(reverb::mix) * 0.01f;
@@ -570,23 +647,23 @@ private:
 // feed back; ping-pong sends the input to the left line and crosses the
 // feedback so the repeats alternate sides. Two seconds of buffer, allocated in
 // prepare.
-class Delay final : public ProcessorBase
+class Delay final : public MeteredBuiltIn
 {
 public:
     static constexpr float maxTimeMs = 2000.0f;
 
     Delay()
-        : ProcessorBase(types::delay,
-                        {{"Time", "ms", 1.0f, maxTimeMs, 375.0f, true},
-                         {"Feedback", "%", 0.0f, 95.0f, 35.0f, false},
-                         {"Tone", "Hz", 500.0f, 20000.0f, 8000.0f, true},
-                         {"Ping-pong", "", 0.0f, 1.0f, 0.0f, false, {"Off", "On"}},
-                         {"Mix", "%", 0.0f, 100.0f, 30.0f, false}})
+        : MeteredBuiltIn(types::delay,
+                         {{"Time", "ms", 1.0f, maxTimeMs, 375.0f, true},
+                          {"Feedback", "%", 0.0f, 95.0f, 35.0f, false},
+                          {"Tone", "Hz", 500.0f, 20000.0f, 8000.0f, true},
+                          {"Ping-pong", "", 0.0f, 1.0f, 0.0f, false, {"Off", "On"}},
+                          {"Mix", "%", 0.0f, 100.0f, 30.0f, false}})
     {
     }
 
 private:
-    void prepareAudio(double sampleRate, int) override
+    void prepareBuiltIn(double sampleRate, int) override
     {
         const auto size = static_cast<size_t>(sampleRate * maxTimeMs * 0.001) + 4;
         for (auto& c : channels_)
@@ -598,7 +675,7 @@ private:
         primed_ = false; // the first block takes the time as it is then (parameters arrive after prepare)
     }
 
-    void processAudio(float* left, float* right, int numSamples) noexcept override
+    void processBuiltIn(float* left, float* right, int numSamples) noexcept override
     {
         const auto rate = static_cast<float>(sampleRate_);
         const int size = static_cast<int>(channels_[0].buffer.size());
@@ -666,20 +743,20 @@ private:
 // A small polyphonic subtractive synth: a polyBLEP saw/square per voice through a
 // state-variable low-pass, with an ADSR on the amplitude. Sixteen voices, the
 // oldest stolen. Mono, written to both channels. Enough to audition a part.
-class Synth final : public ProcessorBase
+class Synth final : public MeteredBuiltIn
 {
 public:
     static constexpr int maxVoices = 16;
     Synth()
-        : ProcessorBase(types::synth,
-                        {{"Level", "dB", -60.0f, 12.0f, -12.0f, false},
-                         {"Shape", "", 0.0f, 1.0f, 0.0f, false}, // saw .. square
-                         {"Cutoff", "Hz", 40.0f, 20000.0f, 6000.0f, true},
-                         {"Resonance", "", 0.0f, 1.0f, 0.2f, false},
-                         {"Attack", "ms", 1.0f, 2000.0f, 5.0f, true},
-                         {"Decay", "ms", 1.0f, 2000.0f, 200.0f, true},
-                         {"Sustain", "", 0.0f, 1.0f, 0.7f, false},
-                         {"Release", "ms", 1.0f, 4000.0f, 200.0f, true}})
+        : MeteredBuiltIn(types::synth,
+                         {{"Level", "dB", -60.0f, 12.0f, -12.0f, false},
+                          {"Shape", "", 0.0f, 1.0f, 0.0f, false}, // saw .. square
+                          {"Cutoff", "Hz", 40.0f, 20000.0f, 6000.0f, true},
+                          {"Resonance", "", 0.0f, 1.0f, 0.2f, false},
+                          {"Attack", "ms", 1.0f, 2000.0f, 5.0f, true},
+                          {"Decay", "ms", 1.0f, 2000.0f, 200.0f, true},
+                          {"Sustain", "", 0.0f, 1.0f, 0.7f, false},
+                          {"Release", "ms", 1.0f, 4000.0f, 200.0f, true}})
     {
     }
 
@@ -706,7 +783,7 @@ private:
         std::uint32_t age = 0;
     };
 
-    void prepareAudio(double, int) override
+    void prepareBuiltIn(double, int) override
     {
         for (auto& v : voices_)
             v = Voice{};
@@ -800,7 +877,7 @@ private:
         return 0.0f;
     }
 
-    void processAudio(float* left, float* right, int numSamples) noexcept override
+    void processBuiltIn(float* left, float* right, int numSamples) noexcept override
     {
         const float level = dbToGain(parameter(0));
         const float shape = parameter(1);

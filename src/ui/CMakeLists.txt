@@ -49,6 +49,8 @@ add_library(aural_ui STATIC
     strip/Graphs.cpp
     strip/EqGraph.h
     strip/EqGraph.cpp
+    strip/BuiltInCards.h
+    strip/BuiltInCards.cpp
     strip/ChannelStripView.h
     strip/ChannelStripView.cpp
     strip/UserStripPresets.h

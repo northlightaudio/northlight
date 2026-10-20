@@ -6,6 +6,7 @@
 #include "ui/Theme.h"
 #include "ui/components/Knob.h"
 #include "ui/components/NumericField.h"
+#include "ui/strip/ModuleCard.h"
 
 #include <juce_gui_basics/juce_gui_basics.h>
 
@@ -23,7 +24,7 @@ namespace aural::ui
 // (a built-in's window) it has a title and the bypass and mix controls above
 // the rows; embedded in a plugin window the bar has those. A knob drag is one
 // gesture (one undo step); the field commits on Enter.
-class InsertEditor final : public juce::Component
+class InsertEditor final : public juce::Component, private juce::Timer
 {
 public:
     // `title` overrides the built-in display name (a hosted plugin's name);
@@ -33,6 +34,12 @@ public:
                  const engine::InsertProcessor& processor,
                  const std::string& title = {},
                  bool embedded = false);
+
+    // A built-in's own editor (ui/strip/BuiltInCards.h) in place of the rows:
+    // the same display and controls as its card in the Editor panel, live from
+    // the processor `live` finds. Sizes the editor to it.
+    void showBuiltInBody(const core::Insert& insert,
+                         std::function<std::shared_ptr<engine::InsertProcessor>(core::Id)> live);
 
     // Refreshes the controls from the model insert (after undo, for instance).
     void setInsert(const core::Insert& insert);
@@ -82,6 +89,11 @@ private:
     juce::Viewport viewport_;
     juce::Component rows_;
     std::vector<Row> parameters_;
+    void timerCallback() override;
+    strip::CardHost host_;
+    std::unique_ptr<strip::ModuleCard> body_;
+    std::function<std::shared_ptr<engine::InsertProcessor>(core::Id)> live_;
+    double lastTickMs_ = 0.0;
 };
 
 } // namespace aural::ui

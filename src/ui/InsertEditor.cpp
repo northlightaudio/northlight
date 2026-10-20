@@ -2,6 +2,7 @@
 
 #include "plugins/BuiltIns.h"
 #include "ui/AuralLookAndFeel.h"
+#include "ui/strip/BuiltInCards.h"
 
 #include <cmath>
 
@@ -109,6 +110,54 @@ InsertEditor::InsertEditor(core::Id channelId,
     setSize(preferredWidth, preferredHeight(static_cast<int>(infos_.size()), embedded_));
 }
 
+void InsertEditor::showBuiltInBody(const core::Insert& insert,
+                                   std::function<std::shared_ptr<engine::InsertProcessor>(core::Id)> live)
+{
+    live_ = std::move(live);
+    host_.onCommand = [this](std::unique_ptr<core::Command> command)
+    {
+        if (onCommand)
+            onCommand(std::move(command));
+    };
+    host_.onGestureBegin = [this](const std::string& name)
+    {
+        if (onGestureBegin)
+            onGestureBegin(name);
+    };
+    host_.onGestureEnd = [this]
+    {
+        if (onGestureEnd)
+            onGestureEnd();
+    };
+    host_.liveInsert = [this](core::Id id)
+    { return live_ ? live_(id) : std::shared_ptr<engine::InsertProcessor>(); };
+    body_ = strip::createBuiltInCard(theme_, host_, channelId_, insert);
+    if (body_ == nullptr)
+        return;
+    body_->setEmbedded(true);
+    addAndMakeVisible(*body_);
+    viewport_.setVisible(false);
+    const int header = embedded_ ? 0
+                                 : theme_.sizes.control + theme_.spacing.sm + theme_.sizes.controlCompact +
+                                       theme_.spacing.md;
+    setSize(std::max(preferredWidth, body_->preferredWidth() + 2 * theme_.spacing.lg),
+            2 * theme_.spacing.md + header + body_->preferredBodyHeight() + theme_.sizes.controlCompact);
+    startTimerHz(60);
+}
+
+void InsertEditor::timerCallback()
+{
+    const double now = juce::Time::getMillisecondCounterHiRes();
+    const double elapsed = lastTickMs_ > 0.0 ? std::min(100.0, now - lastTickMs_) : 16.0;
+    lastTickMs_ = now;
+    if (body_ == nullptr)
+        return;
+    if (isShowing())
+        body_->tick(elapsed);
+    else
+        body_->stopWatching();
+}
+
 void InsertEditor::setParameter(int index, float value)
 {
     if (updating_)
@@ -129,6 +178,8 @@ void InsertEditor::setInsert(const core::Insert& insert)
     bypass_.setToggleState(insert.bypass, juce::dontSendNotification);
     mix_.setValue(insert.mix * 100.0, juce::dontSendNotification);
     sidechain_ = insert.sidechain;
+    if (body_ != nullptr)
+        body_->refresh(insert);
     for (size_t i = 0; i < parameters_.size() && i < insert.params.size(); ++i)
     {
         parameters_[i].knob->setValue(insert.params[i], juce::dontSendNotification);
@@ -165,7 +216,7 @@ void InsertEditor::paint(juce::Graphics& g)
                    juce::Rectangle<int>(mix_.getX() - 64, mix_.getY(), 60, mix_.getHeight()),
                    juce::Justification::centredRight);
     }
-    if (parameters_.empty())
+    if (parameters_.empty() && body_ == nullptr)
     {
         g.setColour(c.textTertiary);
         g.setFont(theme_.small());
@@ -187,6 +238,11 @@ void InsertEditor::resized()
         area.removeFromTop(theme_.spacing.md);
     }
     area.removeFromBottom(theme_.sizes.controlCompact); // the footer line
+    if (body_ != nullptr)
+    {
+        body_->setBounds(area);
+        return;
+    }
     viewport_.setBounds(area);
     const int width = area.getWidth() - theme_.sizes.scrollbar;
     rows_.setSize(std::max(1, width), static_cast<int>(parameters_.size()) * rowHeight);

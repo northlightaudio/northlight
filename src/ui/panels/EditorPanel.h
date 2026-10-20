@@ -92,6 +92,9 @@ private:
     AddSlot add_{theme_, "Insert"};
     std::vector<core::Id> builtOrder_;
     int dropIndex_ = -1; // the insertion index while a plugin or card is dragged over
+    double lastTickMs_ = 0.0;
+    bool wasShowing_ = false;
+    int ticks_ = 0;
 };
 
 } // namespace aural::ui

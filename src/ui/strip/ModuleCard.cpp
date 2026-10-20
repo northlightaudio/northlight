@@ -333,7 +333,7 @@ void ModuleCard::tick(double elapsedMs)
     if (n > 0 || inDb_ > -119.0f || grDb_ > 0.0f)
         framesArrived(elapsedMs);
     const auto status = headerStatus();
-    if (status != shownStatus_)
+    if (status != shownStatus_ && !embedded_)
     {
         shownStatus_ = status;
         repaint(getLocalBounds().removeFromTop(headerHeight));
@@ -461,8 +461,19 @@ juce::Rectangle<int> ModuleCard::headerArea() const
     return getLocalBounds().removeFromTop(headerHeight).withTrimmedTop(hueLine).reduced(theme_.spacing.sm, 0);
 }
 
+void ModuleCard::setEmbedded(bool embedded)
+{
+    embedded_ = embedded;
+    power_.setVisible(!embedded);
+    collapse_->setVisible(!embedded);
+    resized();
+    repaint();
+}
+
 void ModuleCard::paint(juce::Graphics& g)
 {
+    if (embedded_)
+        return; // the frame draws the surface and the header
     const auto& c = theme_.colours;
     const auto bounds = getLocalBounds().toFloat();
     g.setColour(c.surface1);
@@ -516,7 +527,7 @@ void ModuleCard::paint(juce::Graphics& g)
 
 void ModuleCard::paintOverChildren(juce::Graphics& g)
 {
-    if (!bypass_ || collapsed_)
+    if (!bypass_ || collapsed_ || embedded_)
         return;
     // Off: the body dims (and stays usable).
     auto body = getLocalBounds().withTrimmedTop(headerHeight).toFloat().reduced(1.0f);
@@ -526,6 +537,11 @@ void ModuleCard::paintOverChildren(juce::Graphics& g)
 
 void ModuleCard::resized()
 {
+    if (embedded_)
+    {
+        layoutBody(getLocalBounds().reduced(theme_.spacing.sm, theme_.spacing.xs));
+        return;
+    }
     auto header = headerArea();
     if (collapsed_)
     {
@@ -547,12 +563,12 @@ void ModuleCard::mouseDown(const juce::MouseEvent& e)
             host_.onCollapse(moduleId_, false);
         return;
     }
-    dragging_ = e.y < headerHeight && e.mods.isLeftButtonDown();
+    dragging_ = !embedded_ && e.y < headerHeight && e.mods.isLeftButtonDown();
 }
 
 void ModuleCard::mouseMove(const juce::MouseEvent& e)
 {
-    if (!collapsed_)
+    if (!collapsed_ && !embedded_)
         setMouseCursor(e.y < headerHeight ? juce::MouseCursor::DraggingHandCursor
                                           : juce::MouseCursor::NormalCursor);
 }

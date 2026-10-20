@@ -1771,6 +1771,7 @@ void MixerView::openInsertEditor(core::Id channelId, core::Id insertId)
         if (onGestureEnd)
             onGestureEnd();
     };
+    editor->showBuiltInBody(*insert, liveInsert);
     editor->setInsert(*insert);
     const juce::String title = juce::String(channel->name) + " - " +
                                juce::String(plugins::BuiltInFactory::displayName(insert->type));

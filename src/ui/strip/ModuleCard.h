@@ -85,9 +85,20 @@ public:
     bool isCollapsed() const noexcept { return collapsed_; }
     int layoutWidth() const { return collapsed_ ? collapsedWidth : preferredWidth(); }
     static constexpr int collapsedWidth = 34;
+    // Embedded: the card is the body of another frame (an insert's card in the
+    // Editor panel), which draws the surface, the header and the bypass dimming;
+    // the card shows only its display and controls.
+    void setEmbedded(bool embedded);
+    // The height the card's body wants at its preferred width (for an embedded
+    // card, whose frame sizes to it).
+    virtual int preferredBodyHeight() const { return 220; }
 
     // ----- for the displays ------------------------------------------------------
     float param(int index) const noexcept;
+    bool hasParam(int index) const noexcept
+    {
+        return index >= 0 && static_cast<size_t>(index) < params_.size();
+    }
     const float* params() const noexcept { return params_.data(); }
     const engine::ParameterInfo& info(int index) const;
     // A user edit: updates the card at once and sends the command.
@@ -166,7 +177,7 @@ private:
     std::vector<std::unique_ptr<juce::Component>> owned_;
     IconButton power_;
     std::unique_ptr<juce::Button> collapse_;
-    bool bypass_ = true, updating_ = false, dragging_ = false, collapsed_ = false;
+    bool bypass_ = true, updating_ = false, dragging_ = false, collapsed_ = false, embedded_ = false;
     std::vector<juce::Component::SafePointer<juce::Component>> hiddenByCollapse_;
     juce::String shownStatus_;
     std::shared_ptr<engine::InsertProcessor> live_;

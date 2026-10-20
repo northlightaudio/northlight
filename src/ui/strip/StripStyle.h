@@ -43,6 +43,22 @@ inline juce::Colour moduleColour(const Theme& theme, const std::string& type)
         return paletteColour(theme, "Tangerine");
     if (type == t::limiter)
         return paletteColour(theme, "Coral");
+    // The built-ins, in the same family (a built-in EQ, compressor or limiter
+    // takes its strip counterpart's hue).
+    if (type == "aural.eq")
+        return paletteColour(theme, "Sky");
+    if (type == "aural.compressor")
+        return paletteColour(theme, "Indigo");
+    if (type == "aural.limiter")
+        return paletteColour(theme, "Coral");
+    if (type == "aural.gain")
+        return paletteColour(theme, "Lime");
+    if (type == "aural.reverb")
+        return paletteColour(theme, "Teal");
+    if (type == "aural.delay")
+        return paletteColour(theme, "Amber");
+    if (type == "aural.synth")
+        return paletteColour(theme, "Magenta");
     return theme.colours.textSecondary;
 }
 

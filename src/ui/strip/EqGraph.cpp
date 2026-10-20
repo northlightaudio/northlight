@@ -24,10 +24,44 @@ constexpr float analyserTopDb = 0.0f, analyserBottomDb = -96.0f;
 constexpr double tiltDbPerOctave = 3.0;
 } // namespace
 
-EqGraph::EqGraph(ModuleCard& card)
-    : card_(card), analyser_(analyserPreference()), analyserToggle_(card.theme(), "Analyser", card.colour())
+EqBands stripEqBands()
+{
+    EqBands b;
+    b.count = eq::bandCount;
+    b.selected = eq::band2;
+    b.output = eq::output;
+    b.index = [](int band, EqBands::Field field) { return eq::paramIndex(band, field); };
+    b.isCut = [](int band) { return eq::isCut(band); };
+    b.colour = [](const Theme& theme, int band) { return bandColour(theme, band); };
+    b.name = [](int band)
+    {
+        return band == eq::lowCut    ? juce::String("Low cut")
+               : band == eq::highCut ? juce::String("High cut")
+                                     : "Band " + juce::String(band);
+    };
+    b.label = [](int band)
+    {
+        return band == eq::lowCut    ? juce::String("L")
+               : band == eq::highCut ? juce::String("H")
+                                     : juce::String(band);
+    };
+    b.design = [](const float* params, double rate, plugins::Biquad* out, int band)
+    { eq::design(params, rate, out, band); };
+    return b;
+}
+
+EqGraph::EqGraph(ModuleCard& card, EqBands bands)
+    : card_(card), bands_(std::move(bands)), selected_(bands_.selected), analyser_(analyserPreference()),
+      analyserToggle_(card.theme(), "Analyser", card.colour())
 {
     setOpaque(false);
+    if (!bands_.isOn)
+        bands_.isOn = [this](const ModuleCard& c, int band) { return c.param(index(band, eq::on)) >= 0.5f; };
+    if (!bands_.setOn)
+        bands_.setOn = [this](ModuleCard& c, int band, bool on)
+        { c.setParam(index(band, eq::on), on ? 1.0f : 0.0f); };
+    bandDb_.resize(static_cast<size_t>(bands_.count));
+    bandKeys_.resize(static_cast<size_t>(bands_.count));
     window_.resize(fftSize);
     for (int i = 0; i < fftSize; ++i)
         window_[static_cast<size_t>(i)] = 0.5f - 0.5f * std::cos(2.0f * juce::MathConstants<float>::pi *
@@ -82,19 +116,20 @@ void EqGraph::resized()
 
 bool EqGraph::bandOn(int band) const
 {
-    return card_.param(eq::paramIndex(band, eq::on)) >= 0.5f;
+    return bands_.isOn(card_, band);
 }
 
 juce::Point<float> EqGraph::nodePosition(int band) const
 {
     const auto p = plot();
-    const float x = hzToX(card_.param(eq::paramIndex(band, eq::frequency)), p);
+    const float x = hzToX(std::max<double>(bands_.lowestNodeHz, card_.param(index(band, eq::frequency))), p);
     float db = 0.0f;
-    if (!eq::isCut(band))
+    if (!bands_.isCut(band) && index(band, eq::gain) >= 0)
     {
-        const int shape = static_cast<int>(std::lround(card_.param(eq::paramIndex(band, eq::type))));
+        const int typeIndex = index(band, eq::type);
+        const int shape = typeIndex >= 0 ? static_cast<int>(std::lround(card_.param(typeIndex))) : eq::peak;
         if (shape != eq::notch)
-            db = card_.param(eq::paramIndex(band, eq::gain));
+            db = card_.param(index(band, eq::gain));
     }
     return {x, dbToY(db, rangeDb, -rangeDb, p)};
 }
@@ -104,7 +139,7 @@ int EqGraph::bandAt(juce::Point<float> pt) const
     // The selected node wins a tie, then the nearest within reach.
     int best = -1;
     float bestDistance = 11.0f;
-    for (int b = 0; b < eq::bandCount; ++b)
+    for (int b = 0; b < bands_.count; ++b)
     {
         const float d = nodePosition(b).getDistanceFrom(pt) - (b == selected_ ? 2.0f : 0.0f);
         if (d < bestDistance)
@@ -126,20 +161,21 @@ void EqGraph::rebuildCurve()
     const double rate = card_.sampleRate();
     const float* params = card_.params();
     const bool layout = !curveValid_ || rate != lastRate_ || static_cast<int>(curveDb_.size()) != columns;
-    bool changed = layout || params[eq::output] != lastOutput_;
-    for (int band = 0; band < eq::bandCount; ++band)
+    const float output = bands_.output >= 0 ? params[bands_.output] : 0.0f;
+    bool changed = layout || output != lastOutput_;
+    for (int band = 0; band < bands_.count; ++band)
     {
         std::array<float, 5> key{};
         for (int f = 0; f < 5; ++f)
-            if (const int index = eq::paramIndex(band, static_cast<eq::Field>(f)); index >= 0)
-                key[static_cast<size_t>(f)] = params[index];
+            if (const int i = index(band, static_cast<eq::Field>(f)); i >= 0)
+                key[static_cast<size_t>(f)] = params[i];
         auto& curve = bandDb_[static_cast<size_t>(band)];
         if (!layout && key == bandKeys_[static_cast<size_t>(band)])
             continue;
         bandKeys_[static_cast<size_t>(band)] = key;
         changed = true;
-        plugins::Biquad sections[eq::maxSections];
-        eq::design(params, rate, sections, band);
+        plugins::Biquad sections[EqBands::maxSections];
+        bands_.design(params, rate, sections, band);
         curve.assign(static_cast<size_t>(columns), 0.0f);
         for (int col = 0; col < columns; ++col)
         {
@@ -153,10 +189,10 @@ void EqGraph::rebuildCurve()
     }
     curveValid_ = true;
     lastRate_ = rate;
-    lastOutput_ = params[eq::output];
+    lastOutput_ = output;
     if (!changed)
         return;
-    curveDb_.assign(static_cast<size_t>(columns), params[eq::output]);
+    curveDb_.assign(static_cast<size_t>(columns), output);
     for (const auto& curve : bandDb_)
         for (int col = 0; col < columns; ++col)
             curveDb_[static_cast<size_t>(col)] += curve[static_cast<size_t>(col)];
@@ -347,7 +383,7 @@ void EqGraph::paint(juce::Graphics& g)
                 area.lineTo(colX(col), yDb(band[static_cast<size_t>(col)]));
             area.lineTo(colX(columns - 1), yDb(0.0f));
             area.closeSubPath();
-            g.setColour(bandColour(theme, focus).withAlpha(0.16f));
+            g.setColour(bands_.colour(theme, focus).withAlpha(0.16f));
             g.fillPath(area);
         }
 
@@ -374,13 +410,13 @@ void EqGraph::paint(juce::Graphics& g)
 
     // The nodes, the selected one on top.
     for (int pass = 0; pass < 2; ++pass)
-        for (int b = 0; b < eq::bandCount; ++b)
+        for (int b = 0; b < bands_.count; ++b)
         {
             if ((b == selected_) != (pass == 1))
                 continue;
             const auto at = nodePosition(b);
             const bool on = bandOn(b);
-            const auto colour = bandColour(theme, b);
+            const auto colour = bands_.colour(theme, b);
             const float radius = b == selected_ ? 8.0f : 7.0f;
             const auto r = juce::Rectangle<float>(radius * 2.0f, radius * 2.0f).withCentre(at);
             if (b == hovered_ || b == dragging_)
@@ -399,26 +435,31 @@ void EqGraph::paint(juce::Graphics& g)
             }
             g.setColour(on ? c.textOnColour : colour);
             g.setFont(theme.font(Theme::Face::ui, theme.fonts.size.caption, theme.fonts.weight.semibold));
-            const juce::String name = b == eq::lowCut ? "L" : b == eq::highCut ? "H" : juce::String(b);
-            g.drawText(name, r, juce::Justification::centred);
+            g.drawText(bands_.label(b), r, juce::Justification::centred);
         }
 
     // A readout for the band under the pointer (or being dragged).
     const int readout = dragging_ >= 0 ? dragging_ : hovered_;
     if (readout >= 0)
     {
-        juce::String text = formatHz(card_.param(eq::paramIndex(readout, eq::frequency)));
-        if (eq::isCut(readout))
-            text << "  "
-                 << eq::slopes[static_cast<size_t>(juce::jlimit(
-                        0, 5, static_cast<int>(std::lround(card_.param(eq::paramIndex(readout, eq::type))))))]
-                 << " dB/oct";
+        juce::String text = formatHz(card_.param(index(readout, eq::frequency)));
+        const int typeIndex = index(readout, eq::type);
+        if (bands_.isCut(readout))
+        {
+            if (typeIndex >= 0)
+                text << "  "
+                     << eq::slopes[static_cast<size_t>(
+                            juce::jlimit(0, 5, static_cast<int>(std::lround(card_.param(typeIndex)))))]
+                     << " dB/oct";
+        }
         else
         {
-            const int shape = static_cast<int>(std::lround(card_.param(eq::paramIndex(readout, eq::type))));
-            if (shape != eq::notch)
-                text << "  " << formatDb(card_.param(eq::paramIndex(readout, eq::gain)));
-            text << "  Q " << juce::String(card_.param(eq::paramIndex(readout, eq::q)), 2);
+            const int shape =
+                typeIndex >= 0 ? static_cast<int>(std::lround(card_.param(typeIndex))) : eq::peak;
+            if (shape != eq::notch && index(readout, eq::gain) >= 0)
+                text << "  " << formatDb(card_.param(index(readout, eq::gain)));
+            if (index(readout, eq::q) >= 0)
+                text << "  Q " << juce::String(card_.param(index(readout, eq::q)), 2);
         }
         g.setFont(theme.value());
         const int w = juce::GlyphArrangement::getStringWidthInt(g.getCurrentFont(), text) + 12;
@@ -479,12 +520,10 @@ void EqGraph::mouseDown(const juce::MouseEvent& e)
         return;
     }
     dragging_ = band;
-    card_.beginGesture(band == eq::lowCut    ? "Low cut"
-                       : band == eq::highCut ? "High cut"
-                                             : "Band " + juce::String(band));
+    card_.beginGesture(bands_.name(band));
     // Dragging a band that is off switches it on.
     if (!bandOn(band))
-        card_.setParam(eq::paramIndex(band, eq::on), 1.0f);
+        bands_.setOn(card_, band, true);
     repaint();
 }
 
@@ -500,13 +539,14 @@ void EqGraph::mouseDrag(const juce::MouseEvent& e)
         const auto start = e.mouseDownPosition;
         pos = start + (pos - start) * 0.25f;
     }
-    const int fIndex = eq::paramIndex(dragging_, eq::frequency);
+    const int fIndex = index(dragging_, eq::frequency);
     if (!e.mods.isAltDown()) // Alt: gain only
         card_.setParam(fIndex, static_cast<float>(xToHz(pos.x, p)));
-    const int gIndex = eq::paramIndex(dragging_, eq::gain);
+    const int gIndex = index(dragging_, eq::gain);
     if (gIndex >= 0)
     {
-        const int shape = static_cast<int>(std::lround(card_.param(eq::paramIndex(dragging_, eq::type))));
+        const int typeIndex = index(dragging_, eq::type);
+        const int shape = typeIndex >= 0 ? static_cast<int>(std::lround(card_.param(typeIndex))) : eq::peak;
         if (shape != eq::notch)
             card_.setParam(gIndex, yToDb(pos.y, rangeDb, -rangeDb, p));
     }
@@ -528,7 +568,7 @@ void EqGraph::mouseDoubleClick(const juce::MouseEvent& e)
     if (band < 0)
         return;
     card_.beginGesture("Switch band");
-    card_.setParam(eq::paramIndex(band, eq::on), bandOn(band) ? 0.0f : 1.0f);
+    bands_.setOn(card_, band, !bandOn(band));
     card_.endGesture();
 }
 
@@ -538,17 +578,16 @@ void EqGraph::mouseWheelMove(const juce::MouseEvent& e, const juce::MouseWheelDe
     if (band < 0 || wheel.deltaY == 0.0f)
         return;
     const float direction = wheel.deltaY > 0.0f ? 1.0f : -1.0f;
+    const int typeIndex = index(band, eq::type), qIndex = index(band, eq::q);
+    if (bands_.isCut(band) ? typeIndex < 0 : qIndex < 0)
+        return; // nothing for the wheel on this band
     card_.beginGesture("Q");
-    if (eq::isCut(band))
-    {
-        const int index = eq::paramIndex(band, eq::type);
-        card_.setParam(index, juce::jlimit(0.0f, 5.0f, std::round(card_.param(index)) + direction));
-    }
+    if (bands_.isCut(band))
+        card_.setParam(typeIndex, juce::jlimit(0.0f, 5.0f, std::round(card_.param(typeIndex)) + direction));
     else
     {
-        const int index = eq::paramIndex(band, eq::q);
         const float step = e.mods.isShiftDown() ? 1.02f : 1.12f;
-        card_.setParam(index, card_.param(index) * (direction > 0.0f ? step : 1.0f / step));
+        card_.setParam(qIndex, card_.param(qIndex) * (direction > 0.0f ? step : 1.0f / step));
     }
     card_.endGesture();
     repaint();
@@ -557,16 +596,20 @@ void EqGraph::mouseWheelMove(const juce::MouseEvent& e, const juce::MouseWheelDe
 void EqGraph::showBandMenu(int band)
 {
     juce::PopupMenu menu;
-    const auto& typeInfo = card_.info(eq::paramIndex(band, eq::type));
-    const int current = static_cast<int>(std::lround(card_.param(eq::paramIndex(band, eq::type))));
-    menu.addSectionHeader(eq::isCut(band) ? "Slope" : "Shape");
-    for (size_t i = 0; i < typeInfo.choices.size(); ++i)
-        menu.addItem(static_cast<int>(i) + 1,
-                     eq::isCut(band) ? juce::String(typeInfo.choices[i]) + "/oct"
-                                     : juce::String(typeInfo.choices[i]),
-                     true,
-                     static_cast<int>(i) == current);
-    menu.addSeparator();
+    const int typeIndex = index(band, eq::type);
+    if (typeIndex >= 0)
+    {
+        const auto& typeInfo = card_.info(typeIndex);
+        const int current = static_cast<int>(std::lround(card_.param(typeIndex)));
+        menu.addSectionHeader(bands_.isCut(band) ? "Slope" : "Shape");
+        for (size_t i = 0; i < typeInfo.choices.size(); ++i)
+            menu.addItem(static_cast<int>(i) + 1,
+                         bands_.isCut(band) ? juce::String(typeInfo.choices[i]) + "/oct"
+                                            : juce::String(typeInfo.choices[i]),
+                         true,
+                         static_cast<int>(i) == current);
+        menu.addSeparator();
+    }
     menu.addItem(100, bandOn(band) ? "Switch band off" : "Switch band on");
     menu.addItem(101, "Reset band");
     juce::Component::SafePointer<EqGraph> safe(this);
@@ -579,15 +622,15 @@ void EqGraph::showBandMenu(int band)
                            auto& card = safe->card_;
                            card.beginGesture("Band");
                            if (choice == 100)
-                               card.setParam(eq::paramIndex(band, eq::on), safe->bandOn(band) ? 0.0f : 1.0f);
+                               safe->bands_.setOn(card, band, !safe->bandOn(band));
                            else if (choice == 101)
                            {
                                for (const auto field : {eq::type, eq::frequency, eq::gain, eq::q})
-                                   if (const int index = eq::paramIndex(band, field); index >= 0)
-                                       card.setParam(index, card.info(index).defaultValue);
+                                   if (const int i = safe->index(band, field); i >= 0)
+                                       card.setParam(i, card.info(i).defaultValue);
                            }
                            else
-                               card.setParam(eq::paramIndex(band, eq::type), static_cast<float>(choice - 1));
+                               card.setParam(safe->index(band, eq::type), static_cast<float>(choice - 1));
                            card.endGesture();
                            safe->repaint();
                        });

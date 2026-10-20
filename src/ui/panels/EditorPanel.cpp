@@ -2,6 +2,7 @@
 
 #include "plugins/BuiltIns.h"
 #include "ui/AuralLookAndFeel.h"
+#include "ui/strip/BuiltInCards.h"
 
 #include <map>
 
@@ -60,8 +61,46 @@ public:
                 owner_.onOpenEditor(channelId_, insertId_);
         };
         addChildComponent(open_);
-        rebuildKnobs();
+        // A built-in's body is its own editor: a display to drag and its knobs.
+        host_.onCommand = [this](std::unique_ptr<core::Command> command)
+        {
+            if (owner_.onCommand)
+                owner_.onCommand(std::move(command));
+        };
+        host_.onGestureBegin = [this](const std::string& name)
+        {
+            if (owner_.onGestureBegin)
+                owner_.onGestureBegin(name);
+        };
+        host_.onGestureEnd = [this]
+        {
+            if (owner_.onGestureEnd)
+                owner_.onGestureEnd();
+        };
+        host_.liveInsert = [this](core::Id id)
+        { return owner_.liveInsert ? owner_.liveInsert(id) : std::shared_ptr<engine::InsertProcessor>(); };
+        body_ = strip::createBuiltInCard(theme_, host_, channelId_, insert);
+        if (body_ != nullptr)
+        {
+            body_->setEmbedded(true);
+            addAndMakeVisible(*body_);
+        }
+        else
+            rebuildKnobs();
         refresh(insert);
+    }
+
+    // About 60 times a second while the panel shows: the body's displays read
+    // the processor's feedback.
+    void tick(double elapsedMs)
+    {
+        if (body_ != nullptr)
+            body_->tick(elapsedMs);
+    }
+    void stopWatching()
+    {
+        if (body_ != nullptr)
+            body_->stopWatching();
     }
 
     core::Id insertId() const noexcept { return insertId_; }
@@ -91,6 +130,8 @@ public:
         power_.setTooltip(insert.bypass ? "Bypassed: click to enable" : "Enabled: click to bypass");
         mix_.setValue(insert.mix * 100.0, juce::dontSendNotification);
         sidechain_ = insert.sidechain;
+        if (body_ != nullptr)
+            body_->refresh(insert);
         const auto live = owner_.liveInsert ? owner_.liveInsert(insertId_) : nullptr;
         for (size_t i = 0; i < knobs_.size() && live != nullptr; ++i)
             knobs_[i]->setValue(live->parameter(static_cast<int>(i)), juce::dontSendNotification);
@@ -100,6 +141,8 @@ public:
 
     int preferredWidth() const noexcept
     {
+        if (body_ != nullptr)
+            return body_->preferredWidth();
         const int perRow = 4;
         const int knobW = theme_.sizes.knob + theme_.spacing.xl;
         return std::max(160,
@@ -230,6 +273,11 @@ public:
         footer.removeFromLeft(56);
         mix_.setBounds(footer);
         area.removeFromTop(theme_.sizes.controlCompact); // the info line
+        if (body_ != nullptr)
+        {
+            body_->setBounds(area);
+            return;
+        }
         area = area.reduced(theme_.spacing.md, theme_.spacing.xs);
         if (open_.isVisible())
         {
@@ -358,6 +406,8 @@ private:
     bool bypassed_ = false, updating_ = false, missing_ = false, dragging_ = false;
     core::Id sidechain_ = core::invalidId;
     int latency_ = 0;
+    strip::CardHost host_;
+    std::unique_ptr<strip::ModuleCard> body_; // a built-in's editor
 };
 
 // ----- the panel --------------------------------------------------------------------------------
@@ -401,7 +451,7 @@ EditorPanel::EditorPanel(const Theme& theme) : theme_(theme), stripView_(theme)
     add_.setTooltip("Add an insert");
     add_.onClick = [this] { showAddMenu(); };
     strip_.addAndMakeVisible(add_);
-    startTimerHz(10);
+    startTimerHz(60);
 }
 
 EditorPanel::~EditorPanel()
@@ -475,7 +525,24 @@ void EditorPanel::rebuild()
 
 void EditorPanel::timerCallback()
 {
-    // Hosted plugins change their own values: keep the knobs current.
+    const double now = juce::Time::getMillisecondCounterHiRes();
+    const double elapsed = lastTickMs_ > 0.0 ? std::min(100.0, now - lastTickMs_) : 16.0;
+    lastTickMs_ = now;
+    // The built-ins' displays, while the panel shows.
+    if (!isShowing())
+    {
+        if (wasShowing_)
+            for (const auto& card : cards_)
+                card->stopWatching();
+        wasShowing_ = false;
+        return;
+    }
+    wasShowing_ = true;
+    for (const auto& card : cards_)
+        card->tick(elapsed);
+    // Hosted plugins change their own values: keep the knobs current (10 Hz).
+    if (++ticks_ % 6 != 0)
+        return;
     if (const auto* ch = channel())
         for (size_t i = 0; i < cards_.size() && i < ch->inserts.size(); ++i)
             cards_[i]->refresh(ch->inserts[i]);

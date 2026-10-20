@@ -17,8 +17,7 @@ strip of device cards, Bitwig-style, so the whole signal path reads left to righ
 - Card: `surface1`, radius `md`, 1 px `lineSubtle`, min width 160, height fills the
   dock; header 28 px with power (bypass) toggle, name in `label`, format badge,
   and a "⋮" menu (replace, remove, presets, sidechain, latency "32 smp").
-- Body: for built-ins, the generic editor's knobs laid out in a grid of 28 px knobs
-  with `caption` labels, 4 per row, section headers for multi-section plugins; for
+- Body: for built-ins, the built-in's own editor (7.2a); for
   hosted plugins with a GUI, a thumbnail placeholder with an "Open" primary button
   (the native editor opens in a plugin window) and the three most important
   parameters as knobs if the plugin exposes them; for hosted plugins without a GUI,
@@ -51,9 +50,41 @@ Native window with a 32 px Aural bar above the plugin's own editor:
 - Closing the window never unloads the plugin; the card in the chain shows "open" as
   an `accent` dot on its header while the window is open.
 
+## 7.2a Built-in editors
+
+Every built-in has an editor in the channel strip's language (12-channel-strip.md
+12.1-12.2): a display in a well that reads the processor live and drags, then
+knobs in the module's hue. The same editor is the card's body in the Editor panel
+and the body of its window (under the title, bypass and mix). The hues follow the
+strip: EQ `Sky`, compressor `Indigo`, limiter `Coral`; gain `Lime`, reverb `Teal`,
+delay `Amber`, synth `Magenta`.
+
+- **Gain**: the input and output history with IN and OUT meters; Gain.
+- **EQ**: the strip's EQ graph with the built-in's four bands (a high-pass,
+  off at 0 Hz, sitting at the left edge; low shelf; mid with Q on the wheel; high
+  shelf) and the analyser. The selected band's knobs below under its name.
+- **Compressor**: the transfer curve, the history with the threshold line, the IN
+  threshold meter, GR and OUT; Ratio, Attack, Release, Knee, Makeup.
+- **Limiter**: the history with the ceiling, the ceiling on the IN meter, GR and
+  OUT; Release, Lookahead.
+- **Reverb**: the decay: the dry sound, the pre-delay, early reflections (more and
+  longer for a bigger room), the tail falling 60 dB over the decay and the highs'
+  faster fall (dashed) for the damping. Drag the tail's start for the pre-delay, its
+  end for the decay. Size, Damping, Low cut, Width, Mix.
+- **Delay**: the echoes over time as bars as loud as the feedback leaves them,
+  left up and right down when ping-pong alternates them, darker as the tone falls.
+  Drag the first echo for the time, the second for the feedback. Time, Feedback,
+  Tone, Mix and a Ping-pong pill.
+- **Synth**: the oscillator's cycle (saw into square), the filter's curve (drag
+  across for the cutoff, up for the resonance) and the envelope (drag the peak, the
+  sustain point and the release end); the eight knobs under them in the same order.
+
+Draggable points are one handle everywhere: a 9 px `textPrimary` disc with a 1.5 px
+ring in the hue. A display's readout is `value` at its top right.
+
 ## 7.3 Generic parameter editor
 
-For built-ins and GUI-less hosted plugins. A scrollable grid of parameter rows:
+For GUI-less hosted plugins. A scrollable grid of parameter rows:
 
 - Row 28 px: name `body` left (160 px), control centre (knob for continuous, segmented
   for choices under 5 options, combo above, checkbox for booleans), value `value`
