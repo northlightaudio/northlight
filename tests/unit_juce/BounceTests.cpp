@@ -2,6 +2,7 @@
 #include "engine/WavFile.h"
 #include "hosting/HostFactory.h"
 #include "hosting/PluginRegistry.h"
+#include "plugins/Aurora.h"
 #include "plugins/BuiltIns.h"
 
 #include <catch2/catch_approx.hpp>
@@ -107,11 +108,16 @@ TEST_CASE("Bouncing a MIDI track renders its instrument", "[app][bounce][midi]")
     keys.id = 1;
     keys.name = "Keys";
     keys.kind = core::TrackKind::midi;
-    core::Insert synth;
-    synth.id = 11;
-    synth.type = plugins::types::synth;
-    synth.params = plugins::defaultParameters(synth.type);
-    keys.inserts.push_back(synth);
+    keys.instrument.id = 11;
+    keys.instrument.type = plugins::aurora::type;
+    keys.instrument.params = plugins::defaultParameters(keys.instrument.type);
+    // One centred voice per note, no chorus and a short release: the checks
+    // below want the same signal on both sides and silence soon after the note.
+    namespace au = plugins::aurora;
+    keys.instrument.params[au::unison] = 1.0f;
+    keys.instrument.params[au::width] = 0.0f;
+    keys.instrument.params[au::shimmer] = 0.0f;
+    keys.instrument.params[au::ampRelease] = 30.0f;
     core::MidiClip clip;
     clip.id = 12;
     clip.name = "note";

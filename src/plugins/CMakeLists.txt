@@ -10,6 +10,8 @@ add_library(aural_plugins STATIC
     Pulsar.cpp
     Nebula.h
     Nebula.cpp
+    Starbit.h
+    Starbit.cpp
     Biquad.h
     ProcessorBase.h
     ChannelStrip.h

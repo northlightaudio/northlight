@@ -293,6 +293,7 @@ private:
     void removeOwnAutosave();
     void autosaveIfDue();
     // Pulls each hosted plugin's current state into the model before a save.
+    void replaceLegacySynth();
     void captureInsertStates();
 
     audio::AudioDeviceLayer& audio_;

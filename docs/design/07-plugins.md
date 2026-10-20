@@ -57,7 +57,7 @@ Every built-in has an editor in the channel strip's language (12-channel-strip.m
 knobs in the module's hue. The same editor is the card's body in the Editor panel
 and the body of its window (under the title, bypass and mix). The hues follow the
 strip: EQ `Sky`, compressor `Indigo`, limiter `Coral`; gain `Lime`, reverb `Teal`,
-delay `Amber`, synth `Magenta`.
+delay `Amber`. The instruments (7.4b-7.4e) have faces of their own.
 
 - **Gain**: the input and output history with IN and OUT meters; Gain.
 - **EQ**: the strip's EQ graph with the built-in's four bands (a high-pass,
@@ -75,9 +75,6 @@ delay `Amber`, synth `Magenta`.
   left up and right down when ping-pong alternates them, darker as the tone falls.
   Drag the first echo for the time, the second for the feedback. Time, Feedback,
   Tone, Mix and a Ping-pong pill.
-- **Synth**: the oscillator's cycle (saw into square), the filter's curve (drag
-  across for the cutoff, up for the resonance) and the envelope (drag the peak, the
-  sustain point and the release end); the eight knobs under them in the same order.
 
 Draggable points are one handle everywhere: a 9 px `textPrimary` disc with a 1.5 px
 ring in the hue. A display's readout is `value` at its top right.
@@ -227,6 +224,32 @@ Glass Halo, Hollow Moon, Solar Breath, Deep Field, Ice Bells, Drifting Veil.
   Spread, Width, Halo, Sub, Breath.
 - ENVELOPE (draggable), MOTION (the wave with the live value), SPACE (the tail as
   long as the size and as bright as the mix; drag for both) with their knobs.
+
+## 7.4e Starbit
+
+The chiptune synth bundled with Aural, after 8-bit consoles' sound chips. A
+pulse (12.5, 25, 50 or 75% duty, with a duty sweep that cycles them), a 4-bit
+stepped triangle and saw, LFSR noise (long, or short and metallic, pitched with
+the note) and a 32-step 4-bit Wave you draw; volume in 16 steps; arpeggios in
+tracker style (Chord cycles the held notes on one voice; Octave, Major, Minor,
+Power, Maj7, Min7 cycle a shape over each note) at a rate in steps a second;
+vibrato with a delay, a pitch sweep into each note and glide; Mono (newest note,
+legato) or four voices; Bits, Rate (sample and hold) and a chip Echo. Presets:
+Starbit, Hero Lead, Chord Arp, Major Sparkle, Tri Bass, Wave Pad, Laser Zap,
+Noise Snare, Metal Hat, Crunchy Saw.
+
+- Pixel art: a 5×7 pixel-font wordmark STARBIT, each letter a palette colour
+  with a drop shadow, "CHIP SYNTH · AURAL" in mono, square stars that blink in
+  whole steps a few times a second while it plays, windows and screens with
+  notched corners and 2 px borders, scanlines over the screens, four square voice
+  lights. The knobs are the app's own.
+- WAVE: the cycle as 32 columns of 16 cells; the shape, the duty (for the pulse)
+  and the noise mode (for the noise) in chips; with Wave chosen, click and drag to
+  draw the steps. Duty sweep, Octave, Coarse, Velocity.
+- VOLUME: the envelope as 16-step bars. ARP: the steps as blocks as high as their
+  offsets, the one playing lit; the mode and Mono/Poly in chips. PITCH: the sweep
+  and the vibrato over a note's first second. LO-FI: a sine as the bits and rate
+  leave it.
 
 ## 7.5 States and errors
 

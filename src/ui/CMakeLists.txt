@@ -63,6 +63,8 @@ add_library(aural_ui STATIC
     strip/PulsarEditor.cpp
     strip/NebulaEditor.h
     strip/NebulaEditor.cpp
+    strip/StarbitEditor.h
+    strip/StarbitEditor.cpp
     strip/ChannelStripView.h
     strip/ChannelStripView.cpp
     strip/UserStripPresets.h

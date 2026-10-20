@@ -164,7 +164,11 @@ hats, two toms), each with tune, decay, two shaping controls, level and pan, six
 kits, and an editor whose pads light as they play. **Nebula**, the bundled pad
 synth, builds each note from a drifting cloud of partials shaped by brightness, a
 vowel formant and stretch, with a halo, breath, slow motion and a large space,
-for ethereal pads.
+for ethereal pads. **Starbit**, the bundled chiptune synth, has the classic
+pulse duties, 4-bit triangle and saw, LFSR noise and a wave you draw, tracker
+arpeggios (including cycling the notes you hold), vibrato, sweeps and a lo-fi end,
+behind a pixel-art editor. (The first, plain built-in "Synth" is gone; projects
+that used it open with Aurora.)
 A MIDI track can also play an external instrument: pick a MIDI output in Audio
 Setup, then the channel in the track's right-click menu (**MIDI output**); its
 clips and, while monitoring, its live input go out in time with the audio.

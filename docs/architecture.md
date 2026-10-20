@@ -889,9 +889,16 @@ a 32-sample control rate from a tilt, an odd/even balance, a stretch and a vowel
 formant (with the motion LFO sweeping them) and ramped across the interval; a
 sub, band-passed breath noise, a one-pole tone filter and an eight-line feedback
 delay network for the space. `nebula::spectrum` gives the editor the same partial
-levels for its picture. The older `aural.synth` (16 voices, polyBLEP saw/square,
-state-variable low-pass, ADSR; events partition the block so note timing is
-sample-exact), hosted VST3 plugins that accept MIDI (the events go into the JUCE
+levels for its picture. Starbit (`aural.starbit`, `plugins/Starbit.*`) is a
+chiptune synth: naive pulse, 4-bit triangle and saw, a 15-bit LFSR (short mode
+taps bit 6) clocked from the note and a 32-step drawn wave; 16-step volume;
+arpeggio, vibrato, sweep and glide at a 32-sample control rate from constant
+tables (nothing is built on the audio thread); mono with a held-note stack, or
+four voices; then sample and hold, bit reduction and an echo. The first built-in
+synth (`aural.synth`) is retired: projects that used it open with Aurora in its
+place (`ProjectSession::replaceLegacySynth`, before `adoptInstruments`). Every
+instrument parses its events at their sample offsets, so note timing is
+sample-exact. Hosted VST3 plugins that accept MIDI (the events go into the JUCE
 MIDI buffer as raw bytes) and CLAP plugins with a note input port (CLAP note
 events, or MIDI 1.0 events when that is the only dialect the port takes, after
 the block's parameter events). The test CLAP plugin has a note port that marks

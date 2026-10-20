@@ -7,8 +7,8 @@
 #include <vector>
 
 // The built-in utility processors: gain, a three-band EQ with high-pass, a
-// compressor, a limiter and a small polyphonic synth (so a MIDI track makes a
-// sound without third-party plugins). JUCE-free, real-time safe after prepare().
+// compressor, a limiter, a reverb and a delay; the instruments (Aurora, Pulsar,
+// Nebula, Starbit) are in their own files. JUCE-free, real-time safe after prepare().
 
 namespace aural::plugins
 {
@@ -19,7 +19,9 @@ inline const std::string gain = "aural.gain";
 inline const std::string eq = "aural.eq";
 inline const std::string compressor = "aural.compressor";
 inline const std::string limiter = "aural.limiter";
-inline const std::string synth = "aural.synth"; // instrument
+// The first built-in synth, retired for Aurora: projects that used it load with
+// Aurora in its place (ProjectSession).
+inline const std::string legacySynth = "aural.synth";
 inline const std::string reverb = "aural.reverb";
 inline const std::string delay = "aural.delay";
 } // namespace types

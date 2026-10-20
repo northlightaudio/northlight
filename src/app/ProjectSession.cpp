@@ -323,6 +323,7 @@ std::string ProjectSession::open(const juce::File& file)
         return error.empty() ? "could not read project" : error;
     project_ = *loaded;
     plugins::strip::ensureChannelStrip(project_); // projects saved before the strip existed
+    replaceLegacySynth();
     project_.adoptInstruments([this](const std::string& type) { return isInstrumentType(type); });
     undo_.clear();
     projectFile_ = file;
@@ -409,6 +410,7 @@ std::string ProjectSession::newFromTemplate(const juce::File& file)
     project_.name = "Untitled";
     hostedSent_.clear();
     plugins::strip::ensureChannelStrip(project_);
+    replaceLegacySynth();
     project_.adoptInstruments([this](const std::string& type) { return isInstrumentType(type); });
     undo_.clear();
     projectFile_ = juce::File();
@@ -636,6 +638,7 @@ std::string ProjectSession::restoreAutosave(const Autosave& autosave)
     engine_.resetCaches();
     project_ = *loaded;
     plugins::strip::ensureChannelStrip(project_);
+    replaceLegacySynth();
     project_.adoptInstruments([this](const std::string& type) { return isInstrumentType(type); });
     undo_.clear();
     projectFile_ = autosave.project;
@@ -1271,6 +1274,32 @@ void ProjectSession::saveRegistry()
         return;
     registryFile_.getParentDirectory().createDirectory();
     registryFile_.replaceWithText(juce::String(registry_.toJson()));
+}
+
+// Projects from before Aurora played the first built-in synth, which is gone:
+// Aurora takes its place (the same slot and id, its own default sound), and
+// lanes on the old synth's parameters go with it.
+void ProjectSession::replaceLegacySynth()
+{
+    const auto replace = [](core::Channel& channel, core::Insert& insert)
+    {
+        const auto id = insert.id;
+        insert.type = plugins::aurora::type;
+        insert.params = plugins::defaultParameters(insert.type);
+        insert.state.clear();
+        std::erase_if(
+            channel.automation,
+            [id](const core::AutomationLane& lane)
+            { return lane.target == core::AutomationTarget::insertParameter && lane.insert == id; });
+    };
+    for (auto& t : project_.tracks)
+    {
+        if (t.instrument.type == plugins::types::legacySynth)
+            replace(t, t.instrument);
+        for (auto& i : t.inserts)
+            if (i.type == plugins::types::legacySynth)
+                replace(t, i);
+    }
 }
 
 bool ProjectSession::isInstrumentType(const std::string& type) const

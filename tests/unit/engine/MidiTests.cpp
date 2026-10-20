@@ -9,6 +9,7 @@
 #include "plugins/BuiltIns.h"
 #include "plugins/Nebula.h"
 #include "plugins/Pulsar.h"
+#include "plugins/Starbit.h"
 
 #include <catch2/catch_approx.hpp>
 #include <catch2/catch_test_macros.hpp>
@@ -440,37 +441,6 @@ TEST_CASE("An aux track carries an instrument's extra output pair through its ow
     CHECK(h.left[10] == Approx(0.0f));
 }
 
-TEST_CASE("The built-in synth makes sound for a note and goes quiet after it", "[engine][midi][synth]")
-{
-    core::MidiClip clip;
-    clip.start = 0;
-    clip.length = 48000;
-    clip.notes.push_back({20, 69, 110, 0, 4800}); // A4 for 100 ms
-    Harness h;
-    h.engine.setProject(keysProject(clip, plugins::types::synth.c_str()));
-    h.engine.play();
-    float loud = 0.0f, quiet = 0.0f;
-    for (int b = 0; b < 75; ++b) // 4800 samples of note, then release
-    {
-        h.engine.process(h.outputs, 2, blockSize);
-        float peak = 0.0f;
-        for (float v : h.left)
-            peak = std::max(peak, std::abs(v));
-        if (b >= 10 && b < 70)
-            loud = std::max(loud, peak);
-        if (b == 74)
-            quiet = peak;
-    }
-    for (int b = 0; b < 400; ++b) // well past the release
-        h.engine.process(h.outputs, 2, blockSize);
-    float tail = 0.0f;
-    for (float v : h.left)
-        tail = std::max(tail, std::abs(v));
-    CHECK(loud > 0.05f);
-    CHECK(tail < 1.0e-4f);
-    (void)quiet;
-}
-
 TEST_CASE("Aurora sounds for a chord, goes quiet after the release, and every preset stays finite",
           "[engine][midi][aurora]")
 {
@@ -627,4 +597,60 @@ TEST_CASE("Nebula swells for a chord, every preset stays finite, and a dry note 
     const auto o = ne::spectrum(hollow.data(), 220.0f);
     CHECK(o[1].level == Approx(0.0f).margin(1.0e-6f)); // the 2nd partial
     CHECK(o[2].level > 0.05f);                         // the 3rd
+}
+
+TEST_CASE("Starbit sounds for every preset, goes quiet after the release, and draws its waves",
+          "[engine][midi][starbit]")
+{
+    namespace sb = plugins::starbit;
+    core::MidiClip clip;
+    clip.start = 0;
+    clip.length = 96000;
+    for (const int note : {60, 64, 67})
+        clip.notes.push_back({core::invalidId, note, 110, 0, 24000}); // half a second
+    for (size_t i = 0; i < clip.notes.size(); ++i)
+        clip.notes[i].id = 20 + static_cast<core::Id>(i);
+    for (const auto& preset : sb::presets())
+    {
+        INFO(preset.name);
+        auto project = keysProject(clip, sb::type.c_str());
+        project.tracks[0].instrument.params = preset.values;
+        Harness h;
+        h.engine.setProject(project);
+        h.engine.play();
+        float loud = 0.0f;
+        bool finite = true;
+        for (int b = 0; b < 375; ++b) // the notes
+        {
+            h.engine.process(h.outputs, 2, blockSize);
+            for (size_t i = 0; i < h.left.size(); ++i)
+            {
+                finite = finite && std::isfinite(h.left[i]) && std::isfinite(h.right[i]);
+                loud = std::max(loud, std::abs(h.left[i]));
+            }
+        }
+        for (int b = 0; b < 3000; ++b) // the release and the echo's tail
+            h.engine.process(h.outputs, 2, blockSize);
+        float tail = 0.0f;
+        for (float v : h.left)
+            tail = std::max(tail, std::abs(v));
+        CHECK(finite);
+        CHECK(loud > 0.01f);
+        CHECK(loud < 2.0f);
+        CHECK(tail < 1.0e-3f);
+    }
+
+    // The waves as the editor draws them.
+    auto values = sb::presets().front().values;
+    values[sb::wave] = sb::pulse;
+    values[sb::duty] = 2.0f; // 50%
+    auto shape = sb::waveShape(values.data());
+    CHECK(shape[0] == 15);
+    CHECK(shape[16] == 0);
+    values[sb::wave] = sb::custom;
+    values[sb::firstWaveStep + 5] = 3.0f;
+    shape = sb::waveShape(values.data());
+    CHECK(shape[5] == 3);
+    CHECK(sb::arpSteps(sb::arpMajor) == std::vector<int>{0, 4, 7});
+    CHECK(sb::arpSteps(sb::arpChord).empty());
 }
