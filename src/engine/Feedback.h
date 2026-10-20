@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <atomic>
+#include <cmath>
 #include <cstdint>
 #include <memory>
 
@@ -70,6 +71,21 @@ public:
             if (count_ >= interval_)
                 building_ = frame; // a long block fills several frames with its peaks
         }
+    }
+
+    // A bypassed processor's block: it passes the signal, so input and output
+    // read the same peak and nothing is reduced; both taps get the signal. Only
+    // while an editor is watching.
+    void addBypassed(const float* left, const float* right, int numSamples) noexcept
+    {
+        if (!watched())
+            return;
+        float peak = 0.0f;
+        for (int i = 0; i < numSamples; ++i)
+            peak = std::max(peak, std::max(std::abs(left[i]), std::abs(right[i])));
+        addBlock(peak, peak, 0.0f, 0.0f, numSamples);
+        tap(0, left, right, numSamples);
+        tap(1, left, right, numSamples);
     }
 
     // The mono sum of a stereo block into tap `which`, when an analyser asked for it.

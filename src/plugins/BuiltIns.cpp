@@ -217,16 +217,8 @@ public:
             const float a = inputDb > envelopeDb_ ? attack : release;
             envelopeDb_ = a * envelopeDb_ + (1.0f - a) * inputDb;
 
-            // Soft-knee gain computer.
-            const float over = envelopeDb_ - threshold;
-            float reductionDb = 0.0f;
-            if (knee > 0.0f && std::abs(over) <= knee * 0.5f)
-            {
-                const float x = over + knee * 0.5f;
-                reductionDb = (1.0f / r - 1.0f) * x * x / (2.0f * knee);
-            }
-            else if (over > 0.0f)
-                reductionDb = (1.0f / r - 1.0f) * over;
+            // The soft-knee gain computer the channel strip's compressor uses too.
+            const float reductionDb = -strip::compressor::gainReductionDb(envelopeDb_, threshold, r, knee);
 
             const float g = dbToGain(reductionDb) * makeup;
             left[i] *= g;
@@ -247,9 +239,9 @@ private:
 
 // ----- limiter ----------------------------------------------------------------------------------
 
-// Brickwall by instantaneous gain computation with a fast release: no lookahead, so
-// it adds no latency (delay compensation arrives in Phase 5). Transients that
-// exceed the ceiling within one sample are clipped to it.
+// Brickwall with lookahead: the signal is delayed by the lookahead while the gain
+// ramps down ahead of a peak, so the ceiling holds without clipping; the delay is
+// reported as latency and compensated across the graph.
 class Limiter final : public MeteredBuiltIn
 {
 public:

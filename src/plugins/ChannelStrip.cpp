@@ -317,12 +317,7 @@ protected:
 
     void processBypassed(float* left, float* right, int numSamples) noexcept override
     {
-        if (!feedback_.watched())
-            return;
-        const float peak = peakOf(left, right, numSamples);
-        feedback_.addBlock(peak, peak, 0.0f, 0.0f, numSamples);
-        feedback_.tap(0, left, right, numSamples);
-        feedback_.tap(1, left, right, numSamples);
+        feedback_.addBypassed(left, right, numSamples);
     }
 
     engine::ProcessorFeedback feedback_;
