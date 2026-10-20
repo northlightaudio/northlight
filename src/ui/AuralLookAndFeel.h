@@ -127,6 +127,9 @@ public:
                                    int& idealWidth,
                                    int& idealHeight) override;
     int getPopupMenuBorderSize() override;
+    // Menus (and combo lists, submenus) open with the motion table's 120 ms fade
+    // and 2 px slide into place.
+    void preparePopupMenuWindow(juce::Component& window) override;
     juce::Font getPopupMenuFont() override;
     void drawPopupMenuSectionHeader(juce::Graphics& g,
                                     const juce::Rectangle<int>& area,

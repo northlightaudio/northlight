@@ -50,6 +50,7 @@ add_library(aural_ui STATIC
     shell/StatusBar.cpp
     Selection.h
     Db.h
+    Motion.h
     SendMenu.h
     panels/EditorPanel.h
     panels/EditorPanel.cpp

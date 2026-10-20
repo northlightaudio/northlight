@@ -1,5 +1,7 @@
 #include "ui/AuralLookAndFeel.h"
 
+#include "ui/Motion.h"
+
 #include <atomic>
 #include <cmath>
 
@@ -607,6 +609,26 @@ void AuralLookAndFeel::drawPopupMenuBackgroundWithOptions(juce::Graphics& g,
     g.fillRoundedRectangle(bounds, theme_.radius.md);
     g.setColour(theme_.colours.lineStrong);
     g.drawRoundedRectangle(bounds.reduced(0.5f), theme_.radius.md, 1.0f);
+}
+
+void AuralLookAndFeel::preparePopupMenuWindow(juce::Component& window)
+{
+    // Called with the window placed and not yet shown: start it transparent and
+    // 2 px short of its place, and ease both in (02-design-system.md 2.6).
+    const int ms = theme_.motion.ms(theme_.motion.menuMs);
+    if (ms <= 0)
+        return;
+    const auto place = window.getPosition();
+    window.setAlpha(0.0f);
+    window.setTopLeftPosition(place.translated(0, -2));
+    motion::Tween::run(window,
+                       ms,
+                       [&window, place](float t)
+                       {
+                           window.setAlpha(t);
+                           window.setTopLeftPosition(
+                               place.translated(0, juce::roundToInt(-2.0f * (1.0f - t))));
+                       });
 }
 
 int AuralLookAndFeel::getPopupMenuBorderSize()
