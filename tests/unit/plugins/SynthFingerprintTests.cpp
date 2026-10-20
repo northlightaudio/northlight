@@ -24,7 +24,9 @@ TEST_CASE("Each synth renders a fixed phrase as it did when its voices were shar
     const std::map<std::string, Fingerprint> expected{
         {"aural.aurora", {7146.622921677, 3566664.141710, 0.711221039}},
         {"aural.nebula", {9364.366943710, 4674356.443178, 0.624030709}},
-        {"aural.starbit", {11572.388444439, 5791251.940253, 0.601424694}},
+        // Starbit: re-measured after band-limiting its steps, the even lo-fi holds and
+        // the DC blocker (which lifts a pulse's peak: it swings about zero now).
+        {"aural.starbit", {8592.526227236, 4290393.874162215, 0.967896581}},
         {"aural.pulsar", {2212.962334298, 1026907.658278, 0.732445359}},
     };
     for (const auto& [type, want] : expected)

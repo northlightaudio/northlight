@@ -8,6 +8,7 @@
 #include <cmath>
 #include <cstdint>
 #include <numbers>
+#include <utility>
 
 namespace aural::plugins::starbit
 {
@@ -54,7 +55,24 @@ struct Voice
     std::uint16_t lfsr = 1;
     double noiseClock = 0.0;
     float noiseOut = 1.0f;
+    // The voice's output runs a sample behind, so a step it takes can be
+    // band-limited on both sides (the sample before it is still open).
+    float pending = 0.0f;
     bool active() const noexcept { return amp.active(); }
+};
+
+// Two-sample polyBLEP: a step of height h that happened t samples before the
+// current one (0 <= t < 1) is smoothed by adding `before` to the previous
+// sample and `after` to the current one, which removes most of the aliasing a
+// hard step makes at the host rate (as chip emulators band-limit their steps).
+struct Blep
+{
+    float before = 0.0f, after = 0.0f;
+    void add(float h, float t) noexcept
+    {
+        before += h * t * t * 0.5f;
+        after -= h * (1.0f - t) * (1.0f - t) * 0.5f;
+    }
 };
 
 class Starbit final : public MeteredBuiltIn
@@ -72,8 +90,10 @@ private:
         heldCount_ = 0;
         arpPhase_ = 0.0;
         arpStep_ = 0;
-        holdL_ = holdR_ = 0.0f;
+        holdValue_ = holdPending_ = previousSum_ = 0.0f;
         holdPhase_ = 1.0;
+        smoothA_ = smoothB_ = 0.0f;
+        dcInL_ = dcInR_ = dcOutL_ = dcOutR_ = 0.0f;
         echo_.assign(static_cast<size_t>(sampleRate * 0.25) + 4, 0.0f);
         echoPos_ = 0;
         countdown_ = 0;
@@ -236,6 +256,13 @@ private:
         const bool shortNoise = p[noiseMode] >= 0.5f;
         const float levels = std::exp2(std::clamp(std::round(p[bits]), 2.0f, 16.0f)) * 0.5f;
         const double holdStep = std::clamp(static_cast<double>(p[rate]), 1000.0, sampleRate_) / sampleRate_;
+        {
+            const double cutoff = std::min(0.45 * holdStep, 0.45) * sampleRate_;
+            smoothG_ = static_cast<float>(std::tan(std::numbers::pi * cutoff / sampleRate_));
+            smoothK_ = 1.41421356f;
+            smoothH_ = 1.0f / (1.0f + smoothK_ * smoothG_ + smoothG_ * smoothG_);
+            dcPole_ = static_cast<float>(std::exp(-2.0 * std::numbers::pi * 20.0 / sampleRate_));
+        }
         const float echoMix = p[echo];
         const float outGain = dbToGain(p[level]) * 0.3f;
         std::array<int, waveSteps> table{};
@@ -264,70 +291,116 @@ private:
             {
                 auto& v = voices_[static_cast<size_t>(vi)];
                 if (!v.active())
+                {
+                    sum += std::exchange(v.pending, 0.0f); // its last sample
                     continue;
+                }
                 const float env = v.amp.stepLinear(attackStep, decayStep, sustainLevel, releaseStep);
                 if (!v.amp.active())
                 {
                     v.note = -1;
+                    sum += std::exchange(v.pending, 0.0f);
                     continue;
                 }
+                // The wave as a staircase of `steps` levels a cycle (the pulse is
+                // eight, high for the duty), read after the phase moves on; every
+                // step the phase crossed on the way is band-limited.
+                Blep blep;
                 float x = 0.0f;
-                const auto ph = static_cast<float>(v.phase);
-                switch (shape)
+                if (shape == noise)
                 {
-                    case pulse:
-                        x = ph < dutyNow ? 1.0f : -1.0f;
-                        break;
-                    case triangle:
+                    // An LFSR clocked 16 times a cycle: long (15-bit) or short
+                    // (the 93-step loop's metallic tone).
+                    const double clockStep = v.increment * 16.0;
+                    v.noiseClock += clockStep;
+                    while (v.noiseClock >= 1.0)
                     {
-                        // 32 steps up and down, 4 bits.
-                        const int step = static_cast<int>(ph * 32.0f);
-                        const int levelStep = step < 16 ? step : 31 - step;
-                        x = static_cast<float>(levelStep) / 7.5f - 1.0f;
-                        break;
+                        v.noiseClock -= 1.0;
+                        const auto bit =
+                            static_cast<std::uint16_t>((v.lfsr ^ (v.lfsr >> (shortNoise ? 6 : 1))) & 1u);
+                        v.lfsr = static_cast<std::uint16_t>((v.lfsr >> 1) | (bit << 14));
+                        const float out = (v.lfsr & 1u) != 0 ? 1.0f : -1.0f;
+                        if (out != v.noiseOut)
+                            blep.add(out - v.noiseOut,
+                                     static_cast<float>(std::min(0.999, v.noiseClock / clockStep)));
+                        v.noiseOut = out;
                     }
-                    case saw:
-                        x = static_cast<float>(static_cast<int>(ph * 16.0f)) / 7.5f - 1.0f;
-                        break;
-                    case noise:
-                    {
-                        // An LFSR clocked 16 times a cycle: long (15-bit) or short
-                        // (the 93-step loop's metallic tone).
-                        v.noiseClock += v.increment * 16.0;
-                        while (v.noiseClock >= 1.0)
-                        {
-                            v.noiseClock -= 1.0;
-                            const auto bit =
-                                static_cast<std::uint16_t>((v.lfsr ^ (v.lfsr >> (shortNoise ? 6 : 1))) & 1u);
-                            v.lfsr = static_cast<std::uint16_t>((v.lfsr >> 1) | (bit << 14));
-                            v.noiseOut = (v.lfsr & 1u) != 0 ? 1.0f : -1.0f;
-                        }
-                        x = v.noiseOut;
-                        break;
-                    }
-                    default:
-                        x = static_cast<float>(
-                                table[static_cast<size_t>(std::min(31, static_cast<int>(ph * 32.0f)))]) /
-                                7.5f -
-                            1.0f;
-                        break;
+                    x = v.noiseOut;
                 }
-                v.phase += v.increment;
-                if (v.phase >= 1.0)
-                    v.phase -= 1.0;
+                else
+                {
+                    const int steps = shape == pulse ? 8 : shape == saw ? 16 : 32;
+                    const int high = static_cast<int>(std::lround(dutyNow * 8.0f));
+                    const auto level = [&](int k) -> float
+                    {
+                        switch (shape)
+                        {
+                            case pulse:
+                                return k < high ? 1.0f : -1.0f;
+                            case triangle:
+                                return static_cast<float>(k < 16 ? k : 31 - k) / 7.5f - 1.0f;
+                            case saw:
+                                return static_cast<float>(k) / 7.5f - 1.0f;
+                            default:
+                                return static_cast<float>(table[static_cast<size_t>(k)]) / 7.5f - 1.0f;
+                        }
+                    };
+                    const double before = v.phase;
+                    const double after = before + v.increment;
+                    const int from = static_cast<int>(before * steps);
+                    const int to = static_cast<int>(after * steps);
+                    for (int b = from + 1; b <= to; ++b)
+                    {
+                        const float h = level(b % steps) - level((b - 1) % steps);
+                        if (h != 0.0f)
+                            blep.add(
+                                h,
+                                static_cast<float>(std::clamp(
+                                    (after - static_cast<double>(b) / steps) / v.increment, 0.0, 0.999)));
+                    }
+                    v.phase = after >= 1.0 ? after - 1.0 : after;
+                    x = level(std::min(steps - 1, static_cast<int>(v.phase * steps)));
+                }
                 // The volume in 16 steps, as the chips had it.
                 const float volume = std::round(env * v.velocity * 15.0f) / 15.0f;
-                sum += x * volume;
+                sum += v.pending + blep.before * volume; // the previous sample, now complete
+                v.pending = (x + blep.after) * volume;
             }
-            // Lo-fi: hold each sample for the slower rate, then fewer bits.
-            holdPhase_ += holdStep;
-            if (holdPhase_ >= 1.0)
+            // Lo-fi: fewer bits, and a slower sample rate. A held sample changes
+            // at its exact moment between two output samples (taking the input
+            // there), band-limited, so the holds keep an even rhythm instead of
+            // jittering by a sample; a gentle low-pass at 0.45 x the rate then
+            // takes off the images above it. What folds below the rate stays: it
+            // is the lo-fi sound.
+            const auto crush = [levels](float v)
+            { return std::round(std::clamp(v * 0.5f, -1.0f, 1.0f) * levels) / levels * 2.0f; };
+            float mono = 0.0f;
+            if (holdStep >= 0.999)
+                mono = crush(sum);
+            else
             {
-                holdPhase_ -= 1.0;
-                const float crushed = std::round(std::clamp(sum * 0.5f, -1.0f, 1.0f) * levels) / levels;
-                holdL_ = holdR_ = crushed * 2.0f;
+                Blep hold;
+                holdPhase_ += holdStep;
+                if (holdPhase_ >= 1.0)
+                {
+                    holdPhase_ -= 1.0;
+                    const auto t = static_cast<float>(std::min(0.999, holdPhase_ / holdStep));
+                    const float value = crush(sum + (previousSum_ - sum) * t);
+                    hold.add(value - holdValue_, t);
+                    holdValue_ = value;
+                }
+                mono = holdPending_ + hold.before;
+                holdPending_ = holdValue_ + hold.after;
+                // Two-pole low-pass (TPT state variable, Butterworth).
+                const float hp = (mono - (smoothK_ + smoothG_) * smoothA_ - smoothB_) * smoothH_;
+                const float bp = smoothG_ * hp + smoothA_;
+                const float lp = smoothG_ * bp + smoothB_;
+                smoothA_ = smoothG_ * hp + bp;
+                smoothB_ = smoothG_ * bp + lp;
+                mono = lp;
             }
-            float l = holdL_, r = holdR_;
+            previousSum_ = sum;
+            float l = mono, r = mono;
             // The echo: three sixteenths at 120 bpm, a little to the right.
             if (echoMix > 0.001f && !echo_.empty())
             {
@@ -343,8 +416,16 @@ private:
                 l += delayed * echoMix * 0.6f;
                 r += delayed * echoMix;
             }
-            left[i] = l * outGain;
-            right[i] = r * outGain;
+            // The chips' output was AC-coupled: a 20 Hz DC blocker keeps a pulse's
+            // offset out of the mix (and the click it makes when a note starts).
+            const float outL = l - dcInL_ + dcPole_ * dcOutL_;
+            const float outR = r - dcInR_ + dcPole_ * dcOutR_;
+            dcInL_ = l;
+            dcInR_ = r;
+            dcOutL_ = outL;
+            dcOutR_ = outR;
+            left[i] = outL * outGain;
+            right[i] = outR * outGain;
         }
         while (events != nullptr && next < events->size() && inChunk((*events)[next], numSamples))
             handle((*events)[next++]);
@@ -365,7 +446,9 @@ private:
     int arpStep_ = 0;
     int countdown_ = 0;
     double holdPhase_ = 1.0;
-    float holdL_ = 0.0f, holdR_ = 0.0f;
+    float holdValue_ = 0.0f, holdPending_ = 0.0f, previousSum_ = 0.0f;
+    float smoothA_ = 0.0f, smoothB_ = 0.0f, smoothG_ = 0.0f, smoothK_ = 1.41421356f, smoothH_ = 1.0f;
+    float dcPole_ = 0.997f, dcInL_ = 0.0f, dcInR_ = 0.0f, dcOutL_ = 0.0f, dcOutR_ = 0.0f;
     std::vector<float> echo_;
     int echoPos_ = 0;
 };
