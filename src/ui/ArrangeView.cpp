@@ -970,6 +970,45 @@ void ArrangeView::drawRuler(juce::Graphics& g, juce::Rectangle<int> area)
 }
 // ----- drag and drop ------------------------------------------------------------------------
 
+bool ArrangeView::isInterestedInDragSource(const SourceDetails& details)
+{
+    return project_ != nullptr && details.description.toString().startsWith("plugin:");
+}
+
+void ArrangeView::itemDragEnter(const SourceDetails& details)
+{
+    itemDragMove(details);
+}
+
+void ArrangeView::itemDragMove(const SourceDetails& details)
+{
+    const int row = rowAtY(details.localPosition.y);
+    if (row != pluginDropRow_)
+    {
+        pluginDropRow_ = row;
+        repaint();
+    }
+}
+
+void ArrangeView::itemDragExit(const SourceDetails&)
+{
+    pluginDropRow_ = -1;
+    repaint();
+}
+
+void ArrangeView::itemDropped(const SourceDetails& details)
+{
+    const int row = rowAtY(details.localPosition.y);
+    pluginDropRow_ = -1;
+    repaint();
+    if (row < 0 || project_ == nullptr || !onInsertPlugin)
+        return;
+    const auto type =
+        details.description.toString().fromFirstOccurrenceOf("plugin:", false, false).toStdString();
+    if (!type.empty())
+        onInsertPlugin(project_->tracks[static_cast<size_t>(row)].id, type);
+}
+
 void ArrangeView::setAcceptedExtensions(const juce::String& wildcards)
 {
     acceptedExtensions_.clear();
@@ -1494,6 +1533,13 @@ void ArrangeView::paint(juce::Graphics& g)
                 juce::Rectangle<int>(0, ghostY, headerWidth, rowHeight - 4).reduced(theme_.spacing.sm, 0),
                 juce::Justification::centredLeft);
         }
+    }
+
+    // A plugin dragged over a track lights its row.
+    if (pluginDropRow_ >= 0)
+    {
+        g.setColour(c.dropTarget);
+        g.fillRect(rowBounds(pluginDropRow_).withRight(getWidth() - scrollbarWidth));
     }
 
     // The corner over the headers.

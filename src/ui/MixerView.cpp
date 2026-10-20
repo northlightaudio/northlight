@@ -1342,8 +1342,9 @@ void MixerView::openInsertEditor(core::Id channelId, core::Id insertId)
         auto* clap = dynamic_cast<hosting::HostedClapPlugin*>(live.get());
         if (vst3 == nullptr && clap == nullptr)
             return; // not loaded (missing plugin): nothing to show
-        const juce::String title = juce::String::fromUTF8(channel->name.c_str()) + " - " +
-                                   juce::String::fromUTF8(insertDisplayName(insert->type).c_str());
+        const juce::String pluginName = juce::String::fromUTF8(insertDisplayName(insert->type).c_str());
+        const juce::String trackName = juce::String::fromUTF8(channel->name.c_str());
+        const juce::String format = hosting::PluginRegistry::isClapType(insert->type) ? "CLAP" : "VST3";
         const auto setting = [this](const std::string& key)
         { return loadSetting ? loadSetting(key) : std::string{}; };
         const bool pinned = setting("plugins.pin") == "1";
@@ -1401,8 +1402,16 @@ void MixerView::openInsertEditor(core::Id channelId, core::Id insertId)
             }
             presets = clap;
         }
-        auto window = std::make_unique<PluginWindow>(
-            channelId, insertId, live, *presets, std::move(editor), resizable, title, pinned);
+        auto window = std::make_unique<PluginWindow>(channelId,
+                                                     insertId,
+                                                     live,
+                                                     *presets,
+                                                     std::move(editor),
+                                                     resizable,
+                                                     pluginName,
+                                                     trackName,
+                                                     format,
+                                                     pinned);
         juce::Component::SafePointer<MixerView> safe(this);
         if (clapEditor != nullptr)
         {
@@ -1445,18 +1454,30 @@ void MixerView::openInsertEditor(core::Id channelId, core::Id insertId)
             if (safe != nullptr && safe->saveSetting)
                 safe->saveSetting("plugins.pin", pin ? "1" : "0");
         };
-        // Where this plugin's window was last left, per plugin type, if still on screen.
+        // Where this plugin's window was last left, and its size, per plugin type,
+        // if still on screen.
         const std::string positionKey = "plugins.window." + insert->type;
         const auto saved = juce::StringArray::fromTokens(juce::String(setting(positionKey)), ",", "");
         const auto screen = juce::Desktop::getInstance().getDisplays().getTotalBounds(true);
-        if (saved.size() == 2 && screen.contains(saved[0].getIntValue() + 20, saved[1].getIntValue() + 20))
+        if (saved.size() >= 2 && screen.contains(saved[0].getIntValue() + 20, saved[1].getIntValue() + 20))
+        {
             window->setTopLeftPosition(saved[0].getIntValue(), saved[1].getIntValue());
+            if (saved.size() == 4 && resizable && saved[2].getIntValue() > 100 && saved[3].getIntValue() > 50)
+                window->setEditorSize(saved[2].getIntValue(), saved[3].getIntValue());
+        }
         else
             window->centreAroundComponent(getTopLevelComponent(), window->getWidth(), window->getHeight());
-        window->onMoved = [safe, positionKey](juce::Point<int> p)
+        juce::Component::SafePointer<PluginWindow> weakWindow(window.get());
+        window->onBoundsChanged = [safe, weakWindow, positionKey](juce::Rectangle<int> b)
         {
-            if (safe != nullptr && safe->saveSetting)
-                safe->saveSetting(positionKey, std::to_string(p.x) + "," + std::to_string(p.y));
+            if (safe == nullptr || !safe->saveSetting || weakWindow == nullptr)
+                return;
+            const auto* content = weakWindow->getContentComponent();
+            const int w = content != nullptr ? content->getWidth() : 0;
+            const int h = content != nullptr ? content->getHeight() - PluginWindow::barHeight : 0;
+            safe->saveSetting(positionKey,
+                              std::to_string(b.getX()) + "," + std::to_string(b.getY()) + "," +
+                                  std::to_string(w) + "," + std::to_string(h));
         };
         window->setInsert(*insert);
         pluginWindows_.push_back(std::move(window));
@@ -1512,6 +1533,17 @@ MixerView::~MixerView()
 {
     stopTimer();
     closeEditors();
+}
+
+bool MixerView::isEditorOpen(core::Id insertId) const
+{
+    for (const auto& w : pluginWindows_)
+        if (w->insertId() == insertId)
+            return true;
+    for (const auto& w : editors_)
+        if (w->editor().insertId() == insertId)
+            return true;
+    return false;
 }
 
 void MixerView::closeEditors()
@@ -1574,6 +1606,9 @@ void MixerView::setProject(const core::Project* project)
                       if (insert == nullptr)
                           return true;
                       w->editor().setInsert(*insert);
+                      if (liveInsert)
+                          if (const auto live = liveInsert(w->editor().insertId()))
+                              w->editor().setLatency(live->latencySamples());
                       return false;
                   });
 }

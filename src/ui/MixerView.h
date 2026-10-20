@@ -77,6 +77,8 @@ public:
     void openInsertEditor(core::Id channelId, core::Id insertId);
     // Closes every editor window (before a project is replaced).
     void closeEditors();
+    // Whether an insert's editor (plugin or generic window) is open.
+    bool isEditorOpen(core::Id insertId) const;
     // The display name of an insert type (built-in or hosted), for the editor panel.
     std::string insertDisplayName(const std::string& type) const;
 

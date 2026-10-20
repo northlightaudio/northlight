@@ -15,10 +15,11 @@ namespace aural::ui
 {
 
 // A floating window for a hosted plugin's editor (VST3 or CLAP, or a generic one
-// when the plugin has none), with a bar above it for bypass, wet/dry mix, a
-// presets menu and "pin" (always on top). The window never outlives the plugin
-// instance: it shares ownership of the processor, and the owner closes it when the
-// insert leaves the model.
+// when the plugin has none) with the 32 px bar of 07-plugins.md 7.2 above it:
+// power (bypass), "Plugin · Track", the format badge, the wet/dry slider with
+// its value, the presets menu and pin (always on top). The window never
+// outlives the plugin instance: it shares ownership of the processor, and the
+// owner closes it when the insert leaves the model.
 class PluginWindow final : public juce::DocumentWindow
 {
 public:
@@ -31,7 +32,9 @@ public:
                  hosting::PluginPresets& presets,
                  std::unique_ptr<juce::Component> editor,
                  bool resizable,
-                 const juce::String& title,
+                 const juce::String& pluginName,
+                 const juce::String& trackName,
+                 const juce::String& format,
                  bool pinned);
     ~PluginWindow() override;
 
@@ -44,16 +47,20 @@ public:
     void setInsert(const core::Insert& insert);
     // The editor changed size (a plugin resized itself): follow it.
     void editorSizeChanged(int width, int height);
+    // The editor's size the user left (resizable windows), to restore next time.
+    void setEditorSize(int width, int height);
 
     std::function<void(std::unique_ptr<core::Command>)> onCommand;
     std::function<void()> onClose;          // called (asynchronously) after the close button
     std::function<void(bool)> onPinChanged; // the user toggled always-on-top
-    std::function<void(juce::Point<int>)> onMoved;
+    std::function<void(juce::Rectangle<int>)> onBoundsChanged; // moved or resized by the user
 
     void closeButtonPressed() override;
     void moved() override;
+    void resized() override;
 
-    static constexpr int barHeight = 30;
+    static constexpr int barHeight = 32;
+    static constexpr int minWidth = 420;
 
 private:
     class Holder;

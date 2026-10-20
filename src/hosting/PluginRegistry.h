@@ -63,6 +63,8 @@ public:
     const std::map<std::string, std::string>& blocked() const noexcept { return blocked_; }
     const std::map<std::string, std::int64_t>& scannedFiles() const noexcept { return scannedFiles_; }
     void clearBlocklist();
+    // Forgets one blocked file (and its scan record) so the next scan tries it again.
+    void unblock(const std::string& path);
 
     std::string toJson() const;
     static std::optional<PluginRegistry> fromJson(const std::string& text, std::string* error = nullptr);

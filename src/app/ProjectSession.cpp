@@ -844,6 +844,15 @@ void ProjectSession::clearPluginBlocklist()
     sendChangeMessage();
 }
 
+void ProjectSession::retryBlockedPlugin(const std::string& path)
+{
+    registry_.unblock(path);
+    saveRegistry();
+    if (!scanner_.isScanning())
+        scanner_.start(false);
+    sendChangeMessage();
+}
+
 void ProjectSession::saveRegistry()
 {
     if (registryFile_.getFullPathName().isEmpty())

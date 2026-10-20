@@ -94,6 +94,12 @@ void PluginRegistry::clearBlocklist()
     blocked_.clear();
 }
 
+void PluginRegistry::unblock(const std::string& path)
+{
+    blocked_.erase(path);
+    scannedFiles_.erase(path);
+}
+
 std::string PluginRegistry::toJson() const
 {
     json plugins = json::array();

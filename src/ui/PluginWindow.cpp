@@ -1,5 +1,8 @@
 #include "ui/PluginWindow.h"
 
+#include "ui/AuralLookAndFeel.h"
+#include "ui/Icons.h"
+
 #include <functional>
 #include <vector>
 
@@ -11,49 +14,48 @@ namespace aural::ui
 class PluginWindow::Holder final : public juce::Component
 {
 public:
-    Holder(PluginWindow& window, hosting::PluginPresets& presets, std::unique_ptr<juce::Component> editor)
-        : window_(window), presets_(presets), editor_(std::move(editor))
+    Holder(PluginWindow& window,
+           hosting::PluginPresets& presets,
+           std::unique_ptr<juce::Component> editor,
+           const juce::String& pluginName,
+           const juce::String& trackName,
+           const juce::String& format)
+        : window_(window), presets_(presets), editor_(std::move(editor)), pluginName_(pluginName),
+          trackName_(trackName), format_(format), power_(theme_, Icon::power, "Bypass"),
+          pin_(theme_, Icon::pin, "Keep this window above the others")
     {
         setOpaque(true);
-        bypass_.setButtonText("Bypass");
-        bypass_.setClickingTogglesState(true);
-        bypass_.setColour(juce::TextButton::buttonOnColourId, theme_.colours.warning);
-        bypass_.setColour(juce::TextButton::textColourOnId, theme_.colours.accentText);
-        bypass_.onClick = [this]
+        power_.setClickingTogglesState(true);
+        power_.onClick = [this]
         {
             if (!updating_ && window_.onCommand)
                 window_.onCommand(std::make_unique<core::SetInsertBypass>(
-                    window_.channelId(), window_.insertId(), bypass_.getToggleState()));
+                    window_.channelId(), window_.insertId(), !power_.getToggleState()));
         };
-        addAndMakeVisible(bypass_);
+        addAndMakeVisible(power_);
 
         presetsButton_.setButtonText("Presets");
+        presetsButton_.getProperties().set(AuralLookAndFeel::propertyVariant, "ghost");
+        presetsButton_.getProperties().set(AuralLookAndFeel::propertyMenu, true);
         presetsButton_.onClick = [this] { showPresetsMenu(); };
         addAndMakeVisible(presetsButton_);
 
-        mixLabel_.setText("Mix", juce::dontSendNotification);
-        mixLabel_.setFont(juce::FontOptions{theme_.type.caption});
-        mixLabel_.setColour(juce::Label::textColourId, theme_.colours.textSecondary);
-        addAndMakeVisible(mixLabel_);
         mix_.setSliderStyle(juce::Slider::LinearHorizontal);
         mix_.setRange(0.0, 100.0, 1.0);
-        mix_.setTextValueSuffix("%");
-        mix_.setTextBoxStyle(juce::Slider::TextBoxRight, false, 48, 20);
+        mix_.setTextBoxStyle(juce::Slider::NoTextBox, true, 0, 0);
         mix_.setDoubleClickReturnValue(true, 100.0);
         mix_.setValue(100.0, juce::dontSendNotification);
+        mix_.setTooltip("Wet/dry mix");
         mix_.onValueChange = [this]
         {
+            repaint();
             if (!updating_ && window_.onCommand)
                 window_.onCommand(std::make_unique<core::SetInsertMix>(
                     window_.channelId(), window_.insertId(), static_cast<float>(mix_.getValue() / 100.0)));
         };
         addAndMakeVisible(mix_);
 
-        pin_.setButtonText("Pin");
-        pin_.setTooltip("Keep this window above the others");
         pin_.setClickingTogglesState(true);
-        pin_.setColour(juce::TextButton::buttonOnColourId, theme_.colours.accent);
-        pin_.setColour(juce::TextButton::textColourOnId, theme_.colours.accentText);
         pin_.onClick = [this]
         {
             window_.setAlwaysOnTop(pin_.getToggleState());
@@ -63,7 +65,8 @@ public:
         addAndMakeVisible(pin_);
 
         addAndMakeVisible(*editor_);
-        setSize(std::max(editor_->getWidth(), 340), editor_->getHeight() + PluginWindow::barHeight);
+        setSize(std::max(editor_->getWidth(), PluginWindow::minWidth),
+                editor_->getHeight() + PluginWindow::barHeight);
     }
 
     ~Holder() override
@@ -73,6 +76,8 @@ public:
         removeChildComponent(editor_.get());
         editor_.reset();
     }
+
+    juce::Component& editor() noexcept { return *editor_; }
 
     void showPresetsMenu()
     {
@@ -163,28 +168,79 @@ public:
     void setInsert(const core::Insert& insert)
     {
         const juce::ScopedValueSetter<bool> guard(updating_, true);
-        bypass_.setToggleState(insert.bypass, juce::dontSendNotification);
+        power_.setToggleState(!insert.bypass, juce::dontSendNotification);
+        power_.setTooltip(insert.bypass ? "Bypassed: click to enable" : "Enabled: click to bypass");
         mix_.setValue(insert.mix * 100.0, juce::dontSendNotification);
+        repaint();
     }
 
     void paint(juce::Graphics& g) override
     {
-        g.fillAll(theme_.colours.background);
-        g.setColour(theme_.colours.border);
+        const auto& c = theme_.colours;
+        g.fillAll(c.canvas);
+        g.setColour(c.surface0);
+        g.fillRect(0, 0, getWidth(), PluginWindow::barHeight);
+        g.setColour(c.lineSubtle);
         g.fillRect(0, PluginWindow::barHeight - 1, getWidth(), 1);
+        // "Plugin · Track" after the power button, the badge after that, the mix
+        // value after the slider.
+        g.setFont(theme_.label());
+        auto title = titleArea_;
+        const auto dot = juce::String::fromUTF8(" \xc2\xb7 ");
+        const int pluginW = juce::GlyphArrangement::getStringWidthInt(theme_.label(), pluginName_);
+        const int dotW = juce::GlyphArrangement::getStringWidthInt(theme_.label(), dot);
+        g.setColour(power_.getToggleState() ? c.textPrimary : c.textTertiary);
+        g.drawText(pluginName_,
+                   title.removeFromLeft(std::min(pluginW, title.getWidth())),
+                   juce::Justification::centredLeft,
+                   true);
+        if (trackName_.isNotEmpty() && title.getWidth() > dotW)
+        {
+            g.setColour(c.textSecondary);
+            g.drawText(dot, title.removeFromLeft(dotW), juce::Justification::centredLeft);
+            g.drawText(trackName_, title, juce::Justification::centredLeft, true);
+        }
+        if (!badgeArea_.isEmpty())
+        {
+            g.setFont(theme_.captionCaps());
+            const auto badge = badgeArea_.toFloat();
+            g.setColour(c.accent.withAlpha(0.2f));
+            g.fillRoundedRectangle(badge, badge.getHeight() * 0.5f);
+            g.setColour(c.accent);
+            g.drawText(format_, badgeArea_, juce::Justification::centred);
+        }
+        g.setFont(theme_.value());
+        g.setColour(c.textSecondary);
+        g.drawText(juce::String(static_cast<int>(mix_.getValue())) + "%",
+                   mixValueArea_,
+                   juce::Justification::centredLeft);
     }
 
     void resized() override
     {
-        auto bar = getLocalBounds().removeFromTop(PluginWindow::barHeight).reduced(theme_.spacing.sm, 4);
-        bypass_.setBounds(bar.removeFromLeft(64));
+        const int control = theme_.sizes.controlCompact;
+        auto bar = getLocalBounds()
+                       .removeFromTop(PluginWindow::barHeight)
+                       .reduced(theme_.spacing.sm, (PluginWindow::barHeight - control) / 2);
+        power_.setBounds(bar.removeFromLeft(control));
         bar.removeFromLeft(theme_.spacing.sm);
-        presetsButton_.setBounds(bar.removeFromLeft(66));
-        bar.removeFromLeft(theme_.spacing.sm);
-        pin_.setBounds(bar.removeFromRight(44));
+        pin_.setBounds(bar.removeFromRight(control));
         bar.removeFromRight(theme_.spacing.sm);
-        mixLabel_.setBounds(bar.removeFromLeft(28));
-        mix_.setBounds(bar);
+        presetsButton_.setBounds(bar.removeFromRight(84));
+        bar.removeFromRight(theme_.spacing.sm);
+        mixValueArea_ = bar.removeFromRight(36);
+        mix_.setBounds(bar.removeFromRight(80));
+        bar.removeFromRight(theme_.spacing.sm);
+        badgeArea_ = {};
+        if (format_.isNotEmpty())
+        {
+            const int w = juce::GlyphArrangement::getStringWidthInt(theme_.captionCaps(), format_) +
+                          2 * theme_.spacing.sm;
+            badgeArea_ =
+                bar.removeFromRight(w).withSizeKeepingCentre(w, theme_.sizes.icon + theme_.spacing.xxs);
+            bar.removeFromRight(theme_.spacing.sm);
+        }
+        titleArea_ = bar;
         const juce::ScopedValueSetter<bool> guard(layingOut_, true);
         editor_->setTopLeftPosition(0, PluginWindow::barHeight);
     }
@@ -194,7 +250,7 @@ public:
     {
         if (child != editor_.get() || layingOut_)
             return;
-        const int w = std::max(editor_->getWidth(), 340);
+        const int w = std::max(editor_->getWidth(), PluginWindow::minWidth);
         const int h = editor_->getHeight() + PluginWindow::barHeight;
         if (w != getWidth() || h != getHeight())
             window_.setContentComponentSize(w, h);
@@ -205,9 +261,11 @@ private:
     PluginWindow& window_;
     hosting::PluginPresets& presets_;
     std::unique_ptr<juce::Component> editor_;
-    juce::TextButton bypass_, pin_, presetsButton_;
-    juce::Label mixLabel_;
+    juce::String pluginName_, trackName_, format_;
+    IconButton power_, pin_;
+    juce::TextButton presetsButton_;
     juce::Slider mix_;
+    juce::Rectangle<int> titleArea_, badgeArea_, mixValueArea_;
     std::unique_ptr<juce::FileChooser> chooser_;
     bool updating_ = false;
     bool layingOut_ = false;
@@ -219,13 +277,17 @@ PluginWindow::PluginWindow(core::Id channelId,
                            hosting::PluginPresets& presets,
                            std::unique_ptr<juce::Component> editor,
                            bool resizable,
-                           const juce::String& title,
+                           const juce::String& pluginName,
+                           const juce::String& trackName,
+                           const juce::String& format,
                            bool pinned)
-    : juce::DocumentWindow(title, Theme::dark().colours.background, juce::DocumentWindow::closeButton),
+    : juce::DocumentWindow(trackName.isEmpty() ? pluginName : trackName + " - " + pluginName,
+                           Theme::dark().colours.canvas,
+                           juce::DocumentWindow::closeButton),
       keepAlive_(std::move(keepAlive)), channelId_(channelId), insertId_(insertId)
 {
     setUsingNativeTitleBar(true);
-    auto holder = std::make_unique<Holder>(*this, presets, std::move(editor));
+    auto holder = std::make_unique<Holder>(*this, presets, std::move(editor), pluginName, trackName, format);
     holder_ = holder.get();
     holder_->setPinned(pinned);
     setContentOwned(holder.release(), true);
@@ -248,7 +310,16 @@ void PluginWindow::setInsert(const core::Insert& insert)
 
 void PluginWindow::editorSizeChanged(int width, int height)
 {
-    setContentComponentSize(std::max(width, 340), height + barHeight);
+    setContentComponentSize(std::max(width, minWidth), height + barHeight);
+}
+
+void PluginWindow::setEditorSize(int width, int height)
+{
+    if (holder_ != nullptr && isResizable())
+    {
+        holder_->editor().setSize(width, height);
+        setContentComponentSize(std::max(width, minWidth), height + barHeight);
+    }
 }
 
 void PluginWindow::closeButtonPressed()
@@ -260,8 +331,15 @@ void PluginWindow::closeButtonPressed()
 void PluginWindow::moved()
 {
     juce::DocumentWindow::moved();
-    if (onMoved && isVisible())
-        onMoved(getPosition());
+    if (onBoundsChanged && isVisible())
+        onBoundsChanged(getBounds());
+}
+
+void PluginWindow::resized()
+{
+    juce::DocumentWindow::resized();
+    if (onBoundsChanged && isVisible() && holder_ != nullptr)
+        onBoundsChanged(getBounds());
 }
 
 } // namespace aural::ui

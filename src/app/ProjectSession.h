@@ -16,6 +16,7 @@
 
 #include <memory>
 #include <string>
+#include <utility>
 
 namespace aural::audio
 {
@@ -61,6 +62,10 @@ public:
     void scanPlugins(bool all = false);
     bool isScanningPlugins() const noexcept { return scanner_.isScanning(); }
     void clearPluginBlocklist();
+    void cancelPluginScan() { scanner_.cancel(); }
+    std::pair<int, int> pluginScanProgress() const { return {scanner_.scanned(), scanner_.total()}; }
+    // Forgets a blocked file and scans again so it gets another try.
+    void retryBlockedPlugin(const std::string& path);
     std::string pluginScanStatus() const { return scanner_.status(); }
     audio::PeakStore& peakStore() noexcept { return peaks_; }
 

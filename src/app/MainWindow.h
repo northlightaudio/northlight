@@ -50,6 +50,8 @@ public:
     void openPianoRoll(core::Id trackId, core::Id clipId);
     // A layout preset ("Mix", "Edit") for unattended captures and the menu.
     void applyLayoutPreset(const juce::String& name);
+    // Shows a panel by its key (mixer, editor, pianoRoll, diagnostics, browser, inspector).
+    void showPanel(const juce::String& key);
     // A toast or a status message, for the application's own notices.
     void notify(const juce::String& message, bool warning = false);
 

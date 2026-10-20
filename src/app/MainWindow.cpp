@@ -6,6 +6,7 @@
 #include "core/Command.h"
 #include "core/Model.h"
 #include "engine/Snapshot.h"
+#include "plugins/BuiltIns.h"
 #include "ui/ArrangeView.h"
 #include "ui/AudioSetupView.h"
 #include "ui/AuralLookAndFeel.h"
@@ -246,7 +247,10 @@ private:
 
 // ----- the content ---------------------------------------------------------------------------
 
-class MainWindow::Content final : public juce::Component, private juce::ChangeListener, private juce::Timer
+class MainWindow::Content final : public juce::Component,
+                                  public juce::DragAndDropContainer,
+                                  private juce::ChangeListener,
+                                  private juce::Timer
 {
 public:
     friend class MainWindow;
@@ -658,8 +662,28 @@ private:
         { session_.executeGroup(name, std::move(commands)); };
 
         browser_.onScan = [this](bool all) { session_.scanPlugins(all); };
+        browser_.onCancelScan = [this] { session_.cancelPluginScan(); };
         browser_.onClearBlocklist = [this] { session_.clearPluginBlocklist(); };
+        browser_.onRetry = [this](const std::string& path) { session_.retryBlockedPlugin(path); };
+        browser_.scanProgress = [this] { return session_.pluginScanProgress(); };
+        browser_.loadSetting = [this](const std::string& key) { return settings_.value(key); };
+        browser_.saveSetting = [this](const std::string& key, const std::string& value)
+        { settings_.setValue(key, value); };
+        browser_.onInsert = [this](const std::string& type) { insertPlugin(tracks_.selectedTrack(), type); };
         browser_.setStatus(session_.pluginScanStatus());
+        tracks_.onInsertPlugin = [this](core::Id trackId, const std::string& type)
+        { insertPlugin(trackId, type); };
+        editor_.isEditorOpen = [this](core::Id insertId) { return mixer_.isEditorOpen(insertId); };
+        editor_.listSetting = [this](const std::string& key)
+        {
+            std::vector<std::string> values;
+            for (const auto& item : juce::StringArray::fromTokens(
+                     juce::String::fromUTF8(settings_.value(key).c_str()), "\t", ""))
+                if (item.isNotEmpty())
+                    values.push_back(item.toStdString());
+            return values;
+        };
+        editor_.onInserted = [this](const std::string& type) { browser_.rememberRecent(type); };
     }
 
     void wirePanels()
@@ -761,6 +785,13 @@ private:
             tracks_.setMidiInputNames(audio_.midi().openInputNames());
         }
         tracks_.setProject(&session_.project());
+        // There is always a selected track while the project has one (the editor
+        // and inspector follow it).
+        if (tracks_.selectedTrack() == core::invalidId && !session_.project().tracks.empty())
+        {
+            tracks_.setSelectedTrack(session_.project().tracks.front().id);
+            selectionChanged(session_.project().tracks.front().id);
+        }
         mixer_.setProject(&session_.project());
         editor_.setProject(&session_.project());
         inspector_.setProject(&session_.project());
@@ -971,6 +1002,23 @@ private:
         editor_.setChannel(trackId);
         inspector_.setSelection(trackId, clipId);
         mixer_.setSelectedChannel(trackId);
+    }
+
+    // Inserts a plugin type on a track (from the browser, a drop or the chain).
+    void insertPlugin(core::Id trackId, const std::string& type)
+    {
+        if (trackId == core::invalidId || session_.project().findChannel(trackId) == nullptr)
+        {
+            toast(ui::ToastStack::Kind::info, "Select a track to insert the plugin on.");
+            return;
+        }
+        core::Insert insert;
+        insert.type = type;
+        insert.params = plugins::defaultParameters(type);
+        session_.execute(std::make_unique<core::AddInsert>(trackId, insert));
+        browser_.rememberRecent(type);
+        tracks_.setSelectedTrack(trackId);
+        selectionChanged(trackId);
     }
 
     void armSelected()
@@ -1627,6 +1675,21 @@ void MainWindow::openPianoRoll(core::Id trackId, core::Id clipId)
         content->pianoRoll_.setClip(&session_.project(), trackId, clipId);
         content->panels_.show(ui::PanelId::pianoRoll);
     }
+}
+
+void MainWindow::showPanel(const juce::String& key)
+{
+    auto* content = dynamic_cast<Content*>(getContentComponent());
+    if (content == nullptr)
+        return;
+    for (const auto id : {ui::PanelId::mixer,
+                          ui::PanelId::editor,
+                          ui::PanelId::pianoRoll,
+                          ui::PanelId::diagnostics,
+                          ui::PanelId::browser,
+                          ui::PanelId::inspector})
+        if (key == ui::panelKey(id))
+            content->panels_.show(id);
 }
 
 void MainWindow::applyLayoutPreset(const juce::String& name)

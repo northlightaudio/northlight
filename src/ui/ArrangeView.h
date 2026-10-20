@@ -43,6 +43,7 @@ namespace aural::ui
 // drag moves it (snapped), a double-click renames it, Delete removes it.
 class ArrangeView final : public juce::Component,
                           public juce::FileDragAndDropTarget,
+                          public juce::DragAndDropTarget,
                           private juce::ChangeListener,
                           private juce::ScrollBar::Listener
 {
@@ -147,6 +148,13 @@ public:
     void fileDragMove(const juce::StringArray& files, int x, int y) override;
     void fileDragExit(const juce::StringArray& files) override;
     void filesDropped(const juce::StringArray& files, int x, int y) override;
+    // A plugin dragged from the browser ("plugin:<type>") lands on a track.
+    bool isInterestedInDragSource(const SourceDetails& details) override;
+    void itemDragEnter(const SourceDetails& details) override;
+    void itemDragMove(const SourceDetails& details) override;
+    void itemDragExit(const SourceDetails& details) override;
+    void itemDropped(const SourceDetails& details) override;
+    std::function<void(core::Id trackId, const std::string& type)> onInsertPlugin;
 
 private:
     int rulerHeight = 32;  // size.ruler: the markers row over the bars row
@@ -294,6 +302,7 @@ private:
     juce::StringArray acceptedExtensions_;
     bool dragOver_ = false;
     juce::Point<int> dropPoint_;
+    int pluginDropRow_ = -1;
     juce::StringArray dropFiles_;
     bool followPlayhead_ = true;
     int hoverRow_ = -1;

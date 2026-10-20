@@ -3,6 +3,8 @@
 #include "plugins/BuiltIns.h"
 #include "ui/AuralLookAndFeel.h"
 
+#include <map>
+
 namespace aural::ui
 {
 
@@ -13,7 +15,8 @@ class EditorPanel::Card final : public juce::Component
 public:
     Card(EditorPanel& owner, const Theme& theme, core::Id channelId, const core::Insert& insert)
         : owner_(owner), theme_(theme), channelId_(channelId), insertId_(insert.id), type_(insert.type),
-          power_(theme, Icon::power, "Bypass"), menu_(theme, Icon::menu, "Replace, remove, presets, sidechain")
+          power_(theme, Icon::power, "Bypass"),
+          menu_(theme, Icon::menu, "Replace, remove, presets, sidechain")
     {
         power_.setClickingTogglesState(true);
         power_.setSize(theme_.sizes.controlCompact, theme_.sizes.controlCompact);
@@ -21,7 +24,8 @@ public:
         power_.onClick = [this]
         {
             if (owner_.onCommand)
-                owner_.onCommand(std::make_unique<core::SetInsertBypass>(channelId_, insertId_, !power_.getToggleState()));
+                owner_.onCommand(
+                    std::make_unique<core::SetInsertBypass>(channelId_, insertId_, !power_.getToggleState()));
         };
         menu_.onClick = [this] { showMenu(); };
         addAndMakeVisible(power_);
@@ -44,7 +48,8 @@ public:
         mix_.onValueChange = [this]
         {
             if (!updating_ && owner_.onCommand)
-                owner_.onCommand(std::make_unique<core::SetInsertMix>(channelId_, insertId_, static_cast<float>(mix_.getValue() / 100.0)));
+                owner_.onCommand(std::make_unique<core::SetInsertMix>(
+                    channelId_, insertId_, static_cast<float>(mix_.getValue() / 100.0)));
         };
         addAndMakeVisible(mix_);
         open_.setButtonText("Open");
@@ -61,6 +66,22 @@ public:
 
     core::Id insertId() const noexcept { return insertId_; }
     const std::string& type() const noexcept { return type_; }
+
+    void mouseDown(const juce::MouseEvent& e) override
+    {
+        dragging_ = e.y < theme_.sizes.control && e.mods.isLeftButtonDown();
+    }
+    void mouseDrag(const juce::MouseEvent& e) override
+    {
+        if (dragging_ && e.mouseWasDraggedSinceMouseDown())
+            owner_.reorderCard(insertId_, e.getScreenPosition(), false);
+    }
+    void mouseUp(const juce::MouseEvent& e) override
+    {
+        if (dragging_ && e.mouseWasDraggedSinceMouseDown())
+            owner_.reorderCard(insertId_, e.getScreenPosition(), true);
+        dragging_ = false;
+    }
 
     void refresh(const core::Insert& insert)
     {
@@ -81,7 +102,9 @@ public:
     {
         const int perRow = 4;
         const int knobW = theme_.sizes.knob + theme_.spacing.xl;
-        return std::max(160, std::min(perRow, std::max(1, static_cast<int>(knobs_.size()))) * knobW + 2 * theme_.spacing.md);
+        return std::max(160,
+                        std::min(perRow, std::max(1, static_cast<int>(knobs_.size()))) * knobW +
+                            2 * theme_.spacing.md);
     }
 
     void paint(juce::Graphics& g) override
@@ -100,36 +123,74 @@ public:
         if (badge.isNotEmpty())
         {
             g.setFont(theme_.captionCaps());
-            const int w = juce::GlyphArrangement::getStringWidthInt(g.getCurrentFont(), badge) + 2 * theme_.spacing.sm;
-            auto b = header.removeFromRight(w).withSizeKeepingCentre(w, theme_.sizes.icon + theme_.spacing.xxs).toFloat();
+            const int w =
+                juce::GlyphArrangement::getStringWidthInt(g.getCurrentFont(), badge) + 2 * theme_.spacing.sm;
+            auto b = header.removeFromRight(w)
+                         .withSizeKeepingCentre(w, theme_.sizes.icon + theme_.spacing.xxs)
+                         .toFloat();
             g.setColour(c.accent.withAlpha(0.2f));
             g.fillRoundedRectangle(b, b.getHeight() * 0.5f);
             g.setColour(c.accent);
             g.drawText(badge, b.toNearestInt(), juce::Justification::centred);
             header.removeFromRight(theme_.spacing.xs);
         }
+        // The "open" dot while the editor window is open.
+        if (owner_.isEditorOpen && owner_.isEditorOpen(insertId_))
+        {
+            g.setColour(c.accent);
+            g.fillEllipse(header.removeFromLeft(10).toFloat().withSizeKeepingCentre(6.0f, 6.0f));
+            header.removeFromLeft(theme_.spacing.xxs);
+        }
         g.setFont(theme_.label());
-        g.setColour(bypassed_ ? c.textTertiary : c.textPrimary);
-        const auto name = owner_.displayName ? juce::String::fromUTF8(owner_.displayName(type_).c_str()) : juce::String(type_);
+        g.setColour(bypassed_ || missing_ ? c.textTertiary : c.textPrimary);
+        const auto name = owner_.displayName ? juce::String::fromUTF8(owner_.displayName(type_).c_str())
+                                             : juce::String(type_);
         g.drawText(name, header, juce::Justification::centredLeft, true);
+        if (missing_)
+        {
+            auto body = getLocalBounds()
+                            .withTrimmedTop(theme_.sizes.control + theme_.sizes.controlCompact)
+                            .withTrimmedBottom(theme_.sizes.controlCompact);
+            Icons::draw(g,
+                        Icon::warning,
+                        juce::Rectangle<float>(20.0f, 20.0f)
+                            .withCentre({static_cast<float>(body.getCentreX()),
+                                         static_cast<float>(body.getCentreY() - 14)}),
+                        c.warning);
+            g.setColour(c.textTertiary);
+            g.setFont(theme_.small());
+            g.drawText(
+                "Not installed", body.withTrimmedTop(body.getHeight() / 2), juce::Justification::centredTop);
+        }
         if (bypassed_)
         {
-            const int w = std::min(header.getWidth(), juce::GlyphArrangement::getStringWidthInt(theme_.label(), name));
+            const int w =
+                std::min(header.getWidth(), juce::GlyphArrangement::getStringWidthInt(theme_.label(), name));
             g.fillRect(header.getX(), header.getCentreY(), w, 1);
         }
         // Sidechain chip and latency in the footer line above the mix.
-        auto footer = getLocalBounds().removeFromBottom(theme_.sizes.controlCompact).reduced(theme_.spacing.md, 0);
+        auto footer =
+            getLocalBounds().removeFromBottom(theme_.sizes.controlCompact).reduced(theme_.spacing.md, 0);
         g.setFont(theme_.caption());
         g.setColour(c.textSecondary);
-        g.drawText("Mix " + juce::String(static_cast<int>(mix_.getValue())) + "%", footer.removeFromLeft(56), juce::Justification::centredLeft);
-        auto info = getLocalBounds().withTrimmedTop(theme_.sizes.control).removeFromTop(theme_.sizes.controlCompact).reduced(theme_.spacing.md, 0);
+        g.drawText("Mix " + juce::String(static_cast<int>(mix_.getValue())) + "%",
+                   footer.removeFromLeft(56),
+                   juce::Justification::centredLeft);
+        auto info = getLocalBounds()
+                        .withTrimmedTop(theme_.sizes.control)
+                        .removeFromTop(theme_.sizes.controlCompact)
+                        .reduced(theme_.spacing.md, 0);
         if (sidechain_ != core::invalidId && owner_.project_ != nullptr)
         {
             const auto* source = owner_.project_->findChannel(sidechain_);
-            const auto text = "key: " + (source != nullptr ? juce::String::fromUTF8(source->name.c_str()) : juce::String("?"));
+            const auto text = "key: " + (source != nullptr ? juce::String::fromUTF8(source->name.c_str())
+                                                           : juce::String("?"));
             g.setFont(theme_.caption());
-            const int w = juce::GlyphArrangement::getStringWidthInt(g.getCurrentFont(), text) + 2 * theme_.spacing.sm;
-            const auto chip = info.removeFromLeft(w).withSizeKeepingCentre(w, theme_.sizes.icon + theme_.spacing.xxs).toFloat();
+            const int w =
+                juce::GlyphArrangement::getStringWidthInt(g.getCurrentFont(), text) + 2 * theme_.spacing.sm;
+            const auto chip = info.removeFromLeft(w)
+                                  .withSizeKeepingCentre(w, theme_.sizes.icon + theme_.spacing.xxs)
+                                  .toFloat();
             g.setColour(c.accentSubtle);
             g.fillRoundedRectangle(chip, chip.getHeight() * 0.5f);
             g.setColour(c.accent);
@@ -141,23 +202,28 @@ public:
             g.setFont(theme_.caption());
             g.drawText(juce::String(latency_) + " smp", info, juce::Justification::centredRight);
         }
-        if (knobs_.empty() && !open_.isVisible())
+        if (knobs_.empty() && !open_.isVisible() && !missing_)
         {
             g.setColour(c.textTertiary);
             g.setFont(theme_.small());
-            g.drawText("No parameters", getLocalBounds().reduced(theme_.spacing.md), juce::Justification::centred);
+            g.drawText(
+                "No parameters", getLocalBounds().reduced(theme_.spacing.md), juce::Justification::centred);
         }
         if (bypassed_)
         {
             g.setColour(c.surface1.withAlpha(0.5f));
-            g.fillRoundedRectangle(bounds.withTrimmedTop(static_cast<float>(theme_.sizes.control)).withTrimmedBottom(static_cast<float>(theme_.sizes.controlCompact)), theme_.radius.md);
+            g.fillRoundedRectangle(bounds.withTrimmedTop(static_cast<float>(theme_.sizes.control))
+                                       .withTrimmedBottom(static_cast<float>(theme_.sizes.controlCompact)),
+                                   theme_.radius.md);
         }
     }
 
     void resized() override
     {
         auto area = getLocalBounds();
-        auto header = area.removeFromTop(theme_.sizes.control).reduced(theme_.spacing.xs, (theme_.sizes.control - theme_.sizes.controlCompact) / 2);
+        auto header =
+            area.removeFromTop(theme_.sizes.control)
+                .reduced(theme_.spacing.xs, (theme_.sizes.control - theme_.sizes.controlCompact) / 2);
         power_.setBounds(header.removeFromLeft(theme_.sizes.controlCompact));
         menu_.setBounds(header.removeFromRight(theme_.sizes.controlCompact));
         auto footer = area.removeFromBottom(theme_.sizes.controlCompact).reduced(theme_.spacing.md, 0);
@@ -172,13 +238,20 @@ public:
         }
         const int perRow = 4;
         const int cellW = area.getWidth() / std::max(1, std::min(perRow, static_cast<int>(knobs_.size())));
-        const int cellH = theme_.sizes.knob + static_cast<int>(theme_.fonts.size.value) + static_cast<int>(theme_.fonts.size.caption) + theme_.spacing.sm;
+        const int cellH = theme_.sizes.knob + static_cast<int>(theme_.fonts.size.value) +
+                          static_cast<int>(theme_.fonts.size.caption) + theme_.spacing.sm;
         for (size_t i = 0; i < knobs_.size(); ++i)
         {
             const int row = static_cast<int>(i) / perRow, col = static_cast<int>(i) % perRow;
-            const auto cell = juce::Rectangle<int>(area.getX() + col * cellW, area.getY() + row * cellH, cellW, cellH);
-            knobs_[i]->setBounds(cell.withTrimmedBottom(static_cast<int>(theme_.fonts.size.caption) + theme_.spacing.xxs).reduced(theme_.spacing.xs, 0));
-            labels_[i]->setBounds(cell.withTop(cell.getBottom() - static_cast<int>(theme_.fonts.size.caption) - theme_.spacing.xxs).withHeight(static_cast<int>(theme_.fonts.size.caption) + theme_.spacing.xxs));
+            const auto cell =
+                juce::Rectangle<int>(area.getX() + col * cellW, area.getY() + row * cellH, cellW, cellH);
+            knobs_[i]->setBounds(
+                cell.withTrimmedBottom(static_cast<int>(theme_.fonts.size.caption) + theme_.spacing.xxs)
+                    .reduced(theme_.spacing.xs, 0));
+            labels_[i]->setBounds(
+                cell.withTop(cell.getBottom() - static_cast<int>(theme_.fonts.size.caption) -
+                             theme_.spacing.xxs)
+                    .withHeight(static_cast<int>(theme_.fonts.size.caption) + theme_.spacing.xxs));
         }
     }
 
@@ -197,9 +270,10 @@ private:
         knobs_.clear();
         labels_.clear();
         const auto live = owner_.liveInsert ? owner_.liveInsert(insertId_) : nullptr;
+        const bool hosted = hosting::PluginRegistry::isHostedType(type_);
+        missing_ = live == nullptr && hosted;
         if (live == nullptr)
             return;
-        const bool hosted = hosting::PluginRegistry::isHostedType(type_);
         if (hosted && live->parameters().empty())
         {
             // A plugin with its own GUI: open it in its window.
@@ -232,7 +306,8 @@ private:
             knob->onValueChanged = [this, index](double value)
             {
                 if (!updating_ && owner_.onCommand)
-                    owner_.onCommand(std::make_unique<core::SetInsertParameter>(channelId_, insertId_, index, static_cast<float>(value)));
+                    owner_.onCommand(std::make_unique<core::SetInsertParameter>(
+                        channelId_, insertId_, index, static_cast<float>(value)));
             };
             addAndMakeVisible(*knob);
             auto label = std::make_unique<juce::Label>();
@@ -250,8 +325,8 @@ private:
     void showMenu()
     {
         juce::PopupMenu menu;
-        menu.addItem(1, bypassed_ ? "Enable" : "Bypass");
-        menu.addItem(2, "Open editor", true);
+        menu.addItem(1, bypassed_ ? "Enable" : "Bypass", !missing_);
+        menu.addItem(2, "Open editor", !missing_);
         menu.addItem(3, "Remove");
         juce::Component::SafePointer<Card> safe(this);
         menu.showMenuAsync(juce::PopupMenu::Options().withTargetComponent(menu_),
@@ -260,11 +335,13 @@ private:
                                if (safe == nullptr || choice == 0 || !safe->owner_.onCommand)
                                    return;
                                if (choice == 1)
-                                   safe->owner_.onCommand(std::make_unique<core::SetInsertBypass>(safe->channelId_, safe->insertId_, !safe->bypassed_));
+                                   safe->owner_.onCommand(std::make_unique<core::SetInsertBypass>(
+                                       safe->channelId_, safe->insertId_, !safe->bypassed_));
                                else if (choice == 2 && safe->owner_.onOpenEditor)
                                    safe->owner_.onOpenEditor(safe->channelId_, safe->insertId_);
                                else if (choice == 3)
-                                   safe->owner_.onCommand(std::make_unique<core::RemoveInsert>(safe->channelId_, safe->insertId_));
+                                   safe->owner_.onCommand(std::make_unique<core::RemoveInsert>(
+                                       safe->channelId_, safe->insertId_));
                            });
     }
 
@@ -277,7 +354,7 @@ private:
     juce::TextButton open_;
     std::vector<std::unique_ptr<Knob>> knobs_;
     std::vector<std::unique_ptr<juce::Label>> labels_;
-    bool bypassed_ = false, updating_ = false;
+    bool bypassed_ = false, updating_ = false, missing_ = false, dragging_ = false;
     core::Id sidechain_ = core::invalidId;
     int latency_ = 0;
 };
@@ -372,10 +449,103 @@ void EditorPanel::paint(juce::Graphics& g)
     {
         g.setColour(c.textTertiary);
         g.setFont(theme_.small());
-        g.drawText("Select a track or bus to see its inserts", getLocalBounds(), juce::Justification::centred);
+        g.drawText(
+            "Select a track or bus to see its inserts", getLocalBounds(), juce::Justification::centred);
         return;
     }
-    g.drawText(juce::String::fromUTF8(ch->name.c_str()) + juce::String::fromUTF8("  \xe2\x96\xb8"), title, juce::Justification::centredLeft);
+    g.drawText(juce::String::fromUTF8(ch->name.c_str()) + juce::String::fromUTF8("  \xe2\x96\xb8"),
+               title,
+               juce::Justification::centredLeft);
+    if (dropIndex_ >= 0)
+    {
+        // The insertion line between cards (a plugin or a card dragged over).
+        int x = theme_.spacing.md - theme_.spacing.sm / 2;
+        if (dropIndex_ > 0 && static_cast<size_t>(dropIndex_) <= cards_.size())
+            x = cards_[static_cast<size_t>(dropIndex_ - 1)]->getRight() + theme_.spacing.sm / 2;
+        const int sx = viewport_.getX() + x - viewport_.getViewPositionX();
+        g.setColour(c.accent);
+        g.fillRect(
+            sx - 1, viewport_.getY() + theme_.spacing.xs, 2, viewport_.getHeight() - theme_.spacing.md);
+    }
+}
+
+int EditorPanel::insertIndexForX(int stripX) const
+{
+    int index = 0;
+    for (const auto& card : cards_)
+    {
+        if (stripX < card->getX() + card->getWidth() / 2)
+            break;
+        ++index;
+    }
+    return index;
+}
+
+bool EditorPanel::isInterestedInDragSource(const SourceDetails& details)
+{
+    return channel() != nullptr && details.description.toString().startsWith("plugin:");
+}
+
+void EditorPanel::itemDragEnter(const SourceDetails& details)
+{
+    itemDragMove(details);
+}
+
+void EditorPanel::itemDragMove(const SourceDetails& details)
+{
+    const auto local = strip_.getLocalPoint(this, details.localPosition);
+    dropIndex_ = insertIndexForX(local.x);
+    repaint();
+}
+
+void EditorPanel::itemDragExit(const SourceDetails&)
+{
+    dropIndex_ = -1;
+    repaint();
+}
+
+void EditorPanel::itemDropped(const SourceDetails& details)
+{
+    const int index = dropIndex_;
+    dropIndex_ = -1;
+    repaint();
+    const auto type =
+        details.description.toString().fromFirstOccurrenceOf("plugin:", false, false).toStdString();
+    if (!type.empty())
+        addInsert(type, index);
+}
+
+void EditorPanel::addInsert(const std::string& type, int index)
+{
+    if (!onCommand || channel() == nullptr)
+        return;
+    core::Insert insert;
+    insert.type = type;
+    insert.params = plugins::defaultParameters(type);
+    onCommand(std::make_unique<core::AddInsert>(channelId_, insert, index));
+    if (onInserted)
+        onInserted(type);
+}
+
+void EditorPanel::reorderCard(core::Id insertId, juce::Point<int> screen, bool released)
+{
+    const auto local = strip_.getLocalPoint(nullptr, screen);
+    const int index = insertIndexForX(local.x);
+    if (!released)
+    {
+        dropIndex_ = index;
+        repaint();
+        return;
+    }
+    dropIndex_ = -1;
+    repaint();
+    const auto* ch = channel();
+    if (ch == nullptr || !onCommand)
+        return;
+    const int from = ch->insertIndex(insertId);
+    const int to = index > from ? index - 1 : index;
+    if (from >= 0 && to != from)
+        onCommand(std::make_unique<core::MoveInsert>(channelId_, insertId, to));
 }
 
 void EditorPanel::resized()
@@ -383,7 +553,8 @@ void EditorPanel::resized()
     auto area = getLocalBounds().withTrimmedTop(theme_.sizes.control);
     viewport_.setBounds(area);
     int x = theme_.spacing.md;
-    const int h = std::max(theme_.sizes.dockMin - theme_.sizes.control, area.getHeight() - theme_.spacing.md - theme_.sizes.scrollbar);
+    const int h = std::max(theme_.sizes.dockMin - theme_.sizes.control,
+                           area.getHeight() - theme_.spacing.md - theme_.sizes.scrollbar);
     for (auto& card : cards_)
     {
         card->setBounds(x, theme_.spacing.xs, card->preferredWidth(), h);
@@ -396,34 +567,63 @@ void EditorPanel::resized()
 
 void EditorPanel::showAddMenu()
 {
+    // Recent, built-ins, favourites, then every scanned plugin by manufacturer.
     juce::PopupMenu menu;
     std::vector<std::string> types;
     int item = 1;
+    const auto nameOf = [this](const std::string& type)
+    { return displayName ? juce::String::fromUTF8(displayName(type).c_str()) : juce::String(type); };
+    const auto known = [this](const std::string& type)
+    {
+        if (!hosting::PluginRegistry::isHostedType(type))
+            return plugins::BuiltInFactory().create(type) != nullptr;
+        return registry_ != nullptr && registry_->findByType(type) != nullptr;
+    };
+    const auto section = [&](const char* title, const std::vector<std::string>& list)
+    {
+        bool any = false;
+        for (const auto& type : list)
+        {
+            if (!known(type))
+                continue;
+            if (!any)
+                menu.addSectionHeader(title);
+            any = true;
+            menu.addItem(item++, nameOf(type));
+            types.push_back(type);
+        }
+    };
+    if (listSetting)
+        section("Recent", listSetting("plugins.recent"));
+    menu.addSectionHeader("Built-in");
     for (const auto& type : plugins::BuiltInFactory().typeNames())
     {
         menu.addItem(item++, plugins::BuiltInFactory::displayName(type));
         types.push_back(type);
     }
+    if (listSetting)
+        section("Favourites", listSetting("plugins.favourites"));
     if (registry_ != nullptr && !registry_->plugins().empty())
     {
-        menu.addSeparator();
+        std::map<std::string, juce::PopupMenu> byManufacturer;
         for (const auto& plugin : registry_->plugins())
         {
-            menu.addItem(item++, juce::String::fromUTF8(plugin.name.c_str()) + "  [" + juce::String(plugin.format) + "]");
+            byManufacturer[plugin.manufacturer.empty() ? "Other" : plugin.manufacturer].addItem(
+                item++,
+                juce::String::fromUTF8(plugin.name.c_str()) + "  [" + juce::String(plugin.format) + "]");
             types.push_back(hosting::PluginRegistry::typeFor(plugin));
         }
+        menu.addSeparator();
+        for (auto& [manufacturer, sub] : byManufacturer)
+            menu.addSubMenu(juce::String::fromUTF8(manufacturer.c_str()), sub);
     }
     juce::Component::SafePointer<EditorPanel> safe(this);
     menu.showMenuAsync(juce::PopupMenu::Options().withTargetComponent(add_),
                        [safe, types](int choice)
                        {
-                           if (safe == nullptr || choice <= 0 || static_cast<size_t>(choice) > types.size() || !safe->onCommand)
+                           if (safe == nullptr || choice <= 0 || static_cast<size_t>(choice) > types.size())
                                return;
-                           core::Insert insert;
-                           insert.type = types[static_cast<size_t>(choice - 1)];
-                           insert.params = plugins::defaultParameters(insert.type);
-                           safe->onCommand(std::make_unique<core::AddInsert>(safe->channelId_, insert));
+                           safe->addInsert(types[static_cast<size_t>(choice - 1)], -1);
                        });
 }
-
 } // namespace aural::ui

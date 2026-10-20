@@ -55,6 +55,7 @@ public:
     //   --loop <from> <to>   set and enable the loop region, in seconds
     //   --no-count-in        record without the count-in
     //   --layout <Mix|Edit>  apply a layout preset
+    //   --panel <name>       show a panel: mixer, editor, pianoRoll, diagnostics, browser, inspector
     //   --first-run          show the first-run sheet
     //   --midi-track         add a MIDI track (built-in synth) with a short clip
     //   --midi-track-with <type>  the same with the given instrument type instead
@@ -143,6 +144,8 @@ public:
                 mainWindow_->showMixer();
             else if (arg == "--layout" && i + 1 < tokens.size())
                 mainWindow_->applyLayoutPreset(tokens.getReference(++i).text.unquoted());
+            else if (arg == "--panel" && i + 1 < tokens.size())
+                mainWindow_->showPanel(tokens.getReference(++i).text.unquoted());
             else if (arg == "--insert" && i + 1 < tokens.size())
             {
                 // Adds a built-in insert to every track and opens the first one's editor.

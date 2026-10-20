@@ -22,7 +22,9 @@ aural.exe
                   AudioSetupView (audio and MIDI devices), ArrangeView (tracks,
                   waveforms, MIDI clips, zoom, scroll, editing), TrackHeader
                   (input or MIDI input, arm, monitor), MixerView (strips, master,
-                  inserts menu), InsertEditor (generic parameter window),
+                  inserts menu), InsertEditor (generic parameter editor),
+                  PluginBrowser (search, filters, sections, favourites, scan),
+                  PluginWindow (the bar over a hosted plugin's editor),
                   PianoRoll (one MIDI clip's notes and velocities)
   src/core        Project model (audio and MIDI tracks and buses on a shared
                   Channel, sends, fader groups, master, audio clips, MIDI clips
@@ -416,9 +418,10 @@ signal is delayed by the lookahead while the gain the coming samples need is
 known, taken as a running minimum over the window with release, smoothed by a
 moving average of the same length, so nothing crosses the ceiling and the gain
 ramps instead of stepping; it reports the lookahead as latency for delay
-compensation). `ui::InsertEditor` is a generic
-window with a slider per parameter, used for every built-in; hosted plugins bring
-their own editors.
+compensation). `ui::InsertEditor` is the generic parameter editor of
+07-plugins.md 7.3: 28 px rows of name, knob and an editable value field, a
+footer with the latency and the key input, in its own window for a built-in and
+embedded under the bar of a `PluginWindow` for a hosted plugin without a GUI.
 
 `engine::LoudnessMeter` implements BS.1770 K-weighting (the RLB stage with the
 standard's unnormalised numerator, so a full-scale 997 Hz sine in one channel reads
@@ -509,10 +512,24 @@ plugin type and the pin (always-on-top) preference in the user settings, and its
 Presets menu lists the plugin's factory programs and the `.vstpreset` files under
 the standard user folder (`Documents/VST3 Presets/<manufacturer>/<plugin>`), with
 load and save through the format's preset extension. The
-plugin browser (`ui::PluginBrowser`, from the mixer's Plugins... button or
-`--plugins`) lists everything the registry knows with search, shows the blocklist
-with reasons, and offers a scan for changes, a full rescan and clearing the
-blocklist.
+plugin browser (`ui::PluginBrowser`, the Browser panel, `--plugins` for it
+floating) is 7.4: a search field, format (All, VST3, CLAP, Built-in) and
+category segmented controls, then sections (Favourites, Recent, Effects,
+Instruments, Blocked) of 28 px rows with the star, name, manufacturer and
+format badge; Enter or a double-click inserts the plugin on the selected track,
+a row drags onto the Editor chain (at the insertion line) or an arrange track
+(the row lights); a blocked row shows the reason and Retry (the registry forgets
+the file and scans again); the scan button's chevron menu rescans or clears the
+blocklist, and a progress bar with "Scanning n of m · file" and Cancel replaces
+it while a scan runs. Favourites and recent types are user settings. The
+`PluginWindow` bar is 7.2: power, "Plugin · Track", the format badge, the 80 px
+mix slider with its value, the presets menu and pin; position and editor size
+are remembered per plugin type. The Editor panel's cards (7.1) show an accent
+dot while the editor window is open, reorder by dragging their header, take
+plugin drops, read "Not installed" with a warning when the plugin is missing,
+and the "+" card's menu lists recent, built-in, favourite and then every
+scanned plugin by manufacturer. Not in this pass: the generic-editor toggle for
+plugins that have both editors, a failed-load toast with a Blocklist action.
 
 Sidechains: an insert slot can key from another channel (`Insert::sidechain`,
 `SetInsertSidechain`, the inserts menu's Sidechain submenu, offered when the live
