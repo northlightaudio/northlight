@@ -6,6 +6,7 @@
 #include "hosting/PluginRegistry.h"
 #include "ui/Icons.h"
 #include "ui/Theme.h"
+#include "ui/components/AddSlot.h"
 #include "ui/components/Knob.h"
 #include "ui/strip/ChannelStripView.h"
 
@@ -88,7 +89,7 @@ private:
     int insertsX_ = 0; // where the inserts section starts in the content
     bool laidOutPreInserts_ = false;
     std::vector<std::unique_ptr<Card>> cards_;
-    juce::TextButton add_{"+"};
+    AddSlot add_{theme_, "Insert"};
     std::vector<core::Id> builtOrder_;
     int dropIndex_ = -1; // the insertion index while a plugin or card is dragged over
 };

@@ -13,6 +13,8 @@ add_library(aural_ui STATIC
     Theme.cpp
     AuralLookAndFeel.h
     AuralLookAndFeel.cpp
+    Wells.h
+    components/AddSlot.h
     components/Fader.h
     components/Fader.cpp
     components/Knob.h

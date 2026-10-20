@@ -6,11 +6,17 @@ The transport cluster is the centre of the header bar. It is the one place that 
 always visible and always truthful about what the engine is doing.
 
 ```
- [|◀] [▶] [■] [●]  ·  ⟲ loop  punch  click  count-in  ·  ┌ 5.3.240 ┐ ┌ 0:12.480 ┐  ·  120.00  4/4
-                                                          └ bars    ┘ └ time    ┘
+ ╭─────────────────╮  ╭───────────────────────────╮  ╭───────────────────────────────────╮
+ │ |◀  ▶  ■  ●     │  │ loop  punch  click  count │  │ 5.3.240 │ 0:12.480 │ 120.00 BPM │ 4/4 ⌄ │
+ ╰─────────────────╯  ╰───────────────────────────╯  ╰───────────────────────────────────╯
 ```
 
-Left to right, `space.md` gaps inside groups and `space.xl` between groups:
+Every control in the bar is `controlLarge` (32 px) tall. Each cluster sits in a
+tray: `surface1`, radius `md`, the groove's inset along the top and a 1 px
+`lineSubtle` rim, `space.xs` padding, `space.xxs` between the controls, `space.md`
+between trays. The bar has a `lineSubtle` rule along its bottom. The same trays
+hold the left cluster (project, undo, redo) and the right ones (snap, ripple,
+zoom; the panel toggles). Left to right in the centre:
 
 1. **Transport buttons** (32 px, `controlLarge`): Go to start, Play, Stop, Record.
    Keys in the control material (section 2.4) with 20 px icons; the active one
@@ -23,13 +29,16 @@ Left to right, `space.md` gaps inside groups and `space.xl` between groups:
    brackets around a dot; on state uses `record` instead of `accent`), Click
    (metronome), Count-in (metronome with the pendulum the other way and the bar
    count as a 9 px figure in the corner; right-click or long-press for 0/1/2).
-3. **Time displays**: two `surface2` fields with radius `sm`, 28 px, `timeLarge`
-   22 px mono for the primary (bars.beats.ticks) and `timeSmall` 13 px mono for the
-   secondary (h:mm:ss.mmm, or samples, or timecode via right-click). Click a field to
+3. **Readout**: one readout well (the material's `readoutWell`, radius `md`, the
+   groove's inset, a `lineSubtle` rim) holding bars, time, tempo and signature
+   with hairline dividers. `timeLarge` 22 px mono for the primary
+   (bars.beats.ticks) and `timeSmall` 13 px mono for the rest: the secondary time
+   (h:mm:ss.mmm, or samples, or timecode via right-click), the tempo with a
+   `caption` "BPM", the signature with a small chevron. Click a field to
    type a position; drag vertically on a segment to nudge. The primary shows the
    heard position (delay-compensated).
-4. **Tempo and signature**: numeric field "120.00" (drag, type; tap tempo via T key
-   while focused) and a "4/4" combo. Both `value` mono.
+4. **Tempo and signature** (in the readout): tempo drags, types, and taps (T while
+   focused); the signature opens its list on click.
 5. **Master clip indicator**: a 6×6 square at the far right of the cluster, hidden
    until the master clips, then `meterClip` until clicked.
 
@@ -64,8 +73,8 @@ bar. A "Copy report" ghost button copies a text summary for bug reports.
 
 ## Acceptance
 
-- Cluster screenshot matches: 32 px transport buttons, 28 px toggles and fields,
-  22 px mono primary time, exact token colours per state.
+- Cluster screenshot matches: every control 32 px in 40 px trays, one readout
+  well, 22 px mono primary time, exact token colours per state.
 - Recording state screenshot: solid record button, red time text, "●" title prefix,
   disk readout in the status bar.
 - Count-in screenshot shows negative bars in `warning`.

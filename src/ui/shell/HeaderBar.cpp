@@ -31,16 +31,25 @@ void TimeDisplay::setTone(Tone tone)
     repaint();
 }
 
+void TimeDisplay::setFramed(bool framed)
+{
+    framed_ = framed;
+    repaint();
+}
+
 void TimeDisplay::paint(juce::Graphics& g)
 {
     const auto& c = theme_.colours;
     const auto& m = theme_.material;
     const auto bounds = getLocalBounds().toFloat();
     auto* lnf = dynamic_cast<AuralLookAndFeel*>(&getLookAndFeel());
-    g.setColour(m.enabled ? m.readoutWell : c.surface2);
-    g.fillRoundedRectangle(bounds, theme_.radius.sm);
-    if (m.enabled && lnf != nullptr)
-        lnf->drawInset(g, bounds, theme_.radius.sm, m.grooveInset);
+    if (framed_)
+    {
+        g.setColour(m.enabled ? m.readoutWell : c.surface2);
+        g.fillRoundedRectangle(bounds, theme_.radius.sm);
+        if (m.enabled && lnf != nullptr)
+            lnf->drawInset(g, bounds, theme_.radius.sm, m.grooveInset);
+    }
     if (editor_ != nullptr)
         return;
     const juce::Colour text = tone_ == Tone::recording ? (m.enabled ? m.readoutRecord : c.record)
@@ -270,6 +279,13 @@ HeaderBar::HeaderBar(const Theme& theme)
         }
         return true;
     };
+    bars_.setFramed(false);
+    time_.setFramed(false);
+    tempo_.setReadout(true);
+    tempo_.setUnit("BPM");
+    signature_.getProperties().set(AuralLookAndFeel::propertyVariant, "readout");
+    signature_.setColour(juce::ComboBox::textColourId,
+                         theme_.material.enabled ? theme_.material.readoutText : theme_.colours.textPrimary);
     for (const char* s : {"2/4", "3/4", "4/4", "5/4", "6/8", "7/8", "12/8"})
         signature_.addItem(s, signature_.getNumItems() + 1);
     signature_.setTooltip("Time signature");
@@ -370,13 +386,44 @@ void HeaderBar::refreshFromState()
 juce::Rectangle<int> HeaderBar::clipIndicatorBounds() const
 {
     const int size = theme_.sizes.meterWidth;
-    return {signature_.getRight() + theme_.spacing.sm, (getHeight() - size) / 2, size, size};
+    return {readout_.getRight() + theme_.spacing.sm, (getHeight() - size) / 2, size, size};
 }
 
 void HeaderBar::paint(juce::Graphics& g)
 {
     const auto& c = theme_.colours;
+    const auto& m = theme_.material;
+    auto* lnf = dynamic_cast<AuralLookAndFeel*>(&getLookAndFeel());
     g.fillAll(c.surface0);
+    // The bar's lower edge.
+    g.setColour(c.lineSubtle);
+    g.fillRect(0, getHeight() - 1, getWidth(), 1);
+    // The trays: a recessed surface1 bed with the groove's inset and a rim.
+    const float radius = theme_.radius.md;
+    for (const auto& tray : trays_)
+    {
+        const auto r = tray.toFloat();
+        g.setColour(c.surface1);
+        g.fillRoundedRectangle(r, radius);
+        if (m.enabled && lnf != nullptr)
+            lnf->drawInset(g, r, radius, m.grooveInset);
+        g.setColour(c.lineSubtle);
+        g.drawRoundedRectangle(r.reduced(0.5f), radius, 1.0f);
+    }
+    // The readout well, with hairline dividers between its fields.
+    if (!readout_.isEmpty())
+    {
+        const auto r = readout_.toFloat();
+        g.setColour(m.enabled ? m.readoutWell : c.surface2);
+        g.fillRoundedRectangle(r, radius);
+        if (m.enabled && lnf != nullptr)
+            lnf->drawInset(g, r, radius, m.grooveInset);
+        g.setColour(c.lineSubtle);
+        g.drawRoundedRectangle(r.reduced(0.5f), radius, 1.0f);
+        for (int x : readoutDividers_)
+            g.fillRect(
+                x, readout_.getY() + theme_.spacing.sm, 1, readout_.getHeight() - 2 * theme_.spacing.sm);
+    }
     // The unsaved dot after the project name.
     if (state_.modified)
     {
@@ -387,9 +434,6 @@ void HeaderBar::paint(juce::Graphics& g)
                       static_cast<float>(d),
                       static_cast<float>(d));
     }
-    // The divider before the panel toggles.
-    g.setColour(c.lineStrong);
-    g.fillRect(mixer_.getX() - theme_.spacing.md, theme_.spacing.md, 1, getHeight() - 2 * theme_.spacing.md);
     // The master clip indicator, only while lit.
     if (clipLit_)
     {
@@ -407,58 +451,84 @@ void HeaderBar::mouseDown(const juce::MouseEvent& e)
 
 void HeaderBar::resized()
 {
-    const int h = getHeight();
-    const int control = theme_.sizes.control;
-    const int large = theme_.sizes.controlLarge;
-    const int md = theme_.spacing.md, sm = theme_.spacing.sm, xl = theme_.spacing.xl;
-    auto bar = getLocalBounds().reduced(md, 0);
-    const auto place = [&](juce::Component& c, int w, int height, int gapAfter)
+    // Every control is controlLarge tall; each cluster sits in a tray (or the
+    // readout well) that adds xs all round, with xxs between the controls in
+    // it and md between trays (06-transport.md).
+    const int key = theme_.sizes.controlLarge;
+    const int pad = theme_.spacing.xs, inner = theme_.spacing.xxs, between = theme_.spacing.md;
+    const int trayH = key + 2 * pad;
+    const int trayY = (getHeight() - trayH) / 2;
+    trays_.clear();
+    readoutDividers_.clear();
+
+    struct Item
     {
-        c.setBounds(bar.removeFromLeft(w).withSizeKeepingCentre(w, height));
-        bar.removeFromLeft(gapAfter);
+        juce::Component* c;
+        int w;
     };
-    // Left: app, project, undo/redo.
-    place(app_, control, control, md);
+    const auto widthOf = [&](std::initializer_list<Item> items)
+    {
+        int w = 2 * pad - inner;
+        for (const auto& i : items)
+            w += i.w + inner;
+        return w;
+    };
+    // Places a group at x in a tray (or the readout well) and returns its width.
+    const auto group = [&](int x, std::initializer_list<Item> items, bool readout)
+    {
+        const int w = widthOf(items);
+        const juce::Rectangle<int> box(x, trayY, w, trayH);
+        if (readout)
+            readout_ = box;
+        else
+            trays_.push_back(box);
+        int cx = x + pad;
+        bool first = true;
+        for (const auto& i : items)
+        {
+            if (readout && !first)
+                readoutDividers_.push_back(cx - inner / 2);
+            first = false;
+            i.c->setBounds(cx, trayY + pad, i.w, key);
+            cx += i.w + inner;
+        }
+        return w;
+    };
+
     const int projectW =
-        std::min(220,
+        std::min(200,
                  juce::GlyphArrangement::getStringWidthInt(theme_.label(), project_.getButtonText()) +
-                     2 * md + theme_.sizes.icon + sm);
-    place(project_, projectW, control, md);
-    place(undo_, control, control, sm);
-    place(redo_, control, control, xl);
-    // Right cluster, placed from the right edge.
-    auto right = bar;
-    const auto placeRight = [&](juce::Component& c, int w, int gapBefore)
-    {
-        c.setBounds(right.removeFromRight(w).withSizeKeepingCentre(w, control));
-        right.removeFromRight(gapBefore);
-    };
-    placeRight(browser_, control, sm);
-    placeRight(editor_, control, sm);
-    placeRight(mixer_, control, md + 1 + md); // the divider sits in this gap
-    placeRight(zoomFit_, control, sm);
-    placeRight(ripple_, control, sm);
-    placeRight(snap_, control + sm, xl);
-    bar.setRight(right.getRight());
-    // Centre: the transport cluster.
-    const int clusterW = 4 * large + 3 * md + xl + 4 * control + 3 * sm + xl + 150 + sm + 110 + xl + 72 + sm +
-                         64 + sm + theme_.sizes.meterWidth;
-    auto cluster = bar.withSizeKeepingCentre(std::min(clusterW, bar.getWidth()), h);
-    if (cluster.getX() < bar.getX())
-        cluster.setX(bar.getX());
-    bar = cluster;
-    place(goToStart_, large, large, md);
-    place(play_, large, large, md);
-    place(stop_, large, large, md);
-    place(record_, large, large, xl);
-    place(loop_, control, control, sm);
-    place(punch_, control, control, sm);
-    place(click_, control, control, sm);
-    place(countIn_, control, control, xl);
-    place(bars_, 150, control, sm);
-    place(time_, 110, control, xl);
-    place(tempo_, 72, control, sm);
-    place(signature_, 64, control, sm);
+                     2 * theme_.spacing.md + theme_.sizes.icon + theme_.spacing.sm);
+    const std::initializer_list<Item> left{{&project_, projectW}, {&undo_, key}, {&redo_, key}};
+    const std::initializer_list<Item> transport{
+        {&goToStart_, key + pad}, {&play_, key + pad}, {&stop_, key + pad}, {&record_, key + pad}};
+    const std::initializer_list<Item> modes{{&loop_, key}, {&punch_, key}, {&click_, key}, {&countIn_, key}};
+    const std::initializer_list<Item> readout{{&bars_, 136}, {&time_, 104}, {&tempo_, 92}, {&signature_, 60}};
+    const std::initializer_list<Item> edit{
+        {&snap_, key + theme_.spacing.sm}, {&ripple_, key}, {&zoomFit_, key}};
+    const std::initializer_list<Item> panels{{&mixer_, key}, {&editor_, key}, {&browser_, key}};
+
+    // Left: the app mark on its own, then project, undo and redo.
+    int x = theme_.spacing.md;
+    app_.setBounds(x, trayY + pad, key, key);
+    x += key + theme_.spacing.sm;
+    x += group(x, left, false) + between;
+    const int leftEnd = x;
+    // Right, from the edge: the panel toggles, then snap, ripple and zoom.
+    int right = getWidth() - theme_.spacing.md;
+    right -= widthOf(panels);
+    group(right, panels, false);
+    right -= between + widthOf(edit);
+    group(right, edit, false);
+    right -= between;
+    // Centre: transport, modes and the readout, centred in the window when there
+    // is room and pushed right of the left cluster when not.
+    const int clusterW = widthOf(transport) + between + widthOf(modes) + between + widthOf(readout) +
+                         theme_.spacing.sm + theme_.sizes.meterWidth;
+    x = std::max(leftEnd, std::min((getWidth() - clusterW) / 2, right - clusterW));
+    x += group(x, transport, false) + between;
+    x += group(x, modes, false) + between;
+    group(x, readout, true);
 }
 
 } // namespace aural::ui

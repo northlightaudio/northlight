@@ -543,6 +543,21 @@ void AuralLookAndFeel::drawComboBox(juce::Graphics& g,
 {
     const auto& c = theme_.colours;
     auto bounds = juce::Rectangle<int>(0, 0, width, height).toFloat().reduced(0.5f);
+    if (variantOf(box) == "readout")
+    {
+        // Part of a readout well (the transport's signature): no face of its own,
+        // a faint lift on hover.
+        if (box.isMouseOver(true) || box.isPopupActive())
+        {
+            g.setColour(c.textPrimary.withAlpha(0.06f));
+            g.fillRoundedRectangle(bounds, theme_.radius.sm);
+        }
+        const auto arrow =
+            bounds.removeFromRight(static_cast<float>(theme_.sizes.iconSmall + theme_.spacing.xs));
+        drawChevron(g, arrow, c.textTertiary, true);
+        drawFocusRing(g, box, bounds.withRight(arrow.getRight()), theme_.radius.sm);
+        return;
+    }
     if (!box.isEnabled())
     {
         g.setColour(c.surface1);
@@ -567,17 +582,18 @@ void AuralLookAndFeel::drawComboBox(juce::Graphics& g,
     drawFocusRing(g, box, bounds.withRight(arrow.getRight()), theme_.radius.sm);
 }
 
-juce::Font AuralLookAndFeel::getComboBoxFont(juce::ComboBox&)
+juce::Font AuralLookAndFeel::getComboBoxFont(juce::ComboBox& box)
 {
+    if (variantOf(box) == "readout")
+        return theme_.timeSmall();
     return theme_.body();
 }
 
 void AuralLookAndFeel::positionComboBoxText(juce::ComboBox& box, juce::Label& label)
 {
-    label.setBounds(theme_.spacing.sm,
-                    1,
-                    box.getWidth() - theme_.sizes.icon - 2 * theme_.spacing.sm,
-                    box.getHeight() - 2);
+    const int chevron = variantOf(box) == "readout" ? theme_.sizes.iconSmall + theme_.spacing.xs
+                                                    : theme_.sizes.icon + theme_.spacing.sm;
+    label.setBounds(theme_.spacing.sm, 1, box.getWidth() - chevron - theme_.spacing.sm, box.getHeight() - 2);
     label.setFont(getComboBoxFont(box));
 }
 
@@ -760,11 +776,26 @@ void AuralLookAndFeel::drawLinearSlider(juce::Graphics& g,
                                        trackThickness,
                                        static_cast<float>(height) - thumbRadius * 2.0f);
 
-    g.setColour(c.surface2);
-    g.fillRoundedRectangle(track, trackThickness * 0.5f);
+    // The track is a groove cut into the panel (the fader slot's colour and
+    // rim), so the thumb sits in something even where nothing is filled.
+    const auto& m = theme_.material;
+    const auto groove = track.expanded(0.5f);
+    g.setColour(m.enabled ? m.groove : c.surface2);
+    g.fillRoundedRectangle(groove, groove.getHeight() * 0.5f);
+    g.setColour(c.lineStrong);
+    g.drawRoundedRectangle(groove, std::min(groove.getWidth(), groove.getHeight()) * 0.5f, 1.0f);
 
-    // Bipolar sliders fill from the centre; the rest from the start.
+    // Bipolar sliders fill from the centre (marked); the rest from the start.
     const bool bipolar = slider.getMinimum() < 0.0 && slider.getMaximum() > 0.0;
+    if (bipolar)
+    {
+        const float zero = static_cast<float>(slider.getPositionOfValue(0.0));
+        g.setColour(c.textTertiary);
+        if (horizontal)
+            g.fillRect(zero - 0.5f, groove.getY() - 2.0f, 1.0f, groove.getHeight() + 4.0f);
+        else
+            g.fillRect(groove.getX() - 2.0f, zero - 0.5f, groove.getWidth() + 4.0f, 1.0f);
+    }
     juce::Rectangle<float> filled = track;
     juce::Point<float> thumb;
     if (horizontal)

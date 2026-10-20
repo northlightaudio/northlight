@@ -23,6 +23,13 @@ public:
     double value() const noexcept { return value_; }
     void setUnit(const juce::String& unit);
     void setDecimals(int decimals) { decimals_ = decimals; }
+    // Drawn as part of a readout well (the transport's tempo): no field of its
+    // own, the readout's text colour and mono face, centred.
+    void setReadout(bool readout)
+    {
+        readout_ = readout;
+        repaint();
+    }
     // Formats the value (without the unit); default fixed decimals.
     std::function<juce::String(double)> format;
     std::function<double(const juce::String&)> parse;
@@ -63,6 +70,7 @@ private:
     const Theme& theme_;
     double minimum_ = 0.0, maximum_ = 1.0, step_ = 0.01, value_ = 0.0;
     int decimals_ = 2;
+    bool readout_ = false;
     juce::String unit_;
     std::unique_ptr<juce::TextEditor> editor_;
     double dragStartValue_ = 0.0;

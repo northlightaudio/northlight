@@ -11,6 +11,7 @@
 #include "ui/FrameStats.h"
 #include "ui/Icons.h"
 #include "ui/InsertEditor.h"
+#include "ui/components/AddSlot.h"
 #include "ui/strip/StripStyle.h"
 
 #include <algorithm>
@@ -309,16 +310,6 @@ private:
     juce::Slider slider_;
 };
 
-// A ghost "+" row at the end of a section.
-class AddRow final : public juce::TextButton
-{
-public:
-    AddRow()
-    {
-        setButtonText("+");
-        getProperties().set(AuralLookAndFeel::propertyVariant, "ghost");
-    }
-};
 } // namespace
 
 // ----- strip --------------------------------------------------------------------------------
@@ -487,8 +478,8 @@ class MixerView::Strip final : public juce::Component
 {
 public:
     Strip(MixerView& owner, const Theme& theme)
-        : owner_(owner), theme_(theme), cap_(theme), stripRow_(theme), pan_(theme), fader_(theme),
-          meter_(theme, 2, true), value_(theme)
+        : owner_(owner), theme_(theme), cap_(theme), stripRow_(theme), addInsert_(theme, "Insert"),
+          addSend_(theme, "Send"), pan_(theme), fader_(theme), meter_(theme, 2, true), value_(theme)
     {
         setOpaque(true);
         stripRow_.onToggle = [this](core::Id moduleId, bool on)
@@ -863,6 +854,18 @@ public:
             showAutomated(owner_.automatedValues(id_));
     }
 
+    // What this strip needs of the shared row plan, and where its fader band
+    // and gain field landed (for the master to match).
+    void addTo(RowPlan& rows) const
+    {
+        rows.input = rows.input || input_.isVisible();
+        rows.stripRow = rows.stripRow || stripRow_.isVisible();
+        rows.inserts = std::max(rows.inserts, insertCount_);
+        rows.sends = std::max(rows.sends, sendCount_);
+    }
+    juce::Rectangle<int> faderBand() const { return fader_.getBounds().getUnion(meter_.getBounds()); }
+    int valueY() const { return value_.getY(); }
+
     // The fader and pan follow what automation plays (unless the user holds them).
     void showAutomated(const MixerView::Automated& a)
     {
@@ -927,12 +930,15 @@ public:
         auto area = getLocalBounds().reduced(pad, 0);
         cap_.setBounds(getLocalBounds().withHeight(control));
         area.removeFromTop(control + pad);
-        if (input_.isVisible())
+        // Rows another strip has are reserved here too (empty), so every strip's
+        // sections line up across the mixer.
+        const auto& rows = owner_.rows_;
+        if (rows.input || input_.isVisible())
         {
             input_.setBounds(area.removeFromTop(control));
             area.removeFromTop(pad);
         }
-        if (stripRow_.isVisible())
+        if (rows.stripRow || stripRow_.isVisible())
         {
             stripRow_.setBounds(area.removeFromTop(16));
             area.removeFromTop(pad);
@@ -940,8 +946,9 @@ public:
         // The fixed bottom: pan, toggles, value, output; the fader takes the rest
         // between 120 and 200 px, and below 120 the sections collapse.
         const int bottom = theme_.sizes.knob + 16 + pad + control + pad + pad + control + pad + control + pad;
-        const int insertsFull = std::min(insertCount_ + 1, maxVisibleSlots) * slotHeight + 4;
-        const int sendsFull = (sendCount_ + 1) * slotHeight + 4;
+        const int insertsFull =
+            std::min(std::max(rows.inserts, insertCount_) + 1, maxVisibleSlots) * slotHeight + 4;
+        const int sendsFull = (std::max(rows.sends, sendCount_) + 1) * slotHeight + 4;
         int faderTravel = area.getHeight() - bottom - insertsFull - sendsFull - 2 * pad;
         collapsed_ = faderTravel < minFaderTravel;
         const int insertsH = collapsed_ ? slotHeight : insertsFull;
@@ -1368,7 +1375,7 @@ private:
     bool fx_ = false; // an FX track (a bus fed by sends)
     std::vector<std::unique_ptr<InsertSlot>> inserts_;
     std::vector<std::unique_ptr<SendRow>> sends_;
-    AddRow addInsert_, addSend_;
+    AddSlot addInsert_, addSend_;
     juce::Rectangle<int> insertsSummary_, sendsSummary_;
     Knob pan_;
     juce::TextButton mute_, solo_, arm_, phase_;
@@ -1438,6 +1445,17 @@ public:
         meter_.push(peaks, 2, elapsedMs);
     }
 
+    // The channel strips' fader band and gain field row, to line up with; an
+    // empty band lays the master out on its own.
+    void alignTo(juce::Rectangle<int> band, int valueY)
+    {
+        if (band == band_ && valueY == valueY_)
+            return;
+        band_ = band;
+        valueY_ = valueY;
+        resized();
+    }
+
     void pushLoudness(const engine::LoudnessMeter::Reading& r)
     {
         loudness_ = r;
@@ -1478,9 +1496,25 @@ public:
         auto area = getLocalBounds().reduced(pad, 0);
         cap_.setBounds(getLocalBounds().withHeight(control));
         area.removeFromTop(control + pad);
+        const int loudnessH = 3 * (static_cast<int>(theme_.fonts.size.value) + 4);
+        if (!band_.isEmpty() && valueY_ + control <= getHeight() && band_.getBottom() + loudnessH <= valueY_)
+        {
+            // Lined up with the channels: the same fader band and gain row, the
+            // loudness readout between them.
+            value_.setBounds(area.getX(), valueY_, area.getWidth(), control);
+            loudnessArea_ = juce::Rectangle<int>(
+                                area.getX(), band_.getBottom(), area.getWidth(), valueY_ - band_.getBottom())
+                                .withSizeKeepingCentre(area.getWidth(), loudnessH);
+            auto faderArea =
+                juce::Rectangle<int>(area.getX(), band_.getY(), area.getWidth(), band_.getHeight());
+            meter_.setBounds(faderArea.removeFromRight(meter_.barsWidth() + 18));
+            faderArea.removeFromRight(pad);
+            fader_.setBounds(faderArea);
+            return;
+        }
         value_.setBounds(area.removeFromBottom(control));
         area.removeFromBottom(pad);
-        loudnessArea_ = area.removeFromBottom(3 * (static_cast<int>(theme_.fonts.size.value) + 4));
+        loudnessArea_ = area.removeFromBottom(loudnessH);
         area.removeFromBottom(pad);
         auto faderArea = area.withTrimmedTop(pad).withHeight(
             std::clamp(area.getHeight() - pad, 60, maxFaderTravel + 2 * pad));
@@ -1499,6 +1533,8 @@ private:
     Meter meter_;
     NumericField value_;
     juce::Rectangle<int> loudnessArea_;
+    juce::Rectangle<int> band_;
+    int valueY_ = 0;
     engine::LoudnessMeter::Reading loudness_;
 };
 
@@ -1920,6 +1956,11 @@ void MixerView::layoutStrips()
     // gap; the "+ Bus" ghost at the end.
     const int height = viewport_.getHeight();
     const int width = theme_.sizes.mixerStripWidth;
+    RowPlan rows;
+    for (const auto& strip : strips_)
+        strip->addTo(rows);
+    const bool rowsChanged = !(rows == rows_);
+    rows_ = rows;
     const int gap = theme_.spacing.xxs;
     int x = 0;
     bool busGap = false;
@@ -1930,9 +1971,16 @@ void MixerView::layoutStrips()
             busGap = true;
             x += theme_.spacing.sm;
         }
+        const bool moved = strip->getWidth() != width || strip->getHeight() != height;
         strip->setBounds(x, 0, width, height);
+        if (rowsChanged && !moved)
+            strip->resized();
         x += width + gap;
     }
+    if (!strips_.empty())
+        master_->alignTo(strips_.front()->faderBand(), strips_.front()->valueY());
+    else
+        master_->alignTo({}, 0);
     addBus_.setBounds(x, theme_.spacing.xs, 56, theme_.sizes.controlCompact);
     stripsHolder_.setSize(std::max(1, x + 56 + gap), std::max(1, height));
 }

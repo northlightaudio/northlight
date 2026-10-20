@@ -29,6 +29,8 @@ public:
         countIn,
     };
     void setTone(Tone tone);
+    // Without its own well: the text sits in a readout well the owner paints.
+    void setFramed(bool framed);
     std::function<void(const juce::String&)> onTyped;
     std::function<void(int segment, int steps)> onNudge; // segment from the left, steps up/down
 
@@ -48,6 +50,7 @@ private:
     bool primary_;
     juce::String text_;
     Tone tone_ = Tone::normal;
+    bool framed_ = true;
     std::unique_ptr<juce::TextEditor> editor_;
     int dragSegment_ = -1, dragStartY_ = 0, dragSteps_ = 0;
     bool dragged_ = false;
@@ -119,6 +122,11 @@ private:
     std::vector<double> tapTimesMs_; // the last tempo taps
     juce::ComboBox signature_;
     IconButton snap_, ripple_, zoomFit_, mixer_, editor_, browser_;
+    // The trays the clusters sit in and the readout well (bars, time, tempo,
+    // signature) with the x of each divider inside it; set by resized().
+    std::vector<juce::Rectangle<int>> trays_;
+    juce::Rectangle<int> readout_;
+    std::vector<int> readoutDividers_;
     bool clipLit_ = false;
     bool lastPlaying_ = false, lastRecording_ = false;
 };

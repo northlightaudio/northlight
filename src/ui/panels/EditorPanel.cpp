@@ -398,7 +398,6 @@ EditorPanel::EditorPanel(const Theme& theme) : theme_(theme), stripView_(theme)
     viewport_.setViewedComponent(&strip_, false);
     viewport_.setScrollBarsShown(false, true);
     addAndMakeVisible(viewport_);
-    add_.getProperties().set(AuralLookAndFeel::propertyVariant, "ghost");
     add_.setTooltip("Add an insert");
     add_.onClick = [this] { showAddMenu(); };
     strip_.addAndMakeVisible(add_);
@@ -621,8 +620,10 @@ void EditorPanel::resized()
         card->setBounds(x, theme_.spacing.xs + caption, card->preferredWidth(), h - caption);
         x += card->preferredWidth() + theme_.spacing.sm;
     }
-    add_.setBounds(x, theme_.spacing.xs + caption, theme_.sizes.controlLarge * 2, theme_.sizes.controlLarge);
-    x += theme_.sizes.controlLarge * 2 + theme_.spacing.xl;
+    // The add slot: an empty card the cards' height.
+    const int addW = theme_.sizes.controlLarge * 3;
+    add_.setBounds(x, theme_.spacing.xs + caption, addW, h - caption);
+    x += addW + theme_.spacing.xl;
     if (!stripFirst)
         placeStrip();
     strip_.setSize(std::max(x, area.getWidth()), h + theme_.spacing.sm);

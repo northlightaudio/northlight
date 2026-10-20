@@ -70,6 +70,27 @@ void NumericField::paint(juce::Graphics& g)
 {
     const auto& c = theme_.colours;
     const auto bounds = getLocalBounds().toFloat().reduced(0.5f);
+    if (readout_)
+    {
+        if (editor_ != nullptr)
+            return;
+        const auto& m = theme_.material;
+        auto area = getLocalBounds().reduced(theme_.spacing.sm, 0);
+        g.setFont(theme_.font(Theme::Face::ui, theme_.fonts.size.caption, theme_.fonts.weight.medium));
+        g.setColour(c.textTertiary);
+        if (unit_.isNotEmpty())
+        {
+            const int w = juce::GlyphArrangement::getStringWidthInt(g.getCurrentFont(), unit_);
+            g.drawText(unit_, area.removeFromRight(w), juce::Justification::centredRight);
+            area.removeFromRight(theme_.spacing.xs);
+        }
+        g.setFont(theme_.timeSmall());
+        g.setColour(!isEnabled() ? c.textDisabled : m.enabled ? m.readoutText : c.textPrimary);
+        g.drawText(text(), area, juce::Justification::centredRight);
+        if (auto* lnf = dynamic_cast<AuralLookAndFeel*>(&getLookAndFeel()))
+            lnf->drawFocusRing(g, *this, bounds, theme_.radius.sm);
+        return;
+    }
     g.setColour(isEnabled() ? c.surface2 : c.surface1);
     g.fillRoundedRectangle(bounds, theme_.radius.sm);
     g.setColour(hasKeyboardFocus(true) ? c.accent : c.lineStrong);

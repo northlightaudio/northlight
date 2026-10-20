@@ -113,6 +113,15 @@ private:
     std::vector<std::string> inputNames_, midiInputNames_;
     core::Id selected_ = core::invalidId;
     double lastMeterMs_ = 0.0;
+    // The rows every strip reserves, sized to the busiest strip so that each
+    // section (fader, pan, buttons) sits at the same height in all of them.
+    struct RowPlan
+    {
+        bool input = false, stripRow = false;
+        int inserts = 0, sends = 0;
+        bool operator==(const RowPlan&) const = default;
+    };
+    RowPlan rows_;
     std::vector<std::unique_ptr<Strip>> strips_;
     std::unique_ptr<MasterStrip> master_;
     juce::Viewport viewport_;

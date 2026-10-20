@@ -145,6 +145,12 @@ void Meter::paint(juce::Graphics& g)
             else
                 g.fillRect(yForDb(channel.peakDb, bar) - 1.0f, bar.getY(), 1.0f, w);
         }
+        // The bar's rim, so it reads as cut into the strip rather than lying on it.
+        if (m.enabled && !m.meterWellInset.empty())
+        {
+            g.setColour(m.meterWellInset.colour.withMultipliedAlpha(0.9f));
+            g.drawRect(bar, 1.0f);
+        }
         // The clip square.
         juce::Rectangle<float> clip =
             vertical_ ? juce::Rectangle<float>(bar.getX(), clipRow.getY(), w, clipSize)
