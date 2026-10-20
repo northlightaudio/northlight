@@ -74,6 +74,8 @@ void giveChannelStrip(core::Command& command)
 void ProjectSession::execute(std::unique_ptr<core::Command> command)
 {
     giveChannelStrip(*command);
+    if (recordAutomation(*command))
+        return; // written into automation, not into the static value
     // A removal copies the model insert into the command for undo: pull the live
     // plugin state into the model first, so undo brings back what the user had,
     // not what the last save held.
@@ -114,6 +116,7 @@ void ProjectSession::endGesture()
         return;
     undo_.endGroup();
     gestureOpen_ = false;
+    finishPasses(true); // touch passes end with the gesture
 }
 
 void ProjectSession::executeGroup(const std::string& name,
@@ -480,13 +483,14 @@ void ProjectSession::play()
 
 void ProjectSession::stop()
 {
+    finishAutomationPasses();
     engine_.stop();
 }
 
 void ProjectSession::togglePlay()
 {
     if (engine_.isPlaying() || engine_.isRecording())
-        engine_.stop();
+        stop();
     else
         engine_.play();
 }
@@ -1136,6 +1140,286 @@ void ProjectSession::timerCallback()
 {
     poll();
     autosaveIfDue();
+    // Write mode starts when playback does; a stop from anywhere finishes the passes.
+    if (engine_.isPlaying())
+    {
+        if (!writePassesStarted_)
+            startWritePasses();
+    }
+    else
+    {
+        writePassesStarted_ = false;
+        if (!passes_.empty())
+            finishAutomationPasses();
+    }
+}
+
+// ----- automation writing ---------------------------------------------------------------
+
+namespace
+{
+constexpr double rampInSeconds = 0.01;  // from the curve into a written pass
+constexpr double rampOutSeconds = 0.05; // from a released touch back to the curve
+
+bool writes(core::AutomationMode mode)
+{
+    return mode == core::AutomationMode::touch || mode == core::AutomationMode::latch ||
+           mode == core::AutomationMode::write;
+}
+
+// Drops points that repeat the value before them (a held control at UI rate).
+std::vector<core::AutomationPoint> thinned(const std::vector<core::AutomationPoint>& points)
+{
+    std::vector<core::AutomationPoint> out;
+    for (size_t i = 0; i < points.size(); ++i)
+    {
+        const bool repeat = !out.empty() && std::abs(points[i].value - out.back().value) < 1.0e-5f;
+        const bool lastOfRun =
+            i + 1 < points.size() && std::abs(points[i + 1].value - points[i].value) >= 1.0e-5f;
+        if (!repeat || lastOfRun || i + 1 == points.size())
+            out.push_back(points[i]);
+    }
+    return out;
+}
+} // namespace
+
+float ProjectSession::staticValue(const core::Channel& channel, const AutomationPass& pass) const
+{
+    switch (pass.target)
+    {
+        case core::AutomationTarget::gain:
+            return channel.gain;
+        case core::AutomationTarget::pan:
+            return channel.pan;
+        case core::AutomationTarget::insertParameter:
+            if (const auto* insert = channel.findInsert(pass.insert);
+                insert != nullptr && pass.parameter >= 0 &&
+                static_cast<size_t>(pass.parameter) < insert->params.size())
+                return insert->params[static_cast<size_t>(pass.parameter)];
+            if (const auto live = engine_.insertInstance(pass.insert))
+                return live->parameter(pass.parameter);
+            return 0.0f;
+    }
+    return 0.0f;
+}
+
+bool ProjectSession::recordAutomation(const core::Command& command)
+{
+    if (!engine_.isPlaying())
+        return false;
+    AutomationPass key;
+    float value = 0.0f;
+    if (const auto* gain = dynamic_cast<const core::SetTrackGain*>(&command))
+    {
+        key.channel = gain->channelId();
+        key.target = core::AutomationTarget::gain;
+        value = gain->value();
+    }
+    else if (const auto* pan = dynamic_cast<const core::SetTrackPan*>(&command))
+    {
+        key.channel = pan->channelId();
+        key.target = core::AutomationTarget::pan;
+        value = pan->value();
+    }
+    else if (const auto* param = dynamic_cast<const core::SetInsertParameter*>(&command))
+    {
+        key.channel = param->channelId();
+        key.target = core::AutomationTarget::insertParameter;
+        key.insert = param->insertId();
+        key.parameter = param->parameter();
+        value = param->value();
+    }
+    else
+        return false;
+    const auto* channel = project_.findChannel(key.channel);
+    if (channel == nullptr || !writes(channel->automationMode))
+        return false;
+    std::shared_ptr<engine::InsertProcessor> instance;
+    if (key.target == core::AutomationTarget::insertParameter)
+    {
+        // A hosted plugin owns its parameters and is not automated yet.
+        instance = engine_.insertInstance(key.insert);
+        if (instance == nullptr || instance->ownsParameters())
+            return false;
+    }
+    const auto position = engine_.position();
+    auto it = std::find_if(passes_.begin(),
+                           passes_.end(),
+                           [&](const AutomationPass& p)
+                           {
+                               return p.channel == key.channel && p.target == key.target &&
+                                      p.insert == key.insert && p.parameter == key.parameter;
+                           });
+    if (it != passes_.end() && !it->points.empty() && position < it->points.back().position)
+    {
+        // The transport looped back: what was written so far is one pass.
+        std::vector<std::unique_ptr<core::Command>> commands;
+        commitPass(*it, it->points.back().position, commands);
+        it->points.clear();
+        if (!commands.empty())
+            executeGroupWithoutRecording(commands);
+        it->lane = channel->findLane(key.target, key.insert, key.parameter) != nullptr
+                       ? channel->findLane(key.target, key.insert, key.parameter)->id
+                       : core::invalidId;
+        if (it->lane != core::invalidId)
+            engine_.setAutomationTouched(it->lane, true);
+    }
+    if (it == passes_.end())
+    {
+        key.mode = channel->automationMode;
+        if (const auto* lane = channel->findLane(key.target, key.insert, key.parameter))
+        {
+            key.lane = lane->id;
+            engine_.setAutomationTouched(lane->id, true);
+        }
+        passes_.push_back(key);
+        it = passes_.end() - 1;
+    }
+    if (!it->points.empty() && it->points.back().position == position)
+        it->points.back().value = value;
+    else
+        it->points.push_back({position, value});
+    // The value is heard at once.
+    switch (key.target)
+    {
+        case core::AutomationTarget::gain:
+            engine_.setLiveGain(key.channel, value);
+            break;
+        case core::AutomationTarget::pan:
+            engine_.setLivePan(key.channel, value);
+            break;
+        case core::AutomationTarget::insertParameter:
+            instance->setParameter(key.parameter, value);
+            break;
+    }
+    return true;
+}
+
+void ProjectSession::startWritePasses()
+{
+    writePassesStarted_ = true;
+    const auto position = engine_.position();
+    const auto start = [&](const core::Channel& channel)
+    {
+        if (channel.automationMode != core::AutomationMode::write)
+            return;
+        for (const auto& lane : channel.automation)
+        {
+            AutomationPass pass;
+            pass.channel = channel.id;
+            pass.target = lane.target;
+            pass.insert = lane.insert;
+            pass.parameter = lane.parameter;
+            pass.mode = core::AutomationMode::write;
+            pass.lane = lane.id;
+            pass.points.push_back({position, staticValue(channel, pass)});
+            engine_.setAutomationTouched(lane.id, true);
+            passes_.push_back(std::move(pass));
+        }
+    };
+    for (const auto& t : project_.tracks)
+        start(t);
+    for (const auto& b : project_.buses)
+        start(b);
+}
+
+void ProjectSession::commitPass(const AutomationPass& pass,
+                                core::SamplePosition end,
+                                std::vector<std::unique_ptr<core::Command>>& out) const
+{
+    const auto* channel = project_.findChannel(pass.channel);
+    if (channel == nullptr || pass.points.empty())
+        return;
+    const auto* lane = channel->findLane(pass.target, pass.insert, pass.parameter);
+    const auto recorded = thinned(pass.points);
+    const auto rate = project_.sampleRate;
+    const auto start = recorded.front().position;
+    const bool touch = pass.mode == core::AutomationMode::touch;
+    const auto stop = touch ? recorded.back().position : std::max(end, recorded.back().position);
+    const auto rampIn = static_cast<core::SamplePosition>(rate * rampInSeconds);
+    const auto rampOut = static_cast<core::SamplePosition>(rate * rampOutSeconds);
+    const float fallback = staticValue(*channel, pass);
+    const auto curveAt = [&](core::SamplePosition at)
+    { return lane != nullptr ? lane->valueAt(at) : fallback; };
+
+    std::vector<core::AutomationPoint> points;
+    if (lane != nullptr)
+        for (const auto& p : lane->points)
+            if (p.position < start - rampIn)
+                points.push_back(p);
+    if (start - rampIn >= 0)
+        points.push_back({start - rampIn, curveAt(start - rampIn)});
+    points.insert(points.end(), recorded.begin(), recorded.end());
+    core::SamplePosition resume = stop;
+    if (touch)
+    {
+        resume = stop + rampOut; // back to the curve after a short glide
+        points.push_back({resume, curveAt(resume)});
+    }
+    else if (stop > recorded.back().position)
+        points.push_back({stop, recorded.back().value}); // latch and write hold to the stop
+    if (lane != nullptr)
+        for (const auto& p : lane->points)
+            if (p.position > resume)
+                points.push_back(p);
+
+    if (lane != nullptr)
+        out.push_back(
+            std::make_unique<core::SetAutomationPoints>(pass.channel, lane->id, points, "Write automation"));
+    else
+    {
+        core::AutomationLane added;
+        added.target = pass.target;
+        added.insert = pass.insert;
+        added.parameter = pass.parameter;
+        added.points = points;
+        out.push_back(std::make_unique<core::AddAutomationLane>(pass.channel, added));
+    }
+}
+
+void ProjectSession::finishPasses(bool touchOnly)
+{
+    if (passes_.empty())
+        return;
+    const auto end = engine_.position();
+    std::vector<std::unique_ptr<core::Command>> commands;
+    std::vector<core::Id> lanes;
+    for (auto it = passes_.begin(); it != passes_.end();)
+    {
+        if (touchOnly && it->mode != core::AutomationMode::touch)
+        {
+            ++it;
+            continue;
+        }
+        commitPass(*it, end, commands);
+        if (it->lane != core::invalidId)
+            lanes.push_back(it->lane);
+        it = passes_.erase(it);
+    }
+    if (!commands.empty())
+        executeGroupWithoutRecording(commands);
+    for (const auto lane : lanes)
+        engine_.setAutomationTouched(lane, false);
+}
+
+void ProjectSession::finishAutomationPasses()
+{
+    finishPasses(false);
+}
+
+void ProjectSession::executeGroupWithoutRecording(std::vector<std::unique_ptr<core::Command>>& commands)
+{
+    // Inside an open gesture (a pass committed by a loop wrap mid-drag) the
+    // commands join the gesture's step; otherwise they are a step of their own.
+    if (!gestureOpen_)
+        undo_.beginGroup("Write automation");
+    for (auto& command : commands)
+        undo_.execute(project_, std::move(command));
+    if (!gestureOpen_)
+        undo_.endGroup();
+    modified_ = true;
+    edited();
+    publish();
 }
 
 void ProjectSession::poll()

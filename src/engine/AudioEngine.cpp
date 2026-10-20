@@ -187,6 +187,38 @@ void AudioEngine::resetCaches()
     runtimes_.clear();
 }
 
+void AudioEngine::setAutomationTouched(core::Id laneId, bool touched)
+{
+    AURAL_ASSERT_NOT_REALTIME("AudioEngine::setAutomationTouched");
+    runtimes_.automation(laneId)->touched.store(touched, std::memory_order_relaxed);
+}
+
+AudioEngine::AutomatedValues AudioEngine::automatedValues(core::Id channelId) const
+{
+    AutomatedValues v;
+    if (const auto runtime = runtimes_.find(channelId))
+    {
+        const int bits = runtime->automated.load(std::memory_order_relaxed);
+        v.gain = (bits & 1) != 0;
+        v.pan = (bits & 2) != 0;
+        v.gainValue = runtime->shownGain.load(std::memory_order_relaxed);
+        v.panValue = runtime->shownPan.load(std::memory_order_relaxed);
+    }
+    return v;
+}
+
+void AudioEngine::setLiveGain(core::Id channelId, float gain)
+{
+    if (const auto runtime = runtimes_.find(channelId))
+        runtime->targetGain.store(gain, std::memory_order_relaxed);
+}
+
+void AudioEngine::setLivePan(core::Id channelId, float pan)
+{
+    if (const auto runtime = runtimes_.find(channelId))
+        runtime->targetPan.store(pan, std::memory_order_relaxed);
+}
+
 void AudioEngine::applyLiveValues(const core::Project& project)
 {
     AURAL_ASSERT_NOT_REALTIME("AudioEngine::applyLiveValues");

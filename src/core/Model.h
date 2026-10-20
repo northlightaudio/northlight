@@ -1,5 +1,7 @@
 #pragma once
 
+#include <algorithm>
+#include <cmath>
 #include <cstdint>
 #include <string>
 #include <vector>
@@ -100,6 +102,82 @@ struct Insert
     bool operator==(const Insert&) const = default;
 };
 
+// Automation (Phase 9): a lane of breakpoints for one of a channel's
+// parameters. Values are in the parameter's own units (gain linear, pan -1..1,
+// an insert parameter in its range). Between points the value is interpolated
+// (gain in dB, so a fade sounds even), and it holds before the first point and
+// after the last.
+enum class AutomationTarget : std::uint8_t
+{
+    gain,
+    pan,
+    insertParameter,
+};
+
+struct AutomationPoint
+{
+    SamplePosition position = 0;
+    float value = 0.0f;
+    bool operator==(const AutomationPoint&) const = default;
+};
+
+// The value of a sorted run of points at a position. Real-time safe.
+inline float automationValueAt(const AutomationPoint* points,
+                               size_t count,
+                               AutomationTarget target,
+                               SamplePosition position) noexcept
+{
+    if (count == 0)
+        return 0.0f;
+    if (position <= points[0].position)
+        return points[0].value;
+    if (position >= points[count - 1].position)
+        return points[count - 1].value;
+    size_t lo = 0, hi = count - 1; // points[lo] <= position < points[hi]
+    while (hi - lo > 1)
+    {
+        const size_t mid = (lo + hi) / 2;
+        (points[mid].position <= position ? lo : hi) = mid;
+    }
+    const auto& a = points[lo];
+    const auto& b = points[hi];
+    const double t =
+        static_cast<double>(position - a.position) / static_cast<double>(b.position - a.position);
+    if (target == AutomationTarget::gain && a.value > 1.0e-5f && b.value > 1.0e-5f)
+        return static_cast<float>(std::exp(std::log(a.value) + (std::log(b.value) - std::log(a.value)) * t));
+    return static_cast<float>(a.value + (b.value - a.value) * t);
+}
+
+struct AutomationLane
+{
+    Id id = invalidId;
+    AutomationTarget target = AutomationTarget::gain;
+    Id insert = invalidId; // the insert or strip module, for an insert parameter
+    int parameter = 0;
+    std::vector<AutomationPoint> points; // sorted by position
+
+    float valueAt(SamplePosition position) const noexcept
+    {
+        return automationValueAt(points.data(), points.size(), target, position);
+    }
+    bool sameTarget(AutomationTarget t, Id insertId, int parameterIndex) const noexcept
+    {
+        return target == t && (t != AutomationTarget::insertParameter ||
+                               (insert == insertId && parameter == parameterIndex));
+    }
+    bool operator==(const AutomationLane&) const = default;
+};
+
+// How a channel's automation plays and records.
+enum class AutomationMode : std::uint8_t
+{
+    off,   // the lanes are ignored
+    read,  // the lanes play
+    touch, // the lanes play; a control moved while playing writes until released
+    latch, // the lanes play; a control moved while playing writes until the transport stops
+    write, // while playing, the controls' values overwrite their lanes
+};
+
 // What tracks and buses share: the fader section and routing.
 // The loudest a channel fader goes (+6 dB); group moves clamp to it.
 constexpr float maxChannelGain = 1.99526f;
@@ -136,6 +214,8 @@ struct Channel
     // instance cache apply to them unchanged.
     std::vector<Insert> strip;
     bool stripPreInserts = false; // the strip runs before the inserts (default: after them)
+    std::vector<AutomationLane> automation;
+    AutomationMode automationMode = AutomationMode::read;
 
     Send* findSend(Id busId) noexcept;
     // An insert or a strip module, by id.
@@ -145,6 +225,10 @@ struct Channel
     int stripIndex(Id insertId) const noexcept;  // in `strip` only
     // Every processor in processing order: the inserts and the strip modules.
     std::vector<const Insert*> processingChain() const;
+    AutomationLane* findLane(Id laneId) noexcept;
+    const AutomationLane* findLane(Id laneId) const noexcept;
+    const AutomationLane*
+    findLane(AutomationTarget target, Id insertId = invalidId, int parameter = 0) const noexcept;
     bool operator==(const Channel&) const = default;
 };
 

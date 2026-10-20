@@ -25,6 +25,19 @@ struct ChannelRuntime
     float pan = 0.0f;        // real-time
     bool gainPrimed = false; // real-time: the first block jumps to the target instead of ramping
     bool panPrimed = false;  // from the defaults (gain and pan are set in different stages)
+    // Automation (real-time): a lane playing overrides the target for the span.
+    bool gainAutomated = false, panAutomated = false;
+    float automatedGain = 1.0f, automatedPan = 0.0f;
+    // What automation last played, for the UI (relaxed; `automated` bit 0 gain, bit 1 pan).
+    std::atomic<float> shownGain{1.0f}, shownPan{0.0f};
+    std::atomic<int> automated{0};
+};
+
+// One automation lane's run-time state, kept across compiles: while the user
+// touches its control (writing), the lane is not played.
+struct AutomationRuntime
+{
+    std::atomic<bool> touched{false};
 };
 
 struct MasterRuntime
@@ -67,6 +80,18 @@ public:
             r = std::make_shared<MidiRuntime>();
         return r;
     }
+    std::shared_ptr<AutomationRuntime> automation(core::Id laneId)
+    {
+        auto& r = automation_[laneId];
+        if (r == nullptr)
+            r = std::make_shared<AutomationRuntime>();
+        return r;
+    }
+    std::shared_ptr<AutomationRuntime> findAutomation(core::Id laneId) const
+    {
+        const auto it = automation_.find(laneId);
+        return it != automation_.end() ? it->second : nullptr;
+    }
     std::shared_ptr<MasterRuntime> master()
     {
         if (master_ == nullptr)
@@ -78,17 +103,22 @@ public:
     {
         std::erase_if(channels_, [](const auto& entry) { return entry.second.use_count() == 1; });
         std::erase_if(midi_, [](const auto& entry) { return entry.second.use_count() == 1; });
+        std::erase_if(automation_,
+                      [](const auto& entry)
+                      { return entry.second.use_count() == 1 && !entry.second->touched; });
     }
     void clear()
     {
         channels_.clear();
         midi_.clear();
+        automation_.clear();
         master_.reset();
     }
 
 private:
     std::map<core::Id, std::shared_ptr<ChannelRuntime>> channels_;
     std::map<core::Id, std::shared_ptr<MidiRuntime>> midi_;
+    std::map<core::Id, std::shared_ptr<AutomationRuntime>> automation_;
     std::shared_ptr<MasterRuntime> master_;
 };
 

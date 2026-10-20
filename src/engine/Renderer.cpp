@@ -9,6 +9,64 @@
 namespace aural::engine
 {
 
+namespace
+{
+// Plays a channel's lanes at `position`: gain and pan become the span's
+// targets (the ramps glide to them), insert parameters are set on their
+// processors (atomics). A lane whose control the user is touching is skipped.
+void applyAutomation(const ChannelNode& node, core::SamplePosition position) noexcept
+{
+    if (node.runtime == nullptr)
+        return;
+    bool gain = false, pan = false;
+    for (const auto& lane : node.automation)
+    {
+        if (lane.runtime != nullptr && lane.runtime->touched.load(std::memory_order_relaxed))
+            continue;
+        const float value =
+            core::automationValueAt(lane.points.data(), lane.points.size(), lane.target, position);
+        switch (lane.target)
+        {
+            case core::AutomationTarget::gain:
+                node.runtime->automatedGain = value;
+                gain = true;
+                break;
+            case core::AutomationTarget::pan:
+                node.runtime->automatedPan = value;
+                pan = true;
+                break;
+            case core::AutomationTarget::insertParameter:
+                if (lane.processor != nullptr)
+                    lane.processor->setParameter(lane.parameter, value);
+                break;
+        }
+    }
+    node.runtime->gainAutomated = gain;
+    node.runtime->panAutomated = pan;
+    if (gain)
+        node.runtime->shownGain.store(node.runtime->automatedGain, std::memory_order_relaxed);
+    if (pan)
+        node.runtime->shownPan.store(node.runtime->automatedPan, std::memory_order_relaxed);
+    node.runtime->automated.store((gain ? 1 : 0) | (pan ? 2 : 0), std::memory_order_relaxed);
+}
+
+float targetGainOf(const ChannelNode& node) noexcept
+{
+    if (node.runtime == nullptr)
+        return node.gain;
+    return node.runtime->gainAutomated ? node.runtime->automatedGain
+                                       : node.runtime->targetGain.load(std::memory_order_relaxed);
+}
+
+float targetPanOf(const ChannelNode& node) noexcept
+{
+    if (node.runtime == nullptr)
+        return node.pan;
+    return node.runtime->panAutomated ? node.runtime->automatedPan
+                                      : node.runtime->targetPan.load(std::memory_order_relaxed);
+}
+} // namespace
+
 void Renderer::prepare(int maxBlockSize)
 {
     AURAL_ASSERT_NOT_REALTIME("Renderer::prepare");
@@ -165,8 +223,7 @@ void Renderer::renderTrack(const Snapshot& snapshot,
     // for sidechains. The routing stage is what keeps it out of the mix.
 
     // The pan this block ramps from and to (the runtime outlives snapshots).
-    const float pan1 =
-        track.runtime != nullptr ? track.runtime->targetPan.load(std::memory_order_relaxed) : track.pan;
+    const float pan1 = targetPanOf(track);
     const float pan0 = track.runtime != nullptr && track.runtime->panPrimed ? track.runtime->pan : pan1;
 
     // A stereo source (an instrument, an aux output): the pan is a balance and the
@@ -534,9 +591,7 @@ void Renderer::routeChannel(const Snapshot& snapshot,
     float* outR = nullptr;
     target(channel.outputBus, outL, outR);
     // The fader ramps from where it was to the target across the block.
-    const float gain1 = channel.runtime != nullptr
-                            ? channel.runtime->targetGain.load(std::memory_order_relaxed)
-                            : channel.gain;
+    const float gain1 = targetGainOf(channel);
     const float gain0 =
         channel.runtime != nullptr && channel.runtime->gainPrimed ? channel.runtime->gain : gain1;
     const float gainStep = (gain1 - gain0) / static_cast<float>(numSamples);
@@ -609,6 +664,17 @@ void Renderer::renderSpan(const Snapshot& snapshot,
                           int numSamples,
                           WorkerPool* pool) noexcept
 {
+    // Automation at the end of the span, so the ramps arrive where the lanes say
+    // when the span ends (before any thread renders, so every job sees it).
+    for (const auto& track : snapshot.tracks)
+        if (!track.automation.empty() ||
+            (track.runtime != nullptr && track.runtime->automated.load(std::memory_order_relaxed) != 0))
+            applyAutomation(track, position + numSamples);
+    for (const auto& bus : snapshot.buses)
+        if (!bus.automation.empty() ||
+            (bus.runtime != nullptr && bus.runtime->automated.load(std::memory_order_relaxed) != 0))
+            applyAutomation(bus, position + numSamples);
+
     // Tracks render in parallel within a level; levels in order so a keyed track
     // sees its source finished.
     for (const auto& level : snapshot.trackLevels)
@@ -636,8 +702,7 @@ void Renderer::renderSpan(const Snapshot& snapshot,
         const auto& bus = snapshot.buses[static_cast<size_t>(index)];
         // The bus's pre-fader output: its summed inputs through balance (ramped)
         // and phase.
-        const float pan1 =
-            bus.runtime != nullptr ? bus.runtime->targetPan.load(std::memory_order_relaxed) : bus.pan;
+        const float pan1 = targetPanOf(bus);
         const float pan0 = bus.runtime != nullptr && bus.runtime->panPrimed ? bus.runtime->pan : pan1;
         float panLeft0 = 1.0f, panRight0 = 1.0f, panLeft1 = 1.0f, panRight1 = 1.0f;
         stereoPanGains(pan0, panLeft0, panRight0);

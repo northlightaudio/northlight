@@ -83,6 +83,29 @@ void channelToJson(json& j, const Channel& c)
         j["inserts"] = insertsToJson(c.inserts);
     if (!c.strip.empty() || c.stripPreInserts)
         j["strip"] = json{{"pre", c.stripPreInserts}, {"modules", insertsToJson(c.strip)}};
+    if (!c.automation.empty() || c.automationMode != AutomationMode::read)
+    {
+        static const char* modes[] = {"off", "read", "touch", "latch", "write"};
+        static const char* targets[] = {"gain", "pan", "parameter"};
+        json lanes = json::array();
+        for (const auto& lane : c.automation)
+        {
+            json points = json::array();
+            for (const auto& point : lane.points)
+                points.push_back(json::array({point.position, point.value}));
+            json lj{{"id", lane.id},
+                    {"target", targets[static_cast<int>(lane.target)]},
+                    {"points", std::move(points)}};
+            if (lane.target == AutomationTarget::insertParameter)
+            {
+                lj["insert"] = lane.insert;
+                lj["parameter"] = lane.parameter;
+            }
+            lanes.push_back(std::move(lj));
+        }
+        j["automation"] =
+            json{{"mode", modes[static_cast<int>(c.automationMode)]}, {"lanes", std::move(lanes)}};
+    }
 }
 
 void channelFromJson(const json& j, Channel& c)
@@ -124,6 +147,36 @@ void channelFromJson(const json& j, Channel& c)
         c.stripPreInserts = it->value("pre", false);
         if (const auto modules = it->find("modules"); modules != it->end() && modules->is_array())
             insertsFromJson(*modules, c.strip);
+    }
+    if (const auto it = j.find("automation"); it != j.end() && it->is_object())
+    {
+        const auto mode = it->value("mode", std::string("read"));
+        c.automationMode = mode == "off"     ? AutomationMode::off
+                           : mode == "touch" ? AutomationMode::touch
+                           : mode == "latch" ? AutomationMode::latch
+                           : mode == "write" ? AutomationMode::write
+                                             : AutomationMode::read;
+        if (const auto lanes = it->find("lanes"); lanes != it->end() && lanes->is_array())
+            for (const auto& l : *lanes)
+            {
+                AutomationLane lane;
+                lane.id = l.value("id", invalidId);
+                const auto target = l.value("target", std::string("gain"));
+                lane.target = target == "pan"         ? AutomationTarget::pan
+                              : target == "parameter" ? AutomationTarget::insertParameter
+                                                      : AutomationTarget::gain;
+                lane.insert = l.value("insert", invalidId);
+                lane.parameter = l.value("parameter", 0);
+                if (const auto points = l.find("points"); points != l.end() && points->is_array())
+                    for (const auto& pt : *points)
+                        if (pt.is_array() && pt.size() >= 2)
+                            lane.points.push_back({pt[0].get<SamplePosition>(), pt[1].get<float>()});
+                std::stable_sort(lane.points.begin(),
+                                 lane.points.end(),
+                                 [](const AutomationPoint& a, const AutomationPoint& b)
+                                 { return a.position < b.position; });
+                c.automation.push_back(std::move(lane));
+            }
     }
 }
 
@@ -349,6 +402,8 @@ std::optional<Project> projectFromJson(const std::string& text, std::string* err
                 maxId = std::max(maxId, i.id);
             for (const auto& i : b.strip)
                 maxId = std::max(maxId, i.id);
+            for (const auto& l : b.automation)
+                maxId = std::max(maxId, l.id);
         }
         for (const auto& t : p.tracks)
         {
@@ -356,6 +411,8 @@ std::optional<Project> projectFromJson(const std::string& text, std::string* err
                 maxId = std::max(maxId, i.id);
             for (const auto& i : t.strip)
                 maxId = std::max(maxId, i.id);
+            for (const auto& l : t.automation)
+                maxId = std::max(maxId, l.id);
         }
         for (const auto& g : p.groups)
             maxId = std::max(maxId, g.id);
@@ -384,6 +441,8 @@ std::optional<Project> projectFromJson(const std::string& text, std::string* err
                 fresh(i.id);
             for (auto& i : t.strip)
                 fresh(i.id);
+            for (auto& l : t.automation)
+                fresh(l.id);
         }
         for (auto& b : p.buses)
         {
@@ -392,6 +451,8 @@ std::optional<Project> projectFromJson(const std::string& text, std::string* err
                 fresh(i.id);
             for (auto& i : b.strip)
                 fresh(i.id);
+            for (auto& l : b.automation)
+                fresh(l.id);
         }
         for (auto& g : p.groups)
             fresh(g.id);

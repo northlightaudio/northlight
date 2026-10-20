@@ -586,6 +586,10 @@ public:
     std::string name() const override { return "Set parameter"; }
     void apply(Project&) override;
     void revert(Project&) override;
+    Id channelId() const noexcept { return channelId_; }
+    Id insertId() const noexcept { return insertId_; }
+    int parameter() const noexcept { return parameter_; }
+    float value() const noexcept { return value_; }
     void touchedParameters(std::vector<ParameterTouch>& out) const override
     {
         out.push_back({insertId_, parameter_});
@@ -668,6 +672,70 @@ private:
     bool value_, previous_ = false;
 };
 
+// ----- automation -----------------------------------------------------------------------
+
+// Adds a lane (its id allocated on apply when invalid). A channel has at most
+// one lane per target.
+class AddAutomationLane final : public Command
+{
+public:
+    AddAutomationLane(Id channelId, AutomationLane lane);
+    std::string name() const override { return "Add automation"; }
+    void apply(Project&) override;
+    void revert(Project&) override;
+    Id laneId() const noexcept { return lane_.id; }
+
+private:
+    Id channelId_;
+    AutomationLane lane_;
+};
+
+class RemoveAutomationLane final : public Command
+{
+public:
+    RemoveAutomationLane(Id channelId, Id laneId);
+    std::string name() const override { return "Remove automation"; }
+    void apply(Project&) override;
+    void revert(Project&) override;
+
+private:
+    Id channelId_, laneId_;
+    AutomationLane removed_;
+    int index_ = -1;
+};
+
+// Replaces a lane's points (sorted on construction): every point edit and
+// every recorded pass is one of these.
+class SetAutomationPoints final : public Command
+{
+public:
+    SetAutomationPoints(Id channelId,
+                        Id laneId,
+                        std::vector<AutomationPoint> points,
+                        std::string name = "Edit automation");
+    std::string name() const override { return name_; }
+    void apply(Project&) override;
+    void revert(Project&) override;
+
+private:
+    Id channelId_, laneId_;
+    std::vector<AutomationPoint> points_, previous_;
+    std::string name_;
+};
+
+class SetAutomationMode final : public Command
+{
+public:
+    SetAutomationMode(Id channelId, AutomationMode mode);
+    std::string name() const override { return "Set automation mode"; }
+    void apply(Project&) override;
+    void revert(Project&) override;
+
+private:
+    Id channelId_;
+    AutomationMode value_, previous_ = AutomationMode::read;
+};
+
 // The fader-section commands below take a track or bus id.
 class SetTrackName final : public Command
 {
@@ -690,6 +758,8 @@ public:
     std::string name() const override { return "Set track gain"; }
     void apply(Project&) override;
     void revert(Project&) override;
+    Id channelId() const noexcept { return trackId_; }
+    float value() const noexcept { return value_; }
 
 private:
     Id trackId_;
@@ -704,6 +774,8 @@ public:
     std::string name() const override { return "Set track pan"; }
     void apply(Project&) override;
     void revert(Project&) override;
+    Id channelId() const noexcept { return trackId_; }
+    float value() const noexcept { return value_; }
 
 private:
     Id trackId_;

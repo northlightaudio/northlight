@@ -44,6 +44,30 @@ int Channel::stripIndex(Id insertId) const noexcept
     return -1;
 }
 
+AutomationLane* Channel::findLane(Id laneId) noexcept
+{
+    for (auto& l : automation)
+        if (l.id == laneId)
+            return &l;
+    return nullptr;
+}
+
+const AutomationLane* Channel::findLane(Id laneId) const noexcept
+{
+    for (const auto& l : automation)
+        if (l.id == laneId)
+            return &l;
+    return nullptr;
+}
+
+const AutomationLane* Channel::findLane(AutomationTarget target, Id insertId, int parameter) const noexcept
+{
+    for (const auto& l : automation)
+        if (l.sameTarget(target, insertId, parameter))
+            return &l;
+    return nullptr;
+}
+
 std::vector<const Insert*> Channel::processingChain() const
 {
     std::vector<const Insert*> chain;

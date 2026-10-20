@@ -1103,6 +1103,104 @@ void SetStripPosition::revert(Project& p)
     requireChannel(p, channelId_).stripPreInserts = previous_;
 }
 
+// ----- automation -------------------------------------------------------------------------
+
+namespace
+{
+void sortPoints(std::vector<AutomationPoint>& points)
+{
+    std::stable_sort(points.begin(),
+                     points.end(),
+                     [](const AutomationPoint& a, const AutomationPoint& b)
+                     { return a.position < b.position; });
+}
+
+AutomationLane& requireLane(Channel& c, Id laneId)
+{
+    auto* lane = c.findLane(laneId);
+    if (lane == nullptr)
+        throw std::logic_error("command references an automation lane that does not exist");
+    return *lane;
+}
+} // namespace
+
+AddAutomationLane::AddAutomationLane(Id channelId, AutomationLane lane)
+    : channelId_(channelId), lane_(std::move(lane))
+{
+    sortPoints(lane_.points);
+}
+void AddAutomationLane::apply(Project& p)
+{
+    auto& c = requireChannel(p, channelId_);
+    if (c.findLane(lane_.target, lane_.insert, lane_.parameter) != nullptr)
+        throw std::logic_error("the channel already has a lane for that parameter");
+    if (lane_.id == invalidId)
+        lane_.id = p.allocateId();
+    p.nextId = std::max(p.nextId, lane_.id + 1);
+    c.automation.push_back(lane_);
+}
+void AddAutomationLane::revert(Project& p)
+{
+    auto& c = requireChannel(p, channelId_);
+    std::erase_if(c.automation, [this](const AutomationLane& l) { return l.id == lane_.id; });
+}
+
+RemoveAutomationLane::RemoveAutomationLane(Id channelId, Id laneId) : channelId_(channelId), laneId_(laneId)
+{
+}
+void RemoveAutomationLane::apply(Project& p)
+{
+    auto& c = requireChannel(p, channelId_);
+    for (size_t i = 0; i < c.automation.size(); ++i)
+        if (c.automation[i].id == laneId_)
+        {
+            removed_ = c.automation[i];
+            index_ = static_cast<int>(i);
+            c.automation.erase(c.automation.begin() + static_cast<std::ptrdiff_t>(i));
+            return;
+        }
+    throw std::logic_error("command references an automation lane that does not exist");
+}
+void RemoveAutomationLane::revert(Project& p)
+{
+    auto& c = requireChannel(p, channelId_);
+    const int at = std::clamp(index_, 0, static_cast<int>(c.automation.size()));
+    c.automation.insert(c.automation.begin() + at, removed_);
+}
+
+SetAutomationPoints::SetAutomationPoints(Id channelId,
+                                         Id laneId,
+                                         std::vector<AutomationPoint> points,
+                                         std::string name)
+    : channelId_(channelId), laneId_(laneId), points_(std::move(points)), name_(std::move(name))
+{
+    sortPoints(points_);
+}
+void SetAutomationPoints::apply(Project& p)
+{
+    auto& lane = requireLane(requireChannel(p, channelId_), laneId_);
+    previous_ = lane.points;
+    lane.points = points_;
+}
+void SetAutomationPoints::revert(Project& p)
+{
+    requireLane(requireChannel(p, channelId_), laneId_).points = previous_;
+}
+
+SetAutomationMode::SetAutomationMode(Id channelId, AutomationMode mode) : channelId_(channelId), value_(mode)
+{
+}
+void SetAutomationMode::apply(Project& p)
+{
+    auto& c = requireChannel(p, channelId_);
+    previous_ = c.automationMode;
+    c.automationMode = value_;
+}
+void SetAutomationMode::revert(Project& p)
+{
+    requireChannel(p, channelId_).automationMode = previous_;
+}
+
 SetTrackName::SetTrackName(Id trackId, std::string name) : trackId_(trackId), value_(std::move(name)) {}
 void SetTrackName::apply(Project& p)
 {

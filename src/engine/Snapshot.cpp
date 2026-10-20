@@ -312,6 +312,34 @@ std::unique_ptr<Snapshot> compileSnapshot(const core::Project& project,
                 node.insertKeyBus.push_back(instance->acceptsSidechain() ? keyBus : -1);
                 node.keepAlive.push_back(std::move(instance));
             }
+        // Automation: the lanes with points, when the mode reads. An insert
+        // parameter plays only on a processor whose parameters the model owns
+        // (built-ins and the strip; a hosted plugin owns its own).
+        const bool reads = c.automationMode == core::AutomationMode::read ||
+                           c.automationMode == core::AutomationMode::touch ||
+                           c.automationMode == core::AutomationMode::latch;
+        for (const auto& lane : c.automation)
+        {
+            if (!reads || lane.points.empty())
+                continue;
+            AutomationNode a;
+            a.target = lane.target;
+            a.parameter = lane.parameter;
+            if (lane.target == core::AutomationTarget::insertParameter)
+            {
+                const auto instance = inserts.find(lane.insert);
+                if (instance == nullptr || instance->ownsParameters() || lane.parameter < 0 ||
+                    lane.parameter >= static_cast<int>(instance->parameters().size()) ||
+                    std::find(node.inserts.begin(), node.inserts.end(), instance.get()) == node.inserts.end())
+                    continue;
+                a.processor = instance.get();
+            }
+            a.points = lane.points;
+            auto runtime = runtimeCache.automation(lane.id);
+            a.runtime = runtime.get();
+            node.keepAliveAutomation.push_back(std::move(runtime));
+            node.automation.push_back(std::move(a));
+        }
         node.outLeft.assign(n, 0.0f);
         node.outRight.assign(n, 0.0f);
         node.dryLeft.assign(n, 0.0f);

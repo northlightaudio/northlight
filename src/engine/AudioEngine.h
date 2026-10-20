@@ -108,6 +108,22 @@ public:
     // value TrackNode::midiSource filters on.
     int midiSourceIndex(const std::string& name);
 
+    // Automation. While the user touches a control to write its lane, the lane
+    // is not played (controller thread).
+    void setAutomationTouched(core::Id laneId, bool touched);
+    // What a channel's automation is playing now, for the UI: which of gain and
+    // pan are automated and their values.
+    struct AutomatedValues
+    {
+        bool gain = false, pan = false;
+        float gainValue = 1.0f, panValue = 0.0f;
+    };
+    AutomatedValues automatedValues(core::Id channelId) const;
+    // A control's value pushed straight to the running graph without touching
+    // the model (a value being written into automation).
+    void setLiveGain(core::Id channelId, float gain);
+    void setLivePan(core::Id channelId, float pan);
+
     // Live values: pushed to the running graph without a recompile (the renderer
     // ramps gains and pans; insert parameters are atomics on the instance).
     void applyLiveValues(const core::Project& project);

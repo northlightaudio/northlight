@@ -128,6 +128,18 @@ public:
     bool autosaveNow();
     juce::File currentAutosaveFile() const;
 
+    // ----- automation writing ---------------------------------------------------------
+    // While the transport plays, a gain, pan or built-in parameter moved on a
+    // channel in touch, latch or write mode writes its lane: the value goes
+    // straight to the engine (the model's static value and the undo history are
+    // left alone) and the lane stops playing while it is written. Touch ends at
+    // the end of the gesture; latch and write when the transport stops; write
+    // also rewrites the channel's existing lanes from where playback started.
+    // Each finished pass becomes one undoable "Write automation" step.
+    bool isWritingAutomation() const noexcept { return !passes_.empty(); }
+    // Finishes every pass now (the transport stopped; tests call it directly).
+    void finishAutomationPasses();
+
     // ----- transport --------------------------------------------------------------
     void play();
     void stop();
@@ -204,6 +216,24 @@ private:
     void matchDeviceSampleRate();
     void finishRecording(engine::AudioEngine::FinishedRecording finished);
     void saveRegistry();
+    struct AutomationPass
+    {
+        core::Id channel = core::invalidId;
+        core::AutomationTarget target = core::AutomationTarget::gain;
+        core::Id insert = core::invalidId;
+        int parameter = 0;
+        core::AutomationMode mode = core::AutomationMode::touch;
+        core::Id lane = core::invalidId; // the lane being rewritten (touched in the engine), if any
+        std::vector<core::AutomationPoint> points;
+    };
+    bool recordAutomation(const core::Command& command);
+    void startWritePasses();
+    void finishPasses(bool touchOnly);
+    void executeGroupWithoutRecording(std::vector<std::unique_ptr<core::Command>>& commands);
+    void commitPass(const AutomationPass& pass,
+                    core::SamplePosition end,
+                    std::vector<std::unique_ptr<core::Command>>& out) const;
+    float staticValue(const core::Channel& channel, const AutomationPass& pass) const;
     void edited();
     void removeOwnAutosave();
     void autosaveIfDue();
@@ -239,6 +269,8 @@ private:
     juce::String untitledStem_;  // the autosave name of an unsaved project
     double dirtySinceMs_ = 0.0;  // unsaved changes not yet autosaved, since
     double lastEditMs_ = 0.0;
+    std::vector<AutomationPass> passes_;
+    bool writePassesStarted_ = false;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(ProjectSession)
 };

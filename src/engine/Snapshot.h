@@ -50,6 +50,16 @@ struct SendNode
     DelayLine* delay = nullptr; // compensation on this edge (null = none)
 };
 
+// A lane that plays: its points (a copy) and what it drives.
+struct AutomationNode
+{
+    core::AutomationTarget target = core::AutomationTarget::gain;
+    InsertProcessor* processor = nullptr; // an insert parameter's processor
+    int parameter = 0;
+    std::vector<core::AutomationPoint> points;
+    AutomationRuntime* runtime = nullptr; // outlives the snapshot (the touch flag)
+};
+
 // What tracks and buses share once compiled.
 struct ChannelNode
 {
@@ -76,6 +86,10 @@ struct ChannelNode
     DelayLine* outputDelay = nullptr;                        // compensation on the output edge
     std::vector<std::shared_ptr<DelayLine>> keepAliveDelays;
     mutable std::vector<float> delayScratchLeft, delayScratchRight; // a delayed copy for one edge
+
+    // The lanes that play (empty when the channel's mode does not read).
+    std::vector<AutomationNode> automation;
+    std::vector<std::shared_ptr<AutomationRuntime>> keepAliveAutomation;
 
     // Pre-fader stereo output for one span (the parallel render writes it).
     mutable std::vector<float> outLeft, outRight;
