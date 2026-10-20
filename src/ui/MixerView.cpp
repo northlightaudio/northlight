@@ -13,6 +13,7 @@
 #include "ui/Icons.h"
 #include "ui/InsertEditor.h"
 #include "ui/InstrumentOutputs.h"
+#include "ui/Motion.h"
 #include "ui/PluginMenu.h"
 #include "ui/SendMenu.h"
 #include "ui/components/AddSlot.h"
@@ -141,8 +142,28 @@ private:
 class InsertSlot final : public juce::Component, public juce::SettableTooltipClient
 {
 public:
-    explicit InsertSlot(const Theme& theme) : theme_(theme) { setRepaintsOnMouseActivity(true); }
+    explicit InsertSlot(const Theme& theme) : theme_(theme) {}
     std::function<void()> onOpen, onBypass, onMenu;
+
+    // Hover eases in the power button and the drag handle (the name moves over
+    // to make room) and eases them out again, over motion.hoverMs.
+    void mouseEnter(const juce::MouseEvent&) override { hoverTo(1.0f); }
+    void mouseExit(const juce::MouseEvent&) override { hoverTo(0.0f); }
+    void hoverTo(float target)
+    {
+        const float from = hover_;
+        juce::Component::SafePointer<InsertSlot> safe(this);
+        motion::Tween::cancel(*this);
+        motion::Tween::run(*this,
+                           theme_.motion.ms(theme_.motion.hoverMs),
+                           [safe, from, target](float t)
+                           {
+                               if (safe == nullptr)
+                                   return;
+                               safe->hover_ = from + (target - from) * t;
+                               safe->repaint();
+                           });
+    }
     std::function<void(juce::Point<int> screen, bool released)> onReorder;
 
     void setBypassed(bool bypassed)
@@ -164,23 +185,24 @@ public:
     void paint(juce::Graphics& g) override
     {
         const auto& c = theme_.colours;
-        g.setColour(isMouseOver() ? c.surface3 : c.surface2);
+        g.setColour(c.surface2.interpolatedWith(c.surface3, hover_));
         g.fillRoundedRectangle(getLocalBounds().toFloat().reduced(0.0f, 0.5f), theme_.radius.sm);
         auto area = getLocalBounds().reduced(theme_.spacing.xs, 0);
-        if (isMouseOver())
+        if (hover_ > 0.0f)
         {
-            Icons::draw(g,
-                        Icon::power,
-                        area.removeFromLeft(12).toFloat().reduced(0.0f, 4.0f),
-                        bypassed_ ? c.textTertiary : c.success);
-            area.removeFromLeft(theme_.spacing.xxs);
+            // The controls fade in where they sit; the name gives them room as they come.
+            const auto power = area.withWidth(12).toFloat().reduced(0.0f, 4.0f);
+            const auto handle = area.withTrimmedLeft(area.getWidth() - 10).toFloat().reduced(0.0f, 4.0f);
             Icons::draw(
-                g, Icon::dragHandle, area.removeFromRight(10).toFloat().reduced(0.0f, 4.0f), c.textTertiary);
+                g, Icon::power, power, (bypassed_ ? c.textTertiary : c.success).withMultipliedAlpha(hover_));
+            Icons::draw(g, Icon::dragHandle, handle, c.textTertiary.withMultipliedAlpha(hover_));
+            area.removeFromLeft(juce::roundToInt((12.0f + static_cast<float>(theme_.spacing.xxs)) * hover_));
+            area.removeFromRight(juce::roundToInt(10.0f * hover_));
         }
-        if (badge_.isNotEmpty() && !isMouseOver())
+        if (badge_.isNotEmpty() && hover_ < 1.0f)
         {
             g.setFont(theme_.caption());
-            g.setColour(c.textTertiary);
+            g.setColour(c.textTertiary.withMultipliedAlpha(1.0f - hover_));
             const int w = juce::GlyphArrangement::getStringWidthInt(theme_.caption(), badge_);
             g.drawText(badge_, area.removeFromRight(w), juce::Justification::centredRight);
             area.removeFromRight(theme_.spacing.xxs);
@@ -237,6 +259,7 @@ private:
     const Theme& theme_;
     juce::String name_, badge_;
     bool bypassed_ = false, handle_ = false, dragging_ = false;
+    float hover_ = 0.0f; // 0 at rest, 1 hovered
 };
 
 // A send row: the bus name, a 40 px mini slider and the pre/post dot.
@@ -1012,7 +1035,9 @@ public:
         }
         // The fixed bottom: pan, toggles, value, output; the fader takes the rest
         // between 120 and 200 px, and below 120 the sections collapse.
-        const int bottom = theme_.sizes.knob + 16 + pad + control + pad + pad + control + pad + control + pad;
+        // (The last term is the room under the output selector.)
+        const int bottom =
+            theme_.sizes.knob + 16 + pad + control + pad + pad + control + pad + control + theme_.spacing.sm;
         const int insertsFull =
             std::min(std::max(rows.inserts, insertCount_) + 1, maxVisibleSlots) * slotHeight + 4;
         const int sendsFull = (std::max(rows.sends, sendCount_) + 1) * slotHeight + 4;
@@ -2063,14 +2088,21 @@ void MixerView::layoutStrips()
 {
     // Strips at the strip width with 2 px gaps; the bus group after a lineSubtle
     // gap; the "+ Bus" ghost at the end.
-    const int height = viewport_.getHeight();
     const int width = theme_.sizes.mixerStripWidth;
+    const int gap = theme_.spacing.xxs;
+    // When they are wider than the view its horizontal scrollbar shows along the
+    // bottom: the strips stop above it, so it never covers the output selectors.
+    const bool anyBus =
+        std::any_of(strips_.begin(), strips_.end(), [](const auto& strip) { return strip->isBus(); });
+    const int contentWidth =
+        static_cast<int>(strips_.size()) * (width + gap) + (anyBus ? theme_.spacing.sm : 0) + 56 + gap;
+    const int height =
+        viewport_.getHeight() - (contentWidth > viewport_.getWidth() ? viewport_.getScrollBarThickness() : 0);
     RowPlan rows;
     for (const auto& strip : strips_)
         strip->addTo(rows);
     const bool rowsChanged = !(rows == rows_);
     rows_ = rows;
-    const int gap = theme_.spacing.xxs;
     int x = 0;
     bool busGap = false;
     for (auto& strip : strips_)

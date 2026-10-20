@@ -6,6 +6,7 @@
 
 #include <juce_gui_basics/juce_gui_basics.h>
 
+#include <map>
 #include <memory>
 #include <vector>
 
@@ -45,6 +46,9 @@ public:
     // strip is showing, since measuring began.
     static void startMeasuring();
     static std::vector<double> takeTickIntervals();
+    // Which module types the user opened or closed is remembered for the session;
+    // tests start from none.
+    static void forgetExpandedForTesting();
 
 private:
     void timerCallback() override;
@@ -64,6 +68,14 @@ private:
     CardHost cardHost_; // what the cards see: the owner's host plus reordering
     core::Id channelId_ = core::invalidId;
     std::vector<std::unique_ptr<ModuleCard>> cards_;
+    // Card motion: a card that collapses, expands or switches on (and its
+    // neighbours) glides to its new place. Each card's last target is kept, so a
+    // relayout that does not move it (the panel gliding the strip's width, frame
+    // by frame) leaves its glide alone.
+    bool animateCards_ = false;
+    std::map<const ModuleCard*, juce::Rectangle<int>> cardTargets_;
+    // Lays the cards out again, gliding them.
+    void relayoutAnimated();
     std::vector<core::Id> order_;
     bool preInserts_ = false;
     int dropIndex_ = -1;

@@ -122,6 +122,7 @@ public:
     std::function<void()> onAddAudioTrack, onImportRequested, onAddBus;
     // The plugins its "New instrument" menus offer (the shell's shared sources).
     void setPluginSources(const PluginSources* sources) noexcept { pluginSources_ = sources; }
+    void openAddTrackMenu() { addTrackMenu(); } // as the "+" button does
     // A MIDI track with a new instrument channel playing `type` (empty: the
     // default instrument).
     std::function<void(const std::string& type)> onAddMidiTrack;

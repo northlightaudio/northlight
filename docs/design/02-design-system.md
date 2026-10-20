@@ -135,7 +135,7 @@ panels turning into hardware:
 | Fader cap | `capTop` to `capBottom` gradient, `capHighlight` top edge, `capShadow`; the track-colour line gets a 4 px glow of its own colour. |
 | Knob | Rim `knobRim` 3 px with the value arc on it; body a radial gradient `knobBodyLight` (offset to the upper left) to `knobBodyDark`; a faint `knobHighlight` arc at the top; the indicator line `textPrimary`. |
 | Meter | A well: `meterWell` with `meterWellInset`; the signal is LED-segmented at `ledPitchPx` with `ledGapPx` dark gaps, zone colours unchanged; peak hold and clip as before. |
-| Numeric readouts (time, dB, tempo) | A readout well `readoutWell` with `grooveInset`; text in `readoutText` with `readoutGlow`; `readoutRecord` while recording. Values in fields that are typed into keep the plain Text field look. |
+| Numeric readouts (time, dB, tempo) | A readout well `readoutWell` with `grooveInset`; text in `readoutText` (no glow); `readoutRecord` while recording. Values in fields that are typed into keep the plain Text field look. |
 | Scrollbars, tabs, menus, tooltips, sheets, toasts, badges, checkboxes, sliders' tracks | Unchanged: flat per their component spec. |
 
 Rules that keep it from sliding into C: no textures or noise, no bevels on panels, no
@@ -255,7 +255,7 @@ A text field that also drags: pointer down and vertical drag changes the value
 type, Enter commits, Esc reverts, scroll wheel over a focused field steps. Value in
 `value` (mono) 12/500, unit in `textSecondary` after a thin space. Right aligned.
 Readout variant (time displays, fader dB, tempo, loudness): a readout well
-(`readoutWell`, `grooveInset`) with the value in `readoutText` and `readoutGlow`,
+(`readoutWell`, `grooveInset`) with the value in `readoutText`,
 `readoutRecord` while recording; while being typed into it reverts to the plain
 Text field look so the caret and selection are legible.
 

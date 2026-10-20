@@ -240,6 +240,18 @@ public:
                 mainWindow_->applyLayoutPreset(tokens.getReference(++i).text.unquoted());
             else if (arg == "--panel" && i + 1 < tokens.size())
                 mainWindow_->showPanel(tokens.getReference(++i).text.unquoted());
+            else if (arg == "--show-menu" && i + 1 < tokens.size())
+            {
+                // After the window has settled, so a capture can watch it open.
+                const auto key = tokens.getReference(++i).text.unquoted();
+                juce::Component::SafePointer<MainWindow> window(mainWindow_.get());
+                juce::Timer::callAfterDelay(1500,
+                                            [window, key]
+                                            {
+                                                if (window != nullptr)
+                                                    window->showMenu(key);
+                                            });
+            }
             else if (arg == "--benchmark-strip-drag" && i + 1 < tokens.size())
                 mainWindow_->runStripDragBenchmark(tokens.getReference(++i).text.getIntValue());
             else if (arg == "--benchmark-ui" && i + 1 < tokens.size())

@@ -486,7 +486,6 @@ bool Theme::apply(const juce::var& tokens, Theme& theme, std::string& error)
         shadow("glowMonitor", m.glowMonitor);
         colour("readoutWell", m.readoutWell);
         colour("readoutText", m.readoutText);
-        shadow("readoutGlow", m.readoutGlow);
         colour("readoutRecord", m.readoutRecord);
         m.enabled = !m.controlTop.isTransparent();
     }

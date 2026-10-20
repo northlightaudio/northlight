@@ -597,7 +597,14 @@ EditorPanel::EditorPanel(const Theme& theme) : theme_(theme), stripView_(theme)
     };
     stripView_.host.liveInsert = [this](core::Id id)
     { return liveInsert ? liveInsert(id) : std::shared_ptr<engine::InsertProcessor>{}; };
-    stripView_.onWidthChanged = [this] { resized(); };
+    stripView_.onWidthChanged = [this]
+    {
+        // A strip card collapsed or expanded: the strip and what follows it glide.
+        rememberBounds();
+        animateLayout_ = true;
+        resized();
+        animateLayout_ = false;
+    };
     strip_.addChildComponent(stripView_);
     strip_.onPaint = [this](juce::Graphics& g)
     {

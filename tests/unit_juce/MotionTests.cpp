@@ -1,5 +1,6 @@
 #include "audio/PeakStore.h"
 #include "core/Model.h"
+#include "plugins/ChannelStrip.h"
 #include "ui/ArrangeView.h"
 #include "ui/AuralLookAndFeel.h"
 #include "ui/Motion.h"
@@ -8,6 +9,7 @@
 #include "ui/components/Sheet.h"
 #include "ui/components/Toast.h"
 #include "ui/panels/EditorPanel.h"
+#include "ui/strip/ChannelStripView.h"
 
 #include <catch2/catch_approx.hpp>
 #include <catch2/catch_test_macros.hpp>
@@ -186,4 +188,64 @@ TEST_CASE("A new insert's card fades in; switching channels does not animate", "
 
     panel.setChannel(2);
     CHECK(fadingComponents(panel) == 0);
+}
+
+TEST_CASE("Strip cards glide when one opens, and appear at once for a new channel", "[ui][motion]")
+{
+    const juce::ScopedJuceInitialiser_GUI juceInit;
+    const auto& theme = ui::Theme::dark();
+    if (theme.motion.reduceMotion)
+        SKIP("the OS asks for reduced motion");
+    core::Channel channel;
+    channel.id = 1;
+    channel.strip = plugins::strip::defaultStrip(); // every module off: collapsed
+    core::Id next = 10;
+    for (auto& m : channel.strip)
+        m.id = next++;
+    ui::strip::ChannelStripView view(theme);
+    view.setSize(2000, 300);
+    view.setChannel(&channel);
+    CHECK(fadingComponents(view) == 0);
+    std::vector<int> before;
+    for (auto* child : view.getChildren())
+        before.push_back(child->getWidth());
+
+    channel.strip[0].bypass = false; // the gate switches on: its card opens
+    view.setChannel(&channel);
+    const auto* gate = view.getChildComponent(view.getNumChildComponents() - view.moduleCount());
+    REQUIRE(gate != nullptr);
+    const int opening = gate->getWidth();
+    ui::motion::Tween::finishAllForTesting();
+    CHECK(gate->getWidth() > opening);                       // it was still on its way
+    ui::strip::ChannelStripView::forgetExpandedForTesting(); // the open gate is remembered per session
+}
+
+TEST_CASE("A tooltip's box fits its text as drawn, without wrapping it again", "[ui][tooltip]")
+{
+    const juce::ScopedJuceInitialiser_GUI juceInit;
+    const auto& theme = ui::Theme::dark();
+    ui::AuralLookAndFeel lookAndFeel(theme);
+    const juce::Rectangle<int> screen(0, 0, 1920, 1080);
+    for (const juce::String text : {"UADx Topline Vocal Tune",
+                                    "UADx Pultec EQP-1A",
+                                    "Remove this send",
+                                    "Volume",
+                                    "Choose the instrument this track's MIDI plays",
+                                    "Pre-fader: the send ignores the channel's fader and follows its pan"})
+    {
+        INFO(text);
+        const auto box = lookAndFeel.getTooltipBounds(text, {200, 200}, screen);
+        const auto lines = [&](float width)
+        {
+            juce::TextLayout layout;
+            juce::AttributedString attributed(text);
+            attributed.setFont(theme.small());
+            layout.createLayout(attributed, width);
+            return std::pair{layout.getNumLines(), layout.getHeight()};
+        };
+        const auto measured = lines(static_cast<float>(theme.sizes.tooltipMaxWidth - 2 * theme.spacing.sm));
+        const auto drawn = lines(static_cast<float>(box.getWidth() - 2 * theme.spacing.sm)); // as drawTooltip
+        CHECK(drawn.first == measured.first);
+        CHECK(drawn.second + 2 * theme.spacing.xs <= static_cast<float>(box.getHeight()));
+    }
 }

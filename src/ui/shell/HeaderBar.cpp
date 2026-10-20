@@ -57,17 +57,6 @@ void TimeDisplay::paint(juce::Graphics& g)
                               : m.enabled              ? m.readoutText
                                                        : c.textPrimary;
     g.setFont(primary_ ? theme_.timeLarge() : theme_.timeSmall());
-    if (m.enabled && lnf != nullptr && tone_ == Tone::normal)
-    {
-        const int w = juce::GlyphArrangement::getStringWidthInt(g.getCurrentFont(), text_);
-        lnf->drawGlow(g,
-                      juce::Rectangle<float>(bounds.getCentreX() - w * 0.5f,
-                                             bounds.getCentreY() - g.getCurrentFont().getHeight() * 0.4f,
-                                             static_cast<float>(w),
-                                             g.getCurrentFont().getHeight() * 0.8f),
-                      theme_.radius.sm,
-                      m.readoutGlow);
-    }
     g.setColour(text);
     g.drawText(text_, getLocalBounds().reduced(theme_.spacing.sm, 0), juce::Justification::centred);
 }

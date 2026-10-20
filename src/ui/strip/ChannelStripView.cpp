@@ -4,6 +4,7 @@
 #include "plugins/ChannelStrip.h"
 #include "plugins/StripPresets.h"
 #include "ui/AuralLookAndFeel.h"
+#include "ui/Motion.h"
 #include "ui/components/Sheet.h"
 #include "ui/strip/UserStripPresets.h"
 
@@ -43,6 +44,11 @@ std::vector<double> ChannelStripView::takeTickIntervals()
     return std::move(tickIntervals());
 }
 
+void ChannelStripView::forgetExpandedForTesting()
+{
+    expandedTypes().clear();
+}
+
 bool ChannelStripView::expanded(const std::string& type, bool on)
 {
     const auto& chosen = expandedTypes();
@@ -58,9 +64,19 @@ void ChannelStripView::collapse(core::Id moduleId, bool collapsed)
             expandedTypes()[card->type()] = !collapsed;
             card->setCollapsed(collapsed);
         }
-    resized();
+    relayoutAnimated();
     if (onWidthChanged)
         onWidthChanged();
+}
+
+void ChannelStripView::relayoutAnimated()
+{
+    animateCards_ = true;
+    resized();
+    animateCards_ = false;
+    laidOutWidths_.clear();
+    for (const auto& card : cards_)
+        laidOutWidths_.push_back(card->layoutWidth());
 }
 
 ChannelStripView::ChannelStripView(const Theme& theme) : theme_(theme)
@@ -138,6 +154,7 @@ void ChannelStripView::setChannel(const core::Channel* channel)
     if (rebuilt)
     {
         cards_.clear();
+        cardTargets_.clear();
         channelId_ = id;
         order_ = order;
         if (channel != nullptr)
@@ -177,7 +194,9 @@ void ChannelStripView::setChannel(const core::Channel* channel)
     if (widths != laidOutWidths_ || rebuilt)
     {
         laidOutWidths_ = std::move(widths);
+        animateCards_ = !rebuilt; // a card switched on opens: glide (a new channel appears at once)
         resized();
+        animateCards_ = false;
         repaint();
     }
 }
@@ -217,10 +236,18 @@ void ChannelStripView::resized()
     presets_.setBounds(caption.removeFromLeft(84).reduced(0, 1));
     int x = 0;
     const int h = getHeight() - captionHeight;
+    const int ms = animateCards_ ? theme_.motion.ms(theme_.motion.panelMs) : 0;
     for (const auto& card : cards_)
     {
-        card->setBounds(x, captionHeight, card->layoutWidth(), h);
+        const juce::Rectangle<int> target(x, captionHeight, card->layoutWidth(), h);
         x += card->layoutWidth() + theme_.spacing.sm;
+        auto& last = cardTargets_[card.get()];
+        if (last == target)
+            continue; // already there, or gliding there
+        last = target;
+        const auto before = card->getBounds();
+        card->setBounds(target);
+        motion::glideIn(*card, ms > 0 && !before.isEmpty() ? before : target, 1.0f, ms);
     }
 }
 
@@ -256,7 +283,7 @@ void ChannelStripView::applyPreset(const std::vector<core::Insert>& modules, con
             if (m.type == card->type())
                 card->setCollapsed(m.bypass);
     host.onCommand(std::make_unique<core::SetStripState>(channelId_, modules, "Strip preset: " + name));
-    resized();
+    relayoutAnimated();
     if (onWidthChanged)
         onWidthChanged();
 }

@@ -61,6 +61,9 @@ public:
     void applyLayoutPreset(const juce::String& name);
     // Shows a panel by its key (mixer, editor, pianoRoll, diagnostics, browser, inspector).
     void showPanel(const juce::String& key);
+    // Opens a menu as a click would ("project", "add-track"), for checking how menus
+    // appear (--show-menu).
+    void showMenu(const juce::String& key);
     // The strip drag benchmark (--benchmark-strip-drag).
     void runStripDragBenchmark(int seconds);
     // Shows a track's automation over its lane in the arrange view.

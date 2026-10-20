@@ -2450,6 +2450,17 @@ void MainWindow::showPanel(const juce::String& key)
             content->panels_.show(id);
 }
 
+void MainWindow::showMenu(const juce::String& key)
+{
+    auto* content = dynamic_cast<Content*>(getContentComponent());
+    if (content == nullptr)
+        return;
+    if (key == "project")
+        content->projectMenu();
+    else if (key == "add-track")
+        content->tracks_.openAddTrackMenu();
+}
+
 void MainWindow::applyLayoutPreset(const juce::String& name)
 {
     if (auto* content = dynamic_cast<Content*>(getContentComponent()))

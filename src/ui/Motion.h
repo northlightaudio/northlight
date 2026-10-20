@@ -44,10 +44,14 @@ inline float ease(float t) noexcept
 class Tween final : private juce::Timer
 {
 public:
+    // With startWhenShowing, the clock starts once the component is on screen
+    // (a menu window can take a hundred milliseconds to appear; started at
+    // creation, its fade would be over before anyone saw it).
     static void run(juce::Component& component,
                     int ms,
                     std::function<void(float)> onFrame,
-                    std::function<void()> onDone = {})
+                    std::function<void()> onDone = {},
+                    bool startWhenShowing = false)
     {
         if (ms <= 0)
         {
@@ -58,6 +62,7 @@ public:
         }
         auto* tween = new Tween(component, ms, std::move(onFrame)); // owns itself
         tween->onDone_ = std::move(onDone);
+        tween->waiting_ = startWhenShowing;
         live().push_back(tween);
         tween->onFrame_(0.0f);
         tween->startTimerHz(60);
@@ -115,6 +120,14 @@ private:
             finish();
             return;
         }
+        if (waiting_)
+        {
+            if (!component_->isShowing())
+                return;
+            waiting_ = false; // on screen: the clock starts now
+            startMs_ = juce::Time::getMillisecondCounterHiRes();
+            return;
+        }
         const auto t = static_cast<float>((juce::Time::getMillisecondCounterHiRes() - startMs_) / ms_);
         onFrame_(ease(std::min(1.0f, t)));
         if (t >= 1.0f)
@@ -131,6 +144,7 @@ private:
     std::function<void(float)> onFrame_;
     std::function<void()> onDone_;
     double startMs_;
+    bool waiting_ = false;
 };
 
 // Moves a component from `from` to its current bounds (and its alpha from

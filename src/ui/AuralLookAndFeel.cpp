@@ -621,14 +621,16 @@ void AuralLookAndFeel::preparePopupMenuWindow(juce::Component& window)
     const auto place = window.getPosition();
     window.setAlpha(0.0f);
     window.setTopLeftPosition(place.translated(0, -2));
-    motion::Tween::run(window,
-                       ms,
-                       [&window, place](float t)
-                       {
-                           window.setAlpha(t);
-                           window.setTopLeftPosition(
-                               place.translated(0, juce::roundToInt(-2.0f * (1.0f - t))));
-                       });
+    motion::Tween::run(
+        window,
+        ms,
+        [&window, place](float t)
+        {
+            window.setAlpha(t);
+            window.setTopLeftPosition(place.translated(0, juce::roundToInt(-2.0f * (1.0f - t))));
+        },
+        {},
+        true); // timed from when the window is on screen
 }
 
 int AuralLookAndFeel::getPopupMenuBorderSize()
@@ -924,8 +926,11 @@ juce::Rectangle<int> AuralLookAndFeel::getTooltipBounds(const juce::String& tipT
     juce::AttributedString text(tipText);
     text.setFont(font);
     layout.createLayout(text, static_cast<float>(theme_.sizes.tooltipMaxWidth - 2 * theme_.spacing.sm));
-    const int w = static_cast<int>(layout.getWidth()) + 2 * theme_.spacing.sm;
-    const int h = static_cast<int>(layout.getHeight()) + 2 * theme_.spacing.xs + theme_.spacing.xs;
+    // Rounded up, with a pixel to spare: drawTooltip lays the text out again in
+    // the box, and a box a fraction narrower than the text wraps it once more
+    // (and clips the last line).
+    const int w = static_cast<int>(std::ceil(layout.getWidth())) + 1 + 2 * theme_.spacing.sm;
+    const int h = static_cast<int>(std::ceil(layout.getHeight())) + 2 * theme_.spacing.xs;
     return juce::Rectangle<int>(screenPos.x > parentArea.getCentreX() ? screenPos.x - (w + theme_.spacing.sm)
                                                                       : screenPos.x + theme_.spacing.sm,
                                 screenPos.y > parentArea.getCentreY() ? screenPos.y - (h + theme_.spacing.sm)

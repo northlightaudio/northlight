@@ -176,7 +176,6 @@ struct Theme
         int ledPitchPx = 2, ledGapPx = 1;
         Shadow glowAccent, glowRecord, glowSolo, glowMonitor;
         juce::Colour readoutWell, readoutText, readoutRecord;
-        Shadow readoutGlow;
         bool enabled = false; // false until a material block is loaded
     };
 
