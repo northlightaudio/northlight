@@ -115,6 +115,9 @@ public:
     // ----- metronome, loop, punch ---------------------------------------------------
     void setMetronome(bool enabled);
     bool metronomeEnabled() const noexcept { return metronome_; }
+    void setMetronomeLevel(float gain);
+    // Extra folders the plugin scanner searches besides the standard locations.
+    void setPluginSearchPaths(std::vector<std::string> folders);
     // Bars of click before a recording starts (0 = none).
     void setCountInBars(int bars);
     int countInBars() const noexcept { return countInBars_; }
@@ -191,6 +194,7 @@ private:
     std::unique_ptr<BounceJob> bounce_;
     bool gestureOpen_ = false;
     bool metronome_ = false;
+    float metronomeGain_ = 0.5f;
     int countInBars_ = 1;
     core::SamplePosition regionStart_ = 0, regionEnd_ = 0;
     bool loop_ = false;

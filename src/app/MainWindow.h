@@ -35,6 +35,9 @@ public:
     // Opens the Audio Setup window (non-modal) or brings it to the front.
     void showAudioSetup();
     void closeAudioSetup();
+    // Opens Preferences on a page ("general", "audio", ...).
+    void showPreferences(const juce::String& page = {});
+    void closePreferences();
 
     // If unfinished recordings are in the media folder, offers to recover them (a toast).
     void offerRecovery();
@@ -58,11 +61,13 @@ public:
 private:
     class Content;
     class AudioSetupWindow;
+    class PreferencesWindow;
 
     audio::AudioDeviceLayer& audio_;
     ProjectSession& session_;
     UserSettings& settings_;
     std::unique_ptr<AudioSetupWindow> audioSetupWindow_;
+    std::unique_ptr<PreferencesWindow> preferencesWindow_;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(MainWindow)
 };

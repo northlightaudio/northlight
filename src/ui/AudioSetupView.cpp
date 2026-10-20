@@ -1,5 +1,6 @@
 #include "ui/AudioSetupView.h"
 
+#include <algorithm>
 #include <cmath>
 
 namespace aural::ui
@@ -41,7 +42,7 @@ void styleCaption(juce::Label& label, const Theme& theme)
 
 void styleValue(juce::Label& label, const Theme& theme)
 {
-    label.setFont(juce::FontOptions{theme.type.body});
+    label.setFont(theme.value());
     label.setColour(juce::Label::textColourId, theme.colours.textPrimary);
     label.setJustificationType(juce::Justification::centredLeft);
 }
@@ -118,43 +119,6 @@ private:
     int lastChanged_ = -1;
     std::vector<std::string> names_;
     std::vector<bool> enabled_;
-};
-
-// ----- meter ------------------------------------------------------------------------------
-
-class AudioSetupView::Meter final : public juce::Component
-{
-public:
-    explicit Meter(const Theme& theme) : theme_(theme) {}
-
-    void push(float peak)
-    {
-        level_ = juce::jmax(peak, level_ * 0.8f);
-        if (peak >= 1.0f)
-            clipFrames_ = uiTimerHz;
-        else if (clipFrames_ > 0)
-            --clipFrames_;
-        repaint();
-    }
-
-    void paint(juce::Graphics& g) override
-    {
-        const auto& c = theme_.colours;
-        auto bounds = getLocalBounds().toFloat();
-        g.setColour(c.surfaceRaised);
-        g.fillRoundedRectangle(bounds, 3.0f);
-
-        const double db = level_ > 0.0f ? 20.0 * std::log10(level_) : -100.0;
-        const auto fraction = static_cast<float>(juce::jlimit(0.0, 1.0, (db + 60.0) / 60.0));
-        auto fill = bounds.withWidth(bounds.getWidth() * fraction);
-        g.setColour(clipFrames_ > 0 ? c.meterClip : (db > -6.0 ? c.meterHot : c.meter));
-        g.fillRoundedRectangle(fill, 3.0f);
-    }
-
-private:
-    const Theme& theme_;
-    float level_ = 0.0f;
-    int clipFrames_ = 0;
 };
 
 // ----- view -------------------------------------------------------------------------------
@@ -260,12 +224,27 @@ AudioSetupView::AudioSetupView(audio::AudioDeviceLayer& audio) : audio_(audio), 
 
     // Monitoring
     passThroughToggle_.setButtonText("Pass inputs through to outputs");
+    passThroughToggle_.setTooltip("Hear the selected inputs directly. Use headphones.");
     passThroughToggle_.onClick = [this]
     {
-        if (!updating_)
-            audio_.setPassThroughEnabled(passThroughToggle_.getToggleState());
+        if (updating_)
+            return;
+        const bool on = passThroughToggle_.getToggleState();
+        audio_.setPassThroughEnabled(on);
+        // Switched on while an input is live: warn once about feedback.
+        if (on && lastInputPeak_ > 0.01f && !warnedPassThrough_ && onWarning)
+        {
+            warnedPassThrough_ = true;
+            onWarning("Pass-through is on: the inputs now feed the outputs directly. Use headphones to avoid "
+                      "feedback.");
+        }
     };
     addAndMakeVisible(passThroughToggle_);
+    passThroughHint_.setText("Hear the selected inputs directly. Use headphones.",
+                             juce::dontSendNotification);
+    passThroughHint_.setFont(theme_.caption());
+    passThroughHint_.setColour(juce::Label::textColourId, theme_.colours.textTertiary);
+    addAndMakeVisible(passThroughHint_);
 
     styleCaption(levelLabel_, theme_);
     levelLabel_.setText("Level", juce::dontSendNotification);
@@ -293,8 +272,8 @@ AudioSetupView::AudioSetupView(audio::AudioDeviceLayer& audio) : audio_(audio), 
     }
     inputMeterLabel_.setText("Input", juce::dontSendNotification);
     outputMeterLabel_.setText("Output", juce::dontSendNotification);
-    inputMeter_ = std::make_unique<Meter>(theme_);
-    outputMeter_ = std::make_unique<Meter>(theme_);
+    inputMeter_ = std::make_unique<Meter>(theme_, 1, false);
+    outputMeter_ = std::make_unique<Meter>(theme_, 1, false);
     addAndMakeVisible(*inputMeter_);
     addAndMakeVisible(*outputMeter_);
 
@@ -324,20 +303,26 @@ AudioSetupView::~AudioSetupView()
 void AudioSetupView::paint(juce::Graphics& g)
 {
     const auto& c = theme_.colours;
-    g.fillAll(c.background);
+    g.fillAll(c.surface0);
 
     const auto drawSection = [&](juce::Rectangle<int> area, const juce::String& title)
     {
-        g.setColour(c.surface);
-        g.fillRoundedRectangle(area.toFloat(), theme_.radius.lg);
-        g.setColour(c.border);
-        g.drawRoundedRectangle(area.toFloat().reduced(0.5f), theme_.radius.lg, 1.0f);
-        g.setColour(c.textPrimary);
-        g.setFont(juce::FontOptions{theme_.type.title});
-        g.drawText(title,
+        g.setColour(c.surface1);
+        g.fillRoundedRectangle(area.toFloat(), theme_.radius.md);
+        g.setColour(c.lineSubtle);
+        g.drawRoundedRectangle(area.toFloat().reduced(0.5f), theme_.radius.md, 1.0f);
+        g.setColour(c.textTertiary);
+        g.setFont(theme_.captionCaps());
+        g.drawText(title.toUpperCase(),
                    area.reduced(theme_.spacing.lg, theme_.spacing.md).removeFromTop(22),
                    juce::Justification::centredLeft);
     };
+    // The status dot before the status line.
+    const auto dot = juce::Rectangle<float>(8.0f, 8.0f)
+                         .withCentre({static_cast<float>(statusLabel_.getX() - theme_.spacing.sm),
+                                      static_cast<float>(statusLabel_.getBounds().getCentreY())});
+    g.setColour(statusColour_);
+    g.fillEllipse(dot);
 
     drawSection(deviceSection_, "Device");
     drawSection(channelsSection_, "Channels");
@@ -356,13 +341,13 @@ void AudioSetupView::resized()
     const bool separateInputs = selectedTypeHasSeparateInputs();
 
     auto bounds = getLocalBounds().reduced(sp.xl);
-    statusLabel_.setBounds(bounds.removeFromBottom(rowH));
+    statusLabel_.setBounds(bounds.removeFromBottom(rowH).withTrimmedLeft(sp.lg));
     bounds.removeFromBottom(sp.md);
 
     const int deviceRows = separateInputs ? 4 : 3;
     const int deviceH = titleH + deviceRows * (rowH + gap) + sp.lg;
     const int latencyH = titleH + 4 * (rowH + gap) + sp.lg;
-    const int monitoringH = titleH + 2 * (rowH + gap) + sp.lg;
+    const int monitoringH = titleH + 2 * (rowH + gap) + theme_.sizes.controlCompact + sp.lg;
     const int midiH = titleH + 3 * (rowH + gap) + sp.lg;
 
     deviceSection_ = bounds.removeFromTop(deviceH);
@@ -472,10 +457,11 @@ void AudioSetupView::resized()
         row.removeFromLeft(sp.lg);
         levelLabel_.setBounds(row.removeFromLeft(50));
         levelSlider_.setBounds(row);
+        passThroughHint_.setBounds(area.removeFromTop(theme_.sizes.controlCompact).withTrimmedLeft(sp.xl));
         area.removeFromTop(gap);
 
         row = area.removeFromTop(rowH);
-        const int meterH = theme_.sizes.meterHeight + 4;
+        const int meterH = 8;
         auto left = row.removeFromLeft((row.getWidth() - sp.lg) / 2);
         row.removeFromLeft(sp.lg);
         inputMeterLabel_.setBounds(left.removeFromLeft(60));
@@ -494,15 +480,21 @@ void AudioSetupView::changeListenerCallback(juce::ChangeBroadcaster*)
 
 void AudioSetupView::timerCallback()
 {
-    inputMeter_->push(audio_.callback().takeInputPeak());
-    outputMeter_->push(audio_.callback().takeOutputPeak());
+    const double now = juce::Time::getMillisecondCounterHiRes();
+    const double elapsed = lastMeterMs_ > 0.0 ? now - lastMeterMs_ : 1000.0 / uiTimerHz;
+    lastMeterMs_ = now;
+    const float inputPeak = audio_.callback().takeInputPeak();
+    const float outputPeak = audio_.callback().takeOutputPeak();
+    lastInputPeak_ = inputPeak;
+    inputMeter_->push(&inputPeak, 1, elapsed);
+    outputMeter_->push(&outputPeak, 1, elapsed);
 
     auto& calibrator = audio_.calibrator();
     if (calibrator.isRunning())
     {
         const auto p = calibrator.progress();
-        calibrationStatus_.setText("Calibrating... trial " + juce::String(p.trial) + " of " +
-                                       juce::String(p.trialsTotal),
+        calibrationStatus_.setText(juce::String::fromUTF8("Playing click\xe2\x80\xa6 ") +
+                                       juce::String(p.trial) + "/" + juce::String(p.trialsTotal),
                                    juce::dontSendNotification);
     }
 }
@@ -543,8 +535,10 @@ void AudioSetupView::refreshFromDevice()
 
     // Devices of that type
     deviceNames_ = audio_.deviceNames(selectedDeviceType());
-    const auto fillDevices =
-        [](juce::ComboBox& box, const std::vector<std::string>& names, const std::string& current)
+    const auto fillDevices = [](juce::ComboBox& box,
+                                const std::vector<std::string>& names,
+                                const std::string& current,
+                                const std::string& preferred)
     {
         box.clear(juce::dontSendNotification);
         box.addItem("(none)", 1);
@@ -554,11 +548,21 @@ void AudioSetupView::refreshFromDevice()
             if (names[i] == current)
                 box.setSelectedId(static_cast<int>(i) + 2, juce::dontSendNotification);
         }
+        // The preferred device that is not here now: greyed, so the user sees what
+        // the app is waiting for.
+        if (!preferred.empty() && std::find(names.begin(), names.end(), preferred) == names.end())
+        {
+            const int id = static_cast<int>(names.size()) + 2;
+            box.addItem(juce::String::fromUTF8(preferred.c_str()) + " (unavailable)", id);
+            box.setItemEnabled(id, false);
+            if (current.empty())
+                box.setSelectedId(id, juce::dontSendNotification);
+        }
         if (box.getSelectedId() == 0)
             box.setSelectedId(1, juce::dontSendNotification);
     };
-    fillDevices(outputDeviceBox_, deviceNames_.outputs, status.outputDevice);
-    fillDevices(inputDeviceBox_, deviceNames_.inputs, status.inputDevice);
+    fillDevices(outputDeviceBox_, deviceNames_.outputs, status.outputDevice, settings.outputDevice);
+    fillDevices(inputDeviceBox_, deviceNames_.inputs, status.inputDevice, settings.inputDevice);
 
     // Sample rate and buffer size
     sampleRateBox_.clear(juce::dontSendNotification);
@@ -630,17 +634,18 @@ void AudioSetupView::refreshFromDevice()
     passThroughToggle_.setToggleState(audio_.callback().isPassThroughEnabled(), juce::dontSendNotification);
     levelSlider_.setValue(gainToDb(audio_.callback().masterGain()), juce::dontSendNotification);
 
-    // Status line
+    // Status line: the dot says success, warning or danger.
     if (!status.message.empty())
-        setStatus(status.message, theme_.colours.warning);
+        setStatus(status.open ? status.message : "Device unavailable, retrying\xe2\x80\xa6 " + status.message,
+                  theme_.colours.warning);
     else if (!status.open)
-        setStatus("No audio device is open.", theme_.colours.warning);
+        setStatus("No audio device is open.", theme_.colours.danger);
     else
         setStatus(juce::String(status.running ? "Running" : "Open") + separator + status.deviceType +
                       separator + juce::String(status.activeInputs.size()) + " in / " +
                       juce::String(status.activeOutputs.size()) + " out" + separator +
-                      "Dropouts: " + (status.xruns >= 0 ? juce::String(status.xruns) : juce::String("n/a")),
-                  theme_.colours.textSecondary);
+                      juce::String(status.xruns >= 0 ? status.xruns : 0) + " dropouts",
+                  theme_.colours.success);
 
     if (typeChanged)
         resized();
@@ -830,8 +835,13 @@ void AudioSetupView::applySettings(const audio::AudioSettings& settings)
 
 void AudioSetupView::setStatus(const juce::String& text, juce::Colour colour)
 {
-    statusLabel_.setText(text, juce::dontSendNotification);
-    statusLabel_.setColour(juce::Label::textColourId, colour);
+    statusLabel_.setText(juce::String::fromUTF8(text.toRawUTF8()), juce::dontSendNotification);
+    statusLabel_.setFont(
+        theme_.font(Theme::Face::mono, theme_.fonts.size.timeSmall, theme_.fonts.weight.regular));
+    statusLabel_.setColour(juce::Label::textColourId,
+                           colour == theme_.colours.success ? theme_.colours.textSecondary : colour);
+    statusColour_ = colour;
+    repaint();
 }
 
 // ----- calibration ------------------------------------------------------------------------

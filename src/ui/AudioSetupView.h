@@ -2,9 +2,11 @@
 
 #include "audio/AudioDeviceLayer.h"
 #include "ui/Theme.h"
+#include "ui/components/Meter.h"
 
 #include <juce_gui_basics/juce_gui_basics.h>
 
+#include <functional>
 #include <memory>
 #include <string>
 #include <vector>
@@ -22,10 +24,15 @@ namespace aural::ui
 class AudioSetupView final : public juce::Component, private juce::ChangeListener, private juce::Timer
 {
 public:
-    static constexpr int preferredWidth = 860;
-    static constexpr int preferredHeight = 960;
-    static constexpr int minimumWidth = 700;
-    static constexpr int minimumHeight = 820;
+    // The window (08-setup.md 8.1): 720x620, scrolling the content's natural height.
+    static constexpr int preferredWidth = 720;
+    static constexpr int preferredHeight = 620;
+    static constexpr int minimumWidth = 640;
+    static constexpr int minimumHeight = 480;
+    static constexpr int contentHeight = 1040;
+
+    // Pass-through switched on while an input is live: the owner shows a toast.
+    std::function<void(const juce::String& message)> onWarning;
 
     explicit AudioSetupView(audio::AudioDeviceLayer& audio);
     ~AudioSetupView() override;
@@ -35,7 +42,6 @@ public:
 
 private:
     class ChannelListModel;
-    class Meter;
 
     void changeListenerCallback(juce::ChangeBroadcaster* source) override;
     void timerCallback() override;
@@ -91,13 +97,18 @@ private:
 
     // Monitoring
     juce::ToggleButton passThroughToggle_;
+    juce::Label passThroughHint_;
+    bool warnedPassThrough_ = false;
+    float lastInputPeak_ = 0.0f;
+    double lastMeterMs_ = 0.0;
     juce::Label levelLabel_;
     juce::Slider levelSlider_;
     juce::Label inputMeterLabel_, outputMeterLabel_;
-    std::unique_ptr<Meter> inputMeter_, outputMeter_;
+    std::unique_ptr<Meter> inputMeter_, outputMeter_; // ui::Meter, horizontal
 
     // Status
     juce::Label statusLabel_;
+    juce::Colour statusColour_;
 
     juce::Rectangle<int> deviceSection_, channelsSection_, midiSection_, latencySection_, monitoringSection_;
 

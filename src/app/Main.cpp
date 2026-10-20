@@ -56,6 +56,8 @@ public:
     //   --no-count-in        record without the count-in
     //   --layout <Mix|Edit>  apply a layout preset
     //   --panel <name>       show a panel: mixer, editor, pianoRoll, diagnostics, browser, inspector
+    //   --preferences [page] open Preferences (general, audio, recording, editing, plugins, shortcuts,
+    //   diagnostics)
     //   --first-run          show the first-run sheet
     //   --midi-track         add a MIDI track (built-in synth) with a short clip
     //   --midi-track-with <type>  the same with the given instrument type instead
@@ -146,6 +148,10 @@ public:
                 mainWindow_->applyLayoutPreset(tokens.getReference(++i).text.unquoted());
             else if (arg == "--panel" && i + 1 < tokens.size())
                 mainWindow_->showPanel(tokens.getReference(++i).text.unquoted());
+            else if (arg == "--preferences")
+                mainWindow_->showPreferences(i + 1 < tokens.size() && !tokens[i + 1].text.startsWith("--")
+                                                 ? tokens.getReference(++i).text.unquoted()
+                                                 : juce::String());
             else if (arg == "--insert" && i + 1 < tokens.size())
             {
                 // Adds a built-in insert to every track and opens the first one's editor.

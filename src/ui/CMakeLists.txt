@@ -59,6 +59,7 @@ add_library(aural_ui STATIC
     PluginWindow.cpp
     PluginBrowser.h
     PluginBrowser.cpp
+    PreferencesView.cpp
     ClapEditor.h
     ClapEditor.cpp)
 

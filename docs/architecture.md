@@ -766,6 +766,34 @@ open configuration matches. Phase 3 uses that value to place recorded audio.
 (`audio.*`) via `AudioSettings::toKeyValues()`, so the audio layer has no JUCE
 dependency for serialisation and the format is trivially diffable.
 
+Preferences (08-setup.md 8.2, `ui::PreferencesView`, Ctrl+, or the app menu,
+`--preferences [page]`): a 160 px page list and pages of label-and-control rows
+with uppercase section headers. General (project folder, recent-file count,
+theme, accent swatches and hex, UI scale), Audio (the Audio Setup view inline),
+Recording (file format, count-in, pre-roll, metronome level, take name
+pattern), Editing (snap and grid defaults, default fade, ripple, follow
+playhead), Plugins (extra scan folders, scan on launch, blocklist, scan now,
+windows on top), Shortcuts (a searchable table of the keyboard map) and
+Diagnostics (crash-report opt-in, the settings folder, copy system report).
+Values are `general.*`, `recording.*`, `editing.*`, `plugins.*` and
+`diagnostics.*` keys; the main window applies the ones with an effect (UI
+scale, metronome level, scan folders, follow playhead) when a value changes and
+the project defaults (count-in, snap, grid, ripple, scan on launch) at launch.
+The accent is stored and applied at the next launch; file format, pre-roll,
+default fade, the take name pattern and crash reporting are stored and say so
+in their hints until the features that use them land; shortcut rebinding is
+not in this pass.
+
+Audio Setup (8.1): the sections are cards (`surface1`, uppercase caption
+titles), labels in body `textSecondary`, values in the mono value face, the
+status line in mono with a success/warning/danger dot; the preferred device
+shows greyed as "(unavailable)" when it is not present; calibration reports
+"Playing click… n/m" inline; pass-through carries the hint "Hear the selected
+inputs directly. Use headphones." and switching it on while an input is live
+shows a one-time feedback toast. The window is 720×620 and scrolls the
+content. Not in this pass: a meter per input channel (the callback reports one
+input peak) and stereo-linked channel pairs (tracks take one input channel).
+
 ### UI
 
 `ui::Theme` loads the design tokens (docs/design/tokens.json, section 2 of the

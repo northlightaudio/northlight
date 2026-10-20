@@ -337,8 +337,19 @@ std::string ProjectSession::sampleRateWarning() const
 void ProjectSession::setMetronome(bool enabled)
 {
     metronome_ = enabled;
-    engine_.setMetronome(enabled, 0.5f);
+    engine_.setMetronome(enabled, metronomeGain_);
     sendChangeMessage();
+}
+
+void ProjectSession::setMetronomeLevel(float gain)
+{
+    metronomeGain_ = std::clamp(gain, 0.0f, 1.0f);
+    engine_.setMetronome(metronome_, metronomeGain_);
+}
+
+void ProjectSession::setPluginSearchPaths(std::vector<std::string> folders)
+{
+    scanner_.setExtraSearchPaths(std::move(folders));
 }
 
 void ProjectSession::setCountInBars(int bars)

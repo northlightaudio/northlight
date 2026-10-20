@@ -14,6 +14,7 @@
 #include "ui/MixerView.h"
 #include "ui/PianoRoll.h"
 #include "ui/PluginBrowser.h"
+#include "ui/PreferencesView.h"
 #include "ui/Theme.h"
 #include "ui/components/Meter.h"
 #include "ui/components/Sheet.h"
@@ -288,8 +289,53 @@ public:
         };
         audio_.addChangeListener(this);
         session_.addChangeListener(this);
+        applyPreferences(true);
         refresh();
         startTimerHz(30);
+    }
+
+    // The preferences with an immediate effect (08-setup.md 8.2); `atLaunch` also
+    // applies the defaults a project starts with.
+    void applyPreferences(bool atLaunch)
+    {
+        using Keys = ui::PreferencesView::Keys;
+        const auto value = [this](const char* key, const std::string& fallback)
+        {
+            const auto v = settings_.value(key);
+            return v.empty() ? fallback : v;
+        };
+        const double scale = juce::String(value(Keys::uiScale, "0")).getDoubleValue();
+        juce::Desktop::getInstance().setGlobalScaleFactor(
+            static_cast<float>(scale > 0.0 ? scale / 100.0 : 1.0));
+        const double levelDb = juce::String(value(Keys::metronomeLevel, "-6")).getDoubleValue();
+        session_.setMetronomeLevel(static_cast<float>(std::pow(10.0, levelDb / 20.0)));
+        std::vector<std::string> paths;
+        for (const auto& item : juce::StringArray::fromTokens(
+                 juce::String::fromUTF8(value(Keys::pluginPaths, "").c_str()), "\t", ""))
+            if (item.isNotEmpty())
+                paths.push_back(item.toStdString());
+        session_.setPluginSearchPaths(std::move(paths));
+        tracks_.setFollowPlayhead(value(Keys::followPlayhead, "1") == "1");
+        if (atLaunch)
+        {
+            session_.setCountInBars(juce::String(value(Keys::countIn, "1")).getIntValue());
+            tracks_.setSnapEnabled(value(Keys::snap, "1") == "1");
+            tracks_.setSnapGrid(juce::String(value(Keys::snapGrid, "0")).getIntValue());
+            tracks_.setRippleEnabled(value(Keys::ripple, "0") == "1");
+            if (value(Keys::scanOnLaunch, "0") == "1")
+                session_.scanPlugins(false);
+        }
+        refreshHeader();
+    }
+
+    // The folder new projects are saved to and opened from.
+    juce::File projectFolder() const
+    {
+        const auto chosen = settings_.value(ui::PreferencesView::Keys::projectFolder);
+        if (!chosen.empty())
+            if (const juce::File folder(juce::String::fromUTF8(chosen.c_str())); folder.isDirectory())
+                return folder;
+        return juce::File::getSpecialLocation(juce::File::userDocumentsDirectory);
     }
 
     ~Content() override
@@ -488,9 +534,14 @@ public:
             redo();
             return true;
         }
-        if (is('A', M::ctrlModifier | M::shiftModifier) || is(',', M::ctrlModifier))
+        if (is('A', M::ctrlModifier | M::shiftModifier))
         {
             owner_.showAudioSetup();
+            return true;
+        }
+        if (is(',', M::ctrlModifier))
+        {
+            owner_.showPreferences();
             return true;
         }
         if (is('P', M::ctrlModifier | M::shiftModifier))
@@ -1132,8 +1183,7 @@ private:
     {
         if (session_.isRecording())
             return;
-        chooser_ = std::make_unique<juce::FileChooser>(
-            "Open project", juce::File::getSpecialLocation(juce::File::userDocumentsDirectory), "*.aural");
+        chooser_ = std::make_unique<juce::FileChooser>("Open project", projectFolder(), "*.aural");
         chooser_->launchAsync(juce::FileBrowserComponent::openMode |
                                   juce::FileBrowserComponent::canSelectFiles,
                               [this](const juce::FileChooser& fc)
@@ -1166,9 +1216,7 @@ private:
             return;
         }
         chooser_ = std::make_unique<juce::FileChooser>(
-            "Save project",
-            juce::File::getSpecialLocation(juce::File::userDocumentsDirectory).getChildFile("Untitled.aural"),
-            "*.aural");
+            "Save project", projectFolder().getChildFile("Untitled.aural"), "*.aural");
         chooser_->launchAsync(juce::FileBrowserComponent::saveMode |
                                   juce::FileBrowserComponent::canSelectFiles |
                                   juce::FileBrowserComponent::warnAboutOverwriting,
@@ -1197,7 +1245,7 @@ private:
         refresh();
     }
 
-    static constexpr int recentCount = 8;
+    static constexpr int recentCount = 20; // the list's capacity; the menu shows the preferred count
 
     std::vector<juce::String> recentFiles() const
     {
@@ -1274,7 +1322,7 @@ private:
     // 1 = the mix, 2 = the loop region, 3 = stems.
     void startExport(int choice)
     {
-        const auto documents = juce::File::getSpecialLocation(juce::File::userDocumentsDirectory);
+        const auto documents = projectFolder();
         const auto base = projectName();
         juce::Component::SafePointer<Content> safe(this);
         const auto report = [safe](const std::string& error)
@@ -1334,6 +1382,7 @@ private:
         menu.addSeparator();
         menu.addItem(2, "Audio Setup...");
         menu.addItem(3, "Plugins...");
+        menu.addItem(6, "Preferences...");
         juce::PopupMenu layout;
         layout.addItem(10, "Edit");
         layout.addItem(11, "Mix");
@@ -1358,6 +1407,9 @@ private:
                                        break;
                                    case 3:
                                        safe->owner_.showPluginBrowser();
+                                       break;
+                                   case 6:
+                                       safe->owner_.showPreferences();
                                        break;
                                    case 10:
                                        safe->panels_.applyPreset("Edit");
@@ -1394,7 +1446,11 @@ private:
         menu.addItem(1, "New");
         menu.addItem(2, "Open...");
         juce::PopupMenu recent;
-        const auto files = recentFiles();
+        auto files = recentFiles();
+        const auto shown = settings_.value(ui::PreferencesView::Keys::recentCount);
+        if (const int count = shown.empty() ? 8 : juce::String(shown).getIntValue();
+            static_cast<size_t>(std::max(0, count)) < files.size())
+            files.resize(static_cast<size_t>(std::max(0, count)));
         for (size_t i = 0; i < files.size(); ++i)
             recent.addItem(100 + static_cast<int>(i), juce::File(files[i]).getFileNameWithoutExtension());
         menu.addSubMenu("Recent", recent, !files.empty());
@@ -1573,13 +1629,35 @@ public:
           owner_(owner)
     {
         setUsingNativeTitleBar(true);
-        auto* view = new ui::AudioSetupView(audio);
-        view->setSize(ui::AudioSetupView::preferredWidth, ui::AudioSetupView::preferredHeight);
-        setContentOwned(view, true);
+        view_ = std::make_unique<ui::AudioSetupView>(audio);
+        view_->onWarning = [&owner](const juce::String& message) { owner.notify(message, true); };
+        auto* viewport = new juce::Viewport();
+        viewport->setScrollBarsShown(true, false);
+        viewport->setScrollBarThickness(ui::Theme::dark().sizes.scrollbar);
+        viewport->setViewedComponent(view_.get(), false);
+        viewport->setSize(ui::AudioSetupView::preferredWidth, ui::AudioSetupView::preferredHeight);
+        setContentOwned(viewport, true);
         setResizable(true, false);
         setResizeLimits(ui::AudioSetupView::minimumWidth, ui::AudioSetupView::minimumHeight, 4000, 4000);
         centreAroundComponent(&owner, getWidth(), getHeight());
+        resized();
         setVisible(true);
+    }
+
+    ~AudioSetupWindow() override
+    {
+        if (auto* viewport = dynamic_cast<juce::Viewport*>(getContentComponent()))
+            viewport->setViewedComponent(nullptr, false);
+        view_.reset();
+    }
+
+    void resized() override
+    {
+        juce::DocumentWindow::resized();
+        if (auto* viewport = dynamic_cast<juce::Viewport*>(getContentComponent());
+            viewport != nullptr && view_ != nullptr)
+            view_->setSize(viewport->getWidth() - ui::Theme::dark().sizes.scrollbar,
+                           std::max(viewport->getHeight(), ui::AudioSetupView::contentHeight));
     }
 
     void closeButtonPressed() override
@@ -1605,6 +1683,50 @@ public:
 
 private:
     MainWindow& owner_;
+    std::unique_ptr<ui::AudioSetupView> view_;
+};
+
+// The Preferences window: the PreferencesView, closed with Escape.
+class MainWindow::PreferencesWindow final : public juce::DocumentWindow
+{
+public:
+    PreferencesWindow(MainWindow& owner, std::unique_ptr<ui::PreferencesView> view)
+        : juce::DocumentWindow("Preferences",
+                               ui::Theme::dark().colours.surface0,
+                               juce::DocumentWindow::closeButton | juce::DocumentWindow::minimiseButton),
+          owner_(owner), view_(view.get())
+    {
+        setUsingNativeTitleBar(true);
+        setContentOwned(view.release(), true);
+        setResizable(true, false);
+        setResizeLimits(640, 420, 4000, 4000);
+        centreAroundComponent(&owner, getWidth(), getHeight());
+        setVisible(true);
+    }
+    ui::PreferencesView& view() noexcept { return *view_; }
+    void closeButtonPressed() override
+    {
+        juce::Component::SafePointer<MainWindow> owner(&owner_);
+        juce::MessageManager::callAsync(
+            [owner]
+            {
+                if (owner != nullptr)
+                    owner->closePreferences();
+            });
+    }
+    bool keyPressed(const juce::KeyPress& key) override
+    {
+        if (key == juce::KeyPress::escapeKey)
+        {
+            closeButtonPressed();
+            return true;
+        }
+        return juce::DocumentWindow::keyPressed(key);
+    }
+
+private:
+    MainWindow& owner_;
+    ui::PreferencesView* view_;
 };
 
 // ----- the window --------------------------------------------------------------------------
@@ -1626,6 +1748,7 @@ MainWindow::MainWindow(const juce::String& name,
 
 MainWindow::~MainWindow()
 {
+    preferencesWindow_.reset();
     audioSetupWindow_.reset();
 }
 
@@ -1644,6 +1767,49 @@ void MainWindow::showAudioSetup()
 void MainWindow::closeAudioSetup()
 {
     audioSetupWindow_.reset();
+}
+
+void MainWindow::showPreferences(const juce::String& page)
+{
+    if (preferencesWindow_ == nullptr)
+    {
+        auto view =
+            std::make_unique<ui::PreferencesView>(ui::Theme::dark(), audio_, session_.pluginRegistry());
+        view->loadSetting = [this](const std::string& key)
+        {
+            if (key == "__settingsFolder")
+                return settings_.file().getParentDirectory().getFullPathName().toStdString();
+            return settings_.value(key);
+        };
+        view->saveSetting = [this](const std::string& key, const std::string& value)
+        { settings_.setValue(key, value); };
+        juce::Component::SafePointer<MainWindow> safe(this);
+        view->onChanged = [safe]
+        {
+            if (safe != nullptr)
+                if (auto* content = dynamic_cast<Content*>(safe->getContentComponent()))
+                    content->applyPreferences(false);
+        };
+        view->onClearBlocklist = [this] { session_.clearPluginBlocklist(); };
+        view->onScan = [this] { session_.scanPlugins(false); };
+        view->onNotice = [this](const juce::String& message) { notify(message, false); };
+        view->onWarning = [this](const juce::String& message) { notify(message, true); };
+        view->systemReport = [this]
+        {
+            if (auto* content = dynamic_cast<Content*>(getContentComponent()))
+                return content->diagnostics_.report();
+            return juce::String();
+        };
+        preferencesWindow_ = std::make_unique<PreferencesWindow>(*this, std::move(view));
+    }
+    if (page.isNotEmpty())
+        preferencesWindow_->view().showPage(page);
+    preferencesWindow_->toFront(true);
+}
+
+void MainWindow::closePreferences()
+{
+    preferencesWindow_.reset();
 }
 
 void MainWindow::showMixer()
