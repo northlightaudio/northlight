@@ -1004,3 +1004,21 @@ TEST_CASE("Every insert is handed the song's tempo and position before it plays 
     CHECK(out[blockSize] == Approx(1.5 + perBlock).margin(1e-4));
     CHECK(out[2 * blockSize] == Approx(1.5 + 2 * perBlock).margin(1e-4));
 }
+
+TEST_CASE("A note that ends with its clip ends even when a block starts at the clip's end", "[engine][midi]")
+{
+    // The clip ends on a block boundary (10 blocks of 64): the note-off at its
+    // end falls at the top of the block after, which used to skip the clip.
+    core::MidiClip clip;
+    clip.start = 0;
+    clip.length = 10 * blockSize;
+    clip.notes.push_back({20, 60, 127, 0, 10 * blockSize});             // to the clip's end
+    clip.notes.push_back({21, 64, 127, 5 * blockSize, 20 * blockSize}); // past it: cut there
+    Harness h;
+    h.engine.setProject(keysProject(clip));
+    h.engine.play();
+    const auto out = h.render(12);
+    CHECK(out[0] == Approx(1.0f).margin(0.01f));
+    // Both end at the clip's end (the marker sums them: two note-offs, -2).
+    CHECK(out[10 * blockSize] == Approx(-2.0f).margin(0.01f));
+}

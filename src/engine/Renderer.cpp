@@ -443,7 +443,10 @@ void Renderer::scheduleMidi(const TrackNode& track,
         {
             if (clip.start >= spanEnd)
                 break;
-            if (clip.end() <= position)
+            // A clip that ends exactly here still has note-offs here: the notes
+            // cut at its end (skipping it at `<=` left them stuck when a span
+            // started on the clip's end, which bar-length clips do).
+            if (clip.end() < position)
                 continue;
             // Skip the notes that ended before this span (they started more than the
             // longest note's length ago): the work per span stays with the notes near
