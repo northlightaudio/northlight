@@ -59,6 +59,8 @@ inline juce::Colour moduleColour(const Theme& theme, const std::string& type)
         return paletteColour(theme, "Amber");
     if (type == "aural.synth")
         return paletteColour(theme, "Magenta");
+    if (type == "aural.aurora")
+        return paletteColour(theme, "Violet");
     return theme.colours.textSecondary;
 }
 

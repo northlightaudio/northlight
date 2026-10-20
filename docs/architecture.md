@@ -845,9 +845,16 @@ timeline place, split, duplicate) and notes (add, remove, set, quantise to a gri
 with a strength); the JSON writes notes as compact arrays.
 
 The engine side is `engine::MidiEvent` / `MidiEventList` (a fixed-capacity list
-per track, sized at compile) and `InsertProcessor::acceptsMidi/processMidi`: the
-first insert in a MIDI track's chain that takes MIDI is its instrument and gets
-the span's events with its audio; the rest of the chain, the pan (a stereo
+per track, sized at compile) and `InsertProcessor::acceptsMidi/processMidi`: a
+MIDI track's instrument lives in its own slot (`Channel::instrument`, an
+`Insert` with an empty type when there is none), which `processingChain()` puts
+first, so the first processor that takes MIDI is the instrument and gets the
+span's events with its audio (the engine, automation, parameter commands and
+instance cache treat it as an insert; `SetInstrument` sets, replaces or removes
+it, keeping the slot's id on a replacement so output tracks stay connected, and
+taking its parameter lanes with it). Projects from before the slot had the
+instrument as the first insert: `Project::adoptInstruments` moves it on load.
+The rest of the chain, the rest of the chain, the pan (a stereo
 balance applied after the instrument) and the fader follow as on any channel.
 `Renderer::scheduleMidi` collects the events for each span: note-ons and
 note-offs from the clips at exact sample offsets while playing, the live input
@@ -861,7 +868,14 @@ the engine having to know why the position moved. Live MIDI enters through
 SPSC queue, drained once per block and delivered in the block's first segment)
 tagged with a per-device-name index the snapshot resolves for each track.
 
-Instruments: the built-in `aural.synth` (16 voices, polyBLEP saw/square,
+Instruments: Aurora (`aural.aurora`, `plugins/Aurora.*`, the default for new
+MIDI tracks): twelve voices of two morphing polyBLEP oscillators with up to
+seven-voice unison spread across the stereo field, a sub and noise, a drivable
+TPT state-variable filter (12/24 dB low-pass, band-pass, high-pass) with key
+tracking and its own envelope, coefficients and the LFO at a 16-sample control
+rate, glide, and Shimmer, a two-line modulated chorus; it publishes its output
+tap, the sounding voices and the LFO through the built-ins' feedback for its
+editor, and has eight factory presets. The older `aural.synth` (16 voices, polyBLEP saw/square,
 state-variable low-pass, ADSR; events partition the block so note timing is
 sample-exact), hosted VST3 plugins that accept MIDI (the events go into the JUCE
 MIDI buffer as raw bytes) and CLAP plugins with a note input port (CLAP note
@@ -872,9 +886,11 @@ keeps its further stereo output buses (VST3) or ports (CLAP) and exposes them as
 `InsertProcessor::auxOutput` pairs; an aux track (`TrackKind::aux`, with the
 source track, insert and output number) carries one such pair through its own
 chain, fader, pan and sends, and renders in a later level than its source like a
-keyed track. The mixer's insert menu offers "Outputs" on an instrument with
-extra pairs, one aux track per pair; a source that goes away leaves the aux
-track silent.
+keyed track. The Instruments panel (`ui/panels/InstrumentRack`) lists every
+instrument as a rack unit with its outputs (the main pair is the instrument
+track; each further pair is an output track or a chip that makes one), and the
+mixer's instrument slot menu offers the same "Outputs"; a source that goes away
+leaves the aux track silent.
 
 Recording: an armed MIDI track joins the record session (`addMidiTrack`); the
 engine stamps each live event it delivers to that track with its timeline

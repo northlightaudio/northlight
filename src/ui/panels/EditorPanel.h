@@ -64,6 +64,9 @@ private:
     void rebuild();
     void timerCallback() override;
     void showAddMenu();
+    // The instrument menu (built-in and scanned instruments) for the slot.
+    void showInstrumentMenu(juce::Component& target);
+    void setInstrument(const std::string& type);
     const core::Channel* channel() const;
     int insertIndexForX(int stripX) const;
     void reorderCard(core::Id insertId, juce::Point<int> screen, bool released);
@@ -90,6 +93,9 @@ private:
     bool laidOutPreInserts_ = false;
     std::vector<std::unique_ptr<Card>> cards_;
     AddSlot add_{theme_, "Insert"};
+    std::unique_ptr<Card> instrumentCard_; // the instrument slot, filled
+    AddSlot addInstrument_{theme_, "Instrument"};
+    int instrumentX_ = 0;
     std::vector<core::Id> builtOrder_;
     int dropIndex_ = -1; // the insertion index while a plugin or card is dragged over
     double lastTickMs_ = 0.0;

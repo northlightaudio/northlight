@@ -24,6 +24,8 @@ const Send* Channel::findSend(Id busId) const noexcept
 
 const Insert* Channel::findInsert(Id insertId) const noexcept
 {
+    if (hasInstrument() && instrument.id == insertId)
+        return &instrument;
     for (const auto& i : inserts)
         if (i.id == insertId)
             return &i;
@@ -35,6 +37,8 @@ const Insert* Channel::findInsert(Id insertId) const noexcept
 
 Insert* Channel::findInsert(Id insertId) noexcept
 {
+    if (hasInstrument() && instrument.id == insertId)
+        return &instrument;
     for (auto& i : inserts)
         if (i.id == insertId)
             return &i;
@@ -79,7 +83,9 @@ const AutomationLane* Channel::findLane(AutomationTarget target, Id insertId, in
 std::vector<const Insert*> Channel::processingChain() const
 {
     std::vector<const Insert*> chain;
-    chain.reserve(inserts.size() + strip.size());
+    chain.reserve(inserts.size() + strip.size() + 1);
+    if (hasInstrument())
+        chain.push_back(&instrument);
     const auto add = [&](const std::vector<Insert>& list)
     {
         for (const auto& i : list)
@@ -99,6 +105,16 @@ int Channel::insertIndex(Id insertId) const noexcept
         if (inserts[i].id == insertId)
             return static_cast<int>(i);
     return -1;
+}
+
+void Project::adoptInstruments(const std::function<bool(const std::string& type)>& isInstrument)
+{
+    for (auto& t : tracks)
+        if (t.isMidi() && !t.hasInstrument() && !t.inserts.empty() && isInstrument(t.inserts.front().type))
+        {
+            t.instrument = t.inserts.front();
+            t.inserts.erase(t.inserts.begin());
+        }
 }
 
 AudioClip* Track::findClip(Id clipId) noexcept

@@ -167,6 +167,8 @@ void AddTrack::apply(Project& p)
             c.id = p.allocateId();
     // Ids allocated here stay in the command, so a redo brings back the same
     // ones (later commands in the history refer to them).
+    if (track_.hasInstrument() && track_.instrument.id == invalidId)
+        track_.instrument.id = p.allocateId();
     for (auto& i : track_.inserts)
         if (i.id == invalidId)
             i.id = p.allocateId();
@@ -960,6 +962,44 @@ void RemoveInsert::revert(Project& p)
     auto& c = requireChannel(p, channelId_);
     const int at = std::clamp(index_, 0, static_cast<int>(c.inserts.size()));
     c.inserts.insert(c.inserts.begin() + at, removed_);
+}
+
+SetInstrument::SetInstrument(Id trackId, Insert instrument)
+    : trackId_(trackId), instrument_(std::move(instrument))
+{
+}
+void SetInstrument::apply(Project& p)
+{
+    auto* t = p.findTrack(trackId_);
+    if (t == nullptr)
+        throw std::logic_error("command references a track that does not exist");
+    previous_ = t->instrument;
+    if (!instrument_.type.empty())
+    {
+        // The slot keeps its id (a new one for an empty slot; the same on redo).
+        if (previous_.id != invalidId && !previous_.type.empty())
+            instrument_.id = previous_.id;
+        else if (instrument_.id == invalidId)
+            instrument_.id = p.allocateId();
+    }
+    // A different processor (or none) has other parameters: its lanes go.
+    previousLanes_ = t->automation;
+    if (!previous_.type.empty() && previous_.type != instrument_.type)
+    {
+        std::erase_if(
+            t->automation,
+            [this](const AutomationLane& lane)
+            { return lane.target == AutomationTarget::insertParameter && lane.insert == previous_.id; });
+    }
+    t->instrument = instrument_.type.empty() ? Insert{} : instrument_;
+}
+void SetInstrument::revert(Project& p)
+{
+    auto* t = p.findTrack(trackId_);
+    if (t == nullptr)
+        return;
+    t->instrument = previous_;
+    t->automation = previousLanes_;
 }
 
 MoveInsert::MoveInsert(Id channelId, Id insertId, int newIndex)

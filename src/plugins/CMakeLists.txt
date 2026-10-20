@@ -3,6 +3,9 @@
 add_library(aural_plugins STATIC
     BuiltIns.h
     BuiltIns.cpp
+    MeteredBuiltIn.h
+    Aurora.h
+    Aurora.cpp
     Biquad.h
     ProcessorBase.h
     ChannelStrip.h

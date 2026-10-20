@@ -94,6 +94,7 @@ private:
     std::unique_ptr<strip::ModuleCard> body_;
     std::function<std::shared_ptr<engine::InsertProcessor>(core::Id)> live_;
     double lastTickMs_ = 0.0;
+    bool instrument_ = false; // a built-in instrument: no mix
 };
 
 } // namespace aural::ui

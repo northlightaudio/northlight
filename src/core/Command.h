@@ -581,6 +581,28 @@ private:
     int index_ = -1;
 };
 
+// Sets, replaces or removes (an empty type) a track's instrument. A replacement
+// keeps the slot's id, so the output tracks reading its extra outputs stay
+// connected; the automation lanes of a replaced or removed instrument's
+// parameters go with it (and come back on undo).
+class SetInstrument final : public Command
+{
+public:
+    SetInstrument(Id trackId, Insert instrument);
+    std::string name() const override
+    {
+        return instrument_.type.empty() ? "Remove instrument" : "Set instrument";
+    }
+    void apply(Project&) override;
+    void revert(Project&) override;
+    Id instrumentId() const noexcept { return instrument_.id; }
+
+private:
+    Id trackId_;
+    Insert instrument_, previous_;
+    std::vector<AutomationLane> previousLanes_;
+};
+
 class MoveInsert final : public Command
 {
 public:

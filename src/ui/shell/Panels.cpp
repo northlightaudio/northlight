@@ -23,6 +23,8 @@ const char* panelKey(PanelId id)
             return "browser";
         case PanelId::inspector:
             return "inspector";
+        case PanelId::instruments:
+            return "instruments";
     }
     return "panel";
 }
@@ -201,7 +203,10 @@ void PanelHost::paint(juce::Graphics& g)
         const auto textColour = front || hover ? c.textPrimary : c.textSecondary;
         Icons::draw(g,
                     tab.info.icon,
-                    area.removeFromLeft(theme_.sizes.icon).toFloat().withSizeKeepingCentre(static_cast<float>(theme_.sizes.icon), static_cast<float>(theme_.sizes.icon)),
+                    area.removeFromLeft(theme_.sizes.icon)
+                        .toFloat()
+                        .withSizeKeepingCentre(static_cast<float>(theme_.sizes.icon),
+                                               static_cast<float>(theme_.sizes.icon)),
                     textColour);
         area.removeFromLeft(theme_.spacing.sm);
         g.setColour(textColour);
@@ -210,7 +215,8 @@ void PanelHost::paint(juce::Graphics& g)
         if (front)
         {
             g.setColour(c.accent);
-            g.fillRect(tab.bounds.withTrimmedTop(headerHeight() - theme_.spacing.xxs).reduced(theme_.spacing.sm, 0));
+            g.fillRect(
+                tab.bounds.withTrimmedTop(headerHeight() - theme_.spacing.xxs).reduced(theme_.spacing.sm, 0));
         }
     }
     if (dropHighlight_)
@@ -295,7 +301,8 @@ public:
                                    [safe](int choice)
                                    {
                                        if (safe != nullptr && choice > 0 && safe->window_.onAttach)
-                                           safe->window_.onAttach(safe->info_.id, choice == 1 ? HostKind::dock : HostKind::side);
+                                           safe->window_.onAttach(
+                                               safe->info_.id, choice == 1 ? HostKind::dock : HostKind::side);
                                    });
                 return;
             }
@@ -317,7 +324,10 @@ public:
         auto area = getLocalBounds().reduced(theme_.spacing.md, 0);
         Icons::draw(g,
                     info_.icon,
-                    area.removeFromLeft(theme_.sizes.icon).toFloat().withSizeKeepingCentre(static_cast<float>(theme_.sizes.icon), static_cast<float>(theme_.sizes.icon)),
+                    area.removeFromLeft(theme_.sizes.icon)
+                        .toFloat()
+                        .withSizeKeepingCentre(static_cast<float>(theme_.sizes.icon),
+                                               static_cast<float>(theme_.sizes.icon)),
                     c.textSecondary);
         area.removeFromLeft(theme_.spacing.sm);
         g.setColour(c.textPrimary);
@@ -569,7 +579,8 @@ void PanelManager::openFloating(Entry& entry)
             mainWindow_ != nullptr
                 ? mainWindow_->getScreenBounds()
                 : juce::Desktop::getInstance().getDisplays().getPrimaryDisplay()->userBounds.toNearestInt();
-        bounds = juce::Rectangle<int>(main.getWidth() * 3 / 5, main.getHeight() * 3 / 5).withCentre(main.getCentre());
+        bounds = juce::Rectangle<int>(main.getWidth() * 3 / 5, main.getHeight() * 3 / 5)
+                     .withCentre(main.getCentre());
     }
     // Back onto a screen that exists.
     const auto displays = juce::Desktop::getInstance().getDisplays();
@@ -781,7 +792,8 @@ void PanelManager::animate()
 void PanelManager::timerCallback()
 {
     const int duration = std::max(1, theme_.motion.ms(theme_.motion.panelMs));
-    const double t = juce::jlimit(0.0, 1.0, (juce::Time::getMillisecondCounterHiRes() - animationStart_) / duration);
+    const double t =
+        juce::jlimit(0.0, 1.0, (juce::Time::getMillisecondCounterHiRes() - animationStart_) / duration);
     const double eased = 1.0 - std::pow(1.0 - t, 3.0);
     dockHeightShown_ = dockFrom_ + (dockRequested_ - dockFrom_) * eased;
     sideWidthShown_ = sideFrom_ + (sideRequested_ - sideFrom_) * eased;
@@ -842,8 +854,10 @@ void PanelManager::fromJson(const juce::var& layout)
             hostComponent(entry->host).removePanel(entry->info.id);
         entry->visible = false;
     }
-    dockSize_ = std::max(theme_.sizes.dockMin, static_cast<int>(layout.getProperty("dockHeight", defaultDockHeight)));
-    sideSize_ = std::max(theme_.sizes.panelMin, static_cast<int>(layout.getProperty("sideWidth", defaultSideWidth)));
+    dockSize_ =
+        std::max(theme_.sizes.dockMin, static_cast<int>(layout.getProperty("dockHeight", defaultDockHeight)));
+    sideSize_ =
+        std::max(theme_.sizes.panelMin, static_cast<int>(layout.getProperty("sideWidth", defaultSideWidth)));
     struct Placement
     {
         Entry* entry;
@@ -864,10 +878,17 @@ void PanelManager::fromJson(const juce::var& layout)
             entry->host = hostFromKey(p.getProperty("host", "").toString(), entry->info.defaultHost);
             entry->pinned = static_cast<bool>(p.getProperty("pinned", false));
             if (const auto* b = p["bounds"].getArray(); b != nullptr && b->size() == 4)
-                entry->floatingBounds = {static_cast<int>((*b)[0]), static_cast<int>((*b)[1]), static_cast<int>((*b)[2]), static_cast<int>((*b)[3])};
-            placements.push_back({entry, static_cast<int>(p.getProperty("order", 0)), static_cast<bool>(p.getProperty("visible", false))});
+                entry->floatingBounds = {static_cast<int>((*b)[0]),
+                                         static_cast<int>((*b)[1]),
+                                         static_cast<int>((*b)[2]),
+                                         static_cast<int>((*b)[3])};
+            placements.push_back({entry,
+                                  static_cast<int>(p.getProperty("order", 0)),
+                                  static_cast<bool>(p.getProperty("visible", false))});
         }
-    std::sort(placements.begin(), placements.end(), [](const Placement& a, const Placement& b) { return a.order < b.order; });
+    std::sort(placements.begin(),
+              placements.end(),
+              [](const Placement& a, const Placement& b) { return a.order < b.order; });
     // Hidden docked panels are added first (so tabs keep their order), the
     // visible one last so it shows.
     for (const auto& placement : placements)

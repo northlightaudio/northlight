@@ -72,7 +72,9 @@ public:
     //   --loop <from> <to>   set and enable the loop region, in seconds
     //   --no-count-in        record without the count-in
     //   --layout <Mix|Edit>  apply a layout preset
-    //   --panel <name>       show a panel: mixer, editor, pianoRoll, diagnostics, browser, inspector
+    //   --instrument-editor  open the first instrument's editor window
+    //   --panel <name>       show a panel: mixer, editor, instruments, pianoRoll, diagnostics, browser,
+    //   inspector
     //   --preferences [page] open Preferences (general, audio, recording, editing, plugins, shortcuts,
     //   diagnostics)
     //   --benchmark-strip-drag <s>  drag the first track's strip EQ for s seconds, print the
@@ -142,14 +144,10 @@ public:
                 if (arg == "--midi-track-with")
                 {
                     const auto type = tokens.getReference(++i).text.unquoted().toStdString();
-                    if (const auto* track = session_->project().findTrack(trackId);
-                        track != nullptr && !track->inserts.empty())
-                        session_->execute(
-                            std::make_unique<core::RemoveInsert>(trackId, track->inserts[0].id));
                     core::Insert instrument;
                     instrument.type = type;
                     instrument.params = plugins::defaultParameters(type);
-                    session_->execute(std::make_unique<core::AddInsert>(trackId, instrument));
+                    session_->execute(std::make_unique<core::SetInstrument>(trackId, instrument));
                 }
                 const auto beat = static_cast<core::SamplePosition>(
                     core::samplesPerBeat(session_->project().sampleRate,
@@ -263,6 +261,16 @@ public:
                 }
                 if (first != core::invalidId)
                     mainWindow_->openInsertEditor(firstTrack, first);
+            }
+            else if (arg == "--instrument-editor")
+            {
+                // Opens the first instrument's editor window.
+                for (const auto& track : session_->project().tracks)
+                    if (track.hasInstrument())
+                    {
+                        mainWindow_->openInsertEditor(track.id, track.instrument.id);
+                        break;
+                    }
             }
             else if (arg == "--stop-after" && i + 1 < tokens.size())
             {

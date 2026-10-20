@@ -124,6 +124,57 @@ For GUI-less hosted plugins. A scrollable grid of parameter rows:
   Surge XT.vst3" and a Cancel; results appear as they arrive.
 - The window version (from the app menu) is the same panel at 720×560.
 
+## 7.4a Instruments: the slot and the rack
+
+An instrument is not an effect: a MIDI track has an **instrument slot**, ahead of
+its inserts, that takes only instruments (built-in, VST3 or CLAP). The insert
+menus list effects only; an instrument dropped or chosen from the browser goes to
+the selected MIDI track's slot, or makes a new instrument track when the
+selection is not a MIDI track.
+
+- **Editor panel**: an INSTRUMENT section first, before the strip and the inserts:
+  the instrument's card (its own editor for a built-in, Open for a plugin with a
+  GUI) with Replace and Remove in its menu and no wet/dry footer, or a dashed
+  "+ Instrument" slot. The card is not reordered with the inserts.
+- **Mixer**: an instrument row under the module row on every strip (reserved on
+  all strips when any has one, so the sections stay aligned): the slot with an
+  INST / VST3 / CLAP badge, or "+ Instrument". Its menu: Open, Bypass, Outputs,
+  Replace instrument, Remove instrument.
+- **Instruments panel** (dock tab, F8): the rack. A unit per MIDI track, 64 px, a
+  `surface1` panel with the track's hue down its left edge: power (in the hue),
+  the instrument's name with a BUILT-IN / VST3 / CLAP badge and the track it plays
+  on, OUTPUTS as chips, Edit, and a menu (open, select track, replace, remove).
+  Each output pair is a chip: "1/2 Keys" for the main pair (the track itself) and
+  each pair with an output track (click selects the track), a dashed
+  "+ Track for 3/4" for a pair without one (click makes it: an aux track named
+  after the track and the channels, in its colour, with its own inserts, strip,
+  sends and fader). "+ Instrument track" at the end makes a MIDI track with the
+  instrument chosen. A track without an instrument shows a "+ Instrument" slot.
+
+## 7.4b Aurora
+
+The synth bundled with Aural reads as its own product, so its editor is bolder
+than the built-in effects' while keeping to the theme's palette (Mint, Teal,
+Sky, Violet, Magenta, Amber) and type:
+
+- A night sky (the canvas darkening to the top) with twinkling stars and three
+  aurora ribbons in Mint, Teal and Violet drifting across the top; they move and
+  brighten while Aurora sounds and hold still when it is silent or with reduce
+  motion on.
+- The wordmark AURORA, tracked wide with a Mint-to-Violet gradient, "POLYSYNTH ·
+  AURAL" beside it; the preset bar (previous, the name as a menu, next; "Custom"
+  when the values match no preset); twelve voice lights that light as voices sound.
+- Six glass panels (`surface1` at 72% over the sky, a rim and a top highlight),
+  each a hue dot and caption, a display and its knobs in its hue: OSCILLATORS (both
+  cycles, drag across to morph sine, triangle, saw, square), UNISON (the voices as
+  a fan, spread by the detune and coloured by the pan; drag for the spread),
+  FILTER (the response; drag for cutoff and resonance; the mode in a corner chip),
+  ENVELOPES (the amp envelope filled and the filter envelope dashed; the corner chip
+  picks which the handles edit), LFO (its shape, the live value as a marker; the
+  shape in a corner chip) and OUTPUT (a scope of the output).
+- Factory presets: Northern Lights, Solar Wind, Glacier Keys, Polar Bass, Ice
+  Pluck, Starfield, Comet Lead, Aurora Drift.
+
 ## 7.5 States and errors
 
 - Plugin missing on this machine: the chain card shows the name in `textTertiary`

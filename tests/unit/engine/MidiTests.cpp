@@ -5,6 +5,7 @@
 #include "engine/Midi.h"
 #include "engine/Recording.h"
 #include "engine/Snapshot.h"
+#include "plugins/Aurora.h"
 #include "plugins/BuiltIns.h"
 
 #include <catch2/catch_approx.hpp>
@@ -124,11 +125,10 @@ core::Project keysProject(core::MidiClip clip, const char* instrument = "test.mi
     core::Track t;
     t.id = 1;
     t.kind = core::TrackKind::midi;
-    core::Insert i;
-    i.id = 2;
-    i.type = instrument;
-    i.params = plugins::defaultParameters(instrument);
-    t.inserts.push_back(i);
+    // The instrument in its own slot (the engine plays it first and gives it the MIDI).
+    t.instrument.id = 2;
+    t.instrument.type = instrument;
+    t.instrument.params = plugins::defaultParameters(instrument);
     clip.id = 3;
     t.midiClips.push_back(clip);
     p.tracks.push_back(t);
@@ -432,7 +432,7 @@ TEST_CASE("An aux track carries an instrument's extra output pair through its ow
     CHECK(snapshot->trackLevels[1] == std::vector<int>{0});
 
     // A source that goes away leaves the aux track silent, not crashing.
-    p.tracks[1].inserts.clear();
+    p.tracks[1].instrument = {};
     h.engine.setProject(p);
     h.render(2);
     CHECK(h.left[10] == Approx(0.0f));
@@ -467,4 +467,45 @@ TEST_CASE("The built-in synth makes sound for a note and goes quiet after it", "
     CHECK(loud > 0.05f);
     CHECK(tail < 1.0e-4f);
     (void)quiet;
+}
+
+TEST_CASE("Aurora sounds for a chord, goes quiet after the release, and every preset stays finite",
+          "[engine][midi][aurora]")
+{
+    for (const auto& preset : plugins::aurora::presets())
+    {
+        INFO(preset.name);
+        core::MidiClip clip;
+        clip.start = 0;
+        clip.length = 96000;
+        for (const int note : {48, 55, 60, 64})
+            clip.notes.push_back({core::invalidId, note, 100, 0, 9600}); // 200 ms
+        for (size_t i = 0; i < clip.notes.size(); ++i)
+            clip.notes[i].id = 20 + static_cast<core::Id>(i);
+        auto project = keysProject(clip, plugins::aurora::type.c_str());
+        project.tracks[0].instrument.params = preset.values;
+        Harness h;
+        h.engine.setProject(project);
+        h.engine.play();
+        float loud = 0.0f;
+        bool finite = true;
+        for (int b = 0; b < 150; ++b) // the notes and a little after
+        {
+            h.engine.process(h.outputs, 2, blockSize);
+            for (size_t i = 0; i < h.left.size(); ++i)
+            {
+                finite = finite && std::isfinite(h.left[i]) && std::isfinite(h.right[i]);
+                loud = std::max(loud, std::abs(h.left[i]));
+            }
+        }
+        for (int b = 0; b < 6000; ++b) // past the longest release (8 s)
+            h.engine.process(h.outputs, 2, blockSize);
+        float tail = 0.0f;
+        for (float v : h.left)
+            tail = std::max(tail, std::abs(v));
+        CHECK(finite);
+        CHECK(loud > 0.01f);
+        CHECK(loud < 4.0f);
+        CHECK(tail < 1.0e-3f);
+    }
 }

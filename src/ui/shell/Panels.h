@@ -30,6 +30,7 @@ enum class PanelId
     diagnostics,
     browser,
     inspector,
+    instruments,
 };
 
 enum class HostKind

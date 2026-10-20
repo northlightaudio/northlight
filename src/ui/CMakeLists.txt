@@ -14,6 +14,8 @@ add_library(aural_ui STATIC
     AuralLookAndFeel.h
     AuralLookAndFeel.cpp
     Wells.h
+    PluginMenu.h
+    PluginMenu.cpp
     components/AddSlot.h
     components/Fader.h
     components/Fader.cpp
@@ -41,6 +43,9 @@ add_library(aural_ui STATIC
     shell/StatusBar.cpp
     panels/EditorPanel.h
     panels/EditorPanel.cpp
+    panels/InstrumentRack.h
+    panels/InstrumentRack.cpp
+    InstrumentOutputs.h
     strip/StripStyle.h
     strip/ModuleCard.h
     strip/ModuleCard.cpp
@@ -51,6 +56,8 @@ add_library(aural_ui STATIC
     strip/EqGraph.cpp
     strip/BuiltInCards.h
     strip/BuiltInCards.cpp
+    strip/AuroraEditor.h
+    strip/AuroraEditor.cpp
     strip/ChannelStripView.h
     strip/ChannelStripView.cpp
     strip/UserStripPresets.h

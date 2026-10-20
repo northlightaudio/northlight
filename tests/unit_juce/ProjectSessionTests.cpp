@@ -172,7 +172,8 @@ TEST_CASE_METHOD(SessionFixture,
     REQUIRE(track != nullptr);
     CHECK(track->isMidi());
     CHECK(track->armed);
-    REQUIRE(track->inserts.size() == 1);
+    REQUIRE(track->hasInstrument());
+    CHECK(track->inserts.empty()); // the instrument has its own slot
     prepareDevice(48000.0);
     REQUIRE(session->startRecording().empty());
     runBlocks(2); // the record command applies in the first block: capture from 0

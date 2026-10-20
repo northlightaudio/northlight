@@ -150,6 +150,15 @@ the chips at the lane's top left; click to add points, drag them, double-click t
 remove. VST3 and CLAP plugin parameters can be automated too, including moves
 made in the plugin's own window. In Touch, Latch or Write, moving the fader, pan or a parameter while
 playing records it into the lane. Faders and knobs follow automation as it plays.
+**Instruments**: a MIDI track plays the instrument in its instrument slot (first
+in its Editor panel and on its mixer strip), not in its effects. New MIDI tracks
+get **Aurora**, the bundled polysynth (two morphing oscillators with unison, a
+drivable multimode filter, two envelopes, an LFO, glide and Shimmer, with its own
+editor and eight presets); VST3 and CLAP instruments go in the same slot from the
+browser or the slot's menu. The **Instruments** panel (F8) is the rack: every
+instrument with the track it plays on and its outputs; each extra stereo output
+of a multi-output instrument becomes a track of its own, with effects like any
+other, in one click.
 A MIDI track can also play an external instrument: pick a MIDI output in Audio
 Setup, then the channel in the track's right-click menu (**MIDI output**); its
 clips and, while monitoring, its live input go out in time with the audio.

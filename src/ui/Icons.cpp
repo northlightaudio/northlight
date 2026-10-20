@@ -95,6 +95,9 @@ const Definition definitions[Icons::count] = {
     {"pianoRoll", "M2.5 3.5 H13.5 V12.5 H2.5 Z M5.5 3.5 V12.5 M9.5 3.5 V12.5 M2.5 8 H13.5", false},
     {"diagnostics", "M2 9 H4.5 L6.5 4 L9.5 12 L11.5 7 H14", false},
     {"menu", "M3 4.5 H13 M3 8 H13 M3 11.5 H13", false},
+    {"instrument",
+     "M2 4 H14 V12.5 H2 Z M5 8.5 V12.5 M8 8.5 V12.5 M11 8.5 V12.5 M4 4 V8.5 H6 V4 M10 4 V8.5 H12 V4",
+     false},
 };
 } // namespace
 

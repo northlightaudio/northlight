@@ -117,7 +117,7 @@ private:
     // section (fader, pan, buttons) sits at the same height in all of them.
     struct RowPlan
     {
-        bool input = false, stripRow = false;
+        bool input = false, stripRow = false, instrument = false;
         int inserts = 0, sends = 0;
         bool operator==(const RowPlan&) const = default;
     };

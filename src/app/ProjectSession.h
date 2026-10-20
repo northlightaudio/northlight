@@ -108,6 +108,9 @@ public:
     // Adds a MIDI track with the built-in synth as its instrument, armed and
     // listening to every input. Returns the new track's id.
     core::Id addMidiTrack();
+    // Whether an insert type is an instrument (a built-in synth or a scanned plugin
+    // the registry calls one).
+    bool isInstrumentType(const std::string& type) const;
 
     // ----- files ------------------------------------------------------------------
     void newProject();

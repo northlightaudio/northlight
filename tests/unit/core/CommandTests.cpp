@@ -702,3 +702,84 @@ TEST_CASE("A MIDI track's MIDI output setting is undoable and saved", "[core][mi
     CHECK_FALSE(p.tracks[0].midiOut);
     CHECK(p.tracks[0].midiOutChannel == 1);
 }
+
+TEST_CASE("An instrument has its own slot, first in the chain, and keeps its id when replaced",
+          "[core][command][instrument]")
+{
+    Project p;
+    UndoStack stack;
+    Track t;
+    t.kind = TrackKind::midi;
+    Insert fx;
+    fx.type = "aural.eq";
+    t.inserts.push_back(fx);
+    stack.execute(p, std::make_unique<AddTrack>(t));
+    const Id trackId = p.tracks[0].id;
+
+    Insert synth;
+    synth.type = "aural.synth";
+    synth.params = {1.0f, 2.0f};
+    stack.execute(p, std::make_unique<SetInstrument>(trackId, synth));
+    auto* track = p.findTrack(trackId);
+    REQUIRE(track->hasInstrument());
+    const Id slot = track->instrument.id;
+    CHECK(slot != invalidId);
+    CHECK(track->findInsert(slot) == &track->instrument);
+    const auto chain = track->processingChain();
+    REQUIRE(!chain.empty());
+    CHECK(chain.front() == &track->instrument); // the instrument plays first
+
+    // A lane on the instrument goes when another instrument replaces it.
+    AutomationLane lane;
+    lane.id = p.allocateId();
+    lane.target = AutomationTarget::insertParameter;
+    lane.insert = slot;
+    track->automation.push_back(lane);
+    Insert other;
+    other.type = "aural.aurora";
+    stack.execute(p, std::make_unique<SetInstrument>(trackId, other));
+    track = p.findTrack(trackId);
+    CHECK(track->instrument.type == "aural.aurora");
+    CHECK(track->instrument.id == slot); // output tracks stay connected
+    CHECK(track->automation.empty());
+
+    CHECK(stack.undo(p));
+    track = p.findTrack(trackId);
+    CHECK(track->instrument.type == "aural.synth");
+    CHECK(track->automation.size() == 1);
+
+    // Removing empties the slot; undo brings it back.
+    stack.execute(p, std::make_unique<SetInstrument>(trackId, Insert{}));
+    CHECK_FALSE(p.findTrack(trackId)->hasInstrument());
+    CHECK(p.findTrack(trackId)->findInsert(slot) == nullptr);
+    CHECK(stack.undo(p));
+    CHECK(p.findTrack(trackId)->instrument.id == slot);
+}
+
+TEST_CASE("Older projects' instruments move from the first insert into the slot", "[core][instrument]")
+{
+    Project p;
+    Track t;
+    t.id = p.allocateId();
+    t.kind = TrackKind::midi;
+    Insert synth;
+    synth.id = p.allocateId();
+    synth.type = "aural.synth";
+    Insert eq;
+    eq.id = p.allocateId();
+    eq.type = "aural.eq";
+    t.inserts = {synth, eq};
+    p.tracks.push_back(t);
+    Track audio;
+    audio.id = p.allocateId();
+    audio.inserts = {synth}; // an audio track keeps whatever it has
+    audio.inserts[0].id = p.allocateId();
+    p.tracks.push_back(audio);
+
+    p.adoptInstruments([](const std::string& type) { return type == "aural.synth"; });
+    CHECK(p.tracks[0].instrument.id == synth.id);
+    REQUIRE(p.tracks[0].inserts.size() == 1);
+    CHECK(p.tracks[0].inserts[0].type == "aural.eq");
+    CHECK_FALSE(p.tracks[1].hasInstrument());
+    CHECK(p.tracks[1].inserts.size() == 1);
+}

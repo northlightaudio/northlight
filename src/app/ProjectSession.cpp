@@ -4,6 +4,7 @@
 #include "core/ProjectJson.h"
 #include "engine/WavFile.h"
 #include "hosting/ClapPlugin.h"
+#include "plugins/Aurora.h"
 #include "plugins/BuiltIns.h"
 #include "plugins/ChannelStrip.h"
 
@@ -262,10 +263,8 @@ core::Id ProjectSession::addMidiTrack()
     track.kind = core::TrackKind::midi;
     track.name = "MIDI " + std::to_string(count + 1);
     track.armed = true;
-    core::Insert synth;
-    synth.type = plugins::types::synth;
-    synth.params = plugins::defaultParameters(synth.type);
-    track.inserts.push_back(synth);
+    track.instrument.type = plugins::aurora::type; // the bundled synth
+    track.instrument.params = plugins::defaultParameters(track.instrument.type);
     auto command = std::make_unique<core::AddTrack>(track);
     const auto* raw = command.get();
     execute(std::move(command));
@@ -324,6 +323,7 @@ std::string ProjectSession::open(const juce::File& file)
         return error.empty() ? "could not read project" : error;
     project_ = *loaded;
     plugins::strip::ensureChannelStrip(project_); // projects saved before the strip existed
+    project_.adoptInstruments([this](const std::string& type) { return isInstrumentType(type); });
     undo_.clear();
     projectFile_ = file;
     modified_ = false;
@@ -409,6 +409,7 @@ std::string ProjectSession::newFromTemplate(const juce::File& file)
     project_.name = "Untitled";
     hostedSent_.clear();
     plugins::strip::ensureChannelStrip(project_);
+    project_.adoptInstruments([this](const std::string& type) { return isInstrumentType(type); });
     undo_.clear();
     projectFile_ = juce::File();
     modified_ = false;
@@ -635,6 +636,7 @@ std::string ProjectSession::restoreAutosave(const Autosave& autosave)
     engine_.resetCaches();
     project_ = *loaded;
     plugins::strip::ensureChannelStrip(project_);
+    project_.adoptInstruments([this](const std::string& type) { return isInstrumentType(type); });
     undo_.clear();
     projectFile_ = autosave.project;
     modified_ = true; // not saved until the user saves it
@@ -1271,10 +1273,22 @@ void ProjectSession::saveRegistry()
     registryFile_.replaceWithText(juce::String(registry_.toJson()));
 }
 
+bool ProjectSession::isInstrumentType(const std::string& type) const
+{
+    if (plugins::BuiltInFactory::isInstrument(type))
+        return true;
+    const auto* info = registry_.findByType(type);
+    return info != nullptr && info->isInstrument;
+}
+
 void ProjectSession::captureInsertStates()
 {
     const auto capture = [this](core::Channel& channel)
     {
+        if (channel.hasInstrument())
+            if (const auto live = engine_.insertInstance(channel.instrument.id))
+                if (const auto state = live->state(); !state.empty())
+                    channel.instrument.state = state;
         for (auto& insert : channel.inserts)
             if (const auto live = engine_.insertInstance(insert.id))
                 if (const auto state = live->state(); !state.empty())
@@ -1638,6 +1652,8 @@ void ProjectSession::playHostedAutomation()
         std::vector<std::pair<core::Id, core::Id>> hosted; // channel, insert
         const auto collect = [&](const core::Channel& channel)
         {
+            if (channel.hasInstrument() && hosting::PluginRegistry::isHostedType(channel.instrument.type))
+                hosted.emplace_back(channel.id, channel.instrument.id);
             for (const auto& insert : channel.inserts)
                 if (hosting::PluginRegistry::isHostedType(insert.type))
                     hosted.emplace_back(channel.id, insert.id);

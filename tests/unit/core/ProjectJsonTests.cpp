@@ -159,3 +159,21 @@ TEST_CASE("An aux track's source survives a JSON round trip", "[core][json][aux]
     CHECK(back->tracks[1].auxOutput == 1);
     CHECK(*back == p);
 }
+
+TEST_CASE("A track's instrument round-trips through JSON", "[core][json][instrument]")
+{
+    Project p;
+    Track t;
+    t.id = p.allocateId();
+    t.kind = TrackKind::midi;
+    t.instrument.id = p.allocateId();
+    t.instrument.type = "aural.aurora";
+    t.instrument.params = {0.25f, 3.0f};
+    t.instrument.state = "abc";
+    p.tracks.push_back(t);
+    const auto loaded = projectFromJson(projectToJson(p));
+    REQUIRE(loaded.has_value());
+    REQUIRE(loaded->tracks.size() == 1);
+    CHECK(loaded->tracks[0].instrument == p.tracks[0].instrument);
+    CHECK(loaded->nextId > t.instrument.id);
+}

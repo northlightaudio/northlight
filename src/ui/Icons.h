@@ -73,6 +73,7 @@ enum class Icon
     pianoRoll,
     diagnostics,
     menu,
+    instrument, // a keyboard: the instruments rack
 };
 
 struct Icons
@@ -84,7 +85,7 @@ struct Icons
     static void draw(juce::Graphics& g, Icon icon, juce::Rectangle<float> bounds, juce::Colour colour);
     static const char* name(Icon icon);
     static const char* svgPath(Icon icon);
-    static constexpr int count = static_cast<int>(Icon::menu) + 1;
+    static constexpr int count = static_cast<int>(Icon::instrument) + 1;
 };
 
 // An icon button (28×28 default): ghost at rest, the icon in textSecondary,
@@ -99,17 +100,41 @@ public:
     void setIcon(Icon icon);
     Icon icon() const noexcept { return icon_; }
     // The colour for the on state: "accent" (default), "record", "solo", "monitor", "warning".
-    void setOnColour(juce::Colour colour) { onColour_ = colour; repaint(); }
-    void setIconSize(int px) { iconSize_ = px; repaint(); }
+    void setOnColour(juce::Colour colour)
+    {
+        onColour_ = colour;
+        repaint();
+    }
+    void setIconSize(int px)
+    {
+        iconSize_ = px;
+        repaint();
+    }
     // A 9 px figure overlaid in the bottom-right corner (empty = none).
     void setCornerText(const juce::String& text);
-    void setShowsMenuChevron(bool show) { chevron_ = show; repaint(); }
+    void setShowsMenuChevron(bool show)
+    {
+        chevron_ = show;
+        repaint();
+    }
     // The whole button fills with the on colour (the recording state).
-    void setSolidWhenOn(bool solid) { solidOn_ = solid; repaint(); }
+    void setSolidWhenOn(bool solid)
+    {
+        solidOn_ = solid;
+        repaint();
+    }
     // A warning dot in the top-right corner.
-    void setWarningDot(bool show) { warningDot_ = show; repaint(); }
+    void setWarningDot(bool show)
+    {
+        warningDot_ = show;
+        repaint();
+    }
     // Icon colour at rest when not toggled (default textSecondary).
-    void setRestColour(juce::Colour colour) { restColour_ = colour; repaint(); }
+    void setRestColour(juce::Colour colour)
+    {
+        restColour_ = colour;
+        repaint();
+    }
 
     void paintButton(juce::Graphics& g, bool isMouseOver, bool isButtonDown) override;
 

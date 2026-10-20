@@ -137,9 +137,12 @@ void InsertEditor::showBuiltInBody(const core::Insert& insert,
     body_->setEmbedded(true);
     addAndMakeVisible(*body_);
     viewport_.setVisible(false);
-    const int header = embedded_ ? 0
-                                 : theme_.sizes.control + theme_.spacing.sm + theme_.sizes.controlCompact +
-                                       theme_.spacing.md;
+    instrument_ = plugins::BuiltInFactory::isInstrument(insert.type);
+    mix_.setVisible(!embedded_ && !instrument_); // an instrument has no dry signal to mix
+    const int header = embedded_     ? 0
+                       : instrument_ ? theme_.sizes.control + theme_.spacing.md
+                                     : theme_.sizes.control + theme_.spacing.sm +
+                                           theme_.sizes.controlCompact + theme_.spacing.md;
     setSize(std::max(preferredWidth, body_->preferredWidth() + 2 * theme_.spacing.lg),
             2 * theme_.spacing.md + header + body_->preferredBodyHeight() + theme_.sizes.controlCompact);
     startTimerHz(60);
@@ -209,7 +212,7 @@ void InsertEditor::paint(juce::Graphics& g)
     if (sidechain_ != core::invalidId)
         line << juce::String::fromUTF8("  \xc2\xb7  key input set");
     g.drawText(line, footer, juce::Justification::centredLeft);
-    if (!embedded_)
+    if (!embedded_ && !instrument_)
     {
         g.setColour(c.textSecondary);
         g.drawText("Mix " + juce::String(static_cast<int>(mix_.getValue())) + "%",
@@ -232,9 +235,12 @@ void InsertEditor::resized()
         auto header = area.removeFromTop(theme_.sizes.control);
         bypass_.setBounds(header.removeFromRight(80));
         title_.setBounds(header);
-        area.removeFromTop(theme_.spacing.sm);
-        auto mixRow = area.removeFromTop(theme_.sizes.controlCompact);
-        mix_.setBounds(mixRow.removeFromRight(std::max(80, mixRow.getWidth() / 2)));
+        if (!instrument_)
+        {
+            area.removeFromTop(theme_.spacing.sm);
+            auto mixRow = area.removeFromTop(theme_.sizes.controlCompact);
+            mix_.setBounds(mixRow.removeFromRight(std::max(80, mixRow.getWidth() / 2)));
+        }
         area.removeFromTop(theme_.spacing.md);
     }
     area.removeFromBottom(theme_.sizes.controlCompact); // the footer line

@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <cmath>
 #include <cstdint>
+#include <functional>
 #include <string>
 #include <vector>
 
@@ -206,6 +207,11 @@ struct Channel
     Id outputBus = invalidId; // invalidId routes to the master
     Id group = invalidId;     // fader group membership
     std::vector<Send> sends;
+    // A MIDI track's instrument (an empty type: none): the dedicated slot the
+    // track's MIDI plays, ahead of its effects. Its main output is the track's
+    // audio; each further stereo output can feed an output track (an aux track).
+    // Buses have none.
+    Insert instrument;
     std::vector<Insert> inserts; // processed in order, pre-fader
     // The channel strip: built-in modules every channel has (gate, EQ,
     // compressor, ...), in processing order, switched on and off in place
@@ -219,12 +225,14 @@ struct Channel
 
     Send* findSend(Id busId) noexcept;
     const Send* findSend(Id busId) const noexcept;
-    // An insert or a strip module, by id.
+    bool hasInstrument() const noexcept { return !instrument.type.empty(); }
+    // The instrument, an insert or a strip module, by id.
     Insert* findInsert(Id insertId) noexcept;
     const Insert* findInsert(Id insertId) const noexcept;
     int insertIndex(Id insertId) const noexcept; // in `inserts` only; -1 for a strip module
     int stripIndex(Id insertId) const noexcept;  // in `strip` only
-    // Every processor in processing order: the inserts and the strip modules.
+    // Every processor in processing order: the instrument, then the inserts and
+    // the strip modules.
     std::vector<const Insert*> processingChain() const;
     AutomationLane* findLane(Id laneId) noexcept;
     const AutomationLane* findLane(Id laneId) const noexcept;
@@ -335,6 +343,11 @@ struct Project
     int groupIndex(Id groupId) const noexcept;
     // Every track and bus in the group, in mixer order.
     std::vector<Channel*> groupMembers(Id groupId) noexcept;
+
+    // Projects from before the instrument slot kept a MIDI track's instrument as
+    // its first insert: moves it into the slot (same id, so its automation and
+    // output tracks stay connected) where `isInstrument` says the type is one.
+    void adoptInstruments(const std::function<bool(const std::string& type)>& isInstrument);
 
     // Whether audio leaving bus `fromBus` can reach bus `toBus` through outputs
     // and sends (including fromBus == toBus). Used to refuse routing cycles.

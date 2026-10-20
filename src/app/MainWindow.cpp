@@ -27,6 +27,7 @@
 #include "ui/panels/DiagnosticsPanel.h"
 #include "ui/panels/EditorPanel.h"
 #include "ui/panels/InspectorPanel.h"
+#include "ui/panels/InstrumentRack.h"
 #include "ui/shell/HeaderBar.h"
 #include "ui/shell/Panels.h"
 #include "ui/shell/StatusBar.h"
@@ -274,8 +275,8 @@ public:
               session.engine().meters(),
               [&session] { return session.engine().loudness(); },
               [&session] { return session.engine().masterMeterSlot(); }),
-          editor_(theme_), diagnostics_(theme_), browser_(session.pluginRegistry()), inspector_(theme_),
-          panels_(theme_, dock_, side_)
+          editor_(theme_), instruments_(theme_), diagnostics_(theme_), browser_(session.pluginRegistry()),
+          inspector_(theme_), panels_(theme_, dock_, side_)
     {
         setSize(1280, 800);
         setOpaque(true);
@@ -860,6 +861,19 @@ private:
         editor_.onOpenEditor = [this](core::Id channelId, core::Id insertId)
         { owner_.openInsertEditor(channelId, insertId); };
 
+        instruments_.setRegistry(&session_.pluginRegistry());
+        instruments_.liveInsert = [this](core::Id insertId) { return session_.liveInsert(insertId); };
+        instruments_.displayName = [this](const std::string& type) { return mixer_.insertDisplayName(type); };
+        instruments_.onCommand = [this](std::unique_ptr<core::Command> c) { session_.execute(std::move(c)); };
+        instruments_.onOpenEditor = [this](core::Id channelId, core::Id insertId)
+        { owner_.openInsertEditor(channelId, insertId); };
+        instruments_.onSelectTrack = [this](core::Id trackId)
+        {
+            tracks_.setSelectedTrack(trackId);
+            selectionChanged(trackId);
+        };
+        instruments_.onInserted = [this](const std::string& type) { browser_.rememberRecent(type); };
+
         inspector_.onCommand = [this](std::unique_ptr<core::Command> c) { session_.execute(std::move(c)); };
         inspector_.onGestureBegin = [this](const std::string& name) { session_.beginGesture(name); };
         inspector_.onGestureEnd = [this] { session_.endGesture(); };
@@ -966,6 +980,16 @@ private:
                                         false,
                                         key(juce::KeyPress::F6Key)},
                               pianoRoll_);
+        panels_.registerPanel(PanelInfo{PanelId::instruments,
+                                        "Instruments",
+                                        Icon::instrument,
+                                        HostKind::dock,
+                                        480,
+                                        200,
+                                        true,
+                                        false,
+                                        key(juce::KeyPress::F8Key)},
+                              instruments_);
         panels_.registerPanel(PanelInfo{PanelId::diagnostics,
                                         "Diagnostics",
                                         Icon::diagnostics,
@@ -1038,6 +1062,7 @@ private:
         tracks_.setProject(&session_.project(), true);
         mixer_.setProject(&session_.project());
         editor_.setProject(&session_.project());
+        instruments_.setProject(&session_.project());
         inspector_.setProject(&session_.project());
     }
 
@@ -1080,6 +1105,7 @@ private:
         }
         mixer_.setProject(&session_.project());
         editor_.setProject(&session_.project());
+        instruments_.setProject(&session_.project());
         inspector_.setProject(&session_.project());
         pianoRoll_.setClip(&session_.project(), pianoRoll_.trackId(), pianoRoll_.clipId());
         browser_.setStatus(session_.pluginScanStatus());
@@ -1312,8 +1338,8 @@ private:
         for (const auto& track : session_.project().tracks)
         {
             int latency = 0;
-            for (const auto& insert : track.inserts)
-                if (const auto live = session_.liveInsert(insert.id))
+            for (const auto* insert : track.processingChain())
+                if (const auto live = session_.liveInsert(insert->id))
                     latency += live->latencySamples();
             if (latency > 0)
                 sample.trackLatencies.emplace_back(juce::String::fromUTF8(track.name.c_str()), latency);
@@ -1409,6 +1435,24 @@ private:
     // Inserts a plugin type on a track (from the browser, a drop or the chain).
     void insertPlugin(core::Id trackId, const std::string& type)
     {
+        // An instrument plays in a MIDI track's instrument slot, or a new
+        // instrument track when the selection is not a MIDI track.
+        if (session_.isInstrumentType(type))
+        {
+            const auto* track = session_.project().findTrack(trackId);
+            if (track != nullptr && track->isMidi())
+            {
+                core::Insert instrument;
+                instrument.type = type;
+                instrument.params = plugins::defaultParameters(type);
+                session_.execute(std::make_unique<core::SetInstrument>(trackId, instrument));
+                browser_.rememberRecent(type);
+                selectionChanged(trackId);
+            }
+            else
+                instruments_.addInstrumentTrack(type);
+            return;
+        }
         if (trackId == core::invalidId || session_.project().findChannel(trackId) == nullptr)
         {
             toast(ui::ToastStack::Kind::info, "Select a track to insert the plugin on.");
@@ -2106,6 +2150,7 @@ private:
     Splitter dockSplitter_, sideSplitter_;
     ui::MixerView mixer_;
     ui::EditorPanel editor_;
+    ui::InstrumentRack instruments_;
     ui::PianoRoll pianoRoll_;
     ui::DiagnosticsPanel diagnostics_;
     ui::PluginBrowser browser_;
@@ -2381,7 +2426,8 @@ void MainWindow::showPanel(const juce::String& key)
                           ui::PanelId::pianoRoll,
                           ui::PanelId::diagnostics,
                           ui::PanelId::browser,
-                          ui::PanelId::inspector})
+                          ui::PanelId::inspector,
+                          ui::PanelId::instruments})
         if (key == ui::panelKey(id))
             content->panels_.show(id);
 }

@@ -11,6 +11,8 @@
 #include "ui/FrameStats.h"
 #include "ui/Icons.h"
 #include "ui/InsertEditor.h"
+#include "ui/InstrumentOutputs.h"
+#include "ui/PluginMenu.h"
 #include "ui/components/AddSlot.h"
 #include "ui/strip/StripStyle.h"
 
@@ -530,6 +532,11 @@ public:
         insertsView_.setScrollBarsShown(false, false, true, false);
         insertsView_.setScrollBarThickness(4);
         addAndMakeVisible(insertsView_);
+        instrument_.setTooltip("The instrument this track's MIDI plays");
+        addChildComponent(instrument_);
+        addInstrument_.setTooltip("Choose the instrument this track's MIDI plays");
+        addInstrument_.onClick = [this] { showInstrumentMenu(addInstrument_); };
+        addChildComponent(addInstrument_);
         addInsert_.setTooltip("Add an insert");
         addInsert_.onClick = [this] { showAddInsertMenu(); };
         insertsHolder_.addAndMakeVisible(addInsert_);
@@ -744,6 +751,32 @@ public:
         stripRow_.set(channel);
         stripRow_.setVisible(stripRow_.hasModules());
 
+        // The instrument slot (a MIDI track's): filled, or an add slot.
+        const bool instrumentSlot = track != nullptr && (track->isMidi() || track->hasInstrument());
+        instrumentSlot_ = instrumentSlot;
+        instrument_.setVisible(instrumentSlot && track->hasInstrument());
+        addInstrument_.setVisible(instrumentSlot && !track->hasInstrument());
+        if (instrumentSlot && track->hasInstrument())
+        {
+            const auto& inst = track->instrument;
+            const core::Id instrumentId = inst.id;
+            juce::String badge = "INST";
+            if (hosting::PluginRegistry::isHostedType(inst.type))
+                badge = inst.type.rfind("clap:", 0) == 0 ? "CLAP" : "VST3";
+            instrument_.set(
+                juce::String::fromUTF8(owner_.insertDisplayName(inst.type).c_str()), badge, inst.bypass);
+            instrument_.onOpen = [this, instrumentId] { owner_.openInsertEditor(id_, instrumentId); };
+            instrument_.onBypass = [this, instrumentId]
+            {
+                if (const auto* ch = owner_.project_ != nullptr ? owner_.project_->findChannel(id_) : nullptr)
+                    if (const auto* ins = ch->findInsert(instrumentId))
+                        owner_.onCommand(
+                            std::make_unique<core::SetInsertBypass>(id_, instrumentId, !ins->bypass));
+            };
+            instrument_.onMenu = [this, instrumentId] { showInsertMenu(instrumentId); };
+            instrument_.onReorder = nullptr;
+        }
+
         // Insert slots.
         while (inserts_.size() > channel.inserts.size())
             inserts_.pop_back();
@@ -860,6 +893,7 @@ public:
     {
         rows.input = rows.input || input_.isVisible();
         rows.stripRow = rows.stripRow || stripRow_.isVisible();
+        rows.instrument = rows.instrument || instrumentSlot_;
         rows.inserts = std::max(rows.inserts, insertCount_);
         rows.sends = std::max(rows.sends, sendCount_);
     }
@@ -941,6 +975,13 @@ public:
         if (rows.stripRow || stripRow_.isVisible())
         {
             stripRow_.setBounds(area.removeFromTop(16));
+            area.removeFromTop(pad);
+        }
+        if (rows.instrument || instrumentSlot_)
+        {
+            const auto row = area.removeFromTop(slotHeight);
+            instrument_.setBounds(row.withTrimmedBottom(1));
+            addInstrument_.setBounds(row.withTrimmedBottom(1));
             area.removeFromTop(pad);
         }
         // The fixed bottom: pan, toggles, value, output; the fader takes the rest
@@ -1158,6 +1199,11 @@ private:
         actions.push_back(
             [this, insertId, bypass]
             { owner_.onCommand(std::make_unique<core::SetInsertBypass>(id_, insertId, !bypass)); });
+        if (channel->hasInstrument() && insertId == channel->instrument.id)
+        {
+            showInstrumentSlotMenu(menu, actions, item);
+            return;
+        }
         const int index = channel->insertIndex(insertId);
         menu.addItem(item++, "Move up", index > 0);
         actions.push_back(
@@ -1254,15 +1300,74 @@ private:
                            });
     }
 
+    // The rest of the instrument slot's menu: its outputs as tracks, replace and
+    // remove.
+    void showInstrumentSlotMenu(juce::PopupMenu& menu, std::vector<std::function<void()>>& actions, int item)
+    {
+        const auto* track = owner_.project_->findTrack(id_);
+        if (track == nullptr)
+            return;
+        const auto live = owner_.liveInsert ? owner_.liveInsert(track->instrument.id) : nullptr;
+        if (live != nullptr && live->auxOutputCount() > 0)
+        {
+            juce::PopupMenu outputs;
+            for (int output = 1; output <= live->auxOutputCount(); ++output)
+            {
+                const bool exists = outputTrack(*owner_.project_, *track, output) != nullptr;
+                outputs.addItem(item++, "Track for " + juce::String(outputPairName(output)), !exists, exists);
+                const auto made = makeOutputTrack(*track, output);
+                actions.push_back([this, made] { owner_.onCommand(std::make_unique<core::AddTrack>(made)); });
+            }
+            menu.addSubMenu("Outputs", outputs);
+        }
+        menu.addSeparator();
+        auto replace = buildPluginMenu(
+            PluginKind::instrument, owner_.host_ != nullptr ? &owner_.host_->registry() : nullptr, {}, item);
+        for (const auto& type : replace.types)
+            actions.push_back([this, type] { setInstrument(type); });
+        item = replace.nextItem();
+        menu.addSubMenu("Replace instrument", replace.menu);
+        menu.addItem(item++, "Remove instrument");
+        actions.push_back([this]
+                          { owner_.onCommand(std::make_unique<core::SetInstrument>(id_, core::Insert{})); });
+        menu.showMenuAsync(juce::PopupMenu::Options(),
+                           [actions](int result)
+                           {
+                               if (result >= 1 && static_cast<size_t>(result) <= actions.size())
+                                   actions[static_cast<size_t>(result) - 1]();
+                           });
+    }
+
+    void setInstrument(const std::string& type)
+    {
+        core::Insert instrument;
+        instrument.type = type;
+        instrument.params = plugins::defaultParameters(type);
+        owner_.onCommand(std::make_unique<core::SetInstrument>(id_, instrument));
+    }
+
+    void showInstrumentMenu(juce::Component& target)
+    {
+        auto built = buildPluginMenu(PluginKind::instrument,
+                                     owner_.host_ != nullptr ? &owner_.host_->registry() : nullptr);
+        juce::Component::SafePointer<Strip> safe(this);
+        built.menu.showMenuAsync(juce::PopupMenu::Options().withTargetComponent(target),
+                                 [safe, built](int choice)
+                                 {
+                                     if (safe != nullptr)
+                                         if (const auto type = built.typeFor(choice); !type.empty())
+                                             safe->setInstrument(type);
+                                 });
+    }
+
     void showAddInsertMenu()
     {
-        juce::PopupMenu menu;
+        // Effects only: an instrument has its own slot.
+        auto built = buildPluginMenu(PluginKind::effect,
+                                     owner_.host_ != nullptr ? &owner_.host_->registry() : nullptr);
+        auto& menu = built.menu;
         std::vector<std::function<void()>> actions;
-        int item = 1;
-        // Built-ins first, then every scanned plugin by name, then the scanner.
-        for (const auto& type : plugins::BuiltInFactory().typeNames())
-        {
-            menu.addItem(item++, plugins::BuiltInFactory::displayName(type));
+        for (const auto& type : built.types)
             actions.push_back(
                 [this, type]
                 {
@@ -1271,29 +1376,7 @@ private:
                     insert.params = plugins::defaultParameters(type);
                     owner_.onCommand(std::make_unique<core::AddInsert>(id_, insert));
                 });
-        }
-        if (owner_.host_ != nullptr && !owner_.host_->registry().plugins().empty())
-        {
-            menu.addSeparator();
-            for (const auto& plugin : owner_.host_->registry().plugins())
-            {
-                menu.addItem(item++,
-                             juce::String::fromUTF8(plugin.name.c_str()) +
-                                 (plugin.manufacturer.empty()
-                                      ? juce::String()
-                                      : "  (" + juce::String::fromUTF8(plugin.manufacturer.c_str()) + ")") +
-                                 "  [" + juce::String(plugin.format) +
-                                 (plugin.isInstrument ? ", instrument" : "") + "]");
-                const auto type = hosting::PluginRegistry::typeFor(plugin);
-                actions.push_back(
-                    [this, type]
-                    {
-                        core::Insert insert;
-                        insert.type = type;
-                        owner_.onCommand(std::make_unique<core::AddInsert>(id_, insert));
-                    });
-            }
-        }
+        int item = built.nextItem();
         menu.addSeparator();
         menu.addItem(item++, "Scan for plugins...");
         actions.push_back(
@@ -1376,6 +1459,9 @@ private:
     std::vector<std::unique_ptr<InsertSlot>> inserts_;
     std::vector<std::unique_ptr<SendRow>> sends_;
     AddSlot addInsert_, addSend_;
+    InsertSlot instrument_{theme_};
+    AddSlot addInstrument_{theme_, "Instrument"};
+    bool instrumentSlot_ = false; // a MIDI track: the instrument row shows
     juce::Rectangle<int> insertsSummary_, sendsSummary_;
     Knob pan_;
     juce::TextButton mute_, solo_, arm_, phase_;

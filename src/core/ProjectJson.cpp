@@ -79,6 +79,8 @@ void channelToJson(json& j, const Channel& c)
         }
         return inserts;
     };
+    if (c.hasInstrument())
+        j["instrument"] = insertsToJson({c.instrument}).front();
     if (!c.inserts.empty())
         j["inserts"] = insertsToJson(c.inserts);
     if (!c.strip.empty() || c.stripPreInserts)
@@ -140,6 +142,12 @@ void channelFromJson(const json& j, Channel& c)
             into.push_back(std::move(insert));
         }
     };
+    if (const auto it = j.find("instrument"); it != j.end() && it->is_object())
+    {
+        std::vector<Insert> one;
+        insertsFromJson(json::array({*it}), one);
+        c.instrument = one.front();
+    }
     if (const auto it = j.find("inserts"); it != j.end() && it->is_array())
         insertsFromJson(*it, c.inserts);
     if (const auto it = j.find("strip"); it != j.end() && it->is_object())
@@ -417,6 +425,8 @@ std::optional<Project> projectFromJson(const std::string& text, std::string* err
         }
         for (const auto& t : p.tracks)
         {
+            if (t.hasInstrument())
+                maxId = std::max(maxId, t.instrument.id);
             for (const auto& i : t.inserts)
                 maxId = std::max(maxId, i.id);
             for (const auto& i : t.strip)
@@ -447,6 +457,8 @@ std::optional<Project> projectFromJson(const std::string& text, std::string* err
                 for (auto& n : c.notes)
                     fresh(n.id);
             }
+            if (t.hasInstrument())
+                fresh(t.instrument.id);
             for (auto& i : t.inserts)
                 fresh(i.id);
             for (auto& i : t.strip)

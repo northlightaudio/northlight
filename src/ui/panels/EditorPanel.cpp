@@ -2,6 +2,7 @@
 
 #include "plugins/BuiltIns.h"
 #include "ui/AuralLookAndFeel.h"
+#include "ui/PluginMenu.h"
 #include "ui/strip/BuiltInCards.h"
 
 #include <map>
@@ -14,9 +15,15 @@ namespace aural::ui
 class EditorPanel::Card final : public juce::Component
 {
 public:
-    Card(EditorPanel& owner, const Theme& theme, core::Id channelId, const core::Insert& insert)
+    // `instrument`: the track's instrument slot (replaced and removed as one,
+    // not reordered among the inserts).
+    Card(EditorPanel& owner,
+         const Theme& theme,
+         core::Id channelId,
+         const core::Insert& insert,
+         bool instrument = false)
         : owner_(owner), theme_(theme), channelId_(channelId), insertId_(insert.id), type_(insert.type),
-          power_(theme, Icon::power, "Bypass"),
+          instrument_(instrument), power_(theme, Icon::power, "Bypass"),
           menu_(theme, Icon::menu, "Replace, remove, presets, sidechain")
     {
         power_.setClickingTogglesState(true);
@@ -53,6 +60,7 @@ public:
                     channelId_, insertId_, static_cast<float>(mix_.getValue() / 100.0)));
         };
         addAndMakeVisible(mix_);
+        mix_.setVisible(!instrument_); // an instrument has no dry signal to mix
         open_.setButtonText("Open");
         open_.getProperties().set(AuralLookAndFeel::propertyVariant, "primary");
         open_.onClick = [this]
@@ -112,12 +120,12 @@ public:
     }
     void mouseDrag(const juce::MouseEvent& e) override
     {
-        if (dragging_ && e.mouseWasDraggedSinceMouseDown())
+        if (dragging_ && !instrument_ && e.mouseWasDraggedSinceMouseDown())
             owner_.reorderCard(insertId_, e.getScreenPosition(), false);
     }
     void mouseUp(const juce::MouseEvent& e) override
     {
-        if (dragging_ && e.mouseWasDraggedSinceMouseDown())
+        if (dragging_ && !instrument_ && e.mouseWasDraggedSinceMouseDown())
             owner_.reorderCard(insertId_, e.getScreenPosition(), true);
         dragging_ = false;
     }
@@ -216,9 +224,10 @@ public:
             getLocalBounds().removeFromBottom(theme_.sizes.controlCompact).reduced(theme_.spacing.md, 0);
         g.setFont(theme_.caption());
         g.setColour(c.textSecondary);
-        g.drawText("Mix " + juce::String(static_cast<int>(mix_.getValue())) + "%",
-                   footer.removeFromLeft(56),
-                   juce::Justification::centredLeft);
+        if (!instrument_)
+            g.drawText("Mix " + juce::String(static_cast<int>(mix_.getValue())) + "%",
+                       footer.removeFromLeft(56),
+                       juce::Justification::centredLeft);
         auto info = getLocalBounds()
                         .withTrimmedTop(theme_.sizes.control)
                         .removeFromTop(theme_.sizes.controlCompact)
@@ -269,9 +278,12 @@ public:
                 .reduced(theme_.spacing.xs, (theme_.sizes.control - theme_.sizes.controlCompact) / 2);
         power_.setBounds(header.removeFromLeft(theme_.sizes.controlCompact));
         menu_.setBounds(header.removeFromRight(theme_.sizes.controlCompact));
-        auto footer = area.removeFromBottom(theme_.sizes.controlCompact).reduced(theme_.spacing.md, 0);
-        footer.removeFromLeft(56);
-        mix_.setBounds(footer);
+        if (!instrument_)
+        {
+            auto footer = area.removeFromBottom(theme_.sizes.controlCompact).reduced(theme_.spacing.md, 0);
+            footer.removeFromLeft(56);
+            mix_.setBounds(footer);
+        }
         area.removeFromTop(theme_.sizes.controlCompact); // the info line
         if (body_ != nullptr)
         {
@@ -376,6 +388,30 @@ private:
         juce::PopupMenu menu;
         menu.addItem(1, bypassed_ ? "Enable" : "Bypass", !missing_);
         menu.addItem(2, "Open editor", !missing_);
+        if (instrument_)
+        {
+            menu.addItem(4, "Replace instrument...");
+            menu.addItem(5, "Remove instrument");
+            juce::Component::SafePointer<Card> safe(this);
+            menu.showMenuAsync(juce::PopupMenu::Options().withTargetComponent(menu_),
+                               [safe](int choice)
+                               {
+                                   if (safe == nullptr || choice == 0 || !safe->owner_.onCommand)
+                                       return;
+                                   auto& owner = safe->owner_;
+                                   if (choice == 1)
+                                       owner.onCommand(std::make_unique<core::SetInsertBypass>(
+                                           safe->channelId_, safe->insertId_, !safe->bypassed_));
+                                   else if (choice == 2 && owner.onOpenEditor)
+                                       owner.onOpenEditor(safe->channelId_, safe->insertId_);
+                                   else if (choice == 4)
+                                       owner.showInstrumentMenu(safe->menu_);
+                                   else if (choice == 5)
+                                       owner.onCommand(std::make_unique<core::SetInstrument>(safe->channelId_,
+                                                                                             core::Insert{}));
+                               });
+            return;
+        }
         menu.addItem(3, "Remove");
         juce::Component::SafePointer<Card> safe(this);
         menu.showMenuAsync(juce::PopupMenu::Options().withTargetComponent(menu_),
@@ -398,6 +434,7 @@ private:
     const Theme& theme_;
     core::Id channelId_, insertId_;
     std::string type_;
+    bool instrument_ = false;
     IconButton power_, menu_;
     juce::Slider mix_;
     juce::TextButton open_;
@@ -440,6 +477,11 @@ EditorPanel::EditorPanel(const Theme& theme) : theme_(theme), stripView_(theme)
             return;
         g.setFont(theme_.captionCaps());
         g.setColour(theme_.colours.textTertiary);
+        if (addInstrument_.isVisible() || instrumentCard_ != nullptr)
+            g.drawText("INSTRUMENT",
+                       juce::Rectangle<int>(
+                           instrumentX_ + theme_.spacing.xxs, 0, 120, strip::ChannelStripView::captionHeight),
+                       juce::Justification::centredLeft);
         g.drawText("INSERTS",
                    juce::Rectangle<int>(
                        insertsX_ + theme_.spacing.xxs, 0, 120, strip::ChannelStripView::captionHeight),
@@ -451,12 +493,16 @@ EditorPanel::EditorPanel(const Theme& theme) : theme_(theme), stripView_(theme)
     add_.setTooltip("Add an insert");
     add_.onClick = [this] { showAddMenu(); };
     strip_.addAndMakeVisible(add_);
+    addInstrument_.setTooltip("Choose the instrument this track's MIDI plays");
+    addInstrument_.onClick = [this] { showInstrumentMenu(addInstrument_); };
+    strip_.addChildComponent(addInstrument_);
     startTimerHz(60);
 }
 
 EditorPanel::~EditorPanel()
 {
     stopTimer();
+    instrumentCard_.reset();
     cards_.clear();
     stripView_.setChannel(nullptr);
 }
@@ -505,6 +551,31 @@ void EditorPanel::rebuild()
     else if (ch != nullptr)
         for (size_t i = 0; i < cards_.size(); ++i)
             cards_[i]->refresh(ch->inserts[i]);
+    // The instrument slot: a MIDI track's (or any track that has one).
+    const auto* track = project_ != nullptr ? project_->findTrack(channelId_) : nullptr;
+    const bool slot = track != nullptr && (track->isMidi() || track->hasInstrument());
+    const bool hasInstrument = slot && track->hasInstrument();
+    bool instrumentChanged = false;
+    if (!hasInstrument)
+    {
+        instrumentChanged = instrumentCard_ != nullptr;
+        instrumentCard_.reset();
+    }
+    else if (instrumentCard_ == nullptr || instrumentCard_->insertId() != track->instrument.id ||
+             instrumentCard_->type() != track->instrument.type)
+    {
+        instrumentCard_ = std::make_unique<Card>(*this, theme_, channelId_, track->instrument, true);
+        strip_.addAndMakeVisible(*instrumentCard_);
+        instrumentChanged = true;
+    }
+    else
+        instrumentCard_->refresh(track->instrument);
+    if (addInstrument_.isVisible() != (slot && !hasInstrument))
+    {
+        addInstrument_.setVisible(slot && !hasInstrument);
+        instrumentChanged = true;
+    }
+    same = same && !instrumentChanged;
     // Only a change of shape lays the panel out again (each card repaints
     // what changed in it): a knob drag refreshes this many times a second.
     const int stripWidth = stripView_.preferredWidth();
@@ -532,20 +603,30 @@ void EditorPanel::timerCallback()
     if (!isShowing())
     {
         if (wasShowing_)
+        {
+            if (instrumentCard_ != nullptr)
+                instrumentCard_->stopWatching();
             for (const auto& card : cards_)
                 card->stopWatching();
+        }
         wasShowing_ = false;
         return;
     }
     wasShowing_ = true;
+    if (instrumentCard_ != nullptr)
+        instrumentCard_->tick(elapsed);
     for (const auto& card : cards_)
         card->tick(elapsed);
     // Hosted plugins change their own values: keep the knobs current (10 Hz).
     if (++ticks_ % 6 != 0)
         return;
     if (const auto* ch = channel())
+    {
+        if (instrumentCard_ != nullptr && ch->hasInstrument())
+            instrumentCard_->refresh(ch->instrument);
         for (size_t i = 0; i < cards_.size() && i < ch->inserts.size(); ++i)
             cards_[i]->refresh(ch->inserts[i]);
+    }
 }
 
 void EditorPanel::paint(juce::Graphics& g)
@@ -623,7 +704,11 @@ void EditorPanel::itemDropped(const SourceDetails& details)
     repaint();
     const auto type =
         details.description.toString().fromFirstOccurrenceOf("plugin:", false, false).toStdString();
-    if (!type.empty())
+    if (type.empty())
+        return;
+    if (isInstrumentType(type, registry_))
+        setInstrument(type);
+    else
         addInsert(type, index);
 }
 
@@ -637,6 +722,32 @@ void EditorPanel::addInsert(const std::string& type, int index)
     onCommand(std::make_unique<core::AddInsert>(channelId_, insert, index));
     if (onInserted)
         onInserted(type);
+}
+
+void EditorPanel::setInstrument(const std::string& type)
+{
+    const auto* track = project_ != nullptr ? project_->findTrack(channelId_) : nullptr;
+    if (!onCommand || track == nullptr || !track->isMidi())
+        return;
+    core::Insert instrument;
+    instrument.type = type;
+    instrument.params = plugins::defaultParameters(type);
+    onCommand(std::make_unique<core::SetInstrument>(channelId_, instrument));
+    if (onInserted)
+        onInserted(type);
+}
+
+void EditorPanel::showInstrumentMenu(juce::Component& target)
+{
+    auto built = buildPluginMenu(PluginKind::instrument, registry_, listSetting);
+    juce::Component::SafePointer<EditorPanel> safe(this);
+    built.menu.showMenuAsync(juce::PopupMenu::Options().withTargetComponent(target),
+                             [safe, built](int choice)
+                             {
+                                 if (safe != nullptr)
+                                     if (const auto type = built.typeFor(choice); !type.empty())
+                                         safe->setInstrument(type);
+                             });
 }
 
 void EditorPanel::reorderCard(core::Id insertId, juce::Point<int> screen, bool released)
@@ -671,7 +782,27 @@ void EditorPanel::resized()
     const bool showStrip = stripView_.isVisible();
     const bool stripFirst = showStrip && ch != nullptr && ch->stripPreInserts;
     int x = theme_.spacing.md;
-    // The strip and the inserts in signal order, each under its caption.
+    // The instrument, then the strip and the inserts in signal order, each under
+    // its caption.
+    instrumentX_ = x;
+    if (instrumentCard_ != nullptr)
+    {
+        const int w = instrumentCard_->preferredWidth();
+        instrumentCard_->setBounds(x,
+                                   theme_.spacing.xs + strip::ChannelStripView::captionHeight,
+                                   w,
+                                   h - strip::ChannelStripView::captionHeight);
+        x += w + theme_.spacing.xl;
+    }
+    else if (addInstrument_.isVisible())
+    {
+        const int w = theme_.sizes.controlLarge * 4;
+        addInstrument_.setBounds(x,
+                                 theme_.spacing.xs + strip::ChannelStripView::captionHeight,
+                                 w,
+                                 h - strip::ChannelStripView::captionHeight);
+        x += w + theme_.spacing.xl;
+    }
     const auto placeStrip = [&]
     {
         if (!showStrip)
@@ -699,63 +830,15 @@ void EditorPanel::resized()
 
 void EditorPanel::showAddMenu()
 {
-    // Recent, built-ins, favourites, then every scanned plugin by manufacturer.
-    juce::PopupMenu menu;
-    std::vector<std::string> types;
-    int item = 1;
-    const auto nameOf = [this](const std::string& type)
-    { return displayName ? juce::String::fromUTF8(displayName(type).c_str()) : juce::String(type); };
-    const auto known = [this](const std::string& type)
-    {
-        if (!hosting::PluginRegistry::isHostedType(type))
-            return plugins::BuiltInFactory().create(type) != nullptr;
-        return registry_ != nullptr && registry_->findByType(type) != nullptr;
-    };
-    const auto section = [&](const char* title, const std::vector<std::string>& list)
-    {
-        bool any = false;
-        for (const auto& type : list)
-        {
-            if (!known(type))
-                continue;
-            if (!any)
-                menu.addSectionHeader(title);
-            any = true;
-            menu.addItem(item++, nameOf(type));
-            types.push_back(type);
-        }
-    };
-    if (listSetting)
-        section("Recent", listSetting("plugins.recent"));
-    menu.addSectionHeader("Built-in");
-    for (const auto& type : plugins::BuiltInFactory().typeNames())
-    {
-        menu.addItem(item++, plugins::BuiltInFactory::displayName(type));
-        types.push_back(type);
-    }
-    if (listSetting)
-        section("Favourites", listSetting("plugins.favourites"));
-    if (registry_ != nullptr && !registry_->plugins().empty())
-    {
-        std::map<std::string, juce::PopupMenu> byManufacturer;
-        for (const auto& plugin : registry_->plugins())
-        {
-            byManufacturer[plugin.manufacturer.empty() ? "Other" : plugin.manufacturer].addItem(
-                item++,
-                juce::String::fromUTF8(plugin.name.c_str()) + "  [" + juce::String(plugin.format) + "]");
-            types.push_back(hosting::PluginRegistry::typeFor(plugin));
-        }
-        menu.addSeparator();
-        for (auto& [manufacturer, sub] : byManufacturer)
-            menu.addSubMenu(juce::String::fromUTF8(manufacturer.c_str()), sub);
-    }
+    // Effects only: an instrument has its own slot.
+    auto built = buildPluginMenu(PluginKind::effect, registry_, listSetting);
     juce::Component::SafePointer<EditorPanel> safe(this);
-    menu.showMenuAsync(juce::PopupMenu::Options().withTargetComponent(add_),
-                       [safe, types](int choice)
-                       {
-                           if (safe == nullptr || choice <= 0 || static_cast<size_t>(choice) > types.size())
-                               return;
-                           safe->addInsert(types[static_cast<size_t>(choice - 1)], -1);
-                       });
+    built.menu.showMenuAsync(juce::PopupMenu::Options().withTargetComponent(add_),
+                             [safe, built](int choice)
+                             {
+                                 if (safe != nullptr)
+                                     if (const auto type = built.typeFor(choice); !type.empty())
+                                         safe->addInsert(type, -1);
+                             });
 }
 } // namespace aural::ui
