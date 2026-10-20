@@ -630,6 +630,11 @@ private:
         mixer_.setHost(&session_.insertFactory());
         mixer_.liveInsert = [this](core::Id insertId) { return session_.liveInsert(insertId); };
         mixer_.onScanPlugins = [this] { session_.scanPlugins(true); };
+        mixer_.onSelectChannel = [this](core::Id id)
+        {
+            tracks_.setSelectedTrack(id);
+            selectionChanged(id);
+        };
         mixer_.onOpenPluginBrowser = [this] { owner_.showPluginBrowser(); };
         mixer_.loadSetting = [this](const std::string& key) { return settings_.value(key); };
         mixer_.saveSetting = [this](const std::string& key, const std::string& value)
@@ -751,6 +756,7 @@ private:
                 names.push_back(channel >= 0 && static_cast<size_t>(channel) < all.size()
                                     ? all[static_cast<size_t>(channel)]
                                     : "Input " + std::to_string(channel + 1));
+            mixer_.setInputNames(names, audio_.midi().openInputNames());
             tracks_.setInputNames(std::move(names));
             tracks_.setMidiInputNames(audio_.midi().openInputNames());
         }
@@ -964,6 +970,7 @@ private:
         }
         editor_.setChannel(trackId);
         inspector_.setSelection(trackId, clipId);
+        mixer_.setSelectedChannel(trackId);
     }
 
     void armSelected()

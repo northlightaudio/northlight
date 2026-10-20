@@ -324,6 +324,11 @@ void AuralLookAndFeel::drawButtonBackground(juce::Graphics& g,
             colour = c.monitor;
             glow = &m.glowMonitor;
         }
+        else if (semantic == "phase")
+        {
+            colour = c.textSecondary;
+            glow = nullptr;
+        }
         if (glow != nullptr)
             drawGlow(g, bounds, radius, *glow);
         if (hardOn)
@@ -429,6 +434,8 @@ void AuralLookAndFeel::drawButtonText(juce::Graphics& g,
             colour = c.mute;
         else if (semantic == "monitor")
             colour = c.monitor;
+        else if (semantic == "phase")
+            colour = c.textSecondary;
         text = hardOn ? c.textOnColour : colour;
     }
     else if (variant == "primary")

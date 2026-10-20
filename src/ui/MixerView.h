@@ -7,20 +7,27 @@
 #include "hosting/HostFactory.h"
 #include "ui/PluginWindow.h"
 #include "ui/Theme.h"
+#include "ui/components/Fader.h"
+#include "ui/components/Knob.h"
+#include "ui/components/Meter.h"
+#include "ui/components/NumericField.h"
 
 #include <juce_gui_basics/juce_gui_basics.h>
 
 #include <functional>
 #include <memory>
+#include <string>
 #include <vector>
 
 namespace aural::ui
 {
 
-// The mixer: one strip per track and bus (fader, pan, mute, solo, phase, output,
-// sends, meter) and the master strip. Every change is issued as a core::Command
-// through onCommand; the view refreshes from the project it is given and drains
-// the meter block on a timer.
+// The mixer (05-mixer.md): one strip per track and bus (name cap, input, insert
+// slots, send rows, pan, M/S/R/phase, fader with a meter, value field, output)
+// and the master strip (fader, scaled meter, loudness readout) pinned at the
+// right. Every change is issued as a core::Command through onCommand; the view
+// refreshes from the project it is given and drains the meter block on a timer.
+// The selected strip follows the arrange selection and reports clicks back.
 class MixerView final : public juce::Component, private juce::Timer
 {
 public:
@@ -30,6 +37,12 @@ public:
     ~MixerView() override;
 
     void setProject(const core::Project* project);
+    // The audio inputs (callback order) and the open MIDI inputs for the input combos.
+    void setInputNames(std::vector<std::string> audio, std::vector<std::string> midi);
+    // The selected channel (its strip gets the accent outline); clicks on a name
+    // cap report through onSelectChannel.
+    void setSelectedChannel(core::Id channelId);
+    std::function<void(core::Id)> onSelectChannel;
 
     std::function<void(std::unique_ptr<core::Command>)> onCommand;
     // A slider drag starts and ends a gesture: its commands make one undo step.
@@ -60,8 +73,6 @@ public:
     void paint(juce::Graphics& g) override;
     void resized() override;
 
-    static constexpr int stripWidth = 104;
-
     // Opens (or fronts) the parameter editor window for an insert.
     void openInsertEditor(core::Id channelId, core::Id insertId);
     // Closes every editor window (before a project is replaced).
@@ -86,12 +97,14 @@ private:
     const core::Project* project_ = nullptr;
     bool masterClipped_ = false;
     std::vector<rt::MeterBlock::Reading> readings_;
+    std::vector<std::string> inputNames_, midiInputNames_;
+    core::Id selected_ = core::invalidId;
+    double lastMeterMs_ = 0.0;
     std::vector<std::unique_ptr<Strip>> strips_;
     std::unique_ptr<MasterStrip> master_;
     juce::Viewport viewport_;
     juce::Component stripsHolder_;
-    juce::TextButton addBusButton_{"+ Bus"};
-    juce::TextButton pluginsButton_{"Plugins..."};
+    juce::TextButton addBus_{"+ Bus"};
     std::vector<std::unique_ptr<EditorWindow>> editors_;
     std::vector<std::unique_ptr<PluginWindow>> pluginWindows_;
     const hosting::HostFactory* host_ = nullptr;

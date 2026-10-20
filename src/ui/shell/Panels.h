@@ -179,7 +179,7 @@ public:
     void applyPreset(const juce::String& name);
     void setWindowDefaults(int mainWidth, int mainHeight);
 
-    static constexpr int defaultDockHeight = 320;
+    static constexpr int defaultDockHeight = 480;
     static constexpr int defaultSideWidth = 300;
 
 private:

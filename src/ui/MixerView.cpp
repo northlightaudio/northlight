@@ -4,9 +4,12 @@
 #include "hosting/ClapPlugin.h"
 #include "hosting/HostedPlugin.h"
 #include "plugins/BuiltIns.h"
+#include "ui/AuralLookAndFeel.h"
 #include "ui/ClapEditor.h"
+#include "ui/Icons.h"
 #include "ui/InsertEditor.h"
 
+#include <algorithm>
 #include <cmath>
 #include <cstdint>
 #include <iterator>
@@ -24,6 +27,9 @@ constexpr double maxFaderDb = 6.0; // matches core::maxChannelGain
 constexpr std::uint32_t groupColours[] = {
     0xff4f8fe8u, 0xffe8a84fu, 0xff5fc96fu, 0xffd65f9eu, 0xff9b6fe8u, 0xff4fc9c9u};
 constexpr int meterHz = 30;
+constexpr int slotHeight = 20;     // an insert slot or a send row
+constexpr int maxVisibleSlots = 6; // inserts shown before the box scrolls
+constexpr int minFaderTravel = 120, maxFaderTravel = 200;
 
 float dbToGain(double db) noexcept
 {
@@ -40,72 +46,274 @@ juce::String dbText(double db)
     return db <= minFaderDb + 0.05 ? juce::String("-inf") : juce::String(db, 1);
 }
 
-// A stereo bar meter with peak hold and a slow fall, fed from MeterBlock readings.
-class StereoMeter final : public juce::Component
+juce::String panText(double v)
+{
+    const int percent = static_cast<int>(std::lround(std::abs(v) * 100.0));
+    return percent == 0 ? juce::String("C") : juce::String(v < 0 ? "L" : "R") + juce::String(percent);
+}
+
+// The name cap at the top of a strip: the colour stripe, the name (double-click
+// renames), the group bar; a click selects the channel.
+class NameCap final : public juce::Component
 {
 public:
-    explicit StereoMeter(const Theme& theme) : theme_(theme) {}
-
-    void push(const rt::MeterBlock::Reading& r)
+    explicit NameCap(const Theme& theme) : theme_(theme)
     {
-        const auto decay = [](float& level, float target)
-        { level = target > level ? target : level * 0.85f; };
-        decay(rmsL_, r.rmsLeft);
-        decay(rmsR_, r.rmsRight);
-        decay(peakL_, r.peakLeft);
-        decay(peakR_, r.peakRight);
-        if (r.peakLeft >= 1.0f || r.peakRight >= 1.0f)
-            clipFrames_ = meterHz;
-        else if (clipFrames_ > 0)
-            --clipFrames_;
+        name_.setFont(theme_.label());
+        name_.setColour(juce::Label::textColourId, theme_.colours.textPrimary);
+        name_.setJustificationType(juce::Justification::centredLeft);
+        name_.setMinimumHorizontalScale(1.0f);
+        name_.setEditable(false, true, false);
+        name_.setInterceptsMouseClicks(false, false);
+        name_.onTextChange = [this]
+        {
+            if (onRenamed)
+                onRenamed(name_.getText().trim());
+        };
+        addAndMakeVisible(name_);
+    }
+    std::function<void(const juce::String&)> onRenamed;
+    std::function<void()> onClicked, onMenu;
+
+    void
+    set(const juce::String& name, juce::Colour colour, bool selected, int group, juce::Colour groupColour)
+    {
+        name_.setText(name, juce::dontSendNotification);
+        colour_ = colour;
+        selected_ = selected;
+        group_ = group;
+        groupColour_ = groupColour;
         repaint();
     }
-
     void paint(juce::Graphics& g) override
     {
         const auto& c = theme_.colours;
-        auto bounds = getLocalBounds().toFloat();
-        g.setColour(c.surfaceRaised);
-        g.fillRoundedRectangle(bounds, 2.0f);
-        const float gap = 2.0f;
-        auto left = bounds.removeFromLeft(bounds.getWidth() * 0.5f - gap * 0.5f);
-        bounds.removeFromLeft(gap);
-        drawBar(g, left, rmsL_, peakL_);
-        drawBar(g, bounds, rmsR_, peakR_);
-        if (clipFrames_ > 0)
+        g.setColour(colour_.withAlpha(selected_ ? 1.0f : theme_.track.clipHeaderAlpha));
+        g.fillRect(getLocalBounds());
+        g.setColour(colour_);
+        g.fillRect(getLocalBounds().removeFromLeft(theme_.track.headerStripeWidth));
+        if (group_ > 0)
         {
-            g.setColour(c.meterClip);
-            g.fillRect(getLocalBounds().removeFromTop(4));
+            auto bar = getLocalBounds().removeFromTop(3);
+            g.setColour(groupColour_);
+            g.fillRect(bar);
+            g.setFont(theme_.caption());
+            g.drawText(juce::String(group_),
+                       getLocalBounds().removeFromRight(14),
+                       juce::Justification::centredRight);
         }
+        juce::ignoreUnused(c);
+    }
+    void resized() override
+    {
+        name_.setBounds(getLocalBounds()
+                            .withTrimmedLeft(theme_.track.headerStripeWidth + theme_.spacing.xs)
+                            .withTrimmedRight(group_ > 0 ? 14 : 2));
+    }
+    void mouseDown(const juce::MouseEvent& e) override
+    {
+        if (e.mods.isPopupMenu())
+        {
+            if (onMenu)
+                onMenu();
+            return;
+        }
+        if (onClicked)
+            onClicked();
+    }
+    void mouseDoubleClick(const juce::MouseEvent&) override { name_.showEditor(); }
+
+private:
+    const Theme& theme_;
+    juce::Label name_;
+    juce::Colour colour_, groupColour_;
+    bool selected_ = false;
+    int group_ = 0;
+};
+
+// An insert slot: name in small, the format badge, a strike when bypassed, the
+// power icon (left) and drag handle (right) on hover.
+class InsertSlot final : public juce::Component, public juce::SettableTooltipClient
+{
+public:
+    explicit InsertSlot(const Theme& theme) : theme_(theme) { setRepaintsOnMouseActivity(true); }
+    std::function<void()> onOpen, onBypass, onMenu;
+    std::function<void(juce::Point<int> screen, bool released)> onReorder;
+
+    void set(const juce::String& name, const juce::String& badge, bool bypassed)
+    {
+        name_ = name;
+        badge_ = badge;
+        bypassed_ = bypassed;
+        setTooltip(name + (bypassed ? " (bypassed)" : ""));
+        repaint();
+    }
+    void paint(juce::Graphics& g) override
+    {
+        const auto& c = theme_.colours;
+        g.setColour(isMouseOver() ? c.surface3 : c.surface2);
+        g.fillRoundedRectangle(getLocalBounds().toFloat().reduced(0.0f, 0.5f), theme_.radius.sm);
+        auto area = getLocalBounds().reduced(theme_.spacing.xs, 0);
+        if (isMouseOver())
+        {
+            Icons::draw(g,
+                        Icon::power,
+                        area.removeFromLeft(12).toFloat().reduced(0.0f, 4.0f),
+                        bypassed_ ? c.textTertiary : c.success);
+            area.removeFromLeft(theme_.spacing.xxs);
+            Icons::draw(
+                g, Icon::dragHandle, area.removeFromRight(10).toFloat().reduced(0.0f, 4.0f), c.textTertiary);
+        }
+        if (badge_.isNotEmpty() && !isMouseOver())
+        {
+            g.setFont(theme_.caption());
+            g.setColour(c.textTertiary);
+            const int w = juce::GlyphArrangement::getStringWidthInt(theme_.caption(), badge_);
+            g.drawText(badge_, area.removeFromRight(w), juce::Justification::centredRight);
+            area.removeFromRight(theme_.spacing.xxs);
+        }
+        g.setFont(theme_.small());
+        g.setColour(bypassed_ ? c.textTertiary : c.textPrimary);
+        g.drawText(name_, area, juce::Justification::centredLeft, true);
+        if (bypassed_)
+        {
+            const int w =
+                std::min(area.getWidth(), juce::GlyphArrangement::getStringWidthInt(theme_.small(), name_));
+            g.fillRect(area.getX(), area.getCentreY(), w, 1);
+        }
+    }
+    void mouseDown(const juce::MouseEvent& e) override
+    {
+        dragging_ = false;
+        if (e.mods.isPopupMenu())
+        {
+            if (onMenu)
+                onMenu();
+            return;
+        }
+        if (e.x < theme_.spacing.xs + 12)
+        {
+            if (onBypass)
+                onBypass();
+            return;
+        }
+        handle_ = e.x >= getWidth() - theme_.spacing.xs - 10;
+    }
+    void mouseDrag(const juce::MouseEvent& e) override
+    {
+        if (!handle_ || !e.mouseWasDraggedSinceMouseDown())
+            return;
+        dragging_ = true;
+        if (onReorder)
+            onReorder(e.getScreenPosition(), false);
+    }
+    void mouseUp(const juce::MouseEvent& e) override
+    {
+        if (dragging_)
+        {
+            if (onReorder)
+                onReorder(e.getScreenPosition(), true);
+        }
+        else if (!e.mods.isPopupMenu() && e.x >= theme_.spacing.xs + 12 && onOpen)
+            onOpen();
+        dragging_ = false;
+        handle_ = false;
     }
 
 private:
-    static float fraction(float level)
-    {
-        const double db = level > 0.0f ? 20.0 * std::log10(level) : -100.0;
-        return static_cast<float>(juce::jlimit(0.0, 1.0, (db + 60.0) / 66.0));
-    }
+    const Theme& theme_;
+    juce::String name_, badge_;
+    bool bypassed_ = false, handle_ = false, dragging_ = false;
+};
 
-    void drawBar(juce::Graphics& g, juce::Rectangle<float> area, float rms, float peak)
+// A send row: the bus name, a 40 px mini slider and the pre/post dot.
+class SendRow final : public juce::Component, public juce::SettableTooltipClient
+{
+public:
+    explicit SendRow(const Theme& theme) : theme_(theme)
+    {
+        slider_.setSliderStyle(juce::Slider::LinearHorizontal);
+        slider_.setTextBoxStyle(juce::Slider::NoTextBox, true, 0, 0);
+        slider_.setRange(minFaderDb, maxFaderDb, 0.1);
+        slider_.setDoubleClickReturnValue(true, 0.0);
+        slider_.onDragStart = [this]
+        {
+            if (onGestureBegin)
+                onGestureBegin();
+        };
+        slider_.onDragEnd = [this]
+        {
+            if (onGestureEnd)
+                onGestureEnd();
+        };
+        slider_.onValueChange = [this]
+        {
+            slider_.setTooltip(dbText(slider_.getValue()) + " dB");
+            if (!updating_ && onLevel)
+                onLevel(dbToGain(slider_.getValue()));
+        };
+        addAndMakeVisible(slider_);
+    }
+    std::function<void(float)> onLevel;
+    std::function<void()> onTogglePre, onMenu, onGestureBegin, onGestureEnd;
+
+    void set(const juce::String& name, float level, bool pre)
+    {
+        const juce::ScopedValueSetter<bool> guard(updating_, true);
+        name_ = name;
+        pre_ = pre;
+        slider_.setValue(gainToDb(level), juce::dontSendNotification);
+        slider_.setTooltip(dbText(gainToDb(level)) + " dB");
+        setTooltip(name + (pre ? " (pre-fader)" : " (post-fader)"));
+        repaint();
+    }
+    void paint(juce::Graphics& g) override
     {
         const auto& c = theme_.colours;
-        const float h = area.getHeight();
-        const auto rmsFraction = fraction(rms);
-        auto fill = area.withTop(area.getBottom() - h * rmsFraction);
-        g.setColour(rms > 0.5f ? c.meterHot : c.meter);
-        g.fillRect(fill);
-        const auto peakY = area.getBottom() - h * fraction(peak);
-        g.setColour(peak > 0.5f ? c.meterHot : c.meter);
-        g.fillRect(area.getX(), peakY - 1.0f, area.getWidth(), 2.0f);
-        // 0 dBFS line (at 60/66 of the height).
-        g.setColour(c.borderStrong);
-        const float zeroY = area.getBottom() - h * (60.0f / 66.0f);
-        g.fillRect(area.getX(), zeroY, area.getWidth(), 1.0f);
+        auto area = getLocalBounds().reduced(theme_.spacing.xs, 0);
+        area.removeFromRight(40 + theme_.spacing.xs);
+        const auto dot = area.removeFromRight(10).toFloat().withSizeKeepingCentre(6.0f, 6.0f);
+        g.setColour(c.accent);
+        if (pre_)
+            g.fillEllipse(dot);
+        else
+            g.drawEllipse(dot, 1.0f);
+        g.setFont(theme_.small());
+        g.setColour(c.textSecondary);
+        g.drawText(name_, area.withTrimmedRight(theme_.spacing.xxs), juce::Justification::centredLeft, true);
+    }
+    void resized() override
+    {
+        slider_.setBounds(getLocalBounds().reduced(theme_.spacing.xs, 0).removeFromRight(40));
+    }
+    void mouseDown(const juce::MouseEvent& e) override
+    {
+        if (e.mods.isPopupMenu())
+        {
+            if (onMenu)
+                onMenu();
+            return;
+        }
+        if (e.x >= getWidth() - theme_.spacing.xs - 40 - theme_.spacing.xs - 12 && onTogglePre)
+            onTogglePre();
     }
 
+private:
     const Theme& theme_;
-    float rmsL_ = 0.0f, rmsR_ = 0.0f, peakL_ = 0.0f, peakR_ = 0.0f;
-    int clipFrames_ = 0;
+    juce::String name_;
+    bool pre_ = false, updating_ = false;
+    juce::Slider slider_;
+};
+
+// A ghost "+" row at the end of a section.
+class AddRow final : public juce::TextButton
+{
+public:
+    AddRow()
+    {
+        setButtonText("+");
+        getProperties().set(AuralLookAndFeel::propertyVariant, "ghost");
+    }
 };
 } // namespace
 
@@ -114,24 +322,59 @@ private:
 class MixerView::Strip final : public juce::Component
 {
 public:
-    Strip(MixerView& owner, const Theme& theme) : owner_(owner), theme_(theme), meter_(theme)
+    Strip(MixerView& owner, const Theme& theme)
+        : owner_(owner), theme_(theme), cap_(theme), pan_(theme), fader_(theme), meter_(theme, 2, true),
+          value_(theme)
     {
-        name_.setFont(juce::FontOptions{theme_.type.caption});
-        name_.setJustificationType(juce::Justification::centred);
-        name_.setMinimumHorizontalScale(0.7f);
-        name_.setEditable(false, true, false);
-        name_.onTextChange = [this]
+        setOpaque(true);
+        setWantsKeyboardFocus(true);
+        cap_.onRenamed = [this](const juce::String& name)
         {
             if (!updating_)
-                owner_.onCommand(std::make_unique<core::SetTrackName>(id_, name_.getText().toStdString()));
+                owner_.onCommand(std::make_unique<core::SetTrackName>(id_, name.toStdString()));
         };
-        addAndMakeVisible(name_);
+        cap_.onClicked = [this]
+        {
+            if (owner_.onSelectChannel)
+                owner_.onSelectChannel(id_);
+        };
+        cap_.onMenu = [this] { showGroupMenu(); };
+        addAndMakeVisible(cap_);
 
-        pan_.setSliderStyle(juce::Slider::RotaryHorizontalVerticalDrag);
-        pan_.setRange(-1.0, 1.0, 0.01);
-        pan_.setDoubleClickReturnValue(true, 0.0);
-        pan_.setTextBoxStyle(juce::Slider::NoTextBox, true, 0, 0);
+        input_.setTooltip("Input");
+        input_.onChange = [this]
+        {
+            if (updating_)
+                return;
+            if (midi_)
+            {
+                const int index = input_.getSelectedId() - 2;
+                owner_.onCommand(std::make_unique<core::SetTrackMidiInput>(
+                    id_,
+                    index >= 0 && static_cast<size_t>(index) < owner_.midiInputNames_.size()
+                        ? owner_.midiInputNames_[static_cast<size_t>(index)]
+                        : std::string{}));
+            }
+            else
+                owner_.onCommand(std::make_unique<core::SetTrackInput>(id_, input_.getSelectedId() - 2));
+        };
+        addAndMakeVisible(input_);
+
+        insertsView_.setViewedComponent(&insertsHolder_, false);
+        insertsView_.setScrollBarsShown(false, false, true, false);
+        insertsView_.setScrollBarThickness(4);
+        addAndMakeVisible(insertsView_);
+        addInsert_.setTooltip("Add an insert");
+        addInsert_.onClick = [this] { showAddInsertMenu(); };
+        insertsHolder_.addAndMakeVisible(addInsert_);
+        addSend_.setTooltip("Add a send");
+        addSend_.onClick = [this] { showAddSendMenu(); };
+        addAndMakeVisible(addSend_);
+
+        pan_.setRange(-1.0, 1.0, 0.0);
+        pan_.setShowValue(true);
         pan_.setTooltip("Pan");
+        pan_.format = [](double v) { return panText(v); };
         pan_.onDragStart = [this]
         {
             if (owner_.onGestureBegin)
@@ -142,52 +385,23 @@ public:
             if (owner_.onGestureEnd)
                 owner_.onGestureEnd();
         };
-        pan_.onValueChange = [this]
+        pan_.onValueChanged = [this](double v)
         {
             if (!updating_)
-                owner_.onCommand(
-                    std::make_unique<core::SetTrackPan>(id_, static_cast<float>(pan_.getValue())));
+                owner_.onCommand(std::make_unique<core::SetTrackPan>(id_, static_cast<float>(v)));
         };
         addAndMakeVisible(pan_);
 
-        fader_.setSliderStyle(juce::Slider::LinearVertical);
-        fader_.setRange(minFaderDb, maxFaderDb, 0.1);
-        fader_.setSkewFactorFromMidPoint(-12.0);
-        fader_.setDoubleClickReturnValue(true, 0.0);
-        fader_.setTextBoxStyle(juce::Slider::TextBoxBelow, false, 56, 18);
-        fader_.textFromValueFunction = [](double v) { return dbText(v); };
-        fader_.valueFromTextFunction = [](const juce::String& t)
-        { return t.containsIgnoreCase("inf") ? minFaderDb : t.getDoubleValue(); };
-        fader_.onDragStart = [this]
+        const auto toggle = [this](juce::TextButton& b,
+                                   const char* text,
+                                   const char* semantic,
+                                   const char* tip,
+                                   auto makeCommand)
         {
-            if (owner_.onGestureBegin)
-                owner_.onGestureBegin("Fader");
-        };
-        fader_.onDragEnd = [this]
-        {
-            if (owner_.onGestureEnd)
-                owner_.onGestureEnd();
-        };
-        fader_.onValueChange = [this]
-        {
-            if (updating_)
-                return;
-            const float gain = dbToGain(fader_.getValue());
-            // In a group the move is relative: every member scales by the same ratio.
-            // A member sitting at -inf has no ratio, so it moves alone.
-            if (group_ != core::invalidId && currentGain_ > 1.0e-6f)
-                owner_.onCommand(std::make_unique<core::SetGroupGain>(group_, gain / currentGain_));
-            else
-                owner_.onCommand(std::make_unique<core::SetTrackGain>(id_, gain));
-        };
-        addAndMakeVisible(fader_);
-
-        const auto toggle = [this](juce::TextButton& b, const char* text, juce::Colour on, auto makeCommand)
-        {
-            b.setButtonText(text);
+            b.setButtonText(juce::String::fromUTF8(text));
             b.setClickingTogglesState(true);
-            b.setColour(juce::TextButton::buttonOnColourId, on);
-            b.setColour(juce::TextButton::textColourOnId, theme_.colours.accentText);
+            b.getProperties().set(AuralLookAndFeel::propertySemantic, semantic);
+            b.setTooltip(tip);
             b.onClick = [this, &b, makeCommand]
             {
                 if (!updating_)
@@ -197,7 +411,8 @@ public:
         };
         toggle(mute_,
                "M",
-               theme_.colours.warning,
+               "mute",
+               "Mute",
                [](core::Id id, core::Id group, bool on) -> std::unique_ptr<core::Command>
                {
                    if (group != core::invalidId)
@@ -206,19 +421,57 @@ public:
                });
         toggle(solo_,
                "S",
-               theme_.colours.success,
+               "solo",
+               "Solo",
                [](core::Id id, core::Id group, bool on) -> std::unique_ptr<core::Command>
                {
                    if (group != core::invalidId)
                        return std::make_unique<core::SetGroupSolo>(group, on);
                    return std::make_unique<core::SetTrackSolo>(id, on);
                });
+        toggle(arm_,
+               "R",
+               "arm",
+               "Arm for recording",
+               [](core::Id id, core::Id, bool on) -> std::unique_ptr<core::Command>
+               { return std::make_unique<core::SetTrackArmed>(id, on); });
+        arm_.getProperties().set(AuralLookAndFeel::propertyHardOn, true);
         toggle(phase_,
                "\xC3\x98",
-               theme_.colours.accent,
+               "monitor",
+               "Phase invert",
                [](core::Id id, core::Id, bool on) -> std::unique_ptr<core::Command>
                { return std::make_unique<core::SetPhaseInvert>(id, on); });
-        phase_.setButtonText(juce::String::fromUTF8("\xC3\x98"));
+        phase_.getProperties().set(AuralLookAndFeel::propertySemantic, "phase");
+
+        fader_.setMaxDb(static_cast<float>(maxFaderDb));
+        fader_.onDragStart = [this]
+        {
+            breakLink_ = juce::ModifierKeys::getCurrentModifiers().isAltDown();
+            if (owner_.onGestureBegin)
+                owner_.onGestureBegin("Fader");
+        };
+        fader_.onDragEnd = [this]
+        {
+            breakLink_ = false;
+            if (owner_.onGestureEnd)
+                owner_.onGestureEnd();
+        };
+        fader_.onGainChanged = [this](float gain) { gainChanged(gain); };
+        addAndMakeVisible(fader_);
+        addAndMakeVisible(meter_);
+
+        value_.setRange(minFaderDb, maxFaderDb, 0.1);
+        value_.setDecimals(1);
+        value_.setUnit("dB");
+        value_.format = [](double v) { return dbText(v); };
+        value_.parse = [](const juce::String& t)
+        { return t.containsIgnoreCase("inf") ? minFaderDb : t.getDoubleValue(); };
+        value_.setTooltip("Gain");
+        value_.onDragStart = fader_.onDragStart;
+        value_.onDragEnd = fader_.onDragEnd;
+        value_.onValueChanged = [this](double db) { gainChanged(dbToGain(db)); };
+        addAndMakeVisible(value_);
 
         output_.setTooltip("Output");
         output_.onChange = [this]
@@ -232,45 +485,73 @@ public:
             owner_.onCommand(std::make_unique<core::SetOutputBus>(id_, bus));
         };
         addAndMakeVisible(output_);
-
-        sends_.setButtonText("Sends");
-        sends_.onClick = [this] { showSendsMenu(); };
-        addAndMakeVisible(sends_);
-        inserts_.setButtonText("Inserts");
-        inserts_.onClick = [this] { showInsertsMenu(); };
-        addAndMakeVisible(inserts_);
-        groupButton_.setTooltip("Fader group");
-        groupButton_.onClick = [this] { showGroupMenu(); };
-        addAndMakeVisible(groupButton_);
-        addAndMakeVisible(meter_);
     }
 
     core::Id id() const noexcept { return id_; }
     int meterSlot() const noexcept { return meterSlot_; }
+    bool isBus() const noexcept { return isBus_; }
 
-    void setChannel(const core::Channel& channel, bool isBus, const core::Project& project, int slot)
+    void
+    setChannel(const core::Channel& channel, bool isBus, const core::Project& project, int slot, int index)
     {
         const juce::ScopedValueSetter<bool> guard(updating_, true);
         id_ = channel.id;
         isBus_ = isBus;
         meterSlot_ = slot;
-        colour_ = channel.colour != 0 ? juce::Colour(channel.colour)
-                                      : (isBus ? theme_.colours.warning : theme_.colours.accent);
-        name_.setText(channel.name.empty() ? (isBus ? "Bus" : "Track") : channel.name,
-                      juce::dontSendNotification);
-        pan_.setValue(channel.pan, juce::dontSendNotification);
-        currentGain_ = channel.gain;
-        fader_.setValue(gainToDb(channel.gain), juce::dontSendNotification);
+        const auto* track = isBus ? nullptr : project.findTrack(channel.id);
+        midi_ = track != nullptr && track->isMidi();
+        aux_ = track != nullptr && track->isAux();
+        colour_ = isBus ? theme_.track.forBus(channel.colour) : theme_.track.forTrack(channel.colour, index);
+        fader_.setTrackColour(colour_);
         group_ = channel.group;
         const auto* group = project.findGroup(channel.group);
-        groupButton_.setButtonText(group != nullptr ? juce::String(group->name) : juce::String("Group"));
-        groupButton_.setColour(juce::TextButton::buttonColourId,
-                               group != nullptr && group->colour != 0
-                                   ? juce::Colour(group->colour).withAlpha(0.35f)
-                                   : theme_.colours.surface);
+        int groupNumber = 0;
+        for (size_t i = 0; i < project.groups.size(); ++i)
+            if (project.groups[i].id == channel.group)
+                groupNumber = static_cast<int>(i) + 1;
+        cap_.set(
+            juce::String::fromUTF8(channel.name.empty() ? (isBus ? "Bus" : "Track") : channel.name.c_str()),
+            colour_,
+            id_ == owner_.selected_,
+            groupNumber,
+            group != nullptr && group->colour != 0 ? juce::Colour(group->colour) : theme_.colours.accent);
+        pan_.setValue(channel.pan, juce::dontSendNotification);
+        currentGain_ = channel.gain;
+        fader_.setGain(channel.gain, juce::dontSendNotification);
+        value_.setValue(gainToDb(channel.gain), juce::dontSendNotification);
         mute_.setToggleState(channel.mute, juce::dontSendNotification);
         solo_.setToggleState(channel.solo, juce::dontSendNotification);
         phase_.setToggleState(channel.phaseInvert, juce::dontSendNotification);
+        arm_.setVisible(track != nullptr && !aux_);
+        arm_.setToggleState(track != nullptr && track->armed, juce::dontSendNotification);
+
+        // The input (tracks only): audio inputs or MIDI inputs.
+        input_.setVisible(track != nullptr && !aux_);
+        input_.clear(juce::dontSendNotification);
+        if (track != nullptr && midi_)
+        {
+            input_.addItem("All MIDI", 1);
+            int selected = 1;
+            for (size_t i = 0; i < owner_.midiInputNames_.size(); ++i)
+            {
+                input_.addItem(juce::String::fromUTF8(owner_.midiInputNames_[i].c_str()),
+                               static_cast<int>(i) + 2);
+                if (owner_.midiInputNames_[i] == track->midiInput)
+                    selected = static_cast<int>(i) + 2;
+            }
+            input_.setSelectedId(selected, juce::dontSendNotification);
+        }
+        else if (track != nullptr)
+        {
+            input_.addItem("No input", 1);
+            for (size_t i = 0; i < owner_.inputNames_.size(); ++i)
+                input_.addItem("In " + juce::String(static_cast<int>(i) + 1), static_cast<int>(i) + 2);
+            input_.setSelectedId(track->inputChannel >= 0 &&
+                                         static_cast<size_t>(track->inputChannel) < owner_.inputNames_.size()
+                                     ? track->inputChannel + 2
+                                     : 1,
+                                 juce::dontSendNotification);
+        }
 
         busIds_.clear();
         output_.clear(juce::dontSendNotification);
@@ -278,10 +559,11 @@ public:
         int id = 2;
         for (const auto& b : project.buses)
         {
-            if (project.wouldCycle(channel.id, b.id))
-                continue; // itself, or a bus that already feeds this one
             busIds_.push_back(b.id);
-            output_.addItem(b.name.empty() ? "Bus" : b.name, id++);
+            output_.addItem(juce::String::fromUTF8(b.name.empty() ? "Bus" : b.name.c_str()), id);
+            // Itself, or a bus that already feeds this one, would make a loop: greyed.
+            output_.setItemEnabled(id, !project.wouldCycle(channel.id, b.id));
+            ++id;
         }
         int selected = 1;
         for (size_t i = 0; i < busIds_.size(); ++i)
@@ -289,56 +571,272 @@ public:
                 selected = static_cast<int>(i) + 2;
         output_.setSelectedId(selected, juce::dontSendNotification);
 
+        // Insert slots.
+        while (inserts_.size() > channel.inserts.size())
+            inserts_.pop_back();
+        while (inserts_.size() < channel.inserts.size())
+        {
+            auto made = std::make_unique<InsertSlot>(theme_);
+            insertsHolder_.addAndMakeVisible(*made);
+            inserts_.push_back(std::move(made));
+        }
+        for (size_t i = 0; i < channel.inserts.size(); ++i)
+        {
+            const auto& insert = channel.inserts[i];
+            const core::Id insertId = insert.id;
+            juce::String badge;
+            if (hosting::PluginRegistry::isHostedType(insert.type))
+                badge = insert.type.rfind("clap:", 0) == 0 ? "CLAP" : "VST3";
+            inserts_[i]->set(
+                juce::String::fromUTF8(owner_.insertDisplayName(insert.type).c_str()), badge, insert.bypass);
+            inserts_[i]->onOpen = [this, insertId] { owner_.openInsertEditor(id_, insertId); };
+            inserts_[i]->onBypass = [this, insertId]
+            {
+                if (const auto* ch = owner_.project_ != nullptr ? owner_.project_->findChannel(id_) : nullptr)
+                    if (const auto* ins = ch->findInsert(insertId))
+                        owner_.onCommand(
+                            std::make_unique<core::SetInsertBypass>(id_, insertId, !ins->bypass));
+            };
+            inserts_[i]->onMenu = [this, insertId] { showInsertMenu(insertId); };
+            inserts_[i]->onReorder = [this, insertId](juce::Point<int> screen, bool released)
+            { reorderInsert(insertId, screen, released); };
+        }
         insertCount_ = static_cast<int>(channel.inserts.size());
-        inserts_.setButtonText(insertCount_ > 0 ? "Inserts (" + juce::String(insertCount_) + ")" : "Inserts");
+
+        // Send rows.
+        while (sends_.size() > channel.sends.size())
+            sends_.pop_back();
+        while (sends_.size() < channel.sends.size())
+        {
+            auto row = std::make_unique<SendRow>(theme_);
+            addAndMakeVisible(*row);
+            sends_.push_back(std::move(row));
+        }
+        for (size_t i = 0; i < channel.sends.size(); ++i)
+        {
+            const auto& send = channel.sends[i];
+            const auto* bus = project.findBus(send.bus);
+            const core::Id busId = send.bus;
+            const bool pre = send.preFader;
+            const float level = send.level;
+            sends_[i]->set(
+                juce::String::fromUTF8(bus != nullptr && !bus->name.empty() ? bus->name.c_str() : "Bus"),
+                level,
+                pre);
+            sends_[i]->onLevel = [this, busId, pre](float value)
+            { owner_.onCommand(std::make_unique<core::SetSend>(id_, busId, value, pre)); };
+            sends_[i]->onTogglePre = [this, busId, level, pre]
+            { owner_.onCommand(std::make_unique<core::SetSend>(id_, busId, level, !pre)); };
+            sends_[i]->onMenu = [this, busId]
+            {
+                juce::PopupMenu menu;
+                menu.addItem(1, "Remove send");
+                juce::Component::SafePointer<Strip> safe(this);
+                menu.showMenuAsync(juce::PopupMenu::Options(),
+                                   [safe, busId](int choice)
+                                   {
+                                       if (safe != nullptr && choice == 1)
+                                           safe->owner_.onCommand(
+                                               std::make_unique<core::RemoveSend>(safe->id_, busId));
+                                   });
+            };
+            sends_[i]->onGestureBegin = [this]
+            {
+                if (owner_.onGestureBegin)
+                    owner_.onGestureBegin("Send level");
+            };
+            sends_[i]->onGestureEnd = [this]
+            {
+                if (owner_.onGestureEnd)
+                    owner_.onGestureEnd();
+            };
+        }
         sendCount_ = static_cast<int>(channel.sends.size());
-        sends_.setButtonText(sendCount_ > 0 ? "Sends (" + juce::String(sendCount_) + ")" : "Sends");
-        sends_.setEnabled(!busIds_.empty());
+        addSend_.setEnabled(!busIds_.empty());
+        feedsSoloedBus_ = false;
+        for (const auto& b : project.buses)
+            if (b.solo && (channel.outputBus == b.id ||
+                           std::any_of(channel.sends.begin(),
+                                       channel.sends.end(),
+                                       [&](const core::Send& s) { return s.bus == b.id; })))
+                feedsSoloedBus_ = true;
+        resized();
         repaint();
     }
 
-    void pushMeter(const rt::MeterBlock::Reading& r) { meter_.push(r); }
+    void pushMeter(const rt::MeterBlock::Reading& r, double elapsedMs)
+    {
+        const float peaks[2] = {r.peakLeft, r.peakRight};
+        meter_.push(peaks, 2, elapsedMs);
+    }
 
     void paint(juce::Graphics& g) override
     {
         const auto& c = theme_.colours;
-        g.fillAll(c.surface);
-        g.setColour(c.border);
-        g.fillRect(getLocalBounds().removeFromRight(1));
-        g.setColour(colour_);
-        g.fillRect(getLocalBounds().removeFromTop(4));
+        g.fillAll(c.surface0);
+        auto bounds = getLocalBounds().toFloat().reduced(0.0f, 0.5f);
+        g.setColour(c.surface1);
+        g.fillRoundedRectangle(bounds, theme_.radius.sm);
+        if (id_ == owner_.selected_)
+        {
+            g.setColour(c.accent);
+            g.drawRoundedRectangle(bounds.reduced(0.5f), theme_.radius.sm, 1.0f);
+        }
+        else if (feedsSoloedBus_)
+        {
+            g.setColour(c.solo.withAlpha(0.5f));
+            g.drawRoundedRectangle(bounds.reduced(0.5f), theme_.radius.sm, 1.0f);
+        }
+        // Section labels and the collapsed summaries.
+        g.setFont(theme_.caption());
+        g.setColour(c.textTertiary);
+        if (collapsed_)
+        {
+            g.drawText(juce::String(insertCount_) + (insertCount_ == 1 ? " insert" : " inserts"),
+                       insertsSummary_,
+                       juce::Justification::centredLeft);
+            g.drawText(juce::String(sendCount_) + (sendCount_ == 1 ? " send" : " sends"),
+                       sendsSummary_,
+                       juce::Justification::centredLeft);
+        }
+        if (hasKeyboardFocus(false))
+            if (auto* laf = dynamic_cast<AuralLookAndFeel*>(&getLookAndFeel()))
+                laf->drawFocusRing(g, *this, bounds.reduced(1.0f), theme_.radius.sm);
+        if (reorderLineY_ >= 0)
+        {
+            g.setColour(c.accent);
+            g.fillRect(insertsView_.getX(), reorderLineY_ - 1, insertsView_.getWidth(), 2);
+        }
     }
 
     void resized() override
     {
-        auto area = getLocalBounds().reduced(theme_.spacing.xs);
-        area.removeFromTop(4);
-        name_.setBounds(area.removeFromTop(18));
-        area.removeFromTop(theme_.spacing.xs);
-        output_.setBounds(area.removeFromTop(22));
-        area.removeFromTop(theme_.spacing.xs);
-        sends_.setBounds(area.removeFromTop(22));
-        area.removeFromTop(theme_.spacing.xs);
-        inserts_.setBounds(area.removeFromTop(22));
-        area.removeFromTop(theme_.spacing.xs);
-        groupButton_.setBounds(area.removeFromTop(22));
-        area.removeFromTop(theme_.spacing.xs);
-        pan_.setBounds(area.removeFromTop(40).withSizeKeepingCentre(40, 40));
-        area.removeFromTop(theme_.spacing.xs);
-        auto buttons = area.removeFromTop(22);
-        const int bw = (buttons.getWidth() - 2 * theme_.spacing.xs) / 3;
-        mute_.setBounds(buttons.removeFromLeft(bw));
-        buttons.removeFromLeft(theme_.spacing.xs);
-        solo_.setBounds(buttons.removeFromLeft(bw));
-        buttons.removeFromLeft(theme_.spacing.xs);
-        phase_.setBounds(buttons);
-        area.removeFromTop(theme_.spacing.sm);
-        meter_.setBounds(area.removeFromRight(14).withTrimmedBottom(20));
-        area.removeFromRight(theme_.spacing.xs);
-        fader_.setBounds(area);
+        const int pad = theme_.spacing.xs;
+        const int control = theme_.sizes.controlCompact;
+        auto area = getLocalBounds().reduced(pad, 0);
+        cap_.setBounds(getLocalBounds().withHeight(control));
+        area.removeFromTop(control + pad);
+        if (input_.isVisible())
+        {
+            input_.setBounds(area.removeFromTop(control));
+            area.removeFromTop(pad);
+        }
+        // The fixed bottom: pan, toggles, value, output; the fader takes the rest
+        // between 120 and 200 px, and below 120 the sections collapse.
+        const int bottom = theme_.sizes.knob + 16 + pad + control + pad + pad + control + pad + control + pad;
+        const int insertsFull = std::min(insertCount_ + 1, maxVisibleSlots) * slotHeight + 4;
+        const int sendsFull = (sendCount_ + 1) * slotHeight + 4;
+        int faderTravel = area.getHeight() - bottom - insertsFull - sendsFull - 2 * pad;
+        collapsed_ = faderTravel < minFaderTravel;
+        const int insertsH = collapsed_ ? slotHeight : insertsFull;
+        const int sendsH = collapsed_ ? slotHeight : sendsFull;
+        faderTravel = std::clamp(area.getHeight() - bottom - insertsH - sendsH - 2 * pad, 24, maxFaderTravel);
+
+        auto insertsArea = area.removeFromTop(insertsH);
+        area.removeFromTop(pad);
+        auto sendsArea = area.removeFromTop(sendsH);
+        area.removeFromTop(pad);
+        insertsSummary_ = insertsArea.withTrimmedLeft(pad);
+        sendsSummary_ = sendsArea.withTrimmedLeft(pad);
+        insertsView_.setVisible(!collapsed_);
+        addSend_.setVisible(!collapsed_);
+        for (auto& s : sends_)
+            s->setVisible(!collapsed_);
+        if (!collapsed_)
+        {
+            insertsView_.setBounds(insertsArea.reduced(0, 2));
+            insertsHolder_.setSize(insertsView_.getWidth(), (insertCount_ + 1) * slotHeight);
+            int y = 0;
+            for (auto& slot : inserts_)
+            {
+                slot->setBounds(0, y, insertsHolder_.getWidth(), slotHeight - 1);
+                y += slotHeight;
+            }
+            addInsert_.setBounds(0, y, insertsHolder_.getWidth(), slotHeight - 1);
+            sendsArea.reduce(0, 2);
+            for (auto& row : sends_)
+                row->setBounds(sendsArea.removeFromTop(slotHeight).withTrimmedBottom(1));
+            addSend_.setBounds(sendsArea.removeFromTop(slotHeight).withTrimmedBottom(1));
+        }
+
+        auto faderArea = area.removeFromTop(faderTravel + 2 * pad);
+        auto meterArea = faderArea.removeFromRight(meter_.barsWidth());
+        meter_.setBounds(meterArea.withTrimmedTop(pad));
+        faderArea.removeFromRight(pad);
+        fader_.setBounds(faderArea);
+        area.removeFromTop(pad);
+        pan_.setBounds(area.removeFromTop(theme_.sizes.knob + 16)
+                           .withSizeKeepingCentre(theme_.sizes.knob + 16, theme_.sizes.knob + 16));
+        area.removeFromTop(pad);
+        auto toggles = area.removeFromTop(control);
+        const int count = arm_.isVisible() ? 4 : 3;
+        const int tw = (toggles.getWidth() - (count - 1) * theme_.spacing.xxs) / count;
+        mute_.setBounds(toggles.removeFromLeft(tw));
+        toggles.removeFromLeft(theme_.spacing.xxs);
+        solo_.setBounds(toggles.removeFromLeft(tw));
+        toggles.removeFromLeft(theme_.spacing.xxs);
+        if (arm_.isVisible())
+        {
+            arm_.setBounds(toggles.removeFromLeft(tw));
+            toggles.removeFromLeft(theme_.spacing.xxs);
+        }
+        phase_.setBounds(toggles);
+        area.removeFromTop(pad);
+        value_.setBounds(area.removeFromTop(control));
+        area.removeFromTop(pad);
+        output_.setBounds(area.removeFromTop(control));
     }
 
+    bool keyPressed(const juce::KeyPress& key) override
+    {
+        if (key == juce::KeyPress('m') || key == juce::KeyPress('M'))
+            mute_.triggerClick();
+        else if (key == juce::KeyPress('s') || key == juce::KeyPress('S'))
+            solo_.triggerClick();
+        else if ((key == juce::KeyPress('r') || key == juce::KeyPress('R')) && arm_.isVisible())
+            arm_.triggerClick();
+        else
+            return fader_.keyPressed(key);
+        return true;
+    }
+    void focusGained(FocusChangeType) override { repaint(); }
+    void focusLost(FocusChangeType) override { repaint(); }
+
 private:
+    void gainChanged(float gain)
+    {
+        if (updating_)
+            return;
+        // In a group the move is relative: every member scales by the same ratio.
+        // A member sitting at -inf has no ratio, so it moves alone; Alt breaks the link.
+        if (group_ != core::invalidId && currentGain_ > 1.0e-6f && !breakLink_)
+            owner_.onCommand(std::make_unique<core::SetGroupGain>(group_, gain / currentGain_));
+        else
+            owner_.onCommand(std::make_unique<core::SetTrackGain>(id_, gain));
+    }
+
+    void reorderInsert(core::Id insertId, juce::Point<int> screen, bool released)
+    {
+        const auto local = insertsHolder_.getLocalPoint(nullptr, screen);
+        const int index = std::clamp(
+            static_cast<int>(std::lround(static_cast<double>(local.y) / slotHeight)), 0, insertCount_);
+        if (!released)
+        {
+            reorderLineY_ = getLocalPoint(&insertsHolder_, juce::Point<int>(0, index * slotHeight)).y;
+            repaint();
+            return;
+        }
+        reorderLineY_ = -1;
+        repaint();
+        const auto* channel = owner_.project_ != nullptr ? owner_.project_->findChannel(id_) : nullptr;
+        if (channel == nullptr)
+            return;
+        const int from = channel->insertIndex(insertId);
+        const int to = index > from ? index - 1 : index;
+        if (from >= 0 && to != from)
+            owner_.onCommand(std::make_unique<core::MoveInsert>(id_, insertId, to));
+    }
+
     void showGroupMenu()
     {
         if (owner_.project_ == nullptr)
@@ -347,18 +845,19 @@ private:
         juce::PopupMenu menu;
         std::vector<std::function<void()>> actions;
         int item = 1;
-        menu.addItem(item++, "None", true, group_ == core::invalidId);
+        juce::PopupMenu groups;
+        groups.addItem(item++, "None", true, group_ == core::invalidId);
         actions.push_back(
             [this] { owner_.onCommand(std::make_unique<core::SetChannelGroup>(id_, core::invalidId)); });
         for (const auto& g : project.groups)
         {
-            menu.addItem(item++, g.name, true, g.id == group_);
+            groups.addItem(item++, g.name, true, g.id == group_);
             const core::Id groupId = g.id;
             actions.push_back([this, groupId]
                               { owner_.onCommand(std::make_unique<core::SetChannelGroup>(id_, groupId)); });
         }
-        menu.addSeparator();
-        menu.addItem(item++, "New group");
+        groups.addSeparator();
+        groups.addItem(item++, "New group");
         actions.push_back(
             [this]
             {
@@ -372,12 +871,32 @@ private:
             });
         if (group_ != core::invalidId)
         {
-            menu.addItem(item++, "Remove group");
+            groups.addItem(item++, "Remove group");
             const core::Id groupId = group_;
             actions.push_back([this, groupId]
                               { owner_.onCommand(std::make_unique<core::RemoveGroup>(groupId)); });
         }
-        menu.showMenuAsync(juce::PopupMenu::Options().withTargetComponent(groupButton_),
+        menu.addSubMenu("Fader group", groups);
+        juce::PopupMenu colours;
+        const auto& palette = theme_.track.palette;
+        for (size_t i = 0; i < palette.size(); ++i)
+        {
+            colours.addItem(item++, palette[i].name);
+            const auto argb = palette[i].value.getARGB();
+            actions.push_back([this, argb]
+                              { owner_.onCommand(std::make_unique<core::SetColour>(id_, argb)); });
+        }
+        colours.addSeparator();
+        colours.addItem(item++, "Default");
+        actions.push_back([this] { owner_.onCommand(std::make_unique<core::SetColour>(id_, 0u)); });
+        menu.addSubMenu("Colour", colours);
+        if (isBus_)
+        {
+            menu.addSeparator();
+            menu.addItem(item++, "Remove bus");
+            actions.push_back([this] { owner_.onCommand(std::make_unique<core::RemoveBus>(id_)); });
+        }
+        menu.showMenuAsync(juce::PopupMenu::Options().withTargetComponent(cap_),
                            [actions](int chosen)
                            {
                                if (chosen > 0 && static_cast<size_t>(chosen) <= actions.size())
@@ -385,117 +904,129 @@ private:
                            });
     }
 
-    void showInsertsMenu()
+    void showInsertMenu(core::Id insertId)
     {
         if (owner_.project_ == nullptr)
             return;
         const auto* channel = owner_.project_->findChannel(id_);
-        if (channel == nullptr)
+        const auto* insert = channel != nullptr ? channel->findInsert(insertId) : nullptr;
+        if (insert == nullptr)
             return;
         juce::PopupMenu menu;
         std::vector<std::function<void()>> actions;
         int item = 1;
-        for (const auto& insert : channel->inserts)
+        menu.addItem(item++, "Open");
+        actions.push_back([this, insertId] { owner_.openInsertEditor(id_, insertId); });
+        menu.addItem(item++, "Bypass", true, insert->bypass);
+        const bool bypass = insert->bypass;
+        actions.push_back(
+            [this, insertId, bypass]
+            { owner_.onCommand(std::make_unique<core::SetInsertBypass>(id_, insertId, !bypass)); });
+        const int index = channel->insertIndex(insertId);
+        menu.addItem(item++, "Move up", index > 0);
+        actions.push_back(
+            [this, insertId, index]
+            { owner_.onCommand(std::make_unique<core::MoveInsert>(id_, insertId, index - 1)); });
+        menu.addItem(item++, "Move down", index + 1 < static_cast<int>(channel->inserts.size()));
+        actions.push_back(
+            [this, insertId, index]
+            { owner_.onCommand(std::make_unique<core::MoveInsert>(id_, insertId, index + 1)); });
+        juce::PopupMenu mix;
+        for (const int percent : {0, 25, 50, 75, 100})
         {
-            juce::PopupMenu sub;
-            sub.addItem(item++, "Edit...");
-            const core::Id insertId = insert.id;
-            actions.push_back([this, insertId] { owner_.openInsertEditor(id_, insertId); });
-            sub.addItem(item++, "Bypass", true, insert.bypass);
-            const bool bypass = insert.bypass;
+            mix.addItem(
+                item++, juce::String(percent) + "%", true, std::abs(insert->mix - percent / 100.0f) < 0.01f);
             actions.push_back(
-                [this, insertId, bypass]
-                { owner_.onCommand(std::make_unique<core::SetInsertBypass>(id_, insertId, !bypass)); });
-            const int index = channel->insertIndex(insertId);
-            sub.addItem(item++, "Move up", index > 0);
-            actions.push_back(
-                [this, insertId, index]
-                { owner_.onCommand(std::make_unique<core::MoveInsert>(id_, insertId, index - 1)); });
-            sub.addItem(item++, "Move down", index + 1 < static_cast<int>(channel->inserts.size()));
-            actions.push_back(
-                [this, insertId, index]
-                { owner_.onCommand(std::make_unique<core::MoveInsert>(id_, insertId, index + 1)); });
-            // Key (sidechain) source, for inserts that take one: tracks for anyone,
-            // buses too when this channel is a bus.
-            const auto live = owner_.liveInsert ? owner_.liveInsert(insertId) : nullptr;
-            if (live != nullptr && live->acceptsSidechain())
-            {
-                juce::PopupMenu key;
-                key.addItem(item++, "None", true, insert.sidechain == core::invalidId);
-                actions.push_back(
-                    [this, insertId]
-                    {
-                        owner_.onCommand(
-                            std::make_unique<core::SetInsertSidechain>(id_, insertId, core::invalidId));
-                    });
-                const auto& project = *owner_.project_;
-                const auto offer = [&](const core::Channel& source, const juce::String& prefix)
-                {
-                    if (source.id == id_)
-                        return;
-                    // A source this channel feeds (directly, through buses or through
-                    // another key) would make a loop: shown, but greyed.
-                    key.addItem(item++,
-                                prefix + juce::String::fromUTF8(source.name.c_str()),
-                                !project.keyWouldCycle(id_, source.id),
-                                insert.sidechain == source.id);
-                    const core::Id sourceId = source.id;
-                    actions.push_back(
-                        [this, insertId, sourceId]
-                        {
-                            owner_.onCommand(
-                                std::make_unique<core::SetInsertSidechain>(id_, insertId, sourceId));
-                        });
-                };
-                for (const auto& t : project.tracks)
-                    offer(t, "");
-                if (isBus_)
-                    for (const auto& b : project.buses)
-                        offer(b, "Bus: ");
-                sub.addSubMenu("Sidechain", key);
-            }
-            // Extra outputs of a multi-output instrument: one aux track per pair.
-            if (live != nullptr && live->auxOutputCount() > 0 && !isBus_)
-            {
-                juce::PopupMenu outputs;
-                const auto& project = *owner_.project_;
-                for (int output = 1; output <= live->auxOutputCount(); ++output)
-                {
-                    bool exists = false;
-                    for (const auto& t : project.tracks)
-                        if (t.isAux() && t.auxTrack == id_ && t.auxInsert == insertId &&
-                            t.auxOutput == output)
-                            exists = true;
-                    outputs.addItem(item++, "Track for output " + juce::String(output + 1), !exists, exists);
-                    const std::string name = channel->name;
-                    actions.push_back(
-                        [this, insertId, output, name]
-                        {
-                            core::Track aux;
-                            aux.kind = core::TrackKind::aux;
-                            aux.name = name + " out " + std::to_string(output + 1);
-                            aux.auxTrack = id_;
-                            aux.auxInsert = insertId;
-                            aux.auxOutput = output;
-                            owner_.onCommand(std::make_unique<core::AddTrack>(aux));
-                        });
-                }
-                sub.addSubMenu("Outputs", outputs);
-            }
-            sub.addItem(item++, "Remove");
-            actions.push_back([this, insertId]
-                              { owner_.onCommand(std::make_unique<core::RemoveInsert>(id_, insertId)); });
-            menu.addSubMenu(juce::String::fromUTF8(owner_.insertDisplayName(insert.type).c_str()) +
-                                (insert.bypass ? "  (bypassed)" : ""),
-                            sub);
+                [this, insertId, percent]
+                { owner_.onCommand(std::make_unique<core::SetInsertMix>(id_, insertId, percent / 100.0f)); });
         }
-        if (!channel->inserts.empty())
-            menu.addSeparator();
-        juce::PopupMenu add;
+        menu.addSubMenu("Wet/dry", mix);
+        // Key (sidechain) source, for inserts that take one: tracks for anyone,
+        // buses too when this channel is a bus.
+        const auto live = owner_.liveInsert ? owner_.liveInsert(insertId) : nullptr;
+        if (live != nullptr && live->acceptsSidechain())
+        {
+            juce::PopupMenu key;
+            key.addItem(item++, "None", true, insert->sidechain == core::invalidId);
+            actions.push_back(
+                [this, insertId]
+                {
+                    owner_.onCommand(
+                        std::make_unique<core::SetInsertSidechain>(id_, insertId, core::invalidId));
+                });
+            const auto& project = *owner_.project_;
+            const auto offer = [&](const core::Channel& source, const juce::String& prefix)
+            {
+                if (source.id == id_)
+                    return;
+                // A source this channel feeds (directly, through buses or through
+                // another key) would make a loop: shown, but greyed.
+                key.addItem(item++,
+                            prefix + juce::String::fromUTF8(source.name.c_str()),
+                            !project.keyWouldCycle(id_, source.id),
+                            insert->sidechain == source.id);
+                const core::Id sourceId = source.id;
+                actions.push_back(
+                    [this, insertId, sourceId]
+                    {
+                        owner_.onCommand(std::make_unique<core::SetInsertSidechain>(id_, insertId, sourceId));
+                    });
+            };
+            for (const auto& t : project.tracks)
+                offer(t, "");
+            if (isBus_)
+                for (const auto& b : project.buses)
+                    offer(b, "Bus: ");
+            menu.addSubMenu("Sidechain", key);
+        }
+        // Extra outputs of a multi-output instrument: one aux track per pair.
+        if (live != nullptr && live->auxOutputCount() > 0 && !isBus_)
+        {
+            juce::PopupMenu outputs;
+            const auto& project = *owner_.project_;
+            for (int output = 1; output <= live->auxOutputCount(); ++output)
+            {
+                bool exists = false;
+                for (const auto& t : project.tracks)
+                    if (t.isAux() && t.auxTrack == id_ && t.auxInsert == insertId && t.auxOutput == output)
+                        exists = true;
+                outputs.addItem(item++, "Track for output " + juce::String(output + 1), !exists, exists);
+                const std::string name = channel->name;
+                actions.push_back(
+                    [this, insertId, output, name]
+                    {
+                        core::Track aux;
+                        aux.kind = core::TrackKind::aux;
+                        aux.name = name + " out " + std::to_string(output + 1);
+                        aux.auxTrack = id_;
+                        aux.auxInsert = insertId;
+                        aux.auxOutput = output;
+                        owner_.onCommand(std::make_unique<core::AddTrack>(aux));
+                    });
+            }
+            menu.addSubMenu("Outputs", outputs);
+        }
+        menu.addSeparator();
+        menu.addItem(item++, "Remove");
+        actions.push_back([this, insertId]
+                          { owner_.onCommand(std::make_unique<core::RemoveInsert>(id_, insertId)); });
+        menu.showMenuAsync(juce::PopupMenu::Options(),
+                           [actions](int result)
+                           {
+                               if (result >= 1 && static_cast<size_t>(result) <= actions.size())
+                                   actions[static_cast<size_t>(result) - 1]();
+                           });
+    }
+
+    void showAddInsertMenu()
+    {
+        juce::PopupMenu menu;
+        std::vector<std::function<void()>> actions;
+        int item = 1;
         // Built-ins first, then every scanned plugin by name, then the scanner.
         for (const auto& type : plugins::BuiltInFactory().typeNames())
         {
-            add.addItem(item++, plugins::BuiltInFactory::displayName(type));
+            menu.addItem(item++, plugins::BuiltInFactory::displayName(type));
             actions.push_back(
                 [this, type]
                 {
@@ -507,16 +1038,16 @@ private:
         }
         if (owner_.host_ != nullptr && !owner_.host_->registry().plugins().empty())
         {
-            add.addSeparator();
+            menu.addSeparator();
             for (const auto& plugin : owner_.host_->registry().plugins())
             {
-                add.addItem(item++,
-                            juce::String::fromUTF8(plugin.name.c_str()) +
-                                (plugin.manufacturer.empty()
-                                     ? juce::String()
-                                     : "  (" + juce::String::fromUTF8(plugin.manufacturer.c_str()) + ")") +
-                                "  [" + juce::String(plugin.format) +
-                                (plugin.isInstrument ? ", instrument" : "") + "]");
+                menu.addItem(item++,
+                             juce::String::fromUTF8(plugin.name.c_str()) +
+                                 (plugin.manufacturer.empty()
+                                      ? juce::String()
+                                      : "  (" + juce::String::fromUTF8(plugin.manufacturer.c_str()) + ")") +
+                                 "  [" + juce::String(plugin.format) +
+                                 (plugin.isInstrument ? ", instrument" : "") + "]");
                 const auto type = hosting::PluginRegistry::typeFor(plugin);
                 actions.push_back(
                     [this, type]
@@ -527,16 +1058,22 @@ private:
                     });
             }
         }
-        add.addSeparator();
-        add.addItem(item++, "Scan for plugins...");
+        menu.addSeparator();
+        menu.addItem(item++, "Scan for plugins...");
         actions.push_back(
             [this]
             {
                 if (owner_.onScanPlugins)
                     owner_.onScanPlugins();
             });
-        menu.addSubMenu("Add", add);
-        menu.showMenuAsync(juce::PopupMenu::Options().withTargetComponent(inserts_),
+        menu.addItem(item++, "Plugin browser...");
+        actions.push_back(
+            [this]
+            {
+                if (owner_.onOpenPluginBrowser)
+                    owner_.onOpenPluginBrowser();
+            });
+        menu.showMenuAsync(juce::PopupMenu::Options().withTargetComponent(addInsert_),
                            [actions](int result)
                            {
                                if (result >= 1 && static_cast<size_t>(result) <= actions.size())
@@ -544,7 +1081,7 @@ private:
                            });
     }
 
-    void showSendsMenu()
+    void showAddSendMenu()
     {
         if (owner_.project_ == nullptr)
             return;
@@ -553,46 +1090,30 @@ private:
             return;
         juce::PopupMenu menu;
         int item = 1;
-        std::vector<std::function<void()>> actions;
+        std::vector<core::Id> targets;
         for (const core::Id busId : busIds_)
         {
             if (owner_.project_->wouldCycle(id_, busId))
                 continue; // a send there would feed this channel back into itself
+            const bool has = std::any_of(channel->sends.begin(),
+                                         channel->sends.end(),
+                                         [busId](const core::Send& s) { return s.bus == busId; });
             const auto* bus = owner_.project_->findBus(busId);
-            const auto* send = const_cast<core::Channel*>(channel)->findSend(busId);
-            const juce::String busName =
-                bus != nullptr && !bus->name.empty() ? juce::String(bus->name) : "Bus";
-            juce::PopupMenu sub;
-            const bool has = send != nullptr;
-            const float level = has ? send->level : 0.0f;
-            const bool pre = has && send->preFader; // captured by value: the menu fires later
-            sub.addItem(item++, "Off", true, !has);
-            actions.push_back([this, busId]
-                              { owner_.onCommand(std::make_unique<core::RemoveSend>(id_, busId)); });
-            for (const double db : {-12.0, -6.0, 0.0})
-            {
-                const float value = dbToGain(db);
-                sub.addItem(
-                    item++, juce::String(db, 0) + " dB", true, has && std::abs(level - value) < 0.01f);
-                actions.push_back(
-                    [this, busId, value, pre]
-                    { owner_.onCommand(std::make_unique<core::SetSend>(id_, busId, value, pre)); });
-            }
-            sub.addSeparator();
-            sub.addItem(item++, "Pre-fader", has, pre);
-            actions.push_back(
-                [this, busId, has, level, pre]
-                {
-                    if (has)
-                        owner_.onCommand(std::make_unique<core::SetSend>(id_, busId, level, !pre));
-                });
-            menu.addSubMenu(busName + (has ? "  (" + dbText(gainToDb(level)) + " dB)" : ""), sub);
+            menu.addItem(
+                item++,
+                juce::String::fromUTF8(bus != nullptr && !bus->name.empty() ? bus->name.c_str() : "Bus"),
+                !has,
+                has);
+            targets.push_back(busId);
         }
-        menu.showMenuAsync(juce::PopupMenu::Options().withTargetComponent(sends_),
-                           [actions](int result)
+        juce::Component::SafePointer<Strip> safe(this);
+        menu.showMenuAsync(juce::PopupMenu::Options().withTargetComponent(addSend_),
+                           [safe, targets](int result)
                            {
-                               if (result >= 1 && static_cast<size_t>(result) <= actions.size())
-                                   actions[static_cast<size_t>(result) - 1]();
+                               if (safe != nullptr && result >= 1 &&
+                                   static_cast<size_t>(result) <= targets.size())
+                                   safe->owner_.onCommand(std::make_unique<core::SetSend>(
+                                       safe->id_, targets[static_cast<size_t>(result) - 1], 1.0f, false));
                            });
     }
 
@@ -601,18 +1122,27 @@ private:
     core::Id id_ = core::invalidId;
     core::Id group_ = core::invalidId;
     float currentGain_ = 1.0f;
-    bool isBus_ = false;
+    bool isBus_ = false, midi_ = false, aux_ = false;
     int meterSlot_ = -1;
     int sendCount_ = 0;
     int insertCount_ = 0;
-    bool updating_ = false;
+    bool updating_ = false, breakLink_ = false, collapsed_ = false, feedsSoloedBus_ = false;
+    int reorderLineY_ = -1;
     juce::Colour colour_;
     std::vector<core::Id> busIds_;
-    juce::Label name_;
-    juce::Slider pan_, fader_;
-    juce::TextButton mute_, solo_, phase_, sends_, inserts_, groupButton_;
-    juce::ComboBox output_;
-    StereoMeter meter_;
+    NameCap cap_;
+    juce::ComboBox input_, output_;
+    juce::Viewport insertsView_;
+    juce::Component insertsHolder_;
+    std::vector<std::unique_ptr<InsertSlot>> inserts_;
+    std::vector<std::unique_ptr<SendRow>> sends_;
+    AddRow addInsert_, addSend_;
+    juce::Rectangle<int> insertsSummary_, sendsSummary_;
+    Knob pan_;
+    juce::TextButton mute_, solo_, arm_, phase_;
+    Fader fader_;
+    Meter meter_;
+    NumericField value_;
 };
 
 // ----- master -------------------------------------------------------------------------------
@@ -620,87 +1150,124 @@ private:
 class MixerView::MasterStrip final : public juce::Component
 {
 public:
-    MasterStrip(MixerView& owner, const Theme& theme) : owner_(owner), theme_(theme), meter_(theme)
+    MasterStrip(MixerView& owner, const Theme& theme)
+        : owner_(owner), theme_(theme), cap_(theme), fader_(theme), meter_(theme, 2, true), value_(theme)
     {
-        name_.setText("Master", juce::dontSendNotification);
-        name_.setFont(juce::FontOptions{theme_.type.caption});
-        name_.setJustificationType(juce::Justification::centred);
-        addAndMakeVisible(name_);
-        lufs_.setFont(juce::FontOptions{theme_.type.caption});
-        lufs_.setJustificationType(juce::Justification::centred);
-        lufs_.setColour(juce::Label::textColourId, theme_.colours.textSecondary);
-        lufs_.setTooltip("Loudness, LUFS: momentary (400 ms) and short-term (3 s)");
-        addAndMakeVisible(lufs_);
-        fader_.setSliderStyle(juce::Slider::LinearVertical);
-        fader_.setRange(minFaderDb, maxFaderDb, 0.1);
-        fader_.setSkewFactorFromMidPoint(-12.0);
-        fader_.setDoubleClickReturnValue(true, 0.0);
-        fader_.setTextBoxStyle(juce::Slider::TextBoxBelow, false, 56, 18);
-        fader_.textFromValueFunction = [](double v) { return dbText(v); };
-        fader_.valueFromTextFunction = [](const juce::String& t)
-        { return t.containsIgnoreCase("inf") ? minFaderDb : t.getDoubleValue(); };
+        setOpaque(true);
+        cap_.set("Master", theme_.colours.textPrimary, false, 0, {});
+        cap_.setInterceptsMouseClicks(false, false);
+        addAndMakeVisible(cap_);
+        fader_.setMaxDb(static_cast<float>(maxFaderDb));
+        fader_.setTrackColour(theme_.colours.textPrimary);
         fader_.onDragStart = [this]
         {
             if (owner_.onGestureBegin)
-                owner_.onGestureBegin("Fader");
+                owner_.onGestureBegin("Master fader");
         };
         fader_.onDragEnd = [this]
         {
             if (owner_.onGestureEnd)
                 owner_.onGestureEnd();
         };
-        fader_.onValueChange = [this]
+        fader_.onGainChanged = [this](float gain)
         {
             if (!updating_)
-                owner_.onCommand(std::make_unique<core::SetMasterGain>(dbToGain(fader_.getValue())));
+                owner_.onCommand(std::make_unique<core::SetMasterGain>(gain));
         };
         addAndMakeVisible(fader_);
+        meter_.setShowScale(true);
         addAndMakeVisible(meter_);
+        value_.setRange(minFaderDb, maxFaderDb, 0.1);
+        value_.setDecimals(1);
+        value_.setUnit("dB");
+        value_.format = [](double v) { return dbText(v); };
+        value_.parse = [](const juce::String& t)
+        { return t.containsIgnoreCase("inf") ? minFaderDb : t.getDoubleValue(); };
+        value_.onDragStart = fader_.onDragStart;
+        value_.onDragEnd = fader_.onDragEnd;
+        value_.onValueChanged = [this](double db)
+        {
+            if (!updating_)
+                owner_.onCommand(std::make_unique<core::SetMasterGain>(dbToGain(db)));
+        };
+        addAndMakeVisible(value_);
     }
 
     void setMaster(const core::Master& master)
     {
         const juce::ScopedValueSetter<bool> guard(updating_, true);
-        fader_.setValue(gainToDb(master.gain), juce::dontSendNotification);
+        fader_.setGain(master.gain, juce::dontSendNotification);
+        value_.setValue(gainToDb(master.gain), juce::dontSendNotification);
     }
 
-    void pushMeter(const rt::MeterBlock::Reading& r) { meter_.push(r); }
+    void pushMeter(const rt::MeterBlock::Reading& r, double elapsedMs)
+    {
+        const float peaks[2] = {r.peakLeft, r.peakRight};
+        meter_.push(peaks, 2, elapsedMs);
+    }
 
     void pushLoudness(const engine::LoudnessMeter::Reading& r)
     {
-        const auto text = [](float lufs)
-        { return lufs <= -99.0f ? juce::String("-inf") : juce::String(lufs, 1); };
-        lufs_.setText("M " + text(r.momentaryLufs) + "\nS " + text(r.shortTermLufs) + "\nI " +
-                          text(r.integratedLufs),
-                      juce::dontSendNotification);
+        loudness_ = r;
+        repaint(loudnessArea_);
     }
 
     void paint(juce::Graphics& g) override
     {
-        g.fillAll(theme_.colours.surfaceRaised);
-        g.setColour(theme_.colours.border);
-        g.fillRect(getLocalBounds().removeFromLeft(1));
+        const auto& c = theme_.colours;
+        g.fillAll(c.surface0);
+        g.setColour(c.surface1);
+        g.fillRoundedRectangle(getLocalBounds().toFloat().reduced(0.0f, 0.5f), theme_.radius.sm);
+        // The loudness readout: M / S / I in value mono with the target marker by I.
+        const auto text = [](float lufs)
+        { return lufs <= -99.0f ? juce::String("-inf") : juce::String(lufs, 1); };
+        auto area = loudnessArea_;
+        g.setFont(theme_.value());
+        const int rowH = area.getHeight() / 3;
+        const auto row = [&](const char* label, float lufs, bool target)
+        {
+            auto r = area.removeFromTop(rowH);
+            g.setColour(c.textTertiary);
+            g.drawText(label, r.removeFromLeft(14), juce::Justification::centredLeft);
+            g.setColour(target && lufs > -99.0f && std::abs(lufs - theme_.meter.loudnessTargetLufs) <= 1.0f
+                            ? c.loudnessTarget
+                            : c.textSecondary);
+            g.drawText(text(lufs), r, juce::Justification::centredRight);
+        };
+        row("M", loudness_.momentaryLufs, false);
+        row("S", loudness_.shortTermLufs, false);
+        row("I", loudness_.integratedLufs, true);
     }
 
     void resized() override
     {
-        auto area = getLocalBounds().reduced(theme_.spacing.xs);
-        area.removeFromTop(4);
-        name_.setBounds(area.removeFromTop(18));
-        lufs_.setBounds(area.removeFromTop(30));
-        area.removeFromTop(theme_.spacing.xs);
-        meter_.setBounds(area.removeFromRight(18).withTrimmedBottom(20));
-        area.removeFromRight(theme_.spacing.xs);
-        fader_.setBounds(area);
+        const int pad = theme_.spacing.xs;
+        const int control = theme_.sizes.controlCompact;
+        auto area = getLocalBounds().reduced(pad, 0);
+        cap_.setBounds(getLocalBounds().withHeight(control));
+        area.removeFromTop(control + pad);
+        value_.setBounds(area.removeFromBottom(control));
+        area.removeFromBottom(pad);
+        loudnessArea_ = area.removeFromBottom(3 * (static_cast<int>(theme_.fonts.size.value) + 4));
+        area.removeFromBottom(pad);
+        auto faderArea = area.withTrimmedTop(pad).withHeight(
+            std::clamp(area.getHeight() - pad, 60, maxFaderTravel + 2 * pad));
+        auto meterArea = faderArea.removeFromRight(meter_.barsWidth() + 18);
+        meter_.setBounds(meterArea);
+        faderArea.removeFromRight(pad);
+        fader_.setBounds(faderArea);
     }
 
 private:
     MixerView& owner_;
     const Theme& theme_;
     bool updating_ = false;
-    juce::Label name_, lufs_;
-    juce::Slider fader_;
-    StereoMeter meter_;
+    NameCap cap_;
+    Fader fader_;
+    Meter meter_;
+    NumericField value_;
+    juce::Rectangle<int> loudnessArea_;
+    engine::LoudnessMeter::Reading loudness_;
 };
 
 // ----- insert editor windows ------------------------------------------------------------------
@@ -931,20 +1498,16 @@ MixerView::MixerView(rt::MeterBlock& meters,
     setOpaque(true);
     viewport_.setViewedComponent(&stripsHolder_, false);
     viewport_.setScrollBarsShown(false, true);
+    viewport_.setScrollBarThickness(theme_.sizes.scrollbar);
     addAndMakeVisible(viewport_);
     master_ = std::make_unique<MasterStrip>(*this, theme_);
     addAndMakeVisible(*master_);
-    addBusButton_.onClick = [this] { addBus(); };
-    addAndMakeVisible(addBusButton_);
-    pluginsButton_.onClick = [this]
-    {
-        if (onOpenPluginBrowser)
-            onOpenPluginBrowser();
-    };
-    addAndMakeVisible(pluginsButton_);
+    addBus_.getProperties().set(AuralLookAndFeel::propertyVariant, "ghost");
+    addBus_.setTooltip("Add a bus");
+    addBus_.onClick = [this] { addBus(); };
+    stripsHolder_.addAndMakeVisible(addBus_);
     startTimerHz(meterHz);
 }
-
 MixerView::~MixerView()
 {
     stopTimer();
@@ -955,6 +1518,23 @@ void MixerView::closeEditors()
 {
     pluginWindows_.clear();
     editors_.clear();
+}
+
+void MixerView::setInputNames(std::vector<std::string> audio, std::vector<std::string> midi)
+{
+    if (audio == inputNames_ && midi == midiInputNames_)
+        return;
+    inputNames_ = std::move(audio);
+    midiInputNames_ = std::move(midi);
+    rebuildStrips();
+}
+
+void MixerView::setSelectedChannel(core::Id channelId)
+{
+    if (selected_ == channelId)
+        return;
+    selected_ = channelId;
+    rebuildStrips();
 }
 
 void MixerView::setProject(const core::Project* project)
@@ -1022,30 +1602,49 @@ void MixerView::rebuildStrips()
     {
         size_t i = 0;
         for (size_t t = 0; t < project_->tracks.size(); ++t, ++i)
-            strips_[i]->setChannel(
-                project_->tracks[t], false, *project_, engine::trackMeterSlot(static_cast<int>(t)));
+            strips_[i]->setChannel(project_->tracks[t],
+                                   false,
+                                   *project_,
+                                   engine::trackMeterSlot(static_cast<int>(t)),
+                                   static_cast<int>(t));
         for (size_t b = 0; b < project_->buses.size(); ++b, ++i)
-            strips_[i]->setChannel(
-                project_->buses[b], true, *project_, engine::busMeterSlot(*project_, static_cast<int>(b)));
+            strips_[i]->setChannel(project_->buses[b],
+                                   true,
+                                   *project_,
+                                   engine::busMeterSlot(*project_, static_cast<int>(b)),
+                                   static_cast<int>(b));
         master_->setMaster(project_->master);
     }
     layoutStrips();
+    repaint();
 }
-
 void MixerView::layoutStrips()
 {
+    // Strips at the strip width with 2 px gaps; the bus group after a lineSubtle
+    // gap; the "+ Bus" ghost at the end.
     const int height = viewport_.getHeight();
-    stripsHolder_.setSize(std::max(1, static_cast<int>(strips_.size()) * stripWidth), std::max(1, height));
+    const int width = theme_.sizes.mixerStripWidth;
+    const int gap = theme_.spacing.xxs;
     int x = 0;
+    bool busGap = false;
     for (auto& strip : strips_)
     {
-        strip->setBounds(x, 0, stripWidth, height);
-        x += stripWidth;
+        if (strip->isBus() && !busGap)
+        {
+            busGap = true;
+            x += theme_.spacing.sm;
+        }
+        strip->setBounds(x, 0, width, height);
+        x += width + gap;
     }
+    addBus_.setBounds(x, theme_.spacing.xs, 56, theme_.sizes.controlCompact);
+    stripsHolder_.setSize(std::max(1, x + 56 + gap), std::max(1, height));
 }
-
 void MixerView::timerCallback()
 {
+    const double now = juce::Time::getMillisecondCounterHiRes();
+    const double elapsed = lastMeterMs_ > 0.0 ? now - lastMeterMs_ : 1000.0 / meterHz;
+    lastMeterMs_ = now;
     for (auto& strip : strips_)
     {
         const auto reading = meters_.take(strip->meterSlot());
@@ -1055,7 +1654,7 @@ void MixerView::timerCallback()
                 readings_.resize(static_cast<size_t>(strip->meterSlot()) + 1);
             readings_[static_cast<size_t>(strip->meterSlot())] = reading;
         }
-        strip->pushMeter(reading);
+        strip->pushMeter(reading, elapsed);
     }
     if (project_ != nullptr)
     {
@@ -1063,30 +1662,40 @@ void MixerView::timerCallback()
             meters_.take(masterMeterSlot_ ? masterMeterSlot_() : engine::masterMeterSlot(*project_));
         if (reading.peakLeft >= 1.0f || reading.peakRight >= 1.0f)
             masterClipped_ = true;
-        master_->pushMeter(reading);
+        master_->pushMeter(reading, elapsed);
     }
     if (loudness_)
         master_->pushLoudness(loudness_());
 }
-
 void MixerView::paint(juce::Graphics& g)
 {
-    g.fillAll(theme_.colours.background);
-    g.setColour(theme_.colours.border);
-    g.fillRect(getLocalBounds().removeFromTop(1));
+    const auto& c = theme_.colours;
+    g.fillAll(c.surface0);
+    // The separator before the master, and the bus group's slate line.
+    g.setColour(c.lineSubtle);
+    g.fillRect(master_->getX() - theme_.spacing.sm, 0, 1, getHeight());
+    bool firstBus = true;
+    for (const auto& strip : strips_)
+        if (strip->isBus() && firstBus)
+        {
+            firstBus = false;
+            const int x = viewport_.getX() + strip->getX() - viewport_.getViewPositionX() - theme_.spacing.xs;
+            if (x > viewport_.getX() && x < viewport_.getRight())
+                g.fillRect(x, 0, 1, viewport_.getHeight());
+        }
+    if (strips_.empty())
+    {
+        g.setColour(c.textTertiary);
+        g.setFont(theme_.body());
+        g.drawText("Add a track to start mixing", viewport_.getBounds(), juce::Justification::centred);
+    }
 }
-
 void MixerView::resized()
 {
-    auto area = getLocalBounds().withTrimmedTop(1);
-    auto header = area.removeFromTop(theme_.sizes.controlHeight + theme_.spacing.sm);
-    auto headerRow = header.reduced(theme_.spacing.sm, theme_.spacing.xs);
-    addBusButton_.setBounds(headerRow.removeFromLeft(72));
-    headerRow.removeFromLeft(theme_.spacing.sm);
-    pluginsButton_.setBounds(headerRow.removeFromLeft(90));
-    master_->setBounds(area.removeFromRight(stripWidth + 16));
+    auto area = getLocalBounds();
+    master_->setBounds(area.removeFromRight(theme_.sizes.mixerStripWideWidth));
+    area.removeFromRight(theme_.spacing.lg);
     viewport_.setBounds(area);
     layoutStrips();
 }
-
 } // namespace aural::ui

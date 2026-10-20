@@ -341,11 +341,28 @@ readings at 30 Hz and draws them with its own ballistics. Slots follow project
 order: tracks, then buses, then the master (`trackMeterSlot`, `busMeterSlot`,
 `masterMeterSlot`).
 
-`ui::MixerView` shows one strip per track and bus (name, output selector, sends
-menu, inserts menu, pan, mute/solo/phase, fader in dB, stereo meter) and the master
-strip with momentary, short-term and integrated LUFS, in a panel under the arrange
-view (Mixer button, Ctrl+M). Every control issues a `core::Command`; the view
-refreshes from the project.
+`ui::MixerView` is the console of 05-mixer.md, a panel of the shell (the dock
+by default, F2). One 84 px strip per track and bus, 2 px apart, buses after a
+gap, the 112 px master pinned at the right behind a separator. A strip, top to
+bottom: the name cap (track colour at the header alpha with the full-colour
+stripe, the fader-group bar and number; click selects the channel in the
+arrange view and back; double-click renames; right-click: fader group, colour,
+remove bus), the input combo (audio or MIDI inputs, tracks only), the insert
+slots (20 px: name, VST3/CLAP badge, a strike when bypassed, the power icon and
+drag handle on hover; drag reorders with an insertion line; click opens the
+editor; right-click: open, bypass, move, wet/dry, sidechain, outputs, remove;
+a ghost "+" opens the add menu; the box scrolls past six), the send rows (name,
+a 40 px level slider, the pre/post dot; "+" adds one; right-click removes),
+the pan knob, M/S/R/phase toggles, the `Fader` with a `Meter` beside it, the
+dB `NumericField` and the output combo (cyclic targets greyed). The fader
+travel takes the height left between 120 and 200 px; below 120 the inserts and
+sends collapse to one-line summaries. The master has the fader, a scaled meter,
+the value field and the M/S/I loudness readout (I lights in the target colour
+within 1 LU of the target). Strips feeding a soloed bus get a dim solo outline;
+the selected strip an accent outline; Tab focuses a strip, arrows move its
+fader, M/S/R toggle it. The default dock height is 480 so the fader has its
+full travel. Not in this pass: the 112 px wide strip mode, master inserts (the
+model's master has none), solo-safe.
 
 Live values and smoothing: a fader, pan, master or insert-parameter command is
 "live" (`Command::isLive`). The session applies it to the model (undo) and pushes
@@ -868,6 +885,7 @@ Phase 8 flags.
 | 2026-10-19 | MIDI devices are identified by name | The name is what the user recognises and what a project can carry between machines; JUCE's identifier is stable but opaque. Two devices of one name are both opened and both heard. |
 | 2026-10-19 | A built-in synth ships with the engine | A MIDI track must make a sound without a third-party instrument, both for the user and for offline tests of the whole path (schedule, instrument, bounce). |
 | 2026-10-19 | Trimming a MIDI clip keeps its notes where they are on the timeline | Matches audio clips (the source stays put under the clip edges) and lets a trim be undone by trimming back without losing notes. |
+| 2026-10-20 | The mixer's section boxes are real slots and rows, not menus | Signal flow must be visible: an insert's bypass and order, a send's level and tap are on the strip, and the menus keep only what has no control of its own. |
 | 2026-10-20 | The arrange headers read meter copies from the mixer rather than taking from the meter block | `MeterBlock::take` resets the peak, so one consumer must own each slot; the mixer already takes every slot each frame and keeps the last readings for anyone else. |
 | 2026-10-20 | Missing media is detected once per project change, not per paint | A file-exists check per clip per frame would stall painting on a slow volume; the set is rebuilt when the project changes. |
 | 2026-10-19 | Panels are owned by one of three hosts and never destroyed on close | A panel's component keeps its state (the mixer's open editors, the browser's filter) across moves and hides; closing a floating panel hides it and returns it to its default host, so a user cannot lose one. |
