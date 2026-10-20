@@ -101,9 +101,11 @@ public:
         for (auto* button : {&action_, &second_})
             if (button->isVisible())
             {
-                const int w = juce::GlyphArrangement::getStringWidthInt(theme_.label(), button->getButtonText()) +
-                              2 * theme_.spacing.sm;
-                button->setBounds(area.removeFromRight(w).withSizeKeepingCentre(w, theme_.sizes.controlCompact));
+                const int w =
+                    juce::GlyphArrangement::getStringWidthInt(theme_.label(), button->getButtonText()) +
+                    2 * theme_.spacing.sm;
+                button->setBounds(
+                    area.removeFromRight(w).withSizeKeepingCentre(w, theme_.sizes.controlCompact));
                 area.removeFromRight(theme_.spacing.xs);
             }
     }
@@ -148,6 +150,11 @@ void ToastStack::show(Kind kind,
     auto toast = std::make_unique<Toast>(
         theme_, kind, message, action, std::move(onAction), secondAction, std::move(onSecondAction));
     toast->shownAtMs = juce::Time::getMillisecondCounterHiRes();
+    juce::AccessibilityHandler::postAnnouncement(
+        message,
+        kind == Kind::error || kind == Kind::warning
+            ? juce::AccessibilityHandler::AnnouncementPriority::high
+            : juce::AccessibilityHandler::AnnouncementPriority::medium);
     auto* raw = toast.get();
     toast->onDismiss = [this, raw] { dismiss(raw); };
     addAndMakeVisible(*toast);

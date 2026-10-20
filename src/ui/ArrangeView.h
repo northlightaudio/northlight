@@ -130,6 +130,8 @@ public:
     // The time view, for views that link their zoom to this one.
     double samplesPerPixel() const noexcept { return samplesPerPixel_; }
     core::SamplePosition scrollPosition() const noexcept { return scroll_; }
+    core::SamplePosition visibleSamplesForBenchmark() const noexcept { return visibleSamples(); }
+    void setScroll(core::SamplePosition firstVisible);
     bool followPlayhead() const noexcept { return followPlayhead_; }
     // The row height: size.trackRowMin, trackRow or trackRowLarge.
     void setRowHeight(int height);
@@ -218,7 +220,6 @@ private:
     core::SamplePosition visibleSamples() const noexcept;
     core::SamplePosition contentLength() const noexcept;
     void setZoom(double samplesPerPixel, int anchorX);
-    void setScroll(core::SamplePosition firstVisible);
     void setVerticalScroll(int firstRowPixel);
     void updateScrollbar();
     void rebuildHeaders();

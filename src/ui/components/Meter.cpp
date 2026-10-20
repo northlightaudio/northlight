@@ -47,7 +47,13 @@ void Meter::push(const float* peaks, int numChannels, double elapsedMs)
                 c.clipped = false;
         }
     }
-    repaint();
+    // Silence stays silent: no repaint while every channel sits on the floor.
+    bool changed = false;
+    for (const auto& c : channels_)
+        changed = changed || c.levelDb > theme_.meter.floorDb || c.peakDb > theme_.meter.floorDb || c.clipped;
+    if (changed || !wasSilent_)
+        repaint();
+    wasSilent_ = !changed;
 }
 
 void Meter::clearClip()
@@ -162,6 +168,44 @@ void Meter::paint(juce::Graphics& g)
                        juce::Justification::centredRight);
         }
     }
+}
+
+namespace
+{
+class MeterValue final : public juce::AccessibilityValueInterface
+{
+public:
+    explicit MeterValue(const Meter& meter) : meter_(meter) {}
+    bool isReadOnly() const override { return true; }
+    double getCurrentValue() const override { return meter_.accessibleValue(); }
+    juce::String getCurrentValueAsString() const override
+    {
+        return juce::String(meter_.accessibleValue(), 1) + " dB";
+    }
+    void setValue(double) override {}
+    void setValueAsString(const juce::String&) override {}
+    AccessibleValueRange getRange() const override { return {{-100.0, 6.0}, 0.1}; }
+
+private:
+    const Meter& meter_;
+};
+} // namespace
+
+double Meter::accessibleValue() const noexcept
+{
+    double loudest = -100.0;
+    for (const auto& channel : channels_)
+        loudest = std::max(loudest, static_cast<double>(channel.levelDb));
+    return loudest;
+}
+
+std::unique_ptr<juce::AccessibilityHandler> Meter::createAccessibilityHandler()
+{
+    return std::make_unique<juce::AccessibilityHandler>(
+        *this,
+        juce::AccessibilityRole::slider,
+        juce::AccessibilityActions(),
+        juce::AccessibilityHandler::Interfaces{std::make_unique<MeterValue>(*this)});
 }
 
 } // namespace aural::ui

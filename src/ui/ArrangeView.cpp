@@ -1,6 +1,7 @@
 #include "ui/ArrangeView.h"
 
 #include "ui/AuralLookAndFeel.h"
+#include "ui/FrameStats.h"
 #include "ui/Icons.h"
 
 #include <algorithm>
@@ -1375,6 +1376,7 @@ void ArrangeView::drawMidiClip(juce::Graphics& g,
 }
 void ArrangeView::paint(juce::Graphics& g)
 {
+    const FrameStats::Scope timing;
     const auto& c = theme_.colours;
     g.fillAll(c.canvas);
 

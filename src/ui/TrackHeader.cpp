@@ -178,6 +178,8 @@ void TrackHeader::setTrack(const core::Track& track,
     aux_ = track.isAux();
     muted_ = track.mute;
     colour_ = theme_.track.forTrack(track.colour, index);
+    setTitle("Track " + juce::String(index + 1) + ": " + juce::String::fromUTF8(track.name.c_str()));
+    setDescription(track.isMidi() ? "MIDI track" : track.isAux() ? "Aux track" : "Audio track");
     input_.setVisible(!aux_);
     arm_.setVisible(!aux_);
     monitorButton_.setVisible(!aux_);
@@ -470,8 +472,9 @@ void TrackHeader::resized()
     place(solo_);
     place(arm_);
     place(monitorButton_);
-    name_.setBounds(row1.withTrimmedRight(theme_.spacing.sm).withSizeKeepingCentre(
-        std::max(0, row1.getWidth() - theme_.spacing.sm), theme_.sizes.controlCompact - theme_.spacing.xs));
+    name_.setBounds(row1.withTrimmedRight(theme_.spacing.sm)
+                        .withSizeKeepingCentre(std::max(0, row1.getWidth() - theme_.spacing.sm),
+                                               theme_.sizes.controlCompact - theme_.spacing.xs));
 
     // Row 2: input, meter, volume (the row hides below 44 px; the slider below 200 px width).
     const bool row2 = getHeight() >= 44;

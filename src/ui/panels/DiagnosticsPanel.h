@@ -31,7 +31,8 @@ public:
         int workerThreads = 0;
         int outputLatencySamples = 0;
         double frameP50Ms = 0.0, frameP99Ms = 0.0, frameMaxMs = 0.0;
-        std::vector<std::pair<juce::String, int>> trackLatencies; // name, samples
+        double paintP50Ms = 0.0, paintP99Ms = 0.0, paintMaxMs = 0.0; // the arrange and mixer paints
+        std::vector<std::pair<juce::String, int>> trackLatencies;    // name, samples
         bool recording = false;
     };
     void push(const Sample& sample);
@@ -41,7 +42,10 @@ public:
     void resized() override;
 
 private:
-    void drawSparkline(juce::Graphics& g, juce::Rectangle<int> area, const std::deque<double>& values, juce::Colour colour) const;
+    void drawSparkline(juce::Graphics& g,
+                       juce::Rectangle<int> area,
+                       const std::deque<double>& values,
+                       juce::Colour colour) const;
 
     const Theme& theme_;
     Sample last_;

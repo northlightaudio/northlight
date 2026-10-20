@@ -41,6 +41,13 @@ public:
     bool keyPressed(const juce::KeyPress& key) override;
     void focusGained(FocusChangeType) override { repaint(); }
     void focusLost(FocusChangeType) override { repaint(); }
+    // Accessibility: a slider in dB.
+    std::unique_ptr<juce::AccessibilityHandler> createAccessibilityHandler() override;
+    double accessibleValue() const noexcept;
+    juce::String accessibleValueText() const;
+    void setAccessibleValue(double db);
+    std::pair<double, double> accessibleRange() const noexcept { return {minusInfinityDb, maxDb_}; }
+    double accessibleStep() const noexcept { return 0.5; }
 
 private:
     juce::Rectangle<int> trackBounds() const noexcept;

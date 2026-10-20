@@ -43,6 +43,8 @@ public:
     void offerRecovery();
     // The first-run sheet (08-setup.md 8.3): device choice, then a plugin scan offer.
     void showFirstRun();
+    // --benchmark-ui: plays and scrolls for `seconds`, prints frame percentiles, quits.
+    void runBenchmark(int seconds);
     // Shows the mixer panel.
     void showMixer();
     // Shows the mixer and opens an insert's editor.

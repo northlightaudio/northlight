@@ -9,6 +9,32 @@ namespace aural::ui
 
 namespace
 {
+// UI Automation sees the control as a slider with a readable value (11.3).
+template <typename Owner> class ValueInterface final : public juce::AccessibilityValueInterface
+{
+public:
+    explicit ValueInterface(Owner& owner) : owner_(owner) {}
+    bool isReadOnly() const override { return false; }
+    double getCurrentValue() const override { return owner_.accessibleValue(); }
+    juce::String getCurrentValueAsString() const override { return owner_.accessibleValueText(); }
+    void setValue(double newValue) override { owner_.setAccessibleValue(newValue); }
+    void setValueAsString(const juce::String& newValue) override
+    {
+        owner_.setAccessibleValue(newValue.getDoubleValue());
+    }
+    AccessibleValueRange getRange() const override
+    {
+        const auto range = owner_.accessibleRange();
+        return {{range.first, range.second}, owner_.accessibleStep()};
+    }
+
+private:
+    Owner& owner_;
+};
+} // namespace
+
+namespace
+{
 constexpr float zeroDbFraction = 0.75f;
 constexpr float lowDb = -48.0f; // the bottom of the log region; below is a short run to -inf
 constexpr float infFraction = 0.03f;
@@ -261,6 +287,31 @@ bool Fader::keyPressed(const juce::KeyPress& key)
     else
         return false;
     return true;
+}
+
+std::unique_ptr<juce::AccessibilityHandler> Fader::createAccessibilityHandler()
+{
+    return std::make_unique<juce::AccessibilityHandler>(
+        *this,
+        juce::AccessibilityRole::slider,
+        juce::AccessibilityActions(),
+        juce::AccessibilityHandler::Interfaces{std::make_unique<ValueInterface<Fader>>(*this)});
+}
+
+double Fader::accessibleValue() const noexcept
+{
+    return currentDb();
+}
+
+juce::String Fader::accessibleValueText() const
+{
+    const float db = currentDb();
+    return db <= minusInfinityDb + 0.5f ? juce::String("-inf dB") : juce::String(db, 1) + " dB";
+}
+
+void Fader::setAccessibleValue(double db)
+{
+    setDb(static_cast<float>(db), true);
 }
 
 } // namespace aural::ui

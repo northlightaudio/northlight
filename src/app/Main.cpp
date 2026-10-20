@@ -58,6 +58,7 @@ public:
     //   --panel <name>       show a panel: mixer, editor, pianoRoll, diagnostics, browser, inspector
     //   --preferences [page] open Preferences (general, audio, recording, editing, plugins, shortcuts,
     //   diagnostics)
+    //   --benchmark-ui <s>   play and scroll for s seconds, print frame percentiles, quit
     //   --first-run          show the first-run sheet
     //   --midi-track         add a MIDI track (built-in synth) with a short clip
     //   --midi-track-with <type>  the same with the given instrument type instead
@@ -148,6 +149,8 @@ public:
                 mainWindow_->applyLayoutPreset(tokens.getReference(++i).text.unquoted());
             else if (arg == "--panel" && i + 1 < tokens.size())
                 mainWindow_->showPanel(tokens.getReference(++i).text.unquoted());
+            else if (arg == "--benchmark-ui" && i + 1 < tokens.size())
+                mainWindow_->runBenchmark(tokens.getReference(++i).text.getIntValue());
             else if (arg == "--preferences")
                 mainWindow_->showPreferences(i + 1 < tokens.size() && !tokens[i + 1].text.startsWith("--")
                                                  ? tokens.getReference(++i).text.unquoted()

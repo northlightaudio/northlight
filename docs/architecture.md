@@ -900,6 +900,40 @@ views' key handlers (the main window's own bindings are thin forwards). Not
 in this pass: triplet and dotted grids, custom fade and split cursors, the
 300 ms wheel guard on valued controls, Space+drag panning, rebinding.
 
+**Accessibility and performance** (11-accessibility-performance.md).
+`scripts/contrast.py` regenerates docs/design/contrast.md from the token file
+(the WCAG ratios for every text/surface pair the design uses and the twelve
+hues) and exits 1 with `--check` when a required pair fails; its output
+matches the checked-in table. Preferences offers a High contrast variant
+(lines at 24%, text one step brighter) and the accent override; both are
+written to the user's `tokens.json` beside the settings and read at the next
+launch. UI Automation: `Fader`, `Knob`, `NumericField` and `SegmentedControl`
+expose themselves as sliders with their value text (dB, pan, the segment
+label), `Meter` as a read-only level, icon buttons carry their tooltip as the
+name, track headers are titled "Track n: name" with the kind as description,
+and the status bar's transient messages and toasts post announcements (toasts
+for warnings and errors at high priority). Reduce-motion comes from the OS
+setting (Theme). Rendering: the playhead repaints only the columns it leaves
+and takes, meters skip the repaint while silent, the status bar rebuilds only
+when a shown value changed, and `ui::FrameStats` records the arrange and
+mixer paint times; the Diagnostics panel shows the paint percentiles next to
+the frame interval, and `--benchmark-ui <seconds>` plays the open project
+with the mixer shown, scrolls the arrange view a screen a second and prints
+the frame-interval, paint and audio-load percentiles to stdout before
+quitting. The acceptance screenshots live under `docs/screenshots/phase7/`
+(dated). Measured on 2026-10-20 on the development PC (Ryzen 9 3900X, RTX
+4070 SUPER, the window at 1280×800, 100%, Volt ASIO at 64 samples) with the
+RelWithDebInfo build, nine tracks (eight audio with a 3-minute mixdown each
+and one MIDI), playing with the mixer open and the arrange view scrolling a
+screen a second: paint p50 0.69 ms, p99 3.69 ms, max 4.92 ms over 655 paints;
+the frame interval sits at the 30 Hz timer (p50 34.0 ms, p99 35.1 ms, no
+missed tick); audio load p50 0.8%, max 2.0%. The Debug build of the same run
+paints at p50 4.6 ms, p99 14.0 ms, max 16.9 ms. The 64-track 4K at 150% and
+mixed-DPI scenarios of 11.6 were not run: no such monitor is attached here.
+Not in this pass: handlers for clips and the ruler, a Narrator walkthrough
+(no screen reader was run here), DPI-change verification beyond 100%, a CI
+machine for the benchmark.
+
 ## Decisions log
 
 | Date | Decision | Why |
@@ -970,6 +1004,7 @@ in this pass: triplet and dotted grids, custom fade and split cursors, the
 | 2026-10-19 | MIDI devices are identified by name | The name is what the user recognises and what a project can carry between machines; JUCE's identifier is stable but opaque. Two devices of one name are both opened and both heard. |
 | 2026-10-19 | A built-in synth ships with the engine | A MIDI track must make a sound without a third-party instrument, both for the user and for offline tests of the whole path (schedule, instrument, bounce). |
 | 2026-10-19 | Trimming a MIDI clip keeps its notes where they are on the timeline | Matches audio clips (the source stays put under the clip edges) and lets a trim be undone by trimming back without losing notes. |
+| 2026-10-20 | Paint times are recorded by the two heavy views, not by hooking every component | A scope at the top of `ArrangeView::paint` and `MixerView::paint` costs nothing elsewhere and covers what the budget is about; the frame interval (the timer's cadence) is tracked separately in the main window. |
 | 2026-10-20 | The mixer's section boxes are real slots and rows, not menus | Signal flow must be visible: an insert's bypass and order, a send's level and tap are on the strip, and the menus keep only what has no control of its own. |
 | 2026-10-20 | The arrange headers read meter copies from the mixer rather than taking from the meter block | `MeterBlock::take` resets the peak, so one consumer must own each slot; the mixer already takes every slot each frame and keeps the last readings for anyone else. |
 | 2026-10-20 | Missing media is detected once per project change, not per paint | A file-exists check per clip per frame would stall painting on a slow volume; the set is rebuilt when the project changes. |

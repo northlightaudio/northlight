@@ -9,6 +9,32 @@ namespace aural::ui
 
 namespace
 {
+// UI Automation sees the control as a slider with a readable value (11.3).
+template <typename Owner> class ValueInterface final : public juce::AccessibilityValueInterface
+{
+public:
+    explicit ValueInterface(Owner& owner) : owner_(owner) {}
+    bool isReadOnly() const override { return false; }
+    double getCurrentValue() const override { return owner_.accessibleValue(); }
+    juce::String getCurrentValueAsString() const override { return owner_.accessibleValueText(); }
+    void setValue(double newValue) override { owner_.setAccessibleValue(newValue); }
+    void setValueAsString(const juce::String& newValue) override
+    {
+        owner_.setAccessibleValue(newValue.getDoubleValue());
+    }
+    AccessibleValueRange getRange() const override
+    {
+        const auto range = owner_.accessibleRange();
+        return {{range.first, range.second}, owner_.accessibleStep()};
+    }
+
+private:
+    Owner& owner_;
+};
+} // namespace
+
+namespace
+{
 constexpr float startAngle = juce::MathConstants<float>::pi * 1.25f; // 7 o'clock
 constexpr float sweep = juce::MathConstants<float>::pi * 1.5f;       // to 5 o'clock
 } // namespace
@@ -195,6 +221,15 @@ bool Knob::keyPressed(const juce::KeyPress& key)
     else
         return false;
     return true;
+}
+
+std::unique_ptr<juce::AccessibilityHandler> Knob::createAccessibilityHandler()
+{
+    return std::make_unique<juce::AccessibilityHandler>(
+        *this,
+        juce::AccessibilityRole::slider,
+        juce::AccessibilityActions(),
+        juce::AccessibilityHandler::Interfaces{std::make_unique<ValueInterface<Knob>>(*this)});
 }
 
 } // namespace aural::ui

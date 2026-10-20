@@ -31,6 +31,21 @@ public:
     bool keyPressed(const juce::KeyPress& key) override;
     void focusGained(FocusChangeType) override { repaint(); }
     void focusLost(FocusChangeType) override { repaint(); }
+    // Accessibility: a slider over the segment indices, read as the label.
+    std::unique_ptr<juce::AccessibilityHandler> createAccessibilityHandler() override;
+    double accessibleValue() const noexcept { return selected_; }
+    juce::String accessibleValueText() const
+    {
+        return selected_ >= 0 && static_cast<size_t>(selected_) < labels_.size()
+                   ? labels_[static_cast<size_t>(selected_)]
+                   : juce::String();
+    }
+    void setAccessibleValue(double value) { setSelected(static_cast<int>(value), juce::sendNotification); }
+    std::pair<double, double> accessibleRange() const noexcept
+    {
+        return {0.0, static_cast<double>(std::max<size_t>(1, labels_.size()) - 1)};
+    }
+    double accessibleStep() const noexcept { return 1.0; }
 
 private:
     void timerCallback() override;

@@ -6,6 +6,7 @@
 #include "plugins/BuiltIns.h"
 #include "ui/AuralLookAndFeel.h"
 #include "ui/ClapEditor.h"
+#include "ui/FrameStats.h"
 #include "ui/Icons.h"
 #include "ui/InsertEditor.h"
 
@@ -1712,6 +1713,7 @@ void MixerView::timerCallback()
 }
 void MixerView::paint(juce::Graphics& g)
 {
+    const FrameStats::Scope timing;
     const auto& c = theme_.colours;
     g.fillAll(c.surface0);
     // The separator before the master, and the bus group's slate line.

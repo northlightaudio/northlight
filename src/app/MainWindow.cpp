@@ -11,6 +11,7 @@
 #include "ui/ArrangeView.h"
 #include "ui/AudioSetupView.h"
 #include "ui/AuralLookAndFeel.h"
+#include "ui/FrameStats.h"
 #include "ui/Icons.h"
 #include "ui/MixerView.h"
 #include "ui/PianoRoll.h"
@@ -29,6 +30,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <cstdio>
 #include <deque>
 #include <optional>
 
@@ -327,6 +329,60 @@ public:
                 session_.scanPlugins(false);
         }
         refreshHeader();
+    }
+
+    // --benchmark-ui (11.8): plays the project with the mixer open, scrolls the
+    // arrange view a screen every second, and after `seconds` prints the frame
+    // interval and paint percentiles to stdout and quits.
+    void runBenchmark(int seconds)
+    {
+        benchmarkEndMs_ = juce::Time::getMillisecondCounterHiRes() + seconds * 1000.0;
+        panels_.show(ui::PanelId::mixer);
+        ui::FrameStats::reset();
+        frames_.clear();
+        session_.returnToStart();
+        session_.play();
+    }
+
+    void benchmarkTick()
+    {
+        if (benchmarkEndMs_ <= 0.0)
+            return;
+        if (ticks_ % 30 == 0)
+            tracks_.setScroll(tracks_.scrollPosition() + tracks_.visibleSamplesForBenchmark());
+        if (juce::Time::getMillisecondCounterHiRes() < benchmarkEndMs_)
+            return;
+        benchmarkEndMs_ = 0.0;
+        session_.stop();
+        std::vector<double> sorted(frames_.begin(), frames_.end());
+        std::sort(sorted.begin(), sorted.end());
+        const auto at = [&](double q)
+        {
+            return sorted.empty()
+                       ? 0.0
+                       : sorted[std::min(sorted.size() - 1, static_cast<size_t>(sorted.size() * q))];
+        };
+        const auto paints = ui::FrameStats::summary();
+        const auto stats = audio_.callback().stats().summary();
+        juce::String report;
+        report << "benchmark-ui: tracks " << session_.project().tracks.size() << ", " << getWidth() << "x"
+               << getHeight() << " at "
+               << juce::String(juce::Desktop::getInstance().getDisplays().getPrimaryDisplay()->scale * 100.0,
+                               0)
+               << "%\n"
+               << "frame interval ms: p50 " << juce::String(at(0.5), 2) << " p99 "
+               << juce::String(at(0.99), 2) << " max "
+               << juce::String(sorted.empty() ? 0.0 : sorted.back(), 2) << " (" << sorted.size()
+               << " frames)\n"
+               << "paint ms (arrange + mixer): p50 " << juce::String(paints.p50Ms, 2) << " p99 "
+               << juce::String(paints.p99Ms, 2) << " max " << juce::String(paints.maxMs, 2) << " ("
+               << paints.frames << " paints)\n"
+               << "audio load: p50 " << juce::String(stats.p50 * 100.0, 1) << "% p99 "
+               << juce::String(stats.p99 * 100.0, 1) << "% max " << juce::String(stats.max * 100.0, 1)
+               << "%\n";
+        std::printf("%s", report.toRawUTF8());
+        std::fflush(stdout);
+        juce::JUCEApplication::getInstance()->quit();
     }
 
     // The folder new projects are saved to and opened from.
@@ -1052,6 +1108,7 @@ private:
         if (ticks_ % 15 == 0)
             refreshStatus();
         updateHoverHint();
+        benchmarkTick();
         if (recording != lastRecording_)
         {
             lastRecording_ = recording;
@@ -1101,6 +1158,10 @@ private:
         sample.workerThreads = session_.engine().workerThreads();
         sample.outputLatencySamples = session_.engine().outputLatencySamples();
         sample.recording = session_.isRecording();
+        const auto paints = ui::FrameStats::summary();
+        sample.paintP50Ms = paints.p50Ms;
+        sample.paintP99Ms = paints.p99Ms;
+        sample.paintMaxMs = paints.maxMs;
         if (!frames_.empty())
         {
             std::vector<double> sorted(frames_.begin(), frames_.end());
@@ -1775,6 +1836,7 @@ private:
     int dropoutsToasted_ = 0;
     double lastDropoutToastMs_ = 0.0;
     bool quitAfterSave_ = false;
+    double benchmarkEndMs_ = 0.0;
     juce::Component::SafePointer<juce::Component> hoverComponent_;
     double hoverSinceMs_ = 0.0;
 };
@@ -2038,6 +2100,12 @@ void MainWindow::notify(const juce::String& message, bool warning)
         else
             content->status_.showMessage(message);
     }
+}
+
+void MainWindow::runBenchmark(int seconds)
+{
+    if (auto* content = dynamic_cast<Content*>(getContentComponent()))
+        content->runBenchmark(std::max(1, seconds));
 }
 
 void MainWindow::showFirstRun()

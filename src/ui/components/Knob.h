@@ -39,6 +39,13 @@ public:
     bool keyPressed(const juce::KeyPress& key) override;
     void focusGained(FocusChangeType) override { repaint(); }
     void focusLost(FocusChangeType) override { repaint(); }
+    // Accessibility: a slider over the range.
+    std::unique_ptr<juce::AccessibilityHandler> createAccessibilityHandler() override;
+    double accessibleValue() const noexcept { return value_; }
+    juce::String accessibleValueText() const { return format ? format(value_) : juce::String(value_, 2); }
+    void setAccessibleValue(double value) { setValue(value, juce::sendNotification); }
+    std::pair<double, double> accessibleRange() const noexcept { return {minimum_, maximum_}; }
+    double accessibleStep() const noexcept { return (maximum_ - minimum_) / 100.0; }
 
 private:
     double fraction() const noexcept;

@@ -58,6 +58,7 @@ public:
         static constexpr const char* recentCount = "general.recentCount";
         static constexpr const char* accent = "general.accent";
         static constexpr const char* uiScale = "general.uiScale";
+        static constexpr const char* contrast = "general.contrast";
         static constexpr const char* recordingFormat = "recording.format";
         static constexpr const char* countIn = "recording.countIn";
         static constexpr const char* preRoll = "recording.preRollBars";
@@ -84,6 +85,9 @@ private:
     void set(const char* key, const std::string& value);
     void buildPages();
     void writeAccentOverride(const juce::String& hex);
+    // Writes the user's tokens.json beside the settings from the accent and
+    // contrast choices (Theme::initialise reads it at the next launch).
+    void writeTokenOverride();
 
     const Theme& theme_;
     audio::AudioDeviceLayer& audio_;

@@ -382,18 +382,60 @@ void PreferencesView::set(const char* key, const std::string& value)
         return;
     if (saveSetting)
         saveSetting(key, value);
+    if (std::string(key) == Keys::contrast)
+        writeTokenOverride();
     if (onChanged)
         onChanged();
 }
 
 void PreferencesView::writeAccentOverride(const juce::String& hex)
 {
-    // The user's tokens.json beside the settings: the accent and its derived
-    // hover, pressed and subtle colours (Theme::initialise reads it at launch).
     set(Keys::accent, hex.toStdString());
+    writeTokenOverride();
     if (onNotice)
         onNotice(hex.isEmpty() ? "Accent reset. Restart Aural to apply."
                                : "Accent set to " + hex + ". Restart Aural to apply.");
+}
+
+void PreferencesView::writeTokenOverride()
+{
+    if (!loadSetting)
+        return;
+    const juce::File file = juce::File(juce::String::fromUTF8(loadSetting("__settingsFolder").c_str()))
+                                .getChildFile("tokens.json");
+    auto* colours = new juce::DynamicObject();
+    const auto accent = juce::String::fromUTF8(get(Keys::accent).c_str());
+    if (accent.length() == 7 && accent.startsWithChar('#'))
+    {
+        const auto base = juce::Colour::fromString("ff" + accent.substring(1));
+        const auto hex = [](juce::Colour colour, int alpha = 255)
+        {
+            return "#" + colour.withAlpha(static_cast<juce::uint8>(alpha)).toDisplayString(false) +
+                   (alpha == 255 ? juce::String() : juce::String::toHexString(alpha).paddedLeft('0', 2));
+        };
+        colours->setProperty("accent", hex(base));
+        colours->setProperty("accentHover", hex(base.brighter(0.15f)));
+        colours->setProperty("accentPressed", hex(base.darker(0.15f)));
+        colours->setProperty("accentSubtle", hex(base, 0x1f));
+        colours->setProperty("lineFocus", hex(base, 0xb3));
+    }
+    if (get(Keys::contrast, "standard") == "high")
+    {
+        // Lines at 24%, text one step brighter (11.1).
+        colours->setProperty("lineSubtle", "#FFFFFF3D");
+        colours->setProperty("lineStrong", "#FFFFFF52");
+        colours->setProperty("textSecondary", "#" + theme_.colours.textPrimary.toDisplayString(false));
+        colours->setProperty("textTertiary", "#" + theme_.colours.textSecondary.toDisplayString(false));
+    }
+    if (colours->getProperties().isEmpty())
+    {
+        delete colours;
+        file.deleteFile();
+        return;
+    }
+    auto* root = new juce::DynamicObject();
+    root->setProperty("color", juce::var(colours));
+    file.replaceWithText(juce::JSON::toString(juce::var(root), false));
 }
 
 void PreferencesView::buildPages()
@@ -491,6 +533,9 @@ void PreferencesView::buildPages()
         };
         page->add(
             "Accent colour", std::move(swatches), "A preset or a hex value; applied at the next launch.");
+        page->add("Contrast",
+                  combo({{"Standard", "standard"}, {"High", "high"}}, Keys::contrast, "standard"),
+                  "High: lines at 24% and text one step brighter; applied at the next launch.");
         page->add(
             "UI scale",
             combo(

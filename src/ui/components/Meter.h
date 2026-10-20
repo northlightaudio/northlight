@@ -33,6 +33,9 @@ public:
 
     void paint(juce::Graphics& g) override;
     void mouseDown(const juce::MouseEvent& e) override;
+    // Accessibility: a read-only level in dB.
+    std::unique_ptr<juce::AccessibilityHandler> createAccessibilityHandler() override;
+    double accessibleValue() const noexcept;
 
 private:
     struct Channel
@@ -50,6 +53,7 @@ private:
     bool vertical_ = true;
     bool showScale_ = false;
     bool autoClearClip_ = false;
+    bool wasSilent_ = false;
 };
 
 } // namespace aural::ui

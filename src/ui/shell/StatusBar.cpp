@@ -1,5 +1,7 @@
 #include "ui/shell/StatusBar.h"
 
+#include <cmath>
+
 namespace aural::ui
 {
 
@@ -10,6 +12,19 @@ StatusBar::StatusBar(const Theme& theme) : theme_(theme)
 
 void StatusBar::setState(const State& state)
 {
+    // Rebuilt and repainted only when something shown changed (11.6).
+    if (state.deviceOpen == state_.deviceOpen &&
+        state.devicePreferredUnavailable == state_.devicePreferredUnavailable &&
+        state.driver == state_.driver && state.device == state_.device &&
+        state.sampleRate == state_.sampleRate && state.bufferSize == state_.bufferSize &&
+        std::abs(state.roundTripMs - state_.roundTripMs) < 0.05 &&
+        state.roundTripMeasured == state_.roundTripMeasured &&
+        std::abs(state.loadP50 - state_.loadP50) < 0.005 &&
+        std::abs(state.loadP99 - state_.loadP99) < 0.005 &&
+        std::abs(state.loadMax - state_.loadMax) < 0.005 && state.dropouts == state_.dropouts &&
+        state.recording == state_.recording && std::abs(state.diskFreeGb - state_.diskFreeGb) < 0.05 &&
+        state.warning == state_.warning)
+        return;
     state_ = state;
     rebuildSegments();
     repaint();
@@ -21,6 +36,9 @@ void StatusBar::showMessage(const juce::String& message)
     messageShownAt_ = juce::Time::getMillisecondCounterHiRes();
     startTimer(250);
     repaint();
+    // A live region for screen readers (11.3).
+    juce::AccessibilityHandler::postAnnouncement(message,
+                                                 juce::AccessibilityHandler::AnnouncementPriority::low);
 }
 
 void StatusBar::setHint(const juce::String& hint)
@@ -47,8 +65,10 @@ void StatusBar::rebuildSegments()
     const auto& s = state_;
     segments_.clear();
     Segment device;
-    device.text = s.deviceOpen ? s.driver + juce::String::fromUTF8(" \xc2\xb7 ") + s.device : juce::String("No audio device");
-    device.tooltip = s.devicePreferredUnavailable ? "The preferred device is unavailable; using " + s.device + ". Click to open Audio Setup."
+    device.text = s.deviceOpen ? s.driver + juce::String::fromUTF8(" \xc2\xb7 ") + s.device
+                               : juce::String("No audio device");
+    device.tooltip = s.devicePreferredUnavailable ? "The preferred device is unavailable; using " + s.device +
+                                                        ". Click to open Audio Setup."
                                                   : "Click to open Audio Setup";
     device.colour = s.deviceOpen ? c.textSecondary : c.warning;
     device.warningDot = s.devicePreferredUnavailable;
@@ -57,25 +77,33 @@ void StatusBar::rebuildSegments()
     if (s.deviceOpen)
     {
         Segment format;
-        format.text = juce::String(s.sampleRate / 1000.0, 1) + " kHz" + juce::String::fromUTF8(" \xc2\xb7 ") + juce::String(s.bufferSize);
-        format.tooltip = juce::String(s.bufferSize) + " samples = " + juce::String(s.sampleRate > 0.0 ? 1000.0 * s.bufferSize / s.sampleRate : 0.0, 2) + " ms";
+        format.text = juce::String(s.sampleRate / 1000.0, 1) + " kHz" + juce::String::fromUTF8(" \xc2\xb7 ") +
+                      juce::String(s.bufferSize);
+        format.tooltip = juce::String(s.bufferSize) + " samples = " +
+                         juce::String(s.sampleRate > 0.0 ? 1000.0 * s.bufferSize / s.sampleRate : 0.0, 2) +
+                         " ms";
         format.colour = c.textSecondary;
         segments_.push_back(format);
         Segment rt;
         rt.text = juce::String(s.roundTripMs, 1) + " ms RT";
-        rt.tooltip = s.roundTripMeasured ? "Round trip measured by loopback calibration" : "Round trip as reported by the driver (not measured)";
+        rt.tooltip = s.roundTripMeasured ? "Round trip measured by loopback calibration"
+                                         : "Round trip as reported by the driver (not measured)";
         rt.colour = s.roundTripMeasured ? c.textPrimary : c.textSecondary;
         segments_.push_back(rt);
         Segment load;
         load.text = "CPU " + juce::String(static_cast<int>(std::round(s.loadP50 * 100.0))) + "%";
-        load.tooltip = "Callback time against the deadline: p50 " + juce::String(s.loadP50 * 100.0, 1) + "%, p99 " + juce::String(s.loadP99 * 100.0, 1) + "%, max " + juce::String(s.loadMax * 100.0, 1) + "%";
+        load.tooltip = "Callback time against the deadline: p50 " + juce::String(s.loadP50 * 100.0, 1) +
+                       "%, p99 " + juce::String(s.loadP99 * 100.0, 1) + "%, max " +
+                       juce::String(s.loadMax * 100.0, 1) + "%";
         load.colour = s.loadP99 > 0.9 ? c.danger : s.loadP99 > 0.7 ? c.warning : c.textSecondary;
         segments_.push_back(load);
         if (s.dropouts > 0)
         {
             Segment drop;
             drop.text = juce::String(s.dropouts) + (s.dropouts == 1 ? " dropout" : " dropouts");
-            drop.tooltip = (s.lastDropoutTime.isNotEmpty() ? "Last at " + s.lastDropoutTime + ". " : juce::String()) + "Click to reset";
+            drop.tooltip =
+                (s.lastDropoutTime.isNotEmpty() ? "Last at " + s.lastDropoutTime + ". " : juce::String()) +
+                "Click to reset";
             drop.colour = c.warning;
             drop.action = &onDropoutsClicked;
             segments_.push_back(drop);
@@ -83,7 +111,8 @@ void StatusBar::rebuildSegments()
         if (s.recording)
         {
             Segment disk;
-            disk.text = "Disk " + juce::String(s.diskMbPerSec, 1) + " MB/s" + juce::String::fromUTF8(" \xc2\xb7 ") + juce::String(s.diskFreeGb, 1) + " GB free";
+            disk.text = "Disk " + juce::String(s.diskMbPerSec, 1) + " MB/s" +
+                        juce::String::fromUTF8(" \xc2\xb7 ") + juce::String(s.diskFreeGb, 1) + " GB free";
             disk.tooltip = "Recording throughput and free space in the media folder";
             disk.colour = c.textSecondary;
             segments_.push_back(disk);
@@ -101,7 +130,8 @@ void StatusBar::rebuildSegments()
     int x = theme_.spacing.md;
     for (auto& segment : segments_)
     {
-        const int w = juce::GlyphArrangement::getStringWidthInt(font, segment.text) + (segment.warningDot ? theme_.spacing.md : 0);
+        const int w = juce::GlyphArrangement::getStringWidthInt(font, segment.text) +
+                      (segment.warningDot ? theme_.spacing.md : 0);
         segment.bounds = {x, 0, w, getHeight()};
         x += w + theme_.spacing.xl;
     }
@@ -120,15 +150,24 @@ void StatusBar::paint(juce::Graphics& g)
         {
             g.setColour(c.warning);
             const int d = theme_.spacing.sm - theme_.spacing.xxs;
-            g.fillEllipse(static_cast<float>(area.getX()), static_cast<float>((getHeight() - d) / 2), static_cast<float>(d), static_cast<float>(d));
+            g.fillEllipse(static_cast<float>(area.getX()),
+                          static_cast<float>((getHeight() - d) / 2),
+                          static_cast<float>(d),
+                          static_cast<float>(d));
             area.removeFromLeft(theme_.spacing.md);
         }
-        g.setColour(static_cast<int>(i) == hoverSegment_ && segment.action != nullptr ? c.textPrimary : segment.colour);
+        g.setColour(static_cast<int>(i) == hoverSegment_ && segment.action != nullptr ? c.textPrimary
+                                                                                      : segment.colour);
         g.drawText(segment.text, area, juce::Justification::centredLeft);
         if (i + 1 < segments_.size())
         {
             g.setColour(c.textTertiary);
-            g.drawText(juce::String::fromUTF8("\xc2\xb7"), segment.bounds.getRight(), 0, theme_.spacing.xl, getHeight(), juce::Justification::centred);
+            g.drawText(juce::String::fromUTF8("\xc2\xb7"),
+                       segment.bounds.getRight(),
+                       0,
+                       theme_.spacing.xl,
+                       getHeight(),
+                       juce::Justification::centred);
         }
     }
     // Right: the transient message, else the hover hint.
@@ -137,7 +176,8 @@ void StatusBar::paint(juce::Graphics& g)
     if (message_.isNotEmpty())
     {
         const double age = juce::Time::getMillisecondCounterHiRes() - messageShownAt_;
-        alpha = age > messageMs - 500 ? static_cast<float>(juce::jlimit(0.0, 1.0, (messageMs - age) / 500.0)) : 1.0f;
+        alpha = age > messageMs - 500 ? static_cast<float>(juce::jlimit(0.0, 1.0, (messageMs - age) / 500.0))
+                                      : 1.0f;
     }
     else
         rightText = hint_;
@@ -146,7 +186,10 @@ void StatusBar::paint(juce::Graphics& g)
         g.setColour(c.textSecondary.withMultipliedAlpha(alpha));
         g.setFont(theme_.small());
         const int left = segments_.empty() ? 0 : segments_.back().bounds.getRight() + theme_.spacing.xl;
-        g.drawText(rightText, juce::Rectangle<int>(left, 0, getWidth() - left - theme_.spacing.md, getHeight()), juce::Justification::centredRight, true);
+        g.drawText(rightText,
+                   juce::Rectangle<int>(left, 0, getWidth() - left - theme_.spacing.md, getHeight()),
+                   juce::Justification::centredRight,
+                   true);
     }
 }
 
