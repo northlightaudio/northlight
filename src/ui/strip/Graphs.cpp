@@ -293,7 +293,6 @@ juce::Rectangle<float> TransferCurve::plot() const
 
 float TransferCurve::outputDb(float inputDb) const
 {
-    // (The built-in compressor has the first six parameters, no auto make-up or mix.)
     float makeup = card_.param(comp::makeup);
     if (card_.hasParam(comp::autoMakeup) && card_.param(comp::autoMakeup) >= 0.5f)
         makeup += comp::autoMakeupDb(card_.param(comp::threshold), card_.param(comp::ratio));

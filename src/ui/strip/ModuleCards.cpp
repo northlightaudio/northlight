@@ -553,4 +553,10 @@ createModuleCard(const Theme& theme, CardHost& host, core::Id channelId, const c
     return nullptr;
 }
 
+std::unique_ptr<ModuleCard>
+createCompressorCard(const Theme& theme, CardHost& host, core::Id channelId, const core::Insert& insert)
+{
+    return std::make_unique<CompressorCard>(theme, host, channelId, insert);
+}
+
 } // namespace aural::ui::strip

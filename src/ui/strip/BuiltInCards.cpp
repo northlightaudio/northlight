@@ -32,10 +32,6 @@ namespace eqp
 {
 constexpr int highPass = 0, lowHz = 1, lowDb = 2, midHz = 3, midDb = 4, midQ = 5, highHz = 6, highDb = 7;
 }
-namespace compp
-{
-constexpr int threshold = 0, ratio = 1, attack = 2, release = 3, knee = 4, makeup = 5;
-}
 namespace limp
 {
 constexpr int ceiling = 0, release = 1, lookahead = 2;
@@ -308,65 +304,6 @@ private:
     std::vector<std::vector<Knob*>> knobs_;
     juce::Rectangle<int> caption_;
     int selected_ = 2;
-};
-
-// ----- compressor ---------------------------------------------------------------------------------
-
-class CompressorCard final : public ModuleCard
-{
-public:
-    CompressorCard(const Theme& theme, CardHost& host, core::Id channelId, const core::Insert& insert)
-        : ModuleCard(theme, host, channelId, insert), curve_(*this),
-          history_(*this,
-                   HistoryGraph::Style{0.0f, -60.0f, false, true, true, compp::threshold, false, 3.0f}),
-          bars_(*this, {LevelBars::Kind::reduction, LevelBars::Kind::output}),
-          threshold_(
-              *this, compp::threshold, ThresholdMeter::Level::input, -60.0f, "IN", theme.colours.meterHot)
-    {
-        curve_.setTooltip(
-            "The curve with make-up; drag left of the knee for the threshold, right of it for the ratio");
-        history_.setTooltip(
-            "Input (grey), output and gain reduction (from the top); drag to set the threshold");
-        for (auto* c : std::initializer_list<juce::Component*>{&curve_, &history_, &bars_, &threshold_})
-            addAndMakeVisible(c);
-        for (int p : {compp::ratio, compp::attack, compp::release, compp::knee, compp::makeup})
-            knobs_.push_back(&addKnob(p));
-    }
-
-    int preferredWidth() const override { return 5 * knobCellWidth() + 150; }
-    int preferredBodyHeight() const override { return 160 + knobCellHeight(); }
-
-private:
-    void layoutBody(juce::Rectangle<int> body) override
-    {
-        auto display = takeDisplay(body, knobCellHeight());
-        bars_.setBounds(display.removeFromRight(bars_.preferredWidth()));
-        threshold_.setBounds(display.removeFromRight(ThresholdMeter::preferredWidth));
-        display.removeFromRight(4);
-        curve_.setBounds(display.removeFromLeft(std::min(display.getHeight(), display.getWidth() / 2)));
-        display.removeFromLeft(6);
-        history_.setBounds(display);
-        layoutKnobs(body.removeFromTop(knobCellHeight()), 5, knobs_);
-    }
-    void paramsChanged() override
-    {
-        curve_.repaint();
-        history_.repaint();
-        threshold_.repaint();
-    }
-    void framesArrived(double) override
-    {
-        curve_.repaint();
-        history_.repaint();
-        bars_.repaint();
-        threshold_.repaint();
-    }
-
-    TransferCurve curve_;
-    HistoryGraph history_;
-    LevelBars bars_;
-    ThresholdMeter threshold_;
-    std::vector<Knob*> knobs_;
 };
 
 // ----- limiter ------------------------------------------------------------------------------------
@@ -805,7 +742,7 @@ createBuiltInCard(const Theme& theme, CardHost& host, core::Id channelId, const 
     if (insert.type == types::eq)
         return std::make_unique<EqCard>(theme, host, channelId, insert);
     if (insert.type == types::compressor)
-        return std::make_unique<CompressorCard>(theme, host, channelId, insert);
+        return createCompressorCard(theme, host, channelId, insert); // the strip compressor's
     if (insert.type == types::limiter)
         return std::make_unique<LimiterCard>(theme, host, channelId, insert);
     if (insert.type == types::reverb)

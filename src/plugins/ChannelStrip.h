@@ -38,6 +38,9 @@ const std::vector<std::string>& moduleTypes();
 bool isStripType(const std::string& type);
 std::string displayName(const std::string& type);
 std::unique_ptr<engine::InsertProcessor> create(const std::string& type);
+// The channel strip's compressor as an insert of another type (the built-in
+// "aural.compressor"), listening to a sidechain key when one is chosen.
+std::unique_ptr<engine::InsertProcessor> createKeyedCompressor(const std::string& type);
 
 // Every module, off, with its default parameters and no ids (AddTrack and
 // AddBus allocate them).

@@ -352,3 +352,55 @@ TEST_CASE("Every built-in names each parameter with a unique, non-empty key", "[
         }
     }
 }
+
+TEST_CASE("The insert compressor is the channel strip's, with a sidechain key", "[plugins][compressor]")
+{
+    plugins::BuiltInFactory factory;
+    auto insert = factory.create(plugins::types::compressor);
+    auto module = factory.create(plugins::strip::types::compressor);
+    REQUIRE(insert != nullptr);
+    REQUIRE(module != nullptr);
+    CHECK(insert->typeName() == plugins::types::compressor); // its own type, for saved projects
+    CHECK(insert->acceptsSidechain());
+    CHECK_FALSE(module->acceptsSidechain());
+    REQUIRE(insert->parameters().size() == module->parameters().size());
+    for (int i = 0; i < static_cast<int>(insert->parameters().size()); ++i)
+        CHECK(insert->parameterKey(i) == module->parameterKey(i));
+
+    // The strip's extras work on the insert: a fully dry mix leaves the signal alone.
+    namespace comp = plugins::strip::compressor;
+    insert->prepare(rate, 256);
+    insert->setParameter(comp::threshold, -40.0f);
+    insert->setParameter(comp::ratio, 10.0f);
+    insert->setParameter(comp::mix, 0.0f);
+    CHECK(responseDb(*insert, 1000.0, 0.5f) == Approx(0.0f).margin(0.1f));
+    insert->setParameter(comp::mix, 100.0f);
+    insert->setParameter(comp::detector, 1.0f); // RMS
+    CHECK(responseDb(*insert, 1000.0, 0.5f) < -10.0f);
+}
+
+TEST_CASE("A compressor saved before the merge loads with its settings and the new controls' defaults",
+          "[plugins][compressor][parameters]")
+{
+    // The insert compressor had six parameters (threshold to makeup), saved by key.
+    core::Project p;
+    core::Track t;
+    t.id = 1;
+    core::Insert old;
+    old.id = 2;
+    old.type = plugins::types::compressor;
+    old.params = {-24.0f, 6.0f, 5.0f, 200.0f, 3.0f, 4.0f};
+    old.paramKeys = {"threshold", "ratio", "attack", "release", "knee", "makeup"};
+    t.inserts.push_back(old);
+    p.tracks.push_back(t);
+    const plugins::BuiltInParameterKeys keys;
+    CHECK(core::reconcileParameters(p, keys));
+    const auto& params = p.tracks[0].inserts[0].params;
+    namespace comp = plugins::strip::compressor;
+    REQUIRE(params.size() == static_cast<size_t>(comp::count));
+    CHECK(params[comp::threshold] == -24.0f);
+    CHECK(params[comp::ratio] == 6.0f);
+    CHECK(params[comp::makeup] == 4.0f);
+    CHECK(params[comp::autoMakeup] == 0.0f); // off, so the level is what it was
+    CHECK(params[comp::mix] == 100.0f);      // fully wet, as before
+}

@@ -481,7 +481,12 @@ its biquad coefficients across the block when a parameter changes.
 
 `src/plugins` holds the built-ins behind `plugins::BuiltInFactory`: Gain (ramped),
 EQ (high-pass, low shelf, peaking mid, high shelf as RBJ biquads), Compressor
-(log-domain peak detector, soft knee, makeup) and Limiter (a lookahead limiter: the
+(the channel strip's compressor, `strip::createKeyedCompressor`: peak or RMS
+detection, soft knee, attack and release on the gain reduction, makeup plus auto
+makeup, a parallel mix, and its detector keyed from a sidechain when one is
+chosen; one compressor serves both, and a project saved with the older six-control
+insert compressor loads its settings by key with the new controls at their
+defaults) and Limiter (a lookahead limiter: the
 signal is delayed by the lookahead while the gain the coming samples need is
 known, taken as a running minimum over the window with release, smoothed by a
 moving average of the same length, so nothing crosses the ceiling and the gain
@@ -1337,6 +1342,7 @@ machine for the benchmark.
 | 2026-10-20 | Paint times are recorded by the two heavy views, not by hooking every component | A scope at the top of `ArrangeView::paint` and `MixerView::paint` costs nothing elsewhere and covers what the budget is about; the frame interval (the timer's cadence) is tracked separately in the main window. |
 | 2026-10-20 | The mixer's section boxes are real slots and rows, not menus | Signal flow must be visible: an insert's bypass and order, a send's level and tap are on the strip, and the menus keep only what has no control of its own. |
 | 2026-10-20 | The arrange headers read meter copies from the mixer rather than taking from the meter block | `MeterBlock::take` resets the peak, so one consumer must own each slot; the mixer already takes every slot each frame and keeps the last readings for anyone else. |
+| 2026-10-20 | One compressor for inserts and the channel strip: the strip's, keyed | The two had drifted (the insert lacked RMS, auto makeup and mix; the strip lacked a key); keeping both meant fixing everything twice. The strip's behaviour won, so insert compressors in older projects sound somewhat different. |
 | 2026-10-20 | Selection has one owner that notifies one listener | Four views each cached the selection and nine call sites kept them in step by hand; missing one left the editor on another channel, twice. |
 | 2026-10-20 | Parameters are saved with stable keys and reconciled on load | Saving by position silently moved every later value (and automation) whenever a processor gained a parameter, as Pulsar did; keys let processors change, and an upgrade chain replaces refusing older files. |
 | 2026-10-20 | Missing media is detected once per project change, not per paint | A file-exists check per clip per frame would stall painting on a slow volume; the set is rebuilt when the project changes. |

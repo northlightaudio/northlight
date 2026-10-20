@@ -193,5 +193,9 @@ private:
 // The card for a module type (null for an unknown type).
 std::unique_ptr<ModuleCard>
 createModuleCard(const Theme& theme, CardHost& host, core::Id channelId, const core::Insert& module);
+// The compressor's card for any insert that runs the strip compressor (the
+// "aural.compressor" insert as well as the strip module).
+std::unique_ptr<ModuleCard>
+createCompressorCard(const Theme& theme, CardHost& host, core::Id channelId, const core::Insert& insert);
 
 } // namespace aural::ui::strip

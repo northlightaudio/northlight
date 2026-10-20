@@ -159,83 +159,7 @@ private:
     std::array<float, 8> lastParams_{};
 };
 
-// ----- compressor -------------------------------------------------------------------------------
-
-class Compressor final : public MeteredBuiltIn
-{
-public:
-    enum Param
-    {
-        thresholdDb,
-        ratio,
-        attackMs,
-        releaseMs,
-        kneeDb,
-        makeupDb,
-    };
-
-    Compressor()
-        : MeteredBuiltIn(types::compressor,
-                         {{"Threshold", "dB", -60.0f, 0.0f, -18.0f, false},
-                          {"Ratio", ":1", 1.0f, 20.0f, 4.0f, true},
-                          {"Attack", "ms", 0.1f, 200.0f, 10.0f, true},
-                          {"Release", "ms", 10.0f, 2000.0f, 100.0f, true},
-                          {"Knee", "dB", 0.0f, 24.0f, 6.0f, false},
-                          {"Makeup", "dB", 0.0f, 24.0f, 0.0f, false}})
-    {
-    }
-
-    void prepareBuiltIn(double, int) override { envelopeDb_ = minusInfinityDb; }
-
-    // Peak detector in the log domain, stereo-linked, feed-forward. With a
-    // sidechain the detector listens to the key signal instead of the audio.
-    bool acceptsSidechain() const noexcept override { return true; }
-    void processBuiltIn(float* left, float* right, int numSamples) noexcept override
-    {
-        processKeyed(left,
-                     right,
-                     keyLeft_ != nullptr ? keyLeft_ : left,
-                     keyRight_ != nullptr ? keyRight_ : right,
-                     numSamples);
-    }
-    void processKeyed(
-        float* left, float* right, const float* keyLeft, const float* keyRight, int numSamples) noexcept
-    {
-        const float threshold = parameter(thresholdDb);
-        const float r = parameter(ratio);
-        const float knee = parameter(kneeDb);
-        const float makeup = dbToGain(parameter(makeupDb));
-        const auto coefficient = [this](float ms)
-        { return std::exp(-1.0f / (static_cast<float>(sampleRate_) * ms * 0.001f)); };
-        const float attack = coefficient(parameter(attackMs));
-        const float release = coefficient(parameter(releaseMs));
-
-        for (int i = 0; i < numSamples; ++i)
-        {
-            const float input = std::max(std::abs(keyLeft[i]), std::abs(keyRight[i]));
-            const float inputDb = gainToDb(input);
-            const float a = inputDb > envelopeDb_ ? attack : release;
-            envelopeDb_ = a * envelopeDb_ + (1.0f - a) * inputDb;
-
-            // The soft-knee gain computer the channel strip's compressor uses too.
-            const float reductionDb = -strip::compressor::gainReductionDb(envelopeDb_, threshold, r, knee);
-
-            const float g = dbToGain(reductionDb) * makeup;
-            left[i] *= g;
-            right[i] *= g;
-            blockReduction_ = std::max(blockReduction_, -reductionDb);
-        }
-        // The detector's level for the editor's curve.
-        blockExtra_ = dbToGain(envelopeDb_);
-        reduction_.store(
-            std::max(0.0f, -(envelopeDb_ > threshold ? (1.0f / r - 1.0f) * (envelopeDb_ - threshold) : 0.0f)),
-            std::memory_order_relaxed);
-    }
-
-private:
-    float envelopeDb_ = minusInfinityDb;
-    std::atomic<float> reduction_{0.0f};
-};
+// The compressor is the channel strip's (strip::createKeyedCompressor).
 
 // ----- limiter ----------------------------------------------------------------------------------
 
@@ -698,7 +622,7 @@ std::unique_ptr<engine::InsertProcessor> BuiltInFactory::create(const std::strin
     if (typeName == types::eq)
         return std::make_unique<Eq>();
     if (typeName == types::compressor)
-        return std::make_unique<Compressor>();
+        return strip::createKeyedCompressor(types::compressor); // the channel strip's, with a key
     if (typeName == types::limiter)
         return std::make_unique<Limiter>();
     if (typeName == aurora::type)

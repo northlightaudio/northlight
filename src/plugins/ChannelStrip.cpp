@@ -568,12 +568,14 @@ private:
 // its level, the reduction smoothed with attack and release (smoothing the
 // curve's output rather than the level keeps a waveform's troughs from
 // dragging the envelope down), make-up (manual plus auto) and an internal
-// wet/dry for parallel compression.
+// wet/dry for parallel compression. The one compressor: the channel strip's
+// module, and (keyed) the "aural.compressor" insert, whose detector listens to
+// a sidechain key when one is chosen.
 class Compressor final : public StripProcessor
 {
 public:
-    Compressor()
-        : StripProcessor(types::compressor,
+    explicit Compressor(const std::string& type = types::compressor, bool keyed = false)
+        : StripProcessor(type,
                          {{"Threshold", "dB", -60.0f, 0.0f, -18.0f, false},
                           {"Ratio", ":1", 1.0f, 20.0f, 3.0f, true},
                           {"Attack", "ms", 0.1f, 100.0f, 10.0f, true},
@@ -582,9 +584,12 @@ public:
                           {"Makeup", "dB", 0.0f, 24.0f, 0.0f, false},
                           choice("Auto makeup", {"Off", "On"}, 0.0f),
                           choice("Detector", {"Peak", "RMS"}, 0.0f),
-                          {"Mix", "%", 0.0f, 100.0f, 100.0f, false}})
+                          {"Mix", "%", 0.0f, 100.0f, 100.0f, false}}),
+          keyed_(keyed)
     {
     }
+
+    bool acceptsSidechain() const noexcept override { return keyed_; }
 
 private:
     void prepareModule(double, int) override
@@ -615,15 +620,19 @@ private:
         const float wet = parameter(compressor::mix) * 0.01f;
         const float targetMakeup = currentMakeup();
         const float makeupStep = (targetMakeup - makeup_) / static_cast<float>(std::max(1, numSamples));
+        // The detector listens to the key when there is one, else to the audio.
+        const float* detectL = keyed_ && keyLeft_ != nullptr ? keyLeft_ : left;
+        const float* detectR = keyed_ && keyRight_ != nullptr ? keyRight_ : right;
         for (int i = 0; i < numSamples; ++i)
         {
             const float inL = left[i], inR = right[i];
-            float level = std::max(std::abs(inL), std::abs(inR));
+            const float keyL = detectL[i], keyR = detectR[i];
+            float level = std::max(std::abs(keyL), std::abs(keyR));
             if (rms)
             {
                 // Scaled so a sine reads its peak, like the peak detector.
-                meanSquare_ =
-                    rmsCoefficient * meanSquare_ + (1.0f - rmsCoefficient) * (inL * inL + inR * inR) * 0.5f;
+                meanSquare_ = rmsCoefficient * meanSquare_ +
+                              (1.0f - rmsCoefficient) * (keyL * keyL + keyR * keyR) * 0.5f;
                 level = std::sqrt(2.0f * meanSquare_);
             }
             const float target = compressor::gainReductionDb(gainToDb(level), threshold, ratio, knee);
@@ -649,6 +658,7 @@ private:
     float displayLevel_ = 0.0f;
     float meanSquare_ = 0.0f;
     float makeup_ = 1.0f;
+    bool keyed_ = false;
 };
 
 // ----- de-esser -------------------------------------------------------------------------------
@@ -904,6 +914,12 @@ private:
     float input_ = 1.0f;
 };
 } // namespace
+
+std::unique_ptr<engine::InsertProcessor> createKeyedCompressor(const std::string& type)
+{
+    AURAL_ASSERT_NOT_REALTIME("strip::createKeyedCompressor");
+    return std::make_unique<Compressor>(type, true);
+}
 
 std::unique_ptr<engine::InsertProcessor> create(const std::string& type)
 {

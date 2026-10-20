@@ -63,8 +63,11 @@ delay `Amber`. The instruments (7.4b-7.4e) have faces of their own.
 - **EQ**: the strip's EQ graph with the built-in's four bands (a high-pass,
   off at 0 Hz, sitting at the left edge; low shelf; mid with Q on the wheel; high
   shelf) and the analyser. The selected band's knobs below under its name.
-- **Compressor**: the transfer curve, the history with the threshold line, the IN
-  threshold meter, GR and OUT; Ratio, Attack, Release, Knee, Makeup.
+- **Compressor**: the channel strip compressor's card (the insert and the strip
+  module are one compressor): the transfer curve, the history with the threshold
+  line, the IN threshold meter, GR and OUT; Ratio, Attack, Release, Knee, Makeup,
+  Mix; Auto make-up and Peak / RMS. The insert also takes a sidechain key (its
+  menu).
 - **Limiter**: the history with the ceiling, the ceiling on the IN meter, GR and
   OUT; Release, Lookahead.
 - **Reverb**: the decay: the dry sound, the pre-delay, early reflections (more and
