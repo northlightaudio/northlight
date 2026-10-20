@@ -161,7 +161,10 @@ of a multi-output instrument becomes a track of its own, with effects like any
 other, in one click. **Pulsar**, the bundled drum synth, has eight synthesised
 pads on the General MIDI drum notes (kick, rim, snare, clap, closed and open
 hats, two toms), each with tune, decay, two shaping controls, level and pan, six
-kits, and an editor whose pads light as they play.
+kits, and an editor whose pads light as they play. **Nebula**, the bundled pad
+synth, builds each note from a drifting cloud of partials shaped by brightness, a
+vowel formant and stretch, with a halo, breath, slow motion and a large space,
+for ethereal pads.
 A MIDI track can also play an external instrument: pick a MIDI output in Audio
 Setup, then the channel in the track's right-click menu (**MIDI output**); its
 clips and, while monitoring, its live input go out in time with the audio.

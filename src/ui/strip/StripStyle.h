@@ -63,6 +63,8 @@ inline juce::Colour moduleColour(const Theme& theme, const std::string& type)
         return paletteColour(theme, "Violet");
     if (type == "aural.pulsar")
         return paletteColour(theme, "Coral");
+    if (type == "aural.nebula")
+        return paletteColour(theme, "Magenta");
     return theme.colours.textSecondary;
 }
 

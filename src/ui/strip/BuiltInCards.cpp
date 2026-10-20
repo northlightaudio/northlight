@@ -9,6 +9,7 @@
 #include "ui/strip/AuroraEditor.h"
 #include "ui/strip/EqGraph.h"
 #include "ui/strip/Graphs.h"
+#include "ui/strip/NebulaEditor.h"
 #include "ui/strip/PulsarEditor.h"
 #include "ui/strip/StripStyle.h"
 
@@ -1172,6 +1173,8 @@ createBuiltInCard(const Theme& theme, CardHost& host, core::Id channelId, const 
         return createAuroraEditor(theme, host, channelId, insert);
     if (insert.type == "aural.pulsar")
         return createPulsarEditor(theme, host, channelId, insert);
+    if (insert.type == "aural.nebula")
+        return createNebulaEditor(theme, host, channelId, insert);
     return nullptr;
 }
 

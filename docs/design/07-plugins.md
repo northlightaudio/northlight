@@ -202,6 +202,32 @@ Clicks, Industrial.
   its six knobs.
 - MASTER: Drive, Velocity, Level and a scope of the output.
 
+## 7.4d Nebula
+
+The pad synth bundled with Aural, for slow, airy, ethereal sounds. Each note is a
+cloud of partials (4 to 24), each a pair of sines detuned by the spread and
+wandering on its own with the drift, panned alternately left and right (wider the
+higher), shaped by Brightness (the spectrum's tilt), Odd/even (hollow to full),
+Stretch (towards a bell) and a vowel Formant; a Halo of partials an octave up, a
+Sub and Breath (noise around the note); a slow envelope; Motion, an LFO sweeping
+the brightness, the formant and the partials' pans; a gentle Tone low-pass; and
+Space, a large eight-line reverb. Eight voices. Presets: Nebula, Choir of Dust,
+Glass Halo, Hollow Moon, Solar Breath, Deep Field, Ice Bells, Drifting Veil.
+
+- Gas clouds in Violet, Magenta, Teal and Indigo drifting behind the panels and
+  breathing with the sound, dust rising through them; still when silent or with
+  reduce motion on. The wordmark NEBULA, light and tracked wide in a Magenta-to-Teal
+  gradient on a soft glow; "PAD SYNTH · AURAL"; the preset bar; eight voice lights.
+- SPECTRUM: the partials as columns of light on a log axis (55 Hz to 12 kHz, for
+  A3 and the octave), the halo's in Mint, under the formant's cloud, swaying with
+  the motion; drag across for the vowel, up and down for the brightness; the octave
+  in a corner chip. Partials, Bright, Odd/even, Stretch, Vowel, Formant.
+- CLOUD: where the partials sit in the stereo field (left to right, low to high),
+  each a pair of dots as far apart as the spread, wandering with the drift. Drift,
+  Spread, Width, Halo, Sub, Breath.
+- ENVELOPE (draggable), MOTION (the wave with the live value), SPACE (the tail as
+  long as the size and as bright as the mix; drag for both) with their knobs.
+
 ## 7.5 States and errors
 
 - Plugin missing on this machine: the chain card shows the name in `textTertiary`

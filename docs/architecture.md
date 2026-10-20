@@ -881,7 +881,15 @@ snare two shell modes and band-passed wires, clap four noise bursts and a tail,
 hats six square waves at the 808's ratios and noise through a high-pass, rim an
 FM ping), triggered by note-ons only, the closed hat choking the open one; the
 same voice code renders a pad offline (`renderPad`) for its editor's pictures,
-and `pulsar::activity` gives the editor a hit counter and level per pad. The older `aural.synth` (16 voices, polyBLEP saw/square,
+and `pulsar::activity` gives the editor a hit counter and level per pad. Nebula
+(`aural.nebula`, `plugins/Nebula.*`) is a pad synth: per voice up to 24 partials
+plus a halo an octave up, each two sines from a shared table (linear
+interpolation) detuned by the spread and a slow random drift, their levels set at
+a 32-sample control rate from a tilt, an odd/even balance, a stretch and a vowel
+formant (with the motion LFO sweeping them) and ramped across the interval; a
+sub, band-passed breath noise, a one-pole tone filter and an eight-line feedback
+delay network for the space. `nebula::spectrum` gives the editor the same partial
+levels for its picture. The older `aural.synth` (16 voices, polyBLEP saw/square,
 state-variable low-pass, ADSR; events partition the block so note timing is
 sample-exact), hosted VST3 plugins that accept MIDI (the events go into the JUCE
 MIDI buffer as raw bytes) and CLAP plugins with a note input port (CLAP note

@@ -53,7 +53,7 @@ constexpr int paramIndex(int pad, Field field) noexcept
 // After the pads.
 enum Master
 {
-    drive = padCount * fieldCount,
+    drive = static_cast<int>(padCount) * static_cast<int>(fieldCount),
     velocity, // 0..1 how much velocity shapes the level
     output,   // dB
     count

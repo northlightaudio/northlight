@@ -56,10 +56,13 @@ add_library(aural_ui STATIC
     strip/EqGraph.cpp
     strip/BuiltInCards.h
     strip/BuiltInCards.cpp
+    strip/SynthParts.h
     strip/AuroraEditor.h
     strip/AuroraEditor.cpp
     strip/PulsarEditor.h
     strip/PulsarEditor.cpp
+    strip/NebulaEditor.h
+    strip/NebulaEditor.cpp
     strip/ChannelStripView.h
     strip/ChannelStripView.cpp
     strip/UserStripPresets.h

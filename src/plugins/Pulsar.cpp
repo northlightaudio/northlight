@@ -426,10 +426,10 @@ const std::vector<Kit>& kits()
         std::vector<Kit> made;
         using Set = std::initializer_list<std::tuple<int, Field, float>>;
         const auto kit =
-            [&](const char* name, Set pads, std::initializer_list<std::pair<int, float>> master = {})
+            [&](const char* name, Set settings, std::initializer_list<std::pair<int, float>> master = {})
         {
             Kit k{name, base};
-            for (const auto& [pad, field, value] : pads)
+            for (const auto& [pad, field, value] : settings)
                 k.values[static_cast<size_t>(paramIndex(pad, field))] = value;
             for (const auto& [param, value] : master)
                 k.values[static_cast<size_t>(param)] = value;

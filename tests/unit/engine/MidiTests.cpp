@@ -7,6 +7,7 @@
 #include "engine/Snapshot.h"
 #include "plugins/Aurora.h"
 #include "plugins/BuiltIns.h"
+#include "plugins/Nebula.h"
 #include "plugins/Pulsar.h"
 
 #include <catch2/catch_approx.hpp>
@@ -560,4 +561,70 @@ TEST_CASE("Pulsar's pads sound on their notes, play out without note-offs and ev
     }
     CHECK(kick > 0.05f);
     CHECK(snare > 0.02f);
+}
+
+TEST_CASE("Nebula swells for a chord, every preset stays finite, and a dry note dies away",
+          "[engine][midi][nebula]")
+{
+    namespace ne = plugins::nebula;
+    core::MidiClip clip;
+    clip.start = 0;
+    clip.length = 480000;
+    for (const int note : {48, 55, 60, 64})
+        clip.notes.push_back({core::invalidId, note, 100, 0, 48000}); // a second
+    for (size_t i = 0; i < clip.notes.size(); ++i)
+        clip.notes[i].id = 20 + static_cast<core::Id>(i);
+    for (const auto& preset : ne::presets())
+    {
+        INFO(preset.name);
+        auto project = keysProject(clip, ne::type.c_str());
+        project.tracks[0].instrument.params = preset.values;
+        Harness h;
+        h.engine.setProject(project);
+        h.engine.play();
+        float loud = 0.0f;
+        bool finite = true;
+        for (int b = 0; b < 1500; ++b) // two seconds: the swell and the start of the release
+        {
+            h.engine.process(h.outputs, 2, blockSize);
+            for (size_t i = 0; i < h.left.size(); ++i)
+            {
+                finite = finite && std::isfinite(h.left[i]) && std::isfinite(h.right[i]);
+                loud = std::max(loud, std::abs(h.left[i]));
+            }
+        }
+        CHECK(finite);
+        CHECK(loud > 0.01f);
+        CHECK(loud < 4.0f);
+    }
+
+    // Without the space and with a short release, the voices end.
+    auto values = ne::presets().front().values;
+    values[ne::spaceMix] = 0.0f;
+    values[ne::attack] = 5.0f;
+    values[ne::release] = 200.0f;
+    auto project = keysProject(clip, ne::type.c_str());
+    project.tracks[0].instrument.params = values;
+    Harness h;
+    h.engine.setProject(project);
+    h.engine.play();
+    for (int b = 0; b < 1500; ++b) // the note (1 s) and the release
+        h.engine.process(h.outputs, 2, blockSize);
+    float tail = 0.0f;
+    for (float v : h.left)
+        tail = std::max(tail, std::abs(v));
+    CHECK(tail < 1.0e-3f);
+
+    // The spectrum the editor draws: brighter lifts the upper partials; odd only
+    // empties the even ones.
+    auto dark = values, bright = values, hollow = values;
+    dark[ne::brightness] = 0.0f;
+    bright[ne::brightness] = 1.0f;
+    hollow[ne::oddEven] = -1.0f;
+    hollow[ne::formant] = 0.0f;
+    const auto d = ne::spectrum(dark.data(), 220.0f), b = ne::spectrum(bright.data(), 220.0f);
+    CHECK(b[8].level > d[8].level);
+    const auto o = ne::spectrum(hollow.data(), 220.0f);
+    CHECK(o[1].level == Approx(0.0f).margin(1.0e-6f)); // the 2nd partial
+    CHECK(o[2].level > 0.05f);                         // the 3rd
 }
