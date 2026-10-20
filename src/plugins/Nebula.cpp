@@ -2,6 +2,7 @@
 
 #include "engine/rt/RealtimeGuard.h"
 #include "plugins/MeteredBuiltIn.h"
+#include "plugins/SynthVoices.h"
 
 #include <algorithm>
 #include <array>
@@ -80,22 +81,15 @@ struct Rng
     }
 };
 
-enum class Stage : std::uint8_t
-{
-    off,
-    attack,
-    decay,
-    sustain,
-    release
-};
+using synth::Envelope;
+using synth::Stage;
 
 struct Voice
 {
     int note = -1;
     float velocity = 1.0f;
     std::uint32_t age = 0;
-    Stage stage = Stage::off;
-    float env = 0.0f;
+    Envelope level; // the voice's level
     double hz = 220.0;
     std::array<std::array<double, slots>, 2> phase{}; // two sines per partial
     std::array<double, slots> increment1{}, increment2{};
@@ -103,7 +97,7 @@ struct Voice
     std::array<float, slots> driftNow{}, driftTarget{};
     double subPhase = 0.0;
     float breathLow = 0.0f, breathBand = 0.0f;
-    bool active() const noexcept { return stage != Stage::off; }
+    bool active() const noexcept { return level.active(); }
 };
 
 // Space: an eight-line feedback delay network with damping.
@@ -193,33 +187,16 @@ private:
 
     void noteOn(int note, int vel) noexcept
     {
-        Voice* voice = nullptr;
-        for (auto& v : voices_)
-            if (v.note == note && v.active())
-                voice = &v;
-        if (voice == nullptr)
-            for (auto& v : voices_)
-                if (!v.active())
-                {
-                    voice = &v;
-                    break;
-                }
-        if (voice == nullptr)
-        {
-            voice = &voices_[0];
-            for (auto& v : voices_)
-                if (v.age < voice->age)
-                    voice = &v;
-        }
+        Voice* voice = &synth::allocateVoice(voices_.data(), static_cast<int>(voices_.size()), note);
         const bool fresh = !voice->active();
         voice->note = note;
         const float sensitivity = parameter(velocity);
         voice->velocity = 1.0f - sensitivity + sensitivity * static_cast<float>(vel) / 127.0f;
         voice->age = ++age_;
-        voice->stage = Stage::attack;
+        voice->level.start();
         if (fresh)
         {
-            voice->env = 0.0f;
+            voice->level.value = 0.0f;
             // Random phases and drifts: no two notes start alike.
             for (auto& side : voice->phase)
                 for (auto& ph : side)
@@ -237,20 +214,20 @@ private:
     {
         for (auto& v : voices_)
             if (v.note == note && v.active())
-                v.stage = Stage::release;
+                v.level.release();
     }
 
     void handle(const engine::MidiEvent& e) noexcept
     {
-        if (e.type == engine::MidiEvent::Type::noteOn && e.velocity > 0)
-            noteOn(e.note, e.velocity);
-        else if (e.type == engine::MidiEvent::Type::noteOff ||
-                 (e.type == engine::MidiEvent::Type::noteOn && e.velocity == 0))
-            noteOff(e.note);
-        else if (e.type == engine::MidiEvent::Type::allNotesOff)
-            for (auto& v : voices_)
-                if (v.active())
-                    v.stage = Stage::release;
+        synth::dispatch(
+            e,
+            [this](int note, int velocity) { noteOn(note, velocity); },
+            [this](int note) { noteOff(note); },
+            [this]
+            {
+                for (auto& v : voices_)
+                    v.level.release();
+            });
     }
 
     // Once per control interval: each voice's partial frequencies and levels.
@@ -363,35 +340,11 @@ private:
             {
                 if (!v.active())
                     continue;
-                switch (v.stage)
+                const float env = v.level.step(attackStep, decayCoef, sustainLevel, releaseCoef);
+                if (!v.level.active())
                 {
-                    case Stage::attack:
-                        v.env += attackStep;
-                        if (v.env >= 1.0f)
-                        {
-                            v.env = 1.0f;
-                            v.stage = Stage::decay;
-                        }
-                        break;
-                    case Stage::decay:
-                        v.env = sustainLevel + (v.env - sustainLevel) * decayCoef;
-                        if (v.env - sustainLevel < 1.0e-4f)
-                            v.stage = Stage::sustain;
-                        break;
-                    case Stage::sustain:
-                        v.env = sustainLevel;
-                        break;
-                    case Stage::release:
-                        v.env *= releaseCoef;
-                        if (v.env < 1.0e-5f)
-                        {
-                            v.stage = Stage::off;
-                            v.note = -1;
-                            continue;
-                        }
-                        break;
-                    case Stage::off:
-                        continue;
+                    v.note = -1;
+                    continue;
                 }
                 float vl = 0.0f, vr = 0.0f;
                 for (int s = 0; s < used; ++s)
@@ -432,7 +385,7 @@ private:
                 const float high = noise - v.breathLow - 1.2f * v.breathBand;
                 v.breathBand += f * high;
                 const float centre = subSample + v.breathBand * breathLevel;
-                const float gain = v.env * v.velocity;
+                const float gain = env * v.velocity;
                 l += (vl + centre * 0.7071f) * gain;
                 r += (vr + centre * 0.7071f) * gain;
             }

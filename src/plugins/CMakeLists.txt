@@ -7,6 +7,7 @@ add_library(aural_plugins STATIC
     Aurora.h
     Aurora.cpp
     Pulsar.h
+    SynthVoices.h
     Pulsar.cpp
     Nebula.h
     Nebula.cpp

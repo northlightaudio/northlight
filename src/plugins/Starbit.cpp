@@ -2,6 +2,7 @@
 
 #include "engine/rt/RealtimeGuard.h"
 #include "plugins/MeteredBuiltIn.h"
+#include "plugins/SynthVoices.h"
 
 #include <algorithm>
 #include <cmath>
@@ -38,29 +39,22 @@ constexpr std::array<Shape, 8> shapes{{
 constexpr std::array<int, waveSteps> defaultWave{8, 11, 13, 14, 15, 15, 14, 12, 10, 9, 9, 10, 12, 13, 13, 12,
                                                  9, 6,  4,  3,  3,  4,  6,  7,  7,  6, 4, 2,  1,  0,  1,  4};
 
-enum class Stage : std::uint8_t
-{
-    off,
-    attack,
-    decay,
-    sustain,
-    release
-};
+using synth::Envelope;
+using synth::Stage;
 
 struct Voice
 {
     int note = -1;
     float velocity = 1.0f;
     std::uint32_t age = 0;
-    Stage stage = Stage::off;
-    float env = 0.0f;
+    Envelope amp; // the voice's volume, counted linearly as a chip does
     double phase = 0.0, increment = 0.0;
     double currentSemis = 60.0; // where the pitch is (gliding to the note)
     double sinceOn = 0.0;       // seconds since the note began
     std::uint16_t lfsr = 1;
     double noiseClock = 0.0;
     float noiseOut = 1.0f;
-    bool active() const noexcept { return stage != Stage::off; }
+    bool active() const noexcept { return amp.active(); }
 };
 
 class Starbit final : public MeteredBuiltIn
@@ -107,11 +101,11 @@ private:
         }
         if (!legato)
         {
-            v.stage = Stage::attack;
-            v.env = 0.0f; // a chip retriggers its volume
+            v.amp.start();
+            v.amp.value = 0.0f; // a chip retriggers its volume
         }
-        else if (v.stage == Stage::release || v.stage == Stage::off)
-            v.stage = Stage::attack;
+        else if (v.amp.stage == Stage::release || !v.amp.active())
+            v.amp.start();
     }
 
     void noteOn(int note, int vel) noexcept
@@ -123,28 +117,11 @@ private:
         if (mono())
         {
             auto& v = voices_[0];
-            startVoice(v, note, vel, v.active() && v.stage != Stage::release);
+            startVoice(v, note, vel, v.active() && v.amp.stage != Stage::release);
             return;
         }
-        Voice* voice = nullptr;
-        for (int i = 0; i < polyVoices; ++i)
-            if (voices_[static_cast<size_t>(i)].note == note && voices_[static_cast<size_t>(i)].active())
-                voice = &voices_[static_cast<size_t>(i)];
-        if (voice == nullptr)
-            for (int i = 0; i < polyVoices; ++i)
-                if (!voices_[static_cast<size_t>(i)].active())
-                {
-                    voice = &voices_[static_cast<size_t>(i)];
-                    break;
-                }
-        if (voice == nullptr)
-        {
-            voice = &voices_[0];
-            for (int i = 0; i < polyVoices; ++i)
-                if (voices_[static_cast<size_t>(i)].age < voice->age)
-                    voice = &voices_[static_cast<size_t>(i)];
-        }
-        voice->stage = Stage::off; // a fresh start
+        Voice* voice = &synth::allocateVoice(voices_.data(), polyVoices, note);
+        voice->amp.stage = Stage::off; // a fresh start
         startVoice(*voice, note, vel, false);
     }
 
@@ -165,28 +142,26 @@ private:
                     startVoice(v, held_[static_cast<size_t>(heldCount_ - 1)], lastVelocity_, true);
             }
             else if (v.active())
-                v.stage = Stage::release;
+                v.amp.release();
             return;
         }
         for (int i = 0; i < polyVoices; ++i)
             if (voices_[static_cast<size_t>(i)].note == note && voices_[static_cast<size_t>(i)].active())
-                voices_[static_cast<size_t>(i)].stage = Stage::release;
+                voices_[static_cast<size_t>(i)].amp.release();
     }
 
     void handle(const engine::MidiEvent& e) noexcept
     {
-        if (e.type == engine::MidiEvent::Type::noteOn && e.velocity > 0)
-            noteOn(e.note, e.velocity);
-        else if (e.type == engine::MidiEvent::Type::noteOff ||
-                 (e.type == engine::MidiEvent::Type::noteOn && e.velocity == 0))
-            noteOff(e.note);
-        else if (e.type == engine::MidiEvent::Type::allNotesOff)
-        {
-            heldCount_ = 0;
-            for (auto& v : voices_)
-                if (v.active())
-                    v.stage = Stage::release;
-        }
+        synth::dispatch(
+            e,
+            [this](int note, int velocity) { noteOn(note, velocity); },
+            [this](int note) { noteOff(note); },
+            [this]
+            {
+                heldCount_ = 0;
+                for (auto& v : voices_)
+                    v.amp.release();
+            });
     }
 
     // Once per control interval: each voice's pitch (arp, vibrato, sweep, glide).
@@ -290,39 +265,11 @@ private:
                 auto& v = voices_[static_cast<size_t>(vi)];
                 if (!v.active())
                     continue;
-                switch (v.stage)
+                const float env = v.amp.stepLinear(attackStep, decayStep, sustainLevel, releaseStep);
+                if (!v.amp.active())
                 {
-                    case Stage::attack:
-                        v.env += attackStep;
-                        if (v.env >= 1.0f)
-                        {
-                            v.env = 1.0f;
-                            v.stage = Stage::decay;
-                        }
-                        break;
-                    case Stage::decay:
-                        v.env -= decayStep;
-                        if (v.env <= sustainLevel)
-                        {
-                            v.env = sustainLevel;
-                            v.stage = Stage::sustain;
-                        }
-                        break;
-                    case Stage::sustain:
-                        v.env = sustainLevel;
-                        break;
-                    case Stage::release:
-                        v.env -= releaseStep;
-                        if (v.env <= 0.0f)
-                        {
-                            v.env = 0.0f;
-                            v.stage = Stage::off;
-                            v.note = -1;
-                            continue;
-                        }
-                        break;
-                    case Stage::off:
-                        continue;
+                    v.note = -1;
+                    continue;
                 }
                 float x = 0.0f;
                 const auto ph = static_cast<float>(v.phase);
@@ -369,7 +316,7 @@ private:
                 if (v.phase >= 1.0)
                     v.phase -= 1.0;
                 // The volume in 16 steps, as the chips had it.
-                const float volume = std::round(v.env * v.velocity * 15.0f) / 15.0f;
+                const float volume = std::round(env * v.velocity * 15.0f) / 15.0f;
                 sum += x * volume;
             }
             // Lo-fi: hold each sample for the slower rate, then fewer bits.

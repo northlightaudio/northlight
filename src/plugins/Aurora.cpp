@@ -2,6 +2,7 @@
 
 #include "engine/rt/RealtimeGuard.h"
 #include "plugins/MeteredBuiltIn.h"
+#include "plugins/SynthVoices.h"
 
 #include <algorithm>
 #include <array>
@@ -86,63 +87,8 @@ struct Svf
     void reset() noexcept { ic1 = ic2 = 0.0f; }
 };
 
-enum class Stage : std::uint8_t
-{
-    off,
-    attack,
-    decay,
-    sustain,
-    release
-};
-
-struct Envelope
-{
-    Stage stage = Stage::off;
-    float value = 0.0f;
-    void start() noexcept { stage = Stage::attack; }
-    void release() noexcept
-    {
-        if (stage != Stage::off)
-            stage = Stage::release;
-    }
-    // One step: a linear attack, exponential decay and release.
-    float step(float attackStep, float decayCoef, float sustain, float releaseCoef) noexcept
-    {
-        switch (stage)
-        {
-            case Stage::attack:
-                value += attackStep;
-                if (value >= 1.0f)
-                {
-                    value = 1.0f;
-                    stage = Stage::decay;
-                }
-                break;
-            case Stage::decay:
-                value = sustain + (value - sustain) * decayCoef;
-                if (value - sustain < 1.0e-4f)
-                {
-                    value = sustain;
-                    stage = Stage::sustain;
-                }
-                break;
-            case Stage::sustain:
-                value = sustain;
-                break;
-            case Stage::release:
-                value *= releaseCoef;
-                if (value < 1.0e-5f)
-                {
-                    value = 0.0f;
-                    stage = Stage::off;
-                }
-                break;
-            case Stage::off:
-                break;
-        }
-        return value;
-    }
-};
+using synth::Envelope;
+using synth::Stage;
 
 struct Voice
 {
@@ -187,24 +133,8 @@ private:
 
     void noteOn(int note, int velocity) noexcept
     {
-        Voice* voice = nullptr;
-        for (auto& v : voices_) // the same note retriggers its voice
-            if (v.note == note && v.active())
-                voice = &v;
-        if (voice == nullptr)
-            for (auto& v : voices_)
-                if (!v.active())
-                {
-                    voice = &v;
-                    break;
-                }
-        if (voice == nullptr) // steal the oldest
-        {
-            voice = &voices_[0];
-            for (auto& v : voices_)
-                if (v.age < voice->age)
-                    voice = &v;
-        }
+        // The same note retriggers its voice; else a free one; else the oldest.
+        Voice* voice = &synth::allocateVoice(voices_.data(), static_cast<int>(voices_.size()), note);
         const bool fresh = !voice->active();
         voice->note = note;
         voice->velocity = static_cast<float>(velocity) / 127.0f;
@@ -247,27 +177,18 @@ private:
 
     void handle(const engine::MidiEvent& e) noexcept
     {
-        switch (e.type)
-        {
-            case engine::MidiEvent::Type::noteOn:
-                if (e.velocity == 0)
-                    noteOff(e.note);
-                else
-                    noteOn(e.note, e.velocity);
-                break;
-            case engine::MidiEvent::Type::noteOff:
-                noteOff(e.note);
-                break;
-            case engine::MidiEvent::Type::allNotesOff:
+        synth::dispatch(
+            e,
+            [this](int note, int velocity) { noteOn(note, velocity); },
+            [this](int note) { noteOff(note); },
+            [this]
+            {
                 for (auto& v : voices_)
                 {
                     v.amp.release();
                     v.filter.release();
                 }
-                break;
-            default:
-                break;
-        }
+            });
     }
 
     double random01() noexcept
