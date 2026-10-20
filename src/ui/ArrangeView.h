@@ -5,6 +5,7 @@
 #include "core/Model.h"
 #include "engine/Meters.h"
 #include "engine/Recording.h"
+#include "ui/AutomationOverlay.h"
 #include "ui/Icons.h"
 #include "ui/Theme.h"
 #include "ui/TrackHeader.h"
@@ -185,6 +186,13 @@ public:
     void itemDragExit(const SourceDetails& details) override;
     void itemDropped(const SourceDetails& details) override;
     std::function<void(core::Id trackId, const std::string& type)> onInsertPlugin;
+    // Names for insert types (the automation chips).
+    void setDisplayName(std::function<std::string(const std::string&)> name)
+    {
+        automation_.displayName = std::move(name);
+    }
+    // Shows or hides a track's automation over its lane (the header's A).
+    void showAutomation(core::Id trackId, bool shown);
 
 private:
     int rulerHeight = 32;  // size.ruler: the markers row over the bars row
@@ -376,6 +384,7 @@ private:
     std::vector<ClipboardItem> clipboard_;
     int lastPlayheadX_ = -1;
     IconButton addTrack_, rowsSmaller_, rowsLarger_;
+    AutomationOverlay automation_{theme_};
     std::unique_ptr<juce::TextEditor> markerEditor_;
     core::Id editingMarker_ = core::invalidId;
 

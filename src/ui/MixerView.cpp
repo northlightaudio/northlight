@@ -854,6 +854,26 @@ public:
         const float peaks[2] = {r.peakLeft, r.peakRight};
         meter_.push(peaks, 2, elapsedMs);
         stripRow_.updateReductions(owner_.liveInsert);
+        if (owner_.automatedValues)
+            showAutomated(owner_.automatedValues(id_));
+    }
+
+    // The fader and pan follow what automation plays (unless the user holds them).
+    void showAutomated(const MixerView::Automated& a)
+    {
+        const juce::ScopedValueSetter<bool> guard(updating_, true);
+        if (a.gain && !fader_.isMouseButtonDown() && !value_.isMouseButtonDown())
+        {
+            fader_.setGain(a.gainValue, juce::dontSendNotification);
+            value_.setValue(gainToDb(a.gainValue), juce::dontSendNotification);
+        }
+        if (a.pan && !pan_.isMouseButtonDown())
+            pan_.setValue(a.panValue, juce::dontSendNotification);
+        if (a.gain != automatedShown_)
+        {
+            automatedShown_ = a.gain;
+            fader_.setTooltip(a.gain ? "Gain (automated: the fader follows its lane)" : "Gain");
+        }
     }
 
     void paint(juce::Graphics& g) override
@@ -1339,6 +1359,7 @@ private:
     juce::Viewport insertsView_;
     juce::Component insertsHolder_;
     StripRow stripRow_;
+    bool automatedShown_ = false;
     std::vector<std::unique_ptr<InsertSlot>> inserts_;
     std::vector<std::unique_ptr<SendRow>> sends_;
     AddRow addInsert_, addSend_;

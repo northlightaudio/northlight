@@ -36,5 +36,8 @@ public:
 
 // Default parameter values for a type, for creating a model insert.
 std::vector<float> defaultParameters(const std::string& typeName);
+// A built-in's (or strip module's) parameter descriptions, made once per type
+// (empty for an unknown type). Not real-time safe.
+const std::vector<engine::ParameterInfo>& parameterInfo(const std::string& typeName);
 
 } // namespace aural::plugins

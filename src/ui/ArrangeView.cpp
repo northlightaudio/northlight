@@ -36,6 +36,24 @@ ArrangeView::ArrangeView(audio::PeakStore& peaks)
         b->setIconSize(theme_.sizes.iconSmall);
         addAndMakeVisible(*b);
     }
+    automation_.geometry.xForSample = [this](core::SamplePosition s) { return xForSample(s); };
+    automation_.geometry.sampleForX = [this](int x) { return sampleForX(x); };
+    automation_.geometry.rowBounds = [this](int row) { return rowBounds(row); };
+    automation_.geometry.lanesArea = [this]
+    {
+        return juce::Rectangle<int>(
+            headerWidth, rulerHeight, getWidth() - headerWidth - scrollbarWidth, lanesHeight());
+    };
+    automation_.geometry.snap = [this](core::SamplePosition s) { return snapped(s); };
+    automation_.onEdit = [this](std::vector<std::unique_ptr<core::Command>> commands, const std::string& name)
+    { emit(std::move(commands), name); };
+    automation_.onShownChanged = [this](core::Id trackId, bool shown)
+    {
+        for (auto& h : headers_)
+            if (h->trackId() == trackId)
+                h->setAutomationShown(shown);
+    };
+    addAndMakeVisible(automation_);
     import_.setButtonText(juce::String::fromUTF8("Import audio\xe2\x80\xa6"));
     for (auto* b : {&addAudio_, &addInstrument_, &import_})
     {
@@ -75,6 +93,7 @@ ArrangeView::~ArrangeView()
 
 void ArrangeView::setProject(const core::Project* project)
 {
+    automation_.setProject(project);
     project_ = project;
     std::erase_if(selection_, [this](const ClipRef& ref) { return !spanOf(ref).has_value(); });
     if (project_ == nullptr || project_->findMarker(selectedMarker_) == nullptr)
@@ -225,6 +244,7 @@ void ArrangeView::rebuildHeaders()
         header->onReorderDrag = [this](core::Id id, juce::Point<int> screen, bool released)
         { reorderDrag(id, screen, released); };
         header->onContextMenu = [this](core::Id id, juce::Point<int> screen) { trackMenu(id, screen); };
+        header->onAutomationToggled = [this](core::Id id, bool shown) { showAutomation(id, shown); };
         addAndMakeVisible(*header);
         headers_.push_back(std::move(header));
     }
@@ -232,6 +252,7 @@ void ArrangeView::rebuildHeaders()
     {
         const auto& track = project_->tracks[i];
         headers_[i]->setTrack(track, static_cast<int>(i), *project_, inputNames_, midiInputNames_);
+        headers_[i]->setAutomationShown(automation_.isShown(track.id));
         headers_[i]->setSelected(track.id == selectedTrack_);
         bool missing = false;
         for (const auto& clip : track.clips)
@@ -395,9 +416,18 @@ void ArrangeView::changeListenerCallback(juce::ChangeBroadcaster*)
     repaint(); // peaks arrived
 }
 
+void ArrangeView::showAutomation(core::Id trackId, bool shown)
+{
+    automation_.setShown(trackId, shown);
+    for (auto& h : headers_)
+        if (h->trackId() == trackId)
+            h->setAutomationShown(shown);
+}
+
 void ArrangeView::resized()
 {
     layoutEmptyState();
+    automation_.setBounds(getLocalBounds());
     scrollbar_.setBounds(headerWidth,
                          getHeight() - scrollbarHeight,
                          getWidth() - headerWidth - scrollbarWidth,

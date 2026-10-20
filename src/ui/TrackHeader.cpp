@@ -78,6 +78,12 @@ TrackHeader::TrackHeader(const Theme& theme) : theme_(theme), meter_(theme, 2, f
     toggle(solo_, "solo", "Solo");
     toggle(arm_, "arm", "Arm for recording");
     arm_.getProperties().set(AuralLookAndFeel::propertyHardOn, true);
+    toggle(automation_, "", "Show automation (volume, pan, plugin parameters) over the lane");
+    automation_.onClick = [this]
+    {
+        if (onAutomationToggled)
+            onAutomationToggled(trackId_, automation_.getToggleState());
+    };
     mute_.onClick = [this]
     {
         if (!updating_ && onCommand)
@@ -463,6 +469,11 @@ void TrackHeader::paint(juce::Graphics& g)
     g.fillRect(getLocalBounds().removeFromBottom(1));
 }
 
+void TrackHeader::setAutomationShown(bool shown)
+{
+    automation_.setToggleState(shown, juce::dontSendNotification);
+}
+
 void TrackHeader::resized()
 {
     const int stripe = theme_.track.headerStripeWidth;
@@ -472,7 +483,7 @@ void TrackHeader::resized()
     // Row 1: number, name, M S R monitor.
     auto row1 = area.removeFromTop(theme_.sizes.control);
     row1.removeFromLeft(numberBounds().getWidth());
-    auto trio = row1.removeFromRight(4 * control + 3 * theme_.spacing.xxs);
+    auto trio = row1.removeFromRight(5 * control + 4 * theme_.spacing.xxs);
     const auto place = [&](juce::Component& b)
     {
         b.setBounds(trio.removeFromLeft(control).withSizeKeepingCentre(control, control));
@@ -482,6 +493,7 @@ void TrackHeader::resized()
     place(solo_);
     place(arm_);
     place(monitorButton_);
+    place(automation_);
     name_.setBounds(row1.withTrimmedRight(theme_.spacing.sm)
                         .withSizeKeepingCentre(std::max(0, row1.getWidth() - theme_.spacing.sm),
                                                theme_.sizes.controlCompact - theme_.spacing.xs));

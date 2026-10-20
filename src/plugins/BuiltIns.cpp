@@ -10,6 +10,7 @@
 #include <atomic>
 #include <cmath>
 #include <cstdint>
+#include <map>
 #include <numbers>
 #include <vector>
 
@@ -698,6 +699,21 @@ std::string BuiltInFactory::displayName(const std::string& typeName)
     if (typeName == types::synth)
         return "Synth";
     return typeName;
+}
+
+const std::vector<engine::ParameterInfo>& parameterInfo(const std::string& typeName)
+{
+    AURAL_ASSERT_NOT_REALTIME("plugins::parameterInfo");
+    static std::map<std::string, std::vector<engine::ParameterInfo>> cache;
+    auto it = cache.find(typeName);
+    if (it == cache.end())
+    {
+        std::vector<engine::ParameterInfo> infos;
+        if (const auto p = BuiltInFactory().create(typeName))
+            infos = p->parameters();
+        it = cache.emplace(typeName, std::move(infos)).first;
+    }
+    return it->second;
 }
 
 std::vector<float> defaultParameters(const std::string& typeName)

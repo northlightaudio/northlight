@@ -76,6 +76,7 @@ public:
     //   --midi-track         add a MIDI track (built-in synth) with a short clip
     //   --midi-track-with <type>  the same with the given instrument type instead
     //   --piano-roll         open the piano roll on the first MIDI clip
+    //   --automation         add a volume lane to the first track and show it in the arrange view
     //   --master-gain <dB>   set the master fader (-120 = silent: an unattended check that
     //                        should not be heard; pre-fader displays still move)
     //   --strip <modules>    switch channel strip modules on for every track and show the
@@ -167,6 +168,22 @@ public:
                 const float db = tokens.getReference(++i).text.getFloatValue();
                 session_->execute(std::make_unique<core::SetMasterGain>(
                     db <= -120.0f ? 0.0f : std::pow(10.0f, db / 20.0f)));
+            }
+            else if (arg == "--automation")
+            {
+                // A volume lane on the first track (a slow swell), shown in the arrange view.
+                if (!session_->project().tracks.empty())
+                {
+                    const auto trackId = session_->project().tracks.front().id;
+                    const double rate = session_->project().sampleRate;
+                    core::AutomationLane lane;
+                    lane.target = core::AutomationTarget::gain;
+                    const float values[] = {1.0f, 0.3f, 0.3f, 1.0f, 0.6f, 1.4f, 0.0f};
+                    for (int p = 0; p < 7; ++p)
+                        lane.points.push_back({static_cast<core::SamplePosition>(p * 2.5 * rate), values[p]});
+                    session_->execute(std::make_unique<core::AddAutomationLane>(trackId, lane));
+                    mainWindow_->showAutomation(trackId);
+                }
             }
             else if (arg == "--strip" && i + 1 < tokens.size())
                 applyStripFlag(tokens.getReference(++i).text.unquoted());

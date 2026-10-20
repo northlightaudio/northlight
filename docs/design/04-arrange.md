@@ -134,6 +134,31 @@ Rows at `trackRow` 56 default. Contents, left to right, inside `space.sm` paddin
 - Takes: stacked clips on the lane, each with a badge; the top one is audible. Lanes
   do not expand in v1 (**Decision**: take lanes as rows are a post-v1 feature).
 
+## Automation
+
+- The track header's **A** toggle (fifth of the row-one toggles, after monitor)
+  shows the track's automation over its lane; the lane's clips dim under a
+  `canvas` wash at 55%.
+- Two chips at the lane's top left (18 px, `surface2`, radius `sm`, `caption`):
+  the parameter ("Volume", "Pan", or "EQ: Band 2 gain"; a menu of Volume, Pan and
+  each insert and strip module's parameters, those with a lane marked with a dot,
+  plus Hide automation) and the channel's mode (Off `textTertiary`, Read
+  `success`, Touch and Latch `warning`, Write `record`; the menu explains each).
+- The lane: the curve in `automation` (1.5 px, filled at 12% beneath), points as
+  8 px dots ringed in `canvas` (10 px and a `textPrimary` ring when hovered or
+  dragged); `textTertiary` when the mode is Off. Without a lane the static value
+  shows as a dashed line with "Click to add a point".
+- Vertical scale: Volume from -60 dB at the bottom to +6 dB at the top (silence
+  at the bottom edge), Pan from L100 to R100, a parameter over its range (log for
+  frequencies and times).
+- Click adds a point where clicked (drag to place it before release), drag a
+  point to move it (snapped in time to the grid; Shift keeps its time; points keep
+  their order), double-click removes a point, right-click offers Delete point,
+  Clear lane and Hide automation. The value shows in a `surface3` tag while
+  dragging. Each edit is one undo step.
+- While automation plays, the mixer's fader, value field and pan knob, and the
+  channel strip's controls, follow it.
+
 ## Selection
 
 - Click selects a clip or track; Shift+click extends; Ctrl+click toggles; lasso from

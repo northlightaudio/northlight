@@ -743,6 +743,45 @@ created on the message thread (during a snapshot compile) and destroyed there
 too (the cache prunes from the session's timer); a plugin window is closed before
 its insert leaves the model so the editor never outlives the instance.
 
+### Automation (Phase 9)
+
+`core::AutomationLane`s live on the channel (`Channel::automation`, with
+`automationMode`): a target (gain, pan, or an insert or strip module's
+parameter), sorted breakpoints in the parameter's own units, and
+`automationValueAt` (a binary search, linear between points, gain in dB, held
+outside) that the engine and the UI share. Commands add, remove and replace a
+lane's points and set the mode; lanes and the mode are in the project file.
+
+Playback: `compileSnapshot` copies the lanes of a channel whose mode reads
+(read, touch, latch) into `AutomationNode`s, skipping hosted plugins (they own
+their parameters) and lanes for missing inserts. `Renderer::renderSpan`
+evaluates every lane at the span's end before any thread renders: gain and pan
+become the span's ramp targets (`ChannelRuntime::automatedGain/Pan`, overriding
+the static targets while a lane plays), an insert parameter is set on its
+processor (an atomic). A per-lane `AutomationRuntime::touched` flag (outliving
+snapshots, set by the controller) skips a lane while it is being written. The
+runtime also publishes what played (`shownGain`, `shownPan`, `automated`) so the
+mixer's controls follow. Lanes play when stopped too, at the playhead.
+
+Writing (`ProjectSession`): while the transport plays, a `SetTrackGain`,
+`SetTrackPan` or built-in `SetInsertParameter` on a channel in touch, latch or
+write mode is captured instead of executed: the value goes straight to the
+engine (`setLiveGain`, `setLivePan`, the processor), the point is appended to a
+pass with the engine position, and the lane is marked touched. Touch passes end
+with the gesture, latch and write passes at the stop (or when the session's
+timer sees the transport stopped); write mode also starts a pass for each of the
+channel's lanes when playback starts. A pass replaces the lane's points over its
+range (a 10 ms ramp in from the curve, a 50 ms glide back for touch, the last
+value held to the stop for latch and write), or creates the lane, as one
+"Write automation" undo step; a loop wrap closes the pass so far. The model's
+static values and the undo history are untouched while writing.
+
+UI: `ui::AutomationOverlay` covers the arrange view and takes the pointer only
+over rows whose header's A toggle is on; it draws the chosen lane over the row
+and edits points (04-arrange.md, Automation). The mixer strip asks for the
+automated values each meter frame; strip cards follow their processor's
+parameters.
+
 ### MIDI and instruments (Phase 8)
 
 A track is audio or MIDI (`Track::kind`); a MIDI track has `midiClips` of

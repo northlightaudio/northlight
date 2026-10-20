@@ -132,6 +132,12 @@ recording, the next launch offers to repair the unfinished files and put them ba
 on their tracks where they were captured (or on "Recovered" tracks when the project
 has changed), or set them aside. Recording needs the device at the project's sample
 rate.
+**Automation**: the **A** button on a track header shows the track's automation
+over its lane. Pick the parameter (volume, pan, or any parameter of a built-in
+insert or channel strip module) and the mode (Off, Read, Touch, Latch, Write) from
+the chips at the lane's top left; click to add points, drag them, double-click to
+remove. In Touch, Latch or Write, moving the fader, pan or a parameter while
+playing records it into the lane. Faders and knobs follow automation as it plays.
 **Editing** in the arrange view: click a clip to select it (Shift adds, Ctrl
 toggles), drag on empty space to lasso, drag a clip to move it (across tracks too),
 drag its edge to trim, drag the handle at a top corner for a fade, Ctrl+drag up or

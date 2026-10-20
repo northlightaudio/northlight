@@ -59,6 +59,9 @@ public:
     // Dragging the number: the screen position while it moves and when released.
     std::function<void(core::Id, juce::Point<int> screen, bool released)> onReorderDrag;
     std::function<void(core::Id, juce::Point<int> screen)> onContextMenu;
+    // The A toggle: show the track's automation over its lane.
+    std::function<void(core::Id, bool shown)> onAutomationToggled;
+    void setAutomationShown(bool shown);
 
     void paint(juce::Graphics& g) override;
     void resized() override;
@@ -97,7 +100,7 @@ private:
     std::vector<core::Id> busIds_;
     juce::Label name_;
     juce::ComboBox input_, output_;
-    juce::TextButton mute_{"M"}, solo_{"S"}, arm_{"R"}, monitorButton_;
+    juce::TextButton mute_{"M"}, solo_{"S"}, arm_{"R"}, monitorButton_, automation_{"A"};
     juce::Slider volume_;
     Meter meter_;
     Knob pan_;

@@ -294,6 +294,26 @@ void ModuleCard::tick(double elapsedMs)
         }
         return;
     }
+    // Automation sets the processor's parameters: the controls follow.
+    if (live_ != nullptr && !isMouseButtonDown(true))
+    {
+        bool moved = false;
+        for (size_t i = 0; i < params_.size() && i < live_->parameters().size(); ++i)
+        {
+            const float v = live_->parameter(static_cast<int>(i));
+            if (v != params_[i])
+            {
+                params_[i] = v;
+                moved = true;
+            }
+        }
+        if (moved)
+        {
+            for (const auto& b : bindings_)
+                updateBinding(b);
+            paramsChanged();
+        }
+    }
     const float dt = static_cast<float>(elapsedMs * 0.001);
     const float fall = theme_.motion.meterFallDbPerSec * dt * 1.5f;
     float in = 0.0f, out = 0.0f, gr = 0.0f, extra = 0.0f;

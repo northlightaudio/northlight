@@ -55,6 +55,13 @@ public:
     std::function<void()> onOpenPluginBrowser;
     // "Edit channel strip" on a strip's module row: show the channel in the Editor panel.
     std::function<void(core::Id channelId)> onShowStrip;
+    // What automation is playing on a channel: faders and pans follow it.
+    struct Automated
+    {
+        bool gain = false, pan = false;
+        float gainValue = 1.0f, panValue = 0.0f;
+    };
+    std::function<Automated(core::Id channelId)> automatedValues;
     // Per-user values (plugin window positions, the pin preference); may be null.
     std::function<std::string(const std::string& key)> loadSetting;
     std::function<void(const std::string& key, const std::string& value)> saveSetting;

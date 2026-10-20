@@ -61,6 +61,8 @@ public:
     void applyLayoutPreset(const juce::String& name);
     // Shows a panel by its key (mixer, editor, pianoRoll, diagnostics, browser, inspector).
     void showPanel(const juce::String& key);
+    // Shows a track's automation over its lane in the arrange view.
+    void showAutomation(core::Id trackId);
     // A toast or a status message, for the application's own notices.
     void notify(const juce::String& message, bool warning = false);
 

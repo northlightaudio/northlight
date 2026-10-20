@@ -767,6 +767,11 @@ private:
             selectionChanged(id);
         };
         mixer_.onOpenPluginBrowser = [this] { owner_.showPluginBrowser(); };
+        mixer_.automatedValues = [this](core::Id id)
+        {
+            const auto v = session_.engine().automatedValues(id);
+            return ui::MixerView::Automated{v.gain, v.pan, v.gainValue, v.panValue};
+        };
         mixer_.onShowStrip = [this](core::Id id)
         {
             tracks_.setSelectedTrack(id);
@@ -813,6 +818,7 @@ private:
         { settings_.setValue(key, value); };
         browser_.onInsert = [this](const std::string& type) { insertPlugin(tracks_.selectedTrack(), type); };
         browser_.setStatus(session_.pluginScanStatus());
+        tracks_.setDisplayName([this](const std::string& type) { return mixer_.insertDisplayName(type); });
         tracks_.onInsertPlugin = [this](core::Id trackId, const std::string& type)
         { insertPlugin(trackId, type); };
         editor_.isEditorOpen = [this](core::Id insertId) { return mixer_.isEditorOpen(insertId); };
@@ -2087,6 +2093,12 @@ void MainWindow::openPianoRoll(core::Id trackId, core::Id clipId)
         content->pianoRoll_.setClip(&session_.project(), trackId, clipId);
         content->panels_.show(ui::PanelId::pianoRoll);
     }
+}
+
+void MainWindow::showAutomation(core::Id trackId)
+{
+    if (auto* content = dynamic_cast<Content*>(getContentComponent()))
+        content->tracks_.showAutomation(trackId, true);
 }
 
 void MainWindow::showPanel(const juce::String& key)
