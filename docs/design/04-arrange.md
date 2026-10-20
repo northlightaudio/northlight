@@ -61,8 +61,10 @@ Rows at `trackRow` 56 default. Contents, left to right, inside `space.sm` paddin
   height. Clicking it opens the colour swatch popup.
 - Row 1 (28 px): track number `caption` `textTertiary`, name `label` `textPrimary`
   (double-click renames inline), then the control trio right aligned: M, S, R as
-  24 px toggle buttons with their semantic colours, plus a monitor toggle (● icon,
-  `monitor`) that cycles off/auto/on with the state in its tooltip.
+  24 px toggle buttons with their semantic colours, plus a monitor toggle (● icon)
+  that cycles off/auto/on with the state in its tooltip: dim when off, `monitor`
+  green while the input is heard (on, or auto with the track armed and the
+  transport stopped or recording), `warning` yellow while auto is waiting.
 - Row 2 (24 px, hidden below 44 px row height): input select (compact combo, "In 1",
   "In 1/2" for linked stereo, "No input"), an 8 px tall horizontal meter filling the
   middle, and a compact volume slider on the right (hidden below 200 px header width,

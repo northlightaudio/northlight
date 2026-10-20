@@ -257,6 +257,7 @@ void TrackHeader::setLiveState(bool monitoring, bool recording)
         return;
     monitoring_ = monitoring;
     recording_ = recording;
+    refreshMonitorButton(); // auto turns from waiting to hearing as the state changes
     repaint();
 }
 
@@ -387,14 +388,23 @@ void TrackHeader::showColourMenu()
         });
 }
 
+// The dot: dim when off; `monitor` green when the input is heard (on, or auto
+// with its conditions met: armed and stopped or recording); `warning` yellow
+// when auto is waiting for them.
 void TrackHeader::refreshMonitorButton()
 {
     using core::MonitorMode;
+    const bool waiting = monitor_ == MonitorMode::automatic && !monitoring_;
     monitorButton_.setToggleState(monitor_ != MonitorMode::off, juce::dontSendNotification);
-    monitorButton_.setTooltip(monitor_ == MonitorMode::off         ? "Monitor: off"
-                              : monitor_ == MonitorMode::automatic ? "Monitor: auto (while armed and stopped)"
-                                                                   : "Monitor: on");
+    monitorButton_.getProperties().set(AuralLookAndFeel::propertySemantic,
+                                       waiting ? "monitorAuto" : "monitor");
+    monitorButton_.setTooltip(monitor_ == MonitorMode::off  ? "Monitor: off"
+                              : monitor_ == MonitorMode::on ? "Monitor: on"
+                              : waiting
+                                  ? "Monitor: auto (waiting: heard while armed and stopped or recording)"
+                                  : "Monitor: auto (hearing the input)");
     monitorButton_.setAlpha(monitor_ == MonitorMode::off ? 0.7f : 1.0f);
+    monitorButton_.repaint();
 }
 
 void TrackHeader::paint(juce::Graphics& g)

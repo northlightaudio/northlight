@@ -324,6 +324,12 @@ void AuralLookAndFeel::drawButtonBackground(juce::Graphics& g,
             colour = c.monitor;
             glow = &m.glowMonitor;
         }
+        else if (semantic == "monitorAuto")
+        {
+            // Auto monitoring that is not passing the input right now: waiting.
+            colour = c.warning;
+            glow = nullptr;
+        }
         else if (semantic == "phase")
         {
             colour = c.textSecondary;
@@ -434,6 +440,8 @@ void AuralLookAndFeel::drawButtonText(juce::Graphics& g,
             colour = c.mute;
         else if (semantic == "monitor")
             colour = c.monitor;
+        else if (semantic == "monitorAuto")
+            colour = c.warning;
         else if (semantic == "phase")
             colour = c.textSecondary;
         text = hardOn ? c.textOnColour : colour;
