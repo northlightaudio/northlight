@@ -282,6 +282,7 @@ std::string ProjectSession::importAudioFile(const juce::File& file, core::Sample
 void ProjectSession::newProject()
 {
     removeOwnAutosave();
+    hostedSent_.clear();
     untitledStem_.clear();
     engine_.resetCaches(); // another project's ids must not reuse these instances
     project_ = core::Project{};
@@ -295,6 +296,7 @@ void ProjectSession::newProject()
 std::string ProjectSession::open(const juce::File& file)
 {
     removeOwnAutosave();
+    hostedSent_.clear();
     untitledStem_.clear();
     engine_.resetCaches();
     std::string error;
@@ -386,6 +388,7 @@ std::string ProjectSession::newFromTemplate(const juce::File& file)
     engine_.resetCaches();
     project_ = *loaded;
     project_.name = "Untitled";
+    hostedSent_.clear();
     plugins::strip::ensureChannelStrip(project_);
     undo_.clear();
     projectFile_ = juce::File();
@@ -609,6 +612,7 @@ std::string ProjectSession::restoreAutosave(const Autosave& autosave)
         return error.empty() ? "could not read the autosave" : error;
     removeOwnAutosave();
     untitledStem_.clear();
+    hostedSent_.clear();
     engine_.resetCaches();
     project_ = *loaded;
     plugins::strip::ensureChannelStrip(project_);
@@ -1543,7 +1547,7 @@ void ProjectSession::finishPasses(bool touchOnly)
     std::vector<core::Id> lanes;
     for (auto it = passes_.begin(); it != passes_.end();)
     {
-        if (touchOnly && it->mode != core::AutomationMode::touch)
+        if (touchOnly && (it->mode != core::AutomationMode::touch || it->fromPlugin))
         {
             ++it;
             continue;
@@ -1570,7 +1574,17 @@ void ProjectSession::handlePluginEdit(const core::Channel& channel,
 {
     using Kind = engine::InsertProcessor::ParameterEdit::Kind;
     if (edit.kind == Kind::value)
-        recordAutomation(core::SetInsertParameter(channel.id, insert.id, edit.index, edit.value), false);
+    {
+        // A plugin reporting back what a lane just sent it is not the user.
+        if (const auto sent = hostedSent_.find({insert.id, edit.index});
+            sent != hostedSent_.end() && std::abs(sent->second - edit.value) <= 1.0e-4f)
+            return;
+        if (recordAutomation(core::SetInsertParameter(channel.id, insert.id, edit.index, edit.value), false))
+            for (auto& pass : passes_)
+                if (pass.insert == insert.id && pass.parameter == edit.index &&
+                    pass.target == core::AutomationTarget::insertParameter)
+                    pass.fromPlugin = true;
+    }
     else if (edit.kind == Kind::end && channel.automationMode == core::AutomationMode::touch)
         finishPass(channel.id, insert.id, edit.index); // the plugin let go of its control
 }
@@ -1648,11 +1662,12 @@ void ProjectSession::playHostedAutomation()
                             passes_.end(),
                             [&](const AutomationPass& p) { return p.lane == lane.id; }))
                 continue;
+            // Sent whenever the plugin is somewhere else (the lane moved, the
+            // instance is new, or the user turned the plugin's own knob in Read).
             const float value = lane.valueAt(position);
-            const auto last = hostedLaneValues_.find(lane.id);
-            if (last != hostedLaneValues_.end() && last->second == value)
-                continue; // only changes go to the plugin
-            hostedLaneValues_[lane.id] = value;
+            if (std::abs(instance->parameter(lane.parameter) - value) <= 1.0e-4f)
+                continue;
+            hostedSent_[{lane.insert, lane.parameter}] = value;
             instance->setParameter(lane.parameter, value);
         }
     };

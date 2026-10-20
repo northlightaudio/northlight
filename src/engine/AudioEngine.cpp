@@ -252,9 +252,20 @@ void AudioEngine::applyLiveValues(const core::Project& project)
                 // the ones a command touched (pushInsertParameters).
                 if (!instance->ownsParameters())
                 {
+                    // A parameter a lane is playing belongs to the renderer: the
+                    // static value would flash in for a block.
+                    const bool reads = c.automationMode == core::AutomationMode::read ||
+                                       c.automationMode == core::AutomationMode::touch ||
+                                       c.automationMode == core::AutomationMode::latch;
                     const auto count = static_cast<int>(instance->parameters().size());
                     for (int k = 0; k < count && static_cast<size_t>(k) < i.params.size(); ++k)
+                    {
+                        const auto* lane =
+                            reads ? c.findLane(core::AutomationTarget::insertParameter, i.id, k) : nullptr;
+                        if (lane != nullptr && !lane->points.empty())
+                            continue;
                         instance->setParameter(k, i.params[static_cast<size_t>(k)]);
+                    }
                 }
                 instance->setBypassed(i.bypass);
             }

@@ -1,6 +1,7 @@
 #include "plugins/ChannelStrip.h"
 
 #include "engine/rt/RealtimeGuard.h"
+#include "plugins/BuiltIns.h"
 #include "plugins/ProcessorBase.h"
 
 #include <algorithm>
@@ -935,9 +936,8 @@ std::vector<core::Insert> defaultStrip()
         core::Insert module;
         module.type = type;
         module.bypass = true; // off until switched on
-        if (const auto processor = create(type))
-            for (const auto& p : processor->parameters())
-                module.params.push_back(p.defaultValue);
+        for (const auto& p : parameterInfo(type))
+            module.params.push_back(p.defaultValue);
         modules.push_back(std::move(module));
     }
     return modules;

@@ -72,6 +72,14 @@ private:
         std::unique_ptr<engine::DiskThread> disk;
         std::unique_ptr<audio::JuceMediaLoader> loader;
         std::unique_ptr<engine::AudioEngine> engine;
+        // Lanes on hosted plugins (they own their parameters, so the engine does
+        // not play them): set from the render thread before each block.
+        struct HostedLane
+        {
+            core::AutomationLane lane;
+            std::shared_ptr<engine::InsertProcessor> instance;
+        };
+        std::vector<HostedLane> hostedLanes;
     };
 
     void run() override;

@@ -258,6 +258,7 @@ private:
         core::AutomationMode mode = core::AutomationMode::touch;
         core::Id lane = core::invalidId; // the lane being rewritten (touched in the engine), if any
         std::vector<core::AutomationPoint> points;
+        bool fromPlugin = false; // driven by the plugin's own controls: ended by its gesture, not ours
     };
     bool recordAutomation(const core::Command& command, bool pushValue = true);
     // An edit a hosted plugin made itself: recorded while writing.
@@ -310,7 +311,9 @@ private:
     double lastEditMs_ = 0.0;
     std::vector<AutomationPass> passes_;
     bool writePassesStarted_ = false;
-    std::map<core::Id, float> hostedLaneValues_; // the last value each hosted lane pushed
+    // What each hosted lane last sent, per insert and parameter (to tell an
+    // echo of it from the plugin from a move by the user); cleared with the project.
+    std::map<std::pair<core::Id, int>, float> hostedSent_;
     juce::TimedCallback hostedAutomation_{[this] { playHostedAutomation(); }};
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(ProjectSession)

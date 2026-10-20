@@ -1,5 +1,6 @@
 #include "ui/strip/ModuleCard.h"
 
+#include "plugins/BuiltIns.h"
 #include "plugins/ChannelStrip.h"
 #include "ui/AuralLookAndFeel.h"
 #include "ui/strip/StripStyle.h"
@@ -11,22 +12,6 @@ namespace aural::ui::strip
 
 namespace
 {
-// Parameter metadata per module type, made once (an instance per card would
-// allocate the feedback rings just to read names).
-const std::vector<engine::ParameterInfo>& parameterInfos(const std::string& type)
-{
-    static std::map<std::string, std::vector<engine::ParameterInfo>> cache;
-    auto it = cache.find(type);
-    if (it == cache.end())
-    {
-        std::vector<engine::ParameterInfo> infos;
-        if (const auto p = plugins::strip::create(type))
-            infos = p->parameters();
-        it = cache.emplace(type, std::move(infos)).first;
-    }
-    return it->second;
-}
-
 juce::String formatValue(const engine::ParameterInfo& info, double v)
 {
     if (!info.choices.empty())
@@ -109,7 +94,7 @@ private:
 
 ModuleCard::ModuleCard(const Theme& theme, CardHost& host, core::Id channelId, const core::Insert& module)
     : theme_(theme), host_(host), channelId_(channelId), moduleId_(module.id), type_(module.type),
-      colour_(moduleColour(theme, module.type)), infos_(parameterInfos(module.type)),
+      colour_(moduleColour(theme, module.type)), infos_(plugins::parameterInfo(module.type)),
       power_(theme, Icon::power, "Switch on"), ring_(static_cast<size_t>(historyCapacity))
 {
     setOpaque(false);

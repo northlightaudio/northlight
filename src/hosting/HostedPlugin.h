@@ -118,8 +118,11 @@ private:
     void parameterValueChanged(int parameterIndex, float newValue) override;
     void parameterGestureChanged(int parameterIndex, bool gestureIsStarting) override;
     void pushEdit(const ParameterEdit& edit) noexcept;
+    static constexpr size_t maxEdits = 4096;
     std::mutex editsMutex_;
-    std::vector<ParameterEdit> edits_;
+    std::vector<ParameterEdit> edits_;   // both reserved to maxEdits: swapping keeps the capacity
+    std::vector<ParameterEdit> drained_; // the message thread's copy
+    size_t drainedAt_ = 0;
     static thread_local bool settingFromHost_; // our own setValue: not an edit
     std::unique_ptr<juce::AudioPluginInstance> instance_;
     void run(float* left, float* right, const float* keyLeft, const float* keyRight, int numSamples) noexcept;

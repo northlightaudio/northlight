@@ -493,7 +493,8 @@ void EditorPanel::paint(juce::Graphics& g)
     if (dropIndex_ >= 0)
     {
         // The insertion line between cards (a plugin or a card dragged over).
-        int x = theme_.spacing.md - theme_.spacing.sm / 2;
+        int x = insertsX_ -
+                theme_.spacing.sm / 2; // the head of the inserts (after the strip when it comes first)
         if (dropIndex_ > 0 && static_cast<size_t>(dropIndex_) <= cards_.size())
             x = cards_[static_cast<size_t>(dropIndex_ - 1)]->getRight() + theme_.spacing.sm / 2;
         const int sx = viewport_.getX() + x - viewport_.getViewPositionX();

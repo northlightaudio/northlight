@@ -26,6 +26,21 @@ BounceJob::BounceJob(const core::Project& project, const hosting::HostFactory& i
         render->engine = std::make_unique<engine::AudioEngine>(*render->loader, inserts_, 0);
         render->engine->prepare(render->project.sampleRate, options_.blockSize);
         render->engine->setProject(render->project); // plugin instances: message thread
+        const auto collect = [&](const core::Channel& channel)
+        {
+            if (channel.automationMode == core::AutomationMode::off ||
+                channel.automationMode == core::AutomationMode::write)
+                return;
+            for (const auto& lane : channel.automation)
+                if (lane.target == core::AutomationTarget::insertParameter && !lane.points.empty())
+                    if (auto instance = render->engine->insertInstance(lane.insert);
+                        instance != nullptr && instance->ownsParameters())
+                        render->hostedLanes.push_back({lane, std::move(instance)});
+        };
+        for (const auto& t : render->project.tracks)
+            collect(t);
+        for (const auto& b : render->project.buses)
+            collect(b);
         renders_.push_back(std::move(render));
     };
     if (!options_.stems)
@@ -133,6 +148,8 @@ bool BounceJob::renderOne(Render& render, int index, int count)
             return false;
         }
         const int n = static_cast<int>(std::min<core::SamplePosition>(block, total - produced));
+        for (const auto& hosted : render.hostedLanes)
+            hosted.instance->setParameter(hosted.lane.parameter, hosted.lane.valueAt(engine.position()));
         engine.process(nullptr, 0, outputs, 2, n);
         int from = 0;
         if (produced < latency)

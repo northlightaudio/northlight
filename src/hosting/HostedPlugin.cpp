@@ -62,6 +62,8 @@ HostedPlugin::HostedPlugin(std::string typeName,
     acceptsMidi_ = instance_->acceptsMidi();
     // The parameters the plugin shows the host (VST3 bypass and program
     // parameters included), as normalised values.
+    edits_.reserve(maxEdits); // pushEdit never grows it (it may run on the audio thread)
+    drained_.reserve(maxEdits);
     indexOfProcessorParameter_.assign(static_cast<size_t>(instance_->getParameters().size()), -1);
     for (auto* parameter : instance_->getParameters())
     {
@@ -95,7 +97,7 @@ void HostedPlugin::setParameter(int index, float value) noexcept
 void HostedPlugin::pushEdit(const ParameterEdit& edit) noexcept
 {
     std::unique_lock<std::mutex> lock(editsMutex_, std::try_to_lock);
-    if (!lock.owns_lock() || edits_.size() >= 4096)
+    if (!lock.owns_lock() || edits_.size() >= maxEdits)
         return; // dropped: never wait (the audio thread may be the caller)
     edits_.push_back(edit);
 }
@@ -120,11 +122,18 @@ void HostedPlugin::parameterGestureChanged(int parameterIndex, bool gestureIsSta
 
 bool HostedPlugin::takeParameterEdit(ParameterEdit& edit) noexcept
 {
-    const std::lock_guard<std::mutex> lock(editsMutex_);
-    if (edits_.empty())
+    // The queue is swapped out whole (a short hold of the lock the listener
+    // tries) and handed out from the copy.
+    if (drainedAt_ >= drained_.size())
+    {
+        drained_.clear();
+        drainedAt_ = 0;
+        const std::lock_guard<std::mutex> lock(editsMutex_);
+        std::swap(edits_, drained_);
+    }
+    if (drainedAt_ >= drained_.size())
         return false;
-    edit = edits_.front();
-    edits_.erase(edits_.begin());
+    edit = drained_[drainedAt_++];
     return true;
 }
 
