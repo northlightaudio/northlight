@@ -5,6 +5,7 @@
 #include "audio/AudioDeviceLayer.h"
 #include "core/Command.h"
 #include "core/Model.h"
+#include "engine/Snapshot.h"
 #include "ui/ArrangeView.h"
 #include "ui/AudioSetupView.h"
 #include "ui/AuralLookAndFeel.h"
@@ -35,8 +36,8 @@ namespace
 {
 juce::String barsText(const core::Project& project, core::SamplePosition position)
 {
-    const auto bb =
-        core::samplesToBarsBeats(std::abs(position), project.sampleRate, project.tempoBpm, project.timeSignature);
+    const auto bb = core::samplesToBarsBeats(
+        std::abs(position), project.sampleRate, project.tempoBpm, project.timeSignature);
     return juce::String(position < 0 ? "-" : "") + juce::String(bb.bar) + "." + juce::String(bb.beat) + "." +
            juce::String(bb.tick).paddedLeft('0', 3);
 }
@@ -85,7 +86,8 @@ class Splitter final : public juce::Component
 public:
     Splitter(const ui::Theme& theme, bool horizontal) : theme_(theme), horizontal_(horizontal)
     {
-        setMouseCursor(horizontal ? juce::MouseCursor::UpDownResizeCursor : juce::MouseCursor::LeftRightResizeCursor);
+        setMouseCursor(horizontal ? juce::MouseCursor::UpDownResizeCursor
+                                  : juce::MouseCursor::LeftRightResizeCursor);
         setRepaintsOnMouseActivity(true);
     }
     std::function<void(int delta)> onDragged;
@@ -99,7 +101,10 @@ public:
         else
             g.fillRect(getWidth() / 2, 0, 1, getHeight());
     }
-    void mouseDown(const juce::MouseEvent& e) override { last_ = horizontal_ ? e.getScreenY() : e.getScreenX(); }
+    void mouseDown(const juce::MouseEvent& e) override
+    {
+        last_ = horizontal_ ? e.getScreenY() : e.getScreenX();
+    }
     void mouseDrag(const juce::MouseEvent& e) override
     {
         const int now = horizontal_ ? e.getScreenY() : e.getScreenX();
@@ -146,7 +151,8 @@ public:
         for (size_t i = 0; i < types_.size(); ++i)
         {
             driver_.addItem(types_[i].name, static_cast<int>(i) + 1);
-            if (types_[i].name == status.deviceType || (status.deviceType.empty() && types_[i].name == "ASIO"))
+            if (types_[i].name == status.deviceType ||
+                (status.deviceType.empty() && types_[i].name == "ASIO"))
                 driver_.setSelectedId(static_cast<int>(i) + 1, juce::dontSendNotification);
         }
         if (driver_.getSelectedId() == 0 && !types_.empty())
@@ -183,7 +189,10 @@ public:
         return audio_.apply(settings);
     }
 
-    static int preferredHeight(const ui::Theme& theme) { return 4 * (theme.sizes.control + theme.spacing.sm); }
+    static int preferredHeight(const ui::Theme& theme)
+    {
+        return 4 * (theme.sizes.control + theme.spacing.sm);
+    }
 
     void resized() override
     {
@@ -191,7 +200,8 @@ public:
         const int labelW = 120;
         const auto row = [&](juce::Label& label, juce::Component& control, int height)
         {
-            auto r = area.removeFromTop(theme_.sizes.control + theme_.spacing.sm).withTrimmedBottom(theme_.spacing.sm);
+            auto r = area.removeFromTop(theme_.sizes.control + theme_.spacing.sm)
+                         .withTrimmedBottom(theme_.spacing.sm);
             label.setBounds(r.removeFromLeft(labelW));
             control.setBounds(r.withSizeKeepingCentre(r.getWidth(), height));
         };
@@ -241,7 +251,10 @@ class MainWindow::Content final : public juce::Component, private juce::ChangeLi
 public:
     friend class MainWindow;
 
-    Content(MainWindow& owner, audio::AudioDeviceLayer& audio, ProjectSession& session, UserSettings& settings)
+    Content(MainWindow& owner,
+            audio::AudioDeviceLayer& audio,
+            ProjectSession& session,
+            UserSettings& settings)
         : owner_(owner), audio_(audio), session_(session), settings_(settings), header_(theme_),
           tracks_(session.peakStore()), dock_(theme_, ui::HostKind::dock), side_(theme_, ui::HostKind::side),
           status_(theme_), toasts_(theme_), dockSplitter_(theme_, true), sideSplitter_(theme_, false),
@@ -585,12 +598,14 @@ private:
         { importFiles(files, at); };
         tracks_.onEdit = [this](std::vector<std::unique_ptr<core::Command>> commands, const std::string& name)
         { session_.executeGroup(name, std::move(commands)); };
-        tracks_.onOpenMidiClip = [this](core::Id trackId, core::Id clipId) { owner_.openPianoRoll(trackId, clipId); };
+        tracks_.onOpenMidiClip = [this](core::Id trackId, core::Id clipId)
+        { owner_.openPianoRoll(trackId, clipId); };
         tracks_.onNormalise = [this](core::Id trackId, core::Id clipId)
         {
             const auto error = session_.normaliseClip(trackId, clipId);
             if (!error.empty())
-                toast(ui::ToastStack::Kind::error, "Normalise failed: " + juce::String::fromUTF8(error.c_str()));
+                toast(ui::ToastStack::Kind::error,
+                      "Normalise failed: " + juce::String::fromUTF8(error.c_str()));
         };
         tracks_.playheadForEdits = [this] { return session_.position(); };
         tracks_.setAcceptedExtensions(session_.mediaLoader().supportedExtensions());
@@ -598,12 +613,18 @@ private:
         tracks_.onSelectionChanged = [this] { selectionChanged(tracks_.selectedTrack()); };
         tracks_.onAddAudioTrack = [this] { addAudioTrack(); };
         tracks_.onAddInstrumentTrack = [this] { addInstrumentTrack(); };
+        tracks_.onAddBus = [this] { addBus(); };
         tracks_.onImportRequested = [this] { importAudio(); };
+        tracks_.onCommand = [this](std::unique_ptr<core::Command> c) { session_.execute(std::move(c)); };
+        tracks_.onGestureBegin = [this](const std::string& name) { session_.beginGesture(name); };
+        tracks_.onGestureEnd = [this] { session_.endGesture(); };
+        tracks_.trackMeter = [this](int index) { return mixer_.lastReading(engine::trackMeterSlot(index)); };
     }
 
     void wireMixer()
     {
-        mixer_.onCommand = [this](std::unique_ptr<core::Command> command) { session_.execute(std::move(command)); };
+        mixer_.onCommand = [this](std::unique_ptr<core::Command> command)
+        { session_.execute(std::move(command)); };
         mixer_.onGestureBegin = [this](const std::string& name) { session_.beginGesture(name); };
         mixer_.onGestureEnd = [this] { session_.endGesture(); };
         mixer_.setHost(&session_.insertFactory());
@@ -627,7 +648,8 @@ private:
         inspector_.onGestureBegin = [this](const std::string& name) { session_.beginGesture(name); };
         inspector_.onGestureEnd = [this] { session_.endGesture(); };
 
-        pianoRoll_.onEdit = [this](std::vector<std::unique_ptr<core::Command>> commands, const std::string& name)
+        pianoRoll_.onEdit =
+            [this](std::vector<std::unique_ptr<core::Command>> commands, const std::string& name)
         { session_.executeGroup(name, std::move(commands)); };
 
         browser_.onScan = [this](bool all) { session_.scanPlugins(all); };
@@ -642,15 +664,36 @@ private:
         using ui::PanelId;
         using ui::PanelInfo;
         const auto key = [](int code) { return juce::KeyPress(code, juce::ModifierKeys(), 0); };
-        panels_.registerPanel(
-            PanelInfo{PanelId::mixer, "Mixer", Icon::mixer, HostKind::dock, 480, 240, true, false, key(juce::KeyPress::F2Key)},
-            mixer_);
-        panels_.registerPanel(
-            PanelInfo{PanelId::editor, "Editor", Icon::plugin, HostKind::dock, 320, 200, true, true, key(juce::KeyPress::F3Key)},
-            editor_);
-        panels_.registerPanel(
-            PanelInfo{PanelId::browser, "Browser", Icon::browser, HostKind::side, 240, 200, true, true, key(juce::KeyPress::F4Key)},
-            browser_);
+        panels_.registerPanel(PanelInfo{PanelId::mixer,
+                                        "Mixer",
+                                        Icon::mixer,
+                                        HostKind::dock,
+                                        480,
+                                        240,
+                                        true,
+                                        false,
+                                        key(juce::KeyPress::F2Key)},
+                              mixer_);
+        panels_.registerPanel(PanelInfo{PanelId::editor,
+                                        "Editor",
+                                        Icon::plugin,
+                                        HostKind::dock,
+                                        320,
+                                        200,
+                                        true,
+                                        true,
+                                        key(juce::KeyPress::F3Key)},
+                              editor_);
+        panels_.registerPanel(PanelInfo{PanelId::browser,
+                                        "Browser",
+                                        Icon::browser,
+                                        HostKind::side,
+                                        240,
+                                        200,
+                                        true,
+                                        true,
+                                        key(juce::KeyPress::F4Key)},
+                              browser_);
         panels_.registerPanel(PanelInfo{PanelId::inspector,
                                         "Inspector",
                                         Icon::inspector,
@@ -797,7 +840,8 @@ private:
     // playhead and the readouts follow the sound, not the engine.
     core::SamplePosition heardPosition() const
     {
-        return std::max<core::SamplePosition>(0, session_.position() - session_.engine().outputLatencySamples());
+        return std::max<core::SamplePosition>(0,
+                                              session_.position() - session_.engine().outputLatencySamples());
     }
 
     void refreshStatus()
@@ -812,8 +856,9 @@ private:
         state.bufferSize = s.bufferSize;
         const auto calibration = audio_.currentCalibration();
         state.roundTripMeasured = calibration.has_value();
-        state.roundTripMs = calibration.has_value() ? calibration->roundTripMilliseconds()
-                                                    : s.inputLatencyMilliseconds() + s.outputLatencyMilliseconds();
+        state.roundTripMs = calibration.has_value()
+                                ? calibration->roundTripMilliseconds()
+                                : s.inputLatencyMilliseconds() + s.outputLatencyMilliseconds();
         const auto stats = audio_.callback().stats().summary();
         state.loadP50 = stats.p50;
         state.loadP99 = stats.p99;
@@ -828,7 +873,8 @@ private:
         if (session_.isScanningPlugins())
             state.warning = juce::String::fromUTF8(session_.pluginScanStatus().c_str());
         if (session_.isBouncing())
-            state.warning = "Bouncing " + juce::String(static_cast<int>(session_.bounceProgress() * 100.0f)) + "%";
+            state.warning =
+                "Bouncing " + juce::String(static_cast<int>(session_.bounceProgress() * 100.0f)) + "%";
         status_.setState(state);
     }
 
@@ -845,6 +891,7 @@ private:
         lastTickMs_ = now;
         const bool recording = session_.isRecording();
         tracks_.setPlayhead(heardPosition(), session_.isPlaying(), recording);
+        tracks_.pushMeters();
         if (panels_.isVisible(ui::PanelId::pianoRoll))
             pianoRoll_.setPlayhead(session_.position());
         refreshHeader();
@@ -973,7 +1020,10 @@ private:
             armed = armed || t.armed;
         if (!armed)
         {
-            toast(ui::ToastStack::Kind::warning, "Arm a track to record.", "Arm selected", [this] { armSelected(); });
+            toast(ui::ToastStack::Kind::warning,
+                  "Arm a track to record.",
+                  "Arm selected",
+                  [this] { armSelected(); });
             return;
         }
         const auto error = session_.startRecording();
@@ -1029,7 +1079,8 @@ private:
             return;
         chooser_ = std::make_unique<juce::FileChooser>(
             "Open project", juce::File::getSpecialLocation(juce::File::userDocumentsDirectory), "*.aural");
-        chooser_->launchAsync(juce::FileBrowserComponent::openMode | juce::FileBrowserComponent::canSelectFiles,
+        chooser_->launchAsync(juce::FileBrowserComponent::openMode |
+                                  juce::FileBrowserComponent::canSelectFiles,
                               [this](const juce::FileChooser& fc)
                               {
                                   if (const auto file = fc.getResult(); file != juce::File())
@@ -1063,7 +1114,8 @@ private:
             "Save project",
             juce::File::getSpecialLocation(juce::File::userDocumentsDirectory).getChildFile("Untitled.aural"),
             "*.aural");
-        chooser_->launchAsync(juce::FileBrowserComponent::saveMode | juce::FileBrowserComponent::canSelectFiles |
+        chooser_->launchAsync(juce::FileBrowserComponent::saveMode |
+                                  juce::FileBrowserComponent::canSelectFiles |
                                   juce::FileBrowserComponent::warnAboutOverwriting,
                               [this](const juce::FileChooser& fc)
                               {
@@ -1108,16 +1160,19 @@ private:
         files.insert(files.begin(), file.getFullPathName());
         for (int i = 0; i < recentCount; ++i)
             settings_.setValue("recent." + std::to_string(i),
-                               static_cast<size_t>(i) < files.size() ? files[static_cast<size_t>(i)].toStdString()
-                                                                     : std::string{});
+                               static_cast<size_t>(i) < files.size()
+                                   ? files[static_cast<size_t>(i)].toStdString()
+                                   : std::string{});
     }
 
     void importAudio()
     {
-        chooser_ = std::make_unique<juce::FileChooser>("Import audio",
-                                                       juce::File::getSpecialLocation(juce::File::userMusicDirectory),
-                                                       session_.mediaLoader().supportedExtensions());
-        chooser_->launchAsync(juce::FileBrowserComponent::openMode | juce::FileBrowserComponent::canSelectFiles |
+        chooser_ = std::make_unique<juce::FileChooser>(
+            "Import audio",
+            juce::File::getSpecialLocation(juce::File::userMusicDirectory),
+            session_.mediaLoader().supportedExtensions());
+        chooser_->launchAsync(juce::FileBrowserComponent::openMode |
+                                  juce::FileBrowserComponent::canSelectFiles |
                                   juce::FileBrowserComponent::canSelectMultipleItems,
                               [this](const juce::FileChooser& fc)
                               {
@@ -1134,7 +1189,8 @@ private:
         {
             const auto error = session_.importAudioFile(file, at);
             if (!error.empty())
-                toast(ui::ToastStack::Kind::error, file.getFileName() + ": " + juce::String::fromUTF8(error.c_str()));
+                toast(ui::ToastStack::Kind::error,
+                      file.getFileName() + ": " + juce::String::fromUTF8(error.c_str()));
         }
         refresh();
         grabKeyboardFocus();
@@ -1176,8 +1232,10 @@ private:
         };
         if (choice == 3)
         {
-            chooser_ = std::make_unique<juce::FileChooser>("Stems folder", documents.getChildFile(base + " Stems"));
-            chooser_->launchAsync(juce::FileBrowserComponent::saveMode | juce::FileBrowserComponent::canSelectDirectories,
+            chooser_ =
+                std::make_unique<juce::FileChooser>("Stems folder", documents.getChildFile(base + " Stems"));
+            chooser_->launchAsync(juce::FileBrowserComponent::saveMode |
+                                      juce::FileBrowserComponent::canSelectDirectories,
                                   [this, report](const juce::FileChooser& fc)
                                   {
                                       const auto folder = fc.getResult();
@@ -1192,7 +1250,8 @@ private:
         }
         chooser_ = std::make_unique<juce::FileChooser>(
             "Export mix", documents.getChildFile(base + (choice == 2 ? " loop" : "") + ".wav"), "*.wav");
-        chooser_->launchAsync(juce::FileBrowserComponent::saveMode | juce::FileBrowserComponent::canSelectFiles |
+        chooser_->launchAsync(juce::FileBrowserComponent::saveMode |
+                                  juce::FileBrowserComponent::canSelectFiles |
                                   juce::FileBrowserComponent::warnAboutOverwriting,
                               [this, choice, report](const juce::FileChooser& fc)
                               {
@@ -1265,12 +1324,13 @@ private:
 
     void about()
     {
-        sheet_ = ui::Sheet::show(*this,
-                                 theme_,
-                                 "Aural " + juce::JUCEApplication::getInstance()->getApplicationVersion(),
-                                 "A native Windows DAW: ASIO, VST3 and CLAP hosting, multitrack recording and MIDI.",
-                                 {{"Close", true, false}},
-                                 [this](int) { sheet_ = nullptr; });
+        sheet_ = ui::Sheet::show(
+            *this,
+            theme_,
+            "Aural " + juce::JUCEApplication::getInstance()->getApplicationVersion(),
+            "A native Windows DAW: ASIO, VST3 and CLAP hosting, multitrack recording and MIDI.",
+            {{"Close", true, false}},
+            [this](int) { sheet_ = nullptr; });
     }
 
     void projectMenu()
@@ -1403,18 +1463,18 @@ private:
 
     void offerScan()
     {
-        sheet_ = ui::Sheet::show(
-            *this,
-            theme_,
-            "Scan for plugins now?",
-            "Aural looks in the VST3 and CLAP folders. Scanning runs in the background; you can keep working.",
-            {{"Later", false, false}, {"Scan", true, false}},
-            [this](int result)
-            {
-                sheet_ = nullptr;
-                if (result == 1)
-                    session_.scanPlugins(true);
-            });
+        sheet_ = ui::Sheet::show(*this,
+                                 theme_,
+                                 "Scan for plugins now?",
+                                 "Aural looks in the VST3 and CLAP folders. Scanning runs in the background; "
+                                 "you can keep working.",
+                                 {{"Later", false, false}, {"Scan", true, false}},
+                                 [this](int result)
+                                 {
+                                     sheet_ = nullptr;
+                                     if (result == 1)
+                                         session_.scanPlugins(true);
+                                 });
     }
 
     MainWindow& owner_;
@@ -1594,21 +1654,22 @@ void MainWindow::offerRecovery()
     if (content == nullptr)
         return;
     juce::Component::SafePointer<MainWindow> safe(this);
-    content->toast(ui::ToastStack::Kind::warning,
-                   juce::String(count) + (count == 1 ? " recording was" : " recordings were") +
-                       " not finished: the app closed while recording.",
-                   "Recover",
-                   [safe]
-                   {
-                       if (safe != nullptr)
-                           safe->session_.recoverPartialRecordings();
-                   },
-                   "Set aside",
-                   [safe]
-                   {
-                       if (safe != nullptr)
-                           safe->session_.discardPartialRecordings();
-                   });
+    content->toast(
+        ui::ToastStack::Kind::warning,
+        juce::String(count) + (count == 1 ? " recording was" : " recordings were") +
+            " not finished: the app closed while recording.",
+        "Recover",
+        [safe]
+        {
+            if (safe != nullptr)
+                safe->session_.recoverPartialRecordings();
+        },
+        "Set aside",
+        [safe]
+        {
+            if (safe != nullptr)
+                safe->session_.discardPartialRecordings();
+        });
 }
 
 } // namespace aural

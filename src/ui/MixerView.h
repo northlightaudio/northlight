@@ -48,6 +48,14 @@ public:
     // The master clipped since the last clear (the header's indicator mirrors it).
     bool masterClipped() const noexcept { return masterClipped_; }
     void clearMasterClip() { masterClipped_ = false; }
+    // The last reading taken for a meter slot (the mixer consumes the meters; the
+    // arrange headers read these copies).
+    rt::MeterBlock::Reading lastReading(int slot) const noexcept
+    {
+        return slot >= 0 && static_cast<size_t>(slot) < readings_.size()
+                   ? readings_[static_cast<size_t>(slot)]
+                   : rt::MeterBlock::Reading{};
+    }
 
     void paint(juce::Graphics& g) override;
     void resized() override;
@@ -77,6 +85,7 @@ private:
     std::function<int()> masterMeterSlot_;
     const core::Project* project_ = nullptr;
     bool masterClipped_ = false;
+    std::vector<rt::MeterBlock::Reading> readings_;
     std::vector<std::unique_ptr<Strip>> strips_;
     std::unique_ptr<MasterStrip> master_;
     juce::Viewport viewport_;

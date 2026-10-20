@@ -207,12 +207,35 @@ rate so peaks line up with clip positions), caches them beside the media as
 change on the message thread when a build finishes. The view asks for peaks while
 painting and simply draws a flat block until they arrive.
 
-`ui::ArrangeView` draws a two-row ruler (bars with beat ticks over time, spacing
-chosen from the zoom), one row per track with its clips, a waveform column per pixel
-from the peaks, and the playhead, which pages the view forward during playback.
-Horizontal zoom is Ctrl+wheel around the pointer; the wheel scrolls tracks and
-Shift+wheel (or the scrollbar) scrolls time; clicking locates; audio files dropped
-on the view become tracks at the drop position. Clip editing is Phase 6.
+`ui::ArrangeView` is laid out to 04-arrange.md: a 220 px header column (the
+boundary drags 160..360), a 32 px ruler whose top 14 px row holds the marker
+flags and the punch band and whose bars row holds the numbered bar lines, beat
+and sub-beat ticks (shown once a beat is 12 and 48 px wide), the loop band with
+draggable ends and the time selection; lanes at the row height (28, 56 or 112
+px from the corner stepper) with alternating fills, the grid under the clips,
+hover and selected fills and loop/punch bands at half alpha. Clips are drawn in
+the track's palette colour: an 18 px header at the header alpha with the name,
+the body at the body alpha, the waveform (one min/max column per pixel from the
+peaks, scaled by the clip gain) at the waveform alpha over a centre line, a
+hatched body and dimmer waveform when muted, fade wedges under a light curve,
+8 px fade handles on hover or selection, an outline at 40/70/100% for
+rest/hover/selected, and a warning outline with "Missing: file" when the media
+is absent (checked once per project change). The playhead is a 1 px line with
+a head in the ruler; the view follows it by pages (toggled in the ruler's menu).
+Zoom: Ctrl+wheel around the pointer, a vertical drag in the ruler, Z to fit,
+Shift+Z to the selection; the wheel scrolls time and Shift+wheel the tracks.
+Drags show the snap guide and a tooltip (new position and delta in beats, the
+trimmed length, the fade, the gain); files dragged over light the lane and show
+a ghost clip with the file name, and dropping below the last lane makes a track
+per file. `ui::TrackHeader` has the stripe (click: colour menu), number (drag:
+reorder with an insertion line, through `core::MoveTrack`), name (double-click
+renames inline), M/S/R and monitor toggles, then the input combo, a horizontal
+meter fed from the mixer's last readings and a compact volume slider, and at
+the large row height pan, output and a sends summary; right-click opens the
+track menu. The corner holds the add-track menu and the row-height stepper.
+Not in this pass: buses and the master as arrange rows, take badges, the live
+recording clip, a split tool mode (S splits at the playhead, Shift+S at the time
+selection or loop), track duplication.
 
 ### Recording
 
@@ -845,6 +868,8 @@ Phase 8 flags.
 | 2026-10-19 | MIDI devices are identified by name | The name is what the user recognises and what a project can carry between machines; JUCE's identifier is stable but opaque. Two devices of one name are both opened and both heard. |
 | 2026-10-19 | A built-in synth ships with the engine | A MIDI track must make a sound without a third-party instrument, both for the user and for offline tests of the whole path (schedule, instrument, bounce). |
 | 2026-10-19 | Trimming a MIDI clip keeps its notes where they are on the timeline | Matches audio clips (the source stays put under the clip edges) and lets a trim be undone by trimming back without losing notes. |
+| 2026-10-20 | The arrange headers read meter copies from the mixer rather than taking from the meter block | `MeterBlock::take` resets the peak, so one consumer must own each slot; the mixer already takes every slot each frame and keeps the last readings for anyone else. |
+| 2026-10-20 | Missing media is detected once per project change, not per paint | A file-exists check per clip per frame would stall painting on a slow volume; the set is rebuilt when the project changes. |
 | 2026-10-19 | Panels are owned by one of three hosts and never destroyed on close | A panel's component keeps its state (the mixer's open editors, the browser's filter) across moves and hides; closing a floating panel hides it and returns it to its default host, so a user cannot lose one. |
 | 2026-10-19 | Shift+M / Shift+S stay the track state; the marker region and split-at-selection take Alt | The spec assigns both pairs the same keys; mute and solo are the more frequent and match every other DAW, so the edits move. |
 | 2026-10-19 | The first-run sheet is detected by the settings file's absence, before settings are created | No "first run" flag can be stale, and the sheet never shows again once any setting is saved. |

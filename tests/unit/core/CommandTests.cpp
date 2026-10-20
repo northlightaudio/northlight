@@ -267,6 +267,29 @@ TEST_CASE("A new command after undo discards the redo history", "[core][command]
     CHECK(p.tempoBpm == 90.0);
 }
 
+TEST_CASE("Moving a track reorders the list and undoes back", "[core][command]")
+{
+    Project p = projectWithTrack();
+    Track second, third;
+    second.name = "Second";
+    third.name = "Third";
+    p.tracks.push_back(second);
+    p.tracks.push_back(third);
+    p.tracks[1].id = p.allocateId();
+    p.tracks[2].id = p.allocateId();
+    const Id first = p.tracks[0].id;
+    UndoStack stack;
+    stack.execute(p, std::make_unique<MoveTrack>(first, 2));
+    CHECK(p.tracks[2].id == first);
+    CHECK(p.tracks[0].name == "Second");
+    stack.undo(p);
+    CHECK(p.tracks[0].id == first);
+    CHECK(p.tracks[2].name == "Third");
+    stack.redo(p);
+    CHECK(p.trackIndex(first) == 2);
+    CHECK_THROWS(stack.execute(p, std::make_unique<MoveTrack>(Id{999999}, 0)));
+}
+
 TEST_CASE("A fader group moves its members together, keeping their balance", "[core][command][group]")
 {
     Project p = projectWithTrack();

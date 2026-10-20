@@ -1047,10 +1047,20 @@ void MixerView::layoutStrips()
 void MixerView::timerCallback()
 {
     for (auto& strip : strips_)
-        strip->pushMeter(meters_.take(strip->meterSlot()));
+    {
+        const auto reading = meters_.take(strip->meterSlot());
+        if (strip->meterSlot() >= 0)
+        {
+            if (static_cast<size_t>(strip->meterSlot()) >= readings_.size())
+                readings_.resize(static_cast<size_t>(strip->meterSlot()) + 1);
+            readings_[static_cast<size_t>(strip->meterSlot())] = reading;
+        }
+        strip->pushMeter(reading);
+    }
     if (project_ != nullptr)
     {
-        const auto reading = meters_.take(masterMeterSlot_ ? masterMeterSlot_() : engine::masterMeterSlot(*project_));
+        const auto reading =
+            meters_.take(masterMeterSlot_ ? masterMeterSlot_() : engine::masterMeterSlot(*project_));
         if (reading.peakLeft >= 1.0f || reading.peakRight >= 1.0f)
             masterClipped_ = true;
         master_->pushMeter(reading);

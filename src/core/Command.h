@@ -99,6 +99,20 @@ private:
     int index_ = -1;
 };
 
+// Moves a track to another position in the list (the arrange view's reorder).
+class MoveTrack final : public Command
+{
+public:
+    MoveTrack(Id trackId, int newIndex);
+    std::string name() const override { return "Move track"; }
+    void apply(Project&) override;
+    void revert(Project&) override;
+
+private:
+    Id trackId_;
+    int newIndex_, oldIndex_ = -1;
+};
+
 class AddBus final : public Command
 {
 public:

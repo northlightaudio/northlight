@@ -3,6 +3,8 @@
 #include "audio/PeakStore.h"
 #include "core/Command.h"
 #include "core/Model.h"
+#include "engine/Meters.h"
+#include "ui/Icons.h"
 #include "ui/Theme.h"
 #include "ui/TrackHeader.h"
 
@@ -12,6 +14,7 @@
 #include <memory>
 #include <optional>
 #include <string>
+#include <unordered_set>
 #include <vector>
 
 namespace aural::ui
@@ -107,8 +110,26 @@ public:
     void setSelectedTrack(core::Id trackId);
     core::Id selectedTrack() const noexcept { return selectedTrack_; }
     // The empty state's actions (03-shell.md).
-    std::function<void()> onAddAudioTrack, onAddInstrumentTrack, onImportRequested;
+    std::function<void()> onAddAudioTrack, onAddInstrumentTrack, onImportRequested, onAddBus;
     const std::vector<ClipRef>& selection() const noexcept { return selection_; }
+    // Single commands from the headers (mute, solo, gain, pan, name, colour, output,
+    // reorder, delete) and their gestures.
+    std::function<void(std::unique_ptr<core::Command>)> onCommand;
+    std::function<void(const std::string& name)> onGestureBegin;
+    std::function<void()> onGestureEnd;
+    // The meter reading of a track (by index) for the headers; pushMeters() polls
+    // it once per UI frame.
+    std::function<rt::MeterBlock::Reading(int trackIndex)> trackMeter;
+    void pushMeters();
+    // The time selection (10-interaction.md): a range across the selected tracks,
+    // empty when end <= start.
+    core::SamplePosition timeSelectionStart() const noexcept { return timeSelStart_; }
+    core::SamplePosition timeSelectionEnd() const noexcept { return timeSelEnd_; }
+    void setFollowPlayhead(bool follow) { followPlayhead_ = follow; }
+    bool followPlayhead() const noexcept { return followPlayhead_; }
+    // The row height: size.trackRowMin, trackRow or trackRowLarge.
+    void setRowHeight(int height);
+    int currentRowHeight() const noexcept { return rowHeight; }
     void selectAll();
     void clearSelection();
 
@@ -118,22 +139,26 @@ public:
     void mouseDrag(const juce::MouseEvent& e) override;
     void mouseUp(const juce::MouseEvent& e) override;
     void mouseMove(const juce::MouseEvent& e) override;
+    void mouseExit(const juce::MouseEvent& e) override;
     void mouseWheelMove(const juce::MouseEvent& e, const juce::MouseWheelDetails& wheel) override;
 
     bool isInterestedInFileDrag(const juce::StringArray& files) override;
     void fileDragEnter(const juce::StringArray& files, int x, int y) override;
+    void fileDragMove(const juce::StringArray& files, int x, int y) override;
     void fileDragExit(const juce::StringArray& files) override;
     void filesDropped(const juce::StringArray& files, int x, int y) override;
 
 private:
-    static constexpr int rulerHeight = 40; // bars/beats row over a time row
-    static constexpr int headerWidth = 220;
-    static constexpr int rowHeight = 72;
-    static constexpr int scrollbarHeight = 12;
-    static constexpr int scrollbarWidth = 12;
-    static constexpr int edgeZone = 8;    // px at a clip's ends that trim
-    static constexpr int fadeHandle = 10; // px square at a clip's top corners
+    int rulerHeight = 32;  // size.ruler: the markers row over the bars row
+    int headerWidth = 220; // size.trackHeaderWidth; the boundary drags 160..360
+    int rowHeight = 56;    // size.trackRow; the corner stepper cycles min/default/large
+    int scrollbarHeight = 10;
+    int scrollbarWidth = 10;
+    static constexpr int markersRowHeight = 14;
+    static constexpr int edgeZone = 6;   // px at a clip's ends that trim
+    static constexpr int fadeHandle = 8; // px square at a clip's top corners
     static constexpr int gridMinPixels = 16;
+    static constexpr int loopHandle = 8; // px at the loop band's ends
 
     enum class Drag
     {
@@ -147,6 +172,12 @@ private:
         fadeOut,
         gain,
         marker,
+        zoom,         // a vertical drag in the ruler
+        loopMove,     // the loop band dragged along
+        loopStart,    // its left handle
+        loopEnd,      // its right handle
+        timeSelect,   // Shift+drag in the bars row: a time range
+        headerResize, // the boundary between headers and lanes
     };
 
     void changeListenerCallback(juce::ChangeBroadcaster*) override;
@@ -175,6 +206,19 @@ private:
                       const core::MidiClip& model,
                       juce::Rectangle<int> lane);
     void drawEditOverlay(juce::Graphics& g);
+    void drawGrid(juce::Graphics& g, juce::Rectangle<int> area, bool ruler);
+    void drawTooltip(juce::Graphics& g, const juce::String& text, juce::Point<int> at);
+    juce::Colour trackColour(const core::Track& track, int row) const;
+    juce::Rectangle<int> loopBand() const noexcept; // in the bars row, empty without a region
+    bool mediaMissing(const std::string& path);
+    void refreshMissingMedia();
+    void trackMenu(core::Id trackId, juce::Point<int> screen);
+    void rulerMenu(juce::Point<int> screen);
+    void addTrackMenu();
+    void reorderDrag(core::Id trackId, juce::Point<int> screen, bool released);
+    void finishTimeSelection();
+    void splitAtSelection();
+    juce::String positionText(core::SamplePosition position) const;
 
     // ----- editing helpers --------------------------------------------------------
     int rowAtY(int y) const noexcept; // track index or -1
@@ -249,6 +293,24 @@ private:
     bool updatingScrollbar_ = false;
     juce::StringArray acceptedExtensions_;
     bool dragOver_ = false;
+    juce::Point<int> dropPoint_;
+    juce::StringArray dropFiles_;
+    bool followPlayhead_ = true;
+    int hoverRow_ = -1;
+    core::Id hoverMarker_ = core::invalidId;
+    ClipRef hoverClip_;
+    juce::Point<int> dragPoint_;
+    double zoomStartSpp_ = 1.0;
+    core::SamplePosition loopOriginalStart_ = 0, loopOriginalEnd_ = 0;
+    core::SamplePosition timeSelStart_ = 0, timeSelEnd_ = 0;
+    std::vector<core::Id> timeSelTracks_;
+    std::unordered_set<std::string> missingMedia_;
+    core::Id reorderFrom_ = core::invalidId;
+    int reorderTo_ = -1;
+    double lastMeterMs_ = 0.0;
+    IconButton addTrack_, rowsSmaller_, rowsLarger_;
+    std::unique_ptr<juce::TextEditor> markerEditor_;
+    core::Id editingMarker_ = core::invalidId;
 
     // editing state
     std::vector<ClipRef> selection_;
@@ -270,7 +332,8 @@ private:
     bool draggedFar_ = false;
     core::Id selectedMarker_ = core::invalidId;
     core::Id selectedTrack_ = core::invalidId;
-    juce::TextButton addAudio_{"Add audio track"}, addInstrument_{"Add instrument track"}, import_{"Import audio\xe2\x80\xa6"};
+    juce::TextButton addAudio_{"Add audio track"}, addInstrument_{"Add instrument track"},
+        import_{"Import audio\xe2\x80\xa6"};
     void layoutEmptyState();
     void selectTrack(core::Id trackId);
     core::Marker dragMarker_;                // the marker being dragged, as it was

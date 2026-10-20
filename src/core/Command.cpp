@@ -188,6 +188,26 @@ void RemoveTrack::revert(Project& p)
     p.tracks.insert(p.tracks.begin() + at, removed_);
 }
 
+MoveTrack::MoveTrack(Id trackId, int newIndex) : trackId_(trackId), newIndex_(newIndex) {}
+
+void MoveTrack::apply(Project& p)
+{
+    oldIndex_ = p.trackIndex(trackId_);
+    if (oldIndex_ < 0)
+        throw std::logic_error("command references a track that does not exist");
+    newIndex_ = std::clamp(newIndex_, 0, static_cast<int>(p.tracks.size()) - 1);
+    Track moved = std::move(p.tracks[static_cast<size_t>(oldIndex_)]);
+    p.tracks.erase(p.tracks.begin() + oldIndex_);
+    p.tracks.insert(p.tracks.begin() + newIndex_, std::move(moved));
+}
+
+void MoveTrack::revert(Project& p)
+{
+    Track moved = std::move(p.tracks[static_cast<size_t>(newIndex_)]);
+    p.tracks.erase(p.tracks.begin() + newIndex_);
+    p.tracks.insert(p.tracks.begin() + oldIndex_, std::move(moved));
+}
+
 AddBus::AddBus(Bus bus, int index) : bus_(std::move(bus)), index_(index) {}
 
 void AddBus::apply(Project& p)
@@ -1385,7 +1405,6 @@ void SetTimeSignature::revert(Project& p)
 {
     p.timeSignature = previous_;
 }
-
 
 void SetTempo::apply(Project& p)
 {
