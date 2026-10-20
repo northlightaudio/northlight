@@ -103,6 +103,30 @@ void HistoryGraph::paintContent(juce::Graphics& g)
     // 5 ms peaks (which are jagged at this scale).
     const auto fall =
         static_cast<float>(std::pow(10.0, -30.0 * static_cast<double>(perColumn) / framesPerSecond / 20.0));
+    // The envelope comes in from the left already falling: the frames older than
+    // the window (the card keeps about two seconds more) are folded into the
+    // first column, so a peak scrolling off the left keeps its tail instead of
+    // the whole curve dropping as it leaves.
+    if (total > 0 && newestBucket >= static_cast<std::uint64_t>(columns - 1))
+    {
+        const auto firstBucket = newestBucket - static_cast<std::uint64_t>(columns - 1);
+        float carryLevel = 0.0f, carryOutput = 0.0f;
+        const auto oldest = first / perColumn;
+        for (auto bucket = oldest; bucket < firstBucket; ++bucket)
+        {
+            float l = 0.0f, o = 0.0f;
+            for (auto a = std::max(first, bucket * perColumn); a < (bucket + 1) * perColumn; ++a)
+            {
+                const auto& f = card_.historyAt(static_cast<int>(a - first));
+                l = std::max(l, style_.levelFromExtra ? f.extra : f.input);
+                o = std::max(o, f.output);
+            }
+            carryLevel = std::max(l, carryLevel * fall);
+            carryOutput = std::max(o, carryOutput * fall);
+        }
+        level_[0] = std::max(level_[0], carryLevel * fall);
+        output_[0] = std::max(output_[0], carryOutput * fall);
+    }
     for (int col = 1; col < columns; ++col)
     {
         auto& l = level_[static_cast<size_t>(col)];

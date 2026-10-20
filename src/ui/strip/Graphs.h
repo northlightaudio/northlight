@@ -40,6 +40,13 @@ public:
     void mouseDrag(const juce::MouseEvent& e) override;
     void mouseUp(const juce::MouseEvent& e) override;
     void mouseDoubleClick(const juce::MouseEvent& e) override;
+    // The level drawn in a column at the last paint (linear), for tests.
+    float levelColumnForTesting(int column) const
+    {
+        return column >= 0 && static_cast<size_t>(column) < level_.size()
+                   ? level_[static_cast<size_t>(column)]
+                   : 0.0f;
+    }
 
 private:
     juce::Rectangle<float> plot() const;

@@ -202,3 +202,55 @@ TEST_CASE("A card follows automation on its processor through refreshes that rep
     card->refresh(insert);
     CHECK(card->param(plugins::delay::time) == 500.0f);
 }
+
+#include "ui/strip/Graphs.h"
+
+TEST_CASE("A peak scrolling off the level graph's left keeps its falling tail", "[strip][ui]")
+{
+    const juce::ScopedJuceInitialiser_GUI juceInit;
+    const auto& theme = ui::Theme::dark();
+    std::shared_ptr<engine::InsertProcessor> live =
+        plugins::BuiltInFactory().create(plugins::types::compressor);
+    live->prepare(48000.0, 240);
+    core::Insert insert;
+    insert.id = 9;
+    insert.type = plugins::types::compressor;
+    insert.params = plugins::defaultParameters(insert.type);
+    for (size_t i = 0; i < insert.params.size(); ++i)
+        live->setParameter(static_cast<int>(i), insert.params[i]);
+    ui::strip::CardHost host;
+    host.liveInsert = [&](core::Id) { return live; };
+    auto card = ui::strip::createBuiltInCard(theme, host, 1, insert);
+    REQUIRE(card != nullptr);
+    card->setBounds(0, 0, 600, 300);
+    card->tick(16.0); // starts watching
+
+    ui::strip::HistoryGraph graph(*card, ui::strip::HistoryGraph::Style{});
+    graph.setBounds(0, 0, 302, 100); // 300 columns over three seconds: 2 frames each
+    juce::Image image(juce::Image::ARGB, 302, 100, true);
+    // `seconds` of audio at `level`, the card reading it as it goes.
+    std::vector<float> l(240), r(240);
+    const auto play = [&](double seconds, float level)
+    {
+        for (int b = 0; b < static_cast<int>(seconds * 200.0); ++b) // 5 ms blocks
+        {
+            std::fill(l.begin(), l.end(), level);
+            std::fill(r.begin(), r.end(), level);
+            live->process(l.data(), r.data(), 240);
+            if (b % 10 == 0)
+                card->tick(50.0);
+        }
+        card->tick(50.0);
+    };
+    play(0.5, 0.0f);
+    play(0.05, 1.0f); // the peak
+    play(3.1, 0.0f);  // now just off the left edge
+    {
+        juce::Graphics g(image);
+        graph.paintContent(g);
+    }
+    // Still falling from the peak at 30 dB a second (about 3 dB down), not silent.
+    const float left = graph.levelColumnForTesting(0);
+    CHECK(left > 0.5f);
+    CHECK(left < 1.0f);
+}
