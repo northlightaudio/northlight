@@ -716,10 +716,27 @@ which is what tracks and settings store. Audio Setup shows the inputs as toggles
 and the output as a menu. The UI: MIDI clips draw on their lanes with a bar per
 note and take part in the arrange editing that applies to them (select, move
 onto MIDI tracks only, trim, split, duplicate, nudge, delete); double-clicking
-one opens `ui::PianoRoll` in its own window (keyboard, bar/beat ruler on the
-timeline, grid at a chosen division, velocity lane; the keys match the arrange
-view's). `+MIDI` adds an armed MIDI track with the synth. Launch flags:
-`--midi-track`, `--piano-roll`.
+one opens `ui::PianoRoll` in the Piano Roll panel (F6). The roll follows
+09-piano-roll.md: a 32 px toolbar (Draw / Select / Erase, the snap grid menu,
+the quantise menu with its strength, a link-zoom toggle that follows the
+arrange view's time view, the scale slot), a 64 px keyboard (white keys
+`surface2`, black `surface0`, C labels; keys light in `accent` while their
+notes sound at the playhead or are held, and pressing one previews the note
+through the track's instrument by pushing a MIDI event into the engine under
+the source name "Piano Roll"), `laneAlt` rows on the black keys with octave
+lines, the arrange grid colours, notes in the track colour at the waveform
+alpha with a `canvas` inset and a velocity alpha from `midiNoteVelocityLow` to
+full, selection as a `textPrimary` outline over the selection tint, ghost notes
+from the track's other clips at 30%, and an 80 px velocity lane with 6 px caps
+that ramp when dragged across. Draw adds a note of the last-used length and
+drags its length (Alt skips snap); Select lassos, moves with a pitch tooltip,
+resizes, Ctrl+drags to duplicate, Shift constrains the axis, double-click adds;
+Erase clicks or drags across notes; Q quantises at the menu strength, Shift+Q
+the ends too; arrows nudge (Shift fine, Ctrl an octave), + and - transpose.
+Not in this pass: the scale highlight (no key model), notes drawn live while
+recording, the instrument chip in the track header. Launch flags:
+`--midi-track`, `--midi-track-with <type>`, `--piano-roll` (the first MIDI
+clip in the panel).
 
 ### Metronome, count-in, loop and punch
 

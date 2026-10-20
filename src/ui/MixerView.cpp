@@ -586,7 +586,15 @@ public:
             const core::Id insertId = insert.id;
             juce::String badge;
             if (hosting::PluginRegistry::isHostedType(insert.type))
-                badge = insert.type.rfind("clap:", 0) == 0 ? "CLAP" : "VST3";
+            {
+                const auto* info =
+                    owner_.host_ != nullptr ? owner_.host_->registry().findByType(insert.type) : nullptr;
+                badge = info != nullptr && info->isInstrument ? "INST"
+                        : insert.type.rfind("clap:", 0) == 0  ? "CLAP"
+                                                              : "VST3";
+            }
+            else if (plugins::BuiltInFactory::isInstrument(insert.type))
+                badge = "INST";
             inserts_[i]->set(
                 juce::String::fromUTF8(owner_.insertDisplayName(insert.type).c_str()), badge, insert.bypass);
             inserts_[i]->onOpen = [this, insertId] { owner_.openInsertEditor(id_, insertId); };

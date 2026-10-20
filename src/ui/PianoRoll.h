@@ -2,11 +2,14 @@
 
 #include "core/Command.h"
 #include "core/Model.h"
+#include "ui/Icons.h"
 #include "ui/Theme.h"
+#include "ui/components/SegmentedControl.h"
 
 #include <juce_gui_basics/juce_gui_basics.h>
 
 #include <functional>
+#include <map>
 #include <memory>
 #include <string>
 #include <vector>
@@ -14,16 +17,19 @@
 namespace aural::ui
 {
 
-// The piano roll: one MIDI clip's notes on a pitch/time grid with a keyboard at the
-// left, a bar/beat ruler on top and a velocity lane underneath. Edits go out as
-// commands (onEdit) and the view is refreshed from the model by the owner, like
-// the arrange view. Keys match the arrange view where they overlap: Delete,
-// Ctrl+A, Ctrl+D (duplicate), Esc, G (snap), arrows (nudge), Q (quantise).
+// The piano roll (09-piano-roll.md): a toolbar (tool, snap, quantise, link zoom,
+// scale), a 64 px keyboard, a bar/beat ruler, the note grid and an 80 px
+// velocity lane. It edits one MIDI clip; the track's other clips show as ghosts.
+// Edits go out as commands (onEdit) and the view is refreshed from the model by
+// the owner, like the arrange view.
 //
-// Mouse: click on empty grid adds a note of one grid step; click a note to select
-// (Shift adds, Ctrl toggles); drag a note's body to move it in time and pitch;
-// drag its right edge to resize; drag in empty space to lasso; drag in the
-// velocity lane over a note's bar to set its velocity. Ctrl+wheel zooms time.
+// Tools: Draw adds a note of the last-used length at the snapped position (drag
+// sets the length; Alt disables snap); Select clicks, Shift adds, Ctrl toggles,
+// lassos, drags move (vertical = transpose, with a tooltip), edges resize,
+// Ctrl+drag duplicates, double-click adds; Erase removes what is clicked or
+// dragged across. Keys: 1/2/3 tools, Delete, Ctrl+A, Ctrl+D, Esc, Q quantises at
+// the menu's strength (Shift+Q the ends too), arrows nudge (Shift fine, Ctrl an
+// octave), + and - transpose, [ and ] change the grid.
 class PianoRoll final : public juce::Component, private juce::ScrollBar::Listener
 {
 public:
@@ -37,6 +43,12 @@ public:
     void setPlayhead(core::SamplePosition position);
 
     std::function<void(std::vector<std::unique_ptr<core::Command>>, const std::string& name)> onEdit;
+    // A key was pressed or released on the keyboard: the owner previews the note
+    // through the track's instrument.
+    std::function<void(core::Id trackId, int note, bool on)> onPreviewNote;
+    // The "link zoom to arrange" toggle: the owner feeds setTimeView while linked.
+    bool zoomLinked() const noexcept { return linked_; }
+    void setTimeView(double samplesPerPixel, core::SamplePosition absoluteFirstVisible);
 
     // The grid as a fraction of a beat (1 = a beat, 4 = a sixteenth); snap on/off.
     void setGridDivision(int division);
@@ -46,13 +58,23 @@ public:
     // The grid in samples at the project's tempo.
     core::SamplePosition gridSamples() const noexcept;
 
+    enum class Tool
+    {
+        draw,
+        select,
+        erase,
+    };
+    void setTool(Tool tool);
+    Tool tool() const noexcept { return tool_; }
+
     const std::vector<core::Id>& selection() const noexcept { return selection_; }
     void selectAll();
     void clearSelection();
     void deleteSelection();
     void duplicateSelection();
-    void quantiseSelection(float strength = 1.0f);
-    void nudgeSelection(int timeSteps, int semitones);
+    void quantiseSelection(float strength, bool ends = false);
+    void nudgeSelection(int timeSteps, int semitones, bool fine = false);
+    void transposeSelection(int semitones);
     bool handleEditKey(const juce::KeyPress& key);
 
     void paint(juce::Graphics& g) override;
@@ -61,49 +83,61 @@ public:
     void mouseDrag(const juce::MouseEvent& e) override;
     void mouseUp(const juce::MouseEvent& e) override;
     void mouseMove(const juce::MouseEvent& e) override;
+    void mouseExit(const juce::MouseEvent& e) override;
     void mouseDoubleClick(const juce::MouseEvent& e) override;
     void mouseWheelMove(const juce::MouseEvent& e, const juce::MouseWheelDetails& wheel) override;
     bool keyPressed(const juce::KeyPress& key) override;
 
-    static constexpr int keyboardWidth = 56;
-    static constexpr int rulerHeight = 28;
-    static constexpr int velocityHeight = 84;
+    static constexpr int keyboardWidth = 64;
+    static constexpr int toolbarHeight = 32;
     static constexpr int rowHeight = 12;
-    static constexpr int scrollbarSize = 12;
     static constexpr int edgeZone = 6;
 
 private:
     enum class Drag
     {
         none,
+        draw,
         move,
         resize,
         lasso,
         velocity,
+        erase,
+        key, // a key held on the keyboard
     };
 
     void scrollBarMoved(juce::ScrollBar* bar, double newRangeStart) override;
     const core::MidiClip* clip() const noexcept;
+    const core::Track* track() const noexcept;
+    juce::Colour trackColour() const;
     juce::Rectangle<int> gridArea() const noexcept;
+    juce::Rectangle<int> rulerArea() const noexcept;
+    juce::Rectangle<int> keysArea() const noexcept;
     juce::Rectangle<int> velocityArea() const noexcept;
     int xForSample(core::SamplePosition s) const noexcept; // clip-relative
     core::SamplePosition sampleForX(int x) const noexcept;
     int yForNote(int note) const noexcept; // top of the row
     int noteForY(int y) const noexcept;
-    core::SamplePosition snapped(core::SamplePosition s) const noexcept;
+    core::SamplePosition snapped(core::SamplePosition s, bool force = false) const noexcept;
     juce::Rectangle<int> noteBounds(const core::MidiNote& note) const noexcept;
     const core::MidiNote* noteAt(juce::Point<int> p, bool& onRightEdge) const noexcept;
     const core::MidiNote* noteAtVelocityBar(juce::Point<int> p) const noexcept;
     bool isSelected(core::Id note) const noexcept;
     void emit(std::vector<std::unique_ptr<core::Command>> commands, const std::string& name);
-    void finishMove();
+    void finishMove(bool duplicate);
     void finishResize();
     void finishLasso();
     void finishVelocity();
-    void addNoteAt(juce::Point<int> p);
+    void finishDraw();
+    void eraseAt(juce::Point<int> p);
+    void addNoteAt(juce::Point<int> p, core::SamplePosition length);
     void updateScrollbars();
     void fitToClip();
     core::MidiNote previewOf(const core::MidiNote& note) const noexcept;
+    void drawTooltip(juce::Graphics& g, const juce::String& text, juce::Point<int> at);
+    void showSnapMenu();
+    void showQuantiseMenu();
+    void refreshToolbar();
     static juce::String noteName(int note);
 
     const Theme& theme_ = Theme::dark();
@@ -117,18 +151,37 @@ private:
     bool updatingScrollbars_ = false;
     int gridDivision_ = 4;
     bool snap_ = true;
+    bool linked_ = false;
+    float quantiseStrength_ = 1.0f;
+    Tool tool_ = Tool::select;
+    core::SamplePosition lastLength_ = 0; // the draw tool's length (0 = a grid step)
+    int velocityHeight_ = 80;
+    int rulerHeight_ = 32;
+    int scrollbarSize_ = 10;
+
+    // The toolbar.
+    SegmentedControl tools_;
+    juce::TextButton snapButton_, quantiseButton_;
+    IconButton link_;
 
     std::vector<core::Id> selection_;
     Drag drag_ = Drag::none;
     bool draggedFar_ = false;
+    bool duplicating_ = false;
     core::Id dragNote_ = core::invalidId;
     core::MidiNote dragOriginal_;
-    juce::Point<int> dragStart_;
+    juce::Point<int> dragStart_, dragPoint_;
     core::SamplePosition moveDelta_ = 0;
     int pitchDelta_ = 0;
     core::SamplePosition lengthPreview_ = 0;
     int velocityPreview_ = 0;
+    std::map<core::Id, int> velocityRamp_; // per-note velocities while dragging across bars
     juce::Rectangle<int> lasso_;
+    core::MidiNote drawNote_; // the note being drawn
+    int heldKey_ = -1;
+    bool fitPending_ = false;
+    core::Id hoverNote_ = core::invalidId;
+    bool hoverEdge_ = false;
 };
 
 } // namespace aural::ui

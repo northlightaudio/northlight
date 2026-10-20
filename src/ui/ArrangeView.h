@@ -127,6 +127,9 @@ public:
     core::SamplePosition timeSelectionStart() const noexcept { return timeSelStart_; }
     core::SamplePosition timeSelectionEnd() const noexcept { return timeSelEnd_; }
     void setFollowPlayhead(bool follow) { followPlayhead_ = follow; }
+    // The time view, for views that link their zoom to this one.
+    double samplesPerPixel() const noexcept { return samplesPerPixel_; }
+    core::SamplePosition scrollPosition() const noexcept { return scroll_; }
     bool followPlayhead() const noexcept { return followPlayhead_; }
     // The row height: size.trackRowMin, trackRow or trackRowLarge.
     void setRowHeight(int height);

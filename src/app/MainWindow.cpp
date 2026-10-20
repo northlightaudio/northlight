@@ -5,6 +5,7 @@
 #include "audio/AudioDeviceLayer.h"
 #include "core/Command.h"
 #include "core/Model.h"
+#include "engine/Midi.h"
 #include "engine/Snapshot.h"
 #include "plugins/BuiltIns.h"
 #include "ui/ArrangeView.h"
@@ -712,6 +713,14 @@ private:
             [this](std::vector<std::unique_ptr<core::Command>> commands, const std::string& name)
         { session_.executeGroup(name, std::move(commands)); };
 
+        pianoRoll_.onPreviewNote = [this](core::Id, int note, bool on)
+        {
+            engine::MidiEvent event;
+            event.type = on ? engine::MidiEvent::Type::noteOn : engine::MidiEvent::Type::noteOff;
+            event.note = static_cast<std::uint8_t>(std::clamp(note, 0, 127));
+            event.velocity = on ? 100 : 0;
+            session_.engine().pushMidiInput(event, "Piano Roll");
+        };
         browser_.onScan = [this](bool all) { session_.scanPlugins(all); };
         browser_.onCancelScan = [this] { session_.cancelPluginScan(); };
         browser_.onClearBlocklist = [this] { session_.clearPluginBlocklist(); };
@@ -981,7 +990,11 @@ private:
         tracks_.setPlayhead(heardPosition(), session_.isPlaying(), recording);
         tracks_.pushMeters();
         if (panels_.isVisible(ui::PanelId::pianoRoll))
+        {
             pianoRoll_.setPlayhead(session_.position());
+            if (pianoRoll_.zoomLinked())
+                pianoRoll_.setTimeView(tracks_.samplesPerPixel(), tracks_.scrollPosition());
+        }
         refreshHeader();
         if (ticks_ % 5 == 0)
         {
