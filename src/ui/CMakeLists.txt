@@ -8,6 +8,13 @@ file(READ "${AURAL_TOKENS_FILE}" AURAL_TOKENS_JSON)
 configure_file(TokensEmbedded.inc.in "${CMAKE_CURRENT_BINARY_DIR}/generated/TokensEmbedded.inc" @ONLY)
 set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS "${AURAL_TOKENS_FILE}")
 
+# The arrange view's clip edits as plain functions (JUCE-free, unit tested).
+add_library(aural_ui_edit STATIC
+    edit/ClipOps.h
+    edit/ClipOps.cpp)
+target_include_directories(aural_ui_edit PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/..")
+target_link_libraries(aural_ui_edit PUBLIC aural_core aural_options)
+
 add_library(aural_ui STATIC
     Theme.h
     Theme.cpp
@@ -100,4 +107,4 @@ add_library(aural_ui STATIC
 
 target_include_directories(aural_ui PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/..")
 target_include_directories(aural_ui PRIVATE "${CMAKE_CURRENT_BINARY_DIR}/generated")
-target_link_libraries(aural_ui PUBLIC aural_core aural_plugins aural_hosting aural_audio_device aural_juce)
+target_link_libraries(aural_ui PUBLIC aural_ui_edit aural_core aural_plugins aural_hosting aural_audio_device aural_juce)

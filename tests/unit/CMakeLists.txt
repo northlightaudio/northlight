@@ -33,7 +33,8 @@ add_executable(aural_unit_tests
     engine/AutomationTests.cpp
     engine/FxTrackTests.cpp
     hosting/PluginRegistryTests.cpp
-    ui/SelectionTests.cpp)
+    ui/SelectionTests.cpp
+    ui/ClipOpsTests.cpp)
 
 target_link_libraries(aural_unit_tests PRIVATE
     aural_options
@@ -44,6 +45,7 @@ target_link_libraries(aural_unit_tests PRIVATE
     aural_engine
     aural_plugins
     aural_hosting_core
+    aural_ui_edit
     Catch2::Catch2WithMain)
 
 include(Catch)

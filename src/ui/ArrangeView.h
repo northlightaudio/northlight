@@ -10,6 +10,7 @@
 #include "ui/PluginMenu.h"
 #include "ui/Theme.h"
 #include "ui/TrackHeader.h"
+#include "ui/edit/ClipOps.h"
 
 #include <juce_gui_basics/juce_gui_basics.h>
 
@@ -108,13 +109,7 @@ public:
     void setSnapEnabled(bool on);
     void setRippleEnabled(bool on);
 
-    struct ClipRef
-    {
-        core::Id track = core::invalidId;
-        core::Id clip = core::invalidId;
-        bool midi = false; // a MIDI clip (Track::midiClips) rather than an audio clip
-        bool operator==(const ClipRef&) const = default;
-    };
+    using ClipRef = edit::ClipRef; // a MIDI clip (Track::midiClips) or an audio clip
     // Double-click on a MIDI clip: open it in the piano roll.
     std::function<void(core::Id trackId, core::Id clipId)> onOpenMidiClip;
     // Track selection (a click on a header or a lane) and clip selection changes.
@@ -431,14 +426,7 @@ private:
     juce::String snapTargetName_;
     core::SamplePosition panScroll_ = 0;
     int panVertical_ = 0;
-    struct ClipboardItem
-    {
-        bool midi = false;
-        core::AudioClip audio;
-        core::MidiClip midiClip;
-        int trackOffset = 0; // rows from the first copied clip's track
-    };
-    std::vector<ClipboardItem> clipboard_;
+    std::vector<edit::ClipboardItem> clipboard_;
     int lastPlayheadX_ = -1;
     IconButton addTrack_, rowsSmaller_, rowsLarger_;
     AutomationOverlay automation_{theme_};

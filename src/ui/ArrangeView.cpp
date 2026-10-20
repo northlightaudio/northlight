@@ -2293,37 +2293,8 @@ void ArrangeView::setTool(Tool tool)
 
 void ArrangeView::copySelection()
 {
-    if (project_ == nullptr)
-        return;
-    clipboard_.clear();
-    int firstRow = -1;
-    for (const auto& ref : selection_)
-    {
-        const int row = project_->trackIndex(ref.track);
-        if (row >= 0)
-            firstRow = firstRow < 0 ? row : std::min(firstRow, row);
-    }
-    for (const auto& ref : selection_)
-    {
-        const int row = project_->trackIndex(ref.track);
-        if (row < 0)
-            continue;
-        ClipboardItem item;
-        item.midi = ref.midi;
-        item.trackOffset = row - firstRow;
-        if (ref.midi)
-        {
-            if (const auto* m = findMidiClip(ref))
-                item.midiClip = *m;
-            else
-                continue;
-        }
-        else if (const auto* a = findClip(ref))
-            item.audio = *a;
-        else
-            continue;
-        clipboard_.push_back(std::move(item));
-    }
+    if (project_ != nullptr)
+        clipboard_ = edit::copyClips(*project_, selection_);
 }
 
 void ArrangeView::cutSelection()
@@ -2337,42 +2308,11 @@ void ArrangeView::paste()
 {
     if (project_ == nullptr || clipboard_.empty())
         return;
-    int row = project_->trackIndex(selectedTrack_);
-    if (row < 0)
-        row = 0;
-    core::SamplePosition earliest = -1;
-    for (const auto& item : clipboard_)
-    {
-        const auto start = item.midi ? item.midiClip.start : item.audio.start;
-        earliest = earliest < 0 ? start : std::min(earliest, start);
-    }
-    const auto at = playheadForEdits ? playheadForEdits() : playhead_;
-    std::vector<std::unique_ptr<core::Command>> commands;
-    for (const auto& item : clipboard_)
-    {
-        const int target =
-            std::clamp(row + item.trackOffset, 0, static_cast<int>(project_->tracks.size()) - 1);
-        const auto& track = project_->tracks[static_cast<size_t>(target)];
-        if (track.isMidi() != item.midi)
-            continue; // a clip only lands on its own kind of track
-        if (item.midi)
-        {
-            auto clip = item.midiClip;
-            clip.id = core::invalidId;
-            for (auto& n : clip.notes)
-                n.id = core::invalidId;
-            clip.start = at + (clip.start - earliest);
-            commands.push_back(std::make_unique<core::AddMidiClip>(track.id, clip));
-        }
-        else
-        {
-            auto clip = item.audio;
-            clip.id = core::invalidId;
-            clip.start = at + (clip.start - earliest);
-            commands.push_back(std::make_unique<core::AddClip>(track.id, clip));
-        }
-    }
-    emit(std::move(commands), "Paste clips");
+    auto e = edit::pasteClips(*project_,
+                              clipboard_,
+                              project_->trackIndex(selectedTrack_),
+                              playheadForEdits ? playheadForEdits() : playhead_);
+    emit(std::move(e.commands), e.name);
 }
 
 void ArrangeView::renameSelectedTrack()
@@ -2488,61 +2428,26 @@ void ArrangeView::deleteSelection()
 {
     if (project_ == nullptr || selection_.empty())
         return;
-    std::vector<std::unique_ptr<core::Command>> commands;
-    for (const auto& t : project_->tracks)
-    {
-        // Later clips first, so with ripple each gap closes over the clips that
-        // were already shifted.
-        std::vector<const core::AudioClip*> doomed;
-        for (const auto& c : t.clips)
-            if (isSelected(t.id, c.id))
-                doomed.push_back(&c);
-        std::sort(
-            doomed.begin(), doomed.end(), [](const auto* a, const auto* b) { return a->start > b->start; });
-        for (const auto* c : doomed)
-        {
-            commands.push_back(std::make_unique<core::RemoveClip>(t.id, c->id));
-            if (ripple_)
-                commands.push_back(std::make_unique<core::ShiftClips>(t.id, c->end(), -c->length));
-        }
-        for (const auto& m : t.midiClips)
-            if (isSelected({t.id, m.id, true}))
-                commands.push_back(std::make_unique<core::RemoveMidiClip>(t.id, m.id));
-    }
+    auto e = edit::deleteClips(*project_, selection_, ripple_);
     selection_.clear();
-    emit(std::move(commands), ripple_ ? "Ripple delete" : "Delete clips");
+    emit(std::move(e.commands), e.name);
 }
 
 void ArrangeView::duplicateSelection()
 {
-    std::vector<std::unique_ptr<core::Command>> commands;
-    for (const auto& ref : selection_)
-    {
-        if (ref.midi && findMidiClip(ref) != nullptr)
-            commands.push_back(std::make_unique<core::DuplicateMidiClip>(ref.track, ref.clip));
-        else if (findClip(ref) != nullptr)
-            commands.push_back(std::make_unique<core::DuplicateClip>(ref.track, ref.clip));
-    }
-    emit(std::move(commands), "Duplicate clips");
+    if (project_ == nullptr)
+        return;
+    auto e = edit::duplicateClips(*project_, selection_);
+    emit(std::move(e.commands), e.name);
 }
 
 void ArrangeView::splitAtPlayhead()
 {
+    // Selected clips under the playhead; with nothing selected, every clip there.
     if (project_ == nullptr)
         return;
-    const auto at = playheadForEdits ? playheadForEdits() : playhead_;
-    std::vector<std::unique_ptr<core::Command>> commands;
-    // Selected clips under the playhead; with nothing selected, every clip there.
-    for (const auto& t : project_->tracks)
-    {
-        for (const auto& c : t.clips)
-            if (at > c.start && at < c.end() && (selection_.empty() || isSelected(t.id, c.id)))
-                commands.push_back(std::make_unique<core::SplitClip>(t.id, c.id, at));
-        for (const auto& m : t.midiClips)
-            if (at > m.start && at < m.end() && (selection_.empty() || isSelected({t.id, m.id, true})))
-                commands.push_back(std::make_unique<core::SplitMidiClip>(t.id, m.id, at));
-    }
-    emit(std::move(commands), "Split clips");
+    auto e = edit::splitAt(*project_, selection_, playheadForEdits ? playheadForEdits() : playhead_);
+    emit(std::move(e.commands), e.name);
 }
 
 void ArrangeView::splitAtSelection()
@@ -2553,20 +2458,8 @@ void ArrangeView::splitAtSelection()
         return;
     const auto start = timeSelEnd_ > timeSelStart_ ? timeSelStart_ : regionStart_;
     const auto end = timeSelEnd_ > timeSelStart_ ? timeSelEnd_ : regionEnd_;
-    if (end <= start)
-        return;
-    std::vector<std::unique_ptr<core::Command>> commands;
-    for (const auto& t : project_->tracks)
-        for (const auto at : {end, start}) // the later cut first so ids stay valid
-        {
-            for (const auto& c : t.clips)
-                if (at > c.start && at < c.end() && (selection_.empty() || isSelected(t.id, c.id)))
-                    commands.push_back(std::make_unique<core::SplitClip>(t.id, c.id, at));
-            for (const auto& m : t.midiClips)
-                if (at > m.start && at < m.end() && (selection_.empty() || isSelected({t.id, m.id, true})))
-                    commands.push_back(std::make_unique<core::SplitMidiClip>(t.id, m.id, at));
-        }
-    emit(std::move(commands), "Split at selection");
+    auto e = edit::splitAtRange(*project_, selection_, start, end);
+    emit(std::move(e.commands), e.name);
 }
 
 void ArrangeView::finishTimeSelection()
@@ -2934,47 +2827,16 @@ void ArrangeView::joinSelection()
 {
     if (project_ == nullptr)
         return;
-    std::vector<std::unique_ptr<core::Command>> commands;
-    for (const auto& t : project_->tracks)
-    {
-        const core::AudioClip* left = nullptr;
-        core::AudioClip merged;       // what `left` will look like after the joins so far
-        for (const auto& c : t.clips) // sorted by start
-        {
-            if (!isSelected(t.id, c.id))
-                continue;
-            if (left != nullptr && core::JoinClips::canJoin(merged, c))
-            {
-                commands.push_back(std::make_unique<core::JoinClips>(t.id, left->id, c.id));
-                merged.length += c.length;
-                merged.fadeOut = c.fadeOut;
-                continue;
-            }
-            left = &c;
-            merged = c;
-        }
-    }
-    emit(std::move(commands), "Join clips");
+    auto e = edit::joinClips(*project_, selection_);
+    emit(std::move(e.commands), e.name);
 }
 
 void ArrangeView::crossfadeSelection()
 {
     if (project_ == nullptr)
         return;
-    std::vector<std::unique_ptr<core::Command>> commands;
-    for (const auto& t : project_->tracks)
-    {
-        const core::AudioClip* previous = nullptr;
-        for (const auto& c : t.clips)
-        {
-            if (!isSelected(t.id, c.id))
-                continue;
-            if (previous != nullptr && c.start > previous->start && c.start < previous->end())
-                commands.push_back(std::make_unique<core::CrossfadeClips>(t.id, previous->id, c.id));
-            previous = &c;
-        }
-    }
-    emit(std::move(commands), "Crossfade clips");
+    auto e = edit::crossfadeClips(*project_, selection_);
+    emit(std::move(e.commands), e.name);
 }
 
 void ArrangeView::nudgeSelection(int direction, bool fine)
@@ -2982,18 +2844,8 @@ void ArrangeView::nudgeSelection(int direction, bool fine)
     if (project_ == nullptr)
         return;
     const auto step = (fine ? std::max<core::SamplePosition>(1, grid() / 4) : grid()) * direction;
-    std::vector<std::unique_ptr<core::Command>> commands;
-    for (const auto& ref : selection_)
-        if (const auto span = spanOf(ref))
-        {
-            const auto start = std::max<core::SamplePosition>(0, span->start + step);
-            if (ref.midi)
-                commands.push_back(
-                    std::make_unique<core::MoveMidiClip>(ref.track, ref.clip, ref.track, start));
-            else
-                commands.push_back(std::make_unique<core::MoveClip>(ref.track, ref.clip, ref.track, start));
-        }
-    emit(std::move(commands), "Nudge clips");
+    auto e = edit::nudgeClips(*project_, selection_, step);
+    emit(std::move(e.commands), e.name);
 }
 void ArrangeView::normaliseSelection()
 {
