@@ -3,6 +3,7 @@
 #include "engine/rt/RealtimeGuard.h"
 
 #include <algorithm>
+#include <map>
 #include <functional>
 
 namespace aural::engine
@@ -251,6 +252,9 @@ std::unique_ptr<Snapshot> compileSnapshot(const core::Project& project,
     }
 
     DelayCache localDelays; // used only when the caller keeps no cache
+    // The latency a channel's signal has gathered through each insert of its
+    // chain, that insert included: an instrument's extra outputs leave there.
+    std::map<core::Id, int> latencyThrough;
     const auto fillChannel = [&](ChannelNode& node, const core::Channel& c, int index, int slot, bool isBus)
     {
         node.id = c.id;
@@ -281,6 +285,7 @@ std::unique_ptr<Snapshot> compileSnapshot(const core::Project& project,
                 // re-solves the graph.
                 const int latency = std::max(0, instance->latencySamples());
                 node.chainLatency += latency;
+                latencyThrough[i.id] = node.chainLatency;
                 node.inserts.push_back(instance.get());
                 node.insertMix.push_back(std::clamp(i.mix, 0.0f, 1.0f));
                 // A partly dry slot needs its dry copy held back by the insert's
@@ -534,7 +539,14 @@ std::unique_ptr<Snapshot> compileSnapshot(const core::Project& project,
         };
         for (int t = 0; t < trackCount; ++t)
         {
-            trackOut[static_cast<size_t>(t)] = snapshot->tracks[static_cast<size_t>(t)].chainLatency;
+            // An output track carries an instrument's extra pair, which already lags
+            // by the source chain up to that instrument.
+            int sourceLag = 0;
+            if (const auto& track = project.tracks[static_cast<size_t>(t)];
+                track.isAux() && snapshot->tracks[static_cast<size_t>(t)].auxInsert != nullptr)
+                if (const auto it = latencyThrough.find(track.auxInsert); it != latencyThrough.end())
+                    sourceLag = it->second;
+            trackOut[static_cast<size_t>(t)] = sourceLag + snapshot->tracks[static_cast<size_t>(t)].chainLatency;
             offer(snapshot->tracks[static_cast<size_t>(t)], trackOut[static_cast<size_t>(t)]);
         }
         for (int b : snapshot->busOrder)

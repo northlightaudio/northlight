@@ -82,6 +82,48 @@ private:
     std::vector<float> auxLeft_ = std::vector<float>(8192), auxRight_ = std::vector<float>(8192);
 };
 
+// "test.latent": reports 32 samples of latency and, at every note-on, writes a
+// 1 to its main left channel and to its extra pair's left at the same sample, so
+// a test can check the two arrive together after compensation.
+class LatentInstrument final : public engine::InsertProcessor
+{
+public:
+    const std::string& typeName() const noexcept override { return type_; }
+    const std::vector<engine::ParameterInfo>& parameters() const noexcept override { return none_; }
+    void prepare(double, int) override {}
+    void setParameter(int, float) noexcept override {}
+    float parameter(int) const noexcept override { return 0.0f; }
+    bool acceptsMidi() const noexcept override { return true; }
+    int latencySamples() const noexcept override { return 32; }
+    int auxOutputCount() const noexcept override { return 1; }
+    const float* auxOutput(int index, int channel) const noexcept override
+    {
+        return index == 0 ? (channel == 0 ? auxLeft_.data() : auxRight_.data()) : nullptr;
+    }
+    void process(float* l, float* r, int n) noexcept override
+    {
+        std::fill(l, l + n, 0.0f);
+        std::fill(r, r + n, 0.0f);
+        std::fill(auxLeft_.begin(), auxLeft_.end(), 0.0f);
+        std::fill(auxRight_.begin(), auxRight_.end(), 0.0f);
+    }
+    void processMidi(const engine::MidiEventList& events, float* l, float* r, int n) noexcept override
+    {
+        process(l, r, n);
+        for (const auto& e : events)
+            if (e.type == engine::MidiEvent::Type::noteOn && e.sampleOffset >= 0 && e.sampleOffset < n)
+            {
+                l[e.sampleOffset] = 1.0f;
+                auxLeft_[static_cast<size_t>(e.sampleOffset)] = 1.0f;
+            }
+    }
+
+private:
+    std::string type_ = "test.latent";
+    std::vector<engine::ParameterInfo> none_;
+    std::vector<float> auxLeft_ = std::vector<float>(8192), auxRight_ = std::vector<float>(8192);
+};
+
 class MidiFactory final : public engine::InsertFactory
 {
 public:
@@ -90,6 +132,8 @@ public:
     {
         if (type == "test.midi")
             return std::make_unique<MarkerInstrument>();
+        if (type == "test.latent")
+            return std::make_unique<LatentInstrument>();
         return builtIns_.create(type);
     }
 
@@ -781,4 +825,93 @@ TEST_CASE("A block longer than prepare() announced plays each note at its own of
         CHECK(before == 0.0f); // nothing before the note
         CHECK(after > 0.0f);
     }
+}
+
+namespace
+{
+std::int64_t fakeNow = 0;
+std::int64_t fakeClock() noexcept
+{
+    return fakeNow;
+}
+} // namespace
+
+TEST_CASE("Device MIDI plays one block later at the point it arrived, not at the block start",
+          "[engine][midi][timing]")
+{
+    core::MidiClip clip;
+    clip.start = 0;
+    clip.length = 10;
+    auto p = keysProject(clip);
+    p.tracks[0].armed = true; // monitoring: live input reaches the instrument
+    Harness h;
+    h.engine.setClockForTesting(&fakeClock);
+    h.engine.setProject(p);
+    fakeNow = 1'000'000;
+    h.render(1); // a block starts at 1 ms
+    // Arrives a quarter of the way to the next block start (2 ms).
+    h.engine.pushMidiInput({0, engine::MidiEvent::Type::noteOn, 0, 72, 100}, "", 1'250'000);
+    // And one that arrived before the last block began: the start of this one.
+    h.engine.pushMidiInput({0, engine::MidiEvent::Type::noteOn, 0, 60, 50}, "", 900'000);
+    fakeNow = 2'000'000;
+    const auto out = h.render(1);
+    CHECK(out[16] == Approx(100.0f / 127.0f).margin(0.01f)); // a quarter of 64
+    CHECK(h.right[16] == Approx(72.0f).margin(0.01f));
+    CHECK(out[0] == Approx(50.0f / 127.0f).margin(0.01f));
+    CHECK(out[15] == Approx(0.0f));
+    h.engine.setClockForTesting(&engine::AudioEngine::steadyNanos);
+}
+
+TEST_CASE("Live MIDI in a block split at the loop end plays in the piece it falls in",
+          "[engine][midi][timing]")
+{
+    core::MidiClip clip;
+    clip.start = 0;
+    clip.length = 10;
+    auto p = keysProject(clip);
+    p.tracks[0].armed = true;
+    p.tracks[0].monitor = core::MonitorMode::on; // heard while playing, too
+    Harness h;
+    h.engine.setProject(p);
+    h.engine.setLoop(0, 100, true);
+    h.engine.play();
+    h.render(1); // [0, 64)
+    // The next block plays [64, 100) then wraps to [0, 28): an event at block
+    // offset 50 belongs to the second piece, 14 samples into it.
+    h.engine.pushMidiInput({50, engine::MidiEvent::Type::noteOn, 0, 72, 100}, "");
+    const auto out = h.render(1);
+    CHECK(out[50] == Approx(100.0f / 127.0f).margin(0.01f));
+    CHECK(out[35] == Approx(0.0f)); // not crammed into the first piece's last sample
+}
+
+TEST_CASE("An instrument's extra output is compensated for the instrument's latency, like its main one",
+          "[engine][midi][aux][latency]")
+{
+    core::MidiClip clip;
+    clip.start = 0;
+    clip.length = 1000;
+    clip.notes.push_back({20, 60, 100, 10, 100}); // on at 10
+    auto p = keysProject(clip, "test.latent");
+    core::Track aux;
+    aux.id = 5;
+    aux.kind = core::TrackKind::aux;
+    aux.auxTrack = 4;
+    aux.auxInsert = 2; // the instrument
+    aux.auxOutput = 1;
+    p.tracks.push_back(aux);
+    Harness h;
+    h.engine.setProject(p);
+    h.engine.play();
+    const auto out = h.render(4);
+    // Both pairs left the instrument at sample 10 and lag by its 32 samples
+    // together: one pulse of 2 at the master, not 1 now and 1 later.
+    float peak = 0.0f;
+    int pulses = 0;
+    for (const float v : out)
+    {
+        peak = std::max(peak, v);
+        pulses += v > 0.5f ? 1 : 0;
+    }
+    CHECK(peak == Approx(2.0f).margin(0.05f));
+    CHECK(pulses == 1);
 }

@@ -40,6 +40,11 @@ struct RenderContext
     // Per event: the track an audition is for (core::invalidId for device input);
     // may be null.
     const core::Id* liveMidiTargets = nullptr;
+    // Where this render call starts within the device block the live MIDI's
+    // offsets count from, and whether it is the block's last piece (which takes
+    // any event past its end).
+    int liveMidiBase = 0;
+    bool liveMidiLast = true;
     // The MIDI output: tracks that play it push their span's events here with
     // their time on the engine's sample clock (this span starts at sampleClock).
     rt::SpscQueue<MidiOutEvent>* midiOut = nullptr;

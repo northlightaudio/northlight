@@ -99,7 +99,16 @@ public:
     // Live MIDI from a device (any non-real-time thread): `source` names the input
     // it came from (empty = unknown). The event reaches the MIDI tracks listening
     // to that input in the next block, at its sample offset clamped to the block.
-    void pushMidiInput(const MidiEvent& event, const std::string& source);
+    // Live MIDI from a device. With an arrival time (the steady clock, in
+    // nanoseconds) the event plays in the next block at the point it arrived
+    // during the last one, so a performance keeps its timing for one block of
+    // delay instead of snapping to block starts; without one (0) its
+    // sampleOffset is used as given.
+    void pushMidiInput(const MidiEvent& event, const std::string& source, std::int64_t arrivalNanos = 0);
+    // The clock block starts are stamped with (the steady clock); tests replace it.
+    using NanoClock = std::int64_t (*)() noexcept;
+    void setClockForTesting(NanoClock clock) noexcept { clock_ = clock; }
+    static std::int64_t steadyNanos() noexcept;
     // A note the user auditions (the piano roll): it reaches only the given
     // track's instrument, whether or not the track is armed or monitoring, and
     // is never recorded.
@@ -202,6 +211,7 @@ private:
         MidiEvent event;
         int source = -1;
         core::Id target = core::invalidId; // a preview's track; invalidId for device input
+        std::int64_t arrival = 0;          // steady-clock nanoseconds; 0: keep the event's offset
     };
     static constexpr size_t midiQueueCapacity = 4096;
     rt::SpscQueue<QueuedMidi> midiIn_{midiQueueCapacity}; // producer side under midiMutex_
@@ -217,6 +227,8 @@ private:
     // (odd while it writes) so a reader never sees half of a pair.
     std::atomic<std::uint64_t> syncSequence_{0};
     std::atomic<std::int64_t> syncClock_{0}, syncNanos_{0};
+    NanoClock clock_ = &AudioEngine::steadyNanos;
+    std::int64_t lastBlockNanos_ = 0; // when the previous block started (audio thread)
     std::atomic<int> masterMeterSlot_{-1};
     bool flushDelays_ = false; // real-time thread only: a locate happened
     std::atomic<int> outputLatency_{0};

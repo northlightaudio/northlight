@@ -164,11 +164,12 @@ void Renderer::render(const Snapshot& snapshot,
                 span = static_cast<int>(std::min<core::SamplePosition>(span, toLoopEnd));
             }
             spanContext.sampleClock = context.sampleClock + done;
+            spanContext.liveMidiLast = context.liveMidiLast && done + span >= numSamples;
             renderSpan(snapshot, spanContext, transport.position, left + done, right + done, span, pool);
             renderClicks(snapshot, transport, transport.position, left + done, right + done, span);
             transport.position += span;
             done += span;
-            spanContext.liveMidi = nullptr; // delivered once, in the first span
+            spanContext.liveMidiBase += span; // the next span plays the events after this one's
             if (transport.loopIsValid() && transport.position >= transport.loopEnd)
                 transport.position = transport.loopStart;
         }
@@ -475,7 +476,10 @@ void Renderer::scheduleMidi(const TrackNode& track,
                                      context.liveMidiSources[i] != track.midiSource))
                 continue;
             MidiEvent e = (*context.liveMidi)[i];
-            e.sampleOffset = std::clamp(e.sampleOffset, 0, numSamples - 1);
+            const int at = e.sampleOffset - context.liveMidiBase;
+            if (at < 0 || (at >= numSamples && !context.liveMidiLast))
+                continue; // a later (or earlier) span's
+            e.sampleOffset = std::clamp(at, 0, numSamples - 1);
             events.push(e);
             if (e.type == MidiEvent::Type::noteOn && e.velocity > 0)
                 held->held[e.note & 127] = 1;

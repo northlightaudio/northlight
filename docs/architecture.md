@@ -919,8 +919,16 @@ outlives snapshots like the channel runtimes, so a stop, a locate, a loop wrap
 or play-from-elsewhere ends every held note at the top of the next span without
 the engine having to know why the position moved. Live MIDI enters through
 `AudioEngine::pushMidiInput` (device threads, a mutex on the producer side of an
-SPSC queue, drained once per block and delivered in the block's first segment)
-tagged with a per-device-name index the snapshot resolves for each track.
+SPSC queue, drained once per block) tagged with a per-device-name index the
+snapshot resolves for each track. A device event carries its arrival time on
+the steady clock; the block that drains it places it where it arrived within
+the previous block's span of time, scaled to this block's length, so a
+performance keeps its timing for a constant one-block delay instead of
+snapping to block starts. Every piece of a block split at a loop end, a punch
+edge or the count-in's end takes the events that fall in it (the last piece
+takes any past the end). An instrument's extra outputs are compensated like
+its main one: an output track's signal lags by the source chain's latency up
+to the instrument, plus its own chain.
 
 Instruments: Aurora (`aural.aurora`, `plugins/Aurora.*`, the default for new
 MIDI tracks): twelve voices of two morphing polyBLEP oscillators with up to

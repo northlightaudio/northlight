@@ -304,6 +304,8 @@ void MidiDeviceLayer::handleIncomingMidiMessage(juce::MidiInput* source, const j
     auto* engine = engine_.load(std::memory_order_acquire);
     if (engine == nullptr)
         return;
+    // Stamped on arrival: the engine places it in the next block where it fell.
+    const auto arrival = engine::AudioEngine::steadyNanos();
     engine::MidiEvent event;
     event.sampleOffset = 0;
     event.channel = static_cast<std::uint8_t>(std::clamp(message.getChannel() - 1, 0, 15));
@@ -336,10 +338,10 @@ void MidiDeviceLayer::handleIncomingMidiMessage(juce::MidiInput* source, const j
     for (const auto& o : open_)
         if (o.device.get() == source)
         {
-            engine->pushMidiInput(event, o.name);
+            engine->pushMidiInput(event, o.name, arrival);
             return;
         }
-    engine->pushMidiInput(event, {});
+    engine->pushMidiInput(event, {}, arrival);
 }
 
 } // namespace aural::audio

@@ -5,6 +5,7 @@
 #include <algorithm>
 #include <chrono>
 #include <thread>
+#include <utility>
 
 namespace aural::engine
 {
@@ -164,12 +165,19 @@ int AudioEngine::midiSourceIndex(const std::string& name)
     return static_cast<int>(midiSourceNames_.size() - 1);
 }
 
-void AudioEngine::pushMidiInput(const MidiEvent& event, const std::string& source)
+std::int64_t AudioEngine::steadyNanos() noexcept
+{
+    return std::chrono::duration_cast<std::chrono::nanoseconds>(
+               std::chrono::steady_clock::now().time_since_epoch())
+        .count();
+}
+
+void AudioEngine::pushMidiInput(const MidiEvent& event, const std::string& source, std::int64_t arrivalNanos)
 {
     AURAL_ASSERT_NOT_REALTIME("AudioEngine::pushMidiInput");
     const int index = source.empty() ? -1 : midiSourceIndex(source);
     const std::lock_guard<std::mutex> lock(midiMutex_); // several device threads share the queue
-    midiIn_.push(QueuedMidi{event, index});
+    midiIn_.push(QueuedMidi{event, index, core::invalidId, arrivalNanos});
 }
 
 void AudioEngine::pushMidiPreview(const MidiEvent& event, core::Id trackId)
@@ -395,10 +403,10 @@ void AudioEngine::process(
     }
 
     // The sample clock for this block, for the MIDI output's timing.
+    const auto blockNanos = clock_();
+    const auto previousBlockNanos = std::exchange(lastBlockNanos_, blockNanos);
     {
-        const auto nanos = std::chrono::duration_cast<std::chrono::nanoseconds>(
-                               std::chrono::steady_clock::now().time_since_epoch())
-                               .count();
+        const auto nanos = blockNanos;
         const auto sequence = syncSequence_.load(std::memory_order_relaxed);
         syncSequence_.store(sequence + 1, std::memory_order_relaxed);
         // The write side: the odd sequence is visible before any data store.
@@ -420,11 +428,24 @@ void AudioEngine::process(
     liveMidiCount_ = 0;
     QueuedMidi queued;
     while (midiIn_.pop(queued))
+    {
+        // A device event lands where it arrived during the last block's span of
+        // time, scaled to this block (one block of delay, its timing intact).
+        if (queued.arrival > 0)
+        {
+            int offset = 0;
+            if (previousBlockNanos > 0 && blockNanos > previousBlockNanos &&
+                queued.arrival > previousBlockNanos)
+                offset = static_cast<int>(static_cast<double>(queued.arrival - previousBlockNanos) /
+                                          static_cast<double>(blockNanos - previousBlockNanos) * numSamples);
+            queued.event.sampleOffset = std::clamp(offset, 0, numSamples - 1);
+        }
         if (liveMidi_.push(queued.event))
         {
             liveMidiSources_[liveMidiCount_] = queued.source;
             liveMidiTargets_[liveMidiCount_++] = queued.target;
         }
+    }
     constexpr int maxChannels = 64;
     float* outPieces[maxChannels];
     const float* inPieces[maxChannels];
@@ -477,8 +498,8 @@ void AudioEngine::process(
         {
             recordSession_->capture(
                 inChannels > 0 ? inPieces : nullptr, inChannels, count, transport_.position);
-            // Live MIDI on the recorded tracks (delivered in the first segment only).
-            if (done == 0 && !liveMidi_.empty() && snapshot != nullptr)
+            // Live MIDI on the recorded tracks: the events that fall in this segment.
+            if (!liveMidi_.empty() && snapshot != nullptr)
                 for (const auto& track : snapshot->tracks)
                 {
                     if (!track.isMidi || !recordSession_->recordsMidi(track.id))
@@ -490,7 +511,10 @@ void AudioEngine::process(
                         if (track.midiSource >= 0 && liveMidiSources_[i] != track.midiSource)
                             continue;
                         MidiEvent e = liveMidi_[i];
-                        e.sampleOffset = std::clamp(e.sampleOffset, 0, count - 1);
+                        const int at = e.sampleOffset - done;
+                        if (at < 0 || (at >= count && done + count < numSamples))
+                            continue; // another segment's (the last one takes any past the end)
+                        e.sampleOffset = std::clamp(at, 0, count - 1);
                         recordSession_->captureMidi(track.id, e, transport_.position + e.sampleOffset);
                     }
                 }
@@ -506,11 +530,14 @@ void AudioEngine::process(
         context.loudness = &loudness_;
         context.midiOut = &midiOut_;
         context.sampleClock = sampleClock_ + done;
-        if (done == 0 && !liveMidi_.empty())
+        if (!liveMidi_.empty())
         {
+            // Every segment sees the block's live MIDI and plays the events in it.
             context.liveMidi = &liveMidi_;
             context.liveMidiSources = liveMidiSources_.data();
             context.liveMidiTargets = liveMidiTargets_.data();
+            context.liveMidiBase = done;
+            context.liveMidiLast = done + count >= numSamples;
         }
 
         if (snapshot != nullptr)
