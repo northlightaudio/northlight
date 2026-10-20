@@ -120,7 +120,8 @@ public:
     void mouseUp(const juce::MouseEvent& e) override;
     void mouseMove(const juce::MouseEvent& e) override;
 
-    static constexpr int headerHeight = 28;
+    static constexpr int headerHeight = 34;
+    static constexpr int hueLine = 2;
 
 protected:
     // Controls bound to parameters (refreshed from the model, sending commands).
@@ -150,6 +151,7 @@ protected:
     std::vector<float> params_;
 
 private:
+    juce::Rectangle<int> headerArea() const;
     struct Binding
     {
         int index = -1;

@@ -455,6 +455,12 @@ void ModuleCard::layoutKnobs(juce::Rectangle<int> area, int perRow, const std::v
     }
 }
 
+// The header row under the hue line, inset like the body.
+juce::Rectangle<int> ModuleCard::headerArea() const
+{
+    return getLocalBounds().removeFromTop(headerHeight).withTrimmedTop(hueLine).reduced(theme_.spacing.sm, 0);
+}
+
 void ModuleCard::paint(juce::Graphics& g)
 {
     const auto& c = theme_.colours;
@@ -471,7 +477,7 @@ void ModuleCard::paint(juce::Graphics& g)
         clip.addRoundedRectangle(bounds, theme_.radius.md);
         g.reduceClipRegion(clip);
         g.setColour(bypass_ ? colour_.withAlpha(0.25f) : colour_);
-        g.fillRect(bounds.withHeight(2.0f));
+        g.fillRect(bounds.withHeight(static_cast<float>(hueLine)));
         const auto name = juce::String(plugins::strip::displayName(type_));
         g.setFont(theme_.label());
         g.setColour(bypass_ ? c.textSecondary : c.textPrimary);
@@ -490,9 +496,9 @@ void ModuleCard::paint(juce::Graphics& g)
         clip.addRoundedRectangle(bounds, theme_.radius.md);
         g.reduceClipRegion(clip);
         g.setColour(bypass_ ? colour_.withAlpha(0.25f) : colour_);
-        g.fillRect(bounds.withHeight(2.0f));
+        g.fillRect(bounds.withHeight(static_cast<float>(hueLine)));
     }
-    auto header = getLocalBounds().removeFromTop(headerHeight).reduced(theme_.spacing.xs, 0);
+    auto header = headerArea();
     header.removeFromLeft(theme_.sizes.controlCompact + theme_.spacing.xs);
     header.removeFromRight(16 + theme_.spacing.xs); // the collapse chevron
     if (shownStatus_.isNotEmpty())
@@ -520,7 +526,7 @@ void ModuleCard::paintOverChildren(juce::Graphics& g)
 
 void ModuleCard::resized()
 {
-    auto header = getLocalBounds().removeFromTop(headerHeight).reduced(theme_.spacing.xs, 0);
+    auto header = headerArea();
     if (collapsed_)
     {
         power_.setBounds(

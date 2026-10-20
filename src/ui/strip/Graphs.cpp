@@ -400,7 +400,7 @@ void TransferCurve::paintContent(juce::Graphics& g)
     g.setFont(theme.value());
     g.setColour(c.textSecondary);
     g.drawText(juce::String(card_.param(comp::ratio), 1) + ":1",
-               p.reduced(4.0f).removeFromTop(14.0f),
+               p.reduced(8.0f, 7.0f).removeFromTop(14.0f),
                juce::Justification::centredLeft);
 }
 
