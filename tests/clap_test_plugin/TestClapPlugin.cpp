@@ -18,7 +18,11 @@
 //                                         and, there, sets its gain to 0.5 and asks
 //                                         for a rescan of values; 2 asks for a
 //                                         restart from process(); 3 asks for a
-//                                         rescan of everything from the callback
+//                                         rescan of everything from the callback;
+//                                         4 moves its own gain to 0.7 from
+//                                         process(), as its GUI would (a gesture
+//                                         begin, the value, a gesture end on the
+//                                         output events)
 //
 // The key input, when present and non-zero, replaces the audio (so a test can see
 // what the host fed it); a note-on adds its velocity (0..1) to the left output at
@@ -167,7 +171,7 @@ bool paramsGetInfo(const clap_plugin_t* p, uint32_t index, clap_param_info_t* in
         info->flags = CLAP_PARAM_IS_STEPPED;
         std::strncpy(info->name, "Trigger", sizeof(info->name) - 1);
         info->min_value = 0.0;
-        info->max_value = 3.0;
+        info->max_value = 4.0;
         info->default_value = 0.0;
     }
     std::strncpy(info->module, "", sizeof(info->module) - 1);
@@ -214,7 +218,7 @@ void applyEvents(Plugin& self, const clap_input_events_t* in, bool fromProcess)
             self.trigger = e->value;
             if (fromProcess && self.trigger >= 2.0 && self.trigger < 3.0)
                 self.host->request_restart(self.host);
-            else if (fromProcess && self.trigger >= 1.0)
+            else if (fromProcess && self.trigger >= 1.0 && self.trigger < 4.0)
                 self.host->request_callback(self.host);
         }
     }
@@ -349,6 +353,27 @@ clap_process_status pluginProcess(const clap_plugin_t* p, const clap_process_t* 
     if (!self.processing)
         return CLAP_PROCESS_ERROR;
     applyEvents(self, process->in_events, true);
+    if (v.trigger && self.trigger >= 4.0 && self.trigger < 5.0)
+    {
+        self.trigger = 0.0;
+        self.gain = 0.7;
+        clap_event_param_gesture_t begin{};
+        begin.header = {sizeof(begin), 0, CLAP_CORE_EVENT_SPACE_ID, CLAP_EVENT_PARAM_GESTURE_BEGIN, 0};
+        begin.param_id = gainParam;
+        process->out_events->try_push(process->out_events, &begin.header);
+        clap_event_param_value_t value{};
+        value.header = {sizeof(value), 0, CLAP_CORE_EVENT_SPACE_ID, CLAP_EVENT_PARAM_VALUE, 0};
+        value.param_id = gainParam;
+        value.note_id = -1;
+        value.port_index = -1;
+        value.channel = -1;
+        value.key = -1;
+        value.value = 0.7;
+        process->out_events->try_push(process->out_events, &value.header);
+        clap_event_param_gesture_t end = begin;
+        end.header.type = CLAP_EVENT_PARAM_GESTURE_END;
+        process->out_events->try_push(process->out_events, &end.header);
+    }
     const uint32_t n = process->frames_count;
     // The host must hand exactly the declared ports with their channel counts.
     if (process->audio_inputs_count != audioPortsCount(p, true) ||

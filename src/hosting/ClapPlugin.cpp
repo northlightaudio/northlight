@@ -148,14 +148,35 @@ bool HostedClapPlugin::OutEvents::tryPush(const clap_output_events_t* list,
     // update the host's view of the value; everything else is accepted and dropped.
     // The tables are never reallocated while the plugin is active (see rescan).
     auto* self = static_cast<OutEvents*>(list->ctx);
-    if (event->space_id == CLAP_CORE_EVENT_SPACE_ID && event->type == CLAP_EVENT_PARAM_VALUE &&
-        self->owner != nullptr)
+    if (event->space_id != CLAP_CORE_EVENT_SPACE_ID || self->owner == nullptr)
+        return true;
+    auto& owner = *self->owner;
+    const auto indexOf = [&owner](clap_id id)
+    {
+        for (size_t i = 0; i < owner.paramInfos_.size(); ++i)
+            if (owner.paramInfos_[i].id == id)
+                return static_cast<int>(i);
+        return -1;
+    };
+    if (event->type == CLAP_EVENT_PARAM_VALUE)
     {
         const auto* value = reinterpret_cast<const clap_event_param_value_t*>(event);
-        auto& owner = *self->owner;
-        for (size_t i = 0; i < owner.paramInfos_.size(); ++i)
-            if (owner.paramInfos_[i].id == value->param_id)
-                owner.values_[i].store(static_cast<float>(value->value), std::memory_order_relaxed);
+        if (const int i = indexOf(value->param_id); i >= 0)
+        {
+            owner.values_[static_cast<size_t>(i)].store(static_cast<float>(value->value),
+                                                        std::memory_order_relaxed);
+            if (owner.edits_ != nullptr)
+                owner.edits_->push({ParameterEdit::Kind::value, i, static_cast<float>(value->value)});
+        }
+    }
+    else if (event->type == CLAP_EVENT_PARAM_GESTURE_BEGIN || event->type == CLAP_EVENT_PARAM_GESTURE_END)
+    {
+        const auto* gesture = reinterpret_cast<const clap_event_param_gesture_t*>(event);
+        if (const int i = indexOf(gesture->param_id); i >= 0 && owner.edits_ != nullptr)
+            owner.edits_->push({event->type == CLAP_EVENT_PARAM_GESTURE_BEGIN ? ParameterEdit::Kind::begin
+                                                                              : ParameterEdit::Kind::end,
+                                i,
+                                0.0f});
     }
     return true;
 }
@@ -282,6 +303,7 @@ bool HostedClapPlugin::initialise(const std::string& path, const std::string& pl
     }
     readParameters();
     pending_ = std::make_unique<rt::SpscQueue<ParamChange>>(pendingCapacity);
+    edits_ = std::make_unique<rt::SpscQueue<ParameterEdit>>(pendingCapacity);
     in_.list.ctx = &in_;
     in_.list.size = &InEvents::size;
     in_.list.get = &InEvents::get;

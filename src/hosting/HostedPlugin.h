@@ -7,6 +7,7 @@
 
 #include <atomic>
 #include <memory>
+#include <mutex>
 #include <string>
 #include <vector>
 
@@ -26,7 +27,9 @@ namespace aural::hosting
 // taken). Bypass crossfades to the plugin's own bypassed path
 // (processBlockBypassed keeps the latency), so toggling it never re-solves the
 // graph or freezes a tail.
-class HostedPlugin final : public engine::InsertProcessor, public PluginPresets
+class HostedPlugin final : public engine::InsertProcessor,
+                           public PluginPresets,
+                           private juce::AudioProcessorParameter::Listener
 {
 public:
     // Which channel layout the plugin accepted (decided once, at creation).
@@ -56,6 +59,7 @@ public:
     void prepare(double sampleRate, int maxBlockSize) override;
     void setParameter(int index, float value) noexcept override;
     float parameter(int index) const noexcept override;
+    bool takeParameterEdit(ParameterEdit& edit) noexcept override;
     bool ownsParameters() const noexcept override { return true; }
     int auxOutputCount() const noexcept override { return auxOutputs_; }
     const float* auxOutput(int index, int channel) const noexcept override
@@ -108,6 +112,15 @@ private:
     std::string typeName_;
     std::vector<engine::ParameterInfo> parameterInfos_;
     std::vector<juce::AudioProcessorParameter*> parameterObjects_; // owned by the instance
+    std::vector<int> indexOfProcessorParameter_;                   // processor index -> ours (-1 = none)
+    // Edits the plugin made (its editor): the listener runs on the message
+    // thread, or sometimes the audio thread, which only ever tries the lock.
+    void parameterValueChanged(int parameterIndex, float newValue) override;
+    void parameterGestureChanged(int parameterIndex, bool gestureIsStarting) override;
+    void pushEdit(const ParameterEdit& edit) noexcept;
+    std::mutex editsMutex_;
+    std::vector<ParameterEdit> edits_;
+    static thread_local bool settingFromHost_; // our own setValue: not an edit
     std::unique_ptr<juce::AudioPluginInstance> instance_;
     void run(float* left, float* right, const float* keyLeft, const float* keyRight, int numSamples) noexcept;
     void processBuffer(juce::AudioBuffer<float>& buffer, bool bypassed) noexcept;

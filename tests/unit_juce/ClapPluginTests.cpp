@@ -695,3 +695,65 @@ TEST_CASE("A CLAP plugin's parameter lane plays from the session and is written 
     }
     folder.deleteRecursively();
 }
+
+TEST_CASE("A move in a plugin's own controls is written in touch mode, and kept by the plugin otherwise",
+          "[hosting][clap][session][automation]")
+{
+    const juce::ScopedJuceInitialiser_GUI juceInit;
+    REQUIRE(testClap().existsAsFile());
+    const auto folder = juce::File::getSpecialLocation(juce::File::tempDirectory)
+                            .getChildFile("aural-clap-edits")
+                            .getChildFile(juce::Uuid().toString());
+    REQUIRE(folder.createDirectory().wasOk());
+    const auto registryFile = folder.getChildFile("plugins.json");
+    REQUIRE(registryFile.replaceWithText(juce::String(testRegistry().toJson())));
+    MemoryStore store;
+    audio::AudioDeviceLayer audio{store};
+    {
+        ProjectSession session(audio, registryFile);
+        core::Track t;
+        t.id = 1;
+        session.execute(std::make_unique<core::AddTrack>(t));
+        core::Insert insert;
+        insert.id = 60;
+        insert.type = "clap:io.leafshade.aural.testgain.callback";
+        session.execute(std::make_unique<core::AddInsert>(1, insert));
+        session.engine().prepare(48000.0, 64);
+        const auto live = session.liveInsert(60);
+        REQUIRE(live != nullptr);
+        REQUIRE(live->parameters().size() == 2); // gain, trigger
+        std::vector<float> l(64), r(64);
+        float* outputs[] = {l.data(), r.data()};
+        const auto blocks = [&](int n)
+        {
+            for (int i = 0; i < n; ++i)
+                session.engine().process(nullptr, 0, outputs, 2, 64);
+        };
+
+        // Read mode: the plugin keeps its own move; nothing is written.
+        session.play();
+        blocks(5);
+        live->setParameter(1, 4.0f); // the plugin moves its gain to 0.7 in its next process
+        blocks(2);
+        session.playHostedAutomation();
+        CHECK(live->parameter(0) == Approx(0.7f));
+        CHECK(session.project().tracks[0].automation.empty());
+        CHECK_FALSE(session.isWritingAutomation());
+
+        // Touch: the same move becomes a pass, ended by the plugin's gesture end.
+        session.execute(std::make_unique<core::SetAutomationMode>(1, core::AutomationMode::touch));
+        live->setParameter(0, 1.0f);
+        blocks(5);
+        live->setParameter(1, 4.0f);
+        blocks(2);
+        session.playHostedAutomation();
+        CHECK_FALSE(session.isWritingAutomation()); // the gesture ended in the same block
+        const auto* lane =
+            session.project().tracks[0].findLane(core::AutomationTarget::insertParameter, 60, 0);
+        REQUIRE(lane != nullptr);
+        CHECK(std::any_of(lane->points.begin(),
+                          lane->points.end(),
+                          [](const core::AutomationPoint& p) { return std::abs(p.value - 0.7f) < 1.0e-4f; }));
+    }
+    folder.deleteRecursively();
+}

@@ -14,11 +14,12 @@ namespace ps = plugins::strip;
 
 namespace
 {
-// The display's share of the body above `controlsHeight` of controls.
-juce::Rectangle<int> takeDisplay(juce::Rectangle<int>& body, int controlsHeight, int minimum = 96)
+// The display takes the body above `controlsHeight` of controls. The controls
+// come first: in a short dock the display shrinks (to 40 px at worst) rather
+// than pushing the knobs out of the card.
+juce::Rectangle<int> takeDisplay(juce::Rectangle<int>& body, int controlsHeight)
 {
-    const int h = std::max(minimum, body.getHeight() - controlsHeight);
-    auto display = body.removeFromTop(h);
+    auto display = body.removeFromTop(std::max(40, body.getHeight() - controlsHeight - 6));
     body.removeFromTop(6);
     return display;
 }
@@ -298,7 +299,7 @@ private:
     {
         const int chipsH = 22;
         const int controlsH = chipsH + 6 + theme_.sizes.controlCompact + 4 + knobCellHeight();
-        graph_.setBounds(takeDisplay(body, controlsH, 140));
+        graph_.setBounds(takeDisplay(body, controlsH));
         chips_.setBounds(body.removeFromTop(chipsH));
         body.removeFromTop(6);
         const auto& band = bands_[static_cast<size_t>(selected_)];

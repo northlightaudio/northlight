@@ -793,7 +793,14 @@ not compiled into the snapshot: `ProjectSession::playHostedAutomation` runs 50
 times a second on the message thread, evaluates those lanes at the engine
 position and sends each changed value to the instance; a lane being written is
 skipped. Writing a hosted parameter (through the generic editor's commands)
-records like any other; a move in a plugin's own GUI does not record yet.
+records like any other. A move in a plugin's own window reaches the session as
+`InsertProcessor::ParameterEdit`s (value, gesture begin and end): a VST3 through
+JUCE's parameter listeners (on the message thread, or the audio thread, which
+only tries the lock and drops on contention; the host's own setValue is not
+mistaken for an edit), a CLAP through its output events (an SPSC queue whose
+one producer is process() or, while nothing processes, a flush). The same 50 Hz
+pass drains them: while writing they record without being sent back to the
+plugin, and a gesture end closes a touch pass; otherwise the plugin keeps them.
 `HostedPlugin` lists a VST3 plugin's automatable parameters as normalised
 values through JUCE's parameter objects (message thread only), and mirroring a
 plugin's parameters into the model before a command only reaches up to the

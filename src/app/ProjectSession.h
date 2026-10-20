@@ -259,7 +259,12 @@ private:
         core::Id lane = core::invalidId; // the lane being rewritten (touched in the engine), if any
         std::vector<core::AutomationPoint> points;
     };
-    bool recordAutomation(const core::Command& command);
+    bool recordAutomation(const core::Command& command, bool pushValue = true);
+    // An edit a hosted plugin made itself: recorded while writing.
+    void handlePluginEdit(const core::Channel& channel,
+                          const core::Insert& insert,
+                          const engine::InsertProcessor::ParameterEdit& edit);
+    void finishPass(core::Id channel, core::Id insert, int parameter);
     void startWritePasses();
     void finishPasses(bool touchOnly);
     void executeGroupWithoutRecording(std::vector<std::unique_ptr<core::Command>>& commands);

@@ -70,6 +70,10 @@ public:
     void prepare(double sampleRate, int maxBlockSize) override;
     void setParameter(int index, float value) noexcept override;
     float parameter(int index) const noexcept override;
+    bool takeParameterEdit(ParameterEdit& edit) noexcept override
+    {
+        return edits_ != nullptr && edits_->pop(edit);
+    }
     void beginParameterGesture(int index) noexcept override;
     void endParameterGesture(int index) noexcept override;
     void process(float* left, float* right, int numSamples) noexcept override;
@@ -269,6 +273,9 @@ private:
     std::vector<clap_param_info_t> paramInfos_;
     std::vector<std::atomic<float>> values_;              // last value the host sent or read, per parameter
     std::unique_ptr<rt::SpscQueue<ParamChange>> pending_; // host -> audio thread
+    // Edits the plugin made itself (its output events) -> the message thread. The
+    // producer is process() or, while nothing processes, a flush: never both.
+    std::unique_ptr<rt::SpscQueue<ParameterEdit>> edits_;
     InEvents in_;
     OutEvents out_;
 

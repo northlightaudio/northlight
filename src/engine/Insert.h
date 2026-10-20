@@ -54,6 +54,22 @@ public:
     // gesture events (one undo step, automation touch). Defaults do nothing.
     virtual void beginParameterGesture(int) noexcept {}
     virtual void endParameterGesture(int) noexcept {}
+    // A parameter the plugin moved itself (its own editor), for automation
+    // writing: the value, and the plugin's gesture begin and end. The message
+    // thread takes them; a processor that reports none returns false.
+    struct ParameterEdit
+    {
+        enum class Kind : std::uint8_t
+        {
+            value,
+            begin,
+            end,
+        };
+        Kind kind = Kind::value;
+        int index = 0;
+        float value = 0.0f;
+    };
+    virtual bool takeParameterEdit(ParameterEdit&) noexcept { return false; }
     // True when the processor's own state (presets, its editor) is the authority
     // for its parameters: the cache then pushes the model's parameter list only
     // when a command changes it, never on a compile, so a preset loaded from the

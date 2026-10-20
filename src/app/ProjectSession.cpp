@@ -1358,7 +1358,7 @@ float ProjectSession::staticValue(const core::Channel& channel, const Automation
     return 0.0f;
 }
 
-bool ProjectSession::recordAutomation(const core::Command& command)
+bool ProjectSession::recordAutomation(const core::Command& command, bool pushValue)
 {
     if (!engine_.isPlaying())
         return false;
@@ -1434,7 +1434,9 @@ bool ProjectSession::recordAutomation(const core::Command& command)
         it->points.back().value = value;
     else
         it->points.push_back({position, value});
-    // The value is heard at once.
+    // The value is heard at once (a plugin's own edit is already in the plugin).
+    if (!pushValue)
+        return true;
     switch (key.target)
     {
         case core::AutomationTarget::gain:
@@ -1562,8 +1564,70 @@ void ProjectSession::finishAutomationPasses()
     finishPasses(false);
 }
 
+void ProjectSession::handlePluginEdit(const core::Channel& channel,
+                                      const core::Insert& insert,
+                                      const engine::InsertProcessor::ParameterEdit& edit)
+{
+    using Kind = engine::InsertProcessor::ParameterEdit::Kind;
+    if (edit.kind == Kind::value)
+        recordAutomation(core::SetInsertParameter(channel.id, insert.id, edit.index, edit.value), false);
+    else if (edit.kind == Kind::end && channel.automationMode == core::AutomationMode::touch)
+        finishPass(channel.id, insert.id, edit.index); // the plugin let go of its control
+}
+
+void ProjectSession::finishPass(core::Id channel, core::Id insert, int parameter)
+{
+    const auto it = std::find_if(passes_.begin(),
+                                 passes_.end(),
+                                 [&](const AutomationPass& p)
+                                 {
+                                     return p.channel == channel && p.insert == insert &&
+                                            p.parameter == parameter &&
+                                            p.target == core::AutomationTarget::insertParameter;
+                                 });
+    if (it == passes_.end())
+        return;
+    std::vector<std::unique_ptr<core::Command>> commands;
+    commitPass(*it, engine_.position(), commands);
+    const auto lane = it->lane;
+    passes_.erase(it);
+    if (!commands.empty())
+        executeGroupWithoutRecording(commands);
+    if (lane != core::invalidId)
+        engine_.setAutomationTouched(lane, false);
+}
+
 void ProjectSession::playHostedAutomation()
 {
+    // Edits the plugins made themselves (their own editors) first: while writing
+    // they become automation, otherwise the plugin simply keeps them.
+    {
+        std::vector<std::pair<core::Id, core::Id>> hosted; // channel, insert
+        const auto collect = [&](const core::Channel& channel)
+        {
+            for (const auto& insert : channel.inserts)
+                if (hosting::PluginRegistry::isHostedType(insert.type))
+                    hosted.emplace_back(channel.id, insert.id);
+        };
+        for (const auto& t : project_.tracks)
+            collect(t);
+        for (const auto& b : project_.buses)
+            collect(b);
+        for (const auto& [channelId, insertId] : hosted)
+        {
+            const auto instance = engine_.insertInstance(insertId);
+            if (instance == nullptr)
+                continue;
+            engine::InsertProcessor::ParameterEdit edit;
+            for (int n = 0; n < 1024 && instance->takeParameterEdit(edit); ++n)
+            {
+                const auto* channel = project_.findChannel(channelId);
+                const auto* insert = channel != nullptr ? channel->findInsert(insertId) : nullptr;
+                if (insert != nullptr)
+                    handlePluginEdit(*channel, *insert, edit);
+            }
+        }
+    }
     const auto position = engine_.position();
     const auto play = [&](const core::Channel& channel)
     {

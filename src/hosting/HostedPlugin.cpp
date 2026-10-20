@@ -62,10 +62,15 @@ HostedPlugin::HostedPlugin(std::string typeName,
     acceptsMidi_ = instance_->acceptsMidi();
     // The parameters the plugin shows the host (VST3 bypass and program
     // parameters included), as normalised values.
+    indexOfProcessorParameter_.assign(static_cast<size_t>(instance_->getParameters().size()), -1);
     for (auto* parameter : instance_->getParameters())
     {
         if (parameter == nullptr || !parameter->isAutomatable())
             continue;
+        if (const int p = parameter->getParameterIndex();
+            p >= 0 && static_cast<size_t>(p) < indexOfProcessorParameter_.size())
+            indexOfProcessorParameter_[static_cast<size_t>(p)] = static_cast<int>(parameterObjects_.size());
+        parameter->addListener(this);
         engine::ParameterInfo info;
         info.name = parameter->getName(64).toStdString();
         info.unit = parameter->getLabel().toStdString();
@@ -77,10 +82,50 @@ HostedPlugin::HostedPlugin(std::string typeName,
     }
 }
 
+thread_local bool HostedPlugin::settingFromHost_ = false;
+
 void HostedPlugin::setParameter(int index, float value) noexcept
 {
-    if (index >= 0 && static_cast<size_t>(index) < parameterObjects_.size())
-        parameterObjects_[static_cast<size_t>(index)]->setValue(juce::jlimit(0.0f, 1.0f, value));
+    if (index < 0 || static_cast<size_t>(index) >= parameterObjects_.size())
+        return;
+    const juce::ScopedValueSetter<bool> fromHost(settingFromHost_, true);
+    parameterObjects_[static_cast<size_t>(index)]->setValue(juce::jlimit(0.0f, 1.0f, value));
+}
+
+void HostedPlugin::pushEdit(const ParameterEdit& edit) noexcept
+{
+    std::unique_lock<std::mutex> lock(editsMutex_, std::try_to_lock);
+    if (!lock.owns_lock() || edits_.size() >= 4096)
+        return; // dropped: never wait (the audio thread may be the caller)
+    edits_.push_back(edit);
+}
+
+void HostedPlugin::parameterValueChanged(int parameterIndex, float newValue)
+{
+    if (settingFromHost_ || parameterIndex < 0 ||
+        static_cast<size_t>(parameterIndex) >= indexOfProcessorParameter_.size())
+        return;
+    if (const int i = indexOfProcessorParameter_[static_cast<size_t>(parameterIndex)]; i >= 0)
+        pushEdit({ParameterEdit::Kind::value, i, newValue});
+}
+
+void HostedPlugin::parameterGestureChanged(int parameterIndex, bool gestureIsStarting)
+{
+    if (settingFromHost_ || parameterIndex < 0 ||
+        static_cast<size_t>(parameterIndex) >= indexOfProcessorParameter_.size())
+        return;
+    if (const int i = indexOfProcessorParameter_[static_cast<size_t>(parameterIndex)]; i >= 0)
+        pushEdit({gestureIsStarting ? ParameterEdit::Kind::begin : ParameterEdit::Kind::end, i, 0.0f});
+}
+
+bool HostedPlugin::takeParameterEdit(ParameterEdit& edit) noexcept
+{
+    const std::lock_guard<std::mutex> lock(editsMutex_);
+    if (edits_.empty())
+        return false;
+    edit = edits_.front();
+    edits_.erase(edits_.begin());
+    return true;
 }
 
 float HostedPlugin::parameter(int index) const noexcept
@@ -93,6 +138,8 @@ float HostedPlugin::parameter(int index) const noexcept
 HostedPlugin::~HostedPlugin()
 {
     AURAL_ASSERT_NOT_REALTIME("HostedPlugin::~HostedPlugin");
+    for (auto* parameter : parameterObjects_)
+        parameter->removeListener(this);
     if (prepared_.load(std::memory_order_acquire))
         instance_->releaseResources();
 }
