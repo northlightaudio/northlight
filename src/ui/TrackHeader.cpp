@@ -20,6 +20,7 @@ TrackHeader::TrackHeader(const Theme& theme) : theme_(theme), meter_(theme, 2, f
 {
     setOpaque(true);
     setRepaintsOnMouseActivity(true);
+    addMouseListener(&selectOnPress_, true);
 
     name_.setFont(theme_.label());
     name_.setColour(juce::Label::textColourId, theme_.colours.textPrimary);
@@ -175,6 +176,7 @@ TrackHeader::TrackHeader(const Theme& theme) : theme_(theme), meter_(theme, 2, f
 
 TrackHeader::~TrackHeader()
 {
+    removeMouseListener(&selectOnPress_);
     stopTimer();
 }
 
@@ -352,8 +354,7 @@ juce::Rectangle<int> TrackHeader::numberBounds() const noexcept
 
 void TrackHeader::mouseDown(const juce::MouseEvent& e)
 {
-    if (onSelected)
-        onSelected(trackId_);
+    // (Selection: selectOnPress_ sees this press and every child's.)
     if (e.mods.isPopupMenu())
     {
         if (onContextMenu)

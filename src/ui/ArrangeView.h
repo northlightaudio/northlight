@@ -308,6 +308,7 @@ private:
 
     // ----- editing helpers --------------------------------------------------------
     int rowAtY(int y) const noexcept;                    // track index or -1
+    int channelRowAtY(int y) const noexcept;             // any row, FX tracks included, or -1
     int rowHeightOf(int row) const noexcept;             // a row's height (its own, or the default)
     int rowTop(int row) const noexcept;                  // a row's top edge in view coordinates
     int resizeEdgeAt(juce::Point<int> p) const noexcept; // the row whose bottom edge is at p, or -1

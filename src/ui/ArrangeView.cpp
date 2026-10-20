@@ -639,6 +639,8 @@ void ArrangeView::mouseDown(const juce::MouseEvent& e)
     dragStartRow_ = hit.row;
     if (hit.track != nullptr)
         selectTrack(hit.track->id);
+    else if (const int row = channelRowAtY(e.y); row >= 0)
+        selectTrack(channelAtRow(row)->id); // an FX track's lane
     if (e.mods.isPopupMenu())
     {
         if (hit.track != nullptr)
@@ -1919,6 +1921,21 @@ int ArrangeView::rowAtY(int y) const noexcept
         return -1;
     int top = rulerHeight - verticalScroll_;
     for (int row = 0, n = static_cast<int>(project_->tracks.size()); row < n; ++row)
+    {
+        const int h = rowHeightOf(row);
+        if (y >= top && y < top + h)
+            return row;
+        top += h;
+    }
+    return -1;
+}
+
+int ArrangeView::channelRowAtY(int y) const noexcept
+{
+    if (project_ == nullptr || y < rulerHeight || y >= getHeight() - scrollbarHeight)
+        return -1;
+    int top = rulerHeight - verticalScroll_;
+    for (int row = 0, n = rowCount(); row < n; ++row)
     {
         const int h = rowHeightOf(row);
         if (y >= top && y < top + h)

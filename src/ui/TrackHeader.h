@@ -84,6 +84,18 @@ private:
 
     const Theme& theme_;
     core::Id trackId_ = core::invalidId;
+    // Selects the track on a press anywhere in the header, its controls included
+    // (the name, the buttons, the fader, the meter), not just its background.
+    struct SelectOnPress final : juce::MouseListener
+    {
+        explicit SelectOnPress(TrackHeader& header) : header_(header) {}
+        void mouseDown(const juce::MouseEvent&) override
+        {
+            if (header_.onSelected)
+                header_.onSelected(header_.trackId_);
+        }
+        TrackHeader& header_;
+    } selectOnPress_{*this};
     core::MonitorMode monitor_ = core::MonitorMode::automatic;
     juce::Colour colour_;
     bool updating_ = false;
