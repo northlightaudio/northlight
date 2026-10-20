@@ -271,8 +271,34 @@ public:
     Activity activity;
 
 private:
-    void prepareBuiltIn(double, int) override
+    // The extra outputs: as many as the highest a pad uses (so a kit all on the
+    // main pair has none), each a pair of buffers filled by every process call.
+    int auxOutputCount() const noexcept override
     {
+        int highest = 0;
+        for (int pad = 0; pad < padCount; ++pad)
+            highest = std::max(highest, routeOf(pad));
+        return highest;
+    }
+    const float* auxOutput(int index, int channel) const noexcept override
+    {
+        const auto i = static_cast<size_t>(index * 2 + channel);
+        return index >= 0 && index < extraOutputs && channel >= 0 && channel < 2 && !aux_[i].empty()
+                   ? aux_[i].data()
+                   : nullptr;
+    }
+    std::string auxOutputName(int index) const override
+    {
+        std::array<float, count> p{};
+        for (int i = 0; i < count; ++i)
+            p[static_cast<size_t>(i)] = parameter(i);
+        return routeName(p.data(), index + 1);
+    }
+
+    void prepareBuiltIn(double, int maxBlockSize) override
+    {
+        for (auto& buffer : aux_)
+            buffer.assign(static_cast<size_t>(std::max(1, maxBlockSize)), 0.0f);
         for (auto& v : voices_)
             v.active = false;
         for (auto& l : activity.level)
@@ -298,10 +324,39 @@ private:
             hit(pad, e.velocity);
     }
 
+    int routeOf(int pad) const noexcept
+    {
+        return std::clamp(static_cast<int>(std::lround(parameter(paramIndex(pad, route)))), 0, extraOutputs);
+    }
+
+    // Where this chunk's samples go in the extra outputs' buffers (a block longer
+    // than prepare() announced comes in chunks; the buffers hold the first).
+    void clearAux(int numSamples) noexcept
+    {
+        for (auto& buffer : aux_)
+        {
+            const auto from = std::min(buffer.size(), static_cast<size_t>(chunkStart_));
+            const auto to = std::min(buffer.size(), static_cast<size_t>(chunkStart_ + numSamples));
+            std::fill(buffer.begin() + static_cast<std::ptrdiff_t>(from),
+                      buffer.begin() + static_cast<std::ptrdiff_t>(to),
+                      0.0f);
+        }
+    }
+
+    void processBypassed(float* left, float* right, int numSamples) noexcept override
+    {
+        clearAux(numSamples); // off: the extra outputs are silent too
+        MeteredBuiltIn::processBypassed(left, right, numSamples);
+    }
+
     void processBuiltIn(float* left, float* right, int numSamples) noexcept override
     {
         for (int p = 0; p < count; ++p)
             params_[static_cast<size_t>(p)] = parameter(p);
+        clearAux(numSamples);
+        std::array<int, padCount> routes{};
+        for (int pad = 0; pad < padCount; ++pad)
+            routes[static_cast<size_t>(pad)] = routeOf(pad);
         std::array<float, padCount> gainL{}, gainR{};
         for (int pad = 0; pad < padCount; ++pad)
         {
@@ -324,7 +379,9 @@ private:
             while (events != nullptr && next < events->size() &&
                    std::clamp((*events)[next].sampleOffset - chunkStart_, 0, numSamples) <= i)
                 handle((*events)[next++]);
-            float l = 0.0f, r = 0.0f;
+            // Each output sums its pads; the master's drive and level apply to each.
+            std::array<float, extraOutputs + 1> l{}, r{};
+            int used = 0;
             for (int pad = 0; pad < padCount; ++pad)
             {
                 auto& voice = voices_[static_cast<size_t>(pad)];
@@ -332,16 +389,26 @@ private:
                     continue;
                 const float x = voice.next(params_.data(), sampleRate_) * voice.velocity;
                 peak[static_cast<size_t>(pad)] = std::max(peak[static_cast<size_t>(pad)], std::abs(x));
-                l += x * gainL[static_cast<size_t>(pad)];
-                r += x * gainR[static_cast<size_t>(pad)];
+                const auto to = static_cast<size_t>(routes[static_cast<size_t>(pad)]);
+                l[to] += x * gainL[static_cast<size_t>(pad)];
+                r[to] += x * gainR[static_cast<size_t>(pad)];
+                used = std::max(used, static_cast<int>(to));
             }
-            if (driveAmount > 0.001f)
+            const auto finish = [&](float v)
+            { return (driveAmount > 0.001f ? std::tanh(v * driveGain) * driveNorm : v) * outGain * 0.5f; };
+            left[i] = finish(l[0]);
+            right[i] = finish(r[0]);
+            const auto at = static_cast<size_t>(chunkStart_ + i);
+            for (int o = 1; o <= used; ++o)
             {
-                l = std::tanh(l * driveGain) * driveNorm;
-                r = std::tanh(r * driveGain) * driveNorm;
+                auto& bl = aux_[static_cast<size_t>((o - 1) * 2)];
+                auto& br = aux_[static_cast<size_t>((o - 1) * 2 + 1)];
+                if (at < bl.size())
+                {
+                    bl[at] = finish(l[static_cast<size_t>(o)]);
+                    br[at] = finish(r[static_cast<size_t>(o)]);
+                }
             }
-            left[i] = l * outGain * 0.5f;
-            right[i] = r * outGain * 0.5f;
         }
         while (events != nullptr && next < events->size())
             handle((*events)[next++]);
@@ -352,6 +419,7 @@ private:
 
     std::array<Voice, padCount> voices_{};
     std::array<float, count> params_{};
+    std::array<std::vector<float>, extraOutputs * 2> aux_; // the extra pairs, left then right
 };
 } // namespace
 
@@ -375,6 +443,20 @@ int padNote(int pad) noexcept
 {
     return pad >= 0 && pad < padCount ? pads[static_cast<size_t>(pad)].note : -1;
 }
+int padRoute(const float* params, int pad) noexcept
+{
+    return std::clamp(static_cast<int>(std::lround(params[paramIndex(pad, route)])), 0, extraOutputs);
+}
+
+std::string routeName(const float* params, int extra)
+{
+    std::string name;
+    for (int pad = 0; pad < padCount; ++pad)
+        if (padRoute(params, pad) == extra)
+            name += (name.empty() ? "" : " + ") + std::string(pads[static_cast<size_t>(pad)].name);
+    return name;
+}
+
 int padForNote(int note) noexcept
 {
     for (int p = 0; p < padCount; ++p)
@@ -409,6 +491,14 @@ std::vector<engine::ParameterInfo> parameterInfo()
         p[static_cast<size_t>(paramIndex(pad, level))] = {
             name + " level", "dB", -60.0f, 6.0f, info.level, false, {}};
         p[static_cast<size_t>(paramIndex(pad, pan))] = {name + " pan", "", -1.0f, 1.0f, info.pan, false, {}};
+        p[static_cast<size_t>(paramIndex(pad, route))] = {
+            name + " output",
+            "",
+            0.0f,
+            static_cast<float>(extraOutputs),
+            0.0f,
+            false,
+            {"Main", "3/4", "5/6", "7/8", "9/10", "11/12", "13/14", "15/16"}};
     }
     p[drive] = {"Drive", "", 0.0f, 1.0f, 0.15f, false, {}};
     p[velocity] = {"Velocity", "", 0.0f, 1.0f, 0.7f, false, {}};

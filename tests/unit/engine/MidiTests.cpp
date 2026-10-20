@@ -709,3 +709,54 @@ TEST_CASE("Starbit sounds for every preset, goes quiet after the release, and dr
     CHECK(sb::arpSteps(sb::arpMajor) == std::vector<int>{0, 4, 7});
     CHECK(sb::arpSteps(sb::arpChord).empty());
 }
+
+TEST_CASE("Pulsar routes a pad to its own output, which an output track carries", "[engine][midi][pulsar]")
+{
+    namespace pu = plugins::pulsar;
+    core::MidiClip clip;
+    clip.start = 0;
+    clip.length = 48000;
+    clip.notes.push_back({20, pu::padNote(pu::kick), 120, 0, 1});
+    clip.notes.push_back({21, pu::padNote(pu::snare), 120, 0, 1});
+    auto p = keysProject(clip, pu::type.c_str());
+    auto& params = p.tracks[1].instrument.params;
+    params[static_cast<size_t>(pu::paramIndex(pu::kick, pu::route))] = 1.0f;    // the kick on 3/4
+    params[static_cast<size_t>(pu::paramIndex(pu::snare, pu::level))] = -60.0f; // the snare all but silent
+    core::Track kickOut;
+    kickOut.id = 30;
+    kickOut.kind = core::TrackKind::aux;
+    kickOut.auxTrack = 4; // the instrument channel
+    kickOut.auxInsert = 2;
+    kickOut.auxOutput = 1;
+    p.tracks.push_back(kickOut);
+    Harness h;
+    h.engine.setProject(p);
+    const auto live = h.engine.insertInstance(2);
+    REQUIRE(live != nullptr);
+    CHECK(live->auxOutputCount() == 1); // only as many as the pads use
+    CHECK(live->auxOutputName(0) == "Kick");
+    h.engine.play();
+    float withTrack = 0.0f;
+    for (int b = 0; b < 40; ++b)
+    {
+        h.engine.process(h.outputs, 2, blockSize);
+        for (float v : h.left)
+            withTrack = std::max(withTrack, std::abs(v));
+    }
+    CHECK(withTrack > 0.05f); // the kick, through its own track
+
+    // Without the output track the kick goes nowhere: the main pair has only the
+    // near-silent snare.
+    p.tracks.pop_back();
+    Harness quiet;
+    quiet.engine.setProject(p);
+    quiet.engine.play();
+    float without = 0.0f;
+    for (int b = 0; b < 40; ++b)
+    {
+        quiet.engine.process(quiet.outputs, 2, blockSize);
+        for (float v : quiet.left)
+            without = std::max(without, std::abs(v));
+    }
+    CHECK(without < 0.01f);
+}

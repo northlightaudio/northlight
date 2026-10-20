@@ -164,7 +164,8 @@ stereo output of a multi-output instrument becomes a track of its own, with
 effects like any other, in one click. **Pulsar**, the bundled drum synth, has eight synthesised
 pads on the General MIDI drum notes (kick, rim, snare, clap, closed and open
 hats, two toms), each with tune, decay, two shaping controls, level and pan, six
-kits, and an editor whose pads light as they play. **Nebula**, the bundled pad
+kits, and an editor whose pads light as they play; any pad can go to an output of
+its own (a track with its own processing), alone or in groups. **Nebula**, the bundled pad
 synth, builds each note from a drifting cloud of partials shaped by brightness, a
 vowel formant and stretch, with a halo, breath, slow motion and a large space,
 for ethereal pads. **Starbit**, the bundled chiptune synth, has the classic

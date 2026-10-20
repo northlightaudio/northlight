@@ -11,6 +11,7 @@
 #include "plugins/Pulsar.h"
 #include "ui/AuralLookAndFeel.h"
 #include "ui/strip/StripStyle.h"
+#include "ui/strip/SynthParts.h"
 
 #include <array>
 #include <cmath>
@@ -38,14 +39,14 @@ juce::String noteName(int note)
 // peak per column for drawing.
 struct Preview
 {
-    std::array<float, 6> key{};
+    std::array<float, pu::fieldCount> key{};
     bool valid = false;
     double seconds = 0.0;
     std::vector<float> peaks; // 0..1, per column of `columns`
 
     void update(const float* params, int pad, int columns)
     {
-        std::array<float, 6> now{};
+        std::array<float, pu::fieldCount> now{};
         for (int f = 0; f < pu::fieldCount; ++f)
             now[static_cast<size_t>(f)] = params[pu::paramIndex(pad, static_cast<pu::Field>(f))];
         if (valid && now == key && static_cast<int>(peaks.size()) == columns)
@@ -148,6 +149,16 @@ public:
         g.setFont(theme.font(Theme::Face::mono, theme.fonts.size.caption - 1.0f, theme.fonts.weight.medium));
         g.setColour(hue);
         g.drawText(noteName(pu::padNote(pad_)), top, juce::Justification::centredRight);
+        if (const int route = pu::padRoute(card_.params(), pad_); route > 0)
+        {
+            // Its own output: the pair, in a small chip at the bottom right.
+            const juce::String pair = juce::String(2 * route + 1) + "/" + juce::String(2 * route + 2);
+            const auto chip = r.reduced(6.0f).removeFromBottom(13.0f).removeFromRight(34.0f);
+            g.setColour(hue.withAlpha(0.25f));
+            g.fillRoundedRectangle(chip, 6.5f);
+            g.setColour(hue);
+            g.drawText(pair, chip, juce::Justification::centred);
+        }
         preview_.update(card_.params(), pad_, std::max(8, static_cast<int>(inner.getWidth() / 2.0f)));
         drawPeaks(g, preview_.peaks, inner.reduced(0.0f, 4.0f), hue, glow);
     }
@@ -375,6 +386,20 @@ public:
         previous_.onClick = [this] { stepKit(-1); };
         next_.onClick = [this] { stepKit(1); };
         kitName_.onClick = [this] { showKits(); };
+        route_.choices = {"Main", "3/4", "5/6", "7/8", "9/10", "11/12", "13/14", "15/16"};
+        route_.setTooltip("The output this pad plays through (each extra one can be a track of its own)");
+        route_.onChoose = [this](int r)
+        {
+            beginGesture(juce::String(pu::padName(selected_)) + " output");
+            setParam(pu::paramIndex(selected_, pu::route), static_cast<float>(r));
+            endGesture();
+        };
+        addAndMakeVisible(route_);
+        outputs_.getProperties().set(AuralLookAndFeel::propertyVariant, "ghost");
+        outputs_.setButtonText(juce::String::fromUTF8("Outputs \xe2\x96\xbe"));
+        outputs_.setTooltip("Route the pads: all to the main pair, one output each, or in groups");
+        outputs_.onClick = [this] { showOutputs(); };
+        addAndMakeVisible(outputs_);
         kitName_.setButtonText(currentKitName());
         select(pu::kick);
     }
@@ -392,6 +417,8 @@ private:
     void select(int pad)
     {
         selected_ = pad;
+        route_.selected = pu::padRoute(params_.data(), pad);
+        route_.repaint();
         display_.pad = pad;
         for (int p = 0; p < pu::padCount; ++p)
         {
@@ -416,6 +443,8 @@ private:
         wordmark_ = header.removeFromLeft(300).withTrimmedLeft(44);
         auto kit = header.removeFromRight(260).withSizeKeepingCentre(260, theme_.sizes.controlCompact);
         kitBar_ = kit;
+        header.removeFromRight(theme_.spacing.sm);
+        outputs_.setBounds(header.removeFromRight(96).withSizeKeepingCentre(96, theme_.sizes.controlCompact));
         previous_.setBounds(kit.removeFromLeft(theme_.sizes.controlCompact));
         next_.setBounds(kit.removeFromRight(theme_.sizes.controlCompact));
         kitName_.setBounds(kit.reduced(2, 0));
@@ -442,6 +471,10 @@ private:
         // Right: the selected pad.
         body.removeFromLeft(gap);
         padPanel_ = body;
+        route_.setBounds(body.reduced(margin, margin / 2)
+                             .removeFromTop(captionH)
+                             .removeFromRight(route_.preferredWidth())
+                             .withSizeKeepingCentre(route_.preferredWidth(), 16));
         auto pad = body.reduced(margin);
         pad.removeFromTop(captionH);
         const auto knobRow = pad.removeFromBottom(knobCellHeight());
@@ -656,8 +689,37 @@ private:
 
     // ----- live --------------------------------------------------------------------------------
 
+    // Routings: all on the main pair; one output each (in pad order); or four
+    // groups (kick; snare, clap and rim; the hats; the toms).
+    void showOutputs()
+    {
+        juce::PopupMenu menu;
+        menu.addItem(1, "All to the main output");
+        menu.addItem(2, "One output per pad");
+        menu.addItem(3, "Groups: kick, snares, hats, toms");
+        juce::Component::SafePointer<PulsarCard> safe(this);
+        menu.showMenuAsync(juce::PopupMenu::Options().withTargetComponent(outputs_),
+                           [safe](int choice)
+                           {
+                               if (safe == nullptr || choice == 0)
+                                   return;
+                               static const std::array<int, pu::padCount> groups{0, 1, 1, 1, 2, 2, 3, 3};
+                               safe->beginGesture("Pad outputs");
+                               for (int pad = 0; pad < pu::padCount; ++pad)
+                               {
+                                   const int route = choice == 1   ? 0
+                                                     : choice == 2 ? std::min(pad, pu::extraOutputs)
+                                                                   : groups[static_cast<size_t>(pad)];
+                                   safe->setParam(pu::paramIndex(pad, pu::route), static_cast<float>(route));
+                               }
+                               safe->endGesture();
+                           });
+    }
+
     void paramsChanged() override
     {
+        route_.selected = pu::padRoute(params_.data(), selected_);
+        route_.repaint();
         kitName_.setButtonText(currentKitName());
         for (auto& t : tiles_)
             t->repaint();
@@ -738,6 +800,8 @@ private:
     juce::TextButton previous_{juce::String::fromUTF8("\xe2\x80\xb9")},
         next_{juce::String::fromUTF8("\xe2\x80\xba")};
     juce::TextButton kitName_;
+    CornerChoice route_{theme_, paletteColour(theme_, "Sky")};
+    juce::TextButton outputs_;
     juce::Rectangle<int> sky_, wordmark_, kitBar_, masterPanel_, padPanel_;
     juce::Point<float> star_;
     int selected_ = pu::kick;

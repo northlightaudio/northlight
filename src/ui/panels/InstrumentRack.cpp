@@ -95,7 +95,8 @@ public:
             const auto* out = outputTrack(project, track, output);
             outputs_.push_back({output,
                                 out != nullptr ? juce::String::fromUTF8(out->name.c_str()) : juce::String(),
-                                out != nullptr ? out->id : core::invalidId});
+                                out != nullptr ? out->id : core::invalidId,
+                                live->auxOutputName(output - 1)});
         }
         resized();
         repaint();
@@ -180,7 +181,8 @@ public:
         }
         else if (owner_.onCommand && owner_.project_ != nullptr)
             if (const auto* track = owner_.project_->findTrack(trackId_))
-                owner_.onCommand(std::make_unique<core::AddTrack>(makeOutputTrack(*track, out.output)));
+                owner_.onCommand(
+                    std::make_unique<core::AddTrack>(makeOutputTrack(*track, out.output, out.carries)));
     }
 
     void resized() override
@@ -207,11 +209,15 @@ private:
         int output = 0;    // 0 = the main pair
         juce::String name; // the track carrying it
         core::Id track = core::invalidId;
+        std::string carries; // what the instrument says the pair carries ("Kick")
     };
 
     juce::Rectangle<int> chip(int i) const
     {
-        const int w = 148, gap = theme_.spacing.xs;
+        // As wide as 148 px, narrower when there are many outputs (down to 72).
+        const int gap = theme_.spacing.xs;
+        const int n = std::max<int>(1, static_cast<int>(outputs_.size()));
+        const int w = std::clamp((outputsArea_.getWidth() - (n - 1) * gap) / n, 72, 148);
         return juce::Rectangle<int>(
                    outputsArea_.getX() + i * (w + gap), outputsArea_.getY(), w, outputsArea_.getHeight())
             .withSizeKeepingCentre(w, theme_.sizes.controlCompact)
@@ -257,7 +263,10 @@ private:
             g.fillPath(dashed);
             g.setFont(theme_.caption());
             g.setColour(hover ? c.textSecondary : c.textTertiary);
-            g.drawText("+ Track for " + pair, r, juce::Justification::centred);
+            g.drawText(out.carries.empty() ? "+ Track for " + pair
+                                           : "+ " + juce::String::fromUTF8(out.carries.c_str()) + "  " + pair,
+                       r,
+                       juce::Justification::centred);
             return;
         }
         g.setColour(hover ? c.surface3 : c.surface2);

@@ -12,8 +12,10 @@
 // Pulsar: the drum synth bundled with Aural (07-plugins.md 7.4c). Eight
 // synthesised pads on the General MIDI drum notes (and C3 to G3): kick, rim,
 // snare, clap, closed hat, open hat, low tom, high tom. Each pad has tune,
-// decay, two shaping controls of its own, level and pan; the closed hat
-// chokes the open one. A master drive, velocity and level follow. JUCE-free;
+// decay, two shaping controls of its own, level, pan and an output: the main
+// pair, or one of seven more (3/4 to 15/16), each a track of its own once
+// it is made (a multi-output instrument). The closed hat chokes the open one.
+// A master drive, velocity and level apply to every output. JUCE-free;
 // real-time safe after prepare().
 
 namespace aural::plugins::pulsar
@@ -43,8 +45,10 @@ enum Field
     snap,  // 0..1, its second (a kick's punch, a snare's crack, ...)
     level, // dB
     pan,   // -1..1
+    route, // 0 the main pair, 1..7 the extra pairs (3/4 .. 15/16)
     fieldCount
 };
+constexpr int extraOutputs = 7;
 constexpr int paramIndex(int pad, Field field) noexcept
 {
     return pad * fieldCount + field;
@@ -79,6 +83,12 @@ struct Kit
     std::vector<float> values;
 };
 const std::vector<Kit>& kits();
+
+// The output a pad plays through (0 = main, 1..7 the extra pairs), and a name
+// for an extra pair from the pads routed there ("Kick", "Hat + Open"; empty
+// when none is).
+int padRoute(const float* params, int pad) noexcept;
+std::string routeName(const float* params, int extra);
 
 // One hit of a pad at full velocity, mono, before the master: for drawing it.
 std::vector<float> renderPad(const float* params, int pad, double sampleRate, int samples);

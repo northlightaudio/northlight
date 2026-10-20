@@ -200,8 +200,11 @@ clap D#1, closed hat F#1, low tom A1, open hat A#1, high tom C2) and on C3 to G3
 in that order, played out whatever the note's length; the closed hat chokes the
 open one. Each pad: Tune, Decay, two shaping controls named for the sound (kick
 Click and Punch, rim Ring and Click, snare Snappy and Crack, clap Bright and
-Spread, hats Bright and Noise, toms Noise and Punch), Level and Pan. The master:
-Drive, Velocity, Level. Kits: Pulsar, Boom Room, Tight Electro, Dusty, Minimal
+Spread, hats Bright and Noise, toms Noise and Punch), Level, Pan and Output: the
+main pair or an extra one (3/4 to 15/16). Pulsar has as many extra outputs as its
+pads use, each named for the pads on it ("Kick", "Closed hat + Open hat"), and
+each becomes a track of its own from the rack's chip or the mixer's Outputs menu,
+named that way. The master: Drive, Velocity, Level (applied to every output). Kits: Pulsar, Boom Room, Tight Electro, Dusty, Minimal
 Clicks, Industrial.
 
 - Deep space (the canvas darkening around the star) with stars, and the pulsar in
@@ -214,9 +217,12 @@ Clicks, Industrial.
   Mint, Teal, Sky, Indigo): its short name, its note, and its sound, rendered and
   drawn as a waveform; a hit lights the tile from within and its rim. Clicking a
   tile selects it (a stronger rim).
-- The selected pad's panel: its name and note, its sound drawn large over a time
-  grid (drag across for the decay, up and down for the tune, Shift for fine), and
-  its six knobs.
+- The selected pad's panel: its name and note, its output in a chip at the
+  caption's right, its sound drawn large over a time grid (drag across for the
+  decay, up and down for the tune, Shift for fine), and its six knobs. A tile whose
+  pad has its own output shows the pair ("3/4") in a chip at its bottom right.
+- "Outputs" beside the kit bar: all to the main output, one output per pad, or
+  four groups (kick; snare, clap and rim; the hats; the toms).
 - MASTER: Drive, Velocity, Level and a scope of the output.
 
 ## 7.4d Nebula

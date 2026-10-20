@@ -283,6 +283,14 @@ core::Project makeDemoSong()
     pad.instrument.params[ne::level] = -8.0f;
     bass.instrument.params[au::level] = -6.0f;
     drums.instrument.params[pu::output] = -4.0f;
+    // The kit in groups: the kick on the main pair; snares, hats and toms each
+    // on an output of its own (their tracks are added at the end).
+    {
+        constexpr std::array<int, pu::padCount> groups{0, 1, 1, 1, 2, 2, 3, 3};
+        for (int padIndex = 0; padIndex < pu::padCount; ++padIndex)
+            drums.instrument.params[static_cast<size_t>(pu::paramIndex(padIndex, pu::route))] =
+                static_cast<float>(groups[static_cast<size_t>(padIndex)]);
+    }
 
     // ----- parts ---------------------------------------------------------------------------------
     {
@@ -466,6 +474,32 @@ core::Project makeDemoSong()
     marker("Finale", finale, ending);
     marker("End", ending, bars);
     p.sortMarkers();
+
+    // ----- the drum outputs: a track each, under the drums' channel ---------------------------
+    // (Last: inserting tracks moves the ones the references above point at.)
+    {
+        const auto drumsChannel = p.tracks[1];
+        const char* names[] = {"", "Snares", "Hats", "Toms"};
+        const float gains[] = {1.0f, 0.9f, 0.7f, 0.85f};
+        std::vector<core::Track> outputs;
+        for (int o = 1; o <= 3; ++o)
+        {
+            core::Track out;
+            out.id = s.id();
+            out.kind = core::TrackKind::aux;
+            out.name = names[o];
+            out.colour = drumsChannel.colour;
+            out.auxTrack = drumsChannel.id;
+            out.auxInsert = drumsChannel.instrument.id;
+            out.auxOutput = o;
+            out.gain = gains[o];
+            outputs.push_back(std::move(out));
+        }
+        outputs[0].sends.push_back({p.buses[0].id, 0.2f, false}); // the snares into the hall
+        outputs[1].pan = 0.15f;                                   // the hats a little right
+        p.tracks.insert(p.tracks.begin() + 2, outputs.begin(), outputs.end());
+        plugins::strip::ensureChannelStrip(p); // their strips (off)
+    }
     return p;
 }
 

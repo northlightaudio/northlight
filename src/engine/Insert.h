@@ -109,6 +109,9 @@ public:
     // channel 0/1; valid until the next process call on the real-time thread.
     virtual int auxOutputCount() const noexcept { return 0; }
     virtual const float* auxOutput(int, int) const noexcept { return nullptr; }
+    // What an extra pair carries ("Kick", "Hat + Open"), for naming its output
+    // track; empty for no name. Index as auxOutput. Not real-time safe.
+    virtual std::string auxOutputName(int) const { return {}; }
 
     // Live values for an editor's displays (meters, gain reduction, spectrum);
     // null for a processor that publishes none.

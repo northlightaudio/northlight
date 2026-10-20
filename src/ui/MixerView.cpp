@@ -1315,7 +1315,7 @@ private:
             {
                 const bool exists = outputTrack(*owner_.project_, *track, output) != nullptr;
                 outputs.addItem(item++, "Track for " + juce::String(outputPairName(output)), !exists, exists);
-                const auto made = makeOutputTrack(*track, output);
+                const auto made = makeOutputTrack(*track, output, live->auxOutputName(output - 1));
                 actions.push_back([this, made] { owner_.onCommand(std::make_unique<core::AddTrack>(made)); });
             }
             menu.addSubMenu("Outputs", outputs);

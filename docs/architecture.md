@@ -887,7 +887,11 @@ snare two shell modes and band-passed wires, clap four noise bursts and a tail,
 hats six square waves at the 808's ratios and noise through a high-pass, rim an
 FM ping), triggered by note-ons only, the closed hat choking the open one; the
 same voice code renders a pad offline (`renderPad`) for its editor's pictures,
-and `pulsar::activity` gives the editor a hit counter and level per pad. Nebula
+and `pulsar::activity` gives the editor a hit counter and level per pad. Each pad
+routes to the main pair or one of seven extra pairs, exposed as aux outputs (as
+many as the highest in use) with buffers allocated in prepare; the master drive
+and level apply per output. `InsertProcessor::auxOutputName` lets an instrument
+name a pair ("Kick"), which output tracks take as their name. Nebula
 (`aural.nebula`, `plugins/Nebula.*`) is a pad synth: per voice up to 24 partials
 plus a halo an octave up, each two sines from a shared table (linear
 interpolation) detuned by the spread and a slow random drift, their levels set at

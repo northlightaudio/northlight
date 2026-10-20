@@ -28,13 +28,14 @@ inline std::string outputPairName(int output)
     return std::to_string(2 * output + 1) + "/" + std::to_string(2 * output + 2);
 }
 
-// A new output track for pair `output` of the instrument on `source`, named
-// after the track and the channels ("Keys 3/4") in the track's colour.
-inline core::Track makeOutputTrack(const core::Track& source, int output)
+// A new output track for pair `output` of the instrument on `source`, in the
+// source's colour, named for what the instrument says the pair carries ("Kick")
+// or else after the source and the channels ("Keys 3/4").
+inline core::Track makeOutputTrack(const core::Track& source, int output, const std::string& carries = {})
 {
     core::Track aux;
     aux.kind = core::TrackKind::aux;
-    aux.name = source.name + " " + outputPairName(output);
+    aux.name = carries.empty() ? source.name + " " + outputPairName(output) : carries;
     aux.colour = source.colour;
     aux.auxTrack = source.id;
     aux.auxInsert = source.instrument.id;

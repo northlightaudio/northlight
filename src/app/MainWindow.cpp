@@ -1061,6 +1061,7 @@ private:
         if (parametersOnly)
         {
             mixer_.refreshEditors();
+            instruments_.setProject(&session_.project()); // an instrument's outputs follow its parameters
             return;
         }
         tracks_.setProject(&session_.project(), true);
