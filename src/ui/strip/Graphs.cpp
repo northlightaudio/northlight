@@ -693,7 +693,8 @@ void LevelBars::paint(juce::Graphics& g)
             const float h = juce::jlimit(0.0f, 1.0f, gr / 24.0f) * inner.getHeight();
             g.setColour(c.meterHot);
             g.fillRect(inner.withHeight(h));
-            text = gr >= 0.05f ? "-" + juce::String(gr, gr >= 10.0f ? 0 : 1) : juce::String("0.0");
+            const float shown = card_.reductionReadoutDb();
+            text = shown >= 0.05f ? "-" + juce::String(shown, shown >= 10.0f ? 0 : 1) : juce::String("0.0");
             name = "GR";
         }
         else
@@ -703,8 +704,9 @@ void LevelBars::paint(juce::Graphics& g)
             const auto fill = inner.withTop(inner.getBottom() - f * inner.getHeight());
             g.setColour(theme.meter.colourAt(db));
             g.fillRect(fill);
-            text = db > -99.0f ? juce::String(db, db <= -10.0f ? 0 : 1)
-                               : juce::String::fromUTF8("-\xe2\x88\x9e");
+            const float shown = kind == Kind::input ? card_.inputReadoutDb() : card_.outputReadoutDb();
+            text = shown > -99.0f ? juce::String(shown, shown <= -10.0f ? 0 : 1)
+                                  : juce::String::fromUTF8("-\xe2\x88\x9e");
             name = kind == Kind::input ? "IN" : "OUT";
         }
         drawWellFrame(g, theme, bar);

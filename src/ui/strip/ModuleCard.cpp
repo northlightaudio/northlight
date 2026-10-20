@@ -120,6 +120,7 @@ ModuleCard::ModuleCard(const Theme& theme, CardHost& host, core::Id channelId, c
         params_[i] = infos_[i].defaultValue;
     for (size_t i = 0; i < infos_.size() && i < module.params.size(); ++i)
         params_[i] = module.params[i];
+    model_ = module.params;
     bypass_ = module.bypass;
     power_.setToggleState(!bypass_, juce::dontSendNotification);
 }
@@ -199,11 +200,19 @@ void ModuleCard::refresh(const core::Insert& module)
     bypass_ = module.bypass;
     power_.setToggleState(!bypass_, juce::dontSendNotification);
     power_.setTooltip(bypass_ ? "Off: click to switch on" : "On: click to switch off");
+    // Only the model's changes come in: a refresh that repeats a value would
+    // pull a control off what automation is playing (tick follows the live
+    // processor), flipping between the two every frame.
+    model_.resize(module.params.size(), 0.0f);
     for (size_t i = 0; i < params_.size() && i < module.params.size(); ++i)
-        if (params_[i] != module.params[i])
+        if (model_[i] != module.params[i])
         {
-            params_[i] = module.params[i];
-            changed = true;
+            model_[i] = module.params[i];
+            if (params_[i] != module.params[i])
+            {
+                params_[i] = module.params[i];
+                changed = true;
+            }
         }
     if (!changed)
         return;
@@ -305,8 +314,6 @@ void ModuleCard::tick(double elapsedMs)
             paramsChanged();
         }
     }
-    const float dt = static_cast<float>(elapsedMs * 0.001);
-    const float fall = theme_.motion.meterFallDbPerSec * dt * 1.5f;
     float in = 0.0f, out = 0.0f, gr = 0.0f, extra = 0.0f;
     int n = 0;
     if (auto* fb = liveFeedback())
@@ -326,17 +333,20 @@ void ModuleCard::tick(double elapsedMs)
             extra = std::max(extra, frames[i].extra);
         }
     }
-    const auto ballistic = [fall](float& shown, float level)
-    {
-        const float db = toDb(level);
-        shown = db >= shown ? db : std::max(db, shown - fall);
-    };
+    // The meters' ballistics (ui/MeterBallistics.h): levels rise over the
+    // token time and fall at the token rate; gain reduction moves like a
+    // compressor's needle, quick in and a third of a second out.
+    const auto& motion = theme_.motion;
+    const auto ballistic = [&](float& shown, float level)
+    { shown = followLevel(shown, toDb(level), elapsedMs, motion.meterRiseMs, motion.meterFallDbPerSec); };
     ballistic(inDb_, in);
     ballistic(outDb_, out);
     ballistic(extraDb_, extra);
-    // Gain reduction follows the newest frames, falling back at twice the meter rate.
-    grDb_ = gr >= grDb_ ? gr : std::max(gr, grDb_ - fall * 2.0f);
-    if (n > 0 || inDb_ > -119.0f || grDb_ > 0.0f)
+    grDb_ = followReduction(grDb_, gr, elapsedMs, motion.meterRiseMs * 0.5, 300.0);
+    bool readoutsMoved = inReadout_.update(toDb(in), elapsedMs);
+    readoutsMoved = outReadout_.update(toDb(out), elapsedMs) || readoutsMoved;
+    readoutsMoved = grReadout_.update(gr, elapsedMs) || readoutsMoved;
+    if (n > 0 || inDb_ > -119.0f || grDb_ > 0.0f || readoutsMoved)
         framesArrived(elapsedMs);
     const auto status = headerStatus();
     if (status != shownStatus_ && !embedded_)

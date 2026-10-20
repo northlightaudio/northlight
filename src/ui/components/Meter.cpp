@@ -1,5 +1,7 @@
 #include "ui/components/Meter.h"
 
+#include "ui/MeterBallistics.h"
+
 #include <cmath>
 
 namespace aural::ui
@@ -21,18 +23,18 @@ Meter::Meter(const Theme& theme, int channels, bool vertical)
 
 void Meter::push(const float* peaks, int numChannels, double elapsedMs)
 {
-    const float fall = theme_.motion.meterFallDbPerSec * static_cast<float>(elapsedMs / 1000.0);
     for (size_t ch = 0; ch < channels_.size(); ++ch)
     {
         auto& c = channels_[ch];
         const float peak = ch < static_cast<size_t>(numChannels) ? peaks[ch] : 0.0f;
         const float db = toDb(peak);
-        // Rise instantly, fall at the token rate.
-        c.levelDb = db >= c.levelDb ? db : std::max(db, c.levelDb - fall);
+        // Rise over the token time (a lone spike does not jump the bar), fall at the token rate.
+        c.levelDb =
+            followLevel(c.levelDb, db, elapsedMs, theme_.motion.meterRiseMs, theme_.motion.meterFallDbPerSec);
         c.peakAgeMs += elapsedMs;
         if (db >= c.peakDb || c.peakAgeMs > theme_.motion.peakHoldMs)
         {
-            c.peakDb = db >= c.peakDb ? db : c.levelDb;
+            c.peakDb = db >= c.peakDb ? db : std::max(c.levelDb, db);
             c.peakAgeMs = 0.0;
         }
         if (peak >= 1.0f)

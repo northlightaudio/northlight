@@ -194,7 +194,7 @@ Durations from `motion.*`; one easing (`cubic-bezier(0.2, 0, 0, 1)`, deceleratin
 | Track row added / removed | 180 ms | A new row grows from nothing; a removed row's space closes so the rows below glide up |
 | Editor panel cards | 180 ms | When the chain changes (an insert or send added, removed, moved) cards glide to their new places and new ones fade in; switching channels is instant |
 | Tooltip | 500 ms delay, 80 ms fade | No delay when moving between adjacent tooltipped controls |
-| Meters, playhead, counters | 0 | Ballistics are in `motion.meterFallDbPerSec` and `peakHoldMs`, not eased |
+| Meters, playhead, counters | 0 | Ballistics are in `motion.meterRiseMs`, `meterFallDbPerSec` and `peakHoldMs`, not eased |
 | Clip snap during drag | 0 | Snap is instantaneous; a guide line appears instead |
 
 Honour the OS reduce-motion setting: all durations become 0 except meter ballistics.
@@ -300,8 +300,9 @@ gradient blur between zones),
 peak-hold line 1 px `meterPeakHold` with `peakHoldMs`, clip indicator: a 6×6 square
 above the bar that turns `meterClip` and stays until clicked (`clipHoldMs` for the
 auto variant on the master). Scale ticks `caption` `textTertiary` at
-`meter.scaleTicksDb` on wide strips only. Rise is instant; fall
-`meterFallDbPerSec`. Horizontal variant (track header) is the same bar rotated,
+`meter.scaleTicksDb` on wide strips only. The bar rises over `meterRiseMs` (40
+ms: a lone spike does not jump it) and falls at `meterFallDbPerSec`; the peak line
+and the clip light see the raw peaks. Horizontal variant (track header) is the same bar rotated,
 without scale.
 
 ### Scrollbar

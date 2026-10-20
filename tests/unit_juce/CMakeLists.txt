@@ -16,6 +16,7 @@ add_executable(aural_juce_tests
     CrashGuardTests.cpp
     DbTests.cpp
     MotionTests.cpp
+    MeterBallisticsTests.cpp
     AutosaveTests.cpp
     AutomationWriteTests.cpp
     TemplatesMediaTests.cpp

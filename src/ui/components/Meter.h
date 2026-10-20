@@ -12,7 +12,8 @@ namespace aural::ui
 // A level meter (02-design-system.md, "Meter"): one 6 px bar per channel with 2 px
 // gaps, the zones from the tokens painted as solid segments, a 1 px peak-hold
 // line, and a clip square above the bars that stays lit until clicked (or, when
-// autoClear is on, for clipHoldMs). Rise is instant; fall is meterFallDbPerSec.
+// autoClear is on, for clipHoldMs). The bar rises over meterRiseMs and falls at
+// meterFallDbPerSec (ui/MeterBallistics.h); the peak line and clip see raw peaks.
 // The owner pushes peaks (linear) per UI frame; the meter keeps the ballistics.
 // Vertical by default; the horizontal variant draws the same bars rotated,
 // without the scale.

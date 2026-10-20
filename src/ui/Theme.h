@@ -120,7 +120,7 @@ struct Theme
     struct Motion
     {
         int hoverMs = 100, pressMs = 60, toggleMs = 120, panelMs = 180, menuMs = 120, toastMs = 200,
-            tooltipDelayMs = 500, meterRiseMs = 0, peakHoldMs = 1500;
+            tooltipDelayMs = 500, meterRiseMs = 40, peakHoldMs = 1500;
         float meterFallDbPerSec = 20.0f;
         bool reduceMotion = false; // the OS setting, read at load
         // A duration with reduce-motion applied.

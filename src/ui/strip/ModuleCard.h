@@ -4,6 +4,7 @@
 #include "core/Model.h"
 #include "engine/Insert.h"
 #include "ui/Icons.h"
+#include "ui/MeterBallistics.h"
 #include "ui/Theme.h"
 #include "ui/components/Knob.h"
 #include "ui/components/SegmentedControl.h"
@@ -119,6 +120,11 @@ public:
     float outputDb() const noexcept { return outDb_; }
     float reductionDb() const noexcept { return grDb_; }
     float extraDb() const noexcept { return extraDb_; }
+    // The same as numbers for a readout: the loudest of each quarter second, so
+    // a printed value is readable rather than flickering every frame.
+    float inputReadoutDb() const noexcept { return inReadout_.value(); }
+    float outputReadoutDb() const noexcept { return outReadout_.value(); }
+    float reductionReadoutDb() const noexcept { return grReadout_.value(); }
     // The live processor's feedback (null before the engine has an instance).
     engine::ProcessorFeedback* liveFeedback() const noexcept;
     // The live processor itself (null before the engine has an instance).
@@ -164,6 +170,7 @@ protected:
     juce::Colour colour_;
     std::vector<engine::ParameterInfo> infos_;
     std::vector<float> params_;
+    std::vector<float> model_; // the model's values at the last refresh
 
 private:
     juce::Rectangle<int> headerArea() const;
@@ -190,6 +197,7 @@ private:
     int head_ = 0, count_ = 0;
     std::uint64_t total_ = 0;
     float inDb_ = -120.0f, outDb_ = -120.0f, grDb_ = 0.0f, extraDb_ = -120.0f;
+    MeterReadout inReadout_, outReadout_, grReadout_{0.0f};
 };
 
 // The card for a module type (null for an unknown type).

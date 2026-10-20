@@ -163,7 +163,7 @@ private:
     }
     juce::String headerStatus() const override
     {
-        return isOn() ? gainReductionText(reductionDb()) : juce::String();
+        return isOn() ? gainReductionText(reductionReadoutDb()) : juce::String();
     }
     juce::Colour headerStatusColour() const override { return theme_.colours.meterHot; }
 
@@ -411,7 +411,7 @@ private:
     }
     juce::String headerStatus() const override
     {
-        return isOn() ? gainReductionText(reductionDb()) : juce::String();
+        return isOn() ? gainReductionText(reductionReadoutDb()) : juce::String();
     }
     juce::Colour headerStatusColour() const override { return theme_.colours.meterHot; }
 
@@ -523,7 +523,7 @@ private:
     }
     juce::String headerStatus() const override
     {
-        return isOn() ? gainReductionText(reductionDb()) : juce::String();
+        return isOn() ? gainReductionText(reductionReadoutDb()) : juce::String();
     }
     juce::Colour headerStatusColour() const override { return theme_.colours.meterHot; }
 

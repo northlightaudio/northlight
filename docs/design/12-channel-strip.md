@@ -79,8 +79,10 @@ threshold line stays and drags too.
 Every module publishes, from the audio thread, a level history of 200 frames a
 second (input peak, output peak, gain reduction, a module-specific level) and the
 EQ two signal taps (before and after it). The UI reads them at 60 Hz while the
-card is visible. Meters fall at 1.5 × `meterFallDbPerSec`; gain reduction falls
-twice as fast. Histories scroll right to left over three seconds.
+card is visible. Meters rise over `meterRiseMs` and fall at `meterFallDbPerSec`;
+gain reduction moves like a needle (in over half `meterRiseMs`, out over 300 ms).
+Numbers beside meters show the loudest reading of each quarter second, so they
+can be read. Histories scroll right to left over three seconds.
 
 ## 12.3 Gate
 

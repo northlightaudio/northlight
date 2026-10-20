@@ -163,3 +163,42 @@ TEST_CASE("A user strip preset saves and loads back", "[strip][presets]")
     CHECK(loaded[0].modules[0].bypass);
     folder.deleteRecursively();
 }
+
+#include "plugins/BuiltIns.h"
+#include "ui/strip/BuiltInCards.h"
+
+TEST_CASE("A card follows automation on its processor through refreshes that repeat the model",
+          "[strip][ui][automation]")
+{
+    const juce::ScopedJuceInitialiser_GUI juceInit;
+    const auto& theme = ui::Theme::dark();
+    std::shared_ptr<engine::InsertProcessor> live = plugins::BuiltInFactory().create(plugins::types::delay);
+    live->prepare(48000.0, 64);
+    core::Insert insert;
+    insert.id = 7;
+    insert.type = plugins::types::delay;
+    insert.params = plugins::defaultParameters(insert.type);
+    insert.params[plugins::delay::time] = 375.0f;
+    live->setParameter(plugins::delay::time, 375.0f);
+    ui::strip::CardHost host;
+    host.liveInsert = [&](core::Id) { return live; };
+    auto card = ui::strip::createBuiltInCard(theme, host, 1, insert);
+    REQUIRE(card != nullptr);
+    card->setBounds(0, 0, 600, 300);
+
+    // A lane plays the time: the card follows the processor.
+    live->setParameter(plugins::delay::time, 200.0f);
+    card->tick(16.0);
+    CHECK(card->param(plugins::delay::time) == 200.0f);
+    // The views refresh with the model as it was: the card stays with the lane
+    // (it used to flip back to the model's value every refresh).
+    card->refresh(insert);
+    CHECK(card->param(plugins::delay::time) == 200.0f);
+    card->tick(16.0);
+    card->refresh(insert);
+    CHECK(card->param(plugins::delay::time) == 200.0f);
+    // A change to the model (an edit, an undo) still comes in.
+    insert.params[plugins::delay::time] = 500.0f;
+    card->refresh(insert);
+    CHECK(card->param(plugins::delay::time) == 500.0f);
+}
