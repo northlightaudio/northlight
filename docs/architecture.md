@@ -1076,6 +1076,16 @@ bar starts, 1 kHz otherwise) at multiples of the beat length from zero, so the s
 code serves the count-in before the start position (negative timeline positions)
 and playback. The snapshot carries tempo and time signature.
 
+Every insert is handed an `engine::PlayHead` before each block
+(`InsertProcessor::setPlayHead`): the tempo, the time signature, whether the
+transport plays, and the song position at the block's first sample in samples
+and quarter notes (one tempo, so position / samples-per-quarter). Built-ins read
+it through `ProcessorBase::playHead()` (moved on by the chunk offset when a block
+is split); the Delay and Starbit's arpeggio use it for note values
+(`plugins/BeatSync.h`), and a hosted plugin gets it as JUCE's `AudioPlayHead`
+(VST3) or a `clap_event_transport` (CLAP). The editors read the tempo back from
+the feedback block (`ProcessorFeedback::tempoBpm`).
+
 The transport holds a count-in length, a punch region and the loop region.
 `AudioEngine::process` cuts every block into segments at the count-in end and the
 punch edges (on top of the renderer's own split at the loop end): during the

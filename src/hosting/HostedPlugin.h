@@ -71,6 +71,7 @@ public:
         return index >= 0 && index < auxOutputs_ && i < aux_.size() ? aux_[i].data() : nullptr;
     }
     void process(float* left, float* right, int numSamples) noexcept override;
+    void setPlayHead(const engine::PlayHead& head) noexcept override { playHead_.head = head; }
     bool acceptsSidechain() const noexcept override { return sidechain_.load(std::memory_order_acquire); }
     // Instruments (and MIDI effects): the block's events go into the plugin's
     // MIDI buffer at their offsets.
@@ -147,6 +148,14 @@ private:
     float bypassStep_ = 0.0f;                            // per-sample ramp (10 ms)
     std::atomic<bool> prepared_{false};
     std::atomic<bool> sidechain_{false}; // the plugin's second input bus is live
+
+    // The transport the plugin asks for during processBlock (tempo, position).
+    struct PlayHead final : juce::AudioPlayHead
+    {
+        engine::PlayHead head;
+        juce::Optional<PositionInfo> getPosition() const override;
+    };
+    PlayHead playHead_;
 };
 
 } // namespace aural::hosting

@@ -89,6 +89,8 @@ public:
         lastChunk_ = true;
     }
 
+    void setPlayHead(const engine::PlayHead& head) noexcept final { playHead_ = head; }
+
     // MIDI goes through the same bypass handling as the key input: parked for
     // processAudio (an instrument reads it with offsets relative to chunkStart_).
     void
@@ -141,6 +143,19 @@ protected:
     virtual void processBypassed(float*, float*, int) noexcept {}
 
     double sampleRate_ = 48000.0;
+    // The song at the current chunk's first sample (the block's, moved on by
+    // the chunk's offset while playing).
+    engine::PlayHead playHead() const noexcept
+    {
+        auto head = playHead_;
+        head.sampleRate = sampleRate_;
+        if (head.playing && chunkStart_ > 0)
+        {
+            head.samples += chunkStart_;
+            head.quarterNotes += chunkStart_ * head.quartersPerSample();
+        }
+        return head;
+    }
     const float* keyLeft_ = nullptr;
     const float* keyRight_ = nullptr;
     const engine::MidiEventList* midi_ = nullptr;
@@ -168,6 +183,7 @@ private:
     std::vector<engine::ParameterInfo> infos_;
     std::vector<std::atomic<float>> values_;
     std::vector<float> dryLeft_, dryRight_;
+    engine::PlayHead playHead_;
     float bypassMix_ = 0.0f;
     float bypassStep_ = 0.0f;
 };

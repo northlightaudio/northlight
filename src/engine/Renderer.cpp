@@ -264,7 +264,8 @@ void Renderer::renderTrack(const Snapshot& snapshot,
             std::copy(auxL, auxL + numSamples, left);
             std::copy(auxR, auxR + numSamples, right);
         }
-        processChain(snapshot, track, left, right, numSamples);
+        processChain(
+            snapshot, track, playHeadAt(snapshot, position, context.playing), left, right, numSamples);
         finishStereo();
         return;
     }
@@ -300,7 +301,13 @@ void Renderer::renderTrack(const Snapshot& snapshot,
             }
         }
         events.sortByTime();
-        processChain(snapshot, track, left, right, numSamples, &events);
+        processChain(snapshot,
+                     track,
+                     playHeadAt(snapshot, position, context.playing),
+                     left,
+                     right,
+                     numSamples,
+                     &events);
         finishStereo();
         return;
     }
@@ -402,7 +409,7 @@ void Renderer::renderTrack(const Snapshot& snapshot,
             right[i] = -right[i];
         }
 
-    processChain(snapshot, track, left, right, numSamples);
+    processChain(snapshot, track, playHeadAt(snapshot, position, context.playing), left, right, numSamples);
 }
 
 void Renderer::scheduleMidi(const TrackNode& track,
@@ -500,8 +507,22 @@ void Renderer::scheduleMidi(const TrackNode& track,
     events.sortByTime();
 }
 
+PlayHead Renderer::playHeadAt(const Snapshot& snapshot, core::SamplePosition position, bool playing) noexcept
+{
+    PlayHead head;
+    head.sampleRate = snapshot.sampleRate;
+    head.tempoBpm = std::max(1.0, snapshot.tempoBpm);
+    head.numerator = snapshot.timeSignature.numerator;
+    head.denominator = snapshot.timeSignature.denominator;
+    head.playing = playing;
+    head.samples = position;
+    head.quarterNotes = static_cast<double>(position) * head.quartersPerSample();
+    return head;
+}
+
 void Renderer::processChain(const Snapshot& snapshot,
                             const ChannelNode& channel,
+                            const PlayHead& playHead,
                             float* left,
                             float* right,
                             int numSamples,
@@ -530,6 +551,7 @@ void Renderer::processChain(const Snapshot& snapshot,
             keyL = source.audible ? source.outLeft.data() : snapshot.silence.data();
             keyR = source.audible ? source.outRight.data() : snapshot.silence.data();
         }
+        insert->setPlayHead(playHead);
         const auto run = [&](float* l, float* r)
         {
             if (midi != nullptr && !midiDelivered && insert->acceptsMidi())
@@ -789,7 +811,7 @@ void Renderer::renderSpan(const Snapshot& snapshot,
             bus.runtime->pan = pan1;
             bus.runtime->panPrimed = true;
         }
-        processChain(snapshot, bus, outL, outR, numSamples);
+        processChain(snapshot, bus, playHeadAt(snapshot, position, context.playing), outL, outR, numSamples);
         routeChannel(snapshot, bus, context, left, right, numSamples);
     }
 

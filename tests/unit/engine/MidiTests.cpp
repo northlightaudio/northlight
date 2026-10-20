@@ -124,6 +124,30 @@ private:
     std::vector<float> auxLeft_ = std::vector<float>(8192), auxRight_ = std::vector<float>(8192);
 };
 
+// Writes the play head it was handed: the song position in quarter notes on
+// the left, the tempo / 1000 on the right (0 when stopped).
+class PlayHeadProbe final : public engine::InsertProcessor
+{
+public:
+    const std::string& typeName() const noexcept override { return type_; }
+    const std::vector<engine::ParameterInfo>& parameters() const noexcept override { return none_; }
+    void prepare(double, int) override {}
+    void setParameter(int, float) noexcept override {}
+    float parameter(int) const noexcept override { return 0.0f; }
+    bool acceptsMidi() const noexcept override { return true; }
+    void setPlayHead(const engine::PlayHead& head) noexcept override { head_ = head; }
+    void process(float* l, float* r, int n) noexcept override
+    {
+        std::fill(l, l + n, static_cast<float>(head_.quarterNotes));
+        std::fill(r, r + n, head_.playing ? static_cast<float>(head_.tempoBpm / 1000.0) : 0.0f);
+    }
+
+private:
+    std::string type_ = "test.head";
+    std::vector<engine::ParameterInfo> none_;
+    engine::PlayHead head_;
+};
+
 class MidiFactory final : public engine::InsertFactory
 {
 public:
@@ -134,6 +158,8 @@ public:
             return std::make_unique<MarkerInstrument>();
         if (type == "test.latent")
             return std::make_unique<LatentInstrument>();
+        if (type == "test.head")
+            return std::make_unique<PlayHeadProbe>();
         return builtIns_.create(type);
     }
 
@@ -957,4 +983,24 @@ TEST_CASE("A recompile reuses each channel's work buffers; only a new channel ge
     const auto grown = engine::compileSnapshot(p, media, inserts, nullptr, &runtimes);
     CHECK(grown->tracks[1].outLeft.data() == first->tracks[1].outLeft.data());
     CHECK(grown->tracks[2].outLeft.data() != first->tracks[1].outLeft.data());
+}
+
+TEST_CASE("Every insert is handed the song's tempo and position before it plays a block", "[engine][midi]")
+{
+    auto project = keysProject(core::MidiClip{}, "test.head");
+    project.tempoBpm = 90.0;
+    Harness h;
+    h.engine.setProject(project);
+    // Stopped: the position holds, and it says so.
+    auto out = h.render(1);
+    CHECK(out[0] == Approx(0.0f));
+    CHECK(h.right[0] == Approx(0.0f));
+    h.engine.locate(48000); // one second in: 1.5 quarter notes at 90 bpm
+    h.engine.play();
+    out = h.render(3);
+    CHECK(h.right[0] == Approx(0.09f));
+    const double perBlock = blockSize * 90.0 / 60.0 / 48000.0;
+    CHECK(out[0] == Approx(1.5).margin(1e-4));
+    CHECK(out[blockSize] == Approx(1.5 + perBlock).margin(1e-4));
+    CHECK(out[2 * blockSize] == Approx(1.5 + 2 * perBlock).margin(1e-4));
 }

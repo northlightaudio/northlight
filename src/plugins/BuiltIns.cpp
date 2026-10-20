@@ -2,6 +2,7 @@
 
 #include "engine/rt/RealtimeGuard.h"
 #include "plugins/Aurora.h"
+#include "plugins/BeatSync.h"
 #include "plugins/Biquad.h"
 #include "plugins/ChannelStrip.h"
 #include "plugins/MeteredBuiltIn.h"
@@ -497,27 +498,31 @@ private:
 // A stereo delay: the time glides to a new value (a short slew, like tape, so a
 // change never clicks), the repeats darken through a one-pole low-pass and
 // feed back; ping-pong sends the input to the left line and crosses the
-// feedback so the repeats alternate sides. Two seconds of buffer, allocated in
-// prepare.
+// feedback so the repeats alternate sides. Synced, the time is a note value at
+// the project tempo (gliding to a new tempo too). Four seconds of buffer (a
+// whole note at 60 bpm), allocated in prepare.
 class Delay final : public MeteredBuiltIn
 {
 public:
     static constexpr float maxTimeMs = 2000.0f;
+    static constexpr double bufferSeconds = 4.0;
 
     Delay()
-        : MeteredBuiltIn(types::delay,
-                         {{"Time", "ms", 1.0f, maxTimeMs, 375.0f, true},
-                          {"Feedback", "%", 0.0f, 95.0f, 35.0f, false},
-                          {"Tone", "Hz", 500.0f, 20000.0f, 8000.0f, true},
-                          {"Ping-pong", "", 0.0f, 1.0f, 0.0f, false, {"Off", "On"}},
-                          {"Mix", "%", 0.0f, 100.0f, 30.0f, false}})
+        : MeteredBuiltIn(
+              types::delay,
+              {{"Time", "ms", 1.0f, maxTimeMs, 375.0f, true},
+               {"Feedback", "%", 0.0f, 95.0f, 35.0f, false},
+               {"Tone", "Hz", 500.0f, 20000.0f, 8000.0f, true},
+               {"Ping-pong", "", 0.0f, 1.0f, 0.0f, false, {"Off", "On"}},
+               {"Mix", "%", 0.0f, 100.0f, 30.0f, false},
+               {"Sync", "", 0.0f, static_cast<float>(sync::choiceCount - 1), 0.0f, false, sync::choices()}})
     {
     }
 
 private:
     void prepareBuiltIn(double sampleRate, int) override
     {
-        const auto size = static_cast<size_t>(sampleRate * maxTimeMs * 0.001) + 4;
+        const auto size = static_cast<size_t>(sampleRate * bufferSeconds) + 4;
         for (auto& c : channels_)
         {
             c.buffer.assign(size, 0.0f);
@@ -531,8 +536,11 @@ private:
     {
         const auto rate = static_cast<float>(sampleRate_);
         const int size = static_cast<int>(channels_[0].buffer.size());
+        const float synced = parameter(delay::sync);
+        const double seconds = sync::quarters(synced) > 0.0 ? sync::seconds(synced, playHead().tempoBpm)
+                                                            : parameter(delay::time) * 0.001;
         const float target =
-            std::clamp(parameter(delay::time) * 0.001f * rate, 1.0f, static_cast<float>(size - 3));
+            std::clamp(static_cast<float>(seconds) * rate, 1.0f, static_cast<float>(size - 3));
         const float slew = 1.0f - std::exp(-1.0f / (0.05f * rate)); // 50 ms glide
         const float feedback = parameter(delay::feedback) * 0.01f;
         const float tone = 1.0f - std::exp(-2.0f * std::numbers::pi_v<float> * parameter(delay::tone) / rate);

@@ -56,22 +56,23 @@ enum Param
     decay,
     sustain, // 0..1 (16 steps)
     release,
-    arp,           // Arp
-    arpRate,       // Hz (steps a second)
-    vibratoDepth,  // semitones
-    vibratoRate,   // Hz
-    vibratoDelay,  // ms
-    sweep,         // semitones the note starts from
-    sweepTime,     // ms to reach the note
-    glide,         // ms
-    voices,        // 0 mono, 1 poly (four)
-    bits,          // 2..16
-    rate,          // Hz: the sample-and-hold rate
-    echo,          // 0..1
-    velocity,      // 0..1
-    level,         // dB
-    firstWaveStep, // the custom wave's 32 steps follow
-    count = firstWaveStep + waveSteps
+    arp,                                 // Arp
+    arpRate,                             // Hz (steps a second)
+    vibratoDepth,                        // semitones
+    vibratoRate,                         // Hz
+    vibratoDelay,                        // ms
+    sweep,                               // semitones the note starts from
+    sweepTime,                           // ms to reach the note
+    glide,                               // ms
+    voices,                              // 0 mono, 1 poly (four)
+    bits,                                // 2..16
+    rate,                                // Hz: the sample-and-hold rate
+    echo,                                // 0..1
+    velocity,                            // 0..1
+    level,                               // dB
+    firstWaveStep,                       // the custom wave's 32 steps follow
+    arpSync = firstWaveStep + waveSteps, // 0 off (the rate in Hz), else a note value a step
+    count
 };
 
 constexpr int polyVoices = 4;

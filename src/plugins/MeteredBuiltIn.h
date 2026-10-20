@@ -44,6 +44,7 @@ protected:
     void processAudio(float* left, float* right, int numSamples) noexcept final
     {
         const bool watched = feedback_.watched();
+        feedback_.setTempoBpm(playHead().tempoBpm);
         float in = 0.0f;
         if (watched)
         {

@@ -77,7 +77,10 @@ delay `Amber`. The instruments (7.4b-7.4e) have faces of their own.
 - **Delay**: the echoes over time as bars as loud as the feedback leaves them,
   left up and right down when ping-pong alternates them, darker as the tone falls.
   Drag the first echo for the time, the second for the feedback. Time, Feedback,
-  Tone, Mix and a Ping-pong pill.
+  Tone, Mix, a Ping-pong pill and a Sync chip: off (the time in ms) or a note
+  value from 1/64 to 1/1, straight, triplet or dotted, at the project tempo.
+  Synced, the Time knob dims and shows the note value, and dragging the first
+  echo snaps to the nearest one.
 
 Draggable points are one handle everywhere: a 9 px `textPrimary` disc with a 1.5 px
 ring in the hue. A display's readout is `value` at its top right.
@@ -286,7 +289,9 @@ Noise Snare, Metal Hat, Crunchy Saw.
   and the noise mode (for the noise) in chips; with Wave chosen, click and drag to
   draw the steps. Duty sweep, Octave, Coarse, Velocity.
 - VOLUME: the envelope as 16-step bars. ARP: the steps as blocks as high as their
-  offsets, the one playing lit; the mode and Mono/Poly in chips. PITCH: the sweep
+  offsets, the one playing lit; the mode and Mono/Poly in chips; a Sync chip under
+  Rate makes each step a note value at the project tempo, on the song's grid
+  while it plays (the Rate knob dims and shows the value). PITCH: the sweep
   and the vibrato over a note's first second. LO-FI: a sine as the bits and rate
   leave it.
 

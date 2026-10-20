@@ -4,6 +4,7 @@
 
 #include "ui/strip/BuiltInCards.h"
 
+#include "plugins/BeatSync.h"
 #include "plugins/Biquad.h"
 #include "plugins/BuiltIns.h"
 #include "ui/strip/AuroraEditor.h"
@@ -13,6 +14,7 @@
 #include "ui/strip/PulsarEditor.h"
 #include "ui/strip/StarbitEditor.h"
 #include "ui/strip/StripStyle.h"
+#include "ui/strip/SynthParts.h"
 
 #include <cmath>
 
@@ -554,6 +556,19 @@ private:
 // sides (left up, right down), otherwise each is both. The tone darkens the
 // later repeats. Drag the first echo across for the time, the second up and
 // down for the feedback.
+
+// The delay's time in seconds: the note value at the tempo when synced.
+double delaySeconds(const ModuleCard& card)
+{
+    const float synced = card.param(del::sync);
+    return plugins::sync::quarters(synced) > 0.0 ? plugins::sync::seconds(synced, card.tempoBpm())
+                                                 : card.param(del::time) * 0.001;
+}
+bool delaySynced(const ModuleCard& card)
+{
+    return plugins::sync::quarters(card.param(del::sync)) > 0.0;
+}
+
 class DelayGraph final : public juce::Component, public juce::SettableTooltipClient
 {
 public:
@@ -571,7 +586,7 @@ public:
         drawWell(g, theme, bounds);
         const auto p = plot();
         const double span = spanSeconds();
-        const double time = card_.param(del::time) * 0.001;
+        const double time = delaySeconds(card_);
         const float feedback = card_.param(del::feedback) * 0.01f;
         const bool pingPong = card_.param(del::pingPong) >= 0.5f;
         const float tone =
@@ -626,8 +641,13 @@ public:
                        hue,
                        {x(2.0 * time), pingPong ? mid + height(secondDb) : mid - height(secondDb)},
                        drag_ == Drag::feedback);
-        juce::String text = juce::String(static_cast<int>(std::lround(time * 1000.0))) + " ms   " +
-                            juce::String(static_cast<int>(std::lround(feedback * 100.0f))) + "% feedback";
+        juce::String text = juce::String(static_cast<int>(std::lround(time * 1000.0))) + " ms   ";
+        if (delaySynced(card_))
+            text = juce::String(plugins::sync::noteValues[static_cast<size_t>(plugins::sync::choiceOf(
+                                                              card_.param(del::sync)))]
+                                    .name) +
+                   "  (" + text.trimEnd() + ")   ";
+        text << juce::String(static_cast<int>(std::lround(feedback * 100.0f))) << "% feedback";
         if (pingPong)
             text << "   ping-pong";
         drawReadout(g, theme, p, text);
@@ -637,7 +657,7 @@ public:
     {
         const auto p = plot();
         frozenSpan_ = spanSeconds();
-        const double time = card_.param(del::time) * 0.001;
+        const double time = delaySeconds(card_);
         const float secondX = p.getX() + static_cast<float>(2.0 * time / frozenSpan_) * p.getWidth();
         drag_ = std::abs(e.position.x - secondX) <= 10.0f ? Drag::feedback : Drag::time;
         card_.beginGesture(drag_ == Drag::time ? "Delay time" : "Feedback");
@@ -649,7 +669,11 @@ public:
         if (drag_ == Drag::time)
         {
             const double t = (e.position.x - p.getX()) / p.getWidth() * frozenSpan_;
-            card_.setParam(del::time, static_cast<float>(t * 1000.0));
+            if (delaySynced(card_))
+                card_.setParam(del::sync,
+                               static_cast<float>(plugins::sync::nearest(t * card_.tempoBpm() / 60.0)));
+            else
+                card_.setParam(del::time, static_cast<float>(t * 1000.0));
         }
         else if (drag_ == Drag::feedback)
         {
@@ -686,7 +710,7 @@ private:
     {
         if (frozenSpan_ > 0.0)
             return frozenSpan_;
-        return juce::jlimit(0.1, 6.0, card_.param(del::time) * 0.001 * 6.5);
+        return juce::jlimit(0.1, 6.0, delaySeconds(card_) * 6.5);
     }
 
     ModuleCard& card_;
@@ -699,13 +723,35 @@ class DelayCard final : public ModuleCard
 public:
     DelayCard(const Theme& theme, CardHost& host, core::Id channelId, const core::Insert& insert)
         : ModuleCard(theme, host, channelId, insert), graph_(*this),
-          bars_(*this, {LevelBars::Kind::input, LevelBars::Kind::output})
+          bars_(*this, {LevelBars::Kind::input, LevelBars::Kind::output}), sync_(theme, colour())
     {
         addAndMakeVisible(graph_);
         addAndMakeVisible(bars_);
         for (int p : {del::time, del::feedback, del::tone, del::mix})
             knobs_.push_back(&addKnob(p));
+        // Synced, the time knob stands aside: it shows the note value.
+        auto* time = knobs_.front();
+        time->format = [this, plain = time->format](double v)
+        {
+            if (!delaySynced(*this))
+                return plain ? plain(v) : juce::String(static_cast<int>(std::lround(v))) + " ms";
+            return juce::String(
+                plugins::sync::noteValues[static_cast<size_t>(plugins::sync::choiceOf(param(del::sync)))]
+                    .name);
+        };
         pingPong_ = &addToggle(del::pingPong, "Ping-pong");
+        for (const auto& c : plugins::sync::choices())
+            sync_.choices.emplace_back(c);
+        sync_.choices.front() = "Sync off";
+        sync_.setTooltip("Sync the time to the project tempo");
+        sync_.onChoose = [this](int i)
+        {
+            beginGesture("Delay sync");
+            setParam(del::sync, static_cast<float>(i));
+            endGesture();
+        };
+        addAndMakeVisible(sync_);
+        paramsChanged();
     }
 
     int preferredWidth() const override { return 4 * knobCellWidth() + 110 + 90; }
@@ -721,15 +767,39 @@ private:
         auto row = body.removeFromTop(knobCellHeight());
         layoutKnobs(row.removeFromLeft(4 * knobCellWidth()), 4, knobs_);
         row.removeFromLeft(theme_.spacing.sm);
-        pingPong_->setBounds(row.removeFromLeft(96).withSizeKeepingCentre(96, theme_.sizes.controlCompact));
+        // Ping-pong and the sync chip, stacked.
+        auto side = row.removeFromLeft(96);
+        const int h = theme_.sizes.controlCompact;
+        auto pair = side.withSizeKeepingCentre(96, 2 * h + theme_.spacing.sm);
+        pingPong_->setBounds(pair.removeFromTop(h));
+        pair.removeFromTop(theme_.spacing.sm);
+        sync_.setBounds(pair.withSizeKeepingCentre(std::min(96, sync_.preferredWidth()), 16));
     }
-    void paramsChanged() override { graph_.repaint(); }
-    void framesArrived(double) override { bars_.repaint(); }
+    void paramsChanged() override
+    {
+        sync_.selected = plugins::sync::choiceOf(param(del::sync));
+        sync_.repaint();
+        knobs_.front()->setAlpha(delaySynced(*this) ? 0.5f : 1.0f);
+        knobs_.front()->repaint();
+        graph_.repaint();
+    }
+    void framesArrived(double) override
+    {
+        bars_.repaint();
+        // A synced time follows the tempo.
+        if (const double bpm = tempoBpm(); bpm != shownTempo_)
+        {
+            shownTempo_ = bpm;
+            graph_.repaint();
+        }
+    }
 
     DelayGraph graph_;
     LevelBars bars_;
     std::vector<Knob*> knobs_;
     PillToggle* pingPong_ = nullptr;
+    CornerChoice sync_;
+    double shownTempo_ = 0.0;
 };
 
 } // namespace

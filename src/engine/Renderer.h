@@ -110,10 +110,15 @@ private:
     // feeding keyed slots their source's pre-fader signal.
     static void processChain(const Snapshot& snapshot,
                              const ChannelNode& channel,
+                             const PlayHead& playHead,
                              float* left,
                              float* right,
                              int numSamples,
                              const MidiEventList* midi = nullptr) noexcept;
+
+    // The song at `position` for a span's inserts.
+    static PlayHead
+    playHeadAt(const Snapshot& snapshot, core::SamplePosition position, bool playing) noexcept;
 
     void renderSpan(const Snapshot& snapshot,
                     const RenderContext& context,

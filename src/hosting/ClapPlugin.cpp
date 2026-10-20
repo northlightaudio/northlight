@@ -4,6 +4,7 @@
 #include "hosting/CrashGuard.h"
 
 #include <algorithm>
+#include <cmath>
 #include <cstring>
 
 namespace aural::hosting
@@ -766,7 +767,29 @@ bool HostedClapPlugin::run(
     clap_process_t process{};
     process.steady_time = -1;
     process.frames_count = static_cast<uint32_t>(numSamples);
-    process.transport = nullptr;
+    {
+        // The song's position and tempo (one tempo, no loop reported).
+        const auto& h = playHead_;
+        auto& t = transport_;
+        t = clap_event_transport_t{};
+        t.header.size = sizeof(t);
+        t.header.space_id = CLAP_CORE_EVENT_SPACE_ID;
+        t.header.type = CLAP_EVENT_TRANSPORT;
+        t.flags = CLAP_TRANSPORT_HAS_TEMPO | CLAP_TRANSPORT_HAS_BEATS_TIMELINE |
+                  CLAP_TRANSPORT_HAS_SECONDS_TIMELINE | CLAP_TRANSPORT_HAS_TIME_SIGNATURE |
+                  (h.playing ? CLAP_TRANSPORT_IS_PLAYING : 0u);
+        t.tempo = h.tempoBpm;
+        t.song_pos_beats = static_cast<clap_beattime>(std::llround(h.quarterNotes * CLAP_BEATTIME_FACTOR));
+        t.song_pos_seconds = static_cast<clap_sectime>(
+            std::llround(static_cast<double>(h.samples) / h.sampleRate * CLAP_SECTIME_FACTOR));
+        const double quartersPerBar = h.numerator * 4.0 / std::max(1, h.denominator);
+        const double bar = std::floor(h.quarterNotes / quartersPerBar);
+        t.bar_start = static_cast<clap_beattime>(std::llround(bar * quartersPerBar * CLAP_BEATTIME_FACTOR));
+        t.bar_number = static_cast<int32_t>(bar);
+        t.tsig_num = static_cast<uint16_t>(h.numerator);
+        t.tsig_denom = static_cast<uint16_t>(h.denominator);
+    }
+    process.transport = &transport_;
     process.audio_inputs = inBuffers_.data();
     process.audio_inputs_count = static_cast<uint32_t>(inBuffers_.size());
     process.audio_outputs = outBuffers_.data();

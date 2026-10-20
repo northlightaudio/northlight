@@ -39,6 +39,21 @@ struct ParameterInfo
     std::string id;
 };
 
+// Where the song is for a block, for tempo-synced processors (an arpeggio, a
+// delay in note values) and hosted plugins' transport. One tempo for the
+// project (no tempo map yet).
+struct PlayHead
+{
+    double tempoBpm = 120.0;   // quarter notes a minute
+    double quarterNotes = 0.0; // the song position at the block's first sample
+    std::int64_t samples = 0;  // the same, in samples
+    int numerator = 4, denominator = 4;
+    bool playing = false; // the position moves (stopped: it holds)
+    double sampleRate = 48000.0;
+    double quartersPerSample() const noexcept { return tempoBpm / 60.0 / sampleRate; }
+    double samplesPerQuarter() const noexcept { return sampleRate * 60.0 / tempoBpm; }
+};
+
 class InsertProcessor
 {
 public:
@@ -95,6 +110,10 @@ public:
 
     // Real-time. Processes the stereo pair in place.
     virtual void process(float* left, float* right, int numSamples) noexcept = 0;
+
+    // Real-time: the song's position and tempo for the block about to be
+    // processed (the renderer calls it before every process call).
+    virtual void setPlayHead(const PlayHead&) noexcept {}
 
     // Sidechain (key) input. A processor that accepts one gets the source's
     // signal alongside its own; the default ignores it.

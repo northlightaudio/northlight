@@ -111,6 +111,9 @@ public:
     void setTapsEnabled(bool enabled) noexcept { tapsEnabled_.store(enabled, std::memory_order_relaxed); }
     bool hasTaps() const noexcept { return taps_ != nullptr; }
     double sampleRate() const noexcept { return sampleRate_.load(std::memory_order_relaxed); }
+    // The project tempo the processor last played at (for a synced display).
+    double tempoBpm() const noexcept { return tempoBpm_.load(std::memory_order_relaxed); }
+    void setTempoBpm(double bpm) noexcept { tempoBpm_.store(bpm, std::memory_order_relaxed); }
 
     // Frames published since `cursor` (the newest `maxFrames` of them), oldest
     // first; advances the cursor. Start with cursor 0.
@@ -193,6 +196,7 @@ private:
     std::atomic<std::uint64_t> written_{0};
     std::atomic<std::uint64_t> tapWritten_[tapCount] = {};
     std::atomic<double> sampleRate_{48000.0};
+    std::atomic<double> tempoBpm_{120.0};
     std::atomic<bool> tapsEnabled_{false};
     std::atomic<bool> watched_{false};
     // Real-time side only.

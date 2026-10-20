@@ -144,6 +144,12 @@ double ModuleCard::sampleRate() const noexcept
     return fb != nullptr ? fb->sampleRate() : 48000.0;
 }
 
+double ModuleCard::tempoBpm() const noexcept
+{
+    const auto* fb = liveFeedback();
+    return fb != nullptr ? fb->tempoBpm() : 120.0;
+}
+
 float ModuleCard::param(int index) const noexcept
 {
     return index >= 0 && static_cast<size_t>(index) < params_.size() ? params_[static_cast<size_t>(index)]

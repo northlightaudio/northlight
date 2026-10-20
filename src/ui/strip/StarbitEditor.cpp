@@ -7,6 +7,7 @@
 
 #include "ui/strip/StarbitEditor.h"
 
+#include "plugins/BeatSync.h"
 #include "plugins/Starbit.h"
 #include "ui/AuralLookAndFeel.h"
 #include "ui/strip/StripStyle.h"
@@ -497,7 +498,7 @@ public:
     StarbitCard(const Theme& theme, CardHost& host, core::Id channelId, const core::Insert& insert)
         : ModuleCard(theme, host, channelId, insert), hues_(theme), wave_(*this, hues_.wave),
           envelope_(*this, hues_.envelope), arp_(*this, hues_.arp), pitch_(*this, hues_.pitch),
-          lofi_(*this, hues_.lofi)
+          lofi_(*this, hues_.lofi), arpSync_(theme, hues_.arp)
     {
         for (auto* c : std::initializer_list<juce::Component*>{&wave_, &envelope_, &arp_, &pitch_, &lofi_})
             addAndMakeVisible(c);
@@ -537,8 +538,27 @@ public:
         arpKnobs_ = {knob(sb::arpRate,
                           "Rate",
                           hues_.arp,
-                          [](double v) { return juce::String(static_cast<int>(std::lround(v))) + " Hz"; }),
+                          [this](double v)
+                          {
+                              // Synced, the rate is the note value a step.
+                              if (const int c = plugins::sync::choiceOf(param(sb::arpSync)); c > 0)
+                                  return juce::String(plugins::sync::noteValues[static_cast<size_t>(c)].name);
+                              return juce::String(static_cast<int>(std::lround(v))) + " Hz";
+                          }),
                      knob(sb::glide, "Glide", hues_.arp)};
+        for (const auto& c : plugins::sync::choices())
+            arpSync_.choices.emplace_back(c);
+        arpSync_.choices.front() = "Free";
+        arpSync_.setTooltip("Sync the arpeggio's steps to the project tempo");
+        arpSync_.onChoose = [this](int i)
+        {
+            beginGesture("Arp sync");
+            setParam(sb::arpSync, static_cast<float>(i));
+            endGesture();
+        };
+        arpSync_.selected = plugins::sync::choiceOf(param(sb::arpSync));
+        arpKnobs_.front()->setAlpha(arpSync_.selected > 0 ? 0.5f : 1.0f);
+        addAndMakeVisible(arpSync_);
         pitchKnobs_ = {knob(sb::vibratoDepth,
                             "Vibrato",
                             hues_.pitch,
@@ -613,7 +633,7 @@ private:
                                int columns,
                                int rows,
                                juce::Component& display,
-                               const std::vector<Knob*>& knobs)
+                               const std::vector<Knob*>& knobs) -> juce::Rectangle<int>
         {
             const int w = columns * cellW + 2 * pad;
             const juce::Rectangle<int> r(x, body.getY(), w, body.getHeight());
@@ -623,12 +643,21 @@ private:
             const int knobsH = rows * knobCellHeight();
             display.setBounds(inner.removeFromTop(std::max(36, inner.getHeight() - knobsH - pad)));
             inner.removeFromTop(pad);
-            layoutKnobs(inner.removeFromTop(knobsH), columns, knobs);
+            const auto area = inner.removeFromTop(knobsH);
+            layoutKnobs(area, columns, knobs);
             x += w + gap;
+            return area;
         };
         panel("WAVE", hues_.wave, 4, 1, wave_, waveKnobs_);
         panel("VOLUME", hues_.envelope, 2, 2, envelope_, envelopeKnobs_);
-        panel("ARP", hues_.arp, 2, 2, arp_, arpKnobs_);
+        {
+            // The arp's second row: the sync chip, under its caption.
+            auto row = panel("ARP", hues_.arp, 2, 2, arp_, arpKnobs_).withTrimmedTop(knobCellHeight());
+            auto chip = row.withSizeKeepingCentre(row.getWidth(), 16 + captionH);
+            arpSyncCaption_ = chip.removeFromTop(captionH);
+            arpSync_.setBounds(
+                chip.withSizeKeepingCentre(std::min(chip.getWidth(), arpSync_.preferredWidth()), 16));
+        }
         panel("PITCH", hues_.pitch, 3, 2, pitch_, pitchKnobs_);
         panel("LO-FI", hues_.lofi, 2, 2, lofi_, lofiKnobs_);
     }
@@ -662,6 +691,10 @@ private:
             g.setColour(c.textSecondary);
             g.drawText(s.title, caption, juce::Justification::centredLeft);
         }
+        g.setFont(
+            theme_.font(Theme::Face::mono, theme_.fonts.size.caption - 1.0f, theme_.fonts.weight.semibold));
+        g.setColour(c.textTertiary);
+        g.drawText("SYNC", arpSyncCaption_, juce::Justification::centred);
         g.setColour(c.surface1);
         g.fillPath(notched(presetBar_.toFloat(), 3.0f));
         g.setColour(c.lineStrong);
@@ -796,6 +829,10 @@ private:
     void paramsChanged() override
     {
         presetName_.setButtonText(currentPresetName());
+        arpSync_.selected = plugins::sync::choiceOf(param(sb::arpSync));
+        arpSync_.repaint();
+        arpKnobs_.front()->setAlpha(arpSync_.selected > 0 ? 0.5f : 1.0f);
+        arpKnobs_.front()->repaint();
         for (auto* c : std::initializer_list<juce::Component*>{&wave_, &envelope_, &arp_, &pitch_, &lofi_})
             c->repaint();
     }
@@ -841,7 +878,8 @@ private:
         next_{juce::String::fromUTF8("\xe2\x80\xba")};
     juce::TextButton presetName_;
     std::vector<Section> sections_;
-    juce::Rectangle<int> sky_, wordmark_, voices_, presetBar_;
+    juce::Rectangle<int> sky_, wordmark_, voices_, presetBar_, arpSyncCaption_;
+    CornerChoice arpSync_;
     int activeVoices_ = 0;
     float time_ = 0.0f;
     double sinceSky_ = 0.0;

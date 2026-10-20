@@ -4,6 +4,7 @@
 #include "hosting/CrashGuard.h"
 
 #include <algorithm>
+#include <cmath>
 #include <cstdint>
 
 namespace aural::hosting
@@ -162,6 +163,7 @@ void HostedPlugin::prepare(double sampleRate, int maxBlockSize)
 
     // The layout was negotiated when the instance was created (see negotiateLayout).
     instance_->setNonRealtime(false);
+    instance_->setPlayHead(&playHead_);
     instance_->setRateAndBufferSizeDetails(sampleRate, maxBlockSize);
     instance_->prepareToPlay(sampleRate, maxBlockSize);
     // JUCE stores each event as a 4-byte time, a 2-byte size and its bytes: room
@@ -180,6 +182,22 @@ void HostedPlugin::prepare(double sampleRate, int maxBlockSize)
     bypassStep_ = 1.0f / static_cast<float>(std::max(1.0, sampleRate * 0.010));
     bypassMix_ = isBypassed() ? 1.0f : 0.0f;
     prepared_.store(true, std::memory_order_release);
+}
+
+juce::Optional<juce::AudioPlayHead::PositionInfo> HostedPlugin::PlayHead::getPosition() const
+{
+    PositionInfo info;
+    info.setBpm(head.tempoBpm);
+    info.setTimeSignature(TimeSignature{head.numerator, head.denominator});
+    info.setTimeInSamples(head.samples);
+    info.setTimeInSeconds(static_cast<double>(head.samples) / head.sampleRate);
+    info.setPpqPosition(head.quarterNotes);
+    const double quartersPerBar = head.numerator * 4.0 / std::max(1, head.denominator);
+    const double bar = std::floor(head.quarterNotes / quartersPerBar);
+    info.setPpqPositionOfLastBarStart(bar * quartersPerBar);
+    info.setBarCount(static_cast<std::int64_t>(bar));
+    info.setIsPlaying(head.playing);
+    return info;
 }
 
 void HostedPlugin::process(float* left, float* right, int numSamples) noexcept

@@ -124,6 +124,8 @@ public:
     // The live processor itself (null before the engine has an instance).
     const engine::InsertProcessor* liveProcessor() const noexcept { return live_.get(); }
     double sampleRate() const noexcept;
+    // The project tempo the live processor plays at (120 before it has played).
+    double tempoBpm() const noexcept;
 
     void paint(juce::Graphics& g) override;
     void paintOverChildren(juce::Graphics& g) override;

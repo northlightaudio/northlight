@@ -1,6 +1,7 @@
 #include "plugins/Starbit.h"
 
 #include "engine/rt/RealtimeGuard.h"
+#include "plugins/BeatSync.h"
 #include "plugins/MeteredBuiltIn.h"
 #include "plugins/SynthVoices.h"
 
@@ -184,15 +185,31 @@ private:
             });
     }
 
-    // Once per control interval: each voice's pitch (arp, vibrato, sweep, glide).
-    void control(const float* p, double seconds) noexcept
+    // Once per control interval (`at` samples into the chunk): each voice's
+    // pitch (arp, vibrato, sweep, glide).
+    void control(const float* p, double seconds, int at) noexcept
     {
         const int shape = std::clamp(static_cast<int>(std::lround(p[arp])), 0, 7);
-        arpPhase_ += seconds * p[arpRate];
-        while (arpPhase_ >= 1.0)
+        const double stepQuarters = sync::quarters(p[arpSync]);
+        if (stepQuarters > 0.0 && head_.playing)
         {
-            arpPhase_ -= 1.0;
-            ++arpStep_;
+            // Synced while playing: the steps fall on the song's grid, the
+            // first of the pattern on a step of the bar.
+            const double position = (head_.quarterNotes + at * head_.quartersPerSample()) / stepQuarters;
+            const double whole = std::floor(position);
+            arpStep_ = static_cast<int>(std::fmod(whole, 1 << 30));
+            arpPhase_ = position - whole;
+        }
+        else
+        {
+            // Free (Hz), or synced while stopped: the note value's rate at the tempo.
+            arpPhase_ += seconds * (stepQuarters > 0.0 ? head_.tempoBpm / 60.0 / stepQuarters
+                                                       : static_cast<double>(p[arpRate]));
+            while (arpPhase_ >= 1.0)
+            {
+                arpPhase_ -= 1.0;
+                ++arpStep_;
+            }
         }
         const auto& steps = shapes[static_cast<size_t>(shape)];
         const double transpose = std::round(p[octave]) * 12.0 + std::round(p[coarse]);
@@ -270,6 +287,7 @@ private:
             table[static_cast<size_t>(s)] =
                 std::clamp(static_cast<int>(std::lround(p[firstWaveStep + s])), 0, 15);
         const int voiceLimit = mono() ? 1 : polyVoices;
+        head_ = playHead();
 
         size_t next = firstChunkEvent();
         const engine::MidiEventList* events = midi_;
@@ -280,7 +298,7 @@ private:
                 handle((*events)[next++]);
             if (countdown_ <= 0)
             {
-                control(p.data(), controlInterval / sampleRate_);
+                control(p.data(), controlInterval / sampleRate_, i);
                 countdown_ = controlInterval;
             }
             --countdown_;
@@ -443,6 +461,7 @@ private:
     int heldCount_ = 0, lastVelocity_ = 100;
     std::uint32_t age_ = 0;
     double arpPhase_ = 0.0, dutyPhase_ = 0.0;
+    engine::PlayHead head_; // this chunk's song position, for a synced arpeggio
     int arpStep_ = 0;
     int countdown_ = 0;
     double holdPhase_ = 1.0;
@@ -481,6 +500,8 @@ std::vector<engine::ParameterInfo> parameterInfo()
               false,
               {"Off", "Chord", "Octave", "Major", "Minor", "Power", "Maj7", "Min7"}};
     p[arpRate] = {"Arp rate", "Hz", 2.0f, 60.0f, 20.0f, false, {}};
+    p[arpSync] = {
+        "Arp sync", "", 0.0f, static_cast<float>(sync::choiceCount - 1), 0.0f, false, sync::choices()};
     p[vibratoDepth] = {"Vibrato", "st", 0.0f, 1.0f, 0.0f, false, {}};
     p[vibratoRate] = {"Vibrato rate", "Hz", 0.5f, 15.0f, 6.0f, false, {}};
     p[vibratoDelay] = {"Vibrato delay", "ms", 0.0f, 1000.0f, 200.0f, false, {}};

@@ -60,6 +60,7 @@ enum Param
     tone,     // Hz: the repeats darken above this
     pingPong, // 0 off, 1 on: the repeats alternate sides
     mix,      // % wet
+    sync,     // 0 off (the time in ms), else a note value at the project tempo (plugins/BeatSync.h)
     count
 };
 } // namespace delay

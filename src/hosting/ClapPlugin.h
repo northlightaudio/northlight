@@ -84,6 +84,7 @@ public:
     void beginParameterGesture(int index) noexcept override;
     void endParameterGesture(int index) noexcept override;
     void process(float* left, float* right, int numSamples) noexcept override;
+    void setPlayHead(const engine::PlayHead& head) noexcept override { playHead_ = head; }
     bool acceptsSidechain() const noexcept override { return hasSidechain_; }
     void processWithSidechain(float* left,
                               float* right,
@@ -295,6 +296,8 @@ private:
     bool hasNoteInput_ = false;
     bool noteDialectClap_ = true;                        // else MIDI 1.0 events
     const engine::MidiEventList* pendingMidi_ = nullptr; // this block's events, while running
+    engine::PlayHead playHead_;                          // this block's song position and tempo
+    clap_event_transport_t transport_{};                 // the same, for process()
     std::vector<float> keyLeft_, keyRight_;              // the key port's channels
     std::vector<float> dryLeft_, dryRight_;              // the input, for bypass and the error path
     std::vector<float> monoIn_, outLeft_, outRight_;     // a mono main input, a separate main output
