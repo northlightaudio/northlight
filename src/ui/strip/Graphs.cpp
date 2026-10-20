@@ -286,9 +286,9 @@ TransferCurve::TransferCurve(ModuleCard& card) : card_(card)
 
 juce::Rectangle<float> TransferCurve::plot() const
 {
-    auto r = getLocalBounds().toFloat();
-    const float side = std::min(r.getWidth(), r.getHeight());
-    return r.withSizeKeepingCentre(side, side).reduced(1.0f);
+    // The whole display, square or not, so the well lines up with the history
+    // and the meters beside it.
+    return getLocalBounds().toFloat().reduced(1.0f);
 }
 
 float TransferCurve::outputDb(float inputDb) const
