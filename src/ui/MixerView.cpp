@@ -903,7 +903,20 @@ private:
         {
             menu.addSeparator();
             menu.addItem(item++, "Remove bus");
-            actions.push_back([this] { owner_.onCommand(std::make_unique<core::RemoveBus>(id_)); });
+            actions.push_back(
+                [this]
+                {
+                    // The removal rebuilds the strips, which may delete this one:
+                    // run it once the menu's callback has unwound.
+                    juce::Component::SafePointer<MixerView> owner(&owner_);
+                    const auto id = id_;
+                    juce::MessageManager::callAsync(
+                        [owner, id]
+                        {
+                            if (owner != nullptr && owner->onCommand)
+                                owner->onCommand(std::make_unique<core::RemoveBus>(id));
+                        });
+                });
         }
         menu.showMenuAsync(juce::PopupMenu::Options().withTargetComponent(cap_),
                            [actions](int chosen)

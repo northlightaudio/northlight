@@ -45,6 +45,10 @@ public:
     void showFirstRun();
     // --benchmark-ui: plays and scrolls for `seconds`, prints frame percentiles, quits.
     void runBenchmark(int seconds);
+    // --bus / --remove-bus: adds a bus; removes the last one through the mixer's
+    // command path (the sheet when channels route to it), for unattended checks.
+    void addBus();
+    void removeLastBus();
     // Shows the mixer panel.
     void showMixer();
     // Shows the mixer and opens an insert's editor.

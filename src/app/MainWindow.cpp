@@ -752,8 +752,8 @@ private:
         mixer_.onCommand = [this](std::unique_ptr<core::Command> command)
         {
             if (auto* removal = dynamic_cast<core::RemoveBus*>(command.get()))
-                if (confirmBusRemoval(removal->busId(), std::move(command)))
-                    return;
+                if (confirmBusRemoval(removal->busId(), command))
+                    return; // the sheet took the command
             session_.execute(std::move(command));
         };
         mixer_.onGestureBegin = [this](const std::string& name) { session_.beginGesture(name); };
@@ -1202,8 +1202,9 @@ private:
     }
 
     // A bus that tracks route to is removed only after a sheet (10.6). Returns
-    // true when the sheet took the command.
-    bool confirmBusRemoval(core::Id busId, std::unique_ptr<core::Command> command)
+    // true when the sheet took the command; otherwise the command is left with
+    // the caller to execute at once.
+    bool confirmBusRemoval(core::Id busId, std::unique_ptr<core::Command>& command)
     {
         const auto& project = session_.project();
         const auto* bus = project.findBus(busId);
@@ -1381,6 +1382,14 @@ private:
         core::Bus bus;
         bus.name = "Bus " + std::to_string(session_.project().buses.size() + 1);
         session_.execute(std::make_unique<core::AddBus>(bus));
+    }
+
+    // --remove-bus: the last bus goes the way the mixer strip's menu removes it.
+    void removeLastBus()
+    {
+        const auto& buses = session_.project().buses;
+        if (!buses.empty() && mixer_.onCommand)
+            mixer_.onCommand(std::make_unique<core::RemoveBus>(buses.back().id));
     }
 
     void newProject()
@@ -2103,6 +2112,18 @@ void MainWindow::notify(const juce::String& message, bool warning)
         else
             content->status_.showMessage(message);
     }
+}
+
+void MainWindow::addBus()
+{
+    if (auto* content = dynamic_cast<Content*>(getContentComponent()))
+        content->addBus();
+}
+
+void MainWindow::removeLastBus()
+{
+    if (auto* content = dynamic_cast<Content*>(getContentComponent()))
+        content->removeLastBus();
 }
 
 void MainWindow::runBenchmark(int seconds)

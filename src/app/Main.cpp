@@ -59,6 +59,8 @@ public:
     //   --preferences [page] open Preferences (general, audio, recording, editing, plugins, shortcuts,
     //   diagnostics)
     //   --benchmark-ui <s>   play and scroll for s seconds, print frame percentiles, quit
+    //   --bus                add a bus
+    //   --remove-bus         remove the last bus the way the mixer does
     //   --first-run          show the first-run sheet
     //   --midi-track         add a MIDI track (built-in synth) with a short clip
     //   --midi-track-with <type>  the same with the given instrument type instead
@@ -143,6 +145,10 @@ public:
                         break;
                     }
             }
+            else if (arg == "--bus")
+                mainWindow_->addBus();
+            else if (arg == "--remove-bus")
+                mainWindow_->removeLastBus();
             else if (arg == "--mixer")
                 mainWindow_->showMixer();
             else if (arg == "--layout" && i + 1 < tokens.size())
