@@ -1,4 +1,5 @@
 #include "audio/PeakStore.h"
+#include "core/Command.h"
 #include "core/Model.h"
 #include "plugins/ChannelStrip.h"
 #include "ui/ArrangeView.h"
@@ -248,4 +249,101 @@ TEST_CASE("A tooltip's box fits its text as drawn, without wrapping it again", "
         CHECK(drawn.first == measured.first);
         CHECK(drawn.second + 2 * theme.spacing.xs <= static_cast<float>(box.getHeight()));
     }
+}
+
+namespace
+{
+// A mouse event on the arrange view at x, y (no real input: the handlers are
+// called directly).
+juce::MouseEvent mouseAt(ui::ArrangeView& view, int x, int y, int clicks = 1, bool dragged = false)
+{
+    const juce::Point<float> at(static_cast<float>(x), static_cast<float>(y));
+    return juce::MouseEvent(juce::Desktop::getInstance().getMainMouseSource(),
+                            at,
+                            juce::ModifierKeys(juce::ModifierKeys::leftButtonModifier),
+                            1.0f,
+                            0.0f,
+                            0.0f,
+                            0.0f,
+                            0.0f,
+                            &view,
+                            &view,
+                            juce::Time::getCurrentTime(),
+                            at,
+                            juce::Time::getCurrentTime(),
+                            clicks,
+                            dragged);
+}
+
+struct DrawFixture
+{
+    juce::ScopedJuceInitialiser_GUI juceInit;
+    audio::PeakStore peaks;
+    ui::ArrangeView view{peaks};
+    core::Project project;
+    core::UndoStack undo;
+    DrawFixture()
+    {
+        core::Track midi;
+        midi.id = 1;
+        midi.kind = core::TrackKind::midi;
+        core::Track audioTrack;
+        audioTrack.id = 2;
+        project.tracks = {midi, audioTrack};
+        project.nextId = 10;
+        view.setSize(1200, 500);
+        view.setProject(&project);
+        view.onEdit = [this](std::vector<std::unique_ptr<core::Command>> commands, const std::string&)
+        {
+            for (auto& c : commands)
+                undo.execute(project, std::move(c));
+            view.setProject(&project);
+        };
+    }
+    int rowY(int row)
+    {
+        return headerFor(view, project.tracks[static_cast<size_t>(row)].id)->getBounds().getCentreY();
+    }
+};
+} // namespace
+
+TEST_CASE("The pencil draws a MIDI clip on a MIDI track, snapped and selected", "[ui][pencil]")
+{
+    DrawFixture f;
+    f.view.setTool(ui::ArrangeView::Tool::pencil);
+    const int y = f.rowY(0);
+    const int x0 = 400, x1 = 700;
+    f.view.mouseDown(mouseAt(f.view, x0, y));
+    f.view.mouseDrag(mouseAt(f.view, x1, y, 1, true));
+    f.view.mouseUp(mouseAt(f.view, x1, y, 1, true));
+    REQUIRE(f.project.tracks[0].midiClips.size() == 1);
+    const auto& clip = f.project.tracks[0].midiClips[0];
+    CHECK(clip.notes.empty());
+    CHECK(clip.length > 0);
+    REQUIRE(f.view.selection().size() == 1);
+    CHECK(f.view.selection().front().clip == clip.id); // ready to open or move
+
+    // On an audio track the pencil draws nothing.
+    f.view.mouseDown(mouseAt(f.view, x0, f.rowY(1)));
+    f.view.mouseUp(mouseAt(f.view, x0, f.rowY(1)));
+    CHECK(f.project.tracks[1].clips.empty());
+    CHECK(f.project.tracks[1].midiClips.empty());
+}
+
+TEST_CASE("A click with the pencil makes a bar-long clip; double-click on empty MIDI space does too",
+          "[ui][pencil]")
+{
+    DrawFixture f;
+    f.view.setTool(ui::ArrangeView::Tool::pencil);
+    f.view.mouseDown(mouseAt(f.view, 600, f.rowY(0)));
+    f.view.mouseUp(mouseAt(f.view, 600, f.rowY(0)));
+    REQUIRE(f.project.tracks[0].midiClips.size() == 1);
+    const auto bar = f.project.tracks[0].midiClips[0].length;
+    CHECK(bar == 4 * 24000); // 4/4 at 120 bpm, 48 kHz
+
+    f.view.setTool(ui::ArrangeView::Tool::select);
+    static_cast<juce::Component&>(f.view).mouseDoubleClick(mouseAt(f.view, 1100, f.rowY(0), 2));
+    REQUIRE(f.project.tracks[0].midiClips.size() == 2);
+    CHECK(f.project.tracks[0].midiClips[1].length == bar);
+    CHECK(f.project.tracks[0].midiClips[1].start % bar == 0); // on a bar line
 }

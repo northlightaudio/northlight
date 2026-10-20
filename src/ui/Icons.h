@@ -74,6 +74,9 @@ enum class Icon
     diagnostics,
     menu,
     instrument, // a keyboard: the instruments rack
+    pointer,    // the select tool
+    rangeTool,  // the range tool: an I-beam between brackets
+    pencil,     // the pencil tool: draws MIDI clips
 };
 
 struct Icons
@@ -85,7 +88,7 @@ struct Icons
     static void draw(juce::Graphics& g, Icon icon, juce::Rectangle<float> bounds, juce::Colour colour);
     static const char* name(Icon icon);
     static const char* svgPath(Icon icon);
-    static constexpr int count = static_cast<int>(Icon::instrument) + 1;
+    static constexpr int count = static_cast<int>(Icon::pencil) + 1;
 };
 
 // An icon button (28×28 default): ghost at rest, the icon in textSecondary,

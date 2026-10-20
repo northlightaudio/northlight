@@ -22,7 +22,10 @@ constexpr double maxSamplesPerPixel = 48000.0 * 16.0; // eight bars per pixel at
 
 ArrangeView::ArrangeView(audio::PeakStore& peaks)
     : peaks_(peaks), addTrack_(theme_, Icon::add, "Add track"),
-      rowsSmaller_(theme_, Icon::zoomOut, "Smaller rows"), rowsLarger_(theme_, Icon::zoomIn, "Larger rows")
+      rowsSmaller_(theme_, Icon::zoomOut, "Smaller rows"), rowsLarger_(theme_, Icon::zoomIn, "Larger rows"),
+      selectTool_(theme_, Icon::pointer, "Select tool: move, trim and select clips  1"),
+      rangeTool_(theme_, Icon::rangeTool, "Range tool: select a time range across tracks  2"),
+      pencilTool_(theme_, Icon::pencil, "Pencil: draw a MIDI clip on a MIDI track  3")
 {
     setOpaque(true);
     rulerHeight = theme_.sizes.ruler;
@@ -35,11 +38,15 @@ ArrangeView::ArrangeView(audio::PeakStore& peaks)
     { setRowHeight(rowHeight > theme_.sizes.trackRow ? theme_.sizes.trackRow : theme_.sizes.trackRowMin); };
     rowsLarger_.onClick = [this]
     { setRowHeight(rowHeight < theme_.sizes.trackRow ? theme_.sizes.trackRow : theme_.sizes.trackRowLarge); };
-    for (auto* b : {&addTrack_, &rowsSmaller_, &rowsLarger_})
+    selectTool_.onClick = [this] { setTool(Tool::select); };
+    rangeTool_.onClick = [this] { setTool(Tool::range); };
+    pencilTool_.onClick = [this] { setTool(Tool::pencil); };
+    for (auto* b : {&addTrack_, &rowsSmaller_, &rowsLarger_, &selectTool_, &rangeTool_, &pencilTool_})
     {
         b->setIconSize(theme_.sizes.iconSmall);
         addAndMakeVisible(*b);
     }
+    refreshToolButtons();
     automation_.geometry.xForSample = [this](core::SamplePosition s) { return xForSample(s); };
     automation_.geometry.sampleForX = [this](int x) { return sampleForX(x); };
     automation_.geometry.rowBounds = [this](int row) { return rowBounds(row); };
@@ -683,6 +690,14 @@ void ArrangeView::resized()
     addTrack_.setBounds(corner.removeFromLeft(button).withSizeKeepingCentre(button, button));
     rowsLarger_.setBounds(corner.removeFromRight(button).withSizeKeepingCentre(button, button));
     rowsSmaller_.setBounds(corner.removeFromRight(button).withSizeKeepingCentre(button, button));
+    // The tools after "+", a group of their own.
+    corner.removeFromLeft(theme_.spacing.sm);
+    for (auto* b : {&selectTool_, &rangeTool_, &pencilTool_})
+    {
+        b->setVisible(corner.getWidth() >= button);
+        if (b->isVisible())
+            b->setBounds(corner.removeFromLeft(button).withSizeKeepingCentre(button, button));
+    }
     setVerticalScroll(verticalScroll_);
 }
 // ----- input -------------------------------------------------------------------------------
@@ -831,6 +846,18 @@ void ArrangeView::mouseDownLanes(const juce::MouseEvent& e)
         trimStart_ = hit.midiClip->start;
         trimLength_ = hit.midiClip->length;
         trimOffset_ = 0;
+        repaint();
+        return;
+    }
+    if (tool_ == Tool::pencil && hit.clip == nullptr && hit.track != nullptr && hit.track->isMidi())
+    {
+        // The pencil: a new clip from the grid line at or before the press.
+        drag_ = Drag::draw;
+        drawTrack_ = hit.track->id;
+        const auto g = std::max<core::SamplePosition>(1, snapEnabled() ? grid() : 1);
+        drawAnchor_ = (std::max<core::SamplePosition>(0, dragStartSample_) / g) * g;
+        drawStart_ = drawAnchor_;
+        drawEnd_ = drawAnchor_ + barLength();
         repaint();
         return;
     }
@@ -984,6 +1011,24 @@ void ArrangeView::mouseDrag(const juce::MouseEvent& e)
         case Drag::rowResize:
             dragRowResize(e);
             break;
+        case Drag::draw:
+            if (draggedFar_)
+            {
+                const auto g = std::max<core::SamplePosition>(1, snapEnabled() ? grid() : 1);
+                const auto cell = [g](core::SamplePosition s, bool up)
+                { return (up ? (s + g - 1) / g : s / g) * g; };
+                if (at >= drawAnchor_)
+                {
+                    drawStart_ = drawAnchor_;
+                    drawEnd_ = std::max(drawAnchor_ + g, cell(at, true));
+                }
+                else
+                {
+                    drawStart_ = std::max<core::SamplePosition>(0, cell(at, false));
+                    drawEnd_ = drawAnchor_ + g;
+                }
+            }
+            break;
         case Drag::pan:
             setScroll(panScroll_ -
                       static_cast<core::SamplePosition>((e.x - dragStart_.x) * samplesPerPixel_));
@@ -1067,6 +1112,12 @@ void ArrangeView::mouseUp(const juce::MouseEvent& e)
     const auto before = selection_;
     switch (drag)
     {
+        case Drag::draw:
+        {
+            const auto track = std::exchange(drawTrack_, core::invalidId);
+            addMidiClip(track, drawStart_, drawEnd_);
+            break;
+        }
         case Drag::rowResize:
         {
             const auto channel = resizeChannel_;
@@ -2033,6 +2084,21 @@ void ArrangeView::paint(juce::Graphics& g)
         g.fillRect(0, ly - 1, headerWidth, 2);
     }
 
+    // The pencil's clip while it draws: the clip it will make, in the track's colour.
+    if (drag_ == Drag::draw && project_ != nullptr)
+        if (const int row = project_->trackIndex(drawTrack_); row >= 0)
+        {
+            g.saveState();
+            g.reduceClipRegion(lanesArea);
+            const auto r = spanBounds(drawStart_, drawEnd_ - drawStart_, row).toFloat().reduced(0.5f, 1.5f);
+            const auto colour = trackColour(project_->tracks[static_cast<size_t>(row)], row);
+            g.setColour(colour.withAlpha(0.35f));
+            g.fillRoundedRectangle(r, theme_.radius.sm);
+            g.setColour(colour);
+            g.drawRoundedRectangle(r, theme_.radius.sm, 1.0f);
+            g.restoreState();
+        }
+
     // Files dragged over: the lane lights up and a ghost clip shows where they land.
     if (dragOver_)
     {
@@ -2435,10 +2501,71 @@ core::SamplePosition ArrangeView::snapWithTargets(core::SamplePosition wanted,
     return core::snapToGrid(wanted, step);
 }
 
+namespace
+{
+// The pencil as a cursor: the icon in the primary text colour over a dark
+// outline, its tip (bottom left) the hot spot.
+juce::MouseCursor pencilCursor(const Theme& theme)
+{
+    juce::Image image(juce::Image::ARGB, 20, 20, true);
+    juce::Graphics g(image);
+    Icons::draw(g, Icon::pencil, juce::Rectangle<float>(1.0f, 1.0f, 18.0f, 18.0f), juce::Colours::black);
+    Icons::draw(g, Icon::pencil, juce::Rectangle<float>(0.0f, 0.0f, 18.0f, 18.0f), theme.colours.textPrimary);
+    return juce::MouseCursor(image, 2, 17);
+}
+} // namespace
+
 void ArrangeView::setTool(Tool tool)
 {
+    if (tool == tool_)
+        return;
     tool_ = tool;
-    setMouseCursor(tool == Tool::range ? juce::MouseCursor::IBeamCursor : juce::MouseCursor::NormalCursor);
+    setMouseCursor(tool == Tool::range    ? juce::MouseCursor(juce::MouseCursor::IBeamCursor)
+                   : tool == Tool::pencil ? pencilCursor(theme_)
+                                          : juce::MouseCursor(juce::MouseCursor::NormalCursor));
+    refreshToolButtons();
+    if (onToolChanged)
+        onToolChanged(tool);
+}
+
+void ArrangeView::refreshToolButtons()
+{
+    selectTool_.setToggleState(tool_ == Tool::select, juce::dontSendNotification);
+    rangeTool_.setToggleState(tool_ == Tool::range, juce::dontSendNotification);
+    pencilTool_.setToggleState(tool_ == Tool::pencil, juce::dontSendNotification);
+}
+
+core::SamplePosition ArrangeView::barLength() const noexcept
+{
+    if (project_ == nullptr)
+        return 48000 * 2;
+    const double beat = core::samplesPerBeat(sampleRate(), project_->tempoBpm, project_->timeSignature);
+    return std::max<core::SamplePosition>(1, std::llround(beat * project_->timeSignature.numerator));
+}
+
+void ArrangeView::addMidiClip(core::Id trackId, core::SamplePosition start, core::SamplePosition end)
+{
+    const auto* track = project_ != nullptr ? project_->findTrack(trackId) : nullptr;
+    if (track == nullptr || !track->isMidi() || end <= start)
+        return;
+    core::MidiClip clip;
+    clip.name = "MIDI clip";
+    clip.start = std::max<core::SamplePosition>(0, start);
+    clip.length = end - clip.start;
+    std::vector<std::unique_ptr<core::Command>> commands;
+    commands.push_back(std::make_unique<core::AddMidiClip>(trackId, clip));
+    emit(std::move(commands), "Draw MIDI clip");
+    // The new clip, selected: the one at that start (ids are given on apply).
+    if (const auto* now = project_->findTrack(trackId))
+        for (const auto& c : now->midiClips)
+            if (c.start == clip.start && c.length == clip.length && c.notes.empty())
+            {
+                selection_.clear();
+                select({trackId, c.id, true}, true);
+                if (onSelectionChanged)
+                    onSelectionChanged();
+            }
+    repaint();
 }
 
 void ArrangeView::copySelection()
@@ -3060,9 +3187,9 @@ bool ArrangeView::handleEditKey(const juce::KeyPress& key)
         paste();
         return true;
     }
-    if (plain('1') || plain('2'))
+    if (plain('1') || plain('2') || plain('3'))
     {
-        setTool(plain('1') ? Tool::select : Tool::range);
+        setTool(plain('1') ? Tool::select : plain('2') ? Tool::range : Tool::pencil);
         return true;
     }
     if (key.getModifiers().isAltDown() &&
@@ -3454,6 +3581,13 @@ void ArrangeView::mouseDoubleClick(const juce::MouseEvent& e)
     const auto hit = hitTest(e.getPosition());
     if (hit.midiClip != nullptr && onOpenMidiClip)
         onOpenMidiClip(hit.track->id, hit.midiClip->id);
+    else if (hit.track != nullptr && hit.track->isMidi() && hit.clip == nullptr && hit.midiClip == nullptr)
+    {
+        // Empty space on a MIDI track: a new bar-long clip from the bar there.
+        const auto bar = barLength();
+        const auto start = (std::max<core::SamplePosition>(0, sampleForX(e.x)) / bar) * bar;
+        addMidiClip(hit.track->id, start, start + bar);
+    }
 }
 
 } // namespace aural::ui

@@ -74,7 +74,7 @@ Defaults; all rebindable in Preferences. Shown in tooltips and menus.
 | Join | J |
 | Mute / solo / arm selected track | Shift+M / Shift+S / Shift+R |
 | Nudge selection | Alt+Left / Right (grid), Alt+Shift (fine) |
-| Tools: select / range / draw / erase | 1 / 2 / 3 / 4 |
+| Tools: select / range / pencil (draws MIDI clips) | 1 / 2 / 3 |
 | Snap on/off | N |
 | Ripple on/off | Shift+N |
 | New / open / save / save as | Ctrl+N / Ctrl+O / Ctrl+S / Ctrl+Shift+S |

@@ -17,8 +17,15 @@ Where the recording and the arrangement live. It must stay legible with 4 tracks
 +-----------+------------------------------------------------------------+
 ```
 
-- **Corner**: 220×32, `surface0`; holds the "+" add-track button (ghost, left) and
-  the row-height stepper (two tiny icon buttons).
+- **Corner**: 220×32, `surface0`; holds the "+" add-track button (ghost, left), the
+  tools after it (select, range, pencil; the current one lit; keys 1, 2, 3) and the
+  row-height stepper (two tiny icon buttons).
+- **Pencil**: on a MIDI track's empty space a drag draws a new empty clip in whole
+  grid cells from the grid line at the press (either direction), previewed in the
+  track's colour; a click draws a bar. The new clip is selected (double-click opens
+  it in the piano roll). On a clip the pencil acts as the select tool; on an audio
+  track it draws nothing. With any tool, a double-click on a MIDI track's empty
+  space makes a bar-long clip on the bar there.
 - **R Ruler**: `size.ruler` 32 px, `surface0`. Two rows: 14 px markers row on top,
   18 px bars/beats below with the seconds readout in `caption` `textTertiary` under
   the bar numbers when zoomed out past 1 bar per 80 px.

@@ -98,6 +98,11 @@ const Definition definitions[Icons::count] = {
     {"instrument",
      "M2 4 H14 V12.5 H2 Z M5 8.5 V12.5 M8 8.5 V12.5 M11 8.5 V12.5 M4 4 V8.5 H6 V4 M10 4 V8.5 H12 V4",
      false},
+    {"pointer", "M4.5 2.5 V12.5 L7 10 L9 13.5 L10.5 12.7 L8.6 9.3 L12 9 Z", false},
+    {"rangeTool",
+     "M6.5 3 H9.5 M8 3 V13 M6.5 13 H9.5 M3.5 5.5 L2 8 L3.5 10.5 M12.5 5.5 L14 8 L12.5 10.5",
+     false},
+    {"pencil", "M10.5 2.5 L13.5 5.5 L5.5 13.5 H2.5 V10.5 Z M9 4 L12 7", false},
 };
 } // namespace
 

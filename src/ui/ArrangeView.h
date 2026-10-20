@@ -152,15 +152,18 @@ public:
     // The row height: size.trackRowMin, trackRow or trackRowLarge.
     void setRowHeight(int height);
     int currentRowHeight() const noexcept { return rowHeight; }
-    // The tools (10-interaction.md): select (1) or range (2: a drag in a lane
-    // selects a time range across the selected tracks).
+    // The tools (10-interaction.md): select (1), range (2: a drag in a lane
+    // selects a time range across the selected tracks) or pencil (3: a drag in
+    // a MIDI track's empty space draws a new clip, a click a bar-long one).
     enum class Tool
     {
         select,
         range,
+        pencil,
     };
     void setTool(Tool tool);
     Tool tool() const noexcept { return tool_; }
+    std::function<void(Tool)> onToolChanged;
     // The clipboard: Ctrl+C/X copy or cut the selected clips, Ctrl+V pastes them
     // at the playhead on the selected track (keeping their spacing and track offsets).
     void copySelection();
@@ -247,6 +250,7 @@ private:
         timeSelect,   // Shift+drag in the bars row: a time range
         headerResize, // the boundary between headers and lanes
         rowResize,    // a row's bottom edge: that track's height
+        draw,         // the pencil drawing a new MIDI clip
         pan,          // the middle button drags the view
     };
 
@@ -348,6 +352,12 @@ private:
     void dragRegion(const juce::MouseEvent& e, core::SamplePosition at);
     void dragMoveClips(const juce::MouseEvent& e, core::SamplePosition at);
     void dragTrimLeft(core::SamplePosition at);
+    // A new empty MIDI clip on a MIDI track over [start, end), selected.
+    void addMidiClip(core::Id trackId, core::SamplePosition start, core::SamplePosition end);
+    core::SamplePosition barLength() const noexcept;
+    // The pencil's clip while it draws.
+    core::Id drawTrack_ = core::invalidId;
+    core::SamplePosition drawAnchor_ = 0, drawStart_ = 0, drawEnd_ = 0;
     int rowHeightOf(int row) const noexcept;             // a row's height (its own, or the default)
     int rowTop(int row) const noexcept;                  // a row's top edge in view coordinates
     int resizeEdgeAt(juce::Point<int> p) const noexcept; // the row whose bottom edge is at p, or -1
@@ -448,6 +458,9 @@ private:
     std::vector<edit::ClipboardItem> clipboard_;
     int lastPlayheadX_ = -1;
     IconButton addTrack_, rowsSmaller_, rowsLarger_;
+    // The tools, in the corner beside "+": select, range, pencil.
+    IconButton selectTool_, rangeTool_, pencilTool_;
+    void refreshToolButtons();
     AutomationOverlay automation_{theme_};
     std::unique_ptr<juce::TextEditor> markerEditor_;
     core::Id editingMarker_ = core::invalidId;
