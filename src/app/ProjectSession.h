@@ -107,7 +107,9 @@ public:
     std::string importAudioFile(const juce::File& file, core::SamplePosition at);
     // Adds a MIDI track with the built-in synth as its instrument, armed and
     // listening to every input. Returns the new track's id.
-    core::Id addMidiTrack();
+    // A MIDI track playing a new instrument channel (Aurora unless a type is
+    // given); returns the MIDI track.
+    core::Id addMidiTrack(const std::string& instrumentType = {});
     // Whether an insert type is an instrument (a built-in synth or a scanned plugin
     // the registry calls one).
     bool isInstrumentType(const std::string& type) const;
@@ -293,7 +295,6 @@ private:
     void removeOwnAutosave();
     void autosaveIfDue();
     // Pulls each hosted plugin's current state into the model before a save.
-    void replaceLegacySynth();
     void captureInsertStates();
 
     audio::AudioDeviceLayer& audio_;

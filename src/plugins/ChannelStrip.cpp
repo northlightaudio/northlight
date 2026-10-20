@@ -963,7 +963,8 @@ bool ensureChannelStrip(core::Project& project)
         }
     };
     for (auto& t : project.tracks)
-        ensure(t);
+        if (t.hasAudio()) // a MIDI track makes no audio to process
+            ensure(t);
     for (auto& b : project.buses)
         ensure(b);
     return changed;

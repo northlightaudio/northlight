@@ -64,15 +64,22 @@ struct Builder
         return i;
     }
 
-    core::Track& midiTrack(const std::string& name, const std::string& instrument, std::vector<float> params)
+    // An instrument track: a MIDI track named for the part over an instrument
+    // channel named for the instrument ("Drums" over "Drums: Pulsar").
+    void instrumentTrack(const std::string& name, const std::string& instrument, std::vector<float> params)
     {
-        core::Track t;
-        t.id = id();
-        t.kind = core::TrackKind::midi;
-        t.name = name;
-        t.instrument = insert(instrument, std::move(params));
-        project.tracks.push_back(std::move(t));
-        return project.tracks.back();
+        core::Track midi;
+        midi.id = id();
+        midi.kind = core::TrackKind::midi;
+        midi.name = name;
+        core::Track channel;
+        channel.id = id();
+        channel.kind = core::TrackKind::instrument;
+        channel.name = name + ": " + plugins::BuiltInFactory::displayName(instrument);
+        channel.instrument = insert(instrument, std::move(params));
+        midi.midiTarget = channel.id;
+        project.tracks.push_back(std::move(midi));
+        project.tracks.push_back(std::move(channel));
     }
 
     // A clip over bars [from, to), the notes given in beats from the clip's start.
@@ -245,18 +252,25 @@ core::Project makeDemoSong()
     p.master.gain = 0.7f; // headroom: the finale peaks near -1 dBFS
 
     // ----- tracks (the references are taken after every track is in) ---------------------------
-    s.midiTrack("Drums", pu::type, preset(pu::kits(), "Tight Electro"));
-    s.midiTrack("Bass", au::type, preset(au::presets(), "Polar Bass"));
-    s.midiTrack("Pad", ne::type, preset(ne::presets(), "Choir of Dust"));
-    s.midiTrack("Keys", au::type, preset(au::presets(), "Glacier Keys"));
-    s.midiTrack("Arp", sb::type, preset(sb::presets(), "Chord Arp"));
-    s.midiTrack("Lead", sb::type, preset(sb::presets(), "Hero Lead"));
-    auto& drums = p.tracks[0];
-    auto& bass = p.tracks[1];
-    auto& pad = p.tracks[2];
-    auto& keys = p.tracks[3];
-    auto& arp = p.tracks[4];
-    auto& lead = p.tracks[5];
+    s.instrumentTrack("Drums", pu::type, preset(pu::kits(), "Tight Electro"));
+    s.instrumentTrack("Bass", au::type, preset(au::presets(), "Polar Bass"));
+    s.instrumentTrack("Pad", ne::type, preset(ne::presets(), "Choir of Dust"));
+    s.instrumentTrack("Keys", au::type, preset(au::presets(), "Glacier Keys"));
+    s.instrumentTrack("Arp", sb::type, preset(sb::presets(), "Chord Arp"));
+    s.instrumentTrack("Lead", sb::type, preset(sb::presets(), "Hero Lead"));
+    // Each part: its MIDI track (the notes) and its instrument channel (the sound).
+    auto& drumsMidi = p.tracks[0];
+    auto& drums = p.tracks[1];
+    auto& bassMidi = p.tracks[2];
+    auto& bass = p.tracks[3];
+    auto& padMidi = p.tracks[4];
+    auto& pad = p.tracks[5];
+    auto& keysMidi = p.tracks[6];
+    auto& keys = p.tracks[7];
+    auto& arpMidi = p.tracks[8];
+    auto& arp = p.tracks[9];
+    auto& leadMidi = p.tracks[10];
+    auto& lead = p.tracks[11];
 
     // A few touches on the presets.
     arp.instrument.params[sb::arpRate] = 16.0f; // sixteenths of a triplet feel at 120
@@ -276,7 +290,7 @@ core::Project makeDemoSong()
         for (int bar = verse; bar < ending; ++bar)
             for (const auto& x : drumBar(bar))
                 n.push_back(x);
-        s.clip(drums, "Beat", verse, ending, n);
+        s.clip(drumsMidi, "Beat", verse, ending, n);
     }
     {
         // Eighths on the root (the last one up an octave); whole notes in the breakdown.
@@ -292,7 +306,7 @@ core::Project makeDemoSong()
                     n.push_back({e == 7 ? root + 12 : root, e % 2 == 0 ? 112 : 92, b + e * 0.5, 0.42});
         }
         n.push_back({45, 112, (ending - verse) * 4.0, 3.5}); // the last chord's A
-        s.clip(bass, "Bass line", verse, ending + 1, n);
+        s.clip(bassMidi, "Bass line", verse, ending + 1, n);
     }
     {
         // The pad holds every chord, a bar each, through the whole song.
@@ -302,7 +316,7 @@ core::Project makeDemoSong()
                 n.push_back({t, 80, bar * 4.0, 4.0});
         for (const int t : {57, 60, 64, 69})
             n.push_back({t, 84, ending * 4.0, 4.0});
-        s.clip(pad, "Chords", intro, ending + 1, n);
+        s.clip(padMidi, "Chords", intro, ending + 1, n);
     }
     {
         // Keys: off-beat stabs in the choruses, held chords in the breakdown.
@@ -319,7 +333,7 @@ core::Project makeDemoSong()
                     for (const int t : c.tones)
                         n.push_back({t + 12, stab == 0.5 ? 96 : 80, b + stab, 0.35});
         }
-        s.clip(keys, "Stabs", chorus, ending, n);
+        s.clip(keysMidi, "Stabs", chorus, ending, n);
     }
     {
         // The arpeggio: the chord held an octave up, Starbit cycles it.
@@ -332,7 +346,7 @@ core::Project makeDemoSong()
             for (const int t : chordAt(bar).tones)
                 n.push_back({t + 24, 90, bar * 4.0, 3.9});
         }
-        s.clip(arp, "Sparkle", intro, ending, n);
+        s.clip(arpMidi, "Sparkle", intro, ending, n);
     }
     {
         // The lead sings in the choruses: phrase A then B, twice; the last note rings.
@@ -346,7 +360,7 @@ core::Project makeDemoSong()
                 n.push_back({x.pitch, x.velocity, b + 16.0 + x.start, x.length});
         }
         n.push_back({81, 104, (ending - chorus) * 4.0, 3.0});
-        s.clip(lead, "Melody", chorus, ending + 1, n);
+        s.clip(leadMidi, "Melody", chorus, ending + 1, n);
     }
 
     // ----- effects -------------------------------------------------------------------------------

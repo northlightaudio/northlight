@@ -19,9 +19,6 @@ inline const std::string gain = "aural.gain";
 inline const std::string eq = "aural.eq";
 inline const std::string compressor = "aural.compressor";
 inline const std::string limiter = "aural.limiter";
-// The first built-in synth, retired for Aurora: projects that used it load with
-// Aurora in its place (ProjectSession).
-inline const std::string legacySynth = "aural.synth";
 inline const std::string reverb = "aural.reverb";
 inline const std::string delay = "aural.delay";
 } // namespace types

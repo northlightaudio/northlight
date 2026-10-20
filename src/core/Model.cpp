@@ -107,14 +107,13 @@ int Channel::insertIndex(Id insertId) const noexcept
     return -1;
 }
 
-void Project::adoptInstruments(const std::function<bool(const std::string& type)>& isInstrument)
+std::vector<const Track*> Project::midiFeeds(Id instrumentChannel) const
 {
-    for (auto& t : tracks)
-        if (t.isMidi() && !t.hasInstrument() && !t.inserts.empty() && isInstrument(t.inserts.front().type))
-        {
-            t.instrument = t.inserts.front();
-            t.inserts.erase(t.inserts.begin());
-        }
+    std::vector<const Track*> feeds;
+    for (const auto& t : tracks)
+        if (t.isMidi() && t.midiTarget == instrumentChannel && instrumentChannel != invalidId)
+            feeds.push_back(&t);
+    return feeds;
 }
 
 AudioClip* Track::findClip(Id clipId) noexcept

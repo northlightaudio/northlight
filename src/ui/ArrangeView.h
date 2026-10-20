@@ -188,9 +188,12 @@ public:
     void itemDragExit(const SourceDetails& details) override;
     void itemDropped(const SourceDetails& details) override;
     std::function<void(core::Id trackId, const std::string& type)> onInsertPlugin;
+    // A MIDI track asked for a new instrument: make a channel for it and aim the track there.
+    std::function<void(core::Id midiTrack, const std::string& type)> onPlayNewInstrument;
     // Names for insert types (the automation chips).
     void setDisplayName(std::function<std::string(const std::string&)> name)
     {
+        displayName_ = name;
         automation_.displayName = std::move(name);
     }
     // The meter reading of a bus (by index), for the FX track headers.
@@ -283,6 +286,8 @@ private:
     int rowCount() const noexcept;
     const core::Channel* channelAtRow(int row) const;
     void fxTrackMenu(core::Id busId, juce::Point<int> screen);
+    void targetMenu(core::Id trackId, juce::Rectangle<int> screenArea);
+    std::function<std::string(const std::string&)> displayName_;
     void addFxMenu(juce::PopupMenu& menu, int firstId) const;
     void addFxTrack(int choice, int firstId, std::vector<core::Id> sendFrom);
     void reorderDrag(core::Id trackId, juce::Point<int> screen, bool released);

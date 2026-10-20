@@ -112,8 +112,15 @@ struct MidiClipNode
 
 struct TrackNode : ChannelNode
 {
-    bool isMidi = false;
+    bool isMidi = false;       // notes only: schedules its events, makes no audio
+    bool isInstrument = false; // plays the merged events of the MIDI tracks feeding it
     bool isAux = false;
+    // A MIDI track: how its events reach its instrument channel.
+    std::uint8_t midiChannel = 0; // 0..15, stamped on every event it sends
+    float velocityScale = 1.0f;   // the track's volume, applied to note-on velocities
+    bool midiMuted = false;       // muted: no new notes (note-offs still pass)
+    // An instrument channel: the MIDI tracks aimed at it (track indices).
+    std::vector<int> midiFeeds;
     int auxSourceTrack = -1;              // the track whose instrument feeds this one
     InsertProcessor* auxInsert = nullptr; // that instrument
     int auxOutput = 0;                    // its extra pair, 0 = the first beyond main

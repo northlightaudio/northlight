@@ -108,7 +108,7 @@ TEST_CASE("Bouncing a MIDI track renders its instrument", "[app][bounce][midi]")
     core::Track keys;
     keys.id = 1;
     keys.name = "Keys";
-    keys.kind = core::TrackKind::midi;
+    keys.kind = core::TrackKind::instrument; // the channel; "notes" below plays it
     keys.instrument.id = 11;
     keys.instrument.type = plugins::aurora::type;
     keys.instrument.params = plugins::defaultParameters(keys.instrument.type);
@@ -125,8 +125,12 @@ TEST_CASE("Bouncing a MIDI track renders its instrument", "[app][bounce][midi]")
     clip.start = 0;
     clip.length = 48000;
     clip.notes.push_back({13, 69, 110, 24000, 12000}); // A4 from 0.5 s for 0.25 s
-    keys.midiClips.push_back(clip);
-    p.tracks = {keys};
+    core::Track notes;
+    notes.id = 2;
+    notes.kind = core::TrackKind::midi;
+    notes.midiTarget = keys.id;
+    notes.midiClips.push_back(clip);
+    p.tracks = {notes, keys};
     p.nextId = 100;
 
     hosting::PluginRegistry registry;

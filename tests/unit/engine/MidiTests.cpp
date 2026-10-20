@@ -72,7 +72,7 @@ public:
             else if (e.type == engine::MidiEvent::Type::noteOff ||
                      e.type == engine::MidiEvent::Type::allNotesOff)
                 l[e.sampleOffset] -= 1.0f;
-            r[e.sampleOffset] = static_cast<float>(e.note); // which note
+            r[e.sampleOffset] = static_cast<float>(e.note + 128 * e.channel); // which note, on which channel
         }
     }
 
@@ -122,19 +122,25 @@ struct Harness
     }
 };
 
+// A MIDI track (1, with the clip) aimed at an instrument channel (4) whose
+// instrument (2) plays its notes: tracks[0] is the MIDI track, tracks[1] the channel.
 core::Project keysProject(core::MidiClip clip, const char* instrument = "test.midi")
 {
     core::Project p;
     core::Track t;
     t.id = 1;
     t.kind = core::TrackKind::midi;
-    // The instrument in its own slot (the engine plays it first and gives it the MIDI).
-    t.instrument.id = 2;
-    t.instrument.type = instrument;
-    t.instrument.params = plugins::defaultParameters(instrument);
+    t.midiTarget = 4;
     clip.id = 3;
     t.midiClips.push_back(clip);
     p.tracks.push_back(t);
+    core::Track channel;
+    channel.id = 4;
+    channel.kind = core::TrackKind::instrument;
+    channel.instrument.id = 2;
+    channel.instrument.type = instrument;
+    channel.instrument.params = plugins::defaultParameters(instrument);
+    p.tracks.push_back(channel);
     p.nextId = 100;
     return p;
 }
@@ -415,7 +421,7 @@ TEST_CASE("An aux track carries an instrument's extra output pair through its ow
     aux.id = 5;
     aux.kind = core::TrackKind::aux;
     aux.name = "Keys out 2";
-    aux.auxTrack = 1;
+    aux.auxTrack = 4; // the instrument channel
     aux.auxInsert = 2;
     aux.auxOutput = 1;
     aux.gain = 0.5f;
@@ -430,15 +436,64 @@ TEST_CASE("An aux track carries an instrument's extra output pair through its ow
     CHECK(h.right[10] == Approx(-0.25f).margin(0.01f));
     const auto* snapshot = h.engine.snapshotForTest();
     REQUIRE(snapshot != nullptr);
-    REQUIRE(snapshot->trackLevels.size() == 2);
-    CHECK(snapshot->trackLevels[0] == std::vector<int>{1}); // the source first
-    CHECK(snapshot->trackLevels[1] == std::vector<int>{0});
+    REQUIRE(snapshot->trackLevels.size() == 3);
+    CHECK(snapshot->trackLevels[0] == std::vector<int>{1}); // the MIDI track schedules first,
+    CHECK(snapshot->trackLevels[1] == std::vector<int>{2}); // then its instrument channel plays,
+    CHECK(snapshot->trackLevels[2] == std::vector<int>{0}); // then the output reads it
 
     // A source that goes away leaves the aux track silent, not crashing.
-    p.tracks[1].instrument = {};
+    p.tracks[2].instrument = {};
     h.engine.setProject(p);
     h.render(2);
     CHECK(h.left[10] == Approx(0.0f));
+}
+
+TEST_CASE("Several MIDI tracks play one instrument channel, on their channels, scaled and muted",
+          "[engine][midi][routing]")
+{
+    core::MidiClip clip;
+    clip.start = 0;
+    clip.length = 1000;
+    clip.notes.push_back({20, 60, 127, 5, 50}); // track A: on at 5
+    auto p = keysProject(clip);
+    // Track B, channel 3 at half volume: a note at 20.
+    core::Track b;
+    b.id = 10;
+    b.kind = core::TrackKind::midi;
+    b.midiTarget = 4;
+    b.midiChannel = 3;
+    b.gain = 0.5f;
+    core::MidiClip bc;
+    bc.id = 11;
+    bc.start = 0;
+    bc.length = 1000;
+    bc.notes.push_back({12, 64, 100, 20, 50});
+    b.midiClips.push_back(bc);
+    // Track C, muted: a note at 30 that must not sound.
+    core::Track c = b;
+    c.id = 13;
+    c.mute = true;
+    c.gain = 1.0f;
+    c.midiChannel = 1;
+    c.midiClips[0].id = 14;
+    c.midiClips[0].notes = {{15, 67, 100, 30, 50}};
+    p.tracks.push_back(b);
+    p.tracks.push_back(c);
+    Harness h;
+    h.engine.setProject(p);
+    h.engine.play();
+    const auto out = h.render(1);
+    CHECK(out[5] == Approx(1.0f).margin(0.01f));
+    CHECK(h.right[5] == Approx(60.0f).margin(0.01f)); // channel 1
+    CHECK(out[20] == Approx(50.0f / 127.0f).margin(0.01f));
+    CHECK(h.right[20] == Approx(64.0f + 128.0f * 2.0f).margin(0.01f)); // channel 3
+    CHECK(out[30] == Approx(0.0f));
+    // A MIDI track aimed nowhere plays nothing.
+    p.tracks[0].midiTarget = core::invalidId;
+    h.engine.setProject(p);
+    h.engine.locate(0);
+    const auto again = h.render(1);
+    CHECK(again[5] == Approx(0.0f));
 }
 
 TEST_CASE("Aurora sounds for a chord, goes quiet after the release, and every preset stays finite",
@@ -455,7 +510,7 @@ TEST_CASE("Aurora sounds for a chord, goes quiet after the release, and every pr
         for (size_t i = 0; i < clip.notes.size(); ++i)
             clip.notes[i].id = 20 + static_cast<core::Id>(i);
         auto project = keysProject(clip, plugins::aurora::type.c_str());
-        project.tracks[0].instrument.params = preset.values;
+        project.tracks[1].instrument.params = preset.values;
         Harness h;
         h.engine.setProject(project);
         h.engine.play();
@@ -548,7 +603,7 @@ TEST_CASE("Nebula swells for a chord, every preset stays finite, and a dry note 
     {
         INFO(preset.name);
         auto project = keysProject(clip, ne::type.c_str());
-        project.tracks[0].instrument.params = preset.values;
+        project.tracks[1].instrument.params = preset.values;
         Harness h;
         h.engine.setProject(project);
         h.engine.play();
@@ -574,7 +629,7 @@ TEST_CASE("Nebula swells for a chord, every preset stays finite, and a dry note 
     values[ne::attack] = 5.0f;
     values[ne::release] = 200.0f;
     auto project = keysProject(clip, ne::type.c_str());
-    project.tracks[0].instrument.params = values;
+    project.tracks[1].instrument.params = values;
     Harness h;
     h.engine.setProject(project);
     h.engine.play();
@@ -614,7 +669,7 @@ TEST_CASE("Starbit sounds for every preset, goes quiet after the release, and dr
     {
         INFO(preset.name);
         auto project = keysProject(clip, sb::type.c_str());
-        project.tracks[0].instrument.params = preset.values;
+        project.tracks[1].instrument.params = preset.values;
         Harness h;
         h.engine.setProject(project);
         h.engine.play();

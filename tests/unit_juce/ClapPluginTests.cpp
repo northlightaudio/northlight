@@ -507,11 +507,9 @@ TEST_CASE("A multi-output CLAP instrument's second port feeds an aux track", "[h
     core::Project p;
     core::Track keys;
     keys.id = 1;
-    keys.kind = core::TrackKind::midi;
-    core::Insert instrument;
-    instrument.id = 10;
-    instrument.type = "clap:io.leafshade.aural.testgain.multiout";
-    keys.inserts.push_back(instrument);
+    keys.kind = core::TrackKind::instrument; // an instrument channel with the multi-output plugin
+    keys.instrument.id = 10;
+    keys.instrument.type = "clap:io.leafshade.aural.testgain.multiout";
     core::Track aux;
     aux.id = 2;
     aux.kind = core::TrackKind::aux;

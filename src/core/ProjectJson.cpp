@@ -199,7 +199,14 @@ json trackToJson(const Track& t)
     json j;
     channelToJson(j, t);
     if (t.kind == TrackKind::midi)
+    {
         j["kind"] = "midi";
+        if (t.midiTarget != invalidId)
+            j["target"] = t.midiTarget;
+        j["midiChannel"] = t.midiChannel;
+    }
+    else if (t.kind == TrackKind::instrument)
+        j["kind"] = "instrument";
     else if (t.kind == TrackKind::aux)
     {
         j["kind"] = "aux";
@@ -254,7 +261,12 @@ Track trackFromJson(const json& j)
     Track t;
     channelFromJson(j, t);
     const auto kind = j.value("kind", std::string{"audio"});
-    t.kind = kind == "midi" ? TrackKind::midi : kind == "aux" ? TrackKind::aux : TrackKind::audio;
+    t.kind = kind == "midi"         ? TrackKind::midi
+             : kind == "instrument" ? TrackKind::instrument
+             : kind == "aux"        ? TrackKind::aux
+                                    : TrackKind::audio;
+    t.midiTarget = j.value("target", invalidId);
+    t.midiChannel = std::clamp(j.value("midiChannel", 1), 1, 16);
     if (const auto aux = j.find("aux"); aux != j.end() && aux->is_object())
     {
         t.auxTrack = aux->value("track", invalidId);
@@ -361,7 +373,10 @@ std::optional<Project> projectFromJson(const std::string& text, std::string* err
     if (j.value("format", std::string{}) != "aural.project")
         return fail("not an Aural project file");
     const int version = j.value("version", 0);
-    if (version < 1 || version > Project::schemaVersion)
+    if (version < Project::schemaVersion)
+        return fail("made by an older version of Aural (project version " + std::to_string(version) +
+                    "), which this one no longer opens");
+    if (version > Project::schemaVersion)
         return fail("unsupported project version " + std::to_string(version));
 
     try

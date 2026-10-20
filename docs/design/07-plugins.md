@@ -121,32 +121,52 @@ For GUI-less hosted plugins. A scrollable grid of parameter rows:
   Surge XT.vst3" and a Cancel; results appear as they arrive.
 - The window version (from the app menu) is the same panel at 720×560.
 
-## 7.4a Instruments: the slot and the rack
+## 7.4a Instruments: channels, MIDI tracks and the rack
 
-An instrument is not an effect: a MIDI track has an **instrument slot**, ahead of
-its inserts, that takes only instruments (built-in, VST3 or CLAP). The insert
-menus list effects only; an instrument dropped or chosen from the browser goes to
-the selected MIDI track's slot, or makes a new instrument track when the
-selection is not a MIDI track.
+An instrument is not an effect, and its sound is not its MIDI's. An instrument
+lives on an **instrument channel**: an audio channel whose **instrument slot**,
+ahead of its inserts, takes only instruments (built-in, VST3 or CLAP), and whose
+inserts, channel strip, sends, fader and automation process the instrument's main
+output. **MIDI tracks** hold the notes (clips, an input, arm and monitoring, MIDI
+out) and make no audio: each aims at an instrument channel on a MIDI channel
+(1-16). Several MIDI tracks may play one instrument (a multitimbral plugin tells
+them apart by channel); a MIDI track's volume scales its notes' velocities, its
+mute stops new notes. Each further stereo output of an instrument is an **output
+track** with its own processing.
 
-- **Editor panel**: an INSTRUMENT section first, before the strip and the inserts:
-  the instrument's card (its own editor for a built-in, Open for a plugin with a
-  GUI) with Replace and Remove in its menu and no wet/dry footer, or a dashed
-  "+ Instrument" slot. The card is not reordered with the inserts.
-- **Mixer**: an instrument row under the module row on every strip (reserved on
-  all strips when any has one, so the sections stay aligned): the slot with an
-  INST / VST3 / CLAP badge, or "+ Instrument". Its menu: Open, Bypass, Outputs,
-  Replace instrument, Remove instrument.
-- **Instruments panel** (dock tab, F8): the rack. A unit per MIDI track, 64 px, a
-  `surface1` panel with the track's hue down its left edge: power (in the hue),
-  the instrument's name with a BUILT-IN / VST3 / CLAP badge and the track it plays
-  on, OUTPUTS as chips, Edit, and a menu (open, select track, replace, remove).
-  Each output pair is a chip: "1/2 Keys" for the main pair (the track itself) and
-  each pair with an output track (click selects the track), a dashed
-  "+ Track for 3/4" for a pair without one (click makes it: an aux track named
-  after the track and the channels, in its colour, with its own inserts, strip,
-  sends and fader). "+ Instrument track" at the end makes a MIDI track with the
-  instrument chosen. A track without an instrument shows a "+ Instrument" slot.
+Adding an instrument track makes both in one step: the MIDI track and, just under
+it, its instrument channel (named for the instrument). The insert menus list
+effects only; an instrument chosen from the browser goes to the selected
+instrument channel, the one the selected MIDI track plays (or a new channel for
+it, when it plays none), or a new instrument track.
+
+- **Arrange**: a MIDI track's header has no meter, solo or automation; in their
+  place a chip says what it plays ("→ Drums: Pulsar  ch 2"); a click (or "Plays..."
+  in its menu) offers every instrument channel, Nothing, the MIDI channel and New
+  instrument. It has no Send to. An instrument channel's header has no input or
+  arm; its lane reads "Instrument channel: Pulsar ← Drums, Fills". An output
+  track's lane reads "Output 3/4 of Drums: Pulsar".
+- **Editor panel**: selecting a MIDI track shows the instrument channel it plays,
+  titled "MIDI 1 → Drums: Pulsar"; a MIDI track that plays nothing shows a
+  "+ Instrument" slot that makes a channel for it. An instrument channel shows an
+  INSTRUMENT section first, before the strip and the inserts: the instrument's
+  card (its own editor for a built-in, Open for a plugin with a GUI) with Replace
+  and Remove in its menu and no wet/dry footer. The card is not reordered with the
+  inserts.
+- **Mixer**: strips for the channels that make audio (MIDI tracks have none). An
+  instrument row under the module row (reserved on every strip when any has one,
+  so the sections stay aligned): the slot with an INST / VST3 / CLAP badge, or
+  "+ Instrument". Its menu: Open, Bypass, Outputs, Replace instrument, Remove
+  instrument.
+- **Instruments panel** (dock tab, F8): the rack. A unit per instrument channel,
+  64 px, a `surface1` panel with the channel's hue down its left edge: power (in
+  the hue), the instrument's name with a BUILT-IN / VST3 / CLAP badge, the channel
+  and who plays it ("Drums: Pulsar ← Drums, Fills (ch 2)"), OUTPUTS as chips, Edit,
+  and a menu (open, select track, replace, remove). Each output pair is a chip:
+  "1/2 Drums: Pulsar" for the main pair (the channel itself) and each pair with an
+  output track (click selects it), a dashed "+ Track for 3/4" for a pair without
+  one (click makes it). "+ Instrument track" at the end makes the MIDI track and
+  its channel with the instrument chosen.
 
 ## 7.4b Aurora
 

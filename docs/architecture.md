@@ -845,17 +845,23 @@ timeline place, split, duplicate) and notes (add, remove, set, quantise to a gri
 with a strength); the JSON writes notes as compact arrays.
 
 The engine side is `engine::MidiEvent` / `MidiEventList` (a fixed-capacity list
-per track, sized at compile) and `InsertProcessor::acceptsMidi/processMidi`: a
-MIDI track's instrument lives in its own slot (`Channel::instrument`, an
-`Insert` with an empty type when there is none), which `processingChain()` puts
-first, so the first processor that takes MIDI is the instrument and gets the
-span's events with its audio (the engine, automation, parameter commands and
-instance cache treat it as an insert; `SetInstrument` sets, replaces or removes
-it, keeping the slot's id on a replacement so output tracks stay connected, and
-taking its parameter lanes with it). Projects from before the slot had the
-instrument as the first insert: `Project::adoptInstruments` moves it on load.
-The rest of the chain, the rest of the chain, the pan (a stereo
-balance applied after the instrument) and the fader follow as on any channel.
+per track, sized at compile) and `InsertProcessor::acceptsMidi/processMidi`. An
+instrument lives on an instrument channel (`TrackKind::instrument`), in its
+instrument slot (`Channel::instrument`, an `Insert` with an empty type when there
+is none), which `processingChain()` puts first, so the first processor that takes
+MIDI is the instrument (the engine, automation, parameter commands and instance
+cache treat it as an insert; `SetInstrument` sets, replaces or removes it, keeping
+the slot's id on a replacement so output tracks stay connected, and taking its
+parameter lanes with it). MIDI tracks (`TrackKind::midi`) make no audio: each
+aims at an instrument channel (`midiTarget`, `midiChannel`; `SetMidiTarget`), and
+`AddInstrumentTrack` adds a MIDI track and its channel as one step. In the
+snapshot each instrument channel lists its feeding MIDI tracks (`midiFeeds`) and
+renders in a later level than them; a MIDI track only schedules its span's
+events, and the channel merges every feed's events, stamped with the feed's MIDI
+channel, note-on velocities scaled by its volume (a muted feed passes only
+note-offs), and plays them through its chain; its pan (a stereo balance applied
+after the chain) and fader follow as on any channel. Projects from before
+instrument channels (version 1) are refused.
 `Renderer::scheduleMidi` collects the events for each span: note-ons and
 note-offs from the clips at exact sample offsets while playing, the live input
 (filtered by the track's device) while the track monitors (armed and not

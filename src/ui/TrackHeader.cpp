@@ -139,6 +139,13 @@ TrackHeader::TrackHeader(const Theme& theme) : theme_(theme), meter_(theme, 2, f
     };
     addAndMakeVisible(volume_);
     addAndMakeVisible(meter_);
+    target_.getProperties().set(AuralLookAndFeel::propertyVariant, "ghost");
+    target_.onClick = [this]
+    {
+        if (onTargetMenu)
+            onTargetMenu(trackId_, target_.getScreenBounds());
+    };
+    addChildComponent(target_);
 
     pan_.setRange(-1.0, 1.0, 0.0);
     pan_.setShowValue(false);
@@ -182,13 +189,34 @@ void TrackHeader::setTrack(const core::Track& track,
     index_ = index;
     midi_ = track.isMidi();
     aux_ = track.isAux();
+    instrument_ = track.isInstrument();
     muted_ = track.mute;
     colour_ = theme_.track.forTrack(track.colour, index);
     setTitle("Track " + juce::String(index + 1) + ": " + juce::String::fromUTF8(track.name.c_str()));
-    setDescription(track.isMidi() ? "MIDI track" : track.isAux() ? "Aux track" : "Audio track");
-    input_.setVisible(!aux_);
-    arm_.setVisible(!aux_);
-    monitorButton_.setVisible(!aux_);
+    setDescription(track.isMidi()         ? "MIDI track"
+                   : track.isInstrument() ? "Instrument channel"
+                   : track.isAux()        ? "Instrument output"
+                                          : "Audio track");
+    const bool takesInput = !aux_ && !instrument_; // an instrument channel's MIDI tracks take it
+    input_.setVisible(takesInput);
+    arm_.setVisible(takesInput);
+    monitorButton_.setVisible(takesInput);
+    // A MIDI track makes notes, not sound: no solo or automation of its own; its
+    // volume scales velocities; the chip says what it plays.
+    solo_.setVisible(!midi_);
+    automation_.setVisible(!midi_);
+    volume_.setTooltip(midi_ ? "Velocity: scales the notes this track sends" : "Volume");
+    if (midi_)
+    {
+        const auto* target = project.findTrack(track.midiTarget);
+        juce::String text = juce::String::fromUTF8("\xe2\x86\x92 ");
+        text << (target != nullptr ? juce::String::fromUTF8(target->name.c_str())
+                                   : juce::String("No instrument"));
+        if (target != nullptr && track.midiChannel != 1)
+            text << "  ch " << track.midiChannel;
+        target_.setButtonText(text);
+        target_.setTooltip("The instrument channel this track plays (click to change)");
+    }
     name_.setText(juce::String::fromUTF8(track.name.c_str()), juce::dontSendNotification);
     name_.setColour(juce::Label::textColourId,
                     track.mute ? theme_.colours.textSecondary : theme_.colours.textPrimary);
@@ -500,13 +528,14 @@ void TrackHeader::resized()
 
     // Row 2: input, meter, volume (the row hides below 44 px; the slider below 200 px width).
     const bool row2 = getHeight() >= 44;
-    input_.setVisible(row2 && !aux_);
-    meter_.setVisible(row2);
+    input_.setVisible(row2 && !aux_ && !instrument_);
+    meter_.setVisible(row2 && !midi_);
+    target_.setVisible(row2 && midi_);
     volume_.setVisible(row2 && getWidth() >= 200);
     if (row2)
     {
         auto row = area.removeFromTop(control);
-        if (!aux_)
+        if (!aux_ && !instrument_)
         {
             const int inputW = std::clamp(row.getWidth() / 3, 76, 96);
             input_.setBounds(row.removeFromLeft(inputW).withSizeKeepingCentre(inputW, control));
@@ -519,6 +548,7 @@ void TrackHeader::resized()
         }
         meter_.setBounds(
             row.withSizeKeepingCentre(row.getWidth(), 2 * theme_.sizes.meterWidth + theme_.sizes.meterGap));
+        target_.setBounds(row.withSizeKeepingCentre(row.getWidth(), control));
     }
 
     // Row 3 at the large height: pan, output, sends summary.

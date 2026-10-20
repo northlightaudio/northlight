@@ -34,7 +34,12 @@ public:
 
     void setProject(const core::Project* project);
     void setChannel(core::Id channelId);
+    // The channel shown: the one selected, or for a MIDI track the instrument
+    // channel it plays.
     core::Id channelId() const noexcept { return channelId_; }
+    // A MIDI track that plays nothing chose an instrument: make an instrument
+    // channel with it and aim the track there.
+    std::function<void(core::Id midiTrack, const std::string& type)> onPlayNewInstrument;
     void setRegistry(const hosting::PluginRegistry* registry) { registry_ = registry; }
 
     std::function<std::shared_ptr<engine::InsertProcessor>(core::Id)> liveInsert;
@@ -75,7 +80,10 @@ private:
     const Theme& theme_;
     const core::Project* project_ = nullptr;
     const hosting::PluginRegistry* registry_ = nullptr;
+    void resolveChannel();
     core::Id channelId_ = core::invalidId;
+    core::Id selectedId_ = core::invalidId;  // what the selection asked for
+    core::Id midiTrackId_ = core::invalidId; // a MIDI track selected: shown through its target
     // The scrolled content: the section captions are painted on it.
     struct Content final : juce::Component
     {

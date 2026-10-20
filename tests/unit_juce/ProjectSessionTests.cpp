@@ -167,13 +167,18 @@ TEST_CASE_METHOD(SessionFixture,
                  "A performance on an armed MIDI track becomes a clip with its notes at their positions",
                  "[app][session][record][midi]")
 {
-    const auto id = session->addMidiTrack(); // armed, every input, the built-in synth
+    const auto id = session->addMidiTrack(); // armed, every input, aimed at a new Aurora channel
     const auto* track = session->project().findTrack(id);
     REQUIRE(track != nullptr);
     CHECK(track->isMidi());
     CHECK(track->armed);
-    REQUIRE(track->hasInstrument());
-    CHECK(track->inserts.empty()); // the instrument has its own slot
+    CHECK(track->strip.empty()); // notes only: no channel strip
+    const auto* channel = session->project().findTrack(track->midiTarget);
+    REQUIRE(channel != nullptr);
+    CHECK(channel->isInstrument());
+    CHECK(channel->instrument.type == "aural.aurora");
+    CHECK(!channel->strip.empty()); // the channel processes the audio
+    CHECK(session->project().trackIndex(channel->id) == session->project().trackIndex(id) + 1);
     prepareDevice(48000.0);
     REQUIRE(session->startRecording().empty());
     runBlocks(2); // the record command applies in the first block: capture from 0

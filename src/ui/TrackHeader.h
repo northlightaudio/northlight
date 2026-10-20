@@ -59,6 +59,8 @@ public:
     // Dragging the number: the screen position while it moves and when released.
     std::function<void(core::Id, juce::Point<int> screen, bool released)> onReorderDrag;
     std::function<void(core::Id, juce::Point<int> screen)> onContextMenu;
+    // A MIDI track's "plays" chip was clicked: choose its instrument channel.
+    std::function<void(core::Id, juce::Rectangle<int> screenArea)> onTargetMenu;
     // The A toggle: show the track's automation over its lane.
     std::function<void(core::Id, bool shown)> onAutomationToggled;
     void setAutomationShown(bool shown);
@@ -87,6 +89,7 @@ private:
     bool armed_ = false;
     bool midi_ = false;
     bool aux_ = false;
+    bool instrument_ = false; // an instrument channel: no input or arm (its MIDI tracks have them)
     bool muted_ = false;
     bool selected_ = false;
     bool hovered_ = false;
@@ -103,6 +106,7 @@ private:
     juce::TextButton mute_{"M"}, solo_{"S"}, arm_{"R"}, monitorButton_, automation_{"A"};
     juce::Slider volume_;
     Meter meter_;
+    juce::TextButton target_; // a MIDI track's: "→ Drums: Pulsar", what it plays
     Knob pan_;
 };
 

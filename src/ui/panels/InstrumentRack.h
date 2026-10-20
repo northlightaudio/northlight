@@ -18,11 +18,11 @@ namespace aural::ui
 {
 
 // The Instruments panel (07-plugins.md 7.4): every instrument in the project
-// as a rack unit. A unit is a MIDI track's instrument slot: power, the
-// instrument's name and format, the track it plays on, its outputs (the main
-// pair is the track itself; each further pair is an output track, or a dashed
-// chip that makes one) and its editor. "+ Instrument" makes a new instrument
-// track with the instrument chosen. The owner gives the model, the live
+// as a rack unit, one per instrument channel: power, the instrument's name and
+// format, the channel and the MIDI tracks that play it, its outputs (the main
+// pair is the channel itself; each further pair is an output track, or a
+// dashed chip that makes one) and its editor. "+ Instrument track" makes an
+// instrument channel and a MIDI track aimed at it. The owner gives the model, the live
 // instances and the registry, and takes commands back.
 class InstrumentRack final : public juce::Component
 {

@@ -709,7 +709,7 @@ TEST_CASE("An instrument has its own slot, first in the chain, and keeps its id 
     Project p;
     UndoStack stack;
     Track t;
-    t.kind = TrackKind::midi;
+    t.kind = TrackKind::instrument;
     Insert fx;
     fx.type = "aural.eq";
     t.inserts.push_back(fx);
@@ -756,30 +756,42 @@ TEST_CASE("An instrument has its own slot, first in the chain, and keeps its id 
     CHECK(p.findTrack(trackId)->instrument.id == slot);
 }
 
-TEST_CASE("Older projects' instruments move from the first insert into the slot", "[core][instrument]")
+TEST_CASE("An instrument track is a MIDI track over its instrument channel, added and undone as one",
+          "[core][command][instrument]")
 {
     Project p;
-    Track t;
-    t.id = p.allocateId();
-    t.kind = TrackKind::midi;
-    Insert synth;
-    synth.id = p.allocateId();
-    synth.type = "aural.synth";
-    Insert eq;
-    eq.id = p.allocateId();
-    eq.type = "aural.eq";
-    t.inserts = {synth, eq};
-    p.tracks.push_back(t);
-    Track audio;
-    audio.id = p.allocateId();
-    audio.inserts = {synth}; // an audio track keeps whatever it has
-    audio.inserts[0].id = p.allocateId();
-    p.tracks.push_back(audio);
+    UndoStack stack;
+    Track channel;
+    channel.name = "Aurora";
+    channel.instrument.type = "aural.aurora";
+    Track midi;
+    midi.name = "MIDI 1";
+    auto add = std::make_unique<AddInstrumentTrack>(channel, midi);
+    const auto* raw = add.get();
+    stack.execute(p, std::move(add));
+    const Id channelId = raw->channelId(), midiId = raw->midiTrackId();
+    REQUIRE(p.tracks.size() == 2);
+    CHECK(p.tracks[0].id == midiId); // the MIDI track above its channel
+    CHECK(p.tracks[0].isMidi());
+    CHECK(p.tracks[0].midiTarget == channelId);
+    CHECK(p.tracks[1].isInstrument());
+    CHECK(p.tracks[1].instrument.id != invalidId);
+    REQUIRE(p.midiFeeds(channelId).size() == 1);
 
-    p.adoptInstruments([](const std::string& type) { return type == "aural.synth"; });
-    CHECK(p.tracks[0].instrument.id == synth.id);
-    REQUIRE(p.tracks[0].inserts.size() == 1);
-    CHECK(p.tracks[0].inserts[0].type == "aural.eq");
-    CHECK_FALSE(p.tracks[1].hasInstrument());
-    CHECK(p.tracks[1].inserts.size() == 1);
+    // A second MIDI track aimed at the same instrument, on channel 2.
+    Track second;
+    second.kind = TrackKind::midi;
+    stack.execute(p, std::make_unique<AddTrack>(second));
+    const Id secondId = p.tracks.back().id;
+    stack.execute(p, std::make_unique<SetMidiTarget>(secondId, channelId, 2));
+    CHECK(p.findTrack(secondId)->midiChannel == 2);
+    CHECK(p.midiFeeds(channelId).size() == 2);
+    CHECK(stack.undo(p));
+    CHECK(p.findTrack(secondId)->midiTarget == invalidId);
+    CHECK(stack.undo(p));
+    CHECK(stack.undo(p));
+    CHECK(p.tracks.empty());
+    CHECK(stack.redo(p));
+    REQUIRE(p.tracks.size() == 2);
+    CHECK(p.tracks[0].midiTarget == p.tracks[1].id); // the same ids come back
 }

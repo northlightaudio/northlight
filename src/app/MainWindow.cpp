@@ -860,6 +860,8 @@ private:
         editor_.onGestureEnd = [this] { session_.endGesture(); };
         editor_.onOpenEditor = [this](core::Id channelId, core::Id insertId)
         { owner_.openInsertEditor(channelId, insertId); };
+        editor_.onPlayNewInstrument = [this](core::Id midiTrack, const std::string& type)
+        { playNewInstrument(midiTrack, type); };
 
         instruments_.setRegistry(&session_.pluginRegistry());
         instruments_.liveInsert = [this](core::Id insertId) { return session_.liveInsert(insertId); };
@@ -910,6 +912,8 @@ private:
             });
         tracks_.onInsertPlugin = [this](core::Id trackId, const std::string& type)
         { insertPlugin(trackId, type); };
+        tracks_.onPlayNewInstrument = [this](core::Id midiTrack, const std::string& type)
+        { playNewInstrument(midiTrack, type); };
         editor_.isEditorOpen = [this](core::Id insertId) { return mixer_.isEditorOpen(insertId); };
         editor_.listSetting = [this](const std::string& key)
         {
@@ -1433,22 +1437,52 @@ private:
     }
 
     // Inserts a plugin type on a track (from the browser, a drop or the chain).
+    // Makes an instrument channel playing `type` just under a MIDI track and aims
+    // the track at it (one undo step).
+    void playNewInstrument(core::Id midiTrack, const std::string& type)
+    {
+        const auto& project = session_.project();
+        const int at = project.trackIndex(midiTrack);
+        if (at < 0)
+            return;
+        core::Track channel;
+        channel.id = project.nextId; // known now, so the target can name it
+        channel.kind = core::TrackKind::instrument;
+        channel.name = mixer_.insertDisplayName(type);
+        channel.instrument.type = type;
+        channel.instrument.params = plugins::defaultParameters(type);
+        const auto& midi = project.tracks[static_cast<size_t>(at)];
+        std::vector<std::unique_ptr<core::Command>> commands;
+        commands.push_back(std::make_unique<core::AddTrack>(channel, at + 1));
+        commands.push_back(std::make_unique<core::SetMidiTarget>(midiTrack, channel.id, midi.midiChannel));
+        session_.executeGroup("Play a new instrument", std::move(commands));
+        browser_.rememberRecent(type);
+        selectionChanged(midiTrack);
+    }
+
     void insertPlugin(core::Id trackId, const std::string& type)
     {
-        // An instrument plays in a MIDI track's instrument slot, or a new
-        // instrument track when the selection is not a MIDI track.
+        // An instrument goes to an instrument channel: the one selected, or the one
+        // the selected MIDI track plays (a channel for it when it plays none);
+        // otherwise a new instrument track.
         if (session_.isInstrumentType(type))
         {
             const auto* track = session_.project().findTrack(trackId);
-            if (track != nullptr && track->isMidi())
+            const auto* channel = track != nullptr && track->isInstrument() ? track
+                                  : track != nullptr && track->isMidi()
+                                      ? session_.project().findTrack(track->midiTarget)
+                                      : nullptr;
+            if (channel != nullptr && channel->isInstrument())
             {
                 core::Insert instrument;
                 instrument.type = type;
                 instrument.params = plugins::defaultParameters(type);
-                session_.execute(std::make_unique<core::SetInstrument>(trackId, instrument));
+                session_.execute(std::make_unique<core::SetInstrument>(channel->id, instrument));
                 browser_.rememberRecent(type);
                 selectionChanged(trackId);
             }
+            else if (track != nullptr && track->isMidi())
+                playNewInstrument(track->id, type);
             else
                 instruments_.addInstrumentTrack(type);
             return;
@@ -1540,7 +1574,7 @@ private:
         core::Track track;
         int count = 0;
         for (const auto& t : session_.project().tracks)
-            if (!t.isMidi() && !t.isAux())
+            if (t.kind == core::TrackKind::audio)
                 ++count;
         track.name = "Audio " + std::to_string(count + 1);
         auto command = std::make_unique<core::AddTrack>(track);

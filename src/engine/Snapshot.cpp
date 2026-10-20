@@ -356,6 +356,7 @@ std::unique_ptr<Snapshot> compileSnapshot(const core::Project& project,
         TrackNode node;
         fillChannel(node, track, t, trackMeterSlot(t), false);
         node.isMidi = track.isMidi();
+        node.isInstrument = track.isInstrument();
         node.isAux = track.isAux();
         node.inputChannel = track.isAux() ? -1 : track.inputChannel;
         node.armed = track.armed;
@@ -371,6 +372,9 @@ std::unique_ptr<Snapshot> compileSnapshot(const core::Project& project,
                 midiSources != nullptr && !track.midiInput.empty() ? midiSources(track.midiInput) : -1;
             node.midiOut = track.midiOut;
             node.midiOutChannel = static_cast<std::uint8_t>(std::clamp(track.midiOutChannel, 1, 16) - 1);
+            node.midiChannel = static_cast<std::uint8_t>(std::clamp(track.midiChannel, 1, 16) - 1);
+            node.velocityScale = std::clamp(track.gain, 0.0f, 4.0f);
+            node.midiMuted = track.mute;
             for (const auto& c : track.midiClips)
             {
                 MidiClipNode clip;
@@ -420,6 +424,17 @@ std::unique_ptr<Snapshot> compileSnapshot(const core::Project& project,
         snapshot->buses.push_back(std::move(node));
     }
 
+    // ----- MIDI tracks into their instrument channels ---------------------------------
+    for (int t = 0; t < trackCount; ++t)
+    {
+        const auto& track = project.tracks[static_cast<size_t>(t)];
+        if (!track.isMidi())
+            continue;
+        const int target = project.trackIndex(track.midiTarget);
+        if (target >= 0 && project.tracks[static_cast<size_t>(target)].isInstrument())
+            snapshot->tracks[static_cast<size_t>(target)].midiFeeds.push_back(t);
+    }
+
     // ----- aux tracks: the instrument they read -------------------------------------
     for (int t = 0; t < trackCount; ++t)
     {
@@ -462,6 +477,10 @@ std::unique_ptr<Snapshot> compileSnapshot(const core::Project& project,
                 if (const int source = snapshot->tracks[static_cast<size_t>(t)].auxSourceTrack;
                     source >= 0 && level[static_cast<size_t>(source)] < 0)
                     ready = false;
+                // An instrument channel plays what its MIDI tracks scheduled this span.
+                for (const int feed : snapshot->tracks[static_cast<size_t>(t)].midiFeeds)
+                    if (level[static_cast<size_t>(feed)] < 0)
+                        ready = false;
                 if (ready)
                     current.push_back(t);
             }

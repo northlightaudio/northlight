@@ -699,11 +699,11 @@ public:
         mute_.setToggleState(channel.mute, juce::dontSendNotification);
         solo_.setToggleState(channel.solo, juce::dontSendNotification);
         phase_.setToggleState(channel.phaseInvert, juce::dontSendNotification);
-        arm_.setVisible(track != nullptr && !aux_);
+        arm_.setVisible(track != nullptr && !aux_ && !track->isInstrument()); // its MIDI tracks arm
         arm_.setToggleState(track != nullptr && track->armed, juce::dontSendNotification);
 
         // The input (tracks only): audio inputs or MIDI inputs.
-        input_.setVisible(track != nullptr && !aux_);
+        input_.setVisible(track != nullptr && !aux_ && !track->isInstrument());
         input_.clear(juce::dontSendNotification);
         if (track != nullptr && midi_)
         {
@@ -752,7 +752,7 @@ public:
         stripRow_.setVisible(stripRow_.hasModules());
 
         // The instrument slot (a MIDI track's): filled, or an add slot.
-        const bool instrumentSlot = track != nullptr && (track->isMidi() || track->hasInstrument());
+        const bool instrumentSlot = track != nullptr && (track->isInstrument() || track->hasInstrument());
         instrumentSlot_ = instrumentSlot;
         instrument_.setVisible(instrumentSlot && track->hasInstrument());
         addInstrument_.setVisible(instrumentSlot && !track->hasInstrument());
@@ -1461,7 +1461,7 @@ private:
     AddSlot addInsert_, addSend_;
     InsertSlot instrument_{theme_};
     AddSlot addInstrument_{theme_, "Instrument"};
-    bool instrumentSlot_ = false; // a MIDI track: the instrument row shows
+    bool instrumentSlot_ = false; // an instrument channel: the instrument row shows
     juce::Rectangle<int> insertsSummary_, sendsSummary_;
     Knob pan_;
     juce::TextButton mute_, solo_, arm_, phase_;
@@ -2008,7 +2008,13 @@ void MixerView::addBus()
 
 void MixerView::rebuildStrips()
 {
-    const size_t count = project_ != nullptr ? project_->tracks.size() + project_->buses.size() : 0;
+    // A strip per channel that makes audio: MIDI tracks only make notes (their
+    // instrument channels have the strips).
+    size_t audible = 0;
+    if (project_ != nullptr)
+        for (const auto& t : project_->tracks)
+            audible += t.hasAudio() ? 1 : 0;
+    const size_t count = project_ != nullptr ? audible + project_->buses.size() : 0;
     while (strips_.size() > count)
         strips_.pop_back();
     while (strips_.size() < count)
@@ -2020,12 +2026,16 @@ void MixerView::rebuildStrips()
     if (project_ != nullptr)
     {
         size_t i = 0;
-        for (size_t t = 0; t < project_->tracks.size(); ++t, ++i)
-            strips_[i]->setChannel(project_->tracks[t],
-                                   false,
-                                   *project_,
-                                   engine::trackMeterSlot(static_cast<int>(t)),
-                                   static_cast<int>(t));
+        for (size_t t = 0; t < project_->tracks.size(); ++t)
+        {
+            if (!project_->tracks[t].hasAudio())
+                continue;
+            strips_[i++]->setChannel(project_->tracks[t],
+                                     false,
+                                     *project_,
+                                     engine::trackMeterSlot(static_cast<int>(t)),
+                                     static_cast<int>(t));
+        }
         for (size_t b = 0; b < project_->buses.size(); ++b, ++i)
             strips_[i]->setChannel(project_->buses[b],
                                    true,

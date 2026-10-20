@@ -515,13 +515,31 @@ const core::Channel* EditorPanel::channel() const
 void EditorPanel::setProject(const core::Project* project)
 {
     project_ = project;
+    resolveChannel();
     rebuild();
 }
 
 void EditorPanel::setChannel(core::Id channelId)
 {
-    channelId_ = channelId;
+    selectedId_ = channelId;
+    resolveChannel();
     rebuild();
+}
+
+// A MIDI track makes no audio: the panel shows the instrument channel it plays
+// (or, aimed nowhere, the MIDI track itself, with a slot to give it one).
+void EditorPanel::resolveChannel()
+{
+    channelId_ = selectedId_;
+    midiTrackId_ = core::invalidId;
+    const auto* track = project_ != nullptr ? project_->findTrack(selectedId_) : nullptr;
+    if (track != nullptr && track->isMidi())
+    {
+        midiTrackId_ = track->id;
+        if (const auto* target = project_->findTrack(track->midiTarget);
+            target != nullptr && target->isInstrument())
+            channelId_ = target->id;
+    }
 }
 
 void EditorPanel::rebuild()
@@ -551,9 +569,11 @@ void EditorPanel::rebuild()
     else if (ch != nullptr)
         for (size_t i = 0; i < cards_.size(); ++i)
             cards_[i]->refresh(ch->inserts[i]);
-    // The instrument slot: a MIDI track's (or any track that has one).
+    // The instrument slot: an instrument channel's (or a MIDI track's that plays
+    // nothing yet, to give it one).
     const auto* track = project_ != nullptr ? project_->findTrack(channelId_) : nullptr;
-    const bool slot = track != nullptr && (track->isMidi() || track->hasInstrument());
+    const bool slot =
+        track != nullptr && (track->isInstrument() || track->isMidi() || track->hasInstrument());
     const bool hasInstrument = slot && track->hasInstrument();
     bool instrumentChanged = false;
     if (!hasInstrument)
@@ -645,9 +665,14 @@ void EditorPanel::paint(juce::Graphics& g)
             "Select a track or bus to see its inserts", getLocalBounds(), juce::Justification::centred);
         return;
     }
-    g.drawText(juce::String::fromUTF8(ch->name.c_str()) + juce::String::fromUTF8("  \xe2\x96\xb8"),
-               title,
-               juce::Justification::centredLeft);
+    // A MIDI track's title says what it plays: "MIDI 1 → Drums: Pulsar".
+    juce::String heading = juce::String::fromUTF8(ch->name.c_str());
+    if (const auto* midi = project_->findTrack(midiTrackId_); midi != nullptr && midi->id != ch->id)
+        heading =
+            juce::String::fromUTF8(midi->name.c_str()) + juce::String::fromUTF8("  \xe2\x86\x92  ") + heading;
+    else if (midi != nullptr)
+        heading << "  (plays no instrument)";
+    g.drawText(heading + juce::String::fromUTF8("  \xe2\x96\xb8"), title, juce::Justification::centredLeft);
     if (dropIndex_ >= 0)
     {
         // The insertion line between cards (a plugin or a card dragged over).
@@ -727,12 +752,17 @@ void EditorPanel::addInsert(const std::string& type, int index)
 void EditorPanel::setInstrument(const std::string& type)
 {
     const auto* track = project_ != nullptr ? project_->findTrack(channelId_) : nullptr;
-    if (!onCommand || track == nullptr || !track->isMidi())
+    if (!onCommand || track == nullptr)
         return;
     core::Insert instrument;
     instrument.type = type;
     instrument.params = plugins::defaultParameters(type);
-    onCommand(std::make_unique<core::SetInstrument>(channelId_, instrument));
+    if (track->isInstrument())
+        onCommand(std::make_unique<core::SetInstrument>(channelId_, instrument));
+    else if (track->isMidi() && onPlayNewInstrument)
+        onPlayNewInstrument(track->id, type); // a channel for it, and the track aimed there
+    else
+        return;
     if (onInserted)
         onInserted(type);
 }

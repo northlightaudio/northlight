@@ -153,7 +153,7 @@ AddTrack::AddTrack(Track track, int index) : track_(std::move(track)), index_(in
 
 void AddTrack::setDefaultStrip(const std::vector<Insert>& modules)
 {
-    if (track_.strip.empty())
+    if (track_.strip.empty() && track_.hasAudio()) // a MIDI track makes no audio to process
         track_.strip = modules;
 }
 
@@ -186,6 +186,76 @@ void AddTrack::revert(Project& p)
     const int i = p.trackIndex(track_.id);
     if (i >= 0)
         p.tracks.erase(p.tracks.begin() + i);
+}
+
+AddInstrumentTrack::AddInstrumentTrack(Track instrumentChannel, Track midiTrack, int index)
+    : channel_(std::move(instrumentChannel)), midi_(std::move(midiTrack)), index_(index)
+{
+    channel_.kind = TrackKind::instrument;
+    midi_.kind = TrackKind::midi;
+}
+
+void AddInstrumentTrack::setDefaultStrip(const std::vector<Insert>& modules)
+{
+    if (channel_.strip.empty())
+        channel_.strip = modules;
+}
+
+void AddInstrumentTrack::apply(Project& p)
+{
+    for (auto* t : {&midi_, &channel_})
+    {
+        if (t->id == invalidId)
+            t->id = p.allocateId();
+        p.nextId = std::max(p.nextId, t->id + 1);
+        if (t->hasInstrument() && t->instrument.id == invalidId)
+            t->instrument.id = p.allocateId();
+        for (auto& i : t->inserts)
+            if (i.id == invalidId)
+                i.id = p.allocateId();
+        for (auto& m : t->strip)
+            if (m.id == invalidId)
+                m.id = p.allocateId();
+        for (auto& c : t->midiClips)
+            if (c.id == invalidId)
+                c.id = p.allocateId();
+    }
+    midi_.midiTarget = channel_.id;
+    const int at =
+        index_ < 0 || index_ > static_cast<int>(p.tracks.size()) ? static_cast<int>(p.tracks.size()) : index_;
+    index_ = at;
+    p.tracks.insert(p.tracks.begin() + at, channel_);
+    p.tracks.insert(p.tracks.begin() + at, midi_); // the MIDI track above its instrument
+}
+
+void AddInstrumentTrack::revert(Project& p)
+{
+    std::erase_if(p.tracks, [this](const Track& t) { return t.id == midi_.id || t.id == channel_.id; });
+}
+
+SetMidiTarget::SetMidiTarget(Id trackId, Id target, int midiChannel)
+    : trackId_(trackId), target_(target), channel_(std::clamp(midiChannel, 1, 16))
+{
+}
+
+void SetMidiTarget::apply(Project& p)
+{
+    auto* t = p.findTrack(trackId_);
+    if (t == nullptr || !t->isMidi())
+        throw std::logic_error("command references a MIDI track that does not exist");
+    previousTarget_ = t->midiTarget;
+    previousChannel_ = t->midiChannel;
+    t->midiTarget = target_;
+    t->midiChannel = channel_;
+}
+
+void SetMidiTarget::revert(Project& p)
+{
+    if (auto* t = p.findTrack(trackId_))
+    {
+        t->midiTarget = previousTarget_;
+        t->midiChannel = previousChannel_;
+    }
 }
 
 RemoveTrack::RemoveTrack(Id trackId) : trackId_(trackId) {}

@@ -57,6 +57,16 @@ public:
         instrumentId_ = track.instrument.id;
         hue_ = trackColour(theme_, track, index);
         trackName_ = juce::String::fromUTF8(track.name.c_str());
+        // Who plays it: the MIDI tracks aimed at this channel.
+        playedBy_.clear();
+        for (const auto* feed : project.midiFeeds(track.id))
+        {
+            if (playedBy_.isNotEmpty())
+                playedBy_ << ", ";
+            playedBy_ << juce::String::fromUTF8(feed->name.c_str());
+            if (feed->midiChannel != 1)
+                playedBy_ << " (ch " << feed->midiChannel << ")";
+        }
         bypassed_ = track.instrument.bypass;
         power_.setToggleState(hasInstrument_ && !bypassed_, juce::dontSendNotification);
         power_.setOnColour(hue_);
@@ -141,7 +151,11 @@ public:
                           .withY(static_cast<float>(bottom.getY()) + 4.0f));
         bottom.removeFromLeft(theme_.spacing.xs);
         g.setColour(c.textSecondary);
-        g.drawText(trackName_, bottom, juce::Justification::topLeft, true);
+        g.drawText(trackName_ + juce::String::fromUTF8("  \xe2\x86\x90  ") +
+                       (playedBy_.isNotEmpty() ? playedBy_ : juce::String("no MIDI track plays it")),
+                   bottom,
+                   juce::Justification::topLeft,
+                   true);
 
         // The outputs: a caption and a chip per pair.
         g.setFont(theme_.captionCaps());
@@ -319,7 +333,7 @@ private:
     core::Id trackId_ = core::invalidId, instrumentId_ = core::invalidId;
     bool hasInstrument_ = false, bypassed_ = false;
     juce::Colour hue_;
-    juce::String name_, format_, trackName_;
+    juce::String name_, format_, trackName_, playedBy_;
     std::vector<Output> outputs_;
     juce::Rectangle<int> identity_, outputsCaption_, outputsArea_;
     int hoverChip_ = -1;
@@ -353,7 +367,7 @@ void InstrumentRack::rebuild()
     std::vector<core::Id> ids;
     if (project_ != nullptr)
         for (const auto& t : project_->tracks)
-            if (t.isMidi() || t.hasInstrument())
+            if (t.isInstrument())
                 ids.push_back(t.id);
     if (ids != builtFor_)
     {
@@ -378,13 +392,18 @@ void InstrumentRack::addInstrumentTrack(const std::string& type)
 {
     if (!onCommand || project_ == nullptr)
         return;
-    core::Track track;
-    track.kind = core::TrackKind::midi;
-    track.name = displayName ? displayName(type) : type;
-    track.armed = true;
-    track.instrument.type = type;
-    track.instrument.params = plugins::defaultParameters(type);
-    onCommand(std::make_unique<core::AddTrack>(track));
+    // The instrument channel and a MIDI track aimed at it, as one step.
+    int count = 0;
+    for (const auto& t : project_->tracks)
+        count += t.isMidi() ? 1 : 0;
+    core::Track channel;
+    channel.name = displayName ? displayName(type) : type;
+    channel.instrument.type = type;
+    channel.instrument.params = plugins::defaultParameters(type);
+    core::Track midi;
+    midi.name = "MIDI " + std::to_string(count + 1);
+    midi.armed = true;
+    onCommand(std::make_unique<core::AddInstrumentTrack>(channel, midi));
     if (onInserted)
         onInserted(type);
 }

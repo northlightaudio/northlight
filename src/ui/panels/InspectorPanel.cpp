@@ -20,8 +20,8 @@ double gainToDb(float gain)
 } // namespace
 
 InspectorPanel::InspectorPanel(const Theme& theme)
-    : theme_(theme), gain_(theme), start_(theme), length_(theme), clipGain_(theme), fadeIn_(theme), fadeOut_(theme),
-      pan_(theme)
+    : theme_(theme), gain_(theme), start_(theme), length_(theme), clipGain_(theme), fadeIn_(theme),
+      fadeOut_(theme), pan_(theme)
 {
     setOpaque(true);
     name_.setFont(theme_.body());
@@ -144,7 +144,11 @@ InspectorPanel::InspectorPanel(const Theme& theme)
         {
             if (updating_ || !onCommand || clipId_ == core::invalidId)
                 return;
-            onCommand(std::make_unique<core::SetClipFades>(trackId_, clipId_, static_cast<core::SamplePosition>(fadeIn_.value()), static_cast<core::SamplePosition>(fadeOut_.value())));
+            onCommand(
+                std::make_unique<core::SetClipFades>(trackId_,
+                                                     clipId_,
+                                                     static_cast<core::SamplePosition>(fadeIn_.value()),
+                                                     static_cast<core::SamplePosition>(fadeOut_.value())));
         };
         addChildComponent(*field);
     }
@@ -185,12 +189,13 @@ void InspectorPanel::refresh()
     pan_.setVisible(t != nullptr && !clipMode);
     mute_.setVisible(t != nullptr && !clipMode);
     solo_.setVisible(t != nullptr && !clipMode);
-    arm_.setVisible(t != nullptr && !clipMode && !t->isAux());
+    arm_.setVisible(t != nullptr && !clipMode && !t->isAux() && !t->isInstrument());
     for (auto* f : {&start_, &length_, &clipGain_, &fadeIn_, &fadeOut_})
         f->setVisible(clipMode);
     if (t == nullptr)
         return;
-    name_.setText(juce::String::fromUTF8(clipMode ? c->name.c_str() : t->name.c_str()), juce::dontSendNotification);
+    name_.setText(juce::String::fromUTF8(clipMode ? c->name.c_str() : t->name.c_str()),
+                  juce::dontSendNotification);
     name_.setReadOnly(clipMode);
     if (clipMode)
     {
@@ -239,7 +244,13 @@ void InspectorPanel::paint(juce::Graphics& g)
     auto area = getLocalBounds().reduced(theme_.spacing.md, theme_.spacing.md);
     g.setFont(theme_.captionCaps());
     g.setColour(c.textTertiary);
-    g.drawText(clip() != nullptr ? "CLIP" : (t->isMidi() ? "MIDI TRACK" : t->isAux() ? "AUX TRACK" : "AUDIO TRACK"), area.removeFromTop(theme_.sizes.controlCompact), juce::Justification::centredLeft);
+    g.drawText(clip() != nullptr ? "CLIP"
+                                 : (t->isMidi()         ? "MIDI TRACK"
+                                    : t->isInstrument() ? "INSTRUMENT CHANNEL"
+                                    : t->isAux()        ? "INSTRUMENT OUTPUT"
+                                                        : "AUDIO TRACK"),
+               area.removeFromTop(theme_.sizes.controlCompact),
+               juce::Justification::centredLeft);
     g.setFont(theme_.body());
     g.setColour(c.textSecondary);
     const auto label = [&](const char* text)
@@ -311,9 +322,12 @@ void InspectorPanel::resized()
     pan_.setBounds(control().withWidth(theme_.sizes.knob + 40).withHeight(theme_.sizes.knob));
     auto state = control();
     const int w = theme_.sizes.controlCompact + theme_.spacing.sm;
-    mute_.setBounds(state.removeFromLeft(w).reduced(0, (theme_.sizes.control - theme_.sizes.controlCompact) / 2));
-    solo_.setBounds(state.removeFromLeft(w).reduced(0, (theme_.sizes.control - theme_.sizes.controlCompact) / 2));
-    arm_.setBounds(state.removeFromLeft(w).reduced(0, (theme_.sizes.control - theme_.sizes.controlCompact) / 2));
+    mute_.setBounds(
+        state.removeFromLeft(w).reduced(0, (theme_.sizes.control - theme_.sizes.controlCompact) / 2));
+    solo_.setBounds(
+        state.removeFromLeft(w).reduced(0, (theme_.sizes.control - theme_.sizes.controlCompact) / 2));
+    arm_.setBounds(
+        state.removeFromLeft(w).reduced(0, (theme_.sizes.control - theme_.sizes.controlCompact) / 2));
 }
 
 void InspectorPanel::mouseDown(const juce::MouseEvent& e)

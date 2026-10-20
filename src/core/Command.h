@@ -89,6 +89,42 @@ private:
     int index_;
 };
 
+// Adds an instrument channel and, right above it, a MIDI track aimed at it (one
+// undo step): what "add an instrument track" makes. Ids are allocated on
+// apply (kept for redo).
+class AddInstrumentTrack final : public Command
+{
+public:
+    AddInstrumentTrack(Track instrumentChannel, Track midiTrack, int index = -1);
+    std::string name() const override { return "Add instrument track"; }
+    void apply(Project&) override;
+    void revert(Project&) override;
+    Id channelId() const noexcept { return channel_.id; }
+    Id midiTrackId() const noexcept { return midi_.id; }
+    // The channel strip for the instrument channel (the MIDI track has none).
+    void setDefaultStrip(const std::vector<Insert>& modules);
+
+private:
+    Track channel_, midi_;
+    int index_;
+};
+
+// Aims a MIDI track at an instrument channel (invalidId: none) on a MIDI channel.
+class SetMidiTarget final : public Command
+{
+public:
+    SetMidiTarget(Id trackId, Id target, int midiChannel);
+    std::string name() const override { return "Set MIDI target"; }
+    void apply(Project&) override;
+    void revert(Project&) override;
+
+private:
+    Id trackId_, target_;
+    int channel_;
+    Id previousTarget_ = invalidId;
+    int previousChannel_ = 1;
+};
+
 class RemoveTrack final : public Command
 {
 public:

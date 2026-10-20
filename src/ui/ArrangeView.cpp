@@ -4,6 +4,7 @@
 #include "ui/AuralLookAndFeel.h"
 #include "ui/FrameStats.h"
 #include "ui/Icons.h"
+#include "ui/PluginMenu.h"
 
 #include <algorithm>
 #include <cmath>
@@ -259,6 +260,7 @@ void ArrangeView::rebuildHeaders()
         header->onReorderDrag = [this](core::Id id, juce::Point<int> screen, bool released)
         { reorderDrag(id, screen, released); };
         header->onContextMenu = [this](core::Id id, juce::Point<int> screen) { trackMenu(id, screen); };
+        header->onTargetMenu = [this](core::Id id, juce::Rectangle<int> area) { targetMenu(id, area); };
         header->onAutomationToggled = [this](core::Id id, bool shown) { showAutomation(id, shown); };
         addAndMakeVisible(*header);
         headers_.push_back(std::move(header));
@@ -1675,11 +1677,32 @@ void ArrangeView::paint(juce::Graphics& g)
                     const auto* source = project_->findTrack(track.auxTrack);
                     g.setColour(c.textTertiary);
                     g.setFont(theme_.caption());
-                    g.drawText("Output " + juce::String(track.auxOutput + 1) + " of " +
+                    g.drawText("Output " + juce::String(2 * track.auxOutput + 1) + "/" +
+                                   juce::String(2 * track.auxOutput + 2) + " of " +
                                    (source != nullptr ? juce::String::fromUTF8(source->name.c_str())
-                                                      : juce::String("a removed track")),
+                                                      : juce::String("a removed instrument")),
                                lane.withTrimmedLeft(theme_.spacing.sm),
                                juce::Justification::centredLeft);
+                }
+                if (track.isInstrument())
+                {
+                    // An instrument channel: what it is and who plays it.
+                    juce::String text = "Instrument channel";
+                    if (track.hasInstrument())
+                        text << ": "
+                             << juce::String::fromUTF8(displayName_
+                                                           ? displayName_(track.instrument.type).c_str()
+                                                           : track.instrument.type.c_str());
+                    juce::String players;
+                    for (const auto* feed : project_->midiFeeds(track.id))
+                        players << (players.isEmpty() ? "" : ", ")
+                                << juce::String::fromUTF8(feed->name.c_str());
+                    text << juce::String::fromUTF8("  \xe2\x86\x90  ")
+                         << (players.isNotEmpty() ? players : juce::String("no MIDI track plays it yet"));
+                    g.setColour(c.textTertiary);
+                    g.setFont(theme_.caption());
+                    g.drawText(
+                        text, lane.withTrimmedLeft(theme_.spacing.sm), juce::Justification::centredLeft);
                 }
             }
             y += rowHeight;
@@ -2487,7 +2510,10 @@ void ArrangeView::trackMenu(core::Id trackId, juce::Point<int> screen)
         }
         menu.addSubMenu("MIDI output", out);
     }
+    if (track->isMidi())
+        menu.addItem(5, "Plays...");
     // Sends: tick a bus or FX track to send to it (post-fader, -6 dB), untick to stop.
+    if (track->hasAudio())
     {
         juce::PopupMenu sends;
         for (size_t b = 0; b < project_->buses.size(); ++b)
@@ -2547,6 +2573,12 @@ void ArrangeView::trackMenu(core::Id trackId, juce::Point<int> screen)
                 safe->showAutomation(trackId, !safe->automation_.isShown(trackId));
                 return;
             }
+            if (choice == 5)
+            {
+                const auto mouse = juce::Desktop::getMousePosition();
+                safe->targetMenu(trackId, {mouse.x, mouse.y, 1, 1});
+                return;
+            }
             const auto& palette = safe->theme_.track.palette;
             if (choice >= 100 && choice < 199 && static_cast<size_t>(choice - 100) < palette.size())
             {
@@ -2565,6 +2597,65 @@ void ArrangeView::trackMenu(core::Id trackId, juce::Point<int> screen)
                 safe->onCommand(std::make_unique<core::RemoveTrack>(trackId));
             if (choice == 3 && safe->onAddBus)
                 safe->onAddBus();
+        });
+}
+
+// What a MIDI track plays: an instrument channel (or none), the MIDI channel it
+// sends on, or a new instrument (a channel for it, just under the track).
+void ArrangeView::targetMenu(core::Id trackId, juce::Rectangle<int> screenArea)
+{
+    const auto* track = project_ != nullptr ? project_->findTrack(trackId) : nullptr;
+    if (track == nullptr || !track->isMidi())
+        return;
+    juce::PopupMenu menu;
+    std::vector<core::Id> channels;
+    menu.addSectionHeader("Plays");
+    for (const auto& t : project_->tracks)
+        if (t.isInstrument())
+        {
+            juce::String text = juce::String::fromUTF8(t.name.c_str());
+            if (t.hasInstrument())
+                text << "  ("
+                     << juce::String::fromUTF8(displayName_ ? displayName_(t.instrument.type).c_str()
+                                                            : t.instrument.type.c_str())
+                     << ")";
+            channels.push_back(t.id);
+            menu.addItem(1000 + static_cast<int>(channels.size()) - 1, text, true, track->midiTarget == t.id);
+        }
+    menu.addItem(999, "Nothing", true, track->midiTarget == core::invalidId);
+    menu.addSeparator();
+    juce::PopupMenu midiChannels;
+    for (int ch = 1; ch <= 16; ++ch)
+        midiChannels.addItem(1100 + ch, "Channel " + juce::String(ch), true, track->midiChannel == ch);
+    menu.addSubMenu("MIDI channel", midiChannels);
+    auto instruments = buildPluginMenu(PluginKind::instrument, nullptr, {}, 1200);
+    menu.addSubMenu("New instrument", instruments.menu);
+    juce::Component::SafePointer<ArrangeView> safe(this);
+    menu.showMenuAsync(
+        juce::PopupMenu::Options().withTargetScreenArea(screenArea),
+        [safe, trackId, channels, instruments](int choice)
+        {
+            if (safe == nullptr || choice == 0 || safe->project_ == nullptr)
+                return;
+            const auto* t = safe->project_->findTrack(trackId);
+            if (t == nullptr)
+                return;
+            if (const auto type = instruments.typeFor(choice); !type.empty())
+            {
+                if (safe->onPlayNewInstrument)
+                    safe->onPlayNewInstrument(trackId, type);
+                return;
+            }
+            if (!safe->onCommand)
+                return;
+            if (choice == 999)
+                safe->onCommand(
+                    std::make_unique<core::SetMidiTarget>(trackId, core::invalidId, t->midiChannel));
+            else if (choice >= 1000 && static_cast<size_t>(choice - 1000) < channels.size())
+                safe->onCommand(std::make_unique<core::SetMidiTarget>(
+                    trackId, channels[static_cast<size_t>(choice - 1000)], t->midiChannel));
+            else if (choice > 1100 && choice <= 1116)
+                safe->onCommand(std::make_unique<core::SetMidiTarget>(trackId, t->midiTarget, choice - 1100));
         });
 }
 

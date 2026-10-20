@@ -150,15 +150,18 @@ the chips at the lane's top left; click to add points, drag them, double-click t
 remove. VST3 and CLAP plugin parameters can be automated too, including moves
 made in the plugin's own window. In Touch, Latch or Write, moving the fader, pan or a parameter while
 playing records it into the lane. Faders and knobs follow automation as it plays.
-**Instruments**: a MIDI track plays the instrument in its instrument slot (first
-in its Editor panel and on its mixer strip), not in its effects. New MIDI tracks
-get **Aurora**, the bundled polysynth (two morphing oscillators with unison, a
-drivable multimode filter, two envelopes, an LFO, glide and Shimmer, with its own
-editor and eight presets); VST3 and CLAP instruments go in the same slot from the
-browser or the slot's menu. The **Instruments** panel (F8) is the rack: every
-instrument with the track it plays on and its outputs; each extra stereo output
-of a multi-output instrument becomes a track of its own, with effects like any
-other, in one click. **Pulsar**, the bundled drum synth, has eight synthesised
+**Instruments**: an instrument lives on an instrument channel (its inserts, strip,
+sends and fader process the sound), and MIDI tracks play it: each holds the notes
+and aims at an instrument channel on a MIDI channel, so several MIDI tracks can
+play one instrument. Adding an instrument track makes the MIDI track and its
+channel together, and selecting the MIDI track shows its instrument below. New
+instrument tracks get **Aurora**, the bundled polysynth (two morphing oscillators
+with unison, a drivable multimode filter, two envelopes, an LFO, glide and
+Shimmer, with its own editor and eight presets); VST3 and CLAP instruments go in
+the same slot from the browser or the slot's menu. The **Instruments** panel (F8)
+is the rack: every instrument with who plays it and its outputs; each extra
+stereo output of a multi-output instrument becomes a track of its own, with
+effects like any other, in one click. **Pulsar**, the bundled drum synth, has eight synthesised
 pads on the General MIDI drum notes (kick, rim, snare, clap, closed and open
 hats, two toms), each with tune, decay, two shaping controls, level and pan, six
 kits, and an editor whose pads light as they play. **Nebula**, the bundled pad

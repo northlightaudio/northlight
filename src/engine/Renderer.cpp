@@ -269,10 +269,37 @@ void Renderer::renderTrack(const Snapshot& snapshot,
     }
     if (track.isMidi)
     {
-        // A MIDI track: its events for the span go to the first insert that takes
-        // MIDI (the instrument); the rest of the chain follows as on any channel.
+        // A MIDI track: it schedules its events for the span (clips, live input,
+        // auditions); its instrument channel plays them. It makes no audio.
         scheduleMidi(track, position, numSamples, context);
-        processChain(snapshot, track, left, right, numSamples, &track.events);
+        return;
+    }
+    if (track.isInstrument)
+    {
+        // An instrument channel: the events of every MIDI track aimed at it (their
+        // levels came first), on their MIDI channels, velocities scaled by their
+        // volumes, go to the instrument at the head of the chain.
+        auto& events = track.events;
+        events.clear();
+        for (const int feed : track.midiFeeds)
+        {
+            const auto& source = snapshot.tracks[static_cast<size_t>(feed)];
+            for (size_t i = 0; i < source.events.size(); ++i)
+            {
+                MidiEvent e = source.events[i];
+                if (e.type == MidiEvent::Type::noteOn && e.velocity > 0)
+                {
+                    if (source.midiMuted)
+                        continue; // muted: no new notes, but held ones still end
+                    e.velocity = static_cast<std::uint8_t>(
+                        std::clamp(static_cast<int>(std::lround(e.velocity * source.velocityScale)), 1, 127));
+                }
+                e.channel = source.midiChannel;
+                events.push(e);
+            }
+        }
+        events.sortByTime();
+        processChain(snapshot, track, left, right, numSamples, &events);
         finishStereo();
         return;
     }

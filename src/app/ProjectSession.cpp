@@ -69,6 +69,8 @@ void giveChannelStrip(core::Command& command)
 {
     if (auto* addTrack = dynamic_cast<core::AddTrack*>(&command))
         addTrack->setDefaultStrip(plugins::strip::defaultStrip());
+    else if (auto* addInstrument = dynamic_cast<core::AddInstrumentTrack*>(&command))
+        addInstrument->setDefaultStrip(plugins::strip::defaultStrip());
     else if (auto* addBus = dynamic_cast<core::AddBus*>(&command))
         addBus->setDefaultStrip(plugins::strip::defaultStrip());
 }
@@ -253,22 +255,26 @@ void ProjectSession::mirrorOwnedParameters(const std::vector<core::Command::Para
     }
 }
 
-core::Id ProjectSession::addMidiTrack()
+core::Id ProjectSession::addMidiTrack(const std::string& instrumentType)
 {
+    // An instrument track: the instrument channel and a MIDI track aimed at it.
     int count = 0;
     for (const auto& t : project_.tracks)
         if (t.isMidi())
             ++count;
-    core::Track track;
-    track.kind = core::TrackKind::midi;
-    track.name = "MIDI " + std::to_string(count + 1);
-    track.armed = true;
-    track.instrument.type = plugins::aurora::type; // the bundled synth
-    track.instrument.params = plugins::defaultParameters(track.instrument.type);
-    auto command = std::make_unique<core::AddTrack>(track);
+    const auto type = instrumentType.empty() ? plugins::aurora::type : instrumentType;
+    core::Track channel;
+    channel.name = plugins::BuiltInFactory::isInstrument(type) ? plugins::BuiltInFactory::displayName(type)
+                                                               : std::string("Instrument");
+    channel.instrument.type = type;
+    channel.instrument.params = plugins::defaultParameters(type);
+    core::Track midi;
+    midi.name = "MIDI " + std::to_string(count + 1);
+    midi.armed = true;
+    auto command = std::make_unique<core::AddInstrumentTrack>(channel, midi);
     const auto* raw = command.get();
     execute(std::move(command));
-    return raw->trackId();
+    return raw->midiTrackId();
 }
 
 std::string ProjectSession::importAudioFile(const juce::File& file, core::SamplePosition at)
@@ -323,8 +329,6 @@ std::string ProjectSession::open(const juce::File& file)
         return error.empty() ? "could not read project" : error;
     project_ = *loaded;
     plugins::strip::ensureChannelStrip(project_); // projects saved before the strip existed
-    replaceLegacySynth();
-    project_.adoptInstruments([this](const std::string& type) { return isInstrumentType(type); });
     undo_.clear();
     projectFile_ = file;
     modified_ = false;
@@ -410,8 +414,6 @@ std::string ProjectSession::newFromTemplate(const juce::File& file)
     project_.name = "Untitled";
     hostedSent_.clear();
     plugins::strip::ensureChannelStrip(project_);
-    replaceLegacySynth();
-    project_.adoptInstruments([this](const std::string& type) { return isInstrumentType(type); });
     undo_.clear();
     projectFile_ = juce::File();
     modified_ = false;
@@ -638,8 +640,6 @@ std::string ProjectSession::restoreAutosave(const Autosave& autosave)
     engine_.resetCaches();
     project_ = *loaded;
     plugins::strip::ensureChannelStrip(project_);
-    replaceLegacySynth();
-    project_.adoptInstruments([this](const std::string& type) { return isInstrumentType(type); });
     undo_.clear();
     projectFile_ = autosave.project;
     modified_ = true; // not saved until the user saves it
@@ -1274,32 +1274,6 @@ void ProjectSession::saveRegistry()
         return;
     registryFile_.getParentDirectory().createDirectory();
     registryFile_.replaceWithText(juce::String(registry_.toJson()));
-}
-
-// Projects from before Aurora played the first built-in synth, which is gone:
-// Aurora takes its place (the same slot and id, its own default sound), and
-// lanes on the old synth's parameters go with it.
-void ProjectSession::replaceLegacySynth()
-{
-    const auto replace = [](core::Channel& channel, core::Insert& insert)
-    {
-        const auto id = insert.id;
-        insert.type = plugins::aurora::type;
-        insert.params = plugins::defaultParameters(insert.type);
-        insert.state.clear();
-        std::erase_if(
-            channel.automation,
-            [id](const core::AutomationLane& lane)
-            { return lane.target == core::AutomationTarget::insertParameter && lane.insert == id; });
-    };
-    for (auto& t : project_.tracks)
-    {
-        if (t.instrument.type == plugins::types::legacySynth)
-            replace(t, t.instrument);
-        for (auto& i : t.inserts)
-            if (i.type == plugins::types::legacySynth)
-                replace(t, i);
-    }
 }
 
 bool ProjectSession::isInstrumentType(const std::string& type) const

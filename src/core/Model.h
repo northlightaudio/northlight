@@ -67,9 +67,10 @@ struct MidiClip
 
 enum class TrackKind
 {
-    audio, // audio clips, an audio input
-    midi,  // MIDI clips, a MIDI input, an instrument in its chain
-    aux,   // an instrument's extra output pair, taken from another track
+    audio,      // audio clips, an audio input
+    midi,       // MIDI clips and a MIDI input: notes for an instrument channel, no audio of its own
+    instrument, // an instrument channel: the instrument (its main output) and the processing after it
+    aux,        // an instrument's extra output pair, taken from an instrument channel
 };
 
 enum class MonitorMode
@@ -207,10 +208,10 @@ struct Channel
     Id outputBus = invalidId; // invalidId routes to the master
     Id group = invalidId;     // fader group membership
     std::vector<Send> sends;
-    // A MIDI track's instrument (an empty type: none): the dedicated slot the
-    // track's MIDI plays, ahead of its effects. Its main output is the track's
-    // audio; each further stereo output can feed an output track (an aux track).
-    // Buses have none.
+    // An instrument channel's instrument (an empty type: none): the slot ahead
+    // of its effects that the MIDI tracks aimed at the channel play. Its main
+    // output is the channel's audio; each further stereo output can feed an
+    // output track (an aux track). Other channels have none.
     Insert instrument;
     std::vector<Insert> inserts; // processed in order, pre-fader
     // The channel strip: built-in modules every channel has (gate, EQ,
@@ -244,8 +245,13 @@ struct Channel
 struct Track : Channel
 {
     TrackKind kind = TrackKind::audio;
-    // An aux track (kind == aux) carries one extra stereo output of an instrument
-    // on another track: output 1 is the first beyond the main pair.
+    // A MIDI track plays the instrument channel it aims at, on a MIDI channel
+    // (several MIDI tracks may aim at one instrument; a multitimbral plugin
+    // tells them apart by channel). Its volume scales the notes' velocities.
+    Id midiTarget = invalidId;
+    int midiChannel = 1; // 1..16
+    // An aux track (kind == aux) carries one extra stereo output of the
+    // instrument on an instrument channel: output 1 is the first beyond the main pair.
     Id auxTrack = invalidId;
     Id auxInsert = invalidId;
     int auxOutput = 0;
@@ -268,6 +274,9 @@ struct Track : Channel
     void sortMidiClips();
     bool isMidi() const noexcept { return kind == TrackKind::midi; }
     bool isAux() const noexcept { return kind == TrackKind::aux; }
+    bool isInstrument() const noexcept { return kind == TrackKind::instrument; }
+    // Whether the track makes audio (a MIDI track only makes notes).
+    bool hasAudio() const noexcept { return kind != TrackKind::midi; }
     bool operator==(const Track&) const = default;
 };
 
@@ -308,7 +317,8 @@ struct TimeSignature
 
 struct Project
 {
-    static constexpr int schemaVersion = 1;
+    // 2: instruments moved to instrument channels; MIDI tracks aim at them.
+    static constexpr int schemaVersion = 2;
 
     std::string name = "Untitled";
     double sampleRate = 48000.0;
@@ -344,10 +354,8 @@ struct Project
     // Every track and bus in the group, in mixer order.
     std::vector<Channel*> groupMembers(Id groupId) noexcept;
 
-    // Projects from before the instrument slot kept a MIDI track's instrument as
-    // its first insert: moves it into the slot (same id, so its automation and
-    // output tracks stay connected) where `isInstrument` says the type is one.
-    void adoptInstruments(const std::function<bool(const std::string& type)>& isInstrument);
+    // The MIDI tracks aiming at an instrument channel, in track order.
+    std::vector<const Track*> midiFeeds(Id instrumentChannel) const;
 
     // Whether audio leaving bus `fromBus` can reach bus `toBus` through outputs
     // and sends (including fromBus == toBus). Used to refuse routing cycles.

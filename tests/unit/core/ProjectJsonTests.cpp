@@ -106,7 +106,7 @@ TEST_CASE("Missing optional fields take defaults and nextId is repaired", "[core
 {
     const auto p = projectFromJson(R"({
         "format": "aural.project",
-        "version": 1,
+        "version": 2,
         "tracks": [ { "id": 10, "clips": [ { "id": 42, "media": "x.wav", "length": 5 } ] } ]
     })");
     REQUIRE(p.has_value());
@@ -125,7 +125,7 @@ TEST_CASE("Missing optional fields take defaults and nextId is repaired", "[core
 TEST_CASE("Wrongly typed fields are reported rather than crashing", "[core][json]")
 {
     std::string error;
-    const auto p = projectFromJson(R"({"format":"aural.project","version":1,"tempo":"fast"})", &error);
+    const auto p = projectFromJson(R"({"format":"aural.project","version":2,"tempo":"fast"})", &error);
     CHECK_FALSE(p.has_value());
     CHECK(error.starts_with("malformed project"));
 }
@@ -165,7 +165,7 @@ TEST_CASE("A track's instrument round-trips through JSON", "[core][json][instrum
     Project p;
     Track t;
     t.id = p.allocateId();
-    t.kind = TrackKind::midi;
+    t.kind = TrackKind::instrument;
     t.instrument.id = p.allocateId();
     t.instrument.type = "aural.aurora";
     t.instrument.params = {0.25f, 3.0f};
@@ -176,4 +176,28 @@ TEST_CASE("A track's instrument round-trips through JSON", "[core][json][instrum
     REQUIRE(loaded->tracks.size() == 1);
     CHECK(loaded->tracks[0].instrument == p.tracks[0].instrument);
     CHECK(loaded->nextId > t.instrument.id);
+}
+
+TEST_CASE("MIDI tracks keep their target and channel; older project versions are refused",
+          "[core][json][instrument]")
+{
+    Project p;
+    Track channel;
+    channel.id = p.allocateId();
+    channel.kind = TrackKind::instrument;
+    Track midi;
+    midi.id = p.allocateId();
+    midi.kind = TrackKind::midi;
+    midi.midiTarget = channel.id;
+    midi.midiChannel = 10;
+    p.tracks = {midi, channel};
+    const auto loaded = projectFromJson(projectToJson(p));
+    REQUIRE(loaded.has_value());
+    CHECK(loaded->tracks[0].midiTarget == channel.id);
+    CHECK(loaded->tracks[0].midiChannel == 10);
+    CHECK(loaded->tracks[1].isInstrument());
+
+    std::string error;
+    CHECK_FALSE(projectFromJson(R"({"format":"aural.project","version":1})", &error).has_value());
+    CHECK(error.find("older version of Aural") != std::string::npos);
 }

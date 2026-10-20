@@ -149,17 +149,12 @@ public:
                 session_->setCountInBars(0);
             else if (arg == "--midi-track" || (arg == "--midi-track-with" && i + 1 < tokens.size()))
             {
-                // A MIDI track with the built-in synth (or the given instrument type)
-                // and a four-note clip.
-                const auto trackId = session_->addMidiTrack();
-                if (arg == "--midi-track-with")
-                {
-                    const auto type = tokens.getReference(++i).text.unquoted().toStdString();
-                    core::Insert instrument;
-                    instrument.type = type;
-                    instrument.params = plugins::defaultParameters(type);
-                    session_->execute(std::make_unique<core::SetInstrument>(trackId, instrument));
-                }
+                // An instrument track (Aurora, or the given instrument type) with a
+                // four-note clip on its MIDI track.
+                const auto type = arg == "--midi-track-with"
+                                      ? tokens.getReference(++i).text.unquoted().toStdString()
+                                      : std::string{};
+                const auto trackId = session_->addMidiTrack(type);
                 const auto beat = static_cast<core::SamplePosition>(
                     core::samplesPerBeat(session_->project().sampleRate,
                                          session_->project().tempoBpm,
@@ -258,6 +253,8 @@ public:
                 core::Id first = core::invalidId, firstTrack = core::invalidId;
                 for (const auto& track : session_->project().tracks)
                 {
+                    if (!track.hasAudio())
+                        continue; // a MIDI track has no audio to process
                     core::Insert insert;
                     insert.type = type;
                     insert.params = plugins::defaultParameters(type);
