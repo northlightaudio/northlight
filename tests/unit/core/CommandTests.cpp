@@ -188,6 +188,8 @@ TEST_CASE("Buses, routing and sends are added, changed and undone", "[core][comm
     stack.execute(p, std::make_unique<SetSend>(track, bus, 0.25f, false)); // update
     stack.execute(p, std::make_unique<SetPhaseInvert>(track, true));
     stack.execute(p, std::make_unique<SetColour>(track, 0xff336699u));
+    stack.execute(p, std::make_unique<SetChannelHeight>(track, 120));
+    stack.execute(p, std::make_unique<SetChannelHeight>(bus, 40)); // FX tracks have rows too
     stack.execute(p, std::make_unique<SetTrackGain>(bus, 0.7f)); // fader commands work on buses
     stack.execute(p, std::make_unique<SetMasterGain>(0.9f));
     CHECK(p.tracks[0].outputBus == bus);
@@ -195,6 +197,8 @@ TEST_CASE("Buses, routing and sends are added, changed and undone", "[core][comm
     CHECK(p.tracks[0].sends[0] == Send{bus, 0.25f, false});
     CHECK(p.tracks[0].phaseInvert);
     CHECK(p.tracks[0].colour == 0xff336699u);
+    CHECK(p.tracks[0].height == 120);
+    CHECK(p.buses[0].height == 40);
     CHECK(p.buses[0].gain == 0.7f);
     CHECK(p.master.gain == 0.9f);
 
@@ -221,6 +225,7 @@ TEST_CASE("Buses, routing and sends are added, changed and undone", "[core][comm
     CHECK(p.tracks[0].sends.empty());
     CHECK_FALSE(p.tracks[0].phaseInvert);
     CHECK(p.tracks[0].colour == 0);
+    CHECK(p.tracks[0].height == 0);
     CHECK(p.master.gain == 1.0f);
 
     CHECK_THROWS(SetOutputBus(track, 999).apply(p));

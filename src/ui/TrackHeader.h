@@ -67,6 +67,9 @@ public:
 
     void paint(juce::Graphics& g) override;
     void resized() override;
+    // The bottom edge belongs to the arrange view, which resizes the row there.
+    bool hitTest(int x, int y) override { return y < getHeight() - resizeEdge && x >= 0; }
+    static constexpr int resizeEdge = 3;
     void mouseDown(const juce::MouseEvent& e) override;
     void mouseDrag(const juce::MouseEvent& e) override;
     void mouseUp(const juce::MouseEvent& e) override;

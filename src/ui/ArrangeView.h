@@ -212,6 +212,9 @@ private:
     int rulerHeight = 32;  // size.ruler: the markers row over the bars row
     int headerWidth = 220; // size.trackHeaderWidth; the boundary drags 160..360
     int rowHeight = 56;    // size.trackRow; the corner stepper cycles min/default/large
+    // A row being resized: its channel and the height it shows until release.
+    core::Id resizeChannel_ = core::invalidId;
+    int resizeHeight_ = 0, resizeStartHeight_ = 0;
     int scrollbarHeight = 10;
     int scrollbarWidth = 10;
     static constexpr int markersRowHeight = 14;
@@ -238,6 +241,7 @@ private:
         loopEnd,      // its right handle
         timeSelect,   // Shift+drag in the bars row: a time range
         headerResize, // the boundary between headers and lanes
+        rowResize,    // a row's bottom edge: that track's height
         pan,          // the middle button drags the view
     };
 
@@ -303,7 +307,10 @@ private:
                                          core::SamplePosition original = 0);
 
     // ----- editing helpers --------------------------------------------------------
-    int rowAtY(int y) const noexcept; // track index or -1
+    int rowAtY(int y) const noexcept;                    // track index or -1
+    int rowHeightOf(int row) const noexcept;             // a row's height (its own, or the default)
+    int rowTop(int row) const noexcept;                  // a row's top edge in view coordinates
+    int resizeEdgeAt(juce::Point<int> p) const noexcept; // the row whose bottom edge is at p, or -1
     juce::Rectangle<int> rowBounds(int row) const noexcept;
     juce::Rectangle<int> clipBounds(const core::AudioClip& clip, int row) const noexcept;
     juce::Rectangle<int>

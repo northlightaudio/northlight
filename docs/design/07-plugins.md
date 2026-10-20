@@ -146,6 +146,12 @@ it, when it plays none), or a new instrument track.
   instrument. It has no Send to. An instrument channel's header has no input or
   arm; its lane reads "Instrument channel: Pulsar ← Drums, Fills". An output
   track's lane reads "Output 3/4 of Drums: Pulsar".
+- **Editor panel sends**: a SENDS section ends the strip, after the inserts and
+  the channel strip: a card per send with the bus's colour and name, a vertical
+  fader (the mixer's law) with the level under it, Pre/Post and a remove button,
+  then a "+ Send" slot listing the FX tracks and groups the channel can feed (not
+  ones that would loop back into it; ones it already feeds are ticked). A MIDI
+  track has no sends; its instrument channel's show instead.
 - **Editor panel**: selecting a MIDI track shows the instrument channel it plays,
   titled "MIDI 1 → Drums: Pulsar"; a MIDI track that plays nothing shows a
   "+ Instrument" slot that makes a channel for it. An instrument channel shows an

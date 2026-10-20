@@ -239,7 +239,10 @@ boundary drags 160..360), a 32 px ruler whose top 14 px row holds the marker
 flags and the punch band and whose bars row holds the numbered bar lines, beat
 and sub-beat ticks (shown once a beat is 12 and 48 px wide), the loop band with
 draggable ends and the time selection; lanes at the row height (28, 56 or 112
-px from the corner stepper) with alternating fills, the grid under the clips,
+px from the corner stepper, or the track's own height from 28 to 240 px: drag a
+row's bottom edge under its header or across its lane, double-click the edge to
+go back to the default; `Channel::height`, saved with the project, set by the
+undoable `SetChannelHeight`) with alternating fills, the grid under the clips,
 hover and selected fills and loop/punch bands at half alpha. Clips are drawn in
 the track's palette colour: an 18 px header at the header alpha with the name,
 the body at the body alpha, the waveform (one min/max column per pixel from the

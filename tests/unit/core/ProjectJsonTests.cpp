@@ -31,6 +31,7 @@ Project sampleProject()
     u.monitor = MonitorMode::on;
     u.phaseInvert = true;
     u.colour = 0xffaa5500u;
+    u.height = 96; // a row resized in the arrange view
     u.outputBus = 5;
     u.sends.push_back({6, 0.3f, true});
     p.tracks.push_back(u);
@@ -43,6 +44,7 @@ Project sampleProject()
     Bus verb;
     verb.id = 6;
     verb.name = "Reverb";
+    verb.height = 40;
     p.buses.push_back(verb);
     p.groups.push_back(Group{7, "Rhythm", 0xff22aa66u});
     Track keys;

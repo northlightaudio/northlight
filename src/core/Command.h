@@ -574,6 +574,22 @@ private:
     std::uint32_t value_, previous_ = 0;
 };
 
+// A track's (or FX track's) row height in the arrange view; 0 returns it to
+// the view's default.
+class SetChannelHeight final : public Command
+{
+public:
+    bool isLive() const noexcept override { return true; }
+    SetChannelHeight(Id channelId, int height);
+    std::string name() const override { return "Resize track"; }
+    void apply(Project&) override;
+    void revert(Project&) override;
+
+private:
+    Id channelId_;
+    int value_, previous_ = 0;
+};
+
 class SetMasterGain final : public Command
 {
 public:

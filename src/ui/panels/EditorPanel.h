@@ -66,6 +66,7 @@ public:
 
 private:
     class Card;
+    class SendCard;
     void rebuild();
     void timerCallback() override;
     void showAddMenu();
@@ -76,6 +77,9 @@ private:
     int insertIndexForX(int stripX) const;
     void reorderCard(core::Id insertId, juce::Point<int> screen, bool released);
     void addInsert(const std::string& type, int index);
+    // The sends: one card per send after the inserts and the strip.
+    void rebuildSends(const core::Channel* ch, bool& shape);
+    void showAddSendMenu();
 
     const Theme& theme_;
     const core::Project* project_ = nullptr;
@@ -104,6 +108,9 @@ private:
     std::unique_ptr<Card> instrumentCard_; // the instrument slot, filled
     AddSlot addInstrument_{theme_, "Instrument"};
     int instrumentX_ = 0;
+    std::vector<std::unique_ptr<SendCard>> sendCards_;
+    AddSlot addSend_{theme_, "Send"};
+    int sendsX_ = 0;
     std::vector<core::Id> builtOrder_;
     int dropIndex_ = -1; // the insertion index while a plugin or card is dragged over
     double lastTickMs_ = 0.0;

@@ -3,6 +3,8 @@
 #include "plugins/BuiltIns.h"
 #include "ui/AuralLookAndFeel.h"
 #include "ui/PluginMenu.h"
+#include "ui/components/Fader.h"
+#include "ui/components/SegmentedControl.h"
 #include "ui/strip/BuiltInCards.h"
 
 #include <map>
@@ -447,6 +449,132 @@ private:
     std::unique_ptr<strip::ModuleCard> body_; // a built-in's editor
 };
 
+// ----- a send ----------------------------------------------------------------------------------
+
+// One send: the bus it feeds (name, in its colour), a fader for the level with
+// its value under it, Pre/Post (where it taps the channel) and a remove button.
+class EditorPanel::SendCard final : public juce::Component, public juce::SettableTooltipClient
+{
+public:
+    SendCard(EditorPanel& owner, const Theme& theme, core::Id channelId, core::Id busId)
+        : owner_(owner), theme_(theme), channelId_(channelId), busId_(busId), fader_(theme), tap_(theme),
+          remove_(theme, Icon::close, "Remove this send")
+    {
+        fader_.onDragStart = [this]
+        {
+            if (owner_.onGestureBegin)
+                owner_.onGestureBegin("Send level");
+        };
+        fader_.onDragEnd = [this]
+        {
+            if (owner_.onGestureEnd)
+                owner_.onGestureEnd();
+        };
+        fader_.onGainChanged = [this](float gain)
+        {
+            level_ = gain;
+            repaint(valueArea());
+            if (!updating_ && owner_.onCommand)
+                owner_.onCommand(std::make_unique<core::SetSend>(channelId_, busId_, gain, pre_));
+        };
+        addAndMakeVisible(fader_);
+        tap_.setSegments({"Pre", "Post"});
+        tap_.onChange = [this](int index)
+        {
+            if (!updating_ && owner_.onCommand)
+                owner_.onCommand(std::make_unique<core::SetSend>(channelId_, busId_, level_, index == 0));
+        };
+        addAndMakeVisible(tap_);
+        remove_.setSize(theme_.sizes.controlCompact, theme_.sizes.controlCompact);
+        remove_.onClick = [this]
+        {
+            if (owner_.onCommand)
+                owner_.onCommand(std::make_unique<core::RemoveSend>(channelId_, busId_));
+        };
+        addAndMakeVisible(remove_);
+    }
+
+    core::Id busId() const noexcept { return busId_; }
+    static int preferredWidth() noexcept { return 88; }
+
+    void refresh(const core::Send& send, const core::Bus* bus)
+    {
+        const juce::ScopedValueSetter<bool> guard(updating_, true);
+        level_ = send.level;
+        pre_ = send.preFader;
+        name_ = juce::String::fromUTF8(bus != nullptr && !bus->name.empty() ? bus->name.c_str() : "Bus");
+        colour_ = bus != nullptr && bus->colour != 0 ? juce::Colour(bus->colour) : theme_.colours.accent;
+        fader_.setTrackColour(colour_);
+        fader_.setGain(send.level, juce::dontSendNotification);
+        tap_.setSelected(pre_ ? 0 : 1, juce::dontSendNotification);
+        setTooltip(name_ + (pre_ ? " (pre-fader: ignores the channel's fader)"
+                                 : " (post-fader: follows the channel's fader)"));
+        repaint();
+    }
+
+    void paint(juce::Graphics& g) override
+    {
+        const auto& c = theme_.colours;
+        const auto bounds = getLocalBounds().toFloat();
+        g.setColour(c.surface1);
+        g.fillRoundedRectangle(bounds, theme_.radius.md);
+        g.setColour(c.lineSubtle);
+        g.drawRoundedRectangle(bounds.reduced(0.5f), theme_.radius.md, 1.0f);
+        // The header: the bus's colour and name.
+        auto header = getLocalBounds().removeFromTop(theme_.sizes.control).reduced(theme_.spacing.sm, 0);
+        header.removeFromRight(theme_.sizes.controlCompact);
+        const auto dot = header.removeFromLeft(8).toFloat().withSizeKeepingCentre(8.0f, 8.0f);
+        g.setColour(colour_);
+        g.fillEllipse(dot);
+        header.removeFromLeft(theme_.spacing.xs);
+        g.setFont(theme_.label());
+        g.setColour(c.textPrimary);
+        g.drawText(name_, header, juce::Justification::centredLeft, true);
+        // The level under the fader.
+        const float db = level_ > 0.0f ? 20.0f * std::log10(level_) : -1000.0f;
+        juce::String text = db < -99.0f ? juce::String::fromUTF8("ââ")
+                                        : (db > 0.05f ? "+" : "") + juce::String(db, 1);
+        g.setFont(theme_.caption());
+        g.setColour(c.textSecondary);
+        g.drawText(text + " dB", valueArea(), juce::Justification::centred);
+    }
+
+    void resized() override
+    {
+        auto area = getLocalBounds();
+        auto header =
+            area.removeFromTop(theme_.sizes.control)
+                .reduced(theme_.spacing.xs, (theme_.sizes.control - theme_.sizes.controlCompact) / 2);
+        remove_.setBounds(header.removeFromRight(theme_.sizes.controlCompact));
+        area = area.reduced(theme_.spacing.sm, 0);
+        tap_.setBounds(area.removeFromBottom(theme_.sizes.controlCompact + theme_.spacing.sm)
+                           .withTrimmedBottom(theme_.spacing.sm));
+        area.removeFromBottom(valueHeight); // the value line
+        fader_.setBounds(area.withTrimmedBottom(theme_.spacing.xxs));
+    }
+
+private:
+    static constexpr int valueHeight = 18;
+    juce::Rectangle<int> valueArea() const
+    {
+        return getLocalBounds()
+            .reduced(theme_.spacing.sm, 0)
+            .withTrimmedBottom(theme_.sizes.controlCompact + theme_.spacing.sm)
+            .removeFromBottom(valueHeight);
+    }
+
+    EditorPanel& owner_;
+    const Theme& theme_;
+    core::Id channelId_, busId_;
+    Fader fader_;
+    SegmentedControl tap_;
+    IconButton remove_;
+    juce::String name_;
+    juce::Colour colour_;
+    float level_ = 1.0f;
+    bool pre_ = false, updating_ = false;
+};
+
 // ----- the panel --------------------------------------------------------------------------------
 
 EditorPanel::EditorPanel(const Theme& theme) : theme_(theme), stripView_(theme)
@@ -486,6 +614,11 @@ EditorPanel::EditorPanel(const Theme& theme) : theme_(theme), stripView_(theme)
                    juce::Rectangle<int>(
                        insertsX_ + theme_.spacing.xxs, 0, 120, strip::ChannelStripView::captionHeight),
                    juce::Justification::centredLeft);
+        if (addSend_.isVisible())
+            g.drawText("SENDS",
+                       juce::Rectangle<int>(
+                           sendsX_ + theme_.spacing.xxs, 0, 120, strip::ChannelStripView::captionHeight),
+                       juce::Justification::centredLeft);
     };
     viewport_.setViewedComponent(&strip_, false);
     viewport_.setScrollBarsShown(false, true);
@@ -496,6 +629,9 @@ EditorPanel::EditorPanel(const Theme& theme) : theme_(theme), stripView_(theme)
     addInstrument_.setTooltip("Choose the instrument this track's MIDI plays");
     addInstrument_.onClick = [this] { showInstrumentMenu(addInstrument_); };
     strip_.addChildComponent(addInstrument_);
+    addSend_.setTooltip("Send this channel to an FX track or a bus");
+    addSend_.onClick = [this] { showAddSendMenu(); };
+    strip_.addChildComponent(addSend_);
     startTimerHz(60);
 }
 
@@ -504,6 +640,7 @@ EditorPanel::~EditorPanel()
     stopTimer();
     instrumentCard_.reset();
     cards_.clear();
+    sendCards_.clear();
     stripView_.setChannel(nullptr);
 }
 
@@ -602,11 +739,12 @@ void EditorPanel::rebuild()
     const bool stripShown = ch != nullptr && !ch->strip.empty();
     const bool preInserts = ch != nullptr && ch->stripPreInserts;
     stripView_.setChannel(ch);
-    const bool shape = !same || add_.isVisible() != (ch != nullptr) || stripView_.isVisible() != stripShown ||
+    bool shape = !same || add_.isVisible() != (ch != nullptr) || stripView_.isVisible() != stripShown ||
                        stripWidth != stripView_.preferredWidth() || preInserts != laidOutPreInserts_;
     add_.setVisible(ch != nullptr);
     stripView_.setVisible(stripShown);
     laidOutPreInserts_ = preInserts;
+    rebuildSends(ch, shape);
     if (shape)
     {
         resized();
@@ -854,8 +992,83 @@ void EditorPanel::resized()
     x += addW + theme_.spacing.xl;
     if (!stripFirst)
         placeStrip();
+    // The sends last: they tap the channel after its fader (or, pre-fader, just before it).
+    sendsX_ = x;
+    if (addSend_.isVisible())
+    {
+        for (auto& card : sendCards_)
+        {
+            card->setBounds(x, theme_.spacing.xs + caption, SendCard::preferredWidth(), h - caption);
+            x += SendCard::preferredWidth() + theme_.spacing.sm;
+        }
+        addSend_.setBounds(x, theme_.spacing.xs + caption, SendCard::preferredWidth(), h - caption);
+        x += SendCard::preferredWidth() + theme_.spacing.xl;
+    }
     strip_.setSize(std::max(x, area.getWidth()), h + theme_.spacing.sm);
     strip_.repaint();
+}
+
+void EditorPanel::rebuildSends(const core::Channel* ch, bool& shape)
+{
+    // A MIDI track makes no audio, so it has nothing to send.
+    const auto* track = ch != nullptr && project_ != nullptr ? project_->findTrack(ch->id) : nullptr;
+    const bool shown = ch != nullptr && (track == nullptr || track->hasAudio());
+    std::vector<core::Id> order;
+    if (shown)
+        for (const auto& send : ch->sends)
+            order.push_back(send.bus);
+    bool same = shown == addSend_.isVisible() && order.size() == sendCards_.size();
+    for (size_t i = 0; same && i < order.size(); ++i)
+        same = sendCards_[i]->busId() == order[i];
+    if (!same)
+    {
+        sendCards_.clear();
+        for (const auto bus : order)
+        {
+            auto card = std::make_unique<SendCard>(*this, theme_, ch->id, bus);
+            strip_.addAndMakeVisible(*card);
+            sendCards_.push_back(std::move(card));
+        }
+        addSend_.setVisible(shown);
+        shape = true;
+    }
+    for (size_t i = 0; i < sendCards_.size(); ++i)
+        sendCards_[i]->refresh(ch->sends[i], project_->findBus(ch->sends[i].bus));
+}
+
+// The buses and FX tracks this channel can send to: those that would not feed
+// it back into itself, with the ones it already sends to ticked.
+void EditorPanel::showAddSendMenu()
+{
+    const auto* ch = channel();
+    if (ch == nullptr || project_ == nullptr)
+        return;
+    juce::PopupMenu menu;
+    std::vector<core::Id> targets;
+    for (const auto& bus : project_->buses)
+    {
+        if (bus.id == ch->id || project_->wouldCycle(ch->id, bus.id))
+            continue;
+        const bool has = ch->findSend(bus.id) != nullptr;
+        targets.push_back(bus.id);
+        menu.addItem(static_cast<int>(targets.size()),
+                     juce::String::fromUTF8(bus.name.empty() ? "Bus" : bus.name.c_str()) +
+                         (bus.fx ? "" : "  (group)"),
+                     !has,
+                     has);
+    }
+    if (targets.empty())
+        menu.addItem(-1, "No FX tracks yet (add one from the track list)", false);
+    juce::Component::SafePointer<EditorPanel> safe(this);
+    const core::Id channelId = ch->id;
+    menu.showMenuAsync(juce::PopupMenu::Options().withTargetComponent(addSend_),
+                       [safe, targets, channelId](int choice)
+                       {
+                           if (safe != nullptr && choice >= 1 &&
+                               static_cast<size_t>(choice) <= targets.size() && safe->onCommand)
+                               safe->onCommand(std::make_unique<core::SetSend>(
+                                   channelId, targets[static_cast<size_t>(choice) - 1], 1.0f, false));
+                       });
 }
 
 void EditorPanel::showAddMenu()

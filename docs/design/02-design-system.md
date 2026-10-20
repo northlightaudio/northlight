@@ -366,7 +366,9 @@ cursor; double-click resets to default size. Panels snap closed below `panelMin`
 
 Designed at 100%; verified at 125, 150, 200. All sizes scale uniformly; nothing
 reflows except panels, which can be hidden. Minimum window 1280×720 at 100%. Track
-row heights are user-adjustable between `trackRowMin` and `trackRowLarge`.
+row heights are user-adjustable between `trackRowMin` and `trackRowLarge` for all
+tracks (the corner stepper), and per track between `trackRowMin` and `trackRowMax`
+(drag the row's bottom edge).
 
 ## 2.9 Light theme
 

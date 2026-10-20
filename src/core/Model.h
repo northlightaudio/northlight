@@ -205,6 +205,7 @@ struct Channel
     bool solo = false;
     bool phaseInvert = false;
     std::uint32_t colour = 0; // 0xAARRGGBB, 0 = default
+    int height = 0;           // the arrange row's height in pixels, 0 = the view's default
     Id outputBus = invalidId; // invalidId routes to the master
     Id group = invalidId;     // fader group membership
     std::vector<Send> sends;

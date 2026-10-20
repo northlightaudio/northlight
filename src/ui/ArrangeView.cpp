@@ -187,8 +187,9 @@ void ArrangeView::setSelectedTrack(core::Id trackId)
     if (selectedTrack_ == trackId)
         return;
     selectedTrack_ = trackId;
-    for (auto& header : headers_)
-        header->setSelected(header->trackId() == trackId);
+    for (auto* list : {&headers_, &fxHeaders_})
+        for (auto& header : *list)
+            header->setSelected(header->trackId() == trackId);
     repaint();
 }
 
@@ -328,13 +329,15 @@ void ArrangeView::setMonitoringStates(const std::vector<bool>& monitoring, bool 
 void ArrangeView::layoutHeaders()
 {
     int y = rulerHeight - verticalScroll_;
+    int row = 0;
     for (auto* list : {&headers_, &fxHeaders_})
         for (auto& header : *list)
         {
-            const bool visible = y + rowHeight > rulerHeight && y < getHeight() - scrollbarHeight;
+            const int h = rowHeightOf(row++);
+            const bool visible = y + h > rulerHeight && y < getHeight() - scrollbarHeight;
             header->setVisible(visible);
-            header->setBounds(0, y, headerWidth, rowHeight);
-            y += rowHeight;
+            header->setBounds(0, y, headerWidth, h);
+            y += h;
         }
 }
 
@@ -432,7 +435,10 @@ const core::Channel* ArrangeView::channelAtRow(int row) const
 
 int ArrangeView::contentHeight() const noexcept
 {
-    return rowCount() * rowHeight;
+    int total = 0;
+    for (int row = 0, n = rowCount(); row < n; ++row)
+        total += rowHeightOf(row);
+    return total;
 }
 
 void ArrangeView::setVerticalScroll(int firstRowPixel)
@@ -561,6 +567,15 @@ void ArrangeView::mouseDown(const juce::MouseEvent& e)
         drag_ = Drag::pan;
         panScroll_ = scroll_;
         panVertical_ = verticalScroll_;
+        return;
+    }
+    // A row's bottom edge (under its header or across its lane) resizes that track.
+    if (const int edge = resizeEdgeAt(e.getPosition()); edge >= 0 && !e.mods.isPopupMenu())
+    {
+        resizeStartHeight_ = rowHeightOf(edge);
+        resizeHeight_ = resizeStartHeight_;
+        resizeChannel_ = channelAtRow(edge)->id;
+        drag_ = Drag::rowResize;
         return;
     }
     if (e.x < headerWidth || e.x >= getWidth() - scrollbarWidth || e.y >= getHeight() - scrollbarHeight)
@@ -716,6 +731,20 @@ void ArrangeView::mouseDrag(const juce::MouseEvent& e)
             resized();
             layoutHeaders();
             break;
+        case Drag::rowResize:
+        {
+            const int h = std::clamp(
+                resizeStartHeight_ + e.y - dragStart_.y, theme_.sizes.trackRowMin, theme_.sizes.trackRowMax);
+            if (h != resizeHeight_)
+            {
+                resizeHeight_ = h;
+                layoutHeaders();
+                updateScrollbar();
+                automation_.repaint();
+                repaint();
+            }
+            break;
+        }
         case Drag::pan:
             setScroll(panScroll_ -
                       static_cast<core::SamplePosition>((e.x - dragStart_.x) * samplesPerPixel_));
@@ -855,6 +884,21 @@ void ArrangeView::mouseUp(const juce::MouseEvent& e)
     const auto before = selection_;
     switch (drag)
     {
+        case Drag::rowResize:
+        {
+            const auto channel = resizeChannel_;
+            resizeChannel_ = core::invalidId;
+            if (resizeHeight_ != resizeStartHeight_ && project_ != nullptr &&
+                project_->findChannel(channel) != nullptr)
+            {
+                std::vector<std::unique_ptr<core::Command>> commands;
+                commands.push_back(std::make_unique<core::SetChannelHeight>(channel, resizeHeight_));
+                emit(std::move(commands), "Resize track");
+            }
+            layoutHeaders();
+            updateScrollbar();
+            break;
+        }
         case Drag::headerResize:
         case Drag::zoom:
         case Drag::pan:
@@ -929,8 +973,14 @@ void ArrangeView::mouseUp(const juce::MouseEvent& e)
         case Drag::none:
             break;
     }
-    if (selection_ != before && onSelectionChanged)
-        onSelectionChanged();
+    if (selection_ != before)
+    {
+        // A clip picked on another track moves the track selection with it.
+        if (!selection_.empty())
+            setSelectedTrack(selection_.back().track);
+        if (onSelectionChanged)
+            onSelectionChanged();
+    }
     repaint();
 }
 
@@ -941,6 +991,11 @@ void ArrangeView::mouseMove(const juce::MouseEvent& e)
     if (e.y >= rulerHeight && std::abs(e.x - headerWidth) <= 2)
     {
         setMouseCursor(juce::MouseCursor::LeftRightResizeCursor);
+        return;
+    }
+    if (resizeEdgeAt(e.getPosition()) >= 0)
+    {
+        setMouseCursor(juce::MouseCursor::UpDownResizeCursor);
         return;
     }
     if (e.y < rulerHeight)
@@ -1584,7 +1639,8 @@ void ArrangeView::paint(juce::Graphics& g)
         int row = 0;
         for (const auto& track : project_->tracks)
         {
-            const juce::Rectangle<int> lane(headerWidth, y, lanesArea.getWidth(), rowHeight);
+            const int h = rowHeightOf(row);
+            const juce::Rectangle<int> lane(headerWidth, y, lanesArea.getWidth(), h);
             if (lane.getBottom() >= rulerHeight && lane.getY() <= getHeight())
             {
                 if (track.id == selectedTrack_)
@@ -1600,22 +1656,23 @@ void ArrangeView::paint(juce::Graphics& g)
                     g.fillRect(lane);
                 }
                 g.setColour(c.lineSubtle);
-                g.fillRect(lane.withTrimmedTop(rowHeight - 1));
+                g.fillRect(lane.withTrimmedTop(h - 1));
             }
-            y += rowHeight;
+            y += h;
             ++row;
         }
         // FX tracks: a lane with no clips, saying who feeds it.
         for (const auto* fx : fxTracks())
         {
-            const juce::Rectangle<int> lane(headerWidth, y, lanesArea.getWidth(), rowHeight);
+            const int h = rowHeightOf(row);
+            const juce::Rectangle<int> lane(headerWidth, y, lanesArea.getWidth(), h);
             if (lane.getBottom() >= rulerHeight && lane.getY() <= getHeight())
             {
                 g.setColour(fx->id == selectedTrack_ ? c.laneSelected
                                                      : (row % 2 == 1 ? c.laneAlt : c.canvas));
                 g.fillRect(lane);
                 g.setColour(c.lineSubtle);
-                g.fillRect(lane.withTrimmedTop(rowHeight - 1));
+                g.fillRect(lane.withTrimmedTop(h - 1));
                 int senders = 0;
                 const auto counts = [&](const core::Channel& ch)
                 {
@@ -1631,10 +1688,10 @@ void ArrangeView::paint(juce::Graphics& g)
                 g.drawText(senders == 0 ? juce::String("FX track: no sends yet (a track's menu, Send to)")
                                         : "FX track: " + juce::String(senders) +
                                               (senders == 1 ? " channel sends here" : " channels send here"),
-                           lane.reduced(theme_.spacing.sm, 0).withHeight(std::min(rowHeight, 24)),
+                           lane.reduced(theme_.spacing.sm, 0).withHeight(std::min(h, 24)),
                            juce::Justification::centredLeft);
             }
-            y += rowHeight;
+            y += h;
             ++row;
         }
         drawGrid(g, lanesArea, false);
@@ -1657,9 +1714,11 @@ void ArrangeView::paint(juce::Graphics& g)
         }
 
         y = rulerHeight - verticalScroll_;
+        row = 0;
         for (const auto& track : project_->tracks)
         {
-            const juce::Rectangle<int> lane(headerWidth, y, lanesArea.getWidth(), rowHeight);
+            const int h = rowHeightOf(row++);
+            const juce::Rectangle<int> lane(headerWidth, y, lanesArea.getWidth(), h);
             if (lane.getBottom() >= rulerHeight && lane.getY() <= getHeight())
             {
                 for (const auto& clip : track.clips)
@@ -1705,7 +1764,7 @@ void ArrangeView::paint(juce::Graphics& g)
                         text, lane.withTrimmedLeft(theme_.spacing.sm), juce::Justification::centredLeft);
                 }
             }
-            y += rowHeight;
+            y += h;
         }
         g.restoreState();
     }
@@ -1782,7 +1841,7 @@ void ArrangeView::paint(juce::Graphics& g)
     // The reorder insertion line over the headers.
     if (reorderFrom_ != core::invalidId && reorderTo_ >= 0)
     {
-        const int ly = rulerHeight - verticalScroll_ + reorderTo_ * rowHeight;
+        const int ly = rowTop(reorderTo_);
         g.setColour(c.accent);
         g.fillRect(0, ly - 1, headerWidth, 2);
     }
@@ -1858,13 +1917,57 @@ int ArrangeView::rowAtY(int y) const noexcept
 {
     if (project_ == nullptr || y < rulerHeight || y >= getHeight() - scrollbarHeight)
         return -1;
-    const int row = (y - rulerHeight + verticalScroll_) / rowHeight;
-    return row >= 0 && static_cast<size_t>(row) < project_->tracks.size() ? row : -1;
+    int top = rulerHeight - verticalScroll_;
+    for (int row = 0, n = static_cast<int>(project_->tracks.size()); row < n; ++row)
+    {
+        const int h = rowHeightOf(row);
+        if (y >= top && y < top + h)
+            return row;
+        top += h;
+    }
+    return -1;
+}
+
+int ArrangeView::rowHeightOf(int row) const noexcept
+{
+    const auto* channel = channelAtRow(row);
+    if (channel == nullptr)
+        return rowHeight;
+    if (channel->id == resizeChannel_)
+        return resizeHeight_;
+    return channel->height > 0
+               ? std::clamp(channel->height, theme_.sizes.trackRowMin, theme_.sizes.trackRowMax)
+               : rowHeight;
+}
+
+int ArrangeView::rowTop(int row) const noexcept
+{
+    int top = rulerHeight - verticalScroll_;
+    for (int i = 0; i < row; ++i)
+        top += rowHeightOf(i);
+    return top;
+}
+
+int ArrangeView::resizeEdgeAt(juce::Point<int> p) const noexcept
+{
+    if (project_ == nullptr || p.y < rulerHeight || p.y >= getHeight() - scrollbarHeight ||
+        p.x >= getWidth() - scrollbarWidth)
+        return -1;
+    int bottom = rulerHeight - verticalScroll_;
+    for (int row = 0, n = rowCount(); row < n; ++row)
+    {
+        bottom += rowHeightOf(row);
+        if (p.y >= bottom - TrackHeader::resizeEdge && p.y <= bottom + 1)
+            return row;
+        if (bottom > p.y + 1)
+            break;
+    }
+    return -1;
 }
 
 juce::Rectangle<int> ArrangeView::rowBounds(int row) const noexcept
 {
-    return {0, rulerHeight - verticalScroll_ + row * rowHeight, getWidth() - scrollbarWidth, rowHeight};
+    return {0, rowTop(row), getWidth() - scrollbarWidth, rowHeightOf(row)};
 }
 
 juce::Rectangle<int> ArrangeView::clipBounds(const core::AudioClip& clip, int row) const noexcept
@@ -2456,11 +2559,10 @@ void ArrangeView::reorderDrag(core::Id trackId, juce::Point<int> screen, bool re
     const auto local = getLocalPoint(nullptr, screen);
     const int count = static_cast<int>(project_->tracks.size());
     // The insertion index: the row boundary nearest the pointer.
-    const int index =
-        std::clamp(static_cast<int>(
-                       std::lround(static_cast<double>(local.y - rulerHeight + verticalScroll_) / rowHeight)),
-                   0,
-                   count);
+    int index = 0;
+    for (int i = 1; i <= count; ++i)
+        if (std::abs(rowTop(i) - local.y) < std::abs(rowTop(index) - local.y))
+            index = i;
     if (!released)
     {
         reorderFrom_ = trackId;
@@ -3230,6 +3332,20 @@ void ArrangeView::renameMarker(core::Id markerId)
 }
 void ArrangeView::mouseDoubleClick(const juce::MouseEvent& e)
 {
+    if (const int edge = resizeEdgeAt(e.getPosition()); edge >= 0)
+    {
+        const auto* channel = channelAtRow(edge);
+        if (channel->height != 0)
+        {
+            std::vector<std::unique_ptr<core::Command>> commands;
+            commands.push_back(std::make_unique<core::SetChannelHeight>(channel->id, 0));
+            emit(std::move(commands), "Reset track height");
+            layoutHeaders();
+            updateScrollbar();
+            repaint();
+        }
+        return;
+    }
     if (e.y < rulerHeight)
     {
         if (const auto* marker = markerAtRulerPoint(e.getPosition()))

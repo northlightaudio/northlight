@@ -52,6 +52,8 @@ void channelToJson(json& j, const Channel& c)
         j["phaseInvert"] = true;
     if (c.colour != 0)
         j["colour"] = c.colour;
+    if (c.height > 0)
+        j["height"] = c.height;
     if (c.outputBus != invalidId)
         j["output"] = c.outputBus;
     if (c.group != invalidId)
@@ -120,6 +122,7 @@ void channelFromJson(const json& j, Channel& c)
     c.solo = j.value("solo", false);
     c.phaseInvert = j.value("phaseInvert", false);
     c.colour = j.value("colour", std::uint32_t{0});
+    c.height = std::max(0, j.value("height", 0));
     c.outputBus = j.value("output", invalidId);
     c.group = j.value("group", invalidId);
     if (const auto it = j.find("sends"); it != j.end() && it->is_array())

@@ -963,6 +963,21 @@ void SetColour::revert(Project& p)
     requireChannel(p, channelId_).colour = previous_;
 }
 
+SetChannelHeight::SetChannelHeight(Id channelId, int height)
+    : channelId_(channelId), value_(std::max(0, height))
+{
+}
+void SetChannelHeight::apply(Project& p)
+{
+    auto& c = requireChannel(p, channelId_);
+    previous_ = c.height;
+    c.height = value_;
+}
+void SetChannelHeight::revert(Project& p)
+{
+    requireChannel(p, channelId_).height = previous_;
+}
+
 SetMasterGain::SetMasterGain(float gain) : value_(gain) {}
 void SetMasterGain::apply(Project& p)
 {

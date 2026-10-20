@@ -1357,12 +1357,12 @@ private:
 
     void selectionChanged(core::Id trackId)
     {
+        // The track the user picked always leads; a selected audio clip only
+        // reaches the inspector when it sits on that track.
         core::Id clipId = core::invalidId;
-        if (!tracks_.selection().empty() && !tracks_.selection().front().midi)
-        {
-            clipId = tracks_.selection().front().clip;
-            trackId = tracks_.selection().front().track;
-        }
+        for (const auto& clip : tracks_.selection())
+            if (!clip.midi && clip.track == trackId)
+                clipId = clip.clip;
         editor_.setChannel(trackId);
         inspector_.setSelection(trackId, clipId);
         mixer_.setSelectedChannel(trackId);

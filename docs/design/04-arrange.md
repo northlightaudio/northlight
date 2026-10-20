@@ -25,6 +25,10 @@ Where the recording and the arrangement live. It must stay legible with 4 tracks
 - **H Track headers**: `size.trackHeaderWidth` 220 default, resizable 160 to 360,
   `surface0`.
 - **L Lanes**: `canvas` background, one lane per track at the track's row height.
+  Each track can have its own height: drag the bottom edge of its header or lane
+  (an up-down cursor shows there), 28 to 240 px; double-click the edge to return to
+  the default the corner stepper sets. The height is saved with the project and
+  the resize is undoable.
 - **Overview strip** (**Decision**: deferred past Phase 7; keep the slot).
 
 ## Ruler
