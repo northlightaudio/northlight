@@ -274,7 +274,13 @@ std::unique_ptr<Snapshot> compileSnapshot(const core::Project& project,
             const int bus = project.busIndex(s.bus);
             const auto& allowed = routing.sendTargets[static_cast<size_t>(index)];
             if (bus >= 0 && std::find(allowed.begin(), allowed.end(), bus) != allowed.end())
-                node.sends.push_back(SendNode{bus, s.level, s.preFader});
+            {
+                SendNode send{bus, s.level, s.preFader};
+                send.keepAliveRuntime = runtimeCache.send(c.id, s.bus);
+                send.runtime = send.keepAliveRuntime.get();
+                send.runtime->targetLevel.store(s.level, std::memory_order_relaxed);
+                node.sends.push_back(std::move(send));
+            }
         }
         for (const auto* chained : c.processingChain())
             if (const auto& i = *chained; auto instance = inserts.get(i))

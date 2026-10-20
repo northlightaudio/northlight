@@ -488,3 +488,20 @@ TEST_CASE_METHOD(
     CHECK(session->project().findTrack(channel)->inserts.size() == 1);
     CHECK(session->insertPlugin(core::invalidId, "aural.reverb").placement == Placement::noChannel);
 }
+
+TEST_CASE_METHOD(SessionFixture,
+                 "Dragging a send's level pushes a value instead of recompiling",
+                 "[app][session]")
+{
+    session->execute(std::make_unique<core::AddTrack>(core::Track{}));
+    const auto track = session->project().tracks.back().id;
+    core::Bus fx;
+    fx.fx = true;
+    session->execute(std::make_unique<core::AddBus>(fx));
+    const auto bus = session->project().buses.back().id;
+    session->execute(std::make_unique<core::SetSend>(track, bus, 1.0f, false));
+    session->takeChange();
+    session->execute(std::make_unique<core::SetSend>(track, bus, 0.5f, false));
+    CHECK(session->takeChange() == ProjectSession::Change::values);
+    CHECK(session->project().findTrack(track)->findSend(bus)->level == 0.5f);
+}

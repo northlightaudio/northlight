@@ -256,6 +256,9 @@ void AudioEngine::applyLiveValues(const core::Project& project)
             runtime->targetGain.store(c.gain, std::memory_order_relaxed);
             runtime->targetPan.store(c.pan, std::memory_order_relaxed);
         }
+        for (const auto& s : c.sends)
+            if (const auto send = runtimes_.findSend(c.id, s.bus))
+                send->targetLevel.store(s.level, std::memory_order_relaxed);
         for (const auto* chained : c.processingChain())
             if (const auto& i = *chained; const auto instance = inserts_.find(i.id))
             {

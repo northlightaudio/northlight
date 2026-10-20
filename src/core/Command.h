@@ -577,6 +577,12 @@ class SetSend final : public Command
 {
 public:
     SetSend(Id channelId, Id busId, float level, bool preFader);
+    // A new send or a pre/post switch changes the graph; a level is a live value.
+    // (Known once applied: the session asks after.)
+    ChangeKind changeKind() const noexcept override
+    {
+        return existed_ && previous_.preFader == value_.preFader ? ChangeKind::values : ChangeKind::structure;
+    }
     std::string name() const override { return "Set send"; }
     void apply(Project&) override;
     void revert(Project&) override;

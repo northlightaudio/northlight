@@ -33,6 +33,15 @@ struct ChannelRuntime
     std::atomic<int> automated{0};
 };
 
+// A send's level, kept across compiles like a channel's gain: a level change is
+// pushed here (the renderer ramps to it over the span) instead of recompiling.
+struct SendRuntime
+{
+    std::atomic<float> targetLevel{1.0f};
+    float level = 1.0f;  // real-time: where the ramp is
+    bool primed = false; // real-time: the first span jumps to the target
+};
+
 // One automation lane's run-time state, kept across compiles: while the user
 // touches its control (writing), the lane is not played.
 struct AutomationRuntime
@@ -101,6 +110,18 @@ public:
             r = std::make_shared<MidiRuntime>();
         return r;
     }
+    std::shared_ptr<SendRuntime> send(core::Id channelId, core::Id busId)
+    {
+        auto& r = sends_[{channelId, busId}];
+        if (r == nullptr)
+            r = std::make_shared<SendRuntime>();
+        return r;
+    }
+    std::shared_ptr<SendRuntime> findSend(core::Id channelId, core::Id busId) const
+    {
+        const auto it = sends_.find({channelId, busId});
+        return it != sends_.end() ? it->second : nullptr;
+    }
     std::shared_ptr<AutomationRuntime> automation(core::Id laneId)
     {
         auto& r = automation_[laneId];
@@ -124,6 +145,7 @@ public:
     {
         std::erase_if(channels_, [](const auto& entry) { return entry.second.use_count() == 1; });
         std::erase_if(buffers_, [](const auto& entry) { return entry.second.use_count() == 1; });
+        std::erase_if(sends_, [](const auto& entry) { return entry.second.use_count() == 1; });
         std::erase_if(midi_, [](const auto& entry) { return entry.second.use_count() == 1; });
         std::erase_if(automation_,
                       [](const auto& entry)
@@ -133,6 +155,7 @@ public:
     {
         channels_.clear();
         buffers_.clear();
+        sends_.clear();
         midi_.clear();
         automation_.clear();
         master_.reset();
@@ -141,6 +164,7 @@ public:
 private:
     std::map<core::Id, std::shared_ptr<ChannelRuntime>> channels_;
     std::map<core::Id, std::shared_ptr<ChannelBuffers>> buffers_;
+    std::map<std::pair<core::Id, core::Id>, std::shared_ptr<SendRuntime>> sends_; // (channel, bus)
     std::map<core::Id, std::shared_ptr<MidiRuntime>> midi_;
     std::map<core::Id, std::shared_ptr<AutomationRuntime>> automation_;
     std::shared_ptr<MasterRuntime> master_;

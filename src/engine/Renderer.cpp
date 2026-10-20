@@ -658,10 +658,21 @@ void Renderer::routeChannel(const Snapshot& snapshot,
         const float* l = nullptr;
         const float* r = nullptr;
         delayed(send.delay, l, r);
+        // The level ramps from where it was to its live target over the span.
+        float from = send.level, to = send.level;
+        if (send.runtime != nullptr)
+        {
+            to = send.runtime->targetLevel.load(std::memory_order_relaxed);
+            from = send.runtime->primed ? send.runtime->level : to;
+            send.runtime->level = to;
+            send.runtime->primed = true;
+        }
+        const float step = numSamples > 0 ? (to - from) / static_cast<float>(numSamples) : 0.0f;
         if (channel.sendsAudible)
             for (int i = 0; i < numSamples; ++i)
             {
-                const float level = send.preFader ? send.level : send.level * gainAt(i);
+                const float sendLevel = from + step * static_cast<float>(i + 1);
+                const float level = send.preFader ? sendLevel : sendLevel * gainAt(i);
                 sl[i] += l[i] * level;
                 sr[i] += r[i] * level;
             }

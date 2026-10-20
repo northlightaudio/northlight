@@ -1084,3 +1084,25 @@ TEST_CASE("Every command undoes to the exact project it started from and redoes 
         CHECK(sameAsBefore());
     }
 }
+
+TEST_CASE("A send's level is a live value; a new send or a pre/post switch changes the graph", "[core][undo]")
+{
+    Project p;
+    Track t;
+    t.id = 1;
+    p.tracks.push_back(t);
+    Bus fx;
+    fx.id = 2;
+    fx.fx = true;
+    p.buses.push_back(fx);
+    p.nextId = 10;
+    SetSend added(1, 2, 0.5f, false);
+    added.apply(p);
+    CHECK(added.changeKind() == Command::ChangeKind::structure);
+    SetSend level(1, 2, 0.25f, false);
+    level.apply(p);
+    CHECK(level.changeKind() == Command::ChangeKind::values);
+    SetSend tap(1, 2, 0.25f, true);
+    tap.apply(p);
+    CHECK(tap.changeKind() == Command::ChangeKind::structure);
+}

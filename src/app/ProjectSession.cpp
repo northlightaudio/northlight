@@ -154,12 +154,13 @@ bool ProjectSession::run(std::unique_ptr<core::Command> command, bool mayWriteAu
             return true; // written into automation, not into the static value
     if (command->capturesInsertState())
         captureInsertStates();
-    const auto kind = command->changeKind();
     std::vector<core::Command::ParameterTouch> touches;
     command->touchedParameters(touches);
     mirrorOwnedParameters(touches);
+    const auto* applied = command.get(); // the undo history keeps it
     if (!applyChecked(std::move(command)))
         return false;
+    const auto kind = applied->changeKind(); // after apply: some commands only know then
     modified_ = true;
     pendingKind_ = std::max(pendingKind_.value_or(core::Command::ChangeKind::cosmetic), kind);
     pendingTouches_.insert(pendingTouches_.end(), touches.begin(), touches.end());

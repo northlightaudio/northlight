@@ -47,7 +47,9 @@ struct SendNode
     int bus = -1; // index into Snapshot::buses
     float level = 1.0f;
     bool preFader = false;
-    DelayLine* delay = nullptr; // compensation on this edge (null = none)
+    DelayLine* delay = nullptr;     // compensation on this edge (null = none)
+    SendRuntime* runtime = nullptr; // the live level (ramped); outlives the snapshot
+    std::shared_ptr<SendRuntime> keepAliveRuntime;
 };
 
 // A lane that plays: its points (a copy) and what it drives.
