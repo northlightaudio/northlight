@@ -3,6 +3,7 @@
 #include "plugins/BuiltIns.h"
 #include "ui/AuralLookAndFeel.h"
 #include "ui/Db.h"
+#include "ui/Motion.h"
 #include "ui/PluginMenu.h"
 #include "ui/SendMenu.h"
 #include "ui/components/Fader.h"
@@ -689,6 +690,7 @@ void EditorPanel::rebuild()
     // inserts, the same strip, sends to the same buses) and the cards hold the
     // channel they edit.
     const bool channelChanged = channelId_ != builtChannel_;
+    rememberBounds(); // where the cards are now, before any is rebuilt
     builtChannel_ = channelId_;
     if (channelChanged)
         sendCards_.clear();
@@ -753,7 +755,9 @@ void EditorPanel::rebuild()
     rebuildSends(ch, shape);
     if (shape || channelChanged)
     {
+        animateLayout_ = !channelChanged; // the same channel's cards changed: they move
         resized();
+        animateLayout_ = false;
         repaint();
     }
     else
@@ -958,32 +962,52 @@ void EditorPanel::resized()
     const bool showStrip = stripView_.isVisible();
     const bool stripFirst = showStrip && ch != nullptr && ch->stripPreInserts;
     int x = theme_.spacing.md;
+    // Each card to its place: eased from where it was when the cards changed
+    // (a new one fades in), else at once.
+    const int ms = animateLayout_ ? theme_.motion.ms(theme_.motion.panelMs) : 0;
+    const auto place = [&](juce::Component& c, juce::Rectangle<int> target, const std::string& key)
+    {
+        auto before = c.getBounds();
+        if (const auto it = previousBounds_.find(key); it != previousBounds_.end())
+            before = it->second;
+        c.setBounds(target);
+        if (ms <= 0)
+            motion::glideIn(c, target, 1.0f, 0); // settles any glide still running
+        else if (before.isEmpty())
+            motion::glideIn(c, target.translated(0, 6), 0.0f, ms);
+        else
+            motion::glideIn(c, before, 1.0f, ms);
+    };
     // The instrument, then the strip and the inserts in signal order, each under
     // its caption.
     instrumentX_ = x;
     if (instrumentCard_ != nullptr)
     {
         const int w = instrumentCard_->preferredWidth();
-        instrumentCard_->setBounds(x,
-                                   theme_.spacing.xs + strip::ChannelStripView::captionHeight,
-                                   w,
-                                   h - strip::ChannelStripView::captionHeight);
+        place(*instrumentCard_,
+              {x,
+               theme_.spacing.xs + strip::ChannelStripView::captionHeight,
+               w,
+               h - strip::ChannelStripView::captionHeight},
+              "instrument");
         x += w + theme_.spacing.xl;
     }
     else if (addInstrument_.isVisible())
     {
         const int w = theme_.sizes.controlLarge * 4;
-        addInstrument_.setBounds(x,
-                                 theme_.spacing.xs + strip::ChannelStripView::captionHeight,
-                                 w,
-                                 h - strip::ChannelStripView::captionHeight);
+        place(addInstrument_,
+              {x,
+               theme_.spacing.xs + strip::ChannelStripView::captionHeight,
+               w,
+               h - strip::ChannelStripView::captionHeight},
+              "addInstrument");
         x += w + theme_.spacing.xl;
     }
     const auto placeStrip = [&]
     {
         if (!showStrip)
             return;
-        stripView_.setBounds(x, theme_.spacing.xs, stripView_.preferredWidth(), h);
+        place(stripView_, {x, theme_.spacing.xs, stripView_.preferredWidth(), h}, "strip");
         x += stripView_.preferredWidth() + theme_.spacing.xl;
     };
     if (stripFirst)
@@ -991,12 +1015,14 @@ void EditorPanel::resized()
     insertsX_ = x;
     for (auto& card : cards_)
     {
-        card->setBounds(x, theme_.spacing.xs + caption, card->preferredWidth(), h - caption);
+        place(*card,
+              {x, theme_.spacing.xs + caption, card->preferredWidth(), h - caption},
+              "insert:" + std::to_string(card->insertId()));
         x += card->preferredWidth() + theme_.spacing.sm;
     }
     // The add slot: an empty card the cards' height.
     const int addW = theme_.sizes.controlLarge * 3;
-    add_.setBounds(x, theme_.spacing.xs + caption, addW, h - caption);
+    place(add_, {x, theme_.spacing.xs + caption, addW, h - caption}, "add");
     x += addW + theme_.spacing.xl;
     if (!stripFirst)
         placeStrip();
@@ -1006,14 +1032,31 @@ void EditorPanel::resized()
     {
         for (auto& card : sendCards_)
         {
-            card->setBounds(x, theme_.spacing.xs + caption, SendCard::preferredWidth(), h - caption);
+            place(*card,
+                  {x, theme_.spacing.xs + caption, SendCard::preferredWidth(), h - caption},
+                  "send:" + std::to_string(card->busId()));
             x += SendCard::preferredWidth() + theme_.spacing.sm;
         }
-        addSend_.setBounds(x, theme_.spacing.xs + caption, SendCard::preferredWidth(), h - caption);
+        place(addSend_, {x, theme_.spacing.xs + caption, SendCard::preferredWidth(), h - caption}, "addSend");
         x += SendCard::preferredWidth() + theme_.spacing.xl;
     }
     strip_.setSize(std::max(x, area.getWidth()), h + theme_.spacing.sm);
     strip_.repaint();
+}
+
+void EditorPanel::rememberBounds()
+{
+    previousBounds_.clear();
+    for (const auto& card : cards_)
+        previousBounds_["insert:" + std::to_string(card->insertId())] = card->getBounds();
+    for (const auto& card : sendCards_)
+        previousBounds_["send:" + std::to_string(card->busId())] = card->getBounds();
+    if (instrumentCard_ != nullptr)
+        previousBounds_["instrument"] = instrumentCard_->getBounds();
+    previousBounds_["addInstrument"] = addInstrument_.getBounds();
+    previousBounds_["strip"] = stripView_.getBounds();
+    previousBounds_["add"] = add_.getBounds();
+    previousBounds_["addSend"] = addSend_.getBounds();
 }
 
 void EditorPanel::rebuildSends(const core::Channel* ch, bool& shape)

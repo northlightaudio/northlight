@@ -14,7 +14,9 @@
 #include <juce_gui_basics/juce_gui_basics.h>
 
 #include <functional>
+#include <map>
 #include <memory>
+#include <string>
 #include <vector>
 
 namespace aural::ui
@@ -112,6 +114,12 @@ private:
     std::vector<std::unique_ptr<SendCard>> sendCards_;
     AddSlot addSend_{theme_, "Send"};
     int sendsX_ = 0;
+    // Card motion: when the cards change (an insert added, removed or moved, a
+    // send added or removed) the layout eases each one from where it was and
+    // fades new ones in; switching channels and resizing stay instant.
+    std::map<std::string, juce::Rectangle<int>> previousBounds_;
+    bool animateLayout_ = false;
+    void rememberBounds();
     std::vector<core::Id> builtOrder_;
     core::Id builtChannel_ = core::invalidId; // the channel the cards were built for
     int dropIndex_ = -1;                      // the insertion index while a plugin or card is dragged over

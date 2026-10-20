@@ -1,6 +1,7 @@
 #include "ui/components/Sheet.h"
 
 #include "ui/AuralLookAndFeel.h"
+#include "ui/Motion.h"
 
 namespace aural::ui
 {
@@ -47,7 +48,30 @@ Sheet* Sheet::show(juce::Component& host,
     sheet->setBounds(host.getLocalBounds());
     sheet->toFront(true);
     sheet->grabKeyboardFocus();
+    sheet->enter();
     return sheet;
+}
+
+void Sheet::enter()
+{
+    const int ms = theme_.motion.ms(theme_.motion.panelMs);
+    if (ms <= 0)
+        return;
+    setAlpha(0.0f);
+    rise_ = 8;
+    resized();
+    juce::Component::SafePointer<Sheet> safe(this);
+    motion::Tween::run(*this,
+                       ms,
+                       [safe](float t)
+                       {
+                           if (safe == nullptr)
+                               return;
+                           safe->setAlpha(t);
+                           safe->rise_ = juce::roundToInt(8.0f * (1.0f - t));
+                           safe->resized();
+                           safe->repaint();
+                       });
 }
 
 void Sheet::finish(int result)
@@ -56,14 +80,32 @@ void Sheet::finish(int result)
         return;
     finished_ = true;
     auto callback = std::move(onResult_);
+    setInterceptsMouseClicks(false, false); // the window behind is live again at once
     juce::Component::SafePointer<Sheet> safe(this);
     juce::MessageManager::callAsync(
         [safe, callback, result]
         {
             if (callback)
                 callback(result);
-            if (safe != nullptr)
-                delete safe.getComponent();
+            if (safe == nullptr)
+                return;
+            // Fade out, then go.
+            auto* sheet = safe.getComponent();
+            motion::Tween::cancel(*sheet);
+            const float from = sheet->getAlpha();
+            motion::Tween::run(
+                *sheet,
+                sheet->theme_.motion.ms(sheet->theme_.motion.menuMs),
+                [safe, from](float t)
+                {
+                    if (safe != nullptr)
+                        safe->setAlpha(from * (1.0f - t));
+                },
+                [safe]
+                {
+                    if (safe != nullptr)
+                        delete safe.getComponent();
+                });
         });
 }
 
@@ -77,9 +119,9 @@ juce::Rectangle<int> Sheet::panelBounds() const
     const int height = theme_.spacing.xl +
                        static_cast<int>(theme_.fonts.size.title * theme_.fonts.lineHeight) +
                        theme_.spacing.md + static_cast<int>(layout.getHeight()) + theme_.spacing.xl +
-                       (contentHeight_ > 0 ? contentHeight_ + theme_.spacing.xl : 0) +
-                       theme_.sizes.control + theme_.spacing.xl;
-    return juce::Rectangle<int>(width, height).withCentre(getLocalBounds().getCentre());
+                       (contentHeight_ > 0 ? contentHeight_ + theme_.spacing.xl : 0) + theme_.sizes.control +
+                       theme_.spacing.xl;
+    return juce::Rectangle<int>(width, height).withCentre(getLocalBounds().getCentre()).translated(0, rise_);
 }
 
 void Sheet::paint(juce::Graphics& g)

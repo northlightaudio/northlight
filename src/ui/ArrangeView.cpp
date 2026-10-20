@@ -5,6 +5,7 @@
 #include "ui/Db.h"
 #include "ui/FrameStats.h"
 #include "ui/Icons.h"
+#include "ui/Motion.h"
 #include "ui/PluginMenu.h"
 
 #include <algorithm>
@@ -119,6 +120,7 @@ void ArrangeView::setProject(const core::Project* project, bool valuesOnly)
     if (project_ == nullptr || project_->findChannel(selectedTrack_) == nullptr) // a track or an FX track
         selectedTrack_ = core::invalidId;
     refreshMissingMedia();
+    animateRowChanges();
     rebuildHeaders();
     updateScrollbar();
     layoutEmptyState();
@@ -341,6 +343,7 @@ void ArrangeView::layoutHeaders()
     for (auto* list : {&headers_, &fxHeaders_})
         for (auto& header : *list)
         {
+            y = rowTop(row);
             const int h = rowHeightOf(row++);
             const bool visible = y + h > rulerHeight && y < getHeight() - scrollbarHeight;
             header->setVisible(visible);
@@ -420,6 +423,111 @@ std::vector<const core::Bus*> ArrangeView::fxTracks() const
     return list;
 }
 
+void ArrangeView::animateRowChanges()
+{
+    // What came and went since the last structural refresh. A few at a time
+    // animate (an add, a remove, an undo); a new project or a large change
+    // just appears.
+    std::vector<core::Id> ids;
+    if (project_ != nullptr)
+    {
+        for (const auto& t : project_->tracks)
+            ids.push_back(t.id);
+        for (const auto& b : project_->buses)
+            if (b.fx)
+                ids.push_back(b.id);
+    }
+    std::vector<core::Id> added, removedIds;
+    std::vector<int> removedAt;
+    for (const auto id : ids)
+        if (std::find(shownRowIds_.begin(), shownRowIds_.end(), id) == shownRowIds_.end())
+            added.push_back(id);
+    for (size_t i = 0; i < shownRowIds_.size(); ++i)
+        if (std::find(ids.begin(), ids.end(), shownRowIds_[i]) == ids.end())
+        {
+            removedIds.push_back(shownRowIds_[i]);
+            removedAt.push_back(static_cast<int>(i));
+        }
+    const int ms = theme_.motion.ms(theme_.motion.panelMs);
+    const bool animate = ms > 0 && !shownRowIds_.empty() && added.size() + removedIds.size() <= 2;
+    if (animate)
+    {
+        juce::Component::SafePointer<ArrangeView> safe(this);
+        for (const auto id : added)
+        {
+            rowGrowth_[id] = 0.0f;
+            motion::Tween::run(
+                *this,
+                ms,
+                [safe, id](float t)
+                {
+                    if (safe == nullptr)
+                        return;
+                    safe->rowGrowth_[id] = t;
+                    safe->rowsValid_ = false;
+                    safe->layoutHeaders();
+                    safe->updateScrollbar();
+                    safe->automation_.repaint();
+                    safe->repaint();
+                },
+                [safe, id]
+                {
+                    if (safe == nullptr)
+                        return;
+                    safe->rowGrowth_.erase(id);
+                    safe->rowsValid_ = false;
+                    safe->layoutHeaders();
+                    safe->repaint();
+                });
+        }
+        if (removedIds.size() == 1)
+        {
+            // Rows above the removed one keep their places; from its place down the
+            // rows start where they were and glide up.
+            int above = 0;
+            for (int i = 0; i < removedAt[0]; ++i)
+                above += std::find(ids.begin(), ids.end(), shownRowIds_[static_cast<size_t>(i)]) != ids.end()
+                             ? 1
+                             : 0;
+            gapRow_ = above;
+            const float height = static_cast<float>(shownRowHeights_[static_cast<size_t>(removedAt[0])]);
+            gapHeight_ = height;
+            motion::Tween::run(
+                *this,
+                ms,
+                [safe, height](float t)
+                {
+                    if (safe == nullptr)
+                        return;
+                    safe->gapHeight_ = height * (1.0f - t);
+                    safe->rowsValid_ = false;
+                    safe->layoutHeaders();
+                    safe->updateScrollbar();
+                    safe->automation_.repaint();
+                    safe->repaint();
+                },
+                [safe]
+                {
+                    if (safe != nullptr)
+                        safe->gapRow_ = -1;
+                });
+        }
+    }
+    rowsValid_ = false;
+    shownRowIds_ = ids;
+    shownRowHeights_.clear();
+    const auto& r = rows();
+    for (size_t i = 0; i + 1 < r.tops.size() && i < ids.size(); ++i)
+    {
+        // The row's own height (not its growth or the gap): what a removal closes.
+        const auto* channel = r.channels[i];
+        int h = rowHeight;
+        if (channel->height > 0)
+            h = std::clamp(channel->height, theme_.sizes.trackRowMin, theme_.sizes.trackRowMax);
+        shownRowHeights_.push_back(h);
+    }
+}
+
 const ArrangeView::RowLayout& ArrangeView::rows() const
 {
     // Built once per change (the project, a height, the default height, a resize
@@ -449,8 +557,16 @@ const ArrangeView::RowLayout& ArrangeView::rows() const
                 h = resizeHeight_;
             else if (channel->height > 0)
                 h = std::clamp(channel->height, theme_.sizes.trackRowMin, theme_.sizes.trackRowMax);
+            if (const auto growing = rowGrowth_.find(channel->id); growing != rowGrowth_.end())
+                h = std::max(1, juce::roundToInt(static_cast<float>(h) * growing->second));
             rows_.tops.push_back(rows_.tops.back() + h);
         }
+        // A removed row's space, closing: everything from its place down sits lower.
+        if (gapRow_ >= 0 && gapHeight_ > 0.0f)
+            for (size_t k = static_cast<size_t>(std::min(gapRow_, static_cast<int>(rows_.tops.size()) - 1));
+                 k < rows_.tops.size();
+                 ++k)
+                rows_.tops[k] += juce::roundToInt(gapHeight_);
     }
     rowsValid_ = true;
     return rows_;
@@ -1708,6 +1824,7 @@ void ArrangeView::paint(juce::Graphics& g)
         for (const auto& track : project_->tracks)
         {
             const int h = rowHeightOf(row);
+            y = rowTop(row);
             const juce::Rectangle<int> lane(headerWidth, y, lanesArea.getWidth(), h);
             if (lane.getBottom() >= rulerHeight && lane.getY() <= getHeight())
             {
@@ -1733,6 +1850,7 @@ void ArrangeView::paint(juce::Graphics& g)
         for (const auto* fx : fxTracks())
         {
             const int h = rowHeightOf(row);
+            y = rowTop(row);
             const juce::Rectangle<int> lane(headerWidth, y, lanesArea.getWidth(), h);
             if (lane.getBottom() >= rulerHeight && lane.getY() <= getHeight())
             {
@@ -1785,6 +1903,7 @@ void ArrangeView::paint(juce::Graphics& g)
         row = 0;
         for (const auto& track : project_->tracks)
         {
+            y = rowTop(row);
             const int h = rowHeightOf(row++);
             const juce::Rectangle<int> lane(headerWidth, y, lanesArea.getWidth(), h);
             if (lane.getBottom() >= rulerHeight && lane.getY() <= getHeight())

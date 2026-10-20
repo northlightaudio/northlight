@@ -25,6 +25,7 @@
 #include "ui/components/Meter.h"
 #include "ui/components/Sheet.h"
 #include "ui/components/Toast.h"
+#include "ui/components/Tooltips.h"
 #include "ui/panels/DiagnosticsPanel.h"
 #include "ui/panels/EditorPanel.h"
 #include "ui/panels/InspectorPanel.h"
@@ -271,11 +272,11 @@ public:
             UserSettings& settings)
         : owner_(owner), audio_(audio), session_(session), settings_(settings), header_(theme_),
           tracks_(session.peakStore()), dock_(theme_, ui::HostKind::dock), side_(theme_, ui::HostKind::side),
-          status_(theme_), toasts_(theme_), dockSplitter_(theme_, true), sideSplitter_(theme_, false),
-          mixer_(
-              session.engine().meters(),
-              [&session] { return session.engine().loudness(); },
-              [&session] { return session.engine().masterMeterSlot(); }),
+          status_(theme_), toasts_(theme_), tooltips_(theme_), dockSplitter_(theme_, true),
+          sideSplitter_(theme_, false), mixer_(
+                                            session.engine().meters(),
+                                            [&session] { return session.engine().loudness(); },
+                                            [&session] { return session.engine().masterMeterSlot(); }),
           editor_(theme_), instruments_(theme_), diagnostics_(theme_), browser_(session.pluginRegistry()),
           inspector_(theme_), panels_(theme_, dock_, side_)
     {
@@ -2163,6 +2164,7 @@ private:
     ui::PanelHost dock_, side_;
     ui::StatusBar status_;
     ui::ToastStack toasts_;
+    ui::Tooltips tooltips_; // the floating tooltip for every control
     Splitter dockSplitter_, sideSplitter_;
     ui::MixerView mixer_;
     ui::EditorPanel editor_;

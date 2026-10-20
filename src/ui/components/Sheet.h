@@ -51,6 +51,10 @@ private:
           std::function<void(int)> onResult);
     void finish(int result);
     juce::Rectangle<int> panelBounds() const;
+    // Entering, the sheet fades in with its panel rising 8 px into place; leaving,
+    // it fades out before it goes (02-design-system.md 2.6).
+    void enter();
+    int rise_ = 0; // how far below its place the panel is drawn, while entering
 
     const Theme& theme_;
     juce::String title_, body_;

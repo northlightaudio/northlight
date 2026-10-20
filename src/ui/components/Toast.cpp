@@ -1,6 +1,7 @@
 #include "ui/components/Toast.h"
 
 #include "ui/AuralLookAndFeel.h"
+#include "ui/Motion.h"
 
 namespace aural::ui
 {
@@ -160,15 +161,45 @@ void ToastStack::show(Kind kind,
     addAndMakeVisible(*toast);
     toasts_.push_back(std::move(toast));
     while (toasts_.size() > static_cast<size_t>(maxShown))
+    {
+        auto oldest = std::move(toasts_.front());
         toasts_.erase(toasts_.begin());
-    layout();
+        retire(std::move(oldest));
+    }
+    layout(true);
     startTimer(250);
 }
 
 void ToastStack::dismissAll()
 {
     toasts_.clear();
+    leaving_.clear();
     layout();
+}
+
+void ToastStack::retire(std::unique_ptr<Toast> toast)
+{
+    auto* raw = toast.get();
+    raw->setInterceptsMouseClicks(false, false);
+    leaving_.push_back(std::move(toast));
+    const auto from = raw->getPosition();
+    juce::Component::SafePointer<ToastStack> safe(this);
+    motion::Tween::cancel(*raw);
+    motion::Tween::run(
+        *raw,
+        theme_.motion.ms(theme_.motion.toastMs),
+        [raw, from](float t)
+        {
+            raw->setAlpha(1.0f - t);
+            raw->setTopLeftPosition(from.translated(0, juce::roundToInt(8.0f * t)));
+        },
+        [safe, raw]
+        {
+            if (safe == nullptr)
+                return;
+            std::erase_if(safe->leaving_, [raw](const auto& t) { return t.get() == raw; });
+            safe->setVisible(!safe->toasts_.empty() || !safe->leaving_.empty());
+        });
 }
 
 void ToastStack::dismiss(Toast* toast)
@@ -180,19 +211,34 @@ void ToastStack::dismiss(Toast* toast)
         {
             if (safe == nullptr)
                 return;
-            std::erase_if(safe->toasts_, [toast](const auto& t) { return t.get() == toast; });
-            safe->layout();
+            for (auto it = safe->toasts_.begin(); it != safe->toasts_.end(); ++it)
+                if (it->get() == toast)
+                {
+                    auto gone = std::move(*it);
+                    safe->toasts_.erase(it);
+                    safe->retire(std::move(gone));
+                    break;
+                }
+            safe->layout(true);
         });
 }
 
 void ToastStack::timerCallback()
 {
     const double now = juce::Time::getMillisecondCounterHiRes();
-    const auto before = toasts_.size();
-    std::erase_if(toasts_,
-                  [now](const auto& t) { return !t->persistent() && now - t->shownAtMs > autoDismissMs; });
-    if (toasts_.size() != before)
-        layout();
+    bool changed = false;
+    for (auto it = toasts_.begin(); it != toasts_.end();)
+        if (!(*it)->persistent() && now - (*it)->shownAtMs > autoDismissMs)
+        {
+            auto gone = std::move(*it);
+            it = toasts_.erase(it);
+            retire(std::move(gone));
+            changed = true;
+        }
+        else
+            ++it;
+    if (changed)
+        layout(true);
     if (toasts_.empty())
         stopTimer();
 }
@@ -202,18 +248,25 @@ void ToastStack::resized()
     layout();
 }
 
-void ToastStack::layout()
+void ToastStack::layout(bool animated)
 {
+    const int ms = animated ? theme_.motion.ms(theme_.motion.toastMs) : 0;
     int bottom = getHeight();
     for (auto it = toasts_.rbegin(); it != toasts_.rend(); ++it)
     {
         auto& toast = **it;
-        toast.setSize(getWidth(), toast.preferredHeight());
+        const auto before = toast.getBounds();
+        const bool isNew = before.isEmpty();
         const int h = toast.preferredHeight();
-        toast.setBounds(0, bottom - h, getWidth(), h);
+        const juce::Rectangle<int> place(0, bottom - h, getWidth(), h);
+        toast.setBounds(place);
+        if (isNew)
+            motion::glideIn(toast, place.translated(0, 8), 0.0f, ms); // slides up and fades in
+        else
+            motion::glideIn(toast, ms > 0 ? before : place, 1.0f, ms);
         bottom -= h + theme_.spacing.sm;
     }
-    setVisible(!toasts_.empty());
+    setVisible(!toasts_.empty() || !leaving_.empty());
 }
 
 } // namespace aural::ui

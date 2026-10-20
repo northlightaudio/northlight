@@ -47,10 +47,15 @@ private:
     class Toast;
     void timerCallback() override;
     void dismiss(Toast* toast);
-    void layout();
+    // Places the toasts bottom up; animated, a new one slides up 8 px and fades
+    // in and the others glide to their places (02-design-system.md 2.6).
+    void layout(bool animated = false);
+    // A toast on its way out: it fades and drops 8 px, then goes.
+    void retire(std::unique_ptr<Toast> toast);
 
     const Theme& theme_;
     std::vector<std::unique_ptr<Toast>> toasts_;
+    std::vector<std::unique_ptr<Toast>> leaving_;
 };
 
 } // namespace aural::ui

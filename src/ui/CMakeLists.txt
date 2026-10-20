@@ -37,6 +37,7 @@ add_library(aural_ui STATIC
     components/PanelHeader.h
     components/PanelHeader.cpp
     components/Toast.h
+    components/Tooltips.h
     components/Toast.cpp
     components/Sheet.h
     components/Sheet.cpp

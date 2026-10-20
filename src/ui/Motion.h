@@ -37,23 +37,39 @@ inline float ease(float t) noexcept
 }
 
 // Calls onFrame with the eased progress (0..1) about 60 times a second for
-// `ms`, ending on exactly 1, then deletes itself. Stops early (without the
-// last frame) if the component is deleted. With ms <= 0 (reduce motion) the
-// last frame runs at once. Message thread only.
+// `ms`, ending on exactly 1, then onDone (if any), then deletes itself. Stops
+// early (without the last frame or onDone) if the component is deleted. With
+// ms <= 0 (reduce motion) the last frame and onDone run at once. Message
+// thread only.
 class Tween final : private juce::Timer
 {
 public:
-    static void run(juce::Component& component, int ms, std::function<void(float)> onFrame)
+    static void run(juce::Component& component,
+                    int ms,
+                    std::function<void(float)> onFrame,
+                    std::function<void()> onDone = {})
     {
         if (ms <= 0)
         {
             onFrame(1.0f);
+            if (onDone)
+                onDone();
             return;
         }
         auto* tween = new Tween(component, ms, std::move(onFrame)); // owns itself
+        tween->onDone_ = std::move(onDone);
         live().push_back(tween);
         tween->onFrame_(0.0f);
         tween->startTimerHz(60);
+    }
+
+    // Stops the component's running tweens where they are (no last frame, no
+    // onDone): a new layout or animation takes over.
+    static void cancel(juce::Component& component)
+    {
+        for (size_t i = live().size(); i-- > 0;)
+            if (i < live().size() && live()[i]->component_ == &component)
+                live()[i]->finish();
     }
 
     // Tests run without a message loop: bring every running tween to its end.
@@ -62,9 +78,13 @@ public:
         while (!live().empty())
         {
             auto* tween = live().back();
-            if (tween->component_ != nullptr)
+            const bool alive = tween->component_ != nullptr;
+            if (alive)
                 tween->onFrame_(1.0f);
+            auto done = alive ? std::move(tween->onDone_) : std::function<void()>{};
             tween->finish();
+            if (done)
+                done();
         }
     }
 
@@ -98,13 +118,49 @@ private:
         const auto t = static_cast<float>((juce::Time::getMillisecondCounterHiRes() - startMs_) / ms_);
         onFrame_(ease(std::min(1.0f, t)));
         if (t >= 1.0f)
-            finish();
+        {
+            auto done = std::move(onDone_);
+            finish(); // deletes this: done runs after
+            if (done)
+                done();
+        }
     }
 
     juce::Component::SafePointer<juce::Component> component_;
     int ms_;
     std::function<void(float)> onFrame_;
+    std::function<void()> onDone_;
     double startMs_;
 };
+
+// Moves a component from `from` to its current bounds (and its alpha from
+// `alphaFrom` to 1) over `ms`. The usual entrance and rearrangement.
+inline void glideIn(juce::Component& component, juce::Rectangle<int> from, float alphaFrom, int ms)
+{
+    const auto to = component.getBounds();
+    Tween::cancel(component);
+    if (ms <= 0 || (from == to && alphaFrom >= 1.0f))
+    {
+        component.setAlpha(1.0f);
+        return;
+    }
+    juce::Component::SafePointer<juce::Component> safe(&component);
+    component.setBounds(from);
+    component.setAlpha(alphaFrom);
+    Tween::run(component,
+               ms,
+               [safe, from, to, alphaFrom](float t)
+               {
+                   if (safe == nullptr)
+                       return;
+                   const auto lerp = [t](int a, int b)
+                   { return a + juce::roundToInt(static_cast<float>(b - a) * t); };
+                   safe->setBounds(lerp(from.getX(), to.getX()),
+                                   lerp(from.getY(), to.getY()),
+                                   lerp(from.getWidth(), to.getWidth()),
+                                   lerp(from.getHeight(), to.getHeight()));
+                   safe->setAlpha(alphaFrom + (1.0f - alphaFrom) * t);
+               });
+}
 
 } // namespace aural::ui::motion

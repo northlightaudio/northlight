@@ -189,7 +189,10 @@ Durations from `motion.*`; one easing (`cubic-bezier(0.2, 0, 0, 1)`, deceleratin
 | Toggle | 120 ms | Segmented thumb slide, switch |
 | Panel open/close | 180 ms | Width or height, content fades last 60 ms |
 | Menu, popup | 120 ms | Fade plus 2 px translate from the anchor |
-| Toast | 200 ms | Slide up 8 px and fade |
+| Toast | 200 ms | Slide up 8 px and fade in; the others glide to their places; a dismissed one fades and drops 8 px |
+| Sheet | 180 ms in, 120 ms out | Fade with the panel rising 8 px into place; fades out before it goes |
+| Track row added / removed | 180 ms | A new row grows from nothing; a removed row's space closes so the rows below glide up |
+| Editor panel cards | 180 ms | When the chain changes (an insert or send added, removed, moved) cards glide to their new places and new ones fade in; switching channels is instant |
 | Tooltip | 500 ms delay, 80 ms fade | No delay when moving between adjacent tooltipped controls |
 | Meters, playhead, counters | 0 | Ballistics are in `motion.meterFallDbPerSec` and `peakHoldMs`, not eased |
 | Clip snap during drag | 0 | Snap is instantaneous; a guide line appears instead |

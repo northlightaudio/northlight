@@ -15,6 +15,7 @@
 #include <juce_gui_basics/juce_gui_basics.h>
 
 #include <functional>
+#include <map>
 #include <memory>
 #include <optional>
 #include <string>
@@ -329,6 +330,16 @@ private:
     const RowLayout& rows() const;
     mutable RowLayout rows_;
     mutable bool rowsValid_ = false;
+    // Row motion: a new track's row grows from nothing (its scale, 0..1), and a
+    // removed one's space closes (the rows from gapRow_ on sit gapHeight_ lower,
+    // easing to 0), so the tracks below glide rather than jump.
+    std::map<core::Id, float> rowGrowth_;
+    int gapRow_ = -1;
+    float gapHeight_ = 0.0f;
+    // The rows as the last structural refresh showed them, to tell what came and went.
+    std::vector<core::Id> shownRowIds_;
+    std::vector<int> shownRowHeights_;
+    void animateRowChanges();
     // Mouse handling, by where it began and what it drags.
     void mouseDownRuler(const juce::MouseEvent& e);
     void mouseDownLanes(const juce::MouseEvent& e);
