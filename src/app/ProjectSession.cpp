@@ -392,6 +392,44 @@ core::Id ProjectSession::addMidiTrackPlaying(core::Id channel)
     return raw->trackId();
 }
 
+ProjectSession::PluginInsertion ProjectSession::insertPlugin(core::Id channelId, const std::string& type)
+{
+    PluginInsertion result;
+    if (isInstrumentType(type))
+    {
+        const auto* track = project_.findTrack(channelId);
+        const auto* channel = track != nullptr && track->isInstrument() ? track
+                              : track != nullptr && track->isMidi() ? project_.findTrack(track->midiTarget)
+                                                                    : nullptr;
+        if (channel != nullptr && channel->isInstrument())
+        {
+            core::Insert instrument;
+            instrument.type = type;
+            instrument.params = plugins::defaultParameters(type);
+            const auto id = channel->id;
+            if (run(std::make_unique<core::SetInstrument>(id, instrument)))
+                result = {PluginPlacement::instrumentReplaced, id};
+        }
+        else if (track != nullptr && track->isMidi())
+        {
+            const auto midi = track->id; // adding the channel may move the track list
+            if (const auto made = playNewInstrument(midi, type); made != core::invalidId)
+                result = {PluginPlacement::newInstrument, made, midi};
+        }
+        else if (const auto midi = addMidiTrack(type); midi != core::invalidId)
+            result = {PluginPlacement::newInstrument, project_.findTrack(midi)->midiTarget, midi};
+        return result;
+    }
+    if (project_.findChannel(channelId) == nullptr)
+        return result;
+    core::Insert insert;
+    insert.type = type;
+    insert.params = plugins::defaultParameters(type);
+    if (run(std::make_unique<core::AddInsert>(channelId, insert)))
+        result = {PluginPlacement::effectAdded, channelId};
+    return result;
+}
+
 core::Id ProjectSession::playNewInstrument(core::Id midiTrack, const std::string& type)
 {
     const auto* midi = project_.findTrack(midiTrack);

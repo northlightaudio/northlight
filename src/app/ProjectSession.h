@@ -117,6 +117,24 @@ public:
     // A new instrument channel playing `type`, placed under the MIDI track, which
     // is aimed at it (one step). Returns the channel's id, or invalidId.
     core::Id playNewInstrument(core::Id midiTrack, const std::string& type);
+    // A plugin chosen for a channel (the browser's double-click or drop). An
+    // instrument goes to an instrument channel: the one given, or the one the
+    // given MIDI track plays (a new one under it when it plays none), or a new
+    // MIDI track and channel. An effect is added to the channel's inserts.
+    enum class PluginPlacement
+    {
+        instrumentReplaced, // on an existing instrument channel
+        newInstrument,      // a new instrument channel (the result's channel)
+        effectAdded,
+        noChannel, // an effect with no channel to go on: nothing happened
+    };
+    struct PluginInsertion
+    {
+        PluginPlacement placement = PluginPlacement::noChannel;
+        core::Id channel = core::invalidId;   // where it went
+        core::Id midiTrack = core::invalidId; // a new instrument: the MIDI track that plays it
+    };
+    PluginInsertion insertPlugin(core::Id channelId, const std::string& type);
     // Whether an insert type is an instrument (a built-in synth or a scanned plugin
     // the registry calls one).
     bool isInstrumentType(const std::string& type) const;

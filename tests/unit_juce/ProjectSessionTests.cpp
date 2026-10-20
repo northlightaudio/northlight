@@ -458,3 +458,33 @@ TEST_CASE_METHOD(SessionFixture,
     CHECK(session->project().findTrack(midi)->midiTarget == core::invalidId);
     CHECK(session->undoName() == steps);
 }
+
+TEST_CASE_METHOD(
+    SessionFixture,
+    "A plugin from the browser goes where it belongs: instrument channels, inserts or a new pair",
+    "[app][session][plugins]")
+{
+    using Placement = ProjectSession::PluginPlacement;
+    // An instrument with nothing selected: a new MIDI track and channel.
+    auto result = session->insertPlugin(core::invalidId, "aural.nebula");
+    REQUIRE(result.placement == Placement::newInstrument);
+    const auto channel = result.channel;
+    const auto midi = result.midiTrack;
+    CHECK(session->project().findTrack(midi)->midiTarget == channel);
+    // An instrument on the MIDI track replaces what its channel plays.
+    result = session->insertPlugin(midi, "aural.starbit");
+    CHECK(result.placement == Placement::instrumentReplaced);
+    CHECK(result.channel == channel);
+    CHECK(session->project().findTrack(channel)->instrument.type == "aural.starbit");
+    // A MIDI track that plays nothing gets a channel of its own.
+    const auto lone = session->addMidiTrackPlaying(core::invalidId);
+    result = session->insertPlugin(lone, "aural.pulsar");
+    CHECK(result.placement == Placement::newInstrument);
+    CHECK(result.midiTrack == lone);
+    CHECK(session->project().findTrack(lone)->midiTarget == result.channel);
+    // An effect goes on the channel's inserts; with no channel, nowhere.
+    result = session->insertPlugin(channel, "aural.reverb");
+    CHECK(result.placement == Placement::effectAdded);
+    CHECK(session->project().findTrack(channel)->inserts.size() == 1);
+    CHECK(session->insertPlugin(core::invalidId, "aural.reverb").placement == Placement::noChannel);
+}

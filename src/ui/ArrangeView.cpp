@@ -615,56 +615,71 @@ void ArrangeView::mouseDown(const juce::MouseEvent& e)
         return;
     if (e.y < rulerHeight)
     {
-        if (e.mods.isPopupMenu())
-        {
-            rulerMenu(e.getScreenPosition());
-            return;
-        }
-        // The loop band's handles and body, when the loop is on.
-        const auto band = loopBand();
-        if (loop_ && !band.isEmpty() && e.y >= band.getY())
-        {
-            loopOriginalStart_ = regionStart_;
-            loopOriginalEnd_ = regionEnd_;
-            dragAnchor_ = sampleForX(e.x);
-            if (std::abs(e.x - band.getX()) <= loopHandle)
-                drag_ = Drag::loopStart;
-            else if (std::abs(e.x - band.getRight()) <= loopHandle)
-                drag_ = Drag::loopEnd;
-            else if (band.contains(e.getPosition()))
-                drag_ = Drag::loopMove;
-            if (drag_ != Drag::none)
-                return;
-        }
-        // Shift+drag in the bars row: a time selection across the selected tracks.
-        if (e.mods.isShiftDown() && e.y >= markersRowHeight)
-        {
-            drag_ = Drag::timeSelect;
-            dragAnchor_ = snapped(sampleForX(e.x));
-            timeSelStart_ = timeSelEnd_ = dragAnchor_;
-            return;
-        }
-        // A marker flag: select it, locate to it, and a drag moves it. Elsewhere
-        // a drag sets the loop/punch region and a plain click locates.
-        if (const auto* marker = markerAtRulerPoint(e.getPosition()))
-        {
-            selectedMarker_ = marker->id;
-            selection_.clear();
-            dragMarker_ = *marker;
-            markerPreview_ = marker->position;
-            dragStartSample_ = sampleForX(e.x);
-            drag_ = Drag::marker;
-            if (onLocate)
-                onLocate(marker->position);
-            repaint();
-            return;
-        }
-        selectedMarker_ = core::invalidId;
-        drag_ = Drag::region;
-        zoomStartSpp_ = samplesPerPixel_;
-        dragAnchor_ = sampleForX(e.x);
+        mouseDownRuler(e);
         return;
     }
+    mouseDownLanes(e);
+}
+
+// The ruler: its menu, the loop band's handles, a time selection, a marker, or
+// the loop/punch region (a click locates).
+void ArrangeView::mouseDownRuler(const juce::MouseEvent& e)
+{
+    if (e.mods.isPopupMenu())
+    {
+        rulerMenu(e.getScreenPosition());
+        return;
+    }
+    // The loop band's handles and body, when the loop is on.
+    const auto band = loopBand();
+    if (loop_ && !band.isEmpty() && e.y >= band.getY())
+    {
+        loopOriginalStart_ = regionStart_;
+        loopOriginalEnd_ = regionEnd_;
+        dragAnchor_ = sampleForX(e.x);
+        if (std::abs(e.x - band.getX()) <= loopHandle)
+            drag_ = Drag::loopStart;
+        else if (std::abs(e.x - band.getRight()) <= loopHandle)
+            drag_ = Drag::loopEnd;
+        else if (band.contains(e.getPosition()))
+            drag_ = Drag::loopMove;
+        if (drag_ != Drag::none)
+            return;
+    }
+    // Shift+drag in the bars row: a time selection across the selected tracks.
+    if (e.mods.isShiftDown() && e.y >= markersRowHeight)
+    {
+        drag_ = Drag::timeSelect;
+        dragAnchor_ = snapped(sampleForX(e.x));
+        timeSelStart_ = timeSelEnd_ = dragAnchor_;
+        return;
+    }
+    // A marker flag: select it, locate to it, and a drag moves it. Elsewhere
+    // a drag sets the loop/punch region and a plain click locates.
+    if (const auto* marker = markerAtRulerPoint(e.getPosition()))
+    {
+        selectedMarker_ = marker->id;
+        selection_.clear();
+        dragMarker_ = *marker;
+        markerPreview_ = marker->position;
+        dragStartSample_ = sampleForX(e.x);
+        drag_ = Drag::marker;
+        if (onLocate)
+            onLocate(marker->position);
+        repaint();
+        return;
+    }
+    selectedMarker_ = core::invalidId;
+    drag_ = Drag::region;
+    zoomStartSpp_ = samplesPerPixel_;
+    dragAnchor_ = sampleForX(e.x);
+    return;
+}
+
+// The lanes: select the track, then pick up a clip (move, trim, fade or gain by
+// where it was grabbed), start a range or a lasso.
+void ArrangeView::mouseDownLanes(const juce::MouseEvent& e)
+{
     selectedMarker_ = core::invalidId;
 
     dragStartSample_ = sampleForX(e.x);
@@ -751,6 +766,90 @@ void ArrangeView::mouseDown(const juce::MouseEvent& e)
     repaint();
 }
 
+void ArrangeView::dragRowResize(const juce::MouseEvent& e)
+{
+    const int h = std::clamp(
+        resizeStartHeight_ + e.y - dragStart_.y, theme_.sizes.trackRowMin, theme_.sizes.trackRowMax);
+    if (h != resizeHeight_)
+    {
+        resizeHeight_ = h;
+        rowsValid_ = false;
+        layoutHeaders();
+        updateScrollbar();
+        automation_.repaint();
+        repaint();
+    }
+}
+
+// A drag in the bars row: the loop/punch region, unless the first movement is
+// mostly vertical, which turns it into a zoom.
+void ArrangeView::dragRegion(const juce::MouseEvent& e, core::SamplePosition at)
+{
+    if (!draggedFar_)
+        return;
+    // The first movement decides: mostly vertical zooms, otherwise the region.
+    if (std::abs(e.y - dragStart_.y) > std::abs(e.x - dragStart_.x) && std::abs(e.y - dragStart_.y) > 6)
+    {
+        drag_ = Drag::zoom;
+        return;
+    }
+    regionStart_ = snapped(std::min(dragAnchor_, at));
+    regionEnd_ = snapped(std::max(dragAnchor_, at));
+}
+
+// The dragged clip's new start snaps; the rest of the selection follows by the
+// same delta, and rows by the same count, never before zero, outside the
+// tracks or onto a track of the other kind.
+void ArrangeView::dragMoveClips(const juce::MouseEvent& e, core::SamplePosition at)
+{
+    const auto wanted = dragOriginal_.start + (at - dragStartSample_);
+    moveDelta_ =
+        snapWithTargets(wanted, dragStartRow_ + rowDelta_, true, dragOriginal_.start) - dragOriginal_.start;
+    core::SamplePosition earliest = dragOriginal_.start;
+    int lowestRow = dragStartRow_, highestRow = dragStartRow_;
+    if (project_ != nullptr)
+        for (const auto& ref : selection_)
+            if (const auto span = spanOf(ref))
+            {
+                const int t = project_->trackIndex(ref.track);
+                earliest = std::min(earliest, span->start);
+                lowestRow = std::min(lowestRow, t);
+                highestRow = std::max(highestRow, t);
+            }
+    moveDelta_ = std::max(moveDelta_, -earliest);
+    const int row = rowAtY(e.y);
+    const int trackCount = project_ != nullptr ? static_cast<int>(project_->tracks.size()) : 0;
+    int wantedRows = row >= 0 ? row - dragStartRow_ : rowDelta_;
+    wantedRows = std::clamp(wantedRows, -lowestRow, std::max(0, trackCount - 1 - highestRow));
+    // A clip only lands on a track of its own kind (MIDI on MIDI, audio on audio).
+    bool kindsMatch = project_ != nullptr;
+    if (kindsMatch)
+        for (const auto& ref : selection_)
+        {
+            const int from = project_->trackIndex(ref.track);
+            if (from < 0)
+                continue;
+            const auto& target = project_->tracks[static_cast<size_t>(from + wantedRows)];
+            if (target.isMidi() != ref.midi)
+                kindsMatch = false;
+        }
+    if (kindsMatch)
+        rowDelta_ = wantedRows;
+}
+
+void ArrangeView::dragTrimLeft(core::SamplePosition at)
+{
+    const auto sourceStart = dragClip_.midi
+                                 ? core::SamplePosition{0}
+                                 : dragOriginal_.start - dragOriginal_.sourceOffset; // source sample 0
+    const auto newStart = std::clamp(snapWithTargets(at, dragStartRow_),
+                                     std::max<core::SamplePosition>(0, sourceStart),
+                                     dragOriginal_.end() - 1);
+    trimStart_ = newStart;
+    trimLength_ = dragOriginal_.end() - newStart;
+    trimOffset_ = dragOriginal_.sourceOffset + (newStart - dragOriginal_.start);
+}
+
 void ArrangeView::mouseDrag(const juce::MouseEvent& e)
 {
     if (drag_ == Drag::none)
@@ -767,20 +866,8 @@ void ArrangeView::mouseDrag(const juce::MouseEvent& e)
             layoutHeaders();
             break;
         case Drag::rowResize:
-        {
-            const int h = std::clamp(
-                resizeStartHeight_ + e.y - dragStart_.y, theme_.sizes.trackRowMin, theme_.sizes.trackRowMax);
-            if (h != resizeHeight_)
-            {
-                resizeHeight_ = h;
-                rowsValid_ = false;
-                layoutHeaders();
-                updateScrollbar();
-                automation_.repaint();
-                repaint();
-            }
+            dragRowResize(e);
             break;
-        }
         case Drag::pan:
             setScroll(panScroll_ -
                       static_cast<core::SamplePosition>((e.x - dragStart_.x) * samplesPerPixel_));
@@ -794,17 +881,7 @@ void ArrangeView::mouseDrag(const juce::MouseEvent& e)
             break;
         }
         case Drag::region:
-            if (!draggedFar_)
-                break;
-            // The first movement decides: mostly vertical zooms, otherwise the region.
-            if (std::abs(e.y - dragStart_.y) > std::abs(e.x - dragStart_.x) &&
-                std::abs(e.y - dragStart_.y) > 6)
-            {
-                drag_ = Drag::zoom;
-                break;
-            }
-            regionStart_ = snapped(std::min(dragAnchor_, at));
-            regionEnd_ = snapped(std::max(dragAnchor_, at));
+            dragRegion(e, at);
             break;
         case Drag::loopMove:
         {
@@ -834,57 +911,11 @@ void ArrangeView::mouseDrag(const juce::MouseEvent& e)
                                                               std::max(dragStart_.y, e.y));
             break;
         case Drag::move:
-        {
-            // The dragged clip's new start snaps; the rest of the selection follows by
-            // the same delta. Nothing may land before zero or outside the tracks.
-            const auto wanted = dragOriginal_.start + (at - dragStartSample_);
-            moveDelta_ = snapWithTargets(wanted, dragStartRow_ + rowDelta_, true, dragOriginal_.start) -
-                         dragOriginal_.start;
-            core::SamplePosition earliest = dragOriginal_.start;
-            int lowestRow = dragStartRow_, highestRow = dragStartRow_;
-            if (project_ != nullptr)
-                for (const auto& ref : selection_)
-                    if (const auto span = spanOf(ref))
-                    {
-                        const int t = project_->trackIndex(ref.track);
-                        earliest = std::min(earliest, span->start);
-                        lowestRow = std::min(lowestRow, t);
-                        highestRow = std::max(highestRow, t);
-                    }
-            moveDelta_ = std::max(moveDelta_, -earliest);
-            const int row = rowAtY(e.y);
-            const int trackCount = project_ != nullptr ? static_cast<int>(project_->tracks.size()) : 0;
-            int wantedRows = row >= 0 ? row - dragStartRow_ : rowDelta_;
-            wantedRows = std::clamp(wantedRows, -lowestRow, std::max(0, trackCount - 1 - highestRow));
-            // A clip only lands on a track of its own kind (MIDI on MIDI, audio on audio).
-            bool kindsMatch = project_ != nullptr;
-            if (kindsMatch)
-                for (const auto& ref : selection_)
-                {
-                    const int from = project_->trackIndex(ref.track);
-                    if (from < 0)
-                        continue;
-                    const auto& target = project_->tracks[static_cast<size_t>(from + wantedRows)];
-                    if (target.isMidi() != ref.midi)
-                        kindsMatch = false;
-                }
-            if (kindsMatch)
-                rowDelta_ = wantedRows;
+            dragMoveClips(e, at);
             break;
-        }
         case Drag::trimLeft:
-        {
-            const auto sourceStart =
-                dragClip_.midi ? core::SamplePosition{0}
-                               : dragOriginal_.start - dragOriginal_.sourceOffset; // source sample 0
-            const auto newStart = std::clamp(snapWithTargets(at, dragStartRow_),
-                                             std::max<core::SamplePosition>(0, sourceStart),
-                                             dragOriginal_.end() - 1);
-            trimStart_ = newStart;
-            trimLength_ = dragOriginal_.end() - newStart;
-            trimOffset_ = dragOriginal_.sourceOffset + (newStart - dragOriginal_.start);
+            dragTrimLeft(at);
             break;
-        }
         case Drag::trimRight:
         {
             const auto newEnd = std::max(snapWithTargets(at, dragStartRow_), dragOriginal_.start + 1);

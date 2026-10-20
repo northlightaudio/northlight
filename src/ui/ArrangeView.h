@@ -329,6 +329,13 @@ private:
     const RowLayout& rows() const;
     mutable RowLayout rows_;
     mutable bool rowsValid_ = false;
+    // Mouse handling, by where it began and what it drags.
+    void mouseDownRuler(const juce::MouseEvent& e);
+    void mouseDownLanes(const juce::MouseEvent& e);
+    void dragRowResize(const juce::MouseEvent& e);
+    void dragRegion(const juce::MouseEvent& e, core::SamplePosition at);
+    void dragMoveClips(const juce::MouseEvent& e, core::SamplePosition at);
+    void dragTrimLeft(core::SamplePosition at);
     int rowHeightOf(int row) const noexcept;             // a row's height (its own, or the default)
     int rowTop(int row) const noexcept;                  // a row's top edge in view coordinates
     int resizeEdgeAt(juce::Point<int> p) const noexcept; // the row whose bottom edge is at p, or -1

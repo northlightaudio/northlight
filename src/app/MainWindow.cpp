@@ -1465,42 +1465,17 @@ private:
 
     void insertPlugin(core::Id trackId, const std::string& type)
     {
-        // An instrument goes to an instrument channel: the one selected, or the one
-        // the selected MIDI track plays (a channel for it when it plays none);
-        // otherwise a new MIDI track and instrument channel.
-        if (session_.isInstrumentType(type))
-        {
-            const auto* track = session_.project().findTrack(trackId);
-            const auto* channel = track != nullptr && track->isInstrument() ? track
-                                  : track != nullptr && track->isMidi()
-                                      ? session_.project().findTrack(track->midiTarget)
-                                      : nullptr;
-            if (channel != nullptr && channel->isInstrument())
-            {
-                core::Insert instrument;
-                instrument.type = type;
-                instrument.params = plugins::defaultParameters(type);
-                session_.execute(std::make_unique<core::SetInstrument>(channel->id, instrument));
-                browser_.rememberRecent(type);
-                select(trackId);
-            }
-            else if (track != nullptr && track->isMidi())
-                playNewInstrument(track->id, type);
-            else
-                addMidiTrack(type);
-            return;
-        }
-        if (trackId == core::invalidId || session_.project().findChannel(trackId) == nullptr)
+        // Where it goes is the session's rule; the shell remembers it and selects.
+        using Placement = ProjectSession::PluginPlacement;
+        const auto result = session_.insertPlugin(trackId, type);
+        if (result.placement == Placement::noChannel)
         {
             toast(ui::ToastStack::Kind::info, "Select a track to insert the plugin on.");
             return;
         }
-        core::Insert insert;
-        insert.type = type;
-        insert.params = plugins::defaultParameters(type);
-        session_.execute(std::make_unique<core::AddInsert>(trackId, insert));
         browser_.rememberRecent(type);
-        select(trackId);
+        // A new instrument selects the MIDI track that plays it.
+        select(result.placement == Placement::newInstrument ? result.midiTrack : trackId);
     }
 
     void armSelected()
