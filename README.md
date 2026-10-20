@@ -167,7 +167,9 @@ vowel formant and stretch, with a halo, breath, slow motion and a large space,
 for ethereal pads. **Starbit**, the bundled chiptune synth, has the classic
 pulse duties, 4-bit triangle and saw, LFSR noise and a wave you draw, tracker
 arpeggios (including cycling the notes you hold), vibrato, sweeps and a lo-fi end,
-behind a pixel-art editor. (The first, plain built-in "Synth" is gone; projects
+behind a pixel-art editor. To hear them together, write and open the demo song, "Northern Drift" (Pulsar
+drums, Aurora bass and keys, a Nebula pad, Starbit's arpeggio and lead, Hall and
+Echo FX tracks, automation and section markers): `Aural --demo-song "<folder>/Northern Drift.aural"`. (The first, plain built-in "Synth" is gone; projects
 that used it open with Aurora.)
 A MIDI track can also play an external instrument: pick a MIDI output in Audio
 Setup, then the channel in the track's right-click menu (**MIDI output**); its

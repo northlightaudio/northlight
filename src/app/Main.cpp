@@ -1,9 +1,11 @@
 #include "CrashReports.h"
+#include "DemoSong.h"
 #include "MainWindow.h"
 #include "ProjectSession.h"
 #include "UserSettings.h"
 #include "audio/AudioDeviceLayer.h"
 #include "core/Command.h"
+#include "core/ProjectJson.h"
 #include "plugins/BuiltIns.h"
 #include "plugins/ChannelStrip.h"
 #include "plugins/FxTracks.h"
@@ -72,6 +74,7 @@ public:
     //   --loop <from> <to>   set and enable the loop region, in seconds
     //   --no-count-in        record without the count-in
     //   --layout <Mix|Edit>  apply a layout preset
+    //   --demo-song <file>   write the demo song (Northern Drift) to the file and open it
     //   --instrument-editor  open the first instrument's editor window
     //   --panel <name>       show a panel: mixer, editor, instruments, pianoRoll, diagnostics, browser,
     //   inspector
@@ -106,6 +109,14 @@ public:
                 mainWindow_->showAudioSetup();
             else if (arg == "--open" && i + 1 < tokens.size())
                 session_->open(tokens.getReference(++i).resolveAsFile());
+            else if (arg == "--demo-song" && i + 1 < tokens.size())
+            {
+                // Writes the demo song to the file and opens it.
+                const auto file = tokens.getReference(++i).resolveAsFile();
+                file.getParentDirectory().createDirectory();
+                if (file.replaceWithText(juce::String(core::projectToJson(makeDemoSong()))))
+                    session_->open(file);
+            }
             else if (arg == "--import" && i + 1 < tokens.size())
                 session_->importAudioFile(tokens.getReference(++i).resolveAsFile(), 0);
             else if (arg == "--play")
