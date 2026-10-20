@@ -632,6 +632,20 @@ integrated loudness of the mix. Export... on the toolbar offers the three.
 
 ### Plugin hosting (Phase 5)
 
+Robustness. A hosted plugin's processing call runs through
+`hosting::callGuarded` (structured exception handling on Windows): a crash
+inside it (an access violation, a thrown exception) is contained, the plugin
+is never called again and its slot passes audio through, and the session tells
+the user once to save and restart (`ProjectSession::checkCrashedPlugins`); the
+plugin's memory may be damaged, so it stays off. A CLAP plugin's audio-side
+calls are claimed by whichever thread makes them (`HostedClapPlugin::Claim`, a
+compare-and-swap, no waiting): a block that finds a main-thread flush in the
+plugin passes its input through, a flush that finds a block running leaves the
+queue to it, so the two never overlap. The scanner waits for each child process
+in 100 ms slices, so cancelling (quitting mid-scan) kills a slow plugin's
+inspection at once instead of the thread being force-stopped, and results it
+queued for the message thread are dropped once it is gone.
+
 Hosted plugins are inserts like the built-ins: the model insert's type is
 `vst3:<identifier>` and `hosting::HostFactory` creates a `hosting::HostedPlugin`
 (a `juce::AudioPluginInstance` behind `engine::InsertProcessor`) for it, so the

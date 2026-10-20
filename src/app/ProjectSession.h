@@ -17,6 +17,7 @@
 #include <functional>
 #include <map>
 #include <memory>
+#include <set>
 #include <string>
 #include <utility>
 #include <vector>
@@ -250,6 +251,8 @@ public:
     bool isTrackMonitoring(const core::Track& track) const;
     // Human-readable note about the last recording (dropouts, recovery), if any.
     const std::string& lastRecordingMessage() const noexcept { return recordingMessage_; }
+    // The latest plugin that crashed while processing (it was switched off), or empty.
+    const std::string& lastPluginMessage() const noexcept { return pluginMessage_; }
     // Brings `into` up to date with the recording in progress (its audio takes'
     // peaks so far and its MIDI takes), for the arrange view to draw it growing;
     // clears it when nothing is recording. Call once per UI frame. Finished
@@ -341,6 +344,9 @@ private:
     juce::File projectFile_;
     bool modified_ = false;
     std::string recordingMessage_;
+    std::string pluginMessage_;
+    std::set<core::Id> reportedCrashes_; // inserts whose crash the user has been told about
+    void checkCrashedPlugins();
     std::string bounceMessage_;
     std::unique_ptr<BounceJob> bounce_;
     bool gestureOpen_ = false;

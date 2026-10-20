@@ -1,6 +1,7 @@
 #include "hosting/HostedPlugin.h"
 
 #include "engine/rt/RealtimeGuard.h"
+#include "hosting/CrashGuard.h"
 
 #include <algorithm>
 #include <cstdint>
@@ -242,17 +243,27 @@ void HostedPlugin::processBuffer(juce::AudioBuffer<float>& buffer, bool bypassed
             }
             midi_.addEvent(bytes, 3, e.sampleOffset);
         }
-    if (bypassed)
-        instance_->processBlockBypassed(buffer, midi_); // the plugin's own bypass keeps its latency
-    else
-        instance_->processBlock(buffer, midi_);
+    auto call = [&]
+    {
+        if (bypassed)
+            instance_->processBlockBypassed(buffer, midi_); // the plugin's own bypass keeps its latency
+        else
+            instance_->processBlock(buffer, midi_);
+    };
+    if (!callGuarded(call))
+    {
+        // It crashed: what it left in the buffer is not audio. Silence this block;
+        // later blocks pass the input through without calling it.
+        crashed_.store(true, std::memory_order_release);
+        buffer.clear();
+    }
 }
 
 void HostedPlugin::run(
     float* left, float* right, const float* keyLeft, const float* keyRight, int numSamples) noexcept
 {
     if (!prepared_.load(std::memory_order_acquire) || layout_ == Layout::unsupported ||
-        numSamples > static_cast<int>(dryLeft_.size()))
+        numSamples > static_cast<int>(dryLeft_.size()) || crashed_.load(std::memory_order_relaxed))
         return;
 
     // Bypass: ramp between the processed and the bypassed signal over 10 ms. While

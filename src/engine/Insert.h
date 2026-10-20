@@ -83,6 +83,9 @@ public:
     // when a command changes it, never on a compile, so a preset loaded from the
     // plugin's menu is not reverted by the next edit elsewhere.
     virtual bool ownsParameters() const noexcept { return false; }
+    // A hosted plugin that crashed while processing: it is no longer called and
+    // its slot passes audio through. The session tells the user once.
+    virtual bool crashed() const noexcept { return false; }
     // True when the processor must be recreated (a plugin asked for a restart or
     // changed its parameter set): the cache replaces it, carrying the state over,
     // and the next snapshot takes the new instance.

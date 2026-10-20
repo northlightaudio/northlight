@@ -308,6 +308,42 @@ private:
     std::atomic<bool> processing_{false}; // start_processing has been called (audio side)
     std::atomic<bool> pretendAudioThread_{false};
     std::atomic<bool> engineRunning_{false}; // set by serviceAll: the audio thread may be processing
+    // Who is inside the plugin's audio-side calls: the audio thread (a block) or
+    // the main thread (a flush while the engine is stopped). Each claims it with a
+    // compare-and-swap and neither waits: a block that finds a flush running
+    // passes its input through, a flush that finds a block running leaves the
+    // queue to that block. So the two never call the plugin (or drain the event
+    // queue) at once, however stale engineRunning_ is.
+    enum Owner : int
+    {
+        nobody,
+        audioThread,
+        mainThread,
+    };
+    std::atomic<int> owner_{nobody};
+    std::atomic<bool> crashed_{false}; // the plugin crashed in process(): never called again
+
+public:
+    bool crashed() const noexcept override { return crashed_.load(std::memory_order_acquire); }
+
+private:
+    struct Claim
+    {
+        Claim(std::atomic<int>& owner, int who) noexcept : owner_(owner)
+        {
+            int expected = nobody;
+            held = owner_.compare_exchange_strong(expected, who, std::memory_order_acquire);
+        }
+        ~Claim()
+        {
+            if (held)
+                owner_.store(nobody, std::memory_order_release);
+        }
+        Claim(const Claim&) = delete;
+        Claim& operator=(const Claim&) = delete;
+        std::atomic<int>& owner_;
+        bool held = false;
+    };
     std::atomic<int> latency_{0};
     std::atomic<bool> latencyDirty_{false};
     std::atomic<bool> flushRequested_{false};

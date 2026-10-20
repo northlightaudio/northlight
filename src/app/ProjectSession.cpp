@@ -1846,6 +1846,34 @@ void ProjectSession::executeGroupWithoutRecording(std::vector<std::unique_ptr<co
         run(std::move(command), false);
 }
 
+void ProjectSession::checkCrashedPlugins()
+{
+    // A plugin that crashed while processing is switched off (its slot passes
+    // audio through); say so once, with a nudge to save, since a crash can leave
+    // the process unstable.
+    const auto check = [this](const core::Channel& channel)
+    {
+        std::vector<const core::Insert*> inserts;
+        if (channel.hasInstrument())
+            inserts.push_back(&channel.instrument);
+        for (const auto& insert : channel.inserts)
+            inserts.push_back(&insert);
+        for (const auto* insert : inserts)
+            if (const auto live = liveInsert(insert->id);
+                live != nullptr && live->crashed() && reportedCrashes_.insert(insert->id).second)
+            {
+                pluginMessage_ = inserts_.displayName(insert->type) + " on " + channel.name +
+                                 " crashed and was switched off. Save your project and restart Aural to use "
+                                 "it again.";
+                notify(Change::structure);
+            }
+    };
+    for (const auto& track : project_.tracks)
+        check(track);
+    for (const auto& bus : project_.buses)
+        check(bus);
+}
+
 void ProjectSession::poll()
 {
     engine_.collectGarbage();
@@ -1854,6 +1882,7 @@ void ProjectSession::poll()
     hosting::HostedClapPlugin::serviceAll(engine_.isRunning());
     if (engine_.insertLatencyChanged() || engine_.insertRestartRequested())
         publish(); // a plugin changed its latency or asked for a restart: new snapshot
+    checkCrashedPlugins();
     if (engine_.hasRecordingToCollect())
         if (auto finished = engine_.collectRecording())
             finishRecording(std::move(*finished));

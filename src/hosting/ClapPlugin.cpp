@@ -1,6 +1,7 @@
 #include "hosting/ClapPlugin.h"
 
 #include "engine/rt/RealtimeGuard.h"
+#include "hosting/CrashGuard.h"
 
 #include <algorithm>
 #include <cstring>
@@ -677,8 +678,12 @@ void HostedClapPlugin::processMidi(const engine::MidiEventList& events,
 bool HostedClapPlugin::run(
     float* left, float* right, const float* keyLeft, const float* keyRight, int numSamples) noexcept
 {
-    if (!activated_.load(std::memory_order_acquire) || numSamples > maxBlock_)
+    if (!activated_.load(std::memory_order_acquire) || numSamples > maxBlock_ ||
+        crashed_.load(std::memory_order_relaxed))
         return false;
+    const Claim claim(owner_, audioThread);
+    if (!claim.held)
+        return false; // a main-thread flush is in the plugin: this block passes through
     ensureProcessing(true);
     collectEvents(pendingMidi_);
 
@@ -768,7 +773,17 @@ bool HostedClapPlugin::run(
     process.audio_outputs_count = static_cast<uint32_t>(outBuffers_.size());
     process.in_events = &in_.list;
     process.out_events = &out_.list;
-    const auto status = plugin_->process(plugin_, &process);
+    clap_process_status status = CLAP_PROCESS_ERROR;
+    auto call = [&] { status = plugin_->process(plugin_, &process); };
+    if (!callGuarded(call))
+    {
+        // It crashed: stop calling it; this block (and every later one) passes
+        // the input through.
+        crashed_.store(true, std::memory_order_release);
+        std::copy(dryLeft_.begin(), dryLeft_.begin() + numSamples, left);
+        std::copy(dryRight_.begin(), dryRight_.begin() + numSamples, right);
+        return false;
+    }
     if (status == CLAP_PROCESS_ERROR)
     {
         // Pass the input through untouched.
@@ -839,6 +854,9 @@ void HostedClapPlugin::flushPendingOnMainThread()
     // is what guarantees the latter.
     if (params_ == nullptr)
         return;
+    const Claim claim(owner_, mainThread);
+    if (!claim.held)
+        return; // a block is processing: it delivers the queue
     if (!activated_.load(std::memory_order_acquire))
     {
         collectEvents(nullptr);

@@ -61,6 +61,7 @@ public:
     float parameter(int index) const noexcept override;
     bool takeParameterEdit(ParameterEdit& edit) noexcept override;
     bool ownsParameters() const noexcept override { return true; }
+    bool crashed() const noexcept override { return crashed_.load(std::memory_order_acquire); }
     // The VST3 ParamID (through JUCE's parameter id): stable across versions.
     std::string parameterKey(int index) const override;
     int auxOutputCount() const noexcept override { return auxOutputs_; }
@@ -133,7 +134,8 @@ private:
     Layout layout_;
     bool acceptsMidi_ = false;
     juce::MidiBuffer midi_;
-    static constexpr int maxMidiEvents = 1024;           // engine::MidiEventList's capacity
+    std::atomic<bool> crashed_{false};         // the plugin crashed while processing: never called again
+    static constexpr int maxMidiEvents = 1024; // engine::MidiEventList's capacity
     const engine::MidiEventList* pendingMidi_ = nullptr; // this block's events, while running
     std::vector<float> keyLeft_, keyRight_;              // the sidechain bus's channels for one block
     std::vector<float> mono_;                            // the summed pair for a mono plugin

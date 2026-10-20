@@ -11,6 +11,7 @@ PluginScanner::PluginScanner(PluginRegistry& registry) : juce::Thread("Plugin sc
 PluginScanner::~PluginScanner()
 {
     cancel();
+    alive_->store(false); // results still queued for the message thread are dropped
 }
 
 void PluginScanner::cancel()
@@ -61,7 +62,8 @@ bool PluginScanner::inspect(const juce::File& scanner,
                             const juce::File& file,
                             std::vector<PluginInfo>& found,
                             std::string& error,
-                            int timeoutMs)
+                            int timeoutMs,
+                            const std::function<bool()>& shouldStop)
 {
     found.clear();
     if (!scanner.existsAsFile())
@@ -82,13 +84,24 @@ bool PluginScanner::inspect(const juce::File& scanner,
     // reader also keeps a chatty plugin from filling the pipe and stalling.
     juce::String output;
     std::thread reader([&process, &output] { output = process.readAllProcessOutput(); });
-    const bool finished = process.waitForProcessToFinish(timeoutMs);
+    // Waited in short slices, so a cancel (quitting mid-scan) ends a slow
+    // plugin's inspection at once instead of after the whole timeout.
+    bool finished = false, stopped = false;
+    for (int waited = 0; !finished && waited < timeoutMs; waited += 100)
+    {
+        finished = process.waitForProcessToFinish(std::min(100, timeoutMs - waited));
+        if (!finished && shouldStop && shouldStop())
+        {
+            stopped = true;
+            break;
+        }
+    }
     if (!finished)
         process.kill();
     reader.join();
     if (!finished)
     {
-        error = "timed out";
+        error = stopped ? "stopped" : "timed out";
         return false;
     }
     if (process.getExitCode() != 0)
@@ -211,8 +224,10 @@ void PluginScanner::run()
         // need a look, so the scan thread never touches it.
         const bool rescanAll = rescanAll_;
         juce::MessageManager::callAsync(
-            [this, planning, rescanAll]
+            [this, alive = alive_, planning, rescanAll]
             {
+                if (!alive->load())
+                    return;
                 for (const auto& path : planning->candidates)
                 {
                     const juce::File file(path);
@@ -251,12 +266,17 @@ void PluginScanner::run()
         }
         std::vector<PluginInfo> found;
         std::string error;
-        const bool ok = inspect(scanner, job.file, found, error);
+        const bool ok =
+            inspect(scanner, job.file, found, error, 60000, [this] { return threadShouldExit(); });
+        if (!ok && threadShouldExit())
+            break; // stopped, not a bad plugin: nothing to blocklist
         const auto path = job.file.getFullPathName().toStdString();
         const auto modified = job.modified;
         juce::MessageManager::callAsync(
-            [this, ok, path, modified, found = std::move(found), error]
+            [this, alive = alive_, ok, path, modified, found = std::move(found), error]
             {
+                if (!alive->load())
+                    return;
                 if (ok)
                     registry_.setFileResults(path, modified, found);
                 else
@@ -267,9 +287,9 @@ void PluginScanner::run()
             });
     }
     juce::MessageManager::callAsync(
-        [this]
+        [this, alive = alive_]
         {
-            if (onFinished)
+            if (alive->load() && onFinished)
                 onFinished();
         });
 }

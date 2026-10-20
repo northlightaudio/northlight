@@ -7,6 +7,7 @@
 
 #include <atomic>
 #include <functional>
+#include <memory>
 #include <string>
 #include <vector>
 
@@ -44,14 +45,17 @@ public:
     // the AURAL_PLUGIN_SCANNER environment variable.
     static juce::File scannerExecutable();
 
-    // Inspects one file in a child process. Blocks up to timeoutMs. Returns false
-    // when the process crashed or hung (the caller blocklists the file);
-    // `found` holds the descriptions otherwise.
+    // Inspects one file in a child process. Blocks up to timeoutMs, or until
+    // `shouldStop` says so (checked every 100 ms; the child is killed). Returns
+    // false when the process crashed, hung or was stopped (the caller
+    // blocklists the file unless it stopped); `found` holds the descriptions
+    // otherwise.
     static bool inspect(const juce::File& scanner,
                         const juce::File& file,
                         std::vector<PluginInfo>& found,
                         std::string& error,
-                        int timeoutMs = 60000);
+                        int timeoutMs = 60000,
+                        const std::function<bool()>& shouldStop = {});
 
     static PluginInfo toInfo(const juce::PluginDescription& description);
     static std::int64_t modificationTime(const juce::File& file);
@@ -60,6 +64,9 @@ private:
     void run() override;
 
     PluginRegistry& registry_;
+    // Cleared by the destructor: results the scan thread queued for the message
+    // thread that run after the scanner is gone find it false and do nothing.
+    std::shared_ptr<std::atomic<bool>> alive_ = std::make_shared<std::atomic<bool>>(true);
     std::vector<std::string> extraPaths_;
     bool rescanAll_ = false;
     std::atomic<int> done_{0}, total_{0};

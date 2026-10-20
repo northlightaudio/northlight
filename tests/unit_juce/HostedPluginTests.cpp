@@ -236,6 +236,12 @@ TEST_CASE("A scanner that crashes, hangs or talks nonsense fails the file so it 
     mode("hang");
     CHECK_FALSE(hosting::PluginScanner::inspect(stub, target, found, error, 500));
     CHECK(error == "timed out");
+    // A cancel (quitting mid-scan) ends a hanging inspection at once, not after
+    // the whole timeout, and says it stopped rather than blaming the plugin.
+    const auto started = juce::Time::getMillisecondCounterHiRes();
+    CHECK_FALSE(hosting::PluginScanner::inspect(stub, target, found, error, 20000, [] { return true; }));
+    CHECK(error == "stopped");
+    CHECK(juce::Time::getMillisecondCounterHiRes() - started < 5000.0);
     mode("junk");
     CHECK_FALSE(hosting::PluginScanner::inspect(stub, target, found, error, 20000));
     CHECK(error.find("no result") != std::string::npos);

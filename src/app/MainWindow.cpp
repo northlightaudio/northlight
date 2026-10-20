@@ -1126,6 +1126,12 @@ private:
                       juce::String::fromUTF8(recording.c_str()));
             }
         }
+        if (const auto& crash = session_.lastPluginMessage(); crash != lastPluginMessage_)
+        {
+            lastPluginMessage_ = crash;
+            if (!crash.empty())
+                toast(ui::ToastStack::Kind::error, juce::String::fromUTF8(crash.c_str()));
+        }
         const auto bounce = session_.lastBounceMessage();
         if (bounce != lastBounceMessage_)
         {
@@ -2187,7 +2193,7 @@ private:
     ui::PanelManager panels_; // after the panels: its floating windows go first
     ui::Sheet* sheet_ = nullptr;
     std::unique_ptr<juce::FileChooser> chooser_;
-    std::string lastRecordingMessage_, lastBounceMessage_;
+    std::string lastRecordingMessage_, lastBounceMessage_, lastPluginMessage_;
     bool lastRecording_ = false;
     int ticks_ = 0;
     int dropoutBaseline_ = 0;

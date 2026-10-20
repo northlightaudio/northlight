@@ -19,7 +19,9 @@ add_library(aural_hosting STATIC
     ClapPlugin.h
     ClapPlugin.cpp
     HostFactory.h
-    HostFactory.cpp)
+    HostFactory.cpp
+    CrashGuard.h
+    CrashGuard.cpp)
 
 target_include_directories(aural_hosting PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/..")
 target_link_libraries(aural_hosting
