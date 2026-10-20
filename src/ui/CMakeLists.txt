@@ -49,6 +49,8 @@ add_library(aural_ui STATIC
     strip/EqGraph.cpp
     strip/ChannelStripView.h
     strip/ChannelStripView.cpp
+    strip/UserStripPresets.h
+    strip/UserStripPresets.cpp
     panels/InspectorPanel.h
     panels/InspectorPanel.cpp
     panels/DiagnosticsPanel.h

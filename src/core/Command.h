@@ -688,6 +688,30 @@ private:
     bool value_, previous_ = false;
 };
 
+// Sets the strip's modules from a preset: for each given module, the channel's
+// module of the same type takes its on/off state and parameters (ids and the
+// strip's order stay). One undo step.
+class SetStripState final : public Command
+{
+public:
+    SetStripState(Id channelId, std::vector<Insert> modules, std::string name = "Apply strip preset");
+    std::string name() const override { return name_; }
+    void apply(Project&) override;
+    void revert(Project&) override;
+
+private:
+    Id channelId_;
+    std::vector<Insert> modules_;
+    std::string name_;
+    struct Previous
+    {
+        Id id;
+        bool bypass;
+        std::vector<float> params;
+    };
+    std::vector<Previous> previous_;
+};
+
 // ----- automation -----------------------------------------------------------------------
 
 // Adds a lane (its id allocated on apply when invalid). A channel has at most

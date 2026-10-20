@@ -138,3 +138,28 @@ TEST_CASE("The strip view shows a card per module, off modules as tabs", "[strip
     view.setChannel(nullptr);
     CHECK(view.moduleCount() == 0);
 }
+
+#include "ui/strip/UserStripPresets.h"
+
+TEST_CASE("A user strip preset saves and loads back", "[strip][presets]")
+{
+    const juce::ScopedJuceInitialiser_GUI juceInit;
+    const auto folder = juce::File::getSpecialLocation(juce::File::tempDirectory)
+                            .getChildFile("aural-strip-presets")
+                            .getChildFile(juce::Uuid().toString());
+    auto modules = ps::defaultStrip();
+    modules[2].bypass = false;
+    modules[2].params[ps::compressor::threshold] = -31.5f;
+    CHECK_FALSE(ui::strip::saveUserPreset(folder, "  ", modules).empty());
+    REQUIRE(ui::strip::saveUserPreset(folder, "Gritty bass", modules).empty());
+    const auto loaded = ui::strip::loadUserPresets(folder);
+    REQUIRE(loaded.size() == 1);
+    CHECK(loaded[0].name == "Gritty bass");
+    CHECK(loaded[0].category == "Yours");
+    REQUIRE(loaded[0].modules.size() == modules.size());
+    CHECK(loaded[0].modules[2].type == ps::types::compressor);
+    CHECK_FALSE(loaded[0].modules[2].bypass);
+    CHECK(loaded[0].modules[2].params[ps::compressor::threshold] == -31.5f);
+    CHECK(loaded[0].modules[0].bypass);
+    folder.deleteRecursively();
+}

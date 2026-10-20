@@ -1089,6 +1089,35 @@ void MoveStripModule::revert(Project& p)
     c.strip.insert(c.strip.begin() + at, moved);
 }
 
+SetStripState::SetStripState(Id channelId, std::vector<Insert> modules, std::string name)
+    : channelId_(channelId), modules_(std::move(modules)), name_(std::move(name))
+{
+}
+void SetStripState::apply(Project& p)
+{
+    auto& c = requireChannel(p, channelId_);
+    previous_.clear();
+    for (const auto& wanted : modules_)
+        for (auto& module : c.strip)
+            if (module.type == wanted.type)
+            {
+                previous_.push_back({module.id, module.bypass, module.params});
+                module.bypass = wanted.bypass;
+                module.params = wanted.params;
+                break;
+            }
+}
+void SetStripState::revert(Project& p)
+{
+    auto& c = requireChannel(p, channelId_);
+    for (const auto& before : previous_)
+        if (auto* module = c.findInsert(before.id))
+        {
+            module->bypass = before.bypass;
+            module->params = before.params;
+        }
+}
+
 SetStripPosition::SetStripPosition(Id channelId, bool preInserts) : channelId_(channelId), value_(preInserts)
 {
 }

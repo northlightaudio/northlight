@@ -510,6 +510,12 @@ drive and wet/dry. Limiter: zero-latency peak limiting (gain drops at once,
 recovers at the release rate, the output clamped), so a strip that is off never
 adds latency.
 
+Presets: `plugins/StripPresets` holds the factory presets (each built from the
+default strip, every module off, with the modules and values the preset uses)
+and `SetStripState` applies one: each given module's bypass and parameters go
+to the channel's module of the same type, ids and order untouched, one undo
+step. `ui/strip/UserStripPresets` reads and writes the user's presets as JSON.
+
 Real-time feedback is `engine::ProcessorFeedback` (`InsertProcessor::feedback()`):
 the audio thread publishes a frame every 5 ms (input and output peaks, gain
 reduction, one module-specific level) into a 1024-frame ring of atomics and, for

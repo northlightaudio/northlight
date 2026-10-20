@@ -24,6 +24,8 @@ public:
 
     // The owner fills these (the cards call through them).
     CardHost host;
+    // Where the user's presets live (tests point it elsewhere).
+    juce::File presetFolder;
     // The strip's width changed (a card collapsed or expanded): the owner re-lays out.
     std::function<void()> onWidthChanged;
 
@@ -43,6 +45,11 @@ private:
     void timerCallback() override;
     void reorder(core::Id moduleId, juce::Point<int> screen, bool released);
     void collapse(core::Id moduleId, bool collapsed);
+    void showPresetMenu();
+    // Sets the strip to a preset (one undo step) and opens the cards of the
+    // modules it switches on, folding the rest.
+    void applyPreset(const std::vector<core::Insert>& modules, const std::string& name);
+    void savePreset();
     // Whether a module type's card is expanded: what the user chose this
     // session, otherwise whether the module is on.
     static bool expanded(const std::string& type, bool on);
@@ -57,7 +64,8 @@ private:
     int dropIndex_ = -1;
     double lastTickMs_ = 0.0;
     bool wasShowing_ = false;
-    juce::TextButton position_, allOff_;
+    juce::TextButton position_, allOff_, presets_;
+    std::vector<core::Insert> modules_; // the channel's strip as last set (for saving a preset)
 };
 
 } // namespace aural::ui::strip

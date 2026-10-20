@@ -1,7 +1,11 @@
 #include "ui/strip/ChannelStripView.h"
 
 #include "core/Command.h"
+#include "plugins/ChannelStrip.h"
+#include "plugins/StripPresets.h"
 #include "ui/AuralLookAndFeel.h"
+#include "ui/components/Sheet.h"
+#include "ui/strip/UserStripPresets.h"
 
 #include <map>
 
@@ -85,6 +89,12 @@ ChannelStripView::ChannelStripView(const Theme& theme) : theme_(theme)
             host.onGestureEnd();
     };
     addAndMakeVisible(allOff_);
+    presets_.setButtonText(juce::String::fromUTF8("Presets \xe2\x96\xbe"));
+    presets_.getProperties().set(AuralLookAndFeel::propertyVariant, "ghost");
+    presets_.setTooltip("Starting points for vocals, guitars, drums and buses, and your own");
+    presets_.onClick = [this] { showPresetMenu(); };
+    addAndMakeVisible(presets_);
+    presetFolder = userPresetFolder();
     startTimerHz(60);
 }
 
@@ -101,6 +111,7 @@ void ChannelStripView::setChannel(const core::Channel* channel)
         for (const auto& m : channel->strip)
             order.push_back(m.id);
     const core::Id id = channel != nullptr ? channel->id : core::invalidId;
+    modules_ = channel != nullptr ? channel->strip : std::vector<core::Insert>{};
     if (id != channelId_ || order != order_)
     {
         cards_.clear();
@@ -171,6 +182,7 @@ void ChannelStripView::resized()
     caption.removeFromLeft(110);
     position_.setBounds(caption.removeFromLeft(120).reduced(0, 1));
     allOff_.setBounds(caption.removeFromLeft(64).reduced(0, 1));
+    presets_.setBounds(caption.removeFromLeft(84).reduced(0, 1));
     int x = 0;
     const int h = getHeight() - captionHeight;
     for (const auto& card : cards_)
@@ -197,6 +209,103 @@ void ChannelStripView::timerCallback()
     wasShowing_ = true;
     for (const auto& card : cards_)
         card->tick(elapsed);
+}
+
+void ChannelStripView::applyPreset(const std::vector<core::Insert>& modules, const std::string& name)
+{
+    if (!host.onCommand || channelId_ == core::invalidId)
+        return;
+    for (const auto& m : modules)
+        expandedTypes()[m.type] = !m.bypass;
+    for (const auto& card : cards_)
+        for (const auto& m : modules)
+            if (m.type == card->type())
+                card->setCollapsed(m.bypass);
+    host.onCommand(std::make_unique<core::SetStripState>(channelId_, modules, "Strip preset: " + name));
+    resized();
+    if (onWidthChanged)
+        onWidthChanged();
+}
+
+void ChannelStripView::showPresetMenu()
+{
+    juce::PopupMenu menu;
+    std::vector<plugins::strip::Preset> choices;
+    const auto add = [&](juce::PopupMenu& into, const plugins::strip::Preset& preset)
+    {
+        choices.push_back(preset);
+        into.addItem(static_cast<int>(choices.size()), juce::String(preset.name));
+    };
+    std::string category;
+    for (const auto& preset : plugins::strip::factoryPresets())
+    {
+        if (preset.category != category)
+        {
+            category = preset.category;
+            menu.addSectionHeader(juce::String(category));
+        }
+        add(menu, preset);
+    }
+    const auto yours = loadUserPresets(presetFolder);
+    if (!yours.empty())
+    {
+        menu.addSectionHeader("Yours");
+        for (const auto& preset : yours)
+            add(menu, preset);
+    }
+    menu.addSeparator();
+    menu.addItem(10001, juce::String::fromUTF8("Save as preset\xe2\x80\xa6"), channelId_ != core::invalidId);
+    menu.addItem(10002, "Reset strip (all off, defaults)", channelId_ != core::invalidId);
+    menu.addItem(10003, "Show presets folder");
+    juce::Component::SafePointer<ChannelStripView> safe(this);
+    menu.showMenuAsync(juce::PopupMenu::Options().withTargetComponent(presets_),
+                       [safe, choices](int choice)
+                       {
+                           if (safe == nullptr || choice <= 0)
+                               return;
+                           if (choice == 10001)
+                               safe->savePreset();
+                           else if (choice == 10002)
+                               safe->applyPreset(plugins::strip::defaultStrip(), "Reset");
+                           else if (choice == 10003)
+                           {
+                               safe->presetFolder.createDirectory();
+                               safe->presetFolder.revealToUser();
+                           }
+                           else if (static_cast<size_t>(choice) <= choices.size())
+                           {
+                               const auto& preset = choices[static_cast<size_t>(choice - 1)];
+                               safe->applyPreset(preset.modules, preset.name);
+                           }
+                       });
+}
+
+void ChannelStripView::savePreset()
+{
+    auto* window = getTopLevelComponent();
+    if (window == nullptr)
+        return;
+    auto field = std::make_unique<juce::TextEditor>();
+    field->setText("My strip");
+    field->selectAll();
+    auto* raw = field.get();
+    juce::Component::SafePointer<ChannelStripView> safe(this);
+    const auto modules = modules_;
+    Sheet::show(
+        *window,
+        theme_,
+        "Save strip preset",
+        "Every module's on/off state and settings, to start other channels from. "
+        "It appears under Yours in the Presets menu.",
+        {{"Cancel", false, false}, {"Save", true, false}},
+        [safe, raw, modules](int result)
+        {
+            if (safe == nullptr || result != 1)
+                return;
+            saveUserPreset(safe->presetFolder, raw->getText(), modules);
+        },
+        std::move(field),
+        theme_.sizes.control);
 }
 
 int ChannelStripView::indexForX(int x) const

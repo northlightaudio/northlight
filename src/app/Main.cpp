@@ -6,6 +6,7 @@
 #include "core/Command.h"
 #include "plugins/BuiltIns.h"
 #include "plugins/ChannelStrip.h"
+#include "plugins/StripPresets.h"
 #include "ui/AuralLookAndFeel.h"
 #include "ui/PreferencesView.h"
 
@@ -83,6 +84,7 @@ public:
     //   --automation         add a volume lane to the first track and show it in the arrange view
     //   --master-gain <dB>   set the master fader (-120 = silent: an unattended check that
     //                        should not be heard; pre-fader displays still move)
+    //   --strip-preset <name> apply a factory channel strip preset to every track
     //   --strip <modules>    switch channel strip modules on for every track and show the
     //                        Editor panel: a comma list of gate, eq, compressor, deesser,
     //                        saturation, limiter, or all; "demo" also sets values that give
@@ -188,6 +190,18 @@ public:
                     session_->execute(std::make_unique<core::AddAutomationLane>(trackId, lane));
                     mainWindow_->showAutomation(trackId);
                 }
+            }
+            else if (arg == "--strip-preset" && i + 1 < tokens.size())
+            {
+                // A factory strip preset on every track, and the Editor panel.
+                const auto name = tokens.getReference(++i).text.unquoted().toStdString();
+                if (const auto* preset = plugins::strip::findFactoryPreset(name))
+                {
+                    const auto tracks = session_->project().tracks;
+                    for (const auto& track : tracks)
+                        session_->execute(std::make_unique<core::SetStripState>(track.id, preset->modules));
+                }
+                mainWindow_->showPanel("editor");
             }
             else if (arg == "--strip" && i + 1 < tokens.size())
                 applyStripFlag(tokens.getReference(++i).text.unquoted());

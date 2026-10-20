@@ -6,7 +6,9 @@ add_library(aural_plugins STATIC
     Biquad.h
     ProcessorBase.h
     ChannelStrip.h
-    ChannelStrip.cpp)
+    ChannelStrip.cpp
+    StripPresets.h
+    StripPresets.cpp)
 
 target_include_directories(aural_plugins PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/..")
 target_link_libraries(aural_plugins PUBLIC aural_engine)

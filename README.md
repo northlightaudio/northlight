@@ -114,6 +114,10 @@ on in place: in the Editor panel each module is a card with a real-time display
 history and gain-reduction meter, the gate's open/closed lane), and a module
 that is off folds to a tab; the mixer strips have a row of module cells to switch
 them. The strip runs after the inserts unless switched to before them.
+**Presets** in the strip's caption row start a channel from a factory setting
+(lead and backing vocals, spoken word, acoustic and electric guitar, bass,
+piano, synth pad, kick, snare, drum bus, mix bus, reverb return) or one of your
+own (**Save as preset...**).
 A strip's **Group** button puts it in a fader group: grouped faders move together
 (keeping their balance) and mute and solo act on the whole group.
 **Inserts ▸ Add** lists the built-ins and every VST3 and CLAP plugin found by

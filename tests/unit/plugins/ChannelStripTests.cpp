@@ -365,3 +365,85 @@ TEST_CASE("The strip survives a save and older projects get one", "[core][strip]
     CHECK(std::adjacent_find(ids.begin(), ids.end()) == ids.end());
     CHECK_FALSE(strip::ensureChannelStrip(old));
 }
+
+// ----- presets ----------------------------------------------------------------------------------
+
+#include "plugins/StripPresets.h"
+
+TEST_CASE("Every factory strip preset is complete and in range", "[plugins][strip][presets]")
+{
+    const auto& presets = strip::factoryPresets();
+    REQUIRE(presets.size() >= 10);
+    for (const char* name : {"Lead vocal",
+                             "Acoustic guitar",
+                             "Electric guitar",
+                             "Bass",
+                             "Kick",
+                             "Snare",
+                             "Drum bus",
+                             "Mix bus glue"})
+        CHECK(strip::findFactoryPreset(name) != nullptr);
+    CHECK(strip::findFactoryPreset("nope") == nullptr);
+    for (const auto& preset : presets)
+    {
+        INFO(preset.name);
+        CHECK_FALSE(preset.category.empty());
+        CHECK_FALSE(preset.description.empty());
+        REQUIRE(preset.modules.size() == strip::moduleTypes().size());
+        bool anyOn = false;
+        for (size_t m = 0; m < preset.modules.size(); ++m)
+        {
+            const auto& module = preset.modules[m];
+            CHECK(module.type == strip::moduleTypes()[m]);
+            anyOn = anyOn || !module.bypass;
+            const auto& infos = plugins::parameterInfo(module.type);
+            REQUIRE(module.params.size() == infos.size());
+            for (size_t i = 0; i < infos.size(); ++i)
+            {
+                INFO(module.type << " " << infos[i].name);
+                CHECK(module.params[i] >= infos[i].minimum);
+                CHECK(module.params[i] <= infos[i].maximum);
+            }
+        }
+        CHECK(anyOn);
+    }
+    // The lead vocal preset: EQ, compressor, de-esser and saturation on; a 24 dB cut at 90 Hz.
+    const auto* vocal = strip::findFactoryPreset("Lead vocal");
+    CHECK(vocal->modules[0].bypass);       // gate
+    CHECK_FALSE(vocal->modules[1].bypass); // EQ
+    const auto& eq = vocal->modules[1].params;
+    CHECK(eq[static_cast<size_t>(strip::eq::paramIndex(strip::eq::lowCut, strip::eq::frequency))] == 90.0f);
+    CHECK(strip::eq::slopes[static_cast<size_t>(
+              eq[static_cast<size_t>(strip::eq::paramIndex(strip::eq::lowCut, strip::eq::type))])] == 24);
+}
+
+TEST_CASE("Applying a strip preset is one undoable step that keeps the module ids and order",
+          "[core][strip][presets]")
+{
+    core::Project p;
+    core::UndoStack undo;
+    auto add = std::make_unique<core::AddTrack>(core::Track{});
+    add->setDefaultStrip(strip::defaultStrip());
+    undo.execute(p, std::move(add));
+    const auto trackId = p.tracks[0].id;
+    undo.execute(p, std::make_unique<core::MoveStripModule>(trackId, p.tracks[0].strip[5].id, 0));
+    const auto before = p.tracks[0].strip;
+    const auto* kick = strip::findFactoryPreset("Kick");
+    undo.execute(p, std::make_unique<core::SetStripState>(trackId, kick->modules, "Strip preset: Kick"));
+    const auto& after = p.tracks[0].strip;
+    REQUIRE(after.size() == before.size());
+    for (size_t i = 0; i < after.size(); ++i)
+    {
+        CHECK(after[i].id == before[i].id);
+        CHECK(after[i].type == before[i].type);
+        for (const auto& m : kick->modules)
+            if (m.type == after[i].type)
+            {
+                CHECK(after[i].bypass == m.bypass);
+                CHECK(after[i].params == m.params);
+            }
+    }
+    CHECK(undo.undoName() == "Strip preset: Kick");
+    undo.undo(p);
+    CHECK(p.tracks[0].strip == before);
+}
