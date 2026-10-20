@@ -1226,6 +1226,25 @@ void SetMediaPaths::revert(Project& p)
                 c->mediaPath = change.previous;
 }
 
+SetTrackMidiOutput::SetTrackMidiOutput(Id trackId, bool on, int channel)
+    : trackId_(trackId), on_(on), channel_(std::clamp(channel, 1, 16))
+{
+}
+void SetTrackMidiOutput::apply(Project& p)
+{
+    auto& t = requireTrack(p, trackId_);
+    previousOn_ = t.midiOut;
+    previousChannel_ = t.midiOutChannel;
+    t.midiOut = on_;
+    t.midiOutChannel = channel_;
+}
+void SetTrackMidiOutput::revert(Project& p)
+{
+    auto& t = requireTrack(p, trackId_);
+    t.midiOut = previousOn_;
+    t.midiOutChannel = previousChannel_;
+}
+
 SetTrackName::SetTrackName(Id trackId, std::string name) : trackId_(trackId), value_(std::move(name)) {}
 void SetTrackName::apply(Project& p)
 {

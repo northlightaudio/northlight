@@ -214,6 +214,45 @@ TEST_CASE("Live MIDI input reaches an armed MIDI track's instrument in the same 
     CHECK(h.right[7] == Approx(72.0f).margin(0.01f));
 }
 
+TEST_CASE("A track that plays the MIDI output hands its events on, timed on the sample clock",
+          "[engine][midi][midiout]")
+{
+    core::MidiClip clip;
+    clip.start = 0;
+    clip.length = 1000;
+    clip.notes.push_back({20, 60, 100, 70, 100}); // on at 70 (second block), off at 170
+    auto p = keysProject(clip);
+    p.tracks[0].midiOut = true;
+    p.tracks[0].midiOutChannel = 10;
+    Harness h;
+    h.engine.setProject(p);
+    h.engine.play();
+    h.render(1);
+    engine::MidiOutEvent e;
+    CHECK_FALSE(h.engine.popMidiOutput(e)); // nothing in the first block
+    h.render(3);
+    std::vector<engine::MidiOutEvent> out;
+    while (h.engine.popMidiOutput(e))
+        out.push_back(e);
+    REQUIRE(out.size() == 2);
+    CHECK(out[0].event.type == engine::MidiEvent::Type::noteOn);
+    CHECK(out[0].event.channel == 9); // channel 10, zero-based
+    CHECK(out[0].event.note == 60);
+    CHECK(out[0].clock == 70);
+    CHECK(out[1].clock == 170);
+    // The clock sync names a block start on the same clock.
+    const auto sync = h.engine.clockSync();
+    CHECK(sync.clock == 3 * 64);
+    CHECK(sync.steadyNanos > 0);
+
+    // A track that does not play the output hands on nothing.
+    p.tracks[0].midiOut = false;
+    h.engine.setProject(p);
+    h.engine.locate(0);
+    h.render(4);
+    CHECK_FALSE(h.engine.popMidiOutput(e));
+}
+
 TEST_CASE("An audition reaches only its own track's instrument, armed or not", "[engine][midi]")
 {
     core::MidiClip clip;

@@ -187,6 +187,22 @@ void AudioEngine::resetCaches()
     runtimes_.clear();
 }
 
+AudioEngine::ClockSync AudioEngine::clockSync() const noexcept
+{
+    ClockSync sync;
+    for (int attempt = 0; attempt < 8; ++attempt)
+    {
+        const auto before = syncSequence_.load(std::memory_order_acquire);
+        if ((before & 1) != 0)
+            continue;
+        sync.clock = syncClock_.load(std::memory_order_relaxed);
+        sync.steadyNanos = syncNanos_.load(std::memory_order_relaxed);
+        if (syncSequence_.load(std::memory_order_acquire) == before)
+            break;
+    }
+    return sync;
+}
+
 void AudioEngine::setAutomationTouched(core::Id laneId, bool touched)
 {
     AURAL_ASSERT_NOT_REALTIME("AudioEngine::setAutomationTouched");
@@ -364,6 +380,18 @@ void AudioEngine::process(
         return;
     }
 
+    // The sample clock for this block, for the MIDI output's timing.
+    {
+        const auto nanos = std::chrono::duration_cast<std::chrono::nanoseconds>(
+                               std::chrono::steady_clock::now().time_since_epoch())
+                               .count();
+        const auto sequence = syncSequence_.load(std::memory_order_relaxed);
+        syncSequence_.store(sequence + 1, std::memory_order_release);
+        syncClock_.store(sampleClock_, std::memory_order_relaxed);
+        syncNanos_.store(nanos, std::memory_order_relaxed);
+        syncSequence_.store(sequence + 2, std::memory_order_release);
+    }
+
     const Snapshot* snapshot = publisher_.acquire();
     if (flushDelays_ && snapshot != nullptr)
     {
@@ -460,6 +488,8 @@ void AudioEngine::process(
         context.countIn = countingIn;
         context.meters = &meters_;
         context.loudness = &loudness_;
+        context.midiOut = &midiOut_;
+        context.sampleClock = sampleClock_ + done;
         if (done == 0 && !liveMidi_.empty())
         {
             context.liveMidi = &liveMidi_;
@@ -488,6 +518,7 @@ void AudioEngine::process(
         done += count;
     }
 
+    sampleClock_ += numSamples;
     position_.store(transport_.position, std::memory_order_relaxed);
     playing_.store(transport_.playing, std::memory_order_relaxed);
     countingIn_.store(transport_.playing && transport_.countInRemaining > 0, std::memory_order_relaxed);

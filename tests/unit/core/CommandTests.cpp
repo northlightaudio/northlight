@@ -1,4 +1,5 @@
 #include "core/Command.h"
+#include "core/ProjectJson.h"
 
 #include <catch2/catch_test_macros.hpp>
 
@@ -680,4 +681,24 @@ TEST_CASE("MIDI clips and notes are added, moved, trimmed, split, edited, quanti
     {
     }
     CHECK(p.tracks.empty());
+}
+
+TEST_CASE("A MIDI track's MIDI output setting is undoable and saved", "[core][midi]")
+{
+    Project p;
+    Track t;
+    t.id = p.allocateId();
+    t.kind = TrackKind::midi;
+    p.tracks.push_back(t);
+    UndoStack undo;
+    undo.execute(p, std::make_unique<SetTrackMidiOutput>(t.id, true, 20)); // clamped
+    CHECK(p.tracks[0].midiOut);
+    CHECK(p.tracks[0].midiOutChannel == 16);
+    const auto loaded = projectFromJson(projectToJson(p));
+    REQUIRE(loaded.has_value());
+    CHECK(loaded->tracks[0].midiOut);
+    CHECK(loaded->tracks[0].midiOutChannel == 16);
+    undo.undo(p);
+    CHECK_FALSE(p.tracks[0].midiOut);
+    CHECK(p.tracks[0].midiOutChannel == 1);
 }

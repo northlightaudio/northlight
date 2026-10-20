@@ -2347,6 +2347,27 @@ void ArrangeView::trackMenu(core::Id trackId, juce::Point<int> screen)
     colours.addSeparator();
     colours.addItem(199, "Default");
     menu.addSubMenu("Colour", colours);
+    const auto* track = project_->findTrack(trackId);
+    if (track->isMidi())
+    {
+        // MIDI output: the device chosen in Audio Setup, on a channel.
+        const auto device = midiOutputName ? midiOutputName() : std::string{};
+        juce::PopupMenu out;
+        if (device.empty())
+            out.addItem(300, "Choose a MIDI output in Audio Setup", false);
+        else
+        {
+            out.addSectionHeader(juce::String::fromUTF8(device.c_str()));
+            out.addItem(300, "Off", true, !track->midiOut);
+            for (int ch = 1; ch <= 16; ++ch)
+                out.addItem(300 + ch,
+                            "Channel " + juce::String(ch),
+                            true,
+                            track->midiOut && track->midiOutChannel == ch);
+        }
+        menu.addSubMenu("MIDI output", out);
+    }
+    menu.addItem(4, automation_.isShown(trackId) ? "Hide automation" : "Show automation");
     menu.addSeparator();
     menu.addItem(2, "Delete track");
     menu.addItem(3, "Add bus");
@@ -2356,6 +2377,18 @@ void ArrangeView::trackMenu(core::Id trackId, juce::Point<int> screen)
                        {
                            if (safe == nullptr || choice == 0)
                                return;
+                           if (choice >= 300 && choice <= 316)
+                           {
+                               if (safe->onCommand)
+                                   safe->onCommand(std::make_unique<core::SetTrackMidiOutput>(
+                                       trackId, choice > 300, std::max(1, choice - 300)));
+                               return;
+                           }
+                           if (choice == 4)
+                           {
+                               safe->showAutomation(trackId, !safe->automation_.isShown(trackId));
+                               return;
+                           }
                            const auto& palette = safe->theme_.track.palette;
                            if (choice >= 100 && choice < 199 &&
                                static_cast<size_t>(choice - 100) < palette.size())

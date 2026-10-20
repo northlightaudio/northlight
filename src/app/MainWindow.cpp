@@ -819,6 +819,7 @@ private:
         browser_.onInsert = [this](const std::string& type) { insertPlugin(tracks_.selectedTrack(), type); };
         browser_.setStatus(session_.pluginScanStatus());
         tracks_.setDisplayName([this](const std::string& type) { return mixer_.insertDisplayName(type); });
+        tracks_.midiOutputName = [this] { return audio_.midi().outputName(); };
         tracks_.onInsertPlugin = [this](core::Id trackId, const std::string& type)
         { insertPlugin(trackId, type); };
         editor_.isEditorOpen = [this](core::Id insertId) { return mixer_.isEditorOpen(insertId); };

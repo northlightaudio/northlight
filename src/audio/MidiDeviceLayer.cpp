@@ -3,9 +3,27 @@
 #include "engine/AudioEngine.h"
 
 #include <algorithm>
+#include <chrono>
 
 namespace aural::audio
 {
+
+class MidiDeviceLayer::Sender final : public juce::Thread
+{
+public:
+    explicit Sender(MidiDeviceLayer& owner) : juce::Thread("Aural MIDI out"), owner_(owner) {}
+    void run() override
+    {
+        while (!threadShouldExit())
+        {
+            owner_.sendDue();
+            wait(1);
+        }
+    }
+
+private:
+    MidiDeviceLayer& owner_;
+};
 
 MidiDeviceLayer::MidiDeviceLayer() = default;
 
@@ -16,7 +34,72 @@ MidiDeviceLayer::~MidiDeviceLayer()
 
 void MidiDeviceLayer::setEngine(engine::AudioEngine* engine) noexcept
 {
+    const std::lock_guard<std::mutex> lock(engineMutex_);
     engine_.store(engine, std::memory_order_release);
+}
+
+void MidiDeviceLayer::sendDue()
+{
+    std::int64_t dueBefore = 0; // the newest clock value that is due now
+    {
+        const std::lock_guard<std::mutex> lock(engineMutex_);
+        auto* engine = engine_.load(std::memory_order_acquire);
+        if (engine == nullptr)
+        {
+            pending_.clear();
+            return;
+        }
+        engine::MidiOutEvent e;
+        while (engine->popMidiOutput(e))
+        {
+            // Mostly in order already; tracks interleave within a block.
+            auto at = std::upper_bound(pending_.begin(),
+                                       pending_.end(),
+                                       e.clock,
+                                       [](std::int64_t clock, const engine::MidiOutEvent& x)
+                                       { return clock < x.clock; });
+            pending_.insert(at, e);
+        }
+        if (pending_.empty())
+            return;
+        const double rate = std::max(1.0, engine->deviceSampleRate());
+        const auto sync = engine->clockSync();
+        const auto now = std::chrono::duration_cast<std::chrono::nanoseconds>(
+                             std::chrono::steady_clock::now().time_since_epoch())
+                             .count();
+        // A clock value is due once now has passed its time (sample clock to
+        // wall time, plus the output latency, so it sounds with the audio).
+        const double latency = engine->outputLatencySamples();
+        dueBefore = sync.clock + static_cast<std::int64_t>(
+                                     static_cast<double>(now - sync.steadyNanos) * rate / 1.0e9 - latency);
+    }
+    const std::lock_guard<std::mutex> lock(outputMutex_);
+    size_t sent = 0;
+    for (; sent < pending_.size() && pending_[sent].clock <= dueBefore; ++sent)
+    {
+        if (output_ == nullptr)
+            continue;
+        const auto& e = pending_[sent].event;
+        const int channel = e.channel + 1;
+        switch (e.type)
+        {
+            case engine::MidiEvent::Type::noteOn:
+                output_->sendMessageNow(e.velocity > 0
+                                            ? juce::MidiMessage::noteOn(channel, e.note, e.velocity)
+                                            : juce::MidiMessage::noteOff(channel, e.note));
+                break;
+            case engine::MidiEvent::Type::noteOff:
+                output_->sendMessageNow(juce::MidiMessage::noteOff(channel, e.note));
+                break;
+            case engine::MidiEvent::Type::controller:
+                output_->sendMessageNow(juce::MidiMessage::controllerEvent(channel, e.note, e.velocity));
+                break;
+            case engine::MidiEvent::Type::allNotesOff:
+                output_->sendMessageNow(juce::MidiMessage::allNotesOff(channel));
+                break;
+        }
+    }
+    pending_.erase(pending_.begin(), pending_.begin() + static_cast<std::ptrdiff_t>(sent));
 }
 
 void MidiDeviceLayer::initialise(const std::optional<std::vector<std::string>>& enabledInputs,
@@ -28,12 +111,17 @@ void MidiDeviceLayer::initialise(const std::optional<std::vector<std::string>>& 
     initialised_ = true;
     connection_ = juce::MidiDeviceListConnection::make([this] { refresh(); });
     refresh();
+    sender_ = std::make_unique<Sender>(*this);
+    sender_->startThread(juce::Thread::Priority::high);
 }
 
 void MidiDeviceLayer::shutdown()
 {
     if (!initialised_)
         return;
+    if (sender_ != nullptr)
+        sender_->stopThread(1000);
+    sender_.reset();
     connection_ = {};
     std::vector<OpenInput> closing;
     {
@@ -43,7 +131,10 @@ void MidiDeviceLayer::shutdown()
     for (auto& input : closing)
         input.device->stop();
     closing.clear();
-    output_.reset();
+    {
+        const std::lock_guard<std::mutex> lock(outputMutex_);
+        output_.reset();
+    }
     initialised_ = false;
 }
 
@@ -140,10 +231,13 @@ void MidiDeviceLayer::refresh()
         std::find_if(available.begin(),
                      available.end(),
                      [&](const juce::MidiDeviceInfo& i) { return i.name.toStdString() == outputName_; });
-    if (wanted == available.end() || outputName_.empty())
-        output_.reset();
-    else if (output_ == nullptr || output_->getIdentifier() != wanted->identifier)
-        output_ = juce::MidiOutput::openDevice(wanted->identifier);
+    {
+        const std::lock_guard<std::mutex> lock(outputMutex_);
+        if (wanted == available.end() || outputName_.empty())
+            output_.reset();
+        else if (output_ == nullptr || output_->getIdentifier() != wanted->identifier)
+            output_ = juce::MidiOutput::openDevice(wanted->identifier);
+    }
     sendChangeMessage();
 }
 

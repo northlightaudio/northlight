@@ -6,6 +6,7 @@
 #include "engine/Snapshot.h"
 #include "engine/Transport.h"
 #include "engine/WorkerPool.h"
+#include "engine/rt/SpscQueue.h"
 
 #include <vector>
 
@@ -39,6 +40,10 @@ struct RenderContext
     // Per event: the track an audition is for (core::invalidId for device input);
     // may be null.
     const core::Id* liveMidiTargets = nullptr;
+    // The MIDI output: tracks that play it push their span's events here with
+    // their time on the engine's sample clock (this span starts at sampleClock).
+    rt::SpscQueue<MidiOutEvent>* midiOut = nullptr;
+    std::int64_t sampleClock = 0;
 };
 
 class Renderer

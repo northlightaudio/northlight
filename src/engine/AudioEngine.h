@@ -104,6 +104,18 @@ public:
     // track's instrument, whether or not the track is armed or monitoring, and
     // is never recorded.
     void pushMidiPreview(const MidiEvent& event, core::Id trackId);
+    // MIDI output (any one non-real-time consumer thread): the next event the
+    // tracks that play the output produced, and how the sample clock maps to
+    // wall time (the clock at the start of the latest block and when it began,
+    // in steady_clock nanoseconds).
+    bool popMidiOutput(MidiOutEvent& event) noexcept { return midiOut_.pop(event); }
+    struct ClockSync
+    {
+        std::int64_t clock = 0;
+        std::int64_t steadyNanos = 0;
+    };
+    ClockSync clockSync() const noexcept;
+
     // The engine's index for an input name (registering it the first time), the
     // value TrackNode::midiSource filters on.
     int midiSourceIndex(const std::string& name);
@@ -199,6 +211,12 @@ private:
     size_t liveMidiCount_ = 0;
     std::vector<std::string> midiSourceNames_; // index = source
     std::mutex midiMutex_;
+    rt::SpscQueue<MidiOutEvent> midiOut_{4096};
+    std::int64_t sampleClock_ = 0; // real-time: samples rendered since start
+    // The clock sync, published by the real-time thread with a sequence count
+    // (odd while it writes) so a reader never sees half of a pair.
+    std::atomic<std::uint64_t> syncSequence_{0};
+    std::atomic<std::int64_t> syncClock_{0}, syncNanos_{0};
     std::atomic<int> masterMeterSlot_{-1};
     bool flushDelays_ = false; // real-time thread only: a locate happened
     std::atomic<int> outputLatency_{0};

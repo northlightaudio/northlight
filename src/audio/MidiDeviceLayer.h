@@ -22,7 +22,11 @@ namespace aural::audio
 
 // MIDI devices: the inputs the user enabled (every input by default) are open and
 // feed the engine's live MIDI queue, tagged with the device name so a track can
-// listen to one of them; one output can be selected and is kept open. Devices
+// listen to one of them; one output can be selected and is kept open. A sender
+// thread plays what the tracks that use the output produce: it takes the
+// engine's MIDI output events and sends each when its sample-clock time comes
+// round (mapped to wall time through the engine's clock sync, plus the audio
+// output latency so the notes line up with what is heard). Devices
 // that appear or vanish (hot-plug) are picked up through JUCE's device-list
 // notification and the lists re-read. Message thread only, apart from the input
 // callbacks, which run on JUCE's MIDI threads and only touch the engine's queue.
@@ -67,6 +71,9 @@ public:
 
 private:
     void handleIncomingMidiMessage(juce::MidiInput* source, const juce::MidiMessage& message) override;
+    class Sender;
+    // The sender thread: one pass of taking events and sending the due ones.
+    void sendDue();
     bool isEnabled(const std::string& name) const;
     void openEnabledInputs();
 
@@ -82,6 +89,10 @@ private:
     std::vector<OpenInput> open_;
     mutable std::mutex openMutex_; // the callback reads open_ while the list changes
     std::unique_ptr<juce::MidiOutput> output_;
+    std::mutex outputMutex_;                    // the sender sends while the message thread may reopen
+    std::mutex engineMutex_;                    // the sender reads the engine while it may be detached
+    std::vector<engine::MidiOutEvent> pending_; // sender thread only, in clock order
+    std::unique_ptr<Sender> sender_;
     juce::MidiDeviceListConnection connection_;
     bool initialised_ = false;
 

@@ -878,6 +878,22 @@ recording, the instrument chip in the track header. Launch flags:
 `--midi-track`, `--midi-track-with <type>`, `--piano-roll` (the first MIDI
 clip in the panel).
 
+### MIDI output
+
+A MIDI track with `midiOut` set plays the MIDI output device (the one chosen in
+Audio Setup) on its `midiOutChannel`. After the tracks of a span have rendered,
+`Renderer::renderSpan` (on the callback thread, so the queue has one producer)
+pushes each such track's span events, with the channel set, into the engine's
+`midiOut_` SPSC queue, timed on the engine's sample clock (samples rendered
+since the engine started; loops and locates do not disturb it). At the start of
+each block the engine publishes the clock with the `steady_clock` time,
+guarded by a sequence count so a reader never sees half a pair.
+`audio::MidiDeviceLayer` runs a sender thread that drains the queue every
+millisecond into a clock-ordered list and sends each event once its clock time,
+mapped to wall time and delayed by the audio output latency, has come, so the
+external instrument sounds with the audio. Note-offs on stop, locate and loop
+come through the same events. A full queue drops events rather than block.
+
 ### Metronome, count-in, loop and punch
 
 `engine::ClickGenerator` adds a 30 ms decaying sine burst on every beat (1.5 kHz on

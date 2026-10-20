@@ -138,6 +138,9 @@ insert or channel strip module) and the mode (Off, Read, Touch, Latch, Write) fr
 the chips at the lane's top left; click to add points, drag them, double-click to
 remove. In Touch, Latch or Write, moving the fader, pan or a parameter while
 playing records it into the lane. Faders and knobs follow automation as it plays.
+A MIDI track can also play an external instrument: pick a MIDI output in Audio
+Setup, then the channel in the track's right-click menu (**MIDI output**); its
+clips and, while monitoring, its live input go out in time with the audio.
 **Editing** in the arrange view: click a clip to select it (Shift adds, Ctrl
 toggles), drag on empty space to lasso, drag a clip to move it (across tracks too),
 drag its edge to trim, drag the handle at a top corner for a fade, Ctrl+drag up or

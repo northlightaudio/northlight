@@ -163,6 +163,7 @@ void Renderer::render(const Snapshot& snapshot,
                 const auto toLoopEnd = transport.loopEnd - transport.position;
                 span = static_cast<int>(std::min<core::SamplePosition>(span, toLoopEnd));
             }
+            spanContext.sampleClock = context.sampleClock + done;
             renderSpan(snapshot, spanContext, transport.position, left + done, right + done, span, pool);
             renderClicks(snapshot, transport, transport.position, left + done, right + done, span);
             transport.position += span;
@@ -687,6 +688,20 @@ void Renderer::renderSpan(const Snapshot& snapshot,
             for (int i = 0; i < count; ++i)
                 trackJob(&job, i);
     }
+
+    // MIDI output: the tracks that play it hand on their span's events (here, on
+    // the callback thread, so the queue has one producer). A full queue drops.
+    if (context.midiOut != nullptr)
+        for (const auto& track : snapshot.tracks)
+            if (track.midiOut)
+                for (size_t i = 0; i < track.events.size(); ++i)
+                {
+                    MidiOutEvent out;
+                    out.event = track.events[i];
+                    out.event.channel = track.midiOutChannel;
+                    out.clock = context.sampleClock + track.events[i].sampleOffset;
+                    context.midiOut->push(out);
+                }
 
     // Summing in fixed order: the result does not depend on which thread did what.
     for (const auto& bus : snapshot.buses)

@@ -27,6 +27,14 @@ struct MidiEvent
     std::uint8_t velocity = 0;
 };
 
+// A MIDI event leaving for the output device: the event with its channel, at
+// a time on the engine's sample clock (samples rendered since it started).
+struct MidiOutEvent
+{
+    MidiEvent event;
+    std::int64_t clock = 0;
+};
+
 class MidiEventList
 {
 public:

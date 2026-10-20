@@ -200,6 +200,8 @@ json trackToJson(const Track& t)
     j["input"] = t.inputChannel;
     if (!t.midiInput.empty())
         j["midiInput"] = t.midiInput;
+    if (t.midiOut)
+        j["midiOut"] = json{{"channel", t.midiOutChannel}};
     j["armed"] = t.armed;
     j["monitor"] = monitor;
     j["clips"] = std::move(clips);
@@ -249,6 +251,11 @@ Track trackFromJson(const json& j)
         t.auxOutput = aux->value("output", 0);
     }
     t.midiInput = j.value("midiInput", std::string{});
+    if (const auto out = j.find("midiOut"); out != j.end() && out->is_object())
+    {
+        t.midiOut = true;
+        t.midiOutChannel = std::clamp(out->value("channel", 1), 1, 16);
+    }
     if (const auto it = j.find("midiClips"); it != j.end() && it->is_array())
     {
         for (const auto& cj : *it)

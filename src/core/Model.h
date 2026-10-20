@@ -242,7 +242,11 @@ struct Track : Channel
     int auxOutput = 0;
     int inputChannel = -1; // device input channel index (callback order), -1 = none
     std::string midiInput; // MIDI input device name; empty = every enabled input
-    bool armed = false;    // records when the transport records
+    // A MIDI track can also play the MIDI output device (the one chosen in Audio
+    // Setup) on a channel: its clips and, while monitoring, its live input.
+    bool midiOut = false;
+    int midiOutChannel = 1; // 1..16
+    bool armed = false;     // records when the transport records
     MonitorMode monitor = MonitorMode::automatic;
     std::vector<AudioClip> clips;    // kept sorted by start
     std::vector<MidiClip> midiClips; // kept sorted by start

@@ -369,6 +369,8 @@ std::unique_ptr<Snapshot> compileSnapshot(const core::Project& project,
             }
             node.midiSource =
                 midiSources != nullptr && !track.midiInput.empty() ? midiSources(track.midiInput) : -1;
+            node.midiOut = track.midiOut;
+            node.midiOutChannel = static_cast<std::uint8_t>(std::clamp(track.midiOutChannel, 1, 16) - 1);
             for (const auto& c : track.midiClips)
             {
                 MidiClipNode clip;

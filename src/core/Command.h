@@ -265,6 +265,21 @@ private:
     std::string value_, previous_;
 };
 
+// Whether a MIDI track plays the MIDI output device, and on which channel (1..16).
+class SetTrackMidiOutput final : public Command
+{
+public:
+    SetTrackMidiOutput(Id trackId, bool on, int channel);
+    std::string name() const override { return "Set MIDI output"; }
+    void apply(Project&) override;
+    void revert(Project&) override;
+
+private:
+    Id trackId_;
+    bool on_, previousOn_ = false;
+    int channel_, previousChannel_ = 1;
+};
+
 class AddMidiClip final : public Command
 {
 public:

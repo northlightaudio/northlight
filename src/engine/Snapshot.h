@@ -118,8 +118,10 @@ struct TrackNode : ChannelNode
     InsertProcessor* auxInsert = nullptr; // that instrument
     int auxOutput = 0;                    // its extra pair, 0 = the first beyond main
     std::shared_ptr<InsertProcessor> keepAliveAux;
-    int inputChannel = -1; // device input (callback order) or -1
-    int midiSource = -1;   // live MIDI: -1 = every input, else the engine's index for the device
+    int inputChannel = -1;           // device input (callback order) or -1
+    int midiSource = -1;             // live MIDI: -1 = every input, else the engine's index for the device
+    bool midiOut = false;            // the span's events also go to the MIDI output device
+    std::uint8_t midiOutChannel = 0; // 0..15
     bool armed = false;
     core::MonitorMode monitor = core::MonitorMode::automatic;
     std::vector<ClipNode> clips;         // sorted by start

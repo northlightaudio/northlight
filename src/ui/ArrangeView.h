@@ -191,6 +191,8 @@ public:
     {
         automation_.displayName = std::move(name);
     }
+    // The MIDI output device's name (empty when none is chosen), for the track menu.
+    std::function<std::string()> midiOutputName;
     // Shows or hides a track's automation over its lane (the header's A).
     void showAutomation(core::Id trackId, bool shown);
 
