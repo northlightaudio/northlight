@@ -1090,6 +1090,9 @@ private:
         lastTickMs_ = now;
         const bool recording = session_.isRecording();
         tracks_.setPlayhead(heardPosition(), session_.isPlaying(), recording);
+        // The takes being recorded, drawn growing (04-arrange.md "Recording clip").
+        session_.updateLiveRecording(tracks_.liveRecording());
+        tracks_.liveRecordingChanged();
         tracks_.pushMeters();
         if (panels_.isVisible(ui::PanelId::pianoRoll))
         {

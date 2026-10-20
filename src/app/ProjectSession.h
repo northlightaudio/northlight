@@ -159,6 +159,12 @@ public:
     bool isTrackMonitoring(const core::Track& track) const;
     // Human-readable note about the last recording (dropouts, recovery), if any.
     const std::string& lastRecordingMessage() const noexcept { return recordingMessage_; }
+    // Brings `into` up to date with the recording in progress (its audio takes'
+    // peaks so far and its MIDI takes), for the arrange view to draw it growing;
+    // clears it when nothing is recording. Call once per UI frame. Finished
+    // recordings are collected here too, so their clips replace the live takes in
+    // the same frame.
+    void updateLiveRecording(engine::LiveRecording& into);
     // Collects finished recordings (placing their clips) and engine garbage. A timer
     // calls this every 250 ms; tests call it directly.
     void poll();

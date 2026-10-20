@@ -131,6 +131,17 @@ bool AudioEngine::hasRecordingToCollect() const noexcept
     return activeRecord_ != nullptr && activeRecord_->isFinished() && !writer_.isWriting();
 }
 
+void AudioEngine::updateLiveTakes(std::vector<LiveTake>& into) const
+{
+    AURAL_ASSERT_NOT_REALTIME("AudioEngine::updateLiveTakes");
+    if (activeRecord_ == nullptr)
+    {
+        into.clear();
+        return;
+    }
+    writer_.updateLiveTakes(into);
+}
+
 std::optional<AudioEngine::FinishedRecording> AudioEngine::collectRecording()
 {
     AURAL_ASSERT_NOT_REALTIME("AudioEngine::collectRecording");

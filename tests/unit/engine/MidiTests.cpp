@@ -246,10 +246,7 @@ TEST_CASE("Recording an armed MIDI track captures its live notes at their timeli
         h.render(1);
     auto finished = h.engine.collectRecording();
     REQUIRE(finished.has_value());
-    std::vector<engine::RecordSession::CapturedMidi> events;
-    engine::RecordSession::CapturedMidi e;
-    while (finished->session->popMidi(e))
-        events.push_back(e);
+    const auto events = finished->session->capturedMidi();
     REQUIRE(events.size() == 3);
     CHECK(events[0].trackId == 1);
     CHECK(events[0].position == 67);
@@ -263,6 +260,8 @@ TEST_CASE("Recording an armed MIDI track captures its live notes at their timeli
     CHECK(spans[0].end == 256);
     CHECK(spans[1].start == 0);
     CHECK(spans[1].end == 128);
+    CHECK(finished->session->takeSpans().size() == 2); // kept: a second call sees the same
+    CHECK(finished->session->capturedMidi().size() == 3);
 
     // Takes become clips: the second pass's note is still held when the
     // recording stops, so it ends there; everything moves 10 samples early.

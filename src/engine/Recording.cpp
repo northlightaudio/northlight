@@ -146,16 +146,27 @@ void RecordSession::captureMidi(core::Id trackId,
     midi_.push(CapturedMidi{trackId, event, position, take_});
 }
 
+const std::vector<RecordSession::CapturedMidi>& RecordSession::capturedMidi()
+{
+    AURAL_ASSERT_NOT_REALTIME("RecordSession::capturedMidi");
+    CapturedMidi e;
+    while (midi_.pop(e))
+        midiEvents_.push_back(e);
+    return midiEvents_;
+}
+
 std::vector<RecordSession::TakeSpan> RecordSession::takeSpans()
 {
     AURAL_ASSERT_NOT_REALTIME("RecordSession::takeSpans");
-    std::vector<TakeSpan> spans;
-    spans.push_back({std::max<core::SamplePosition>(0, startPosition()), 0});
     TakeSpan mark;
     while (midiMarks_.pop(mark))
+        wraps_.push_back(mark);
+    std::vector<TakeSpan> spans;
+    spans.push_back({std::max<core::SamplePosition>(0, startPosition()), 0});
+    for (const auto& wrap : wraps_)
     {
-        spans.back().end = mark.end;
-        spans.push_back({mark.start, 0});
+        spans.back().end = wrap.end;
+        spans.push_back({wrap.start, 0});
     }
     spans.back().end = std::max(spans.back().start, endPosition());
     return spans;
@@ -230,6 +241,7 @@ std::vector<MidiTake> buildMidiTakes(const std::vector<RecordSession::CapturedMi
                 closeNote(b, n, std::max(span.end, b.held[n]->start + 1));
         if (b.take.clip.notes.empty())
             continue;
+        b.take.takeIndex = b.index;
         // Timeline to clip-relative, the take moved earlier by the latency.
         auto& clip = b.take.clip;
         clip.start = std::max<core::SamplePosition>(0, span.start - latency);
@@ -251,6 +263,49 @@ std::uint64_t RecordSession::totalDropped() const noexcept
     for (const auto& input : inputs_)
         total += input->dropped.load(std::memory_order_relaxed);
     return total;
+}
+
+// ----- live takes ---------------------------------------------------------------------------------
+
+void LiveTake::lookup(std::int64_t start, std::int64_t end, float& minimum, float& maximum) const noexcept
+{
+    minimum = maximum = 0.0f;
+    start = std::max<std::int64_t>(0, start);
+    end = std::min(end, samplesWritten);
+    if (levels.empty() || end <= start)
+        return;
+    // The coarsest level whose bins are no wider than the span.
+    const LivePeakLevel* level = &levels.front();
+    for (const auto& candidate : levels)
+        if (candidate.samplesPerBin <= end - start)
+            level = &candidate;
+    bool any = false;
+    // Folds in the bins of `lvl` that overlap [from, to); returns where its
+    // completed bins stop (the span may run past them: the writer is up to a bin
+    // ahead of each level).
+    const auto fold = [&](const LivePeakLevel& lvl, std::int64_t from, std::int64_t to)
+    {
+        const auto spb = static_cast<std::int64_t>(lvl.samplesPerBin);
+        const auto stop = std::min(static_cast<size_t>((to - 1) / spb + 1), lvl.minimum.size());
+        for (auto b = static_cast<size_t>(from / spb); b < stop; ++b)
+        {
+            if (!any)
+            {
+                minimum = lvl.minimum[b];
+                maximum = lvl.maximum[b];
+                any = true;
+            }
+            else
+            {
+                minimum = std::min(minimum, lvl.minimum[b]);
+                maximum = std::max(maximum, lvl.maximum[b]);
+            }
+        }
+        return std::max(from, static_cast<std::int64_t>(stop) * spb);
+    };
+    const auto covered = fold(*level, start, end);
+    if (covered < end && level != &levels.front())
+        fold(levels.front(), covered, end);
 }
 
 // ----- writer ------------------------------------------------------------------------------------
@@ -282,6 +337,10 @@ bool RecordWriter::begin(RecordSession& session)
     }
 
     {
+        const std::lock_guard<std::mutex> live(liveMutex_);
+        live_.clear();
+    }
+    {
         const std::lock_guard<std::mutex> lock(mutex_);
         session_ = &session;
         inputs_ = std::move(states);
@@ -289,10 +348,153 @@ bool RecordWriter::begin(RecordSession& session)
         results_.clear();
         chunk_.resize(1 << 16);
         zeros_.assign(1 << 12, 0.0f);
+        // The first take of every input; its start is known once capture begins.
+        for (size_t i = 0; i < inputs_.size(); ++i)
+            openLiveTake(i, 0, -1);
         writing_.store(true, std::memory_order_release);
     }
     wake_.notify_all();
     return true;
+}
+
+void RecordWriter::updateLiveTakes(std::vector<LiveTake>& into) const
+{
+    const std::lock_guard<std::mutex> lock(liveMutex_);
+    if (into.size() > live_.size())
+        into.resize(live_.size());
+    for (size_t i = 0; i < live_.size(); ++i)
+    {
+        const auto& src = live_[i];
+        if (i < into.size() && into[i].trackId == src.trackId && into[i].takeIndex == src.takeIndex &&
+            into[i].levels.size() == src.levels.size())
+        {
+            auto& dst = into[i];
+            dst.startPosition = src.startPosition;
+            dst.samplesWritten = src.samplesWritten;
+            for (size_t l = 0; l < src.levels.size(); ++l)
+            {
+                const auto have = std::min(dst.levels[l].minimum.size(), src.levels[l].minimum.size());
+                dst.levels[l].minimum.resize(have);
+                dst.levels[l].maximum.resize(have);
+                dst.levels[l].minimum.insert(dst.levels[l].minimum.end(),
+                                             src.levels[l].minimum.begin() +
+                                                 static_cast<std::ptrdiff_t>(have),
+                                             src.levels[l].minimum.end());
+                dst.levels[l].maximum.insert(dst.levels[l].maximum.end(),
+                                             src.levels[l].maximum.begin() +
+                                                 static_cast<std::ptrdiff_t>(have),
+                                             src.levels[l].maximum.end());
+            }
+            continue;
+        }
+        if (i < into.size())
+            into[i] = src;
+        else
+            into.push_back(src);
+    }
+}
+
+void RecordWriter::openLiveTake(size_t inputIndex, int takeIndex, core::SamplePosition start)
+{
+    auto& state = inputs_[inputIndex];
+    state.tails[0] = state.tails[1] = InputState::Tail{};
+    LiveTake take;
+    take.trackId = session_->inputs()[inputIndex]->trackId;
+    take.takeIndex = takeIndex;
+    take.startPosition = start;
+    take.levels.resize(2);
+    take.levels[0].samplesPerBin = livePeakSamplesPerBin;
+    take.levels[1].samplesPerBin = livePeakSamplesPerBin * livePeakLevelRatio;
+    const std::lock_guard<std::mutex> lock(liveMutex_);
+    state.liveIndex = live_.size();
+    live_.push_back(std::move(take));
+}
+
+// Folds `count` written samples into the input's live peaks: the fine level
+// completes a bin every livePeakSamplesPerBin samples, the coarse one every
+// livePeakLevelRatio fine bins. One lock per call, not per bin.
+void RecordWriter::addLivePeaks(size_t inputIndex, const float* samples, int count)
+{
+    if (count <= 0)
+        return;
+    auto& state = inputs_[inputIndex];
+    std::vector<float> fineMin, fineMax, coarseMin, coarseMax;
+    auto& fine = state.tails[0];
+    auto& coarse = state.tails[1];
+    for (int i = 0; i < count; ++i)
+    {
+        const float v = samples[i];
+        if (fine.count == 0)
+            fine.minimum = fine.maximum = v;
+        else
+        {
+            fine.minimum = std::min(fine.minimum, v);
+            fine.maximum = std::max(fine.maximum, v);
+        }
+        if (++fine.count < livePeakSamplesPerBin)
+            continue;
+        fineMin.push_back(fine.minimum);
+        fineMax.push_back(fine.maximum);
+        if (coarse.count == 0)
+        {
+            coarse.minimum = fine.minimum;
+            coarse.maximum = fine.maximum;
+        }
+        else
+        {
+            coarse.minimum = std::min(coarse.minimum, fine.minimum);
+            coarse.maximum = std::max(coarse.maximum, fine.maximum);
+        }
+        fine.count = 0;
+        if (++coarse.count < livePeakLevelRatio)
+            continue;
+        coarseMin.push_back(coarse.minimum);
+        coarseMax.push_back(coarse.maximum);
+        coarse.count = 0;
+    }
+    const std::lock_guard<std::mutex> lock(liveMutex_);
+    auto& take = live_[state.liveIndex];
+    if (take.samplesWritten == 0 && take.takeIndex == 0)
+        take.startPosition = session_->startPosition(); // set by the audio thread before its first push
+    take.samplesWritten += count;
+    take.levels[0].minimum.insert(take.levels[0].minimum.end(), fineMin.begin(), fineMin.end());
+    take.levels[0].maximum.insert(take.levels[0].maximum.end(), fineMax.begin(), fineMax.end());
+    take.levels[1].minimum.insert(take.levels[1].minimum.end(), coarseMin.begin(), coarseMin.end());
+    take.levels[1].maximum.insert(take.levels[1].maximum.end(), coarseMax.begin(), coarseMax.end());
+}
+
+// The unfinished bins become bins of their own when a take closes, so its last
+// few samples show too.
+void RecordWriter::flushLivePeaks(size_t inputIndex)
+{
+    auto& state = inputs_[inputIndex];
+    auto& fine = state.tails[0];
+    auto& coarse = state.tails[1];
+    const std::lock_guard<std::mutex> lock(liveMutex_);
+    auto& take = live_[state.liveIndex];
+    if (fine.count > 0)
+    {
+        take.levels[0].minimum.push_back(fine.minimum);
+        take.levels[0].maximum.push_back(fine.maximum);
+        if (coarse.count == 0)
+        {
+            coarse.minimum = fine.minimum;
+            coarse.maximum = fine.maximum;
+        }
+        else
+        {
+            coarse.minimum = std::min(coarse.minimum, fine.minimum);
+            coarse.maximum = std::max(coarse.maximum, fine.maximum);
+        }
+        ++coarse.count;
+        fine.count = 0;
+    }
+    if (coarse.count > 0)
+    {
+        take.levels[1].minimum.push_back(coarse.minimum);
+        take.levels[1].maximum.push_back(coarse.maximum);
+        coarse.count = 0;
+    }
 }
 
 std::vector<RecordWriter::Result> RecordWriter::takeResults()
@@ -327,6 +529,7 @@ void RecordWriter::closeTake(size_t inputIndex, std::vector<Result>& into)
     const bool closed = state.writer != nullptr && state.writer->close();
     r.ok = closed && !state.failed;
     into.push_back(std::move(r));
+    flushLivePeaks(inputIndex);
 }
 
 void RecordWriter::fail(size_t inputIndex, int lostNow)
@@ -358,6 +561,7 @@ bool RecordWriter::applyEventsAt(size_t inputIndex)
             closeTake(inputIndex, results_);
             state.takeIndex += 1;
             state.takeStart = mark.start;
+            openLiveTake(inputIndex, state.takeIndex, mark.start);
             state.writer = std::make_unique<WavWriter>();
             if (!state.writer->open(takePath(session_->inputs()[inputIndex]->path, state.takeIndex),
                                     1,
@@ -413,6 +617,7 @@ bool RecordWriter::writeSamples(size_t inputIndex, const float* samples, int cou
             fail(inputIndex, count);
             return false;
         }
+        addLivePeaks(inputIndex, samples, toWrite);
         state.written += toWrite;
         samples += toWrite;
         count -= toWrite;

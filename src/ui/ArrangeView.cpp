@@ -258,6 +258,14 @@ void ArrangeView::layoutHeaders()
     }
 }
 
+void ArrangeView::liveRecordingChanged()
+{
+    const bool has = !live_.empty();
+    if (has || hadLive_)
+        repaint();
+    hadLive_ = has;
+}
+
 void ArrangeView::setPlayhead(core::SamplePosition position, bool playing, bool recording)
 {
     if (position == playhead_ && playing == playing_ && recording == recording_)
@@ -327,10 +335,14 @@ void ArrangeView::setVerticalScroll(int firstRowPixel)
 
 core::SamplePosition ArrangeView::contentLength() const noexcept
 {
-    const auto projectLength = project_ != nullptr ? project_->length() : 0;
+    auto length = project_ != nullptr ? project_->length() : 0;
+    // A recording in progress counts too, so the view can follow it past the end.
+    for (const auto& take : live_.takes)
+        length = std::max(length, take.startPosition + take.samplesWritten);
+    for (const auto& take : live_.midi)
+        length = std::max(length, take.clip.end());
     // Always leave room to scroll a screen past the end, and at least a minute.
-    return std::max<core::SamplePosition>(projectLength,
-                                          static_cast<core::SamplePosition>(60.0 * sampleRate())) +
+    return std::max<core::SamplePosition>(length, static_cast<core::SamplePosition>(60.0 * sampleRate())) +
            visibleSamples();
 }
 
@@ -1161,21 +1173,8 @@ void ArrangeView::drawClip(juce::Graphics& g,
                       (selected ? theme_.track.clipBodySelectedAlpha : theme_.track.clipBodyAlpha) * dim));
     g.fillRoundedRectangle(block.toFloat(), theme_.radius.sm);
     if (showHeader)
-    {
-        g.setColour((missing ? c.warning : colour).withAlpha(theme_.track.clipHeaderAlpha * dim));
-        juce::Path header;
-        header.addRoundedRectangle(static_cast<float>(block.getX()),
-                                   static_cast<float>(block.getY()),
-                                   static_cast<float>(block.getWidth()),
-                                   static_cast<float>(headerH),
-                                   theme_.radius.sm,
-                                   theme_.radius.sm,
-                                   true,
-                                   true,
-                                   false,
-                                   false);
-        g.fillPath(header);
-    }
+        fillClipHeader(
+            g, block, headerH, (missing ? c.warning : colour).withAlpha(theme_.track.clipHeaderAlpha * dim));
     if (track.mute && !missing)
     {
         // A hatched body for muted clips: 45 degrees, 6 px apart.
@@ -1284,7 +1283,8 @@ void ArrangeView::drawClip(juce::Graphics& g,
 void ArrangeView::drawMidiClip(juce::Graphics& g,
                                const core::Track& track,
                                const core::MidiClip& model,
-                               juce::Rectangle<int> lane)
+                               juce::Rectangle<int> lane,
+                               bool recording)
 {
     const auto& c = theme_.colours;
     const ClipRef ref{track.id, model.id, true};
@@ -1308,7 +1308,7 @@ void ArrangeView::drawMidiClip(juce::Graphics& g,
         block.getIntersection(lane.withLeft(headerWidth).withRight(getWidth() - scrollbarWidth));
     if (visible.isEmpty())
         return;
-    const auto colour = trackColour(track, row);
+    const auto colour = recording ? c.record : trackColour(track, row);
     const float dim = moving ? 0.4f : 1.0f;
     const bool showHeader = lane.getHeight() >= 24;
     const int headerH = showHeader ? theme_.sizes.clipHeader : 0;
@@ -1316,21 +1316,7 @@ void ArrangeView::drawMidiClip(juce::Graphics& g,
         colour.withAlpha((selected ? theme_.track.clipBodySelectedAlpha : theme_.track.clipBodyAlpha) * dim));
     g.fillRoundedRectangle(block.toFloat(), theme_.radius.sm);
     if (showHeader)
-    {
-        g.setColour(colour.withAlpha(theme_.track.clipHeaderAlpha * dim));
-        juce::Path header;
-        header.addRoundedRectangle(static_cast<float>(block.getX()),
-                                   static_cast<float>(block.getY()),
-                                   static_cast<float>(block.getWidth()),
-                                   static_cast<float>(headerH),
-                                   theme_.radius.sm,
-                                   theme_.radius.sm,
-                                   true,
-                                   true,
-                                   false,
-                                   false);
-        g.fillPath(header);
-    }
+        fillClipHeader(g, block, headerH, colour.withAlpha(theme_.track.clipHeaderAlpha * dim));
 
     // Notes: a bar per note, pitch on a range that fits the clip's notes.
     if (!model.notes.empty())
@@ -1361,14 +1347,101 @@ void ArrangeView::drawMidiClip(juce::Graphics& g,
                        std::max(1.0f, rowH - 1.0f));
         }
     }
-    g.setColour(colour.withAlpha(selected ? 1.0f : hovered ? 0.7f : 0.4f));
+    g.setColour(colour.withAlpha(selected ? 1.0f : hovered || recording ? 0.7f : 0.4f));
     g.drawRoundedRectangle(block.toFloat().reduced(0.5f), theme_.radius.sm, 1.0f);
     if (showHeader || block.getHeight() >= 14)
     {
         g.setColour(c.textPrimary.withAlpha(dim));
         g.setFont(theme_.caption());
-        g.drawText(juce::String::fromUTF8(clip.name.c_str()) + "  " + juce::String(model.notes.size()) +
-                       " notes",
+        const auto name = recording ? juce::String::fromUTF8("\xe2\x97\x8f Recording")
+                                    : juce::String::fromUTF8(clip.name.c_str());
+        g.drawText(name + "  " + juce::String(model.notes.size()) + " notes",
+                   (showHeader ? block.withHeight(headerH) : block).getIntersection(visible).reduced(6, 0),
+                   juce::Justification::centredLeft,
+                   true);
+    }
+}
+
+void ArrangeView::fillClipHeader(juce::Graphics& g,
+                                 juce::Rectangle<int> block,
+                                 int headerH,
+                                 juce::Colour colour)
+{
+    g.setColour(colour);
+    juce::Path header;
+    header.addRoundedRectangle(static_cast<float>(block.getX()),
+                               static_cast<float>(block.getY()),
+                               static_cast<float>(block.getWidth()),
+                               static_cast<float>(headerH),
+                               theme_.radius.sm,
+                               theme_.radius.sm,
+                               true,
+                               true,
+                               false,
+                               false);
+    g.fillPath(header);
+}
+
+// A take being recorded (04-arrange.md "Recording clip"): a clip in `record` at
+// the body alpha, growing with the file, its waveform from the live peaks and
+// the header "● Recording". It sits where its clip will land (latency-compensated),
+// so nothing jumps when the file closes and the clip takes its place.
+void ArrangeView::drawLiveTake(juce::Graphics& g,
+                               const core::Track& track,
+                               const engine::LiveTake& take,
+                               juce::Rectangle<int> lane)
+{
+    const auto& c = theme_.colours;
+    if (take.samplesWritten <= 0 || take.startPosition < 0)
+        return;
+    const auto placement = engine::placeRecording(take.startPosition, take.samplesWritten, live_.latency);
+    if (placement.length <= 0)
+        return;
+    const int row = project_->trackIndex(track.id);
+    const auto block = spanBounds(placement.start, placement.length, row);
+    const auto visible =
+        block.getIntersection(lane.withLeft(headerWidth).withRight(getWidth() - scrollbarWidth));
+    if (visible.isEmpty())
+        return;
+    const auto colour = c.record;
+    const bool showHeader = lane.getHeight() >= 24;
+    const int headerH = showHeader ? theme_.sizes.clipHeader : 0;
+    const auto body = block.withTrimmedTop(headerH);
+    g.setColour(colour.withAlpha(theme_.track.clipBodyAlpha));
+    g.fillRoundedRectangle(block.toFloat(), theme_.radius.sm);
+    if (showHeader)
+        fillClipHeader(g, block, headerH, colour.withAlpha(theme_.track.clipHeaderAlpha));
+
+    // Waveform: one min/max column per pixel from the peaks written so far; the
+    // unwritten tail (at most a bin and the writer's lag) reads as silence.
+    const auto wave = body.getIntersection(visible);
+    const float midY = static_cast<float>(wave.getY()) + static_cast<float>(wave.getHeight()) * 0.5f;
+    g.setColour(colour.withAlpha(0.3f));
+    g.fillRect(static_cast<float>(wave.getX()), midY, static_cast<float>(wave.getWidth()), 1.0f);
+    g.setColour(colour.withAlpha(theme_.track.waveformAlpha));
+    const float half = static_cast<float>(wave.getHeight()) * 0.48f;
+    for (int x = wave.getX(); x < wave.getRight(); ++x)
+    {
+        const auto from = placement.sourceOffset + (sampleForX(x) - placement.start);
+        const auto to = placement.sourceOffset + (sampleForX(x + 1) - placement.start);
+        float minimum = 0.0f, maximum = 0.0f;
+        take.lookup(from, std::max(to, from + 1), minimum, maximum);
+        const float top = midY - maximum * half;
+        const float bottom = midY - minimum * half;
+        g.fillRect(
+            static_cast<float>(x), std::min(top, bottom), 1.0f, std::max(1.0f, std::abs(bottom - top)));
+    }
+
+    g.setColour(colour.withAlpha(0.7f));
+    g.drawRoundedRectangle(block.toFloat().reduced(0.5f), theme_.radius.sm, 1.0f);
+    if (showHeader || block.getHeight() >= 14)
+    {
+        g.setColour(c.textPrimary);
+        g.setFont(theme_.caption());
+        juce::String label = juce::String::fromUTF8("\xe2\x97\x8f Recording");
+        if (take.takeIndex > 0)
+            label << "  take " << (take.takeIndex + 1);
+        g.drawText(label,
                    (showHeader ? block.withHeight(headerH) : block).getIntersection(visible).reduced(6, 0),
                    juce::Justification::centredLeft,
                    true);
@@ -1441,6 +1514,12 @@ void ArrangeView::paint(juce::Graphics& g)
                     drawClip(g, track, clip, lane);
                 for (const auto& clip : track.midiClips)
                     drawMidiClip(g, track, clip, lane);
+                for (const auto& take : live_.takes)
+                    if (take.trackId == track.id)
+                        drawLiveTake(g, track, take, lane);
+                for (const auto& take : live_.midi)
+                    if (take.trackId == track.id)
+                        drawMidiClip(g, track, take.clip, lane, true);
                 if (track.isAux())
                 {
                     const auto* source = project_->findTrack(track.auxTrack);

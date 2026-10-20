@@ -293,6 +293,18 @@ files in the media folder and asks whether to recover them or set them aside as
 track still exists) at its capture position, later takes at the loop start, shifted
 by the recorded latency; without a sidecar it lands at zero on a "Recovered" track.
 
+Live view (04-arrange.md "Recording clip"): the writer keeps min/max peaks of the
+samples it has put in each take's file (`LiveTake`: a 256-sample level and a
+16384-sample one, under its own mutex, appended once per chunk), and the record
+session drains its MIDI events and take marks into controller-side lists on
+demand (`capturedMidi()`, `takeSpans()`), so both can be read mid-take. Once per
+UI frame `ProjectSession::updateLiveRecording` brings the arrange view's
+`engine::LiveRecording` up to date in place (a known take gets only its new bins)
+and the view draws each audio take as a growing clip in `record`, placed with
+`placeRecording` where its clip will land, and each MIDI take as the clip it will
+become (the current take even before a note). The same call collects a finished
+recording, so the clips replace the live takes in the frame the files close.
+
 A muted or un-soloed track still renders its clips and inserts (envelopes, tails
 and latency buffers keep moving; its key output stays live for sidechains, though
 a muted source's key reads as silence); the routing stage is what keeps it out of

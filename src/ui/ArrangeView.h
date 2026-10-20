@@ -4,6 +4,7 @@
 #include "core/Command.h"
 #include "core/Model.h"
 #include "engine/Meters.h"
+#include "engine/Recording.h"
 #include "ui/Icons.h"
 #include "ui/Theme.h"
 #include "ui/TrackHeader.h"
@@ -62,6 +63,13 @@ public:
     // Live state per track (same order as the project's tracks): whether the input is
     // being heard, and whether a recording is in progress.
     void setMonitoringStates(const std::vector<bool>& monitoring, bool recording);
+    // The recording in progress (04-arrange.md "Recording clip"): the window's
+    // timer has the session bring this up to date each frame, then calls
+    // liveRecordingChanged(). Each audio take draws as a growing clip in `record`
+    // with its waveform so far, placed where its clip will land; each MIDI take
+    // as the clip it will become, with the notes played so far.
+    engine::LiveRecording& liveRecording() noexcept { return live_; }
+    void liveRecordingChanged();
 
     std::function<void(core::SamplePosition)> onLocate;
     std::function<void(core::SamplePosition, core::SamplePosition)> onRegionChanged;
@@ -234,7 +242,13 @@ private:
     void drawMidiClip(juce::Graphics& g,
                       const core::Track& track,
                       const core::MidiClip& model,
+                      juce::Rectangle<int> lane,
+                      bool recording = false);
+    void drawLiveTake(juce::Graphics& g,
+                      const core::Track& track,
+                      const engine::LiveTake& take,
                       juce::Rectangle<int> lane);
+    void fillClipHeader(juce::Graphics& g, juce::Rectangle<int> block, int headerH, juce::Colour colour);
     void drawEditOverlay(juce::Graphics& g);
     void drawGrid(juce::Graphics& g, juce::Rectangle<int> area, bool ruler);
     void drawTooltip(juce::Graphics& g, const juce::String& text, juce::Point<int> at);
@@ -316,6 +330,8 @@ private:
     core::SamplePosition playhead_ = 0;
     bool playing_ = false;
     bool recording_ = false;
+    engine::LiveRecording live_;
+    bool hadLive_ = false;
     core::SamplePosition regionStart_ = 0, regionEnd_ = 0;
     bool loop_ = false, punch_ = false;
     core::SamplePosition dragAnchor_ = 0;

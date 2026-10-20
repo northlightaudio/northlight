@@ -215,6 +215,110 @@ TEST_CASE("Recording captures armed inputs sample-exactly from the record positi
     CHECK_FALSE(engine.hasRecordingToCollect());
 }
 
+TEST_CASE("The writer keeps live peaks of a take as it writes, handed out incrementally",
+          "[engine][record][live]")
+{
+    NoMediaLoader loader;
+    engine::AudioEngine engine(loader, builtIns, 0);
+    engine.prepare(48000.0, 64);
+    engine.setProject(core::Project{});
+    engine.locate(1000);
+    std::vector<float> in0(64);
+    const float* inputs[] = {in0.data()};
+    std::vector<float> l(64), r(64);
+    float* outputs[] = {l.data(), r.data()};
+    engine.process(inputs, 1, outputs, 2, 64);
+
+    std::vector<engine::LiveTake> live;
+    engine.updateLiveTakes(live);
+    CHECK(live.empty()); // nothing recording
+
+    auto session = std::make_unique<engine::RecordSession>(48000.0, 0.5);
+    session->addInput(7, 0, tempPath("live.partial.wav"));
+    std::string error;
+    REQUIRE(engine.startRecording(std::move(session), error));
+
+    // A ramp, one block at a time; the writer catches up within a few ms.
+    const auto runBlocks = [&](int blocks, std::int64_t& sample)
+    {
+        for (int block = 0; block < blocks; ++block)
+        {
+            for (int i = 0; i < 64; ++i)
+                in0[static_cast<size_t>(i)] = static_cast<float>(sample + i) / 10000.0f;
+            engine.process(inputs, 1, outputs, 2, 64);
+            sample += 64;
+        }
+    };
+    const auto waitForWritten = [&](std::int64_t count)
+    {
+        for (int i = 0; i < 2000; ++i)
+        {
+            engine.updateLiveTakes(live);
+            if (!live.empty() && live[0].samplesWritten >= count)
+                return;
+            std::this_thread::sleep_for(std::chrono::milliseconds(2));
+        }
+    };
+    std::int64_t sample = 0;
+    runBlocks(50, sample); // 3200 samples: 12 full bins and a half one
+    waitForWritten(3200);
+    REQUIRE(live.size() == 1);
+    CHECK(live[0].trackId == 7);
+    CHECK(live[0].takeIndex == 0);
+    CHECK(live[0].startPosition == 1000);
+    CHECK(live[0].samplesWritten == 3200);
+    REQUIRE(live[0].levels.size() == 2);
+    CHECK(live[0].levels[0].samplesPerBin == 256);
+    CHECK(live[0].levels[1].samplesPerBin == 256 * 64);
+    REQUIRE(live[0].levels[0].minimum.size() == 12);
+    CHECK(live[0].levels[0].minimum[0] == 0.0f);
+    CHECK(live[0].levels[0].maximum[0] == Approx(255.0f / 10000.0f));
+    CHECK(live[0].levels[0].minimum[11] == Approx(2816.0f / 10000.0f));
+    CHECK(live[0].levels[1].minimum.empty()); // the coarse level needs 16384 samples
+
+    // A lookup reads the written span and nothing past it.
+    float minimum = 0.0f, maximum = 0.0f;
+    live[0].lookup(256, 768, minimum, maximum);
+    CHECK(minimum == Approx(256.0f / 10000.0f));
+    CHECK(maximum == Approx(767.0f / 10000.0f));
+    live[0].lookup(3000, 4000, minimum, maximum); // bin 11 and the unfinished 12th: just bin 11
+    CHECK(maximum == Approx(3071.0f / 10000.0f));
+
+    // More blocks: the same vector gains the new bins and keeps the old ones.
+    const auto firstBins = live[0].levels[0].maximum;
+    runBlocks(50, sample);
+    waitForWritten(6400);
+    CHECK(live[0].samplesWritten == 6400);
+    REQUIRE(live[0].levels[0].maximum.size() == 25);
+    for (size_t b = 0; b < firstBins.size(); ++b)
+        CHECK(live[0].levels[0].maximum[b] == firstBins[b]);
+    CHECK(live[0].levels[0].maximum[24] == Approx(6399.0f / 10000.0f));
+
+    // A fresh vector gets everything.
+    std::vector<engine::LiveTake> fresh;
+    engine.updateLiveTakes(fresh);
+    REQUIRE(fresh.size() == 1);
+    CHECK(fresh[0].levels[0].maximum == live[0].levels[0].maximum);
+
+    // Enough for the coarse level: 16384 samples = 256 blocks in all.
+    runBlocks(156, sample);
+    waitForWritten(16384);
+    REQUIRE(live[0].levels[1].minimum.size() == 1);
+    CHECK(live[0].levels[1].minimum[0] == 0.0f);
+    CHECK(live[0].levels[1].maximum[0] == Approx(16383.0f / 10000.0f));
+    live[0].lookup(0, 16384, minimum, maximum); // served by the coarse level
+    CHECK(maximum == Approx(16383.0f / 10000.0f));
+
+    engine.stop();
+    engine.process(inputs, 1, outputs, 2, 64);
+    waitForWriter(engine);
+    engine.updateLiveTakes(live);
+    CHECK(live.size() == 1); // still there until the recording is collected
+    REQUIRE(engine.collectRecording().has_value());
+    engine.updateLiveTakes(live);
+    CHECK(live.empty());
+}
+
 TEST_CASE("Stopping the device mid-recording finishes the files", "[engine][record]")
 {
     NoMediaLoader loader;

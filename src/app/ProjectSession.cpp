@@ -648,13 +648,9 @@ void ProjectSession::finishRecording(engine::AudioEngine::FinishedRecording fini
     }
     // MIDI takes: the captured events become clips, placed like the audio (the
     // player heard the instrument late by the output path, and played to that).
-    std::vector<engine::RecordSession::CapturedMidi> events;
-    engine::RecordSession::CapturedMidi captured;
-    while (finished.session->popMidi(captured))
-        events.push_back(captured);
     int midiClips = 0;
-    for (auto& take :
-         engine::buildMidiTakes(events, finished.session->takeSpans(), midiRecordingLatencySamples()))
+    for (auto& take : engine::buildMidiTakes(
+             finished.session->capturedMidi(), finished.session->takeSpans(), midiRecordingLatencySamples()))
         if (project_.findTrack(take.trackId) != nullptr)
         {
             take.clip.name = "Take " + std::to_string(++midiClips);
@@ -679,6 +675,47 @@ void ProjectSession::finishRecording(engine::AudioEngine::FinishedRecording fini
                             (takes > 1 ? ", " + std::to_string(takes) + " takes" : std::string{}) +
                             ", placed " + std::to_string(latency) + " samples early for latency";
     publish();
+}
+
+void ProjectSession::updateLiveRecording(engine::LiveRecording& into)
+{
+    // The files closed since the last frame: place the clips now rather than at
+    // the next 250 ms poll, so the live takes hand over to them without a gap.
+    if (engine_.hasRecordingToCollect())
+        if (auto finished = engine_.collectRecording())
+            finishRecording(std::move(*finished));
+    auto* session = engine_.activeRecording();
+    if (session == nullptr)
+    {
+        into.takes.clear();
+        into.midi.clear();
+        return;
+    }
+    into.latency = recordingLatencySamples();
+    engine_.updateLiveTakes(into.takes);
+    into.midi.clear();
+    if (session->midiTracks().empty() || session->startPosition() < 0)
+        return; // nothing captured yet (a count-in)
+    const auto spans = session->takeSpans();
+    const auto midiLatency = midiRecordingLatencySamples();
+    into.midi = engine::buildMidiTakes(session->capturedMidi(), spans, midiLatency);
+    // The current take shows as a clip even before a note is played.
+    const int current = static_cast<int>(spans.size()) - 1;
+    for (const auto trackId : session->midiTracks())
+    {
+        bool shown = false;
+        for (const auto& take : into.midi)
+            shown = shown || (take.trackId == trackId && take.takeIndex == current);
+        if (shown)
+            continue;
+        engine::MidiTake take;
+        take.trackId = trackId;
+        take.takeIndex = current;
+        take.clip.start = std::max<core::SamplePosition>(0, spans.back().start - midiLatency);
+        take.clip.length =
+            std::max<core::SamplePosition>(1, spans.back().end - midiLatency - take.clip.start);
+        into.midi.push_back(std::move(take));
+    }
 }
 
 int ProjectSession::countPartialRecordings() const

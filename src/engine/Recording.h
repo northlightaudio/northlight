@@ -33,6 +33,11 @@
 // MIDI: an armed MIDI track's live events are stamped with their timeline
 // position and the take they fall in and queued for the controller, which turns
 // them into clips when the session is collected (buildMidiTakes).
+//
+// Live view: as the writer puts samples in a file it also keeps min/max peaks of
+// them (LiveTake), and the controller drains the MIDI events and take marks as
+// they come, so the arrange view can draw each take growing while it records
+// (04-arrange.md "Recording clip") instead of waiting for the files to close.
 
 namespace aural::engine
 {
@@ -143,9 +148,11 @@ public:
     // A live MIDI event on a recorded track, at its timeline position (after
     // capture() for the block, which fixes the take). A full queue drops it.
     void captureMidi(core::Id trackId, const MidiEvent& event, core::SamplePosition position) noexcept;
-    // Controller, once finished: the captured events in time order, and the
-    // takes' spans (index = take; drains the marks, so call it once).
-    bool popMidi(CapturedMidi& out) noexcept { return midi_.pop(out); }
+    // Controller, while recording or once finished: every captured event so far
+    // in time order, and the takes' spans so far (index = take; the current take
+    // ends at endPosition()). Both drain the audio thread's queues into
+    // controller-side lists, so they can be called as often as the UI likes.
+    const std::vector<CapturedMidi>& capturedMidi();
     std::vector<TakeSpan> takeSpans();
     // Timeline position just after the last captured block.
     core::SamplePosition endPosition() const noexcept { return endPosition_.load(std::memory_order_acquire); }
@@ -171,6 +178,8 @@ private:
     std::vector<core::Id> midiTracks_;
     rt::SpscQueue<CapturedMidi> midi_{16384};
     rt::SpscQueue<TakeSpan> midiMarks_{256}; // a wrap: {new start, previous end}
+    std::vector<CapturedMidi> midiEvents_;   // controller only: drained from midi_
+    std::vector<TakeSpan> wraps_;            // controller only: drained from midiMarks_
     int take_ = 0;                           // audio thread only
     std::atomic<core::SamplePosition> endPosition_{-1};
     std::atomic<core::SamplePosition> startPosition_{-1};
@@ -189,7 +198,43 @@ private:
 struct MidiTake
 {
     core::Id trackId = core::invalidId;
+    int takeIndex = 0; // 0 for the first pass
     core::MidiClip clip;
+};
+
+// What one audio take looks like so far, for drawing it while it records: the
+// min/max of every `samplesPerBin` samples the writer has put in its file, at a
+// fine level and a coarse one (like PeakData, so a zoomed-out view needs no scan),
+// and how far the file has got. Timeline placement is placeRecording()'s.
+struct LivePeakLevel
+{
+    int samplesPerBin = 0;
+    std::vector<float> minimum; // one per completed bin
+    std::vector<float> maximum;
+};
+struct LiveTake
+{
+    core::Id trackId = core::invalidId;
+    int takeIndex = 0;
+    core::SamplePosition startPosition = 0; // timeline position of the first sample
+    std::int64_t samplesWritten = 0;
+    std::vector<LivePeakLevel> levels; // fine first
+    // Min/max over the written samples [start, end) from the coarsest level whose
+    // bins fit the span; anything past samplesWritten reads as silence.
+    void lookup(std::int64_t start, std::int64_t end, float& minimum, float& maximum) const noexcept;
+};
+
+// The recording in progress as the UI draws it: the audio takes written so far,
+// the MIDI takes captured so far (every take with notes, plus the current take of
+// each recorded MIDI track even before a note, so an armed track visibly records),
+// and the latency the audio takes will be placed early by. ProjectSession fills
+// it in place once per UI frame, so a long take costs only its new bins.
+struct LiveRecording
+{
+    std::vector<LiveTake> takes;
+    std::vector<MidiTake> midi;
+    core::SamplePosition latency = 0;
+    bool empty() const noexcept { return takes.empty() && midi.empty(); }
 };
 std::vector<MidiTake> buildMidiTakes(const std::vector<RecordSession::CapturedMidi>& events,
                                      const std::vector<RecordSession::TakeSpan>& spans,
@@ -222,8 +267,15 @@ public:
     // Valid once isWriting() is false again after a begin().
     std::vector<Result> takeResults();
 
+    // Any thread. Brings `into` up to date with every take of the current (or
+    // last) recording: takes it already holds (same track and take index) get only
+    // the bins written since, new ones are appended. begin() starts afresh.
+    void updateLiveTakes(std::vector<LiveTake>& into) const;
+
     static constexpr int headerUpdateMilliseconds = 1000;
     static constexpr int drainIntervalMilliseconds = 10;
+    static constexpr int livePeakSamplesPerBin = 256;
+    static constexpr int livePeakLevelRatio = 64; // the coarse level: 16384 samples per bin
 
 private:
     struct InputState
@@ -237,6 +289,14 @@ private:
         size_t nextGap = 0;
         bool failed = false;   // an open, write or header update failed: nothing more is written
         std::int64_t lost = 0; // samples discarded after the failure
+        // Live peaks: the take being built in live_ and the unfinished bin per level.
+        size_t liveIndex = 0;
+        struct Tail
+        {
+            float minimum = 0.0f, maximum = 0.0f;
+            int count = 0;
+        };
+        Tail tails[2];
     };
 
     void run();
@@ -246,6 +306,9 @@ private:
     bool applyEventsAt(size_t inputIndex);
     void fail(size_t inputIndex, int lostNow);
     void closeTake(size_t inputIndex, std::vector<Result>& into);
+    void openLiveTake(size_t inputIndex, int takeIndex, core::SamplePosition start);
+    void addLivePeaks(size_t inputIndex, const float* samples, int count);
+    void flushLivePeaks(size_t inputIndex);
     static std::string takePath(const std::string& firstPath, int takeIndex);
 
     RecordSession* session_ = nullptr;
@@ -257,6 +320,8 @@ private:
     bool flushing_ = false; // inside the final flush of trailing events
     std::atomic<bool> writing_{false};
     std::atomic<bool> stop_{false};
+    std::vector<LiveTake> live_; // under liveMutex_
+    mutable std::mutex liveMutex_;
     std::mutex mutex_;
     std::condition_variable wake_;
     std::thread thread_;

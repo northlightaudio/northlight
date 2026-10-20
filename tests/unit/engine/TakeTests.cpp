@@ -104,8 +104,28 @@ TEST_CASE("Loop recording splits each pass into its own take file at the exact s
     engine.stop();
     engine.process(inputs, 1, outputs, 2, 64);
     waitForWriter(engine);
+
+    // Before the recording is collected the live view has every take, placed at
+    // its start and with its last partial bin flushed.
+    std::vector<engine::LiveTake> live;
+    engine.updateLiveTakes(live);
+    REQUIRE(live.size() == 3);
+    CHECK(live[0].takeIndex == 0);
+    CHECK(live[0].startPosition == 900);
+    CHECK(live[0].samplesWritten == 600);
+    CHECK(live[0].levels[0].minimum.size() == 3); // 256, 256, 88
+    CHECK(live[0].levels[0].minimum[0] == 900.0f);
+    CHECK(live[0].levels[0].maximum[2] == 1499.0f);
+    CHECK(live[1].takeIndex == 1);
+    CHECK(live[1].startPosition == 1000);
+    CHECK(live[1].samplesWritten == 500);
+    CHECK(live[2].startPosition == 1000);
+    CHECK(live[2].samplesWritten == 500);
+
     auto finished = engine.collectRecording();
     REQUIRE(finished.has_value());
+    engine.updateLiveTakes(live);
+    CHECK(live.empty()); // collected: the clips stand in for the live takes
 
     // 25 blocks = 1600 samples captured: take 1 = 900..1500 (600), take 2 = 500, take 3 = 500.
     const auto& results = finished->results;

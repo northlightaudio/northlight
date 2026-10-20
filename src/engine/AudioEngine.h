@@ -70,6 +70,13 @@ public:
                         core::SamplePosition countInSamples = 0);
     bool hasRecordingToCollect() const noexcept;
     std::optional<FinishedRecording> collectRecording();
+    // The recording in progress (until it is collected), for drawing it live: the
+    // session's controller-side accessors (capturedMidi, takeSpans) may be used
+    // while it records. Null when there is none.
+    RecordSession* activeRecording() noexcept { return activeRecord_.get(); }
+    // Brings `into` up to date with the audio takes of the recording in progress
+    // (RecordWriter::updateLiveTakes); clears it when there is none.
+    void updateLiveTakes(std::vector<LiveTake>& into) const;
 
     // Frees retired snapshots and unreferenced media. Call periodically (a UI timer).
     void collectGarbage();

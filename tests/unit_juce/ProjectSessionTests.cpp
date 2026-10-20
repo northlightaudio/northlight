@@ -200,6 +200,87 @@ TEST_CASE_METHOD(SessionFixture,
     CHECK(session->project().findTrack(id)->midiClips.empty());
 }
 
+TEST_CASE_METHOD(SessionFixture,
+                 "While recording, the live view grows with the take and hands over to the clip",
+                 "[app][session][record][live]")
+{
+    addArmedTrack();
+    prepareDevice(48000.0);
+    engine::LiveRecording live;
+    session->updateLiveRecording(live);
+    CHECK(live.empty());
+
+    REQUIRE(session->startRecording().empty());
+    runBlocks(9, 0.5f); // 576 samples: two full bins of 0.5
+    for (int i = 0; i < 2000; ++i)
+    {
+        session->updateLiveRecording(live);
+        if (!live.takes.empty() && live.takes[0].samplesWritten >= 576)
+            break;
+        std::this_thread::sleep_for(std::chrono::milliseconds(2));
+    }
+    REQUIRE(live.takes.size() == 1);
+    CHECK(live.takes[0].trackId == session->project().tracks[0].id);
+    CHECK(live.takes[0].startPosition == 0);
+    CHECK(live.takes[0].samplesWritten == 576);
+    CHECK(live.latency == session->recordingLatencySamples());
+    REQUIRE(live.takes[0].levels[0].maximum.size() == 2);
+    CHECK(live.takes[0].levels[0].maximum[1] == 0.5f);
+    CHECK(live.takes[0].levels[0].minimum[1] == 0.5f);
+    CHECK(live.midi.empty());
+
+    // Stopped: the next update collects the files and the clip stands in for the take.
+    session->stop();
+    runBlocks(1);
+    for (int i = 0; i < 2000 && !session->engine().hasRecordingToCollect(); ++i)
+        std::this_thread::sleep_for(std::chrono::milliseconds(2));
+    session->updateLiveRecording(live);
+    CHECK(live.empty());
+    REQUIRE(session->project().tracks[0].clips.size() == 1);
+    CHECK(session->project().tracks[0].clips[0].length == 576);
+}
+
+TEST_CASE_METHOD(SessionFixture,
+                 "While recording MIDI, the live view shows the take and the notes held so far",
+                 "[app][session][record][midi][live]")
+{
+    const auto id = session->addMidiTrack();
+    prepareDevice(48000.0);
+    REQUIRE(session->startRecording().empty());
+    engine::LiveRecording live;
+    session->updateLiveRecording(live);
+    CHECK(live.empty()); // the record command has not applied yet
+    runBlocks(2);        // capture from 0; the take runs to 128
+    session->updateLiveRecording(live);
+    REQUIRE(live.midi.size() == 1); // an empty take, so the track visibly records
+    CHECK(live.midi[0].trackId == id);
+    CHECK(live.midi[0].takeIndex == 0);
+    CHECK(live.midi[0].clip.start == 0);
+    CHECK(live.midi[0].clip.length == 128);
+    CHECK(live.midi[0].clip.notes.empty());
+
+    session->engine().pushMidiInput({0, engine::MidiEvent::Type::noteOn, 0, 64, 90}, "");
+    runBlocks(2); // on at 128, still held at 256
+    session->updateLiveRecording(live);
+    REQUIRE(live.midi.size() == 1);
+    CHECK(live.midi[0].clip.length == 256);
+    REQUIRE(live.midi[0].clip.notes.size() == 1);
+    CHECK(live.midi[0].clip.notes[0].note == 64);
+    CHECK(live.midi[0].clip.notes[0].start == 128);
+    CHECK(live.midi[0].clip.notes[0].length == 128); // held: it ends where the take does, for now
+
+    session->engine().pushMidiInput({0, engine::MidiEvent::Type::noteOff, 0, 64, 0}, "");
+    runBlocks(1);
+    stopAndCollect();
+    session->updateLiveRecording(live);
+    CHECK(live.empty());
+    const auto* track = session->project().findTrack(id);
+    REQUIRE(track != nullptr);
+    REQUIRE(track->midiClips.size() == 1);
+    REQUIRE(track->midiClips[0].notes.size() == 1);
+    CHECK(track->midiClips[0].notes[0].length == 128);
+}
+
 TEST_CASE_METHOD(SessionFixture, "An empty take is deleted rather than placed", "[app][session][record]")
 {
     addArmedTrack();
