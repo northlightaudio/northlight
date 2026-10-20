@@ -32,6 +32,8 @@ public:
 
     // `index`: the track's position (its number and default colour); `inputNames`:
     // the audio inputs (callback order); `midiInputNames`: the open MIDI inputs.
+    // A values refresh: volume, pan and the toggles only (no combo refill).
+    void setValues(const core::Channel& channel);
     void setTrack(const core::Track& track,
                   int index,
                   const core::Project& project,

@@ -1062,7 +1062,7 @@ private:
             return;
         }
         tracks_.setProject(&session_.project(), true);
-        mixer_.setProject(&session_.project());
+        mixer_.setProject(&session_.project(), true);
         editor_.setProject(&session_.project());
         instruments_.setProject(&session_.project());
         inspector_.setProject(&session_.project());

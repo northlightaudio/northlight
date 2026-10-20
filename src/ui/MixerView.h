@@ -36,7 +36,9 @@ public:
               std::function<int()> masterMeterSlot);
     ~MixerView() override;
 
-    void setProject(const core::Project* project);
+    // valuesOnly: only live values changed (a fader drag): the strips update
+    // their values without rebuilding.
+    void setProject(const core::Project* project, bool valuesOnly = false);
     // Only parameters changed: the open editor windows follow, the strips stay.
     void refreshEditors();
     // The audio inputs (callback order) and the open MIDI inputs for the input combos.

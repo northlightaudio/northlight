@@ -97,9 +97,15 @@ ArrangeView::~ArrangeView()
 
 void ArrangeView::setProject(const core::Project* project, bool valuesOnly)
 {
-    if (valuesOnly && project == project_)
+    rowsValid_ = false; // heights may have changed (a values refresh carries a resize)
+    if (valuesOnly && project == project_ && project_ != nullptr)
     {
-        rebuildHeaders(); // the headers repaint what changed in them
+        // Values only (a fader drag): the headers take their channels' values
+        // without refilling their menus.
+        for (auto* list : {&headers_, &fxHeaders_})
+            for (auto& header : *list)
+                if (const auto* channel = project_->findChannel(header->trackId()))
+                    header->setValues(*channel);
         if (automation_.anyShown())
             automation_.repaint();
         return;
@@ -140,6 +146,7 @@ void ArrangeView::setRowHeight(int height)
     if (height == rowHeight)
         return;
     rowHeight = height;
+    rowsValid_ = false;
     rowsSmaller_.setEnabled(rowHeight > theme_.sizes.trackRowMin);
     rowsLarger_.setEnabled(rowHeight < theme_.sizes.trackRowLarge);
     setVerticalScroll(verticalScroll_);
@@ -412,33 +419,57 @@ std::vector<const core::Bus*> ArrangeView::fxTracks() const
     return list;
 }
 
+const ArrangeView::RowLayout& ArrangeView::rows() const
+{
+    // Built once per change (the project, a height, the default height, a resize
+    // drag) and read by every row lookup, paint and hit test.
+    if (rowsValid_ &&
+        (project_ == nullptr ||
+         (rows_.tracksData == project_->tracks.data() && rows_.tracksSize == project_->tracks.size() &&
+          rows_.busesData == project_->buses.data() && rows_.busesSize == project_->buses.size())))
+        return rows_;
+    rows_.tracksData = project_ != nullptr ? project_->tracks.data() : nullptr;
+    rows_.tracksSize = project_ != nullptr ? project_->tracks.size() : 0;
+    rows_.busesData = project_ != nullptr ? project_->buses.data() : nullptr;
+    rows_.busesSize = project_ != nullptr ? project_->buses.size() : 0;
+    rows_.channels.clear();
+    rows_.tops.assign(1, 0);
+    if (project_ != nullptr)
+    {
+        for (const auto& t : project_->tracks)
+            rows_.channels.push_back(&t);
+        for (const auto& b : project_->buses)
+            if (b.fx)
+                rows_.channels.push_back(&b);
+        for (const auto* channel : rows_.channels)
+        {
+            int h = rowHeight;
+            if (channel->id == resizeChannel_)
+                h = resizeHeight_;
+            else if (channel->height > 0)
+                h = std::clamp(channel->height, theme_.sizes.trackRowMin, theme_.sizes.trackRowMax);
+            rows_.tops.push_back(rows_.tops.back() + h);
+        }
+    }
+    rowsValid_ = true;
+    return rows_;
+}
+
 int ArrangeView::rowCount() const noexcept
 {
-    if (project_ == nullptr)
-        return 0;
-    int fx = 0;
-    for (const auto& b : project_->buses)
-        fx += b.fx ? 1 : 0;
-    return static_cast<int>(project_->tracks.size()) + fx;
+    return static_cast<int>(rows().channels.size());
 }
 
 const core::Channel* ArrangeView::channelAtRow(int row) const
 {
-    if (project_ == nullptr || row < 0)
-        return nullptr;
-    if (static_cast<size_t>(row) < project_->tracks.size())
-        return &project_->tracks[static_cast<size_t>(row)];
-    const auto fx = fxTracks();
-    const auto i = static_cast<size_t>(row) - project_->tracks.size();
-    return i < fx.size() ? fx[i] : nullptr;
+    const auto& r = rows();
+    return row >= 0 && static_cast<size_t>(row) < r.channels.size() ? r.channels[static_cast<size_t>(row)]
+                                                                    : nullptr;
 }
 
 int ArrangeView::contentHeight() const noexcept
 {
-    int total = 0;
-    for (int row = 0, n = rowCount(); row < n; ++row)
-        total += rowHeightOf(row);
-    return total;
+    return rows().tops.back();
 }
 
 void ArrangeView::setVerticalScroll(int firstRowPixel)
@@ -575,6 +606,7 @@ void ArrangeView::mouseDown(const juce::MouseEvent& e)
         resizeStartHeight_ = rowHeightOf(edge);
         resizeHeight_ = resizeStartHeight_;
         resizeChannel_ = channelAtRow(edge)->id;
+        rowsValid_ = false;
         drag_ = Drag::rowResize;
         return;
     }
@@ -740,6 +772,7 @@ void ArrangeView::mouseDrag(const juce::MouseEvent& e)
             if (h != resizeHeight_)
             {
                 resizeHeight_ = h;
+                rowsValid_ = false;
                 layoutHeaders();
                 updateScrollbar();
                 automation_.repaint();
@@ -890,6 +923,7 @@ void ArrangeView::mouseUp(const juce::MouseEvent& e)
         {
             const auto channel = resizeChannel_;
             resizeChannel_ = core::invalidId;
+            rowsValid_ = false;
             if (resizeHeight_ != resizeStartHeight_ && project_ != nullptr &&
                 project_->findChannel(channel) != nullptr)
             {
@@ -1915,54 +1949,38 @@ void ArrangeView::paint(juce::Graphics& g)
 }
 // ----- editing -------------------------------------------------------------------------------
 
-int ArrangeView::rowAtY(int y) const noexcept
-{
-    if (project_ == nullptr || y < rulerHeight || y >= getHeight() - scrollbarHeight)
-        return -1;
-    int top = rulerHeight - verticalScroll_;
-    for (int row = 0, n = static_cast<int>(project_->tracks.size()); row < n; ++row)
-    {
-        const int h = rowHeightOf(row);
-        if (y >= top && y < top + h)
-            return row;
-        top += h;
-    }
-    return -1;
-}
-
 int ArrangeView::channelRowAtY(int y) const noexcept
 {
     if (project_ == nullptr || y < rulerHeight || y >= getHeight() - scrollbarHeight)
         return -1;
-    int top = rulerHeight - verticalScroll_;
-    for (int row = 0, n = rowCount(); row < n; ++row)
-    {
-        const int h = rowHeightOf(row);
-        if (y >= top && y < top + h)
-            return row;
-        top += h;
-    }
-    return -1;
+    const auto& tops = rows().tops;
+    const int content = y - rulerHeight + verticalScroll_;
+    // The last top at or above the point (tops are ascending; tops.back() is the end).
+    const auto it = std::upper_bound(tops.begin(), tops.end(), content);
+    const int row = static_cast<int>(it - tops.begin()) - 1;
+    return row >= 0 && row < rowCount() ? row : -1;
+}
+
+int ArrangeView::rowAtY(int y) const noexcept
+{
+    // Tracks only (FX tracks have no clips).
+    const int row = channelRowAtY(y);
+    return project_ != nullptr && row >= 0 && static_cast<size_t>(row) < project_->tracks.size() ? row : -1;
 }
 
 int ArrangeView::rowHeightOf(int row) const noexcept
 {
-    const auto* channel = channelAtRow(row);
-    if (channel == nullptr)
+    const auto& tops = rows().tops;
+    if (row < 0 || static_cast<size_t>(row) + 1 >= tops.size())
         return rowHeight;
-    if (channel->id == resizeChannel_)
-        return resizeHeight_;
-    return channel->height > 0
-               ? std::clamp(channel->height, theme_.sizes.trackRowMin, theme_.sizes.trackRowMax)
-               : rowHeight;
+    return tops[static_cast<size_t>(row) + 1] - tops[static_cast<size_t>(row)];
 }
 
 int ArrangeView::rowTop(int row) const noexcept
 {
-    int top = rulerHeight - verticalScroll_;
-    for (int i = 0; i < row; ++i)
-        top += rowHeightOf(i);
-    return top;
+    const auto& tops = rows().tops;
+    const auto at = static_cast<size_t>(std::clamp(row, 0, static_cast<int>(tops.size()) - 1));
+    return rulerHeight - verticalScroll_ + tops[at];
 }
 
 int ArrangeView::resizeEdgeAt(juce::Point<int> p) const noexcept
@@ -1970,15 +1988,15 @@ int ArrangeView::resizeEdgeAt(juce::Point<int> p) const noexcept
     if (project_ == nullptr || p.y < rulerHeight || p.y >= getHeight() - scrollbarHeight ||
         p.x >= getWidth() - scrollbarWidth)
         return -1;
-    int bottom = rulerHeight - verticalScroll_;
-    for (int row = 0, n = rowCount(); row < n; ++row)
-    {
-        bottom += rowHeightOf(row);
-        if (p.y >= bottom - TrackHeader::resizeEdge && p.y <= bottom + 1)
-            return row;
-        if (bottom > p.y + 1)
-            break;
-    }
+    // The row whose bottom edge is nearest the point, within the edge's reach.
+    const auto& tops = rows().tops;
+    const int content = p.y - rulerHeight + verticalScroll_;
+    const auto it = std::lower_bound(tops.begin() + 1, tops.end(), content - 1);
+    if (it == tops.end())
+        return -1;
+    const int bottom = *it;
+    if (content >= bottom - TrackHeader::resizeEdge && content <= bottom + 1)
+        return static_cast<int>(it - tops.begin()) - 1;
     return -1;
 }
 

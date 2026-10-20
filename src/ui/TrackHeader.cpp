@@ -289,6 +289,16 @@ void TrackHeader::setTrack(const core::Track& track,
     repaint();
 }
 
+void TrackHeader::setValues(const core::Channel& channel)
+{
+    const juce::ScopedValueSetter<bool> guard(updating_, true);
+    mute_.setToggleState(channel.mute, juce::dontSendNotification);
+    solo_.setToggleState(channel.solo, juce::dontSendNotification);
+    volume_.setValue(channel.gain <= 0.0f ? -60.0 : static_cast<double>(dbOf(channel.gain)),
+                     juce::dontSendNotification);
+    pan_.setValue(channel.pan, juce::dontSendNotification);
+}
+
 void TrackHeader::setLiveState(bool monitoring, bool recording)
 {
     if (monitoring == monitoring_ && recording == recording_)

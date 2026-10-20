@@ -312,8 +312,25 @@ private:
                                          core::SamplePosition original = 0);
 
     // ----- editing helpers --------------------------------------------------------
-    int rowAtY(int y) const noexcept;                    // track index or -1
-    int channelRowAtY(int y) const noexcept;             // any row, FX tracks included, or -1
+    int rowAtY(int y) const noexcept;        // track index or -1
+    int channelRowAtY(int y) const noexcept; // any row, FX tracks included, or -1
+    // Every row's channel and top (content coordinates; tops has one more entry,
+    // the content's end), rebuilt when invalidated.
+    struct RowLayout
+    {
+        std::vector<const core::Channel*> channels;
+        std::vector<int> tops;
+        // What it was built from: an edit that reallocated or resized either list
+        // (before the refresh that follows it) rebuilds it rather than leaving
+        // pointers into the old storage.
+        const core::Track* tracksData = nullptr;
+        size_t tracksSize = 0;
+        const core::Bus* busesData = nullptr;
+        size_t busesSize = 0;
+    };
+    const RowLayout& rows() const;
+    mutable RowLayout rows_;
+    mutable bool rowsValid_ = false;
     int rowHeightOf(int row) const noexcept;             // a row's height (its own, or the default)
     int rowTop(int row) const noexcept;                  // a row's top edge in view coordinates
     int resizeEdgeAt(juce::Point<int> p) const noexcept; // the row whose bottom edge is at p, or -1

@@ -147,6 +147,14 @@ public:
     std::function<void()> onOpen, onBypass, onMenu;
     std::function<void(juce::Point<int> screen, bool released)> onReorder;
 
+    void setBypassed(bool bypassed)
+    {
+        if (bypassed == bypassed_)
+            return;
+        bypassed_ = bypassed;
+        setTooltip(name_ + (bypassed ? " (bypassed)" : ""));
+        repaint();
+    }
     void set(const juce::String& name, const juce::String& badge, bool bypassed)
     {
         name_ = name;
@@ -663,6 +671,26 @@ public:
     core::Id id() const noexcept { return id_; }
     int meterSlot() const noexcept { return meterSlot_; }
     bool isBus() const noexcept { return isBus_; }
+
+    // A values refresh (a fader drag, 20 times a second): only what live
+    // commands change (fader, pan, the toggles, bypass states), with no combo
+    // refill, no new callbacks and no relayout.
+    void setValues(const core::Channel& channel)
+    {
+        const juce::ScopedValueSetter<bool> guard(updating_, true);
+        pan_.setValue(channel.pan, juce::dontSendNotification);
+        currentGain_ = channel.gain;
+        fader_.setGain(channel.gain, juce::dontSendNotification);
+        value_.setValue(gainToDb(channel.gain), juce::dontSendNotification);
+        mute_.setToggleState(channel.mute, juce::dontSendNotification);
+        solo_.setToggleState(channel.solo, juce::dontSendNotification);
+        phase_.setToggleState(channel.phaseInvert, juce::dontSendNotification);
+        stripRow_.set(channel);
+        if (channel.hasInstrument())
+            instrument_.setBypassed(channel.instrument.bypass);
+        for (size_t i = 0; i < inserts_.size() && i < channel.inserts.size(); ++i)
+            inserts_[i]->setBypassed(channel.inserts[i].bypass);
+    }
 
     void
     setChannel(const core::Channel& channel, bool isBus, const core::Project& project, int slot, int index)
@@ -1926,8 +1954,17 @@ void MixerView::setSelectedChannel(core::Id channelId)
     rebuildStrips();
 }
 
-void MixerView::setProject(const core::Project* project)
+void MixerView::setProject(const core::Project* project, bool valuesOnly)
 {
+    if (valuesOnly && project == project_ && project_ != nullptr)
+    {
+        for (auto& strip : strips_)
+            if (const auto* channel = project_->findChannel(strip->id()))
+                strip->setValues(*channel);
+        master_->setMaster(project_->master);
+        refreshEditors();
+        return;
+    }
     project_ = project;
     rebuildStrips();
     refreshEditors();
