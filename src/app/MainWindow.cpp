@@ -20,6 +20,7 @@
 #include "ui/PianoRoll.h"
 #include "ui/PluginBrowser.h"
 #include "ui/PreferencesView.h"
+#include "ui/Selection.h"
 #include "ui/Theme.h"
 #include "ui/components/Meter.h"
 #include "ui/components/Sheet.h"
@@ -364,8 +365,7 @@ public:
                 eq = m.id;
         if (eq == core::invalidId)
             return;
-        tracks_.setSelectedTrack(trackId);
-        selectionChanged(trackId);
+        select(trackId);
         panels_.show(ui::PanelId::editor);
         const double start = juce::Time::getMillisecondCounterHiRes() + 1000.0; // let it settle first
         const double end = start + seconds * 1000.0;
@@ -520,7 +520,7 @@ public:
         // F2 renames the selected track while the arrange view has the focus
         // (10.4); elsewhere it is the mixer's panel key.
         if (key.getKeyCode() == juce::KeyPress::F2Key && mods == 0 && tracks_.hasKeyboardFocus(true) &&
-            tracks_.selectedTrack() != core::invalidId)
+            selection_.channel() != core::invalidId)
         {
             tracks_.renameSelectedTrack();
             return true;
@@ -802,15 +802,15 @@ private:
         };
         tracks_.playheadForEdits = [this] { return session_.position(); };
         tracks_.setAcceptedExtensions(session_.mediaLoader().supportedExtensions());
-        tracks_.onTrackSelected = [this](core::Id id) { selectionChanged(id); };
-        tracks_.onSelectionChanged = [this] { selectionChanged(tracks_.selectedTrack()); };
+        tracks_.onTrackSelected = [this](core::Id id) { select(id); };
+        tracks_.onSelectionChanged = [this] { select(tracks_.selectedTrack()); };
+        selection_.onChanged = [this] { applySelection(); };
         tracks_.onAddAudioTrack = [this] { addAudioTrack(); };
         tracks_.onAddMidiTrack = [this](const std::string& type) { addMidiTrack(type); };
         tracks_.onAddMidiTrackPlaying = [this](core::Id channel)
         {
             const auto id = session_.addMidiTrackPlaying(channel);
-            tracks_.setSelectedTrack(id);
-            selectionChanged(id);
+            select(id);
         };
         tracks_.onAddBus = [this] { addBus(); };
         tracks_.onImportRequested = [this] { importAudio(); };
@@ -836,11 +836,7 @@ private:
         mixer_.setHost(&session_.insertFactory());
         mixer_.liveInsert = [this](core::Id insertId) { return session_.liveInsert(insertId); };
         mixer_.onScanPlugins = [this] { session_.scanPlugins(true); };
-        mixer_.onSelectChannel = [this](core::Id id)
-        {
-            tracks_.setSelectedTrack(id);
-            selectionChanged(id);
-        };
+        mixer_.onSelectChannel = [this](core::Id id) { select(id); };
         mixer_.onOpenPluginBrowser = [this] { owner_.showPluginBrowser(); };
         mixer_.automatedValues = [this](core::Id id)
         {
@@ -849,9 +845,7 @@ private:
         };
         mixer_.onShowStrip = [this](core::Id id)
         {
-            tracks_.setSelectedTrack(id);
-            selectionChanged(id);
-            editor_.setChannel(id); // a bus is not a track selection
+            select(id); // a bus too: the editor shows its strip
             panels_.show(ui::PanelId::editor);
         };
         mixer_.loadSetting = [this](const std::string& key) { return settings_.value(key); };
@@ -875,11 +869,7 @@ private:
         instruments_.onCommand = [this](std::unique_ptr<core::Command> c) { session_.execute(std::move(c)); };
         instruments_.onOpenEditor = [this](core::Id channelId, core::Id insertId)
         { owner_.openInsertEditor(channelId, insertId); };
-        instruments_.onSelectTrack = [this](core::Id trackId)
-        {
-            tracks_.setSelectedTrack(trackId);
-            selectionChanged(trackId);
-        };
+        instruments_.onSelectTrack = [this](core::Id trackId) { select(trackId); };
         instruments_.onInserted = [this](const std::string& type) { browser_.rememberRecent(type); };
         instruments_.onAddMidiTrack = [this](const std::string& type) { addMidiTrack(type); };
 
@@ -907,7 +897,7 @@ private:
         browser_.loadSetting = [this](const std::string& key) { return settings_.value(key); };
         browser_.saveSetting = [this](const std::string& key, const std::string& value)
         { settings_.setValue(key, value); };
-        browser_.onInsert = [this](const std::string& type) { insertPlugin(tracks_.selectedTrack(), type); };
+        browser_.onInsert = [this](const std::string& type) { insertPlugin(selection_.channel(), type); };
         browser_.setStatus(session_.pluginScanStatus());
         tracks_.setDisplayName([this](const std::string& type) { return mixer_.insertDisplayName(type); });
         tracks_.midiOutputName = [this] { return audio_.midi().outputName(); };
@@ -1109,12 +1099,8 @@ private:
         }
         tracks_.setProject(&session_.project());
         // There is always a selected track while the project has one (the editor
-        // and inspector follow it).
-        if (tracks_.selectedTrack() == core::invalidId && !session_.project().tracks.empty())
-        {
-            tracks_.setSelectedTrack(session_.project().tracks.front().id);
-            selectionChanged(session_.project().tracks.front().id);
-        }
+        // and inspector follow it); a removed one falls back to the first.
+        selection_.validate(session_.project());
         mixer_.setProject(&session_.project());
         editor_.setProject(&session_.project());
         instruments_.setProject(&session_.project());
@@ -1360,19 +1346,30 @@ private:
     }
 
     // ----- selection -----------------------------------------------------------------------
-    const core::Track* selectedTrack() const { return session_.project().findTrack(tracks_.selectedTrack()); }
+    const core::Track* selectedTrack() const { return session_.project().findTrack(selection_.channel()); }
 
-    void selectionChanged(core::Id trackId)
+    // Everything that selects comes here; selection_ notifies applySelection.
+    void select(core::Id channel) { selection_.select(channel, focusedClipOn(channel)); }
+
+    // The audio clip on the channel the inspector shows: the arrange view's most
+    // recently selected one there, if any.
+    core::Id focusedClipOn(core::Id channel) const
     {
-        // The track the user picked always leads; a selected audio clip only
-        // reaches the inspector when it sits on that track.
         core::Id clipId = core::invalidId;
         for (const auto& clip : tracks_.selection())
-            if (!clip.midi && clip.track == trackId)
+            if (!clip.midi && clip.track == channel)
                 clipId = clip.clip;
-        editor_.setChannel(trackId);
-        inspector_.setSelection(trackId, clipId);
-        mixer_.setSelectedChannel(trackId);
+        return clipId;
+    }
+
+    // The one place the views learn the selection.
+    void applySelection()
+    {
+        const auto channel = selection_.channel();
+        tracks_.setSelectedTrack(channel);
+        editor_.setChannel(channel);
+        inspector_.setSelection(channel, selection_.clip());
+        mixer_.setSelectedChannel(channel);
     }
 
     // A bus that tracks route to is removed only after a sheet (10.6). Returns
@@ -1452,7 +1449,7 @@ private:
         if (session_.playNewInstrument(midiTrack, type) == core::invalidId)
             return;
         browser_.rememberRecent(type);
-        selectionChanged(midiTrack);
+        select(midiTrack);
     }
 
     void insertPlugin(core::Id trackId, const std::string& type)
@@ -1474,7 +1471,7 @@ private:
                 instrument.params = plugins::defaultParameters(type);
                 session_.execute(std::make_unique<core::SetInstrument>(channel->id, instrument));
                 browser_.rememberRecent(type);
-                selectionChanged(trackId);
+                select(trackId);
             }
             else if (track != nullptr && track->isMidi())
                 playNewInstrument(track->id, type);
@@ -1492,8 +1489,7 @@ private:
         insert.params = plugins::defaultParameters(type);
         session_.execute(std::make_unique<core::AddInsert>(trackId, insert));
         browser_.rememberRecent(type);
-        tracks_.setSelectedTrack(trackId);
-        selectionChanged(trackId);
+        select(trackId);
     }
 
     void armSelected()
@@ -1576,8 +1572,7 @@ private:
         const auto* added = command.get(); // the undo history keeps it alive
         session_.execute(std::move(command));
         const auto id = added->trackId(); // allocated on apply
-        tracks_.setSelectedTrack(id);
-        selectionChanged(id);
+        select(id);
     }
 
     // A MIDI track with a new instrument channel (the default instrument when
@@ -1587,8 +1582,7 @@ private:
         const auto id = session_.addMidiTrack(type);
         if (!type.empty())
             browser_.rememberRecent(type);
-        tracks_.setSelectedTrack(id);
-        selectionChanged(id);
+        select(id);
     }
 
     void addBus()
@@ -2177,6 +2171,7 @@ private:
     bool dragging_ = false;
     bool valuesRefreshPending_ = false;
     ui::HeaderBar header_;
+    ui::Selection selection_; // before the views: they are told about it
     ui::ArrangeView tracks_;
     ui::PanelHost dock_, side_;
     ui::StatusBar status_;

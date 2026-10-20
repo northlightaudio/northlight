@@ -31,7 +31,8 @@ add_executable(aural_unit_tests
     engine/MidiTests.cpp
     engine/AutomationTests.cpp
     engine/FxTrackTests.cpp
-    hosting/PluginRegistryTests.cpp)
+    hosting/PluginRegistryTests.cpp
+    ui/SelectionTests.cpp)
 
 target_link_libraries(aural_unit_tests PRIVATE
     aural_options

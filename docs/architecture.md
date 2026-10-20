@@ -222,6 +222,15 @@ caches to the Recycle Bin rather than deleting them, because an undo can bring
 back a clip that used one. `MainWindow` is the
 shell of 03-shell.md (see "UI" below).
 
+Selection has one owner, `ui::Selection` (in the shell): the selected channel
+(a track, an FX track or a bus) and the audio clip on it the inspector shows.
+Everything that selects calls the shell's `select`; the selection notifies one
+listener, which brings the arrange view, the Editor panel, the inspector and the
+mixer to it, so no view can be left on another channel. After every structural
+change it validates itself: a channel that is gone falls back to the first track,
+a clip that is gone is dropped. The arrange view keeps its own set of selected
+clips for editing and reports the one in focus.
+
 ### Waveforms and the arrange view
 
 `engine::PeakData` holds mipmapped min/max peaks per channel: a base level of 256
@@ -1306,6 +1315,7 @@ machine for the benchmark.
 | 2026-10-20 | Paint times are recorded by the two heavy views, not by hooking every component | A scope at the top of `ArrangeView::paint` and `MixerView::paint` costs nothing elsewhere and covers what the budget is about; the frame interval (the timer's cadence) is tracked separately in the main window. |
 | 2026-10-20 | The mixer's section boxes are real slots and rows, not menus | Signal flow must be visible: an insert's bypass and order, a send's level and tap are on the strip, and the menus keep only what has no control of its own. |
 | 2026-10-20 | The arrange headers read meter copies from the mixer rather than taking from the meter block | `MeterBlock::take` resets the peak, so one consumer must own each slot; the mixer already takes every slot each frame and keeps the last readings for anyone else. |
+| 2026-10-20 | Selection has one owner that notifies one listener | Four views each cached the selection and nine call sites kept them in step by hand; missing one left the editor on another channel, twice. |
 | 2026-10-20 | Parameters are saved with stable keys and reconciled on load | Saving by position silently moved every later value (and automation) whenever a processor gained a parameter, as Pulsar did; keys let processors change, and an upgrade chain replaces refusing older files. |
 | 2026-10-20 | Missing media is detected once per project change, not per paint | A file-exists check per clip per frame would stall painting on a slow volume; the set is rebuilt when the project changes. |
 | 2026-10-19 | Panels are owned by one of three hosts and never destroyed on close | A panel's component keeps its state (the mixer's open editors, the browser's filter) across moves and hides; closing a floating panel hides it and returns it to its default host, so a user cannot lose one. |

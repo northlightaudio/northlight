@@ -41,6 +41,7 @@ add_library(aural_ui STATIC
     shell/HeaderBar.cpp
     shell/StatusBar.h
     shell/StatusBar.cpp
+    Selection.h
     panels/EditorPanel.h
     panels/EditorPanel.cpp
     panels/InstrumentRack.h
