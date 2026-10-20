@@ -326,7 +326,10 @@ items show a check icon in `accent`. Disabled `textDisabled`.
 ### Tooltip
 
 `surface3` fill, radius `sm`, `small` 12 text `textPrimary`, max width
-`tooltipMaxWidth`, `sm` padding, shadow. Shows the control name and, for valued
+`tooltipMaxWidth`, `sm` padding, shadow. A shortcut (written after two spaces, keys
+joined by "+": "Redo  Ctrl+Shift+Z") shows as key caps at the right of the first line:
+one per key, `caption` `textSecondary` on `surface1` with a `lineStrong` border, radius `sm`.
+Shows the control name and, for valued
 controls, the current value and the shortcut. Delay `tooltipDelayMs`.
 
 ### Dialog (sheet)

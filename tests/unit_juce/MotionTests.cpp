@@ -347,3 +347,63 @@ TEST_CASE("A click with the pencil makes a bar-long clip; double-click on empty 
     CHECK(f.project.tracks[0].midiClips[1].length == bar);
     CHECK(f.project.tracks[0].midiClips[1].start % bar == 0); // on a bar line
 }
+
+TEST_CASE("A tooltip's shortcut is told apart from its text", "[ui][tooltip]")
+{
+    using Laf = ui::AuralLookAndFeel;
+    auto parts = Laf::splitShortcut("Redo  Ctrl+Shift+Z");
+    CHECK(parts.text == "Redo");
+    CHECK(parts.keys == juce::StringArray{"Ctrl", "Shift", "Z"});
+    CHECK(Laf::splitShortcut("Select tool: move, trim and select clips  1").keys == juce::StringArray{"1"});
+    CHECK(Laf::splitShortcut("Go to start  Enter").keys == juce::StringArray{"Enter"});
+    CHECK(Laf::splitShortcut("Mixer  F2").keys == juce::StringArray{"F2"});
+    CHECK(Laf::splitShortcut("Snap: Adaptive  N").text == "Snap: Adaptive");
+    // Not shortcuts: words, a modifier alone, a label with a middle dot.
+    CHECK(Laf::splitShortcut("Volume").keys.isEmpty());
+    CHECK(Laf::splitShortcut("Pad  Shift").keys.isEmpty());
+    CHECK(Laf::splitShortcut("Notes  pitched").keys.isEmpty());
+    CHECK(Laf::splitShortcut(juce::String::fromUTF8("CHIP SYNTH  \xc2\xb7  AURAL")).keys.isEmpty());
+    CHECK(Laf::splitShortcut("Two words  Ctrl+Click here").keys.isEmpty());
+}
+
+TEST_CASE("A tooltip with a shortcut is wide enough for its text and key caps", "[ui][tooltip]")
+{
+    const juce::ScopedJuceInitialiser_GUI juceInit;
+    const auto& theme = ui::Theme::dark();
+    ui::AuralLookAndFeel lookAndFeel(theme);
+    const auto plain = lookAndFeel.getTooltipBounds("Redo", {200, 200}, {0, 0, 1920, 1080});
+    const auto withKeys = lookAndFeel.getTooltipBounds("Redo  Ctrl+Shift+Z", {200, 200}, {0, 0, 1920, 1080});
+    CHECK(withKeys.getWidth() > plain.getWidth() + 3 * 16); // three caps beside the word
+    CHECK(withKeys.getHeight() >= plain.getHeight());
+}
+
+// Not run by default ([.]): renders sample tooltips to a PNG for a look.
+TEST_CASE("render sample tooltips", "[.render]")
+{
+    const juce::ScopedJuceInitialiser_GUI juceInit;
+    const auto& theme = ui::Theme::dark();
+    ui::AuralLookAndFeel lookAndFeel(theme);
+    juce::Image image(juce::Image::ARGB, 460, 260, true);
+    {
+        juce::Graphics g(image); // drawn into the image when it goes
+        g.fillAll(theme.colours.canvas);
+        int y = 12;
+        for (const juce::String tip : {"Redo  Ctrl+Shift+Z",
+                                       "Play  Space",
+                                       "Pencil: draw a MIDI clip on a MIDI track  3",
+                                       "Ripple: off  Shift+N",
+                                       "UADx Topline Vocal Tune"})
+        {
+            const auto box = lookAndFeel.getTooltipBounds(tip, {0, 0}, {0, 0, 1920, 1080});
+            juce::Graphics::ScopedSaveState state(g);
+            g.setOrigin(12, y);
+            lookAndFeel.drawTooltip(g, tip, box.getWidth(), box.getHeight());
+            y += box.getHeight() + 12;
+        }
+    }
+    const auto out =
+        juce::File::getSpecialLocation(juce::File::tempDirectory).getChildFile("aural-tooltips.png");
+    out.deleteFile();
+    juce::FileOutputStream stream(out);
+    juce::PNGImageFormat().writeImageToStream(image, stream);
+}

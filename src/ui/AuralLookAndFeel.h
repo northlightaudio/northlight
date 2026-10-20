@@ -179,6 +179,16 @@ public:
 
     // ----- tooltips, progress, tables ------------------------------------------
     void drawTooltip(juce::Graphics& g, const juce::String& text, int width, int height) override;
+    // A tooltip's shortcut, drawn as key caps: "Redo  Ctrl+Shift+Z" is the text
+    // "Redo" and the keys Ctrl, Shift, Z. Only key names count (modifiers, a
+    // single character, F1-F12, Space, Enter and the like), so a label that
+    // happens to hold two spaces keeps its words.
+    struct TooltipParts
+    {
+        juce::String text;
+        juce::StringArray keys;
+    };
+    static TooltipParts splitShortcut(const juce::String& tip);
     juce::Rectangle<int> getTooltipBounds(const juce::String& tipText,
                                           juce::Point<int> screenPos,
                                           juce::Rectangle<int> parentArea) override;

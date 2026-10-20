@@ -917,20 +917,82 @@ void AuralLookAndFeel::drawTabButton(juce::TabBarButton& button,
 
 // ----- tooltips, progress, tables ---------------------------------------------------------
 
+AuralLookAndFeel::TooltipParts AuralLookAndFeel::splitShortcut(const juce::String& tip)
+{
+    const int at = tip.lastIndexOf("  ");
+    if (at <= 0)
+        return {tip, {}};
+    const auto shortcut = tip.substring(at + 2).trim();
+    if (shortcut.isEmpty() || shortcut.containsChar(' '))
+        return {tip, {}};
+    static const juce::StringArray modifiers{"Ctrl", "Shift", "Alt", "Cmd"};
+    static const juce::StringArray named{"Space",
+                                         "Enter",
+                                         "Esc",
+                                         "Tab",
+                                         "Delete",
+                                         "Backspace",
+                                         "Home",
+                                         "End",
+                                         "Up",
+                                         "Down",
+                                         "Left",
+                                         "Right",
+                                         "PgUp",
+                                         "PgDn"};
+    auto keys = juce::StringArray::fromTokens(shortcut, "+", "");
+    for (int i = 0; i < keys.size(); ++i)
+    {
+        const auto& k = keys[i];
+        const bool last = i == keys.size() - 1;
+        const bool isKey =
+            (k.length() == 1 && !juce::CharacterFunctions::isWhitespace(k[0])) || named.contains(k) ||
+            (k.length() >= 2 && k.length() <= 3 && k[0] == 'F' && k.substring(1).containsOnly("0123456789"));
+        if (last ? !isKey : !modifiers.contains(k))
+            return {tip, {}};
+    }
+    return {tip.substring(0, at).trimEnd(), keys};
+}
+
+namespace
+{
+// The key caps' measures (shared by the bounds and the drawing).
+constexpr float capPad = 5.0f, capGap = 3.0f, capToText = 10.0f;
+float capWidth(const juce::Font& font, const juce::String& key, float height)
+{
+    return std::max(height,
+                    static_cast<float>(juce::GlyphArrangement::getStringWidthInt(font, key)) + 2.0f * capPad);
+}
+float capsWidth(const juce::Font& font, const juce::StringArray& keys, float height)
+{
+    float w = 0.0f;
+    for (const auto& k : keys)
+        w += capWidth(font, k, height) + capGap;
+    return keys.isEmpty() ? 0.0f : w - capGap;
+}
+} // namespace
+
 juce::Rectangle<int> AuralLookAndFeel::getTooltipBounds(const juce::String& tipText,
                                                         juce::Point<int> screenPos,
                                                         juce::Rectangle<int> parentArea)
 {
     const auto font = theme_.small();
+    const auto parts = splitShortcut(tipText);
+    const float capH = theme_.caption().getHeight() + 4.0f;
+    const float keysW =
+        parts.keys.isEmpty() ? 0.0f : capToText + capsWidth(theme_.caption(), parts.keys, capH);
     juce::TextLayout layout;
-    juce::AttributedString text(tipText);
+    juce::AttributedString text(parts.text);
     text.setFont(font);
-    layout.createLayout(text, static_cast<float>(theme_.sizes.tooltipMaxWidth - 2 * theme_.spacing.sm));
+    layout.createLayout(text,
+                        static_cast<float>(theme_.sizes.tooltipMaxWidth - 2 * theme_.spacing.sm) - keysW);
     // Rounded up, with a pixel to spare: drawTooltip lays the text out again in
     // the box, and a box a fraction narrower than the text wraps it once more
     // (and clips the last line).
-    const int w = static_cast<int>(std::ceil(layout.getWidth())) + 1 + 2 * theme_.spacing.sm;
-    const int h = static_cast<int>(std::ceil(layout.getHeight())) + 2 * theme_.spacing.xs;
+    const int w = static_cast<int>(std::ceil(layout.getWidth() + keysW)) + 1 + 2 * theme_.spacing.sm;
+    const int h =
+        static_cast<int>(std::ceil(std::max(layout.getHeight(), parts.keys.isEmpty() ? 0.0f : capH))) +
+        2 * theme_.spacing.xs;
     return juce::Rectangle<int>(screenPos.x > parentArea.getCentreX() ? screenPos.x - (w + theme_.spacing.sm)
                                                                       : screenPos.x + theme_.spacing.sm,
                                 screenPos.y > parentArea.getCentreY() ? screenPos.y - (h + theme_.spacing.sm)
@@ -947,13 +1009,39 @@ void AuralLookAndFeel::drawTooltip(juce::Graphics& g, const juce::String& text, 
     g.fillRoundedRectangle(bounds, theme_.radius.sm);
     g.setColour(theme_.colours.lineStrong);
     g.drawRoundedRectangle(bounds.reduced(0.5f), theme_.radius.sm, 1.0f);
+    const auto parts = splitShortcut(text);
+    const auto capFont = theme_.caption();
+    const float capH = capFont.getHeight() + 4.0f;
+    const float keysW = parts.keys.isEmpty() ? 0.0f : capsWidth(capFont, parts.keys, capH);
+    auto content =
+        bounds.reduced(static_cast<float>(theme_.spacing.sm), static_cast<float>(theme_.spacing.xs));
     juce::TextLayout layout;
-    juce::AttributedString attributed(text);
+    juce::AttributedString attributed(parts.text);
     attributed.setFont(theme_.small());
     attributed.setColour(theme_.colours.textPrimary);
-    layout.createLayout(attributed, static_cast<float>(width - 2 * theme_.spacing.sm));
-    layout.draw(g,
-                bounds.reduced(static_cast<float>(theme_.spacing.sm), static_cast<float>(theme_.spacing.xs)));
+    layout.createLayout(attributed, content.getWidth() - (keysW > 0.0f ? keysW + capToText : 0.0f));
+    // A single line sits centred; the key caps sit on the first line, at the right.
+    const float textTop = content.getY() + std::max(0.0f, (content.getHeight() - layout.getHeight()) * 0.5f) *
+                                               (layout.getNumLines() <= 1 ? 1.0f : 0.0f);
+    layout.draw(g, content.withY(textTop).withHeight(layout.getHeight()));
+    if (parts.keys.isEmpty())
+        return;
+    const float firstLine =
+        layout.getNumLines() > 0 ? layout.getLine(0).getLineBoundsY().getLength() : content.getHeight();
+    const float capY = textTop + (firstLine - capH) * 0.5f;
+    float x = content.getRight() - keysW;
+    g.setFont(capFont);
+    for (const auto& key : parts.keys)
+    {
+        const auto cap = juce::Rectangle<float>(x, capY, capWidth(capFont, key, capH), capH);
+        g.setColour(theme_.colours.surface1);
+        g.fillRoundedRectangle(cap, theme_.radius.sm);
+        g.setColour(theme_.colours.lineStrong);
+        g.drawRoundedRectangle(cap.reduced(0.5f), theme_.radius.sm, 1.0f);
+        g.setColour(theme_.colours.textSecondary);
+        g.drawText(key, cap, juce::Justification::centred, false);
+        x = cap.getRight() + capGap;
+    }
 }
 
 void AuralLookAndFeel::drawProgressBar(juce::Graphics& g,
