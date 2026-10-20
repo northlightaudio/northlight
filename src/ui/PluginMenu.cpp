@@ -2,6 +2,7 @@
 
 #include "plugins/BuiltIns.h"
 
+#include <algorithm>
 #include <map>
 
 namespace aural::ui
@@ -24,10 +25,11 @@ PluginMenu buildPluginMenu(PluginKind kind,
     result.firstItem = firstItem;
     auto& menu = result.menu;
     const bool instruments = kind == PluginKind::instrument;
+    const auto builtIns = plugins::BuiltInFactory().typeNames(); // a list, not an instance per check
     const auto wanted = [&](const std::string& type)
     {
         if (!hosting::PluginRegistry::isHostedType(type))
-            return plugins::BuiltInFactory().create(type) != nullptr &&
+            return std::find(builtIns.begin(), builtIns.end(), type) != builtIns.end() &&
                    plugins::BuiltInFactory::isInstrument(type) == instruments;
         const auto* info = registry != nullptr ? registry->findByType(type) : nullptr;
         return info != nullptr && info->isInstrument == instruments;
@@ -81,6 +83,12 @@ PluginMenu buildPluginMenu(PluginKind kind,
         }
     }
     return result;
+}
+
+PluginMenu buildPluginMenu(PluginKind kind, const PluginSources* sources, int firstItem)
+{
+    return sources != nullptr ? buildPluginMenu(kind, sources->registry, sources->listSetting, firstItem)
+                              : buildPluginMenu(kind, nullptr, {}, firstItem);
 }
 
 } // namespace aural::ui

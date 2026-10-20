@@ -41,10 +41,20 @@ struct PluginMenu
     }
 };
 
+// Where every view's plugin menus come from: the scanned plugins and the
+// recent / favourite lists. The shell owns one and hands it to every view, so
+// each menu offers the same plugins (a view without it offers the built-ins).
+struct PluginSources
+{
+    const hosting::PluginRegistry* registry = nullptr;
+    std::function<std::vector<std::string>(const std::string&)> listSetting;
+};
+
 PluginMenu
 buildPluginMenu(PluginKind kind,
                 const hosting::PluginRegistry* registry,
                 const std::function<std::vector<std::string>(const std::string&)>& listSetting = {},
                 int firstItem = 1);
+PluginMenu buildPluginMenu(PluginKind kind, const PluginSources* sources, int firstItem = 1);
 
 } // namespace aural::ui

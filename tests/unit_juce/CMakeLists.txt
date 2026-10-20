@@ -14,6 +14,7 @@ add_executable(aural_juce_tests
     ChannelStripUiTests.cpp
     EditorPanelTests.cpp
     CrashGuardTests.cpp
+    DbTests.cpp
     AutosaveTests.cpp
     AutomationWriteTests.cpp
     TemplatesMediaTests.cpp

@@ -1,5 +1,7 @@
 #include "ui/AudioSetupView.h"
 
+#include "ui/Db.h"
+
 #include <algorithm>
 #include <cmath>
 
@@ -23,14 +25,14 @@ juce::String ms(double milliseconds)
     return juce::String(milliseconds, 2) + " ms";
 }
 
-float dbToGain(double db)
+float dbToGain(double v)
 {
-    return db <= minLevelDb + 0.05 ? 0.0f : static_cast<float>(std::pow(10.0, db / 20.0));
+    return db::toGain(v, minLevelDb); // the slider's bottom is silence
 }
 
 double gainToDb(float gain)
 {
-    return gain <= 0.0f ? minLevelDb : juce::jlimit(minLevelDb, maxLevelDb, 20.0 * std::log10(gain));
+    return db::fromGain(gain, minLevelDb, maxLevelDb);
 }
 
 void styleCaption(juce::Label& label, const Theme& theme)
@@ -254,9 +256,9 @@ AudioSetupView::AudioSetupView(audio::AudioDeviceLayer& audio) : audio_(audio), 
     levelSlider_.setSkewFactorFromMidPoint(-12.0);
     levelSlider_.setTextBoxStyle(juce::Slider::TextBoxRight, false, 72, theme_.sizes.controlHeight - 4);
     levelSlider_.textFromValueFunction = [](double v)
-    { return v <= minLevelDb + 0.05 ? juce::String("-inf dB") : juce::String(v, 1) + " dB"; };
+    { return db::text(v <= minLevelDb + 0.05 ? db::silence : v) + " dB"; };
     levelSlider_.valueFromTextFunction = [](const juce::String& t)
-    { return t.containsIgnoreCase("inf") ? minLevelDb : t.getDoubleValue(); };
+    { return std::max(minLevelDb, db::parse(t)); };
     levelSlider_.onValueChange = [this]
     {
         if (!updating_)

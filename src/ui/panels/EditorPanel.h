@@ -5,6 +5,7 @@
 #include "engine/Insert.h"
 #include "hosting/PluginRegistry.h"
 #include "ui/Icons.h"
+#include "ui/PluginMenu.h"
 #include "ui/Theme.h"
 #include "ui/components/AddSlot.h"
 #include "ui/components/Knob.h"
@@ -41,6 +42,7 @@ public:
     // channel with it and aim the track there.
     std::function<void(core::Id midiTrack, const std::string& type)> onPlayNewInstrument;
     void setRegistry(const hosting::PluginRegistry* registry) { registry_ = registry; }
+    void setPluginSources(const PluginSources* sources) noexcept { pluginSources_ = sources; }
 
     std::function<std::shared_ptr<engine::InsertProcessor>(core::Id)> liveInsert;
     std::function<std::string(const std::string& type)> displayName;
@@ -50,8 +52,6 @@ public:
     std::function<void(core::Id channelId, core::Id insertId)> onOpenEditor;
     // Whether an insert's editor window is open (the card shows a dot).
     std::function<bool(core::Id insertId)> isEditorOpen;
-    // Recent and favourite plugin types for the "+" menu; may be null.
-    std::function<std::vector<std::string>(const std::string& key)> listSetting;
     // An insert was added here (the owner remembers the type as recent).
     std::function<void(const std::string& type)> onInserted;
 
@@ -84,6 +84,7 @@ private:
     const Theme& theme_;
     const core::Project* project_ = nullptr;
     const hosting::PluginRegistry* registry_ = nullptr;
+    const PluginSources* pluginSources_ = nullptr;
     void resolveChannel();
     core::Id channelId_ = core::invalidId;
     core::Id selectedId_ = core::invalidId;  // what the selection asked for

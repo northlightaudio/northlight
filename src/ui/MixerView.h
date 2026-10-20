@@ -5,6 +5,7 @@
 #include "engine/Loudness.h"
 #include "engine/Meters.h"
 #include "hosting/HostFactory.h"
+#include "ui/PluginMenu.h"
 #include "ui/PluginWindow.h"
 #include "ui/Theme.h"
 #include "ui/components/Fader.h"
@@ -71,6 +72,7 @@ public:
     std::function<void(const std::string& key, const std::string& value)> saveSetting;
     // Names and the plugin list for the inserts menu; may be null (built-ins only).
     void setHost(const hosting::HostFactory* host) noexcept { host_ = host; }
+    void setPluginSources(const PluginSources* sources) noexcept { pluginSources_ = sources; }
     // The master clipped since the last clear (the header's indicator mirrors it).
     bool masterClipped() const noexcept { return masterClipped_; }
     void clearMasterClip() { masterClipped_ = false; }
@@ -132,6 +134,7 @@ private:
     std::vector<std::unique_ptr<EditorWindow>> editors_;
     std::vector<std::unique_ptr<PluginWindow>> pluginWindows_;
     const hosting::HostFactory* host_ = nullptr;
+    const PluginSources* pluginSources_ = nullptr;
 };
 
 } // namespace aural::ui

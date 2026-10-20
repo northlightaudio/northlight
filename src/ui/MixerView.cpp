@@ -8,11 +8,13 @@
 #include "plugins/FxTracks.h"
 #include "ui/AuralLookAndFeel.h"
 #include "ui/ClapEditor.h"
+#include "ui/Db.h"
 #include "ui/FrameStats.h"
 #include "ui/Icons.h"
 #include "ui/InsertEditor.h"
 #include "ui/InstrumentOutputs.h"
 #include "ui/PluginMenu.h"
+#include "ui/SendMenu.h"
 #include "ui/components/AddSlot.h"
 #include "ui/strip/StripStyle.h"
 
@@ -38,19 +40,15 @@ constexpr int slotHeight = 20;     // an insert slot or a send row
 constexpr int maxVisibleSlots = 6; // inserts shown before the box scrolls
 constexpr int minFaderTravel = 120, maxFaderTravel = 200;
 
-float dbToGain(double db) noexcept
+// The send slider's travel stops at minFaderDb (silence there); the value boxes
+// take any gain down to db::silence, so one typed elsewhere is not clipped.
+float sendGain(double db) noexcept
 {
-    return db <= minFaderDb + 0.05 ? 0.0f : static_cast<float>(std::pow(10.0, db / 20.0));
+    return db::toGain(db, minFaderDb);
 }
-
-double gainToDb(float gain) noexcept
+double sendDb(float gain) noexcept
 {
-    return gain <= 0.0f ? minFaderDb : juce::jlimit(minFaderDb, maxFaderDb, 20.0 * std::log10(gain));
-}
-
-juce::String dbText(double db)
-{
-    return db <= minFaderDb + 0.05 ? juce::String("-inf") : juce::String(db, 1);
+    return db::fromGain(gain, minFaderDb, maxFaderDb);
 }
 
 juce::String panText(double v)
@@ -263,9 +261,10 @@ public:
         };
         slider_.onValueChange = [this]
         {
-            slider_.setTooltip(dbText(slider_.getValue()) + " dB");
+            slider_.setTooltip(
+                db::text(slider_.getValue() <= minFaderDb + 0.05 ? db::silence : slider_.getValue()) + " dB");
             if (!updating_ && onLevel)
-                onLevel(dbToGain(slider_.getValue()));
+                onLevel(sendGain(slider_.getValue()));
         };
         addAndMakeVisible(slider_);
     }
@@ -277,8 +276,8 @@ public:
         const juce::ScopedValueSetter<bool> guard(updating_, true);
         name_ = name;
         pre_ = pre;
-        slider_.setValue(gainToDb(level), juce::dontSendNotification);
-        slider_.setTooltip(dbText(gainToDb(level)) + " dB");
+        slider_.setValue(sendDb(level), juce::dontSendNotification);
+        slider_.setTooltip(db::gainText(level) + " dB");
         setTooltip(name + (pre ? " (pre-fader)" : " (post-fader)"));
         repaint();
     }
@@ -642,16 +641,15 @@ public:
         addAndMakeVisible(fader_);
         addAndMakeVisible(meter_);
 
-        value_.setRange(minFaderDb, maxFaderDb, 0.1);
+        value_.setRange(db::silence, maxFaderDb, 0.1);
         value_.setDecimals(1);
         value_.setUnit("dB");
-        value_.format = [](double v) { return dbText(v); };
-        value_.parse = [](const juce::String& t)
-        { return t.containsIgnoreCase("inf") ? minFaderDb : t.getDoubleValue(); };
+        value_.format = [](double v) { return db::text(v); };
+        value_.parse = [](const juce::String& t) { return db::parse(t); };
         value_.setTooltip("Gain");
         value_.onDragStart = fader_.onDragStart;
         value_.onDragEnd = fader_.onDragEnd;
-        value_.onValueChanged = [this](double db) { gainChanged(dbToGain(db)); };
+        value_.onValueChanged = [this](double v) { gainChanged(db::toGain(v)); };
         addAndMakeVisible(value_);
 
         output_.setTooltip("Output");
@@ -681,7 +679,7 @@ public:
         pan_.setValue(channel.pan, juce::dontSendNotification);
         currentGain_ = channel.gain;
         fader_.setGain(channel.gain, juce::dontSendNotification);
-        value_.setValue(gainToDb(channel.gain), juce::dontSendNotification);
+        value_.setValue(db::fromGain(channel.gain), juce::dontSendNotification);
         mute_.setToggleState(channel.mute, juce::dontSendNotification);
         solo_.setToggleState(channel.solo, juce::dontSendNotification);
         phase_.setToggleState(channel.phaseInvert, juce::dontSendNotification);
@@ -723,7 +721,7 @@ public:
         pan_.setValue(channel.pan, juce::dontSendNotification);
         currentGain_ = channel.gain;
         fader_.setGain(channel.gain, juce::dontSendNotification);
-        value_.setValue(gainToDb(channel.gain), juce::dontSendNotification);
+        value_.setValue(db::fromGain(channel.gain), juce::dontSendNotification);
         mute_.setToggleState(channel.mute, juce::dontSendNotification);
         solo_.setToggleState(channel.solo, juce::dontSendNotification);
         phase_.setToggleState(channel.phaseInvert, juce::dontSendNotification);
@@ -935,7 +933,7 @@ public:
         if (a.gain && !fader_.isMouseButtonDown() && !value_.isMouseButtonDown())
         {
             fader_.setGain(a.gainValue, juce::dontSendNotification);
-            value_.setValue(gainToDb(a.gainValue), juce::dontSendNotification);
+            value_.setValue(db::fromGain(a.gainValue), juce::dontSendNotification);
         }
         if (a.pan && !pan_.isMouseButtonDown())
             pan_.setValue(a.panValue, juce::dontSendNotification);
@@ -1351,8 +1349,7 @@ private:
             menu.addSubMenu("Outputs", outputs);
         }
         menu.addSeparator();
-        auto replace = buildPluginMenu(
-            PluginKind::instrument, owner_.host_ != nullptr ? &owner_.host_->registry() : nullptr, {}, item);
+        auto replace = buildPluginMenu(PluginKind::instrument, owner_.pluginSources_, item);
         for (const auto& type : replace.types)
             actions.push_back([this, type] { setInstrument(type); });
         item = replace.nextItem();
@@ -1378,8 +1375,7 @@ private:
 
     void showInstrumentMenu(juce::Component& target)
     {
-        auto built = buildPluginMenu(PluginKind::instrument,
-                                     owner_.host_ != nullptr ? &owner_.host_->registry() : nullptr);
+        auto built = buildPluginMenu(PluginKind::instrument, owner_.pluginSources_);
         juce::Component::SafePointer<Strip> safe(this);
         built.menu.showMenuAsync(juce::PopupMenu::Options().withTargetComponent(target),
                                  [safe, built](int choice)
@@ -1393,8 +1389,7 @@ private:
     void showAddInsertMenu()
     {
         // Effects only: an instrument has its own slot.
-        auto built = buildPluginMenu(PluginKind::effect,
-                                     owner_.host_ != nullptr ? &owner_.host_->registry() : nullptr);
+        auto built = buildPluginMenu(PluginKind::effect, owner_.pluginSources_);
         auto& menu = built.menu;
         std::vector<std::function<void()>> actions;
         for (const auto& type : built.types)
@@ -1434,36 +1429,15 @@ private:
     {
         if (owner_.project_ == nullptr)
             return;
-        const auto* channel = owner_.project_->findChannel(id_);
-        if (channel == nullptr)
-            return;
-        juce::PopupMenu menu;
-        int item = 1;
-        std::vector<core::Id> targets;
-        for (const core::Id busId : busIds_)
-        {
-            if (owner_.project_->wouldCycle(id_, busId))
-                continue; // a send there would feed this channel back into itself
-            const bool has = std::any_of(channel->sends.begin(),
-                                         channel->sends.end(),
-                                         [busId](const core::Send& s) { return s.bus == busId; });
-            const auto* bus = owner_.project_->findBus(busId);
-            menu.addItem(
-                item++,
-                juce::String::fromUTF8(bus != nullptr && !bus->name.empty() ? bus->name.c_str() : "Bus"),
-                !has,
-                has);
-            targets.push_back(busId);
-        }
+        auto built = buildSendMenu(*owner_.project_, id_);
         juce::Component::SafePointer<Strip> safe(this);
-        menu.showMenuAsync(juce::PopupMenu::Options().withTargetComponent(addSend_),
-                           [safe, targets](int result)
-                           {
-                               if (safe != nullptr && result >= 1 &&
-                                   static_cast<size_t>(result) <= targets.size())
-                                   safe->owner_.onCommand(std::make_unique<core::SetSend>(
-                                       safe->id_, targets[static_cast<size_t>(result) - 1], 1.0f, false));
-                           });
+        built.menu.showMenuAsync(
+            juce::PopupMenu::Options().withTargetComponent(addSend_),
+            [safe, built, id = id_](int choice)
+            {
+                if (const auto bus = built.busFor(choice); safe != nullptr && bus != core::invalidId)
+                    safe->owner_.onCommand(std::make_unique<core::SetSend>(id, bus, 1.0f, false));
+            });
     }
 
     MixerView& owner_;
@@ -1532,18 +1506,17 @@ public:
         addAndMakeVisible(fader_);
         meter_.setShowScale(true);
         addAndMakeVisible(meter_);
-        value_.setRange(minFaderDb, maxFaderDb, 0.1);
+        value_.setRange(db::silence, maxFaderDb, 0.1);
         value_.setDecimals(1);
         value_.setUnit("dB");
-        value_.format = [](double v) { return dbText(v); };
-        value_.parse = [](const juce::String& t)
-        { return t.containsIgnoreCase("inf") ? minFaderDb : t.getDoubleValue(); };
+        value_.format = [](double v) { return db::text(v); };
+        value_.parse = [](const juce::String& t) { return db::parse(t); };
         value_.onDragStart = fader_.onDragStart;
         value_.onDragEnd = fader_.onDragEnd;
         value_.onValueChanged = [this](double db)
         {
             if (!updating_)
-                owner_.onCommand(std::make_unique<core::SetMasterGain>(dbToGain(db)));
+                owner_.onCommand(std::make_unique<core::SetMasterGain>(db::toGain(db)));
         };
         addAndMakeVisible(value_);
     }
@@ -1552,7 +1525,7 @@ public:
     {
         const juce::ScopedValueSetter<bool> guard(updating_, true);
         fader_.setGain(master.gain, juce::dontSendNotification);
-        value_.setValue(gainToDb(master.gain), juce::dontSendNotification);
+        value_.setValue(db::fromGain(master.gain), juce::dontSendNotification);
     }
 
     void pushMeter(const rt::MeterBlock::Reading& r, double elapsedMs)

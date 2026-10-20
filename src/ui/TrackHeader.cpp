@@ -1,6 +1,7 @@
 #include "ui/TrackHeader.h"
 
 #include "ui/AuralLookAndFeel.h"
+#include "ui/Db.h"
 #include "ui/Icons.h"
 
 #include <cmath>
@@ -10,9 +11,11 @@ namespace aural::ui
 
 namespace
 {
+// The volume slider stops at -60 dB, which means silence.
+constexpr double volumeBottomDb = -60.0;
 float dbOf(float gain) noexcept
 {
-    return 20.0f * std::log10(std::max(gain, 1.0e-5f));
+    return static_cast<float>(db::fromGain(gain, volumeBottomDb, 6.0));
 }
 } // namespace
 
@@ -135,7 +138,7 @@ TrackHeader::TrackHeader(const Theme& theme) : theme_(theme), meter_(theme, 2, f
         if (updating_ || !onCommand)
             return;
         const double db = volume_.getValue();
-        const float gain = db <= -60.0 ? 0.0f : static_cast<float>(std::pow(10.0, db / 20.0));
+        const float gain = db::toGain(db, volumeBottomDb);
         onCommand(std::make_unique<core::SetTrackGain>(trackId_, gain));
     };
     addAndMakeVisible(volume_);

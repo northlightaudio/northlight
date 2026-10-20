@@ -1,23 +1,12 @@
 #include "ui/panels/InspectorPanel.h"
 
 #include "ui/AuralLookAndFeel.h"
+#include "ui/Db.h"
 
 #include <cmath>
 
 namespace aural::ui
 {
-
-namespace
-{
-float dbToGain(double db)
-{
-    return db <= -100.0 ? 0.0f : static_cast<float>(std::pow(10.0, db / 20.0));
-}
-double gainToDb(float gain)
-{
-    return gain > 0.0f ? 20.0 * std::log10(gain) : -100.0;
-}
-} // namespace
 
 InspectorPanel::InspectorPanel(const Theme& theme)
     : theme_(theme), gain_(theme), start_(theme), length_(theme), clipGain_(theme), fadeIn_(theme),
@@ -53,7 +42,7 @@ InspectorPanel::InspectorPanel(const Theme& theme)
     gain_.onValueChanged = [this](double db)
     {
         if (!updating_ && onCommand)
-            onCommand(std::make_unique<core::SetTrackGain>(trackId_, dbToGain(db)));
+            onCommand(std::make_unique<core::SetTrackGain>(trackId_, db::toGain(db)));
     };
     addAndMakeVisible(gain_);
 
@@ -132,7 +121,7 @@ InspectorPanel::InspectorPanel(const Theme& theme)
     clipGain_.onValueChanged = [this](double db)
     {
         if (!updating_ && onCommand && clipId_ != core::invalidId)
-            onCommand(std::make_unique<core::SetClipGain>(trackId_, clipId_, dbToGain(db)));
+            onCommand(std::make_unique<core::SetClipGain>(trackId_, clipId_, db::toGain(db)));
     };
     addChildComponent(clipGain_);
     for (auto* field : {&fadeIn_, &fadeOut_})
@@ -201,13 +190,13 @@ void InspectorPanel::refresh()
     {
         start_.setValue(static_cast<double>(c->start), juce::dontSendNotification);
         length_.setValue(static_cast<double>(c->length), juce::dontSendNotification);
-        clipGain_.setValue(gainToDb(c->gain), juce::dontSendNotification);
+        clipGain_.setValue(db::fromGain(c->gain), juce::dontSendNotification);
         fadeIn_.setValue(static_cast<double>(c->fadeIn), juce::dontSendNotification);
         fadeOut_.setValue(static_cast<double>(c->fadeOut), juce::dontSendNotification);
     }
     else
     {
-        gain_.setValue(gainToDb(t->gain), juce::dontSendNotification);
+        gain_.setValue(db::fromGain(t->gain), juce::dontSendNotification);
         pan_.setValue(t->pan, juce::dontSendNotification);
         mute_.setToggleState(t->mute, juce::dontSendNotification);
         solo_.setToggleState(t->solo, juce::dontSendNotification);

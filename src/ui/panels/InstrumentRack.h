@@ -5,6 +5,7 @@
 #include "engine/Insert.h"
 #include "hosting/PluginRegistry.h"
 #include "ui/Icons.h"
+#include "ui/PluginMenu.h"
 #include "ui/Theme.h"
 #include "ui/components/AddSlot.h"
 
@@ -32,6 +33,7 @@ public:
 
     void setProject(const core::Project* project);
     void setRegistry(const hosting::PluginRegistry* registry) { registry_ = registry; }
+    void setPluginSources(const PluginSources* sources) noexcept { pluginSources_ = sources; }
 
     std::function<std::shared_ptr<engine::InsertProcessor>(core::Id)> liveInsert;
     std::function<std::string(const std::string& type)> displayName;
@@ -60,6 +62,7 @@ private:
     const Theme& theme_;
     const core::Project* project_ = nullptr;
     const hosting::PluginRegistry* registry_ = nullptr;
+    const PluginSources* pluginSources_ = nullptr;
     juce::Viewport viewport_;
     juce::Component list_;
     std::vector<std::unique_ptr<Unit>> units_;

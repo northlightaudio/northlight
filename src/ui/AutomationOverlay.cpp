@@ -2,6 +2,7 @@
 
 #include "plugins/BuiltIns.h"
 #include "ui/AuralLookAndFeel.h"
+#include "ui/Db.h"
 
 #include <cmath>
 
@@ -245,9 +246,7 @@ juce::String AutomationOverlay::valueText(const core::Channel& track, const Key&
     switch (key.target)
     {
         case core::AutomationTarget::gain:
-            if (value <= 1.0e-6f)
-                return juce::String::fromUTF8("-\xe2\x88\x9e dB");
-            return juce::String(20.0f * std::log10(value), 1) + " dB";
+            return db::gainText(value) + " dB";
         case core::AutomationTarget::pan:
         {
             const int amount = static_cast<int>(std::lround(std::abs(value) * 100.0f));

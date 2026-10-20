@@ -287,7 +287,7 @@ private:
         menu.addItem(1, "Open editor");
         menu.addItem(2, "Select track");
         menu.addSeparator();
-        auto replace = buildPluginMenu(PluginKind::instrument, owner_.registry_, {}, 10);
+        auto replace = buildPluginMenu(PluginKind::instrument, owner_.pluginSources_, 10);
         menu.addSubMenu("Replace instrument", replace.menu);
         menu.addItem(3, "Remove instrument");
         juce::Component::SafePointer<Unit> safe(this);
@@ -311,7 +311,7 @@ private:
 
     void showReplaceMenu(juce::Component& target)
     {
-        auto built = buildPluginMenu(PluginKind::instrument, owner_.registry_);
+        auto built = buildPluginMenu(PluginKind::instrument, owner_.pluginSources_);
         juce::Component::SafePointer<Unit> safe(this);
         built.menu.showMenuAsync(juce::PopupMenu::Options().withTargetComponent(target),
                                  [safe, built](int choice)
@@ -406,7 +406,7 @@ void InstrumentRack::addInstrumentTrack(const std::string& type)
 
 void InstrumentRack::showAddMenu(juce::Component& target)
 {
-    auto built = buildPluginMenu(PluginKind::instrument, registry_);
+    auto built = buildPluginMenu(PluginKind::instrument, pluginSources_);
     juce::Component::SafePointer<InstrumentRack> safe(this);
     built.menu.showMenuAsync(juce::PopupMenu::Options().withTargetComponent(target),
                              [safe, built](int choice)

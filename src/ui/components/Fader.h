@@ -30,7 +30,7 @@ public:
     // The law, shared with tests: travel fraction 0..1 <-> dB.
     static float dbForFraction(float fraction, float maxDb) noexcept;
     static float fractionForDb(float db, float maxDb) noexcept;
-    static constexpr float minusInfinityDb = -100.0f;
+    static constexpr float minusInfinityDb = -100.0f; // db::silence
 
     void paint(juce::Graphics& g) override;
     void mouseDown(const juce::MouseEvent& e) override;

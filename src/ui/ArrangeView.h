@@ -7,6 +7,7 @@
 #include "engine/Recording.h"
 #include "ui/AutomationOverlay.h"
 #include "ui/Icons.h"
+#include "ui/PluginMenu.h"
 #include "ui/Theme.h"
 #include "ui/TrackHeader.h"
 
@@ -123,6 +124,8 @@ public:
     core::Id selectedTrack() const noexcept { return selectedTrack_; }
     // The empty state's actions (03-shell.md).
     std::function<void()> onAddAudioTrack, onImportRequested, onAddBus;
+    // The plugins its "New instrument" menus offer (the shell's shared sources).
+    void setPluginSources(const PluginSources* sources) noexcept { pluginSources_ = sources; }
     // A MIDI track with a new instrument channel playing `type` (empty: the
     // default instrument).
     std::function<void(const std::string& type)> onAddMidiTrack;
@@ -468,6 +471,7 @@ private:
     void selectTrack(core::Id trackId);
     core::Marker dragMarker_;                // the marker being dragged, as it was
     core::SamplePosition markerPreview_ = 0; // its position during the drag
+    const PluginSources* pluginSources_ = nullptr;
 };
 
 } // namespace aural::ui

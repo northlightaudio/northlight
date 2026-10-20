@@ -2,6 +2,7 @@
 
 #include "plugins/FxTracks.h"
 #include "ui/AuralLookAndFeel.h"
+#include "ui/Db.h"
 #include "ui/FrameStats.h"
 #include "ui/Icons.h"
 #include "ui/PluginMenu.h"
@@ -1483,7 +1484,7 @@ void ArrangeView::drawClip(juce::Graphics& g,
         g.setFont(theme_.caption());
         juce::String label = juce::String::fromUTF8(clip.name.c_str());
         if (std::abs(clip.gain - 1.0f) > 1.0e-3f)
-            label << "  " << juce::String(20.0 * std::log10(std::max(clip.gain, 1.0e-4f)), 1) << " dB";
+            label << "  " << db::gainText(clip.gain) << " dB";
         const auto textArea = (showHeader ? block.withHeight(headerH) : block)
                                   .getIntersection(visible)
                                   .withTrimmedLeft(fadeHandle + 2 > 6 ? fadeHandle + 2 : 6)
@@ -2766,7 +2767,7 @@ void ArrangeView::targetMenu(core::Id trackId, juce::Rectangle<int> screenArea)
     for (int ch = 1; ch <= 16; ++ch)
         midiChannels.addItem(1100 + ch, "Channel " + juce::String(ch), true, track->midiChannel == ch);
     menu.addSubMenu("MIDI channel", midiChannels);
-    auto instruments = buildPluginMenu(PluginKind::instrument, nullptr, {}, 1200);
+    auto instruments = buildPluginMenu(PluginKind::instrument, pluginSources_, 1200);
     menu.addSubMenu("New instrument", instruments.menu);
     juce::Component::SafePointer<ArrangeView> safe(this);
     menu.showMenuAsync(
@@ -2881,7 +2882,7 @@ void ArrangeView::addTrackMenu()
     // A MIDI track plays an instrument channel: a new one, one already here, or
     // nothing yet.
     juce::PopupMenu midi;
-    auto instruments = buildPluginMenu(PluginKind::instrument, nullptr, {}, 1200);
+    auto instruments = buildPluginMenu(PluginKind::instrument, pluginSources_, 1200);
     midi.addSubMenu("With a new instrument", instruments.menu);
     std::vector<core::Id> channels;
     if (project_ != nullptr)
@@ -3232,8 +3233,7 @@ void ArrangeView::drawEditOverlay(juce::Graphics& g)
                     "Fade " + juce::String(static_cast<double>(fadePreview_) / sampleRate(), 2) + " s",
                     dragPoint_);
     if (drag_ == Drag::gain && draggedFar_)
-        drawTooltip(
-            g, juce::String(20.0 * std::log10(std::max(gainPreview_, 1.0e-4f)), 1) + " dB", dragPoint_);
+        drawTooltip(g, db::gainText(gainPreview_) + " dB", dragPoint_);
     g.restoreState();
     if ((drag_ == Drag::loopMove || drag_ == Drag::loopStart || drag_ == Drag::loopEnd ||
          drag_ == Drag::region) &&

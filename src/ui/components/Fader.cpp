@@ -1,6 +1,7 @@
 #include "ui/components/Fader.h"
 
 #include "ui/AuralLookAndFeel.h"
+#include "ui/Db.h"
 
 #include <cmath>
 
@@ -39,14 +40,14 @@ constexpr float zeroDbFraction = 0.75f;
 constexpr float lowDb = -48.0f; // the bottom of the log region; below is a short run to -inf
 constexpr float infFraction = 0.03f;
 
-float dbToGain(float db) noexcept
+float dbToGain(float value) noexcept
 {
-    return db <= Fader::minusInfinityDb ? 0.0f : std::pow(10.0f, db / 20.0f);
+    return db::toGain(value);
 }
 
 float gainToDb(float gain) noexcept
 {
-    return gain > 0.0f ? 20.0f * std::log10(gain) : Fader::minusInfinityDb;
+    return static_cast<float>(db::fromGain(gain));
 }
 } // namespace
 

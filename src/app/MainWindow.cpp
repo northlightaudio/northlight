@@ -912,7 +912,8 @@ private:
         tracks_.onPlayNewInstrument = [this](core::Id midiTrack, const std::string& type)
         { playNewInstrument(midiTrack, type); };
         editor_.isEditorOpen = [this](core::Id insertId) { return mixer_.isEditorOpen(insertId); };
-        editor_.listSetting = [this](const std::string& key)
+        pluginSources_.registry = &session_.pluginRegistry();
+        pluginSources_.listSetting = [this](const std::string& key)
         {
             std::vector<std::string> values;
             for (const auto& item : juce::StringArray::fromTokens(
@@ -921,6 +922,10 @@ private:
                     values.push_back(item.toStdString());
             return values;
         };
+        tracks_.setPluginSources(&pluginSources_);
+        mixer_.setPluginSources(&pluginSources_);
+        editor_.setPluginSources(&pluginSources_);
+        instruments_.setPluginSources(&pluginSources_);
         editor_.onInserted = [this](const std::string& type) { browser_.rememberRecent(type); };
     }
 
@@ -2177,7 +2182,8 @@ private:
     bool dragging_ = false;
     bool valuesRefreshPending_ = false;
     ui::HeaderBar header_;
-    ui::Selection selection_; // before the views: they are told about it
+    ui::Selection selection_;         // before the views: they are told about it
+    ui::PluginSources pluginSources_; // every view's plugin menus read it
     ui::ArrangeView tracks_;
     ui::PanelHost dock_, side_;
     ui::StatusBar status_;

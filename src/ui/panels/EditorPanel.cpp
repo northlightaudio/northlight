@@ -2,7 +2,9 @@
 
 #include "plugins/BuiltIns.h"
 #include "ui/AuralLookAndFeel.h"
+#include "ui/Db.h"
 #include "ui/PluginMenu.h"
+#include "ui/SendMenu.h"
 #include "ui/components/Fader.h"
 #include "ui/components/SegmentedControl.h"
 #include "ui/strip/BuiltInCards.h"
@@ -531,12 +533,9 @@ public:
         g.setColour(c.textPrimary);
         g.drawText(name_, header, juce::Justification::centredLeft, true);
         // The level under the fader.
-        const float db = level_ > 0.0f ? 20.0f * std::log10(level_) : -1000.0f;
-        juce::String text = db < -99.0f ? juce::String::fromUTF8("ââ")
-                                        : (db > 0.05f ? "+" : "") + juce::String(db, 1);
         g.setFont(theme_.caption());
         g.setColour(c.textSecondary);
-        g.drawText(text + " dB", valueArea(), juce::Justification::centred);
+        g.drawText(db::gainText(level_) + " dB", valueArea(), juce::Justification::centred);
     }
 
     void resized() override
@@ -916,7 +915,7 @@ void EditorPanel::setInstrument(const std::string& type)
 
 void EditorPanel::showInstrumentMenu(juce::Component& target)
 {
-    auto built = buildPluginMenu(PluginKind::instrument, registry_, listSetting);
+    auto built = buildPluginMenu(PluginKind::instrument, pluginSources_);
     juce::Component::SafePointer<EditorPanel> safe(this);
     built.menu.showMenuAsync(juce::PopupMenu::Options().withTargetComponent(target),
                              [safe, built](int choice)
@@ -1052,38 +1051,23 @@ void EditorPanel::showAddSendMenu()
     const auto* ch = channel();
     if (ch == nullptr || project_ == nullptr)
         return;
-    juce::PopupMenu menu;
-    std::vector<core::Id> targets;
-    for (const auto& bus : project_->buses)
-    {
-        if (bus.id == ch->id || project_->wouldCycle(ch->id, bus.id))
-            continue;
-        const bool has = ch->findSend(bus.id) != nullptr;
-        targets.push_back(bus.id);
-        menu.addItem(static_cast<int>(targets.size()),
-                     juce::String::fromUTF8(bus.name.empty() ? "Bus" : bus.name.c_str()) +
-                         (bus.fx ? "" : "  (group)"),
-                     !has,
-                     has);
-    }
-    if (targets.empty())
-        menu.addItem(-1, "No FX tracks yet (add one from the track list)", false);
+    auto built = buildSendMenu(*project_, ch->id);
     juce::Component::SafePointer<EditorPanel> safe(this);
     const core::Id channelId = ch->id;
-    menu.showMenuAsync(juce::PopupMenu::Options().withTargetComponent(addSend_),
-                       [safe, targets, channelId](int choice)
-                       {
-                           if (safe != nullptr && choice >= 1 &&
-                               static_cast<size_t>(choice) <= targets.size() && safe->onCommand)
-                               safe->onCommand(std::make_unique<core::SetSend>(
-                                   channelId, targets[static_cast<size_t>(choice) - 1], 1.0f, false));
-                       });
+    built.menu.showMenuAsync(juce::PopupMenu::Options().withTargetComponent(addSend_),
+                             [safe, built, channelId](int choice)
+                             {
+                                 if (const auto bus = built.busFor(choice);
+                                     safe != nullptr && bus != core::invalidId && safe->onCommand)
+                                     safe->onCommand(
+                                         std::make_unique<core::SetSend>(channelId, bus, 1.0f, false));
+                             });
 }
 
 void EditorPanel::showAddMenu()
 {
     // Effects only: an instrument has its own slot.
-    auto built = buildPluginMenu(PluginKind::effect, registry_, listSetting);
+    auto built = buildPluginMenu(PluginKind::effect, pluginSources_);
     juce::Component::SafePointer<EditorPanel> safe(this);
     built.menu.showMenuAsync(juce::PopupMenu::Options().withTargetComponent(add_),
                              [safe, built](int choice)
