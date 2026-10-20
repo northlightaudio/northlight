@@ -4,11 +4,13 @@
 #include "hosting/ClapPlugin.h"
 #include "hosting/HostedPlugin.h"
 #include "plugins/BuiltIns.h"
+#include "plugins/ChannelStrip.h"
 #include "ui/AuralLookAndFeel.h"
 #include "ui/ClapEditor.h"
 #include "ui/FrameStats.h"
 #include "ui/Icons.h"
 #include "ui/InsertEditor.h"
+#include "ui/strip/StripStyle.h"
 
 #include <algorithm>
 #include <cmath>
@@ -320,14 +322,185 @@ public:
 
 // ----- strip --------------------------------------------------------------------------------
 
+// The channel strip's row in a mixer strip (12-channel-strip.md 12.9): a cell
+// per module with its initial, lit in the module's hue when on; a click
+// switches the module in place, right-click offers the same plus "Edit channel
+// strip". Gain-reducing modules show their reduction as a bar along the bottom.
+class StripRow final : public juce::Component, public juce::SettableTooltipClient
+{
+public:
+    explicit StripRow(const Theme& theme) : theme_(theme) { setRepaintsOnMouseActivity(true); }
+
+    std::function<void(core::Id moduleId, bool on)> onToggle;
+    std::function<void()> onEdit;
+
+    bool hasModules() const noexcept { return !cells_.empty(); }
+
+    void set(const core::Channel& channel)
+    {
+        std::vector<Cell> cells;
+        for (const auto& m : channel.strip)
+        {
+            Cell cell;
+            cell.id = m.id;
+            cell.type = m.type;
+            cell.on = !m.bypass;
+            for (const auto& old : cells_)
+                if (old.id == m.id)
+                    cell.reduction = old.reduction;
+            cells.push_back(cell);
+        }
+        cells_ = std::move(cells);
+        repaint();
+    }
+
+    // The live gain reduction of the modules that are on (from their feedback).
+    void updateReductions(const std::function<std::shared_ptr<engine::InsertProcessor>(core::Id)>& live)
+    {
+        bool changed = false;
+        for (auto& cell : cells_)
+        {
+            float reduction = 0.0f;
+            if (cell.on && live)
+                if (const auto p = live(cell.id))
+                    if (auto* fb = p->feedback())
+                        reduction = fb->latest().reduction;
+            if (std::abs(reduction - cell.reduction) > 0.25f)
+            {
+                cell.reduction = reduction;
+                changed = true;
+            }
+        }
+        if (changed)
+            repaint();
+    }
+
+    void paint(juce::Graphics& g) override
+    {
+        const auto& c = theme_.colours;
+        const auto mouse = getMouseXYRelative();
+        for (size_t i = 0; i < cells_.size(); ++i)
+        {
+            const auto& cell = cells_[i];
+            const auto r = cellBounds(static_cast<int>(i)).toFloat().reduced(0.5f, 0.0f);
+            const auto hue = strip::moduleColour(theme_, cell.type);
+            const bool hover = isMouseOver() && r.contains(mouse.toFloat());
+            g.setColour(cell.on ? hue.withAlpha(hover ? 0.42f : 0.3f) : (hover ? c.surface3 : c.surface2));
+            g.fillRoundedRectangle(r, 2.0f);
+            if (cell.on && cell.reduction > 0.5f && cell.type != plugins::strip::types::gate)
+            {
+                const float f = juce::jlimit(0.0f, 1.0f, cell.reduction / 12.0f);
+                g.setColour(c.meterHot);
+                g.fillRect(r.withTop(r.getBottom() - 2.0f).withWidth(r.getWidth() * f));
+            }
+            g.setFont(
+                theme_.font(Theme::Face::ui, theme_.fonts.size.caption - 1.0f, theme_.fonts.weight.semibold));
+            g.setColour(cell.on ? c.textPrimary : c.textTertiary);
+            g.drawText(juce::String(plugins::strip::displayName(cell.type)).substring(0, 1),
+                       r,
+                       juce::Justification::centred);
+        }
+    }
+
+    void mouseMove(const juce::MouseEvent& e) override
+    {
+        const int i = cellAt(e.x);
+        if (i >= 0)
+        {
+            const auto& cell = cells_[static_cast<size_t>(i)];
+            setTooltip(juce::String(plugins::strip::displayName(cell.type)) +
+                       (cell.on ? ": on, click to switch off" : ": off, click to switch on") +
+                       " (right-click to edit the strip)");
+        }
+    }
+
+    void mouseDown(const juce::MouseEvent& e) override
+    {
+        if (e.mods.isPopupMenu())
+        {
+            showMenu();
+            return;
+        }
+        const int i = cellAt(e.x);
+        if (i >= 0 && onToggle)
+            onToggle(cells_[static_cast<size_t>(i)].id, !cells_[static_cast<size_t>(i)].on);
+    }
+
+private:
+    struct Cell
+    {
+        core::Id id = core::invalidId;
+        std::string type;
+        bool on = false;
+        float reduction = 0.0f;
+    };
+
+    juce::Rectangle<int> cellBounds(int i) const
+    {
+        const int n = std::max<int>(1, static_cast<int>(cells_.size()));
+        const int x0 = getWidth() * i / n, x1 = getWidth() * (i + 1) / n;
+        return {x0, 0, x1 - x0, getHeight()};
+    }
+
+    int cellAt(int x) const
+    {
+        for (size_t i = 0; i < cells_.size(); ++i)
+            if (cellBounds(static_cast<int>(i)).getHorizontalRange().contains(x))
+                return static_cast<int>(i);
+        return -1;
+    }
+
+    void showMenu()
+    {
+        juce::PopupMenu menu;
+        menu.addItem(1, "Edit channel strip");
+        menu.addSeparator();
+        for (size_t i = 0; i < cells_.size(); ++i)
+            menu.addItem(static_cast<int>(i) + 2,
+                         juce::String(plugins::strip::displayName(cells_[i].type)),
+                         true,
+                         cells_[i].on);
+        juce::Component::SafePointer<StripRow> safe(this);
+        menu.showMenuAsync(juce::PopupMenu::Options().withTargetComponent(this),
+                           [safe](int choice)
+                           {
+                               if (safe == nullptr || choice <= 0)
+                                   return;
+                               if (choice == 1)
+                               {
+                                   if (safe->onEdit)
+                                       safe->onEdit();
+                                   return;
+                               }
+                               const auto i = static_cast<size_t>(choice - 2);
+                               if (i < safe->cells_.size() && safe->onToggle)
+                                   safe->onToggle(safe->cells_[i].id, !safe->cells_[i].on);
+                           });
+    }
+
+    const Theme& theme_;
+    std::vector<Cell> cells_;
+};
+
 class MixerView::Strip final : public juce::Component
 {
 public:
     Strip(MixerView& owner, const Theme& theme)
-        : owner_(owner), theme_(theme), cap_(theme), pan_(theme), fader_(theme), meter_(theme, 2, true),
-          value_(theme)
+        : owner_(owner), theme_(theme), cap_(theme), stripRow_(theme), pan_(theme), fader_(theme),
+          meter_(theme, 2, true), value_(theme)
     {
         setOpaque(true);
+        stripRow_.onToggle = [this](core::Id moduleId, bool on)
+        {
+            if (!updating_)
+                owner_.onCommand(std::make_unique<core::SetInsertBypass>(id_, moduleId, !on));
+        };
+        stripRow_.onEdit = [this]
+        {
+            if (owner_.onShowStrip)
+                owner_.onShowStrip(id_);
+        };
+        addAndMakeVisible(stripRow_);
         setWantsKeyboardFocus(true);
         cap_.onRenamed = [this](const juce::String& name)
         {
@@ -572,6 +745,9 @@ public:
                 selected = static_cast<int>(i) + 2;
         output_.setSelectedId(selected, juce::dontSendNotification);
 
+        stripRow_.set(channel);
+        stripRow_.setVisible(stripRow_.hasModules());
+
         // Insert slots.
         while (inserts_.size() > channel.inserts.size())
             inserts_.pop_back();
@@ -677,6 +853,7 @@ public:
     {
         const float peaks[2] = {r.peakLeft, r.peakRight};
         meter_.push(peaks, 2, elapsedMs);
+        stripRow_.updateReductions(owner_.liveInsert);
     }
 
     void paint(juce::Graphics& g) override
@@ -728,6 +905,11 @@ public:
         if (input_.isVisible())
         {
             input_.setBounds(area.removeFromTop(control));
+            area.removeFromTop(pad);
+        }
+        if (stripRow_.isVisible())
+        {
+            stripRow_.setBounds(area.removeFromTop(16));
             area.removeFromTop(pad);
         }
         // The fixed bottom: pan, toggles, value, output; the fader takes the rest
@@ -1156,6 +1338,7 @@ private:
     juce::ComboBox input_, output_;
     juce::Viewport insertsView_;
     juce::Component insertsHolder_;
+    StripRow stripRow_;
     std::vector<std::unique_ptr<InsertSlot>> inserts_;
     std::vector<std::unique_ptr<SendRow>> sends_;
     AddRow addInsert_, addSend_;

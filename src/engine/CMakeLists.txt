@@ -47,6 +47,7 @@ add_library(aural_engine STATIC
     Click.cpp
     Resampling.h
     Insert.h
+    Feedback.h
     Midi.h
     Insert.cpp
     Delay.h

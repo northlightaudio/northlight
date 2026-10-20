@@ -361,9 +361,39 @@ private:
 
 // ----- the panel --------------------------------------------------------------------------------
 
-EditorPanel::EditorPanel(const Theme& theme) : theme_(theme)
+EditorPanel::EditorPanel(const Theme& theme) : theme_(theme), stripView_(theme)
 {
     setOpaque(true);
+    stripView_.host.onCommand = [this](std::unique_ptr<core::Command> c)
+    {
+        if (onCommand)
+            onCommand(std::move(c));
+    };
+    stripView_.host.onGestureBegin = [this](const std::string& name)
+    {
+        if (onGestureBegin)
+            onGestureBegin(name);
+    };
+    stripView_.host.onGestureEnd = [this]
+    {
+        if (onGestureEnd)
+            onGestureEnd();
+    };
+    stripView_.host.liveInsert = [this](core::Id id)
+    { return liveInsert ? liveInsert(id) : std::shared_ptr<engine::InsertProcessor>{}; };
+    stripView_.onWidthChanged = [this] { resized(); };
+    strip_.addChildComponent(stripView_);
+    strip_.onPaint = [this](juce::Graphics& g)
+    {
+        if (channel() == nullptr)
+            return;
+        g.setFont(theme_.captionCaps());
+        g.setColour(theme_.colours.textTertiary);
+        g.drawText("INSERTS",
+                   juce::Rectangle<int>(
+                       insertsX_ + theme_.spacing.xxs, 0, 120, strip::ChannelStripView::captionHeight),
+                   juce::Justification::centredLeft);
+    };
     viewport_.setViewedComponent(&strip_, false);
     viewport_.setScrollBarsShown(false, true);
     addAndMakeVisible(viewport_);
@@ -378,6 +408,7 @@ EditorPanel::~EditorPanel()
 {
     stopTimer();
     cards_.clear();
+    stripView_.setChannel(nullptr);
 }
 
 const core::Channel* EditorPanel::channel() const
@@ -425,6 +456,8 @@ void EditorPanel::rebuild()
         for (size_t i = 0; i < cards_.size(); ++i)
             cards_[i]->refresh(ch->inserts[i]);
     add_.setVisible(ch != nullptr);
+    stripView_.setChannel(ch);
+    stripView_.setVisible(ch != nullptr && !ch->strip.empty());
     resized();
     repaint();
 }
@@ -552,17 +585,35 @@ void EditorPanel::resized()
 {
     auto area = getLocalBounds().withTrimmedTop(theme_.sizes.control);
     viewport_.setBounds(area);
-    int x = theme_.spacing.md;
+    const int caption = strip::ChannelStripView::captionHeight;
     const int h = std::max(theme_.sizes.dockMin - theme_.sizes.control,
                            area.getHeight() - theme_.spacing.md - theme_.sizes.scrollbar);
+    const auto* ch = channel();
+    const bool showStrip = stripView_.isVisible();
+    const bool stripFirst = showStrip && ch != nullptr && ch->stripPreInserts;
+    int x = theme_.spacing.md;
+    // The strip and the inserts in signal order, each under its caption.
+    const auto placeStrip = [&]
+    {
+        if (!showStrip)
+            return;
+        stripView_.setBounds(x, theme_.spacing.xs, stripView_.preferredWidth(), h);
+        x += stripView_.preferredWidth() + theme_.spacing.xl;
+    };
+    if (stripFirst)
+        placeStrip();
+    insertsX_ = x;
     for (auto& card : cards_)
     {
-        card->setBounds(x, theme_.spacing.xs, card->preferredWidth(), h);
+        card->setBounds(x, theme_.spacing.xs + caption, card->preferredWidth(), h - caption);
         x += card->preferredWidth() + theme_.spacing.sm;
     }
-    add_.setBounds(x, theme_.spacing.xs, theme_.sizes.controlLarge * 2, theme_.sizes.controlLarge);
-    x += theme_.sizes.controlLarge * 2 + theme_.spacing.md;
+    add_.setBounds(x, theme_.spacing.xs + caption, theme_.sizes.controlLarge * 2, theme_.sizes.controlLarge);
+    x += theme_.sizes.controlLarge * 2 + theme_.spacing.xl;
+    if (!stripFirst)
+        placeStrip();
     strip_.setSize(std::max(x, area.getWidth()), h + theme_.spacing.sm);
+    strip_.repaint();
 }
 
 void EditorPanel::showAddMenu()

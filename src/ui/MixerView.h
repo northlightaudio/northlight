@@ -53,6 +53,8 @@ public:
     // "Scan for plugins..." in the inserts menu; "Plugins..." in the header.
     std::function<void()> onScanPlugins;
     std::function<void()> onOpenPluginBrowser;
+    // "Edit channel strip" on a strip's module row: show the channel in the Editor panel.
+    std::function<void(core::Id channelId)> onShowStrip;
     // Per-user values (plugin window positions, the pin preference); may be null.
     std::function<std::string(const std::string& key)> loadSetting;
     std::function<void(const std::string& key, const std::string& value)> saveSetting;

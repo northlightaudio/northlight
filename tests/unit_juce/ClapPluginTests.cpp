@@ -592,11 +592,11 @@ TEST_CASE("A preset loaded from the plugin's side survives a fader move and a sa
         t.name = "Keys";
         session.execute(std::make_unique<core::AddTrack>(t));
         core::Insert insert;
-        insert.id = 5;
+        insert.id = 50; // clear of the ids the channel strip takes
         insert.type = "clap:io.leafshade.aural.testgain";
         session.execute(std::make_unique<core::AddInsert>(1, insert));
         session.engine().prepare(48000.0, 64);
-        const auto live = session.liveInsert(5);
+        const auto live = session.liveInsert(50);
         REQUIRE(live != nullptr);
         // The user loads a preset from the plugin's own menu: the host only sees the state.
         live->setState(gainState(0.5));
@@ -606,24 +606,24 @@ TEST_CASE("A preset loaded from the plugin's side survives a fader move and a sa
         CHECK(live->parameter(0) == Approx(0.5f));
         // An edit elsewhere recompiles: still no stomp.
         session.execute(std::make_unique<core::SetTrackName>(1, "Pads"));
-        CHECK(session.liveInsert(5)->parameter(0) == Approx(0.5f));
+        CHECK(session.liveInsert(50)->parameter(0) == Approx(0.5f));
         // The generic editor's own edit does reach the plugin, and undo restores it.
-        session.execute(std::make_unique<core::SetInsertParameter>(1, 5, 0, 0.8f));
+        session.execute(std::make_unique<core::SetInsertParameter>(1, 50, 0, 0.8f));
         std::vector<float> l(64, 0.0f), r(64, 0.0f);
         float* outputs[] = {l.data(), r.data()};
         session.engine().process(outputs, 2, 64); // delivers the queued value
-        CHECK(session.liveInsert(5)->state() == gainState(static_cast<double>(0.8f)));
+        CHECK(session.liveInsert(50)->state() == gainState(static_cast<double>(0.8f)));
         session.undo();
         session.engine().process(outputs, 2, 64);
-        CHECK(session.liveInsert(5)->state() == gainState(static_cast<double>(0.5f)));
-        CHECK(session.liveInsert(5)->parameter(0) == Approx(0.5f));
+        CHECK(session.liveInsert(50)->state() == gainState(static_cast<double>(0.5f)));
+        CHECK(session.liveInsert(50)->parameter(0) == Approx(0.5f));
         REQUIRE(session.save(folder.getChildFile("song.aural")).empty());
     }
     {
         ProjectSession reopened(audio, registryFile);
         REQUIRE(reopened.open(folder.getChildFile("song.aural")).empty());
         reopened.engine().prepare(48000.0, 64);
-        const auto live = reopened.liveInsert(5);
+        const auto live = reopened.liveInsert(50);
         REQUIRE(live != nullptr);
         CHECK(live->parameter(0) == Approx(0.5f));
         CHECK(live->state() == gainState(0.5));

@@ -1,6 +1,9 @@
 #include "plugins/BuiltIns.h"
 
 #include "engine/rt/RealtimeGuard.h"
+#include "plugins/Biquad.h"
+#include "plugins/ChannelStrip.h"
+#include "plugins/ProcessorBase.h"
 
 #include <algorithm>
 #include <array>
@@ -15,149 +18,12 @@ namespace aural::plugins
 
 namespace
 {
-constexpr float minusInfinityDb = -120.0f;
-
-float dbToGain(float db) noexcept
-{
-    return db <= minusInfinityDb ? 0.0f : std::pow(10.0f, db / 20.0f);
-}
-
-float gainToDb(float gain) noexcept
-{
-    return gain > 0.0f ? 20.0f * std::log10(gain) : minusInfinityDb;
-}
-
-// Shared parameter storage: atomics the real-time thread snapshots per block.
-class Base : public engine::InsertProcessor
-{
-public:
-    Base(std::string typeName, std::vector<engine::ParameterInfo> infos)
-        : typeName_(std::move(typeName)), infos_(std::move(infos)), values_(infos_.size())
-    {
-        for (size_t i = 0; i < infos_.size(); ++i)
-            values_[i].store(infos_[i].defaultValue, std::memory_order_relaxed);
-    }
-
-    const std::string& typeName() const noexcept override { return typeName_; }
-    const std::vector<engine::ParameterInfo>& parameters() const noexcept override { return infos_; }
-
-    void setParameter(int index, float value) noexcept override
-    {
-        if (index < 0 || static_cast<size_t>(index) >= infos_.size())
-            return;
-        const auto& info = infos_[static_cast<size_t>(index)];
-        values_[static_cast<size_t>(index)].store(std::clamp(value, info.minimum, info.maximum),
-                                                  std::memory_order_relaxed);
-    }
-
-    float parameter(int index) const noexcept override
-    {
-        if (index < 0 || static_cast<size_t>(index) >= infos_.size())
-            return 0.0f;
-        return values_[static_cast<size_t>(index)].load(std::memory_order_relaxed);
-    }
-
-    // Bypass is a 10 ms crossfade between the processed signal and what the
-    // processor passes when bypassed (its input, or for a latent processor its
-    // input delayed by the latency). The processor keeps running while bypassed
-    // so its state (filter memory, envelopes) follows the audio and un-bypassing
-    // does not click.
-    void prepare(double sampleRate, int maxBlockSize) final
-    {
-        sampleRate_ = sampleRate;
-        dryLeft_.assign(static_cast<size_t>(std::max(1, maxBlockSize)), 0.0f);
-        dryRight_.assign(static_cast<size_t>(std::max(1, maxBlockSize)), 0.0f);
-        bypassStep_ = 1.0f / static_cast<float>(std::max(1.0, sampleRate * 0.010));
-        bypassMix_ = isBypassed() ? 1.0f : 0.0f;
-        prepareAudio(sampleRate, maxBlockSize);
-    }
-
-    void process(float* left, float* right, int numSamples) noexcept final
-    {
-        const int capacity = static_cast<int>(dryLeft_.size());
-        if (capacity == 0)
-            return; // process before prepare: nothing is allocated
-        // Longer blocks than prepare() announced are taken in pieces.
-        for (int done = 0; done < numSamples; done += capacity)
-        {
-            chunkStart_ = done;
-            processChunk(left + done, right + done, std::min(capacity, numSamples - done));
-        }
-        chunkStart_ = 0;
-    }
-
-    // MIDI goes through the same bypass handling as the key input: parked for
-    // processAudio (an instrument reads it with offsets relative to chunkStart_).
-    void
-    processMidi(const engine::MidiEventList& events, float* left, float* right, int numSamples) noexcept final
-    {
-        midi_ = &events;
-        process(left, right, numSamples);
-        midi_ = nullptr;
-    }
-
-    void processChunk(float* left, float* right, int numSamples) noexcept
-    {
-        const float target = isBypassed() ? 1.0f : 0.0f;
-        if (bypassMix_ == target && target == 1.0f)
-        {
-            processBypassed(left, right, numSamples);
-            return;
-        }
-        std::copy(left, left + numSamples, dryLeft_.data());
-        std::copy(right, right + numSamples, dryRight_.data());
-        processAudio(left, right, numSamples);
-        if (bypassMix_ == target)
-            return;
-        // The bypassed signal for the ramp is the dry input (a latent processor's
-        // bypassed path only differs by its delay, which the ramp hides).
-        for (int i = 0; i < numSamples; ++i)
-        {
-            bypassMix_ = target > bypassMix_ ? std::min(target, bypassMix_ + bypassStep_)
-                                             : std::max(target, bypassMix_ - bypassStep_);
-            left[i] = left[i] * (1.0f - bypassMix_) + dryLeft_[static_cast<size_t>(i)] * bypassMix_;
-            right[i] = right[i] * (1.0f - bypassMix_) + dryRight_[static_cast<size_t>(i)] * bypassMix_;
-        }
-    }
-
-    // The key input goes through the same bypass handling: it is parked for
-    // processAudio to pick up (null = no key, use the audio itself).
-    void processWithSidechain(
-        float* left, float* right, const float* keyLeft, const float* keyRight, int numSamples) noexcept final
-    {
-        keyLeft_ = keyLeft;
-        keyRight_ = keyRight;
-        process(left, right, numSamples);
-        keyLeft_ = keyRight_ = nullptr;
-    }
-
-protected:
-    virtual void prepareAudio(double sampleRate, int maxBlockSize) = 0;
-    virtual void processAudio(float* left, float* right, int numSamples) noexcept = 0;
-    // Settled bypass: by default the input passes untouched (zero latency).
-    virtual void processBypassed(float*, float*, int) noexcept {}
-
-    double sampleRate_ = 48000.0;
-    const float* keyLeft_ = nullptr;
-    const float* keyRight_ = nullptr;
-    const engine::MidiEventList* midi_ = nullptr;
-    int chunkStart_ = 0; // offset of the current chunk within the block
-
-private:
-    std::string typeName_;
-    std::vector<engine::ParameterInfo> infos_;
-    std::vector<std::atomic<float>> values_;
-    std::vector<float> dryLeft_, dryRight_;
-    float bypassMix_ = 0.0f;
-    float bypassStep_ = 0.0f;
-};
-
 // ----- gain -----------------------------------------------------------------------------------
 
-class Gain final : public Base
+class Gain final : public ProcessorBase
 {
 public:
-    Gain() : Base(types::gain, {{"Gain", "dB", -60.0f, 24.0f, 0.0f, false}}) {}
+    Gain() : ProcessorBase(types::gain, {{"Gain", "dB", -60.0f, 24.0f, 0.0f, false}}) {}
 
     void prepareAudio(double, int) override { current_ = dbToGain(parameter(0)); }
 
@@ -182,111 +48,7 @@ private:
 
 // ----- EQ -------------------------------------------------------------------------------------
 
-// RBJ cookbook biquad, transposed direct form II.
-struct Biquad
-{
-    float b0 = 1.0f, b1 = 0.0f, b2 = 0.0f, a1 = 0.0f, a2 = 0.0f;
-    float z1 = 0.0f, z2 = 0.0f;
-
-    void reset() noexcept { z1 = z2 = 0.0f; }
-
-    float process(float x) noexcept
-    {
-        const float y = b0 * x + z1;
-        z1 = b1 * x - a1 * y + z2;
-        z2 = b2 * x - a2 * y;
-        return y;
-    }
-
-    void bypass() noexcept
-    {
-        b0 = 1.0f;
-        b1 = b2 = a1 = a2 = 0.0f;
-    }
-
-    // Coefficients t of the way from `from` to `to`; the memory is kept.
-    void blend(const Biquad& from, const Biquad& to, float t) noexcept
-    {
-        b0 = from.b0 + (to.b0 - from.b0) * t;
-        b1 = from.b1 + (to.b1 - from.b1) * t;
-        b2 = from.b2 + (to.b2 - from.b2) * t;
-        a1 = from.a1 + (to.a1 - from.a1) * t;
-        a2 = from.a2 + (to.a2 - from.a2) * t;
-    }
-
-    void setPeaking(double sampleRate, double hz, double q, double gainDb) noexcept
-    {
-        const double A = std::pow(10.0, gainDb / 40.0);
-        const double w0 = 2.0 * std::numbers::pi * std::clamp(hz, 10.0, sampleRate * 0.49) / sampleRate;
-        const double alpha = std::sin(w0) / (2.0 * std::max(0.1, q));
-        const double c = std::cos(w0);
-        const double a0 = 1.0 + alpha / A;
-        set((1.0 + alpha * A) / a0,
-            (-2.0 * c) / a0,
-            (1.0 - alpha * A) / a0,
-            (-2.0 * c) / a0,
-            (1.0 - alpha / A) / a0);
-    }
-
-    void setLowShelf(double sampleRate, double hz, double gainDb) noexcept
-    {
-        shelf(sampleRate, hz, gainDb, true);
-    }
-
-    void setHighShelf(double sampleRate, double hz, double gainDb) noexcept
-    {
-        shelf(sampleRate, hz, gainDb, false);
-    }
-
-    void setHighPass(double sampleRate, double hz) noexcept
-    {
-        const double w0 = 2.0 * std::numbers::pi * std::clamp(hz, 10.0, sampleRate * 0.49) / sampleRate;
-        const double alpha = std::sin(w0) / (2.0 * std::numbers::sqrt2 / 2.0); // Butterworth Q
-        const double c = std::cos(w0);
-        const double a0 = 1.0 + alpha;
-        set((1.0 + c) / 2.0 / a0, -(1.0 + c) / a0, (1.0 + c) / 2.0 / a0, (-2.0 * c) / a0, (1.0 - alpha) / a0);
-    }
-
-private:
-    void shelf(double sampleRate, double hz, double gainDb, bool low) noexcept
-    {
-        const double A = std::pow(10.0, gainDb / 40.0);
-        const double w0 = 2.0 * std::numbers::pi * std::clamp(hz, 10.0, sampleRate * 0.49) / sampleRate;
-        const double c = std::cos(w0);
-        const double s = std::sin(w0);
-        const double alpha = s / 2.0 * std::sqrt(2.0); // S = 1
-        const double twoRootAAlpha = 2.0 * std::sqrt(A) * alpha;
-        if (low)
-        {
-            const double a0 = (A + 1.0) + (A - 1.0) * c + twoRootAAlpha;
-            set(A * ((A + 1.0) - (A - 1.0) * c + twoRootAAlpha) / a0,
-                2.0 * A * ((A - 1.0) - (A + 1.0) * c) / a0,
-                A * ((A + 1.0) - (A - 1.0) * c - twoRootAAlpha) / a0,
-                -2.0 * ((A - 1.0) + (A + 1.0) * c) / a0,
-                ((A + 1.0) + (A - 1.0) * c - twoRootAAlpha) / a0);
-        }
-        else
-        {
-            const double a0 = (A + 1.0) - (A - 1.0) * c + twoRootAAlpha;
-            set(A * ((A + 1.0) + (A - 1.0) * c + twoRootAAlpha) / a0,
-                -2.0 * A * ((A - 1.0) + (A + 1.0) * c) / a0,
-                A * ((A + 1.0) + (A - 1.0) * c - twoRootAAlpha) / a0,
-                2.0 * ((A - 1.0) - (A + 1.0) * c) / a0,
-                ((A + 1.0) - (A - 1.0) * c - twoRootAAlpha) / a0);
-        }
-    }
-
-    void set(double nb0, double nb1, double nb2, double na1, double na2) noexcept
-    {
-        b0 = static_cast<float>(nb0);
-        b1 = static_cast<float>(nb1);
-        b2 = static_cast<float>(nb2);
-        a1 = static_cast<float>(na1);
-        a2 = static_cast<float>(na2);
-    }
-};
-
-class Eq final : public Base
+class Eq final : public ProcessorBase
 {
 public:
     enum Param
@@ -302,15 +64,15 @@ public:
     };
 
     Eq()
-        : Base(types::eq,
-               {{"High-pass", "Hz", 0.0f, 1000.0f, 0.0f, true},
-                {"Low freq", "Hz", 30.0f, 1000.0f, 120.0f, true},
-                {"Low gain", "dB", -18.0f, 18.0f, 0.0f, false},
-                {"Mid freq", "Hz", 100.0f, 10000.0f, 1000.0f, true},
-                {"Mid gain", "dB", -18.0f, 18.0f, 0.0f, false},
-                {"Mid Q", "", 0.3f, 10.0f, 1.0f, true},
-                {"High freq", "Hz", 1500.0f, 18000.0f, 8000.0f, true},
-                {"High gain", "dB", -18.0f, 18.0f, 0.0f, false}})
+        : ProcessorBase(types::eq,
+                        {{"High-pass", "Hz", 0.0f, 1000.0f, 0.0f, true},
+                         {"Low freq", "Hz", 30.0f, 1000.0f, 120.0f, true},
+                         {"Low gain", "dB", -18.0f, 18.0f, 0.0f, false},
+                         {"Mid freq", "Hz", 100.0f, 10000.0f, 1000.0f, true},
+                         {"Mid gain", "dB", -18.0f, 18.0f, 0.0f, false},
+                         {"Mid Q", "", 0.3f, 10.0f, 1.0f, true},
+                         {"High freq", "Hz", 1500.0f, 18000.0f, 8000.0f, true},
+                         {"High gain", "dB", -18.0f, 18.0f, 0.0f, false}})
     {
     }
 
@@ -391,7 +153,7 @@ private:
 
 // ----- compressor -------------------------------------------------------------------------------
 
-class Compressor final : public Base
+class Compressor final : public ProcessorBase
 {
 public:
     enum Param
@@ -405,13 +167,13 @@ public:
     };
 
     Compressor()
-        : Base(types::compressor,
-               {{"Threshold", "dB", -60.0f, 0.0f, -18.0f, false},
-                {"Ratio", ":1", 1.0f, 20.0f, 4.0f, true},
-                {"Attack", "ms", 0.1f, 200.0f, 10.0f, true},
-                {"Release", "ms", 10.0f, 2000.0f, 100.0f, true},
-                {"Knee", "dB", 0.0f, 24.0f, 6.0f, false},
-                {"Makeup", "dB", 0.0f, 24.0f, 0.0f, false}})
+        : ProcessorBase(types::compressor,
+                        {{"Threshold", "dB", -60.0f, 0.0f, -18.0f, false},
+                         {"Ratio", ":1", 1.0f, 20.0f, 4.0f, true},
+                         {"Attack", "ms", 0.1f, 200.0f, 10.0f, true},
+                         {"Release", "ms", 10.0f, 2000.0f, 100.0f, true},
+                         {"Knee", "dB", 0.0f, 24.0f, 6.0f, false},
+                         {"Makeup", "dB", 0.0f, 24.0f, 0.0f, false}})
     {
     }
 
@@ -477,7 +239,7 @@ private:
 // Brickwall by instantaneous gain computation with a fast release: no lookahead, so
 // it adds no latency (delay compensation arrives in Phase 5). Transients that
 // exceed the ceiling within one sample are clipped to it.
-class Limiter final : public Base
+class Limiter final : public ProcessorBase
 {
 public:
     enum Param
@@ -490,10 +252,10 @@ public:
     static constexpr float maxLookaheadMs = 10.0f;
 
     Limiter()
-        : Base(types::limiter,
-               {{"Ceiling", "dB", -24.0f, 0.0f, -0.3f, false},
-                {"Release", "ms", 1.0f, 1000.0f, 50.0f, true},
-                {"Lookahead", "ms", 0.0f, maxLookaheadMs, 1.5f, false}})
+        : ProcessorBase(types::limiter,
+                        {{"Ceiling", "dB", -24.0f, 0.0f, -0.3f, false},
+                         {"Release", "ms", 1.0f, 1000.0f, 50.0f, true},
+                         {"Lookahead", "ms", 0.0f, maxLookaheadMs, 1.5f, false}})
     {
     }
 
@@ -653,20 +415,20 @@ private:
 // A small polyphonic subtractive synth: a polyBLEP saw/square per voice through a
 // state-variable low-pass, with an ADSR on the amplitude. Sixteen voices, the
 // oldest stolen. Mono, written to both channels. Enough to audition a part.
-class Synth final : public Base
+class Synth final : public ProcessorBase
 {
 public:
     static constexpr int maxVoices = 16;
     Synth()
-        : Base(types::synth,
-               {{"Level", "dB", -60.0f, 12.0f, -12.0f, false},
-                {"Shape", "", 0.0f, 1.0f, 0.0f, false}, // saw .. square
-                {"Cutoff", "Hz", 40.0f, 20000.0f, 6000.0f, true},
-                {"Resonance", "", 0.0f, 1.0f, 0.2f, false},
-                {"Attack", "ms", 1.0f, 2000.0f, 5.0f, true},
-                {"Decay", "ms", 1.0f, 2000.0f, 200.0f, true},
-                {"Sustain", "", 0.0f, 1.0f, 0.7f, false},
-                {"Release", "ms", 1.0f, 4000.0f, 200.0f, true}})
+        : ProcessorBase(types::synth,
+                        {{"Level", "dB", -60.0f, 12.0f, -12.0f, false},
+                         {"Shape", "", 0.0f, 1.0f, 0.0f, false}, // saw .. square
+                         {"Cutoff", "Hz", 40.0f, 20000.0f, 6000.0f, true},
+                         {"Resonance", "", 0.0f, 1.0f, 0.2f, false},
+                         {"Attack", "ms", 1.0f, 2000.0f, 5.0f, true},
+                         {"Decay", "ms", 1.0f, 2000.0f, 200.0f, true},
+                         {"Sustain", "", 0.0f, 1.0f, 0.7f, false},
+                         {"Release", "ms", 1.0f, 4000.0f, 200.0f, true}})
     {
     }
 
@@ -906,6 +668,8 @@ bool BuiltInFactory::isInstrument(const std::string& typeName)
 std::unique_ptr<engine::InsertProcessor> BuiltInFactory::create(const std::string& typeName) const
 {
     AURAL_ASSERT_NOT_REALTIME("BuiltInFactory::create");
+    if (strip::isStripType(typeName))
+        return strip::create(typeName);
     if (typeName == types::gain)
         return std::make_unique<Gain>();
     if (typeName == types::eq)
@@ -921,6 +685,8 @@ std::unique_ptr<engine::InsertProcessor> BuiltInFactory::create(const std::strin
 
 std::string BuiltInFactory::displayName(const std::string& typeName)
 {
+    if (strip::isStripType(typeName))
+        return strip::displayName(typeName);
     if (typeName == types::gain)
         return "Gain";
     if (typeName == types::eq)

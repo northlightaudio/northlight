@@ -190,8 +190,8 @@ void AudioEngine::applyLiveValues(const core::Project& project)
             runtime->targetGain.store(c.gain, std::memory_order_relaxed);
             runtime->targetPan.store(c.pan, std::memory_order_relaxed);
         }
-        for (const auto& i : c.inserts)
-            if (const auto instance = inserts_.find(i.id))
+        for (const auto* chained : c.processingChain())
+            if (const auto& i = *chained; const auto instance = inserts_.find(i.id))
             {
                 // A processor that owns its parameters (a hosted plugin) only gets
                 // the ones a command touched (pushInsertParameters).

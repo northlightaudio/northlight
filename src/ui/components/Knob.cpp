@@ -51,6 +51,7 @@ void Knob::setRange(double minimum, double maximum, double defaultValue)
     minimum_ = minimum;
     maximum_ = std::max(maximum, minimum + 1.0e-9);
     default_ = juce::jlimit(minimum_, maximum_, defaultValue);
+    logarithmic_ = logarithmic_ && minimum_ > 0.0;
     setValue(juce::jlimit(minimum_, maximum_, value_), juce::dontSendNotification);
 }
 
@@ -63,15 +64,25 @@ void Knob::setValue(double value, juce::NotificationType notify)
         onValueChanged(value_);
 }
 
+void Knob::setLogarithmic(bool logarithmic)
+{
+    logarithmic_ = logarithmic && minimum_ > 0.0;
+    repaint();
+}
+
 double Knob::fraction() const noexcept
 {
+    if (logarithmic_)
+        return std::log(value_ / minimum_) / std::log(maximum_ / minimum_);
     return (value_ - minimum_) / (maximum_ - minimum_);
 }
 
 void Knob::setFraction(double f, bool notify)
 {
-    setValue(minimum_ + juce::jlimit(0.0, 1.0, f) * (maximum_ - minimum_),
-             notify ? juce::sendNotification : juce::dontSendNotification);
+    f = juce::jlimit(0.0, 1.0, f);
+    const double value =
+        logarithmic_ ? minimum_ * std::pow(maximum_ / minimum_, f) : minimum_ + f * (maximum_ - minimum_);
+    setValue(value, notify ? juce::sendNotification : juce::dontSendNotification);
 }
 
 juce::String Knob::text() const
@@ -136,7 +147,7 @@ void Knob::paint(juce::Graphics& g)
                       std::min(fromAngle, valueAngle),
                       std::max(fromAngle, valueAngle),
                       true);
-    g.setColour(isEnabled() ? c.accent : c.textDisabled);
+    g.setColour(isEnabled() ? (arcColour_.isTransparent() ? c.accent : arcColour_) : c.textDisabled);
     g.strokePath(arc,
                  juce::PathStrokeType(stroke, juce::PathStrokeType::curved, juce::PathStrokeType::rounded));
 
@@ -159,7 +170,7 @@ void Knob::paint(juce::Graphics& g)
 void Knob::mouseDown(const juce::MouseEvent& e)
 {
     grabKeyboardFocus();
-    dragStartValue_ = value_;
+    dragStartValue_ = fraction();
     dragStartY_ = e.y;
     dragging_ = true;
     if (onDragStart)
@@ -171,8 +182,7 @@ void Knob::mouseDrag(const juce::MouseEvent& e)
     if (!dragging_)
         return;
     const double pixelsForFullTravel = e.mods.isShiftDown() ? 1000.0 : 150.0;
-    const double startFraction = (dragStartValue_ - minimum_) / (maximum_ - minimum_);
-    setFraction(startFraction + static_cast<double>(dragStartY_ - e.y) / pixelsForFullTravel, true);
+    setFraction(dragStartValue_ + static_cast<double>(dragStartY_ - e.y) / pixelsForFullTravel, true);
 }
 
 void Knob::mouseUp(const juce::MouseEvent&)

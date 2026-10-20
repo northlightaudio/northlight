@@ -20,6 +20,7 @@ add_executable(aural_unit_tests
     engine/TakeTests.cpp
     engine/MixerTests.cpp
     plugins/BuiltInTests.cpp
+    plugins/ChannelStripTests.cpp
     engine/LoudnessTests.cpp
     engine/WriterTests.cpp
     engine/DelayCompTests.cpp

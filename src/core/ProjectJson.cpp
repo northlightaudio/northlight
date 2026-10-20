@@ -63,10 +63,10 @@ void channelToJson(json& j, const Channel& c)
             sends.push_back(json{{"bus", s.bus}, {"level", s.level}, {"pre", s.preFader}});
         j["sends"] = std::move(sends);
     }
-    if (!c.inserts.empty())
+    const auto insertsToJson = [](const std::vector<Insert>& list)
     {
         json inserts = json::array();
-        for (const auto& i : c.inserts)
+        for (const auto& i : list)
         {
             json ij{{"id", i.id}, {"type", i.type}, {"bypass", i.bypass}, {"params", i.params}};
             if (!i.state.empty())
@@ -77,8 +77,12 @@ void channelToJson(json& j, const Channel& c)
                 ij["sidechain"] = i.sidechain;
             inserts.push_back(std::move(ij));
         }
-        j["inserts"] = std::move(inserts);
-    }
+        return inserts;
+    };
+    if (!c.inserts.empty())
+        j["inserts"] = insertsToJson(c.inserts);
+    if (!c.strip.empty() || c.stripPreInserts)
+        j["strip"] = json{{"pre", c.stripPreInserts}, {"modules", insertsToJson(c.strip)}};
 }
 
 void channelFromJson(const json& j, Channel& c)
@@ -96,8 +100,9 @@ void channelFromJson(const json& j, Channel& c)
     if (const auto it = j.find("sends"); it != j.end() && it->is_array())
         for (const auto& s : *it)
             c.sends.push_back(Send{s.value("bus", invalidId), s.value("level", 1.0f), s.value("pre", false)});
-    if (const auto it = j.find("inserts"); it != j.end() && it->is_array())
-        for (const auto& i : *it)
+    const auto insertsFromJson = [](const json& list, std::vector<Insert>& into)
+    {
+        for (const auto& i : list)
         {
             Insert insert;
             insert.id = i.value("id", invalidId);
@@ -109,8 +114,17 @@ void channelFromJson(const json& j, Channel& c)
             if (const auto params = i.find("params"); params != i.end() && params->is_array())
                 for (const auto& v : *params)
                     insert.params.push_back(v.get<float>());
-            c.inserts.push_back(std::move(insert));
+            into.push_back(std::move(insert));
         }
+    };
+    if (const auto it = j.find("inserts"); it != j.end() && it->is_array())
+        insertsFromJson(*it, c.inserts);
+    if (const auto it = j.find("strip"); it != j.end() && it->is_object())
+    {
+        c.stripPreInserts = it->value("pre", false);
+        if (const auto modules = it->find("modules"); modules != it->end() && modules->is_array())
+            insertsFromJson(*modules, c.strip);
+    }
 }
 
 json trackToJson(const Track& t)
@@ -333,10 +347,16 @@ std::optional<Project> projectFromJson(const std::string& text, std::string* err
             maxId = std::max(maxId, b.id);
             for (const auto& i : b.inserts)
                 maxId = std::max(maxId, i.id);
+            for (const auto& i : b.strip)
+                maxId = std::max(maxId, i.id);
         }
         for (const auto& t : p.tracks)
+        {
             for (const auto& i : t.inserts)
                 maxId = std::max(maxId, i.id);
+            for (const auto& i : t.strip)
+                maxId = std::max(maxId, i.id);
+        }
         for (const auto& g : p.groups)
             maxId = std::max(maxId, g.id);
         for (const auto& m : p.markers)
@@ -362,11 +382,15 @@ std::optional<Project> projectFromJson(const std::string& text, std::string* err
             }
             for (auto& i : t.inserts)
                 fresh(i.id);
+            for (auto& i : t.strip)
+                fresh(i.id);
         }
         for (auto& b : p.buses)
         {
             fresh(b.id);
             for (auto& i : b.inserts)
+                fresh(i.id);
+            for (auto& i : b.strip)
                 fresh(i.id);
         }
         for (auto& g : p.groups)

@@ -19,6 +19,9 @@ const Insert* Channel::findInsert(Id insertId) const noexcept
     for (const auto& i : inserts)
         if (i.id == insertId)
             return &i;
+    for (const auto& i : strip)
+        if (i.id == insertId)
+            return &i;
     return nullptr;
 }
 
@@ -27,7 +30,35 @@ Insert* Channel::findInsert(Id insertId) noexcept
     for (auto& i : inserts)
         if (i.id == insertId)
             return &i;
+    for (auto& i : strip)
+        if (i.id == insertId)
+            return &i;
     return nullptr;
+}
+
+int Channel::stripIndex(Id insertId) const noexcept
+{
+    for (size_t i = 0; i < strip.size(); ++i)
+        if (strip[i].id == insertId)
+            return static_cast<int>(i);
+    return -1;
+}
+
+std::vector<const Insert*> Channel::processingChain() const
+{
+    std::vector<const Insert*> chain;
+    chain.reserve(inserts.size() + strip.size());
+    const auto add = [&](const std::vector<Insert>& list)
+    {
+        for (const auto& i : list)
+            chain.push_back(&i);
+    };
+    if (stripPreInserts)
+        add(strip);
+    add(inserts);
+    if (!stripPreInserts)
+        add(strip);
+    return chain;
 }
 
 int Channel::insertIndex(Id insertId) const noexcept

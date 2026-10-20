@@ -79,6 +79,9 @@ public:
     void apply(Project&) override;
     void revert(Project&) override;
     Id trackId() const noexcept { return track_.id; }
+    // Gives the track these strip modules when it has none (the session supplies
+    // the default strip; ids are allocated on apply). Before apply only.
+    void setDefaultStrip(const std::vector<Insert>& modules);
 
 private:
     Track track_;
@@ -121,6 +124,7 @@ public:
     void apply(Project&) override;
     void revert(Project&) override;
     Id busId() const noexcept { return bus_.id; }
+    void setDefaultStrip(const std::vector<Insert>& modules);
 
 private:
     Bus bus_;
@@ -633,6 +637,34 @@ public:
 
 private:
     Id channelId_, insertId_;
+    bool value_, previous_ = false;
+};
+
+// Moves a strip module to another place in the strip (processing order).
+class MoveStripModule final : public Command
+{
+public:
+    MoveStripModule(Id channelId, Id moduleId, int newIndex);
+    std::string name() const override { return "Move strip module"; }
+    void apply(Project&) override;
+    void revert(Project&) override;
+
+private:
+    Id channelId_, moduleId_;
+    int newIndex_, previousIndex_ = -1;
+};
+
+// Whether the channel strip runs before the inserts or after them.
+class SetStripPosition final : public Command
+{
+public:
+    SetStripPosition(Id channelId, bool preInserts);
+    std::string name() const override { return "Move channel strip"; }
+    void apply(Project&) override;
+    void revert(Project&) override;
+
+private:
+    Id channelId_;
     bool value_, previous_ = false;
 };
 

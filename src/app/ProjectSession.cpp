@@ -5,6 +5,7 @@
 #include "engine/WavFile.h"
 #include "hosting/ClapPlugin.h"
 #include "plugins/BuiltIns.h"
+#include "plugins/ChannelStrip.h"
 
 #include <algorithm>
 #include <cmath>
@@ -57,8 +58,21 @@ ProjectSession::~ProjectSession()
 
 // ----- editing --------------------------------------------------------------------------
 
+namespace
+{
+// Every new track and bus gets the channel strip (its modules off).
+void giveChannelStrip(core::Command& command)
+{
+    if (auto* addTrack = dynamic_cast<core::AddTrack*>(&command))
+        addTrack->setDefaultStrip(plugins::strip::defaultStrip());
+    else if (auto* addBus = dynamic_cast<core::AddBus*>(&command))
+        addBus->setDefaultStrip(plugins::strip::defaultStrip());
+}
+} // namespace
+
 void ProjectSession::execute(std::unique_ptr<core::Command> command)
 {
+    giveChannelStrip(*command);
     // A removal copies the model insert into the command for undo: pull the live
     // plugin state into the model first, so undo brings back what the user had,
     // not what the last save held.
@@ -109,6 +123,7 @@ void ProjectSession::executeGroup(const std::string& name,
     std::vector<core::Command::ParameterTouch> touches;
     for (auto& command : commands)
     {
+        giveChannelStrip(*command);
         std::vector<core::Command::ParameterTouch> own;
         command->touchedParameters(own);
         mirrorOwnedParameters(own);
@@ -270,6 +285,7 @@ std::string ProjectSession::open(const juce::File& file)
     if (!loaded.has_value())
         return error.empty() ? "could not read project" : error;
     project_ = *loaded;
+    plugins::strip::ensureChannelStrip(project_); // projects saved before the strip existed
     undo_.clear();
     projectFile_ = file;
     modified_ = false;

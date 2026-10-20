@@ -18,7 +18,8 @@ aural.exe
                   SegmentedControl, NumericField, PanelHeader, Toast, Sheet),
                   shell/ (HeaderBar, StatusBar, Panels: hosts, floating windows,
                   the PanelManager), panels/ (EditorPanel, InspectorPanel,
-                  DiagnosticsPanel),
+                  DiagnosticsPanel), strip/ (the channel strip's module cards
+                  and their real-time displays),
                   AudioSetupView (audio and MIDI devices), ArrangeView (tracks,
                   waveforms, MIDI clips, zoom, scroll, editing), TrackHeader
                   (input or MIDI input, arm, monitor), MixerView (strips, master,
@@ -36,8 +37,10 @@ aural.exe
                   WavFile, Click (metronome), Insert interface, Meters, Loudness,
                   Midi (event list per span; the renderer schedules clips and
                   live input into instruments). No JUCE.
-  src/plugins     Built-in processors (gain, EQ, compressor, limiter) and the
-                  built-in synth behind the insert interface. No JUCE.
+  src/plugins     Built-in processors (gain, EQ, compressor, limiter), the
+                  built-in synth and the channel strip modules (gate, parametric
+                  EQ, compressor, de-esser, saturation, limiter) behind the
+                  insert interface. No JUCE.
   src/hosting     PluginRegistry (known plugins, blocklist, scan times; no JUCE),
                   PluginScanner (drives aural_plugin_scan per file), HostedPlugin
                   (a VST3 instance behind the insert interface), HostFactory
@@ -442,6 +445,67 @@ integrated loudness per BS.1770-4: the 400 ms window at every 100 ms hop is kept
 (two hours' worth, preallocated) and the controller computes the gated mean on
 demand (absolute gate -70 LUFS, relative gate 10 LU under the mean of the rest).
 Play from stop restarts it.
+
+### Channel strip
+
+Every track and bus has a channel strip (design: [design/12-channel-strip.md](design/12-channel-strip.md)):
+six built-in modules switched on in place rather than added. In the model they
+are `core::Insert`s in `Channel::strip`, beside `Channel::inserts`, with
+`bypass` meaning off and `stripPreInserts` placing the strip before or after the
+inserts. `Channel::findInsert` searches both lists, so the insert commands
+(parameter, bypass, mix) apply to modules unchanged and undo needs nothing new;
+`MoveStripModule` and `SetStripPosition` reorder. `Channel::processingChain()`
+gives the processing order, and the snapshot compiler and the live-value push
+walk it instead of `inserts`. The insert slots, inserts menu, sidechain and
+everything else that lists inserts still read `inserts` only.
+
+New channels get the strip from the session: `ProjectSession::execute` hands
+every `AddTrack` and `AddBus` the default strip (`plugins::strip::defaultStrip`,
+every module off with its defaults) before it applies, and the command
+allocates the module ids and keeps them, so a redo brings back the same ids the
+later commands in the history refer to (the same now holds for a new track's
+inserts, which previously kept id 0). Opening a project runs
+`ensureChannelStrip`, which adds any missing module with a fresh id, so older
+projects (and modules added later) need no migration and no undo step.
+
+The modules (`src/plugins/ChannelStrip.cpp`) share `ProcessorBase` (moved out of
+`BuiltIns.cpp`: atomic parameters, the bypass crossfade, chunking) and the RBJ
+biquads in `Biquad.h`, which also compute magnitude responses so the editor
+draws exactly the filter that runs. Gate: key high-pass and low-pass, a peak
+detector, hysteresis and hold, the gain gliding between unity and the range.
+EQ: twelve biquad slots in a fixed layout (four per cut, Butterworth sections
+for 6 to 48 dB/oct; one per band), identity slots skipped, coefficient ramps
+across the block, a section's memory cleared when it switches on. Compressor:
+peak or RMS detector, the soft-knee curve applied to the level and the
+reduction smoothed with attack and release (smoothing the curve's output, not
+the level, keeps a waveform's troughs from dragging the envelope down), make-up
+with an auto amount, internal wet/dry. De-esser: an LR4 crossover so the bands
+sum flat, the band's envelope over the threshold setting a 5:1 reduction capped
+at the range, on the band or the whole signal. Saturation: drive into tanh,
+biased tanh or a cubic clip with first-order antiderivative anti-aliasing (no
+oversampling, so no latency), a DC blocker, a tone shelf, a trim of half the
+drive and wet/dry. Limiter: zero-latency peak limiting (gain drops at once,
+recovers at the release rate, the output clamped), so a strip that is off never
+adds latency.
+
+Real-time feedback is `engine::ProcessorFeedback` (`InsertProcessor::feedback()`):
+the audio thread publishes a frame every 5 ms (input and output peaks, gain
+reduction, one module-specific level) into a 1024-frame ring of atomics and, for
+the EQ, the mono sum before and after it into two 16384-sample taps that only
+run while an analyser asks. A module that is off measures its input only while
+an editor is watching it (`setWatched`), so a hidden or collapsed card costs
+nothing. Readers copy what is newer than their cursor; a frame being overwritten
+while it is read only ever shows on a display.
+
+The UI is `src/ui/strip`: `ModuleCard` (the card: header, bound knobs, choices
+and pills that send the insert commands, the level history and meter ballistics
+read on `tick`), the displays in `Graphs` (`HistoryGraph`, `TransferCurve`,
+`SaturationCurve`, `LevelBars`) and `EqGraph` (draggable band nodes over the
+response and a JUCE FFT analyser), the six cards in `ModuleCards.cpp`, and
+`ChannelStripView`, which the Editor panel places before or after the insert
+cards in signal order and which ticks its cards at 60 Hz while showing. Cards
+of modules that are off collapse to tabs. The mixer strips get a row of module
+cells that switch modules in place and show gain reduction.
 
 ### Editing (Phase 6)
 
@@ -1016,6 +1080,10 @@ machine for the benchmark.
 | 2026-10-19 | MIDI devices are identified by name | The name is what the user recognises and what a project can carry between machines; JUCE's identifier is stable but opaque. Two devices of one name are both opened and both heard. |
 | 2026-10-19 | A built-in synth ships with the engine | A MIDI track must make a sound without a third-party instrument, both for the user and for offline tests of the whole path (schedule, instrument, bounce). |
 | 2026-10-19 | Trimming a MIDI clip keeps its notes where they are on the timeline | Matches audio clips (the source stays put under the clip edges) and lets a trim be undone by trimming back without losing notes. |
+| 2026-10-20 | The channel strip is stored as inserts in a second list, not a new model type | Modules need exactly what an insert has (type, parameters, bypass, a cached processor instance); a second list keeps them out of the insert rack while every insert command, the undo history, the instance cache and the live-value path work on them unchanged. |
+| 2026-10-20 | Strip modules that are off are compiled as bypassed inserts, not left out | Switching a module is then a live value (no recompile, no click: the bypass crossfade covers it), and a settled bypass costs one branch per block. |
+| 2026-10-20 | Feedback for editors is a ring of atomics per processor, polled by the UI | It follows the RT-to-controller rule (preallocated, never blocks) without a queue per display; a display tolerates the rare torn frame, and the UI can read as much or as little history as it draws. |
+| 2026-10-20 | The strip limiter has no lookahead | A strip is on every channel; a module that is off must not add latency, and switching it on must not re-solve delay compensation. The insert limiter keeps its lookahead for mastering. |
 | 2026-10-20 | Paint times are recorded by the two heavy views, not by hooking every component | A scope at the top of `ArrangeView::paint` and `MixerView::paint` costs nothing elsewhere and covers what the budget is about; the frame interval (the timer's cadence) is tracked separately in the main window. |
 | 2026-10-20 | The mixer's section boxes are real slots and rows, not menus | Signal flow must be visible: an insert's bypass and order, a send's level and tap are on the strip, and the menus keep only what has no control of its own. |
 | 2026-10-20 | The arrange headers read meter copies from the mixer rather than taking from the meter block | `MeterBlock::take` resets the peak, so one consumer must own each slot; the mixer already takes every slot each frame and keeps the last readings for anyone else. |

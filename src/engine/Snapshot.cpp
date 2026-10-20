@@ -272,8 +272,8 @@ std::unique_ptr<Snapshot> compileSnapshot(const core::Project& project,
             if (bus >= 0 && std::find(allowed.begin(), allowed.end(), bus) != allowed.end())
                 node.sends.push_back(SendNode{bus, s.level, s.preFader});
         }
-        for (const auto& i : c.inserts)
-            if (auto instance = inserts.get(i))
+        for (const auto* chained : c.processingChain())
+            if (const auto& i = *chained; auto instance = inserts.get(i))
             {
                 // Latency counts whether or not the slot is bypassed: a bypassed
                 // processor still delays by it (plugins through processBlockBypassed,

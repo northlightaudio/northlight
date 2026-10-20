@@ -151,13 +151,28 @@ AudioClip& requireClip(Track& t, Id id)
 
 AddTrack::AddTrack(Track track, int index) : track_(std::move(track)), index_(index) {}
 
+void AddTrack::setDefaultStrip(const std::vector<Insert>& modules)
+{
+    if (track_.strip.empty())
+        track_.strip = modules;
+}
+
 void AddTrack::apply(Project& p)
 {
     if (track_.id == invalidId)
         track_.id = p.allocateId();
+    p.nextId = std::max(p.nextId, track_.id + 1); // a caller-chosen id is never handed out again
     for (auto& c : track_.clips)
         if (c.id == invalidId)
             c.id = p.allocateId();
+    // Ids allocated here stay in the command, so a redo brings back the same
+    // ones (later commands in the history refer to them).
+    for (auto& i : track_.inserts)
+        if (i.id == invalidId)
+            i.id = p.allocateId();
+    for (auto& m : track_.strip)
+        if (m.id == invalidId)
+            m.id = p.allocateId();
     const int at =
         index_ < 0 || index_ > static_cast<int>(p.tracks.size()) ? static_cast<int>(p.tracks.size()) : index_;
     index_ = at;
@@ -210,10 +225,23 @@ void MoveTrack::revert(Project& p)
 
 AddBus::AddBus(Bus bus, int index) : bus_(std::move(bus)), index_(index) {}
 
+void AddBus::setDefaultStrip(const std::vector<Insert>& modules)
+{
+    if (bus_.strip.empty())
+        bus_.strip = modules;
+}
+
 void AddBus::apply(Project& p)
 {
     if (bus_.id == invalidId)
         bus_.id = p.allocateId();
+    p.nextId = std::max(p.nextId, bus_.id + 1);
+    for (auto& i : bus_.inserts)
+        if (i.id == invalidId)
+            i.id = p.allocateId();
+    for (auto& m : bus_.strip)
+        if (m.id == invalidId)
+            m.id = p.allocateId();
     const int at =
         index_ < 0 || index_ > static_cast<int>(p.buses.size()) ? static_cast<int>(p.buses.size()) : index_;
     index_ = at;
@@ -1032,6 +1060,47 @@ void SetInsertBypass::apply(Project& p)
 void SetInsertBypass::revert(Project& p)
 {
     requireInsert(requireChannel(p, channelId_), insertId_).bypass = previous_;
+}
+
+MoveStripModule::MoveStripModule(Id channelId, Id moduleId, int newIndex)
+    : channelId_(channelId), moduleId_(moduleId), newIndex_(newIndex)
+{
+}
+void MoveStripModule::apply(Project& p)
+{
+    auto& c = requireChannel(p, channelId_);
+    previousIndex_ = c.stripIndex(moduleId_);
+    if (previousIndex_ < 0)
+        throw std::logic_error("command references a strip module that does not exist");
+    Insert moved = c.strip[static_cast<size_t>(previousIndex_)];
+    c.strip.erase(c.strip.begin() + previousIndex_);
+    const int at = std::clamp(newIndex_, 0, static_cast<int>(c.strip.size()));
+    c.strip.insert(c.strip.begin() + at, moved);
+}
+void MoveStripModule::revert(Project& p)
+{
+    auto& c = requireChannel(p, channelId_);
+    const int current = c.stripIndex(moduleId_);
+    if (current < 0)
+        return;
+    Insert moved = c.strip[static_cast<size_t>(current)];
+    c.strip.erase(c.strip.begin() + current);
+    const int at = std::clamp(previousIndex_, 0, static_cast<int>(c.strip.size()));
+    c.strip.insert(c.strip.begin() + at, moved);
+}
+
+SetStripPosition::SetStripPosition(Id channelId, bool preInserts) : channelId_(channelId), value_(preInserts)
+{
+}
+void SetStripPosition::apply(Project& p)
+{
+    auto& c = requireChannel(p, channelId_);
+    previous_ = c.stripPreInserts;
+    c.stripPreInserts = value_;
+}
+void SetStripPosition::revert(Project& p)
+{
+    requireChannel(p, channelId_).stripPreInserts = previous_;
 }
 
 SetTrackName::SetTrackName(Id trackId, std::string name) : trackId_(trackId), value_(std::move(name)) {}

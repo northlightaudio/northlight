@@ -767,6 +767,13 @@ private:
             selectionChanged(id);
         };
         mixer_.onOpenPluginBrowser = [this] { owner_.showPluginBrowser(); };
+        mixer_.onShowStrip = [this](core::Id id)
+        {
+            tracks_.setSelectedTrack(id);
+            selectionChanged(id);
+            editor_.setChannel(id); // a bus is not a track selection
+            panels_.show(ui::PanelId::editor);
+        };
         mixer_.loadSetting = [this](const std::string& key) { return settings_.value(key); };
         mixer_.saveSetting = [this](const std::string& key, const std::string& value)
         { settings_.setValue(key, value); };

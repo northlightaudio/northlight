@@ -107,6 +107,13 @@ With **Loop** on, each pass through the region becomes a new take on the track.
 **Mixer** (Ctrl+M) opens strips for every track and bus with output routing, sends,
 inserts (built-in gain, EQ, compressor, limiter with an editor window each), pan,
 mute, solo, phase, fader and meters, plus the master with LUFS; **+ Bus** adds a bus.
+Every track and bus also has a **channel strip** (gate, parametric EQ,
+compressor, de-esser, saturation, limiter), separate from the inserts and switched
+on in place: in the Editor panel each module is a card with a real-time display
+(the EQ's draggable bands over a spectrum analyser, the compressor's curve, level
+history and gain-reduction meter, the gate's open/closed lane), and a module
+that is off folds to a tab; the mixer strips have a row of module cells to switch
+them. The strip runs after the inserts unless switched to before them.
 A strip's **Group** button puts it in a fader group: grouped faders move together
 (keeping their balance) and mute and solo act on the whole group.
 **Inserts ▸ Add** lists the built-ins and every VST3 and CLAP plugin found by
@@ -146,7 +153,9 @@ For unattended checks: `Aural.exe --import <file> [--import <file>] --play` (or
 `--open <project>`), and
 `Aural.exe --record <inputs> [--loop <from> <to>] [--no-count-in] --stop-after <seconds>`; `--mixer`
 opens the mixer panel and `--insert <type>` adds a built-in (for example `aural.eq`) to
-every track and opens its editor. `--scan-plugins` runs a full plugin scan, `--plugins` opens the browser, `--marker <seconds>` drops a marker; `--recover` recovers unfinished recordings without
+every track and opens its editor. `--strip <modules|all|demo>` switches channel strip modules on for every track
+and shows the Editor panel, and `--master-gain -120` silences the master for an
+unattended check that should not be heard. `--scan-plugins` runs a full plugin scan, `--plugins` opens the browser, `--marker <seconds>` drops a marker; `--recover` recovers unfinished recordings without
 the prompt and `--save <file>` writes the project (so a check can read the placed
 clips); `--save` runs two seconds after a preceding `--stop-after`, else half a
 second after launch.

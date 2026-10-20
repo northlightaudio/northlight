@@ -1,6 +1,7 @@
 #pragma once
 
 #include "core/Model.h"
+#include "engine/Feedback.h"
 #include "engine/Midi.h"
 
 #include <atomic>
@@ -31,6 +32,8 @@ struct ParameterInfo
     float maximum = 1.0f;
     float defaultValue = 0.0f;
     bool logarithmic = false; // frequencies and times feel better on a log scale
+    // A stepped parameter's choices, by value (0, 1, ...); empty for a continuous one.
+    std::vector<std::string> choices;
 };
 
 class InsertProcessor
@@ -90,6 +93,10 @@ public:
     // channel 0/1; valid until the next process call on the real-time thread.
     virtual int auxOutputCount() const noexcept { return 0; }
     virtual const float* auxOutput(int, int) const noexcept { return nullptr; }
+
+    // Live values for an editor's displays (meters, gain reduction, spectrum);
+    // null for a processor that publishes none.
+    virtual ProcessorFeedback* feedback() noexcept { return nullptr; }
 
     // Samples of delay the processor adds (for delay compensation, Phase 5).
     virtual int latencySamples() const noexcept { return 0; }

@@ -129,11 +129,22 @@ struct Channel
     Id group = invalidId;     // fader group membership
     std::vector<Send> sends;
     std::vector<Insert> inserts; // processed in order, pre-fader
+    // The channel strip: built-in modules every channel has (gate, EQ,
+    // compressor, ...), in processing order, switched on and off in place
+    // (bypass = off) instead of being added and removed. They are stored as
+    // inserts so the insert commands (parameters, bypass) and the engine's
+    // instance cache apply to them unchanged.
+    std::vector<Insert> strip;
+    bool stripPreInserts = false; // the strip runs before the inserts (default: after them)
 
     Send* findSend(Id busId) noexcept;
+    // An insert or a strip module, by id.
     Insert* findInsert(Id insertId) noexcept;
     const Insert* findInsert(Id insertId) const noexcept;
-    int insertIndex(Id insertId) const noexcept;
+    int insertIndex(Id insertId) const noexcept; // in `inserts` only; -1 for a strip module
+    int stripIndex(Id insertId) const noexcept;  // in `strip` only
+    // Every processor in processing order: the inserts and the strip modules.
+    std::vector<const Insert*> processingChain() const;
     bool operator==(const Channel&) const = default;
 };
 

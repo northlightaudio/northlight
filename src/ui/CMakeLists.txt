@@ -39,6 +39,16 @@ add_library(aural_ui STATIC
     shell/StatusBar.cpp
     panels/EditorPanel.h
     panels/EditorPanel.cpp
+    strip/StripStyle.h
+    strip/ModuleCard.h
+    strip/ModuleCard.cpp
+    strip/ModuleCards.cpp
+    strip/Graphs.h
+    strip/Graphs.cpp
+    strip/EqGraph.h
+    strip/EqGraph.cpp
+    strip/ChannelStripView.h
+    strip/ChannelStripView.cpp
     panels/InspectorPanel.h
     panels/InspectorPanel.cpp
     panels/DiagnosticsPanel.h

@@ -10,7 +10,8 @@ add_executable(aural_juce_tests
     ClapPluginTests.cpp
     BounceTests.cpp
     ThemeTests.cpp
-    KeyboardMapTests.cpp)
+    KeyboardMapTests.cpp
+    ChannelStripUiTests.cpp)
 
 target_link_libraries(aural_juce_tests PRIVATE
     aural_options

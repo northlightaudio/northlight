@@ -24,6 +24,7 @@ design system first; the screen specs depend on them.
 | [09-piano-roll.md](09-piano-roll.md) | Piano roll and MIDI clips (Phase 8), specified now so the design pass covers it |
 | [10-interaction.md](10-interaction.md) | State matrix, pointer and drag feedback, snapping, keyboard map, tooltips, notifications, errors |
 | [11-accessibility-performance.md](11-accessibility-performance.md) | Contrast, focus, keyboard, screen reader names, DPI, frame budget and how it is measured |
+| [12-channel-strip.md](12-channel-strip.md) | The channel strip: module cards with real-time displays in the Editor panel, the EQ analyser, tabs, the mixer's module row |
 | [contrast.md](contrast.md) | Generated contrast table for every text and surface pair in the token file |
 
 ## Mockups

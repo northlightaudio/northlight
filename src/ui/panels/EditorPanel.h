@@ -7,6 +7,7 @@
 #include "ui/Icons.h"
 #include "ui/Theme.h"
 #include "ui/components/Knob.h"
+#include "ui/strip/ChannelStripView.h"
 
 #include <juce_gui_basics/juce_gui_basics.h>
 
@@ -18,7 +19,8 @@ namespace aural::ui
 {
 
 // The Editor panel (07-plugins.md 7.1): the selected channel's insert chain as a
-// horizontal strip of device cards. Each card has a header (power, name, format
+// horizontal strip of device cards, and its channel strip (12-channel-strip.md)
+// before or after them in signal order. Each card has a header (power, name, format
 // badge, menu), a body (knobs for a built-in or GUI-less plugin, an Open button
 // for a plugin with its own GUI) and a footer with the wet/dry mix; a ghost "+"
 // card adds an insert. The owner gives the model, the live instances and the
@@ -70,8 +72,20 @@ private:
     const core::Project* project_ = nullptr;
     const hosting::PluginRegistry* registry_ = nullptr;
     core::Id channelId_ = core::invalidId;
+    // The scrolled content: the section captions are painted on it.
+    struct Content final : juce::Component
+    {
+        std::function<void(juce::Graphics&)> onPaint;
+        void paint(juce::Graphics& g) override
+        {
+            if (onPaint)
+                onPaint(g);
+        }
+    };
     juce::Viewport viewport_;
-    juce::Component strip_;
+    Content strip_;
+    strip::ChannelStripView stripView_;
+    int insertsX_ = 0; // where the inserts section starts in the content
     std::vector<std::unique_ptr<Card>> cards_;
     juce::TextButton add_{"+"};
     std::vector<core::Id> builtOrder_;

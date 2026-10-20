@@ -4,9 +4,12 @@
 #include "audio/AudioDeviceLayer.h"
 #include "core/Command.h"
 #include "plugins/BuiltIns.h"
+#include "plugins/ChannelStrip.h"
 #include "ui/AuralLookAndFeel.h"
 
 #include <juce_gui_extra/juce_gui_extra.h>
+
+#include <cmath>
 
 namespace aural
 {
@@ -65,6 +68,12 @@ public:
     //   --midi-track         add a MIDI track (built-in synth) with a short clip
     //   --midi-track-with <type>  the same with the given instrument type instead
     //   --piano-roll         open the piano roll on the first MIDI clip
+    //   --master-gain <dB>   set the master fader (-120 = silent: an unattended check that
+    //                        should not be heard; pre-fader displays still move)
+    //   --strip <modules>    switch channel strip modules on for every track and show the
+    //                        Editor panel: a comma list of gate, eq, compressor, deesser,
+    //                        saturation, limiter, or all; "demo" also sets values that give
+    //                        every display something to show
     void applyLaunchFlags(const juce::String& commandLine)
     {
         const auto tokens = juce::ArgumentList("Aural", commandLine).arguments;
@@ -145,6 +154,14 @@ public:
                         break;
                     }
             }
+            else if (arg == "--master-gain" && i + 1 < tokens.size())
+            {
+                const float db = tokens.getReference(++i).text.getFloatValue();
+                session_->execute(std::make_unique<core::SetMasterGain>(
+                    db <= -120.0f ? 0.0f : std::pow(10.0f, db / 20.0f)));
+            }
+            else if (arg == "--strip" && i + 1 < tokens.size())
+                applyStripFlag(tokens.getReference(++i).text.unquoted());
             else if (arg == "--bus")
                 mainWindow_->addBus();
             else if (arg == "--remove-bus")
@@ -211,6 +228,54 @@ public:
                                             [this, file] { session_->save(file); });
             }
         }
+    }
+
+    void applyStripFlag(const juce::String& text)
+    {
+        namespace ps = plugins::strip;
+        const auto names = juce::StringArray::fromTokens(text.toLowerCase(), ",", "");
+        const bool all = names.contains("all") || (names.contains("demo") && names.size() == 1);
+        const bool demo = names.contains("demo");
+        const auto tracks = session_->project().tracks; // a copy: commands change the project
+        for (const auto& track : tracks)
+            for (const auto& module : track.strip)
+            {
+                const auto name = juce::String(module.type).fromLastOccurrenceOf(".", false, false);
+                if (all || names.contains(name))
+                    session_->execute(std::make_unique<core::SetInsertBypass>(track.id, module.id, false));
+                if (!demo || !(all || names.contains(name)))
+                    continue;
+                const auto set = [&](int index, float value)
+                {
+                    session_->execute(
+                        std::make_unique<core::SetInsertParameter>(track.id, module.id, index, value));
+                };
+                if (module.type == ps::types::eq)
+                {
+                    set(ps::eq::paramIndex(ps::eq::lowCut, ps::eq::on), 1.0f);
+                    set(ps::eq::paramIndex(ps::eq::lowCut, ps::eq::frequency), 45.0f);
+                    set(ps::eq::paramIndex(ps::eq::band1, ps::eq::gain), 3.0f);
+                    set(ps::eq::paramIndex(ps::eq::band3, ps::eq::frequency), 900.0f);
+                    set(ps::eq::paramIndex(ps::eq::band3, ps::eq::gain), -5.0f);
+                    set(ps::eq::paramIndex(ps::eq::band3, ps::eq::q), 2.5f);
+                    set(ps::eq::paramIndex(ps::eq::band4, ps::eq::gain), 2.5f);
+                }
+                else if (module.type == ps::types::compressor)
+                {
+                    set(ps::compressor::threshold, -26.0f);
+                    set(ps::compressor::ratio, 4.0f);
+                    set(ps::compressor::autoMakeup, 1.0f);
+                }
+                else if (module.type == ps::types::gate)
+                    set(ps::gate::threshold, -45.0f);
+                else if (module.type == ps::types::deesser)
+                    set(ps::deesser::threshold, -42.0f);
+                else if (module.type == ps::types::saturation)
+                    set(ps::saturation::drive, 12.0f);
+                else if (module.type == ps::types::limiter)
+                    set(ps::limiter::input, 6.0f);
+            }
+        mainWindow_->showPanel("editor");
     }
 
     void shutdown() override

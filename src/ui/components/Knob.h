@@ -20,6 +20,15 @@ public:
 
     // The value range; bipolar knobs are those whose range crosses zero.
     void setRange(double minimum, double maximum, double defaultValue);
+    // Travel proportional to the logarithm of the value (frequencies, times,
+    // ratios); only for a positive range.
+    void setLogarithmic(bool logarithmic);
+    // The arc's colour (default accent): a channel strip module's own hue.
+    void setArcColour(juce::Colour colour)
+    {
+        arcColour_ = colour;
+        repaint();
+    }
     void setValue(double value, juce::NotificationType notify);
     double value() const noexcept { return value_; }
     // Formats the value for the label and the tooltip.
@@ -56,7 +65,9 @@ private:
     const Theme& theme_;
     double minimum_ = 0.0, maximum_ = 1.0, default_ = 0.0, value_ = 0.0;
     bool showValue_ = true;
-    double dragStartValue_ = 0.0;
+    bool logarithmic_ = false;
+    juce::Colour arcColour_;
+    double dragStartValue_ = 0.0; // the fraction at the start of a drag
     int dragStartY_ = 0;
     bool dragging_ = false;
 };
