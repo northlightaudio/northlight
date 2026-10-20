@@ -100,6 +100,10 @@ public:
     // it came from (empty = unknown). The event reaches the MIDI tracks listening
     // to that input in the next block, at its sample offset clamped to the block.
     void pushMidiInput(const MidiEvent& event, const std::string& source);
+    // A note the user auditions (the piano roll): it reaches only the given
+    // track's instrument, whether or not the track is armed or monitoring, and
+    // is never recorded.
+    void pushMidiPreview(const MidiEvent& event, core::Id trackId);
     // The engine's index for an input name (registering it the first time), the
     // value TrackNode::midiSource filters on.
     int midiSourceIndex(const std::string& name);
@@ -169,11 +173,13 @@ private:
     {
         MidiEvent event;
         int source = -1;
+        core::Id target = core::invalidId; // a preview's track; invalidId for device input
     };
     static constexpr size_t midiQueueCapacity = 4096;
     rt::SpscQueue<QueuedMidi> midiIn_{midiQueueCapacity}; // producer side under midiMutex_
     MidiEventList liveMidi_{midiQueueCapacity};
     std::vector<int> liveMidiSources_ = std::vector<int>(midiQueueCapacity);
+    std::vector<core::Id> liveMidiTargets_ = std::vector<core::Id>(midiQueueCapacity);
     size_t liveMidiCount_ = 0;
     std::vector<std::string> midiSourceNames_; // index = source
     std::mutex midiMutex_;

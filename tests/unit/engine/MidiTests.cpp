@@ -214,6 +214,24 @@ TEST_CASE("Live MIDI input reaches an armed MIDI track's instrument in the same 
     CHECK(h.right[7] == Approx(72.0f).margin(0.01f));
 }
 
+TEST_CASE("An audition reaches only its own track's instrument, armed or not", "[engine][midi]")
+{
+    core::MidiClip clip;
+    clip.start = 0;
+    clip.length = 10;
+    auto p = keysProject(clip); // not armed, so device input is not heard
+    Harness h;
+    h.engine.setProject(p);
+    h.engine.pushMidiInput({5, engine::MidiEvent::Type::noteOn, 0, 64, 100}, "");
+    h.engine.pushMidiPreview({7, engine::MidiEvent::Type::noteOn, 0, 72, 100}, 99); // another track
+    auto out = h.render(1);
+    CHECK(out[7] == Approx(0.0f));
+    h.engine.pushMidiPreview({7, engine::MidiEvent::Type::noteOn, 0, 72, 100}, p.tracks[0].id);
+    out = h.render(1);
+    CHECK(out[7] == Approx(100.0f / 127.0f).margin(0.01f));
+    CHECK(h.right[7] == Approx(72.0f).margin(0.01f));
+}
+
 TEST_CASE("Recording an armed MIDI track captures its live notes at their timeline positions, per take",
           "[engine][midi][record]")
 {

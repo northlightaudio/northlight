@@ -172,6 +172,13 @@ void AudioEngine::pushMidiInput(const MidiEvent& event, const std::string& sourc
     midiIn_.push(QueuedMidi{event, index});
 }
 
+void AudioEngine::pushMidiPreview(const MidiEvent& event, core::Id trackId)
+{
+    AURAL_ASSERT_NOT_REALTIME("AudioEngine::pushMidiPreview");
+    const std::lock_guard<std::mutex> lock(midiMutex_);
+    midiIn_.push(QueuedMidi{event, -1, trackId});
+}
+
 void AudioEngine::resetCaches()
 {
     AURAL_ASSERT_NOT_REALTIME("AudioEngine::resetCaches");
@@ -338,7 +345,10 @@ void AudioEngine::process(
     QueuedMidi queued;
     while (midiIn_.pop(queued))
         if (liveMidi_.push(queued.event))
-            liveMidiSources_[liveMidiCount_++] = queued.source;
+        {
+            liveMidiSources_[liveMidiCount_] = queued.source;
+            liveMidiTargets_[liveMidiCount_++] = queued.target;
+        }
     constexpr int maxChannels = 64;
     float* outPieces[maxChannels];
     const float* inPieces[maxChannels];
@@ -399,6 +409,8 @@ void AudioEngine::process(
                         continue;
                     for (size_t i = 0; i < liveMidi_.size(); ++i)
                     {
+                        if (liveMidiTargets_[i] != core::invalidId) // an audition, not a performance
+                            continue;
                         if (track.midiSource >= 0 && liveMidiSources_[i] != track.midiSource)
                             continue;
                         MidiEvent e = liveMidi_[i];
@@ -420,6 +432,7 @@ void AudioEngine::process(
         {
             context.liveMidi = &liveMidi_;
             context.liveMidiSources = liveMidiSources_.data();
+            context.liveMidiTargets = liveMidiTargets_.data();
         }
 
         if (snapshot != nullptr)

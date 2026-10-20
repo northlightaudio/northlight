@@ -795,11 +795,14 @@ onto MIDI tracks only, trim, split, duplicate, nudge, delete); double-clicking
 one opens `ui::PianoRoll` in the Piano Roll panel (F6). The roll follows
 09-piano-roll.md: a 32 px toolbar (Draw / Select / Erase, the snap grid menu,
 the quantise menu with its strength, a link-zoom toggle that follows the
-arrange view's time view, the scale slot), a 64 px keyboard (white keys
-`surface2`, black `surface0`, C labels; keys light in `accent` while their
-notes sound at the playhead or are held, and pressing one previews the note
-through the track's instrument by pushing a MIDI event into the engine under
-the source name "Piano Roll"), `laneAlt` rows on the black keys with octave
+arrange view's time view, an audition toggle, the scale slot), a 64 px keyboard
+(white keys `surface2`, black `surface0`, C labels; keys light in `accent`
+while their notes sound at the playhead or are held, and pressing one previews
+the note), with drawing, clicking or transposing a note auditioning it too
+(while the toggle is on). Auditions go through `AudioEngine::pushMidiPreview`:
+queued with live MIDI but tagged with the clip's track, they reach only that
+track's instrument whether or not it is armed or monitoring, and are never
+recorded, `laneAlt` rows on the black keys with octave
 lines, the arrange grid colours, notes in the track colour at the waveform
 alpha with a `canvas` inset and a velocity alpha from `midiNoteVelocityLow` to
 full, selection as a `textPrimary` outline over the selection tint, ghost notes

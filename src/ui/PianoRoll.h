@@ -43,9 +43,13 @@ public:
     void setPlayhead(core::SamplePosition position);
 
     std::function<void(std::vector<std::unique_ptr<core::Command>>, const std::string& name)> onEdit;
-    // A key was pressed or released on the keyboard: the owner previews the note
-    // through the track's instrument.
+    // A key was pressed or released on the keyboard, or a note is being drawn,
+    // clicked or dragged to another pitch (while auditioning is on): the owner
+    // previews the note through the track's instrument.
     std::function<void(core::Id trackId, int note, bool on)> onPreviewNote;
+    // Hearing notes while editing them (the toolbar's speaker toggle).
+    void setAudition(bool on);
+    bool audition() const noexcept { return audition_; }
     // The "link zoom to arrange" toggle: the owner feeds setTimeView while linked.
     bool zoomLinked() const noexcept { return linked_; }
     void setTimeView(double samplesPerPixel, core::SamplePosition absoluteFirstVisible);
@@ -140,6 +144,9 @@ private:
     void showQuantiseMenu();
     void refreshToolbar();
     static juce::String noteName(int note);
+    // Sounds `note` (ending any note sounding) while auditioning is on.
+    void auditionNote(int note);
+    void stopAudition();
 
     const Theme& theme_ = Theme::dark();
     const core::Project* project_ = nullptr;
@@ -163,7 +170,9 @@ private:
     // The toolbar.
     SegmentedControl tools_;
     juce::TextButton snapButton_, quantiseButton_;
-    IconButton link_;
+    IconButton link_, auditionButton_;
+    bool audition_ = true;
+    int auditioned_ = -1; // the note sounding while editing
 
     std::vector<core::Id> selection_;
     Drag drag_ = Drag::none;

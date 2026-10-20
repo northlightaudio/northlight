@@ -795,13 +795,13 @@ private:
             [this](std::vector<std::unique_ptr<core::Command>> commands, const std::string& name)
         { session_.executeGroup(name, std::move(commands)); };
 
-        pianoRoll_.onPreviewNote = [this](core::Id, int note, bool on)
+        pianoRoll_.onPreviewNote = [this](core::Id trackId, int note, bool on)
         {
             engine::MidiEvent event;
             event.type = on ? engine::MidiEvent::Type::noteOn : engine::MidiEvent::Type::noteOff;
             event.note = static_cast<std::uint8_t>(std::clamp(note, 0, 127));
             event.velocity = on ? 100 : 0;
-            session_.engine().pushMidiInput(event, "Piano Roll");
+            session_.engine().pushMidiPreview(event, trackId);
         };
         browser_.onScan = [this](bool all) { session_.scanPlugins(all); };
         browser_.onCancelScan = [this] { session_.cancelPluginScan(); };

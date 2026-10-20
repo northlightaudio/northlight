@@ -36,6 +36,9 @@ struct RenderContext
     // the first span of a block only.
     const MidiEventList* liveMidi = nullptr;
     const int* liveMidiSources = nullptr;
+    // Per event: the track an audition is for (core::invalidId for device input);
+    // may be null.
+    const core::Id* liveMidiTargets = nullptr;
 };
 
 class Renderer

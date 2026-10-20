@@ -21,7 +21,9 @@ selected track in a ghosted overlay.
 
 - **Toolbar** (left column top, 32 px): segmented control for tool (Draw, Select,
   Erase), snap chevron, quantise button with strength menu, "Link zoom to arrange"
-  toggle, a scale/key display ("C minor") for the highlight.
+  toggle, an audition toggle (speaker icon, on by default: drawing a note, clicking
+  one and dragging it to another pitch sound it through the track's instrument,
+  armed or not), a scale/key display ("C minor") for the highlight.
 - **Keys**: 64 px keyboard, white keys `surface2`, black keys `surface0`, C labels in
   `caption`; keys light `accent` when a note on that pitch plays; clicking a key
   previews the note through the track's instrument.

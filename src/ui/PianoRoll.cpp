@@ -29,7 +29,9 @@ bool isBlackKey(int note) noexcept
 }
 } // namespace
 
-PianoRoll::PianoRoll() : tools_(theme_), link_(theme_, Icon::link, "Link zoom to the arrange view")
+PianoRoll::PianoRoll()
+    : tools_(theme_), link_(theme_, Icon::link, "Link zoom to the arrange view"),
+      auditionButton_(theme_, Icon::monitor, "Hear notes while drawing and moving them")
 {
     setOpaque(true);
     setWantsKeyboardFocus(true);
@@ -68,6 +70,10 @@ PianoRoll::PianoRoll() : tools_(theme_), link_(theme_, Icon::link, "Link zoom to
         repaint();
     };
     addAndMakeVisible(link_);
+    auditionButton_.setClickingTogglesState(true);
+    auditionButton_.setToggleState(audition_, juce::dontSendNotification);
+    auditionButton_.onClick = [this] { setAudition(auditionButton_.getToggleState()); };
+    addAndMakeVisible(auditionButton_);
     refreshToolbar();
 }
 
@@ -229,6 +235,31 @@ juce::Rectangle<int> PianoRoll::noteBounds(const core::MidiNote& note) const noe
     return {x0, yForNote(note.note), x1 - x0, rowHeight};
 }
 
+void PianoRoll::setAudition(bool on)
+{
+    if (!on)
+        stopAudition();
+    audition_ = on;
+    auditionButton_.setToggleState(on, juce::dontSendNotification);
+}
+
+void PianoRoll::auditionNote(int note)
+{
+    if (!audition_ || note == auditioned_)
+        return;
+    stopAudition();
+    auditioned_ = std::clamp(note, 0, 127);
+    if (onPreviewNote)
+        onPreviewNote(trackId_, auditioned_, true);
+}
+
+void PianoRoll::stopAudition()
+{
+    if (auditioned_ >= 0 && onPreviewNote)
+        onPreviewNote(trackId_, auditioned_, false);
+    auditioned_ = -1;
+}
+
 core::MidiNote PianoRoll::previewOf(const core::MidiNote& note) const noexcept
 {
     core::MidiNote p = note;
@@ -362,6 +393,8 @@ void PianoRoll::resized()
     quantiseButton_.setBounds(bar.removeFromLeft(96));
     bar.removeFromLeft(theme_.spacing.sm);
     link_.setBounds(bar.removeFromLeft(theme_.sizes.controlCompact));
+    bar.removeFromLeft(theme_.spacing.xs);
+    auditionButton_.setBounds(bar.removeFromLeft(theme_.sizes.controlCompact));
     horizontal_.setBounds(keyboardWidth,
                           getHeight() - scrollbarSize_,
                           std::max(0, getWidth() - keyboardWidth - scrollbarSize_),
@@ -822,6 +855,7 @@ void PianoRoll::mouseDown(const juce::MouseEvent& e)
         drawNote_.start = snapped(sampleForX(e.x));
         drawNote_.length = lastLength_ > 0 ? lastLength_ : gridSamples();
         drag_ = Drag::draw;
+        auditionNote(drawNote_.note);
         repaint();
         return;
     }
@@ -854,6 +888,8 @@ void PianoRoll::mouseDown(const juce::MouseEvent& e)
     moveDelta_ = 0;
     pitchDelta_ = 0;
     lengthPreview_ = note->length;
+    if (drag_ == Drag::move)
+        auditionNote(note->note);
     repaint();
 }
 
@@ -921,6 +957,7 @@ void PianoRoll::mouseDrag(const juce::MouseEvent& e)
                 else
                     moveDelta_ = 0;
             }
+            auditionNote(dragOriginal_.note + pitchDelta_); // only sounds when the pitch changes
             break;
         }
         case Drag::resize:
@@ -972,6 +1009,7 @@ void PianoRoll::mouseUp(const juce::MouseEvent& e)
 {
     const auto drag = drag_;
     drag_ = Drag::none;
+    stopAudition();
     switch (drag)
     {
         case Drag::pan:

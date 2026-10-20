@@ -373,12 +373,21 @@ void Renderer::scheduleMidi(const TrackNode& track,
         }
     }
 
-    // Live input while the track monitors, from its chosen device (or any).
-    if (context.liveMidi != nullptr && monitorsMidi(track, context.playing, context.recording))
+    // Live input while the track monitors, from its chosen device (or any), and
+    // auditions meant for this track whatever it monitors.
+    const bool monitoring = monitorsMidi(track, context.playing, context.recording);
+    if (context.liveMidi != nullptr)
         for (size_t i = 0; i < context.liveMidi->size(); ++i)
         {
-            if (track.midiSource >= 0 && context.liveMidiSources != nullptr &&
-                context.liveMidiSources[i] != track.midiSource)
+            const core::Id target =
+                context.liveMidiTargets != nullptr ? context.liveMidiTargets[i] : core::invalidId;
+            if (target != core::invalidId)
+            {
+                if (target != track.id)
+                    continue;
+            }
+            else if (!monitoring || (track.midiSource >= 0 && context.liveMidiSources != nullptr &&
+                                     context.liveMidiSources[i] != track.midiSource))
                 continue;
             MidiEvent e = (*context.liveMidi)[i];
             e.sampleOffset = std::clamp(e.sampleOffset, 0, numSamples - 1);
