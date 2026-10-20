@@ -9,6 +9,8 @@ juce_add_gui_app(aural
 # The project session and user settings as a library so the JUCE tests can drive
 # a session without the window.
 add_library(aural_app_session STATIC
+    CrashReports.h
+    CrashReports.cpp
     UserSettings.h
     UserSettings.cpp
     ProjectSession.h

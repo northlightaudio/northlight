@@ -337,7 +337,8 @@ Status 2026-10-20: recent files existed already; autosave with crash restore is
 built (architecture.md, Session and UI). Automation lanes with read, touch, latch
 and write are built for gain, pan, built-in and strip parameters and hosted
 plugin parameters (VST3 and CLAP, including moves made in a plugin's own window). Project templates and media management
-(gather into the project folder, remove unused) are built.
+(gather into the project folder, remove unused) are built, and a crash leaves
+a local minidump that the next launch points to (sending reports is not built).
 
 ### Phase 10 — Beta hardening (ongoing)
 

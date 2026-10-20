@@ -663,7 +663,8 @@ void PreferencesView::buildPages()
         auto page = std::make_unique<Page>(theme_, "Diagnostics");
         page->add("Crash reports",
                   toggle("Send crash reports (opt in)", Keys::crashReports, false),
-                  "Stored; reporting itself comes with the release work.");
+                  "A crash always leaves a report in the settings folder's Crashes folder, on this "
+                  "computer only; sending them comes with the release work.");
         const auto folder = loadSetting
                                 ? juce::File(juce::String::fromUTF8(loadSetting("__settingsFolder").c_str()))
                                 : juce::File();

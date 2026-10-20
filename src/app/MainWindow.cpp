@@ -1,5 +1,6 @@
 #include "MainWindow.h"
 
+#include "CrashReports.h"
 #include "ProjectSession.h"
 #include "UserSettings.h"
 #include "audio/AudioDeviceLayer.h"
@@ -2290,6 +2291,24 @@ void MainWindow::offerRecovery()
     if (content == nullptr)
         return;
     juce::Component::SafePointer<MainWindow> safe(this);
+    // A crash report from last time: say so, once.
+    const auto crashes = settings_.file().getSiblingFile("Crashes");
+    const auto reports = crash::pending(crashes.getFullPathName().toWideCharPointer());
+    if (!reports.empty())
+    {
+        const auto report = juce::File(juce::String(reports.front().wstring().c_str()));
+        content->toast(
+            ui::ToastStack::Kind::warning,
+            "Aural closed unexpectedly last time. A crash report was saved on this computer.",
+            "Show",
+            [report, crashes]
+            {
+                crash::acknowledge(crashes.getFullPathName().toWideCharPointer());
+                crashes.getChildFile("Seen").getChildFile(report.getFileName()).revealToUser();
+            },
+            "Dismiss",
+            [crashes] { crash::acknowledge(crashes.getFullPathName().toWideCharPointer()); });
+    }
     // A project a crashed session left unsaved: the newest is offered (older
     // ones stay for the next launch).
     if (const auto leftovers = session_.leftoverAutosaves(); !leftovers.empty())

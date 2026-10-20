@@ -159,7 +159,9 @@ the status line shows the progress and the integrated loudness of the result.
 Projects are `.aural` files: **New**, **Open...**, **Save** (Ctrl+N / Ctrl+O / Ctrl+S,
 Ctrl+Shift+S to save as). Unsaved changes are autosaved every two minutes (set in
 Preferences, General); if Aural closes without saving, the next launch offers to
-restore them. **Save as template...** keeps the tracks, buses, routing, inserts and
+restore them. If Aural crashes, a crash report (a minidump) is saved in the
+settings folder's `Crashes` folder and the next launch offers to show it.
+**Save as template...** keeps the tracks, buses, routing, inserts and
 channel strips without clips; **New from template** starts a project from one.
 **Media ▸ Gather media into the project folder** copies media used from elsewhere
 next to the project (undoable), and **Remove unused media...** moves files in the

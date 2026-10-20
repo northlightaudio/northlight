@@ -913,6 +913,17 @@ mapped to wall time and delayed by the audio output latency, has come, so the
 external instrument sounds with the audio. Note-offs on stop, locate and loop
 come through the same events. A full queue drops events rather than block.
 
+### Crash reports
+
+`aural::crash` (src/app/CrashReports, no JUCE) installs an unhandled-exception
+filter at startup. A crash writes a minidump (thread info, indirectly referenced
+memory, unloaded modules) and a note with the version and exception code into
+`<settings folder>/Crashes`, from buffers prepared at install (the heap may be
+corrupt by then), and leaves the exception to Windows Error Reporting too. The
+next launch says so with a toast (Show reveals the dump; either button moves the
+reports to `Crashes/Seen`). Nothing is sent anywhere: the Diagnostics
+preference to send reports waits for the release work.
+
 ### Metronome, count-in, loop and punch
 
 `engine::ClickGenerator` adds a 30 ms decaying sine burst on every beat (1.5 kHz on
