@@ -269,7 +269,7 @@ private:
                 std::clamp(static_cast<int>(std::lround(p[firstWaveStep + s])), 0, 15);
         const int voiceLimit = mono() ? 1 : polyVoices;
 
-        size_t next = 0;
+        size_t next = firstChunkEvent();
         const engine::MidiEventList* events = midi_;
         for (int i = 0; i < numSamples; ++i)
         {
@@ -399,7 +399,7 @@ private:
             left[i] = l * outGain;
             right[i] = r * outGain;
         }
-        while (events != nullptr && next < events->size())
+        while (events != nullptr && next < events->size() && inChunk((*events)[next], numSamples))
             handle((*events)[next++]);
         int active = 0;
         for (const auto& v : voices_)

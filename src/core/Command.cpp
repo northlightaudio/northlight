@@ -27,6 +27,11 @@ public:
     }
     void add(std::unique_ptr<Command> c) { commands_.push_back(std::move(c)); }
     bool empty() const noexcept { return commands_.empty(); }
+    bool isCosmetic() const noexcept override
+    {
+        return !commands_.empty() &&
+               std::all_of(commands_.begin(), commands_.end(), [](const auto& c) { return c->isCosmetic(); });
+    }
     void touchedParameters(std::vector<ParameterTouch>& out) const override
     {
         for (const auto& c : commands_)
@@ -90,18 +95,23 @@ void UndoStack::clear()
     undo_.clear();
     redo_.clear();
     openGroup_.reset();
+    groupDepth_ = 0;
 }
 
 void UndoStack::beginGroup(std::string name)
 {
     if (openGroup_ == nullptr)
         openGroup_ = std::make_unique<Group>(std::move(name));
+    ++groupDepth_;
 }
 
 void UndoStack::endGroup()
 {
     if (openGroup_ == nullptr)
         return;
+    if (--groupDepth_ > 0)
+        return; // an inner group: the outer one is still open
+    groupDepth_ = 0;
     auto group = std::move(openGroup_);
     if (!group->empty())
     {
@@ -260,6 +270,54 @@ void SetMidiTarget::revert(Project& p)
 
 RemoveTrack::RemoveTrack(Id trackId) : trackId_(trackId) {}
 
+void DetachedReferences::detach(Project& p, Id removed)
+{
+    midiTracks.clear();
+    auxTracks.clear();
+    sidechains.clear();
+    for (auto& t : p.tracks)
+    {
+        if (t.isMidi() && t.midiTarget == removed)
+        {
+            midiTracks.push_back(t.id);
+            t.midiTarget = invalidId;
+        }
+        if (t.isAux() && t.auxTrack == removed)
+        {
+            auxTracks.push_back(t.id);
+            t.auxTrack = invalidId;
+        }
+    }
+    const auto keys = [&](Channel& c)
+    {
+        for (auto* list : {&c.inserts, &c.strip})
+            for (auto& insert : *list)
+                if (insert.sidechain == removed)
+                {
+                    sidechains.emplace_back(c.id, insert.id);
+                    insert.sidechain = invalidId;
+                }
+    };
+    for (auto& t : p.tracks)
+        keys(t);
+    for (auto& b : p.buses)
+        keys(b);
+}
+
+void DetachedReferences::restore(Project& p, Id removed) const
+{
+    for (const Id id : midiTracks)
+        if (auto* t = p.findTrack(id))
+            t->midiTarget = removed;
+    for (const Id id : auxTracks)
+        if (auto* t = p.findTrack(id))
+            t->auxTrack = removed;
+    for (const auto& [channelId, insertId] : sidechains)
+        if (auto* c = p.findChannel(channelId))
+            if (auto* insert = c->findInsert(insertId))
+                insert->sidechain = removed;
+}
+
 void RemoveTrack::apply(Project& p)
 {
     index_ = p.trackIndex(trackId_);
@@ -267,12 +325,14 @@ void RemoveTrack::apply(Project& p)
         throw std::logic_error("command references a track that does not exist");
     removed_ = p.tracks[static_cast<size_t>(index_)];
     p.tracks.erase(p.tracks.begin() + index_);
+    detached_.detach(p, trackId_);
 }
 
 void RemoveTrack::revert(Project& p)
 {
     const int at = std::clamp(index_, 0, static_cast<int>(p.tracks.size()));
     p.tracks.insert(p.tracks.begin() + at, removed_);
+    detached_.restore(p, trackId_);
 }
 
 MoveTrack::MoveTrack(Id trackId, int newIndex) : trackId_(trackId), newIndex_(newIndex) {}
@@ -361,12 +421,14 @@ void RemoveBus::apply(Project& p)
         if (b.id != busId_)
             detach(b);
     p.buses.erase(p.buses.begin() + index_);
+    detached_.detach(p, busId_);
 }
 
 void RemoveBus::revert(Project& p)
 {
     const int at = std::clamp(index_, 0, static_cast<int>(p.buses.size()));
     p.buses.insert(p.buses.begin() + at, removed_);
+    detached_.restore(p, busId_);
     for (const auto& [channelId, output] : detachedOutputs_)
         if (auto* c = p.findChannel(channelId))
             c->outputBus = output;

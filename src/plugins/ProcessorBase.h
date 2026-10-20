@@ -82,9 +82,11 @@ public:
         for (int done = 0; done < numSamples; done += capacity)
         {
             chunkStart_ = done;
+            lastChunk_ = done + capacity >= numSamples;
             processChunk(left + done, right + done, std::min(capacity, numSamples - done));
         }
         chunkStart_ = 0;
+        lastChunk_ = true;
     }
 
     // MIDI goes through the same bypass handling as the key input: parked for
@@ -143,6 +145,23 @@ protected:
     const float* keyRight_ = nullptr;
     const engine::MidiEventList* midi_ = nullptr;
     int chunkStart_ = 0; // offset of the current chunk within the block
+    bool lastChunk_ = true;
+
+    // An instrument walks the events of the current chunk only: from
+    // firstChunkEvent() while inChunk() holds (the last chunk takes any
+    // stragglers past the block's end).
+    size_t firstChunkEvent() const noexcept
+    {
+        size_t i = 0;
+        if (midi_ != nullptr)
+            while (i < midi_->size() && (*midi_)[i].sampleOffset < chunkStart_)
+                ++i;
+        return i;
+    }
+    bool inChunk(const engine::MidiEvent& e, int chunkSamples) const noexcept
+    {
+        return lastChunk_ || e.sampleOffset < chunkStart_ + chunkSamples;
+    }
 
 private:
     std::string typeName_;

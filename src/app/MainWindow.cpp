@@ -1585,8 +1585,9 @@ private:
                 ++count;
         track.name = "Audio " + std::to_string(count + 1);
         auto command = std::make_unique<core::AddTrack>(track);
-        const auto id = command->trackId();
+        const auto* added = command.get(); // the undo history keeps it alive
         session_.execute(std::move(command));
+        const auto id = added->trackId(); // allocated on apply
         tracks_.setSelectedTrack(id);
         selectionChanged(id);
     }

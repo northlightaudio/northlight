@@ -190,7 +190,7 @@ TEST_CASE("Buses, routing and sends are added, changed and undone", "[core][comm
     stack.execute(p, std::make_unique<SetColour>(track, 0xff336699u));
     stack.execute(p, std::make_unique<SetChannelHeight>(track, 120));
     stack.execute(p, std::make_unique<SetChannelHeight>(bus, 40)); // FX tracks have rows too
-    stack.execute(p, std::make_unique<SetTrackGain>(bus, 0.7f)); // fader commands work on buses
+    stack.execute(p, std::make_unique<SetTrackGain>(bus, 0.7f));   // fader commands work on buses
     stack.execute(p, std::make_unique<SetMasterGain>(0.9f));
     CHECK(p.tracks[0].outputBus == bus);
     REQUIRE(p.tracks[0].sends.size() == 1);
@@ -799,4 +799,100 @@ TEST_CASE("An instrument track is a MIDI track over its instrument channel, adde
     CHECK(stack.redo(p));
     REQUIRE(p.tracks.size() == 2);
     CHECK(p.tracks[0].midiTarget == p.tracks[1].id); // the same ids come back
+}
+
+TEST_CASE("Undo groups nest: an inner group joins the open one and only the outer end commits",
+          "[core][undo]")
+{
+    Project p;
+    UndoStack stack;
+    stack.beginGroup("Fader"); // a gesture
+    stack.execute(p, std::make_unique<AddBus>(Bus{}));
+    stack.beginGroup("Record"); // e.g. a take finishing mid-gesture
+    stack.execute(p, std::make_unique<AddBus>(Bus{}));
+    stack.endGroup();
+    CHECK(stack.groupOpen()); // the gesture is still open
+    CHECK_FALSE(stack.canUndo());
+    stack.execute(p, std::make_unique<AddBus>(Bus{}));
+    stack.endGroup();
+    CHECK_FALSE(stack.groupOpen());
+    CHECK(p.buses.size() == 3);
+    CHECK(stack.undoName() == "Fader");
+    CHECK(stack.undo(p));
+    CHECK(p.buses.empty()); // one step
+    CHECK_FALSE(stack.canUndo());
+}
+
+TEST_CASE("Removing a channel detaches what pointed at it, and undo restores every reference",
+          "[core][undo][midi]")
+{
+    Project p;
+    UndoStack stack;
+    Track channel;
+    channel.kind = TrackKind::instrument;
+    channel.instrument.type = "aural.pulsar";
+    Track midi;
+    midi.kind = TrackKind::midi;
+    stack.execute(p, std::make_unique<AddInstrumentTrack>(channel, midi));
+    const Id midiId = p.tracks[0].id, channelId = p.tracks[1].id;
+    const Id instrumentId = p.tracks[1].instrument.id;
+    Track aux;
+    aux.kind = TrackKind::aux;
+    aux.auxTrack = channelId;
+    aux.auxInsert = instrumentId;
+    aux.auxOutput = 1;
+    stack.execute(p, std::make_unique<AddTrack>(aux));
+    const Id auxId = p.tracks.back().id;
+    Track audio;
+    Insert comp;
+    comp.type = "aural.compressor";
+    comp.sidechain = channelId; // keyed from the drums
+    audio.inserts.push_back(comp);
+    stack.execute(p, std::make_unique<AddTrack>(audio));
+    const Id audioId = p.tracks.back().id;
+    const Id compId = p.tracks.back().inserts[0].id;
+    Bus bus;
+    stack.execute(p, std::make_unique<AddBus>(bus));
+    const Id busId = p.buses[0].id;
+    Insert busKeyed;
+    busKeyed.type = "aural.compressor";
+    busKeyed.sidechain = busId;
+    stack.execute(p, std::make_unique<AddBus>(Bus{}));
+    const Id otherBus = p.buses[1].id;
+    stack.execute(p, std::make_unique<AddInsert>(otherBus, busKeyed));
+    const Id busKeyedId = p.buses[1].inserts[0].id;
+
+    stack.execute(p, std::make_unique<RemoveTrack>(channelId));
+    CHECK(p.findTrack(midiId)->midiTarget == invalidId);
+    CHECK(p.findTrack(auxId)->auxTrack == invalidId);
+    CHECK(p.findTrack(audioId)->findInsert(compId)->sidechain == invalidId);
+    stack.undo(p);
+    CHECK(p.findTrack(midiId)->midiTarget == channelId);
+    CHECK(p.findTrack(auxId)->auxTrack == channelId);
+    CHECK(p.findTrack(audioId)->findInsert(compId)->sidechain == channelId);
+
+    stack.execute(p, std::make_unique<RemoveBus>(busId));
+    CHECK(p.findBus(otherBus)->findInsert(busKeyedId)->sidechain == invalidId);
+    stack.undo(p);
+    CHECK(p.findBus(otherBus)->findInsert(busKeyedId)->sidechain == busId);
+}
+
+TEST_CASE("A row height is cosmetic, alone or grouped; other edits are not", "[core][undo]")
+{
+    Project p;
+    UndoStack stack;
+    stack.execute(p, std::make_unique<AddTrack>(Track{}));
+    const Id id = p.tracks[0].id;
+    CHECK_FALSE(stack.undoTop()->isCosmetic());
+    stack.execute(p, std::make_unique<SetChannelHeight>(id, 90));
+    CHECK(stack.undoTop()->isCosmetic());
+    stack.beginGroup("Resize");
+    stack.execute(p, std::make_unique<SetChannelHeight>(id, 100));
+    stack.endGroup();
+    CHECK(stack.undoTop()->isCosmetic());
+    stack.beginGroup("Mixed");
+    stack.execute(p, std::make_unique<SetChannelHeight>(id, 110));
+    stack.execute(p, std::make_unique<SetTrackGain>(id, 0.5f));
+    stack.endGroup();
+    CHECK_FALSE(stack.undoTop()->isCosmetic());
 }

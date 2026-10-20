@@ -25,6 +25,10 @@ public:
     // recompile (gains, pans, insert parameters and bypass): the session pushes
     // the new values instead of publishing a new snapshot.
     virtual bool isLive() const noexcept { return false; }
+    // A cosmetic command changes only what the views show (a row height): the
+    // engine reads nothing it touches, so the session neither recompiles nor
+    // pushes values.
+    virtual bool isCosmetic() const noexcept { return false; }
     // The insert parameters this command sets (or restores on undo), so the
     // session can push exactly those to processors that own their parameters.
     struct ParameterTouch
@@ -58,14 +62,18 @@ public:
     void clear();
 
     // Groups the next `execute` calls into one undoable step until endGroup().
+    // Groups nest: an inner begin/end pair joins the open group (keeping its
+    // name) and only the outermost endGroup() commits it.
     void beginGroup(std::string name);
     void endGroup();
+    bool groupOpen() const noexcept { return openGroup_ != nullptr; }
 
 private:
     class Group;
     std::vector<std::unique_ptr<Command>> undo_;
     std::vector<std::unique_ptr<Command>> redo_;
     std::unique_ptr<Group> openGroup_;
+    int groupDepth_ = 0;
 };
 
 // ----- concrete commands ------------------------------------------------------------------
@@ -125,6 +133,18 @@ private:
     int previousChannel_ = 1;
 };
 
+// What a removed channel leaves pointing at it, detached on removal and put
+// back on undo: MIDI tracks aimed at it, output tracks it fed and key inputs
+// (sidechains) it supplied.
+struct DetachedReferences
+{
+    std::vector<Id> midiTracks;                // their midiTarget was the channel
+    std::vector<Id> auxTracks;                 // their auxTrack was the channel
+    std::vector<std::pair<Id, Id>> sidechains; // channel id, insert id
+    void detach(Project& p, Id removed);
+    void restore(Project& p, Id removed) const;
+};
+
 class RemoveTrack final : public Command
 {
 public:
@@ -137,6 +157,7 @@ private:
     Id trackId_;
     Track removed_;
     int index_ = -1;
+    DetachedReferences detached_;
 };
 
 // Moves a track to another position in the list (the arrange view's reorder).
@@ -190,6 +211,7 @@ private:
         size_t index; // where it sat in the channel's sends
     };
     std::vector<DetachedSend> detachedSends_;
+    DetachedReferences detached_; // key inputs it supplied
 };
 
 // ----- fader groups ----------------------------------------------------------------------------
@@ -579,7 +601,7 @@ private:
 class SetChannelHeight final : public Command
 {
 public:
-    bool isLive() const noexcept override { return true; }
+    bool isCosmetic() const noexcept override { return true; }
     SetChannelHeight(Id channelId, int height);
     std::string name() const override { return "Resize track"; }
     void apply(Project&) override;

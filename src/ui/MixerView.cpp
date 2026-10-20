@@ -841,17 +841,17 @@ public:
             { owner_.onCommand(std::make_unique<core::SetSend>(id_, busId, value, pre)); };
             sends_[i]->onTogglePre = [this, busId, level, pre]
             { owner_.onCommand(std::make_unique<core::SetSend>(id_, busId, level, !pre)); };
-            sends_[i]->onMenu = [this, busId]
+            sends_[i]->onMenu = [this, busId, row = sends_[i].get()]
             {
                 juce::PopupMenu menu;
                 menu.addItem(1, "Remove send");
                 juce::Component::SafePointer<Strip> safe(this);
-                menu.showMenuAsync(juce::PopupMenu::Options(),
-                                   [safe, busId](int choice)
+                menu.showMenuAsync(juce::PopupMenu::Options().withTargetComponent(row),
+                                   [safe, id = id_, busId](int choice)
                                    {
                                        if (safe != nullptr && choice == 1)
                                            safe->owner_.onCommand(
-                                               std::make_unique<core::RemoveSend>(safe->id_, busId));
+                                               std::make_unique<core::RemoveSend>(id, busId));
                                    });
             };
             sends_[i]->onGestureBegin = [this]
@@ -1107,23 +1107,26 @@ private:
             return;
         const auto& project = *owner_.project_;
         juce::PopupMenu menu;
+        // The channel this menu is for, fixed now: a rebuild while it is open may
+        // give this strip another channel.
+        const core::Id id = id_;
         std::vector<std::function<void()>> actions;
         int item = 1;
         juce::PopupMenu groups;
         groups.addItem(item++, "None", true, group_ == core::invalidId);
         actions.push_back(
-            [this] { owner_.onCommand(std::make_unique<core::SetChannelGroup>(id_, core::invalidId)); });
+            [this, id] { owner_.onCommand(std::make_unique<core::SetChannelGroup>(id, core::invalidId)); });
         for (const auto& g : project.groups)
         {
             groups.addItem(item++, g.name, true, g.id == group_);
             const core::Id groupId = g.id;
-            actions.push_back([this, groupId]
-                              { owner_.onCommand(std::make_unique<core::SetChannelGroup>(id_, groupId)); });
+            actions.push_back([this, id, groupId]
+                              { owner_.onCommand(std::make_unique<core::SetChannelGroup>(id, groupId)); });
         }
         groups.addSeparator();
         groups.addItem(item++, "New group");
         actions.push_back(
-            [this]
+            [this, id]
             {
                 if (owner_.project_ == nullptr)
                     return;
@@ -1131,7 +1134,7 @@ private:
                 core::Group g;
                 g.name = "Group " + std::to_string(n + 1);
                 g.colour = groupColours[n % std::size(groupColours)];
-                owner_.onCommand(std::make_unique<core::AddGroup>(g, std::vector<core::Id>{id_}));
+                owner_.onCommand(std::make_unique<core::AddGroup>(g, std::vector<core::Id>{id}));
             });
         if (group_ != core::invalidId)
         {
@@ -1147,24 +1150,23 @@ private:
         {
             colours.addItem(item++, palette[i].name);
             const auto argb = palette[i].value.getARGB();
-            actions.push_back([this, argb]
-                              { owner_.onCommand(std::make_unique<core::SetColour>(id_, argb)); });
+            actions.push_back([this, id, argb]
+                              { owner_.onCommand(std::make_unique<core::SetColour>(id, argb)); });
         }
         colours.addSeparator();
         colours.addItem(item++, "Default");
-        actions.push_back([this] { owner_.onCommand(std::make_unique<core::SetColour>(id_, 0u)); });
+        actions.push_back([this, id] { owner_.onCommand(std::make_unique<core::SetColour>(id, 0u)); });
         menu.addSubMenu("Colour", colours);
         if (isBus_)
         {
             menu.addSeparator();
             menu.addItem(item++, "Remove bus");
             actions.push_back(
-                [this]
+                [this, id]
                 {
                     // The removal rebuilds the strips, which may delete this one:
                     // run it once the menu's callback has unwound.
                     juce::Component::SafePointer<MixerView> owner(&owner_);
-                    const auto id = id_;
                     juce::MessageManager::callAsync(
                         [owner, id]
                         {

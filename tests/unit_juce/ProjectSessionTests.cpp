@@ -402,3 +402,17 @@ TEST_CASE_METHOD(SessionFixture,
     CHECK(session->countPartialRecordings() == 0);
     CHECK(files("*.recording.json").isEmpty());
 }
+
+TEST_CASE_METHOD(SessionFixture,
+                 "A stale edit (its track already gone) is dropped instead of ending the app",
+                 "[app][session]")
+{
+    const auto id = session->addMidiTrackPlaying(core::invalidId);
+    session->execute(std::make_unique<core::RemoveTrack>(id));
+    const auto undoName = session->undoName();
+    CHECK_NOTHROW(session->execute(std::make_unique<core::RemoveTrack>(id))); // a menu opened earlier
+    CHECK(session->undoName() == undoName); // nothing was added to the history
+    std::vector<std::unique_ptr<core::Command>> group;
+    group.push_back(std::make_unique<core::SetTrackGain>(id, 0.5f));
+    CHECK_NOTHROW(session->executeGroup("Stale", std::move(group)));
+}

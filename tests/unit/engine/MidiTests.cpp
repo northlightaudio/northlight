@@ -760,3 +760,25 @@ TEST_CASE("Pulsar routes a pad to its own output, which an output track carries"
     }
     CHECK(without < 0.01f);
 }
+
+TEST_CASE("A block longer than prepare() announced plays each note at its own offset, once", "[engine][midi]")
+{
+    // The synths take an oversized block in pieces; each piece must play only
+    // its own events (not the whole block's at its start, and not again later).
+    for (const std::string type : {"aural.aurora", "aural.nebula", "aural.starbit", "aural.pulsar"})
+    {
+        INFO(type);
+        auto synth = plugins::BuiltInFactory().create(type);
+        REQUIRE(synth != nullptr);
+        synth->prepare(48000.0, 64);
+        engine::MidiEventList events;
+        events.push({200, engine::MidiEvent::Type::noteOn, 0, 36, 120});
+        std::vector<float> l(256), r(256);
+        synth->processMidi(events, l.data(), r.data(), 256);
+        float before = 0.0f, after = 0.0f;
+        for (size_t i = 0; i < l.size(); ++i)
+            (i < 200 ? before : after) = std::max(i < 200 ? before : after, std::abs(l[i]) + std::abs(r[i]));
+        CHECK(before == 0.0f); // nothing before the note
+        CHECK(after > 0.0f);
+    }
+}

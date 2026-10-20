@@ -163,7 +163,9 @@ void HostedPlugin::prepare(double sampleRate, int maxBlockSize)
     instance_->setNonRealtime(false);
     instance_->setRateAndBufferSizeDetails(sampleRate, maxBlockSize);
     instance_->prepareToPlay(sampleRate, maxBlockSize);
-    midi_.ensureSize(1024);
+    // JUCE stores each event as a 4-byte time, a 2-byte size and its bytes: room
+    // for a full event list, so adding never grows the buffer in the callback.
+    midi_.ensureSize(maxMidiEvents * 16);
     keyLeft_.assign(static_cast<size_t>(maxBlockSize), 0.0f);
     keyRight_.assign(static_cast<size_t>(maxBlockSize), 0.0f);
     mono_.assign(static_cast<size_t>(maxBlockSize), 0.0f);
@@ -203,9 +205,12 @@ void HostedPlugin::processMidi(const engine::MidiEventList& events,
 void HostedPlugin::processBuffer(juce::AudioBuffer<float>& buffer, bool bypassed) noexcept
 {
     midi_.clear();
+    int added = 0;
     if (pendingMidi_ != nullptr)
         for (const auto& e : *pendingMidi_)
         {
+            if (++added > maxMidiEvents)
+                break; // what the buffer was sized for
             // Raw bytes, so no MidiMessage is built (the buffer was sized in prepare).
             std::uint8_t bytes[3] = {0, e.note, e.velocity};
             switch (e.type)

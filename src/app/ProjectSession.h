@@ -264,6 +264,9 @@ private:
     void changeListenerCallback(juce::ChangeBroadcaster*) override;
     void timerCallback() override;
     void publish();
+    // Applies through the undo stack; false (and nothing changed) when the command
+    // refers to something that is gone.
+    bool applyChecked(std::unique_ptr<core::Command> command);
     void matchDeviceSampleRate();
     void finishRecording(engine::AudioEngine::FinishedRecording finished);
     void saveRegistry();

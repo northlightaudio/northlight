@@ -341,7 +341,7 @@ private:
         const int used = maxPartials + (partialCount + 1) / 2;
         const auto& table = table_;
 
-        size_t next = 0;
+        size_t next = firstChunkEvent();
         const engine::MidiEventList* events = midi_;
         for (int i = 0; i < numSamples; ++i)
         {
@@ -443,7 +443,7 @@ private:
             left[i] = (toneL_ * (1.0f - 0.5f * mix) + wetL * mix * 1.6f) * outGain;
             right[i] = (toneR_ * (1.0f - 0.5f * mix) + wetR * mix * 1.6f) * outGain;
         }
-        while (events != nullptr && next < events->size())
+        while (events != nullptr && next < events->size() && inChunk((*events)[next], numSamples))
             handle((*events)[next++]);
         int active = 0;
         for (const auto& v : voices_)

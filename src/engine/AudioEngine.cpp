@@ -197,7 +197,10 @@ AudioEngine::ClockSync AudioEngine::clockSync() const noexcept
             continue;
         sync.clock = syncClock_.load(std::memory_order_relaxed);
         sync.steadyNanos = syncNanos_.load(std::memory_order_relaxed);
-        if (syncSequence_.load(std::memory_order_acquire) == before)
+        // The seqlock's read side: the data loads complete before the second
+        // sequence load (a plain acquire load does not order them on ARM).
+        std::atomic_thread_fence(std::memory_order_acquire);
+        if (syncSequence_.load(std::memory_order_relaxed) == before)
             break;
     }
     return sync;
@@ -397,7 +400,9 @@ void AudioEngine::process(
                                std::chrono::steady_clock::now().time_since_epoch())
                                .count();
         const auto sequence = syncSequence_.load(std::memory_order_relaxed);
-        syncSequence_.store(sequence + 1, std::memory_order_release);
+        syncSequence_.store(sequence + 1, std::memory_order_relaxed);
+        // The write side: the odd sequence is visible before any data store.
+        std::atomic_thread_fence(std::memory_order_release);
         syncClock_.store(sampleClock_, std::memory_order_relaxed);
         syncNanos_.store(nanos, std::memory_order_relaxed);
         syncSequence_.store(sequence + 2, std::memory_order_release);

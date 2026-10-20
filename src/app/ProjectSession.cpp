@@ -54,8 +54,10 @@ ProjectSession::~ProjectSession()
     removeOwnAutosave(); // a normal close: the user saved or chose not to
     scanner_.cancel();
     audio_.removeChangeListener(this);
-    // The device must not call into a dead engine: detach, then let the layer stop
-    // the device (it shuts down after this object in the application).
+    // Stop new callbacks reaching the engine. This does not wait for one already
+    // inside engine->process: that is safe only because the application shuts the
+    // device down before it destroys the session (Main.cpp). Any other teardown
+    // must stop the device first.
     audio_.callback().setEngine(nullptr);
     audio_.midi().setEngine(nullptr);
 }
@@ -101,17 +103,22 @@ void ProjectSession::execute(std::unique_ptr<core::Command> command)
     // not what the last save held.
     if (dynamic_cast<core::RemoveInsert*>(command.get()) != nullptr ||
         dynamic_cast<core::RemoveTrack*>(command.get()) != nullptr ||
-        dynamic_cast<core::RemoveBus*>(command.get()) != nullptr)
+        dynamic_cast<core::RemoveBus*>(command.get()) != nullptr ||
+        dynamic_cast<core::SetInstrument*>(command.get()) != nullptr) // replacing or removing one
         captureInsertStates();
     const bool live = command->isLive();
+    const bool cosmetic = command->isCosmetic();
     const bool parametersOnly = dynamic_cast<core::SetInsertParameter*>(command.get()) != nullptr;
     std::vector<core::Command::ParameterTouch> touches;
     command->touchedParameters(touches);
     mirrorOwnedParameters(touches);
-    undo_.execute(project_, std::move(command));
+    if (!applyChecked(std::move(command)))
+        return;
     modified_ = true;
     edited();
-    if (live)
+    if (cosmetic)
+        notify(Change::values); // the views redraw; the engine is untouched
+    else if (live)
     {
         // A gain, pan or parameter: the running graph takes the new value
         // (ramped) without a recompile.
@@ -148,6 +155,8 @@ void ProjectSession::executeGroup(const std::string& name,
 {
     if (commands.empty())
         return;
+    const bool cosmetic = std::all_of(
+        commands.begin(), commands.end(), [](const auto& c) { return c != nullptr && c->isCosmetic(); });
     undo_.beginGroup(name);
     std::vector<core::Command::ParameterTouch> touches;
     for (auto& command : commands)
@@ -157,11 +166,17 @@ void ProjectSession::executeGroup(const std::string& name,
         command->touchedParameters(own);
         mirrorOwnedParameters(own);
         touches.insert(touches.end(), own.begin(), own.end());
-        undo_.execute(project_, std::move(command));
+        if (!applyChecked(std::move(command)))
+            break; // the rest of the group was built on what this one would have done
     }
     undo_.endGroup();
     modified_ = true;
     edited();
+    if (cosmetic)
+    {
+        notify(Change::values);
+        return;
+    }
     publish();
     engine_.pushInsertParameters(project_, touches);
 }
@@ -195,12 +210,34 @@ std::string ProjectSession::normaliseClip(core::Id trackId, core::Id clipId, flo
     return {};
 }
 
+bool ProjectSession::applyChecked(std::unique_ptr<core::Command> command)
+{
+    // A command can arrive stale: a menu opened on a track that an undo has
+    // since removed. Commands check what they reference and throw; that drops
+    // the command instead of ending the app.
+    try
+    {
+        undo_.execute(project_, std::move(command));
+        return true;
+    }
+    catch (const std::logic_error& e)
+    {
+        juce::Logger::writeToLog(juce::String("Dropped a stale edit: ") + e.what());
+        return false;
+    }
+}
+
 void ProjectSession::undo()
 {
     if (undo_.undo(project_))
     {
         modified_ = true;
         edited();
+        if (const auto* undone = undo_.redoTop(); undone != nullptr && undone->isCosmetic())
+        {
+            notify(Change::values);
+            return;
+        }
         publish();
         // Parameters the undone command restored reach plugins that own theirs.
         std::vector<core::Command::ParameterTouch> touches;
@@ -216,6 +253,11 @@ void ProjectSession::redo()
     {
         modified_ = true;
         edited();
+        if (const auto* redone = undo_.undoTop(); redone != nullptr && redone->isCosmetic())
+        {
+            notify(Change::values);
+            return;
+        }
         publish();
         std::vector<core::Command::ParameterTouch> touches;
         if (const auto* redone = undo_.undoTop())

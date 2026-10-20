@@ -352,7 +352,7 @@ private:
         }
         const float unisonNorm = 1.0f / std::sqrt(static_cast<float>(voicesPerOsc));
 
-        size_t next = 0;
+        size_t next = firstChunkEvent();
         const engine::MidiEventList* events = midi_;
         int active = 0;
         for (int i = 0; i < numSamples; ++i)
@@ -495,7 +495,7 @@ private:
             left[i] = outL * outGain;
             right[i] = outR * outGain;
         }
-        while (events != nullptr && next < events->size())
+        while (events != nullptr && next < events->size() && inChunk((*events)[next], numSamples))
             handle((*events)[next++]);
         for (const auto& v : voices_)
             if (v.active())

@@ -262,6 +262,8 @@ void TrackHeader::setTrack(const core::Track& track,
     {
         busIds_.push_back(bus.id);
         output_.addItem(juce::String::fromUTF8(bus.name.c_str()), static_cast<int>(busIds_.size()) + 1);
+        // A bus that already feeds this track would make a loop: greyed, as in the mixer.
+        output_.setItemEnabled(static_cast<int>(busIds_.size()) + 1, !project.wouldCycle(track.id, bus.id));
         if (bus.id == track.outputBus)
             outputId = static_cast<int>(busIds_.size()) + 1;
     }

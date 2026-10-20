@@ -372,7 +372,7 @@ private:
         const float outGain = dbToGain(params_[output]);
         std::array<float, padCount> peak{};
 
-        size_t next = 0;
+        size_t next = firstChunkEvent();
         const engine::MidiEventList* events = midi_;
         for (int i = 0; i < numSamples; ++i)
         {
@@ -410,7 +410,7 @@ private:
                 }
             }
         }
-        while (events != nullptr && next < events->size())
+        while (events != nullptr && next < events->size() && inChunk((*events)[next], numSamples))
             handle((*events)[next++]);
         for (int pad = 0; pad < padCount; ++pad)
             activity.level[static_cast<size_t>(pad)].store(std::min(1.0f, peak[static_cast<size_t>(pad)]),

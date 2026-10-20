@@ -2424,7 +2424,8 @@ void ArrangeView::finishMove()
         moved.push_back({target.id, ref.clip, ref.midi});
     }
     selection_ = moved; // the selection follows the clips to their new tracks
-    emit(std::move(commands), commands.size() > 1 ? "Move clips" : "Move clip");
+    const std::string name = commands.size() > 1 ? "Move clips" : "Move clip";
+    emit(std::move(commands), name);
 }
 
 void ArrangeView::finishTrim()
