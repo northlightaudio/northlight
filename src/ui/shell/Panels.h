@@ -27,6 +27,7 @@ enum class PanelId
     mixer,
     editor,
     pianoRoll,
+    audioEditor,
     diagnostics,
     browser,
     inspector,

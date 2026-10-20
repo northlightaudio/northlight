@@ -16,6 +16,7 @@
 #include <juce_gui_extra/juce_gui_extra.h>
 
 #include <cmath>
+#include <functional>
 
 namespace aural
 {
@@ -89,6 +90,9 @@ public:
     //   --midi-track         add a MIDI track (built-in synth) with a short clip
     //   --midi-track-with <type>  the same with the given instrument type instead
     //   --piano-roll         open the piano roll on the first MIDI clip
+    //   --audio-editor [pitch]  open the audio editor on the first audio clip (in pitch mode)
+    //   --correct-pitch      once that clip's pitch is analysed, correct it to the key
+    //   --mute-breaths       once that clip's pitch is analysed, mute its breaths
     //   --automation         add a volume lane to the first track and show it in the arrange view
     //   --master-gain <dB>   set the master fader (-120 = silent: an unattended check that
     //                        should not be heard; pre-fader displays still move)
@@ -98,6 +102,24 @@ public:
     //                        Editor panel: a comma list of gate, eq, compressor, deesser,
     //                        saturation, limiter, or all; "demo" also sets values that give
     //                        every display something to show
+    // Runs `action` once the first audio clip has a vocal edit (its analysis is in),
+    // checking twice a second up to `tries` times.
+    void whenVocalReady(std::function<void()> action, int tries)
+    {
+        juce::Timer::callAfterDelay(500,
+                                    [this, action, tries]
+                                    {
+                                        for (const auto& track : session_->project().tracks)
+                                            if (!track.clips.empty() && track.clips.front().vocal.active())
+                                            {
+                                                action();
+                                                return;
+                                            }
+                                        if (tries > 0)
+                                            whenVocalReady(action, tries - 1);
+                                    });
+    }
+
     void applyLaunchFlags(const juce::String& commandLine)
     {
         const auto tokens = juce::ArgumentList("Aural", commandLine).arguments;
@@ -179,6 +201,23 @@ public:
                         break;
                     }
             }
+            else if (arg == "--audio-editor")
+            {
+                const bool pitch = i + 1 < tokens.size() && tokens.getReference(i + 1).text == "pitch";
+                if (pitch)
+                    ++i;
+                for (const auto& track : session_->project().tracks)
+                    if (!track.clips.empty())
+                    {
+                        mainWindow_->openAudioEditor(track.id, track.clips.front().id, pitch);
+                        break;
+                    }
+            }
+            else if (arg == "--correct-pitch" || arg == "--mute-breaths")
+                whenVocalReady(arg == "--correct-pitch"
+                                   ? [this] { mainWindow_->correctPitchInEditor(); }
+                                   : std::function<void()>([this] { mainWindow_->muteBreathsInEditor(); }),
+                               60);
             else if (arg == "--master-gain" && i + 1 < tokens.size())
             {
                 const float db = tokens.getReference(++i).text.getFloatValue();

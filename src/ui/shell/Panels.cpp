@@ -17,6 +17,8 @@ const char* panelKey(PanelId id)
             return "editor";
         case PanelId::pianoRoll:
             return "pianoRoll";
+        case PanelId::audioEditor:
+            return "audioEditor";
         case PanelId::diagnostics:
             return "diagnostics";
         case PanelId::browser:

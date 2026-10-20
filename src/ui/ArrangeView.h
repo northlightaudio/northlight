@@ -113,6 +113,8 @@ public:
     using ClipRef = edit::ClipRef; // a MIDI clip (Track::midiClips) or an audio clip
     // Double-click on a MIDI clip: open it in the piano roll.
     std::function<void(core::Id trackId, core::Id clipId)> onOpenMidiClip;
+    // An audio clip was double-clicked: the audio editor opens on it.
+    std::function<void(core::Id trackId, core::Id clipId)> onOpenAudioClip;
     // Track selection (a click on a header or a lane) and clip selection changes.
     std::function<void(core::Id trackId)> onTrackSelected;
     std::function<void()> onSelectionChanged;

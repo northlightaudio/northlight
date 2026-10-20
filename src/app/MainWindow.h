@@ -57,6 +57,11 @@ public:
     void showPluginBrowser();
     // The piano roll panel on a MIDI clip.
     void openPianoRoll(core::Id trackId, core::Id clipId);
+    // The audio editor on an audio clip, in pitch mode when asked.
+    void openAudioEditor(core::Id trackId, core::Id clipId, bool pitch = false);
+    // Launch-flag conveniences for the audio editor's pitch tools.
+    void correctPitchInEditor();
+    void muteBreathsInEditor();
     // A layout preset ("Mix", "Edit") for unattended captures and the menu.
     void applyLayoutPreset(const juce::String& name);
     // Shows a panel by its key (mixer, editor, pianoRoll, diagnostics, browser, inspector).

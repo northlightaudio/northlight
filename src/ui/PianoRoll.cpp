@@ -528,7 +528,9 @@ void PianoRoll::paint(juce::Graphics& g)
     g.fillRect(0, toolbarHeight - 1, getWidth(), 1);
     g.setFont(theme_.caption());
     g.setColour(c.textTertiary);
-    g.drawText("No scale",
+    const core::MusicalKey key = project_ != nullptr ? project_->key : core::MusicalKey{};
+    g.drawText(key.isSet() ? juce::String(core::pitchClassName(key.root)) + " " + core::scaleName(key.scale)
+                           : juce::String("No key"),
                getLocalBounds().removeFromTop(toolbarHeight).reduced(theme_.spacing.sm, 0),
                juce::Justification::centredRight);
 
@@ -543,6 +545,11 @@ void PianoRoll::paint(juce::Graphics& g)
         if (isBlackKey(note))
         {
             g.setColour(c.laneAlt);
+            g.fillRect(grid.getX(), y, grid.getWidth(), rowHeight);
+        }
+        if (key.isSet() && !key.contains(note))
+        {
+            g.setColour(c.canvas.withAlpha(0.45f));
             g.fillRect(grid.getX(), y, grid.getWidth(), rowHeight);
         }
         if (note % 12 == 0)

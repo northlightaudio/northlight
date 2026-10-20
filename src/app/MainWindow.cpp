@@ -12,6 +12,7 @@
 #include "plugins/ChannelStrip.h"
 #include "plugins/FxTracks.h"
 #include "ui/ArrangeView.h"
+#include "ui/AudioEditor.h"
 #include "ui/AudioSetupView.h"
 #include "ui/AuralLookAndFeel.h"
 #include "ui/FrameStats.h"
@@ -277,8 +278,9 @@ public:
                                             session.engine().meters(),
                                             [&session] { return session.engine().loudness(); },
                                             [&session] { return session.engine().masterMeterSlot(); }),
-          editor_(theme_), instruments_(theme_), diagnostics_(theme_), browser_(session.pluginRegistry()),
-          inspector_(theme_), panels_(theme_, dock_, side_)
+          editor_(theme_), instruments_(theme_), audioEditor_(session.peakStore(), session.vocal()),
+          diagnostics_(theme_), browser_(session.pluginRegistry()), inspector_(theme_),
+          panels_(theme_, dock_, side_)
     {
         setSize(1280, 800);
         setOpaque(true);
@@ -794,6 +796,8 @@ private:
         { session_.executeGroup(name, std::move(commands)); };
         tracks_.onOpenMidiClip = [this](core::Id trackId, core::Id clipId)
         { owner_.openPianoRoll(trackId, clipId); };
+        tracks_.onOpenAudioClip = [this](core::Id trackId, core::Id clipId)
+        { owner_.openAudioEditor(trackId, clipId); };
         tracks_.onNormalise = [this](core::Id trackId, core::Id clipId)
         {
             const auto error = session_.normaliseClip(trackId, clipId);
@@ -881,6 +885,20 @@ private:
         pianoRoll_.onEdit =
             [this](std::vector<std::unique_ptr<core::Command>> commands, const std::string& name)
         { session_.executeGroup(name, std::move(commands)); };
+
+        audioEditor_.onEdit =
+            [this](std::vector<std::unique_ptr<core::Command>> commands, const std::string& name)
+        { session_.executeGroup(name, std::move(commands)); };
+        audioEditor_.onGestureBegin = [this](const std::string& name) { session_.beginGesture(name); };
+        audioEditor_.onGestureEnd = [this] { session_.endGesture(); };
+        audioEditor_.onUndo = [this] { session_.undo(); };
+        audioEditor_.onAudition = [this](core::SamplePosition from, core::SamplePosition to)
+        {
+            // Plays the stretch, then stops (the timer watches for its end).
+            session_.locate(from);
+            session_.play();
+            auditionEnd_ = to;
+        };
 
         pianoRoll_.onPreviewNote = [this](core::Id trackId, int note, bool on)
         {
@@ -987,6 +1005,16 @@ private:
                                         false,
                                         key(juce::KeyPress::F6Key)},
                               pianoRoll_);
+        panels_.registerPanel(PanelInfo{PanelId::audioEditor,
+                                        "Audio Editor",
+                                        Icon::fileAudio,
+                                        HostKind::dock,
+                                        480,
+                                        260,
+                                        true,
+                                        false,
+                                        key(juce::KeyPress::F9Key)},
+                              audioEditor_);
         panels_.registerPanel(PanelInfo{PanelId::instruments,
                                         "Instruments",
                                         Icon::instrument,
@@ -1112,6 +1140,7 @@ private:
         instruments_.setProject(&session_.project());
         inspector_.setProject(&session_.project());
         pianoRoll_.setClip(&session_.project(), pianoRoll_.trackId(), pianoRoll_.clipId());
+        audioEditor_.setClip(&session_.project(), audioEditor_.trackId(), audioEditor_.clipId());
         browser_.setStatus(session_.pluginScanStatus());
         browser_.refresh();
         tracks_.setRegion(
@@ -1266,6 +1295,18 @@ private:
         session_.updateLiveRecording(tracks_.liveRecording());
         tracks_.liveRecordingChanged();
         tracks_.pushMeters();
+        if (auditionEnd_ >= 0 && (!session_.isPlaying() || session_.position() >= auditionEnd_))
+        {
+            if (session_.isPlaying())
+                session_.stop();
+            auditionEnd_ = -1;
+        }
+        if (panels_.isVisible(ui::PanelId::audioEditor))
+        {
+            audioEditor_.setPlayhead(session_.position());
+            if (audioEditor_.zoomLinked())
+                audioEditor_.setTimeView(tracks_.samplesPerPixel(), tracks_.scrollPosition());
+        }
         if (panels_.isVisible(ui::PanelId::pianoRoll))
         {
             pianoRoll_.setPlayhead(session_.position());
@@ -2170,6 +2211,8 @@ private:
     ui::EditorPanel editor_;
     ui::InstrumentRack instruments_;
     ui::PianoRoll pianoRoll_;
+    ui::AudioEditor audioEditor_;
+    core::SamplePosition auditionEnd_ = -1; // an auditioned note stops the transport here
     ui::DiagnosticsPanel diagnostics_;
     ui::PluginBrowser browser_;
     ui::InspectorPanel inspector_;
@@ -2422,6 +2465,29 @@ void MainWindow::openPianoRoll(core::Id trackId, core::Id clipId)
     }
 }
 
+void MainWindow::openAudioEditor(core::Id trackId, core::Id clipId, bool pitch)
+{
+    if (auto* content = dynamic_cast<Content*>(getContentComponent()))
+    {
+        content->audioEditor_.setClip(&session_.project(), trackId, clipId);
+        if (pitch)
+            content->audioEditor_.setMode(ui::AudioEditor::Mode::pitch);
+        content->panels_.show(ui::PanelId::audioEditor);
+    }
+}
+
+void MainWindow::correctPitchInEditor()
+{
+    if (auto* content = dynamic_cast<Content*>(getContentComponent()))
+        content->audioEditor_.correctToKey({});
+}
+
+void MainWindow::muteBreathsInEditor()
+{
+    if (auto* content = dynamic_cast<Content*>(getContentComponent()))
+        content->audioEditor_.setBreaths(0.0f, true);
+}
+
 void MainWindow::runStripDragBenchmark(int seconds)
 {
     if (auto* content = dynamic_cast<Content*>(getContentComponent()))
@@ -2442,6 +2508,7 @@ void MainWindow::showPanel(const juce::String& key)
     for (const auto id : {ui::PanelId::mixer,
                           ui::PanelId::editor,
                           ui::PanelId::pianoRoll,
+                          ui::PanelId::audioEditor,
                           ui::PanelId::diagnostics,
                           ui::PanelId::browser,
                           ui::PanelId::inspector,

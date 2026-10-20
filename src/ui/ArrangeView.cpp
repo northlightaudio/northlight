@@ -3581,6 +3581,8 @@ void ArrangeView::mouseDoubleClick(const juce::MouseEvent& e)
     const auto hit = hitTest(e.getPosition());
     if (hit.midiClip != nullptr && onOpenMidiClip)
         onOpenMidiClip(hit.track->id, hit.midiClip->id);
+    else if (hit.clip != nullptr && onOpenAudioClip)
+        onOpenAudioClip(hit.track->id, hit.clip->id);
     else if (hit.track != nullptr && hit.track->isMidi() && hit.clip == nullptr && hit.midiClip == nullptr)
     {
         // Empty space on a MIDI track: a new bar-long clip from the bar there.

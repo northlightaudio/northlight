@@ -93,6 +93,8 @@ add_library(aural_ui STATIC
     AutomationOverlay.cpp
     PianoRoll.h
     PianoRoll.cpp
+    AudioEditor.h
+    AudioEditor.cpp
     TrackHeader.h
     TrackHeader.cpp
     MixerView.h
