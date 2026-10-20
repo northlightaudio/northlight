@@ -175,6 +175,33 @@ Sky, Violet, Magenta, Amber) and type:
 - Factory presets: Northern Lights, Solar Wind, Glacier Keys, Polar Bass, Ice
   Pluck, Starfield, Comet Lead, Aurora Drift.
 
+## 7.4c Pulsar
+
+The drum synth bundled with Aural, Aurora's sibling for percussion: eight
+synthesised pads on the General MIDI drum notes (kick C1, rim C#1, snare D1,
+clap D#1, closed hat F#1, low tom A1, open hat A#1, high tom C2) and on C3 to G3
+in that order, played out whatever the note's length; the closed hat chokes the
+open one. Each pad: Tune, Decay, two shaping controls named for the sound (kick
+Click and Punch, rim Ring and Click, snare Snappy and Crack, clap Bright and
+Spread, hats Bright and Noise, toms Noise and Punch), Level and Pan. The master:
+Drive, Velocity, Level. Kits: Pulsar, Boom Room, Tight Electro, Dusty, Minimal
+Clicks, Industrial.
+
+- Deep space (the canvas darkening around the star) with stars, and the pulsar in
+  the top-left corner: a white core, a `Sky` halo and two beams that turn slowly
+  while it plays and flare on every hit, which also sends a ring in the pad's hue
+  out across the sky behind the glass. Still when silent or with reduce motion on.
+- The wordmark PULSAR tracked wide in a Sky-to-Coral gradient, "DRUM SYNTH ·
+  AURAL", and the kit bar (previous, the name as a menu, next; "Custom" off-kit).
+- Eight pad tiles (4×2) of glass, each in its hue (Coral, Amber, Tangerine, Lime,
+  Mint, Teal, Sky, Indigo): its short name, its note, and its sound, rendered and
+  drawn as a waveform; a hit lights the tile from within and its rim. Clicking a
+  tile selects it (a stronger rim).
+- The selected pad's panel: its name and note, its sound drawn large over a time
+  grid (drag across for the decay, up and down for the tune, Shift for fine), and
+  its six knobs.
+- MASTER: Drive, Velocity, Level and a scope of the output.
+
 ## 7.5 States and errors
 
 - Plugin missing on this machine: the chain card shows the name in `textTertiary`

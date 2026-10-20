@@ -58,6 +58,8 @@ add_library(aural_ui STATIC
     strip/BuiltInCards.cpp
     strip/AuroraEditor.h
     strip/AuroraEditor.cpp
+    strip/PulsarEditor.h
+    strip/PulsarEditor.cpp
     strip/ChannelStripView.h
     strip/ChannelStripView.cpp
     strip/UserStripPresets.h

@@ -875,7 +875,13 @@ TPT state-variable filter (12/24 dB low-pass, band-pass, high-pass) with key
 tracking and its own envelope, coefficients and the LFO at a 16-sample control
 rate, glide, and Shimmer, a two-line modulated chorus; it publishes its output
 tap, the sounding voices and the LFO through the built-ins' feedback for its
-editor, and has eight factory presets. The older `aural.synth` (16 voices, polyBLEP saw/square,
+editor, and has eight factory presets. Pulsar (`aural.pulsar`, `plugins/Pulsar.*`)
+is a drum synth: a voice per pad (kick and toms a pitch-swept sine with a click,
+snare two shell modes and band-passed wires, clap four noise bursts and a tail,
+hats six square waves at the 808's ratios and noise through a high-pass, rim an
+FM ping), triggered by note-ons only, the closed hat choking the open one; the
+same voice code renders a pad offline (`renderPad`) for its editor's pictures,
+and `pulsar::activity` gives the editor a hit counter and level per pad. The older `aural.synth` (16 voices, polyBLEP saw/square,
 state-variable low-pass, ADSR; events partition the block so note timing is
 sample-exact), hosted VST3 plugins that accept MIDI (the events go into the JUCE
 MIDI buffer as raw bytes) and CLAP plugins with a note input port (CLAP note

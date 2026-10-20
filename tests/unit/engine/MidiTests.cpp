@@ -7,6 +7,7 @@
 #include "engine/Snapshot.h"
 #include "plugins/Aurora.h"
 #include "plugins/BuiltIns.h"
+#include "plugins/Pulsar.h"
 
 #include <catch2/catch_approx.hpp>
 #include <catch2/catch_test_macros.hpp>
@@ -508,4 +509,55 @@ TEST_CASE("Aurora sounds for a chord, goes quiet after the release, and every pr
         CHECK(loud < 4.0f);
         CHECK(tail < 1.0e-3f);
     }
+}
+
+TEST_CASE("Pulsar's pads sound on their notes, play out without note-offs and every kit stays finite",
+          "[engine][midi][pulsar]")
+{
+    namespace pu = plugins::pulsar;
+    CHECK(pu::padForNote(36) == pu::kick);
+    CHECK(pu::padForNote(42) == pu::closedHat);
+    CHECK(pu::padForNote(60) == pu::kick); // C3 up plays the pads in order
+    CHECK(pu::padForNote(30) == -1);
+    for (const auto& kit : pu::kits())
+        for (int pad = 0; pad < pu::padCount; ++pad)
+        {
+            INFO(kit.name << " " << pu::padName(pad));
+            // The pad's own sound, offline: loud at first, silent by the end.
+            const auto hit = pu::renderPad(kit.values.data(), pad, 48000.0, 48000 * 4);
+            float early = 0.0f, late = 0.0f;
+            bool finite = true;
+            for (size_t i = 0; i < hit.size(); ++i)
+            {
+                finite = finite && std::isfinite(hit[i]);
+                if (i < 4800)
+                    early = std::max(early, std::abs(hit[i]));
+                if (i > hit.size() - 4800)
+                    late = std::max(late, std::abs(hit[i]));
+            }
+            CHECK(finite);
+            CHECK(early > 0.05f);
+            CHECK(late < 1.0e-3f);
+        }
+
+    // Through the engine: a kick and a snare, each a 1-sample note (the note-off
+    // does not cut a drum short).
+    core::MidiClip clip;
+    clip.start = 0;
+    clip.length = 48000;
+    clip.notes.push_back({20, 36, 120, 0, 1});
+    clip.notes.push_back({21, 38, 100, 12000, 1});
+    Harness h;
+    h.engine.setProject(keysProject(clip, pu::type.c_str()));
+    h.engine.play();
+    float kick = 0.0f, snare = 0.0f;
+    for (int b = 0; b < 375; ++b) // 0.5 s
+    {
+        h.engine.process(h.outputs, 2, blockSize);
+        for (float v : h.left)
+            (b * blockSize < 12000 ? kick : snare) =
+                std::max(b * blockSize < 12000 ? kick : snare, std::abs(v));
+    }
+    CHECK(kick > 0.05f);
+    CHECK(snare > 0.02f);
 }

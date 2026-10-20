@@ -9,6 +9,7 @@
 #include "ui/strip/AuroraEditor.h"
 #include "ui/strip/EqGraph.h"
 #include "ui/strip/Graphs.h"
+#include "ui/strip/PulsarEditor.h"
 #include "ui/strip/StripStyle.h"
 
 #include <cmath>
@@ -1169,6 +1170,8 @@ createBuiltInCard(const Theme& theme, CardHost& host, core::Id channelId, const 
         return std::make_unique<SynthCard>(theme, host, channelId, insert);
     if (insert.type == "aural.aurora")
         return createAuroraEditor(theme, host, channelId, insert);
+    if (insert.type == "aural.pulsar")
+        return createPulsarEditor(theme, host, channelId, insert);
     return nullptr;
 }
 

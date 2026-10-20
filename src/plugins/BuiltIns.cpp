@@ -6,6 +6,7 @@
 #include "plugins/ChannelStrip.h"
 #include "plugins/MeteredBuiltIn.h"
 #include "plugins/ProcessorBase.h"
+#include "plugins/Pulsar.h"
 
 #include <algorithm>
 #include <array>
@@ -924,12 +925,13 @@ std::vector<std::string> BuiltInFactory::typeNames() const
             types::reverb,
             types::delay,
             aurora::type,
+            pulsar::type,
             types::synth};
 }
 
 bool BuiltInFactory::isInstrument(const std::string& typeName)
 {
-    return typeName == types::synth || typeName == aurora::type;
+    return typeName == types::synth || typeName == aurora::type || typeName == pulsar::type;
 }
 
 std::unique_ptr<engine::InsertProcessor> BuiltInFactory::create(const std::string& typeName) const
@@ -949,6 +951,8 @@ std::unique_ptr<engine::InsertProcessor> BuiltInFactory::create(const std::strin
         return std::make_unique<Synth>();
     if (typeName == aurora::type)
         return aurora::create();
+    if (typeName == pulsar::type)
+        return pulsar::create();
     if (typeName == types::reverb)
         return std::make_unique<Reverb>();
     if (typeName == types::delay)
@@ -972,6 +976,8 @@ std::string BuiltInFactory::displayName(const std::string& typeName)
         return "Synth";
     if (typeName == aurora::type)
         return "Aurora";
+    if (typeName == pulsar::type)
+        return "Pulsar";
     if (typeName == types::reverb)
         return "Reverb";
     if (typeName == types::delay)

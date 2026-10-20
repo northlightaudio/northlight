@@ -121,6 +121,8 @@ public:
     float extraDb() const noexcept { return extraDb_; }
     // The live processor's feedback (null before the engine has an instance).
     engine::ProcessorFeedback* liveFeedback() const noexcept;
+    // The live processor itself (null before the engine has an instance).
+    const engine::InsertProcessor* liveProcessor() const noexcept { return live_.get(); }
     double sampleRate() const noexcept;
 
     void paint(juce::Graphics& g) override;
