@@ -53,6 +53,7 @@ add_library(aural_ui STATIC
     Db.h
     Motion.h
     SendMenu.h
+    SidechainMenu.h
     panels/EditorPanel.h
     panels/EditorPanel.cpp
     panels/InstrumentRack.h

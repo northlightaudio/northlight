@@ -134,6 +134,14 @@ public:
     void mouseEnter(const juce::MouseEvent&) override { repaint(); }
     void mouseExit(const juce::MouseEvent&) override { repaint(); }
     static constexpr int preferredWidth = 46;
+    void setCaption(const juce::String& caption)
+    {
+        if (caption_ != caption)
+        {
+            caption_ = caption;
+            repaint();
+        }
+    }
 
 private:
     juce::Rectangle<float> bar() const;

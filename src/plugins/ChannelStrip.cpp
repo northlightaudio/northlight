@@ -646,7 +646,9 @@ private:
             const float mixGain = (1.0f - wet) + wet * g;
             left[i] = inL * mixGain;
             right[i] = inR * mixGain;
-            feedback_.addSample(std::max(std::abs(inL), std::abs(inR)),
+            // The input meter shows what the detector hears: the key when there
+            // is one (the threshold acts on it), else the audio.
+            feedback_.addSample(std::max(std::abs(keyL), std::abs(keyR)),
                                 std::max(std::abs(left[i]), std::abs(right[i])),
                                 reduction,
                                 displayLevel_);

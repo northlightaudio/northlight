@@ -27,6 +27,8 @@ struct CardHost
     std::function<void(const std::string& name)> onGestureBegin;
     std::function<void()> onGestureEnd;
     std::function<std::shared_ptr<engine::InsertProcessor>(core::Id)> liveInsert;
+    // The project (for a card that names other channels: the compressor's key).
+    std::function<const core::Project*()> project;
     // A drag on a card's header reorders the strip: the screen position as it
     // moves, `released` at the end.
     std::function<void(core::Id moduleId, juce::Point<int> screen, bool released)> onReorder;
@@ -157,6 +159,9 @@ protected:
 
     virtual void layoutBody(juce::Rectangle<int> body) = 0;
     virtual void paramsChanged() {}
+    // Every model refresh, before the parameters (for state beyond them, such
+    // as the key source).
+    virtual void insertChanged(const core::Insert& insert) { juce::ignoreUnused(insert); }
     // New frames arrived (the displays repaint).
     virtual void framesArrived(double elapsedMs) { juce::ignoreUnused(elapsedMs); }
     // The header's live readout (a gain reduction, "open").

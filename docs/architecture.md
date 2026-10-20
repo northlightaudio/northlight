@@ -704,7 +704,8 @@ plugins that have both editors, a failed-load toast with a Blocklist action.
 
 Sidechains: an insert slot can key from another channel (`Insert::sidechain`,
 `SetInsertSidechain`, the inserts menu's Sidechain submenu, offered when the live
-processor `acceptsSidechain()`). The key taps the source before its fader (its
+processor `acceptsSidechain()`, and the compressor card's Sidechain button; both
+build their items with `ui/SidechainMenu.h`). The key taps the source before its fader (its
 chain output; the fader does not matter) or, with `Insert::sidechainPostFader`
 (the submenu's Pre-fader / Post-fader), after it, so it follows the fader and its
 automation: the renderer writes a post-fader copy of any channel a post-fader key

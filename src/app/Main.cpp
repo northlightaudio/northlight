@@ -77,6 +77,7 @@ public:
     //   --layout <Mix|Edit>  apply a layout preset
     //   --demo-song <file>   write the demo song (Northern Drift) to the file and open it
     //   --instrument-editor  open the first instrument's editor window
+    //   --insert-editor      open the editor window of the first insert on the first track that has one
     //   --panel <name>       show a panel: mixer, editor, instruments, pianoRoll, diagnostics, browser,
     //   inspector
     //   --preferences [page] open Preferences (general, audio, recording, editing, plugins, shortcuts,
@@ -322,6 +323,15 @@ public:
                 }
                 if (first != core::invalidId)
                     mainWindow_->openInsertEditor(firstTrack, first);
+            }
+            else if (arg == "--insert-editor")
+            {
+                for (const auto& track : session_->project().tracks)
+                    if (!track.inserts.empty())
+                    {
+                        mainWindow_->openInsertEditor(track.id, track.inserts.front().id);
+                        break;
+                    }
             }
             else if (arg == "--instrument-editor")
             {

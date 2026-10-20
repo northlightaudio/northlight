@@ -214,6 +214,7 @@ void ModuleCard::refresh(const core::Insert& module)
                 changed = true;
             }
         }
+    insertChanged(module);
     if (!changed)
         return;
     for (const auto& b : bindings_)

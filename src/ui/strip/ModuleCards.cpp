@@ -1,7 +1,9 @@
 // The six channel strip cards (12-channel-strip.md 12.3-12.8): each lays out
 // its display and controls on the shared ModuleCard.
 
+#include "plugins/BuiltIns.h"
 #include "plugins/ChannelStrip.h"
+#include "ui/SidechainMenu.h"
 #include "ui/strip/EqGraph.h"
 #include "ui/strip/Graphs.h"
 #include "ui/strip/ModuleCard.h"
@@ -126,6 +128,16 @@ public:
             knobs_.push_back(&addKnob(p));
         auto_ = &addToggle(ps::compressor::autoMakeup, "Auto make-up");
         detector_ = &addChoice(ps::compressor::detector);
+        // The insert (not the strip module) takes a key: its Sidechain button
+        // picks the source, and lights with its name while one is set.
+        if (module.type == plugins::types::compressor)
+        {
+            sidechain_ = std::make_unique<PillToggle>(theme, "Sidechain", colour());
+            sidechain_->setClickingTogglesState(false);
+            sidechain_->onClick = [this] { showSidechainMenu(); };
+            addAndMakeVisible(*sidechain_);
+            insertChanged(module);
+        }
     }
 
     int preferredWidth() const override { return 7 * knobCellWidth() + 2 * theme_.spacing.sm + 10; }
@@ -147,6 +159,53 @@ private:
         auto_->setBounds(options.removeFromLeft(110).reduced(0, 2));
         options.removeFromLeft(theme_.spacing.sm);
         detector_->setBounds(options.removeFromLeft(std::min(options.getWidth(), 120)));
+        if (sidechain_ != nullptr)
+        {
+            options.removeFromLeft(theme_.spacing.sm);
+            sidechain_->setBounds(options.removeFromRight(std::min(options.getWidth(), 170)).reduced(0, 2));
+        }
+    }
+    void insertChanged(const core::Insert& insert) override
+    {
+        if (sidechain_ == nullptr)
+            return;
+        const auto* project = host_.project ? host_.project() : nullptr;
+        const bool keyed = insert.sidechain != core::invalidId;
+        const auto name = project != nullptr ? sidechainLabel(*project, insert) : juce::String("?");
+        sidechain_->setButtonText(keyed ? "Key: " + name : juce::String("Sidechain"));
+        sidechain_->setToggleState(keyed, juce::dontSendNotification);
+        sidechain_->setTooltip(keyed ? "The detector listens to " + name +
+                                           ", not to this channel; click to change the key"
+                                     : juce::String("Key the detector from another channel"));
+        // Keyed, the input meter and the history's grey trace show the key, and
+        // the threshold acts on it.
+        threshold_.setCaption(keyed ? "KEY" : "IN");
+        threshold_.setTooltip(keyed ? "Key level (" + name + "); drag to set the threshold"
+                                    : juce::String("Input level; drag to set the threshold"));
+        history_.setTooltip(keyed ? "Key " + name +
+                                        " (grey), output and gain reduction (from the top); drag to set the "
+                                        "threshold"
+                                  : juce::String("Input (grey), output and gain reduction (from the top); "
+                                                 "drag to set the threshold"));
+    }
+    void showSidechainMenu()
+    {
+        const auto* project = host_.project ? host_.project() : nullptr;
+        const auto* channel = project != nullptr ? project->findChannel(channelId_) : nullptr;
+        const auto* insert = channel != nullptr ? channel->findInsert(moduleId_) : nullptr;
+        if (insert == nullptr)
+            return;
+        juce::PopupMenu menu;
+        auto actions = std::make_shared<std::vector<std::function<void()>>>();
+        addSidechainItems(menu, *actions, *project, channelId_, *insert, host_.onCommand);
+        juce::Component::SafePointer<juce::Component> safe(this);
+        menu.showMenuAsync(juce::PopupMenu::Options().withTargetComponent(sidechain_.get()),
+                           [safe, actions](int result)
+                           {
+                               if (safe != nullptr && result >= 1 &&
+                                   static_cast<size_t>(result) <= actions->size())
+                                   (*actions)[static_cast<size_t>(result) - 1]();
+                           });
     }
     void paramsChanged() override
     {
@@ -174,6 +233,7 @@ private:
     std::vector<Knob*> knobs_;
     PillToggle* auto_ = nullptr;
     SegmentedControl* detector_ = nullptr;
+    std::unique_ptr<PillToggle> sidechain_; // the insert only
 };
 
 // ----- EQ -----------------------------------------------------------------------------------------

@@ -66,8 +66,11 @@ delay `Amber`. The instruments (7.4b-7.4e) have faces of their own.
 - **Compressor**: the channel strip compressor's card (the insert and the strip
   module are one compressor): the transfer curve, the history with the threshold
   line, the IN threshold meter, GR and OUT; Ratio, Attack, Release, Knee, Makeup,
-  Mix; Auto make-up and Peak / RMS. The insert also takes a sidechain key (its
-  menu), tapped before or after the source's fader.
+  Mix; Auto make-up and Peak / RMS. The insert also takes a sidechain key, tapped
+  before or after the source's fader: a Sidechain button beside Peak / RMS picks
+  it (the same items as the slot menu) and, while a key is set, lights in the
+  module's hue as "Key: Kick (post)"; the threshold meter's caption reads KEY
+  and it, the history's grey trace and the threshold all follow the key.
 - **Limiter**: the history with the ceiling, the ceiling on the IN meter, GR and
   OUT; Release, Lookahead.
 - **Reverb**: the decay: the dry sound, the pre-delay, early reflections (more and

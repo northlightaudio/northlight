@@ -16,6 +16,7 @@
 #include "ui/Motion.h"
 #include "ui/PluginMenu.h"
 #include "ui/SendMenu.h"
+#include "ui/SidechainMenu.h"
 #include "ui/components/AddSlot.h"
 #include "ui/strip/StripStyle.h"
 
@@ -1282,56 +1283,8 @@ private:
         if (live != nullptr && live->acceptsSidechain())
         {
             juce::PopupMenu key;
-            key.addItem(item++, "None", true, insert->sidechain == core::invalidId);
-            actions.push_back(
-                [this, insertId]
-                {
-                    owner_.onCommand(
-                        std::make_unique<core::SetInsertSidechain>(id_, insertId, core::invalidId));
-                });
-            const auto& project = *owner_.project_;
-            const auto offer = [&](const core::Channel& source, const juce::String& prefix)
-            {
-                if (source.id == id_)
-                    return;
-                // A source this channel feeds (directly, through buses or through
-                // another key) would make a loop: shown, but greyed.
-                key.addItem(item++,
-                            prefix + juce::String::fromUTF8(source.name.c_str()),
-                            !project.keyWouldCycle(id_, source.id),
-                            insert->sidechain == source.id);
-                const core::Id sourceId = source.id;
-                const bool postFader = insert->sidechainPostFader;
-                actions.push_back(
-                    [this, insertId, sourceId, postFader]
-                    {
-                        owner_.onCommand(
-                            std::make_unique<core::SetInsertSidechain>(id_, insertId, sourceId, postFader));
-                    });
-            };
-            for (const auto& t : project.tracks)
-                offer(t, "");
-            if (isBus_)
-                for (const auto& b : project.buses)
-                    offer(b, "Bus: ");
-            // The tap: before the source's fader (the key ignores it) or after it
-            // (the key follows the fader and its automation).
-            key.addSeparator();
-            const bool keyed = insert->sidechain != core::invalidId;
-            for (const bool post : {false, true})
-            {
-                key.addItem(item++,
-                            post ? "Post-fader" : "Pre-fader",
-                            keyed,
-                            keyed && insert->sidechainPostFader == post);
-                const core::Id sourceId = insert->sidechain;
-                actions.push_back(
-                    [this, insertId, sourceId, post]
-                    {
-                        owner_.onCommand(
-                            std::make_unique<core::SetInsertSidechain>(id_, insertId, sourceId, post));
-                    });
-            }
+            addSidechainItems(key, actions, *owner_.project_, id_, *insert, owner_.onCommand);
+            item = static_cast<int>(actions.size()) + 1;
             menu.addSubMenu("Sidechain", key);
         }
         // Extra outputs of a multi-output instrument: one aux track per pair.
@@ -1905,6 +1858,7 @@ void MixerView::openInsertEditor(core::Id channelId, core::Id insertId)
         if (onGestureEnd)
             onGestureEnd();
     };
+    editor->project = [this] { return project_; };
     editor->showBuiltInBody(*insert, liveInsert);
     editor->setInsert(*insert);
     const juce::String title = juce::String(channel->name) + " - " +

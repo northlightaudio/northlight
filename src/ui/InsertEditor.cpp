@@ -131,6 +131,7 @@ void InsertEditor::showBuiltInBody(const core::Insert& insert,
     };
     host_.liveInsert = [this](core::Id id)
     { return live_ ? live_(id) : std::shared_ptr<engine::InsertProcessor>(); };
+    host_.project = [this] { return project ? project() : nullptr; };
     body_ = strip::createBuiltInCard(theme_, host_, channelId_, insert);
     if (body_ == nullptr)
         return;

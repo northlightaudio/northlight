@@ -6,6 +6,7 @@
 #include "ui/Motion.h"
 #include "ui/PluginMenu.h"
 #include "ui/SendMenu.h"
+#include "ui/SidechainMenu.h"
 #include "ui/components/Fader.h"
 #include "ui/components/SegmentedControl.h"
 #include "ui/strip/BuiltInCards.h"
@@ -92,6 +93,7 @@ public:
         };
         host_.liveInsert = [this](core::Id id)
         { return owner_.liveInsert ? owner_.liveInsert(id) : std::shared_ptr<engine::InsertProcessor>(); };
+        host_.project = [this] { return owner_.project_; };
         body_ = strip::createBuiltInCard(theme_, host_, channelId_, insert);
         if (body_ != nullptr)
         {

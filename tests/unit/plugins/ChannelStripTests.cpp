@@ -272,6 +272,25 @@ TEST_CASE("A switched-off module measures its input only while watched", "[plugi
     CHECK(c->feedback()->latest().reduction == 0.0f);
 }
 
+TEST_CASE("A keyed compressor meters its key as its input", "[plugins][strip][compressor][sidechain]")
+{
+    // The insert compressor: its input meter (and the threshold beside it) shows
+    // what the detector hears, so with a key it reads the key, not the audio.
+    auto c = plugins::BuiltInFactory().create(plugins::types::compressor);
+    REQUIRE(c != nullptr);
+    REQUIRE(c->acceptsSidechain());
+    c->prepare(rate, 2400);
+    c->setBypassed(false);
+    c->feedback()->setWatched(true);
+    std::vector<float> l(2400, 0.1f), r(2400, 0.1f), keyL(2400, 0.6f), keyR(2400, 0.6f);
+    c->processWithSidechain(l.data(), r.data(), keyL.data(), keyR.data(), 2400);
+    CHECK(c->feedback()->latest().input == Approx(0.6f));
+    std::fill(l.begin(), l.end(), 0.1f);
+    std::fill(r.begin(), r.end(), 0.1f);
+    c->process(l.data(), r.data(), 2400); // no key: the audio
+    CHECK(c->feedback()->latest().input == Approx(0.1f));
+}
+
 // ----- model ------------------------------------------------------------------------------------
 
 TEST_CASE("Strip modules are inserts to the commands, in processing order", "[core][strip]")
