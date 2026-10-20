@@ -1,6 +1,7 @@
 # 13. Vocal pitch editing (Phase 11)
 
-Status: **plan for review**, 2026-10-20. Nothing here is built yet.
+Status: **built**, 2026-10-20, on the `pitch-editing` branch. "As built" at the end
+records where the build differs from this plan.
 
 Melodyne-style editing of a monophonic vocal clip, inside a new audio clip editor:
 analyse the clip for pitch, edit each note, mute or reduce breaths, and correct the
@@ -189,3 +190,21 @@ formant shifts, exporting the melody as MIDI, harmony generation.
   roll.
 - **Timing edits:** left out of the first version.
 - **Breath default:** reduce by 12 dB rather than a full mute.
+
+## As built (2026-10-20)
+
+- The analysis cache and render service are one engine class,
+  `engine::VocalService` (src/engine/pitch/VocalService.h), instead of a JUCE
+  `PitchStore` in src/audio: the bounce needs the same analysis and renders
+  without JUCE. It caches analyses beside the media as `<file>.<rate>.aural-pitch`.
+- Correct to key also considers each note's nearest semitone, with a penalty when
+  it is outside the key. A chromatic note sung in tune stays chromatic, and a wrong
+  key (detection from a short phrase can pick a relative key) cannot pull a note
+  onto a different scale step. The key breaks ties; it does not force.
+- The correction sheet previews live inside one gesture. Apply, or clicking away,
+  keeps the result; Cancel undoes it.
+- Opening pitch mode on a clip for the first time adds an "Analyse pitch" undo
+  step that stores the notes found. It changes nothing audible.
+- Launch flags for unattended checks: `--audio-editor [pitch]`, `--correct-pitch`,
+  `--mute-breaths`.
+- Not built yet: the formant control, and the layout/token spec for the panel.

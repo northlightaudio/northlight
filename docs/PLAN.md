@@ -371,6 +371,10 @@ in [design/13-pitch-editing.md](design/13-pitch-editing.md).
 **Milestone:** a vocal tuned to the key that sounds sung, not snapped, with the
 unedited parts bit-identical to the original.
 
+Status 2026-10-20: all seven steps built on the `pitch-editing` branch (tests in
+tests/unit/engine/PitchTests.cpp). Not yet checked by ear on a real vocal
+recording; the checks so far use synthetic voices.
+
 Rough total: about 8 months of focused work to a beta, excluding the design time itself.
 
 ---
