@@ -34,6 +34,7 @@ public:
     HistoryGraph(ModuleCard& card, Style style);
 
     void paint(juce::Graphics& g) override;
+    void paintContent(juce::Graphics& g);
     void mouseMove(const juce::MouseEvent& e) override;
     void mouseDown(const juce::MouseEvent& e) override;
     void mouseDrag(const juce::MouseEvent& e) override;
@@ -59,6 +60,7 @@ public:
     explicit TransferCurve(ModuleCard& card);
 
     void paint(juce::Graphics& g) override;
+    void paintContent(juce::Graphics& g);
     void mouseDown(const juce::MouseEvent& e) override;
     void mouseDrag(const juce::MouseEvent& e) override;
     void mouseUp(const juce::MouseEvent& e) override;
@@ -88,9 +90,57 @@ class SaturationCurve final : public juce::Component, public juce::SettableToolt
 public:
     explicit SaturationCurve(ModuleCard& card);
     void paint(juce::Graphics& g) override;
+    void paintContent(juce::Graphics& g);
 
 private:
     ModuleCard& card_;
+};
+
+// A threshold on its meter (12-channel-strip.md 12.2): a vertical bar of the
+// level the threshold is compared with (the input, a gate's key, a
+// de-esser's band) with the threshold as a handle across it. Drag anywhere to
+// set it (Shift: fine), the wheel steps half a decibel, double-click resets.
+// The part of the level over the threshold shows in `overColour` (the hue for
+// a gate opening, meterHot for reduction), so the bar says how far the signal
+// goes past it.
+class ThresholdMeter final : public juce::Component, public juce::SettableTooltipClient
+{
+public:
+    enum class Level
+    {
+        input,
+        extra, // the key or band level (Frame::extra)
+    };
+    ThresholdMeter(ModuleCard& card,
+                   int parameter,
+                   Level level,
+                   float bottomDb,
+                   juce::String caption,
+                   juce::Colour overColour);
+
+    void paint(juce::Graphics& g) override;
+    void mouseDown(const juce::MouseEvent& e) override;
+    void mouseDrag(const juce::MouseEvent& e) override;
+    void mouseUp(const juce::MouseEvent& e) override;
+    void mouseDoubleClick(const juce::MouseEvent& e) override;
+    void mouseWheelMove(const juce::MouseEvent& e, const juce::MouseWheelDetails& wheel) override;
+    void mouseEnter(const juce::MouseEvent&) override { repaint(); }
+    void mouseExit(const juce::MouseEvent&) override { repaint(); }
+    static constexpr int preferredWidth = 46;
+
+private:
+    juce::Rectangle<float> bar() const;
+    float dbAt(float y) const;
+
+    ModuleCard& card_;
+    int parameter_;
+    Level level_;
+    float bottomDb_;
+    juce::String caption_;
+    juce::Colour over_;
+    bool dragging_ = false;
+    float dragStartDb_ = 0.0f;
+    int dragStartY_ = 0;
 };
 
 // Vertical meters: IN and OUT on the -60..0 dB meter scale, GR hanging from

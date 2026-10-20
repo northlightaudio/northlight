@@ -370,6 +370,8 @@ void EqGraph::paint(juce::Graphics& g)
         }
     }
 
+    drawWellFrame(g, theme, getLocalBounds().toFloat());
+
     // The nodes, the selected one on top.
     for (int pass = 0; pass < 2; ++pass)
         for (int b = 0; b < eq::bandCount; ++b)

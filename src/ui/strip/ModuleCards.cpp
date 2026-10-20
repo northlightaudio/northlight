@@ -36,14 +36,16 @@ class GateCard final : public ModuleCard
 public:
     GateCard(const Theme& theme, CardHost& host, core::Id channelId, const core::Insert& module)
         : ModuleCard(theme, host, channelId, module),
-          graph_(*this,
-                 HistoryGraph::Style{0.0f, -80.0f, true, true, false, ps::gate::threshold, true, 3.0f, false})
+          graph_(
+              *this,
+              HistoryGraph::Style{0.0f, -80.0f, true, true, false, ps::gate::threshold, true, 3.0f, false}),
+          threshold_(*this, ps::gate::threshold, ThresholdMeter::Level::extra, -80.0f, "KEY", colour_)
     {
         graph_.setTooltip(
             "Key level (grey) and output; drag to set the threshold. The lane shows the gate open.");
         addAndMakeVisible(graph_);
-        for (int p : {ps::gate::threshold,
-                      ps::gate::range,
+        addAndMakeVisible(threshold_);
+        for (int p : {ps::gate::range,
                       ps::gate::attack,
                       ps::gate::hold,
                       ps::gate::release,
@@ -57,11 +59,22 @@ public:
 private:
     void layoutBody(juce::Rectangle<int> body) override
     {
-        graph_.setBounds(takeDisplay(body, 2 * knobCellHeight()));
-        layoutKnobs(body, 4, knobs_);
+        auto display = takeDisplay(body, 2 * knobCellHeight());
+        threshold_.setBounds(display.removeFromLeft(ThresholdMeter::preferredWidth));
+        display.removeFromLeft(4);
+        graph_.setBounds(display);
+        layoutKnobs(body, 3, knobs_);
     }
-    void paramsChanged() override { graph_.repaint(); }
-    void framesArrived(double) override { graph_.repaint(); }
+    void paramsChanged() override
+    {
+        graph_.repaint();
+        threshold_.repaint();
+    }
+    void framesArrived(double) override
+    {
+        graph_.repaint();
+        threshold_.repaint();
+    }
     juce::String headerStatus() const override
     {
         if (!isOn() || historySize() == 0 || inputDb() < -100.0f)
@@ -74,6 +87,7 @@ private:
     }
 
     HistoryGraph graph_;
+    ThresholdMeter threshold_;
     std::vector<Knob*> knobs_;
 };
 
@@ -87,8 +101,15 @@ public:
           history_(
               *this,
               HistoryGraph::Style{0.0f, -60.0f, false, true, true, ps::compressor::threshold, false, 3.0f}),
-          bars_(*this, {LevelBars::Kind::input, LevelBars::Kind::reduction, LevelBars::Kind::output})
+          bars_(*this, {LevelBars::Kind::reduction, LevelBars::Kind::output}),
+          threshold_(*this,
+                     ps::compressor::threshold,
+                     ThresholdMeter::Level::input,
+                     -60.0f,
+                     "IN",
+                     theme.colours.meterHot)
     {
+        addAndMakeVisible(threshold_);
         curve_.setTooltip(
             "The curve with make-up; drag left of the knee for the threshold, right of it for the ratio");
         history_.setTooltip(
@@ -96,8 +117,7 @@ public:
         addAndMakeVisible(curve_);
         addAndMakeVisible(history_);
         addAndMakeVisible(bars_);
-        for (int p : {ps::compressor::threshold,
-                      ps::compressor::ratio,
+        for (int p : {ps::compressor::ratio,
                       ps::compressor::attack,
                       ps::compressor::release,
                       ps::compressor::knee,
@@ -108,7 +128,7 @@ public:
         detector_ = &addChoice(ps::compressor::detector);
     }
 
-    int preferredWidth() const override { return 7 * knobCellWidth() + 2 * theme_.spacing.sm; }
+    int preferredWidth() const override { return 7 * knobCellWidth() + 2 * theme_.spacing.sm + 10; }
 
 private:
     void layoutBody(juce::Rectangle<int> body) override
@@ -116,11 +136,12 @@ private:
         const int optionsH = theme_.sizes.controlCompact;
         auto display = takeDisplay(body, knobCellHeight() + optionsH + 6);
         bars_.setBounds(display.removeFromRight(bars_.preferredWidth()));
+        threshold_.setBounds(display.removeFromRight(ThresholdMeter::preferredWidth));
         display.removeFromRight(4);
         curve_.setBounds(display.removeFromLeft(std::min(display.getHeight(), display.getWidth() / 2)));
         display.removeFromLeft(6);
         history_.setBounds(display);
-        layoutKnobs(body.removeFromTop(knobCellHeight()), 7, knobs_);
+        layoutKnobs(body.removeFromTop(knobCellHeight()), 6, knobs_);
         body.removeFromTop(6);
         auto options = body.removeFromTop(optionsH);
         auto_->setBounds(options.removeFromLeft(110).reduced(0, 2));
@@ -131,12 +152,14 @@ private:
     {
         curve_.repaint();
         history_.repaint();
+        threshold_.repaint();
     }
     void framesArrived(double) override
     {
         curve_.repaint();
         history_.repaint();
         bars_.repaint();
+        threshold_.repaint();
     }
     juce::String headerStatus() const override
     {
@@ -147,6 +170,7 @@ private:
     TransferCurve curve_;
     HistoryGraph history_;
     LevelBars bars_;
+    ThresholdMeter threshold_;
     std::vector<Knob*> knobs_;
     PillToggle* auto_ = nullptr;
     SegmentedControl* detector_ = nullptr;
@@ -340,11 +364,18 @@ public:
     DeEsserCard(const Theme& theme, CardHost& host, core::Id channelId, const core::Insert& module)
         : ModuleCard(theme, host, channelId, module),
           graph_(*this,
-                 HistoryGraph::Style{0.0f, -60.0f, true, false, true, ps::deesser::threshold, false, 3.0f})
+                 HistoryGraph::Style{0.0f, -60.0f, true, false, true, ps::deesser::threshold, false, 3.0f}),
+          threshold_(*this,
+                     ps::deesser::threshold,
+                     ThresholdMeter::Level::extra,
+                     -60.0f,
+                     "BAND",
+                     theme.colours.meterHot)
     {
+        addAndMakeVisible(threshold_);
         graph_.setTooltip("The sibilance band's level (grey) and the reduction; drag to set the threshold");
         addAndMakeVisible(graph_);
-        for (int p : {ps::deesser::frequency, ps::deesser::threshold, ps::deesser::range})
+        for (int p : {ps::deesser::frequency, ps::deesser::range})
             knobs_.push_back(&addKnob(p));
         mode_ = &addChoice(ps::deesser::mode);
         listen_ = &addToggle(ps::deesser::listen, "Listen");
@@ -357,16 +388,27 @@ private:
     void layoutBody(juce::Rectangle<int> body) override
     {
         const int optionsH = theme_.sizes.controlCompact;
-        graph_.setBounds(takeDisplay(body, knobCellHeight() + optionsH + 6));
-        layoutKnobs(body.removeFromTop(knobCellHeight()), 3, knobs_);
+        auto display = takeDisplay(body, knobCellHeight() + optionsH + 6);
+        threshold_.setBounds(display.removeFromRight(ThresholdMeter::preferredWidth));
+        display.removeFromRight(4);
+        graph_.setBounds(display);
+        layoutKnobs(body.removeFromTop(knobCellHeight()), 2, knobs_);
         body.removeFromTop(6);
         auto options = body.removeFromTop(optionsH);
         listen_->setBounds(options.removeFromRight(64).reduced(0, 2));
         options.removeFromRight(theme_.spacing.sm);
         mode_->setBounds(options.removeFromLeft(std::min(options.getWidth(), 120)));
     }
-    void paramsChanged() override { graph_.repaint(); }
-    void framesArrived(double) override { graph_.repaint(); }
+    void paramsChanged() override
+    {
+        graph_.repaint();
+        threshold_.repaint();
+    }
+    void framesArrived(double) override
+    {
+        graph_.repaint();
+        threshold_.repaint();
+    }
     juce::String headerStatus() const override
     {
         return isOn() ? gainReductionText(reductionDb()) : juce::String();
@@ -374,6 +416,7 @@ private:
     juce::Colour headerStatusColour() const override { return theme_.colours.meterHot; }
 
     HistoryGraph graph_;
+    ThresholdMeter threshold_;
     std::vector<Knob*> knobs_;
     SegmentedControl* mode_ = nullptr;
     PillToggle* listen_ = nullptr;
@@ -443,12 +486,15 @@ public:
         : ModuleCard(theme, host, channelId, module),
           graph_(*this,
                  HistoryGraph::Style{0.0f, -36.0f, false, true, true, ps::limiter::ceiling, false, 3.0f}),
-          bars_(*this, {LevelBars::Kind::input, LevelBars::Kind::reduction, LevelBars::Kind::output})
+          bars_(*this, {LevelBars::Kind::reduction, LevelBars::Kind::output}),
+          ceiling_(
+              *this, ps::limiter::ceiling, ThresholdMeter::Level::input, -36.0f, "IN", theme.colours.meterHot)
     {
+        addAndMakeVisible(ceiling_);
         graph_.setTooltip("Input (grey), output and gain reduction; drag to set the ceiling");
         addAndMakeVisible(graph_);
         addAndMakeVisible(bars_);
-        for (int p : {ps::limiter::input, ps::limiter::ceiling, ps::limiter::release})
+        for (int p : {ps::limiter::input, ps::limiter::release})
             knobs_.push_back(&addKnob(p));
     }
 
@@ -459,15 +505,21 @@ private:
     {
         auto display = takeDisplay(body, knobCellHeight());
         bars_.setBounds(display.removeFromRight(bars_.preferredWidth()));
+        ceiling_.setBounds(display.removeFromRight(ThresholdMeter::preferredWidth));
         display.removeFromRight(4);
         graph_.setBounds(display);
-        layoutKnobs(body.removeFromTop(knobCellHeight()), 3, knobs_);
+        layoutKnobs(body.removeFromTop(knobCellHeight()), 2, knobs_);
     }
-    void paramsChanged() override { graph_.repaint(); }
+    void paramsChanged() override
+    {
+        graph_.repaint();
+        ceiling_.repaint();
+    }
     void framesArrived(double) override
     {
         graph_.repaint();
         bars_.repaint();
+        ceiling_.repaint();
     }
     juce::String headerStatus() const override
     {
@@ -477,6 +529,7 @@ private:
 
     HistoryGraph graph_;
     LevelBars bars_;
+    ThresholdMeter ceiling_;
     std::vector<Knob*> knobs_;
 };
 } // namespace

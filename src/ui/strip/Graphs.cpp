@@ -48,6 +48,12 @@ juce::Rectangle<float> HistoryGraph::plot() const
 
 void HistoryGraph::paint(juce::Graphics& g)
 {
+    paintContent(g);
+    drawWellFrame(g, card_.theme(), getLocalBounds().toFloat());
+}
+
+void HistoryGraph::paintContent(juce::Graphics& g)
+{
     const auto& theme = card_.theme();
     const auto& c = theme.colours;
     const auto area = getLocalBounds().toFloat();
@@ -300,6 +306,12 @@ float TransferCurve::outputDb(float inputDb) const
 
 void TransferCurve::paint(juce::Graphics& g)
 {
+    paintContent(g);
+    drawWellFrame(g, card_.theme(), plot().expanded(1.0f));
+}
+
+void TransferCurve::paintContent(juce::Graphics& g)
+{
     const auto& theme = card_.theme();
     const auto& c = theme.colours;
     const auto p = plot();
@@ -438,6 +450,12 @@ SaturationCurve::SaturationCurve(ModuleCard& card) : card_(card)
 
 void SaturationCurve::paint(juce::Graphics& g)
 {
+    paintContent(g);
+    drawWellFrame(g, card_.theme(), getLocalBounds().toFloat());
+}
+
+void SaturationCurve::paintContent(juce::Graphics& g)
+{
     const auto& theme = card_.theme();
     const auto& c = theme.colours;
     auto r = getLocalBounds().toFloat();
@@ -495,6 +513,142 @@ void SaturationCurve::paint(juce::Graphics& g)
     }
 }
 
+// ----- threshold meter -----------------------------------------------------------------------------
+
+ThresholdMeter::ThresholdMeter(ModuleCard& card,
+                               int parameter,
+                               Level level,
+                               float bottomDb,
+                               juce::String caption,
+                               juce::Colour overColour)
+    : card_(card), parameter_(parameter), level_(level), bottomDb_(bottomDb), caption_(std::move(caption)),
+      over_(overColour)
+{
+    setOpaque(false);
+    setRepaintsOnMouseActivity(true);
+    setTitle(juce::String(card.info(parameter).name));
+    setTooltip(juce::String(card.info(parameter).name) +
+               ": drag on the meter (Shift for fine), wheel to step, double-click to reset");
+}
+
+juce::Rectangle<float> ThresholdMeter::bar() const
+{
+    const auto& theme = card_.theme();
+    const float captionH = theme.fonts.size.caption + 4.0f;
+    auto r = getLocalBounds().toFloat();
+    r.removeFromTop(captionH);
+    r.removeFromBottom(captionH);
+    return r.withSizeKeepingCentre(14.0f, r.getHeight()).reduced(0.0f, 2.0f);
+}
+
+float ThresholdMeter::dbAt(float y) const
+{
+    const auto& info = card_.info(parameter_);
+    return juce::jlimit(info.minimum, info.maximum, yToDb(y, 0.0f, bottomDb_, bar()));
+}
+
+void ThresholdMeter::paint(juce::Graphics& g)
+{
+    const auto& theme = card_.theme();
+    const auto& c = theme.colours;
+    const auto b = bar();
+    const float captionH = theme.fonts.size.caption + 4.0f;
+    const float threshold = card_.param(parameter_);
+    const float level = level_ == Level::input ? card_.inputDb() : card_.extraDb();
+    const float ty = dbToY(threshold, 0.0f, bottomDb_, b);
+    const float ly = dbToY(level, 0.0f, bottomDb_, b);
+    drawWell(g, theme, b);
+    // The level: below the threshold in the meter's zone colours, over it in `over_`.
+    if (level > bottomDb_)
+    {
+        const auto inner = b.reduced(2.0f, 1.0f);
+        g.setColour(
+            theme.meter.colourAt(std::min(level, threshold)).withMultipliedAlpha(card_.isOn() ? 1.0f : 0.6f));
+        g.fillRect(juce::Rectangle<float>::leftTopRightBottom(
+            inner.getX(), std::max(ly, ty), inner.getRight(), b.getBottom() - 1.0f));
+        if (ly < ty)
+        {
+            g.setColour(over_);
+            g.fillRect(juce::Rectangle<float>::leftTopRightBottom(inner.getX(), ly, inner.getRight(), ty));
+        }
+    }
+    // Scale ticks every 12 dB, on the left.
+    g.setColour(c.textTertiary);
+    for (float db = -12.0f; db > bottomDb_; db -= 12.0f)
+    {
+        const float y = dbToY(db, 0.0f, bottomDb_, b);
+        g.fillRect(juce::Rectangle<float>(b.getX() - 5.0f, y, 3.0f, 1.0f));
+    }
+    drawWellFrame(g, theme, b);
+    // The threshold: a line across the well and a handle pointing at it.
+    const bool hot = dragging_ || isMouseOver();
+    g.setColour(c.textPrimary.withAlpha(hot ? 1.0f : 0.85f));
+    g.fillRect(juce::Rectangle<float>(b.getX() - 2.0f, ty - 0.75f, b.getWidth() + 4.0f, 1.5f));
+    juce::Path handle;
+    const float hx = b.getRight() + 2.0f, size = hot ? 7.0f : 6.0f;
+    handle.addTriangle(hx, ty, hx + size, ty - size * 0.75f, hx + size, ty + size * 0.75f);
+    g.fillPath(handle);
+    // The caption above and the value below.
+    g.setFont(theme.caption());
+    g.setColour(c.textTertiary);
+    g.drawText(caption_, getLocalBounds().toFloat().withHeight(captionH), juce::Justification::centred);
+    g.setFont(theme.font(Theme::Face::mono, theme.fonts.size.caption, theme.fonts.weight.medium));
+    g.setColour(hot ? c.textPrimary : c.textSecondary);
+    g.drawText(juce::String(threshold, 1),
+               getLocalBounds().toFloat().withTop(getHeight() - captionH),
+               juce::Justification::centred);
+}
+
+void ThresholdMeter::mouseDown(const juce::MouseEvent& e)
+{
+    dragging_ = true;
+    dragStartDb_ = card_.param(parameter_);
+    dragStartY_ = e.y;
+    card_.beginGesture(card_.info(parameter_).name);
+    // A click away from the handle moves the threshold there; on the handle it only grabs it.
+    const float ty = dbToY(dragStartDb_, 0.0f, bottomDb_, bar());
+    if (std::abs(static_cast<float>(e.y) - ty) > 5.0f && !e.mods.isShiftDown())
+    {
+        dragStartDb_ = dbAt(static_cast<float>(e.y));
+        card_.setParam(parameter_, dragStartDb_);
+    }
+    repaint();
+}
+
+void ThresholdMeter::mouseDrag(const juce::MouseEvent& e)
+{
+    if (!dragging_)
+        return;
+    const float perPixel = (0.0f - bottomDb_) / std::max(1.0f, bar().getHeight());
+    const float scale = e.mods.isShiftDown() ? 0.2f : 1.0f;
+    card_.setParam(parameter_, dragStartDb_ - static_cast<float>(e.y - dragStartY_) * perPixel * scale);
+    repaint();
+}
+
+void ThresholdMeter::mouseUp(const juce::MouseEvent&)
+{
+    if (dragging_)
+        card_.endGesture();
+    dragging_ = false;
+    repaint();
+}
+
+void ThresholdMeter::mouseDoubleClick(const juce::MouseEvent&)
+{
+    card_.beginGesture(card_.info(parameter_).name);
+    card_.setParam(parameter_, card_.info(parameter_).defaultValue);
+    card_.endGesture();
+}
+
+void ThresholdMeter::mouseWheelMove(const juce::MouseEvent&, const juce::MouseWheelDetails& wheel)
+{
+    if (wheel.deltaY == 0.0f)
+        return;
+    card_.beginGesture(card_.info(parameter_).name);
+    card_.setParam(parameter_, card_.param(parameter_) + (wheel.deltaY > 0.0f ? 0.5f : -0.5f));
+    card_.endGesture();
+}
+
 // ----- level bars -----------------------------------------------------------------------------------
 
 LevelBars::LevelBars(ModuleCard& card, std::vector<Kind> kinds) : card_(card), kinds_(std::move(kinds))
@@ -515,16 +669,16 @@ void LevelBars::paint(juce::Graphics& g)
         auto col = area.removeFromLeft(columnWidth);
         const auto caption = col.removeFromBottom(captionH);
         const auto value = col.removeFromTop(captionH);
-        auto bar = col.withSizeKeepingCentre(8, col.getHeight()).toFloat();
-        g.setColour(theme.material.enabled ? theme.material.meterWell : c.meterTrack);
-        g.fillRoundedRectangle(bar, 2.0f);
+        auto bar = col.withSizeKeepingCentre(14, col.getHeight()).toFloat().reduced(0.0f, 2.0f);
+        drawWell(g, theme, bar);
+        const auto inner = bar.reduced(2.0f, 1.0f);
         juce::String text, name;
         if (kind == Kind::reduction)
         {
             const float gr = card_.reductionDb();
-            const float h = juce::jlimit(0.0f, 1.0f, gr / 24.0f) * bar.getHeight();
+            const float h = juce::jlimit(0.0f, 1.0f, gr / 24.0f) * inner.getHeight();
             g.setColour(c.meterHot);
-            g.fillRoundedRectangle(bar.withHeight(h), 2.0f);
+            g.fillRect(inner.withHeight(h));
             text = gr >= 0.05f ? "-" + juce::String(gr, gr >= 10.0f ? 0 : 1) : juce::String("0.0");
             name = "GR";
         }
@@ -532,13 +686,14 @@ void LevelBars::paint(juce::Graphics& g)
         {
             const float db = kind == Kind::input ? card_.inputDb() : card_.outputDb();
             const float f = juce::jlimit(0.0f, 1.0f, (db - theme.meter.floorDb) / -theme.meter.floorDb);
-            const auto fill = bar.withTop(bar.getBottom() - f * bar.getHeight());
+            const auto fill = inner.withTop(inner.getBottom() - f * inner.getHeight());
             g.setColour(theme.meter.colourAt(db));
-            g.fillRoundedRectangle(fill, 2.0f);
+            g.fillRect(fill);
             text = db > -99.0f ? juce::String(db, db <= -10.0f ? 0 : 1)
                                : juce::String::fromUTF8("-\xe2\x88\x9e");
             name = kind == Kind::input ? "IN" : "OUT";
         }
+        drawWellFrame(g, theme, bar);
         g.setFont(theme.font(Theme::Face::mono, theme.fonts.size.caption - 1.0f, theme.fonts.weight.medium));
         g.setColour(c.textSecondary);
         g.drawText(text, value, juce::Justification::centred);

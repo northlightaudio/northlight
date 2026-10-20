@@ -50,14 +50,29 @@ is a no-op) and adds no latency (the limiter has no lookahead for that reason).
   (the gain reduction in `meterHot`, the gate's "open"/"closed"), and a collapse
   chevron. Dragging the header reorders the strip with a 2 px `accent` insertion
   line.
-- Body: a display well (`canvas`, radius `sm`, 1 px `lineSubtle`) above the
-  controls. The display takes what the controls leave (at least 96 px; 140 for the
+- Body: display wells above the controls. A well is cut into the card: the
+  material's `meterWell` (or `canvas`), radius `sm`, an inner shadow in the
+  `meterWellInset` colour 10 px down from the top edge, 4 px in from the sides
+  and 3 px up from the bottom, a 1 px rim of the same colour, and a `grooveLip`
+  highlight along the panel just under it. Meters are wells too. The display takes what the controls leave (at least 96 px; 140 for the
   EQ). Knobs are 28 px rings in the module's hue with the value under the ring in
   `value` and the name under that in `caption`, on a 60 px grid. Choices are
   segmented controls; two-state options are pills (the hue at 25% when on).
 - Off, the body is dimmed (`surface1` at 42% over it) but stays live: the display
   keeps measuring the input, so a threshold can be set against the signal before
   the module is switched on.
+
+### Threshold meters
+
+A threshold sits on the meter of what it is compared with, not on a knob: a
+46 px column with a caption (KEY, IN, BAND), a 14 px well with the level (the
+meter's zone colours below the threshold; above it the module's hue for the
+gate opening, `meterHot` for reduction), ticks every 12 dB on the left, the
+threshold as a 1.5 px `textPrimary` line across the well with a triangular
+handle on the right, and its value under the well in `value`. Drag anywhere on
+it (a click away from the handle moves the threshold there; Shift is fine),
+the wheel steps 0.5 dB, double-click resets. The history graph's dashed
+threshold line stays and drags too.
 
 ## 12.2 Real-time feedback
 
@@ -73,7 +88,8 @@ twice as fast. Histories scroll right to left over three seconds.
   hue line, the threshold as a dashed line with its value; a 4 px lane along the
   bottom is the hue while the gate is open and `surface3` while it is closed.
 - Drag anywhere in the display to set the threshold; double-click resets it.
-- Knobs (two rows of four): Threshold, Range, Attack, Hold, Release, Key HP, Key LP.
+- A KEY threshold meter left of the history (the key level, the hue over the threshold).
+- Knobs (two rows of three): Range, Attack, Hold, Release, Key HP, Key LP.
 
 ## 12.4 EQ
 
@@ -109,15 +125,17 @@ twice as fast. Histories scroll right to left over three seconds.
 - Drag on the curve left of the knee for the threshold, right of it to bend the
   ratio (the pointer sets the slope above the threshold); drag in the history for
   the threshold.
-- Knobs (one row): Threshold, Ratio, Attack, Release, Knee, Makeup, Mix; under
-  them the Auto make-up pill and the Peak / RMS detector.
+- The IN threshold meter replaces the IN bar (`meterHot` over the threshold);
+  GR and OUT bars beside it.
+- Knobs (one row): Ratio, Attack, Release, Knee, Makeup, Mix; under them the
+  Auto make-up pill and the Peak / RMS detector.
 
 ## 12.6 De-esser
 
 - Display: the sibilance band's level as a grey area, gain reduction from the top,
   the threshold dashed and draggable.
-- Knobs: Frequency, Threshold, Range; Split / Wide and a Listen pill (hear the band
-  alone).
+- A BAND threshold meter right of the history.
+- Knobs: Frequency, Range; Split / Wide and a Listen pill (hear the band alone).
 
 ## 12.7 Saturation
 
@@ -132,7 +150,9 @@ twice as fast. Histories scroll right to left over three seconds.
 
 - Display: history (input grey, output in the hue, reduction from the top) on a
   0..-36 dB scale with the ceiling as the draggable line; IN, GR and OUT bars.
-- Knobs: Input, Ceiling, Release.
+- The ceiling on the IN meter (the input after the input gain; `meterHot` above
+  the ceiling is what is being limited), GR and OUT bars beside it.
+- Knobs: Input, Release.
 
 ## 12.9 In the mixer
 
