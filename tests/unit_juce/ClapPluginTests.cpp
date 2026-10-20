@@ -630,3 +630,68 @@ TEST_CASE("A preset loaded from the plugin's side survives a fader move and a sa
     }
     folder.deleteRecursively();
 }
+
+TEST_CASE("A CLAP plugin's parameter lane plays from the session and is written by touch",
+          "[hosting][clap][session][automation]")
+{
+    const juce::ScopedJuceInitialiser_GUI juceInit;
+    REQUIRE(testClap().existsAsFile());
+    const auto folder = juce::File::getSpecialLocation(juce::File::tempDirectory)
+                            .getChildFile("aural-clap-automation")
+                            .getChildFile(juce::Uuid().toString());
+    REQUIRE(folder.createDirectory().wasOk());
+    const auto registryFile = folder.getChildFile("plugins.json");
+    REQUIRE(registryFile.replaceWithText(juce::String(testRegistry().toJson())));
+    MemoryStore store;
+    audio::AudioDeviceLayer audio{store};
+    {
+        ProjectSession session(audio, registryFile);
+        core::Track t;
+        t.id = 1;
+        session.execute(std::make_unique<core::AddTrack>(t));
+        core::Insert insert;
+        insert.id = 50;
+        insert.type = "clap:io.leafshade.aural.testgain";
+        session.execute(std::make_unique<core::AddInsert>(1, insert));
+        session.engine().prepare(48000.0, 64);
+        const auto live = session.liveInsert(50);
+        REQUIRE(live != nullptr);
+        REQUIRE_FALSE(live->parameters().empty());
+
+        core::AutomationLane lane;
+        lane.target = core::AutomationTarget::insertParameter;
+        lane.insert = 50;
+        lane.parameter = 0;
+        lane.points = {{0, 0.2f}, {48000, 0.8f}};
+        session.execute(std::make_unique<core::AddAutomationLane>(1, lane));
+        session.playHostedAutomation();
+        CHECK(live->parameter(0) == Approx(0.2f));
+
+        // Mode off: the lane is left alone.
+        session.execute(std::make_unique<core::SetAutomationMode>(1, core::AutomationMode::off));
+        live->setParameter(0, 0.5f);
+        session.playHostedAutomation();
+        CHECK(live->parameter(0) == Approx(0.5f));
+
+        // Touch while playing writes the lane through the plugin.
+        session.execute(std::make_unique<core::SetAutomationMode>(1, core::AutomationMode::touch));
+        session.play();
+        std::vector<float> l(64), r(64);
+        float* outputs[] = {l.data(), r.data()};
+        for (int i = 0; i < 10; ++i)
+            session.engine().process(nullptr, 0, outputs, 2, 64);
+        session.beginGesture("Gain");
+        session.execute(std::make_unique<core::SetInsertParameter>(1, 50, 0, 0.9f));
+        CHECK(live->parameter(0) == Approx(0.9f));
+        session.playHostedAutomation(); // a lane being written is not played
+        CHECK(live->parameter(0) == Approx(0.9f));
+        for (int i = 0; i < 10; ++i)
+            session.engine().process(nullptr, 0, outputs, 2, 64);
+        session.endGesture();
+        const auto* written =
+            session.project().tracks[0].findLane(core::AutomationTarget::insertParameter, 50, 0);
+        REQUIRE(written != nullptr);
+        CHECK(written->valueAt(640) == Approx(0.9f)); // the written point (then a glide back to the curve)
+    }
+    folder.deleteRecursively();
+}

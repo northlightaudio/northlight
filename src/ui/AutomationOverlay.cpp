@@ -37,17 +37,25 @@ const char* modeName(core::AutomationMode mode)
     return "Read";
 }
 
-const engine::ParameterInfo* infoFor(const core::Track& track, const AutomationOverlay::Key& key)
+} // namespace
+
+const std::vector<engine::ParameterInfo>* AutomationOverlay::parametersOf(const core::Insert& insert) const
+{
+    if (isHosted(insert.type))
+        return hostedParameters ? hostedParameters(insert.id) : nullptr;
+    return &plugins::parameterInfo(insert.type);
+}
+
+const engine::ParameterInfo* AutomationOverlay::infoFor(const core::Track& track, const Key& key) const
 {
     const auto* insert = track.findInsert(key.insert);
     if (insert == nullptr)
         return nullptr;
-    const auto& infos = plugins::parameterInfo(insert->type);
-    return key.parameter >= 0 && static_cast<size_t>(key.parameter) < infos.size()
-               ? &infos[static_cast<size_t>(key.parameter)]
+    const auto* infos = parametersOf(*insert);
+    return infos != nullptr && key.parameter >= 0 && static_cast<size_t>(key.parameter) < infos->size()
+               ? &(*infos)[static_cast<size_t>(key.parameter)]
                : nullptr;
 }
-} // namespace
 
 AutomationOverlay::AutomationOverlay(const Theme& theme) : theme_(theme)
 {
@@ -611,11 +619,10 @@ void AutomationOverlay::showParameterMenu(const core::Track& track, int row)
     bool separator = false;
     for (const auto* insert : track.processingChain())
     {
-        if (isHosted(insert->type))
-            continue; // hosted plugins are not automated yet
-        const auto& infos = plugins::parameterInfo(insert->type);
-        if (infos.empty())
-            continue;
+        const auto* found = parametersOf(*insert);
+        if (found == nullptr || found->empty())
+            continue; // (a VST3 plugin exposes no parameters yet)
+        const auto& infos = *found;
         if (!separator)
             menu.addSeparator();
         separator = true;

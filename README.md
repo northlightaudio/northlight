@@ -136,7 +136,8 @@ rate.
 over its lane. Pick the parameter (volume, pan, or any parameter of a built-in
 insert or channel strip module) and the mode (Off, Read, Touch, Latch, Write) from
 the chips at the lane's top left; click to add points, drag them, double-click to
-remove. In Touch, Latch or Write, moving the fader, pan or a parameter while
+remove. CLAP plugin parameters can be automated too (VST3 parameters come
+later). In Touch, Latch or Write, moving the fader, pan or a parameter while
 playing records it into the lane. Faders and knobs follow automation as it plays.
 A MIDI track can also play an external instrument: pick a MIDI output in Audio
 Setup, then the channel in the track's right-click menu (**MIDI output**); its

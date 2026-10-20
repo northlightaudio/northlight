@@ -335,8 +335,8 @@ output device on a channel (2026-10-20).
 
 Status 2026-10-20: recent files existed already; autosave with crash restore is
 built (architecture.md, Session and UI). Automation lanes with read, touch, latch
-and write are built for gain, pan and built-in and strip parameters; hosted
-plugin parameters are not automated yet. Project templates and media management
+and write are built for gain, pan, built-in and strip parameters and CLAP plugin
+parameters (VST3 plugins expose no parameters to the host yet). Project templates and media management
 (gather into the project folder, remove unused) are built.
 
 ### Phase 10 — Beta hardening (ongoing)

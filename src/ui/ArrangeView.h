@@ -193,6 +193,11 @@ public:
     }
     // The MIDI output device's name (empty when none is chosen), for the track menu.
     std::function<std::string()> midiOutputName;
+    // A hosted plugin's parameters, for the automation lane menu.
+    void setHostedParameters(std::function<const std::vector<engine::ParameterInfo>*(core::Id)> find)
+    {
+        automation_.hostedParameters = std::move(find);
+    }
     // Shows or hides a track's automation over its lane (the header's A).
     void showAutomation(core::Id trackId, bool shown);
 

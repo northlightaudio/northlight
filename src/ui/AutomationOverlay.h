@@ -2,6 +2,7 @@
 
 #include "core/Command.h"
 #include "core/Model.h"
+#include "engine/Insert.h"
 #include "ui/Theme.h"
 
 #include <juce_gui_basics/juce_gui_basics.h>
@@ -51,6 +52,8 @@ public:
 
     std::function<void(std::vector<std::unique_ptr<core::Command>>, const std::string&)> onEdit;
     std::function<std::string(const std::string& type)> displayName;
+    // A hosted plugin's parameters (from its live instance); null when unknown.
+    std::function<const std::vector<engine::ParameterInfo>*(core::Id insertId)> hostedParameters;
     // The overlay hid a track's automation itself (its menus): the header follows.
     std::function<void(core::Id trackId, bool shown)> onShownChanged;
 
@@ -87,6 +90,8 @@ private:
     float staticValue(const core::Track& track, const Key& key) const;
     juce::String valueText(const core::Track& track, const Key& key, float value) const;
     const core::AutomationLane* laneFor(const core::Track& track, const Key& key) const;
+    const std::vector<engine::ParameterInfo>* parametersOf(const core::Insert& insert) const;
+    const engine::ParameterInfo* infoFor(const core::Track& track, const Key& key) const;
     int pointAt(const core::Track& track, int row, juce::Point<int> p) const;
     void showParameterMenu(const core::Track& track, int row);
     void showModeMenu(const core::Track& track, int row);

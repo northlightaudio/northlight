@@ -43,11 +43,13 @@ ProjectSession::ProjectSession(audio::AudioDeviceLayer& audio, juce::File regist
     matchDeviceSampleRate();
     publish();
     startTimer(garbageTimerMilliseconds);
+    hostedAutomation_.startTimerHz(50);
 }
 
 ProjectSession::~ProjectSession()
 {
     stopTimer();
+    hostedAutomation_.stopTimer();
     removeOwnAutosave(); // a normal close: the user saved or chose not to
     scanner_.cancel();
     audio_.removeChangeListener(this);
@@ -1387,9 +1389,9 @@ bool ProjectSession::recordAutomation(const core::Command& command)
     std::shared_ptr<engine::InsertProcessor> instance;
     if (key.target == core::AutomationTarget::insertParameter)
     {
-        // A hosted plugin owns its parameters and is not automated yet.
         instance = engine_.insertInstance(key.insert);
-        if (instance == nullptr || instance->ownsParameters())
+        if (instance == nullptr || key.parameter < 0 ||
+            key.parameter >= static_cast<int>(instance->parameters().size()))
             return false;
     }
     const auto position = engine_.position();
@@ -1555,6 +1557,42 @@ void ProjectSession::finishPasses(bool touchOnly)
 void ProjectSession::finishAutomationPasses()
 {
     finishPasses(false);
+}
+
+void ProjectSession::playHostedAutomation()
+{
+    const auto position = engine_.position();
+    const auto play = [&](const core::Channel& channel)
+    {
+        if (channel.automationMode != core::AutomationMode::read &&
+            channel.automationMode != core::AutomationMode::touch &&
+            channel.automationMode != core::AutomationMode::latch)
+            return;
+        for (const auto& lane : channel.automation)
+        {
+            if (lane.target != core::AutomationTarget::insertParameter || lane.points.empty())
+                continue;
+            const auto instance = engine_.insertInstance(lane.insert);
+            if (instance == nullptr || !instance->ownsParameters() || lane.parameter < 0 ||
+                lane.parameter >= static_cast<int>(instance->parameters().size()))
+                continue;
+            // A lane being written is the user's.
+            if (std::any_of(passes_.begin(),
+                            passes_.end(),
+                            [&](const AutomationPass& p) { return p.lane == lane.id; }))
+                continue;
+            const float value = lane.valueAt(position);
+            const auto last = hostedLaneValues_.find(lane.id);
+            if (last != hostedLaneValues_.end() && last->second == value)
+                continue; // only changes go to the plugin
+            hostedLaneValues_[lane.id] = value;
+            instance->setParameter(lane.parameter, value);
+        }
+    };
+    for (const auto& t : project_.tracks)
+        play(t);
+    for (const auto& b : project_.buses)
+        play(b);
 }
 
 void ProjectSession::executeGroupWithoutRecording(std::vector<std::unique_ptr<core::Command>>& commands)

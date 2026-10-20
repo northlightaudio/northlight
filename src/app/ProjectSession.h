@@ -15,6 +15,7 @@
 #include <juce_gui_basics/juce_gui_basics.h>
 
 #include <functional>
+#include <map>
 #include <memory>
 #include <string>
 #include <utility>
@@ -167,6 +168,10 @@ public:
     bool isWritingAutomation() const noexcept { return !passes_.empty(); }
     // Finishes every pass now (the transport stopped; tests call it directly).
     void finishAutomationPasses();
+    // Hosted plugins own their parameters, so their lanes play from here (50
+    // times a second, on the message thread) rather than on the audio thread.
+    // Public for tests.
+    void playHostedAutomation();
 
     // ----- transport --------------------------------------------------------------
     void play();
@@ -300,6 +305,8 @@ private:
     double lastEditMs_ = 0.0;
     std::vector<AutomationPass> passes_;
     bool writePassesStarted_ = false;
+    std::map<core::Id, float> hostedLaneValues_; // the last value each hosted lane pushed
+    juce::TimedCallback hostedAutomation_{[this] { playHostedAutomation(); }};
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(ProjectSession)
 };

@@ -787,6 +787,15 @@ value held to the stop for latch and write), or creates the lane, as one
 "Write automation" undo step; a loop wrap closes the pass so far. The model's
 static values and the undo history are untouched while writing.
 
+Hosted plugins own their parameters (a CLAP plugin's setParameter queues for
+its process call from one producer, the controller thread), so their lanes are
+not compiled into the snapshot: `ProjectSession::playHostedAutomation` runs 50
+times a second on the message thread, evaluates those lanes at the engine
+position and sends each changed value to the instance; a lane being written is
+skipped. Writing a hosted parameter (through the generic editor's commands)
+records like any other. VST3 plugins expose no parameters to the host yet, so
+they have no lanes.
+
 UI: `ui::AutomationOverlay` covers the arrange view and takes the pointer only
 over rows whose header's A toggle is on; it draws the chosen lane over the row
 and edits points (04-arrange.md, Automation). The mixer strip asks for the

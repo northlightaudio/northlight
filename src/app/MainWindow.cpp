@@ -820,6 +820,12 @@ private:
         browser_.setStatus(session_.pluginScanStatus());
         tracks_.setDisplayName([this](const std::string& type) { return mixer_.insertDisplayName(type); });
         tracks_.midiOutputName = [this] { return audio_.midi().outputName(); };
+        tracks_.setHostedParameters(
+            [this](core::Id insertId) -> const std::vector<engine::ParameterInfo>*
+            {
+                const auto live = session_.liveInsert(insertId);
+                return live != nullptr ? &live->parameters() : nullptr;
+            });
         tracks_.onInsertPlugin = [this](core::Id trackId, const std::string& type)
         { insertPlugin(trackId, type); };
         editor_.isEditorOpen = [this](core::Id insertId) { return mixer_.isEditorOpen(insertId); };
