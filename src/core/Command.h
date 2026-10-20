@@ -1219,6 +1219,37 @@ private:
     std::vector<Changed> changed_;
 };
 
+// Replaces a clip's vocal edit (every pitch, breath and note edit, and entering
+// or leaving pitch editing). Notes and segments without an id get one on apply
+// (kept for redo).
+class SetVocalEdit final : public Command
+{
+public:
+    SetVocalEdit(Id trackId, Id clipId, VocalEdit edit, std::string name = "Edit pitch");
+    std::string name() const override { return name_; }
+    void apply(Project&) override;
+    void revert(Project&) override;
+    const VocalEdit& edit() const noexcept { return value_; }
+
+private:
+    Id trackId_, clipId_;
+    VocalEdit value_, previous_;
+    std::string name_;
+};
+
+class SetProjectKey final : public Command
+{
+public:
+    explicit SetProjectKey(MusicalKey key);
+    std::string name() const override { return "Set key"; }
+    ChangeKind changeKind() const noexcept override { return ChangeKind::cosmetic; }
+    void apply(Project&) override;
+    void revert(Project&) override;
+
+private:
+    MusicalKey value_, previous_;
+};
+
 class SetTimeSignature final : public Command
 {
 public:

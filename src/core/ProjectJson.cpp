@@ -36,7 +36,8 @@ void migrate(json& j, int from)
     {
         switch (version)
         {
-            case 2:
+            case 2: // 2 -> 3 and 3 -> 4 only add optional fields
+            case 3:
                 break;
             default:
                 break;
@@ -58,6 +59,47 @@ json clipToJson(const AudioClip& c)
         j["fadeIn"] = c.fadeIn;
     if (c.fadeOut > 0)
         j["fadeOut"] = c.fadeOut;
+    if (c.vocal.active())
+    {
+        json notes = json::array();
+        for (const auto& n : c.vocal.notes)
+        {
+            json nj{
+                {"id", n.id}, {"start", n.start}, {"end", n.end}, {"centre", n.centre}, {"target", n.target}};
+            if (n.drift != 1.0f)
+                nj["drift"] = n.drift;
+            if (n.vibrato != 1.0f)
+                nj["vibrato"] = n.vibrato;
+            if (n.transitionIn > 0)
+                nj["transitionIn"] = n.transitionIn;
+            if (n.transitionOut > 0)
+                nj["transitionOut"] = n.transitionOut;
+            if (n.gainDb != 0.0f)
+                nj["gainDb"] = n.gainDb;
+            if (n.muted)
+                nj["muted"] = true;
+            notes.push_back(std::move(nj));
+        }
+        json segments = json::array();
+        for (const auto& s : c.vocal.segments)
+        {
+            json sj{{"id", s.id},
+                    {"start", s.start},
+                    {"end", s.end},
+                    {"kind",
+                     s.kind == VocalSegmentKind::breath      ? "breath"
+                     : s.kind == VocalSegmentKind::consonant ? "consonant"
+                                                             : "silence"}};
+            if (s.gainDb != 0.0f)
+                sj["gainDb"] = s.gainDb;
+            if (s.muted)
+                sj["muted"] = true;
+            segments.push_back(std::move(sj));
+        }
+        j["vocal"] = json{{"analysis", c.vocal.analysisVersion},
+                          {"notes", std::move(notes)},
+                          {"segments", std::move(segments)}};
+    }
     return j;
 }
 
@@ -73,6 +115,42 @@ AudioClip clipFromJson(const json& j)
     c.gain = j.value("gain", 1.0f);
     c.fadeIn = j.value("fadeIn", SamplePosition{0});
     c.fadeOut = j.value("fadeOut", SamplePosition{0});
+    if (const auto it = j.find("vocal"); it != j.end() && it->is_object())
+    {
+        c.vocal.analysisVersion = it->value("analysis", 0);
+        if (const auto n = it->find("notes"); n != it->end() && n->is_array())
+            for (const auto& nj : *n)
+            {
+                VocalNote note;
+                note.id = nj.value("id", invalidId);
+                note.start = nj.value("start", SamplePosition{0});
+                note.end = nj.value("end", SamplePosition{0});
+                note.centre = nj.value("centre", 6000.0f);
+                note.target = nj.value("target", note.centre);
+                note.drift = nj.value("drift", 1.0f);
+                note.vibrato = nj.value("vibrato", 1.0f);
+                note.transitionIn = nj.value("transitionIn", SamplePosition{0});
+                note.transitionOut = nj.value("transitionOut", SamplePosition{0});
+                note.gainDb = nj.value("gainDb", 0.0f);
+                note.muted = nj.value("muted", false);
+                c.vocal.notes.push_back(note);
+            }
+        if (const auto s = it->find("segments"); s != it->end() && s->is_array())
+            for (const auto& sj : *s)
+            {
+                VocalSegment segment;
+                segment.id = sj.value("id", invalidId);
+                segment.start = sj.value("start", SamplePosition{0});
+                segment.end = sj.value("end", SamplePosition{0});
+                const auto kind = sj.value("kind", std::string{"silence"});
+                segment.kind = kind == "breath"      ? VocalSegmentKind::breath
+                               : kind == "consonant" ? VocalSegmentKind::consonant
+                                                     : VocalSegmentKind::silence;
+                segment.gainDb = sj.value("gainDb", 0.0f);
+                segment.muted = sj.value("muted", false);
+                c.vocal.segments.push_back(segment);
+            }
+    }
     return c;
 }
 
@@ -399,20 +477,21 @@ std::string projectToJson(const Project& p, bool pretty, const ParameterKeys* ke
         markers.push_back(std::move(mj));
     }
 
-    const json j{
-        {"format", "aural.project"},
-        {"version", Project::schemaVersion},
-        {"name", p.name},
-        {"sampleRate", p.sampleRate},
-        {"tempo", p.tempoBpm},
-        {"timeSignature",
-         json{{"numerator", p.timeSignature.numerator}, {"denominator", p.timeSignature.denominator}}},
-        {"nextId", p.nextId},
-        {"master", json{{"gain", p.master.gain}}},
-        {"buses", std::move(buses)},
-        {"groups", std::move(groups)},
-        {"markers", std::move(markers)},
-        {"tracks", std::move(tracks)}};
+    json j{{"format", "aural.project"},
+           {"version", Project::schemaVersion},
+           {"name", p.name},
+           {"sampleRate", p.sampleRate},
+           {"tempo", p.tempoBpm},
+           {"timeSignature",
+            json{{"numerator", p.timeSignature.numerator}, {"denominator", p.timeSignature.denominator}}},
+           {"nextId", p.nextId},
+           {"master", json{{"gain", p.master.gain}}},
+           {"buses", std::move(buses)},
+           {"groups", std::move(groups)},
+           {"markers", std::move(markers)},
+           {"tracks", std::move(tracks)}};
+    if (p.key.isSet())
+        j["key"] = json{{"root", p.key.root}, {"scale", static_cast<int>(p.key.scale)}};
     return pretty ? j.dump(2) : j.dump();
 }
 
@@ -450,6 +529,12 @@ std::optional<Project> projectFromJson(const std::string& text, std::string* err
             p.timeSignature.denominator = it->value("denominator", 4);
         }
         p.nextId = j.value("nextId", Id{1});
+        if (const auto it = j.find("key"); it != j.end() && it->is_object())
+        {
+            p.key.root = std::clamp(it->value("root", -1), -1, 11);
+            p.key.scale = static_cast<ScaleKind>(
+                std::clamp(it->value("scale", 0), 0, static_cast<int>(ScaleKind::chromatic)));
+        }
         if (const auto it = j.find("tracks"); it != j.end() && it->is_array())
             for (const auto& t : *it)
                 p.tracks.push_back(trackFromJson(t));

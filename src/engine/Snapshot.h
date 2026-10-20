@@ -205,6 +205,13 @@ public:
     std::shared_ptr<const AudioSource>
     getForClip(const std::string& path, double sampleRate, core::Id clipId);
 
+    // What a clip plays: getForClip's source, passed through the clip hook when one
+    // is set (vocal pitch edits lay their rendered spans over it).
+    using ClipSourceHook = std::function<std::shared_ptr<const AudioSource>(
+        const core::AudioClip& clip, double sampleRate, std::shared_ptr<const AudioSource> base)>;
+    void setClipSourceHook(ClipSourceHook hook) { clipHook_ = std::move(hook); }
+    std::shared_ptr<const AudioSource> sourceForClip(const core::AudioClip& clip, double sampleRate);
+
     // Drops entries no snapshot references any more.
     void prune();
 
@@ -224,6 +231,7 @@ private:
     std::map<std::string, std::shared_ptr<const AudioSource>> sources_;
     std::map<core::Id, Instance> instances_;
     std::map<std::string, std::string> errors_;
+    ClipSourceHook clipHook_;
 };
 
 // `delays` keeps compensation delay lines across compiles; without it each

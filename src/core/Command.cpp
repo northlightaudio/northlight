@@ -1690,6 +1690,7 @@ void SplitClip::apply(Project& p)
     right_.gain = c.gain;
     right_.fadeIn = 0;
     right_.fadeOut = std::min(c.fadeOut, right_.length);
+    right_.vocal = c.vocal; // in source samples: both halves keep the notes they play
     c.length = at_ - c.start;
     c.fadeOut = 0;
     c.fadeIn = std::min(c.fadeIn, c.length);
@@ -1707,7 +1708,8 @@ void SplitClip::revert(Project& p)
 bool JoinClips::canJoin(const AudioClip& left, const AudioClip& right) noexcept
 {
     return left.mediaPath == right.mediaPath && right.start == left.end() &&
-           right.sourceOffset == left.sourceOffset + left.length && left.gain == right.gain;
+           right.sourceOffset == left.sourceOffset + left.length && left.gain == right.gain &&
+           left.vocal == right.vocal;
 }
 JoinClips::JoinClips(Id trackId, Id leftClipId, Id rightClipId)
     : trackId_(trackId), leftId_(leftClipId), rightId_(rightClipId)
@@ -1816,6 +1818,46 @@ void SetClipGain::apply(Project& p)
 void SetClipGain::revert(Project& p)
 {
     requireClip(requireTrack(p, trackId_), clipId_).gain = previous_;
+}
+
+// ----- vocal pitch editing ----------------------------------------------------------------
+
+SetVocalEdit::SetVocalEdit(Id trackId, Id clipId, VocalEdit edit, std::string name)
+    : trackId_(trackId), clipId_(clipId), value_(std::move(edit)), name_(std::move(name))
+{
+    std::sort(value_.notes.begin(),
+              value_.notes.end(),
+              [](const VocalNote& a, const VocalNote& b) { return a.start < b.start; });
+    std::sort(value_.segments.begin(),
+              value_.segments.end(),
+              [](const VocalSegment& a, const VocalSegment& b) { return a.start < b.start; });
+}
+void SetVocalEdit::apply(Project& p)
+{
+    auto& c = requireClip(requireTrack(p, trackId_), clipId_);
+    previous_ = c.vocal;
+    for (auto& n : value_.notes)
+        if (n.id == invalidId)
+            n.id = p.allocateId();
+    for (auto& s : value_.segments)
+        if (s.id == invalidId)
+            s.id = p.allocateId();
+    c.vocal = value_;
+}
+void SetVocalEdit::revert(Project& p)
+{
+    requireClip(requireTrack(p, trackId_), clipId_).vocal = previous_;
+}
+
+SetProjectKey::SetProjectKey(MusicalKey key) : value_(key) {}
+void SetProjectKey::apply(Project& p)
+{
+    previous_ = p.key;
+    p.key = value_;
+}
+void SetProjectKey::revert(Project& p)
+{
+    p.key = previous_;
 }
 
 // ----- project ----------------------------------------------------------------------------

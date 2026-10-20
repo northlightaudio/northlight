@@ -46,6 +46,8 @@ public:
     // ----- controller thread ------------------------------------------------------
     // Compiles and publishes the project. Media errors are available afterwards.
     void setProject(const core::Project& project);
+    // What clips play is passed through this before a snapshot uses it (vocal edits).
+    void setClipSourceHook(MediaCache::ClipSourceHook hook) { media_.setClipSourceHook(std::move(hook)); }
     const std::map<std::string, std::string>& mediaErrors() const noexcept { return media_.errors(); }
 
     void play();

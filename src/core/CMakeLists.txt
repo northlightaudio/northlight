@@ -3,6 +3,7 @@
 add_library(aural_core STATIC
     Model.h
     Model.cpp
+    Vocal.h
     Command.h
     Command.cpp
     ProjectJson.h

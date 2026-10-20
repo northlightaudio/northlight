@@ -14,6 +14,8 @@
 // Positions and lengths are in samples at the project sample rate, which makes the
 // model sample-accurate and keeps tempo a display concern (TimeSignature below).
 
+#include "core/Vocal.h"
+
 namespace aural::core
 {
 
@@ -32,6 +34,7 @@ struct AudioClip
     float gain = 1.0f;               // linear
     SamplePosition fadeIn = 0;       // samples of linear fade at the start
     SamplePosition fadeOut = 0;      // and at the end (overlapping clips crossfade this way)
+    VocalEdit vocal;                 // pitch edits (core/Vocal.h); inactive = the media as recorded
 
     SamplePosition end() const noexcept { return start + length; }
     bool operator==(const AudioClip&) const = default;
@@ -326,13 +329,15 @@ struct Project
 {
     // 2: instruments moved to instrument channels; MIDI tracks aim at them.
     // 3: parameters and automation lanes carry stable keys; row heights.
-    static constexpr int schemaVersion = 3;
+    // 4: vocal pitch edits on audio clips; the project key.
+    static constexpr int schemaVersion = 4;
     static constexpr int oldestReadableVersion = 2; // older files are refused
 
     std::string name = "Untitled";
     double sampleRate = 48000.0;
     double tempoBpm = 120.0;
     TimeSignature timeSignature;
+    MusicalKey key;
     std::vector<Track> tracks;
     std::vector<Bus> buses;
     std::vector<Group> groups;

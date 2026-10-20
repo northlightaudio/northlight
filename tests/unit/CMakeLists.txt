@@ -34,6 +34,7 @@ add_executable(aural_unit_tests
     engine/MidiTests.cpp
     engine/AutomationTests.cpp
     engine/FxTrackTests.cpp
+    engine/PitchTests.cpp
     hosting/PluginRegistryTests.cpp
     ui/SelectionTests.cpp
     ui/ClipOpsTests.cpp)

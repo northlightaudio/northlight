@@ -454,6 +454,79 @@ SamplePosition snapToGrid(SamplePosition position, SamplePosition grid) noexcept
     return position - lower < upper - position ? lower : upper;
 }
 
+std::uint16_t MusicalKey::mask() const noexcept
+{
+    // Intervals above the root, as bits.
+    std::uint16_t intervals = 0;
+    const auto set = [&intervals](std::initializer_list<int> steps)
+    {
+        for (int s : steps)
+            intervals = static_cast<std::uint16_t>(intervals | (1u << s));
+    };
+    switch (scale)
+    {
+        case ScaleKind::major:
+            set({0, 2, 4, 5, 7, 9, 11});
+            break;
+        case ScaleKind::minor:
+            set({0, 2, 3, 5, 7, 8, 10});
+            break;
+        case ScaleKind::harmonicMinor:
+            set({0, 2, 3, 5, 7, 8, 11});
+            break;
+        case ScaleKind::dorian:
+            set({0, 2, 3, 5, 7, 9, 10});
+            break;
+        case ScaleKind::mixolydian:
+            set({0, 2, 4, 5, 7, 9, 10});
+            break;
+        case ScaleKind::majorPentatonic:
+            set({0, 2, 4, 7, 9});
+            break;
+        case ScaleKind::minorPentatonic:
+            set({0, 3, 5, 7, 10});
+            break;
+        case ScaleKind::chromatic:
+            set({0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11});
+            break;
+    }
+    if (!isSet())
+        return 0x0fff;
+    // Rotate the intervals up to the root.
+    const int r = root % 12;
+    return static_cast<std::uint16_t>(((intervals << r) | (intervals >> (12 - r))) & 0x0fff);
+}
+
+const char* scaleName(ScaleKind scale) noexcept
+{
+    switch (scale)
+    {
+        case ScaleKind::major:
+            return "major";
+        case ScaleKind::minor:
+            return "minor";
+        case ScaleKind::harmonicMinor:
+            return "harmonic minor";
+        case ScaleKind::dorian:
+            return "Dorian";
+        case ScaleKind::mixolydian:
+            return "Mixolydian";
+        case ScaleKind::majorPentatonic:
+            return "major pentatonic";
+        case ScaleKind::minorPentatonic:
+            return "minor pentatonic";
+        case ScaleKind::chromatic:
+            return "chromatic";
+    }
+    return "";
+}
+
+const char* pitchClassName(int pitchClass) noexcept
+{
+    static const char* const names[] = {"C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"};
+    return names[((pitchClass % 12) + 12) % 12];
+}
+
 BarsBeats samplesToBarsBeats(SamplePosition position,
                              double sampleRate,
                              double tempoBpm,

@@ -52,6 +52,16 @@ add_library(aural_engine STATIC
     Insert.cpp
     Delay.h
     Delay.cpp
-    Loudness.h)
+    Loudness.h
+    pitch/PitchAnalysis.h
+    pitch/PitchAnalysis.cpp
+    pitch/VocalRender.h
+    pitch/VocalRender.cpp
+    pitch/Correction.h
+    pitch/Correction.cpp
+    pitch/VocalService.h
+    pitch/VocalService.cpp
+    pitch/VocalOps.h
+    pitch/VocalOps.cpp)
 
 target_link_libraries(aural_engine PUBLIC aural_rt aural_core)

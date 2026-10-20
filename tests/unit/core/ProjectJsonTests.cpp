@@ -299,10 +299,11 @@ TEST_CASE("Parameters without keys are positional, padded with defaults or trimm
 TEST_CASE("A version 2 project is upgraded on load and saved as the current version", "[core][json]")
 {
     auto text = projectToJson(keyedProject());
-    const auto at = text.find("\"version\": 3");
+    const auto current = "\"version\": " + std::to_string(Project::schemaVersion);
+    const auto at = text.find(current);
     REQUIRE(at != std::string::npos);
-    text.replace(at, 12, "\"version\": 2");
+    text.replace(at, current.size(), "\"version\": 2");
     const auto loaded = projectFromJson(text);
     REQUIRE(loaded.has_value());
-    CHECK(projectToJson(*loaded).find("\"version\": 3") != std::string::npos);
+    CHECK(projectToJson(*loaded).find(current) != std::string::npos);
 }
