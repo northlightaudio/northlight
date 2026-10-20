@@ -1201,6 +1201,31 @@ void SetAutomationMode::revert(Project& p)
     requireChannel(p, channelId_).automationMode = previous_;
 }
 
+SetMediaPaths::SetMediaPaths(std::vector<std::pair<std::string, std::string>> renames)
+    : renames_(std::move(renames))
+{
+}
+void SetMediaPaths::apply(Project& p)
+{
+    changed_.clear();
+    for (auto& t : p.tracks)
+        for (auto& c : t.clips)
+            for (const auto& [from, to] : renames_)
+                if (c.mediaPath == from)
+                {
+                    changed_.push_back({t.id, c.id, c.mediaPath});
+                    c.mediaPath = to;
+                    break;
+                }
+}
+void SetMediaPaths::revert(Project& p)
+{
+    for (const auto& change : changed_)
+        if (auto* t = p.findTrack(change.track))
+            if (auto* c = t->findClip(change.clip))
+                c->mediaPath = change.previous;
+}
+
 SetTrackName::SetTrackName(Id trackId, std::string name) : trackId_(trackId), value_(std::move(name)) {}
 void SetTrackName::apply(Project& p)
 {

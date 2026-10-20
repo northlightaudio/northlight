@@ -318,6 +318,156 @@ std::string ProjectSession::save(const juce::File& file)
     return {};
 }
 
+// ----- templates ---------------------------------------------------------------------------
+
+juce::File ProjectSession::templatesFolder() const
+{
+    if (templatesFolder_ != juce::File())
+        return templatesFolder_;
+    return juce::File::getSpecialLocation(juce::File::userDocumentsDirectory)
+        .getChildFile("Aural")
+        .getChildFile("Templates");
+}
+
+std::vector<juce::File> ProjectSession::templates() const
+{
+    std::vector<juce::File> found;
+    for (const auto& f : templatesFolder().findChildFiles(juce::File::findFiles, false, "*.aural"))
+        found.push_back(f);
+    std::sort(found.begin(),
+              found.end(),
+              [](const juce::File& a, const juce::File& b)
+              { return a.getFileName().compareNatural(b.getFileName()) < 0; });
+    return found;
+}
+
+std::string ProjectSession::saveAsTemplate(const juce::String& name)
+{
+    const auto clean = juce::File::createLegalFileName(name.trim());
+    if (clean.isEmpty())
+        return "a template needs a name";
+    captureInsertStates();
+    auto layout = project_;
+    layout.name = clean.toStdString();
+    for (auto& t : layout.tracks)
+    {
+        t.clips.clear();
+        t.midiClips.clear();
+        t.armed = false;
+        for (auto& lane : t.automation)
+            lane.points.clear();
+        std::erase_if(t.automation, [](const core::AutomationLane& l) { return l.points.empty(); });
+    }
+    for (auto& b : layout.buses)
+        b.automation.clear();
+    layout.markers.clear();
+    const auto folder = templatesFolder();
+    if (!folder.createDirectory().wasOk())
+        return "could not create " + folder.getFullPathName().toStdString();
+    const auto file = folder.getChildFile(clean + ".aural");
+    if (!file.replaceWithText(juce::String(core::projectToJson(layout))))
+        return "could not write " + file.getFullPathName().toStdString();
+    return {};
+}
+
+std::string ProjectSession::newFromTemplate(const juce::File& file)
+{
+    std::string error;
+    const auto loaded = core::projectFromJson(file.loadFileAsString().toStdString(), &error);
+    if (!loaded.has_value())
+        return error.empty() ? "could not read the template" : error;
+    removeOwnAutosave();
+    untitledStem_.clear();
+    engine_.resetCaches();
+    project_ = *loaded;
+    project_.name = "Untitled";
+    plugins::strip::ensureChannelStrip(project_);
+    undo_.clear();
+    projectFile_ = juce::File();
+    modified_ = false;
+    matchDeviceSampleRate();
+    publish();
+    return {};
+}
+
+// ----- media management ------------------------------------------------------------------
+
+namespace
+{
+bool isMediaFile(const juce::File& f)
+{
+    if (f.getFileName().endsWithIgnoreCase(".partial.wav") ||
+        f.getFileName().endsWithIgnoreCase(".discarded.wav"))
+        return false; // unfinished recordings belong to recovery
+    return f.hasFileExtension("wav;aif;aiff;flac;mp3;ogg");
+}
+} // namespace
+
+ProjectSession::MediaReport ProjectSession::mediaReport() const
+{
+    MediaReport report;
+    const auto folder = mediaFolder();
+    std::vector<juce::File> used;
+    for (const auto& t : project_.tracks)
+        for (const auto& c : t.clips)
+        {
+            const juce::File f(juce::String::fromUTF8(c.mediaPath.c_str()));
+            if (std::find(used.begin(), used.end(), f) != used.end())
+                continue;
+            used.push_back(f);
+            if (!f.existsAsFile())
+                report.missing.push_back(f);
+            else if (projectFile_ == juce::File() || !f.isAChildOf(folder))
+                report.outside.push_back(f);
+        }
+    if (projectFile_ != juce::File() && folder.isDirectory())
+        for (const auto& f : folder.findChildFiles(juce::File::findFiles, false))
+            if (isMediaFile(f) && std::find(used.begin(), used.end(), f) == used.end())
+                report.unused.push_back(f);
+    return report;
+}
+
+std::string ProjectSession::consolidateMedia(int& copied)
+{
+    copied = 0;
+    if (projectFile_ == juce::File())
+        return "save the project first: media is gathered next to the project file";
+    const auto folder = mediaFolder();
+    if (!folder.createDirectory().wasOk())
+        return "could not create " + folder.getFullPathName().toStdString();
+    std::vector<std::pair<std::string, std::string>> renames;
+    for (const auto& source : mediaReport().outside)
+    {
+        auto target = folder.getChildFile(source.getFileName());
+        if (target.existsAsFile())
+            target = folder.getNonexistentChildFile(
+                source.getFileNameWithoutExtension(), source.getFileExtension(), false);
+        if (!source.copyFileTo(target))
+            return "could not copy " + source.getFullPathName().toStdString();
+        renames.emplace_back(source.getFullPathName().toStdString(), target.getFullPathName().toStdString());
+        ++copied;
+    }
+    if (!renames.empty())
+        execute(std::make_unique<core::SetMediaPaths>(std::move(renames)));
+    return {};
+}
+
+int ProjectSession::removeUnusedMedia()
+{
+    int moved = 0;
+    for (const auto& f : mediaReport().unused)
+    {
+        if (!f.moveToTrash())
+            continue;
+        ++moved;
+        // Its peak cache goes with it.
+        for (const auto& sidecar :
+             f.getParentDirectory().findChildFiles(juce::File::findFiles, false, f.getFileName() + ".*"))
+            sidecar.moveToTrash();
+    }
+    return moved;
+}
+
 // ----- autosave ---------------------------------------------------------------------------
 
 namespace

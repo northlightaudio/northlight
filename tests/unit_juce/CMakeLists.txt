@@ -13,7 +13,8 @@ add_executable(aural_juce_tests
     KeyboardMapTests.cpp
     ChannelStripUiTests.cpp
     AutosaveTests.cpp
-    AutomationWriteTests.cpp)
+    AutomationWriteTests.cpp
+    TemplatesMediaTests.cpp)
 
 target_link_libraries(aural_juce_tests PRIVATE
     aural_options

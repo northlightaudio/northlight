@@ -1415,6 +1415,101 @@ private:
         refresh();
     }
 
+    void newFromTemplate(const juce::File& file)
+    {
+        if (session_.isRecording())
+            return;
+        session_.stop();
+        mixer_.closeEditors();
+        const auto error = session_.newFromTemplate(file);
+        if (!error.empty())
+            toast(ui::ToastStack::Kind::error,
+                  "Cannot use the template: " + juce::String::fromUTF8(error.c_str()));
+        else
+            status_.showMessage("New project from " + file.getFileNameWithoutExtension());
+        refresh();
+    }
+
+    void saveTemplate()
+    {
+        auto field = std::make_unique<juce::TextEditor>();
+        field->setText(juce::String::fromUTF8(session_.project().name.c_str()) == "Untitled"
+                           ? juce::String("My template")
+                           : juce::String::fromUTF8(session_.project().name.c_str()));
+        field->selectAll();
+        auto* raw = field.get();
+        sheet_ = ui::Sheet::show(
+            *this,
+            theme_,
+            "Save as template",
+            "The tracks, buses, routing, inserts and channel strips, without clips or markers. "
+            "New from template in the Project menu starts a project from it.",
+            {{"Cancel", false, false}, {"Save", true, false}},
+            [this, raw](int result)
+            {
+                const auto name = raw->getText();
+                sheet_ = nullptr;
+                if (result != 1)
+                    return;
+                const auto error = session_.saveAsTemplate(name);
+                if (!error.empty())
+                    toast(ui::ToastStack::Kind::error,
+                          "Cannot save the template: " + juce::String::fromUTF8(error.c_str()));
+                else
+                    toast(ui::ToastStack::Kind::success, "Saved the template \"" + name.trim() + "\"");
+            },
+            std::move(field),
+            theme_.sizes.control);
+    }
+
+    void gatherMedia()
+    {
+        int copied = 0;
+        const auto error = session_.consolidateMedia(copied);
+        if (!error.empty())
+            toast(ui::ToastStack::Kind::error,
+                  "Cannot gather media: " + juce::String::fromUTF8(error.c_str()));
+        else if (copied == 0)
+            toast(ui::ToastStack::Kind::info, "All media is already in the project folder.");
+        else
+            toast(ui::ToastStack::Kind::success,
+                  "Copied " + juce::String(copied) + (copied == 1 ? " file" : " files") +
+                      " into the project folder. Save to keep the new paths.");
+    }
+
+    void removeUnusedMedia()
+    {
+        const auto report = session_.mediaReport();
+        if (report.unused.empty())
+        {
+            toast(ui::ToastStack::Kind::info, "No unused media in the project folder.");
+            return;
+        }
+        juce::int64 bytes = 0;
+        for (const auto& f : report.unused)
+            bytes += f.getSize();
+        sheet_ =
+            ui::Sheet::show(*this,
+                            theme_,
+                            "Remove unused media",
+                            juce::String(static_cast<int>(report.unused.size())) +
+                                (report.unused.size() == 1 ? " file" : " files") + " (" +
+                                juce::File::descriptionOfSizeInBytes(bytes) +
+                                ") in the project folder are not used by any clip. They go to the "
+                                "Recycle Bin, so an undo that brings a clip back can still find them there.",
+                            {{"Cancel", false, false}, {"Move to Recycle Bin", true, true}},
+                            [this](int result)
+                            {
+                                sheet_ = nullptr;
+                                if (result != 1)
+                                    return;
+                                const int moved = session_.removeUnusedMedia();
+                                toast(ui::ToastStack::Kind::success,
+                                      "Moved " + juce::String(moved) + (moved == 1 ? " file" : " files") +
+                                          " to the Recycle Bin.");
+                            });
+    }
+
     void openProject()
     {
         if (session_.isRecording())
@@ -1685,6 +1780,11 @@ private:
     {
         juce::PopupMenu menu;
         menu.addItem(1, "New");
+        juce::PopupMenu fromTemplate;
+        const auto templateFiles = session_.templates();
+        for (size_t i = 0; i < templateFiles.size(); ++i)
+            fromTemplate.addItem(200 + static_cast<int>(i), templateFiles[i].getFileNameWithoutExtension());
+        menu.addSubMenu("New from template", fromTemplate, !templateFiles.empty());
         menu.addItem(2, "Open...");
         juce::PopupMenu recent;
         auto files = recentFiles();
@@ -1698,6 +1798,12 @@ private:
         menu.addSeparator();
         menu.addItem(3, "Save");
         menu.addItem(4, "Save As...");
+        menu.addItem(9, "Save as template...");
+        menu.addSeparator();
+        juce::PopupMenu media;
+        media.addItem(10, "Gather media into the project folder", session_.projectFile() != juce::File());
+        media.addItem(11, "Remove unused media...", session_.projectFile() != juce::File());
+        menu.addSubMenu("Media", media);
         menu.addSeparator();
         menu.addItem(5, "Import audio...");
         menu.addItem(6, "Add audio track");
@@ -1709,10 +1815,15 @@ private:
         menu.addSubMenu("Export", exports);
         juce::Component::SafePointer<Content> safe(this);
         menu.showMenuAsync(juce::PopupMenu::Options().withTargetComponent(&header_).withMinimumWidth(220),
-                           [safe, files](int choice)
+                           [safe, files, templateFiles](int choice)
                            {
                                if (safe == nullptr)
                                    return;
+                               if (choice >= 200 && static_cast<size_t>(choice - 200) < templateFiles.size())
+                               {
+                                   safe->newFromTemplate(templateFiles[static_cast<size_t>(choice - 200)]);
+                                   return;
+                               }
                                if (choice >= 100 && static_cast<size_t>(choice - 100) < files.size())
                                {
                                    safe->openFile(juce::File(files[static_cast<size_t>(choice - 100)]));
@@ -1743,6 +1854,15 @@ private:
                                        break;
                                    case 8:
                                        safe->addBus();
+                                       break;
+                                   case 9:
+                                       safe->saveTemplate();
+                                       break;
+                                   case 10:
+                                       safe->gatherMedia();
+                                       break;
+                                   case 11:
+                                       safe->removeUnusedMedia();
                                        break;
                                    case 21:
                                    case 22:

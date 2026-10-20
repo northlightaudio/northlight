@@ -4,6 +4,7 @@
 
 #include <memory>
 #include <string>
+#include <utility>
 #include <vector>
 
 // Every edit to the Project is a Command with apply/revert. UndoStack owns the
@@ -1009,6 +1010,26 @@ public:
 private:
     Id trackId_, clipId_;
     float value_, previous_ = 1.0f;
+};
+
+// Points every clip using a media file at another path (consolidating media
+// into the project folder): old path -> new path.
+class SetMediaPaths final : public Command
+{
+public:
+    explicit SetMediaPaths(std::vector<std::pair<std::string, std::string>> renames);
+    std::string name() const override { return "Consolidate media"; }
+    void apply(Project&) override;
+    void revert(Project&) override;
+
+private:
+    std::vector<std::pair<std::string, std::string>> renames_;
+    struct Changed
+    {
+        Id track, clip;
+        std::string previous;
+    };
+    std::vector<Changed> changed_;
 };
 
 class SetTimeSignature final : public Command

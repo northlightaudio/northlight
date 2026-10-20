@@ -208,7 +208,18 @@ the last one, with a JSON sidecar naming the project file and the time. Saving,
 starting or opening another project and a normal close delete it, so whatever
 is in the folder at launch was left by a session that did not close; the main
 window offers the newest with a toast (Restore / Discard). A restored project
-belongs to its file but stays unsaved until the user saves it. `MainWindow` is the
+belongs to its file but stays unsaved until the user saves it.
+
+Templates are project files in `Documents/Aural/Templates` with the clips, MIDI
+clips, markers and automation points stripped (and nothing armed); "New from
+template" loads one as an unsaved, untitled project. Media management works on
+the project's media folder (`<project> Media`): `mediaReport` lists media used
+from outside it, files in it no clip uses (unfinished `.partial.wav` recordings
+excluded: they belong to recovery) and missing files; `consolidateMedia` copies
+the outside media in (renaming on a clash) and repoints the clips with one
+`SetMediaPaths` command; `removeUnusedMedia` moves unused files and their peak
+caches to the Recycle Bin rather than deleting them, because an undo can bring
+back a clip that used one. `MainWindow` is the
 shell of 03-shell.md (see "UI" below).
 
 ### Waveforms and the arrange view

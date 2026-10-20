@@ -336,7 +336,8 @@ external devices.
 Status 2026-10-20: recent files existed already; autosave with crash restore is
 built (architecture.md, Session and UI). Automation lanes with read, touch, latch
 and write are built for gain, pan and built-in and strip parameters; hosted
-plugin parameters are not automated yet.
+plugin parameters are not automated yet. Project templates and media management
+(gather into the project folder, remove unused) are built.
 
 ### Phase 10 — Beta hardening (ongoing)
 

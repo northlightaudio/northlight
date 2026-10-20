@@ -105,6 +105,34 @@ public:
     const juce::File& projectFile() const noexcept { return projectFile_; }
     bool isModified() const noexcept { return modified_; }
 
+    // ----- templates ----------------------------------------------------------------
+    // Templates are projects without clips, notes or markers (tracks, buses,
+    // routing, inserts, the strips, automation modes), in Documents/Aural/Templates.
+    juce::File templatesFolder() const;
+    void setTemplatesFolder(juce::File folder) { templatesFolder_ = std::move(folder); } // tests
+    std::vector<juce::File> templates() const;
+    // Saves the current project's layout as a template. Returns an error or empty.
+    std::string saveAsTemplate(const juce::String& name);
+    // Starts a new, unsaved project from a template. Returns an error or empty.
+    std::string newFromTemplate(const juce::File& file);
+
+    // ----- media management ---------------------------------------------------------
+    // Media the clips use that lives outside the project's media folder, and files
+    // in the media folder that no clip uses.
+    struct MediaReport
+    {
+        std::vector<juce::File> outside;
+        std::vector<juce::File> unused;
+        std::vector<juce::File> missing;
+    };
+    MediaReport mediaReport() const;
+    // Copies the outside media into the media folder and points the clips there
+    // (one undo step). Needs a saved project. Returns an error or empty;
+    // `copied` gets the number of files copied.
+    std::string consolidateMedia(int& copied);
+    // Moves unused media (and their peak files) to the Recycle Bin. Returns how many.
+    int removeUnusedMedia();
+
     // ----- autosave -----------------------------------------------------------------
     // While the project has unsaved changes it is written to `folder` every
     // `intervalSeconds()` (0 = off), once edits pause for a second. Saving,
@@ -263,6 +291,7 @@ private:
     core::SamplePosition regionStart_ = 0, regionEnd_ = 0;
     bool loop_ = false;
     bool punch_ = false;
+    juce::File templatesFolder_;
     juce::File autosaveFolder_;
     std::function<int()> autosaveInterval_;
     juce::File autosaveWritten_; // the copy this session last wrote
