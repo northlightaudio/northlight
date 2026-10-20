@@ -45,6 +45,9 @@ public:
     std::function<void(const std::string& key, const std::string& value)> saveSetting;
     // Names and the plugin list for the inserts menu; may be null (built-ins only).
     void setHost(const hosting::HostFactory* host) noexcept { host_ = host; }
+    // The master clipped since the last clear (the header's indicator mirrors it).
+    bool masterClipped() const noexcept { return masterClipped_; }
+    void clearMasterClip() { masterClipped_ = false; }
 
     void paint(juce::Graphics& g) override;
     void resized() override;
@@ -55,6 +58,8 @@ public:
     void openInsertEditor(core::Id channelId, core::Id insertId);
     // Closes every editor window (before a project is replaced).
     void closeEditors();
+    // The display name of an insert type (built-in or hosted), for the editor panel.
+    std::string insertDisplayName(const std::string& type) const;
 
 private:
     class Strip;
@@ -65,13 +70,13 @@ private:
     void rebuildStrips();
     void layoutStrips();
     void addBus();
-    std::string insertDisplayName(const std::string& type) const;
 
     const Theme& theme_ = Theme::dark();
     rt::MeterBlock& meters_;
     std::function<engine::LoudnessMeter::Reading()> loudness_;
     std::function<int()> masterMeterSlot_;
     const core::Project* project_ = nullptr;
+    bool masterClipped_ = false;
     std::vector<std::unique_ptr<Strip>> strips_;
     std::unique_ptr<MasterStrip> master_;
     juce::Viewport viewport_;

@@ -33,7 +33,9 @@ public:
     void show(Kind kind,
               const juce::String& message,
               const juce::String& action = {},
-              std::function<void()> onAction = {});
+              std::function<void()> onAction = {},
+              const juce::String& secondAction = {},
+              std::function<void()> onSecondAction = {});
     void dismissAll();
     int count() const noexcept { return static_cast<int>(toasts_.size()); }
     static constexpr int maxShown = 3;

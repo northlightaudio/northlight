@@ -1372,6 +1372,21 @@ void SetClipGain::revert(Project& p)
 // ----- project ----------------------------------------------------------------------------
 
 SetTempo::SetTempo(double bpm) : value_(bpm) {}
+SetTimeSignature::SetTimeSignature(int numerator, int denominator)
+    : value_{std::clamp(numerator, 1, 32), std::clamp(denominator, 1, 32)}
+{
+}
+void SetTimeSignature::apply(Project& p)
+{
+    previous_ = p.timeSignature;
+    p.timeSignature = value_;
+}
+void SetTimeSignature::revert(Project& p)
+{
+    p.timeSignature = previous_;
+}
+
+
 void SetTempo::apply(Project& p)
 {
     previous_ = p.tempoBpm;

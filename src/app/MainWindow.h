@@ -2,7 +2,7 @@
 
 #include "core/Model.h"
 
-#include <juce_gui_extra/juce_gui_extra.h>
+#include <juce_gui_basics/juce_gui_basics.h>
 
 #include <memory>
 
@@ -13,12 +13,14 @@ class AudioDeviceLayer;
 
 namespace aural
 {
-
 class ProjectSession;
 class UserSettings;
 
-// Top-level document window. Phase 2: a toolbar with transport, import and the
-// device summary, a placeholder track list, and the Audio Setup window.
+// The main window (docs/design/03-shell.md): the header bar with the transport,
+// the arrange view, the dock and side panel hosts with their panels (mixer,
+// editor, piano roll, diagnostics; browser, inspector), the status bar and the
+// toasts. Secondary windows exist only for plugin editors, Audio Setup and
+// floating panels.
 class MainWindow final : public juce::DocumentWindow
 {
 public:
@@ -34,35 +36,31 @@ public:
     void showAudioSetup();
     void closeAudioSetup();
 
-    // If unfinished recordings are in the media folder, asks whether to recover them.
+    // If unfinished recordings are in the media folder, offers to recover them (a toast).
     void offerRecovery();
+    // The first-run sheet (08-setup.md 8.3): device choice, then a plugin scan offer.
+    void showFirstRun();
     // Shows the mixer panel.
     void showMixer();
     // Shows the mixer and opens an insert's editor.
     void openInsertEditor(core::Id channelId, core::Id insertId);
-    // The plugin browser (scan results, blocklist, scan controls).
+    // The plugin browser: the Browser panel in its own window.
     void showPluginBrowser();
-    void closePluginBrowser();
-    // The piano roll on a MIDI clip (one window, retargeted).
+    // The piano roll panel on a MIDI clip.
     void openPianoRoll(core::Id trackId, core::Id clipId);
-    void closePianoRoll();
+    // A layout preset ("Mix", "Edit") for unattended captures and the menu.
+    void applyLayoutPreset(const juce::String& name);
+    // A toast or a status message, for the application's own notices.
+    void notify(const juce::String& message, bool warning = false);
 
 private:
     class Content;
     class AudioSetupWindow;
-    class PluginBrowserWindow;
-    class PianoRollWindow;
-
-    void refreshPluginBrowser();
-    void refreshPianoRoll();
-    void refreshPianoRollPlayhead();
 
     audio::AudioDeviceLayer& audio_;
     ProjectSession& session_;
     UserSettings& settings_;
     std::unique_ptr<AudioSetupWindow> audioSetupWindow_;
-    std::unique_ptr<PluginBrowserWindow> pluginBrowserWindow_;
-    std::unique_ptr<PianoRollWindow> pianoRollWindow_;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(MainWindow)
 };

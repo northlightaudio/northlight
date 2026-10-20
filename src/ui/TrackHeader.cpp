@@ -120,6 +120,20 @@ void TrackHeader::setLiveState(bool monitoring, bool recording)
     repaint();
 }
 
+void TrackHeader::setSelected(bool selected)
+{
+    if (selected_ == selected)
+        return;
+    selected_ = selected;
+    repaint();
+}
+
+void TrackHeader::mouseDown(const juce::MouseEvent&)
+{
+    if (onSelected)
+        onSelected(trackId_);
+}
+
 void TrackHeader::refreshMonitorButton()
 {
     using core::MonitorMode;
@@ -132,6 +146,11 @@ void TrackHeader::paint(juce::Graphics& g)
 {
     const auto& c = theme_.colours;
     g.fillAll(recording_ && armed_ ? c.surface.overlaidWith(c.danger.withAlpha(0.12f)) : c.surface);
+    if (selected_)
+    {
+        g.setColour(c.laneSelected);
+        g.fillRect(getLocalBounds());
+    }
     if (midi_) // a MIDI track: a thin accent stripe at the left edge
     {
         g.setColour(c.accent.withAlpha(0.8f));

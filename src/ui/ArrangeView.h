@@ -80,6 +80,15 @@ public:
     bool handleEditKey(const juce::KeyPress& key);
     bool snapEnabled() const noexcept { return snap_; }
     bool rippleEnabled() const noexcept { return ripple_; }
+    // The snap grid: 0 = adaptive (bar/beat/sub-beat by zoom), 1 = bar, 4 = beat,
+    // 8 = 1/8, 16 = 1/16, 32 = 1/32 (10-interaction.md 10.3).
+    void setSnapGrid(int division);
+    int snapGrid() const noexcept { return snapGrid_; }
+    juce::String snapGridName() const;
+    // Zoom: by a factor around the view's centre, to fit the project, or to the selection.
+    void zoomBy(double factor);
+    void zoomToFit();
+    void zoomToSelection();
     void setSnapEnabled(bool on);
     void setRippleEnabled(bool on);
 
@@ -92,6 +101,13 @@ public:
     };
     // Double-click on a MIDI clip: open it in the piano roll.
     std::function<void(core::Id trackId, core::Id clipId)> onOpenMidiClip;
+    // Track selection (a click on a header or a lane) and clip selection changes.
+    std::function<void(core::Id trackId)> onTrackSelected;
+    std::function<void()> onSelectionChanged;
+    void setSelectedTrack(core::Id trackId);
+    core::Id selectedTrack() const noexcept { return selectedTrack_; }
+    // The empty state's actions (03-shell.md).
+    std::function<void()> onAddAudioTrack, onAddInstrumentTrack, onImportRequested;
     const std::vector<ClipRef>& selection() const noexcept { return selection_; }
     void selectAll();
     void clearSelection();
@@ -237,6 +253,7 @@ private:
     // editing state
     std::vector<ClipRef> selection_;
     bool snap_ = true;
+    int snapGrid_ = 0;
     bool ripple_ = false;
     Drag drag_ = Drag::none;
     ClipRef dragClip_;             // the clip under the pointer when the drag began
@@ -252,6 +269,10 @@ private:
     juce::Rectangle<int> lasso_;
     bool draggedFar_ = false;
     core::Id selectedMarker_ = core::invalidId;
+    core::Id selectedTrack_ = core::invalidId;
+    juce::TextButton addAudio_{"Add audio track"}, addInstrument_{"Add instrument track"}, import_{"Import audio\xe2\x80\xa6"};
+    void layoutEmptyState();
+    void selectTrack(core::Id trackId);
     core::Marker dragMarker_;                // the marker being dragged, as it was
     core::SamplePosition markerPreview_ = 0; // its position during the drag
 };

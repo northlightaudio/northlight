@@ -256,6 +256,13 @@ TEST_CASE("A new command after undo discards the redo history", "[core][command]
     stack.undo(p);
     CHECK(stack.canRedo());
     stack.execute(p, std::make_unique<SetTempo>(90.0));
+    stack.execute(p, std::make_unique<SetTimeSignature>(7, 8));
+    CHECK(p.timeSignature.numerator == 7);
+    CHECK(p.timeSignature.denominator == 8);
+    stack.undo(p);
+    CHECK(p.timeSignature.numerator == 4);
+    stack.redo(p);
+    CHECK(p.timeSignature.denominator == 8);
     CHECK_FALSE(stack.canRedo());
     CHECK(p.tempoBpm == 90.0);
 }

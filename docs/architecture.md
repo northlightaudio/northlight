@@ -3,16 +3,22 @@
 Living document. The intended architecture is in [PLAN.md](PLAN.md), section 3; this
 file records what is actually built and the decisions made along the way.
 
-## Current state (Phase 6 complete; Phase 8 MIDI in progress; Phase 7 waits for the design spec)
+## Current state (Phases 6 and 8 complete; Phase 7, the design spec, in progress: design system and shell done)
 
 ```
 aural.exe
-  src/app         JUCEApplication; MainWindow (transport + record bar, file and
-                  import buttons, undo/redo, device summary, Audio Setup window);
+  src/app         JUCEApplication; MainWindow (the shell: header bar, arrange
+                  view, dock and side panel hosts, status bar, toasts, sheets,
+                  the keyboard map, menus, Audio Setup window);
                   ProjectSession (the open Project + UndoStack + AudioEngine +
                   DiskThread + PeakStore; recording flow and recovery);
                   UserSettings (per-user properties file)
   src/ui          Theme (design tokens), AuralLookAndFeel (dark, token-driven),
+                  Icons (the icon set as paths), components/ (Fader, Knob, Meter,
+                  SegmentedControl, NumericField, PanelHeader, Toast, Sheet),
+                  shell/ (HeaderBar, StatusBar, Panels: hosts, floating windows,
+                  the PanelManager), panels/ (EditorPanel, InspectorPanel,
+                  DiagnosticsPanel),
                   AudioSetupView (audio and MIDI devices), ArrangeView (tracks,
                   waveforms, MIDI clips, zoom, scroll, editing), TrackHeader
                   (input or MIDI input, arm, monitor), MixerView (strips, master,
@@ -186,9 +192,8 @@ to the sample.
 project, the undo stack, the disk thread, the loader and the engine, republishes the
 snapshot after every command, imports files as new tracks, saves/opens JSON project
 files and drives the transport. An empty project adopts the device sample rate; a
-project with media keeps its own and the mismatch is shown. `MainWindow` has the
-transport bar (space to play/stop, Return/Home to return to start, Ctrl+Z/Y), import,
-and `ArrangeView`.
+project with media keeps its own and the mismatch is shown. `MainWindow` is the
+shell of 03-shell.md (see "UI" below).
 
 ### Waveforms and the arrange view
 
@@ -730,10 +735,45 @@ arrow presses; any click turns them off). Dedicated components under
 travel, +6 dB at the top, a grooved track and a lit cap), `Knob` (ring with a
 radial body), `Meter` (zone segments as LEDs in a well, peak hold, clip squares),
 `SegmentedControl` (sliding thumb), `NumericField` (drag, type, wheel),
-`PanelHeader`, `ToastStack` (bottom-left notifications, persistent for warnings
-and errors) and `Sheet` (a dialog without a modal loop). A CTest
+`PanelHeader`, `ToastStack` (top-left notifications under the header, persistent
+for warnings and errors, up to two actions) and `Sheet` (a dialog without a
+modal loop, with an optional content component). A CTest
 (`scripts/check-ui-tokens.ps1`) fails when `src/ui` carries a literal colour;
 `JUCE_MODAL_LOOPS_PERMITTED` stays 0.
+
+**The shell** (03-shell.md, 06-transport.md). `MainWindow`'s content is five
+zones: the 48 px `HeaderBar`, the arrange view, the dock below it, the side
+panel to its right and the 24 px `StatusBar`; toasts stack under the header at
+the left and sheets cover the content. Every secondary view is a panel
+(`ui::PanelId`: mixer, editor, piano roll, diagnostics, browser, inspector) that
+exactly one host owns at a time: the dock, the side panel (both `PanelHost`, a
+tab row with detach and close buttons) or a `FloatingPanelWindow` (a native
+window with a header that attaches back, pins always-on-top and closes). The
+`PanelManager` owns the model: register, show/hide/toggle, move between hosts
+(buttons, Shift+F-key, dragging a tab out of a host or a floating header over
+one, with a drop highlight), animated dock height and side width (reduce-motion
+honoured), `layout.json` beside the settings (hosts, order, sizes, floating
+bounds, visibility) and the Mix and Edit presets. Closing a floating panel hides
+it; a panel is never lost. The header carries the app and project menus, undo
+and redo with their names in tooltips, the transport cluster (go to start,
+play/stop, stop, record; loop, punch, click with a count-in menu), the bars and
+time readouts (click to type, drag or wheel a segment to nudge, both following
+the heard position), tempo and signature fields, the master clip indicator, snap
+with its grid menu, ripple, zoom to fit and the panel toggles. The status bar
+shows the device (click: Audio Setup), rate and buffer, the round trip (measured
+or driver-reported), callback load with the warning thresholds, dropouts since
+the last click, disk space while recording, a persistent warning and transient
+messages (saved, undid...). The first launch (no settings file) shows the
+first-run sheet: driver, device and buffer combos with a live input meter, then
+"Scan for plugins now?"; `--first-run` shows it again. Unfinished recordings
+are offered back as a toast (Recover / Set aside) and the window title carries
+"● " while recording. The keyboard map of 10-interaction.md 10.4 lives in the
+content's `keyPressed` ahead of the arrange view's edit keys; where the spec
+gives Shift+M and Shift+S two jobs, the track state (mute, solo) keeps them and
+the edits (marker region, split at selection) take Alt. Launch flags for
+unattended captures: `--mixer`, `--plugins` (the browser floating),
+`--layout <Mix|Edit>`, `--first-run`, besides `--open`, `--audio-setup` and the
+Phase 8 flags.
 
 ## Decisions log
 
@@ -805,4 +845,7 @@ and errors) and `Sheet` (a dialog without a modal loop). A CTest
 | 2026-10-19 | MIDI devices are identified by name | The name is what the user recognises and what a project can carry between machines; JUCE's identifier is stable but opaque. Two devices of one name are both opened and both heard. |
 | 2026-10-19 | A built-in synth ships with the engine | A MIDI track must make a sound without a third-party instrument, both for the user and for offline tests of the whole path (schedule, instrument, bounce). |
 | 2026-10-19 | Trimming a MIDI clip keeps its notes where they are on the timeline | Matches audio clips (the source stays put under the clip edges) and lets a trim be undone by trimming back without losing notes. |
+| 2026-10-19 | Panels are owned by one of three hosts and never destroyed on close | A panel's component keeps its state (the mixer's open editors, the browser's filter) across moves and hides; closing a floating panel hides it and returns it to its default host, so a user cannot lose one. |
+| 2026-10-19 | Shift+M / Shift+S stay the track state; the marker region and split-at-selection take Alt | The spec assigns both pairs the same keys; mute and solo are the more frequent and match every other DAW, so the edits move. |
+| 2026-10-19 | The first-run sheet is detected by the settings file's absence, before settings are created | No "first run" flag can be stale, and the sheet never shows again once any setting is saved. |
 | 2026-10-19 | The limiter has no lookahead (superseded the same day: lookahead added once delay compensation landed) | Lookahead adds latency that needs delay compensation across the graph, which Phase 5 brings with plugin hosting; until then a fast-release limiter with a hard ceiling is honest about what it does. |

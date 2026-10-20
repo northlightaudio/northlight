@@ -80,6 +80,8 @@ public:
     void undo();
     void redo();
     bool canUndo() const noexcept { return undo_.canUndo(); }
+    std::string undoName() const { return undo_.undoName(); }
+    std::string redoName() const { return undo_.redoName(); }
     bool canRedo() const noexcept { return undo_.canRedo(); }
 
     // Adds a track with the file as a clip starting at `at`. Returns an error

@@ -12,9 +12,25 @@ public:
           Kind kind,
           const juce::String& message,
           const juce::String& action,
-          std::function<void()> onAction)
-        : theme_(theme), kind_(kind), message_(message), onAction_(std::move(onAction))
+          std::function<void()> onAction,
+          const juce::String& secondAction = {},
+          std::function<void()> onSecondAction = {})
+        : theme_(theme), kind_(kind), message_(message), onAction_(std::move(onAction)),
+          onSecond_(std::move(onSecondAction))
     {
+        if (secondAction.isNotEmpty())
+        {
+            second_.setButtonText(secondAction);
+            second_.getProperties().set(AuralLookAndFeel::propertyVariant, "ghost");
+            second_.onClick = [this]
+            {
+                if (onSecond_)
+                    onSecond_();
+                if (onDismiss)
+                    onDismiss();
+            };
+            addAndMakeVisible(second_);
+        }
         close_.getProperties().set(AuralLookAndFeel::propertyVariant, "ghost");
         close_.getProperties().set(AuralLookAndFeel::propertyIcon, true);
         close_.setTooltip("Dismiss");
@@ -82,12 +98,14 @@ public:
         close_.setBounds(
             area.removeFromRight(theme_.sizes.controlCompact)
                 .withSizeKeepingCentre(theme_.sizes.controlCompact, theme_.sizes.controlCompact));
-        if (action_.isVisible())
-        {
-            const int w = juce::GlyphArrangement::getStringWidthInt(theme_.label(), action_.getButtonText()) +
-                          2 * theme_.spacing.sm;
-            action_.setBounds(area.removeFromRight(w).withSizeKeepingCentre(w, theme_.sizes.controlCompact));
-        }
+        for (auto* button : {&action_, &second_})
+            if (button->isVisible())
+            {
+                const int w = juce::GlyphArrangement::getStringWidthInt(theme_.label(), button->getButtonText()) +
+                              2 * theme_.spacing.sm;
+                button->setBounds(area.removeFromRight(w).withSizeKeepingCentre(w, theme_.sizes.controlCompact));
+                area.removeFromRight(theme_.spacing.xs);
+            }
     }
 
 private:
@@ -97,6 +115,8 @@ private:
                 theme_.spacing.sm;
         if (action_.isVisible())
             w -= action_.getWidth() + theme_.spacing.sm;
+        if (second_.isVisible())
+            w -= second_.getWidth() + theme_.spacing.sm;
         return std::max(40, w);
     }
     juce::Rectangle<int> textArea() const
@@ -107,8 +127,8 @@ private:
     const Theme& theme_;
     Kind kind_;
     juce::String message_;
-    std::function<void()> onAction_;
-    juce::TextButton action_, close_{juce::CharPointer_UTF8("\xc3\x97")};
+    std::function<void()> onAction_, onSecond_;
+    juce::TextButton action_, second_, close_{juce::CharPointer_UTF8("\xc3\x97")};
 };
 
 ToastStack::ToastStack(const Theme& theme) : theme_(theme)
@@ -121,9 +141,12 @@ ToastStack::~ToastStack() = default;
 void ToastStack::show(Kind kind,
                       const juce::String& message,
                       const juce::String& action,
-                      std::function<void()> onAction)
+                      std::function<void()> onAction,
+                      const juce::String& secondAction,
+                      std::function<void()> onSecondAction)
 {
-    auto toast = std::make_unique<Toast>(theme_, kind, message, action, std::move(onAction));
+    auto toast = std::make_unique<Toast>(
+        theme_, kind, message, action, std::move(onAction), secondAction, std::move(onSecondAction));
     toast->shownAtMs = juce::Time::getMillisecondCounterHiRes();
     auto* raw = toast.get();
     toast->onDismiss = [this, raw] { dismiss(raw); };

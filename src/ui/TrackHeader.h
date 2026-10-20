@@ -29,13 +29,16 @@ public:
     void setLiveState(bool monitoring, bool recording);
     core::Id trackId() const noexcept { return trackId_; }
 
+    std::function<void(core::Id)> onSelected; // a click anywhere on the header
     std::function<void(core::Id, int)> onInputChanged;
     std::function<void(core::Id, const std::string&)> onMidiInputChanged; // empty = all
     std::function<void(core::Id, bool)> onArmChanged;
     std::function<void(core::Id, core::MonitorMode)> onMonitorChanged;
 
+    void setSelected(bool selected);
     void paint(juce::Graphics& g) override;
     void resized() override;
+    void mouseDown(const juce::MouseEvent& e) override;
 
 private:
     void refreshMonitorButton();
@@ -49,6 +52,7 @@ private:
     bool armed_ = false;
     bool midi_ = false;
     bool aux_ = false;
+    bool selected_ = false;
     std::vector<std::string> midiNames_;
     juce::Label name_;
     juce::ComboBox input_;

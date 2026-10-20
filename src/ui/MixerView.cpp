@@ -1049,8 +1049,12 @@ void MixerView::timerCallback()
     for (auto& strip : strips_)
         strip->pushMeter(meters_.take(strip->meterSlot()));
     if (project_ != nullptr)
-        master_->pushMeter(
-            meters_.take(masterMeterSlot_ ? masterMeterSlot_() : engine::masterMeterSlot(*project_)));
+    {
+        const auto reading = meters_.take(masterMeterSlot_ ? masterMeterSlot_() : engine::masterMeterSlot(*project_));
+        if (reading.peakLeft >= 1.0f || reading.peakRight >= 1.0f)
+            masterClipped_ = true;
+        master_->pushMeter(reading);
+    }
     if (loudness_)
         master_->pushLoudness(loudness_());
 }

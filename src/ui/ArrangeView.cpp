@@ -1,5 +1,7 @@
 #include "ui/ArrangeView.h"
 
+#include "ui/Icons.h"
+
 #include <algorithm>
 #include <cmath>
 
@@ -15,6 +17,27 @@ constexpr double maxSamplesPerPixel = 48000.0 * 4.0; // four seconds per pixel
 ArrangeView::ArrangeView(audio::PeakStore& peaks) : peaks_(peaks)
 {
     setOpaque(true);
+    import_.setButtonText(juce::String::fromUTF8("Import audio\xe2\x80\xa6"));
+    for (auto* b : {&addAudio_, &addInstrument_, &import_})
+    {
+        b->getProperties().set("variant", "ghost");
+        addChildComponent(*b);
+    }
+    addAudio_.onClick = [this]
+    {
+        if (onAddAudioTrack)
+            onAddAudioTrack();
+    };
+    addInstrument_.onClick = [this]
+    {
+        if (onAddInstrumentTrack)
+            onAddInstrumentTrack();
+    };
+    import_.onClick = [this]
+    {
+        if (onImportRequested)
+            onImportRequested();
+    };
     scrollbar_.setAutoHide(false);
     scrollbar_.addListener(this);
     addAndMakeVisible(scrollbar_);
@@ -37,9 +60,48 @@ void ArrangeView::setProject(const core::Project* project)
     std::erase_if(selection_, [this](const ClipRef& ref) { return !spanOf(ref).has_value(); });
     if (project_ == nullptr || project_->findMarker(selectedMarker_) == nullptr)
         selectedMarker_ = core::invalidId;
+    if (project_ == nullptr || project_->findTrack(selectedTrack_) == nullptr)
+        selectedTrack_ = core::invalidId;
     rebuildHeaders();
     updateScrollbar();
+    layoutEmptyState();
     repaint();
+}
+
+void ArrangeView::layoutEmptyState()
+{
+    const bool empty = project_ == nullptr || project_->tracks.empty();
+    for (auto* b : {&addAudio_, &addInstrument_, &import_})
+        b->setVisible(empty);
+    if (!empty)
+        return;
+    // The mark, a heading, three ghost buttons in a row and a hint (03-shell.md).
+    const int buttonW = 150, gap = theme_.spacing.md;
+    const int total = 3 * buttonW + 2 * gap;
+    auto row = getLocalBounds().withTrimmedTop(rulerHeight).withSizeKeepingCentre(total, theme_.sizes.control);
+    row.translate(0, theme_.spacing.xl);
+    addAudio_.setBounds(row.removeFromLeft(buttonW));
+    row.removeFromLeft(gap);
+    addInstrument_.setBounds(row.removeFromLeft(buttonW));
+    row.removeFromLeft(gap);
+    import_.setBounds(row.removeFromLeft(buttonW));
+}
+
+void ArrangeView::setSelectedTrack(core::Id trackId)
+{
+    if (selectedTrack_ == trackId)
+        return;
+    selectedTrack_ = trackId;
+    for (auto& header : headers_)
+        header->setSelected(header->trackId() == trackId);
+    repaint();
+}
+
+void ArrangeView::selectTrack(core::Id trackId)
+{
+    setSelectedTrack(trackId);
+    if (onTrackSelected)
+        onTrackSelected(trackId);
 }
 
 void ArrangeView::setInputNames(std::vector<std::string> names)
@@ -79,6 +141,7 @@ void ArrangeView::rebuildHeaders()
             if (onTrackArmChanged)
                 onTrackArmChanged(id, armed);
         };
+        header->onSelected = [this](core::Id id) { selectTrack(id); };
         header->onMonitorChanged = [this](core::Id id, core::MonitorMode mode)
         {
             if (onTrackMonitorChanged)
@@ -88,7 +151,10 @@ void ArrangeView::rebuildHeaders()
         headers_.push_back(std::move(header));
     }
     for (size_t i = 0; i < count; ++i)
+    {
         headers_[i]->setTrack(project_->tracks[i], inputNames_, midiInputNames_);
+        headers_[i]->setSelected(project_->tracks[i].id == selectedTrack_);
+    }
     layoutHeaders();
 }
 
@@ -225,6 +291,7 @@ void ArrangeView::changeListenerCallback(juce::ChangeBroadcaster*)
 
 void ArrangeView::resized()
 {
+    layoutEmptyState();
     scrollbar_.setBounds(headerWidth,
                          getHeight() - scrollbarHeight,
                          getWidth() - headerWidth - scrollbarWidth,
@@ -277,6 +344,8 @@ void ArrangeView::mouseDown(const juce::MouseEvent& e)
     dragStartSample_ = sampleForX(e.x);
     const auto hit = hitTest(e.getPosition());
     dragStartRow_ = hit.row;
+    if (hit.track != nullptr)
+        selectTrack(hit.track->id);
     if (hit.midiClip != nullptr)
     {
         const ClipRef ref{hit.track->id, hit.midiClip->id, true};
@@ -444,6 +513,7 @@ void ArrangeView::mouseUp(const juce::MouseEvent& e)
 {
     const auto drag = drag_;
     drag_ = Drag::none;
+    const auto before = selection_;
     switch (drag)
     {
         case Drag::region:
@@ -507,6 +577,8 @@ void ArrangeView::mouseUp(const juce::MouseEvent& e)
         case Drag::none:
             break;
     }
+    if (selection_ != before && onSelectionChanged)
+        onSelectionChanged();
     repaint();
 }
 
@@ -892,6 +964,11 @@ void ArrangeView::paint(juce::Graphics& g)
                 continue;
             }
             const juce::Rectangle<int> row(0, y, getWidth() - scrollbarWidth, rowHeight);
+            if (track.id == selectedTrack_)
+            {
+                g.setColour(c.laneSelected);
+                g.fillRect(row.withLeft(headerWidth));
+            }
             g.setColour(c.border);
             g.fillRect(row.withTrimmedTop(rowHeight - 1));
 
@@ -925,10 +1002,23 @@ void ArrangeView::paint(juce::Graphics& g)
 
     if (project_ == nullptr || project_->tracks.empty())
     {
-        g.setColour(c.textDisabled);
-        g.setFont(juce::FontOptions{theme_.type.title});
-        g.drawText("Import an audio file to create a track",
-                   getLocalBounds().withTrimmedTop(rulerHeight),
+        // The empty state: the mark, "Start a project", the buttons (components) and a hint.
+        const auto area = getLocalBounds().withTrimmedTop(rulerHeight);
+        const int markSize = theme_.spacing.xxxl;
+        const auto mark = juce::Rectangle<float>(static_cast<float>(markSize), static_cast<float>(markSize))
+                              .withCentre({static_cast<float>(area.getCentreX()), static_cast<float>(area.getCentreY() - theme_.spacing.xxxl - theme_.spacing.xl)});
+        Icons::draw(g, Icon::mark, mark, c.textTertiary);
+        g.setColour(c.textPrimary);
+        g.setFont(theme_.heading());
+        g.drawText("Start a project",
+                   area.withSizeKeepingCentre(area.getWidth(), static_cast<int>(theme_.fonts.size.heading * 2))
+                       .translated(0, -theme_.spacing.sm),
+                   juce::Justification::centred);
+        g.setColour(c.textTertiary);
+        g.setFont(theme_.small());
+        g.drawText("or drop audio files here",
+                   area.withSizeKeepingCentre(area.getWidth(), static_cast<int>(theme_.fonts.size.small * 2))
+                       .translated(0, theme_.spacing.xl + theme_.sizes.control + theme_.spacing.lg),
                    juce::Justification::centred);
     }
 
@@ -1140,8 +1230,77 @@ core::SamplePosition ArrangeView::grid() const noexcept
 {
     if (project_ == nullptr)
         return 1;
+    if (snapGrid_ > 0)
+    {
+        const double beat = core::samplesPerBeat(sampleRate(), project_->tempoBpm, project_->timeSignature);
+        const double samples = snapGrid_ == 1 ? beat * std::max(1, project_->timeSignature.numerator)
+                                              : beat * 4.0 / static_cast<double>(snapGrid_);
+        return std::max<core::SamplePosition>(1, static_cast<core::SamplePosition>(std::llround(samples)));
+    }
     return core::gridSamples(
         sampleRate(), project_->tempoBpm, project_->timeSignature, samplesPerPixel_, gridMinPixels);
+}
+
+void ArrangeView::setSnapGrid(int division)
+{
+    snapGrid_ = std::max(0, division);
+    repaint();
+}
+
+juce::String ArrangeView::snapGridName() const
+{
+    switch (snapGrid_)
+    {
+        case 0:
+            return "Adaptive";
+        case 1:
+            return "Bar";
+        case 4:
+            return "Beat";
+        default:
+            return "1/" + juce::String(snapGrid_);
+    }
+}
+
+void ArrangeView::zoomBy(double factor)
+{
+    setZoom(samplesPerPixel_ * factor, headerWidth + (getWidth() - headerWidth - scrollbarWidth) / 2);
+    updateScrollbar();
+    repaint();
+}
+
+void ArrangeView::zoomToFit()
+{
+    const int width = std::max(1, getWidth() - headerWidth - scrollbarWidth - theme_.spacing.xl);
+    const auto length = std::max<core::SamplePosition>(project_ != nullptr ? project_->length() : 0,
+                                                        static_cast<core::SamplePosition>(sampleRate() * 4.0));
+    samplesPerPixel_ = std::clamp(static_cast<double>(length) / width, minSamplesPerPixel, maxSamplesPerPixel);
+    setScroll(0);
+    updateScrollbar();
+    repaint();
+}
+
+void ArrangeView::zoomToSelection()
+{
+    if (selection_.empty())
+    {
+        zoomToFit();
+        return;
+    }
+    core::SamplePosition from = -1, to = 0;
+    for (const auto& ref : selection_)
+        if (const auto span = spanOf(ref))
+        {
+            from = from < 0 ? span->start : std::min(from, span->start);
+            to = std::max(to, span->end());
+        }
+    if (from < 0 || to <= from)
+        return;
+    const int width = std::max(1, getWidth() - headerWidth - scrollbarWidth - theme_.spacing.xl);
+    samplesPerPixel_ = std::clamp(static_cast<double>(to - from) / width, minSamplesPerPixel, maxSamplesPerPixel);
+    setScroll(std::max<core::SamplePosition>(0, from - static_cast<core::SamplePosition>(theme_.spacing.md * samplesPerPixel_)));
+    updateScrollbar();
+    repaint();
 }
 
 core::SamplePosition ArrangeView::snapped(core::SamplePosition s) const noexcept

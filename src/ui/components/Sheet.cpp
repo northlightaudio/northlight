@@ -32,9 +32,17 @@ Sheet* Sheet::show(juce::Component& host,
                    const juce::String& title,
                    const juce::String& body,
                    std::vector<Button> buttons,
-                   std::function<void(int)> onResult)
+                   std::function<void(int)> onResult,
+                   std::unique_ptr<juce::Component> content,
+                   int contentHeight)
 {
     auto* sheet = new Sheet(theme, title, body, std::move(buttons), std::move(onResult));
+    if (content != nullptr)
+    {
+        sheet->content_ = std::move(content);
+        sheet->contentHeight_ = contentHeight;
+        sheet->addAndMakeVisible(*sheet->content_);
+    }
     host.addAndMakeVisible(sheet);
     sheet->setBounds(host.getLocalBounds());
     sheet->toFront(true);
@@ -69,6 +77,7 @@ juce::Rectangle<int> Sheet::panelBounds() const
     const int height = theme_.spacing.xl +
                        static_cast<int>(theme_.fonts.size.title * theme_.fonts.lineHeight) +
                        theme_.spacing.md + static_cast<int>(layout.getHeight()) + theme_.spacing.xl +
+                       (contentHeight_ > 0 ? contentHeight_ + theme_.spacing.xl : 0) +
                        theme_.sizes.control + theme_.spacing.xl;
     return juce::Rectangle<int>(width, height).withCentre(getLocalBounds().getCentre());
 }
@@ -94,14 +103,23 @@ void Sheet::paint(juce::Graphics& g)
     text.setFont(theme_.body());
     text.setColour(c.textSecondary);
     layout.createLayout(text, static_cast<float>(area.getWidth()));
-    layout.draw(g, area.withTrimmedBottom(theme_.sizes.control + theme_.spacing.xl).toFloat());
+    layout.draw(g,
+                area.withTrimmedBottom(theme_.sizes.control + theme_.spacing.xl +
+                                       (contentHeight_ > 0 ? contentHeight_ + theme_.spacing.xl : 0))
+                    .toFloat());
 }
 
 void Sheet::resized()
 {
     if (auto* parent = getParentComponent())
         setBounds(parent->getLocalBounds());
-    auto row = panelBounds().reduced(theme_.spacing.xl).removeFromBottom(theme_.sizes.control);
+    auto panel = panelBounds().reduced(theme_.spacing.xl);
+    auto row = panel.removeFromBottom(theme_.sizes.control);
+    if (content_ != nullptr)
+    {
+        panel.removeFromBottom(theme_.spacing.xl);
+        content_->setBounds(panel.removeFromBottom(contentHeight_));
+    }
     for (auto it = buttonComponents_.rbegin(); it != buttonComponents_.rend(); ++it)
     {
         auto& button = **it;

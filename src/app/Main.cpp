@@ -20,6 +20,8 @@ public:
 
     void initialise(const juce::String& commandLine) override
     {
+        // The very first launch (no settings file yet) gets the device sheet.
+        firstRun_ = !UserSettings().file().existsAsFile();
         settings_ = std::make_unique<UserSettings>();
         // The design tokens: shipped beside the app, with the user's tokens.json
         // beside the settings file applied on top.
@@ -40,6 +42,8 @@ public:
         mainWindow_->offerRecovery();
 
         applyLaunchFlags(commandLine);
+        if (firstRun_ || commandLine.contains("--first-run"))
+            mainWindow_->showFirstRun();
     }
 
     // Developer conveniences for unattended checks:
@@ -50,6 +54,8 @@ public:
     //   --stop-after <s>     stop the transport after s seconds
     //   --loop <from> <to>   set and enable the loop region, in seconds
     //   --no-count-in        record without the count-in
+    //   --layout <Mix|Edit>  apply a layout preset
+    //   --first-run          show the first-run sheet
     //   --midi-track         add a MIDI track (built-in synth) with a short clip
     //   --midi-track-with <type>  the same with the given instrument type instead
     //   --piano-roll         open the piano roll on the first MIDI clip
@@ -135,6 +141,8 @@ public:
             }
             else if (arg == "--mixer")
                 mainWindow_->showMixer();
+            else if (arg == "--layout" && i + 1 < tokens.size())
+                mainWindow_->applyLayoutPreset(tokens.getReference(++i).text.unquoted());
             else if (arg == "--insert" && i + 1 < tokens.size())
             {
                 // Adds a built-in insert to every track and opens the first one's editor.
@@ -202,6 +210,7 @@ public:
 
 private:
     std::unique_ptr<ui::AuralLookAndFeel> lookAndFeel_;
+    bool firstRun_ = false;
     std::unique_ptr<UserSettings> settings_;
     std::unique_ptr<audio::AudioDeviceLayer> audio_;
     std::unique_ptr<ProjectSession> session_;

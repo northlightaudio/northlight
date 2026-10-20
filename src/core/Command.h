@@ -892,6 +892,18 @@ private:
     float value_, previous_ = 1.0f;
 };
 
+class SetTimeSignature final : public Command
+{
+public:
+    SetTimeSignature(int numerator, int denominator);
+    std::string name() const override { return "Set time signature"; }
+    void apply(Project&) override;
+    void revert(Project&) override;
+
+private:
+    TimeSignature value_, previous_;
+};
+
 class SetTempo final : public Command
 {
 public:

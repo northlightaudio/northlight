@@ -29,6 +29,20 @@ add_library(aural_ui STATIC
     components/Toast.cpp
     components/Sheet.h
     components/Sheet.cpp
+    Icons.h
+    Icons.cpp
+    shell/Panels.h
+    shell/Panels.cpp
+    shell/HeaderBar.h
+    shell/HeaderBar.cpp
+    shell/StatusBar.h
+    shell/StatusBar.cpp
+    panels/EditorPanel.h
+    panels/EditorPanel.cpp
+    panels/InspectorPanel.h
+    panels/InspectorPanel.cpp
+    panels/DiagnosticsPanel.h
+    panels/DiagnosticsPanel.cpp
     AudioSetupView.h
     AudioSetupView.cpp
     ArrangeView.h

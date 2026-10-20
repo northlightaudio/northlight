@@ -32,7 +32,10 @@ public:
                        const juce::String& title,
                        const juce::String& body,
                        std::vector<Button> buttons,
-                       std::function<void(int)> onResult);
+                       std::function<void(int)> onResult,
+                       std::unique_ptr<juce::Component> content = nullptr,
+                       int contentHeight = 0);
+    void close() { finish(-1); }
 
     void paint(juce::Graphics& g) override;
     void resized() override;
@@ -54,6 +57,8 @@ private:
     std::vector<Button> buttons_;
     std::vector<std::unique_ptr<juce::TextButton>> buttonComponents_;
     std::function<void(int)> onResult_;
+    std::unique_ptr<juce::Component> content_;
+    int contentHeight_ = 0;
     bool finished_ = false;
 };
 
