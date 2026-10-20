@@ -349,6 +349,28 @@ a local minidump that the next launch points to (sending reports is not built).
 - Driver matrix testing (Focusrite, RME, UA, Steinberg, ASIO4ALL, FlexASIO).
 - Performance regression suite in CI.
 
+### Phase 11 — Vocal pitch editing
+
+Melodyne-style editing of monophonic vocal clips. The design and the reasoning are
+in [design/13-pitch-editing.md](design/13-pitch-editing.md).
+
+1. Audio clip editor panel (waveform, gain, fades), opened from an audio clip like
+   the piano roll.
+2. Pitch analysis (pYIN pitch curve, pitch marks, notes, breaths) in a background
+   `PitchStore` with a sidecar cache.
+3. `VocalEdit` on audio clips: notes and their parameters in the model, with
+   commands and JSON.
+4. In-house PSOLA renderer behind a `PitchEditedSource`, re-rendering changed
+   phrases in the background; bounce renders them first.
+5. Pitch mode UI: note blobs, pitch curves, pitch, split, drift, vibrato,
+   transition and breath tools.
+6. Correct to key: a project key and scale, key detection, and the correction
+   pass that keeps vibrato and slides.
+7. Breaths: mute or reduce, in bulk or one by one.
+
+**Milestone:** a vocal tuned to the key that sounds sung, not snapped, with the
+unedited parts bit-identical to the original.
+
 Rough total: about 8 months of focused work to a beta, excluding the design time itself.
 
 ---
