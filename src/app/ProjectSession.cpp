@@ -222,7 +222,10 @@ void ProjectSession::mirrorOwnedParameters(const std::vector<core::Command::Para
                 insert = i;
         if (insert == nullptr)
             continue;
-        const auto count = instance->parameters().size();
+        // Up to the touched parameter (a plugin can have thousands; the list
+        // only needs to reach what commands record and restore).
+        const auto count =
+            std::min(instance->parameters().size(), static_cast<size_t>(std::max(0, touch.parameter)) + 1);
         if (insert->params.size() < count)
             insert->params.resize(count, 0.0f);
         for (size_t k = 0; k < count; ++k)

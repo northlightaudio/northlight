@@ -793,8 +793,11 @@ not compiled into the snapshot: `ProjectSession::playHostedAutomation` runs 50
 times a second on the message thread, evaluates those lanes at the engine
 position and sends each changed value to the instance; a lane being written is
 skipped. Writing a hosted parameter (through the generic editor's commands)
-records like any other. VST3 plugins expose no parameters to the host yet, so
-they have no lanes.
+records like any other; a move in a plugin's own GUI does not record yet.
+`HostedPlugin` lists a VST3 plugin's automatable parameters as normalised
+values through JUCE's parameter objects (message thread only), and mirroring a
+plugin's parameters into the model before a command only reaches up to the
+touched parameter, since a plugin can have thousands.
 
 UI: `ui::AutomationOverlay` covers the arrange view and takes the pointer only
 over rows whose header's A toggle is on; it draws the chosen lane over the row

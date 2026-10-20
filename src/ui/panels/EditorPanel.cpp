@@ -274,9 +274,10 @@ private:
         missing_ = live == nullptr && hosted;
         if (live == nullptr)
             return;
-        if (hosted && live->parameters().empty())
+        if (hosted && (live->parameters().empty() || type_.rfind("vst3:", 0) == 0))
         {
-            // A plugin with its own GUI: open it in its window.
+            // A plugin with its own GUI (every VST3: JUCE gives a GUI-less one a
+            // generic editor): open it in its window.
             open_.setVisible(true);
             return;
         }

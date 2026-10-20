@@ -102,7 +102,17 @@ TEST_CASE("A hosted plugin loads, processes a block in place and round-trips its
     REQUIRE(processor != nullptr);
     auto* hosted = dynamic_cast<hosting::HostedPlugin*>(processor.get());
     REQUIRE(hosted != nullptr);
-    CHECK(processor->parameters().empty()); // the plugin owns them
+    // Its parameters, normalised (what automation reads and writes); the plugin owns them.
+    CHECK(processor->ownsParameters());
+    INFO("parameters: " << processor->parameters().size());
+    for (size_t i = 0; i < processor->parameters().size(); ++i)
+    {
+        CHECK(processor->parameters()[i].minimum == 0.0f);
+        CHECK(processor->parameters()[i].maximum == 1.0f);
+        const float v = processor->parameter(static_cast<int>(i));
+        CHECK(v >= 0.0f);
+        CHECK(v <= 1.0f);
+    }
     processor->prepare(48000.0, 256);
     CHECK(processor->latencySamples() >= 0);
 

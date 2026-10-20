@@ -14,9 +14,12 @@ namespace aural::hosting
 {
 
 // A hosted plugin behind the engine's insert interface. The plugin owns its
-// parameters and state: parameters() is empty (its own editor edits it) and the
-// model keeps an opaque state blob that is restored when the instance is created
-// and captured when the project is saved. The chain is a stereo pair: the main bus
+// parameters and state: parameters() lists the plugin's parameters as
+// normalised 0..1 values (for automation and the lane menu; the plugin's own
+// editor edits them, and setParameter/parameter go through JUCE's parameter
+// objects on the message thread, never the audio thread), and the model keeps
+// an opaque state blob that is restored when the instance is created and
+// captured when the project is saved. The chain is a stereo pair: the main bus
 // is set to stereo in and out (a mono-only plugin gets the pair summed and its
 // output on both sides), a second input bus becomes the stereo key, other buses
 // stay disabled (an instrument has no input bus and its first output pair is
@@ -48,11 +51,11 @@ public:
     Layout layout() const noexcept { return layout_; }
 
     const std::string& typeName() const noexcept override { return typeName_; }
-    const std::vector<engine::ParameterInfo>& parameters() const noexcept override { return noParameters_; }
+    const std::vector<engine::ParameterInfo>& parameters() const noexcept override { return parameterInfos_; }
 
     void prepare(double sampleRate, int maxBlockSize) override;
-    void setParameter(int, float) noexcept override {}
-    float parameter(int) const noexcept override { return 0.0f; }
+    void setParameter(int index, float value) noexcept override;
+    float parameter(int index) const noexcept override;
     bool ownsParameters() const noexcept override { return true; }
     int auxOutputCount() const noexcept override { return auxOutputs_; }
     const float* auxOutput(int index, int channel) const noexcept override
@@ -103,7 +106,8 @@ public:
 
 private:
     std::string typeName_;
-    std::vector<engine::ParameterInfo> noParameters_;
+    std::vector<engine::ParameterInfo> parameterInfos_;
+    std::vector<juce::AudioProcessorParameter*> parameterObjects_; // owned by the instance
     std::unique_ptr<juce::AudioPluginInstance> instance_;
     void run(float* left, float* right, const float* keyLeft, const float* keyRight, int numSamples) noexcept;
     void processBuffer(juce::AudioBuffer<float>& buffer, bool bypassed) noexcept;

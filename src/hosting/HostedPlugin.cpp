@@ -60,6 +60,34 @@ HostedPlugin::HostedPlugin(std::string typeName,
 {
     sidechain_.store(sidechain, std::memory_order_release);
     acceptsMidi_ = instance_->acceptsMidi();
+    // The parameters the plugin shows the host (VST3 bypass and program
+    // parameters included), as normalised values.
+    for (auto* parameter : instance_->getParameters())
+    {
+        if (parameter == nullptr || !parameter->isAutomatable())
+            continue;
+        engine::ParameterInfo info;
+        info.name = parameter->getName(64).toStdString();
+        info.unit = parameter->getLabel().toStdString();
+        info.minimum = 0.0f;
+        info.maximum = 1.0f;
+        info.defaultValue = parameter->getDefaultValue();
+        parameterInfos_.push_back(std::move(info));
+        parameterObjects_.push_back(parameter);
+    }
+}
+
+void HostedPlugin::setParameter(int index, float value) noexcept
+{
+    if (index >= 0 && static_cast<size_t>(index) < parameterObjects_.size())
+        parameterObjects_[static_cast<size_t>(index)]->setValue(juce::jlimit(0.0f, 1.0f, value));
+}
+
+float HostedPlugin::parameter(int index) const noexcept
+{
+    return index >= 0 && static_cast<size_t>(index) < parameterObjects_.size()
+               ? parameterObjects_[static_cast<size_t>(index)]->getValue()
+               : 0.0f;
 }
 
 HostedPlugin::~HostedPlugin()
