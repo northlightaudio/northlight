@@ -1217,8 +1217,8 @@ void SetInsertMix::revert(Project& p)
     requireInsert(requireChannel(p, channelId_), insertId_).mix = previous_;
 }
 
-SetInsertSidechain::SetInsertSidechain(Id channelId, Id insertId, Id sourceId)
-    : channelId_(channelId), insertId_(insertId), value_(sourceId)
+SetInsertSidechain::SetInsertSidechain(Id channelId, Id insertId, Id sourceId, bool postFader)
+    : channelId_(channelId), insertId_(insertId), value_(sourceId), postFader_(postFader)
 {
 }
 void SetInsertSidechain::apply(Project& p)
@@ -1229,11 +1229,15 @@ void SetInsertSidechain::apply(Project& p)
     if (p.keyWouldCycle(channelId_, value_))
         throw std::logic_error("sidechain source would form a feedback loop");
     previous_ = i.sidechain;
+    previousPostFader_ = i.sidechainPostFader;
     i.sidechain = value_;
+    i.sidechainPostFader = value_ != invalidId && postFader_;
 }
 void SetInsertSidechain::revert(Project& p)
 {
-    requireInsert(requireChannel(p, channelId_), insertId_).sidechain = previous_;
+    auto& i = requireInsert(requireChannel(p, channelId_), insertId_);
+    i.sidechain = previous_;
+    i.sidechainPostFader = previousPostFader_;
 }
 
 SetInsertBypass::SetInsertBypass(Id channelId, Id insertId, bool bypass)

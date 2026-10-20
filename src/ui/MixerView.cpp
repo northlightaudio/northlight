@@ -1301,10 +1301,12 @@ private:
                             !project.keyWouldCycle(id_, source.id),
                             insert->sidechain == source.id);
                 const core::Id sourceId = source.id;
+                const bool postFader = insert->sidechainPostFader;
                 actions.push_back(
-                    [this, insertId, sourceId]
+                    [this, insertId, sourceId, postFader]
                     {
-                        owner_.onCommand(std::make_unique<core::SetInsertSidechain>(id_, insertId, sourceId));
+                        owner_.onCommand(
+                            std::make_unique<core::SetInsertSidechain>(id_, insertId, sourceId, postFader));
                     });
             };
             for (const auto& t : project.tracks)
@@ -1312,6 +1314,24 @@ private:
             if (isBus_)
                 for (const auto& b : project.buses)
                     offer(b, "Bus: ");
+            // The tap: before the source's fader (the key ignores it) or after it
+            // (the key follows the fader and its automation).
+            key.addSeparator();
+            const bool keyed = insert->sidechain != core::invalidId;
+            for (const bool post : {false, true})
+            {
+                key.addItem(item++,
+                            post ? "Post-fader" : "Pre-fader",
+                            keyed,
+                            keyed && insert->sidechainPostFader == post);
+                const core::Id sourceId = insert->sidechain;
+                actions.push_back(
+                    [this, insertId, sourceId, post]
+                    {
+                        owner_.onCommand(
+                            std::make_unique<core::SetInsertSidechain>(id_, insertId, sourceId, post));
+                    });
+            }
             menu.addSubMenu("Sidechain", key);
         }
         // Extra outputs of a multi-output instrument: one aux track per pair.

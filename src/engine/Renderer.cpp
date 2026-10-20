@@ -65,6 +65,25 @@ float targetPanOf(const ChannelNode& node) noexcept
     return node.runtime->panAutomated ? node.runtime->automatedPan
                                       : node.runtime->targetPan.load(std::memory_order_relaxed);
 }
+
+// A channel some insert keys from after its fader: its pre-fader output through
+// the fader ramp routeChannel applies this span (the runtime still holds the
+// last span's gain here), into its post-fader buffer.
+void writePostFaderKey(const ChannelNode& node, int numSamples) noexcept
+{
+    if (!node.keyPostFader || numSamples <= 0)
+        return;
+    numSamples = std::min(numSamples, static_cast<int>(node.postLeft.size()));
+    const float gain1 = targetGainOf(node);
+    const float gain0 = node.runtime != nullptr && node.runtime->gainPrimed ? node.runtime->gain : gain1;
+    const float step = (gain1 - gain0) / static_cast<float>(numSamples);
+    for (int i = 0; i < numSamples; ++i)
+    {
+        const float g = gain0 + step * static_cast<float>(i + 1);
+        node.postLeft[static_cast<size_t>(i)] = node.outLeft[static_cast<size_t>(i)] * g;
+        node.postRight[static_cast<size_t>(i)] = node.outRight[static_cast<size_t>(i)] * g;
+    }
+}
 } // namespace
 
 void Renderer::prepare(int maxBlockSize)
@@ -536,23 +555,33 @@ void Renderer::processChain(const Snapshot& snapshot,
     {
         auto* insert = channel.inserts[k];
         const float mix = k < channel.insertMix.size() ? channel.insertMix[k] : 1.0f;
-        // The key signal: the source channel's pre-fader output, already rendered
-        // (tracks by level, buses by order).
+        // The key signal: the source channel's output before or after its fader,
+        // already rendered (tracks by level, buses by order).
         const float* keyL = nullptr;
         const float* keyR = nullptr;
-        // A source that is muted (or un-soloed) still renders, but its key is
-        // silence: mute wins.
+        const ChannelNode* keySource = nullptr;
         if (const int t = k < channel.insertKeyTrack.size() ? channel.insertKeyTrack[k] : -1; t >= 0)
-        {
-            const auto& source = snapshot.tracks[static_cast<size_t>(t)];
-            keyL = source.audible ? source.outLeft.data() : snapshot.silence.data();
-            keyR = source.audible ? source.outRight.data() : snapshot.silence.data();
-        }
+            keySource = &snapshot.tracks[static_cast<size_t>(t)];
         else if (const int b = k < channel.insertKeyBus.size() ? channel.insertKeyBus[k] : -1; b >= 0)
+            keySource = &snapshot.buses[static_cast<size_t>(b)];
+        if (keySource != nullptr)
         {
-            const auto& source = snapshot.buses[static_cast<size_t>(b)];
-            keyL = source.audible ? source.outLeft.data() : snapshot.silence.data();
-            keyR = source.audible ? source.outRight.data() : snapshot.silence.data();
+            // A source that is muted (or un-soloed) still renders, but its key is
+            // silence: mute wins.
+            const bool post = k < channel.insertKeyPostFader.size() && channel.insertKeyPostFader[k] != 0;
+            keyL = !keySource->audible ? snapshot.silence.data()
+                   : post              ? keySource->postLeft.data()
+                                       : keySource->outLeft.data();
+            keyR = !keySource->audible ? snapshot.silence.data()
+                   : post              ? keySource->postRight.data()
+                                       : keySource->outRight.data();
+            // Delay compensation: an early key waits for the audio it acts on.
+            if (auto* delay = k < channel.insertKeyDelay.size() ? channel.insertKeyDelay[k] : nullptr)
+            {
+                delay->process(keyL, keyR, channel.keyLeft.data(), channel.keyRight.data(), numSamples);
+                keyL = channel.keyLeft.data();
+                keyR = channel.keyRight.data();
+            }
         }
         insert->setPlayHead(playHead);
         const auto run = [&](float* l, float* r)
@@ -605,11 +634,9 @@ void Renderer::trackJob(void* context, int index) noexcept
 {
     const auto& job = *static_cast<const SpanJob*>(context);
     const int track = (*job.tracks)[static_cast<size_t>(index)];
-    renderTrack(*job.snapshot,
-                job.snapshot->tracks[static_cast<size_t>(track)],
-                job.position,
-                job.numSamples,
-                *job.context);
+    const auto& node = job.snapshot->tracks[static_cast<size_t>(track)];
+    renderTrack(*job.snapshot, node, job.position, job.numSamples, *job.context);
+    writePostFaderKey(node, job.numSamples);
 }
 
 void Renderer::routeChannel(const Snapshot& snapshot,
@@ -815,6 +842,7 @@ void Renderer::renderSpan(const Snapshot& snapshot,
             bus.runtime->panPrimed = true;
         }
         processChain(snapshot, bus, playHeadAt(snapshot, position, context.playing), outL, outR, numSamples);
+        writePostFaderKey(bus, numSamples);
         routeChannel(snapshot, bus, context, left, right, numSamples);
     }
 

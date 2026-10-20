@@ -329,6 +329,10 @@ std::unique_ptr<Snapshot> compileSnapshot(const core::Project& project,
                     keyTrack = -1; // a track keying from itself: meaningless
                 node.insertKeyTrack.push_back(instance->acceptsSidechain() ? keyTrack : -1);
                 node.insertKeyBus.push_back(instance->acceptsSidechain() ? keyBus : -1);
+                node.insertKeyPostFader.push_back(i.sidechainPostFader ? 1 : 0);
+                node.insertKeyDelay.push_back(nullptr); // set with the compensation below
+                node.insertIds.push_back(i.id);
+                node.insertInputLatency.push_back(node.chainLatency - latency);
                 node.keepAlive.push_back(std::move(instance));
             }
         // Automation: the lanes with points, when the mode reads. An insert
@@ -369,6 +373,10 @@ std::unique_ptr<Snapshot> compileSnapshot(const core::Project& project,
         node.dryRight = {b.buffer(3), n};
         node.delayScratchLeft = {b.buffer(4), n};
         node.delayScratchRight = {b.buffer(5), n};
+        node.postLeft = {b.buffer(8), n};
+        node.postRight = {b.buffer(9), n};
+        node.keyLeft = {b.buffer(10), n};
+        node.keyRight = {b.buffer(11), n};
     };
 
     // ----- tracks -----------------------------------------------------------------------
@@ -611,6 +619,40 @@ std::unique_ptr<Snapshot> compileSnapshot(const core::Project& project,
             attach(snapshot->buses[static_cast<size_t>(b)],
                    project.buses[static_cast<size_t>(b)].id,
                    busOut[static_cast<size_t>(b)]);
+
+        // Keys: a slot's key lines up with the audio reaching that slot. A key that
+        // arrives early (its source gathered less latency) is delayed by the
+        // difference; one that arrives late cannot be pulled earlier and plays as is.
+        const auto keys = [&](ChannelNode& node, int inputLag)
+        {
+            for (size_t k = 0; k < node.insertKeyTrack.size(); ++k)
+            {
+                const int t = node.insertKeyTrack[k];
+                const int b = node.insertKeyBus[k];
+                if (t < 0 && b < 0)
+                    continue;
+                ChannelNode* source =
+                    t >= 0 ? static_cast<ChannelNode*>(&snapshot->tracks[static_cast<size_t>(t)])
+                           : static_cast<ChannelNode*>(&snapshot->buses[static_cast<size_t>(b)]);
+                if (node.insertKeyPostFader[k] != 0)
+                    source->keyPostFader = true;
+                const int keyLag = t >= 0 ? trackOut[static_cast<size_t>(t)] : busOut[static_cast<size_t>(b)];
+                const int needed = inputLag + node.insertInputLatency[k] - keyLag;
+                if (needed <= 0)
+                    continue;
+                auto line = cache.get(DelayKey{node.insertIds[k], source->id, false}, needed);
+                snapshot->allDelays.push_back(line.get());
+                node.insertKeyDelay[k] = line.get();
+                node.keepAliveDelays.push_back(std::move(line));
+            }
+        };
+        for (int t = 0; t < trackCount; ++t)
+        {
+            auto& node = snapshot->tracks[static_cast<size_t>(t)];
+            keys(node, trackOut[static_cast<size_t>(t)] - node.chainLatency);
+        }
+        for (int b = 0; b < busCount; ++b)
+            keys(snapshot->buses[static_cast<size_t>(b)], arrival[static_cast<size_t>(b)]);
     }
     return snapshot;
 }

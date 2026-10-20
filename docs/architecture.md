@@ -704,9 +704,17 @@ plugins that have both editors, a failed-load toast with a Blocklist action.
 
 Sidechains: an insert slot can key from another channel (`Insert::sidechain`,
 `SetInsertSidechain`, the inserts menu's Sidechain submenu, offered when the live
-processor `acceptsSidechain()`). The key is the source's pre-fader signal (its
-chain output; the fader does not matter, mute does, since a muted channel renders
-silence). A track may key from a track; a bus from a track or from a bus. To make
+processor `acceptsSidechain()`). The key taps the source before its fader (its
+chain output; the fader does not matter) or, with `Insert::sidechainPostFader`
+(the submenu's Pre-fader / Post-fader), after it, so it follows the fader and its
+automation: the renderer writes a post-fader copy of any channel a post-fader key
+reads once its chain has run (`ChannelNode::keyPostFader`, `postLeft/Right`).
+Either way mute wins, since a muted channel's key is silence. Keys are delay
+compensated: a key that reaches its slot earlier than the slot's own audio (the
+source gathered less latency than the keyed channel's input plus the inserts
+before the slot) runs through a delay line for the difference
+(`ChannelNode::insertKeyDelay`); a key that arrives late is used as it is, since
+lining it up would add latency to the keyed channel. A track may key from a track; a bus from a track or from a bus. To make
 the source ready in time the compiler groups tracks into levels (a keyed track
 renders in a later level than its source; levels run in parallel one after the
 other, and a cycle drops the keys that block it) and adds bus-to-bus key edges to
@@ -1356,6 +1364,7 @@ machine for the benchmark.
 | 2026-10-20 | Selection has one owner that notifies one listener | Four views each cached the selection and nine call sites kept them in step by hand; missing one left the editor on another channel, twice. |
 | 2026-10-20 | Parameters are saved with stable keys and reconciled on load | Saving by position silently moved every later value (and automation) whenever a processor gained a parameter, as Pulsar did; keys let processors change, and an upgrade chain replaces refusing older files. |
 | 2026-10-20 | Missing media is detected once per project change, not per paint | A file-exists check per clip per frame would stall painting on a slow volume; the set is rebuilt when the project changes. |
+| 2026-10-20 | Sidechain keys can tap after the source's fader, and are delay compensated | Ducking that should follow a source's level rides (a kick pulled down in the chorus) needs the fader in the key; pre-fader stays the default so existing projects sound the same. An early key is delayed for free, a late one would cost the keyed channel latency, so it is left as is. Bus sources for track inserts are still not offered. |
 | 2026-10-19 | Panels are owned by one of three hosts and never destroyed on close | A panel's component keeps its state (the mixer's open editors, the browser's filter) across moves and hides; closing a floating panel hides it and returns it to its default host, so a user cannot lose one. |
 | 2026-10-19 | Shift+M / Shift+S stay the track state; the marker region and split-at-selection take Alt | The spec assigns both pairs the same keys; mute and solo are the more frequent and match every other DAW, so the edits move. |
 | 2026-10-19 | The first-run sheet is detected by the settings file's absence, before settings are created | No "first run" flag can be stale, and the sheet never shows again once any setting is saved. |

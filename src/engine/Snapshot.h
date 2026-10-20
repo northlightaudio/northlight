@@ -88,11 +88,15 @@ struct ChannelNode
     int outputBus = -1; // index into Snapshot::buses, -1 = master
     int meterSlot = -1;
     std::vector<SendNode> sends;
-    std::vector<InsertProcessor*> inserts;                   // in chain order
-    std::vector<float> insertMix;                            // wet/dry per slot (1 = all wet)
-    std::vector<DelayLine*> insertDry;                       // aligns the dry path to a latent insert
-    std::vector<int> insertKeyTrack;                         // per slot: sidechain source track index or -1
-    std::vector<int> insertKeyBus;                           // per slot: sidechain source bus index or -1
+    std::vector<InsertProcessor*> inserts;        // in chain order
+    std::vector<float> insertMix;                 // wet/dry per slot (1 = all wet)
+    std::vector<DelayLine*> insertDry;            // aligns the dry path to a latent insert
+    std::vector<int> insertKeyTrack;              // per slot: sidechain source track index or -1
+    std::vector<int> insertKeyBus;                // per slot: sidechain source bus index or -1
+    std::vector<std::uint8_t> insertKeyPostFader; // per slot: the key taps after the source's fader
+    std::vector<DelayLine*> insertKeyDelay;       // per slot: lines an early key up (null = none)
+    std::vector<core::Id> insertIds;              // per slot: the insert's id
+    std::vector<int> insertInputLatency;          // per slot: what the chain adds before it
     std::vector<std::shared_ptr<InsertProcessor>> keepAlive; // controller-side ownership
     WorkBuffer dryLeft, dryRight;                            // the dry copy for a mixed slot
     int chainLatency = 0;                                    // samples the inserts add
@@ -106,6 +110,11 @@ struct ChannelNode
 
     // Pre-fader stereo output for one span (the parallel render writes it).
     WorkBuffer outLeft, outRight;
+    // Some insert keys from this channel after its fader: the renderer also
+    // writes the post-fader output, once the channel's chain has run.
+    bool keyPostFader = false;
+    WorkBuffer postLeft, postRight;
+    WorkBuffer keyLeft, keyRight;                     // a delayed key for the slot being processed
     std::shared_ptr<ChannelBuffers> keepAliveBuffers; // what the WorkBuffers view
 };
 

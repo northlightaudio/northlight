@@ -36,8 +36,9 @@ void migrate(json& j, int from)
     {
         switch (version)
         {
-            case 2: // 2 -> 3 and 3 -> 4 only add optional fields
+            case 2: // 2 -> 3, 3 -> 4 and 4 -> 5 only add optional fields
             case 3:
+            case 4:
                 break;
             default:
                 break;
@@ -193,6 +194,8 @@ void channelToJson(json& j, const Channel& c)
                 ij["mix"] = i.mix;
             if (i.sidechain != invalidId)
                 ij["sidechain"] = i.sidechain;
+            if (i.sidechain != invalidId && i.sidechainPostFader)
+                ij["sidechainPostFader"] = true;
             inserts.push_back(std::move(ij));
         }
         return inserts;
@@ -262,6 +265,7 @@ void channelFromJson(const json& j, Channel& c)
             insert.state = i.value("state", std::string{});
             insert.mix = i.value("mix", 1.0f);
             insert.sidechain = i.value("sidechain", invalidId);
+            insert.sidechainPostFader = insert.sidechain != invalidId && i.value("sidechainPostFader", false);
             if (const auto params = i.find("params"); params != i.end() && params->is_array())
                 for (const auto& v : *params)
                     insert.params.push_back(v.get<float>());

@@ -67,7 +67,7 @@ delay `Amber`. The instruments (7.4b-7.4e) have faces of their own.
   module are one compressor): the transfer curve, the history with the threshold
   line, the IN threshold meter, GR and OUT; Ratio, Attack, Release, Knee, Makeup,
   Mix; Auto make-up and Peak / RMS. The insert also takes a sidechain key (its
-  menu).
+  menu), tapped before or after the source's fader.
 - **Limiter**: the history with the ceiling, the ceiling on the IN meter, GR and
   OUT; Release, Lookahead.
 - **Reverb**: the decay: the dry sound, the pre-delay, early reflections (more and

@@ -103,7 +103,10 @@ struct Insert
     std::vector<float> params;
     std::string state;        // opaque (base64) for processors that own their state
     float mix = 1.0f;         // wet/dry: 1 = fully processed, 0 = the input passes untouched
-    Id sidechain = invalidId; // a track (or, on a bus, a bus) whose pre-fader signal feeds the key input
+    Id sidechain = invalidId; // a track (or, on a bus, a bus) whose signal feeds the key input
+    // Where the key taps its source: before the source's fader (false) or after
+    // it, so the key follows the source's fader and gain automation.
+    bool sidechainPostFader = false;
     // The stable keys of `params` as a file named them, kept only until a
     // processor of this type says where each one goes now (core
     // reconcileParameters); a plugin that is not installed keeps them, so a
@@ -330,7 +333,7 @@ struct Project
     // 2: instruments moved to instrument channels; MIDI tracks aim at them.
     // 3: parameters and automation lanes carry stable keys; row heights.
     // 4: vocal pitch edits on audio clips; the project key.
-    static constexpr int schemaVersion = 4;
+    static constexpr int schemaVersion = 5;
     static constexpr int oldestReadableVersion = 2; // older files are refused
 
     std::string name = "Untitled";

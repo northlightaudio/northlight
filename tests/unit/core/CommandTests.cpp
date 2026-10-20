@@ -401,6 +401,22 @@ TEST_CASE("An insert's sidechain source is set to an existing channel and undone
     CHECK(p.tracks[0].inserts[0].sidechain == invalidId);
     stack.execute(p, std::make_unique<SetInsertSidechain>(track, id, kick));
     CHECK(p.tracks[0].inserts[0].sidechain == kick);
+    CHECK_FALSE(p.tracks[0].inserts[0].sidechainPostFader);
+    // The tap: after the kick's fader, then undone back to before it.
+    stack.execute(p, std::make_unique<SetInsertSidechain>(track, id, kick, true));
+    CHECK(p.tracks[0].inserts[0].sidechainPostFader);
+    stack.undo(p);
+    CHECK(p.tracks[0].inserts[0].sidechain == kick);
+    CHECK_FALSE(p.tracks[0].inserts[0].sidechainPostFader);
+    stack.redo(p);
+    CHECK(p.tracks[0].inserts[0].sidechainPostFader);
+    // No source: no tap either.
+    SetInsertSidechain clear(track, id, invalidId, true);
+    clear.apply(p);
+    CHECK_FALSE(p.tracks[0].inserts[0].sidechainPostFader);
+    clear.revert(p);
+    CHECK(p.tracks[0].inserts[0].sidechain == kick);
+    CHECK(p.tracks[0].inserts[0].sidechainPostFader);
     CHECK_THROWS(SetInsertSidechain(track, id, 999).apply(p));
     // A loop: keying the track from itself, or from a bus it feeds (directly or
     // through another key), is refused.

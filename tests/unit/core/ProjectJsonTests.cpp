@@ -66,7 +66,9 @@ Project sampleProject()
     p.markers.push_back(Marker{9, "Intro", 0, 44100});
     p.markers.push_back(Marker{10, "Drop", 88200, 0});
     p.buses[0].inserts.push_back(Insert{8, "vst3:VST3-abc", false, {}, "AAECAw==", 0.4f, 1});
-    p.nextId = 15;
+    // The bass compressor keys from the drums after their fader.
+    p.tracks[1].inserts.push_back(Insert{15, "aural.compressor", false, {}, "", 1.0f, 1, true});
+    p.nextId = 16;
     p.tracks[0].group = 7;
     p.buses[0].group = 7;
     p.master.gain = 0.8f;
@@ -306,4 +308,27 @@ TEST_CASE("A version 2 project is upgraded on load and saved as the current vers
     const auto loaded = projectFromJson(text);
     REQUIRE(loaded.has_value());
     CHECK(projectToJson(*loaded).find(current) != std::string::npos);
+}
+
+TEST_CASE("A post-fader key is saved only with its source; older files load pre-fader",
+          "[core][json][sidechain]")
+{
+    const auto text = projectToJson(sampleProject());
+    CHECK(text.find("\"sidechainPostFader\"") != std::string::npos);
+    std::string error;
+    // A version 4 file has no tap: its keys are pre-fader.
+    const auto old = projectFromJson(R"({"format":"aural.project","version":4,"tracks":[
+        {"id":1,"name":"Kick"},
+        {"id":2,"name":"Bass","inserts":[{"id":3,"type":"aural.compressor","sidechain":1}]}],"nextId":4})",
+                                     &error);
+    REQUIRE(old.has_value());
+    REQUIRE(old->tracks[1].inserts.size() == 1);
+    CHECK(old->tracks[1].inserts[0].sidechain == 1);
+    CHECK_FALSE(old->tracks[1].inserts[0].sidechainPostFader);
+    // A tap without a source means nothing and does not survive a load.
+    const auto stray = projectFromJson(R"({"format":"aural.project","version":5,"tracks":[
+        {"id":2,"name":"Bass","inserts":[{"id":3,"type":"aural.compressor","sidechainPostFader":true}]}],"nextId":4})",
+                                       &error);
+    REQUIRE(stray.has_value());
+    CHECK_FALSE(stray->tracks[0].inserts[0].sidechainPostFader);
 }

@@ -67,13 +67,14 @@ struct MidiRuntime
     bool wasPlaying = false;
 };
 
-// A channel's work buffers for one span (output, dry copy, delayed copy, and a
-// fourth pair: a track's clip scratch or a bus's sum), in one allocation. Kept
+// A channel's work buffers for one span (output, dry copy, delayed copy, a
+// fourth pair: a track's clip scratch or a bus's sum, then the post-fader copy
+// a post-fader key reads and a delayed key), in one allocation. Kept
 // across compiles like the runtimes, so a structural edit allocates only for
 // new channels. Snapshots share them: only the one being rendered writes.
 struct ChannelBuffers
 {
-    static constexpr int pairs = 4;
+    static constexpr int pairs = 6;
     explicit ChannelBuffers(size_t blockSize) : blockSize(blockSize), storage(2 * pairs * blockSize, 0.0f) {}
     float* buffer(int index) noexcept { return storage.data() + static_cast<size_t>(index) * blockSize; }
     size_t blockSize;

@@ -143,6 +143,7 @@ public:
         power_.setTooltip(insert.bypass ? "Bypassed: click to enable" : "Enabled: click to bypass");
         mix_.setValue(insert.mix * 100.0, juce::dontSendNotification);
         sidechain_ = insert.sidechain;
+        sidechainPostFader_ = insert.sidechainPostFader;
         if (body_ != nullptr)
             body_->refresh(insert);
         const auto live = owner_.liveInsert ? owner_.liveInsert(insertId_) : nullptr;
@@ -240,8 +241,10 @@ public:
         if (sidechain_ != core::invalidId && owner_.project_ != nullptr)
         {
             const auto* source = owner_.project_->findChannel(sidechain_);
-            const auto text = "key: " + (source != nullptr ? juce::String::fromUTF8(source->name.c_str())
-                                                           : juce::String("?"));
+            const auto text =
+                "key: " +
+                (source != nullptr ? juce::String::fromUTF8(source->name.c_str()) : juce::String("?")) +
+                (sidechainPostFader_ ? " (post)" : "");
             g.setFont(theme_.caption());
             const int w =
                 juce::GlyphArrangement::getStringWidthInt(g.getCurrentFont(), text) + 2 * theme_.spacing.sm;
@@ -447,6 +450,7 @@ private:
     std::vector<std::unique_ptr<juce::Label>> labels_;
     bool bypassed_ = false, updating_ = false, missing_ = false, dragging_ = false;
     core::Id sidechain_ = core::invalidId;
+    bool sidechainPostFader_ = false;
     int latency_ = 0;
     strip::CardHost host_;
     std::unique_ptr<strip::ModuleCard> body_; // a built-in's editor
