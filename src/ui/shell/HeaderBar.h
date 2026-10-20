@@ -7,6 +7,7 @@
 #include <juce_gui_basics/juce_gui_basics.h>
 
 #include <functional>
+#include <vector>
 
 namespace aural::ui
 {
@@ -115,6 +116,7 @@ private:
     IconButton loop_, punch_, click_, countIn_;
     TimeDisplay bars_, time_;
     NumericField tempo_;
+    std::vector<double> tapTimesMs_; // the last tempo taps
     juce::ComboBox signature_;
     IconButton snap_, ripple_, zoomFit_, mixer_, editor_, browser_;
     bool clipLit_ = false;

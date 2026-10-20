@@ -29,6 +29,9 @@ public:
 
     std::function<void(double)> onValueChanged;
     std::function<void()> onDragStart, onDragEnd;
+    // A key the owner wants first while the field is focused (tap tempo on T);
+    // return true to consume it.
+    std::function<bool(const juce::KeyPress&)> onKey;
 
     void paint(juce::Graphics& g) override;
     void resized() override;

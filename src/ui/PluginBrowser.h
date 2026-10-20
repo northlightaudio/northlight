@@ -45,6 +45,7 @@ public:
     void refresh();
     // Remembers a type as recently used (the owner calls it on any insert).
     void rememberRecent(const std::string& type);
+    void focusSearch() { search_.grabKeyboardFocus(); }
 
     void paint(juce::Graphics& g) override;
     void resized() override;

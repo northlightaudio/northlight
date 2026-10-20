@@ -165,6 +165,8 @@ bool NumericField::keyPressed(const juce::KeyPress& key)
 {
     if (editor_ != nullptr)
         return false;
+    if (onKey && onKey(key))
+        return true;
     const double scale = key.getModifiers().isShiftDown()  ? 0.1
                          : key.getModifiers().isCtrlDown() ? 10.0
                                                            : 1.0;

@@ -104,6 +104,7 @@ private:
         velocity,
         erase,
         key, // a key held on the keyboard
+        pan, // the middle button drags the view
     };
 
     void scrollBarMoved(juce::ScrollBar* bar, double newRangeStart) override;
@@ -180,6 +181,8 @@ private:
     core::MidiNote drawNote_; // the note being drawn
     int heldKey_ = -1;
     bool fitPending_ = false;
+    core::SamplePosition panScroll_ = 0;
+    int panVertical_ = 0;
     core::Id hoverNote_ = core::invalidId;
     bool hoverEdge_ = false;
 };

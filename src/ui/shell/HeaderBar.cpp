@@ -2,6 +2,8 @@
 
 #include "ui/AuralLookAndFeel.h"
 
+#include <algorithm>
+
 namespace aural::ui
 {
 
@@ -50,7 +52,10 @@ void TimeDisplay::paint(juce::Graphics& g)
     {
         const int w = juce::GlyphArrangement::getStringWidthInt(g.getCurrentFont(), text_);
         lnf->drawGlow(g,
-                      juce::Rectangle<float>(bounds.getCentreX() - w * 0.5f, bounds.getCentreY() - g.getCurrentFont().getHeight() * 0.4f, static_cast<float>(w), g.getCurrentFont().getHeight() * 0.8f),
+                      juce::Rectangle<float>(bounds.getCentreX() - w * 0.5f,
+                                             bounds.getCentreY() - g.getCurrentFont().getHeight() * 0.4f,
+                                             static_cast<float>(w),
+                                             g.getCurrentFont().getHeight() * 0.8f),
                       theme_.radius.sm,
                       m.readoutGlow);
     }
@@ -244,6 +249,27 @@ HeaderBar::HeaderBar(const Theme& theme)
         if (onTempo)
             onTempo(value);
     };
+    // Tap tempo: T while the field is focused; the average of the last taps within
+    // two seconds becomes the tempo once there are two or more.
+    tempo_.onKey = [this](const juce::KeyPress& key)
+    {
+        if (key.getTextCharacter() != 't' && key.getTextCharacter() != 'T')
+            return false;
+        const double now = juce::Time::getMillisecondCounterHiRes();
+        if (!tapTimesMs_.empty() && now - tapTimesMs_.back() > 2000.0)
+            tapTimesMs_.clear();
+        tapTimesMs_.push_back(now);
+        if (tapTimesMs_.size() > 8)
+            tapTimesMs_.erase(tapTimesMs_.begin());
+        if (tapTimesMs_.size() >= 2)
+        {
+            const double interval =
+                (tapTimesMs_.back() - tapTimesMs_.front()) / static_cast<double>(tapTimesMs_.size() - 1);
+            if (interval > 0.0 && onTempo)
+                onTempo(std::clamp(60000.0 / interval, 20.0, 400.0));
+        }
+        return true;
+    };
     for (const char* s : {"2/4", "3/4", "4/4", "5/4", "6/8", "7/8", "12/8"})
         signature_.addItem(s, signature_.getNumItems() + 1);
     signature_.setTooltip("Time signature");
@@ -255,7 +281,10 @@ HeaderBar::HeaderBar(const Theme& theme)
                         text.fromFirstOccurrenceOf("/", false, false).getIntValue());
     };
 
-    for (auto* c : std::initializer_list<juce::Component*>{&app_, &project_, &undo_, &redo_, &goToStart_, &play_, &stop_, &record_, &loop_, &punch_, &click_, &countIn_, &bars_, &time_, &tempo_, &signature_, &snap_, &ripple_, &zoomFit_, &mixer_, &editor_, &browser_})
+    for (auto* c : std::initializer_list<juce::Component*>{
+             &app_,  &project_, &undo_,    &redo_,    &goToStart_, &play_,   &stop_,  &record_,
+             &loop_, &punch_,   &click_,   &countIn_, &bars_,      &time_,   &tempo_, &signature_,
+             &snap_, &ripple_,  &zoomFit_, &mixer_,   &editor_,    &browser_})
         addAndMakeVisible(c);
     refreshFromState();
 }
@@ -284,20 +313,25 @@ void HeaderBar::refreshFromState()
     record_.setEnabled(s.deviceReady);
     play_.setEnabled(s.deviceReady);
     record_.setWarningDot(!s.deviceReady);
-    record_.setTooltip(s.deviceReady ? (s.recording ? "Stop recording  R" : "Record  R") : "No audio device: click to open Audio Setup");
+    record_.setTooltip(s.deviceReady ? (s.recording ? "Stop recording  R" : "Record  R")
+                                     : "No audio device: click to open Audio Setup");
     loop_.setToggleState(s.loop, juce::dontSendNotification);
     loop_.setEnabled(s.loopPossible);
-    loop_.setTooltip(s.loopPossible ? juce::String(s.loop ? "Loop: on  L" : "Loop: off  L") : juce::String("Set a loop region in the ruler"));
+    loop_.setTooltip(s.loopPossible ? juce::String(s.loop ? "Loop: on  L" : "Loop: off  L")
+                                    : juce::String("Set a loop region in the ruler"));
     punch_.setToggleState(s.punch, juce::dontSendNotification);
     punch_.setTooltip(s.punch ? "Punch: on  P" : "Punch: off  P");
     click_.setToggleState(s.click, juce::dontSendNotification);
     click_.setTooltip(s.click ? "Click: on  C" : "Click: off  C");
     countIn_.setToggleState(s.countInBars > 0, juce::dontSendNotification);
     countIn_.setCornerText(s.countInBars > 0 ? juce::String(s.countInBars) : juce::String());
-    countIn_.setTooltip("Count-in: " + juce::String(s.countInBars) + (s.countInBars == 1 ? " bar" : " bars") + " (click to change)");
+    countIn_.setTooltip("Count-in: " + juce::String(s.countInBars) + (s.countInBars == 1 ? " bar" : " bars") +
+                        " (click to change)");
     bars_.setText(s.barsText);
     time_.setText(s.timeText);
-    const auto tone = s.recording ? TimeDisplay::Tone::recording : s.countingIn ? TimeDisplay::Tone::countIn : TimeDisplay::Tone::normal;
+    const auto tone = s.recording    ? TimeDisplay::Tone::recording
+                      : s.countingIn ? TimeDisplay::Tone::countIn
+                                     : TimeDisplay::Tone::normal;
     bars_.setTone(tone);
     time_.setTone(tone);
     if (std::abs(tempo_.value() - s.tempo) > 1.0e-6)
@@ -348,7 +382,10 @@ void HeaderBar::paint(juce::Graphics& g)
     {
         g.setColour(c.accent);
         const int d = theme_.spacing.sm - theme_.spacing.xxs;
-        g.fillEllipse(static_cast<float>(project_.getRight() - theme_.spacing.sm), static_cast<float>(project_.getBounds().getCentreY() - d / 2), static_cast<float>(d), static_cast<float>(d));
+        g.fillEllipse(static_cast<float>(project_.getRight() - theme_.spacing.sm),
+                      static_cast<float>(project_.getBounds().getCentreY() - d / 2),
+                      static_cast<float>(d),
+                      static_cast<float>(d));
     }
     // The divider before the panel toggles.
     g.setColour(c.lineStrong);
@@ -363,7 +400,8 @@ void HeaderBar::paint(juce::Graphics& g)
 
 void HeaderBar::mouseDown(const juce::MouseEvent& e)
 {
-    if (clipLit_ && clipIndicatorBounds().expanded(theme_.spacing.xs).contains(e.getPosition()) && onMasterClipClicked)
+    if (clipLit_ && clipIndicatorBounds().expanded(theme_.spacing.xs).contains(e.getPosition()) &&
+        onMasterClipClicked)
         onMasterClipClicked();
 }
 
@@ -381,7 +419,10 @@ void HeaderBar::resized()
     };
     // Left: app, project, undo/redo.
     place(app_, control, control, md);
-    const int projectW = std::min(220, juce::GlyphArrangement::getStringWidthInt(theme_.label(), project_.getButtonText()) + 2 * md + theme_.sizes.icon + sm);
+    const int projectW =
+        std::min(220,
+                 juce::GlyphArrangement::getStringWidthInt(theme_.label(), project_.getButtonText()) +
+                     2 * md + theme_.sizes.icon + sm);
     place(project_, projectW, control, md);
     place(undo_, control, control, sm);
     place(redo_, control, control, xl);
@@ -400,7 +441,8 @@ void HeaderBar::resized()
     placeRight(snap_, control + sm, xl);
     bar.setRight(right.getRight());
     // Centre: the transport cluster.
-    const int clusterW = 4 * large + 3 * md + xl + 4 * control + 3 * sm + xl + 150 + sm + 110 + xl + 72 + sm + 64 + sm + theme_.sizes.meterWidth;
+    const int clusterW = 4 * large + 3 * md + xl + 4 * control + 3 * sm + xl + 150 + sm + 110 + xl + 72 + sm +
+                         64 + sm + theme_.sizes.meterWidth;
     auto cluster = bar.withSizeKeepingCentre(std::min(clusterW, bar.getWidth()), h);
     if (cluster.getX() < bar.getX())
         cluster.setX(bar.getX());

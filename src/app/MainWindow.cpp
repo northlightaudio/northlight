@@ -394,6 +394,20 @@ public:
         { return key.getTextCharacter() == static_cast<juce::juce_wchar>(c) && mods == with; };
         if (key.getKeyCode() == juce::KeyPress::tabKey)
             ui::AuralLookAndFeel::setKeyboardFocusVisible(true);
+        // F2 renames the selected track while the arrange view has the focus
+        // (10.4); elsewhere it is the mixer's panel key.
+        if (key.getKeyCode() == juce::KeyPress::F2Key && mods == 0 && tracks_.hasKeyboardFocus(true) &&
+            tracks_.selectedTrack() != core::invalidId)
+        {
+            tracks_.renameSelectedTrack();
+            return true;
+        }
+        if (is('F', M::ctrlModifier))
+        {
+            panels_.show(ui::PanelId::browser);
+            browser_.focusSearch();
+            return true;
+        }
         if (panels_.handleKey(key))
             return true;
         // Transport.
@@ -680,7 +694,12 @@ private:
     void wireMixer()
     {
         mixer_.onCommand = [this](std::unique_ptr<core::Command> command)
-        { session_.execute(std::move(command)); };
+        {
+            if (auto* removal = dynamic_cast<core::RemoveBus*>(command.get()))
+                if (confirmBusRemoval(removal->busId(), std::move(command)))
+                    return;
+            session_.execute(std::move(command));
+        };
         mixer_.onGestureBegin = [this](const std::string& name) { session_.beginGesture(name); };
         mixer_.onGestureEnd = [this] { session_.endGesture(); };
         mixer_.setHost(&session_.insertFactory());
@@ -833,6 +852,21 @@ private:
     void refresh()
     {
         const auto s = audio_.status();
+        // The device went away: say what happened, what it means and what to do (10.6).
+        if (lastDeviceOpen_ && !s.open)
+        {
+            const bool wasPlaying = session_.isPlaying();
+            session_.stop();
+            toast(ui::ToastStack::Kind::error,
+                  "The " + juce::String::fromUTF8(lastDeviceName_.c_str()) + " was disconnected. " +
+                      (wasPlaying ? "Playback stopped. " : juce::String()) +
+                      "Reconnect it or choose another device in Audio Setup.",
+                  "Audio Setup",
+                  [this] { owner_.showAudioSetup(); });
+        }
+        lastDeviceOpen_ = s.open;
+        if (s.open)
+            lastDeviceName_ = s.outputDevice;
         {
             const auto all = audio_.inputChannelNames();
             std::vector<std::string> names;
@@ -963,6 +997,18 @@ private:
         state.dropouts = std::max(0, s.xruns - dropoutBaseline_) +
                          static_cast<int>(std::max<std::int64_t>(
                              0, static_cast<std::int64_t>(stats.overruns) - overrunBaseline_));
+        // Dropouts over the threshold: a toast with the fix, at most once a minute.
+        const double now = juce::Time::getMillisecondCounterHiRes();
+        if (state.dropouts - dropoutsToasted_ >= 10 && now - lastDropoutToastMs_ > 60000.0)
+        {
+            dropoutsToasted_ = state.dropouts;
+            lastDropoutToastMs_ = now;
+            toast(ui::ToastStack::Kind::warning,
+                  "Audio dropouts. The buffer is too small for this project on this device. Raise the buffer "
+                  "size in Audio Setup.",
+                  "Audio Setup",
+                  [this] { owner_.showAudioSetup(); });
+        }
         state.recording = session_.isRecording();
         if (state.recording)
             state.diskFreeGb = static_cast<double>(session_.mediaFolder().getBytesFreeOnVolume()) / 1.0e9;
@@ -1005,6 +1051,7 @@ private:
         }
         if (ticks_ % 15 == 0)
             refreshStatus();
+        updateHoverHint();
         if (recording != lastRecording_)
         {
             lastRecording_ = recording;
@@ -1012,6 +1059,28 @@ private:
         }
         if (ticks_ % 30 == 0)
             pushDiagnostics();
+    }
+
+    // The status bar's right side describes the control under the pointer after
+    // a second (10.5): its tooltip, which carries the name, value and shortcut.
+    void updateHoverHint()
+    {
+        auto* under = juce::Desktop::getInstance().getMainMouseSource().getComponentUnderMouse();
+        juce::String tip;
+        for (auto* comp = under; comp != nullptr && tip.isEmpty(); comp = comp->getParentComponent())
+            if (auto* client = dynamic_cast<juce::TooltipClient*>(comp))
+                tip = client->getTooltip();
+        if (under != hoverComponent_)
+        {
+            hoverComponent_ = under;
+            hoverSinceMs_ = juce::Time::getMillisecondCounterHiRes();
+            status_.setHint({});
+            return;
+        }
+        const bool dragging = juce::Desktop::getInstance().getMainMouseSource().isDragging();
+        if (!dragging && tip.isNotEmpty() &&
+            juce::Time::getMillisecondCounterHiRes() - hoverSinceMs_ >= 1000.0)
+            status_.setHint(tip.replace("\n", "  "));
     }
 
     void pushDiagnostics()
@@ -1066,6 +1135,74 @@ private:
         editor_.setChannel(trackId);
         inspector_.setSelection(trackId, clipId);
         mixer_.setSelectedChannel(trackId);
+    }
+
+    // A bus that tracks route to is removed only after a sheet (10.6). Returns
+    // true when the sheet took the command.
+    bool confirmBusRemoval(core::Id busId, std::unique_ptr<core::Command> command)
+    {
+        const auto& project = session_.project();
+        const auto* bus = project.findBus(busId);
+        if (bus == nullptr)
+            return false;
+        int routed = 0;
+        const auto count = [&](const core::Channel& ch)
+        {
+            if (ch.outputBus == busId)
+                ++routed;
+            for (const auto& send : ch.sends)
+                if (send.bus == busId)
+                    ++routed;
+        };
+        for (const auto& t : project.tracks)
+            count(t);
+        for (const auto& b : project.buses)
+            if (b.id != busId)
+                count(b);
+        if (routed == 0)
+            return false;
+        auto shared = std::make_shared<std::unique_ptr<core::Command>>(std::move(command));
+        sheet_ =
+            ui::Sheet::show(*this,
+                            theme_,
+                            "Delete " + juce::String::fromUTF8(bus->name.c_str()) + "?",
+                            juce::String(routed) + (routed == 1 ? " channel routes" : " channels route") +
+                                " to it and will go to the master instead. This can be undone.",
+                            {{"Cancel", false, false}, {"Delete", false, true}},
+                            [this, shared](int result)
+                            {
+                                sheet_ = nullptr;
+                                if (result == 1 && *shared != nullptr)
+                                    session_.execute(std::move(*shared));
+                            });
+        return true;
+    }
+
+    // Unsaved changes on close (10.6): a sheet with Save as the primary action.
+    void confirmClose()
+    {
+        if (!session_.isModified())
+        {
+            juce::JUCEApplication::getInstance()->quit();
+            return;
+        }
+        sheet_ =
+            ui::Sheet::show(*this,
+                            theme_,
+                            "Save changes to " + projectName() + "?",
+                            "Unsaved changes will be lost if you close without saving.",
+                            {{"Cancel", false, false}, {"Don't save", false, true}, {"Save", true, false}},
+                            [this](int result)
+                            {
+                                sheet_ = nullptr;
+                                if (result == 1)
+                                    juce::JUCEApplication::getInstance()->quit();
+                                else if (result == 2)
+                                {
+                                    quitAfterSave_ = true;
+                                    saveProject(false);
+                                }
+                            });
     }
 
     // Inserts a plugin type on a track (from the browser, a drop or the chain).
@@ -1249,11 +1386,16 @@ private:
     {
         const auto error = session_.save(file);
         if (!error.empty())
+        {
+            quitAfterSave_ = false;
             toast(ui::ToastStack::Kind::error, "Cannot save: " + juce::String::fromUTF8(error.c_str()));
+        }
         else
         {
             status_.showMessage("Saved " + file.getFileName());
             rememberRecent(file);
+            if (quitAfterSave_)
+                juce::JUCEApplication::getInstance()->quit();
         }
         refresh();
     }
@@ -1628,6 +1770,13 @@ private:
     std::int64_t overrunBaseline_ = 0;
     double lastTickMs_ = 0.0;
     std::deque<double> frames_;
+    bool lastDeviceOpen_ = false;
+    std::string lastDeviceName_;
+    int dropoutsToasted_ = 0;
+    double lastDropoutToastMs_ = 0.0;
+    bool quitAfterSave_ = false;
+    juce::Component::SafePointer<juce::Component> hoverComponent_;
+    double hoverSinceMs_ = 0.0;
 };
 
 // ----- secondary windows -------------------------------------------------------------------
@@ -1767,7 +1916,10 @@ MainWindow::~MainWindow()
 
 void MainWindow::closeButtonPressed()
 {
-    juce::JUCEApplication::getInstance()->systemRequestedQuit();
+    if (auto* content = dynamic_cast<Content*>(getContentComponent()))
+        content->confirmClose();
+    else
+        juce::JUCEApplication::getInstance()->systemRequestedQuit();
 }
 
 void MainWindow::showAudioSetup()

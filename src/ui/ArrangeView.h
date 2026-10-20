@@ -134,6 +134,23 @@ public:
     // The row height: size.trackRowMin, trackRow or trackRowLarge.
     void setRowHeight(int height);
     int currentRowHeight() const noexcept { return rowHeight; }
+    // The tools (10-interaction.md): select (1) or range (2: a drag in a lane
+    // selects a time range across the selected tracks).
+    enum class Tool
+    {
+        select,
+        range,
+    };
+    void setTool(Tool tool);
+    Tool tool() const noexcept { return tool_; }
+    // The clipboard: Ctrl+C/X copy or cut the selected clips, Ctrl+V pastes them
+    // at the playhead on the selected track (keeping their spacing and track offsets).
+    void copySelection();
+    void cutSelection();
+    void paste();
+    bool clipboardEmpty() const noexcept { return clipboard_.empty(); }
+    // Renames the selected track inline (F2).
+    void renameSelectedTrack();
     void selectAll();
     void clearSelection();
 
@@ -189,6 +206,7 @@ private:
         loopEnd,      // its right handle
         timeSelect,   // Shift+drag in the bars row: a time range
         headerResize, // the boundary between headers and lanes
+        pan,          // the middle button drags the view
     };
 
     void changeListenerCallback(juce::ChangeBroadcaster*) override;
@@ -230,6 +248,13 @@ private:
     void finishTimeSelection();
     void splitAtSelection();
     juce::String positionText(core::SamplePosition position) const;
+    // Snaps a wanted position to the nearest target within 6 px (clip edges on the
+    // row, markers, the loop and punch edges, the playhead) or to the grid; names
+    // the target in snapTargetName_ (empty for the grid).
+    core::SamplePosition snapWithTargets(core::SamplePosition wanted,
+                                         int row,
+                                         bool relativeTo = false,
+                                         core::SamplePosition original = 0);
 
     // ----- editing helpers --------------------------------------------------------
     int rowAtY(int y) const noexcept; // track index or -1
@@ -271,7 +296,7 @@ private:
     void splitAtPlayhead();
     void joinSelection();
     void crossfadeSelection();
-    void nudgeSelection(int direction);
+    void nudgeSelection(int direction, bool fine = false);
     void normaliseSelection();
     // Markers.
     const core::Marker* markerAtRulerPoint(juce::Point<int> p) const noexcept;
@@ -320,6 +345,19 @@ private:
     core::Id reorderFrom_ = core::invalidId;
     int reorderTo_ = -1;
     double lastMeterMs_ = 0.0;
+    Tool tool_ = Tool::select;
+    juce::String snapTargetName_;
+    core::SamplePosition panScroll_ = 0;
+    int panVertical_ = 0;
+    struct ClipboardItem
+    {
+        bool midi = false;
+        core::AudioClip audio;
+        core::MidiClip midiClip;
+        int trackOffset = 0; // rows from the first copied clip's track
+    };
+    std::vector<ClipboardItem> clipboard_;
+    int lastPlayheadX_ = -1;
     IconButton addTrack_, rowsSmaller_, rowsLarger_;
     std::unique_ptr<juce::TextEditor> markerEditor_;
     core::Id editingMarker_ = core::invalidId;

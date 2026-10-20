@@ -874,8 +874,31 @@ content's `keyPressed` ahead of the arrange view's edit keys; where the spec
 gives Shift+M and Shift+S two jobs, the track state (mute, solo) keeps them and
 the edits (marker region, split at selection) take Alt. Launch flags for
 unattended captures: `--mixer`, `--plugins` (the browser floating),
-`--layout <Mix|Edit>`, `--first-run`, besides `--open`, `--audio-setup` and the
-Phase 8 flags.
+`--layout <Mix|Edit>`, `--panel <key>`, `--first-run`, `--preferences [page]`,
+besides `--open`, `--audio-setup` and the Phase 8 flags.
+
+**Interaction** (10-interaction.md). Moves and trims in the arrange view snap
+to the nearest target within 6 px (clip edges on the row, markers, the loop
+and punch edges, the playhead) before the grid; the drag tooltip names the
+target, Alt skips snap for that drag, and a clip that did not start on the
+grid keeps its offset (relative snap). The middle button pans the arrange
+view and the piano roll. Ctrl+C/X/V copy, cut and paste clips (at the
+playhead on the selected track, keeping spacing and track offsets);
+Alt+Left/Right nudge (Shift fine); 1 and 2 pick the select and range tools
+(a range drag in a lane selects a time range across the selected tracks); F2
+renames the selected track while the arrange view has the focus and is the
+mixer's panel key otherwise; Ctrl+F shows the browser and focuses its search;
+T taps the tempo while the tempo field is focused (`NumericField::onKey`).
+The status bar's right side shows the tooltip of the control under the
+pointer after a second. Errors follow 10.6: a disconnected device stops
+playback and raises an error toast (what happened, what it means, what to
+do) with Audio Setup as the action; ten dropouts raise a warning toast with
+the fix at most once a minute; closing with unsaved changes and removing a
+bus that channels route to ask in sheets whose destructive action is styled
+danger. `tests/unit_juce/KeyboardMapTests.cpp` exercises the map through the
+views' key handlers (the main window's own bindings are thin forwards). Not
+in this pass: triplet and dotted grids, custom fade and split cursors, the
+300 ms wheel guard on valued controls, Space+drag panning, rebinding.
 
 ## Decisions log
 

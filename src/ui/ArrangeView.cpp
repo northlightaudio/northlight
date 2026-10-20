@@ -261,6 +261,7 @@ void ArrangeView::setPlayhead(core::SamplePosition position, bool playing, bool 
 {
     if (position == playhead_ && playing == playing_ && recording == recording_)
         return;
+    const bool stateChanged = playing != playing_ || recording != recording_;
     playhead_ = position;
     playing_ = playing;
     recording_ = recording;
@@ -270,11 +271,23 @@ void ArrangeView::setPlayhead(core::SamplePosition position, bool playing, bool 
     {
         const auto visible = visibleSamples();
         if (playhead_ >= scroll_ + visible * 9 / 10 || playhead_ < scroll_)
+        {
             setScroll(playhead_ - visible / 10);
+            return; // setScroll repainted everything
+        }
     }
-    repaint();
-}
-// ----- geometry -------------------------------------------------------------------------
+    // Only the columns the playhead left and takes repaint (11.7).
+    const int x = xForSample(playhead_);
+    if (stateChanged)
+        repaint();
+    else
+    {
+        if (lastPlayheadX_ >= 0)
+            repaint(lastPlayheadX_ - 5, 0, 11, getHeight());
+        repaint(x - 5, 0, 11, getHeight());
+    }
+    lastPlayheadX_ = x;
+} // ----- geometry -------------------------------------------------------------------------
 
 double ArrangeView::sampleRate() const noexcept
 {
@@ -409,6 +422,14 @@ void ArrangeView::mouseDown(const juce::MouseEvent& e)
         drag_ = Drag::headerResize;
         return;
     }
+    // The middle button pans.
+    if (e.mods.isMiddleButtonDown())
+    {
+        drag_ = Drag::pan;
+        panScroll_ = scroll_;
+        panVertical_ = verticalScroll_;
+        return;
+    }
     if (e.x < headerWidth || e.x >= getWidth() - scrollbarWidth || e.y >= getHeight() - scrollbarHeight)
         return;
     if (e.y < rulerHeight)
@@ -499,6 +520,14 @@ void ArrangeView::mouseDown(const juce::MouseEvent& e)
         repaint();
         return;
     }
+    if (hit.clip == nullptr && tool_ == Tool::range)
+    {
+        // The range tool: a drag in a lane selects a time range.
+        drag_ = Drag::timeSelect;
+        dragAnchor_ = snapped(dragStartSample_);
+        timeSelStart_ = timeSelEnd_ = dragAnchor_;
+        return;
+    }
     if (hit.clip == nullptr)
     {
         // Empty lane: a drag lassos, a click locates (and clears the selection).
@@ -554,6 +583,11 @@ void ArrangeView::mouseDrag(const juce::MouseEvent& e)
             resized();
             layoutHeaders();
             break;
+        case Drag::pan:
+            setScroll(panScroll_ -
+                      static_cast<core::SamplePosition>((e.x - dragStart_.x) * samplesPerPixel_));
+            setVerticalScroll(panVertical_ - (e.y - dragStart_.y));
+            break;
         case Drag::zoom:
         {
             // A vertical drag zooms around where it began (Logic style): 80 px per octave.
@@ -606,7 +640,8 @@ void ArrangeView::mouseDrag(const juce::MouseEvent& e)
             // The dragged clip's new start snaps; the rest of the selection follows by
             // the same delta. Nothing may land before zero or outside the tracks.
             const auto wanted = dragOriginal_.start + (at - dragStartSample_);
-            moveDelta_ = snapped(wanted) - dragOriginal_.start;
+            moveDelta_ = snapWithTargets(wanted, dragStartRow_ + rowDelta_, true, dragOriginal_.start) -
+                         dragOriginal_.start;
             core::SamplePosition earliest = dragOriginal_.start;
             int lowestRow = dragStartRow_, highestRow = dragStartRow_;
             if (project_ != nullptr)
@@ -644,8 +679,9 @@ void ArrangeView::mouseDrag(const juce::MouseEvent& e)
             const auto sourceStart =
                 dragClip_.midi ? core::SamplePosition{0}
                                : dragOriginal_.start - dragOriginal_.sourceOffset; // source sample 0
-            const auto newStart = std::clamp(
-                snapped(at), std::max<core::SamplePosition>(0, sourceStart), dragOriginal_.end() - 1);
+            const auto newStart = std::clamp(snapWithTargets(at, dragStartRow_),
+                                             std::max<core::SamplePosition>(0, sourceStart),
+                                             dragOriginal_.end() - 1);
             trimStart_ = newStart;
             trimLength_ = dragOriginal_.end() - newStart;
             trimOffset_ = dragOriginal_.sourceOffset + (newStart - dragOriginal_.start);
@@ -653,7 +689,7 @@ void ArrangeView::mouseDrag(const juce::MouseEvent& e)
         }
         case Drag::trimRight:
         {
-            const auto newEnd = std::max(snapped(at), dragOriginal_.start + 1);
+            const auto newEnd = std::max(snapWithTargets(at, dragStartRow_), dragOriginal_.start + 1);
             trimLength_ = newEnd - dragOriginal_.start;
             break;
         }
@@ -688,6 +724,7 @@ void ArrangeView::mouseUp(const juce::MouseEvent& e)
     {
         case Drag::headerResize:
         case Drag::zoom:
+        case Drag::pan:
             break;
         case Drag::region:
             if (draggedFar_)
@@ -1786,10 +1823,171 @@ void ArrangeView::zoomToSelection()
 
 core::SamplePosition ArrangeView::snapped(core::SamplePosition s) const noexcept
 {
-    return snap_ ? core::snapToGrid(std::max<core::SamplePosition>(0, s), grid())
-                 : std::max<core::SamplePosition>(0, s);
+    const bool alt = juce::ModifierKeys::getCurrentModifiers().isAltDown();
+    return snap_ && !alt ? core::snapToGrid(std::max<core::SamplePosition>(0, s), grid())
+                         : std::max<core::SamplePosition>(0, s);
 }
 
+core::SamplePosition ArrangeView::snapWithTargets(core::SamplePosition wanted,
+                                                  int row,
+                                                  bool relativeTo,
+                                                  core::SamplePosition original)
+{
+    snapTargetName_.clear();
+    const bool alt = juce::ModifierKeys::getCurrentModifiers().isAltDown();
+    wanted = std::max<core::SamplePosition>(0, wanted);
+    if (!snap_ || alt || project_ == nullptr)
+        return wanted;
+    const auto tolerance = static_cast<core::SamplePosition>(6.0 * samplesPerPixel_);
+    core::SamplePosition best = -1;
+    juce::String bestName;
+    const auto consider = [&](core::SamplePosition target, const juce::String& name)
+    {
+        const auto distance = std::abs(target - wanted);
+        if (distance <= tolerance && (best < 0 || distance < std::abs(best - wanted)))
+        {
+            best = target;
+            bestName = name;
+        }
+    };
+    if (row >= 0 && static_cast<size_t>(row) < project_->tracks.size())
+    {
+        const auto& track = project_->tracks[static_cast<size_t>(row)];
+        for (const auto& clip : track.clips)
+            if (!isSelected(track.id, clip.id))
+            {
+                const auto name = juce::String::fromUTF8(clip.name.c_str());
+                consider(clip.start, name + " start");
+                consider(clip.end(), name + " end");
+            }
+        for (const auto& clip : track.midiClips)
+            if (!isSelected({track.id, clip.id, true}))
+            {
+                const auto name = juce::String::fromUTF8(clip.name.c_str());
+                consider(clip.start, name + " start");
+                consider(clip.end(), name + " end");
+            }
+    }
+    for (const auto& m : project_->markers)
+    {
+        consider(m.position, juce::String::fromUTF8(m.name.c_str()));
+        if (m.isRegion())
+            consider(m.position + m.length, juce::String::fromUTF8(m.name.c_str()) + " end");
+    }
+    if (regionEnd_ > regionStart_)
+    {
+        consider(regionStart_, loop_ ? "loop start" : punch_ ? "punch in" : "region start");
+        consider(regionEnd_, loop_ ? "loop end" : punch_ ? "punch out" : "region end");
+    }
+    consider(playhead_, "playhead");
+    if (best >= 0)
+    {
+        snapTargetName_ = bestName;
+        return best;
+    }
+    // Relative snap: a clip that did not start on the grid keeps its offset.
+    const auto step = grid();
+    if (relativeTo && step > 0 && original % step != 0)
+        return original + core::snapToGrid(wanted - original + step * 1000, step) - step * 1000;
+    return core::snapToGrid(wanted, step);
+}
+
+void ArrangeView::setTool(Tool tool)
+{
+    tool_ = tool;
+    setMouseCursor(tool == Tool::range ? juce::MouseCursor::IBeamCursor : juce::MouseCursor::NormalCursor);
+}
+
+void ArrangeView::copySelection()
+{
+    if (project_ == nullptr)
+        return;
+    clipboard_.clear();
+    int firstRow = -1;
+    for (const auto& ref : selection_)
+    {
+        const int row = project_->trackIndex(ref.track);
+        if (row >= 0)
+            firstRow = firstRow < 0 ? row : std::min(firstRow, row);
+    }
+    for (const auto& ref : selection_)
+    {
+        const int row = project_->trackIndex(ref.track);
+        if (row < 0)
+            continue;
+        ClipboardItem item;
+        item.midi = ref.midi;
+        item.trackOffset = row - firstRow;
+        if (ref.midi)
+        {
+            if (const auto* m = findMidiClip(ref))
+                item.midiClip = *m;
+            else
+                continue;
+        }
+        else if (const auto* a = findClip(ref))
+            item.audio = *a;
+        else
+            continue;
+        clipboard_.push_back(std::move(item));
+    }
+}
+
+void ArrangeView::cutSelection()
+{
+    copySelection();
+    if (!clipboard_.empty())
+        deleteSelection();
+}
+
+void ArrangeView::paste()
+{
+    if (project_ == nullptr || clipboard_.empty())
+        return;
+    int row = project_->trackIndex(selectedTrack_);
+    if (row < 0)
+        row = 0;
+    core::SamplePosition earliest = -1;
+    for (const auto& item : clipboard_)
+    {
+        const auto start = item.midi ? item.midiClip.start : item.audio.start;
+        earliest = earliest < 0 ? start : std::min(earliest, start);
+    }
+    const auto at = playheadForEdits ? playheadForEdits() : playhead_;
+    std::vector<std::unique_ptr<core::Command>> commands;
+    for (const auto& item : clipboard_)
+    {
+        const int target =
+            std::clamp(row + item.trackOffset, 0, static_cast<int>(project_->tracks.size()) - 1);
+        const auto& track = project_->tracks[static_cast<size_t>(target)];
+        if (track.isMidi() != item.midi)
+            continue; // a clip only lands on its own kind of track
+        if (item.midi)
+        {
+            auto clip = item.midiClip;
+            clip.id = core::invalidId;
+            for (auto& n : clip.notes)
+                n.id = core::invalidId;
+            clip.start = at + (clip.start - earliest);
+            commands.push_back(std::make_unique<core::AddMidiClip>(track.id, clip));
+        }
+        else
+        {
+            auto clip = item.audio;
+            clip.id = core::invalidId;
+            clip.start = at + (clip.start - earliest);
+            commands.push_back(std::make_unique<core::AddClip>(track.id, clip));
+        }
+    }
+    emit(std::move(commands), "Paste clips");
+}
+
+void ArrangeView::renameSelectedTrack()
+{
+    for (auto& header : headers_)
+        if (header->trackId() == selectedTrack_)
+            header->startRename();
+}
 const core::AudioClip* ArrangeView::findClip(const ClipRef& ref, const core::Track** track) const noexcept
 {
     if (project_ == nullptr || ref.midi)
@@ -2171,11 +2369,11 @@ void ArrangeView::crossfadeSelection()
     emit(std::move(commands), "Crossfade clips");
 }
 
-void ArrangeView::nudgeSelection(int direction)
+void ArrangeView::nudgeSelection(int direction, bool fine)
 {
     if (project_ == nullptr)
         return;
-    const auto step = grid() * direction;
+    const auto step = (fine ? std::max<core::SamplePosition>(1, grid() / 4) : grid()) * direction;
     std::vector<std::unique_ptr<core::Command>> commands;
     for (const auto& ref : selection_)
         if (const auto span = spanOf(ref))
@@ -2189,7 +2387,6 @@ void ArrangeView::nudgeSelection(int direction)
         }
     emit(std::move(commands), "Nudge clips");
 }
-
 void ArrangeView::normaliseSelection()
 {
     if (!onNormalise)
@@ -2236,6 +2433,33 @@ bool ArrangeView::handleEditKey(const juce::KeyPress& key)
     if (ctrl('d'))
     {
         duplicateSelection();
+        return true;
+    }
+    if (ctrl('c'))
+    {
+        copySelection();
+        return true;
+    }
+    if (ctrl('x'))
+    {
+        cutSelection();
+        return true;
+    }
+    if (ctrl('v'))
+    {
+        paste();
+        return true;
+    }
+    if (plain('1') || plain('2'))
+    {
+        setTool(plain('1') ? Tool::select : Tool::range);
+        return true;
+    }
+    if (key.getModifiers().isAltDown() &&
+        (key.getKeyCode() == juce::KeyPress::leftKey || key.getKeyCode() == juce::KeyPress::rightKey))
+    {
+        nudgeSelection(key.getKeyCode() == juce::KeyPress::leftKey ? -1 : 1,
+                       key.getModifiers().isShiftDown());
         return true;
     }
     if (ctrl('a'))
@@ -2384,7 +2608,8 @@ void ArrangeView::drawEditOverlay(juce::Graphics& g)
         const double deltaBeats = static_cast<double>(moveDelta_) / std::max(1.0, beat);
         drawTooltip(g,
                     positionText(newStart) + "  " + (deltaBeats >= 0 ? "+" : "") +
-                        juce::String(deltaBeats, 2) + " beats",
+                        juce::String(deltaBeats, 2) + " beats" +
+                        (snapTargetName_.isNotEmpty() ? "  to " + snapTargetName_ : juce::String()),
                     dragPoint_);
     }
     if ((drag_ == Drag::trimLeft || drag_ == Drag::trimRight) && draggedFar_)

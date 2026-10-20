@@ -102,13 +102,18 @@ void PianoRoll::setPlayhead(core::SamplePosition position)
     const auto* c = clip();
     const auto relative =
         c != nullptr && position >= c->start && position < c->end() ? position - c->start : -1;
-    if (relative != playhead_)
-    {
-        playhead_ = relative;
-        repaint();
-    }
+    if (relative == playhead_)
+        return;
+    const int oldX = playhead_ >= 0 ? xForSample(playhead_) : -1;
+    playhead_ = relative;
+    const int x = playhead_ >= 0 ? xForSample(playhead_) : -1;
+    // The playhead's columns and the keyboard (its lit keys) repaint; nothing else.
+    if (oldX >= 0)
+        repaint(oldX - 2, 0, 5, getHeight());
+    if (x >= 0)
+        repaint(x - 2, 0, 5, getHeight());
+    repaint(keysArea());
 }
-
 void PianoRoll::setTimeView(double samplesPerPixel, core::SamplePosition absoluteFirstVisible)
 {
     const auto* c = clip();
@@ -760,6 +765,14 @@ void PianoRoll::mouseDown(const juce::MouseEvent& e)
     if (c == nullptr)
         return;
 
+    // The middle button pans.
+    if (e.mods.isMiddleButtonDown())
+    {
+        drag_ = Drag::pan;
+        panScroll_ = scroll_;
+        panVertical_ = verticalScroll_;
+        return;
+    }
     // A key on the keyboard previews the note.
     if (keysArea().contains(e.getPosition()))
     {
@@ -857,6 +870,13 @@ void PianoRoll::mouseDrag(const juce::MouseEvent& e)
     const auto at = sampleForX(x);
     switch (drag_)
     {
+        case Drag::pan:
+            scroll_ = panScroll_ - static_cast<core::SamplePosition>((e.x - dragStart_.x) * samplesPerPixel_);
+            verticalScroll_ = std::clamp(panVertical_ - (e.y - dragStart_.y),
+                                         0,
+                                         std::max(0, rows * rowHeight - gridArea().getHeight()));
+            updateScrollbars();
+            break;
         case Drag::key:
         {
             const int key = noteForY(e.y);
@@ -954,6 +974,8 @@ void PianoRoll::mouseUp(const juce::MouseEvent& e)
     drag_ = Drag::none;
     switch (drag)
     {
+        case Drag::pan:
+            break;
         case Drag::key:
             if (onPreviewNote && heldKey_ >= 0)
                 onPreviewNote(trackId_, heldKey_, false);

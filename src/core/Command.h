@@ -132,6 +132,7 @@ class RemoveBus final : public Command
 {
 public:
     explicit RemoveBus(Id busId);
+    Id busId() const noexcept { return busId_; }
     std::string name() const override { return "Remove bus"; }
     void apply(Project&) override;
     void revert(Project&) override;
