@@ -48,6 +48,7 @@ ProjectSession::ProjectSession(audio::AudioDeviceLayer& audio, juce::File regist
 ProjectSession::~ProjectSession()
 {
     stopTimer();
+    removeOwnAutosave(); // a normal close: the user saved or chose not to
     scanner_.cancel();
     audio_.removeChangeListener(this);
     // The device must not call into a dead engine: detach, then let the layer stop
@@ -86,6 +87,7 @@ void ProjectSession::execute(std::unique_ptr<core::Command> command)
     mirrorOwnedParameters(touches);
     undo_.execute(project_, std::move(command));
     modified_ = true;
+    edited();
     if (live)
     {
         // A gain, pan or parameter: the running graph takes the new value
@@ -132,6 +134,7 @@ void ProjectSession::executeGroup(const std::string& name,
     }
     undo_.endGroup();
     modified_ = true;
+    edited();
     publish();
     engine_.pushInsertParameters(project_, touches);
 }
@@ -170,6 +173,7 @@ void ProjectSession::undo()
     if (undo_.undo(project_))
     {
         modified_ = true;
+        edited();
         publish();
         // Parameters the undone command restored reach plugins that own theirs.
         std::vector<core::Command::ParameterTouch> touches;
@@ -184,6 +188,7 @@ void ProjectSession::redo()
     if (undo_.redo(project_))
     {
         modified_ = true;
+        edited();
         publish();
         std::vector<core::Command::ParameterTouch> touches;
         if (const auto* redone = undo_.undoTop())
@@ -268,6 +273,8 @@ std::string ProjectSession::importAudioFile(const juce::File& file, core::Sample
 
 void ProjectSession::newProject()
 {
+    removeOwnAutosave();
+    untitledStem_.clear();
     engine_.resetCaches(); // another project's ids must not reuse these instances
     project_ = core::Project{};
     undo_.clear();
@@ -279,6 +286,8 @@ void ProjectSession::newProject()
 
 std::string ProjectSession::open(const juce::File& file)
 {
+    removeOwnAutosave();
+    untitledStem_.clear();
     engine_.resetCaches();
     std::string error;
     const auto loaded = core::projectFromJson(file.loadFileAsString().toStdString(), &error);
@@ -301,8 +310,163 @@ std::string ProjectSession::save(const juce::File& file)
         return "could not write " + file.getFullPathName().toStdString();
     projectFile_ = file;
     modified_ = false;
+    removeOwnAutosave();
     sendChangeMessage();
     return {};
+}
+
+// ----- autosave ---------------------------------------------------------------------------
+
+namespace
+{
+juce::File sidecarOf(const juce::File& autosave)
+{
+    return autosave.withFileExtension("json");
+}
+} // namespace
+
+void ProjectSession::setAutosave(juce::File folder, std::function<int()> intervalSeconds)
+{
+    autosaveFolder_ = std::move(folder);
+    autosaveInterval_ = std::move(intervalSeconds);
+}
+
+juce::File ProjectSession::currentAutosaveFile() const
+{
+    if (autosaveFolder_ == juce::File())
+        return {};
+    juce::String stem;
+    if (projectFile_ != juce::File())
+        stem = projectFile_.getFileNameWithoutExtension() + "-" +
+               juce::String::toHexString(projectFile_.getFullPathName().toLowerCase().hashCode64());
+    else
+        stem = "Untitled-" + untitledStem_;
+    return autosaveFolder_.getChildFile(juce::File::createLegalFileName(stem) + ".aural");
+}
+
+void ProjectSession::edited()
+{
+    const double now = juce::Time::getMillisecondCounterHiRes();
+    lastEditMs_ = now;
+    if (dirtySinceMs_ <= 0.0)
+        dirtySinceMs_ = now;
+}
+
+bool ProjectSession::autosaveNow()
+{
+    if (autosaveFolder_ == juce::File() || !modified_)
+        return false;
+    if (untitledStem_.isEmpty())
+        untitledStem_ = juce::Uuid().toString().substring(0, 8);
+    const auto target = currentAutosaveFile();
+    if (!autosaveFolder_.createDirectory().wasOk())
+        return false;
+    captureInsertStates();
+    // Written beside the target and moved over it, so a crash mid-write never
+    // leaves a torn copy where the last good one was.
+    const auto temp = target.getSiblingFile(target.getFileName() + ".tmp");
+    if (!temp.replaceWithText(juce::String(core::projectToJson(project_))) || !temp.moveFileTo(target))
+    {
+        temp.deleteFile();
+        return false;
+    }
+    auto meta = std::make_unique<juce::DynamicObject>();
+    meta->setProperty("project", projectFile_.getFullPathName());
+    meta->setProperty("name", juce::String::fromUTF8(project_.name.c_str()));
+    meta->setProperty("time", juce::Time::currentTimeMillis());
+    sidecarOf(target).replaceWithText(juce::JSON::toString(juce::var(meta.release())));
+    // A project saved under a new name since the last autosave: the old copy goes.
+    if (autosaveWritten_ != juce::File() && autosaveWritten_ != target)
+    {
+        autosaveWritten_.deleteFile();
+        sidecarOf(autosaveWritten_).deleteFile();
+    }
+    autosaveWritten_ = target;
+    dirtySinceMs_ = 0.0;
+    return true;
+}
+
+void ProjectSession::removeOwnAutosave()
+{
+    if (autosaveWritten_ != juce::File())
+    {
+        autosaveWritten_.deleteFile();
+        sidecarOf(autosaveWritten_).deleteFile();
+    }
+    autosaveWritten_ = juce::File();
+    dirtySinceMs_ = 0.0;
+}
+
+void ProjectSession::autosaveIfDue()
+{
+    const int interval = autosaveInterval_ ? autosaveInterval_() : 0;
+    if (interval <= 0 || dirtySinceMs_ <= 0.0 || gestureOpen_)
+        return;
+    const double now = juce::Time::getMillisecondCounterHiRes();
+    // Due once the interval has passed since the first unsaved change, and the
+    // edits have paused for a second (not in the middle of a burst of commands).
+    if (now - dirtySinceMs_ >= interval * 1000.0 && now - lastEditMs_ >= 1000.0)
+        autosaveNow();
+}
+
+std::vector<ProjectSession::Autosave> ProjectSession::leftoverAutosaves() const
+{
+    std::vector<Autosave> found;
+    if (!autosaveFolder_.isDirectory())
+        return found;
+    for (const auto& file : autosaveFolder_.findChildFiles(juce::File::findFiles, false, "*.aural"))
+    {
+        if (file == autosaveWritten_)
+            continue;
+        Autosave a;
+        a.file = file;
+        a.time = file.getLastModificationTime();
+        a.name = file.getFileNameWithoutExtension().toStdString();
+        const auto meta = juce::JSON::parse(sidecarOf(file).loadFileAsString());
+        if (const auto* object = meta.getDynamicObject())
+        {
+            const auto path = object->getProperty("project").toString();
+            if (path.isNotEmpty())
+                a.project = juce::File(path);
+            const auto name = object->getProperty("name").toString();
+            if (name.isNotEmpty())
+                a.name = name.toStdString();
+            if (const auto ms = static_cast<juce::int64>(object->getProperty("time")); ms > 0)
+                a.time = juce::Time(ms);
+        }
+        if (a.project != juce::File())
+            a.name = a.project.getFileNameWithoutExtension().toStdString();
+        found.push_back(std::move(a));
+    }
+    std::sort(
+        found.begin(), found.end(), [](const Autosave& x, const Autosave& y) { return x.time > y.time; });
+    return found;
+}
+
+std::string ProjectSession::restoreAutosave(const Autosave& autosave)
+{
+    std::string error;
+    const auto loaded = core::projectFromJson(autosave.file.loadFileAsString().toStdString(), &error);
+    if (!loaded.has_value())
+        return error.empty() ? "could not read the autosave" : error;
+    removeOwnAutosave();
+    untitledStem_.clear();
+    engine_.resetCaches();
+    project_ = *loaded;
+    plugins::strip::ensureChannelStrip(project_);
+    undo_.clear();
+    projectFile_ = autosave.project;
+    modified_ = true; // not saved until the user saves it
+    discardAutosave(autosave);
+    edited();
+    publish();
+    return {};
+}
+
+void ProjectSession::discardAutosave(const Autosave& autosave)
+{
+    autosave.file.deleteFile();
+    sidecarOf(autosave.file).deleteFile();
 }
 
 // ----- transport ---------------------------------------------------------------------------
@@ -971,6 +1135,7 @@ void ProjectSession::changeListenerCallback(juce::ChangeBroadcaster*)
 void ProjectSession::timerCallback()
 {
     poll();
+    autosaveIfDue();
 }
 
 void ProjectSession::poll()

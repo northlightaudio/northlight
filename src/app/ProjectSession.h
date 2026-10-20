@@ -14,9 +14,11 @@
 #include <juce_events/juce_events.h>
 #include <juce_gui_basics/juce_gui_basics.h>
 
+#include <functional>
 #include <memory>
 #include <string>
 #include <utility>
+#include <vector>
 
 namespace aural::audio
 {
@@ -103,6 +105,29 @@ public:
     const juce::File& projectFile() const noexcept { return projectFile_; }
     bool isModified() const noexcept { return modified_; }
 
+    // ----- autosave -----------------------------------------------------------------
+    // While the project has unsaved changes it is written to `folder` every
+    // `intervalSeconds()` (0 = off), once edits pause for a second. Saving,
+    // starting another project or closing normally deletes the copy, so what is
+    // left in the folder at launch is what a session that did not close left.
+    void setAutosave(juce::File folder, std::function<int()> intervalSeconds);
+    struct Autosave
+    {
+        juce::File file;    // the project as it was autosaved
+        juce::File project; // the file it belongs to (empty for an unsaved project)
+        juce::Time time;
+        std::string name;
+    };
+    // Autosaves left by earlier sessions, newest first.
+    std::vector<Autosave> leftoverAutosaves() const;
+    // Opens an autosave as the current project (unsaved, belonging to its file);
+    // the leftover is removed. Returns an error or empty.
+    std::string restoreAutosave(const Autosave& autosave);
+    static void discardAutosave(const Autosave& autosave);
+    // Writes the autosave now if there are unsaved changes; returns whether it wrote.
+    bool autosaveNow();
+    juce::File currentAutosaveFile() const;
+
     // ----- transport --------------------------------------------------------------
     void play();
     void stop();
@@ -179,6 +204,9 @@ private:
     void matchDeviceSampleRate();
     void finishRecording(engine::AudioEngine::FinishedRecording finished);
     void saveRegistry();
+    void edited();
+    void removeOwnAutosave();
+    void autosaveIfDue();
     // Pulls each hosted plugin's current state into the model before a save.
     void captureInsertStates();
 
@@ -205,6 +233,12 @@ private:
     core::SamplePosition regionStart_ = 0, regionEnd_ = 0;
     bool loop_ = false;
     bool punch_ = false;
+    juce::File autosaveFolder_;
+    std::function<int()> autosaveInterval_;
+    juce::File autosaveWritten_; // the copy this session last wrote
+    juce::String untitledStem_;  // the autosave name of an unsaved project
+    double dirtySinceMs_ = 0.0;  // unsaved changes not yet autosaved, since
+    double lastEditMs_ = 0.0;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(ProjectSession)
 };

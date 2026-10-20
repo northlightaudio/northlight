@@ -147,7 +147,9 @@ rename it, **Delete** to remove it.
 rate, or every track to a stems folder, offline, compensated for insert latency;
 the status line shows the progress and the integrated loudness of the result.
 Projects are `.aural` files: **New**, **Open...**, **Save** (Ctrl+N / Ctrl+O / Ctrl+S,
-Ctrl+Shift+S to save as).
+Ctrl+Shift+S to save as). Unsaved changes are autosaved every two minutes (set in
+Preferences, General); if Aural closes without saving, the next launch offers to
+restore them.
 
 For unattended checks: `Aural.exe --import <file> [--import <file>] --play` (or
 `--open <project>`), and

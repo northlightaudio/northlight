@@ -519,6 +519,9 @@ void PreferencesView::buildPages()
         page->add("Recent files",
                   number(Keys::recentCount, 8, 0, 20, 1, "", 0),
                   "How many recent projects the Project menu keeps.");
+        page->add("Autosave",
+                  number(Keys::autosaveMinutes, 2, 0, 60, 1, "min", 0),
+                  "Unsaved changes are kept every this many minutes, to restore after a crash; 0 is off.");
         page->addSection("Appearance");
         page->add("Theme", combo({{"Dark", "dark"}}, "general.theme", "dark"), "Light theme comes later.");
         auto swatches = std::make_unique<Swatches>(theme_);

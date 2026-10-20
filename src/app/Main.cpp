@@ -6,6 +6,7 @@
 #include "plugins/BuiltIns.h"
 #include "plugins/ChannelStrip.h"
 #include "ui/AuralLookAndFeel.h"
+#include "ui/PreferencesView.h"
 
 #include <juce_gui_extra/juce_gui_extra.h>
 
@@ -35,6 +36,13 @@ public:
         audio_ = std::make_unique<audio::AudioDeviceLayer>(*settings_);
         session_ =
             std::make_unique<ProjectSession>(*audio_, settings_->file().getSiblingFile("plugins.json"));
+        session_->setAutosave(settings_->file().getSiblingFile("Autosave"),
+                              [this]
+                              {
+                                  const auto minutes =
+                                      settings_->value(ui::PreferencesView::Keys::autosaveMinutes);
+                                  return (minutes.empty() ? 2 : juce::String(minutes).getIntValue()) * 60;
+                              });
         mainWindow_ = std::make_unique<MainWindow>(getApplicationName(), *audio_, *session_, *settings_);
 
         // Open the device after the window is up so a slow driver does not delay

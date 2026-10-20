@@ -11,7 +11,8 @@ add_executable(aural_juce_tests
     BounceTests.cpp
     ThemeTests.cpp
     KeyboardMapTests.cpp
-    ChannelStripUiTests.cpp)
+    ChannelStripUiTests.cpp
+    AutosaveTests.cpp)
 
 target_link_libraries(aural_juce_tests PRIVATE
     aural_options

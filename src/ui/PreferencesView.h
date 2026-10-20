@@ -56,6 +56,7 @@ public:
     {
         static constexpr const char* projectFolder = "general.projectFolder";
         static constexpr const char* recentCount = "general.recentCount";
+        static constexpr const char* autosaveMinutes = "general.autosaveMinutes";
         static constexpr const char* accent = "general.accent";
         static constexpr const char* uiScale = "general.uiScale";
         static constexpr const char* contrast = "general.contrast";

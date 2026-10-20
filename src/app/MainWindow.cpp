@@ -2147,13 +2147,36 @@ void MainWindow::showFirstRun()
 
 void MainWindow::offerRecovery()
 {
-    const int count = session_.countPartialRecordings();
-    if (count <= 0)
-        return;
     auto* content = dynamic_cast<Content*>(getContentComponent());
     if (content == nullptr)
         return;
     juce::Component::SafePointer<MainWindow> safe(this);
+    // A project a crashed session left unsaved: the newest is offered (older
+    // ones stay for the next launch).
+    if (const auto leftovers = session_.leftoverAutosaves(); !leftovers.empty())
+    {
+        const auto autosave = leftovers.front();
+        content->toast(
+            ui::ToastStack::Kind::warning,
+            "Aural closed with unsaved changes to \"" + juce::String::fromUTF8(autosave.name.c_str()) +
+                "\" (autosaved " + autosave.time.formatted("%H:%M") + ").",
+            "Restore",
+            [safe, autosave]
+            {
+                if (safe == nullptr)
+                    return;
+                const auto error = safe->session_.restoreAutosave(autosave);
+                if (!error.empty())
+                    if (auto* c = dynamic_cast<Content*>(safe->getContentComponent()))
+                        c->toast(ui::ToastStack::Kind::error,
+                                 "Cannot restore: " + juce::String::fromUTF8(error.c_str()));
+            },
+            "Discard",
+            [autosave] { ProjectSession::discardAutosave(autosave); });
+    }
+    const int count = session_.countPartialRecordings();
+    if (count <= 0)
+        return;
     content->toast(
         ui::ToastStack::Kind::warning,
         juce::String(count) + (count == 1 ? " recording was" : " recordings were") +

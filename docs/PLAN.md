@@ -333,6 +333,9 @@ external devices.
 
 **Milestone:** public beta candidate.
 
+Status 2026-10-20: recent files existed already; autosave with crash restore is
+built (architecture.md, Session and UI).
+
 ### Phase 10 — Beta hardening (ongoing)
 
 - Soak tests: 24-hour playback, 1000-plugin scans, 200-track projects.

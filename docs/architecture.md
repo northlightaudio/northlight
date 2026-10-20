@@ -197,7 +197,18 @@ to the sample.
 project, the undo stack, the disk thread, the loader and the engine, republishes the
 snapshot after every command, imports files as new tracks, saves/opens JSON project
 files and drives the transport. An empty project adopts the device sample rate; a
-project with media keeps its own and the mismatch is shown. `MainWindow` is the
+project with media keeps its own and the mismatch is shown.
+
+Autosave: while the project has unsaved changes the session writes it to
+`<settings folder>/Autosave` every interval (Preferences, General; 2 minutes by
+default, 0 off), once edits have paused for a second and no gesture is open.
+The copy is named after the project file (name plus a hash of the path) or, for
+an unsaved project, `Untitled-<id>`; it is written to a temp file and moved over
+the last one, with a JSON sidecar naming the project file and the time. Saving,
+starting or opening another project and a normal close delete it, so whatever
+is in the folder at launch was left by a session that did not close; the main
+window offers the newest with a toast (Restore / Discard). A restored project
+belongs to its file but stays unsaved until the user saves it. `MainWindow` is the
 shell of 03-shell.md (see "UI" below).
 
 ### Waveforms and the arrange view
