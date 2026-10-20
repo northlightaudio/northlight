@@ -686,7 +686,14 @@ void EditorPanel::rebuild()
     if (ch != nullptr)
         for (const auto& insert : ch->inserts)
             order.push_back(insert.id);
-    bool same = order == builtOrder_;
+    // Another channel always rebuilds: two channels can look alike (no
+    // inserts, the same strip, sends to the same buses) and the cards hold the
+    // channel they edit.
+    const bool channelChanged = channelId_ != builtChannel_;
+    builtChannel_ = channelId_;
+    if (channelChanged)
+        sendCards_.clear();
+    bool same = order == builtOrder_ && !channelChanged;
     if (same && ch != nullptr)
         for (size_t i = 0; i < cards_.size(); ++i)
             if (cards_[i]->type() != ch->inserts[i].type)
@@ -740,16 +747,18 @@ void EditorPanel::rebuild()
     const bool preInserts = ch != nullptr && ch->stripPreInserts;
     stripView_.setChannel(ch);
     bool shape = !same || add_.isVisible() != (ch != nullptr) || stripView_.isVisible() != stripShown ||
-                       stripWidth != stripView_.preferredWidth() || preInserts != laidOutPreInserts_;
+                 stripWidth != stripView_.preferredWidth() || preInserts != laidOutPreInserts_;
     add_.setVisible(ch != nullptr);
     stripView_.setVisible(stripShown);
     laidOutPreInserts_ = preInserts;
     rebuildSends(ch, shape);
-    if (shape)
+    if (shape || channelChanged)
     {
         resized();
         repaint();
     }
+    else
+        repaint(getLocalBounds().removeFromTop(theme_.sizes.control)); // the title (a rename)
 }
 
 void EditorPanel::timerCallback()

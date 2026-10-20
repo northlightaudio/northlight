@@ -112,7 +112,8 @@ private:
     AddSlot addSend_{theme_, "Send"};
     int sendsX_ = 0;
     std::vector<core::Id> builtOrder_;
-    int dropIndex_ = -1; // the insertion index while a plugin or card is dragged over
+    core::Id builtChannel_ = core::invalidId; // the channel the cards were built for
+    int dropIndex_ = -1;                      // the insertion index while a plugin or card is dragged over
     double lastTickMs_ = 0.0;
     bool wasShowing_ = false;
     int ticks_ = 0;
