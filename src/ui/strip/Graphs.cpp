@@ -362,14 +362,8 @@ void TransferCurve::paintContent(juce::Graphics& g)
     g.setColour(card_.colour());
     g.strokePath(curve, juce::PathStrokeType(2.0f));
 
-    // The threshold handle.
-    const float tx = xOf(threshold);
-    const float ty = dbToY(outputDb(threshold), 0.0f, floorDb, p);
-    g.setColour(c.textPrimary.withAlpha(mode_ == Mode::threshold ? 1.0f : 0.7f));
-    g.drawVerticalLine(static_cast<int>(tx), ty + 6.0f, p.getBottom());
-    g.fillEllipse(juce::Rectangle<float>(7.0f, 7.0f).withCentre({tx, ty}));
-
-    // The live detector level on the curve, with a trail line from the floor.
+    // The live detector level on the curve: a light in the module's hue with a
+    // trail from the floor, under the handles and unlike them.
     const float level = card_.extraDb();
     if (level > floorDb)
     {
@@ -377,11 +371,31 @@ void TransferCurve::paintContent(juce::Graphics& g)
         const float ly = dbToY(outputDb(level), 0.0f, floorDb, p);
         g.setColour(card_.colour().withAlpha(0.25f));
         g.drawVerticalLine(static_cast<int>(lx), ly, p.getBottom());
-        g.setColour(card_.colour().withAlpha(0.35f));
-        g.fillEllipse(juce::Rectangle<float>(14.0f, 14.0f).withCentre({lx, ly}));
-        g.setColour(c.textPrimary);
-        g.fillEllipse(juce::Rectangle<float>(6.0f, 6.0f).withCentre({lx, ly}));
+        g.setColour(card_.colour().withAlpha(0.3f));
+        g.fillEllipse(juce::Rectangle<float>(10.0f, 10.0f).withCentre({lx, ly}));
+        g.setColour(card_.colour().brighter(0.4f));
+        g.fillEllipse(juce::Rectangle<float>(4.0f, 4.0f).withCentre({lx, ly}));
     }
+
+    // The two handles, alike: the threshold at the knee and the ratio at the
+    // curve's end (the slope above the threshold).
+    const auto handle = [&](float x, float y, bool active)
+    {
+        const auto r = juce::Rectangle<float>(9.0f, 9.0f).withCentre({x, y});
+        g.setColour(c.textPrimary.withAlpha(active ? 1.0f : 0.8f));
+        g.fillEllipse(r);
+        g.setColour(card_.colour());
+        g.drawEllipse(r, 1.5f);
+    };
+    const float tx = xOf(threshold);
+    const float ty = dbToY(outputDb(threshold), 0.0f, floorDb, p);
+    g.setColour(c.textPrimary.withAlpha(mode_ == Mode::threshold ? 0.9f : 0.5f));
+    g.drawVerticalLine(static_cast<int>(tx), ty + 5.0f, p.getBottom());
+    handle(tx, ty, mode_ == Mode::threshold);
+    if (threshold < -1.0f)
+        handle(p.getRight() - 5.0f,
+               dbToY(outputDb(-5.0f * -floorDb / p.getWidth()), 0.0f, floorDb, p),
+               mode_ == Mode::ratio);
     // Ratio caption.
     g.setFont(theme.value());
     g.setColour(c.textSecondary);
