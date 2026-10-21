@@ -4,6 +4,7 @@
 #include <catch2/catch_test_macros.hpp>
 
 #include <atomic>
+#include <chrono>
 #include <thread>
 #include <vector>
 
@@ -50,19 +51,37 @@ TEST_CASE("Every job in a batch runs exactly once, with or without workers", "[e
     }
 }
 
+namespace
+{
+// A batch whose jobs on the calling thread wait (up to a deadline) until a worker
+// has taken one, so the test does not depend on how fast workers wake: on a busy
+// two-core build machine the caller could otherwise finish every short job first.
+struct SpreadBatch
+{
+    std::thread::id caller = std::this_thread::get_id();
+    std::atomic<bool> workerRan{false};
+};
+
+void spreadJob(void* context, int) noexcept
+{
+    auto& batch = *static_cast<SpreadBatch*>(context);
+    if (std::this_thread::get_id() != batch.caller)
+    {
+        batch.workerRan.store(true);
+        return;
+    }
+    const auto deadline = std::chrono::steady_clock::now() + std::chrono::milliseconds(500);
+    while (!batch.workerRan.load() && std::chrono::steady_clock::now() < deadline)
+        std::this_thread::yield();
+}
+} // namespace
+
 TEST_CASE("With workers, jobs are spread over more than one thread", "[engine][pool]")
 {
     WorkerPool pool(3);
-    bool spread = false;
-    for (int round = 0; round < 50 && !spread; ++round)
-    {
-        Batch batch(64);
-        pool.run(64, &countJob, &batch);
-        const auto first = batch.threadHash[0].load();
-        for (const auto& h : batch.threadHash)
-            spread = spread || h.load() != first;
-    }
-    CHECK(spread);
+    SpreadBatch batch;
+    pool.run(64, &spreadJob, &batch);
+    CHECK(batch.workerRan.load());
 }
 
 #if defined(NORTHLIGHT_RT_CHECKS)

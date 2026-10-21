@@ -36,6 +36,9 @@ TEST_CASE("A menu window fades in and slides 2 px into place, unless motion is r
 {
     const juce::ScopedJuceInitialiser_GUI juceInit;
     auto theme = ui::Theme::dark();
+    // The default follows Windows' animation setting, which is off on build
+    // machines; the test sets it either way rather than inherit the machine's.
+    theme.motion.reduceMotion = false;
     ui::NorthlightLookAndFeel lookAndFeel(theme);
     juce::Component window;
     window.setBounds(100, 200, 160, 120);
