@@ -296,6 +296,13 @@ the app.
 
 **Milestone:** edit a full song from raw takes to a bounced mix without leaving the app.
 
+Status 2026-10-21: export is built: an export sheet (mix,
+every track's stems or the selected tracks'; project, loop or a marker region),
+WAV/AIFF/FLAC/Ogg Vorbis at 16/24-bit or 32-bit float, offline windowed-sinc
+rate conversion, TPDF or noise-shaped dither, and loudness normalisation to a
+LUFS target under a true-peak or sample-peak ceiling (architecture.md, Export).
+Not yet checked by ear beyond the unit tests; MP3 is not offered.
+
 ### Phase 7 — Design fidelity pass (3 weeks)
 
 - Implement every screen to the Figma spec; motion, hover states, empty states, drag

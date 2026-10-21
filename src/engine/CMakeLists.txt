@@ -57,6 +57,10 @@ add_library(aural_engine STATIC
     Stretch.cpp
     TempoDetect.h
     TempoDetect.cpp
+    ExportSettings.h
+    ExportSettings.cpp
+    ExportDsp.h
+    ExportDsp.cpp
     pitch/PitchAnalysis.h
     pitch/PitchAnalysis.cpp
     pitch/VocalRender.h

@@ -16,6 +16,7 @@
 #include "ui/AudioEditor.h"
 #include "ui/AudioSetupView.h"
 #include "ui/AuralLookAndFeel.h"
+#include "ui/ExportView.h"
 #include "ui/FrameStats.h"
 #include "ui/Icons.h"
 #include "ui/MixerView.h"
@@ -37,10 +38,13 @@
 #include "ui/shell/StatusBar.h"
 #include "ui/strip/ChannelStripView.h"
 
+#include <juce_audio_formats/juce_audio_formats.h>
+
 #include <algorithm>
 #include <cmath>
 #include <cstdio>
 #include <deque>
+#include <map>
 #include <optional>
 
 namespace aural
@@ -662,7 +666,7 @@ public:
         }
         if (is('E', M::ctrlModifier))
         {
-            exportMenu();
+            showExportSheet();
             return true;
         }
         if (is('Z', M::ctrlModifier))
@@ -1218,8 +1222,7 @@ private:
         if (bounce != lastBounceMessage_)
         {
             lastBounceMessage_ = bounce;
-            if (!bounce.empty())
-                status_.showMessage(juce::String::fromUTF8(bounce.c_str()));
+            showBounceOutcome(bounce);
         }
     }
 
@@ -1911,31 +1914,78 @@ private:
         grabKeyboardFocus();
     }
 
-    void addExportItems(juce::PopupMenu& menu, int base)
+    // ----- export ----------------------------------------------------------------------------
+    // The tracks "selected tracks" exports: the selected channel when it is a
+    // track, and every track holding a selected clip.
+    std::vector<core::Id> selectedTrackIds() const
     {
-        menu.addItem(base + 1, "Mix to WAV...");
-        menu.addItem(base + 2, "Loop region to WAV...", session_.regionEnd() > session_.regionStart());
-        menu.addItem(base + 3, "Stems to folder...");
+        std::vector<core::Id> ids;
+        const auto add = [&](core::Id id)
+        {
+            if (session_.project().findTrack(id) != nullptr &&
+                std::find(ids.begin(), ids.end(), id) == ids.end())
+                ids.push_back(id);
+        };
+        add(selection_.channel());
+        for (const auto& clip : tracks_.selection())
+            add(clip.track);
+        return ids;
     }
 
-    void exportMenu()
+    // The last export's settings, from the user settings ("export.*").
+    engine::ExportSettings exportSettings() const
     {
-        juce::PopupMenu menu;
-        addExportItems(menu, 0);
-        juce::Component::SafePointer<Content> safe(this);
-        menu.showMenuAsync(juce::PopupMenu::Options().withTargetComponent(&header_),
-                           [safe](int choice)
-                           {
-                               if (safe != nullptr && choice > 0)
-                                   safe->startExport(choice);
-                           });
+        std::map<std::string, std::string> values;
+        for (const auto& [key, fallback] : engine::ExportSettings{}.toKeyValues())
+            if (auto value = settings_.value(key); !value.empty())
+                values[key] = value;
+        return engine::ExportSettings::fromKeyValues(values);
     }
 
-    // 1 = the mix, 2 = the loop region, 3 = stems.
-    void startExport(int choice)
+    void showExportSheet()
     {
-        const auto documents = projectFolder();
-        const auto base = projectName();
+        if (sheet_ != nullptr || session_.isBouncing())
+            return;
+        ui::ExportView::Context context;
+        context.hasLoop = session_.regionEnd() > session_.regionStart();
+        std::vector<core::Marker> regions;
+        for (const auto& marker : session_.project().markers)
+            if (marker.isRegion())
+            {
+                regions.push_back(marker);
+                context.regions.push_back(juce::String::fromUTF8(marker.name.c_str()));
+            }
+        context.selectedTracks = static_cast<int>(selectedTrackIds().size());
+        context.projectRate = session_.project().sampleRate;
+        context.oggQualities = juce::OggVorbisAudioFormat().getQualityOptions();
+        auto view = std::make_unique<ui::ExportView>(theme_, exportSettings(), std::move(context));
+        auto* raw = view.get();
+        sheet_ = ui::Sheet::show(
+            *this,
+            theme_,
+            "Export",
+            "Renders offline, faster than real time, with the plugins as they are now.",
+            {{"Cancel", false, false}, {"Export...", true, false}},
+            [this, raw, regions](int result)
+            {
+                sheet_ = nullptr;
+                if (result != 1)
+                    return;
+                const auto chosen = raw->settings();
+                for (const auto& [key, value] : chosen.toKeyValues())
+                    settings_.setValue(key, value);
+                std::optional<core::Marker> region;
+                if (chosen.range == engine::ExportRange::region &&
+                    static_cast<size_t>(raw->region()) < regions.size())
+                    region = regions[static_cast<size_t>(raw->region())];
+                startExport(chosen, region);
+            },
+            std::move(view),
+            ui::ExportView::preferredHeight(theme_));
+    }
+
+    void startExport(const engine::ExportSettings& chosen, std::optional<core::Marker> region)
+    {
         juce::Component::SafePointer<Content> safe(this);
         const auto report = [safe](const std::string& error)
         {
@@ -1945,45 +1995,96 @@ private:
                 safe->toast(ui::ToastStack::Kind::error, "Export: " + juce::String::fromUTF8(error.c_str()));
             safe->refresh();
         };
-        if (choice == 3)
+        BounceJob::Options options;
+        options.format = chosen;
+        options.stems = chosen.source != engine::ExportSource::mix;
+        if (chosen.source == engine::ExportSource::selectedStems)
+        {
+            options.stemTracks = selectedTrackIds();
+            if (options.stemTracks.empty())
+            {
+                report("no tracks are selected");
+                return;
+            }
+        }
+        juce::String suffix;
+        if (chosen.range == engine::ExportRange::loop && session_.regionEnd() > session_.regionStart())
+        {
+            options.start = session_.regionStart();
+            options.end = session_.regionEnd();
+            suffix = " loop";
+        }
+        else if (region.has_value())
+        {
+            options.start = region->position;
+            options.end = region->end();
+            suffix =
+                " " + juce::File::createLegalFileName(juce::String::fromUTF8(region->name.c_str())).trim();
+        }
+        const auto documents = projectFolder();
+        const auto base = projectName() + suffix;
+        const auto extension = juce::String(engine::extensionFor(chosen.format));
+        if (options.stems)
         {
             chooser_ =
                 std::make_unique<juce::FileChooser>("Stems folder", documents.getChildFile(base + " Stems"));
             chooser_->launchAsync(juce::FileBrowserComponent::saveMode |
                                       juce::FileBrowserComponent::canSelectDirectories,
-                                  [this, report](const juce::FileChooser& fc)
+                                  [this, report, options](const juce::FileChooser& fc) mutable
                                   {
                                       const auto folder = fc.getResult();
                                       if (folder == juce::File())
                                           return;
-                                      BounceJob::Options options;
                                       options.output = folder;
-                                      options.stems = true;
                                       report(session_.startBounce(options));
                                   });
             return;
         }
         chooser_ = std::make_unique<juce::FileChooser>(
-            "Export mix", documents.getChildFile(base + (choice == 2 ? " loop" : "") + ".wav"), "*.wav");
+            "Export mix", documents.getChildFile(base + "." + extension), "*." + extension);
         chooser_->launchAsync(juce::FileBrowserComponent::saveMode |
                                   juce::FileBrowserComponent::canSelectFiles |
                                   juce::FileBrowserComponent::warnAboutOverwriting,
-                              [this, choice, report](const juce::FileChooser& fc)
+                              [this, report, options, extension](const juce::FileChooser& fc) mutable
                               {
                                   auto file = fc.getResult();
                                   if (file == juce::File())
                                       return;
-                                  if (!file.hasFileExtension("wav"))
-                                      file = file.withFileExtension("wav");
-                                  BounceJob::Options options;
+                                  if (!file.hasFileExtension(extension))
+                                      file = file.withFileExtension(extension);
                                   options.output = file;
-                                  if (choice == 2)
-                                  {
-                                      options.start = session_.regionStart();
-                                      options.end = session_.regionEnd();
-                                  }
                                   report(session_.startBounce(options));
                               });
+    }
+
+    // While a bounce runs its progress is in the status bar; when it ends a toast
+    // gives the outcome (the measured loudness and any gain), with the file to hand.
+    void showBounceOutcome(const std::string& message)
+    {
+        if (message.empty())
+            return;
+        const auto text = juce::String::fromUTF8(message.c_str());
+        if (session_.isBouncing())
+        {
+            status_.showMessage(text);
+            return;
+        }
+        const auto& result = session_.lastBounceResult();
+        if (!result.error.empty())
+        {
+            toast(ui::ToastStack::Kind::error, text);
+            return;
+        }
+        if (result.cancelled || result.files.empty())
+        {
+            toast(ui::ToastStack::Kind::info, text);
+            return;
+        }
+        const auto file = result.files.front();
+        toast(result.limitedByCeiling ? ui::ToastStack::Kind::warning : ui::ToastStack::Kind::success,
+              text,
+              "Show in folder",
+              [file] { file.revealToUser(); });
     }
 
     // ----- menus ---------------------------------------------------------------------------
@@ -2091,9 +2192,7 @@ private:
         menu.addSubMenu("Add FX track", fxTracks);
         menu.addItem(8, "Add bus");
         menu.addSeparator();
-        juce::PopupMenu exports;
-        addExportItems(exports, 20);
-        menu.addSubMenu("Export", exports);
+        menu.addItem(21, "Export...");
         juce::Component::SafePointer<Content> safe(this);
         menu.showMenuAsync(
             juce::PopupMenu::Options().withTargetComponent(&header_).withMinimumWidth(220),
@@ -2157,9 +2256,7 @@ private:
                         safe->removeUnusedMedia();
                         break;
                     case 21:
-                    case 22:
-                    case 23:
-                        safe->startExport(choice - 20);
+                        safe->showExportSheet();
                         break;
                     default:
                         break;
@@ -2684,6 +2781,12 @@ void MainWindow::showFirstRun()
 {
     if (auto* content = dynamic_cast<Content*>(getContentComponent()))
         content->showFirstRun();
+}
+
+void MainWindow::showExport()
+{
+    if (auto* content = dynamic_cast<Content*>(getContentComponent()))
+        content->showExportSheet();
 }
 
 void MainWindow::offerRecovery()

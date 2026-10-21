@@ -43,6 +43,8 @@ public:
     void offerRecovery();
     // The first-run sheet (08-setup.md 8.3): device choice, then a plugin scan offer.
     void showFirstRun();
+    // The export sheet (Ctrl+E).
+    void showExport();
     // --benchmark-ui: plays and scrolls for `seconds`, prints frame percentiles, quits.
     void runBenchmark(int seconds);
     // --bus / --remove-bus: adds a bus; removes the last one through the mixer's

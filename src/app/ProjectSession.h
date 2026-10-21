@@ -69,8 +69,10 @@ public:
     std::string startBounce(BounceJob::Options options);
     bool isBouncing() const noexcept { return bounce_ != nullptr && bounce_->isRunning(); }
     float bounceProgress() const noexcept { return bounce_ != nullptr ? bounce_->progress() : 0.0f; }
-    // The last bounce's outcome, as a sentence for the status bar.
+    // The last bounce's outcome, as a sentence for the completion toast ("Bouncing..."
+    // while it runs), and its result (the files, for Show in folder).
     const std::string& lastBounceMessage() const noexcept { return bounceMessage_; }
+    const BounceJob::Result& lastBounceResult() const noexcept { return bounceResult_; }
 
     // ----- plugins ----------------------------------------------------------------
     // Scans the VST3 folders in the background (changed files only unless `all`);
@@ -395,6 +397,7 @@ private:
     std::set<core::Id> reportedCrashes_; // inserts whose crash the user has been told about
     void checkCrashedPlugins();
     std::string bounceMessage_;
+    BounceJob::Result bounceResult_;
     std::unique_ptr<BounceJob> bounce_;
     bool gestureOpen_ = false;
     bool metronome_ = false;

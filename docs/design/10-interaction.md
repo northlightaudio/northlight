@@ -104,7 +104,9 @@ up/down, clips left/right).
 
 ## 10.6 Notifications and errors
 
-- Transient confirmations (saved, bounced, scanned): status bar message, 4 s.
+- Transient confirmations (saved, scanned): status bar message, 4 s. An export's
+  progress is in the status bar; its outcome is a toast (it carries the measured
+  loudness and the gain applied, and offers Show in folder).
 - Needs attention (dropouts over threshold, device lost, plugin failed, recording
   write failure, recoverable recordings): toast with an action; persistent for
   errors.

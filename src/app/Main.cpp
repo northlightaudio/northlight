@@ -89,6 +89,7 @@ public:
     //   --bus                add a bus
     //   --remove-bus         remove the last bus the way the mixer does
     //   --first-run          show the first-run sheet
+    //   --export             show the export sheet
     //   --midi-track         add a MIDI track (built-in synth) with a short clip
     //   --midi-track-with <type>  the same with the given instrument type instead
     //   --piano-roll         open the piano roll on the first MIDI clip
@@ -325,6 +326,8 @@ public:
                 mainWindow_->runStripDragBenchmark(tokens.getReference(++i).text.getIntValue());
             else if (arg == "--benchmark-ui" && i + 1 < tokens.size())
                 mainWindow_->runBenchmark(tokens.getReference(++i).text.getIntValue());
+            else if (arg == "--export")
+                mainWindow_->showExport();
             else if (arg == "--preferences")
                 mainWindow_->showPreferences(i + 1 < tokens.size() && !tokens[i + 1].text.startsWith("--")
                                                  ? tokens.getReference(++i).text.unquoted()
