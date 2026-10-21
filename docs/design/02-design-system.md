@@ -215,8 +215,11 @@ control; it is only drawn for keyboard focus, never for pointer clicks.
   `controlBottom` gradient, top highlight, 1 px shadow), `textPrimary` label, radius
   `sm`. Hover: gradient one step lighter. Pressed: `pressedInset`, gradient reversed.
   Disabled: flat `surface1` fill, `textDisabled`, no highlight or shadow.
-- **Primary**: `accent` fill, `textOnAccent` label. Hover `accentHover`, pressed
-  `accentPressed`. At most one per view.
+- **Primary**: moonlight, the one bright thing in a view: `primary` fill (a faint
+  vertical shade and the control shadow below), `textOnPrimary` label. Hover
+  `primaryHover`, pressed `primaryPressed`. At most one per view. It is not the
+  accent: Overcast marks what is active (toggles, selection, focus), and a filled
+  Overcast button read as washed out against the peat.
 - **Ghost**: no fill, `textSecondary` label; hover `surface2` fill and `textPrimary`.
   Toolbar and panel headers use ghost buttons.
 - **Danger**: ghost at rest with `danger` text; hover `danger` fill with

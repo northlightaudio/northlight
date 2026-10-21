@@ -15,7 +15,10 @@ Generated from [tokens.json](tokens.json) (Machair Dusk v2) by `scripts/contrast
 | textDisabled | surface1 | 2.09 | Disabled (exempt from the requirement) | n/a |
 | accent | surface0 | 7.55 | Active icons, links | yes |
 | lineFocus | surface0 | 4.35 | Focus ring (non-text) | yes |
-| textOnAccent | accent | 7.55 | Primary button label | yes |
+| textOnAccent | accent | 7.55 | Label on an accent fill | yes |
+| textOnPrimary | primary | 14.22 | Primary button label | yes |
+| textOnPrimary | primaryHover | 15.86 | Primary button label, hovered | yes |
+| primary | surface0 | 14.22 | Primary button against the panel (non-text) | yes |
 | record | surface0 | 5.49 | Record icon, recording time | yes |
 | warning | surface0 | 8.98 | Warnings | yes |
 | success | surface0 | 7.67 | Confirmations | yes |

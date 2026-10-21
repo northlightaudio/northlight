@@ -373,12 +373,19 @@ void NorthlightLookAndFeel::drawButtonBackground(juce::Graphics& g,
     }
     else if (variant == "primary")
     {
-        const auto base = isButtonDown ? c.accentPressed : isMouseOver ? c.accentHover : c.accent;
+        // Moonlight: a cream key with peat text, the one bright thing in a view.
+        const auto base = isButtonDown ? c.primaryPressed : isMouseOver ? c.primaryHover : c.primary;
         if (m.enabled)
         {
-            g.setGradientFill(juce::ColourGradient::vertical(
-                base.brighter(0.1f), bounds.getY(), base.darker(0.1f), bounds.getBottom()));
+            g.setGradientFill(
+                juce::ColourGradient::vertical(base, bounds.getY(), base.darker(0.06f), bounds.getBottom()));
             g.fillRoundedRectangle(bounds, radius);
+            if (!isButtonDown)
+            {
+                g.setColour(m.controlShadow.colour);
+                g.fillRect(
+                    bounds.getX() + radius * 0.5f, bounds.getBottom(), bounds.getWidth() - radius, 1.0f);
+            }
         }
         else
         {
@@ -451,7 +458,7 @@ void NorthlightLookAndFeel::drawButtonText(juce::Graphics& g,
         text = hardOn ? c.textOnColour : colour;
     }
     else if (variant == "primary")
-        text = c.textOnAccent;
+        text = c.textOnPrimary;
     else if (variant == "ghost")
         text = isMouseOver || isButtonDown ? c.textPrimary : c.textSecondary;
     else if (variant == "danger")

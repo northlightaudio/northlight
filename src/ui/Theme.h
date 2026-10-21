@@ -27,6 +27,8 @@ struct Theme
         juce::Colour textPrimary, textSecondary, textTertiary, textDisabled, textOnAccent, textOnColour;
         // Accent
         juce::Colour accent, accentHover, accentPressed, accentSubtle, selectionFill, selectionOutline;
+        // The primary button: moonlight, with peat text (15-brand.md)
+        juce::Colour primary, primaryHover, primaryPressed, textOnPrimary;
         // Semantic
         juce::Colour record, recordHover, recordSubtle, danger, warning, success, info;
         juce::Colour mute, solo, arm, monitor;
