@@ -31,8 +31,9 @@ struct Hues
 {
     juce::Colour sample, loop, keys, envelope, filter;
     explicit Hues(const Theme& t)
-        : sample(paletteColour(t, "Teal")), loop(paletteColour(t, "Amber")), keys(paletteColour(t, "Mint")),
-          envelope(paletteColour(t, "Sky")), filter(paletteColour(t, "Indigo"))
+        : sample(paletteColour(t, "Lichen")), loop(paletteColour(t, "Gorse")),
+          keys(paletteColour(t, "Sea grass")), envelope(paletteColour(t, "Overcast")),
+          filter(paletteColour(t, "Loch"))
     {
     }
 };

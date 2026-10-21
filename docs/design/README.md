@@ -12,6 +12,7 @@ design system first; the screen specs depend on them.
 
 | File | What it decides |
 |---|---|
+| [15-brand.md](15-brand.md) | The brand, Machair dusk: the idea, the mark and its files, colour, type, voice, imagery, and where each piece lives |
 | [01-brief.md](01-brief.md) | Who Northlight is for, what it should feel like, the principles every screen follows, and what is borrowed or avoided from other DAWs |
 | [02-design-system.md](02-design-system.md) | Colour, type, spacing, radii, elevation, iconography, motion, and the component library with every state |
 | [tokens.json](tokens.json) | The machine-readable token file `ui::Theme` loads. Section 2 is the human explanation of this file |

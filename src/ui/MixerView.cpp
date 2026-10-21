@@ -726,7 +726,7 @@ public:
         aux_ = track != nullptr && track->isAux();
         const auto* busModel = isBus ? project.findBus(channel.id) : nullptr;
         fx_ = busModel != nullptr && busModel->fx;
-        colour_ = isBus ? (fx_ && channel.colour == 0 ? strip::paletteColour(theme_, "Teal")
+        colour_ = isBus ? (fx_ && channel.colour == 0 ? strip::paletteColour(theme_, "Lichen")
                                                       : theme_.track.forBus(channel.colour))
                         : theme_.track.forTrack(channel.colour, index);
         fader_.setTrackColour(colour_);

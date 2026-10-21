@@ -21,14 +21,16 @@ Five neutral steps, each used for exactly one plane:
 `surfacePressed` is darker than `surface2` so pressing reads as "pushed in".
 `overlay` dims the window behind a sheet.
 
-The base is near-black with a faint warm cast (`#0F0F10` rather than a blue grey) so
-track colours and meters sit on something neutral. Steps are 6 to 9 points of
-lightness apart: enough to read as planes, not enough to read as boxes.
+The base is Machair dusk's peat green (`#0F1311` to `#2F3630`, see
+[15-brand.md](15-brand.md)): dark and close to neutral, with just enough green that the
+window reads as evening land rather than a black box, so track colours and meters sit
+on something calm. Steps are 6 to 9 points of lightness apart: enough to read as
+planes, not enough to read as boxes.
 
 ### Lines
 
-Two line tokens only. `lineSubtle` (white at 6%) separates planes that touch;
-`lineStrong` (white at 12%) outlines popups and fields with focus-less emphasis.
+Two line tokens only. `lineSubtle` (moon cream at 6%) separates planes that touch;
+`lineStrong` (moon cream at 12%) outlines popups and fields with focus-less emphasis.
 Borders are the exception, not the rule: a panel edge is normally a change of
 surface, not a line.
 

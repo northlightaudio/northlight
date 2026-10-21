@@ -1,0 +1,119 @@
+# 15. Brand: Machair dusk
+
+Northlight looks like a Hebridean island in early evening: an overcast sky, brown-green
+grass going dark, a pale moon. This page is the brand guide: the idea, the mark, colour,
+type, voice, and where each piece lives. The design system (02-design-system.md) turns it
+into the app's components; `tokens.json` is the single source of every value here.
+
+## The idea
+
+The machair is the low, grassy land behind the beaches of the Outer Hebrides. At dusk
+the colour drains out of it from the ground up: the grass goes to peat, the sky stays
+light the longest, and a moon comes up before it is dark. Northlight borrows that order:
+
+- **The ground is dark and quiet.** Surfaces are peat and turf greens, close in
+  lightness, so a long session is calm on the eyes and the music's colours stand out.
+- **The sky is the accent.** Overcast blue marks whatever is active: play, selection,
+  focus, links, the transport readout.
+- **The moon is the text.** A warm cream, never pure white, so the screen reads as
+  evening light rather than a lamp.
+- **Colour comes from the land.** Track colours are machair, straw, heather, rowan and
+  sea grass: muted, but each clearly itself on the dark ground.
+
+## The mark
+
+A moon over a waveform horizon. The horizon is flat, breaks into a short burst of sound
+and settles flat again; the moon sits low and to the right, as it did in the moodboard.
+
+| File (in `assets/brand/`) | Use |
+|---|---|
+| `northlight-mark.svg` | The mark on dark backgrounds: moon `#F1EEDF`, horizon Overcast `#93ABC2` |
+| `northlight-mark-on-light.svg` | On light backgrounds: moon Peat `#141815`, horizon `#4F6A84` |
+| `northlight-mark-mono.svg` | One colour (`currentColor`): embossing, single-ink print, the app's own icon set |
+| `northlight-lockup.svg` and `-on-light`, `-mono` | The mark with the wordmark, for the website, the about screen, documents |
+| `northlight-icon-{16,32,48,256,1024}.png` | The app icon: the mark on a rounded Peat square |
+
+All of them come from `scripts/brand-assets.py`, which holds the geometry once (a
+64-unit grid: the moon at 43, 19 with radius 9.5; the horizon's points; a 5-unit stroke)
+and outlines the wordmark from Newsreader. Change the mark there and regenerate; the
+app's 16 px version is the `mark` entry in `src/ui/Icons.cpp`, the same shape scaled to
+a quarter.
+
+Using the mark:
+
+- **Clear space** around the mark: at least the moon's diameter on every side.
+- **Minimum size**: 16 px for the mark alone; 96 px wide for the lockup.
+- **The wordmark sits on the horizon**: in the lockup the baseline of "Northlight" is
+  the horizon line, and the mark is never placed after the word.
+- **Do not** recolour the moon in the accent, outline the moon, add a gradient or a glow,
+  rotate the mark, or set the wordmark in another face.
+
+## Colour
+
+The palette, with names used in conversation and design files. The values are the
+`color` and `track` tokens.
+
+| Name | Hex | Role |
+|---|---|---|
+| Field at night | `#0F1311` | `canvas`: behind everything; lanes, wells |
+| Peat | `#141815` | `surface0`: panels, the website's ground |
+| Turf | `#1C211D` | `surface1`: raised groups, cards |
+| Moss | `#262C27` | `surface2`: controls at rest |
+| Bog cotton | `#2F3630` | `surface3`: controls on hover |
+| Moon | `#E8E5DA` | `textPrimary`: names and values (the mark's moon is a touch lighter, `#F1EEDF`) |
+| Lichen | `#A9AFA6` | `textSecondary`: labels, units, quiet text |
+| Overcast | `#93ABC2` | `accent`: anything active, links, focus, the transport readout |
+| Rowan | `#D9705E` | `record`, `arm`: recording, and nothing else |
+| Straw gold | `#D6B36A` | `solo`, `warning`, `automation`, the middle meter zone |
+| Sea grass | `#8FB38A` | `success`, `monitor`; meters' low zone `#7FA57C` |
+| Heather | `#C3A2BE` | `midiNote` |
+
+Track colours (`track.palette`), each at least 5.7:1 on the canvas: Overcast `#93ABC2`,
+Machair `#9AA65E`, Straw `#C9B07A`, Heather `#C3A2BE`, Rowan `#D9806B`, Sea grass
+`#7FB08F`, Kelp `#A68A5B`, Loch `#6F9FB8`, Gorse `#D9B44A`, Thrift `#D48AA7`, Lichen
+`#B6C49A`, Slate `#9AA3A8` (buses).
+
+Rules:
+
+- **One accent.** Overcast is the only colour for interaction. Track colours mark tracks
+  and never mean "active".
+- **Rowan means recording.** Not errors (those are `danger`, a lighter red) and not
+  decoration.
+- **Text contrast** is checked by `scripts/contrast.py` (docs/design/contrast.md): body
+  text at least 4.5:1, hints and non-text at least 3:1. Run it whenever a token changes.
+- **No pure black or white** anywhere: the darkest value is Field at night, the lightest
+  the mark's moon.
+
+## Type
+
+| Face | Use | Where it comes from |
+|---|---|---|
+| **Newsreader** | Headings on the website, the about screen, the wordmark | Google Fonts, SIL Open Font License (`font.display`) |
+| **Inter** | Every control and label in the app; body text on the website | `font.ui` |
+| **JetBrains Mono** | Time, bars, tempo, dB and every other value that changes | `font.mono` |
+
+Newsreader is a reading face with a gentle, slightly literary voice; it is used large
+and sparingly, never for controls. Inter carries the interface, JetBrains Mono the
+numbers, so values never jitter as they change.
+
+## Voice
+
+Plain, specific and calm, like the rest of the documentation. Say what the software does,
+in the user's words, without superlatives. A little of the landscape is allowed in
+headlines ("Record the light while it lasts."), never in instructions, labels or
+error messages.
+
+## Imagery
+
+Photographs of the kind on the moodboard: open land under overcast or evening skies,
+grasses, a low moon or sun, desaturated and slightly grainy, never staged or
+high-contrast. No stock photos of people in studios, no gear close-ups, no glowing
+waveforms. Screenshots of the app are the other image, shown at 100% or 200%.
+
+## Where the brand lives
+
+The application repository is the source: `docs/design/tokens.json` (values),
+`docs/design/15-brand.md` (this guide), `assets/brand/` (the files) and
+`scripts/brand-assets.py` (how they are made). The website (`northlightaudio.org`) takes
+its colours, fonts and logo from here with its `npm run sync-brand` script and keeps
+only its page layouts and imagery of its own.

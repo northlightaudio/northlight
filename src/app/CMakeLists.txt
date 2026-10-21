@@ -2,6 +2,8 @@ juce_add_gui_app(northlight
     PRODUCT_NAME        "Northlight"
     COMPANY_NAME        "Leafshade"
     BUNDLE_ID           "org.northlightaudio.northlight"
+    ICON_BIG            "${CMAKE_SOURCE_DIR}/assets/brand/northlight-icon-1024.png"
+    ICON_SMALL          "${CMAKE_SOURCE_DIR}/assets/brand/northlight-icon-32.png"
     VERSION             "${PROJECT_VERSION}"
     NEEDS_CURL          FALSE
     NEEDS_WEB_BROWSER   FALSE)
