@@ -25,6 +25,8 @@ aural.exe
                   (input or MIDI input, arm, monitor), MixerView (strips, master,
                   inserts menu), InsertEditor (generic parameter editor),
                   PluginBrowser (search, filters, sections, favourites, scan),
+                  MediaBrowser (the browser's Files tab: places, audio files,
+                  previews, drags),
                   PluginWindow (the bar over a hosted plugin's editor),
                   PianoRoll (one MIDI clip's notes and velocities)
   src/core        Project model (audio and MIDI tracks and buses on a shared
@@ -704,7 +706,22 @@ a row drags onto the Editor chain (at the insertion line) or an arrange track
 the file and scans again); the scan button's chevron menu rescans or clears the
 blocklist, and a progress bar with "Scanning n of m · file" and Cancel replaces
 it while a scan runs. Favourites and recent types are user settings. The
-`PluginWindow` bar is 7.2: power, "Plugin · Track", the format badge, the 80 px
+Browser panel is `ui::BrowserPanel`: a Plugins / Files segmented control over
+the plugin browser and `ui::MediaBrowser` (7.4g; the tab is a user setting).
+The Files tab browses a place (the saved project's folder, Music, or a folder
+added to its list, kept in the settings with the last folder) and its
+subfolders; a background job (one `juce::ThreadPool` thread, a generation count
+cancelling a stale one) lists the folder, or with a search walks the whole place
+for names holding every word (up to 2000 results), and reads each file's header
+for its length and rate, posting the result back to the message thread. A click
+auditions a file through `ProjectSession::previewFile` (the engine's
+`PreviewPlayer`, see Media and streaming; the panel pumps it on a 30 Hz timer
+while one plays, and shows the progress under the row), a second click, another
+file, Escape or Stop ends it; double-click or Enter imports the file onto a new
+track at the playhead; a row drags as "file:<path>", which the arrange view
+takes like a file from Explorer (a new track where it lands, with the same drop
+preview) and the Sampler's waveform loads. Launch flag: `--browser-files
+[folder]`. The `PluginWindow` bar is 7.2: power, "Plugin · Track", the format badge, the 80 px
 mix slider with its value, the presets menu and pin; position and editor size
 are remembered per plugin type. The Editor panel's cards (7.1) show an accent
 dot while the editor window is open, reorder by dragging their header, take

@@ -97,6 +97,7 @@ public:
     //   --audio-editor [pitch]  open the audio editor on the first audio clip (in pitch mode)
     //   --correct-pitch      once that clip's pitch is analysed, correct it to the key
     //   --mute-breaths       once that clip's pitch is analysed, mute its breaths
+    //   --browser-files [folder]  show the Browser panel's Files tab (at the folder)
     //   --automation         add a volume lane to the first track and show it in the arrange view
     //   --master-gain <dB>   set the master fader (-120 = silent: an unattended check that
     //                        should not be heard; pre-fader displays still move)
@@ -397,6 +398,10 @@ public:
                 session_->scanPlugins(true);
             else if (arg == "--plugins")
                 mainWindow_->showPluginBrowser();
+            else if (arg == "--browser-files")
+                mainWindow_->showFilesBrowser(i + 1 < tokens.size() && !tokens[i + 1].text.startsWith("--")
+                                                  ? tokens.getReference(++i).resolveAsFile()
+                                                  : juce::File());
             else if (arg == "--marker" && i + 1 < tokens.size())
             {
                 core::Marker marker;

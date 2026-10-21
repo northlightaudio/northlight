@@ -20,7 +20,8 @@ add_executable(aural_juce_tests
     AutosaveTests.cpp
     AutomationWriteTests.cpp
     TemplatesMediaTests.cpp
-    CrashReportTests.cpp)
+    CrashReportTests.cpp
+    MediaBrowserTests.cpp)
 
 target_link_libraries(aural_juce_tests PRIVATE
     aural_options

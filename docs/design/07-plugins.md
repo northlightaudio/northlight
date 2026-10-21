@@ -130,6 +130,42 @@ For GUI-less hosted plugins. A scrollable grid of parameter rows:
   Surge XT.vst3" and a Cancel; results appear as they arrive.
 - The window version (from the app menu) is the same panel at 720×560.
 
+## 7.4g Files (the browser's second tab)
+
+```
+| [ Plugins | Files ]                                    |
+| 🔍 Search files                                        |
+| ( Music › Drums                         ▾ )  [↑] [+]   |
+|   📁 Loops                                             |
+|   ▶ Kick 01.wav                       0.60 s   48 kHz  |
+|   ♪ Hat Closed.wav                    0.25 s   48 kHz  |
+| ( ■  ━━━━━━━━━━━━●━━━━━━━━━━              -6.2 dB )    |
+```
+
+- A segmented control at the top of the Browser panel switches Plugins and
+  Files (remembered). Leaving Files stops a preview.
+- Places: the saved project's folder, Music, and folders the user adds (the
+  "+" button or the place menu's "Add a folder…"; "Remove this folder from the
+  list" and "Show in Explorer" there too). The place button (ghost, chevron)
+  shows the place and the path below it; ↑ (and Backspace) goes up, never above
+  the place. Place, ↑ and + sit in one tray.
+- Rows 28 px: folders first (folder icon, `textSecondary`), then audio files
+  (wav, aif, aiff, flac, mp3, ogg) with the length in `value` `textSecondary` and
+  the rate in `textTertiary` at the right. A click on a folder opens it.
+- Search looks under the whole place for names holding every word typed; a
+  result shows its folder in `small` `textTertiary` after the name. Escape in
+  the field stops the preview and clears it.
+- Click a file to audition it: its icon becomes a play mark in `accent`, the
+  name turns `accent` and `accentSubtle` fills the row as it plays. Another
+  click, another file, Escape or Stop ends it with a 5 ms fade; the preview
+  plays over the mix at the footer's volume, outside the faders and meters.
+- Double-click or Enter puts the file on a new track at the playhead; drag a row
+  onto the arrange view for a new track where it is dropped (the drop preview a
+  file from Explorer shows), or onto a Sampler's waveform to load it.
+- The footer tray: Stop and the preview volume (a slider with its dB readout).
+- Empty folder: "No audio files here"; no match: "No files match"; reading:
+  "Reading…" in `small` `textTertiary`.
+
 ## 7.4a Instruments: channels, MIDI tracks and the rack
 
 An instrument is not an effect, and its sound is not its MIDI's. An instrument

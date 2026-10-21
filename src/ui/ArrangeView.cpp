@@ -5,6 +5,7 @@
 #include "ui/Db.h"
 #include "ui/FrameStats.h"
 #include "ui/Icons.h"
+#include "ui/MediaFiles.h"
 #include "ui/Motion.h"
 #include "ui/PluginMenu.h"
 
@@ -1433,7 +1434,8 @@ void ArrangeView::drawRuler(juce::Graphics& g, juce::Rectangle<int> area)
 
 bool ArrangeView::isInterestedInDragSource(const SourceDetails& details)
 {
-    return project_ != nullptr && details.description.toString().startsWith("plugin:");
+    return project_ != nullptr && (details.description.toString().startsWith("plugin:") ||
+                                   isAudioFile(fileFromDragDescription(details.description)));
 }
 
 void ArrangeView::itemDragEnter(const SourceDetails& details)
@@ -1443,6 +1445,15 @@ void ArrangeView::itemDragEnter(const SourceDetails& details)
 
 void ArrangeView::itemDragMove(const SourceDetails& details)
 {
+    if (const auto file = fileFromDragDescription(details.description); file != juce::File())
+    {
+        // A file from the browser shows where it will land, as one from Explorer does.
+        dragOver_ = true;
+        dropFiles_ = juce::StringArray(file.getFullPathName());
+        dropPoint_ = details.localPosition;
+        repaint();
+        return;
+    }
     const int row = rowAtY(details.localPosition.y);
     if (row != pluginDropRow_)
     {
@@ -1454,11 +1465,20 @@ void ArrangeView::itemDragMove(const SourceDetails& details)
 void ArrangeView::itemDragExit(const SourceDetails&)
 {
     pluginDropRow_ = -1;
+    dragOver_ = false;
     repaint();
 }
 
 void ArrangeView::itemDropped(const SourceDetails& details)
 {
+    if (const auto file = fileFromDragDescription(details.description); file != juce::File())
+    {
+        dragOver_ = false;
+        repaint();
+        if (onImportFiles && file.existsAsFile())
+            onImportFiles({file}, sampleForX(std::max(headerWidth, details.localPosition.x)));
+        return;
+    }
     const int row = rowAtY(details.localPosition.y);
     pluginDropRow_ = -1;
     repaint();

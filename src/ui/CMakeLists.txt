@@ -107,6 +107,8 @@ add_library(aural_ui STATIC
     PluginWindow.h
     PluginWindow.cpp
     MediaFiles.h
+    MediaBrowser.h
+    MediaBrowser.cpp
     PluginBrowser.h
     PluginBrowser.cpp
     PreferencesView.cpp

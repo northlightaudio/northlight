@@ -329,7 +329,9 @@ output device on a channel (2026-10-20).
 Added 2026-10-21: a built-in Sampler instrument (one sample across the keys,
 loop with crossfade, one-shot, filter, glide; the file kept in the insert's
 state). Right-click an audio clip, Open in Sampler, to play it from a new MIDI
-track. See architecture.md.
+track. The Browser panel has a Files tab: places (project, Music, added
+folders), search, click to audition through an engine preview, drag to the
+arrange view or a Sampler. See architecture.md and design/07-plugins.md 7.4f-g.
 
 ### Phase 9 — Automation, stretch, polish (4 weeks)
 

@@ -193,7 +193,9 @@ public:
     void fileDragMove(const juce::StringArray& files, int x, int y) override;
     void fileDragExit(const juce::StringArray& files) override;
     void filesDropped(const juce::StringArray& files, int x, int y) override;
-    // A plugin dragged from the browser ("plugin:<type>") lands on a track.
+    // A plugin dragged from the browser ("plugin:<type>") lands on a track; an
+    // audio file from its Files tab ("file:<path>") goes where a file from
+    // Explorer would.
     bool isInterestedInDragSource(const SourceDetails& details) override;
     void itemDragEnter(const SourceDetails& details) override;
     void itemDragMove(const SourceDetails& details) override;
