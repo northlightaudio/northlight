@@ -6,17 +6,17 @@
 #include <string>
 #include <vector>
 
-// Aurora: the polysynth bundled with Aural (07-plugins.md 7.5). Two morphing
+// Aurora: the polysynth bundled with Northlight (07-plugins.md 7.5). Two morphing
 // oscillators (sine, triangle, saw, square) with up to seven-voice unison,
 // a sub and noise; a drivable multimode filter with its own envelope and key
 // tracking; amp and filter envelopes; an LFO to pitch, cutoff and level;
 // glide; and Shimmer, a stereo chorus on the output. Twelve voices.
 // JUCE-free; real-time safe after prepare().
 
-namespace aural::plugins::aurora
+namespace northlight::plugins::aurora
 {
 
-inline const std::string type = "aural.aurora";
+inline const std::string type = "northlight.aurora";
 
 enum Param
 {
@@ -76,4 +76,4 @@ const std::vector<Preset>& presets();
 // One cycle of a morphing shape (0..3) at phase 0..1, for drawing it.
 float shapeAt(float shape, float phase) noexcept;
 
-} // namespace aural::plugins::aurora
+} // namespace northlight::plugins::aurora

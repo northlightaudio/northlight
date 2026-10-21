@@ -12,7 +12,7 @@
 #include <string>
 #include <vector>
 
-namespace aural::ui
+namespace northlight::ui
 {
 
 class PluginBrowser;
@@ -155,4 +155,4 @@ private:
     SegmentedControl tabs_;
 };
 
-} // namespace aural::ui
+} // namespace northlight::ui

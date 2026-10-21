@@ -14,10 +14,10 @@
 // Waveform peaks for the arrange view. peaksFor() returns the peaks for a media
 // file if they are ready; otherwise it queues a build on the background thread and
 // returns nullptr, and the store broadcasts a change (message thread) when they
-// arrive. Built peaks are cached beside the media as "<file>.<rate>.aural-peaks" and
+// arrive. Built peaks are cached beside the media as "<file>.<rate>.northlight-peaks" and
 // reused while they are newer than the media file.
 
-namespace aural::audio
+namespace northlight::audio
 {
 
 class PeakStore final : public juce::ChangeBroadcaster, private juce::Thread, private juce::AsyncUpdater
@@ -57,4 +57,4 @@ private:
     bool building_ = false;
 };
 
-} // namespace aural::audio
+} // namespace northlight::audio

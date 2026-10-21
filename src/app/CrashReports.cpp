@@ -16,7 +16,7 @@
 #pragma comment(lib, "dbghelp.lib")
 #endif
 
-namespace aural::crash
+namespace northlight::crash
 {
 
 #if defined(_WIN32)
@@ -33,7 +33,7 @@ bool writeDump(EXCEPTION_POINTERS* exception, wchar_t* outPath, size_t outSize)
     GetLocalTime(&t);
     swprintf_s(outPath,
                outSize,
-               L"%s\\Aural-%04u%02u%02u-%02u%02u%02u-%lu.dmp",
+               L"%s\\Northlight-%04u%02u%02u-%02u%02u%02u-%lu.dmp",
                folderPath,
                t.wYear,
                t.wMonth,
@@ -71,7 +71,7 @@ bool writeDump(EXCEPTION_POINTERS* exception, wchar_t* outPath, size_t outSize)
         const int n =
             sprintf_s(text,
                       sizeof(text),
-                      "Aural %s\r\nexception 0x%08lX at %p\r\n",
+                      "Northlight %s\r\nexception 0x%08lX at %p\r\n",
                       versionText,
                       exception != nullptr ? exception->ExceptionRecord->ExceptionCode : 0ul,
                       exception != nullptr ? exception->ExceptionRecord->ExceptionAddress : nullptr);
@@ -157,4 +157,4 @@ void acknowledge(const std::filesystem::path& folder)
     }
 }
 
-} // namespace aural::crash
+} // namespace northlight::crash

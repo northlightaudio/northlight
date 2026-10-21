@@ -9,7 +9,7 @@
 // read can start anywhere. Quality is adequate for monitoring and playback of
 // imported media; a windowed-sinc converter for bounces arrives in Phase 9.
 
-namespace aural::engine
+namespace northlight::engine
 {
 
 inline float hermite(float xm1, float x0, float x1, float x2, float t) noexcept
@@ -63,4 +63,4 @@ inline void sourceRangeFor(double ratio,
     sourceCount = static_cast<int>(last - first + 1);
 }
 
-} // namespace aural::engine
+} // namespace northlight::engine

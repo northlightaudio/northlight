@@ -15,12 +15,12 @@
 #include "ui/ArrangeView.h"
 #include "ui/AudioEditor.h"
 #include "ui/AudioSetupView.h"
-#include "ui/AuralLookAndFeel.h"
 #include "ui/ExportView.h"
 #include "ui/FrameStats.h"
 #include "ui/Icons.h"
 #include "ui/MediaBrowser.h"
 #include "ui/MixerView.h"
+#include "ui/NorthlightLookAndFeel.h"
 #include "ui/PianoRoll.h"
 #include "ui/PluginBrowser.h"
 #include "ui/PreferencesView.h"
@@ -48,7 +48,7 @@
 #include <map>
 #include <optional>
 
-namespace aural
+namespace northlight
 {
 
 namespace
@@ -524,7 +524,7 @@ public:
         const auto chr = [&](char c, int with = 0)
         { return key.getTextCharacter() == static_cast<juce::juce_wchar>(c) && mods == with; };
         if (key.getKeyCode() == juce::KeyPress::tabKey)
-            ui::AuralLookAndFeel::setKeyboardFocusVisible(true);
+            ui::NorthlightLookAndFeel::setKeyboardFocusVisible(true);
         // F2 renames the selected track while the arrange view has the focus
         // (10.4); elsewhere it is the mixer's panel key.
         if (key.getKeyCode() == juce::KeyPress::F2Key && mods == 0 && tracks_.hasKeyboardFocus(true) &&
@@ -1260,7 +1260,7 @@ private:
     void refreshTitle()
     {
         owner_.setName((session_.isRecording() ? juce::String::fromUTF8("\xe2\x97\x8f ") : juce::String()) +
-                       projectName() + (session_.isModified() ? "*" : "") + " - Aural");
+                       projectName() + (session_.isModified() ? "*" : "") + " - Northlight");
     }
 
     void refreshHeader()
@@ -1877,7 +1877,8 @@ private:
     {
         if (session_.isRecording())
             return;
-        chooser_ = std::make_unique<juce::FileChooser>("Open project", projectFolder(), "*.aural");
+        chooser_ =
+            std::make_unique<juce::FileChooser>("Open project", projectFolder(), "*.northlight;*.aural");
         chooser_->launchAsync(juce::FileBrowserComponent::openMode |
                                   juce::FileBrowserComponent::canSelectFiles,
                               [this](const juce::FileChooser& fc)
@@ -1910,7 +1911,7 @@ private:
             return;
         }
         chooser_ = std::make_unique<juce::FileChooser>(
-            "Save project", projectFolder().getChildFile("Untitled.aural"), "*.aural");
+            "Save project", projectFolder().getChildFile("Untitled.northlight"), "*.northlight");
         chooser_->launchAsync(juce::FileBrowserComponent::saveMode |
                                   juce::FileBrowserComponent::canSelectFiles |
                                   juce::FileBrowserComponent::warnAboutOverwriting,
@@ -1919,8 +1920,8 @@ private:
                                   auto file = fc.getResult();
                                   if (file == juce::File())
                                       return;
-                                  if (!file.hasFileExtension("aural"))
-                                      file = file.withFileExtension("aural");
+                                  if (!file.hasFileExtension("northlight"))
+                                      file = file.withFileExtension("northlight");
                                   saveTo(file);
                                   grabKeyboardFocus();
                               });
@@ -2248,7 +2249,7 @@ private:
     void appMenu()
     {
         juce::PopupMenu menu;
-        menu.addItem(1, "About Aural");
+        menu.addItem(1, "About Northlight");
         menu.addSeparator();
         menu.addItem(2, "Audio Setup...");
         menu.addItem(3, "Plugins...");
@@ -2304,7 +2305,7 @@ private:
         sheet_ = ui::Sheet::show(
             *this,
             theme_,
-            "Aural " + juce::JUCEApplication::getInstance()->getApplicationVersion(),
+            "Northlight " + juce::JUCEApplication::getInstance()->getApplicationVersion(),
             "A native Windows DAW: ASIO, VST3 and CLAP hosting, multitrack recording and MIDI.",
             {{"Close", true, false}},
             [this](int) { sheet_ = nullptr; });
@@ -2522,7 +2523,7 @@ private:
             *this,
             theme_,
             "Choose your audio device",
-            "Aural works best with an ASIO device. You can change this any time from the status bar.",
+            "Northlight works best with an ASIO device. You can change this any time from the status bar.",
             {{"Skip", false, false}, {"Use this device", true, false}},
             [this, raw](int result)
             {
@@ -2547,18 +2548,19 @@ private:
 
     void offerScan()
     {
-        sheet_ = ui::Sheet::show(*this,
-                                 theme_,
-                                 "Scan for plugins now?",
-                                 "Aural looks in the VST3 and CLAP folders. Scanning runs in the background; "
-                                 "you can keep working.",
-                                 {{"Later", false, false}, {"Scan", true, false}},
-                                 [this](int result)
-                                 {
-                                     sheet_ = nullptr;
-                                     if (result == 1)
-                                         session_.scanPlugins(true);
-                                 });
+        sheet_ =
+            ui::Sheet::show(*this,
+                            theme_,
+                            "Scan for plugins now?",
+                            "Northlight looks in the VST3 and CLAP folders. Scanning runs in the background; "
+                            "you can keep working.",
+                            {{"Later", false, false}, {"Scan", true, false}},
+                            [this](int result)
+                            {
+                                sheet_ = nullptr;
+                                if (result == 1)
+                                    session_.scanPlugins(true);
+                            });
     }
 
     MainWindow& owner_;
@@ -2988,7 +2990,7 @@ void MainWindow::offerRecovery()
         const auto report = juce::File(juce::String(reports.front().wstring().c_str()));
         content->toast(
             ui::ToastStack::Kind::warning,
-            "Aural closed unexpectedly last time. A crash report was saved on this computer.",
+            "Northlight closed unexpectedly last time. A crash report was saved on this computer.",
             "Show",
             [report, crashes]
             {
@@ -3005,7 +3007,7 @@ void MainWindow::offerRecovery()
         const auto autosave = leftovers.front();
         content->toast(
             ui::ToastStack::Kind::warning,
-            "Aural closed with unsaved changes to \"" + juce::String::fromUTF8(autosave.name.c_str()) +
+            "Northlight closed with unsaved changes to \"" + juce::String::fromUTF8(autosave.name.c_str()) +
                 "\" (autosaved " + autosave.time.formatted("%H:%M") + ").",
             "Restore",
             [safe, autosave]
@@ -3042,4 +3044,4 @@ void MainWindow::offerRecovery()
         });
 }
 
-} // namespace aural
+} // namespace northlight

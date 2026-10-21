@@ -13,7 +13,7 @@
 // sleeping briefly when none needs work. Registration happens from the controller
 // thread; the real-time thread never touches this object.
 
-namespace aural::engine
+namespace northlight::engine
 {
 
 class DiskThread
@@ -44,4 +44,4 @@ private:
     std::thread thread_;
 };
 
-} // namespace aural::engine
+} // namespace northlight::engine

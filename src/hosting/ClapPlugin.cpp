@@ -7,7 +7,7 @@
 #include <cmath>
 #include <cstring>
 
-namespace aural::hosting
+namespace northlight::hosting
 {
 
 namespace
@@ -95,7 +95,7 @@ bool HostedClapPlugin::isLive(const HostedClapPlugin* plugin)
 
 void HostedClapPlugin::serviceAll(bool engineRunning)
 {
-    AURAL_ASSERT_NOT_REALTIME("HostedClapPlugin::serviceAll");
+    NORTHLIGHT_ASSERT_NOT_REALTIME("HostedClapPlugin::serviceAll");
     std::vector<HostedClapPlugin*> snapshot;
     {
         const std::lock_guard<std::mutex> lock(liveMutex());
@@ -190,7 +190,7 @@ std::unique_ptr<HostedClapPlugin> HostedClapPlugin::create(const std::string& ty
                                                            const std::string& pluginId,
                                                            std::string& error)
 {
-    AURAL_ASSERT_NOT_REALTIME("HostedClapPlugin::create");
+    NORTHLIGHT_ASSERT_NOT_REALTIME("HostedClapPlugin::create");
     std::unique_ptr<HostedClapPlugin> plugin(new HostedClapPlugin());
     plugin->typeName_ = typeName;
     if (!plugin->initialise(path, pluginId, error))
@@ -232,7 +232,7 @@ bool HostedClapPlugin::initialise(const std::string& path, const std::string& pl
     // The host object the plugin talks back to.
     host_.clap_version = CLAP_VERSION;
     host_.host_data = this;
-    host_.name = "Aural";
+    host_.name = "Northlight";
     host_.vendor = "Leafshade";
     host_.url = "https://leafshade.io";
     host_.version = "0.1";
@@ -375,7 +375,7 @@ bool HostedClapPlugin::readPorts(std::string& error)
 
 HostedClapPlugin::~HostedClapPlugin()
 {
-    AURAL_ASSERT_NOT_REALTIME("HostedClapPlugin::~HostedClapPlugin");
+    NORTHLIGHT_ASSERT_NOT_REALTIME("HostedClapPlugin::~HostedClapPlugin");
     {
         const std::lock_guard<std::mutex> lock(liveMutex());
         std::erase(liveInstances(), this);
@@ -439,7 +439,7 @@ void HostedClapPlugin::refreshValues()
 
 void HostedClapPlugin::prepare(double sampleRate, int maxBlockSize)
 {
-    AURAL_ASSERT_NOT_REALTIME("HostedClapPlugin::prepare");
+    NORTHLIGHT_ASSERT_NOT_REALTIME("HostedClapPlugin::prepare");
     if (activated_.load(std::memory_order_acquire))
     {
         ensureProcessing(false);
@@ -878,7 +878,7 @@ void HostedClapPlugin::flushPendingOnMainThread()
 
 void HostedClapPlugin::onMainThread()
 {
-    AURAL_ASSERT_NOT_REALTIME("HostedClapPlugin::onMainThread");
+    NORTHLIGHT_ASSERT_NOT_REALTIME("HostedClapPlugin::onMainThread");
     if (plugin_ == nullptr)
         return;
     if (callbackRequested_.exchange(false, std::memory_order_acq_rel))
@@ -932,7 +932,7 @@ struct ByteSource
 
 std::string HostedClapPlugin::state() const
 {
-    AURAL_ASSERT_NOT_REALTIME("HostedClapPlugin::state");
+    NORTHLIGHT_ASSERT_NOT_REALTIME("HostedClapPlugin::state");
     if (state_ == nullptr)
         return {};
     ByteSink sink;
@@ -944,7 +944,7 @@ std::string HostedClapPlugin::state() const
 
 void HostedClapPlugin::setState(const std::string& state)
 {
-    AURAL_ASSERT_NOT_REALTIME("HostedClapPlugin::setState");
+    NORTHLIGHT_ASSERT_NOT_REALTIME("HostedClapPlugin::setState");
     if (state_ == nullptr || state.empty())
         return;
     juce::MemoryOutputStream decoded;
@@ -990,7 +990,7 @@ std::vector<juce::File> HostedClapPlugin::userPresetFiles() const
 
 bool HostedClapPlugin::loadPresetFile(const juce::File& file)
 {
-    AURAL_ASSERT_NOT_REALTIME("HostedClapPlugin::loadPresetFile");
+    NORTHLIGHT_ASSERT_NOT_REALTIME("HostedClapPlugin::loadPresetFile");
     const auto text = file.loadFileAsString();
     if (text.isEmpty())
         return false;
@@ -1000,7 +1000,7 @@ bool HostedClapPlugin::loadPresetFile(const juce::File& file)
 
 bool HostedClapPlugin::savePresetFile(const juce::File& file) const
 {
-    AURAL_ASSERT_NOT_REALTIME("HostedClapPlugin::savePresetFile");
+    NORTHLIGHT_ASSERT_NOT_REALTIME("HostedClapPlugin::savePresetFile");
     const auto blob = state();
     if (blob.empty())
         return false;
@@ -1012,7 +1012,7 @@ bool HostedClapPlugin::savePresetFile(const juce::File& file) const
 
 bool HostedClapPlugin::openEditor(void* parentHwnd, double scale, int& width, int& height)
 {
-    AURAL_ASSERT_NOT_REALTIME("HostedClapPlugin::openEditor");
+    NORTHLIGHT_ASSERT_NOT_REALTIME("HostedClapPlugin::openEditor");
     if (gui_ == nullptr || editorOpen_.load(std::memory_order_acquire))
         return false;
     if (!gui_->create(plugin_, CLAP_WINDOW_API_WIN32, false))
@@ -1252,4 +1252,4 @@ bool HostedClapPlugin::hostTimerUnregister(const clap_host_t* host, clap_id time
     return self(host).timers_.erase(timerId) > 0;
 }
 
-} // namespace aural::hosting
+} // namespace northlight::hosting

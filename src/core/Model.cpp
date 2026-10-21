@@ -3,7 +3,7 @@
 #include <algorithm>
 #include <cmath>
 
-namespace aural::core
+namespace northlight::core
 {
 
 Send* Channel::findSend(Id busId) noexcept
@@ -749,4 +749,4 @@ barsBeatsToSamples(BarsBeats position, double sampleRate, double tempoBpm, TimeS
     return static_cast<SamplePosition>(std::llround(beats * spb));
 }
 
-} // namespace aural::core
+} // namespace northlight::core

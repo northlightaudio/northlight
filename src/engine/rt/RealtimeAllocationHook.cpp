@@ -1,15 +1,15 @@
 // Global operator new/delete override that reports allocations on real-time threads.
 //
-// This file is compiled into an OBJECT library (aural_rt_checks) and linked into every
+// This file is compiled into an OBJECT library (northlight_rt_checks) and linked into every
 // executable so the override cannot be dropped by the linker. It does nothing unless
-// AURAL_RT_CHECKS is defined.
+// NORTHLIGHT_RT_CHECKS is defined.
 //
 // Only C++ operator new/delete are hooked. malloc/free from C libraries and plugins
 // are not, so this catches our own mistakes, not third-party ones.
 
 #include "engine/rt/RealtimeGuard.h"
 
-#if defined(AURAL_RT_CHECKS)
+#if defined(NORTHLIGHT_RT_CHECKS)
 
 #include <cstdlib>
 #include <new>
@@ -18,14 +18,16 @@ namespace
 {
 void checkAllocation() noexcept
 {
-    if (aural::rt::isRealtimeThread())
-        aural::rt::reportViolation({aural::rt::ViolationKind::allocation, "operator new", nullptr, 0});
+    if (northlight::rt::isRealtimeThread())
+        northlight::rt::reportViolation(
+            {northlight::rt::ViolationKind::allocation, "operator new", nullptr, 0});
 }
 
 void checkDeallocation() noexcept
 {
-    if (aural::rt::isRealtimeThread())
-        aural::rt::reportViolation({aural::rt::ViolationKind::deallocation, "operator delete", nullptr, 0});
+    if (northlight::rt::isRealtimeThread())
+        northlight::rt::reportViolation(
+            {northlight::rt::ViolationKind::deallocation, "operator delete", nullptr, 0});
 }
 
 void* allocate(std::size_t size)
@@ -141,4 +143,4 @@ void operator delete[](void* p, std::size_t, std::align_val_t) noexcept
     _aligned_free(p);
 }
 
-#endif // AURAL_RT_CHECKS
+#endif // NORTHLIGHT_RT_CHECKS

@@ -26,12 +26,12 @@
 #include <utility>
 #include <vector>
 
-namespace aural::audio
+namespace northlight::audio
 {
 class AudioDeviceLayer;
 }
 
-namespace aural
+namespace northlight
 {
 
 // The open project: the model, its undo history and the engine that plays it.
@@ -198,7 +198,7 @@ public:
 
     // ----- templates ----------------------------------------------------------------
     // Templates are projects without clips, notes or markers (tracks, buses,
-    // routing, inserts, the strips, automation modes), in Documents/Aural/Templates.
+    // routing, inserts, the strips, automation modes), in Documents/Northlight/Templates.
     juce::File templatesFolder() const;
     void setTemplatesFolder(juce::File folder) { templatesFolder_ = std::move(folder); } // tests
     std::vector<juce::File> templates() const;
@@ -300,7 +300,7 @@ public:
     std::string startRecording();
     bool isRecording() const noexcept { return engine_.isRecording(); }
     // The folder new recordings go to: next to the project file, or the user's
-    // Documents/Aural/Recordings when the project has not been saved.
+    // Documents/Northlight/Recordings when the project has not been saved.
     juce::File mediaFolder() const;
     // Latency used to place recordings: the loopback measurement when it matches
     // the device configuration, otherwise the driver's reported input + output.
@@ -464,4 +464,4 @@ private:
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(ProjectSession)
 };
 
-} // namespace aural
+} // namespace northlight

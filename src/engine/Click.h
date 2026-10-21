@@ -9,7 +9,7 @@
 // beat of each bar. Real-time safe and allocation-free; the only state is the burst
 // in progress, so it can run across count-in and playback without a reset.
 
-namespace aural::engine
+namespace northlight::engine
 {
 
 class ClickGenerator
@@ -52,4 +52,4 @@ private:
     double phaseStep_ = 0.0;
 };
 
-} // namespace aural::engine
+} // namespace northlight::engine

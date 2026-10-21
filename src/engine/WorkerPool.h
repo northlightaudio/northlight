@@ -19,7 +19,7 @@
 // batches a block issues. Workers block on the semaphore between batches (outside
 // any real-time section) and run each job inside one with denormals flushed.
 
-namespace aural::engine
+namespace northlight::engine
 {
 
 class WorkerPool
@@ -74,4 +74,4 @@ private:
     void* context_ = nullptr;
 };
 
-} // namespace aural::engine
+} // namespace northlight::engine

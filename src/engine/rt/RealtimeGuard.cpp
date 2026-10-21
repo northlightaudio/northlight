@@ -4,7 +4,7 @@
 #include <cstdio>
 #include <cstdlib>
 
-namespace aural::rt
+namespace northlight::rt
 {
 
 namespace
@@ -31,9 +31,9 @@ void defaultHandler(const Violation& v) noexcept
     // fprintf may allocate on some runtimes; we are about to abort anyway.
     if (v.file != nullptr)
         std::fprintf(
-            stderr, "[aural::rt] %s on a real-time thread: %s (%s:%d)\n", kind, v.what, v.file, v.line);
+            stderr, "[northlight::rt] %s on a real-time thread: %s (%s:%d)\n", kind, v.what, v.file, v.line);
     else
-        std::fprintf(stderr, "[aural::rt] %s on a real-time thread: %s\n", kind, v.what);
+        std::fprintf(stderr, "[northlight::rt] %s on a real-time thread: %s\n", kind, v.what);
 
     std::fflush(stderr);
     std::abort();
@@ -91,4 +91,4 @@ void assertNotRealtime(const char* what, const char* file, int line) noexcept
 }
 } // namespace detail
 
-} // namespace aural::rt
+} // namespace northlight::rt

@@ -9,14 +9,14 @@
 #include "ui/strip/PulsarEditor.h"
 
 #include "plugins/Pulsar.h"
-#include "ui/AuralLookAndFeel.h"
+#include "ui/NorthlightLookAndFeel.h"
 #include "ui/strip/StripStyle.h"
 #include "ui/strip/SynthParts.h"
 
 #include <array>
 #include <cmath>
 
-namespace aural::ui::strip
+namespace northlight::ui::strip
 {
 
 namespace
@@ -377,7 +377,7 @@ public:
         }
         for (auto* b : {&previous_, &next_, &kitName_})
         {
-            b->getProperties().set(AuralLookAndFeel::propertyVariant, "ghost");
+            b->getProperties().set(NorthlightLookAndFeel::propertyVariant, "ghost");
             addAndMakeVisible(b);
         }
         previous_.setTooltip("Previous kit");
@@ -395,7 +395,7 @@ public:
             endGesture();
         };
         addAndMakeVisible(route_);
-        outputs_.getProperties().set(AuralLookAndFeel::propertyVariant, "ghost");
+        outputs_.getProperties().set(NorthlightLookAndFeel::propertyVariant, "ghost");
         outputs_.setButtonText(juce::String::fromUTF8("Outputs \xe2\x96\xbe"));
         outputs_.setTooltip("Route the pads: all to the main pair, one output each, or in groups");
         outputs_.onClick = [this] { showOutputs(); };
@@ -631,7 +631,7 @@ private:
         g.fillPath(text);
         g.setFont(theme_.font(Theme::Face::ui, theme_.fonts.size.caption - 1.0f, theme_.fonts.weight.medium));
         g.setColour(theme_.colours.textTertiary);
-        g.drawText(juce::String::fromUTF8("DRUM SYNTH  \xc2\xb7  AURAL"),
+        g.drawText(juce::String::fromUTF8("DRUM SYNTH  \xc2\xb7  NORTHLIGHT"),
                    juce::Rectangle<float>(box.getRight() + 10.0f, baseline - 10.0f, 150.0f, 12.0f),
                    juce::Justification::centredLeft);
     }
@@ -819,4 +819,4 @@ createPulsarEditor(const Theme& theme, CardHost& host, core::Id channelId, const
     return std::make_unique<PulsarCard>(theme, host, channelId, insert);
 }
 
-} // namespace aural::ui::strip
+} // namespace northlight::ui::strip

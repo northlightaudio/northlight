@@ -10,7 +10,7 @@
 #include <cstdint>
 #include <numbers>
 
-namespace aural::plugins::nebula
+namespace northlight::plugins::nebula
 {
 
 namespace
@@ -426,7 +426,7 @@ private:
 
 std::unique_ptr<engine::InsertProcessor> create()
 {
-    AURAL_ASSERT_NOT_REALTIME("nebula::create");
+    NORTHLIGHT_ASSERT_NOT_REALTIME("nebula::create");
     return std::make_unique<Nebula>();
 }
 
@@ -600,4 +600,4 @@ std::vector<Partial> spectrum(const float* params, float noteHz, float motion)
     return out;
 }
 
-} // namespace aural::plugins::nebula
+} // namespace northlight::plugins::nebula

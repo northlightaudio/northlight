@@ -6,14 +6,14 @@
 #include <cstring>
 
 #if defined(_WIN32)
-#define AURAL_FSEEK _fseeki64
-#define AURAL_FTELL _ftelli64
+#define NORTHLIGHT_FSEEK _fseeki64
+#define NORTHLIGHT_FTELL _ftelli64
 #else
-#define AURAL_FSEEK fseeko
-#define AURAL_FTELL ftello
+#define NORTHLIGHT_FSEEK fseeko
+#define NORTHLIGHT_FTELL ftello
 #endif
 
-namespace aural::engine
+namespace northlight::engine
 {
 
 namespace
@@ -79,7 +79,7 @@ WavWriter::~WavWriter()
 
 bool WavWriter::open(const std::string& path, int numChannels, double sampleRate)
 {
-    AURAL_ASSERT_NOT_REALTIME("WavWriter::open");
+    NORTHLIGHT_ASSERT_NOT_REALTIME("WavWriter::open");
     if (file_ != nullptr || numChannels <= 0 || sampleRate <= 0.0)
         return false;
     file_ = std::fopen(path.c_str(), "wb");
@@ -102,11 +102,11 @@ bool WavWriter::writeHeader()
 {
     unsigned char h[headerBytes];
     buildHeader(h, numChannels_, sampleRate_, clampBytes(samplesWritten_ * numChannels_ * 4));
-    if (AURAL_FSEEK(file_, 0, SEEK_SET) != 0)
+    if (NORTHLIGHT_FSEEK(file_, 0, SEEK_SET) != 0)
         return false;
     if (std::fwrite(h, 1, headerBytes, file_) != headerBytes)
         return false;
-    return AURAL_FSEEK(file_, 0, SEEK_END) == 0;
+    return NORTHLIGHT_FSEEK(file_, 0, SEEK_END) == 0;
 }
 
 bool WavWriter::write(const float* const* channels, int numSamples)
@@ -156,7 +156,7 @@ bool WavWriter::close()
 
 bool WavWriter::repair(const std::string& path)
 {
-    AURAL_ASSERT_NOT_REALTIME("WavWriter::repair");
+    NORTHLIGHT_ASSERT_NOT_REALTIME("WavWriter::repair");
     std::FILE* f = std::fopen(path.c_str(), "r+b");
     if (f == nullptr)
         return false;
@@ -165,8 +165,8 @@ bool WavWriter::repair(const std::string& path)
               std::memcmp(h + 8, "WAVE", 4) == 0 && std::memcmp(h + 36, "data", 4) == 0;
     if (ok)
     {
-        ok = AURAL_FSEEK(f, 0, SEEK_END) == 0;
-        const std::int64_t size = AURAL_FTELL(f);
+        ok = NORTHLIGHT_FSEEK(f, 0, SEEK_END) == 0;
+        const std::int64_t size = NORTHLIGHT_FTELL(f);
         const auto blockAlign = static_cast<std::int64_t>(get16(h + 32));
         if (ok && size >= headerBytes && blockAlign > 0)
         {
@@ -174,7 +174,7 @@ bool WavWriter::repair(const std::string& path)
             const std::int64_t dataBytes = ((size - headerBytes) / blockAlign) * blockAlign;
             put32(h + 4, 36 + clampBytes(dataBytes));
             put32(h + 40, clampBytes(dataBytes));
-            ok = AURAL_FSEEK(f, 0, SEEK_SET) == 0 && std::fwrite(h, 1, headerBytes, f) == headerBytes;
+            ok = NORTHLIGHT_FSEEK(f, 0, SEEK_SET) == 0 && std::fwrite(h, 1, headerBytes, f) == headerBytes;
         }
     }
     const bool closed = std::fclose(f) == 0;
@@ -213,7 +213,7 @@ bool readWavSamples(const std::string& path, std::vector<std::vector<float>>& ch
     std::FILE* f = std::fopen(path.c_str(), "rb");
     if (f == nullptr)
         return false;
-    bool ok = AURAL_FSEEK(f, headerBytes, SEEK_SET) == 0;
+    bool ok = NORTHLIGHT_FSEEK(f, headerBytes, SEEK_SET) == 0;
     const auto frames = static_cast<size_t>(info->lengthSamples);
     const auto bytesPerSample = static_cast<size_t>(info->bitsPerSample / 8);
     std::vector<unsigned char> raw(frames * static_cast<size_t>(info->numChannels) * bytesPerSample);
@@ -250,4 +250,4 @@ bool readWavSamples(const std::string& path, std::vector<std::vector<float>>& ch
     return true;
 }
 
-} // namespace aural::engine
+} // namespace northlight::engine

@@ -28,7 +28,7 @@
 // Listeners (the Audio Setup screen) register as juce::ChangeListener and re-read
 // status() whenever anything changes.
 
-namespace aural::audio
+namespace northlight::audio
 {
 
 class AudioDeviceLayer final : public juce::ChangeBroadcaster,
@@ -141,4 +141,4 @@ private:
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(AudioDeviceLayer)
 };
 
-} // namespace aural::audio
+} // namespace northlight::audio

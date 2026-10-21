@@ -6,7 +6,7 @@
 #include <string>
 #include <vector>
 
-// Nebula: the pad synth bundled with Aural (07-plugins.md 7.4d), for slow,
+// Nebula: the pad synth bundled with Northlight (07-plugins.md 7.4d), for slow,
 // airy, ethereal sounds. Each note is a cloud of partials (up to 24, each a
 // pair of detuned sines drifting on their own and panned across the field),
 // shaped by brightness, odd/even balance, stretch (towards bells) and a vowel
@@ -14,10 +14,10 @@
 // motion (an LFO sweeping the spectrum), and Space, a large reverb, after a
 // gentle tone filter. Eight voices. JUCE-free; real-time safe after prepare().
 
-namespace aural::plugins::nebula
+namespace northlight::plugins::nebula
 {
 
-inline const std::string type = "aural.nebula";
+inline const std::string type = "northlight.nebula";
 
 enum Param
 {
@@ -72,4 +72,4 @@ struct Partial
 };
 std::vector<Partial> spectrum(const float* params, float noteHz, float motion = 0.0f);
 
-} // namespace aural::plugins::nebula
+} // namespace northlight::plugins::nebula

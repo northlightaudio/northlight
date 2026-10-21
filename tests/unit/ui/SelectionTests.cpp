@@ -2,7 +2,7 @@
 
 #include <catch2/catch_test_macros.hpp>
 
-using namespace aural;
+using namespace northlight;
 
 namespace
 {

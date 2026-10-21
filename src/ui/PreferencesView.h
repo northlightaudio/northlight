@@ -12,7 +12,7 @@
 #include <string>
 #include <vector>
 
-namespace aural::ui
+namespace northlight::ui
 {
 
 // Preferences (08-setup.md 8.2): a 160 px page list on the left and the page's
@@ -101,4 +101,4 @@ private:
     bool updating_ = false;
 };
 
-} // namespace aural::ui
+} // namespace northlight::ui

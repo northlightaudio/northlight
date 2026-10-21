@@ -5,7 +5,7 @@
 #include <cmath>
 #include <limits>
 
-namespace aural::engine::pitch
+namespace northlight::engine::pitch
 {
 
 namespace
@@ -229,4 +229,4 @@ chordTonesUnder(const core::Project& project, core::Id trackId, const core::Audi
     return out;
 }
 
-} // namespace aural::engine::pitch
+} // namespace northlight::engine::pitch

@@ -30,8 +30,8 @@ vibrato and the singer's own slides between notes.
 | Part | Where | Why |
 |---|---|---|
 | Audio clip editor | `src/ui/AudioEditor.*`; opened by double-clicking an audio clip; registered with `PanelManager` like `PianoRoll` | Same shape as the piano roll: one clip, edits out through `onEdit` as commands |
-| Analysis cache | `src/audio/PitchStore.*`: a background thread and a sidecar `<media>.aural-pitch` | Same pattern as `PeakStore`: derived data that can be rebuilt, kept out of the project file |
-| Analysis algorithms | `src/engine/pitch/` (no JUCE) | Tested in `aural_unit_tests` |
+| Analysis cache | `src/audio/PitchStore.*`: a background thread and a sidecar `<media>.northlight-pitch` | Same pattern as `PeakStore`: derived data that can be rebuilt, kept out of the project file |
+| Analysis algorithms | `src/engine/pitch/` (no JUCE) | Tested in `northlight_unit_tests` |
 | Edits | `core::VocalEdit` on `AudioClip`: notes (source sample ranges, original centre) with each note's parameters; breath segments with their gain | Splitting and merging notes, and every parameter, go through the undo stack, so they belong in the model. Bumps the project file version |
 | Playback | `PitchEditedSource : AudioSource`: reads rendered phrases where they exist and the original audio elsewhere | The renderer and the snapshot compiler do not change; `MediaCache` keys the source as `path#vocal:<editHash>` |
 | Re-rendering | A controller-side render thread (not the real-time `WorkerPool`) that publishes an immutable phrase table atomically, like `SnapshotPublisher` | Dragging a note re-renders about one phrase in milliseconds; nothing allocates on the audio thread |
@@ -196,7 +196,7 @@ formant shifts, exporting the melody as MIDI, harmony generation.
 - The analysis cache and render service are one engine class,
   `engine::VocalService` (src/engine/pitch/VocalService.h), instead of a JUCE
   `PitchStore` in src/audio: the bounce needs the same analysis and renders
-  without JUCE. It caches analyses beside the media as `<file>.<rate>.aural-pitch`.
+  without JUCE. It caches analyses beside the media as `<file>.<rate>.northlight-pitch`.
 - Correct to key also considers each note's nearest semitone, with a penalty when
   it is outside the key. A chromatic note sung in tune stays chromatic, and a wrong
   key (detection from a short phrase can pick a relative key) cannot pull a note

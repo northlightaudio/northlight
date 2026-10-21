@@ -9,7 +9,7 @@
 #include "ui/strip/ModuleCard.h"
 #include "ui/strip/StripStyle.h"
 
-namespace aural::ui::strip
+namespace northlight::ui::strip
 {
 
 namespace ps = plugins::strip;
@@ -619,4 +619,4 @@ createCompressorCard(const Theme& theme, CardHost& host, core::Id channelId, con
     return std::make_unique<CompressorCard>(theme, host, channelId, insert);
 }
 
-} // namespace aural::ui::strip
+} // namespace northlight::ui::strip

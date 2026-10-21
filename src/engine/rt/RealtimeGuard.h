@@ -8,15 +8,15 @@
 // duration of that scope: it must not allocate, lock, block, log, or touch the
 // filesystem. See docs/rt-rules.md.
 //
-// When AURAL_RT_CHECKS is defined (Debug and RelWithDebInfo by default), the global
+// When NORTHLIGHT_RT_CHECKS is defined (Debug and RelWithDebInfo by default), the global
 // operator new/delete are hooked (RealtimeAllocationHook.cpp) and any allocation on a
 // real-time thread reports a violation. Code that takes a lock or does other
-// forbidden work should call AURAL_ASSERT_NOT_REALTIME() so the same reporting path
+// forbidden work should call NORTHLIGHT_ASSERT_NOT_REALTIME() so the same reporting path
 // catches it.
 //
-// In builds without AURAL_RT_CHECKS everything here compiles to nothing.
+// In builds without NORTHLIGHT_RT_CHECKS everything here compiles to nothing.
 
-namespace aural::rt
+namespace northlight::rt
 {
 
 enum class ViolationKind
@@ -76,10 +76,11 @@ namespace detail
 void assertNotRealtime(const char* what, const char* file, int line) noexcept;
 }
 
-} // namespace aural::rt
+} // namespace northlight::rt
 
-#if defined(AURAL_RT_CHECKS)
-#define AURAL_ASSERT_NOT_REALTIME(what) ::aural::rt::detail::assertNotRealtime((what), __FILE__, __LINE__)
+#if defined(NORTHLIGHT_RT_CHECKS)
+#define NORTHLIGHT_ASSERT_NOT_REALTIME(what)                                                                 \
+    ::northlight::rt::detail::assertNotRealtime((what), __FILE__, __LINE__)
 #else
-#define AURAL_ASSERT_NOT_REALTIME(what) ((void)0)
+#define NORTHLIGHT_ASSERT_NOT_REALTIME(what) ((void)0)
 #endif

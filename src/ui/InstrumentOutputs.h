@@ -8,7 +8,7 @@
 // instrument track itself; every further stereo pair can feed an output track
 // (an aux track) with its own inserts, strip, sends and fader.
 
-namespace aural::ui
+namespace northlight::ui
 {
 
 // The output track reading output pair `output` (1 = the first beyond the
@@ -43,4 +43,4 @@ inline core::Track makeOutputTrack(const core::Track& source, int output, const 
     return aux;
 }
 
-} // namespace aural::ui
+} // namespace northlight::ui

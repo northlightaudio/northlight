@@ -6,7 +6,7 @@
 #include <cstdio>
 #include <utility>
 
-namespace aural::audio
+namespace northlight::audio
 {
 
 namespace
@@ -31,7 +31,7 @@ LatencyCalibrator::~LatencyCalibrator()
 
 bool LatencyCalibrator::start(int inputChannel, int outputChannel, float level, OnFinished onFinished)
 {
-    AURAL_ASSERT_NOT_REALTIME("LatencyCalibrator::start");
+    NORTHLIGHT_ASSERT_NOT_REALTIME("LatencyCalibrator::start");
     JUCE_ASSERT_MESSAGE_THREAD;
 
     if (running_ || !callback_.isDeviceRunning())
@@ -186,4 +186,4 @@ void LatencyCalibrator::finish(Result result)
         handler(result);
 }
 
-} // namespace aural::audio
+} // namespace northlight::audio

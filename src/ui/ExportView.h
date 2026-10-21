@@ -8,7 +8,7 @@
 
 #include <vector>
 
-namespace aural::ui
+namespace northlight::ui
 {
 
 // The body of the export sheet: what to render (the mix, every track's stem or
@@ -56,4 +56,4 @@ private:
     std::vector<engine::ExportDepth> depths_; // what depth_'s items are
 };
 
-} // namespace aural::ui
+} // namespace northlight::ui

@@ -5,7 +5,7 @@
 #include <algorithm>
 #include <utility>
 
-namespace aural::plugins::strip
+namespace northlight::plugins::strip
 {
 
 namespace
@@ -290,4 +290,4 @@ const Preset* findFactoryPreset(const std::string& name)
     return nullptr;
 }
 
-} // namespace aural::plugins::strip
+} // namespace northlight::plugins::strip

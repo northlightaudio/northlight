@@ -10,7 +10,7 @@
 // read; RMS is the last span's value. Slots are assigned by the snapshot compiler in
 // project order: tracks first, then buses, then the master.
 
-namespace aural::rt
+namespace northlight::rt
 {
 
 class MeterBlock
@@ -97,4 +97,4 @@ private:
     std::array<Slot, maxSlots> slots_{};
 };
 
-} // namespace aural::rt
+} // namespace northlight::rt

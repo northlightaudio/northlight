@@ -9,7 +9,7 @@
 #include <memory>
 #include <thread>
 
-using namespace aural::rt;
+using namespace northlight::rt;
 
 TEST_CASE("SPSC queue holds capacity items and preserves order", "[rt][queue]")
 {
@@ -122,7 +122,7 @@ TEST_CASE("Snapshot publisher retires old snapshots only after the real-time sid
     CHECK(Snap::alive == 0); // destructor frees the current one
 }
 
-#if defined(AURAL_RT_CHECKS)
+#if defined(NORTHLIGHT_RT_CHECKS)
 namespace
 {
 std::atomic<int> rtViolations{0};

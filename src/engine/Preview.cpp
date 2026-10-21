@@ -4,12 +4,12 @@
 
 #include <algorithm>
 
-namespace aural::engine
+namespace northlight::engine
 {
 
 void PreviewPlayer::prepare(double sampleRate, int maxBlockSize)
 {
-    AURAL_ASSERT_NOT_REALTIME("PreviewPlayer::prepare");
+    NORTHLIGHT_ASSERT_NOT_REALTIME("PreviewPlayer::prepare");
     const auto size = static_cast<size_t>(std::max(1, maxBlockSize));
     left_.assign(size, 0.0f);
     right_.assign(size, 0.0f);
@@ -27,7 +27,7 @@ void PreviewPlayer::publish(std::shared_ptr<AudioSource> source)
 
 void PreviewPlayer::play(std::shared_ptr<AudioSource> source)
 {
-    AURAL_ASSERT_NOT_REALTIME("PreviewPlayer::play");
+    NORTHLIGHT_ASSERT_NOT_REALTIME("PreviewPlayer::play");
     pending_ = std::move(source);
     hasPending_ = true;
     if (currentId_ != 0)
@@ -36,7 +36,7 @@ void PreviewPlayer::play(std::shared_ptr<AudioSource> source)
 
 void PreviewPlayer::stop()
 {
-    AURAL_ASSERT_NOT_REALTIME("PreviewPlayer::stop");
+    NORTHLIGHT_ASSERT_NOT_REALTIME("PreviewPlayer::stop");
     pending_.reset();
     hasPending_ = false;
     if (currentId_ != 0)
@@ -45,7 +45,7 @@ void PreviewPlayer::stop()
 
 void PreviewPlayer::pump(bool realtimeRunning)
 {
-    AURAL_ASSERT_NOT_REALTIME("PreviewPlayer::pump");
+    NORTHLIGHT_ASSERT_NOT_REALTIME("PreviewPlayer::pump");
     const bool currentDone =
         currentId_ == 0 || !realtimeRunning || doneId_.load(std::memory_order_acquire) == currentId_;
     if (hasPending_ && currentDone)
@@ -109,4 +109,4 @@ void PreviewPlayer::process(float* const* outputs, int numOutputs, int numSample
         doneId_.store(rtId_, std::memory_order_release);
 }
 
-} // namespace aural::engine
+} // namespace northlight::engine

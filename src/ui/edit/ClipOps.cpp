@@ -2,7 +2,7 @@
 
 #include <algorithm>
 
-namespace aural::ui::edit
+namespace northlight::ui::edit
 {
 
 std::optional<Span> spanOf(const core::Project& project, const ClipRef& ref)
@@ -246,4 +246,4 @@ Edit pasteClips(const core::Project& project,
     return edit;
 }
 
-} // namespace aural::ui::edit
+} // namespace northlight::ui::edit

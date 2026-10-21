@@ -6,7 +6,7 @@
 
 #include <functional>
 
-namespace aural::ui
+namespace northlight::ui
 {
 
 // The icon set of docs/design/02-design-system.md section 2.5: vector paths on a
@@ -69,7 +69,7 @@ enum class Icon
     midiPort,
     detach,
     attach,
-    mark, // the Aural mark: a circle with one waveform stroke
+    mark, // the Northlight mark: a circle with one waveform stroke
     pianoRoll,
     diagnostics,
     menu,
@@ -150,4 +150,4 @@ private:
     bool chevron_ = false, solidOn_ = false, warningDot_ = false;
 };
 
-} // namespace aural::ui
+} // namespace northlight::ui

@@ -6,7 +6,7 @@
 #include <cmath>
 #include <numbers>
 
-namespace aural::engine
+namespace northlight::engine
 {
 
 namespace
@@ -88,7 +88,7 @@ void writePostFaderKey(const ChannelNode& node, int numSamples) noexcept
 
 void Renderer::prepare(int maxBlockSize)
 {
-    AURAL_ASSERT_NOT_REALTIME("Renderer::prepare");
+    NORTHLIGHT_ASSERT_NOT_REALTIME("Renderer::prepare");
     maxBlockSize_ = std::clamp(maxBlockSize, 1, Snapshot::maxBlockSamples);
     const auto n = static_cast<size_t>(maxBlockSize_);
     mixLeft_.assign(n, 0.0f);
@@ -1001,4 +1001,4 @@ void Renderer::renderSpan(const Snapshot& snapshot,
         context.loudness->processBlock(left, right, numSamples);
 }
 
-} // namespace aural::engine
+} // namespace northlight::engine

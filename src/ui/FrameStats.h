@@ -8,7 +8,7 @@
 #include <cstddef>
 #include <vector>
 
-namespace aural::ui
+namespace northlight::ui
 {
 
 // Paint-time statistics for the heavy views (11-accessibility-performance.md
@@ -74,4 +74,4 @@ private:
     std::size_t next_ = 0;
 };
 
-} // namespace aural::ui
+} // namespace northlight::ui

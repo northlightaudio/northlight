@@ -19,7 +19,7 @@
 #include <string>
 #include <vector>
 
-namespace aural::ui
+namespace northlight::ui
 {
 
 // The Editor panel (07-plugins.md 7.1): the selected channel's insert chain as a
@@ -128,4 +128,4 @@ private:
     int ticks_ = 0;
 };
 
-} // namespace aural::ui
+} // namespace northlight::ui

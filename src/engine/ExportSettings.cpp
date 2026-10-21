@@ -5,7 +5,7 @@
 #include <cmath>
 #include <cstdio>
 
-namespace aural::engine
+namespace northlight::engine
 {
 
 namespace
@@ -262,4 +262,4 @@ const std::vector<double>& peakCeilings()
     return ceilings;
 }
 
-} // namespace aural::engine
+} // namespace northlight::engine

@@ -1,6 +1,6 @@
 # Real-time utilities. Header-mostly; no JUCE dependency so it can be unit tested
 # quickly and reused by the scanner process later.
-add_library(aural_rt STATIC
+add_library(northlight_rt STATIC
     rt/RealtimeGuard.h
     rt/RealtimeGuard.cpp
     rt/SpscQueue.h
@@ -9,19 +9,19 @@ add_library(aural_rt STATIC
     rt/Denormals.h
     Meters.h)
 
-target_include_directories(aural_rt PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/..")
-target_link_libraries(aural_rt PUBLIC aural_options)
+target_include_directories(northlight_rt PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/..")
+target_link_libraries(northlight_rt PUBLIC northlight_options)
 
 # The global operator new/delete override must live in the final executable's link,
 # not in a static library (where the linker could discard it). An OBJECT library's
 # object files are linked directly into whatever links it.
-add_library(aural_rt_checks OBJECT
+add_library(northlight_rt_checks OBJECT
     rt/RealtimeAllocationHook.cpp)
-target_link_libraries(aural_rt_checks PUBLIC aural_rt)
+target_link_libraries(northlight_rt_checks PUBLIC northlight_rt)
 
 # The engine: snapshot compiler, transport, renderer and the controller/RT façade.
 # JUCE-free so it runs offline in tests.
-add_library(aural_engine STATIC
+add_library(northlight_engine STATIC
     AudioSource.h
     AudioSource.cpp
     Snapshot.h
@@ -74,4 +74,4 @@ add_library(aural_engine STATIC
     pitch/VocalOps.h
     pitch/VocalOps.cpp)
 
-target_link_libraries(aural_engine PUBLIC aural_rt aural_core PRIVATE signalsmith-stretch)
+target_link_libraries(northlight_engine PUBLIC northlight_rt northlight_core PRIVATE signalsmith-stretch)

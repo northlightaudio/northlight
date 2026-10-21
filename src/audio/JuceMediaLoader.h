@@ -12,7 +12,7 @@
 // available). Short files are decoded into memory (resampled on load); longer ones
 // become StreamingAudioSources fed by the disk thread (resampled as they stream).
 
-namespace aural::audio
+namespace northlight::audio
 {
 
 class JuceMediaLoader final : public engine::MediaLoader
@@ -47,4 +47,4 @@ private:
     juce::AudioFormatManager formats_;
 };
 
-} // namespace aural::audio
+} // namespace northlight::audio

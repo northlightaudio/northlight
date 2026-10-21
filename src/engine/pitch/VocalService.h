@@ -20,7 +20,7 @@
 // Vocal pitch editing for the engine (docs/design/13-pitch-editing.md, "How it fits").
 //
 // The VocalService owns, per media file, its samples and its pitch analysis (made
-// on a background thread, cached beside the media as "<file>.<rate>.aural-pitch"),
+// on a background thread, cached beside the media as "<file>.<rate>.northlight-pitch"),
 // and the rendered spans of every vocal edit. The snapshot compiler asks it for a
 // clip's source (MediaCache's clip hook): a clip whose edit changes the sound gets a
 // PitchEditedSource that plays the rendered spans over its ordinary source. Spans
@@ -31,7 +31,7 @@
 // Controller-thread API (the message thread, or a bounce's own thread when
 // synchronous): everything except onChanged, which is called from the worker.
 
-namespace aural::engine
+namespace northlight::engine
 {
 
 // A clip's ordinary source with rendered spans laid over it. Real-time safe.
@@ -144,4 +144,4 @@ private:
     std::thread worker_;
 };
 
-} // namespace aural::engine
+} // namespace northlight::engine

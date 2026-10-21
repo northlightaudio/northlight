@@ -1,9 +1,9 @@
 #include "ui/components/Sheet.h"
 
-#include "ui/AuralLookAndFeel.h"
 #include "ui/Motion.h"
+#include "ui/NorthlightLookAndFeel.h"
 
-namespace aural::ui
+namespace northlight::ui
 {
 
 Sheet::Sheet(const Theme& theme,
@@ -18,9 +18,9 @@ Sheet::Sheet(const Theme& theme,
     {
         auto button = std::make_unique<juce::TextButton>(buttons_[i].label);
         if (buttons_[i].destructive)
-            button->getProperties().set(AuralLookAndFeel::propertyVariant, "danger");
+            button->getProperties().set(NorthlightLookAndFeel::propertyVariant, "danger");
         else if (buttons_[i].primary)
-            button->getProperties().set(AuralLookAndFeel::propertyVariant, "primary");
+            button->getProperties().set(NorthlightLookAndFeel::propertyVariant, "primary");
         const int index = static_cast<int>(i);
         button->onClick = [this, index] { finish(index); };
         addAndMakeVisible(*button);
@@ -195,4 +195,4 @@ void Sheet::mouseDown(const juce::MouseEvent& e)
         finish(-1);
 }
 
-} // namespace aural::ui
+} // namespace northlight::ui

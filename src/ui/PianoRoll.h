@@ -15,7 +15,7 @@
 #include <string>
 #include <vector>
 
-namespace aural::ui
+namespace northlight::ui
 {
 
 // The piano roll (09-piano-roll.md): a toolbar (tool, snap, quantise, link zoom,
@@ -277,4 +277,4 @@ private:
     int ctlValueDelta_ = 0;
 };
 
-} // namespace aural::ui
+} // namespace northlight::ui

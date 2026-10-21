@@ -3,8 +3,8 @@
 #include "core/Model.h"
 #include "plugins/ChannelStrip.h"
 #include "ui/ArrangeView.h"
-#include "ui/AuralLookAndFeel.h"
 #include "ui/Motion.h"
+#include "ui/NorthlightLookAndFeel.h"
 #include "ui/Theme.h"
 #include "ui/TrackHeader.h"
 #include "ui/components/Sheet.h"
@@ -15,7 +15,7 @@
 #include <catch2/catch_approx.hpp>
 #include <catch2/catch_test_macros.hpp>
 
-using namespace aural;
+using namespace northlight;
 using Catch::Approx;
 
 TEST_CASE("The easing decelerates from 0 to 1", "[ui][motion]")
@@ -36,7 +36,7 @@ TEST_CASE("A menu window fades in and slides 2 px into place, unless motion is r
 {
     const juce::ScopedJuceInitialiser_GUI juceInit;
     auto theme = ui::Theme::dark();
-    ui::AuralLookAndFeel lookAndFeel(theme);
+    ui::NorthlightLookAndFeel lookAndFeel(theme);
     juce::Component window;
     window.setBounds(100, 200, 160, 120);
     lookAndFeel.preparePopupMenuWindow(window);
@@ -47,7 +47,7 @@ TEST_CASE("A menu window fades in and slides 2 px into place, unless motion is r
     CHECK(window.getPosition() == juce::Point<int>(100, 200));
 
     theme.motion.reduceMotion = true;
-    ui::AuralLookAndFeel still(theme);
+    ui::NorthlightLookAndFeel still(theme);
     juce::Component other;
     other.setBounds(10, 20, 50, 50);
     still.preparePopupMenuWindow(other);
@@ -179,7 +179,7 @@ TEST_CASE("A new insert's card fades in; switching channels does not animate", "
 
     core::Insert gain;
     gain.id = 5;
-    gain.type = "aural.gain";
+    gain.type = "northlight.gain";
     gain.params = {0.0f};
     p.tracks[0].inserts.push_back(gain);
     panel.setProject(&p);
@@ -225,7 +225,7 @@ TEST_CASE("A tooltip's box fits its text as drawn, without wrapping it again", "
 {
     const juce::ScopedJuceInitialiser_GUI juceInit;
     const auto& theme = ui::Theme::dark();
-    ui::AuralLookAndFeel lookAndFeel(theme);
+    ui::NorthlightLookAndFeel lookAndFeel(theme);
     const juce::Rectangle<int> screen(0, 0, 1920, 1080);
     for (const juce::String text : {"UADx Topline Vocal Tune",
                                     "UADx Pultec EQP-1A",
@@ -350,7 +350,7 @@ TEST_CASE("A click with the pencil makes a bar-long clip; double-click on empty 
 
 TEST_CASE("A tooltip's shortcut is told apart from its text", "[ui][tooltip]")
 {
-    using Laf = ui::AuralLookAndFeel;
+    using Laf = ui::NorthlightLookAndFeel;
     auto parts = Laf::splitShortcut("Redo  Ctrl+Shift+Z");
     CHECK(parts.text == "Redo");
     CHECK(parts.keys == juce::StringArray{"Ctrl", "Shift", "Z"});
@@ -362,7 +362,7 @@ TEST_CASE("A tooltip's shortcut is told apart from its text", "[ui][tooltip]")
     CHECK(Laf::splitShortcut("Volume").keys.isEmpty());
     CHECK(Laf::splitShortcut("Pad  Shift").keys.isEmpty());
     CHECK(Laf::splitShortcut("Notes  pitched").keys.isEmpty());
-    CHECK(Laf::splitShortcut(juce::String::fromUTF8("CHIP SYNTH  \xc2\xb7  AURAL")).keys.isEmpty());
+    CHECK(Laf::splitShortcut(juce::String::fromUTF8("CHIP SYNTH  \xc2\xb7  NORTHLIGHT")).keys.isEmpty());
     CHECK(Laf::splitShortcut("Two words  Ctrl+Click here").keys.isEmpty());
 }
 
@@ -370,7 +370,7 @@ TEST_CASE("A tooltip with a shortcut is wide enough for its text and key caps", 
 {
     const juce::ScopedJuceInitialiser_GUI juceInit;
     const auto& theme = ui::Theme::dark();
-    ui::AuralLookAndFeel lookAndFeel(theme);
+    ui::NorthlightLookAndFeel lookAndFeel(theme);
     const auto plain = lookAndFeel.getTooltipBounds("Redo", {200, 200}, {0, 0, 1920, 1080});
     const auto withKeys = lookAndFeel.getTooltipBounds("Redo  Ctrl+Shift+Z", {200, 200}, {0, 0, 1920, 1080});
     CHECK(withKeys.getWidth() > plain.getWidth() + 3 * 16); // three caps beside the word
@@ -382,7 +382,7 @@ TEST_CASE("render sample tooltips", "[.render]")
 {
     const juce::ScopedJuceInitialiser_GUI juceInit;
     const auto& theme = ui::Theme::dark();
-    ui::AuralLookAndFeel lookAndFeel(theme);
+    ui::NorthlightLookAndFeel lookAndFeel(theme);
     juce::Image image(juce::Image::ARGB, 460, 260, true);
     {
         juce::Graphics g(image); // drawn into the image when it goes
@@ -402,7 +402,7 @@ TEST_CASE("render sample tooltips", "[.render]")
         }
     }
     const auto out =
-        juce::File::getSpecialLocation(juce::File::tempDirectory).getChildFile("aural-tooltips.png");
+        juce::File::getSpecialLocation(juce::File::tempDirectory).getChildFile("northlight-tooltips.png");
     out.deleteFile();
     juce::FileOutputStream stream(out);
     juce::PNGImageFormat().writeImageToStream(image, stream);

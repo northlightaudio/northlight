@@ -9,11 +9,11 @@
 // bound to the parameters) embedded as the body of the insert's card in the
 // Editor panel.
 
-namespace aural::ui::strip
+namespace northlight::ui::strip
 {
 
 // The editor for a built-in type, or null for a type without one.
 std::unique_ptr<ModuleCard>
 createBuiltInCard(const Theme& theme, CardHost& host, core::Id channelId, const core::Insert& insert);
 
-} // namespace aural::ui::strip
+} // namespace northlight::ui::strip

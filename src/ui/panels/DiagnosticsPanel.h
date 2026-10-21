@@ -8,7 +8,7 @@
 #include <functional>
 #include <vector>
 
-namespace aural::ui
+namespace northlight::ui
 {
 
 // The Diagnostics panel (06-transport.md): engine health for the user who wants
@@ -54,4 +54,4 @@ private:
     static constexpr size_t history = 60;
 };
 
-} // namespace aural::ui
+} // namespace northlight::ui

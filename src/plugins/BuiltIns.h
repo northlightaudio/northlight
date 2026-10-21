@@ -12,17 +12,17 @@
 // compressor, a limiter, a reverb and a delay; the instruments (Aurora, Pulsar,
 // Nebula, Starbit, Sampler) are in their own files. JUCE-free, real-time safe after prepare().
 
-namespace aural::plugins
+namespace northlight::plugins
 {
 
 namespace types
 {
-inline const std::string gain = "aural.gain";
-inline const std::string eq = "aural.eq";
-inline const std::string compressor = "aural.compressor";
-inline const std::string limiter = "aural.limiter";
-inline const std::string reverb = "aural.reverb";
-inline const std::string delay = "aural.delay";
+inline const std::string gain = "northlight.gain";
+inline const std::string eq = "northlight.eq";
+inline const std::string compressor = "northlight.compressor";
+inline const std::string limiter = "northlight.limiter";
+inline const std::string reverb = "northlight.reverb";
+inline const std::string delay = "northlight.delay";
 } // namespace types
 
 class BuiltInFactory final : public engine::InsertFactory
@@ -91,4 +91,4 @@ public:
 // (empty for an unknown type). Not real-time safe.
 const std::vector<engine::ParameterInfo>& parameterInfo(const std::string& typeName);
 
-} // namespace aural::plugins
+} // namespace northlight::plugins

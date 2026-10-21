@@ -7,7 +7,7 @@
 #include <string>
 #include <vector>
 
-// Starbit: the chiptune synth bundled with Aural (07-plugins.md 7.4e), after the
+// Starbit: the chiptune synth bundled with Northlight (07-plugins.md 7.4e), after the
 // sound chips of 8-bit consoles. A pulse with the classic duty cycles (and a
 // duty sweep), a 4-bit stepped triangle and saw, LFSR noise (long or short,
 // metallic) and a 32-step 4-bit wave you draw; a volume envelope in 16 steps;
@@ -16,10 +16,10 @@
 // end: bit depth, sample rate and a chip echo. JUCE-free; real-time safe after
 // prepare().
 
-namespace aural::plugins::starbit
+namespace northlight::plugins::starbit
 {
 
-inline const std::string type = "aural.starbit";
+inline const std::string type = "northlight.starbit";
 
 enum Wave
 {
@@ -94,4 +94,4 @@ std::vector<int> arpSteps(int shape);
 // noise draws as a fixed run of its bits).
 std::array<int, waveSteps> waveShape(const float* params);
 
-} // namespace aural::plugins::starbit
+} // namespace northlight::plugins::starbit

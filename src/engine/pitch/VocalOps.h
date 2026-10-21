@@ -8,7 +8,7 @@
 // Edits on a VocalEdit that the audio editor's tools make. Plain functions on the
 // model's values; the editor wraps the result in a SetVocalEdit command.
 
-namespace aural::engine::pitch
+namespace northlight::engine::pitch
 {
 
 // The pitch the ear hears over [start, end): the loudness-weighted mean of the
@@ -32,4 +32,4 @@ void resetPitch(core::VocalEdit& edit, const std::vector<core::Id>& notes);
 // Each note's target on the nearest semitone (100% correction, drift as it is).
 void snapToSemitones(core::VocalEdit& edit, const std::vector<core::Id>& notes);
 
-} // namespace aural::engine::pitch
+} // namespace northlight::engine::pitch

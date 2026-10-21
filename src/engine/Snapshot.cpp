@@ -8,12 +8,12 @@
 #include <map>
 #include <optional>
 
-namespace aural::engine
+namespace northlight::engine
 {
 
 std::shared_ptr<const AudioSource> MediaCache::get(const std::string& path, double sampleRate)
 {
-    AURAL_ASSERT_NOT_REALTIME("MediaCache::get");
+    NORTHLIGHT_ASSERT_NOT_REALTIME("MediaCache::get");
     if (const auto it = sources_.find(path); it != sources_.end())
     {
         if (it->second->sampleRate() == sampleRate)
@@ -177,7 +177,7 @@ std::unique_ptr<Snapshot> compileSnapshot(const core::Project& project,
                                           RuntimeCache* runtimes,
                                           const std::function<int(const std::string&)>& midiSources)
 {
-    AURAL_ASSERT_NOT_REALTIME("compileSnapshot");
+    NORTHLIGHT_ASSERT_NOT_REALTIME("compileSnapshot");
     auto snapshot = std::make_unique<Snapshot>();
     snapshot->sampleRate = project.sampleRate;
     snapshot->tempoBpm = project.tempoBpm;
@@ -775,4 +775,4 @@ std::unique_ptr<Snapshot> compileSnapshot(const core::Project& project,
     return snapshot;
 }
 
-} // namespace aural::engine
+} // namespace northlight::engine

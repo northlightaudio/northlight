@@ -9,7 +9,7 @@
 #include <memory>
 #include <vector>
 
-using namespace aural;
+using namespace northlight;
 
 namespace
 {
@@ -28,7 +28,7 @@ struct Fixture
     Fixture()
     {
         folder = juce::File::getSpecialLocation(juce::File::tempDirectory)
-                     .getChildFile("aural-template-tests")
+                     .getChildFile("northlight-template-tests")
                      .getChildFile(juce::Uuid().toString());
         REQUIRE(folder.createDirectory().wasOk());
         session = std::make_unique<ProjectSession>(audio);
@@ -104,7 +104,7 @@ TEST_CASE("Media outside the project folder is gathered in, undoably, and unused
           "[session][media]")
 {
     Fixture f;
-    const auto project = f.folder.getChildFile("Song.aural");
+    const auto project = f.folder.getChildFile("Song.northlight");
     REQUIRE(f.session->save(project).empty());
     const auto media = f.session->mediaFolder();
     const auto inside = f.wav(media.getChildFile("vox.wav"));

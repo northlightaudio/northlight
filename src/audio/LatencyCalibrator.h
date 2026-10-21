@@ -19,7 +19,7 @@
 // whole run (a loopback cable would otherwise feed the output back into the input)
 // and restored afterwards.
 
-namespace aural::audio
+namespace northlight::audio
 {
 
 class LatencyCalibrator final : private juce::Timer
@@ -85,4 +85,4 @@ private:
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(LatencyCalibrator)
 };
 
-} // namespace aural::audio
+} // namespace northlight::audio

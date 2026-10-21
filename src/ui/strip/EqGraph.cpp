@@ -4,7 +4,7 @@
 
 #include <cmath>
 
-namespace aural::ui::strip
+namespace northlight::ui::strip
 {
 
 namespace eq = plugins::strip::eq;
@@ -636,4 +636,4 @@ void EqGraph::showBandMenu(int band)
                        });
 }
 
-} // namespace aural::ui::strip
+} // namespace northlight::ui::strip

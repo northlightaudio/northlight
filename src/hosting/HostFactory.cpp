@@ -4,7 +4,7 @@
 #include "hosting/ClapPlugin.h"
 #include "hosting/HostedPlugin.h"
 
-namespace aural::hosting
+namespace northlight::hosting
 {
 
 HostFactory::HostFactory(const PluginRegistry& registry) : registry_(registry)
@@ -28,7 +28,7 @@ std::string HostFactory::displayName(const std::string& typeName) const
 
 std::unique_ptr<engine::InsertProcessor> HostFactory::create(const std::string& typeName) const
 {
-    AURAL_ASSERT_NOT_REALTIME("HostFactory::create");
+    NORTHLIGHT_ASSERT_NOT_REALTIME("HostFactory::create");
     lastError_.clear();
     if (!PluginRegistry::isHostedType(typeName))
         return builtIns_.create(typeName);
@@ -81,4 +81,4 @@ std::unique_ptr<engine::InsertProcessor> HostFactory::create(const std::string& 
     return std::make_unique<HostedPlugin>(typeName, std::move(instance), layout, sidechain, auxOutputs);
 }
 
-} // namespace aural::hosting
+} // namespace northlight::hosting

@@ -4,13 +4,13 @@
 #include <catch2/catch_approx.hpp>
 #include <catch2/catch_test_macros.hpp>
 
-using namespace aural;
+using namespace northlight;
 using Catch::Approx;
 
 TEST_CASE("The embedded tokens load with the design system's values", "[ui][theme]")
 {
     const auto theme = ui::Theme::defaults();
-    CHECK(theme.name == "Aural Dark");
+    CHECK(theme.name == "Northlight Dark");
     CHECK(theme.colours.canvas == juce::Colour(0xff0f0f10));
     CHECK(theme.colours.accent == juce::Colour(0xff7aa2ff));
     CHECK(theme.colours.lineSubtle.getAlpha() == 0x0f); // #FFFFFF0F

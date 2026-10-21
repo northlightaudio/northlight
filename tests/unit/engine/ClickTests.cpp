@@ -18,10 +18,10 @@
 
 namespace
 {
-const aural::plugins::BuiltInFactory builtIns;
+const northlight::plugins::BuiltInFactory builtIns;
 } // namespace
 
-using namespace aural;
+using namespace northlight;
 using Catch::Approx;
 
 namespace
@@ -38,7 +38,7 @@ public:
 
 std::string tempPath(const char* name)
 {
-    const auto dir = std::filesystem::temp_directory_path() / "aural-tests";
+    const auto dir = std::filesystem::temp_directory_path() / "northlight-tests";
     std::filesystem::create_directories(dir);
     const auto path = (dir / name).string();
     std::remove(path.c_str());

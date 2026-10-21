@@ -4,7 +4,7 @@
 
 #include <map>
 
-using namespace aural::core;
+using namespace northlight::core;
 
 namespace
 {
@@ -67,7 +67,7 @@ Project sampleProject()
     p.markers.push_back(Marker{10, "Drop", 88200, 0});
     p.buses[0].inserts.push_back(Insert{8, "vst3:VST3-abc", false, {}, "AAECAw==", 0.4f, 1});
     // The bass compressor keys from the drums after their fader.
-    p.tracks[1].inserts.push_back(Insert{15, "aural.compressor", false, {}, "", 1.0f, 1, true});
+    p.tracks[1].inserts.push_back(Insert{15, "northlight.compressor", false, {}, "", 1.0f, 1, true});
     p.nextId = 16;
     p.tracks[0].group = 7;
     p.buses[0].group = 7;
@@ -102,16 +102,16 @@ TEST_CASE("Invalid text, wrong format and future versions are rejected with a re
     CHECK(error == "not valid JSON");
 
     CHECK_FALSE(projectFromJson(R"({"format":"something.else","version":1})", &error).has_value());
-    CHECK(error == "not an Aural project file");
+    CHECK(error == "not a Northlight project file");
 
-    CHECK_FALSE(projectFromJson(R"({"format":"aural.project","version":99})", &error).has_value());
-    CHECK(error == "made by a newer version of Aural (project version 99)");
+    CHECK_FALSE(projectFromJson(R"({"format":"northlight.project","version":99})", &error).has_value());
+    CHECK(error == "made by a newer version of Northlight (project version 99)");
 }
 
 TEST_CASE("Missing optional fields take defaults and nextId is repaired", "[core][json]")
 {
     const auto p = projectFromJson(R"({
-        "format": "aural.project",
+        "format": "northlight.project",
         "version": 2,
         "tracks": [ { "id": 10, "clips": [ { "id": 42, "media": "x.wav", "length": 5 } ] } ]
     })");
@@ -131,7 +131,7 @@ TEST_CASE("Missing optional fields take defaults and nextId is repaired", "[core
 TEST_CASE("Wrongly typed fields are reported rather than crashing", "[core][json]")
 {
     std::string error;
-    const auto p = projectFromJson(R"({"format":"aural.project","version":2,"tempo":"fast"})", &error);
+    const auto p = projectFromJson(R"({"format":"northlight.project","version":2,"tempo":"fast"})", &error);
     CHECK_FALSE(p.has_value());
     CHECK(error.starts_with("malformed project"));
 }
@@ -173,7 +173,7 @@ TEST_CASE("A track's instrument round-trips through JSON", "[core][json][instrum
     t.id = p.allocateId();
     t.kind = TrackKind::instrument;
     t.instrument.id = p.allocateId();
-    t.instrument.type = "aural.aurora";
+    t.instrument.type = "northlight.aurora";
     t.instrument.params = {0.25f, 3.0f};
     t.instrument.state = "abc";
     p.tracks.push_back(t);
@@ -204,8 +204,8 @@ TEST_CASE("MIDI tracks keep their target and channel; older project versions are
     CHECK(loaded->tracks[1].isInstrument());
 
     std::string error;
-    CHECK_FALSE(projectFromJson(R"({"format":"aural.project","version":1})", &error).has_value());
-    CHECK(error.find("older version of Aural") != std::string::npos);
+    CHECK_FALSE(projectFromJson(R"({"format":"northlight.project","version":1})", &error).has_value());
+    CHECK(error.find("older version of Northlight") != std::string::npos);
 }
 
 namespace
@@ -317,17 +317,17 @@ TEST_CASE("A post-fader key is saved only with its source; older files load pre-
     CHECK(text.find("\"sidechainPostFader\"") != std::string::npos);
     std::string error;
     // A version 4 file has no tap: its keys are pre-fader.
-    const auto old = projectFromJson(R"({"format":"aural.project","version":4,"tracks":[
+    const auto old = projectFromJson(R"({"format":"northlight.project","version":4,"tracks":[
         {"id":1,"name":"Kick"},
-        {"id":2,"name":"Bass","inserts":[{"id":3,"type":"aural.compressor","sidechain":1}]}],"nextId":4})",
+        {"id":2,"name":"Bass","inserts":[{"id":3,"type":"northlight.compressor","sidechain":1}]}],"nextId":4})",
                                      &error);
     REQUIRE(old.has_value());
     REQUIRE(old->tracks[1].inserts.size() == 1);
     CHECK(old->tracks[1].inserts[0].sidechain == 1);
     CHECK_FALSE(old->tracks[1].inserts[0].sidechainPostFader);
     // A tap without a source means nothing and does not survive a load.
-    const auto stray = projectFromJson(R"({"format":"aural.project","version":5,"tracks":[
-        {"id":2,"name":"Bass","inserts":[{"id":3,"type":"aural.compressor","sidechainPostFader":true}]}],"nextId":4})",
+    const auto stray = projectFromJson(R"({"format":"northlight.project","version":5,"tracks":[
+        {"id":2,"name":"Bass","inserts":[{"id":3,"type":"northlight.compressor","sidechainPostFader":true}]}],"nextId":4})",
                                        &error);
     REQUIRE(stray.has_value());
     CHECK_FALSE(stray->tracks[0].inserts[0].sidechainPostFader);
@@ -403,4 +403,23 @@ TEST_CASE("Unknown controller kinds and out-of-range values in a file are droppe
     CHECK(events[1].value == 8191);
     CHECK(events[0].id != invalidId);
     CHECK(events[0].id != events[1].id);
+}
+
+TEST_CASE("Project files from when Northlight was Aural still open", "[core][json]")
+{
+    // The old format name and built-in processor names.
+    const std::string text = R"({"format": "aural.project", "version": 5, "name": "Old",
+        "tracks": [{"id": 1, "name": "Vox", "inserts": [{"id": 2, "type": "aural.eq", "params": []}],
+                    "strip": {"modules": [{"id": 3, "type": "aural.strip.gate", "params": []}]}}],
+        "nextId": 4})";
+    std::string error;
+    const auto loaded = projectFromJson(text, &error);
+    INFO(error);
+    REQUIRE(loaded.has_value());
+    REQUIRE(loaded->tracks.size() == 1);
+    REQUIRE(loaded->tracks[0].inserts.size() == 1);
+    REQUIRE(loaded->tracks[0].strip.size() == 1);
+    CHECK(loaded->tracks[0].inserts[0].type == "northlight.eq");
+    CHECK(loaded->tracks[0].strip[0].type == "northlight.strip.gate");
+    CHECK(currentTypeName("clap:com.vendor.thing") == "clap:com.vendor.thing"); // others untouched
 }

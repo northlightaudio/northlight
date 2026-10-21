@@ -5,7 +5,7 @@
 
 #include <juce_gui_basics/juce_gui_basics.h>
 
-namespace aural::ui
+namespace northlight::ui
 {
 
 // The floating tooltip (02-design-system.md, "Tooltip"): after the tooltip
@@ -40,4 +40,4 @@ private:
     const Theme& theme_;
 };
 
-} // namespace aural::ui
+} // namespace northlight::ui

@@ -6,8 +6,8 @@
 
 #include <atomic>
 
-using aural::rt::CallbackStats;
 using Catch::Approx;
+using northlight::rt::CallbackStats;
 
 TEST_CASE("Callback stats report percentiles, max and overruns", "[rt][stats]")
 {
@@ -42,11 +42,11 @@ TEST_CASE("Loads beyond twice the deadline saturate rather than overflow", "[rt]
     CHECK(s.max == Approx(50.0));
 }
 
-#if defined(AURAL_RT_CHECKS)
+#if defined(NORTHLIGHT_RT_CHECKS)
 namespace
 {
 std::atomic<int> statsViolations{0};
-void countStatsViolation(const aural::rt::Violation&) noexcept
+void countStatsViolation(const northlight::rt::Violation&) noexcept
 {
     statsViolations.fetch_add(1, std::memory_order_relaxed);
 }
@@ -55,14 +55,14 @@ void countStatsViolation(const aural::rt::Violation&) noexcept
 TEST_CASE("Recording stats does not allocate on a real-time thread", "[rt][stats]")
 {
     CallbackStats stats;
-    const auto previous = aural::rt::setViolationHandler(&countStatsViolation);
+    const auto previous = northlight::rt::setViolationHandler(&countStatsViolation);
     statsViolations = 0;
     {
-        aural::rt::ScopedRealtimeSection section;
+        northlight::rt::ScopedRealtimeSection section;
         for (int i = 0; i < 1000; ++i)
             stats.record(static_cast<double>(i) / 500.0);
     }
-    aural::rt::setViolationHandler(previous);
+    northlight::rt::setViolationHandler(previous);
     CHECK(statsViolations == 0);
 }
 #endif

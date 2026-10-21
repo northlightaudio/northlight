@@ -11,7 +11,7 @@
 #include <functional>
 #include <memory>
 
-namespace aural::ui
+namespace northlight::ui
 {
 
 // A floating window for a hosted plugin's editor (VST3 or CLAP, or a generic one
@@ -69,4 +69,4 @@ private:
     Holder* holder_ = nullptr;
 };
 
-} // namespace aural::ui
+} // namespace northlight::ui

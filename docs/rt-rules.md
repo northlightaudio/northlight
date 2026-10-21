@@ -5,13 +5,13 @@ worker thread. They exist because a single missed deadline is an audible glitch,
 the worst offenders (page faults from allocation, priority inversion from locks) are
 unbounded in duration.
 
-The rules are enforced three ways: code review, `AURAL_ASSERT_NOT_REALTIME()` at the
+The rules are enforced three ways: code review, `NORTHLIGHT_ASSERT_NOT_REALTIME()` at the
 entry of every function that is known to be unsafe, and the debug-build allocation hook
 in `src/engine/rt/RealtimeAllocationHook.cpp`.
 
 ## What a real-time thread is
 
-A thread is real-time while it is inside an `aural::rt::ScopedRealtimeSection`. The
+A thread is real-time while it is inside an `northlight::rt::ScopedRealtimeSection`. The
 audio device callback enters one before calling into the engine; worker threads enter
 one for the lifetime of each job. Everything called from inside that scope, including
 plugin `process` calls, is subject to these rules.
@@ -46,7 +46,7 @@ plugin `process` calls, is subject to these rules.
   preallocated capacity. If a queue is full, drop and count the drop; never block.
 - Keep per-callback work bounded. Loops over tracks and nodes are fine; loops whose
   bound depends on user input (e.g. the number of pending UI commands) must be capped.
-- Use `AURAL_ASSERT_NOT_REALTIME("reason")` at the top of any helper that is unsafe,
+- Use `NORTHLIGHT_ASSERT_NOT_REALTIME("reason")` at the top of any helper that is unsafe,
   so an accidental call from RT code is caught in debug builds.
 
 ## Ownership and lifetime
@@ -75,7 +75,7 @@ Anything that does not fit one of these needs a design discussion first.
 
 ## Verifying
 
-- Debug and RelWithDebInfo builds define `AURAL_RT_CHECKS`. Any `operator new` or
+- Debug and RelWithDebInfo builds define `NORTHLIGHT_RT_CHECKS`. Any `operator new` or
   `operator delete` on an RT thread aborts with a message naming the thread state.
 - The unit tests in `tests/unit/rt/` exercise the guard itself.
 - Phase 2 adds an offline engine harness that runs scripted sessions under the checker

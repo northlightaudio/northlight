@@ -1,6 +1,7 @@
 #include "CrashReports.h"
 #include "DemoSong.h"
 #include "MainWindow.h"
+#include "Migration.h"
 #include "ProjectSession.h"
 #include "UserSettings.h"
 #include "audio/AudioDeviceLayer.h"
@@ -12,7 +13,7 @@
 #include "plugins/ChannelStrip.h"
 #include "plugins/FxTracks.h"
 #include "plugins/StripPresets.h"
-#include "ui/AuralLookAndFeel.h"
+#include "ui/NorthlightLookAndFeel.h"
 #include "ui/PianoRoll.h"
 #include "ui/PreferencesView.h"
 
@@ -23,10 +24,10 @@
 #include <cmath>
 #include <functional>
 
-namespace aural
+namespace northlight
 {
 
-class AuralApplication final : public juce::JUCEApplication
+class NorthlightApplication final : public juce::JUCEApplication
 {
 public:
     const juce::String getApplicationName() override { return JUCE_APPLICATION_NAME_STRING; }
@@ -36,6 +37,8 @@ public:
     void initialise(const juce::String& commandLine) override
     {
         // The very first launch (no settings file yet) gets the device sheet.
+        // Northlight was called Aural: bring its settings and folders across once.
+        migration::fromAural();
         firstRun_ = !UserSettings().file().existsAsFile();
         settings_ = std::make_unique<UserSettings>();
         // A crash from here on leaves a report in the settings folder.
@@ -44,7 +47,7 @@ public:
         // The design tokens: shipped beside the app, with the user's tokens.json
         // beside the settings file applied on top.
         ui::Theme::initialise(settings_->file().getSiblingFile("tokens.json"));
-        lookAndFeel_ = std::make_unique<ui::AuralLookAndFeel>(ui::Theme::dark());
+        lookAndFeel_ = std::make_unique<ui::NorthlightLookAndFeel>(ui::Theme::dark());
         juce::LookAndFeel::setDefaultLookAndFeel(lookAndFeel_.get());
 
         audio_ = std::make_unique<audio::AudioDeviceLayer>(*settings_);
@@ -189,7 +192,7 @@ public:
 
     void applyLaunchFlags(const juce::String& commandLine)
     {
-        const auto tokens = juce::ArgumentList("Aural", commandLine).arguments;
+        const auto tokens = juce::ArgumentList("Northlight", commandLine).arguments;
         int stopAfterSeconds = 0;
         for (int i = 0; i < tokens.size(); ++i)
         {
@@ -669,7 +672,7 @@ public:
     void systemRequestedQuit() override { quit(); }
 
 private:
-    std::unique_ptr<ui::AuralLookAndFeel> lookAndFeel_;
+    std::unique_ptr<ui::NorthlightLookAndFeel> lookAndFeel_;
     bool firstRun_ = false;
     std::unique_ptr<UserSettings> settings_;
     std::unique_ptr<audio::AudioDeviceLayer> audio_;
@@ -677,6 +680,6 @@ private:
     std::unique_ptr<MainWindow> mainWindow_;
 };
 
-} // namespace aural
+} // namespace northlight
 
-START_JUCE_APPLICATION(aural::AuralApplication)
+START_JUCE_APPLICATION(northlight::NorthlightApplication)

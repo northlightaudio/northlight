@@ -20,7 +20,7 @@
 #include <string>
 #include <vector>
 
-using namespace aural;
+using namespace northlight;
 using Catch::Approx;
 
 namespace
@@ -892,7 +892,8 @@ TEST_CASE("A block longer than prepare() announced plays each note at its own of
 {
     // The synths take an oversized block in pieces; each piece must play only
     // its own events (not the whole block's at its start, and not again later).
-    for (const std::string type : {"aural.aurora", "aural.nebula", "aural.starbit", "aural.pulsar"})
+    for (const std::string type :
+         {"northlight.aurora", "northlight.nebula", "northlight.starbit", "northlight.pulsar"})
     {
         INFO(type);
         auto synth = plugins::BuiltInFactory().create(type);

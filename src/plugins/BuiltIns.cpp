@@ -22,7 +22,7 @@
 #include <numbers>
 #include <vector>
 
-namespace aural::plugins
+namespace northlight::plugins
 {
 
 namespace
@@ -624,7 +624,7 @@ bool BuiltInFactory::isInstrument(const std::string& typeName)
 
 std::unique_ptr<engine::InsertProcessor> BuiltInFactory::create(const std::string& typeName) const
 {
-    AURAL_ASSERT_NOT_REALTIME("BuiltInFactory::create");
+    NORTHLIGHT_ASSERT_NOT_REALTIME("BuiltInFactory::create");
     if (strip::isStripType(typeName))
         return strip::create(typeName);
     if (typeName == types::gain)
@@ -683,7 +683,7 @@ std::string BuiltInFactory::displayName(const std::string& typeName)
 
 const std::vector<engine::ParameterInfo>& parameterInfo(const std::string& typeName)
 {
-    AURAL_ASSERT_NOT_REALTIME("plugins::parameterInfo");
+    NORTHLIGHT_ASSERT_NOT_REALTIME("plugins::parameterInfo");
     static std::map<std::string, std::vector<engine::ParameterInfo>> cache;
     auto it = cache.find(typeName);
     if (it == cache.end())
@@ -724,4 +724,4 @@ core::ParameterLayout builtInParameterLayout(const std::string& typeName)
     return layout;
 }
 
-} // namespace aural::plugins
+} // namespace northlight::plugins

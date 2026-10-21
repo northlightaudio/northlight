@@ -25,7 +25,7 @@
 // spans the edit touches are rendered; everywhere else, and wherever the shift is
 // zero, the original samples play unchanged.
 
-namespace aural::engine::pitch
+namespace northlight::engine::pitch
 {
 
 // The shift in cents per analysis frame (0 outside notes).
@@ -64,4 +64,4 @@ RenderedSpan renderSpan(const std::vector<std::vector<float>>& media,
 
 std::uint64_t hashBytes(const void* data, size_t size, std::uint64_t seed = 1469598103934665603ull) noexcept;
 
-} // namespace aural::engine::pitch
+} // namespace northlight::engine::pitch

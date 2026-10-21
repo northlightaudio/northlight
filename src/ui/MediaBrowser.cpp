@@ -1,7 +1,7 @@
 #include "ui/MediaBrowser.h"
 
-#include "ui/AuralLookAndFeel.h"
 #include "ui/MediaFiles.h"
+#include "ui/NorthlightLookAndFeel.h"
 #include "ui/PluginBrowser.h"
 
 #include <juce_audio_formats/juce_audio_formats.h>
@@ -9,7 +9,7 @@
 #include <algorithm>
 #include <cmath>
 
-namespace aural::ui
+namespace northlight::ui
 {
 
 namespace
@@ -155,12 +155,12 @@ MediaBrowser::MediaBrowser()
     };
     addAndMakeVisible(search_);
 
-    place_.getProperties().set(AuralLookAndFeel::propertyVariant, "ghost");
-    place_.getProperties().set(AuralLookAndFeel::propertyMenu, true);
+    place_.getProperties().set(NorthlightLookAndFeel::propertyVariant, "ghost");
+    place_.getProperties().set(NorthlightLookAndFeel::propertyMenu, true);
     place_.setTooltip("The place to browse: the project's folder, Music, or a folder you added");
     place_.onClick = [this] { showPlaceMenu(); };
     addAndMakeVisible(place_);
-    up_.getProperties().set(AuralLookAndFeel::propertyVariant, "ghost");
+    up_.getProperties().set(NorthlightLookAndFeel::propertyVariant, "ghost");
     up_.setTooltip("Up a folder (Backspace)");
     up_.onClick = [this] { goUp(); };
     addAndMakeVisible(up_);
@@ -750,4 +750,4 @@ void BrowserPanel::resized()
     files_.setBounds(area);
 }
 
-} // namespace aural::ui
+} // namespace northlight::ui

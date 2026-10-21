@@ -8,7 +8,7 @@
 #include <string>
 #include <vector>
 
-namespace aural::ui
+namespace northlight::ui
 {
 
 // What a plugin slot takes: an insert slot takes effects, an instrument slot
@@ -57,4 +57,4 @@ buildPluginMenu(PluginKind kind,
                 int firstItem = 1);
 PluginMenu buildPluginMenu(PluginKind kind, const PluginSources* sources, int firstItem = 1);
 
-} // namespace aural::ui
+} // namespace northlight::ui

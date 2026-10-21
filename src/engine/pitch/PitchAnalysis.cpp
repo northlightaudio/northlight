@@ -8,7 +8,7 @@
 #include <numeric>
 #include <thread>
 
-namespace aural::engine::pitch
+namespace northlight::engine::pitch
 {
 
 namespace
@@ -1056,4 +1056,4 @@ PitchAnalysis analyse(const std::vector<std::vector<float>>& channels,
     return a;
 }
 
-} // namespace aural::engine::pitch
+} // namespace northlight::engine::pitch

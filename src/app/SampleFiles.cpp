@@ -4,7 +4,7 @@
 
 #include <algorithm>
 
-namespace aural
+namespace northlight
 {
 
 SampleFiles::SampleFiles()
@@ -14,7 +14,7 @@ SampleFiles::SampleFiles()
 
 std::shared_ptr<const plugins::sampler::Sample> SampleFiles::load(const std::string& path, std::string& error)
 {
-    AURAL_ASSERT_NOT_REALTIME("SampleFiles::load");
+    NORTHLIGHT_ASSERT_NOT_REALTIME("SampleFiles::load");
     const juce::File file(juce::String::fromUTF8(path.c_str()));
     if (!file.existsAsFile())
     {
@@ -57,4 +57,4 @@ std::shared_ptr<const plugins::sampler::Sample> SampleFiles::load(const std::str
     return sample;
 }
 
-} // namespace aural
+} // namespace northlight

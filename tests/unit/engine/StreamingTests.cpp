@@ -10,7 +10,7 @@
 #include <thread>
 #include <vector>
 
-using namespace aural::engine;
+using namespace northlight::engine;
 
 namespace
 {
@@ -178,11 +178,11 @@ TEST_CASE("The disk thread keeps a paced reader fed with no underruns after the 
     CHECK(source->windowStart() == 48000 * 10);
 }
 
-#if defined(AURAL_RT_CHECKS)
+#if defined(NORTHLIGHT_RT_CHECKS)
 namespace
 {
 std::atomic<int> streamViolations{0};
-void countStreamViolation(const aural::rt::Violation&) noexcept
+void countStreamViolation(const northlight::rt::Violation&) noexcept
 {
     streamViolations.fetch_add(1, std::memory_order_relaxed);
 }
@@ -196,15 +196,15 @@ TEST_CASE("Streaming reads do not allocate on a real-time thread", "[engine][str
     {
     }
     std::vector<float> buffer(64);
-    const auto previous = aural::rt::setViolationHandler(&countStreamViolation);
+    const auto previous = northlight::rt::setViolationHandler(&countStreamViolation);
     streamViolations = 0;
     {
-        aural::rt::ScopedRealtimeSection section;
+        northlight::rt::ScopedRealtimeSection section;
         source.read(0, 0, buffer.data(), 64);
         source.read(1, 4000, buffer.data(), 64);  // wraps the ring
         source.read(0, 90000, buffer.data(), 64); // underrun path
     }
-    aural::rt::setViolationHandler(previous);
+    northlight::rt::setViolationHandler(previous);
     CHECK(streamViolations == 0);
 }
 #endif

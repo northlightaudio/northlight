@@ -1,9 +1,9 @@
 #include "ui/panels/EditorPanel.h"
 
 #include "plugins/BuiltIns.h"
-#include "ui/AuralLookAndFeel.h"
 #include "ui/Db.h"
 #include "ui/Motion.h"
+#include "ui/NorthlightLookAndFeel.h"
 #include "ui/PluginMenu.h"
 #include "ui/SendMenu.h"
 #include "ui/SidechainMenu.h"
@@ -13,7 +13,7 @@
 
 #include <map>
 
-namespace aural::ui
+namespace northlight::ui
 {
 
 // ----- a device card ----------------------------------------------------------------------------
@@ -68,7 +68,7 @@ public:
         addAndMakeVisible(mix_);
         mix_.setVisible(!instrument_); // an instrument has no dry signal to mix
         open_.setButtonText("Open");
-        open_.getProperties().set(AuralLookAndFeel::propertyVariant, "primary");
+        open_.getProperties().set(NorthlightLookAndFeel::propertyVariant, "primary");
         open_.onClick = [this]
         {
             if (owner_.onOpenEditor)
@@ -1133,4 +1133,4 @@ void EditorPanel::showAddMenu()
                                          safe->addInsert(type, -1);
                              });
 }
-} // namespace aural::ui
+} // namespace northlight::ui

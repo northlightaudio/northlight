@@ -14,7 +14,7 @@
 // are kept across snapshot recompiles (a fader move must not empty them), so they
 // live in a controller-side cache keyed by the edge, like insert instances.
 
-namespace aural::engine
+namespace northlight::engine
 {
 
 // A stereo fixed delay. setDelay() on the controller thread (allocates when the
@@ -70,4 +70,4 @@ private:
     std::map<DelayKey, std::shared_ptr<DelayLine>> lines_;
 };
 
-} // namespace aural::engine
+} // namespace northlight::engine

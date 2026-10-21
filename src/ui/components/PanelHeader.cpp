@@ -1,16 +1,16 @@
 #include "ui/components/PanelHeader.h"
 
-#include "ui/AuralLookAndFeel.h"
+#include "ui/NorthlightLookAndFeel.h"
 
-namespace aural::ui
+namespace northlight::ui
 {
 
 PanelHeader::PanelHeader(const Theme& theme) : theme_(theme)
 {
     for (auto* button : {&detach_, &close_})
     {
-        button->getProperties().set(AuralLookAndFeel::propertyVariant, "ghost");
-        button->getProperties().set(AuralLookAndFeel::propertyIcon, true);
+        button->getProperties().set(NorthlightLookAndFeel::propertyVariant, "ghost");
+        button->getProperties().set(NorthlightLookAndFeel::propertyIcon, true);
         addChildComponent(*button);
     }
     detach_.setTooltip("Detach into its own window");
@@ -66,4 +66,4 @@ void PanelHeader::resized()
         detach_.setBounds(area.removeFromRight(side).withSizeKeepingCentre(side, side));
 }
 
-} // namespace aural::ui
+} // namespace northlight::ui

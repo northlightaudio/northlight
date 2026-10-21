@@ -8,11 +8,11 @@
 #include <vector>
 
 // The user's own channel strip presets: one JSON file each in
-// Documents/Aural/Strip Presets (name, then each module's type, on/off and
+// Documents/Northlight/Strip Presets (name, then each module's type, on/off and
 // parameters). A preset saved by an older version simply lacks the modules
 // added since; applying it leaves those alone.
 
-namespace aural::ui::strip
+namespace northlight::ui::strip
 {
 
 juce::File userPresetFolder();
@@ -21,4 +21,4 @@ std::vector<plugins::strip::Preset> loadUserPresets(const juce::File& folder);
 std::string
 saveUserPreset(const juce::File& folder, const juce::String& name, const std::vector<core::Insert>& modules);
 
-} // namespace aural::ui::strip
+} // namespace northlight::ui::strip

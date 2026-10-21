@@ -6,7 +6,7 @@
 #include <chrono>
 #include <thread>
 
-namespace aural::engine
+namespace northlight::engine
 {
 
 StreamingAudioSource::StreamingAudioSource(std::unique_ptr<StreamReader> reader, Options options)
@@ -114,7 +114,7 @@ void StreamingAudioSource::setInstanceFactory(OpenReader openReader, OnInstance 
 
 std::shared_ptr<AudioSource> StreamingAudioSource::createInstance() const
 {
-    AURAL_ASSERT_NOT_REALTIME("StreamingAudioSource::createInstance");
+    NORTHLIGHT_ASSERT_NOT_REALTIME("StreamingAudioSource::createInstance");
     if (!openReader_)
         return nullptr;
     auto reader = openReader_();
@@ -159,7 +159,7 @@ void StreamingAudioSource::bumpGeneration() noexcept
 
 bool StreamingAudioSource::service()
 {
-    AURAL_ASSERT_NOT_REALTIME("StreamingAudioSource::service");
+    NORTHLIGHT_ASSERT_NOT_REALTIME("StreamingAudioSource::service");
 
     const auto wanted = clampToFile(wanted_.load(std::memory_order_acquire));
     auto start = validStart_.load(std::memory_order_relaxed);
@@ -203,4 +203,4 @@ bool StreamingAudioSource::service()
     return true;
 }
 
-} // namespace aural::engine
+} // namespace northlight::engine

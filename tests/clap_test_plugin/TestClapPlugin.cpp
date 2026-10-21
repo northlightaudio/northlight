@@ -1,19 +1,19 @@
 // A set of tiny CLAP plugins built alongside the tests so the host can be
 // exercised without a third-party plugin. One file, five descriptors:
 //
-//   io.leafshade.aural.testgain           stereo in/out paired in place, a stereo
+//   org.northlightaudio.testgain           stereo in/out paired in place, a stereo
 //                                         key input, a note input port, gain of
 //                                         32 samples latency, a state of one double
-//   io.leafshade.aural.testgain.quad      a four-channel main port (the host must
+//   org.northlightaudio.testgain.quad      a four-channel main port (the host must
 //                                         refuse it, never index past its buffers)
-//   io.leafshade.aural.testgain.multiout  stereo main plus a second stereo output
+//   org.northlightaudio.testgain.multiout  stereo main plus a second stereo output
 //                                         port the plugin writes a constant into
 //                                         (the host must drain it)
-//   io.leafshade.aural.testgain.noinplace stereo in/out without an in-place pair:
+//   org.northlightaudio.testgain.noinplace stereo in/out without an in-place pair:
 //                                         the output is the input with its
 //                                         channels swapped, written left first,
 //                                         so an aliased buffer gives the wrong right
-//   io.leafshade.aural.testgain.callback  a "Trigger" parameter: 1 asks the host
+//   org.northlightaudio.testgain.callback  a "Trigger" parameter: 1 asks the host
 //                                         for a main-thread callback from process()
 //                                         and, there, sets its gain to 0.5 and asks
 //                                         for a rescan of values; 2 asks for a
@@ -54,9 +54,9 @@ struct Variant
 };
 
 const Variant variants[] = {
-    {"io.leafshade.aural.testgain",
-     "Aural Test Gain",
-     "A test effect for Aural's CLAP host",
+    {"org.northlightaudio.testgain",
+     "Northlight Test Gain",
+     "A test effect for Northlight's CLAP host",
      2,
      true,
      0,
@@ -64,8 +64,8 @@ const Variant variants[] = {
      false,
      32,
      false},
-    {"io.leafshade.aural.testgain.quad",
-     "Aural Test Gain Quad",
+    {"org.northlightaudio.testgain.quad",
+     "Northlight Test Gain Quad",
      "A four-channel main port",
      4,
      false,
@@ -74,8 +74,8 @@ const Variant variants[] = {
      false,
      32,
      false},
-    {"io.leafshade.aural.testgain.multiout",
-     "Aural Test Gain Multi",
+    {"org.northlightaudio.testgain.multiout",
+     "Northlight Test Gain Multi",
      "A second output port",
      2,
      false,
@@ -84,8 +84,8 @@ const Variant variants[] = {
      false,
      32,
      false},
-    {"io.leafshade.aural.testgain.noinplace",
-     "Aural Test Gain Swap",
+    {"org.northlightaudio.testgain.noinplace",
+     "Northlight Test Gain Swap",
      "No in-place pair; swaps channels",
      2,
      false,
@@ -94,8 +94,8 @@ const Variant variants[] = {
      true,
      0,
      false},
-    {"io.leafshade.aural.testgain.callback",
-     "Aural Test Gain Callback",
+    {"org.northlightaudio.testgain.callback",
+     "Northlight Test Gain Callback",
      "Asks the host for callbacks",
      2,
      false,

@@ -8,7 +8,7 @@
 #include <memory>
 #include <vector>
 
-namespace aural::ui
+namespace northlight::ui
 {
 
 // Notifications (02-design-system.md, "Toast"): stacked at the bottom-left of
@@ -58,4 +58,4 @@ private:
     std::vector<std::unique_ptr<Toast>> leaving_;
 };
 
-} // namespace aural::ui
+} // namespace northlight::ui

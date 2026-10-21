@@ -2,7 +2,7 @@
 
 #include <algorithm>
 
-namespace aural::audio
+namespace northlight::audio
 {
 
 void renderSilence(float* const* outputs, int numOutputs, int numSamples) noexcept
@@ -64,4 +64,4 @@ void renderPassThrough(const float* const* inputs,
     }
 }
 
-} // namespace aural::audio
+} // namespace northlight::audio

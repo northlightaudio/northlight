@@ -2,18 +2,18 @@
 
 #include "core/Comping.h"
 #include "plugins/FxTracks.h"
-#include "ui/AuralLookAndFeel.h"
 #include "ui/Db.h"
 #include "ui/FrameStats.h"
 #include "ui/Icons.h"
 #include "ui/MediaFiles.h"
 #include "ui/Motion.h"
+#include "ui/NorthlightLookAndFeel.h"
 #include "ui/PluginMenu.h"
 
 #include <algorithm>
 #include <cmath>
 
-namespace aural::ui
+namespace northlight::ui
 {
 
 namespace
@@ -4081,4 +4081,4 @@ void ArrangeView::mouseDoubleClick(const juce::MouseEvent& e)
     }
 }
 
-} // namespace aural::ui
+} // namespace northlight::ui

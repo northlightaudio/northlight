@@ -14,7 +14,7 @@
 #include <numbers>
 #include <vector>
 
-using namespace aural;
+using namespace northlight;
 using Catch::Approx;
 namespace sp = plugins::sampler;
 
@@ -350,7 +350,7 @@ TEST_CASE("A built-in's model state reaches its live instance when a command cha
     CHECK(sp::decodeState(instance->state()) == "a.wav");
 }
 
-#ifdef AURAL_RT_CHECKS
+#ifdef NORTHLIGHT_RT_CHECKS
 namespace
 {
 std::atomic<int> samplerViolations{0};

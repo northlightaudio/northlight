@@ -12,7 +12,7 @@
 #include <functional>
 #include <vector>
 
-namespace aural::ui::strip
+namespace northlight::ui::strip
 {
 
 // The bands an EqGraph edits, so one graph serves the channel strip's EQ and
@@ -119,4 +119,4 @@ private:
     PillToggle analyserToggle_;
 };
 
-} // namespace aural::ui::strip
+} // namespace northlight::ui::strip

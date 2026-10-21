@@ -5,7 +5,7 @@
 #include <algorithm>
 #include <cmath>
 
-namespace aural::ui
+namespace northlight::ui
 {
 
 namespace
@@ -896,4 +896,4 @@ void AudioSetupView::calibrationFinished(const audio::LatencyCalibrator::Result&
         refreshCalibrationChoices(audio_.status());
 }
 
-} // namespace aural::ui
+} // namespace northlight::ui

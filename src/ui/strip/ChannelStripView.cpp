@@ -3,14 +3,14 @@
 #include "core/Command.h"
 #include "plugins/ChannelStrip.h"
 #include "plugins/StripPresets.h"
-#include "ui/AuralLookAndFeel.h"
 #include "ui/Motion.h"
+#include "ui/NorthlightLookAndFeel.h"
 #include "ui/components/Sheet.h"
 #include "ui/strip/UserStripPresets.h"
 
 #include <map>
 
-namespace aural::ui::strip
+namespace northlight::ui::strip
 {
 
 namespace
@@ -103,7 +103,7 @@ ChannelStripView::ChannelStripView(const Theme& theme) : theme_(theme)
     { reorder(id, screen, released); };
     cardHost_.onCollapse = [this](core::Id id, bool collapsed) { collapse(id, collapsed); };
 
-    position_.getProperties().set(AuralLookAndFeel::propertyVariant, "ghost");
+    position_.getProperties().set(NorthlightLookAndFeel::propertyVariant, "ghost");
     position_.setTooltip("Where the strip sits in the channel: click to move it before or after the inserts");
     position_.onClick = [this]
     {
@@ -112,7 +112,7 @@ ChannelStripView::ChannelStripView(const Theme& theme) : theme_(theme)
     };
     addAndMakeVisible(position_);
     allOff_.setButtonText("All off");
-    allOff_.getProperties().set(AuralLookAndFeel::propertyVariant, "ghost");
+    allOff_.getProperties().set(NorthlightLookAndFeel::propertyVariant, "ghost");
     allOff_.setTooltip("Switch every module of the strip off");
     allOff_.onClick = [this]
     {
@@ -128,7 +128,7 @@ ChannelStripView::ChannelStripView(const Theme& theme) : theme_(theme)
     };
     addAndMakeVisible(allOff_);
     presets_.setButtonText(juce::String::fromUTF8("Presets \xe2\x96\xbe"));
-    presets_.getProperties().set(AuralLookAndFeel::propertyVariant, "ghost");
+    presets_.getProperties().set(NorthlightLookAndFeel::propertyVariant, "ghost");
     presets_.setTooltip("Starting points for vocals, guitars, drums and buses, and your own");
     presets_.onClick = [this] { showPresetMenu(); };
     addAndMakeVisible(presets_);
@@ -401,4 +401,4 @@ void ChannelStripView::reorder(core::Id moduleId, juce::Point<int> screen, bool 
         host.onCommand(std::make_unique<core::MoveStripModule>(channelId_, moduleId, to));
 }
 
-} // namespace aural::ui::strip
+} // namespace northlight::ui::strip

@@ -5,7 +5,7 @@
 
 #include <memory>
 
-using namespace aural::core;
+using namespace northlight::core;
 
 namespace
 {
@@ -414,7 +414,7 @@ TEST_CASE("Take groups round-trip through JSON, and version 5 files load without
     REQUIRE(loaded.has_value());
     CHECK(*loaded == p);
 
-    const auto old = projectFromJson(R"({"format":"aural.project","version":5,"tracks":[
+    const auto old = projectFromJson(R"({"format":"northlight.project","version":5,"tracks":[
         {"id":1,"name":"A","clips":[{"id":2,"media":"a.wav","start":0,"length":10},
                                      {"id":3,"media":"b.wav","start":0,"length":10}]}]})",
                                      &error);

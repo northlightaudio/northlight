@@ -12,7 +12,7 @@
 // read maps its output positions to exact source positions, so reads can land
 // anywhere with no state carried between them.
 
-namespace aural::audio
+namespace northlight::audio
 {
 
 class JuceStreamReader final : public engine::StreamReader
@@ -34,4 +34,4 @@ private:
     juce::AudioBuffer<float> sourceBuffer_; // disk thread only
 };
 
-} // namespace aural::audio
+} // namespace northlight::audio

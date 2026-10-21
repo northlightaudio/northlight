@@ -9,7 +9,7 @@
 #include <memory>
 #include <vector>
 
-namespace aural::ui
+namespace northlight::ui
 {
 
 // The key (sidechain) sources an insert can listen to, as menu items (the
@@ -74,4 +74,4 @@ inline juce::String sidechainLabel(const core::Project& project, const core::Ins
            (insert.sidechainPostFader ? " (post)" : "");
 }
 
-} // namespace aural::ui
+} // namespace northlight::ui

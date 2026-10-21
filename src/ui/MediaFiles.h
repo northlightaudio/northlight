@@ -6,7 +6,7 @@
 // media browser lists, and the description an audio file carries when it is
 // dragged inside the app ("file:<path>", as plugins carry "plugin:<type>").
 
-namespace aural::ui
+namespace northlight::ui
 {
 
 inline const juce::StringArray& audioFileExtensions()
@@ -34,4 +34,4 @@ inline juce::File fileFromDragDescription(const juce::var& description)
     return juce::File(text.substring(5));
 }
 
-} // namespace aural::ui
+} // namespace northlight::ui

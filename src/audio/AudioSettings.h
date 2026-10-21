@@ -11,7 +11,7 @@
 // the app's settings store decides how it is written to disk. Serialisation is a flat
 // string map; the app maps that onto its properties file.
 
-namespace aural::audio
+namespace northlight::audio
 {
 
 // Result of the loopback latency calibration, stored with enough context to tell
@@ -85,4 +85,4 @@ public:
     virtual void saveAudioSettings(const AudioSettings& settings) = 0;
 };
 
-} // namespace aural::audio
+} // namespace northlight::audio

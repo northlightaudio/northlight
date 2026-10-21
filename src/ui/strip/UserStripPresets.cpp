@@ -1,14 +1,15 @@
 #include "ui/strip/UserStripPresets.h"
 
+#include "core/ProjectJson.h"
 #include "plugins/ChannelStrip.h"
 
-namespace aural::ui::strip
+namespace northlight::ui::strip
 {
 
 juce::File userPresetFolder()
 {
     return juce::File::getSpecialLocation(juce::File::userDocumentsDirectory)
-        .getChildFile("Aural")
+        .getChildFile("Northlight")
         .getChildFile("Strip Presets");
 }
 
@@ -27,7 +28,7 @@ std::vector<plugins::strip::Preset> loadUserPresets(const juce::File& folder)
         for (const auto& m : *modules)
         {
             core::Insert module;
-            module.type = m.getProperty("type", {}).toString().toStdString();
+            module.type = core::currentTypeName(m.getProperty("type", {}).toString().toStdString());
             if (!plugins::strip::isStripType(module.type))
                 continue;
             module.bypass = !static_cast<bool>(m.getProperty("on", false));
@@ -75,4 +76,4 @@ saveUserPreset(const juce::File& folder, const juce::String& name, const std::ve
     return {};
 }
 
-} // namespace aural::ui::strip
+} // namespace northlight::ui::strip

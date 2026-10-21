@@ -17,7 +17,7 @@
 // exist, and has no JUCE dependency; the device-side orchestration lives in
 // LatencyCalibrator.
 
-namespace aural::audio
+namespace northlight::audio
 {
 
 struct LatencyMeasurement
@@ -56,4 +56,4 @@ std::optional<LatencyMeasurement> detectLatency(std::span<const float> captured,
 std::optional<LatencyMeasurement> combineMeasurements(std::span<const LatencyMeasurement> trials,
                                                       double sampleRate);
 
-} // namespace aural::audio
+} // namespace northlight::audio

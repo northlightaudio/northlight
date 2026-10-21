@@ -11,7 +11,7 @@
 #include <numbers>
 #include <utility>
 
-namespace aural::plugins::starbit
+namespace northlight::plugins::starbit
 {
 
 namespace
@@ -480,7 +480,7 @@ private:
 
 std::unique_ptr<engine::InsertProcessor> create()
 {
-    AURAL_ASSERT_NOT_REALTIME("starbit::create");
+    NORTHLIGHT_ASSERT_NOT_REALTIME("starbit::create");
     return std::make_unique<Starbit>();
 }
 
@@ -664,4 +664,4 @@ std::array<int, waveSteps> waveShape(const float* params)
     return out;
 }
 
-} // namespace aural::plugins::starbit
+} // namespace northlight::plugins::starbit

@@ -4,7 +4,7 @@
 #include <cstdlib>
 #include <sstream>
 
-namespace aural::audio
+namespace northlight::audio
 {
 
 namespace
@@ -214,4 +214,4 @@ AudioSettings AudioSettings::fromKeyValues(const KeyValues& values)
     return s;
 }
 
-} // namespace aural::audio
+} // namespace northlight::audio

@@ -4,7 +4,7 @@
 
 #include <catch2/catch_test_macros.hpp>
 
-using namespace aural::core;
+using namespace northlight::core;
 
 namespace
 {

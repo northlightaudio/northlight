@@ -14,7 +14,7 @@
 #include <thread>
 #include <vector>
 
-using namespace aural;
+using namespace northlight;
 
 namespace
 {
@@ -35,11 +35,11 @@ struct SessionFixture
     SessionFixture()
     {
         folder = juce::File::getSpecialLocation(juce::File::tempDirectory)
-                     .getChildFile("aural-session-tests")
+                     .getChildFile("northlight-session-tests")
                      .getChildFile(juce::Uuid().toString());
         REQUIRE(folder.createDirectory().wasOk());
         session = std::make_unique<ProjectSession>(audio);
-        REQUIRE(session->save(folder.getChildFile("song.aural")).empty());
+        REQUIRE(session->save(folder.getChildFile("song.northlight")).empty());
         media = session->mediaFolder();
         REQUIRE(media.createDirectory().wasOk());
         session->setCountInBars(0); // capture from the first block
@@ -169,7 +169,7 @@ TEST_CASE_METHOD(SessionFixture,
                  "A new MIDI track can play an instrument channel already there, or nothing",
                  "[app][session][midi]")
 {
-    const auto first = session->addMidiTrack("aural.pulsar");
+    const auto first = session->addMidiTrack("northlight.pulsar");
     const auto channel = session->project().findTrack(first)->midiTarget;
     const auto second = session->addMidiTrackPlaying(channel);
     const auto& project = session->project();
@@ -201,7 +201,7 @@ TEST_CASE_METHOD(SessionFixture,
     const auto* channel = session->project().findTrack(track->midiTarget);
     REQUIRE(channel != nullptr);
     CHECK(channel->isInstrument());
-    CHECK(channel->instrument.type == "aural.aurora");
+    CHECK(channel->instrument.type == "northlight.aurora");
     CHECK(!channel->strip.empty()); // the channel processes the audio
     CHECK(session->project().trackIndex(channel->id) == session->project().trackIndex(id) + 1);
     prepareDevice(48000.0);
@@ -372,11 +372,12 @@ TEST_CASE_METHOD(SessionFixture,
                  "[app][session][recover]")
 {
     addArmedTrack();
-    writePartial("Guitar-20261019-101010-1",
-                 0,
-                 500,
-                 R"({"format":"aural.recording/1","trackId":1,"trackName":"Guitar","startPosition":1000,)"
-                 R"("loopStart":-1,"sampleRate":48000.0,"latencySamples":100})");
+    writePartial(
+        "Guitar-20261019-101010-1",
+        0,
+        500,
+        R"({"format":"northlight.recording/1","trackId":1,"trackName":"Guitar","startPosition":1000,)"
+        R"("loopStart":-1,"sampleRate":48000.0,"latencySamples":100})");
     CHECK(session->countPartialRecordings() == 1);
     CHECK(session->recoverPartialRecordings() == 1);
     REQUIRE(session->project().tracks.size() == 1); // no "Recovered" track: the original is still here
@@ -398,7 +399,7 @@ TEST_CASE_METHOD(SessionFixture,
     writePartial("Guitar-20261019-101010-1",
                  1,
                  300,
-                 R"({"format":"aural.recording/1","trackId":1,"trackName":"Guitar","startPosition":500,)"
+                 R"({"format":"northlight.recording/1","trackId":1,"trackName":"Guitar","startPosition":500,)"
                  R"("loopStart":2000,"sampleRate":48000.0,"latencySamples":50})");
     writePartial("Orphan-20261019-101010-1", 0, 200, {});
     CHECK(session->countPartialRecordings() == 2);
@@ -417,7 +418,7 @@ TEST_CASE_METHOD(SessionFixture,
                  "Discarding sets partial files aside and drops their sidecars",
                  "[app][session][recover]")
 {
-    writePartial("Guitar-20261019-101010-1", 0, 100, R"({"format":"aural.recording/1","trackId":1})");
+    writePartial("Guitar-20261019-101010-1", 0, 100, R"({"format":"northlight.recording/1","trackId":1})");
     CHECK(session->discardPartialRecordings() == 1);
     CHECK(session->countPartialRecordings() == 0);
     CHECK(files("*.discarded.wav").size() == 1);
@@ -433,7 +434,7 @@ TEST_CASE_METHOD(SessionFixture,
     writePartial("Bass-20261019-101010-1",
                  0,
                  400,
-                 R"({"format":"aural.recording/1","trackId":7,"trackName":"Bass","startPosition":0,)"
+                 R"({"format":"northlight.recording/1","trackId":7,"trackName":"Bass","startPosition":0,)"
                  R"("loopStart":1000,"sampleRate":48000.0,"latencySamples":0})");
     writePartial("Bass-20261019-101010-1", 1, 300, {});
     REQUIRE(media.getChildFile("Bass-20261019-101010-1-take3.partial.wav").create().wasOk());
@@ -490,12 +491,12 @@ TEST_CASE_METHOD(SessionFixture,
 {
     const auto midi = session->addMidiTrackPlaying(core::invalidId);
     const auto steps = session->undoName();
-    const auto channel = session->playNewInstrument(midi, "aural.starbit");
+    const auto channel = session->playNewInstrument(midi, "northlight.starbit");
     REQUIRE(channel != core::invalidId);
     const auto& project = session->project();
     CHECK(project.findTrack(midi)->midiTarget == channel);
     CHECK(project.trackIndex(channel) == project.trackIndex(midi) + 1);
-    CHECK(project.findTrack(channel)->instrument.type == "aural.starbit");
+    CHECK(project.findTrack(channel)->instrument.type == "northlight.starbit");
     CHECK(project.findTrack(channel)->name == "Starbit");
     CHECK_FALSE(project.findTrack(channel)->strip.empty()); // the channel strip, like any new channel
     CHECK(session->undoName() == "Play a new instrument");
@@ -512,27 +513,27 @@ TEST_CASE_METHOD(
 {
     using Placement = ProjectSession::PluginPlacement;
     // An instrument with nothing selected: a new MIDI track and channel.
-    auto result = session->insertPlugin(core::invalidId, "aural.nebula");
+    auto result = session->insertPlugin(core::invalidId, "northlight.nebula");
     REQUIRE(result.placement == Placement::newInstrument);
     const auto channel = result.channel;
     const auto midi = result.midiTrack;
     CHECK(session->project().findTrack(midi)->midiTarget == channel);
     // An instrument on the MIDI track replaces what its channel plays.
-    result = session->insertPlugin(midi, "aural.starbit");
+    result = session->insertPlugin(midi, "northlight.starbit");
     CHECK(result.placement == Placement::instrumentReplaced);
     CHECK(result.channel == channel);
-    CHECK(session->project().findTrack(channel)->instrument.type == "aural.starbit");
+    CHECK(session->project().findTrack(channel)->instrument.type == "northlight.starbit");
     // A MIDI track that plays nothing gets a channel of its own.
     const auto lone = session->addMidiTrackPlaying(core::invalidId);
-    result = session->insertPlugin(lone, "aural.pulsar");
+    result = session->insertPlugin(lone, "northlight.pulsar");
     CHECK(result.placement == Placement::newInstrument);
     CHECK(result.midiTrack == lone);
     CHECK(session->project().findTrack(lone)->midiTarget == result.channel);
     // An effect goes on the channel's inserts; with no channel, nowhere.
-    result = session->insertPlugin(channel, "aural.reverb");
+    result = session->insertPlugin(channel, "northlight.reverb");
     CHECK(result.placement == Placement::effectAdded);
     CHECK(session->project().findTrack(channel)->inserts.size() == 1);
-    CHECK(session->insertPlugin(core::invalidId, "aural.reverb").placement == Placement::noChannel);
+    CHECK(session->insertPlugin(core::invalidId, "northlight.reverb").placement == Placement::noChannel);
 }
 
 TEST_CASE_METHOD(SessionFixture,
@@ -607,7 +608,7 @@ TEST_CASE_METHOD(SessionFixture,
     CHECK(loudest > 0.05f);
 
     // Saved and opened again, the file comes back with it.
-    const auto song = folder.getChildFile("sampler.aural");
+    const auto song = folder.getChildFile("sampler.northlight");
     REQUIRE(session->save(song).empty());
     REQUIRE(session->open(song).empty());
     const auto* reopened = session->project().findTrack(channelId);

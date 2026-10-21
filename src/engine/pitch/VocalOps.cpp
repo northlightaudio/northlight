@@ -3,7 +3,7 @@
 #include <algorithm>
 #include <cmath>
 
-namespace aural::engine::pitch
+namespace northlight::engine::pitch
 {
 
 float centreOver(const PitchAnalysis& a, std::int64_t start, std::int64_t end)
@@ -106,4 +106,4 @@ void snapToSemitones(core::VocalEdit& edit, const std::vector<core::Id>& notes)
             n.target = std::round(n.target / 100.0f) * 100.0f;
 }
 
-} // namespace aural::engine::pitch
+} // namespace northlight::engine::pitch

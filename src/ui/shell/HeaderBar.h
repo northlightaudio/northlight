@@ -9,7 +9,7 @@
 #include <functional>
 #include <vector>
 
-namespace aural::ui
+namespace northlight::ui
 {
 
 // A time readout (06-transport.md): a surface2 field with mono text, in a readout
@@ -131,4 +131,4 @@ private:
     bool lastPlaying_ = false, lastRecording_ = false;
 };
 
-} // namespace aural::ui
+} // namespace northlight::ui

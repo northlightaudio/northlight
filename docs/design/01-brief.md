@@ -1,6 +1,6 @@
 # 1. Design brief
 
-## What Aural is
+## What Northlight is
 
 A Windows-native digital audio workstation for recording and mixing real performances:
 multitrack audio first, instruments and MIDI second. It runs at low latency on
@@ -72,7 +72,7 @@ completeness.
 
 ## Visual identity
 
-- **Name**: Aural. Wordmark in Inter Semi Bold, letterspaced +2%, lowercase "aural"
+- **Name**: Northlight. Wordmark in Inter Semi Bold, letterspaced +2%, lowercase "northlight"
   in the about screen and the splash; the window title uses the project name.
 - **Mark**: a circle with a single horizontal waveform stroke across it (one centred
   peak-and-trough), drawn in the accent colour on the dark background. Used for the

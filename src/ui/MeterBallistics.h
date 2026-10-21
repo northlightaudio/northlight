@@ -11,7 +11,7 @@
 // second, holding the loudest reading of each period. The peak-hold line and
 // the clip light still see the raw peaks.
 
-namespace aural::ui
+namespace northlight::ui
 {
 
 // One step of a level in dB towards `targetDb` after `elapsedMs`.
@@ -74,4 +74,4 @@ private:
     bool first_ = true;
 };
 
-} // namespace aural::ui
+} // namespace northlight::ui

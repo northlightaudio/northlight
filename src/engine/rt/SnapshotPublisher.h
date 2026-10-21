@@ -16,7 +16,7 @@
 //
 // T must have a `std::uint64_t epoch` member that the publisher may set.
 
-namespace aural::rt
+namespace northlight::rt
 {
 
 template <typename T> class SnapshotPublisher
@@ -84,4 +84,4 @@ private:
     std::vector<Retired> retired_;
 };
 
-} // namespace aural::rt
+} // namespace northlight::rt

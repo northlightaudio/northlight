@@ -6,7 +6,7 @@
 
 #include <vector>
 
-namespace aural::ui
+namespace northlight::ui
 {
 
 // The buses and FX tracks a channel can send to, as a menu (the mixer's and the
@@ -49,4 +49,4 @@ inline SendMenu buildSendMenu(const core::Project& project, core::Id channelId, 
     return result;
 }
 
-} // namespace aural::ui
+} // namespace northlight::ui

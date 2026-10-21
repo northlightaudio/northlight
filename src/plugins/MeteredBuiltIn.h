@@ -9,7 +9,7 @@
 #include <utility>
 #include <vector>
 
-namespace aural::plugins
+namespace northlight::plugins
 {
 
 inline float peakOf(const float* left, const float* right, int numSamples) noexcept
@@ -78,4 +78,4 @@ private:
     engine::ProcessorFeedback feedback_;
 };
 
-} // namespace aural::plugins
+} // namespace northlight::plugins

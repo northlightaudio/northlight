@@ -9,7 +9,7 @@
 #include <memory>
 #include <vector>
 
-using namespace aural;
+using namespace northlight;
 using Catch::Approx;
 
 namespace
@@ -114,7 +114,7 @@ TEST_CASE("Preview: with no audio thread a new file is handed over at once", "[e
     CHECK(run(p, 4).back() == Approx(0.25f));
 }
 
-#ifdef AURAL_RT_CHECKS
+#ifdef NORTHLIGHT_RT_CHECKS
 namespace
 {
 std::atomic<int> previewViolations{0};

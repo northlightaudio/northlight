@@ -2,8 +2,8 @@
 
 #include <catch2/catch_test_macros.hpp>
 
-using aural::audio::AudioSettings;
-using aural::audio::LatencyCalibration;
+using northlight::audio::AudioSettings;
+using northlight::audio::LatencyCalibration;
 
 TEST_CASE("Default audio settings round-trip through key/values unchanged", "[audio][settings]")
 {

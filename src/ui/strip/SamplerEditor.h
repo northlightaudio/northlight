@@ -4,7 +4,7 @@
 
 #include <memory>
 
-namespace aural::ui::strip
+namespace northlight::ui::strip
 {
 
 // The Sampler's editor (07-plugins.md 7.4f): the sample's waveform with its
@@ -14,4 +14,4 @@ namespace aural::ui::strip
 std::unique_ptr<ModuleCard>
 createSamplerEditor(const Theme& theme, CardHost& host, core::Id channelId, const core::Insert& insert);
 
-} // namespace aural::ui::strip
+} // namespace northlight::ui::strip

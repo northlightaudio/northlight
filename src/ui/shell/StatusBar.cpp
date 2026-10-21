@@ -2,7 +2,7 @@
 
 #include <cmath>
 
-namespace aural::ui
+namespace northlight::ui
 {
 
 StatusBar::StatusBar(const Theme& theme) : theme_(theme)
@@ -214,4 +214,4 @@ void StatusBar::mouseDown(const juce::MouseEvent& e)
             (*segment.action)();
 }
 
-} // namespace aural::ui
+} // namespace northlight::ui

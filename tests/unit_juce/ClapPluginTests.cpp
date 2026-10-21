@@ -20,10 +20,10 @@
 #include <thread>
 #include <vector>
 
-using namespace aural;
+using namespace northlight;
 using Catch::Approx;
 
-// The CLAP host against the test effect built beside the tests (AuralTestGain.clap:
+// The CLAP host against the test effect built beside the tests (NorthlightTestGain.clap:
 // a gain with 32 samples of latency, a key input and a one-value state).
 
 namespace
@@ -31,7 +31,7 @@ namespace
 juce::File testClap()
 {
     return juce::File::getSpecialLocation(juce::File::currentExecutableFile)
-        .getSiblingFile("AuralTestGain.clap");
+        .getSiblingFile("NorthlightTestGain.clap");
 }
 
 std::atomic<int> clapViolations{0};
@@ -52,16 +52,16 @@ TEST_CASE("The scanner lists a CLAP file's plugins with their format", "[hosting
     REQUIRE(hosting::PluginScanner::inspect(scanner, testClap(), found, error));
     REQUIRE(found.size() == 5);
     CHECK(found[0].format == "CLAP");
-    CHECK(found[0].id == "io.leafshade.aural.testgain");
-    CHECK(found[0].name == "Aural Test Gain");
+    CHECK(found[0].id == "org.northlightaudio.testgain");
+    CHECK(found[0].name == "Northlight Test Gain");
     CHECK(found[0].manufacturer == "Leafshade");
     CHECK_FALSE(found[0].isInstrument);
     CHECK(found[0].category.find("audio-effect") != std::string::npos);
     hosting::PluginRegistry registry;
     registry.setFileResults(testClap().getFullPathName().toStdString(), 1, found);
-    CHECK(hosting::PluginRegistry::typeFor(registry.plugins()[0]) == "clap:io.leafshade.aural.testgain");
-    CHECK(registry.findByType("clap:io.leafshade.aural.testgain") != nullptr);
-    CHECK(registry.findByType("vst3:io.leafshade.aural.testgain") == nullptr);
+    CHECK(hosting::PluginRegistry::typeFor(registry.plugins()[0]) == "clap:org.northlightaudio.testgain");
+    CHECK(registry.findByType("clap:org.northlightaudio.testgain") != nullptr);
+    CHECK(registry.findByType("vst3:org.northlightaudio.testgain") == nullptr);
     const auto back = hosting::PluginRegistry::fromJson(registry.toJson());
     REQUIRE(back.has_value());
     CHECK(back->plugins()[0].format == "CLAP");
@@ -75,13 +75,13 @@ TEST_CASE("A CLAP plugin loads, delays by its latency, takes parameters and keep
     hosting::PluginRegistry registry;
     hosting::PluginInfo info;
     info.format = "CLAP";
-    info.id = "io.leafshade.aural.testgain";
-    info.name = "Aural Test Gain";
+    info.id = "org.northlightaudio.testgain";
+    info.name = "Northlight Test Gain";
     registry.setFileResults(testClap().getFullPathName().toStdString(), 1, {info});
     hosting::HostFactory factory(registry);
-    CHECK(factory.displayName("clap:io.leafshade.aural.testgain") == "Aural Test Gain");
+    CHECK(factory.displayName("clap:org.northlightaudio.testgain") == "Northlight Test Gain");
 
-    auto processor = factory.create("clap:io.leafshade.aural.testgain");
+    auto processor = factory.create("clap:org.northlightaudio.testgain");
     INFO(factory.lastError());
     REQUIRE(processor != nullptr);
     auto* clap = dynamic_cast<hosting::HostedClapPlugin*>(processor.get());
@@ -120,7 +120,7 @@ TEST_CASE("A CLAP plugin loads, delays by its latency, takes parameters and keep
     // State round trip: a second instance restored from the first has its gain.
     const auto state = processor->state();
     REQUIRE_FALSE(state.empty());
-    auto second = factory.create("clap:io.leafshade.aural.testgain");
+    auto second = factory.create("clap:org.northlightaudio.testgain");
     REQUIRE(second != nullptr);
     second->prepare(48000.0, 256);
     second->setState(state);
@@ -131,7 +131,7 @@ TEST_CASE("A CLAP plugin loads, delays by its latency, takes parameters and keep
     CHECK(clap->supportsPresetFiles());
     CHECK(clap->userPresetFolder().getFullPathName().contains("CLAP Presets"));
     const auto file =
-        juce::File::getSpecialLocation(juce::File::tempDirectory).getChildFile("aural-test.clappreset");
+        juce::File::getSpecialLocation(juce::File::tempDirectory).getChildFile("northlight-test.clappreset");
     file.deleteFile();
     REQUIRE(clap->savePresetFile(file));
     second->setParameter(0, 1.5f);
@@ -152,7 +152,7 @@ TEST_CASE("A CLAP plugin loads, delays by its latency, takes parameters and keep
     processor->setBypassed(false);
 }
 
-#if defined(AURAL_RT_CHECKS)
+#if defined(NORTHLIGHT_RT_CHECKS)
 TEST_CASE("A CLAP plugin with a note port gets the block's notes at their offsets", "[hosting][clap][midi]")
 {
     const juce::ScopedJuceInitialiser_GUI juceInit;
@@ -160,11 +160,11 @@ TEST_CASE("A CLAP plugin with a note port gets the block's notes at their offset
     hosting::PluginRegistry registry;
     hosting::PluginInfo info;
     info.format = "CLAP";
-    info.id = "io.leafshade.aural.testgain";
-    info.name = "Aural Test Gain";
+    info.id = "org.northlightaudio.testgain";
+    info.name = "Northlight Test Gain";
     registry.setFileResults(testClap().getFullPathName().toStdString(), 1, {info});
     hosting::HostFactory factory(registry);
-    auto processor = factory.create("clap:io.leafshade.aural.testgain");
+    auto processor = factory.create("clap:org.northlightaudio.testgain");
     REQUIRE(processor != nullptr);
     CHECK(processor->acceptsMidi());
     processor->prepare(48000.0, 256);
@@ -194,9 +194,9 @@ TEST_CASE("Processing a CLAP plugin allocates nothing on the real-time thread", 
     const juce::ScopedJuceInitialiser_GUI juceInit;
     REQUIRE(testClap().existsAsFile());
     std::string error;
-    auto plugin = hosting::HostedClapPlugin::create("clap:io.leafshade.aural.testgain",
+    auto plugin = hosting::HostedClapPlugin::create("clap:org.northlightaudio.testgain",
                                                     testClap().getFullPathName().toStdString(),
-                                                    "io.leafshade.aural.testgain",
+                                                    "org.northlightaudio.testgain",
                                                     error);
     REQUIRE(plugin != nullptr);
     plugin->prepare(48000.0, 256);
@@ -229,11 +229,11 @@ hosting::PluginRegistry testRegistry()
 {
     hosting::PluginRegistry registry;
     std::vector<hosting::PluginInfo> infos;
-    for (const char* id : {"io.leafshade.aural.testgain",
-                           "io.leafshade.aural.testgain.quad",
-                           "io.leafshade.aural.testgain.multiout",
-                           "io.leafshade.aural.testgain.noinplace",
-                           "io.leafshade.aural.testgain.callback"})
+    for (const char* id : {"org.northlightaudio.testgain",
+                           "org.northlightaudio.testgain.quad",
+                           "org.northlightaudio.testgain.multiout",
+                           "org.northlightaudio.testgain.noinplace",
+                           "org.northlightaudio.testgain.callback"})
     {
         hosting::PluginInfo info;
         info.format = "CLAP";
@@ -273,13 +273,13 @@ TEST_CASE("Every port layout the plugin declares is honoured or refused, never i
 
     SECTION("a four-channel main port is refused with a message the user can read")
     {
-        auto quad = factory.create("clap:io.leafshade.aural.testgain.quad");
+        auto quad = factory.create("clap:org.northlightaudio.testgain.quad");
         CHECK(quad == nullptr);
         CHECK(factory.lastError().find("channels") != std::string::npos);
     }
     SECTION("a second output port is drained to scratch and the main pair still processes")
     {
-        auto processor = factory.create("clap:io.leafshade.aural.testgain.multiout");
+        auto processor = factory.create("clap:org.northlightaudio.testgain.multiout");
         INFO(factory.lastError());
         REQUIRE(processor != nullptr);
         auto* clap = dynamic_cast<hosting::HostedClapPlugin*>(processor.get());
@@ -297,7 +297,7 @@ TEST_CASE("Every port layout the plugin declares is honoured or refused, never i
     }
     SECTION("a plugin without an in-place pair gets its own output buffers")
     {
-        auto processor = factory.create("clap:io.leafshade.aural.testgain.noinplace");
+        auto processor = factory.create("clap:org.northlightaudio.testgain.noinplace");
         INFO(factory.lastError());
         REQUIRE(processor != nullptr);
         auto* clap = dynamic_cast<hosting::HostedClapPlugin*>(processor.get());
@@ -312,7 +312,7 @@ TEST_CASE("Every port layout the plugin declares is honoured or refused, never i
     }
     SECTION("the plain plugin is paired in place")
     {
-        auto processor = factory.create("clap:io.leafshade.aural.testgain");
+        auto processor = factory.create("clap:org.northlightaudio.testgain");
         REQUIRE(processor != nullptr);
         auto* clap = dynamic_cast<hosting::HostedClapPlugin*>(processor.get());
         REQUIRE(clap != nullptr);
@@ -328,10 +328,10 @@ TEST_CASE("Two instances of one CLAP file share its entry point", "[hosting][cla
     REQUIRE(testClap().existsAsFile());
     const auto registry = testRegistry();
     hosting::HostFactory factory(registry);
-    auto first = factory.create("clap:io.leafshade.aural.testgain");
+    auto first = factory.create("clap:org.northlightaudio.testgain");
     REQUIRE(first != nullptr);
     // The test plugin refuses a second entry init: a per-instance init would fail here.
-    auto second = factory.create("clap:io.leafshade.aural.testgain.noinplace");
+    auto second = factory.create("clap:org.northlightaudio.testgain.noinplace");
     INFO(factory.lastError());
     REQUIRE(second != nullptr);
     first.reset(); // the survivor keeps the entry alive
@@ -340,7 +340,7 @@ TEST_CASE("Two instances of one CLAP file share its entry point", "[hosting][cla
     second->process(l.data(), r.data(), 64);
     CHECK(r[5] == Approx(1.0f));
     second.reset();
-    auto third = factory.create("clap:io.leafshade.aural.testgain"); // a fresh init after deinit
+    auto third = factory.create("clap:org.northlightaudio.testgain"); // a fresh init after deinit
     INFO(factory.lastError());
     CHECK(third != nullptr);
 }
@@ -351,9 +351,9 @@ TEST_CASE("A rescan of values from a callback requested on the audio thread is s
     const juce::ScopedJuceInitialiser_GUI juceInit;
     REQUIRE(testClap().existsAsFile());
     std::string error;
-    auto plugin = hosting::HostedClapPlugin::create("clap:io.leafshade.aural.testgain.callback",
+    auto plugin = hosting::HostedClapPlugin::create("clap:org.northlightaudio.testgain.callback",
                                                     testClap().getFullPathName().toStdString(),
-                                                    "io.leafshade.aural.testgain.callback",
+                                                    "org.northlightaudio.testgain.callback",
                                                     error);
     INFO(error);
     REQUIRE(plugin != nullptr);
@@ -405,7 +405,7 @@ TEST_CASE("A restart request, or a rescan of everything while active, is answere
     cache.prepare(48000.0, 64);
     core::Insert insert;
     insert.id = 7;
-    insert.type = "clap:io.leafshade.aural.testgain.callback";
+    insert.type = "clap:org.northlightaudio.testgain.callback";
     auto first = cache.get(insert);
     REQUIRE(first != nullptr);
     std::vector<float> l(64, 0.1f), r(64, 0.1f);
@@ -459,7 +459,7 @@ TEST_CASE("A bypassed latent CLAP plugin keeps its delay, so a parallel path sta
     a.monitor = core::MonitorMode::on;
     core::Insert plugin;
     plugin.id = 10;
-    plugin.type = "clap:io.leafshade.aural.testgain";
+    plugin.type = "clap:org.northlightaudio.testgain";
     plugin.bypass = true;
     a.inserts.push_back(plugin);
     b.id = 2;
@@ -509,7 +509,7 @@ TEST_CASE("A multi-output CLAP instrument's second port feeds an aux track", "[h
     keys.id = 1;
     keys.kind = core::TrackKind::instrument; // an instrument channel with the multi-output plugin
     keys.instrument.id = 10;
-    keys.instrument.type = "clap:io.leafshade.aural.testgain.multiout";
+    keys.instrument.type = "clap:org.northlightaudio.testgain.multiout";
     core::Track aux;
     aux.id = 2;
     aux.kind = core::TrackKind::aux;
@@ -537,9 +537,9 @@ TEST_CASE("Host parameter changes reach a CLAP plugin while the device is stoppe
     const juce::ScopedJuceInitialiser_GUI juceInit;
     REQUIRE(testClap().existsAsFile());
     std::string error;
-    auto plugin = hosting::HostedClapPlugin::create("clap:io.leafshade.aural.testgain",
+    auto plugin = hosting::HostedClapPlugin::create("clap:org.northlightaudio.testgain",
                                                     testClap().getFullPathName().toStdString(),
-                                                    "io.leafshade.aural.testgain",
+                                                    "org.northlightaudio.testgain",
                                                     error);
     REQUIRE(plugin != nullptr);
     plugin->prepare(48000.0, 64);
@@ -575,7 +575,7 @@ TEST_CASE("A preset loaded from the plugin's side survives a fader move and a sa
     const juce::ScopedJuceInitialiser_GUI juceInit;
     REQUIRE(testClap().existsAsFile());
     const auto folder = juce::File::getSpecialLocation(juce::File::tempDirectory)
-                            .getChildFile("aural-clap-session")
+                            .getChildFile("northlight-clap-session")
                             .getChildFile(juce::Uuid().toString());
     REQUIRE(folder.createDirectory().wasOk());
     const auto registryFile = folder.getChildFile("plugins.json");
@@ -584,14 +584,14 @@ TEST_CASE("A preset loaded from the plugin's side survives a fader move and a sa
     audio::AudioDeviceLayer audio{store};
     {
         ProjectSession session(audio, registryFile);
-        REQUIRE(session.save(folder.getChildFile("song.aural")).empty());
+        REQUIRE(session.save(folder.getChildFile("song.northlight")).empty());
         core::Track t;
         t.id = 1;
         t.name = "Keys";
         session.execute(std::make_unique<core::AddTrack>(t));
         core::Insert insert;
         insert.id = 50; // clear of the ids the channel strip takes
-        insert.type = "clap:io.leafshade.aural.testgain";
+        insert.type = "clap:org.northlightaudio.testgain";
         session.execute(std::make_unique<core::AddInsert>(1, insert));
         session.engine().prepare(48000.0, 64);
         const auto live = session.liveInsert(50);
@@ -615,11 +615,11 @@ TEST_CASE("A preset loaded from the plugin's side survives a fader move and a sa
         session.engine().process(outputs, 2, 64);
         CHECK(session.liveInsert(50)->state() == gainState(static_cast<double>(0.5f)));
         CHECK(session.liveInsert(50)->parameter(0) == Approx(0.5f));
-        REQUIRE(session.save(folder.getChildFile("song.aural")).empty());
+        REQUIRE(session.save(folder.getChildFile("song.northlight")).empty());
     }
     {
         ProjectSession reopened(audio, registryFile);
-        REQUIRE(reopened.open(folder.getChildFile("song.aural")).empty());
+        REQUIRE(reopened.open(folder.getChildFile("song.northlight")).empty());
         reopened.engine().prepare(48000.0, 64);
         const auto live = reopened.liveInsert(50);
         REQUIRE(live != nullptr);
@@ -635,7 +635,7 @@ TEST_CASE("A CLAP plugin's parameter lane plays from the session and is written 
     const juce::ScopedJuceInitialiser_GUI juceInit;
     REQUIRE(testClap().existsAsFile());
     const auto folder = juce::File::getSpecialLocation(juce::File::tempDirectory)
-                            .getChildFile("aural-clap-automation")
+                            .getChildFile("northlight-clap-automation")
                             .getChildFile(juce::Uuid().toString());
     REQUIRE(folder.createDirectory().wasOk());
     const auto registryFile = folder.getChildFile("plugins.json");
@@ -649,7 +649,7 @@ TEST_CASE("A CLAP plugin's parameter lane plays from the session and is written 
         session.execute(std::make_unique<core::AddTrack>(t));
         core::Insert insert;
         insert.id = 50;
-        insert.type = "clap:io.leafshade.aural.testgain";
+        insert.type = "clap:org.northlightaudio.testgain";
         session.execute(std::make_unique<core::AddInsert>(1, insert));
         session.engine().prepare(48000.0, 64);
         const auto live = session.liveInsert(50);
@@ -700,7 +700,7 @@ TEST_CASE("A move in a plugin's own controls is written in touch mode, and kept 
     const juce::ScopedJuceInitialiser_GUI juceInit;
     REQUIRE(testClap().existsAsFile());
     const auto folder = juce::File::getSpecialLocation(juce::File::tempDirectory)
-                            .getChildFile("aural-clap-edits")
+                            .getChildFile("northlight-clap-edits")
                             .getChildFile(juce::Uuid().toString());
     REQUIRE(folder.createDirectory().wasOk());
     const auto registryFile = folder.getChildFile("plugins.json");
@@ -714,7 +714,7 @@ TEST_CASE("A move in a plugin's own controls is written in touch mode, and kept 
         session.execute(std::make_unique<core::AddTrack>(t));
         core::Insert insert;
         insert.id = 60;
-        insert.type = "clap:io.leafshade.aural.testgain.callback";
+        insert.type = "clap:org.northlightaudio.testgain.callback";
         session.execute(std::make_unique<core::AddInsert>(1, insert));
         session.engine().prepare(48000.0, 64);
         const auto live = session.liveInsert(60);

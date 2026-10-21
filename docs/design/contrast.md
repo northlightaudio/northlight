@@ -1,6 +1,6 @@
 # Contrast table
 
-Generated from [tokens.json](tokens.json) (Aural Dark v1) with the WCAG 2.x relative
+Generated from [tokens.json](tokens.json) (Northlight Dark v1) with the WCAG 2.x relative
 luminance formula; alpha colours are composited over the named background (which is
 itself composited over `canvas` when translucent). Thresholds: 4.5:1 for text at
 `body` and smaller, 3:1 for `title` and larger and for non-text.

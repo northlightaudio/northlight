@@ -6,7 +6,7 @@
 
 #include <functional>
 
-namespace aural::ui
+namespace northlight::ui
 {
 
 // A numeric field (02-design-system.md): shows a value in the mono `value` face
@@ -78,4 +78,4 @@ private:
     bool dragging_ = false, dragged_ = false;
 };
 
-} // namespace aural::ui
+} // namespace northlight::ui

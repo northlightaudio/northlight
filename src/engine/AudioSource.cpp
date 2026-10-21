@@ -2,7 +2,7 @@
 
 #include <algorithm>
 
-namespace aural::engine
+namespace northlight::engine
 {
 
 MemoryAudioSource::MemoryAudioSource(std::vector<std::vector<float>> channels, double sampleRate)
@@ -44,4 +44,4 @@ void MemoryAudioSource::read(int channel,
     std::fill(dest + leadingZeros + count, dest + numSamples, 0.0f);
 }
 
-} // namespace aural::engine
+} // namespace northlight::engine

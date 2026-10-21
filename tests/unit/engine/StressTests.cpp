@@ -15,7 +15,7 @@
 #include <thread>
 #include <vector>
 
-using namespace aural;
+using namespace northlight;
 
 namespace
 {

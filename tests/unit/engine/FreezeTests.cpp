@@ -10,7 +10,7 @@
 #include <memory>
 #include <vector>
 
-using namespace aural;
+using namespace northlight;
 using Catch::Approx;
 
 namespace
@@ -107,7 +107,7 @@ TEST_CASE("A frozen track plays its render instead of its clips and chain", "[en
     // A gain insert at +12 dB that the frozen track must not run again.
     core::Insert gain;
     gain.id = 50;
-    gain.type = "aural.gain";
+    gain.type = "northlight.gain";
     gain.params = {12.0f};
     track.inserts.push_back(gain);
     p.tracks = {track};

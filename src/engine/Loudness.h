@@ -12,7 +12,7 @@
 // and a 3 s window (short-term). Integrated loudness with gating is left for the
 // export stage. Real-time: processBlock allocates nothing after prepare().
 
-namespace aural::engine
+namespace northlight::engine
 {
 
 class LoudnessMeter
@@ -211,4 +211,4 @@ private:
     std::atomic<bool> resetRequested_{false};
 };
 
-} // namespace aural::engine
+} // namespace northlight::engine

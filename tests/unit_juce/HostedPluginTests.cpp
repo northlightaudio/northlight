@@ -13,7 +13,7 @@
 #include <numbers>
 #include <vector>
 
-using namespace aural;
+using namespace northlight;
 using Catch::Approx;
 
 // These tests use whatever VST3 plugin is installed in the system folder. On a
@@ -51,7 +51,7 @@ TEST_CASE("The scanner process describes an installed plugin, and a non-plugin y
 
     // A text file is not a plugin: a clean empty result, not a failure.
     const auto text =
-        juce::File::getSpecialLocation(juce::File::tempDirectory).getChildFile("aural-not-a-plugin.txt");
+        juce::File::getSpecialLocation(juce::File::tempDirectory).getChildFile("northlight-not-a-plugin.txt");
     REQUIRE(text.replaceWithText("hello"));
     std::vector<hosting::PluginInfo> found;
     std::string error;
@@ -93,9 +93,9 @@ TEST_CASE("A hosted plugin loads, processes a block in place and round-trips its
     hosting::HostFactory factory(registry);
     CHECK(factory.displayName(hosting::PluginRegistry::typeFor(info)) == info.name);
     CHECK(factory.displayName("vst3:unknown") == "Missing plugin");
-    CHECK(factory.displayName("aural.eq") == plugins::BuiltInFactory::displayName("aural.eq"));
+    CHECK(factory.displayName("northlight.eq") == plugins::BuiltInFactory::displayName("northlight.eq"));
     CHECK(factory.create("vst3:unknown") == nullptr);
-    CHECK(factory.create("aural.gain") != nullptr);
+    CHECK(factory.create("northlight.gain") != nullptr);
 
     auto processor = factory.create(hosting::PluginRegistry::typeFor(info));
     INFO(factory.lastError());
@@ -205,13 +205,13 @@ TEST_CASE("A hosted plugin lists its programs and round-trips a .vstpreset file"
     CHECK(hosted->userPresetFolder().getFullPathName().contains("VST3 Presets"));
 
     const auto file =
-        juce::File::getSpecialLocation(juce::File::tempDirectory).getChildFile("aural-test.vstpreset");
+        juce::File::getSpecialLocation(juce::File::tempDirectory).getChildFile("northlight-test.vstpreset");
     file.deleteFile();
     REQUIRE(hosted->savePresetFile(file));
     CHECK(file.getSize() > 0);
     CHECK(hosted->loadPresetFile(file));
-    CHECK_FALSE(hosted->loadPresetFile(
-        juce::File::getSpecialLocation(juce::File::tempDirectory).getChildFile("aural-missing.vstpreset")));
+    CHECK_FALSE(hosted->loadPresetFile(juce::File::getSpecialLocation(juce::File::tempDirectory)
+                                           .getChildFile("northlight-missing.vstpreset")));
     file.deleteFile();
 }
 
@@ -221,12 +221,12 @@ TEST_CASE("A scanner that crashes, hangs or talks nonsense fails the file so it 
     const juce::ScopedJuceInitialiser_GUI juceInit;
     // The stub stands in for the scanner and misbehaves as the environment says.
     const auto stub = juce::File::getSpecialLocation(juce::File::currentExecutableFile)
-                          .getSiblingFile("aural_scan_stub.exe");
+                          .getSiblingFile("northlight_scan_stub.exe");
     REQUIRE(stub.existsAsFile());
     const auto target =
         juce::File::getSpecialLocation(juce::File::tempDirectory).getChildFile("stub-target.vst3");
     REQUIRE(target.replaceWithText("x"));
-    const auto mode = [](const char* value) { _putenv_s("AURAL_SCAN_STUB_MODE", value); };
+    const auto mode = [](const char* value) { _putenv_s("NORTHLIGHT_SCAN_STUB_MODE", value); };
 
     std::vector<hosting::PluginInfo> found;
     std::string error;

@@ -5,7 +5,7 @@
 #include <cmath>
 #include <numeric>
 
-namespace aural::engine
+namespace northlight::engine
 {
 
 namespace
@@ -204,4 +204,4 @@ TempoGuess guessTempo(const std::string& name,
     return {};
 }
 
-} // namespace aural::engine
+} // namespace northlight::engine

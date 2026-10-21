@@ -11,7 +11,7 @@
 #include <string>
 #include <vector>
 
-namespace aural::hosting
+namespace northlight::hosting
 {
 
 // The app's insert factory: the built-ins by their type names, and every plugin
@@ -47,4 +47,4 @@ private:
     mutable std::map<std::string, std::string> failures_;
 };
 
-} // namespace aural::hosting
+} // namespace northlight::hosting

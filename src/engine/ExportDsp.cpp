@@ -6,7 +6,7 @@
 #include <cmath>
 #include <numbers>
 
-namespace aural::engine
+namespace northlight::engine
 {
 
 namespace
@@ -290,4 +290,4 @@ std::int32_t Quantiser::process(float sample) noexcept
     return static_cast<std::int32_t>(q);
 }
 
-} // namespace aural::engine
+} // namespace northlight::engine

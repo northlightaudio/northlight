@@ -13,7 +13,7 @@
 #include <string>
 #include <vector>
 
-namespace aural::ui
+namespace northlight::ui
 {
 
 // Take lanes and comping in the arrange view (docs/design/14-comping.md). The
@@ -139,4 +139,4 @@ private:
     std::unique_ptr<juce::TextEditor> editor_;
 };
 
-} // namespace aural::ui
+} // namespace northlight::ui

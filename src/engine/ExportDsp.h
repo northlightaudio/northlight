@@ -10,7 +10,7 @@
 // conversion, peak and loudness measurement, the normalisation gain, and the
 // quantiser that reduces floats to 16 or 24-bit integers with dither.
 
-namespace aural::engine
+namespace northlight::engine
 {
 
 double gainToDb(double gain) noexcept;
@@ -98,4 +98,4 @@ private:
     double e1_ = 0.0, e2_ = 0.0, e3_ = 0.0;
 };
 
-} // namespace aural::engine
+} // namespace northlight::engine

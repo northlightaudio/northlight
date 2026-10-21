@@ -4,7 +4,7 @@
 
 #include <memory>
 
-namespace aural::ui::strip
+namespace northlight::ui::strip
 {
 
 // Nebula's editor (07-plugins.md 7.4d): the pad synth's own face, drifting gas
@@ -12,4 +12,4 @@ namespace aural::ui::strip
 std::unique_ptr<ModuleCard>
 createNebulaEditor(const Theme& theme, CardHost& host, core::Id channelId, const core::Insert& insert);
 
-} // namespace aural::ui::strip
+} // namespace northlight::ui::strip

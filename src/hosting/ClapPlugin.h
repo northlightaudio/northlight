@@ -18,7 +18,7 @@
 #include <string>
 #include <vector>
 
-namespace aural::hosting
+namespace northlight::hosting
 {
 
 // A CLAP plugin behind the engine's insert interface, hosted directly against the
@@ -363,4 +363,4 @@ private:
     clap_id nextTimerId_ = 1;
 };
 
-} // namespace aural::hosting
+} // namespace northlight::hosting

@@ -7,7 +7,7 @@
 #include <atomic>
 #include <cmath>
 
-using namespace aural::audio;
+using namespace northlight::audio;
 
 TEST_CASE("Pass-through copies each input to the matching output with gain", "[audio][passthrough]")
 {
@@ -91,11 +91,11 @@ TEST_CASE("No inputs or null channels produce silence", "[audio][passthrough]")
     CHECK(out1 == std::array<float, 3>{0.0f, 0.0f, 0.0f});
 }
 
-#if defined(AURAL_RT_CHECKS)
+#if defined(NORTHLIGHT_RT_CHECKS)
 namespace
 {
 std::atomic<int> violations{0};
-void countViolation(const aural::rt::Violation&) noexcept
+void countViolation(const northlight::rt::Violation&) noexcept
 {
     violations.fetch_add(1, std::memory_order_relaxed);
 }
@@ -103,7 +103,7 @@ void countViolation(const aural::rt::Violation&) noexcept
 
 TEST_CASE("Pass-through does not allocate on a real-time thread", "[audio][passthrough][rt]")
 {
-    const auto previous = aural::rt::setViolationHandler(&countViolation);
+    const auto previous = northlight::rt::setViolationHandler(&countViolation);
     violations = 0;
 
     std::array<float, 256> in0{}, in1{};
@@ -111,12 +111,12 @@ TEST_CASE("Pass-through does not allocate on a real-time thread", "[audio][passt
     const float* ins[] = {in0.data(), in1.data()};
     float* outs[] = {out0.data(), out1.data()};
     {
-        aural::rt::ScopedRealtimeSection section;
+        northlight::rt::ScopedRealtimeSection section;
         renderPassThrough(ins, 2, outs, 2, 256, 0.9f, 1.0f);
         renderSilence(outs, 2, 256);
     }
 
-    aural::rt::setViolationHandler(previous);
+    northlight::rt::setViolationHandler(previous);
     CHECK(violations == 0);
 }
 #endif

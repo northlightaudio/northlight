@@ -6,7 +6,7 @@
 
 #include <functional>
 
-namespace aural::ui
+namespace northlight::ui
 {
 
 // The mixer fader (02-design-system.md, "Fader"): a 4 px track with a 0 dB tick
@@ -66,4 +66,4 @@ private:
     bool dragging_ = false;
 };
 
-} // namespace aural::ui
+} // namespace northlight::ui

@@ -4,7 +4,7 @@
 
 #include <functional>
 
-namespace aural::ui
+namespace northlight::ui
 {
 
 // The one owner of what is selected: a channel (a track, an FX track or a bus)
@@ -55,4 +55,4 @@ private:
     core::Id clip_ = core::invalidId;
 };
 
-} // namespace aural::ui
+} // namespace northlight::ui

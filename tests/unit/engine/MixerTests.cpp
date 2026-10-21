@@ -13,10 +13,10 @@
 
 namespace
 {
-const aural::plugins::BuiltInFactory builtIns;
+const northlight::plugins::BuiltInFactory builtIns;
 } // namespace
 
-using namespace aural;
+using namespace northlight;
 using Catch::Approx;
 
 namespace

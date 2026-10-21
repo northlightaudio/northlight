@@ -5,7 +5,7 @@
 #include <algorithm>
 #include <map>
 
-namespace aural::ui
+namespace northlight::ui
 {
 
 bool isInstrumentType(const std::string& type, const hosting::PluginRegistry* registry)
@@ -91,4 +91,4 @@ PluginMenu buildPluginMenu(PluginKind kind, const PluginSources* sources, int fi
                               : buildPluginMenu(kind, nullptr, {}, firstItem);
 }
 
-} // namespace aural::ui
+} // namespace northlight::ui

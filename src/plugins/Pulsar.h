@@ -9,7 +9,7 @@
 #include <string>
 #include <vector>
 
-// Pulsar: the drum synth bundled with Aural (07-plugins.md 7.4c). Eight
+// Pulsar: the drum synth bundled with Northlight (07-plugins.md 7.4c). Eight
 // synthesised pads on the General MIDI drum notes (and C3 to G3): kick, rim,
 // snare, clap, closed hat, open hat, low tom, high tom. Each pad has tune,
 // decay, two shaping controls of its own, level, pan and an output: the main
@@ -18,10 +18,10 @@
 // A master drive, velocity and level apply to every output. JUCE-free;
 // real-time safe after prepare().
 
-namespace aural::plugins::pulsar
+namespace northlight::plugins::pulsar
 {
 
-inline const std::string type = "aural.pulsar";
+inline const std::string type = "northlight.pulsar";
 
 enum Pad
 {
@@ -102,4 +102,4 @@ struct Activity
 };
 const Activity* activity(const engine::InsertProcessor& processor) noexcept;
 
-} // namespace aural::plugins::pulsar
+} // namespace northlight::plugins::pulsar

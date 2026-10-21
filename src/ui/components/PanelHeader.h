@@ -6,7 +6,7 @@
 
 #include <functional>
 
-namespace aural::ui
+namespace northlight::ui
 {
 
 // A panel's header row: an uppercase caption title (textTertiary, tracked) at
@@ -33,4 +33,4 @@ private:
         close_{juce::CharPointer_UTF8("\xc3\x97")};
 };
 
-} // namespace aural::ui
+} // namespace northlight::ui

@@ -76,7 +76,7 @@ vertical rhythm, section headers in uppercase `caption`.
 ## 8.3 First run
 
 Sheet over the empty project on the very first launch (section 3): title "Choose
-your audio device", one sentence "Aural works best with an ASIO device. You can
+your audio device", one sentence "Northlight works best with an ASIO device. You can
 change this any time from the status bar.", Driver and Device selects, Buffer size,
 a live input meter row, "Use this device" primary, "Skip" ghost. After choosing,
 a second step offers "Scan for plugins now?" with Scan / Later. Never shown again

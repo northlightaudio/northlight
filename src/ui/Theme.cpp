@@ -13,7 +13,7 @@
 #include <map>
 #include <memory>
 
-namespace aural::ui
+namespace northlight::ui
 {
 
 namespace
@@ -568,4 +568,4 @@ const std::string& Theme::source()
     return currentSource;
 }
 
-} // namespace aural::ui
+} // namespace northlight::ui

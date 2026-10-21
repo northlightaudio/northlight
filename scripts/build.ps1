@@ -1,6 +1,6 @@
 <#
 .SYNOPSIS
-  Configure, build and (optionally) test Aural from any PowerShell window.
+  Configure, build and (optionally) test Northlight from any PowerShell window.
 
 .DESCRIPTION
   Locates Visual Studio with vswhere, imports the x64 developer environment, and
@@ -11,7 +11,7 @@
   .\scripts\build.ps1                       # windows-debug, build only
   .\scripts\build.ps1 -Preset windows-release
   .\scripts\build.ps1 -Test                 # build then run ctest
-  .\scripts\build.ps1 -Run                  # build then launch aural.exe
+  .\scripts\build.ps1 -Run                  # build then launch northlight.exe
 #>
 [CmdletBinding()]
 param(
@@ -63,8 +63,8 @@ try {
     }
 
     if ($Run) {
-        $exe = Get-ChildItem -Path $buildDir -Recurse -Filter 'Aural.exe' | Select-Object -First 1
-        if (-not $exe) { throw 'Aural.exe not found in build output' }
+        $exe = Get-ChildItem -Path $buildDir -Recurse -Filter 'Northlight.exe' | Select-Object -First 1
+        if (-not $exe) { throw 'Northlight.exe not found in build output' }
         & $exe.FullName
     }
 }

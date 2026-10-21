@@ -1,4 +1,4 @@
-# Aural — Development Plan
+# Northlight — Development Plan
 
 A native, high-performance digital audio workstation for Windows (first), built around
 a lock-free real-time engine, first-class ASIO support, VST3 plugin hosting, and a UI
@@ -93,7 +93,7 @@ decisions. We should read Tracktion's source for ideas regardless.
 
 ```
 +--------------------------------------------------------------+
-| aural.exe                                                    |
+| northlight.exe                                                    |
 |                                                              |
 |  UI thread (message loop, 60 fps paint, user input)          |
 |       |  commands (lock-free queue)       ^ state snapshots  |
@@ -112,7 +112,7 @@ decisions. We should read Tracktion's source for ideas regardless.
 +--------------------------------------------------------------+
 
 +-------------------------+
-| aural-scanner.exe       |  separate process: loads each plugin once,
+| northlight-scanner.exe       |  separate process: loads each plugin once,
 | (plugin scanner)        |  reports metadata; a crash kills only itself
 +-------------------------+
 ```
@@ -480,7 +480,7 @@ Rough total: about 8 months of focused work to a beta, excluding the design time
 ## 9. Repository layout
 
 ```
-aural/
+northlight/
 +-- CMakeLists.txt
 +-- CMakePresets.json
 +-- vcpkg.json
@@ -498,7 +498,7 @@ aural/
 |   +-- ui/                # components, LookAndFeel, views, theme loader
 |   +-- app/               # main, window, preferences, command manager
 +-- tools/
-|   +-- scanner/           # aural-scanner.exe
+|   +-- scanner/           # northlight-scanner.exe
 +-- tests/
 |   +-- unit/
 |   +-- integration/
@@ -513,9 +513,10 @@ aural/
 These need an answer before or during the phase noted.
 
 1. **Own engine vs Tracktion Engine** (Phase 0). Plan recommends own engine; see section 2.
-2. **Licensing of Aural itself** (Phase 0). Proprietary, GPL, or dual? Affects the
+2. **Licensing of Northlight itself** (Phase 0). Proprietary, GPL, or dual? Affects the
    time-stretch library choice and whether Tracktion is viable.
-   **Decided 2026-10-21: GNU AGPLv3**, released as Northlight. It matches JUCE's
+   **Decided 2026-10-21: GNU AGPLv3**, released as Northlight (the project was
+   renamed from Aural the same day; see architecture.md, "Settings"). It matches JUCE's
    open licence and takes the ASIO SDK under its GPLv3 option (GPLv3 section 13
    allows the combination); every other dependency is permissive. See LICENSE and
    THIRD_PARTY_NOTICES.md.
@@ -529,7 +530,7 @@ These need an answer before or during the phase noted.
 6. **Time-stretch library** (Phase 9). Rubber Band (best quality, GPL/commercial) vs
    Signalsmith (MIT, very good).
 7. **Minimum hardware spec** (Phase 2). Needed to set the performance budget.
-8. **Name and visual identity** (Phase 0). "Aural" is the working name.
+8. **Name and visual identity** (Phase 0). "Northlight" is the working name.
 
 ---
 

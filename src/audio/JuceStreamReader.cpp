@@ -6,7 +6,7 @@
 #include <algorithm>
 #include <cmath>
 
-namespace aural::audio
+namespace northlight::audio
 {
 
 JuceStreamReader::JuceStreamReader(std::unique_ptr<juce::AudioFormatReader> reader, double targetSampleRate)
@@ -28,7 +28,7 @@ JuceStreamReader::JuceStreamReader(std::unique_ptr<juce::AudioFormatReader> read
 
 bool JuceStreamReader::read(std::int64_t start, int numSamples, float* const* dest)
 {
-    AURAL_ASSERT_NOT_REALTIME("JuceStreamReader::read");
+    NORTHLIGHT_ASSERT_NOT_REALTIME("JuceStreamReader::read");
     if (numSamples <= 0)
         return true;
 
@@ -50,4 +50,4 @@ bool JuceStreamReader::read(std::int64_t start, int numSamples, float* const* de
     return true;
 }
 
-} // namespace aural::audio
+} // namespace northlight::audio

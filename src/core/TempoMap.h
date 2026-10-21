@@ -15,7 +15,7 @@
 // are counted in the signature's denominator, so a bar of 6/8 has six beats of an
 // eighth each. Positions before zero continue the first tempo and signature.
 
-namespace aural::core
+namespace northlight::core
 {
 
 // A snap grid: every `bars` bars (from bar 1) when bars > 0, else every
@@ -130,4 +130,4 @@ TempoMap tempoMapOf(const Project& project);
 // beats, re-stretched to fit.
 void remapMusicalTime(Project& project, const TempoMap& from, const TempoMap& to);
 
-} // namespace aural::core
+} // namespace northlight::core

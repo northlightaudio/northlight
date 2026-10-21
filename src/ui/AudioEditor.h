@@ -17,7 +17,7 @@
 #include <string>
 #include <vector>
 
-namespace aural::ui
+namespace northlight::ui
 {
 
 // The audio editor (docs/design/13-pitch-editing.md, "UI in the editor"): one audio
@@ -234,4 +234,4 @@ private:
     int ticks_ = 0;
 };
 
-} // namespace aural::ui
+} // namespace northlight::ui

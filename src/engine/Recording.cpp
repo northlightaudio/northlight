@@ -7,7 +7,7 @@
 #include <cmath>
 #include <optional>
 
-namespace aural::engine
+namespace northlight::engine
 {
 
 // ----- ring ---------------------------------------------------------------------------------
@@ -93,7 +93,7 @@ RecordSession::RecordSession(double sampleRate, double ringSeconds)
 
 void RecordSession::addInput(core::Id trackId, int inputChannel, std::string path)
 {
-    AURAL_ASSERT_NOT_REALTIME("RecordSession::addInput");
+    NORTHLIGHT_ASSERT_NOT_REALTIME("RecordSession::addInput");
     auto input = std::make_unique<Input>();
     input->trackId = trackId;
     input->inputChannel = inputChannel;
@@ -128,7 +128,7 @@ void RecordSession::capture(const float* const* inputs,
 
 void RecordSession::addMidiTrack(core::Id trackId)
 {
-    AURAL_ASSERT_NOT_REALTIME("RecordSession::addMidiTrack");
+    NORTHLIGHT_ASSERT_NOT_REALTIME("RecordSession::addMidiTrack");
     midiTracks_.push_back(trackId);
 }
 
@@ -148,7 +148,7 @@ void RecordSession::captureMidi(core::Id trackId,
 
 const std::vector<RecordSession::CapturedMidi>& RecordSession::capturedMidi()
 {
-    AURAL_ASSERT_NOT_REALTIME("RecordSession::capturedMidi");
+    NORTHLIGHT_ASSERT_NOT_REALTIME("RecordSession::capturedMidi");
     CapturedMidi e;
     while (midi_.pop(e))
         midiEvents_.push_back(e);
@@ -157,7 +157,7 @@ const std::vector<RecordSession::CapturedMidi>& RecordSession::capturedMidi()
 
 std::vector<RecordSession::TakeSpan> RecordSession::takeSpans()
 {
-    AURAL_ASSERT_NOT_REALTIME("RecordSession::takeSpans");
+    NORTHLIGHT_ASSERT_NOT_REALTIME("RecordSession::takeSpans");
     TakeSpan mark;
     while (midiMarks_.pop(mark))
         wraps_.push_back(mark);
@@ -176,7 +176,7 @@ std::vector<MidiTake> buildMidiTakes(const std::vector<RecordSession::CapturedMi
                                      const std::vector<RecordSession::TakeSpan>& spans,
                                      core::SamplePosition latency)
 {
-    AURAL_ASSERT_NOT_REALTIME("buildMidiTakes");
+    NORTHLIGHT_ASSERT_NOT_REALTIME("buildMidiTakes");
     struct Open
     {
         core::SamplePosition start;
@@ -354,7 +354,7 @@ RecordWriter::~RecordWriter()
 
 bool RecordWriter::begin(RecordSession& session)
 {
-    AURAL_ASSERT_NOT_REALTIME("RecordWriter::begin");
+    NORTHLIGHT_ASSERT_NOT_REALTIME("RecordWriter::begin");
     if (isWriting())
         return false;
 
@@ -753,4 +753,4 @@ void RecordWriter::run()
     }
 }
 
-} // namespace aural::engine
+} // namespace northlight::engine

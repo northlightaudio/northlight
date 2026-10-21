@@ -4,7 +4,7 @@
 
 #include <juce_gui_basics/juce_gui_basics.h>
 
-namespace aural::ui
+namespace northlight::ui
 {
 
 // An empty slot that adds something (an insert, a send): the shape of a
@@ -48,4 +48,4 @@ private:
     const Theme& theme_;
 };
 
-} // namespace aural::ui
+} // namespace northlight::ui

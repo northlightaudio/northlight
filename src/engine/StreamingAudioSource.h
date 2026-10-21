@@ -32,7 +32,7 @@
 //     outlast the grace), so a seek first bumps generation_, and a read that saw it
 //     change while copying returns silence.
 
-namespace aural::engine
+namespace northlight::engine
 {
 
 // Pulls decoded samples from a file. Implemented with JUCE in the audio layer.
@@ -115,4 +115,4 @@ private:
     std::atomic<bool> readError_{false};
 };
 
-} // namespace aural::engine
+} // namespace northlight::engine

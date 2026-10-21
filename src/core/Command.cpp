@@ -7,7 +7,7 @@
 #include <stdexcept>
 #include <utility>
 
-namespace aural::core
+namespace northlight::core
 {
 
 // ----- undo stack -------------------------------------------------------------------------
@@ -2240,4 +2240,4 @@ void SetClipStretch::revert(Project& p)
     requireClip(t, clipId_) = previous_;
 }
 
-} // namespace aural::core
+} // namespace northlight::core

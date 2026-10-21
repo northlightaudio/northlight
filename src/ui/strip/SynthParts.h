@@ -11,7 +11,7 @@
 // Pieces the bundled synths' editors share (07-plugins.md 7.4b-7.4d): the
 // drag handle, a display's screen, and a corner chip that opens a list.
 
-namespace aural::ui::strip
+namespace northlight::ui::strip
 {
 
 // A draggable point: a 9 px textPrimary disc with a ring in the hue (and a
@@ -94,4 +94,4 @@ private:
     juce::Colour hue_;
 };
 
-} // namespace aural::ui::strip
+} // namespace northlight::ui::strip

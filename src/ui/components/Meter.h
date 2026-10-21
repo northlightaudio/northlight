@@ -6,7 +6,7 @@
 
 #include <vector>
 
-namespace aural::ui
+namespace northlight::ui
 {
 
 // A level meter (02-design-system.md, "Meter"): one 6 px bar per channel with 2 px
@@ -57,4 +57,4 @@ private:
     bool wasSilent_ = false;
 };
 
-} // namespace aural::ui
+} // namespace northlight::ui

@@ -3,12 +3,12 @@
 #include "core/TempoMap.h"
 #include "engine/pitch/VocalOps.h"
 #include "engine/pitch/VocalRender.h"
-#include "ui/AuralLookAndFeel.h"
+#include "ui/NorthlightLookAndFeel.h"
 
 #include <algorithm>
 #include <cmath>
 
-namespace aural::ui
+namespace northlight::ui
 {
 
 namespace pitch = engine::pitch;
@@ -82,7 +82,7 @@ public:
         apply_.setButtonText("Apply");
         apply_.onClick = [this] { close(false); };
         cancel_.setButtonText("Cancel");
-        cancel_.getProperties().set(AuralLookAndFeel::propertyVariant, "ghost");
+        cancel_.getProperties().set(NorthlightLookAndFeel::propertyVariant, "ghost");
         cancel_.onClick = [this] { close(true); };
         addAndMakeVisible(apply_);
         addAndMakeVisible(cancel_);
@@ -196,7 +196,7 @@ AudioEditor::AudioEditor(audio::PeakStore& peaks, engine::VocalService& vocal)
     addChildComponent(tools_);
     for (auto* b : {&correctButton_, &breathsButton_, &keyButton_})
     {
-        b->getProperties().set(AuralLookAndFeel::propertyVariant, "ghost");
+        b->getProperties().set(NorthlightLookAndFeel::propertyVariant, "ghost");
         addChildComponent(*b);
     }
     correctButton_.setButtonText("Correct");
@@ -204,10 +204,10 @@ AudioEditor::AudioEditor(audio::PeakStore& peaks, engine::VocalService& vocal)
         "Correct the notes towards the key (the selected ones, or all), with a preview");
     correctButton_.onClick = [this] { showCorrectSheet(); };
     breathsButton_.setButtonText("Breaths");
-    breathsButton_.getProperties().set(AuralLookAndFeel::propertyMenu, true);
+    breathsButton_.getProperties().set(NorthlightLookAndFeel::propertyMenu, true);
     breathsButton_.setTooltip("Mute or turn down every breath");
     breathsButton_.onClick = [this] { showBreathMenu(); };
-    keyButton_.getProperties().set(AuralLookAndFeel::propertyMenu, true);
+    keyButton_.getProperties().set(NorthlightLookAndFeel::propertyMenu, true);
     keyButton_.setTooltip("The project's key: what Correct aims at and the grid highlights");
     keyButton_.onClick = [this] { showKeyMenu(); };
     link_.setClickingTogglesState(true);
@@ -1968,4 +1968,4 @@ void AudioEditor::showSegmentMenu(const core::VocalSegment& segment)
                        });
 }
 
-} // namespace aural::ui
+} // namespace northlight::ui

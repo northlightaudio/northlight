@@ -13,7 +13,7 @@
 // history. Commands capture whatever they need to revert at apply time, so they can
 // be constructed before the model state they revert to is known.
 
-namespace aural::core
+namespace northlight::core
 {
 
 class Command
@@ -1456,4 +1456,4 @@ private:
     MusicalPositions positions_;
 };
 
-} // namespace aural::core
+} // namespace northlight::core

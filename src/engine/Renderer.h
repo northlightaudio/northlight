@@ -20,7 +20,7 @@
 // fixed, so the output is identical whatever the worker count. Inserts arrive with
 // the built-in plugins. Real-time: render() allocates nothing.
 
-namespace aural::engine
+namespace northlight::engine
 {
 
 struct RenderContext
@@ -148,4 +148,4 @@ private:
     ClickGenerator click_;
 };
 
-} // namespace aural::engine
+} // namespace northlight::engine

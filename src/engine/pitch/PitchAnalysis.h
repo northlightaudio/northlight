@@ -22,7 +22,7 @@
 //
 // JUCE-free and deterministic, so the same media always gives the same notes.
 
-namespace aural::engine::pitch
+namespace northlight::engine::pitch
 {
 
 struct AnalysisOptions
@@ -68,11 +68,11 @@ PitchAnalysis analyse(const std::vector<std::vector<float>>& channels,
 inline float hzToCents(double hz) noexcept;
 inline double centsToHz(double cents) noexcept;
 
-} // namespace aural::engine::pitch
+} // namespace northlight::engine::pitch
 
 #include <cmath>
 
-namespace aural::engine::pitch
+namespace northlight::engine::pitch
 {
 inline float hzToCents(double hz) noexcept
 {
@@ -82,4 +82,4 @@ inline double centsToHz(double cents) noexcept
 {
     return 440.0 * std::exp2((cents - 6900.0) / 1200.0);
 }
-} // namespace aural::engine::pitch
+} // namespace northlight::engine::pitch

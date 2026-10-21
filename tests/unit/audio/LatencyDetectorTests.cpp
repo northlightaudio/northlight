@@ -6,7 +6,7 @@
 #include <cstdint>
 #include <vector>
 
-using namespace aural::audio;
+using namespace northlight::audio;
 
 namespace
 {

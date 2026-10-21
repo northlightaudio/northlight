@@ -8,7 +8,7 @@
 
 #include <cmath>
 
-using namespace aural::core;
+using namespace northlight::core;
 using Catch::Approx;
 
 TEST_CASE("A constant tempo map matches the single-tempo helpers", "[core][tempo]")

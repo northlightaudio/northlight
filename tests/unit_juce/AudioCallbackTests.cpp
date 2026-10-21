@@ -13,10 +13,10 @@
 
 namespace
 {
-const aural::plugins::BuiltInFactory builtIns;
+const northlight::plugins::BuiltInFactory builtIns;
 } // namespace
 
-using namespace aural;
+using namespace northlight;
 using Catch::Approx;
 
 namespace
@@ -130,7 +130,7 @@ namespace
 std::string tempRecordingPath(const char* name)
 {
     const auto file = juce::File::getSpecialLocation(juce::File::tempDirectory)
-                          .getChildFile("aural-tests")
+                          .getChildFile("northlight-tests")
                           .getChildFile(name);
     file.getParentDirectory().createDirectory();
     file.deleteFile();

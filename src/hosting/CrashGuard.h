@@ -1,6 +1,6 @@
 #pragma once
 
-namespace aural::hosting
+namespace northlight::hosting
 {
 
 // Runs fn(context) and catches a hardware exception a plugin raises inside it
@@ -19,4 +19,4 @@ template <typename F> bool callGuarded(F& f) noexcept
     return callGuarded([](void* context) { (*static_cast<F*>(context))(); }, &f);
 }
 
-} // namespace aural::hosting
+} // namespace northlight::hosting

@@ -11,7 +11,7 @@
 #include <string>
 #include <vector>
 
-namespace aural::ui
+namespace northlight::ui
 {
 
 // The panel model of docs/design/03-shell.md: a fixed shell with detachable
@@ -222,4 +222,4 @@ private:
     bool defaultsDockOpen_ = true, defaultsSideOpen_ = true;
 };
 
-} // namespace aural::ui
+} // namespace northlight::ui

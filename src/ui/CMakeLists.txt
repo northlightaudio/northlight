@@ -3,23 +3,23 @@
 
 # The design tokens (docs/design/tokens.json) are embedded as the theme's
 # defaults, so the app and the tests have them without any file beside them.
-set(AURAL_TOKENS_FILE "${CMAKE_SOURCE_DIR}/docs/design/tokens.json")
-file(READ "${AURAL_TOKENS_FILE}" AURAL_TOKENS_JSON)
+set(NORTHLIGHT_TOKENS_FILE "${CMAKE_SOURCE_DIR}/docs/design/tokens.json")
+file(READ "${NORTHLIGHT_TOKENS_FILE}" NORTHLIGHT_TOKENS_JSON)
 configure_file(TokensEmbedded.inc.in "${CMAKE_CURRENT_BINARY_DIR}/generated/TokensEmbedded.inc" @ONLY)
-set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS "${AURAL_TOKENS_FILE}")
+set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS "${NORTHLIGHT_TOKENS_FILE}")
 
 # The arrange view's clip edits as plain functions (JUCE-free, unit tested).
-add_library(aural_ui_edit STATIC
+add_library(northlight_ui_edit STATIC
     edit/ClipOps.h
     edit/ClipOps.cpp)
-target_include_directories(aural_ui_edit PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/..")
-target_link_libraries(aural_ui_edit PUBLIC aural_core aural_options)
+target_include_directories(northlight_ui_edit PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/..")
+target_link_libraries(northlight_ui_edit PUBLIC northlight_core northlight_options)
 
-add_library(aural_ui STATIC
+add_library(northlight_ui STATIC
     Theme.h
     Theme.cpp
-    AuralLookAndFeel.h
-    AuralLookAndFeel.cpp
+    NorthlightLookAndFeel.h
+    NorthlightLookAndFeel.cpp
     Wells.h
     PluginMenu.h
     PluginMenu.cpp
@@ -121,6 +121,6 @@ add_library(aural_ui STATIC
     ClapEditor.h
     ClapEditor.cpp)
 
-target_include_directories(aural_ui PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/..")
-target_include_directories(aural_ui PRIVATE "${CMAKE_CURRENT_BINARY_DIR}/generated")
-target_link_libraries(aural_ui PUBLIC aural_ui_edit aural_core aural_plugins aural_hosting aural_audio_device aural_juce)
+target_include_directories(northlight_ui PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/..")
+target_include_directories(northlight_ui PRIVATE "${CMAKE_CURRENT_BINARY_DIR}/generated")
+target_link_libraries(northlight_ui PUBLIC northlight_ui_edit northlight_core northlight_plugins northlight_hosting northlight_audio_device northlight_juce)

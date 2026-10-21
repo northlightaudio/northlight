@@ -6,7 +6,6 @@
 #include "plugins/BuiltIns.h"
 #include "plugins/ChannelStrip.h"
 #include "plugins/FxTracks.h"
-#include "ui/AuralLookAndFeel.h"
 #include "ui/ClapEditor.h"
 #include "ui/Db.h"
 #include "ui/FrameStats.h"
@@ -14,6 +13,7 @@
 #include "ui/InsertEditor.h"
 #include "ui/InstrumentOutputs.h"
 #include "ui/Motion.h"
+#include "ui/NorthlightLookAndFeel.h"
 #include "ui/PluginMenu.h"
 #include "ui/SendMenu.h"
 #include "ui/SidechainMenu.h"
@@ -26,7 +26,7 @@
 #include <iterator>
 #include <string>
 
-namespace aural::ui
+namespace northlight::ui
 {
 
 namespace
@@ -604,7 +604,7 @@ public:
         {
             b.setButtonText(juce::String::fromUTF8(text));
             b.setClickingTogglesState(true);
-            b.getProperties().set(AuralLookAndFeel::propertySemantic, semantic);
+            b.getProperties().set(NorthlightLookAndFeel::propertySemantic, semantic);
             b.setTooltip(tip);
             b.onClick = [this, &b, makeCommand]
             {
@@ -639,14 +639,14 @@ public:
                "Arm for recording",
                [](core::Id id, core::Id, bool on) -> std::unique_ptr<core::Command>
                { return std::make_unique<core::SetTrackArmed>(id, on); });
-        arm_.getProperties().set(AuralLookAndFeel::propertyHardOn, true);
+        arm_.getProperties().set(NorthlightLookAndFeel::propertyHardOn, true);
         toggle(phase_,
                "\xC3\x98",
                "monitor",
                "Phase invert",
                [](core::Id id, core::Id, bool on) -> std::unique_ptr<core::Command>
                { return std::make_unique<core::SetPhaseInvert>(id, on); });
-        phase_.getProperties().set(AuralLookAndFeel::propertySemantic, "phase");
+        phase_.getProperties().set(NorthlightLookAndFeel::propertySemantic, "phase");
 
         fader_.setMaxDb(static_cast<float>(maxFaderDb));
         fader_.onDragStart = [this]
@@ -998,7 +998,7 @@ public:
                        juce::Justification::centredLeft);
         }
         if (hasKeyboardFocus(false))
-            if (auto* laf = dynamic_cast<AuralLookAndFeel*>(&getLookAndFeel()))
+            if (auto* laf = dynamic_cast<NorthlightLookAndFeel*>(&getLookAndFeel()))
                 laf->drawFocusRing(g, *this, bounds.reduced(1.0f), theme_.radius.sm);
         if (reorderLineY_ >= 0)
         {
@@ -1880,7 +1880,7 @@ MixerView::MixerView(rt::MeterBlock& meters,
     addAndMakeVisible(viewport_);
     master_ = std::make_unique<MasterStrip>(*this, theme_);
     addAndMakeVisible(*master_);
-    addBus_.getProperties().set(AuralLookAndFeel::propertyVariant, "ghost");
+    addBus_.getProperties().set(NorthlightLookAndFeel::propertyVariant, "ghost");
     addBus_.setTooltip("Add a bus or an FX track");
     addBus_.onClick = [this] { addBus(); };
     stripsHolder_.addAndMakeVisible(addBus_);
@@ -2158,4 +2158,4 @@ void MixerView::resized()
     viewport_.setBounds(area);
     layoutStrips();
 }
-} // namespace aural::ui
+} // namespace northlight::ui

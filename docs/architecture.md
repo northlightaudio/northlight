@@ -6,14 +6,14 @@ file records what is actually built and the decisions made along the way.
 ## Current state (Phases 6 and 8 complete; Phase 7, the design spec, in progress: design system and shell done)
 
 ```
-aural.exe
+northlight.exe
   src/app         JUCEApplication; MainWindow (the shell: header bar, arrange
                   view, dock and side panel hosts, status bar, toasts, sheets,
                   the keyboard map, menus, Audio Setup window);
                   ProjectSession (the open Project + UndoStack + AudioEngine +
                   DiskThread + PeakStore; recording flow and recovery);
                   UserSettings (per-user properties file)
-  src/ui          Theme (design tokens), AuralLookAndFeel (dark, token-driven),
+  src/ui          Theme (design tokens), NorthlightLookAndFeel (dark, token-driven),
                   Icons (the icon set as paths), components/ (Fader, Knob, Meter,
                   SegmentedControl, NumericField, PanelHeader, Toast, Sheet),
                   shell/ (HeaderBar, StatusBar, Panels: hosts, floating windows,
@@ -44,10 +44,10 @@ aural.exe
                   EQ, compressor, de-esser, saturation, limiter) behind the
                   insert interface. No JUCE.
   src/hosting     PluginRegistry (known plugins, blocklist, scan times; no JUCE),
-                  PluginScanner (drives aural_plugin_scan per file), HostedPlugin
+                  PluginScanner (drives northlight_plugin_scan per file), HostedPlugin
                   (a VST3 instance behind the insert interface), HostFactory
                   (built-ins + hosted types for the engine)
-  aural_plugin_scan  the out-of-process scanner (one plugin file per run)
+  northlight_plugin_scan  the out-of-process scanner (one plugin file per run)
   src/engine/rt   Real-time guard and allocation hook, SpscQueue, SnapshotPublisher,
                   CallbackStats, ScopedFlushDenormals
   src/audio       Pure:  AudioSettings, LatencyDetector, PassThrough
@@ -55,7 +55,7 @@ aural.exe
                          LatencyCalibrator, JuceMediaLoader, JuceStreamReader,
                          PeakStore
 
-aural_unit_tests.exe
+northlight_unit_tests.exe
   tests/unit/rt      Catch2 tests for the guard
   tests/unit/audio   Settings serialisation, latency detection, pass-through
   tests/unit/core    Model, every command's undo/redo, JSON round trips
@@ -67,12 +67,12 @@ aural_unit_tests.exe
                      scheduling, stop/jump/loop note-offs, live input, the synth,
                      MIDI capture and take building)
 
-aural_juce_tests.exe
+northlight_juce_tests.exe
   tests/unit_juce    JUCE-linked tests that need no device: stream reader
                      resampling, AudioCallback driving the engine through a fake
                      juce::AudioIODevice
 
-aural_loopback_tool.exe, aural_record_soak.exe
+northlight_loopback_tool.exe, northlight_record_soak.exe
   tests/hardware     Console tools: list devices / loopback calibration; the
                      offline recording soak (N inputs for M minutes through the
                      record path, verified sample-exactly). Built, never run by
@@ -83,18 +83,18 @@ Build targets:
 
 | Target | Kind | Depends on |
 |---|---|---|
-| `aural_options` | INTERFACE | Compiler flags and defines shared by everything |
-| `aural_rt` | STATIC | `aural_options` |
-| `aural_rt_checks` | OBJECT | `aural_rt`; holds the global `operator new` override so it is linked into executables rather than discarded from a static lib |
-| `aural_juce` | STATIC | The JUCE modules, compiled once; re-exports their include paths and settings (see decisions log) |
-| `aural_core` | STATIC | `aural_options`, nlohmann_json (private); the model |
-| `aural_engine` | STATIC | `aural_rt`, `aural_core`; the engine, JUCE-free |
-| `aural_audio` | STATIC | `aural_rt`; pure audio code with no JUCE dependency |
-| `aural_audio_device` | STATIC | `aural_audio`, `aural_engine`, `aural_juce`; the device layer and media loading |
-| `aural_ui` | STATIC | `aural_core`, `aural_audio_device`, `aural_juce` |
-| `aural` | GUI app | `aural_ui`, `aural_audio_device`, `aural_engine`, `aural_core`, `aural_juce`, `aural_rt_checks` |
-| `aural_unit_tests` | console app | Catch2, `aural_audio`, `aural_core`, `aural_engine`, `aural_rt`, `aural_rt_checks` |
-| `aural_loopback_tool` | console app | `aural_audio_device`, `aural_juce`, `aural_rt_checks` |
+| `northlight_options` | INTERFACE | Compiler flags and defines shared by everything |
+| `northlight_rt` | STATIC | `northlight_options` |
+| `northlight_rt_checks` | OBJECT | `northlight_rt`; holds the global `operator new` override so it is linked into executables rather than discarded from a static lib |
+| `northlight_juce` | STATIC | The JUCE modules, compiled once; re-exports their include paths and settings (see decisions log) |
+| `northlight_core` | STATIC | `northlight_options`, nlohmann_json (private); the model |
+| `northlight_engine` | STATIC | `northlight_rt`, `northlight_core`; the engine, JUCE-free |
+| `northlight_audio` | STATIC | `northlight_rt`; pure audio code with no JUCE dependency |
+| `northlight_audio_device` | STATIC | `northlight_audio`, `northlight_engine`, `northlight_juce`; the device layer and media loading |
+| `northlight_ui` | STATIC | `northlight_core`, `northlight_audio_device`, `northlight_juce` |
+| `northlight` | GUI app | `northlight_ui`, `northlight_audio_device`, `northlight_engine`, `northlight_core`, `northlight_juce`, `northlight_rt_checks` |
+| `northlight_unit_tests` | console app | Catch2, `northlight_audio`, `northlight_core`, `northlight_engine`, `northlight_rt`, `northlight_rt_checks` |
+| `northlight_loopback_tool` | console app | `northlight_audio_device`, `northlight_juce`, `northlight_rt_checks` |
 
 ### Audio device layer
 
@@ -134,7 +134,7 @@ the engine's `prepare`/`release`, which is where the renderer's scratch is sized
 and sit on the timeline in samples at the project rate. Every edit is a
 `core::Command` with `apply`/`revert`; `core::UndoStack` owns the history and can
 group commands into one step. `projectToJson`/`projectFromJson` read and write the
-versioned `aural.project` format. Bars/beats are a display conversion
+versioned `northlight.project` format. Bars/beats are a display conversion
 (`samplesToBarsBeats`) with a constant tempo for now.
 
 Take groups (comping, design/14-comping.md): a track's `takeGroups` each hold
@@ -252,7 +252,7 @@ is in the folder at launch was left by a session that did not close; the main
 window offers the newest with a toast (Restore / Discard). A restored project
 belongs to its file but stays unsaved until the user saves it.
 
-Templates are project files in `Documents/Aural/Templates` with the clips, MIDI
+Templates are project files in `Documents/Northlight/Templates` with the clips, MIDI
 clips, markers and automation points stripped (and nothing armed); "New from
 template" loads one as an unsaved, untitled project. Media management works on
 the project's media folder (`<project> Media`): `mediaReport` lists media used
@@ -281,7 +281,7 @@ start, end)` picks the coarsest level whose bins still fit the span, so one pixe
 column costs a handful of bin reads at any zoom. `audio::PeakStore` builds peaks on a
 low-priority background thread (reading through `JuceStreamReader` at the project
 rate so peaks line up with clip positions), caches them beside the media as
-`<file>.<rate>.aural-peaks` while the cache is newer than the media, and broadcasts a
+`<file>.<rate>.northlight-peaks` while the cache is newer than the media, and broadcasts a
 change on the message thread when a build finishes. The view asks for peaks while
 painting and simply draws a flat block until they arrive.
 
@@ -414,7 +414,7 @@ Input monitoring is part of the track render: a track in monitor mode "on" alway
 hears its input through its gain and pan; "automatic" hears it while armed and the
 transport is not playing back (stopped or recording); "off" never. The Phase 1
 pass-through in Audio Setup is still available as a global monitor and adds on top.
-Hardware (driver-side direct) monitoring is not controlled from Aural: JUCE's ASIO
+Hardware (driver-side direct) monitoring is not controlled from Northlight: JUCE's ASIO
 wrapper does not expose the input-monitor message, so an interface's own direct
 monitoring is used by setting the track to "off". The header shows a green dot
 while a track's input is being heard and the arm button reads REC during a take.
@@ -423,7 +423,7 @@ while a track's input is being heard and the arm button reads REC during a take.
 
 The plan's milestone is 16 inputs for 30 minutes with no dropouts, then a kill and
 recovery. The Volt has four inputs, so the 16-input run is the offline soak
-(`aural_record_soak --inputs 16 --minutes 30 --speed 8`): synthetic inputs through
+(`northlight_record_soak --inputs 16 --minutes 30 --speed 8`): synthetic inputs through
 the real record path (rings, writer thread, header rewrites) at eight times real
 time, every file verified sample-exactly afterwards. On the development machine it
 passed with zero ring overruns (see the hand-over note for the figures). On the Volt,
@@ -885,7 +885,7 @@ in the same child process (entry, factory, descriptors) from
 `%COMMONPROGRAMFILES%\CLAP`, the per-user folder and every `%CLAP_PATH%` entry; a
 file whose entry refuses to initialise is blocklisted with the reason rather than
 recorded as empty; the registry records each plugin's format and the browser
-filters effects from instruments. The test file (`AuralTestGain.clap`, built with
+filters effects from instruments. The test file (`NorthlightTestGain.clap`, built with
 the tests) holds five plugins: the stereo in-place effect with a key and a note
 port, a four-channel one (refused), a two-output one (drained), one without an
 in-place pair that swaps its channels (separate buffers), and one that asks for
@@ -922,7 +922,7 @@ its latency after prepare is noticed on the session's poll and the graph re-solv
 The playhead and the position display follow the heard position (engine position
 minus the lag).
 
-Scanning is out of process from day one: `aural_plugin_scan <file>` loads one
+Scanning is out of process from day one: `northlight_plugin_scan <file>` loads one
 file and prints its `PluginDescription`s as XML, and `hosting::PluginScanner` runs
 it per candidate on a background thread with a timeout: the child's output is
 drained on a helper thread (a JUCE child-process read blocks until the child
@@ -1085,14 +1085,14 @@ takes any past the end). An instrument's extra outputs are compensated like
 its main one: an output track's signal lags by the source chain's latency up
 to the instrument, plus its own chain.
 
-Instruments: Aurora (`aural.aurora`, `plugins/Aurora.*`, the default for new
+Instruments: Aurora (`northlight.aurora`, `plugins/Aurora.*`, the default for new
 MIDI tracks): twelve voices of two morphing polyBLEP oscillators with up to
 seven-voice unison spread across the stereo field, a sub and noise, a drivable
 TPT state-variable filter (12/24 dB low-pass, band-pass, high-pass) with key
 tracking and its own envelope, coefficients and the LFO at a 16-sample control
 rate, glide, and Shimmer, a two-line modulated chorus; it publishes its output
 tap, the sounding voices and the LFO through the built-ins' feedback for its
-editor, and has eight factory presets. Pulsar (`aural.pulsar`, `plugins/Pulsar.*`)
+editor, and has eight factory presets. Pulsar (`northlight.pulsar`, `plugins/Pulsar.*`)
 is a drum synth: a voice per pad (kick and toms a pitch-swept sine with a click,
 snare two shell modes and band-passed wires, clap four noise bursts and a tail,
 hats six square waves at the 808's ratios and noise through a high-pass, rim an
@@ -1103,14 +1103,14 @@ routes to the main pair or one of seven extra pairs, exposed as aux outputs (as
 many as the highest in use) with buffers allocated in prepare; the master drive
 and level apply per output. `InsertProcessor::auxOutputName` lets an instrument
 name a pair ("Kick"), which output tracks take as their name. Nebula
-(`aural.nebula`, `plugins/Nebula.*`) is a pad synth: per voice up to 24 partials
+(`northlight.nebula`, `plugins/Nebula.*`) is a pad synth: per voice up to 24 partials
 plus a halo an octave up, each two sines from a shared table (linear
 interpolation) detuned by the spread and a slow random drift, their levels set at
 a 32-sample control rate from a tilt, an odd/even balance, a stretch and a vowel
 formant (with the motion LFO sweeping them) and ramped across the interval; a
 sub, band-passed breath noise, a one-pole tone filter and an eight-line feedback
 delay network for the space. `nebula::spectrum` gives the editor the same partial
-levels for its picture. Starbit (`aural.starbit`, `plugins/Starbit.*`) is a
+levels for its picture. Starbit (`northlight.starbit`, `plugins/Starbit.*`) is a
 chiptune synth: naive pulse, 4-bit triangle and saw, a 15-bit LFSR (short mode
 taps bit 6) clocked from the note and a 32-step drawn wave; 16-step volume;
 arpeggio, vibrato, sweep and glide at a 32-sample control rate from constant
@@ -1124,7 +1124,7 @@ Aurora applies it at its control rate, Nebula on each voice's partials, Starbit
 on top of its own vibrato; Pulsar takes the bend as a tuning of every pad and
 the mod wheel as opening their tone. A centred bend and resting wheel multiply
 by exactly 1, so the sound is unchanged when they are not used. The first built-in
-synth (`aural.synth`) is retired: projects that used it open with Aurora in its
+synth (`northlight.synth`) is retired: projects that used it open with Aurora in its
 place (`ProjectSession::replaceLegacySynth`, before `adoptInstruments`). Every
 instrument parses its events at their sample offsets, so note timing is
 sample-exact. Hosted VST3 plugins that accept MIDI (the events go into the JUCE
@@ -1144,7 +1144,7 @@ track; each further pair is an output track or a chip that makes one), and the
 mixer's instrument slot menu offers the same "Outputs"; a source that goes away
 leaves the aux track silent.
 
-The Sampler (`aural.sampler`, `plugins/Sampler.*`) plays one sample across the
+The Sampler (`northlight.sampler`, `plugins/Sampler.*`) plays one sample across the
 keyboard: a root note and a key range, tune and fine, velocity to level, an ADSR
 on the amplitude (the shared `synth::Envelope`), start and end points, a forward
 loop whose last few milliseconds crossfade into the same distance before the
@@ -1265,7 +1265,7 @@ come through the same events. A full queue drops events rather than block.
 
 ### MIDI files
 
-`app/MidiFiles` (`aural::midifile`, JUCE's `MidiFile` for the bytes) converts
+`app/MidiFiles` (`northlight::midifile`, JUCE's `MidiFile` for the bytes) converts
 between Standard MIDI Files and clips, apart from the session so it is tested
 on its own (tests/unit_juce/MidiFileTests.cpp). Import reads types 0 and 1
 (type 2 is refused): every file track becomes one part per MIDI channel it
@@ -1298,7 +1298,7 @@ selected MIDI track's, else all). Launch flags: `--import-midi <file>`,
 
 ### Crash reports
 
-`aural::crash` (src/app/CrashReports, no JUCE) installs an unhandled-exception
+`northlight::crash` (src/app/CrashReports, no JUCE) installs an unhandled-exception
 filter at startup. A crash writes a minidump (thread info, indirectly referenced
 memory, unloaded modules) and a note with the version and exception code into
 `<settings folder>/Crashes`, from buffers prepared at install (the heap may be
@@ -1439,7 +1439,23 @@ open configuration matches. Phase 3 uses that value to place recorded audio.
 ### Settings
 
 `UserSettings` wraps `juce::ApplicationProperties`; the file is
-`%APPDATA%\Aural\Aural.settings` (XML). Each subsystem writes namespaced keys
+`%APPDATA%\Northlight\Northlight.settings` (XML).
+
+**Renamed from Aural** (2026-10-21). Northlight was called Aural, and what users kept
+from then still works. On the first start, `migration::fromAural` (src/app/Migration)
+copies `%APPDATA%\Aural` to `%APPDATA%\Northlight` (renaming the settings file and
+rewriting built-in processor names in it) and `Documents\Aural\Templates` and
+`Strip Presets` into `Documents\Northlight`. It copies, never moves, and never
+copies over an existing Northlight folder. Recordings stay where projects point.
+Old files load as they are: `projectFromJson` accepts the "aural.project" format
+and maps every "aural.*" processor name to "northlight.*" (`core::currentTypeName`,
+also used for user strip presets), the plugin list accepts "aural.plugins", and the
+open dialog, templates and autosaves take `.aural` files beside `.northlight` ones.
+The build still reads the ASIO SDK path from `AURAL_ASIO_SDK_DIR` when
+`NORTHLIGHT_ASIO_SDK_DIR` is not set (except in the CI preset, which turns ASIO
+off). Peak and pitch caches have new names (`.northlight-peaks`,
+`.northlight-pitch`) and are rebuilt; the old ones beside media files can be
+deleted. Each subsystem writes namespaced keys
 (`audio.*`) via `AudioSettings::toKeyValues()`, so the audio layer has no JUCE
 dependency for serialisation and the format is trivially diffable.
 
@@ -1483,7 +1499,7 @@ JetBrains Mono under `assets/fonts`) are loaded as system typefaces when
 present and fall back to Segoe UI and Consolas when not; `Theme::font()` and
 the named helpers (`body()`, `label()`, `value()`, `timeLarge()`...) give views
 the scale. The pre-token field names (`colours.background`, `sizes.controlHeight`)
-are kept as aliases until every screen is restyled. `ui::AuralLookAndFeel` draws
+are kept as aliases until every screen is restyled. `ui::NorthlightLookAndFeel` draws
 every stock control to the component specs (buttons by variant through component
 properties: secondary, primary, ghost, danger; toggles with the semantic M/S/R/
 monitor colours and a "hard on" arm; combos, fields, checkboxes, sliders with
@@ -1603,7 +1619,7 @@ machine for the benchmark.
 | 2026-10-19 | JUCE and Catch2 via `FetchContent`, no vcpkg yet | Nothing yet needs a package with a real build step. vcpkg (bundled with VS) comes in when spdlog or a resampler lands. |
 | 2026-10-19 | RT checks via global `operator new` override in an OBJECT library | A static library's override can be discarded by the linker; OBJECT library objects are always linked. |
 | 2026-10-19 | `JUCE_MODAL_LOOPS_PERMITTED=0` | Forces async dialogs from day one so the message thread never re-enters during a modal loop, which is a classic source of host/plugin deadlocks. |
-| 2026-10-19 | JUCE modules compiled once into `aural_juce` and re-exported | JUCE modules are INTERFACE targets that add their sources to every consumer; with three consumers (app, device library, hardware tool) that means duplicate symbols. `aural_juce` links the modules PRIVATE and re-exports `INCLUDE_DIRECTORIES` and `COMPILE_DEFINITIONS` so consumers see one consistent set of module settings. |
+| 2026-10-19 | JUCE modules compiled once into `northlight_juce` and re-exported | JUCE modules are INTERFACE targets that add their sources to every consumer; with three consumers (app, device library, hardware tool) that means duplicate symbols. `northlight_juce` links the modules PRIVATE and re-exports `INCLUDE_DIRECTORIES` and `COMPILE_DEFINITIONS` so consumers see one consistent set of module settings. |
 | 2026-10-19 | Audio settings are a JUCE-free value type serialised to a flat key/value map | Lets the settings and the calibration record be unit tested without JUCE, and keeps the on-disk format simple. The app maps the keys onto its properties file. |
 | 2026-10-19 | Device changes go through `AudioDeviceManager::initialise` with a `DEVICESETUP` element | `setCurrentAudioDeviceType` opens the type's default device first (and sleeps 1.5 s), then `setAudioDeviceSetup` opens the chosen one: two opens per change. The XML path applies type, device, rate, buffer size and channels in one open. |
 | 2026-10-19 | Calibration signal is a 10 ms windowed chirp found by cross-correlation | Single-sample impulses are smeared by converter filters and easily lost in noise; a chirp survives band-limiting and its autocorrelation peak is one sample wide, so the match is sample-accurate on real hardware. Matching on magnitude tolerates polarity-inverting cables. |

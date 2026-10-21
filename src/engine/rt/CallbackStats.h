@@ -9,7 +9,7 @@
 // deadline, plus running max and overrun counters. The controller side reads
 // percentiles from the histogram whenever it likes.
 
-namespace aural::rt
+namespace northlight::rt
 {
 
 class CallbackStats
@@ -94,4 +94,4 @@ private:
     std::atomic<float> max_{0.0f};
 };
 
-} // namespace aural::rt
+} // namespace northlight::rt

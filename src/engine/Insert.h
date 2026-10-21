@@ -21,7 +21,7 @@
 // at the start of each block, so a parameter change never needs a new instance and
 // the processor's state (filter memory, envelopes) survives snapshot recompiles.
 
-namespace aural::engine
+namespace northlight::engine
 {
 
 struct ParameterInfo
@@ -212,4 +212,4 @@ private:
     std::map<core::Id, std::string> appliedState_; // the model state an instance last took
 };
 
-} // namespace aural::engine
+} // namespace northlight::engine

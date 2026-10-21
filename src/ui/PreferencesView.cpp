@@ -1,11 +1,11 @@
 #include "ui/PreferencesView.h"
 
-#include "ui/AuralLookAndFeel.h"
+#include "ui/NorthlightLookAndFeel.h"
 #include "ui/components/NumericField.h"
 
 #include <algorithm>
 
-namespace aural::ui
+namespace northlight::ui
 {
 
 namespace
@@ -393,8 +393,8 @@ void PreferencesView::writeAccentOverride(const juce::String& hex)
     set(Keys::accent, hex.toStdString());
     writeTokenOverride();
     if (onNotice)
-        onNotice(hex.isEmpty() ? "Accent reset. Restart Aural to apply."
-                               : "Accent set to " + hex + ". Restart Aural to apply.");
+        onNotice(hex.isEmpty() ? "Accent reset. Restart Northlight to apply."
+                               : "Accent set to " + hex + ". Restart Northlight to apply.");
 }
 
 void PreferencesView::writeTokenOverride()
@@ -505,7 +505,7 @@ void PreferencesView::buildPages()
     const auto button = [](const juce::String& label, std::function<void()> action)
     {
         auto b = std::make_unique<juce::TextButton>(label);
-        b->getProperties().set(AuralLookAndFeel::propertyVariant, "secondary");
+        b->getProperties().set(NorthlightLookAndFeel::propertyVariant, "secondary");
         b->onClick = std::move(action);
         return b;
     };
@@ -629,7 +629,8 @@ void PreferencesView::buildPages()
                   std::move(paths),
                   "Extra folders; the standard locations are always scanned.",
                   3 * rowHeight);
-        page->add("Scan on launch", toggle("Scan for changes when Aural starts", Keys::scanOnLaunch, false));
+        page->add("Scan on launch",
+                  toggle("Scan for changes when Northlight starts", Keys::scanOnLaunch, false));
         page->add("Blocklist",
                   button(registry_.blocked().empty()
                              ? "No blocked plugins"
@@ -742,4 +743,4 @@ void PreferencesView::resized()
     }
 }
 
-} // namespace aural::ui
+} // namespace northlight::ui

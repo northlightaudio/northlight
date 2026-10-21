@@ -1,12 +1,12 @@
 #include "ui/AutomationOverlay.h"
 
 #include "plugins/BuiltIns.h"
-#include "ui/AuralLookAndFeel.h"
 #include "ui/Db.h"
+#include "ui/NorthlightLookAndFeel.h"
 
 #include <cmath>
 
-namespace aural::ui
+namespace northlight::ui
 {
 
 namespace
@@ -739,4 +739,4 @@ void AutomationOverlay::showPointMenu(const core::Channel& track, int row, int p
                        });
 }
 
-} // namespace aural::ui
+} // namespace northlight::ui

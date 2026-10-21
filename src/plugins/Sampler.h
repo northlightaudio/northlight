@@ -8,7 +8,7 @@
 #include <string>
 #include <vector>
 
-// The Sampler: a polyphonic player of one sample bundled with Aural (07-plugins.md
+// The Sampler: a polyphonic player of one sample bundled with Northlight (07-plugins.md
 // 7.4f). A root note and a key range, tune, velocity to level, an ADSR on the
 // amplitude, start and end points, a forward loop with a crossfade, one-shot
 // playback, a resonant low-pass with the envelope on its cutoff, a polyphony
@@ -23,10 +23,10 @@
 // buffer through an epoch-retired publisher (rt::SnapshotPublisher); the
 // real-time thread only reads it. Real-time safe after prepare().
 
-namespace aural::plugins::sampler
+namespace northlight::plugins::sampler
 {
 
-inline const std::string type = "aural.sampler";
+inline const std::string type = "northlight.sampler";
 
 // A decoded sample, immutable once made and shared by every processor that
 // plays the file.
@@ -105,4 +105,4 @@ std::vector<VoiceInfo> soundingVoices(const engine::InsertProcessor& processor);
 // A note name for a MIDI note number ("C4" = 60).
 std::string noteName(int note);
 
-} // namespace aural::plugins::sampler
+} // namespace northlight::plugins::sampler

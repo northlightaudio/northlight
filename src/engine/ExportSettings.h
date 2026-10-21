@@ -9,7 +9,7 @@
 // applies) and their persistence as key/value pairs ("export.*" in the user
 // settings). JUCE-free so the rules are unit tested.
 
-namespace aural::engine
+namespace northlight::engine
 {
 
 enum class ExportFormat
@@ -107,4 +107,4 @@ bool ditherApplies(const ExportSettings& settings) noexcept;
 const std::vector<double>& loudnessTargets();
 const std::vector<double>& peakCeilings();
 
-} // namespace aural::engine
+} // namespace northlight::engine

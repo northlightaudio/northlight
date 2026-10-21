@@ -23,13 +23,13 @@ covered here follows the C++ Core Guidelines.
 
 | Thing | Style | Example |
 |---|---|---|
-| Namespaces | lower | `aural::engine` |
+| Namespaces | lower | `northlight::engine` |
 | Types | PascalCase | `TrackNode`, `ScopedRealtimeSection` |
 | Functions and methods | camelCase | `compileGraph()` |
 | Variables and parameters | camelCase | `blockSize` |
 | Private members | camelCase with trailing underscore | `mainWindow_` |
 | Constants and enumerators | camelCase | `maxChannels`, `ViolationKind::allocation` |
-| Macros | `AURAL_` prefix, SCREAMING | `AURAL_ASSERT_NOT_REALTIME` |
+| Macros | `NORTHLIGHT_` prefix, SCREAMING | `NORTHLIGHT_ASSERT_NOT_REALTIME` |
 | Files | PascalCase matching the main type | `RealtimeGuard.h` |
 
 One class per header where practical. Headers are included by path from `src/`
@@ -37,8 +37,8 @@ One class per header where practical. Headers are included by path from `src/`
 
 ## Namespaces
 
-- Everything lives in `aural::`. Sub-namespaces mirror `src/` directories: `aural::rt`,
-  `aural::engine`, `aural::audio`, `aural::plugins`, `aural::ui`, `aural::core`.
+- Everything lives in `northlight::`. Sub-namespaces mirror `src/` directories: `northlight::rt`,
+  `northlight::engine`, `northlight::audio`, `northlight::plugins`, `northlight::ui`, `northlight::core`.
 - No `using namespace` in headers. `using namespace juce;` is banned everywhere; spell
   out `juce::`.
 
@@ -55,7 +55,7 @@ One class per header where practical. Headers are included by path from `src/`
 ## Real-time code
 
 See [rt-rules.md](rt-rules.md). In short: no allocation, locks, I/O, or UI on RT
-threads; mark RT functions `noexcept`; put `AURAL_ASSERT_NOT_REALTIME` at the top of
+threads; mark RT functions `noexcept`; put `NORTHLIGHT_ASSERT_NOT_REALTIME` at the top of
 anything that is not safe.
 
 ## Errors and logging
@@ -63,7 +63,7 @@ anything that is not safe.
 - Functions that can fail return `std::expected<T, Error>` (or `std::optional` when
   there is only one way to fail) rather than throwing, unless the failure is a
   programming error, in which case `jassert`.
-- Logging goes through the `aural::log` facade (Phase 1) which is RT-safe on the
+- Logging goes through the `northlight::log` facade (Phase 1) which is RT-safe on the
   posting side. Do not call `DBG` or `std::cout` from engine code.
 
 ## Tests

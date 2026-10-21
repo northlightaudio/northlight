@@ -1,12 +1,12 @@
 #include "ui/TrackHeader.h"
 
-#include "ui/AuralLookAndFeel.h"
 #include "ui/Db.h"
 #include "ui/Icons.h"
+#include "ui/NorthlightLookAndFeel.h"
 
 #include <cmath>
 
-namespace aural::ui
+namespace northlight::ui
 {
 
 namespace
@@ -74,14 +74,14 @@ TrackHeader::TrackHeader(const Theme& theme) : theme_(theme), meter_(theme, 2, f
     const auto toggle = [this](juce::TextButton& b, const char* semantic, const char* tip)
     {
         b.setClickingTogglesState(true);
-        b.getProperties().set(AuralLookAndFeel::propertySemantic, semantic);
+        b.getProperties().set(NorthlightLookAndFeel::propertySemantic, semantic);
         b.setTooltip(tip);
         addAndMakeVisible(b);
     };
     toggle(mute_, "mute", "Mute");
     toggle(solo_, "solo", "Solo");
     toggle(arm_, "arm", "Arm for recording");
-    arm_.getProperties().set(AuralLookAndFeel::propertyHardOn, true);
+    arm_.getProperties().set(NorthlightLookAndFeel::propertyHardOn, true);
     toggle(automation_, "", "Show automation (volume, pan, plugin parameters) over the lane");
     automation_.onClick = [this]
     {
@@ -104,8 +104,8 @@ TrackHeader::TrackHeader(const Theme& theme) : theme_(theme), meter_(theme, 2, f
             onArmChanged(trackId_, arm_.getToggleState());
     };
 
-    monitorButton_.getProperties().set(AuralLookAndFeel::propertySemantic, "monitor");
-    monitorButton_.getProperties().set(AuralLookAndFeel::propertyIcon, true);
+    monitorButton_.getProperties().set(NorthlightLookAndFeel::propertySemantic, "monitor");
+    monitorButton_.getProperties().set(NorthlightLookAndFeel::propertyIcon, true);
     monitorButton_.setButtonText(juce::String::fromUTF8("\xe2\x97\x8f"));
     monitorButton_.onClick = [this]
     {
@@ -143,14 +143,14 @@ TrackHeader::TrackHeader(const Theme& theme) : theme_(theme), meter_(theme, 2, f
     };
     addAndMakeVisible(volume_);
     addAndMakeVisible(meter_);
-    target_.getProperties().set(AuralLookAndFeel::propertyVariant, "ghost");
+    target_.getProperties().set(NorthlightLookAndFeel::propertyVariant, "ghost");
     target_.onClick = [this]
     {
         if (onTargetMenu)
             onTargetMenu(trackId_, target_.getScreenBounds());
     };
     addChildComponent(target_);
-    fold_.getProperties().set(AuralLookAndFeel::propertyVariant, "ghost");
+    fold_.getProperties().set(NorthlightLookAndFeel::propertyVariant, "ghost");
     fold_.onClick = [this]
     {
         if (onCommand)
@@ -466,7 +466,7 @@ void TrackHeader::refreshMonitorButton()
     using core::MonitorMode;
     const bool waiting = monitor_ == MonitorMode::automatic && !monitoring_;
     monitorButton_.setToggleState(monitor_ != MonitorMode::off, juce::dontSendNotification);
-    monitorButton_.getProperties().set(AuralLookAndFeel::propertySemantic,
+    monitorButton_.getProperties().set(NorthlightLookAndFeel::propertySemantic,
                                        waiting ? "monitorAuto" : "monitor");
     monitorButton_.setTooltip(monitor_ == MonitorMode::off  ? "Monitor: off"
                               : monitor_ == MonitorMode::on ? "Monitor: on"
@@ -612,4 +612,4 @@ void TrackHeader::resized()
     }
 }
 
-} // namespace aural::ui
+} // namespace northlight::ui

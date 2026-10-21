@@ -11,8 +11,8 @@
 
 #include "core/Command.h"
 #include "plugins/Sampler.h"
-#include "ui/AuralLookAndFeel.h"
 #include "ui/MediaFiles.h"
+#include "ui/NorthlightLookAndFeel.h"
 #include "ui/strip/StripStyle.h"
 #include "ui/strip/SynthParts.h"
 
@@ -20,7 +20,7 @@
 #include <functional>
 #include <vector>
 
-namespace aural::ui::strip
+namespace northlight::ui::strip
 {
 
 namespace
@@ -612,7 +612,7 @@ public:
                              hues_.filter,
                              [](double v) { return (v > 0.005 ? "+" : "") + juce::String(v, 1) + " oct"; })};
 
-        load_.getProperties().set(AuralLookAndFeel::propertyVariant, "ghost");
+        load_.getProperties().set(NorthlightLookAndFeel::propertyVariant, "ghost");
         load_.setTooltip("Load an audio file (or drop one on the waveform)");
         load_.onClick = [this] { chooseFile(); };
         addAndMakeVisible(load_);
@@ -898,4 +898,4 @@ createSamplerEditor(const Theme& theme, CardHost& host, core::Id channelId, cons
     return std::make_unique<SamplerCard>(theme, host, channelId, insert);
 }
 
-} // namespace aural::ui::strip
+} // namespace northlight::ui::strip

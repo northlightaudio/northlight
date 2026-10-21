@@ -6,7 +6,7 @@
 
 #include <functional>
 
-namespace aural::ui
+namespace northlight::ui
 {
 
 // A 28 px ring knob (pan, send level, plugin parameters): a surface2 track, an
@@ -72,4 +72,4 @@ private:
     bool dragging_ = false;
 };
 
-} // namespace aural::ui
+} // namespace northlight::ui

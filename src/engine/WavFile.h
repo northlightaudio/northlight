@@ -12,7 +12,7 @@
 // header from the file size to recover everything after it. JUCE-free so the engine
 // tests can exercise it.
 
-namespace aural::engine
+namespace northlight::engine
 {
 
 struct WavInfo
@@ -70,4 +70,4 @@ bool readWavSamples(const std::string& path,
                     std::vector<std::vector<float>>& channels,
                     WavInfo* info = nullptr);
 
-} // namespace aural::engine
+} // namespace northlight::engine

@@ -11,7 +11,7 @@
 #include <string>
 #include <vector>
 
-namespace aural::hosting
+namespace northlight::hosting
 {
 
 // A hosted plugin behind the engine's insert interface. The plugin owns its
@@ -158,4 +158,4 @@ private:
     PlayHead playHead_;
 };
 
-} // namespace aural::hosting
+} // namespace northlight::hosting

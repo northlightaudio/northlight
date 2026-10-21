@@ -22,7 +22,7 @@
 // map's tempo and signature changes into the file's first track (a ramp as a
 // tempo event every sixteenth note along it).
 
-namespace aural::midifile
+namespace northlight::midifile
 {
 
 // A file's tempo changes, for turning ticks into seconds.
@@ -107,4 +107,4 @@ std::string writeMidiFile(const juce::File& file, const juce::MidiFile& midi);
 
 constexpr int exportTicksPerQuarter = 960;
 
-} // namespace aural::midifile
+} // namespace northlight::midifile

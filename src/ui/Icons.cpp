@@ -1,10 +1,10 @@
 #include "ui/Icons.h"
 
-#include "ui/AuralLookAndFeel.h"
+#include "ui/NorthlightLookAndFeel.h"
 
 #include <map>
 
-namespace aural::ui
+namespace northlight::ui
 {
 
 namespace
@@ -178,7 +178,7 @@ void IconButton::paintButton(juce::Graphics& g, bool isMouseOver, bool isButtonD
     const auto bounds = getLocalBounds().toFloat();
     const float radius = theme_.radius.sm;
     const bool on = getToggleState();
-    auto* lnf = dynamic_cast<AuralLookAndFeel*>(&getLookAndFeel());
+    auto* lnf = dynamic_cast<NorthlightLookAndFeel*>(&getLookAndFeel());
 
     juce::Colour iconColour = restColour_;
     if (!isEnabled())
@@ -252,4 +252,4 @@ void IconButton::paintButton(juce::Graphics& g, bool isMouseOver, bool isButtonD
         lnf->drawFocusRing(g, *this, bounds.reduced(1.0f), radius);
 }
 
-} // namespace aural::ui
+} // namespace northlight::ui

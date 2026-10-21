@@ -15,10 +15,10 @@
 
 namespace
 {
-const aural::plugins::BuiltInFactory builtIns;
+const northlight::plugins::BuiltInFactory builtIns;
 } // namespace
 
-using namespace aural;
+using namespace northlight;
 using Catch::Approx;
 
 namespace
@@ -418,7 +418,7 @@ TEST_CASE("Device blocks larger than the renderer maximum are rendered in pieces
     CHECK(left[8192 + 10] == 0.0f);
 }
 
-#if defined(AURAL_RT_CHECKS)
+#if defined(NORTHLIGHT_RT_CHECKS)
 namespace
 {
 std::atomic<int> engineViolations{0};

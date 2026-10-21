@@ -3,10 +3,10 @@
 #include "audio/JuceStreamReader.h"
 #include "engine/rt/RealtimeGuard.h"
 
-namespace aural::audio
+namespace northlight::audio
 {
 
-PeakStore::PeakStore() : juce::Thread("aural peaks")
+PeakStore::PeakStore() : juce::Thread("northlight peaks")
 {
     formats_.registerBasicFormats();
     startThread(juce::Thread::Priority::low);
@@ -22,7 +22,7 @@ PeakStore::~PeakStore()
 
 std::shared_ptr<const engine::PeakData> PeakStore::peaksFor(const std::string& path, double sampleRate)
 {
-    AURAL_ASSERT_NOT_REALTIME("PeakStore::peaksFor");
+    NORTHLIGHT_ASSERT_NOT_REALTIME("PeakStore::peaksFor");
     const Key key{path, sampleRate};
     const std::lock_guard<std::mutex> lock(mutex_);
     if (const auto it = ready_.find(key); it != ready_.end())
@@ -46,7 +46,7 @@ juce::File PeakStore::cacheFileFor(const Key& key)
 {
     const juce::File media{juce::String(key.path)};
     return media.getSiblingFile(media.getFileName() + "." + juce::String(static_cast<int>(key.sampleRate)) +
-                                ".aural-peaks");
+                                ".northlight-peaks");
 }
 
 std::shared_ptr<const engine::PeakData> PeakStore::buildOrLoad(const Key& key)
@@ -125,4 +125,4 @@ void PeakStore::handleAsyncUpdate()
     sendChangeMessage();
 }
 
-} // namespace aural::audio
+} // namespace northlight::audio

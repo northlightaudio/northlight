@@ -14,7 +14,7 @@
 #include <numbers>
 #include <utility>
 
-namespace aural::plugins::sampler
+namespace northlight::plugins::sampler
 {
 
 namespace
@@ -99,7 +99,7 @@ public:
 
     void setState(const std::string& state) override
     {
-        AURAL_ASSERT_NOT_REALTIME("Sampler::setState");
+        NORTHLIGHT_ASSERT_NOT_REALTIME("Sampler::setState");
         state_ = state;
         error_.clear();
         std::shared_ptr<const Sample> sample;
@@ -117,7 +117,7 @@ public:
 
     void publish(std::shared_ptr<const Sample> sample)
     {
-        AURAL_ASSERT_NOT_REALTIME("Sampler::publish");
+        NORTHLIGHT_ASSERT_NOT_REALTIME("Sampler::publish");
         controllerSample_ = sample;
         auto slot = std::make_unique<Slot>();
         slot->sample = std::move(sample);
@@ -470,7 +470,7 @@ constexpr char base64Alphabet[] = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrs
 
 std::unique_ptr<engine::InsertProcessor> create(Loader loader)
 {
-    AURAL_ASSERT_NOT_REALTIME("sampler::create");
+    NORTHLIGHT_ASSERT_NOT_REALTIME("sampler::create");
     return std::make_unique<Sampler>(std::move(loader));
 }
 
@@ -577,4 +577,4 @@ std::string noteName(int note)
     return std::string(names[note % 12]) + std::to_string(note / 12 - 1);
 }
 
-} // namespace aural::plugins::sampler
+} // namespace northlight::plugins::sampler

@@ -11,7 +11,7 @@
 // and comes with the release work. Windows only; elsewhere the functions do
 // nothing. No JUCE, so the handler has nothing to call into but the OS.
 
-namespace aural::crash
+namespace northlight::crash
 {
 
 // Installs the handler. `folder` is created; `version` goes into the note.
@@ -27,4 +27,4 @@ void acknowledge(const std::filesystem::path& folder);
 // Returns the dump's path, empty on failure.
 std::filesystem::path writeReportNow(const std::filesystem::path& folder);
 
-} // namespace aural::crash
+} // namespace northlight::crash

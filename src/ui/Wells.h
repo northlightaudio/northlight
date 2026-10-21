@@ -4,7 +4,7 @@
 
 #include <juce_gui_basics/juce_gui_basics.h>
 
-namespace aural::ui
+namespace northlight::ui
 {
 
 // A display well (12-channel-strip.md 12.1), cut into the panel: drawWell fills
@@ -54,4 +54,4 @@ inline void drawWellFrame(juce::Graphics& g, const Theme& theme, juce::Rectangle
         static_cast<int>(area.getBottom()), area.getX() + theme.radius.sm, area.getRight() - theme.radius.sm);
 }
 
-} // namespace aural::ui
+} // namespace northlight::ui

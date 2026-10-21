@@ -2,7 +2,7 @@
 
 #include <cmath>
 
-namespace aural::ui
+namespace northlight::ui
 {
 
 namespace
@@ -282,4 +282,4 @@ void ExportView::resized()
     peakMode_.setBounds(ceiling);
 }
 
-} // namespace aural::ui
+} // namespace northlight::ui

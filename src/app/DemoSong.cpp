@@ -13,7 +13,7 @@
 #include <string>
 #include <vector>
 
-namespace aural
+namespace northlight
 {
 
 namespace
@@ -503,4 +503,4 @@ core::Project makeDemoSong()
     return p;
 }
 
-} // namespace aural
+} // namespace northlight

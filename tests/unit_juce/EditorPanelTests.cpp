@@ -8,7 +8,7 @@
 
 #include <memory>
 
-using namespace aural;
+using namespace northlight;
 
 namespace
 {

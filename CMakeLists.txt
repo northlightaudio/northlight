@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.28)
 
-project(Aural
+project(Northlight
     VERSION 0.1.0
     DESCRIPTION "A native, high-performance digital audio workstation"
     LANGUAGES C CXX)
@@ -22,14 +22,20 @@ list(APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/cmake")
 # ---------------------------------------------------------------------------
 # Options
 # ---------------------------------------------------------------------------
-option(AURAL_BUILD_TESTS "Build unit tests" ON)
-option(AURAL_RT_CHECKS "Enable real-time safety checks (allocation/lock detection on RT threads)" ON)
-option(AURAL_WARNINGS_AS_ERRORS "Treat compiler warnings as errors" OFF)
+option(NORTHLIGHT_BUILD_TESTS "Build unit tests" ON)
+option(NORTHLIGHT_RT_CHECKS "Enable real-time safety checks (allocation/lock detection on RT threads)" ON)
+option(NORTHLIGHT_WARNINGS_AS_ERRORS "Treat compiler warnings as errors" OFF)
 
 # Steinberg SDKs are not vendored. Point this at a local copy of the ASIO SDK
 # (the directory that contains common/, host/, driver/) to enable ASIO support.
 # The VST3 SDK is bundled inside JUCE, so VST3 hosting needs nothing extra.
-set(AURAL_ASIO_SDK_DIR "" CACHE PATH "Path to the Steinberg ASIO SDK root (enables ASIO when set)")
+set(NORTHLIGHT_ASIO_SDK_DIR "" CACHE PATH "Path to the Steinberg ASIO SDK root (enables ASIO when set)")
+# The variable was AURAL_ASIO_SDK_DIR before the rename: still honoured from the
+# environment when the new one is not set (not for a build that turns ASIO off).
+if(NOT NORTHLIGHT_ASIO_SDK_DIR AND NOT NORTHLIGHT_NO_ASIO AND DEFINED ENV{AURAL_ASIO_SDK_DIR} AND NOT "$ENV{AURAL_ASIO_SDK_DIR}" STREQUAL "")
+    set(NORTHLIGHT_ASIO_SDK_DIR "$ENV{AURAL_ASIO_SDK_DIR}" CACHE PATH "Path to the Steinberg ASIO SDK root (enables ASIO when set)" FORCE)
+    message(STATUS "Northlight: using AURAL_ASIO_SDK_DIR; rename the variable to NORTHLIGHT_ASIO_SDK_DIR")
+endif()
 
 # ---------------------------------------------------------------------------
 # Dependencies
@@ -69,7 +75,7 @@ FetchContent_Declare(signalsmith_stretch
     GIT_SHALLOW    TRUE)
 FetchContent_MakeAvailable(signalsmith_stretch)
 
-if(AURAL_BUILD_TESTS)
+if(NORTHLIGHT_BUILD_TESTS)
     FetchContent_Declare(Catch2
         GIT_REPOSITORY https://github.com/catchorg/Catch2.git
         GIT_TAG        v3.16.1
@@ -81,26 +87,26 @@ endif()
 # ---------------------------------------------------------------------------
 # ASIO
 # ---------------------------------------------------------------------------
-set(AURAL_HAS_ASIO 0)
-if(AURAL_ASIO_SDK_DIR)
-    if(EXISTS "${AURAL_ASIO_SDK_DIR}/common/iasiodrv.h")
-        set(AURAL_HAS_ASIO 1)
-        message(STATUS "Aural: ASIO enabled (SDK at ${AURAL_ASIO_SDK_DIR})")
+set(NORTHLIGHT_HAS_ASIO 0)
+if(NORTHLIGHT_ASIO_SDK_DIR)
+    if(EXISTS "${NORTHLIGHT_ASIO_SDK_DIR}/common/iasiodrv.h")
+        set(NORTHLIGHT_HAS_ASIO 1)
+        message(STATUS "Northlight: ASIO enabled (SDK at ${NORTHLIGHT_ASIO_SDK_DIR})")
     else()
-        message(WARNING "Aural: AURAL_ASIO_SDK_DIR is set but common/iasiodrv.h was not found; ASIO disabled")
+        message(WARNING "Northlight: NORTHLIGHT_ASIO_SDK_DIR is set but common/iasiodrv.h was not found; ASIO disabled")
     endif()
 else()
-    message(STATUS "Aural: ASIO disabled (set AURAL_ASIO_SDK_DIR to enable)")
+    message(STATUS "Northlight: ASIO disabled (set NORTHLIGHT_ASIO_SDK_DIR to enable)")
 endif()
 
 # ---------------------------------------------------------------------------
 # Shared compile settings
 # ---------------------------------------------------------------------------
-add_library(aural_options INTERFACE)
-target_compile_features(aural_options INTERFACE cxx_std_20)
+add_library(northlight_options INTERFACE)
+target_compile_features(northlight_options INTERFACE cxx_std_20)
 
 if(MSVC)
-    target_compile_options(aural_options INTERFACE
+    target_compile_options(northlight_options INTERFACE
         /W4
         /permissive-
         /Zc:__cplusplus
@@ -111,30 +117,30 @@ if(MSVC)
         # C5105: "macro expansion producing 'defined'" fires inside JUCE's bundled
         # harfbuzz under /Zc:preprocessor; third-party code, not ours.
         /wd5105)
-    target_compile_definitions(aural_options INTERFACE
+    target_compile_definitions(northlight_options INTERFACE
         NOMINMAX
         WIN32_LEAN_AND_MEAN
         _CRT_SECURE_NO_WARNINGS)
-    if(AURAL_WARNINGS_AS_ERRORS)
-        target_compile_options(aural_options INTERFACE /WX)
+    if(NORTHLIGHT_WARNINGS_AS_ERRORS)
+        target_compile_options(northlight_options INTERFACE /WX)
     endif()
 else()
-    target_compile_options(aural_options INTERFACE -Wall -Wextra -Wpedantic)
-    if(AURAL_WARNINGS_AS_ERRORS)
-        target_compile_options(aural_options INTERFACE -Werror)
+    target_compile_options(northlight_options INTERFACE -Wall -Wextra -Wpedantic)
+    if(NORTHLIGHT_WARNINGS_AS_ERRORS)
+        target_compile_options(northlight_options INTERFACE -Werror)
     endif()
 endif()
 
-target_compile_definitions(aural_options INTERFACE
-    $<$<CONFIG:Debug>:AURAL_DEBUG=1>
-    $<$<BOOL:${AURAL_RT_CHECKS}>:AURAL_RT_CHECKS=1>)
+target_compile_definitions(northlight_options INTERFACE
+    $<$<CONFIG:Debug>:NORTHLIGHT_DEBUG=1>
+    $<$<BOOL:${NORTHLIGHT_RT_CHECKS}>:NORTHLIGHT_RT_CHECKS=1>)
 
 # ---------------------------------------------------------------------------
 # Sources
 # ---------------------------------------------------------------------------
 add_subdirectory(src)
 
-if(AURAL_BUILD_TESTS)
+if(NORTHLIGHT_BUILD_TESTS)
     enable_testing()
     add_subdirectory(tests)
 endif()

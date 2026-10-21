@@ -9,7 +9,7 @@
 #include <mutex>
 #include <string>
 
-namespace aural
+namespace northlight
 {
 
 // Decodes audio files for the built-in Sampler (its sampler::Loader): the whole
@@ -42,4 +42,4 @@ private:
     std::map<std::string, Cached> cache_;
 };
 
-} // namespace aural
+} // namespace northlight

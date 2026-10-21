@@ -2,7 +2,7 @@
 
 #include "engine/rt/RealtimeGuard.h"
 
-namespace aural::audio
+namespace northlight::audio
 {
 
 namespace
@@ -102,7 +102,7 @@ AudioDeviceLayer::~AudioDeviceLayer()
 
 void AudioDeviceLayer::initialise()
 {
-    AURAL_ASSERT_NOT_REALTIME("AudioDeviceLayer::initialise");
+    NORTHLIGHT_ASSERT_NOT_REALTIME("AudioDeviceLayer::initialise");
     JUCE_ASSERT_MESSAGE_THREAD;
 
     settings_ = store_.loadAudioSettings();
@@ -250,7 +250,7 @@ std::optional<LatencyCalibration> AudioDeviceLayer::currentCalibration() const
 
 std::optional<std::string> AudioDeviceLayer::apply(const AudioSettings& requested)
 {
-    AURAL_ASSERT_NOT_REALTIME("AudioDeviceLayer::apply");
+    NORTHLIGHT_ASSERT_NOT_REALTIME("AudioDeviceLayer::apply");
     JUCE_ASSERT_MESSAGE_THREAD;
 
     calibrator_.cancel();
@@ -439,4 +439,4 @@ void AudioDeviceLayer::timerCallback()
     }
 }
 
-} // namespace aural::audio
+} // namespace northlight::audio

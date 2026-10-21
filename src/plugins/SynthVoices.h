@@ -10,7 +10,7 @@
 // What the built-in instruments share: the envelope stages, the envelope
 // curves, voice allocation and how a MIDI event is read. Real-time safe.
 
-namespace aural::plugins::synth
+namespace northlight::plugins::synth
 {
 
 enum class Stage : std::uint8_t
@@ -282,4 +282,4 @@ void dispatch(
     }
 }
 
-} // namespace aural::plugins::synth
+} // namespace northlight::plugins::synth

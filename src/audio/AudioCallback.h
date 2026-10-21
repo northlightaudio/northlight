@@ -14,7 +14,7 @@
 // Phase 1 input pass-through on top for monitoring, and hosts the loopback
 // calibration capture. The entry discipline:
 //
-//   1. enter aural::rt::ScopedRealtimeSection (allocation hook becomes live)
+//   1. enter northlight::rt::ScopedRealtimeSection (allocation hook becomes live)
 //   2. set FTZ/DAZ (juce::ScopedNoDenormals)
 //   3. only then touch audio
 //
@@ -22,7 +22,7 @@
 // ownership is handed over through the calibration phase state machine below. The
 // callback never allocates, locks or posts messages.
 
-namespace aural::audio
+namespace northlight::audio
 {
 
 class AudioCallback final : public juce::AudioIODeviceCallback
@@ -146,4 +146,4 @@ private:
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(AudioCallback)
 };
 
-} // namespace aural::audio
+} // namespace northlight::audio

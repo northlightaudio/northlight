@@ -8,7 +8,7 @@
 // block, filled by the renderer (clips, live input, note-offs on stop) and read by
 // instruments. Nothing allocates after construction.
 
-namespace aural::engine
+namespace northlight::engine
 {
 
 struct MidiEvent
@@ -204,4 +204,4 @@ private:
     size_t count_ = 0;
 };
 
-} // namespace aural::engine
+} // namespace northlight::engine

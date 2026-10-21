@@ -15,7 +15,7 @@
 #include <numbers>
 #include <vector>
 
-using namespace aural;
+using namespace northlight;
 using Catch::Approx;
 
 namespace
@@ -303,7 +303,7 @@ TEST_CASE("Removing a bus and undoing it keeps the order of the sends", "[core][
     CHECK(p.tracks[0].sends[1].bus == 60); // back in the middle, not at the end
 }
 
-#if defined(AURAL_RT_CHECKS)
+#if defined(NORTHLIGHT_RT_CHECKS)
 namespace
 {
 std::atomic<int> chainViolations{0};

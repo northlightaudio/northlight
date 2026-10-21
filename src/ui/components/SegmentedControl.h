@@ -7,7 +7,7 @@
 #include <functional>
 #include <vector>
 
-namespace aural::ui
+namespace northlight::ui
 {
 
 // A segmented control: a pill track (surface1) with a sliding thumb (surface3)
@@ -59,4 +59,4 @@ private:
     float animationFrom_ = 0.0f;
 };
 
-} // namespace aural::ui
+} // namespace northlight::ui

@@ -25,7 +25,7 @@
 #include <unordered_set>
 #include <vector>
 
-namespace aural::ui
+namespace northlight::ui
 {
 
 // The arrange view: tracks as rows, clips with waveforms drawn from the peak
@@ -539,4 +539,4 @@ private:
     TakeLanes::Row takeRow(int row) const; // a track row, for TakeLanes
 };
 
-} // namespace aural::ui
+} // namespace northlight::ui

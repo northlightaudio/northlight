@@ -21,9 +21,9 @@
 #include <numeric>
 #include <random>
 
-using namespace aural;
-using namespace aural::engine;
-using namespace aural::engine::pitch;
+using namespace northlight;
+using namespace northlight::engine;
+using namespace northlight::engine::pitch;
 
 namespace
 {

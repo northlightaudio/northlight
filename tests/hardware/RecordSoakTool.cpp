@@ -4,7 +4,7 @@
 // No audio device, no JUCE: the Volt has four inputs, so the 16-input milestone is
 // checked here.
 //
-//   aural_record_soak [--inputs 16] [--minutes 30] [--speed 8] [--folder <dir>] [--keep]
+//   northlight_record_soak [--inputs 16] [--minutes 30] [--speed 8] [--folder <dir>] [--keep]
 
 #include "core/Model.h"
 #include "engine/AudioEngine.h"
@@ -25,15 +25,16 @@
 
 namespace
 {
-const aural::plugins::BuiltInFactory builtIns;
+const northlight::plugins::BuiltInFactory builtIns;
 } // namespace
 
 namespace
 {
-class NoMediaLoader final : public aural::engine::MediaLoader
+class NoMediaLoader final : public northlight::engine::MediaLoader
 {
 public:
-    std::shared_ptr<aural::engine::AudioSource> load(const std::string&, double, std::string& error) override
+    std::shared_ptr<northlight::engine::AudioSource>
+    load(const std::string&, double, std::string& error) override
     {
         error = "no media";
         return nullptr;
@@ -55,7 +56,7 @@ int main(int argc, char* argv[])
     double minutes = 30.0;
     double speed = 8.0;
     bool keep = false;
-    std::filesystem::path folder = std::filesystem::temp_directory_path() / "aural-soak";
+    std::filesystem::path folder = std::filesystem::temp_directory_path() / "northlight-soak";
     for (int i = 1; i < argc; ++i)
     {
         const std::string arg = argv[i];
@@ -83,26 +84,26 @@ int main(int argc, char* argv[])
                 folder.string().c_str());
 
     NoMediaLoader loader;
-    aural::engine::AudioEngine engine(loader, builtIns, 0);
+    northlight::engine::AudioEngine engine(loader, builtIns, 0);
     engine.prepare(sampleRate, blockSize);
-    aural::core::Project project;
+    northlight::core::Project project;
     for (int k = 0; k < inputs; ++k)
     {
-        aural::core::Track t;
-        t.id = static_cast<aural::core::Id>(k + 1);
+        northlight::core::Track t;
+        t.id = static_cast<northlight::core::Id>(k + 1);
         t.inputChannel = k;
         t.armed = true;
         project.tracks.push_back(t);
     }
     engine.setProject(project);
 
-    auto session = std::make_unique<aural::engine::RecordSession>(sampleRate);
+    auto session = std::make_unique<northlight::engine::RecordSession>(sampleRate);
     std::vector<std::string> paths;
     for (int k = 0; k < inputs; ++k)
     {
         paths.push_back((folder / ("soak-" + std::to_string(k + 1) + ".partial.wav")).string());
         std::remove(paths.back().c_str());
-        session->addInput(static_cast<aural::core::Id>(k + 1), k, paths.back());
+        session->addInput(static_cast<northlight::core::Id>(k + 1), k, paths.back());
     }
     std::string error;
     if (!engine.startRecording(std::move(session), error))
@@ -131,7 +132,7 @@ int main(int argc, char* argv[])
 
         const auto t0 = std::chrono::steady_clock::now();
         {
-            aural::rt::ScopedRealtimeSection realtime;
+            northlight::rt::ScopedRealtimeSection realtime;
             engine.process(inputPointers.data(), inputs, outputs, 2, blockSize);
         }
         maxBlockSeconds = std::max(
@@ -146,7 +147,7 @@ int main(int argc, char* argv[])
     }
     engine.stop();
     {
-        aural::rt::ScopedRealtimeSection realtime;
+        northlight::rt::ScopedRealtimeSection realtime;
         engine.process(inputPointers.data(), inputs, outputs, 2, blockSize);
     }
     while (!engine.hasRecordingToCollect())
@@ -180,7 +181,7 @@ int main(int argc, char* argv[])
     std::printf("Verifying %d files...\n", inputs);
     for (int k = 0; k < inputs; ++k)
     {
-        const auto info = aural::engine::readWavInfo(paths[static_cast<size_t>(k)]);
+        const auto info = northlight::engine::readWavInfo(paths[static_cast<size_t>(k)]);
         if (!info.has_value() || info->lengthSamples != position)
         {
             std::printf("  input %d: bad header\n", k + 1);

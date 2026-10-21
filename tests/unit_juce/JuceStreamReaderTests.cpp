@@ -10,13 +10,13 @@
 #include <numbers>
 #include <vector>
 
-using namespace aural;
+using namespace northlight;
 
 namespace
 {
 std::string tempPath(const char* name)
 {
-    const auto dir = std::filesystem::temp_directory_path() / "aural-tests";
+    const auto dir = std::filesystem::temp_directory_path() / "northlight-tests";
     std::filesystem::create_directories(dir);
     const auto path = (dir / name).string();
     std::remove(path.c_str());

@@ -11,7 +11,7 @@
 #include <memory>
 #include <vector>
 
-using namespace aural;
+using namespace northlight;
 using Catch::Approx;
 
 namespace

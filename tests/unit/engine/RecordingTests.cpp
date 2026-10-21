@@ -19,17 +19,17 @@
 
 namespace
 {
-const aural::plugins::BuiltInFactory builtIns;
+const northlight::plugins::BuiltInFactory builtIns;
 } // namespace
 
-using namespace aural;
+using namespace northlight;
 using Catch::Approx;
 
 namespace
 {
 std::string tempPath(const char* name)
 {
-    const auto dir = std::filesystem::temp_directory_path() / "aural-tests";
+    const auto dir = std::filesystem::temp_directory_path() / "northlight-tests";
     std::filesystem::create_directories(dir);
     const auto path = (dir / name).string();
     std::remove(path.c_str());
@@ -391,7 +391,7 @@ TEST_CASE("A monitored input is heard through the track gain and pan while stopp
     CHECK(r[10] == Approx(0.0f).margin(1e-6f));
 }
 
-#if defined(AURAL_RT_CHECKS)
+#if defined(NORTHLIGHT_RT_CHECKS)
 namespace
 {
 std::atomic<int> recordViolations{0};

@@ -20,17 +20,17 @@
 // reorder. The curve functions are shared by the processors and the editors so
 // what the editor draws is what runs.
 
-namespace aural::plugins::strip
+namespace northlight::plugins::strip
 {
 
 namespace types
 {
-inline const std::string gate = "aural.strip.gate";
-inline const std::string eq = "aural.strip.eq";
-inline const std::string compressor = "aural.strip.compressor";
-inline const std::string deesser = "aural.strip.deesser";
-inline const std::string saturation = "aural.strip.saturation";
-inline const std::string limiter = "aural.strip.limiter";
+inline const std::string gate = "northlight.strip.gate";
+inline const std::string eq = "northlight.strip.eq";
+inline const std::string compressor = "northlight.strip.compressor";
+inline const std::string deesser = "northlight.strip.deesser";
+inline const std::string saturation = "northlight.strip.saturation";
+inline const std::string limiter = "northlight.strip.limiter";
 } // namespace types
 
 // The modules, in their default processing order.
@@ -39,7 +39,7 @@ bool isStripType(const std::string& type);
 std::string displayName(const std::string& type);
 std::unique_ptr<engine::InsertProcessor> create(const std::string& type);
 // The channel strip's compressor as an insert of another type (the built-in
-// "aural.compressor"), listening to a sidechain key when one is chosen.
+// "northlight.compressor"), listening to a sidechain key when one is chosen.
 std::unique_ptr<engine::InsertProcessor> createKeyedCompressor(const std::string& type);
 
 // Every module, off, with its default parameters and no ids (AddTrack and
@@ -182,4 +182,4 @@ enum Param
 };
 } // namespace limiter
 
-} // namespace aural::plugins::strip
+} // namespace northlight::plugins::strip

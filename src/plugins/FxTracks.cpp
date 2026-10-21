@@ -2,7 +2,7 @@
 
 #include "plugins/BuiltIns.h"
 
-namespace aural::plugins
+namespace northlight::plugins
 {
 
 std::vector<FxChoice> fxTrackEffects()
@@ -57,4 +57,4 @@ std::vector<std::unique_ptr<core::Command>> addFxTrackCommands(const core::Proje
     return commands;
 }
 
-} // namespace aural::plugins
+} // namespace northlight::plugins

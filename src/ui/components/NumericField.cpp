@@ -1,8 +1,8 @@
 #include "ui/components/NumericField.h"
 
-#include "ui/AuralLookAndFeel.h"
+#include "ui/NorthlightLookAndFeel.h"
 
-namespace aural::ui
+namespace northlight::ui
 {
 
 namespace
@@ -87,7 +87,7 @@ void NumericField::paint(juce::Graphics& g)
         g.setFont(theme_.timeSmall());
         g.setColour(!isEnabled() ? c.textDisabled : m.enabled ? m.readoutText : c.textPrimary);
         g.drawText(text(), area, juce::Justification::centredRight);
-        if (auto* lnf = dynamic_cast<AuralLookAndFeel*>(&getLookAndFeel()))
+        if (auto* lnf = dynamic_cast<NorthlightLookAndFeel*>(&getLookAndFeel()))
             lnf->drawFocusRing(g, *this, bounds, theme_.radius.sm);
         return;
     }
@@ -109,7 +109,7 @@ void NumericField::paint(juce::Graphics& g)
     g.setFont(theme_.value());
     g.setColour(isEnabled() ? c.textPrimary : c.textDisabled);
     g.drawText(text(), area, juce::Justification::centredRight);
-    if (auto* lnf = dynamic_cast<AuralLookAndFeel*>(&getLookAndFeel()))
+    if (auto* lnf = dynamic_cast<NorthlightLookAndFeel*>(&getLookAndFeel()))
         lnf->drawFocusRing(g, *this, bounds, theme_.radius.sm);
 }
 
@@ -237,4 +237,4 @@ std::unique_ptr<juce::AccessibilityHandler> NumericField::createAccessibilityHan
         juce::AccessibilityHandler::Interfaces{std::make_unique<ValueInterface<NumericField>>(*this)});
 }
 
-} // namespace aural::ui
+} // namespace northlight::ui

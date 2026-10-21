@@ -8,7 +8,7 @@
 #include <memory>
 #include <vector>
 
-namespace aural::ui
+namespace northlight::ui
 {
 
 // A dialog without a modal loop (02-design-system.md, "Dialog (sheet)"): an
@@ -66,4 +66,4 @@ private:
     bool finished_ = false;
 };
 
-} // namespace aural::ui
+} // namespace northlight::ui

@@ -4,7 +4,7 @@
 
 #include <memory>
 
-namespace aural::ui::strip
+namespace northlight::ui::strip
 {
 
 // Starbit's editor (07-plugins.md 7.4e): the chiptune synth's own face, pixel
@@ -12,4 +12,4 @@ namespace aural::ui::strip
 std::unique_ptr<ModuleCard>
 createStarbitEditor(const Theme& theme, CardHost& host, core::Id channelId, const core::Insert& insert);
 
-} // namespace aural::ui::strip
+} // namespace northlight::ui::strip

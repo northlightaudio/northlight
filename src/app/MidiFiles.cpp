@@ -6,7 +6,7 @@
 #include <map>
 #include <optional>
 
-namespace aural::midifile
+namespace northlight::midifile
 {
 
 // ----- time ---------------------------------------------------------------------------------------
@@ -405,4 +405,4 @@ std::string writeMidiFile(const juce::File& file, const juce::MidiFile& midi)
     return {};
 }
 
-} // namespace aural::midifile
+} // namespace northlight::midifile

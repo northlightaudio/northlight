@@ -3,7 +3,7 @@
 #include <catch2/catch_approx.hpp>
 #include <catch2/catch_test_macros.hpp>
 
-using namespace aural::ui;
+using namespace northlight::ui;
 using Catch::Approx;
 
 TEST_CASE("A meter rises over its time constant and falls at its rate", "[ui][meter]")

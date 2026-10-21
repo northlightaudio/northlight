@@ -10,7 +10,7 @@
 #include <memory>
 #include <vector>
 
-using namespace aural;
+using namespace northlight;
 
 namespace
 {
@@ -201,7 +201,7 @@ TEST_CASE("Importing a MIDI file adds instrument tracks, takes its tempo when em
     drums.addEvent(at(juce::MidiMessage::noteOff(10, 36), 240));
     file.addTrack(drums);
     const auto path = juce::File::getSpecialLocation(juce::File::tempDirectory)
-                          .getChildFile("aural-midifile-" + juce::Uuid().toString() + ".mid");
+                          .getChildFile("northlight-midifile-" + juce::Uuid().toString() + ".mid");
     {
         juce::FileOutputStream out(path);
         REQUIRE(out.openedOk());
@@ -218,7 +218,7 @@ TEST_CASE("Importing a MIDI file adds instrument tracks, takes its tempo when em
     CHECK(keysTrack->isMidi());
     const auto* keysChannel = p.findTrack(keysTrack->midiTarget);
     REQUIRE(keysChannel != nullptr);
-    CHECK(keysChannel->instrument.type == "aural.aurora");
+    CHECK(keysChannel->instrument.type == "northlight.aurora");
     REQUIRE(keysTrack->midiClips.size() == 1);
     const auto& clip = keysTrack->midiClips[0];
     REQUIRE(clip.notes.size() == 1);
@@ -229,7 +229,7 @@ TEST_CASE("Importing a MIDI file adds instrument tracks, takes its tempo when em
     CHECK(drumsTrack->midiChannel == 10);
     const auto* drumsChannel = p.findTrack(drumsTrack->midiTarget);
     REQUIRE(drumsChannel != nullptr);
-    CHECK(drumsChannel->instrument.type == "aural.pulsar");
+    CHECK(drumsChannel->instrument.type == "northlight.pulsar");
 
     // Into a chosen instrument: one more MIDI track on the keys' channel, no new channel.
     REQUIRE(session.importMidiFile(path, 0, keysChannel->id).empty());

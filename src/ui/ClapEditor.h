@@ -5,7 +5,7 @@
 #include <juce_gui_basics/juce_gui_basics.h>
 #include <juce_gui_extra/juce_gui_extra.h>
 
-namespace aural::ui
+namespace northlight::ui
 {
 
 // Hosts a CLAP plugin's own GUI inside a JUCE component. The plugin wants a native
@@ -40,4 +40,4 @@ private:
     bool opened_ = false;
 };
 
-} // namespace aural::ui
+} // namespace northlight::ui

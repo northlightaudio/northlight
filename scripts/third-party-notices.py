@@ -72,7 +72,7 @@ def section(name, purpose, licence, text):
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--deps", default=os.path.join(ROOT, "build", "windows-debug", "_deps"))
-    parser.add_argument("--asio", default=os.environ.get("AURAL_ASIO_SDK_DIR", ""))
+    parser.add_argument("--asio", default=os.environ.get("NORTHLIGHT_ASIO_SDK_DIR", ""))
     parser.add_argument("--out", default=os.path.join(ROOT, "THIRD_PARTY_NOTICES.md"))
     args = parser.parse_args()
 
@@ -103,7 +103,7 @@ def main():
     if args.asio and os.path.isfile(os.path.join(args.asio, ASIO[3])):
         parts.append(section(ASIO[0], ASIO[1], ASIO[2], read(os.path.join(args.asio, ASIO[3]))))
     else:
-        sys.exit("the ASIO SDK was not found: pass --asio or set AURAL_ASIO_SDK_DIR")
+        sys.exit("the ASIO SDK was not found: pass --asio or set NORTHLIGHT_ASIO_SDK_DIR")
     parts.append("## Used only to build and test\n")
     parts.append(section(TEST_ONLY[0], TEST_ONLY[1], TEST_ONLY[2], read(os.path.join(args.deps, TEST_ONLY[3]))))
 

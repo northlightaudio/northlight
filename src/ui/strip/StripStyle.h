@@ -14,7 +14,7 @@
 // data colours from the track palette, never the accent (which stays the
 // colour of selection and focus).
 
-namespace aural::ui::strip
+namespace northlight::ui::strip
 {
 
 // A track palette colour by name (textSecondary when a user's token file drops it).
@@ -45,27 +45,27 @@ inline juce::Colour moduleColour(const Theme& theme, const std::string& type)
         return paletteColour(theme, "Coral");
     // The built-ins, in the same family (a built-in EQ, compressor or limiter
     // takes its strip counterpart's hue).
-    if (type == "aural.eq")
+    if (type == "northlight.eq")
         return paletteColour(theme, "Sky");
-    if (type == "aural.compressor")
+    if (type == "northlight.compressor")
         return paletteColour(theme, "Indigo");
-    if (type == "aural.limiter")
+    if (type == "northlight.limiter")
         return paletteColour(theme, "Coral");
-    if (type == "aural.gain")
+    if (type == "northlight.gain")
         return paletteColour(theme, "Lime");
-    if (type == "aural.reverb")
+    if (type == "northlight.reverb")
         return paletteColour(theme, "Teal");
-    if (type == "aural.delay")
+    if (type == "northlight.delay")
         return paletteColour(theme, "Amber");
-    if (type == "aural.aurora")
+    if (type == "northlight.aurora")
         return paletteColour(theme, "Violet");
-    if (type == "aural.pulsar")
+    if (type == "northlight.pulsar")
         return paletteColour(theme, "Coral");
-    if (type == "aural.nebula")
+    if (type == "northlight.nebula")
         return paletteColour(theme, "Magenta");
-    if (type == "aural.starbit")
+    if (type == "northlight.starbit")
         return paletteColour(theme, "Lime");
-    if (type == "aural.sampler")
+    if (type == "northlight.sampler")
         return paletteColour(theme, "Teal");
     return theme.colours.textSecondary;
 }
@@ -128,4 +128,4 @@ inline juce::String formatDb(float db, int decimals = 1)
 using ui::drawWell;
 using ui::drawWellFrame;
 
-} // namespace aural::ui::strip
+} // namespace northlight::ui::strip

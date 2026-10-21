@@ -28,7 +28,7 @@
 // the master gain is last. Mute and solo-in-place are resolved at compile time into
 // `audible`.
 
-namespace aural::engine
+namespace northlight::engine
 {
 
 struct ClipNode
@@ -294,4 +294,4 @@ inline int masterMeterSlot(const core::Project& project) noexcept
     return static_cast<int>(project.tracks.size() + project.buses.size());
 }
 
-} // namespace aural::engine
+} // namespace northlight::engine

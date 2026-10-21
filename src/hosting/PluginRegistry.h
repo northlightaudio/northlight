@@ -12,7 +12,7 @@
 // only touches what changed. Persisted as JSON next to the user settings. JUCE-free
 // so it is unit-tested without a message loop.
 
-namespace aural::hosting
+namespace northlight::hosting
 {
 
 struct PluginInfo
@@ -77,4 +77,4 @@ private:
     std::map<std::string, std::string> blocked_;       // path -> reason
 };
 
-} // namespace aural::hosting
+} // namespace northlight::hosting

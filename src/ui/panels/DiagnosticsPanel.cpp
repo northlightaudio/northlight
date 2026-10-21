@@ -1,14 +1,14 @@
 #include "ui/panels/DiagnosticsPanel.h"
 
-#include "ui/AuralLookAndFeel.h"
+#include "ui/NorthlightLookAndFeel.h"
 
-namespace aural::ui
+namespace northlight::ui
 {
 
 DiagnosticsPanel::DiagnosticsPanel(const Theme& theme) : theme_(theme)
 {
     setOpaque(true);
-    copy_.getProperties().set(AuralLookAndFeel::propertyVariant, "ghost");
+    copy_.getProperties().set(NorthlightLookAndFeel::propertyVariant, "ghost");
     copy_.setTooltip("Copy a text summary for a bug report");
     copy_.onClick = [this] { juce::SystemClipboard::copyTextToClipboard(report()); };
     addAndMakeVisible(copy_);
@@ -29,7 +29,7 @@ void DiagnosticsPanel::push(const Sample& sample)
 juce::String DiagnosticsPanel::report() const
 {
     juce::String text;
-    text << "Aural diagnostics\n";
+    text << "Northlight diagnostics\n";
     text << "Device: " << last_.device << " at " << juce::String(last_.sampleRate / 1000.0, 1) << " kHz, "
          << last_.bufferSize << " samples\n";
     text << "Callback load: p50 " << juce::String(last_.loadP50 * 100.0, 1) << "%, p99 "
@@ -146,4 +146,4 @@ void DiagnosticsPanel::resized()
     copy_.setBounds(top.removeFromRight(120));
 }
 
-} // namespace aural::ui
+} // namespace northlight::ui

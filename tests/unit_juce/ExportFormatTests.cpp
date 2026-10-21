@@ -14,7 +14,7 @@
 #include <numbers>
 #include <vector>
 
-using namespace aural;
+using namespace northlight;
 using Catch::Approx;
 
 namespace
@@ -184,7 +184,7 @@ TEST_CASE("Normalised stems share the mix's gain, and a selection limits the ste
     const auto project = twoTracks(a, b, 2 * 48000);
     hosting::PluginRegistry registry;
     hosting::HostFactory factory(registry);
-    const auto folder = tempFile("aural-export-stems");
+    const auto folder = tempFile("northlight-export-stems");
     folder.deleteRecursively();
     BounceJob::Options options;
     options.output = folder;

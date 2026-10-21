@@ -6,7 +6,7 @@
 #include <functional>
 #include <memory>
 
-using namespace aural::core;
+using namespace northlight::core;
 
 namespace
 {
@@ -368,7 +368,7 @@ TEST_CASE("An insert's wet/dry mix is set, clamped and undone", "[core][command]
     UndoStack stack;
     const Id track = p.tracks[0].id;
     Insert insert;
-    insert.type = "aural.eq";
+    insert.type = "northlight.eq";
     auto add = std::make_unique<AddInsert>(track, insert);
     const auto* addPtr = add.get();
     stack.execute(p, std::move(add));
@@ -393,7 +393,7 @@ TEST_CASE("An insert's sidechain source is set to an existing channel and undone
     stack.execute(p, std::make_unique<AddTrack>(other));
     const Id track = p.tracks[0].id, kick = p.tracks[1].id;
     Insert insert;
-    insert.type = "aural.compressor";
+    insert.type = "northlight.compressor";
     auto add = std::make_unique<AddInsert>(track, insert);
     const auto* addPtr = add.get();
     stack.execute(p, std::move(add));
@@ -435,7 +435,7 @@ TEST_CASE("An insert's sidechain source is set to an existing channel and undone
     CHECK_FALSE(p.keyWouldCycle(kick, drums));
     // The kick keyed from the track: now the track must not be keyed from the kick.
     Insert kickInsert;
-    kickInsert.type = "aural.compressor";
+    kickInsert.type = "northlight.compressor";
     stack.execute(p, std::make_unique<AddInsert>(kick, kickInsert));
     const Id kickInsertId = p.tracks[1].inserts[0].id;
     stack.execute(p, std::make_unique<SetInsertSidechain>(kick, kickInsertId, track));
@@ -733,13 +733,13 @@ TEST_CASE("An instrument has its own slot, first in the chain, and keeps its id 
     Track t;
     t.kind = TrackKind::instrument;
     Insert fx;
-    fx.type = "aural.eq";
+    fx.type = "northlight.eq";
     t.inserts.push_back(fx);
     stack.execute(p, std::make_unique<AddTrack>(t));
     const Id trackId = p.tracks[0].id;
 
     Insert synth;
-    synth.type = "aural.synth";
+    synth.type = "northlight.synth";
     synth.params = {1.0f, 2.0f};
     stack.execute(p, std::make_unique<SetInstrument>(trackId, synth));
     auto* track = p.findTrack(trackId);
@@ -758,16 +758,16 @@ TEST_CASE("An instrument has its own slot, first in the chain, and keeps its id 
     lane.insert = slot;
     track->automation.push_back(lane);
     Insert other;
-    other.type = "aural.aurora";
+    other.type = "northlight.aurora";
     stack.execute(p, std::make_unique<SetInstrument>(trackId, other));
     track = p.findTrack(trackId);
-    CHECK(track->instrument.type == "aural.aurora");
+    CHECK(track->instrument.type == "northlight.aurora");
     CHECK(track->instrument.id == slot); // output tracks stay connected
     CHECK(track->automation.empty());
 
     CHECK(stack.undo(p));
     track = p.findTrack(trackId);
-    CHECK(track->instrument.type == "aural.synth");
+    CHECK(track->instrument.type == "northlight.synth");
     CHECK(track->automation.size() == 1);
 
     // Removing empties the slot; undo brings it back.
@@ -785,7 +785,7 @@ TEST_CASE("An instrument track is a MIDI track over its instrument channel, adde
     UndoStack stack;
     Track channel;
     channel.name = "Aurora";
-    channel.instrument.type = "aural.aurora";
+    channel.instrument.type = "northlight.aurora";
     Track midi;
     midi.name = "MIDI 1";
     auto add = std::make_unique<AddInstrumentTrack>(channel, midi);
@@ -847,7 +847,7 @@ TEST_CASE("Removing a channel detaches what pointed at it, and undo restores eve
     UndoStack stack;
     Track channel;
     channel.kind = TrackKind::instrument;
-    channel.instrument.type = "aural.pulsar";
+    channel.instrument.type = "northlight.pulsar";
     Track midi;
     midi.kind = TrackKind::midi;
     stack.execute(p, std::make_unique<AddInstrumentTrack>(channel, midi));
@@ -862,7 +862,7 @@ TEST_CASE("Removing a channel detaches what pointed at it, and undo restores eve
     const Id auxId = p.tracks.back().id;
     Track audio;
     Insert comp;
-    comp.type = "aural.compressor";
+    comp.type = "northlight.compressor";
     comp.sidechain = channelId; // keyed from the drums
     audio.inserts.push_back(comp);
     stack.execute(p, std::make_unique<AddTrack>(audio));
@@ -872,7 +872,7 @@ TEST_CASE("Removing a channel detaches what pointed at it, and undo restores eve
     stack.execute(p, std::make_unique<AddBus>(bus));
     const Id busId = p.buses[0].id;
     Insert busKeyed;
-    busKeyed.type = "aural.compressor";
+    busKeyed.type = "northlight.compressor";
     busKeyed.sidechain = busId;
     stack.execute(p, std::make_unique<AddBus>(Bus{}));
     const Id otherBus = p.buses[1].id;
@@ -928,7 +928,7 @@ Project everyCommandFixture()
     audio.clips.push_back({11, "b", "a.wav", 1000, 1000, 1000, 1.0f});
     Insert gain;
     gain.id = 20;
-    gain.type = "aural.gain";
+    gain.type = "northlight.gain";
     gain.params = {0.5f};
     Insert gain2 = gain;
     gain2.id = 22;
@@ -954,7 +954,7 @@ Project everyCommandFixture()
     channel.name = "Keys";
     channel.kind = TrackKind::instrument;
     channel.instrument.id = 21;
-    channel.instrument.type = "aural.aurora";
+    channel.instrument.type = "northlight.aurora";
     p.tracks = {audio, midi, channel};
     Bus hall;
     hall.id = 5;
@@ -981,7 +981,7 @@ TEST_CASE("Every command undoes to the exact project it started from and redoes 
 {
     Track instrumentChannel;
     instrumentChannel.kind = TrackKind::instrument;
-    instrumentChannel.instrument.type = "aural.pulsar";
+    instrumentChannel.instrument.type = "northlight.pulsar";
     Track midiTrack;
     midiTrack.kind = TrackKind::midi;
     MidiClip newClip;
@@ -989,9 +989,9 @@ TEST_CASE("Every command undoes to the exact project it started from and redoes 
     newClip.length = 100;
     newClip.notes = {{invalidId, 70, 100, 0, 50}};
     Insert eq;
-    eq.type = "aural.eq";
+    eq.type = "northlight.eq";
     Insert starbit;
-    starbit.type = "aural.starbit";
+    starbit.type = "northlight.starbit";
     AutomationLane panLane;
     panLane.target = AutomationTarget::pan;
     panLane.points = {{0, 0.5f}};

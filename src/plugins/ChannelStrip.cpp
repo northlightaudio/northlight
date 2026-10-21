@@ -9,7 +9,7 @@
 #include <cmath>
 #include <numbers>
 
-namespace aural::plugins::strip
+namespace northlight::plugins::strip
 {
 
 const std::vector<std::string>& moduleTypes()
@@ -21,7 +21,7 @@ const std::vector<std::string>& moduleTypes()
 
 bool isStripType(const std::string& type)
 {
-    return type.rfind("aural.strip.", 0) == 0;
+    return type.rfind("northlight.strip.", 0) == 0;
 }
 
 std::string displayName(const std::string& type)
@@ -569,7 +569,7 @@ private:
 // curve's output rather than the level keeps a waveform's troughs from
 // dragging the envelope down), make-up (manual plus auto) and an internal
 // wet/dry for parallel compression. The one compressor: the channel strip's
-// module, and (keyed) the "aural.compressor" insert, whose detector listens to
+// module, and (keyed) the "northlight.compressor" insert, whose detector listens to
 // a sidechain key when one is chosen.
 class Compressor final : public StripProcessor
 {
@@ -919,13 +919,13 @@ private:
 
 std::unique_ptr<engine::InsertProcessor> createKeyedCompressor(const std::string& type)
 {
-    AURAL_ASSERT_NOT_REALTIME("strip::createKeyedCompressor");
+    NORTHLIGHT_ASSERT_NOT_REALTIME("strip::createKeyedCompressor");
     return std::make_unique<Compressor>(type, true);
 }
 
 std::unique_ptr<engine::InsertProcessor> create(const std::string& type)
 {
-    AURAL_ASSERT_NOT_REALTIME("strip::create");
+    NORTHLIGHT_ASSERT_NOT_REALTIME("strip::create");
     if (type == types::gate)
         return std::make_unique<Gate>();
     if (type == types::eq)
@@ -983,4 +983,4 @@ bool ensureChannelStrip(core::Project& project)
     return changed;
 }
 
-} // namespace aural::plugins::strip
+} // namespace northlight::plugins::strip

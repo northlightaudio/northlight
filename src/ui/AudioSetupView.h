@@ -11,7 +11,7 @@
 #include <string>
 #include <vector>
 
-namespace aural::ui
+namespace northlight::ui
 {
 
 // The Audio Setup screen: driver type, device, sample rate, buffer size, channel
@@ -115,4 +115,4 @@ private:
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(AudioSetupView)
 };
 
-} // namespace aural::ui
+} // namespace northlight::ui

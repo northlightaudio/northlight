@@ -39,7 +39,7 @@
 // they come, so the arrange view can draw each take growing while it records
 // (04-arrange.md "Recording clip") instead of waiting for the files to close.
 
-namespace aural::engine
+namespace northlight::engine
 {
 
 // Single-producer (audio thread) single-consumer (writer thread) ring of samples.
@@ -328,4 +328,4 @@ private:
     std::thread thread_;
 };
 
-} // namespace aural::engine
+} // namespace northlight::engine

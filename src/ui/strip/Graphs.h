@@ -10,7 +10,7 @@
 // its card's values and level history and edits through the card (so a drag
 // is one gesture, one undo step).
 
-namespace aural::ui::strip
+namespace northlight::ui::strip
 {
 
 // A scrolling level history, newest on the right: the input (or key) level as
@@ -178,4 +178,4 @@ private:
     std::vector<Kind> kinds_;
 };
 
-} // namespace aural::ui::strip
+} // namespace northlight::ui::strip

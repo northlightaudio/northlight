@@ -11,11 +11,11 @@
 #include <string>
 #include <vector>
 
-namespace aural::hosting
+namespace northlight::hosting
 {
 
 // Finds VST3 files in the search paths and inspects each one in a child process
-// (aural_plugin_scan), so a plugin that crashes or hangs while loading only costs
+// (northlight_plugin_scan), so a plugin that crashes or hangs while loading only costs
 // that process. Runs on its own thread; the registry is updated on the message
 // thread through update(), and onProgress / onFinished are called there too.
 class PluginScanner final : private juce::Thread
@@ -42,7 +42,7 @@ public:
     std::function<void()> onFinished; // message thread, once, after the last file
 
     // Where the scanner executable is looked for: next to this executable, or
-    // the AURAL_PLUGIN_SCANNER environment variable.
+    // the NORTHLIGHT_PLUGIN_SCANNER environment variable.
     static juce::File scannerExecutable();
 
     // Inspects one file in a child process. Blocks up to timeoutMs, or until
@@ -74,4 +74,4 @@ private:
     std::string current_;
 };
 
-} // namespace aural::hosting
+} // namespace northlight::hosting

@@ -12,7 +12,7 @@
 // tokens with a tokens.json beside the settings file (keys that are present win;
 // the rest keep the shipped values).
 
-namespace aural::ui
+namespace northlight::ui
 {
 
 struct Theme
@@ -180,7 +180,7 @@ struct Theme
         bool enabled = false; // false until a material block is loaded
     };
 
-    std::string name = "Aural Dark";
+    std::string name = "Northlight Dark";
     Colours colours;
     Track track;
     Fonts fonts;
@@ -232,4 +232,4 @@ struct Theme
     static bool parseShadow(const juce::String& text, Shadow& out);
 };
 
-} // namespace aural::ui
+} // namespace northlight::ui

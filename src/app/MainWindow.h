@@ -6,12 +6,12 @@
 
 #include <memory>
 
-namespace aural::audio
+namespace northlight::audio
 {
 class AudioDeviceLayer;
 }
 
-namespace aural
+namespace northlight
 {
 class ProjectSession;
 class UserSettings;
@@ -97,4 +97,4 @@ private:
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(MainWindow)
 };
 
-} // namespace aural
+} // namespace northlight

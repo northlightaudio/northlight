@@ -7,7 +7,6 @@
 #include <catch2/catch_test_macros.hpp>
 
 #include <algorithm>
-
 #include <chrono>
 #include <cstdio>
 #include <filesystem>
@@ -15,15 +14,15 @@
 #include <thread>
 #include <vector>
 
-using namespace aural;
+using namespace northlight;
 
 namespace
 {
-const aural::plugins::BuiltInFactory builtIns;
+const northlight::plugins::BuiltInFactory builtIns;
 
 std::string tempPath(const char* name)
 {
-    const auto dir = std::filesystem::temp_directory_path() / "aural-tests";
+    const auto dir = std::filesystem::temp_directory_path() / "northlight-tests";
     std::filesystem::create_directories(dir);
     const auto path = (dir / name).string();
     std::remove(path.c_str());

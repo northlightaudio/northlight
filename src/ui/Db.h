@@ -8,7 +8,7 @@
 // Gains as the user sees them: one floor and one formatter for every view, so a
 // gain reads the same in the mixer, the inspector, the Editor panel and the
 // arrange view, and a value typed in one is not clipped by another.
-namespace aural::ui::db
+namespace northlight::ui::db
 {
 
 // At or below this a gain is silence (0) and reads "-inf".
@@ -53,4 +53,4 @@ inline double parse(const juce::String& typed)
     return typed.containsIgnoreCase("inf") ? silence : typed.getDoubleValue();
 }
 
-} // namespace aural::ui::db
+} // namespace northlight::ui::db

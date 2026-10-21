@@ -19,7 +19,7 @@
 // starts with a fade-in. The real-time side reads the source into scratch
 // buffers sized in prepare(); it never allocates, locks or frees.
 
-namespace aural::engine
+namespace northlight::engine
 {
 
 class PreviewPlayer
@@ -75,4 +75,4 @@ private:
     bool rtDone_ = true;
 };
 
-} // namespace aural::engine
+} // namespace northlight::engine

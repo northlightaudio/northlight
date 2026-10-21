@@ -7,7 +7,7 @@
 // Transport state as the real-time thread sees it, and the commands the controller
 // sends to change it. Positions are samples at the project rate.
 
-namespace aural::engine
+namespace northlight::engine
 {
 
 // A loop shorter than this is refused: each wrap costs a render span, and a loop
@@ -126,4 +126,4 @@ inline void applyTransportCommand(TransportState& state, const TransportCommand&
     }
 }
 
-} // namespace aural::engine
+} // namespace northlight::engine

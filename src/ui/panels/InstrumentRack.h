@@ -15,7 +15,7 @@
 #include <memory>
 #include <vector>
 
-namespace aural::ui
+namespace northlight::ui
 {
 
 // The Instruments panel (07-plugins.md 7.4): every instrument in the project
@@ -70,4 +70,4 @@ private:
     AddSlot add_{theme_, "Instrument"};
 };
 
-} // namespace aural::ui
+} // namespace northlight::ui

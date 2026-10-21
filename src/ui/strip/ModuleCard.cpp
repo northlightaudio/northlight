@@ -2,12 +2,12 @@
 
 #include "plugins/BuiltIns.h"
 #include "plugins/ChannelStrip.h"
-#include "ui/AuralLookAndFeel.h"
+#include "ui/NorthlightLookAndFeel.h"
 #include "ui/strip/StripStyle.h"
 
 #include <map>
 
-namespace aural::ui::strip
+namespace northlight::ui::strip
 {
 
 namespace
@@ -603,4 +603,4 @@ void ModuleCard::mouseUp(const juce::MouseEvent& e)
     dragging_ = false;
 }
 
-} // namespace aural::ui::strip
+} // namespace northlight::ui::strip

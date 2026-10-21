@@ -1,12 +1,12 @@
 #include "ui/PianoRoll.h"
 
-#include "ui/AuralLookAndFeel.h"
+#include "ui/NorthlightLookAndFeel.h"
 
 #include <algorithm>
 #include <cmath>
 #include <limits>
 
-namespace aural::ui
+namespace northlight::ui
 {
 
 namespace
@@ -53,14 +53,14 @@ PianoRoll::PianoRoll()
         setTool(index == 0 ? Tool::draw : index == 2 ? Tool::erase : Tool::select);
     };
     addAndMakeVisible(tools_);
-    snapButton_.getProperties().set(AuralLookAndFeel::propertyVariant, "ghost");
-    snapButton_.getProperties().set(AuralLookAndFeel::propertyMenu, true);
+    snapButton_.getProperties().set(NorthlightLookAndFeel::propertyVariant, "ghost");
+    snapButton_.getProperties().set(NorthlightLookAndFeel::propertyMenu, true);
     snapButton_.setTooltip("Snap grid");
     snapButton_.onClick = [this] { showSnapMenu(); };
     addAndMakeVisible(snapButton_);
     quantiseButton_.setButtonText("Quantise");
-    quantiseButton_.getProperties().set(AuralLookAndFeel::propertyVariant, "ghost");
-    quantiseButton_.getProperties().set(AuralLookAndFeel::propertyMenu, true);
+    quantiseButton_.getProperties().set(NorthlightLookAndFeel::propertyVariant, "ghost");
+    quantiseButton_.getProperties().set(NorthlightLookAndFeel::propertyMenu, true);
     quantiseButton_.setTooltip("Quantise the selected notes (Q); the strength is in the menu");
     quantiseButton_.onClick = [this] { showQuantiseMenu(); };
     addAndMakeVisible(quantiseButton_);
@@ -76,7 +76,7 @@ PianoRoll::PianoRoll()
     auditionButton_.onClick = [this] { setAudition(auditionButton_.getToggleState()); };
     addAndMakeVisible(auditionButton_);
     scaleButton_.setButtonText("Scale");
-    scaleButton_.getProperties().set(AuralLookAndFeel::propertyVariant, "ghost");
+    scaleButton_.getProperties().set(NorthlightLookAndFeel::propertyVariant, "ghost");
     scaleButton_.setTooltip("Shade the notes outside the project key's scale and mark its notes on the keys");
     scaleButton_.setClickingTogglesState(true);
     scaleButton_.setToggleState(scaleHighlight_, juce::dontSendNotification);
@@ -2148,4 +2148,4 @@ void PianoRoll::deleteControllerSelection()
     emit(std::move(commands), "Delete controller points");
 }
 
-} // namespace aural::ui
+} // namespace northlight::ui

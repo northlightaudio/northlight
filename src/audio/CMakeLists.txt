@@ -1,6 +1,6 @@
 # Pure audio code: settings model, latency detection DSP, pass-through render.
 # No JUCE dependency so the unit tests stay fast and hardware-free.
-add_library(aural_audio STATIC
+add_library(northlight_audio STATIC
     AudioSettings.h
     AudioSettings.cpp
     LatencyDetector.h
@@ -8,12 +8,12 @@ add_library(aural_audio STATIC
     PassThrough.h
     PassThrough.cpp)
 
-target_include_directories(aural_audio PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/..")
-target_link_libraries(aural_audio PUBLIC aural_options aural_rt)
+target_include_directories(northlight_audio PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/..")
+target_link_libraries(northlight_audio PUBLIC northlight_options northlight_rt)
 
 # Device layer: wraps juce::AudioDeviceManager, owns the real-time callback and the
 # loopback calibrator.
-add_library(aural_audio_device STATIC
+add_library(northlight_audio_device STATIC
     AudioCallback.h
     AudioCallback.cpp
     AudioDeviceLayer.h
@@ -29,4 +29,4 @@ add_library(aural_audio_device STATIC
     PeakStore.h
     PeakStore.cpp)
 
-target_link_libraries(aural_audio_device PUBLIC aural_audio aural_engine aural_juce)
+target_link_libraries(northlight_audio_device PUBLIC northlight_audio northlight_engine northlight_juce)

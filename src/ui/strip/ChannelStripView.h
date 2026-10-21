@@ -10,7 +10,7 @@
 #include <memory>
 #include <vector>
 
-namespace aural::ui::strip
+namespace northlight::ui::strip
 {
 
 // A channel's strip in the Editor panel (12-channel-strip.md 12.1): a caption
@@ -86,4 +86,4 @@ private:
     std::vector<int> laidOutWidths_;    // the cards' widths at the last layout
 };
 
-} // namespace aural::ui::strip
+} // namespace northlight::ui::strip

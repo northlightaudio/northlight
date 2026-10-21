@@ -1,4 +1,4 @@
-add_executable(aural_unit_tests
+add_executable(northlight_unit_tests
     NoAssertDialogs.cpp
     rt/RealtimeGuardTests.cpp
     audio/AudioSettingsTests.cpp
@@ -49,17 +49,17 @@ add_executable(aural_unit_tests
     ui/SelectionTests.cpp
     ui/ClipOpsTests.cpp)
 
-target_link_libraries(aural_unit_tests PRIVATE
-    aural_options
-    aural_rt
-    aural_rt_checks
-    aural_audio
-    aural_core
-    aural_engine
-    aural_plugins
-    aural_hosting_core
-    aural_ui_edit
+target_link_libraries(northlight_unit_tests PRIVATE
+    northlight_options
+    northlight_rt
+    northlight_rt_checks
+    northlight_audio
+    northlight_core
+    northlight_engine
+    northlight_plugins
+    northlight_hosting_core
+    northlight_ui_edit
     Catch2::Catch2WithMain)
 
 include(Catch)
-catch_discover_tests(aural_unit_tests)
+catch_discover_tests(northlight_unit_tests)

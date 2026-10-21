@@ -1,4 +1,4 @@
-# Aural
+# Northlight
 
 A native, high-performance digital audio workstation for Windows. ASIO, VST3 hosting,
 multitrack recording, and a UI that is designed before it is built.
@@ -43,26 +43,27 @@ ASIO:
 
 1. Download the ASIO SDK from Steinberg and unzip it somewhere outside the repo
    (for example `H:\Tools\asiosdk`).
-2. Set `AURAL_ASIO_SDK_DIR` to that directory, either as an environment variable before
+2. Set `NORTHLIGHT_ASIO_SDK_DIR` to that directory, either as an environment variable before
    configuring or as a CMake cache variable:
 
    ```powershell
-   $env:AURAL_ASIO_SDK_DIR = 'H:\Tools\asiosdk'
+   $env:NORTHLIGHT_ASIO_SDK_DIR = 'H:\Tools\asiosdk'
    .\scripts\build.ps1
    ```
 
 Without it the app builds with WASAPI only. VST3 hosting needs no external SDK; the
-VST3 SDK ships inside JUCE.
+VST3 SDK ships inside JUCE. (The variable was `AURAL_ASIO_SDK_DIR` before the rename to
+Northlight; the build still reads that from the environment when the new one is not set.)
 
 ### Build options
 
 | Option | Default | Meaning |
 |---|---|---|
-| `AURAL_BUILD_TESTS` | ON | Build the Catch2 unit tests |
-| `AURAL_BUILD_HARDWARE_TESTS` | ON | Build the manual hardware test tools (never run by CTest) |
-| `AURAL_RT_CHECKS` | ON (OFF in `windows-release`) | Hook operator new/delete to catch allocations on real-time threads |
-| `AURAL_WARNINGS_AS_ERRORS` | OFF (ON in `ci`) | `/WX` |
-| `AURAL_ASIO_SDK_DIR` | empty | Path to the ASIO SDK root |
+| `NORTHLIGHT_BUILD_TESTS` | ON | Build the Catch2 unit tests |
+| `NORTHLIGHT_BUILD_HARDWARE_TESTS` | ON | Build the manual hardware test tools (never run by CTest) |
+| `NORTHLIGHT_RT_CHECKS` | ON (OFF in `windows-release`) | Hook operator new/delete to catch allocations on real-time threads |
+| `NORTHLIGHT_WARNINGS_AS_ERRORS` | OFF (ON in `ci`) | `/WX` |
+| `NORTHLIGHT_ASIO_SDK_DIR` | empty | Path to the ASIO SDK root |
 
 ## Layout
 
@@ -94,7 +95,7 @@ Shift+wheel or the scrollbars scroll. The status bar shows the audio callback lo
 Ctrl+Y. Files longer than 30 s
 stream from disk; everything is resampled to the project rate (the device rate of
 an empty project). Waveform peaks are built in the background and cached next to
-each media file as `<file>.<rate>.aural-peaks`.
+each media file as `<file>.<rate>.northlight-peaks`.
 
 To record, pick an input in a track's header, arm it with **R** (the **I** button
 cycles input monitoring off / auto / on) and press **Rec** or Ctrl+R; **Stop** or the
@@ -129,7 +130,7 @@ A strip's **Group** button puts it in a fader group: grouped faders move togethe
 (keeping their balance) and mute and solo act on the whole group.
 **Inserts ▸ Add** lists the built-ins and every VST3 and CLAP plugin found by
 **Scan for plugins...** (the standard VST3 and CLAP folders, each file inspected in
-a separate process so a bad plugin cannot crash Aural); a hosted plugin opens its own editor window
+a separate process so a bad plugin cannot crash Northlight); a hosted plugin opens its own editor window
 and its state is saved with the project; its window has bypass, a wet/dry mix and a
 pin (always on top), a Presets menu (factory programs and `.vstpreset` files), and
 remembers where you left it. **Plugins...** opens the
@@ -137,7 +138,7 @@ browser (search, blocklist, scan). Every insert has a wet/dry mix, and a compres
 input) can be sidechained from another track via its **Sidechain** submenu. Insert latency is
 compensated across tracks, buses and sends, and recordings allow for it.
 Recordings go next to the project file in a `<project> Media` folder, or to
-`Documents\Aural\Recordings` for an unsaved project, each with a small
+`Documents\Northlight\Recordings` for an unsaved project, each with a small
 `.recording.json` beside it while it is in progress. If the app dies while
 recording, the next launch offers to repair the unfinished files and put them back
 on their tracks where they were captured (or on "Recovered" tracks when the project
@@ -174,7 +175,7 @@ pulse duties, 4-bit triangle and saw, LFSR noise and a wave you draw, tracker
 arpeggios (including cycling the notes you hold), vibrato, sweeps and a lo-fi end,
 behind a pixel-art editor. To hear them together, write and open the demo song, "Northern Drift" (Pulsar
 drums, Aurora bass and keys, a Nebula pad, Starbit's arpeggio and lead, Hall and
-Echo FX tracks, automation and section markers): `Aural --demo-song "<folder>/Northern Drift.aural"`. (The first, plain built-in "Synth" is gone; projects
+Echo FX tracks, automation and section markers): `Northlight --demo-song "<folder>/Northern Drift.northlight"`. (The first, plain built-in "Synth" is gone; projects
 that used it open with Aurora.)
 A MIDI track can also play an external instrument: pick a MIDI output in Audio
 Setup, then the channel in the track's right-click menu (**MIDI output**); its
@@ -193,10 +194,10 @@ rename it, **Delete** to remove it.
 **Export...** bounces the mix (or the loop region) to a float WAV at the project
 rate, or every track to a stems folder, offline, compensated for insert latency;
 the status line shows the progress and the integrated loudness of the result.
-Projects are `.aural` files: **New**, **Open...**, **Save** (Ctrl+N / Ctrl+O / Ctrl+S,
+Projects are `.northlight` files: **New**, **Open...**, **Save** (Ctrl+N / Ctrl+O / Ctrl+S,
 Ctrl+Shift+S to save as). Unsaved changes are autosaved every two minutes (set in
-Preferences, General); if Aural closes without saving, the next launch offers to
-restore them. If Aural crashes, a crash report (a minidump) is saved in the
+Preferences, General); if Northlight closes without saving, the next launch offers to
+restore them. If Northlight crashes, a crash report (a minidump) is saved in the
 settings folder's `Crashes` folder and the next launch offers to show it.
 **Save as template...** keeps the tracks, buses, routing, inserts and
 channel strips without clips; **New from template** starts a project from one.
@@ -204,21 +205,21 @@ channel strips without clips; **New from template** starts a project from one.
 next to the project (undoable), and **Remove unused media...** moves files in the
 project's media folder that no clip uses to the Recycle Bin.
 
-For unattended checks: `Aural.exe --import <file> [--import <file>] --play` (or
+For unattended checks: `Northlight.exe --import <file> [--import <file>] --play` (or
 `--open <project>`), and
-`Aural.exe --record <inputs> [--loop <from> <to>] [--no-count-in] --stop-after <seconds>`; `--mixer`
-opens the mixer panel and `--insert <type>` adds a built-in (for example `aural.eq`) to
+`Northlight.exe --record <inputs> [--loop <from> <to>] [--no-count-in] --stop-after <seconds>`; `--mixer`
+opens the mixer panel and `--insert <type>` adds a built-in (for example `northlight.eq`) to
 every track and opens its editor. `--strip <modules|all|demo>` switches channel strip modules on for every track
 and shows the Editor panel, and `--master-gain -120` silences the master for an
 unattended check that should not be heard. `--scan-plugins` runs a full plugin scan, `--plugins` opens the browser, `--marker <seconds>` drops a marker; `--recover` recovers unfinished recordings without
 the prompt and `--save <file>` writes the project (so a check can read the placed
 clips); `--save` runs two seconds after a preceding `--stop-after`, else half a
 second after launch.
-The offline recording soak is `aural_record_soak --inputs 16 --minutes 30 --speed 8`.
+The offline recording soak is `northlight_record_soak --inputs 16 --minutes 30 --speed 8`.
 
 ### Audio setup
 
-Launch `Aural.exe` and click **Audio Setup...** in the toolbar. Pick the driver type
+Launch `Northlight.exe` and click **Audio Setup...** in the toolbar. Pick the driver type
 (ASIO, or one of the Windows Audio modes), the device, sample rate, buffer size and the
 channels to enable. With **Pass inputs through to outputs** on you hear the inputs on
 the outputs; the Latency section shows the driver's reported input and output latency.
@@ -227,14 +228,14 @@ To measure the real round trip, connect one output to one input with a cable, ch
 that pair under **Loopback** and click **Calibrate**. The result is stored per device,
 sample rate and buffer size and is used to place recorded audio in Phase 3.
 
-Settings live in `%APPDATA%\Aural\Aural.settings`. `Aural.exe --audio-setup` opens the
+Settings live in `%APPDATA%\Northlight\Northlight.settings`. `Northlight.exe --audio-setup` opens the
 Audio Setup window on launch.
 
 The same can be done from the command line with the hardware tool:
 
 ```powershell
-.\build\windows-debug\tests\hardware\aural_loopback_tool_artefacts\Debug\aural_loopback_tool.exe --list
-.\build\windows-debug\tests\hardware\aural_loopback_tool_artefacts\Debug\aural_loopback_tool.exe --type ASIO --device "Focusrite USB ASIO" --buffer 64 --out 0 --in 0
+.\build\windows-debug\tests\hardware\northlight_loopback_tool_artefacts\Debug\northlight_loopback_tool.exe --list
+.\build\windows-debug\tests\hardware\northlight_loopback_tool_artefacts\Debug\northlight_loopback_tool.exe --type ASIO --device "Focusrite USB ASIO" --buffer 64 --out 0 --in 0
 ```
 
 ## Documentation
@@ -246,7 +247,7 @@ The same can be done from the command line with the hardware tool:
 
 ## Licence
 
-Northlight (the code still calls itself Aural until the rename) is free software:
+Northlight is free software:
 you can redistribute it and/or modify it under the terms of the GNU Affero General
 Public License as published by the Free Software Foundation, version 3 of the
 License. It is distributed in the hope that it will be useful, but WITHOUT ANY

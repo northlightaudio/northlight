@@ -13,7 +13,7 @@
 // announced taken in pieces, and the key input and MIDI parked for
 // processAudio. JUCE-free.
 
-namespace aural::plugins
+namespace northlight::plugins
 {
 
 constexpr float minusInfinityDb = -120.0f;
@@ -188,4 +188,4 @@ private:
     float bypassStep_ = 0.0f;
 };
 
-} // namespace aural::plugins
+} // namespace northlight::plugins

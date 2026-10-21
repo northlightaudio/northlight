@@ -16,7 +16,7 @@
 // while the UI keeps up. This is the "RT to controller" path of rt-rules.md:
 // a preallocated ring the RT side never blocks on.
 
-namespace aural::engine
+namespace northlight::engine
 {
 
 class ProcessorFeedback
@@ -205,4 +205,4 @@ private:
     int interval_ = 240;
 };
 
-} // namespace aural::engine
+} // namespace northlight::engine

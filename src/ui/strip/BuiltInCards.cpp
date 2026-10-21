@@ -19,7 +19,7 @@
 
 #include <cmath>
 
-namespace aural::ui::strip
+namespace northlight::ui::strip
 {
 
 namespace
@@ -820,17 +820,17 @@ createBuiltInCard(const Theme& theme, CardHost& host, core::Id channelId, const 
         return std::make_unique<ReverbCard>(theme, host, channelId, insert);
     if (insert.type == types::delay)
         return std::make_unique<DelayCard>(theme, host, channelId, insert);
-    if (insert.type == "aural.aurora")
+    if (insert.type == "northlight.aurora")
         return createAuroraEditor(theme, host, channelId, insert);
-    if (insert.type == "aural.pulsar")
+    if (insert.type == "northlight.pulsar")
         return createPulsarEditor(theme, host, channelId, insert);
-    if (insert.type == "aural.nebula")
+    if (insert.type == "northlight.nebula")
         return createNebulaEditor(theme, host, channelId, insert);
-    if (insert.type == "aural.starbit")
+    if (insert.type == "northlight.starbit")
         return createStarbitEditor(theme, host, channelId, insert);
-    if (insert.type == "aural.sampler")
+    if (insert.type == "northlight.sampler")
         return createSamplerEditor(theme, host, channelId, insert);
     return nullptr;
 }
 
-} // namespace aural::ui::strip
+} // namespace northlight::ui::strip

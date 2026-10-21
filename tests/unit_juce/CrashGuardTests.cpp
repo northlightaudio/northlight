@@ -4,7 +4,7 @@
 
 #include <stdexcept>
 
-using namespace aural;
+using namespace northlight;
 
 namespace
 {

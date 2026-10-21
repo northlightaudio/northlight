@@ -33,7 +33,7 @@ strip of device cards, Bitwig-style, so the whole signal path reads left to righ
 
 ## 7.2 Plugin window
 
-Native window with a 32 px Aural bar above the plugin's own editor:
+Native window with a 32 px Northlight bar above the plugin's own editor:
 
 ```
 | ⏻  DC1A3 · 01 Kick     VST3   mix ──o── 100%   presets ▾   ⟲   📌   ⤢ |
@@ -108,9 +108,9 @@ For GUI-less hosted plugins. A scrollable grid of parameter rows:
 |   ★ DC1A3                  Klanghelm        VST3       |
 | Recent                                                 |
 | Effects                                                |
-|   Aural EQ                 Built-in                    |
+|   Northlight EQ                 Built-in                    |
 |   DC1A3                    Klanghelm        VST3       |
-|   Aural Test Gain          Leafshade        CLAP       |
+|   Northlight Test Gain          Leafshade        CLAP       |
 | Instruments                                            |
 |   …                                                    |
 | Blocked (1)                                             |
@@ -225,7 +225,7 @@ it, when it plays none), or a new MIDI track and instrument channel.
 
 ## 7.4b Aurora
 
-The synth bundled with Aural reads as its own product, so its editor is bolder
+The synth bundled with Northlight reads as its own product, so its editor is bolder
 than the built-in effects' while keeping to the theme's palette (Mint, Teal,
 Sky, Violet, Magenta, Amber) and type:
 
@@ -234,7 +234,7 @@ Sky, Violet, Magenta, Amber) and type:
   brighten while Aurora sounds and hold still when it is silent or with reduce
   motion on.
 - The wordmark AURORA, tracked wide with a Mint-to-Violet gradient, "POLYSYNTH ·
-  AURAL" beside it; the preset bar (previous, the name as a menu, next; "Custom"
+  NORTHLIGHT" beside it; the preset bar (previous, the name as a menu, next; "Custom"
   when the values match no preset); twelve voice lights that light as voices sound.
 - Six glass panels (`surface1` at 72% over the sky, a rim and a top highlight),
   each a hue dot and caption, a display and its knobs in its hue: OSCILLATORS (both
@@ -249,7 +249,7 @@ Sky, Violet, Magenta, Amber) and type:
 
 ## 7.4c Pulsar
 
-The drum synth bundled with Aural, Aurora's sibling for percussion: eight
+The drum synth bundled with Northlight, Aurora's sibling for percussion: eight
 synthesised pads on the General MIDI drum notes (kick C1, rim C#1, snare D1,
 clap D#1, closed hat F#1, low tom A1, open hat A#1, high tom C2) and on C3 to G3
 in that order, played out whatever the note's length; the closed hat chokes the
@@ -267,7 +267,7 @@ Clicks, Industrial.
   while it plays and flare on every hit, which also sends a ring in the pad's hue
   out across the sky behind the glass. Still when silent or with reduce motion on.
 - The wordmark PULSAR tracked wide in a Sky-to-Coral gradient, "DRUM SYNTH ·
-  AURAL", and the kit bar (previous, the name as a menu, next; "Custom" off-kit).
+  NORTHLIGHT", and the kit bar (previous, the name as a menu, next; "Custom" off-kit).
 - Eight pad tiles (4×2) of glass, each in its hue (Coral, Amber, Tangerine, Lime,
   Mint, Teal, Sky, Indigo): its short name, its note, and its sound, rendered and
   drawn as a waveform; a hit lights the tile from within and its rim. Clicking a
@@ -282,7 +282,7 @@ Clicks, Industrial.
 
 ## 7.4d Nebula
 
-The pad synth bundled with Aural, for slow, airy, ethereal sounds. Each note is a
+The pad synth bundled with Northlight, for slow, airy, ethereal sounds. Each note is a
 cloud of partials (4 to 24), each a pair of sines detuned by the spread and
 wandering on its own with the drift, panned alternately left and right (wider the
 higher), shaped by Brightness (the spectrum's tilt), Odd/even (hollow to full),
@@ -295,7 +295,7 @@ Glass Halo, Hollow Moon, Solar Breath, Deep Field, Ice Bells, Drifting Veil.
 - Gas clouds in Violet, Magenta, Teal and Indigo drifting behind the panels and
   breathing with the sound, dust rising through them; still when silent or with
   reduce motion on. The wordmark NEBULA, light and tracked wide in a Magenta-to-Teal
-  gradient on a soft glow; "PAD SYNTH · AURAL"; the preset bar; eight voice lights.
+  gradient on a soft glow; "PAD SYNTH · NORTHLIGHT"; the preset bar; eight voice lights.
 - SPECTRUM: the partials as columns of light on a log axis (55 Hz to 12 kHz, for
   A3 and the octave), the halo's in Mint, under the formant's cloud, swaying with
   the motion; drag across for the vowel, up and down for the brightness; the octave
@@ -308,7 +308,7 @@ Glass Halo, Hollow Moon, Solar Breath, Deep Field, Ice Bells, Drifting Veil.
 
 ## 7.4e Starbit
 
-The chiptune synth bundled with Aural, after 8-bit consoles' sound chips. A
+The chiptune synth bundled with Northlight, after 8-bit consoles' sound chips. A
 pulse (12.5, 25, 50 or 75% duty, with a duty sweep that cycles them), a 4-bit
 stepped triangle and saw, LFSR noise (long, or short and metallic, pitched with
 the note) and a 32-step 4-bit Wave you draw; volume in 16 steps; arpeggios in
@@ -320,7 +320,7 @@ Starbit, Hero Lead, Chord Arp, Major Sparkle, Tri Bass, Wave Pad, Laser Zap,
 Noise Snare, Metal Hat, Crunchy Saw.
 
 - Pixel art: a 5×7 pixel-font wordmark STARBIT, each letter a palette colour
-  with a drop shadow, "CHIP SYNTH · AURAL" in mono, square stars that blink in
+  with a drop shadow, "CHIP SYNTH · NORTHLIGHT" in mono, square stars that blink in
   whole steps a few times a second while it plays, windows and screens with
   notched corners and 2 px borders, scanlines over the screens, four square voice
   lights. The knobs are the app's own.

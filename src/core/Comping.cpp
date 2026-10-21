@@ -4,7 +4,7 @@
 #include <cmath>
 #include <stdexcept>
 
-namespace aural::core
+namespace northlight::core
 {
 
 namespace
@@ -526,4 +526,4 @@ moveTakeToNewTrack(const Project& project, Id trackId, Id groupId, Id takeId)
     return commands;
 }
 
-} // namespace aural::core
+} // namespace northlight::core

@@ -14,7 +14,7 @@
 #include <string>
 #include <vector>
 
-namespace aural::ui
+namespace northlight::ui
 {
 
 // A track's header at the left of its lane (04-arrange.md, "Track header"): the
@@ -132,4 +132,4 @@ private:
     Knob pan_;
 };
 
-} // namespace aural::ui
+} // namespace northlight::ui

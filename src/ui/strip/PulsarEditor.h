@@ -4,7 +4,7 @@
 
 #include <memory>
 
-namespace aural::ui::strip
+namespace northlight::ui::strip
 {
 
 // Pulsar's editor (07-plugins.md 7.4c): the drum synth's own face, a pulsing
@@ -13,4 +13,4 @@ namespace aural::ui::strip
 std::unique_ptr<ModuleCard>
 createPulsarEditor(const Theme& theme, CardHost& host, core::Id channelId, const core::Insert& insert);
 
-} // namespace aural::ui::strip
+} // namespace northlight::ui::strip

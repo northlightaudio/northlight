@@ -1,11 +1,11 @@
 #include "ui/panels/InstrumentRack.h"
 
 #include "plugins/BuiltIns.h"
-#include "ui/AuralLookAndFeel.h"
 #include "ui/InstrumentOutputs.h"
+#include "ui/NorthlightLookAndFeel.h"
 #include "ui/PluginMenu.h"
 
-namespace aural::ui
+namespace northlight::ui
 {
 
 namespace
@@ -446,4 +446,4 @@ void InstrumentRack::resized()
     list_.setSize(width, y);
 }
 
-} // namespace aural::ui
+} // namespace northlight::ui

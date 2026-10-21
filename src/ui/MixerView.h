@@ -20,7 +20,7 @@
 #include <string>
 #include <vector>
 
-namespace aural::ui
+namespace northlight::ui
 {
 
 // The mixer (05-mixer.md): one strip per track and bus (name cap, input, insert
@@ -137,4 +137,4 @@ private:
     const PluginSources* pluginSources_ = nullptr;
 };
 
-} // namespace aural::ui
+} // namespace northlight::ui

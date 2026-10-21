@@ -6,7 +6,7 @@
 #include <fstream>
 #include <sstream>
 
-namespace aural::engine
+namespace northlight::engine
 {
 
 namespace
@@ -90,7 +90,7 @@ std::string VocalService::cachePathFor(const std::string& path, double sampleRat
     if (path.empty() || !std::filesystem::is_regular_file(fsPath(path), ec))
         return {};
     std::ostringstream name;
-    name << path << '.' << static_cast<long long>(sampleRate) << ".aural-pitch";
+    name << path << '.' << static_cast<long long>(sampleRate) << ".northlight-pitch";
     return name.str();
 }
 
@@ -386,4 +386,4 @@ void VocalService::workerLoop()
     idle_.notify_all();
 }
 
-} // namespace aural::engine
+} // namespace northlight::engine

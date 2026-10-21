@@ -5,7 +5,7 @@
 #include <string>
 #include <vector>
 
-namespace aural::hosting
+namespace northlight::hosting
 {
 
 // What the plugin window's Presets menu needs from a hosted plugin, whatever its
@@ -28,4 +28,4 @@ public:
     virtual std::string presetFileExtension() const = 0;
 };
 
-} // namespace aural::hosting
+} // namespace northlight::hosting

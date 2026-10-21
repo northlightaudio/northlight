@@ -1,12 +1,12 @@
 #include "ui/PluginWindow.h"
 
-#include "ui/AuralLookAndFeel.h"
 #include "ui/Icons.h"
+#include "ui/NorthlightLookAndFeel.h"
 
 #include <functional>
 #include <vector>
 
-namespace aural::ui
+namespace northlight::ui
 {
 
 // The bar plus the plugin's editor. Follows the editor's size (a plugin may
@@ -35,8 +35,8 @@ public:
         addAndMakeVisible(power_);
 
         presetsButton_.setButtonText("Presets");
-        presetsButton_.getProperties().set(AuralLookAndFeel::propertyVariant, "ghost");
-        presetsButton_.getProperties().set(AuralLookAndFeel::propertyMenu, true);
+        presetsButton_.getProperties().set(NorthlightLookAndFeel::propertyVariant, "ghost");
+        presetsButton_.getProperties().set(NorthlightLookAndFeel::propertyMenu, true);
         presetsButton_.onClick = [this] { showPresetsMenu(); };
         addAndMakeVisible(presetsButton_);
 
@@ -342,4 +342,4 @@ void PluginWindow::resized()
         onBoundsChanged(getBounds());
 }
 
-} // namespace aural::ui
+} // namespace northlight::ui

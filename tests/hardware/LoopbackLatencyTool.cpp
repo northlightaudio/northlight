@@ -4,8 +4,8 @@
 // loopback calibration and prints the measured round trip. Requires a cable from
 // the chosen output to the chosen input. Not run by CI.
 //
-//   aural_loopback_tool --list
-//   aural_loopback_tool [--type "ASIO"] [--device "Name"] [--rate 48000] [--buffer 64]
+//   northlight_loopback_tool --list
+//   northlight_loopback_tool [--type "ASIO"] [--device "Name"] [--rate 48000] [--buffer 64]
 //                       [--in 0] [--out 0] [--passthrough-seconds 5]
 
 #include "audio/AudioDeviceLayer.h"
@@ -19,12 +19,12 @@
 namespace
 {
 
-class MemoryStore final : public aural::audio::AudioSettingsStore
+class MemoryStore final : public northlight::audio::AudioSettingsStore
 {
 public:
-    aural::audio::AudioSettings settings;
-    aural::audio::AudioSettings loadAudioSettings() override { return settings; }
-    void saveAudioSettings(const aural::audio::AudioSettings& s) override { settings = s; }
+    northlight::audio::AudioSettings settings;
+    northlight::audio::AudioSettings loadAudioSettings() override { return settings; }
+    void saveAudioSettings(const northlight::audio::AudioSettings& s) override { settings = s; }
 };
 
 struct Args
@@ -66,7 +66,7 @@ Args parseArgs(const juce::StringArray& argv)
     return a;
 }
 
-void printStatus(const aural::audio::AudioDeviceLayer::Status& s)
+void printStatus(const northlight::audio::AudioDeviceLayer::Status& s)
 {
     if (!s.open)
     {
@@ -163,7 +163,7 @@ private:
             args_.input,
             args_.output,
             0.5f,
-            [this](const aural::audio::LatencyCalibrator::Result& r)
+            [this](const northlight::audio::LatencyCalibrator::Result& r)
             {
                 std::printf("%s\n", r.message.c_str());
                 if (r.measurement.has_value())
@@ -191,7 +191,7 @@ private:
 
     Args args_;
     MemoryStore store_;
-    aural::audio::AudioDeviceLayer layer_;
+    northlight::audio::AudioDeviceLayer layer_;
     juce::uint32 passThroughEndsAt_ = 0;
     int exitCode_ = 1;
 };

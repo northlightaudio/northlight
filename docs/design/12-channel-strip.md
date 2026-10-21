@@ -182,7 +182,7 @@ defaults)" and "Show presets folder". A preset sets every module's on/off state
 and parameters in one undo step ("Strip preset: Lead vocal"), keeping the
 channel's module order; the cards of modules it switches on open and the rest
 fold to tabs. EQ bands a preset does not use are switched off so their nodes
-stay out of the way. User presets are JSON files in Documents/Aural/Strip
+stay out of the way. User presets are JSON files in Documents/Northlight/Strip
 Presets, listed under "Yours"; a preset from an older version leaves modules
 it does not know alone.
 

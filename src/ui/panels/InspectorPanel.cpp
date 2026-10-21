@@ -1,11 +1,11 @@
 #include "ui/panels/InspectorPanel.h"
 
-#include "ui/AuralLookAndFeel.h"
 #include "ui/Db.h"
+#include "ui/NorthlightLookAndFeel.h"
 
 #include <cmath>
 
-namespace aural::ui
+namespace northlight::ui
 {
 
 InspectorPanel::InspectorPanel(const Theme& theme)
@@ -73,14 +73,14 @@ InspectorPanel::InspectorPanel(const Theme& theme)
     const auto toggle = [this](juce::TextButton& b, const char* semantic, const char* tip)
     {
         b.setClickingTogglesState(true);
-        b.getProperties().set(AuralLookAndFeel::propertySemantic, semantic);
+        b.getProperties().set(NorthlightLookAndFeel::propertySemantic, semantic);
         b.setTooltip(tip);
         addAndMakeVisible(b);
     };
     toggle(mute_, "mute", "Mute  Shift+M");
     toggle(solo_, "solo", "Solo  Shift+S");
     toggle(arm_, "arm", "Arm for recording  Shift+R");
-    arm_.getProperties().set(AuralLookAndFeel::propertyHardOn, true);
+    arm_.getProperties().set(NorthlightLookAndFeel::propertyHardOn, true);
     mute_.onClick = [this]
     {
         if (!updating_ && onCommand)
@@ -331,4 +331,4 @@ void InspectorPanel::mouseDown(const juce::MouseEvent& e)
         }
 }
 
-} // namespace aural::ui
+} // namespace northlight::ui

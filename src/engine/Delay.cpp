@@ -4,12 +4,12 @@
 
 #include <algorithm>
 
-namespace aural::engine
+namespace northlight::engine
 {
 
 void DelayLine::setDelay(int samples)
 {
-    AURAL_ASSERT_NOT_REALTIME("DelayLine::setDelay");
+    NORTHLIGHT_ASSERT_NOT_REALTIME("DelayLine::setDelay");
     samples = std::max(0, samples);
     if (samples == delay_)
         return;
@@ -76,7 +76,7 @@ void DelayLine::continueFrom(const DelayLine& other) noexcept
 
 std::shared_ptr<DelayLine> DelayCache::get(const DelayKey& key, int delaySamples)
 {
-    AURAL_ASSERT_NOT_REALTIME("DelayCache::get");
+    NORTHLIGHT_ASSERT_NOT_REALTIME("DelayCache::get");
     delaySamples = std::max(0, delaySamples);
     auto& line = lines_[key];
     if (line != nullptr && line->delay() == delaySamples)
@@ -96,4 +96,4 @@ void DelayCache::prune()
     std::erase_if(lines_, [](const auto& entry) { return entry.second.use_count() == 1; });
 }
 
-} // namespace aural::engine
+} // namespace northlight::engine

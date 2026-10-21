@@ -5,7 +5,7 @@
 #include <algorithm>
 #include <cstring>
 
-namespace aural::engine
+namespace northlight::engine
 {
 
 namespace
@@ -68,7 +68,7 @@ PeakData PeakData::build(StreamReader& reader,
                          int levelCount,
                          const std::function<bool(double)>& progress)
 {
-    AURAL_ASSERT_NOT_REALTIME("PeakData::build");
+    NORTHLIGHT_ASSERT_NOT_REALTIME("PeakData::build");
     PeakData data;
     data.length_ = reader.lengthSamples();
     data.sampleRate_ = reader.sampleRate();
@@ -216,4 +216,4 @@ bool PeakData::deserialise(const std::string& in, PeakData& out)
     return true;
 }
 
-} // namespace aural::engine
+} // namespace northlight::engine

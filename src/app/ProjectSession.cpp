@@ -20,7 +20,7 @@
 #include <optional>
 #include <vector>
 
-namespace aural
+namespace northlight
 {
 
 namespace
@@ -748,14 +748,16 @@ juce::File ProjectSession::templatesFolder() const
     if (templatesFolder_ != juce::File())
         return templatesFolder_;
     return juce::File::getSpecialLocation(juce::File::userDocumentsDirectory)
-        .getChildFile("Aural")
+        .getChildFile("Northlight")
         .getChildFile("Templates");
 }
 
 std::vector<juce::File> ProjectSession::templates() const
 {
     std::vector<juce::File> found;
-    for (const auto& f : templatesFolder().findChildFiles(juce::File::findFiles, false, "*.aural"))
+    // Templates (and autosaves) from when Northlight was Aural are ".aural" files.
+    for (const auto& f :
+         templatesFolder().findChildFiles(juce::File::findFiles, false, "*.northlight;*.aural"))
         found.push_back(f);
     std::sort(found.begin(),
               found.end(),
@@ -788,7 +790,7 @@ std::string ProjectSession::saveAsTemplate(const juce::String& name)
     const auto folder = templatesFolder();
     if (!folder.createDirectory().wasOk())
         return "could not create " + folder.getFullPathName().toStdString();
-    const auto file = folder.getChildFile(clean + ".aural");
+    const auto file = folder.getChildFile(clean + ".northlight");
     const SessionKeys keys(*this);
     if (!file.replaceWithText(juce::String(core::projectToJson(layout, true, &keys))))
         return "could not write " + file.getFullPathName().toStdString();
@@ -940,7 +942,7 @@ juce::File ProjectSession::currentAutosaveFile() const
                juce::String::toHexString(projectFile_.getFullPathName().toLowerCase().hashCode64());
     else
         stem = "Untitled-" + untitledStem_;
-    return autosaveFolder_.getChildFile(juce::File::createLegalFileName(stem) + ".aural");
+    return autosaveFolder_.getChildFile(juce::File::createLegalFileName(stem) + ".northlight");
 }
 
 void ProjectSession::edited()
@@ -1015,7 +1017,8 @@ std::vector<ProjectSession::Autosave> ProjectSession::leftoverAutosaves() const
     std::vector<Autosave> found;
     if (!autosaveFolder_.isDirectory())
         return found;
-    for (const auto& file : autosaveFolder_.findChildFiles(juce::File::findFiles, false, "*.aural"))
+    for (const auto& file :
+         autosaveFolder_.findChildFiles(juce::File::findFiles, false, "*.northlight;*.aural"))
     {
         if (file == autosaveWritten_)
             continue;
@@ -1171,7 +1174,7 @@ juce::File ProjectSession::mediaFolder() const
     if (projectFile_.existsAsFile() || projectFile_.getFullPathName().isNotEmpty())
         return projectFile_.getSiblingFile(projectFile_.getFileNameWithoutExtension() + " Media");
     return juce::File::getSpecialLocation(juce::File::userDocumentsDirectory)
-        .getChildFile("Aural")
+        .getChildFile("Northlight")
         .getChildFile("Recordings");
 }
 
@@ -1256,7 +1259,7 @@ struct RecordingMeta
 bool writeSidecar(const juce::File& file, const RecordingMeta& meta)
 {
     auto* object = new juce::DynamicObject();
-    object->setProperty("format", "aural.recording/1");
+    object->setProperty("format", "northlight.recording/1");
     object->setProperty("trackId", static_cast<juce::int64>(meta.trackId));
     object->setProperty("trackName", juce::String(meta.trackName));
     object->setProperty("startPosition", static_cast<juce::int64>(meta.startPosition));
@@ -2209,9 +2212,10 @@ void ProjectSession::checkCrashedPlugins()
             if (const auto live = liveInsert(insert->id);
                 live != nullptr && live->crashed() && reportedCrashes_.insert(insert->id).second)
             {
-                pluginMessage_ = inserts_.displayName(insert->type) + " on " + channel.name +
-                                 " crashed and was switched off. Save your project and restart Aural to use "
-                                 "it again.";
+                pluginMessage_ =
+                    inserts_.displayName(insert->type) + " on " + channel.name +
+                    " crashed and was switched off. Save your project and restart Northlight to use "
+                    "it again.";
                 notify(Change::structure);
             }
     };
@@ -2235,4 +2239,4 @@ void ProjectSession::poll()
             finishRecording(std::move(*finished));
 }
 
-} // namespace aural
+} // namespace northlight

@@ -21,7 +21,7 @@
 //     trimmed, vibrato is kept;
 //   - nothing moves more than about a semitone on its own: such notes are flagged.
 
-namespace aural::engine::pitch
+namespace northlight::engine::pitch
 {
 
 struct CorrectionOptions
@@ -57,4 +57,4 @@ core::MusicalKey detectKey(const std::vector<core::VocalNote>& notes);
 std::vector<std::uint16_t>
 chordTonesUnder(const core::Project& project, core::Id trackId, const core::AudioClip& clip);
 
-} // namespace aural::engine::pitch
+} // namespace northlight::engine::pitch

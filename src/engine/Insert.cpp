@@ -4,7 +4,7 @@
 
 #include <cctype>
 
-namespace aural::engine
+namespace northlight::engine
 {
 
 std::string InsertProcessor::parameterKey(int index) const
@@ -32,7 +32,7 @@ std::string InsertProcessor::parameterKey(int index) const
 
 void InsertCache::prepare(double sampleRate, int maxBlockSize)
 {
-    AURAL_ASSERT_NOT_REALTIME("InsertCache::prepare");
+    NORTHLIGHT_ASSERT_NOT_REALTIME("InsertCache::prepare");
     sampleRate_ = sampleRate;
     maxBlockSize_ = maxBlockSize;
     for (auto& [id, instance] : instances_)
@@ -41,7 +41,7 @@ void InsertCache::prepare(double sampleRate, int maxBlockSize)
 
 std::shared_ptr<InsertProcessor> InsertCache::get(const core::Insert& insert)
 {
-    AURAL_ASSERT_NOT_REALTIME("InsertCache::get");
+    NORTHLIGHT_ASSERT_NOT_REALTIME("InsertCache::get");
     std::shared_ptr<InsertProcessor> instance;
     std::string carriedState; // from an instance being replaced
     if (const auto it = instances_.find(insert.id); it != instances_.end())
@@ -105,7 +105,7 @@ std::shared_ptr<InsertProcessor> InsertCache::find(core::Id insertId) const
 
 void InsertCache::clear()
 {
-    AURAL_ASSERT_NOT_REALTIME("InsertCache::clear");
+    NORTHLIGHT_ASSERT_NOT_REALTIME("InsertCache::clear");
     instances_.clear();
     latencyAtCompile_.clear();
     appliedState_.clear();
@@ -135,4 +135,4 @@ void InsertCache::prune()
     std::erase_if(appliedState_, [this](const auto& entry) { return !instances_.contains(entry.first); });
 }
 
-} // namespace aural::engine
+} // namespace northlight::engine

@@ -2,7 +2,7 @@
 
 #include "engine/rt/RealtimeGuard.h"
 
-namespace aural
+namespace northlight
 {
 
 namespace
@@ -13,9 +13,9 @@ constexpr const char* audioKeyPrefix = "audio.";
 UserSettings::UserSettings()
 {
     juce::PropertiesFile::Options options;
-    options.applicationName = "Aural";
+    options.applicationName = "Northlight";
     options.filenameSuffix = "settings";
-    options.folderName = "Aural";
+    options.folderName = "Northlight";
     options.osxLibrarySubFolder = "Application Support";
     options.storageFormat = juce::PropertiesFile::storeAsXML;
     options.millisecondsBeforeSaving = 500;
@@ -47,13 +47,13 @@ std::string UserSettings::value(const std::string& key, const std::string& fallb
 
 void UserSettings::setValue(const std::string& key, const std::string& value)
 {
-    AURAL_ASSERT_NOT_REALTIME("UserSettings::setValue");
+    NORTHLIGHT_ASSERT_NOT_REALTIME("UserSettings::setValue");
     properties_.getUserSettings()->setValue(juce::String(key), juce::String(value));
 }
 
 audio::AudioSettings UserSettings::loadAudioSettings()
 {
-    AURAL_ASSERT_NOT_REALTIME("UserSettings::loadAudioSettings");
+    NORTHLIGHT_ASSERT_NOT_REALTIME("UserSettings::loadAudioSettings");
     audio::AudioSettings::KeyValues values;
     const auto& all = properties_.getUserSettings()->getAllProperties();
     for (const auto& key : all.getAllKeys())
@@ -64,7 +64,7 @@ audio::AudioSettings UserSettings::loadAudioSettings()
 
 void UserSettings::saveAudioSettings(const audio::AudioSettings& settings)
 {
-    AURAL_ASSERT_NOT_REALTIME("UserSettings::saveAudioSettings");
+    NORTHLIGHT_ASSERT_NOT_REALTIME("UserSettings::saveAudioSettings");
     auto* user = properties_.getUserSettings();
     const auto values = settings.toKeyValues();
 
@@ -77,4 +77,4 @@ void UserSettings::saveAudioSettings(const audio::AudioSettings& settings)
         user->setValue(juce::String(key), juce::String(value));
 }
 
-} // namespace aural
+} // namespace northlight

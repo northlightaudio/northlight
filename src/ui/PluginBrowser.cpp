@@ -1,12 +1,12 @@
 #include "ui/PluginBrowser.h"
 
 #include "plugins/BuiltIns.h"
-#include "ui/AuralLookAndFeel.h"
 #include "ui/Icons.h"
+#include "ui/NorthlightLookAndFeel.h"
 
 #include <algorithm>
 
-namespace aural::ui
+namespace northlight::ui
 {
 
 namespace
@@ -56,12 +56,12 @@ PluginBrowser::PluginBrowser(const hosting::PluginRegistry& registry)
     list_.setMultipleSelectionEnabled(false);
     addAndMakeVisible(list_);
 
-    scan_.getProperties().set(AuralLookAndFeel::propertyVariant, "ghost");
-    scan_.getProperties().set(AuralLookAndFeel::propertyMenu, true);
+    scan_.getProperties().set(NorthlightLookAndFeel::propertyVariant, "ghost");
+    scan_.getProperties().set(NorthlightLookAndFeel::propertyMenu, true);
     scan_.setTooltip("Scan the VST3 and CLAP folders for new or changed plugins");
     scan_.onClick = [this] { showScanMenu(); };
     addAndMakeVisible(scan_);
-    cancel_.getProperties().set(AuralLookAndFeel::propertyVariant, "ghost");
+    cancel_.getProperties().set(NorthlightLookAndFeel::propertyVariant, "ghost");
     cancel_.onClick = [this]
     {
         if (onCancelScan)
@@ -458,4 +458,4 @@ void PluginBrowser::resized()
     list_.setBounds(area);
 }
 
-} // namespace aural::ui
+} // namespace northlight::ui

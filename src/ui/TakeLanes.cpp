@@ -6,7 +6,7 @@
 #include <algorithm>
 #include <cmath>
 
-namespace aural::ui
+namespace northlight::ui
 {
 
 namespace
@@ -707,4 +707,4 @@ void TakeLanes::rename(core::Id track, core::Id group, const core::Take& take, j
     editor_->grabKeyboardFocus();
 }
 
-} // namespace aural::ui
+} // namespace northlight::ui

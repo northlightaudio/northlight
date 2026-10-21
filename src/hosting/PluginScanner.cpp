@@ -3,7 +3,7 @@
 #include <cstdlib>
 #include <thread>
 
-namespace aural::hosting
+namespace northlight::hosting
 {
 
 PluginScanner::PluginScanner(PluginRegistry& registry) : juce::Thread("Plugin scan"), registry_(registry) {}
@@ -21,13 +21,13 @@ void PluginScanner::cancel()
 
 juce::File PluginScanner::scannerExecutable()
 {
-    if (const char* env = std::getenv("AURAL_PLUGIN_SCANNER"); env != nullptr && *env != '\0')
+    if (const char* env = std::getenv("NORTHLIGHT_PLUGIN_SCANNER"); env != nullptr && *env != '\0')
         return juce::File(juce::String::fromUTF8(env));
     const auto self = juce::File::getSpecialLocation(juce::File::currentExecutableFile);
-    const auto beside = self.getSiblingFile("aural_plugin_scan.exe");
+    const auto beside = self.getSiblingFile("northlight_plugin_scan.exe");
     if (beside.existsAsFile())
         return beside;
-    return self.getSiblingFile("aural_plugin_scan");
+    return self.getSiblingFile("northlight_plugin_scan");
 }
 
 std::int64_t PluginScanner::modificationTime(const juce::File& file)
@@ -111,14 +111,15 @@ bool PluginScanner::inspect(const juce::File& scanner,
     }
     // Only the block between the sentinels is the result; a plugin may print
     // anything else while it loads.
-    const int from = output.indexOf("<<AURAL-SCAN>>");
-    const int to = output.indexOf("<<END-AURAL-SCAN>>");
+    const juce::String begin("<<NORTHLIGHT-SCAN>>"), end("<<END-NORTHLIGHT-SCAN>>");
+    const int from = output.indexOf(begin);
+    const int to = output.indexOf(end);
     if (from < 0 || to < from)
     {
         error = "the scanner produced no result";
         return false;
     }
-    const auto xml = juce::XmlDocument::parse(output.substring(from + 14, to));
+    const auto xml = juce::XmlDocument::parse(output.substring(from + begin.length(), to));
     if (xml == nullptr || !xml->hasTagName("plugins"))
     {
         error = "the scanner produced no result";
@@ -294,4 +295,4 @@ void PluginScanner::run()
         });
 }
 
-} // namespace aural::hosting
+} // namespace northlight::hosting

@@ -7,7 +7,7 @@
 #include <thread>
 #include <utility>
 
-namespace aural::engine
+namespace northlight::engine
 {
 
 AudioEngine::AudioEngine(MediaLoader& loader, const InsertFactory& inserts, int workerThreads)
@@ -34,7 +34,7 @@ AudioEngine::~AudioEngine()
 
 void AudioEngine::setProject(const core::Project& project)
 {
-    AURAL_ASSERT_NOT_REALTIME("AudioEngine::setProject");
+    NORTHLIGHT_ASSERT_NOT_REALTIME("AudioEngine::setProject");
     auto snapshot = compileSnapshot(project,
                                     media_,
                                     inserts_,
@@ -87,7 +87,7 @@ bool AudioEngine::startRecording(std::unique_ptr<RecordSession> session,
                                  std::string& error,
                                  core::SamplePosition countInSamples)
 {
-    AURAL_ASSERT_NOT_REALTIME("AudioEngine::startRecording");
+    NORTHLIGHT_ASSERT_NOT_REALTIME("AudioEngine::startRecording");
     if (session == nullptr || (session->inputs().empty() && session->midiTracks().empty()))
     {
         error = "no armed tracks with an input";
@@ -134,7 +134,7 @@ bool AudioEngine::hasRecordingToCollect() const noexcept
 
 void AudioEngine::updateLiveTakes(std::vector<LiveTake>& into) const
 {
-    AURAL_ASSERT_NOT_REALTIME("AudioEngine::updateLiveTakes");
+    NORTHLIGHT_ASSERT_NOT_REALTIME("AudioEngine::updateLiveTakes");
     if (activeRecord_ == nullptr)
     {
         into.clear();
@@ -145,7 +145,7 @@ void AudioEngine::updateLiveTakes(std::vector<LiveTake>& into) const
 
 std::optional<AudioEngine::FinishedRecording> AudioEngine::collectRecording()
 {
-    AURAL_ASSERT_NOT_REALTIME("AudioEngine::collectRecording");
+    NORTHLIGHT_ASSERT_NOT_REALTIME("AudioEngine::collectRecording");
     if (!hasRecordingToCollect())
         return std::nullopt;
     FinishedRecording finished;
@@ -156,7 +156,7 @@ std::optional<AudioEngine::FinishedRecording> AudioEngine::collectRecording()
 
 int AudioEngine::midiSourceIndex(const std::string& name)
 {
-    AURAL_ASSERT_NOT_REALTIME("AudioEngine::midiSourceIndex");
+    NORTHLIGHT_ASSERT_NOT_REALTIME("AudioEngine::midiSourceIndex");
     const std::lock_guard<std::mutex> lock(midiMutex_);
     for (size_t i = 0; i < midiSourceNames_.size(); ++i)
         if (midiSourceNames_[i] == name)
@@ -174,7 +174,7 @@ std::int64_t AudioEngine::steadyNanos() noexcept
 
 void AudioEngine::pushMidiInput(const MidiEvent& event, const std::string& source, std::int64_t arrivalNanos)
 {
-    AURAL_ASSERT_NOT_REALTIME("AudioEngine::pushMidiInput");
+    NORTHLIGHT_ASSERT_NOT_REALTIME("AudioEngine::pushMidiInput");
     const int index = source.empty() ? -1 : midiSourceIndex(source);
     const std::lock_guard<std::mutex> lock(midiMutex_); // several device threads share the queue
     midiIn_.push(QueuedMidi{event, index, core::invalidId, arrivalNanos});
@@ -182,14 +182,14 @@ void AudioEngine::pushMidiInput(const MidiEvent& event, const std::string& sourc
 
 void AudioEngine::pushMidiPreview(const MidiEvent& event, core::Id trackId)
 {
-    AURAL_ASSERT_NOT_REALTIME("AudioEngine::pushMidiPreview");
+    NORTHLIGHT_ASSERT_NOT_REALTIME("AudioEngine::pushMidiPreview");
     const std::lock_guard<std::mutex> lock(midiMutex_);
     midiIn_.push(QueuedMidi{event, -1, trackId});
 }
 
 void AudioEngine::resetCaches()
 {
-    AURAL_ASSERT_NOT_REALTIME("AudioEngine::resetCaches");
+    NORTHLIGHT_ASSERT_NOT_REALTIME("AudioEngine::resetCaches");
     inserts_.clear();
     delays_.clear();
     runtimes_.clear();
@@ -216,7 +216,7 @@ AudioEngine::ClockSync AudioEngine::clockSync() const noexcept
 
 void AudioEngine::setAutomationTouched(core::Id laneId, bool touched)
 {
-    AURAL_ASSERT_NOT_REALTIME("AudioEngine::setAutomationTouched");
+    NORTHLIGHT_ASSERT_NOT_REALTIME("AudioEngine::setAutomationTouched");
     runtimes_.automation(laneId)->touched.store(touched, std::memory_order_relaxed);
 }
 
@@ -248,7 +248,7 @@ void AudioEngine::setLivePan(core::Id channelId, float pan)
 
 void AudioEngine::applyLiveValues(const core::Project& project)
 {
-    AURAL_ASSERT_NOT_REALTIME("AudioEngine::applyLiveValues");
+    NORTHLIGHT_ASSERT_NOT_REALTIME("AudioEngine::applyLiveValues");
     const auto channel = [&](const core::Channel& c)
     {
         if (const auto runtime = runtimes_.find(c.id))
@@ -294,7 +294,7 @@ void AudioEngine::applyLiveValues(const core::Project& project)
 void AudioEngine::pushInsertParameters(const core::Project& project,
                                        const std::vector<core::Command::ParameterTouch>& touches)
 {
-    AURAL_ASSERT_NOT_REALTIME("AudioEngine::pushInsertParameters");
+    NORTHLIGHT_ASSERT_NOT_REALTIME("AudioEngine::pushInsertParameters");
     for (const auto& touch : touches)
     {
         const auto instance = inserts_.find(touch.insertId);
@@ -315,7 +315,7 @@ void AudioEngine::pushInsertParameters(const core::Project& project,
 
 void AudioEngine::collectGarbage()
 {
-    AURAL_ASSERT_NOT_REALTIME("AudioEngine::collectGarbage");
+    NORTHLIGHT_ASSERT_NOT_REALTIME("AudioEngine::collectGarbage");
     publisher_.collect(isRunning());
     preview_.pump(isRunning());
     media_.prune();
@@ -326,7 +326,7 @@ void AudioEngine::collectGarbage()
 
 void AudioEngine::prepare(double sampleRate, int maxBlockSize)
 {
-    AURAL_ASSERT_NOT_REALTIME("AudioEngine::prepare");
+    NORTHLIGHT_ASSERT_NOT_REALTIME("AudioEngine::prepare");
     renderer_.prepare(maxBlockSize);
     inserts_.prepare(sampleRate, std::min(maxBlockSize, Snapshot::maxBlockSamples));
     loudness_.prepare(sampleRate);
@@ -575,4 +575,4 @@ void AudioEngine::process(
     countingIn_.store(transport_.playing && transport_.countInRemaining > 0, std::memory_order_relaxed);
 }
 
-} // namespace aural::engine
+} // namespace northlight::engine

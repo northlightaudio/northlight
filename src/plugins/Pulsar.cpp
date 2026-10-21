@@ -10,7 +10,7 @@
 #include <numbers>
 #include <tuple>
 
-namespace aural::plugins::pulsar
+namespace northlight::plugins::pulsar
 {
 
 namespace
@@ -488,7 +488,7 @@ int padForNote(int note) noexcept
 
 std::unique_ptr<engine::InsertProcessor> create()
 {
-    AURAL_ASSERT_NOT_REALTIME("pulsar::create");
+    NORTHLIGHT_ASSERT_NOT_REALTIME("pulsar::create");
     return std::make_unique<Pulsar>();
 }
 
@@ -634,4 +634,4 @@ const Activity* activity(const engine::InsertProcessor& processor) noexcept
     return nullptr;
 }
 
-} // namespace aural::plugins::pulsar
+} // namespace northlight::plugins::pulsar

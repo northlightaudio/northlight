@@ -10,7 +10,7 @@
 // one easing, and a short tween that drives a component until it is done or the
 // component goes away.
 
-namespace aural::ui::motion
+namespace northlight::ui::motion
 {
 
 // The one easing: cubic-bezier(0.2, 0, 0, 1), decelerating. t and the result
@@ -177,4 +177,4 @@ inline void glideIn(juce::Component& component, juce::Rectangle<int> from, float
                });
 }
 
-} // namespace aural::ui::motion
+} // namespace northlight::ui::motion

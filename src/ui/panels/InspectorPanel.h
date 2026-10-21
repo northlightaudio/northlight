@@ -12,7 +12,7 @@
 #include <memory>
 #include <vector>
 
-namespace aural::ui
+namespace northlight::ui
 {
 
 // The Inspector panel (03-shell.md): the selected track or clip. A track shows
@@ -52,4 +52,4 @@ private:
     juce::Rectangle<int> swatchArea_;
 };
 
-} // namespace aural::ui
+} // namespace northlight::ui

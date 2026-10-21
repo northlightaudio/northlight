@@ -14,12 +14,12 @@
 
 #if defined(_M_X64) || defined(__x86_64__)
 #include <immintrin.h>
-#define AURAL_PAUSE() _mm_pause()
+#define NORTHLIGHT_PAUSE() _mm_pause()
 #else
-#define AURAL_PAUSE() ((void)0)
+#define NORTHLIGHT_PAUSE() ((void)0)
 #endif
 
-namespace aural::engine
+namespace northlight::engine
 {
 
 namespace
@@ -129,7 +129,7 @@ void WorkerPool::run(int count, Job job, void* context) noexcept
     {
         if (++spins < spinsBeforeYield)
         {
-            AURAL_PAUSE();
+            NORTHLIGHT_PAUSE();
         }
         else
         {
@@ -142,4 +142,4 @@ void WorkerPool::run(int count, Job job, void* context) noexcept
     state_.store(pack(0, 0), std::memory_order_release);
 }
 
-} // namespace aural::engine
+} // namespace northlight::engine

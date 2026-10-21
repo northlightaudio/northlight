@@ -5,12 +5,12 @@
 #include <filesystem>
 #include <system_error>
 
-using namespace aural;
+using namespace northlight;
 
 TEST_CASE("A crash report is written, listed until acknowledged, then set aside", "[app][crash]")
 {
     const auto folder =
-        std::filesystem::temp_directory_path() / "aural-crash-tests" /
+        std::filesystem::temp_directory_path() / "northlight-crash-tests" /
         std::to_string(std::filesystem::file_time_type::clock::now().time_since_epoch().count());
     CHECK(crash::pending(folder).empty()); // no folder yet
 #if defined(_WIN32)

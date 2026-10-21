@@ -7,7 +7,7 @@
 #include <windows.h>
 #endif
 
-namespace aural::ui
+namespace northlight::ui
 {
 
 ClapEditor::ClapEditor(hosting::HostedClapPlugin& plugin) : plugin_(plugin)
@@ -101,4 +101,4 @@ void ClapEditor::timerCallback()
     }
 }
 
-} // namespace aural::ui
+} // namespace northlight::ui

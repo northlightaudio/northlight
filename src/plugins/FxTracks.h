@@ -11,7 +11,7 @@
 // (core::Bus). This makes new ones: an effect as the first insert, fully wet
 // (the dry signal stays on the sending channels), named after the effect.
 
-namespace aural::plugins
+namespace northlight::plugins
 {
 
 struct FxChoice
@@ -34,4 +34,4 @@ std::vector<std::unique_ptr<core::Command>> addFxTrackCommands(const core::Proje
                                                                const std::string& effectName,
                                                                const std::vector<core::Id>& sendFrom = {});
 
-} // namespace aural::plugins
+} // namespace northlight::plugins

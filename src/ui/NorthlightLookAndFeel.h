@@ -7,7 +7,7 @@
 #include <map>
 #include <tuple>
 
-namespace aural::ui
+namespace northlight::ui
 {
 
 // The look and feel every JUCE stock control gets, drawn from the design tokens
@@ -18,11 +18,11 @@ namespace aural::ui
 // component properties (see the `property*` names); dedicated components
 // (fader, knob, meter, segmented control, numeric field, panel header, toast,
 // sheet) live in ui/components and draw themselves from the same tokens.
-class AuralLookAndFeel final : public juce::LookAndFeel_V4, private juce::MouseListener
+class NorthlightLookAndFeel final : public juce::LookAndFeel_V4, private juce::MouseListener
 {
 public:
-    explicit AuralLookAndFeel(const Theme& theme);
-    ~AuralLookAndFeel() override;
+    explicit NorthlightLookAndFeel(const Theme& theme);
+    ~NorthlightLookAndFeel() override;
 
     const Theme& theme() const noexcept { return theme_; }
 
@@ -229,4 +229,4 @@ private:
     mutable std::map<GlowKey, juce::Image> glows_;
 };
 
-} // namespace aural::ui
+} // namespace northlight::ui

@@ -2,8 +2,8 @@
 
 #include <catch2/catch_test_macros.hpp>
 
-using namespace aural;
-using namespace aural::core;
+using namespace northlight;
+using namespace northlight::core;
 using ui::edit::ClipRef;
 
 namespace

@@ -4,7 +4,7 @@
 #include <cmath>
 #include <limits>
 
-namespace aural::core
+namespace northlight::core
 {
 
 namespace
@@ -446,4 +446,4 @@ void remapMusicalTime(Project& project, const TempoMap& from, const TempoMap& to
     project.sortMarkers();
 }
 
-} // namespace aural::core
+} // namespace northlight::core

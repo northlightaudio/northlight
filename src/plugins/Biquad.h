@@ -9,7 +9,7 @@
 // shared by the processors and the editors, so a curve on screen is exactly
 // the filter that runs.
 
-namespace aural::plugins
+namespace northlight::plugins
 {
 
 struct Biquad
@@ -181,4 +181,4 @@ private:
     }
 };
 
-} // namespace aural::plugins
+} // namespace northlight::plugins

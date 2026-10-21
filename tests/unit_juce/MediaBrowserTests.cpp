@@ -7,7 +7,7 @@
 
 #include <vector>
 
-using namespace aural;
+using namespace northlight;
 using Catch::Approx;
 
 namespace
@@ -27,7 +27,7 @@ TEST_CASE("The Files tab lists folders first, then audio files with their length
 {
     juce::ScopedJuceInitialiser_GUI init;
     const auto root = juce::File::getSpecialLocation(juce::File::tempDirectory)
-                          .getChildFile("aural-media-browser-tests")
+                          .getChildFile("northlight-media-browser-tests")
                           .getChildFile(juce::Uuid().toString());
     REQUIRE(root.getChildFile("Drums").createDirectory().wasOk());
     writeWav(root.getChildFile("b pad.wav"), 1, 44100.0, 44100 * 2);
@@ -59,7 +59,7 @@ TEST_CASE("The Files tab lists folders first, then audio files with their length
     // In-app drags name the file.
     const auto file = root.getChildFile("A lead.wav");
     CHECK(ui::fileFromDragDescription(ui::fileDragDescription(file)) == file);
-    CHECK(ui::fileFromDragDescription("plugin:aural.eq") == juce::File());
+    CHECK(ui::fileFromDragDescription("plugin:northlight.eq") == juce::File());
     CHECK(ui::isAudioFile(file));
     CHECK_FALSE(ui::isAudioFile(root.getChildFile("notes.txt")));
     root.getParentDirectory().deleteRecursively();

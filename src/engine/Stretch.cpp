@@ -14,7 +14,7 @@
 #include <cmath>
 #include <cstring>
 
-namespace aural::engine
+namespace northlight::engine
 {
 
 namespace
@@ -61,7 +61,7 @@ void stretchAudio(const std::vector<const float*>& input,
                   double semitones,
                   const std::function<void(std::int64_t done)>& progress)
 {
-    AURAL_ASSERT_NOT_REALTIME("stretchAudio");
+    NORTHLIGHT_ASSERT_NOT_REALTIME("stretchAudio");
     const int channels = static_cast<int>(std::min(input.size(), output.size()));
     if (channels <= 0 || outputLength <= 0)
         return;
@@ -185,7 +185,7 @@ std::shared_ptr<const AudioSource> StretchService::sourceFor(const core::AudioCl
                                                              double sampleRate,
                                                              const std::shared_ptr<const AudioSource>& base)
 {
-    AURAL_ASSERT_NOT_REALTIME("StretchService::sourceFor");
+    NORTHLIGHT_ASSERT_NOT_REALTIME("StretchService::sourceFor");
     if (base == nullptr || !clip.isStretched())
         return base;
     const auto mediaLength = base->lengthSamples();
@@ -360,4 +360,4 @@ void StretchService::waitUntilIdle()
     idle_.wait(lock, [this] { return queue_.empty() && running_ == 0; });
 }
 
-} // namespace aural::engine
+} // namespace northlight::engine

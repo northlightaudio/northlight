@@ -16,7 +16,7 @@
 
 #include "core/Vocal.h"
 
-namespace aural::core
+namespace northlight::core
 {
 
 using Id = std::uint64_t;
@@ -201,7 +201,7 @@ struct Send
 };
 
 // A processor in a channel's insert chain. `type` names a built-in
-// ("aural.eq") or, later, a hosted plugin; `params` are its parameter values in the
+// ("northlight.eq") or, later, a hosted plugin; `params` are its parameter values in the
 // processor's own order.
 struct Insert
 {
@@ -595,4 +595,4 @@ BarsBeats samplesToBarsBeats(SamplePosition position,
 SamplePosition
 barsBeatsToSamples(BarsBeats position, double sampleRate, double tempoBpm, TimeSignature signature) noexcept;
 
-} // namespace aural::core
+} // namespace northlight::core

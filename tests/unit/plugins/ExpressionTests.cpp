@@ -13,7 +13,7 @@
 #include <string>
 #include <vector>
 
-using namespace aural;
+using namespace northlight;
 
 namespace
 {
@@ -28,7 +28,7 @@ std::vector<float> render(const std::string& type,
 {
     auto synth = plugins::BuiltInFactory().create(type);
     synth->prepare(rate, block);
-    if (plain && type == "aural.aurora")
+    if (plain && type == "northlight.aurora")
     {
         // One sine voice, nothing around it: its period reads cleanly.
         namespace a = plugins::aurora;
@@ -144,7 +144,7 @@ TEST_CASE("Pitch bend moves each melodic synth's pitch by up to two semitones",
           "[plugins][synth][expression]")
 {
     // A4 (440 Hz, a period of ~109 samples); bent fully up, B4 (~97 samples).
-    for (const std::string type : {"aural.aurora", "aural.nebula", "aural.starbit"})
+    for (const std::string type : {"northlight.aurora", "northlight.nebula", "northlight.starbit"})
     {
         INFO(type);
         const auto play = [&](int bendValue)
@@ -175,7 +175,8 @@ TEST_CASE("Pitch bend moves each melodic synth's pitch by up to two semitones",
 TEST_CASE("A centred bend and a resting mod wheel change nothing; moving them changes the sound",
           "[plugins][synth][expression]")
 {
-    for (const std::string type : {"aural.aurora", "aural.nebula", "aural.starbit", "aural.pulsar"})
+    for (const std::string type :
+         {"northlight.aurora", "northlight.nebula", "northlight.starbit", "northlight.pulsar"})
     {
         INFO(type);
         const auto play = [&](int bendValue, int mod)
@@ -209,7 +210,7 @@ TEST_CASE("Aurora holds a released note while the sustain pedal is down", "[plug
 {
     const auto play = [](bool pedal)
     {
-        return render("aural.aurora",
+        return render("northlight.aurora",
                       800,
                       [&](int b, engine::MidiEventList& list)
                       {

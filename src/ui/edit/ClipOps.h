@@ -11,7 +11,7 @@
 // the selected clips and returns the commands (and the undo step's name). No
 // JUCE, no view state, so the editing rules are tested on their own.
 
-namespace aural::ui::edit
+namespace northlight::ui::edit
 {
 
 // One selected clip: an audio clip (Track::clips) or a MIDI clip (Track::midiClips).
@@ -73,4 +73,4 @@ Edit pasteClips(const core::Project& project,
                 int row,
                 core::SamplePosition at);
 
-} // namespace aural::ui::edit
+} // namespace northlight::ui::edit

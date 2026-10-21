@@ -14,7 +14,7 @@
 #include <string>
 #include <vector>
 
-namespace aural::ui
+namespace northlight::ui
 {
 
 // Automation in the arrange view (04-arrange.md "Automation"): for each track
@@ -118,4 +118,4 @@ private:
     int hoverRow_ = -1, hoverPoint_ = -1;
 };
 
-} // namespace aural::ui
+} // namespace northlight::ui

@@ -7,7 +7,7 @@
 #include <chrono>
 #include <cmath>
 
-namespace aural::audio
+namespace northlight::audio
 {
 
 namespace
@@ -117,7 +117,7 @@ AudioCallback::CalibrationPhase AudioCallback::calibrationPhase() const noexcept
 
 bool AudioCallback::prepareCalibration(CalibrationPlan plan)
 {
-    AURAL_ASSERT_NOT_REALTIME("AudioCallback::prepareCalibration");
+    NORTHLIGHT_ASSERT_NOT_REALTIME("AudioCallback::prepareCalibration");
     if (calibrationPhase() != CalibrationPhase::idle)
         return false;
     if (plan.reference.empty() || plan.captureLength <= 0 || plan.emitSample < 0 ||
@@ -162,7 +162,7 @@ void AudioCallback::finishCalibration() noexcept
 
 void AudioCallback::audioDeviceAboutToStart(juce::AudioIODevice* device)
 {
-    AURAL_ASSERT_NOT_REALTIME("AudioCallback::audioDeviceAboutToStart");
+    NORTHLIGHT_ASSERT_NOT_REALTIME("AudioCallback::audioDeviceAboutToStart");
     numInputs_.store(device->getActiveInputChannels().countNumberOfSetBits(), std::memory_order_relaxed);
     numOutputs_.store(device->getActiveOutputChannels().countNumberOfSetBits(), std::memory_order_relaxed);
     sampleRate_.store(device->getCurrentSampleRate(), std::memory_order_relaxed);
@@ -286,4 +286,4 @@ void AudioCallback::renderCalibration(
         calibrationPhase_.store(CalibrationPhase::done, std::memory_order_release);
 }
 
-} // namespace aural::audio
+} // namespace northlight::audio

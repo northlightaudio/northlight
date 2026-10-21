@@ -3,7 +3,7 @@
 #include <algorithm>
 #include <cmath>
 
-namespace aural::ui
+namespace northlight::ui
 {
 
 namespace
@@ -612,4 +612,4 @@ void TempoLane::meterMenu(int index, juce::Point<int> screen)
                        });
 }
 
-} // namespace aural::ui
+} // namespace northlight::ui

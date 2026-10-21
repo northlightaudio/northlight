@@ -11,7 +11,7 @@
 // the rest note values from short to long, each with its triplet (T: two
 // thirds as long) before it and its dotted (D: half as long again) after.
 
-namespace aural::plugins::sync
+namespace northlight::plugins::sync
 {
 
 struct NoteValue
@@ -87,4 +87,4 @@ inline int nearest(double lengthQuarters) noexcept
     return best;
 }
 
-} // namespace aural::plugins::sync
+} // namespace northlight::plugins::sync

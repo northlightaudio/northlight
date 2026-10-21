@@ -4,8 +4,8 @@
 #include "core/Model.h"
 #include "engine/AudioEngine.h"
 #include "engine/DiskThread.h"
-#include "engine/Stretch.h"
 #include "engine/ExportSettings.h"
+#include "engine/Stretch.h"
 #include "engine/pitch/VocalService.h"
 #include "hosting/HostFactory.h"
 
@@ -18,7 +18,7 @@
 #include <string>
 #include <vector>
 
-namespace aural
+namespace northlight
 {
 
 // Offline rendering (bounce, export): the master mix, or one file per track
@@ -134,4 +134,4 @@ private:
     double sharedGainDb_ = 0.0; // stems: the gain the mix render found
 };
 
-} // namespace aural
+} // namespace northlight

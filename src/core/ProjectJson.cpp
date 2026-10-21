@@ -5,7 +5,7 @@
 #include <algorithm>
 #include <unordered_set>
 
-namespace aural::core
+namespace northlight::core
 {
 
 namespace
@@ -305,7 +305,7 @@ void channelFromJson(const json& j, Channel& c)
         {
             Insert insert;
             insert.id = i.value("id", invalidId);
-            insert.type = i.value("type", std::string{});
+            insert.type = currentTypeName(i.value("type", std::string{}));
             insert.bypass = i.value("bypass", false);
             insert.state = i.value("state", std::string{});
             insert.mix = i.value("mix", 1.0f);
@@ -614,7 +614,7 @@ std::string projectToJson(const Project& p, bool pretty, const ParameterKeys* ke
         markers.push_back(std::move(mj));
     }
 
-    json j{{"format", "aural.project"},
+    json j{{"format", "northlight.project"},
            {"version", Project::schemaVersion},
            {"name", p.name},
            {"sampleRate", p.sampleRate},
@@ -653,6 +653,24 @@ std::string projectToJson(const Project& p, bool pretty, const ParameterKeys* ke
     return pretty ? j.dump(2) : j.dump();
 }
 
+const char* legacyTypePrefix() noexcept
+{
+    return "aural.";
+}
+
+const char* currentTypePrefix() noexcept
+{
+    return "northlight.";
+}
+
+std::string currentTypeName(std::string type)
+{
+    const std::string old = legacyTypePrefix();
+    if (type.compare(0, old.size(), old) == 0)
+        type = currentTypePrefix() + type.substr(old.size());
+    return type;
+}
+
 std::optional<Project> projectFromJson(const std::string& text, std::string* error)
 {
     const auto fail = [error](const std::string& message) -> std::optional<Project>
@@ -665,14 +683,16 @@ std::optional<Project> projectFromJson(const std::string& text, std::string* err
     json j = json::parse(text, nullptr, false);
     if (j.is_discarded() || !j.is_object())
         return fail("not valid JSON");
-    if (j.value("format", std::string{}) != "aural.project")
-        return fail("not an Aural project file");
+    if (const auto format = j.value("format", std::string{});
+        format != "northlight.project" && format != "aural.project")
+        return fail("not a Northlight project file");
     const int version = j.value("version", 0);
     if (version < Project::oldestReadableVersion)
-        return fail("made by an older version of Aural (project version " + std::to_string(version) +
+        return fail("made by an older version of Northlight (project version " + std::to_string(version) +
                     "), which this one no longer opens");
     if (version > Project::schemaVersion)
-        return fail("made by a newer version of Aural (project version " + std::to_string(version) + ")");
+        return fail("made by a newer version of Northlight (project version " + std::to_string(version) +
+                    ")");
     migrate(j, version);
 
     try
@@ -917,4 +937,4 @@ bool reconcileParameters(Project& project, const ParameterKeys& keys)
     return changed;
 }
 
-} // namespace aural::core
+} // namespace northlight::core

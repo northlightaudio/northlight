@@ -14,7 +14,7 @@
 #include <memory>
 #include <vector>
 
-namespace aural::ui
+namespace northlight::ui
 {
 
 // The generic parameter editor (07-plugins.md 7.3) for built-ins and GUI-less
@@ -100,4 +100,4 @@ private:
     bool instrument_ = false; // a built-in instrument: no mix
 };
 
-} // namespace aural::ui
+} // namespace northlight::ui

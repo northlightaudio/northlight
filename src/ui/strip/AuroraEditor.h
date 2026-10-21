@@ -4,7 +4,7 @@
 
 #include <memory>
 
-namespace aural::ui::strip
+namespace northlight::ui::strip
 {
 
 // Aurora's editor (07-plugins.md 7.5): the bundled synth's own face, a night
@@ -13,4 +13,4 @@ namespace aural::ui::strip
 std::unique_ptr<ModuleCard>
 createAuroraEditor(const Theme& theme, CardHost& host, core::Id channelId, const core::Insert& insert);
 
-} // namespace aural::ui::strip
+} // namespace northlight::ui::strip

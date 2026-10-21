@@ -12,7 +12,7 @@
 // view at whatever zoom level is on screen: lookup() picks the coarsest level whose
 // bins are still finer than the requested span, so painting never scans samples.
 
-namespace aural::engine
+namespace northlight::engine
 {
 
 struct PeakLevel
@@ -68,4 +68,4 @@ private:
     std::vector<std::vector<PeakLevel>> channels_; // [channel][level]
 };
 
-} // namespace aural::engine
+} // namespace northlight::engine

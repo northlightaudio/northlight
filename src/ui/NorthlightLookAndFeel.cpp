@@ -1,11 +1,11 @@
-#include "ui/AuralLookAndFeel.h"
+#include "ui/NorthlightLookAndFeel.h"
 
 #include "ui/Motion.h"
 
 #include <atomic>
 #include <cmath>
 
-namespace aural::ui
+namespace northlight::ui
 {
 
 namespace
@@ -15,28 +15,28 @@ std::atomic<bool> keyboardFocus{false};
 juce::String variantOf(const juce::Component& component)
 {
     return component.getProperties()
-        .getWithDefault(AuralLookAndFeel::propertyVariant, "secondary")
+        .getWithDefault(NorthlightLookAndFeel::propertyVariant, "secondary")
         .toString();
 }
 } // namespace
 
-const juce::Identifier AuralLookAndFeel::propertyVariant{"variant"};
-const juce::Identifier AuralLookAndFeel::propertySemantic{"semantic"};
-const juce::Identifier AuralLookAndFeel::propertyHardOn{"hardOn"};
-const juce::Identifier AuralLookAndFeel::propertyMenu{"menu"};
-const juce::Identifier AuralLookAndFeel::propertyIcon{"icon"};
+const juce::Identifier NorthlightLookAndFeel::propertyVariant{"variant"};
+const juce::Identifier NorthlightLookAndFeel::propertySemantic{"semantic"};
+const juce::Identifier NorthlightLookAndFeel::propertyHardOn{"hardOn"};
+const juce::Identifier NorthlightLookAndFeel::propertyMenu{"menu"};
+const juce::Identifier NorthlightLookAndFeel::propertyIcon{"icon"};
 
-void AuralLookAndFeel::setKeyboardFocusVisible(bool visible) noexcept
+void NorthlightLookAndFeel::setKeyboardFocusVisible(bool visible) noexcept
 {
     keyboardFocus.store(visible, std::memory_order_relaxed);
 }
 
-bool AuralLookAndFeel::keyboardFocusVisible() noexcept
+bool NorthlightLookAndFeel::keyboardFocusVisible() noexcept
 {
     return keyboardFocus.load(std::memory_order_relaxed);
 }
 
-AuralLookAndFeel::AuralLookAndFeel(const Theme& theme) : theme_(theme)
+NorthlightLookAndFeel::NorthlightLookAndFeel(const Theme& theme) : theme_(theme)
 {
     const auto& c = theme_.colours;
     if (theme_.fonts.ui != nullptr)
@@ -122,20 +122,20 @@ AuralLookAndFeel::AuralLookAndFeel(const Theme& theme) : theme_(theme)
     juce::Desktop::getInstance().addGlobalMouseListener(this);
 }
 
-AuralLookAndFeel::~AuralLookAndFeel()
+NorthlightLookAndFeel::~NorthlightLookAndFeel()
 {
     juce::Desktop::getInstance().removeGlobalMouseListener(this);
 }
 
-void AuralLookAndFeel::mouseDown(const juce::MouseEvent&)
+void NorthlightLookAndFeel::mouseDown(const juce::MouseEvent&)
 {
     setKeyboardFocusVisible(false);
 }
 
-void AuralLookAndFeel::drawFocusRing(juce::Graphics& g,
-                                     const juce::Component& component,
-                                     juce::Rectangle<float> bounds,
-                                     float radius) const
+void NorthlightLookAndFeel::drawFocusRing(juce::Graphics& g,
+                                          const juce::Component& component,
+                                          juce::Rectangle<float> bounds,
+                                          float radius) const
 {
     if (!keyboardFocusVisible() || !component.hasKeyboardFocus(false))
         return;
@@ -144,12 +144,12 @@ void AuralLookAndFeel::drawFocusRing(juce::Graphics& g,
     g.drawRoundedRectangle(bounds.expanded(ring * 0.5f + 1.0f), radius + ring, ring);
 }
 
-void AuralLookAndFeel::drawControlFace(juce::Graphics& g,
-                                       juce::Rectangle<float> bounds,
-                                       float radius,
-                                       juce::Colour flat,
-                                       bool pressed,
-                                       bool hover) const
+void NorthlightLookAndFeel::drawControlFace(juce::Graphics& g,
+                                            juce::Rectangle<float> bounds,
+                                            float radius,
+                                            juce::Colour flat,
+                                            bool pressed,
+                                            bool hover) const
 {
     const auto& m = theme_.material;
     if (!m.enabled)
@@ -182,10 +182,10 @@ void AuralLookAndFeel::drawControlFace(juce::Graphics& g,
     }
 }
 
-void AuralLookAndFeel::drawInset(juce::Graphics& g,
-                                 juce::Rectangle<float> bounds,
-                                 float radius,
-                                 const Theme::Shadow& inset) const
+void NorthlightLookAndFeel::drawInset(juce::Graphics& g,
+                                      juce::Rectangle<float> bounds,
+                                      float radius,
+                                      const Theme::Shadow& inset) const
 {
     if (inset.empty())
         return;
@@ -201,10 +201,10 @@ void AuralLookAndFeel::drawInset(juce::Graphics& g,
     g.restoreState();
 }
 
-void AuralLookAndFeel::drawGlow(juce::Graphics& g,
-                                juce::Rectangle<float> bounds,
-                                float radius,
-                                const Theme::Shadow& glow) const
+void NorthlightLookAndFeel::drawGlow(juce::Graphics& g,
+                                     juce::Rectangle<float> bounds,
+                                     float radius,
+                                     const Theme::Shadow& glow) const
 {
     if (glow.empty() || theme_.motion.reduceMotion)
         return;
@@ -236,10 +236,10 @@ void AuralLookAndFeel::drawGlow(juce::Graphics& g,
                   static_cast<int>(bounds.getY()) - pad + static_cast<int>(glow.y));
 }
 
-void AuralLookAndFeel::drawChevron(juce::Graphics& g,
-                                   juce::Rectangle<float> area,
-                                   juce::Colour colour,
-                                   bool down) const
+void NorthlightLookAndFeel::drawChevron(juce::Graphics& g,
+                                        juce::Rectangle<float> area,
+                                        juce::Colour colour,
+                                        bool down) const
 {
     const float size = static_cast<float>(theme_.sizes.iconSmall) * 0.5f;
     juce::Path chevron;
@@ -262,7 +262,9 @@ void AuralLookAndFeel::drawChevron(juce::Graphics& g,
                  juce::PathStrokeType(1.5f, juce::PathStrokeType::curved, juce::PathStrokeType::rounded));
 }
 
-void AuralLookAndFeel::drawCheck(juce::Graphics& g, juce::Rectangle<float> box, juce::Colour colour) const
+void NorthlightLookAndFeel::drawCheck(juce::Graphics& g,
+                                      juce::Rectangle<float> box,
+                                      juce::Colour colour) const
 {
     juce::Path tick;
     tick.startNewSubPath(box.getX() + box.getWidth() * 0.25f, box.getCentreY());
@@ -275,11 +277,11 @@ void AuralLookAndFeel::drawCheck(juce::Graphics& g, juce::Rectangle<float> box, 
 
 // ----- buttons ------------------------------------------------------------------------
 
-void AuralLookAndFeel::drawButtonBackground(juce::Graphics& g,
-                                            juce::Button& button,
-                                            const juce::Colour& /*backgroundColour*/,
-                                            bool isMouseOver,
-                                            bool isButtonDown)
+void NorthlightLookAndFeel::drawButtonBackground(juce::Graphics& g,
+                                                 juce::Button& button,
+                                                 const juce::Colour& /*backgroundColour*/,
+                                                 bool isMouseOver,
+                                                 bool isButtonDown)
 {
     const auto& c = theme_.colours;
     const auto bounds = button.getLocalBounds().toFloat().reduced(0.5f);
@@ -418,10 +420,10 @@ void AuralLookAndFeel::drawButtonBackground(juce::Graphics& g,
     drawFocusRing(g, button, bounds, radius);
 }
 
-void AuralLookAndFeel::drawButtonText(juce::Graphics& g,
-                                      juce::TextButton& button,
-                                      bool isMouseOver,
-                                      bool isButtonDown)
+void NorthlightLookAndFeel::drawButtonText(juce::Graphics& g,
+                                           juce::TextButton& button,
+                                           bool isMouseOver,
+                                           bool isButtonDown)
 {
     const auto& c = theme_.colours;
     const auto variant = variantOf(button);
@@ -469,15 +471,15 @@ void AuralLookAndFeel::drawButtonText(juce::Graphics& g,
     g.drawFittedText(button.getButtonText(), area.reduced(pad, 0), juce::Justification::centred, 1, 1.0f);
 }
 
-juce::Font AuralLookAndFeel::getTextButtonFont(juce::TextButton&, int /*buttonHeight*/)
+juce::Font NorthlightLookAndFeel::getTextButtonFont(juce::TextButton&, int /*buttonHeight*/)
 {
     return theme_.label();
 }
 
-void AuralLookAndFeel::drawToggleButton(juce::Graphics& g,
-                                        juce::ToggleButton& button,
-                                        bool isMouseOver,
-                                        bool isButtonDown)
+void NorthlightLookAndFeel::drawToggleButton(juce::Graphics& g,
+                                             juce::ToggleButton& button,
+                                             bool isMouseOver,
+                                             bool isButtonDown)
 {
     // A checkbox: 16 px box, label to the right, the whole row is the hit target.
     const float boxSize = static_cast<float>(theme_.sizes.icon);
@@ -501,16 +503,16 @@ void AuralLookAndFeel::drawToggleButton(juce::Graphics& g,
                      1);
 }
 
-void AuralLookAndFeel::drawTickBox(juce::Graphics& g,
-                                   juce::Component& component,
-                                   float x,
-                                   float y,
-                                   float w,
-                                   float h,
-                                   bool ticked,
-                                   bool isEnabled,
-                                   bool isMouseOver,
-                                   bool /*isButtonDown*/)
+void NorthlightLookAndFeel::drawTickBox(juce::Graphics& g,
+                                        juce::Component& component,
+                                        float x,
+                                        float y,
+                                        float w,
+                                        float h,
+                                        bool ticked,
+                                        bool isEnabled,
+                                        bool isMouseOver,
+                                        bool /*isButtonDown*/)
 {
     const auto& c = theme_.colours;
     const auto box = juce::Rectangle<float>(x, y, w, h).reduced(0.5f);
@@ -533,15 +535,15 @@ void AuralLookAndFeel::drawTickBox(juce::Graphics& g,
 
 // ----- combo boxes and menus --------------------------------------------------------------
 
-void AuralLookAndFeel::drawComboBox(juce::Graphics& g,
-                                    int width,
-                                    int height,
-                                    bool isButtonDown,
-                                    int /*buttonX*/,
-                                    int /*buttonY*/,
-                                    int /*buttonW*/,
-                                    int /*buttonH*/,
-                                    juce::ComboBox& box)
+void NorthlightLookAndFeel::drawComboBox(juce::Graphics& g,
+                                         int width,
+                                         int height,
+                                         bool isButtonDown,
+                                         int /*buttonX*/,
+                                         int /*buttonY*/,
+                                         int /*buttonW*/,
+                                         int /*buttonH*/,
+                                         juce::ComboBox& box)
 {
     const auto& c = theme_.colours;
     auto bounds = juce::Rectangle<int>(0, 0, width, height).toFloat().reduced(0.5f);
@@ -584,14 +586,14 @@ void AuralLookAndFeel::drawComboBox(juce::Graphics& g,
     drawFocusRing(g, box, bounds.withRight(arrow.getRight()), theme_.radius.sm);
 }
 
-juce::Font AuralLookAndFeel::getComboBoxFont(juce::ComboBox& box)
+juce::Font NorthlightLookAndFeel::getComboBoxFont(juce::ComboBox& box)
 {
     if (variantOf(box) == "readout")
         return theme_.timeSmall();
     return theme_.body();
 }
 
-void AuralLookAndFeel::positionComboBoxText(juce::ComboBox& box, juce::Label& label)
+void NorthlightLookAndFeel::positionComboBoxText(juce::ComboBox& box, juce::Label& label)
 {
     const int chevron = variantOf(box) == "readout" ? theme_.sizes.iconSmall + theme_.spacing.xs
                                                     : theme_.sizes.icon + theme_.spacing.sm;
@@ -599,10 +601,10 @@ void AuralLookAndFeel::positionComboBoxText(juce::ComboBox& box, juce::Label& la
     label.setFont(getComboBoxFont(box));
 }
 
-void AuralLookAndFeel::drawPopupMenuBackgroundWithOptions(juce::Graphics& g,
-                                                          int width,
-                                                          int height,
-                                                          const juce::PopupMenu::Options& /*options*/)
+void NorthlightLookAndFeel::drawPopupMenuBackgroundWithOptions(juce::Graphics& g,
+                                                               int width,
+                                                               int height,
+                                                               const juce::PopupMenu::Options& /*options*/)
 {
     const auto bounds = juce::Rectangle<int>(0, 0, width, height).toFloat();
     g.setColour(theme_.colours.surface1);
@@ -611,7 +613,7 @@ void AuralLookAndFeel::drawPopupMenuBackgroundWithOptions(juce::Graphics& g,
     g.drawRoundedRectangle(bounds.reduced(0.5f), theme_.radius.md, 1.0f);
 }
 
-void AuralLookAndFeel::preparePopupMenuWindow(juce::Component& window)
+void NorthlightLookAndFeel::preparePopupMenuWindow(juce::Component& window)
 {
     // Called with the window placed and not yet shown: start it transparent and
     // 2 px short of its place, and ease both in (02-design-system.md 2.6).
@@ -633,21 +635,21 @@ void AuralLookAndFeel::preparePopupMenuWindow(juce::Component& window)
         true); // timed from when the window is on screen
 }
 
-int AuralLookAndFeel::getPopupMenuBorderSize()
+int NorthlightLookAndFeel::getPopupMenuBorderSize()
 {
     return theme_.spacing.xs;
 }
 
-juce::Font AuralLookAndFeel::getPopupMenuFont()
+juce::Font NorthlightLookAndFeel::getPopupMenuFont()
 {
     return theme_.body();
 }
 
-void AuralLookAndFeel::getIdealPopupMenuItemSize(const juce::String& text,
-                                                 bool isSeparator,
-                                                 int /*standardMenuItemHeight*/,
-                                                 int& idealWidth,
-                                                 int& idealHeight)
+void NorthlightLookAndFeel::getIdealPopupMenuItemSize(const juce::String& text,
+                                                      bool isSeparator,
+                                                      int /*standardMenuItemHeight*/,
+                                                      int& idealWidth,
+                                                      int& idealHeight)
 {
     if (isSeparator)
     {
@@ -661,17 +663,17 @@ void AuralLookAndFeel::getIdealPopupMenuItemSize(const juce::String& text,
                  theme_.sizes.iconLarge + theme_.spacing.xl;
 }
 
-void AuralLookAndFeel::drawPopupMenuItem(juce::Graphics& g,
-                                         const juce::Rectangle<int>& area,
-                                         bool isSeparator,
-                                         bool isActive,
-                                         bool isHighlighted,
-                                         bool isTicked,
-                                         bool hasSubMenu,
-                                         const juce::String& text,
-                                         const juce::String& shortcutKeyText,
-                                         const juce::Drawable* icon,
-                                         const juce::Colour* textColour)
+void NorthlightLookAndFeel::drawPopupMenuItem(juce::Graphics& g,
+                                              const juce::Rectangle<int>& area,
+                                              bool isSeparator,
+                                              bool isActive,
+                                              bool isHighlighted,
+                                              bool isTicked,
+                                              bool hasSubMenu,
+                                              const juce::String& text,
+                                              const juce::String& shortcutKeyText,
+                                              const juce::Drawable* icon,
+                                              const juce::Colour* textColour)
 {
     const auto& c = theme_.colours;
     if (isSeparator)
@@ -714,9 +716,9 @@ void AuralLookAndFeel::drawPopupMenuItem(juce::Graphics& g,
     g.drawFittedText(text, row.withTrimmedRight(theme_.spacing.sm), juce::Justification::centredLeft, 1);
 }
 
-void AuralLookAndFeel::drawPopupMenuSectionHeader(juce::Graphics& g,
-                                                  const juce::Rectangle<int>& area,
-                                                  const juce::String& sectionName)
+void NorthlightLookAndFeel::drawPopupMenuSectionHeader(juce::Graphics& g,
+                                                       const juce::Rectangle<int>& area,
+                                                       const juce::String& sectionName)
 {
     g.setColour(theme_.colours.textTertiary);
     g.setFont(theme_.captionCaps());
@@ -728,24 +730,24 @@ void AuralLookAndFeel::drawPopupMenuSectionHeader(juce::Graphics& g,
 
 // ----- labels, fields ---------------------------------------------------------------------
 
-juce::Font AuralLookAndFeel::getLabelFont(juce::Label& label)
+juce::Font NorthlightLookAndFeel::getLabelFont(juce::Label& label)
 {
     return label.getFont();
 }
 
-void AuralLookAndFeel::fillTextEditorBackground(juce::Graphics& g,
-                                                int width,
-                                                int height,
-                                                juce::TextEditor& editor)
+void NorthlightLookAndFeel::fillTextEditorBackground(juce::Graphics& g,
+                                                     int width,
+                                                     int height,
+                                                     juce::TextEditor& editor)
 {
     g.setColour(editor.isEnabled() ? theme_.colours.surface2 : theme_.colours.surface1);
     g.fillRoundedRectangle(juce::Rectangle<int>(0, 0, width, height).toFloat(), theme_.radius.sm);
 }
 
-void AuralLookAndFeel::drawTextEditorOutline(juce::Graphics& g,
-                                             int width,
-                                             int height,
-                                             juce::TextEditor& editor)
+void NorthlightLookAndFeel::drawTextEditorOutline(juce::Graphics& g,
+                                                  int width,
+                                                  int height,
+                                                  juce::TextEditor& editor)
 {
     const auto bounds = juce::Rectangle<int>(0, 0, width, height).toFloat().reduced(0.5f);
     const bool invalid = static_cast<bool>(editor.getProperties().getWithDefault("invalid", false));
@@ -757,12 +759,12 @@ void AuralLookAndFeel::drawTextEditorOutline(juce::Graphics& g,
 
 // ----- sliders ----------------------------------------------------------------------------
 
-int AuralLookAndFeel::getSliderThumbRadius(juce::Slider& slider)
+int NorthlightLookAndFeel::getSliderThumbRadius(juce::Slider& slider)
 {
     return slider.isMouseOverOrDragging() ? 8 : 7;
 }
 
-juce::Label* AuralLookAndFeel::createSliderTextBox(juce::Slider& slider)
+juce::Label* NorthlightLookAndFeel::createSliderTextBox(juce::Slider& slider)
 {
     auto* label = LookAndFeel_V4::createSliderTextBox(slider);
     label->setFont(theme_.value());
@@ -770,16 +772,16 @@ juce::Label* AuralLookAndFeel::createSliderTextBox(juce::Slider& slider)
     return label;
 }
 
-void AuralLookAndFeel::drawLinearSlider(juce::Graphics& g,
-                                        int x,
-                                        int y,
-                                        int width,
-                                        int height,
-                                        float sliderPos,
-                                        float /*minSliderPos*/,
-                                        float /*maxSliderPos*/,
-                                        juce::Slider::SliderStyle style,
-                                        juce::Slider& slider)
+void NorthlightLookAndFeel::drawLinearSlider(juce::Graphics& g,
+                                             int x,
+                                             int y,
+                                             int width,
+                                             int height,
+                                             float sliderPos,
+                                             float /*minSliderPos*/,
+                                             float /*maxSliderPos*/,
+                                             juce::Slider::SliderStyle style,
+                                             juce::Slider& slider)
 {
     const auto& c = theme_.colours;
     const bool horizontal = style == juce::Slider::LinearHorizontal || style == juce::Slider::LinearBar;
@@ -849,22 +851,22 @@ void AuralLookAndFeel::drawLinearSlider(juce::Graphics& g,
 
 // ----- scrollbars -------------------------------------------------------------------------
 
-int AuralLookAndFeel::getDefaultScrollbarWidth()
+int NorthlightLookAndFeel::getDefaultScrollbarWidth()
 {
     return theme_.sizes.scrollbar;
 }
 
-void AuralLookAndFeel::drawScrollbar(juce::Graphics& g,
-                                     juce::ScrollBar& /*scrollbar*/,
-                                     int x,
-                                     int y,
-                                     int width,
-                                     int height,
-                                     bool isScrollbarVertical,
-                                     int thumbStartPosition,
-                                     int thumbSize,
-                                     bool isMouseOver,
-                                     bool isMouseDown)
+void NorthlightLookAndFeel::drawScrollbar(juce::Graphics& g,
+                                          juce::ScrollBar& /*scrollbar*/,
+                                          int x,
+                                          int y,
+                                          int width,
+                                          int height,
+                                          bool isScrollbarVertical,
+                                          int thumbStartPosition,
+                                          int thumbSize,
+                                          bool isMouseOver,
+                                          bool isMouseDown)
 {
     if (thumbSize <= 0)
         return;
@@ -881,25 +883,25 @@ void AuralLookAndFeel::drawScrollbar(juce::Graphics& g,
 
 // ----- tabs ---------------------------------------------------------------------------------
 
-int AuralLookAndFeel::getTabButtonBestWidth(juce::TabBarButton& button, int /*tabDepth*/)
+int NorthlightLookAndFeel::getTabButtonBestWidth(juce::TabBarButton& button, int /*tabDepth*/)
 {
     return juce::GlyphArrangement::getStringWidthInt(theme_.label(), button.getButtonText()) +
            2 * theme_.spacing.md;
 }
 
-int AuralLookAndFeel::getTabButtonOverlap(int /*tabDepth*/)
+int NorthlightLookAndFeel::getTabButtonOverlap(int /*tabDepth*/)
 {
     return 0;
 }
 
-void AuralLookAndFeel::drawTabbedButtonBarBackground(juce::TabbedButtonBar&, juce::Graphics&) {}
+void NorthlightLookAndFeel::drawTabbedButtonBarBackground(juce::TabbedButtonBar&, juce::Graphics&) {}
 
-void AuralLookAndFeel::drawTabAreaBehindFrontButton(juce::TabbedButtonBar&, juce::Graphics&, int, int) {}
+void NorthlightLookAndFeel::drawTabAreaBehindFrontButton(juce::TabbedButtonBar&, juce::Graphics&, int, int) {}
 
-void AuralLookAndFeel::drawTabButton(juce::TabBarButton& button,
-                                     juce::Graphics& g,
-                                     bool isMouseOver,
-                                     bool /*isMouseDown*/)
+void NorthlightLookAndFeel::drawTabButton(juce::TabBarButton& button,
+                                          juce::Graphics& g,
+                                          bool isMouseOver,
+                                          bool /*isMouseDown*/)
 {
     const auto& c = theme_.colours;
     const auto area = button.getActiveArea();
@@ -917,7 +919,7 @@ void AuralLookAndFeel::drawTabButton(juce::TabBarButton& button,
 
 // ----- tooltips, progress, tables ---------------------------------------------------------
 
-AuralLookAndFeel::TooltipParts AuralLookAndFeel::splitShortcut(const juce::String& tip)
+NorthlightLookAndFeel::TooltipParts NorthlightLookAndFeel::splitShortcut(const juce::String& tip)
 {
     const int at = tip.lastIndexOf("  ");
     if (at <= 0)
@@ -972,9 +974,9 @@ float capsWidth(const juce::Font& font, const juce::StringArray& keys, float hei
 }
 } // namespace
 
-juce::Rectangle<int> AuralLookAndFeel::getTooltipBounds(const juce::String& tipText,
-                                                        juce::Point<int> screenPos,
-                                                        juce::Rectangle<int> parentArea)
+juce::Rectangle<int> NorthlightLookAndFeel::getTooltipBounds(const juce::String& tipText,
+                                                             juce::Point<int> screenPos,
+                                                             juce::Rectangle<int> parentArea)
 {
     const auto font = theme_.small();
     const auto parts = splitShortcut(tipText);
@@ -1002,7 +1004,7 @@ juce::Rectangle<int> AuralLookAndFeel::getTooltipBounds(const juce::String& tipT
         .constrainedWithin(parentArea);
 }
 
-void AuralLookAndFeel::drawTooltip(juce::Graphics& g, const juce::String& text, int width, int height)
+void NorthlightLookAndFeel::drawTooltip(juce::Graphics& g, const juce::String& text, int width, int height)
 {
     const auto bounds = juce::Rectangle<int>(0, 0, width, height).toFloat();
     g.setColour(theme_.colours.surface3);
@@ -1044,12 +1046,12 @@ void AuralLookAndFeel::drawTooltip(juce::Graphics& g, const juce::String& text, 
     }
 }
 
-void AuralLookAndFeel::drawProgressBar(juce::Graphics& g,
-                                       juce::ProgressBar& /*bar*/,
-                                       int width,
-                                       int height,
-                                       double progress,
-                                       const juce::String& textToShow)
+void NorthlightLookAndFeel::drawProgressBar(juce::Graphics& g,
+                                            juce::ProgressBar& /*bar*/,
+                                            int width,
+                                            int height,
+                                            double progress,
+                                            const juce::String& textToShow)
 {
     const auto& c = theme_.colours;
     const float barH = static_cast<float>(theme_.spacing.xs);
@@ -1079,7 +1081,7 @@ void AuralLookAndFeel::drawProgressBar(juce::Graphics& g,
     }
 }
 
-void AuralLookAndFeel::drawTableHeaderBackground(juce::Graphics& g, juce::TableHeaderComponent& header)
+void NorthlightLookAndFeel::drawTableHeaderBackground(juce::Graphics& g, juce::TableHeaderComponent& header)
 {
     g.setColour(theme_.colours.surface0);
     g.fillRect(header.getLocalBounds());
@@ -1087,15 +1089,15 @@ void AuralLookAndFeel::drawTableHeaderBackground(juce::Graphics& g, juce::TableH
     g.fillRect(header.getLocalBounds().removeFromBottom(1));
 }
 
-void AuralLookAndFeel::drawTableHeaderColumn(juce::Graphics& g,
-                                             juce::TableHeaderComponent& /*header*/,
-                                             const juce::String& columnName,
-                                             int /*columnId*/,
-                                             int width,
-                                             int height,
-                                             bool isMouseOver,
-                                             bool /*isMouseDown*/,
-                                             int columnFlags)
+void NorthlightLookAndFeel::drawTableHeaderColumn(juce::Graphics& g,
+                                                  juce::TableHeaderComponent& /*header*/,
+                                                  const juce::String& columnName,
+                                                  int /*columnId*/,
+                                                  int width,
+                                                  int height,
+                                                  bool isMouseOver,
+                                                  bool /*isMouseDown*/,
+                                                  int columnFlags)
 {
     auto area = juce::Rectangle<int>(0, 0, width, height);
     if (isMouseOver)
@@ -1115,4 +1117,4 @@ void AuralLookAndFeel::drawTableHeaderColumn(juce::Graphics& g,
         columnName.toUpperCase(), area.reduced(theme_.spacing.sm, 0), juce::Justification::centredLeft, 1);
 }
 
-} // namespace aural::ui
+} // namespace northlight::ui

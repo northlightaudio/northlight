@@ -14,7 +14,7 @@
 // clips, switching takes at the exact boundary sample, crossfading at constant
 // sum around it, and reading each take's media at the right offset.
 
-using namespace aural;
+using namespace northlight;
 using Catch::Approx;
 
 namespace

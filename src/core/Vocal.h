@@ -13,7 +13,7 @@
 // that is moved, trimmed, split or duplicated keeps its edits on the audio they
 // belong to. Pitches are in cents above MIDI note 0 (6000 = MIDI note 60).
 
-namespace aural::core
+namespace northlight::core
 {
 
 using Id = std::uint64_t;
@@ -138,4 +138,4 @@ struct MusicalKey
 const char* scaleName(ScaleKind scale) noexcept;
 const char* pitchClassName(int pitchClass) noexcept; // "C", "C#", ...
 
-} // namespace aural::core
+} // namespace northlight::core

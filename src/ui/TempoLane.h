@@ -12,7 +12,7 @@
 #include <optional>
 #include <string>
 
-namespace aural::ui
+namespace northlight::ui
 {
 
 // The tempo track (04-arrange.md, "Tempo track"): a lane under the ruler that
@@ -86,4 +86,4 @@ private:
     std::unique_ptr<juce::TextEditor> editor_;
 };
 
-} // namespace aural::ui
+} // namespace northlight::ui

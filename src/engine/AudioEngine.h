@@ -32,7 +32,7 @@
 //
 // No JUCE: the app's AudioCallback calls process(); tests drive it offline.
 
-namespace aural::engine
+namespace northlight::engine
 {
 
 class AudioEngine
@@ -262,4 +262,4 @@ private:
     std::atomic<std::uint64_t> droppedCommands_{0};
 };
 
-} // namespace aural::engine
+} // namespace northlight::engine

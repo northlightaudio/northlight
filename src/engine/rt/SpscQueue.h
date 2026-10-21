@@ -9,7 +9,7 @@
 // the constructor; push/pop never allocate, lock or block. T must be trivially
 // copyable or at least nothrow move constructible; the queue holds objects by value.
 
-namespace aural::rt
+namespace northlight::rt
 {
 
 template <typename T> class SpscQueue
@@ -59,4 +59,4 @@ private:
     std::atomic<std::size_t> tail_{0};
 };
 
-} // namespace aural::rt
+} // namespace northlight::rt

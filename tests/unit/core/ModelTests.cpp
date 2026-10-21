@@ -2,7 +2,7 @@
 
 #include <catch2/catch_test_macros.hpp>
 
-using namespace aural::core;
+using namespace northlight::core;
 
 TEST_CASE("Project length is the end of the furthest clip", "[core][model]")
 {

@@ -4,7 +4,7 @@
 #include <cmath>
 #include <numbers>
 
-namespace aural::audio
+namespace northlight::audio
 {
 
 std::vector<float> makeCalibrationSignal(double sampleRate)
@@ -111,4 +111,4 @@ std::optional<LatencyMeasurement> combineMeasurements(std::span<const LatencyMea
     return combined;
 }
 
-} // namespace aural::audio
+} // namespace northlight::audio

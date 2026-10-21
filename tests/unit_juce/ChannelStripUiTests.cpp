@@ -12,7 +12,7 @@
 #include <memory>
 #include <vector>
 
-using namespace aural;
+using namespace northlight;
 namespace ps = plugins::strip;
 
 namespace
@@ -83,7 +83,7 @@ TEST_CASE("A project saved before the strip existed gets one when opened", "[str
 {
     const juce::ScopedJuceInitialiser_GUI juceInit;
     const auto folder = juce::File::getSpecialLocation(juce::File::tempDirectory)
-                            .getChildFile("aural-strip-tests")
+                            .getChildFile("northlight-strip-tests")
                             .getChildFile(juce::Uuid().toString());
     REQUIRE(folder.createDirectory().wasOk());
     core::Project old;
@@ -94,7 +94,7 @@ TEST_CASE("A project saved before the strip existed gets one when opened", "[str
     core::Bus b;
     b.id = old.allocateId();
     old.buses.push_back(b);
-    const auto file = folder.getChildFile("old.aural");
+    const auto file = folder.getChildFile("old.northlight");
     REQUIRE(file.replaceWithText(juce::String(core::projectToJson(old))));
 
     MemoryStore store;
@@ -145,7 +145,7 @@ TEST_CASE("A user strip preset saves and loads back", "[strip][presets]")
 {
     const juce::ScopedJuceInitialiser_GUI juceInit;
     const auto folder = juce::File::getSpecialLocation(juce::File::tempDirectory)
-                            .getChildFile("aural-strip-presets")
+                            .getChildFile("northlight-strip-presets")
                             .getChildFile(juce::Uuid().toString());
     auto modules = ps::defaultStrip();
     modules[2].bypass = false;

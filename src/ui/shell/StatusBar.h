@@ -6,7 +6,7 @@
 
 #include <functional>
 
-namespace aural::ui
+namespace northlight::ui
 {
 
 // The status bar (03-shell.md): device, rate and buffer, round trip, load,
@@ -67,4 +67,4 @@ private:
     static constexpr int messageMs = 4000;
 };
 
-} // namespace aural::ui
+} // namespace northlight::ui

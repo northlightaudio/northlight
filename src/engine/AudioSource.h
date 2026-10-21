@@ -9,7 +9,7 @@
 // referenced by snapshots; read() is called from the real-time thread and must be
 // allocation-free and bounded.
 
-namespace aural::engine
+namespace northlight::engine
 {
 
 class AudioSource
@@ -62,4 +62,4 @@ public:
     load(const std::string& path, double targetSampleRate, std::string& error) = 0;
 };
 
-} // namespace aural::engine
+} // namespace northlight::engine

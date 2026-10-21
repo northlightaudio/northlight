@@ -11,7 +11,7 @@
 #include <set>
 #include <vector>
 
-using namespace aural;
+using namespace northlight;
 using Catch::Approx;
 
 namespace
@@ -197,7 +197,7 @@ TEST_CASE("With lookahead a sudden peak is already attenuated when it arrives", 
     CHECK(l[2000] == Approx(0.1f).margin(0.01f));
 }
 
-#if defined(AURAL_RT_CHECKS)
+#if defined(NORTHLIGHT_RT_CHECKS)
 namespace
 {
 std::atomic<int> pluginViolations{0};
@@ -334,13 +334,13 @@ TEST_CASE("Every built-in names each parameter with a unique, non-empty key", "[
 {
     // Saved projects and automation find parameters by these keys: a duplicate
     // would send a value to the wrong control after a reorder.
-    auto types = aural::plugins::BuiltInFactory().typeNames();
-    for (const auto& t : aural::plugins::strip::moduleTypes())
+    auto types = northlight::plugins::BuiltInFactory().typeNames();
+    for (const auto& t : northlight::plugins::strip::moduleTypes())
         types.push_back(t);
     for (const auto& type : types)
     {
         INFO(type);
-        const auto layout = aural::plugins::builtInParameterLayout(type);
+        const auto layout = northlight::plugins::builtInParameterLayout(type);
         REQUIRE_FALSE(layout.keys.empty());
         CHECK(layout.keys.size() == layout.defaults.size());
         std::set<std::string> seen;

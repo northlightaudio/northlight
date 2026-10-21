@@ -1,10 +1,10 @@
 #include "ui/shell/Panels.h"
 
-#include "ui/AuralLookAndFeel.h"
+#include "ui/NorthlightLookAndFeel.h"
 
 #include <cmath>
 
-namespace aural::ui
+namespace northlight::ui
 {
 
 const char* panelKey(PanelId id)
@@ -995,4 +995,4 @@ void PanelManager::applyPreset(const juce::String& name)
     resetLayout(); // "Edit": the defaults
 }
 
-} // namespace aural::ui
+} // namespace northlight::ui

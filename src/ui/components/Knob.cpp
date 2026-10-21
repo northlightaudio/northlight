@@ -1,10 +1,10 @@
 #include "ui/components/Knob.h"
 
-#include "ui/AuralLookAndFeel.h"
+#include "ui/NorthlightLookAndFeel.h"
 
 #include <cmath>
 
-namespace aural::ui
+namespace northlight::ui
 {
 
 namespace
@@ -163,7 +163,7 @@ void Knob::paint(juce::Graphics& g)
         g.setColour(c.textSecondary);
         g.drawText(text(), area.toNearestInt(), juce::Justification::centredTop);
     }
-    if (auto* lnf = dynamic_cast<AuralLookAndFeel*>(&getLookAndFeel()))
+    if (auto* lnf = dynamic_cast<NorthlightLookAndFeel*>(&getLookAndFeel()))
         lnf->drawFocusRing(g, *this, ring, size * 0.5f);
 }
 
@@ -242,4 +242,4 @@ std::unique_ptr<juce::AccessibilityHandler> Knob::createAccessibilityHandler()
         juce::AccessibilityHandler::Interfaces{std::make_unique<ValueInterface<Knob>>(*this)});
 }
 
-} // namespace aural::ui
+} // namespace northlight::ui

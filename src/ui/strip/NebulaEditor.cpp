@@ -9,14 +9,14 @@
 #include "ui/strip/NebulaEditor.h"
 
 #include "plugins/Nebula.h"
-#include "ui/AuralLookAndFeel.h"
+#include "ui/NorthlightLookAndFeel.h"
 #include "ui/strip/StripStyle.h"
 #include "ui/strip/SynthParts.h"
 
 #include <array>
 #include <cmath>
 
-namespace aural::ui::strip
+namespace northlight::ui::strip
 {
 
 namespace
@@ -495,7 +495,7 @@ public:
                             })};
         for (auto* b : {&previous_, &next_, &presetName_})
         {
-            b->getProperties().set(AuralLookAndFeel::propertyVariant, "ghost");
+            b->getProperties().set(NorthlightLookAndFeel::propertyVariant, "ghost");
             addAndMakeVisible(b);
         }
         previous_.setTooltip("Previous preset");
@@ -685,7 +685,7 @@ private:
         g.fillPath(text);
         g.setFont(theme_.font(Theme::Face::ui, theme_.fonts.size.caption - 1.0f, theme_.fonts.weight.medium));
         g.setColour(theme_.colours.textTertiary);
-        g.drawText(juce::String::fromUTF8("PAD SYNTH  \xc2\xb7  AURAL"),
+        g.drawText(juce::String::fromUTF8("PAD SYNTH  \xc2\xb7  NORTHLIGHT"),
                    juce::Rectangle<float>(box.getRight() + 12.0f, baseline - 10.0f, 140.0f, 12.0f),
                    juce::Justification::centredLeft);
     }
@@ -831,4 +831,4 @@ createNebulaEditor(const Theme& theme, CardHost& host, core::Id channelId, const
     return std::make_unique<NebulaCard>(theme, host, channelId, insert);
 }
 
-} // namespace aural::ui::strip
+} // namespace northlight::ui::strip

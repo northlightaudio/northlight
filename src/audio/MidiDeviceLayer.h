@@ -12,12 +12,12 @@
 #include <string>
 #include <vector>
 
-namespace aural::engine
+namespace northlight::engine
 {
 class AudioEngine;
 }
 
-namespace aural::audio
+namespace northlight::audio
 {
 
 // MIDI devices: the inputs the user enabled (every input by default) are open and
@@ -99,4 +99,4 @@ private:
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(MidiDeviceLayer)
 };
 
-} // namespace aural::audio
+} // namespace northlight::audio

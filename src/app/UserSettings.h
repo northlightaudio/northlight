@@ -4,10 +4,10 @@
 
 #include <juce_data_structures/juce_data_structures.h>
 
-namespace aural
+namespace northlight
 {
 
-// The app's per-user settings file (%APPDATA%\Aural\Aural.settings, XML). Each
+// The app's per-user settings file (%APPDATA%\Northlight\Northlight.settings, XML). Each
 // subsystem that persists something implements its store interface on top of this
 // one file by writing namespaced keys ("audio.*").
 class UserSettings final : public audio::AudioSettingsStore
@@ -34,4 +34,4 @@ private:
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(UserSettings)
 };
 
-} // namespace aural
+} // namespace northlight

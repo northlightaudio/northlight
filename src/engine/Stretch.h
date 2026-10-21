@@ -32,7 +32,7 @@
 //
 // Controller-thread API, except onChanged (called from a worker).
 
-namespace aural::engine
+namespace northlight::engine
 {
 
 // Stretches `input` (channels of equal length) to `outputLength` samples and
@@ -138,4 +138,4 @@ private:
     std::vector<std::thread> workers_;
 };
 
-} // namespace aural::engine
+} // namespace northlight::engine

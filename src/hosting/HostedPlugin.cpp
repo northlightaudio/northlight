@@ -7,7 +7,7 @@
 #include <cmath>
 #include <cstdint>
 
-namespace aural::hosting
+namespace northlight::hosting
 {
 
 HostedPlugin::Layout
@@ -148,7 +148,7 @@ float HostedPlugin::parameter(int index) const noexcept
 
 HostedPlugin::~HostedPlugin()
 {
-    AURAL_ASSERT_NOT_REALTIME("HostedPlugin::~HostedPlugin");
+    NORTHLIGHT_ASSERT_NOT_REALTIME("HostedPlugin::~HostedPlugin");
     for (auto* parameter : parameterObjects_)
         parameter->removeListener(this);
     if (prepared_.load(std::memory_order_acquire))
@@ -157,7 +157,7 @@ HostedPlugin::~HostedPlugin()
 
 void HostedPlugin::prepare(double sampleRate, int maxBlockSize)
 {
-    AURAL_ASSERT_NOT_REALTIME("HostedPlugin::prepare");
+    NORTHLIGHT_ASSERT_NOT_REALTIME("HostedPlugin::prepare");
     if (prepared_.exchange(false, std::memory_order_acq_rel))
         instance_->releaseResources();
 
@@ -362,7 +362,7 @@ void HostedPlugin::run(
 
 std::vector<std::string> HostedPlugin::factoryPrograms() const
 {
-    AURAL_ASSERT_NOT_REALTIME("HostedPlugin::factoryPrograms");
+    NORTHLIGHT_ASSERT_NOT_REALTIME("HostedPlugin::factoryPrograms");
     std::vector<std::string> names;
     const int count = instance_->getNumPrograms();
     if (count <= 1)
@@ -379,7 +379,7 @@ int HostedPlugin::currentProgram() const
 
 void HostedPlugin::setProgram(int index)
 {
-    AURAL_ASSERT_NOT_REALTIME("HostedPlugin::setProgram");
+    NORTHLIGHT_ASSERT_NOT_REALTIME("HostedPlugin::setProgram");
     if (index >= 0 && index < instance_->getNumPrograms())
         instance_->setCurrentProgram(index);
 }
@@ -417,7 +417,7 @@ std::vector<juce::File> HostedPlugin::userPresetFiles() const
 
 bool HostedPlugin::loadPresetFile(const juce::File& file)
 {
-    AURAL_ASSERT_NOT_REALTIME("HostedPlugin::loadPresetFile");
+    NORTHLIGHT_ASSERT_NOT_REALTIME("HostedPlugin::loadPresetFile");
     auto* client = instance_->getVST3Client();
     if (client == nullptr)
         return false;
@@ -429,7 +429,7 @@ bool HostedPlugin::loadPresetFile(const juce::File& file)
 
 bool HostedPlugin::savePresetFile(const juce::File& file) const
 {
-    AURAL_ASSERT_NOT_REALTIME("HostedPlugin::savePresetFile");
+    NORTHLIGHT_ASSERT_NOT_REALTIME("HostedPlugin::savePresetFile");
     auto* client = const_cast<juce::AudioPluginInstance&>(*instance_).getVST3Client();
     if (client == nullptr)
         return false;
@@ -442,7 +442,7 @@ bool HostedPlugin::savePresetFile(const juce::File& file) const
 
 std::string HostedPlugin::state() const
 {
-    AURAL_ASSERT_NOT_REALTIME("HostedPlugin::state");
+    NORTHLIGHT_ASSERT_NOT_REALTIME("HostedPlugin::state");
     juce::MemoryBlock block;
     instance_->getStateInformation(block);
     return block.toBase64Encoding().toStdString();
@@ -450,7 +450,7 @@ std::string HostedPlugin::state() const
 
 void HostedPlugin::setState(const std::string& state)
 {
-    AURAL_ASSERT_NOT_REALTIME("HostedPlugin::setState");
+    NORTHLIGHT_ASSERT_NOT_REALTIME("HostedPlugin::setState");
     if (state.empty())
         return;
     juce::MemoryBlock block;
@@ -458,4 +458,4 @@ void HostedPlugin::setState(const std::string& state)
         instance_->setStateInformation(block.getData(), static_cast<int>(block.getSize()));
 }
 
-} // namespace aural::hosting
+} // namespace northlight::hosting

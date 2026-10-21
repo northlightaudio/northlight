@@ -1,11 +1,11 @@
 #include "ui/components/Fader.h"
 
-#include "ui/AuralLookAndFeel.h"
 #include "ui/Db.h"
+#include "ui/NorthlightLookAndFeel.h"
 
 #include <cmath>
 
-namespace aural::ui
+namespace northlight::ui
 {
 
 namespace
@@ -137,7 +137,7 @@ void Fader::paint(juce::Graphics& g)
     const auto track = trackBounds();
     const float trackW = static_cast<float>(theme_.spacing.xs);
     const float cx = static_cast<float>(getWidth()) * 0.5f;
-    auto* lnf = dynamic_cast<AuralLookAndFeel*>(&getLookAndFeel());
+    auto* lnf = dynamic_cast<NorthlightLookAndFeel*>(&getLookAndFeel());
     const auto& m = theme_.material;
     // The track (a groove when the material is on) and the scale to its left.
     const auto groove = juce::Rectangle<float>(
@@ -315,4 +315,4 @@ void Fader::setAccessibleValue(double db)
     setDb(static_cast<float>(db), true);
 }
 
-} // namespace aural::ui
+} // namespace northlight::ui

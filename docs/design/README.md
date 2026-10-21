@@ -1,4 +1,4 @@
-# Aural design specification
+# Northlight design specification
 
 This folder is the design source for Phase 7 (design fidelity pass) of
 [../PLAN.md](../PLAN.md). It replaces the Figma file the plan originally assumed: every
@@ -12,7 +12,7 @@ design system first; the screen specs depend on them.
 
 | File | What it decides |
 |---|---|
-| [01-brief.md](01-brief.md) | Who Aural is for, what it should feel like, the principles every screen follows, and what is borrowed or avoided from other DAWs |
+| [01-brief.md](01-brief.md) | Who Northlight is for, what it should feel like, the principles every screen follows, and what is borrowed or avoided from other DAWs |
 | [02-design-system.md](02-design-system.md) | Colour, type, spacing, radii, elevation, iconography, motion, and the component library with every state |
 | [tokens.json](tokens.json) | The machine-readable token file `ui::Theme` loads. Section 2 is the human explanation of this file |
 | [03-shell.md](03-shell.md) | The application window: zones, header, docks, panels, resizing, density |
@@ -32,7 +32,7 @@ design system first; the screen specs depend on them.
 
 ## Mockups
 
-Static mockups rendered from this spec and `tokens.json` live on the "Aural UI
+Static mockups rendered from this spec and `tokens.json` live on the "Northlight UI
 Mockups" canvas (claude.ai artifact, private to the project owner): the shell with
 a populated arrange view, the mixer at full height, transport states, the plugin
 chain, window bar and browser, Audio Setup, the piano roll, a component sheet and
@@ -73,7 +73,7 @@ never a track colour.
 - `ui::Theme` becomes a loader for `tokens.json` (shipped in `assets/`, overridable
   from the user settings folder for custom themes). The struct shape grows to cover
   every token in the file; nothing in `src/ui` may carry a literal colour or size.
-- Components are restyled through `AuralLookAndFeel` and dedicated components where
+- Components are restyled through `NorthlightLookAndFeel` and dedicated components where
   JUCE's stock ones cannot reach the spec (fader, knob, meter, segmented control,
   clip, track header, ruler).
 - Each screen spec's acceptance section is the definition of done for that screen.

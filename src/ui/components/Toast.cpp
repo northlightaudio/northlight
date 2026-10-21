@@ -1,9 +1,9 @@
 #include "ui/components/Toast.h"
 
-#include "ui/AuralLookAndFeel.h"
 #include "ui/Motion.h"
+#include "ui/NorthlightLookAndFeel.h"
 
-namespace aural::ui
+namespace northlight::ui
 {
 
 class ToastStack::Toast final : public juce::Component
@@ -22,7 +22,7 @@ public:
         if (secondAction.isNotEmpty())
         {
             second_.setButtonText(secondAction);
-            second_.getProperties().set(AuralLookAndFeel::propertyVariant, "ghost");
+            second_.getProperties().set(NorthlightLookAndFeel::propertyVariant, "ghost");
             second_.onClick = [this]
             {
                 if (onSecond_)
@@ -32,14 +32,14 @@ public:
             };
             addAndMakeVisible(second_);
         }
-        close_.getProperties().set(AuralLookAndFeel::propertyVariant, "ghost");
-        close_.getProperties().set(AuralLookAndFeel::propertyIcon, true);
+        close_.getProperties().set(NorthlightLookAndFeel::propertyVariant, "ghost");
+        close_.getProperties().set(NorthlightLookAndFeel::propertyIcon, true);
         close_.setTooltip("Dismiss");
         addAndMakeVisible(close_);
         if (action.isNotEmpty())
         {
             action_.setButtonText(action);
-            action_.getProperties().set(AuralLookAndFeel::propertyVariant, "ghost");
+            action_.getProperties().set(NorthlightLookAndFeel::propertyVariant, "ghost");
             action_.onClick = [this]
             {
                 if (onAction_)
@@ -269,4 +269,4 @@ void ToastStack::layout(bool animated)
     setVisible(!toasts_.empty() || !leaving_.empty());
 }
 
-} // namespace aural::ui
+} // namespace northlight::ui

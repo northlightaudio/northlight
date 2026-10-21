@@ -3,7 +3,7 @@
 #include <algorithm>
 #include <cmath>
 
-namespace aural::engine::pitch
+namespace northlight::engine::pitch
 {
 
 namespace
@@ -459,4 +459,4 @@ RenderedSpan renderSpan(const std::vector<std::vector<float>>& media,
     return out;
 }
 
-} // namespace aural::engine::pitch
+} // namespace northlight::engine::pitch

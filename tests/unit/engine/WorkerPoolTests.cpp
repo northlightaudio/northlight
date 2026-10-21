@@ -7,7 +7,7 @@
 #include <thread>
 #include <vector>
 
-using aural::engine::WorkerPool;
+using northlight::engine::WorkerPool;
 
 namespace
 {
@@ -65,18 +65,18 @@ TEST_CASE("With workers, jobs are spread over more than one thread", "[engine][p
     CHECK(spread);
 }
 
-#if defined(AURAL_RT_CHECKS)
+#if defined(NORTHLIGHT_RT_CHECKS)
 namespace
 {
 std::atomic<int> poolViolations{0};
-void countPoolViolation(const aural::rt::Violation&) noexcept
+void countPoolViolation(const northlight::rt::Violation&) noexcept
 {
     poolViolations.fetch_add(1, std::memory_order_relaxed);
 }
 void rtJob(void*, int) noexcept
 {
     // Workers must be inside a real-time section while running jobs.
-    if (!aural::rt::isRealtimeThread())
+    if (!northlight::rt::isRealtimeThread())
         poolViolations.fetch_add(1000, std::memory_order_relaxed);
 }
 } // namespace
@@ -84,14 +84,14 @@ void rtJob(void*, int) noexcept
 TEST_CASE("Running a batch does not allocate on the calling or worker threads", "[engine][pool][rt]")
 {
     WorkerPool pool(2);
-    const auto previous = aural::rt::setViolationHandler(&countPoolViolation);
+    const auto previous = northlight::rt::setViolationHandler(&countPoolViolation);
     poolViolations = 0;
     {
-        aural::rt::ScopedRealtimeSection section;
+        northlight::rt::ScopedRealtimeSection section;
         for (int round = 0; round < 100; ++round)
             pool.run(16, &rtJob, nullptr);
     }
-    aural::rt::setViolationHandler(previous);
+    northlight::rt::setViolationHandler(previous);
     CHECK(poolViolations == 0);
 }
 #endif

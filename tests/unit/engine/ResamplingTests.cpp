@@ -7,7 +7,7 @@
 #include <numbers>
 #include <vector>
 
-using namespace aural::engine;
+using namespace northlight::engine;
 using Catch::Approx;
 
 namespace

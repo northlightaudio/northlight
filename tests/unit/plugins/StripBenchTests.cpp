@@ -9,10 +9,10 @@
 #include <numbers>
 #include <vector>
 
-using namespace aural;
+using namespace northlight;
 namespace strip = plugins::strip;
 
-// A benchmark, hidden from the default run (aural_unit_tests "[.bench]"): what
+// A benchmark, hidden from the default run (northlight_unit_tests "[.bench]"): what
 // a channel strip costs per track, all modules on and all off, in percent of
 // one core at 48 kHz with 256-sample blocks.
 TEST_CASE("Channel strip cost per track", "[.bench][strip]")

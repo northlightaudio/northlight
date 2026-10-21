@@ -3,7 +3,7 @@
 #include <cmath>
 #include <numbers>
 
-namespace aural::engine
+namespace northlight::engine
 {
 
 void ClickGenerator::trigger(bool accent, double sampleRate) noexcept
@@ -96,4 +96,4 @@ void ClickGenerator::render(core::SamplePosition start,
     }
 }
 
-} // namespace aural::engine
+} // namespace northlight::engine

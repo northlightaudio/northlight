@@ -5,7 +5,7 @@
 #include <cmath>
 #include <memory>
 
-using namespace aural::engine;
+using namespace northlight::engine;
 
 namespace
 {

@@ -7,7 +7,7 @@
 
 #include <algorithm>
 
-namespace aural
+namespace northlight
 {
 
 BounceJob::BounceJob(const core::Project& project, const hosting::HostFactory& inserts, Options options)
@@ -416,4 +416,4 @@ bool BounceJob::writeFile(const juce::File& file,
     return true;
 }
 
-} // namespace aural
+} // namespace northlight

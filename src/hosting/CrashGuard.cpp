@@ -1,6 +1,6 @@
 #include "hosting/CrashGuard.h"
 
-namespace aural::hosting
+namespace northlight::hosting
 {
 
 // Kept to a plain function with no objects that need unwinding: MSVC allows
@@ -23,4 +23,4 @@ bool callGuarded(void (*fn)(void* context), void* context) noexcept
 #endif
 }
 
-} // namespace aural::hosting
+} // namespace northlight::hosting

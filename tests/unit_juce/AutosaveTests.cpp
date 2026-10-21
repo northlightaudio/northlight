@@ -7,7 +7,7 @@
 
 #include <memory>
 
-using namespace aural;
+using namespace northlight;
 
 namespace
 {
@@ -26,7 +26,7 @@ struct AutosaveFixture
     AutosaveFixture()
     {
         folder = juce::File::getSpecialLocation(juce::File::tempDirectory)
-                     .getChildFile("aural-autosave-tests")
+                     .getChildFile("northlight-autosave-tests")
                      .getChildFile(juce::Uuid().toString());
         REQUIRE(folder.createDirectory().wasOk());
         autosaves = folder.getChildFile("Autosave");
@@ -66,13 +66,14 @@ TEST_CASE("Unsaved changes are autosaved and a crashed session's copy can be res
         CHECK(session->leftoverAutosaves().empty()); // its own copy is not a leftover
         // A crash: the session never closes, so its copy stays. (Simulated by
         // copying the file aside before the normal close removes it.)
-        REQUIRE(session->currentAutosaveFile().copyFileTo(f.folder.getChildFile("kept.aural")));
+        REQUIRE(session->currentAutosaveFile().copyFileTo(f.folder.getChildFile("kept.northlight")));
         REQUIRE(session->currentAutosaveFile().withFileExtension("json").copyFileTo(
             f.folder.getChildFile("kept.json")));
     }
     // The normal close removed it.
-    CHECK(f.autosaves.findChildFiles(juce::File::findFiles, false, "*.aural").isEmpty());
-    REQUIRE(f.folder.getChildFile("kept.aural").copyFileTo(f.autosaves.getChildFile("Untitled-abc.aural")));
+    CHECK(f.autosaves.findChildFiles(juce::File::findFiles, false, "*.northlight").isEmpty());
+    REQUIRE(f.folder.getChildFile("kept.northlight")
+                .copyFileTo(f.autosaves.getChildFile("Untitled-abc.northlight")));
     REQUIRE(f.folder.getChildFile("kept.json").copyFileTo(f.autosaves.getChildFile("Untitled-abc.json")));
 
     auto next = f.makeSession();
@@ -91,7 +92,7 @@ TEST_CASE("Saving removes the autosave and a saved project's copy names its file
 {
     AutosaveFixture f;
     auto session = f.makeSession();
-    const auto song = f.folder.getChildFile("Song.aural");
+    const auto song = f.folder.getChildFile("Song.northlight");
     REQUIRE(session->save(song).empty());
     f.addTrack(*session, "Bass");
     REQUIRE(session->autosaveNow());
@@ -105,10 +106,10 @@ TEST_CASE("Saving removes the autosave and a saved project's copy names its file
     // A leftover for a saved project belongs to that file when restored.
     f.addTrack(*session, "Keys");
     REQUIRE(session->autosaveNow());
-    REQUIRE(copy.copyFileTo(f.folder.getChildFile("x.aural")));
+    REQUIRE(copy.copyFileTo(f.folder.getChildFile("x.northlight")));
     REQUIRE(copy.withFileExtension("json").copyFileTo(f.folder.getChildFile("x.json")));
     session.reset();
-    REQUIRE(f.folder.getChildFile("x.aural").copyFileTo(copy));
+    REQUIRE(f.folder.getChildFile("x.northlight").copyFileTo(copy));
     REQUIRE(f.folder.getChildFile("x.json").copyFileTo(copy.withFileExtension("json")));
     auto next = f.makeSession();
     const auto leftovers = next->leftoverAutosaves();

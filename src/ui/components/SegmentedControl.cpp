@@ -1,8 +1,8 @@
 #include "ui/components/SegmentedControl.h"
 
-#include "ui/AuralLookAndFeel.h"
+#include "ui/NorthlightLookAndFeel.h"
 
-namespace aural::ui
+namespace northlight::ui
 {
 
 namespace
@@ -121,7 +121,7 @@ void SegmentedControl::paint(juce::Graphics& g)
         g.drawText(
             labels_[static_cast<size_t>(i)], segmentBounds(i).toNearestInt(), juce::Justification::centred);
     }
-    if (auto* lnf = dynamic_cast<AuralLookAndFeel*>(&getLookAndFeel()))
+    if (auto* lnf = dynamic_cast<NorthlightLookAndFeel*>(&getLookAndFeel()))
         lnf->drawFocusRing(g, *this, bounds, radius);
 }
 
@@ -153,4 +153,4 @@ std::unique_ptr<juce::AccessibilityHandler> SegmentedControl::createAccessibilit
         juce::AccessibilityHandler::Interfaces{std::make_unique<ValueInterface<SegmentedControl>>(*this)});
 }
 
-} // namespace aural::ui
+} // namespace northlight::ui

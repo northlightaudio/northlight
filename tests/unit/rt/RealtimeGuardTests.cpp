@@ -10,7 +10,7 @@
 // ScopedRealtimeSection is alive. Observations are captured into locals inside the
 // section and checked after it ends.
 
-using namespace aural::rt;
+using namespace northlight::rt;
 
 namespace
 {
@@ -69,19 +69,19 @@ TEST_CASE("ScopedRealtimeSuspend temporarily clears the flag", "[rt]")
     CHECK(afterSuspend);
 }
 
-TEST_CASE("AURAL_ASSERT_NOT_REALTIME reports only on real-time threads", "[rt]")
+TEST_CASE("NORTHLIGHT_ASSERT_NOT_REALTIME reports only on real-time threads", "[rt]")
 {
     HandlerScope scope;
 
-    AURAL_ASSERT_NOT_REALTIME("lock in test");
+    NORTHLIGHT_ASSERT_NOT_REALTIME("lock in test");
     CHECK(violationCount == 0);
 
     {
         ScopedRealtimeSection section;
-        AURAL_ASSERT_NOT_REALTIME("lock in test");
+        NORTHLIGHT_ASSERT_NOT_REALTIME("lock in test");
     }
 
-#if defined(AURAL_RT_CHECKS)
+#if defined(NORTHLIGHT_RT_CHECKS)
     CHECK(violationCount == 1);
     CHECK(lastKind == ViolationKind::explicitAssert);
 #else
@@ -89,7 +89,7 @@ TEST_CASE("AURAL_ASSERT_NOT_REALTIME reports only on real-time threads", "[rt]")
 #endif
 }
 
-#if defined(AURAL_RT_CHECKS)
+#if defined(NORTHLIGHT_RT_CHECKS)
 
 TEST_CASE("Allocation on a real-time thread is reported", "[rt]")
 {
@@ -158,4 +158,4 @@ TEST_CASE("Preallocated containers do not trigger violations", "[rt]")
     CHECK(buffer.size() == 1024);
 }
 
-#endif // AURAL_RT_CHECKS
+#endif // NORTHLIGHT_RT_CHECKS

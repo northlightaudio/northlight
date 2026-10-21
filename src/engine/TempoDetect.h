@@ -9,7 +9,7 @@
 // onset envelope's autocorrelation), and from its length (a loop is usually a
 // whole number of bars). Not real-time.
 
-namespace aural::engine
+namespace northlight::engine
 {
 
 struct TempoGuess
@@ -54,4 +54,4 @@ TempoGuess guessTempo(const std::string& name,
                       std::int64_t length,
                       double sampleRate);
 
-} // namespace aural::engine
+} // namespace northlight::engine

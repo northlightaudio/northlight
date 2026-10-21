@@ -12,7 +12,7 @@
 #include <cmath>
 #include <vector>
 
-using namespace aural;
+using namespace northlight;
 using Catch::Approx;
 
 namespace
@@ -180,7 +180,8 @@ TEST_CASE("Bouncing stems writes one file per track with the others muted", "[ap
     p.nextId = 100;
     hosting::PluginRegistry registry;
     hosting::HostFactory factory(registry);
-    const auto folder = juce::File::getSpecialLocation(juce::File::tempDirectory).getChildFile("aural-stems");
+    const auto folder =
+        juce::File::getSpecialLocation(juce::File::tempDirectory).getChildFile("northlight-stems");
     folder.deleteRecursively();
     BounceJob::Options options;
     options.output = folder;
@@ -210,8 +211,8 @@ TEST_CASE("The demo song bounces to a full, unclipped mix with every section sou
 
     hosting::PluginRegistry registry;
     hosting::HostFactory factory(registry);
-    // AURAL_DEMO_BOUNCE names where to keep the mix (to listen to it).
-    const auto kept = juce::SystemStats::getEnvironmentVariable("AURAL_DEMO_BOUNCE", {});
+    // NORTHLIGHT_DEMO_BOUNCE names where to keep the mix (to listen to it).
+    const auto kept = juce::SystemStats::getEnvironmentVariable("NORTHLIGHT_DEMO_BOUNCE", {});
     const auto out =
         kept.isNotEmpty()
             ? juce::File(kept)

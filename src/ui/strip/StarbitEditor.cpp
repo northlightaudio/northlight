@@ -3,20 +3,20 @@
 // whole steps, windows with notched corners, and displays drawn on a grid of
 // cells with scanlines over them. The wave display is also the wave editor:
 // with the Wave shape chosen, click and drag to set its 32 steps. The knobs
-// stay the app's own, so the synth still plays like the rest of Aural.
+// stay the app's own, so the synth still plays like the rest of Northlight.
 
 #include "ui/strip/StarbitEditor.h"
 
 #include "plugins/BeatSync.h"
 #include "plugins/Starbit.h"
-#include "ui/AuralLookAndFeel.h"
+#include "ui/NorthlightLookAndFeel.h"
 #include "ui/strip/StripStyle.h"
 #include "ui/strip/SynthParts.h"
 
 #include <array>
 #include <cmath>
 
-namespace aural::ui::strip
+namespace northlight::ui::strip
 {
 
 namespace
@@ -586,7 +586,7 @@ public:
                       knob(sb::level, "Level", hues_.lofi)};
         for (auto* b : {&previous_, &next_, &presetName_})
         {
-            b->getProperties().set(AuralLookAndFeel::propertyVariant, "ghost");
+            b->getProperties().set(NorthlightLookAndFeel::propertyVariant, "ghost");
             addAndMakeVisible(b);
         }
         previous_.setTooltip("Previous preset");
@@ -747,7 +747,7 @@ private:
         g.setFont(
             theme_.font(Theme::Face::mono, theme_.fonts.size.caption - 1.0f, theme_.fonts.weight.semibold));
         g.setColour(theme_.colours.textTertiary);
-        g.drawText(juce::String::fromUTF8("CHIP SYNTH  \xc2\xb7  AURAL"),
+        g.drawText(juce::String::fromUTF8("CHIP SYNTH  \xc2\xb7  NORTHLIGHT"),
                    juce::Rectangle<float>(x + 6.0f, y + 2.0f * px, 160.0f, 14.0f),
                    juce::Justification::centredLeft);
     }
@@ -892,4 +892,4 @@ createStarbitEditor(const Theme& theme, CardHost& host, core::Id channelId, cons
     return std::make_unique<StarbitCard>(theme, host, channelId, insert);
 }
 
-} // namespace aural::ui::strip
+} // namespace northlight::ui::strip

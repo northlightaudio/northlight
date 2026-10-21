@@ -6,7 +6,7 @@
 // real-time safe; called from the audio callback. Replaced by the engine graph in
 // Phase 2 but kept as the simplest possible "is audio flowing" path.
 
-namespace aural::audio
+namespace northlight::audio
 {
 
 // Copies inputs to outputs with a linear gain ramp from `gainStart` to `gainEnd`
@@ -28,4 +28,4 @@ void renderPassThrough(const float* const* inputs,
 // Writes silence to every output channel.
 void renderSilence(float* const* outputs, int numOutputs, int numSamples) noexcept;
 
-} // namespace aural::audio
+} // namespace northlight::audio

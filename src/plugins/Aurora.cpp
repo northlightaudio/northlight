@@ -10,7 +10,7 @@
 #include <cstdint>
 #include <numbers>
 
-namespace aural::plugins::aurora
+namespace northlight::plugins::aurora
 {
 
 namespace
@@ -455,7 +455,7 @@ float shapeAt(float shape, float phase) noexcept
 
 std::unique_ptr<engine::InsertProcessor> create()
 {
-    AURAL_ASSERT_NOT_REALTIME("aurora::create");
+    NORTHLIGHT_ASSERT_NOT_REALTIME("aurora::create");
     return std::make_unique<Aurora>();
 }
 
@@ -607,4 +607,4 @@ const std::vector<Preset>& presets()
     return list;
 }
 
-} // namespace aural::plugins::aurora
+} // namespace northlight::plugins::aurora

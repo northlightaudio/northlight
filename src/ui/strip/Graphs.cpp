@@ -5,7 +5,7 @@
 
 #include <cmath>
 
-namespace aural::ui::strip
+namespace northlight::ui::strip
 {
 
 namespace
@@ -743,4 +743,4 @@ void LevelBars::paint(juce::Graphics& g)
     }
 }
 
-} // namespace aural::ui::strip
+} // namespace northlight::ui::strip

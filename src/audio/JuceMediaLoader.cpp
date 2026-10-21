@@ -6,7 +6,7 @@
 
 #include <cmath>
 
-namespace aural::audio
+namespace northlight::audio
 {
 
 namespace
@@ -47,7 +47,7 @@ juce::String JuceMediaLoader::supportedExtensions() const
 
 std::optional<JuceMediaLoader::Info> JuceMediaLoader::probe(const std::string& path, std::string& error)
 {
-    AURAL_ASSERT_NOT_REALTIME("JuceMediaLoader::probe");
+    NORTHLIGHT_ASSERT_NOT_REALTIME("JuceMediaLoader::probe");
     const juce::File file{juce::String(path)};
     if (!file.existsAsFile())
     {
@@ -66,7 +66,7 @@ std::optional<JuceMediaLoader::Info> JuceMediaLoader::probe(const std::string& p
 std::shared_ptr<engine::AudioSource>
 JuceMediaLoader::load(const std::string& path, double targetSampleRate, std::string& error)
 {
-    AURAL_ASSERT_NOT_REALTIME("JuceMediaLoader::load");
+    NORTHLIGHT_ASSERT_NOT_REALTIME("JuceMediaLoader::load");
     const juce::File file{juce::String(path)};
     if (!file.existsAsFile())
     {
@@ -135,4 +135,4 @@ JuceMediaLoader::load(const std::string& path, double targetSampleRate, std::str
     return std::make_shared<engine::MemoryAudioSource>(std::move(channels), reader->sampleRate);
 }
 
-} // namespace aural::audio
+} // namespace northlight::audio

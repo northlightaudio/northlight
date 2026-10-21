@@ -4,7 +4,7 @@
 
 #include <cmath>
 
-namespace aural::ui
+namespace northlight::ui
 {
 
 namespace
@@ -216,4 +216,4 @@ std::unique_ptr<juce::AccessibilityHandler> Meter::createAccessibilityHandler()
         juce::AccessibilityHandler::Interfaces{std::make_unique<MeterValue>(*this)});
 }
 
-} // namespace aural::ui
+} // namespace northlight::ui

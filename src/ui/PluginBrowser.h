@@ -11,7 +11,7 @@
 #include <utility>
 #include <vector>
 
-namespace aural::ui
+namespace northlight::ui
 {
 
 // The plugin browser (07-plugins.md 7.4): a search field with format and
@@ -100,4 +100,4 @@ private:
     bool scanning_ = false;
 };
 
-} // namespace aural::ui
+} // namespace northlight::ui

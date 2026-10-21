@@ -1,12 +1,12 @@
 #include "ui/InsertEditor.h"
 
 #include "plugins/BuiltIns.h"
-#include "ui/AuralLookAndFeel.h"
+#include "ui/NorthlightLookAndFeel.h"
 #include "ui/strip/BuiltInCards.h"
 
 #include <cmath>
 
-namespace aural::ui
+namespace northlight::ui
 {
 
 InsertEditor::InsertEditor(core::Id channelId,
@@ -27,7 +27,7 @@ InsertEditor::InsertEditor(core::Id channelId,
     addAndMakeVisible(title_);
 
     bypass_.setClickingTogglesState(true);
-    bypass_.getProperties().set(AuralLookAndFeel::propertySemantic, "mute");
+    bypass_.getProperties().set(NorthlightLookAndFeel::propertySemantic, "mute");
     bypass_.setVisible(!embedded_);
     bypass_.onClick = [this]
     {
@@ -264,4 +264,4 @@ void InsertEditor::resized()
     }
 }
 
-} // namespace aural::ui
+} // namespace northlight::ui

@@ -9,8 +9,8 @@
 #include <numbers>
 #include <vector>
 
-using aural::engine::LoudnessMeter;
 using Catch::Approx;
+using northlight::engine::LoudnessMeter;
 
 namespace
 {
@@ -83,11 +83,11 @@ TEST_CASE("Silence reads as minus infinity and short-term lags momentary", "[eng
     CHECK(after.shortTermLufs < after.momentaryLufs - 3.0f); // only 0.5 s of its 3 s window is loud
 }
 
-#if defined(AURAL_RT_CHECKS)
+#if defined(NORTHLIGHT_RT_CHECKS)
 namespace
 {
 std::atomic<int> loudnessViolations{0};
-void countLoudnessViolation(const aural::rt::Violation&) noexcept
+void countLoudnessViolation(const northlight::rt::Violation&) noexcept
 {
     loudnessViolations.fetch_add(1, std::memory_order_relaxed);
 }
@@ -101,14 +101,14 @@ TEST_CASE("Loudness processing does not allocate on a real-time thread", "[engin
     for (int i = 0; i < 256; ++i)
         l[static_cast<size_t>(i)] = r[static_cast<size_t>(i)] =
             0.1f * static_cast<float>(std::sin(2.0 * std::numbers::pi * 1000.0 * i / 48000.0));
-    const auto previous = aural::rt::setViolationHandler(&countLoudnessViolation);
+    const auto previous = northlight::rt::setViolationHandler(&countLoudnessViolation);
     loudnessViolations = 0;
     {
-        aural::rt::ScopedRealtimeSection section;
+        northlight::rt::ScopedRealtimeSection section;
         for (int block = 0; block < 200; ++block)
             meter.processBlock(l.data(), r.data(), 256);
     }
-    aural::rt::setViolationHandler(previous);
+    northlight::rt::setViolationHandler(previous);
     CHECK(loudnessViolations == 0);
 }
 #endif

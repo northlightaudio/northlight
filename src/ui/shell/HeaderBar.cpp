@@ -1,10 +1,10 @@
 #include "ui/shell/HeaderBar.h"
 
-#include "ui/AuralLookAndFeel.h"
+#include "ui/NorthlightLookAndFeel.h"
 
 #include <algorithm>
 
-namespace aural::ui
+namespace northlight::ui
 {
 
 // ----- time display ---------------------------------------------------------------------------
@@ -42,7 +42,7 @@ void TimeDisplay::paint(juce::Graphics& g)
     const auto& c = theme_.colours;
     const auto& m = theme_.material;
     const auto bounds = getLocalBounds().toFloat();
-    auto* lnf = dynamic_cast<AuralLookAndFeel*>(&getLookAndFeel());
+    auto* lnf = dynamic_cast<NorthlightLookAndFeel*>(&getLookAndFeel());
     if (framed_)
     {
         g.setColour(m.enabled ? m.readoutWell : c.surface2);
@@ -157,7 +157,7 @@ void TimeDisplay::endTyping(bool commit)
 // ----- header bar -----------------------------------------------------------------------------
 
 HeaderBar::HeaderBar(const Theme& theme)
-    : theme_(theme), app_(theme, Icon::mark, "Aural: About, Preferences, Audio Setup, Plugins"),
+    : theme_(theme), app_(theme, Icon::mark, "Northlight: About, Preferences, Audio Setup, Plugins"),
       undo_(theme, Icon::undo, "Undo  Ctrl+Z"), redo_(theme, Icon::redo, "Redo  Ctrl+Shift+Z"),
       goToStart_(theme, Icon::goToStart, "Go to start  Enter"), play_(theme, Icon::play, "Play  Space"),
       stop_(theme, Icon::stop, "Stop  Space"), record_(theme, Icon::record, "Record  R"),
@@ -210,8 +210,8 @@ HeaderBar::HeaderBar(const Theme& theme)
     snap_.setShowsMenuChevron(true);
     snap_.setSize(theme_.sizes.control + theme_.spacing.sm, theme_.sizes.control);
 
-    project_.getProperties().set(AuralLookAndFeel::propertyVariant, "ghost");
-    project_.getProperties().set(AuralLookAndFeel::propertyMenu, true);
+    project_.getProperties().set(NorthlightLookAndFeel::propertyVariant, "ghost");
+    project_.getProperties().set(NorthlightLookAndFeel::propertyMenu, true);
     project_.onClick = [this]
     {
         if (onProjectMenu)
@@ -272,7 +272,7 @@ HeaderBar::HeaderBar(const Theme& theme)
     time_.setFramed(false);
     tempo_.setReadout(true);
     tempo_.setUnit("BPM");
-    signature_.getProperties().set(AuralLookAndFeel::propertyVariant, "readout");
+    signature_.getProperties().set(NorthlightLookAndFeel::propertyVariant, "readout");
     signature_.setColour(juce::ComboBox::textColourId,
                          theme_.material.enabled ? theme_.material.readoutText : theme_.colours.textPrimary);
     for (const char* s : {"2/4", "3/4", "4/4", "5/4", "6/8", "7/8", "12/8"})
@@ -382,7 +382,7 @@ void HeaderBar::paint(juce::Graphics& g)
 {
     const auto& c = theme_.colours;
     const auto& m = theme_.material;
-    auto* lnf = dynamic_cast<AuralLookAndFeel*>(&getLookAndFeel());
+    auto* lnf = dynamic_cast<NorthlightLookAndFeel*>(&getLookAndFeel());
     g.fillAll(c.surface0);
     // The bar's lower edge.
     g.setColour(c.lineSubtle);
@@ -520,4 +520,4 @@ void HeaderBar::resized()
     group(x, readout, true);
 }
 
-} // namespace aural::ui
+} // namespace northlight::ui

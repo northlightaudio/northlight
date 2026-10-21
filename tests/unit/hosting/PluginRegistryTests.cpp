@@ -2,7 +2,7 @@
 
 #include <catch2/catch_test_macros.hpp>
 
-using namespace aural::hosting;
+using namespace northlight::hosting;
 
 namespace
 {
@@ -38,10 +38,10 @@ TEST_CASE("A scanned file's plugins are listed by name and found by insert type"
     REQUIRE(found != nullptr);
     CHECK(found->path == "C:/VST3/a.vst3");
     CHECK(PluginRegistry::typeFor(*found) == "vst3:VST3-mid");
-    CHECK(r.findByType("aural.eq") == nullptr);
+    CHECK(r.findByType("northlight.eq") == nullptr);
     CHECK(r.findByType("vst3:nope") == nullptr);
     CHECK(PluginRegistry::isHostedType("vst3:x"));
-    CHECK_FALSE(PluginRegistry::isHostedType("aural.gain"));
+    CHECK_FALSE(PluginRegistry::isHostedType("northlight.gain"));
 
     // Rescanning a file replaces what it held before.
     r.setFileResults("C:/VST3/b.vst3", 300, {plugin("VST3-zeta", "Zeta 2", "")});
@@ -88,9 +88,20 @@ TEST_CASE("The registry round-trips through JSON and rejects other files", "[hos
 
     CHECK_FALSE(PluginRegistry::fromJson("not json", &error).has_value());
     CHECK(error == "not valid JSON");
-    CHECK_FALSE(PluginRegistry::fromJson(R"({"format":"aural.project"})", &error).has_value());
-    CHECK_FALSE(PluginRegistry::fromJson(R"({"format":"aural.plugins","version":2})", &error).has_value());
-    const auto empty = PluginRegistry::fromJson(R"({"format":"aural.plugins","version":1})", &error);
+    CHECK_FALSE(PluginRegistry::fromJson(R"({"format":"northlight.project"})", &error).has_value());
+    CHECK_FALSE(
+        PluginRegistry::fromJson(R"({"format":"northlight.plugins","version":2})", &error).has_value());
+    const auto empty = PluginRegistry::fromJson(R"({"format":"northlight.plugins","version":1})", &error);
     REQUIRE(empty.has_value());
     CHECK(empty->plugins().empty());
+}
+
+TEST_CASE("A plugin list saved by Aural still loads", "[hosting]")
+{
+    PluginRegistry registry;
+    auto text = registry.toJson();
+    const auto at = text.find("northlight.plugins");
+    REQUIRE(at != std::string::npos);
+    text.replace(at, std::string("northlight.plugins").size(), "aural.plugins");
+    CHECK(PluginRegistry::fromJson(text).has_value());
 }

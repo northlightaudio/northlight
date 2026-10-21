@@ -14,7 +14,7 @@
 // parameter changes travel this way). Controller thread writes the targets
 // (atomics); only the real-time thread touches the current values.
 
-namespace aural::engine
+namespace northlight::engine
 {
 
 struct ChannelRuntime
@@ -184,4 +184,4 @@ private:
     std::shared_ptr<MasterRuntime> master_;
 };
 
-} // namespace aural::engine
+} // namespace northlight::engine

@@ -14,7 +14,7 @@
 // (TakeGroup::clips names them); every command here that changes what plays
 // rebuilds those clips from the takes and the segments, reusing their ids.
 
-namespace aural::core
+namespace northlight::core
 {
 
 // The default crossfade at a comp boundary: 10 ms at the rate.
@@ -209,4 +209,4 @@ private:
 std::vector<std::unique_ptr<Command>>
 moveTakeToNewTrack(const Project& project, Id trackId, Id groupId, Id takeId);
 
-} // namespace aural::core
+} // namespace northlight::core

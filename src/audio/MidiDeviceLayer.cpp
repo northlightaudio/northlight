@@ -5,13 +5,13 @@
 #include <algorithm>
 #include <chrono>
 
-namespace aural::audio
+namespace northlight::audio
 {
 
 class MidiDeviceLayer::Sender final : public juce::Thread
 {
 public:
-    explicit Sender(MidiDeviceLayer& owner) : juce::Thread("Aural MIDI out"), owner_(owner) {}
+    explicit Sender(MidiDeviceLayer& owner) : juce::Thread("Northlight MIDI out"), owner_(owner) {}
     void run() override
     {
         while (!threadShouldExit())
@@ -347,4 +347,4 @@ void MidiDeviceLayer::handleIncomingMidiMessage(juce::MidiInput* source, const j
     engine->pushMidiInput(event, {}, arrival);
 }
 
-} // namespace aural::audio
+} // namespace northlight::audio

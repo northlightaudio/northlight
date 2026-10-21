@@ -4,7 +4,7 @@
 
 #include <chrono>
 
-namespace aural::engine
+namespace northlight::engine
 {
 
 DiskThread::DiskThread(int idleMilliseconds) : idleMilliseconds_(idleMilliseconds), thread_([this] { run(); })
@@ -21,7 +21,7 @@ DiskThread::~DiskThread()
 
 void DiskThread::add(const std::shared_ptr<StreamingAudioSource>& source)
 {
-    AURAL_ASSERT_NOT_REALTIME("DiskThread::add");
+    NORTHLIGHT_ASSERT_NOT_REALTIME("DiskThread::add");
     {
         const std::lock_guard<std::mutex> lock(mutex_);
         std::erase_if(sources_, [](const auto& weak) { return weak.expired(); });
@@ -71,4 +71,4 @@ void DiskThread::run()
     }
 }
 
-} // namespace aural::engine
+} // namespace northlight::engine
