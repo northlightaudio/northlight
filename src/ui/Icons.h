@@ -69,7 +69,7 @@ enum class Icon
     midiPort,
     detach,
     attach,
-    mark, // the Northlight mark: a circle with one waveform stroke
+    mark, // the Northlight mark: Moonrise, a half moon over the horizon
     pianoRoll,
     diagnostics,
     menu,

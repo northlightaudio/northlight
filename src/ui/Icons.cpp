@@ -92,11 +92,9 @@ const Definition definitions[Icons::count] = {
      false},
     {"detach", "M9 2.5 H13.5 V7 M13.5 2.5 L8 8 M6.5 4 H3 V13 H12 V9.5", false},
     {"attach", "M7 9 H2.5 V13.5 M2.5 13.5 L8 8 M13 2.5 H4 V5.5 M13 2.5 V11.5 H10.5", false},
-    // The brand mark (docs/design/15-brand.md): a moon over a waveform horizon.
-    {"mark",
-     "M1.5 11 H3.5 L4.5 10 L5.5 12.25 L6.5 9 L7.5 13 L8.5 10 L9.5 11.75 L10.5 11 H14.5",
-     false,
-     "M13.125 4.75 A2.375 2.375 0 1 1 13.115 4.75 Z"},
+    // The brand mark (docs/design/15-brand.md): Moonrise, a half moon over the horizon (its reflection left
+    // out at 16 px).
+    {"mark", "M1.75 11 H14.25", false, "M4.25 9 A3.75 3.75 0 0 1 11.75 9 Z"},
     {"pianoRoll", "M2.5 3.5 H13.5 V12.5 H2.5 Z M5.5 3.5 V12.5 M9.5 3.5 V12.5 M2.5 8 H13.5", false},
     {"diagnostics", "M2 9 H4.5 L6.5 4 L9.5 12 L11.5 7 H14", false},
     {"menu", "M3 4.5 H13 M3 8 H13 M3 11.5 H13", false},

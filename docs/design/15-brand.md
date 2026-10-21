@@ -22,8 +22,9 @@ light the longest, and a moon comes up before it is dark. Northlight borrows tha
 
 ## The mark
 
-A moon over a waveform horizon. The horizon is flat, breaks into a short burst of sound
-and settles flat again; the moon sits low and to the right, as it did in the moodboard.
+Moonrise: a half moon risen over the horizon, its light broken on the water below in
+two fading strokes. The reflection is the Hebridean sea at dusk, and, quietly, a pair of
+levels.
 
 | File (in `assets/brand/`) | Use |
 |---|---|
@@ -33,11 +34,14 @@ and settles flat again; the moon sits low and to the right, as it did in the moo
 | `northlight-lockup.svg` and `-on-light`, `-mono` | The mark with the wordmark, for the website, the about screen, documents |
 | `northlight-icon-{16,32,48,256,1024}.png` | The app icon: the mark on a rounded Peat square |
 
-All of them come from `scripts/brand-assets.py`, which holds the geometry once (a
-64-unit grid: the moon at 43, 19 with radius 9.5; the horizon's points; a 5-unit stroke)
-and outlines the wordmark from Newsreader. Change the mark there and regenerate; the
-app's 16 px version is the `mark` entry in `src/ui/Icons.cpp`, the same shape scaled to
-a quarter.
+All of them come from `scripts/brand-assets.py`, which holds the geometry once, on a
+64-unit grid: the half moon's base centred at 32, 28 with radius 15; the horizon from 7 to
+57 at 35, a 4.5-unit stroke; the reflection at 22 to 42 (y 43, 55% opacity) and 27 to 37
+(y 50, 30%), 3.5-unit strokes in the moon's colour. It also outlines the wordmark from
+Newsreader. Change the mark there and regenerate. The app's 16 px version is the `mark`
+entry in `src/ui/Icons.cpp`: the moon and horizon at a quarter, without the reflection,
+which at that size reads as an equals sign. The app icon PNGs below 48 px leave it out
+too.
 
 Using the mark:
 
@@ -45,8 +49,10 @@ Using the mark:
 - **Minimum size**: 16 px for the mark alone; 96 px wide for the lockup.
 - **The wordmark sits on the horizon**: in the lockup the baseline of "Northlight" is
   the horizon line, and the mark is never placed after the word.
-- **Do not** recolour the moon in the accent, outline the moon, add a gradient or a glow,
-  rotate the mark, or set the wordmark in another face.
+- **On a photograph** (the splash), the whole mark is drawn in moonlight: the Overcast
+  horizon would vanish into an overcast sky.
+- **Do not** recolour the moon in the accent, outline the moon, make it a full circle,
+  add a gradient or a glow, rotate the mark, or set the wordmark in another face.
 
 ## Colour
 

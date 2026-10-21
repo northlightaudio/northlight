@@ -77,7 +77,7 @@ completeness.
   surfaces, an overcast-blue accent, moon-cream text, track colours from the land.
 - **Name**: Northlight. Wordmark in Newsreader, set on the mark's horizon line; the
   window title uses the project name.
-- **Mark**: a moon over a waveform horizon, the moon low and to the right. Used for the
+- **Mark**: Moonrise, a half moon risen over the horizon with its reflection on the water. Used for the
   app icon, the empty-project state, the about screen and the website. Files in
   `assets/brand/`, made by `scripts/brand-assets.py`.
 - **Palette direction**: a dark peat-green base, neutral surfaces stepping up by
