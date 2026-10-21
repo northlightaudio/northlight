@@ -57,6 +57,8 @@ public:
     void showPluginBrowser();
     // The piano roll panel on a MIDI clip.
     void openPianoRoll(core::Id trackId, core::Id clipId);
+    // The piano roll's lane by key (ui::PianoRoll::laneForKey: "velocity", "bend", "mod", "cc74").
+    void setPianoRollLane(const juce::String& key);
     // The audio editor on an audio clip, in pitch mode when asked.
     void openAudioEditor(core::Id trackId, core::Id clipId, bool pitch = false);
     // Launch-flag conveniences for the audio editor's pitch tools.

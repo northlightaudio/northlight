@@ -2465,6 +2465,12 @@ void MainWindow::openPianoRoll(core::Id trackId, core::Id clipId)
     }
 }
 
+void MainWindow::setPianoRollLane(const juce::String& key)
+{
+    if (auto* content = dynamic_cast<Content*>(getContentComponent()))
+        content->pianoRoll_.setLane(ui::PianoRoll::laneForKey(key));
+}
+
 void MainWindow::openAudioEditor(core::Id trackId, core::Id clipId, bool pitch)
 {
     if (auto* content = dynamic_cast<Content*>(getContentComponent()))

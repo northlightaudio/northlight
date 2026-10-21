@@ -331,7 +331,9 @@ and poly pressure) with bulk undoable edits and JSON (project version 6). The
 engine schedules them, chases each controller's value after a jump, loop or
 start, rests bend and pedals on stop, records them from live input, and
 delivers them to VST3, CLAP, the MIDI output and the built-in synths (bend, mod
-wheel vibrato, sustain pedal).
+wheel vibrato, sustain pedal). The piano roll's lane switches between velocity
+and a controller (draw freehand or a line, select, drag, erase), and a Scale
+toggle highlights the project key on the keys and rows.
 
 ### Phase 9 — Automation, stretch, polish (4 weeks)
 

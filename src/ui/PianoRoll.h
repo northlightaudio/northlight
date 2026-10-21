@@ -18,8 +18,10 @@ namespace aural::ui
 {
 
 // The piano roll (09-piano-roll.md): a toolbar (tool, snap, quantise, link zoom,
-// scale), a 64 px keyboard, a bar/beat ruler, the note grid and an 80 px
-// velocity lane. It edits one MIDI clip; the track's other clips show as ghosts.
+// audition, the scale highlight), a 64 px keyboard, a bar/beat ruler, the note
+// grid and an 80 px lane that shows the notes' velocities or one controller
+// (pitch bend, a CC, channel pressure; the menu on the lane's name picks it).
+// It edits one MIDI clip; the track's other clips show as ghosts.
 // Edits go out as commands (onEdit) and the view is refreshed from the model by
 // the owner, like the arrange view.
 //
@@ -30,6 +32,12 @@ namespace aural::ui
 // dragged across. Keys: 1/2/3 tools, Delete, Ctrl+A, Ctrl+D, Esc, Q quantises at
 // the menu's strength (Shift+Q the ends too), arrows nudge (Shift fine, Ctrl an
 // octave), + and - transpose, [ and ] change the grid.
+//
+// A controller lane draws each event as a point and its value as a step until
+// the next. Draw paints points freehand at the grid (every 4 px with snap off),
+// Shift+drag a straight line, replacing what was there in the span; Select
+// clicks, Shift adds, lassos and drags points (time and value, Shift one axis),
+// double-click adds; Erase removes what it touches; Delete removes the selection.
 class PianoRoll final : public juce::Component, private juce::ScrollBar::Listener
 {
 public:
@@ -81,6 +89,32 @@ public:
     void transposeSelection(int semitones);
     bool handleEditKey(const juce::KeyPress& key);
 
+    // What the lane under the grid shows: the notes' velocities, or one controller.
+    struct Lane
+    {
+        bool velocity = true;
+        core::MidiControllerType type = core::MidiControllerType::controller;
+        int number = 0; // the controller (control changes only)
+        bool operator==(const Lane&) const = default;
+        static Lane velocities() noexcept { return {}; }
+        static Lane controller(core::MidiControllerType type, int number = 0) noexcept
+        {
+            return {false, type, type == core::MidiControllerType::controller ? number : 0};
+        }
+    };
+    void setLane(Lane lane);
+    const Lane& lane() const noexcept { return lane_; }
+    // "Pitch bend", "CC 74 Cutoff"; brief: "BEND", "CC 74".
+    static juce::String laneName(const Lane& lane, bool brief = false);
+    // A lane by a short key ("velocity", "bend", "mod", "expression", "sustain",
+    // "pressure", "cc74"); velocities for anything else.
+    static Lane laneForKey(const juce::String& key);
+    const std::vector<core::Id>& controllerSelection() const noexcept { return ctlSelection_; }
+    void deleteControllerSelection();
+    // Shading the rows and keys outside the project key's scale (the Scale toggle).
+    void setScaleHighlight(bool on);
+    bool scaleHighlight() const noexcept { return scaleHighlight_; }
+
     void paint(juce::Graphics& g) override;
     void resized() override;
     void mouseDown(const juce::MouseEvent& e) override;
@@ -109,6 +143,15 @@ private:
         erase,
         key, // a key held on the keyboard
         pan, // the middle button drags the view
+        ctlDraw,
+        ctlMove,
+        ctlLasso,
+        ctlErase,
+    };
+    struct ControlPoint
+    {
+        core::SamplePosition time = 0;
+        int value = 0;
     };
 
     void scrollBarMoved(juce::ScrollBar* bar, double newRangeStart) override;
@@ -140,6 +183,25 @@ private:
     void fitToClip();
     core::MidiNote previewOf(const core::MidiNote& note) const noexcept;
     void drawTooltip(juce::Graphics& g, const juce::String& text, juce::Point<int> at);
+    // The controller lane.
+    juce::Rectangle<int> laneLabelArea() const noexcept;
+    int yForValue(int value) const noexcept;
+    int valueForY(int y) const noexcept;
+    core::SamplePosition laneTimeForX(int x) const noexcept;
+    core::SamplePosition drawStep() const noexcept;
+    std::vector<core::MidiControllerEvent> laneEvents() const;
+    std::vector<core::MidiControllerEvent> previewLaneEvents() const;
+    const core::MidiControllerEvent* controllerAt(juce::Point<int> p) const noexcept;
+    bool isControllerSelected(core::Id id) const noexcept;
+    juce::String valueText(int value) const;
+    void paintLane(juce::Graphics& g, juce::Rectangle<int> area, juce::Colour colour);
+    void showLaneMenu();
+    void laneMouseDown(const juce::MouseEvent& e);
+    void addDrawSegment(ControlPoint from, ControlPoint to);
+    void finishControllerDraw();
+    void finishControllerMove();
+    void finishControllerLasso();
+    void addControllerAt(juce::Point<int> p);
     void showSnapMenu();
     void showQuantiseMenu();
     void refreshToolbar();
@@ -171,6 +233,8 @@ private:
     SegmentedControl tools_;
     juce::TextButton snapButton_, quantiseButton_;
     IconButton link_, auditionButton_;
+    juce::TextButton scaleButton_;
+    bool scaleHighlight_ = true;
     bool audition_ = true;
     int auditioned_ = -1; // the note sounding while editing
 
@@ -194,6 +258,19 @@ private:
     int panVertical_ = 0;
     core::Id hoverNote_ = core::invalidId;
     bool hoverEdge_ = false;
+
+    // The controller lane.
+    Lane lane_;
+    bool laneFocus_ = false; // the last click was in the lane (Delete and Ctrl+A act there)
+    std::vector<core::Id> ctlSelection_;
+    std::map<core::SamplePosition, int> ctlDrawPoints_; // the points being drawn, by time
+    ControlPoint ctlDrawStart_, ctlDrawLast_;
+    bool ctlLine_ = false;
+    std::vector<core::Id> ctlErased_;
+    core::Id ctlDragId_ = core::invalidId;
+    core::MidiControllerEvent ctlOriginal_;
+    core::SamplePosition ctlMoveDelta_ = 0;
+    int ctlValueDelta_ = 0;
 };
 
 } // namespace aural::ui

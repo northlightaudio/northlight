@@ -4,6 +4,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <limits>
 
 namespace aural::ui
 {
@@ -74,6 +75,13 @@ PianoRoll::PianoRoll()
     auditionButton_.setToggleState(audition_, juce::dontSendNotification);
     auditionButton_.onClick = [this] { setAudition(auditionButton_.getToggleState()); };
     addAndMakeVisible(auditionButton_);
+    scaleButton_.setButtonText("Scale");
+    scaleButton_.getProperties().set(AuralLookAndFeel::propertyVariant, "ghost");
+    scaleButton_.setTooltip("Shade the notes outside the project key's scale and mark its notes on the keys");
+    scaleButton_.setClickingTogglesState(true);
+    scaleButton_.setToggleState(scaleHighlight_, juce::dontSendNotification);
+    scaleButton_.onClick = [this] { setScaleHighlight(scaleButton_.getToggleState()); };
+    addAndMakeVisible(scaleButton_);
     refreshToolbar();
 }
 
@@ -97,6 +105,7 @@ void PianoRoll::setClip(const core::Project* project, core::Id trackId, core::Id
         return;
     }
     std::erase_if(selection_, [c](core::Id id) { return c->findNote(id) == nullptr; });
+    std::erase_if(ctlSelection_, [c](core::Id id) { return c->findController(id) == nullptr; });
     if (!same)
         fitToClip();
     updateScrollbars();
@@ -395,6 +404,8 @@ void PianoRoll::resized()
     link_.setBounds(bar.removeFromLeft(theme_.sizes.controlCompact));
     bar.removeFromLeft(theme_.spacing.xs);
     auditionButton_.setBounds(bar.removeFromLeft(theme_.sizes.controlCompact));
+    bar.removeFromLeft(theme_.spacing.xs);
+    scaleButton_.setBounds(bar.removeFromLeft(56));
     horizontal_.setBounds(keyboardWidth,
                           getHeight() - scrollbarSize_,
                           std::max(0, getWidth() - keyboardWidth - scrollbarSize_),
@@ -547,9 +558,14 @@ void PianoRoll::paint(juce::Graphics& g)
             g.setColour(c.laneAlt);
             g.fillRect(grid.getX(), y, grid.getWidth(), rowHeight);
         }
-        if (key.isSet() && !key.contains(note))
+        if (scaleHighlight_ && key.isSet() && !key.contains(note))
         {
             g.setColour(c.canvas.withAlpha(0.45f));
+            g.fillRect(grid.getX(), y, grid.getWidth(), rowHeight);
+        }
+        else if (scaleHighlight_ && key.isSet() && note % 12 == key.root)
+        {
+            g.setColour(c.accentSubtle);
             g.fillRect(grid.getX(), y, grid.getWidth(), rowHeight);
         }
         if (note % 12 == 0)
@@ -693,11 +709,19 @@ void PianoRoll::paint(juce::Graphics& g)
         const bool black = isBlackKey(note);
         g.setColour(lit[static_cast<size_t>(note)] ? c.accent : black ? c.surface0 : c.surface2);
         g.fillRect(0, y, black ? keyboardWidth * 2 / 3 : keyboardWidth - 1, rowHeight - 1);
-        if (note % 12 == 0)
+        // The scale: a stripe on the keys in the project key, the root named.
+        const bool root = scaleHighlight_ && key.isSet() && note % 12 == key.root;
+        if (scaleHighlight_ && key.isSet() && key.contains(note) && !lit[static_cast<size_t>(note)])
         {
-            g.setColour(lit[static_cast<size_t>(note)] ? c.textOnAccent : c.textSecondary);
+            g.setColour(root ? c.accent : c.accent.withAlpha(0.45f));
+            g.fillRect(keyboardWidth - 5, y, 3, rowHeight - 1);
+        }
+        if (note % 12 == 0 || root)
+        {
+            g.setColour(lit[static_cast<size_t>(note)] ? c.textOnAccent : root ? c.accent : c.textSecondary);
             g.setFont(theme_.caption());
-            g.drawText(noteName(note), 4, y, keyboardWidth - 8, rowHeight, juce::Justification::centredRight);
+            g.drawText(
+                noteName(note), 4, y, keyboardWidth - 10, rowHeight, juce::Justification::centredRight);
         }
     }
     g.setColour(c.lineSubtle);
@@ -747,20 +771,53 @@ void PianoRoll::paint(juce::Graphics& g)
         g.restoreState();
     }
 
-    // Velocity lane: a bar per note with a 6 px cap.
+    // The lane: velocity (a bar per note with a 6 px cap) or a controller; its
+    // name opens the menu that picks it.
     g.setColour(c.surface0);
     g.fillRect(velocity.withX(0).withWidth(getWidth()));
     g.setColour(c.lineSubtle);
     g.fillRect(0, velocity.getY(), getWidth(), 1);
-    g.setColour(c.textTertiary);
-    g.setFont(theme_.captionCaps());
-    g.drawText("VEL",
-               0,
-               velocity.getY(),
-               keyboardWidth - theme_.spacing.sm,
-               theme_.sizes.controlCompact,
-               juce::Justification::centredRight);
-    if (clipModel != nullptr)
+    {
+        auto label = laneLabelArea();
+        const int chevron = 10;
+        g.setColour(c.textTertiary);
+        g.setFont(theme_.captionCaps());
+        g.drawText(laneName(lane_, true),
+                   label.withTrimmedRight(theme_.spacing.sm + chevron),
+                   juce::Justification::centredRight);
+        Icons::draw(g,
+                    Icon::chevronDown,
+                    label.removeFromRight(theme_.spacing.sm + chevron)
+                        .withSizeKeepingCentre(chevron, chevron)
+                        .toFloat(),
+                    c.textTertiary);
+        if (!lane_.velocity)
+        {
+            g.setFont(theme_.caption());
+            const int low = core::midiControllerMinimum(lane_.type),
+                      high = core::midiControllerMaximum(lane_.type);
+            g.drawText(juce::String(high > 127 ? "+" : "") + juce::String(high),
+                       0,
+                       std::max(yForValue(high) - 2, laneLabelArea().getBottom()),
+                       keyboardWidth - theme_.spacing.sm,
+                       12,
+                       juce::Justification::centredRight);
+            g.drawText(juce::String(low),
+                       0,
+                       yForValue(low) - 10,
+                       keyboardWidth - theme_.spacing.sm,
+                       12,
+                       juce::Justification::centredRight);
+        }
+    }
+    if (clipModel != nullptr && !lane_.velocity)
+    {
+        g.saveState();
+        g.reduceClipRegion(velocity);
+        paintLane(g, velocity, colour);
+        g.restoreState();
+    }
+    else if (clipModel != nullptr)
     {
         g.saveState();
         g.reduceClipRegion(velocity);
@@ -824,6 +881,18 @@ void PianoRoll::mouseDown(const juce::MouseEvent& e)
         return;
     }
 
+    laneFocus_ = velocityArea().contains(e.getPosition());
+    if (laneLabelArea().contains(e.getPosition()))
+    {
+        showLaneMenu();
+        return;
+    }
+    if (velocityArea().contains(e.getPosition()) && !lane_.velocity)
+    {
+        if (!e.mods.isPopupMenu())
+            laneMouseDown(e);
+        return;
+    }
     if (velocityArea().contains(e.getPosition()))
     {
         velocityRamp_.clear();
@@ -936,6 +1005,49 @@ void PianoRoll::mouseDrag(const juce::MouseEvent& e)
         }
         case Drag::erase:
             eraseAt(e.getPosition());
+            break;
+        case Drag::ctlErase:
+            if (const auto* hit = controllerAt(e.getPosition()))
+                if (std::find(ctlErased_.begin(), ctlErased_.end(), hit->id) == ctlErased_.end())
+                    ctlErased_.push_back(hit->id);
+            break;
+        case Drag::ctlDraw:
+        {
+            const ControlPoint point{laneTimeForX(x), valueForY(e.y)};
+            if (ctlLine_)
+            {
+                ctlDrawPoints_.clear();
+                addDrawSegment(ctlDrawStart_, point);
+            }
+            else
+                addDrawSegment(ctlDrawLast_, point);
+            ctlDrawLast_ = point;
+            break;
+        }
+        case Drag::ctlMove:
+        {
+            const auto wanted = ctlOriginal_.time + (at - sampleForX(dragStart_.x));
+            ctlMoveDelta_ = snapped(wanted) - ctlOriginal_.time;
+            core::SamplePosition earliest = ctlOriginal_.time;
+            for (const auto& ev : laneEvents())
+                if (isControllerSelected(ev.id))
+                    earliest = std::min(earliest, ev.time);
+            ctlMoveDelta_ = std::max(ctlMoveDelta_, -earliest);
+            ctlValueDelta_ = valueForY(e.y) - ctlOriginal_.value;
+            if (e.mods.isShiftDown()) // one axis: whichever moved more
+            {
+                if (std::abs(e.x - dragStart_.x) > std::abs(e.y - dragStart_.y))
+                    ctlValueDelta_ = 0;
+                else
+                    ctlMoveDelta_ = 0;
+            }
+            break;
+        }
+        case Drag::ctlLasso:
+            lasso_ = juce::Rectangle<int>::leftTopRightBottom(std::min(dragStart_.x, x),
+                                                              std::min(dragStart_.y, e.y),
+                                                              std::max(dragStart_.x, x),
+                                                              std::max(dragStart_.y, e.y));
             break;
         case Drag::draw:
             drawNote_.length = std::max(minNoteLength, snapped(at) - drawNote_.start);
@@ -1056,6 +1168,36 @@ void PianoRoll::mouseUp(const juce::MouseEvent& e)
             if (draggedFar_)
                 finishVelocity();
             break;
+        case Drag::ctlDraw:
+            finishControllerDraw();
+            ctlDrawPoints_.clear();
+            break;
+        case Drag::ctlMove:
+            if (draggedFar_)
+                finishControllerMove();
+            else if (!e.mods.isShiftDown() && !e.mods.isCtrlDown())
+                ctlSelection_ = {ctlDragId_};
+            break;
+        case Drag::ctlLasso:
+            if (draggedFar_)
+                finishControllerLasso();
+            break;
+        case Drag::ctlErase:
+            if (!ctlErased_.empty())
+            {
+                for (const auto id : ctlErased_)
+                    std::erase(ctlSelection_, id);
+                std::vector<std::unique_ptr<core::Command>> commands;
+                commands.push_back(
+                    std::make_unique<core::EditMidiControllers>(trackId_,
+                                                                clipId_,
+                                                                std::vector<core::MidiControllerEvent>{},
+                                                                ctlErased_,
+                                                                "Erase controller points"));
+                emit(std::move(commands), "Erase controller points");
+            }
+            ctlErased_.clear();
+            break;
         case Drag::none:
             break;
     }
@@ -1096,7 +1238,14 @@ void PianoRoll::mouseExit(const juce::MouseEvent&)
 
 void PianoRoll::mouseDoubleClick(const juce::MouseEvent& e)
 {
-    // In Select mode a double-click on empty grid adds a note.
+    // In Select mode a double-click on empty grid adds a note (in a controller
+    // lane, a point).
+    if (tool_ == Tool::select && !lane_.velocity && velocityArea().contains(e.getPosition()) &&
+        controllerAt(e.getPosition()) == nullptr)
+    {
+        addControllerAt(e.getPosition());
+        return;
+    }
     if (tool_ != Tool::select || !gridArea().contains(e.getPosition()))
         return;
     bool onEdge = false;
@@ -1375,7 +1524,10 @@ bool PianoRoll::handleEditKey(const juce::KeyPress& key)
     { return key == juce::KeyPress(ch, juce::ModifierKeys::commandModifier, 0); };
     if (key == juce::KeyPress::deleteKey || key == juce::KeyPress::backspaceKey)
     {
-        deleteSelection();
+        if (laneFocus_ && !ctlSelection_.empty())
+            deleteControllerSelection();
+        else
+            deleteSelection();
         return true;
     }
     if (plain('1') || plain('3') || plain('4'))
@@ -1385,7 +1537,15 @@ bool PianoRoll::handleEditKey(const juce::KeyPress& key)
     }
     if (ctrl('a'))
     {
-        selectAll();
+        if (laneFocus_ && !lane_.velocity)
+        {
+            ctlSelection_.clear();
+            for (const auto& e : laneEvents())
+                ctlSelection_.push_back(e.id);
+            repaint();
+        }
+        else
+            selectAll();
         return true;
     }
     if (ctrl('d'))
@@ -1395,6 +1555,7 @@ bool PianoRoll::handleEditKey(const juce::KeyPress& key)
     }
     if (key == juce::KeyPress::escapeKey)
     {
+        ctlSelection_.clear();
         clearSelection();
         return true;
     }
@@ -1440,6 +1601,525 @@ bool PianoRoll::handleEditKey(const juce::KeyPress& key)
 bool PianoRoll::keyPressed(const juce::KeyPress& key)
 {
     return handleEditKey(key);
+}
+
+// ----- the controller lane --------------------------------------------------------------------
+
+namespace
+{
+// The names of the common controllers, for the lane menu and label.
+const char* controllerName(int number) noexcept
+{
+    switch (number)
+    {
+        case 0:
+            return "Bank select";
+        case 1:
+            return "Mod wheel";
+        case 2:
+            return "Breath";
+        case 4:
+            return "Foot";
+        case 5:
+            return "Portamento time";
+        case 7:
+            return "Volume";
+        case 8:
+            return "Balance";
+        case 10:
+            return "Pan";
+        case 11:
+            return "Expression";
+        case 64:
+            return "Sustain";
+        case 65:
+            return "Portamento";
+        case 66:
+            return "Sostenuto";
+        case 67:
+            return "Soft pedal";
+        case 71:
+            return "Resonance";
+        case 74:
+            return "Cutoff";
+        case 91:
+            return "Reverb";
+        case 93:
+            return "Chorus";
+        default:
+            return "";
+    }
+}
+} // namespace
+
+juce::String PianoRoll::laneName(const Lane& lane, bool brief)
+{
+    if (lane.velocity)
+        return brief ? "VEL" : "Velocity";
+    switch (lane.type)
+    {
+        case core::MidiControllerType::pitchBend:
+            return brief ? "BEND" : "Pitch bend";
+        case core::MidiControllerType::channelPressure:
+            return brief ? "PRESS" : "Channel pressure";
+        case core::MidiControllerType::polyPressure:
+            return brief ? "POLY" : "Poly pressure";
+        case core::MidiControllerType::controller:
+            break;
+    }
+    if (brief)
+        switch (lane.number)
+        {
+            case 1:
+                return "MOD";
+            case 11:
+                return "EXPR";
+            case 64:
+                return "SUS";
+            default:
+                return "CC " + juce::String(lane.number);
+        }
+    const juce::String name = controllerName(lane.number);
+    return "CC " + juce::String(lane.number) + (name.isEmpty() ? juce::String() : " " + name);
+}
+
+PianoRoll::Lane PianoRoll::laneForKey(const juce::String& key)
+{
+    const auto k = key.trim().toLowerCase();
+    if (k == "bend")
+        return Lane::controller(core::MidiControllerType::pitchBend);
+    if (k == "pressure")
+        return Lane::controller(core::MidiControllerType::channelPressure);
+    if (k == "mod")
+        return Lane::controller(core::MidiControllerType::controller, 1);
+    if (k == "expression")
+        return Lane::controller(core::MidiControllerType::controller, 11);
+    if (k == "sustain")
+        return Lane::controller(core::MidiControllerType::controller, 64);
+    if (k.startsWith("cc") && k.substring(2).containsOnly("0123456789") && k.length() > 2)
+        return Lane::controller(core::MidiControllerType::controller,
+                                std::clamp(k.substring(2).getIntValue(), 0, 127));
+    return Lane::velocities();
+}
+
+void PianoRoll::setLane(Lane lane)
+{
+    if (lane.type == core::MidiControllerType::polyPressure)
+        lane = Lane::velocities(); // per key: not a lane of its own
+    if (lane == lane_)
+        return;
+    lane_ = lane;
+    ctlSelection_.clear();
+    // A controller lane is taller: its values want the room.
+    velocityHeight_ = lane_.velocity ? 80 : 120;
+    resized();
+    repaint();
+}
+
+void PianoRoll::setScaleHighlight(bool on)
+{
+    scaleHighlight_ = on;
+    scaleButton_.setToggleState(on, juce::dontSendNotification);
+    repaint();
+}
+
+juce::Rectangle<int> PianoRoll::laneLabelArea() const noexcept
+{
+    return {0, velocityArea().getY() + 1, keyboardWidth, theme_.sizes.controlCompact};
+}
+
+int PianoRoll::yForValue(int value) const noexcept
+{
+    const auto area = velocityArea();
+    const int low = core::midiControllerMinimum(lane_.type), high = core::midiControllerMaximum(lane_.type);
+    const int top = area.getY() + 6, bottom = area.getBottom() - 4;
+    const double t =
+        static_cast<double>(std::clamp(value, low, high) - low) / static_cast<double>(high - low);
+    return bottom - static_cast<int>(std::lround(t * (bottom - top)));
+}
+
+int PianoRoll::valueForY(int y) const noexcept
+{
+    const auto area = velocityArea();
+    const int low = core::midiControllerMinimum(lane_.type), high = core::midiControllerMaximum(lane_.type);
+    const int top = area.getY() + 6, bottom = area.getBottom() - 4;
+    const double t = static_cast<double>(bottom - y) / static_cast<double>(std::max(1, bottom - top));
+    return std::clamp(low + static_cast<int>(std::lround(t * (high - low))), low, high);
+}
+
+core::SamplePosition PianoRoll::laneTimeForX(int x) const noexcept
+{
+    const auto* c = clip();
+    const auto last = c != nullptr ? std::max<core::SamplePosition>(0, c->length - 1) : 0;
+    return std::clamp<core::SamplePosition>(sampleForX(x), 0, last);
+}
+
+core::SamplePosition PianoRoll::drawStep() const noexcept
+{
+    const bool alt = juce::ModifierKeys::getCurrentModifiers().isAltDown();
+    if (snap_ && !alt)
+        return gridSamples();
+    return std::max<core::SamplePosition>(
+        1, static_cast<core::SamplePosition>(std::llround(4.0 * samplesPerPixel_)));
+}
+
+std::vector<core::MidiControllerEvent> PianoRoll::laneEvents() const
+{
+    std::vector<core::MidiControllerEvent> out;
+    if (const auto* c = clip(); c != nullptr && !lane_.velocity)
+        for (const auto& e : c->controllers)
+            if (e.sameLane(lane_.type, lane_.number))
+                out.push_back(e);
+    return out;
+}
+
+std::vector<core::MidiControllerEvent> PianoRoll::previewLaneEvents() const
+{
+    auto events = laneEvents();
+    if (drag_ == Drag::ctlMove && draggedFar_)
+    {
+        for (auto& e : events)
+            if (isControllerSelected(e.id))
+            {
+                e.time = std::max<core::SamplePosition>(0, e.time + ctlMoveDelta_);
+                e.value = std::clamp(e.value + ctlValueDelta_,
+                                     core::midiControllerMinimum(e.type),
+                                     core::midiControllerMaximum(e.type));
+            }
+    }
+    else if (drag_ == Drag::ctlDraw && !ctlDrawPoints_.empty())
+    {
+        const auto from = ctlDrawPoints_.begin()->first, to = ctlDrawPoints_.rbegin()->first;
+        std::erase_if(events,
+                      [&](const core::MidiControllerEvent& e) { return e.time >= from && e.time <= to; });
+        for (const auto& [time, value] : ctlDrawPoints_)
+            events.push_back({core::invalidId, lane_.type, lane_.number, value, time});
+    }
+    else if (drag_ == Drag::ctlErase)
+        std::erase_if(events,
+                      [&](const core::MidiControllerEvent& e)
+                      { return std::find(ctlErased_.begin(), ctlErased_.end(), e.id) != ctlErased_.end(); });
+    std::stable_sort(events.begin(),
+                     events.end(),
+                     [](const core::MidiControllerEvent& a, const core::MidiControllerEvent& b)
+                     { return a.time < b.time; });
+    return events;
+}
+
+const core::MidiControllerEvent* PianoRoll::controllerAt(juce::Point<int> p) const noexcept
+{
+    const auto* c = clip();
+    if (c == nullptr || lane_.velocity || !velocityArea().contains(p))
+        return nullptr;
+    const core::MidiControllerEvent* best = nullptr;
+    int bestDistance = 1 << 30;
+    for (const auto& e : c->controllers)
+    {
+        if (!e.sameLane(lane_.type, lane_.number) || e.time < 0)
+            continue;
+        const int dx = std::abs(xForSample(e.time) - p.x), dy = std::abs(yForValue(e.value) - p.y);
+        if (dx > 5 || dy > 8)
+            continue;
+        if (dx + dy < bestDistance)
+        {
+            best = &e;
+            bestDistance = dx + dy;
+        }
+    }
+    return best;
+}
+
+bool PianoRoll::isControllerSelected(core::Id id) const noexcept
+{
+    return std::find(ctlSelection_.begin(), ctlSelection_.end(), id) != ctlSelection_.end();
+}
+
+juce::String PianoRoll::valueText(int value) const
+{
+    if (lane_.type == core::MidiControllerType::pitchBend)
+        return (value > 0 ? "+" : "") + juce::String(value) + "  (" + (value > 0 ? "+" : "") +
+               juce::String(value / 8192.0 * 2.0, 2) + " st)";
+    if (lane_.type == core::MidiControllerType::controller && lane_.number >= 64 && lane_.number <= 69)
+        return juce::String(value) + (value >= 64 ? "  (on)" : "  (off)");
+    return juce::String(value);
+}
+
+void PianoRoll::paintLane(juce::Graphics& g, juce::Rectangle<int> area, juce::Colour colour)
+{
+    const auto& c = theme_.colours;
+    const auto* clipModel = clip();
+    if (clipModel == nullptr)
+        return;
+    const auto events = previewLaneEvents();
+    const bool bend = lane_.type == core::MidiControllerType::pitchBend;
+    const int base = bend ? yForValue(0) : area.getBottom() - 4;
+    // Guides: the bend's centre, or half way.
+    g.setColour(c.gridBeat);
+    g.fillRect(area.getX(), bend ? base : yForValue(64), area.getWidth(), 1);
+    const int end = xForSample(clipModel->length);
+    for (size_t i = 0; i < events.size(); ++i)
+    {
+        const auto& e = events[i];
+        if (e.time < 0)
+            continue;
+        const int x0 = xForSample(e.time);
+        const int x1 = i + 1 < events.size() ? xForSample(events[i + 1].time) : end;
+        if (x1 < area.getX() || x0 > area.getRight())
+            continue;
+        const int y = yForValue(e.value);
+        // The value holds as a step until the next event.
+        g.setColour(colour.withAlpha(0.22f));
+        g.fillRect(x0, std::min(y, base), std::max(1, x1 - x0), std::abs(base - y));
+        g.setColour(colour.withAlpha(0.9f));
+        g.fillRect(x0, y - 1, std::max(1, x1 - x0), 2);
+        if (i + 1 < events.size())
+        {
+            const int next = yForValue(events[i + 1].value);
+            g.fillRect(x1, std::min(y, next) - 1, 1, std::abs(next - y) + 2);
+        }
+    }
+    for (const auto& e : events)
+    {
+        if (e.time < 0)
+            continue;
+        const int x = xForSample(e.time), y = yForValue(e.value);
+        if (x < area.getX() - 4 || x > area.getRight() + 4)
+            continue;
+        const bool selected = e.id != core::invalidId && isControllerSelected(e.id);
+        g.setColour(colour.withAlpha(selected ? 1.0f : 0.85f));
+        g.fillRect(x - 3, y - 3, 6, 6);
+        g.setColour(selected ? c.textPrimary : c.canvas);
+        g.drawRect(x - 3, y - 3, 6, 6, 1);
+    }
+    if (drag_ == Drag::ctlLasso && draggedFar_)
+    {
+        g.setColour(c.selectionFill);
+        g.fillRect(lasso_);
+        g.setColour(c.selectionOutline);
+        g.drawRect(lasso_, 1);
+    }
+    if ((drag_ == Drag::ctlMove || drag_ == Drag::ctlDraw) && draggedFar_)
+    {
+        const int value = drag_ == Drag::ctlMove ? std::clamp(ctlOriginal_.value + ctlValueDelta_,
+                                                              core::midiControllerMinimum(lane_.type),
+                                                              core::midiControllerMaximum(lane_.type))
+                                                 : ctlDrawLast_.value;
+        drawTooltip(g, valueText(value), dragPoint_.translated(0, -40));
+    }
+}
+
+void PianoRoll::showLaneMenu()
+{
+    const auto* c = clip();
+    const auto has = [c](core::MidiControllerType type, int number)
+    {
+        return c != nullptr &&
+               std::any_of(c->controllers.begin(),
+                           c->controllers.end(),
+                           [&](const core::MidiControllerEvent& e) { return e.sameLane(type, number); });
+    };
+    const auto label = [&](const Lane& lane)
+    {
+        // A dot marks the lanes this clip has events in.
+        return laneName(lane) + (!lane.velocity && has(lane.type, lane.number)
+                                     ? juce::String(juce::CharPointer_UTF8("  \xe2\x80\xa2"))
+                                     : juce::String());
+    };
+    const Lane fixed[] = {Lane::velocities(),
+                          Lane::controller(core::MidiControllerType::pitchBend),
+                          Lane::controller(core::MidiControllerType::controller, 1),
+                          Lane::controller(core::MidiControllerType::controller, 11),
+                          Lane::controller(core::MidiControllerType::controller, 64),
+                          Lane::controller(core::MidiControllerType::channelPressure)};
+    juce::PopupMenu menu;
+    menu.addSectionHeader("Lane");
+    for (int i = 0; i < 6; ++i)
+        menu.addItem(1 + i, label(fixed[i]), true, lane_ == fixed[i]);
+    juce::PopupMenu others;
+    for (int number = 0; number < 128; ++number)
+    {
+        const auto lane = Lane::controller(core::MidiControllerType::controller, number);
+        others.addItem(100 + number, label(lane), true, lane_ == lane);
+    }
+    menu.addSubMenu("Other CC", others);
+    juce::Component::SafePointer<PianoRoll> safe(this);
+    menu.showMenuAsync(juce::PopupMenu::Options().withTargetScreenArea(localAreaToGlobal(laneLabelArea())),
+                       [safe, fixed](int choice)
+                       {
+                           if (safe == nullptr || choice == 0)
+                               return;
+                           if (choice >= 100)
+                               safe->setLane(
+                                   Lane::controller(core::MidiControllerType::controller, choice - 100));
+                           else if (choice >= 1 && choice <= 6)
+                               safe->setLane(fixed[choice - 1]);
+                       });
+}
+
+void PianoRoll::laneMouseDown(const juce::MouseEvent& e)
+{
+    const auto p = e.getPosition();
+    if (tool_ == Tool::erase)
+    {
+        drag_ = Drag::ctlErase;
+        ctlErased_.clear();
+        if (const auto* hit = controllerAt(p))
+            ctlErased_.push_back(hit->id);
+        repaint();
+        return;
+    }
+    if (tool_ == Tool::draw)
+    {
+        drag_ = Drag::ctlDraw;
+        draggedFar_ = true; // a click draws a point
+        ctlLine_ = e.mods.isShiftDown();
+        ctlDrawPoints_.clear();
+        ctlDrawStart_ = {laneTimeForX(p.x), valueForY(p.y)};
+        ctlDrawLast_ = ctlDrawStart_;
+        addDrawSegment(ctlDrawStart_, ctlDrawStart_);
+        repaint();
+        return;
+    }
+    if (const auto* hit = controllerAt(p))
+    {
+        if (e.mods.isShiftDown() || e.mods.isCtrlDown())
+        {
+            if (!isControllerSelected(hit->id))
+                ctlSelection_.push_back(hit->id);
+            else if (e.mods.isCtrlDown())
+                std::erase(ctlSelection_, hit->id);
+        }
+        else if (!isControllerSelected(hit->id))
+            ctlSelection_ = {hit->id};
+        ctlDragId_ = hit->id;
+        ctlOriginal_ = *hit;
+        ctlMoveDelta_ = 0;
+        ctlValueDelta_ = 0;
+        drag_ = isControllerSelected(hit->id) ? Drag::ctlMove : Drag::none;
+        repaint();
+        return;
+    }
+    if (!e.mods.isShiftDown())
+        ctlSelection_.clear();
+    drag_ = Drag::ctlLasso;
+    lasso_ = juce::Rectangle<int>(p.x, p.y, 0, 0);
+    repaint();
+}
+
+void PianoRoll::addDrawSegment(ControlPoint from, ControlPoint to)
+{
+    const auto step = drawStep();
+    const auto align = [step](core::SamplePosition t)
+    { return core::snapToGrid(std::max<core::SamplePosition>(0, t), step); };
+    const auto* c = clip();
+    const auto last = c != nullptr ? std::max<core::SamplePosition>(0, c->length - 1) : 0;
+    if (from.time > to.time)
+        std::swap(from, to);
+    const auto value = [&](core::SamplePosition t)
+    {
+        if (to.time == from.time)
+            return to.value;
+        const double f = static_cast<double>(t - from.time) / static_cast<double>(to.time - from.time);
+        return static_cast<int>(std::lround(from.value + (to.value - from.value) * std::clamp(f, 0.0, 1.0)));
+    };
+    for (auto t = align(from.time); t <= align(to.time); t += step)
+        if (t <= last)
+            ctlDrawPoints_[t] = value(t);
+}
+
+void PianoRoll::finishControllerDraw()
+{
+    const auto* c = clip();
+    if (c == nullptr || ctlDrawPoints_.empty())
+        return;
+    const auto from = ctlDrawPoints_.begin()->first, to = ctlDrawPoints_.rbegin()->first;
+    std::vector<core::Id> remove;
+    for (const auto& e : laneEvents())
+        if (e.time >= from && e.time <= to)
+            remove.push_back(e.id);
+    std::vector<core::MidiControllerEvent> add;
+    int previous = std::numeric_limits<int>::min();
+    for (const auto& [time, value] : ctlDrawPoints_)
+    {
+        if (value == previous)
+            continue; // the step holds it already
+        add.push_back({core::invalidId, lane_.type, lane_.number, value, time});
+        previous = value;
+    }
+    std::vector<std::unique_ptr<core::Command>> commands;
+    auto edit = std::make_unique<core::EditMidiControllers>(
+        trackId_, clipId_, add, remove, ctlLine_ ? "Draw controller line" : "Draw controller");
+    const auto* raw = edit.get();
+    commands.push_back(std::move(edit));
+    emit(std::move(commands), ctlLine_ ? "Draw controller line" : "Draw controller");
+    // The drawn points become the selection (their ids were given on apply).
+    ctlSelection_.clear();
+    for (const auto& e : raw->events())
+        if (e.id != core::invalidId)
+            ctlSelection_.push_back(e.id);
+}
+
+void PianoRoll::finishControllerMove()
+{
+    const auto* c = clip();
+    if (c == nullptr || (ctlMoveDelta_ == 0 && ctlValueDelta_ == 0))
+        return;
+    std::vector<core::MidiControllerEvent> moved;
+    for (const auto& e : laneEvents())
+        if (isControllerSelected(e.id))
+        {
+            auto m = e;
+            m.time = std::clamp<core::SamplePosition>(
+                e.time + ctlMoveDelta_, 0, std::max<core::SamplePosition>(0, c->length - 1));
+            m.value = std::clamp(e.value + ctlValueDelta_,
+                                 core::midiControllerMinimum(e.type),
+                                 core::midiControllerMaximum(e.type));
+            moved.push_back(m);
+        }
+    std::vector<std::unique_ptr<core::Command>> commands;
+    commands.push_back(std::make_unique<core::EditMidiControllers>(
+        trackId_, clipId_, std::move(moved), std::vector<core::Id>{}, "Move controller points"));
+    emit(std::move(commands), "Move controller points");
+}
+
+void PianoRoll::finishControllerLasso()
+{
+    for (const auto& e : laneEvents())
+        if (e.time >= 0 && lasso_.expanded(3).contains(xForSample(e.time), yForValue(e.value)) &&
+            !isControllerSelected(e.id))
+            ctlSelection_.push_back(e.id);
+}
+
+void PianoRoll::addControllerAt(juce::Point<int> p)
+{
+    if (clip() == nullptr || lane_.velocity)
+        return;
+    const auto time = snapped(laneTimeForX(p.x));
+    std::vector<core::MidiControllerEvent> add{
+        {core::invalidId, lane_.type, lane_.number, valueForY(p.y), time}};
+    std::vector<std::unique_ptr<core::Command>> commands;
+    auto edit = std::make_unique<core::EditMidiControllers>(
+        trackId_, clipId_, add, std::vector<core::Id>{}, "Add controller point");
+    const auto* raw = edit.get();
+    commands.push_back(std::move(edit));
+    emit(std::move(commands), "Add controller point");
+    ctlSelection_.clear();
+    if (!raw->events().empty() && raw->events()[0].id != core::invalidId)
+        ctlSelection_.push_back(raw->events()[0].id);
+}
+
+void PianoRoll::deleteControllerSelection()
+{
+    if (clip() == nullptr || ctlSelection_.empty())
+        return;
+    std::vector<std::unique_ptr<core::Command>> commands;
+    commands.push_back(std::make_unique<core::EditMidiControllers>(trackId_,
+                                                                   clipId_,
+                                                                   std::vector<core::MidiControllerEvent>{},
+                                                                   ctlSelection_,
+                                                                   "Delete controller points"));
+    ctlSelection_.clear();
+    emit(std::move(commands), "Delete controller points");
 }
 
 } // namespace aural::ui

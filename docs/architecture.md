@@ -1085,10 +1085,25 @@ drags its length (Alt skips snap); Select lassos, moves with a pitch tooltip,
 resizes, Ctrl+drags to duplicate, Shift constrains the axis, double-click adds;
 Erase clicks or drags across notes; Q quantises at the menu strength, Shift+Q
 the ends too; arrows nudge (Shift fine, Ctrl an octave), + and - transpose.
-Not in this pass: the scale highlight (no key model), notes drawn live while
-recording, the instrument chip in the track header. Launch flags:
+The lane under the grid is switchable (the menu on its name in the keyboard
+column): Velocity, Pitch bend, Mod wheel, Expression, Sustain, Channel
+pressure or any other CC (a dot marks the lanes the clip has events in). A
+controller lane (120 px) draws each event as a point and its value as a step
+in the track colour, the bend around a centre line; Draw paints points at the
+grid (every 4 px with snap off; Alt skips snap) freehand or, with Shift, as a
+straight line, replacing the lane's events in the span drawn; Select clicks,
+Shift/Ctrl adds or toggles, lassos, drags points in time and value (Shift one
+axis, a value tooltip), double-click adds; Erase removes what it touches;
+Delete and Ctrl+A act on the lane after a click in it. Each gesture is one
+`EditMidiControllers` step. The Scale toggle in the toolbar shades the rows
+outside the project key (`Project::key`), tints the root's rows in
+`accentSubtle` and marks the scale's keys with a stripe (the root's in
+`accent`, named). Not in this pass: notes drawn live while recording, the
+instrument chip in the track header, a poly pressure lane. Launch flags:
 `--midi-track`, `--midi-track-with <type>`, `--piano-roll` (the first MIDI
-clip in the panel).
+clip in the panel), `--cc-lane <bend|mod|expression|sustain|pressure|cc<n>>`
+(the same with that lane, a demonstration curve drawn into an empty one),
+`--key <0..11> [minor]` (the project key).
 
 ### MIDI output
 
