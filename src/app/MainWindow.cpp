@@ -25,6 +25,7 @@
 #include "ui/PluginBrowser.h"
 #include "ui/PreferencesView.h"
 #include "ui/Selection.h"
+#include "ui/SplashScreen.h"
 #include "ui/Theme.h"
 #include "ui/components/Meter.h"
 #include "ui/components/Sheet.h"
@@ -2302,13 +2303,8 @@ private:
 
     void about()
     {
-        sheet_ = ui::Sheet::show(
-            *this,
-            theme_,
-            "Northlight " + juce::JUCEApplication::getInstance()->getApplicationVersion(),
-            "A native Windows DAW: ASIO, VST3 and CLAP hosting, multitrack recording and MIDI.",
-            {{"Close", true, false}},
-            [this](int) { sheet_ = nullptr; });
+        ui::SplashScreen::showAbout(
+            theme_, juce::JUCEApplication::getInstance()->getApplicationVersion(), getTopLevelComponent());
     }
 
     void projectMenu()
@@ -2754,6 +2750,12 @@ void MainWindow::closeButtonPressed()
         content->confirmClose();
     else
         juce::JUCEApplication::getInstance()->systemRequestedQuit();
+}
+
+void MainWindow::showAbout()
+{
+    ui::SplashScreen::showAbout(
+        ui::Theme::dark(), juce::JUCEApplication::getInstance()->getApplicationVersion(), this);
 }
 
 void MainWindow::showAudioSetup()

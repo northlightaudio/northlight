@@ -116,6 +116,10 @@ add_library(northlight_ui STATIC
     PluginBrowser.h
     PluginBrowser.cpp
     PreferencesView.cpp
+    SplashScreen.h
+    SplashScreen.cpp
+    Brand.h
+    Brand.cpp
     ExportView.h
     ExportView.cpp
     ClapEditor.h

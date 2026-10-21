@@ -34,6 +34,8 @@ public:
 
     // Opens the Audio Setup window (non-modal) or brings it to the front.
     void showAudioSetup();
+    // The About box: the splash screen, centred over the window.
+    void showAbout();
     void closeAudioSetup();
     // Opens Preferences on a page ("general", "audio", ...).
     void showPreferences(const juce::String& page = {});
