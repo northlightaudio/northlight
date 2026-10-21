@@ -104,6 +104,8 @@ public:
     //   --browser-files [folder]  show the Browser panel's Files tab (at the folder)
     //   --automation         add a volume lane to the first track and show it in the arrange view
     //   --tempo-demo         a tempo track with a change, a ramp and a 3/4 bar, shown
+    //   --freeze <n>         freeze track n (1-based) in the background
+    //   --folder <n> <m>     put tracks n..m (1-based) in a new folder track
     //   --stretch <factor> [semitones]  stretch (and transpose) the first audio clip
     //   --takes-demo <files> a "Vocal" track with the files as takes in one take group, comped
     //                        from each in turn, its take lanes expanded
@@ -372,6 +374,26 @@ public:
                 mainWindow_->removeLastBus();
             else if (arg == "--mixer")
                 mainWindow_->showMixer();
+            else if (arg == "--freeze" && i + 1 < tokens.size())
+            {
+                const int n = tokens.getReference(++i).text.getIntValue() - 1;
+                if (n >= 0 && n < static_cast<int>(session_->project().tracks.size()))
+                    if (const auto error =
+                            session_->freezeTrack(session_->project().tracks[static_cast<size_t>(n)].id);
+                        !error.empty())
+                        juce::Logger::writeToLog("--freeze: " + juce::String(error));
+            }
+            else if (arg == "--folder" && i + 2 < tokens.size())
+            {
+                const int from = tokens.getReference(++i).text.getIntValue() - 1;
+                const int to = tokens.getReference(++i).text.getIntValue() - 1;
+                std::vector<core::Id> members;
+                for (int t = std::max(0, from);
+                     t <= to && t < static_cast<int>(session_->project().tracks.size());
+                     ++t)
+                    members.push_back(session_->project().tracks[static_cast<size_t>(t)].id);
+                session_->execute(std::make_unique<core::AddFolderTrack>("Folder", members));
+            }
             else if (arg == "--tempo-demo")
             {
                 core::TempoState state = core::TempoState::of(session_->project());

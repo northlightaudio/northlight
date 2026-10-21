@@ -41,6 +41,7 @@ void migrate(json& j, int from)
             case 4:
             case 5: // 6 adds the tempo track and clip stretch
             case 6: // 7 adds take groups; a file without them has none (its clips stay as they are)
+            case 7: // 8 adds folder tracks and frozen tracks
                 break;
             default:
                 break;
@@ -358,6 +359,16 @@ json trackToJson(const Track& t)
         j["kind"] = "aux";
         j["aux"] = json{{"track", t.auxTrack}, {"insert", t.auxInsert}, {"output", t.auxOutput}};
     }
+    else if (t.kind == TrackKind::folder)
+    {
+        j["kind"] = "folder";
+        if (!t.folderOpen)
+            j["folderOpen"] = false;
+    }
+    if (t.folder != invalidId)
+        j["folder"] = t.folder;
+    if (!t.frozenMedia.empty())
+        j["frozen"] = t.frozenMedia;
     j["input"] = t.inputChannel;
     if (!t.midiInput.empty())
         j["midiInput"] = t.midiInput;
@@ -434,7 +445,11 @@ Track trackFromJson(const json& j)
     t.kind = kind == "midi"         ? TrackKind::midi
              : kind == "instrument" ? TrackKind::instrument
              : kind == "aux"        ? TrackKind::aux
+             : kind == "folder"     ? TrackKind::folder
                                     : TrackKind::audio;
+    t.folder = j.value("folder", invalidId);
+    t.folderOpen = j.value("folderOpen", true);
+    t.frozenMedia = j.value("frozen", std::string{});
     t.midiTarget = j.value("target", invalidId);
     t.midiChannel = std::clamp(j.value("midiChannel", 1), 1, 16);
     if (const auto aux = j.find("aux"); aux != j.end() && aux->is_object())

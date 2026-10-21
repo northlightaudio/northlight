@@ -1960,6 +1960,92 @@ void SetTempo::revert(Project& p)
     positions_.restore(p);
 }
 
+AddFolderTrack::AddFolderTrack(std::string name, std::vector<Id> members, int index)
+    : members_(std::move(members)), index_(index)
+{
+    folder_.name = std::move(name);
+    folder_.kind = TrackKind::folder;
+    folder_.inputChannel = -1;
+}
+void AddFolderTrack::apply(Project& p)
+{
+    if (folder_.id == invalidId)
+        folder_.id = p.allocateId();
+    previousOrder_ = p.tracks;
+    // The folder takes the place of its first member (or `index`), its members follow.
+    int at =
+        index_ < 0 ? static_cast<int>(p.tracks.size()) : std::min(index_, static_cast<int>(p.tracks.size()));
+    for (const Id id : members_)
+        if (const int i = p.trackIndex(id); i >= 0)
+            at = std::min(at, i);
+    std::vector<Track> moved;
+    for (const auto& t : p.tracks)
+        if (std::find(members_.begin(), members_.end(), t.id) != members_.end() && t.id != folder_.id)
+            moved.push_back(t);
+    const auto before = static_cast<int>(std::count_if(
+        p.tracks.begin(),
+        p.tracks.begin() + at,
+        [&](const Track& t) { return std::find(members_.begin(), members_.end(), t.id) != members_.end(); }));
+    std::erase_if(p.tracks,
+                  [&](const Track& t)
+                  { return std::find(members_.begin(), members_.end(), t.id) != members_.end(); });
+    at -= before;
+    const Id outer = moved.empty() ? invalidId : moved.front().folder; // nest where the first member was
+    folder_.folder = outer;
+    for (auto& t : moved)
+        t.folder = folder_.id;
+    p.tracks.insert(p.tracks.begin() + at, folder_);
+    p.tracks.insert(p.tracks.begin() + at + 1, moved.begin(), moved.end());
+}
+void AddFolderTrack::revert(Project& p)
+{
+    p.tracks = previousOrder_;
+}
+
+SetTrackFolder::SetTrackFolder(Id trackId, Id folderId) : trackId_(trackId), folderId_(folderId) {}
+void SetTrackFolder::apply(Project& p)
+{
+    auto& t = requireTrack(p, trackId_);
+    if (folderId_ != invalidId)
+    {
+        const auto& f = requireTrack(p, folderId_);
+        if (!f.isFolder() || p.insideFolder(folderId_, trackId_))
+            throw std::logic_error("a track cannot go into that folder");
+    }
+    previous_ = t.folder;
+    t.folder = folderId_;
+}
+void SetTrackFolder::revert(Project& p)
+{
+    requireTrack(p, trackId_).folder = previous_;
+}
+
+SetFolderOpen::SetFolderOpen(Id folderId, bool open) : folderId_(folderId), open_(open) {}
+void SetFolderOpen::apply(Project& p)
+{
+    auto& f = requireTrack(p, folderId_);
+    previous_ = f.folderOpen;
+    f.folderOpen = open_;
+}
+void SetFolderOpen::revert(Project& p)
+{
+    requireTrack(p, folderId_).folderOpen = previous_;
+}
+
+SetTrackFrozen::SetTrackFrozen(Id trackId, std::string media) : trackId_(trackId), media_(std::move(media)) {}
+void SetTrackFrozen::apply(Project& p)
+{
+    auto& t = requireTrack(p, trackId_);
+    if (!t.hasAudio() && !media_.empty())
+        throw std::logic_error("only a track that makes audio can be frozen");
+    previous_ = t.frozenMedia;
+    t.frozenMedia = media_;
+}
+void SetTrackFrozen::revert(Project& p)
+{
+    requireTrack(p, trackId_).frozenMedia = previous_;
+}
+
 TempoState TempoState::of(const Project& p)
 {
     return {p.tempoBpm, p.timeSignature, p.tempoChanges, p.meterChanges};

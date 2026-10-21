@@ -371,6 +371,11 @@ plugin parameters (VST3 and CLAP, including moves made in a plugin's own window)
 (gather into the project folder, remove unused) are built, and a crash leaves
 a local minidump that the next launch points to (sending reports is not built).
 
+Status 2026-10-21: folder tracks (nested, with mute and solo for what they hold,
+open and closed in the arrange view) and track freezing (a background render of
+the track before its fader, played instead of its chain) are built
+(architecture.md, "Folder tracks and freezing").
+
 Status 2026-10-21: tempo mapping and time-stretch are built: a tempo track with
 tempo changes, ramps and time signature changes (MIDI, markers, automation and
 tempo-following clips keep their bars and beats through tempo edits), clip

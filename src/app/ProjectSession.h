@@ -68,6 +68,15 @@ public:
     // Renders the mix (or stems) offline on a background thread. Returns an error
     // or empty; progress and the result are reported through the job.
     std::string startBounce(BounceJob::Options options);
+    // Freezes a track: renders its output before the fader in the background
+    // (into "<media>/Freeze"), then the track plays that instead of its clips and
+    // chain. Unfreezing is a command (SetTrackFrozen with no media). Returns an
+    // error, or empty once the render has started.
+    std::string freezeTrack(core::Id trackId);
+    bool isFreezing() const noexcept { return freeze_ != nullptr && freeze_->isRunning(); }
+    float freezeProgress() const noexcept { return freeze_ != nullptr ? freeze_->progress() : 0.0f; }
+    // The last freeze's outcome for a toast ("" while none has finished).
+    const std::string& lastFreezeMessage() const noexcept { return freezeMessage_; }
     bool isBouncing() const noexcept { return bounce_ != nullptr && bounce_->isRunning(); }
     float bounceProgress() const noexcept { return bounce_ != nullptr ? bounce_->progress() : 0.0f; }
     // The last bounce's outcome, as a sentence for the completion toast ("Bouncing..."
@@ -414,6 +423,8 @@ private:
     std::string bounceMessage_;
     BounceJob::Result bounceResult_;
     std::unique_ptr<BounceJob> bounce_;
+    std::unique_ptr<BounceJob> freeze_;
+    std::string freezeMessage_;
     bool gestureOpen_ = false;
     bool metronome_ = false;
     float metronomeGain_ = 0.5f;

@@ -1274,6 +1274,72 @@ private:
     MusicalKey value_, previous_;
 };
 
+// ----- folders and freezing ------------------------------------------------------------------
+
+// A new folder track at `index` (end when < 0) holding `members` (moved into it,
+// keeping their order, right after it). Its id is allocated on apply.
+class AddFolderTrack final : public Command
+{
+public:
+    AddFolderTrack(std::string name, std::vector<Id> members, int index = -1);
+    std::string name() const override { return "Add folder track"; }
+    void apply(Project&) override;
+    void revert(Project&) override;
+    Id folderId() const noexcept { return folder_.id; }
+
+private:
+    Track folder_;
+    std::vector<Id> members_;
+    int index_;
+    std::vector<Track> previousOrder_;
+};
+
+// Moves a track into a folder (invalidId: out of any). A folder cannot go into
+// itself or a folder inside it.
+class SetTrackFolder final : public Command
+{
+public:
+    SetTrackFolder(Id trackId, Id folderId);
+    std::string name() const override
+    {
+        return folderId_ == invalidId ? "Remove from folder" : "Move into folder";
+    }
+    void apply(Project&) override;
+    void revert(Project&) override;
+
+private:
+    Id trackId_, folderId_, previous_ = invalidId;
+};
+
+// Opens or closes a folder (what the arrange view shows; no engine work).
+class SetFolderOpen final : public Command
+{
+public:
+    SetFolderOpen(Id folderId, bool open);
+    std::string name() const override { return open_ ? "Open folder" : "Close folder"; }
+    ChangeKind changeKind() const noexcept override { return ChangeKind::cosmetic; }
+    void apply(Project&) override;
+    void revert(Project&) override;
+
+private:
+    Id folderId_;
+    bool open_, previous_ = true;
+};
+
+// Freezes a track to a render of its output (`media`), or unfreezes it (empty).
+class SetTrackFrozen final : public Command
+{
+public:
+    SetTrackFrozen(Id trackId, std::string media);
+    std::string name() const override { return media_.empty() ? "Unfreeze track" : "Freeze track"; }
+    void apply(Project&) override;
+    void revert(Project&) override;
+
+private:
+    Id trackId_;
+    std::string media_, previous_;
+};
+
 // What a tempo edit changes and restores: the tempo track, and every position
 // that follows it (MIDI clips, clips that follow the tempo, automation, markers),
 // captured whole so undo puts them back exactly rather than remapping again.

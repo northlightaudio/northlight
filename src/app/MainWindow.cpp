@@ -849,6 +849,17 @@ private:
                       "Normalise failed: " + juce::String::fromUTF8(error.c_str()));
         };
         tracks_.onConformClip = [this](core::Id trackId, core::Id clipId) { conformClip(trackId, clipId); };
+        tracks_.onFreezeTrack = [this](core::Id trackId, bool freeze)
+        {
+            if (!freeze)
+            {
+                session_.execute(std::make_unique<core::SetTrackFrozen>(trackId, std::string{}));
+                return;
+            }
+            if (const auto error = session_.freezeTrack(trackId); !error.empty())
+                toast(ui::ToastStack::Kind::warning,
+                      "Cannot freeze: " + juce::String::fromUTF8(error.c_str()));
+        };
         // The tempo track: its edits, and whether it shows (kept per user).
         tracks_.onTempoEdit = [this](core::TempoState state, const std::string& name)
         { session_.execute(std::make_unique<core::SetTempoMap>(std::move(state), name)); };
@@ -1228,6 +1239,14 @@ private:
             lastBounceMessage_ = bounce;
             showBounceOutcome(bounce);
         }
+        if (const auto& freeze = session_.lastFreezeMessage(); freeze != lastFreezeMessage_)
+        {
+            lastFreezeMessage_ = freeze;
+            if (!freeze.empty())
+                toast(freeze.rfind("Froze", 0) == 0 ? ui::ToastStack::Kind::success
+                                                    : ui::ToastStack::Kind::warning,
+                      juce::String::fromUTF8(freeze.c_str()));
+        }
     }
 
     juce::String projectName() const
@@ -1335,6 +1354,9 @@ private:
         if (session_.isBouncing())
             state.warning =
                 "Bouncing " + juce::String(static_cast<int>(session_.bounceProgress() * 100.0f)) + "%";
+        if (session_.isFreezing())
+            state.warning =
+                "Freezing " + juce::String(static_cast<int>(session_.freezeProgress() * 100.0f)) + "%";
         status_.setState(state);
     }
 
@@ -2490,7 +2512,7 @@ private:
     ui::PanelManager panels_; // after the panels: its floating windows go first
     ui::Sheet* sheet_ = nullptr;
     std::unique_ptr<juce::FileChooser> chooser_;
-    std::string lastRecordingMessage_, lastBounceMessage_, lastPluginMessage_;
+    std::string lastRecordingMessage_, lastBounceMessage_, lastPluginMessage_, lastFreezeMessage_;
     bool lastRecording_ = false;
     int ticks_ = 0;
     int dropoutBaseline_ = 0;

@@ -6,6 +6,7 @@
 #include <cmath>
 #include <functional>
 #include <map>
+#include <optional>
 
 namespace aural::engine
 {
@@ -152,7 +153,12 @@ std::unique_ptr<Snapshot> compileSnapshot(const core::Project& project,
         routing.mute[static_cast<size_t>(index)] = c.mute;
     };
     for (int t = 0; t < trackCount; ++t)
-        channelOf(t, project.tracks[static_cast<size_t>(t)]);
+    {
+        const auto& track = project.tracks[static_cast<size_t>(t)];
+        channelOf(t, track);
+        routing.solo[static_cast<size_t>(t)] = track.solo || project.soloedByFolder(track);
+        routing.mute[static_cast<size_t>(t)] = track.mute || project.mutedByFolder(track) || track.isFolder();
+    }
     for (int b = 0; b < busCount; ++b)
         channelOf(trackCount + b, project.buses[static_cast<size_t>(b)]);
 
@@ -387,11 +393,28 @@ std::unique_ptr<Snapshot> compileSnapshot(const core::Project& project,
     snapshot->tracks.reserve(project.tracks.size());
     for (int t = 0; t < trackCount; ++t)
     {
-        const auto& track = project.tracks[static_cast<size_t>(t)];
+        const auto& model = project.tracks[static_cast<size_t>(t)];
+        // A frozen track (or a folder) runs no chain: compile it from a copy
+        // without its instrument, inserts, strip, sends (a folder's) and
+        // insert automation.
+        std::optional<core::Track> stripped;
+        if (model.isFrozen() || model.isFolder())
+        {
+            stripped = model;
+            stripped->instrument = core::Insert{};
+            stripped->inserts.clear();
+            stripped->strip.clear();
+            if (model.isFolder())
+                stripped->sends.clear();
+            std::erase_if(stripped->automation,
+                          [](const core::AutomationLane& lane)
+                          { return lane.target == core::AutomationTarget::insertParameter; });
+        }
+        const auto& track = stripped ? *stripped : model;
         TrackNode node;
         fillChannel(node, track, t, trackMeterSlot(t), false);
         node.isMidi = track.isMidi();
-        node.isInstrument = track.isInstrument();
+        node.isInstrument = track.isInstrument() && !track.isFrozen();
         node.isAux = track.isAux();
         node.inputChannel = track.isAux() ? -1 : track.inputChannel;
         node.armed = track.armed;
@@ -409,7 +432,7 @@ std::unique_ptr<Snapshot> compileSnapshot(const core::Project& project,
             node.midiOutChannel = static_cast<std::uint8_t>(std::clamp(track.midiOutChannel, 1, 16) - 1);
             node.midiChannel = static_cast<std::uint8_t>(std::clamp(track.midiChannel, 1, 16) - 1);
             node.velocityScale = std::clamp(track.gain, 0.0f, 4.0f);
-            node.midiMuted = track.mute;
+            node.midiMuted = track.mute || project.mutedByFolder(track);
             for (const auto& c : track.midiClips)
             {
                 MidiClipNode clip;
@@ -436,9 +459,21 @@ std::unique_ptr<Snapshot> compileSnapshot(const core::Project& project,
                 node.midiClips.push_back(std::move(clip));
             }
         }
+        if (track.isFrozen())
+        {
+            // Frozen: its render plays from the song's start, through the fader.
+            ClipNode clip;
+            clip.keepAlive = media.get(track.frozenMedia, project.sampleRate);
+            clip.source = clip.keepAlive.get();
+            clip.length = clip.source != nullptr ? clip.source->lengthSamples() : 0;
+            node.clips.push_back(std::move(clip));
+        }
         node.clips.reserve(track.clips.size());
+        const bool playsClips = !track.isFrozen() && !track.isFolder();
         for (const auto& c : track.clips)
         {
+            if (!playsClips)
+                break;
             ClipNode clip;
             clip.start = c.start;
             clip.length = c.length;
@@ -477,7 +512,8 @@ std::unique_ptr<Snapshot> compileSnapshot(const core::Project& project,
         if (!track.isMidi())
             continue;
         const int target = project.trackIndex(track.midiTarget);
-        if (target >= 0 && project.tracks[static_cast<size_t>(target)].isInstrument())
+        if (target >= 0 && project.tracks[static_cast<size_t>(target)].isInstrument() &&
+            !project.tracks[static_cast<size_t>(target)].isFrozen())
             snapshot->tracks[static_cast<size_t>(target)].midiFeeds.push_back(t);
     }
 
@@ -492,7 +528,9 @@ std::unique_ptr<Snapshot> compileSnapshot(const core::Project& project,
         if (source < 0 || source == t)
             continue;
         const auto* sourceTrack = project.findTrack(track.auxTrack);
-        if (sourceTrack == nullptr || sourceTrack->findInsert(track.auxInsert) == nullptr)
+        // A frozen instrument does not run: its extra outputs are silent.
+        if (sourceTrack == nullptr || sourceTrack->isFrozen() ||
+            sourceTrack->findInsert(track.auxInsert) == nullptr)
             continue;
         if (auto instance = inserts.find(track.auxInsert))
         {

@@ -1269,6 +1269,36 @@ playhead (the governing change when there are changes); the count-in is the bars
 before where capture rolls from. The tempo track (`ui::TempoLane`, 04-arrange.md)
 edits the changes; every edit is one `SetTempoMap`.
 
+### Folder tracks and freezing
+
+A folder is a track of its own kind (`TrackKind::folder`): no audio, no clips;
+tracks point at the folder they sit in (`Track::folder`), folders nest, and
+`folderOpen` says whether the arrange view shows what a folder holds. The project
+answers `folderOf`, `folderDepth`, `hiddenByFolder`, `mutedByFolder` and
+`soloedByFolder` (with a depth guard against cycles in a hand-edited file).
+`AddFolderTrack` puts a folder where its first member was and moves its members
+right after it in order; `SetTrackFolder` moves one track in or out (refusing a
+folder inside itself); `SetFolderOpen` is cosmetic. The snapshot compiler folds a
+folder's mute and solo into the tracks it holds and compiles the folder itself as
+a silent channel. In the arrange view a track inside a closed folder keeps its row
+at no height (so rows stay one per track), headers indent by depth, and a folder's
+lane shows its tracks' clips as thin bars in their colours. Moving a folder in the
+track order does not yet take its tracks with it.
+
+Freezing renders a track's output before its fader and plays that instead.
+`core::freezeRenderProject` builds the project the render hears: the track at unity
+gain and centre pan, without sends or fader automation, straight to the master at
+unity; the MIDI tracks that play it unchanged; every other channel silenced by its
+fader (not muted, so a pre-fader sidechain key still works). `ProjectSession::
+freezeTrack` renders it with a `BounceJob` (float WAV into "<media>/Freeze", the
+song plus three seconds of tail) and then sets `Track::frozenMedia` with
+`SetTrackFrozen`, which is also how unfreezing works (no media). A frozen track
+compiles without its instrument, inserts, strip and insert automation: one clip
+of its render from the song's start through its fader, pan (as a balance), sends
+and gain automation; its MIDI feeds and an instrument's extra outputs are not run.
+An instrument whose extra outputs feed aux tracks cannot be frozen yet. The media
+report counts frozen renders as used.
+
 ### Metronome, count-in, loop and punch
 
 `engine::ClickGenerator` adds a 30 ms decaying sine burst on every beat (1.5 kHz on

@@ -740,6 +740,16 @@ ProjectSession::MediaReport ProjectSession::mediaReport() const
             for (const auto& take : g.takes)
                 clips.push_back(&take.clip);
     }
+    std::vector<core::AudioClip> frozen; // a frozen track's render, as a clip for the check below
+    for (const auto& t : project_.tracks)
+        if (t.isFrozen())
+        {
+            core::AudioClip c;
+            c.mediaPath = t.frozenMedia;
+            frozen.push_back(c);
+        }
+    for (const auto& c : frozen)
+        clips.push_back(&c);
     for (const auto* clip : clips)
     {
         const auto& c = *clip;
@@ -1551,6 +1561,62 @@ std::string ProjectSession::startBounce(BounceJob::Options options)
     bounceResult_ = BounceJob::Result{};
     bounceMessage_ = "Bouncing...";
     bounce_->start();
+    notify(Change::structure);
+    return {};
+}
+
+std::string ProjectSession::freezeTrack(core::Id trackId)
+{
+    if (isFreezing())
+        return "a freeze is already running";
+    if (isBouncing())
+        return "wait for the export to finish";
+    const auto* track = project_.findTrack(trackId);
+    if (track == nullptr || !track->hasAudio())
+        return "only a track that makes audio can be frozen";
+    if (track->isFrozen())
+        return {};
+    for (const auto& t : project_.tracks)
+        if (t.isAux() && t.auxTrack == trackId)
+            return "this instrument's extra outputs feed other tracks; it cannot be frozen yet";
+    const auto folder = mediaFolder().getChildFile("Freeze");
+    if (!folder.createDirectory().wasOk())
+        return "could not create " + folder.getFullPathName().toStdString();
+    captureInsertStates(); // the offline engine restores the live plugin states
+    const auto safe = juce::File::createLegalFileName(juce::String::fromUTF8(track->name.c_str()))
+                          .trim()
+                          .replaceCharacter(' ', '-');
+    const auto file =
+        folder.getNonexistentChildFile((safe.isEmpty() ? juce::String("Track") : safe) + "-freeze", ".wav");
+    BounceJob::Options options;
+    options.output = file;
+    options.start = 0;
+    // The song and three seconds for tails (a reverb, a release).
+    options.end = project_.length() + static_cast<core::SamplePosition>(project_.sampleRate * 3.0);
+    freeze_ = std::make_unique<BounceJob>(core::freezeRenderProject(project_, trackId), inserts_, options);
+    const auto name = track->name;
+    freeze_->onFinished = [this, trackId, file, name](const BounceJob::Result& result)
+    {
+        if (!result.error.empty() || result.cancelled)
+        {
+            freezeMessage_ =
+                "Freezing " + name + " failed: " + (result.cancelled ? "cancelled" : result.error);
+            file.deleteFile();
+        }
+        else if (project_.findTrack(trackId) == nullptr)
+        {
+            freezeMessage_ = "The track was removed while it was being frozen.";
+            file.deleteFile();
+        }
+        else
+        {
+            execute(std::make_unique<core::SetTrackFrozen>(trackId, file.getFullPathName().toStdString()));
+            freezeMessage_ = "Froze " + name + ": it plays its render until you unfreeze it.";
+        }
+        notify(Change::structure);
+    };
+    freezeMessage_.clear();
+    freeze_->start();
     notify(Change::structure);
     return {};
 }

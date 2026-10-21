@@ -99,6 +99,8 @@ public:
     // An edit: the commands that make it, as one undo step with this name.
     std::function<void(std::vector<std::unique_ptr<core::Command>>, const std::string&)> onEdit;
     std::function<void(core::Id trackId, core::Id clipId)> onNormalise;
+    // Freeze (render and play the render) or unfreeze a track.
+    std::function<void(core::Id trackId, bool freeze)> onFreezeTrack;
     // Stretch a clip to the project's tempo (the owner asks for the clip's tempo).
     std::function<void(core::Id trackId, core::Id clipId)> onConformClip;
     // How far a stretched clip's render has got (0..1), for its header tag.
@@ -320,6 +322,8 @@ private:
     bool mediaMissing(const std::string& path);
     void refreshMissingMedia();
     void clipMenu(core::Id trackId, core::Id clipId, juce::Point<int> screen);
+    std::vector<const core::Track*> folderChoices(core::Id trackId) const;
+    void drawFolderLane(juce::Graphics& g, const core::Track& folder, juce::Rectangle<int> lane);
     void finishStretch();
     // The track's menu; on an audio clip (clipId) it leads with the clip's items.
     void trackMenu(core::Id trackId, juce::Point<int> screen, core::Id clipId = core::invalidId);

@@ -137,6 +137,7 @@ enum class TrackKind
     midi,       // MIDI clips and a MIDI input: notes for an instrument channel, no audio of its own
     instrument, // an instrument channel: the instrument (its main output) and the processing after it
     aux,        // an instrument's extra output pair, taken from an instrument channel
+    folder,     // holds other tracks (Track::folder): no audio; its mute and solo act on them
 };
 
 enum class MonitorMode
@@ -342,6 +343,13 @@ struct Track : Channel
     std::vector<AudioClip> clips;      // kept sorted by start
     std::vector<MidiClip> midiClips;   // kept sorted by start
     std::vector<TakeGroup> takeGroups; // take lanes and comps (core/Comping.h), sorted by start
+    // The folder track this track sits in (invalidId: none); a folder's own
+    // tracks show under it while it is open.
+    Id folder = invalidId;
+    bool folderOpen = true;
+    // Frozen: the track plays this render of its output before the fader (its
+    // clips or instrument through its inserts and strip) instead of running them.
+    std::string frozenMedia;
 
     AudioClip* findClip(Id clipId) noexcept;
     const AudioClip* findClip(Id clipId) const noexcept;
@@ -358,8 +366,10 @@ struct Track : Channel
     bool isMidi() const noexcept { return kind == TrackKind::midi; }
     bool isAux() const noexcept { return kind == TrackKind::aux; }
     bool isInstrument() const noexcept { return kind == TrackKind::instrument; }
-    // Whether the track makes audio (a MIDI track only makes notes).
-    bool hasAudio() const noexcept { return kind != TrackKind::midi; }
+    bool isFolder() const noexcept { return kind == TrackKind::folder; }
+    bool isFrozen() const noexcept { return !frozenMedia.empty(); }
+    // Whether the track makes audio (a MIDI track only makes notes; a folder none).
+    bool hasAudio() const noexcept { return kind != TrackKind::midi && kind != TrackKind::folder; }
     bool operator==(const Track&) const = default;
 };
 
@@ -429,7 +439,8 @@ struct Project
     // 6: the tempo track (tempo and meter changes); clip stretch, transpose and
     //    musical time base.
     // 7: take groups (take lanes and comps) on tracks.
-    static constexpr int schemaVersion = 7;
+    // 8: folder tracks; frozen tracks.
+    static constexpr int schemaVersion = 8;
     static constexpr int oldestReadableVersion = 2; // older files are refused
 
     std::string name = "Untitled";
@@ -469,6 +480,17 @@ struct Project
     // Every track and bus in the group, in mixer order.
     std::vector<Channel*> groupMembers(Id groupId) noexcept;
 
+    // Folders: the folder a track sits in (null when none or missing), how deep
+    // it is nested, whether a closed folder above hides it, and whether a folder
+    // above mutes or solos it (a folder's mute and solo act on what it holds).
+    const Track* folderOf(const Track& track) const noexcept;
+    int folderDepth(const Track& track) const noexcept;
+    bool hiddenByFolder(const Track& track) const noexcept;
+    bool mutedByFolder(const Track& track) const noexcept;
+    bool soloedByFolder(const Track& track) const noexcept;
+    // Whether `track` is `folder` or sits somewhere inside it.
+    bool insideFolder(Id track, Id folder) const noexcept;
+
     // The MIDI tracks aiming at an instrument channel, in track order.
     std::vector<const Track*> midiFeeds(Id instrumentChannel) const;
 
@@ -491,6 +513,13 @@ struct Project
 
     bool operator==(const Project&) const = default;
 };
+
+// The project a freeze renders: only `trackId` sounds, at unity gain and centre
+// pan with no sends, straight to the master (at unity), so the mix is the
+// track's output before its fader. The MIDI tracks that play it keep playing;
+// every other channel is silenced by its fader (not muted, so it can still key a
+// sidechain before its fader), and folders mute and solo nothing.
+Project freezeRenderProject(const Project& project, Id trackId);
 
 // Bars/beats display helpers. Beats are counted in the time signature's denominator
 // note value; bars and beats are 1-based for display.

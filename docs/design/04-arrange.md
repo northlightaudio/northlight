@@ -59,6 +59,21 @@ Where the recording and the arrangement live. It must stay legible with 4 tracks
 - Zoom: Ctrl+wheel over ruler or lanes zooms around the pointer; drag the ruler
   vertically to zoom (Logic style); "Z" zooms to fit, Shift+Z to the selection.
 
+## Folder tracks and frozen tracks
+
+- A folder track's header shows its number, a disclosure (▾ open, ▸ closed) before
+  its name, and M and S, which act on every track it holds. Its lane reads "5
+  tracks" in `caption` `textTertiary` over its tracks' clips drawn as thin bars,
+  one row per track (at most eight), in each track's colour (30% when muted).
+- Tracks inside a folder indent their header 12 px per level. A closed folder's
+  tracks take no height.
+- Add a folder from the "+" menu (it takes the selected track) or a track's menu
+  (Folder: a new folder holding it, or move it into a folder or out of one).
+- A frozen track's name carries a snowflake and its lane is veiled (canvas at 45%)
+  with "❄ FROZEN" in `captionCaps` `info`. Freeze and unfreeze from the track's
+  menu; the status bar shows "Freezing 40%" while the render runs and a toast says
+  when it is done.
+
 ## Tempo track
 
 A 52 px lane under the ruler, shown from the ruler's menu ("Show tempo track"; kept

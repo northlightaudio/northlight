@@ -383,7 +383,7 @@ void ArrangeView::layoutHeaders()
         {
             y = rowTop(row);
             const int h = rowHeightOf(row++);
-            const bool visible = y + h > rulerHeight && y < getHeight() - scrollbarHeight;
+            const bool visible = h > 0 && y + h > rulerHeight && y < getHeight() - scrollbarHeight;
             header->setVisible(visible);
             header->setBounds(0, y, headerWidth, h);
             y += h;
@@ -599,7 +599,12 @@ const ArrangeView::RowLayout& ArrangeView::rows() const
                 h = std::max(1, juce::roundToInt(static_cast<float>(h) * growing->second));
             // A track's expanded take lanes sit under its row (rowHeightOf leaves them out).
             if (const auto index = rows_.tops.size() - 1; index < project_->tracks.size())
+            {
                 h += takes_.lanesHeight(project_->tracks[index]);
+                // A track in a closed folder keeps its row, at no height.
+                if (project_->hiddenByFolder(project_->tracks[index]))
+                    h = 0;
+            }
             rows_.tops.push_back(rows_.tops.back() + h);
         }
         // A removed row's space, closing: everything from its place down sits lower.
@@ -1857,6 +1862,47 @@ void ArrangeView::drawClip(juce::Graphics& g,
         g.drawText(label, textArea, juce::Justification::centredLeft, true);
     }
 }
+void ArrangeView::drawFolderLane(juce::Graphics& g, const core::Track& folder, juce::Rectangle<int> lane)
+{
+    // What the folder holds, at a glance: each track's clips as thin bars in its
+    // colour, one row of bars per track (at most eight rows), under a caption.
+    const auto& c = theme_.colours;
+    std::vector<int> members;
+    for (int t = 0; t < static_cast<int>(project_->tracks.size()); ++t)
+        if (const auto& track = project_->tracks[static_cast<size_t>(t)];
+            &track != &folder && project_->insideFolder(track.id, folder.id))
+            members.push_back(t);
+    g.setColour(c.textTertiary);
+    g.setFont(theme_.caption());
+    g.drawText(juce::String(static_cast<int>(members.size())) + (members.size() == 1 ? " track" : " tracks") +
+                   (folder.folderOpen ? juce::String() : juce::String("  (closed)")),
+               lane.withTrimmedLeft(theme_.spacing.sm).withHeight(std::min(lane.getHeight(), 18)),
+               juce::Justification::centredLeft);
+    const auto bars = lane.withTrimmedTop(std::min(lane.getHeight() / 2, 18)).reduced(0, 3);
+    const int shown = std::min(8, static_cast<int>(members.size()));
+    if (shown == 0 || bars.getHeight() < 4)
+        return;
+    const float rowH = static_cast<float>(bars.getHeight()) / static_cast<float>(shown);
+    for (int i = 0; i < shown; ++i)
+    {
+        const auto& track = project_->tracks[static_cast<size_t>(members[static_cast<size_t>(i)])];
+        g.setColour(trackColour(track, members[static_cast<size_t>(i)]).withAlpha(track.mute ? 0.3f : 0.75f));
+        const float y = static_cast<float>(bars.getY()) + rowH * static_cast<float>(i);
+        const float barH = std::max(1.0f, rowH - 1.0f);
+        const auto bar = [&](core::SamplePosition start, core::SamplePosition length)
+        {
+            const int x0 = std::max(lane.getX(), xForSample(start));
+            const int x1 = std::min(lane.getRight(), xForSample(start + length));
+            if (x1 > x0)
+                g.fillRoundedRectangle(static_cast<float>(x0), y, static_cast<float>(x1 - x0), barH, 1.0f);
+        };
+        for (const auto& clip : track.clips)
+            bar(clip.start, clip.length);
+        for (const auto& clip : track.midiClips)
+            bar(clip.start, clip.length);
+    }
+}
+
 void ArrangeView::drawMidiClip(juce::Graphics& g,
                                const core::Track& track,
                                const core::MidiClip& model,
@@ -2044,7 +2090,7 @@ void ArrangeView::paint(juce::Graphics& g)
             const int h = rowHeightOf(row);
             y = rowTop(row);
             const juce::Rectangle<int> lane(headerWidth, y, lanesArea.getWidth(), h);
-            if (lane.getBottom() >= rulerHeight && lane.getY() <= getHeight())
+            if (h > 0 && lane.getBottom() >= rulerHeight && lane.getY() <= getHeight())
             {
                 if (track.id == selectedTrack_)
                     g.setColour(c.laneSelected);
@@ -2124,7 +2170,9 @@ void ArrangeView::paint(juce::Graphics& g)
             y = rowTop(row);
             const int h = rowHeightOf(row++);
             const juce::Rectangle<int> lane(headerWidth, y, lanesArea.getWidth(), h);
-            if (lane.getBottom() >= rulerHeight && lane.getY() <= getHeight())
+            if (h > 0 && track.isFolder() && lane.getBottom() >= rulerHeight && lane.getY() <= getHeight())
+                drawFolderLane(g, track, lane);
+            if (h > 0 && lane.getBottom() >= rulerHeight && lane.getY() <= getHeight())
             {
                 for (const auto& clip : track.clips)
                     drawClip(g, track, clip, lane);
@@ -2136,6 +2184,17 @@ void ArrangeView::paint(juce::Graphics& g)
                 for (const auto& take : live_.midi)
                     if (take.trackId == track.id)
                         drawMidiClip(g, track, take.clip, lane, true);
+                if (track.isFrozen())
+                {
+                    // Frozen: the clips are what was rendered, shown under a veil.
+                    g.setColour(c.canvas.withAlpha(0.45f));
+                    g.fillRect(lane);
+                    g.setColour(c.info);
+                    g.setFont(theme_.captionCaps());
+                    g.drawText(juce::String::fromUTF8("\xe2\x9d\x84 FROZEN"),
+                               lane.withTrimmedLeft(theme_.spacing.sm).withHeight(std::min(h, 20)),
+                               juce::Justification::centredLeft);
+                }
                 if (track.isAux())
                 {
                     const auto* source = project_->findTrack(track.auxTrack);
@@ -2375,7 +2434,7 @@ int ArrangeView::rowHeightOf(int row) const noexcept
     const int lanes = project_ != nullptr && static_cast<size_t>(row) < project_->tracks.size()
                           ? takes_.lanesHeight(project_->tracks[static_cast<size_t>(row)])
                           : 0;
-    return tops[static_cast<size_t>(row) + 1] - tops[static_cast<size_t>(row)] - lanes;
+    return std::max(0, tops[static_cast<size_t>(row) + 1] - tops[static_cast<size_t>(row)] - lanes);
 }
 
 TakeLanes::Row ArrangeView::takeRow(int row) const
@@ -2912,6 +2971,18 @@ void ArrangeView::finishStretch()
     emit(std::move(commands), "Stretch clip");
 }
 
+std::vector<const core::Track*> ArrangeView::folderChoices(core::Id trackId) const
+{
+    // Folders the track can go into: not itself, nor one inside it.
+    std::vector<const core::Track*> out;
+    if (project_ == nullptr)
+        return out;
+    for (const auto& t : project_->tracks)
+        if (t.isFolder() && !project_->insideFolder(t.id, trackId))
+            out.push_back(&t);
+    return out;
+}
+
 void ArrangeView::clipMenu(core::Id trackId, core::Id clipId, juce::Point<int> screen)
 {
     const auto* track = project_ != nullptr ? project_->findTrack(trackId) : nullptr;
@@ -3091,7 +3162,7 @@ void ArrangeView::trackMenu(core::Id trackId, juce::Point<int> screen, core::Id 
         onOpenInSampler)
     {
         menu.addSectionHeader("Clip");
-        menu.addItem(6, "Open in Sampler");
+        menu.addItem(7, "Open in Sampler");
         menu.addSeparator();
         menu.addSectionHeader("Track");
     }
@@ -3145,6 +3216,24 @@ void ArrangeView::trackMenu(core::Id trackId, juce::Point<int> screen, core::Id 
         menu.addSubMenu("Send to", sends);
     }
     menu.addItem(4, automation_.isShown(trackId) ? "Hide automation" : "Show automation");
+    if (track->hasAudio())
+        menu.addItem(800, track->isFrozen() ? "Unfreeze track" : "Freeze track");
+    if (track->isFolder())
+        menu.addItem(802, track->folderOpen ? "Close folder" : "Open folder");
+    {
+        juce::PopupMenu folders;
+        folders.addItem(801, "New folder containing this track");
+        folders.addSeparator();
+        folders.addItem(
+            810, "Not in a folder", track->folder != core::invalidId, track->folder == core::invalidId);
+        const auto choices = folderChoices(trackId);
+        for (size_t i = 0; i < choices.size(); ++i)
+            folders.addItem(811 + static_cast<int>(i),
+                            juce::String::fromUTF8(choices[i]->name.c_str()),
+                            true,
+                            track->folder == choices[i]->id);
+        menu.addSubMenu("Folder", folders);
+    }
     if (!track->takeGroups.empty())
         menu.addItem(6, takes_.laneCount(*track) > 0 ? "Hide take lanes" : "Show take lanes");
     menu.addSeparator();
@@ -3157,10 +3246,39 @@ void ArrangeView::trackMenu(core::Id trackId, juce::Point<int> screen, core::Id 
         {
             if (safe == nullptr || choice == 0)
                 return;
-            if (choice == 6)
+            if (choice == 7)
             {
                 if (safe->onOpenInSampler)
                     safe->onOpenInSampler(trackId, clipId);
+                return;
+            }
+            if (choice == 800)
+            {
+                if (const auto* t = safe->project_ != nullptr ? safe->project_->findTrack(trackId) : nullptr;
+                    t != nullptr && safe->onFreezeTrack)
+                    safe->onFreezeTrack(trackId, !t->isFrozen());
+                return;
+            }
+            if (choice == 801)
+            {
+                if (safe->onCommand)
+                    safe->onCommand(
+                        std::make_unique<core::AddFolderTrack>("Folder", std::vector<core::Id>{trackId}));
+                return;
+            }
+            if (choice >= 810 && choice < 900 && safe->project_ != nullptr && safe->onCommand)
+            {
+                const auto folders = safe->folderChoices(trackId);
+                const auto pick = static_cast<size_t>(choice - 811);
+                safe->onCommand(std::make_unique<core::SetTrackFolder>(
+                    trackId, choice == 810 || pick >= folders.size() ? core::invalidId : folders[pick]->id));
+                return;
+            }
+            if (choice == 802)
+            {
+                if (const auto* t = safe->project_ != nullptr ? safe->project_->findTrack(trackId) : nullptr;
+                    t != nullptr && safe->onCommand)
+                    safe->onCommand(std::make_unique<core::SetFolderOpen>(trackId, !t->folderOpen));
                 return;
             }
             if (choice >= 450 && choice < 500)
@@ -3400,27 +3518,37 @@ void ArrangeView::addTrackMenu()
     addFxMenu(fx, 400);
     menu.addSubMenu("FX track", fx);
     menu.addItem(3, "Bus");
+    menu.addItem(
+        4, selectedTrack_ != core::invalidId ? "Folder track (holding the selected track)" : "Folder track");
     juce::Component::SafePointer<ArrangeView> safe(this);
-    menu.showMenuAsync(juce::PopupMenu::Options().withTargetComponent(&addTrack_),
-                       [safe, instruments, channels](int choice)
-                       {
-                           if (safe == nullptr)
-                               return;
-                           if (choice == 1 && safe->onAddAudioTrack)
-                               safe->onAddAudioTrack();
-                           if (const auto type = instruments.typeFor(choice);
-                               !type.empty() && safe->onAddMidiTrack)
-                               safe->onAddMidiTrack(type);
-                           if (choice == 999 && safe->onAddMidiTrackPlaying)
-                               safe->onAddMidiTrackPlaying(core::invalidId);
-                           if (choice >= 1000 && static_cast<size_t>(choice - 1000) < channels.size() &&
-                               safe->onAddMidiTrackPlaying)
-                               safe->onAddMidiTrackPlaying(channels[static_cast<size_t>(choice - 1000)]);
-                           if (choice == 3 && safe->onAddBus)
-                               safe->onAddBus();
-                           if (choice >= 400 && choice < 450)
-                               safe->addFxTrack(choice, 400, {});
-                       });
+    menu.showMenuAsync(
+        juce::PopupMenu::Options().withTargetComponent(&addTrack_),
+        [safe, instruments, channels](int choice)
+        {
+            if (safe == nullptr)
+                return;
+            if (choice == 4 && safe->onCommand)
+            {
+                std::vector<core::Id> members;
+                if (safe->project_ != nullptr && safe->project_->findTrack(safe->selectedTrack_) != nullptr)
+                    members.push_back(safe->selectedTrack_);
+                safe->onCommand(std::make_unique<core::AddFolderTrack>("Folder", members));
+                return;
+            }
+            if (choice == 1 && safe->onAddAudioTrack)
+                safe->onAddAudioTrack();
+            if (const auto type = instruments.typeFor(choice); !type.empty() && safe->onAddMidiTrack)
+                safe->onAddMidiTrack(type);
+            if (choice == 999 && safe->onAddMidiTrackPlaying)
+                safe->onAddMidiTrackPlaying(core::invalidId);
+            if (choice >= 1000 && static_cast<size_t>(choice - 1000) < channels.size() &&
+                safe->onAddMidiTrackPlaying)
+                safe->onAddMidiTrackPlaying(channels[static_cast<size_t>(choice - 1000)]);
+            if (choice == 3 && safe->onAddBus)
+                safe->onAddBus();
+            if (choice >= 400 && choice < 450)
+                safe->addFxTrack(choice, 400, {});
+        });
 }
 
 void ArrangeView::joinSelection()

@@ -480,6 +480,104 @@ bool Project::wouldCycle(Id channelId, Id busId) const noexcept
     return findBus(channelId) != nullptr && busReaches(busId, channelId);
 }
 
+namespace
+{
+constexpr int maxFolderDepth = 32; // a cycle in a hand-edited file ends here
+} // namespace
+
+const Track* Project::folderOf(const Track& track) const noexcept
+{
+    if (track.folder == invalidId || track.folder == track.id)
+        return nullptr;
+    const auto* folder = findTrack(track.folder);
+    return folder != nullptr && folder->isFolder() ? folder : nullptr;
+}
+
+int Project::folderDepth(const Track& track) const noexcept
+{
+    int depth = 0;
+    for (const auto* f = folderOf(track); f != nullptr && depth < maxFolderDepth; f = folderOf(*f))
+        ++depth;
+    return depth;
+}
+
+bool Project::hiddenByFolder(const Track& track) const noexcept
+{
+    int depth = 0;
+    for (const auto* f = folderOf(track); f != nullptr && depth < maxFolderDepth; f = folderOf(*f), ++depth)
+        if (!f->folderOpen)
+            return true;
+    return false;
+}
+
+bool Project::mutedByFolder(const Track& track) const noexcept
+{
+    int depth = 0;
+    for (const auto* f = folderOf(track); f != nullptr && depth < maxFolderDepth; f = folderOf(*f), ++depth)
+        if (f->mute)
+            return true;
+    return false;
+}
+
+bool Project::soloedByFolder(const Track& track) const noexcept
+{
+    int depth = 0;
+    for (const auto* f = folderOf(track); f != nullptr && depth < maxFolderDepth; f = folderOf(*f), ++depth)
+        if (f->solo)
+            return true;
+    return false;
+}
+
+bool Project::insideFolder(Id trackId, Id folderId) const noexcept
+{
+    const auto* t = findTrack(trackId);
+    int depth = 0;
+    for (; t != nullptr && depth <= maxFolderDepth; t = folderOf(*t), ++depth)
+        if (t->id == folderId)
+            return true;
+    return false;
+}
+
+Project freezeRenderProject(const Project& project, Id trackId)
+{
+    Project copy = project;
+    const auto dropFader = [](Channel& c)
+    {
+        std::erase_if(
+            c.automation,
+            [](const AutomationLane& lane)
+            { return lane.target == AutomationTarget::gain || lane.target == AutomationTarget::pan; });
+        c.sends.clear();
+        c.solo = false;
+        c.group = invalidId;
+    };
+    for (auto& t : copy.tracks)
+    {
+        dropFader(t);
+        if (t.id == trackId)
+        {
+            t.gain = 1.0f;
+            t.pan = 0.0f;
+            t.mute = false;
+            t.outputBus = invalidId;
+            t.frozenMedia.clear();
+        }
+        else if (t.isMidi() && t.midiTarget == trackId)
+            continue; // its notes play the frozen instrument
+        else if (t.isFolder())
+            t.mute = false;
+        else
+            t.gain = 0.0f;
+    }
+    for (auto& b : copy.buses)
+    {
+        dropFader(b);
+        b.gain = 0.0f;
+    }
+    copy.master.gain = 1.0f;
+    return copy;
+}
+
 SamplePosition Project::length() const noexcept
 {
     SamplePosition end = 0;
