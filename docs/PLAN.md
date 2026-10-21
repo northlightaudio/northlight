@@ -515,6 +515,10 @@ These need an answer before or during the phase noted.
 1. **Own engine vs Tracktion Engine** (Phase 0). Plan recommends own engine; see section 2.
 2. **Licensing of Aural itself** (Phase 0). Proprietary, GPL, or dual? Affects the
    time-stretch library choice and whether Tracktion is viable.
+   **Decided 2026-10-21: GNU AGPLv3**, released as Northlight. It matches JUCE's
+   open licence and takes the ASIO SDK under its GPLv3 option (GPLv3 section 13
+   allows the combination); every other dependency is permissive. See LICENSE and
+   THIRD_PARTY_NOTICES.md.
 3. **CLAP hosting** (Phase 5). Recommended yes; small cost on top of VST3.
    **Decided 2026-10-19: yes.** Hosted directly against the CLAP C ABI (JUCE does
    not host CLAP), behind the same insert interface, as "clap:<id>" types.

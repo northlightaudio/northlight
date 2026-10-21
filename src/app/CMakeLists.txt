@@ -43,7 +43,10 @@ add_custom_command(TARGET aural POST_BUILD
     COMMAND ${CMAKE_COMMAND} -E copy_if_different $<TARGET_FILE:aural_plugin_scan> $<TARGET_FILE_DIR:aural>
     COMMAND ${CMAKE_COMMAND} -E make_directory "$<TARGET_FILE_DIR:aural>/assets"
     COMMAND ${CMAKE_COMMAND} -E copy_if_different "${CMAKE_SOURCE_DIR}/docs/design/tokens.json" "$<TARGET_FILE_DIR:aural>/assets/tokens.json"
-    COMMAND ${CMAKE_COMMAND} -E copy_directory "${CMAKE_SOURCE_DIR}/assets" "$<TARGET_FILE_DIR:aural>/assets")
+    COMMAND ${CMAKE_COMMAND} -E copy_directory "${CMAKE_SOURCE_DIR}/assets" "$<TARGET_FILE_DIR:aural>/assets"
+    # The licence and the third-party notices ship with every build.
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different "${CMAKE_SOURCE_DIR}/LICENSE" "$<TARGET_FILE_DIR:aural>/LICENSE.txt"
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different "${CMAKE_SOURCE_DIR}/THIRD_PARTY_NOTICES.md" "$<TARGET_FILE_DIR:aural>/THIRD_PARTY_NOTICES.md")
 add_dependencies(aural aural_plugin_scan)
 
 target_sources(aural PRIVATE
