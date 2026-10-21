@@ -52,8 +52,7 @@ Using the mark:
 
 ## Colour
 
-The palette, with names used in conversation and design files. The values are the
-`color` and `track` tokens.
+The palette by name. The values are the `color` and `track` tokens.
 
 | Name | Hex | Role |
 |---|---|---|
@@ -94,22 +93,20 @@ Rules:
 | **Inter** | Every control and label in the app; body text on the website | `font.ui` |
 | **JetBrains Mono** | Time, bars, tempo, dB and every other value that changes | `font.mono` |
 
-Newsreader is a reading face with a gentle, slightly literary voice; it is used large
-and sparingly, never for controls. Inter carries the interface, JetBrains Mono the
-numbers, so values never jitter as they change.
+Newsreader is used large and sparingly, never for controls. JetBrains Mono keeps
+values from jittering as they change.
 
 ## Voice
 
-Plain, specific and calm, like the rest of the documentation. Say what the software does,
-in the user's words, without superlatives. A little of the landscape is allowed in
+Plain, specific and calm. Say what the software does, in the user's words, without
+superlatives. A little of the landscape is allowed in
 headlines ("Record the light while it lasts."), never in instructions, labels or
 error messages.
 
 ## Imagery
 
-Photographs of the kind on the moodboard: open land under overcast or evening skies,
-grasses, a low moon or sun, desaturated and slightly grainy, never staged or
-high-contrast. No stock photos of people in studios, no gear close-ups, no glowing
+Photographs of open land under overcast or evening skies, grasses, a low moon or
+sun, desaturated and slightly grainy, never staged or high-contrast. No stock photos of people in studios, no gear close-ups, no glowing
 waveforms. Screenshots of the app are the other image, shown at 100% or 200%.
 
 ## Where the brand lives

@@ -58,7 +58,10 @@ public:
         slots_[static_cast<size_t>(slot)].count.fetch_add(numSamples, std::memory_order_relaxed);
     }
 
-    // UI thread: returns the reading and resets the peak hold.
+    // UI thread: returns the reading and resets the peak hold. Because it resets,
+    // each slot must have exactly one reader (the mixer takes every slot each frame
+    // and keeps the last readings for any other view); a second reader would steal
+    // peaks from the first.
     Reading take(int slot) noexcept
     {
         Reading r;

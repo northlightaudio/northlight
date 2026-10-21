@@ -3,7 +3,7 @@
 ## 7.1 Insert chain panel (Editor tab, dock)
 
 Selecting a track or bus and opening the Editor tab shows its chain as a horizontal
-strip of device cards, Bitwig-style, so the whole signal path reads left to right.
+strip of device cards, so the whole signal path reads left to right.
 
 ```
 | 01 Kick ▸  [ EQ ─────────── ] [ DC1A3 ──── VST3 ] [ Limiter ───── ] [ + ]
@@ -17,11 +17,10 @@ strip of device cards, Bitwig-style, so the whole signal path reads left to righ
 - Card: `surface1`, radius `md`, 1 px `lineSubtle`, min width 160, height fills the
   dock; header 28 px with power (bypass) toggle, name in `label`, format badge,
   and a "⋮" menu (replace, remove, presets, sidechain, latency "32 smp").
-- Body: for built-ins, the built-in's own editor (7.2a); for
-  hosted plugins with a GUI, a thumbnail placeholder with an "Open" primary button
-  (the native editor opens in a plugin window) and the three most important
-  parameters as knobs if the plugin exposes them; for hosted plugins without a GUI,
-  the generic editor in the card.
+- Body: for built-ins, the built-in's own editor (7.2a); for hosted plugins with a
+  GUI, a thumbnail placeholder with an "Open" primary button (opens the plugin
+  window) and the three most important parameters as knobs if the plugin exposes
+  them; for hosted plugins without a GUI, the generic editor.
 - Footer 24 px: wet/dry mini slider with "Mix 100%".
 - Bypassed card: body at 50% alpha, power icon `textTertiary`, header name struck.
 - Drag the header to reorder; a 2 px `accent` insertion line between cards. Drag a
@@ -45,16 +44,16 @@ Native window with a 32 px Northlight bar above the plugin's own editor:
   (**Decision**: deferred, keep the slot), pin (always on top) toggle, and a
   generic-editor toggle for plugins that have both.
 - The plugin's editor sits below at its native size; the window follows plugin
-  resize requests; DPI scaling passed through.
+  resize requests; DPI scaling is passed through.
 - Position and size remembered per plugin type; pin state remembered.
 - Closing the window never unloads the plugin; the card in the chain shows "open" as
   an `accent` dot on its header while the window is open.
 
 ## 7.2a Built-in editors
 
-Every built-in has an editor in the channel strip's language (screens/channel-strip.md
-12.1-12.2): a display in a well that reads the processor live and drags, then
-knobs in the module's hue. The same editor is the card's body in the Editor panel
+Every built-in has an editor in the channel strip's language
+([channel-strip.md](channel-strip.md) 12.1-12.2): a live, draggable display in a
+well, then knobs in the module's hue. The same editor is the card's body in the Editor panel
 and the body of its window (under the title, bypass and mix). The hues follow the
 strip: EQ `Overcast`, compressor `Loch`, limiter `Rowan`; gain `Machair`, reverb `Lichen`,
 delay `Gorse`. The instruments (7.4b-7.4e) have faces of their own.
@@ -63,8 +62,8 @@ delay `Gorse`. The instruments (7.4b-7.4e) have faces of their own.
 - **EQ**: the strip's EQ graph with the built-in's four bands (a high-pass,
   off at 0 Hz, sitting at the left edge; low shelf; mid with Q on the wheel; high
   shelf) and the analyser. The selected band's knobs below under its name.
-- **Compressor**: the channel strip compressor's card (the insert and the strip
-  module are one compressor): the transfer curve, the history with the threshold
+- **Compressor**: the channel strip compressor's card (they are one compressor):
+  the transfer curve, the history with the threshold
   line, the IN threshold meter, GR and OUT; Ratio, Attack, Release, Knee, Makeup,
   Mix; Auto make-up and Peak / RMS. The insert also takes a sidechain key, tapped
   before or after the source's fader: a Sidechain button beside Peak / RMS picks
@@ -108,12 +107,11 @@ For GUI-less hosted plugins. A scrollable grid of parameter rows:
 |   ★ DC1A3                  Klanghelm        VST3       |
 | Recent                                                 |
 | Effects                                                |
-|   Northlight EQ                 Built-in                    |
+|   Northlight EQ            Built-in                    |
 |   DC1A3                    Klanghelm        VST3       |
-|   Northlight Test Gain          Leafshade        CLAP       |
 | Instruments                                            |
 |   …                                                    |
-| Blocked (1)                                             |
+| Blocked (1)                                            |
 |   ⚠ BadPlugin.vst3         crashed on scan   Retry     |
 ```
 
@@ -175,8 +173,8 @@ inserts, channel strip, sends, fader and automation process the instrument's mai
 output. **MIDI tracks** hold the notes (clips, an input, arm and monitoring, MIDI
 out) and make no audio: each aims at an instrument channel on a MIDI channel
 (1-16). Several MIDI tracks may play one instrument (a multitimbral plugin tells
-them apart by channel); a MIDI track's volume scales its notes' velocities, its
-mute stops new notes. Each further stereo output of an instrument is an **output
+them apart by channel); a MIDI track's volume scales its notes' velocities, and
+its mute stops new notes. Each further stereo output of an instrument is an **output
 track** with its own processing.
 
 The "+" menu's **MIDI track** submenu offers: **With a new instrument** (any
@@ -184,8 +182,8 @@ built-in or scanned instrument), which makes both in one step, the MIDI track an
 just under it, its instrument channel (named for the instrument); **Playing** any
 instrument channel already in the project (the MIDI track goes just above it); or
 **Playing nothing yet**. Ctrl+Shift+T and the empty project's "Add MIDI track" make
-a MIDI track with a new Aurora channel. The insert menus list
-effects only; an instrument chosen from the browser goes to the selected
+a MIDI track with a new Aurora channel. The insert menus list effects only; an
+instrument chosen from the browser goes to the selected
 instrument channel, the one the selected MIDI track plays (or a new channel for
 it, when it plays none), or a new MIDI track and instrument channel.
 
@@ -259,8 +257,8 @@ Spread, hats Bright and Noise, toms Noise and Punch), Level, Pan and Output: the
 main pair or an extra one (3/4 to 15/16). Pulsar has as many extra outputs as its
 pads use, each named for the pads on it ("Kick", "Closed hat + Open hat"), and
 each becomes a track of its own from the rack's chip or the mixer's Outputs menu,
-named that way. The master: Drive, Velocity, Level (applied to every output). Kits: Pulsar, Boom Room, Tight Electro, Dusty, Minimal
-Clicks, Industrial.
+named that way. The master: Drive, Velocity, Level (applied to every output).
+Kits: Pulsar, Boom Room, Tight Electro, Dusty, Minimal Clicks, Industrial.
 
 - Deep space (the canvas darkening around the star) with stars, and the pulsar in
   the top-left corner: a white core, an `Overcast` halo and two beams that turn slowly
@@ -376,14 +374,13 @@ envelope moves by Env octaves. Hues: the sample `Lichen`, loop `Gorse`, keys
   removed or replaced.
 - Plugin failed to load (layout refused, crash on instantiate): a toast with the
   reason and a "Blocklist" action; the card shows "Failed" in `danger`.
-- Latency change (plugin reports new latency): no UI beyond the card's latency label
-  updating; the graph re-solves silently.
+- Latency change: no UI beyond the card's latency label updating.
 
 ## Acceptance
 
-- Chain strip screenshot with three cards matches sizes and states, including a
-  bypassed card and a drag insertion line mid-drag.
-- Plugin window bar screenshot at 100% and 150% with DC1A3 shows the 32 px bar and
-  the plugin at its native size.
-- Browser screenshot with favourites, both formats and a blocked row.
-- Scan progress and cancel verified with the stub scanner tests' hanging plugin.
+- A chain of three cards matches sizes and states, including a bypassed card and
+  the insertion line mid-drag.
+- At 100% and 150%, a plugin window shows the 32 px bar and the plugin at its
+  native size.
+- The browser shows favourites, both formats and a blocked row.
+- Scan progress and Cancel work when a plugin hangs during the scan.

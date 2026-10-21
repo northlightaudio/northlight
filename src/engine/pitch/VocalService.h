@@ -17,7 +17,7 @@
 #include <thread>
 #include <vector>
 
-// Vocal pitch editing for the engine (docs/design/screens/pitch-editing.md, "How it fits").
+// Vocal pitch editing for the engine (docs/design/screens/pitch-editing.md, "Where it fits").
 //
 // The VocalService owns, per media file, its samples and its pitch analysis (made
 // on a background thread, cached beside the media as "<file>.<rate>.northlight-pitch"),

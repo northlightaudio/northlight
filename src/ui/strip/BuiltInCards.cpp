@@ -1,4 +1,4 @@
-// The built-ins' inline editors (screens/plugins.md 7.1): a display to read and
+// The built-ins' inline editors (screens/plugins.md 7.2a): a display to read and
 // drag for each processor, then the knobs. The dynamics reuse the channel
 // strip's displays; the reverb, delay and synth have their own here.
 

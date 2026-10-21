@@ -100,9 +100,8 @@ up/down, clips left/right).
 - Every control has a tooltip: name, value if any, shortcut in mono. Appears after
   500 ms, instantly when moving between adjacent controls, never during a drag.
 - The status bar's right side shows a one-line description of the control under the
-  pointer after 1 s hover ("Pan: drag up/down, double-click to centre"); off by
-  default in Preferences after the first week (**Decision**: on by default for new
-  installs).
+  pointer after 1 s hover ("Pan: drag up/down, double-click to centre").
+  **Decision**: on by default for new installs; can be turned off in Preferences.
 
 ## 10.6 Notifications and errors
 
@@ -128,9 +127,8 @@ drags) are one undo step each; typing in a field is one step per commit.
 
 ## Acceptance
 
-- A state audit table per screen (component × state) is filled in with screenshot
-  references; no cell may read "not implemented".
-- The keyboard map is exercised by an automated test that posts key events to the
-  main window and checks the resulting commands.
+- Every component on every screen implements every state in 10.1.
+- An automated test posts the keyboard map's key events to the main window and
+  checks the resulting commands.
 - Every error path listed in sections 4 to 8 produces the specified toast or sheet
   wording.

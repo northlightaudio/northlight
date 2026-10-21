@@ -118,8 +118,8 @@ Rows at `trackRow` 56 default. Contents, left to right, inside `space.sm` paddin
   transport stopped or recording), `warning` yellow while auto is waiting.
 - Row 2 (24 px, hidden below 44 px row height): input select (compact combo, "In 1",
   "In 1/2" for linked stereo, "No input"), an 8 px tall horizontal meter filling the
-  middle, and a compact volume slider on the right (hidden below 200 px header width,
-  the fader lives in the mixer anyway).
+  middle, and a compact volume slider on the right (hidden below 200 px header
+  width).
 - At `trackRowLarge` 112 the header gains a third row with pan knob, output select and
   a sends summary ("2 sends").
 - Selected track: header `laneSelected` fill and name `textPrimary`; the lane gets
@@ -190,9 +190,8 @@ Rows at `trackRow` 56 default. Contents, left to right, inside `space.sm` paddin
 - Recording clip: a growing clip in `record` at 22% body, with the live waveform
   appended from the recording peaks, header "● Recording".
 - Takes: a take group's comp plays on the lane as clips with a take badge each; the
-  takes expand into lanes under the row for swipe comping (screens/comping.md, which
-  replaces the earlier decision to keep take lanes past v1). Older projects'
-  stacked clips stay stacked, the top one audible.
+  takes expand into lanes under the row for swipe comping (screens/comping.md).
+  Stacked clips from older projects stay stacked, the top one audible.
 
 ## FX tracks
 
@@ -260,12 +259,10 @@ Rows at `trackRow` 56 default. Contents, left to right, inside `space.sm` paddin
 
 ## Acceptance
 
-- 4-track screenshot at 100% matches: ruler 32 px, headers 220 px, rows 56 px, clip
-  header 18 px, colours by alpha from the token file.
-- 64-track screenshot at 3840×2160 150% renders in under 16 ms per frame while
-  scrolling and with the playhead moving (section 11 method).
-- Every drag state (move, trim, fade, lasso, time selection, file drop) has been
-  screenshotted mid-drag and matches the descriptions, including the snap guide and
-  tooltip.
-- Clip, header and lane hover and selected states are each visibly distinct at a
-  glance.
+- At 100%: ruler 32 px, headers 220 px, rows 56 px, clip header 18 px, colours by
+  alpha from the token file.
+- 64 tracks at 4K and 150% draw in under 16 ms per frame while scrolling with the
+  playhead moving (section 11 method).
+- Every drag state (move, trim, fade, lasso, time selection, file drop) matches its
+  description mid-drag, including the snap guide and tooltip.
+- Clip, header and lane hover and selected states are each distinct at a glance.

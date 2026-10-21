@@ -38,9 +38,9 @@ scale and a second column for sends):
 
 - Strip width 84; gap `space.xxs` 2 between strips; `surface1` strip on `surface0`
   background with radius `sm` at top and bottom.
-- Fader section is the flexible part: the dock height determines fader travel between
-  120 and 200 px; below 120 the inserts and sends sections collapse to single-line
-  summaries ("3 inserts", "2 sends") that expand on hover.
+- The fader section is the flexible part: dock height sets fader travel between
+  120 and 200 px; below 120 the inserts and sends collapse to one-line summaries
+  ("3 inserts", "2 sends") that expand on hover.
 - Master strip: 112 px, separated by `space.lg` and a `lineSubtle`, pinned right; its
   meter is 10 px per channel with a scale, and under it the loudness readout
   (M / S / I in `value` mono with a target marker). Master has inserts, no input, no
@@ -60,9 +60,9 @@ scale and a second column for sends):
   left; drag handle on hover at the right; dragging reorders with a 2 px `accent`
   insertion line; the "+" slot is a ghost button opening the plugin menu. Right-click:
   bypass, open, replace, remove, move up/down, wet/dry, sidechain.
-- Send row: name `small`, a 40 px mini slider, a pre/post dot (filled `accent` =
-  pre-fader) that toggles on click; drag the slider for level; double-click resets;
-  tooltip shows dB.
+- Send row: name `small`, a 40 px mini slider (drag for level, double-click resets,
+  tooltip shows dB), a pre/post dot (filled `accent` = pre-fader) that toggles on
+  click.
 - Pan: knob per section 2; centre detent; value "C", "L35", "R12".
 - Toggles: M `mute`, S `solo`, R `arm`, Ø phase (`textSecondary` on, with the on
   pattern). Solo-safe and solo-in-place are in the right-click menu.
@@ -80,18 +80,17 @@ scale and a second column for sends):
   steps 0.5 dB; keyboard arrows when focused.
 - Clicking an insert name opens its editor (plugin window or generic); clicking the
   badge opens the plugin browser filtered to that plugin.
-- Solo: soloing a bus lights the strips that feed it with a dim `solo` outline so
-  the user sees why they are audible.
+- Solo: soloing a bus gives the strips that feed it a dim `solo` outline, showing
+  why they are audible.
 - Dropouts and overloads: a clip indicator stays lit until clicked; the master's
   clip indicator also appears in the header bar's transport cluster.
 - Metering is never eased; ballistics from `motion.meterFallDbPerSec`.
 
 ## Pop-out window
 
-The mixer is a panel under the panel model in section 3: ⤢ in its header, dragging
-its tab out, or Shift+F2 opens it in its own window with the same layout and a
-240 px minimum height. The fader section grows to use the window height up to the
-200 px travel.
+The mixer follows the panel model (section 3): ⤢ in its header, dragging its tab
+out, or Shift+F2 opens it in its own window with the same layout and a 240 px
+minimum height. Fader travel grows with the window up to 200 px.
 
 ## Empty state
 
@@ -100,12 +99,12 @@ No tracks: the dock shows only the master strip and the arrange empty-state hint
 
 ## Acceptance
 
-- Strip screenshot at 100% matches the anatomy with the listed heights; the fader
-  travel is 200 px at the default dock height.
-- Fader law check: 0 dB at 75% travel, +6 at top, -inf at bottom; the value field and
-  the tooltip agree with the engine's gain within 0.1 dB.
-- Meter zones change at -18 and -6 dBFS against a calibrated test tone; peak hold
-  1.5 s; clip indicator latches.
+- At 100% a strip matches the anatomy and listed heights; fader travel is 200 px
+  at the default dock height.
+- Fader law: 0 dB at 75% travel, +6 at top, -inf at bottom; the value field and
+  tooltip agree with the engine's gain within 0.1 dB.
+- Meter zones change at -18 and -6 dBFS; peak hold 1.5 s; the clip indicator
+  latches.
 - 32 strips plus 4 buses plus master render and scroll at 60 fps at 150% scale with
   meters live.
 - Keyboard: Tab moves between strips, arrows adjust the focused fader, M/S/R toggle

@@ -21,11 +21,9 @@ Five neutral steps, each used for exactly one plane:
 `surfacePressed` is darker than `surface2` so pressing reads as "pushed in".
 `overlay` dims the window behind a sheet.
 
-The base is Machair dusk's peat green (`#0F1311` to `#2F3630`, see
-[brand.md](brand.md)): dark and close to neutral, with just enough green that the
-window reads as evening land rather than a black box, so track colours and meters sit
-on something calm. Steps are 6 to 9 points of lightness apart: enough to read as
-planes, not enough to read as boxes.
+The base is Machair dusk's peat green (see [brand.md](brand.md)): close to neutral,
+with enough green that the window reads as evening land rather than a black box.
+Steps are 6 to 9 points of lightness apart: enough to read as planes, not boxes.
 
 ### Lines
 
@@ -43,11 +41,10 @@ light track colour.
 
 ### Accent
 
-One interaction colour, `accent` (a cool, airy blue), with hover and pressed steps and
+One interaction colour, `accent` (Overcast blue), with hover and pressed steps and
 a 12% `accentSubtle` fill. It means exactly four things: selected, focused, active
 toggle, drop target. It is never used for data (meters, clips, notes use their own
-tokens), so when something is accent-coloured the user knows it is about their
-current action.
+tokens).
 
 ### Semantic
 
@@ -56,7 +53,7 @@ button, the record transport button, the recording playhead and punch regions;
 `danger` is destructive confirmation and hard errors. `warning` (amber) is for
 dropouts, latency mismatch, missing plugins. `success` (green) is for completed
 bounces and healthy status. The track-control trio is `arm` (red), `solo` (amber),
-`mute` (slate), matching long-standing DAW convention so nobody has to learn it.
+`mute` (slate), matching DAW convention.
 
 ### Meters
 
@@ -87,7 +84,7 @@ Derived uses, all by alpha over the base (see `track.*Alpha`):
 
 ## 2.2 Typography
 
-- **UI face: Inter** (variable). Humanist, excellent at 11 to 13 px, open licence.
+- **UI face: Inter** (variable). Humanist, clear at 11 to 13 px, open licence.
   Bundled in `assets/fonts`.
 - **Numeric face: JetBrains Mono** (variable) for every time display, counter, dB
   value, tempo and sample-rate readout. Monospace guarantees stable widths while
@@ -122,12 +119,10 @@ control's thumb.
 
 ## 2.4 Elevation and material
 
-**Panels are flat; controls are tactile.** This is design language B from the
-workshop board on the mockup canvas. Planes (canvas, surfaces, panels, cards, strips,
-lanes, clips) are expressed by surface steps alone and carry no shadows, bevels,
-textures or gradients. Controls, the things a hand would touch, get a consistent
-lighting model from the `material` tokens so they read as physical without the
-panels turning into hardware:
+**Panels are flat; controls are tactile.** Planes (canvas, surfaces, panels, cards,
+strips, lanes, clips) are expressed by surface steps alone and carry no shadows,
+bevels, textures or gradients. Controls, the things a hand would touch, get a
+consistent lighting model from the `material` tokens:
 
 | Element | Treatment (tokens in `material.*`) |
 |---|---|
@@ -136,12 +131,11 @@ panels turning into hardware:
 | Fader track | A groove: `groove` fill, `grooveInset` shadow, 1 px `grooveLip` under it. |
 | Fader cap | `capTop` to `capBottom` gradient, `capHighlight` top edge, `capShadow`; the track-colour line gets a 4 px glow of its own colour. |
 | Knob | Rim `knobRim` 3 px with the value arc on it; body a radial gradient `knobBodyLight` (offset to the upper left) to `knobBodyDark`; a faint `knobHighlight` arc at the top; the indicator line `textPrimary`. |
-| Meter | A well: `meterWell` with `meterWellInset`; the signal is LED-segmented at `ledPitchPx` with `ledGapPx` dark gaps, zone colours unchanged; peak hold and clip as before. |
+| Meter | A well: `meterWell` with `meterWellInset`; the signal is LED-segmented at `ledPitchPx` with `ledGapPx` dark gaps, zone colours unchanged; peak hold and clip as in Meter (2.7). |
 | Numeric readouts (time, dB, tempo) | A readout well `readoutWell` with `grooveInset`; text in `readoutText` (no glow); `readoutRecord` while recording. Values in fields that are typed into keep the plain Text field look. |
 | Scrollbars, tabs, menus, tooltips, sheets, toasts, badges, checkboxes, sliders' tracks | Unchanged: flat per their component spec. |
 
-Rules that keep it from sliding into C: no textures or noise, no bevels on panels, no
-screw heads, no engraved text, no gradients wider than a control, no glow on anything
+Rules: no textures or noise, no bevels on panels, no screw heads, no engraved text, no gradients wider than a control, no glow on anything
 that is not an active state or a readout, shadows never longer than 3 px inside the
 window. Reduce-motion and high-contrast variants keep the geometry and drop the glows.
 
@@ -150,10 +144,9 @@ Popups (menus, tooltips, combo lists, colour swatches) float with
 Secondary windows (plugin, audio setup, browser) are native windows with the same
 surface tokens and no inner chrome.
 
-Rendering: gradients and inset shadows are cheap in Direct2D; blurred glows are
-not. Glows are pre-rendered once per scale into cached images per colour and drawn
-as 9-slice bitmaps, never computed per frame. The LED meter is a single
-`repeating` fill, not per-segment rectangles.
+Rendering: blurred glows are expensive, so they are pre-rendered once per scale and
+colour and drawn as 9-slice images, never computed per frame. The LED meter is a
+single repeating fill, not per-segment rectangles.
 
 ## 2.5 Iconography
 
@@ -218,8 +211,8 @@ control; it is only drawn for keyboard focus, never for pointer clicks.
 - **Primary**: moonlight, the one bright thing in a view: `primary` fill (a faint
   vertical shade and the control shadow below), `textOnPrimary` label. Hover
   `primaryHover`, pressed `primaryPressed`. At most one per view. It is not the
-  accent: Overcast marks what is active (toggles, selection, focus), and a filled
-  Overcast button read as washed out against the peat.
+  accent: Overcast marks what is active, and a filled Overcast button reads as
+  washed out against the peat.
 - **Ghost**: no fill, `textSecondary` label; hover `surface2` fill and `textPrimary`.
   Toolbar and panel headers use ghost buttons.
 - **Danger**: ghost at rest with `danger` text; hover `danger` fill with
@@ -283,9 +276,9 @@ Track: a 4 px groove (`groove`, `grooveInset`, `grooveLip`), `faderTravel` 200 p
 with a 0 dB tick (`lineStrong`, 8 px wide) and a scale (`caption`, `textTertiary`)
 at +6, 0, -6, -12, -24, -48, -inf on the left. Cap `faderCap` 36×14 in the cap
 material (`capTop` to `capBottom`, `capHighlight`, `capShadow`), radius `sm`, a
-1 px track-colour line across its centre with a 4 px glow of the same colour,
-hover: highlight brightens, drag shows the dB value in a tooltip. Law: Logic-style, 0 dB at 75% travel, +6 dB max. Double-click to 0 dB.
-Shift drag = fine. Keyboard as Slider.
+1 px track-colour line across its centre with a 4 px glow of the same colour.
+Hover: highlight brightens; drag shows the dB value in a tooltip. Law: 0 dB at 75%
+travel, +6 dB max. Double-click to 0 dB. Shift drag = fine. Keyboard as Slider.
 
 ### Knob (pan, send level, plugin parameters)
 
@@ -301,14 +294,13 @@ Vertical drag; double-click resets. Keyboard as Slider.
 Vertical bar `meterWidth` 6 px per channel, `meterGap` 2 px between channels, in a
 well (`meterWell`, `meterWellInset`); the signal is LED-segmented at `ledPitchPx`
 with `ledGapPx` dark gaps, zones per `meter.zones` painted as solid colour runs (no
-gradient blur between zones),
-peak-hold line 1 px `meterPeakHold` with `peakHoldMs`, clip indicator: a 6×6 square
-above the bar that turns `meterClip` and stays until clicked (`clipHoldMs` for the
-auto variant on the master). Scale ticks `caption` `textTertiary` at
-`meter.scaleTicksDb` on wide strips only. The bar rises over `meterRiseMs` (40
-ms: a lone spike does not jump it) and falls at `meterFallDbPerSec`; the peak line
-and the clip light see the raw peaks. Horizontal variant (track header) is the same bar rotated,
-without scale.
+blur between zones). Peak-hold line 1 px `meterPeakHold` with `peakHoldMs`. Clip
+indicator: a 6×6 square above the bar that turns `meterClip` and stays until clicked
+(`clipHoldMs` for the auto variant on the master). Scale ticks `caption`
+`textTertiary` at `meter.scaleTicksDb` on wide strips only. The bar rises over
+`meterRiseMs` (so a lone spike does not jump it) and falls at `meterFallDbPerSec`;
+the peak line and the clip light see the raw peaks. The horizontal variant (track
+header) is the same bar rotated, without scale.
 
 ### Scrollbar
 
@@ -332,11 +324,11 @@ items show a check icon in `accent`. Disabled `textDisabled`.
 ### Tooltip
 
 `surface3` fill, radius `sm`, `small` 12 text `textPrimary`, max width
-`tooltipMaxWidth`, `sm` padding, shadow. A shortcut (written after two spaces, keys
-joined by "+": "Redo  Ctrl+Shift+Z") shows as key caps at the right of the first line:
-one per key, `caption` `textSecondary` on `surface1` with a `lineStrong` border, radius `sm`.
-Shows the control name and, for valued
-controls, the current value and the shortcut. Delay `tooltipDelayMs`.
+`tooltipMaxWidth`, `sm` padding, shadow. Shows the control name and, for valued
+controls, the current value and the shortcut. The shortcut (written after two
+spaces, keys joined by "+": "Redo  Ctrl+Shift+Z") shows as key caps at the right of
+the first line, one per key: `caption` `textSecondary` on `surface1` with a
+`lineStrong` border, radius `sm`. Delay `tooltipDelayMs`.
 
 ### Dialog (sheet)
 

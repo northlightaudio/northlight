@@ -4,7 +4,7 @@ Loop recording and punching leave several takes of the same part. Comping is
 choosing, phrase by phrase, which take plays: the "punch and comp fast and
 obvious" promise of the brief (principles.md). This note covers the model, the
 recording rules and the arrange view's take lanes, Logic / Cubase / Studio One
-style. It supersedes screens/arrange.md's v1 decision that takes only stack.
+style.
 
 ## Model
 
@@ -18,11 +18,9 @@ style. It supersedes screens/arrange.md's v1 decision that takes only stack.
   ordinary clips** (one per segment, on the take's media with the matching source
   offset). The group remembers which clips are its comp.
   - Why: the engine, bounce, peaks, the inspector and every clip command already
-    work on clips; a comp that is clips needs no change in any of them, and the
-    risk of the feature stays in the model and the arrange view.
-  - The cost: the comp's clips can be edited like any clip (moved, trimmed,
-    gain), but the next comp edit rebuilds them from the takes. Flatten first to
-    keep hand edits as the new starting point.
+    work on clips, so none of them change.
+  - The cost: the comp's clips can be edited like any clip, but the next comp
+    edit rebuilds them from the takes. Flatten first to keep hand edits.
 - **Crossfades**: at a boundary between two takes the clips overlap by the
   group's crossfade, 10 ms by default, centred on the boundary, with matching
   linear fades (constant sum, the existing crossfade mechanism). A crossfade is
@@ -41,9 +39,9 @@ style. It supersedes screens/arrange.md's v1 decision that takes only stack.
 - A punch recording's pass is a take covering the punch range.
 - A pass that lands on an existing take group's range joins it as its newest take
   and plays over its range.
-- A single pass anywhere else is a plain clip, as before. Clips already on the
-  track are not folded into a group: a pass over an ordinary clip overlaps it.
-- MIDI loop recording keeps its clip per pass (MIDI take lanes are not built).
+- A single pass anywhere else is a plain clip. Clips already on the track are not
+  folded into a group: a pass over an ordinary clip overlaps it.
+- MIDI loop recording keeps a clip per pass.
 
 ## Arrange view
 
@@ -97,9 +95,9 @@ style. It supersedes screens/arrange.md's v1 decision that takes only stack.
 - Rows: the track's row height (and its resize edge, under the main lane) is
   unchanged; the lanes add to the row's extent, so the tracks below move down.
 
-## Not in this pass
+## Deferred
 
-- MIDI take lanes (MIDI loop recording keeps a clip per pass).
+- MIDI take lanes.
 - Trimming a comp's outer edges (a trim acts on that clip alone and the next
   comp edit rebuilds it).
 - Turning existing overlapping clips into a take group.

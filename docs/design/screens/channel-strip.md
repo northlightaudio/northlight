@@ -3,9 +3,9 @@
 ## Purpose and anatomy
 
 Every track and bus has a channel strip: a fixed set of built-in processors that
-are always there and switched on in place, the way a console channel (or Cubase's
-channel strip) works. It is separate from the insert rack: nothing is added or
-removed, and the modules never show up in the inserts menu or the insert slots.
+are always there and switched on in place, like a console channel. It is separate
+from the insert rack: nothing is added or removed, and the modules never appear in
+the inserts menu or the insert slots.
 
 Modules, in their default order:
 
@@ -23,8 +23,8 @@ selection, focus and drop targets.
 
 The strip sits after the inserts by default (signal flow: inserts, strip, fader);
 its caption row switches it to before them. Modules can be dragged into another
-order. A module that is off costs almost nothing (the processor's settled bypass
-is a no-op) and adds no latency (the limiter has no lookahead for that reason).
+order. A module that is off costs almost nothing and adds no latency (so the
+limiter has no lookahead).
 
 ## 12.1 In the Editor panel
 
@@ -42,8 +42,8 @@ is a no-op) and adds no latency (the limiter has no lookahead for that reason).
 - A module that is off is shown as a **tab**: 34 px wide, `surface1`, radius `md`,
   the hue as a 2 px top line at 25% alpha, the power button at the top and the name
   running down it in `label`. Clicking the tab expands the card without switching
-  the module on; switching a module on (from anywhere) expands it. The expanded or
-  collapsed choice is remembered per module type for the session.
+  the module on; switching a module on (from anywhere) expands it. Expanded or
+  collapsed is remembered per module type for the session.
 - An expanded **card**: `surface1`, radius `md`, 1 px `lineSubtle`, the hue as a
   2 px line along the top (25% when off). Header 28 px: power (`IconButton`, the
   module's hue when on), name in `label`, a live readout on the right in `value`
@@ -54,8 +54,8 @@ is a no-op) and adds no latency (the limiter has no lookahead for that reason).
   material's `meterWell` (or `canvas`), radius `sm`, an inner shadow in the
   `meterWellInset` colour 10 px down from the top edge, 4 px in from the sides
   and 3 px up from the bottom, a 1 px rim of the same colour, and a `grooveLip`
-  highlight along the panel just under it. Meters are wells too. The display takes what the controls leave (at least 96 px; 140 for the
-  EQ). Knobs are 28 px rings in the module's hue with the value under the ring in
+  highlight along the panel just under it. Meters are wells too. The display
+  takes what the controls leave (at least 96 px; 140 for the EQ). Knobs are 28 px rings in the module's hue with the value under the ring in
   `value` and the name under that in `caption`, on a 60 px grid. Choices are
   segmented controls; two-state options are pills (the hue at 25% when on).
 - Off, the body is dimmed (`surface1` at 42% over it) but stays live: the display
@@ -70,19 +70,19 @@ meter's zone colours below the threshold; above it the module's hue for the
 gate opening, `meterHot` for reduction), ticks every 12 dB on the left, the
 threshold as a 1.5 px `textPrimary` line across the well with a triangular
 handle on the right, and its value under the well in `value`. Drag anywhere on
-it (a click away from the handle moves the threshold there; Shift is fine),
+it (a click away from the handle moves the threshold there; Shift for fine),
 the wheel steps 0.5 dB, double-click resets. The history graph's dashed
-threshold line stays and drags too.
+threshold line also drags.
 
 ## 12.2 Real-time feedback
 
-Every module publishes, from the audio thread, a level history of 200 frames a
-second (input peak, output peak, gain reduction, a module-specific level) and the
-EQ two signal taps (before and after it). The UI reads them at 60 Hz while the
-card is visible. Meters rise over `meterRiseMs` and fall at `meterFallDbPerSec`;
-gain reduction moves like a needle (in over half `meterRiseMs`, out over 300 ms).
-Numbers beside meters show the loudest reading of each quarter second, so they
-can be read. Histories scroll right to left over three seconds.
+Every module publishes a level history at 200 frames a second (input peak,
+output peak, gain reduction, a module-specific level); the EQ also publishes
+signal taps before and after it. The UI reads them at 60 Hz while the card is
+visible. Meters rise over `meterRiseMs` and fall at `meterFallDbPerSec`; gain
+reduction moves like a needle (in over half `meterRiseMs`, out over 300 ms).
+Numbers beside meters show the loudest reading of each quarter second so they
+stay readable. Histories scroll right to left over three seconds.
 
 ## 12.3 Gate
 
@@ -111,7 +111,7 @@ can be read. Histories scroll right to left over three seconds.
   8192-point Hann FFT of the signal after the EQ as a gradient fill in the hue
   (32% to 6%) and before it as a `textSecondary` line at 45%, on a -96..0 dBFS
   scale tilted +3 dB/octave about 1 kHz so a typical mix reads level; 30 updates a
-  second, rising quickly and falling at 40 dB/s. The taps only run while an
+  second, rising quickly and falling at 40 dB/s. The taps run only while an
   analyser is showing.
 - Under the display: a chip per band (cuts wider), filled in the band's hue when
   on; click selects, double-click switches. Under the chips the selected band's
@@ -145,8 +145,8 @@ can be read. Histories scroll right to left over three seconds.
   dashed), the part the signal is using right now shaded in the hue with dots where
   its peaks land; IN and OUT bars.
 - Type: Tape / Tube / Clip; knobs: Drive, Tone (Dark / Neutral / Bright), Output,
-  Mix. Drive is trimmed by half its value on the way out, so more drive is more
-  colour rather than only more level.
+  Mix. Half the drive is trimmed on the way out, so more drive adds colour more
+  than level.
 
 ## 12.8 Limiter
 
@@ -181,19 +181,16 @@ then "Save as preset…" (a sheet asking for a name), "Reset strip (all off,
 defaults)" and "Show presets folder". A preset sets every module's on/off state
 and parameters in one undo step ("Strip preset: Lead vocal"), keeping the
 channel's module order; the cards of modules it switches on open and the rest
-fold to tabs. EQ bands a preset does not use are switched off so their nodes
-stay out of the way. User presets are JSON files in Documents/Northlight/Strip
-Presets, listed under "Yours"; a preset from an older version leaves modules
-it does not know alone.
+fold to tabs. EQ bands a preset does not use are switched off. User presets are
+JSON files in Documents/Northlight/Strip Presets, listed under "Yours"; a preset
+from an older version leaves modules it does not know alone.
 
 ## Acceptance
 
-- Editor panel screenshot with a track playing: an expanded EQ with the analyser,
-  the compressor showing reduction on its curve, history and GR bar, two modules
-  collapsed to tabs.
-- Switching a module from a tab, the mixer row and the card's power all land on
-  the same state, each as one undo step.
-- A project from before the strip opens with every channel's strip present and
+- With a track playing, the Editor panel shows an expanded EQ with the analyser,
+  the compressor showing reduction on its curve, history and GR bar, and two
+  modules collapsed to tabs.
+- Switching a module from a tab, the mixer row or the card's power reaches the
+  same state, each as one undo step.
+- A project saved without a strip opens with every channel's strip present and
   off, without an undo step.
-- `--strip demo` with `--master-gain -120` gives every display something to show
-  without sound, for unattended screenshots.

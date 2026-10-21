@@ -2,8 +2,7 @@
 
 ## 8.1 Audio setup
 
-The current Audio Setup window is structurally right; the pass refines it rather
-than redesigns it. Window 720×620 default, `surface0`, sections as cards
+Window 720×620 default, `surface0`, sections as cards
 (`surface1`, radius `md`, `space.lg` padding, uppercase `caption` section titles).
 
 ```
@@ -40,9 +39,8 @@ MONITORING
 - Calibrate runs as an inline progress ("Playing click… 3/5") with the measured
   result appearing in `textPrimary` and the reported value dimming to
   `textSecondary` once a measurement exists; Clear resets.
-- Pass-through is **off by default** and is never turned on by the app: a
-  microphone on an input and speakers on the output would feed back the moment the
-  device opens. The checkbox carries the hint "Hear the selected inputs directly.
+- Pass-through is **off by default** and the app never turns it on: a microphone
+  and speakers would feed back the moment the device opens. The checkbox carries the hint "Hear the selected inputs directly.
   Use headphones." and, when turned on while any input meter is live, a one-time
   toast warns about feedback. Track monitoring uses each track's monitor mode
   instead.
@@ -75,15 +73,14 @@ vertical rhythm, section headers in uppercase `caption`.
 
 ## 8.3 First run
 
-Two welcome sheets over the empty project on the very first launch, 600 px wide.
-Never shown again unless the settings file is missing (`--first-run` shows them).
+Two welcome sheets, 600 px wide, over the empty project on first launch. They do
+not show again unless the settings file is missing (`--first-run` forces them).
 
 Both open with the welcome hero: a 132 px band of the brand photograph at the
-panel's width, nudged up 16 px so its moon sits in the upper part (`canvas` wash at
-12%). It stays clear over the top 40%, then dissolves into the `surface0` panel (85%
-by about three quarters down, solid at the bottom), with "WELCOME TO"
+panel's width, its sky and moon clear at the top, dissolving into the `surface0`
+panel behind the text, with "WELCOME TO"
 (`captionCaps`, `textPrimary`) over the wordmark at 30 px, at the panel's
-`space.xl` margin. The photograph is drawn with high-quality resampling. Below it, the step in `captionCaps` `textTertiary`, the
+`space.xl` margin. Below it come the step in `captionCaps` `textTertiary`, the
 title (`title`), one sentence (`body`, `textSecondary`), the content, then the
 button row with a footnote (`caption`, `textTertiary`) at its left.
 
@@ -114,9 +111,10 @@ Unsplash; `assets/splash`) fills it, with a `canvas` wash at 10% and a gradient
 darkening the field into `canvas` at 94% along the bottom, where the text sits in a
 `space.xxl` margin:
 
-- **Top left**: the mark at 28 px in the sky, aligned to the margin, all in `textPrimary`
-  (the Overcast horizon would vanish into the photograph's overcast sky).
-- **Bottom left**: the on-dark wordmark (Newsreader, 36 px) directly above "Version 0.1.0" (`small`,
+- **Top left**: the mark at 28 px in the sky, aligned to the margin, all in
+  `textPrimary` (an Overcast horizon would vanish into the sky).
+- **Bottom left**: the on-dark wordmark (Newsreader, 36 px) directly above the
+  version ("Version 0.1.0", `small`,
   `textSecondary`) and what is loading now (`caption`, `textTertiary`): preparing the
   audio engine, loading the plugin list, opening the main window, opening the audio
   device, ready.
@@ -133,9 +131,9 @@ shows the same window over the main window, without the progress line and with
 
 ## Acceptance
 
-- Audio Setup screenshot matches the card layout, 120 px label column, live input
-  meters per channel, and the status line with its dot.
-- Calibration flow screenshot mid-run shows the inline progress.
-- Preferences: each page screenshot matches the row layout; Shortcuts rebinding and
-  conflict display verified.
-- First-run sheet screenshot matches; it does not appear on a second launch.
+- Audio Setup matches the card layout, 120 px label column, live input meters per
+  channel, and the status line with its dot.
+- Calibration shows the inline progress while it runs.
+- Preferences: each page matches the row layout; Shortcuts rebinding and conflict
+  display work.
+- The first-run sheets match and do not appear on a second launch.

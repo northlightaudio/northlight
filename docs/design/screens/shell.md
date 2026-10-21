@@ -2,8 +2,8 @@
 
 ## Purpose and anatomy
 
-One main window holds everything a session needs; secondary windows exist only for
-plugin editors, audio setup and the plugin browser. The shell has five zones:
+One main window holds a session; secondary windows are only for plugin editors,
+audio setup and the plugin browser. The shell has five zones:
 
 ```
 +--------------------------------------------------------------------------+
@@ -48,8 +48,8 @@ remember their size and open state per user, not per project.
 
 **Decision**: v1 has a fixed shell with detachable panels, not a free docking system.
 Every secondary view is a *panel* that one of three *hosts* owns at a time; the user
-can move a panel between hosts but cannot split hosts or nest them. The model is
-built so a full docking layout could be added later without rewriting the panels.
+can move a panel between hosts but cannot split or nest hosts. Panels do not depend
+on their host, so full docking can come later.
 
 Panels (each a component with a stable id, title, icon and minimum size):
 
@@ -102,12 +102,11 @@ Interactions:
 Persistence: a per-user layout file (`layout.json` beside the settings) records each
 panel's host, order, visibility, dock height, side panel width and floating window
 bounds. Projects do not carry layout. "Reset layout" in the View menu restores the
-defaults. Two named presets, "Mix" (mixer floating, dock closed, side panel closed)
-and "Edit" (defaults), are shipped; user-named presets are deferred.
+defaults. Two presets ship: "Mix" (mixer floating, dock and side panel closed) and
+"Edit" (defaults).
 
-Out of scope for v1 (keep possible): splitting a host into two tab groups, docking
-to the top or left, tabbing a floating window with another, saving named layouts
-per project.
+Deferred: user-named presets, splitting a host into two tab groups, docking top or
+left, tabbing floating windows together, per-project layouts.
 
 ## Layout rules
 
@@ -124,12 +123,10 @@ right holds the window buttons, minimise, maximise (restore when maximised) and
 close: 46 px wide and the bar's full height, flat, `textSecondary` 10 px glyphs; hover
 fills `surface2` (close fills `record` with a `textOnColour` glyph). Any part of the
 bar that is not a control is the caption: drag to move, double-click to maximise,
-drag to a screen edge to snap. The window answers Windows' hit-testing (JUCE's
-`findControlAtPoint`), so edge resizing, Aero Snap and the Snap Layouts flyout over
-the maximise button stay native; the top 4 px of the window is the top resize edge.
-The window title (project name and app) still shows in the taskbar. Secondary
-windows (plugin editors, Audio Setup, Preferences, floating panels) keep native
-title bars.
+drag to a screen edge to snap. Edge resizing, Aero Snap and the Snap Layouts flyout
+over the maximise button stay native; the top 4 px is the top resize edge. The
+window title (project name and app) still shows in the taskbar. Secondary windows
+keep native title bars.
 
 ## Header bar detail
 
@@ -137,10 +134,9 @@ Left to right, with `space.md` gaps between groups and `space.xl` between cluste
 
 1. App button: 28×28 ghost with the mark; menu: About, Preferences, Audio Setup,
    Plugins, Quit.
-2. Project name: ghost button, `label`, unsaved indicator as a 6 px `accent` dot
-   after the name; menu as listed above. Hover shows the file path in a tooltip.
-3. Undo / Redo: icon buttons, disabled when nothing to undo; tooltip names the action
-   ("Undo Move clip").
+2. Project title: as described under A.
+3. Undo / Redo: icon buttons, disabled when there is nothing to undo; the tooltip
+   names the action ("Undo Move clip").
 4. Transport cluster: section 6.
 5. Right cluster, all icon toggles 28×28 with tooltips: Snap (magnet icon with a
    chevron that opens the grid menu; the tooltip reads "Snap: Adaptive"), Ripple,
@@ -179,20 +175,18 @@ hint "or drop audio files here". No other chrome changes.
 
 ## First run
 
-Before the main window shows for the first time, a sheet over the empty project:
-title "Audio device", a one-line explanation, the driver and device selects, buffer
-size, a live input meter, and a primary "Use this device" button. Skipping is
-allowed; the status bar then shows the `warning` dot. Specified in section 8.
+On first launch, welcome sheets over the empty project choose the audio device and
+scan for plugins (section 8.3). Skipping is allowed; the status bar then shows the
+`warning` dot.
 
 ## Acceptance
 
-- Screenshot at 1920×1080 100% and 3840×2160 150% matches the zone diagram with the
-  sizes above; the header, status bar and ruler heights are exact.
-- Dock and side panel open, close and resize with the 180 ms transition and remember
-  state across restarts.
-- Every panel in the table can be detached and reattached by button, by drag and by
-  Shift+Fn; the drop highlight appears over a valid host; layout survives a restart;
-  closing a floating panel does not lose it; the "Mix" preset opens the mixer on a
-  second monitor when one was recorded.
-- The empty state and first-run sheet match the descriptions.
+- At 100% and 150% scaling the window matches the zone diagram; header, status bar
+  and ruler heights are exact.
+- Dock and side panel open, close and resize with a 180 ms transition and remember
+  their state across restarts.
+- Every panel in the table detaches and reattaches by button, drag and Shift+Fn; the
+  drop highlight shows over a valid host; layout survives a restart; closing a
+  floating panel does not lose it; "Mix" reopens the mixer on its recorded monitor.
+- The empty state and first-run sheet match their descriptions.
 - No zone draws a border where a surface change already separates it.

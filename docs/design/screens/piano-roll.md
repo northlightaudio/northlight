@@ -1,6 +1,5 @@
 # 9. Piano roll and MIDI
 
-
 ## Purpose and anatomy
 
 A dock tab ("Piano Roll") that edits the selected MIDI clip, or all MIDI clips on the
@@ -20,9 +19,9 @@ selected track in a ghosted overlay.
 
 - **Toolbar** (left column top, 32 px): segmented control for tool (Draw, Select,
   Erase), snap chevron, quantise button with strength menu, "Link zoom to arrange"
-  toggle, an audition toggle (speaker icon, on by default: drawing a note, clicking
-  one and dragging it to another pitch sound it through the track's instrument,
-  armed or not), a scale/key display ("C minor") for the highlight.
+  toggle, an audition toggle (speaker icon, on by default: drawing, clicking or
+  re-pitching a note sounds it through the track's instrument, armed or not), and a
+  scale/key display ("C minor") for the highlight.
 - **Keys**: 64 px keyboard, white keys `surface2`, black keys `surface0`, C labels in
   `caption`; keys light `accent` when a note on that pitch plays; clicking a key
   previews the note through the track's instrument.
@@ -55,15 +54,14 @@ selected track in a ghosted overlay.
 
 ## MIDI tracks and their instruments
 
-- Track header gains a MIDI input select (device + channel, "All") in place of the
-  audio input, and the instrument's name as a chip under the name that opens its
-  window.
-- Mixer strip: the instrument appears as the first insert card with an "INST"
-  badge; multi-output instruments add child strips grouped under the instrument.
+- Track header: a MIDI input select (device + channel, "All") in place of the
+  audio input.
+- MIDI tracks, instrument channels and output tracks: see
+  [plugins.md 7.4a](plugins.md#74a-instruments-channels-midi-tracks-and-the-rack).
 
 ## Acceptance
 
-- Screenshot with a 2-bar clip of 16 notes matches: 64 px keys, note colours by
-  velocity, velocity lane 80 px, selected note styling.
-- Draw, move, resize and lasso mid-drag screenshots match.
-- Rendering 1,000 visible notes at 150% scrolls at 60 fps.
+- A 2-bar clip of 16 notes shows 64 px keys, note colours by velocity, an 80 px
+  velocity lane and selected-note styling.
+- Draw, move, resize and lasso look right mid-drag.
+- 1,000 visible notes at 150% scroll at 60 fps.

@@ -1,8 +1,8 @@
 # Decisions
 
 Why Northlight is built the way it is. Each entry records a choice, the date it was
-made and the reason, so a later change can tell what it is trading away. Entries are
-in the order they were made; one that was later reversed says so.
+made and the reason, so a later change can tell what it is trading away. The log is
+grouped by area; an entry that replaced an earlier choice says so.
 
 For how the pieces fit together see [architecture.md](architecture.md).
 
@@ -10,96 +10,126 @@ For how the pieces fit together see [architecture.md](architecture.md).
 
 | Date | Decision | Why |
 |---|---|---|
-| 2026-10-19 | Windows first; a platform seam kept for a later port | ASIO and VST3 hosting are the hard requirements and both are Windows-first; the device layer, plugin window embedding and file dialogs are kept behind interfaces so macOS and Linux remain possible. |
-| 2026-10-19 | VST3 and CLAP; no VST2, AAX or AU | Steinberg no longer licenses VST2 to new hosts; CLAP is open (MIT) and cheap to add beside VST3. |
-| 2026-10-19 | MIDI and instruments in the first version | Audio-only was a legitimate first version, but MIDI added about a month and makes the application useful on its own with the bundled instruments. |
+| 2026-10-19 | Windows first; a platform seam kept for a later port | ASIO and VST3 hosting are the hard requirements and both are Windows-first. The device layer, plugin window embedding and file dialogs sit behind interfaces so macOS and Linux remain possible. |
+| 2026-10-19 | VST3 and CLAP; no VST2, AAX or AU | Steinberg no longer licenses VST2 to new hosts. CLAP is open (MIT) and cheap to add beside VST3. |
+| 2026-10-19 | MIDI and instruments in the first version | With the bundled instruments the application is useful on its own. |
 | 2026-10-21 | Licensed under the GNU AGPLv3 | It matches JUCE's open licence and takes the ASIO SDK under its GPLv3 option (GPLv3 section 13 allows the combination); every other dependency is permissive. See LICENSE and THIRD_PARTY_NOTICES.md. |
-| 2026-10-21 | Renamed from Aural to Northlight | A name of its own for the public release (with northlightaudio.org). Settings and folders from the old name migrate on first start. |
-| 2026-10-21 | Signalsmith Stretch for time-stretch | MIT licensed and very good; Rubber Band was the alternative, at a licensing cost. |
+| 2026-10-21 | Renamed from Aural to Northlight | A name of its own for the public release. Settings and folders from the old name migrate on first start. |
+| 2026-10-21 | Signalsmith Stretch for time-stretch | MIT licensed and very good; Rubber Band would have cost a licence. |
 
 ## Log
 
+### Platform and build
+
 | Date | Decision | Why |
 |---|---|---|
-| 2026-10-19 | C++20 + JUCE 8 over Rust | VST3 hosting and plugin-window embedding are mature in JUCE and immature in Rust; the hybrid (Rust engine, JUCE shell) stays an option after Phase 2. |
-| 2026-10-19 | Own engine rather than Tracktion Engine | Licensing freedom and control of the threading/data model. Re-evaluate at the end of Phase 2 if the milestone slips. |
-| 2026-10-19 | JUCE and Catch2 via `FetchContent`, no vcpkg yet | Nothing yet needs a package with a real build step. vcpkg (bundled with VS) comes in when spdlog or a resampler lands. |
-| 2026-10-19 | RT checks via global `operator new` override in an OBJECT library | A static library's override can be discarded by the linker; OBJECT library objects are always linked. |
-| 2026-10-19 | `JUCE_MODAL_LOOPS_PERMITTED=0` | Forces async dialogs from day one so the message thread never re-enters during a modal loop, which is a classic source of host/plugin deadlocks. |
-| 2026-10-19 | JUCE modules compiled once into `northlight_juce` and re-exported | JUCE modules are INTERFACE targets that add their sources to every consumer; with three consumers (app, device library, hardware tool) that means duplicate symbols. `northlight_juce` links the modules PRIVATE and re-exports `INCLUDE_DIRECTORIES` and `COMPILE_DEFINITIONS` so consumers see one consistent set of module settings. |
-| 2026-10-19 | Audio settings are a JUCE-free value type serialised to a flat key/value map | Lets the settings and the calibration record be unit tested without JUCE, and keeps the on-disk format simple. The app maps the keys onto its properties file. |
-| 2026-10-19 | Device changes go through `AudioDeviceManager::initialise` with a `DEVICESETUP` element | `setCurrentAudioDeviceType` opens the type's default device first (and sleeps 1.5 s), then `setAudioDeviceSetup` opens the chosen one: two opens per change. The XML path applies type, device, rate, buffer size and channels in one open. |
-| 2026-10-19 | Calibration signal is a 10 ms windowed chirp found by cross-correlation | Single-sample impulses are smeared by converter filters and easily lost in noise; a chirp survives band-limiting and its autocorrelation peak is one sample wide, so the match is sample-accurate on real hardware. Matching on magnitude tolerates polarity-inverting cables. |
-| 2026-10-19 | Calibration capture buffer handed between threads by an atomic phase, not a queue | The data is one block of a second of audio moved once per trial; a lock-free queue adds nothing. The audio thread only touches the buffer in `running`, the message thread only in `idle`/`done`, and `audioDeviceStopped` resets to `idle` so a device restart cannot leave the buffer owned by a dead thread. |
-| 2026-10-19 | Measured latency is stored with the device, rate and buffer size it was measured at | Round trip changes with all three; a stale number silently misplaces recordings. The UI shows "not measured for this configuration" rather than a wrong value. |
-| 2026-10-19 | Theme tokens are a C++ struct for now, not a loaded JSON file (superseded: Phase 7 made the struct a loader for docs/design/tokens.json) | The Figma token export does not exist yet. The struct is the contract; Phase 7 adds the loader without touching the views. |
-| 2026-10-19 | The token file is embedded at build time and also shipped beside the app | The app and the tests must never depend on a file being found; embedding gives that, and the shipped copy lets a designer try a token change without a rebuild. The user's override holds only the keys it changes, so a new default reaches them. |
-| 2026-10-19 | Glows are rendered once per size and colour into images | A blurred glow per frame is the one expensive thing in the tactile layer; drawing a cached image keeps meters and toggles cheap, and reduce-motion drops the glows entirely. |
-| 2026-10-19 | Timeline positions are samples at the project rate, not beats | Sample-accurate placement and recording with no rounding; tempo is a display concern until automation and tempo maps arrive (Phase 9). |
-| 2026-10-19 | Snapshot retirement by epoch rather than an RT garbage queue | The RT thread advertising the epoch it uses lets the controller free old snapshots without the RT thread ever touching a queue or a free list, and handles the "RT thread never ran" case (nothing is retained). |
-| 2026-10-19 | nlohmann::json via FetchContent for project files | Header-only, so it needs no package manager; the project file is small enough that parse speed is irrelevant. |
-| 2026-10-19 | Streaming window guarded by position, with a grace period on seeks | A full lock-free ring with per-sample ownership would be over-engineered for one reader and one writer; a guard distance behind the read position plus a few ms of quiescence after emptying the window gives the same safety with trivial code. |
-| 2026-10-19 | Files under 30 s load into memory, longer ones stream | Short clips are the common case for recording takes and one-shots, and memory avoids any disk latency; long material streams so project size is not bounded by RAM. |
-| 2026-10-19 | Device sample rate vs project rate: empty projects follow the device, others warn | Silently resampling a whole project on a device change would hide a real problem; warning keeps the user in control until per-project rate conversion lands. |
-| 2026-10-19 | Peaks are mipmapped by four from 256 samples per bin and cached beside the media | Six levels cover from 5 ms to about 5 s per bin, so every zoom level reads a few bins per pixel; caching next to the file means a project reopened from another folder still finds its peaks, and the cache is small (about 2% of 16-bit audio). |
-| 2026-10-19 | Peaks are built at the project rate, not the file rate | Clip positions and lengths are project-rate samples, so peaks in the same units need no scaling in the view; the cost is one cache per rate a file is used at. |
-| 2026-10-19 | Per-track buffers live in the snapshot, not in a global pool | The snapshot already knows every track and is built on the controller thread, so sizing the buffers there needs no separate pool manager and no RT-side bookkeeping; a snapshot of 32 tracks costs about 4 MB. The engine caps a render call at 8192 samples and splits larger device blocks. |
-| 2026-10-19 | Workers woken by a counting semaphore, completion by spinning | A semaphore release is the cheapest non-blocking wake available on Windows; the callback thread spins on the remaining-jobs count because the wait is bounded by one track's render on a time-critical thread. Work stealing and a dependency graph come with buses in Phase 4. |
-| 2026-10-19 | Callback load as a histogram of deadline fractions | Percentiles from a fixed histogram need no sorting and no allocation, and a fraction of the deadline is the figure a user actually wants: 50% means half the headroom is gone whatever the buffer size. |
-| 2026-10-19 | Recordings are 32-bit float mono WAV per track input | Float matches the engine's pipeline exactly and never clips; one file per input keeps placement and recovery trivial. Stereo inputs become two tracks for now; linked stereo tracks come with the mixer. |
-| 2026-10-19 | The record session lives outside the snapshot | A snapshot swap (any edit while recording) must not disturb the rings or restart capture; the session is handed to the real-time thread once and ended by a transport command, so editing during a take is safe. |
-| 2026-10-19 | Crash safety by periodic header rewrite plus repair from file size | The standard DAW approach: a valid file at every second boundary, and the trailing data recovered by trusting the file size. A journal or a second file would add complexity without saving more audio. |
-| 2026-10-19 | Recordings placed by calibration when it matches, else reported latency | The measurement is the truth when it exists for this device/rate/buffer; falling back to the driver's figures keeps placement roughly right instead of silently wrong. |
-| 2026-10-19 | Count-in and punch handled by segmenting the block on the real-time thread | A count-in that ends on a block boundary would be up to one buffer late (1.3 ms at 64 samples, 20 ms at 1024); segmenting keeps capture sample-accurate at any buffer size with no extra state. |
-| 2026-10-19 | One region serves both loop and punch | Two overlapping regions on a ruler are hard to read and rarely differ in practice; the toggles decide what the region means. Separate regions can come with the editing phase if users ask. |
-| 2026-10-19 | Worker pool batch state packed into one atomic | Review found that separate count/next fields let a worker waking late for batch A compare its stale index with batch B's count and run a job against a dead context. One 64-bit fetch_add makes index and count inseparable; counting wake permits keeps the semaphore within its limit however many spans a block issues. |
-| 2026-10-19 | One streaming window per clip, not per file | Two clips of one long file (or a loop longer than the window) share nothing but the decoded file; a shared window seeks back and forth and plays silence. A private window per clip costs one file handle and a few MB each, cached by clip id so edits do not reset it. |
-| 2026-10-19 | Own Hermite resampler instead of juce::LagrangeInterpolator | The Lagrange interpolator carries a ~2.5-sample lookback delay and sequential state, which misaligned imported media and made chunked seeks awkward. A stateless resampler evaluated at exact positions is simpler and sample-aligned; a windowed-sinc converter for offline bounces is still planned for Phase 9. |
-| 2026-10-19 | Loops shorter than 64 samples are refused | Every loop pass inside a block costs a render span and a worker wake; a one-sample loop would issue hundreds per block for no musical purpose. |
-| 2026-10-19 | Takes are split by the writer at marks from the audio thread, into one file per pass | The audio thread must not open files; marking the cumulative sample count is one lock-free push, and the writer, which already owns the files, cuts them exactly there. One file per take keeps every take a plain clip. |
-| 2026-10-19 | Dropped record blocks become silence in the file, not a shorter file | A shorter file would shift every later sample and take boundary; silence of the right length keeps placement exact and the dropout audible and reportable. |
-| 2026-10-19 | A recording sidecar per input, written before capture | Only the session knows the track, start, loop and latency, and after a crash it is gone; a small JSON next to the file lets recovery place the take instead of guessing zero on a new track. |
-| 2026-10-19 | Crash recovery asks before importing | A recovered take is usually wanted, but silently adding tracks to whatever project opens next (possibly an unrelated one) would surprise; the prompt keeps it a one-click choice and sets aside what is declined rather than deleting it. |
-| 2026-10-19 | 16-input soak is offline, not on hardware | The Volt has four inputs and the engine's record path is identical for synthetic and device inputs after the callback; the offline soak exercises rings, writer and header rewrites at eight times real time, which is a stricter disk test than real time. |
-| 2026-10-19 | Tracks and buses share one Channel type and one set of fader commands | The fader section, routing and sends are identical on both; one command per property keeps undo uniform and the mixer draws both with the same strip. |
-| 2026-10-19 | Solo-in-place propagates both up and down the routing | Soloing a bus should play everything feeding it and soloing a track should keep its bus and the master alive; resolving this at compile time keeps the real-time summing a plain flag check. |
-| 2026-10-19 | Bus summing on the callback thread, tracks in parallel | Bus count is small and their dependency order is serial anyway; parallelising tracks (the many, heavy nodes) captures the benefit without a dependency-aware scheduler. Buses join the pool when inserts make them heavy. |
-| 2026-10-19 | Meters as peak-hold plus last-block RMS in atomics | The UI needs a peak that cannot be missed between frames and a level that falls naturally; holding the peak until read and letting the UI apply ballistics gives both without any queue. LUFS needs K-weighting and a 400 ms window and is a separate pass. |
-| 2026-10-19 | Insert parameters are atomics on a persistent instance, not part of the snapshot | Recreating a filter on every edit would reset its state and click; pushing values into atomics keeps the instance and its memory while the snapshot stays immutable. Sample-accurate parameter changes come with automation in Phase 9. |
-| 2026-10-19 | Built-ins live in src/plugins behind the engine's insert interface | The engine must not depend on any particular processor, and VST3 hosting (Phase 5) implements the same interface; the app injects the factory. |
-| 2026-10-19 | Fader groups are commands over channel values, not engine state | The engine already consumes plain channel gains; a group only needs to move several of them together, and doing that in a command keeps the snapshot unchanged and undo exact. Relative (ratio) moves preserve the members' balance, which is what a fader group is for. |
-| 2026-10-19 | Live values travel as targets the renderer ramps to; structural edits recompile | A fader move must glide, not step, and must not rebuild the graph on every mouse-move; per-channel runtime state that outlives snapshots gives both, and the same state later carries automation. |
-| 2026-10-19 | Routing cycles are refused at the command layer | Letting the compiler silently rewire a cycle shows the user one graph and plays another; refusing the edit (and not offering it) keeps the mixer honest. |
-| 2026-10-19 | Edits are previewed in the view and committed as command groups | The view owns the drag state and draws the preview itself, so a drag issues no commands until release; the release becomes one undo step however many clips it touched. The model never sees a half-finished edit. |
-| 2026-10-19 | Fades are linear | Linear fades crossfade at constant sum for correlated material (the common editing case: the same take split and rejoined); an equal-power option can come with the design pass. |
-| 2026-10-19 | CLAP is hosted against the C ABI, VST3 through JUCE, both behind one insert interface | JUCE does not host CLAP, and the insert interface already hides the format from the chain, the cache and the UI; a "clap:" type beside "vst3:" needed no change in the engine. The thread rules are the spec's, answered truthfully by the thread-check extension because plugins assert on it. |
-| 2026-10-19 | Plugin scanning runs in a separate executable, one file per process | A plugin that crashes or hangs while being inspected must not take the DAW with it; a process per file isolates the damage, lets a timeout kill it, and leaves the file blocklisted with the reason. |
-| 2026-10-19 | A hosted plugin's state is an opaque blob the plugin owns | Mirroring every plugin parameter into the model would fight the plugin's own editor and presets; capturing its state on save and restoring it on load is what every host does and keeps the model small. Automation (Phase 9) adds parameter access on top. |
-| 2026-10-19 | Insert chains are stereo pairs; plugins get a stereo main bus and no sidechain yet | The engine's channels are stereo and the chain interface is two pointers; asking every plugin for stereo in and out keeps hosting simple and correct for effects. Sidechain routing needs a graph change and comes later in Phase 5. |
-| 2026-10-19 | Delay compensation per graph edge, solved at compile, lines cached across compiles | Delaying edges rather than nodes handles a source that feeds several destinations with different needs (a send to a latent bus and a direct output); solving at compile keeps the real-time path a fixed delay per edge; caching the lines by edge is what makes a recompile on every edit inaudible. |
-| 2026-10-19 | Sidechain keys are pre-fader and tracks render in dependency levels | A key should not change when the source's fader moves, and a keyed track must see its source finished in the same block; levels keep the parallel render for everything unkeyed and cost nothing when no sidechain is set. Bus sources for track inserts would need one block of latency and are not offered. |
-| 2026-10-19 | A CLAP restart is a fresh instance through the next snapshot, never a deactivation in place | The real-time thread may be inside process() at any moment while the instance is in a snapshot; recreating it with its state carried over reuses the path every other edit takes and needs no RT-side handshake. |
-| 2026-10-19 | Hosted plugins own their parameters; the model's list reaches them only when a command touches it | Pushing the whole list on every compile or fader move reverted presets loaded from the plugin's own menu; mirroring the instance into the model before a touching command keeps undo exact without making the model the authority. |
-| 2026-10-19 | CLAP parameter flushes while the device is stopped go through the session's poll, not a message | The flush is an audio-thread call while the plugin is active; the poll knows whether the engine is running and leaves the queue to process() when it is, which is what keeps one consumer on the queue. |
-| 2026-10-19 | MIDI note-offs on stop, locate and loop wrap come from the track's own continuity check, not from transport commands | The renderer sees every span's start position; comparing it with where the previous span ended catches every discontinuity (a locate, a wrap, play from elsewhere, a stop) in one place, so no transport path can forget to end a note. |
-| 2026-10-19 | MIDI events are a fixed list per track per span, sized at compile | An instrument reads the span's events with the audio in one call; building the list in the track's render job keeps it off the shared path and allocation-free, and the instrument sees the events in time order. |
-| 2026-10-19 | Recorded MIDI is placed by the output-side latency only | A played note arrives when it is played, but the player plays to what they hear, which lags by the output path; subtracting the input side too (as for audio) would place MIDI early. |
-| 2026-10-19 | MIDI devices are identified by name | The name is what the user recognises and what a project can carry between machines; JUCE's identifier is stable but opaque. Two devices of one name are both opened and both heard. |
-| 2026-10-19 | A built-in synth ships with the engine | A MIDI track must make a sound without a third-party instrument, both for the user and for offline tests of the whole path (schedule, instrument, bounce). |
-| 2026-10-19 | Trimming a MIDI clip keeps its notes where they are on the timeline | Matches audio clips (the source stays put under the clip edges) and lets a trim be undone by trimming back without losing notes. |
-| 2026-10-20 | The channel strip is stored as inserts in a second list, not a new model type | Modules need exactly what an insert has (type, parameters, bypass, a cached processor instance); a second list keeps them out of the insert rack while every insert command, the undo history, the instance cache and the live-value path work on them unchanged. |
-| 2026-10-20 | Strip modules that are off are compiled as bypassed inserts, not left out | Switching a module is then a live value (no recompile, no click: the bypass crossfade covers it), and a settled bypass costs one branch per block. |
-| 2026-10-20 | Feedback for editors is a ring of atomics per processor, polled by the UI | It follows the RT-to-controller rule (preallocated, never blocks) without a queue per display; a display tolerates the rare torn frame, and the UI can read as much or as little history as it draws. |
-| 2026-10-20 | The strip limiter has no lookahead | A strip is on every channel; a module that is off must not add latency, and switching it on must not re-solve delay compensation. The insert limiter keeps its lookahead for mastering. |
-| 2026-10-20 | Paint times are recorded by the two heavy views, not by hooking every component | A scope at the top of `ArrangeView::paint` and `MixerView::paint` costs nothing elsewhere and covers what the budget is about; the frame interval (the timer's cadence) is tracked separately in the main window. |
-| 2026-10-20 | The mixer's section boxes are real slots and rows, not menus | Signal flow must be visible: an insert's bypass and order, a send's level and tap are on the strip, and the menus keep only what has no control of its own. |
-| 2026-10-20 | The arrange headers read meter copies from the mixer rather than taking from the meter block | `MeterBlock::take` resets the peak, so one consumer must own each slot; the mixer already takes every slot each frame and keeps the last readings for anyone else. |
-| 2026-10-20 | One compressor for inserts and the channel strip: the strip's, keyed | The two had drifted (the insert lacked RMS, auto makeup and mix; the strip lacked a key); keeping both meant fixing everything twice. The strip's behaviour won, so insert compressors in older projects sound somewhat different. |
-| 2026-10-20 | Selection has one owner that notifies one listener | Four views each cached the selection and nine call sites kept them in step by hand; missing one left the editor on another channel, twice. |
-| 2026-10-20 | Parameters are saved with stable keys and reconciled on load | Saving by position silently moved every later value (and automation) whenever a processor gained a parameter, as Pulsar did; keys let processors change, and an upgrade chain replaces refusing older files. |
-| 2026-10-20 | Missing media is detected once per project change, not per paint | A file-exists check per clip per frame would stall painting on a slow volume; the set is rebuilt when the project changes. |
-| 2026-10-20 | Sidechain keys can tap after the source's fader, and are delay compensated | Ducking that should follow a source's level rides (a kick pulled down in the chorus) needs the fader in the key; pre-fader stays the default so existing projects sound the same. An early key is delayed for free, a late one would cost the keyed channel latency, so it is left as is. Bus sources for track inserts are still not offered. |
-| 2026-10-19 | Panels are owned by one of three hosts and never destroyed on close | A panel's component keeps its state (the mixer's open editors, the browser's filter) across moves and hides; closing a floating panel hides it and returns it to its default host, so a user cannot lose one. |
-| 2026-10-19 | Shift+M / Shift+S stay the track state; the marker region and split-at-selection take Alt | The spec assigns both pairs the same keys; mute and solo are the more frequent and match every other DAW, so the edits move. |
-| 2026-10-19 | The first-run sheet is detected by the settings file's absence, before settings are created | No "first run" flag can be stale, and the sheet never shows again once any setting is saved. |
-| 2026-10-19 | The limiter has no lookahead (superseded the same day: lookahead added once delay compensation landed) | Lookahead adds latency that needs delay compensation across the graph, which Phase 5 brings with plugin hosting; until then a fast-release limiter with a hard ceiling is honest about what it does. |
+| 2026-10-19 | C++20 and JUCE 8, not Rust | VST3 hosting and plugin-window embedding are mature in JUCE and immature in Rust. |
+| 2026-10-19 | Own engine rather than Tracktion Engine | Licensing freedom and control of the threading and data model. |
+| 2026-10-19 | Dependencies via `FetchContent`, no vcpkg yet | Nothing yet needs a package with a real build step. nlohmann::json is header-only and comes the same way. |
+| 2026-10-19 | JUCE modules compiled once into `northlight_juce` and re-exported | JUCE modules add their sources to every consumer, so several consumers would give duplicate symbols. One target also gives every consumer the same module settings. |
+| 2026-10-19 | The real-time allocation check overrides `operator new` in an OBJECT library | A static library's override can be discarded by the linker; OBJECT library objects are always linked. |
+
+### Engine and real time
+
+| Date | Decision | Why |
+|---|---|---|
+| 2026-10-19 | Timeline positions are samples at the project rate, not beats | Sample-accurate placement and recording with no rounding. Bars, beats and tempo are a view of the timeline through the tempo map. |
+| 2026-10-19 | Snapshots are retired by epoch, not through a real-time garbage queue | The real-time thread advertises the epoch it uses and the controller frees older snapshots, so the real-time thread never touches a queue or free list. |
+| 2026-10-19 | Per-track buffers live in the snapshot, not a global pool | The snapshot already knows every track and is built off the real-time thread, so no pool manager or real-time bookkeeping is needed. Render calls are capped at 8192 samples and larger device blocks are split. |
+| 2026-10-19 | Workers woken by a counting semaphore; the callback spins for completion | A semaphore release is the cheapest non-blocking wake on Windows, and the spin is bounded by one track's render. |
+| 2026-10-19 | Worker pool batch state packed into one atomic | Separate index and count fields let a late worker run a job from one batch against the next batch's context. One 64-bit `fetch_add` keeps them inseparable. |
+| 2026-10-19 | Tracks render in parallel; buses sum on the callback thread | Buses are few and serial by dependency anyway, so parallel tracks capture the benefit without a dependency-aware scheduler. |
+| 2026-10-19 | Callback load is a histogram of deadline fractions | Percentiles need no sorting or allocation, and a fraction of the deadline means the same at any buffer size. |
+| 2026-10-19 | Live values travel as targets the renderer ramps to; structural edits recompile | A fader move must glide, not step, and must not rebuild the graph on every mouse move. Per-channel state that outlives snapshots carries this, and automation too. |
+| 2026-10-19 | Insert parameters are atomics on a persistent instance, not part of the snapshot | Recreating a processor on every edit would reset its state and click. The snapshot stays immutable. |
+| 2026-10-19 | Meters are peak-hold plus last-block RMS in atomics | The UI cannot miss a peak between frames and applies its own ballistics, with no queue. |
+| 2026-10-20 | Editor feedback is a ring of atomics per processor, polled by the UI | Preallocated and non-blocking, with no queue per display; a display tolerates the rare torn frame. |
+| 2026-10-19 | Own Hermite resampler instead of `juce::LagrangeInterpolator` | JUCE's interpolator carries a lookback delay and sequential state, which misaligned media and complicated seeks. A stateless resampler at exact positions is sample-aligned. |
+| 2026-10-19 | Loops shorter than 64 samples are refused | Each loop pass in a block costs a render span and a worker wake; very short loops have no musical use. |
+
+### Audio devices and media
+
+| Date | Decision | Why |
+|---|---|---|
+| 2026-10-19 | Device changes go through `AudioDeviceManager::initialise` with a `DEVICESETUP` element | The other route opens the type's default device first and then the chosen one. The XML path applies everything in one open. |
+| 2026-10-19 | Device rate vs project rate: empty projects follow the device, others warn | Silently resampling a whole project on a device change would hide a real problem. |
+| 2026-10-19 | Files under 30 s load into memory; longer ones stream | Short clips are the common case and avoid disk latency; streaming keeps project size unbounded by RAM. |
+| 2026-10-19 | One streaming window per clip, not per file | Two clips of one file would make a shared window seek back and forth and play silence. Windows are cached by clip id so edits do not reset them. |
+| 2026-10-19 | The streaming window is guarded by position, with a grace period on seeks | One reader and one writer do not need a full lock-free ring; a guard distance and a short quiet period after a seek give the same safety. |
+| 2026-10-19 | Peaks are mipmapped, built at the project rate and cached beside the media | Every zoom level reads a few bins per pixel, peaks share the clips' units, and a project opened from another folder still finds them. |
+
+### Latency calibration and recording
+
+| Date | Decision | Why |
+|---|---|---|
+| 2026-10-19 | Calibration uses a short windowed chirp found by cross-correlation | Impulses are smeared by converter filters and lost in noise; a chirp's correlation peak is one sample wide. Matching on magnitude tolerates polarity-inverting cables. |
+| 2026-10-19 | Measured latency is stored with the device, rate and buffer size | Round trip changes with all three, and a stale figure silently misplaces recordings. |
+| 2026-10-19 | Recordings are placed by calibration when it matches, else by reported latency | The measurement is the truth when it exists; the driver's figures keep placement roughly right otherwise. |
+| 2026-10-19 | Recordings are 32-bit float mono WAV, one file per input | Float matches the engine and never clips; one file per input keeps placement and recovery simple. |
+| 2026-10-19 | The record session lives outside the snapshot | Editing during a take swaps snapshots, which must not disturb the rings or restart capture. |
+| 2026-10-19 | Count-in and punch are handled by segmenting the block on the real-time thread | Acting on block boundaries would be up to one buffer late; segmenting is sample-accurate at any buffer size. |
+| 2026-10-19 | One region serves both loop and punch | Two overlapping regions are hard to read and rarely differ; the toggles decide what the region means. |
+| 2026-10-19 | Takes are split by the writer at marks from the audio thread, one file per pass | The audio thread must not open files, so it only pushes a sample count. One file per take keeps every take a plain clip. |
+| 2026-10-19 | Dropped record blocks become silence, not a shorter file | A shorter file would shift every later sample and take boundary. |
+| 2026-10-19 | Crash safety by periodic header rewrite plus repair from file size | The standard approach: a valid file at every second boundary and the tail recovered from the file size. |
+| 2026-10-19 | A JSON sidecar per input, written before capture | After a crash only the sidecar knows the track, start, loop and latency, so recovery can place the take. |
+| 2026-10-19 | Crash recovery asks before importing | Silently adding tracks to whatever project opens next would surprise. Declined takes are set aside, not deleted. |
+
+### Mixing and routing
+
+| Date | Decision | Why |
+|---|---|---|
+| 2026-10-19 | Tracks and buses share one Channel type and one set of fader commands | Their fader sections, routing and sends are identical, so undo stays uniform and the mixer draws both with one strip. |
+| 2026-10-19 | Solo-in-place propagates both up and down the routing | Soloing a bus plays what feeds it, and soloing a track keeps its bus and the master alive. Resolving this at compile keeps the real-time path a flag check. |
+| 2026-10-19 | Routing cycles are refused at the command layer | Silently rewiring a cycle would show one graph and play another. |
+| 2026-10-19 | Fader groups are commands over channel values, not engine state | The snapshot is unchanged and undo is exact. Relative moves keep the members' balance. |
+| 2026-10-19 | Delay compensation per graph edge, solved at compile, lines cached across compiles | Edges handle a source feeding destinations with different needs. Solving at compile keeps the real-time path a fixed delay, and caching lines makes recompiles inaudible. |
+| 2026-10-19 | Insert chains are stereo pairs | Channels are stereo, so every plugin gets a stereo main bus, which keeps hosting simple and correct for effects. |
+| 2026-10-19 | Sidechain keys are pre-fader by default, can tap post-fader, and are delay compensated; keyed tracks render in dependency levels (post-fader option 2026-10-20) | A keyed track must see its source finished in the same block; levels keep everything unkeyed parallel. Post-fader keys follow level rides. A late key is left as is rather than adding latency, and bus sources for track inserts are not offered. |
+| 2026-10-20 | The channel strip is stored as inserts in a second list, not a new model type | Modules need exactly what an insert has, so every insert command, undo, the instance cache and live values work on them unchanged. |
+| 2026-10-20 | Strip modules that are off are compiled as bypassed inserts | Switching one is a live value with no recompile and no click. |
+| 2026-10-20 | One compressor for inserts and the strip: the strip's, keyed | Two had drifted apart and needed every fix twice. Insert compressors in older projects sound somewhat different. |
+| 2026-10-20 | The strip limiter has no lookahead; the insert limiter does | A strip is on every channel and must not add latency or re-solve delay compensation when switched. The insert limiter keeps lookahead for mastering (added once delay compensation landed). |
+| 2026-10-19 | Fades are linear | Linear fades sum to constant level for correlated material, the common case of a take split and rejoined. |
+
+### Plugins
+
+| Date | Decision | Why |
+|---|---|---|
+| 2026-10-19 | Built-in processors live in `src/plugins` behind the engine's insert interface | The engine must not depend on any processor; hosted plugins implement the same interface and the app injects the factory. |
+| 2026-10-19 | CLAP hosted against the C ABI, VST3 through JUCE, both behind one insert interface | JUCE does not host CLAP. Thread-check answers must be truthful because plugins assert on them. |
+| 2026-10-19 | Plugin scanning runs in a separate executable, one file per process | A plugin that crashes or hangs during a scan must not take the DAW with it; the file is blocklisted with the reason. |
+| 2026-10-19 | Hosted plugins own their state and parameters | State is an opaque blob saved and restored, as in every host. The model's parameter list reaches the plugin only when a command touches it; pushing it on every compile reverted presets loaded from the plugin's own menu. |
+| 2026-10-19 | A CLAP restart creates a fresh instance through the next snapshot, never a deactivation in place | The real-time thread may be inside `process()` at any moment; recreating with state carried over needs no real-time handshake. |
+
+### MIDI
+
+| Date | Decision | Why |
+|---|---|---|
+| 2026-10-19 | Note-offs come from each track's own continuity check, not transport commands | Comparing each span's start with where the last ended catches every locate, wrap and stop in one place. |
+| 2026-10-19 | MIDI events are a fixed list per track per span, sized at compile | Built in the track's render job, allocation-free and in time order. |
+| 2026-10-19 | Recorded MIDI is placed by the output-side latency only | The player plays to what they hear; subtracting input latency as for audio would place notes early. |
+| 2026-10-19 | MIDI devices are identified by name | The name is what the user recognises and what a project carries between machines. Devices sharing a name are all opened. |
+| 2026-10-19 | A built-in synth ships with the engine | A MIDI track must make a sound without third-party instruments, for users and for offline tests of the whole path. |
+| 2026-10-19 | Trimming a MIDI clip keeps its notes in place on the timeline | Matches audio clips and makes a trim undoable by trimming back. |
+
+### Files and settings
+
+| Date | Decision | Why |
+|---|---|---|
+| 2026-10-19 | Audio settings are a JUCE-free value type stored as flat key/value pairs | Testable without JUCE, with a simple on-disk format. |
+| 2026-10-20 | Parameters are saved with stable keys and reconciled on load | Saving by position shifts later values whenever a processor gains a parameter. An upgrade chain replaces refusing older files. |
+| 2026-10-20 | Missing media is detected once per project change, not per paint | A file check per clip per frame would stall painting on a slow volume. |
+| 2026-10-19 | First run is detected by the settings file's absence | No flag can go stale, and the first-run sheet never shows again once a setting is saved. |
+
+### Interface
+
+| Date | Decision | Why |
+|---|---|---|
+| 2026-10-19 | `JUCE_MODAL_LOOPS_PERMITTED=0` | Async dialogs only, so the message thread never re-enters during a modal loop, a classic source of host and plugin deadlocks. |
+| 2026-10-19 | Theme tokens load from `docs/design/tokens.json`, embedded at build time and also shipped beside the app (replaced a hard-coded C++ struct) | The app and tests never depend on finding a file, and a designer can try a change without a rebuild. A user override holds only changed keys, so new defaults still reach them. |
+| 2026-10-19 | Glows are rendered once per size and colour into images | A per-frame blur is the one expensive thing in the tactile layer. Reduce-motion drops glows entirely. |
+| 2026-10-19 | Edits are previewed in the view and committed as command groups | A drag issues no commands until release, which becomes one undo step. The model never sees a half-finished edit. |
+| 2026-10-20 | Selection has one owner that notifies one listener | Views caching their own selection drifted out of step. |
+| 2026-10-20 | The mixer's sections are real slots and rows, not menus | Signal flow must be visible on the strip; menus keep only what has no control of its own. |
+| 2026-10-19 | Panels are owned by one of three hosts and never destroyed on close | Panels keep their state across moves; closing a floating panel returns it to its default host, so none can be lost. |

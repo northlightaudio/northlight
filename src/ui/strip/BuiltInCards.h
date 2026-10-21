@@ -4,7 +4,7 @@
 
 #include <memory>
 
-// The built-in processors' inline editors (screens/plugins.md 7.1): each is a module
+// The built-in processors' inline editors (screens/plugins.md 7.2a): each is a module
 // card (the channel strip's machinery: live feedback, displays to drag, knobs
 // bound to the parameters) embedded as the body of the insert's card in the
 // Editor panel.
