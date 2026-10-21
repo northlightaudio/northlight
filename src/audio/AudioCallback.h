@@ -103,6 +103,10 @@ public:
     // done -> idle.
     void finishCalibration() noexcept;
 
+    // Sends silence to the device while the engine still runs, so every meter and
+    // display keeps moving (--capture plays the song without it being heard).
+    void setOutputMuted(bool muted) noexcept { outputMuted_.store(muted, std::memory_order_relaxed); }
+
     // ----- juce::AudioIODeviceCallback --------------------------------------------
     void audioDeviceIOCallbackWithContext(const float* const* inputChannelData,
                                           int numInputChannels,
@@ -125,6 +129,7 @@ private:
     std::atomic<float> targetGain_{1.0f};
     float currentGain_ = 1.0f; // audio thread only
     std::atomic<bool> passThrough_{false};
+    std::atomic<bool> outputMuted_{false};
 
     std::atomic<std::uint64_t> callbackCount_{0};
     rt::CallbackStats stats_;

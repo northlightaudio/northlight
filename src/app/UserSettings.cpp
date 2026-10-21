@@ -8,6 +8,12 @@ namespace northlight
 namespace
 {
 constexpr const char* audioKeyPrefix = "audio.";
+std::string folderName = "Northlight";
+} // namespace
+
+void UserSettings::useFolder(const std::string& name)
+{
+    folderName = name;
 }
 
 UserSettings::UserSettings()
@@ -15,7 +21,7 @@ UserSettings::UserSettings()
     juce::PropertiesFile::Options options;
     options.applicationName = "Northlight";
     options.filenameSuffix = "settings";
-    options.folderName = "Northlight";
+    options.folderName = juce::String(folderName);
     options.osxLibrarySubFolder = "Application Support";
     options.storageFormat = juce::PropertiesFile::storeAsXML;
     options.millisecondsBeforeSaving = 500;

@@ -40,6 +40,17 @@ public:
 
     void initialise(const juce::String& commandLine) override
     {
+        // --capture keeps its settings in a folder of its own, emptied each run, so a
+        // capture always shows the default layout and the built-in plugins, and leaves
+        // the user's settings alone.
+        if (commandLine.contains("--capture"))
+        {
+            capture_ = true;
+            UserSettings::useFolder("Northlight Capture");
+            const auto folder = UserSettings().file().getParentDirectory();
+            if (folder.getFileName() == "Northlight Capture")
+                folder.deleteRecursively();
+        }
         // The very first launch (no settings file yet) gets the device sheet.
         // Northlight was called Aural: bring its settings and folders across once.
         migration::fromAural();
@@ -67,6 +78,8 @@ public:
 
         step("Preparing the audio engine", 0.25f);
         audio_ = std::make_unique<audio::AudioDeviceLayer>(*settings_);
+        if (capture_)
+            audio_->callback().setOutputMuted(true); // a capture plays but is not heard
         step("Loading the plugin list", 0.45f);
         session_ =
             std::make_unique<ProjectSession>(*audio_, settings_->file().getSiblingFile("plugins.json"));
@@ -91,7 +104,7 @@ public:
         mainWindow_->offerRecovery();
 
         applyLaunchFlags(commandLine);
-        if (firstRun_ || commandLine.contains("--first-run"))
+        if ((firstRun_ && !capture_) || commandLine.contains("--first-run"))
             mainWindow_->showFirstRun();
     }
 
@@ -156,6 +169,13 @@ public:
     //                        Editor panel: a comma list of gate, eq, compressor, deesser,
     //                        saturation, limiter, or all; "demo" also sets values that give
     //                        every display something to show
+    //   --window-size <w>x<h>  set the window's size
+    //   --capture <folder> [s]  after s seconds (2 if not given), save the window and its
+    //                        showing parts (mixer, channel-strip, instrument, piano-roll,
+    //                        audio-editor) as PNGs in the folder, then quit. Uses its own
+    //                        settings folder, so the layout is the default one, and sends
+    //                        silence to the device, so playback is not heard
+    //   --capture-scale <n>  the scale the captures are saved at (2 if not given)
     // --cc-lane: the first MIDI clip in the piano roll with the lane showing; a
     // clip with nothing in that lane gets a curve (a swell, or a bend up and back).
     void showControllerLane(const juce::String& key)
@@ -636,6 +656,30 @@ public:
                 marker.name = "Marker " + std::to_string(session_->project().markers.size() + 1);
                 session_->execute(std::make_unique<core::AddMarker>(marker));
             }
+            else if (arg == "--window-size" && i + 1 < tokens.size())
+            {
+                const auto size = tokens.getReference(++i).text.unquoted();
+                const int width = size.upToFirstOccurrenceOf("x", false, true).getIntValue();
+                const int height = size.fromFirstOccurrenceOf("x", false, true).getIntValue();
+                if (width > 0 && height > 0)
+                    mainWindow_->setSize(width, height);
+            }
+            else if (arg == "--capture-scale" && i + 1 < tokens.size())
+                captureScale_ = juce::jlimit(1.0f, 4.0f, tokens.getReference(++i).text.getFloatValue());
+            else if (arg == "--capture" && i + 1 < tokens.size())
+            {
+                const auto folder = tokens.getReference(++i).resolveAsFile();
+                int seconds = 2;
+                if (i + 1 < tokens.size() && tokens[i + 1].text.containsOnly("0123456789"))
+                    seconds = tokens.getReference(++i).text.getIntValue();
+                juce::Timer::callAfterDelay(seconds * 1000,
+                                            [this, folder]
+                                            {
+                                                if (mainWindow_ != nullptr)
+                                                    mainWindow_->capture(folder, captureScale_);
+                                                quit();
+                                            });
+            }
             else if (arg == "--recover")
                 session_->recoverPartialRecordings(); // without the prompt, for unattended checks
             else if (arg == "--save" && i + 1 < tokens.size())
@@ -713,6 +757,8 @@ public:
 private:
     std::unique_ptr<ui::NorthlightLookAndFeel> lookAndFeel_;
     bool firstRun_ = false;
+    bool capture_ = false;      // --capture: its own settings folder, no first-run sheet
+    float captureScale_ = 2.0f; // --capture-scale
     std::unique_ptr<UserSettings> settings_;
     std::unique_ptr<audio::AudioDeviceLayer> audio_;
     std::unique_ptr<ProjectSession> session_;

@@ -98,6 +98,8 @@ public:
         if (body_ != nullptr)
         {
             body_->setEmbedded(true);
+            if (instrument_)
+                body_->setComponentID("capture:instrument"); // --capture saves it by this name
             addAndMakeVisible(*body_);
         }
         else
@@ -586,6 +588,7 @@ private:
 EditorPanel::EditorPanel(const Theme& theme) : theme_(theme), stripView_(theme)
 {
     setOpaque(true);
+    stripView_.setComponentID("capture:channel-strip"); // --capture saves it by this name
     stripView_.host.onCommand = [this](std::unique_ptr<core::Command> c)
     {
         if (onCommand)

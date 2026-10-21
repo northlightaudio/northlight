@@ -14,6 +14,10 @@ class UserSettings final : public audio::AudioSettingsStore
 {
 public:
     UserSettings();
+    // Keeps settings in another folder beside the usual one (capture mode uses its own,
+    // so a capture neither reads nor changes the user's layout). Call before any
+    // UserSettings is made.
+    static void useFolder(const std::string& name);
     ~UserSettings() override;
 
     audio::AudioSettings loadAudioSettings() override;

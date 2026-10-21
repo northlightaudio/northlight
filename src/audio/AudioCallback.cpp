@@ -249,6 +249,9 @@ void AudioCallback::audioDeviceIOCallbackWithContext(const float* const* inputCh
                               true);
     }
 
+    if (outputMuted_.load(std::memory_order_relaxed))
+        renderSilence(outputChannelData, numOutputChannels, numSamples);
+
     raisePeak(outputPeak_, blockPeak(outputChannelData, numOutputChannels, numSamples));
 
     const double elapsed =

@@ -1043,6 +1043,10 @@ private:
                     return; // the sheet took the command
             session_.execute(std::move(command));
         };
+        // --capture saves these by name when they are showing (MainWindow::capture).
+        mixer_.setComponentID("capture:mixer");
+        pianoRoll_.setComponentID("capture:piano-roll");
+        audioEditor_.setComponentID("capture:audio-editor");
         mixer_.onGestureBegin = [this](const std::string& name) { session_.beginGesture(name); };
         mixer_.onGestureEnd = [this] { session_.endGesture(); };
         mixer_.setHost(&session_.insertFactory());
@@ -3113,6 +3117,36 @@ void MainWindow::showMenu(const juce::String& key)
         content->projectMenu();
     else if (key == "add-track")
         content->tracks_.openAddTrackMenu();
+}
+
+juce::StringArray MainWindow::capture(const juce::File& folder, float scale)
+{
+    juce::StringArray saved;
+    auto* content = getContentComponent();
+    if (content == nullptr || !folder.createDirectory())
+        return saved;
+    const auto save = [&](juce::Component& component, const juce::String& name)
+    {
+        const auto image = component.createComponentSnapshot(component.getLocalBounds(), true, scale);
+        const auto file = folder.getChildFile(name + ".png");
+        file.deleteFile();
+        juce::FileOutputStream out(file);
+        if (out.openedOk() && juce::PNGImageFormat().writeImageToStream(image, out))
+            saved.add(file.getFileName());
+    };
+    save(*content, "window");
+    // Every part tagged "capture:<name>" that is on screen, in full even where a
+    // scrolled panel shows only some of it.
+    std::function<void(juce::Component&)> visit = [&](juce::Component& component)
+    {
+        const auto id = component.getComponentID();
+        if (id.startsWith("capture:") && component.isShowing() && !component.getLocalBounds().isEmpty())
+            save(component, id.fromFirstOccurrenceOf(":", false, false));
+        for (auto* child : component.getChildren())
+            visit(*child);
+    };
+    visit(*content);
+    return saved;
 }
 
 void MainWindow::applyLayoutPreset(const juce::String& name)
