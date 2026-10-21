@@ -61,6 +61,14 @@ set(JSON_BuildTests OFF CACHE INTERNAL "")
 set(JSON_Install OFF CACHE INTERNAL "")
 FetchContent_MakeAvailable(nlohmann_json)
 
+# Time-stretch and pitch-shift for clips (MIT, header-only; brings Signalsmith's
+# MIT "linear" FFT/STFT library with it).
+FetchContent_Declare(signalsmith_stretch
+    GIT_REPOSITORY https://github.com/Signalsmith-Audio/signalsmith-stretch.git
+    GIT_TAG        1.4.0
+    GIT_SHALLOW    TRUE)
+FetchContent_MakeAvailable(signalsmith_stretch)
+
 if(AURAL_BUILD_TESTS)
     FetchContent_Declare(Catch2
         GIT_REPOSITORY https://github.com/catchorg/Catch2.git

@@ -1,6 +1,7 @@
 #pragma once
 
 #include "core/Model.h"
+#include "core/TempoMap.h"
 
 #include <cstdint>
 
@@ -22,6 +23,15 @@ public:
                 double sampleRate,
                 double samplesPerBeat,
                 int beatsPerBar,
+                float gain,
+                float* left,
+                float* right) noexcept;
+
+    // The same over a tempo map: a click on every beat of every bar (beats in the
+    // signature's denominator), the first of each bar accented.
+    void render(core::SamplePosition start,
+                int numSamples,
+                const core::TempoMap& map,
                 float gain,
                 float* left,
                 float* right) noexcept;

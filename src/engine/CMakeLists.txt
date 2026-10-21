@@ -53,6 +53,10 @@ add_library(aural_engine STATIC
     Delay.h
     Delay.cpp
     Loudness.h
+    Stretch.h
+    Stretch.cpp
+    TempoDetect.h
+    TempoDetect.cpp
     pitch/PitchAnalysis.h
     pitch/PitchAnalysis.cpp
     pitch/VocalRender.h
@@ -64,4 +68,4 @@ add_library(aural_engine STATIC
     pitch/VocalOps.h
     pitch/VocalOps.cpp)
 
-target_link_libraries(aural_engine PUBLIC aural_rt aural_core)
+target_link_libraries(aural_engine PUBLIC aural_rt aural_core PRIVATE signalsmith-stretch)

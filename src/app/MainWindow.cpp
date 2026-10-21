@@ -6,6 +6,7 @@
 #include "audio/AudioDeviceLayer.h"
 #include "core/Command.h"
 #include "core/Model.h"
+#include "core/TempoMap.h"
 #include "engine/Midi.h"
 #include "engine/Snapshot.h"
 #include "plugins/BuiltIns.h"
@@ -49,8 +50,7 @@ namespace
 {
 juce::String barsText(const core::Project& project, core::SamplePosition position)
 {
-    const auto bb = core::samplesToBarsBeats(
-        std::abs(position), project.sampleRate, project.tempoBpm, project.timeSignature);
+    const auto bb = core::tempoMapOf(project).barsBeatsAt(std::abs(position));
     return juce::String(position < 0 ? "-" : "") + juce::String(bb.bar) + "." + juce::String(bb.beat) + "." +
            juce::String(bb.tick).paddedLeft('0', 3);
 }
@@ -75,7 +75,7 @@ core::SamplePosition parseBars(const core::Project& project, const juce::String&
     bb.bar = parts[0].getIntValue();
     bb.beat = parts.size() > 1 ? std::max(1, parts[1].getIntValue()) : 1;
     bb.tick = parts.size() > 2 ? std::max(0, parts[2].getIntValue()) : 0;
-    return core::barsBeatsToSamples(bb, project.sampleRate, project.tempoBpm, project.timeSignature);
+    return core::tempoMapOf(project).positionAt(bb);
 }
 
 // "m:ss.mmm" or "ss.mmm" -> samples, or -1.
@@ -737,12 +737,15 @@ private:
         };
         header_.onBarsNudged = [this](int segment, int steps)
         {
-            const auto& p = session_.project();
-            const double beat = core::samplesPerBeat(p.sampleRate, p.tempoBpm, p.timeSignature);
-            const double unit = segment == 0   ? beat * std::max(1, p.timeSignature.numerator)
-                                : segment == 1 ? beat
-                                               : beat / core::BarsBeats::ticksPerBeat;
-            nudge(unit * steps);
+            // Bars, beats or ticks on the tempo track at the position.
+            const auto map = core::tempoMapOf(session_.project());
+            const auto at = session_.position();
+            const double beat = core::TempoMap::quartersPerBeat(map.signatureAt(at));
+            const core::GridStep step = segment == 0 ? core::GridStep{1, 0.0}
+                                        : segment == 1
+                                            ? core::GridStep{0, beat}
+                                            : core::GridStep{0, beat / core::BarsBeats::ticksPerBeat};
+            nudge(static_cast<double>(map.move(at, step, steps) - at));
         };
         header_.onTimeNudged = [this](int segment, int steps)
         {
@@ -750,9 +753,44 @@ private:
             const double unit = segment == 0 ? 60.0 * rate : segment == 1 ? rate : rate / 1000.0;
             nudge(unit * steps);
         };
-        header_.onTempo = [this](double bpm) { session_.execute(std::make_unique<core::SetTempo>(bpm)); };
+        // The header edits the tempo and signature in effect at the playhead: the
+        // song's start values, or the tempo track's change that governs there.
+        header_.onTempo = [this](double bpm)
+        {
+            const auto& p = session_.project();
+            const auto map = core::tempoMapOf(p);
+            const double q = map.quartersAt(static_cast<double>(heardPosition()));
+            int index = -1;
+            for (int i = 0; i < static_cast<int>(p.tempoChanges.size()); ++i)
+                if (p.tempoChanges[static_cast<size_t>(i)].quarter <= q + 1.0e-9)
+                    index = i;
+            if (index < 0)
+            {
+                session_.execute(std::make_unique<core::SetTempo>(bpm));
+                return;
+            }
+            auto state = core::TempoState::of(p);
+            state.tempoChanges[static_cast<size_t>(index)].bpm = bpm;
+            session_.execute(std::make_unique<core::SetTempoMap>(std::move(state), "Set tempo"));
+        };
         header_.onSignature = [this](int n, int d)
-        { session_.execute(std::make_unique<core::SetTimeSignature>(n, d)); };
+        {
+            const auto& p = session_.project();
+            const auto map = core::tempoMapOf(p);
+            const int bar = map.barAtQuarter(map.quartersAt(static_cast<double>(heardPosition())));
+            int index = -1;
+            for (int i = 0; i < static_cast<int>(p.meterChanges.size()); ++i)
+                if (p.meterChanges[static_cast<size_t>(i)].bar <= bar)
+                    index = i;
+            if (index < 0)
+            {
+                session_.execute(std::make_unique<core::SetTimeSignature>(n, d));
+                return;
+            }
+            auto state = core::TempoState::of(p);
+            state.meterChanges[static_cast<size_t>(index)].signature = {n, d};
+            session_.execute(std::make_unique<core::SetTempoMap>(std::move(state), "Set time signature"));
+        };
         header_.onMasterClipClicked = [this] { mixer_.clearMasterClip(); };
         header_.onToggleSnap = [this]
         {
@@ -805,6 +843,15 @@ private:
                 toast(ui::ToastStack::Kind::error,
                       "Normalise failed: " + juce::String::fromUTF8(error.c_str()));
         };
+        tracks_.onConformClip = [this](core::Id trackId, core::Id clipId) { conformClip(trackId, clipId); };
+        // The tempo track: its edits, and whether it shows (kept per user).
+        tracks_.onTempoEdit = [this](core::TempoState state, const std::string& name)
+        { session_.execute(std::make_unique<core::SetTempoMap>(std::move(state), name)); };
+        tracks_.setTempoTrackShown(settings_.value("arrange.tempoTrack", "0") == "1");
+        tracks_.onTempoTrackShownChanged = [this](bool shown)
+        { settings_.setValue("arrange.tempoTrack", shown ? "1" : "0"); };
+        tracks_.stretchProgress = [this](const core::AudioClip& clip)
+        { return session_.stretch().progress(clip, session_.project().sampleRate); };
         tracks_.playheadForEdits = [this] { return session_.position(); };
         tracks_.setAcceptedExtensions(session_.mediaLoader().supportedExtensions());
         tracks_.onTrackSelected = [this](core::Id id) { select(id); };
@@ -1211,9 +1258,15 @@ private:
         state.deviceReady = audio_.status().open;
         state.barsText = barsText(p, heardPosition());
         state.timeText = timeText(p, heardPosition());
-        state.tempo = p.tempoBpm;
-        state.signatureNumerator = p.timeSignature.numerator;
-        state.signatureDenominator = p.timeSignature.denominator;
+        {
+            // The tempo and signature at the heard position.
+            const auto map = core::tempoMapOf(p);
+            const auto at = std::max<core::SamplePosition>(0, heardPosition());
+            const auto signature = map.signatureAt(at);
+            state.tempo = map.bpmAt(at);
+            state.signatureNumerator = signature.numerator;
+            state.signatureDenominator = signature.denominator;
+        }
         state.masterClipped = mixer_.masterClipped();
         state.snap = tracks_.snapEnabled();
         state.snapName = tracks_.snapGridName();
@@ -2140,6 +2193,64 @@ private:
                            });
     }
 
+    // ----- clip tempo --------------------------------------------------------------------------
+    // Asks for the tempo a clip was recorded at (offering a guess from its name,
+    // beats and length), then stretches it to the project's tempo.
+    void conformClip(core::Id trackId, core::Id clipId)
+    {
+        const auto guess = session_.guessClipTempo(trackId, clipId);
+        auto field = std::make_unique<juce::TextEditor>();
+        field->setInputRestrictions(7, "0123456789.");
+        field->setJustification(juce::Justification::centredLeft);
+        field->setText(guess.bpm > 0.0 ? juce::String(guess.bpm, 2) : juce::String(), false);
+        field->selectAll();
+        auto* raw = field.get();
+        juce::String body = "The clip will play at the project's tempo and follow tempo changes. ";
+        switch (guess.source)
+        {
+            case engine::TempoGuess::Source::name:
+                body << "The tempo below is from the file's name.";
+                break;
+            case engine::TempoGuess::Source::length:
+                body << "The tempo below fits the clip's beats and a whole number of bars.";
+                break;
+            case engine::TempoGuess::Source::beats:
+                body << "The tempo below is a guess from the clip's beats; check it.";
+                break;
+            case engine::TempoGuess::Source::none:
+                body << "Enter the tempo the clip was recorded at.";
+                break;
+        }
+        sheet_ = ui::Sheet::show(
+            *this,
+            theme_,
+            "Clip tempo (BPM)",
+            body,
+            {{"Cancel", false, false}, {"Stretch", true, false}},
+            [this, raw, trackId, clipId](int result)
+            {
+                sheet_ = nullptr;
+                const double bpm = raw->getText().getDoubleValue();
+                if (result != 1)
+                    return;
+                if (bpm < 20.0 || bpm > 400.0)
+                {
+                    toast(ui::ToastStack::Kind::warning, "A clip tempo is between 20 and 400 BPM.");
+                    return;
+                }
+                session_.conformClipTempo(trackId, clipId, bpm);
+            },
+            std::move(field),
+            theme_.sizes.controlLarge);
+        juce::Component::SafePointer<juce::TextEditor> focus(raw);
+        juce::MessageManager::callAsync(
+            [focus]
+            {
+                if (focus != nullptr)
+                    focus->grabKeyboardFocus();
+            });
+    }
+
     // ----- first run -------------------------------------------------------------------------
     void showFirstRun()
     {
@@ -2438,6 +2549,12 @@ void MainWindow::showMixer()
 {
     if (auto* content = dynamic_cast<Content*>(getContentComponent()))
         content->panels_.show(ui::PanelId::mixer);
+}
+
+void MainWindow::showTempoTrack()
+{
+    if (auto* content = dynamic_cast<Content*>(getContentComponent()))
+        content->tracks_.setTempoTrackShown(true);
 }
 
 void MainWindow::openInsertEditor(core::Id channelId, core::Id insertId)

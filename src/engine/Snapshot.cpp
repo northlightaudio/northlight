@@ -3,6 +3,7 @@
 #include "engine/rt/RealtimeGuard.h"
 
 #include <algorithm>
+#include <cmath>
 #include <functional>
 #include <map>
 
@@ -53,6 +54,8 @@ MediaCache::getForClip(const std::string& path, double sampleRate, core::Id clip
 std::shared_ptr<const AudioSource> MediaCache::sourceForClip(const core::AudioClip& clip, double sampleRate)
 {
     auto base = getForClip(clip.mediaPath, sampleRate, clip.id);
+    if (clip.isStretched())
+        return stretchHook_ && base != nullptr ? stretchHook_(clip, sampleRate, std::move(base)) : nullptr;
     if (clipHook_ && base != nullptr && clip.vocal.active())
         return clipHook_(clip, sampleRate, std::move(base));
     return base;
@@ -106,6 +109,7 @@ std::unique_ptr<Snapshot> compileSnapshot(const core::Project& project,
     snapshot->sampleRate = project.sampleRate;
     snapshot->tempoBpm = project.tempoBpm;
     snapshot->timeSignature = project.timeSignature;
+    snapshot->tempoMap = core::tempoMapOf(project);
     snapshot->masterGain = project.master.gain;
     RuntimeCache localRuntimes;
     RuntimeCache& runtimeCache = runtimes != nullptr ? *runtimes : localRuntimes;
@@ -438,7 +442,10 @@ std::unique_ptr<Snapshot> compileSnapshot(const core::Project& project,
             ClipNode clip;
             clip.start = c.start;
             clip.length = c.length;
-            clip.sourceOffset = c.sourceOffset;
+            // A stretched clip's source counts stretched samples.
+            clip.sourceOffset = c.isStretched() ? static_cast<core::SamplePosition>(std::llround(
+                                                      static_cast<double>(c.sourceOffset) * c.stretch))
+                                                : c.sourceOffset;
             clip.gain = c.gain;
             clip.fadeIn = std::clamp<core::SamplePosition>(c.fadeIn, 0, c.length);
             clip.fadeOut = std::clamp<core::SamplePosition>(c.fadeOut, 0, c.length);

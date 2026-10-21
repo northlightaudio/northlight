@@ -36,9 +36,10 @@ void migrate(json& j, int from)
     {
         switch (version)
         {
-            case 2: // 2 -> 3, 3 -> 4 and 4 -> 5 only add optional fields
+            case 2: // 2 -> 3, ..., 5 -> 6 only add optional fields
             case 3:
             case 4:
+            case 5:
                 break;
             default:
                 break;
@@ -60,6 +61,12 @@ json clipToJson(const AudioClip& c)
         j["fadeIn"] = c.fadeIn;
     if (c.fadeOut > 0)
         j["fadeOut"] = c.fadeOut;
+    if (c.stretch != 1.0)
+        j["stretch"] = c.stretch;
+    if (c.transpose != 0.0)
+        j["transpose"] = c.transpose;
+    if (c.followTempo)
+        j["followTempo"] = true;
     if (c.vocal.active())
     {
         json notes = json::array();
@@ -116,6 +123,9 @@ AudioClip clipFromJson(const json& j)
     c.gain = j.value("gain", 1.0f);
     c.fadeIn = j.value("fadeIn", SamplePosition{0});
     c.fadeOut = j.value("fadeOut", SamplePosition{0});
+    c.stretch = std::clamp(j.value("stretch", 1.0), 0.05, 20.0);
+    c.transpose = std::clamp(j.value("transpose", 0.0), -48.0, 48.0);
+    c.followTempo = j.value("followTempo", false);
     if (const auto it = j.find("vocal"); it != j.end() && it->is_object())
     {
         c.vocal.analysisVersion = it->value("analysis", 0);
@@ -496,6 +506,27 @@ std::string projectToJson(const Project& p, bool pretty, const ParameterKeys* ke
            {"tracks", std::move(tracks)}};
     if (p.key.isSet())
         j["key"] = json{{"root", p.key.root}, {"scale", static_cast<int>(p.key.scale)}};
+    if (!p.tempoChanges.empty())
+    {
+        json changes = json::array();
+        for (const auto& c : p.tempoChanges)
+        {
+            json cj{{"quarter", c.quarter}, {"bpm", c.bpm}};
+            if (c.ramp)
+                cj["ramp"] = true;
+            changes.push_back(std::move(cj));
+        }
+        j["tempoChanges"] = std::move(changes);
+    }
+    if (!p.meterChanges.empty())
+    {
+        json changes = json::array();
+        for (const auto& m : p.meterChanges)
+            changes.push_back(json{{"bar", m.bar},
+                                   {"numerator", m.signature.numerator},
+                                   {"denominator", m.signature.denominator}});
+        j["meterChanges"] = std::move(changes);
+    }
     return pretty ? j.dump(2) : j.dump();
 }
 
@@ -532,6 +563,25 @@ std::optional<Project> projectFromJson(const std::string& text, std::string* err
             p.timeSignature.numerator = it->value("numerator", 4);
             p.timeSignature.denominator = it->value("denominator", 4);
         }
+        if (const auto it = j.find("tempoChanges"); it != j.end() && it->is_array())
+            for (const auto& c : *it)
+                if (c.is_object())
+                    p.tempoChanges.push_back(TempoChange{c.value("quarter", 0.0),
+                                                         std::clamp(c.value("bpm", 120.0), 1.0, 999.0),
+                                                         c.value("ramp", false)});
+        std::sort(p.tempoChanges.begin(),
+                  p.tempoChanges.end(),
+                  [](const TempoChange& a, const TempoChange& b) { return a.quarter < b.quarter; });
+        if (const auto it = j.find("meterChanges"); it != j.end() && it->is_array())
+            for (const auto& m : *it)
+                if (m.is_object())
+                    p.meterChanges.push_back(
+                        MeterChange{m.value("bar", 0),
+                                    TimeSignature{std::clamp(m.value("numerator", 4), 1, 32),
+                                                  std::clamp(m.value("denominator", 4), 1, 32)}});
+        std::sort(p.meterChanges.begin(),
+                  p.meterChanges.end(),
+                  [](const MeterChange& a, const MeterChange& b) { return a.bar < b.bar; });
         p.nextId = j.value("nextId", Id{1});
         if (const auto it = j.find("key"); it != j.end() && it->is_object())
         {

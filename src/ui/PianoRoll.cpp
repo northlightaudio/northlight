@@ -87,6 +87,7 @@ void PianoRoll::setClip(const core::Project* project, core::Id trackId, core::Id
 {
     const bool same = project == project_ && trackId == trackId_ && clipId == clipId_;
     project_ = project;
+    tempoMap_ = project != nullptr ? core::tempoMapOf(*project) : core::TempoMap();
     trackId_ = trackId;
     clipId_ = clipId;
     const auto* c = clip();
@@ -211,21 +212,30 @@ int PianoRoll::noteForY(int y) const noexcept
     return std::clamp(127 - row, 0, 127);
 }
 
+core::GridStep PianoRoll::gridStep() const noexcept
+{
+    const auto* c = clip();
+    const auto at = c != nullptr ? c->start : 0;
+    return {0, core::TempoMap::quartersPerBeat(tempoMap_.signatureAt(at)) / std::max(1, gridDivision_)};
+}
+
 core::SamplePosition PianoRoll::gridSamples() const noexcept
 {
-    if (project_ == nullptr)
-        return 1;
-    const double beat =
-        core::samplesPerBeat(project_->sampleRate, project_->tempoBpm, project_->timeSignature);
-    return std::max<core::SamplePosition>(
-        1, static_cast<core::SamplePosition>(std::llround(beat / std::max(1, gridDivision_))));
+    const auto* c = clip();
+    const auto at = c != nullptr ? c->start : 0;
+    return std::max<core::SamplePosition>(1, std::llround(tempoMap_.stepSamples(gridStep(), at)));
 }
 
 core::SamplePosition PianoRoll::snapped(core::SamplePosition s, bool force) const noexcept
 {
     s = std::max<core::SamplePosition>(0, s);
     const bool alt = juce::ModifierKeys::getCurrentModifiers().isAltDown();
-    return (snap_ || force) && !alt ? core::snapToGrid(s, gridSamples()) : s;
+    if (!(snap_ || force) || alt)
+        return s;
+    // Clip-relative positions snap to the song's grid.
+    const auto* c = clip();
+    const auto start = c != nullptr ? c->start : 0;
+    return std::max<core::SamplePosition>(0, tempoMap_.snap(start + s, gridStep()) - start);
 }
 
 juce::Rectangle<int> PianoRoll::noteBounds(const core::MidiNote& note) const noexcept
@@ -561,24 +571,27 @@ void PianoRoll::paint(juce::Graphics& g)
     // Grid lines: bars, beats, subdivisions, relative to the timeline's bars.
     if (project_ != nullptr && clipModel != nullptr)
     {
-        const double beat =
-            core::samplesPerBeat(project_->sampleRate, project_->tempoBpm, project_->timeSignature);
-        const auto step = gridSamples();
-        const int beatsPerBar = std::max(1, project_->timeSignature.numerator);
+        const auto& map = tempoMap_;
+        const auto step = gridStep();
         const auto first = sampleForX(grid.getX());
         const auto last = sampleForX(grid.getRight());
-        const auto absoluteFirst = clipModel->start + first;
-        core::SamplePosition s =
-            core::snapToGrid(std::max<core::SamplePosition>(0, absoluteFirst - step), step);
-        const bool subdivisions = static_cast<double>(step) / samplesPerPixel_ >= 6.0;
-        for (; s - clipModel->start <= last; s += step)
+        const auto absoluteFirst = std::max<core::SamplePosition>(0, clipModel->start + first);
+        const bool subdivisions = static_cast<double>(gridSamples()) / samplesPerPixel_ >= 6.0;
+        auto s = map.snap(absoluteFirst, step);
+        for (int guard = 0; s - clipModel->start <= last && guard < 100000; ++guard)
         {
-            const auto relative = s - clipModel->start;
+            const auto here = s;
+            s = std::max(here + 1, map.snap(map.move(here, step, 1), step));
+            const auto relative = here - clipModel->start;
             if (relative < first)
                 continue;
-            const double beats = static_cast<double>(s) / beat;
-            const bool onBeat = std::abs(beats - std::round(beats)) < 1.0e-6;
-            const bool onBar = onBeat && (static_cast<long long>(std::llround(beats)) % beatsPerBar) == 0;
+            // Where the line falls in its bar, in beats of the bar's signature.
+            const double q = map.quartersAt(static_cast<double>(here));
+            const int bar = map.barAtQuarter(q + 1.0e-6);
+            const double beats =
+                (q - map.barStartQuarter(bar)) / core::TempoMap::quartersPerBeat(map.signatureAt(here));
+            const bool onBeat = std::abs(beats - std::round(beats)) < 1.0e-4;
+            const bool onBar = onBeat && std::llround(beats) == 0;
             if (!onBeat && !subdivisions)
                 continue;
             g.setColour(onBar ? c.gridBar : onBeat ? c.gridBeat : c.gridSub);
@@ -713,30 +726,29 @@ void PianoRoll::paint(juce::Graphics& g)
     {
         g.saveState();
         g.reduceClipRegion(ruler);
-        const double beat =
-            core::samplesPerBeat(project_->sampleRate, project_->tempoBpm, project_->timeSignature);
-        const int beatsPerBar = std::max(1, project_->timeSignature.numerator);
-        const auto first = clipModel->start + sampleForX(grid.getX());
+        const auto& map = tempoMap_;
+        const auto first = std::max<core::SamplePosition>(0, clipModel->start + sampleForX(grid.getX()));
         const auto last = clipModel->start + sampleForX(grid.getRight());
-        const bool showBeats = beat / samplesPerPixel_ >= 24.0;
+        const double beatPixels =
+            map.stepSamples({0, core::TempoMap::quartersPerBeat(map.signatureAt(first))}, first) /
+            samplesPerPixel_;
+        const bool showBeats = beatPixels >= 24.0;
         g.setFont(theme_.caption());
-        for (long long b = static_cast<long long>(std::floor(static_cast<double>(first) / beat));
-             b * beat <= static_cast<double>(last);
-             ++b)
+        auto beatAt = map.beatAtOrAfter(static_cast<double>(first));
+        for (int guard = 0; beatAt.position <= last && guard < 100000; ++guard)
         {
-            if (b < 0)
-                continue;
-            const bool bar = b % beatsPerBar == 0;
+            const auto here = beatAt;
+            beatAt = map.nextBeat(here);
+            const bool bar = here.beat == 0;
             if (!bar && !showBeats)
                 continue;
-            const int x =
-                xForSample(static_cast<core::SamplePosition>(std::llround(b * beat)) - clipModel->start);
+            const int x = xForSample(here.position - clipModel->start);
             g.setColour(bar ? c.gridBar : c.gridBeat);
             g.fillRect(x, ruler.getBottom() - (bar ? ruler.getHeight() : 6), 1, bar ? ruler.getHeight() : 6);
             if (bar)
             {
                 g.setColour(c.rulerText);
-                g.drawText(juce::String(b / beatsPerBar + 1),
+                g.drawText(juce::String(here.bar + 1),
                            x + 4,
                            ruler.getY(),
                            40,
@@ -1304,7 +1316,11 @@ void PianoRoll::quantiseSelection(float strength, bool ends)
         return;
     std::vector<std::unique_ptr<core::Command>> commands;
     const auto grid = gridSamples();
-    commands.push_back(std::make_unique<core::QuantiseNotes>(trackId_, clipId_, selection_, grid, strength));
+    const auto step = gridStep();
+    commands.push_back(
+        std::make_unique<core::QuantiseNotes>(trackId_, clipId_, selection_, tempoMap_, step, strength));
+    const auto snapRelative = [&](core::SamplePosition s)
+    { return tempoMap_.snap(c->start + s, step) - c->start; };
     if (ends)
     {
         // The ends move towards the grid by the same strength (at least one step long).
@@ -1313,11 +1329,11 @@ void PianoRoll::quantiseSelection(float strength, bool ends)
             if (!selection_.empty() && !isSelected(n.id))
                 continue;
             const auto start = selection_.empty() || isSelected(n.id)
-                                   ? n.start + static_cast<core::SamplePosition>(std::llround(
-                                                   (core::snapToGrid(n.start, grid) - n.start) * strength))
+                                   ? n.start + static_cast<core::SamplePosition>(
+                                                   std::llround((snapRelative(n.start) - n.start) * strength))
                                    : n.start;
             const auto end = n.end();
-            const auto target = core::snapToGrid(end, grid);
+            const auto target = snapRelative(end);
             auto moved = n;
             moved.start = start;
             moved.length = std::max(
@@ -1335,8 +1351,17 @@ void PianoRoll::nudgeSelection(int timeSteps, int semitones, bool fine)
     if (c == nullptr || selection_.empty())
         return;
     std::vector<std::unique_ptr<core::Command>> commands;
-    const auto step =
-        (fine ? std::max<core::SamplePosition>(1, gridSamples() / 4) : gridSamples()) * timeSteps;
+    // A grid step (a quarter of one when fine) on the tempo track from the first
+    // selected note.
+    core::SamplePosition from = -1;
+    for (const auto id : selection_)
+        if (const auto* n = c->findNote(id))
+            from = from < 0 ? n->start : std::min(from, n->start);
+    auto grid = gridStep();
+    if (fine)
+        grid.quarters /= 4.0;
+    const auto origin = c->start + std::max<core::SamplePosition>(0, from);
+    const auto step = timeSteps == 0 ? 0 : tempoMap_.move(origin, grid, timeSteps) - origin;
     for (const auto id : selection_)
         if (const auto* n = c->findNote(id))
         {

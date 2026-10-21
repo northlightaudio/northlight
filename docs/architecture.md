@@ -1078,17 +1078,68 @@ next launch says so with a toast (Show reveals the dump; either button moves the
 reports to `Crashes/Seen`). Nothing is sent anywhere: the Diagnostics
 preference to send reports waits for the release work.
 
+### Tempo track and time-stretch
+
+The project keeps its start tempo and signature (`Project::tempoBpm`,
+`timeSignature`) and, after them, `tempoChanges` (at quarter-note positions, each
+a step or a ramp into it) and `meterChanges` (at bars). `core::TempoMap` turns
+those into conversions between samples and quarter notes, bars and beats, the
+grid (`GridStep`: whole bars, or a division of quarter notes from each bar line;
+`snap`, `move`, `nextLine`, `adaptiveStep`) and the beats for the click. A ramp
+is linear in tempo over quarter notes, so its time is the closed form
+60/k ln(bpm(q)/bpm0); every query is a binary search over the points, noexcept and
+allocation-free, and the snapshot carries a copy for the audio thread. The
+timeline stays in samples: tempo is a view of it.
+
+`SetTempoMap` replaces the tempo track as one command (`SetTempo` sets the start
+tempo the same way). Before the change it captures every musical position (MIDI
+clips and notes, audio clips, automation, markers) and `remapMusicalTime` moves
+them so each keeps its bar and beat; undo restores the captured copies rather than
+remapping back, so a round trip is exact. Audio clips stay in time unless they
+follow the tempo (`AudioClip::followTempo`): those move and are re-stretched to
+keep their length in beats.
+
+Clips stretch and transpose with `AudioClip::stretch` (timeline samples per
+source sample) and `transpose` (semitones); `sourceOffset` stays in source
+samples. `engine::StretchService` renders a stretched clip with Signalsmith
+Stretch (MIT, fetched by CMake) on two background workers: the media around the
+part the clip uses (half a second of margin, rounded out to 4 s so small trims
+keep their render), into a buffer allocated before the render starts. The worker
+publishes how much of it is finished with a release store; the audio thread's
+`StretchedSource::read` copies only below that (acquire) and reads silence
+beyond, so playback starts while the render runs and no recompile is needed for
+progress. Renders are shared by every clip with the same media, ratio,
+transposition and range, dropped unstarted when nothing plays them any more (a
+stretch dragged through many lengths renders only where it stopped), and pruned
+once unreferenced. The snapshot compiler scales a stretched clip's source offset
+into stretched samples, and `MediaCache` routes stretched clips through the
+stretch hook (silence without one); a bounce uses a synchronous service, so its
+renders finish inside the compile. Vocal pitch edits apply to unstretched clips.
+
+`engine::guessTempo` reads a recording's tempo for "Stretch to project tempo...":
+a tempo in the file name first, then a whole number of bars (1 to 32) that agrees
+with the beats (an onset envelope's autocorrelation, with its multiples scored as
+a comb) within 3%, then the beats alone. `ProjectSession::conformClipTempo` lays
+the clip's beats over the tempo map from where it starts and stretches it to fit.
+
+In the UI the arrange view, piano roll and audio editor draw and snap their grids
+from the tempo map; the header bar shows and edits the tempo and signature at the
+playhead (the governing change when there are changes); the count-in is the bars
+before where capture rolls from. The tempo track (`ui::TempoLane`, 04-arrange.md)
+edits the changes; every edit is one `SetTempoMap`.
+
 ### Metronome, count-in, loop and punch
 
 `engine::ClickGenerator` adds a 30 ms decaying sine burst on every beat (1.5 kHz on
-bar starts, 1 kHz otherwise) at multiples of the beat length from zero, so the same
-code serves the count-in before the start position (negative timeline positions)
-and playback. The snapshot carries tempo and time signature.
+bar starts, 1 kHz otherwise), walking the tempo map's beats, so the same code
+serves the count-in before the start position (negative timeline positions, at
+the first tempo) and playback. The snapshot carries the tempo map.
 
 Every insert is handed an `engine::PlayHead` before each block
-(`InsertProcessor::setPlayHead`): the tempo, the time signature, whether the
-transport plays, and the song position at the block's first sample in samples
-and quarter notes (one tempo, so position / samples-per-quarter). Built-ins read
+(`InsertProcessor::setPlayHead`): the tempo and time signature in effect at the
+block's start, whether the transport plays, the song position at the block's
+first sample in samples and quarter notes, and the bar holding it and where that
+bar began (from the tempo map). Built-ins read
 it through `ProcessorBase::playHead()` (moved on by the chunk offset when a block
 is split); the Delay and Starbit's arpeggio use it for note values
 (`plugins/BeatSync.h`), and a hosted plugin gets it as JUCE's `AudioPlayHead`

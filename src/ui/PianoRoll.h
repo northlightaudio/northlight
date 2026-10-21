@@ -2,6 +2,7 @@
 
 #include "core/Command.h"
 #include "core/Model.h"
+#include "core/TempoMap.h"
 #include "ui/Icons.h"
 #include "ui/Theme.h"
 #include "ui/components/SegmentedControl.h"
@@ -59,7 +60,9 @@ public:
     int gridDivision() const noexcept { return gridDivision_; }
     void setSnapEnabled(bool on);
     bool snapEnabled() const noexcept { return snap_; }
-    // The grid in samples at the project's tempo.
+    // The grid on the tempo track (a fraction of the beat where the clip starts),
+    // and its length in samples there.
+    core::GridStep gridStep() const noexcept;
     core::SamplePosition gridSamples() const noexcept;
 
     enum class Tool
@@ -150,6 +153,7 @@ private:
 
     const Theme& theme_ = Theme::dark();
     const core::Project* project_ = nullptr;
+    core::TempoMap tempoMap_;
     core::Id trackId_ = core::invalidId, clipId_ = core::invalidId;
     core::SamplePosition playhead_ = -1;
     double samplesPerPixel_ = 100.0;

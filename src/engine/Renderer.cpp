@@ -217,15 +217,7 @@ void Renderer::renderClicks(const Snapshot& snapshot,
 {
     if (!transport.metronome)
         return;
-    const double spb = core::samplesPerBeat(snapshot.sampleRate, snapshot.tempoBpm, snapshot.timeSignature);
-    click_.render(start,
-                  numSamples,
-                  snapshot.sampleRate,
-                  spb,
-                  snapshot.timeSignature.numerator,
-                  transport.metronomeGain,
-                  left,
-                  right);
+    click_.render(start, numSamples, snapshot.tempoMap, transport.metronomeGain, left, right);
 }
 
 void Renderer::renderTrack(const Snapshot& snapshot,
@@ -532,13 +524,17 @@ void Renderer::scheduleMidi(const TrackNode& track,
 PlayHead Renderer::playHeadAt(const Snapshot& snapshot, core::SamplePosition position, bool playing) noexcept
 {
     PlayHead head;
+    const auto& map = snapshot.tempoMap;
     head.sampleRate = snapshot.sampleRate;
-    head.tempoBpm = std::max(1.0, snapshot.tempoBpm);
-    head.numerator = snapshot.timeSignature.numerator;
-    head.denominator = snapshot.timeSignature.denominator;
     head.playing = playing;
     head.samples = position;
-    head.quarterNotes = static_cast<double>(position) * head.quartersPerSample();
+    head.quarterNotes = map.quartersAt(static_cast<double>(position));
+    head.tempoBpm = std::max(1.0, map.bpmAtQuarter(head.quarterNotes));
+    head.bar = map.barAtQuarter(head.quarterNotes);
+    head.barStartQuarters = map.barStartQuarter(head.bar);
+    const auto signature = map.signatureAtBar(head.bar);
+    head.numerator = signature.numerator;
+    head.denominator = signature.denominator;
     return head;
 }
 

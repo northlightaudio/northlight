@@ -85,6 +85,7 @@ Defaults; all rebindable in Preferences. Shown in tooltips and menus.
 | Add audio / MIDI track / bus | Ctrl+T / Ctrl+Shift+T / Ctrl+B |
 | Rename selected | F2 when a track or clip is selected (overrides mixer toggle) |
 | Tap tempo | T while the tempo field is focused |
+| Stretch a clip | Alt+drag its right edge |
 | Focus search | Ctrl+F (browser) |
 
 Focus model: the arrange view owns focus by default; Tab cycles header controls,

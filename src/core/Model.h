@@ -35,8 +35,28 @@ struct AudioClip
     SamplePosition fadeIn = 0;       // samples of linear fade at the start
     SamplePosition fadeOut = 0;      // and at the end (overlapping clips crossfade this way)
     VocalEdit vocal;                 // pitch edits (core/Vocal.h); inactive = the media as recorded
+    // Time-stretch and pitch-shift: timeline samples per source sample (2 = half
+    // speed, twice as long) and a transposition in semitones that keeps the
+    // timing. sourceOffset stays in source samples; the clip plays
+    // length / stretch of them.
+    double stretch = 1.0;
+    double transpose = 0.0;
+    // Musical time base: a tempo change moves the clip with its bar and stretches
+    // it to keep its length in beats (MIDI clips always follow the tempo).
+    bool followTempo = false;
 
     SamplePosition end() const noexcept { return start + length; }
+    bool isStretched() const noexcept { return stretch != 1.0 || transpose != 0.0; }
+    // Source samples the clip plays.
+    SamplePosition sourceLength() const noexcept
+    {
+        return static_cast<SamplePosition>(static_cast<double>(length) / stretch + 0.5);
+    }
+    // The source sample under a timeline offset from the clip's start.
+    SamplePosition sourceAt(SamplePosition offsetInClip) const noexcept
+    {
+        return sourceOffset + static_cast<SamplePosition>(static_cast<double>(offsetInClip) / stretch);
+    }
     bool operator==(const AudioClip&) const = default;
 };
 
@@ -328,18 +348,44 @@ struct TimeSignature
     bool operator==(const TimeSignature&) const = default;
 };
 
+// The tempo track (core/TempoMap.h turns it into conversions). The project's
+// tempoBpm and timeSignature hold at the start of the song; these change them
+// later. A tempo change sits at a musical position, in quarter notes from the
+// song's start (> 0): from there the tempo is `bpm` quarter notes a minute. With
+// `ramp` the tempo glides (linearly over the quarter notes) from the previous
+// tempo to this one instead of jumping at it.
+struct TempoChange
+{
+    double quarter = 0.0;
+    double bpm = 120.0;
+    bool ramp = false;
+    bool operator==(const TempoChange&) const = default;
+};
+
+// A time signature change at the start of a bar (0-based bar index, > 0).
+struct MeterChange
+{
+    int bar = 0;
+    TimeSignature signature;
+    bool operator==(const MeterChange&) const = default;
+};
+
 struct Project
 {
     // 2: instruments moved to instrument channels; MIDI tracks aim at them.
     // 3: parameters and automation lanes carry stable keys; row heights.
     // 4: vocal pitch edits on audio clips; the project key.
-    static constexpr int schemaVersion = 5;
+    // 6: the tempo track (tempo and meter changes); clip stretch, transpose and
+    //    musical time base.
+    static constexpr int schemaVersion = 6;
     static constexpr int oldestReadableVersion = 2; // older files are refused
 
     std::string name = "Untitled";
     double sampleRate = 48000.0;
-    double tempoBpm = 120.0;
-    TimeSignature timeSignature;
+    double tempoBpm = 120.0;               // at the song's start
+    TimeSignature timeSignature;           // at the song's start
+    std::vector<TempoChange> tempoChanges; // later tempos, sorted by quarter (all > 0)
+    std::vector<MeterChange> meterChanges; // later signatures, sorted by bar (all > 0)
     MusicalKey key;
     std::vector<Track> tracks;
     std::vector<Bus> buses;

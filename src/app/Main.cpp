@@ -6,6 +6,7 @@
 #include "audio/AudioDeviceLayer.h"
 #include "core/Command.h"
 #include "core/ProjectJson.h"
+#include "core/TempoMap.h"
 #include "plugins/BuiltIns.h"
 #include "plugins/ChannelStrip.h"
 #include "plugins/FxTracks.h"
@@ -95,6 +96,8 @@ public:
     //   --correct-pitch      once that clip's pitch is analysed, correct it to the key
     //   --mute-breaths       once that clip's pitch is analysed, mute its breaths
     //   --automation         add a volume lane to the first track and show it in the arrange view
+    //   --tempo-demo         a tempo track with a change, a ramp and a 3/4 bar, shown
+    //   --stretch <factor> [semitones]  stretch (and transpose) the first audio clip
     //   --master-gain <dB>   set the master fader (-120 = silent: an unattended check that
     //                        should not be heard; pre-fader displays still move)
     //   --fx-track <reverb|delay|empty>  add an FX track with a send from every track
@@ -180,10 +183,7 @@ public:
                                       ? tokens.getReference(++i).text.unquoted().toStdString()
                                       : std::string{};
                 const auto trackId = session_->addMidiTrack(type);
-                const auto beat = static_cast<core::SamplePosition>(
-                    core::samplesPerBeat(session_->project().sampleRate,
-                                         session_->project().tempoBpm,
-                                         session_->project().timeSignature));
+                const auto beat = core::tempoMapOf(session_->project()).positionAt(1.0);
                 core::MidiClip clip;
                 clip.name = "Riff";
                 clip.start = 0;
@@ -276,6 +276,35 @@ public:
                 mainWindow_->removeLastBus();
             else if (arg == "--mixer")
                 mainWindow_->showMixer();
+            else if (arg == "--tempo-demo")
+            {
+                core::TempoState state = core::TempoState::of(session_->project());
+                state.tempoChanges = {{16.0, 140.0, false}, {32.0, 90.0, true}};
+                state.meterChanges = {{10, {3, 4}}, {12, {4, 4}}};
+                session_->execute(std::make_unique<core::SetTempoMap>(state));
+                mainWindow_->showTempoTrack();
+            }
+            else if (arg == "--stretch" && i + 1 < tokens.size())
+            {
+                const double factor = tokens.getReference(++i).text.getDoubleValue();
+                double semitones = 0.0;
+                if (i + 1 < tokens.size() && !tokens.getReference(i + 1).text.startsWith("--"))
+                    semitones = tokens.getReference(++i).text.getDoubleValue();
+                for (const auto& track : session_->project().tracks)
+                    if (!track.clips.empty() && factor > 0.0)
+                    {
+                        const auto& clip = track.clips.front();
+                        session_->execute(std::make_unique<core::SetClipStretch>(
+                            track.id,
+                            clip.id,
+                            clip.stretch * factor,
+                            semitones,
+                            static_cast<core::SamplePosition>(
+                                std::llround(static_cast<double>(clip.length) * factor)),
+                            false));
+                        break;
+                    }
+            }
             else if (arg == "--layout" && i + 1 < tokens.size())
                 mainWindow_->applyLayoutPreset(tokens.getReference(++i).text.unquoted());
             else if (arg == "--panel" && i + 1 < tokens.size())

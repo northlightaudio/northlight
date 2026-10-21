@@ -2,6 +2,7 @@
 
 #include "audio/AudioDeviceLayer.h"
 #include "core/ProjectJson.h"
+#include "core/TempoMap.h"
 #include "engine/WavFile.h"
 #include "hosting/ClapPlugin.h"
 #include "plugins/Aurora.h"
@@ -52,6 +53,11 @@ ProjectSession::ProjectSession(audio::AudioDeviceLayer& audio, juce::File regist
     engine_.setClipSourceHook(
         [this](const core::AudioClip& clip, double rate, std::shared_ptr<const engine::AudioSource> base)
         { return vocal_.sourceFor(clip, rate, std::move(base)); });
+    engine_.setStretchHook(
+        [this](const core::AudioClip& clip, double rate, std::shared_ptr<const engine::AudioSource> base)
+        { return stretch_.sourceFor(clip, rate, base); });
+    stretch_.onChanged = [this] { stretchUpdates_.triggerAsyncUpdate(); };
+    stretchUpdates_.onUpdate = [this] { notify(Change::values); };
     audio_.callback().setEngine(&engine_);
     audio_.midi().setEngine(&engine_);
     audio_.addChangeListener(this);
@@ -263,7 +269,8 @@ std::string ProjectSession::normaliseClip(core::Id trackId, core::Id clipId, flo
         return error.empty() ? "could not read " + clip->mediaPath : error;
     float peak = 0.0f;
     std::vector<float> chunk(8192);
-    const auto end = std::min<std::int64_t>(clip->sourceOffset + clip->length, source->lengthSamples());
+    const auto end =
+        std::min<std::int64_t>(clip->sourceOffset + clip->sourceLength(), source->lengthSamples());
     for (int ch = 0; ch < source->numChannels(); ++ch)
         for (std::int64_t at = clip->sourceOffset; at < end; at += static_cast<std::int64_t>(chunk.size()))
         {
@@ -278,6 +285,57 @@ std::string ProjectSession::normaliseClip(core::Id trackId, core::Id clipId, flo
     const float target = std::pow(10.0f, targetDb / 20.0f);
     execute(std::make_unique<core::SetClipGain>(trackId, clipId, target / peak));
     return {};
+}
+
+engine::TempoGuess ProjectSession::guessClipTempo(core::Id trackId, core::Id clipId)
+{
+    const auto* track = project_.findTrack(trackId);
+    const auto* clip = track != nullptr ? track->findClip(clipId) : nullptr;
+    if (clip == nullptr)
+        return {};
+    std::string error;
+    const auto source = stretchLoader_.load(clip->mediaPath, project_.sampleRate, error);
+    if (source == nullptr)
+        return {};
+    // The part the clip plays (at most a minute of it is enough to hear the beat).
+    const auto from = std::clamp<std::int64_t>(clip->sourceOffset, 0, source->lengthSamples());
+    const auto count = std::clamp<std::int64_t>(clip->sourceLength(), 0, source->lengthSamples() - from);
+    const auto analysed =
+        std::min<std::int64_t>(count, static_cast<std::int64_t>(project_.sampleRate * 60.0));
+    std::vector<std::vector<float>> samples(static_cast<size_t>(source->numChannels()),
+                                            std::vector<float>(static_cast<size_t>(analysed)));
+    std::vector<const float*> channels;
+    for (int ch = 0; ch < source->numChannels(); ++ch)
+    {
+        source->read(ch, from, samples[static_cast<size_t>(ch)].data(), static_cast<int>(analysed));
+        channels.push_back(samples[static_cast<size_t>(ch)].data());
+    }
+    const auto name = juce::File(juce::String::fromUTF8(clip->mediaPath.c_str())).getFileName().toStdString();
+    auto guess = engine::guessTempo(name, channels, analysed, project_.sampleRate);
+    // The length check wants the whole clip, not the analysed minute.
+    if (guess.source == engine::TempoGuess::Source::beats && analysed == count)
+        if (const double byLength = engine::tempoFromLength(count, project_.sampleRate, 4.0, guess.bpm);
+            byLength > 0.0 && std::abs(byLength / guess.bpm - 1.0) < 0.03)
+            guess = {byLength, std::max(guess.confidence, 0.8), engine::TempoGuess::Source::length};
+    return guess;
+}
+
+void ProjectSession::conformClipTempo(core::Id trackId, core::Id clipId, double sourceBpm)
+{
+    const auto* track = project_.findTrack(trackId);
+    const auto* clip = track != nullptr ? track->findClip(clipId) : nullptr;
+    if (clip == nullptr || sourceBpm <= 0.0)
+        return;
+    // The clip's beats at the tempo it was recorded at, laid over the tempo map
+    // from where it starts.
+    const auto map = core::tempoMapOf(project_);
+    const double seconds = static_cast<double>(clip->sourceLength()) / project_.sampleRate;
+    const double quarters = seconds * sourceBpm / 60.0;
+    const auto end = map.positionAt(map.quartersAt(static_cast<double>(clip->start)) + quarters);
+    const auto length = std::max<core::SamplePosition>(1, end - clip->start);
+    const double stretch = static_cast<double>(length) /
+                           static_cast<double>(std::max<core::SamplePosition>(1, clip->sourceLength()));
+    execute(std::make_unique<core::SetClipStretch>(trackId, clipId, stretch, clip->transpose, length, true));
 }
 
 bool ProjectSession::applyChecked(std::unique_ptr<core::Command> command)
@@ -1088,19 +1146,18 @@ std::string ProjectSession::startRecording()
     if (!folder.createDirectory().wasOk())
         return "could not create " + folder.getFullPathName().toStdString();
 
-    const double barSamples =
-        core::samplesPerBeat(project_.sampleRate, project_.tempoBpm, project_.timeSignature) *
-        std::max(1, project_.timeSignature.numerator);
-    const auto countIn = static_cast<core::SamplePosition>(std::llround(barSamples * countInBars_));
+    // Bars on the tempo track: the count-in is the bars before where capture
+    // rolls from, so its clicks are the song's own beats.
+    const auto map = core::tempoMapOf(project_);
     const bool punching = punch_ && regionEnd_ > regionStart_;
     const bool looping = loop_ && regionEnd_ > regionStart_;
 
     // Punching in: roll from one bar before the region so the take has a run-up.
     // (Only once the session is known to start; the locate is harmless otherwise.)
-    const auto rollFrom =
-        punching
-            ? std::max<core::SamplePosition>(0, regionStart_ - static_cast<core::SamplePosition>(barSamples))
-            : engine_.position();
+    const auto rollFrom = punching ? std::max<core::SamplePosition>(0, map.move(regionStart_, {1, 0.0}, -1))
+                                   : engine_.position();
+    const auto countIn =
+        std::max<core::SamplePosition>(0, rollFrom - map.move(rollFrom, {1, 0.0}, -countInBars_));
     // Capture starts at the punch-in point, or wraps to the loop start first when
     // playback is at or past the loop end.
     core::SamplePosition captureStart = punching ? std::max(regionStart_, rollFrom) : rollFrom;

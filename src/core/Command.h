@@ -1,6 +1,7 @@
 #pragma once
 
 #include "core/Model.h"
+#include "core/TempoMap.h"
 
 #include <memory>
 #include <optional>
@@ -505,6 +506,9 @@ class QuantiseNotes final : public Command
 {
 public:
     QuantiseNotes(Id trackId, Id clipId, std::vector<Id> noteIds, SamplePosition grid, float strength = 1.0f);
+    // To a grid on the tempo track (bars and beats follow tempo and meter changes).
+    QuantiseNotes(
+        Id trackId, Id clipId, std::vector<Id> noteIds, TempoMap map, GridStep step, float strength = 1.0f);
     std::string name() const override { return "Quantise"; }
     void apply(Project&) override;
     void revert(Project&) override;
@@ -512,7 +516,8 @@ public:
 private:
     Id trackId_, clipId_;
     std::vector<Id> noteIds_;
-    SamplePosition grid_;
+    SamplePosition grid_ = 1;
+    std::optional<std::pair<TempoMap, GridStep>> tempoGrid_;
     float strength_;
     std::vector<std::pair<Id, SamplePosition>> previous_;
 };
@@ -1252,6 +1257,67 @@ private:
     MusicalKey value_, previous_;
 };
 
+// What a tempo edit changes and restores: the tempo track, and every position
+// that follows it (MIDI clips, clips that follow the tempo, automation, markers),
+// captured whole so undo puts them back exactly rather than remapping again.
+struct TempoState
+{
+    double bpm = 120.0;
+    TimeSignature signature;
+    std::vector<TempoChange> tempoChanges;
+    std::vector<MeterChange> meterChanges;
+    bool operator==(const TempoState&) const = default;
+    static TempoState of(const Project& p);
+};
+
+class MusicalPositions
+{
+public:
+    void capture(const Project& p);
+    void restore(Project& p) const;
+
+private:
+    std::vector<std::vector<MidiClip>> midi_;
+    std::vector<std::vector<AudioClip>> audio_;
+    std::vector<std::vector<AutomationLane>> trackLanes_, busLanes_;
+    std::vector<Marker> markers_;
+};
+
+// Replaces the tempo track (start tempo, signature, changes); musical content
+// keeps its bars and beats (core/TempoMap.h remapMusicalTime).
+class SetTempoMap final : public Command
+{
+public:
+    explicit SetTempoMap(TempoState state, std::string name = "Edit tempo track");
+    std::string name() const override { return name_; }
+    void apply(Project&) override;
+    void revert(Project&) override;
+
+private:
+    TempoState value_, previous_;
+    MusicalPositions positions_;
+    std::string name_;
+};
+
+// A clip's time-stretch and transposition (and its length, which a stretch
+// changes, and whether it follows the tempo).
+class SetClipStretch final : public Command
+{
+public:
+    SetClipStretch(
+        Id trackId, Id clipId, double stretch, double transpose, SamplePosition length, bool followTempo);
+    std::string name() const override { return "Stretch clip"; }
+    void apply(Project&) override;
+    void revert(Project&) override;
+
+private:
+    Id trackId_, clipId_;
+    double stretch_, transpose_;
+    SamplePosition length_;
+    bool followTempo_;
+    AudioClip previous_;
+};
+
 class SetTimeSignature final : public Command
 {
 public:
@@ -1264,6 +1330,8 @@ private:
     TimeSignature value_, previous_;
 };
 
+// The tempo at the song's start (what the header sets when there are no tempo
+// changes); musical content keeps its bars and beats.
 class SetTempo final : public Command
 {
 public:
@@ -1274,6 +1342,7 @@ public:
 
 private:
     double value_, previous_ = 120.0;
+    MusicalPositions positions_;
 };
 
 } // namespace aural::core

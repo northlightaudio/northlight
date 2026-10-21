@@ -29,6 +29,11 @@ BounceJob::BounceJob(const core::Project& project, const hosting::HostFactory& i
             [vocal = render->vocal.get()](
                 const core::AudioClip& clip, double rate, std::shared_ptr<const engine::AudioSource> base)
             { return vocal->sourceFor(clip, rate, std::move(base)); });
+        render->stretch = std::make_unique<engine::StretchService>(*render->loader, true);
+        render->engine->setStretchHook(
+            [stretch = render->stretch.get()](
+                const core::AudioClip& clip, double rate, std::shared_ptr<const engine::AudioSource> base)
+            { return stretch->sourceFor(clip, rate, base); });
         render->engine->prepare(render->project.sampleRate, options_.blockSize);
         render->engine->setProject(render->project); // plugin instances: message thread
         const auto collect = [&](const core::Channel& channel)

@@ -28,7 +28,8 @@ ArrangeView::ArrangeView(audio::PeakStore& peaks)
       pencilTool_(theme_, Icon::pencil, "Pencil: draw a MIDI clip on a MIDI track  3")
 {
     setOpaque(true);
-    rulerHeight = theme_.sizes.ruler;
+    rulerOnly = theme_.sizes.ruler;
+    rulerHeight = rulerOnly;
     headerWidth = theme_.sizes.trackHeaderWidth;
     rowHeight = theme_.sizes.trackRow;
     scrollbarHeight = theme_.sizes.scrollbar;
@@ -67,6 +68,17 @@ ArrangeView::ArrangeView(audio::PeakStore& peaks)
                 h->setAutomationShown(shown);
     };
     addAndMakeVisible(automation_);
+    // The tempo track sits over the automation overlay so its handles take the mouse.
+    tempoLane_.xForSample = [this](core::SamplePosition s) { return xForSample(s); };
+    tempoLane_.sampleForX = [this](int x) { return sampleForX(x); };
+    tempoLane_.playhead = [this] { return playhead_; };
+    tempoLane_.onEdit = [this](core::TempoState state, const std::string& name)
+    {
+        if (onTempoEdit)
+            onTempoEdit(std::move(state), name);
+    };
+    tempoLane_.onHide = [this] { setTempoTrackShown(false); };
+    addChildComponent(tempoLane_);
     import_.setButtonText(juce::String::fromUTF8("Import audio\xe2\x80\xa6"));
     for (auto* b : {&addAudio_, &addInstrument_, &import_})
     {
@@ -121,6 +133,8 @@ void ArrangeView::setProject(const core::Project* project, bool valuesOnly)
     }
     automation_.setProject(project);
     project_ = project;
+    tempoMap_ = project_ != nullptr ? core::tempoMapOf(*project_) : core::TempoMap();
+    tempoLane_.setProject(project);
     std::erase_if(selection_, [this](const ClipRef& ref) { return !spanOf(ref).has_value(); });
     if (project_ == nullptr || project_->findMarker(selectedMarker_) == nullptr)
         selectedMarker_ = core::invalidId;
@@ -164,6 +178,12 @@ void ArrangeView::setRowHeight(int height)
 
 void ArrangeView::pushMeters()
 {
+    // A clip's stretch is rendering: show its progress (each frame until done).
+    if (stretchPending_)
+    {
+        stretchPending_ = false;
+        repaint();
+    }
     const double now = juce::Time::getMillisecondCounterHiRes();
     const double elapsed = lastMeterMs_ > 0.0 ? now - lastMeterMs_ : 33.0;
     lastMeterMs_ = now;
@@ -675,17 +695,35 @@ void ArrangeView::showAutomation(core::Id trackId, bool shown)
             h->setAutomationShown(shown);
 }
 
+void ArrangeView::setTempoTrackShown(bool shown)
+{
+    if (shown == tempoShown_)
+        return;
+    tempoShown_ = shown;
+    rulerHeight = rulerOnly + (shown ? tempoLaneHeight : 0);
+    tempoLane_.setVisible(shown);
+    rowsValid_ = false;
+    resized();
+    layoutHeaders();
+    updateScrollbar();
+    repaint();
+    if (onTempoTrackShownChanged)
+        onTempoTrackShownChanged(shown);
+}
+
 void ArrangeView::resized()
 {
     layoutEmptyState();
     automation_.setBounds(getLocalBounds());
+    tempoLane_.headerWidth = headerWidth;
+    tempoLane_.setBounds(0, rulerOnly, getWidth() - scrollbarWidth, tempoLaneHeight);
     scrollbar_.setBounds(headerWidth,
                          getHeight() - scrollbarHeight,
                          getWidth() - headerWidth - scrollbarWidth,
                          scrollbarHeight);
     verticalScrollbar_.setBounds(getWidth() - scrollbarWidth, rulerHeight, scrollbarWidth, lanesHeight());
     // The corner: "+" at the left, the row-height stepper at the right.
-    auto corner = juce::Rectangle<int>(0, 0, headerWidth, rulerHeight).reduced(theme_.spacing.xs, 0);
+    auto corner = juce::Rectangle<int>(0, 0, headerWidth, rulerOnly).reduced(theme_.spacing.xs, 0);
     const int button = theme_.sizes.controlCompact;
     addTrack_.setBounds(corner.removeFromLeft(button).withSizeKeepingCentre(button, button));
     rowsLarger_.setBounds(corner.removeFromRight(button).withSizeKeepingCentre(button, button));
@@ -822,7 +860,16 @@ void ArrangeView::mouseDownLanes(const juce::MouseEvent& e)
         selectTrack(channelAtRow(row)->id); // an FX track's lane
     if (e.mods.isPopupMenu())
     {
-        if (hit.track != nullptr)
+        if (hit.clip != nullptr)
+        {
+            if (!isSelected(hit.track->id, hit.clip->id))
+            {
+                selection_.clear();
+                select({hit.track->id, hit.clip->id}, true);
+            }
+            clipMenu(hit.track->id, hit.clip->id, e.getScreenPosition());
+        }
+        else if (hit.track != nullptr)
             trackMenu(hit.track->id, e.getScreenPosition());
         return;
     }
@@ -854,10 +901,10 @@ void ArrangeView::mouseDownLanes(const juce::MouseEvent& e)
         // The pencil: a new clip from the grid line at or before the press.
         drag_ = Drag::draw;
         drawTrack_ = hit.track->id;
-        const auto g = std::max<core::SamplePosition>(1, snapEnabled() ? grid() : 1);
-        drawAnchor_ = (std::max<core::SamplePosition>(0, dragStartSample_) / g) * g;
+        const auto from = std::max<core::SamplePosition>(0, dragStartSample_);
+        drawAnchor_ = snapEnabled() ? lineAtOrBefore(from) : from;
         drawStart_ = drawAnchor_;
-        drawEnd_ = drawAnchor_ + barLength();
+        drawEnd_ = tempoMap_.move(drawAnchor_, {1, 0.0}, 1);
         repaint();
         return;
     }
@@ -884,6 +931,11 @@ void ArrangeView::mouseDownLanes(const juce::MouseEvent& e)
         // Ctrl+drag on the body: gain. (Ctrl+click alone toggles the selection.)
         drag_ = Drag::gain;
     }
+    else if (hit.zone == Drag::trimRight && e.mods.isAltDown())
+    {
+        // Alt+drag of the right edge: stretch the clip to the new length.
+        drag_ = Drag::stretch;
+    }
     else
     {
         drag_ = hit.zone;
@@ -906,6 +958,7 @@ void ArrangeView::mouseDownLanes(const juce::MouseEvent& e)
     trimOffset_ = hit.clip->sourceOffset;
     fadePreview_ = drag_ == Drag::fadeOut ? hit.clip->fadeOut : hit.clip->fadeIn;
     gainPreview_ = hit.clip->gain;
+    stretchLength_ = hit.clip->length;
     repaint();
 }
 
@@ -984,13 +1037,18 @@ void ArrangeView::dragTrimLeft(core::SamplePosition at)
 {
     const auto sourceStart = dragClip_.midi
                                  ? core::SamplePosition{0}
-                                 : dragOriginal_.start - dragOriginal_.sourceOffset; // source sample 0
+                                 : dragOriginal_.start - static_cast<core::SamplePosition>(std::llround(
+                                                             static_cast<double>(dragOriginal_.sourceOffset) *
+                                                             dragOriginal_.stretch)); // source sample 0
     const auto newStart = std::clamp(snapWithTargets(at, dragStartRow_),
                                      std::max<core::SamplePosition>(0, sourceStart),
                                      dragOriginal_.end() - 1);
     trimStart_ = newStart;
     trimLength_ = dragOriginal_.end() - newStart;
-    trimOffset_ = dragOriginal_.sourceOffset + (newStart - dragOriginal_.start);
+    trimOffset_ =
+        dragClip_.midi
+            ? dragOriginal_.sourceOffset + (newStart - dragOriginal_.start)
+            : std::max<core::SamplePosition>(0, dragOriginal_.sourceAt(newStart - dragOriginal_.start));
 }
 
 void ArrangeView::mouseDrag(const juce::MouseEvent& e)
@@ -1014,18 +1072,25 @@ void ArrangeView::mouseDrag(const juce::MouseEvent& e)
         case Drag::draw:
             if (draggedFar_)
             {
-                const auto g = std::max<core::SamplePosition>(1, snapEnabled() ? grid() : 1);
-                const auto cell = [g](core::SamplePosition s, bool up)
-                { return (up ? (s + g - 1) / g : s / g) * g; };
+                const bool grid = snapEnabled();
+                const auto cell = [this, grid](core::SamplePosition s, bool up)
+                {
+                    s = std::max<core::SamplePosition>(0, s);
+                    return !grid ? s : up ? lineAtOrAfter(s) : lineAtOrBefore(s);
+                };
+                // At least one grid step long.
+                const auto oneStep =
+                    grid ? std::max(drawAnchor_ + 1, tempoMap_.move(drawAnchor_, gridAt(drawAnchor_), 1))
+                         : drawAnchor_ + 1;
                 if (at >= drawAnchor_)
                 {
                     drawStart_ = drawAnchor_;
-                    drawEnd_ = std::max(drawAnchor_ + g, cell(at, true));
+                    drawEnd_ = std::max(oneStep, cell(at, true));
                 }
                 else
                 {
-                    drawStart_ = std::max<core::SamplePosition>(0, cell(at, false));
-                    drawEnd_ = drawAnchor_ + g;
+                    drawStart_ = cell(at, false);
+                    drawEnd_ = oneStep;
                 }
             }
             break;
@@ -1081,6 +1146,20 @@ void ArrangeView::mouseDrag(const juce::MouseEvent& e)
         {
             const auto newEnd = std::max(snapWithTargets(at, dragStartRow_), dragOriginal_.start + 1);
             trimLength_ = newEnd - dragOriginal_.start;
+            break;
+        }
+        case Drag::stretch:
+        {
+            // Alt is held for the gesture, so the grid snaps here unless it is off.
+            auto end = std::max<core::SamplePosition>(at, dragOriginal_.start + 1);
+            if (snap_)
+                end = tempoMap_.snap(end, gridAt(end));
+            // From a twentieth to twenty times the source's own length.
+            const double source = static_cast<double>(dragOriginal_.sourceLength());
+            stretchLength_ = std::clamp<core::SamplePosition>(
+                end - dragOriginal_.start,
+                std::max<core::SamplePosition>(1, std::llround(source * 0.05)),
+                std::llround(source * 20.0));
             break;
         }
         case Drag::fadeIn:
@@ -1189,6 +1268,10 @@ void ArrangeView::mouseUp(const juce::MouseEvent& e)
         case Drag::trimRight:
             if (draggedFar_)
                 finishTrim();
+            break;
+        case Drag::stretch:
+            if (draggedFar_)
+                finishStretch();
             break;
         case Drag::fadeIn:
         case Drag::fadeOut:
@@ -1303,7 +1386,7 @@ juce::Rectangle<int> ArrangeView::loopBand() const noexcept
         return {};
     const int x0 = xForSample(regionStart_);
     const int x1 = xForSample(regionEnd_);
-    return {x0, markersRowHeight, std::max(2, x1 - x0), rulerHeight - markersRowHeight - 1};
+    return {x0, markersRowHeight, std::max(2, x1 - x0), rulerOnly - markersRowHeight - 1};
 }
 
 void ArrangeView::drawGrid(juce::Graphics& g, juce::Rectangle<int> area, bool ruler)
@@ -1315,23 +1398,29 @@ void ArrangeView::drawGrid(juce::Graphics& g, juce::Rectangle<int> area, bool ru
         return;
     const auto& c = theme_.colours;
     const double rate = sampleRate();
-    const double spb = core::samplesPerBeat(rate, project_->tempoBpm, project_->timeSignature);
-    const int beatsPerBar = std::max(1, project_->timeSignature.numerator);
-    const double beatPixels = spb / samplesPerPixel_;
-    const double barPixels = beatPixels * beatsPerBar;
+    const auto& map = tempoMap_;
+    // Label every barStep-th bar, from the bar width where the view starts (bars
+    // change width with the tempo and signature, but the labels keep one rhythm).
+    const auto firstVisible = std::max<core::SamplePosition>(0, scroll_);
+    const double viewBarPixels = map.stepSamples({1, 0.0}, firstVisible) / samplesPerPixel_;
     int barStep = 1;
-    while (barPixels * barStep < 80.0)
+    while (viewBarPixels * barStep < 80.0 && barStep < (1 << 20))
         barStep *= 2;
-    const bool showBeats = beatPixels >= 12.0;
-    const int subdivisions = beatPixels >= 192.0 ? 4 : beatPixels >= 48.0 ? 2 : 1;
     const int left = std::max(headerWidth, area.getX());
     const int right = std::min(getWidth() - scrollbarWidth, area.getRight());
     g.setFont(theme_.caption());
-    const auto firstBar = static_cast<std::int64_t>(static_cast<double>(scroll_) / (spb * beatsPerBar));
-    for (std::int64_t bar = std::max<std::int64_t>(0, firstBar - 1);; ++bar)
+    const int firstBar = map.barAtQuarter(map.quartersAt(static_cast<double>(firstVisible)));
+    for (int bar = std::max(0, firstBar - 1);; ++bar)
     {
-        const auto barStart =
-            static_cast<core::SamplePosition>(std::llround(static_cast<double>(bar) * spb * beatsPerBar));
+        const double barQuarter = map.barStartQuarter(bar);
+        const auto barStart = map.positionAt(barQuarter);
+        const auto signature = map.signatureAtBar(bar);
+        const int beatsPerBar = std::max(1, signature.numerator);
+        const double beatQuarters = core::TempoMap::quartersPerBeat(signature);
+        const double beatPixels = map.stepSamples({0, beatQuarters}, barStart) / samplesPerPixel_;
+        const double barPixels = beatPixels * beatsPerBar;
+        const bool showBeats = beatPixels >= 12.0;
+        const int subdivisions = beatPixels >= 192.0 ? 4 : beatPixels >= 48.0 ? 2 : 1;
         const int x = xForSample(barStart);
         if (x > right)
             break;
@@ -1366,8 +1455,8 @@ void ArrangeView::drawGrid(juce::Graphics& g, juce::Rectangle<int> area, bool ru
             {
                 if (beat == 0 && sub == 0)
                     continue;
-                const double offset = (beat + static_cast<double>(sub) / subdivisions) * spb;
-                const int bx = xForSample(barStart + static_cast<core::SamplePosition>(std::llround(offset)));
+                const int bx = xForSample(map.positionAt(
+                    barQuarter + (beat + static_cast<double>(sub) / subdivisions) * beatQuarters));
                 if (bx < left || bx > right)
                     continue;
                 g.setColour(sub == 0 ? c.gridBeat : c.gridSub);
@@ -1425,8 +1514,8 @@ void ArrangeView::drawRuler(juce::Graphics& g, juce::Rectangle<int> area)
     drawMarkers(g, markersRow);
     g.restoreState();
     g.setColour(c.lineSubtle);
-    g.fillRect(0, rulerHeight - 1, getWidth(), 1);
-    g.fillRect(headerWidth - 1, 0, 1, rulerHeight);
+    g.fillRect(0, rulerOnly - 1, getWidth(), 1);
+    g.fillRect(headerWidth - 1, 0, 1, rulerOnly);
 }
 // ----- drag and drop ------------------------------------------------------------------------
 
@@ -1552,6 +1641,12 @@ void ArrangeView::drawClip(juce::Graphics& g,
             clip.fadeOut = fadePreview_;
         else if (drag_ == Drag::gain)
             clip.gain = gainPreview_;
+        else if (drag_ == Drag::stretch)
+        {
+            clip.stretch = model.stretch * static_cast<double>(stretchLength_) /
+                           static_cast<double>(std::max<core::SamplePosition>(1, model.length));
+            clip.length = stretchLength_;
+        }
     }
     const ClipRef ref{track.id, model.id};
     const bool selected = isSelected(track.id, model.id);
@@ -1629,8 +1724,8 @@ void ArrangeView::drawClip(juce::Graphics& g,
             const float half = laneHeight * 0.48f * scale;
             for (int x = wave.getX(); x < wave.getRight(); ++x)
             {
-                const auto from = clip.sourceOffset + (sampleForX(x) - clip.start);
-                const auto to = clip.sourceOffset + (sampleForX(x + 1) - clip.start);
+                const auto from = clip.sourceAt(sampleForX(x) - clip.start);
+                const auto to = clip.sourceAt(sampleForX(x + 1) - clip.start);
                 const auto r = peaks->lookup(ch, from, std::max(to, from + 1));
                 const float top = midY - r.maximum * half;
                 const float bottom = midY - r.minimum * half;
@@ -1683,6 +1778,20 @@ void ArrangeView::drawClip(juce::Graphics& g,
         juce::String label = juce::String::fromUTF8(clip.name.c_str());
         if (std::abs(clip.gain - 1.0f) > 1.0e-3f)
             label << "  " << db::gainText(clip.gain) << " dB";
+        // Stretch as the playing speed, transposition in semitones, a note for a
+        // clip that follows the tempo, and the render's progress.
+        if (clip.stretch != 1.0)
+            label << "  " << juce::String(100.0 / clip.stretch, 1) << "%";
+        if (clip.transpose != 0.0)
+            label << "  " << (clip.transpose > 0.0 ? "+" : "") << juce::String(clip.transpose, 1) << " st";
+        if (clip.followTempo)
+            label << "  " << juce::String::fromUTF8("\xe2\x99\xa9");
+        if (clip.isStretched() && !editing && stretchProgress)
+            if (const double done = stretchProgress(model); done < 1.0)
+            {
+                label << "  stretching " << juce::String(static_cast<int>(done * 100.0)) << "%";
+                stretchPending_ = true;
+            }
         const auto textArea = (showHeader ? block.withHeight(headerH) : block)
                                   .getIntersection(visible)
                                   .withTrimmedLeft(fadeHandle + 2 > 6 ? fadeHandle + 2 : 6)
@@ -2057,7 +2166,7 @@ void ArrangeView::paint(juce::Graphics& g)
         g.restoreState();
     }
 
-    drawRuler(g, getLocalBounds().removeFromTop(rulerHeight));
+    drawRuler(g, getLocalBounds().removeFromTop(rulerOnly));
     drawEditOverlay(g);
 
     // The playhead: a 1 px line with a 7 px head in the ruler.
@@ -2068,11 +2177,11 @@ void ArrangeView::paint(juce::Graphics& g)
         g.fillRect(px, 0, 1, getHeight() - scrollbarHeight);
         juce::Path head;
         head.addTriangle(static_cast<float>(px) - 3.5f,
-                         static_cast<float>(rulerHeight - 8),
+                         static_cast<float>(rulerOnly - 8),
                          static_cast<float>(px) + 4.5f,
-                         static_cast<float>(rulerHeight - 8),
+                         static_cast<float>(rulerOnly - 8),
                          static_cast<float>(px) + 0.5f,
-                         static_cast<float>(rulerHeight - 1));
+                         static_cast<float>(rulerOnly - 1));
         g.fillPath(head);
     }
 
@@ -2147,10 +2256,10 @@ void ArrangeView::paint(juce::Graphics& g)
 
     // The corner over the headers.
     g.setColour(c.surface0);
-    g.fillRect(0, 0, headerWidth, rulerHeight);
+    g.fillRect(0, 0, headerWidth, rulerOnly);
     g.setColour(c.lineSubtle);
-    g.fillRect(0, rulerHeight - 1, headerWidth, 1);
-    g.fillRect(headerWidth - 1, 0, 1, rulerHeight);
+    g.fillRect(0, rulerOnly - 1, headerWidth, 1);
+    g.fillRect(headerWidth - 1, 0, 1, rulerOnly);
     if (!selection_.empty())
     {
         g.setColour(c.textTertiary);
@@ -2159,7 +2268,7 @@ void ArrangeView::paint(juce::Graphics& g)
                    juce::Rectangle<int>(theme_.sizes.controlCompact + theme_.spacing.sm,
                                         0,
                                         headerWidth - 3 * theme_.sizes.controlCompact - 2 * theme_.spacing.sm,
-                                        rulerHeight),
+                                        rulerOnly),
                    juce::Justification::centredLeft,
                    true);
     }
@@ -2350,19 +2459,31 @@ void ArrangeView::setRippleEnabled(bool on)
     repaint();
 }
 
-core::SamplePosition ArrangeView::grid() const noexcept
+core::GridStep ArrangeView::gridAt(core::SamplePosition at) const noexcept
 {
-    if (project_ == nullptr)
-        return 1;
+    if (snapGrid_ == 1)
+        return {1, 0.0};
     if (snapGrid_ > 0)
     {
-        const double beat = core::samplesPerBeat(sampleRate(), project_->tempoBpm, project_->timeSignature);
-        const double samples = snapGrid_ == 1 ? beat * std::max(1, project_->timeSignature.numerator)
-                                              : beat * 4.0 / static_cast<double>(snapGrid_);
-        return std::max<core::SamplePosition>(1, static_cast<core::SamplePosition>(std::llround(samples)));
+        // "Beat" and its divisions count the signature's beat where they snap.
+        const double beat = core::TempoMap::quartersPerBeat(tempoMap_.signatureAt(at));
+        return {0, beat * 4.0 / static_cast<double>(snapGrid_)};
     }
-    return core::gridSamples(
-        sampleRate(), project_->tempoBpm, project_->timeSignature, samplesPerPixel_, gridMinPixels);
+    return tempoMap_.adaptiveStep(samplesPerPixel_, gridMinPixels, at);
+}
+
+core::SamplePosition ArrangeView::lineAtOrBefore(core::SamplePosition s) const noexcept
+{
+    const auto step = gridAt(s);
+    auto line = tempoMap_.snap(s, step);
+    if (line > s)
+        line = tempoMap_.snap(tempoMap_.move(line, step, -1), step);
+    return std::max<core::SamplePosition>(0, line);
+}
+
+core::SamplePosition ArrangeView::lineAtOrAfter(core::SamplePosition s) const noexcept
+{
+    return tempoMap_.nextLine(s, gridAt(s));
 }
 
 void ArrangeView::setSnapGrid(int division)
@@ -2433,8 +2554,8 @@ void ArrangeView::zoomToSelection()
 core::SamplePosition ArrangeView::snapped(core::SamplePosition s) const noexcept
 {
     const bool alt = juce::ModifierKeys::getCurrentModifiers().isAltDown();
-    return snap_ && !alt ? core::snapToGrid(std::max<core::SamplePosition>(0, s), grid())
-                         : std::max<core::SamplePosition>(0, s);
+    const auto at = std::max<core::SamplePosition>(0, s);
+    return snap_ && !alt ? std::max<core::SamplePosition>(0, tempoMap_.snap(at, gridAt(at))) : at;
 }
 
 core::SamplePosition ArrangeView::snapWithTargets(core::SamplePosition wanted,
@@ -2495,10 +2616,11 @@ core::SamplePosition ArrangeView::snapWithTargets(core::SamplePosition wanted,
         return best;
     }
     // Relative snap: a clip that did not start on the grid keeps its offset.
-    const auto step = grid();
-    if (relativeTo && step > 0 && original % step != 0)
-        return original + core::snapToGrid(wanted - original + step * 1000, step) - step * 1000;
-    return core::snapToGrid(wanted, step);
+    const auto step = gridAt(wanted);
+    if (relativeTo)
+        if (const auto offset = original - tempoMap_.snap(original, step); offset != 0)
+            return tempoMap_.snap(wanted - offset, step) + offset;
+    return tempoMap_.snap(wanted, step);
 }
 
 namespace
@@ -2533,14 +2655,6 @@ void ArrangeView::refreshToolButtons()
     selectTool_.setToggleState(tool_ == Tool::select, juce::dontSendNotification);
     rangeTool_.setToggleState(tool_ == Tool::range, juce::dontSendNotification);
     pencilTool_.setToggleState(tool_ == Tool::pencil, juce::dontSendNotification);
-}
-
-core::SamplePosition ArrangeView::barLength() const noexcept
-{
-    if (project_ == nullptr)
-        return 48000 * 2;
-    const double beat = core::samplesPerBeat(sampleRate(), project_->tempoBpm, project_->timeSignature);
-    return std::max<core::SamplePosition>(1, std::llround(beat * project_->timeSignature.numerator));
 }
 
 void ArrangeView::addMidiClip(core::Id trackId, core::SamplePosition start, core::SamplePosition end)
@@ -2676,6 +2790,69 @@ void ArrangeView::finishTrim()
         commands.push_back(std::make_unique<core::TrimClip>(
             dragClip_.track, dragClip_.clip, trimStart_, trimLength_, trimOffset_));
     emit(std::move(commands), "Trim clip");
+}
+
+void ArrangeView::finishStretch()
+{
+    const auto* clip = findClip(dragClip_);
+    if (clip == nullptr || stretchLength_ == clip->length)
+        return;
+    const double stretch = clip->stretch * static_cast<double>(stretchLength_) /
+                           static_cast<double>(std::max<core::SamplePosition>(1, clip->length));
+    std::vector<std::unique_ptr<core::Command>> commands;
+    commands.push_back(std::make_unique<core::SetClipStretch>(
+        dragClip_.track, dragClip_.clip, stretch, clip->transpose, stretchLength_, clip->followTempo));
+    emit(std::move(commands), "Stretch clip");
+}
+
+void ArrangeView::clipMenu(core::Id trackId, core::Id clipId, juce::Point<int> screen)
+{
+    const auto* track = project_ != nullptr ? project_->findTrack(trackId) : nullptr;
+    const auto* clip = track != nullptr ? track->findClip(clipId) : nullptr;
+    if (clip == nullptr)
+        return;
+    juce::PopupMenu menu;
+    menu.addSectionHeader(juce::String::fromUTF8(clip->name.c_str()));
+    menu.addItem(1, "Stretch to project tempo...", static_cast<bool>(onConformClip));
+    menu.addItem(2, "Follow tempo changes", true, clip->followTempo);
+    juce::PopupMenu transpose;
+    for (const int semis : {12, 7, 5, 2, 1, 0, -1, -2, -5, -7, -12})
+        transpose.addItem(100 + semis + 50,
+                          semis == 0 ? juce::String("Original pitch")
+                                     : (semis > 0 ? "+" : "") + juce::String(semis) + " semitones",
+                          true,
+                          std::abs(clip->transpose - semis) < 1.0e-6);
+    menu.addSubMenu("Transpose", transpose);
+    menu.addItem(3, "Reset stretch and pitch", clip->isStretched());
+    menu.addSeparator();
+    menu.addItem(4, "Track...");
+    juce::Component::SafePointer<ArrangeView> safe(this);
+    const auto original = *clip;
+    menu.showMenuAsync(
+        juce::PopupMenu::Options().withTargetScreenArea({screen.x, screen.y, 1, 1}),
+        [safe, trackId, original, screen](int choice)
+        {
+            if (safe == nullptr || choice == 0)
+                return;
+            auto& view = *safe;
+            const auto set = [&](double stretch, double transpose, core::SamplePosition length, bool follow)
+            {
+                std::vector<std::unique_ptr<core::Command>> commands;
+                commands.push_back(std::make_unique<core::SetClipStretch>(
+                    trackId, original.id, stretch, transpose, length, follow));
+                view.emit(std::move(commands), "Stretch clip");
+            };
+            if (choice == 1 && view.onConformClip)
+                view.onConformClip(trackId, original.id);
+            else if (choice == 2)
+                set(original.stretch, original.transpose, original.length, !original.followTempo);
+            else if (choice == 3)
+                set(1.0, 0.0, original.sourceLength(), false);
+            else if (choice == 4)
+                view.trackMenu(trackId, screen);
+            else if (choice >= 100 - 12 + 50 && choice <= 100 + 12 + 50)
+                set(original.stretch, choice - 150, original.length, original.followTempo);
+        });
 }
 
 void ArrangeView::finishFade()
@@ -2976,6 +3153,8 @@ void ArrangeView::rulerMenu(juce::Point<int> screen)
     menu.addSeparator();
     menu.addItem(3, "Add marker at playhead");
     menu.addItem(4, "Add region from loop", regionEnd_ > regionStart_);
+    menu.addSeparator();
+    menu.addItem(5, "Show tempo track", true, tempoShown_);
     juce::Component::SafePointer<ArrangeView> safe(this);
     menu.showMenuAsync(juce::PopupMenu::Options().withTargetScreenArea({screen.x, screen.y, 1, 1}),
                        [safe](int choice)
@@ -2995,6 +3174,9 @@ void ArrangeView::rulerMenu(juce::Point<int> screen)
                                    break;
                                case 4:
                                    safe->addMarkerAtPlayhead(true);
+                                   break;
+                               case 5:
+                                   safe->setTempoTrackShown(!safe->tempoShown_);
                                    break;
                                default:
                                    break;
@@ -3120,8 +3302,23 @@ void ArrangeView::nudgeSelection(int direction, bool fine)
 {
     if (project_ == nullptr)
         return;
-    const auto step = (fine ? std::max<core::SamplePosition>(1, grid() / 4) : grid()) * direction;
-    auto e = edit::nudgeClips(*project_, selection_, step);
+    // A grid step (a quarter of one when fine) on the tempo track, from where
+    // the first selected clip starts.
+    core::SamplePosition from = -1;
+    for (const auto& ref : selection_)
+        if (const auto span = spanOf(ref))
+            from = from < 0 ? span->start : std::min(from, span->start);
+    if (from < 0)
+        return;
+    auto step = gridAt(from);
+    if (fine)
+        step = step.bars > 0 ? core::GridStep{0,
+                                              tempoMap_.stepSamples(step, from) /
+                                                  tempoMap_.samplesPerQuarterAt(from) / 4.0}
+                             : core::GridStep{0, step.quarters / 4.0};
+    const auto delta =
+        std::max<core::SamplePosition>(1, std::abs(tempoMap_.move(from, step, direction) - from));
+    auto e = edit::nudgeClips(*project_, selection_, delta * direction);
     emit(std::move(e.commands), e.name);
 }
 void ArrangeView::normaliseSelection()
@@ -3262,6 +3459,7 @@ juce::MouseCursor ArrangeView::cursorFor(Drag zone) const noexcept
     {
         case Drag::trimLeft:
         case Drag::trimRight:
+        case Drag::stretch:
             return juce::MouseCursor::LeftRightResizeCursor;
         case Drag::fadeIn:
         case Drag::fadeOut:
@@ -3277,10 +3475,7 @@ juce::String ArrangeView::positionText(core::SamplePosition position) const
 {
     if (project_ == nullptr)
         return {};
-    const auto bb = core::samplesToBarsBeats(std::max<core::SamplePosition>(0, position),
-                                             sampleRate(),
-                                             project_->tempoBpm,
-                                             project_->timeSignature);
+    const auto bb = tempoMap_.barsBeatsAt(std::max<core::SamplePosition>(0, position));
     return juce::String(bb.bar) + "." + juce::String(bb.beat) + "." +
            juce::String(bb.tick).paddedLeft('0', 3);
 }
@@ -3341,8 +3536,12 @@ void ArrangeView::drawEditOverlay(juce::Graphics& g)
         const int gx = xForSample(newStart);
         g.setColour(c.snapGuide);
         g.fillRect(gx, rulerHeight, 1, lanesHeight());
-        const double beat = core::samplesPerBeat(sampleRate(), project_->tempoBpm, project_->timeSignature);
-        const double deltaBeats = static_cast<double>(moveDelta_) / std::max(1.0, beat);
+        // The move in beats of the signature where the clip starts.
+        const double beatQuarters =
+            core::TempoMap::quartersPerBeat(tempoMap_.signatureAt(dragOriginal_.start));
+        const double deltaBeats = (tempoMap_.quartersAt(static_cast<double>(newStart)) -
+                                   tempoMap_.quartersAt(static_cast<double>(dragOriginal_.start))) /
+                                  beatQuarters;
         drawTooltip(g,
                     positionText(newStart) + "  " + (deltaBeats >= 0 ? "+" : "") +
                         juce::String(deltaBeats, 2) + " beats" +
@@ -3351,12 +3550,22 @@ void ArrangeView::drawEditOverlay(juce::Graphics& g)
     }
     if ((drag_ == Drag::trimLeft || drag_ == Drag::trimRight) && draggedFar_)
     {
-        const double beat = core::samplesPerBeat(sampleRate(), project_->tempoBpm, project_->timeSignature);
-        drawTooltip(g,
-                    "Length " + juce::String(static_cast<double>(trimLength_) / std::max(1.0, beat), 2) +
-                        " beats",
-                    dragPoint_);
+        const double beatQuarters = core::TempoMap::quartersPerBeat(tempoMap_.signatureAt(trimStart_));
+        const double beats = (tempoMap_.quartersAt(static_cast<double>(trimStart_ + trimLength_)) -
+                              tempoMap_.quartersAt(static_cast<double>(trimStart_))) /
+                             beatQuarters;
+        drawTooltip(g, "Length " + juce::String(beats, 2) + " beats", dragPoint_);
     }
+    if (drag_ == Drag::stretch && draggedFar_)
+        drawTooltip(
+            g,
+            "Speed " +
+                juce::String(100.0 * static_cast<double>(dragOriginal_.length) /
+                                 (dragOriginal_.stretch *
+                                  static_cast<double>(std::max<core::SamplePosition>(1, stretchLength_))),
+                             1) +
+                "%  " + positionText(dragOriginal_.start + stretchLength_),
+            dragPoint_);
     if ((drag_ == Drag::fadeIn || drag_ == Drag::fadeOut) && draggedFar_)
         drawTooltip(g,
                     "Fade " + juce::String(static_cast<double>(fadePreview_) / sampleRate(), 2) + " s",
@@ -3586,9 +3795,9 @@ void ArrangeView::mouseDoubleClick(const juce::MouseEvent& e)
     else if (hit.track != nullptr && hit.track->isMidi() && hit.clip == nullptr && hit.midiClip == nullptr)
     {
         // Empty space on a MIDI track: a new bar-long clip from the bar there.
-        const auto bar = barLength();
-        const auto start = (std::max<core::SamplePosition>(0, sampleForX(e.x)) / bar) * bar;
-        addMidiClip(hit.track->id, start, start + bar);
+        const auto at = std::max<core::SamplePosition>(0, sampleForX(e.x));
+        const int bar = tempoMap_.barAtQuarter(tempoMap_.quartersAt(static_cast<double>(at)));
+        addMidiClip(hit.track->id, tempoMap_.barStart(bar), tempoMap_.barStart(bar + 1));
     }
 }
 

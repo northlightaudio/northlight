@@ -7,6 +7,7 @@ add_executable(aural_unit_tests
     core/ModelTests.cpp
     core/CommandTests.cpp
     core/ProjectJsonTests.cpp
+    core/TempoMapTests.cpp
     engine/RtPrimitivesTests.cpp
     engine/EngineTests.cpp
     engine/StreamingTests.cpp
@@ -35,6 +36,7 @@ add_executable(aural_unit_tests
     engine/AutomationTests.cpp
     engine/FxTrackTests.cpp
     engine/PitchTests.cpp
+    engine/StretchTests.cpp
     hosting/PluginRegistryTests.cpp
     ui/SelectionTests.cpp
     ui/ClipOpsTests.cpp)

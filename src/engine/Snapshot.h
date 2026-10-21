@@ -1,6 +1,7 @@
 #pragma once
 
 #include "core/Model.h"
+#include "core/TempoMap.h"
 #include "engine/AudioSource.h"
 #include "engine/Delay.h"
 #include "engine/Insert.h"
@@ -179,8 +180,9 @@ struct Snapshot
 
     std::uint64_t epoch = 0; // set by the publisher
     double sampleRate = 48000.0;
-    double tempoBpm = 120.0;
-    core::TimeSignature timeSignature;
+    double tempoBpm = 120.0;           // at the song's start
+    core::TimeSignature timeSignature; // at the song's start
+    core::TempoMap tempoMap;           // the tempo track: clicks and the play head
     std::vector<TrackNode> tracks;
     std::vector<BusNode> buses; // in project order
     std::vector<int> busOrder;  // bus indices in dependency order (feeders before fed)
@@ -219,6 +221,9 @@ public:
     using ClipSourceHook = std::function<std::shared_ptr<const AudioSource>(
         const core::AudioClip& clip, double sampleRate, std::shared_ptr<const AudioSource> base)>;
     void setClipSourceHook(ClipSourceHook hook) { clipHook_ = std::move(hook); }
+    // What a stretched or transposed clip plays (StretchService::sourceFor); a
+    // stretched clip is silent without one.
+    void setStretchHook(ClipSourceHook hook) { stretchHook_ = std::move(hook); }
     std::shared_ptr<const AudioSource> sourceForClip(const core::AudioClip& clip, double sampleRate);
 
     // Drops entries no snapshot references any more.
@@ -241,6 +246,7 @@ private:
     std::map<core::Id, Instance> instances_;
     std::map<std::string, std::string> errors_;
     ClipSourceHook clipHook_;
+    ClipSourceHook stretchHook_;
 };
 
 // `delays` keeps compensation delay lines across compiles; without it each

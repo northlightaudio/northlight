@@ -215,7 +215,8 @@ TEST_CASE("The demo song bounces to a full, unclipped mix with every section sou
     const auto out =
         kept.isNotEmpty()
             ? juce::File(kept)
-            : juce::File::getSpecialLocation(juce::File::tempDirectory).getChildFile("bounce-demo.wav");
+            : juce::File::getSpecialLocation(juce::File::tempDirectory)
+                  .getNonexistentChildFile("bounce-demo", ".wav", false); // parallel runs must not share it
     out.deleteFile();
     BounceJob::Options options;
     options.output = out;

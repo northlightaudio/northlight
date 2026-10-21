@@ -98,6 +98,8 @@ add_library(aural_ui STATIC
     AudioEditor.cpp
     TrackHeader.h
     TrackHeader.cpp
+    TempoLane.h
+    TempoLane.cpp
     MixerView.h
     MixerView.cpp
     InsertEditor.h

@@ -343,6 +343,14 @@ plugin parameters (VST3 and CLAP, including moves made in a plugin's own window)
 (gather into the project folder, remove unused) are built, and a crash leaves
 a local minidump that the next launch points to (sending reports is not built).
 
+Status 2026-10-21: tempo mapping and time-stretch are built: a tempo track with
+tempo changes, ramps and time signature changes (MIDI, markers, automation and
+tempo-following clips keep their bars and beats through tempo edits), clip
+time-stretch and transposition rendered in the background with Signalsmith Stretch
+(MIT), Alt+drag to stretch, and "Stretch to project tempo" with a tempo guessed from
+the file name, the beats and the length (architecture.md, "Tempo track and
+time-stretch").
+
 ### Phase 10 — Beta hardening (ongoing)
 
 - Soak tests: 24-hour playback, 1000-plugin scans, 200-track projects.

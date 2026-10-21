@@ -1,5 +1,7 @@
 #include "core/Command.h"
 
+#include "core/TempoMap.h"
+
 #include <algorithm>
 #include <cmath>
 #include <stdexcept>
@@ -701,6 +703,12 @@ QuantiseNotes::QuantiseNotes(
     : trackId_(trackId), clipId_(clipId), noteIds_(std::move(noteIds)), grid_(grid), strength_(strength)
 {
 }
+QuantiseNotes::QuantiseNotes(
+    Id trackId, Id clipId, std::vector<Id> noteIds, TempoMap map, GridStep step, float strength)
+    : trackId_(trackId), clipId_(clipId), noteIds_(std::move(noteIds)),
+      tempoGrid_(std::make_pair(std::move(map), step)), strength_(strength)
+{
+}
 void QuantiseNotes::apply(Project& p)
 {
     auto& c = requireMidiClip(requireTrack(p, trackId_), clipId_);
@@ -712,7 +720,8 @@ void QuantiseNotes::apply(Project& p)
             continue;
         previous_.emplace_back(n.id, n.start);
         const auto absolute = c.start + n.start;
-        const auto target = snapToGrid(absolute, grid_);
+        const auto target =
+            tempoGrid_ ? tempoGrid_->first.snap(absolute, tempoGrid_->second) : snapToGrid(absolute, grid_);
         const auto moved =
             absolute + static_cast<SamplePosition>(std::llround((target - absolute) * strength));
         n.start = std::max<SamplePosition>(0, moved - c.start);
@@ -1690,7 +1699,10 @@ void SplitClip::apply(Project& p)
     right_.mediaPath = c.mediaPath;
     right_.start = at_;
     right_.length = c.end() - at_;
-    right_.sourceOffset = c.sourceOffset + (at_ - c.start);
+    right_.sourceOffset = c.sourceAt(at_ - c.start);
+    right_.stretch = c.stretch;
+    right_.transpose = c.transpose;
+    right_.followTempo = c.followTempo;
     right_.gain = c.gain;
     right_.fadeIn = 0;
     right_.fadeOut = std::min(c.fadeOut, right_.length);
@@ -1711,9 +1723,11 @@ void SplitClip::revert(Project& p)
 
 bool JoinClips::canJoin(const AudioClip& left, const AudioClip& right) noexcept
 {
+    const auto expected = left.sourceAt(left.length);
     return left.mediaPath == right.mediaPath && right.start == left.end() &&
-           right.sourceOffset == left.sourceOffset + left.length && left.gain == right.gain &&
-           left.vocal == right.vocal;
+           std::abs(right.sourceOffset - expected) <= (left.stretch == 1.0 ? 0 : 1) &&
+           left.gain == right.gain && left.vocal == right.vocal && left.stretch == right.stretch &&
+           left.transpose == right.transpose;
 }
 JoinClips::JoinClips(Id trackId, Id leftClipId, Id rightClipId)
     : trackId_(trackId), leftId_(leftClipId), rightId_(rightClipId)
@@ -1884,11 +1898,109 @@ void SetTimeSignature::revert(Project& p)
 void SetTempo::apply(Project& p)
 {
     previous_ = p.tempoBpm;
-    p.tempoBpm = value_;
+    positions_.capture(p);
+    const auto before = tempoMapOf(p);
+    p.tempoBpm = std::clamp(value_, 1.0, 999.0);
+    remapMusicalTime(p, before, tempoMapOf(p));
 }
 void SetTempo::revert(Project& p)
 {
     p.tempoBpm = previous_;
+    positions_.restore(p);
+}
+
+TempoState TempoState::of(const Project& p)
+{
+    return {p.tempoBpm, p.timeSignature, p.tempoChanges, p.meterChanges};
+}
+
+void MusicalPositions::capture(const Project& p)
+{
+    midi_.clear();
+    audio_.clear();
+    trackLanes_.clear();
+    busLanes_.clear();
+    for (const auto& t : p.tracks)
+    {
+        midi_.push_back(t.midiClips);
+        audio_.push_back(t.clips);
+        trackLanes_.push_back(t.automation);
+    }
+    for (const auto& b : p.buses)
+        busLanes_.push_back(b.automation);
+    markers_ = p.markers;
+}
+
+void MusicalPositions::restore(Project& p) const
+{
+    for (size_t i = 0; i < p.tracks.size() && i < midi_.size(); ++i)
+    {
+        p.tracks[i].midiClips = midi_[i];
+        p.tracks[i].clips = audio_[i];
+        p.tracks[i].automation = trackLanes_[i];
+    }
+    for (size_t i = 0; i < p.buses.size() && i < busLanes_.size(); ++i)
+        p.buses[i].automation = busLanes_[i];
+    p.markers = markers_;
+}
+
+SetTempoMap::SetTempoMap(TempoState state, std::string name)
+    : value_(std::move(state)), name_(std::move(name))
+{
+}
+void SetTempoMap::apply(Project& p)
+{
+    previous_ = TempoState::of(p);
+    positions_.capture(p);
+    const auto before = tempoMapOf(p);
+    p.tempoBpm = std::clamp(value_.bpm, 1.0, 999.0);
+    p.timeSignature = {std::clamp(value_.signature.numerator, 1, 32),
+                       std::clamp(value_.signature.denominator, 1, 32)};
+    p.tempoChanges = value_.tempoChanges;
+    std::erase_if(p.tempoChanges, [](const TempoChange& t) { return !(t.quarter > 0.0); });
+    std::stable_sort(p.tempoChanges.begin(),
+                     p.tempoChanges.end(),
+                     [](const TempoChange& a, const TempoChange& b) { return a.quarter < b.quarter; });
+    for (auto& t : p.tempoChanges)
+        t.bpm = std::clamp(t.bpm, 1.0, 999.0);
+    p.meterChanges = value_.meterChanges;
+    std::erase_if(p.meterChanges, [](const MeterChange& m) { return m.bar <= 0; });
+    std::stable_sort(p.meterChanges.begin(),
+                     p.meterChanges.end(),
+                     [](const MeterChange& a, const MeterChange& b) { return a.bar < b.bar; });
+    remapMusicalTime(p, before, tempoMapOf(p));
+}
+void SetTempoMap::revert(Project& p)
+{
+    p.tempoBpm = previous_.bpm;
+    p.timeSignature = previous_.signature;
+    p.tempoChanges = previous_.tempoChanges;
+    p.meterChanges = previous_.meterChanges;
+    positions_.restore(p);
+}
+
+SetClipStretch::SetClipStretch(
+    Id trackId, Id clipId, double stretch, double transpose, SamplePosition length, bool followTempo)
+    : trackId_(trackId), clipId_(clipId), stretch_(std::clamp(stretch, 0.05, 20.0)),
+      transpose_(std::clamp(transpose, -48.0, 48.0)), length_(length), followTempo_(followTempo)
+{
+}
+void SetClipStretch::apply(Project& p)
+{
+    auto& t = requireTrack(p, trackId_);
+    auto& c = requireClip(t, clipId_);
+    previous_ = c;
+    c.stretch = stretch_;
+    c.transpose = transpose_;
+    c.followTempo = followTempo_;
+    c.length = std::max<SamplePosition>(1, length_);
+    c.fadeIn = std::min(c.fadeIn, c.length);
+    c.fadeOut = std::min(c.fadeOut, c.length);
+}
+void SetClipStretch::revert(Project& p)
+{
+    auto& t = requireTrack(p, trackId_);
+    requireClip(t, clipId_) = previous_;
 }
 
 } // namespace aural::core

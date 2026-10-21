@@ -40,15 +40,17 @@ struct ParameterInfo
 };
 
 // Where the song is for a block, for tempo-synced processors (an arpeggio, a
-// delay in note values) and hosted plugins' transport. One tempo for the
-// project (no tempo map yet).
+// delay in note values) and hosted plugins' transport: the tempo and signature
+// in effect at the block's first sample (from the project's tempo map).
 struct PlayHead
 {
     double tempoBpm = 120.0;   // quarter notes a minute
     double quarterNotes = 0.0; // the song position at the block's first sample
     std::int64_t samples = 0;  // the same, in samples
     int numerator = 4, denominator = 4;
-    bool playing = false; // the position moves (stopped: it holds)
+    double barStartQuarters = 0.0; // where the bar holding the position began
+    int bar = 0;                   // that bar, 0-based
+    bool playing = false;          // the position moves (stopped: it holds)
     double sampleRate = 48000.0;
     double quartersPerSample() const noexcept { return tempoBpm / 60.0 / sampleRate; }
     double samplesPerQuarter() const noexcept { return sampleRate * 60.0 / tempoBpm; }

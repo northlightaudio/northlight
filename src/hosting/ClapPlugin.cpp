@@ -768,7 +768,7 @@ bool HostedClapPlugin::run(
     process.steady_time = -1;
     process.frames_count = static_cast<uint32_t>(numSamples);
     {
-        // The song's position and tempo (one tempo, no loop reported).
+        // The song's position and tempo at the block's start (no loop reported).
         const auto& h = playHead_;
         auto& t = transport_;
         t = clap_event_transport_t{};
@@ -782,10 +782,8 @@ bool HostedClapPlugin::run(
         t.song_pos_beats = static_cast<clap_beattime>(std::llround(h.quarterNotes * CLAP_BEATTIME_FACTOR));
         t.song_pos_seconds = static_cast<clap_sectime>(
             std::llround(static_cast<double>(h.samples) / h.sampleRate * CLAP_SECTIME_FACTOR));
-        const double quartersPerBar = h.numerator * 4.0 / std::max(1, h.denominator);
-        const double bar = std::floor(h.quarterNotes / quartersPerBar);
-        t.bar_start = static_cast<clap_beattime>(std::llround(bar * quartersPerBar * CLAP_BEATTIME_FACTOR));
-        t.bar_number = static_cast<int32_t>(bar);
+        t.bar_start = static_cast<clap_beattime>(std::llround(h.barStartQuarters * CLAP_BEATTIME_FACTOR));
+        t.bar_number = static_cast<int32_t>(h.bar);
         t.tsig_num = static_cast<uint16_t>(h.numerator);
         t.tsig_denom = static_cast<uint16_t>(h.denominator);
     }

@@ -7,6 +7,8 @@
 #include "core/Model.h"
 #include "engine/AudioEngine.h"
 #include "engine/DiskThread.h"
+#include "engine/Stretch.h"
+#include "engine/TempoDetect.h"
 #include "engine/pitch/VocalService.h"
 #include "hosting/HostFactory.h"
 #include "hosting/PluginRegistry.h"
@@ -46,6 +48,13 @@ public:
     audio::JuceMediaLoader& mediaLoader() noexcept { return loader_; }
     // Vocal pitch editing: analyses, and the renders the engine plays.
     engine::VocalService& vocal() noexcept { return vocal_; }
+    engine::StretchService& stretch() noexcept { return stretch_; }
+    // Guesses the tempo of a clip's media (its name, beats and length), for
+    // stretching it to the project's tempo. 0 when nothing could be guessed.
+    engine::TempoGuess guessClipTempo(core::Id trackId, core::Id clipId);
+    // Stretches a clip so it plays at the project's tempo, given the tempo it was
+    // recorded at, and makes it follow tempo changes from now on.
+    void conformClipTempo(core::Id trackId, core::Id clipId, double sourceBpm);
     const hosting::HostFactory& insertFactory() const noexcept { return inserts_; }
     const hosting::PluginRegistry& pluginRegistry() const noexcept { return registry_; }
     // The live processor behind a model insert (for its editor), if any.
@@ -369,9 +378,13 @@ private:
             if (onUpdate)
                 onUpdate();
         }
-    } vocalUpdates_;
+    } vocalUpdates_, stretchUpdates_;
     audio::JuceMediaLoader vocalLoader_{disk_, true}; // whole files: the renderer reads anywhere
     engine::VocalService vocal_{vocalLoader_};
+    // Stretched and transposed clips render in the background (two workers); a
+    // finished render repaints the clips that show its progress.
+    audio::JuceMediaLoader stretchLoader_{disk_, true};
+    engine::StretchService stretch_{stretchLoader_};
     audio::PeakStore peaks_;
     core::Project project_;
     core::UndoStack undo_;

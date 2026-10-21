@@ -192,10 +192,8 @@ juce::Optional<juce::AudioPlayHead::PositionInfo> HostedPlugin::PlayHead::getPos
     info.setTimeInSamples(head.samples);
     info.setTimeInSeconds(static_cast<double>(head.samples) / head.sampleRate);
     info.setPpqPosition(head.quarterNotes);
-    const double quartersPerBar = head.numerator * 4.0 / std::max(1, head.denominator);
-    const double bar = std::floor(head.quarterNotes / quartersPerBar);
-    info.setPpqPositionOfLastBarStart(bar * quartersPerBar);
-    info.setBarCount(static_cast<std::int64_t>(bar));
+    info.setPpqPositionOfLastBarStart(head.barStartQuarters);
+    info.setBarCount(static_cast<std::int64_t>(head.bar));
     info.setIsPlaying(head.playing);
     return info;
 }
