@@ -1282,15 +1282,13 @@ void ArrangeView::mouseMove(const juce::MouseEvent& e)
         }
         return;
     }
+    // Take lanes, a comp boundary or the comp's chip set their own cursor.
     const auto takeArea = takeRow(rowAtY(e.y));
-    if (const auto takeCursor =
-            takes_.hover(e.getPosition(), takeArea.track != nullptr ? &takeArea : nullptr))
-    {
-        setMouseCursor(*takeCursor);
-        return;
-    }
+    const auto takeCursor = takes_.hover(e.getPosition(), takeArea.track != nullptr ? &takeArea : nullptr);
     const auto hit = hitTest(e.getPosition());
-    setMouseCursor(cursorFor(hit.clip != nullptr || hit.midiClip != nullptr ? hit.zone : Drag::none));
+    setMouseCursor(takeCursor
+                       ? *takeCursor
+                       : cursorFor(hit.clip != nullptr || hit.midiClip != nullptr ? hit.zone : Drag::none));
     const ClipRef clip = hit.clip != nullptr       ? ClipRef{hit.track->id, hit.clip->id}
                          : hit.midiClip != nullptr ? ClipRef{hit.track->id, hit.midiClip->id, true}
                                                    : ClipRef{};
