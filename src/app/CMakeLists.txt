@@ -8,6 +8,21 @@ juce_add_gui_app(northlight
     NEEDS_CURL          FALSE
     NEEDS_WEB_BROWSER   FALSE)
 
+# Keep the app icon current. JUCE makes icon.ico from the PNGs only when CMake
+# configures, so the PNGs re-run the configure; and the resource file includes
+# icon.ico without the build knowing, so it is compiled again when that changes.
+set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS
+    "${CMAKE_SOURCE_DIR}/assets/brand/northlight-icon-1024.png"
+    "${CMAKE_SOURCE_DIR}/assets/brand/northlight-icon-32.png")
+if(WIN32)
+    get_target_property(northlight_generated_dir northlight JUCE_GENERATED_SOURCES_DIRECTORY)
+    get_target_property(northlight_icon_file northlight JUCE_ICON_FILE)
+    if(northlight_icon_file)
+        set_source_files_properties("${northlight_generated_dir}/northlight_resources.rc"
+            PROPERTIES OBJECT_DEPENDS "${northlight_icon_file}")
+    endif()
+endif()
+
 # The project session and user settings as a library so the JUCE tests can drive
 # a session without the window.
 add_library(northlight_app_session STATIC
