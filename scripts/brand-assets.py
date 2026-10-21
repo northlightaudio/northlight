@@ -33,6 +33,10 @@ STROKE = 4.5
 REFLECTION = ((22.0, 42.0, 43.0, 0.55), (27.0, 37.0, 50.0, 0.30))
 REFLECTION_STROKE = 3.5
 BASELINE = 35.0  # the wordmark sits on the horizon line
+# In the lockup the wordmark is set so its capitals rise to the top of the moon
+# (13 units, cap height 22), and it starts close enough to read as one unit.
+LOCKUP_TEXT_SIZE = 32.0
+LOCKUP_GAP = 10.0
 WORDMARK_HEIGHT, WORDMARK_BASELINE = 48.0, 36.0  # the wordmark on its own
 
 # Colours from docs/design/tokens.json (Machair dusk).
@@ -89,7 +93,7 @@ def wordmark(font_path, text="Northlight", size=40.0, weight=420, optical=36):
 
 
 def lockup(colours, letters, advance, title):
-    gap = 18.0
+    gap = LOCKUP_GAP
     width = 64 + gap + advance + 4
     body = mark_paths(colours) + (
         f'<path transform="translate({64 + gap:g} {BASELINE:g})" d="{letters}" fill="{colours["text"]}"/>'
@@ -154,8 +158,9 @@ def main():
         "northlight-lockup-on-light.svg": ON_LIGHT,
         "northlight-lockup-mono.svg": MONO,
     }
+    lockup_letters, lockup_advance = wordmark(args.font, size=LOCKUP_TEXT_SIZE)
     for name, colours in lockups.items():
-        (OUT / name).write_text(lockup(colours, letters, advance, "Northlight"), encoding="utf-8")
+        (OUT / name).write_text(lockup(colours, lockup_letters, lockup_advance, "Northlight"), encoding="utf-8")
 
     wordmarks = {
         "northlight-wordmark.svg": ON_DARK,
