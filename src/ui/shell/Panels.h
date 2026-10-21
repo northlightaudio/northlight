@@ -5,10 +5,12 @@
 
 #include <juce_gui_basics/juce_gui_basics.h>
 
+#include <algorithm>
 #include <functional>
 #include <map>
 #include <memory>
 #include <string>
+#include <utility>
 #include <vector>
 
 namespace northlight::ui
@@ -164,6 +166,23 @@ public:
     // lays the hosts out from these and is told through onLayoutChanged.
     int dockHeight() const noexcept { return static_cast<int>(dockHeightShown_); }
     int sideWidth() const noexcept { return static_cast<int>(sideWidthShown_); }
+    // While a host slides, it moves over the content at its full size rather than
+    // squeezing it: the rest of the window is laid out around the smaller of where
+    // the slide started and where it ends (so it changes once, not every frame),
+    // and the host keeps its open size, partly off screen.
+    bool sliding() const noexcept { return isTimerRunning(); }
+    int dockLayoutHeight() const noexcept
+    {
+        return sliding() ? static_cast<int>(std::min(dockFrom_, static_cast<double>(dockRequested_)))
+                         : dockHeight();
+    }
+    int sideLayoutWidth() const noexcept
+    {
+        return sliding() ? static_cast<int>(std::min(sideFrom_, static_cast<double>(sideRequested_)))
+                         : sideWidth();
+    }
+    int dockOpenHeight() const noexcept { return dockSize_; }
+    int sideOpenWidth() const noexcept { return sideSize_; }
     bool dockOpen() const noexcept { return !dock_.empty() && dockRequested_ > 0; }
     bool sideOpen() const noexcept { return !side_.empty() && sideRequested_ > 0; }
     void setDockHeight(int height);

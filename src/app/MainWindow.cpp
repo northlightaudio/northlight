@@ -112,9 +112,15 @@ public:
     }
     std::function<void(int delta)> onDragged;
     std::function<void()> onReset;
+    // --benchmark-panels: when set, each paint's time is appended. The side
+    // splitter moves on every frame of a slide and is never cached, so its paints
+    // are the frames that reach the screen.
+    std::vector<double>* paintTimes = nullptr;
 
     void paint(juce::Graphics& g) override
     {
+        if (paintTimes != nullptr)
+            paintTimes->push_back(juce::Time::getMillisecondCounterHiRes());
         g.setColour(isMouseOverOrDragging() ? theme_.colours.accent : theme_.colours.lineSubtle);
         if (horizontal_)
             g.fillRect(0, getHeight() / 2, getWidth(), 1);
@@ -400,6 +406,62 @@ public:
         session_.play();
     }
 
+    // --benchmark-panels: with the Editor in the dock, opens and closes the
+    // inspector in the side panel `cycles` times and prints the intervals between
+    // the frames of the slides that reached the screen (16.7 ms is 60 fps), then
+    // quits.
+    void runPanelBenchmark(int cycles)
+    {
+        if (!session_.project().tracks.empty())
+            select(session_.project().tracks.front().id);
+        panels_.show(ui::PanelId::editor);
+        panels_.hide(ui::PanelId::browser);
+        panels_.hide(ui::PanelId::inspector);
+        const double start = juce::Time::getMillisecondCounterHiRes() + 1500.0; // let it settle first
+        auto toggles = std::make_shared<int>(0);
+        dragBenchmark_ = std::make_unique<juce::TimedCallback>(
+            [this, start, cycles, toggles]
+            {
+                if (juce::Time::getMillisecondCounterHiRes() < start)
+                    return;
+                if (*toggles == 0)
+                {
+                    slidePaints_.clear();
+                    sideSplitter_.paintTimes = &slidePaints_;
+                }
+                if (*toggles < 2 * cycles)
+                {
+                    panels_.toggle(ui::PanelId::inspector);
+                    ++*toggles;
+                    return;
+                }
+                dragBenchmark_->stopTimer();
+                sideSplitter_.paintTimes = nullptr;
+                // Intervals within a slide (a gap of over 150 ms is the pause
+                // between one slide and the next).
+                std::vector<double> intervals;
+                for (size_t k = 1; k < slidePaints_.size(); ++k)
+                    if (const double d = slidePaints_[k] - slidePaints_[k - 1]; d < 150.0)
+                        intervals.push_back(d);
+                std::sort(intervals.begin(), intervals.end());
+                const auto at = [&](double q)
+                {
+                    return intervals.empty() ? 0.0
+                                             : intervals[std::min(intervals.size() - 1,
+                                                                  static_cast<size_t>(intervals.size() * q))];
+                };
+                juce::String report;
+                report << "benchmark-panels: " << cycles << " open/close cycles, " << intervals.size()
+                       << " frames shown, " << getWidth() << "x" << getHeight() << "; ms between frames: p50 "
+                       << juce::String(at(0.5), 1) << " p95 " << juce::String(at(0.95), 1) << " max "
+                       << juce::String(intervals.empty() ? 0.0 : intervals.back(), 1) << "\n";
+                std::printf("%s", report.toRawUTF8());
+                std::fflush(stdout);
+                juce::MessageManager::callAsync([] { juce::JUCEApplication::getInstance()->quit(); });
+            });
+        dragBenchmark_->startTimer(450);
+    }
+
     // --benchmark-strip-drag: a knob drag on the first track's strip EQ (a
     // parameter command every 8 ms, like a fast mouse) while the strip shows;
     // prints the intervals between the strip's display ticks, then quits.
@@ -531,22 +593,47 @@ public:
         // The side panel at the right, the dock below the arrange view; both sizes
         // come from the manager, which animates them. The arrange view keeps a
         // minimum of 480×240.
-        const int sideShown = std::min(panels_.sideWidth(), std::max(0, area.getWidth() - 480 - splitter));
-        const int dockShown = std::min(panels_.dockHeight(), std::max(0, area.getHeight() - 240 - splitter));
+        //
+        // While a panel slides it moves over the arrange view (and the side panel
+        // over the dock) at its open size, instead of resizing everything every
+        // frame: the views are laid out once (at the start of a close, at the end
+        // of an open) and drawn from cached images meanwhile, so a frame of the
+        // slide is mostly a copy.
+        const bool sliding = panels_.sliding();
+        if (sliding != slideCached_)
+        {
+            slideCached_ = sliding;
+            for (auto* view : std::initializer_list<juce::Component*>{&tracks_, &dock_, &side_})
+                view->setBufferedToImage(sliding);
+        }
+        const int maxSide = std::max(0, area.getWidth() - 480 - splitter);
+        const int maxDock = std::max(0, area.getHeight() - 240 - splitter);
+        const int sideShown = std::min(panels_.sideWidth(), maxSide);
+        const int sideLayout = std::min(panels_.sideLayoutWidth(), maxSide);
+        const int sideWidth =
+            sliding ? std::max(sideShown, std::min(panels_.sideOpenWidth(), maxSide)) : sideShown;
         side_.setVisible(sideShown > 0);
         sideSplitter_.setVisible(sideShown > 0);
         if (sideShown > 0)
         {
-            side_.setBounds(area.removeFromRight(sideShown));
-            sideSplitter_.setBounds(area.removeFromRight(splitter));
+            side_.setBounds(area.getRight() - sideShown, area.getY(), sideWidth, area.getHeight());
+            sideSplitter_.setBounds(side_.getX() - splitter, area.getY(), splitter, area.getHeight());
         }
+        if (sideLayout > 0)
+            area.removeFromRight(sideLayout + splitter);
+        const int dockShown = std::min(panels_.dockHeight(), maxDock);
+        const int dockLayout = std::min(panels_.dockLayoutHeight(), maxDock);
+        const int dockHeight =
+            sliding ? std::max(dockShown, std::min(panels_.dockOpenHeight(), maxDock)) : dockShown;
         dock_.setVisible(dockShown > 0);
         dockSplitter_.setVisible(dockShown > 0);
         if (dockShown > 0)
         {
-            dock_.setBounds(area.removeFromBottom(dockShown));
-            dockSplitter_.setBounds(area.removeFromBottom(splitter));
+            dock_.setBounds(area.getX(), area.getBottom() - dockShown, area.getWidth(), dockHeight);
+            dockSplitter_.setBounds(area.getX(), dock_.getY() - splitter, area.getWidth(), splitter);
         }
+        if (dockLayout > 0)
+            area.removeFromBottom(dockLayout + splitter);
         tracks_.setBounds(area);
         const int toastW = std::min(420, getWidth() - 2 * theme_.spacing.md);
         toasts_.setBounds(theme_.spacing.md,
@@ -2674,6 +2761,8 @@ private:
     double lastDropoutToastMs_ = 0.0;
     bool quitAfterSave_ = false;
     double benchmarkEndMs_ = 0.0;
+    bool slideCached_ = false;        // the views are drawn from cached images during a panel slide
+    std::vector<double> slidePaints_; // --benchmark-panels
     juce::Component::SafePointer<juce::Component> hoverComponent_;
     double hoverSinceMs_ = 0.0;
 };
@@ -3047,6 +3136,12 @@ void MainWindow::removeLastBus()
 {
     if (auto* content = dynamic_cast<Content*>(getContentComponent()))
         content->removeLastBus();
+}
+
+void MainWindow::runPanelBenchmark(int cycles)
+{
+    if (auto* content = dynamic_cast<Content*>(getContentComponent()))
+        content->runPanelBenchmark(std::max(1, cycles));
 }
 
 void MainWindow::runBenchmark(int seconds)

@@ -182,7 +182,7 @@ Durations from `motion.*`; one easing (`cubic-bezier(0.2, 0, 0, 1)`, deceleratin
 | Hover tint | 100 ms | Surface and text colour only |
 | Press | 60 ms | Immediate on down, eased on up |
 | Toggle | 120 ms | Segmented thumb slide, switch |
-| Panel open/close | 180 ms | Width or height, content fades last 60 ms |
+| Panel open/close | 180 ms | The panel slides over the content at its open size; the content is laid out once, not every frame |
 | Menu, popup | 120 ms | Fade plus 2 px translate from the anchor |
 | Toast | 200 ms | Slide up 8 px and fade in; the others glide to their places; a dismissed one fades and drops 8 px |
 | Sheet | 180 ms in, 120 ms out | Fade with the panel rising 8 px into place; fades out before it goes |

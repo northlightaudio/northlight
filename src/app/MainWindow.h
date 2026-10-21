@@ -52,6 +52,9 @@ public:
     void showExport();
     // --benchmark-ui: plays and scrolls for `seconds`, prints frame percentiles, quits.
     void runBenchmark(int seconds);
+    // --benchmark-panels: opens and closes the inspector `cycles` times, prints the
+    // slide's frame intervals, quits.
+    void runPanelBenchmark(int cycles);
     // --bus / --remove-bus: adds a bus; removes the last one through the mixer's
     // command path (the sheet when channels route to it), for unattended checks.
     void addBus();

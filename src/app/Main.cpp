@@ -116,6 +116,8 @@ public:
     //   --benchmark-strip-drag <s>  drag the first track's strip EQ for s seconds, print the
     //                        strip's display tick intervals, quit
     //   --benchmark-ui <s>   play and scroll for s seconds, print frame percentiles, quit
+    //   --benchmark-panels <n>  open and close the inspector n times with the Editor
+    //                        docked, print the slide's frame intervals, quit
     //   --bus                add a bus
     //   --remove-bus         remove the last bus the way the mixer does
     //   --first-run          show the first-run sheet
@@ -552,6 +554,8 @@ public:
                 mainWindow_->runStripDragBenchmark(tokens.getReference(++i).text.getIntValue());
             else if (arg == "--benchmark-ui" && i + 1 < tokens.size())
                 mainWindow_->runBenchmark(tokens.getReference(++i).text.getIntValue());
+            else if (arg == "--benchmark-panels" && i + 1 < tokens.size())
+                mainWindow_->runPanelBenchmark(tokens.getReference(++i).text.getIntValue());
             else if (arg == "--export")
                 mainWindow_->showExport();
             else if (arg == "--preferences")
