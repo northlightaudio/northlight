@@ -326,6 +326,10 @@ architecture.md). Multi-output instruments feed aux tracks. The piano roll
 auditions notes through the clip's track, and a MIDI track can play the MIDI
 output device on a channel (2026-10-20).
 
+Added 2026-10-21: a built-in Sampler instrument (one sample across the keys,
+loop with crossfade, one-shot, filter, glide; the file kept in the insert's
+state). See architecture.md.
+
 ### Phase 9 — Automation, stretch, polish (4 weeks)
 
 - Automation lanes (read/write/touch/latch) for every plugin and mixer parameter.

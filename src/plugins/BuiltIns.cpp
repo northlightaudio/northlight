@@ -9,6 +9,7 @@
 #include "plugins/Nebula.h"
 #include "plugins/ProcessorBase.h"
 #include "plugins/Pulsar.h"
+#include "plugins/Sampler.h"
 #include "plugins/Starbit.h"
 
 #include <algorithm>
@@ -611,13 +612,14 @@ std::vector<std::string> BuiltInFactory::typeNames() const
             aurora::type,
             pulsar::type,
             nebula::type,
-            starbit::type};
+            starbit::type,
+            sampler::type};
 }
 
 bool BuiltInFactory::isInstrument(const std::string& typeName)
 {
     return typeName == aurora::type || typeName == pulsar::type || typeName == nebula::type ||
-           typeName == starbit::type;
+           typeName == starbit::type || typeName == sampler::type;
 }
 
 std::unique_ptr<engine::InsertProcessor> BuiltInFactory::create(const std::string& typeName) const
@@ -641,6 +643,8 @@ std::unique_ptr<engine::InsertProcessor> BuiltInFactory::create(const std::strin
         return nebula::create();
     if (typeName == starbit::type)
         return starbit::create();
+    if (typeName == sampler::type)
+        return sampler::create(sampleLoader_);
     if (typeName == types::reverb)
         return std::make_unique<Reverb>();
     if (typeName == types::delay)
@@ -668,6 +672,8 @@ std::string BuiltInFactory::displayName(const std::string& typeName)
         return "Nebula";
     if (typeName == starbit::type)
         return "Starbit";
+    if (typeName == sampler::type)
+        return "Sampler";
     if (typeName == types::reverb)
         return "Reverb";
     if (typeName == types::delay)

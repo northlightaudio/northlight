@@ -152,7 +152,9 @@ public:
 
     // Opaque state for processors that own their parameters (hosted plugins):
     // restored once when the instance is created, captured when the project is
-    // saved. Built-ins keep everything in the model's parameter list.
+    // saved. Built-ins keep their parameters in the model's list; one that has
+    // state beyond them (the Sampler's file) keeps it in the model's state too,
+    // and the cache passes it on whenever a command changes it.
     virtual std::string state() const { return {}; }
     virtual void setState(const std::string&) {}
 
@@ -205,6 +207,7 @@ private:
     int maxBlockSize_ = 8192;
     std::map<core::Id, std::shared_ptr<InsertProcessor>> instances_;
     std::map<core::Id, int> latencyAtCompile_;
+    std::map<core::Id, std::string> appliedState_; // the model state an instance last took
 };
 
 } // namespace aural::engine

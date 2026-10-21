@@ -2,6 +2,7 @@
 
 #include "core/ProjectJson.h"
 #include "engine/Insert.h"
+#include "plugins/Sampler.h"
 
 #include <memory>
 #include <string>
@@ -9,7 +10,7 @@
 
 // The built-in utility processors: gain, a three-band EQ with high-pass, a
 // compressor, a limiter, a reverb and a delay; the instruments (Aurora, Pulsar,
-// Nebula, Starbit) are in their own files. JUCE-free, real-time safe after prepare().
+// Nebula, Starbit, Sampler) are in their own files. JUCE-free, real-time safe after prepare().
 
 namespace aural::plugins
 {
@@ -27,6 +28,10 @@ inline const std::string delay = "aural.delay";
 class BuiltInFactory final : public engine::InsertFactory
 {
 public:
+    // The loader decodes the Sampler's files (none: a sampler stays empty).
+    explicit BuiltInFactory(sampler::Loader sampleLoader = {}) : sampleLoader_(std::move(sampleLoader)) {}
+    void setSampleLoader(sampler::Loader loader) { sampleLoader_ = std::move(loader); }
+
     std::vector<std::string> typeNames() const override;
     std::unique_ptr<engine::InsertProcessor> create(const std::string& typeName) const override;
 
@@ -34,6 +39,9 @@ public:
     static std::string displayName(const std::string& typeName);
     // Whether a type is an instrument (takes MIDI, makes audio).
     static bool isInstrument(const std::string& typeName);
+
+private:
+    sampler::Loader sampleLoader_;
 };
 
 namespace reverb

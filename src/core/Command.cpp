@@ -1240,6 +1240,21 @@ void SetInsertSidechain::revert(Project& p)
     i.sidechainPostFader = previousPostFader_;
 }
 
+SetInsertState::SetInsertState(Id channelId, Id insertId, std::string state, std::string name)
+    : channelId_(channelId), insertId_(insertId), value_(std::move(state)), name_(std::move(name))
+{
+}
+void SetInsertState::apply(Project& p)
+{
+    auto& i = requireInsert(requireChannel(p, channelId_), insertId_);
+    previous_ = i.state;
+    i.state = value_;
+}
+void SetInsertState::revert(Project& p)
+{
+    requireInsert(requireChannel(p, channelId_), insertId_).state = previous_;
+}
+
 SetInsertBypass::SetInsertBypass(Id channelId, Id insertId, bool bypass)
     : channelId_(channelId), insertId_(insertId), value_(bypass)
 {

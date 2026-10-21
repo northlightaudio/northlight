@@ -1007,6 +1007,30 @@ track; each further pair is an output track or a chip that makes one), and the
 mixer's instrument slot menu offers the same "Outputs"; a source that goes away
 leaves the aux track silent.
 
+The Sampler (`aural.sampler`, `plugins/Sampler.*`) plays one sample across the
+keyboard: a root note and a key range, tune and fine, velocity to level, an ADSR
+on the amplitude (the shared `synth::Envelope`), start and end points, a forward
+loop whose last few milliseconds crossfade into the same distance before the
+loop's start (so a wrap mid-wave does not click; the fade is as long as the
+material before the loop start allows), one-shot playback (to the end, note-offs
+ignored), a TPT low-pass per voice with the envelope moving its cutoff (out of
+the path at 20 kHz with no envelope), up to 32 voices (over the limit the oldest
+fades out in 5 ms, as does a retriggered note) and glide from the last note's
+pitch. Each voice reads the sample at its exact position with 4-point Hermite
+interpolation (`engine::hermite`), the increment folding in the sample's own
+rate, so nothing is resampled on load. Everything but the file is a parameter
+(automatable); start, end and loop points are fractions of the sample. The file
+is the insert's `state` (base64 of the path) and so lives in the model: loading
+one is a `SetInsertState` command (undoable), and `InsertCache` now passes a
+changed model state to a live built-in that does not own its parameters
+(hosted plugins still take theirs only on creation). The processor is JUCE-free:
+`setState` asks the `sampler::Loader` the factory was given (the app's) for an
+immutable `sampler::Sample` on the controller thread and publishes it through
+an `rt::SnapshotPublisher`, so the real-time thread swaps it in at a block start
+and a retired sample is freed on the controller side once the audio thread has
+moved past it. A missing file keeps its path (a re-save loses nothing) and the
+sampler stays silent with the load error for the editor.
+
 Recording: an armed MIDI track joins the record session (`addMidiTrack`); the
 engine stamps each live event it delivers to that track with its timeline
 position and take index on the session's queue (a loop wrap marks a new take

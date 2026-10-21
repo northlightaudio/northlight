@@ -25,6 +25,7 @@ add_executable(aural_unit_tests
     plugins/SynthFingerprintTests.cpp
     plugins/StarbitSpectrumProbe.cpp
     plugins/BeatSyncTests.cpp
+    plugins/SamplerTests.cpp
     engine/LoudnessTests.cpp
     engine/WriterTests.cpp
     engine/DelayCompTests.cpp
