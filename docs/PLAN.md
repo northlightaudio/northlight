@@ -333,7 +333,9 @@ start, rests bend and pedals on stop, records them from live input, and
 delivers them to VST3, CLAP, the MIDI output and the built-in synths (bend, mod
 wheel vibrato, sustain pedal). The piano roll's lane switches between velocity
 and a controller (draw freehand or a line, select, drag, erase), and a Scale
-toggle highlights the project key on the keys and rows.
+toggle highlights the project key on the keys and rows. Standard MIDI Files
+import (types 0 and 1, by drop or menu, through the file's tempo map) and
+export (type 1, 960 PPQ).
 
 ### Phase 9 — Automation, stretch, polish (4 weeks)
 

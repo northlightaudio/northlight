@@ -109,6 +109,19 @@ public:
     // Adds a track with the file as a clip starting at `at`. Returns an error
     // message or empty on success.
     std::string importAudioFile(const juce::File& file, core::SamplePosition at);
+    // Imports a Standard MIDI File (type 0 or 1) at `at` (moved back to its bar):
+    // a MIDI track per file track (and per channel, where a track uses several),
+    // each with one clip, aimed at `target` (an instrument channel, or the one a
+    // MIDI track plays) or else at a new Aurora channel (channel 10, the drums:
+    // a new Pulsar channel). An empty project takes the file's first tempo and
+    // time signature first. One undo step. Returns an error message or empty.
+    std::string
+    importMidiFile(const juce::File& file, core::SamplePosition at, core::Id target = core::invalidId);
+    // Writes MIDI clips ({track, clip} pairs; one file track per track) to a
+    // type 1 Standard MIDI File at 960 PPQ with the project's tempo and time
+    // signature. Returns an error message or empty.
+    std::string exportMidiFile(const juce::File& file,
+                               const std::vector<std::pair<core::Id, core::Id>>& clips);
     // Adds a MIDI track with the built-in synth as its instrument, armed and
     // listening to every input. Returns the new track's id.
     // A MIDI track playing a new instrument channel (Aurora unless a type is

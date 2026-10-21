@@ -1,5 +1,6 @@
 #include "ProjectSession.h"
 
+#include "app/MidiFiles.h"
 #include "audio/AudioDeviceLayer.h"
 #include "core/ProjectJson.h"
 #include "engine/WavFile.h"
@@ -7,6 +8,7 @@
 #include "plugins/Aurora.h"
 #include "plugins/BuiltIns.h"
 #include "plugins/ChannelStrip.h"
+#include "plugins/Pulsar.h"
 
 #include <algorithm>
 #include <cmath>
@@ -484,6 +486,107 @@ std::string ProjectSession::importAudioFile(const juce::File& file, core::Sample
     if (const auto it = errors.find(clip.mediaPath); it != errors.end())
         return it->second;
     return {};
+}
+
+std::string ProjectSession::importMidiFile(const juce::File& file, core::SamplePosition at, core::Id target)
+{
+    // The file's times become samples at the project rate through its own tempo
+    // map, so they do not depend on the project's tempo; only the bar the import
+    // lands on and the clips' rounding do.
+    auto imported = midifile::readMidiFile(file, project_.sampleRate);
+    if (!imported.error.empty())
+        return imported.error;
+    const Batch batch(*this, "Import MIDI file");
+    if (project_.tracks.empty())
+    {
+        // An empty project takes the file's tempo and time signature.
+        const double bpm = std::clamp(imported.tempo.firstBpm(), 20.0, 999.0);
+        if (std::abs(bpm - project_.tempoBpm) > 1.0e-6)
+            run(std::make_unique<core::SetTempo>(bpm));
+        if (imported.hasTimeSignature && imported.timeSignature != project_.timeSignature)
+            run(std::make_unique<core::SetTimeSignature>(imported.timeSignature.numerator,
+                                                         imported.timeSignature.denominator));
+    }
+    const double bar = core::samplesPerBeat(project_.sampleRate, project_.tempoBpm, project_.timeSignature) *
+                       std::max(1, project_.timeSignature.numerator);
+    const auto barSamples =
+        std::max<core::SamplePosition>(1, static_cast<core::SamplePosition>(std::llround(bar)));
+    const auto start = std::max<core::SamplePosition>(0, at) / barSamples * barSamples;
+
+    // The channel the parts play: the target, or the one a MIDI target plays.
+    core::Id channel = core::invalidId;
+    if (const auto* t = project_.findTrack(target))
+        channel = t->isInstrument() ? t->id
+                  : t->isMidi()
+                      ? (project_.findTrack(t->midiTarget) != nullptr ? t->midiTarget : core::invalidId)
+                      : core::invalidId;
+    const bool targeted = channel != core::invalidId;
+    core::Id drums = core::invalidId; // a new Pulsar for channel 10, when there is no target
+    for (auto& part : imported.parts)
+    {
+        // Whole bars, at least one.
+        part.clip.length =
+            std::max<core::SamplePosition>(1, (part.clip.length + barSamples - 1) / barSamples) * barSamples;
+        part.clip.start = start;
+        core::Track midi;
+        midi.name = part.name;
+        midi.midiChannel = part.channel;
+        core::Id midiTrack = core::invalidId;
+        const bool isDrums = part.channel == 10 && !targeted;
+        auto& playing = isDrums ? drums : channel;
+        if (playing == core::invalidId)
+        {
+            auto command = std::make_unique<core::AddInstrumentTrack>(
+                makeInstrumentChannel(isDrums ? plugins::pulsar::type : plugins::aurora::type), midi);
+            const auto* raw = command.get(); // kept alive by the undo history
+            if (!run(std::move(command)))
+                return "could not add a track for " + part.name;
+            midiTrack = raw->midiTrackId();
+            if (const auto* made = project_.findTrack(midiTrack))
+                playing = made->midiTarget;
+        }
+        else
+        {
+            midi.kind = core::TrackKind::midi;
+            midi.midiTarget = playing;
+            auto command = std::make_unique<core::AddTrack>(midi, project_.trackIndex(playing));
+            const auto* raw = command.get();
+            if (!run(std::move(command)))
+                return "could not add a track for " + part.name;
+            midiTrack = raw->trackId();
+        }
+        run(std::make_unique<core::AddMidiClip>(midiTrack, std::move(part.clip)));
+    }
+    return {};
+}
+
+std::string ProjectSession::exportMidiFile(const juce::File& file,
+                                           const std::vector<std::pair<core::Id, core::Id>>& clips)
+{
+    std::vector<std::pair<const core::Track*, std::vector<const core::MidiClip*>>> tracks;
+    for (const auto& [trackId, clipId] : clips)
+    {
+        const auto* track = project_.findTrack(trackId);
+        const auto* clip = track != nullptr ? track->findMidiClip(clipId) : nullptr;
+        if (clip == nullptr)
+            continue;
+        auto it =
+            std::find_if(tracks.begin(), tracks.end(), [track](const auto& t) { return t.first == track; });
+        if (it == tracks.end())
+        {
+            tracks.push_back({track, {}});
+            it = std::prev(tracks.end());
+        }
+        it->second.push_back(clip);
+    }
+    if (tracks.empty())
+        return "no MIDI clips to export";
+    // In track order, as the arrange view shows them.
+    std::sort(tracks.begin(),
+              tracks.end(),
+              [this](const auto& a, const auto& b)
+              { return project_.trackIndex(a.first->id) < project_.trackIndex(b.first->id); });
+    return midifile::writeMidiFile(file, midifile::toMidiFile(project_, tracks));
 }
 
 // ----- files ------------------------------------------------------------------------------

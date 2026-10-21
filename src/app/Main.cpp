@@ -93,6 +93,9 @@ public:
     //   --midi-track         add a MIDI track (built-in synth) with a short clip
     //   --midi-track-with <type>  the same with the given instrument type instead
     //   --piano-roll         open the piano roll on the first MIDI clip
+    //   --import-midi <file> import a Standard MIDI File at the start (new instrument tracks)
+    //   --export-midi <file> write every MIDI clip to a Standard MIDI File (after the flags
+    //                        before it have run)
     //   --key <root> [minor] set the project key: root a pitch class 0 (C)..11 (B), major
     //                        unless "minor" follows
     //   --cc-lane <lane>     the same, showing a controller lane (bend, mod, expression,
@@ -250,6 +253,22 @@ public:
                         mainWindow_->openPianoRoll(track.id, track.midiClips.front().id);
                         break;
                     }
+            }
+            else if (arg == "--import-midi" && i + 1 < tokens.size())
+            {
+                const auto file = tokens.getReference(++i).resolveAsFile();
+                if (const auto error = session_->importMidiFile(file, 0); !error.empty())
+                    mainWindow_->notify(juce::String::fromUTF8(error.c_str()), true);
+            }
+            else if (arg == "--export-midi" && i + 1 < tokens.size())
+            {
+                std::vector<std::pair<core::Id, core::Id>> clips;
+                for (const auto& track : session_->project().tracks)
+                    for (const auto& clip : track.midiClips)
+                        clips.emplace_back(track.id, clip.id);
+                const auto file = tokens.getReference(++i).resolveAsFile();
+                if (const auto error = session_->exportMidiFile(file, clips); !error.empty())
+                    mainWindow_->notify(juce::String::fromUTF8(error.c_str()), true);
             }
             else if (arg == "--key" && i + 1 < tokens.size())
             {

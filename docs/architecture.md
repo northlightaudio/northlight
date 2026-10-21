@@ -1122,6 +1122,36 @@ mapped to wall time and delayed by the audio output latency, has come, so the
 external instrument sounds with the audio. Note-offs on stop, locate and loop
 come through the same events. A full queue drops events rather than block.
 
+### MIDI files
+
+`app/MidiFiles` (`aural::midifile`, JUCE's `MidiFile` for the bytes) converts
+between Standard MIDI Files and clips, apart from the session so it is tested
+on its own (tests/unit_juce/MidiFileTests.cpp). Import reads types 0 and 1
+(type 2 is refused): every file track becomes one part per MIDI channel it
+uses (a type 0 file's channels come apart), named from the track's name meta
+event ("Name (ch 2)" when split), with notes paired to their offs (a retrigger
+ends the note before it; a note never ended runs to the channel's last
+event), control changes, pitch bend, channel and poly pressure. Ticks become
+samples in one place, `ticksToSamples`: ticks to seconds through the file's own
+tempo map (`TempoMap`, every tempo meta event; SMPTE timing too), then seconds
+to samples at the project rate, so a file's timing survives whatever the
+project tempo is (a project tempo map changes nothing here).
+`ProjectSession::importMidiFile` places the parts at a bar (the drop point or
+the playhead, moved back to its bar), each clip whole bars long, on new MIDI
+tracks aimed at the target instrument (the selected instrument channel, or the
+one the selected MIDI track plays) or at a new Aurora channel (channel 10, the
+drums: a new Pulsar channel); an empty project first takes the file's first
+tempo and time signature; it is all one undo step. Export
+(`exportMidiFile`, `toMidiFile`) writes type 1 at 960 PPQ: a conductor track
+with the project's name, tempo and time signature, then a track per MIDI track
+(named, on its MIDI channel) with its clips' events at their song positions
+(`samplesToTicks` at the project tempo), notes cut at clip ends and a
+controller value a trim left before a clip at the clip's start. The arrange
+view takes `.mid`/`.midi` drops beside audio; the app menu has "Import MIDI
+file..." and Export "MIDI clips to .mid..." (the selected MIDI clips, else the
+selected MIDI track's, else all). Launch flags: `--import-midi <file>`,
+`--export-midi <file>`.
+
 ### Crash reports
 
 `aural::crash` (src/app/CrashReports, no JUCE) installs an unhandled-exception
