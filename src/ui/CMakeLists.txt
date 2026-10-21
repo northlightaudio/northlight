@@ -90,6 +90,8 @@ add_library(aural_ui STATIC
     AudioSetupView.cpp
     ArrangeView.h
     ArrangeView.cpp
+    TakeLanes.h
+    TakeLanes.cpp
     AutomationOverlay.h
     AutomationOverlay.cpp
     PianoRoll.h

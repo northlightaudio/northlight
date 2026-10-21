@@ -74,6 +74,8 @@ Defaults; all rebindable in Preferences. Shown in tooltips and menus.
 | Join | J |
 | Mute / solo / arm selected track | Shift+M / Shift+S / Shift+R |
 | Nudge selection | Alt+Left / Right (grid), Alt+Shift (fine) |
+| Newer / older take at the playhead (comp) | Alt+Up / Alt+Down |
+| Show / hide take lanes | Alt+T |
 | Tools: select / range / pencil (draws MIDI clips) | 1 / 2 / 3 |
 | Snap on/off | N |
 | Ripple on/off | Shift+N |

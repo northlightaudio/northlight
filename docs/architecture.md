@@ -300,7 +300,18 @@ renames inline), M/S/R and monitor toggles, then the input combo, a horizontal
 meter fed from the mixer's last readings and a compact volume slider, and at
 the large row height pan, output and a sends summary; right-click opens the
 track menu. The corner holds the add-track menu and the row-height stepper.
-Not in this pass: buses and the master as arrange rows, take badges, the live
+Take lanes (`ui::TakeLanes`, design/14-comping.md) are a helper the view owns
+and routes to: `rows()` adds a track's expanded lanes (`takeLane` each) to its
+extent while `rowHeightOf` stays the row's own height (so clips, headers,
+automation and the resize edge are unchanged), the paint draws each track's
+comp badges, chip and boundaries over its lane and its lanes and lane headers
+under it, and a press in a row goes to `TakeLanes::mouseDown` first (lanes,
+lane headers, the chip, a boundary below the clip header, the comp's menu), which
+then owns the drag (`Drag::takes`) and emits the comp commands through `emit`.
+Keys: Alt+Up / Alt+Down cycle the take at the playhead on the selected track,
+Alt+T shows or hides its lanes. The `--takes-demo <files>` launch flag builds a
+comped three-take track for screenshots.
+Not in this pass: buses and the master as arrange rows, the live
 recording clip, a split tool mode (S splits at the playhead, Shift+S at the time
 selection or loop), track duplication.
 

@@ -375,7 +375,8 @@ Designed at 100%; verified at 125, 150, 200. All sizes scale uniformly; nothing
 reflows except panels, which can be hidden. Minimum window 1280×720 at 100%. Track
 row heights are user-adjustable between `trackRowMin` and `trackRowLarge` for all
 tracks (the corner stepper), and per track between `trackRowMin` and `trackRowMax`
-(drag the row's bottom edge).
+(drag the row's bottom edge). Expanded take lanes add `takeLane` (40) per lane
+under a track's row (14-comping.md); the row's own height is unchanged.
 
 ## 2.9 Light theme
 
