@@ -88,6 +88,49 @@ struct MidiClip
     bool operator==(const MidiClip&) const = default;
 };
 
+// Take lanes and comping (docs/design/14-comping.md). Each recorded pass over a
+// range is a Take in a TakeGroup on its track; the comp says which take plays
+// where. What plays is ordinary clips: the group materialises its comp as clips
+// in Track::clips (each segment a clip on its take's media, crossfaded at the
+// boundaries) and remembers their ids, so the engine, bounce and every clip
+// edit see plain clips. The comp commands (core/Comping.h) rebuild those clips
+// from the takes and segments; "flatten" drops the group and keeps the clips.
+struct Take
+{
+    AudioClip clip; // the pass as recorded; clip.id is the take's id, clip.name its name
+    int number = 1; // shown as "T<n>"; numbers are not reused within a group
+    Id id() const noexcept { return clip.id; }
+    bool operator==(const Take&) const = default;
+};
+
+// A stretch of the comp: [start, end) plays `take`.
+struct CompSegment
+{
+    SamplePosition start = 0;
+    SamplePosition end = 0;
+    Id take = invalidId;
+    SamplePosition length() const noexcept { return end - start; }
+    bool operator==(const CompSegment&) const = default;
+};
+
+struct TakeGroup
+{
+    Id id = invalidId;
+    std::vector<Take> takes;       // oldest first; the lanes show the newest on top
+    std::vector<CompSegment> comp; // sorted, contiguous, covering [start(), end())
+    std::vector<Id> clips;         // the Track::clips the comp is materialised as
+    SamplePosition crossfade = 0;  // at each boundary between segments (0: butt splices)
+    bool expanded = false;         // the take lanes show under the track's row
+
+    SamplePosition start() const noexcept; // of the earliest take
+    SamplePosition end() const noexcept;   // of the latest take
+    Take* findTake(Id takeId) noexcept;
+    const Take* findTake(Id takeId) const noexcept;
+    int takeIndex(Id takeId) const noexcept; // in `takes`; -1 when absent
+    bool ownsClip(Id clipId) const noexcept;
+    bool operator==(const TakeGroup&) const = default;
+};
+
 enum class TrackKind
 {
     audio,      // audio clips, an audio input
@@ -296,8 +339,9 @@ struct Track : Channel
     int midiOutChannel = 1; // 1..16
     bool armed = false;     // records when the transport records
     MonitorMode monitor = MonitorMode::automatic;
-    std::vector<AudioClip> clips;    // kept sorted by start
-    std::vector<MidiClip> midiClips; // kept sorted by start
+    std::vector<AudioClip> clips;      // kept sorted by start
+    std::vector<MidiClip> midiClips;   // kept sorted by start
+    std::vector<TakeGroup> takeGroups; // take lanes and comps (core/Comping.h), sorted by start
 
     AudioClip* findClip(Id clipId) noexcept;
     const AudioClip* findClip(Id clipId) const noexcept;
@@ -305,6 +349,12 @@ struct Track : Channel
     MidiClip* findMidiClip(Id clipId) noexcept;
     const MidiClip* findMidiClip(Id clipId) const noexcept;
     void sortMidiClips();
+    TakeGroup* findTakeGroup(Id groupId) noexcept;
+    const TakeGroup* findTakeGroup(Id groupId) const noexcept;
+    // The group whose comp a clip in `clips` belongs to (null for an ordinary clip).
+    const TakeGroup* takeGroupOwning(Id clipId) const noexcept;
+    // A take's clip in any of the track's groups, by the take's id.
+    AudioClip* findTakeClip(Id takeId) noexcept;
     bool isMidi() const noexcept { return kind == TrackKind::midi; }
     bool isAux() const noexcept { return kind == TrackKind::aux; }
     bool isInstrument() const noexcept { return kind == TrackKind::instrument; }
@@ -375,9 +425,11 @@ struct Project
     // 2: instruments moved to instrument channels; MIDI tracks aim at them.
     // 3: parameters and automation lanes carry stable keys; row heights.
     // 4: vocal pitch edits on audio clips; the project key.
+    // 5: sidechain keys may tap after the source's fader.
     // 6: the tempo track (tempo and meter changes); clip stretch, transpose and
     //    musical time base.
-    static constexpr int schemaVersion = 6;
+    // 7: take groups (take lanes and comps) on tracks.
+    static constexpr int schemaVersion = 7;
     static constexpr int oldestReadableVersion = 2; // older files are refused
 
     std::string name = "Untitled";

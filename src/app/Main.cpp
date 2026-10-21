@@ -5,6 +5,7 @@
 #include "UserSettings.h"
 #include "audio/AudioDeviceLayer.h"
 #include "core/Command.h"
+#include "core/Comping.h"
 #include "core/ProjectJson.h"
 #include "core/TempoMap.h"
 #include "plugins/BuiltIns.h"
@@ -14,6 +15,7 @@
 #include "ui/AuralLookAndFeel.h"
 #include "ui/PreferencesView.h"
 
+#include <juce_audio_formats/juce_audio_formats.h>
 #include <juce_gui_extra/juce_gui_extra.h>
 
 #include <cmath>
@@ -103,6 +105,8 @@ public:
     //   --automation         add a volume lane to the first track and show it in the arrange view
     //   --tempo-demo         a tempo track with a change, a ramp and a 3/4 bar, shown
     //   --stretch <factor> [semitones]  stretch (and transpose) the first audio clip
+    //   --takes-demo <files> a "Vocal" track with the files as takes in one take group, comped
+    //                        from each in turn, its take lanes expanded
     //   --master-gain <dB>   set the master fader (-120 = silent: an unattended check that
     //                        should not be heard; pre-fader displays still move)
     //   --fx-track <reverb|delay|empty>  add an FX track with a send from every track
@@ -271,6 +275,51 @@ public:
                 const float db = tokens.getReference(++i).text.getFloatValue();
                 session_->execute(std::make_unique<core::SetMasterGain>(
                     db <= -120.0f ? 0.0f : std::pow(10.0f, db / 20.0f)));
+            }
+            else if (arg == "--takes-demo")
+            {
+                // A track whose take group holds the files that follow as takes (all
+                // from zero), comped from each of them in turn, its lanes expanded.
+                std::vector<core::AudioClip> passes;
+                juce::AudioFormatManager formats;
+                formats.registerBasicFormats();
+                const double rate = session_->project().sampleRate;
+                while (i + 1 < tokens.size() && !tokens.getReference(i + 1).text.startsWith("--"))
+                {
+                    const auto file = tokens.getReference(++i).resolveAsFile();
+                    std::unique_ptr<juce::AudioFormatReader> reader(formats.createReaderFor(file));
+                    if (reader == nullptr || reader->sampleRate <= 0.0)
+                        continue;
+                    core::AudioClip clip;
+                    clip.mediaPath = file.getFullPathName().toStdString();
+                    clip.length = static_cast<core::SamplePosition>(
+                        static_cast<double>(reader->lengthInSamples) * rate / reader->sampleRate);
+                    passes.push_back(std::move(clip));
+                }
+                if (!passes.empty())
+                {
+                    core::Track track;
+                    track.name = "Vocal";
+                    session_->execute(std::make_unique<core::AddTrack>(track));
+                    const auto trackId = session_->project().tracks.back().id;
+                    const auto length = passes.front().length;
+                    session_->execute(std::make_unique<core::RecordTakes>(trackId, passes));
+                    const auto& group = session_->project().tracks.back().takeGroups.front();
+                    const auto groupId = group.id;
+                    std::vector<core::Id> takes;
+                    for (const auto& take : group.takes)
+                        takes.push_back(take.id());
+                    for (size_t k = 0; k + 1 < takes.size(); ++k)
+                        session_->execute(std::make_unique<core::SelectTake>(
+                            trackId,
+                            groupId,
+                            takes[k],
+                            length * static_cast<core::SamplePosition>(k + 1) /
+                                static_cast<core::SamplePosition>(takes.size() + 1),
+                            length * static_cast<core::SamplePosition>(k + 2) /
+                                static_cast<core::SamplePosition>(takes.size() + 1)));
+                    session_->execute(std::make_unique<core::SetTakeLanesExpanded>(trackId, groupId, true));
+                }
             }
             else if (arg == "--automation")
             {

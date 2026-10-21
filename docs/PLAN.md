@@ -254,6 +254,20 @@ while scrolling and zooming.
 **Milestone:** record 16 inputs simultaneously for 30 minutes with zero dropouts;
 kill the process mid-record and recover the audio.
 
+Status 2026-10-21: take groups and comping in the model (core/Comping.h):
+takes, comp segments materialised as crossfaded clips, commands with undo for
+swipe, whole take, delete, boundary move, flatten, rename, lanes and move to new
+track; project schema 6 (design/14-comping.md).
+
+Status 2026-10-21: loop recording, punch recording and recording over a take
+group make takes in a group (newest playing) instead of stacked clips; MIDI
+loop recording still makes a clip per pass.
+
+Status 2026-10-21: take lanes in the arrange view: disclosure chip, lanes with
+the comp lit, swipe comping, comp boundary drags, lane header and menus, Alt+Up /
+Alt+Down / Alt+T (design/14-comping.md); a comp moves and deletes as one with its
+takes. MIDI take lanes are not built.
+
 ### Phase 4 — Mixer and routing (3 weeks)
 
 - Gain, pan, mute, solo (with solo-in-place), phase, track colour and naming.

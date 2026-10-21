@@ -1,6 +1,7 @@
 #include "ProjectSession.h"
 
 #include "audio/AudioDeviceLayer.h"
+#include "core/Comping.h"
 #include "core/ProjectJson.h"
 #include "core/TempoMap.h"
 #include "engine/WavFile.h"
@@ -671,6 +672,7 @@ std::string ProjectSession::saveAsTemplate(const juce::String& name)
     {
         t.clips.clear();
         t.midiClips.clear();
+        t.takeGroups.clear();
         t.armed = false;
         for (auto& lane : t.automation)
             lane.points.clear();
@@ -728,18 +730,28 @@ ProjectSession::MediaReport ProjectSession::mediaReport() const
     MediaReport report;
     const auto folder = mediaFolder();
     std::vector<juce::File> used;
+    // Every clip's media and every take's (a take the comp does not play is still kept).
+    std::vector<const core::AudioClip*> clips;
     for (const auto& t : project_.tracks)
+    {
         for (const auto& c : t.clips)
-        {
-            const juce::File f(juce::String::fromUTF8(c.mediaPath.c_str()));
-            if (std::find(used.begin(), used.end(), f) != used.end())
-                continue;
-            used.push_back(f);
-            if (!f.existsAsFile())
-                report.missing.push_back(f);
-            else if (projectFile_ == juce::File() || !f.isAChildOf(folder))
-                report.outside.push_back(f);
-        }
+            clips.push_back(&c);
+        for (const auto& g : t.takeGroups)
+            for (const auto& take : g.takes)
+                clips.push_back(&take.clip);
+    }
+    for (const auto* clip : clips)
+    {
+        const auto& c = *clip;
+        const juce::File f(juce::String::fromUTF8(c.mediaPath.c_str()));
+        if (std::find(used.begin(), used.end(), f) != used.end())
+            continue;
+        used.push_back(f);
+        if (!f.existsAsFile())
+            report.missing.push_back(f);
+        else if (projectFile_ == juce::File() || !f.isAChildOf(folder))
+            report.outside.push_back(f);
+    }
     if (projectFile_ != juce::File() && folder.isDirectory())
         for (const auto& f : folder.findChildFiles(juce::File::findFiles, false))
             if (isMediaFile(f) && std::find(used.begin(), used.end(), f) == used.end())
@@ -1248,6 +1260,7 @@ std::string ProjectSession::startRecording()
         return error;
     }
     recordingMessage_.clear();
+    recordingPunched_ = punching;
     notify(Change::structure);
     return {};
 }
@@ -1262,6 +1275,8 @@ void ProjectSession::finishRecording(engine::AudioEngine::FinishedRecording fini
 
     // One "Record" step; the engine work happens once, below.
     auto batch = std::make_unique<Batch>(*this, "Record");
+    // Each track's passes, in recording order (the results come per input, take by take).
+    std::map<core::Id, std::vector<std::pair<int, core::AudioClip>>> passes;
     for (const auto& r : finished.results)
     {
         dropped = std::max(dropped, r.dropped);
@@ -1288,8 +1303,7 @@ void ProjectSession::finishRecording(engine::AudioEngine::FinishedRecording fini
         if (!partial.moveFileTo(final))
             final = partial;
 
-        // Each loop pass is its own take, placed at the loop start; later takes sit
-        // on top of earlier ones on the same track.
+        // Each loop pass is a take, placed at the loop start.
         const auto placement = engine::placeRecording(r.startPosition, r.samplesWritten, latency);
         core::AudioClip clip;
         clip.name = final.getFileNameWithoutExtension().toStdString();
@@ -1299,9 +1313,26 @@ void ProjectSession::finishRecording(engine::AudioEngine::FinishedRecording fini
         clip.length = placement.length;
         if (clip.length > 0 && project_.findTrack(r.trackId) != nullptr)
         {
-            run(std::make_unique<core::AddClip>(r.trackId, clip), false);
+            passes[r.trackId].emplace_back(r.takeIndex, std::move(clip));
             takes = std::max(takes, r.takeIndex + 1);
         }
+    }
+    // A track's passes become takes in a take group (docs/design/14-comping.md)
+    // when there are several (loop recording), when punching in, or when they
+    // land on a take group already there; a single pass elsewhere is a clip.
+    for (auto& [trackId, list] : passes)
+    {
+        std::stable_sort(
+            list.begin(), list.end(), [](const auto& a, const auto& b) { return a.first < b.first; });
+        std::vector<core::AudioClip> clips;
+        for (auto& [index, clip] : list)
+            clips.push_back(std::move(clip));
+        const auto* track = project_.findTrack(trackId);
+        if (track != nullptr && core::recordingMakesTakes(*track, clips, recordingPunched_))
+            run(std::make_unique<core::RecordTakes>(trackId, std::move(clips)), false);
+        else
+            for (auto& clip : clips)
+                run(std::make_unique<core::AddClip>(trackId, std::move(clip)), false);
     }
     // MIDI takes: the captured events become clips, placed like the audio (the
     // player heard the instrument late by the output path, and played to that).

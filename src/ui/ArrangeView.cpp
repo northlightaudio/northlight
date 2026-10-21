@@ -1,5 +1,6 @@
 #include "ui/ArrangeView.h"
 
+#include "core/Comping.h"
 #include "plugins/FxTracks.h"
 #include "ui/AuralLookAndFeel.h"
 #include "ui/Db.h"
@@ -80,6 +81,14 @@ ArrangeView::ArrangeView(audio::PeakStore& peaks)
     };
     tempoLane_.onHide = [this] { setTempoTrackShown(false); };
     addChildComponent(tempoLane_);
+    takes_.geometry.xForSample = [this](core::SamplePosition at) { return xForSample(at); };
+    takes_.geometry.sampleForX = [this](int x) { return sampleForX(x); };
+    takes_.geometry.snap = [this](core::SamplePosition at) { return snapped(at); };
+    takes_.geometry.samplesPerPixel = [this] { return samplesPerPixel_; };
+    takes_.geometry.sampleRate = [this] { return sampleRate(); };
+    takes_.onEdit = [this](std::vector<std::unique_ptr<core::Command>> commands, const std::string& name)
+    { emit(std::move(commands), name); };
+    takes_.onRepaint = [this] { repaint(); };
     import_.setButtonText(juce::String::fromUTF8("Import audio\xe2\x80\xa6"));
     for (auto* b : {&addAudio_, &addInstrument_, &import_})
     {
@@ -133,6 +142,7 @@ void ArrangeView::setProject(const core::Project* project, bool valuesOnly)
         return;
     }
     automation_.setProject(project);
+    takes_.setProject(project);
     project_ = project;
     tempoMap_ = project_ != nullptr ? core::tempoMapOf(*project_) : core::TempoMap();
     tempoLane_.setProject(project);
@@ -587,6 +597,9 @@ const ArrangeView::RowLayout& ArrangeView::rows() const
                 h = std::clamp(channel->height, theme_.sizes.trackRowMin, theme_.sizes.trackRowMax);
             if (const auto growing = rowGrowth_.find(channel->id); growing != rowGrowth_.end())
                 h = std::max(1, juce::roundToInt(static_cast<float>(h) * growing->second));
+            // A track's expanded take lanes sit under its row (rowHeightOf leaves them out).
+            if (const auto index = rows_.tops.size() - 1; index < project_->tracks.size())
+                h += takes_.lanesHeight(project_->tracks[index]);
             rows_.tops.push_back(rows_.tops.back() + h);
         }
         // A removed row's space, closing: everything from its place down sits lower.
@@ -781,6 +794,15 @@ void ArrangeView::mouseDown(const juce::MouseEvent& e)
         drag_ = Drag::rowResize;
         return;
     }
+    // Take lanes (their headers too) and the comp's chip, boundaries and menu on the main lane.
+    if (e.y >= rulerHeight && e.y < getHeight() - scrollbarHeight && e.x < getWidth() - scrollbarWidth)
+        if (const int row = rowAtY(e.y); row >= 0 && takes_.mouseDown(e, takeRow(row)))
+        {
+            selectTrack(project_->tracks[static_cast<size_t>(row)].id);
+            if (takes_.dragging())
+                drag_ = Drag::takes;
+            return;
+        }
     if (e.x < headerWidth || e.x >= getWidth() - scrollbarWidth || e.y >= getHeight() - scrollbarHeight)
         return;
     if (e.y < rulerHeight)
@@ -950,6 +972,11 @@ void ArrangeView::mouseDownLanes(const juce::MouseEvent& e)
         selection_.clear();
         select(ref, true);
     }
+    // A comp's clips select together: the comp moves and deletes as one, with its takes.
+    if (const auto* group = hit.track->takeGroupOwning(hit.clip->id); group != nullptr && isSelected(ref))
+        for (const auto id : group->clips)
+            if (hit.track->findClip(id) != nullptr)
+                select({hit.track->id, id}, true);
     dragClip_ = ref;
     dragOriginal_ = *hit.clip;
     moveDelta_ = 0;
@@ -1069,6 +1096,9 @@ void ArrangeView::mouseDrag(const juce::MouseEvent& e)
             break;
         case Drag::rowResize:
             dragRowResize(e);
+            break;
+        case Drag::takes:
+            takes_.mouseDrag(e);
             break;
         case Drag::draw:
             if (draggedFar_)
@@ -1192,6 +1222,9 @@ void ArrangeView::mouseUp(const juce::MouseEvent& e)
     const auto before = selection_;
     switch (drag)
     {
+        case Drag::takes:
+            takes_.mouseUp(e);
+            break;
         case Drag::draw:
         {
             const auto track = std::exchange(drawTrack_, core::invalidId);
@@ -1333,8 +1366,13 @@ void ArrangeView::mouseMove(const juce::MouseEvent& e)
         }
         return;
     }
+    // Take lanes, a comp boundary or the comp's chip set their own cursor.
+    const auto takeArea = takeRow(rowAtY(e.y));
+    const auto takeCursor = takes_.hover(e.getPosition(), takeArea.track != nullptr ? &takeArea : nullptr);
     const auto hit = hitTest(e.getPosition());
-    setMouseCursor(cursorFor(hit.clip != nullptr || hit.midiClip != nullptr ? hit.zone : Drag::none));
+    setMouseCursor(takeCursor
+                       ? *takeCursor
+                       : cursorFor(hit.clip != nullptr || hit.midiClip != nullptr ? hit.zone : Drag::none));
     const ClipRef clip = hit.clip != nullptr       ? ClipRef{hit.track->id, hit.clip->id}
                          : hit.midiClip != nullptr ? ClipRef{hit.track->id, hit.midiClip->id, true}
                                                    : ClipRef{};
@@ -2131,8 +2169,23 @@ void ArrangeView::paint(juce::Graphics& g)
                         text, lane.withTrimmedLeft(theme_.spacing.sm), juce::Justification::centredLeft);
                 }
             }
+            // The comp's badges, chip and boundaries over the row; its take lanes under it.
+            if (!track.takeGroups.empty())
+            {
+                const auto takeArea = takeRow(row - 1);
+                takes_.paintMain(g, takeArea);
+                takes_.paintLanes(g, takeArea);
+            }
             y += h;
         }
+        g.restoreState();
+
+        // The take lanes' headers, in the header column under each expanded track's header.
+        g.saveState();
+        g.reduceClipRegion(0, rulerHeight, headerWidth, lanesHeight());
+        for (size_t t = 0; t < project_->tracks.size(); ++t)
+            if (takes_.laneCount(project_->tracks[t]) > 0)
+                takes_.paintLaneHeaders(g, takeRow(static_cast<int>(t)));
         g.restoreState();
     }
 
@@ -2319,7 +2372,22 @@ int ArrangeView::rowHeightOf(int row) const noexcept
     const auto& tops = rows().tops;
     if (row < 0 || static_cast<size_t>(row) + 1 >= tops.size())
         return rowHeight;
-    return tops[static_cast<size_t>(row) + 1] - tops[static_cast<size_t>(row)];
+    const int lanes = project_ != nullptr && static_cast<size_t>(row) < project_->tracks.size()
+                          ? takes_.lanesHeight(project_->tracks[static_cast<size_t>(row)])
+                          : 0;
+    return tops[static_cast<size_t>(row) + 1] - tops[static_cast<size_t>(row)] - lanes;
+}
+
+TakeLanes::Row ArrangeView::takeRow(int row) const
+{
+    TakeLanes::Row r;
+    if (project_ == nullptr || row < 0 || static_cast<size_t>(row) >= project_->tracks.size())
+        return r;
+    r.track = &project_->tracks[static_cast<size_t>(row)];
+    r.main = rowBounds(row).withLeft(headerWidth);
+    r.headerWidth = headerWidth;
+    r.colour = trackColour(*r.track, row);
+    return r;
 }
 
 int ArrangeView::rowTop(int row) const noexcept
@@ -2334,15 +2402,20 @@ int ArrangeView::resizeEdgeAt(juce::Point<int> p) const noexcept
     if (project_ == nullptr || p.y < rulerHeight || p.y >= getHeight() - scrollbarHeight ||
         p.x >= getWidth() - scrollbarWidth)
         return -1;
-    // The row whose bottom edge is nearest the point, within the edge's reach.
+    // The row whose bottom edge is nearest the point, within the edge's reach
+    // (the bottom of the row's own height: take lanes under it do not resize it).
     const auto& tops = rows().tops;
     const int content = p.y - rulerHeight + verticalScroll_;
-    const auto it = std::lower_bound(tops.begin() + 1, tops.end(), content - 1);
-    if (it == tops.end())
-        return -1;
-    const int bottom = *it;
-    if (content >= bottom - TrackHeader::resizeEdge && content <= bottom + 1)
-        return static_cast<int>(it - tops.begin()) - 1;
+    const auto it = std::upper_bound(tops.begin(), tops.end(), content);
+    const int at = static_cast<int>(it - tops.begin()) - 1; // the row the point is in
+    for (const int row : {at - 1, at})
+    {
+        if (row < 0 || static_cast<size_t>(row) + 1 >= tops.size())
+            continue;
+        const int bottom = tops[static_cast<size_t>(row)] + rowHeightOf(row);
+        if (content >= bottom - TrackHeader::resizeEdge && content <= bottom + 1)
+            return row;
+    }
     return -1;
 }
 
@@ -2776,6 +2849,7 @@ void ArrangeView::finishMove()
         return;
     std::vector<std::unique_ptr<core::Command>> commands;
     std::vector<ClipRef> moved;
+    std::vector<core::Id> movedGroups;
     for (const auto& ref : selection_)
     {
         const int from = project_->trackIndex(ref.track);
@@ -2786,6 +2860,19 @@ void ArrangeView::finishMove()
         const auto& target = project_->tracks[static_cast<size_t>(to)];
         if (target.isMidi() != ref.midi)
             continue; // a clip stays on its own kind of track
+        // A comp's clip moves its whole take group (takes, comp and clips) once.
+        if (const auto* group =
+                ref.midi ? nullptr : project_->tracks[static_cast<size_t>(from)].takeGroupOwning(ref.clip))
+        {
+            if (std::find(movedGroups.begin(), movedGroups.end(), group->id) == movedGroups.end())
+            {
+                movedGroups.push_back(group->id);
+                commands.push_back(
+                    std::make_unique<core::MoveTakeGroup>(ref.track, group->id, target.id, moveDelta_));
+            }
+            moved.push_back({target.id, ref.clip, false});
+            continue;
+        }
         const auto start = std::max<core::SamplePosition>(0, span->start + moveDelta_);
         if (ref.midi)
             commands.push_back(std::make_unique<core::MoveMidiClip>(ref.track, ref.clip, target.id, start));
@@ -2906,6 +2993,15 @@ void ArrangeView::deleteSelection()
     if (project_ == nullptr || selection_.empty())
         return;
     auto e = edit::deleteClips(*project_, selection_, ripple_);
+    // A take group whose comp clips are all deleted goes too, takes and all.
+    for (const auto& track : project_->tracks)
+        for (const auto& group : track.takeGroups)
+            if (!group.clips.empty() &&
+                std::all_of(group.clips.begin(),
+                            group.clips.end(),
+                            [&](core::Id id)
+                            { return track.findClip(id) == nullptr || isSelected(track.id, id); }))
+                e.commands.push_back(std::make_unique<core::RemoveTakeGroup>(track.id, group.id));
     selection_.clear();
     emit(std::move(e.commands), e.name);
 }
@@ -3049,6 +3145,8 @@ void ArrangeView::trackMenu(core::Id trackId, juce::Point<int> screen, core::Id 
         menu.addSubMenu("Send to", sends);
     }
     menu.addItem(4, automation_.isShown(trackId) ? "Hide automation" : "Show automation");
+    if (!track->takeGroups.empty())
+        menu.addItem(6, takes_.laneCount(*track) > 0 ? "Hide take lanes" : "Show take lanes");
     menu.addSeparator();
     menu.addItem(2, "Delete track");
     menu.addItem(3, "Add bus");
@@ -3094,6 +3192,12 @@ void ArrangeView::trackMenu(core::Id trackId, juce::Point<int> screen, core::Id 
             if (choice == 4)
             {
                 safe->showAutomation(trackId, !safe->automation_.isShown(trackId));
+                return;
+            }
+            if (choice == 6)
+            {
+                if (const auto* t = safe->project_ != nullptr ? safe->project_->findTrack(trackId) : nullptr)
+                    safe->takes_.toggleLanes(*t);
                 return;
             }
             if (choice == 5)
@@ -3425,6 +3529,17 @@ bool ArrangeView::handleEditKey(const juce::KeyPress& key)
     {
         setTool(plain('1') ? Tool::select : plain('2') ? Tool::range : Tool::pencil);
         return true;
+    }
+    // Take lanes: Alt+Up / Alt+Down cycle the take at the playhead, Alt+T shows or hides the lanes.
+    if (const auto* track = project_ != nullptr ? project_->findTrack(selectedTrack_) : nullptr;
+        track != nullptr && key.getModifiers() == juce::ModifierKeys::altModifier)
+    {
+        if (key.getKeyCode() == juce::KeyPress::upKey || key.getKeyCode() == juce::KeyPress::downKey)
+            return takes_.cycleTake(*track,
+                                    playheadForEdits ? playheadForEdits() : playhead_,
+                                    key.getKeyCode() == juce::KeyPress::upKey ? 1 : -1);
+        if (key.getKeyCode() == 'T' || key.getKeyCode() == 't')
+            return takes_.toggleLanes(*track);
     }
     if (key.getModifiers().isAltDown() &&
         (key.getKeyCode() == juce::KeyPress::leftKey || key.getKeyCode() == juce::KeyPress::rightKey))

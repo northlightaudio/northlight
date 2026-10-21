@@ -26,6 +26,7 @@ design system first; the screen specs depend on them.
 | [11-accessibility-performance.md](11-accessibility-performance.md) | Contrast, focus, keyboard, screen reader names, DPI, frame budget and how it is measured |
 | [12-channel-strip.md](12-channel-strip.md) | The channel strip: module cards with real-time displays in the Editor panel, the EQ analyser, tabs, the mixer's module row |
 | [13-pitch-editing.md](13-pitch-editing.md) | Vocal pitch editing (Phase 11): the audio clip editor, pitch analysis, the note editing model, correction to the key, breaths |
+| [14-comping.md](14-comping.md) | Take lanes and comping: take groups, the comp as crossfaded clips, recording into takes, swipe comping in the arrange view |
 | [contrast.md](contrast.md) | Generated contrast table for every text and surface pair in the token file |
 | [review-2026-10.md](review-2026-10.md) | Design review, October 2026: harmony, spacing and anchoring across the window, with what was fixed and what is open |
 

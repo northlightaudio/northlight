@@ -9,6 +9,7 @@
 #include "ui/AutomationOverlay.h"
 #include "ui/Icons.h"
 #include "ui/PluginMenu.h"
+#include "ui/TakeLanes.h"
 #include "ui/TempoLane.h"
 #include "ui/Theme.h"
 #include "ui/TrackHeader.h"
@@ -48,6 +49,10 @@ namespace aural::ui
 // playhead, Shift+M a region from the loop region, comma and full stop jump to
 // the previous and next marker, a click on a flag selects it (and locates), a
 // drag moves it (snapped), a double-click renames it, Delete removes it.
+//
+// Take lanes (TakeLanes, 14-comping.md): a track's take groups expand into lanes
+// under its row; Alt+Up / Alt+Down play the next newer / older take in the comp
+// segment at the playhead on the selected track, Alt+T shows or hides its lanes.
 class ArrangeView final : public juce::Component,
                           public juce::FileDragAndDropTarget,
                           public juce::DragAndDropTarget,
@@ -274,6 +279,7 @@ private:
         draw,         // the pencil drawing a new MIDI clip
         pan,          // the middle button drags the view
         stretch,      // Alt+drag of an audio clip's right edge: time-stretch
+        takes,        // a swipe or a comp boundary (TakeLanes)
     };
 
     void changeListenerCallback(juce::ChangeBroadcaster*) override;
@@ -524,6 +530,9 @@ private:
     core::Marker dragMarker_;                // the marker being dragged, as it was
     core::SamplePosition markerPreview_ = 0; // its position during the drag
     const PluginSources* pluginSources_ = nullptr;
+    // Take lanes and comping (14-comping.md): lanes under a track's row, swipes, boundaries.
+    TakeLanes takes_{theme_, peaks_, *this};
+    TakeLanes::Row takeRow(int row) const; // a track row, for TakeLanes
 };
 
 } // namespace aural::ui

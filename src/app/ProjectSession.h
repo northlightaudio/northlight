@@ -421,6 +421,7 @@ private:
     core::SamplePosition regionStart_ = 0, regionEnd_ = 0;
     bool loop_ = false;
     bool punch_ = false;
+    bool recordingPunched_ = false; // the recording in progress punches in (its passes become takes)
     juce::File templatesFolder_;
     juce::File autosaveFolder_;
     std::function<int()> autosaveInterval_;

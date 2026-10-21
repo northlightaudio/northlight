@@ -138,6 +138,79 @@ void Track::sortClips()
         clips.begin(), clips.end(), [](const AudioClip& a, const AudioClip& b) { return a.start < b.start; });
 }
 
+SamplePosition TakeGroup::start() const noexcept
+{
+    if (takes.empty())
+        return 0;
+    SamplePosition s = takes.front().clip.start;
+    for (const auto& t : takes)
+        s = std::min(s, t.clip.start);
+    return s;
+}
+
+SamplePosition TakeGroup::end() const noexcept
+{
+    SamplePosition e = 0;
+    for (const auto& t : takes)
+        e = std::max(e, t.clip.end());
+    return e;
+}
+
+Take* TakeGroup::findTake(Id takeId) noexcept
+{
+    for (auto& t : takes)
+        if (t.id() == takeId)
+            return &t;
+    return nullptr;
+}
+
+const Take* TakeGroup::findTake(Id takeId) const noexcept
+{
+    return const_cast<TakeGroup*>(this)->findTake(takeId);
+}
+
+int TakeGroup::takeIndex(Id takeId) const noexcept
+{
+    for (size_t i = 0; i < takes.size(); ++i)
+        if (takes[i].id() == takeId)
+            return static_cast<int>(i);
+    return -1;
+}
+
+bool TakeGroup::ownsClip(Id clipId) const noexcept
+{
+    return std::find(clips.begin(), clips.end(), clipId) != clips.end();
+}
+
+TakeGroup* Track::findTakeGroup(Id groupId) noexcept
+{
+    for (auto& g : takeGroups)
+        if (g.id == groupId)
+            return &g;
+    return nullptr;
+}
+
+const TakeGroup* Track::findTakeGroup(Id groupId) const noexcept
+{
+    return const_cast<Track*>(this)->findTakeGroup(groupId);
+}
+
+const TakeGroup* Track::takeGroupOwning(Id clipId) const noexcept
+{
+    for (const auto& g : takeGroups)
+        if (g.ownsClip(clipId))
+            return &g;
+    return nullptr;
+}
+
+AudioClip* Track::findTakeClip(Id takeId) noexcept
+{
+    for (auto& g : takeGroups)
+        if (auto* t = g.findTake(takeId))
+            return &t->clip;
+    return nullptr;
+}
+
 Track* Project::findTrack(Id trackId) noexcept
 {
     for (auto& t : tracks)

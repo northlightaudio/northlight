@@ -8,6 +8,7 @@ add_executable(aural_unit_tests
     core/CommandTests.cpp
     core/ProjectJsonTests.cpp
     core/TempoMapTests.cpp
+    core/CompingTests.cpp
     engine/RtPrimitivesTests.cpp
     engine/EngineTests.cpp
     engine/StreamingTests.cpp
@@ -34,6 +35,7 @@ add_executable(aural_unit_tests
     engine/DelayCompTests.cpp
     engine/SidechainTests.cpp
     engine/FadeTests.cpp
+    engine/CompTests.cpp
     engine/InsertChainTests.cpp
     engine/MidiTests.cpp
     engine/AutomationTests.cpp

@@ -137,6 +137,35 @@ group commands into one step. `projectToJson`/`projectFromJson` read and write t
 versioned `aural.project` format. Bars/beats are a display conversion
 (`samplesToBarsBeats`) with a constant tempo for now.
 
+Take groups (comping, design/14-comping.md): a track's `takeGroups` each hold
+the takes recorded over a range (`Take`: the pass as an `AudioClip` that is not
+in `Track::clips`, plus its number), the comp (`CompSegment`s: sorted,
+contiguous, covering the takes' union, each naming the take that plays there),
+the comp crossfade (10 ms by default) and whether its lanes are expanded. What
+plays is ordinary clips: the comp is materialised into `Track::clips` and the
+group lists their ids (`TakeGroup::clips`), so the snapshot compiler, renderer,
+bounce, peaks and every clip command see plain clips and nothing in the engine
+knows about takes. `core::compClips` is the mapping: one clip per segment on
+its take's media (source offset following the trimmed start), overlapping its
+neighbour by the crossfade (at most half of either segment) centred on the
+boundary with matching linear fades, so the renderer's per-sample fades sum to
+one; where a take does not reach across the boundary it is a butt splice.
+The commands in `core/Comping.h` (`RecordTakes`, `SelectTake` for a swipe or a
+whole take, `RemoveTake`, `MoveCompBoundary`, `FlattenComp`, `RenameTake`,
+`SetTakeLanesExpanded`, `RemoveTakeGroup`, and `moveTakeToNewTrack` =
+`AddTrack` + `RemoveTake`) share `TakeGroupEdit`: it edits a copy of the group, then removes the group's
+current clips (keeping them, as the user left them, for undo), installs the new
+group and adds the rebuilt clips, reusing the old clip ids in order so streaming
+windows and the selection survive; `FlattenComp` drops the group and leaves the
+clips as ordinary ones. `MoveTakeGroup` moves a group with its clips as they are
+(along the track or onto another audio track, pinned at zero). Ordinary edits on comp clips are allowed (they are just
+clips), but the next comp edit rebuilds the comp from the takes; `ShiftClips`
+(ripple) moves groups that start after its position, consolidation repoints
+take media and the media report counts it as used. Schema 6 adds the groups
+(`takeGroups` on a track: takes as clips plus `number`, `comp` as
+`[start, end, take]` triples, `clips`, `crossfade`, `expanded`); older files
+have none and their overlapping clips play exactly as before.
+
 ### Engine
 
 `engine::AudioEngine` is the façade with a controller side and a real-time side.
@@ -285,7 +314,21 @@ renames inline), M/S/R and monitor toggles, then the input combo, a horizontal
 meter fed from the mixer's last readings and a compact volume slider, and at
 the large row height pan, output and a sends summary; right-click opens the
 track menu. The corner holds the add-track menu and the row-height stepper.
-Not in this pass: buses and the master as arrange rows, take badges, the live
+Take lanes (`ui::TakeLanes`, design/14-comping.md) are a helper the view owns
+and routes to: `rows()` adds a track's expanded lanes (`takeLane` each) to its
+extent while `rowHeightOf` stays the row's own height (so clips, headers,
+automation and the resize edge are unchanged), the paint draws each track's
+comp badges, chip and boundaries over its lane and its lanes and lane headers
+under it, and a press in a row goes to `TakeLanes::mouseDown` first (lanes,
+lane headers, the chip, a boundary below the clip header, the comp's menu), which
+then owns the drag (`Drag::takes`) and emits the comp commands through `emit`.
+A click on a comp clip selects all of the comp's clips; `finishMove` turns a
+move of them into one `MoveTakeGroup` per group, and `deleteSelection` adds a
+`RemoveTakeGroup` for a group whose clips are all deleted.
+Keys: Alt+Up / Alt+Down cycle the take at the playhead on the selected track,
+Alt+T shows or hides its lanes. The `--takes-demo <files>` launch flag builds a
+comped three-take track for screenshots.
+Not in this pass: buses and the master as arrange rows, the live
 recording clip, a split tool mode (S splits at the playhead, Shift+S at the time
 selection or loop), track duplication.
 
@@ -315,9 +358,16 @@ still records, but only the first 4 GB is readable until it is split.
 Loop recording: when the transport wraps while capturing, the real-time thread
 marks a take boundary (the cumulative captured count plus the loop start) through a
 lock-free queue; the writer closes the file at that sample and opens
-`<name>-take<n>.partial.wav`. Every pass through the loop becomes its own clip at
-the loop start, later takes on top of earlier ones on the same track (take lanes
-with their own rows come with the editing phase).
+`<name>-take<n>.partial.wav`. Every pass through the loop is placed at the loop
+start. When the recording is collected, a track's passes (in take order) become
+takes in a take group (`core::RecordTakes`, see "Core model") when there are
+several (loop recording), when the recording punched in, or when they land on a
+take group already on the track (they join it, numbered on from its takes);
+each newer pass plays over its own range, so a loop recording stopped part way
+through its last pass comps that partial take over the earlier full one. A single
+pass anywhere else is a plain clip as before, and clips already on the track are
+left alone (a pass over an ordinary clip still overlaps it). MIDI loop
+recording is unchanged: each pass with notes is its own clip.
 
 Starting at or past the loop end (a locate there, or the loop enabled while
 outside it) wraps to the loop start before the first capture, so the take is
@@ -332,7 +382,7 @@ once and reports an error rather than leaving it pending.
 Stop, locate or a device stop end the session on the real-time side; once the
 writer has closed the files the session polls `collectRecording()`, renames the
 `.partial.wav` files to `.wav` (never over an existing file), deletes empty takes,
-removes the sidecars and adds the clips in one undo step. Placement is
+removes the sidecars and adds the clips (or takes) in one undo step. Placement is
 `engine::placeRecording`: shifted back by `recordingLatencySamples()` (the loopback
 calibration when it matches the device configuration, otherwise the driver's
 reported input plus output latency), trimming the front of anything that would

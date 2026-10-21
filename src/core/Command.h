@@ -1194,6 +1194,7 @@ private:
 
 // Moves every clip starting at or after `from` by `delta` (ripple editing);
 // clips that would start before zero are pinned at zero. Undo moves them back.
+// Take groups starting at or after `from` move too (their takes and comp).
 class ShiftClips final : public Command
 {
 public:
@@ -1205,7 +1206,8 @@ public:
 private:
     Id trackId_;
     SamplePosition from_, delta_;
-    std::vector<std::pair<Id, SamplePosition>> previous_; // clip id, start before
+    std::vector<std::pair<Id, SamplePosition>> previous_;      // clip id, start before
+    std::vector<std::pair<Id, SamplePosition>> shiftedGroups_; // take group id, delta applied
 };
 
 class SetClipGain final : public Command

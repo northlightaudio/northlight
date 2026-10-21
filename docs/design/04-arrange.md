@@ -174,8 +174,10 @@ Rows at `trackRow` 56 default. Contents, left to right, inside `space.sm` paddin
   clicking splits at the snapped position.
 - Recording clip: a growing clip in `record` at 22% body, with the live waveform
   appended from the recording peaks, header "● Recording".
-- Takes: stacked clips on the lane, each with a badge; the top one is audible. Lanes
-  do not expand in v1 (**Decision**: take lanes as rows are a post-v1 feature).
+- Takes: a take group's comp plays on the lane as clips with a take badge each; the
+  takes expand into lanes under the row for swipe comping (14-comping.md, which
+  replaces the earlier decision to keep take lanes past v1). Older projects'
+  stacked clips stay stacked, the top one audible.
 
 ## FX tracks
 
