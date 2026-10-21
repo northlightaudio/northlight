@@ -18,7 +18,7 @@
 namespace northlight::ui
 {
 
-// The piano roll (09-piano-roll.md): a toolbar (tool, snap, quantise, link zoom,
+// The piano roll (screens/piano-roll.md): a toolbar (tool, snap, quantise, link zoom,
 // audition, the scale highlight), a 64 px keyboard, a bar/beat ruler, the note
 // grid and an 80 px lane that shows the notes' velocities or one controller
 // (pitch bend, a CC, channel pressure; the menu on the lane's name picks it).

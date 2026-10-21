@@ -121,7 +121,7 @@ void TakeLanes::drawBadge(juce::Graphics& g,
                           juce::Rectangle<int> area,
                           bool lit) const
 {
-    // 02-design-system.md "Badge": pill, caption 600, the colour at 20% behind it.
+    // design-system.md "Badge": pill, caption 600, the colour at 20% behind it.
     const auto& c = theme_.colours;
     const auto font = theme_.font(Theme::Face::ui, theme_.fonts.size.caption, theme_.fonts.weight.semibold);
     const int w = juce::GlyphArrangement::getStringWidthInt(font, text) + 2 * 6;

@@ -17,7 +17,7 @@ namespace northlight::ui
 
 class PluginBrowser;
 
-// The browser's Files tab (07-plugins.md 7.4g): audio files in a place (the
+// The browser's Files tab (screens/plugins.md 7.4g): audio files in a place (the
 // project's folder, Music, or a folder the user added to the list, kept in the
 // settings) and its subfolders. A tray at the top picks the place and goes up
 // a level or adds a folder; the search field finds files anywhere under the

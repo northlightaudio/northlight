@@ -1,4 +1,4 @@
-# 13. Vocal pitch editing (Phase 11)
+# 13. Vocal pitch editing
 
 Status: **built**, 2026-10-20, on the `pitch-editing` branch. "As built" at the end
 records where the build differs from this plan.
@@ -82,8 +82,7 @@ nothing clicks.
 **Null rule:** a note with no edits renders bit-identical to the original, so
 opening the editor never changes the sound. A test enforces it.
 
-This adds no dependency and does not depend on the open licensing decision (PLAN.md,
-section 10). Signalsmith Stretch (MIT) is the fallback if large formant shifts or
+This adds no dependency. Signalsmith Stretch (MIT) is the fallback if large formant shifts or
 timing edits need it later.
 
 ## Editing model
@@ -160,8 +159,8 @@ undoable command, and any note can be adjusted afterwards.
 - Clicking a note auditions it. The ruler and playhead link to the arrange view, as
   the piano roll's "Link zoom to arrange" does.
 
-Layout, tokens and states for this panel are to be specified in this document (in
-the shape of the other screen specs) before the Phase 11 UI work starts.
+Layout, tokens and states for this panel are still to be specified here, in the
+shape of the other screen specs.
 
 ## Phases
 
@@ -181,7 +180,7 @@ the shape of the other screen specs) before the Phase 11 UI work starts.
 6. **Correct to key,** with the project key and scale and key detection.
 7. **Breaths.**
 
-Later: timing edits (they need time-stretch, the Phase 9 open decision), larger
+Later: timing edits (built on the clip time-stretch), larger
 formant shifts, exporting the melody as MIDI, harmony generation.
 
 ## Decisions to confirm

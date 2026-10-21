@@ -7,7 +7,7 @@
 #include <string>
 #include <vector>
 
-// Starbit: the chiptune synth bundled with Northlight (07-plugins.md 7.4e), after the
+// Starbit: the chiptune synth bundled with Northlight (screens/plugins.md 7.4e), after the
 // sound chips of 8-bit consoles. A pulse with the classic duty cycles (and a
 // duty sweep), a 4-bit stepped triangle and saw, LFSR noise (long or short,
 // metallic) and a 32-step 4-bit wave you draw; a volume envelope in 16 steps;

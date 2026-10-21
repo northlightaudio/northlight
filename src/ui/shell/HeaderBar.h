@@ -12,7 +12,7 @@
 namespace northlight::ui
 {
 
-// A time readout (06-transport.md): a surface2 field with mono text, in a readout
+// A time readout (screens/transport.md): a surface2 field with mono text, in a readout
 // well when the material is on. Click to type a position (bars.beats.ticks or
 // m:ss.mmm), drag vertically on a segment to nudge it. The owner feeds the text
 // and takes the typed value back through onTyped.
@@ -59,7 +59,7 @@ private:
     bool dragged_ = false;
 };
 
-// A window button of the custom chrome (03-shell.md): minimise, maximise/restore or
+// A window button of the custom chrome (screens/shell.md): minimise, maximise/restore or
 // close, the header's full height and flat. Hover fills it with surface2; close fills
 // with `record` and turns its glyph to textOnColour. Windows routes clicks on it to
 // the window (it is a caption control), so it shows hover but never a press.
@@ -80,7 +80,7 @@ private:
     bool closes_;
 };
 
-// The header bar (03-shell.md): app and project menus, undo/redo, the transport
+// The header bar (screens/shell.md): app and project menus, undo/redo, the transport
 // cluster with time, tempo and signature, and the right cluster of snap, ripple,
 // zoom-fit and the panel toggles. The owner pushes the state each UI tick and
 // receives actions through the callbacks; nothing here touches the model.

@@ -1,256 +1,63 @@
 # Northlight
 
-A native, high-performance digital audio workstation for Windows. ASIO, VST3 hosting,
-multitrack recording, and a UI that is designed before it is built.
+A digital audio workstation for Windows, built for low-latency recording and careful
+mixing. Native ASIO, VST3 and CLAP hosting, a lock-free multicore engine, and an
+interface designed before it was built. Free software under the GNU AGPLv3.
 
-Status: **Phase 6 (editing) complete; Phase 8 (MIDI and instruments) in progress;
-Phase 7 (design fidelity pass) waits for the design spec**. See
-[docs/PLAN.md](docs/PLAN.md) for the roadmap and
-[docs/architecture.md](docs/architecture.md) for what is built.
+![Northlight with the demo song open: the arrange view, the Pulsar drum synth in the Editor panel, and the inspector](docs/images/northlight.png)
+
+**Status:** in active development, with no release yet. See the
+[roadmap](docs/roadmap.md) for where it stands.
+
+## What it does
+
+- **Records** many inputs at once, with input monitoring, latency measured through a
+  loopback cable, loop and punch recording into take lanes with swipe comping, and
+  recordings that survive a crash.
+- **Mixes** with buses, FX tracks, sends, fader groups, sidechains and delay
+  compensation everywhere, plus a six-module channel strip on every channel.
+- **Hosts** VST3 and CLAP instruments and effects. Plugins are scanned in a separate
+  process, so a bad one cannot take Northlight down.
+- **Plays MIDI** through a piano roll with controller lanes, five bundled instruments,
+  external MIDI devices and Standard MIDI Files.
+- **Follows the music** with a tempo track, clip time-stretch and transposition, and
+  vocal pitch editing.
+- **Delivers** WAV, AIFF, FLAC and Ogg Vorbis exports with loudness normalisation and
+  dither, and freezes tracks to save processing.
+
+[docs/user-guide.md](docs/user-guide.md) shows how to use it.
 
 ## Building
 
-Requirements:
-
-- Windows 10/11 x64
-- Visual Studio 2022 or later with the "Desktop development with C++" workload
-  (this brings MSVC, CMake 3.28+, Ninja and clang-format)
-- Git
-
-From any PowerShell window:
+You need Windows 10 or 11 and Visual Studio 2022 or later with the **Desktop
+development with C++** workload. Then:
 
 ```powershell
-.\scripts\build.ps1               # Debug build
-.\scripts\build.ps1 -Test         # Debug build + unit tests
-.\scripts\build.ps1 -Run          # Debug build + launch
-.\scripts\build.ps1 -Preset windows-release
+.\scripts\build.ps1 -Run
 ```
 
-Or from a Developer PowerShell / Developer Command Prompt for VS:
-
-```powershell
-cmake --preset windows-debug
-cmake --build --preset windows-debug
-ctest --preset windows-debug
-```
-
-The first configure downloads JUCE and Catch2 into `build/<preset>/_deps`.
-
-### ASIO
-
-The Steinberg ASIO SDK cannot be redistributed, so it is not in the repo. To enable
-ASIO:
-
-1. Download the ASIO SDK from Steinberg and unzip it somewhere outside the repo
-   (for example `H:\Tools\asiosdk`).
-2. Set `NORTHLIGHT_ASIO_SDK_DIR` to that directory, either as an environment variable before
-   configuring or as a CMake cache variable:
-
-   ```powershell
-   $env:NORTHLIGHT_ASIO_SDK_DIR = 'H:\Tools\asiosdk'
-   .\scripts\build.ps1
-   ```
-
-Without it the app builds with WASAPI only. VST3 hosting needs no external SDK; the
-VST3 SDK ships inside JUCE. (The variable was `AURAL_ASIO_SDK_DIR` before the rename to
-Northlight; the build still reads that from the environment when the new one is not set.)
-
-### Build options
-
-| Option | Default | Meaning |
-|---|---|---|
-| `NORTHLIGHT_BUILD_TESTS` | ON | Build the Catch2 unit tests |
-| `NORTHLIGHT_BUILD_HARDWARE_TESTS` | ON | Build the manual hardware test tools (never run by CTest) |
-| `NORTHLIGHT_RT_CHECKS` | ON (OFF in `windows-release`) | Hook operator new/delete to catch allocations on real-time threads |
-| `NORTHLIGHT_WARNINGS_AS_ERRORS` | OFF (ON in `ci`) | `/WX` |
-| `NORTHLIGHT_ASIO_SDK_DIR` | empty | Path to the ASIO SDK root |
-
-## Layout
-
-```
-cmake/            CMake helpers
-docs/             Plan, architecture notes, real-time rules, coding standards, design
-scripts/          Developer scripts
-src/app/          Application entry point, main window, project session, settings
-src/audio/        Device layer (ASIO/WASAPI), audio callback, calibration, media loading
-src/core/         Project model, commands/undo, JSON project files (no JUCE)
-src/engine/       Engine: snapshots, transport, renderer, streaming (no JUCE)
-src/engine/rt/    Real-time safety guard, SPSC queue, snapshot publisher
-src/ui/           Theme tokens, LookAndFeel, Audio Setup screen
-tests/unit/       Catch2 unit tests
-tests/hardware/   Manual tools that need a real audio device
-```
-
-The full intended layout is in [docs/PLAN.md](docs/PLAN.md), section 9. Directories are
-added when their first code lands.
-
-## Using the current build
-
-Click **Import Audio...** to put files on tracks (one track per file, starting at 0),
-**Play** or the space bar to play, **|<** or Return to go back to the start, and
-click in the arrange view to locate, or drop audio files onto it to add tracks at the
-drop position. Ctrl+wheel zooms around the pointer; the wheel scrolls tracks and
-Shift+wheel or the scrollbars scroll. The status bar shows the audio callback load
-(p50/p99/max of the deadline) and any overruns or dropouts. Undo/redo are Ctrl+Z /
-Ctrl+Y. Files longer than 30 s
-stream from disk; everything is resampled to the project rate (the device rate of
-an empty project). Waveform peaks are built in the background and cached next to
-each media file as `<file>.<rate>.northlight-peaks`.
-
-To record, pick an input in a track's header, arm it with **R** (the **I** button
-cycles input monitoring off / auto / on) and press **Rec** or Ctrl+R; **Stop** or the
-space bar ends the take. Clips land on the track shifted back by the measured
-round-trip latency (or the driver's reported latency when no calibration matches).
-**Click** turns the metronome on, **Count-in** cycles 0/1/2 bars of click before a
-take, dragging in the ruler sets a region that **Loop** repeats and **Punch**
-records into (rolling from one bar before it).
-With **Loop** on, each pass through the region becomes a new take on the track.
-**Mixer** (Ctrl+M) opens strips for every track and bus with output routing, sends,
-inserts (built-in gain, EQ, compressor, limiter with an editor window each), pan,
-mute, solo, phase, fader and meters, plus the master with LUFS; **+ Bus** adds a bus.
-Every track and bus also has a **channel strip** (gate, parametric EQ,
-compressor, de-esser, saturation, limiter), separate from the inserts and switched
-on in place: in the Editor panel each module is a card with a real-time display
-(the EQ's draggable bands over a spectrum analyser, the compressor's curve, level
-history and gain-reduction meter, the gate's open/closed lane), and a module
-that is off folds to a tab; the mixer strips have a row of module cells to switch
-them. The strip runs after the inserts unless switched to before them.
-**Presets** in the strip's caption row start a channel from a factory setting
-(lead and backing vocals, spoken word, acoustic and electric guitar, bass,
-piano, synth pad, kick, snare, drum bus, mix bus, reverb return) or one of your
-own (**Save as preset...**).
-**FX tracks** hold shared effects such as a reverb or delay that several
-channels feed through sends: **+ Bus ▸ FX track** in the mixer, **+ ▸ FX track**
-in the arrange view or **Project ▸ Add FX track** makes one with the built-in
-Reverb or Delay fully wet (or empty, for any plugin), and a track's right-click
-**Send to** menu ticks the FX tracks (and buses) it sends to, or makes a new FX
-track with a send in one step. FX tracks show as rows under the tracks in the
-arrange view (for their automation) and as strips in the mixer.
-A strip's **Group** button puts it in a fader group: grouped faders move together
-(keeping their balance) and mute and solo act on the whole group.
-**Inserts ▸ Add** lists the built-ins and every VST3 and CLAP plugin found by
-**Scan for plugins...** (the standard VST3 and CLAP folders, each file inspected in
-a separate process so a bad plugin cannot crash Northlight); a hosted plugin opens its own editor window
-and its state is saved with the project; its window has bypass, a wet/dry mix and a
-pin (always on top), a Presets menu (factory programs and `.vstpreset` files), and
-remembers where you left it. **Plugins...** opens the
-browser (search, blocklist, scan). Every insert has a wet/dry mix, and a compressor (built-in or a plugin with a key
-input) can be sidechained from another track via its **Sidechain** submenu. Insert latency is
-compensated across tracks, buses and sends, and recordings allow for it.
-Recordings go next to the project file in a `<project> Media` folder, or to
-`Documents\Northlight\Recordings` for an unsaved project, each with a small
-`.recording.json` beside it while it is in progress. If the app dies while
-recording, the next launch offers to repair the unfinished files and put them back
-on their tracks where they were captured (or on "Recovered" tracks when the project
-has changed), or set them aside. Recording needs the device at the project's sample
-rate.
-**Automation**: the **A** button on a track header shows the track's automation
-over its lane. Pick the parameter (volume, pan, or any parameter of a built-in
-insert or channel strip module) and the mode (Off, Read, Touch, Latch, Write) from
-the chips at the lane's top left; click to add points, drag them, double-click to
-remove. VST3 and CLAP plugin parameters can be automated too, including moves
-made in the plugin's own window. In Touch, Latch or Write, moving the fader, pan or a parameter while
-playing records it into the lane. Faders and knobs follow automation as it plays.
-**Instruments**: an instrument lives on an instrument channel (its inserts, strip,
-sends and fader process the sound), and MIDI tracks play it: each holds the notes
-and aims at an instrument channel on a MIDI channel, so several MIDI tracks can
-play one instrument. Adding a MIDI track with a new instrument makes the MIDI
-track and its channel together (or the new MIDI track can play an instrument
-already in the project), and selecting the MIDI track shows its instrument below.
-The default instrument is **Aurora**, the bundled polysynth (two morphing oscillators
-with unison, a drivable multimode filter, two envelopes, an LFO, glide and
-Shimmer, with its own editor and eight presets); VST3 and CLAP instruments go in
-the same slot from the browser or the slot's menu. The **Instruments** panel (F8)
-is the rack: every instrument with who plays it and its outputs; each extra
-stereo output of a multi-output instrument becomes a track of its own, with
-effects like any other, in one click. **Pulsar**, the bundled drum synth, has eight synthesised
-pads on the General MIDI drum notes (kick, rim, snare, clap, closed and open
-hats, two toms), each with tune, decay, two shaping controls, level and pan, six
-kits, and an editor whose pads light as they play; any pad can go to an output of
-its own (a track with its own processing), alone or in groups. **Nebula**, the bundled pad
-synth, builds each note from a drifting cloud of partials shaped by brightness, a
-vowel formant and stretch, with a halo, breath, slow motion and a large space,
-for ethereal pads. **Starbit**, the bundled chiptune synth, has the classic
-pulse duties, 4-bit triangle and saw, LFSR noise and a wave you draw, tracker
-arpeggios (including cycling the notes you hold), vibrato, sweeps and a lo-fi end,
-behind a pixel-art editor. To hear them together, write and open the demo song, "Northern Drift" (Pulsar
-drums, Aurora bass and keys, a Nebula pad, Starbit's arpeggio and lead, Hall and
-Echo FX tracks, automation and section markers): `Northlight --demo-song "<folder>/Northern Drift.northlight"`. (The first, plain built-in "Synth" is gone; projects
-that used it open with Aurora.)
-A MIDI track can also play an external instrument: pick a MIDI output in Audio
-Setup, then the channel in the track's right-click menu (**MIDI output**); its
-clips and, while monitoring, its live input go out in time with the audio.
-**Editing** in the arrange view: click a clip to select it (Shift adds, Ctrl
-toggles), drag on empty space to lasso, drag a clip to move it (across tracks too),
-drag its edge to trim, drag the handle at a top corner for a fade, Ctrl+drag up or
-down for clip gain. Moves and trims snap to the grid (**G** toggles). **Delete**
-removes (with ripple on, **E**, later clips close the gap), **Ctrl+D** duplicates,
-**S** splits at the playhead, **J** joins, **X** crossfades overlapping neighbours,
-**Ctrl+Shift+N** normalises, **Left/Right** nudge by a grid step, **Ctrl+A** selects
-all, **Escape** clears the selection. **M** drops a marker at the playhead and
-**Shift+M** a region from the loop region; **,** and **.** jump between markers; click
-a marker's flag in the ruler to select it, drag it to move it, double-click to
-rename it, **Delete** to remove it.
-**Export...** bounces the mix (or the loop region) to a float WAV at the project
-rate, or every track to a stems folder, offline, compensated for insert latency;
-the status line shows the progress and the integrated loudness of the result.
-Projects are `.northlight` files: **New**, **Open...**, **Save** (Ctrl+N / Ctrl+O / Ctrl+S,
-Ctrl+Shift+S to save as). Unsaved changes are autosaved every two minutes (set in
-Preferences, General); if Northlight closes without saving, the next launch offers to
-restore them. If Northlight crashes, a crash report (a minidump) is saved in the
-settings folder's `Crashes` folder and the next launch offers to show it.
-**Save as template...** keeps the tracks, buses, routing, inserts and
-channel strips without clips; **New from template** starts a project from one.
-**Media ▸ Gather media into the project folder** copies media used from elsewhere
-next to the project (undoable), and **Remove unused media...** moves files in the
-project's media folder that no clip uses to the Recycle Bin.
-
-For unattended checks: `Northlight.exe --import <file> [--import <file>] --play` (or
-`--open <project>`), and
-`Northlight.exe --record <inputs> [--loop <from> <to>] [--no-count-in] --stop-after <seconds>`; `--mixer`
-opens the mixer panel and `--insert <type>` adds a built-in (for example `northlight.eq`) to
-every track and opens its editor. `--strip <modules|all|demo>` switches channel strip modules on for every track
-and shows the Editor panel, and `--master-gain -120` silences the master for an
-unattended check that should not be heard. `--scan-plugins` runs a full plugin scan, `--plugins` opens the browser, `--marker <seconds>` drops a marker; `--recover` recovers unfinished recordings without
-the prompt and `--save <file>` writes the project (so a check can read the placed
-clips); `--save` runs two seconds after a preceding `--stop-after`, else half a
-second after launch.
-The offline recording soak is `northlight_record_soak --inputs 16 --minutes 30 --speed 8`.
-
-### Audio setup
-
-Launch `Northlight.exe` and click **Audio Setup...** in the toolbar. Pick the driver type
-(ASIO, or one of the Windows Audio modes), the device, sample rate, buffer size and the
-channels to enable. With **Pass inputs through to outputs** on you hear the inputs on
-the outputs; the Latency section shows the driver's reported input and output latency.
-
-To measure the real round trip, connect one output to one input with a cable, choose
-that pair under **Loopback** and click **Calibrate**. The result is stored per device,
-sample rate and buffer size and is used to place recorded audio in Phase 3.
-
-Settings live in `%APPDATA%\Northlight\Northlight.settings`. `Northlight.exe --audio-setup` opens the
-Audio Setup window on launch.
-
-The same can be done from the command line with the hardware tool:
-
-```powershell
-.\build\windows-debug\tests\hardware\northlight_loopback_tool_artefacts\Debug\northlight_loopback_tool.exe --list
-.\build\windows-debug\tests\hardware\northlight_loopback_tool_artefacts\Debug\northlight_loopback_tool.exe --type ASIO --device "Focusrite USB ASIO" --buffer 64 --out 0 --in 0
-```
+Everything else is downloaded on the first build. ASIO needs Steinberg's ASIO SDK,
+which cannot be redistributed; [docs/building.md](docs/building.md) explains how to
+add it, and covers the presets, options and tests.
 
 ## Documentation
 
-- [docs/PLAN.md](docs/PLAN.md): goals, architecture, roadmap, open decisions
-- [docs/rt-rules.md](docs/rt-rules.md): what real-time threads may and may not do
-- [docs/coding-standards.md](docs/coding-standards.md): style and conventions
-- [docs/architecture.md](docs/architecture.md): living architecture notes
+| Document | What it covers |
+|---|---|
+| [docs/building.md](docs/building.md) | Building, options, tests, launch options for unattended checks |
+| [docs/architecture.md](docs/architecture.md) | How the application is put together: modules, threads, engine, plugins, UI |
+| [docs/rt-rules.md](docs/rt-rules.md) | What real-time threads may and may not do |
+| [docs/decisions.md](docs/decisions.md) | Why things are built the way they are |
+| [docs/roadmap.md](docs/roadmap.md) | Goals, non-goals, and what comes before a first release |
+| [docs/user-guide.md](docs/user-guide.md) | A tour of Northlight for users: setup, recording, mixing, instruments, export |
+| [docs/design/](docs/design/README.md) | The brand, the design system and the specification of every screen |
+| [CONTRIBUTING.md](CONTRIBUTING.md) | How to contribute: checks, code conventions, commits |
 
 ## Licence
 
-Northlight is free software:
-you can redistribute it and/or modify it under the terms of the GNU Affero General
-Public License as published by the Free Software Foundation, version 3 of the
-License. It is distributed in the hope that it will be useful, but WITHOUT ANY
+Northlight is free software: you can redistribute it and modify it under the terms of
+the GNU Affero General Public License, version 3, as published by the Free Software
+Foundation. It is distributed in the hope that it will be useful, but WITHOUT ANY
 WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS FOR A
 PARTICULAR PURPOSE. See [LICENSE](LICENSE) for the full text.
 
@@ -259,15 +66,13 @@ In practice:
 - Anyone who receives the application, free or paid, is entitled to its complete
   source code under the same licence. A build that is sold or shared must say where
   its source is.
-- Changes you distribute (or offer to people over a network) are AGPLv3 too.
+- Changes you distribute, or offer to people over a network, are AGPLv3 too.
 - Plugins the application hosts (VST3, CLAP) are separate programs and keep their own
   licences.
 
-Northlight is built on third-party code under compatible licences: JUCE (AGPLv3),
-the Steinberg ASIO SDK (GPLv3 option), the VST3 SDK, CLAP, Signalsmith Stretch and
+Northlight is built on third-party code under compatible licences: JUCE (AGPLv3), the
+Steinberg ASIO SDK (GPLv3 option), the VST3 SDK, CLAP, Signalsmith Stretch and
 nlohmann/json (MIT), and the codecs and libraries bundled in JUCE. Their notices and
-licence texts are in [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md), which
-`scripts/third-party-notices.py` regenerates from the dependencies' own licence
-files; run it when a dependency changes. The build copies `LICENSE` and
-`THIRD_PARTY_NOTICES.md` beside the executable, so every build and installer ships
-them.
+licence texts are in [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md), and every build
+ships them beside the executable. The splash photograph is by Gytis Bukauskas on
+Unsplash ([assets/splash](assets/splash/README.md)).

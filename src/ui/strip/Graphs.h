@@ -103,7 +103,7 @@ private:
     ModuleCard& card_;
 };
 
-// A threshold on its meter (12-channel-strip.md 12.2): a vertical bar of the
+// A threshold on its meter (screens/channel-strip.md 12.2): a vertical bar of the
 // level the threshold is compared with (the input, a gate's key, a
 // de-esser's band) with the threshold as a handle across it. Drag anywhere to
 // set it (Shift: fine), the wheel steps half a decibel, double-click resets.

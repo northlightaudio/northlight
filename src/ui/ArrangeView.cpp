@@ -217,7 +217,7 @@ void ArrangeView::layoutEmptyState()
         b->setVisible(empty);
     if (!empty)
         return;
-    // The mark, a heading, three ghost buttons in a row and a hint (03-shell.md).
+    // The mark, a heading, three ghost buttons in a row and a hint (screens/shell.md).
     const int buttonW = 150, gap = theme_.spacing.md;
     const int total = 3 * buttonW + 2 * gap;
     auto row =
@@ -2005,7 +2005,7 @@ void ArrangeView::fillClipHeader(juce::Graphics& g,
     g.fillPath(header);
 }
 
-// A take being recorded (04-arrange.md "Recording clip"): a clip in `record` at
+// A take being recorded (screens/arrange.md "Recording clip"): a clip in `record` at
 // the body alpha, growing with the file, its waveform from the live peaks and
 // the header "● Recording". It sits where its clip will land (latency-compensated),
 // so nothing jumps when the file closes and the clip takes its place.

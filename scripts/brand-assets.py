@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Writes the Northlight brand files in assets/brand from one definition of the mark.
 
-The mark (docs/design/15-brand.md) is Moonrise, a half moon over the horizon with its reflection, on a 64-unit
+The mark (docs/design/brand.md) is Moonrise, a half moon over the horizon with its reflection, on a 64-unit
 grid. The wordmark is "Northlight" in Newsreader, turned into outlines so the files
 need no font. The app icon PNGs are drawn from the same geometry.
 

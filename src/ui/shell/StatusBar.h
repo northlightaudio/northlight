@@ -9,7 +9,7 @@
 namespace northlight::ui
 {
 
-// The status bar (03-shell.md): device, rate and buffer, round trip, load,
+// The status bar (screens/shell.md): device, rate and buffer, round trip, load,
 // dropouts and (while recording) disk, left in timeSmall mono separated by
 // middle dots, each with a tooltip; a transient confirmation on the right that
 // fades after four seconds. Anything needing action is a toast, not a message.

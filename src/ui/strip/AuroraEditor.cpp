@@ -1,4 +1,4 @@
-// Aurora's editor (07-plugins.md 7.5). Aurora reads as its own product, so it
+// Aurora's editor (screens/plugins.md 7.5). Aurora reads as its own product, so it
 // has its own face: a night sky with the aurora drifting through it (brighter
 // as it plays) behind a wordmark, the presets and twelve voice lights, and six
 // glass panels: oscillators, unison, filter, envelopes, LFO and output. Every
@@ -993,7 +993,7 @@ private:
 
     void framesArrived(double elapsedMs) override
     {
-        // The newest frame carries the voice count and the LFO (07-plugins.md 7.5).
+        // The newest frame carries the voice count and the LFO (screens/plugins.md 7.5).
         if (historySize() > 0)
         {
             const auto& last = historyAt(historySize() - 1);

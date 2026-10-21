@@ -4,7 +4,7 @@
 #include <string>
 #include <vector>
 
-// Crash reports (PLAN.md Phase 9), the local half: when the process dies of an
+// Crash reports (docs/architecture.md, "Application services"), the local half: when the process dies of an
 // unhandled exception (an access violation in a plugin, say) a minidump and a
 // short note are written into a folder before it goes, and the next launch can
 // say so and show them. Nothing leaves the computer; sending reports is opt in

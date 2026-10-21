@@ -24,7 +24,7 @@ namespace northlight::ui
 class AudioSetupView final : public juce::Component, private juce::ChangeListener, private juce::Timer
 {
 public:
-    // The window (08-setup.md 8.1): 720x620, scrolling the content's natural height.
+    // The window (screens/setup.md 8.1): 720x620, scrolling the content's natural height.
     static constexpr int preferredWidth = 720;
     static constexpr int preferredHeight = 620;
     static constexpr int minimumWidth = 640;

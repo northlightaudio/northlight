@@ -7,7 +7,7 @@
 #include <string>
 #include <vector>
 
-// Pitch analysis of a monophonic vocal (docs/design/13-pitch-editing.md, "Analysis").
+// Pitch analysis of a monophonic vocal (docs/design/screens/pitch-editing.md, "Analysis").
 //
 //   1. A pitch curve, pYIN-style: YIN's cumulative mean normalised difference per
 //      5 ms frame, every dip a pitch candidate weighted by how many thresholds of a

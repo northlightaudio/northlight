@@ -1434,7 +1434,7 @@ void ProjectSession::finishRecording(engine::AudioEngine::FinishedRecording fini
             takes = std::max(takes, r.takeIndex + 1);
         }
     }
-    // A track's passes become takes in a take group (docs/design/14-comping.md)
+    // A track's passes become takes in a take group (docs/design/screens/comping.md)
     // when there are several (loop recording), when punching in, or when they
     // land on a take group already there; a single pass elsewhere is a clip.
     for (auto& [trackId, list] : passes)

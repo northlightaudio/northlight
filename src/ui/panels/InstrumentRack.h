@@ -18,7 +18,7 @@
 namespace northlight::ui
 {
 
-// The Instruments panel (07-plugins.md 7.4): every instrument in the project
+// The Instruments panel (screens/plugins.md 7.4): every instrument in the project
 // as a rack unit, one per instrument channel: power, the instrument's name and
 // format, the channel and the MIDI tracks that play it, its outputs (the main
 // pair is the channel itself; each further pair is an output track, or a

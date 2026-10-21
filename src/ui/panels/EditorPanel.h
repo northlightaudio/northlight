@@ -22,8 +22,8 @@
 namespace northlight::ui
 {
 
-// The Editor panel (07-plugins.md 7.1): the selected channel's insert chain as a
-// horizontal strip of device cards, and its channel strip (12-channel-strip.md)
+// The Editor panel (screens/plugins.md 7.1): the selected channel's insert chain as a
+// horizontal strip of device cards, and its channel strip (screens/channel-strip.md)
 // before or after them in signal order. Each card has a header (power, name, format
 // badge, menu), a body (knobs for a built-in or GUI-less plugin, an Open button
 // for a plugin with its own GUI) and a footer with the wet/dry mix; a ghost "+"

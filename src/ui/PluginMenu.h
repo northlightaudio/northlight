@@ -12,7 +12,7 @@ namespace northlight::ui
 {
 
 // What a plugin slot takes: an insert slot takes effects, an instrument slot
-// (07-plugins.md 7.4) takes instruments.
+// (screens/plugins.md 7.4) takes instruments.
 enum class PluginKind
 {
     effect,

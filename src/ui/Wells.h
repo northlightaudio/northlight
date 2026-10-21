@@ -7,7 +7,7 @@
 namespace northlight::ui
 {
 
-// A display well (12-channel-strip.md 12.1), cut into the panel: drawWell fills
+// A display well (screens/channel-strip.md 12.1), cut into the panel: drawWell fills
 // it (the material's meter well, canvas without the material) before the
 // content; drawWellFrame goes over the content: an inner shadow from the top
 // edge and a little from the sides, a dark rim, and the lip of light along the

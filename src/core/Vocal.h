@@ -3,7 +3,7 @@
 #include <cstdint>
 #include <vector>
 
-// Vocal pitch editing (docs/design/13-pitch-editing.md). An audio clip can carry a
+// Vocal pitch editing (docs/design/screens/pitch-editing.md). An audio clip can carry a
 // VocalEdit: the notes found in its media, each with the parameters the user (or
 // "correct to key") set, and the unvoiced segments between them (breaths,
 // consonants, silence) with their gain. The pitch curve and pitch marks the notes

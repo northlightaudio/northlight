@@ -49,7 +49,7 @@ private:
     juce::Colour onColour_;
 };
 
-// One channel strip module (12-channel-strip.md 12.2): a card with a 28 px
+// One channel strip module (screens/channel-strip.md 12.2): a card with a 28 px
 // header (power in the module's hue, name, a live status readout), a display
 // with real-time feedback, and the module's controls. The card keeps the
 // model's values (the truth for built-ins) and polls the live processor's

@@ -42,7 +42,7 @@ struct EqBands
 // The channel strip's EQ: a low cut, four parametric bands, a high cut.
 EqBands stripEqBands();
 
-// The parametric EQ display (12-channel-strip.md 12.4): the response on a log
+// The parametric EQ display (screens/channel-strip.md 12.4): the response on a log
 // frequency axis (20 Hz-20 kHz, +-24 dB) with a node per band to drag
 // (frequency across, gain up and down; the wheel sets Q, or a cut's slope;
 // double-click switches a band; right-click picks its shape), and behind it a

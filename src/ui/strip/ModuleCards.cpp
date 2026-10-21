@@ -1,4 +1,4 @@
-// The six channel strip cards (12-channel-strip.md 12.3-12.8): each lays out
+// The six channel strip cards (screens/channel-strip.md 12.3-12.8): each lays out
 // its display and controls on the shared ModuleCard.
 
 #include "plugins/BuiltIns.h"

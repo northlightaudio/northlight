@@ -7,7 +7,7 @@
 namespace northlight::ui::strip
 {
 
-// The Sampler's editor (07-plugins.md 7.4f): the sample's waveform with its
+// The Sampler's editor (screens/plugins.md 7.4f): the sample's waveform with its
 // start, end and loop points to drag, the key range and root on a keyboard,
 // and the pitch, playback, envelope and filter controls. Dropping an audio
 // file on it (from Explorer or the browser's Files tab) loads it.

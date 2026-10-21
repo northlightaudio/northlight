@@ -1,4 +1,4 @@
-# Northlight C++ style. See docs/coding-standards.md for the rationale.
+# Northlight C++ style. See CONTRIBUTING.md for the conventions it encodes.
 BasedOnStyle: LLVM
 Standard: c++20
 

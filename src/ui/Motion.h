@@ -6,7 +6,7 @@
 #include <functional>
 #include <vector>
 
-// Motion helpers for the design system's motion table (02-design-system.md 2.6):
+// Motion helpers for the design system's motion table (design-system.md 2.6):
 // one easing, and a short tween that drives a component until it is done or the
 // component goes away.
 

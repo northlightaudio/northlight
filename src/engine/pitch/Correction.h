@@ -5,7 +5,7 @@
 #include <cstdint>
 #include <vector>
 
-// "Correct to key" (docs/design/13-pitch-editing.md): a suggestion pass that sets
+// "Correct to key" (docs/design/screens/pitch-editing.md): a suggestion pass that sets
 // each note's target and drift amount. It never snaps:
 //
 //   - each note is aimed at one of the scale pitches either side of it or at its

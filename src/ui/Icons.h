@@ -9,7 +9,7 @@
 namespace northlight::ui
 {
 
-// The icon set of docs/design/02-design-system.md section 2.5: vector paths on a
+// The icon set of docs/design/design-system.md section 2.5: vector paths on a
 // 16 px grid, 1.5 px strokes with round caps, 1 px inner padding; monochrome, so
 // the caller gives the colour. The same paths are written to assets/icons as SVG
 // by scripts/export-icons.py for the design canvas.
@@ -129,7 +129,7 @@ public:
         solidOn_ = solid;
         repaint();
     }
-    // Drawn as a key in the control material (02-design-system.md 2.4) at rest,
+    // Drawn as a key in the control material (design-system.md 2.4) at rest,
     // rather than a bare icon that only shows a face on hover.
     void setKey(bool key)
     {

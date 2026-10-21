@@ -73,7 +73,7 @@ completeness.
 ## Visual identity
 
 - **Brand: Machair dusk** (decided 2026-10-21; the full guide is
-  [15-brand.md](15-brand.md)). A Hebridean island in early evening: peat-green
+  [brand.md](brand.md)). A Hebridean island in early evening: peat-green
   surfaces, an overcast-blue accent, moon-cream text, track colours from the land.
 - **Name**: Northlight. Wordmark in Newsreader, set on the mark's horizon line; the
   window title uses the project name.
@@ -83,7 +83,7 @@ completeness.
 - **Palette direction**: a dark peat-green base, neutral surfaces stepping up by
   lightness, one cool accent (Overcast) for interaction, a rowan record red, and a
   twelve-hue track palette of muted landscape colours tuned to read on the dark base.
-  Defined in [02-design-system.md](02-design-system.md).
+  Defined in [design-system.md](design-system.md).
 - **Material direction** (decided after the workshop board): tactile controls on
   flat panels. Buttons, keys, caps and knobs are lit from above with a short shadow;
   faders run in grooves; meters are LED-segmented in a well; readouts glow. Nothing
@@ -94,8 +94,8 @@ completeness.
 
 ## What success looks like
 
-Side-by-side with the Phase 6 build, a stranger should be able to say which one is a
-product. Concretely, after the Phase 7 pass:
+Side by side with an unstyled build, a stranger should be able to say which one is a
+product. Concretely:
 
 - Every screen matches its spec's acceptance checks.
 - 60 fps with 64 tracks visible on a 4K display at 150% scale on the reference

@@ -15,7 +15,7 @@
 namespace northlight::ui
 {
 
-// The Inspector panel (03-shell.md): the selected track or clip. A track shows
+// The Inspector panel (screens/shell.md): the selected track or clip. A track shows
 // its name (editable), colour swatches, gain, pan and the M/S/R toggles; a clip
 // its name, start, length, gain and fades. Rows of a 120 px label and a control.
 class InspectorPanel final : public juce::Component

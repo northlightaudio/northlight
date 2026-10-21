@@ -7,7 +7,7 @@
 namespace northlight::ui
 {
 
-// The splash screen (08-setup.md): the brand photograph with the mark, the wordmark, the
+// The splash screen (screens/setup.md): the brand photograph with the mark, the wordmark, the
 // version, what is loading, and the copyright, licence and photo credit. It shows
 // while the app starts and again as the About box. It owns itself: it closes and
 // deletes itself after the start (finish()) or when clicked as the About box.

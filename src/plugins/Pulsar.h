@@ -9,7 +9,7 @@
 #include <string>
 #include <vector>
 
-// Pulsar: the drum synth bundled with Northlight (07-plugins.md 7.4c). Eight
+// Pulsar: the drum synth bundled with Northlight (screens/plugins.md 7.4c). Eight
 // synthesised pads on the General MIDI drum notes (and C3 to G3): kick, rim,
 // snare, clap, closed hat, open hat, low tom, high tom. Each pad has tune,
 // decay, two shaping controls of its own, level, pan and an output: the main

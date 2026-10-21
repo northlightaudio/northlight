@@ -1,4 +1,4 @@
-// Nebula's editor (07-plugins.md 7.4d). A pad synth's face should feel slow
+// Nebula's editor (screens/plugins.md 7.4d). A pad synth's face should feel slow
 // and soft: gas clouds in the palette's cool hues drifting behind the panels,
 // dust rising through them, everything breathing with the sound. The spectrum
 // is the centrepiece: each partial a column of light under the formant's

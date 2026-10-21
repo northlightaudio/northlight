@@ -9,7 +9,7 @@
 namespace northlight::ui
 {
 
-// A level meter (02-design-system.md, "Meter"): one 6 px bar per channel with 2 px
+// A level meter (design-system.md, "Meter"): one 6 px bar per channel with 2 px
 // gaps, the zones from the tokens painted as solid segments, a 1 px peak-hold
 // line, and a clip square above the bars that stays lit until clicked (or, when
 // autoClear is on, for clipHoldMs). The bar rises over meterRiseMs and falls at

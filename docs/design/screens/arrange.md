@@ -36,7 +36,7 @@ Where the recording and the arrangement live. It must stay legible with 4 tracks
   (an up-down cursor shows there), 28 to 240 px; double-click the edge to return to
   the default the corner stepper sets. The height is saved with the project and
   the resize is undoable.
-- **Overview strip** (**Decision**: deferred past Phase 7; keep the slot).
+- **Overview strip** (**Decision**: deferred; keep the slot).
 
 ## Ruler
 
@@ -129,7 +129,7 @@ Rows at `trackRow` 56 default. Contents, left to right, inside `space.sm` paddin
   recording.
 - Drag the number to reorder tracks; a 2 px `accent` insertion line shows the drop
   position. Right-click opens the track menu (rename, colour, duplicate, delete,
-  freeze (later), add bus, show automation (Phase 9)).
+  freeze, add bus, show automation).
 - Buses appear in the same list after tracks, with a slate stripe and no input row;
   the master is always last, pinned, with a `textPrimary` stripe.
 
@@ -190,7 +190,7 @@ Rows at `trackRow` 56 default. Contents, left to right, inside `space.sm` paddin
 - Recording clip: a growing clip in `record` at 22% body, with the live waveform
   appended from the recording peaks, header "● Recording".
 - Takes: a take group's comp plays on the lane as clips with a take badge each; the
-  takes expand into lanes under the row for swipe comping (14-comping.md, which
+  takes expand into lanes under the row for swipe comping (screens/comping.md, which
   replaces the earlier decision to keep take lanes past v1). Older projects'
   stacked clips stay stacked, the top one audible.
 

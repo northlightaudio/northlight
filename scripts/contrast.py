@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Contrast table for the design tokens (docs/design/11-accessibility-performance.md).
+"""Contrast table for the design tokens (docs/design/accessibility-performance.md).
 
 Reads docs/design/tokens.json, composites alpha colours over their background
 (which is itself composited over `canvas` when translucent), computes the WCAG 2.x

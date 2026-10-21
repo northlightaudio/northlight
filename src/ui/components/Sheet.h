@@ -11,7 +11,7 @@
 namespace northlight::ui
 {
 
-// Optional parts of a sheet (02-design-system.md, "Dialog (sheet)").
+// Optional parts of a sheet (design-system.md, "Dialog (sheet)").
 struct SheetOptions
 {
     // A small line above the title in caption caps ("Step 1 of 2").
@@ -25,7 +25,7 @@ struct SheetOptions
     int width = 480;
 };
 
-// A dialog without a modal loop (02-design-system.md, "Dialog (sheet)"): an
+// A dialog without a modal loop (design-system.md, "Dialog (sheet)"): an
 // overlay over the owning component, a surface0 panel with a title, a body and
 // right-aligned buttons, the primary last. Esc cancels; Enter confirms the
 // primary unless it is destructive. The result arrives through the callback
@@ -72,7 +72,7 @@ private:
     int eyebrowHeight() const;
     void paintHero(juce::Graphics& g, juce::Rectangle<int> panel) const;
     // Entering, the sheet fades in with its panel rising 8 px into place; leaving,
-    // it fades out before it goes (02-design-system.md 2.6).
+    // it fades out before it goes (design-system.md 2.6).
     void enter();
     int rise_ = 0; // how far below its place the panel is drawn, while entering
 

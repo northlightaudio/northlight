@@ -4,7 +4,7 @@
 
 #include <string>
 
-// An instrument's outputs as tracks (07-plugins.md 7.4): the main pair is the
+// An instrument's outputs as tracks (screens/plugins.md 7.4): the main pair is the
 // instrument track itself; every further stereo pair can feed an output track
 // (an aux track) with its own inserts, strip, sends and fader.
 

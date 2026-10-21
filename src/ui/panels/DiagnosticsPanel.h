@@ -11,7 +11,7 @@
 namespace northlight::ui
 {
 
-// The Diagnostics panel (06-transport.md): engine health for the user who wants
+// The Diagnostics panel (screens/transport.md): engine health for the user who wants
 // to know. Callback time p50/p99/max as sparklines over the last 60 s, dropouts,
 // plugin latency, worker thread count, device state and the UI frame time, in
 // small and value mono with the status bar's colour thresholds; a "Copy report"

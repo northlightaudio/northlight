@@ -13,7 +13,7 @@
 namespace northlight::ui::strip
 {
 
-// A channel's strip in the Editor panel (12-channel-strip.md 12.1): a caption
+// A channel's strip in the Editor panel (screens/channel-strip.md 12.1): a caption
 // row ("CHANNEL STRIP", the position switch, all-off) over the module cards in
 // processing order. Cards are switched on in place; dragging a card's header
 // reorders the strip. While visible it polls every card's feedback at 60 Hz.

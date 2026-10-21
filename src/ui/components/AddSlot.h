@@ -10,7 +10,7 @@ namespace northlight::ui
 // An empty slot that adds something (an insert, a send): the shape of a
 // filled slot drawn as a dashed lineStrong outline, radius sm, with "+ Name"
 // in caption textTertiary near its top (centred when the slot is a single
-// row). Hover lifts it to surface1 and textSecondary (02-design-system.md 2.7).
+// row). Hover lifts it to surface1 and textSecondary (design-system.md 2.7).
 class AddSlot final : public juce::Button
 {
 public:

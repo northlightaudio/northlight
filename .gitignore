@@ -11,7 +11,7 @@
 *.suo
 CMakeUserPresets.json
 
-# Third-party SDKs are never committed (see docs/PLAN.md, section 2)
+# Third-party SDKs are never committed (see CONTRIBUTING.md, "Third-party code and SDKs")
 /sdk/
 /external/asio*/
 /external/vst3*/

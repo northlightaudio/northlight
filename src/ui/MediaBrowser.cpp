@@ -43,7 +43,7 @@ juce::String rateText(double rate)
            " kHz";
 }
 
-// A tray (docs/design/review-2026-10.md): surface1, radius md, a subtle rim.
+// A tray (docs/design/design-system.md): surface1, radius md, a subtle rim.
 void drawTray(juce::Graphics& g, const Theme& theme, juce::Rectangle<int> r)
 {
     g.setColour(theme.colours.surface1);

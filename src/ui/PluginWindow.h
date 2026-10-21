@@ -15,7 +15,7 @@ namespace northlight::ui
 {
 
 // A floating window for a hosted plugin's editor (VST3 or CLAP, or a generic one
-// when the plugin has none) with the 32 px bar of 07-plugins.md 7.2 above it:
+// when the plugin has none) with the 32 px bar of screens/plugins.md 7.2 above it:
 // power (bypass), "Plugin · Track", the format badge, the wet/dry slider with
 // its value, the presets menu and pin (always on top). The window never
 // outlives the plugin instance: it shares ownership of the processor, and the

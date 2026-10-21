@@ -11,7 +11,7 @@
 namespace northlight::ui
 {
 
-// Paint-time statistics for the heavy views (11-accessibility-performance.md
+// Paint-time statistics for the heavy views (accessibility-performance.md
 // 11.8): the arrange view and the mixer record how long each paint took; the
 // Diagnostics panel and --benchmark-ui read the percentiles over the last
 // minute. Message thread only.

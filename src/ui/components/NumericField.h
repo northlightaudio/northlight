@@ -9,7 +9,7 @@
 namespace northlight::ui
 {
 
-// A numeric field (02-design-system.md): shows a value in the mono `value` face
+// A numeric field (design-system.md): shows a value in the mono `value` face
 // with its unit, right aligned. Pointer down and vertical drag changes it (1 px =
 // 1 step; Shift = fine, 0.1 step; Ctrl = coarse, 10 steps); double-click types;
 // Enter commits, Esc reverts; the wheel steps while focused.

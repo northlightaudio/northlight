@@ -2,9 +2,9 @@
 
 Loop recording and punching leave several takes of the same part. Comping is
 choosing, phrase by phrase, which take plays: the "punch and comp fast and
-obvious" promise of the brief (01-brief.md). This note covers the model, the
+obvious" promise of the brief (principles.md). This note covers the model, the
 recording rules and the arrange view's take lanes, Logic / Cubase / Studio One
-style. It supersedes 04-arrange.md's v1 decision that takes only stack.
+style. It supersedes screens/arrange.md's v1 decision that takes only stack.
 
 ## Model
 
@@ -59,7 +59,7 @@ style. It supersedes 04-arrange.md's v1 decision that takes only stack.
 ```
 
 - **Main lane**: the comp's clips draw like any clip, with a take badge ("T2",
-  02-design-system.md Badge) at the right of each header. A click on one selects
+  design-system.md Badge) at the right of each header. A click on one selects
   all of the comp's clips, so a drag moves the whole group (takes and comp, onto
   another audio track too) and Delete removes it, takes and all. A comp boundary shows
   as a 1 px `textPrimary` line at 35% through the clip bodies; hovered or dragged

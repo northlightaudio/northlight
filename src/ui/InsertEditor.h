@@ -17,7 +17,7 @@
 namespace northlight::ui
 {
 
-// The generic parameter editor (07-plugins.md 7.3) for built-ins and GUI-less
+// The generic parameter editor (screens/plugins.md 7.3) for built-ins and GUI-less
 // hosted plugins: a scrollable list of 28 px rows, each the name in body (160
 // px), a knob in the centre and the value as an editable numeric field (80 px)
 // on the right; a footer line with the latency and the key input. Standalone

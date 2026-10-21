@@ -15,7 +15,7 @@
 namespace northlight::ui
 {
 
-// The tempo track (04-arrange.md, "Tempo track"): a lane under the ruler that
+// The tempo track (screens/arrange.md, "Tempo track"): a lane under the ruler that
 // draws the tempo over the song as a curve, with a handle at the song's start and
 // at each tempo change, and the time signature changes as tags along its top.
 //

@@ -27,7 +27,7 @@ plugin editors, audio setup and the plugin browser. The shell has five zones:
   (Mixer, Editor, Browser) as icon toggle buttons.
 - **B Arrange**: fills the remaining area; specified in section 4.
 - **C Dock**: a bottom panel with tabs. Mixer, Editor (clip/insert generic editor),
-  Piano Roll (Phase 8), Diagnostics. Height user-draggable, default 320 px, min
+  Piano Roll, Diagnostics. Height user-draggable, default 320 px, min
   `dockMin` 200, snaps closed. `surface0`.
 - **D Side panel**: right, default 300 px wide, min `panelMin` 240, snaps closed.
   Tabs: Browser (plugins, presets, project media), Inspector (selected track, clip or
@@ -50,7 +50,7 @@ Panels (each a component with a stable id, title, icon and minimum size):
 |---|---|---|
 | Mixer | Dock | Pop-out keeps the strip layout; 240 px min height |
 | Editor (insert chain / clip) | Dock | Follows the selection in whichever host it is in |
-| Piano Roll | Dock | Phase 8 |
+| Piano Roll | Dock | |
 | Diagnostics | Dock | |
 | Browser | Side panel | |
 | Inspector | Side panel | |
@@ -96,7 +96,7 @@ Persistence: a per-user layout file (`layout.json` beside the settings) records 
 panel's host, order, visibility, dock height, side panel width and floating window
 bounds. Projects do not carry layout. "Reset layout" in the View menu restores the
 defaults. Two named presets, "Mix" (mixer floating, dock closed, side panel closed)
-and "Edit" (defaults), are shipped; user-named presets are deferred past Phase 7.
+and "Edit" (defaults), are shipped; user-named presets are deferred.
 
 Out of scope for v1 (keep possible): splitting a host into two tab groups, docking
 to the top or left, tabbing a floating window with another, saving named layouts

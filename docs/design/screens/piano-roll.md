@@ -1,6 +1,5 @@
-# 9. Piano roll and MIDI (Phase 8)
+# 9. Piano roll and MIDI
 
-Specified now so Phase 8 builds to the design and Phase 7 can cover it.
 
 ## Purpose and anatomy
 

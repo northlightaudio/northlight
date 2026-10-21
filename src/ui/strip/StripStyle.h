@@ -9,7 +9,7 @@
 #include <cmath>
 #include <string>
 
-// Shared drawing for the channel strip editors (12-channel-strip.md): module
+// Shared drawing for the channel strip editors (screens/channel-strip.md): module
 // hues, the log-frequency and dB mappings and the graph well. Module hues are
 // data colours from the track palette, never the accent (which stays the
 // colour of selection and focus).

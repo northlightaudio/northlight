@@ -98,7 +98,7 @@ core::SamplePosition parseTime(const core::Project& project, const juce::String&
     return static_cast<core::SamplePosition>(seconds * project.sampleRate);
 }
 
-// A splitter between the arrange view and a host (02-design-system.md): a 5 px
+// A splitter between the arrange view and a host (design-system.md): a 5 px
 // hit area over a 1 px line, accent on hover, double-click resets the size.
 class Splitter final : public juce::Component
 {
@@ -143,7 +143,7 @@ private:
     int last_ = 0;
 };
 
-// The first-run sheet's content (08-setup.md 8.3): driver, device, buffer size
+// The first-run sheet's content (screens/setup.md 8.3): driver, device, buffer size
 // and a live input meter so the user sees signal before the project opens.
 class FirstRunContent final : public juce::Component, private juce::Timer
 {
@@ -212,7 +212,7 @@ public:
     static constexpr int rowHeight = 56;
     static int preferredHeight(const ui::Theme&) { return 4 * rowHeight; }
 
-    // A card of four rows (08-setup.md 8.3): a label with a one-line hint on the
+    // A card of four rows (screens/setup.md 8.3): a label with a one-line hint on the
     // left, the control on the right, hairlines between the rows.
     void paint(juce::Graphics& g) override
     {
@@ -352,7 +352,7 @@ public:
         startTimerHz(30);
     }
 
-    // The preferences with an immediate effect (08-setup.md 8.2); `atLaunch` also
+    // The preferences with an immediate effect (screens/setup.md 8.2); `atLaunch` also
     // applies the defaults a project starts with.
     void applyPreferences(bool atLaunch)
     {
@@ -556,7 +556,7 @@ public:
             sheet_->setBounds(getLocalBounds());
     }
 
-    // ----- the keyboard map (10-interaction.md 10.4) ---------------------------------------
+    // ----- the keyboard map (interaction.md 10.4) ---------------------------------------
     bool keyPressed(const juce::KeyPress& key) override
     {
         using M = juce::ModifierKeys;
@@ -1429,7 +1429,7 @@ private:
         lastTickMs_ = now;
         const bool recording = session_.isRecording();
         tracks_.setPlayhead(heardPosition(), session_.isPlaying(), recording);
-        // The takes being recorded, drawn growing (04-arrange.md "Recording clip").
+        // The takes being recorded, drawn growing (screens/arrange.md "Recording clip").
         session_.updateLiveRecording(tracks_.liveRecording());
         tracks_.liveRecordingChanged();
         tracks_.pushMeters();
@@ -2798,7 +2798,7 @@ MainWindow::MainWindow(const juce::String& name,
     : juce::DocumentWindow(name, ui::Theme::dark().colours.canvas, juce::DocumentWindow::allButtons),
       audio_(audio), session_(session), settings_(settings)
 {
-    // Custom chrome (03-shell.md): no Windows title bar; the header bar is the
+    // Custom chrome (screens/shell.md): no Windows title bar; the header bar is the
     // title bar and draws the window buttons. findControlAtPoint keeps snapping,
     // edge resizing and the Snap Layouts flyout native.
     setUsingNativeTitleBar(false);

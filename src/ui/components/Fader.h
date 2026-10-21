@@ -9,7 +9,7 @@
 namespace northlight::ui
 {
 
-// The mixer fader (02-design-system.md, "Fader"): a 4 px track with a 0 dB tick
+// The mixer fader (design-system.md, "Fader"): a 4 px track with a 0 dB tick
 // and a scale, a 36×14 cap with a track-colour line, Logic-style law (0 dB at 75%
 // of the travel, +6 dB at the top, -inf at the bottom). Drag moves it (Shift =
 // fine), double-click returns to 0 dB, arrows step (Shift fine), Home/End, and

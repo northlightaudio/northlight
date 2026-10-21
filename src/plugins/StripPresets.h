@@ -5,7 +5,7 @@
 #include <string>
 #include <vector>
 
-// Factory presets for the channel strip (12-channel-strip.md 12.10): starting
+// Factory presets for the channel strip (screens/channel-strip.md 12.10): starting
 // points for common sources. A preset is every module's on/off state and
 // parameters (modules it does not use are off at their defaults); applying one
 // keeps the channel's module order and ids. JUCE-free.

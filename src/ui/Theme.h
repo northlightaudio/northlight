@@ -27,7 +27,7 @@ struct Theme
         juce::Colour textPrimary, textSecondary, textTertiary, textDisabled, textOnAccent, textOnColour;
         // Accent
         juce::Colour accent, accentHover, accentPressed, accentSubtle, selectionFill, selectionOutline;
-        // The primary button: moonlight, with peat text (15-brand.md)
+        // The primary button: moonlight, with peat text (brand.md)
         juce::Colour primary, primaryHover, primaryPressed, textOnPrimary;
         // Semantic
         juce::Colour record, recordHover, recordSubtle, danger, warning, success, info;
@@ -111,7 +111,7 @@ struct Theme
         int headerBar = 48, statusBar = 24, ruler = 32;
         int trackHeaderWidth = 220, trackHeaderMinWidth = 160, trackHeaderMaxWidth = 360;
         int trackRowMin = 28, trackRow = 56, trackRowLarge = 112, trackRowMax = 240, clipHeader = 18;
-        int takeLane = 40; // a take lane under an expanded track (14-comping.md)
+        int takeLane = 40; // a take lane under an expanded track (screens/comping.md)
         int mixerStripWidth = 84, mixerStripWideWidth = 112;
         int faderTravel = 200, faderCapWidth = 36, faderCapHeight = 14, knob = 28;
         int meterWidth = 6, meterGap = 2, scrollbar = 10, splitter = 5;
@@ -163,7 +163,7 @@ struct Theme
         juce::Colour popupShadow{0x80000000};
     };
 
-    // The tactile layer (02-design-system.md 2.4): panels stay flat, controls get
+    // The tactile layer (design-system.md 2.4): panels stay flat, controls get
     // a consistent lighting model from these.
     struct Material
     {

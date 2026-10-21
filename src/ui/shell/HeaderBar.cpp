@@ -536,7 +536,7 @@ void HeaderBar::resized()
     // Every control is controlLarge tall; each cluster sits in a tray (or the
     // readout well) that adds xs all round, with xxs between the controls in
     // it (xs between the transport keys, sm between the readout's fields) and
-    // md between trays (06-transport.md).
+    // md between trays (screens/transport.md).
     const int key = theme_.sizes.controlLarge;
     const int pad = theme_.spacing.xs, inner = theme_.spacing.xxs, between = theme_.spacing.md;
     const int trayH = key + 2 * pad;
@@ -620,7 +620,7 @@ void HeaderBar::resized()
     // window is too narrow the readout moves off centre just enough for both
     // flanks to clear the side clusters; when even that does not fit, the bar
     // gives way in steps: the clock time leaves the readout (bars stay), then the
-    // project name shortens (06-transport.md). Nothing ever overlaps at the
+    // project name shortens (screens/transport.md). Nothing ever overlaps at the
     // window's minimum width.
     const int transportW = widthOf(transport, keyGap), modesW = widthOf(modes, inner);
     const int flank = 2 * theme_.spacing.sm + theme_.sizes.meterWidth;

@@ -7,7 +7,7 @@
 namespace northlight::ui::strip
 {
 
-// Pulsar's editor (07-plugins.md 7.4c): the drum synth's own face, a pulsing
+// Pulsar's editor (screens/plugins.md 7.4c): the drum synth's own face, a pulsing
 // star whose beams flash on every hit, eight pads that light as they play,
 // the selected pad's sound drawn large to drag, its knobs, and the master.
 std::unique_ptr<ModuleCard>

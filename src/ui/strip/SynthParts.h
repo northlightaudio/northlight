@@ -8,7 +8,7 @@
 #include <functional>
 #include <vector>
 
-// Pieces the bundled synths' editors share (07-plugins.md 7.4b-7.4d): the
+// Pieces the bundled synths' editors share (screens/plugins.md 7.4b-7.4d): the
 // drag handle, a display's screen, and a corner chip that opens a list.
 
 namespace northlight::ui::strip

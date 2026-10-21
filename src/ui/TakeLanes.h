@@ -16,7 +16,7 @@
 namespace northlight::ui
 {
 
-// Take lanes and comping in the arrange view (docs/design/14-comping.md). The
+// Take lanes and comping in the arrange view (docs/design/screens/comping.md). The
 // arrange view owns one, asks it how tall a track's lanes are, and hands it
 // paints and presses for a row; everything comp-specific lives here so the
 // view itself only routes to it.

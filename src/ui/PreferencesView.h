@@ -15,7 +15,7 @@
 namespace northlight::ui
 {
 
-// Preferences (08-setup.md 8.2): a 160 px page list on the left and the page's
+// Preferences (screens/setup.md 8.2): a 160 px page list on the left and the page's
 // rows (a 200 px label and a control, section headers in uppercase caption) on
 // the right. Pages: General, Audio (the Audio Setup content inline), Recording,
 // Editing, Plugins, Shortcuts (a searchable table of the keyboard map) and

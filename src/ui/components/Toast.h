@@ -11,7 +11,7 @@
 namespace northlight::ui
 {
 
-// Notifications (02-design-system.md, "Toast"): stacked at the bottom-left of
+// Notifications (design-system.md, "Toast"): stacked at the bottom-left of
 // the window above the status bar, surface1 with a 3 px stripe in the semantic
 // colour, a body message and an optional action link in accent. Info and
 // success dismiss after 6 s; warning and error stay until dismissed. Up to
@@ -48,7 +48,7 @@ private:
     void timerCallback() override;
     void dismiss(Toast* toast);
     // Places the toasts bottom up; animated, a new one slides up 8 px and fades
-    // in and the others glide to their places (02-design-system.md 2.6).
+    // in and the others glide to their places (design-system.md 2.6).
     void layout(bool animated = false);
     // A toast on its way out: it fades and drops 8 px, then goes.
     void retire(std::unique_ptr<Toast> toast);

@@ -6,7 +6,7 @@
 #include <string>
 #include <vector>
 
-// Nebula: the pad synth bundled with Northlight (07-plugins.md 7.4d), for slow,
+// Nebula: the pad synth bundled with Northlight (screens/plugins.md 7.4d), for slow,
 // airy, ethereal sounds. Each note is a cloud of partials (up to 24, each a
 // pair of detuned sines drifting on their own and panned across the field),
 // shaped by brightness, odd/even balance, stretch (towards bells) and a vowel

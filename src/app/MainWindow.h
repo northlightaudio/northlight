@@ -16,7 +16,7 @@ namespace northlight
 class ProjectSession;
 class UserSettings;
 
-// The main window (docs/design/03-shell.md): the header bar with the transport,
+// The main window (docs/design/screens/shell.md): the header bar with the transport,
 // the arrange view, the dock and side panel hosts with their panels (mixer,
 // editor, piano roll, diagnostics; browser, inspector), the status bar and the
 // toasts. Secondary windows exist only for plugin editors, Audio Setup and
@@ -46,7 +46,7 @@ public:
 
     // If unfinished recordings are in the media folder, offers to recover them (a toast).
     void offerRecovery();
-    // The first-run sheet (08-setup.md 8.3): device choice, then a plugin scan offer.
+    // The first-run sheet (screens/setup.md 8.3): device choice, then a plugin scan offer.
     void showFirstRun();
     // The export sheet (Ctrl+E).
     void showExport();

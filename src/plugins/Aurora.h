@@ -6,7 +6,7 @@
 #include <string>
 #include <vector>
 
-// Aurora: the polysynth bundled with Northlight (07-plugins.md 7.5). Two morphing
+// Aurora: the polysynth bundled with Northlight (screens/plugins.md 7.5). Two morphing
 // oscillators (sine, triangle, saw, square) with up to seven-voice unison,
 // a sub and noise; a drivable multimode filter with its own envelope and key
 // tracking; amp and filter envelopes; an LFO to pitch, cutoff and level;

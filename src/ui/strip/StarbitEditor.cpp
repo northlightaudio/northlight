@@ -1,4 +1,4 @@
-// Starbit's editor (07-plugins.md 7.4e). A chiptune synth's face is pixel art:
+// Starbit's editor (screens/plugins.md 7.4e). A chiptune synth's face is pixel art:
 // a blocky wordmark in a run of palette colours, square stars that blink in
 // whole steps, windows with notched corners, and displays drawn on a grid of
 // cells with scanlines over them. The wave display is also the wave editor:

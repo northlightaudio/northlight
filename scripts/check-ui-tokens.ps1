@@ -1,7 +1,7 @@
-# Fails when src/ui carries a literal colour. The design system (docs/design/02)
+# Fails when src/ui carries a literal colour. The design system (docs/design/design-system.md)
 # requires every colour to come from the token file through ui::Theme; this is
 # the CI guard. Theme.cpp (the loader) is the one place allowed to build colours.
-# Sizes are checked screen by screen as each is restyled (see docs/design/10).
+# Sizes are checked screen by screen as each is restyled (see docs/design/interaction.md).
 param([string]$Root = (Join-Path $PSScriptRoot ".."))
 
 $ui = Join-Path $Root "src\ui"

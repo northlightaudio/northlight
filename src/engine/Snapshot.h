@@ -22,7 +22,7 @@
 // current block (the buffer pool is sized here, at compile time, so rendering never
 // allocates).
 //
-// Signal flow (PLAN.md 3.2, Phase 4 scope): tracks render in parallel into their own
+// Signal flow (docs/architecture.md, "Rendering"): tracks render in parallel into their own
 // pre-fader buffers; the summing stage applies the fader and routes each channel to
 // its output bus (or the master) and its sends; buses follow in dependency order;
 // the master gain is last. Mute and solo-in-place are resolved at compile time into

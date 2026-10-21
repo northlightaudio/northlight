@@ -132,7 +132,7 @@ struct MidiClip
     bool operator==(const MidiClip&) const = default;
 };
 
-// Take lanes and comping (docs/design/14-comping.md). Each recorded pass over a
+// Take lanes and comping (docs/design/screens/comping.md). Each recorded pass over a
 // range is a Take in a TakeGroup on its track; the comp says which take plays
 // where. What plays is ordinary clips: the group materialises its comp as clips
 // in Track::clips (each segment a clip on its take's media, crossfaded at the

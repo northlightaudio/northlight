@@ -8,7 +8,7 @@
 namespace northlight::ui
 {
 
-// The floating tooltip (02-design-system.md, "Tooltip"): after the tooltip
+// The floating tooltip (design-system.md, "Tooltip"): after the tooltip
 // delay it fades in over 80 ms; moving to a neighbouring control keeps it up
 // and swaps the text (no second delay or fade). Drawn by the look-and-feel.
 class Tooltips final : public juce::TooltipWindow

@@ -1,4 +1,4 @@
-// The Sampler's editor (07-plugins.md 7.4f). The sample is the centrepiece:
+// The Sampler's editor (screens/plugins.md 7.4f). The sample is the centrepiece:
 // its waveform in a well, the part that plays (start to end) bright and the
 // rest dimmed, the loop shaded with its crossfade, and a line for every voice
 // sounding. Start and end are handles on the top edge, the loop's on the

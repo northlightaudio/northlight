@@ -22,7 +22,7 @@ Five neutral steps, each used for exactly one plane:
 `overlay` dims the window behind a sheet.
 
 The base is Machair dusk's peat green (`#0F1311` to `#2F3630`, see
-[15-brand.md](15-brand.md)): dark and close to neutral, with just enough green that the
+[brand.md](brand.md)): dark and close to neutral, with just enough green that the
 window reads as evening land rather than a black box, so track colours and meters sit
 on something calm. Steps are 6 to 9 points of lightness apart: enough to read as
 planes, not enough to read as boxes.
@@ -172,7 +172,7 @@ as 9-slice bitmaps, never computed per frame. The LED meter is a single
 - Icons never appear without a tooltip. An icon button is 28×28 (20 px icon in the
   32 px transport buttons); related icons sit 8 px apart, groups 24 px apart.
 
-Required set (Phase 7 draws these as vector paths in `assets/icons`): play, stop,
+Required set (drawn as vector paths, exported to `assets/icons`): play, stop,
 record, loop, punch, metronome, count-in, go-to-start, go-to-end, undo, redo, snap,
 ripple, zoom-in, zoom-out, zoom-fit, mixer, browser, inspector, settings, plugin,
 power (bypass), pin, close, chevron-down, chevron-right, check, search, filter,
@@ -381,10 +381,10 @@ reflows except panels, which can be hidden. Minimum window 1280×720 at 100%. Tr
 row heights are user-adjustable between `trackRowMin` and `trackRowLarge` for all
 tracks (the corner stepper), and per track between `trackRowMin` and `trackRowMax`
 (drag the row's bottom edge). Expanded take lanes add `takeLane` (40) per lane
-under a track's row (14-comping.md); the row's own height is unchanged.
+under a track's row (screens/comping.md); the row's own height is unchanged.
 
 ## 2.9 Light theme
 
-**Decision**: light theme is deferred past Phase 7. The token file supports it
+**Decision**: a light theme is deferred. The token file supports it
 (a second file with the same keys), and nothing in the spec assumes dark, but no
 light values are tuned yet.

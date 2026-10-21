@@ -623,7 +623,7 @@ void NorthlightLookAndFeel::drawPopupMenuBackgroundWithOptions(juce::Graphics& g
 void NorthlightLookAndFeel::preparePopupMenuWindow(juce::Component& window)
 {
     // Called with the window placed and not yet shown: start it transparent and
-    // 2 px short of its place, and ease both in (02-design-system.md 2.6).
+    // 2 px short of its place, and ease both in (design-system.md 2.6).
     const int ms = theme_.motion.ms(theme_.motion.menuMs);
     if (ms <= 0)
         return;

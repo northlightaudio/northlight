@@ -6,7 +6,7 @@
 #include <cstdint>
 #include <vector>
 
-// Rendering a vocal edit (docs/design/13-pitch-editing.md, "Resynthesis" and
+// Rendering a vocal edit (docs/design/screens/pitch-editing.md, "Resynthesis" and
 // "Editing model").
 //
 // The edit becomes a pitch shift per analysis frame. Within a note the curve as

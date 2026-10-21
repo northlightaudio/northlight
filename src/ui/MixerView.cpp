@@ -347,7 +347,7 @@ private:
 
 // ----- strip --------------------------------------------------------------------------------
 
-// The channel strip's row in a mixer strip (12-channel-strip.md 12.9): a cell
+// The channel strip's row in a mixer strip (screens/channel-strip.md 12.9): a cell
 // per module with its initial, lit in the module's hue when on; a click
 // switches the module in place, right-click offers the same plus "Edit channel
 // strip". Gain-reducing modules show their reduction as a bar along the bottom.

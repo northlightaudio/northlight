@@ -7,7 +7,7 @@
 namespace northlight::ui::brand
 {
 
-// The brand files shipped beside the app (assets/, docs/design/15-brand.md),
+// The brand files shipped beside the app (assets/, docs/design/brand.md),
 // shared by the splash screen and the welcome sheets.
 
 // The splash photograph (assets/splash), loaded once; invalid when missing.

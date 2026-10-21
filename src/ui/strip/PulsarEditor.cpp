@@ -1,4 +1,4 @@
-// Pulsar's editor (07-plugins.md 7.4c). Like Aurora, Pulsar reads as its own
+// Pulsar's editor (screens/plugins.md 7.4c). Like Aurora, Pulsar reads as its own
 // product: deep space with a pulsar in the corner whose beams sweep and flash
 // with every hit and send rings out across the sky; the eight pads as glass
 // tiles, each with a picture of its sound, lighting as it plays; the selected

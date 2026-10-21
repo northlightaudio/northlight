@@ -14,7 +14,7 @@
 #include <thread>
 #include <vector>
 
-// Recording path (docs/PLAN.md 3.4):
+// Recording path (docs/architecture.md, "Recording"):
 //
 //   audio thread  --RecordRing per input-->  RecordWriter thread  --> temp WAV
 //
@@ -37,7 +37,7 @@
 // Live view: as the writer puts samples in a file it also keeps min/max peaks of
 // them (LiveTake), and the controller drains the MIDI events and take marks as
 // they come, so the arrange view can draw each take growing while it records
-// (04-arrange.md "Recording clip") instead of waiting for the files to close.
+// (screens/arrange.md "Recording clip") instead of waiting for the files to close.
 
 namespace northlight::engine
 {

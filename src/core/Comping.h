@@ -8,7 +8,7 @@
 #include <string>
 #include <vector>
 
-// Take lanes and comping (docs/design/14-comping.md): the pure comp edits on a
+// Take lanes and comping (docs/design/screens/comping.md): the pure comp edits on a
 // TakeGroup, the clips a comp plays as, and the commands that change a group
 // with undo. A group's comp is materialised as ordinary clips in Track::clips
 // (TakeGroup::clips names them); every command here that changes what plays

@@ -52,7 +52,7 @@ Native window with a 32 px Northlight bar above the plugin's own editor:
 
 ## 7.2a Built-in editors
 
-Every built-in has an editor in the channel strip's language (12-channel-strip.md
+Every built-in has an editor in the channel strip's language (screens/channel-strip.md
 12.1-12.2): a display in a well that reads the processor live and drags, then
 knobs in the module's hue. The same editor is the card's body in the Editor panel
 and the body of its window (under the title, bypass and mix). The hues follow the

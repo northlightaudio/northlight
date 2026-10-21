@@ -8,7 +8,7 @@
 #include <string>
 #include <vector>
 
-// The Sampler: a polyphonic player of one sample bundled with Northlight (07-plugins.md
+// The Sampler: a polyphonic player of one sample bundled with Northlight (screens/plugins.md
 // 7.4f). A root note and a key range, tune, velocity to level, an ADSR on the
 // amplitude, start and end points, a forward loop with a crossfade, one-shot
 // playback, a resonant low-pass with the envelope on its cutoff, a polyphony

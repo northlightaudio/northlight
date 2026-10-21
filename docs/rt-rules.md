@@ -78,8 +78,8 @@ Anything that does not fit one of these needs a design discussion first.
 - Debug and RelWithDebInfo builds define `NORTHLIGHT_RT_CHECKS`. Any `operator new` or
   `operator delete` on an RT thread aborts with a message naming the thread state.
 - The unit tests in `tests/unit/rt/` exercise the guard itself.
-- Phase 2 adds an offline engine harness that runs scripted sessions under the checker
-  in CI, so a regression that allocates on the audio thread fails the build.
+- The engine's offline tests run whole sessions under the checker, so a regression
+  that allocates on the audio thread fails the tests.
 - `malloc`/`free` and third-party allocations are not hooked. Plugins that allocate in
   `process` are their vendor's problem; our diagnostics panel reports callback time
   outliers so the user can find them.

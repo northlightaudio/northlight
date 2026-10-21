@@ -13,7 +13,7 @@ namespace
 constexpr int labelWidth = 200;
 constexpr int rowHeight = 28;
 
-// The keyboard map (10-interaction.md 10.4 as implemented), for the table.
+// The keyboard map (interaction.md 10.4 as implemented), for the table.
 struct Shortcut
 {
     const char* action;

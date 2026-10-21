@@ -3,7 +3,7 @@
 #include <algorithm>
 #include <cmath>
 
-// How meters move (02-design-system.md, "Meter"). The engine reports a peak
+// How meters move (design-system.md, "Meter"). The engine reports a peak
 // every few milliseconds; shown raw, a bar and its number jitter with every
 // transient. A shown level instead rises towards a louder reading over a short
 // time constant (motion.meterRiseMs: a single spike no longer jumps the bar)

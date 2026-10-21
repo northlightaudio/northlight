@@ -14,7 +14,7 @@
 namespace northlight::ui
 {
 
-// The plugin browser (07-plugins.md 7.4): a search field with format and
+// The plugin browser (screens/plugins.md 7.4): a search field with format and
 // category filters, then sections (Favourites, Recent, Effects, Instruments,
 // Blocked) of 28 px rows: name, manufacturer, format badge and a star. Enter or
 // a double-click inserts the highlighted plugin on the selected track; a row

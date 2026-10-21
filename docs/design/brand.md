@@ -2,7 +2,7 @@
 
 Northlight looks like a Hebridean island in early evening: an overcast sky, brown-green
 grass going dark, a pale moon. This page is the brand guide: the idea, the mark, colour,
-type, voice, and where each piece lives. The design system (02-design-system.md) turns it
+type, voice, and where each piece lives. The design system (design-system.md) turns it
 into the app's components; `tokens.json` is the single source of every value here.
 
 ## The idea
@@ -48,7 +48,9 @@ Using the mark:
 - **Clear space** around the mark: at least the moon's diameter on every side.
 - **Minimum size**: 16 px for the mark alone; 96 px wide for the lockup.
 - **The wordmark sits on the horizon**: in the lockup the baseline of "Northlight" is
-  the horizon line, and the mark is never placed after the word.
+  the horizon line, its capitals rise to the top of the moon (the wordmark is set at
+  32 units on the mark's 64-unit grid, 10 units after it), and the mark is never
+  placed after the word.
 - **On a photograph** (the splash), the whole mark is drawn in moonlight: the Overcast
   horizon would vanish into an overcast sky.
 - **Do not** recolour the moon in the accent, outline the moon, make it a full circle,
@@ -119,7 +121,7 @@ waveforms. Screenshots of the app are the other image, shown at 100% or 200%.
 ## Where the brand lives
 
 The application repository is the source: `docs/design/tokens.json` (values),
-`docs/design/15-brand.md` (this guide), `assets/brand/` (the files) and
+`docs/design/brand.md` (this guide), `assets/brand/` (the files) and
 `scripts/brand-assets.py` (how they are made). The website (`northlightaudio.org`) takes
 its colours, fonts and logo from here with its `npm run sync-brand` script and keeps
 only its page layouts and imagery of its own.

@@ -14,7 +14,7 @@
 namespace northlight::ui
 {
 
-// The panel model of docs/design/03-shell.md: a fixed shell with detachable
+// The panel model of docs/design/screens/shell.md: a fixed shell with detachable
 // panels. Every secondary view is a panel one of three hosts owns at a time (the
 // dock at the bottom, the side panel at the right, or a floating window); the
 // user moves a panel between hosts by button, by dragging a tab out or a window

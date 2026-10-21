@@ -17,7 +17,7 @@
 namespace northlight::ui
 {
 
-// Automation in the arrange view (04-arrange.md "Automation"): for each track
+// Automation in the arrange view (screens/arrange.md "Automation"): for each track
 // whose header's A toggle is on, one lane is drawn over the track's row, the
 // clips dimmed under it. Two chips at the row's top left pick the parameter
 // (Volume, Pan, or a parameter of an insert or strip module) and the channel's

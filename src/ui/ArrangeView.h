@@ -50,7 +50,7 @@ namespace northlight::ui
 // the previous and next marker, a click on a flag selects it (and locates), a
 // drag moves it (snapped), a double-click renames it, Delete removes it.
 //
-// Take lanes (TakeLanes, 14-comping.md): a track's take groups expand into lanes
+// Take lanes (TakeLanes, screens/comping.md): a track's take groups expand into lanes
 // under its row; Alt+Up / Alt+Down play the next newer / older take in the comp
 // segment at the playhead on the selected track, Alt+T shows or hides its lanes.
 class ArrangeView final : public juce::Component,
@@ -76,7 +76,7 @@ public:
     // Live state per track (same order as the project's tracks): whether the input is
     // being heard, and whether a recording is in progress.
     void setMonitoringStates(const std::vector<bool>& monitoring, bool recording);
-    // The recording in progress (04-arrange.md "Recording clip"): the window's
+    // The recording in progress (screens/arrange.md "Recording clip"): the window's
     // timer has the session bring this up to date each frame, then calls
     // liveRecordingChanged(). Each audio take draws as a growing clip in `record`
     // with its waveform so far, placed where its clip will land; each MIDI take
@@ -114,7 +114,7 @@ public:
     bool snapEnabled() const noexcept { return snap_; }
     bool rippleEnabled() const noexcept { return ripple_; }
     // The snap grid: 0 = adaptive (bar/beat/sub-beat by zoom), 1 = bar, 4 = beat,
-    // 8 = 1/8, 16 = 1/16, 32 = 1/32 (10-interaction.md 10.3).
+    // 8 = 1/8, 16 = 1/16, 32 = 1/32 (interaction.md 10.3).
     void setSnapGrid(int division);
     int snapGrid() const noexcept { return snapGrid_; }
     juce::String snapGridName() const;
@@ -135,7 +135,7 @@ public:
     std::function<void()> onSelectionChanged;
     void setSelectedTrack(core::Id trackId);
     core::Id selectedTrack() const noexcept { return selectedTrack_; }
-    // The empty state's actions (03-shell.md).
+    // The empty state's actions (screens/shell.md).
     std::function<void()> onAddAudioTrack, onImportRequested, onAddBus;
     // The plugins its "New instrument" menus offer (the shell's shared sources).
     void setPluginSources(const PluginSources* sources) noexcept { pluginSources_ = sources; }
@@ -155,7 +155,7 @@ public:
     // it once per UI frame.
     std::function<rt::MeterBlock::Reading(int trackIndex)> trackMeter;
     void pushMeters();
-    // The time selection (10-interaction.md): a range across the selected tracks,
+    // The time selection (interaction.md): a range across the selected tracks,
     // empty when end <= start.
     core::SamplePosition timeSelectionStart() const noexcept { return timeSelStart_; }
     core::SamplePosition timeSelectionEnd() const noexcept { return timeSelEnd_; }
@@ -169,7 +169,7 @@ public:
     // The row height: size.trackRowMin, trackRow or trackRowLarge.
     void setRowHeight(int height);
     int currentRowHeight() const noexcept { return rowHeight; }
-    // The tools (10-interaction.md): select (1), range (2: a drag in a lane
+    // The tools (interaction.md): select (1), range (2: a drag in a lane
     // selects a time range across the selected tracks) or pencil (3: a drag in
     // a MIDI track's empty space draws a new clip, a click a bar-long one).
     enum class Tool
@@ -534,7 +534,7 @@ private:
     core::Marker dragMarker_;                // the marker being dragged, as it was
     core::SamplePosition markerPreview_ = 0; // its position during the drag
     const PluginSources* pluginSources_ = nullptr;
-    // Take lanes and comping (14-comping.md): lanes under a track's row, swipes, boundaries.
+    // Take lanes and comping (screens/comping.md): lanes under a track's row, swipes, boundaries.
     TakeLanes takes_{theme_, peaks_, *this};
     TakeLanes::Row takeRow(int row) const; // a track row, for TakeLanes
 };

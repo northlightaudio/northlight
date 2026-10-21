@@ -20,7 +20,7 @@
 namespace northlight::ui
 {
 
-// The audio editor (docs/design/13-pitch-editing.md, "UI in the editor"): one audio
+// The audio editor (docs/design/screens/pitch-editing.md, "UI in the editor"): one audio
 // clip, opened by double-clicking it.
 //
 // Wave mode shows the clip's waveform with its gain line (drag it) and fade handles

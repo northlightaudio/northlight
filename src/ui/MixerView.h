@@ -23,7 +23,7 @@
 namespace northlight::ui
 {
 
-// The mixer (05-mixer.md): one strip per track and bus (name cap, input, insert
+// The mixer (screens/mixer.md): one strip per track and bus (name cap, input, insert
 // slots, send rows, pan, M/S/R/phase, fader with a meter, value field, output)
 // and the master strip (fader, scaled meter, loudness readout) pinned at the
 // right. Every change is issued as a core::Command through onCommand; the view

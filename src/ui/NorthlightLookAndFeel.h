@@ -11,7 +11,7 @@ namespace northlight::ui
 {
 
 // The look and feel every JUCE stock control gets, drawn from the design tokens
-// to the component specs in docs/design/02-design-system.md: buttons (secondary,
+// to the component specs in docs/design/design-system.md: buttons (secondary,
 // primary, ghost, danger), toggles (accent and the semantic M/S/R/monitor
 // colours), combos, fields, checkboxes, horizontal sliders, scrollbars, tabs,
 // menus, tooltips and progress bars. A control picks a variant through its
@@ -50,7 +50,7 @@ public:
                        juce::Rectangle<float> bounds,
                        float radius) const;
 
-    // ----- the tactile layer (02-design-system.md 2.4), shared with components ---
+    // ----- the tactile layer (design-system.md 2.4), shared with components ---
     // A control face: the material gradient (or a flat fill when no material is
     // loaded), the top highlight and the drop shadow; pressed reverses the
     // gradient and insets the shadow.

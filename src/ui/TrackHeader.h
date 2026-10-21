@@ -17,7 +17,7 @@
 namespace northlight::ui
 {
 
-// A track's header at the left of its lane (04-arrange.md, "Track header"): the
+// A track's header at the left of its lane (screens/arrange.md, "Track header"): the
 // colour stripe, the number and name, M/S/R and monitor toggles on the first
 // row; the input selector, a horizontal meter and a compact volume slider on
 // the second (hidden below 44 px rows); pan, output and a sends summary on a
