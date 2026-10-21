@@ -58,6 +58,8 @@ public:
     void openInsertEditor(core::Id channelId, core::Id insertId);
     // The plugin browser: the Browser panel in its own window.
     void showPluginBrowser();
+    // The Browser panel on its Files tab (at a folder, when one is given).
+    void showFilesBrowser(const juce::File& folder = {});
     // The piano roll panel on a MIDI clip.
     void openPianoRoll(core::Id trackId, core::Id clipId);
     // The audio editor on an audio clip, in pitch mode when asked.

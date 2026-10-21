@@ -19,6 +19,7 @@
 #include "ui/ExportView.h"
 #include "ui/FrameStats.h"
 #include "ui/Icons.h"
+#include "ui/MediaBrowser.h"
 #include "ui/MixerView.h"
 #include "ui/PianoRoll.h"
 #include "ui/PluginBrowser.h"
@@ -535,7 +536,7 @@ public:
         if (is('F', M::ctrlModifier))
         {
             panels_.show(ui::PanelId::browser);
-            browser_.focusSearch();
+            browserPanel_.focusSearch();
             return true;
         }
         if (panels_.handleKey(key))
@@ -856,6 +857,8 @@ private:
         { settings_.setValue("arrange.tempoTrack", shown ? "1" : "0"); };
         tracks_.stretchProgress = [this](const core::AudioClip& clip)
         { return session_.stretch().progress(clip, session_.project().sampleRate); };
+        tracks_.onOpenInSampler = [this](core::Id trackId, core::Id clipId)
+        { openInSampler(trackId, clipId); };
         tracks_.playheadForEdits = [this] { return session_.position(); };
         tracks_.setAcceptedExtensions(session_.mediaLoader().supportedExtensions());
         tracks_.onTrackSelected = [this](core::Id id) { select(id); };
@@ -969,6 +972,7 @@ private:
         { settings_.setValue(key, value); };
         browser_.onInsert = [this](const std::string& type) { insertPlugin(selection_.channel(), type); };
         browser_.setStatus(session_.pluginScanStatus());
+        wireFiles();
         tracks_.setDisplayName([this](const std::string& type) { return mixer_.insertDisplayName(type); });
         tracks_.midiOutputName = [this] { return audio_.midi().outputName(); };
         tracks_.setHostedParameters(
@@ -1035,7 +1039,7 @@ private:
                                         true,
                                         true,
                                         key(juce::KeyPress::F4Key)},
-                              browser_);
+                              browserPanel_);
         panels_.registerPanel(PanelInfo{PanelId::inspector,
                                         "Inspector",
                                         Icon::inspector,
@@ -1657,6 +1661,63 @@ private:
         session_.execute(std::move(command));
         const auto id = added->trackId(); // allocated on apply
         select(id);
+    }
+
+    // The browser's Files tab: places from the settings and the project, previews
+    // through the session, a file onto a new track at the playhead.
+    void wireFiles()
+    {
+        files_.loadSetting = [this](const std::string& key) { return settings_.value(key); };
+        files_.saveSetting = [this](const std::string& key, const std::string& value)
+        { settings_.setValue(key, value); };
+        files_.projectFolder = [this]
+        {
+            const auto& file = session_.projectFile();
+            return file.existsAsFile() ? file.getParentDirectory() : juce::File();
+        };
+        files_.onPreview = [this](const juce::File& file) { return session_.previewFile(file); };
+        files_.onStopPreview = [this] { session_.stopPreview(); };
+        files_.isPreviewing = [this] { return session_.isPreviewing(); };
+        files_.onPump = [this] { session_.pumpPreview(); };
+        files_.onPreviewGain = [this](float gain) { session_.setPreviewGain(gain); };
+        files_.onImport = [this](const juce::File& file) { importFiles({file}, session_.position()); };
+        browserPanel_.onTabChanged = [this](bool files)
+        { settings_.setValue("browser.tab", files ? "files" : "plugins"); };
+        if (settings_.value("browser.tab") == "files")
+            browserPanel_.showFiles();
+    }
+
+    // An audio clip played by a new Sampler: an instrument channel and a MIDI
+    // track, the sampler's start and end at the part of the file the clip uses;
+    // its editor opens.
+    void openInSampler(core::Id trackId, core::Id clipId)
+    {
+        const auto* track = session_.project().findTrack(trackId);
+        const auto* clip = track != nullptr ? track->findClip(clipId) : nullptr;
+        if (clip == nullptr)
+            return;
+        const juce::File file(juce::String::fromUTF8(clip->mediaPath.c_str()));
+        std::string error;
+        const auto info = session_.mediaLoader().probe(clip->mediaPath, error);
+        if (!info.has_value() || info->lengthSamples <= 0)
+        {
+            toast(ui::ToastStack::Kind::error,
+                  "Cannot open in Sampler: " + juce::String::fromUTF8(error.c_str()));
+            return;
+        }
+        const double total = static_cast<double>(info->lengthSamples);
+        const double used = static_cast<double>(clip->length) * info->sampleRate /
+                            std::max(1.0, session_.project().sampleRate);
+        const double from = static_cast<double>(clip->sourceOffset) / total;
+        const double to = (static_cast<double>(clip->sourceOffset) + used) / total;
+        const auto midi = session_.addSamplerTrack(file, from, std::min(1.0, to));
+        const auto* added = session_.project().findTrack(midi);
+        if (added == nullptr)
+            return;
+        browser_.rememberRecent(plugins::sampler::type);
+        select(midi);
+        if (const auto* channel = session_.project().findTrack(added->midiTarget))
+            owner_.openInsertEditor(channel->id, channel->instrument.id);
     }
 
     // A MIDI track with a new instrument channel (the default instrument when
@@ -2423,6 +2484,8 @@ private:
     core::SamplePosition auditionEnd_ = -1; // an auditioned note stops the transport here
     ui::DiagnosticsPanel diagnostics_;
     ui::PluginBrowser browser_;
+    ui::MediaBrowser files_;
+    ui::BrowserPanel browserPanel_{browser_, files_};
     ui::InspectorPanel inspector_;
     ui::PanelManager panels_; // after the panels: its floating windows go first
     ui::Sheet* sheet_ = nullptr;
@@ -2661,10 +2724,22 @@ void MainWindow::openInsertEditor(core::Id channelId, core::Id insertId)
         content->mixer_.openInsertEditor(channelId, insertId);
 }
 
+void MainWindow::showFilesBrowser(const juce::File& folder)
+{
+    if (auto* content = dynamic_cast<Content*>(getContentComponent()))
+    {
+        content->browserPanel_.showFiles();
+        if (folder.isDirectory())
+            content->files_.showFolder(folder);
+        content->panels_.show(ui::PanelId::browser);
+    }
+}
+
 void MainWindow::showPluginBrowser()
 {
     if (auto* content = dynamic_cast<Content*>(getContentComponent()))
     {
+        content->browserPanel_.showPlugins();
         content->panels_.moveTo(ui::PanelId::browser, ui::HostKind::floating);
         content->panels_.show(ui::PanelId::browser);
     }

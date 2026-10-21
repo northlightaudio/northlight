@@ -793,6 +793,21 @@ private:
     bool postFader_, previousPostFader_ = false;
 };
 
+// The opaque state of a built-in that keeps state beyond its parameters (the
+// Sampler's file): the engine passes the new state to the live instance.
+class SetInsertState final : public Command
+{
+public:
+    SetInsertState(Id channelId, Id insertId, std::string state, std::string name = "Set insert state");
+    std::string name() const override { return name_; }
+    void apply(Project&) override;
+    void revert(Project&) override;
+
+private:
+    Id channelId_, insertId_;
+    std::string value_, previous_, name_;
+};
+
 class SetInsertBypass final : public Command
 {
 public:

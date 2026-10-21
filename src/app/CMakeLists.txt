@@ -15,6 +15,8 @@ add_library(aural_app_session STATIC
     UserSettings.cpp
     ProjectSession.h
     ProjectSession.cpp
+    SampleFiles.h
+    SampleFiles.cpp
     DemoSong.h
     DemoSong.cpp
     Bounce.h

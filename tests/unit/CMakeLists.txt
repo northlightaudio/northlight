@@ -16,6 +16,7 @@ add_executable(aural_unit_tests
     engine/WorkerPoolTests.cpp
     engine/RecordingTests.cpp
     engine/ClickTests.cpp
+    engine/PreviewTests.cpp
     engine/StressTests.cpp
     engine/ResamplingTests.cpp
     engine/TakeTests.cpp
@@ -26,6 +27,7 @@ add_executable(aural_unit_tests
     plugins/SynthFingerprintTests.cpp
     plugins/StarbitSpectrumProbe.cpp
     plugins/BeatSyncTests.cpp
+    plugins/SamplerTests.cpp
     engine/LoudnessTests.cpp
     engine/ExportTests.cpp
     engine/WriterTests.cpp

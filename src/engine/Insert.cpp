@@ -68,8 +68,20 @@ std::shared_ptr<InsertProcessor> InsertCache::get(const core::Insert& insert)
         const auto& state = !carriedState.empty() ? carriedState : insert.state;
         if (!state.empty())
             created->setState(state);
+        appliedState_[insert.id] = state;
         instance = std::move(created);
         instances_[insert.id] = instance;
+    }
+    else if (!instance->ownsParameters())
+    {
+        // A built-in's state is the model's (the Sampler's file): a command that
+        // changed it reaches the live instance here.
+        auto& applied = appliedState_[insert.id];
+        if (applied != insert.state)
+        {
+            instance->setState(insert.state);
+            applied = insert.state;
+        }
     }
     // A processor that owns its parameters keeps what its state says; the model's
     // list only reaches it through commands (applyLiveValues) and on first creation
@@ -96,6 +108,7 @@ void InsertCache::clear()
     AURAL_ASSERT_NOT_REALTIME("InsertCache::clear");
     instances_.clear();
     latencyAtCompile_.clear();
+    appliedState_.clear();
 }
 
 bool InsertCache::restartRequested() const noexcept
@@ -119,6 +132,7 @@ void InsertCache::prune()
 {
     std::erase_if(instances_, [](const auto& entry) { return entry.second.use_count() == 1; });
     std::erase_if(latencyAtCompile_, [this](const auto& entry) { return !instances_.contains(entry.first); });
+    std::erase_if(appliedState_, [this](const auto& entry) { return !instances_.contains(entry.first); });
 }
 
 } // namespace aural::engine

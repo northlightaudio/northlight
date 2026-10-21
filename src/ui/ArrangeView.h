@@ -98,6 +98,8 @@ public:
     std::function<void(core::Id trackId, core::Id clipId)> onConformClip;
     // How far a stretched clip's render has got (0..1), for its header tag.
     std::function<double(const core::AudioClip&)> stretchProgress;
+    // "Open in Sampler" on an audio clip's menu: a new Sampler instrument plays it.
+    std::function<void(core::Id trackId, core::Id clipId)> onOpenInSampler;
     // The playhead position the split key uses (the engine's, not the heard one).
     std::function<core::SamplePosition()> playheadForEdits;
     // Editing keys (the window forwards every key here first). True when handled.
@@ -197,7 +199,9 @@ public:
     void fileDragMove(const juce::StringArray& files, int x, int y) override;
     void fileDragExit(const juce::StringArray& files) override;
     void filesDropped(const juce::StringArray& files, int x, int y) override;
-    // A plugin dragged from the browser ("plugin:<type>") lands on a track.
+    // A plugin dragged from the browser ("plugin:<type>") lands on a track; an
+    // audio file from its Files tab ("file:<path>") goes where a file from
+    // Explorer would.
     bool isInterestedInDragSource(const SourceDetails& details) override;
     void itemDragEnter(const SourceDetails& details) override;
     void itemDragMove(const SourceDetails& details) override;
@@ -309,9 +313,10 @@ private:
     juce::Rectangle<int> loopBand() const noexcept; // in the bars row, empty without a region
     bool mediaMissing(const std::string& path);
     void refreshMissingMedia();
-    void trackMenu(core::Id trackId, juce::Point<int> screen);
     void clipMenu(core::Id trackId, core::Id clipId, juce::Point<int> screen);
     void finishStretch();
+    // The track's menu; on an audio clip (clipId) it leads with the clip's items.
+    void trackMenu(core::Id trackId, juce::Point<int> screen, core::Id clipId = core::invalidId);
     void rulerMenu(juce::Point<int> screen);
     void addTrackMenu();
     // FX tracks (buses flagged fx) show as rows under the tracks.

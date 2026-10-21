@@ -317,6 +317,7 @@ void AudioEngine::collectGarbage()
 {
     AURAL_ASSERT_NOT_REALTIME("AudioEngine::collectGarbage");
     publisher_.collect(isRunning());
+    preview_.pump(isRunning());
     media_.prune();
     inserts_.prune();
     delays_.prune();
@@ -329,6 +330,7 @@ void AudioEngine::prepare(double sampleRate, int maxBlockSize)
     renderer_.prepare(maxBlockSize);
     inserts_.prepare(sampleRate, std::min(maxBlockSize, Snapshot::maxBlockSamples));
     loudness_.prepare(sampleRate);
+    preview_.prepare(sampleRate, maxBlockSize);
     deviceSampleRate_.store(sampleRate, std::memory_order_relaxed);
     running_.store(true, std::memory_order_release);
 }
@@ -563,6 +565,9 @@ void AudioEngine::process(
             recordSession_->markTake(transport_.loopStart);
         done += count;
     }
+
+    // An audition over the mix (the browser), after everything else.
+    preview_.process(outputs, numOutputs, numSamples);
 
     sampleClock_ += numSamples;
     position_.store(transport_.position, std::memory_order_relaxed);

@@ -5,6 +5,7 @@
 #include "engine/Loudness.h"
 #include "engine/Meters.h"
 #include "engine/Midi.h"
+#include "engine/Preview.h"
 #include "engine/Recording.h"
 #include "engine/Renderer.h"
 #include "engine/Snapshot.h"
@@ -83,6 +84,9 @@ public:
 
     // Frees retired snapshots and unreferenced media. Call periodically (a UI timer).
     void collectGarbage();
+    // Auditioning files over the mix (the browser): controller-side calls.
+    PreviewPlayer& preview() noexcept { return preview_; }
+    const PreviewPlayer& preview() const noexcept { return preview_; }
     // Forgets cached insert instances and delay lines (a different project may
     // reuse the same ids). Live snapshots keep their own references.
     void resetCaches();
@@ -236,6 +240,7 @@ private:
     bool flushDelays_ = false; // real-time thread only: a locate happened
     std::atomic<int> outputLatency_{0};
     rt::SnapshotPublisher<Snapshot> publisher_;
+    PreviewPlayer preview_;
     rt::SpscQueue<TransportCommand> commands_{commandQueueCapacity};
     WorkerPool pool_;
     Renderer renderer_;

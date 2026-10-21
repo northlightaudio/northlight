@@ -36,6 +36,8 @@ public:
     // until clearFailures() (after a rescan), so a recompile does not reload DLLs.
     const std::map<std::string, std::string>& failures() const noexcept { return failures_; }
     void clearFailures() { failures_.clear(); }
+    // How the built-in Sampler decodes its files (the app's media loader).
+    void setSampleLoader(plugins::sampler::Loader loader) { builtIns_.setSampleLoader(std::move(loader)); }
 
 private:
     const PluginRegistry& registry_;

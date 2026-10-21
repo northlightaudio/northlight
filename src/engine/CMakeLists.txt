@@ -45,6 +45,8 @@ add_library(aural_engine STATIC
     Recording.cpp
     Click.h
     Click.cpp
+    Preview.h
+    Preview.cpp
     Resampling.h
     Insert.h
     Feedback.h

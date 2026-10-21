@@ -5,6 +5,7 @@
 #include "ui/Db.h"
 #include "ui/FrameStats.h"
 #include "ui/Icons.h"
+#include "ui/MediaFiles.h"
 #include "ui/Motion.h"
 #include "ui/PluginMenu.h"
 
@@ -1521,7 +1522,8 @@ void ArrangeView::drawRuler(juce::Graphics& g, juce::Rectangle<int> area)
 
 bool ArrangeView::isInterestedInDragSource(const SourceDetails& details)
 {
-    return project_ != nullptr && details.description.toString().startsWith("plugin:");
+    return project_ != nullptr && (details.description.toString().startsWith("plugin:") ||
+                                   isAudioFile(fileFromDragDescription(details.description)));
 }
 
 void ArrangeView::itemDragEnter(const SourceDetails& details)
@@ -1531,6 +1533,15 @@ void ArrangeView::itemDragEnter(const SourceDetails& details)
 
 void ArrangeView::itemDragMove(const SourceDetails& details)
 {
+    if (const auto file = fileFromDragDescription(details.description); file != juce::File())
+    {
+        // A file from the browser shows where it will land, as one from Explorer does.
+        dragOver_ = true;
+        dropFiles_ = juce::StringArray(file.getFullPathName());
+        dropPoint_ = details.localPosition;
+        repaint();
+        return;
+    }
     const int row = rowAtY(details.localPosition.y);
     if (row != pluginDropRow_)
     {
@@ -1542,11 +1553,20 @@ void ArrangeView::itemDragMove(const SourceDetails& details)
 void ArrangeView::itemDragExit(const SourceDetails&)
 {
     pluginDropRow_ = -1;
+    dragOver_ = false;
     repaint();
 }
 
 void ArrangeView::itemDropped(const SourceDetails& details)
 {
+    if (const auto file = fileFromDragDescription(details.description); file != juce::File())
+    {
+        dragOver_ = false;
+        repaint();
+        if (onImportFiles && file.existsAsFile())
+            onImportFiles({file}, sampleForX(std::max(headerWidth, details.localPosition.x)));
+        return;
+    }
     const int row = rowAtY(details.localPosition.y);
     pluginDropRow_ = -1;
     repaint();
@@ -2825,6 +2845,7 @@ void ArrangeView::clipMenu(core::Id trackId, core::Id clipId, juce::Point<int> s
     menu.addSubMenu("Transpose", transpose);
     menu.addItem(3, "Reset stretch and pitch", clip->isStretched());
     menu.addSeparator();
+    menu.addItem(5, "Open in Sampler", static_cast<bool>(onOpenInSampler));
     menu.addItem(4, "Track...");
     juce::Component::SafePointer<ArrangeView> safe(this);
     const auto original = *clip;
@@ -2850,6 +2871,8 @@ void ArrangeView::clipMenu(core::Id trackId, core::Id clipId, juce::Point<int> s
                 set(1.0, 0.0, original.sourceLength(), false);
             else if (choice == 4)
                 view.trackMenu(trackId, screen);
+            else if (choice == 5 && view.onOpenInSampler)
+                view.onOpenInSampler(trackId, original.id);
             else if (choice >= 100 - 12 + 50 && choice <= 100 + 12 + 50)
                 set(original.stretch, choice - 150, original.length, original.followTempo);
         });
@@ -2963,11 +2986,19 @@ void ArrangeView::reorderDrag(core::Id trackId, juce::Point<int> screen, bool re
         onCommand(std::make_unique<core::MoveTrack>(trackId, to));
 }
 
-void ArrangeView::trackMenu(core::Id trackId, juce::Point<int> screen)
+void ArrangeView::trackMenu(core::Id trackId, juce::Point<int> screen, core::Id clipId)
 {
     if (project_ == nullptr || project_->findTrack(trackId) == nullptr)
         return;
     juce::PopupMenu menu;
+    if (clipId != core::invalidId && project_->findTrack(trackId)->findClip(clipId) != nullptr &&
+        onOpenInSampler)
+    {
+        menu.addSectionHeader("Clip");
+        menu.addItem(6, "Open in Sampler");
+        menu.addSeparator();
+        menu.addSectionHeader("Track");
+    }
     menu.addItem(1, "Rename");
     juce::PopupMenu colours;
     const auto& palette = theme_.track.palette;
@@ -3024,10 +3055,16 @@ void ArrangeView::trackMenu(core::Id trackId, juce::Point<int> screen)
     juce::Component::SafePointer<ArrangeView> safe(this);
     menu.showMenuAsync(
         juce::PopupMenu::Options().withTargetScreenArea({screen.x, screen.y, 1, 1}),
-        [safe, trackId](int choice)
+        [safe, trackId, clipId](int choice)
         {
             if (safe == nullptr || choice == 0)
                 return;
+            if (choice == 6)
+            {
+                if (safe->onOpenInSampler)
+                    safe->onOpenInSampler(trackId, clipId);
+                return;
+            }
             if (choice >= 450 && choice < 500)
             {
                 safe->addFxTrack(choice, 450, {trackId});

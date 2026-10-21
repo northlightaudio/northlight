@@ -25,6 +25,8 @@ aural.exe
                   (input or MIDI input, arm, monitor), MixerView (strips, master,
                   inserts menu), InsertEditor (generic parameter editor),
                   PluginBrowser (search, filters, sections, favourites, scan),
+                  MediaBrowser (the browser's Files tab: places, audio files,
+                  previews, drags),
                   PluginWindow (the bar over a hosted plugin's editor),
                   PianoRoll (one MIDI clip's notes and velocities)
   src/core        Project model (audio and MIDI tracks and buses on a shared
@@ -190,6 +192,17 @@ Sample-rate conversion is `engine/Resampling.h`: 4-point Hermite interpolation
 evaluated at each output sample's exact source position. It is stateless, so reads
 can start anywhere, and it has no lookback delay, so imported media stays aligned
 to the sample.
+
+Auditioning a file (the browser's Files tab) is `engine::PreviewPlayer`, owned by
+the engine and mixed into the device outputs after the render: over the mix and
+outside it (no fader, meters, recording or bounce), at its own gain. The session
+loads the file with the same loader as clips (a long file streams through its own
+disk window) and hands the source over in an `rt::SnapshotPublisher`. Nothing is
+cut: a stop or another file sets the id to fade, the audio thread fades it out
+over 5 ms and reports it done, and only then does `pump()` (the engine's garbage
+collection, and the browser's timer while it previews) publish the next source,
+which fades in. The source is released on the controller side once the audio
+thread has moved past it.
 
 ### Session and UI
 
@@ -716,7 +729,22 @@ a row drags onto the Editor chain (at the insertion line) or an arrange track
 the file and scans again); the scan button's chevron menu rescans or clears the
 blocklist, and a progress bar with "Scanning n of m · file" and Cancel replaces
 it while a scan runs. Favourites and recent types are user settings. The
-`PluginWindow` bar is 7.2: power, "Plugin · Track", the format badge, the 80 px
+Browser panel is `ui::BrowserPanel`: a Plugins / Files segmented control over
+the plugin browser and `ui::MediaBrowser` (7.4g; the tab is a user setting).
+The Files tab browses a place (the saved project's folder, Music, or a folder
+added to its list, kept in the settings with the last folder) and its
+subfolders; a background job (one `juce::ThreadPool` thread, a generation count
+cancelling a stale one) lists the folder, or with a search walks the whole place
+for names holding every word (up to 2000 results), and reads each file's header
+for its length and rate, posting the result back to the message thread. A click
+auditions a file through `ProjectSession::previewFile` (the engine's
+`PreviewPlayer`, see Media and streaming; the panel pumps it on a 30 Hz timer
+while one plays, and shows the progress under the row), a second click, another
+file, Escape or Stop ends it; double-click or Enter imports the file onto a new
+track at the playhead; a row drags as "file:<path>", which the arrange view
+takes like a file from Explorer (a new track where it lands, with the same drop
+preview) and the Sampler's waveform loads. Launch flag: `--browser-files
+[folder]`. The `PluginWindow` bar is 7.2: power, "Plugin · Track", the format badge, the 80 px
 mix slider with its value, the presets menu and pin; position and editor size
 are remembered per plugin type. The Editor panel's cards (7.1) show an accent
 dot while the editor window is open, reorder by dragging their header, take
@@ -1029,6 +1057,46 @@ instrument as a rack unit with its outputs (the main pair is the instrument
 track; each further pair is an output track or a chip that makes one), and the
 mixer's instrument slot menu offers the same "Outputs"; a source that goes away
 leaves the aux track silent.
+
+The Sampler (`aural.sampler`, `plugins/Sampler.*`) plays one sample across the
+keyboard: a root note and a key range, tune and fine, velocity to level, an ADSR
+on the amplitude (the shared `synth::Envelope`), start and end points, a forward
+loop whose last few milliseconds crossfade into the same distance before the
+loop's start (so a wrap mid-wave does not click; the fade is as long as the
+material before the loop start allows), one-shot playback (to the end, note-offs
+ignored), a TPT low-pass per voice with the envelope moving its cutoff (out of
+the path at 20 kHz with no envelope), up to 32 voices (over the limit the oldest
+fades out in 5 ms, as does a retriggered note) and glide from the last note's
+pitch. Each voice reads the sample at its exact position with 4-point Hermite
+interpolation (`engine::hermite`), the increment folding in the sample's own
+rate, so nothing is resampled on load. Everything but the file is a parameter
+(automatable); start, end and loop points are fractions of the sample. The file
+is the insert's `state` (base64 of the path) and so lives in the model: loading
+one is a `SetInsertState` command (undoable), and `InsertCache` now passes a
+changed model state to a live built-in that does not own its parameters
+(hosted plugins still take theirs only on creation). The processor is JUCE-free:
+`setState` asks the `sampler::Loader` the factory was given (the app's) for an
+immutable `sampler::Sample` on the controller thread and publishes it through
+an `rt::SnapshotPublisher`, so the real-time thread swaps it in at a block start
+and a retired sample is freed on the controller side once the audio thread has
+moved past it. A missing file keeps its path (a re-save loses nothing) and the
+sampler stays silent with the load error for the editor.
+The app's loader is `SampleFiles` (in the session, given to the insert factory, so
+bounces load the same way): the whole file at its own rate, up to ten minutes,
+shared while any sampler holds it (a recompile, undo or bounce does not decode it
+again) and read afresh when the file changed on disk. To make one from audio
+already in the project, right-click an audio clip and choose **Open in Sampler**:
+`ProjectSession::addSamplerTrack` adds an instrument channel named after the file
+and a MIDI track playing it in one undo step, the start and end points set to
+the part of the file the clip uses, and the editor opens. The editor
+(`ui/strip/SamplerEditor`, 07-plugins.md 7.4f) draws the waveform from the live
+instance's sample (min and max per pixel column, rebuilt when the sample or the
+width changes), drags the points as parameters, shows the sounding voices from
+`sampler::soundingVoices` (positions the audio thread publishes as atomics per
+block) and loads a dropped or chosen file with `SetInsertState` plus the points
+reset, grouped as one gesture. Launch flag: `--sampler <file> [demo]` (the same
+with a four-note clip, editor open; `demo` sets a loop, a key range and the
+filter).
 
 Recording: an armed MIDI track joins the record session (`addMidiTrack`); the
 engine stamps each live event it delivers to that track with its timeline

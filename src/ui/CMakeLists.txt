@@ -78,6 +78,8 @@ add_library(aural_ui STATIC
     strip/NebulaEditor.cpp
     strip/StarbitEditor.h
     strip/StarbitEditor.cpp
+    strip/SamplerEditor.h
+    strip/SamplerEditor.cpp
     strip/ChannelStripView.h
     strip/ChannelStripView.cpp
     strip/UserStripPresets.h
@@ -106,6 +108,9 @@ add_library(aural_ui STATIC
     InsertEditor.cpp
     PluginWindow.h
     PluginWindow.cpp
+    MediaFiles.h
+    MediaBrowser.h
+    MediaBrowser.cpp
     PluginBrowser.h
     PluginBrowser.cpp
     PreferencesView.cpp
