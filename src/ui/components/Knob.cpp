@@ -93,11 +93,11 @@ juce::String Knob::text() const
 void Knob::paint(juce::Graphics& g)
 {
     const auto& c = theme_.colours;
-    const float size = static_cast<float>(theme_.sizes.knob);
+    const float size = static_cast<float>(ringSize());
     auto area = getLocalBounds().toFloat();
     const bool room = showValue_ && area.getHeight() >= size + theme_.fonts.size.value + 2.0f;
     auto ring = area.removeFromTop(room ? size : area.getHeight()).withSizeKeepingCentre(size, size);
-    const float stroke = 3.0f;
+    const float stroke = size > 40.0f ? 4.0f : 3.0f;
     const auto arcBounds = ring.reduced(stroke * 0.5f + 1.0f);
     const float radius = arcBounds.getWidth() * 0.5f;
     const auto centre = arcBounds.getCentre();

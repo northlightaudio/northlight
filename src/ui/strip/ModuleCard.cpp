@@ -115,6 +115,32 @@ ModuleCard::ModuleCard(const Theme& theme, CardHost& host, core::Id channelId, c
             host_.onCollapse(moduleId_, true);
     };
     addAndMakeVisible(*collapse_);
+    // A slot that runs several models (the compressor: Clean or Opto) swaps
+    // them from the header.
+    if (const auto models = plugins::strip::alternatives(type_); models.size() > 1)
+    {
+        modelSwitch_ = std::make_unique<SegmentedControl>(theme_);
+        std::vector<juce::String> labels;
+        int selected = 0;
+        for (size_t i = 0; i < models.size(); ++i)
+        {
+            labels.emplace_back(plugins::strip::modelName(models[i]));
+            if (models[i] == type_)
+                selected = static_cast<int>(i);
+        }
+        modelSwitch_->setSegments(labels);
+        modelSwitch_->setSelected(selected, juce::dontSendNotification);
+        modelSwitch_->setTitle("Compressor model");
+        modelSwitch_->setTooltip("Clean: a modern feed-forward compressor. "
+                                 "Opto: a vintage optical compressor with a program-dependent release");
+        modelSwitch_->onChange = [this, models](int index)
+        {
+            if (!updating_ && host_.onSwapModel && index >= 0 && static_cast<size_t>(index) < models.size() &&
+                models[static_cast<size_t>(index)] != type_)
+                host_.onSwapModel(moduleId_, models[static_cast<size_t>(index)]);
+        };
+        addAndMakeVisible(*modelSwitch_);
+    }
     params_.resize(infos_.size());
     for (size_t i = 0; i < infos_.size(); ++i)
         params_[i] = infos_[i].defaultValue;
@@ -483,6 +509,8 @@ void ModuleCard::setEmbedded(bool embedded)
     embedded_ = embedded;
     power_.setVisible(!embedded);
     collapse_->setVisible(!embedded);
+    if (modelSwitch_ != nullptr)
+        modelSwitch_->setVisible(!embedded && !collapsed_);
     resized();
     repaint();
 }
@@ -538,8 +566,13 @@ void ModuleCard::paint(juce::Graphics& g)
     }
     g.setFont(theme_.label());
     g.setColour(bypass_ ? c.textSecondary : c.textPrimary);
-    g.drawText(
-        juce::String(plugins::strip::displayName(type_)), header, juce::Justification::centredLeft, true);
+    g.drawText(headerName(), header, juce::Justification::centredLeft, true);
+}
+
+juce::String ModuleCard::headerName() const
+{
+    const auto& type = modelSwitch_ != nullptr ? plugins::strip::slotOf(type_) : type_;
+    return juce::String(plugins::strip::displayName(type));
 }
 
 void ModuleCard::paintOverChildren(juce::Graphics& g)
@@ -569,6 +602,17 @@ void ModuleCard::resized()
     power_.setBounds(header.removeFromLeft(theme_.sizes.controlCompact)
                          .withSizeKeepingCentre(theme_.sizes.controlCompact, theme_.sizes.controlCompact));
     collapse_->setBounds(header.removeFromRight(16));
+    if (modelSwitch_ != nullptr)
+    {
+        // Just after the name.
+        header.removeFromLeft(theme_.spacing.xs);
+        header.removeFromLeft(juce::GlyphArrangement::getStringWidthInt(theme_.label(), headerName()) +
+                              theme_.spacing.sm);
+        modelSwitch_->setBounds(
+            header.removeFromLeft(std::min(header.getWidth(), modelSwitch_->preferredWidth()))
+                .withSizeKeepingCentre(std::min(header.getWidth(), modelSwitch_->preferredWidth()),
+                                       theme_.sizes.controlCompact - 2));
+    }
     layoutBody(getLocalBounds().withTrimmedTop(headerHeight).reduced(theme_.spacing.sm, theme_.spacing.xs));
 }
 

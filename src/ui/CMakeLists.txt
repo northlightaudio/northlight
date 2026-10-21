@@ -63,6 +63,7 @@ add_library(northlight_ui STATIC
     strip/ModuleCard.h
     strip/ModuleCard.cpp
     strip/ModuleCards.cpp
+    strip/OptoCard.cpp
     strip/Graphs.h
     strip/Graphs.cpp
     strip/EqGraph.h

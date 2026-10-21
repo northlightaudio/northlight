@@ -814,6 +814,8 @@ createBuiltInCard(const Theme& theme, CardHost& host, core::Id channelId, const 
         return std::make_unique<EqCard>(theme, host, channelId, insert);
     if (insert.type == types::compressor)
         return createCompressorCard(theme, host, channelId, insert); // the strip compressor's
+    if (insert.type == types::opto)
+        return createOptoCard(theme, host, channelId, insert); // the strip opto's
     if (insert.type == types::limiter)
         return std::make_unique<LimiterCard>(theme, host, channelId, insert);
     if (insert.type == types::reverb)

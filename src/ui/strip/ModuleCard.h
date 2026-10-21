@@ -34,6 +34,9 @@ struct CardHost
     std::function<void(core::Id moduleId, juce::Point<int> screen, bool released)> onReorder;
     // The card asked to collapse (or, clicked while collapsed, to expand).
     std::function<void(core::Id moduleId, bool collapse)> onCollapse;
+    // The header's model switch asked for another model of the module's slot
+    // (plugins::strip::alternatives).
+    std::function<void(core::Id moduleId, const std::string& type)> onSwapModel;
 };
 
 // A small on/off pill for a two-state parameter ("Auto", "Listen"): the
@@ -179,6 +182,8 @@ protected:
 
 private:
     juce::Rectangle<int> headerArea() const;
+    // The header's name: the slot's ("Compressor") when the card has a model switch.
+    juce::String headerName() const;
     struct Binding
     {
         int index = -1;
@@ -193,6 +198,7 @@ private:
     std::vector<std::unique_ptr<juce::Component>> owned_;
     IconButton power_;
     std::unique_ptr<juce::Button> collapse_;
+    std::unique_ptr<SegmentedControl> modelSwitch_; // a slot with several models (Clean / Opto)
     bool bypass_ = true, updating_ = false, dragging_ = false, collapsed_ = false, embedded_ = false;
     std::vector<juce::Component::SafePointer<juce::Component>> hiddenByCollapse_;
     juce::String shownStatus_;
@@ -212,5 +218,8 @@ createModuleCard(const Theme& theme, CardHost& host, core::Id channelId, const c
 // "northlight.compressor" insert as well as the strip module).
 std::unique_ptr<ModuleCard>
 createCompressorCard(const Theme& theme, CardHost& host, core::Id channelId, const core::Insert& insert);
+// The opto compressor's card, for the strip module and the "northlight.opto" insert.
+std::unique_ptr<ModuleCard>
+createOptoCard(const Theme& theme, CardHost& host, core::Id channelId, const core::Insert& insert);
 
 } // namespace northlight::ui::strip

@@ -1406,6 +1406,41 @@ void MoveStripModule::revert(Project& p)
     c.strip.insert(c.strip.begin() + at, moved);
 }
 
+SetStripModuleType::SetStripModuleType(
+    Id channelId, Id moduleId, std::string type, std::vector<float> params, std::string name)
+    : channelId_(channelId), moduleId_(moduleId), type_(std::move(type)), params_(std::move(params)),
+      name_(std::move(name))
+{
+}
+void SetStripModuleType::apply(Project& p)
+{
+    auto& c = requireChannel(p, channelId_);
+    const int index = c.stripIndex(moduleId_);
+    if (index < 0)
+        throw std::logic_error("command references a strip module that does not exist");
+    auto& module = c.strip[static_cast<size_t>(index)];
+    previous_ = module;
+    previousLanes_ = c.automation;
+    if (module.type != type_)
+        std::erase_if(
+            c.automation,
+            [this](const AutomationLane& lane)
+            { return lane.target == AutomationTarget::insertParameter && lane.insert == moduleId_; });
+    module.type = type_;
+    module.params = params_;
+    module.paramKeys.clear();
+    module.state.clear();
+}
+void SetStripModuleType::revert(Project& p)
+{
+    auto& c = requireChannel(p, channelId_);
+    const int index = c.stripIndex(moduleId_);
+    if (index < 0)
+        return;
+    c.strip[static_cast<size_t>(index)] = previous_;
+    c.automation = previousLanes_;
+}
+
 SetStripState::SetStripState(Id channelId, std::vector<Insert> modules, std::string name)
     : channelId_(channelId), modules_(std::move(modules)), name_(std::move(name))
 {

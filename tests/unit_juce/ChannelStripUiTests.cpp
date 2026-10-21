@@ -3,6 +3,7 @@
 #include "audio/AudioSettings.h"
 #include "core/Command.h"
 #include "core/ProjectJson.h"
+#include "plugins/BuiltIns.h"
 #include "plugins/ChannelStrip.h"
 #include "ui/Theme.h"
 #include "ui/strip/ChannelStripView.h"
@@ -137,6 +138,50 @@ TEST_CASE("The strip view shows a card per module, off modules as tabs", "[strip
     // Clearing the channel removes the cards.
     view.setChannel(nullptr);
     CHECK(view.moduleCount() == 0);
+}
+
+TEST_CASE("Swapping the compressor for the opto replaces the live processor and the card", "[strip][opto]")
+{
+    const juce::ScopedJuceInitialiser_GUI juceInit;
+    MemoryStore store;
+    audio::AudioDeviceLayer audio{store};
+    ProjectSession session(audio);
+    core::Track t;
+    t.inputChannel = 0;
+    t.monitor = core::MonitorMode::on;
+    session.execute(std::make_unique<core::AddTrack>(t));
+    const auto trackId = session.project().tracks.front().id;
+    const auto compId = session.project().tracks.front().strip[2].id;
+    session.engine().prepare(48000.0, 64);
+    session.execute(std::make_unique<core::SetInsertBypass>(trackId, compId, false));
+    session.execute(std::make_unique<core::SetStripModuleType>(
+        trackId, compId, ps::types::opto, plugins::defaultParameters(ps::types::opto), "Swap to opto"));
+    auto live = session.liveInsert(compId);
+    REQUIRE(live != nullptr);
+    CHECK(live->typeName() == ps::types::opto);
+    CHECK_FALSE(live->isBypassed());
+    runBlocks(session, 400, 0.5f);
+    CHECK(live->feedback()->latest().reduction > 3.0f);
+
+    // The view rebuilds the card as the opto's, in the same place.
+    const auto& theme = ui::Theme::dark();
+    ui::strip::ChannelStripView view(theme);
+    view.setBounds(0, 0, 2400, 420);
+    const auto cardTypes = [&view]
+    {
+        std::vector<std::string> types;
+        for (auto* child : view.getChildren())
+            if (auto* card = dynamic_cast<ui::strip::ModuleCard*>(child))
+                types.push_back(card->type());
+        return types;
+    };
+    view.setChannel(&session.project().tracks.front());
+    REQUIRE(cardTypes().size() == ps::moduleTypes().size());
+    CHECK(cardTypes()[2] == ps::types::opto);
+    session.undo();
+    CHECK(session.liveInsert(compId)->typeName() == ps::types::compressor);
+    view.setChannel(&session.project().tracks.front());
+    CHECK(cardTypes()[2] == ps::types::compressor);
 }
 
 #include "ui/strip/UserStripPresets.h"

@@ -8,6 +8,8 @@
 
 #include <map>
 #include <memory>
+#include <string>
+#include <utility>
 #include <vector>
 
 namespace northlight::ui::strip
@@ -54,6 +56,10 @@ private:
     void timerCallback() override;
     void reorder(core::Id moduleId, juce::Point<int> screen, bool released);
     void collapse(core::Id moduleId, bool collapsed);
+    // Swaps a module for another model of its slot (one undo step). The new
+    // model starts from what it had when it was last swapped away on this
+    // module this session, else from its defaults.
+    void swapModel(core::Id moduleId, const std::string& type);
     void showPresetMenu();
     // Sets the strip to a preset (one undo step) and opens the cards of the
     // modules it switches on, folding the rest.
@@ -77,6 +83,8 @@ private:
     // Lays the cards out again, gliding them.
     void relayoutAnimated();
     std::vector<core::Id> order_;
+    std::vector<std::string> types_; // the modules' types, in order (a swap rebuilds the card)
+    std::map<std::pair<core::Id, std::string>, std::vector<float>> swappedAway_;
     bool preInserts_ = false;
     int dropIndex_ = -1;
     double lastTickMs_ = 0.0;

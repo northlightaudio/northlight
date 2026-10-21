@@ -38,7 +38,30 @@ std::string displayName(const std::string& type)
         return "Saturation";
     if (type == types::limiter)
         return "Limiter";
+    if (type == types::opto)
+        return "Opto compressor";
     return type;
+}
+
+std::string slotOf(const std::string& type)
+{
+    return type == types::opto ? types::compressor : type;
+}
+
+std::vector<std::string> alternatives(const std::string& type)
+{
+    if (slotOf(type) == types::compressor)
+        return {types::compressor, types::opto};
+    return {type};
+}
+
+std::string modelName(const std::string& type)
+{
+    if (type == types::compressor)
+        return "Clean";
+    if (type == types::opto)
+        return "Opto";
+    return displayName(type);
 }
 
 // ----- curves shared with the editors ---------------------------------------------------------
@@ -205,6 +228,62 @@ float autoMakeupDb(float thresholdDb, float ratio) noexcept
     return 0.5f * gainReductionDb(0.0f, thresholdDb, ratio, 0.0f);
 }
 } // namespace compressor
+
+namespace opto
+{
+namespace
+{
+constexpr float kneeDb = 2.5f; // the softplus knee's width
+
+float softplus(float x) noexcept
+{
+    const float t = x / kneeDb;
+    return t > 20.0f ? x : kneeDb * std::log1p(std::exp(t));
+}
+} // namespace
+
+float sidechainDriveDb(float peakReduction) noexcept
+{
+    // 0% hears the output 5 dB down (nothing a mix reaches compresses); 100%
+    // lifts it 45 dB (peaks around -45 dBFS start to compress).
+    return 0.5f * std::clamp(peakReduction, 0.0f, 100.0f) - 5.0f;
+}
+
+float loopGain(int mode) noexcept
+{
+    // About 3:1 compressing. Limiting, the loop settles in the knee, so a loop
+    // gain of 12 gives about 10:1.
+    return mode == 1 ? 12.0f : 2.0f;
+}
+
+float cellTargetDb(float detectorDb, float peakReduction, int mode) noexcept
+{
+    return loopGain(mode) * softplus(detectorDb + sidechainDriveDb(peakReduction));
+}
+
+float steadyReductionDb(float inputDb, float peakReduction, int mode) noexcept
+{
+    // The fixed point of r = target(input - r): r - target(input - r) rises
+    // with r, so bisect it.
+    float lo = 0.0f, hi = 96.0f;
+    for (int i = 0; i < 40; ++i)
+    {
+        const float r = 0.5f * (lo + hi);
+        (r - cellTargetDb(inputDb - r, peakReduction, mode) > 0.0f ? hi : lo) = r;
+    }
+    return 0.5f * (lo + hi);
+}
+
+float slowShare(float memory) noexcept
+{
+    return 0.35f + 0.4f * std::clamp(memory, 0.0f, 1.0f);
+}
+
+float slowReleaseSeconds(float memory) noexcept
+{
+    return 0.4f + 3.6f * std::clamp(memory, 0.0f, 1.0f);
+}
+} // namespace opto
 
 namespace deesser
 {
@@ -663,6 +742,179 @@ private:
     bool keyed_ = false;
 };
 
+// ----- opto compressor ------------------------------------------------------------------------
+
+// A model of an LA-2A style optical compressor, stereo-linked:
+//  - Feedback: the detector hears the previous output sample (after the cell,
+//    before the make-up), through an optional high shelf (Emphasis). A peak
+//    envelope of that, lifted by Peak reduction, goes through a softplus knee
+//    times the loop gain; the loop settles at a soft ratio of 1 + loop gain.
+//  - The cell: a fast stage follows the target (attack about 30 ms in the
+//    loop, which feedback shortens to about 10, release 60 ms). A slow stage
+//    charges from it over 200 ms toward a share of it and releases over 0.4 to
+//    4 s. Both the share and the slow release grow with the cell's memory,
+//    which fills over seconds of heavy compression and drains slower still.
+//    The reduction is the larger of the two.
+//  - Make-up, then the output valve stage (Colour): the biased tanh with
+//    first-order antiderivative anti-aliasing, unity gain for small signals,
+//    and a DC blocker. Then the internal wet/dry.
+// No lookahead, no latency.
+class Opto final : public StripProcessor
+{
+public:
+    explicit Opto(const std::string& type = types::opto)
+        : StripProcessor(type,
+                         {{"Peak reduction", "%", 0.0f, 100.0f, 40.0f, false},
+                          {"Gain", "dB", -12.0f, 24.0f, 0.0f, false},
+                          choice("Mode", {"Compress", "Limit"}, 0.0f),
+                          {"Emphasis", "%", 0.0f, 100.0f, 0.0f, false},
+                          {"Colour", "%", 0.0f, 100.0f, 30.0f, false},
+                          {"Mix", "%", 0.0f, 100.0f, 100.0f, false}})
+    {
+    }
+
+private:
+    static constexpr double valveBias = 0.25; // saturation's tube curve
+    static float valveDrive(float colourPercent) noexcept { return 0.25f + 0.0175f * colourPercent; }
+
+    void prepareModule(double, int) override
+    {
+        envelope_ = fast_ = slow_ = memory_ = 0.0f;
+        feedbackL_ = feedbackR_ = 0.0f;
+        for (auto& s : shelf_)
+            s.reset();
+        lastEmphasis_ = std::nanf("");
+        for (auto& v : valve_)
+            v = {};
+        makeup_ = dbToGain(parameter(opto::gain));
+        drive_ = valveDrive(parameter(opto::colour));
+        dcCoefficient_ = 1.0f - static_cast<float>(2.0 * std::numbers::pi * 10.0 / sampleRate_);
+        const float sr = static_cast<float>(sampleRate_);
+        const auto step = [sr](float seconds) { return 1.0f - std::exp(-1.0f / (sr * seconds)); };
+        envelopeFall_ = coefficient(sampleRate_, 20.0f);
+        attackStep_ = step(0.030f);
+        fastReleaseStep_ = step(opto::fastReleaseMs * 0.001f);
+        slowAttackStep_ = step(0.2f);
+        memoryFillStep_ = step(2.0f);
+        memoryDrainStep_ = step(6.0f);
+    }
+
+    // The valve stage on one channel's sample at drive `d` (ADAA1 over the
+    // step from the previous sample at the same drive).
+    float valve(size_t ch, float in, float d) noexcept
+    {
+        auto& v = valve_[ch];
+        const double x = static_cast<double>(in) * d;
+        const double previous = v.previousIn * d;
+        const double dx = x - previous;
+        const double shaped = std::abs(dx) > 1.0e-5
+                                  ? (saturation::antiderivative(saturation::tube, x) -
+                                     saturation::antiderivative(saturation::tube, previous)) /
+                                        dx
+                                  : saturation::shapeD(saturation::tube, 0.5 * (x + previous));
+        v.previousIn = in;
+        // Unity gain for small signals: the curve's slope at rest is sech^2(bias).
+        const double slope = 1.0 - std::tanh(valveBias) * std::tanh(valveBias);
+        const double y = shaped / (static_cast<double>(d) * slope);
+        const double blocked = y - v.dcIn + dcCoefficient_ * v.dcOut;
+        v.dcIn = y;
+        v.dcOut = blocked;
+        return static_cast<float>(blocked);
+    }
+
+    void processAudio(float* left, float* right, int numSamples) noexcept override
+    {
+        const float peakReduction = parameter(opto::peakReduction);
+        const int mode = parameter(opto::mode) >= 0.5f ? 1 : 0;
+        const float emphasis = parameter(opto::emphasis);
+        const float colour = parameter(opto::colour);
+        const float wet = parameter(opto::mix) * 0.01f;
+        if (emphasis != lastEmphasis_)
+        {
+            lastEmphasis_ = emphasis;
+            for (auto& s : shelf_)
+                s.setHighShelf(sampleRate_, 1500.0, emphasis * 0.12); // up to +12 dB
+        }
+        const bool emphasise = emphasis > 0.05f;
+        const bool coloured = colour > 0.05f || drive_ > valveDrive(0.05f); // or ramping down to clean
+        // The slow stage's release follows the memory (slow enough to set per block).
+        const float slowReleaseStep =
+            1.0f - std::exp(-1.0f / (static_cast<float>(sampleRate_) * opto::slowReleaseSeconds(memory_)));
+        const float n = static_cast<float>(std::max(1, numSamples));
+        const float targetMakeup = dbToGain(parameter(opto::gain));
+        const float makeupStep = (targetMakeup - makeup_) / n;
+        const float targetDrive = valveDrive(colour);
+        const float driveStep = (targetDrive - drive_) / n;
+        for (int i = 0; i < numSamples; ++i)
+        {
+            const float inL = left[i], inR = right[i];
+            // The detector hears the last output of the cell.
+            float keyL = feedbackL_, keyR = feedbackR_;
+            if (emphasise)
+            {
+                keyL = shelf_[0].process(keyL);
+                keyR = shelf_[1].process(keyR);
+            }
+            const float rectified = std::max(std::abs(keyL), std::abs(keyR));
+            envelope_ =
+                rectified > envelope_ ? rectified : rectified + (envelope_ - rectified) * envelopeFall_;
+            const float target = opto::cellTargetDb(gainToDb(envelope_), peakReduction, mode);
+            fast_ += (target - fast_) * (target > fast_ ? attackStep_ : fastReleaseStep_);
+            const float fill = std::clamp(fast_ / 12.0f, 0.0f, 1.0f);
+            memory_ += (fill - memory_) * (fill > memory_ ? memoryFillStep_ : memoryDrainStep_);
+            const float slowTarget = fast_ * opto::slowShare(memory_);
+            slow_ += (slowTarget - slow_) * (slowTarget > slow_ ? slowAttackStep_ : slowReleaseStep);
+            const float reduction = std::max(fast_, slow_);
+            const float g = dbToGain(-reduction);
+            feedbackL_ = inL * g;
+            feedbackR_ = inR * g;
+            makeup_ += makeupStep;
+            drive_ += driveStep;
+            float outL = feedbackL_ * makeup_, outR = feedbackR_ * makeup_;
+            if (coloured)
+            {
+                outL = valve(0, outL, drive_);
+                outR = valve(1, outR, drive_);
+            }
+            else
+            {
+                // Clean: keep the valve's history current, so switching it on
+                // does not start from a stale sample.
+                valve_[0].previousIn = outL;
+                valve_[1].previousIn = outR;
+            }
+            left[i] = inL * (1.0f - wet) + outL * wet;
+            right[i] = inR * (1.0f - wet) + outR * wet;
+            feedback_.addSample(std::max(std::abs(inL), std::abs(inR)),
+                                std::max(std::abs(left[i]), std::abs(right[i])),
+                                reduction,
+                                memory_);
+        }
+        makeup_ = targetMakeup;
+        drive_ = targetDrive;
+        // Denormals: a long silence leaves the stages creeping toward zero.
+        if (fast_ < 1.0e-6f)
+            fast_ = 0.0f;
+        if (slow_ < 1.0e-6f)
+            slow_ = 0.0f;
+    }
+
+    struct Valve
+    {
+        double previousIn = 0.0;
+        double dcIn = 0.0, dcOut = 0.0;
+    };
+    std::array<Valve, 2> valve_;
+    std::array<Biquad, 2> shelf_;
+    float lastEmphasis_ = 0.0f;
+    float envelope_ = 0.0f, fast_ = 0.0f, slow_ = 0.0f, memory_ = 0.0f;
+    float feedbackL_ = 0.0f, feedbackR_ = 0.0f;
+    float makeup_ = 1.0f, drive_ = 1.0f;
+    float dcCoefficient_ = 0.999f;
+    float envelopeFall_ = 0.0f, attackStep_ = 0.0f, fastReleaseStep_ = 0.0f, slowAttackStep_ = 0.0f;
+    float memoryFillStep_ = 0.0f, memoryDrainStep_ = 0.0f;
+};
+
 // ----- de-esser -------------------------------------------------------------------------------
 
 // A 24 dB Linkwitz-Riley crossover splits the signal at the frequency (the two
@@ -923,9 +1175,17 @@ std::unique_ptr<engine::InsertProcessor> createKeyedCompressor(const std::string
     return std::make_unique<Compressor>(type, true);
 }
 
+std::unique_ptr<engine::InsertProcessor> createOpto(const std::string& type)
+{
+    NORTHLIGHT_ASSERT_NOT_REALTIME("strip::createOpto");
+    return std::make_unique<Opto>(type);
+}
+
 std::unique_ptr<engine::InsertProcessor> create(const std::string& type)
 {
     NORTHLIGHT_ASSERT_NOT_REALTIME("strip::create");
+    if (type == types::opto)
+        return std::make_unique<Opto>();
     if (type == types::gate)
         return std::make_unique<Gate>();
     if (type == types::eq)
@@ -964,9 +1224,11 @@ bool ensureChannelStrip(core::Project& project)
     {
         for (const auto& module : defaults)
         {
-            const bool present = std::any_of(channel.strip.begin(),
-                                             channel.strip.end(),
-                                             [&](const core::Insert& m) { return m.type == module.type; });
+            // A slot counts as present whichever model runs in it.
+            const bool present =
+                std::any_of(channel.strip.begin(),
+                            channel.strip.end(),
+                            [&](const core::Insert& m) { return slotOf(m.type) == module.type; });
             if (present)
                 continue;
             auto added = module;

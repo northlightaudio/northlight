@@ -1,7 +1,9 @@
 #pragma once
 
+#include "core/Command.h"
 #include "core/Model.h"
 
+#include <memory>
 #include <string>
 #include <vector>
 
@@ -18,10 +20,17 @@ struct Preset
     std::string name;
     std::string category; // "Vocals", "Instruments", "Drums", "Buses"
     std::string description;
-    std::vector<core::Insert> modules; // one per module type, no ids
+    std::vector<core::Insert> modules; // one per slot (in the model it uses), no ids
 };
 
 const std::vector<Preset>& factoryPresets();
 const Preset* findFactoryPreset(const std::string& name);
+
+// The commands that set a channel's strip to `modules` (a preset): a slot
+// running another model than the preset names swaps to it first, then every
+// module takes the preset's state. Run them as one group.
+std::vector<std::unique_ptr<core::Command>> presetCommands(const core::Channel& channel,
+                                                           const std::vector<core::Insert>& modules,
+                                                           const std::string& name);
 
 } // namespace northlight::plugins::strip

@@ -13,7 +13,7 @@ namespace northlight::ui
 // A segmented control: a pill track (surface1) with a sliding thumb (surface3)
 // behind the selected segment; labels in `label`, selected textPrimary, others
 // textSecondary. Click or Left/Right selects; the thumb slides over toggleMs.
-class SegmentedControl final : public juce::Component, private juce::Timer
+class SegmentedControl final : public juce::Component, public juce::SettableTooltipClient, private juce::Timer
 {
 public:
     explicit SegmentedControl(const Theme& theme);

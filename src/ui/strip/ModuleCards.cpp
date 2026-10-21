@@ -604,6 +604,8 @@ createModuleCard(const Theme& theme, CardHost& host, core::Id channelId, const c
         return std::make_unique<EqCard>(theme, host, channelId, module);
     if (module.type == t::compressor)
         return std::make_unique<CompressorCard>(theme, host, channelId, module);
+    if (module.type == t::opto)
+        return createOptoCard(theme, host, channelId, module);
     if (module.type == t::deesser)
         return std::make_unique<DeEsserCard>(theme, host, channelId, module);
     if (module.type == t::saturation)

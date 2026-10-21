@@ -337,6 +337,7 @@ TEST_CASE("Every built-in names each parameter with a unique, non-empty key", "[
     auto types = northlight::plugins::BuiltInFactory().typeNames();
     for (const auto& t : northlight::plugins::strip::moduleTypes())
         types.push_back(t);
+    types.push_back(northlight::plugins::strip::types::opto);
     for (const auto& type : types)
     {
         INFO(type);

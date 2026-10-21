@@ -606,6 +606,7 @@ std::vector<std::string> BuiltInFactory::typeNames() const
     return {types::gain,
             types::eq,
             types::compressor,
+            types::opto,
             types::limiter,
             types::reverb,
             types::delay,
@@ -633,6 +634,8 @@ std::unique_ptr<engine::InsertProcessor> BuiltInFactory::create(const std::strin
         return std::make_unique<Eq>();
     if (typeName == types::compressor)
         return strip::createKeyedCompressor(types::compressor); // the channel strip's, with a key
+    if (typeName == types::opto)
+        return strip::createOpto(types::opto);
     if (typeName == types::limiter)
         return std::make_unique<Limiter>();
     if (typeName == aurora::type)
@@ -662,6 +665,8 @@ std::string BuiltInFactory::displayName(const std::string& typeName)
         return "EQ";
     if (typeName == types::compressor)
         return "Compressor";
+    if (typeName == types::opto)
+        return "Opto Compressor";
     if (typeName == types::limiter)
         return "Limiter";
     if (typeName == aurora::type)

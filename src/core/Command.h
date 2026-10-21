@@ -864,6 +864,28 @@ private:
     int newIndex_, previousIndex_ = -1;
 };
 
+// Swaps a strip module for another model of the same slot (the compressor for
+// the opto): the module keeps its id, place and on/off state and takes the new
+// type and parameters. The automation lanes of the old model's parameters go
+// with it (and come back on undo).
+class SetStripModuleType final : public Command
+{
+public:
+    SetStripModuleType(
+        Id channelId, Id moduleId, std::string type, std::vector<float> params, std::string name);
+    std::string name() const override { return name_; }
+    void apply(Project&) override;
+    void revert(Project&) override;
+
+private:
+    Id channelId_, moduleId_;
+    std::string type_;
+    std::vector<float> params_;
+    std::string name_;
+    Insert previous_;
+    std::vector<AutomationLane> previousLanes_;
+};
+
 // Whether the channel strip runs before the inserts or after them.
 class SetStripPosition final : public Command
 {

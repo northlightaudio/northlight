@@ -43,12 +43,16 @@ inline juce::Colour moduleColour(const Theme& theme, const std::string& type)
         return paletteColour(theme, "Kelp");
     if (type == t::limiter)
         return paletteColour(theme, "Rowan");
+    if (type == t::opto)
+        return paletteColour(theme, "Straw"); // warm, like the cell's lamp
     // The built-ins, in the same family (a built-in EQ, compressor or limiter
     // takes its strip counterpart's hue).
     if (type == "northlight.eq")
         return paletteColour(theme, "Overcast");
     if (type == "northlight.compressor")
         return paletteColour(theme, "Loch");
+    if (type == "northlight.opto")
+        return paletteColour(theme, "Straw");
     if (type == "northlight.limiter")
         return paletteColour(theme, "Rowan");
     if (type == "northlight.gain")

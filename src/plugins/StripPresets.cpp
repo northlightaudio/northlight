@@ -1,5 +1,6 @@
 #include "plugins/StripPresets.h"
 
+#include "plugins/BuiltIns.h"
 #include "plugins/ChannelStrip.h"
 
 #include <algorithm>
@@ -63,6 +64,20 @@ public:
         set(types::compressor, compressor::knee, kneeDb);
         set(types::compressor, compressor::autoMakeup, 1.0f);
         return set(types::compressor, compressor::mix, mix);
+    }
+    // The compressor slot running the opto model (Peak reduction and Gain;
+    // Compress unless `limit`).
+    Builder& opto(float peakReduction, float gainDb, float emphasis, float colour, bool limit = false)
+    {
+        auto& m = module(types::compressor);
+        m.type = types::opto;
+        m.params = defaultParameters(types::opto);
+        on(types::opto);
+        set(types::opto, opto::peakReduction, peakReduction);
+        set(types::opto, opto::gain, gainDb);
+        set(types::opto, opto::mode, limit ? 1.0f : 0.0f);
+        set(types::opto, opto::emphasis, emphasis);
+        return set(types::opto, opto::colour, colour);
     }
     Builder& gate(float thresholdDb,
                   float rangeDb,
@@ -132,7 +147,7 @@ std::vector<Preset> build()
             .band(eq::band2, S::peak, 300.0f, -2.5f, 1.2f)
             .band(eq::band3, S::peak, 3500.0f, 2.0f, 0.9f)
             .band(eq::band4, S::highShelf, 10000.0f, 2.5f, 0.7f)
-            .compressor(-20.0f, 3.5f, 5.0f, 80.0f, 6.0f)
+            .opto(50.0f, 4.0f, 20.0f, 30.0f) // the classic smooth vocal levelling
             .deesser(6500.0f, -32.0f, 6.0f)
             .saturation(saturation::tape, 4.0f, 0.1f, 40.0f)
             .done());
@@ -191,7 +206,7 @@ std::vector<Preset> build()
                        .band(eq::band3, S::peak, 800.0f, 1.5f, 1.0f)
                        .flat(eq::band4)
                        .cut(eq::highCut, 8000.0f, 12)
-                       .compressor(-20.0f, 4.0f, 20.0f, 120.0f, 6.0f)
+                       .opto(55.0f, 5.0f, 25.0f, 40.0f) // even notes, a little valve growl
                        .saturation(saturation::tape, 6.0f, -0.2f, 50.0f)
                        .done());
     list.push_back(
@@ -202,7 +217,7 @@ std::vector<Preset> build()
             .band(eq::band2, S::peak, 300.0f, -2.0f, 1.0f)
             .flat(eq::band3)
             .band(eq::band4, S::highShelf, 10000.0f, 1.5f, 0.7f)
-            .compressor(-20.0f, 2.0f, 20.0f, 200.0f, 10.0f)
+            .opto(40.0f, 2.0f, 0.0f, 20.0f) // gentle, program-dependent levelling
             .done());
     list.push_back(Builder("Synth pad", "Instruments", "Out of the way of the low end and the vocal")
                        .on(types::eq)
@@ -288,6 +303,20 @@ const Preset* findFactoryPreset(const std::string& name)
         if (p.name == name)
             return &p;
     return nullptr;
+}
+
+std::vector<std::unique_ptr<core::Command>> presetCommands(const core::Channel& channel,
+                                                           const std::vector<core::Insert>& modules,
+                                                           const std::string& name)
+{
+    std::vector<std::unique_ptr<core::Command>> commands;
+    for (const auto& wanted : modules)
+        for (const auto& current : channel.strip)
+            if (current.type != wanted.type && slotOf(current.type) == slotOf(wanted.type))
+                commands.push_back(std::make_unique<core::SetStripModuleType>(
+                    channel.id, current.id, wanted.type, wanted.params, name));
+    commands.push_back(std::make_unique<core::SetStripState>(channel.id, modules, name));
+    return commands;
 }
 
 } // namespace northlight::plugins::strip

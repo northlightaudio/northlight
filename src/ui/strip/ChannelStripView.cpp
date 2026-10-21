@@ -1,6 +1,7 @@
 #include "ui/strip/ChannelStripView.h"
 
 #include "core/Command.h"
+#include "plugins/BuiltIns.h"
 #include "plugins/ChannelStrip.h"
 #include "plugins/StripPresets.h"
 #include "ui/Motion.h"
@@ -69,6 +70,25 @@ void ChannelStripView::collapse(core::Id moduleId, bool collapsed)
         onWidthChanged();
 }
 
+void ChannelStripView::swapModel(core::Id moduleId, const std::string& type)
+{
+    if (!host.onCommand || channelId_ == core::invalidId)
+        return;
+    const auto module = std::find_if(
+        modules_.begin(), modules_.end(), [moduleId](const core::Insert& m) { return m.id == moduleId; });
+    if (module == modules_.end() || module->type == type ||
+        plugins::strip::slotOf(module->type) != plugins::strip::slotOf(type))
+        return;
+    const auto from = *module; // a copy: the command refreshes the view
+    swappedAway_[{moduleId, from.type}] = from.params;
+    const auto kept = swappedAway_.find({moduleId, type});
+    auto params = kept != swappedAway_.end() ? kept->second : plugins::defaultParameters(type);
+    // The new model's card opens where the old one was.
+    expandedTypes()[type] = true;
+    host.onCommand(std::make_unique<core::SetStripModuleType>(
+        channelId_, moduleId, type, std::move(params), "Swap to " + plugins::strip::displayName(type)));
+}
+
 void ChannelStripView::relayoutAnimated()
 {
     animateCards_ = true;
@@ -102,6 +122,17 @@ ChannelStripView::ChannelStripView(const Theme& theme) : theme_(theme)
     cardHost_.onReorder = [this](core::Id id, juce::Point<int> screen, bool released)
     { reorder(id, screen, released); };
     cardHost_.onCollapse = [this](core::Id id, bool collapsed) { collapse(id, collapsed); };
+    cardHost_.onSwapModel = [this](core::Id id, const std::string& type)
+    {
+        // Later: the swap rebuilds the card whose switch is calling.
+        juce::Component::SafePointer<ChannelStripView> safe(this);
+        juce::MessageManager::callAsync(
+            [safe, id, type]
+            {
+                if (safe != nullptr)
+                    safe->swapModel(id, type);
+            });
+    };
 
     position_.getProperties().set(NorthlightLookAndFeel::propertyVariant, "ghost");
     position_.setTooltip("Where the strip sits in the channel: click to move it before or after the inserts");
@@ -145,18 +176,23 @@ ChannelStripView::~ChannelStripView()
 void ChannelStripView::setChannel(const core::Channel* channel)
 {
     std::vector<core::Id> order;
+    std::vector<std::string> types;
     if (channel != nullptr)
         for (const auto& m : channel->strip)
+        {
             order.push_back(m.id);
+            types.push_back(m.type);
+        }
     const core::Id id = channel != nullptr ? channel->id : core::invalidId;
     modules_ = channel != nullptr ? channel->strip : std::vector<core::Insert>{};
-    const bool rebuilt = id != channelId_ || order != order_;
+    const bool rebuilt = id != channelId_ || order != order_ || types != types_;
     if (rebuilt)
     {
         cards_.clear();
         cardTargets_.clear();
         channelId_ = id;
         order_ = order;
+        types_ = types;
         if (channel != nullptr)
             for (const auto& m : channel->strip)
                 if (auto card = createModuleCard(theme_, cardHost_, channelId_, m))
@@ -282,7 +318,18 @@ void ChannelStripView::applyPreset(const std::vector<core::Insert>& modules, con
         for (const auto& m : modules)
             if (m.type == card->type())
                 card->setCollapsed(m.bypass);
-    host.onCommand(std::make_unique<core::SetStripState>(channelId_, modules, "Strip preset: " + name));
+    // A preset names a model for each slot: a slot running another model swaps
+    // to it first (all one undo step).
+    const auto label = "Strip preset: " + name;
+    if (host.onGestureBegin)
+        host.onGestureBegin(label);
+    core::Channel channel; // the strip as last set (the commands refresh the view)
+    channel.id = channelId_;
+    channel.strip = modules_;
+    for (auto& command : plugins::strip::presetCommands(channel, modules, label))
+        host.onCommand(std::move(command));
+    if (host.onGestureEnd)
+        host.onGestureEnd();
     relayoutAnimated();
     if (onWidthChanged)
         onWidthChanged();

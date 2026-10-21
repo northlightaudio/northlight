@@ -31,6 +31,8 @@ inline const std::string compressor = "northlight.strip.compressor";
 inline const std::string deesser = "northlight.strip.deesser";
 inline const std::string saturation = "northlight.strip.saturation";
 inline const std::string limiter = "northlight.strip.limiter";
+// The opto compressor: swapped into the compressor's place, not a module of its own.
+inline const std::string opto = "northlight.strip.opto";
 } // namespace types
 
 // The modules, in their default processing order.
@@ -41,6 +43,18 @@ std::unique_ptr<engine::InsertProcessor> create(const std::string& type);
 // The channel strip's compressor as an insert of another type (the built-in
 // "northlight.compressor"), listening to a sidechain key when one is chosen.
 std::unique_ptr<engine::InsertProcessor> createKeyedCompressor(const std::string& type);
+// The opto compressor as an insert of another type (the built-in "northlight.opto").
+std::unique_ptr<engine::InsertProcessor> createOpto(const std::string& type);
+
+// Slots: a strip has one module per slot, and a slot can run one of several
+// models (the compressor slot runs the clean compressor or the opto). The slot
+// is named by its default model's type (one of moduleTypes()).
+std::string slotOf(const std::string& type);
+// The models a module of `type` can be swapped for, its own type included
+// (just `type` for a slot with one model).
+std::vector<std::string> alternatives(const std::string& type);
+// A model's short name for the swap control ("Clean", "Opto").
+std::string modelName(const std::string& type);
 
 // Every module, off, with its default parameters and no ids (AddTrack and
 // AddBus allocate them).
@@ -132,6 +146,38 @@ float gainReductionDb(float levelDb, float thresholdDb, float ratio, float kneeD
 // The make-up gain auto make-up adds for a threshold and ratio.
 float autoMakeupDb(float thresholdDb, float ratio) noexcept;
 } // namespace compressor
+
+// The opto compressor (LA-2A style): a feedback design. The cell listens to
+// the output, so the ratio is soft and rises with level; its light-dependent
+// resistor releases in two stages, a fast one (about 60 ms) and a slow one
+// whose length grows with how long and how hard it has been compressing.
+namespace opto
+{
+enum Param
+{
+    peakReduction, // 0..100: how hard the cell is driven
+    gain,          // dB of make-up after the cell
+    mode,          // 0 compress, 1 limit
+    emphasis,      // 0..100: lifts the highs in what the cell hears (bass pumps it less)
+    colour,        // 0..100: the drive into the output valve stage
+    mix,           // % wet
+    count
+};
+// The level (dB) added to the output before the cell's knee, for a Peak reduction.
+float sidechainDriveDb(float peakReduction) noexcept;
+// The feedback loop's gain: well above the knee the ratio is 1 + this.
+float loopGain(int mode) noexcept;
+// The reduction (dB) the cell moves toward when it hears `detectorDb` (the output).
+float cellTargetDb(float detectorDb, float peakReduction, int mode) noexcept;
+// The reduction a steady input level settles at (the loop's fixed point).
+float steadyReductionDb(float inputDb, float peakReduction, int mode) noexcept;
+// The share of the reduction that releases slowly, and the slow release time,
+// for the cell's memory (0..1).
+float slowShare(float memory) noexcept;
+float slowReleaseSeconds(float memory) noexcept;
+// The fast stage's release.
+constexpr float fastReleaseMs = 60.0f;
+} // namespace opto
 
 namespace deesser
 {

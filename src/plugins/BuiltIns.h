@@ -9,7 +9,7 @@
 #include <vector>
 
 // The built-in utility processors: gain, a three-band EQ with high-pass, a
-// compressor, a limiter, a reverb and a delay; the instruments (Aurora, Pulsar,
+// compressor, an opto compressor, a limiter, a reverb and a delay; the instruments (Aurora, Pulsar,
 // Nebula, Starbit, Sampler) are in their own files. JUCE-free, real-time safe after prepare().
 
 namespace northlight::plugins
@@ -20,6 +20,7 @@ namespace types
 inline const std::string gain = "northlight.gain";
 inline const std::string eq = "northlight.eq";
 inline const std::string compressor = "northlight.compressor";
+inline const std::string opto = "northlight.opto"; // the channel strip's opto compressor
 inline const std::string limiter = "northlight.limiter";
 inline const std::string reverb = "northlight.reverb";
 inline const std::string delay = "northlight.delay";

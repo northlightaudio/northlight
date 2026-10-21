@@ -413,7 +413,7 @@ TEST_CASE("Every factory strip preset is complete and in range", "[plugins][stri
         for (size_t m = 0; m < preset.modules.size(); ++m)
         {
             const auto& module = preset.modules[m];
-            CHECK(module.type == strip::moduleTypes()[m]);
+            CHECK(strip::slotOf(module.type) == strip::moduleTypes()[m]);
             anyOn = anyOn || !module.bypass;
             const auto& infos = plugins::parameterInfo(module.type);
             REQUIRE(module.params.size() == infos.size());
@@ -463,6 +463,215 @@ TEST_CASE("Applying a strip preset is one undoable step that keeps the module id
             }
     }
     CHECK(undo.undoName() == "Strip preset: Kick");
+    undo.undo(p);
+    CHECK(p.tracks[0].strip == before);
+}
+
+// ----- opto compressor --------------------------------------------------------------------------
+
+namespace
+{
+// Runs `seconds` of a sine through the processor (its state carries on).
+void play(engine::InsertProcessor& p, double hz, float amplitude, double seconds)
+{
+    const int n = static_cast<int>(rate * seconds);
+    std::vector<float> l(256), r(256);
+    for (int done = 0; done < n; done += 256)
+    {
+        const int count = std::min(256, n - done);
+        for (int i = 0; i < count; ++i)
+            l[static_cast<size_t>(i)] = r[static_cast<size_t>(i)] =
+                amplitude * static_cast<float>(std::sin(2.0 * std::numbers::pi * hz * (done + i) / rate));
+        p.process(l.data(), r.data(), count);
+    }
+}
+} // namespace
+
+TEST_CASE("Opto: the loop settles where the curve says, softer compressing than limiting",
+          "[plugins][strip][opto]")
+{
+    // The steady curve: nothing at low levels, then a soft ratio of 1 + loop gain.
+    CHECK(strip::opto::steadyReductionDb(-60.0f, 40.0f, 0) < 0.05f);
+    const auto ratio = [](int mode)
+    {
+        const float a = strip::opto::steadyReductionDb(-10.0f, 80.0f, mode);
+        const float b = strip::opto::steadyReductionDb(0.0f, 80.0f, mode);
+        return 10.0f / (10.0f - (b - a)); // between -10 and 0 dB in
+    };
+    CHECK(ratio(0) == Approx(3.0f).margin(0.3f));
+    CHECK(ratio(1) == Approx(10.0f).margin(2.0f));
+    // More Peak reduction, more reduction.
+    CHECK(strip::opto::steadyReductionDb(-12.0f, 70.0f, 0) >
+          strip::opto::steadyReductionDb(-12.0f, 40.0f, 0));
+
+    auto o = makeModule(strip::types::opto);
+    enable(*o);
+    o->setParameter(strip::opto::peakReduction, 60.0f);
+    o->setParameter(strip::opto::colour, 0.0f);
+    // A -6 dBFS sine settles near the curve's reduction (the detector is a
+    // peak envelope, so it hears the sine's peak).
+    const float expected = strip::opto::steadyReductionDb(-6.0f, 60.0f, 0);
+    REQUIRE(expected > 6.0f);
+    const float db = responseDb(*o, 1000.0, 0.5f, 3.0);
+    CHECK(db == Approx(-expected).margin(1.0f));
+    const auto frame = o->feedback()->latest();
+    CHECK(frame.reduction == Approx(expected).margin(1.0f));
+    CHECK(frame.extra > 0.3f); // the cell's memory filled
+
+    // Gain is make-up after the cell; Mix 0 is the dry signal.
+    o->setParameter(strip::opto::gain, 6.0f);
+    CHECK(responseDb(*o, 1000.0, 0.5f, 3.0) == Approx(-expected + 6.0f).margin(1.0f));
+    o->setParameter(strip::opto::mix, 0.0f);
+    CHECK(responseDb(*o, 1000.0, 0.5f) == Approx(0.0f).margin(0.05f));
+}
+
+TEST_CASE("Opto: transparent when quiet; Colour adds harmonics without changing quiet gain",
+          "[plugins][strip][opto]")
+{
+    auto o = makeModule(strip::types::opto);
+    enable(*o);
+    o->setParameter(strip::opto::peakReduction, 0.0f);
+    o->setParameter(strip::opto::colour, 0.0f);
+    CHECK(responseDb(*o, 1000.0, 0.01f) == Approx(0.0f).margin(0.05f));
+    o->setParameter(strip::opto::colour, 100.0f);
+    // Small signals pass at unity through the valve.
+    CHECK(responseDb(*o, 1000.0, 0.01f) == Approx(0.0f).margin(0.1f));
+    // A loud one is shaped: its peak is held down, and the output stays bounded.
+    const float peak = peakAfter(*o, 1000.0, 0.9f);
+    CHECK(peak < 0.85f);
+    CHECK(peak > 0.3f);
+}
+
+TEST_CASE("Opto: the release is quick after a short burst and slow after a long one",
+          "[plugins][strip][opto]")
+{
+    // The reduction 300 ms after the signal falls below the knee.
+    struct Result
+    {
+        float during = 0.0f, memory = 0.0f, after = 0.0f;
+    };
+    const auto afterBurst = [](double burstSeconds)
+    {
+        auto o = makeModule(strip::types::opto);
+        enable(*o);
+        o->setParameter(strip::opto::peakReduction, 80.0f);
+        play(*o, 1000.0, 0.5f, burstSeconds);
+        Result r;
+        r.during = o->feedback()->latest().reduction;
+        r.memory = o->feedback()->latest().extra;
+        play(*o, 1000.0, 0.001f, 0.3);
+        r.after = o->feedback()->latest().reduction;
+        return r;
+    };
+    const auto burst = afterBurst(0.1);
+    const auto sustained = afterBurst(6.0);
+    CHECK(burst.during > 15.0f);
+    CHECK(sustained.during > 15.0f);
+    CHECK(burst.memory < 0.2f);
+    CHECK(sustained.memory > 0.8f);
+    // A short burst lets most of its reduction go in the fast stage; a long one
+    // holds most of it.
+    CHECK(burst.after < 0.2f * burst.during);
+    CHECK(sustained.after > 0.6f * sustained.during);
+    // The slow stage: under half a second when fresh, seconds when charged.
+    CHECK(strip::opto::slowReleaseSeconds(0.0f) < 0.5f);
+    CHECK(strip::opto::slowReleaseSeconds(1.0f) > 3.0f);
+}
+
+TEST_CASE("The compressor slot swaps between the clean and the opto models", "[core][strip][opto]")
+{
+    CHECK(strip::slotOf(strip::types::opto) == strip::types::compressor);
+    CHECK(strip::slotOf(strip::types::gate) == strip::types::gate);
+    CHECK(strip::alternatives(strip::types::compressor) ==
+          std::vector<std::string>{strip::types::compressor, strip::types::opto});
+    CHECK(strip::alternatives(strip::types::opto).size() == 2);
+    CHECK(strip::alternatives(strip::types::eq) == std::vector<std::string>{strip::types::eq});
+    CHECK(strip::isStripType(strip::types::opto));
+    // The built-in insert runs the same processor.
+    auto insert = plugins::BuiltInFactory().create(plugins::types::opto);
+    REQUIRE(insert != nullptr);
+    CHECK(insert->parameters().size() == static_cast<size_t>(strip::opto::count));
+    CHECK(plugins::BuiltInFactory::displayName(plugins::types::opto) == "Opto Compressor");
+
+    core::Project p;
+    core::UndoStack undo;
+    auto add = std::make_unique<core::AddTrack>(core::Track{});
+    add->setDefaultStrip(strip::defaultStrip());
+    undo.execute(p, std::move(add));
+    const auto trackId = p.tracks[0].id;
+    const auto compId = p.tracks[0].strip[2].id;
+    undo.execute(p, std::make_unique<core::SetInsertBypass>(trackId, compId, false));
+    core::AutomationLane lane;
+    lane.id = p.allocateId();
+    lane.target = core::AutomationTarget::insertParameter;
+    lane.insert = compId;
+    lane.parameter = strip::compressor::threshold;
+    lane.points.push_back({0, -20.0f});
+    p.tracks[0].automation.push_back(lane);
+
+    undo.execute(
+        p,
+        std::make_unique<core::SetStripModuleType>(
+            trackId, compId, strip::types::opto, plugins::defaultParameters(strip::types::opto), "Swap"));
+    const auto& swapped = p.tracks[0].strip[2];
+    CHECK(swapped.id == compId);
+    CHECK(swapped.type == strip::types::opto);
+    CHECK_FALSE(swapped.bypass); // still on
+    CHECK(swapped.params.size() == static_cast<size_t>(strip::opto::count));
+    CHECK(p.tracks[0].automation.empty()); // the old model's lane went with it
+
+    // A project with the opto keeps it: no second compressor is added, and it saves.
+    CHECK_FALSE(strip::ensureChannelStrip(p));
+    const auto loaded = core::projectFromJson(core::projectToJson(p));
+    REQUIRE(loaded.has_value());
+    CHECK(loaded->tracks[0].strip == p.tracks[0].strip);
+
+    undo.undo(p);
+    CHECK(p.tracks[0].strip[2].type == strip::types::compressor);
+    CHECK(p.tracks[0].strip[2].params.size() == static_cast<size_t>(strip::compressor::count));
+    REQUIRE(p.tracks[0].automation.size() == 1);
+    CHECK(p.tracks[0].automation[0].insert == compId);
+}
+
+TEST_CASE("A preset swaps the compressor slot to the model it names", "[core][strip][presets][opto]")
+{
+    const auto* vocal = strip::findFactoryPreset("Lead vocal");
+    const auto* kick = strip::findFactoryPreset("Kick");
+    REQUIRE(vocal != nullptr);
+    REQUIRE(kick != nullptr);
+    CHECK(vocal->modules[2].type == strip::types::opto);
+    CHECK_FALSE(vocal->modules[2].bypass);
+    CHECK(kick->modules[2].type == strip::types::compressor);
+
+    core::Project p;
+    core::UndoStack undo;
+    auto add = std::make_unique<core::AddTrack>(core::Track{});
+    add->setDefaultStrip(strip::defaultStrip());
+    undo.execute(p, std::move(add));
+    const auto before = p.tracks[0].strip;
+    const auto apply = [&](const strip::Preset& preset)
+    {
+        undo.beginGroup("Strip preset: " + preset.name);
+        for (auto& command :
+             strip::presetCommands(p.tracks[0], preset.modules, "Strip preset: " + preset.name))
+            undo.execute(p, std::move(command));
+        undo.endGroup();
+    };
+
+    apply(*vocal);
+    const auto& slot = p.tracks[0].strip[2];
+    CHECK(slot.id == before[2].id);
+    CHECK(slot.type == strip::types::opto);
+    CHECK(slot.params == vocal->modules[2].params);
+    CHECK_FALSE(slot.bypass);
+
+    // A clean preset swaps it back.
+    apply(*kick);
+    CHECK(p.tracks[0].strip[2].type == strip::types::compressor);
+    CHECK(p.tracks[0].strip[2].params == kick->modules[2].params);
+
+    undo.undo(p);
+    CHECK(p.tracks[0].strip[2].type == strip::types::opto);
     undo.undo(p);
     CHECK(p.tracks[0].strip == before);
 }

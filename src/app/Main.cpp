@@ -167,8 +167,9 @@ public:
     //   --strip-preset <name> apply a factory channel strip preset to every track
     //   --strip <modules>    switch channel strip modules on for every track and show the
     //                        Editor panel: a comma list of gate, eq, compressor, deesser,
-    //                        saturation, limiter, or all; "demo" also sets values that give
-    //                        every display something to show
+    //                        saturation, limiter, or all; "opto" swaps the compressor for
+    //                        the opto compressor and switches it on; "demo" also sets
+    //                        values that give every display something to show
     //   --window-size <w>x<h>  set the window's size
     //   --capture <folder> [s]  after s seconds (2 if not given), save the window and its
     //                        showing parts (mixer, channel-strip, instrument, piano-roll,
@@ -503,7 +504,9 @@ public:
                 {
                     const auto tracks = session_->project().tracks;
                     for (const auto& track : tracks)
-                        session_->execute(std::make_unique<core::SetStripState>(track.id, preset->modules));
+                        session_->executeGroup(
+                            "Strip preset: " + name,
+                            plugins::strip::presetCommands(track, preset->modules, "Strip preset: " + name));
                 }
                 mainWindow_->showPanel("editor");
             }
@@ -699,6 +702,19 @@ public:
         const auto names = juce::StringArray::fromTokens(text.toLowerCase(), ",", "");
         const bool all = names.contains("all") || (names.contains("demo") && names.size() == 1);
         const bool demo = names.contains("demo");
+        if (names.contains("opto"))
+            for (const auto& track : session_->project().tracks)
+                for (const auto& module : track.strip)
+                    if (module.type == ps::types::compressor)
+                    {
+                        session_->execute(std::make_unique<core::SetStripModuleType>(
+                            track.id,
+                            module.id,
+                            ps::types::opto,
+                            plugins::defaultParameters(ps::types::opto),
+                            "Swap"));
+                        break;
+                    }
         const auto tracks = session_->project().tracks; // a copy: commands change the project
         for (const auto& track : tracks)
             for (const auto& module : track.strip)
@@ -728,6 +744,12 @@ public:
                     set(ps::compressor::threshold, -26.0f);
                     set(ps::compressor::ratio, 4.0f);
                     set(ps::compressor::autoMakeup, 1.0f);
+                }
+                else if (module.type == ps::types::opto)
+                {
+                    set(ps::opto::peakReduction, 60.0f);
+                    set(ps::opto::gain, 4.0f);
+                    set(ps::opto::colour, 45.0f);
                 }
                 else if (module.type == ps::types::gate)
                     set(ps::gate::threshold, -45.0f);

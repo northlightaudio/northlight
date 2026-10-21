@@ -35,6 +35,14 @@ public:
     std::function<juce::String(double)> format;
     // Shown under the ring when there is room.
     void setShowValue(bool show) { showValue_ = show; }
+    // The ring's diameter (default the theme's knob size): a module's main
+    // controls can be larger.
+    void setRingSize(int pixels)
+    {
+        ringSize_ = pixels;
+        repaint();
+    }
+    int ringSize() const noexcept { return ringSize_ > 0 ? ringSize_ : theme_.sizes.knob; }
 
     std::function<void(double)> onValueChanged;
     std::function<void()> onDragStart, onDragEnd;
@@ -65,6 +73,7 @@ private:
     const Theme& theme_;
     double minimum_ = 0.0, maximum_ = 1.0, default_ = 0.0, value_ = 0.0;
     bool showValue_ = true;
+    int ringSize_ = 0; // 0: the theme's knob size
     bool logarithmic_ = false;
     juce::Colour arcColour_;
     double dragStartValue_ = 0.0; // the fraction at the start of a drag

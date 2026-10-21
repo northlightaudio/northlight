@@ -13,7 +13,7 @@ Modules, in their default order:
 |---|---|---|
 | Gate | Sea grass | Key-filtered gate: threshold, range, attack, hold, release, key high-pass and low-pass |
 | EQ | Overcast | Six-band parametric: low cut, four bands (peak, low shelf, high shelf or notch), high cut |
-| Compressor | Loch | Feed-forward, peak or RMS detector, soft knee, make-up (manual and auto), wet/dry |
+| Compressor | Loch (Clean), Straw (Opto) | Two models, swapped in the card's header. Clean: feed-forward, peak or RMS detector, soft knee, make-up (manual and auto), wet/dry. Opto: a vintage optical compressor (12.5) |
 | De-esser | Heather | Linkwitz-Riley split at the frequency, reduction on the band (split) or everything (wide), listen |
 | Saturation | Kelp | Tape, tube or clip curve with anti-aliasing, tone, output trim, wet/dry |
 | Limiter | Rowan | Zero-latency peak limiter: input gain, ceiling, release |
@@ -132,6 +132,35 @@ stay readable. Histories scroll right to left over three seconds.
 - Knobs (one row): Ratio, Attack, Release, Knee, Makeup, Mix; under them the
   Auto make-up pill and the Peak / RMS detector.
 
+### Opto model
+
+A slot can run more than one model; the compressor's are **Clean** and **Opto**. The
+card's header shows the slot's name ("Compressor") with a segmented control of its
+models after it; choosing one swaps the module in place as one undo step ("Swap to
+Opto compressor"): it keeps its id, place and on/off state, the old model's
+automation lanes go with it, and the model swapped away keeps its settings for the
+session (swapping back restores them). A preset names a model for each slot and
+swaps to it. The collapsed tab and the mixer name the model ("Opto compressor", O).
+The same processor is the "Opto Compressor" built-in insert.
+
+How it works (LA-2A style): feedback detection, a softplus knee and a loop gain of 2
+(about 3:1) or 12 (Limit, about 10:1); the cell's fast stage attacks in about 10 ms
+and releases in 60 ms, its slow stage takes a share of the reduction and releases
+over 0.4 to 4 s, both growing with the cell's memory of sustained compression;
+Emphasis lifts the detector's highs (up to +12 dB above 1.5 kHz); Colour drives a
+biased valve curve after the make-up, unity gain for small signals.
+
+- Display, in the hue Straw: a **VU meter** (needle with a VU's mass: 99% in about
+  300 ms, slight overshoot; -20..+3 scale linear in amplitude, `meterHot` above 0)
+  that shows gain reduction (the needle falls from 0) or, clicked, the output (0 VU
+  = -18 dBFS), remembered for the session; the **cell**, a 64 px well with the lamp
+  (lit in the hue with the reduction, a halo and a beam to the cell) over the
+  photocell (its track warming with the memory), a memory bar and the slow release
+  it gives; and the three-second history (input grey, output in the hue,
+  reduction from the top).
+- Controls: Peak reduction and Gain as 46 px knobs with 0-10 scale marks; a rule;
+  Compress / Limit over Emphasis, Colour and Mix.
+
 ## 12.6 De-esser
 
 - Display: the sibilance band's level as a grey area, gain reduction from the top,
@@ -181,7 +210,8 @@ then "Save as preset…" (a sheet asking for a name), "Reset strip (all off,
 defaults)" and "Show presets folder". A preset sets every module's on/off state
 and parameters in one undo step ("Strip preset: Lead vocal"), keeping the
 channel's module order; the cards of modules it switches on open and the rest
-fold to tabs. EQ bands a preset does not use are switched off. User presets are
+fold to tabs. EQ bands a preset does not use are switched off. Lead vocal, Bass and
+Piano use the Opto compressor; the rest use Clean. User presets are
 JSON files in Documents/Northlight/Strip Presets, listed under "Yours"; a preset
 from an older version leaves modules it does not know alone.
 

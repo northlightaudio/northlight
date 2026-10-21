@@ -64,7 +64,10 @@ can join a fader group, so their faders, mutes and solos move together.
 
 Every channel has a **channel strip** of six modules (gate, EQ, compressor, de-esser,
 saturation, limiter) that switch on in place. In the **Editor** panel each module
-is a card with a live display. Factory and user **presets** set up a whole strip at
+is a card with a live display. The compressor has two models, switched in its card's
+header: **Clean**, a modern compressor with every control, and **Opto**, a vintage
+optical compressor with just Peak reduction and Gain whose release slows down the
+longer it has been working. Factory and user **presets** set up a whole strip at
 once.
 
 **FX tracks** hold shared effects such as a reverb or a delay that several channels
