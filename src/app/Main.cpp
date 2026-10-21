@@ -17,6 +17,7 @@
 #include "ui/PianoRoll.h"
 #include "ui/PreferencesView.h"
 #include "ui/SplashScreen.h"
+#include "version/Version.h"
 
 #include <juce_audio_formats/juce_audio_formats.h>
 #include <juce_gui_extra/juce_gui_extra.h>
@@ -32,7 +33,9 @@ class NorthlightApplication final : public juce::JUCEApplication
 {
 public:
     const juce::String getApplicationName() override { return JUCE_APPLICATION_NAME_STRING; }
-    const juce::String getApplicationVersion() override { return JUCE_APPLICATION_VERSION_STRING; }
+    // The full version with its commit (version/Version.h): what crash reports and
+    // bug reports need. The About box and splash show version::display().
+    const juce::String getApplicationVersion() override { return juce::String(version::full()); }
     bool moreThanOneInstanceAllowed() override { return true; }
 
     void initialise(const juce::String& commandLine) override
@@ -54,7 +57,8 @@ public:
         // The splash, once the theme is loaded; it reports each step below.
         juce::Component::SafePointer<ui::SplashScreen> splash;
         if (!commandLine.contains("--no-splash"))
-            splash = ui::SplashScreen::showStartup(ui::Theme::dark(), getApplicationVersion());
+            splash = ui::SplashScreen::showStartup(ui::Theme::dark(),
+                                                   juce::String::fromUTF8(version::display().c_str()));
         const auto step = [&splash](const juce::String& text, float progress)
         {
             if (splash != nullptr)

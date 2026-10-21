@@ -2,6 +2,7 @@
 
 #include "engine/rt/RealtimeGuard.h"
 #include "hosting/CrashGuard.h"
+#include "version/Version.h"
 
 #include <algorithm>
 #include <cmath>
@@ -235,7 +236,7 @@ bool HostedClapPlugin::initialise(const std::string& path, const std::string& pl
     host_.name = "Northlight";
     host_.vendor = "Leafshade";
     host_.url = "https://leafshade.io";
-    host_.version = "0.1";
+    host_.version = northlight::version::number(); // the host's own version, from CMake
     host_.get_extension = &hostGetExtension;
     host_.request_restart = &hostRequestRestart;
     host_.request_process = &hostRequestProcess;

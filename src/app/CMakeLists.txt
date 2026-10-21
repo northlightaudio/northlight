@@ -74,9 +74,9 @@ target_sources(northlight PRIVATE
     MainWindow.cpp)
 
 target_compile_definitions(northlight PRIVATE
-    JUCE_APPLICATION_NAME_STRING="$<TARGET_PROPERTY:northlight,JUCE_PRODUCT_NAME>"
-    JUCE_APPLICATION_VERSION_STRING="$<TARGET_PROPERTY:northlight,JUCE_VERSION>")
+    JUCE_APPLICATION_NAME_STRING="$<TARGET_PROPERTY:northlight,JUCE_PRODUCT_NAME>")
 
 target_link_libraries(northlight PRIVATE
     northlight_app_session
-    northlight_ui)
+    northlight_ui
+    northlight_version)

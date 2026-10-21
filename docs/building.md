@@ -66,6 +66,7 @@ VST3 hosting needs no external SDK; the VST3 SDK comes with JUCE.
 | `NORTHLIGHT_RT_CHECKS` | ON (OFF in `windows-release`) | Hook allocation to catch it on real-time threads |
 | `NORTHLIGHT_WARNINGS_AS_ERRORS` | OFF (ON in `ci`) | Treat warnings as errors |
 | `NORTHLIGHT_ASIO_SDK_DIR` | empty | The ASIO SDK root |
+| `NORTHLIGHT_VERSION_LABEL` | `dev` | The version's label: `dev`, a pre-release such as `beta.1`, or empty for a release (see [CONTRIBUTING.md](../CONTRIBUTING.md#versions-and-releases)) |
 
 ## Tests
 

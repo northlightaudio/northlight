@@ -108,6 +108,49 @@ if it is text.
   [docs/decisions.md](docs/decisions.md) for a choice with a reason worth keeping,
   the design spec for anything a user sees.
 
+## Versions and releases
+
+Northlight's version is **MAJOR.MINOR.PATCH**, with the numbers defined by what a
+user notices rather than by an API:
+
+- **MAJOR**: a deliberate break, such as projects that older versions can no longer
+  open. Rare.
+- **MINOR**: a feature release.
+- **PATCH**: fixes only, no new features and no change to the project file format.
+  Safe to install in the middle of a project.
+
+Until 1.0 the version stays at `0.x`, and moving to 1.0 is a promise: every 1.x opens
+every 1.x project. The project file format has its own version number in the file,
+with step-by-step upgrades. It changes independently of the application's version.
+
+**One source.** The number is set in exactly one place, `project(... VERSION x.y.z)`
+in the top-level `CMakeLists.txt`. A label is added by the `NORTHLIGHT_VERSION_LABEL`
+CMake option: `dev` by default, a pre-release such as `beta.1`, or empty for a final
+release. The build reads the git commit every time it runs, so a development build
+names the commit it came from:
+
+| Build | About box and splash | Crash reports and `version::full()` |
+|---|---|---|
+| Development | `0.2.0-dev · 1cb6f30` (`*` when there are uncommitted changes) | `0.2.0-dev+1cb6f30` (`.dirty` when there are uncommitted changes) |
+| Pre-release | `0.2.0-beta.1` | `0.2.0-beta.1+9a8b7c6` |
+| Release | `0.2.0` | `0.2.0+9a8b7c6` |
+
+**Making a release.**
+
+1. Set the version in `CMakeLists.txt` if it has not been set already.
+2. Move the **Unreleased** section of [CHANGELOG.md](CHANGELOG.md) under a heading
+   for the version and the date.
+3. Commit, then tag the commit `vX.Y.Z` (or `vX.Y.Z-beta.N` for a pre-release) with
+   an annotated tag.
+4. Build from the tag with `-DNORTHLIGHT_VERSION_LABEL=` (empty, or the pre-release
+   label) and the Release preset.
+5. Raise the version on `main` to the next minor (`X.Y+1.0`) so development builds
+   are never mistaken for the release.
+
+Development happens on `main`. A `release/X.Y` branch is made from a tag only when
+a release needs a patch while `main` has moved on. Every distributed build must say
+where its source is (the AGPLv3 requires it); the tag is that source.
+
 ## Third-party code and SDKs
 
 Dependencies are fetched by CMake, never committed. The Steinberg ASIO SDK cannot be

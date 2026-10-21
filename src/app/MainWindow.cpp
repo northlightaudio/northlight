@@ -39,6 +39,7 @@
 #include "ui/shell/Panels.h"
 #include "ui/shell/StatusBar.h"
 #include "ui/strip/ChannelStripView.h"
+#include "version/Version.h"
 
 #include <juce_audio_formats/juce_audio_formats.h>
 
@@ -2358,7 +2359,7 @@ private:
     void about()
     {
         ui::SplashScreen::showAbout(
-            theme_, juce::JUCEApplication::getInstance()->getApplicationVersion(), getTopLevelComponent());
+            theme_, juce::String::fromUTF8(version::display().c_str()), getTopLevelComponent());
     }
 
     void projectMenu()
@@ -2843,8 +2844,7 @@ auto MainWindow::findControlAtPoint(juce::Point<float> point) const -> WindowCon
 
 void MainWindow::showAbout()
 {
-    ui::SplashScreen::showAbout(
-        ui::Theme::dark(), juce::JUCEApplication::getInstance()->getApplicationVersion(), this);
+    ui::SplashScreen::showAbout(ui::Theme::dark(), juce::String::fromUTF8(version::display().c_str()), this);
 }
 
 void MainWindow::showAudioSetup()

@@ -25,6 +25,9 @@ list(APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/cmake")
 option(NORTHLIGHT_BUILD_TESTS "Build unit tests" ON)
 option(NORTHLIGHT_RT_CHECKS "Enable real-time safety checks (allocation/lock detection on RT threads)" ON)
 option(NORTHLIGHT_WARNINGS_AS_ERRORS "Treat compiler warnings as errors" OFF)
+# The version's label (CONTRIBUTING.md, "Versions and releases"): "dev" for every
+# development build, a pre-release such as "beta.1", or empty for a final release.
+set(NORTHLIGHT_VERSION_LABEL "dev" CACHE STRING "Version label: dev, a pre-release such as beta.1, or empty for a release")
 
 # Steinberg SDKs are not vendored. Point this at a local copy of the ASIO SDK
 # (the directory that contains common/, host/, driver/) to enable ASIO support.

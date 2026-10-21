@@ -1,5 +1,6 @@
 add_executable(northlight_unit_tests
     NoAssertDialogs.cpp
+    version/VersionTests.cpp
     rt/RealtimeGuardTests.cpp
     audio/AudioSettingsTests.cpp
     audio/LatencyDetectorTests.cpp
@@ -51,6 +52,7 @@ add_executable(northlight_unit_tests
 
 target_link_libraries(northlight_unit_tests PRIVATE
     northlight_options
+    northlight_version
     northlight_rt
     northlight_rt_checks
     northlight_audio

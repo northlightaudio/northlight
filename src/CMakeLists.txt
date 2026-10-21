@@ -45,6 +45,7 @@ target_include_directories(northlight_juce INTERFACE
 target_compile_definitions(northlight_juce INTERFACE
     $<TARGET_PROPERTY:northlight_juce,COMPILE_DEFINITIONS>)
 
+add_subdirectory(version)
 add_subdirectory(core)
 add_subdirectory(engine)
 add_subdirectory(plugins)
