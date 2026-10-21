@@ -625,15 +625,38 @@ selects and locates, a drag moves it (snapped), a double-click renames it in a
 small dialog, Delete removes the selected one.
 
 Bounce (`app::BounceJob`): the mix or one file per track (stems, the others
-muted), over the whole project or a range (the loop region), to 32-bit float
-stereo WAV at the project rate. Each render runs its own `AudioEngine` over a copy
+muted; all tracks or a chosen set), over the whole project or a range (the loop
+region, a marker region). Each render runs its own `AudioEngine` over a copy
 of the project (with the live plugin states captured first), built on the message
 thread because plugin instances must be created there, with media loaded whole
 (`JuceMediaLoader` in memory-only mode: streaming would outrun the disk thread
-offline). The blocks render on a background thread; the first
-`outputLatencySamples()` of output are dropped and that much is rendered past the
-end so the file starts and ends exactly on the range; the result carries the
-integrated loudness of the mix. Export... on the toolbar offers the three.
+offline). The blocks render on a background thread into memory (stereo float at
+the project rate, one render at a time); the first `outputLatencySamples()` of
+output are dropped and that much is rendered past the end so the file starts and
+ends exactly on the range.
+
+Export. The render is then finished in a second pass, all of it JUCE-free in
+`engine/ExportDsp` and `engine/ExportSettings` (unit tested in
+tests/unit/engine/ExportTests.cpp): converted to the output rate (project, 44.1,
+48, 88.2 or 96 kHz) by an offline Kaiser-windowed sinc (48 zero crossings, about
+90 dB stop band, cut-off at 92% of the lower Nyquist; output sample j sits exactly
+at input position j * from / to, so no delay); measured (BS.1770 integrated
+loudness through `LoudnessMeter`, sample peak, and true peak by 4x windowed-sinc
+oversampling when the ceiling is in dBTP); given the loudness normalisation gain
+(target minus measured, cut back so the peak stays under the ceiling; silence
+gets none); then quantised by `engine::Quantiser` to 16 or 24-bit with TPDF
+dither or TPDF with 3-tap E-weighted error-feedback noise shaping (dither only
+when reducing to integers; the writers get left-justified 32-bit integers so
+JUCE's truncation never touches the samples). Stems are normalised together: a
+measure-only render of the mix runs first and its gain goes on every stem, so the
+stems still sum to the normalised mix. Formats: WAV 16/24/32-bit float (float WAV
+keeps the engine's `WavWriter`), AIFF and FLAC 16/24, Ogg Vorbis (JUCE's encoder,
+quality index, written from floats). MP3 is not offered (JUCE has no encoder).
+Ctrl+E or Export... in the app menu opens the export sheet (`ui::ExportView` in a
+`Sheet`); its choices are remembered in the user settings (`export.*`), the file
+or stems folder is chosen after it, the status bar shows progress, and the
+outcome is a toast with the measured loudness, the gain applied and the
+resulting peak, and Show in folder.
 
 ### Plugin hosting (Phase 5)
 

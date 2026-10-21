@@ -9,6 +9,7 @@ add_executable(aural_juce_tests
     HostedPluginTests.cpp
     ClapPluginTests.cpp
     BounceTests.cpp
+    ExportFormatTests.cpp
     ThemeTests.cpp
     KeyboardMapTests.cpp
     ChannelStripUiTests.cpp
