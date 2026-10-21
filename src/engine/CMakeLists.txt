@@ -53,6 +53,10 @@ add_library(aural_engine STATIC
     Delay.h
     Delay.cpp
     Loudness.h
+    ExportSettings.h
+    ExportSettings.cpp
+    ExportDsp.h
+    ExportDsp.cpp
     pitch/PitchAnalysis.h
     pitch/PitchAnalysis.cpp
     pitch/VocalRender.h
