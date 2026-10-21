@@ -714,6 +714,15 @@ public:
         return tracks_.handleEditKey(key);
     }
 
+    // The custom chrome: what a point in the content is to the window. Only the
+    // header bar is title bar; everything else is client. Geometry only.
+    juce::Component::WindowControlKind windowControlAt(juce::Point<float> point) const
+    {
+        if (header_.getBounds().toFloat().contains(point))
+            return header_.windowControlAt(point - header_.getPosition().toFloat());
+        return juce::Component::WindowControlKind::client;
+    }
+
 private:
     // ----- wiring --------------------------------------------------------------------------
     void wireHeader()
@@ -727,6 +736,9 @@ private:
         header_.onStop = [this] { session_.stop(); };
         header_.onRecord = [this] { toggleRecord(); };
         header_.onDeviceWarning = [this] { owner_.showAudioSetup(); };
+        header_.onMinimise = [this] { owner_.minimiseButtonPressed(); };
+        header_.onMaximise = [this] { owner_.maximiseButtonPressed(); };
+        header_.onCloseWindow = [this] { owner_.closeButtonPressed(); };
         header_.onToggleLoop = [this] { session_.setLoopEnabled(!session_.loopEnabled()); };
         header_.onTogglePunch = [this] { session_.setPunchEnabled(!session_.punchEnabled()); };
         header_.onToggleClick = [this] { session_.setMetronome(!session_.metronomeEnabled()); };
@@ -1302,6 +1314,8 @@ private:
         state.mixerVisible = panels_.isVisible(ui::PanelId::mixer);
         state.editorVisible = panels_.isVisible(ui::PanelId::editor);
         state.browserVisible = panels_.isVisible(ui::PanelId::browser);
+        state.windowControls = !owner_.isUsingNativeTitleBar();
+        state.maximised = owner_.isFullScreen();
         header_.setState(state);
     }
 
@@ -2730,7 +2744,11 @@ MainWindow::MainWindow(const juce::String& name,
     : juce::DocumentWindow(name, ui::Theme::dark().colours.canvas, juce::DocumentWindow::allButtons),
       audio_(audio), session_(session), settings_(settings)
 {
-    setUsingNativeTitleBar(true);
+    // Custom chrome (03-shell.md): no Windows title bar; the header bar is the
+    // title bar and draws the window buttons. findControlAtPoint keeps snapping,
+    // edge resizing and the Snap Layouts flyout native.
+    setUsingNativeTitleBar(false);
+    setTitleBarHeight(0);
     setContentOwned(new Content(*this, audio_, session_, settings_), true);
     setResizable(true, false);
     setResizeLimits(1280, 720, 10000, 10000);
@@ -2750,6 +2768,23 @@ void MainWindow::closeButtonPressed()
         content->confirmClose();
     else
         juce::JUCEApplication::getInstance()->systemRequestedQuit();
+}
+
+auto MainWindow::findControlAtPoint(juce::Point<float> point) const -> WindowControlKind
+{
+    if (isUsingNativeTitleBar())
+        return DocumentWindow::findControlAtPoint(point);
+    // Windows 11 expects the top resize edge inside the window (the other edges
+    // are outside it, in the invisible frame).
+    constexpr float edge = 4.0f;
+    const auto bounds = getLocalBounds().toFloat();
+    if (isResizable() && !isFullScreen() && point.y < edge)
+        return point.x < edge                       ? WindowControlKind::sizeTopLeft
+               : point.x > bounds.getRight() - edge ? WindowControlKind::sizeTopRight
+                                                    : WindowControlKind::sizeTop;
+    if (auto* content = dynamic_cast<const Content*>(getContentComponent()))
+        return content->windowControlAt(point - content->getPosition().toFloat());
+    return WindowControlKind::client;
 }
 
 void MainWindow::showAbout()

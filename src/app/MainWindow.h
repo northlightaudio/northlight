@@ -31,6 +31,9 @@ public:
     ~MainWindow() override;
 
     void closeButtonPressed() override;
+    // The custom chrome: Windows asks what is under the mouse, and the header bar
+    // answers (caption, a window button, or a control).
+    WindowControlKind findControlAtPoint(juce::Point<float> point) const override;
 
     // Opens the Audio Setup window (non-modal) or brings it to the front.
     void showAudioSetup();

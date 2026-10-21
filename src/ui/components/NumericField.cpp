@@ -74,7 +74,6 @@ void NumericField::paint(juce::Graphics& g)
     {
         if (editor_ != nullptr)
             return;
-        const auto& m = theme_.material;
         auto area = getLocalBounds().reduced(theme_.spacing.sm, 0);
         g.setFont(theme_.font(Theme::Face::ui, theme_.fonts.size.caption, theme_.fonts.weight.medium));
         g.setColour(c.textTertiary);
@@ -85,7 +84,7 @@ void NumericField::paint(juce::Graphics& g)
             area.removeFromRight(theme_.spacing.xs);
         }
         g.setFont(theme_.timeSmall());
-        g.setColour(!isEnabled() ? c.textDisabled : m.enabled ? m.readoutText : c.textPrimary);
+        g.setColour(isEnabled() ? c.textPrimary : c.textDisabled);
         g.drawText(text(), area, juce::Justification::centredRight);
         if (auto* lnf = dynamic_cast<NorthlightLookAndFeel*>(&getLookAndFeel()))
             lnf->drawFocusRing(g, *this, bounds, theme_.radius.sm);

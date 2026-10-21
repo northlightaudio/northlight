@@ -73,10 +73,13 @@ enum class Icon
     pianoRoll,
     diagnostics,
     menu,
-    instrument, // a keyboard: the instruments rack
-    pointer,    // the select tool
-    rangeTool,  // the range tool: an I-beam between brackets
-    pencil,     // the pencil tool: draws MIDI clips
+    instrument,     // a keyboard: the instruments rack
+    pointer,        // the select tool
+    rangeTool,      // the range tool: an I-beam between brackets
+    pencil,         // the pencil tool: draws MIDI clips
+    windowMinimise, // the window buttons in the header (custom window chrome)
+    windowMaximise,
+    windowRestore,
 };
 
 struct Icons
@@ -88,7 +91,7 @@ struct Icons
     static void draw(juce::Graphics& g, Icon icon, juce::Rectangle<float> bounds, juce::Colour colour);
     static const char* name(Icon icon);
     static const char* svgPath(Icon icon);
-    static constexpr int count = static_cast<int>(Icon::pencil) + 1;
+    static constexpr int count = static_cast<int>(Icon::windowRestore) + 1;
 };
 
 // An icon button (28×28 default): ghost at rest, the icon in textSecondary,
@@ -126,6 +129,13 @@ public:
         solidOn_ = solid;
         repaint();
     }
+    // Drawn as a key in the control material (02-design-system.md 2.4) at rest,
+    // rather than a bare icon that only shows a face on hover.
+    void setKey(bool key)
+    {
+        key_ = key;
+        repaint();
+    }
     // A warning dot in the top-right corner.
     void setWarningDot(bool show)
     {
@@ -147,7 +157,7 @@ private:
     juce::Colour onColour_, restColour_;
     juce::String corner_;
     int iconSize_ = 16;
-    bool chevron_ = false, solidOn_ = false, warningDot_ = false;
+    bool chevron_ = false, solidOn_ = false, warningDot_ = false, key_ = false;
 };
 
 } // namespace northlight::ui
