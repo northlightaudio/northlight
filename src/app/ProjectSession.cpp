@@ -485,6 +485,26 @@ core::Id ProjectSession::addSamplerTrack(const juce::File& file, double startFra
     return raw->midiTrackId();
 }
 
+std::string ProjectSession::previewFile(const juce::File& file)
+{
+    const double rate = engine_.deviceSampleRate() > 0.0 ? engine_.deviceSampleRate() : project_.sampleRate;
+    std::string error;
+    auto source = loader_.load(file.getFullPathName().toStdString(), rate, error);
+    if (source == nullptr)
+        return error.empty() ? "could not read the file" : error;
+    if (auto instance = source->createInstance()) // a long file streams through its own window
+        source = std::move(instance);
+    engine_.preview().play(std::move(source));
+    pumpPreview();
+    return {};
+}
+
+void ProjectSession::stopPreview()
+{
+    engine_.preview().stop();
+    pumpPreview();
+}
+
 std::string ProjectSession::importAudioFile(const juce::File& file, core::SamplePosition at)
 {
     std::string error;

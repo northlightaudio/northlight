@@ -191,6 +191,17 @@ evaluated at each output sample's exact source position. It is stateless, so rea
 can start anywhere, and it has no lookback delay, so imported media stays aligned
 to the sample.
 
+Auditioning a file (the browser's Files tab) is `engine::PreviewPlayer`, owned by
+the engine and mixed into the device outputs after the render: over the mix and
+outside it (no fader, meters, recording or bounce), at its own gain. The session
+loads the file with the same loader as clips (a long file streams through its own
+disk window) and hands the source over in an `rt::SnapshotPublisher`. Nothing is
+cut: a stop or another file sets the id to fade, the audio thread fades it out
+over 5 ms and reports it done, and only then does `pump()` (the engine's garbage
+collection, and the browser's timer while it previews) publish the next source,
+which fades in. The source is released on the controller side once the audio
+thread has moved past it.
+
 ### Session and UI
 
 `ProjectSession` ties the pieces together on the message thread: it owns the

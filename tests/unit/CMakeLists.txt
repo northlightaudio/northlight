@@ -15,6 +15,7 @@ add_executable(aural_unit_tests
     engine/WorkerPoolTests.cpp
     engine/RecordingTests.cpp
     engine/ClickTests.cpp
+    engine/PreviewTests.cpp
     engine/StressTests.cpp
     engine/ResamplingTests.cpp
     engine/TakeTests.cpp
