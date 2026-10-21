@@ -27,8 +27,9 @@ struct Hues
 {
     juce::Colour wave, envelope, arp, pitch, lofi;
     explicit Hues(const Theme& t)
-        : wave(paletteColour(t, "Lime")), envelope(paletteColour(t, "Amber")),
-          arp(paletteColour(t, "Magenta")), pitch(paletteColour(t, "Sky")), lofi(paletteColour(t, "Coral"))
+        : wave(paletteColour(t, "Machair")), envelope(paletteColour(t, "Gorse")),
+          arp(paletteColour(t, "Thrift")), pitch(paletteColour(t, "Overcast")),
+          lofi(paletteColour(t, "Rowan"))
     {
     }
 };
@@ -723,7 +724,8 @@ private:
     // a drop shadow a pixel down and right.
     void paintWordmark(juce::Graphics& g) const
     {
-        static const char* hues[] = {"Coral", "Amber", "Lime", "Mint", "Sky", "Violet", "Magenta"};
+        static const char* hues[] = {
+            "Rowan", "Gorse", "Machair", "Sea grass", "Overcast", "Heather", "Thrift"};
         const float px = 4.0f;
         float x = static_cast<float>(wordmark_.getX()) + 4.0f;
         const float y = static_cast<float>(wordmark_.getCentreY()) - 3.5f * px;

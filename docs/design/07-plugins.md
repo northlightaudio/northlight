@@ -56,8 +56,8 @@ Every built-in has an editor in the channel strip's language (12-channel-strip.m
 12.1-12.2): a display in a well that reads the processor live and drags, then
 knobs in the module's hue. The same editor is the card's body in the Editor panel
 and the body of its window (under the title, bypass and mix). The hues follow the
-strip: EQ `Sky`, compressor `Indigo`, limiter `Coral`; gain `Lime`, reverb `Teal`,
-delay `Amber`. The instruments (7.4b-7.4e) have faces of their own.
+strip: EQ `Overcast`, compressor `Loch`, limiter `Rowan`; gain `Machair`, reverb `Lichen`,
+delay `Gorse`. The instruments (7.4b-7.4e) have faces of their own.
 
 - **Gain**: the input and output history with IN and OUT meters; Gain.
 - **EQ**: the strip's EQ graph with the built-in's four bands (a high-pass,
@@ -226,14 +226,14 @@ it, when it plays none), or a new MIDI track and instrument channel.
 ## 7.4b Aurora
 
 The synth bundled with Northlight reads as its own product, so its editor is bolder
-than the built-in effects' while keeping to the theme's palette (Mint, Teal,
-Sky, Violet, Magenta, Amber) and type:
+than the built-in effects' while keeping to the theme's palette (Sea grass, Lichen,
+Overcast, Heather, Thrift, Gorse) and type:
 
 - A night sky (the canvas darkening to the top) with twinkling stars and three
-  aurora ribbons in Mint, Teal and Violet drifting across the top; they move and
+  aurora ribbons in Sea grass, Lichen and Heather drifting across the top; they move and
   brighten while Aurora sounds and hold still when it is silent or with reduce
   motion on.
-- The wordmark AURORA, tracked wide with a Mint-to-Violet gradient, "POLYSYNTH ·
+- The wordmark AURORA, tracked wide with a Sea grass-to-Heather gradient, "POLYSYNTH ·
   NORTHLIGHT" beside it; the preset bar (previous, the name as a menu, next; "Custom"
   when the values match no preset); twelve voice lights that light as voices sound.
 - Six glass panels (`surface1` at 72% over the sky, a rim and a top highlight),
@@ -263,13 +263,13 @@ named that way. The master: Drive, Velocity, Level (applied to every output). Ki
 Clicks, Industrial.
 
 - Deep space (the canvas darkening around the star) with stars, and the pulsar in
-  the top-left corner: a white core, a `Sky` halo and two beams that turn slowly
+  the top-left corner: a white core, an `Overcast` halo and two beams that turn slowly
   while it plays and flare on every hit, which also sends a ring in the pad's hue
   out across the sky behind the glass. Still when silent or with reduce motion on.
-- The wordmark PULSAR tracked wide in a Sky-to-Coral gradient, "DRUM SYNTH ·
+- The wordmark PULSAR tracked wide in an Overcast-to-Rowan gradient, "DRUM SYNTH ·
   NORTHLIGHT", and the kit bar (previous, the name as a menu, next; "Custom" off-kit).
-- Eight pad tiles (4×2) of glass, each in its hue (Coral, Amber, Tangerine, Lime,
-  Mint, Teal, Sky, Indigo): its short name, its note, and its sound, rendered and
+- Eight pad tiles (4×2) of glass, each in its hue (Rowan, Gorse, Kelp, Machair,
+  Sea grass, Lichen, Overcast, Loch): its short name, its note, and its sound, rendered and
   drawn as a waveform; a hit lights the tile from within and its rim. Clicking a
   tile selects it (a stronger rim).
 - The selected pad's panel: its name and note, its output in a chip at the
@@ -292,12 +292,12 @@ the brightness, the formant and the partials' pans; a gentle Tone low-pass; and
 Space, a large eight-line reverb. Eight voices. Presets: Nebula, Choir of Dust,
 Glass Halo, Hollow Moon, Solar Breath, Deep Field, Ice Bells, Drifting Veil.
 
-- Gas clouds in Violet, Magenta, Teal and Indigo drifting behind the panels and
+- Gas clouds in Heather, Thrift, Lichen and Loch drifting behind the panels and
   breathing with the sound, dust rising through them; still when silent or with
-  reduce motion on. The wordmark NEBULA, light and tracked wide in a Magenta-to-Teal
+  reduce motion on. The wordmark NEBULA, light and tracked wide in a Thrift-to-Lichen
   gradient on a soft glow; "PAD SYNTH · NORTHLIGHT"; the preset bar; eight voice lights.
 - SPECTRUM: the partials as columns of light on a log axis (55 Hz to 12 kHz, for
-  A3 and the octave), the halo's in Mint, under the formant's cloud, swaying with
+  A3 and the octave), the halo's in Sea grass, under the formant's cloud, swaying with
   the motion; drag across for the vowel, up and down for the brightness; the octave
   in a corner chip. Partials, Bright, Odd/even, Stretch, Vowel, Formant.
 - CLOUD: where the partials sit in the stereo field (left to right, low to high),
@@ -340,8 +340,8 @@ One sample across the keyboard: root note and key range, Tune and Fine, Glide;
 Loop (forward, with a crossfade into the loop's end) or One-shot (to the end
 point, note-offs ignored); Voices (1-32; the oldest fades out over the limit),
 Velocity, Level; an ADSR on the amplitude; a resonant low-pass whose cutoff the
-envelope moves by Env octaves. Hues: the sample `Teal`, loop `Amber`, keys
-`Mint`, envelope `Sky`, filter `Indigo`.
+envelope moves by Env octaves. Hues: the sample `Lichen`, loop `Gorse`, keys
+`Sea grass`, envelope `Overcast`, filter `Loch`.
 
 - Header: "Sampler" in the hue over a small decaying wave; the file's name
   (`label`; `warning` when it did not load) with its rate, channels and length

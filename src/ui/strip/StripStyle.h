@@ -32,48 +32,48 @@ inline juce::Colour moduleColour(const Theme& theme, const std::string& type)
 {
     namespace t = plugins::strip::types;
     if (type == t::gate)
-        return paletteColour(theme, "Mint");
+        return paletteColour(theme, "Sea grass");
     if (type == t::eq)
-        return paletteColour(theme, "Sky");
+        return paletteColour(theme, "Overcast");
     if (type == t::compressor)
-        return paletteColour(theme, "Indigo");
+        return paletteColour(theme, "Loch");
     if (type == t::deesser)
-        return paletteColour(theme, "Violet");
+        return paletteColour(theme, "Heather");
     if (type == t::saturation)
-        return paletteColour(theme, "Tangerine");
+        return paletteColour(theme, "Kelp");
     if (type == t::limiter)
-        return paletteColour(theme, "Coral");
+        return paletteColour(theme, "Rowan");
     // The built-ins, in the same family (a built-in EQ, compressor or limiter
     // takes its strip counterpart's hue).
     if (type == "northlight.eq")
-        return paletteColour(theme, "Sky");
+        return paletteColour(theme, "Overcast");
     if (type == "northlight.compressor")
-        return paletteColour(theme, "Indigo");
+        return paletteColour(theme, "Loch");
     if (type == "northlight.limiter")
-        return paletteColour(theme, "Coral");
+        return paletteColour(theme, "Rowan");
     if (type == "northlight.gain")
-        return paletteColour(theme, "Lime");
+        return paletteColour(theme, "Machair");
     if (type == "northlight.reverb")
-        return paletteColour(theme, "Teal");
+        return paletteColour(theme, "Lichen");
     if (type == "northlight.delay")
-        return paletteColour(theme, "Amber");
+        return paletteColour(theme, "Gorse");
     if (type == "northlight.aurora")
-        return paletteColour(theme, "Violet");
+        return paletteColour(theme, "Heather");
     if (type == "northlight.pulsar")
-        return paletteColour(theme, "Coral");
+        return paletteColour(theme, "Rowan");
     if (type == "northlight.nebula")
-        return paletteColour(theme, "Magenta");
+        return paletteColour(theme, "Thrift");
     if (type == "northlight.starbit")
-        return paletteColour(theme, "Lime");
+        return paletteColour(theme, "Machair");
     if (type == "northlight.sampler")
-        return paletteColour(theme, "Teal");
+        return paletteColour(theme, "Lichen");
     return theme.colours.textSecondary;
 }
 
 // The EQ's band hues: low cut, bands 1-4, high cut.
 inline juce::Colour bandColour(const Theme& theme, int band)
 {
-    static const char* names[] = {"Teal", "Coral", "Amber", "Lime", "Magenta", "Violet"};
+    static const char* names[] = {"Lichen", "Rowan", "Gorse", "Machair", "Thrift", "Heather"};
     return paletteColour(theme, names[juce::jlimit(0, 5, band)]);
 }
 

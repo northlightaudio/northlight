@@ -27,9 +27,9 @@ struct Hues
 {
     juce::Colour spectrum, cloud, envelope, motion, space, halo;
     explicit Hues(const Theme& t)
-        : spectrum(paletteColour(t, "Violet")), cloud(paletteColour(t, "Teal")),
-          envelope(paletteColour(t, "Magenta")), motion(paletteColour(t, "Sky")),
-          space(paletteColour(t, "Indigo")), halo(paletteColour(t, "Mint"))
+        : spectrum(paletteColour(t, "Heather")), cloud(paletteColour(t, "Lichen")),
+          envelope(paletteColour(t, "Thrift")), motion(paletteColour(t, "Overcast")),
+          space(paletteColour(t, "Loch")), halo(paletteColour(t, "Sea grass"))
     {
     }
 };

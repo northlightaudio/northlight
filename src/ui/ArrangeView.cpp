@@ -349,7 +349,7 @@ void ArrangeView::rebuildHeaders()
         shown.kind = core::TrackKind::aux; // no input, no arm
         if (shown.colour == 0)
             for (const auto& entry : theme_.track.palette)
-                if (entry.name == "Teal")
+                if (entry.name == "Lichen")
                     shown.colour = entry.value.getARGB();
         fxHeaders_[i]->setTrack(shown, static_cast<int>(count + i), *project_, inputNames_, midiInputNames_);
         fxHeaders_[i]->setSelected(fx[i]->id == selectedTrack_);

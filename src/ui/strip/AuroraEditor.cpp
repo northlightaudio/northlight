@@ -28,9 +28,9 @@ struct Hues
 {
     juce::Colour osc, unison, filter, envelope, lfo, output;
     explicit Hues(const Theme& t)
-        : osc(paletteColour(t, "Mint")), unison(paletteColour(t, "Teal")), filter(paletteColour(t, "Sky")),
-          envelope(paletteColour(t, "Violet")), lfo(paletteColour(t, "Magenta")),
-          output(paletteColour(t, "Amber"))
+        : osc(paletteColour(t, "Sea grass")), unison(paletteColour(t, "Lichen")),
+          filter(paletteColour(t, "Overcast")), envelope(paletteColour(t, "Heather")),
+          lfo(paletteColour(t, "Thrift")), output(paletteColour(t, "Gorse"))
     {
     }
 };

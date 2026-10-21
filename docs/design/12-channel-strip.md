@@ -11,12 +11,12 @@ Modules, in their default order:
 
 | Module | Hue (track palette) | What it does |
 |---|---|---|
-| Gate | Mint | Key-filtered gate: threshold, range, attack, hold, release, key high-pass and low-pass |
-| EQ | Sky | Six-band parametric: low cut, four bands (peak, low shelf, high shelf or notch), high cut |
-| Compressor | Indigo | Feed-forward, peak or RMS detector, soft knee, make-up (manual and auto), wet/dry |
-| De-esser | Violet | Linkwitz-Riley split at the frequency, reduction on the band (split) or everything (wide), listen |
-| Saturation | Tangerine | Tape, tube or clip curve with anti-aliasing, tone, output trim, wet/dry |
-| Limiter | Coral | Zero-latency peak limiter: input gain, ceiling, release |
+| Gate | Sea grass | Key-filtered gate: threshold, range, attack, hold, release, key high-pass and low-pass |
+| EQ | Overcast | Six-band parametric: low cut, four bands (peak, low shelf, high shelf or notch), high cut |
+| Compressor | Loch | Feed-forward, peak or RMS detector, soft knee, make-up (manual and auto), wet/dry |
+| De-esser | Heather | Linkwitz-Riley split at the frequency, reduction on the band (split) or everything (wide), listen |
+| Saturation | Kelp | Tape, tube or clip curve with anti-aliasing, tone, output trim, wet/dry |
+| Limiter | Rowan | Zero-latency peak limiter: input gain, ceiling, release |
 
 Module hues are data colours, never the accent: the accent keeps meaning
 selection, focus and drop targets.
@@ -100,7 +100,7 @@ can be read. Histories scroll right to left over three seconds.
   overall response as a 2 px `textPrimary` line, the focused band's own curve
   filled in its hue at 16%, and a node per band (14 px, its hue; hollow when the
   band is off; the selected node with a `textPrimary` ring).
-- Band hues: low cut Teal, bands 1-4 Coral, Amber, Lime, Magenta, high cut Violet.
+- Band hues: low cut Lichen, bands 1-4 Rowan, Gorse, Machair, Thrift, high cut Heather.
 - Nodes: drag for frequency and gain (cuts and notches move in frequency only);
   Shift for fine, Alt for gain only; the wheel sets Q (a cut's slope: 6, 12, 18,
   24, 36 or 48 dB/oct); double-click switches the band; right-click picks the

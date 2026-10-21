@@ -25,7 +25,8 @@ namespace pu = plugins::pulsar;
 
 juce::Colour padHue(const Theme& theme, int pad)
 {
-    static const char* names[] = {"Coral", "Amber", "Tangerine", "Lime", "Mint", "Teal", "Sky", "Indigo"};
+    static const char* names[] = {
+        "Rowan", "Gorse", "Kelp", "Machair", "Sea grass", "Lichen", "Overcast", "Loch"};
     return paletteColour(theme, names[juce::jlimit(0, pu::padCount - 1, pad)]);
 }
 
@@ -319,7 +320,7 @@ class PulsarCard final : public ModuleCard
 public:
     PulsarCard(const Theme& theme, CardHost& host, core::Id channelId, const core::Insert& insert)
         : ModuleCard(theme, host, channelId, insert), display_(*this),
-          scope_(*this, paletteColour(theme, "Rose"))
+          scope_(*this, paletteColour(theme, "Straw"))
     {
         for (int pad = 0; pad < pu::padCount; ++pad)
         {
@@ -364,7 +365,7 @@ public:
                 });
             padKnobs_[static_cast<size_t>(pad)] = knobs;
         }
-        const auto amber = paletteColour(theme, "Rose");
+        const auto amber = paletteColour(theme, "Straw");
         for (auto [p, label] : {std::pair<int, const char*>{pu::drive, "Drive"},
                                 std::pair<int, const char*>{pu::velocity, "Velocity"},
                                 std::pair<int, const char*>{pu::output, "Level"}})
@@ -522,7 +523,7 @@ private:
             g.setColour(c.textSecondary);
             g.drawText(caption, cap, juce::Justification::centredLeft);
         };
-        glass(masterPanel_, "MASTER", paletteColour(theme_, "Rose"));
+        glass(masterPanel_, "MASTER", paletteColour(theme_, "Straw"));
         glass(padPanel_,
               juce::String(pu::padName(selected_)).toUpperCase() + juce::String::fromUTF8("  \xc2\xb7  ") +
                   noteName(pu::padNote(selected_)),
@@ -553,7 +554,7 @@ private:
     void paintPulsar(juce::Graphics& g, juce::Rectangle<float> b) const
     {
         const auto& c = theme_.colours;
-        const auto beamHue = paletteColour(theme_, "Sky");
+        const auto beamHue = paletteColour(theme_, "Overcast");
         const float flash = juce::jlimit(0.0f, 1.0f, flash_);
         // Rings from the latest hits.
         for (const auto& ring : rings_)
@@ -621,10 +622,10 @@ private:
         juce::Path text;
         glyphs.createPath(text);
         const auto box = text.getBounds();
-        g.setGradientFill(juce::ColourGradient(paletteColour(theme_, "Sky"),
+        g.setGradientFill(juce::ColourGradient(paletteColour(theme_, "Overcast"),
                                                box.getX(),
                                                0.0f,
-                                               paletteColour(theme_, "Coral"),
+                                               paletteColour(theme_, "Rowan"),
                                                box.getRight(),
                                                0.0f,
                                                false));
@@ -800,7 +801,7 @@ private:
     juce::TextButton previous_{juce::String::fromUTF8("\xe2\x80\xb9")},
         next_{juce::String::fromUTF8("\xe2\x80\xba")};
     juce::TextButton kitName_;
-    CornerChoice route_{theme_, paletteColour(theme_, "Sky")};
+    CornerChoice route_{theme_, paletteColour(theme_, "Overcast")};
     juce::TextButton outputs_;
     juce::Rectangle<int> sky_, wordmark_, kitBar_, masterPanel_, padPanel_;
     juce::Point<float> star_;

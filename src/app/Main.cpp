@@ -16,6 +16,7 @@
 #include "ui/NorthlightLookAndFeel.h"
 #include "ui/PianoRoll.h"
 #include "ui/PreferencesView.h"
+#include "ui/SplashScreen.h"
 
 #include <juce_audio_formats/juce_audio_formats.h>
 #include <juce_gui_extra/juce_gui_extra.h>
@@ -50,7 +51,19 @@ public:
         lookAndFeel_ = std::make_unique<ui::NorthlightLookAndFeel>(ui::Theme::dark());
         juce::LookAndFeel::setDefaultLookAndFeel(lookAndFeel_.get());
 
+        // The splash, once the theme is loaded; it reports each step below.
+        juce::Component::SafePointer<ui::SplashScreen> splash;
+        if (!commandLine.contains("--no-splash"))
+            splash = ui::SplashScreen::showStartup(ui::Theme::dark(), getApplicationVersion());
+        const auto step = [&splash](const juce::String& text, float progress)
+        {
+            if (splash != nullptr)
+                splash->setStatus(text, progress);
+        };
+
+        step("Preparing the audio engine", 0.25f);
         audio_ = std::make_unique<audio::AudioDeviceLayer>(*settings_);
+        step("Loading the plugin list", 0.45f);
         session_ =
             std::make_unique<ProjectSession>(*audio_, settings_->file().getSiblingFile("plugins.json"));
         session_->setAutosave(settings_->file().getSiblingFile("Autosave"),
@@ -60,11 +73,15 @@ public:
                                       settings_->value(ui::PreferencesView::Keys::autosaveMinutes);
                                   return (minutes.empty() ? 2 : juce::String(minutes).getIntValue()) * 60;
                               });
+        step("Opening the main window", 0.65f);
         mainWindow_ = std::make_unique<MainWindow>(getApplicationName(), *audio_, *session_, *settings_);
 
         // Open the device after the window is up so a slow driver does not delay
         // the first paint. The session is already attached to the callback.
+        step("Opening the audio device", 0.85f);
         audio_->initialise();
+        if (splash != nullptr)
+            splash->finish();
 
         // Recordings interrupted by a crash are offered back as tracks.
         mainWindow_->offerRecovery();
@@ -76,6 +93,8 @@ public:
 
     // Developer conveniences for unattended checks:
     //   --audio-setup        open the Audio Setup window
+    //   --about              open the About box (the splash screen, until clicked)
+    //   --no-splash          start without the splash screen
     //   --import <file>      import an audio file onto a new track (repeatable)
     //   --play               start the transport
     //   --record <n>         create n armed tracks on inputs 1..n and start recording
@@ -199,6 +218,8 @@ public:
             const auto& arg = tokens.getReference(i);
             if (arg == "--audio-setup")
                 mainWindow_->showAudioSetup();
+            else if (arg == "--about")
+                mainWindow_->showAbout();
             else if (arg == "--open" && i + 1 < tokens.size())
                 session_->open(tokens.getReference(++i).resolveAsFile());
             else if (arg == "--demo-song" && i + 1 < tokens.size())

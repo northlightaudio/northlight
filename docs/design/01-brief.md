@@ -72,22 +72,25 @@ completeness.
 
 ## Visual identity
 
-- **Name**: Northlight. Wordmark in Inter Semi Bold, letterspaced +2%, lowercase "northlight"
-  in the about screen and the splash; the window title uses the project name.
-- **Mark**: a circle with a single horizontal waveform stroke across it (one centred
-  peak-and-trough), drawn in the accent colour on the dark background. Used for the
-  app icon, the empty-project state and the about screen. Final artwork is out of
-  scope for this spec; the geometry is enough to build the placeholder.
-- **Palette direction**: a near-black base with a faint warm cast (not blue-grey),
-  neutral surfaces stepping up by lightness, a single cool accent for interaction, a
-  warm record red, and a twelve-hue track palette tuned to read on the dark base.
+- **Brand: Machair dusk** (decided 2026-10-21; the full guide is
+  [15-brand.md](15-brand.md)). A Hebridean island in early evening: peat-green
+  surfaces, an overcast-blue accent, moon-cream text, track colours from the land.
+- **Name**: Northlight. Wordmark in Newsreader, set on the mark's horizon line; the
+  window title uses the project name.
+- **Mark**: Moonrise, a half moon risen over the horizon with its reflection on the water. Used for the
+  app icon, the empty-project state, the about screen and the website. Files in
+  `assets/brand/`, made by `scripts/brand-assets.py`.
+- **Palette direction**: a dark peat-green base, neutral surfaces stepping up by
+  lightness, one cool accent (Overcast) for interaction, a rowan record red, and a
+  twelve-hue track palette of muted landscape colours tuned to read on the dark base.
   Defined in [02-design-system.md](02-design-system.md).
 - **Material direction** (decided after the workshop board): tactile controls on
   flat panels. Buttons, keys, caps and knobs are lit from above with a short shadow;
   faders run in grooves; meters are LED-segmented in a well; readouts glow. Nothing
   else does.
 - **Type direction**: one humanist sans for the UI (Inter) and one monospace for
-  numerics (JetBrains Mono). No display face.
+  numerics (JetBrains Mono); Newsreader as the display face for the wordmark, the
+  about screen and the website's headings, never for controls.
 
 ## What success looks like
 

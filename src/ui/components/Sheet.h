@@ -11,6 +11,20 @@
 namespace northlight::ui
 {
 
+// Optional parts of a sheet (02-design-system.md, "Dialog (sheet)").
+struct SheetOptions
+{
+    // A small line above the title in caption caps ("Step 1 of 2").
+    juce::String eyebrow;
+    // A quiet line at the left of the button row ("You can change this later").
+    juce::String footnote;
+    // The welcome hero: a band of the brand photograph across the top of the
+    // panel with "Welcome to" and the wordmark (the first-run sheets).
+    bool hero = false;
+    // The panel's width (narrower when the window is).
+    int width = 480;
+};
+
 // A dialog without a modal loop (02-design-system.md, "Dialog (sheet)"): an
 // overlay over the owning component, a surface0 panel with a title, a body and
 // right-aligned buttons, the primary last. Esc cancels; Enter confirms the
@@ -34,7 +48,8 @@ public:
                        std::vector<Button> buttons,
                        std::function<void(int)> onResult,
                        std::unique_ptr<juce::Component> content = nullptr,
-                       int contentHeight = 0);
+                       int contentHeight = 0,
+                       SheetOptions options = SheetOptions());
     void close() { finish(-1); }
 
     void paint(juce::Graphics& g) override;
@@ -42,6 +57,8 @@ public:
     bool keyPressed(const juce::KeyPress& key) override;
     void mouseDown(const juce::MouseEvent& e) override;
     void parentSizeChanged() override { resized(); }
+
+    static constexpr int heroHeight = 132;
 
 private:
     Sheet(const Theme& theme,
@@ -51,6 +68,9 @@ private:
           std::function<void(int)> onResult);
     void finish(int result);
     juce::Rectangle<int> panelBounds() const;
+    int bodyHeight(int width) const;
+    int eyebrowHeight() const;
+    void paintHero(juce::Graphics& g, juce::Rectangle<int> panel) const;
     // Entering, the sheet fades in with its panel rising 8 px into place; leaving,
     // it fades out before it goes (02-design-system.md 2.6).
     void enter();
@@ -58,6 +78,8 @@ private:
 
     const Theme& theme_;
     juce::String title_, body_;
+    SheetOptions options_;
+    std::unique_ptr<juce::Drawable> wordmark_; // the hero's
     std::vector<Button> buttons_;
     std::vector<std::unique_ptr<juce::TextButton>> buttonComponents_;
     std::function<void(int)> onResult_;

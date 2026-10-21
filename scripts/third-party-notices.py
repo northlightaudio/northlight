@@ -91,9 +91,13 @@ def main():
     parts.append(f"| {TEST_ONLY[0]} | {TEST_ONLY[1]} | {TEST_ONLY[2]} |")
     parts.append("")
     parts.append(
-        "Typefaces: when the Inter and JetBrains Mono fonts are bundled in `assets/fonts`, they "
-        "are distributed under the SIL Open Font License 1.1, and their `OFL.txt` files must be "
-        "shipped beside them.\n")
+        "Typefaces: Newsreader, the display face (`assets/fonts/Newsreader-Variable.ttf`), is "
+        "distributed under the SIL Open Font License 1.1, in `Newsreader-OFL.txt` beside it. When "
+        "the Inter and JetBrains Mono fonts are bundled in `assets/fonts`, they are distributed "
+        "under the same licence, and their `OFL.txt` files must be shipped beside them.\n")
+    parts.append(
+        "Images: the splash screen's photograph (`assets/splash`) is by Gytis Bukauskas, used "
+        "under the Unsplash License (https://unsplash.com/license); see `assets/splash/README.md`.\n")
     parts.append(
         "Trademarks: VST is a registered trademark and ASIO a trademark of Steinberg Media "
         "Technologies GmbH. They are used here only to name the formats Northlight supports.\n")

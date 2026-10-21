@@ -20,7 +20,7 @@ plugin editors, audio setup and the plugin browser. The shell has five zones:
 +--------------------------------------------------------------------------+
 ```
 
-- **A Header bar**: `size.headerBar` 48 px, `surface0`. Left: app menu button
+- **A Header bar**: `size.headerBar` 48 px, `surface1`, its clusters in recessed `surface0` trays. Left: app menu button
   (wordmark icon) and the project name as a ghost button that opens a menu (New, Open,
   Save, Save As, Recent, Export). Centre: the transport cluster and time display
   (section 6). Right: snap and ripple controls, zoom-fit, and three view toggles
@@ -109,6 +109,20 @@ per project.
 - The arrange view always has priority: panels never shrink it below 480×240.
 - Secondary windows: native title bars, `surface0` content, remember position and
   size per window type; plugin windows per plugin type.
+
+## Window chrome
+
+The main window has no Windows title bar: the header bar is the title bar. Its far
+right holds the window buttons, minimise, maximise (restore when maximised) and
+close: 46 px wide and the bar's full height, flat, `textSecondary` 10 px glyphs; hover
+fills `surface2` (close fills `record` with a `textOnColour` glyph). Any part of the
+bar that is not a control is the caption: drag to move, double-click to maximise,
+drag to a screen edge to snap. The window answers Windows' hit-testing (JUCE's
+`findControlAtPoint`), so edge resizing, Aero Snap and the Snap Layouts flyout over
+the maximise button stay native; the top 4 px of the window is the top resize edge.
+The window title (project name and app) still shows in the taskbar. Secondary
+windows (plugin editors, Audio Setup, Preferences, floating panels) keep native
+title bars.
 
 ## Header bar detail
 

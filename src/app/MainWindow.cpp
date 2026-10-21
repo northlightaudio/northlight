@@ -25,6 +25,7 @@
 #include "ui/PluginBrowser.h"
 #include "ui/PreferencesView.h"
 #include "ui/Selection.h"
+#include "ui/SplashScreen.h"
 #include "ui/Theme.h"
 #include "ui/components/Meter.h"
 #include "ui/components/Sheet.h"
@@ -150,16 +151,6 @@ public:
     FirstRunContent(const ui::Theme& theme, audio::AudioDeviceLayer& audio)
         : theme_(theme), audio_(audio), meter_(theme, 1, false)
     {
-        for (auto* label : {&driverLabel_, &deviceLabel_, &bufferLabel_, &meterLabel_})
-        {
-            label->setFont(theme_.body());
-            label->setColour(juce::Label::textColourId, theme_.colours.textSecondary);
-            addAndMakeVisible(*label);
-        }
-        driverLabel_.setText("Driver", juce::dontSendNotification);
-        deviceLabel_.setText("Device", juce::dontSendNotification);
-        bufferLabel_.setText("Buffer size", juce::dontSendNotification);
-        meterLabel_.setText("Input", juce::dontSendNotification);
         addAndMakeVisible(driver_);
         addAndMakeVisible(device_);
         addAndMakeVisible(buffer_);
@@ -175,14 +166,25 @@ public:
         }
         if (driver_.getSelectedId() == 0 && !types_.empty())
             driver_.setSelectedId(1, juce::dontSendNotification);
-        driver_.onChange = [this] { fillDevices(); };
-        fillDevices();
-        for (const int size : {32, 64, 128, 256, 512, 1024})
+        driver_.onChange = [this]
         {
-            buffer_.addItem(juce::String(size), size);
-            if (size == (status.bufferSize > 0 ? status.bufferSize : 128))
-                buffer_.setSelectedId(size, juce::dontSendNotification);
-        }
+            fillDevices();
+            repaint(); // the driver's hint
+        };
+        fillDevices();
+        // The usual sizes, and the device's own when it is something else (Windows
+        // Audio often runs at 480), each with what it costs in latency.
+        std::vector<int> sizes{32, 64, 128, 256, 512, 1024};
+        if (status.bufferSize > 0 && std::find(sizes.begin(), sizes.end(), status.bufferSize) == sizes.end())
+            sizes.push_back(status.bufferSize);
+        std::sort(sizes.begin(), sizes.end());
+        const double rate = status.sampleRate > 0.0 ? status.sampleRate : 48000.0;
+        for (const int size : sizes)
+            buffer_.addItem(juce::String(size) + " samples  " +
+                                juce::String(juce::CharPointer_UTF8("\xc2\xb7")) + "  " +
+                                juce::String(1000.0 * size / rate, 1) + " ms",
+                            size);
+        buffer_.setSelectedId(status.bufferSize > 0 ? status.bufferSize : 128, juce::dontSendNotification);
         startTimerHz(20);
     }
     ~FirstRunContent() override { stopTimer(); }
@@ -207,29 +209,69 @@ public:
         return audio_.apply(settings);
     }
 
-    static int preferredHeight(const ui::Theme& theme)
+    static constexpr int rowHeight = 56;
+    static int preferredHeight(const ui::Theme&) { return 4 * rowHeight; }
+
+    // A card of four rows (08-setup.md 8.3): a label with a one-line hint on the
+    // left, the control on the right, hairlines between the rows.
+    void paint(juce::Graphics& g) override
     {
-        return 4 * (theme.sizes.control + theme.spacing.sm);
+        const auto& c = theme_.colours;
+        const auto card = getLocalBounds().toFloat();
+        g.setColour(c.surface1);
+        g.fillRoundedRectangle(card, theme_.radius.md);
+        g.setColour(c.lineSubtle);
+        g.drawRoundedRectangle(card.reduced(0.5f), theme_.radius.md, 1.0f);
+        const bool asio = driver_.getText() == "ASIO";
+        const std::array<std::pair<const char*, juce::String>, 4> rows{{
+            {"Driver",
+             asio ? juce::String("The lowest latency, for recording and monitoring")
+                  : juce::String("ASIO, when your interface has it, gives the lowest latency")},
+            {"Device", "Where Northlight plays and records"},
+            {"Buffer size", "Smaller is more responsive; larger avoids clicks"},
+            {"Input", "Play or sing: the meter should move"},
+        }};
+        for (size_t i = 0; i < rows.size(); ++i)
+        {
+            auto row = rowBounds(static_cast<int>(i));
+            if (i > 0)
+            {
+                g.setColour(c.lineSubtle);
+                g.fillRect(
+                    row.getX() + theme_.spacing.lg, row.getY(), row.getWidth() - 2 * theme_.spacing.lg, 1);
+            }
+            auto text = row.reduced(theme_.spacing.lg, 0).withTrimmedRight(controlWidth + theme_.spacing.lg);
+            const int labelH = juce::roundToInt(theme_.fonts.size.label * theme_.fonts.lineHeight);
+            const int hintH = juce::roundToInt(theme_.fonts.size.caption * theme_.fonts.lineHeight);
+            auto block = text.withSizeKeepingCentre(text.getWidth(), labelH + theme_.spacing.xxs + hintH);
+            g.setFont(theme_.label());
+            g.setColour(c.textPrimary);
+            g.drawText(rows[i].first, block.removeFromTop(labelH), juce::Justification::centredLeft);
+            block.removeFromTop(theme_.spacing.xxs);
+            g.setFont(theme_.caption());
+            g.setColour(c.textTertiary);
+            g.drawText(rows[i].second, block, juce::Justification::centredLeft, true);
+        }
     }
 
     void resized() override
     {
-        auto area = getLocalBounds();
-        const int labelW = 120;
-        const auto row = [&](juce::Label& label, juce::Component& control, int height)
+        const auto place = [&](juce::Component& control, int row, int height)
         {
-            auto r = area.removeFromTop(theme_.sizes.control + theme_.spacing.sm)
-                         .withTrimmedBottom(theme_.spacing.sm);
-            label.setBounds(r.removeFromLeft(labelW));
-            control.setBounds(r.withSizeKeepingCentre(r.getWidth(), height));
+            const auto r = rowBounds(row).reduced(theme_.spacing.lg, 0);
+            control.setBounds(
+                r.withLeft(r.getRight() - controlWidth).withSizeKeepingCentre(controlWidth, height));
         };
-        row(driverLabel_, driver_, theme_.sizes.control);
-        row(deviceLabel_, device_, theme_.sizes.control);
-        row(bufferLabel_, buffer_, theme_.sizes.control);
-        row(meterLabel_, meter_, theme_.sizes.meterWidth * 2 + theme_.spacing.xs);
+        place(driver_, 0, theme_.sizes.control);
+        place(device_, 1, theme_.sizes.control);
+        place(buffer_, 2, theme_.sizes.control);
+        place(meter_, 3, theme_.sizes.meterWidth * 2 + theme_.spacing.xs);
     }
 
 private:
+    static constexpr int controlWidth = 260;
+    juce::Rectangle<int> rowBounds(int row) const { return {0, row * rowHeight, getWidth(), rowHeight}; }
+
     void fillDevices()
     {
         const int type = driver_.getSelectedId() - 1;
@@ -254,7 +296,6 @@ private:
 
     const ui::Theme& theme_;
     audio::AudioDeviceLayer& audio_;
-    juce::Label driverLabel_, deviceLabel_, bufferLabel_, meterLabel_;
     juce::ComboBox driver_, device_, buffer_;
     ui::Meter meter_;
     std::vector<audio::AudioDeviceLayer::DeviceType> types_;
@@ -713,6 +754,15 @@ public:
         return tracks_.handleEditKey(key);
     }
 
+    // The custom chrome: what a point in the content is to the window. Only the
+    // header bar is title bar; everything else is client. Geometry only.
+    juce::Component::WindowControlKind windowControlAt(juce::Point<float> point) const
+    {
+        if (header_.getBounds().toFloat().contains(point))
+            return header_.windowControlAt(point - header_.getPosition().toFloat());
+        return juce::Component::WindowControlKind::client;
+    }
+
 private:
     // ----- wiring --------------------------------------------------------------------------
     void wireHeader()
@@ -726,6 +776,9 @@ private:
         header_.onStop = [this] { session_.stop(); };
         header_.onRecord = [this] { toggleRecord(); };
         header_.onDeviceWarning = [this] { owner_.showAudioSetup(); };
+        header_.onMinimise = [this] { owner_.minimiseButtonPressed(); };
+        header_.onMaximise = [this] { owner_.maximiseButtonPressed(); };
+        header_.onCloseWindow = [this] { owner_.closeButtonPressed(); };
         header_.onToggleLoop = [this] { session_.setLoopEnabled(!session_.loopEnabled()); };
         header_.onTogglePunch = [this] { session_.setPunchEnabled(!session_.punchEnabled()); };
         header_.onToggleClick = [this] { session_.setMetronome(!session_.metronomeEnabled()); };
@@ -1301,6 +1354,8 @@ private:
         state.mixerVisible = panels_.isVisible(ui::PanelId::mixer);
         state.editorVisible = panels_.isVisible(ui::PanelId::editor);
         state.browserVisible = panels_.isVisible(ui::PanelId::browser);
+        state.windowControls = !owner_.isUsingNativeTitleBar();
+        state.maximised = owner_.isFullScreen();
         header_.setState(state);
     }
 
@@ -2302,13 +2357,8 @@ private:
 
     void about()
     {
-        sheet_ = ui::Sheet::show(
-            *this,
-            theme_,
-            "Northlight " + juce::JUCEApplication::getInstance()->getApplicationVersion(),
-            "A native Windows DAW: ASIO, VST3 and CLAP hosting, multitrack recording and MIDI.",
-            {{"Close", true, false}},
-            [this](int) { sheet_ = nullptr; });
+        ui::SplashScreen::showAbout(
+            theme_, juce::JUCEApplication::getInstance()->getApplicationVersion(), getTopLevelComponent());
     }
 
     void projectMenu()
@@ -2519,11 +2569,16 @@ private:
     {
         auto content = std::make_unique<FirstRunContent>(theme_, audio_);
         auto* raw = content.get();
+        ui::SheetOptions options;
+        options.hero = true;
+        options.eyebrow = "Step 1 of 2";
+        options.footnote = "You can change this any time in Audio Setup.";
+        options.width = 600;
         sheet_ = ui::Sheet::show(
             *this,
             theme_,
             "Choose your audio device",
-            "Northlight works best with an ASIO device. You can change this any time from the status bar.",
+            "Pick the interface you record and listen through. Northlight checks it before you start.",
             {{"Skip", false, false}, {"Use this device", true, false}},
             [this, raw](int result)
             {
@@ -2543,24 +2598,33 @@ private:
                     });
             },
             std::move(content),
-            FirstRunContent::preferredHeight(theme_));
+            FirstRunContent::preferredHeight(theme_),
+            options);
     }
 
     void offerScan()
     {
-        sheet_ =
-            ui::Sheet::show(*this,
-                            theme_,
-                            "Scan for plugins now?",
-                            "Northlight looks in the VST3 and CLAP folders. Scanning runs in the background; "
-                            "you can keep working.",
-                            {{"Later", false, false}, {"Scan", true, false}},
-                            [this](int result)
-                            {
-                                sheet_ = nullptr;
-                                if (result == 1)
-                                    session_.scanPlugins(true);
-                            });
+        ui::SheetOptions options;
+        options.hero = true;
+        options.eyebrow = "Step 2 of 2";
+        options.footnote = "Scan again any time from the Browser.";
+        options.width = 600;
+        sheet_ = ui::Sheet::show(
+            *this,
+            theme_,
+            "Find your plugins",
+            "Northlight looks in the standard VST3 and CLAP folders. The scan runs in the background, so you "
+            "can start working straight away.",
+            {{"Later", false, false}, {"Scan now", true, false}},
+            [this](int result)
+            {
+                sheet_ = nullptr;
+                if (result == 1)
+                    session_.scanPlugins(true);
+            },
+            nullptr,
+            0,
+            options);
     }
 
     MainWindow& owner_;
@@ -2734,7 +2798,11 @@ MainWindow::MainWindow(const juce::String& name,
     : juce::DocumentWindow(name, ui::Theme::dark().colours.canvas, juce::DocumentWindow::allButtons),
       audio_(audio), session_(session), settings_(settings)
 {
-    setUsingNativeTitleBar(true);
+    // Custom chrome (03-shell.md): no Windows title bar; the header bar is the
+    // title bar and draws the window buttons. findControlAtPoint keeps snapping,
+    // edge resizing and the Snap Layouts flyout native.
+    setUsingNativeTitleBar(false);
+    setTitleBarHeight(0);
     setContentOwned(new Content(*this, audio_, session_, settings_), true);
     setResizable(true, false);
     setResizeLimits(1280, 720, 10000, 10000);
@@ -2754,6 +2822,29 @@ void MainWindow::closeButtonPressed()
         content->confirmClose();
     else
         juce::JUCEApplication::getInstance()->systemRequestedQuit();
+}
+
+auto MainWindow::findControlAtPoint(juce::Point<float> point) const -> WindowControlKind
+{
+    if (isUsingNativeTitleBar())
+        return DocumentWindow::findControlAtPoint(point);
+    // Windows 11 expects the top resize edge inside the window (the other edges
+    // are outside it, in the invisible frame).
+    constexpr float edge = 4.0f;
+    const auto bounds = getLocalBounds().toFloat();
+    if (isResizable() && !isFullScreen() && point.y < edge)
+        return point.x < edge                       ? WindowControlKind::sizeTopLeft
+               : point.x > bounds.getRight() - edge ? WindowControlKind::sizeTopRight
+                                                    : WindowControlKind::sizeTop;
+    if (auto* content = dynamic_cast<const Content*>(getContentComponent()))
+        return content->windowControlAt(point - content->getPosition().toFloat());
+    return WindowControlKind::client;
+}
+
+void MainWindow::showAbout()
+{
+    ui::SplashScreen::showAbout(
+        ui::Theme::dark(), juce::JUCEApplication::getInstance()->getApplicationVersion(), this);
 }
 
 void MainWindow::showAudioSetup()

@@ -14,14 +14,15 @@ struct Definition
     const char* name;
     const char* d; // SVG path data on the 16 px grid
     bool filled;
+    const char* solid = nullptr; // a filled part drawn under a stroked icon (the mark's moon)
 };
 
 // Stroked unless `filled`; round caps and joins are applied when drawing.
 const Definition definitions[Icons::count] = {
-    {"play", "M4.5 2.5 L13.5 8 L4.5 13.5 Z", true},
-    {"pause", "M4 2.5 H6.5 V13.5 H4 Z M9.5 2.5 H12 V13.5 H9.5 Z", true},
-    {"stop", "M3 3 H13 V13 H3 Z", true},
-    {"record", "M8 2.5 A5.5 5.5 0 1 1 7.99 2.5 Z", true},
+    {"play", "M5 3 L13 8 L5 13 Z", true},
+    {"pause", "M4.5 3 H6.75 V13 H4.5 Z M9.25 3 H11.5 V13 H9.25 Z", true},
+    {"stop", "M4 4 H12 V12 H4 Z", true},
+    {"record", "M8 3.5 A4.5 4.5 0 1 1 7.99 3.5 Z", true},
     {"loop",
      "M3 6.5 V5.5 A2 2 0 0 1 5 3.5 H11 M11 3.5 L9 1.5 M11 3.5 L9 5.5 M13 9.5 V10.5 A2 2 0 0 1 11 12.5 H5 M5 "
      "12.5 L7 10.5 M5 12.5 L7 14.5",
@@ -29,8 +30,8 @@ const Definition definitions[Icons::count] = {
     {"punch", "M4.5 3 H2.5 V13 H4.5 M11.5 3 H13.5 V13 H11.5 M8 6.5 A1.5 1.5 0 1 1 7.99 6.5 Z", false},
     {"metronome", "M6 2.5 H10 L13 13.5 H3 Z M8 6.5 V13.5 M5.5 7 L11 3.5", false},
     {"countIn", "M6 2.5 H10 L13 13.5 H3 Z M8 6.5 V13.5 M10.5 7 L5 3.5", false},
-    {"goToStart", "M3 2.5 V13.5 M13 2.5 L5 8 L13 13.5 Z", false},
-    {"goToEnd", "M13 2.5 V13.5 M3 2.5 L11 8 L3 13.5 Z", false},
+    {"goToStart", "M4 3 V13 M13 3 L6 8 L13 13 Z", false},
+    {"goToEnd", "M12 3 V13 M3 3 L10 8 L3 13 Z", false},
     {"undo", "M6 4 L2.5 7.5 L6 11 M2.5 7.5 H10 A3.5 3.5 0 0 1 10 14.5 H7", false},
     {"redo", "M10 4 L13.5 7.5 L10 11 M13.5 7.5 H6 A3.5 3.5 0 0 0 6 14.5 H9", false},
     {"snap", "M4 2.5 V8 A4 4 0 0 0 12 8 V2.5 M4 2.5 H6.5 V6 M12 2.5 H9.5 V6", false},
@@ -91,7 +92,9 @@ const Definition definitions[Icons::count] = {
      false},
     {"detach", "M9 2.5 H13.5 V7 M13.5 2.5 L8 8 M6.5 4 H3 V13 H12 V9.5", false},
     {"attach", "M7 9 H2.5 V13.5 M2.5 13.5 L8 8 M13 2.5 H4 V5.5 M13 2.5 V11.5 H10.5", false},
-    {"mark", "M8 1.5 A6.5 6.5 0 1 1 7.99 1.5 Z M2.5 8 H5 L7 5 L9 11 L11 8 H13.5", false},
+    // The brand mark (docs/design/15-brand.md): Moonrise, a half moon over the horizon (its reflection left
+    // out at 16 px).
+    {"mark", "M1.75 11 H14.25", false, "M4.25 9 A3.75 3.75 0 0 1 11.75 9 Z"},
     {"pianoRoll", "M2.5 3.5 H13.5 V12.5 H2.5 Z M5.5 3.5 V12.5 M9.5 3.5 V12.5 M2.5 8 H13.5", false},
     {"diagnostics", "M2 9 H4.5 L6.5 4 L9.5 12 L11.5 7 H14", false},
     {"menu", "M3 4.5 H13 M3 8 H13 M3 11.5 H13", false},
@@ -103,6 +106,10 @@ const Definition definitions[Icons::count] = {
      "M6.5 3 H9.5 M8 3 V13 M6.5 13 H9.5 M3.5 5.5 L2 8 L3.5 10.5 M12.5 5.5 L14 8 L12.5 10.5",
      false},
     {"pencil", "M10.5 2.5 L13.5 5.5 L5.5 13.5 H2.5 V10.5 Z M9 4 L12 7", false},
+    // The window buttons: thin, 10 px glyphs, after the Windows caption buttons.
+    {"windowMinimise", "M3 8 H13", false},
+    {"windowMaximise", "M3.5 3.5 H12.5 V12.5 H3.5 Z", false},
+    {"windowRestore", "M5.5 3.5 H12.5 V10.5 M3.5 5.5 H10.5 V12.5 H3.5 Z", false},
 };
 } // namespace
 
@@ -138,6 +145,14 @@ void Icons::draw(juce::Graphics& g, Icon icon, juce::Rectangle<float> bounds, ju
         bounds.getX() + (bounds.getWidth() - 16.0f * scale) * 0.5f,
         bounds.getY() + (bounds.getHeight() - 16.0f * scale) * 0.5f);
     g.setColour(colour);
+    if (const auto* solid = definitions[static_cast<int>(icon)].solid)
+    {
+        static std::map<int, juce::Path> solids;
+        auto it = solids.find(static_cast<int>(icon));
+        if (it == solids.end())
+            it = solids.emplace(static_cast<int>(icon), juce::Drawable::parseSVGPath(solid)).first;
+        g.fillPath(it->second, transform);
+    }
     if (filled)
         g.fillPath(path, transform);
     else
@@ -181,6 +196,20 @@ void IconButton::paintButton(juce::Graphics& g, bool isMouseOver, bool isButtonD
     auto* lnf = dynamic_cast<NorthlightLookAndFeel*>(&getLookAndFeel());
 
     juce::Colour iconColour = restColour_;
+    // A key keeps its face in every state except solid-on, which fills it.
+    const bool keyFace = key_ && !(on && solidOn_);
+    if (keyFace)
+    {
+        const bool live = isEnabled();
+        if (lnf != nullptr)
+            lnf->drawControlFace(
+                g, bounds.reduced(1.0f), radius, c.surface2, live && isButtonDown, live && isMouseOver);
+        else
+        {
+            g.setColour(c.surface2);
+            g.fillRoundedRectangle(bounds.reduced(1.0f), radius);
+        }
+    }
     if (!isEnabled())
         iconColour = c.textDisabled;
     else if (on)
@@ -213,14 +242,20 @@ void IconButton::paintButton(juce::Graphics& g, bool isMouseOver, bool isButtonD
     }
     else if (isButtonDown)
     {
-        g.setColour(c.surfacePressed);
-        g.fillRoundedRectangle(bounds.reduced(1.0f), radius);
+        if (!keyFace)
+        {
+            g.setColour(c.surfacePressed);
+            g.fillRoundedRectangle(bounds.reduced(1.0f), radius);
+        }
         iconColour = c.textPrimary;
     }
     else if (isMouseOver)
     {
-        g.setColour(c.surface2);
-        g.fillRoundedRectangle(bounds.reduced(1.0f), radius);
+        if (!keyFace)
+        {
+            g.setColour(c.surface2);
+            g.fillRoundedRectangle(bounds.reduced(1.0f), radius);
+        }
         iconColour = c.textPrimary;
     }
 

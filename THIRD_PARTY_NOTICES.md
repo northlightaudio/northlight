@@ -20,7 +20,9 @@ Northlight is free software under the GNU Affero General Public License version 
 | Steinberg ASIO SDK | ASIO audio devices (builds made with the SDK) | GNU GPLv3 (Northlight uses the SDK under its GPLv3 option; GPLv3 section 13 allows combining it with AGPLv3 code) |
 | Catch2 | Unit tests (not part of the application) | Boost Software License 1.0 |
 
-Typefaces: when the Inter and JetBrains Mono fonts are bundled in `assets/fonts`, they are distributed under the SIL Open Font License 1.1, and their `OFL.txt` files must be shipped beside them.
+Typefaces: Newsreader, the display face (`assets/fonts/Newsreader-Variable.ttf`), is distributed under the SIL Open Font License 1.1, in `Newsreader-OFL.txt` beside it. When the Inter and JetBrains Mono fonts are bundled in `assets/fonts`, they are distributed under the same licence, and their `OFL.txt` files must be shipped beside them.
+
+Images: the splash screen's photograph (`assets/splash`) is by Gytis Bukauskas, used under the Unsplash License (https://unsplash.com/license); see `assets/splash/README.md`.
 
 Trademarks: VST is a registered trademark and ASIO a trademark of Steinberg Media Technologies GmbH. They are used here only to name the formats Northlight supports.
 

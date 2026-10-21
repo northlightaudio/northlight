@@ -31,6 +31,9 @@ public:
     void setTone(Tone tone);
     // Without its own well: the text sits in a readout well the owner paints.
     void setFramed(bool framed);
+    // Secondary: textSecondary at rest instead of the readout colour (the
+    // clock time beside the primary bars.beats.ticks).
+    void setSecondary(bool secondary);
     std::function<void(const juce::String&)> onTyped;
     std::function<void(int segment, int steps)> onNudge; // segment from the left, steps up/down
 
@@ -50,10 +53,31 @@ private:
     bool primary_;
     juce::String text_;
     Tone tone_ = Tone::normal;
-    bool framed_ = true;
+    bool framed_ = true, secondary_ = false;
     std::unique_ptr<juce::TextEditor> editor_;
     int dragSegment_ = -1, dragStartY_ = 0, dragSteps_ = 0;
     bool dragged_ = false;
+};
+
+// A window button of the custom chrome (03-shell.md): minimise, maximise/restore or
+// close, the header's full height and flat. Hover fills it with surface2; close fills
+// with `record` and turns its glyph to textOnColour. Windows routes clicks on it to
+// the window (it is a caption control), so it shows hover but never a press.
+class WindowButton final : public juce::Button
+{
+public:
+    WindowButton(const Theme& theme, Icon icon, const juce::String& tooltip, bool closes);
+    void setIcon(Icon icon)
+    {
+        icon_ = icon;
+        repaint();
+    }
+    void paintButton(juce::Graphics& g, bool isMouseOver, bool isButtonDown) override;
+
+private:
+    const Theme& theme_;
+    Icon icon_;
+    bool closes_;
 };
 
 // The header bar (03-shell.md): app and project menus, undo/redo, the transport
@@ -83,6 +107,8 @@ public:
         bool snap = true, ripple = false;
         juce::String snapName = "Adaptive";
         bool mixerVisible = false, editorVisible = false, browserVisible = false;
+        // The custom window chrome: the bar is the title bar, with window buttons.
+        bool windowControls = false, maximised = false;
     };
     void setState(const State& state);
     const State& state() const noexcept { return state_; }
@@ -101,10 +127,19 @@ public:
     std::function<void()> onToggleSnap, onSnapMenu, onToggleRipple, onZoomFit;
     std::function<void()> onToggleMixer, onToggleEditor, onToggleBrowser;
     std::function<void()> onDeviceWarning;
+    std::function<void()> onMinimise, onMaximise, onCloseWindow;
+
+    // What a point (in the bar) is to the window: a window button, client (a
+    // control) or caption (empty bar: drag to move, double-click to maximise).
+    // Pure geometry: Windows asks during its own hit-testing.
+    juce::Component::WindowControlKind windowControlAt(juce::Point<float> point) const;
 
     void paint(juce::Graphics& g) override;
     void resized() override;
     void mouseDown(const juce::MouseEvent& e) override;
+
+    static constexpr int windowButtonWidth = 46;            // as the Windows caption buttons
+    static constexpr int unsavedDot = 6, unsavedDotGap = 6; // the dot after the project name
 
 private:
     class ClipIndicator;
@@ -122,11 +157,11 @@ private:
     std::vector<double> tapTimesMs_; // the last tempo taps
     juce::ComboBox signature_;
     IconButton snap_, ripple_, zoomFit_, mixer_, editor_, browser_;
+    WindowButton minimise_, maximise_, closeWindow_;
     // The trays the clusters sit in and the readout well (bars, time, tempo,
-    // signature) with the x of each divider inside it; set by resized().
+    // signature); set by resized().
     std::vector<juce::Rectangle<int>> trays_;
     juce::Rectangle<int> readout_;
-    std::vector<int> readoutDividers_;
     bool clipLit_ = false;
     bool lastPlaying_ = false, lastRecording_ = false;
 };

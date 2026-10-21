@@ -21,14 +21,16 @@ Five neutral steps, each used for exactly one plane:
 `surfacePressed` is darker than `surface2` so pressing reads as "pushed in".
 `overlay` dims the window behind a sheet.
 
-The base is near-black with a faint warm cast (`#0F0F10` rather than a blue grey) so
-track colours and meters sit on something neutral. Steps are 6 to 9 points of
-lightness apart: enough to read as planes, not enough to read as boxes.
+The base is Machair dusk's peat green (`#0F1311` to `#2F3630`, see
+[15-brand.md](15-brand.md)): dark and close to neutral, with just enough green that the
+window reads as evening land rather than a black box, so track colours and meters sit
+on something calm. Steps are 6 to 9 points of lightness apart: enough to read as
+planes, not enough to read as boxes.
 
 ### Lines
 
-Two line tokens only. `lineSubtle` (white at 6%) separates planes that touch;
-`lineStrong` (white at 12%) outlines popups and fields with focus-less emphasis.
+Two line tokens only. `lineSubtle` (moon cream at 6%) separates planes that touch;
+`lineStrong` (moon cream at 12%) outlines popups and fields with focus-less emphasis.
 Borders are the exception, not the rule: a panel edge is normally a change of
 surface, not a line.
 
@@ -213,8 +215,11 @@ control; it is only drawn for keyboard focus, never for pointer clicks.
   `controlBottom` gradient, top highlight, 1 px shadow), `textPrimary` label, radius
   `sm`. Hover: gradient one step lighter. Pressed: `pressedInset`, gradient reversed.
   Disabled: flat `surface1` fill, `textDisabled`, no highlight or shadow.
-- **Primary**: `accent` fill, `textOnAccent` label. Hover `accentHover`, pressed
-  `accentPressed`. At most one per view.
+- **Primary**: moonlight, the one bright thing in a view: `primary` fill (a faint
+  vertical shade and the control shadow below), `textOnPrimary` label. Hover
+  `primaryHover`, pressed `primaryPressed`. At most one per view. It is not the
+  accent: Overcast marks what is active (toggles, selection, focus), and a filled
+  Overcast button read as washed out against the peat.
 - **Ghost**: no fill, `textSecondary` label; hover `surface2` fill and `textPrimary`.
   Toolbar and panel headers use ghost buttons.
 - **Danger**: ghost at rest with `danger` text; hover `danger` fill with
