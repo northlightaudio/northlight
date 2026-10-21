@@ -326,6 +326,13 @@ architecture.md). Multi-output instruments feed aux tracks. The piano roll
 auditions notes through the clip's track, and a MIDI track can play the MIDI
 output device on a channel (2026-10-20).
 
+Status 2026-10-21: MIDI clips hold controller events (CC, pitch bend, channel
+and poly pressure) with bulk undoable edits and JSON (project version 6). The
+engine schedules them, chases each controller's value after a jump, loop or
+start, rests bend and pedals on stop, records them from live input, and
+delivers them to VST3, CLAP, the MIDI output and the built-in synths (bend, mod
+wheel vibrato, sustain pedal).
+
 ### Phase 9 — Automation, stretch, polish (4 weeks)
 
 - Automation lanes (read/write/touch/latch) for every plugin and mixer parameter.

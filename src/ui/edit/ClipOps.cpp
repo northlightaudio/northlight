@@ -230,6 +230,8 @@ Edit pasteClips(const core::Project& project,
             clip.id = core::invalidId;
             for (auto& n : clip.notes)
                 n.id = core::invalidId;
+            for (auto& c : clip.controllers)
+                c.id = core::invalidId;
             clip.start = at + (clip.start - earliest);
             edit.commands.push_back(std::make_unique<core::AddMidiClip>(track.id, clip));
         }

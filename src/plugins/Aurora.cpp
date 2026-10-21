@@ -121,6 +121,8 @@ private:
         lfoPhase_ = 0.0;
         lfoHeld_ = 0.0f;
         lastFrequency_ = 0.0;
+        expression_.reset();
+        expressionRatio_ = 1.0;
         // Shimmer: up to 30 ms of modulated delay per side.
         const auto length = static_cast<size_t>(sampleRate * 0.03) + 4;
         for (auto& line : chorus_)
@@ -179,6 +181,7 @@ private:
     {
         synth::dispatch(
             e,
+            expression_,
             [this](int note, int velocity) { noteOn(note, velocity); },
             [this](int note) { noteOff(note); },
             [this]
@@ -287,6 +290,9 @@ private:
             {
                 controlCountdown_ = controlInterval;
                 lfo_ = lfoValue(lfoKind);
+                // The pitch bend and the mod wheel's vibrato.
+                expressionRatio_ =
+                    synth::Expression::ratio(expression_.advance(controlInterval / sampleRate_));
                 for (auto& v : voices_)
                 {
                     if (!v.active())
@@ -317,7 +323,7 @@ private:
                     v.frequency = v.target + (v.frequency - v.target) * glideCoef;
                 else
                     v.frequency = v.target;
-                const double base = v.frequency * pitchLfo / sampleRate_;
+                const double base = v.frequency * pitchLfo * expressionRatio_ / sampleRate_;
                 float l = 0.0f, r = 0.0f;
                 for (int u = 0; u < voicesPerOsc; ++u)
                 {
@@ -430,6 +436,8 @@ private:
     std::array<Voice, voiceCount> voices_{};
     std::uint32_t age_ = 0;
     std::uint32_t seed_ = 0x2545F491u;
+    synth::Expression expression_;
+    double expressionRatio_ = 1.0;
     double lfoPhase_ = 0.0;
     float lfoHeld_ = 0.0f, lfo_ = 0.0f;
     int controlCountdown_ = 0;

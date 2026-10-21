@@ -25,6 +25,7 @@ Project editProject()
     clip.start = 0;
     clip.length = 4000;
     clip.notes = {{21, 60, 100, 0, 100}};
+    clip.controllers = {{22, MidiControllerType::controller, 1, 64, 50}};
     midi.midiClips.push_back(clip);
     p.tracks = {audio, midi};
     p.nextId = 100;
@@ -98,6 +99,8 @@ TEST_CASE("Copy and paste keep track offsets and land only on matching tracks", 
     CHECK(after.tracks[0].clips.back().start == 8000 + 5000); // its distance from the earliest kept
     CHECK(after.tracks[1].midiClips.size() == 2);
     CHECK(after.tracks[1].midiClips.back().start == 8000);
+    REQUIRE(after.tracks[1].midiClips.back().controllers.size() == 1);
+    CHECK(after.tracks[1].midiClips.back().controllers[0].id != 22); // a fresh id
 
     // Pasted one row down, the audio clip would land on the MIDI track: it is skipped.
     auto shifted = ui::edit::pasteClips(p, clipboard, 1, 8000);

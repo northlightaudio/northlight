@@ -95,6 +95,7 @@ private:
         holdPhase_ = 1.0;
         smoothA_ = smoothB_ = 0.0f;
         dcInL_ = dcInR_ = dcOutL_ = dcOutR_ = 0.0f;
+        expression_.reset();
         echo_.assign(static_cast<size_t>(sampleRate * 0.25) + 4, 0.0f);
         echoPos_ = 0;
         countdown_ = 0;
@@ -175,6 +176,7 @@ private:
     {
         synth::dispatch(
             e,
+            expression_,
             [this](int note, int velocity) { noteOn(note, velocity); },
             [this](int note) { noteOff(note); },
             [this]
@@ -189,6 +191,8 @@ private:
     // pitch (arp, vibrato, sweep, glide).
     void control(const float* p, double seconds, int at) noexcept
     {
+        // The pitch bend and the mod wheel's vibrato, on top of the chip's own.
+        const double expressionSemis = expression_.advance(seconds);
         const int shape = std::clamp(static_cast<int>(std::lround(p[arp])), 0, 7);
         const double stepQuarters = sync::quarters(p[arpSync]);
         if (stepQuarters > 0.0 && head_.playing)
@@ -248,7 +252,7 @@ private:
                 vibrato = p[vibratoDepth] * fade *
                           std::sin(2.0 * std::numbers::pi * p[vibratoRate] * (v.sinceOn - delay));
             }
-            const double semis = v.currentSemis + offset + transpose + vibrato;
+            const double semis = v.currentSemis + offset + transpose + vibrato + expressionSemis;
             const double hz = 440.0 * std::pow(2.0, (semis - 69.0) / 12.0);
             v.increment = std::min(0.45, hz / sampleRate_);
         }
@@ -464,6 +468,7 @@ private:
     engine::PlayHead head_; // this chunk's song position, for a synced arpeggio
     int arpStep_ = 0;
     int countdown_ = 0;
+    synth::Expression expression_;
     double holdPhase_ = 1.0;
     float holdValue_ = 0.0f, holdPending_ = 0.0f, previousSum_ = 0.0f;
     float smoothA_ = 0.0f, smoothB_ = 0.0f, smoothG_ = 0.0f, smoothK_ = 1.41421356f, smoothH_ = 1.0f;

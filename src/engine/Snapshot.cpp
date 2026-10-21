@@ -94,6 +94,78 @@ struct Routing
 };
 } // namespace
 
+namespace
+{
+int chaseKeyOf(const core::MidiControllerEvent& e) noexcept
+{
+    switch (e.type)
+    {
+        case core::MidiControllerType::controller:
+            return std::clamp(e.number, 0, 127);
+        case core::MidiControllerType::pitchBend:
+            return chaseKeyBend;
+        case core::MidiControllerType::channelPressure:
+            return chaseKeyPressure;
+        case core::MidiControllerType::polyPressure:
+            return -1;
+    }
+    return -1;
+}
+
+// A clip's controller events at their timeline places: those inside the clip
+// in time order, preceded (at the clip's start) by the latest value of each
+// controller that a trim left before it.
+void compileControllers(const core::MidiClip& source,
+                        MidiClipNode& clip,
+                        std::array<std::uint8_t, chaseKeyCount>& usedKeys)
+{
+    const auto toNode = [&](const core::MidiControllerEvent& e)
+    {
+        MidiControllerNode n;
+        n.time = source.start + std::max<core::SamplePosition>(0, e.time);
+        n.type = e.type;
+        n.number = static_cast<std::uint8_t>(std::clamp(e.number, 0, 127));
+        n.value = static_cast<std::int16_t>(
+            std::clamp(e.value, core::midiControllerMinimum(e.type), core::midiControllerMaximum(e.type)));
+        n.key = static_cast<std::int16_t>(chaseKeyOf(e));
+        return n;
+    };
+    std::array<int, chaseKeyCount> before;
+    before.fill(-1);
+    for (size_t i = 0; i < source.controllers.size(); ++i)
+    {
+        const auto& e = source.controllers[i];
+        if (e.time < 0)
+        {
+            if (const int key = chaseKeyOf(e); key >= 0)
+                before[static_cast<size_t>(key)] = static_cast<int>(i);
+        }
+    }
+    for (const int i : before)
+        if (i >= 0)
+            clip.controllers.push_back(toNode(source.controllers[static_cast<size_t>(i)]));
+    for (const auto& e : source.controllers)
+        if (e.time >= 0 && e.time < source.length)
+            clip.controllers.push_back(toNode(e));
+    std::stable_sort(clip.controllers.begin(),
+                     clip.controllers.end(),
+                     [](const MidiControllerNode& a, const MidiControllerNode& b)
+                     { return a.time < b.time; });
+    std::array<int, chaseKeyCount> last;
+    last.fill(-1);
+    for (size_t i = 0; i < clip.controllers.size(); ++i)
+        if (const int key = clip.controllers[i].key; key >= 0)
+            last[static_cast<size_t>(key)] = static_cast<int>(i);
+    for (int key = 0; key < chaseKeyCount; ++key)
+        if (const int i = last[static_cast<size_t>(key)]; i >= 0)
+        {
+            clip.lastValues.push_back(clip.controllers[static_cast<size_t>(i)]);
+            usedKeys[static_cast<size_t>(key)] = 1;
+        }
+    clip.chasedKeys = static_cast<int>(clip.lastValues.size());
+}
+} // namespace
+
 std::unique_ptr<Snapshot> compileSnapshot(const core::Project& project,
                                           MediaCache& media,
                                           InsertCache& inserts,
@@ -429,6 +501,7 @@ std::unique_ptr<Snapshot> compileSnapshot(const core::Project& project,
                                  clip.notes.end(),
                                  [](const MidiNoteNode& a, const MidiNoteNode& b)
                                  { return a.start < b.start; });
+                compileControllers(c, clip, node.controllerKeys);
                 node.midiClips.push_back(std::move(clip));
             }
         }

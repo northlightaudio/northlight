@@ -427,7 +427,9 @@ private:
 };
 
 // Splits at a timeline position inside the clip; a note across the split is cut
-// at it (the left part keeps it, shortened).
+// at it (the left part keeps it, shortened). Controller events after the split
+// go right, and the right part opens with each controller's value at the split
+// (so it sounds the same when moved on its own).
 class SplitMidiClip final : public Command
 {
 public:
@@ -441,6 +443,7 @@ private:
     Id trackId_, clipId_;
     SamplePosition at_;
     MidiClip original_, right_;
+    std::vector<Id> chaseIds_; // the right part's opening controller values, kept for redo
 };
 
 class DuplicateMidiClip final : public Command
@@ -497,6 +500,31 @@ public:
 private:
     Id trackId_, clipId_;
     MidiNote value_, previous_;
+};
+
+// Adds, changes and removes controller events in one clip, as one step (a
+// drawn line, a drag of several points, a delete). `events` with an id the clip
+// has replace that event; the rest are added (an invalid id is allocated on
+// apply and kept for redo). Values are clamped to their type's range.
+class EditMidiControllers final : public Command
+{
+public:
+    EditMidiControllers(Id trackId,
+                        Id clipId,
+                        std::vector<MidiControllerEvent> events,
+                        std::vector<Id> remove = {},
+                        std::string name = "Edit controllers");
+    std::string name() const override { return name_; }
+    void apply(Project&) override;
+    void revert(Project&) override;
+    const std::vector<MidiControllerEvent>& events() const noexcept { return events_; }
+
+private:
+    Id trackId_, clipId_;
+    std::vector<MidiControllerEvent> events_;
+    std::vector<Id> remove_;
+    std::string name_;
+    std::vector<MidiControllerEvent> previous_;
 };
 
 // Moves note starts towards the nearest grid line (timeline grid, anchored at

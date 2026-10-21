@@ -23,6 +23,7 @@ add_executable(aural_unit_tests
     plugins/ChannelStripTests.cpp
     plugins/StripBenchTests.cpp
     plugins/SynthFingerprintTests.cpp
+    plugins/ExpressionTests.cpp
     plugins/StarbitSpectrumProbe.cpp
     plugins/BeatSyncTests.cpp
     engine/LoudnessTests.cpp

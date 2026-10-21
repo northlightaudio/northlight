@@ -229,6 +229,32 @@ std::vector<MidiTake> buildMidiTakes(const std::vector<RecordSession::CapturedMi
                     closeNote(*b, n, e.position);
                 break;
             case MidiEvent::Type::controller:
+                b->take.clip.controllers.push_back({core::invalidId,
+                                                    core::MidiControllerType::controller,
+                                                    e.event.note & 127,
+                                                    e.event.velocity & 127,
+                                                    e.position});
+                break;
+            case MidiEvent::Type::pitchBend:
+                b->take.clip.controllers.push_back({core::invalidId,
+                                                    core::MidiControllerType::pitchBend,
+                                                    0,
+                                                    e.event.bendValue(),
+                                                    e.position});
+                break;
+            case MidiEvent::Type::channelPressure:
+                b->take.clip.controllers.push_back({core::invalidId,
+                                                    core::MidiControllerType::channelPressure,
+                                                    0,
+                                                    e.event.velocity & 127,
+                                                    e.position});
+                break;
+            case MidiEvent::Type::polyPressure:
+                b->take.clip.controllers.push_back({core::invalidId,
+                                                    core::MidiControllerType::polyPressure,
+                                                    e.event.note & 127,
+                                                    e.event.velocity & 127,
+                                                    e.position});
                 break;
         }
     }
@@ -239,7 +265,7 @@ std::vector<MidiTake> buildMidiTakes(const std::vector<RecordSession::CapturedMi
         for (int n = 0; n < 128; ++n)
             if (b.held[n].has_value())
                 closeNote(b, n, std::max(span.end, b.held[n]->start + 1));
-        if (b.take.clip.notes.empty())
+        if (b.take.clip.notes.empty() && b.take.clip.controllers.empty())
             continue;
         b.take.takeIndex = b.index;
         // Timeline to clip-relative, the take moved earlier by the latency.
@@ -251,7 +277,13 @@ std::vector<MidiTake> buildMidiTakes(const std::vector<RecordSession::CapturedMi
             n.start = std::max<core::SamplePosition>(0, n.start - latency - clip.start);
             clip.length = std::max(clip.length, n.start + n.length);
         }
+        for (auto& c : clip.controllers)
+        {
+            c.time = std::max<core::SamplePosition>(0, c.time - latency - clip.start);
+            clip.length = std::max(clip.length, c.time + 1);
+        }
         clip.sortNotes();
+        clip.sortControllers();
         takes.push_back(std::move(b.take));
     }
     return takes;

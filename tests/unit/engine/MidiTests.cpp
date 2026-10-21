@@ -14,6 +14,7 @@
 #include <catch2/catch_approx.hpp>
 #include <catch2/catch_test_macros.hpp>
 
+#include <array>
 #include <cmath>
 #include <memory>
 #include <string>
@@ -148,6 +149,60 @@ private:
     engine::PlayHead head_;
 };
 
+// "test.cc": logs every event it is handed with its sample position since the
+// engine started (into a fixed array: no allocation on the audio thread), for
+// tests of controller scheduling and chasing.
+struct LoggedEvent
+{
+    std::int64_t at = 0;
+    engine::MidiEvent event;
+};
+struct EventLog
+{
+    std::array<LoggedEvent, 4096> events{};
+    int count = 0;
+    std::int64_t clock = 0;
+    void clear() noexcept { count = 0; }
+    // The non-note events logged, in order.
+    std::vector<LoggedEvent> controllers() const
+    {
+        std::vector<LoggedEvent> out;
+        for (int i = 0; i < count; ++i)
+            if (!events[static_cast<size_t>(i)].event.isNote())
+                out.push_back(events[static_cast<size_t>(i)]);
+        return out;
+    }
+};
+EventLog eventLog;
+
+class LoggingInstrument final : public engine::InsertProcessor
+{
+public:
+    const std::string& typeName() const noexcept override { return type_; }
+    const std::vector<engine::ParameterInfo>& parameters() const noexcept override { return none_; }
+    void prepare(double, int) override {}
+    void setParameter(int, float) noexcept override {}
+    float parameter(int) const noexcept override { return 0.0f; }
+    bool acceptsMidi() const noexcept override { return true; }
+    void process(float* l, float* r, int n) noexcept override
+    {
+        std::fill(l, l + n, 0.0f);
+        std::fill(r, r + n, 0.0f);
+        eventLog.clock += n;
+    }
+    void processMidi(const engine::MidiEventList& events, float* l, float* r, int n) noexcept override
+    {
+        for (const auto& e : events)
+            if (eventLog.count < static_cast<int>(eventLog.events.size()))
+                eventLog.events[static_cast<size_t>(eventLog.count++)] = {eventLog.clock + e.sampleOffset, e};
+        process(l, r, n);
+    }
+
+private:
+    std::string type_ = "test.cc";
+    std::vector<engine::ParameterInfo> none_;
+};
+
 class MidiFactory final : public engine::InsertFactory
 {
 public:
@@ -160,6 +215,8 @@ public:
             return std::make_unique<LatentInstrument>();
         if (type == "test.head")
             return std::make_unique<PlayHeadProbe>();
+        if (type == "test.cc")
+            return std::make_unique<LoggingInstrument>();
         return builtIns_.create(type);
     }
 
@@ -1021,4 +1078,231 @@ TEST_CASE("A note that ends with its clip ends even when a block starts at the c
     CHECK(out[0] == Approx(1.0f).margin(0.01f));
     // Both end at the clip's end (the marker sums them: two note-offs, -2).
     CHECK(out[10 * blockSize] == Approx(-2.0f).margin(0.01f));
+}
+
+namespace
+{
+core::MidiControllerEvent cc(int number, int value, core::SamplePosition at)
+{
+    return {core::invalidId, core::MidiControllerType::controller, number, value, at};
+}
+core::MidiControllerEvent bend(int value, core::SamplePosition at)
+{
+    return {core::invalidId, core::MidiControllerType::pitchBend, 0, value, at};
+}
+bool isController(const LoggedEvent& e, std::int64_t at, int number, int value)
+{
+    return e.at == at && e.event.type == engine::MidiEvent::Type::controller && e.event.note == number &&
+           e.event.velocity == value;
+}
+bool isBend(const LoggedEvent& e, std::int64_t at, int value)
+{
+    return e.at == at && e.event.type == engine::MidiEvent::Type::pitchBend && e.event.bendValue() == value;
+}
+} // namespace
+
+TEST_CASE("Controller events play at their sample positions, ahead of a note at the same place",
+          "[engine][midi][controllers]")
+{
+    core::MidiClip clip;
+    clip.start = 10;
+    clip.length = 1000;
+    clip.notes.push_back({20, 60, 100, 0, 50});
+    clip.controllers.push_back({21, core::MidiControllerType::controller, 1, 100, 0});
+    clip.controllers.push_back({22, core::MidiControllerType::pitchBend, 0, 4096, 0});
+    clip.controllers.push_back({23, core::MidiControllerType::channelPressure, 0, 77, 60});
+    clip.controllers.push_back({24, core::MidiControllerType::polyPressure, 60, 33, 70});
+    clip.controllers.push_back({25, core::MidiControllerType::controller, 7, 90, 2000}); // past the clip end
+    Harness h;
+    h.engine.setProject(keysProject(clip, "test.cc"));
+    eventLog = {};
+    h.engine.play();
+    h.render(4);
+    REQUIRE(eventLog.count >= 5);
+    const auto& e = eventLog.events;
+    CHECK(isController(e[0], 10, 1, 100));
+    CHECK(isBend(e[1], 10, 4096));
+    CHECK(e[2].event.type == engine::MidiEvent::Type::noteOn); // after the controllers at 10
+    CHECK(e[2].at == 10);
+    CHECK(e[3].event.type == engine::MidiEvent::Type::noteOff);
+    CHECK(e[4].at == 70);
+    CHECK(e[4].event.type == engine::MidiEvent::Type::channelPressure);
+    CHECK(e[4].event.velocity == 77);
+    REQUIRE(eventLog.count == 6);
+    CHECK(e[5].at == 80);
+    CHECK(e[5].event.type == engine::MidiEvent::Type::polyPressure);
+    CHECK(e[5].event.note == 60);
+    CHECK(e[5].event.velocity == 33);
+}
+
+TEST_CASE(
+    "Playing from a new place chases each controller's latest value; stopping rests the bend and pedals",
+    "[engine][midi][controllers]")
+{
+    core::MidiClip clip;
+    clip.start = 0;
+    clip.length = 100000;
+    clip.controllers = {
+        cc(7, 80, 50), cc(1, 20, 100), bend(-2000, 2000), cc(64, 127, 2500), cc(1, 90, 3000), cc(1, 5, 9000)};
+    Harness h;
+    h.engine.setProject(keysProject(clip, "test.cc"));
+    eventLog = {};
+    h.engine.locate(4000);
+    h.engine.play();
+    h.render(1);
+    auto log = eventLog.controllers();
+    // Everything at the top of the first block, in key order: CC 1, CC 7, CC 64, bend.
+    REQUIRE(log.size() == 4);
+    CHECK(isController(log[0], 0, 1, 90));
+    CHECK(isController(log[1], 0, 7, 80));
+    CHECK(isController(log[2], 0, 64, 127));
+    CHECK(isBend(log[3], 0, -2000));
+
+    // Stop: the bend centres, the mod wheel and sustain go to rest; the volume stays.
+    eventLog.clear();
+    h.engine.stop();
+    h.render(1);
+    log = eventLog.controllers();
+    REQUIRE(log.size() == 3);
+    CHECK(isController(log[0], 64, 1, 0));
+    CHECK(isController(log[1], 64, 64, 0));
+    CHECK(isBend(log[2], 64, 0));
+
+    // Play from before the bend: the mod wheel's first value; the volume, bend
+    // and pedal are already where the song has them.
+    eventLog.clear();
+    h.engine.locate(500);
+    h.engine.play();
+    h.render(1);
+    log = eventLog.controllers();
+    REQUIRE(log.size() == 1);
+    CHECK(isController(log[0], 128, 1, 20));
+}
+
+TEST_CASE("A chase reaches back into earlier clips and starts again at every loop wrap",
+          "[engine][midi][controllers]")
+{
+    core::MidiClip first;
+    first.start = 0;
+    first.length = 1000;
+    first.controllers = {cc(1, 50, 10), bend(3000, 20)};
+    core::MidiClip second;
+    second.id = 30;
+    second.start = 2000;
+    second.length = 1000;
+    second.controllers = {cc(1, 10, 5), cc(1, 99, 100)};
+    auto p = keysProject(first, "test.cc");
+    p.tracks[0].midiClips.push_back(second);
+    Harness h;
+    h.engine.setProject(p);
+    eventLog = {};
+    // Loop [2050, 2178): the first pass chases CC 1 = 10 (the second clip) and
+    // the bend from the first clip; CC 1 = 99 plays at 2100; the wrap chases 10
+    // again, and the second pass plays 99 again.
+    h.engine.locate(2050);
+    h.engine.setLoop(2050, 2178, true);
+    h.engine.play();
+    h.render(3);
+    const auto log = eventLog.controllers();
+    REQUIRE(log.size() == 5);
+    CHECK(isController(log[0], 0, 1, 10));
+    CHECK(isBend(log[1], 0, 3000));
+    CHECK(isController(log[2], 50, 1, 99));
+    CHECK(isController(log[3], 128, 1, 10)); // the bend is still where the chase wants it
+    CHECK(isController(log[4], 178, 1, 99));
+}
+
+TEST_CASE("Controller events before a trimmed clip's start open it with their latest value",
+          "[engine][midi][controllers]")
+{
+    core::MidiClip clip;
+    clip.start = 100;
+    clip.length = 1000;
+    clip.controllers = {cc(1, 30, -80), cc(1, 40, -20), cc(11, 64, 10)};
+    Harness h;
+    h.engine.setProject(keysProject(clip, "test.cc"));
+    eventLog = {};
+    h.engine.play();
+    h.render(4);
+    const auto log = eventLog.controllers();
+    REQUIRE(log.size() == 2);
+    CHECK(isController(log[0], 100, 1, 40));
+    CHECK(isController(log[1], 110, 11, 64));
+}
+
+TEST_CASE("Live controller input reaches the instrument and is recorded into the take",
+          "[engine][midi][controllers][record]")
+{
+    using Captured = engine::RecordSession::CapturedMidi;
+    const auto make = [](engine::MidiEvent e, core::SamplePosition at) { return Captured{1, e, at, 0}; };
+    engine::MidiEventList list(8);
+    list.controller(0, 1, 64);
+    list.pitchBend(0, -4096);
+    list.channelPressure(0, 50);
+    list.polyPressure(0, 61, 20);
+    const std::vector<Captured> events = {
+        make(list[0], 1100),
+        make(list[1], 1200),
+        make(list[2], 1300),
+        make(list[3], 1400),
+    };
+    const std::vector<engine::RecordSession::TakeSpan> spans = {{1000, 2000}};
+    const auto takes = engine::buildMidiTakes(events, spans, 100);
+    REQUIRE(takes.size() == 1); // controllers alone make a clip
+    const auto& clip = takes[0].clip;
+    CHECK(clip.start == 900);
+    CHECK(clip.notes.empty());
+    REQUIRE(clip.controllers.size() == 4);
+    CHECK(clip.controllers[0].type == core::MidiControllerType::controller);
+    CHECK(clip.controllers[0].number == 1);
+    CHECK(clip.controllers[0].value == 64);
+    CHECK(clip.controllers[0].time == 100);
+    CHECK(clip.controllers[1].type == core::MidiControllerType::pitchBend);
+    CHECK(clip.controllers[1].value == -4096);
+    CHECK(clip.controllers[2].type == core::MidiControllerType::channelPressure);
+    CHECK(clip.controllers[2].value == 50);
+    CHECK(clip.controllers[3].type == core::MidiControllerType::polyPressure);
+    CHECK(clip.controllers[3].number == 61);
+    CHECK(clip.controllers[3].time == 400);
+
+    // Through the engine: a monitored track passes live pitch bend to its instrument.
+    core::MidiClip empty;
+    empty.length = 10;
+    auto p = keysProject(empty, "test.cc");
+    p.tracks[0].armed = true;
+    Harness h;
+    h.engine.setProject(p);
+    eventLog = {};
+    h.engine.pushMidiInput(list[1], "");
+    h.render(2);
+    const auto log = eventLog.controllers();
+    REQUIRE(log.size() == 1);
+    CHECK(log[0].event.type == engine::MidiEvent::Type::pitchBend);
+    CHECK(log[0].event.bendValue() == -4096);
+}
+
+TEST_CASE("MIDI events convert to their MIDI 1.0 bytes", "[engine][midi][controllers]")
+{
+    engine::MidiEventList list(8);
+    list.pitchBend(0, 8191, 2);
+    list.pitchBend(0, -8192);
+    list.channelPressure(0, 99, 15);
+    list.controller(0, 74, 12, 1);
+    std::uint8_t b[3] = {};
+    CHECK(list[0].toBytes(b) == 3);
+    CHECK(b[0] == 0xE2);
+    CHECK(b[1] == 127);
+    CHECK(b[2] == 127);
+    CHECK(list[0].bendValue() == 8191);
+    CHECK(list[1].toBytes(b) == 3);
+    CHECK(b[1] == 0);
+    CHECK(b[2] == 0);
+    CHECK(list[1].bendValue() == -8192);
+    CHECK(list[2].toBytes(b) == 2);
+    CHECK(b[0] == 0xDF);
+    CHECK(b[1] == 99);
+    CHECK(list[3].toBytes(b) == 3);
+    CHECK(b[0] == 0xB1);
+    CHECK(b[1] == 74);
+    CHECK(b[2] == 12);
 }
