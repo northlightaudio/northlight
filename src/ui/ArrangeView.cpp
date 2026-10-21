@@ -2509,7 +2509,7 @@ juce::MouseCursor pencilCursor(const Theme& theme)
 {
     juce::Image image(juce::Image::ARGB, 20, 20, true);
     juce::Graphics g(image);
-    Icons::draw(g, Icon::pencil, juce::Rectangle<float>(1.0f, 1.0f, 18.0f, 18.0f), juce::Colours::black);
+    Icons::draw(g, Icon::pencil, juce::Rectangle<float>(1.0f, 1.0f, 18.0f, 18.0f), theme.colours.canvas);
     Icons::draw(g, Icon::pencil, juce::Rectangle<float>(0.0f, 0.0f, 18.0f, 18.0f), theme.colours.textPrimary);
     return juce::MouseCursor(image, 2, 17);
 }
