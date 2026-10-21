@@ -6,6 +6,8 @@ add_library(aural_core STATIC
     Vocal.h
     Command.h
     Command.cpp
+    Comping.h
+    Comping.cpp
     ProjectJson.h
     ProjectJson.cpp)
 

@@ -135,6 +135,34 @@ group commands into one step. `projectToJson`/`projectFromJson` read and write t
 versioned `aural.project` format. Bars/beats are a display conversion
 (`samplesToBarsBeats`) with a constant tempo for now.
 
+Take groups (comping, design/14-comping.md): a track's `takeGroups` each hold
+the takes recorded over a range (`Take`: the pass as an `AudioClip` that is not
+in `Track::clips`, plus its number), the comp (`CompSegment`s: sorted,
+contiguous, covering the takes' union, each naming the take that plays there),
+the comp crossfade (10 ms by default) and whether its lanes are expanded. What
+plays is ordinary clips: the comp is materialised into `Track::clips` and the
+group lists their ids (`TakeGroup::clips`), so the snapshot compiler, renderer,
+bounce, peaks and every clip command see plain clips and nothing in the engine
+knows about takes. `core::compClips` is the mapping: one clip per segment on
+its take's media (source offset following the trimmed start), overlapping its
+neighbour by the crossfade (at most half of either segment) centred on the
+boundary with matching linear fades, so the renderer's per-sample fades sum to
+one; where a take does not reach across the boundary it is a butt splice.
+The commands in `core/Comping.h` (`RecordTakes`, `SelectTake` for a swipe or a
+whole take, `RemoveTake`, `MoveCompBoundary`, `FlattenComp`, `RenameTake`,
+`SetTakeLanesExpanded`, and `moveTakeToNewTrack` = `AddTrack` + `RemoveTake`)
+share `TakeGroupEdit`: it edits a copy of the group, then removes the group's
+current clips (keeping them, as the user left them, for undo), installs the new
+group and adds the rebuilt clips, reusing the old clip ids in order so streaming
+windows and the selection survive; `FlattenComp` drops the group and leaves the
+clips as ordinary ones. Ordinary edits on comp clips are allowed (they are just
+clips), but the next comp edit rebuilds the comp from the takes; `ShiftClips`
+(ripple) moves groups that start after its position, consolidation repoints
+take media and the media report counts it as used. Schema 6 adds the groups
+(`takeGroups` on a track: takes as clips plus `number`, `comp` as
+`[start, end, take]` triples, `clips`, `crossfade`, `expanded`); older files
+have none and their overlapping clips play exactly as before.
+
 ### Engine
 
 `engine::AudioEngine` is the façade with a controller side and a real-time side.

@@ -1430,21 +1430,31 @@ SetMediaPaths::SetMediaPaths(std::vector<std::pair<std::string, std::string>> re
 void SetMediaPaths::apply(Project& p)
 {
     changed_.clear();
+    const auto repoint = [this](Id track, AudioClip& c)
+    {
+        for (const auto& [from, to] : renames_)
+            if (c.mediaPath == from)
+            {
+                changed_.push_back({track, c.id, c.mediaPath});
+                c.mediaPath = to;
+                break;
+            }
+    };
     for (auto& t : p.tracks)
+    {
         for (auto& c : t.clips)
-            for (const auto& [from, to] : renames_)
-                if (c.mediaPath == from)
-                {
-                    changed_.push_back({t.id, c.id, c.mediaPath});
-                    c.mediaPath = to;
-                    break;
-                }
+            repoint(t.id, c);
+        for (auto& g : t.takeGroups)
+            for (auto& take : g.takes)
+                repoint(t.id, take.clip);
+    }
 }
 void SetMediaPaths::revert(Project& p)
 {
     for (const auto& change : changed_)
         if (auto* t = p.findTrack(change.track))
-            if (auto* c = t->findClip(change.clip))
+            if (auto* c = t->findClip(change.clip) != nullptr ? t->findClip(change.clip)
+                                                              : t->findTakeClip(change.clip))
                 c->mediaPath = change.previous;
 }
 
@@ -1800,6 +1810,21 @@ void ShiftClips::apply(Project& p)
             c.start = std::max<SamplePosition>(0, c.start + delta_);
         }
     t.sortClips();
+    // A take group that starts at or after the position moves with its clips.
+    shiftedGroups_.clear();
+    for (auto& g : t.takeGroups)
+        if (g.start() >= from_)
+        {
+            const auto delta = std::max(delta_, -g.start());
+            shiftedGroups_.emplace_back(g.id, delta);
+            for (auto& take : g.takes)
+                take.clip.start += delta;
+            for (auto& s : g.comp)
+            {
+                s.start += delta;
+                s.end += delta;
+            }
+        }
 }
 void ShiftClips::revert(Project& p)
 {
@@ -1808,6 +1833,17 @@ void ShiftClips::revert(Project& p)
         if (auto* c = t.findClip(id))
             c->start = start;
     t.sortClips();
+    for (const auto& [id, delta] : shiftedGroups_)
+        if (auto* g = t.findTakeGroup(id))
+        {
+            for (auto& take : g->takes)
+                take.clip.start -= delta;
+            for (auto& s : g->comp)
+            {
+                s.start -= delta;
+                s.end -= delta;
+            }
+        }
 }
 
 SetClipGain::SetClipGain(Id trackId, Id clipId, float gain) : trackId_(trackId), clipId_(clipId), value_(gain)

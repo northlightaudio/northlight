@@ -36,9 +36,10 @@ void migrate(json& j, int from)
     {
         switch (version)
         {
-            case 2: // 2 -> 3, 3 -> 4 and 4 -> 5 only add optional fields
+            case 2: // 2 -> 3, 3 -> 4, 4 -> 5 and 5 -> 6 only add optional fields
             case 3:
             case 4:
+            case 5: // 6 adds take groups; a file without them has none (its clips stay as they are)
                 break;
             default:
                 break;
@@ -371,6 +372,30 @@ json trackToJson(const Track& t)
         }
         j["midiClips"] = std::move(midiClips);
     }
+    if (!t.takeGroups.empty())
+    {
+        json groups = json::array();
+        for (const auto& g : t.takeGroups)
+        {
+            json takes = json::array();
+            for (const auto& take : g.takes)
+            {
+                auto tj = clipToJson(take.clip);
+                tj["number"] = take.number;
+                takes.push_back(std::move(tj));
+            }
+            json comp = json::array();
+            for (const auto& s : g.comp)
+                comp.push_back(json::array({s.start, s.end, s.take}));
+            groups.push_back(json{{"id", g.id},
+                                  {"takes", std::move(takes)},
+                                  {"comp", std::move(comp)},
+                                  {"clips", g.clips},
+                                  {"crossfade", g.crossfade},
+                                  {"expanded", g.expanded}});
+        }
+        j["takeGroups"] = std::move(groups);
+    }
     return j;
 }
 
@@ -446,6 +471,28 @@ Track trackFromJson(const json& j)
         for (const auto& c : *it)
             t.clips.push_back(clipFromJson(c));
     t.sortClips();
+    if (const auto it = j.find("takeGroups"); it != j.end() && it->is_array())
+        for (const auto& gj : *it)
+        {
+            TakeGroup g;
+            g.id = gj.value("id", invalidId);
+            if (const auto takes = gj.find("takes"); takes != gj.end() && takes->is_array())
+                for (const auto& tj : *takes)
+                    g.takes.push_back(Take{clipFromJson(tj), tj.value("number", 1)});
+            if (const auto comp = gj.find("comp"); comp != gj.end() && comp->is_array())
+                for (const auto& sj : *comp)
+                    if (sj.is_array() && sj.size() == 3)
+                        g.comp.push_back(CompSegment{
+                            sj[0].get<SamplePosition>(), sj[1].get<SamplePosition>(), sj[2].get<Id>()});
+            if (const auto clips = gj.find("clips"); clips != gj.end() && clips->is_array())
+                for (const auto& id : *clips)
+                    if (id.is_number_unsigned() && t.findClip(id.get<Id>()) != nullptr)
+                        g.clips.push_back(id.get<Id>());
+            g.crossfade = std::max<SamplePosition>(0, gj.value("crossfade", SamplePosition{0}));
+            g.expanded = gj.value("expanded", false);
+            if (!g.takes.empty())
+                t.takeGroups.push_back(std::move(g));
+        }
     return t;
 }
 } // namespace
@@ -569,6 +616,12 @@ std::optional<Project> projectFromJson(const std::string& text, std::string* err
             maxId = std::max(maxId, t.id);
             for (const auto& c : t.clips)
                 maxId = std::max(maxId, c.id);
+            for (const auto& g : t.takeGroups)
+            {
+                maxId = std::max(maxId, g.id);
+                for (const auto& take : g.takes)
+                    maxId = std::max(maxId, take.id());
+            }
             for (const auto& c : t.midiClips)
             {
                 maxId = std::max(maxId, c.id);
@@ -614,6 +667,19 @@ std::optional<Project> projectFromJson(const std::string& text, std::string* err
             fresh(t.id);
             for (auto& c : t.clips)
                 fresh(c.id);
+            for (auto& g : t.takeGroups)
+            {
+                fresh(g.id);
+                for (auto& take : g.takes)
+                {
+                    const auto was = take.clip.id;
+                    fresh(take.clip.id);
+                    for (auto& s : g.comp)
+                        s.take = s.take == was ? take.clip.id : s.take;
+                }
+                // A comp clip that had to change its id (a corrupt file) is no longer the group's.
+                std::erase_if(g.clips, [&t](Id id) { return t.findClip(id) == nullptr; });
+            }
             for (auto& c : t.midiClips)
             {
                 fresh(c.id);
