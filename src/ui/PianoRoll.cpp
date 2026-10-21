@@ -1541,7 +1541,8 @@ bool PianoRoll::handleEditKey(const juce::KeyPress& key)
         {
             ctlSelection_.clear();
             for (const auto& e : laneEvents())
-                ctlSelection_.push_back(e.id);
+                if (e.time >= 0) // not the values a trim left before the clip
+                    ctlSelection_.push_back(e.id);
             repaint();
         }
         else
