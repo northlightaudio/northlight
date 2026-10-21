@@ -265,8 +265,8 @@ loop recording still makes a clip per pass.
 
 Status 2026-10-21: take lanes in the arrange view: disclosure chip, lanes with
 the comp lit, swipe comping, comp boundary drags, lane header and menus, Alt+Up /
-Alt+Down / Alt+T (design/14-comping.md). Moving a whole comp and MIDI take lanes
-are not built.
+Alt+Down / Alt+T (design/14-comping.md); a comp moves and deletes as one with its
+takes. MIDI take lanes are not built.
 
 ### Phase 4 — Mixer and routing (3 weeks)
 

@@ -1,5 +1,6 @@
 #include "ui/ArrangeView.h"
 
+#include "core/Comping.h"
 #include "plugins/FxTracks.h"
 #include "ui/AuralLookAndFeel.h"
 #include "ui/Db.h"
@@ -918,6 +919,11 @@ void ArrangeView::mouseDownLanes(const juce::MouseEvent& e)
         selection_.clear();
         select(ref, true);
     }
+    // A comp's clips select together: the comp moves and deletes as one, with its takes.
+    if (const auto* group = hit.track->takeGroupOwning(hit.clip->id); group != nullptr && isSelected(ref))
+        for (const auto id : group->clips)
+            if (hit.track->findClip(id) != nullptr)
+                select({hit.track->id, id}, true);
     dragClip_ = ref;
     dragOriginal_ = *hit.clip;
     moveDelta_ = 0;
@@ -2711,6 +2717,7 @@ void ArrangeView::finishMove()
         return;
     std::vector<std::unique_ptr<core::Command>> commands;
     std::vector<ClipRef> moved;
+    std::vector<core::Id> movedGroups;
     for (const auto& ref : selection_)
     {
         const int from = project_->trackIndex(ref.track);
@@ -2721,6 +2728,19 @@ void ArrangeView::finishMove()
         const auto& target = project_->tracks[static_cast<size_t>(to)];
         if (target.isMidi() != ref.midi)
             continue; // a clip stays on its own kind of track
+        // A comp's clip moves its whole take group (takes, comp and clips) once.
+        if (const auto* group =
+                ref.midi ? nullptr : project_->tracks[static_cast<size_t>(from)].takeGroupOwning(ref.clip))
+        {
+            if (std::find(movedGroups.begin(), movedGroups.end(), group->id) == movedGroups.end())
+            {
+                movedGroups.push_back(group->id);
+                commands.push_back(
+                    std::make_unique<core::MoveTakeGroup>(ref.track, group->id, target.id, moveDelta_));
+            }
+            moved.push_back({target.id, ref.clip, false});
+            continue;
+        }
         const auto start = std::max<core::SamplePosition>(0, span->start + moveDelta_);
         if (ref.midi)
             commands.push_back(std::make_unique<core::MoveMidiClip>(ref.track, ref.clip, target.id, start));
@@ -2775,6 +2795,15 @@ void ArrangeView::deleteSelection()
     if (project_ == nullptr || selection_.empty())
         return;
     auto e = edit::deleteClips(*project_, selection_, ripple_);
+    // A take group whose comp clips are all deleted goes too, takes and all.
+    for (const auto& track : project_->tracks)
+        for (const auto& group : track.takeGroups)
+            if (!group.clips.empty() &&
+                std::all_of(group.clips.begin(),
+                            group.clips.end(),
+                            [&](core::Id id)
+                            { return track.findClip(id) == nullptr || isSelected(track.id, id); }))
+                e.commands.push_back(std::make_unique<core::RemoveTakeGroup>(track.id, group.id));
     selection_.clear();
     emit(std::move(e.commands), e.name);
 }

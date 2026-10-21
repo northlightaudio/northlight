@@ -150,12 +150,13 @@ boundary with matching linear fades, so the renderer's per-sample fades sum to
 one; where a take does not reach across the boundary it is a butt splice.
 The commands in `core/Comping.h` (`RecordTakes`, `SelectTake` for a swipe or a
 whole take, `RemoveTake`, `MoveCompBoundary`, `FlattenComp`, `RenameTake`,
-`SetTakeLanesExpanded`, and `moveTakeToNewTrack` = `AddTrack` + `RemoveTake`)
-share `TakeGroupEdit`: it edits a copy of the group, then removes the group's
+`SetTakeLanesExpanded`, `RemoveTakeGroup`, and `moveTakeToNewTrack` =
+`AddTrack` + `RemoveTake`) share `TakeGroupEdit`: it edits a copy of the group, then removes the group's
 current clips (keeping them, as the user left them, for undo), installs the new
 group and adds the rebuilt clips, reusing the old clip ids in order so streaming
 windows and the selection survive; `FlattenComp` drops the group and leaves the
-clips as ordinary ones. Ordinary edits on comp clips are allowed (they are just
+clips as ordinary ones. `MoveTakeGroup` moves a group with its clips as they are
+(along the track or onto another audio track, pinned at zero). Ordinary edits on comp clips are allowed (they are just
 clips), but the next comp edit rebuilds the comp from the takes; `ShiftClips`
 (ripple) moves groups that start after its position, consolidation repoints
 take media and the media report counts it as used. Schema 6 adds the groups
@@ -308,6 +309,9 @@ comp badges, chip and boundaries over its lane and its lanes and lane headers
 under it, and a press in a row goes to `TakeLanes::mouseDown` first (lanes,
 lane headers, the chip, a boundary below the clip header, the comp's menu), which
 then owns the drag (`Drag::takes`) and emits the comp commands through `emit`.
+A click on a comp clip selects all of the comp's clips; `finishMove` turns a
+move of them into one `MoveTakeGroup` per group, and `deleteSelection` adds a
+`RemoveTakeGroup` for a group whose clips are all deleted.
 Keys: Alt+Up / Alt+Down cycle the take at the playhead on the selected track,
 Alt+T shows or hides its lanes. The `--takes-demo <files>` launch flag builds a
 comped three-take track for screenshots.

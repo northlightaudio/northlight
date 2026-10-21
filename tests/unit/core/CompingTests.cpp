@@ -333,6 +333,46 @@ TEST_CASE("Every comp command undoes and redoes exactly", "[core][comping]")
     }
 }
 
+TEST_CASE("A take group moves and deletes as one, takes and all", "[core][comping]")
+{
+    UndoStack stack;
+    auto p = projectWithTakes(stack, {pass("t1.wav", 1000, 1000), pass("t2.wav", 1000, 1000)});
+    const auto groupId = onlyGroup(p).id;
+    stack.execute(p, std::make_unique<SelectTake>(1, groupId, onlyGroup(p).takes[0].id(), 1200, 1400));
+    Track other;
+    other.id = 50;
+    other.name = "Other";
+    p.tracks.push_back(other);
+    const auto before = p;
+
+    // Along the track, pinned at zero.
+    stack.execute(p, std::make_unique<MoveTakeGroup>(1, groupId, 1, -5000));
+    CHECK(onlyGroup(p).start() == 0);
+    CHECK(onlyGroup(p).comp.front().start == 0);
+    CHECK(compOf(p).front().start == 0);
+    CHECK(stack.undo(p));
+    CHECK(same(p, before));
+
+    // Onto another track: the group and its clips go there; the clips keep their ids.
+    const auto clips = compOf(p);
+    stack.execute(p, std::make_unique<MoveTakeGroup>(1, groupId, 50, 500));
+    CHECK(p.tracks[0].takeGroups.empty());
+    CHECK(p.tracks[0].clips.empty());
+    REQUIRE(p.tracks[1].takeGroups.size() == 1);
+    REQUIRE(p.tracks[1].clips.size() == clips.size());
+    CHECK(p.tracks[1].clips[0].id == clips[0].id);
+    CHECK(p.tracks[1].clips[0].start == clips[0].start + 500);
+    CHECK(p.tracks[1].takeGroups[0].takes[0].clip.start == 1500);
+    CHECK(stack.undo(p));
+    CHECK(same(p, before));
+
+    stack.execute(p, std::make_unique<RemoveTakeGroup>(1, groupId));
+    CHECK(p.tracks[0].takeGroups.empty());
+    CHECK(p.tracks[0].clips.empty());
+    CHECK(stack.undo(p));
+    CHECK(same(p, before));
+}
+
 TEST_CASE("Undoing a comp edit brings back the comp's clips as the user left them", "[core][comping]")
 {
     UndoStack stack;

@@ -434,6 +434,75 @@ void SetTakeLanesExpanded::revert(Project& p)
         g->expanded = previous_;
 }
 
+RemoveTakeGroup::RemoveTakeGroup(Id trackId, Id groupId) : TakeGroupEdit(trackId, groupId) {}
+
+TakeGroupEdit::Result RemoveTakeGroup::edit(Project&, Track&, TakeGroup&)
+{
+    return Result::remove;
+}
+
+MoveTakeGroup::MoveTakeGroup(Id fromTrackId, Id groupId, Id toTrackId, SamplePosition delta)
+    : fromTrackId_(fromTrackId), groupId_(groupId), toTrackId_(toTrackId), delta_(delta)
+{
+}
+
+void MoveTakeGroup::move(Project& p, Id from, Id to, SamplePosition delta)
+{
+    auto& source = trackOrThrow(p, from);
+    auto* found = source.findTakeGroup(groupId_);
+    if (found == nullptr)
+        return;
+    TakeGroup g = std::move(*found);
+    std::erase_if(source.takeGroups, [this](const TakeGroup& x) { return x.id == groupId_; });
+    std::vector<AudioClip> clips;
+    for (const auto id : g.clips)
+        if (const auto* c = source.findClip(id))
+        {
+            clips.push_back(*c);
+            std::erase_if(source.clips, [id](const AudioClip& clip) { return clip.id == id; });
+        }
+    source.sortClips();
+    for (auto& take : g.takes)
+        take.clip.start += delta;
+    for (auto& s : g.comp)
+    {
+        s.start += delta;
+        s.end += delta;
+    }
+    auto& target = trackOrThrow(p, to);
+    for (auto& c : clips)
+    {
+        c.start += delta;
+        target.clips.push_back(std::move(c));
+    }
+    target.takeGroups.push_back(std::move(g));
+    sortGroups(target);
+    target.sortClips();
+}
+
+void MoveTakeGroup::apply(Project& p)
+{
+    const auto& from = trackOrThrow(p, fromTrackId_);
+    const auto* group = from.findTakeGroup(groupId_);
+    moved_ = group != nullptr && trackOrThrow(p, toTrackId_).hasAudio() &&
+             !trackOrThrow(p, toTrackId_).isInstrument() && !trackOrThrow(p, toTrackId_).isAux();
+    if (!moved_)
+        return;
+    // Pinned at zero: neither a take nor a comp clip may start before it.
+    SamplePosition earliest = group->start();
+    for (const auto& c : from.clips)
+        if (group->ownsClip(c.id))
+            earliest = std::min(earliest, c.start);
+    applied_ = std::max(delta_, -earliest);
+    move(p, fromTrackId_, toTrackId_, applied_);
+}
+
+void MoveTakeGroup::revert(Project& p)
+{
+    if (moved_)
+        move(p, toTrackId_, fromTrackId_, -applied_);
+}
+
 std::vector<std::unique_ptr<Command>>
 moveTakeToNewTrack(const Project& project, Id trackId, Id groupId, Id takeId)
 {

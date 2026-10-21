@@ -174,6 +174,35 @@ private:
     bool expanded_, previous_ = false;
 };
 
+// Deletes a whole take group: its takes and its comp's clips.
+class RemoveTakeGroup final : public TakeGroupEdit
+{
+public:
+    RemoveTakeGroup(Id trackId, Id groupId);
+    std::string name() const override { return "Delete takes"; }
+
+private:
+    Result edit(Project&, Track&, TakeGroup&) override;
+};
+
+// Moves a take group (its takes, its comp and the comp's clips as they are) by
+// `delta` samples, onto another audio track when `toTrackId` differs; the group
+// is pinned at zero. Moving a comp clip in the arrange view moves its group.
+class MoveTakeGroup final : public Command
+{
+public:
+    MoveTakeGroup(Id fromTrackId, Id groupId, Id toTrackId, SamplePosition delta);
+    std::string name() const override { return "Move takes"; }
+    void apply(Project&) override;
+    void revert(Project&) override;
+
+private:
+    void move(Project& p, Id from, Id to, SamplePosition delta);
+    Id fromTrackId_, groupId_, toTrackId_;
+    SamplePosition delta_, applied_ = 0;
+    bool moved_ = false;
+};
+
 // "Move to new track": a new audio track right under the take's track, with the
 // take as its clip, and the take deleted from the group (one undo step when run
 // as a group). Empty when the take does not exist.

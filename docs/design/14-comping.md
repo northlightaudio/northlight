@@ -59,7 +59,9 @@ style. It supersedes 04-arrange.md's v1 decision that takes only stack.
 ```
 
 - **Main lane**: the comp's clips draw like any clip, with a take badge ("T2",
-  02-design-system.md Badge) at the right of each header. A comp boundary shows
+  02-design-system.md Badge) at the right of each header. A click on one selects
+  all of the comp's clips, so a drag moves the whole group (takes and comp, onto
+  another audio track too) and Delete removes it, takes and all. A comp boundary shows
   as a 1 px `textPrimary` line at 35% through the clip bodies; hovered or dragged
   it is a 2 px `accent` line and the cursor is the left-right resize. Below the
   clip header strip a boundary drags (4 px either side), clamped to its
@@ -98,7 +100,7 @@ style. It supersedes 04-arrange.md's v1 decision that takes only stack.
 ## Not in this pass
 
 - MIDI take lanes (MIDI loop recording keeps a clip per pass).
-- Moving a whole take group by dragging its comp (each comp clip moves alone; a
-  ripple shift moves the whole group).
+- Trimming a comp's outer edges (a trim acts on that clip alone and the next
+  comp edit rebuilds it).
 - Turning existing overlapping clips into a take group.
 - A per-group crossfade length control (the model has it; there is no UI).
