@@ -13,11 +13,13 @@
 #include "plugins/FxTracks.h"
 #include "plugins/StripPresets.h"
 #include "ui/AuralLookAndFeel.h"
+#include "ui/PianoRoll.h"
 #include "ui/PreferencesView.h"
 
 #include <juce_audio_formats/juce_audio_formats.h>
 #include <juce_gui_extra/juce_gui_extra.h>
 
+#include <algorithm>
 #include <cmath>
 #include <functional>
 
@@ -98,6 +100,14 @@ public:
     //   --sampler <file> [demo]  add a Sampler instrument playing the file (a MIDI track with a
     //                        short clip) and open its editor; "demo" also sets a loop, a key
     //                        range and the filter so every display has something to show
+    //   --import-midi <file> import a Standard MIDI File at the start (new instrument tracks)
+    //   --export-midi <file> write every MIDI clip to a Standard MIDI File (after the flags
+    //                        before it have run)
+    //   --key <root> [minor] set the project key: root a pitch class 0 (C)..11 (B), major
+    //                        unless "minor" follows
+    //   --cc-lane <lane>     the same, showing a controller lane (bend, mod, expression,
+    //                        sustain, pressure, cc<n>); a clip with no events in it gets a
+    //                        demonstration curve first
     //   --audio-editor [pitch]  open the audio editor on the first audio clip (in pitch mode)
     //   --correct-pitch      once that clip's pitch is analysed, correct it to the key
     //   --mute-breaths       once that clip's pitch is analysed, mute its breaths
@@ -117,6 +127,48 @@ public:
     //                        Editor panel: a comma list of gate, eq, compressor, deesser,
     //                        saturation, limiter, or all; "demo" also sets values that give
     //                        every display something to show
+    // --cc-lane: the first MIDI clip in the piano roll with the lane showing; a
+    // clip with nothing in that lane gets a curve (a swell, or a bend up and back).
+    void showControllerLane(const juce::String& key)
+    {
+        const auto lane = ui::PianoRoll::laneForKey(key);
+        for (const auto& track : session_->project().tracks)
+        {
+            if (track.midiClips.empty())
+                continue;
+            const auto& clip = track.midiClips.front();
+            const bool empty = std::none_of(clip.controllers.begin(),
+                                            clip.controllers.end(),
+                                            [&](const core::MidiControllerEvent& e)
+                                            { return e.sameLane(lane.type, lane.number); });
+            if (!lane.velocity && empty && clip.length > 0)
+            {
+                std::vector<core::MidiControllerEvent> curve;
+                const int steps = 32;
+                const int low = core::midiControllerMinimum(lane.type),
+                          high = core::midiControllerMaximum(lane.type);
+                for (int s = 0; s < steps; ++s)
+                {
+                    const double t = static_cast<double>(s) / steps;
+                    const double shape = lane.type == core::MidiControllerType::pitchBend
+                                             ? std::sin(t * 2.0 * 3.14159265358979) * 0.5 + 0.5
+                                             : t;
+                    curve.push_back(
+                        {core::invalidId,
+                         lane.type,
+                         lane.number,
+                         low + static_cast<int>(std::lround(shape * (high - low))),
+                         static_cast<core::SamplePosition>(t * static_cast<double>(clip.length))});
+                }
+                session_->execute(std::make_unique<core::EditMidiControllers>(
+                    track.id, clip.id, std::move(curve), std::vector<core::Id>{}, "Draw controller"));
+            }
+            mainWindow_->openPianoRoll(track.id, clip.id);
+            mainWindow_->setPianoRollLane(key);
+            return;
+        }
+    }
+
     // Runs `action` once the first audio clip has a vocal edit (its analysis is in),
     // checking twice a second up to `tries` times.
     void whenVocalReady(std::function<void()> action, int tries)
@@ -255,6 +307,35 @@ public:
                         break;
                     }
             }
+            else if (arg == "--import-midi" && i + 1 < tokens.size())
+            {
+                const auto file = tokens.getReference(++i).resolveAsFile();
+                if (const auto error = session_->importMidiFile(file, 0); !error.empty())
+                    mainWindow_->notify(juce::String::fromUTF8(error.c_str()), true);
+            }
+            else if (arg == "--export-midi" && i + 1 < tokens.size())
+            {
+                std::vector<std::pair<core::Id, core::Id>> clips;
+                for (const auto& track : session_->project().tracks)
+                    for (const auto& clip : track.midiClips)
+                        clips.emplace_back(track.id, clip.id);
+                const auto file = tokens.getReference(++i).resolveAsFile();
+                if (const auto error = session_->exportMidiFile(file, clips); !error.empty())
+                    mainWindow_->notify(juce::String::fromUTF8(error.c_str()), true);
+            }
+            else if (arg == "--key" && i + 1 < tokens.size())
+            {
+                core::MusicalKey key;
+                key.root = std::clamp(tokens.getReference(++i).text.getIntValue(), 0, 11);
+                if (i + 1 < tokens.size() && tokens.getReference(i + 1).text == "minor")
+                {
+                    key.scale = core::ScaleKind::minor;
+                    ++i;
+                }
+                session_->execute(std::make_unique<core::SetProjectKey>(key));
+            }
+            else if (arg == "--cc-lane" && i + 1 < tokens.size())
+                showControllerLane(tokens.getReference(++i).text.unquoted());
             else if (arg == "--audio-editor")
             {
                 const bool pitch = i + 1 < tokens.size() && tokens.getReference(i + 1).text == "pitch";

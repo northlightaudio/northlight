@@ -332,3 +332,75 @@ TEST_CASE("A post-fader key is saved only with its source; older files load pre-
     REQUIRE(stray.has_value());
     CHECK_FALSE(stray->tracks[0].inserts[0].sidechainPostFader);
 }
+
+TEST_CASE("Controller events in MIDI clips round-trip through JSON; version 5 files load without them",
+          "[core][json][midi]")
+{
+    Project p;
+    Track t;
+    t.id = p.allocateId();
+    t.kind = TrackKind::midi;
+    MidiClip c;
+    c.id = p.allocateId();
+    c.start = 100;
+    c.length = 5000;
+    c.notes.push_back({p.allocateId(), 60, 100, 0, 400});
+    c.controllers.push_back({p.allocateId(), MidiControllerType::controller, 1, 64, 10});
+    c.controllers.push_back({p.allocateId(), MidiControllerType::pitchBend, 0, -8192, 20});
+    c.controllers.push_back({p.allocateId(), MidiControllerType::channelPressure, 0, 90, 30});
+    c.controllers.push_back({p.allocateId(), MidiControllerType::polyPressure, 61, 12, 40});
+    c.controllers.push_back({p.allocateId(), MidiControllerType::controller, 64, 127, -50}); // before a trim
+    c.sortControllers();
+    t.midiClips.push_back(c);
+    p.tracks.push_back(t);
+
+    const auto text = projectToJson(p);
+    const auto loaded = projectFromJson(text);
+    REQUIRE(loaded.has_value());
+    CHECK(loaded->tracks[0].midiClips[0] == p.tracks[0].midiClips[0]);
+    CHECK(*loaded == p);
+
+    // A version 5 file (no controllers then) loads, and a re-save writes the
+    // current version.
+    auto plain = p;
+    plain.tracks[0].midiClips[0].controllers.clear();
+    auto old = projectToJson(plain);
+    const auto current = "\"version\": " + std::to_string(Project::schemaVersion);
+    const auto at = old.find(current);
+    REQUIRE(at != std::string::npos);
+    old.replace(at, current.size(), "\"version\": 5");
+    const auto loadedOld = projectFromJson(old);
+    REQUIRE(loadedOld.has_value());
+    CHECK(*loadedOld == plain);
+    CHECK(projectToJson(*loadedOld).find(current) != std::string::npos);
+}
+
+TEST_CASE("Unknown controller kinds and out-of-range values in a file are dropped or clamped",
+          "[core][json][midi]")
+{
+    Project p;
+    Track t;
+    t.id = p.allocateId();
+    t.kind = TrackKind::midi;
+    MidiClip c;
+    c.id = p.allocateId();
+    c.length = 100;
+    t.midiClips.push_back(c);
+    p.tracks.push_back(t);
+    auto text = projectToJson(p, false);
+    const auto notes = std::string("\"notes\":[]");
+    const auto at = text.find(notes);
+    REQUIRE(at != std::string::npos);
+    text.insert(at + notes.size(),
+                ",\"controllers\":[[0,\"bend\",0,99999,5],[0,\"sysex\",0,1,5],[0,\"cc\",300,-4,1]]");
+    const auto loaded = projectFromJson(text);
+    REQUIRE(loaded.has_value());
+    const auto& events = loaded->tracks[0].midiClips[0].controllers;
+    REQUIRE(events.size() == 2);
+    CHECK(events[0].type == MidiControllerType::controller); // sorted by time
+    CHECK(events[0].number == 127);
+    CHECK(events[0].value == 0);
+    CHECK(events[1].value == 8191);
+    CHECK(events[0].id != invalidId);
+    CHECK(events[0].id != events[1].id);
+}

@@ -295,6 +295,30 @@ void MidiClip::sortNotes()
         notes.begin(), notes.end(), [](const MidiNote& a, const MidiNote& b) { return a.start < b.start; });
 }
 
+MidiControllerEvent* MidiClip::findController(Id eventId) noexcept
+{
+    for (auto& e : controllers)
+        if (e.id == eventId)
+            return &e;
+    return nullptr;
+}
+
+const MidiControllerEvent* MidiClip::findController(Id eventId) const noexcept
+{
+    for (const auto& e : controllers)
+        if (e.id == eventId)
+            return &e;
+    return nullptr;
+}
+
+void MidiClip::sortControllers()
+{
+    std::stable_sort(controllers.begin(),
+                     controllers.end(),
+                     [](const MidiControllerEvent& a, const MidiControllerEvent& b)
+                     { return a.time < b.time; });
+}
+
 MidiClip* Track::findMidiClip(Id clipId) noexcept
 {
     for (auto& c : midiClips)

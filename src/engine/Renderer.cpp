@@ -423,6 +423,100 @@ void Renderer::renderTrack(const Snapshot& snapshot,
     processChain(snapshot, track, playHeadAt(snapshot, position, context.playing), left, right, numSamples);
 }
 
+namespace
+{
+void pushController(MidiEventList& events, int offset, const MidiControllerNode& c) noexcept
+{
+    switch (c.type)
+    {
+        case core::MidiControllerType::controller:
+            events.controller(offset, c.number, c.value);
+            break;
+        case core::MidiControllerType::pitchBend:
+            events.pitchBend(offset, c.value);
+            break;
+        case core::MidiControllerType::channelPressure:
+            events.channelPressure(offset, c.value);
+            break;
+        case core::MidiControllerType::polyPressure:
+            events.polyPressure(offset, c.number, c.value);
+            break;
+    }
+}
+
+void pushChaseKey(MidiEventList& events, int offset, int key, int value) noexcept
+{
+    if (key == chaseKeyBend)
+        events.pitchBend(offset, value);
+    else if (key == chaseKeyPressure)
+        events.channelPressure(offset, value);
+    else
+        events.controller(offset, key, value);
+}
+
+// The chase key an event sets and its value; false for events that set none.
+bool chaseKeyOf(const MidiEvent& e, int& key, int& value) noexcept
+{
+    switch (e.type)
+    {
+        case MidiEvent::Type::controller:
+            key = e.note & 127;
+            value = e.velocity & 127;
+            return true;
+        case MidiEvent::Type::pitchBend:
+            key = chaseKeyBend;
+            value = e.bendValue();
+            return true;
+        case MidiEvent::Type::channelPressure:
+            key = chaseKeyPressure;
+            value = e.velocity & 127;
+            return true;
+        default:
+            return false;
+    }
+}
+
+// Each chased controller's latest value before `position` in the track's clips
+// (into runtime.chased, runtime.found). Clips are walked from the last one that
+// starts before the position: one wholly before it gives its last values, the
+// one the position is inside is searched back from the position. Stops once
+// every controller the clips use is found.
+void chaseControllers(const TrackNode& track, MidiRuntime& runtime, core::SamplePosition position) noexcept
+{
+    std::fill(std::begin(runtime.found), std::end(runtime.found), std::uint8_t{0});
+    int wanted = 0;
+    for (const auto used : track.controllerKeys)
+        wanted += used;
+    int foundCount = 0;
+    const auto take = [&](const MidiControllerNode& c)
+    {
+        if (c.key < 0 || runtime.found[c.key] != 0)
+            return;
+        runtime.found[c.key] = 1;
+        runtime.chased[c.key] = c.value;
+        ++foundCount;
+    };
+    for (auto clip = track.midiClips.rbegin(); clip != track.midiClips.rend() && foundCount < wanted; ++clip)
+    {
+        if (clip->start >= position || clip->controllers.empty())
+            continue;
+        if (clip->end() <= position)
+        {
+            for (const auto& c : clip->lastValues)
+                take(c);
+            continue;
+        }
+        auto it = std::lower_bound(clip->controllers.begin(),
+                                   clip->controllers.end(),
+                                   position,
+                                   [](const MidiControllerNode& c, core::SamplePosition at)
+                                   { return c.time < at; });
+        while (it != clip->controllers.begin() && foundCount < wanted)
+            take(*--it);
+    }
+}
+} // namespace
+
 void Renderer::scheduleMidi(const TrackNode& track,
                             core::SamplePosition position,
                             int numSamples,
@@ -438,12 +532,37 @@ void Renderer::scheduleMidi(const TrackNode& track,
     // still sounding ends at the top of the span.
     const bool discontinuous = context.playing ? held->lastEnd != position : held->wasPlaying;
     if (discontinuous)
+    {
         for (int n = 0; n < 128; ++n)
             if (held->held[n] != 0)
             {
                 events.noteOff(0, n);
                 held->held[n] = 0;
             }
+        // Controllers: playing from here, each takes its latest value before the
+        // position (one the clips use but set nowhere before it, and that was
+        // moved, returns to rest: the bend to the centre, the pedals up);
+        // stopping returns everything moved that has a rest value to it, so no
+        // note starts bent or held by a pedal. Values already sent are not resent.
+        if (context.playing)
+            chaseControllers(track, *held, position);
+        for (int key = 0; key < chaseKeyCount; ++key)
+        {
+            const int rest = chaseRestValue(key);
+            int value = 0;
+            if (context.playing && held->found[key] != 0)
+                value = held->chased[key];
+            else if (rest >= 0 && held->sent[key] != MidiRuntime::unknown &&
+                     (!context.playing || track.controllerKeys[static_cast<size_t>(key)] != 0))
+                value = rest;
+            else
+                continue;
+            if (held->sent[key] == value)
+                continue;
+            pushChaseKey(events, 0, key, value);
+            held->sent[key] = static_cast<std::int16_t>(value);
+        }
+    }
     held->wasPlaying = context.playing;
     held->lastEnd = context.playing ? position + numSamples : -1;
 
@@ -459,6 +578,20 @@ void Renderer::scheduleMidi(const TrackNode& track,
             // started on the clip's end, which bar-length clips do).
             if (clip.end() < position)
                 continue;
+            // Controller events first, so a value set where a note starts is
+            // in place for it.
+            for (auto c = std::lower_bound(clip.controllers.begin(),
+                                           clip.controllers.end(),
+                                           position,
+                                           [](const MidiControllerNode& n, core::SamplePosition at)
+                                           { return n.time < at; });
+                 c != clip.controllers.end() && c->time < spanEnd;
+                 ++c)
+            {
+                pushController(events, static_cast<int>(c->time - position), *c);
+                if (c->key >= 0)
+                    held->sent[c->key] = c->value;
+            }
             // Skip the notes that ended before this span (they started more than the
             // longest note's length ago): the work per span stays with the notes near
             // the playhead, however far into a long clip it is.
@@ -517,6 +650,9 @@ void Renderer::scheduleMidi(const TrackNode& track,
                 held->held[e.note & 127] = 0;
             else if (e.type == MidiEvent::Type::allNotesOff)
                 std::fill(std::begin(held->held), std::end(held->held), std::uint8_t{0});
+            int key = 0, value = 0;
+            if (chaseKeyOf(e, key, value))
+                held->sent[key] = static_cast<std::int16_t>(value);
         }
     events.sortByTime();
 }

@@ -193,8 +193,9 @@ private:
 // then closes the files and reports.
 // Turns a finished session's MIDI events into clips: one per track and take,
 // spanning the take, every note-on paired with its note-off (or ended at the
-// take's end), the whole thing moved `latency` samples earlier like an audio
-// take. Takes without notes make no clip.
+// take's end), controller events (CC, pitch bend, pressure) kept as they came,
+// the whole thing moved `latency` samples earlier like an audio take. Takes with
+// neither notes nor controller events make no clip.
 struct MidiTake
 {
     core::Id trackId = core::invalidId;

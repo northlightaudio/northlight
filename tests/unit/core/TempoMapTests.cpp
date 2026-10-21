@@ -156,6 +156,7 @@ TEST_CASE("Changing the tempo keeps MIDI, markers and automation on their beats"
     clip.start = 96000; // bar 2
     clip.length = 96000;
     clip.notes.push_back({p.allocateId(), 60, 100, 24000, 12000}); // beat 2, an eighth
+    clip.controllers.push_back({p.allocateId(), MidiControllerType::controller, 1, 64, 48000}); // beat 3
     t.midiClips.push_back(clip);
     AudioClip fixed{p.allocateId(), "fixed", "a.wav", 48000, 48000};
     AudioClip musical{p.allocateId(), "loop", "b.wav", 96000, 96000};
@@ -176,7 +177,8 @@ TEST_CASE("Changing the tempo keeps MIDI, markers and automation on their beats"
     CHECK(mt.midiClips[0].length == 192000);
     CHECK(mt.midiClips[0].notes[0].start == 48000);
     CHECK(mt.midiClips[0].notes[0].length == 24000);
-    CHECK(mt.findClip(fixed.id)->start == 48000); // audio without a time base stays put
+    CHECK(mt.midiClips[0].controllers[0].time == 96000); // controllers keep their beat too
+    CHECK(mt.findClip(fixed.id)->start == 48000);        // audio without a time base stays put
     const auto* loop = mt.findClip(musical.id);
     CHECK(loop->start == 192000);
     CHECK(loop->length == 192000);

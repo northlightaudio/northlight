@@ -353,6 +353,16 @@ state). Right-click an audio clip, Open in Sampler, to play it from a new MIDI
 track. The Browser panel has a Files tab: places (project, Music, added
 folders), search, click to audition through an engine preview, drag to the
 arrange view or a Sampler. See architecture.md and design/07-plugins.md 7.4f-g.
+Status 2026-10-21: MIDI clips hold controller events (CC, pitch bend, channel
+and poly pressure) with bulk undoable edits and JSON (project version 6). The
+engine schedules them, chases each controller's value after a jump, loop or
+start, rests bend and pedals on stop, records them from live input, and
+delivers them to VST3, CLAP, the MIDI output and the built-in synths (bend, mod
+wheel vibrato, sustain pedal). The piano roll's lane switches between velocity
+and a controller (draw freehand or a line, select, drag, erase), and a Scale
+toggle highlights the project key on the keys and rows. Standard MIDI Files
+import (types 0 and 1, by drop or menu, through the file's tempo map) and
+export (type 1, 960 PPQ).
 
 ### Phase 9 — Automation, stretch, polish (4 weeks)
 

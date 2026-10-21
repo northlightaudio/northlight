@@ -410,6 +410,8 @@ void remapMusicalTime(Project& project, const TempoMap& from, const TempoMap& to
                 note.start = noteStart - start;
                 note.length = std::max<SamplePosition>(1, noteEnd - noteStart);
             }
+            for (auto& event : clip.controllers)
+                event.time = map(clip.start + event.time) - start;
             clip.start = start;
             clip.length = std::max<SamplePosition>(1, end - start);
         }

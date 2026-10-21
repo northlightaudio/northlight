@@ -72,6 +72,46 @@ struct MidiNote
     bool operator==(const MidiNote&) const = default;
 };
 
+// What a controller event in a MIDI clip changes.
+enum class MidiControllerType : std::uint8_t
+{
+    controller,      // a control change: `number` 0..127, `value` 0..127
+    pitchBend,       // `value` -8192..8191 (0 = centre); `number` unused
+    channelPressure, // `value` 0..127; `number` unused
+    polyPressure,    // aftertouch on one key: `number` the note, `value` 0..127
+};
+
+// The value range of a controller type, for clamping and drawing.
+constexpr int midiControllerMinimum(MidiControllerType type) noexcept
+{
+    return type == MidiControllerType::pitchBend ? -8192 : 0;
+}
+constexpr int midiControllerMaximum(MidiControllerType type) noexcept
+{
+    return type == MidiControllerType::pitchBend ? 8191 : 127;
+}
+
+// A controller event inside a MIDI clip. The time is in samples relative to the
+// clip's start, like a note's; the value holds until the next event of the same
+// controller (the engine chases it after a jump).
+struct MidiControllerEvent
+{
+    Id id = invalidId;
+    MidiControllerType type = MidiControllerType::controller;
+    int number = 0; // the controller (or, for poly pressure, the note)
+    int value = 0;
+    SamplePosition time = 0;
+
+    // Whether two events belong to the same lane (type and, where it counts, number).
+    bool sameLane(MidiControllerType t, int n) const noexcept
+    {
+        const bool numbered =
+            type == MidiControllerType::controller || type == MidiControllerType::polyPressure;
+        return type == t && (!numbered || number == n);
+    }
+    bool operator==(const MidiControllerEvent&) const = default;
+};
+
 // A clip of notes on a MIDI track.
 struct MidiClip
 {
@@ -79,12 +119,16 @@ struct MidiClip
     std::string name;
     SamplePosition start = 0;
     SamplePosition length = 0;
-    std::vector<MidiNote> notes; // kept sorted by start
+    std::vector<MidiNote> notes;                  // kept sorted by start
+    std::vector<MidiControllerEvent> controllers; // kept sorted by time
 
     SamplePosition end() const noexcept { return start + length; }
     MidiNote* findNote(Id noteId) noexcept;
     const MidiNote* findNote(Id noteId) const noexcept;
     void sortNotes();
+    MidiControllerEvent* findController(Id eventId) noexcept;
+    const MidiControllerEvent* findController(Id eventId) const noexcept;
+    void sortControllers();
     bool operator==(const MidiClip&) const = default;
 };
 
@@ -440,7 +484,8 @@ struct Project
     //    musical time base.
     // 7: take groups (take lanes and comps) on tracks.
     // 8: folder tracks; frozen tracks.
-    static constexpr int schemaVersion = 8;
+    // 9: controller events (CC, pitch bend, pressure) in MIDI clips.
+    static constexpr int schemaVersion = 9;
     static constexpr int oldestReadableVersion = 2; // older files are refused
 
     std::string name = "Untitled";

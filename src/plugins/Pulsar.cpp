@@ -2,6 +2,7 @@
 
 #include "engine/rt/RealtimeGuard.h"
 #include "plugins/MeteredBuiltIn.h"
+#include "plugins/SynthVoices.h"
 
 #include <algorithm>
 #include <cctype>
@@ -135,14 +136,17 @@ struct Voice
     // A fast fade (a closed hat choking an open one).
     void chokeNow(double sampleRate) noexcept { chokeCoef = coefficient(sampleRate, 25.0); }
 
-    float next(const float* params, double sampleRate) noexcept
+    // `pitch` scales the pad's tuning (the pitch bend); `brighten` 0..1 opens
+    // its tone towards full (the mod wheel).
+    float next(const float* params, double sampleRate, double pitch = 1.0, float brighten = 0.0f) noexcept
     {
         if (!active)
             return 0.0f;
         const auto& info = pads[static_cast<size_t>(pad)];
-        const float t = params[paramIndex(pad, tone)];
+        const float baseTone = params[paramIndex(pad, tone)];
+        const float t = brighten > 0.0f ? baseTone + (1.0f - baseTone) * brighten : baseTone;
         const float s = params[paramIndex(pad, snap)];
-        const double hz = info.baseHz * std::pow(2.0, params[paramIndex(pad, tune)] / 12.0);
+        const double hz = info.baseHz * std::pow(2.0, params[paramIndex(pad, tune)] / 12.0) * pitch;
         const double dt = 1.0 / sampleRate;
         const float noise = rng.next();
         float out = 0.0f;
@@ -301,6 +305,7 @@ private:
             buffer.assign(static_cast<size_t>(std::max(1, maxBlockSize)), 0.0f);
         for (auto& v : voices_)
             v.active = false;
+        expression_.reset();
         for (auto& l : activity.level)
             l.store(0.0f, std::memory_order_relaxed);
     }
@@ -318,10 +323,18 @@ private:
 
     void handle(const engine::MidiEvent& e) noexcept
     {
-        if (e.type != engine::MidiEvent::Type::noteOn || e.velocity == 0)
-            return; // drums play out: note-offs do nothing
-        if (const int pad = padForNote(e.note); pad >= 0)
-            hit(pad, e.velocity);
+        // Drums play out: note-offs (and the sustain pedal) do nothing. The pitch
+        // bend tunes every pad (+-2 semitones); the mod wheel opens their tone.
+        synth::dispatch(
+            e,
+            expression_,
+            [this](int note, int velocity)
+            {
+                if (const int pad = padForNote(note); pad >= 0)
+                    hit(pad, velocity);
+            },
+            [](int) {},
+            [] {});
     }
 
     int routeOf(int pad) const noexcept
@@ -387,7 +400,12 @@ private:
                 auto& voice = voices_[static_cast<size_t>(pad)];
                 if (!voice.active)
                     continue;
-                const float x = voice.next(params_.data(), sampleRate_) * voice.velocity;
+                const float x = voice.next(params_.data(),
+                                           sampleRate_,
+                                           synth::Expression::ratio(expression_.bend *
+                                                                    synth::Expression::bendRangeSemitones),
+                                           expression_.modWheel) *
+                                voice.velocity;
                 peak[static_cast<size_t>(pad)] = std::max(peak[static_cast<size_t>(pad)], std::abs(x));
                 const auto to = static_cast<size_t>(routes[static_cast<size_t>(pad)]);
                 l[to] += x * gainL[static_cast<size_t>(pad)];
@@ -418,6 +436,7 @@ private:
     }
 
     std::array<Voice, padCount> voices_{};
+    synth::Expression expression_;
     std::array<float, count> params_{};
     std::array<std::vector<float>, extraOutputs * 2> aux_; // the extra pairs, left then right
 };

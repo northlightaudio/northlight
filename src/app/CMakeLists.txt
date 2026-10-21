@@ -20,7 +20,9 @@ add_library(aural_app_session STATIC
     DemoSong.h
     DemoSong.cpp
     Bounce.h
-    Bounce.cpp)
+    Bounce.cpp
+    MidiFiles.h
+    MidiFiles.cpp)
 
 target_include_directories(aural_app_session PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/..")
 target_link_libraries(aural_app_session PUBLIC

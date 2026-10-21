@@ -1004,6 +1004,19 @@ A track is audio or MIDI (`Track::kind`); a MIDI track has `midiClips` of
 timeline place, split, duplicate) and notes (add, remove, set, quantise to a grid
 with a strength); the JSON writes notes as compact arrays.
 
+Controller events (`MidiControllerEvent`): a clip also holds control changes
+(number and value 0..127), pitch bend (-8192..8191), channel pressure and poly
+pressure, at clip-relative sample times like notes and kept sorted by time.
+`EditMidiControllers` adds, changes and removes any number of them in one step
+(the piano roll's controller lane draws, drags and deletes through it). Trim
+shifts them with the notes (an event a trim leaves before the clip's start is
+kept, and opens the clip with its value); split sends those after the split
+right and opens the right part with each controller's value at the split (its
+ids kept for redo); duplicate and paste give them fresh ids. The JSON writes
+them as `[id, "cc"|"bend"|"pressure"|"poly", number, value, time]` under the
+clip's `controllers`; project version 6 added them (5 -> 6 has nothing to
+rewrite).
+
 The engine side is `engine::MidiEvent` / `MidiEventList` (a fixed-capacity list
 per track, sized at compile) and `InsertProcessor::acceptsMidi/processMidi`. An
 instrument lives on an instrument channel (`TrackKind::instrument`), in its
@@ -1046,7 +1059,20 @@ playing, or recording, or monitor on), and the note-offs a discontinuity
 demands. A `MidiRuntime` per track (held notes, where the previous span ended)
 outlives snapshots like the channel runtimes, so a stop, a locate, a loop wrap
 or play-from-elsewhere ends every held note at the top of the next span without
-the engine having to know why the position moved. Live MIDI enters through
+the engine having to know why the position moved. Controller events compile to
+`MidiControllerNode`s at timeline positions (events a trim left before a clip
+open it with their latest value) and play in time order, ahead of a note at
+the same sample. The runtime also keeps the last value sent of each chased
+controller (the 128 CCs, pitch bend, channel pressure; `engine::chaseKey*`):
+at a discontinuity while playing, `chaseControllers` finds each one's latest
+value before the position (from the clip the position is in, searched back,
+then each earlier clip's precomputed last values) and sends those that differ;
+one the clips use but that has no value before the position returns to its
+rest value (`chaseRestValue`: bend centred, pressure, mod wheel and pedals at
+0, expression at 127) if it had moved. A stop sends the rest value of every
+moved controller that has one, so nothing sounds bent or pedalled after it.
+Live input's controllers count as sent too. Everything is fixed-size arrays in
+the runtime: no allocation. Live MIDI enters through
 `AudioEngine::pushMidiInput` (device threads, a mutex on the producer side of an
 SPSC queue, drained once per block) tagged with a per-device-name index the
 snapshot resolves for each track. A device event carries its arrival time on
@@ -1089,14 +1115,24 @@ chiptune synth: naive pulse, 4-bit triangle and saw, a 15-bit LFSR (short mode
 taps bit 6) clocked from the note and a 32-step drawn wave; 16-step volume;
 arpeggio, vibrato, sweep and glide at a 32-sample control rate from constant
 tables (nothing is built on the audio thread); mono with a held-note stack, or
-four voices; then sample and hold, bit reduction and an echo. The first built-in
+four voices; then sample and hold, bit reduction and an echo. The built-ins
+share `synth::Expression` (plugins/SynthVoices.h): pitch bend over +-2
+semitones, the mod wheel and channel pressure deepening a 5.5 Hz vibrato (up to
+half a semitone), and the sustain pedal holding released notes until it lifts
+(`dispatch` with an `Expression` defers the note-offs; CC 121 rests it all).
+Aurora applies it at its control rate, Nebula on each voice's partials, Starbit
+on top of its own vibrato; Pulsar takes the bend as a tuning of every pad and
+the mod wheel as opening their tone. A centred bend and resting wheel multiply
+by exactly 1, so the sound is unchanged when they are not used. The first built-in
 synth (`aural.synth`) is retired: projects that used it open with Aurora in its
 place (`ProjectSession::replaceLegacySynth`, before `adoptInstruments`). Every
 instrument parses its events at their sample offsets, so note timing is
 sample-exact. Hosted VST3 plugins that accept MIDI (the events go into the JUCE
-MIDI buffer as raw bytes) and CLAP plugins with a note input port (CLAP note
-events, or MIDI 1.0 events when that is the only dialect the port takes, after
-the block's parameter events). The test CLAP plugin has a note port that marks
+MIDI buffer as raw bytes, `MidiEvent::toBytes`: notes, controllers, pitch bend
+and pressure) and CLAP plugins with a note input port (CLAP note events, or
+MIDI 1.0 events when that is the only dialect the port takes, after the
+block's parameter events; controllers, bend and pressure always go as MIDI 1.0
+events, so a port that takes only the CLAP dialect does not get them). The test CLAP plugin has a note port that marks
 the audio at each note so the host's timing is tested. A multi-output instrument
 keeps its further stereo output buses (VST3) or ports (CLAP) and exposes them as
 `InsertProcessor::auxOutput` pairs; an aux track (`TrackKind::aux`, with the
@@ -1153,15 +1189,18 @@ engine stamps each live event it delivers to that track with its timeline
 position and take index on the session's queue (a loop wrap marks a new take
 with the previous take's end), and `engine::buildMidiTakes` turns the collected
 events into one clip per track and take, pairing note-ons with their offs (a
-retrigger ends the first, a note still held ends at the take's end) and moving
+retrigger ends the first, a note still held ends at the take's end), keeping
+controller events (CC, pitch bend, channel and poly pressure) as they came
+(a take of only controller moves still makes a clip), and moving
 the take earlier by `ProjectSession::midiRecordingLatencySamples` (the device
 output latency plus the master's delay compensation: the player plays to what
 they hear, so the input side of the round trip does not apply). A MIDI-only
 recording needs no audio input and writes no files.
 
 Devices: `audio::MidiDeviceLayer` (owned by the audio device layer) opens the
-inputs the settings enable (every input by default), forwards their messages to
-the engine with the device name, keeps one chosen output open, and re-reads the
+inputs the settings enable (every input by default), forwards their messages
+(notes, controllers, pitch bend, channel and poly pressure) to the engine with
+the device name, keeps one chosen output open, and re-reads the
 device list on JUCE's hot-plug notification; devices are identified by name,
 which is what tracks and settings store. Audio Setup shows the inputs as toggles
 and the output as a menu. The UI: MIDI clips draw on their lanes with a bar per
@@ -1187,15 +1226,31 @@ drags its length (Alt skips snap); Select lassos, moves with a pitch tooltip,
 resizes, Ctrl+drags to duplicate, Shift constrains the axis, double-click adds;
 Erase clicks or drags across notes; Q quantises at the menu strength, Shift+Q
 the ends too; arrows nudge (Shift fine, Ctrl an octave), + and - transpose.
-Not in this pass: the scale highlight (no key model), notes drawn live while
-recording, the instrument chip in the track header. Launch flags:
+The lane under the grid is switchable (the menu on its name in the keyboard
+column): Velocity, Pitch bend, Mod wheel, Expression, Sustain, Channel
+pressure or any other CC (a dot marks the lanes the clip has events in). A
+controller lane (120 px) draws each event as a point and its value as a step
+in the track colour, the bend around a centre line; Draw paints points at the
+grid (every 4 px with snap off; Alt skips snap) freehand or, with Shift, as a
+straight line, replacing the lane's events in the span drawn; Select clicks,
+Shift/Ctrl adds or toggles, lassos, drags points in time and value (Shift one
+axis, a value tooltip), double-click adds; Erase removes what it touches;
+Delete and Ctrl+A act on the lane after a click in it. Each gesture is one
+`EditMidiControllers` step. The Scale toggle in the toolbar shades the rows
+outside the project key (`Project::key`), tints the root's rows in
+`accentSubtle` and marks the scale's keys with a stripe (the root's in
+`accent`, named). Not in this pass: notes drawn live while recording, the
+instrument chip in the track header, a poly pressure lane. Launch flags:
 `--midi-track`, `--midi-track-with <type>`, `--piano-roll` (the first MIDI
-clip in the panel).
+clip in the panel), `--cc-lane <bend|mod|expression|sustain|pressure|cc<n>>`
+(the same with that lane, a demonstration curve drawn into an empty one),
+`--key <0..11> [minor]` (the project key).
 
 ### MIDI output
 
 A MIDI track with `midiOut` set plays the MIDI output device (the one chosen in
-Audio Setup) on its `midiOutChannel`. After the tracks of a span have rendered,
+Audio Setup) on its `midiOutChannel`: notes, controllers, pitch bend and
+pressure (with the chase and rest values above). After the tracks of a span have rendered,
 `Renderer::renderSpan` (on the callback thread, so the queue has one producer)
 pushes each such track's span events, with the channel set, into the engine's
 `midiOut_` SPSC queue, timed on the engine's sample clock (samples rendered
@@ -1207,6 +1262,39 @@ millisecond into a clock-ordered list and sends each event once its clock time,
 mapped to wall time and delayed by the audio output latency, has come, so the
 external instrument sounds with the audio. Note-offs on stop, locate and loop
 come through the same events. A full queue drops events rather than block.
+
+### MIDI files
+
+`app/MidiFiles` (`aural::midifile`, JUCE's `MidiFile` for the bytes) converts
+between Standard MIDI Files and clips, apart from the session so it is tested
+on its own (tests/unit_juce/MidiFileTests.cpp). Import reads types 0 and 1
+(type 2 is refused): every file track becomes one part per MIDI channel it
+uses (a type 0 file's channels come apart), named from the track's name meta
+event ("Name (ch 2)" when split), with notes paired to their offs (a retrigger
+ends the note before it; a note never ended runs to the channel's last
+event), control changes, pitch bend, channel and poly pressure. Ticks become
+samples in one place, `ticksToSamples`: ticks to seconds through the file's own
+tempo map (`TempoMap`, every tempo meta event; SMPTE timing too), then seconds
+to samples at the project rate, so a file's timing survives whatever the
+project's tempo track is.
+`ProjectSession::importMidiFile` places the parts at a bar (the drop point or
+the playhead, moved back to its bar), each clip whole bars long, on new MIDI
+tracks aimed at the target instrument (the selected instrument channel, or the
+one the selected MIDI track plays) or at a new Aurora channel (channel 10, the
+drums: a new Pulsar channel), the bars from the project's tempo track; an
+empty project first takes the file's tempo changes and time signature
+(`tempoStateOf`, one `SetTempoMap`); it is all one undo step. Export
+(`exportMidiFile`, `toMidiFile`) writes type 1 at 960 PPQ: a conductor track
+with the project's name and its tempo track (each tempo change, a ramp as a
+tempo event every sixteenth along it, and each time signature at its bar), then
+a track per MIDI track (named, on its MIDI channel) with its clips' events at
+their song positions (`samplesToTicks` through the tempo map), notes cut at clip
+ends and a
+controller value a trim left before a clip at the clip's start. The arrange
+view takes `.mid`/`.midi` drops beside audio; the app menu has "Import MIDI
+file..." and "Export MIDI clips..." (the selected MIDI clips, else the
+selected MIDI track's, else all). Launch flags: `--import-midi <file>`,
+`--export-midi <file>`.
 
 ### Crash reports
 

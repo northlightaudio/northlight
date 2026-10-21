@@ -22,7 +22,8 @@ add_executable(aural_juce_tests
     AutomationWriteTests.cpp
     TemplatesMediaTests.cpp
     CrashReportTests.cpp
-    MediaBrowserTests.cpp)
+    MediaBrowserTests.cpp
+    MidiFileTests.cpp)
 
 target_link_libraries(aural_juce_tests PRIVATE
     aural_options

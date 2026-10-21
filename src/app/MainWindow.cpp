@@ -871,7 +871,8 @@ private:
         tracks_.onOpenInSampler = [this](core::Id trackId, core::Id clipId)
         { openInSampler(trackId, clipId); };
         tracks_.playheadForEdits = [this] { return session_.position(); };
-        tracks_.setAcceptedExtensions(session_.mediaLoader().supportedExtensions());
+        // Audio files and Standard MIDI Files.
+        tracks_.setAcceptedExtensions(session_.mediaLoader().supportedExtensions() + ";*.mid;*.midi");
         tracks_.onTrackSelected = [this](core::Id id) { select(id); };
         tracks_.onSelectionChanged = [this] { select(tracks_.selectedTrack()); };
         selection_.onChanged = [this] { applySelection(); };
@@ -1988,13 +1989,86 @@ private:
     {
         for (const auto& file : files)
         {
-            const auto error = session_.importAudioFile(file, at);
+            // A MIDI file plays the selected instrument (or the one the selected
+            // MIDI track plays), else a new one.
+            const bool midi = file.hasFileExtension("mid;midi");
+            const auto error = midi ? session_.importMidiFile(file, at, selection_.channel())
+                                    : session_.importAudioFile(file, at);
             if (!error.empty())
                 toast(ui::ToastStack::Kind::error,
                       file.getFileName() + ": " + juce::String::fromUTF8(error.c_str()));
         }
         refresh();
         grabKeyboardFocus();
+    }
+
+    void importMidi()
+    {
+        chooser_ = std::make_unique<juce::FileChooser>(
+            "Import MIDI file",
+            juce::File::getSpecialLocation(juce::File::userMusicDirectory),
+            "*.mid;*.midi");
+        chooser_->launchAsync(juce::FileBrowserComponent::openMode |
+                                  juce::FileBrowserComponent::canSelectFiles |
+                                  juce::FileBrowserComponent::canSelectMultipleItems,
+                              [this](const juce::FileChooser& fc)
+                              {
+                                  std::vector<juce::File> files;
+                                  for (const auto& f : fc.getResults())
+                                      files.push_back(f);
+                                  importFiles(files, session_.position());
+                              });
+    }
+
+    // The MIDI clips an export takes: those selected in the arrange view, else
+    // every clip of the selected MIDI track, else every MIDI clip.
+    std::vector<std::pair<core::Id, core::Id>> midiClipsToExport() const
+    {
+        std::vector<std::pair<core::Id, core::Id>> clips;
+        for (const auto& ref : tracks_.selection())
+            if (ref.midi)
+                clips.emplace_back(ref.track, ref.clip);
+        if (!clips.empty())
+            return clips;
+        const auto& project = session_.project();
+        if (const auto* track = project.findTrack(selection_.channel()); track != nullptr && track->isMidi())
+            for (const auto& c : track->midiClips)
+                clips.emplace_back(track->id, c.id);
+        if (!clips.empty())
+            return clips;
+        for (const auto& track : project.tracks)
+            for (const auto& c : track.midiClips)
+                clips.emplace_back(track.id, c.id);
+        return clips;
+    }
+
+    void exportMidi()
+    {
+        const auto clips = midiClipsToExport();
+        if (clips.empty())
+        {
+            toast(ui::ToastStack::Kind::error, "Export MIDI: there are no MIDI clips");
+            return;
+        }
+        chooser_ = std::make_unique<juce::FileChooser>(
+            "Export MIDI", projectFolder().getChildFile(projectName() + ".mid"), "*.mid");
+        chooser_->launchAsync(juce::FileBrowserComponent::saveMode |
+                                  juce::FileBrowserComponent::canSelectFiles |
+                                  juce::FileBrowserComponent::warnAboutOverwriting,
+                              [this, clips](const juce::FileChooser& fc)
+                              {
+                                  auto file = fc.getResult();
+                                  if (file == juce::File())
+                                      return;
+                                  if (!file.hasFileExtension("mid;midi"))
+                                      file = file.withFileExtension("mid");
+                                  const auto error = session_.exportMidiFile(file, clips);
+                                  if (!error.empty())
+                                      toast(ui::ToastStack::Kind::error,
+                                            "Export MIDI: " + juce::String::fromUTF8(error.c_str()));
+                                  else
+                                      toast(ui::ToastStack::Kind::success, "Exported " + file.getFileName());
+                              });
     }
 
     // ----- export ----------------------------------------------------------------------------
@@ -2266,6 +2340,7 @@ private:
         menu.addSubMenu("Media", media);
         menu.addSeparator();
         menu.addItem(5, "Import audio...");
+        menu.addItem(12, "Import MIDI file...");
         menu.addItem(6, "Add audio track");
         menu.addItem(7, "Add MIDI track");
         juce::PopupMenu fxTracks;
@@ -2276,6 +2351,7 @@ private:
         menu.addItem(8, "Add bus");
         menu.addSeparator();
         menu.addItem(21, "Export...");
+        menu.addItem(24, "Export MIDI clips...");
         juce::Component::SafePointer<Content> safe(this);
         menu.showMenuAsync(
             juce::PopupMenu::Options().withTargetComponent(&header_).withMinimumWidth(220),
@@ -2337,6 +2413,12 @@ private:
                         break;
                     case 11:
                         safe->removeUnusedMedia();
+                        break;
+                    case 12:
+                        safe->importMidi();
+                        break;
+                    case 24:
+                        safe->exportMidi();
                         break;
                     case 21:
                         safe->showExportSheet();
@@ -2774,6 +2856,12 @@ void MainWindow::openPianoRoll(core::Id trackId, core::Id clipId)
         content->pianoRoll_.setClip(&session_.project(), trackId, clipId);
         content->panels_.show(ui::PanelId::pianoRoll);
     }
+}
+
+void MainWindow::setPianoRollLane(const juce::String& key)
+{
+    if (auto* content = dynamic_cast<Content*>(getContentComponent()))
+        content->pianoRoll_.setLane(ui::PianoRoll::laneForKey(key));
 }
 
 void MainWindow::openAudioEditor(core::Id trackId, core::Id clipId, bool pitch)

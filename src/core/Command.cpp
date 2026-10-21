@@ -471,6 +471,13 @@ void clampNote(MidiNote& n)
     n.start = std::max<SamplePosition>(0, n.start);
     n.length = std::max<SamplePosition>(1, n.length);
 }
+
+void clampController(MidiControllerEvent& e)
+{
+    e.number = std::clamp(e.number, 0, 127);
+    e.value = std::clamp(e.value, midiControllerMinimum(e.type), midiControllerMaximum(e.type));
+    e.time = std::max<SamplePosition>(0, e.time);
+}
 } // namespace
 
 SetTrackMidiInput::SetTrackMidiInput(Id trackId, std::string deviceName)
@@ -500,9 +507,16 @@ void AddMidiClip::apply(Project& p)
             n.id = p.allocateId();
         clampNote(n);
     }
+    for (auto& e : clip_.controllers)
+    {
+        if (e.id == invalidId)
+            e.id = p.allocateId();
+        clampController(e);
+    }
     clip_.start = std::max<SamplePosition>(0, clip_.start);
     clip_.length = std::max<SamplePosition>(0, clip_.length);
     clip_.sortNotes();
+    clip_.sortControllers();
     t.midiClips.push_back(clip_);
     t.sortMidiClips();
 }
@@ -567,6 +581,8 @@ void TrimMidiClip::apply(Project& p)
     const auto shift = c.start - newStart; // notes move the other way to stay put
     for (auto& n : c.notes)
         n.start += shift;
+    for (auto& e : c.controllers) // before the start (negative) they still set the opening value
+        e.time += shift;
     c.start = newStart;
     c.length = std::max<SamplePosition>(0, length_);
     t.sortMidiClips();
@@ -596,6 +612,53 @@ void SplitMidiClip::apply(Project& p)
     right_.start = at_;
     right_.length = c.end() - at_;
     right_.notes.clear();
+    right_.controllers.clear();
+    // The right part opens with each controller's value at the split, unless an
+    // event of that controller falls exactly on it.
+    std::vector<MidiControllerEvent> opening;
+    for (const auto& e : c.controllers)
+    {
+        if (e.time >= offset)
+            break; // sorted by time
+        auto it = std::find_if(opening.begin(),
+                               opening.end(),
+                               [&](const MidiControllerEvent& o) { return o.sameLane(e.type, e.number); });
+        if (it == opening.end())
+            opening.push_back(e);
+        else
+            *it = e;
+    }
+    std::erase_if(opening,
+                  [&](const MidiControllerEvent& o)
+                  {
+                      return o.type == MidiControllerType::polyPressure ||
+                             std::any_of(c.controllers.begin(),
+                                         c.controllers.end(),
+                                         [&](const MidiControllerEvent& e)
+                                         { return e.time == offset && e.sameLane(o.type, o.number); });
+                  });
+    for (size_t i = 0; i < opening.size(); ++i)
+    {
+        if (i >= chaseIds_.size())
+            chaseIds_.push_back(p.allocateId());
+        auto e = opening[i];
+        e.id = chaseIds_[i];
+        e.time = 0;
+        right_.controllers.push_back(e);
+    }
+    std::vector<MidiControllerEvent> leftControllers;
+    for (const auto& e : c.controllers)
+    {
+        if (e.time >= offset)
+        {
+            auto moved = e;
+            moved.time -= offset;
+            right_.controllers.push_back(moved);
+        }
+        else
+            leftControllers.push_back(e);
+    }
+    c.controllers = std::move(leftControllers);
     std::vector<MidiNote> left;
     for (const auto& n : c.notes)
     {
@@ -639,6 +702,9 @@ void DuplicateMidiClip::apply(Project& p)
     copy_.id = fresh ? p.allocateId() : keep.id;
     for (size_t i = 0; i < copy_.notes.size(); ++i)
         copy_.notes[i].id = fresh || i >= keep.notes.size() ? p.allocateId() : keep.notes[i].id;
+    for (size_t i = 0; i < copy_.controllers.size(); ++i)
+        copy_.controllers[i].id =
+            fresh || i >= keep.controllers.size() ? p.allocateId() : keep.controllers[i].id;
     copy_.start = at_ >= 0 ? at_ : c.end();
     t.midiClips.push_back(copy_);
     t.sortMidiClips();
@@ -696,6 +762,40 @@ void SetNote::revert(Project& p)
     auto& c = requireMidiClip(requireTrack(p, trackId_), clipId_);
     requireNote(c, value_.id) = previous_;
     c.sortNotes();
+}
+
+EditMidiControllers::EditMidiControllers(
+    Id trackId, Id clipId, std::vector<MidiControllerEvent> events, std::vector<Id> remove, std::string name)
+    : trackId_(trackId), clipId_(clipId), events_(std::move(events)), remove_(std::move(remove)),
+      name_(std::move(name))
+{
+}
+void EditMidiControllers::apply(Project& p)
+{
+    auto& c = requireMidiClip(requireTrack(p, trackId_), clipId_);
+    previous_ = c.controllers;
+    if (!remove_.empty())
+        std::erase_if(c.controllers,
+                      [this](const MidiControllerEvent& e)
+                      { return std::find(remove_.begin(), remove_.end(), e.id) != remove_.end(); });
+    for (auto& e : events_)
+    {
+        clampController(e);
+        if (e.id != invalidId)
+            if (auto* existing = c.findController(e.id))
+            {
+                *existing = e;
+                continue;
+            }
+        if (e.id == invalidId)
+            e.id = p.allocateId();
+        c.controllers.push_back(e);
+    }
+    c.sortControllers();
+}
+void EditMidiControllers::revert(Project& p)
+{
+    requireMidiClip(requireTrack(p, trackId_), clipId_).controllers = previous_;
 }
 
 QuantiseNotes::QuantiseNotes(

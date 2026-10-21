@@ -3,6 +3,7 @@
 #include <nlohmann/json.hpp>
 
 #include <algorithm>
+#include <unordered_set>
 
 namespace aural::core
 {
@@ -42,12 +43,44 @@ void migrate(json& j, int from)
             case 5: // 6 adds the tempo track and clip stretch
             case 6: // 7 adds take groups; a file without them has none (its clips stay as they are)
             case 7: // 8 adds folder tracks and frozen tracks
+            case 8: // 9: MIDI clips gain an optional "controllers" array; a clip
+                    // without one has no controller events, which is what older
+                    // versions meant
                 break;
             default:
                 break;
         }
     }
     j["version"] = Project::schemaVersion;
+}
+
+const char* controllerTypeName(MidiControllerType type)
+{
+    switch (type)
+    {
+        case MidiControllerType::controller:
+            return "cc";
+        case MidiControllerType::pitchBend:
+            return "bend";
+        case MidiControllerType::channelPressure:
+            return "pressure";
+        case MidiControllerType::polyPressure:
+            return "poly";
+    }
+    return "cc";
+}
+
+std::optional<MidiControllerType> controllerTypeFromName(const std::string& name)
+{
+    if (name == "cc")
+        return MidiControllerType::controller;
+    if (name == "bend")
+        return MidiControllerType::pitchBend;
+    if (name == "pressure")
+        return MidiControllerType::channelPressure;
+    if (name == "poly")
+        return MidiControllerType::polyPressure;
+    return std::nullopt;
 }
 
 json clipToJson(const AudioClip& c)
@@ -385,11 +418,21 @@ json trackToJson(const Track& t)
             json notes = json::array();
             for (const auto& n : c.notes)
                 notes.push_back(json::array({n.id, n.note, n.velocity, n.start, n.length}));
-            midiClips.push_back(json{{"id", c.id},
-                                     {"name", c.name},
-                                     {"start", c.start},
-                                     {"length", c.length},
-                                     {"notes", std::move(notes)}});
+            json clip{{"id", c.id},
+                      {"name", c.name},
+                      {"start", c.start},
+                      {"length", c.length},
+                      {"notes", std::move(notes)}};
+            // Controller events as compact arrays: [id, type, number, value, time].
+            if (!c.controllers.empty())
+            {
+                json controllers = json::array();
+                for (const auto& e : c.controllers)
+                    controllers.push_back(
+                        json::array({e.id, controllerTypeName(e.type), e.number, e.value, e.time}));
+                clip["controllers"] = std::move(controllers);
+            }
+            midiClips.push_back(std::move(clip));
         }
         j["midiClips"] = std::move(midiClips);
     }
@@ -481,7 +524,25 @@ Track trackFromJson(const json& j)
                                                    nj[2].get<int>(),
                                                    nj[3].get<SamplePosition>(),
                                                    nj[4].get<SamplePosition>()});
+            if (const auto ctl = cj.find("controllers"); ctl != cj.end() && ctl->is_array())
+                for (const auto& ej : *ctl)
+                {
+                    if (!ej.is_array() || ej.size() != 5 || !ej[1].is_string())
+                        continue;
+                    const auto type = controllerTypeFromName(ej[1].get<std::string>());
+                    if (!type.has_value())
+                        continue; // a kind this version does not know
+                    MidiControllerEvent e;
+                    e.id = ej[0].get<Id>();
+                    e.type = *type;
+                    e.number = std::clamp(ej[2].get<int>(), 0, 127);
+                    e.value = std::clamp(
+                        ej[3].get<int>(), midiControllerMinimum(e.type), midiControllerMaximum(e.type));
+                    e.time = ej[4].get<SamplePosition>();
+                    c.controllers.push_back(e);
+                }
             c.sortNotes();
+            c.sortControllers();
             t.midiClips.push_back(std::move(c));
         }
         t.sortMidiClips();
@@ -692,6 +753,8 @@ std::optional<Project> projectFromJson(const std::string& text, std::string* err
                 maxId = std::max(maxId, c.id);
                 for (const auto& n : c.notes)
                     maxId = std::max(maxId, n.id);
+                for (const auto& e : c.controllers)
+                    maxId = std::max(maxId, e.id);
             }
         }
         for (const auto& b : p.buses)
@@ -720,12 +783,12 @@ std::optional<Project> projectFromJson(const std::string& text, std::string* err
         for (const auto& m : p.markers)
             maxId = std::max(maxId, m.id);
         p.nextId = std::max(p.nextId, maxId + 1);
-        std::vector<Id> seen;
+        std::unordered_set<Id> seen; // a set: clips can hold many thousands of events
         const auto fresh = [&](Id& id)
         {
-            if (id == invalidId || std::find(seen.begin(), seen.end(), id) != seen.end())
+            if (id == invalidId || seen.contains(id))
                 id = p.allocateId();
-            seen.push_back(id);
+            seen.insert(id);
         };
         for (auto& t : p.tracks)
         {
@@ -750,6 +813,8 @@ std::optional<Project> projectFromJson(const std::string& text, std::string* err
                 fresh(c.id);
                 for (auto& n : c.notes)
                     fresh(n.id);
+                for (auto& e : c.controllers)
+                    fresh(e.id);
             }
             if (t.hasInstrument())
                 fresh(t.instrument.id);

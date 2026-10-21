@@ -79,25 +79,10 @@ void MidiDeviceLayer::sendDue()
     {
         if (output_ == nullptr)
             continue;
-        const auto& e = pending_[sent].event;
-        const int channel = e.channel + 1;
-        switch (e.type)
-        {
-            case engine::MidiEvent::Type::noteOn:
-                output_->sendMessageNow(e.velocity > 0
-                                            ? juce::MidiMessage::noteOn(channel, e.note, e.velocity)
-                                            : juce::MidiMessage::noteOff(channel, e.note));
-                break;
-            case engine::MidiEvent::Type::noteOff:
-                output_->sendMessageNow(juce::MidiMessage::noteOff(channel, e.note));
-                break;
-            case engine::MidiEvent::Type::controller:
-                output_->sendMessageNow(juce::MidiMessage::controllerEvent(channel, e.note, e.velocity));
-                break;
-            case engine::MidiEvent::Type::allNotesOff:
-                output_->sendMessageNow(juce::MidiMessage::allNotesOff(channel));
-                break;
-        }
+        // Notes, controllers, pitch bend and pressure as their MIDI bytes.
+        std::uint8_t bytes[3] = {};
+        if (const int size = pending_[sent].event.toBytes(bytes); size > 0)
+            output_->sendMessageNow(juce::MidiMessage(bytes, size));
     }
     pending_.erase(pending_.begin(), pending_.begin() + static_cast<std::ptrdiff_t>(sent));
 }
@@ -330,6 +315,24 @@ void MidiDeviceLayer::handleIncomingMidiMessage(juce::MidiInput* source, const j
         event.type = engine::MidiEvent::Type::controller;
         event.note = static_cast<std::uint8_t>(message.getControllerNumber());
         event.velocity = static_cast<std::uint8_t>(message.getControllerValue());
+    }
+    else if (message.isPitchWheel())
+    {
+        const int raw = std::clamp(message.getPitchWheelValue(), 0, 16383);
+        event.type = engine::MidiEvent::Type::pitchBend;
+        event.note = static_cast<std::uint8_t>(raw & 127);
+        event.velocity = static_cast<std::uint8_t>(raw >> 7);
+    }
+    else if (message.isChannelPressure())
+    {
+        event.type = engine::MidiEvent::Type::channelPressure;
+        event.velocity = static_cast<std::uint8_t>(std::clamp(message.getChannelPressureValue(), 0, 127));
+    }
+    else if (message.isAftertouch())
+    {
+        event.type = engine::MidiEvent::Type::polyPressure;
+        event.note = static_cast<std::uint8_t>(message.getNoteNumber());
+        event.velocity = static_cast<std::uint8_t>(std::clamp(message.getAfterTouchValue(), 0, 127));
     }
     else
         return;
