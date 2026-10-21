@@ -310,6 +310,50 @@ TEST_CASE_METHOD(SessionFixture,
     CHECK(track->midiClips[0].notes[0].length == 128);
 }
 
+TEST_CASE_METHOD(SessionFixture,
+                 "Loop recording makes a take group, and a later pass over it joins as a take",
+                 "[app][session][record][comping]")
+{
+    addArmedTrack();
+    prepareDevice(48000.0);
+    session->setRegion(0, 128);
+    session->setLoopEnabled(true);
+    REQUIRE(session->startRecording().empty());
+    runBlocks(5); // 320 samples: two full passes and half a third
+    stopAndCollect();
+
+    const auto& track = session->project().tracks[0];
+    REQUIRE(track.takeGroups.size() == 1);
+    const auto& group = track.takeGroups[0];
+    REQUIRE(group.takes.size() == 3);
+    CHECK(group.takes[0].clip.length == 128);
+    CHECK(group.takes[1].clip.length == 128);
+    CHECK(group.takes[2].clip.length == 64);
+    CHECK(group.takes[2].clip.name == "Take 3");
+    // The newest take plays where it has audio, the one before it after that.
+    REQUIRE(group.comp.size() == 2);
+    CHECK(group.comp[0].take == group.takes[2].id());
+    CHECK(group.comp[1].take == group.takes[1].id());
+    CHECK(track.clips.size() == 2); // the comp's clips, not three stacked takes
+    CHECK(files("*.wav").size() == 3);
+    CHECK(session->lastRecordingMessage().find("3 takes") != std::string::npos);
+
+    // A second recording over the group's range (no loop) becomes its fourth take.
+    session->setLoopEnabled(false);
+    session->locate(0);
+    REQUIRE(session->startRecording().empty());
+    runBlocks(1);
+    stopAndCollect();
+    REQUIRE(session->project().tracks[0].takeGroups.size() == 1);
+    CHECK(session->project().tracks[0].takeGroups[0].takes.size() == 4);
+
+    session->undo();
+    CHECK(session->project().tracks[0].takeGroups[0].takes.size() == 3);
+    session->undo();
+    CHECK(session->project().tracks[0].takeGroups.empty());
+    CHECK(session->project().tracks[0].clips.empty());
+}
+
 TEST_CASE_METHOD(SessionFixture, "An empty take is deleted rather than placed", "[app][session][record]")
 {
     addArmedTrack();

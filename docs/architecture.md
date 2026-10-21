@@ -330,9 +330,16 @@ still records, but only the first 4 GB is readable until it is split.
 Loop recording: when the transport wraps while capturing, the real-time thread
 marks a take boundary (the cumulative captured count plus the loop start) through a
 lock-free queue; the writer closes the file at that sample and opens
-`<name>-take<n>.partial.wav`. Every pass through the loop becomes its own clip at
-the loop start, later takes on top of earlier ones on the same track (take lanes
-with their own rows come with the editing phase).
+`<name>-take<n>.partial.wav`. Every pass through the loop is placed at the loop
+start. When the recording is collected, a track's passes (in take order) become
+takes in a take group (`core::RecordTakes`, see "Core model") when there are
+several (loop recording), when the recording punched in, or when they land on a
+take group already on the track (they join it, numbered on from its takes);
+each newer pass plays over its own range, so a loop recording stopped part way
+through its last pass comps that partial take over the earlier full one. A single
+pass anywhere else is a plain clip as before, and clips already on the track are
+left alone (a pass over an ordinary clip still overlaps it). MIDI loop
+recording is unchanged: each pass with notes is its own clip.
 
 Starting at or past the loop end (a locate there, or the loop enabled while
 outside it) wraps to the loop start before the first capture, so the take is
@@ -347,7 +354,7 @@ once and reports an error rather than leaving it pending.
 Stop, locate or a device stop end the session on the real-time side; once the
 writer has closed the files the session polls `collectRecording()`, renames the
 `.partial.wav` files to `.wav` (never over an existing file), deletes empty takes,
-removes the sidecars and adds the clips in one undo step. Placement is
+removes the sidecars and adds the clips (or takes) in one undo step. Placement is
 `engine::placeRecording`: shifted back by `recordingLatencySamples()` (the loopback
 calibration when it matches the device configuration, otherwise the driver's
 reported input plus output latency), trimming the front of anything that would

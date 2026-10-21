@@ -259,6 +259,10 @@ takes, comp segments materialised as crossfaded clips, commands with undo for
 swipe, whole take, delete, boundary move, flatten, rename, lanes and move to new
 track; project schema 6 (design/14-comping.md).
 
+Status 2026-10-21: loop recording, punch recording and recording over a take
+group make takes in a group (newest playing) instead of stacked clips; MIDI
+loop recording still makes a clip per pass.
+
 ### Phase 4 — Mixer and routing (3 weeks)
 
 - Gain, pan, mute, solo (with solo-in-place), phase, track colour and naming.
