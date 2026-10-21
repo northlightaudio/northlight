@@ -20,11 +20,18 @@ plugin editors, audio setup and the plugin browser. The shell has five zones:
 +--------------------------------------------------------------------------+
 ```
 
-- **A Header bar**: `size.headerBar` 48 px, `surface1`, its clusters in recessed `surface0` trays. Left: app menu button
-  (wordmark icon) and the project name as a ghost button that opens a menu (New, Open,
-  Save, Save As, Recent, Export). Centre: the transport cluster and time display
-  (section 6). Right: snap and ripple controls, zoom-fit, and three view toggles
-  (Mixer, Editor, Browser) as icon toggle buttons.
+- **A Header bar**: `size.headerBar` 48 px, `surface1`, its clusters in recessed `surface0` trays.
+  Left: the app menu button (the mark at 20 px in `textPrimary`, optically centred
+  on its grid), then the project title, then undo and redo in their own tray. The
+  project title is borderless and left-aligned, two lines centred on the bar: a
+  `captionCaps` label, "PROJECT" in `textTertiary`, or "PROJECT · EDITED" in
+  `textSecondary` while there are unsaved changes, over the name in `label`
+  semibold `textPrimary` with the menu chevron right after it (`textTertiary`).
+  Hover shows a `surface2` face; a click opens the project menu (New, Open, Save,
+  Save As, Recent, Export); the tooltip gives the file's path. Its width fits the
+  name (up to 200 px; 104 px when the bar is short of room). Centre: the transport
+  cluster and time display (section 6). Right: snap and ripple controls, zoom-fit,
+  and three view toggles (Mixer, Editor, Browser) as icon toggle buttons.
 - **B Arrange**: fills the remaining area; specified in section 4.
 - **C Dock**: a bottom panel with tabs. Mixer, Editor (clip/insert generic editor),
   Piano Roll, Diagnostics. Height user-draggable, default 320 px, min

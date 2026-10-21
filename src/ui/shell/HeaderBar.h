@@ -80,6 +80,27 @@ private:
     bool closes_;
 };
 
+// The project title (screens/shell.md): two lines, left-aligned. A caption-caps label,
+// "PROJECT", with " · EDITED" while there are unsaved changes, over the project's
+// name with the menu chevron right after it. Borderless; hover shows a surface2
+// face. Clicking opens the project menu.
+class ProjectTitle final : public juce::Button
+{
+public:
+    explicit ProjectTitle(const Theme& theme);
+    void setProject(const juce::String& name, bool modified);
+    // The width that shows it all (the name capped at `maxWidth`).
+    int idealWidth(int maxWidth) const;
+    void paintButton(juce::Graphics& g, bool isMouseOver, bool isButtonDown) override;
+
+private:
+    juce::Font nameFont() const;
+    juce::String caption() const;
+    const Theme& theme_;
+    juce::String name_;
+    bool modified_ = false;
+};
+
 // The header bar (screens/shell.md): app and project menus, undo/redo, the transport
 // cluster with time, tempo and signature, and the right cluster of snap, ripple,
 // zoom-fit and the panel toggles. The owner pushes the state each UI tick and
@@ -138,8 +159,7 @@ public:
     void resized() override;
     void mouseDown(const juce::MouseEvent& e) override;
 
-    static constexpr int windowButtonWidth = 46;            // as the Windows caption buttons
-    static constexpr int unsavedDot = 6, unsavedDotGap = 6; // the dot after the project name
+    static constexpr int windowButtonWidth = 46; // as the Windows caption buttons
 
 private:
     class ClipIndicator;
@@ -149,7 +169,7 @@ private:
     const Theme& theme_;
     State state_;
     IconButton app_, undo_, redo_;
-    juce::TextButton project_;
+    ProjectTitle project_;
     IconButton goToStart_, play_, stop_, record_;
     IconButton loop_, punch_, click_, countIn_;
     TimeDisplay bars_, time_;

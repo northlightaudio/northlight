@@ -25,7 +25,7 @@ clip indicator). When the window is too narrow for both flanks to clear the side
 clusters, the readout moves off centre just enough; when even that does not fit,
 the bar gives way in steps, so nothing overlaps down to the window's 1280 px
 minimum: first the clock time leaves the readout (bars, tempo and signature stay),
-then the project name shortens to 96 px. The trays and the readout well are
+then the project title shortens to 104 px. The trays and the readout well are
 recessed with a soft shade fading down 5 px from their top edge (`canvas` at 55%
 to clear), not the fader groove's hard inset. The parts:
 

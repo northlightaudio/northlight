@@ -31,6 +31,84 @@ void TimeDisplay::setTone(Tone tone)
     repaint();
 }
 
+// ----- ProjectTitle -------------------------------------------------------------------
+
+ProjectTitle::ProjectTitle(const Theme& theme) : juce::Button("Project"), theme_(theme)
+{
+    setWantsKeyboardFocus(true);
+    setTitle("Project menu");
+}
+
+void ProjectTitle::setProject(const juce::String& name, bool modified)
+{
+    if (name == name_ && modified == modified_)
+        return;
+    name_ = name;
+    modified_ = modified;
+    repaint();
+}
+
+juce::Font ProjectTitle::nameFont() const
+{
+    return theme_.font(Theme::Face::ui, theme_.fonts.size.label, theme_.fonts.weight.semibold);
+}
+
+juce::String ProjectTitle::caption() const
+{
+    return modified_
+               ? juce::String("PROJECT  ") + juce::String(juce::CharPointer_UTF8("\xc2\xb7")) + "  EDITED"
+               : juce::String("PROJECT");
+}
+
+int ProjectTitle::idealWidth(int maxWidth) const
+{
+    const int pad = theme_.spacing.sm;
+    const int chevron = theme_.sizes.iconSmall;
+    // Room for the longer caption, so the width does not change when it does.
+    const int captionW = juce::GlyphArrangement::getStringWidthInt(
+        theme_.captionCaps(),
+        juce::String("PROJECT  ") + juce::String(juce::CharPointer_UTF8("\xc2\xb7")) + "  EDITED");
+    const int nameW =
+        juce::GlyphArrangement::getStringWidthInt(nameFont(), name_) + theme_.spacing.xs + chevron;
+    return std::min(maxWidth, 2 * pad + std::max(captionW, nameW));
+}
+
+void ProjectTitle::paintButton(juce::Graphics& g, bool isMouseOver, bool isButtonDown)
+{
+    const auto& c = theme_.colours;
+    const auto bounds = getLocalBounds().toFloat();
+    if (isMouseOver || isButtonDown)
+    {
+        g.setColour(isButtonDown ? c.surfacePressed : c.surface2);
+        g.fillRoundedRectangle(bounds, theme_.radius.sm);
+    }
+    auto area = getLocalBounds().reduced(theme_.spacing.sm, 0);
+    const int captionH = juce::roundToInt(theme_.fonts.size.caption * theme_.fonts.lineHeight);
+    const int nameH = juce::roundToInt(theme_.fonts.size.label * theme_.fonts.lineHeight);
+    auto block = area.withSizeKeepingCentre(area.getWidth(), captionH + nameH);
+    // The caption: what this is, and whether it is saved.
+    g.setFont(theme_.captionCaps());
+    g.setColour(modified_ ? c.textSecondary : c.textTertiary);
+    g.drawText(caption(), block.removeFromTop(captionH), juce::Justification::centredLeft, true);
+    // The name, then the chevron right after it.
+    auto row = block;
+    const int chevron = theme_.sizes.iconSmall;
+    const auto font = nameFont();
+    const int nameW = std::min(juce::GlyphArrangement::getStringWidthInt(font, name_),
+                               row.getWidth() - chevron - theme_.spacing.xs);
+    g.setFont(font);
+    g.setColour(c.textPrimary);
+    g.drawText(name_, row.removeFromLeft(nameW), juce::Justification::centredLeft, true);
+    row.removeFromLeft(theme_.spacing.xs);
+    Icons::draw(g,
+                Icon::chevronDown,
+                row.removeFromLeft(chevron).toFloat().withSizeKeepingCentre(static_cast<float>(chevron),
+                                                                            static_cast<float>(chevron)),
+                isMouseOver ? c.textSecondary : c.textTertiary);
+    if (auto* lnf = dynamic_cast<NorthlightLookAndFeel*>(&getLookAndFeel()))
+        lnf->drawFocusRing(g, *this, bounds, theme_.radius.sm);
+}
+
 // ----- WindowButton -------------------------------------------------------------------
 
 WindowButton::WindowButton(const Theme& theme, Icon icon, const juce::String& tooltip, bool closes)
@@ -191,7 +269,8 @@ void TimeDisplay::endTyping(bool commit)
 
 HeaderBar::HeaderBar(const Theme& theme)
     : theme_(theme), app_(theme, Icon::mark, "Northlight: About, Preferences, Audio Setup, Plugins"),
-      undo_(theme, Icon::undo, "Undo  Ctrl+Z"), redo_(theme, Icon::redo, "Redo  Ctrl+Shift+Z"),
+      project_(theme), undo_(theme, Icon::undo, "Undo  Ctrl+Z"),
+      redo_(theme, Icon::redo, "Redo  Ctrl+Shift+Z"),
       goToStart_(theme, Icon::goToStart, "Go to start  Enter"), play_(theme, Icon::play, "Play  Space"),
       stop_(theme, Icon::stop, "Stop  Space"), record_(theme, Icon::record, "Record  R"),
       loop_(theme, Icon::loop, "Loop  L"), punch_(theme, Icon::punch, "Punch  P"),
@@ -265,8 +344,10 @@ HeaderBar::HeaderBar(const Theme& theme)
     snap_.setShowsMenuChevron(true);
     snap_.setSize(theme_.sizes.control + theme_.spacing.sm, theme_.sizes.control);
 
-    project_.getProperties().set(NorthlightLookAndFeel::propertyVariant, "ghost");
-    project_.getProperties().set(NorthlightLookAndFeel::propertyMenu, true);
+    // The mark at the brand's in-app size, a step up from the toolbar icons so it
+    // balances the two-line title beside it.
+    app_.setIconSize(theme_.sizes.iconLarge);
+    app_.setRestColour(theme_.colours.textPrimary);
     project_.onClick = [this]
     {
         if (onProjectMenu)
@@ -360,12 +441,15 @@ void HeaderBar::setState(const State& state)
 void HeaderBar::refreshFromState()
 {
     const auto& s = state_;
-    if (project_.getButtonText() != s.projectName)
+    if (project_.getName() != s.projectName)
     {
-        project_.setButtonText(s.projectName);
-        resized(); // the button's width follows the name
+        project_.setName(s.projectName);
+        project_.setProject(s.projectName, s.modified);
+        resized(); // the title's width follows the name
     }
-    project_.setTooltip(s.projectPath.isNotEmpty() ? s.projectPath : juce::String("Unsaved project"));
+    project_.setProject(s.projectName, s.modified);
+    project_.setTooltip((s.projectPath.isNotEmpty() ? s.projectPath : juce::String("Not saved yet")) +
+                        (s.modified ? juce::String("\nUnsaved changes") : juce::String()));
     undo_.setEnabled(s.canUndo);
     undo_.setTooltip(s.canUndo ? "Undo " + s.undoName + "  Ctrl+Z" : "Undo  Ctrl+Z");
     redo_.setEnabled(s.canRedo);
@@ -501,21 +585,6 @@ void HeaderBar::paint(juce::Graphics& g)
     // The readout well: one dark field, its values told apart by size and colour.
     if (!readout_.isEmpty())
         recess(readout_.toFloat(), m.enabled ? m.readoutWell : c.surface2);
-    // The unsaved dot, between the project name and the menu chevron. It sits a
-    // fixed distance before the chevron's zone (the look and feel's icon + xs at
-    // the button's right), in the room the button's width reserves for it, so it
-    // keeps clear of both and the bar does not shift when it appears.
-    if (state_.modified)
-    {
-        const int d = unsavedDot;
-        const int chevronZone = project_.getRight() - (theme_.sizes.icon + theme_.spacing.xs);
-        const int x = chevronZone - unsavedDotGap / 2 - d;
-        g.setColour(c.accent);
-        g.fillEllipse(static_cast<float>(x),
-                      static_cast<float>(project_.getBounds().getCentreY() - d / 2),
-                      static_cast<float>(d),
-                      static_cast<float>(d));
-    }
     // The master clip indicator, only while lit.
     if (clipLit_)
     {
@@ -575,18 +644,13 @@ void HeaderBar::resized()
     };
     const int keyGap = theme_.spacing.xs, fieldGap = theme_.spacing.sm;
 
-    // The name, its padding, the chevron, and room for the unsaved dot on both
-    // sides (so the centred name does not move when the dot shows).
-    const int fullProjectW = std::min(
-        224,
-        juce::GlyphArrangement::getStringWidthInt(theme_.label(), project_.getButtonText()) +
-            2 * theme_.spacing.md + theme_.sizes.icon + theme_.spacing.sm + 2 * (unsavedDot + unsavedDotGap));
+    // The project title: as wide as its name needs, up to 200 px.
+    const int fullProjectW = project_.idealWidth(200);
     const Items transport{{&goToStart_, key}, {&play_, key}, {&stop_, key}, {&record_, key}};
     const Items modes{{&loop_, key}, {&punch_, key}, {&click_, key}, {&countIn_, key}};
     const Items edit{{&snap_, key + theme_.spacing.sm}, {&ripple_, key}, {&zoomFit_, key}};
     const Items panels{{&mixer_, key}, {&editor_, key}, {&browser_, key}};
-    const auto leftItems = [&](int projectW)
-    { return Items{{&project_, projectW}, {&undo_, key}, {&redo_, key}}; };
+    const Items history{{&undo_, key}, {&redo_, key}};
     const auto readoutItems = [&](bool withTime)
     {
         return withTime ? Items{{&bars_, 136}, {&time_, 104}, {&tempo_, 92}, {&signature_, 60}}
@@ -624,8 +688,8 @@ void HeaderBar::resized()
     // window's minimum width.
     const int transportW = widthOf(transport, keyGap), modesW = widthOf(modes, inner);
     const int flank = 2 * theme_.spacing.sm + theme_.sizes.meterWidth;
-    const int leftStart = theme_.spacing.md + key + theme_.spacing.sm;
-    const int compactProjectW = std::min(fullProjectW, 96);
+    const int leftStart = theme_.spacing.md + key + theme_.spacing.xs;
+    const int compactProjectW = std::min(fullProjectW, 104);
     struct Fit
     {
         int projectW;
@@ -635,7 +699,7 @@ void HeaderBar::resized()
     Fit chosen = fits.back();
     for (const auto& fit : fits)
     {
-        const int leftEnd = leftStart + widthOf(leftItems(fit.projectW), inner) + between;
+        const int leftEnd = leftStart + fit.projectW + theme_.spacing.sm + widthOf(history, inner) + between;
         const int readoutW = widthOf(readoutItems(fit.withTime), fieldGap);
         if (leftEnd + transportW + flank + readoutW + flank + modesW <= right)
         {
@@ -644,11 +708,14 @@ void HeaderBar::resized()
         }
     }
 
-    // Left: the app mark on its own, then project, undo and redo.
+    // Left: the app mark, the project title beside it (no tray: it is a title,
+    // not a control group), then undo and redo in their own tray.
     int x = theme_.spacing.md;
     app_.setBounds(x, trayY + pad, key, key);
-    x += key + theme_.spacing.sm;
-    x += group(x, leftItems(chosen.projectW), false, inner) + between;
+    x += key + theme_.spacing.xs;
+    project_.setBounds(x, trayY + pad, chosen.projectW, key);
+    x += chosen.projectW + theme_.spacing.sm;
+    x += group(x, history, false, inner) + between;
     const int leftEnd = x;
 
     time_.setVisible(chosen.withTime);
