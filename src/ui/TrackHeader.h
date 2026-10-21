@@ -18,13 +18,13 @@ namespace northlight::ui
 {
 
 // A track's header at the left of its lane (screens/arrange.md, "Track header"): the
-// colour stripe, the number and name, M/S/R and monitor toggles on the first
+// colour stripe, the track-kind icon and name, M/S/R and monitor toggles on the first
 // row; the input selector, a horizontal meter and a compact volume slider on
 // the second (hidden below 44 px rows); pan, output and a sends summary on a
 // third row at the large row height. The stripe opens the colour popup, the
-// name renames inline on double-click, the number drags to reorder, and a
+// name renames inline on double-click, the icon drags to reorder, and a
 // right-click opens the track menu.
-class TrackHeader final : public juce::Component, private juce::Timer
+class TrackHeader final : public juce::Component, public juce::TooltipClient, private juce::Timer
 {
 public:
     explicit TrackHeader(const Theme& theme);
@@ -47,6 +47,8 @@ public:
     core::Id trackId() const noexcept { return trackId_; }
     juce::Colour colour() const noexcept { return colour_; }
     bool mediaMissing() const noexcept { return missing_; }
+    // Over the icon: the track's number and kind (the rest of the header has none).
+    juce::String getTooltip() override;
     void setMediaMissing(bool missing);
     void startRename();
 
@@ -117,6 +119,7 @@ private:
     bool missing_ = false;
     bool reordering_ = false;
     int index_ = 0;
+    core::TrackKind kind_ = core::TrackKind::audio;
     int sends_ = 0;
     float pulse_ = 0.0f; // the stripe pulse when arming, 1 -> 0 over toggleMs
     double pulseStartMs_ = 0.0;

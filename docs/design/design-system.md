@@ -171,7 +171,9 @@ ripple, zoom-in, zoom-out, zoom-fit, mixer, browser, inspector, settings, plugin
 power (bypass), pin, close, chevron-down, chevron-right, check, search, filter,
 add, remove, drag-handle, mute, solo, arm, monitor, phase, link (stereo), folder,
 file-audio, file-midi, marker, region, warning, info, error, success, loudness,
-cpu, disk, midi-port.
+cpu, disk, midi-port, and the track kinds: track-audio (a waveform), track-midi (a
+note), track-aux (an output jack); instrument channels use instrument and folder
+tracks folder.
 
 ## 2.6 Motion
 

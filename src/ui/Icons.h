@@ -77,6 +77,9 @@ enum class Icon
     pointer,        // the select tool
     rangeTool,      // the range tool: an I-beam between brackets
     pencil,         // the pencil tool: draws MIDI clips
+    trackAudio,     // track kinds (ui/TrackIcon.h): a waveform
+    trackMidi,      // an eighth note
+    trackAux,       // an output jack with an arrow: an instrument's extra output
     windowMinimise, // the window buttons in the header (custom window chrome)
     windowMaximise,
     windowRestore,

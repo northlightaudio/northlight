@@ -3057,6 +3057,12 @@ void MainWindow::openAudioEditor(core::Id trackId, core::Id clipId, bool pitch)
     }
 }
 
+void MainWindow::selectClip(core::Id trackId, core::Id clipId)
+{
+    if (auto* content = dynamic_cast<Content*>(getContentComponent()))
+        content->selection_.select(trackId, clipId);
+}
+
 void MainWindow::correctPitchInEditor()
 {
     if (auto* content = dynamic_cast<Content*>(getContentComponent()))

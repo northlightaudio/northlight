@@ -137,6 +137,7 @@ public:
     //                        sustain, pressure, cc<n>); a clip with no events in it gets a
     //                        demonstration curve first
     //   --audio-editor [pitch]  open the audio editor on the first audio clip (in pitch mode)
+    //   --select-clip        select the first audio clip (the inspector shows it)
     //   --correct-pitch      once that clip's pitch is analysed, correct it to the key
     //   --mute-breaths       once that clip's pitch is analysed, mute its breaths
     //   --browser-files [folder]  show the Browser panel's Files tab (at the folder)
@@ -375,6 +376,15 @@ public:
                     if (!track.clips.empty())
                     {
                         mainWindow_->openAudioEditor(track.id, track.clips.front().id, pitch);
+                        break;
+                    }
+            }
+            else if (arg == "--select-clip")
+            {
+                for (const auto& track : session_->project().tracks)
+                    if (!track.clips.empty())
+                    {
+                        mainWindow_->selectClip(track.id, track.clips.front().id);
                         break;
                     }
             }

@@ -74,6 +74,8 @@ public:
     void setPianoRollLane(const juce::String& key);
     // The audio editor on an audio clip, in pitch mode when asked.
     void openAudioEditor(core::Id trackId, core::Id clipId, bool pitch = false);
+    // Selects an audio clip as a click on it would, so the inspector shows it.
+    void selectClip(core::Id trackId, core::Id clipId);
     // Launch-flag conveniences for the audio editor's pitch tools.
     void correctPitchInEditor();
     void muteBreathsInEditor();

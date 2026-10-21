@@ -3,6 +3,7 @@
 #include "ui/Db.h"
 #include "ui/Icons.h"
 #include "ui/NorthlightLookAndFeel.h"
+#include "ui/TrackIcon.h"
 
 #include <cmath>
 
@@ -199,6 +200,7 @@ void TrackHeader::setTrack(const core::Track& track,
     const juce::ScopedValueSetter<bool> guard(updating_, true);
     trackId_ = track.id;
     index_ = index;
+    kind_ = track.kind;
     midi_ = track.isMidi();
     aux_ = track.isAux();
     instrument_ = track.isInstrument();
@@ -211,11 +213,7 @@ void TrackHeader::setTrack(const core::Track& track,
     muted_ = track.mute;
     colour_ = theme_.track.forTrack(track.colour, index);
     setTitle("Track " + juce::String(index + 1) + ": " + juce::String::fromUTF8(track.name.c_str()));
-    setDescription(track.isMidi()         ? "MIDI track"
-                   : track.isInstrument() ? "Instrument channel"
-                   : track.isAux()        ? "Instrument output"
-                   : track.isFolder()     ? "Folder track"
-                                          : "Audio track");
+    setDescription(trackKindName(track.kind));
     const bool takesInput = !aux_ && !instrument_ && !folder_; // an instrument channel's MIDI tracks take it
     input_.setVisible(takesInput);
     arm_.setVisible(takesInput);
@@ -382,6 +380,13 @@ juce::Rectangle<int> TrackHeader::stripeBounds() const noexcept
     return getLocalBounds().removeFromLeft(theme_.track.headerStripeWidth);
 }
 
+juce::String TrackHeader::getTooltip()
+{
+    if (!numberBounds().contains(getMouseXYRelative()))
+        return {};
+    return "Track " + juce::String(index_ + 1) + ": " + trackKindName(kind_) + ". Drag to reorder";
+}
+
 juce::Rectangle<int> TrackHeader::numberBounds() const noexcept
 {
     return {theme_.track.headerStripeWidth + indent() + theme_.spacing.sm, 0, 22, theme_.sizes.control};
@@ -497,10 +502,18 @@ void TrackHeader::paint(juce::Graphics& g)
         g.fillRect(stripe.expanded(static_cast<int>(pulse_ * 3.0f), 0));
     }
 
-    // The number.
-    g.setFont(theme_.caption());
-    g.setColour(c.textTertiary);
-    g.drawText(juce::String(index_ + 1).paddedLeft('0', 2), numberBounds(), juce::Justification::centredLeft);
+    // The track-kind icon, in the number's place (the number is in its tooltip).
+    {
+        const auto box = numberBounds();
+        const float size = static_cast<float>(theme_.sizes.iconSmall);
+        Icons::draw(g,
+                    trackIcon(kind_),
+                    juce::Rectangle<float>(static_cast<float>(box.getX()),
+                                           static_cast<float>(box.getCentreY()) - size * 0.5f,
+                                           size,
+                                           size),
+                    selected_ ? c.textSecondary : c.textTertiary);
+    }
 
     // A warning dot by the name when media is missing.
     if (missing_)

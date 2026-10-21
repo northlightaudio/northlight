@@ -106,6 +106,10 @@ const Definition definitions[Icons::count] = {
      "M6.5 3 H9.5 M8 3 V13 M6.5 13 H9.5 M3.5 5.5 L2 8 L3.5 10.5 M12.5 5.5 L14 8 L12.5 10.5",
      false},
     {"pencil", "M10.5 2.5 L13.5 5.5 L5.5 13.5 H2.5 V10.5 Z M9 4 L12 7", false},
+    // Track kinds (instrument channels use "instrument", folders "folder").
+    {"trackAudio", "M1.5 8 H3.5 L5 5 L6.5 11 L8 3 L9.5 13 L11 6 L12.5 8 H14.5", false},
+    {"trackMidi", "M6 9.25 A2.25 2.25 0 1 1 5.99 9.25 Z M8.25 11.5 V2.5 C9 4.5 12.5 4.5 12.5 7.5", false},
+    {"trackAux", "M5.5 5 A3 3 0 1 1 5.49 5 Z M8.5 8 H14 M11.5 5.5 L14 8 L11.5 10.5", false},
     // The window buttons: thin, 10 px glyphs, after the Windows caption buttons.
     {"windowMinimise", "M3 8 H13", false},
     {"windowMaximise", "M3.5 3.5 H12.5 V12.5 H3.5 Z", false},

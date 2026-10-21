@@ -61,7 +61,7 @@ Where the recording and the arrangement live. It must stay legible with 4 tracks
 
 ## Folder tracks and frozen tracks
 
-- A folder track's header shows its number, a disclosure (▾ open, ▸ closed) before
+- A folder track's header shows its icon, a disclosure (▾ open, ▸ closed) before
   its name, and M and S, which act on every track it holds. Its lane reads "5
   tracks" in `caption` `textTertiary` over its tracks' clips drawn as thin bars,
   one row per track (at most eight), in each track's colour (30% when muted).
@@ -104,13 +104,15 @@ tempo and signature at the playhead in `caption` `textSecondary`.
 Rows at `trackRow` 56 default. Contents, left to right, inside `space.sm` padding:
 
 ```
-|▌ 01 Kick                                 [M][S][R][●] |
+|▌ ∿  Kick                                 [M][S][R][●] |
 |   In 1 ▾    ▁▃▅▇ meter                   ─────o──── |
 ```
 
 - 4 px track-colour stripe on the left edge (`track.headerStripeWidth`), full row
   height. Clicking it opens the colour swatch popup.
-- Row 1 (28 px): track number `caption` `textTertiary`, name `label` `textPrimary`
+- Row 1 (28 px): the track-kind icon (14 px, `textTertiary`, `textSecondary` when
+  selected: audio, MIDI, instrument channel, instrument output, folder; its tooltip
+  gives the track number and kind), name `label` `textPrimary`
   (double-click renames inline), then the control trio right aligned: M, S, R as
   24 px toggle buttons with their semantic colours, plus a monitor toggle (● icon)
   that cycles off/auto/on with the state in its tooltip: dim when off, `monitor`
@@ -127,7 +129,7 @@ Rows at `trackRow` 56 default. Contents, left to right, inside `space.sm` paddin
 - Armed: the R button is solid `arm`; the stripe pulses once (120 ms) when arming.
   Recording: the whole header's stripe becomes `record` and the input meter shows
   recording.
-- Drag the number to reorder tracks; a 2 px `accent` insertion line shows the drop
+- Drag the icon to reorder tracks; a 2 px `accent` insertion line shows the drop
   position. Right-click opens the track menu (rename, colour, duplicate, delete,
   freeze, add bus, show automation).
 - Buses appear in the same list after tracks, with a slate stripe and no input row;
