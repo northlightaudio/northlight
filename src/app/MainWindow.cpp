@@ -805,6 +805,8 @@ private:
                 toast(ui::ToastStack::Kind::error,
                       "Normalise failed: " + juce::String::fromUTF8(error.c_str()));
         };
+        tracks_.onOpenInSampler = [this](core::Id trackId, core::Id clipId)
+        { openInSampler(trackId, clipId); };
         tracks_.playheadForEdits = [this] { return session_.position(); };
         tracks_.setAcceptedExtensions(session_.mediaLoader().supportedExtensions());
         tracks_.onTrackSelected = [this](core::Id id) { select(id); };
@@ -1601,6 +1603,39 @@ private:
         session_.execute(std::move(command));
         const auto id = added->trackId(); // allocated on apply
         select(id);
+    }
+
+    // An audio clip played by a new Sampler: an instrument channel and a MIDI
+    // track, the sampler's start and end at the part of the file the clip uses;
+    // its editor opens.
+    void openInSampler(core::Id trackId, core::Id clipId)
+    {
+        const auto* track = session_.project().findTrack(trackId);
+        const auto* clip = track != nullptr ? track->findClip(clipId) : nullptr;
+        if (clip == nullptr)
+            return;
+        const juce::File file(juce::String::fromUTF8(clip->mediaPath.c_str()));
+        std::string error;
+        const auto info = session_.mediaLoader().probe(clip->mediaPath, error);
+        if (!info.has_value() || info->lengthSamples <= 0)
+        {
+            toast(ui::ToastStack::Kind::error,
+                  "Cannot open in Sampler: " + juce::String::fromUTF8(error.c_str()));
+            return;
+        }
+        const double total = static_cast<double>(info->lengthSamples);
+        const double used = static_cast<double>(clip->length) * info->sampleRate /
+                            std::max(1.0, session_.project().sampleRate);
+        const double from = static_cast<double>(clip->sourceOffset) / total;
+        const double to = (static_cast<double>(clip->sourceOffset) + used) / total;
+        const auto midi = session_.addSamplerTrack(file, from, std::min(1.0, to));
+        const auto* added = session_.project().findTrack(midi);
+        if (added == nullptr)
+            return;
+        browser_.rememberRecent(plugins::sampler::type);
+        select(midi);
+        if (const auto* channel = session_.project().findTrack(added->midiTarget))
+            owner_.openInsertEditor(channel->id, channel->instrument.id);
     }
 
     // A MIDI track with a new instrument channel (the default instrument when

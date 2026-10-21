@@ -28,6 +28,7 @@ ProjectSession::ProjectSession(audio::AudioDeviceLayer& audio, juce::File regist
     : audio_(audio), loader_(disk_), registryFile_(std::move(registryFile)), scanner_(registry_),
       inserts_(registry_), engine_(loader_, inserts_)
 {
+    inserts_.setSampleLoader(sampleFiles_.loader());
     if (registryFile_.existsAsFile())
         if (auto loaded = hosting::PluginRegistry::fromJson(registryFile_.loadFileAsString().toStdString()))
             registry_ = std::move(*loaded);
@@ -460,6 +461,28 @@ core::Id ProjectSession::playNewInstrument(core::Id midiTrack, const std::string
     const auto channel = raw->trackId(); // allocated on apply
     run(std::make_unique<core::SetMidiTarget>(midiTrack, channel, midiChannel));
     return channel;
+}
+
+core::Id ProjectSession::addSamplerTrack(const juce::File& file, double startFraction, double endFraction)
+{
+    namespace sp = plugins::sampler;
+    auto channel = makeInstrumentChannel(sp::type);
+    if (const auto name = file.getFileNameWithoutExtension().toStdString(); !name.empty())
+        channel.name = name;
+    channel.instrument.state = sp::encodeState(file.getFullPathName().toStdString());
+    if (channel.instrument.params.size() > static_cast<size_t>(sp::end))
+    {
+        channel.instrument.params[sp::start] = static_cast<float>(std::clamp(startFraction, 0.0, 1.0));
+        channel.instrument.params[sp::end] = static_cast<float>(std::clamp(endFraction, 0.0, 1.0));
+    }
+    core::Track midi;
+    midi.name = nextMidiTrackName();
+    midi.armed = true;
+    auto command = std::make_unique<core::AddInstrumentTrack>(channel, midi);
+    const auto* raw = command.get(); // kept alive by the undo history
+    if (!run(std::move(command)))
+        return core::invalidId;
+    return raw->midiTrackId();
 }
 
 std::string ProjectSession::importAudioFile(const juce::File& file, core::SamplePosition at)

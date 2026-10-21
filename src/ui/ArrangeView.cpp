@@ -823,7 +823,8 @@ void ArrangeView::mouseDownLanes(const juce::MouseEvent& e)
     if (e.mods.isPopupMenu())
     {
         if (hit.track != nullptr)
-            trackMenu(hit.track->id, e.getScreenPosition());
+            trackMenu(
+                hit.track->id, e.getScreenPosition(), hit.clip != nullptr ? hit.clip->id : core::invalidId);
         return;
     }
     if (hit.midiClip != nullptr)
@@ -2786,11 +2787,19 @@ void ArrangeView::reorderDrag(core::Id trackId, juce::Point<int> screen, bool re
         onCommand(std::make_unique<core::MoveTrack>(trackId, to));
 }
 
-void ArrangeView::trackMenu(core::Id trackId, juce::Point<int> screen)
+void ArrangeView::trackMenu(core::Id trackId, juce::Point<int> screen, core::Id clipId)
 {
     if (project_ == nullptr || project_->findTrack(trackId) == nullptr)
         return;
     juce::PopupMenu menu;
+    if (clipId != core::invalidId && project_->findTrack(trackId)->findClip(clipId) != nullptr &&
+        onOpenInSampler)
+    {
+        menu.addSectionHeader("Clip");
+        menu.addItem(6, "Open in Sampler");
+        menu.addSeparator();
+        menu.addSectionHeader("Track");
+    }
     menu.addItem(1, "Rename");
     juce::PopupMenu colours;
     const auto& palette = theme_.track.palette;
@@ -2847,10 +2856,16 @@ void ArrangeView::trackMenu(core::Id trackId, juce::Point<int> screen)
     juce::Component::SafePointer<ArrangeView> safe(this);
     menu.showMenuAsync(
         juce::PopupMenu::Options().withTargetScreenArea({screen.x, screen.y, 1, 1}),
-        [safe, trackId](int choice)
+        [safe, trackId, clipId](int choice)
         {
             if (safe == nullptr || choice == 0)
                 return;
+            if (choice == 6)
+            {
+                if (safe->onOpenInSampler)
+                    safe->onOpenInSampler(trackId, clipId);
+                return;
+            }
             if (choice >= 450 && choice < 500)
             {
                 safe->addFxTrack(choice, 450, {trackId});

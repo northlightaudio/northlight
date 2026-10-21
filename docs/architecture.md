@@ -1030,6 +1030,15 @@ an `rt::SnapshotPublisher`, so the real-time thread swaps it in at a block start
 and a retired sample is freed on the controller side once the audio thread has
 moved past it. A missing file keeps its path (a re-save loses nothing) and the
 sampler stays silent with the load error for the editor.
+The app's loader is `SampleFiles` (in the session, given to the insert factory, so
+bounces load the same way): the whole file at its own rate, up to ten minutes,
+shared while any sampler holds it (a recompile, undo or bounce does not decode it
+again) and read afresh when the file changed on disk. To make one from audio
+already in the project, right-click an audio clip and choose **Open in Sampler**:
+`ProjectSession::addSamplerTrack` adds an instrument channel named after the file
+and a MIDI track playing it in one undo step, the start and end points set to
+the part of the file the clip uses, and the editor opens. Launch flag:
+`--sampler <file>` (the same with a four-note clip, editor open).
 
 Recording: an armed MIDI track joins the record session (`addMidiTrack`); the
 engine stamps each live event it delivers to that track with its timeline

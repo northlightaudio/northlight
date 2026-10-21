@@ -91,6 +91,8 @@ public:
     //   --midi-track         add a MIDI track (built-in synth) with a short clip
     //   --midi-track-with <type>  the same with the given instrument type instead
     //   --piano-roll         open the piano roll on the first MIDI clip
+    //   --sampler <file>     add a Sampler instrument playing the file (a MIDI track with a
+    //                        short clip) and open its editor
     //   --audio-editor [pitch]  open the audio editor on the first audio clip (in pitch mode)
     //   --correct-pitch      once that clip's pitch is analysed, correct it to the key
     //   --mute-breaths       once that clip's pitch is analysed, mute its breaths
@@ -191,6 +193,24 @@ public:
                 for (int n = 0; n < 4; ++n)
                     clip.notes.push_back({core::invalidId, 60 + n * 2, 100, beat * n, beat / 2});
                 session_->execute(std::make_unique<core::AddMidiClip>(trackId, clip));
+            }
+            else if (arg == "--sampler" && i + 1 < tokens.size())
+            {
+                const auto file = tokens.getReference(++i).resolveAsFile();
+                const auto midiId = session_->addSamplerTrack(file);
+                const auto beat = static_cast<core::SamplePosition>(
+                    core::samplesPerBeat(session_->project().sampleRate,
+                                         session_->project().tempoBpm,
+                                         session_->project().timeSignature));
+                core::MidiClip clip;
+                clip.name = "Sampler";
+                clip.length = beat * 4;
+                for (int n = 0; n < 4; ++n)
+                    clip.notes.push_back({core::invalidId, 60 + n * 4, 100, beat * n, beat});
+                session_->execute(std::make_unique<core::AddMidiClip>(midiId, clip));
+                if (const auto* midi = session_->project().findTrack(midiId))
+                    if (const auto* channel = session_->project().findTrack(midi->midiTarget))
+                        mainWindow_->openInsertEditor(channel->id, channel->instrument.id);
             }
             else if (arg == "--piano-roll")
             {

@@ -4,10 +4,12 @@
 #include "core/Command.h"
 #include "engine/Midi.h"
 #include "engine/WavFile.h"
+#include "plugins/Sampler.h"
 
 #include <catch2/catch_test_macros.hpp>
 
 #include <chrono>
+#include <cmath>
 #include <memory>
 #include <thread>
 #include <vector>
@@ -504,4 +506,79 @@ TEST_CASE_METHOD(SessionFixture,
     session->execute(std::make_unique<core::SetSend>(track, bus, 0.5f, false));
     CHECK(session->takeChange() == ProjectSession::Change::values);
     CHECK(session->project().findTrack(track)->findSend(bus)->level == 0.5f);
+}
+
+TEST_CASE_METHOD(SessionFixture,
+                 "A sample opened in a Sampler loads, plays, saves with the project and undoes",
+                 "[app][session][sampler]")
+{
+    namespace sp = plugins::sampler;
+    // A second of a 440 Hz sine, stereo, at 44.1 kHz.
+    const auto wav = folder.getChildFile("tone.wav");
+    {
+        engine::WavWriter writer;
+        REQUIRE(writer.open(wav.getFullPathName().toStdString(), 2, 44100.0));
+        std::vector<float> frames(2 * 44100);
+        for (size_t i = 0; i < 44100; ++i)
+            frames[2 * i] = frames[2 * i + 1] =
+                0.5f * static_cast<float>(
+                           std::sin(2.0 * 3.14159265358979 * 440.0 * static_cast<double>(i) / 44100.0));
+        REQUIRE(writer.writeInterleaved(frames.data(), 44100));
+        REQUIRE(writer.close());
+    }
+    const auto midi = session->addSamplerTrack(wav, 0.25, 0.75);
+    REQUIRE(midi != core::invalidId);
+    const auto* channel = session->project().findTrack(session->project().findTrack(midi)->midiTarget);
+    REQUIRE(channel != nullptr);
+    CHECK(channel->name == "tone");
+    CHECK(channel->instrument.type == sp::type);
+    CHECK(sp::decodeState(channel->instrument.state) == wav.getFullPathName().toStdString());
+    CHECK(channel->instrument.params[sp::start] == 0.25f);
+    CHECK(channel->instrument.params[sp::end] == 0.75f);
+    const auto channelId = channel->id, instrumentId = channel->instrument.id;
+    const auto live = session->engine().insertInstance(instrumentId);
+    REQUIRE(live != nullptr);
+    const auto sample = sp::currentSample(*live);
+    REQUIRE(sample != nullptr);
+    CHECK(sample->stereo());
+    CHECK(sample->sampleRate == 44100.0);
+    CHECK(sample->frames() == 44100);
+
+    // A note through the MIDI track sounds.
+    prepareDevice(48000.0);
+    engine::MidiEvent on;
+    on.type = engine::MidiEvent::Type::noteOn;
+    on.note = 60;
+    on.velocity = 110;
+    session->engine().pushMidiPreview(on, midi);
+    std::vector<float> l(64), r(64);
+    float* outputs[] = {l.data(), r.data()};
+    float loudest = 0.0f;
+    for (int b = 0; b < 40; ++b)
+    {
+        session->engine().process(nullptr, 0, outputs, 2, 64);
+        for (const float v : l)
+            loudest = std::max(loudest, std::abs(v));
+    }
+    CHECK(loudest > 0.05f);
+
+    // Saved and opened again, the file comes back with it.
+    const auto song = folder.getChildFile("sampler.aural");
+    REQUIRE(session->save(song).empty());
+    REQUIRE(session->open(song).empty());
+    const auto* reopened = session->project().findTrack(channelId);
+    REQUIRE(reopened != nullptr);
+    CHECK(sp::decodeState(reopened->instrument.state) == wav.getFullPathName().toStdString());
+    const auto again = session->engine().insertInstance(instrumentId);
+    REQUIRE(again != nullptr);
+    CHECK(sp::currentSample(*again) != nullptr);
+
+    // Another file through the command, then undo: the first comes back.
+    const auto other = folder.getChildFile("other.wav");
+    REQUIRE(wav.copyFileTo(other));
+    session->execute(std::make_unique<core::SetInsertState>(
+        channelId, instrumentId, sp::encodeState(other.getFullPathName().toStdString()), "Load sample"));
+    CHECK(sp::currentSample(*again)->path == other.getFullPathName().toStdString());
+    session->undo();
+    CHECK(sp::currentSample(*again)->path == wav.getFullPathName().toStdString());
 }

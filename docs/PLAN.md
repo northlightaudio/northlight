@@ -328,7 +328,8 @@ output device on a channel (2026-10-20).
 
 Added 2026-10-21: a built-in Sampler instrument (one sample across the keys,
 loop with crossfade, one-shot, filter, glide; the file kept in the insert's
-state). See architecture.md.
+state). Right-click an audio clip, Open in Sampler, to play it from a new MIDI
+track. See architecture.md.
 
 ### Phase 9 — Automation, stretch, polish (4 weeks)
 

@@ -92,6 +92,8 @@ public:
     // An edit: the commands that make it, as one undo step with this name.
     std::function<void(std::vector<std::unique_ptr<core::Command>>, const std::string&)> onEdit;
     std::function<void(core::Id trackId, core::Id clipId)> onNormalise;
+    // "Open in Sampler" on an audio clip's menu: a new Sampler instrument plays it.
+    std::function<void(core::Id trackId, core::Id clipId)> onOpenInSampler;
     // The playhead position the split key uses (the engine's, not the heard one).
     std::function<core::SamplePosition()> playheadForEdits;
     // Editing keys (the window forwards every key here first). True when handled.
@@ -293,7 +295,8 @@ private:
     juce::Rectangle<int> loopBand() const noexcept; // in the bars row, empty without a region
     bool mediaMissing(const std::string& path);
     void refreshMissingMedia();
-    void trackMenu(core::Id trackId, juce::Point<int> screen);
+    // The track's menu; on an audio clip (clipId) it leads with the clip's items.
+    void trackMenu(core::Id trackId, juce::Point<int> screen, core::Id clipId = core::invalidId);
     void rulerMenu(juce::Point<int> screen);
     void addTrackMenu();
     // FX tracks (buses flagged fx) show as rows under the tracks.

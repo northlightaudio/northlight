@@ -1,6 +1,7 @@
 #pragma once
 
 #include "Bounce.h"
+#include "SampleFiles.h"
 #include "audio/JuceMediaLoader.h"
 #include "audio/PeakStore.h"
 #include "core/Command.h"
@@ -120,6 +121,11 @@ public:
     // A new instrument channel playing `type`, placed under the MIDI track, which
     // is aimed at it (one step). Returns the channel's id, or invalidId.
     core::Id playNewInstrument(core::Id midiTrack, const std::string& type);
+    // A MIDI track playing a new Sampler with the file loaded (its start and end
+    // points at these fractions of the file), as one step; the MIDI track's id.
+    core::Id addSamplerTrack(const juce::File& file, double startFraction = 0.0, double endFraction = 1.0);
+    // The Sampler's decoded files (the insert factory's loader).
+    SampleFiles& sampleFiles() noexcept { return sampleFiles_; }
     // A plugin chosen for a channel (the browser's double-click or drop). An
     // instrument goes to an instrument channel: the one given, or the one the
     // given MIDI track plays (a new one under it when it plays none), or a new
@@ -354,6 +360,7 @@ private:
     audio::AudioDeviceLayer& audio_;
     engine::DiskThread disk_;
     audio::JuceMediaLoader loader_;
+    SampleFiles sampleFiles_; // before the factory that loads through it
     juce::File registryFile_;
     hosting::PluginRegistry registry_;
     hosting::PluginScanner scanner_;
