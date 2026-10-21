@@ -1,4 +1,9 @@
-Bundled typefaces go here. The build copies this folder beside the executable; ui::Theme loads them and falls back to the system faces when they are missing.
+# Fonts
 
-- Inter-Variable.ttf and JetBrainsMono-Variable.ttf: the UI and numeric faces (open licences, see docs/design/design-system.md section 2.2). Not committed; add them locally.
-- Newsreader-Variable.ttf: the display face for the wordmark, the about screen and the website's headings (docs/design/brand.md). Committed, under the SIL Open Font License in Newsreader-OFL.txt. The website copies it with its sync-brand script.
+The build copies this folder beside the executable, and `ui::Theme` loads the fonts
+from there, falling back to system fonts when one is missing.
+
+- **Newsreader** (committed), the display face for the wordmark and headings, under
+  the SIL Open Font License in `Newsreader-OFL.txt`.
+- **Inter** and **JetBrains Mono**, the interface and number faces, are not committed.
+  Add `Inter-Variable.ttf` and `JetBrainsMono-Variable.ttf` here to use them.
