@@ -298,6 +298,41 @@ Noise Snare, Metal Hat, Crunchy Saw.
   and the vibrato over a note's first second. LO-FI: a sine as the bits and rate
   leave it.
 
+## 7.4f Sampler
+
+One sample across the keyboard: root note and key range, Tune and Fine, Glide;
+Loop (forward, with a crossfade into the loop's end) or One-shot (to the end
+point, note-offs ignored); Voices (1-32; the oldest fades out over the limit),
+Velocity, Level; an ADSR on the amplitude; a resonant low-pass whose cutoff the
+envelope moves by Env octaves. Hues: the sample `Teal`, loop `Amber`, keys
+`Mint`, envelope `Sky`, filter `Indigo`.
+
+- Header: "Sampler" in the hue over a small decaying wave; the file's name
+  (`label`; `warning` when it did not load) with its rate, channels and length
+  in `caption` `textTertiary`; the voices sounding with a light; a ghost
+  **Load…** button (a file chooser).
+- SAMPLE tray, full width: the waveform in a well, bright from the start to the
+  end point and at the muted waveform alpha outside; the loop shaded in its hue
+  at 12% with the crossfade as a gradient before its end; a 1 px line per voice
+  sounding (`textPrimary`, fainter while it releases); the length that plays at
+  the top in `value`. Start and end (S, E) are handles on the top edge, the
+  loop's (L) on the bottom edge (shown while Loop is on); drag them, each stays
+  on its side of its partner. Empty, the well reads "Drop an audio file here, or
+  Load one"; a missing file reads its name and the reason in `warning`. Under it
+  a keyboard of all 128 notes in a well: the range lit in the keys' hue, the
+  root solid, C labels; click a key for the root, drag an end of the range.
+- Trays below: PITCH (Root, Low, High as note names; Tune, Fine, Glide), PLAY
+  (Loop fade, Voices, Velocity; Level and the Loop and One-shot pills), ENVELOPE
+  (the curve in a well, times on a gentle log scale; Attack, Decay, Sustain,
+  Release), FILTER (the response in a well, a fainter second curve where the
+  envelope takes the cutoff; Cutoff, Reso, Env).
+- Dropping an audio file on the waveform (from Explorer or the browser's Files
+  tab) loads it as one undo step and resets the start, end and loop points to
+  the whole file; the well outlines in `dropTarget` while a file is over it.
+- From the arrange view: right-click an audio clip, **Open in Sampler**, for a
+  new instrument channel and MIDI track playing that file, its start and end at
+  the part the clip uses.
+
 ## 7.5 States and errors
 
 - Plugin missing on this machine: the chain card shows the name in `textTertiary`

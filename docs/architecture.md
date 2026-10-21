@@ -1037,8 +1037,15 @@ again) and read afresh when the file changed on disk. To make one from audio
 already in the project, right-click an audio clip and choose **Open in Sampler**:
 `ProjectSession::addSamplerTrack` adds an instrument channel named after the file
 and a MIDI track playing it in one undo step, the start and end points set to
-the part of the file the clip uses, and the editor opens. Launch flag:
-`--sampler <file>` (the same with a four-note clip, editor open).
+the part of the file the clip uses, and the editor opens. The editor
+(`ui/strip/SamplerEditor`, 07-plugins.md 7.4f) draws the waveform from the live
+instance's sample (min and max per pixel column, rebuilt when the sample or the
+width changes), drags the points as parameters, shows the sounding voices from
+`sampler::soundingVoices` (positions the audio thread publishes as atomics per
+block) and loads a dropped or chosen file with `SetInsertState` plus the points
+reset, grouped as one gesture. Launch flag: `--sampler <file> [demo]` (the same
+with a four-note clip, editor open; `demo` sets a loop, a key range and the
+filter).
 
 Recording: an armed MIDI track joins the record session (`addMidiTrack`); the
 engine stamps each live event it delivers to that track with its timeline

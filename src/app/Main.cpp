@@ -91,8 +91,9 @@ public:
     //   --midi-track         add a MIDI track (built-in synth) with a short clip
     //   --midi-track-with <type>  the same with the given instrument type instead
     //   --piano-roll         open the piano roll on the first MIDI clip
-    //   --sampler <file>     add a Sampler instrument playing the file (a MIDI track with a
-    //                        short clip) and open its editor
+    //   --sampler <file> [demo]  add a Sampler instrument playing the file (a MIDI track with a
+    //                        short clip) and open its editor; "demo" also sets a loop, a key
+    //                        range and the filter so every display has something to show
     //   --audio-editor [pitch]  open the audio editor on the first audio clip (in pitch mode)
     //   --correct-pitch      once that clip's pitch is analysed, correct it to the key
     //   --mute-breaths       once that clip's pitch is analysed, mute its breaths
@@ -208,9 +209,33 @@ public:
                 for (int n = 0; n < 4; ++n)
                     clip.notes.push_back({core::invalidId, 60 + n * 4, 100, beat * n, beat});
                 session_->execute(std::make_unique<core::AddMidiClip>(midiId, clip));
+                const bool demo = i + 1 < tokens.size() && tokens.getReference(i + 1).text == "demo";
+                if (demo)
+                    ++i;
                 if (const auto* midi = session_->project().findTrack(midiId))
                     if (const auto* channel = session_->project().findTrack(midi->midiTarget))
-                        mainWindow_->openInsertEditor(channel->id, channel->instrument.id);
+                    {
+                        const auto channelId = channel->id, instrumentId = channel->instrument.id;
+                        if (demo)
+                        {
+                            namespace sp = plugins::sampler;
+                            const std::pair<int, float> values[] = {{sp::loop, 1.0f},
+                                                                    {sp::loopStart, 0.3f},
+                                                                    {sp::loopEnd, 0.62f},
+                                                                    {sp::loopFade, 60.0f},
+                                                                    {sp::end, 0.85f},
+                                                                    {sp::keyLow, 36.0f},
+                                                                    {sp::keyHigh, 84.0f},
+                                                                    {sp::cutoff, 2500.0f},
+                                                                    {sp::resonance, 0.4f},
+                                                                    {sp::filterEnv, 2.0f},
+                                                                    {sp::release, 600.0f}};
+                            for (const auto& [index, value] : values)
+                                session_->execute(std::make_unique<core::SetInsertParameter>(
+                                    channelId, instrumentId, index, value));
+                        }
+                        mainWindow_->openInsertEditor(channelId, instrumentId);
+                    }
             }
             else if (arg == "--piano-roll")
             {

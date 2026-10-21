@@ -12,6 +12,7 @@
 #include "ui/strip/Graphs.h"
 #include "ui/strip/NebulaEditor.h"
 #include "ui/strip/PulsarEditor.h"
+#include "ui/strip/SamplerEditor.h"
 #include "ui/strip/StarbitEditor.h"
 #include "ui/strip/StripStyle.h"
 #include "ui/strip/SynthParts.h"
@@ -827,6 +828,8 @@ createBuiltInCard(const Theme& theme, CardHost& host, core::Id channelId, const 
         return createNebulaEditor(theme, host, channelId, insert);
     if (insert.type == "aural.starbit")
         return createStarbitEditor(theme, host, channelId, insert);
+    if (insert.type == "aural.sampler")
+        return createSamplerEditor(theme, host, channelId, insert);
     return nullptr;
 }
 

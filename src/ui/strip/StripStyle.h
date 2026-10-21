@@ -65,6 +65,8 @@ inline juce::Colour moduleColour(const Theme& theme, const std::string& type)
         return paletteColour(theme, "Magenta");
     if (type == "aural.starbit")
         return paletteColour(theme, "Lime");
+    if (type == "aural.sampler")
+        return paletteColour(theme, "Teal");
     return theme.colours.textSecondary;
 }
 
