@@ -9,6 +9,7 @@ add_executable(aural_juce_tests
     HostedPluginTests.cpp
     ClapPluginTests.cpp
     BounceTests.cpp
+    ExportFormatTests.cpp
     ThemeTests.cpp
     KeyboardMapTests.cpp
     ChannelStripUiTests.cpp
@@ -20,7 +21,9 @@ add_executable(aural_juce_tests
     AutosaveTests.cpp
     AutomationWriteTests.cpp
     TemplatesMediaTests.cpp
-    CrashReportTests.cpp)
+    CrashReportTests.cpp
+    MediaBrowserTests.cpp
+    MidiFileTests.cpp)
 
 target_link_libraries(aural_juce_tests PRIVATE
     aural_options

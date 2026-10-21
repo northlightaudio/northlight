@@ -60,4 +60,40 @@ void ClickGenerator::render(core::SamplePosition start,
     }
 }
 
+void ClickGenerator::render(core::SamplePosition start,
+                            int numSamples,
+                            const core::TempoMap& map,
+                            float gain,
+                            float* left,
+                            float* right) noexcept
+{
+    const double sampleRate = map.sampleRate();
+    if (numSamples <= 0 || sampleRate <= 0.0)
+        return;
+    auto beat = map.beatAtOrAfter(static_cast<double>(start));
+    for (int i = 0; i < numSamples; ++i)
+    {
+        const auto position = start + i;
+        while (beat.position <= position)
+        {
+            if (beat.position == position)
+                trigger(beat.beat == 0, sampleRate);
+            const auto next = map.nextBeat(beat);
+            if (next.position <= beat.position)
+                break; // a degenerate map: never spin
+            beat = next;
+        }
+
+        if (remaining_ > 0)
+        {
+            const float envelope = static_cast<float>(remaining_) / static_cast<float>(length_);
+            const float sample = static_cast<float>(std::sin(phase_)) * envelope * envelope * gain;
+            left[i] += sample;
+            right[i] += sample;
+            phase_ += phaseStep_;
+            --remaining_;
+        }
+    }
+}
+
 } // namespace aural::engine

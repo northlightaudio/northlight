@@ -5,16 +5,21 @@
 #include "UserSettings.h"
 #include "audio/AudioDeviceLayer.h"
 #include "core/Command.h"
+#include "core/Comping.h"
 #include "core/ProjectJson.h"
+#include "core/TempoMap.h"
 #include "plugins/BuiltIns.h"
 #include "plugins/ChannelStrip.h"
 #include "plugins/FxTracks.h"
 #include "plugins/StripPresets.h"
 #include "ui/AuralLookAndFeel.h"
+#include "ui/PianoRoll.h"
 #include "ui/PreferencesView.h"
 
+#include <juce_audio_formats/juce_audio_formats.h>
 #include <juce_gui_extra/juce_gui_extra.h>
 
+#include <algorithm>
 #include <cmath>
 #include <functional>
 
@@ -88,13 +93,32 @@ public:
     //   --bus                add a bus
     //   --remove-bus         remove the last bus the way the mixer does
     //   --first-run          show the first-run sheet
+    //   --export             show the export sheet
     //   --midi-track         add a MIDI track (built-in synth) with a short clip
     //   --midi-track-with <type>  the same with the given instrument type instead
     //   --piano-roll         open the piano roll on the first MIDI clip
+    //   --sampler <file> [demo]  add a Sampler instrument playing the file (a MIDI track with a
+    //                        short clip) and open its editor; "demo" also sets a loop, a key
+    //                        range and the filter so every display has something to show
+    //   --import-midi <file> import a Standard MIDI File at the start (new instrument tracks)
+    //   --export-midi <file> write every MIDI clip to a Standard MIDI File (after the flags
+    //                        before it have run)
+    //   --key <root> [minor] set the project key: root a pitch class 0 (C)..11 (B), major
+    //                        unless "minor" follows
+    //   --cc-lane <lane>     the same, showing a controller lane (bend, mod, expression,
+    //                        sustain, pressure, cc<n>); a clip with no events in it gets a
+    //                        demonstration curve first
     //   --audio-editor [pitch]  open the audio editor on the first audio clip (in pitch mode)
     //   --correct-pitch      once that clip's pitch is analysed, correct it to the key
     //   --mute-breaths       once that clip's pitch is analysed, mute its breaths
+    //   --browser-files [folder]  show the Browser panel's Files tab (at the folder)
     //   --automation         add a volume lane to the first track and show it in the arrange view
+    //   --tempo-demo         a tempo track with a change, a ramp and a 3/4 bar, shown
+    //   --freeze <n>         freeze track n (1-based) in the background
+    //   --folder <n> <m>     put tracks n..m (1-based) in a new folder track
+    //   --stretch <factor> [semitones]  stretch (and transpose) the first audio clip
+    //   --takes-demo <files> a "Vocal" track with the files as takes in one take group, comped
+    //                        from each in turn, its take lanes expanded
     //   --master-gain <dB>   set the master fader (-120 = silent: an unattended check that
     //                        should not be heard; pre-fader displays still move)
     //   --fx-track <reverb|delay|empty>  add an FX track with a send from every track
@@ -103,6 +127,48 @@ public:
     //                        Editor panel: a comma list of gate, eq, compressor, deesser,
     //                        saturation, limiter, or all; "demo" also sets values that give
     //                        every display something to show
+    // --cc-lane: the first MIDI clip in the piano roll with the lane showing; a
+    // clip with nothing in that lane gets a curve (a swell, or a bend up and back).
+    void showControllerLane(const juce::String& key)
+    {
+        const auto lane = ui::PianoRoll::laneForKey(key);
+        for (const auto& track : session_->project().tracks)
+        {
+            if (track.midiClips.empty())
+                continue;
+            const auto& clip = track.midiClips.front();
+            const bool empty = std::none_of(clip.controllers.begin(),
+                                            clip.controllers.end(),
+                                            [&](const core::MidiControllerEvent& e)
+                                            { return e.sameLane(lane.type, lane.number); });
+            if (!lane.velocity && empty && clip.length > 0)
+            {
+                std::vector<core::MidiControllerEvent> curve;
+                const int steps = 32;
+                const int low = core::midiControllerMinimum(lane.type),
+                          high = core::midiControllerMaximum(lane.type);
+                for (int s = 0; s < steps; ++s)
+                {
+                    const double t = static_cast<double>(s) / steps;
+                    const double shape = lane.type == core::MidiControllerType::pitchBend
+                                             ? std::sin(t * 2.0 * 3.14159265358979) * 0.5 + 0.5
+                                             : t;
+                    curve.push_back(
+                        {core::invalidId,
+                         lane.type,
+                         lane.number,
+                         low + static_cast<int>(std::lround(shape * (high - low))),
+                         static_cast<core::SamplePosition>(t * static_cast<double>(clip.length))});
+                }
+                session_->execute(std::make_unique<core::EditMidiControllers>(
+                    track.id, clip.id, std::move(curve), std::vector<core::Id>{}, "Draw controller"));
+            }
+            mainWindow_->openPianoRoll(track.id, clip.id);
+            mainWindow_->setPianoRollLane(key);
+            return;
+        }
+    }
+
     // Runs `action` once the first audio clip has a vocal edit (its analysis is in),
     // checking twice a second up to `tries` times.
     void whenVocalReady(std::function<void()> action, int tries)
@@ -180,10 +246,7 @@ public:
                                       ? tokens.getReference(++i).text.unquoted().toStdString()
                                       : std::string{};
                 const auto trackId = session_->addMidiTrack(type);
-                const auto beat = static_cast<core::SamplePosition>(
-                    core::samplesPerBeat(session_->project().sampleRate,
-                                         session_->project().tempoBpm,
-                                         session_->project().timeSignature));
+                const auto beat = core::tempoMapOf(session_->project()).positionAt(1.0);
                 core::MidiClip clip;
                 clip.name = "Riff";
                 clip.start = 0;
@@ -191,6 +254,48 @@ public:
                 for (int n = 0; n < 4; ++n)
                     clip.notes.push_back({core::invalidId, 60 + n * 2, 100, beat * n, beat / 2});
                 session_->execute(std::make_unique<core::AddMidiClip>(trackId, clip));
+            }
+            else if (arg == "--sampler" && i + 1 < tokens.size())
+            {
+                const auto file = tokens.getReference(++i).resolveAsFile();
+                const auto midiId = session_->addSamplerTrack(file);
+                const auto beat = static_cast<core::SamplePosition>(
+                    core::samplesPerBeat(session_->project().sampleRate,
+                                         session_->project().tempoBpm,
+                                         session_->project().timeSignature));
+                core::MidiClip clip;
+                clip.name = "Sampler";
+                clip.length = beat * 4;
+                for (int n = 0; n < 4; ++n)
+                    clip.notes.push_back({core::invalidId, 60 + n * 4, 100, beat * n, beat});
+                session_->execute(std::make_unique<core::AddMidiClip>(midiId, clip));
+                const bool demo = i + 1 < tokens.size() && tokens.getReference(i + 1).text == "demo";
+                if (demo)
+                    ++i;
+                if (const auto* midi = session_->project().findTrack(midiId))
+                    if (const auto* channel = session_->project().findTrack(midi->midiTarget))
+                    {
+                        const auto channelId = channel->id, instrumentId = channel->instrument.id;
+                        if (demo)
+                        {
+                            namespace sp = plugins::sampler;
+                            const std::pair<int, float> values[] = {{sp::loop, 1.0f},
+                                                                    {sp::loopStart, 0.3f},
+                                                                    {sp::loopEnd, 0.62f},
+                                                                    {sp::loopFade, 60.0f},
+                                                                    {sp::end, 0.85f},
+                                                                    {sp::keyLow, 36.0f},
+                                                                    {sp::keyHigh, 84.0f},
+                                                                    {sp::cutoff, 2500.0f},
+                                                                    {sp::resonance, 0.4f},
+                                                                    {sp::filterEnv, 2.0f},
+                                                                    {sp::release, 600.0f}};
+                            for (const auto& [index, value] : values)
+                                session_->execute(std::make_unique<core::SetInsertParameter>(
+                                    channelId, instrumentId, index, value));
+                        }
+                        mainWindow_->openInsertEditor(channelId, instrumentId);
+                    }
             }
             else if (arg == "--piano-roll")
             {
@@ -202,6 +307,35 @@ public:
                         break;
                     }
             }
+            else if (arg == "--import-midi" && i + 1 < tokens.size())
+            {
+                const auto file = tokens.getReference(++i).resolveAsFile();
+                if (const auto error = session_->importMidiFile(file, 0); !error.empty())
+                    mainWindow_->notify(juce::String::fromUTF8(error.c_str()), true);
+            }
+            else if (arg == "--export-midi" && i + 1 < tokens.size())
+            {
+                std::vector<std::pair<core::Id, core::Id>> clips;
+                for (const auto& track : session_->project().tracks)
+                    for (const auto& clip : track.midiClips)
+                        clips.emplace_back(track.id, clip.id);
+                const auto file = tokens.getReference(++i).resolveAsFile();
+                if (const auto error = session_->exportMidiFile(file, clips); !error.empty())
+                    mainWindow_->notify(juce::String::fromUTF8(error.c_str()), true);
+            }
+            else if (arg == "--key" && i + 1 < tokens.size())
+            {
+                core::MusicalKey key;
+                key.root = std::clamp(tokens.getReference(++i).text.getIntValue(), 0, 11);
+                if (i + 1 < tokens.size() && tokens.getReference(i + 1).text == "minor")
+                {
+                    key.scale = core::ScaleKind::minor;
+                    ++i;
+                }
+                session_->execute(std::make_unique<core::SetProjectKey>(key));
+            }
+            else if (arg == "--cc-lane" && i + 1 < tokens.size())
+                showControllerLane(tokens.getReference(++i).text.unquoted());
             else if (arg == "--audio-editor")
             {
                 const bool pitch = i + 1 < tokens.size() && tokens.getReference(i + 1).text == "pitch";
@@ -224,6 +358,51 @@ public:
                 const float db = tokens.getReference(++i).text.getFloatValue();
                 session_->execute(std::make_unique<core::SetMasterGain>(
                     db <= -120.0f ? 0.0f : std::pow(10.0f, db / 20.0f)));
+            }
+            else if (arg == "--takes-demo")
+            {
+                // A track whose take group holds the files that follow as takes (all
+                // from zero), comped from each of them in turn, its lanes expanded.
+                std::vector<core::AudioClip> passes;
+                juce::AudioFormatManager formats;
+                formats.registerBasicFormats();
+                const double rate = session_->project().sampleRate;
+                while (i + 1 < tokens.size() && !tokens.getReference(i + 1).text.startsWith("--"))
+                {
+                    const auto file = tokens.getReference(++i).resolveAsFile();
+                    std::unique_ptr<juce::AudioFormatReader> reader(formats.createReaderFor(file));
+                    if (reader == nullptr || reader->sampleRate <= 0.0)
+                        continue;
+                    core::AudioClip clip;
+                    clip.mediaPath = file.getFullPathName().toStdString();
+                    clip.length = static_cast<core::SamplePosition>(
+                        static_cast<double>(reader->lengthInSamples) * rate / reader->sampleRate);
+                    passes.push_back(std::move(clip));
+                }
+                if (!passes.empty())
+                {
+                    core::Track track;
+                    track.name = "Vocal";
+                    session_->execute(std::make_unique<core::AddTrack>(track));
+                    const auto trackId = session_->project().tracks.back().id;
+                    const auto length = passes.front().length;
+                    session_->execute(std::make_unique<core::RecordTakes>(trackId, passes));
+                    const auto& group = session_->project().tracks.back().takeGroups.front();
+                    const auto groupId = group.id;
+                    std::vector<core::Id> takes;
+                    for (const auto& take : group.takes)
+                        takes.push_back(take.id());
+                    for (size_t k = 0; k + 1 < takes.size(); ++k)
+                        session_->execute(std::make_unique<core::SelectTake>(
+                            trackId,
+                            groupId,
+                            takes[k],
+                            length * static_cast<core::SamplePosition>(k + 1) /
+                                static_cast<core::SamplePosition>(takes.size() + 1),
+                            length * static_cast<core::SamplePosition>(k + 2) /
+                                static_cast<core::SamplePosition>(takes.size() + 1)));
+                    session_->execute(std::make_unique<core::SetTakeLanesExpanded>(trackId, groupId, true));
+                }
             }
             else if (arg == "--automation")
             {
@@ -276,6 +455,55 @@ public:
                 mainWindow_->removeLastBus();
             else if (arg == "--mixer")
                 mainWindow_->showMixer();
+            else if (arg == "--freeze" && i + 1 < tokens.size())
+            {
+                const int n = tokens.getReference(++i).text.getIntValue() - 1;
+                if (n >= 0 && n < static_cast<int>(session_->project().tracks.size()))
+                    if (const auto error =
+                            session_->freezeTrack(session_->project().tracks[static_cast<size_t>(n)].id);
+                        !error.empty())
+                        juce::Logger::writeToLog("--freeze: " + juce::String(error));
+            }
+            else if (arg == "--folder" && i + 2 < tokens.size())
+            {
+                const int from = tokens.getReference(++i).text.getIntValue() - 1;
+                const int to = tokens.getReference(++i).text.getIntValue() - 1;
+                std::vector<core::Id> members;
+                for (int t = std::max(0, from);
+                     t <= to && t < static_cast<int>(session_->project().tracks.size());
+                     ++t)
+                    members.push_back(session_->project().tracks[static_cast<size_t>(t)].id);
+                session_->execute(std::make_unique<core::AddFolderTrack>("Folder", members));
+            }
+            else if (arg == "--tempo-demo")
+            {
+                core::TempoState state = core::TempoState::of(session_->project());
+                state.tempoChanges = {{16.0, 140.0, false}, {32.0, 90.0, true}};
+                state.meterChanges = {{10, {3, 4}}, {12, {4, 4}}};
+                session_->execute(std::make_unique<core::SetTempoMap>(state));
+                mainWindow_->showTempoTrack();
+            }
+            else if (arg == "--stretch" && i + 1 < tokens.size())
+            {
+                const double factor = tokens.getReference(++i).text.getDoubleValue();
+                double semitones = 0.0;
+                if (i + 1 < tokens.size() && !tokens.getReference(i + 1).text.startsWith("--"))
+                    semitones = tokens.getReference(++i).text.getDoubleValue();
+                for (const auto& track : session_->project().tracks)
+                    if (!track.clips.empty() && factor > 0.0)
+                    {
+                        const auto& clip = track.clips.front();
+                        session_->execute(std::make_unique<core::SetClipStretch>(
+                            track.id,
+                            clip.id,
+                            clip.stretch * factor,
+                            semitones,
+                            static_cast<core::SamplePosition>(
+                                std::llround(static_cast<double>(clip.length) * factor)),
+                            false));
+                        break;
+                    }
+            }
             else if (arg == "--layout" && i + 1 < tokens.size())
                 mainWindow_->applyLayoutPreset(tokens.getReference(++i).text.unquoted());
             else if (arg == "--panel" && i + 1 < tokens.size())
@@ -296,6 +524,8 @@ public:
                 mainWindow_->runStripDragBenchmark(tokens.getReference(++i).text.getIntValue());
             else if (arg == "--benchmark-ui" && i + 1 < tokens.size())
                 mainWindow_->runBenchmark(tokens.getReference(++i).text.getIntValue());
+            else if (arg == "--export")
+                mainWindow_->showExport();
             else if (arg == "--preferences")
                 mainWindow_->showPreferences(i + 1 < tokens.size() && !tokens[i + 1].text.startsWith("--")
                                                  ? tokens.getReference(++i).text.unquoted()
@@ -352,6 +582,10 @@ public:
                 session_->scanPlugins(true);
             else if (arg == "--plugins")
                 mainWindow_->showPluginBrowser();
+            else if (arg == "--browser-files")
+                mainWindow_->showFilesBrowser(i + 1 < tokens.size() && !tokens[i + 1].text.startsWith("--")
+                                                  ? tokens.getReference(++i).resolveAsFile()
+                                                  : juce::File());
             else if (arg == "--marker" && i + 1 < tokens.size())
             {
                 core::Marker marker;

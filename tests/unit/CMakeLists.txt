@@ -7,6 +7,9 @@ add_executable(aural_unit_tests
     core/ModelTests.cpp
     core/CommandTests.cpp
     core/ProjectJsonTests.cpp
+    core/TempoMapTests.cpp
+    core/FolderTests.cpp
+    core/CompingTests.cpp
     engine/RtPrimitivesTests.cpp
     engine/EngineTests.cpp
     engine/StreamingTests.cpp
@@ -15,6 +18,7 @@ add_executable(aural_unit_tests
     engine/WorkerPoolTests.cpp
     engine/RecordingTests.cpp
     engine/ClickTests.cpp
+    engine/PreviewTests.cpp
     engine/StressTests.cpp
     engine/ResamplingTests.cpp
     engine/TakeTests.cpp
@@ -23,18 +27,24 @@ add_executable(aural_unit_tests
     plugins/ChannelStripTests.cpp
     plugins/StripBenchTests.cpp
     plugins/SynthFingerprintTests.cpp
+    plugins/ExpressionTests.cpp
     plugins/StarbitSpectrumProbe.cpp
     plugins/BeatSyncTests.cpp
+    plugins/SamplerTests.cpp
     engine/LoudnessTests.cpp
+    engine/ExportTests.cpp
     engine/WriterTests.cpp
     engine/DelayCompTests.cpp
     engine/SidechainTests.cpp
     engine/FadeTests.cpp
+    engine/CompTests.cpp
     engine/InsertChainTests.cpp
     engine/MidiTests.cpp
     engine/AutomationTests.cpp
     engine/FxTrackTests.cpp
     engine/PitchTests.cpp
+    engine/StretchTests.cpp
+    engine/FreezeTests.cpp
     hosting/PluginRegistryTests.cpp
     ui/SelectionTests.cpp
     ui/ClipOpsTests.cpp)

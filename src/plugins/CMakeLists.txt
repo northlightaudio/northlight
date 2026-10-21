@@ -13,6 +13,8 @@ add_library(aural_plugins STATIC
     Nebula.cpp
     Starbit.h
     Starbit.cpp
+    Sampler.h
+    Sampler.cpp
     Biquad.h
     ProcessorBase.h
     ChannelStrip.h

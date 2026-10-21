@@ -138,6 +138,79 @@ void Track::sortClips()
         clips.begin(), clips.end(), [](const AudioClip& a, const AudioClip& b) { return a.start < b.start; });
 }
 
+SamplePosition TakeGroup::start() const noexcept
+{
+    if (takes.empty())
+        return 0;
+    SamplePosition s = takes.front().clip.start;
+    for (const auto& t : takes)
+        s = std::min(s, t.clip.start);
+    return s;
+}
+
+SamplePosition TakeGroup::end() const noexcept
+{
+    SamplePosition e = 0;
+    for (const auto& t : takes)
+        e = std::max(e, t.clip.end());
+    return e;
+}
+
+Take* TakeGroup::findTake(Id takeId) noexcept
+{
+    for (auto& t : takes)
+        if (t.id() == takeId)
+            return &t;
+    return nullptr;
+}
+
+const Take* TakeGroup::findTake(Id takeId) const noexcept
+{
+    return const_cast<TakeGroup*>(this)->findTake(takeId);
+}
+
+int TakeGroup::takeIndex(Id takeId) const noexcept
+{
+    for (size_t i = 0; i < takes.size(); ++i)
+        if (takes[i].id() == takeId)
+            return static_cast<int>(i);
+    return -1;
+}
+
+bool TakeGroup::ownsClip(Id clipId) const noexcept
+{
+    return std::find(clips.begin(), clips.end(), clipId) != clips.end();
+}
+
+TakeGroup* Track::findTakeGroup(Id groupId) noexcept
+{
+    for (auto& g : takeGroups)
+        if (g.id == groupId)
+            return &g;
+    return nullptr;
+}
+
+const TakeGroup* Track::findTakeGroup(Id groupId) const noexcept
+{
+    return const_cast<Track*>(this)->findTakeGroup(groupId);
+}
+
+const TakeGroup* Track::takeGroupOwning(Id clipId) const noexcept
+{
+    for (const auto& g : takeGroups)
+        if (g.ownsClip(clipId))
+            return &g;
+    return nullptr;
+}
+
+AudioClip* Track::findTakeClip(Id takeId) noexcept
+{
+    for (auto& g : takeGroups)
+        if (auto* t = g.findTake(takeId))
+            return &t->clip;
+    return nullptr;
+}
+
 Track* Project::findTrack(Id trackId) noexcept
 {
     for (auto& t : tracks)
@@ -220,6 +293,30 @@ void MidiClip::sortNotes()
 {
     std::stable_sort(
         notes.begin(), notes.end(), [](const MidiNote& a, const MidiNote& b) { return a.start < b.start; });
+}
+
+MidiControllerEvent* MidiClip::findController(Id eventId) noexcept
+{
+    for (auto& e : controllers)
+        if (e.id == eventId)
+            return &e;
+    return nullptr;
+}
+
+const MidiControllerEvent* MidiClip::findController(Id eventId) const noexcept
+{
+    for (const auto& e : controllers)
+        if (e.id == eventId)
+            return &e;
+    return nullptr;
+}
+
+void MidiClip::sortControllers()
+{
+    std::stable_sort(controllers.begin(),
+                     controllers.end(),
+                     [](const MidiControllerEvent& a, const MidiControllerEvent& b)
+                     { return a.time < b.time; });
 }
 
 MidiClip* Track::findMidiClip(Id clipId) noexcept
@@ -405,6 +502,104 @@ bool Project::wouldCycle(Id channelId, Id busId) const noexcept
         return true;
     // Only a bus can be on a cycle: a track has no inputs.
     return findBus(channelId) != nullptr && busReaches(busId, channelId);
+}
+
+namespace
+{
+constexpr int maxFolderDepth = 32; // a cycle in a hand-edited file ends here
+} // namespace
+
+const Track* Project::folderOf(const Track& track) const noexcept
+{
+    if (track.folder == invalidId || track.folder == track.id)
+        return nullptr;
+    const auto* folder = findTrack(track.folder);
+    return folder != nullptr && folder->isFolder() ? folder : nullptr;
+}
+
+int Project::folderDepth(const Track& track) const noexcept
+{
+    int depth = 0;
+    for (const auto* f = folderOf(track); f != nullptr && depth < maxFolderDepth; f = folderOf(*f))
+        ++depth;
+    return depth;
+}
+
+bool Project::hiddenByFolder(const Track& track) const noexcept
+{
+    int depth = 0;
+    for (const auto* f = folderOf(track); f != nullptr && depth < maxFolderDepth; f = folderOf(*f), ++depth)
+        if (!f->folderOpen)
+            return true;
+    return false;
+}
+
+bool Project::mutedByFolder(const Track& track) const noexcept
+{
+    int depth = 0;
+    for (const auto* f = folderOf(track); f != nullptr && depth < maxFolderDepth; f = folderOf(*f), ++depth)
+        if (f->mute)
+            return true;
+    return false;
+}
+
+bool Project::soloedByFolder(const Track& track) const noexcept
+{
+    int depth = 0;
+    for (const auto* f = folderOf(track); f != nullptr && depth < maxFolderDepth; f = folderOf(*f), ++depth)
+        if (f->solo)
+            return true;
+    return false;
+}
+
+bool Project::insideFolder(Id trackId, Id folderId) const noexcept
+{
+    const auto* t = findTrack(trackId);
+    int depth = 0;
+    for (; t != nullptr && depth <= maxFolderDepth; t = folderOf(*t), ++depth)
+        if (t->id == folderId)
+            return true;
+    return false;
+}
+
+Project freezeRenderProject(const Project& project, Id trackId)
+{
+    Project copy = project;
+    const auto dropFader = [](Channel& c)
+    {
+        std::erase_if(
+            c.automation,
+            [](const AutomationLane& lane)
+            { return lane.target == AutomationTarget::gain || lane.target == AutomationTarget::pan; });
+        c.sends.clear();
+        c.solo = false;
+        c.group = invalidId;
+    };
+    for (auto& t : copy.tracks)
+    {
+        dropFader(t);
+        if (t.id == trackId)
+        {
+            t.gain = 1.0f;
+            t.pan = 0.0f;
+            t.mute = false;
+            t.outputBus = invalidId;
+            t.frozenMedia.clear();
+        }
+        else if (t.isMidi() && t.midiTarget == trackId)
+            continue; // its notes play the frozen instrument
+        else if (t.isFolder())
+            t.mute = false;
+        else
+            t.gain = 0.0f;
+    }
+    for (auto& b : copy.buses)
+    {
+        dropFader(b);
+        b.gain = 0.0f;
+    }
+    copy.master.gain = 1.0f;
+    return copy;
 }
 
 SamplePosition Project::length() const noexcept

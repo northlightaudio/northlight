@@ -3,9 +3,13 @@
 add_library(aural_core STATIC
     Model.h
     Model.cpp
+    TempoMap.h
+    TempoMap.cpp
     Vocal.h
     Command.h
     Command.cpp
+    Comping.h
+    Comping.cpp
     ProjectJson.h
     ProjectJson.cpp)
 

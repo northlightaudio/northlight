@@ -62,9 +62,22 @@ struct MasterRuntime
 // thread only (the track's own render job).
 struct MidiRuntime
 {
+    static constexpr std::int16_t unknown = INT16_MIN;
     std::uint8_t held[128]{};          // 1 while sounding
     core::SamplePosition lastEnd = -1; // where the previous playing span ended
     bool wasPlaying = false;
+    // The last value sent of each chased controller (engine chaseKey order:
+    // control changes, pitch bend, channel pressure), `unknown` before any.
+    std::int16_t sent[130];
+    // Scratch for a chase (real-time; no allocation): the value found per key.
+    std::int16_t chased[130]{};
+    std::uint8_t found[130]{};
+
+    MidiRuntime() noexcept
+    {
+        for (auto& s : sent)
+            s = unknown;
+    }
 };
 
 // A channel's work buffers for one span (output, dry copy, delayed copy, a

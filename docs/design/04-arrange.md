@@ -59,6 +59,46 @@ Where the recording and the arrangement live. It must stay legible with 4 tracks
 - Zoom: Ctrl+wheel over ruler or lanes zooms around the pointer; drag the ruler
   vertically to zoom (Logic style); "Z" zooms to fit, Shift+Z to the selection.
 
+## Folder tracks and frozen tracks
+
+- A folder track's header shows its number, a disclosure (▾ open, ▸ closed) before
+  its name, and M and S, which act on every track it holds. Its lane reads "5
+  tracks" in `caption` `textTertiary` over its tracks' clips drawn as thin bars,
+  one row per track (at most eight), in each track's colour (30% when muted).
+- Tracks inside a folder indent their header 12 px per level. A closed folder's
+  tracks take no height.
+- Add a folder from the "+" menu (it takes the selected track) or a track's menu
+  (Folder: a new folder holding it, or move it into a folder or out of one).
+- A frozen track's name carries a snowflake and its lane is veiled (canvas at 45%)
+  with "❄ FROZEN" in `captionCaps` `info`. Freeze and unfreeze from the track's
+  menu; the status bar shows "Freezing 40%" while the render runs and a toast says
+  when it is done.
+
+## Tempo track
+
+A 52 px lane under the ruler, shown from the ruler's menu ("Show tempo track"; kept
+per user). The header column reads "TEMPO" in `captionCaps` `textTertiary` and the
+tempo and signature at the playhead in `caption` `textSecondary`.
+
+- The tempo as a curve in `automation` (1.5 px) over a 12% fill, flat between
+  changes and gliding over ramps; the lane's vertical range follows the tempos in
+  use with 30% headroom.
+- A handle (4 px radius, `automation`, `selectionOutline` when selected) at the
+  song's start and at each change, with its tempo in `caption` `rulerText` beside
+  it where there is room ("90 ramp" for a change ramped into).
+- Time signatures as `markerFlag` tags along the lane's top edge at their bars.
+- Drag a handle up or down to set its tempo (Shift: a tenth as fast); drag a
+  change sideways to move it, snapped to the grid of the tempo before it (Alt: no
+  snap). Double-click the lane to add a change; double-click a handle to type a
+  tempo. Right-click: a handle (set tempo, ramp from the previous tempo, delete),
+  the lane (add a tempo change, a signature from the bar under the pointer, hide
+  the lane) or a signature tag (change or remove it). Delete removes the
+  selected change.
+- **Decision:** tempo and signature changes sit at musical positions (quarter notes
+  and bars), and a tempo edit keeps MIDI clips and notes, markers, automation and
+  audio clips that follow the tempo on their bars and beats. Other audio clips stay
+  at their time, as recorded audio should.
+
 ## Track header
 
 Rows at `trackRow` 56 default. Contents, left to right, inside `space.sm` padding:
@@ -137,13 +177,22 @@ Rows at `trackRow` 56 default. Contents, left to right, inside `space.sm` paddin
   pointer, snapped; a 1 px `snapGuide` vertical line marks the snap target through
   all lanes; a tooltip shows the new start in bars.beats and the delta.
 - Trim drag: the clip edge follows; the waveform does not move (source stays put);
-  tooltip shows the new length. Alt trims the content inside the clip instead.
+  tooltip shows the new length.
+- Stretch drag: Alt+drag of the right edge stretches the clip to the new end
+  (snapped to the grid); the waveform stretches with it and the tooltip shows the
+  playing speed. The header shows a stretched clip's speed ("66.7%"), its
+  transposition ("+3.0 st"), a note for a clip that follows the tempo, and
+  "stretching 40%" while its render is not finished. Right-click a clip for
+  "Stretch to project tempo...", "Follow tempo changes", Transpose and "Reset
+  stretch and pitch".
 - Split: a thin `accent` line follows the pointer in split mode (S key or tool) and
   clicking splits at the snapped position.
 - Recording clip: a growing clip in `record` at 22% body, with the live waveform
   appended from the recording peaks, header "● Recording".
-- Takes: stacked clips on the lane, each with a badge; the top one is audible. Lanes
-  do not expand in v1 (**Decision**: take lanes as rows are a post-v1 feature).
+- Takes: a take group's comp plays on the lane as clips with a take badge each; the
+  takes expand into lanes under the row for swipe comping (14-comping.md, which
+  replaces the earlier decision to keep take lanes past v1). Older projects'
+  stacked clips stay stacked, the top one audible.
 
 ## FX tracks
 

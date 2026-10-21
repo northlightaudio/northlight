@@ -1,5 +1,6 @@
 #include "ui/AudioEditor.h"
 
+#include "core/TempoMap.h"
 #include "engine/pitch/VocalOps.h"
 #include "engine/pitch/VocalRender.h"
 #include "ui/AuralLookAndFeel.h"
@@ -715,25 +716,34 @@ void AudioEditor::paintRuler(juce::Graphics& g)
     const auto* cl = clip();
     if (cl == nullptr || project_ == nullptr)
         return;
-    const auto step = core::gridSamples(
-        project_->sampleRate, project_->tempoBpm, project_->timeSignature, samplesPerPixel_, 48);
-    const double beat =
-        core::samplesPerBeat(project_->sampleRate, project_->tempoBpm, project_->timeSignature);
-    const int beatsPerBar = std::max(1, project_->timeSignature.numerator);
+    // The song's bars over the clip's source (a stretched clip's source runs at
+    // its stretch against the timeline).
+    const auto map = core::tempoMapOf(*project_);
     const auto toTimeline = [cl](double source)
-    { return static_cast<core::SamplePosition>(source) - cl->sourceOffset + cl->start; };
-    const auto first = toTimeline(scroll_);
-    const auto last = toTimeline(static_cast<double>(sourceForX(static_cast<float>(ruler.getRight()))));
-    g.setFont(theme_.caption());
-    for (auto t = core::snapToGrid(std::max<core::SamplePosition>(0, first - step), step); t <= last;
-         t += step)
     {
-        const float x = xForSource(static_cast<double>(t - cl->start + cl->sourceOffset));
+        return cl->start + static_cast<core::SamplePosition>(
+                               std::llround((source - static_cast<double>(cl->sourceOffset)) * cl->stretch));
+    };
+    const auto toSource = [cl](core::SamplePosition t)
+    { return static_cast<double>(cl->sourceOffset) + static_cast<double>(t - cl->start) / cl->stretch; };
+    const auto first = std::max<core::SamplePosition>(0, toTimeline(scroll_));
+    const auto last = toTimeline(static_cast<double>(sourceForX(static_cast<float>(ruler.getRight()))));
+    const auto step = map.adaptiveStep(samplesPerPixel_ * cl->stretch, 48, first);
+    g.setFont(theme_.caption());
+    auto next = map.snap(first, step);
+    for (int guard = 0; next <= last && guard < 100000; ++guard)
+    {
+        const auto t = next;
+        next = std::max(t + 1, map.snap(map.move(t, step, 1), step));
+        const float x = xForSource(toSource(t));
         if (x < ruler.getX())
             continue;
-        const double beats = static_cast<double>(t) / beat;
-        const bool onBeat = std::abs(beats - std::round(beats)) < 1.0e-6;
-        const bool onBar = onBeat && (std::llround(beats) % beatsPerBar) == 0;
+        const double q = map.quartersAt(static_cast<double>(t));
+        const int barIndex = map.barAtQuarter(q + 1.0e-6);
+        const double beats =
+            (q - map.barStartQuarter(barIndex)) / core::TempoMap::quartersPerBeat(map.signatureAt(t));
+        const bool onBeat = std::abs(beats - std::round(beats)) < 1.0e-4;
+        const bool onBar = onBeat && std::llround(beats) == 0;
         g.setColour(onBar ? c.gridBar : c.gridBeat);
         g.fillRect(static_cast<int>(x),
                    onBar ? ruler.getY() + 4 : ruler.getBottom() - 6,
@@ -742,7 +752,7 @@ void AudioEditor::paintRuler(juce::Graphics& g)
         if (onBar)
         {
             g.setColour(c.rulerText);
-            g.drawText(juce::String(std::llround(beats) / beatsPerBar + 1),
+            g.drawText(juce::String(barIndex + 1),
                        static_cast<int>(x) + 3,
                        ruler.getY(),
                        40,
@@ -1073,21 +1083,29 @@ void AudioEditor::paintPitch(juce::Graphics& g)
     // Beat lines.
     if (cl != nullptr && project_ != nullptr)
     {
-        const auto step = core::gridSamples(
-            project_->sampleRate, project_->tempoBpm, project_->timeSignature, samplesPerPixel_, 48);
-        const auto first = static_cast<core::SamplePosition>(scroll_) - cl->sourceOffset + cl->start;
-        const auto last = sourceForX(static_cast<float>(grid.getRight())) - cl->sourceOffset + cl->start;
-        g.setColour(c.gridSub);
-        for (auto t = core::snapToGrid(std::max<core::SamplePosition>(0, first - step), step); t <= last;
-             t += step)
+        const auto map = core::tempoMapOf(*project_);
+        const auto toTimeline = [cl](double source)
         {
-            const float x = xForSource(static_cast<double>(t - cl->start + cl->sourceOffset));
+            return cl->start + static_cast<core::SamplePosition>(std::llround(
+                                   (source - static_cast<double>(cl->sourceOffset)) * cl->stretch));
+        };
+        const auto first = std::max<core::SamplePosition>(0, toTimeline(scroll_));
+        const auto last = toTimeline(static_cast<double>(sourceForX(static_cast<float>(grid.getRight()))));
+        const auto step = map.adaptiveStep(samplesPerPixel_ * cl->stretch, 48, first);
+        g.setColour(c.gridSub);
+        auto next = map.snap(first, step);
+        for (int guard = 0; next <= last && guard < 100000; ++guard)
+        {
+            const auto t = next;
+            next = std::max(t + 1, map.snap(map.move(t, step, 1), step));
+            const float x = xForSource(static_cast<double>(cl->sourceOffset) +
+                                       static_cast<double>(t - cl->start) / cl->stretch);
             if (x >= grid.getX())
                 g.fillRect(x, static_cast<float>(grid.getY()), 1.0f, static_cast<float>(grid.getHeight()));
         }
         // Outside the clip.
         const float x0 = xForSource(static_cast<double>(cl->sourceOffset));
-        const float x1 = xForSource(static_cast<double>(cl->sourceOffset + cl->length));
+        const float x1 = xForSource(static_cast<double>(cl->sourceOffset + cl->sourceLength()));
         g.setColour(c.canvas.withAlpha(0.6f));
         if (x0 > grid.getX())
             g.fillRect(juce::Rectangle<float>(static_cast<float>(grid.getX()),

@@ -1,12 +1,15 @@
 #pragma once
 
 #include "Bounce.h"
+#include "SampleFiles.h"
 #include "audio/JuceMediaLoader.h"
 #include "audio/PeakStore.h"
 #include "core/Command.h"
 #include "core/Model.h"
 #include "engine/AudioEngine.h"
 #include "engine/DiskThread.h"
+#include "engine/Stretch.h"
+#include "engine/TempoDetect.h"
 #include "engine/pitch/VocalService.h"
 #include "hosting/HostFactory.h"
 #include "hosting/PluginRegistry.h"
@@ -46,6 +49,13 @@ public:
     audio::JuceMediaLoader& mediaLoader() noexcept { return loader_; }
     // Vocal pitch editing: analyses, and the renders the engine plays.
     engine::VocalService& vocal() noexcept { return vocal_; }
+    engine::StretchService& stretch() noexcept { return stretch_; }
+    // Guesses the tempo of a clip's media (its name, beats and length), for
+    // stretching it to the project's tempo. 0 when nothing could be guessed.
+    engine::TempoGuess guessClipTempo(core::Id trackId, core::Id clipId);
+    // Stretches a clip so it plays at the project's tempo, given the tempo it was
+    // recorded at, and makes it follow tempo changes from now on.
+    void conformClipTempo(core::Id trackId, core::Id clipId, double sourceBpm);
     const hosting::HostFactory& insertFactory() const noexcept { return inserts_; }
     const hosting::PluginRegistry& pluginRegistry() const noexcept { return registry_; }
     // The live processor behind a model insert (for its editor), if any.
@@ -58,10 +68,21 @@ public:
     // Renders the mix (or stems) offline on a background thread. Returns an error
     // or empty; progress and the result are reported through the job.
     std::string startBounce(BounceJob::Options options);
+    // Freezes a track: renders its output before the fader in the background
+    // (into "<media>/Freeze"), then the track plays that instead of its clips and
+    // chain. Unfreezing is a command (SetTrackFrozen with no media). Returns an
+    // error, or empty once the render has started.
+    std::string freezeTrack(core::Id trackId);
+    bool isFreezing() const noexcept { return freeze_ != nullptr && freeze_->isRunning(); }
+    float freezeProgress() const noexcept { return freeze_ != nullptr ? freeze_->progress() : 0.0f; }
+    // The last freeze's outcome for a toast ("" while none has finished).
+    const std::string& lastFreezeMessage() const noexcept { return freezeMessage_; }
     bool isBouncing() const noexcept { return bounce_ != nullptr && bounce_->isRunning(); }
     float bounceProgress() const noexcept { return bounce_ != nullptr ? bounce_->progress() : 0.0f; }
-    // The last bounce's outcome, as a sentence for the status bar.
+    // The last bounce's outcome, as a sentence for the completion toast ("Bouncing..."
+    // while it runs), and its result (the files, for Show in folder).
     const std::string& lastBounceMessage() const noexcept { return bounceMessage_; }
+    const BounceJob::Result& lastBounceResult() const noexcept { return bounceResult_; }
 
     // ----- plugins ----------------------------------------------------------------
     // Scans the VST3 folders in the background (changed files only unless `all`);
@@ -109,6 +130,19 @@ public:
     // Adds a track with the file as a clip starting at `at`. Returns an error
     // message or empty on success.
     std::string importAudioFile(const juce::File& file, core::SamplePosition at);
+    // Imports a Standard MIDI File (type 0 or 1) at `at` (moved back to its bar):
+    // a MIDI track per file track (and per channel, where a track uses several),
+    // each with one clip, aimed at `target` (an instrument channel, or the one a
+    // MIDI track plays) or else at a new Aurora channel (channel 10, the drums:
+    // a new Pulsar channel). An empty project takes the file's first tempo and
+    // time signature first. One undo step. Returns an error message or empty.
+    std::string
+    importMidiFile(const juce::File& file, core::SamplePosition at, core::Id target = core::invalidId);
+    // Writes MIDI clips ({track, clip} pairs; one file track per track) to a
+    // type 1 Standard MIDI File at 960 PPQ with the project's tempo and time
+    // signature. Returns an error message or empty.
+    std::string exportMidiFile(const juce::File& file,
+                               const std::vector<std::pair<core::Id, core::Id>>& clips);
     // Adds a MIDI track with the built-in synth as its instrument, armed and
     // listening to every input. Returns the new track's id.
     // A MIDI track playing a new instrument channel (Aurora unless a type is
@@ -120,6 +154,19 @@ public:
     // A new instrument channel playing `type`, placed under the MIDI track, which
     // is aimed at it (one step). Returns the channel's id, or invalidId.
     core::Id playNewInstrument(core::Id midiTrack, const std::string& type);
+    // A MIDI track playing a new Sampler with the file loaded (its start and end
+    // points at these fractions of the file), as one step; the MIDI track's id.
+    core::Id addSamplerTrack(const juce::File& file, double startFraction = 0.0, double endFraction = 1.0);
+    // Auditions a file over the mix through the device (the browser's Files tab):
+    // what plays now fades out first. An error, or empty.
+    std::string previewFile(const juce::File& file);
+    void stopPreview();
+    void setPreviewGain(float linear) { engine_.preview().setGain(linear); }
+    bool isPreviewing() const noexcept { return engine_.preview().isPlaying(); }
+    // Hands the next preview over once the last has faded (a UI timer while previewing).
+    void pumpPreview() { engine_.preview().pump(engine_.isRunning()); }
+    // The Sampler's decoded files (the insert factory's loader).
+    SampleFiles& sampleFiles() noexcept { return sampleFiles_; }
     // A plugin chosen for a channel (the browser's double-click or drop). An
     // instrument goes to an instrument channel: the one given, or the one the
     // given MIDI track plays (a new one under it when it plays none), or a new
@@ -354,6 +401,7 @@ private:
     audio::AudioDeviceLayer& audio_;
     engine::DiskThread disk_;
     audio::JuceMediaLoader loader_;
+    SampleFiles sampleFiles_; // before the factory that loads through it
     juce::File registryFile_;
     hosting::PluginRegistry registry_;
     hosting::PluginScanner scanner_;
@@ -369,9 +417,13 @@ private:
             if (onUpdate)
                 onUpdate();
         }
-    } vocalUpdates_;
+    } vocalUpdates_, stretchUpdates_;
     audio::JuceMediaLoader vocalLoader_{disk_, true}; // whole files: the renderer reads anywhere
     engine::VocalService vocal_{vocalLoader_};
+    // Stretched and transposed clips render in the background (two workers); a
+    // finished render repaints the clips that show its progress.
+    audio::JuceMediaLoader stretchLoader_{disk_, true};
+    engine::StretchService stretch_{stretchLoader_};
     audio::PeakStore peaks_;
     core::Project project_;
     core::UndoStack undo_;
@@ -382,7 +434,10 @@ private:
     std::set<core::Id> reportedCrashes_; // inserts whose crash the user has been told about
     void checkCrashedPlugins();
     std::string bounceMessage_;
+    BounceJob::Result bounceResult_;
     std::unique_ptr<BounceJob> bounce_;
+    std::unique_ptr<BounceJob> freeze_;
+    std::string freezeMessage_;
     bool gestureOpen_ = false;
     bool metronome_ = false;
     float metronomeGain_ = 0.5f;
@@ -390,6 +445,7 @@ private:
     core::SamplePosition regionStart_ = 0, regionEnd_ = 0;
     bool loop_ = false;
     bool punch_ = false;
+    bool recordingPunched_ = false; // the recording in progress punches in (its passes become takes)
     juce::File templatesFolder_;
     juce::File autosaveFolder_;
     std::function<int()> autosaveInterval_;

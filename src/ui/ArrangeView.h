@@ -3,11 +3,14 @@
 #include "audio/PeakStore.h"
 #include "core/Command.h"
 #include "core/Model.h"
+#include "core/TempoMap.h"
 #include "engine/Meters.h"
 #include "engine/Recording.h"
 #include "ui/AutomationOverlay.h"
 #include "ui/Icons.h"
 #include "ui/PluginMenu.h"
+#include "ui/TakeLanes.h"
+#include "ui/TempoLane.h"
 #include "ui/Theme.h"
 #include "ui/TrackHeader.h"
 #include "ui/edit/ClipOps.h"
@@ -46,6 +49,10 @@ namespace aural::ui
 // playhead, Shift+M a region from the loop region, comma and full stop jump to
 // the previous and next marker, a click on a flag selects it (and locates), a
 // drag moves it (snapped), a double-click renames it, Delete removes it.
+//
+// Take lanes (TakeLanes, 14-comping.md): a track's take groups expand into lanes
+// under its row; Alt+Up / Alt+Down play the next newer / older take in the comp
+// segment at the playhead on the selected track, Alt+T shows or hides its lanes.
 class ArrangeView final : public juce::Component,
                           public juce::FileDragAndDropTarget,
                           public juce::DragAndDropTarget,
@@ -92,6 +99,14 @@ public:
     // An edit: the commands that make it, as one undo step with this name.
     std::function<void(std::vector<std::unique_ptr<core::Command>>, const std::string&)> onEdit;
     std::function<void(core::Id trackId, core::Id clipId)> onNormalise;
+    // Freeze (render and play the render) or unfreeze a track.
+    std::function<void(core::Id trackId, bool freeze)> onFreezeTrack;
+    // Stretch a clip to the project's tempo (the owner asks for the clip's tempo).
+    std::function<void(core::Id trackId, core::Id clipId)> onConformClip;
+    // How far a stretched clip's render has got (0..1), for its header tag.
+    std::function<double(const core::AudioClip&)> stretchProgress;
+    // "Open in Sampler" on an audio clip's menu: a new Sampler instrument plays it.
+    std::function<void(core::Id trackId, core::Id clipId)> onOpenInSampler;
     // The playhead position the split key uses (the engine's, not the heard one).
     std::function<core::SamplePosition()> playheadForEdits;
     // Editing keys (the window forwards every key here first). True when handled.
@@ -191,7 +206,9 @@ public:
     void fileDragMove(const juce::StringArray& files, int x, int y) override;
     void fileDragExit(const juce::StringArray& files) override;
     void filesDropped(const juce::StringArray& files, int x, int y) override;
-    // A plugin dragged from the browser ("plugin:<type>") lands on a track.
+    // A plugin dragged from the browser ("plugin:<type>") lands on a track; an
+    // audio file from its Files tab ("file:<path>") goes where a file from
+    // Explorer would.
     bool isInterestedInDragSource(const SourceDetails& details) override;
     void itemDragEnter(const SourceDetails& details) override;
     void itemDragMove(const SourceDetails& details) override;
@@ -217,9 +234,18 @@ public:
     }
     // Shows or hides a track's automation over its lane (the header's A).
     void showAutomation(core::Id trackId, bool shown);
+    // The tempo track under the ruler (TempoLane): its edits arrive here as one
+    // command each.
+    void setTempoTrackShown(bool shown);
+    bool tempoTrackShown() const noexcept { return tempoShown_; }
+    std::function<void(core::TempoState, const std::string& name)> onTempoEdit;
+    std::function<void(bool shown)> onTempoTrackShownChanged;
 
 private:
-    int rulerHeight = 32;  // size.ruler: the markers row over the bars row
+    int rulerHeight = 32; // the ruler and, when shown, the tempo track under it: where the lanes start
+    int rulerOnly = 32;   // size.ruler: the markers row over the bars row
+    static constexpr int tempoLaneHeight = 52;
+    bool tempoShown_ = false;
     int headerWidth = 220; // size.trackHeaderWidth; the boundary drags 160..360
     int rowHeight = 56;    // size.trackRow; the corner stepper cycles min/default/large
     // A row being resized: its channel and the height it shows until release.
@@ -254,6 +280,8 @@ private:
         rowResize,    // a row's bottom edge: that track's height
         draw,         // the pencil drawing a new MIDI clip
         pan,          // the middle button drags the view
+        stretch,      // Alt+drag of an audio clip's right edge: time-stretch
+        takes,        // a swipe or a comp boundary (TakeLanes)
     };
 
     void changeListenerCallback(juce::ChangeBroadcaster*) override;
@@ -293,7 +321,12 @@ private:
     juce::Rectangle<int> loopBand() const noexcept; // in the bars row, empty without a region
     bool mediaMissing(const std::string& path);
     void refreshMissingMedia();
-    void trackMenu(core::Id trackId, juce::Point<int> screen);
+    void clipMenu(core::Id trackId, core::Id clipId, juce::Point<int> screen);
+    std::vector<const core::Track*> folderChoices(core::Id trackId) const;
+    void drawFolderLane(juce::Graphics& g, const core::Track& folder, juce::Rectangle<int> lane);
+    void finishStretch();
+    // The track's menu; on an audio clip (clipId) it leads with the clip's items.
+    void trackMenu(core::Id trackId, juce::Point<int> screen, core::Id clipId = core::invalidId);
     void rulerMenu(juce::Point<int> screen);
     void addTrackMenu();
     // FX tracks (buses flagged fx) show as rows under the tracks.
@@ -356,7 +389,6 @@ private:
     void dragTrimLeft(core::SamplePosition at);
     // A new empty MIDI clip on a MIDI track over [start, end), selected.
     void addMidiClip(core::Id trackId, core::SamplePosition start, core::SamplePosition end);
-    core::SamplePosition barLength() const noexcept;
     // The pencil's clip while it draws.
     core::Id drawTrack_ = core::invalidId;
     core::SamplePosition drawAnchor_ = 0, drawStart_ = 0, drawEnd_ = 0;
@@ -387,7 +419,11 @@ private:
     Hit hitTest(juce::Point<int> p) const noexcept;
     bool isSelected(core::Id track, core::Id clip) const noexcept;
     void select(const ClipRef& ref, bool add);
-    core::SamplePosition grid() const noexcept;
+    // The snap grid at a position (bars, beats and divisions follow the tempo track).
+    core::GridStep gridAt(core::SamplePosition at) const noexcept;
+    // The grid line at or before / at or after a position.
+    core::SamplePosition lineAtOrBefore(core::SamplePosition s) const noexcept;
+    core::SamplePosition lineAtOrAfter(core::SamplePosition s) const noexcept;
     core::SamplePosition snapped(core::SamplePosition s) const noexcept;
     const core::AudioClip* findClip(const ClipRef& ref, const core::Track** track = nullptr) const noexcept;
     void emit(std::vector<std::unique_ptr<core::Command>> commands, const std::string& name);
@@ -417,6 +453,7 @@ private:
     const Theme& theme_ = Theme::dark();
     audio::PeakStore& peaks_;
     const core::Project* project_ = nullptr;
+    core::TempoMap tempoMap_; // the project's, rebuilt on every setProject
     core::SamplePosition playhead_ = 0;
     bool playing_ = false;
     bool recording_ = false;
@@ -464,6 +501,7 @@ private:
     IconButton selectTool_, rangeTool_, pencilTool_;
     void refreshToolButtons();
     AutomationOverlay automation_{theme_};
+    TempoLane tempoLane_{theme_}; // after theme_, which it keeps a reference to
     std::unique_ptr<juce::TextEditor> markerEditor_;
     core::Id editingMarker_ = core::invalidId;
 
@@ -482,7 +520,9 @@ private:
     int rowDelta_ = 0;
     core::SamplePosition trimStart_ = 0, trimLength_ = 0, trimOffset_ = 0; // preview: trim
     core::SamplePosition fadePreview_ = 0;                                 // preview: fade length
-    float gainPreview_ = 1.0f;                                             // preview: gain
+    core::SamplePosition stretchLength_ = 0;                               // preview: stretched length
+    bool stretchPending_ = false; // a drawn clip's stretch is still rendering: repaint next frame
+    float gainPreview_ = 1.0f;    // preview: gain
     juce::Rectangle<int> lasso_;
     bool draggedFar_ = false;
     core::Id selectedMarker_ = core::invalidId;
@@ -494,6 +534,9 @@ private:
     core::Marker dragMarker_;                // the marker being dragged, as it was
     core::SamplePosition markerPreview_ = 0; // its position during the drag
     const PluginSources* pluginSources_ = nullptr;
+    // Take lanes and comping (14-comping.md): lanes under a track's row, swipes, boundaries.
+    TakeLanes takes_{theme_, peaks_, *this};
+    TakeLanes::Row takeRow(int row) const; // a track row, for TakeLanes
 };
 
 } // namespace aural::ui

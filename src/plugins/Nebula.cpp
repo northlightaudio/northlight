@@ -183,6 +183,7 @@ private:
         space_.prepare(sampleRate);
         toneL_ = toneR_ = 0.0f;
         countdown_ = 0;
+        expression_.reset();
     }
 
     void noteOn(int note, int vel) noexcept
@@ -221,6 +222,7 @@ private:
     {
         synth::dispatch(
             e,
+            expression_,
             [this](int note, int velocity) { noteOn(note, velocity); },
             [this](int note) { noteOff(note); },
             [this]
@@ -239,7 +241,9 @@ private:
         const float spreadCents = p[spread];
         const float driftCents = p[drift] * 18.0f;
         const float haloLevel = p[halo];
-        const double octaveRatio = std::pow(2.0, std::round(p[octave]));
+        // The pitch bend and the mod wheel's vibrato ride on the octave.
+        const double octaveRatio = std::pow(2.0, std::round(p[octave])) *
+                                   synth::Expression::ratio(expression_.advance(controlInterval / sr));
         for (auto& v : voices_)
         {
             if (!v.active())
@@ -414,6 +418,7 @@ private:
     double motionPhase_ = 0.0;
     float motion_ = 0.0f;
     int countdown_ = 0;
+    synth::Expression expression_;
     Space space_;
     float toneL_ = 0.0f, toneR_ = 0.0f;
 };

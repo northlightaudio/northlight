@@ -192,10 +192,8 @@ juce::Optional<juce::AudioPlayHead::PositionInfo> HostedPlugin::PlayHead::getPos
     info.setTimeInSamples(head.samples);
     info.setTimeInSeconds(static_cast<double>(head.samples) / head.sampleRate);
     info.setPpqPosition(head.quarterNotes);
-    const double quartersPerBar = head.numerator * 4.0 / std::max(1, head.denominator);
-    const double bar = std::floor(head.quarterNotes / quartersPerBar);
-    info.setPpqPositionOfLastBarStart(bar * quartersPerBar);
-    info.setBarCount(static_cast<std::int64_t>(bar));
+    info.setPpqPositionOfLastBarStart(head.barStartQuarters);
+    info.setBarCount(static_cast<std::int64_t>(head.bar));
     info.setIsPlaying(head.playing);
     return info;
 }
@@ -240,26 +238,12 @@ void HostedPlugin::processBuffer(juce::AudioBuffer<float>& buffer, bool bypassed
         {
             if (++added > maxMidiEvents)
                 break; // what the buffer was sized for
-            // Raw bytes, so no MidiMessage is built (the buffer was sized in prepare).
-            std::uint8_t bytes[3] = {0, e.note, e.velocity};
-            switch (e.type)
-            {
-                case engine::MidiEvent::Type::noteOn:
-                    bytes[0] = static_cast<std::uint8_t>(0x90 | (e.channel & 15));
-                    break;
-                case engine::MidiEvent::Type::noteOff:
-                    bytes[0] = static_cast<std::uint8_t>(0x80 | (e.channel & 15));
-                    break;
-                case engine::MidiEvent::Type::controller:
-                    bytes[0] = static_cast<std::uint8_t>(0xB0 | (e.channel & 15));
-                    break;
-                case engine::MidiEvent::Type::allNotesOff:
-                    bytes[0] = static_cast<std::uint8_t>(0xB0 | (e.channel & 15));
-                    bytes[1] = 123;
-                    bytes[2] = 0;
-                    break;
-            }
-            midi_.addEvent(bytes, 3, e.sampleOffset);
+            // Raw bytes, so no MidiMessage is built (the buffer was sized in prepare):
+            // notes, controllers, pitch bend and pressure (JUCE's VST3 wrapper turns
+            // the controllers into the plugin's MIDI-mapped parameters).
+            std::uint8_t bytes[3] = {};
+            if (const int size = e.toBytes(bytes); size > 0)
+                midi_.addEvent(bytes, size, e.sampleOffset);
         }
     auto call = [&]
     {

@@ -3,6 +3,7 @@
 #include <nlohmann/json.hpp>
 
 #include <algorithm>
+#include <unordered_set>
 
 namespace aural::core
 {
@@ -36,15 +37,50 @@ void migrate(json& j, int from)
     {
         switch (version)
         {
-            case 2: // 2 -> 3, 3 -> 4 and 4 -> 5 only add optional fields
+            case 2: // 2 -> 3, ..., 6 -> 7 only add optional fields
             case 3:
             case 4:
+            case 5: // 6 adds the tempo track and clip stretch
+            case 6: // 7 adds take groups; a file without them has none (its clips stay as they are)
+            case 7: // 8 adds folder tracks and frozen tracks
+            case 8: // 9: MIDI clips gain an optional "controllers" array; a clip
+                    // without one has no controller events, which is what older
+                    // versions meant
                 break;
             default:
                 break;
         }
     }
     j["version"] = Project::schemaVersion;
+}
+
+const char* controllerTypeName(MidiControllerType type)
+{
+    switch (type)
+    {
+        case MidiControllerType::controller:
+            return "cc";
+        case MidiControllerType::pitchBend:
+            return "bend";
+        case MidiControllerType::channelPressure:
+            return "pressure";
+        case MidiControllerType::polyPressure:
+            return "poly";
+    }
+    return "cc";
+}
+
+std::optional<MidiControllerType> controllerTypeFromName(const std::string& name)
+{
+    if (name == "cc")
+        return MidiControllerType::controller;
+    if (name == "bend")
+        return MidiControllerType::pitchBend;
+    if (name == "pressure")
+        return MidiControllerType::channelPressure;
+    if (name == "poly")
+        return MidiControllerType::polyPressure;
+    return std::nullopt;
 }
 
 json clipToJson(const AudioClip& c)
@@ -60,6 +96,12 @@ json clipToJson(const AudioClip& c)
         j["fadeIn"] = c.fadeIn;
     if (c.fadeOut > 0)
         j["fadeOut"] = c.fadeOut;
+    if (c.stretch != 1.0)
+        j["stretch"] = c.stretch;
+    if (c.transpose != 0.0)
+        j["transpose"] = c.transpose;
+    if (c.followTempo)
+        j["followTempo"] = true;
     if (c.vocal.active())
     {
         json notes = json::array();
@@ -116,6 +158,9 @@ AudioClip clipFromJson(const json& j)
     c.gain = j.value("gain", 1.0f);
     c.fadeIn = j.value("fadeIn", SamplePosition{0});
     c.fadeOut = j.value("fadeOut", SamplePosition{0});
+    c.stretch = std::clamp(j.value("stretch", 1.0), 0.05, 20.0);
+    c.transpose = std::clamp(j.value("transpose", 0.0), -48.0, 48.0);
+    c.followTempo = j.value("followTempo", false);
     if (const auto it = j.find("vocal"); it != j.end() && it->is_object())
     {
         c.vocal.analysisVersion = it->value("analysis", 0);
@@ -347,6 +392,16 @@ json trackToJson(const Track& t)
         j["kind"] = "aux";
         j["aux"] = json{{"track", t.auxTrack}, {"insert", t.auxInsert}, {"output", t.auxOutput}};
     }
+    else if (t.kind == TrackKind::folder)
+    {
+        j["kind"] = "folder";
+        if (!t.folderOpen)
+            j["folderOpen"] = false;
+    }
+    if (t.folder != invalidId)
+        j["folder"] = t.folder;
+    if (!t.frozenMedia.empty())
+        j["frozen"] = t.frozenMedia;
     j["input"] = t.inputChannel;
     if (!t.midiInput.empty())
         j["midiInput"] = t.midiInput;
@@ -363,13 +418,47 @@ json trackToJson(const Track& t)
             json notes = json::array();
             for (const auto& n : c.notes)
                 notes.push_back(json::array({n.id, n.note, n.velocity, n.start, n.length}));
-            midiClips.push_back(json{{"id", c.id},
-                                     {"name", c.name},
-                                     {"start", c.start},
-                                     {"length", c.length},
-                                     {"notes", std::move(notes)}});
+            json clip{{"id", c.id},
+                      {"name", c.name},
+                      {"start", c.start},
+                      {"length", c.length},
+                      {"notes", std::move(notes)}};
+            // Controller events as compact arrays: [id, type, number, value, time].
+            if (!c.controllers.empty())
+            {
+                json controllers = json::array();
+                for (const auto& e : c.controllers)
+                    controllers.push_back(
+                        json::array({e.id, controllerTypeName(e.type), e.number, e.value, e.time}));
+                clip["controllers"] = std::move(controllers);
+            }
+            midiClips.push_back(std::move(clip));
         }
         j["midiClips"] = std::move(midiClips);
+    }
+    if (!t.takeGroups.empty())
+    {
+        json groups = json::array();
+        for (const auto& g : t.takeGroups)
+        {
+            json takes = json::array();
+            for (const auto& take : g.takes)
+            {
+                auto tj = clipToJson(take.clip);
+                tj["number"] = take.number;
+                takes.push_back(std::move(tj));
+            }
+            json comp = json::array();
+            for (const auto& s : g.comp)
+                comp.push_back(json::array({s.start, s.end, s.take}));
+            groups.push_back(json{{"id", g.id},
+                                  {"takes", std::move(takes)},
+                                  {"comp", std::move(comp)},
+                                  {"clips", g.clips},
+                                  {"crossfade", g.crossfade},
+                                  {"expanded", g.expanded}});
+        }
+        j["takeGroups"] = std::move(groups);
     }
     return j;
 }
@@ -399,7 +488,11 @@ Track trackFromJson(const json& j)
     t.kind = kind == "midi"         ? TrackKind::midi
              : kind == "instrument" ? TrackKind::instrument
              : kind == "aux"        ? TrackKind::aux
+             : kind == "folder"     ? TrackKind::folder
                                     : TrackKind::audio;
+    t.folder = j.value("folder", invalidId);
+    t.folderOpen = j.value("folderOpen", true);
+    t.frozenMedia = j.value("frozen", std::string{});
     t.midiTarget = j.value("target", invalidId);
     t.midiChannel = std::clamp(j.value("midiChannel", 1), 1, 16);
     if (const auto aux = j.find("aux"); aux != j.end() && aux->is_object())
@@ -431,7 +524,25 @@ Track trackFromJson(const json& j)
                                                    nj[2].get<int>(),
                                                    nj[3].get<SamplePosition>(),
                                                    nj[4].get<SamplePosition>()});
+            if (const auto ctl = cj.find("controllers"); ctl != cj.end() && ctl->is_array())
+                for (const auto& ej : *ctl)
+                {
+                    if (!ej.is_array() || ej.size() != 5 || !ej[1].is_string())
+                        continue;
+                    const auto type = controllerTypeFromName(ej[1].get<std::string>());
+                    if (!type.has_value())
+                        continue; // a kind this version does not know
+                    MidiControllerEvent e;
+                    e.id = ej[0].get<Id>();
+                    e.type = *type;
+                    e.number = std::clamp(ej[2].get<int>(), 0, 127);
+                    e.value = std::clamp(
+                        ej[3].get<int>(), midiControllerMinimum(e.type), midiControllerMaximum(e.type));
+                    e.time = ej[4].get<SamplePosition>();
+                    c.controllers.push_back(e);
+                }
             c.sortNotes();
+            c.sortControllers();
             t.midiClips.push_back(std::move(c));
         }
         t.sortMidiClips();
@@ -446,6 +557,28 @@ Track trackFromJson(const json& j)
         for (const auto& c : *it)
             t.clips.push_back(clipFromJson(c));
     t.sortClips();
+    if (const auto it = j.find("takeGroups"); it != j.end() && it->is_array())
+        for (const auto& gj : *it)
+        {
+            TakeGroup g;
+            g.id = gj.value("id", invalidId);
+            if (const auto takes = gj.find("takes"); takes != gj.end() && takes->is_array())
+                for (const auto& tj : *takes)
+                    g.takes.push_back(Take{clipFromJson(tj), tj.value("number", 1)});
+            if (const auto comp = gj.find("comp"); comp != gj.end() && comp->is_array())
+                for (const auto& sj : *comp)
+                    if (sj.is_array() && sj.size() == 3)
+                        g.comp.push_back(CompSegment{
+                            sj[0].get<SamplePosition>(), sj[1].get<SamplePosition>(), sj[2].get<Id>()});
+            if (const auto clips = gj.find("clips"); clips != gj.end() && clips->is_array())
+                for (const auto& id : *clips)
+                    if (id.is_number_unsigned() && t.findClip(id.get<Id>()) != nullptr)
+                        g.clips.push_back(id.get<Id>());
+            g.crossfade = std::max<SamplePosition>(0, gj.value("crossfade", SamplePosition{0}));
+            g.expanded = gj.value("expanded", false);
+            if (!g.takes.empty())
+                t.takeGroups.push_back(std::move(g));
+        }
     return t;
 }
 } // namespace
@@ -496,6 +629,27 @@ std::string projectToJson(const Project& p, bool pretty, const ParameterKeys* ke
            {"tracks", std::move(tracks)}};
     if (p.key.isSet())
         j["key"] = json{{"root", p.key.root}, {"scale", static_cast<int>(p.key.scale)}};
+    if (!p.tempoChanges.empty())
+    {
+        json changes = json::array();
+        for (const auto& c : p.tempoChanges)
+        {
+            json cj{{"quarter", c.quarter}, {"bpm", c.bpm}};
+            if (c.ramp)
+                cj["ramp"] = true;
+            changes.push_back(std::move(cj));
+        }
+        j["tempoChanges"] = std::move(changes);
+    }
+    if (!p.meterChanges.empty())
+    {
+        json changes = json::array();
+        for (const auto& m : p.meterChanges)
+            changes.push_back(json{{"bar", m.bar},
+                                   {"numerator", m.signature.numerator},
+                                   {"denominator", m.signature.denominator}});
+        j["meterChanges"] = std::move(changes);
+    }
     return pretty ? j.dump(2) : j.dump();
 }
 
@@ -532,6 +686,25 @@ std::optional<Project> projectFromJson(const std::string& text, std::string* err
             p.timeSignature.numerator = it->value("numerator", 4);
             p.timeSignature.denominator = it->value("denominator", 4);
         }
+        if (const auto it = j.find("tempoChanges"); it != j.end() && it->is_array())
+            for (const auto& c : *it)
+                if (c.is_object())
+                    p.tempoChanges.push_back(TempoChange{c.value("quarter", 0.0),
+                                                         std::clamp(c.value("bpm", 120.0), 1.0, 999.0),
+                                                         c.value("ramp", false)});
+        std::sort(p.tempoChanges.begin(),
+                  p.tempoChanges.end(),
+                  [](const TempoChange& a, const TempoChange& b) { return a.quarter < b.quarter; });
+        if (const auto it = j.find("meterChanges"); it != j.end() && it->is_array())
+            for (const auto& m : *it)
+                if (m.is_object())
+                    p.meterChanges.push_back(
+                        MeterChange{m.value("bar", 0),
+                                    TimeSignature{std::clamp(m.value("numerator", 4), 1, 32),
+                                                  std::clamp(m.value("denominator", 4), 1, 32)}});
+        std::sort(p.meterChanges.begin(),
+                  p.meterChanges.end(),
+                  [](const MeterChange& a, const MeterChange& b) { return a.bar < b.bar; });
         p.nextId = j.value("nextId", Id{1});
         if (const auto it = j.find("key"); it != j.end() && it->is_object())
         {
@@ -569,11 +742,19 @@ std::optional<Project> projectFromJson(const std::string& text, std::string* err
             maxId = std::max(maxId, t.id);
             for (const auto& c : t.clips)
                 maxId = std::max(maxId, c.id);
+            for (const auto& g : t.takeGroups)
+            {
+                maxId = std::max(maxId, g.id);
+                for (const auto& take : g.takes)
+                    maxId = std::max(maxId, take.id());
+            }
             for (const auto& c : t.midiClips)
             {
                 maxId = std::max(maxId, c.id);
                 for (const auto& n : c.notes)
                     maxId = std::max(maxId, n.id);
+                for (const auto& e : c.controllers)
+                    maxId = std::max(maxId, e.id);
             }
         }
         for (const auto& b : p.buses)
@@ -602,23 +783,38 @@ std::optional<Project> projectFromJson(const std::string& text, std::string* err
         for (const auto& m : p.markers)
             maxId = std::max(maxId, m.id);
         p.nextId = std::max(p.nextId, maxId + 1);
-        std::vector<Id> seen;
+        std::unordered_set<Id> seen; // a set: clips can hold many thousands of events
         const auto fresh = [&](Id& id)
         {
-            if (id == invalidId || std::find(seen.begin(), seen.end(), id) != seen.end())
+            if (id == invalidId || seen.contains(id))
                 id = p.allocateId();
-            seen.push_back(id);
+            seen.insert(id);
         };
         for (auto& t : p.tracks)
         {
             fresh(t.id);
             for (auto& c : t.clips)
                 fresh(c.id);
+            for (auto& g : t.takeGroups)
+            {
+                fresh(g.id);
+                for (auto& take : g.takes)
+                {
+                    const auto was = take.clip.id;
+                    fresh(take.clip.id);
+                    for (auto& s : g.comp)
+                        s.take = s.take == was ? take.clip.id : s.take;
+                }
+                // A comp clip that had to change its id (a corrupt file) is no longer the group's.
+                std::erase_if(g.clips, [&t](Id id) { return t.findClip(id) == nullptr; });
+            }
             for (auto& c : t.midiClips)
             {
                 fresh(c.id);
                 for (auto& n : c.notes)
                     fresh(n.id);
+                for (auto& e : c.controllers)
+                    fresh(e.id);
             }
             if (t.hasInstrument())
                 fresh(t.instrument.id);

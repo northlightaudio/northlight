@@ -244,9 +244,29 @@ The same can be done from the command line with the hardware tool:
 - [docs/coding-standards.md](docs/coding-standards.md): style and conventions
 - [docs/architecture.md](docs/architecture.md): living architecture notes
 
-## Licensing
+## Licence
 
-Not yet decided (open decision 2 in the plan). Until it is, this repository is
-all-rights-reserved. JUCE is used under its GPLv3 option during development, which is
-why the JUCE splash screen is shown; a commercial JUCE licence or a GPL release of
-Aural removes it.
+Northlight (the code still calls itself Aural until the rename) is free software:
+you can redistribute it and/or modify it under the terms of the GNU Affero General
+Public License as published by the Free Software Foundation, version 3 of the
+License. It is distributed in the hope that it will be useful, but WITHOUT ANY
+WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS FOR A
+PARTICULAR PURPOSE. See [LICENSE](LICENSE) for the full text.
+
+In practice:
+
+- Anyone who receives the application, free or paid, is entitled to its complete
+  source code under the same licence. A build that is sold or shared must say where
+  its source is.
+- Changes you distribute (or offer to people over a network) are AGPLv3 too.
+- Plugins the application hosts (VST3, CLAP) are separate programs and keep their own
+  licences.
+
+Northlight is built on third-party code under compatible licences: JUCE (AGPLv3),
+the Steinberg ASIO SDK (GPLv3 option), the VST3 SDK, CLAP, Signalsmith Stretch and
+nlohmann/json (MIT), and the codecs and libraries bundled in JUCE. Their notices and
+licence texts are in [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md), which
+`scripts/third-party-notices.py` regenerates from the dependencies' own licence
+files; run it when a dependency changes. The build copies `LICENSE` and
+`THIRD_PARTY_NOTICES.md` beside the executable, so every build and installer ships
+them.

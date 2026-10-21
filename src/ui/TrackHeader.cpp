@@ -150,6 +150,13 @@ TrackHeader::TrackHeader(const Theme& theme) : theme_(theme), meter_(theme, 2, f
             onTargetMenu(trackId_, target_.getScreenBounds());
     };
     addChildComponent(target_);
+    fold_.getProperties().set(AuralLookAndFeel::propertyVariant, "ghost");
+    fold_.onClick = [this]
+    {
+        if (onCommand)
+            onCommand(std::make_unique<core::SetFolderOpen>(trackId_, !folderOpen_));
+    };
+    addChildComponent(fold_);
 
     pan_.setRange(-1.0, 1.0, 0.0);
     pan_.setShowValue(false);
@@ -195,21 +202,30 @@ void TrackHeader::setTrack(const core::Track& track,
     midi_ = track.isMidi();
     aux_ = track.isAux();
     instrument_ = track.isInstrument();
+    folder_ = track.isFolder();
+    folderOpen_ = track.folderOpen;
+    depth_ = project.folderDepth(track);
+    fold_.setVisible(folder_);
+    fold_.setButtonText(juce::String::fromUTF8(folderOpen_ ? "\xe2\x96\xbe" : "\xe2\x96\xb8"));
+    fold_.setTooltip(folderOpen_ ? "Close the folder" : "Open the folder");
     muted_ = track.mute;
     colour_ = theme_.track.forTrack(track.colour, index);
     setTitle("Track " + juce::String(index + 1) + ": " + juce::String::fromUTF8(track.name.c_str()));
     setDescription(track.isMidi()         ? "MIDI track"
                    : track.isInstrument() ? "Instrument channel"
                    : track.isAux()        ? "Instrument output"
+                   : track.isFolder()     ? "Folder track"
                                           : "Audio track");
-    const bool takesInput = !aux_ && !instrument_; // an instrument channel's MIDI tracks take it
+    const bool takesInput = !aux_ && !instrument_ && !folder_; // an instrument channel's MIDI tracks take it
     input_.setVisible(takesInput);
     arm_.setVisible(takesInput);
     monitorButton_.setVisible(takesInput);
     // A MIDI track makes notes, not sound: no solo or automation of its own; its
     // volume scales velocities; the chip says what it plays.
     solo_.setVisible(!midi_);
-    automation_.setVisible(!midi_);
+    automation_.setVisible(!midi_ && !folder_);
+    mute_.setTooltip(folder_ ? "Mute every track in the folder" : "Mute");
+    solo_.setTooltip(folder_ ? "Solo every track in the folder" : "Solo");
     volume_.setTooltip(midi_ ? "Velocity: scales the notes this track sends" : "Volume");
     if (midi_)
     {
@@ -222,7 +238,10 @@ void TrackHeader::setTrack(const core::Track& track,
         target_.setButtonText(text);
         target_.setTooltip("The instrument channel this track plays (click to change)");
     }
-    name_.setText(juce::String::fromUTF8(track.name.c_str()), juce::dontSendNotification);
+    // A frozen track's name carries a snowflake.
+    name_.setText((track.isFrozen() ? juce::String::fromUTF8("\xe2\x9d\x84 ") : juce::String()) +
+                      juce::String::fromUTF8(track.name.c_str()),
+                  juce::dontSendNotification);
     name_.setColour(juce::Label::textColourId,
                     track.mute ? theme_.colours.textSecondary : theme_.colours.textPrimary);
 
@@ -289,6 +308,7 @@ void TrackHeader::setTrack(const core::Track& track,
                      juce::dontSendNotification);
     pan_.setValue(track.pan, juce::dontSendNotification);
     refreshMonitorButton();
+    resized(); // which buttons show depends on the kind of track
     repaint();
 }
 
@@ -364,7 +384,7 @@ juce::Rectangle<int> TrackHeader::stripeBounds() const noexcept
 
 juce::Rectangle<int> TrackHeader::numberBounds() const noexcept
 {
-    return {theme_.track.headerStripeWidth + theme_.spacing.sm, 0, 22, theme_.sizes.control};
+    return {theme_.track.headerStripeWidth + indent() + theme_.spacing.sm, 0, 22, theme_.sizes.control};
 }
 
 void TrackHeader::mouseDown(const juce::MouseEvent& e)
@@ -521,15 +541,24 @@ void TrackHeader::setAutomationShown(bool shown)
 void TrackHeader::resized()
 {
     const int stripe = theme_.track.headerStripeWidth;
-    auto area = getLocalBounds().withTrimmedLeft(stripe).reduced(theme_.spacing.sm, 0);
+    auto area = getLocalBounds().withTrimmedLeft(stripe + indent()).reduced(theme_.spacing.sm, 0);
     const int control = theme_.sizes.controlCompact;
 
-    // Row 1: number, name, M S R monitor.
+    // Row 1: number, (a folder's disclosure,) name, M S R monitor.
     auto row1 = area.removeFromTop(theme_.sizes.control);
     row1.removeFromLeft(numberBounds().getWidth());
-    auto trio = row1.removeFromRight(5 * control + 4 * theme_.spacing.xxs);
+    if (folder_)
+        fold_.setBounds(row1.removeFromLeft(control).withSizeKeepingCentre(control, control));
+    // Five button places, so the buttons line up from row to row; a folder has
+    // only M and S, and its name takes the rest.
+    int buttons = 5;
+    if (folder_)
+        buttons = 2;
+    auto trio = row1.removeFromRight(buttons * control + std::max(0, buttons - 1) * theme_.spacing.xxs);
     const auto place = [&](juce::Component& b)
     {
+        if (folder_ && &b != &mute_ && &b != &solo_)
+            return;
         b.setBounds(trio.removeFromLeft(control).withSizeKeepingCentre(control, control));
         trio.removeFromLeft(theme_.spacing.xxs);
     };
@@ -543,7 +572,7 @@ void TrackHeader::resized()
                                                theme_.sizes.controlCompact - theme_.spacing.xs));
 
     // Row 2: input, meter, volume (the row hides below 44 px; the slider below 200 px width).
-    const bool row2 = getHeight() >= 44;
+    const bool row2 = getHeight() >= 44 && !folder_;
     input_.setVisible(row2 && !aux_ && !instrument_);
     meter_.setVisible(row2 && !midi_);
     target_.setVisible(row2 && midi_);
@@ -568,7 +597,7 @@ void TrackHeader::resized()
     }
 
     // Row 3 at the large height: pan, output, sends summary.
-    const bool row3 = getHeight() >= theme_.sizes.trackRowLarge;
+    const bool row3 = getHeight() >= theme_.sizes.trackRowLarge && !folder_;
     pan_.setVisible(row3);
     output_.setVisible(row3);
     if (row3)

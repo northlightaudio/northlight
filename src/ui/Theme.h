@@ -109,6 +109,7 @@ struct Theme
         int headerBar = 48, statusBar = 24, ruler = 32;
         int trackHeaderWidth = 220, trackHeaderMinWidth = 160, trackHeaderMaxWidth = 360;
         int trackRowMin = 28, trackRow = 56, trackRowLarge = 112, trackRowMax = 240, clipHeader = 18;
+        int takeLane = 40; // a take lane under an expanded track (14-comping.md)
         int mixerStripWidth = 84, mixerStripWideWidth = 112;
         int faderTravel = 200, faderCapWidth = 36, faderCapHeight = 14, knob = 28;
         int meterWidth = 6, meterGap = 2, scrollbar = 10, splitter = 5;

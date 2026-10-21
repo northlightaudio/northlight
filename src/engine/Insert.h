@@ -40,15 +40,17 @@ struct ParameterInfo
 };
 
 // Where the song is for a block, for tempo-synced processors (an arpeggio, a
-// delay in note values) and hosted plugins' transport. One tempo for the
-// project (no tempo map yet).
+// delay in note values) and hosted plugins' transport: the tempo and signature
+// in effect at the block's first sample (from the project's tempo map).
 struct PlayHead
 {
     double tempoBpm = 120.0;   // quarter notes a minute
     double quarterNotes = 0.0; // the song position at the block's first sample
     std::int64_t samples = 0;  // the same, in samples
     int numerator = 4, denominator = 4;
-    bool playing = false; // the position moves (stopped: it holds)
+    double barStartQuarters = 0.0; // where the bar holding the position began
+    int bar = 0;                   // that bar, 0-based
+    bool playing = false;          // the position moves (stopped: it holds)
     double sampleRate = 48000.0;
     double quartersPerSample() const noexcept { return tempoBpm / 60.0 / sampleRate; }
     double samplesPerQuarter() const noexcept { return sampleRate * 60.0 / tempoBpm; }
@@ -152,7 +154,9 @@ public:
 
     // Opaque state for processors that own their parameters (hosted plugins):
     // restored once when the instance is created, captured when the project is
-    // saved. Built-ins keep everything in the model's parameter list.
+    // saved. Built-ins keep their parameters in the model's list; one that has
+    // state beyond them (the Sampler's file) keeps it in the model's state too,
+    // and the cache passes it on whenever a command changes it.
     virtual std::string state() const { return {}; }
     virtual void setState(const std::string&) {}
 
@@ -205,6 +209,7 @@ private:
     int maxBlockSize_ = 8192;
     std::map<core::Id, std::shared_ptr<InsertProcessor>> instances_;
     std::map<core::Id, int> latencyAtCompile_;
+    std::map<core::Id, std::string> appliedState_; // the model state an instance last took
 };
 
 } // namespace aural::engine

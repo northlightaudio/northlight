@@ -254,6 +254,20 @@ while scrolling and zooming.
 **Milestone:** record 16 inputs simultaneously for 30 minutes with zero dropouts;
 kill the process mid-record and recover the audio.
 
+Status 2026-10-21: take groups and comping in the model (core/Comping.h):
+takes, comp segments materialised as crossfaded clips, commands with undo for
+swipe, whole take, delete, boundary move, flatten, rename, lanes and move to new
+track; project schema 6 (design/14-comping.md).
+
+Status 2026-10-21: loop recording, punch recording and recording over a take
+group make takes in a group (newest playing) instead of stacked clips; MIDI
+loop recording still makes a clip per pass.
+
+Status 2026-10-21: take lanes in the arrange view: disclosure chip, lanes with
+the comp lit, swipe comping, comp boundary drags, lane header and menus, Alt+Up /
+Alt+Down / Alt+T (design/14-comping.md); a comp moves and deletes as one with its
+takes. MIDI take lanes are not built.
+
 ### Phase 4 — Mixer and routing (3 weeks)
 
 - Gain, pan, mute, solo (with solo-in-place), phase, track colour and naming.
@@ -296,6 +310,13 @@ the app.
 
 **Milestone:** edit a full song from raw takes to a bounced mix without leaving the app.
 
+Status 2026-10-21: export is built: an export sheet (mix,
+every track's stems or the selected tracks'; project, loop or a marker region),
+WAV/AIFF/FLAC/Ogg Vorbis at 16/24-bit or 32-bit float, offline windowed-sinc
+rate conversion, TPDF or noise-shaped dither, and loudness normalisation to a
+LUFS target under a true-peak or sample-peak ceiling (architecture.md, Export).
+Not yet checked by ear beyond the unit tests; MP3 is not offered.
+
 ### Phase 7 — Design fidelity pass (3 weeks)
 
 - Implement every screen to the Figma spec; motion, hover states, empty states, drag
@@ -326,6 +347,23 @@ architecture.md). Multi-output instruments feed aux tracks. The piano roll
 auditions notes through the clip's track, and a MIDI track can play the MIDI
 output device on a channel (2026-10-20).
 
+Added 2026-10-21: a built-in Sampler instrument (one sample across the keys,
+loop with crossfade, one-shot, filter, glide; the file kept in the insert's
+state). Right-click an audio clip, Open in Sampler, to play it from a new MIDI
+track. The Browser panel has a Files tab: places (project, Music, added
+folders), search, click to audition through an engine preview, drag to the
+arrange view or a Sampler. See architecture.md and design/07-plugins.md 7.4f-g.
+Status 2026-10-21: MIDI clips hold controller events (CC, pitch bend, channel
+and poly pressure) with bulk undoable edits and JSON (project version 6). The
+engine schedules them, chases each controller's value after a jump, loop or
+start, rests bend and pedals on stop, records them from live input, and
+delivers them to VST3, CLAP, the MIDI output and the built-in synths (bend, mod
+wheel vibrato, sustain pedal). The piano roll's lane switches between velocity
+and a controller (draw freehand or a line, select, drag, erase), and a Scale
+toggle highlights the project key on the keys and rows. Standard MIDI Files
+import (types 0 and 1, by drop or menu, through the file's tempo map) and
+export (type 1, 960 PPQ).
+
 ### Phase 9 — Automation, stretch, polish (4 weeks)
 
 - Automation lanes (read/write/touch/latch) for every plugin and mixer parameter.
@@ -342,6 +380,19 @@ and write are built for gain, pan, built-in and strip parameters and hosted
 plugin parameters (VST3 and CLAP, including moves made in a plugin's own window). Project templates and media management
 (gather into the project folder, remove unused) are built, and a crash leaves
 a local minidump that the next launch points to (sending reports is not built).
+
+Status 2026-10-21: folder tracks (nested, with mute and solo for what they hold,
+open and closed in the arrange view) and track freezing (a background render of
+the track before its fader, played instead of its chain) are built
+(architecture.md, "Folder tracks and freezing").
+
+Status 2026-10-21: tempo mapping and time-stretch are built: a tempo track with
+tempo changes, ramps and time signature changes (MIDI, markers, automation and
+tempo-following clips keep their bars and beats through tempo edits), clip
+time-stretch and transposition rendered in the background with Signalsmith Stretch
+(MIT), Alt+drag to stretch, and "Stretch to project tempo" with a tempo guessed from
+the file name, the beats and the length (architecture.md, "Tempo track and
+time-stretch").
 
 ### Phase 10 — Beta hardening (ongoing)
 
@@ -464,6 +515,10 @@ These need an answer before or during the phase noted.
 1. **Own engine vs Tracktion Engine** (Phase 0). Plan recommends own engine; see section 2.
 2. **Licensing of Aural itself** (Phase 0). Proprietary, GPL, or dual? Affects the
    time-stretch library choice and whether Tracktion is viable.
+   **Decided 2026-10-21: GNU AGPLv3**, released as Northlight. It matches JUCE's
+   open licence and takes the ASIO SDK under its GPLv3 option (GPLv3 section 13
+   allows the combination); every other dependency is permissive. See LICENSE and
+   THIRD_PARTY_NOTICES.md.
 3. **CLAP hosting** (Phase 5). Recommended yes; small cost on top of VST3.
    **Decided 2026-10-19: yes.** Hosted directly against the CLAP C ABI (JUCE does
    not host CLAP), behind the same insert interface, as "clap:<id>" types.

@@ -25,6 +25,8 @@ aural.exe
                   (input or MIDI input, arm, monitor), MixerView (strips, master,
                   inserts menu), InsertEditor (generic parameter editor),
                   PluginBrowser (search, filters, sections, favourites, scan),
+                  MediaBrowser (the browser's Files tab: places, audio files,
+                  previews, drags),
                   PluginWindow (the bar over a hosted plugin's editor),
                   PianoRoll (one MIDI clip's notes and velocities)
   src/core        Project model (audio and MIDI tracks and buses on a shared
@@ -135,6 +137,35 @@ group commands into one step. `projectToJson`/`projectFromJson` read and write t
 versioned `aural.project` format. Bars/beats are a display conversion
 (`samplesToBarsBeats`) with a constant tempo for now.
 
+Take groups (comping, design/14-comping.md): a track's `takeGroups` each hold
+the takes recorded over a range (`Take`: the pass as an `AudioClip` that is not
+in `Track::clips`, plus its number), the comp (`CompSegment`s: sorted,
+contiguous, covering the takes' union, each naming the take that plays there),
+the comp crossfade (10 ms by default) and whether its lanes are expanded. What
+plays is ordinary clips: the comp is materialised into `Track::clips` and the
+group lists their ids (`TakeGroup::clips`), so the snapshot compiler, renderer,
+bounce, peaks and every clip command see plain clips and nothing in the engine
+knows about takes. `core::compClips` is the mapping: one clip per segment on
+its take's media (source offset following the trimmed start), overlapping its
+neighbour by the crossfade (at most half of either segment) centred on the
+boundary with matching linear fades, so the renderer's per-sample fades sum to
+one; where a take does not reach across the boundary it is a butt splice.
+The commands in `core/Comping.h` (`RecordTakes`, `SelectTake` for a swipe or a
+whole take, `RemoveTake`, `MoveCompBoundary`, `FlattenComp`, `RenameTake`,
+`SetTakeLanesExpanded`, `RemoveTakeGroup`, and `moveTakeToNewTrack` =
+`AddTrack` + `RemoveTake`) share `TakeGroupEdit`: it edits a copy of the group, then removes the group's
+current clips (keeping them, as the user left them, for undo), installs the new
+group and adds the rebuilt clips, reusing the old clip ids in order so streaming
+windows and the selection survive; `FlattenComp` drops the group and leaves the
+clips as ordinary ones. `MoveTakeGroup` moves a group with its clips as they are
+(along the track or onto another audio track, pinned at zero). Ordinary edits on comp clips are allowed (they are just
+clips), but the next comp edit rebuilds the comp from the takes; `ShiftClips`
+(ripple) moves groups that start after its position, consolidation repoints
+take media and the media report counts it as used. Schema 6 adds the groups
+(`takeGroups` on a track: takes as clips plus `number`, `comp` as
+`[start, end, take]` triples, `clips`, `crossfade`, `expanded`); older files
+have none and their overlapping clips play exactly as before.
+
 ### Engine
 
 `engine::AudioEngine` is the façade with a controller side and a real-time side.
@@ -190,6 +221,17 @@ Sample-rate conversion is `engine/Resampling.h`: 4-point Hermite interpolation
 evaluated at each output sample's exact source position. It is stateless, so reads
 can start anywhere, and it has no lookback delay, so imported media stays aligned
 to the sample.
+
+Auditioning a file (the browser's Files tab) is `engine::PreviewPlayer`, owned by
+the engine and mixed into the device outputs after the render: over the mix and
+outside it (no fader, meters, recording or bounce), at its own gain. The session
+loads the file with the same loader as clips (a long file streams through its own
+disk window) and hands the source over in an `rt::SnapshotPublisher`. Nothing is
+cut: a stop or another file sets the id to fade, the audio thread fades it out
+over 5 ms and reports it done, and only then does `pump()` (the engine's garbage
+collection, and the browser's timer while it previews) publish the next source,
+which fades in. The source is released on the controller side once the audio
+thread has moved past it.
 
 ### Session and UI
 
@@ -272,7 +314,21 @@ renames inline), M/S/R and monitor toggles, then the input combo, a horizontal
 meter fed from the mixer's last readings and a compact volume slider, and at
 the large row height pan, output and a sends summary; right-click opens the
 track menu. The corner holds the add-track menu and the row-height stepper.
-Not in this pass: buses and the master as arrange rows, take badges, the live
+Take lanes (`ui::TakeLanes`, design/14-comping.md) are a helper the view owns
+and routes to: `rows()` adds a track's expanded lanes (`takeLane` each) to its
+extent while `rowHeightOf` stays the row's own height (so clips, headers,
+automation and the resize edge are unchanged), the paint draws each track's
+comp badges, chip and boundaries over its lane and its lanes and lane headers
+under it, and a press in a row goes to `TakeLanes::mouseDown` first (lanes,
+lane headers, the chip, a boundary below the clip header, the comp's menu), which
+then owns the drag (`Drag::takes`) and emits the comp commands through `emit`.
+A click on a comp clip selects all of the comp's clips; `finishMove` turns a
+move of them into one `MoveTakeGroup` per group, and `deleteSelection` adds a
+`RemoveTakeGroup` for a group whose clips are all deleted.
+Keys: Alt+Up / Alt+Down cycle the take at the playhead on the selected track,
+Alt+T shows or hides its lanes. The `--takes-demo <files>` launch flag builds a
+comped three-take track for screenshots.
+Not in this pass: buses and the master as arrange rows, the live
 recording clip, a split tool mode (S splits at the playhead, Shift+S at the time
 selection or loop), track duplication.
 
@@ -302,9 +358,16 @@ still records, but only the first 4 GB is readable until it is split.
 Loop recording: when the transport wraps while capturing, the real-time thread
 marks a take boundary (the cumulative captured count plus the loop start) through a
 lock-free queue; the writer closes the file at that sample and opens
-`<name>-take<n>.partial.wav`. Every pass through the loop becomes its own clip at
-the loop start, later takes on top of earlier ones on the same track (take lanes
-with their own rows come with the editing phase).
+`<name>-take<n>.partial.wav`. Every pass through the loop is placed at the loop
+start. When the recording is collected, a track's passes (in take order) become
+takes in a take group (`core::RecordTakes`, see "Core model") when there are
+several (loop recording), when the recording punched in, or when they land on a
+take group already on the track (they join it, numbered on from its takes);
+each newer pass plays over its own range, so a loop recording stopped part way
+through its last pass comps that partial take over the earlier full one. A single
+pass anywhere else is a plain clip as before, and clips already on the track are
+left alone (a pass over an ordinary clip still overlaps it). MIDI loop
+recording is unchanged: each pass with notes is its own clip.
 
 Starting at or past the loop end (a locate there, or the loop enabled while
 outside it) wraps to the loop start before the first capture, so the take is
@@ -319,7 +382,7 @@ once and reports an error rather than leaving it pending.
 Stop, locate or a device stop end the session on the real-time side; once the
 writer has closed the files the session polls `collectRecording()`, renames the
 `.partial.wav` files to `.wav` (never over an existing file), deletes empty takes,
-removes the sidecars and adds the clips in one undo step. Placement is
+removes the sidecars and adds the clips (or takes) in one undo step. Placement is
 `engine::placeRecording`: shifted back by `recordingLatencySamples()` (the loopback
 calibration when it matches the device configuration, otherwise the driver's
 reported input plus output latency), trimming the front of anything that would
@@ -625,15 +688,38 @@ selects and locates, a drag moves it (snapped), a double-click renames it in a
 small dialog, Delete removes the selected one.
 
 Bounce (`app::BounceJob`): the mix or one file per track (stems, the others
-muted), over the whole project or a range (the loop region), to 32-bit float
-stereo WAV at the project rate. Each render runs its own `AudioEngine` over a copy
+muted; all tracks or a chosen set), over the whole project or a range (the loop
+region, a marker region). Each render runs its own `AudioEngine` over a copy
 of the project (with the live plugin states captured first), built on the message
 thread because plugin instances must be created there, with media loaded whole
 (`JuceMediaLoader` in memory-only mode: streaming would outrun the disk thread
-offline). The blocks render on a background thread; the first
-`outputLatencySamples()` of output are dropped and that much is rendered past the
-end so the file starts and ends exactly on the range; the result carries the
-integrated loudness of the mix. Export... on the toolbar offers the three.
+offline). The blocks render on a background thread into memory (stereo float at
+the project rate, one render at a time); the first `outputLatencySamples()` of
+output are dropped and that much is rendered past the end so the file starts and
+ends exactly on the range.
+
+Export. The render is then finished in a second pass, all of it JUCE-free in
+`engine/ExportDsp` and `engine/ExportSettings` (unit tested in
+tests/unit/engine/ExportTests.cpp): converted to the output rate (project, 44.1,
+48, 88.2 or 96 kHz) by an offline Kaiser-windowed sinc (48 zero crossings, about
+90 dB stop band, cut-off at 92% of the lower Nyquist; output sample j sits exactly
+at input position j * from / to, so no delay); measured (BS.1770 integrated
+loudness through `LoudnessMeter`, sample peak, and true peak by 4x windowed-sinc
+oversampling when the ceiling is in dBTP); given the loudness normalisation gain
+(target minus measured, cut back so the peak stays under the ceiling; silence
+gets none); then quantised by `engine::Quantiser` to 16 or 24-bit with TPDF
+dither or TPDF with 3-tap E-weighted error-feedback noise shaping (dither only
+when reducing to integers; the writers get left-justified 32-bit integers so
+JUCE's truncation never touches the samples). Stems are normalised together: a
+measure-only render of the mix runs first and its gain goes on every stem, so the
+stems still sum to the normalised mix. Formats: WAV 16/24/32-bit float (float WAV
+keeps the engine's `WavWriter`), AIFF and FLAC 16/24, Ogg Vorbis (JUCE's encoder,
+quality index, written from floats). MP3 is not offered (JUCE has no encoder).
+Ctrl+E or Export... in the app menu opens the export sheet (`ui::ExportView` in a
+`Sheet`); its choices are remembered in the user settings (`export.*`), the file
+or stems folder is chosen after it, the status bar shows progress, and the
+outcome is a toast with the measured loudness, the gain applied and the
+resulting peak, and Show in folder.
 
 ### Plugin hosting (Phase 5)
 
@@ -693,7 +779,22 @@ a row drags onto the Editor chain (at the insertion line) or an arrange track
 the file and scans again); the scan button's chevron menu rescans or clears the
 blocklist, and a progress bar with "Scanning n of m · file" and Cancel replaces
 it while a scan runs. Favourites and recent types are user settings. The
-`PluginWindow` bar is 7.2: power, "Plugin · Track", the format badge, the 80 px
+Browser panel is `ui::BrowserPanel`: a Plugins / Files segmented control over
+the plugin browser and `ui::MediaBrowser` (7.4g; the tab is a user setting).
+The Files tab browses a place (the saved project's folder, Music, or a folder
+added to its list, kept in the settings with the last folder) and its
+subfolders; a background job (one `juce::ThreadPool` thread, a generation count
+cancelling a stale one) lists the folder, or with a search walks the whole place
+for names holding every word (up to 2000 results), and reads each file's header
+for its length and rate, posting the result back to the message thread. A click
+auditions a file through `ProjectSession::previewFile` (the engine's
+`PreviewPlayer`, see Media and streaming; the panel pumps it on a 30 Hz timer
+while one plays, and shows the progress under the row), a second click, another
+file, Escape or Stop ends it; double-click or Enter imports the file onto a new
+track at the playhead; a row drags as "file:<path>", which the arrange view
+takes like a file from Explorer (a new track where it lands, with the same drop
+preview) and the Sampler's waveform loads. Launch flag: `--browser-files
+[folder]`. The `PluginWindow` bar is 7.2: power, "Plugin · Track", the format badge, the 80 px
 mix slider with its value, the presets menu and pin; position and editor size
 are remembered per plugin type. The Editor panel's cards (7.1) show an accent
 dot while the editor window is open, reorder by dragging their header, take
@@ -903,6 +1004,19 @@ A track is audio or MIDI (`Track::kind`); a MIDI track has `midiClips` of
 timeline place, split, duplicate) and notes (add, remove, set, quantise to a grid
 with a strength); the JSON writes notes as compact arrays.
 
+Controller events (`MidiControllerEvent`): a clip also holds control changes
+(number and value 0..127), pitch bend (-8192..8191), channel pressure and poly
+pressure, at clip-relative sample times like notes and kept sorted by time.
+`EditMidiControllers` adds, changes and removes any number of them in one step
+(the piano roll's controller lane draws, drags and deletes through it). Trim
+shifts them with the notes (an event a trim leaves before the clip's start is
+kept, and opens the clip with its value); split sends those after the split
+right and opens the right part with each controller's value at the split (its
+ids kept for redo); duplicate and paste give them fresh ids. The JSON writes
+them as `[id, "cc"|"bend"|"pressure"|"poly", number, value, time]` under the
+clip's `controllers`; project version 6 added them (5 -> 6 has nothing to
+rewrite).
+
 The engine side is `engine::MidiEvent` / `MidiEventList` (a fixed-capacity list
 per track, sized at compile) and `InsertProcessor::acceptsMidi/processMidi`. An
 instrument lives on an instrument channel (`TrackKind::instrument`), in its
@@ -945,7 +1059,20 @@ playing, or recording, or monitor on), and the note-offs a discontinuity
 demands. A `MidiRuntime` per track (held notes, where the previous span ended)
 outlives snapshots like the channel runtimes, so a stop, a locate, a loop wrap
 or play-from-elsewhere ends every held note at the top of the next span without
-the engine having to know why the position moved. Live MIDI enters through
+the engine having to know why the position moved. Controller events compile to
+`MidiControllerNode`s at timeline positions (events a trim left before a clip
+open it with their latest value) and play in time order, ahead of a note at
+the same sample. The runtime also keeps the last value sent of each chased
+controller (the 128 CCs, pitch bend, channel pressure; `engine::chaseKey*`):
+at a discontinuity while playing, `chaseControllers` finds each one's latest
+value before the position (from the clip the position is in, searched back,
+then each earlier clip's precomputed last values) and sends those that differ;
+one the clips use but that has no value before the position returns to its
+rest value (`chaseRestValue`: bend centred, pressure, mod wheel and pedals at
+0, expression at 127) if it had moved. A stop sends the rest value of every
+moved controller that has one, so nothing sounds bent or pedalled after it.
+Live input's controllers count as sent too. Everything is fixed-size arrays in
+the runtime: no allocation. Live MIDI enters through
 `AudioEngine::pushMidiInput` (device threads, a mutex on the producer side of an
 SPSC queue, drained once per block) tagged with a per-device-name index the
 snapshot resolves for each track. A device event carries its arrival time on
@@ -988,14 +1115,24 @@ chiptune synth: naive pulse, 4-bit triangle and saw, a 15-bit LFSR (short mode
 taps bit 6) clocked from the note and a 32-step drawn wave; 16-step volume;
 arpeggio, vibrato, sweep and glide at a 32-sample control rate from constant
 tables (nothing is built on the audio thread); mono with a held-note stack, or
-four voices; then sample and hold, bit reduction and an echo. The first built-in
+four voices; then sample and hold, bit reduction and an echo. The built-ins
+share `synth::Expression` (plugins/SynthVoices.h): pitch bend over +-2
+semitones, the mod wheel and channel pressure deepening a 5.5 Hz vibrato (up to
+half a semitone), and the sustain pedal holding released notes until it lifts
+(`dispatch` with an `Expression` defers the note-offs; CC 121 rests it all).
+Aurora applies it at its control rate, Nebula on each voice's partials, Starbit
+on top of its own vibrato; Pulsar takes the bend as a tuning of every pad and
+the mod wheel as opening their tone. A centred bend and resting wheel multiply
+by exactly 1, so the sound is unchanged when they are not used. The first built-in
 synth (`aural.synth`) is retired: projects that used it open with Aurora in its
 place (`ProjectSession::replaceLegacySynth`, before `adoptInstruments`). Every
 instrument parses its events at their sample offsets, so note timing is
 sample-exact. Hosted VST3 plugins that accept MIDI (the events go into the JUCE
-MIDI buffer as raw bytes) and CLAP plugins with a note input port (CLAP note
-events, or MIDI 1.0 events when that is the only dialect the port takes, after
-the block's parameter events). The test CLAP plugin has a note port that marks
+MIDI buffer as raw bytes, `MidiEvent::toBytes`: notes, controllers, pitch bend
+and pressure) and CLAP plugins with a note input port (CLAP note events, or
+MIDI 1.0 events when that is the only dialect the port takes, after the
+block's parameter events; controllers, bend and pressure always go as MIDI 1.0
+events, so a port that takes only the CLAP dialect does not get them). The test CLAP plugin has a note port that marks
 the audio at each note so the host's timing is tested. A multi-output instrument
 keeps its further stereo output buses (VST3) or ports (CLAP) and exposes them as
 `InsertProcessor::auxOutput` pairs; an aux track (`TrackKind::aux`, with the
@@ -1007,20 +1144,63 @@ track; each further pair is an output track or a chip that makes one), and the
 mixer's instrument slot menu offers the same "Outputs"; a source that goes away
 leaves the aux track silent.
 
+The Sampler (`aural.sampler`, `plugins/Sampler.*`) plays one sample across the
+keyboard: a root note and a key range, tune and fine, velocity to level, an ADSR
+on the amplitude (the shared `synth::Envelope`), start and end points, a forward
+loop whose last few milliseconds crossfade into the same distance before the
+loop's start (so a wrap mid-wave does not click; the fade is as long as the
+material before the loop start allows), one-shot playback (to the end, note-offs
+ignored), a TPT low-pass per voice with the envelope moving its cutoff (out of
+the path at 20 kHz with no envelope), up to 32 voices (over the limit the oldest
+fades out in 5 ms, as does a retriggered note) and glide from the last note's
+pitch. Each voice reads the sample at its exact position with 4-point Hermite
+interpolation (`engine::hermite`), the increment folding in the sample's own
+rate, so nothing is resampled on load. Everything but the file is a parameter
+(automatable); start, end and loop points are fractions of the sample. The file
+is the insert's `state` (base64 of the path) and so lives in the model: loading
+one is a `SetInsertState` command (undoable), and `InsertCache` now passes a
+changed model state to a live built-in that does not own its parameters
+(hosted plugins still take theirs only on creation). The processor is JUCE-free:
+`setState` asks the `sampler::Loader` the factory was given (the app's) for an
+immutable `sampler::Sample` on the controller thread and publishes it through
+an `rt::SnapshotPublisher`, so the real-time thread swaps it in at a block start
+and a retired sample is freed on the controller side once the audio thread has
+moved past it. A missing file keeps its path (a re-save loses nothing) and the
+sampler stays silent with the load error for the editor.
+The app's loader is `SampleFiles` (in the session, given to the insert factory, so
+bounces load the same way): the whole file at its own rate, up to ten minutes,
+shared while any sampler holds it (a recompile, undo or bounce does not decode it
+again) and read afresh when the file changed on disk. To make one from audio
+already in the project, right-click an audio clip and choose **Open in Sampler**:
+`ProjectSession::addSamplerTrack` adds an instrument channel named after the file
+and a MIDI track playing it in one undo step, the start and end points set to
+the part of the file the clip uses, and the editor opens. The editor
+(`ui/strip/SamplerEditor`, 07-plugins.md 7.4f) draws the waveform from the live
+instance's sample (min and max per pixel column, rebuilt when the sample or the
+width changes), drags the points as parameters, shows the sounding voices from
+`sampler::soundingVoices` (positions the audio thread publishes as atomics per
+block) and loads a dropped or chosen file with `SetInsertState` plus the points
+reset, grouped as one gesture. Launch flag: `--sampler <file> [demo]` (the same
+with a four-note clip, editor open; `demo` sets a loop, a key range and the
+filter).
+
 Recording: an armed MIDI track joins the record session (`addMidiTrack`); the
 engine stamps each live event it delivers to that track with its timeline
 position and take index on the session's queue (a loop wrap marks a new take
 with the previous take's end), and `engine::buildMidiTakes` turns the collected
 events into one clip per track and take, pairing note-ons with their offs (a
-retrigger ends the first, a note still held ends at the take's end) and moving
+retrigger ends the first, a note still held ends at the take's end), keeping
+controller events (CC, pitch bend, channel and poly pressure) as they came
+(a take of only controller moves still makes a clip), and moving
 the take earlier by `ProjectSession::midiRecordingLatencySamples` (the device
 output latency plus the master's delay compensation: the player plays to what
 they hear, so the input side of the round trip does not apply). A MIDI-only
 recording needs no audio input and writes no files.
 
 Devices: `audio::MidiDeviceLayer` (owned by the audio device layer) opens the
-inputs the settings enable (every input by default), forwards their messages to
-the engine with the device name, keeps one chosen output open, and re-reads the
+inputs the settings enable (every input by default), forwards their messages
+(notes, controllers, pitch bend, channel and poly pressure) to the engine with
+the device name, keeps one chosen output open, and re-reads the
 device list on JUCE's hot-plug notification; devices are identified by name,
 which is what tracks and settings store. Audio Setup shows the inputs as toggles
 and the output as a menu. The UI: MIDI clips draw on their lanes with a bar per
@@ -1046,15 +1226,31 @@ drags its length (Alt skips snap); Select lassos, moves with a pitch tooltip,
 resizes, Ctrl+drags to duplicate, Shift constrains the axis, double-click adds;
 Erase clicks or drags across notes; Q quantises at the menu strength, Shift+Q
 the ends too; arrows nudge (Shift fine, Ctrl an octave), + and - transpose.
-Not in this pass: the scale highlight (no key model), notes drawn live while
-recording, the instrument chip in the track header. Launch flags:
+The lane under the grid is switchable (the menu on its name in the keyboard
+column): Velocity, Pitch bend, Mod wheel, Expression, Sustain, Channel
+pressure or any other CC (a dot marks the lanes the clip has events in). A
+controller lane (120 px) draws each event as a point and its value as a step
+in the track colour, the bend around a centre line; Draw paints points at the
+grid (every 4 px with snap off; Alt skips snap) freehand or, with Shift, as a
+straight line, replacing the lane's events in the span drawn; Select clicks,
+Shift/Ctrl adds or toggles, lassos, drags points in time and value (Shift one
+axis, a value tooltip), double-click adds; Erase removes what it touches;
+Delete and Ctrl+A act on the lane after a click in it. Each gesture is one
+`EditMidiControllers` step. The Scale toggle in the toolbar shades the rows
+outside the project key (`Project::key`), tints the root's rows in
+`accentSubtle` and marks the scale's keys with a stripe (the root's in
+`accent`, named). Not in this pass: notes drawn live while recording, the
+instrument chip in the track header, a poly pressure lane. Launch flags:
 `--midi-track`, `--midi-track-with <type>`, `--piano-roll` (the first MIDI
-clip in the panel).
+clip in the panel), `--cc-lane <bend|mod|expression|sustain|pressure|cc<n>>`
+(the same with that lane, a demonstration curve drawn into an empty one),
+`--key <0..11> [minor]` (the project key).
 
 ### MIDI output
 
 A MIDI track with `midiOut` set plays the MIDI output device (the one chosen in
-Audio Setup) on its `midiOutChannel`. After the tracks of a span have rendered,
+Audio Setup) on its `midiOutChannel`: notes, controllers, pitch bend and
+pressure (with the chase and rest values above). After the tracks of a span have rendered,
 `Renderer::renderSpan` (on the callback thread, so the queue has one producer)
 pushes each such track's span events, with the channel set, into the engine's
 `midiOut_` SPSC queue, timed on the engine's sample clock (samples rendered
@@ -1067,6 +1263,39 @@ mapped to wall time and delayed by the audio output latency, has come, so the
 external instrument sounds with the audio. Note-offs on stop, locate and loop
 come through the same events. A full queue drops events rather than block.
 
+### MIDI files
+
+`app/MidiFiles` (`aural::midifile`, JUCE's `MidiFile` for the bytes) converts
+between Standard MIDI Files and clips, apart from the session so it is tested
+on its own (tests/unit_juce/MidiFileTests.cpp). Import reads types 0 and 1
+(type 2 is refused): every file track becomes one part per MIDI channel it
+uses (a type 0 file's channels come apart), named from the track's name meta
+event ("Name (ch 2)" when split), with notes paired to their offs (a retrigger
+ends the note before it; a note never ended runs to the channel's last
+event), control changes, pitch bend, channel and poly pressure. Ticks become
+samples in one place, `ticksToSamples`: ticks to seconds through the file's own
+tempo map (`TempoMap`, every tempo meta event; SMPTE timing too), then seconds
+to samples at the project rate, so a file's timing survives whatever the
+project's tempo track is.
+`ProjectSession::importMidiFile` places the parts at a bar (the drop point or
+the playhead, moved back to its bar), each clip whole bars long, on new MIDI
+tracks aimed at the target instrument (the selected instrument channel, or the
+one the selected MIDI track plays) or at a new Aurora channel (channel 10, the
+drums: a new Pulsar channel), the bars from the project's tempo track; an
+empty project first takes the file's tempo changes and time signature
+(`tempoStateOf`, one `SetTempoMap`); it is all one undo step. Export
+(`exportMidiFile`, `toMidiFile`) writes type 1 at 960 PPQ: a conductor track
+with the project's name and its tempo track (each tempo change, a ramp as a
+tempo event every sixteenth along it, and each time signature at its bar), then
+a track per MIDI track (named, on its MIDI channel) with its clips' events at
+their song positions (`samplesToTicks` through the tempo map), notes cut at clip
+ends and a
+controller value a trim left before a clip at the clip's start. The arrange
+view takes `.mid`/`.midi` drops beside audio; the app menu has "Import MIDI
+file..." and "Export MIDI clips..." (the selected MIDI clips, else the
+selected MIDI track's, else all). Launch flags: `--import-midi <file>`,
+`--export-midi <file>`.
+
 ### Crash reports
 
 `aural::crash` (src/app/CrashReports, no JUCE) installs an unhandled-exception
@@ -1078,17 +1307,98 @@ next launch says so with a toast (Show reveals the dump; either button moves the
 reports to `Crashes/Seen`). Nothing is sent anywhere: the Diagnostics
 preference to send reports waits for the release work.
 
+### Tempo track and time-stretch
+
+The project keeps its start tempo and signature (`Project::tempoBpm`,
+`timeSignature`) and, after them, `tempoChanges` (at quarter-note positions, each
+a step or a ramp into it) and `meterChanges` (at bars). `core::TempoMap` turns
+those into conversions between samples and quarter notes, bars and beats, the
+grid (`GridStep`: whole bars, or a division of quarter notes from each bar line;
+`snap`, `move`, `nextLine`, `adaptiveStep`) and the beats for the click. A ramp
+is linear in tempo over quarter notes, so its time is the closed form
+60/k ln(bpm(q)/bpm0); every query is a binary search over the points, noexcept and
+allocation-free, and the snapshot carries a copy for the audio thread. The
+timeline stays in samples: tempo is a view of it.
+
+`SetTempoMap` replaces the tempo track as one command (`SetTempo` sets the start
+tempo the same way). Before the change it captures every musical position (MIDI
+clips and notes, audio clips, automation, markers) and `remapMusicalTime` moves
+them so each keeps its bar and beat; undo restores the captured copies rather than
+remapping back, so a round trip is exact. Audio clips stay in time unless they
+follow the tempo (`AudioClip::followTempo`): those move and are re-stretched to
+keep their length in beats.
+
+Clips stretch and transpose with `AudioClip::stretch` (timeline samples per
+source sample) and `transpose` (semitones); `sourceOffset` stays in source
+samples. `engine::StretchService` renders a stretched clip with Signalsmith
+Stretch (MIT, fetched by CMake) on two background workers: the media around the
+part the clip uses (half a second of margin, rounded out to 4 s so small trims
+keep their render), into a buffer allocated before the render starts. The worker
+publishes how much of it is finished with a release store; the audio thread's
+`StretchedSource::read` copies only below that (acquire) and reads silence
+beyond, so playback starts while the render runs and no recompile is needed for
+progress. Renders are shared by every clip with the same media, ratio,
+transposition and range, dropped unstarted when nothing plays them any more (a
+stretch dragged through many lengths renders only where it stopped), and pruned
+once unreferenced. The snapshot compiler scales a stretched clip's source offset
+into stretched samples, and `MediaCache` routes stretched clips through the
+stretch hook (silence without one); a bounce uses a synchronous service, so its
+renders finish inside the compile. Vocal pitch edits apply to unstretched clips.
+
+`engine::guessTempo` reads a recording's tempo for "Stretch to project tempo...":
+a tempo in the file name first, then a whole number of bars (1 to 32) that agrees
+with the beats (an onset envelope's autocorrelation, with its multiples scored as
+a comb) within 3%, then the beats alone. `ProjectSession::conformClipTempo` lays
+the clip's beats over the tempo map from where it starts and stretches it to fit.
+
+In the UI the arrange view, piano roll and audio editor draw and snap their grids
+from the tempo map; the header bar shows and edits the tempo and signature at the
+playhead (the governing change when there are changes); the count-in is the bars
+before where capture rolls from. The tempo track (`ui::TempoLane`, 04-arrange.md)
+edits the changes; every edit is one `SetTempoMap`.
+
+### Folder tracks and freezing
+
+A folder is a track of its own kind (`TrackKind::folder`): no audio, no clips;
+tracks point at the folder they sit in (`Track::folder`), folders nest, and
+`folderOpen` says whether the arrange view shows what a folder holds. The project
+answers `folderOf`, `folderDepth`, `hiddenByFolder`, `mutedByFolder` and
+`soloedByFolder` (with a depth guard against cycles in a hand-edited file).
+`AddFolderTrack` puts a folder where its first member was and moves its members
+right after it in order; `SetTrackFolder` moves one track in or out (refusing a
+folder inside itself); `SetFolderOpen` is cosmetic. The snapshot compiler folds a
+folder's mute and solo into the tracks it holds and compiles the folder itself as
+a silent channel. In the arrange view a track inside a closed folder keeps its row
+at no height (so rows stay one per track), headers indent by depth, and a folder's
+lane shows its tracks' clips as thin bars in their colours. Moving a folder in the
+track order does not yet take its tracks with it.
+
+Freezing renders a track's output before its fader and plays that instead.
+`core::freezeRenderProject` builds the project the render hears: the track at unity
+gain and centre pan, without sends or fader automation, straight to the master at
+unity; the MIDI tracks that play it unchanged; every other channel silenced by its
+fader (not muted, so a pre-fader sidechain key still works). `ProjectSession::
+freezeTrack` renders it with a `BounceJob` (float WAV into "<media>/Freeze", the
+song plus three seconds of tail) and then sets `Track::frozenMedia` with
+`SetTrackFrozen`, which is also how unfreezing works (no media). A frozen track
+compiles without its instrument, inserts, strip and insert automation: one clip
+of its render from the song's start through its fader, pan (as a balance), sends
+and gain automation; its MIDI feeds and an instrument's extra outputs are not run.
+An instrument whose extra outputs feed aux tracks cannot be frozen yet. The media
+report counts frozen renders as used.
+
 ### Metronome, count-in, loop and punch
 
 `engine::ClickGenerator` adds a 30 ms decaying sine burst on every beat (1.5 kHz on
-bar starts, 1 kHz otherwise) at multiples of the beat length from zero, so the same
-code serves the count-in before the start position (negative timeline positions)
-and playback. The snapshot carries tempo and time signature.
+bar starts, 1 kHz otherwise), walking the tempo map's beats, so the same code
+serves the count-in before the start position (negative timeline positions, at
+the first tempo) and playback. The snapshot carries the tempo map.
 
 Every insert is handed an `engine::PlayHead` before each block
-(`InsertProcessor::setPlayHead`): the tempo, the time signature, whether the
-transport plays, and the song position at the block's first sample in samples
-and quarter notes (one tempo, so position / samples-per-quarter). Built-ins read
+(`InsertProcessor::setPlayHead`): the tempo and time signature in effect at the
+block's start, whether the transport plays, the song position at the block's
+first sample in samples and quarter notes, and the bar holding it and where that
+bar began (from the tempo map). Built-ins read
 it through `ProcessorBase::playHead()` (moved on by the chunk offset when a block
 is split); the Delay and Starbit's arpeggio use it for note values
 (`plugins/BeatSync.h`), and a hosted plugin gets it as JUCE's `AudioPlayHead`

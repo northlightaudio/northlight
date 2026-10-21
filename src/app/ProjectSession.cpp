@@ -1,12 +1,16 @@
 #include "ProjectSession.h"
 
+#include "app/MidiFiles.h"
 #include "audio/AudioDeviceLayer.h"
+#include "core/Comping.h"
 #include "core/ProjectJson.h"
+#include "core/TempoMap.h"
 #include "engine/WavFile.h"
 #include "hosting/ClapPlugin.h"
 #include "plugins/Aurora.h"
 #include "plugins/BuiltIns.h"
 #include "plugins/ChannelStrip.h"
+#include "plugins/Pulsar.h"
 
 #include <algorithm>
 #include <cmath>
@@ -28,6 +32,7 @@ ProjectSession::ProjectSession(audio::AudioDeviceLayer& audio, juce::File regist
     : audio_(audio), loader_(disk_), registryFile_(std::move(registryFile)), scanner_(registry_),
       inserts_(registry_), engine_(loader_, inserts_)
 {
+    inserts_.setSampleLoader(sampleFiles_.loader());
     if (registryFile_.existsAsFile())
         if (auto loaded = hosting::PluginRegistry::fromJson(registryFile_.loadFileAsString().toStdString()))
             registry_ = std::move(*loaded);
@@ -52,6 +57,11 @@ ProjectSession::ProjectSession(audio::AudioDeviceLayer& audio, juce::File regist
     engine_.setClipSourceHook(
         [this](const core::AudioClip& clip, double rate, std::shared_ptr<const engine::AudioSource> base)
         { return vocal_.sourceFor(clip, rate, std::move(base)); });
+    engine_.setStretchHook(
+        [this](const core::AudioClip& clip, double rate, std::shared_ptr<const engine::AudioSource> base)
+        { return stretch_.sourceFor(clip, rate, base); });
+    stretch_.onChanged = [this] { stretchUpdates_.triggerAsyncUpdate(); };
+    stretchUpdates_.onUpdate = [this] { notify(Change::values); };
     audio_.callback().setEngine(&engine_);
     audio_.midi().setEngine(&engine_);
     audio_.addChangeListener(this);
@@ -263,7 +273,8 @@ std::string ProjectSession::normaliseClip(core::Id trackId, core::Id clipId, flo
         return error.empty() ? "could not read " + clip->mediaPath : error;
     float peak = 0.0f;
     std::vector<float> chunk(8192);
-    const auto end = std::min<std::int64_t>(clip->sourceOffset + clip->length, source->lengthSamples());
+    const auto end =
+        std::min<std::int64_t>(clip->sourceOffset + clip->sourceLength(), source->lengthSamples());
     for (int ch = 0; ch < source->numChannels(); ++ch)
         for (std::int64_t at = clip->sourceOffset; at < end; at += static_cast<std::int64_t>(chunk.size()))
         {
@@ -278,6 +289,57 @@ std::string ProjectSession::normaliseClip(core::Id trackId, core::Id clipId, flo
     const float target = std::pow(10.0f, targetDb / 20.0f);
     execute(std::make_unique<core::SetClipGain>(trackId, clipId, target / peak));
     return {};
+}
+
+engine::TempoGuess ProjectSession::guessClipTempo(core::Id trackId, core::Id clipId)
+{
+    const auto* track = project_.findTrack(trackId);
+    const auto* clip = track != nullptr ? track->findClip(clipId) : nullptr;
+    if (clip == nullptr)
+        return {};
+    std::string error;
+    const auto source = stretchLoader_.load(clip->mediaPath, project_.sampleRate, error);
+    if (source == nullptr)
+        return {};
+    // The part the clip plays (at most a minute of it is enough to hear the beat).
+    const auto from = std::clamp<std::int64_t>(clip->sourceOffset, 0, source->lengthSamples());
+    const auto count = std::clamp<std::int64_t>(clip->sourceLength(), 0, source->lengthSamples() - from);
+    const auto analysed =
+        std::min<std::int64_t>(count, static_cast<std::int64_t>(project_.sampleRate * 60.0));
+    std::vector<std::vector<float>> samples(static_cast<size_t>(source->numChannels()),
+                                            std::vector<float>(static_cast<size_t>(analysed)));
+    std::vector<const float*> channels;
+    for (int ch = 0; ch < source->numChannels(); ++ch)
+    {
+        source->read(ch, from, samples[static_cast<size_t>(ch)].data(), static_cast<int>(analysed));
+        channels.push_back(samples[static_cast<size_t>(ch)].data());
+    }
+    const auto name = juce::File(juce::String::fromUTF8(clip->mediaPath.c_str())).getFileName().toStdString();
+    auto guess = engine::guessTempo(name, channels, analysed, project_.sampleRate);
+    // The length check wants the whole clip, not the analysed minute.
+    if (guess.source == engine::TempoGuess::Source::beats && analysed == count)
+        if (const double byLength = engine::tempoFromLength(count, project_.sampleRate, 4.0, guess.bpm);
+            byLength > 0.0 && std::abs(byLength / guess.bpm - 1.0) < 0.03)
+            guess = {byLength, std::max(guess.confidence, 0.8), engine::TempoGuess::Source::length};
+    return guess;
+}
+
+void ProjectSession::conformClipTempo(core::Id trackId, core::Id clipId, double sourceBpm)
+{
+    const auto* track = project_.findTrack(trackId);
+    const auto* clip = track != nullptr ? track->findClip(clipId) : nullptr;
+    if (clip == nullptr || sourceBpm <= 0.0)
+        return;
+    // The clip's beats at the tempo it was recorded at, laid over the tempo map
+    // from where it starts.
+    const auto map = core::tempoMapOf(project_);
+    const double seconds = static_cast<double>(clip->sourceLength()) / project_.sampleRate;
+    const double quarters = seconds * sourceBpm / 60.0;
+    const auto end = map.positionAt(map.quartersAt(static_cast<double>(clip->start)) + quarters);
+    const auto length = std::max<core::SamplePosition>(1, end - clip->start);
+    const double stretch = static_cast<double>(length) /
+                           static_cast<double>(std::max<core::SamplePosition>(1, clip->sourceLength()));
+    execute(std::make_unique<core::SetClipStretch>(trackId, clipId, stretch, clip->transpose, length, true));
 }
 
 bool ProjectSession::applyChecked(std::unique_ptr<core::Command> command)
@@ -462,6 +524,48 @@ core::Id ProjectSession::playNewInstrument(core::Id midiTrack, const std::string
     return channel;
 }
 
+core::Id ProjectSession::addSamplerTrack(const juce::File& file, double startFraction, double endFraction)
+{
+    namespace sp = plugins::sampler;
+    auto channel = makeInstrumentChannel(sp::type);
+    if (const auto name = file.getFileNameWithoutExtension().toStdString(); !name.empty())
+        channel.name = name;
+    channel.instrument.state = sp::encodeState(file.getFullPathName().toStdString());
+    if (channel.instrument.params.size() > static_cast<size_t>(sp::end))
+    {
+        channel.instrument.params[sp::start] = static_cast<float>(std::clamp(startFraction, 0.0, 1.0));
+        channel.instrument.params[sp::end] = static_cast<float>(std::clamp(endFraction, 0.0, 1.0));
+    }
+    core::Track midi;
+    midi.name = nextMidiTrackName();
+    midi.armed = true;
+    auto command = std::make_unique<core::AddInstrumentTrack>(channel, midi);
+    const auto* raw = command.get(); // kept alive by the undo history
+    if (!run(std::move(command)))
+        return core::invalidId;
+    return raw->midiTrackId();
+}
+
+std::string ProjectSession::previewFile(const juce::File& file)
+{
+    const double rate = engine_.deviceSampleRate() > 0.0 ? engine_.deviceSampleRate() : project_.sampleRate;
+    std::string error;
+    auto source = loader_.load(file.getFullPathName().toStdString(), rate, error);
+    if (source == nullptr)
+        return error.empty() ? "could not read the file" : error;
+    if (auto instance = source->createInstance()) // a long file streams through its own window
+        source = std::move(instance);
+    engine_.preview().play(std::move(source));
+    pumpPreview();
+    return {};
+}
+
+void ProjectSession::stopPreview()
+{
+    engine_.preview().stop();
+    pumpPreview();
+}
+
 std::string ProjectSession::importAudioFile(const juce::File& file, core::SamplePosition at)
 {
     std::string error;
@@ -484,6 +588,108 @@ std::string ProjectSession::importAudioFile(const juce::File& file, core::Sample
     if (const auto it = errors.find(clip.mediaPath); it != errors.end())
         return it->second;
     return {};
+}
+
+std::string ProjectSession::importMidiFile(const juce::File& file, core::SamplePosition at, core::Id target)
+{
+    // The file's times become samples at the project rate through its own tempo
+    // map, so they do not depend on the project's tempo; only the bar the import
+    // lands on and the clips' rounding do.
+    auto imported = midifile::readMidiFile(file, project_.sampleRate);
+    if (!imported.error.empty())
+        return imported.error;
+    const Batch batch(*this, "Import MIDI file");
+    if (project_.tracks.empty())
+    {
+        // An empty project takes the file's tempo changes and time signature.
+        auto state = midifile::tempoStateOf(imported.tempo, core::TempoState::of(project_));
+        if (imported.hasTimeSignature)
+            state.signature = imported.timeSignature;
+        if (!(state == core::TempoState::of(project_)))
+            run(std::make_unique<core::SetTempoMap>(state, "Take the file's tempo"));
+    }
+    // The clips start at the bar the import lands in and run whole bars.
+    const auto map = core::tempoMapOf(project_);
+    const auto barOf = [&](core::SamplePosition s)
+    { return map.barAtQuarter(map.quartersAt(static_cast<double>(std::max<core::SamplePosition>(0, s)))); };
+    const int firstBar = barOf(at);
+    const auto start = map.barStart(firstBar);
+
+    // The channel the parts play: the target, or the one a MIDI target plays.
+    core::Id channel = core::invalidId;
+    if (const auto* t = project_.findTrack(target))
+        channel = t->isInstrument() ? t->id
+                  : t->isMidi()
+                      ? (project_.findTrack(t->midiTarget) != nullptr ? t->midiTarget : core::invalidId)
+                      : core::invalidId;
+    const bool targeted = channel != core::invalidId;
+    core::Id drums = core::invalidId; // a new Pulsar for channel 10, when there is no target
+    for (auto& part : imported.parts)
+    {
+        // Whole bars, at least one. (The file's times are seconds at its own
+        // tempo; laid at `start` they keep that timing.)
+        const auto end = start + std::max<core::SamplePosition>(1, part.clip.length);
+        part.clip.length = map.barStart(std::max(firstBar + 1, barOf(end - 1) + 1)) - start;
+        part.clip.start = start;
+        core::Track midi;
+        midi.name = part.name;
+        midi.midiChannel = part.channel;
+        core::Id midiTrack = core::invalidId;
+        const bool isDrums = part.channel == 10 && !targeted;
+        auto& playing = isDrums ? drums : channel;
+        if (playing == core::invalidId)
+        {
+            auto command = std::make_unique<core::AddInstrumentTrack>(
+                makeInstrumentChannel(isDrums ? plugins::pulsar::type : plugins::aurora::type), midi);
+            const auto* raw = command.get(); // kept alive by the undo history
+            if (!run(std::move(command)))
+                return "could not add a track for " + part.name;
+            midiTrack = raw->midiTrackId();
+            if (const auto* made = project_.findTrack(midiTrack))
+                playing = made->midiTarget;
+        }
+        else
+        {
+            midi.kind = core::TrackKind::midi;
+            midi.midiTarget = playing;
+            auto command = std::make_unique<core::AddTrack>(midi, project_.trackIndex(playing));
+            const auto* raw = command.get();
+            if (!run(std::move(command)))
+                return "could not add a track for " + part.name;
+            midiTrack = raw->trackId();
+        }
+        run(std::make_unique<core::AddMidiClip>(midiTrack, std::move(part.clip)));
+    }
+    return {};
+}
+
+std::string ProjectSession::exportMidiFile(const juce::File& file,
+                                           const std::vector<std::pair<core::Id, core::Id>>& clips)
+{
+    std::vector<std::pair<const core::Track*, std::vector<const core::MidiClip*>>> tracks;
+    for (const auto& [trackId, clipId] : clips)
+    {
+        const auto* track = project_.findTrack(trackId);
+        const auto* clip = track != nullptr ? track->findMidiClip(clipId) : nullptr;
+        if (clip == nullptr)
+            continue;
+        auto it =
+            std::find_if(tracks.begin(), tracks.end(), [track](const auto& t) { return t.first == track; });
+        if (it == tracks.end())
+        {
+            tracks.push_back({track, {}});
+            it = std::prev(tracks.end());
+        }
+        it->second.push_back(clip);
+    }
+    if (tracks.empty())
+        return "no MIDI clips to export";
+    // In track order, as the arrange view shows them.
+    std::sort(tracks.begin(),
+              tracks.end(),
+              [this](const auto& a, const auto& b)
+              { return project_.trackIndex(a.first->id) < project_.trackIndex(b.first->id); });
+    return midifile::writeMidiFile(file, midifile::toMidiFile(project_, tracks));
 }
 
 // ----- files ------------------------------------------------------------------------------
@@ -570,6 +776,7 @@ std::string ProjectSession::saveAsTemplate(const juce::String& name)
     {
         t.clips.clear();
         t.midiClips.clear();
+        t.takeGroups.clear();
         t.armed = false;
         for (auto& lane : t.automation)
             lane.points.clear();
@@ -627,18 +834,38 @@ ProjectSession::MediaReport ProjectSession::mediaReport() const
     MediaReport report;
     const auto folder = mediaFolder();
     std::vector<juce::File> used;
+    // Every clip's media and every take's (a take the comp does not play is still kept).
+    std::vector<const core::AudioClip*> clips;
     for (const auto& t : project_.tracks)
+    {
         for (const auto& c : t.clips)
+            clips.push_back(&c);
+        for (const auto& g : t.takeGroups)
+            for (const auto& take : g.takes)
+                clips.push_back(&take.clip);
+    }
+    std::vector<core::AudioClip> frozen; // a frozen track's render, as a clip for the check below
+    for (const auto& t : project_.tracks)
+        if (t.isFrozen())
         {
-            const juce::File f(juce::String::fromUTF8(c.mediaPath.c_str()));
-            if (std::find(used.begin(), used.end(), f) != used.end())
-                continue;
-            used.push_back(f);
-            if (!f.existsAsFile())
-                report.missing.push_back(f);
-            else if (projectFile_ == juce::File() || !f.isAChildOf(folder))
-                report.outside.push_back(f);
+            core::AudioClip c;
+            c.mediaPath = t.frozenMedia;
+            frozen.push_back(c);
         }
+    for (const auto& c : frozen)
+        clips.push_back(&c);
+    for (const auto* clip : clips)
+    {
+        const auto& c = *clip;
+        const juce::File f(juce::String::fromUTF8(c.mediaPath.c_str()));
+        if (std::find(used.begin(), used.end(), f) != used.end())
+            continue;
+        used.push_back(f);
+        if (!f.existsAsFile())
+            report.missing.push_back(f);
+        else if (projectFile_ == juce::File() || !f.isAChildOf(folder))
+            report.outside.push_back(f);
+    }
     if (projectFile_ != juce::File() && folder.isDirectory())
         for (const auto& f : folder.findChildFiles(juce::File::findFiles, false))
             if (isMediaFile(f) && std::find(used.begin(), used.end(), f) == used.end())
@@ -1088,19 +1315,18 @@ std::string ProjectSession::startRecording()
     if (!folder.createDirectory().wasOk())
         return "could not create " + folder.getFullPathName().toStdString();
 
-    const double barSamples =
-        core::samplesPerBeat(project_.sampleRate, project_.tempoBpm, project_.timeSignature) *
-        std::max(1, project_.timeSignature.numerator);
-    const auto countIn = static_cast<core::SamplePosition>(std::llround(barSamples * countInBars_));
+    // Bars on the tempo track: the count-in is the bars before where capture
+    // rolls from, so its clicks are the song's own beats.
+    const auto map = core::tempoMapOf(project_);
     const bool punching = punch_ && regionEnd_ > regionStart_;
     const bool looping = loop_ && regionEnd_ > regionStart_;
 
     // Punching in: roll from one bar before the region so the take has a run-up.
     // (Only once the session is known to start; the locate is harmless otherwise.)
-    const auto rollFrom =
-        punching
-            ? std::max<core::SamplePosition>(0, regionStart_ - static_cast<core::SamplePosition>(barSamples))
-            : engine_.position();
+    const auto rollFrom = punching ? std::max<core::SamplePosition>(0, map.move(regionStart_, {1, 0.0}, -1))
+                                   : engine_.position();
+    const auto countIn =
+        std::max<core::SamplePosition>(0, rollFrom - map.move(rollFrom, {1, 0.0}, -countInBars_));
     // Capture starts at the punch-in point, or wraps to the loop start first when
     // playback is at or past the loop end.
     core::SamplePosition captureStart = punching ? std::max(regionStart_, rollFrom) : rollFrom;
@@ -1148,6 +1374,7 @@ std::string ProjectSession::startRecording()
         return error;
     }
     recordingMessage_.clear();
+    recordingPunched_ = punching;
     notify(Change::structure);
     return {};
 }
@@ -1162,6 +1389,8 @@ void ProjectSession::finishRecording(engine::AudioEngine::FinishedRecording fini
 
     // One "Record" step; the engine work happens once, below.
     auto batch = std::make_unique<Batch>(*this, "Record");
+    // Each track's passes, in recording order (the results come per input, take by take).
+    std::map<core::Id, std::vector<std::pair<int, core::AudioClip>>> passes;
     for (const auto& r : finished.results)
     {
         dropped = std::max(dropped, r.dropped);
@@ -1188,8 +1417,7 @@ void ProjectSession::finishRecording(engine::AudioEngine::FinishedRecording fini
         if (!partial.moveFileTo(final))
             final = partial;
 
-        // Each loop pass is its own take, placed at the loop start; later takes sit
-        // on top of earlier ones on the same track.
+        // Each loop pass is a take, placed at the loop start.
         const auto placement = engine::placeRecording(r.startPosition, r.samplesWritten, latency);
         core::AudioClip clip;
         clip.name = final.getFileNameWithoutExtension().toStdString();
@@ -1199,9 +1427,26 @@ void ProjectSession::finishRecording(engine::AudioEngine::FinishedRecording fini
         clip.length = placement.length;
         if (clip.length > 0 && project_.findTrack(r.trackId) != nullptr)
         {
-            run(std::make_unique<core::AddClip>(r.trackId, clip), false);
+            passes[r.trackId].emplace_back(r.takeIndex, std::move(clip));
             takes = std::max(takes, r.takeIndex + 1);
         }
+    }
+    // A track's passes become takes in a take group (docs/design/14-comping.md)
+    // when there are several (loop recording), when punching in, or when they
+    // land on a take group already there; a single pass elsewhere is a clip.
+    for (auto& [trackId, list] : passes)
+    {
+        std::stable_sort(
+            list.begin(), list.end(), [](const auto& a, const auto& b) { return a.first < b.first; });
+        std::vector<core::AudioClip> clips;
+        for (auto& [index, clip] : list)
+            clips.push_back(std::move(clip));
+        const auto* track = project_.findTrack(trackId);
+        if (track != nullptr && core::recordingMakesTakes(*track, clips, recordingPunched_))
+            run(std::make_unique<core::RecordTakes>(trackId, std::move(clips)), false);
+        else
+            for (auto& clip : clips)
+                run(std::make_unique<core::AddClip>(trackId, std::move(clip)), false);
     }
     // MIDI takes: the captured events become clips, placed like the audio (the
     // player heard the instrument late by the output path, and played to that).
@@ -1402,31 +1647,80 @@ std::string ProjectSession::startBounce(BounceJob::Options options)
         return "a bounce is already running";
     if (project_.tracks.empty())
         return "nothing to bounce";
+    if (options.stems && !options.stemTracks.empty() &&
+        std::none_of(options.stemTracks.begin(),
+                     options.stemTracks.end(),
+                     [this](core::Id id) { return project_.findTrack(id) != nullptr; }))
+        return "no tracks selected";
     captureInsertStates(); // the offline engines restore the live plugin states
     stop();
-    bounce_ = std::make_unique<BounceJob>(project_, inserts_, std::move(options));
-    bounce_->onFinished = [this](const BounceJob::Result& result)
+    const double outputRate = engine::outputRate(options.format, project_.sampleRate);
+    bounce_ = std::make_unique<BounceJob>(project_, inserts_, options);
+    bounce_->onFinished = [this, options, outputRate](const BounceJob::Result& result)
     {
-        if (!result.error.empty())
-            bounceMessage_ = "Bounce failed: " + result.error;
-        else if (result.cancelled)
-            bounceMessage_ = "Bounce cancelled";
+        bounceResult_ = result;
+        bounceMessage_ = BounceJob::describe(result, options, outputRate);
+        notify(Change::structure);
+    };
+    bounceResult_ = BounceJob::Result{};
+    bounceMessage_ = "Bouncing...";
+    bounce_->start();
+    notify(Change::structure);
+    return {};
+}
+
+std::string ProjectSession::freezeTrack(core::Id trackId)
+{
+    if (isFreezing())
+        return "a freeze is already running";
+    if (isBouncing())
+        return "wait for the export to finish";
+    const auto* track = project_.findTrack(trackId);
+    if (track == nullptr || !track->hasAudio())
+        return "only a track that makes audio can be frozen";
+    if (track->isFrozen())
+        return {};
+    for (const auto& t : project_.tracks)
+        if (t.isAux() && t.auxTrack == trackId)
+            return "this instrument's extra outputs feed other tracks; it cannot be frozen yet";
+    const auto folder = mediaFolder().getChildFile("Freeze");
+    if (!folder.createDirectory().wasOk())
+        return "could not create " + folder.getFullPathName().toStdString();
+    captureInsertStates(); // the offline engine restores the live plugin states
+    const auto safe = juce::File::createLegalFileName(juce::String::fromUTF8(track->name.c_str()))
+                          .trim()
+                          .replaceCharacter(' ', '-');
+    const auto file =
+        folder.getNonexistentChildFile((safe.isEmpty() ? juce::String("Track") : safe) + "-freeze", ".wav");
+    BounceJob::Options options;
+    options.output = file;
+    options.start = 0;
+    // The song and three seconds for tails (a reverb, a release).
+    options.end = project_.length() + static_cast<core::SamplePosition>(project_.sampleRate * 3.0);
+    freeze_ = std::make_unique<BounceJob>(core::freezeRenderProject(project_, trackId), inserts_, options);
+    const auto name = track->name;
+    freeze_->onFinished = [this, trackId, file, name](const BounceJob::Result& result)
+    {
+        if (!result.error.empty() || result.cancelled)
+        {
+            freezeMessage_ =
+                "Freezing " + name + " failed: " + (result.cancelled ? "cancelled" : result.error);
+            file.deleteFile();
+        }
+        else if (project_.findTrack(trackId) == nullptr)
+        {
+            freezeMessage_ = "The track was removed while it was being frozen.";
+            file.deleteFile();
+        }
         else
         {
-            const double seconds = static_cast<double>(result.length) / project_.sampleRate;
-            const int minutes = static_cast<int>(seconds) / 60;
-            const int rest = static_cast<int>(seconds) % 60;
-            char lufs[32];
-            std::snprintf(lufs, sizeof(lufs), "%.1f", static_cast<double>(result.integratedLufs));
-            bounceMessage_ =
-                "Bounced " + std::to_string(result.files.size()) + " file(s), " + std::to_string(minutes) +
-                ":" + (rest < 10 ? "0" : "") + std::to_string(rest) +
-                (result.files.size() == 1 ? std::string(", ") + lufs + " LUFS integrated" : std::string{});
+            execute(std::make_unique<core::SetTrackFrozen>(trackId, file.getFullPathName().toStdString()));
+            freezeMessage_ = "Froze " + name + ": it plays its render until you unfreeze it.";
         }
         notify(Change::structure);
     };
-    bounceMessage_ = "Bouncing...";
-    bounce_->start();
+    freezeMessage_.clear();
+    freeze_->start();
     notify(Change::structure);
     return {};
 }

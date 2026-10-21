@@ -1,6 +1,7 @@
 #pragma once
 
 #include "core/Model.h"
+#include "core/TempoMap.h"
 
 #include <memory>
 #include <optional>
@@ -427,7 +428,9 @@ private:
 };
 
 // Splits at a timeline position inside the clip; a note across the split is cut
-// at it (the left part keeps it, shortened).
+// at it (the left part keeps it, shortened). Controller events after the split
+// go right, and the right part opens with each controller's value at the split
+// (so it sounds the same when moved on its own).
 class SplitMidiClip final : public Command
 {
 public:
@@ -441,6 +444,7 @@ private:
     Id trackId_, clipId_;
     SamplePosition at_;
     MidiClip original_, right_;
+    std::vector<Id> chaseIds_; // the right part's opening controller values, kept for redo
 };
 
 class DuplicateMidiClip final : public Command
@@ -499,12 +503,40 @@ private:
     MidiNote value_, previous_;
 };
 
+// Adds, changes and removes controller events in one clip, as one step (a
+// drawn line, a drag of several points, a delete). `events` with an id the clip
+// has replace that event; the rest are added (an invalid id is allocated on
+// apply and kept for redo). Values are clamped to their type's range.
+class EditMidiControllers final : public Command
+{
+public:
+    EditMidiControllers(Id trackId,
+                        Id clipId,
+                        std::vector<MidiControllerEvent> events,
+                        std::vector<Id> remove = {},
+                        std::string name = "Edit controllers");
+    std::string name() const override { return name_; }
+    void apply(Project&) override;
+    void revert(Project&) override;
+    const std::vector<MidiControllerEvent>& events() const noexcept { return events_; }
+
+private:
+    Id trackId_, clipId_;
+    std::vector<MidiControllerEvent> events_;
+    std::vector<Id> remove_;
+    std::string name_;
+    std::vector<MidiControllerEvent> previous_;
+};
+
 // Moves note starts towards the nearest grid line (timeline grid, anchored at
 // zero) by `strength` (1 = exactly on the grid); lengths are kept.
 class QuantiseNotes final : public Command
 {
 public:
     QuantiseNotes(Id trackId, Id clipId, std::vector<Id> noteIds, SamplePosition grid, float strength = 1.0f);
+    // To a grid on the tempo track (bars and beats follow tempo and meter changes).
+    QuantiseNotes(
+        Id trackId, Id clipId, std::vector<Id> noteIds, TempoMap map, GridStep step, float strength = 1.0f);
     std::string name() const override { return "Quantise"; }
     void apply(Project&) override;
     void revert(Project&) override;
@@ -512,7 +544,8 @@ public:
 private:
     Id trackId_, clipId_;
     std::vector<Id> noteIds_;
-    SamplePosition grid_;
+    SamplePosition grid_ = 1;
+    std::optional<std::pair<TempoMap, GridStep>> tempoGrid_;
     float strength_;
     std::vector<std::pair<Id, SamplePosition>> previous_;
 };
@@ -786,6 +819,21 @@ public:
 private:
     Id channelId_, insertId_, value_, previous_ = invalidId;
     bool postFader_, previousPostFader_ = false;
+};
+
+// The opaque state of a built-in that keeps state beyond its parameters (the
+// Sampler's file): the engine passes the new state to the live instance.
+class SetInsertState final : public Command
+{
+public:
+    SetInsertState(Id channelId, Id insertId, std::string state, std::string name = "Set insert state");
+    std::string name() const override { return name_; }
+    void apply(Project&) override;
+    void revert(Project&) override;
+
+private:
+    Id channelId_, insertId_;
+    std::string value_, previous_, name_;
 };
 
 class SetInsertBypass final : public Command
@@ -1174,6 +1222,7 @@ private:
 
 // Moves every clip starting at or after `from` by `delta` (ripple editing);
 // clips that would start before zero are pinned at zero. Undo moves them back.
+// Take groups starting at or after `from` move too (their takes and comp).
 class ShiftClips final : public Command
 {
 public:
@@ -1185,7 +1234,8 @@ public:
 private:
     Id trackId_;
     SamplePosition from_, delta_;
-    std::vector<std::pair<Id, SamplePosition>> previous_; // clip id, start before
+    std::vector<std::pair<Id, SamplePosition>> previous_;      // clip id, start before
+    std::vector<std::pair<Id, SamplePosition>> shiftedGroups_; // take group id, delta applied
 };
 
 class SetClipGain final : public Command
@@ -1252,6 +1302,133 @@ private:
     MusicalKey value_, previous_;
 };
 
+// ----- folders and freezing ------------------------------------------------------------------
+
+// A new folder track at `index` (end when < 0) holding `members` (moved into it,
+// keeping their order, right after it). Its id is allocated on apply.
+class AddFolderTrack final : public Command
+{
+public:
+    AddFolderTrack(std::string name, std::vector<Id> members, int index = -1);
+    std::string name() const override { return "Add folder track"; }
+    void apply(Project&) override;
+    void revert(Project&) override;
+    Id folderId() const noexcept { return folder_.id; }
+
+private:
+    Track folder_;
+    std::vector<Id> members_;
+    int index_;
+    std::vector<Track> previousOrder_;
+};
+
+// Moves a track into a folder (invalidId: out of any). A folder cannot go into
+// itself or a folder inside it.
+class SetTrackFolder final : public Command
+{
+public:
+    SetTrackFolder(Id trackId, Id folderId);
+    std::string name() const override
+    {
+        return folderId_ == invalidId ? "Remove from folder" : "Move into folder";
+    }
+    void apply(Project&) override;
+    void revert(Project&) override;
+
+private:
+    Id trackId_, folderId_, previous_ = invalidId;
+};
+
+// Opens or closes a folder (what the arrange view shows; no engine work).
+class SetFolderOpen final : public Command
+{
+public:
+    SetFolderOpen(Id folderId, bool open);
+    std::string name() const override { return open_ ? "Open folder" : "Close folder"; }
+    ChangeKind changeKind() const noexcept override { return ChangeKind::cosmetic; }
+    void apply(Project&) override;
+    void revert(Project&) override;
+
+private:
+    Id folderId_;
+    bool open_, previous_ = true;
+};
+
+// Freezes a track to a render of its output (`media`), or unfreezes it (empty).
+class SetTrackFrozen final : public Command
+{
+public:
+    SetTrackFrozen(Id trackId, std::string media);
+    std::string name() const override { return media_.empty() ? "Unfreeze track" : "Freeze track"; }
+    void apply(Project&) override;
+    void revert(Project&) override;
+
+private:
+    Id trackId_;
+    std::string media_, previous_;
+};
+
+// What a tempo edit changes and restores: the tempo track, and every position
+// that follows it (MIDI clips, clips that follow the tempo, automation, markers),
+// captured whole so undo puts them back exactly rather than remapping again.
+struct TempoState
+{
+    double bpm = 120.0;
+    TimeSignature signature;
+    std::vector<TempoChange> tempoChanges;
+    std::vector<MeterChange> meterChanges;
+    bool operator==(const TempoState&) const = default;
+    static TempoState of(const Project& p);
+};
+
+class MusicalPositions
+{
+public:
+    void capture(const Project& p);
+    void restore(Project& p) const;
+
+private:
+    std::vector<std::vector<MidiClip>> midi_;
+    std::vector<std::vector<AudioClip>> audio_;
+    std::vector<std::vector<AutomationLane>> trackLanes_, busLanes_;
+    std::vector<Marker> markers_;
+};
+
+// Replaces the tempo track (start tempo, signature, changes); musical content
+// keeps its bars and beats (core/TempoMap.h remapMusicalTime).
+class SetTempoMap final : public Command
+{
+public:
+    explicit SetTempoMap(TempoState state, std::string name = "Edit tempo track");
+    std::string name() const override { return name_; }
+    void apply(Project&) override;
+    void revert(Project&) override;
+
+private:
+    TempoState value_, previous_;
+    MusicalPositions positions_;
+    std::string name_;
+};
+
+// A clip's time-stretch and transposition (and its length, which a stretch
+// changes, and whether it follows the tempo).
+class SetClipStretch final : public Command
+{
+public:
+    SetClipStretch(
+        Id trackId, Id clipId, double stretch, double transpose, SamplePosition length, bool followTempo);
+    std::string name() const override { return "Stretch clip"; }
+    void apply(Project&) override;
+    void revert(Project&) override;
+
+private:
+    Id trackId_, clipId_;
+    double stretch_, transpose_;
+    SamplePosition length_;
+    bool followTempo_;
+    AudioClip previous_;
+};
+
 class SetTimeSignature final : public Command
 {
 public:
@@ -1264,6 +1441,8 @@ private:
     TimeSignature value_, previous_;
 };
 
+// The tempo at the song's start (what the header sets when there are no tempo
+// changes); musical content keeps its bars and beats.
 class SetTempo final : public Command
 {
 public:
@@ -1274,6 +1453,7 @@ public:
 
 private:
     double value_, previous_ = 120.0;
+    MusicalPositions positions_;
 };
 
 } // namespace aural::core

@@ -6,6 +6,7 @@
 #include "audio/AudioDeviceLayer.h"
 #include "core/Command.h"
 #include "core/Model.h"
+#include "core/TempoMap.h"
 #include "engine/Midi.h"
 #include "engine/Snapshot.h"
 #include "plugins/BuiltIns.h"
@@ -15,8 +16,10 @@
 #include "ui/AudioEditor.h"
 #include "ui/AudioSetupView.h"
 #include "ui/AuralLookAndFeel.h"
+#include "ui/ExportView.h"
 #include "ui/FrameStats.h"
 #include "ui/Icons.h"
+#include "ui/MediaBrowser.h"
 #include "ui/MixerView.h"
 #include "ui/PianoRoll.h"
 #include "ui/PluginBrowser.h"
@@ -36,10 +39,13 @@
 #include "ui/shell/StatusBar.h"
 #include "ui/strip/ChannelStripView.h"
 
+#include <juce_audio_formats/juce_audio_formats.h>
+
 #include <algorithm>
 #include <cmath>
 #include <cstdio>
 #include <deque>
+#include <map>
 #include <optional>
 
 namespace aural
@@ -49,8 +55,7 @@ namespace
 {
 juce::String barsText(const core::Project& project, core::SamplePosition position)
 {
-    const auto bb = core::samplesToBarsBeats(
-        std::abs(position), project.sampleRate, project.tempoBpm, project.timeSignature);
+    const auto bb = core::tempoMapOf(project).barsBeatsAt(std::abs(position));
     return juce::String(position < 0 ? "-" : "") + juce::String(bb.bar) + "." + juce::String(bb.beat) + "." +
            juce::String(bb.tick).paddedLeft('0', 3);
 }
@@ -75,7 +80,7 @@ core::SamplePosition parseBars(const core::Project& project, const juce::String&
     bb.bar = parts[0].getIntValue();
     bb.beat = parts.size() > 1 ? std::max(1, parts[1].getIntValue()) : 1;
     bb.tick = parts.size() > 2 ? std::max(0, parts[2].getIntValue()) : 0;
-    return core::barsBeatsToSamples(bb, project.sampleRate, project.tempoBpm, project.timeSignature);
+    return core::tempoMapOf(project).positionAt(bb);
 }
 
 // "m:ss.mmm" or "ss.mmm" -> samples, or -1.
@@ -531,7 +536,7 @@ public:
         if (is('F', M::ctrlModifier))
         {
             panels_.show(ui::PanelId::browser);
-            browser_.focusSearch();
+            browserPanel_.focusSearch();
             return true;
         }
         if (panels_.handleKey(key))
@@ -662,7 +667,7 @@ public:
         }
         if (is('E', M::ctrlModifier))
         {
-            exportMenu();
+            showExportSheet();
             return true;
         }
         if (is('Z', M::ctrlModifier))
@@ -737,12 +742,15 @@ private:
         };
         header_.onBarsNudged = [this](int segment, int steps)
         {
-            const auto& p = session_.project();
-            const double beat = core::samplesPerBeat(p.sampleRate, p.tempoBpm, p.timeSignature);
-            const double unit = segment == 0   ? beat * std::max(1, p.timeSignature.numerator)
-                                : segment == 1 ? beat
-                                               : beat / core::BarsBeats::ticksPerBeat;
-            nudge(unit * steps);
+            // Bars, beats or ticks on the tempo track at the position.
+            const auto map = core::tempoMapOf(session_.project());
+            const auto at = session_.position();
+            const double beat = core::TempoMap::quartersPerBeat(map.signatureAt(at));
+            const core::GridStep step = segment == 0 ? core::GridStep{1, 0.0}
+                                        : segment == 1
+                                            ? core::GridStep{0, beat}
+                                            : core::GridStep{0, beat / core::BarsBeats::ticksPerBeat};
+            nudge(static_cast<double>(map.move(at, step, steps) - at));
         };
         header_.onTimeNudged = [this](int segment, int steps)
         {
@@ -750,9 +758,44 @@ private:
             const double unit = segment == 0 ? 60.0 * rate : segment == 1 ? rate : rate / 1000.0;
             nudge(unit * steps);
         };
-        header_.onTempo = [this](double bpm) { session_.execute(std::make_unique<core::SetTempo>(bpm)); };
+        // The header edits the tempo and signature in effect at the playhead: the
+        // song's start values, or the tempo track's change that governs there.
+        header_.onTempo = [this](double bpm)
+        {
+            const auto& p = session_.project();
+            const auto map = core::tempoMapOf(p);
+            const double q = map.quartersAt(static_cast<double>(heardPosition()));
+            int index = -1;
+            for (int i = 0; i < static_cast<int>(p.tempoChanges.size()); ++i)
+                if (p.tempoChanges[static_cast<size_t>(i)].quarter <= q + 1.0e-9)
+                    index = i;
+            if (index < 0)
+            {
+                session_.execute(std::make_unique<core::SetTempo>(bpm));
+                return;
+            }
+            auto state = core::TempoState::of(p);
+            state.tempoChanges[static_cast<size_t>(index)].bpm = bpm;
+            session_.execute(std::make_unique<core::SetTempoMap>(std::move(state), "Set tempo"));
+        };
         header_.onSignature = [this](int n, int d)
-        { session_.execute(std::make_unique<core::SetTimeSignature>(n, d)); };
+        {
+            const auto& p = session_.project();
+            const auto map = core::tempoMapOf(p);
+            const int bar = map.barAtQuarter(map.quartersAt(static_cast<double>(heardPosition())));
+            int index = -1;
+            for (int i = 0; i < static_cast<int>(p.meterChanges.size()); ++i)
+                if (p.meterChanges[static_cast<size_t>(i)].bar <= bar)
+                    index = i;
+            if (index < 0)
+            {
+                session_.execute(std::make_unique<core::SetTimeSignature>(n, d));
+                return;
+            }
+            auto state = core::TempoState::of(p);
+            state.meterChanges[static_cast<size_t>(index)].signature = {n, d};
+            session_.execute(std::make_unique<core::SetTempoMap>(std::move(state), "Set time signature"));
+        };
         header_.onMasterClipClicked = [this] { mixer_.clearMasterClip(); };
         header_.onToggleSnap = [this]
         {
@@ -805,8 +848,31 @@ private:
                 toast(ui::ToastStack::Kind::error,
                       "Normalise failed: " + juce::String::fromUTF8(error.c_str()));
         };
+        tracks_.onConformClip = [this](core::Id trackId, core::Id clipId) { conformClip(trackId, clipId); };
+        tracks_.onFreezeTrack = [this](core::Id trackId, bool freeze)
+        {
+            if (!freeze)
+            {
+                session_.execute(std::make_unique<core::SetTrackFrozen>(trackId, std::string{}));
+                return;
+            }
+            if (const auto error = session_.freezeTrack(trackId); !error.empty())
+                toast(ui::ToastStack::Kind::warning,
+                      "Cannot freeze: " + juce::String::fromUTF8(error.c_str()));
+        };
+        // The tempo track: its edits, and whether it shows (kept per user).
+        tracks_.onTempoEdit = [this](core::TempoState state, const std::string& name)
+        { session_.execute(std::make_unique<core::SetTempoMap>(std::move(state), name)); };
+        tracks_.setTempoTrackShown(settings_.value("arrange.tempoTrack", "0") == "1");
+        tracks_.onTempoTrackShownChanged = [this](bool shown)
+        { settings_.setValue("arrange.tempoTrack", shown ? "1" : "0"); };
+        tracks_.stretchProgress = [this](const core::AudioClip& clip)
+        { return session_.stretch().progress(clip, session_.project().sampleRate); };
+        tracks_.onOpenInSampler = [this](core::Id trackId, core::Id clipId)
+        { openInSampler(trackId, clipId); };
         tracks_.playheadForEdits = [this] { return session_.position(); };
-        tracks_.setAcceptedExtensions(session_.mediaLoader().supportedExtensions());
+        // Audio files and Standard MIDI Files.
+        tracks_.setAcceptedExtensions(session_.mediaLoader().supportedExtensions() + ";*.mid;*.midi");
         tracks_.onTrackSelected = [this](core::Id id) { select(id); };
         tracks_.onSelectionChanged = [this] { select(tracks_.selectedTrack()); };
         selection_.onChanged = [this] { applySelection(); };
@@ -918,6 +984,7 @@ private:
         { settings_.setValue(key, value); };
         browser_.onInsert = [this](const std::string& type) { insertPlugin(selection_.channel(), type); };
         browser_.setStatus(session_.pluginScanStatus());
+        wireFiles();
         tracks_.setDisplayName([this](const std::string& type) { return mixer_.insertDisplayName(type); });
         tracks_.midiOutputName = [this] { return audio_.midi().outputName(); };
         tracks_.setHostedParameters(
@@ -984,7 +1051,7 @@ private:
                                         true,
                                         true,
                                         key(juce::KeyPress::F4Key)},
-                              browser_);
+                              browserPanel_);
         panels_.registerPanel(PanelInfo{PanelId::inspector,
                                         "Inspector",
                                         Icon::inspector,
@@ -1171,8 +1238,15 @@ private:
         if (bounce != lastBounceMessage_)
         {
             lastBounceMessage_ = bounce;
-            if (!bounce.empty())
-                status_.showMessage(juce::String::fromUTF8(bounce.c_str()));
+            showBounceOutcome(bounce);
+        }
+        if (const auto& freeze = session_.lastFreezeMessage(); freeze != lastFreezeMessage_)
+        {
+            lastFreezeMessage_ = freeze;
+            if (!freeze.empty())
+                toast(freeze.rfind("Froze", 0) == 0 ? ui::ToastStack::Kind::success
+                                                    : ui::ToastStack::Kind::warning,
+                      juce::String::fromUTF8(freeze.c_str()));
         }
     }
 
@@ -1211,9 +1285,15 @@ private:
         state.deviceReady = audio_.status().open;
         state.barsText = barsText(p, heardPosition());
         state.timeText = timeText(p, heardPosition());
-        state.tempo = p.tempoBpm;
-        state.signatureNumerator = p.timeSignature.numerator;
-        state.signatureDenominator = p.timeSignature.denominator;
+        {
+            // The tempo and signature at the heard position.
+            const auto map = core::tempoMapOf(p);
+            const auto at = std::max<core::SamplePosition>(0, heardPosition());
+            const auto signature = map.signatureAt(at);
+            state.tempo = map.bpmAt(at);
+            state.signatureNumerator = signature.numerator;
+            state.signatureDenominator = signature.denominator;
+        }
         state.masterClipped = mixer_.masterClipped();
         state.snap = tracks_.snapEnabled();
         state.snapName = tracks_.snapGridName();
@@ -1275,6 +1355,9 @@ private:
         if (session_.isBouncing())
             state.warning =
                 "Bouncing " + juce::String(static_cast<int>(session_.bounceProgress() * 100.0f)) + "%";
+        if (session_.isFreezing())
+            state.warning =
+                "Freezing " + juce::String(static_cast<int>(session_.freezeProgress() * 100.0f)) + "%";
         status_.setState(state);
     }
 
@@ -1603,6 +1686,63 @@ private:
         select(id);
     }
 
+    // The browser's Files tab: places from the settings and the project, previews
+    // through the session, a file onto a new track at the playhead.
+    void wireFiles()
+    {
+        files_.loadSetting = [this](const std::string& key) { return settings_.value(key); };
+        files_.saveSetting = [this](const std::string& key, const std::string& value)
+        { settings_.setValue(key, value); };
+        files_.projectFolder = [this]
+        {
+            const auto& file = session_.projectFile();
+            return file.existsAsFile() ? file.getParentDirectory() : juce::File();
+        };
+        files_.onPreview = [this](const juce::File& file) { return session_.previewFile(file); };
+        files_.onStopPreview = [this] { session_.stopPreview(); };
+        files_.isPreviewing = [this] { return session_.isPreviewing(); };
+        files_.onPump = [this] { session_.pumpPreview(); };
+        files_.onPreviewGain = [this](float gain) { session_.setPreviewGain(gain); };
+        files_.onImport = [this](const juce::File& file) { importFiles({file}, session_.position()); };
+        browserPanel_.onTabChanged = [this](bool files)
+        { settings_.setValue("browser.tab", files ? "files" : "plugins"); };
+        if (settings_.value("browser.tab") == "files")
+            browserPanel_.showFiles();
+    }
+
+    // An audio clip played by a new Sampler: an instrument channel and a MIDI
+    // track, the sampler's start and end at the part of the file the clip uses;
+    // its editor opens.
+    void openInSampler(core::Id trackId, core::Id clipId)
+    {
+        const auto* track = session_.project().findTrack(trackId);
+        const auto* clip = track != nullptr ? track->findClip(clipId) : nullptr;
+        if (clip == nullptr)
+            return;
+        const juce::File file(juce::String::fromUTF8(clip->mediaPath.c_str()));
+        std::string error;
+        const auto info = session_.mediaLoader().probe(clip->mediaPath, error);
+        if (!info.has_value() || info->lengthSamples <= 0)
+        {
+            toast(ui::ToastStack::Kind::error,
+                  "Cannot open in Sampler: " + juce::String::fromUTF8(error.c_str()));
+            return;
+        }
+        const double total = static_cast<double>(info->lengthSamples);
+        const double used = static_cast<double>(clip->length) * info->sampleRate /
+                            std::max(1.0, session_.project().sampleRate);
+        const double from = static_cast<double>(clip->sourceOffset) / total;
+        const double to = (static_cast<double>(clip->sourceOffset) + used) / total;
+        const auto midi = session_.addSamplerTrack(file, from, std::min(1.0, to));
+        const auto* added = session_.project().findTrack(midi);
+        if (added == nullptr)
+            return;
+        browser_.rememberRecent(plugins::sampler::type);
+        select(midi);
+        if (const auto* channel = session_.project().findTrack(added->midiTarget))
+            owner_.openInsertEditor(channel->id, channel->instrument.id);
+    }
+
     // A MIDI track with a new instrument channel (the default instrument when
     // `type` is empty).
     void addMidiTrack(const std::string& type)
@@ -1849,7 +1989,11 @@ private:
     {
         for (const auto& file : files)
         {
-            const auto error = session_.importAudioFile(file, at);
+            // A MIDI file plays the selected instrument (or the one the selected
+            // MIDI track plays), else a new one.
+            const bool midi = file.hasFileExtension("mid;midi");
+            const auto error = midi ? session_.importMidiFile(file, at, selection_.channel())
+                                    : session_.importAudioFile(file, at);
             if (!error.empty())
                 toast(ui::ToastStack::Kind::error,
                       file.getFileName() + ": " + juce::String::fromUTF8(error.c_str()));
@@ -1858,31 +2002,147 @@ private:
         grabKeyboardFocus();
     }
 
-    void addExportItems(juce::PopupMenu& menu, int base)
+    void importMidi()
     {
-        menu.addItem(base + 1, "Mix to WAV...");
-        menu.addItem(base + 2, "Loop region to WAV...", session_.regionEnd() > session_.regionStart());
-        menu.addItem(base + 3, "Stems to folder...");
+        chooser_ = std::make_unique<juce::FileChooser>(
+            "Import MIDI file",
+            juce::File::getSpecialLocation(juce::File::userMusicDirectory),
+            "*.mid;*.midi");
+        chooser_->launchAsync(juce::FileBrowserComponent::openMode |
+                                  juce::FileBrowserComponent::canSelectFiles |
+                                  juce::FileBrowserComponent::canSelectMultipleItems,
+                              [this](const juce::FileChooser& fc)
+                              {
+                                  std::vector<juce::File> files;
+                                  for (const auto& f : fc.getResults())
+                                      files.push_back(f);
+                                  importFiles(files, session_.position());
+                              });
     }
 
-    void exportMenu()
+    // The MIDI clips an export takes: those selected in the arrange view, else
+    // every clip of the selected MIDI track, else every MIDI clip.
+    std::vector<std::pair<core::Id, core::Id>> midiClipsToExport() const
     {
-        juce::PopupMenu menu;
-        addExportItems(menu, 0);
-        juce::Component::SafePointer<Content> safe(this);
-        menu.showMenuAsync(juce::PopupMenu::Options().withTargetComponent(&header_),
-                           [safe](int choice)
-                           {
-                               if (safe != nullptr && choice > 0)
-                                   safe->startExport(choice);
-                           });
+        std::vector<std::pair<core::Id, core::Id>> clips;
+        for (const auto& ref : tracks_.selection())
+            if (ref.midi)
+                clips.emplace_back(ref.track, ref.clip);
+        if (!clips.empty())
+            return clips;
+        const auto& project = session_.project();
+        if (const auto* track = project.findTrack(selection_.channel()); track != nullptr && track->isMidi())
+            for (const auto& c : track->midiClips)
+                clips.emplace_back(track->id, c.id);
+        if (!clips.empty())
+            return clips;
+        for (const auto& track : project.tracks)
+            for (const auto& c : track.midiClips)
+                clips.emplace_back(track.id, c.id);
+        return clips;
     }
 
-    // 1 = the mix, 2 = the loop region, 3 = stems.
-    void startExport(int choice)
+    void exportMidi()
     {
-        const auto documents = projectFolder();
-        const auto base = projectName();
+        const auto clips = midiClipsToExport();
+        if (clips.empty())
+        {
+            toast(ui::ToastStack::Kind::error, "Export MIDI: there are no MIDI clips");
+            return;
+        }
+        chooser_ = std::make_unique<juce::FileChooser>(
+            "Export MIDI", projectFolder().getChildFile(projectName() + ".mid"), "*.mid");
+        chooser_->launchAsync(juce::FileBrowserComponent::saveMode |
+                                  juce::FileBrowserComponent::canSelectFiles |
+                                  juce::FileBrowserComponent::warnAboutOverwriting,
+                              [this, clips](const juce::FileChooser& fc)
+                              {
+                                  auto file = fc.getResult();
+                                  if (file == juce::File())
+                                      return;
+                                  if (!file.hasFileExtension("mid;midi"))
+                                      file = file.withFileExtension("mid");
+                                  const auto error = session_.exportMidiFile(file, clips);
+                                  if (!error.empty())
+                                      toast(ui::ToastStack::Kind::error,
+                                            "Export MIDI: " + juce::String::fromUTF8(error.c_str()));
+                                  else
+                                      toast(ui::ToastStack::Kind::success, "Exported " + file.getFileName());
+                              });
+    }
+
+    // ----- export ----------------------------------------------------------------------------
+    // The tracks "selected tracks" exports: the selected channel when it is a
+    // track, and every track holding a selected clip.
+    std::vector<core::Id> selectedTrackIds() const
+    {
+        std::vector<core::Id> ids;
+        const auto add = [&](core::Id id)
+        {
+            if (session_.project().findTrack(id) != nullptr &&
+                std::find(ids.begin(), ids.end(), id) == ids.end())
+                ids.push_back(id);
+        };
+        add(selection_.channel());
+        for (const auto& clip : tracks_.selection())
+            add(clip.track);
+        return ids;
+    }
+
+    // The last export's settings, from the user settings ("export.*").
+    engine::ExportSettings exportSettings() const
+    {
+        std::map<std::string, std::string> values;
+        for (const auto& [key, fallback] : engine::ExportSettings{}.toKeyValues())
+            if (auto value = settings_.value(key); !value.empty())
+                values[key] = value;
+        return engine::ExportSettings::fromKeyValues(values);
+    }
+
+    void showExportSheet()
+    {
+        if (sheet_ != nullptr || session_.isBouncing())
+            return;
+        ui::ExportView::Context context;
+        context.hasLoop = session_.regionEnd() > session_.regionStart();
+        std::vector<core::Marker> regions;
+        for (const auto& marker : session_.project().markers)
+            if (marker.isRegion())
+            {
+                regions.push_back(marker);
+                context.regions.push_back(juce::String::fromUTF8(marker.name.c_str()));
+            }
+        context.selectedTracks = static_cast<int>(selectedTrackIds().size());
+        context.projectRate = session_.project().sampleRate;
+        context.oggQualities = juce::OggVorbisAudioFormat().getQualityOptions();
+        auto view = std::make_unique<ui::ExportView>(theme_, exportSettings(), std::move(context));
+        auto* raw = view.get();
+        sheet_ = ui::Sheet::show(
+            *this,
+            theme_,
+            "Export",
+            "Renders offline, faster than real time, with the plugins as they are now.",
+            {{"Cancel", false, false}, {"Export...", true, false}},
+            [this, raw, regions](int result)
+            {
+                sheet_ = nullptr;
+                if (result != 1)
+                    return;
+                const auto chosen = raw->settings();
+                for (const auto& [key, value] : chosen.toKeyValues())
+                    settings_.setValue(key, value);
+                std::optional<core::Marker> region;
+                if (chosen.range == engine::ExportRange::region &&
+                    static_cast<size_t>(raw->region()) < regions.size())
+                    region = regions[static_cast<size_t>(raw->region())];
+                startExport(chosen, region);
+            },
+            std::move(view),
+            ui::ExportView::preferredHeight(theme_));
+    }
+
+    void startExport(const engine::ExportSettings& chosen, std::optional<core::Marker> region)
+    {
         juce::Component::SafePointer<Content> safe(this);
         const auto report = [safe](const std::string& error)
         {
@@ -1892,45 +2152,96 @@ private:
                 safe->toast(ui::ToastStack::Kind::error, "Export: " + juce::String::fromUTF8(error.c_str()));
             safe->refresh();
         };
-        if (choice == 3)
+        BounceJob::Options options;
+        options.format = chosen;
+        options.stems = chosen.source != engine::ExportSource::mix;
+        if (chosen.source == engine::ExportSource::selectedStems)
+        {
+            options.stemTracks = selectedTrackIds();
+            if (options.stemTracks.empty())
+            {
+                report("no tracks are selected");
+                return;
+            }
+        }
+        juce::String suffix;
+        if (chosen.range == engine::ExportRange::loop && session_.regionEnd() > session_.regionStart())
+        {
+            options.start = session_.regionStart();
+            options.end = session_.regionEnd();
+            suffix = " loop";
+        }
+        else if (region.has_value())
+        {
+            options.start = region->position;
+            options.end = region->end();
+            suffix =
+                " " + juce::File::createLegalFileName(juce::String::fromUTF8(region->name.c_str())).trim();
+        }
+        const auto documents = projectFolder();
+        const auto base = projectName() + suffix;
+        const auto extension = juce::String(engine::extensionFor(chosen.format));
+        if (options.stems)
         {
             chooser_ =
                 std::make_unique<juce::FileChooser>("Stems folder", documents.getChildFile(base + " Stems"));
             chooser_->launchAsync(juce::FileBrowserComponent::saveMode |
                                       juce::FileBrowserComponent::canSelectDirectories,
-                                  [this, report](const juce::FileChooser& fc)
+                                  [this, report, options](const juce::FileChooser& fc) mutable
                                   {
                                       const auto folder = fc.getResult();
                                       if (folder == juce::File())
                                           return;
-                                      BounceJob::Options options;
                                       options.output = folder;
-                                      options.stems = true;
                                       report(session_.startBounce(options));
                                   });
             return;
         }
         chooser_ = std::make_unique<juce::FileChooser>(
-            "Export mix", documents.getChildFile(base + (choice == 2 ? " loop" : "") + ".wav"), "*.wav");
+            "Export mix", documents.getChildFile(base + "." + extension), "*." + extension);
         chooser_->launchAsync(juce::FileBrowserComponent::saveMode |
                                   juce::FileBrowserComponent::canSelectFiles |
                                   juce::FileBrowserComponent::warnAboutOverwriting,
-                              [this, choice, report](const juce::FileChooser& fc)
+                              [this, report, options, extension](const juce::FileChooser& fc) mutable
                               {
                                   auto file = fc.getResult();
                                   if (file == juce::File())
                                       return;
-                                  if (!file.hasFileExtension("wav"))
-                                      file = file.withFileExtension("wav");
-                                  BounceJob::Options options;
+                                  if (!file.hasFileExtension(extension))
+                                      file = file.withFileExtension(extension);
                                   options.output = file;
-                                  if (choice == 2)
-                                  {
-                                      options.start = session_.regionStart();
-                                      options.end = session_.regionEnd();
-                                  }
                                   report(session_.startBounce(options));
                               });
+    }
+
+    // While a bounce runs its progress is in the status bar; when it ends a toast
+    // gives the outcome (the measured loudness and any gain), with the file to hand.
+    void showBounceOutcome(const std::string& message)
+    {
+        if (message.empty())
+            return;
+        const auto text = juce::String::fromUTF8(message.c_str());
+        if (session_.isBouncing())
+        {
+            status_.showMessage(text);
+            return;
+        }
+        const auto& result = session_.lastBounceResult();
+        if (!result.error.empty())
+        {
+            toast(ui::ToastStack::Kind::error, text);
+            return;
+        }
+        if (result.cancelled || result.files.empty())
+        {
+            toast(ui::ToastStack::Kind::info, text);
+            return;
+        }
+        const auto file = result.files.front();
+        toast(result.limitedByCeiling ? ui::ToastStack::Kind::warning : ui::ToastStack::Kind::success,
+              text,
+              "Show in folder",
+              [file] { file.revealToUser(); });
     }
 
     // ----- menus ---------------------------------------------------------------------------
@@ -2029,6 +2340,7 @@ private:
         menu.addSubMenu("Media", media);
         menu.addSeparator();
         menu.addItem(5, "Import audio...");
+        menu.addItem(12, "Import MIDI file...");
         menu.addItem(6, "Add audio track");
         menu.addItem(7, "Add MIDI track");
         juce::PopupMenu fxTracks;
@@ -2038,9 +2350,8 @@ private:
         menu.addSubMenu("Add FX track", fxTracks);
         menu.addItem(8, "Add bus");
         menu.addSeparator();
-        juce::PopupMenu exports;
-        addExportItems(exports, 20);
-        menu.addSubMenu("Export", exports);
+        menu.addItem(21, "Export...");
+        menu.addItem(24, "Export MIDI clips...");
         juce::Component::SafePointer<Content> safe(this);
         menu.showMenuAsync(
             juce::PopupMenu::Options().withTargetComponent(&header_).withMinimumWidth(220),
@@ -2103,10 +2414,14 @@ private:
                     case 11:
                         safe->removeUnusedMedia();
                         break;
+                    case 12:
+                        safe->importMidi();
+                        break;
+                    case 24:
+                        safe->exportMidi();
+                        break;
                     case 21:
-                    case 22:
-                    case 23:
-                        safe->startExport(choice - 20);
+                        safe->showExportSheet();
                         break;
                     default:
                         break;
@@ -2138,6 +2453,64 @@ private:
                                    safe->tracks_.setSnapEnabled(false);
                                safe->refreshHeader();
                            });
+    }
+
+    // ----- clip tempo --------------------------------------------------------------------------
+    // Asks for the tempo a clip was recorded at (offering a guess from its name,
+    // beats and length), then stretches it to the project's tempo.
+    void conformClip(core::Id trackId, core::Id clipId)
+    {
+        const auto guess = session_.guessClipTempo(trackId, clipId);
+        auto field = std::make_unique<juce::TextEditor>();
+        field->setInputRestrictions(7, "0123456789.");
+        field->setJustification(juce::Justification::centredLeft);
+        field->setText(guess.bpm > 0.0 ? juce::String(guess.bpm, 2) : juce::String(), false);
+        field->selectAll();
+        auto* raw = field.get();
+        juce::String body = "The clip will play at the project's tempo and follow tempo changes. ";
+        switch (guess.source)
+        {
+            case engine::TempoGuess::Source::name:
+                body << "The tempo below is from the file's name.";
+                break;
+            case engine::TempoGuess::Source::length:
+                body << "The tempo below fits the clip's beats and a whole number of bars.";
+                break;
+            case engine::TempoGuess::Source::beats:
+                body << "The tempo below is a guess from the clip's beats; check it.";
+                break;
+            case engine::TempoGuess::Source::none:
+                body << "Enter the tempo the clip was recorded at.";
+                break;
+        }
+        sheet_ = ui::Sheet::show(
+            *this,
+            theme_,
+            "Clip tempo (BPM)",
+            body,
+            {{"Cancel", false, false}, {"Stretch", true, false}},
+            [this, raw, trackId, clipId](int result)
+            {
+                sheet_ = nullptr;
+                const double bpm = raw->getText().getDoubleValue();
+                if (result != 1)
+                    return;
+                if (bpm < 20.0 || bpm > 400.0)
+                {
+                    toast(ui::ToastStack::Kind::warning, "A clip tempo is between 20 and 400 BPM.");
+                    return;
+                }
+                session_.conformClipTempo(trackId, clipId, bpm);
+            },
+            std::move(field),
+            theme_.sizes.controlLarge);
+        juce::Component::SafePointer<juce::TextEditor> focus(raw);
+        juce::MessageManager::callAsync(
+            [focus]
+            {
+                if (focus != nullptr)
+                    focus->grabKeyboardFocus();
+            });
     }
 
     // ----- first run -------------------------------------------------------------------------
@@ -2215,11 +2588,13 @@ private:
     core::SamplePosition auditionEnd_ = -1; // an auditioned note stops the transport here
     ui::DiagnosticsPanel diagnostics_;
     ui::PluginBrowser browser_;
+    ui::MediaBrowser files_;
+    ui::BrowserPanel browserPanel_{browser_, files_};
     ui::InspectorPanel inspector_;
     ui::PanelManager panels_; // after the panels: its floating windows go first
     ui::Sheet* sheet_ = nullptr;
     std::unique_ptr<juce::FileChooser> chooser_;
-    std::string lastRecordingMessage_, lastBounceMessage_, lastPluginMessage_;
+    std::string lastRecordingMessage_, lastBounceMessage_, lastPluginMessage_, lastFreezeMessage_;
     bool lastRecording_ = false;
     int ticks_ = 0;
     int dropoutBaseline_ = 0;
@@ -2440,6 +2815,12 @@ void MainWindow::showMixer()
         content->panels_.show(ui::PanelId::mixer);
 }
 
+void MainWindow::showTempoTrack()
+{
+    if (auto* content = dynamic_cast<Content*>(getContentComponent()))
+        content->tracks_.setTempoTrackShown(true);
+}
+
 void MainWindow::openInsertEditor(core::Id channelId, core::Id insertId)
 {
     showMixer();
@@ -2447,10 +2828,22 @@ void MainWindow::openInsertEditor(core::Id channelId, core::Id insertId)
         content->mixer_.openInsertEditor(channelId, insertId);
 }
 
+void MainWindow::showFilesBrowser(const juce::File& folder)
+{
+    if (auto* content = dynamic_cast<Content*>(getContentComponent()))
+    {
+        content->browserPanel_.showFiles();
+        if (folder.isDirectory())
+            content->files_.showFolder(folder);
+        content->panels_.show(ui::PanelId::browser);
+    }
+}
+
 void MainWindow::showPluginBrowser()
 {
     if (auto* content = dynamic_cast<Content*>(getContentComponent()))
     {
+        content->browserPanel_.showPlugins();
         content->panels_.moveTo(ui::PanelId::browser, ui::HostKind::floating);
         content->panels_.show(ui::PanelId::browser);
     }
@@ -2463,6 +2856,12 @@ void MainWindow::openPianoRoll(core::Id trackId, core::Id clipId)
         content->pianoRoll_.setClip(&session_.project(), trackId, clipId);
         content->panels_.show(ui::PanelId::pianoRoll);
     }
+}
+
+void MainWindow::setPianoRollLane(const juce::String& key)
+{
+    if (auto* content = dynamic_cast<Content*>(getContentComponent()))
+        content->pianoRoll_.setLane(ui::PianoRoll::laneForKey(key));
 }
 
 void MainWindow::openAudioEditor(core::Id trackId, core::Id clipId, bool pitch)
@@ -2567,6 +2966,12 @@ void MainWindow::showFirstRun()
 {
     if (auto* content = dynamic_cast<Content*>(getContentComponent()))
         content->showFirstRun();
+}
+
+void MainWindow::showExport()
+{
+    if (auto* content = dynamic_cast<Content*>(getContentComponent()))
+        content->showExportSheet();
 }
 
 void MainWindow::offerRecovery()

@@ -43,6 +43,8 @@ public:
     void offerRecovery();
     // The first-run sheet (08-setup.md 8.3): device choice, then a plugin scan offer.
     void showFirstRun();
+    // The export sheet (Ctrl+E).
+    void showExport();
     // --benchmark-ui: plays and scrolls for `seconds`, prints frame percentiles, quits.
     void runBenchmark(int seconds);
     // --bus / --remove-bus: adds a bus; removes the last one through the mixer's
@@ -51,12 +53,17 @@ public:
     void removeLastBus();
     // Shows the mixer panel.
     void showMixer();
+    void showTempoTrack();
     // Shows the mixer and opens an insert's editor.
     void openInsertEditor(core::Id channelId, core::Id insertId);
     // The plugin browser: the Browser panel in its own window.
     void showPluginBrowser();
+    // The Browser panel on its Files tab (at a folder, when one is given).
+    void showFilesBrowser(const juce::File& folder = {});
     // The piano roll panel on a MIDI clip.
     void openPianoRoll(core::Id trackId, core::Id clipId);
+    // The piano roll's lane by key (ui::PianoRoll::laneForKey: "velocity", "bend", "mod", "cc74").
+    void setPianoRollLane(const juce::String& key);
     // The audio editor on an audio clip, in pitch mode when asked.
     void openAudioEditor(core::Id trackId, core::Id clipId, bool pitch = false);
     // Launch-flag conveniences for the audio editor's pitch tools.

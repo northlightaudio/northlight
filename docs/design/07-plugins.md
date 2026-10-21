@@ -130,6 +130,42 @@ For GUI-less hosted plugins. A scrollable grid of parameter rows:
   Surge XT.vst3" and a Cancel; results appear as they arrive.
 - The window version (from the app menu) is the same panel at 720×560.
 
+## 7.4g Files (the browser's second tab)
+
+```
+| [ Plugins | Files ]                                    |
+| 🔍 Search files                                        |
+| ( Music › Drums                         ▾ )  [↑] [+]   |
+|   📁 Loops                                             |
+|   ▶ Kick 01.wav                       0.60 s   48 kHz  |
+|   ♪ Hat Closed.wav                    0.25 s   48 kHz  |
+| ( ■  ━━━━━━━━━━━━●━━━━━━━━━━              -6.2 dB )    |
+```
+
+- A segmented control at the top of the Browser panel switches Plugins and
+  Files (remembered). Leaving Files stops a preview.
+- Places: the saved project's folder, Music, and folders the user adds (the
+  "+" button or the place menu's "Add a folder…"; "Remove this folder from the
+  list" and "Show in Explorer" there too). The place button (ghost, chevron)
+  shows the place and the path below it; ↑ (and Backspace) goes up, never above
+  the place. Place, ↑ and + sit in one tray.
+- Rows 28 px: folders first (folder icon, `textSecondary`), then audio files
+  (wav, aif, aiff, flac, mp3, ogg) with the length in `value` `textSecondary` and
+  the rate in `textTertiary` at the right. A click on a folder opens it.
+- Search looks under the whole place for names holding every word typed; a
+  result shows its folder in `small` `textTertiary` after the name. Escape in
+  the field stops the preview and clears it.
+- Click a file to audition it: its icon becomes a play mark in `accent`, the
+  name turns `accent` and `accentSubtle` fills the row as it plays. Another
+  click, another file, Escape or Stop ends it with a 5 ms fade; the preview
+  plays over the mix at the footer's volume, outside the faders and meters.
+- Double-click or Enter puts the file on a new track at the playhead; drag a row
+  onto the arrange view for a new track where it is dropped (the drop preview a
+  file from Explorer shows), or onto a Sampler's waveform to load it.
+- The footer tray: Stop and the preview volume (a slider with its dB readout).
+- Empty folder: "No audio files here"; no match: "No files match"; reading:
+  "Reading…" in `small` `textTertiary`.
+
 ## 7.4a Instruments: channels, MIDI tracks and the rack
 
 An instrument is not an effect, and its sound is not its MIDI's. An instrument
@@ -297,6 +333,41 @@ Noise Snare, Metal Hat, Crunchy Saw.
   while it plays (the Rate knob dims and shows the value). PITCH: the sweep
   and the vibrato over a note's first second. LO-FI: a sine as the bits and rate
   leave it.
+
+## 7.4f Sampler
+
+One sample across the keyboard: root note and key range, Tune and Fine, Glide;
+Loop (forward, with a crossfade into the loop's end) or One-shot (to the end
+point, note-offs ignored); Voices (1-32; the oldest fades out over the limit),
+Velocity, Level; an ADSR on the amplitude; a resonant low-pass whose cutoff the
+envelope moves by Env octaves. Hues: the sample `Teal`, loop `Amber`, keys
+`Mint`, envelope `Sky`, filter `Indigo`.
+
+- Header: "Sampler" in the hue over a small decaying wave; the file's name
+  (`label`; `warning` when it did not load) with its rate, channels and length
+  in `caption` `textTertiary`; the voices sounding with a light; a ghost
+  **Load…** button (a file chooser).
+- SAMPLE tray, full width: the waveform in a well, bright from the start to the
+  end point and at the muted waveform alpha outside; the loop shaded in its hue
+  at 12% with the crossfade as a gradient before its end; a 1 px line per voice
+  sounding (`textPrimary`, fainter while it releases); the length that plays at
+  the top in `value`. Start and end (S, E) are handles on the top edge, the
+  loop's (L) on the bottom edge (shown while Loop is on); drag them, each stays
+  on its side of its partner. Empty, the well reads "Drop an audio file here, or
+  Load one"; a missing file reads its name and the reason in `warning`. Under it
+  a keyboard of all 128 notes in a well: the range lit in the keys' hue, the
+  root solid, C labels; click a key for the root, drag an end of the range.
+- Trays below: PITCH (Root, Low, High as note names; Tune, Fine, Glide), PLAY
+  (Loop fade, Voices, Velocity; Level and the Loop and One-shot pills), ENVELOPE
+  (the curve in a well, times on a gentle log scale; Attack, Decay, Sustain,
+  Release), FILTER (the response in a well, a fainter second curve where the
+  envelope takes the cutoff; Cutoff, Reso, Env).
+- Dropping an audio file on the waveform (from Explorer or the browser's Files
+  tab) loads it as one undo step and resets the start, end and loop points to
+  the whole file; the well outlines in `dropTarget` while a file is over it.
+- From the arrange view: right-click an audio clip, **Open in Sampler**, for a
+  new instrument channel and MIDI track playing that file, its start and end at
+  the part the clip uses.
 
 ## 7.5 States and errors
 

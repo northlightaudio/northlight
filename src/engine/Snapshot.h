@@ -1,11 +1,13 @@
 #pragma once
 
 #include "core/Model.h"
+#include "core/TempoMap.h"
 #include "engine/AudioSource.h"
 #include "engine/Delay.h"
 #include "engine/Insert.h"
 #include "engine/Runtime.h"
 
+#include <array>
 #include <cstdint>
 #include <functional>
 #include <map>
@@ -126,12 +128,30 @@ struct MidiNoteNode
     int velocity = 100;
 };
 
+// A controller event at its timeline position. `key` is its chase key
+// (engine::chaseKey*, -1 for poly pressure, which is not chased).
+struct MidiControllerNode
+{
+    core::SamplePosition time = 0;
+    core::MidiControllerType type = core::MidiControllerType::controller;
+    std::uint8_t number = 0;
+    std::int16_t value = 0;
+    std::int16_t key = -1;
+};
+
 struct MidiClipNode
 {
     core::SamplePosition start = 0, length = 0;
     std::vector<MidiNoteNode> notes; // sorted by start
     core::SamplePosition longest =
         0; // the longest note: one that starts earlier than this before a span has ended
+    // Controller events inside the clip, sorted by time (events a trim left
+    // before the start open the clip with their latest value per controller).
+    std::vector<MidiControllerNode> controllers;
+    // The last event of each chased controller in the clip (a chase from past
+    // the clip's end), and how many controllers it chases.
+    std::vector<MidiControllerNode> lastValues;
+    int chasedKeys = 0;
     core::SamplePosition end() const noexcept { return start + length; }
 };
 
@@ -158,7 +178,9 @@ struct TrackNode : ChannelNode
     core::MonitorMode monitor = core::MonitorMode::automatic;
     std::vector<ClipNode> clips;         // sorted by start
     std::vector<MidiClipNode> midiClips; // sorted by start
-    MidiRuntime* midi = nullptr;         // held notes; set for MIDI tracks
+    // The chase keys any of its clips sets (1 where one does).
+    std::array<std::uint8_t, 130> controllerKeys{};
+    MidiRuntime* midi = nullptr; // held notes; set for MIDI tracks
     std::shared_ptr<MidiRuntime> keepAliveMidi;
     mutable MidiEventList events{1024}; // this span's events for the instrument
 
@@ -179,8 +201,9 @@ struct Snapshot
 
     std::uint64_t epoch = 0; // set by the publisher
     double sampleRate = 48000.0;
-    double tempoBpm = 120.0;
-    core::TimeSignature timeSignature;
+    double tempoBpm = 120.0;           // at the song's start
+    core::TimeSignature timeSignature; // at the song's start
+    core::TempoMap tempoMap;           // the tempo track: clicks and the play head
     std::vector<TrackNode> tracks;
     std::vector<BusNode> buses; // in project order
     std::vector<int> busOrder;  // bus indices in dependency order (feeders before fed)
@@ -219,6 +242,9 @@ public:
     using ClipSourceHook = std::function<std::shared_ptr<const AudioSource>(
         const core::AudioClip& clip, double sampleRate, std::shared_ptr<const AudioSource> base)>;
     void setClipSourceHook(ClipSourceHook hook) { clipHook_ = std::move(hook); }
+    // What a stretched or transposed clip plays (StretchService::sourceFor); a
+    // stretched clip is silent without one.
+    void setStretchHook(ClipSourceHook hook) { stretchHook_ = std::move(hook); }
     std::shared_ptr<const AudioSource> sourceForClip(const core::AudioClip& clip, double sampleRate);
 
     // Drops entries no snapshot references any more.
@@ -241,6 +267,7 @@ private:
     std::map<core::Id, Instance> instances_;
     std::map<std::string, std::string> errors_;
     ClipSourceHook clipHook_;
+    ClipSourceHook stretchHook_;
 };
 
 // `delays` keeps compensation delay lines across compiles; without it each

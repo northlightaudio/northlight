@@ -1,5 +1,7 @@
 #include "core/Command.h"
 
+#include "core/TempoMap.h"
+
 #include <algorithm>
 #include <cmath>
 #include <stdexcept>
@@ -469,6 +471,13 @@ void clampNote(MidiNote& n)
     n.start = std::max<SamplePosition>(0, n.start);
     n.length = std::max<SamplePosition>(1, n.length);
 }
+
+void clampController(MidiControllerEvent& e)
+{
+    e.number = std::clamp(e.number, 0, 127);
+    e.value = std::clamp(e.value, midiControllerMinimum(e.type), midiControllerMaximum(e.type));
+    e.time = std::max<SamplePosition>(0, e.time);
+}
 } // namespace
 
 SetTrackMidiInput::SetTrackMidiInput(Id trackId, std::string deviceName)
@@ -498,9 +507,16 @@ void AddMidiClip::apply(Project& p)
             n.id = p.allocateId();
         clampNote(n);
     }
+    for (auto& e : clip_.controllers)
+    {
+        if (e.id == invalidId)
+            e.id = p.allocateId();
+        clampController(e);
+    }
     clip_.start = std::max<SamplePosition>(0, clip_.start);
     clip_.length = std::max<SamplePosition>(0, clip_.length);
     clip_.sortNotes();
+    clip_.sortControllers();
     t.midiClips.push_back(clip_);
     t.sortMidiClips();
 }
@@ -565,6 +581,8 @@ void TrimMidiClip::apply(Project& p)
     const auto shift = c.start - newStart; // notes move the other way to stay put
     for (auto& n : c.notes)
         n.start += shift;
+    for (auto& e : c.controllers) // before the start (negative) they still set the opening value
+        e.time += shift;
     c.start = newStart;
     c.length = std::max<SamplePosition>(0, length_);
     t.sortMidiClips();
@@ -594,6 +612,53 @@ void SplitMidiClip::apply(Project& p)
     right_.start = at_;
     right_.length = c.end() - at_;
     right_.notes.clear();
+    right_.controllers.clear();
+    // The right part opens with each controller's value at the split, unless an
+    // event of that controller falls exactly on it.
+    std::vector<MidiControllerEvent> opening;
+    for (const auto& e : c.controllers)
+    {
+        if (e.time >= offset)
+            break; // sorted by time
+        auto it = std::find_if(opening.begin(),
+                               opening.end(),
+                               [&](const MidiControllerEvent& o) { return o.sameLane(e.type, e.number); });
+        if (it == opening.end())
+            opening.push_back(e);
+        else
+            *it = e;
+    }
+    std::erase_if(opening,
+                  [&](const MidiControllerEvent& o)
+                  {
+                      return o.type == MidiControllerType::polyPressure ||
+                             std::any_of(c.controllers.begin(),
+                                         c.controllers.end(),
+                                         [&](const MidiControllerEvent& e)
+                                         { return e.time == offset && e.sameLane(o.type, o.number); });
+                  });
+    for (size_t i = 0; i < opening.size(); ++i)
+    {
+        if (i >= chaseIds_.size())
+            chaseIds_.push_back(p.allocateId());
+        auto e = opening[i];
+        e.id = chaseIds_[i];
+        e.time = 0;
+        right_.controllers.push_back(e);
+    }
+    std::vector<MidiControllerEvent> leftControllers;
+    for (const auto& e : c.controllers)
+    {
+        if (e.time >= offset)
+        {
+            auto moved = e;
+            moved.time -= offset;
+            right_.controllers.push_back(moved);
+        }
+        else
+            leftControllers.push_back(e);
+    }
+    c.controllers = std::move(leftControllers);
     std::vector<MidiNote> left;
     for (const auto& n : c.notes)
     {
@@ -637,6 +702,9 @@ void DuplicateMidiClip::apply(Project& p)
     copy_.id = fresh ? p.allocateId() : keep.id;
     for (size_t i = 0; i < copy_.notes.size(); ++i)
         copy_.notes[i].id = fresh || i >= keep.notes.size() ? p.allocateId() : keep.notes[i].id;
+    for (size_t i = 0; i < copy_.controllers.size(); ++i)
+        copy_.controllers[i].id =
+            fresh || i >= keep.controllers.size() ? p.allocateId() : keep.controllers[i].id;
     copy_.start = at_ >= 0 ? at_ : c.end();
     t.midiClips.push_back(copy_);
     t.sortMidiClips();
@@ -696,9 +764,49 @@ void SetNote::revert(Project& p)
     c.sortNotes();
 }
 
+EditMidiControllers::EditMidiControllers(
+    Id trackId, Id clipId, std::vector<MidiControllerEvent> events, std::vector<Id> remove, std::string name)
+    : trackId_(trackId), clipId_(clipId), events_(std::move(events)), remove_(std::move(remove)),
+      name_(std::move(name))
+{
+}
+void EditMidiControllers::apply(Project& p)
+{
+    auto& c = requireMidiClip(requireTrack(p, trackId_), clipId_);
+    previous_ = c.controllers;
+    if (!remove_.empty())
+        std::erase_if(c.controllers,
+                      [this](const MidiControllerEvent& e)
+                      { return std::find(remove_.begin(), remove_.end(), e.id) != remove_.end(); });
+    for (auto& e : events_)
+    {
+        clampController(e);
+        if (e.id != invalidId)
+            if (auto* existing = c.findController(e.id))
+            {
+                *existing = e;
+                continue;
+            }
+        if (e.id == invalidId)
+            e.id = p.allocateId();
+        c.controllers.push_back(e);
+    }
+    c.sortControllers();
+}
+void EditMidiControllers::revert(Project& p)
+{
+    requireMidiClip(requireTrack(p, trackId_), clipId_).controllers = previous_;
+}
+
 QuantiseNotes::QuantiseNotes(
     Id trackId, Id clipId, std::vector<Id> noteIds, SamplePosition grid, float strength)
     : trackId_(trackId), clipId_(clipId), noteIds_(std::move(noteIds)), grid_(grid), strength_(strength)
+{
+}
+QuantiseNotes::QuantiseNotes(
+    Id trackId, Id clipId, std::vector<Id> noteIds, TempoMap map, GridStep step, float strength)
+    : trackId_(trackId), clipId_(clipId), noteIds_(std::move(noteIds)),
+      tempoGrid_(std::make_pair(std::move(map), step)), strength_(strength)
 {
 }
 void QuantiseNotes::apply(Project& p)
@@ -712,7 +820,8 @@ void QuantiseNotes::apply(Project& p)
             continue;
         previous_.emplace_back(n.id, n.start);
         const auto absolute = c.start + n.start;
-        const auto target = snapToGrid(absolute, grid_);
+        const auto target =
+            tempoGrid_ ? tempoGrid_->first.snap(absolute, tempoGrid_->second) : snapToGrid(absolute, grid_);
         const auto moved =
             absolute + static_cast<SamplePosition>(std::llround((target - absolute) * strength));
         n.start = std::max<SamplePosition>(0, moved - c.start);
@@ -1240,6 +1349,21 @@ void SetInsertSidechain::revert(Project& p)
     i.sidechainPostFader = previousPostFader_;
 }
 
+SetInsertState::SetInsertState(Id channelId, Id insertId, std::string state, std::string name)
+    : channelId_(channelId), insertId_(insertId), value_(std::move(state)), name_(std::move(name))
+{
+}
+void SetInsertState::apply(Project& p)
+{
+    auto& i = requireInsert(requireChannel(p, channelId_), insertId_);
+    previous_ = i.state;
+    i.state = value_;
+}
+void SetInsertState::revert(Project& p)
+{
+    requireInsert(requireChannel(p, channelId_), insertId_).state = previous_;
+}
+
 SetInsertBypass::SetInsertBypass(Id channelId, Id insertId, bool bypass)
     : channelId_(channelId), insertId_(insertId), value_(bypass)
 {
@@ -1430,21 +1554,31 @@ SetMediaPaths::SetMediaPaths(std::vector<std::pair<std::string, std::string>> re
 void SetMediaPaths::apply(Project& p)
 {
     changed_.clear();
+    const auto repoint = [this](Id track, AudioClip& c)
+    {
+        for (const auto& [from, to] : renames_)
+            if (c.mediaPath == from)
+            {
+                changed_.push_back({track, c.id, c.mediaPath});
+                c.mediaPath = to;
+                break;
+            }
+    };
     for (auto& t : p.tracks)
+    {
         for (auto& c : t.clips)
-            for (const auto& [from, to] : renames_)
-                if (c.mediaPath == from)
-                {
-                    changed_.push_back({t.id, c.id, c.mediaPath});
-                    c.mediaPath = to;
-                    break;
-                }
+            repoint(t.id, c);
+        for (auto& g : t.takeGroups)
+            for (auto& take : g.takes)
+                repoint(t.id, take.clip);
+    }
 }
 void SetMediaPaths::revert(Project& p)
 {
     for (const auto& change : changed_)
         if (auto* t = p.findTrack(change.track))
-            if (auto* c = t->findClip(change.clip))
+            if (auto* c = t->findClip(change.clip) != nullptr ? t->findClip(change.clip)
+                                                              : t->findTakeClip(change.clip))
                 c->mediaPath = change.previous;
 }
 
@@ -1690,7 +1824,10 @@ void SplitClip::apply(Project& p)
     right_.mediaPath = c.mediaPath;
     right_.start = at_;
     right_.length = c.end() - at_;
-    right_.sourceOffset = c.sourceOffset + (at_ - c.start);
+    right_.sourceOffset = c.sourceAt(at_ - c.start);
+    right_.stretch = c.stretch;
+    right_.transpose = c.transpose;
+    right_.followTempo = c.followTempo;
     right_.gain = c.gain;
     right_.fadeIn = 0;
     right_.fadeOut = std::min(c.fadeOut, right_.length);
@@ -1711,9 +1848,11 @@ void SplitClip::revert(Project& p)
 
 bool JoinClips::canJoin(const AudioClip& left, const AudioClip& right) noexcept
 {
+    const auto expected = left.sourceAt(left.length);
     return left.mediaPath == right.mediaPath && right.start == left.end() &&
-           right.sourceOffset == left.sourceOffset + left.length && left.gain == right.gain &&
-           left.vocal == right.vocal;
+           std::abs(right.sourceOffset - expected) <= (left.stretch == 1.0 ? 0 : 1) &&
+           left.gain == right.gain && left.vocal == right.vocal && left.stretch == right.stretch &&
+           left.transpose == right.transpose;
 }
 JoinClips::JoinClips(Id trackId, Id leftClipId, Id rightClipId)
     : trackId_(trackId), leftId_(leftClipId), rightId_(rightClipId)
@@ -1800,6 +1939,21 @@ void ShiftClips::apply(Project& p)
             c.start = std::max<SamplePosition>(0, c.start + delta_);
         }
     t.sortClips();
+    // A take group that starts at or after the position moves with its clips.
+    shiftedGroups_.clear();
+    for (auto& g : t.takeGroups)
+        if (g.start() >= from_)
+        {
+            const auto delta = std::max(delta_, -g.start());
+            shiftedGroups_.emplace_back(g.id, delta);
+            for (auto& take : g.takes)
+                take.clip.start += delta;
+            for (auto& s : g.comp)
+            {
+                s.start += delta;
+                s.end += delta;
+            }
+        }
 }
 void ShiftClips::revert(Project& p)
 {
@@ -1808,6 +1962,17 @@ void ShiftClips::revert(Project& p)
         if (auto* c = t.findClip(id))
             c->start = start;
     t.sortClips();
+    for (const auto& [id, delta] : shiftedGroups_)
+        if (auto* g = t.findTakeGroup(id))
+        {
+            for (auto& take : g->takes)
+                take.clip.start -= delta;
+            for (auto& s : g->comp)
+            {
+                s.start -= delta;
+                s.end -= delta;
+            }
+        }
 }
 
 SetClipGain::SetClipGain(Id trackId, Id clipId, float gain) : trackId_(trackId), clipId_(clipId), value_(gain)
@@ -1884,11 +2049,195 @@ void SetTimeSignature::revert(Project& p)
 void SetTempo::apply(Project& p)
 {
     previous_ = p.tempoBpm;
-    p.tempoBpm = value_;
+    positions_.capture(p);
+    const auto before = tempoMapOf(p);
+    p.tempoBpm = std::clamp(value_, 1.0, 999.0);
+    remapMusicalTime(p, before, tempoMapOf(p));
 }
 void SetTempo::revert(Project& p)
 {
     p.tempoBpm = previous_;
+    positions_.restore(p);
+}
+
+AddFolderTrack::AddFolderTrack(std::string name, std::vector<Id> members, int index)
+    : members_(std::move(members)), index_(index)
+{
+    folder_.name = std::move(name);
+    folder_.kind = TrackKind::folder;
+    folder_.inputChannel = -1;
+}
+void AddFolderTrack::apply(Project& p)
+{
+    if (folder_.id == invalidId)
+        folder_.id = p.allocateId();
+    previousOrder_ = p.tracks;
+    // The folder takes the place of its first member (or `index`), its members follow.
+    int at =
+        index_ < 0 ? static_cast<int>(p.tracks.size()) : std::min(index_, static_cast<int>(p.tracks.size()));
+    for (const Id id : members_)
+        if (const int i = p.trackIndex(id); i >= 0)
+            at = std::min(at, i);
+    std::vector<Track> moved;
+    for (const auto& t : p.tracks)
+        if (std::find(members_.begin(), members_.end(), t.id) != members_.end() && t.id != folder_.id)
+            moved.push_back(t);
+    const auto before = static_cast<int>(std::count_if(
+        p.tracks.begin(),
+        p.tracks.begin() + at,
+        [&](const Track& t) { return std::find(members_.begin(), members_.end(), t.id) != members_.end(); }));
+    std::erase_if(p.tracks,
+                  [&](const Track& t)
+                  { return std::find(members_.begin(), members_.end(), t.id) != members_.end(); });
+    at -= before;
+    const Id outer = moved.empty() ? invalidId : moved.front().folder; // nest where the first member was
+    folder_.folder = outer;
+    for (auto& t : moved)
+        t.folder = folder_.id;
+    p.tracks.insert(p.tracks.begin() + at, folder_);
+    p.tracks.insert(p.tracks.begin() + at + 1, moved.begin(), moved.end());
+}
+void AddFolderTrack::revert(Project& p)
+{
+    p.tracks = previousOrder_;
+}
+
+SetTrackFolder::SetTrackFolder(Id trackId, Id folderId) : trackId_(trackId), folderId_(folderId) {}
+void SetTrackFolder::apply(Project& p)
+{
+    auto& t = requireTrack(p, trackId_);
+    if (folderId_ != invalidId)
+    {
+        const auto& f = requireTrack(p, folderId_);
+        if (!f.isFolder() || p.insideFolder(folderId_, trackId_))
+            throw std::logic_error("a track cannot go into that folder");
+    }
+    previous_ = t.folder;
+    t.folder = folderId_;
+}
+void SetTrackFolder::revert(Project& p)
+{
+    requireTrack(p, trackId_).folder = previous_;
+}
+
+SetFolderOpen::SetFolderOpen(Id folderId, bool open) : folderId_(folderId), open_(open) {}
+void SetFolderOpen::apply(Project& p)
+{
+    auto& f = requireTrack(p, folderId_);
+    previous_ = f.folderOpen;
+    f.folderOpen = open_;
+}
+void SetFolderOpen::revert(Project& p)
+{
+    requireTrack(p, folderId_).folderOpen = previous_;
+}
+
+SetTrackFrozen::SetTrackFrozen(Id trackId, std::string media) : trackId_(trackId), media_(std::move(media)) {}
+void SetTrackFrozen::apply(Project& p)
+{
+    auto& t = requireTrack(p, trackId_);
+    if (!t.hasAudio() && !media_.empty())
+        throw std::logic_error("only a track that makes audio can be frozen");
+    previous_ = t.frozenMedia;
+    t.frozenMedia = media_;
+}
+void SetTrackFrozen::revert(Project& p)
+{
+    requireTrack(p, trackId_).frozenMedia = previous_;
+}
+
+TempoState TempoState::of(const Project& p)
+{
+    return {p.tempoBpm, p.timeSignature, p.tempoChanges, p.meterChanges};
+}
+
+void MusicalPositions::capture(const Project& p)
+{
+    midi_.clear();
+    audio_.clear();
+    trackLanes_.clear();
+    busLanes_.clear();
+    for (const auto& t : p.tracks)
+    {
+        midi_.push_back(t.midiClips);
+        audio_.push_back(t.clips);
+        trackLanes_.push_back(t.automation);
+    }
+    for (const auto& b : p.buses)
+        busLanes_.push_back(b.automation);
+    markers_ = p.markers;
+}
+
+void MusicalPositions::restore(Project& p) const
+{
+    for (size_t i = 0; i < p.tracks.size() && i < midi_.size(); ++i)
+    {
+        p.tracks[i].midiClips = midi_[i];
+        p.tracks[i].clips = audio_[i];
+        p.tracks[i].automation = trackLanes_[i];
+    }
+    for (size_t i = 0; i < p.buses.size() && i < busLanes_.size(); ++i)
+        p.buses[i].automation = busLanes_[i];
+    p.markers = markers_;
+}
+
+SetTempoMap::SetTempoMap(TempoState state, std::string name)
+    : value_(std::move(state)), name_(std::move(name))
+{
+}
+void SetTempoMap::apply(Project& p)
+{
+    previous_ = TempoState::of(p);
+    positions_.capture(p);
+    const auto before = tempoMapOf(p);
+    p.tempoBpm = std::clamp(value_.bpm, 1.0, 999.0);
+    p.timeSignature = {std::clamp(value_.signature.numerator, 1, 32),
+                       std::clamp(value_.signature.denominator, 1, 32)};
+    p.tempoChanges = value_.tempoChanges;
+    std::erase_if(p.tempoChanges, [](const TempoChange& t) { return !(t.quarter > 0.0); });
+    std::stable_sort(p.tempoChanges.begin(),
+                     p.tempoChanges.end(),
+                     [](const TempoChange& a, const TempoChange& b) { return a.quarter < b.quarter; });
+    for (auto& t : p.tempoChanges)
+        t.bpm = std::clamp(t.bpm, 1.0, 999.0);
+    p.meterChanges = value_.meterChanges;
+    std::erase_if(p.meterChanges, [](const MeterChange& m) { return m.bar <= 0; });
+    std::stable_sort(p.meterChanges.begin(),
+                     p.meterChanges.end(),
+                     [](const MeterChange& a, const MeterChange& b) { return a.bar < b.bar; });
+    remapMusicalTime(p, before, tempoMapOf(p));
+}
+void SetTempoMap::revert(Project& p)
+{
+    p.tempoBpm = previous_.bpm;
+    p.timeSignature = previous_.signature;
+    p.tempoChanges = previous_.tempoChanges;
+    p.meterChanges = previous_.meterChanges;
+    positions_.restore(p);
+}
+
+SetClipStretch::SetClipStretch(
+    Id trackId, Id clipId, double stretch, double transpose, SamplePosition length, bool followTempo)
+    : trackId_(trackId), clipId_(clipId), stretch_(std::clamp(stretch, 0.05, 20.0)),
+      transpose_(std::clamp(transpose, -48.0, 48.0)), length_(length), followTempo_(followTempo)
+{
+}
+void SetClipStretch::apply(Project& p)
+{
+    auto& t = requireTrack(p, trackId_);
+    auto& c = requireClip(t, clipId_);
+    previous_ = c;
+    c.stretch = stretch_;
+    c.transpose = transpose_;
+    c.followTempo = followTempo_;
+    c.length = std::max<SamplePosition>(1, length_);
+    c.fadeIn = std::min(c.fadeIn, c.length);
+    c.fadeOut = std::min(c.fadeOut, c.length);
+}
+void SetClipStretch::revert(Project& p)
+{
+    auto& t = requireTrack(p, trackId_);
+    requireClip(t, clipId_) = previous_;
 }
 
 } // namespace aural::core

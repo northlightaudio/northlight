@@ -3,8 +3,10 @@
 #include "engine/rt/RealtimeGuard.h"
 
 #include <algorithm>
+#include <cmath>
 #include <functional>
 #include <map>
+#include <optional>
 
 namespace aural::engine
 {
@@ -53,6 +55,8 @@ MediaCache::getForClip(const std::string& path, double sampleRate, core::Id clip
 std::shared_ptr<const AudioSource> MediaCache::sourceForClip(const core::AudioClip& clip, double sampleRate)
 {
     auto base = getForClip(clip.mediaPath, sampleRate, clip.id);
+    if (clip.isStretched())
+        return stretchHook_ && base != nullptr ? stretchHook_(clip, sampleRate, std::move(base)) : nullptr;
     if (clipHook_ && base != nullptr && clip.vocal.active())
         return clipHook_(clip, sampleRate, std::move(base));
     return base;
@@ -94,6 +98,78 @@ struct Routing
 };
 } // namespace
 
+namespace
+{
+int chaseKeyOf(const core::MidiControllerEvent& e) noexcept
+{
+    switch (e.type)
+    {
+        case core::MidiControllerType::controller:
+            return std::clamp(e.number, 0, 127);
+        case core::MidiControllerType::pitchBend:
+            return chaseKeyBend;
+        case core::MidiControllerType::channelPressure:
+            return chaseKeyPressure;
+        case core::MidiControllerType::polyPressure:
+            return -1;
+    }
+    return -1;
+}
+
+// A clip's controller events at their timeline places: those inside the clip
+// in time order, preceded (at the clip's start) by the latest value of each
+// controller that a trim left before it.
+void compileControllers(const core::MidiClip& source,
+                        MidiClipNode& clip,
+                        std::array<std::uint8_t, chaseKeyCount>& usedKeys)
+{
+    const auto toNode = [&](const core::MidiControllerEvent& e)
+    {
+        MidiControllerNode n;
+        n.time = source.start + std::max<core::SamplePosition>(0, e.time);
+        n.type = e.type;
+        n.number = static_cast<std::uint8_t>(std::clamp(e.number, 0, 127));
+        n.value = static_cast<std::int16_t>(
+            std::clamp(e.value, core::midiControllerMinimum(e.type), core::midiControllerMaximum(e.type)));
+        n.key = static_cast<std::int16_t>(chaseKeyOf(e));
+        return n;
+    };
+    std::array<int, chaseKeyCount> before;
+    before.fill(-1);
+    for (size_t i = 0; i < source.controllers.size(); ++i)
+    {
+        const auto& e = source.controllers[i];
+        if (e.time < 0)
+        {
+            if (const int key = chaseKeyOf(e); key >= 0)
+                before[static_cast<size_t>(key)] = static_cast<int>(i);
+        }
+    }
+    for (const int i : before)
+        if (i >= 0)
+            clip.controllers.push_back(toNode(source.controllers[static_cast<size_t>(i)]));
+    for (const auto& e : source.controllers)
+        if (e.time >= 0 && e.time < source.length)
+            clip.controllers.push_back(toNode(e));
+    std::stable_sort(clip.controllers.begin(),
+                     clip.controllers.end(),
+                     [](const MidiControllerNode& a, const MidiControllerNode& b)
+                     { return a.time < b.time; });
+    std::array<int, chaseKeyCount> last;
+    last.fill(-1);
+    for (size_t i = 0; i < clip.controllers.size(); ++i)
+        if (const int key = clip.controllers[i].key; key >= 0)
+            last[static_cast<size_t>(key)] = static_cast<int>(i);
+    for (int key = 0; key < chaseKeyCount; ++key)
+        if (const int i = last[static_cast<size_t>(key)]; i >= 0)
+        {
+            clip.lastValues.push_back(clip.controllers[static_cast<size_t>(i)]);
+            usedKeys[static_cast<size_t>(key)] = 1;
+        }
+    clip.chasedKeys = static_cast<int>(clip.lastValues.size());
+}
+} // namespace
+
 std::unique_ptr<Snapshot> compileSnapshot(const core::Project& project,
                                           MediaCache& media,
                                           InsertCache& inserts,
@@ -106,6 +182,7 @@ std::unique_ptr<Snapshot> compileSnapshot(const core::Project& project,
     snapshot->sampleRate = project.sampleRate;
     snapshot->tempoBpm = project.tempoBpm;
     snapshot->timeSignature = project.timeSignature;
+    snapshot->tempoMap = core::tempoMapOf(project);
     snapshot->masterGain = project.master.gain;
     RuntimeCache localRuntimes;
     RuntimeCache& runtimeCache = runtimes != nullptr ? *runtimes : localRuntimes;
@@ -148,7 +225,12 @@ std::unique_ptr<Snapshot> compileSnapshot(const core::Project& project,
         routing.mute[static_cast<size_t>(index)] = c.mute;
     };
     for (int t = 0; t < trackCount; ++t)
-        channelOf(t, project.tracks[static_cast<size_t>(t)]);
+    {
+        const auto& track = project.tracks[static_cast<size_t>(t)];
+        channelOf(t, track);
+        routing.solo[static_cast<size_t>(t)] = track.solo || project.soloedByFolder(track);
+        routing.mute[static_cast<size_t>(t)] = track.mute || project.mutedByFolder(track) || track.isFolder();
+    }
     for (int b = 0; b < busCount; ++b)
         channelOf(trackCount + b, project.buses[static_cast<size_t>(b)]);
 
@@ -383,11 +465,28 @@ std::unique_ptr<Snapshot> compileSnapshot(const core::Project& project,
     snapshot->tracks.reserve(project.tracks.size());
     for (int t = 0; t < trackCount; ++t)
     {
-        const auto& track = project.tracks[static_cast<size_t>(t)];
+        const auto& model = project.tracks[static_cast<size_t>(t)];
+        // A frozen track (or a folder) runs no chain: compile it from a copy
+        // without its instrument, inserts, strip, sends (a folder's) and
+        // insert automation.
+        std::optional<core::Track> stripped;
+        if (model.isFrozen() || model.isFolder())
+        {
+            stripped = model;
+            stripped->instrument = core::Insert{};
+            stripped->inserts.clear();
+            stripped->strip.clear();
+            if (model.isFolder())
+                stripped->sends.clear();
+            std::erase_if(stripped->automation,
+                          [](const core::AutomationLane& lane)
+                          { return lane.target == core::AutomationTarget::insertParameter; });
+        }
+        const auto& track = stripped ? *stripped : model;
         TrackNode node;
         fillChannel(node, track, t, trackMeterSlot(t), false);
         node.isMidi = track.isMidi();
-        node.isInstrument = track.isInstrument();
+        node.isInstrument = track.isInstrument() && !track.isFrozen();
         node.isAux = track.isAux();
         node.inputChannel = track.isAux() ? -1 : track.inputChannel;
         node.armed = track.armed;
@@ -405,7 +504,7 @@ std::unique_ptr<Snapshot> compileSnapshot(const core::Project& project,
             node.midiOutChannel = static_cast<std::uint8_t>(std::clamp(track.midiOutChannel, 1, 16) - 1);
             node.midiChannel = static_cast<std::uint8_t>(std::clamp(track.midiChannel, 1, 16) - 1);
             node.velocityScale = std::clamp(track.gain, 0.0f, 4.0f);
-            node.midiMuted = track.mute;
+            node.midiMuted = track.mute || project.mutedByFolder(track);
             for (const auto& c : track.midiClips)
             {
                 MidiClipNode clip;
@@ -429,16 +528,32 @@ std::unique_ptr<Snapshot> compileSnapshot(const core::Project& project,
                                  clip.notes.end(),
                                  [](const MidiNoteNode& a, const MidiNoteNode& b)
                                  { return a.start < b.start; });
+                compileControllers(c, clip, node.controllerKeys);
                 node.midiClips.push_back(std::move(clip));
             }
         }
+        if (track.isFrozen())
+        {
+            // Frozen: its render plays from the song's start, through the fader.
+            ClipNode clip;
+            clip.keepAlive = media.get(track.frozenMedia, project.sampleRate);
+            clip.source = clip.keepAlive.get();
+            clip.length = clip.source != nullptr ? clip.source->lengthSamples() : 0;
+            node.clips.push_back(std::move(clip));
+        }
         node.clips.reserve(track.clips.size());
+        const bool playsClips = !track.isFrozen() && !track.isFolder();
         for (const auto& c : track.clips)
         {
+            if (!playsClips)
+                break;
             ClipNode clip;
             clip.start = c.start;
             clip.length = c.length;
-            clip.sourceOffset = c.sourceOffset;
+            // A stretched clip's source counts stretched samples.
+            clip.sourceOffset = c.isStretched() ? static_cast<core::SamplePosition>(std::llround(
+                                                      static_cast<double>(c.sourceOffset) * c.stretch))
+                                                : c.sourceOffset;
             clip.gain = c.gain;
             clip.fadeIn = std::clamp<core::SamplePosition>(c.fadeIn, 0, c.length);
             clip.fadeOut = std::clamp<core::SamplePosition>(c.fadeOut, 0, c.length);
@@ -470,7 +585,8 @@ std::unique_ptr<Snapshot> compileSnapshot(const core::Project& project,
         if (!track.isMidi())
             continue;
         const int target = project.trackIndex(track.midiTarget);
-        if (target >= 0 && project.tracks[static_cast<size_t>(target)].isInstrument())
+        if (target >= 0 && project.tracks[static_cast<size_t>(target)].isInstrument() &&
+            !project.tracks[static_cast<size_t>(target)].isFrozen())
             snapshot->tracks[static_cast<size_t>(target)].midiFeeds.push_back(t);
     }
 
@@ -485,7 +601,9 @@ std::unique_ptr<Snapshot> compileSnapshot(const core::Project& project,
         if (source < 0 || source == t)
             continue;
         const auto* sourceTrack = project.findTrack(track.auxTrack);
-        if (sourceTrack == nullptr || sourceTrack->findInsert(track.auxInsert) == nullptr)
+        // A frozen instrument does not run: its extra outputs are silent.
+        if (sourceTrack == nullptr || sourceTrack->isFrozen() ||
+            sourceTrack->findInsert(track.auxInsert) == nullptr)
             continue;
         if (auto instance = inserts.find(track.auxInsert))
         {

@@ -107,6 +107,10 @@ private:
     bool midi_ = false;
     bool aux_ = false;
     bool instrument_ = false; // an instrument channel: no input or arm (its MIDI tracks have them)
+    bool folder_ = false;     // a folder track: M, S and its disclosure only
+    bool folderOpen_ = true;
+    int depth_ = 0; // folders it sits in: the header is indented by that much
+    int indent() const noexcept { return depth_ * 12; }
     bool muted_ = false;
     bool selected_ = false;
     bool hovered_ = false;
@@ -124,6 +128,7 @@ private:
     juce::Slider volume_;
     Meter meter_;
     juce::TextButton target_; // a MIDI track's: "→ Drums: Pulsar", what it plays
+    juce::TextButton fold_;   // a folder's disclosure: open or close it
     Knob pan_;
 };
 

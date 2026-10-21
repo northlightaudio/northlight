@@ -1122,3 +1122,98 @@ TEST_CASE("A send's level is a live value; a new send or a pre/post switch chang
     tap.apply(p);
     CHECK(tap.changeKind() == Command::ChangeKind::structure);
 }
+
+TEST_CASE("Controller events are edited in bulk, carried by trim, split and duplicate, and undone",
+          "[core][command][midi]")
+{
+    Project p;
+    Track t;
+    t.kind = TrackKind::midi;
+    UndoStack stack;
+    stack.execute(p, std::make_unique<AddTrack>(t));
+    const Id track = p.tracks[0].id;
+    MidiClip clip;
+    clip.start = 1000;
+    clip.length = 2000;
+    clip.controllers.push_back({invalidId, MidiControllerType::controller, 1, 200, 500}); // clamped to 127
+    clip.controllers.push_back({invalidId, MidiControllerType::pitchBend, 0, 4000, 100});
+    auto add = std::make_unique<AddMidiClip>(track, clip);
+    const auto* addPtr = add.get();
+    stack.execute(p, std::move(add));
+    const Id clipId = addPtr->clipId();
+    const auto& stored = [&]() -> const MidiClip& { return *p.tracks[0].findMidiClip(clipId); };
+    REQUIRE(stored().controllers.size() == 2);
+    CHECK(stored().controllers[0].type == MidiControllerType::pitchBend); // sorted by time
+    CHECK(stored().controllers[1].value == 127);
+    CHECK(stored().controllers[0].id != invalidId);
+    const Id bend = stored().controllers[0].id;
+    const Id mod = stored().controllers[1].id;
+
+    // One step: move the bend, add two points, delete the mod wheel point.
+    std::vector<MidiControllerEvent> events;
+    events.push_back({bend, MidiControllerType::pitchBend, 0, -9000, 150});
+    events.push_back({invalidId, MidiControllerType::controller, 11, 90, 1200});
+    events.push_back({invalidId, MidiControllerType::channelPressure, 0, 30, 50});
+    auto edit = std::make_unique<EditMidiControllers>(track, clipId, events, std::vector<Id>{mod}, "Draw");
+    const auto* editPtr = edit.get();
+    stack.execute(p, std::move(edit));
+    CHECK(editPtr->name() == "Draw");
+    REQUIRE(stored().controllers.size() == 3);
+    CHECK(stored().controllers[0].type == MidiControllerType::channelPressure);
+    CHECK(stored().controllers[1].id == bend);
+    CHECK(stored().controllers[1].value == -8192); // clamped
+    CHECK(stored().controllers[1].time == 150);
+    CHECK(stored().findController(mod) == nullptr);
+    const Id added = editPtr->events()[1].id;
+    CHECK(added != invalidId);
+    stack.undo(p);
+    REQUIRE(stored().controllers.size() == 2);
+    CHECK(stored().findController(bend)->value == 4000);
+    stack.redo(p);
+    CHECK(stored().findController(added) != nullptr); // the same id on redo
+    stack.undo(p);
+
+    // Trim keeps the events on the timeline (an event before the new start keeps
+    // its place, before the clip).
+    stack.execute(p, std::make_unique<TrimMidiClip>(track, clipId, 1300, 1700));
+    CHECK(stored().findController(mod)->time == 200);
+    CHECK(stored().findController(bend)->time == -200);
+    stack.undo(p);
+    CHECK(stored().findController(bend)->time == 100);
+
+    // Split at 1300: the bend (at 100) stays left; the mod wheel (at 500) goes right
+    // at 200; the right part opens with the bend's value.
+    auto split = std::make_unique<SplitMidiClip>(track, clipId, 1300);
+    const auto* splitPtr = split.get();
+    stack.execute(p, std::move(split));
+    const auto* right = p.tracks[0].findMidiClip(splitPtr->rightClipId());
+    REQUIRE(right != nullptr);
+    REQUIRE(stored().controllers.size() == 1);
+    CHECK(stored().controllers[0].id == bend);
+    REQUIRE(right->controllers.size() == 2);
+    CHECK(right->controllers[0].type == MidiControllerType::pitchBend);
+    CHECK(right->controllers[0].time == 0);
+    CHECK(right->controllers[0].value == 4000);
+    CHECK(right->controllers[0].id != bend);
+    const Id opening = right->controllers[0].id;
+    CHECK(right->controllers[1].id == mod);
+    CHECK(right->controllers[1].time == 200);
+    stack.undo(p);
+    CHECK(stored().controllers.size() == 2);
+    stack.redo(p);
+    CHECK(p.tracks[0].findMidiClip(splitPtr->rightClipId())->controllers[0].id == opening); // stable ids
+    stack.undo(p);
+
+    // Duplicate copies them with fresh ids.
+    auto dup = std::make_unique<DuplicateMidiClip>(track, clipId);
+    const auto* dupPtr = dup.get();
+    stack.execute(p, std::move(dup));
+    const auto* copy = p.tracks[0].findMidiClip(dupPtr->newClipId());
+    REQUIRE(copy->controllers.size() == 2);
+    CHECK(copy->controllers[0].id != bend);
+    CHECK(copy->controllers[0].value == 4000);
+    while (stack.undo(p))
+    {
+    }
+    CHECK(p.tracks.empty());
+}

@@ -599,7 +599,9 @@ void HostedClapPlugin::collectEvents(const engine::MidiEventList* midi) noexcept
         if (in_.count >= in_.events.size())
             break;
         auto& slot = in_.events[in_.count++];
-        if (noteDialectClap_ && m.type != engine::MidiEvent::Type::controller)
+        // Notes in the CLAP dialect when the port prefers it; everything else
+        // (controllers, pitch bend, pressure) as MIDI 1.0 events.
+        if (noteDialectClap_ && (m.isNote() || m.type == engine::MidiEvent::Type::allNotesOff))
         {
             auto& e = slot.note;
             e.header.size = sizeof(clap_event_note_t);
@@ -625,30 +627,11 @@ void HostedClapPlugin::collectEvents(const engine::MidiEventList* midi) noexcept
             e.header.type = CLAP_EVENT_MIDI;
             e.header.flags = 0;
             e.port_index = 0;
-            const auto channel = static_cast<uint8_t>(m.channel & 15);
-            switch (m.type)
-            {
-                case engine::MidiEvent::Type::noteOn:
-                    e.data[0] = static_cast<uint8_t>(0x90 | channel);
-                    e.data[1] = m.note;
-                    e.data[2] = m.velocity;
-                    break;
-                case engine::MidiEvent::Type::noteOff:
-                    e.data[0] = static_cast<uint8_t>(0x80 | channel);
-                    e.data[1] = m.note;
-                    e.data[2] = m.velocity;
-                    break;
-                case engine::MidiEvent::Type::controller:
-                    e.data[0] = static_cast<uint8_t>(0xB0 | channel);
-                    e.data[1] = m.note;
-                    e.data[2] = m.velocity;
-                    break;
-                case engine::MidiEvent::Type::allNotesOff:
-                    e.data[0] = static_cast<uint8_t>(0xB0 | channel);
-                    e.data[1] = 123;
-                    e.data[2] = 0;
-                    break;
-            }
+            std::uint8_t bytes[3] = {};
+            const int size = m.toBytes(bytes);
+            e.data[0] = bytes[0];
+            e.data[1] = bytes[1];
+            e.data[2] = size > 2 ? bytes[2] : 0;
         }
     }
 }
@@ -768,7 +751,7 @@ bool HostedClapPlugin::run(
     process.steady_time = -1;
     process.frames_count = static_cast<uint32_t>(numSamples);
     {
-        // The song's position and tempo (one tempo, no loop reported).
+        // The song's position and tempo at the block's start (no loop reported).
         const auto& h = playHead_;
         auto& t = transport_;
         t = clap_event_transport_t{};
@@ -782,10 +765,8 @@ bool HostedClapPlugin::run(
         t.song_pos_beats = static_cast<clap_beattime>(std::llround(h.quarterNotes * CLAP_BEATTIME_FACTOR));
         t.song_pos_seconds = static_cast<clap_sectime>(
             std::llround(static_cast<double>(h.samples) / h.sampleRate * CLAP_SECTIME_FACTOR));
-        const double quartersPerBar = h.numerator * 4.0 / std::max(1, h.denominator);
-        const double bar = std::floor(h.quarterNotes / quartersPerBar);
-        t.bar_start = static_cast<clap_beattime>(std::llround(bar * quartersPerBar * CLAP_BEATTIME_FACTOR));
-        t.bar_number = static_cast<int32_t>(bar);
+        t.bar_start = static_cast<clap_beattime>(std::llround(h.barStartQuarters * CLAP_BEATTIME_FACTOR));
+        t.bar_number = static_cast<int32_t>(h.bar);
         t.tsig_num = static_cast<uint16_t>(h.numerator);
         t.tsig_denom = static_cast<uint16_t>(h.denominator);
     }

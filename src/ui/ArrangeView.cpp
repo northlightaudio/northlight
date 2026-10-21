@@ -1,10 +1,12 @@
 #include "ui/ArrangeView.h"
 
+#include "core/Comping.h"
 #include "plugins/FxTracks.h"
 #include "ui/AuralLookAndFeel.h"
 #include "ui/Db.h"
 #include "ui/FrameStats.h"
 #include "ui/Icons.h"
+#include "ui/MediaFiles.h"
 #include "ui/Motion.h"
 #include "ui/PluginMenu.h"
 
@@ -28,7 +30,8 @@ ArrangeView::ArrangeView(audio::PeakStore& peaks)
       pencilTool_(theme_, Icon::pencil, "Pencil: draw a MIDI clip on a MIDI track  3")
 {
     setOpaque(true);
-    rulerHeight = theme_.sizes.ruler;
+    rulerOnly = theme_.sizes.ruler;
+    rulerHeight = rulerOnly;
     headerWidth = theme_.sizes.trackHeaderWidth;
     rowHeight = theme_.sizes.trackRow;
     scrollbarHeight = theme_.sizes.scrollbar;
@@ -67,6 +70,25 @@ ArrangeView::ArrangeView(audio::PeakStore& peaks)
                 h->setAutomationShown(shown);
     };
     addAndMakeVisible(automation_);
+    // The tempo track sits over the automation overlay so its handles take the mouse.
+    tempoLane_.xForSample = [this](core::SamplePosition s) { return xForSample(s); };
+    tempoLane_.sampleForX = [this](int x) { return sampleForX(x); };
+    tempoLane_.playhead = [this] { return playhead_; };
+    tempoLane_.onEdit = [this](core::TempoState state, const std::string& name)
+    {
+        if (onTempoEdit)
+            onTempoEdit(std::move(state), name);
+    };
+    tempoLane_.onHide = [this] { setTempoTrackShown(false); };
+    addChildComponent(tempoLane_);
+    takes_.geometry.xForSample = [this](core::SamplePosition at) { return xForSample(at); };
+    takes_.geometry.sampleForX = [this](int x) { return sampleForX(x); };
+    takes_.geometry.snap = [this](core::SamplePosition at) { return snapped(at); };
+    takes_.geometry.samplesPerPixel = [this] { return samplesPerPixel_; };
+    takes_.geometry.sampleRate = [this] { return sampleRate(); };
+    takes_.onEdit = [this](std::vector<std::unique_ptr<core::Command>> commands, const std::string& name)
+    { emit(std::move(commands), name); };
+    takes_.onRepaint = [this] { repaint(); };
     import_.setButtonText(juce::String::fromUTF8("Import audio\xe2\x80\xa6"));
     for (auto* b : {&addAudio_, &addInstrument_, &import_})
     {
@@ -120,7 +142,10 @@ void ArrangeView::setProject(const core::Project* project, bool valuesOnly)
         return;
     }
     automation_.setProject(project);
+    takes_.setProject(project);
     project_ = project;
+    tempoMap_ = project_ != nullptr ? core::tempoMapOf(*project_) : core::TempoMap();
+    tempoLane_.setProject(project);
     std::erase_if(selection_, [this](const ClipRef& ref) { return !spanOf(ref).has_value(); });
     if (project_ == nullptr || project_->findMarker(selectedMarker_) == nullptr)
         selectedMarker_ = core::invalidId;
@@ -164,6 +189,12 @@ void ArrangeView::setRowHeight(int height)
 
 void ArrangeView::pushMeters()
 {
+    // A clip's stretch is rendering: show its progress (each frame until done).
+    if (stretchPending_)
+    {
+        stretchPending_ = false;
+        repaint();
+    }
     const double now = juce::Time::getMillisecondCounterHiRes();
     const double elapsed = lastMeterMs_ > 0.0 ? now - lastMeterMs_ : 33.0;
     lastMeterMs_ = now;
@@ -352,7 +383,7 @@ void ArrangeView::layoutHeaders()
         {
             y = rowTop(row);
             const int h = rowHeightOf(row++);
-            const bool visible = y + h > rulerHeight && y < getHeight() - scrollbarHeight;
+            const bool visible = h > 0 && y + h > rulerHeight && y < getHeight() - scrollbarHeight;
             header->setVisible(visible);
             header->setBounds(0, y, headerWidth, h);
             y += h;
@@ -566,6 +597,14 @@ const ArrangeView::RowLayout& ArrangeView::rows() const
                 h = std::clamp(channel->height, theme_.sizes.trackRowMin, theme_.sizes.trackRowMax);
             if (const auto growing = rowGrowth_.find(channel->id); growing != rowGrowth_.end())
                 h = std::max(1, juce::roundToInt(static_cast<float>(h) * growing->second));
+            // A track's expanded take lanes sit under its row (rowHeightOf leaves them out).
+            if (const auto index = rows_.tops.size() - 1; index < project_->tracks.size())
+            {
+                h += takes_.lanesHeight(project_->tracks[index]);
+                // A track in a closed folder keeps its row, at no height.
+                if (project_->hiddenByFolder(project_->tracks[index]))
+                    h = 0;
+            }
             rows_.tops.push_back(rows_.tops.back() + h);
         }
         // A removed row's space, closing: everything from its place down sits lower.
@@ -675,17 +714,35 @@ void ArrangeView::showAutomation(core::Id trackId, bool shown)
             h->setAutomationShown(shown);
 }
 
+void ArrangeView::setTempoTrackShown(bool shown)
+{
+    if (shown == tempoShown_)
+        return;
+    tempoShown_ = shown;
+    rulerHeight = rulerOnly + (shown ? tempoLaneHeight : 0);
+    tempoLane_.setVisible(shown);
+    rowsValid_ = false;
+    resized();
+    layoutHeaders();
+    updateScrollbar();
+    repaint();
+    if (onTempoTrackShownChanged)
+        onTempoTrackShownChanged(shown);
+}
+
 void ArrangeView::resized()
 {
     layoutEmptyState();
     automation_.setBounds(getLocalBounds());
+    tempoLane_.headerWidth = headerWidth;
+    tempoLane_.setBounds(0, rulerOnly, getWidth() - scrollbarWidth, tempoLaneHeight);
     scrollbar_.setBounds(headerWidth,
                          getHeight() - scrollbarHeight,
                          getWidth() - headerWidth - scrollbarWidth,
                          scrollbarHeight);
     verticalScrollbar_.setBounds(getWidth() - scrollbarWidth, rulerHeight, scrollbarWidth, lanesHeight());
     // The corner: "+" at the left, the row-height stepper at the right.
-    auto corner = juce::Rectangle<int>(0, 0, headerWidth, rulerHeight).reduced(theme_.spacing.xs, 0);
+    auto corner = juce::Rectangle<int>(0, 0, headerWidth, rulerOnly).reduced(theme_.spacing.xs, 0);
     const int button = theme_.sizes.controlCompact;
     addTrack_.setBounds(corner.removeFromLeft(button).withSizeKeepingCentre(button, button));
     rowsLarger_.setBounds(corner.removeFromRight(button).withSizeKeepingCentre(button, button));
@@ -742,6 +799,15 @@ void ArrangeView::mouseDown(const juce::MouseEvent& e)
         drag_ = Drag::rowResize;
         return;
     }
+    // Take lanes (their headers too) and the comp's chip, boundaries and menu on the main lane.
+    if (e.y >= rulerHeight && e.y < getHeight() - scrollbarHeight && e.x < getWidth() - scrollbarWidth)
+        if (const int row = rowAtY(e.y); row >= 0 && takes_.mouseDown(e, takeRow(row)))
+        {
+            selectTrack(project_->tracks[static_cast<size_t>(row)].id);
+            if (takes_.dragging())
+                drag_ = Drag::takes;
+            return;
+        }
     if (e.x < headerWidth || e.x >= getWidth() - scrollbarWidth || e.y >= getHeight() - scrollbarHeight)
         return;
     if (e.y < rulerHeight)
@@ -822,7 +888,16 @@ void ArrangeView::mouseDownLanes(const juce::MouseEvent& e)
         selectTrack(channelAtRow(row)->id); // an FX track's lane
     if (e.mods.isPopupMenu())
     {
-        if (hit.track != nullptr)
+        if (hit.clip != nullptr)
+        {
+            if (!isSelected(hit.track->id, hit.clip->id))
+            {
+                selection_.clear();
+                select({hit.track->id, hit.clip->id}, true);
+            }
+            clipMenu(hit.track->id, hit.clip->id, e.getScreenPosition());
+        }
+        else if (hit.track != nullptr)
             trackMenu(hit.track->id, e.getScreenPosition());
         return;
     }
@@ -854,10 +929,10 @@ void ArrangeView::mouseDownLanes(const juce::MouseEvent& e)
         // The pencil: a new clip from the grid line at or before the press.
         drag_ = Drag::draw;
         drawTrack_ = hit.track->id;
-        const auto g = std::max<core::SamplePosition>(1, snapEnabled() ? grid() : 1);
-        drawAnchor_ = (std::max<core::SamplePosition>(0, dragStartSample_) / g) * g;
+        const auto from = std::max<core::SamplePosition>(0, dragStartSample_);
+        drawAnchor_ = snapEnabled() ? lineAtOrBefore(from) : from;
         drawStart_ = drawAnchor_;
-        drawEnd_ = drawAnchor_ + barLength();
+        drawEnd_ = tempoMap_.move(drawAnchor_, {1, 0.0}, 1);
         repaint();
         return;
     }
@@ -884,6 +959,11 @@ void ArrangeView::mouseDownLanes(const juce::MouseEvent& e)
         // Ctrl+drag on the body: gain. (Ctrl+click alone toggles the selection.)
         drag_ = Drag::gain;
     }
+    else if (hit.zone == Drag::trimRight && e.mods.isAltDown())
+    {
+        // Alt+drag of the right edge: stretch the clip to the new length.
+        drag_ = Drag::stretch;
+    }
     else
     {
         drag_ = hit.zone;
@@ -897,6 +977,11 @@ void ArrangeView::mouseDownLanes(const juce::MouseEvent& e)
         selection_.clear();
         select(ref, true);
     }
+    // A comp's clips select together: the comp moves and deletes as one, with its takes.
+    if (const auto* group = hit.track->takeGroupOwning(hit.clip->id); group != nullptr && isSelected(ref))
+        for (const auto id : group->clips)
+            if (hit.track->findClip(id) != nullptr)
+                select({hit.track->id, id}, true);
     dragClip_ = ref;
     dragOriginal_ = *hit.clip;
     moveDelta_ = 0;
@@ -906,6 +991,7 @@ void ArrangeView::mouseDownLanes(const juce::MouseEvent& e)
     trimOffset_ = hit.clip->sourceOffset;
     fadePreview_ = drag_ == Drag::fadeOut ? hit.clip->fadeOut : hit.clip->fadeIn;
     gainPreview_ = hit.clip->gain;
+    stretchLength_ = hit.clip->length;
     repaint();
 }
 
@@ -984,13 +1070,18 @@ void ArrangeView::dragTrimLeft(core::SamplePosition at)
 {
     const auto sourceStart = dragClip_.midi
                                  ? core::SamplePosition{0}
-                                 : dragOriginal_.start - dragOriginal_.sourceOffset; // source sample 0
+                                 : dragOriginal_.start - static_cast<core::SamplePosition>(std::llround(
+                                                             static_cast<double>(dragOriginal_.sourceOffset) *
+                                                             dragOriginal_.stretch)); // source sample 0
     const auto newStart = std::clamp(snapWithTargets(at, dragStartRow_),
                                      std::max<core::SamplePosition>(0, sourceStart),
                                      dragOriginal_.end() - 1);
     trimStart_ = newStart;
     trimLength_ = dragOriginal_.end() - newStart;
-    trimOffset_ = dragOriginal_.sourceOffset + (newStart - dragOriginal_.start);
+    trimOffset_ =
+        dragClip_.midi
+            ? dragOriginal_.sourceOffset + (newStart - dragOriginal_.start)
+            : std::max<core::SamplePosition>(0, dragOriginal_.sourceAt(newStart - dragOriginal_.start));
 }
 
 void ArrangeView::mouseDrag(const juce::MouseEvent& e)
@@ -1011,21 +1102,31 @@ void ArrangeView::mouseDrag(const juce::MouseEvent& e)
         case Drag::rowResize:
             dragRowResize(e);
             break;
+        case Drag::takes:
+            takes_.mouseDrag(e);
+            break;
         case Drag::draw:
             if (draggedFar_)
             {
-                const auto g = std::max<core::SamplePosition>(1, snapEnabled() ? grid() : 1);
-                const auto cell = [g](core::SamplePosition s, bool up)
-                { return (up ? (s + g - 1) / g : s / g) * g; };
+                const bool grid = snapEnabled();
+                const auto cell = [this, grid](core::SamplePosition s, bool up)
+                {
+                    s = std::max<core::SamplePosition>(0, s);
+                    return !grid ? s : up ? lineAtOrAfter(s) : lineAtOrBefore(s);
+                };
+                // At least one grid step long.
+                const auto oneStep =
+                    grid ? std::max(drawAnchor_ + 1, tempoMap_.move(drawAnchor_, gridAt(drawAnchor_), 1))
+                         : drawAnchor_ + 1;
                 if (at >= drawAnchor_)
                 {
                     drawStart_ = drawAnchor_;
-                    drawEnd_ = std::max(drawAnchor_ + g, cell(at, true));
+                    drawEnd_ = std::max(oneStep, cell(at, true));
                 }
                 else
                 {
-                    drawStart_ = std::max<core::SamplePosition>(0, cell(at, false));
-                    drawEnd_ = drawAnchor_ + g;
+                    drawStart_ = cell(at, false);
+                    drawEnd_ = oneStep;
                 }
             }
             break;
@@ -1083,6 +1184,20 @@ void ArrangeView::mouseDrag(const juce::MouseEvent& e)
             trimLength_ = newEnd - dragOriginal_.start;
             break;
         }
+        case Drag::stretch:
+        {
+            // Alt is held for the gesture, so the grid snaps here unless it is off.
+            auto end = std::max<core::SamplePosition>(at, dragOriginal_.start + 1);
+            if (snap_)
+                end = tempoMap_.snap(end, gridAt(end));
+            // From a twentieth to twenty times the source's own length.
+            const double source = static_cast<double>(dragOriginal_.sourceLength());
+            stretchLength_ = std::clamp<core::SamplePosition>(
+                end - dragOriginal_.start,
+                std::max<core::SamplePosition>(1, std::llround(source * 0.05)),
+                std::llround(source * 20.0));
+            break;
+        }
         case Drag::fadeIn:
             fadePreview_ =
                 std::clamp<core::SamplePosition>(at - dragOriginal_.start, 0, dragOriginal_.length);
@@ -1112,6 +1227,9 @@ void ArrangeView::mouseUp(const juce::MouseEvent& e)
     const auto before = selection_;
     switch (drag)
     {
+        case Drag::takes:
+            takes_.mouseUp(e);
+            break;
         case Drag::draw:
         {
             const auto track = std::exchange(drawTrack_, core::invalidId);
@@ -1190,6 +1308,10 @@ void ArrangeView::mouseUp(const juce::MouseEvent& e)
             if (draggedFar_)
                 finishTrim();
             break;
+        case Drag::stretch:
+            if (draggedFar_)
+                finishStretch();
+            break;
         case Drag::fadeIn:
         case Drag::fadeOut:
             if (draggedFar_)
@@ -1249,8 +1371,13 @@ void ArrangeView::mouseMove(const juce::MouseEvent& e)
         }
         return;
     }
+    // Take lanes, a comp boundary or the comp's chip set their own cursor.
+    const auto takeArea = takeRow(rowAtY(e.y));
+    const auto takeCursor = takes_.hover(e.getPosition(), takeArea.track != nullptr ? &takeArea : nullptr);
     const auto hit = hitTest(e.getPosition());
-    setMouseCursor(cursorFor(hit.clip != nullptr || hit.midiClip != nullptr ? hit.zone : Drag::none));
+    setMouseCursor(takeCursor
+                       ? *takeCursor
+                       : cursorFor(hit.clip != nullptr || hit.midiClip != nullptr ? hit.zone : Drag::none));
     const ClipRef clip = hit.clip != nullptr       ? ClipRef{hit.track->id, hit.clip->id}
                          : hit.midiClip != nullptr ? ClipRef{hit.track->id, hit.midiClip->id, true}
                                                    : ClipRef{};
@@ -1303,7 +1430,7 @@ juce::Rectangle<int> ArrangeView::loopBand() const noexcept
         return {};
     const int x0 = xForSample(regionStart_);
     const int x1 = xForSample(regionEnd_);
-    return {x0, markersRowHeight, std::max(2, x1 - x0), rulerHeight - markersRowHeight - 1};
+    return {x0, markersRowHeight, std::max(2, x1 - x0), rulerOnly - markersRowHeight - 1};
 }
 
 void ArrangeView::drawGrid(juce::Graphics& g, juce::Rectangle<int> area, bool ruler)
@@ -1315,23 +1442,29 @@ void ArrangeView::drawGrid(juce::Graphics& g, juce::Rectangle<int> area, bool ru
         return;
     const auto& c = theme_.colours;
     const double rate = sampleRate();
-    const double spb = core::samplesPerBeat(rate, project_->tempoBpm, project_->timeSignature);
-    const int beatsPerBar = std::max(1, project_->timeSignature.numerator);
-    const double beatPixels = spb / samplesPerPixel_;
-    const double barPixels = beatPixels * beatsPerBar;
+    const auto& map = tempoMap_;
+    // Label every barStep-th bar, from the bar width where the view starts (bars
+    // change width with the tempo and signature, but the labels keep one rhythm).
+    const auto firstVisible = std::max<core::SamplePosition>(0, scroll_);
+    const double viewBarPixels = map.stepSamples({1, 0.0}, firstVisible) / samplesPerPixel_;
     int barStep = 1;
-    while (barPixels * barStep < 80.0)
+    while (viewBarPixels * barStep < 80.0 && barStep < (1 << 20))
         barStep *= 2;
-    const bool showBeats = beatPixels >= 12.0;
-    const int subdivisions = beatPixels >= 192.0 ? 4 : beatPixels >= 48.0 ? 2 : 1;
     const int left = std::max(headerWidth, area.getX());
     const int right = std::min(getWidth() - scrollbarWidth, area.getRight());
     g.setFont(theme_.caption());
-    const auto firstBar = static_cast<std::int64_t>(static_cast<double>(scroll_) / (spb * beatsPerBar));
-    for (std::int64_t bar = std::max<std::int64_t>(0, firstBar - 1);; ++bar)
+    const int firstBar = map.barAtQuarter(map.quartersAt(static_cast<double>(firstVisible)));
+    for (int bar = std::max(0, firstBar - 1);; ++bar)
     {
-        const auto barStart =
-            static_cast<core::SamplePosition>(std::llround(static_cast<double>(bar) * spb * beatsPerBar));
+        const double barQuarter = map.barStartQuarter(bar);
+        const auto barStart = map.positionAt(barQuarter);
+        const auto signature = map.signatureAtBar(bar);
+        const int beatsPerBar = std::max(1, signature.numerator);
+        const double beatQuarters = core::TempoMap::quartersPerBeat(signature);
+        const double beatPixels = map.stepSamples({0, beatQuarters}, barStart) / samplesPerPixel_;
+        const double barPixels = beatPixels * beatsPerBar;
+        const bool showBeats = beatPixels >= 12.0;
+        const int subdivisions = beatPixels >= 192.0 ? 4 : beatPixels >= 48.0 ? 2 : 1;
         const int x = xForSample(barStart);
         if (x > right)
             break;
@@ -1366,8 +1499,8 @@ void ArrangeView::drawGrid(juce::Graphics& g, juce::Rectangle<int> area, bool ru
             {
                 if (beat == 0 && sub == 0)
                     continue;
-                const double offset = (beat + static_cast<double>(sub) / subdivisions) * spb;
-                const int bx = xForSample(barStart + static_cast<core::SamplePosition>(std::llround(offset)));
+                const int bx = xForSample(map.positionAt(
+                    barQuarter + (beat + static_cast<double>(sub) / subdivisions) * beatQuarters));
                 if (bx < left || bx > right)
                     continue;
                 g.setColour(sub == 0 ? c.gridBeat : c.gridSub);
@@ -1425,14 +1558,15 @@ void ArrangeView::drawRuler(juce::Graphics& g, juce::Rectangle<int> area)
     drawMarkers(g, markersRow);
     g.restoreState();
     g.setColour(c.lineSubtle);
-    g.fillRect(0, rulerHeight - 1, getWidth(), 1);
-    g.fillRect(headerWidth - 1, 0, 1, rulerHeight);
+    g.fillRect(0, rulerOnly - 1, getWidth(), 1);
+    g.fillRect(headerWidth - 1, 0, 1, rulerOnly);
 }
 // ----- drag and drop ------------------------------------------------------------------------
 
 bool ArrangeView::isInterestedInDragSource(const SourceDetails& details)
 {
-    return project_ != nullptr && details.description.toString().startsWith("plugin:");
+    return project_ != nullptr && (details.description.toString().startsWith("plugin:") ||
+                                   isAudioFile(fileFromDragDescription(details.description)));
 }
 
 void ArrangeView::itemDragEnter(const SourceDetails& details)
@@ -1442,6 +1576,15 @@ void ArrangeView::itemDragEnter(const SourceDetails& details)
 
 void ArrangeView::itemDragMove(const SourceDetails& details)
 {
+    if (const auto file = fileFromDragDescription(details.description); file != juce::File())
+    {
+        // A file from the browser shows where it will land, as one from Explorer does.
+        dragOver_ = true;
+        dropFiles_ = juce::StringArray(file.getFullPathName());
+        dropPoint_ = details.localPosition;
+        repaint();
+        return;
+    }
     const int row = rowAtY(details.localPosition.y);
     if (row != pluginDropRow_)
     {
@@ -1453,11 +1596,20 @@ void ArrangeView::itemDragMove(const SourceDetails& details)
 void ArrangeView::itemDragExit(const SourceDetails&)
 {
     pluginDropRow_ = -1;
+    dragOver_ = false;
     repaint();
 }
 
 void ArrangeView::itemDropped(const SourceDetails& details)
 {
+    if (const auto file = fileFromDragDescription(details.description); file != juce::File())
+    {
+        dragOver_ = false;
+        repaint();
+        if (onImportFiles && file.existsAsFile())
+            onImportFiles({file}, sampleForX(std::max(headerWidth, details.localPosition.x)));
+        return;
+    }
     const int row = rowAtY(details.localPosition.y);
     pluginDropRow_ = -1;
     repaint();
@@ -1552,6 +1704,12 @@ void ArrangeView::drawClip(juce::Graphics& g,
             clip.fadeOut = fadePreview_;
         else if (drag_ == Drag::gain)
             clip.gain = gainPreview_;
+        else if (drag_ == Drag::stretch)
+        {
+            clip.stretch = model.stretch * static_cast<double>(stretchLength_) /
+                           static_cast<double>(std::max<core::SamplePosition>(1, model.length));
+            clip.length = stretchLength_;
+        }
     }
     const ClipRef ref{track.id, model.id};
     const bool selected = isSelected(track.id, model.id);
@@ -1629,8 +1787,8 @@ void ArrangeView::drawClip(juce::Graphics& g,
             const float half = laneHeight * 0.48f * scale;
             for (int x = wave.getX(); x < wave.getRight(); ++x)
             {
-                const auto from = clip.sourceOffset + (sampleForX(x) - clip.start);
-                const auto to = clip.sourceOffset + (sampleForX(x + 1) - clip.start);
+                const auto from = clip.sourceAt(sampleForX(x) - clip.start);
+                const auto to = clip.sourceAt(sampleForX(x + 1) - clip.start);
                 const auto r = peaks->lookup(ch, from, std::max(to, from + 1));
                 const float top = midY - r.maximum * half;
                 const float bottom = midY - r.minimum * half;
@@ -1683,6 +1841,20 @@ void ArrangeView::drawClip(juce::Graphics& g,
         juce::String label = juce::String::fromUTF8(clip.name.c_str());
         if (std::abs(clip.gain - 1.0f) > 1.0e-3f)
             label << "  " << db::gainText(clip.gain) << " dB";
+        // Stretch as the playing speed, transposition in semitones, a note for a
+        // clip that follows the tempo, and the render's progress.
+        if (clip.stretch != 1.0)
+            label << "  " << juce::String(100.0 / clip.stretch, 1) << "%";
+        if (clip.transpose != 0.0)
+            label << "  " << (clip.transpose > 0.0 ? "+" : "") << juce::String(clip.transpose, 1) << " st";
+        if (clip.followTempo)
+            label << "  " << juce::String::fromUTF8("\xe2\x99\xa9");
+        if (clip.isStretched() && !editing && stretchProgress)
+            if (const double done = stretchProgress(model); done < 1.0)
+            {
+                label << "  stretching " << juce::String(static_cast<int>(done * 100.0)) << "%";
+                stretchPending_ = true;
+            }
         const auto textArea = (showHeader ? block.withHeight(headerH) : block)
                                   .getIntersection(visible)
                                   .withTrimmedLeft(fadeHandle + 2 > 6 ? fadeHandle + 2 : 6)
@@ -1690,6 +1862,47 @@ void ArrangeView::drawClip(juce::Graphics& g,
         g.drawText(label, textArea, juce::Justification::centredLeft, true);
     }
 }
+void ArrangeView::drawFolderLane(juce::Graphics& g, const core::Track& folder, juce::Rectangle<int> lane)
+{
+    // What the folder holds, at a glance: each track's clips as thin bars in its
+    // colour, one row of bars per track (at most eight rows), under a caption.
+    const auto& c = theme_.colours;
+    std::vector<int> members;
+    for (int t = 0; t < static_cast<int>(project_->tracks.size()); ++t)
+        if (const auto& track = project_->tracks[static_cast<size_t>(t)];
+            &track != &folder && project_->insideFolder(track.id, folder.id))
+            members.push_back(t);
+    g.setColour(c.textTertiary);
+    g.setFont(theme_.caption());
+    g.drawText(juce::String(static_cast<int>(members.size())) + (members.size() == 1 ? " track" : " tracks") +
+                   (folder.folderOpen ? juce::String() : juce::String("  (closed)")),
+               lane.withTrimmedLeft(theme_.spacing.sm).withHeight(std::min(lane.getHeight(), 18)),
+               juce::Justification::centredLeft);
+    const auto bars = lane.withTrimmedTop(std::min(lane.getHeight() / 2, 18)).reduced(0, 3);
+    const int shown = std::min(8, static_cast<int>(members.size()));
+    if (shown == 0 || bars.getHeight() < 4)
+        return;
+    const float rowH = static_cast<float>(bars.getHeight()) / static_cast<float>(shown);
+    for (int i = 0; i < shown; ++i)
+    {
+        const auto& track = project_->tracks[static_cast<size_t>(members[static_cast<size_t>(i)])];
+        g.setColour(trackColour(track, members[static_cast<size_t>(i)]).withAlpha(track.mute ? 0.3f : 0.75f));
+        const float y = static_cast<float>(bars.getY()) + rowH * static_cast<float>(i);
+        const float barH = std::max(1.0f, rowH - 1.0f);
+        const auto bar = [&](core::SamplePosition start, core::SamplePosition length)
+        {
+            const int x0 = std::max(lane.getX(), xForSample(start));
+            const int x1 = std::min(lane.getRight(), xForSample(start + length));
+            if (x1 > x0)
+                g.fillRoundedRectangle(static_cast<float>(x0), y, static_cast<float>(x1 - x0), barH, 1.0f);
+        };
+        for (const auto& clip : track.clips)
+            bar(clip.start, clip.length);
+        for (const auto& clip : track.midiClips)
+            bar(clip.start, clip.length);
+    }
+}
+
 void ArrangeView::drawMidiClip(juce::Graphics& g,
                                const core::Track& track,
                                const core::MidiClip& model,
@@ -1877,7 +2090,7 @@ void ArrangeView::paint(juce::Graphics& g)
             const int h = rowHeightOf(row);
             y = rowTop(row);
             const juce::Rectangle<int> lane(headerWidth, y, lanesArea.getWidth(), h);
-            if (lane.getBottom() >= rulerHeight && lane.getY() <= getHeight())
+            if (h > 0 && lane.getBottom() >= rulerHeight && lane.getY() <= getHeight())
             {
                 if (track.id == selectedTrack_)
                     g.setColour(c.laneSelected);
@@ -1957,7 +2170,9 @@ void ArrangeView::paint(juce::Graphics& g)
             y = rowTop(row);
             const int h = rowHeightOf(row++);
             const juce::Rectangle<int> lane(headerWidth, y, lanesArea.getWidth(), h);
-            if (lane.getBottom() >= rulerHeight && lane.getY() <= getHeight())
+            if (h > 0 && track.isFolder() && lane.getBottom() >= rulerHeight && lane.getY() <= getHeight())
+                drawFolderLane(g, track, lane);
+            if (h > 0 && lane.getBottom() >= rulerHeight && lane.getY() <= getHeight())
             {
                 for (const auto& clip : track.clips)
                     drawClip(g, track, clip, lane);
@@ -1969,6 +2184,17 @@ void ArrangeView::paint(juce::Graphics& g)
                 for (const auto& take : live_.midi)
                     if (take.trackId == track.id)
                         drawMidiClip(g, track, take.clip, lane, true);
+                if (track.isFrozen())
+                {
+                    // Frozen: the clips are what was rendered, shown under a veil.
+                    g.setColour(c.canvas.withAlpha(0.45f));
+                    g.fillRect(lane);
+                    g.setColour(c.info);
+                    g.setFont(theme_.captionCaps());
+                    g.drawText(juce::String::fromUTF8("\xe2\x9d\x84 FROZEN"),
+                               lane.withTrimmedLeft(theme_.spacing.sm).withHeight(std::min(h, 20)),
+                               juce::Justification::centredLeft);
+                }
                 if (track.isAux())
                 {
                     const auto* source = project_->findTrack(track.auxTrack);
@@ -2002,8 +2228,23 @@ void ArrangeView::paint(juce::Graphics& g)
                         text, lane.withTrimmedLeft(theme_.spacing.sm), juce::Justification::centredLeft);
                 }
             }
+            // The comp's badges, chip and boundaries over the row; its take lanes under it.
+            if (!track.takeGroups.empty())
+            {
+                const auto takeArea = takeRow(row - 1);
+                takes_.paintMain(g, takeArea);
+                takes_.paintLanes(g, takeArea);
+            }
             y += h;
         }
+        g.restoreState();
+
+        // The take lanes' headers, in the header column under each expanded track's header.
+        g.saveState();
+        g.reduceClipRegion(0, rulerHeight, headerWidth, lanesHeight());
+        for (size_t t = 0; t < project_->tracks.size(); ++t)
+            if (takes_.laneCount(project_->tracks[t]) > 0)
+                takes_.paintLaneHeaders(g, takeRow(static_cast<int>(t)));
         g.restoreState();
     }
 
@@ -2057,7 +2298,7 @@ void ArrangeView::paint(juce::Graphics& g)
         g.restoreState();
     }
 
-    drawRuler(g, getLocalBounds().removeFromTop(rulerHeight));
+    drawRuler(g, getLocalBounds().removeFromTop(rulerOnly));
     drawEditOverlay(g);
 
     // The playhead: a 1 px line with a 7 px head in the ruler.
@@ -2068,11 +2309,11 @@ void ArrangeView::paint(juce::Graphics& g)
         g.fillRect(px, 0, 1, getHeight() - scrollbarHeight);
         juce::Path head;
         head.addTriangle(static_cast<float>(px) - 3.5f,
-                         static_cast<float>(rulerHeight - 8),
+                         static_cast<float>(rulerOnly - 8),
                          static_cast<float>(px) + 4.5f,
-                         static_cast<float>(rulerHeight - 8),
+                         static_cast<float>(rulerOnly - 8),
                          static_cast<float>(px) + 0.5f,
-                         static_cast<float>(rulerHeight - 1));
+                         static_cast<float>(rulerOnly - 1));
         g.fillPath(head);
     }
 
@@ -2147,10 +2388,10 @@ void ArrangeView::paint(juce::Graphics& g)
 
     // The corner over the headers.
     g.setColour(c.surface0);
-    g.fillRect(0, 0, headerWidth, rulerHeight);
+    g.fillRect(0, 0, headerWidth, rulerOnly);
     g.setColour(c.lineSubtle);
-    g.fillRect(0, rulerHeight - 1, headerWidth, 1);
-    g.fillRect(headerWidth - 1, 0, 1, rulerHeight);
+    g.fillRect(0, rulerOnly - 1, headerWidth, 1);
+    g.fillRect(headerWidth - 1, 0, 1, rulerOnly);
     if (!selection_.empty())
     {
         g.setColour(c.textTertiary);
@@ -2159,7 +2400,7 @@ void ArrangeView::paint(juce::Graphics& g)
                    juce::Rectangle<int>(theme_.sizes.controlCompact + theme_.spacing.sm,
                                         0,
                                         headerWidth - 3 * theme_.sizes.controlCompact - 2 * theme_.spacing.sm,
-                                        rulerHeight),
+                                        rulerOnly),
                    juce::Justification::centredLeft,
                    true);
     }
@@ -2190,7 +2431,22 @@ int ArrangeView::rowHeightOf(int row) const noexcept
     const auto& tops = rows().tops;
     if (row < 0 || static_cast<size_t>(row) + 1 >= tops.size())
         return rowHeight;
-    return tops[static_cast<size_t>(row) + 1] - tops[static_cast<size_t>(row)];
+    const int lanes = project_ != nullptr && static_cast<size_t>(row) < project_->tracks.size()
+                          ? takes_.lanesHeight(project_->tracks[static_cast<size_t>(row)])
+                          : 0;
+    return std::max(0, tops[static_cast<size_t>(row) + 1] - tops[static_cast<size_t>(row)] - lanes);
+}
+
+TakeLanes::Row ArrangeView::takeRow(int row) const
+{
+    TakeLanes::Row r;
+    if (project_ == nullptr || row < 0 || static_cast<size_t>(row) >= project_->tracks.size())
+        return r;
+    r.track = &project_->tracks[static_cast<size_t>(row)];
+    r.main = rowBounds(row).withLeft(headerWidth);
+    r.headerWidth = headerWidth;
+    r.colour = trackColour(*r.track, row);
+    return r;
 }
 
 int ArrangeView::rowTop(int row) const noexcept
@@ -2205,15 +2461,20 @@ int ArrangeView::resizeEdgeAt(juce::Point<int> p) const noexcept
     if (project_ == nullptr || p.y < rulerHeight || p.y >= getHeight() - scrollbarHeight ||
         p.x >= getWidth() - scrollbarWidth)
         return -1;
-    // The row whose bottom edge is nearest the point, within the edge's reach.
+    // The row whose bottom edge is nearest the point, within the edge's reach
+    // (the bottom of the row's own height: take lanes under it do not resize it).
     const auto& tops = rows().tops;
     const int content = p.y - rulerHeight + verticalScroll_;
-    const auto it = std::lower_bound(tops.begin() + 1, tops.end(), content - 1);
-    if (it == tops.end())
-        return -1;
-    const int bottom = *it;
-    if (content >= bottom - TrackHeader::resizeEdge && content <= bottom + 1)
-        return static_cast<int>(it - tops.begin()) - 1;
+    const auto it = std::upper_bound(tops.begin(), tops.end(), content);
+    const int at = static_cast<int>(it - tops.begin()) - 1; // the row the point is in
+    for (const int row : {at - 1, at})
+    {
+        if (row < 0 || static_cast<size_t>(row) + 1 >= tops.size())
+            continue;
+        const int bottom = tops[static_cast<size_t>(row)] + rowHeightOf(row);
+        if (content >= bottom - TrackHeader::resizeEdge && content <= bottom + 1)
+            return row;
+    }
     return -1;
 }
 
@@ -2350,19 +2611,31 @@ void ArrangeView::setRippleEnabled(bool on)
     repaint();
 }
 
-core::SamplePosition ArrangeView::grid() const noexcept
+core::GridStep ArrangeView::gridAt(core::SamplePosition at) const noexcept
 {
-    if (project_ == nullptr)
-        return 1;
+    if (snapGrid_ == 1)
+        return {1, 0.0};
     if (snapGrid_ > 0)
     {
-        const double beat = core::samplesPerBeat(sampleRate(), project_->tempoBpm, project_->timeSignature);
-        const double samples = snapGrid_ == 1 ? beat * std::max(1, project_->timeSignature.numerator)
-                                              : beat * 4.0 / static_cast<double>(snapGrid_);
-        return std::max<core::SamplePosition>(1, static_cast<core::SamplePosition>(std::llround(samples)));
+        // "Beat" and its divisions count the signature's beat where they snap.
+        const double beat = core::TempoMap::quartersPerBeat(tempoMap_.signatureAt(at));
+        return {0, beat * 4.0 / static_cast<double>(snapGrid_)};
     }
-    return core::gridSamples(
-        sampleRate(), project_->tempoBpm, project_->timeSignature, samplesPerPixel_, gridMinPixels);
+    return tempoMap_.adaptiveStep(samplesPerPixel_, gridMinPixels, at);
+}
+
+core::SamplePosition ArrangeView::lineAtOrBefore(core::SamplePosition s) const noexcept
+{
+    const auto step = gridAt(s);
+    auto line = tempoMap_.snap(s, step);
+    if (line > s)
+        line = tempoMap_.snap(tempoMap_.move(line, step, -1), step);
+    return std::max<core::SamplePosition>(0, line);
+}
+
+core::SamplePosition ArrangeView::lineAtOrAfter(core::SamplePosition s) const noexcept
+{
+    return tempoMap_.nextLine(s, gridAt(s));
 }
 
 void ArrangeView::setSnapGrid(int division)
@@ -2433,8 +2706,8 @@ void ArrangeView::zoomToSelection()
 core::SamplePosition ArrangeView::snapped(core::SamplePosition s) const noexcept
 {
     const bool alt = juce::ModifierKeys::getCurrentModifiers().isAltDown();
-    return snap_ && !alt ? core::snapToGrid(std::max<core::SamplePosition>(0, s), grid())
-                         : std::max<core::SamplePosition>(0, s);
+    const auto at = std::max<core::SamplePosition>(0, s);
+    return snap_ && !alt ? std::max<core::SamplePosition>(0, tempoMap_.snap(at, gridAt(at))) : at;
 }
 
 core::SamplePosition ArrangeView::snapWithTargets(core::SamplePosition wanted,
@@ -2495,10 +2768,11 @@ core::SamplePosition ArrangeView::snapWithTargets(core::SamplePosition wanted,
         return best;
     }
     // Relative snap: a clip that did not start on the grid keeps its offset.
-    const auto step = grid();
-    if (relativeTo && step > 0 && original % step != 0)
-        return original + core::snapToGrid(wanted - original + step * 1000, step) - step * 1000;
-    return core::snapToGrid(wanted, step);
+    const auto step = gridAt(wanted);
+    if (relativeTo)
+        if (const auto offset = original - tempoMap_.snap(original, step); offset != 0)
+            return tempoMap_.snap(wanted - offset, step) + offset;
+    return tempoMap_.snap(wanted, step);
 }
 
 namespace
@@ -2509,7 +2783,7 @@ juce::MouseCursor pencilCursor(const Theme& theme)
 {
     juce::Image image(juce::Image::ARGB, 20, 20, true);
     juce::Graphics g(image);
-    Icons::draw(g, Icon::pencil, juce::Rectangle<float>(1.0f, 1.0f, 18.0f, 18.0f), juce::Colours::black);
+    Icons::draw(g, Icon::pencil, juce::Rectangle<float>(1.0f, 1.0f, 18.0f, 18.0f), theme.colours.canvas);
     Icons::draw(g, Icon::pencil, juce::Rectangle<float>(0.0f, 0.0f, 18.0f, 18.0f), theme.colours.textPrimary);
     return juce::MouseCursor(image, 2, 17);
 }
@@ -2533,14 +2807,6 @@ void ArrangeView::refreshToolButtons()
     selectTool_.setToggleState(tool_ == Tool::select, juce::dontSendNotification);
     rangeTool_.setToggleState(tool_ == Tool::range, juce::dontSendNotification);
     pencilTool_.setToggleState(tool_ == Tool::pencil, juce::dontSendNotification);
-}
-
-core::SamplePosition ArrangeView::barLength() const noexcept
-{
-    if (project_ == nullptr)
-        return 48000 * 2;
-    const double beat = core::samplesPerBeat(sampleRate(), project_->tempoBpm, project_->timeSignature);
-    return std::max<core::SamplePosition>(1, std::llround(beat * project_->timeSignature.numerator));
 }
 
 void ArrangeView::addMidiClip(core::Id trackId, core::SamplePosition start, core::SamplePosition end)
@@ -2642,6 +2908,7 @@ void ArrangeView::finishMove()
         return;
     std::vector<std::unique_ptr<core::Command>> commands;
     std::vector<ClipRef> moved;
+    std::vector<core::Id> movedGroups;
     for (const auto& ref : selection_)
     {
         const int from = project_->trackIndex(ref.track);
@@ -2652,6 +2919,19 @@ void ArrangeView::finishMove()
         const auto& target = project_->tracks[static_cast<size_t>(to)];
         if (target.isMidi() != ref.midi)
             continue; // a clip stays on its own kind of track
+        // A comp's clip moves its whole take group (takes, comp and clips) once.
+        if (const auto* group =
+                ref.midi ? nullptr : project_->tracks[static_cast<size_t>(from)].takeGroupOwning(ref.clip))
+        {
+            if (std::find(movedGroups.begin(), movedGroups.end(), group->id) == movedGroups.end())
+            {
+                movedGroups.push_back(group->id);
+                commands.push_back(
+                    std::make_unique<core::MoveTakeGroup>(ref.track, group->id, target.id, moveDelta_));
+            }
+            moved.push_back({target.id, ref.clip, false});
+            continue;
+        }
         const auto start = std::max<core::SamplePosition>(0, span->start + moveDelta_);
         if (ref.midi)
             commands.push_back(std::make_unique<core::MoveMidiClip>(ref.track, ref.clip, target.id, start));
@@ -2676,6 +2956,84 @@ void ArrangeView::finishTrim()
         commands.push_back(std::make_unique<core::TrimClip>(
             dragClip_.track, dragClip_.clip, trimStart_, trimLength_, trimOffset_));
     emit(std::move(commands), "Trim clip");
+}
+
+void ArrangeView::finishStretch()
+{
+    const auto* clip = findClip(dragClip_);
+    if (clip == nullptr || stretchLength_ == clip->length)
+        return;
+    const double stretch = clip->stretch * static_cast<double>(stretchLength_) /
+                           static_cast<double>(std::max<core::SamplePosition>(1, clip->length));
+    std::vector<std::unique_ptr<core::Command>> commands;
+    commands.push_back(std::make_unique<core::SetClipStretch>(
+        dragClip_.track, dragClip_.clip, stretch, clip->transpose, stretchLength_, clip->followTempo));
+    emit(std::move(commands), "Stretch clip");
+}
+
+std::vector<const core::Track*> ArrangeView::folderChoices(core::Id trackId) const
+{
+    // Folders the track can go into: not itself, nor one inside it.
+    std::vector<const core::Track*> out;
+    if (project_ == nullptr)
+        return out;
+    for (const auto& t : project_->tracks)
+        if (t.isFolder() && !project_->insideFolder(t.id, trackId))
+            out.push_back(&t);
+    return out;
+}
+
+void ArrangeView::clipMenu(core::Id trackId, core::Id clipId, juce::Point<int> screen)
+{
+    const auto* track = project_ != nullptr ? project_->findTrack(trackId) : nullptr;
+    const auto* clip = track != nullptr ? track->findClip(clipId) : nullptr;
+    if (clip == nullptr)
+        return;
+    juce::PopupMenu menu;
+    menu.addSectionHeader(juce::String::fromUTF8(clip->name.c_str()));
+    menu.addItem(1, "Stretch to project tempo...", static_cast<bool>(onConformClip));
+    menu.addItem(2, "Follow tempo changes", true, clip->followTempo);
+    juce::PopupMenu transpose;
+    for (const int semis : {12, 7, 5, 2, 1, 0, -1, -2, -5, -7, -12})
+        transpose.addItem(100 + semis + 50,
+                          semis == 0 ? juce::String("Original pitch")
+                                     : (semis > 0 ? "+" : "") + juce::String(semis) + " semitones",
+                          true,
+                          std::abs(clip->transpose - semis) < 1.0e-6);
+    menu.addSubMenu("Transpose", transpose);
+    menu.addItem(3, "Reset stretch and pitch", clip->isStretched());
+    menu.addSeparator();
+    menu.addItem(5, "Open in Sampler", static_cast<bool>(onOpenInSampler));
+    menu.addItem(4, "Track...");
+    juce::Component::SafePointer<ArrangeView> safe(this);
+    const auto original = *clip;
+    menu.showMenuAsync(
+        juce::PopupMenu::Options().withTargetScreenArea({screen.x, screen.y, 1, 1}),
+        [safe, trackId, original, screen](int choice)
+        {
+            if (safe == nullptr || choice == 0)
+                return;
+            auto& view = *safe;
+            const auto set = [&](double stretch, double transpose, core::SamplePosition length, bool follow)
+            {
+                std::vector<std::unique_ptr<core::Command>> commands;
+                commands.push_back(std::make_unique<core::SetClipStretch>(
+                    trackId, original.id, stretch, transpose, length, follow));
+                view.emit(std::move(commands), "Stretch clip");
+            };
+            if (choice == 1 && view.onConformClip)
+                view.onConformClip(trackId, original.id);
+            else if (choice == 2)
+                set(original.stretch, original.transpose, original.length, !original.followTempo);
+            else if (choice == 3)
+                set(1.0, 0.0, original.sourceLength(), false);
+            else if (choice == 4)
+                view.trackMenu(trackId, screen);
+            else if (choice == 5 && view.onOpenInSampler)
+                view.onOpenInSampler(trackId, original.id);
+            else if (choice >= 100 - 12 + 50 && choice <= 100 + 12 + 50)
+                set(original.stretch, choice - 150, original.length, original.followTempo);
+        });
 }
 
 void ArrangeView::finishFade()
@@ -2706,6 +3064,15 @@ void ArrangeView::deleteSelection()
     if (project_ == nullptr || selection_.empty())
         return;
     auto e = edit::deleteClips(*project_, selection_, ripple_);
+    // A take group whose comp clips are all deleted goes too, takes and all.
+    for (const auto& track : project_->tracks)
+        for (const auto& group : track.takeGroups)
+            if (!group.clips.empty() &&
+                std::all_of(group.clips.begin(),
+                            group.clips.end(),
+                            [&](core::Id id)
+                            { return track.findClip(id) == nullptr || isSelected(track.id, id); }))
+                e.commands.push_back(std::make_unique<core::RemoveTakeGroup>(track.id, group.id));
     selection_.clear();
     emit(std::move(e.commands), e.name);
 }
@@ -2786,11 +3153,19 @@ void ArrangeView::reorderDrag(core::Id trackId, juce::Point<int> screen, bool re
         onCommand(std::make_unique<core::MoveTrack>(trackId, to));
 }
 
-void ArrangeView::trackMenu(core::Id trackId, juce::Point<int> screen)
+void ArrangeView::trackMenu(core::Id trackId, juce::Point<int> screen, core::Id clipId)
 {
     if (project_ == nullptr || project_->findTrack(trackId) == nullptr)
         return;
     juce::PopupMenu menu;
+    if (clipId != core::invalidId && project_->findTrack(trackId)->findClip(clipId) != nullptr &&
+        onOpenInSampler)
+    {
+        menu.addSectionHeader("Clip");
+        menu.addItem(7, "Open in Sampler");
+        menu.addSeparator();
+        menu.addSectionHeader("Track");
+    }
     menu.addItem(1, "Rename");
     juce::PopupMenu colours;
     const auto& palette = theme_.track.palette;
@@ -2841,16 +3216,71 @@ void ArrangeView::trackMenu(core::Id trackId, juce::Point<int> screen)
         menu.addSubMenu("Send to", sends);
     }
     menu.addItem(4, automation_.isShown(trackId) ? "Hide automation" : "Show automation");
+    if (track->hasAudio())
+        menu.addItem(800, track->isFrozen() ? "Unfreeze track" : "Freeze track");
+    if (track->isFolder())
+        menu.addItem(802, track->folderOpen ? "Close folder" : "Open folder");
+    {
+        juce::PopupMenu folders;
+        folders.addItem(801, "New folder containing this track");
+        folders.addSeparator();
+        folders.addItem(
+            810, "Not in a folder", track->folder != core::invalidId, track->folder == core::invalidId);
+        const auto choices = folderChoices(trackId);
+        for (size_t i = 0; i < choices.size(); ++i)
+            folders.addItem(811 + static_cast<int>(i),
+                            juce::String::fromUTF8(choices[i]->name.c_str()),
+                            true,
+                            track->folder == choices[i]->id);
+        menu.addSubMenu("Folder", folders);
+    }
+    if (!track->takeGroups.empty())
+        menu.addItem(6, takes_.laneCount(*track) > 0 ? "Hide take lanes" : "Show take lanes");
     menu.addSeparator();
     menu.addItem(2, "Delete track");
     menu.addItem(3, "Add bus");
     juce::Component::SafePointer<ArrangeView> safe(this);
     menu.showMenuAsync(
         juce::PopupMenu::Options().withTargetScreenArea({screen.x, screen.y, 1, 1}),
-        [safe, trackId](int choice)
+        [safe, trackId, clipId](int choice)
         {
             if (safe == nullptr || choice == 0)
                 return;
+            if (choice == 7)
+            {
+                if (safe->onOpenInSampler)
+                    safe->onOpenInSampler(trackId, clipId);
+                return;
+            }
+            if (choice == 800)
+            {
+                if (const auto* t = safe->project_ != nullptr ? safe->project_->findTrack(trackId) : nullptr;
+                    t != nullptr && safe->onFreezeTrack)
+                    safe->onFreezeTrack(trackId, !t->isFrozen());
+                return;
+            }
+            if (choice == 801)
+            {
+                if (safe->onCommand)
+                    safe->onCommand(
+                        std::make_unique<core::AddFolderTrack>("Folder", std::vector<core::Id>{trackId}));
+                return;
+            }
+            if (choice >= 810 && choice < 900 && safe->project_ != nullptr && safe->onCommand)
+            {
+                const auto folders = safe->folderChoices(trackId);
+                const auto pick = static_cast<size_t>(choice - 811);
+                safe->onCommand(std::make_unique<core::SetTrackFolder>(
+                    trackId, choice == 810 || pick >= folders.size() ? core::invalidId : folders[pick]->id));
+                return;
+            }
+            if (choice == 802)
+            {
+                if (const auto* t = safe->project_ != nullptr ? safe->project_->findTrack(trackId) : nullptr;
+                    t != nullptr && safe->onCommand)
+                    safe->onCommand(std::make_unique<core::SetFolderOpen>(trackId, !t->folderOpen));
+                return;
+            }
             if (choice >= 450 && choice < 500)
             {
                 safe->addFxTrack(choice, 450, {trackId});
@@ -2880,6 +3310,12 @@ void ArrangeView::trackMenu(core::Id trackId, juce::Point<int> screen)
             if (choice == 4)
             {
                 safe->showAutomation(trackId, !safe->automation_.isShown(trackId));
+                return;
+            }
+            if (choice == 6)
+            {
+                if (const auto* t = safe->project_ != nullptr ? safe->project_->findTrack(trackId) : nullptr)
+                    safe->takes_.toggleLanes(*t);
                 return;
             }
             if (choice == 5)
@@ -2976,6 +3412,8 @@ void ArrangeView::rulerMenu(juce::Point<int> screen)
     menu.addSeparator();
     menu.addItem(3, "Add marker at playhead");
     menu.addItem(4, "Add region from loop", regionEnd_ > regionStart_);
+    menu.addSeparator();
+    menu.addItem(5, "Show tempo track", true, tempoShown_);
     juce::Component::SafePointer<ArrangeView> safe(this);
     menu.showMenuAsync(juce::PopupMenu::Options().withTargetScreenArea({screen.x, screen.y, 1, 1}),
                        [safe](int choice)
@@ -2995,6 +3433,9 @@ void ArrangeView::rulerMenu(juce::Point<int> screen)
                                    break;
                                case 4:
                                    safe->addMarkerAtPlayhead(true);
+                                   break;
+                               case 5:
+                                   safe->setTempoTrackShown(!safe->tempoShown_);
                                    break;
                                default:
                                    break;
@@ -3077,27 +3518,37 @@ void ArrangeView::addTrackMenu()
     addFxMenu(fx, 400);
     menu.addSubMenu("FX track", fx);
     menu.addItem(3, "Bus");
+    menu.addItem(
+        4, selectedTrack_ != core::invalidId ? "Folder track (holding the selected track)" : "Folder track");
     juce::Component::SafePointer<ArrangeView> safe(this);
-    menu.showMenuAsync(juce::PopupMenu::Options().withTargetComponent(&addTrack_),
-                       [safe, instruments, channels](int choice)
-                       {
-                           if (safe == nullptr)
-                               return;
-                           if (choice == 1 && safe->onAddAudioTrack)
-                               safe->onAddAudioTrack();
-                           if (const auto type = instruments.typeFor(choice);
-                               !type.empty() && safe->onAddMidiTrack)
-                               safe->onAddMidiTrack(type);
-                           if (choice == 999 && safe->onAddMidiTrackPlaying)
-                               safe->onAddMidiTrackPlaying(core::invalidId);
-                           if (choice >= 1000 && static_cast<size_t>(choice - 1000) < channels.size() &&
-                               safe->onAddMidiTrackPlaying)
-                               safe->onAddMidiTrackPlaying(channels[static_cast<size_t>(choice - 1000)]);
-                           if (choice == 3 && safe->onAddBus)
-                               safe->onAddBus();
-                           if (choice >= 400 && choice < 450)
-                               safe->addFxTrack(choice, 400, {});
-                       });
+    menu.showMenuAsync(
+        juce::PopupMenu::Options().withTargetComponent(&addTrack_),
+        [safe, instruments, channels](int choice)
+        {
+            if (safe == nullptr)
+                return;
+            if (choice == 4 && safe->onCommand)
+            {
+                std::vector<core::Id> members;
+                if (safe->project_ != nullptr && safe->project_->findTrack(safe->selectedTrack_) != nullptr)
+                    members.push_back(safe->selectedTrack_);
+                safe->onCommand(std::make_unique<core::AddFolderTrack>("Folder", members));
+                return;
+            }
+            if (choice == 1 && safe->onAddAudioTrack)
+                safe->onAddAudioTrack();
+            if (const auto type = instruments.typeFor(choice); !type.empty() && safe->onAddMidiTrack)
+                safe->onAddMidiTrack(type);
+            if (choice == 999 && safe->onAddMidiTrackPlaying)
+                safe->onAddMidiTrackPlaying(core::invalidId);
+            if (choice >= 1000 && static_cast<size_t>(choice - 1000) < channels.size() &&
+                safe->onAddMidiTrackPlaying)
+                safe->onAddMidiTrackPlaying(channels[static_cast<size_t>(choice - 1000)]);
+            if (choice == 3 && safe->onAddBus)
+                safe->onAddBus();
+            if (choice >= 400 && choice < 450)
+                safe->addFxTrack(choice, 400, {});
+        });
 }
 
 void ArrangeView::joinSelection()
@@ -3120,8 +3571,23 @@ void ArrangeView::nudgeSelection(int direction, bool fine)
 {
     if (project_ == nullptr)
         return;
-    const auto step = (fine ? std::max<core::SamplePosition>(1, grid() / 4) : grid()) * direction;
-    auto e = edit::nudgeClips(*project_, selection_, step);
+    // A grid step (a quarter of one when fine) on the tempo track, from where
+    // the first selected clip starts.
+    core::SamplePosition from = -1;
+    for (const auto& ref : selection_)
+        if (const auto span = spanOf(ref))
+            from = from < 0 ? span->start : std::min(from, span->start);
+    if (from < 0)
+        return;
+    auto step = gridAt(from);
+    if (fine)
+        step = step.bars > 0 ? core::GridStep{0,
+                                              tempoMap_.stepSamples(step, from) /
+                                                  tempoMap_.samplesPerQuarterAt(from) / 4.0}
+                             : core::GridStep{0, step.quarters / 4.0};
+    const auto delta =
+        std::max<core::SamplePosition>(1, std::abs(tempoMap_.move(from, step, direction) - from));
+    auto e = edit::nudgeClips(*project_, selection_, delta * direction);
     emit(std::move(e.commands), e.name);
 }
 void ArrangeView::normaliseSelection()
@@ -3191,6 +3657,17 @@ bool ArrangeView::handleEditKey(const juce::KeyPress& key)
     {
         setTool(plain('1') ? Tool::select : plain('2') ? Tool::range : Tool::pencil);
         return true;
+    }
+    // Take lanes: Alt+Up / Alt+Down cycle the take at the playhead, Alt+T shows or hides the lanes.
+    if (const auto* track = project_ != nullptr ? project_->findTrack(selectedTrack_) : nullptr;
+        track != nullptr && key.getModifiers() == juce::ModifierKeys::altModifier)
+    {
+        if (key.getKeyCode() == juce::KeyPress::upKey || key.getKeyCode() == juce::KeyPress::downKey)
+            return takes_.cycleTake(*track,
+                                    playheadForEdits ? playheadForEdits() : playhead_,
+                                    key.getKeyCode() == juce::KeyPress::upKey ? 1 : -1);
+        if (key.getKeyCode() == 'T' || key.getKeyCode() == 't')
+            return takes_.toggleLanes(*track);
     }
     if (key.getModifiers().isAltDown() &&
         (key.getKeyCode() == juce::KeyPress::leftKey || key.getKeyCode() == juce::KeyPress::rightKey))
@@ -3262,6 +3739,7 @@ juce::MouseCursor ArrangeView::cursorFor(Drag zone) const noexcept
     {
         case Drag::trimLeft:
         case Drag::trimRight:
+        case Drag::stretch:
             return juce::MouseCursor::LeftRightResizeCursor;
         case Drag::fadeIn:
         case Drag::fadeOut:
@@ -3277,10 +3755,7 @@ juce::String ArrangeView::positionText(core::SamplePosition position) const
 {
     if (project_ == nullptr)
         return {};
-    const auto bb = core::samplesToBarsBeats(std::max<core::SamplePosition>(0, position),
-                                             sampleRate(),
-                                             project_->tempoBpm,
-                                             project_->timeSignature);
+    const auto bb = tempoMap_.barsBeatsAt(std::max<core::SamplePosition>(0, position));
     return juce::String(bb.bar) + "." + juce::String(bb.beat) + "." +
            juce::String(bb.tick).paddedLeft('0', 3);
 }
@@ -3341,8 +3816,12 @@ void ArrangeView::drawEditOverlay(juce::Graphics& g)
         const int gx = xForSample(newStart);
         g.setColour(c.snapGuide);
         g.fillRect(gx, rulerHeight, 1, lanesHeight());
-        const double beat = core::samplesPerBeat(sampleRate(), project_->tempoBpm, project_->timeSignature);
-        const double deltaBeats = static_cast<double>(moveDelta_) / std::max(1.0, beat);
+        // The move in beats of the signature where the clip starts.
+        const double beatQuarters =
+            core::TempoMap::quartersPerBeat(tempoMap_.signatureAt(dragOriginal_.start));
+        const double deltaBeats = (tempoMap_.quartersAt(static_cast<double>(newStart)) -
+                                   tempoMap_.quartersAt(static_cast<double>(dragOriginal_.start))) /
+                                  beatQuarters;
         drawTooltip(g,
                     positionText(newStart) + "  " + (deltaBeats >= 0 ? "+" : "") +
                         juce::String(deltaBeats, 2) + " beats" +
@@ -3351,12 +3830,22 @@ void ArrangeView::drawEditOverlay(juce::Graphics& g)
     }
     if ((drag_ == Drag::trimLeft || drag_ == Drag::trimRight) && draggedFar_)
     {
-        const double beat = core::samplesPerBeat(sampleRate(), project_->tempoBpm, project_->timeSignature);
-        drawTooltip(g,
-                    "Length " + juce::String(static_cast<double>(trimLength_) / std::max(1.0, beat), 2) +
-                        " beats",
-                    dragPoint_);
+        const double beatQuarters = core::TempoMap::quartersPerBeat(tempoMap_.signatureAt(trimStart_));
+        const double beats = (tempoMap_.quartersAt(static_cast<double>(trimStart_ + trimLength_)) -
+                              tempoMap_.quartersAt(static_cast<double>(trimStart_))) /
+                             beatQuarters;
+        drawTooltip(g, "Length " + juce::String(beats, 2) + " beats", dragPoint_);
     }
+    if (drag_ == Drag::stretch && draggedFar_)
+        drawTooltip(
+            g,
+            "Speed " +
+                juce::String(100.0 * static_cast<double>(dragOriginal_.length) /
+                                 (dragOriginal_.stretch *
+                                  static_cast<double>(std::max<core::SamplePosition>(1, stretchLength_))),
+                             1) +
+                "%  " + positionText(dragOriginal_.start + stretchLength_),
+            dragPoint_);
     if ((drag_ == Drag::fadeIn || drag_ == Drag::fadeOut) && draggedFar_)
         drawTooltip(g,
                     "Fade " + juce::String(static_cast<double>(fadePreview_) / sampleRate(), 2) + " s",
@@ -3586,9 +4075,9 @@ void ArrangeView::mouseDoubleClick(const juce::MouseEvent& e)
     else if (hit.track != nullptr && hit.track->isMidi() && hit.clip == nullptr && hit.midiClip == nullptr)
     {
         // Empty space on a MIDI track: a new bar-long clip from the bar there.
-        const auto bar = barLength();
-        const auto start = (std::max<core::SamplePosition>(0, sampleForX(e.x)) / bar) * bar;
-        addMidiClip(hit.track->id, start, start + bar);
+        const auto at = std::max<core::SamplePosition>(0, sampleForX(e.x));
+        const int bar = tempoMap_.barAtQuarter(tempoMap_.quartersAt(static_cast<double>(at)));
+        addMidiClip(hit.track->id, tempoMap_.barStart(bar), tempoMap_.barStart(bar + 1));
     }
 }
 

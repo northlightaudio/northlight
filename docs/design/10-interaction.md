@@ -74,6 +74,8 @@ Defaults; all rebindable in Preferences. Shown in tooltips and menus.
 | Join | J |
 | Mute / solo / arm selected track | Shift+M / Shift+S / Shift+R |
 | Nudge selection | Alt+Left / Right (grid), Alt+Shift (fine) |
+| Newer / older take at the playhead (comp) | Alt+Up / Alt+Down |
+| Show / hide take lanes | Alt+T |
 | Tools: select / range / pencil (draws MIDI clips) | 1 / 2 / 3 |
 | Snap on/off | N |
 | Ripple on/off | Shift+N |
@@ -85,6 +87,7 @@ Defaults; all rebindable in Preferences. Shown in tooltips and menus.
 | Add audio / MIDI track / bus | Ctrl+T / Ctrl+Shift+T / Ctrl+B |
 | Rename selected | F2 when a track or clip is selected (overrides mixer toggle) |
 | Tap tempo | T while the tempo field is focused |
+| Stretch a clip | Alt+drag its right edge |
 | Focus search | Ctrl+F (browser) |
 
 Focus model: the arrange view owns focus by default; Tab cycles header controls,
@@ -103,7 +106,9 @@ up/down, clips left/right).
 
 ## 10.6 Notifications and errors
 
-- Transient confirmations (saved, bounced, scanned): status bar message, 4 s.
+- Transient confirmations (saved, scanned): status bar message, 4 s. An export's
+  progress is in the status bar; its outcome is a toast (it carries the measured
+  loudness and the gain applied, and offers Show in folder).
 - Needs attention (dropouts over threshold, device lost, plugin failed, recording
   write failure, recoverable recordings): toast with an action; persistent for
   errors.
