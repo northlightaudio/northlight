@@ -174,7 +174,7 @@ add, remove, drag-handle, mute, solo, arm, monitor, phase, link (stereo), folder
 file-audio, file-midi, marker, region, warning, info, error, success, loudness,
 cpu, disk, midi-port, and the track kinds: track-audio (a waveform), track-midi (a
 note), track-aux (an output jack); instrument channels use instrument and folder
-tracks folder.
+tracks folder. Preferences adds keyboard (its Shortcuts page).
 
 ## 2.6 Motion
 
@@ -234,9 +234,11 @@ is unmistakable.
 
 ### Segmented control
 
-Pill track `surface1`, thumb `surface3` with radius `pill`, 120 ms slide; segment
-labels `label`; selected label `textPrimary`, others `textSecondary`. Used for
-driver type, snap grid, piano roll tool.
+Pill track `surface1` (`surface0` on a `surface1` card, so it reads as a well),
+thumb `surface3` with radius `pill`, 120 ms slide; segment labels `label`; selected
+label `textPrimary`, others `textSecondary`. A disabled segment is `textDisabled`,
+cannot be chosen and is skipped by the arrow keys. Used for driver type, snap grid,
+piano roll tool, and the Preferences choices with two to four options.
 
 ### Combo / select
 

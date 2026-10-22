@@ -128,7 +128,8 @@ behind whatever the user is doing, and clicks land there instead. Instead:
 - **`--capture <folder> [seconds]`** saves the window and its visible panels as PNGs,
   then quits. It uses its own settings folder (`Northlight Capture`, emptied each
   run) and mutes output, so it never touches the user's settings. Prefer this for
-  screenshots. `--window-size` and `--capture-scale` control the output.
+  screenshots. `--window-size` and `--capture-scale` control the output. With
+  `--preferences` it also saves every Preferences page as `preferences-<page>.png`.
 - Without `--capture`, the app reads and writes the user's real settings in
   `%APPDATA%\Northlight` and recordings in `Documents\Northlight`. A `--record` run
   records real input there; clean up what you created.

@@ -178,7 +178,8 @@ public:
     //   --window-size <w>x<h>  set the window's size
     //   --capture <folder> [s]  after s seconds (2 if not given), save the window and its
     //                        showing parts (mixer, channel-strip, instrument, piano-roll,
-    //                        audio-editor) as PNGs in the folder, then quit. Uses its own
+    //                        audio-editor; with --preferences, every Preferences page as
+    //                        preferences-<page>) as PNGs in the folder, then quit. Uses its own
     //                        settings folder, so the layout is the default one, and sends
     //                        silence to the device, so playback is not heard
     //   --capture-scale <n>  the scale the captures are saved at (2 if not given)

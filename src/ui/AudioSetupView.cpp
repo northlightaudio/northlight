@@ -37,9 +37,10 @@ double gainToDb(float gain)
 
 void styleCaption(juce::Label& label, const Theme& theme)
 {
-    label.setFont(juce::FontOptions{theme.type.body});
+    label.setFont(theme.body());
     label.setColour(juce::Label::textColourId, theme.colours.textSecondary);
     label.setJustificationType(juce::Justification::centredLeft);
+    label.setBorderSize({}); // flush with the label column, like Preferences' labels
 }
 
 void styleValue(juce::Label& label, const Theme& theme)
@@ -47,6 +48,7 @@ void styleValue(juce::Label& label, const Theme& theme)
     label.setFont(theme.value());
     label.setColour(juce::Label::textColourId, theme.colours.textPrimary);
     label.setJustificationType(juce::Justification::centredLeft);
+    label.setBorderSize({});
 }
 } // namespace
 

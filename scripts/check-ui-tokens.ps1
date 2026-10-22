@@ -5,7 +5,7 @@
 param([string]$Root = (Join-Path $PSScriptRoot ".."))
 
 $ui = Join-Path $Root "src\ui"
-$patterns = @('fromRGB\s*\(', 'Colour\s*\(\s*0x', 'Colours::(?!transparentBlack)', 'fromString\s*\(\s*"#', 'fromFloatRGBA\s*\(')
+$patterns = @('fromRGB\s*\(', 'Colour\s*\(\s*0x', 'Colours::(?!transparentBlack)', 'fromString\s*\(\s*"#?[0-9a-fA-F]{6}', 'fromFloatRGBA\s*\(')
 $failures = @()
 Get-ChildItem -Path $ui -Recurse -Include *.cpp, *.h | Where-Object { $_.Name -ne 'Theme.cpp' } | ForEach-Object {
     $file = $_

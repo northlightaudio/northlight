@@ -19,7 +19,19 @@ public:
     explicit SegmentedControl(const Theme& theme);
 
     void setSegments(std::vector<juce::String> labels);
+    // The pill track's colour: surface1 by default, surface0 on a surface1 card.
+    void setTrackColour(juce::Colour colour)
+    {
+        track_ = colour;
+        repaint();
+    }
     void setSelected(int index, juce::NotificationType notify);
+    // A disabled segment draws in textDisabled and cannot be chosen.
+    void setSegmentEnabled(int index, bool enabled);
+    bool isSegmentEnabled(int index) const noexcept;
+    // The tooltip while the pointer is over that segment (the control's own otherwise).
+    void setSegmentTooltip(int index, const juce::String& tooltip);
+    juce::String getTooltip() override;
     int selected() const noexcept { return selected_; }
     int preferredWidth() const;
 
@@ -53,6 +65,9 @@ private:
 
     const Theme& theme_;
     std::vector<juce::String> labels_;
+    juce::Colour track_;
+    std::vector<bool> disabled_;
+    std::vector<juce::String> tooltips_;
     int selected_ = 0;
     float thumbX_ = 0.0f, thumbTargetX_ = 0.0f, thumbWidth_ = 0.0f;
     double animationStart_ = 0.0;

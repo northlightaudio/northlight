@@ -288,6 +288,12 @@ bool Theme::apply(const juce::var& tokens, Theme& theme, std::string& error)
                 t.palette = std::move(entries);
         }
         readString(track, "defaultBus", t.defaultBus);
+        if (const auto* presets = track["accentPresets"].getArray())
+        {
+            t.accentPresets.clear();
+            for (const auto& name : *presets)
+                t.accentPresets.push_back(name.toString().toStdString());
+        }
         readNumber(track, "clipBodyAlpha", t.clipBodyAlpha, error);
         readNumber(track, "clipBodySelectedAlpha", t.clipBodySelectedAlpha, error);
         readNumber(track, "clipHeaderAlpha", t.clipHeaderAlpha, error);

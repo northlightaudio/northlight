@@ -1,19 +1,31 @@
 #include "ui/PreferencesView.h"
 
+#include "ui/Icons.h"
 #include "ui/NorthlightLookAndFeel.h"
 #include "ui/components/NumericField.h"
+#include "ui/components/SegmentedControl.h"
 
 #include <algorithm>
+#include <cmath>
 
 namespace northlight::ui
 {
 
 namespace
 {
-constexpr int labelWidth = 200;
-constexpr int rowHeight = 28;
+constexpr int comboWidth = 200;
+constexpr int numberWidth = 96;
+constexpr int textWidth = 200;
+constexpr int hexWidth = 96;
+constexpr int swatchSize = 20;
+constexpr int cardTitleHeight = 22;
+constexpr int badgeHeight = 18;
+constexpr int keyCapHeight = 18;
+const char* const comingSoonTooltip = "Saved now, used in a later version.";
 
-// The keyboard map (interaction.md 10.4 as implemented), for the table.
+// The keyboard map (interaction.md 10.4 as implemented). Keys are space-separated
+// tokens: a chord ("Ctrl+Shift+S", one cap per key) or a joining word ("/" pairs
+// with the action's own "/", "or" is an alternative, "to" a range).
 struct Shortcut
 {
     const char* action;
@@ -25,8 +37,8 @@ const Shortcut shortcuts[] = {
     {"Pause", "Shift+Space", "Transport"},
     {"Record", "R", "Transport"},
     {"Arm selected track", "Shift+R", "Transport"},
-    {"Return to start", "Return, Home", "Transport"},
-    {"Go to end", "Shift+Return, End", "Transport"},
+    {"Return to start", "Return or Home", "Transport"},
+    {"Go to end", "Shift+Return or End", "Transport"},
     {"Loop", "L", "Transport"},
     {"Punch", "P", "Transport"},
     {"Click", "C", "Transport"},
@@ -36,20 +48,819 @@ const Shortcut shortcuts[] = {
     {"Mixer, Editor, Browser, Inspector, Piano Roll, Diagnostics", "F2 to F7", "View"},
     {"Detach or reattach a panel", "Shift+F2 to Shift+F7", "View"},
     {"Mute / solo selected track", "Shift+M / Shift+S", "Tracks"},
-    {"Add audio / MIDI track, bus", "Ctrl+T / Ctrl+Shift+T, Ctrl+B", "Tracks"},
-    {"Delete selection", "Delete, Backspace", "Editing"},
+    {"Add audio / MIDI track", "Ctrl+T / Ctrl+Shift+T", "Tracks"},
+    {"Add bus", "Ctrl+B", "Tracks"},
+    {"Delete selection", "Delete or Backspace", "Editing"},
     {"Duplicate", "Ctrl+D", "Editing"},
     {"Split at playhead / at selection", "S / Alt+S", "Editing"},
-    {"Join, crossfade", "J, X", "Editing"},
+    {"Join", "J", "Editing"},
+    {"Crossfade", "X", "Editing"},
     {"Normalise", "Ctrl+Shift+N", "Editing"},
-    {"Nudge", "Left / Right", "Editing"},
-    {"Select all / clear", "Ctrl+A / Esc", "Editing"},
-    {"Marker / region, previous / next", "M / Alt+M, comma / full stop", "Editing"},
-    {"New, open, save, save as", "Ctrl+N, Ctrl+O, Ctrl+S, Ctrl+Shift+S", "Files"},
-    {"Import audio, export", "Ctrl+I, Ctrl+E", "Files"},
+    {"Nudge left / right", "Left / Right", "Editing"},
+    {"Select all", "Ctrl+A", "Editing"},
+    {"Clear selection", "Esc", "Editing"},
+    {"Add marker / region", "M / Alt+M", "Editing"},
+    {"Previous / next marker", ", / .", "Editing"},
+    {"New project", "Ctrl+N", "Files"},
+    {"Open", "Ctrl+O", "Files"},
+    {"Save / save as", "Ctrl+S / Ctrl+Shift+S", "Files"},
+    {"Import audio", "Ctrl+I", "Files"},
+    {"Export", "Ctrl+E", "Files"},
     {"Undo / redo", "Ctrl+Z / Ctrl+Y", "Files"},
-    {"Audio Setup, Plugins, Preferences", "Ctrl+Shift+A, Ctrl+Shift+P, Ctrl+,", "App"},
+    {"Audio Setup", "Ctrl+Shift+A", "App"},
+    {"Plugins", "Ctrl+Shift+P", "App"},
+    {"Preferences", "Ctrl+,", "App"},
 };
+
+juce::String ellipsis()
+{
+    return juce::String::fromUTF8("\xe2\x80\xa6");
+}
+
+NorthlightLookAndFeel* lookAndFeelOf(juce::Component& component)
+{
+    return dynamic_cast<NorthlightLookAndFeel*>(&component.getLookAndFeel());
+}
+
+// The text with its start replaced by an ellipsis until it fits, so a path keeps
+// its folder name.
+juce::String elideStart(const juce::Font& font, const juce::String& text, float width)
+{
+    if (juce::GlyphArrangement::getStringWidth(font, text) <= width)
+        return text;
+    for (int start = 1; start < text.length(); ++start)
+    {
+        const auto candidate = ellipsis() + text.substring(start);
+        if (juce::GlyphArrangement::getStringWidth(font, candidate) <= width)
+            return candidate;
+    }
+    return ellipsis();
+}
+
+juce::TextLayout wrapped(const Theme& theme, const juce::String& text, juce::Colour colour, float width)
+{
+    juce::AttributedString string;
+    string.append(text, theme.small(), colour);
+    string.setWordWrap(juce::AttributedString::byWord);
+    juce::TextLayout layout;
+    layout.createLayout(string, width);
+    return layout;
+}
+
+int buttonWidth(const Theme& theme, const juce::String& text)
+{
+    return juce::GlyphArrangement::getStringWidthInt(theme.label(), text) + 2 * theme.spacing.md;
+}
+
+std::unique_ptr<juce::TextButton> makeButton(const juce::String& text)
+{
+    auto button = std::make_unique<juce::TextButton>(text);
+    button->getProperties().set(NorthlightLookAndFeel::propertyVariant, "secondary");
+    return button;
+}
+
+void setUpTextField(const Theme& theme, juce::TextEditor& editor, const juce::Font& font)
+{
+    editor.setFont(font);
+    editor.setJustification(juce::Justification::centredLeft);
+    editor.setIndents(theme.spacing.sm, 0);
+    editor.setSelectAllWhenFocused(false);
+}
+
+// ----- small parts ---------------------------------------------------------------------------
+
+// "Coming soon": a badge (info at 20% with info text) after a setting that is kept
+// but not used yet.
+class Badge final : public juce::Component, public juce::SettableTooltipClient
+{
+public:
+    explicit Badge(const Theme& theme) : theme_(theme)
+    {
+        setTooltip(comingSoonTooltip);
+        setSize(preferredWidth(), badgeHeight);
+    }
+    static juce::String text() { return "COMING SOON"; }
+    int preferredWidth() const
+    {
+        return juce::GlyphArrangement::getStringWidthInt(theme_.captionCaps(), text()) +
+               2 * theme_.spacing.sm;
+    }
+    void paint(juce::Graphics& g) override
+    {
+        const auto bounds = getLocalBounds().toFloat();
+        g.setColour(theme_.colours.info.withAlpha(0.2f));
+        g.fillRoundedRectangle(bounds, bounds.getHeight() * 0.5f);
+        g.setColour(theme_.colours.info);
+        g.setFont(theme_.captionCaps());
+        g.drawText(text(), getLocalBounds(), juce::Justification::centred, false);
+    }
+
+private:
+    const Theme& theme_;
+};
+
+// A path field and its Choose button.
+class PathField final : public juce::Component
+{
+public:
+    PathField(const Theme& theme, const juce::String& placeholder)
+        : theme_(theme), choose_(makeButton("Choose" + ellipsis()))
+    {
+        setUpTextField(theme_, field_, theme_.body());
+        field_.setTextToShowWhenEmpty(placeholder, theme_.colours.textTertiary);
+        field_.onReturnKey = [this] { commit(); };
+        field_.onFocusLost = [this] { commit(); };
+        choose_->onClick = [this]
+        {
+            if (onChoose)
+                onChoose();
+        };
+        addAndMakeVisible(field_);
+        addAndMakeVisible(*choose_);
+    }
+    std::function<void()> onChoose;
+    std::function<void(const juce::String&)> onChanged;
+    void setPath(const juce::String& path, bool notify)
+    {
+        field_.setText(path, false);
+        if (notify)
+            commit();
+    }
+    juce::String path() const { return field_.getText().trim(); }
+    void resized() override
+    {
+        auto area = getLocalBounds();
+        choose_->setBounds(area.removeFromRight(buttonWidth(theme_, choose_->getButtonText())));
+        area.removeFromRight(theme_.spacing.sm);
+        field_.setBounds(area);
+    }
+
+private:
+    void commit()
+    {
+        if (onChanged)
+            onChanged(path());
+    }
+    const Theme& theme_;
+    juce::TextEditor field_;
+    std::unique_ptr<juce::TextButton> choose_;
+};
+
+// A read-only path (small, ellipsis at the start) and a button after it.
+class PathReadout final : public juce::Component
+{
+public:
+    PathReadout(const Theme& theme, juce::String path, const juce::String& buttonText)
+        : theme_(theme), path_(std::move(path)), button_(makeButton(buttonText))
+    {
+        addAndMakeVisible(*button_);
+    }
+    juce::TextButton& button() noexcept { return *button_; }
+    void paint(juce::Graphics& g) override
+    {
+        g.setFont(theme_.small());
+        g.setColour(theme_.colours.textSecondary);
+        g.drawText(elideStart(theme_.small(), path_, static_cast<float>(text_.getWidth())),
+                   text_,
+                   juce::Justification::centredLeft,
+                   false);
+    }
+    void resized() override
+    {
+        // The button follows the path; a long path gives way (its start elided).
+        auto area = getLocalBounds();
+        const int button = buttonWidth(theme_, button_->getButtonText());
+        const int room = std::max(0, area.getWidth() - button - theme_.spacing.md);
+        const int pathWidth =
+            static_cast<int>(std::ceil(juce::GlyphArrangement::getStringWidth(theme_.small(), path_)));
+        text_ = area.removeFromLeft(std::min(room, pathWidth));
+        area.removeFromLeft(theme_.spacing.md);
+        button_->setBounds(area.removeFromLeft(button));
+    }
+
+private:
+    const Theme& theme_;
+    juce::String path_;
+    std::unique_ptr<juce::TextButton> button_;
+    juce::Rectangle<int> text_;
+};
+
+// The blocklist: "None" or "3 plugins", then Clear.
+class BlocklistRow final : public juce::Component
+{
+public:
+    explicit BlocklistRow(const Theme& theme) : theme_(theme), clear_(makeButton("Clear"))
+    {
+        clear_->onClick = [this]
+        {
+            if (onClear)
+                onClear();
+        };
+        addAndMakeVisible(*clear_);
+    }
+    std::function<void()> onClear;
+    void setCount(size_t count)
+    {
+        count_ = count;
+        clear_->setVisible(count_ > 0); // nothing to clear: just "None"
+        resized();
+        repaint();
+    }
+    juce::String text() const
+    {
+        return count_ == 0 ? juce::String("None")
+                           : juce::String(static_cast<int>(count_)) + (count_ == 1 ? " plugin" : " plugins");
+    }
+    int preferredWidth() const
+    {
+        return juce::GlyphArrangement::getStringWidthInt(theme_.body(), "000 plugins") + theme_.spacing.md +
+               buttonWidth(theme_, "Clear");
+    }
+    void paint(juce::Graphics& g) override
+    {
+        g.setFont(theme_.body());
+        g.setColour(theme_.colours.textPrimary);
+        g.drawText(text(), text_, juce::Justification::centredLeft, false);
+    }
+    void resized() override
+    {
+        auto area = getLocalBounds();
+        text_ = area.removeFromLeft(juce::GlyphArrangement::getStringWidthInt(theme_.body(), text()));
+        area.removeFromLeft(theme_.spacing.md);
+        clear_->setBounds(area.removeFromLeft(buttonWidth(theme_, "Clear")));
+    }
+
+private:
+    const Theme& theme_;
+    std::unique_ptr<juce::TextButton> clear_;
+    size_t count_ = 0;
+    juce::Rectangle<int> text_;
+};
+
+// ----- accent swatches -------------------------------------------------------------------------
+
+class Swatches final : public juce::Component, public juce::SettableTooltipClient
+{
+public:
+    explicit Swatches(const Theme& theme) : theme_(theme)
+    {
+        for (const auto& name : theme_.track.accentPresets)
+            for (const auto& entry : theme_.track.palette)
+                if (entry.name == name)
+                    presets_.push_back(entry);
+        if (presets_.empty())
+            presets_.push_back({"Overcast", theme_.colours.accent});
+        setWantsKeyboardFocus(true);
+        setTitle("Accent");
+        setUpTextField(theme_, hex_, theme_.value());
+        hex_.setInputRestrictions(7, "#0123456789abcdefABCDEF");
+        hex_.setTitle("Accent hex value");
+        hex_.onTextChange = [this]
+        { markInvalid(!valid(hex_.getText().trim()) && hex_.getText().isNotEmpty()); };
+        hex_.onReturnKey = [this] { commitHex(); };
+        hex_.onFocusLost = [this] { commitHex(); };
+        addAndMakeVisible(hex_);
+    }
+    std::function<void(const juce::String& hex)> onChanged; // empty: the default
+
+    static bool valid(const juce::String& hex)
+    {
+        return hex.length() == 7 && hex.startsWithChar('#') &&
+               hex.substring(1).containsOnly("0123456789abcdefABCDEF");
+    }
+    void setValue(const juce::String& hex)
+    {
+        value_ = hex.toUpperCase();
+        hex_.setText(effectiveHex(), false);
+        markInvalid(false);
+        repaint();
+    }
+    int preferredWidth() const { return swatchesWidth() + theme_.spacing.md + hexWidth; }
+    juce::String getTooltip() override
+    {
+        const int index = indexAt(getMouseXYRelative());
+        return index >= 0 ? juce::String(presets_[static_cast<size_t>(index)].name) : juce::String();
+    }
+    void paint(juce::Graphics& g) override
+    {
+        const auto& c = theme_.colours;
+        const int chosen = chosenIndex();
+        for (int i = 0; i < static_cast<int>(presets_.size()); ++i)
+        {
+            const auto r = swatchBounds(i);
+            g.setColour(presets_[static_cast<size_t>(i)].value);
+            g.fillEllipse(r);
+            if (i == chosen)
+            {
+                g.setColour(c.textPrimary);
+                g.drawEllipse(r.expanded(3.0f), 2.0f);
+            }
+            else if (i == hover_)
+            {
+                g.setColour(c.lineStrong);
+                g.drawEllipse(r.expanded(2.5f), 1.0f);
+            }
+        }
+        if (auto* lnf = lookAndFeelOf(*this))
+        {
+            const auto row = swatchBounds(0).getUnion(swatchBounds(static_cast<int>(presets_.size()) - 1));
+            lnf->drawFocusRing(g, *this, row.expanded(5.0f), row.getHeight());
+        }
+    }
+    void resized() override
+    {
+        hex_.setBounds(
+            getLocalBounds().withTrimmedLeft(swatchesWidth() + theme_.spacing.md).withWidth(hexWidth));
+    }
+    void mouseMove(const juce::MouseEvent& e) override { setHover(indexAt(e.getPosition())); }
+    void mouseExit(const juce::MouseEvent&) override { setHover(-1); }
+    void mouseDown(const juce::MouseEvent& e) override
+    {
+        const int index = indexAt(e.getPosition());
+        if (index >= 0)
+            choose(index);
+    }
+    bool keyPressed(const juce::KeyPress& key) override
+    {
+        const int chosen = std::max(0, chosenIndex());
+        if (key == juce::KeyPress::leftKey && chosen > 0)
+            choose(chosen - 1);
+        else if (key == juce::KeyPress::rightKey && chosen + 1 < static_cast<int>(presets_.size()))
+            choose(chosen + 1);
+        else
+            return key == juce::KeyPress::leftKey || key == juce::KeyPress::rightKey;
+        return true;
+    }
+    void focusGained(FocusChangeType) override { repaint(); }
+    void focusLost(FocusChangeType) override { repaint(); }
+
+private:
+    int swatchesWidth() const
+    {
+        const int n = static_cast<int>(presets_.size());
+        return 2 * ringRoom + n * swatchSize + (n - 1) * theme_.spacing.sm;
+    }
+    juce::Rectangle<float> swatchBounds(int index) const
+    {
+        const float x = static_cast<float>(ringRoom + index * (swatchSize + theme_.spacing.sm));
+        const float y = (static_cast<float>(getHeight()) - swatchSize) * 0.5f;
+        return {x, y, static_cast<float>(swatchSize), static_cast<float>(swatchSize)};
+    }
+    int indexAt(juce::Point<int> p) const
+    {
+        for (int i = 0; i < static_cast<int>(presets_.size()); ++i)
+            if (swatchBounds(i).expanded(static_cast<float>(theme_.spacing.sm) * 0.5f).contains(p.toFloat()))
+                return i;
+        return -1;
+    }
+    juce::String hexOf(int index) const
+    {
+        return "#" + presets_[static_cast<size_t>(index)].value.toDisplayString(false).toUpperCase();
+    }
+    juce::String effectiveHex() const { return value_.isEmpty() ? hexOf(0) : value_; }
+    int chosenIndex() const
+    {
+        const auto hex = effectiveHex();
+        for (int i = 0; i < static_cast<int>(presets_.size()); ++i)
+            if (hexOf(i) == hex)
+                return i;
+        return -1; // a custom colour
+    }
+    void choose(int index)
+    {
+        if (onChanged)
+            onChanged(index == 0 ? juce::String() : hexOf(index));
+    }
+    void commitHex()
+    {
+        const auto text = hex_.getText().trim().toUpperCase();
+        if (!valid(text))
+        {
+            setValue(value_); // revert
+            return;
+        }
+        if (text != effectiveHex() && onChanged)
+            onChanged(text == hexOf(0) ? juce::String() : text);
+    }
+    void markInvalid(bool invalid)
+    {
+        hex_.getProperties().set("invalid", invalid);
+        hex_.repaint();
+    }
+    void setHover(int index)
+    {
+        if (index != hover_)
+        {
+            hover_ = index;
+            repaint();
+        }
+    }
+
+    static constexpr int ringRoom = 4; // the chosen ring sits 3 px outside, 2 px wide
+    const Theme& theme_;
+    std::vector<Theme::TrackColour> presets_;
+    juce::String value_;
+    juce::TextEditor hex_;
+    int hover_ = -1;
+};
+
+// ----- the scan folder list ----------------------------------------------------------------------
+
+class FolderList final : public juce::Component, private juce::ListBoxModel
+{
+public:
+    explicit FolderList(const Theme& theme) : theme_(theme), add_(makeButton("Add folder" + ellipsis()))
+    {
+        list_.setModel(this);
+        list_.setRowHeight(theme_.sizes.rowHeight);
+        list_.setColour(juce::ListBox::backgroundColourId, juce::Colours::transparentBlack);
+        list_.setOutlineThickness(0);
+        list_.setTitle("Scan folders");
+        add_->onClick = [this]
+        {
+            if (onAdd)
+                onAdd();
+        };
+        addAndMakeVisible(list_);
+        addAndMakeVisible(*add_);
+    }
+    std::function<void()> onAdd;
+    std::function<void(const juce::StringArray&)> onChanged;
+
+    void setFolders(juce::StringArray folders)
+    {
+        folders_ = std::move(folders);
+        list_.updateContent();
+        list_.repaint();
+        repaint();
+    }
+    void addFolder(const juce::String& folder)
+    {
+        if (folder.isEmpty() || folders_.contains(folder, true))
+            return;
+        folders_.add(folder);
+        changed();
+    }
+    const juce::StringArray& folders() const noexcept { return folders_; }
+    int preferredHeight() const
+    {
+        return visibleRows * theme_.sizes.rowHeight + 2 * theme_.spacing.xxs + theme_.spacing.sm +
+               theme_.sizes.control;
+    }
+    void paint(juce::Graphics& g) override
+    {
+        const auto well = wellBounds().toFloat();
+        g.setColour(theme_.colours.surface0);
+        g.fillRoundedRectangle(well, theme_.radius.sm);
+        if (folders_.isEmpty())
+        {
+            g.setFont(theme_.body());
+            g.setColour(theme_.colours.textTertiary);
+            g.drawText("Only the standard VST3 and CLAP folders are scanned.",
+                       wellBounds().reduced(theme_.spacing.md, 0),
+                       juce::Justification::centred,
+                       true);
+        }
+    }
+    void resized() override
+    {
+        auto area = getLocalBounds();
+        auto buttons = area.removeFromBottom(theme_.sizes.control);
+        add_->setBounds(buttons.removeFromLeft(buttonWidth(theme_, add_->getButtonText())));
+        list_.setBounds(wellBounds().reduced(0, theme_.spacing.xxs));
+    }
+
+private:
+    static constexpr int visibleRows = 4;
+
+    juce::Rectangle<int> wellBounds() const
+    {
+        return getLocalBounds().withHeight(visibleRows * theme_.sizes.rowHeight + 2 * theme_.spacing.xxs);
+    }
+    void changed()
+    {
+        list_.updateContent();
+        list_.repaint();
+        repaint();
+        if (onChanged)
+            onChanged(folders_);
+    }
+
+    class Row final : public juce::Component
+    {
+    public:
+        Row(FolderList& owner, const Theme& theme)
+            : owner_(owner), theme_(theme), remove_(theme, Icon::close, "Remove folder")
+        {
+            setRepaintsOnMouseActivity(true);
+            remove_.onClick = [this]
+            {
+                if (row_ >= 0 && row_ < owner_.folders_.size())
+                {
+                    owner_.folders_.remove(row_);
+                    owner_.changed();
+                }
+            };
+            addAndMakeVisible(remove_);
+        }
+        void update(int row)
+        {
+            row_ = row;
+            remove_.setVisible(row_ >= 0 && row_ < owner_.folders_.size());
+            repaint();
+        }
+        void paint(juce::Graphics& g) override
+        {
+            if (row_ < 0 || row_ >= owner_.folders_.size())
+                return;
+            const auto& c = theme_.colours;
+            auto area = getLocalBounds().reduced(theme_.spacing.xxs, 0);
+            if (isMouseOver(true))
+            {
+                g.setColour(c.surface2);
+                g.fillRoundedRectangle(area.toFloat(), theme_.radius.sm);
+            }
+            area.removeFromLeft(theme_.spacing.sm);
+            Icons::draw(g,
+                        Icon::folder,
+                        area.removeFromLeft(theme_.sizes.icon)
+                            .withSizeKeepingCentre(theme_.sizes.icon, theme_.sizes.icon)
+                            .toFloat(),
+                        c.textSecondary);
+            area.removeFromLeft(theme_.spacing.sm);
+            area.removeFromRight(remove_.getWidth() + theme_.spacing.xs);
+            g.setFont(theme_.body());
+            g.setColour(c.textPrimary);
+            g.drawText(elideStart(theme_.body(), owner_.folders_[row_], static_cast<float>(area.getWidth())),
+                       area,
+                       juce::Justification::centredLeft,
+                       false);
+        }
+        void resized() override
+        {
+            const int size = theme_.sizes.controlCompact;
+            remove_.setBounds(
+                getLocalBounds().removeFromRight(size + theme_.spacing.xs).withSizeKeepingCentre(size, size));
+        }
+
+    private:
+        FolderList& owner_;
+        const Theme& theme_;
+        IconButton remove_;
+        int row_ = -1;
+    };
+
+    int getNumRows() override { return folders_.size(); }
+    void paintListBoxItem(int, juce::Graphics&, int, int, bool) override {}
+    juce::Component* refreshComponentForRow(int row, bool, juce::Component* existing) override
+    {
+        auto* component = dynamic_cast<Row*>(existing);
+        if (component == nullptr)
+        {
+            delete existing;
+            component = new Row(*this, theme_);
+        }
+        component->update(row);
+        return component;
+    }
+
+    const Theme& theme_;
+    juce::StringArray folders_;
+    juce::ListBox list_;
+    std::unique_ptr<juce::TextButton> add_;
+};
+
+// ----- the shortcuts table ---------------------------------------------------------------------
+
+class ShortcutTable final : public juce::Component, private juce::ListBoxModel
+{
+public:
+    explicit ShortcutTable(const Theme& theme) : theme_(theme), icon_(theme)
+    {
+        setUpTextField(theme_, search_, theme_.body());
+        search_.setIndents(theme_.spacing.sm + theme_.sizes.icon + theme_.spacing.sm, 0);
+        search_.setTextToShowWhenEmpty("Search shortcuts", theme_.colours.textTertiary);
+        search_.setTitle("Search shortcuts");
+        search_.onTextChange = [this] { filter(); };
+        search_.onEscapeKey = [this] { search_.clear(); };
+        addAndMakeVisible(search_);
+        icon_.setInterceptsMouseClicks(false, false);
+        addAndMakeVisible(icon_);
+        list_.setModel(this);
+        list_.setRowHeight(theme_.sizes.rowHeight);
+        list_.setColour(juce::ListBox::backgroundColourId, juce::Colours::transparentBlack);
+        list_.setOutlineThickness(0);
+        list_.setTitle("Shortcuts");
+        list_.addMouseListener(this, true);
+        addAndMakeVisible(list_);
+        filter();
+    }
+    int rows() const noexcept { return static_cast<int>(rows_.size()); }
+    void paint(juce::Graphics& g) override
+    {
+        const auto& c = theme_.colours;
+        const auto card = cardBounds().toFloat();
+        g.setColour(c.surface1);
+        g.fillRoundedRectangle(card, theme_.radius.md);
+        g.setColour(c.lineSubtle);
+        g.drawRoundedRectangle(card.reduced(0.5f), theme_.radius.md, 1.0f);
+        if (rows_.empty())
+        {
+            g.setFont(theme_.body());
+            g.setColour(c.textTertiary);
+            g.drawText("No shortcuts match " + juce::String::fromUTF8("\xe2\x80\x9c") +
+                           search_.getText().trim() + juce::String::fromUTF8("\xe2\x80\x9d") + ".",
+                       cardBounds().reduced(theme_.spacing.lg),
+                       juce::Justification::centred,
+                       true);
+        }
+    }
+    void resized() override
+    {
+        auto area = getLocalBounds();
+        search_.setBounds(area.removeFromTop(theme_.sizes.control));
+        icon_.setBounds(search_.getBounds()
+                            .withWidth(theme_.spacing.sm + theme_.sizes.icon)
+                            .withTrimmedLeft(theme_.spacing.sm));
+        list_.setBounds(cardBounds().reduced(theme_.spacing.xxs, theme_.spacing.sm));
+    }
+    void mouseMove(const juce::MouseEvent& e) override { setHover(e); }
+    void mouseExit(const juce::MouseEvent&) override
+    {
+        hover_ = -1;
+        list_.repaint();
+    }
+
+private:
+    struct Entry
+    {
+        const Shortcut* shortcut = nullptr; // null: a group header
+        const char* group = "";
+    };
+    class SearchIcon final : public juce::Component
+    {
+    public:
+        explicit SearchIcon(const Theme& theme) : theme_(theme) {}
+        void paint(juce::Graphics& g) override
+        {
+            Icons::draw(g,
+                        Icon::search,
+                        getLocalBounds()
+                            .withSizeKeepingCentre(theme_.sizes.icon, theme_.sizes.icon)
+                            .withX(0)
+                            .toFloat(),
+                        theme_.colours.textTertiary);
+        }
+
+    private:
+        const Theme& theme_;
+    };
+
+    juce::Rectangle<int> cardBounds() const
+    {
+        return getLocalBounds().withTrimmedTop(theme_.sizes.control + theme_.spacing.md);
+    }
+    void setHover(const juce::MouseEvent& e)
+    {
+        const auto p = e.getEventRelativeTo(&list_).getPosition();
+        const int row = list_.getRowContainingPosition(p.x, p.y);
+        if (row != hover_)
+        {
+            hover_ = row;
+            list_.repaint();
+        }
+    }
+    void filter()
+    {
+        rows_.clear();
+        const auto needle = search_.getText().trim();
+        const char* group = nullptr;
+        for (const auto& s : shortcuts)
+        {
+            if (needle.isNotEmpty() && !juce::String(s.action).containsIgnoreCase(needle) &&
+                !juce::String(s.keys).containsIgnoreCase(needle) &&
+                !juce::String(s.group).containsIgnoreCase(needle))
+                continue;
+            if (group == nullptr || juce::String(group) != s.group)
+            {
+                group = s.group;
+                rows_.push_back({nullptr, s.group});
+            }
+            rows_.push_back({&s, s.group});
+        }
+        hover_ = -1;
+        list_.updateContent();
+        list_.repaint();
+        repaint();
+    }
+
+    // The key caps for a key string, right aligned in `area`.
+    void drawKeys(juce::Graphics& g, const juce::String& keys, juce::Rectangle<int> area) const
+    {
+        const auto& c = theme_.colours;
+        struct Piece
+        {
+            juce::String text;
+            bool cap;
+            int width;
+        };
+        std::vector<Piece> pieces;
+        juce::StringArray tokens;
+        tokens.addTokens(keys, " ", "");
+        for (int t = 0; t < tokens.size(); ++t)
+        {
+            const auto& token = tokens[t];
+            if (token == "/" || token == "or" || token == "to")
+            {
+                pieces.push_back({token,
+                                  false,
+                                  juce::GlyphArrangement::getStringWidthInt(theme_.small(), token) +
+                                      2 * theme_.spacing.sm});
+                continue;
+            }
+            // A chord: one cap per key ("Ctrl++" would be Ctrl and +).
+            juce::StringArray keysInChord;
+            keysInChord.addTokens(token, "+", "");
+            if (token.endsWith("+") && token.length() > 1)
+                keysInChord.add("+");
+            keysInChord.removeEmptyStrings();
+            for (int k = 0; k < keysInChord.size(); ++k)
+            {
+                const int capText =
+                    juce::GlyphArrangement::getStringWidthInt(theme_.caption(), keysInChord[k]);
+                pieces.push_back(
+                    {keysInChord[k], true, std::max(keyCapHeight, capText + 2 * theme_.spacing.xs)});
+                if (k + 1 < keysInChord.size())
+                    pieces.push_back({{}, false, theme_.spacing.xxs});
+            }
+        }
+        int total = 0;
+        for (const auto& piece : pieces)
+            total += piece.width;
+        int x = area.getRight() - total;
+        for (const auto& piece : pieces)
+        {
+            const auto r = juce::Rectangle<int>(x, area.getY(), piece.width, area.getHeight());
+            if (piece.cap)
+            {
+                const auto cap = r.withSizeKeepingCentre(piece.width, keyCapHeight).toFloat();
+                g.setColour(c.surface2);
+                g.fillRoundedRectangle(cap, theme_.radius.sm);
+                g.setColour(c.lineStrong);
+                g.drawRoundedRectangle(cap.reduced(0.5f), theme_.radius.sm, 1.0f);
+                g.setFont(theme_.caption());
+                g.setColour(c.textSecondary);
+                g.drawText(piece.text, cap.toNearestInt(), juce::Justification::centred, false);
+            }
+            else if (piece.text.isNotEmpty())
+            {
+                g.setFont(theme_.small());
+                g.setColour(c.textTertiary);
+                g.drawText(piece.text, r, juce::Justification::centred, false);
+            }
+            x += piece.width;
+        }
+    }
+
+    int getNumRows() override { return static_cast<int>(rows_.size()); }
+    void paintListBoxItem(int row, juce::Graphics& g, int width, int height, bool) override
+    {
+        if (row < 0 || static_cast<size_t>(row) >= rows_.size())
+            return;
+        const auto& c = theme_.colours;
+        const auto& entry = rows_[static_cast<size_t>(row)];
+        auto area = juce::Rectangle<int>(0, 0, width, height);
+        if (entry.shortcut == nullptr)
+        {
+            g.setFont(theme_.captionCaps());
+            g.setColour(c.textTertiary);
+            g.drawText(juce::String(entry.group).toUpperCase(),
+                       area.reduced(theme_.spacing.md, 0).withTrimmedBottom(theme_.spacing.xs),
+                       juce::Justification::bottomLeft,
+                       false);
+            return;
+        }
+        if (row == hover_)
+        {
+            g.setColour(c.surface2);
+            g.fillRoundedRectangle(area.reduced(theme_.spacing.xs, 0).toFloat(), theme_.radius.sm);
+        }
+        area = area.reduced(theme_.spacing.md, 0);
+        const auto keys = area.removeFromRight(area.getWidth() / 2);
+        drawKeys(g, entry.shortcut->keys, keys);
+        g.setFont(theme_.body());
+        g.setColour(c.textPrimary);
+        g.drawText(entry.shortcut->action, area, juce::Justification::centredLeft, true);
+    }
+
+    const Theme& theme_;
+    juce::TextEditor search_;
+    SearchIcon icon_;
+    juce::ListBox list_;
+    std::vector<Entry> rows_;
+    int hover_ = -1;
+};
+
 } // namespace
 
 // ----- a page ----------------------------------------------------------------------------------
@@ -59,296 +870,344 @@ class PreferencesView::Page final : public juce::Component
 public:
     Page(const Theme& theme, const juce::String& title) : theme_(theme), title_(title) {}
 
-    void addSection(const juce::String& title)
+    void addCard(const juce::String& title)
     {
-        Row row;
-        row.section = title;
-        rows_.push_back(std::move(row));
+        Card card;
+        card.title = title;
+        cards_.push_back(std::move(card));
     }
-    // A labelled control; `height` for taller controls; `hint` under the control.
+    // A card with no chrome that holds one component as it is (the Audio page).
+    void addBare(std::unique_ptr<juce::Component> component, int height)
+    {
+        Card card;
+        card.bare = true;
+        cards_.push_back(std::move(card));
+        add({}, std::move(component), 0, {}, false, height);
+    }
+    // A card that fills the page's height with one component (the Shortcuts table).
+    void addFill(std::unique_ptr<juce::Component> component)
+    {
+        Card card;
+        card.bare = true;
+        card.fill = true;
+        cards_.push_back(std::move(card));
+        add({}, std::move(component), 0, {}, false, 0);
+    }
+    // A labelled control in the last card: `width` 0 fills the control column.
     template <typename T>
     T& add(const juce::String& label,
            std::unique_ptr<T> control,
+           int width,
            const juce::String& hint = {},
-           int height = rowHeight)
+           bool comingSoon = false,
+           int height = 0)
     {
+        jassert(!cards_.empty());
         T& ref = *control;
         Row row;
         row.label = label;
         row.hint = hint;
-        row.height = height;
+        row.width = width;
+        row.height = height > 0 ? height : theme_.sizes.control;
+        if (label.isNotEmpty() && control->getTitle().isEmpty())
+            control->setTitle(label);
+        row.toggle = dynamic_cast<juce::ToggleButton*>(control.get());
         row.control = std::move(control);
         addAndMakeVisible(*row.control);
-        rows_.push_back(std::move(row));
+        if (comingSoon)
+        {
+            row.badge = std::make_unique<Badge>(theme_);
+            addAndMakeVisible(*row.badge);
+        }
+        cards_.back().rows.push_back(std::move(row));
         return ref;
     }
 
-    int preferredHeight() const
+    void setViewportHeight(int height) noexcept { viewportHeight_ = height; }
+
+    // Lays out everything for `width`; returns the page's height.
+    int layout(int width)
     {
-        int h = theme_.spacing.xl + static_cast<int>(theme_.fonts.size.title * 2) + theme_.spacing.md;
-        for (const auto& row : rows_)
-            h += row.section.isNotEmpty()
-                     ? theme_.spacing.lg + theme_.sizes.controlCompact
-                     : row.height + (row.hint.isNotEmpty() ? theme_.sizes.controlCompact - 6 : 0) +
-                           theme_.spacing.md;
-        return h + theme_.spacing.xl;
+        const auto& sp = theme_.spacing;
+        const int x = sp.xl;
+        int y = sp.xl;
+        titleBounds_ = {x, y, width - 2 * x, theme_.sizes.controlLarge};
+        y += theme_.sizes.controlLarge + sp.lg;
+        const int cardWidth = std::max(0, std::min(maxCardWidth, width - 2 * x));
+        for (auto& card : cards_)
+        {
+            if (card.bare && !card.fill)
+            {
+                // The component insets its own cards by space.xl, like a page.
+                auto& row = card.rows.front();
+                card.bounds = {0, y - sp.xl, std::min(width, cardWidth + 2 * sp.xl), row.height};
+                row.controlBounds = card.bounds;
+                y = card.bounds.getBottom() - sp.xl + sp.md;
+                continue;
+            }
+            if (card.fill)
+            {
+                auto& row = card.rows.front();
+                const int height = std::max(6 * theme_.sizes.rowHeight, viewportHeight_ - y - sp.xl);
+                card.bounds = {x, y, cardWidth, height};
+                row.controlBounds = card.bounds;
+                y = card.bounds.getBottom() + sp.md;
+                continue;
+            }
+            const int top = y;
+            const int innerX = x + sp.lg;
+            const int innerRight = x + cardWidth - sp.lg;
+            y += sp.lg + cardTitleHeight + sp.md;
+            for (auto& row : card.rows)
+            {
+                const int controlX = row.label.isEmpty() ? innerX : innerX + theme_.sizes.labelWidth;
+                const int column = std::max(0, innerRight - controlX);
+                row.labelBounds =
+                    row.label.isEmpty()
+                        ? juce::Rectangle<int>()
+                        : juce::Rectangle<int>(innerX, y, theme_.sizes.labelWidth, theme_.sizes.control);
+                const int controlWidth = row.width > 0 ? std::min(row.width, column) : column;
+                row.controlBounds = {controlX, y, controlWidth, row.height};
+                if (row.badge != nullptr)
+                    row.badgeBounds = juce::Rectangle<int>(row.controlBounds.getRight() + sp.sm,
+                                                           y,
+                                                           row.badge->preferredWidth(),
+                                                           theme_.sizes.control)
+                                          .withSizeKeepingCentre(row.badge->preferredWidth(), badgeHeight);
+                y += row.height;
+                row.hintBounds = {};
+                if (row.hint.isNotEmpty())
+                {
+                    const auto text =
+                        wrapped(theme_, row.hint, theme_.colours.textTertiary, static_cast<float>(column));
+                    const int height = static_cast<int>(std::ceil(text.getHeight()));
+                    row.hintBounds = {controlX, y + sp.xs, column, height};
+                    y += sp.xs + height;
+                }
+                y += sp.sm;
+            }
+            y += sp.lg - sp.sm;
+            card.bounds = {x, top, cardWidth, y - top};
+            y += sp.md;
+        }
+        return y - sp.md + sp.xl;
+    }
+
+    std::vector<RowLayout> rowLayout() const
+    {
+        std::vector<RowLayout> out;
+        for (const auto& card : cards_)
+            for (const auto& row : card.rows)
+                out.push_back({row.label,
+                               row.hint,
+                               card.bounds,
+                               row.labelBounds,
+                               row.controlBounds,
+                               row.hintBounds,
+                               row.control.get(),
+                               row.badge != nullptr,
+                               card.bare});
+        return out;
     }
 
     void paint(juce::Graphics& g) override
     {
         const auto& c = theme_.colours;
         g.fillAll(c.surface0);
-        auto area = getLocalBounds().reduced(theme_.spacing.xl, theme_.spacing.xl);
         g.setFont(theme_.title());
         g.setColour(c.textPrimary);
-        g.drawText(title_,
-                   area.removeFromTop(static_cast<int>(theme_.fonts.size.title * 2)),
-                   juce::Justification::centredLeft);
-        area.removeFromTop(theme_.spacing.md);
-        for (const auto& row : rows_)
+        g.drawText(title_, titleBounds_, juce::Justification::centredLeft, false);
+        for (const auto& card : cards_)
         {
-            if (row.section.isNotEmpty())
-            {
-                area.removeFromTop(theme_.spacing.lg);
-                g.setFont(theme_.captionCaps());
-                g.setColour(c.textTertiary);
-                g.drawText(row.section.toUpperCase(),
-                           area.removeFromTop(theme_.sizes.controlCompact),
-                           juce::Justification::bottomLeft);
+            if (card.bare)
                 continue;
-            }
-            auto r = area.removeFromTop(row.height);
-            g.setFont(theme_.body());
-            g.setColour(c.textSecondary);
-            if (row.label.isNotEmpty())
-                g.drawText(row.label,
-                           r.removeFromLeft(labelWidth).withHeight(rowHeight),
-                           juce::Justification::centredLeft,
-                           true);
-            if (row.hint.isNotEmpty())
+            const auto bounds = card.bounds.toFloat();
+            g.setColour(c.surface1);
+            g.fillRoundedRectangle(bounds, theme_.radius.md);
+            g.setColour(c.lineSubtle);
+            g.drawRoundedRectangle(bounds.reduced(0.5f), theme_.radius.md, 1.0f);
+            g.setFont(theme_.captionCaps());
+            g.setColour(c.textTertiary);
+            g.drawText(card.title.toUpperCase(),
+                       card.bounds.reduced(theme_.spacing.lg, 0)
+                           .withTrimmedTop(theme_.spacing.md)
+                           .withHeight(cardTitleHeight),
+                       juce::Justification::centredLeft,
+                       false);
+            for (const auto& row : card.rows)
             {
-                auto hint = area.removeFromTop(theme_.sizes.controlCompact - 6).withTrimmedLeft(labelWidth);
-                g.setFont(theme_.caption());
-                g.setColour(c.textTertiary);
-                g.drawText(row.hint, hint, juce::Justification::centredLeft, true);
+                if (row.label.isNotEmpty())
+                {
+                    g.setFont(theme_.body());
+                    g.setColour(row.control->isEnabled() ? c.textSecondary : c.textDisabled);
+                    g.drawText(row.label, row.labelBounds, juce::Justification::centredLeft, false);
+                }
+                if (row.hint.isNotEmpty())
+                    wrapped(theme_, row.hint, c.textTertiary, static_cast<float>(row.hintBounds.getWidth()))
+                        .draw(g, row.hintBounds.toFloat());
             }
-            area.removeFromTop(theme_.spacing.md);
         }
     }
 
     void resized() override
     {
-        auto area = getLocalBounds().reduced(theme_.spacing.xl, theme_.spacing.xl);
-        area.removeFromTop(static_cast<int>(theme_.fonts.size.title * 2) + theme_.spacing.md);
-        for (auto& row : rows_)
-        {
-            if (row.section.isNotEmpty())
+        layout(getWidth());
+        for (auto& card : cards_)
+            for (auto& row : card.rows)
             {
-                area.removeFromTop(theme_.spacing.lg + theme_.sizes.controlCompact);
-                continue;
+                row.control->setBounds(row.controlBounds);
+                if (row.badge != nullptr)
+                    row.badge->setBounds(row.badgeBounds);
             }
-            auto r = area.removeFromTop(row.height);
-            if (row.label.isNotEmpty())
-                r.removeFromLeft(labelWidth);
-            row.control->setBounds(r);
-            if (row.hint.isNotEmpty())
-                area.removeFromTop(theme_.sizes.controlCompact - 6);
-            area.removeFromTop(theme_.spacing.md);
-        }
+    }
+
+    // Clicking a checkbox's label toggles it (the whole row is the hit target).
+    void mouseUp(const juce::MouseEvent& e) override
+    {
+        for (auto& card : cards_)
+            for (auto& row : card.rows)
+                if (row.toggle != nullptr && row.toggle->isEnabled() &&
+                    row.labelBounds.contains(e.getPosition()))
+                    row.toggle->triggerClick();
+    }
+
+    bool fills() const
+    {
+        return std::any_of(cards_.begin(), cards_.end(), [](const Card& card) { return card.fill; });
     }
 
 private:
     struct Row
     {
-        juce::String label, hint, section;
-        int height = rowHeight;
+        juce::String label, hint;
+        int width = 0, height = 28;
         std::unique_ptr<juce::Component> control;
+        std::unique_ptr<Badge> badge;
+        juce::ToggleButton* toggle = nullptr;
+        juce::Rectangle<int> labelBounds, controlBounds, hintBounds, badgeBounds;
     };
+    struct Card
+    {
+        juce::String title;
+        bool bare = false, fill = false;
+        std::vector<Row> rows;
+        juce::Rectangle<int> bounds;
+    };
+
     const Theme& theme_;
     juce::String title_;
-    std::vector<Row> rows_;
+    std::vector<Card> cards_;
+    juce::Rectangle<int> titleBounds_;
+    int viewportHeight_ = 0;
 };
 
 // ----- the page list ---------------------------------------------------------------------------
 
-class PreferencesView::PageList final : public juce::Component, private juce::ListBoxModel
+class PreferencesView::PageList final : public juce::Component
 {
 public:
-    PageList(const Theme& theme, std::vector<juce::String> titles) : theme_(theme), titles_(std::move(titles))
+    struct Item
     {
-        list_.setModel(this);
-        list_.setRowHeight(theme_.sizes.controlLarge);
-        list_.setColour(juce::ListBox::backgroundColourId, theme_.colours.surface0);
-        addAndMakeVisible(list_);
+        juce::String title;
+        Icon icon;
+    };
+    PageList(const Theme& theme, std::vector<Item> items) : theme_(theme), items_(std::move(items))
+    {
+        setWantsKeyboardFocus(true);
+        setTitle("Preferences pages");
     }
     std::function<void(int)> onSelected;
-    void select(int index) { list_.selectRow(index); }
-    void resized() override { list_.setBounds(getLocalBounds()); }
-
-private:
-    int getNumRows() override { return static_cast<int>(titles_.size()); }
-    void paintListBoxItem(int row, juce::Graphics& g, int width, int height, bool selected) override
+    void select(int index)
     {
-        const auto& c = theme_.colours;
-        if (selected)
-        {
-            g.setColour(c.selectionFill);
-            g.fillRect(0, 0, width, height);
-            g.setColour(c.accent);
-            g.fillRect(0, 0, 2, height);
-        }
-        g.setFont(theme_.body());
-        g.setColour(selected ? c.textPrimary : c.textSecondary);
-        g.drawText(titles_[static_cast<size_t>(row)],
-                   theme_.spacing.lg,
-                   0,
-                   width - theme_.spacing.lg,
-                   height,
-                   juce::Justification::centredLeft);
-    }
-    void selectedRowsChanged(int row) override
-    {
-        if (row >= 0 && onSelected)
-            onSelected(row);
-    }
-    const Theme& theme_;
-    std::vector<juce::String> titles_;
-    juce::ListBox list_;
-};
-
-// ----- accent swatches -------------------------------------------------------------------------
-
-class PreferencesView::Swatches final : public juce::Component
-{
-public:
-    explicit Swatches(const Theme& theme) : theme_(theme)
-    {
-        hex_.setFont(theme_.value());
-        hex_.setInputRestrictions(7, "#0123456789abcdefABCDEF");
-        hex_.setTextToShowWhenEmpty("#RRGGBB", theme_.colours.textTertiary);
-        hex_.onReturnKey = [this]
-        {
-            if (onChanged)
-                onChanged(hex_.getText().trim());
-        };
-        hex_.onFocusLost = hex_.onReturnKey;
-        addAndMakeVisible(hex_);
-    }
-    std::function<void(const juce::String& hex)> onChanged;
-    void setValue(const juce::String& hex)
-    {
-        value_ = hex;
-        hex_.setText(hex, false);
+        index = juce::jlimit(0, static_cast<int>(items_.size()) - 1, index);
+        if (index == selected_)
+            return;
+        selected_ = index;
+        setDescription(items_[static_cast<size_t>(selected_)].title);
         repaint();
+        if (onSelected)
+            onSelected(selected_);
     }
     void paint(juce::Graphics& g) override
     {
         const auto& c = theme_.colours;
-        auto area = getLocalBounds();
-        for (size_t i = 0; i < presets_.size(); ++i)
+        g.fillAll(c.canvas);
+        for (int i = 0; i < static_cast<int>(items_.size()); ++i)
         {
-            const auto r =
-                area.removeFromLeft(swatch).withSizeKeepingCentre(swatch - 6, swatch - 6).toFloat();
-            g.setColour(presets_[i]);
-            g.fillRoundedRectangle(r, theme_.radius.sm);
-            const bool chosen = value_.isEmpty()
-                                    ? i == 0
-                                    : juce::Colour::fromString("ff" + value_.substring(1)) == presets_[i];
-            if (chosen)
+            const auto r = itemBounds(i);
+            const bool selected = i == selected_;
+            const bool hover = i == hover_;
+            if (selected || hover)
             {
-                g.setColour(c.textPrimary);
-                g.drawRoundedRectangle(r.expanded(2.0f), theme_.radius.sm + 1.0f, 1.5f);
+                g.setColour(selected ? c.surface2 : c.surface1);
+                g.fillRoundedRectangle(r.toFloat(), theme_.radius.sm);
             }
+            auto content = r.withTrimmedLeft(theme_.spacing.md);
+            Icons::draw(g,
+                        items_[static_cast<size_t>(i)].icon,
+                        content.removeFromLeft(theme_.sizes.icon)
+                            .withSizeKeepingCentre(theme_.sizes.icon, theme_.sizes.icon)
+                            .toFloat(),
+                        selected ? c.accent : c.textSecondary);
+            content.removeFromLeft(theme_.spacing.sm);
+            g.setFont(theme_.body());
+            g.setColour(selected || hover ? c.textPrimary : c.textSecondary);
+            g.drawText(
+                items_[static_cast<size_t>(i)].title, content, juce::Justification::centredLeft, false);
         }
+        if (auto* lnf = lookAndFeelOf(*this))
+            lnf->drawFocusRing(g, *this, itemBounds(selected_).toFloat(), theme_.radius.sm);
     }
-    void resized() override
-    {
-        hex_.setBounds(getLocalBounds()
-                           .withTrimmedLeft(static_cast<int>(presets_.size()) * swatch + theme_.spacing.sm)
-                           .withWidth(90));
-    }
+    void mouseMove(const juce::MouseEvent& e) override { setHover(indexAt(e.getPosition())); }
+    void mouseExit(const juce::MouseEvent&) override { setHover(-1); }
     void mouseDown(const juce::MouseEvent& e) override
     {
-        const int index = e.x / swatch;
-        if (index >= 0 && static_cast<size_t>(index) < presets_.size() && onChanged)
-            onChanged(index == 0 ? juce::String()
-                                 : "#" + presets_[static_cast<size_t>(index)].toDisplayString(false));
+        const int index = indexAt(e.getPosition());
+        if (index >= 0)
+            select(index);
     }
+    bool keyPressed(const juce::KeyPress& key) override
+    {
+        if (key == juce::KeyPress::upKey)
+            select(selected_ - 1);
+        else if (key == juce::KeyPress::downKey)
+            select(selected_ + 1);
+        else if (key == juce::KeyPress::homeKey)
+            select(0);
+        else if (key == juce::KeyPress::endKey)
+            select(static_cast<int>(items_.size()) - 1);
+        else
+            return false;
+        return true;
+    }
+    void focusGained(FocusChangeType) override { repaint(); }
+    void focusLost(FocusChangeType) override { repaint(); }
 
 private:
-    static constexpr int swatch = 28;
+    juce::Rectangle<int> itemBounds(int index) const
+    {
+        const int h = theme_.sizes.controlLarge;
+        return {theme_.spacing.sm, theme_.spacing.xl + index * h, getWidth() - 2 * theme_.spacing.sm, h};
+    }
+    int indexAt(juce::Point<int> p) const
+    {
+        for (int i = 0; i < static_cast<int>(items_.size()); ++i)
+            if (itemBounds(i).contains(p))
+                return i;
+        return -1;
+    }
+    void setHover(int index)
+    {
+        if (index != hover_)
+        {
+            hover_ = index;
+            repaint();
+        }
+    }
+
     const Theme& theme_;
-    juce::String value_;
-    juce::TextEditor hex_;
-    // The default accent first, then five presets.
-    const std::vector<juce::Colour> presets_{theme_.colours.accent,
-                                             juce::Colour::fromString("ff5fc96f"),
-                                             juce::Colour::fromString("ffe8a84f"),
-                                             juce::Colour::fromString("ffd65f9e"),
-                                             juce::Colour::fromString("ff9b6fe8"),
-                                             juce::Colour::fromString("ff4fc9c9")};
-};
-
-// ----- the shortcuts table ---------------------------------------------------------------------
-
-class PreferencesView::Shortcuts final : public juce::Component, private juce::ListBoxModel
-{
-public:
-    explicit Shortcuts(const Theme& theme) : theme_(theme)
-    {
-        search_.setTextToShowWhenEmpty("Search actions", theme_.colours.textTertiary);
-        search_.setFont(theme_.body());
-        search_.onTextChange = [this] { filter(); };
-        addAndMakeVisible(search_);
-        list_.setModel(this);
-        list_.setRowHeight(rowHeight);
-        list_.setColour(juce::ListBox::backgroundColourId, theme_.colours.surface1);
-        addAndMakeVisible(list_);
-        filter();
-    }
-    void resized() override
-    {
-        auto area = getLocalBounds();
-        search_.setBounds(area.removeFromTop(theme_.sizes.control));
-        area.removeFromTop(theme_.spacing.sm);
-        list_.setBounds(area);
-    }
-
-private:
-    void filter()
-    {
-        rows_.clear();
-        const auto needle = search_.getText().trim();
-        for (const auto& s : shortcuts)
-            if (needle.isEmpty() || juce::String(s.action).containsIgnoreCase(needle) ||
-                juce::String(s.keys).containsIgnoreCase(needle) ||
-                juce::String(s.group).containsIgnoreCase(needle))
-                rows_.push_back(&s);
-        list_.updateContent();
-        list_.repaint();
-    }
-    int getNumRows() override { return static_cast<int>(rows_.size()); }
-    void paintListBoxItem(int row, juce::Graphics& g, int width, int height, bool) override
-    {
-        const auto& c = theme_.colours;
-        const auto* s = rows_[static_cast<size_t>(row)];
-        auto area = juce::Rectangle<int>(0, 0, width, height).reduced(theme_.spacing.sm, 0);
-        g.setFont(theme_.caption());
-        g.setColour(c.textTertiary);
-        g.drawText(s->group, area.removeFromLeft(72), juce::Justification::centredLeft);
-        g.setFont(theme_.value());
-        g.setColour(c.textPrimary);
-        g.drawText(s->keys, area.removeFromRight(220), juce::Justification::centredLeft, true);
-        g.setFont(theme_.body());
-        g.setColour(c.textSecondary);
-        g.drawText(s->action, area, juce::Justification::centredLeft, true);
-        g.setColour(c.lineSubtle);
-        g.fillRect(0, height - 1, width, 1);
-    }
-    const Theme& theme_;
-    juce::TextEditor search_;
-    juce::ListBox list_;
-    std::vector<const Shortcut*> rows_;
+    std::vector<Item> items_;
+    int selected_ = 0, hover_ = -1;
 };
 
 // ----- the view ----------------------------------------------------------------------------------
@@ -368,6 +1227,13 @@ PreferencesView::PreferencesView(const Theme& theme,
 PreferencesView::~PreferencesView()
 {
     content_.setViewedComponent(nullptr, false);
+}
+
+const std::vector<juce::String>& PreferencesView::pageKeys()
+{
+    static const std::vector<juce::String> keys{
+        "general", "audio", "recording", "editing", "plugins", "shortcuts", "diagnostics"};
+    return keys;
 }
 
 std::string PreferencesView::get(const char* key, const std::string& fallback) const
@@ -438,22 +1304,44 @@ void PreferencesView::writeTokenOverride()
     file.replaceWithText(juce::JSON::toString(juce::var(root), false));
 }
 
+void PreferencesView::chooseFolder(const juce::String& title,
+                                   const juce::File& start,
+                                   std::function<void(const juce::File&)> chosen)
+{
+    chooser_ = std::make_unique<juce::FileChooser>(title, start);
+    juce::Component::SafePointer<PreferencesView> safe(this);
+    chooser_->launchAsync(juce::FileBrowserComponent::openMode |
+                              juce::FileBrowserComponent::canSelectDirectories,
+                          [safe, chosen = std::move(chosen)](const juce::FileChooser& chooser)
+                          {
+                              const auto folder = chooser.getResult();
+                              if (safe != nullptr && folder != juce::File())
+                                  chosen(folder);
+                          });
+}
+
 void PreferencesView::buildPages()
 {
     const juce::ScopedValueSetter<bool> guard(updating_, true);
     pages_.clear();
-    keys_.clear();
-    const auto combo = [this](const std::vector<std::pair<juce::String, std::string>>& items,
-                              const char* key,
-                              const std::string& fallback)
+
+    struct Choice
+    {
+        juce::String text;
+        std::string value;
+        bool comingSoon = false;
+    };
+    const auto combo = [this](const std::vector<Choice>& items, const char* key, const std::string& fallback)
     {
         auto box = std::make_unique<juce::ComboBox>();
         const auto current = get(key, fallback);
         for (size_t i = 0; i < items.size(); ++i)
         {
-            box->addItem(items[i].first, static_cast<int>(i) + 1);
-            if (items[i].second == current)
-                box->setSelectedId(static_cast<int>(i) + 1, juce::dontSendNotification);
+            const int id = static_cast<int>(i) + 1;
+            box->addItem(items[i].comingSoon ? items[i].text + " (coming soon)" : items[i].text, id);
+            box->setItemEnabled(id, !items[i].comingSoon);
+            if (items[i].value == current && !items[i].comingSoon)
+                box->setSelectedId(id, juce::dontSendNotification);
         }
         if (box->getSelectedId() == 0)
             box->setSelectedId(1, juce::dontSendNotification);
@@ -462,13 +1350,36 @@ void PreferencesView::buildPages()
         {
             const int index = raw->getSelectedId() - 1;
             if (index >= 0 && static_cast<size_t>(index) < items.size())
-                set(key, items[static_cast<size_t>(index)].second);
+                set(key, items[static_cast<size_t>(index)].value);
         };
         return box;
     };
-    const auto toggle = [this](const juce::String& text, const char* key, bool fallback)
+    const auto segmented =
+        [this](const std::vector<Choice>& items, const char* key, const std::string& fallback)
     {
-        auto t = std::make_unique<juce::ToggleButton>(text);
+        auto control = std::make_unique<SegmentedControl>(theme_);
+        control->setTrackColour(theme_.colours.surface0); // a well in the surface1 card
+        std::vector<juce::String> labels;
+        for (const auto& item : items)
+            labels.push_back(item.text);
+        control->setSegments(labels);
+        const auto current = get(key, fallback);
+        for (size_t i = 0; i < items.size(); ++i)
+        {
+            control->setSegmentEnabled(static_cast<int>(i), !items[i].comingSoon);
+            if (items[i].value == current)
+                control->setSelected(static_cast<int>(i), juce::dontSendNotification);
+        }
+        control->onChange = [this, items, key](int index)
+        {
+            if (index >= 0 && static_cast<size_t>(index) < items.size())
+                set(key, items[static_cast<size_t>(index)].value);
+        };
+        return control;
+    };
+    const auto checkbox = [this](const char* key, bool fallback)
+    {
+        auto t = std::make_unique<juce::ToggleButton>();
         t->setToggleState(get(key, fallback ? "1" : "0") == "1", juce::dontSendNotification);
         auto* raw = t.get();
         t->onClick = [this, raw, key] { set(key, raw->getToggleState() ? "1" : "0"); };
@@ -477,7 +1388,7 @@ void PreferencesView::buildPages()
     const auto text = [this](const char* key, const std::string& fallback, const juce::String& placeholder)
     {
         auto e = std::make_unique<juce::TextEditor>();
-        e->setFont(theme_.body());
+        setUpTextField(theme_, *e, theme_.body());
         e->setText(juce::String::fromUTF8(get(key, fallback).c_str()), false);
         e->setTextToShowWhenEmpty(placeholder, theme_.colours.textTertiary);
         auto* raw = e.get();
@@ -502,52 +1413,77 @@ void PreferencesView::buildPages()
         f->onValueChanged = [this, key](double v) { set(key, juce::String(v, 2).toStdString()); };
         return f;
     };
-    const auto button = [](const juce::String& label, std::function<void()> action)
+    const auto button = [this](const juce::String& label, std::function<void()> action)
     {
-        auto b = std::make_unique<juce::TextButton>(label);
-        b->getProperties().set(NorthlightLookAndFeel::propertyVariant, "secondary");
+        auto b = makeButton(label);
         b->onClick = std::move(action);
-        return b;
+        const int width = buttonWidth(theme_, label);
+        return std::make_pair(std::move(b), width);
     };
+    const juce::String restartNote = "Applies the next time Northlight starts.";
 
     // General
     {
         auto page = std::make_unique<Page>(theme_, "General");
-        page->add("Project folder",
-                  text(Keys::projectFolder, {}, "Documents"),
-                  "Where new projects are saved and opened from.");
-        page->add("Recent files",
+        page->addCard("Projects");
+        const auto documents = juce::File::getSpecialLocation(juce::File::userDocumentsDirectory);
+        auto folder = std::make_unique<PathField>(theme_, documents.getFullPathName());
+        folder->setPath(juce::String::fromUTF8(get(Keys::projectFolder).c_str()), false);
+        auto* rawFolder = folder.get();
+        folder->onChanged = [this](const juce::String& path)
+        { set(Keys::projectFolder, path.toStdString()); };
+        folder->onChoose = [this, rawFolder, documents]
+        {
+            const juce::File start(rawFolder->path().isNotEmpty() ? juce::File(rawFolder->path())
+                                                                  : documents);
+            juce::Component::SafePointer<PathField> safe(rawFolder);
+            chooseFolder("Project folder",
+                         start,
+                         [safe](const juce::File& chosen)
+                         {
+                             if (safe != nullptr)
+                                 safe->setPath(chosen.getFullPathName(), true);
+                         });
+        };
+        page->add("Folder", std::move(folder), 0, "New projects are saved here.");
+        page->add("Recent",
                   number(Keys::recentCount, 8, 0, 20, 1, "", 0),
-                  "How many recent projects the Project menu keeps.");
+                  numberWidth,
+                  "Shown in the Project menu.");
         page->add("Autosave",
                   number(Keys::autosaveMinutes, 2, 0, 60, 1, "min", 0),
-                  "Unsaved changes are kept every this many minutes, to restore after a crash; 0 is off.");
-        page->addSection("Appearance");
-        page->add("Theme", combo({{"Dark", "dark"}}, "general.theme", "dark"), "Light theme comes later.");
+                  numberWidth,
+                  "Keeps unsaved changes for recovery after a crash. 0 turns it off.");
+
+        page->addCard("Appearance");
+        auto themeControl = segmented({{"Dark", "dark"}, {"Light", "light", true}}, Keys::theme, "dark");
+        themeControl->setSegmentTooltip(1, "The light theme is coming soon.");
+        const int themeWidth = themeControl->preferredWidth();
+        page->add("Theme", std::move(themeControl), themeWidth);
         auto swatches = std::make_unique<Swatches>(theme_);
         swatches->setValue(juce::String::fromUTF8(get(Keys::accent).c_str()));
-        auto* raw = swatches.get();
-        swatches->onChanged = [this, raw](const juce::String& hex)
+        auto* rawSwatches = swatches.get();
+        swatches->onChanged = [this, rawSwatches](const juce::String& hex)
         {
-            if (hex.isNotEmpty() && !(hex.length() == 7 && hex.startsWithChar('#')))
-                return;
-            raw->setValue(hex);
+            rawSwatches->setValue(hex);
             writeAccentOverride(hex);
         };
-        page->add(
-            "Accent colour", std::move(swatches), "A preset or a hex value; applied at the next launch.");
+        const int swatchesWidth = swatches->preferredWidth();
+        page->add("Accent", std::move(swatches), swatchesWidth, restartNote);
+        auto contrast = segmented({{"Standard", "standard"}, {"High", "high"}}, Keys::contrast, "standard");
+        const int contrastWidth = contrast->preferredWidth();
         page->add("Contrast",
-                  combo({{"Standard", "standard"}, {"High", "high"}}, Keys::contrast, "standard"),
-                  "High: lines at 24% and text one step brighter; applied at the next launch.");
+                  std::move(contrast),
+                  contrastWidth,
+                  "High brightens lines and secondary text. " + restartNote);
         page->add(
             "UI scale",
             combo(
                 {{"Follow system", "0"}, {"100%", "100"}, {"125%", "125"}, {"150%", "150"}, {"200%", "200"}},
                 Keys::uiScale,
                 "0"),
-            "Applies at once.");
+            comboWidth);
         pages_.push_back(std::move(page));
-        keys_.push_back("general");
     }
     // Audio
     {
@@ -558,36 +1494,38 @@ void PreferencesView::buildPages()
             if (onWarning)
                 onWarning(message);
         };
-        page->add("", std::move(setup), {}, AudioSetupView::contentHeight);
+        page->addBare(std::move(setup), AudioSetupView::contentHeight);
         pages_.push_back(std::move(page));
-        keys_.push_back("audio");
     }
     // Recording
     {
         auto page = std::make_unique<Page>(theme_, "Recording");
-        page->add(
-            "File format",
-            combo({{"WAV 32-bit float", "float"}, {"WAV 24-bit", "24"}}, Keys::recordingFormat, "float"),
-            "Takes are written as 32-bit float today; 24-bit comes with the file-format work.");
-        page->add("Count-in",
-                  combo({{"Off", "0"}, {"1 bar", "1"}, {"2 bars", "2"}, {"4 bars", "4"}}, Keys::countIn, "1"),
-                  "The default when a project opens.");
-        page->add("Pre-roll",
-                  number(Keys::preRoll, 0, 0, 8, 1, "bars", 0),
-                  "Stored; playback before the punch-in point comes later.");
-        page->add(
-            "Metronome level", number(Keys::metronomeLevel, -6, -40, 0, 0.5, "dB", 1), "Applies at once.");
-        page->add("Take name pattern",
+        page->addCard("Files");
+        page->add("Format",
+                  combo({{"WAV 32-bit float", "float"}, {"WAV 24-bit", "24", true}},
+                        Keys::recordingFormat,
+                        "float"),
+                  comboWidth);
+        page->add("Take names",
                   text(Keys::namePattern, "{track} {take}", "{track} {take}"),
-                  "Stored; applied to new takes later.");
+                  textWidth,
+                  "{track} and {take} become the track name and take number.",
+                  true);
+        page->addCard("Count-in and click");
+        auto countIn =
+            segmented({{"Off", "0"}, {"1 bar", "1"}, {"2 bars", "2"}, {"4 bars", "4"}}, Keys::countIn, "1");
+        const int countInWidth = countIn->preferredWidth();
+        page->add("Count-in", std::move(countIn), countInWidth, "Used when a project opens.");
+        page->add("Pre-roll", number(Keys::preRoll, 0, 0, 8, 1, "bars", 0), numberWidth, {}, true);
+        page->add("Click level", number(Keys::metronomeLevel, -6, -40, 0, 0.5, "dB", 1), numberWidth);
         pages_.push_back(std::move(page));
-        keys_.push_back("recording");
     }
     // Editing
     {
         auto page = std::make_unique<Page>(theme_, "Editing");
-        page->add("Snap", toggle("Snap to grid by default", Keys::snap, true));
-        page->add("Snap grid",
+        page->addCard("Snap");
+        page->add("Snap", checkbox(Keys::snap, true), theme_.sizes.icon, "On when a project opens.");
+        page->add("Grid",
                   combo({{"Adaptive", "0"},
                          {"Bar", "1"},
                          {"Beat", "4"},
@@ -595,115 +1533,147 @@ void PreferencesView::buildPages()
                          {"1/16", "16"},
                          {"1/32", "32"}},
                         Keys::snapGrid,
-                        "0"));
-        page->add("Default fade",
+                        "0"),
+                  comboWidth);
+        page->addCard("Edits");
+        page->add("Ripple", checkbox(Keys::ripple, false), theme_.sizes.icon, "On when a project opens.");
+        page->add("Fade",
                   number(Keys::fadeMs, 10, 0, 2000, 1, "ms", 0),
-                  "Stored; applied to new clips later.");
-        page->add("Ripple", toggle("Ripple edits by default", Keys::ripple, false));
+                  numberWidth,
+                  "The fade new clips start with.",
+                  true);
+        page->addCard("View");
         page->add("Follow playhead",
-                  toggle("Scroll the arrange view with the playhead", Keys::followPlayhead, true));
+                  checkbox(Keys::followPlayhead, true),
+                  theme_.sizes.icon,
+                  "Scrolls the arrange view to keep the playhead in sight.");
         pages_.push_back(std::move(page));
-        keys_.push_back("editing");
     }
     // Plugins
     {
         auto page = std::make_unique<Page>(theme_, "Plugins");
-        auto paths = std::make_unique<juce::TextEditor>();
-        paths->setMultiLine(true, false);
-        paths->setReturnKeyStartsNewLine(true);
-        paths->setFont(theme_.body());
-        paths->setTextToShowWhenEmpty(
-            "One folder per line, scanned besides the standard VST3 and CLAP folders",
-            theme_.colours.textTertiary);
-        paths->setText(juce::String::fromUTF8(get(Keys::pluginPaths).c_str()).replace("\t", "\n"), false);
-        auto* rawPaths = paths.get();
-        paths->onFocusLost = [this, rawPaths]
+        page->addCard("Folders");
+        auto folders = std::make_unique<FolderList>(theme_);
+        juce::StringArray paths;
+        paths.addTokens(juce::String::fromUTF8(get(Keys::pluginPaths).c_str()), "\t", "");
+        paths.removeEmptyStrings();
+        folders->setFolders(paths);
+        auto* rawFolders = folders.get();
+        folders->onChanged = [this](const juce::StringArray& list)
+        { set(Keys::pluginPaths, list.joinIntoString("\t").toStdString()); };
+        folders->onAdd = [this, rawFolders]
         {
-            juce::StringArray lines;
-            lines.addLines(rawPaths->getText());
-            lines.trim();
-            lines.removeEmptyStrings();
-            set(Keys::pluginPaths, lines.joinIntoString("\t").toStdString());
+            juce::Component::SafePointer<FolderList> safe(rawFolders);
+            chooseFolder("Add a plugin folder",
+                         juce::File::getSpecialLocation(juce::File::globalApplicationsDirectory),
+                         [safe](const juce::File& chosen)
+                         {
+                             if (safe != nullptr)
+                                 safe->addFolder(chosen.getFullPathName());
+                         });
         };
-        page->add("Scan folders",
-                  std::move(paths),
-                  "Extra folders; the standard locations are always scanned.",
-                  3 * rowHeight);
+        const int foldersHeight = folders->preferredHeight();
+        page->add({},
+                  std::move(folders),
+                  0,
+                  "Scanned as well as the standard VST3 and CLAP folders.",
+                  false,
+                  foldersHeight);
+
+        page->addCard("Scanning");
         page->add("Scan on launch",
-                  toggle("Scan for changes when Northlight starts", Keys::scanOnLaunch, false));
+                  checkbox(Keys::scanOnLaunch, false),
+                  theme_.sizes.icon,
+                  "Looks for new and changed plugins when Northlight starts.");
+        auto [scan, scanWidth] = button("Scan for changes",
+                                        [this]
+                                        {
+                                            if (onScan)
+                                                onScan();
+                                        });
+        page->add("Scan", std::move(scan), scanWidth);
+        auto blocklist = std::make_unique<BlocklistRow>(theme_);
+        blocklist->setCount(registry_.blocked().size());
+        auto* rawBlocklist = blocklist.get();
+        blocklist->onClear = [this, rawBlocklist]
+        {
+            if (onClearBlocklist)
+                onClearBlocklist();
+            rawBlocklist->setCount(registry_.blocked().size());
+        };
+        const int blocklistWidth = blocklist->preferredWidth();
         page->add("Blocklist",
-                  button(registry_.blocked().empty()
-                             ? "No blocked plugins"
-                             : "Clear " + juce::String(registry_.blocked().size()) + " blocked",
-                         [this]
-                         {
-                             if (onClearBlocklist)
-                                 onClearBlocklist();
-                         }),
-                  "Plugins that crashed or hung while scanning are skipped until cleared.");
-        page->add("Scan now",
-                  button("Scan for changes",
-                         [this]
-                         {
-                             if (onScan)
-                                 onScan();
-                         }));
-        page->add("Windows", toggle("Open plugin windows on top", Keys::pluginsOnTop, false));
+                  std::move(blocklist),
+                  blocklistWidth,
+                  "Plugins that crashed or hung while being scanned are skipped until cleared.");
+
+        page->addCard("Windows");
+        page->add("Keep on top",
+                  checkbox(Keys::pluginsOnTop, false),
+                  theme_.sizes.icon,
+                  "Plugin windows stay above the main window.");
         pages_.push_back(std::move(page));
-        keys_.push_back("plugins");
     }
     // Shortcuts
     {
         auto page = std::make_unique<Page>(theme_, "Shortcuts");
-        page->add("", std::make_unique<Shortcuts>(theme_), {}, 14 * rowHeight);
+        page->addFill(std::make_unique<ShortcutTable>(theme_));
         pages_.push_back(std::move(page));
-        keys_.push_back("shortcuts");
     }
     // Diagnostics
     {
         auto page = std::make_unique<Page>(theme_, "Diagnostics");
-        page->add("Crash reports",
-                  toggle("Send crash reports (opt in)", Keys::crashReports, false),
-                  "A crash always leaves a report in the settings folder's Crashes folder, on this "
-                  "computer only; sending them comes with the release work.");
+        page->addCard("Crash reports");
+        page->add("Send reports",
+                  checkbox(Keys::crashReports, false),
+                  theme_.sizes.icon,
+                  "Reports are always kept on this computer, in the settings folder's Crashes folder.",
+                  true);
+        page->addCard("Support");
         const auto folder = loadSetting
                                 ? juce::File(juce::String::fromUTF8(loadSetting("__settingsFolder").c_str()))
                                 : juce::File();
-        page->add("Log folder",
-                  button(folder.getFullPathName().isEmpty() ? "Open settings folder" : folder.getFileName(),
-                         [folder] { folder.revealToUser(); }),
-                  folder.getFullPathName());
-        page->add("System report",
-                  button("Copy system report",
-                         [this]
-                         {
-                             if (systemReport)
-                                 juce::SystemClipboard::copyTextToClipboard(systemReport());
-                             if (onNotice)
-                                 onNotice("System report copied.");
-                         }));
+        auto readout = std::make_unique<PathReadout>(theme_, folder.getFullPathName(), "Show in Explorer");
+        readout->button().onClick = [folder] { folder.revealToUser(); };
+        readout->button().setEnabled(folder != juce::File());
+        page->add("Settings", std::move(readout), 0);
+        auto [copy, copyWidth] = button("Copy system report",
+                                        [this]
+                                        {
+                                            if (systemReport)
+                                                juce::SystemClipboard::copyTextToClipboard(systemReport());
+                                            if (onNotice)
+                                                onNotice("System report copied.");
+                                        });
+        page->add("Report",
+                  std::move(copy),
+                  copyWidth,
+                  "Copies device, plugin and system details for a bug report.");
         pages_.push_back(std::move(page));
-        keys_.push_back("diagnostics");
     }
-    list_ = std::make_unique<PageList>(
-        theme_,
-        std::vector<juce::String>{
-            "General", "Audio", "Recording", "Editing", "Plugins", "Shortcuts", "Diagnostics"});
+    list_ = std::make_unique<PageList>(theme_,
+                                       std::vector<PageList::Item>{{"General", Icon::settings},
+                                                                   {"Audio", Icon::trackAudio},
+                                                                   {"Recording", Icon::record},
+                                                                   {"Editing", Icon::pencil},
+                                                                   {"Plugins", Icon::plugin},
+                                                                   {"Shortcuts", Icon::keyboard},
+                                                                   {"Diagnostics", Icon::diagnostics}});
     list_->onSelected = [this](int index)
     {
         current_ = index;
         resized();
     };
     addAndMakeVisible(*list_);
-    list_->select(current_);
 }
 
 void PreferencesView::showPage(const juce::String& key)
 {
     if (pages_.empty())
         buildPages();
-    for (size_t i = 0; i < keys_.size(); ++i)
-        if (keys_[i] == key)
+    const auto& keys = pageKeys();
+    for (size_t i = 0; i < keys.size(); ++i)
+        if (keys[i] == key)
         {
             current_ = static_cast<int>(i);
             list_->select(current_);
@@ -713,31 +1683,48 @@ void PreferencesView::showPage(const juce::String& key)
 
 juce::String PreferencesView::currentPage() const
 {
-    return current_ >= 0 && static_cast<size_t>(current_) < keys_.size()
-               ? keys_[static_cast<size_t>(current_)]
-               : juce::String();
+    const auto& keys = pageKeys();
+    return current_ >= 0 && static_cast<size_t>(current_) < keys.size() ? keys[static_cast<size_t>(current_)]
+                                                                        : juce::String();
+}
+
+std::vector<PreferencesView::RowLayout> PreferencesView::rowLayout() const
+{
+    if (current_ < 0 || static_cast<size_t>(current_) >= pages_.size())
+        return {};
+    return pages_[static_cast<size_t>(current_)]->rowLayout();
 }
 
 void PreferencesView::paint(juce::Graphics& g)
 {
-    const auto& c = theme_.colours;
-    g.fillAll(c.surface0);
-    g.setColour(c.lineSubtle);
-    g.fillRect(listWidth - 1, 0, 1, getHeight());
+    g.fillAll(theme_.colours.surface0);
 }
 
 void PreferencesView::resized()
 {
+    // The pages read the settings, so they wait for the owner's callbacks.
     if (pages_.empty())
+    {
+        if (!loadSetting)
+            return;
         buildPages();
+    }
     auto area = getLocalBounds();
     list_->setBounds(area.removeFromLeft(listWidth));
     content_.setBounds(area);
     if (current_ >= 0 && static_cast<size_t>(current_) < pages_.size())
     {
         auto* page = pages_[static_cast<size_t>(current_)].get();
-        const int width = area.getWidth() - theme_.sizes.scrollbar;
-        page->setSize(width, std::max(area.getHeight(), page->preferredHeight()));
+        page->setViewportHeight(area.getHeight());
+        // Leave room for the scrollbar only when the page will scroll.
+        int width = area.getWidth();
+        int height = page->layout(width);
+        if (height > area.getHeight() && !page->fills())
+        {
+            width -= theme_.sizes.scrollbar;
+            height = page->layout(width);
+        }
+        page->setSize(width, page->fills() ? area.getHeight() : std::max(area.getHeight(), height));
         if (content_.getViewedComponent() != page)
             content_.setViewedComponent(page, false);
     }

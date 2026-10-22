@@ -35,7 +35,7 @@ MONITORING
 ● Running · ASIO · 2 in / 2 out · 0 dropouts
 ```
 
-- Labels `body` `textSecondary` in a 120 px column; controls `control` 28 px; values
+- Labels `body` `textSecondary` in a 120 px column, flush with the card's padding; controls `control` 28 px; values
   in `value` mono.
 - Channel rows show a live 8 px input meter next to each enabled input so the user
   can find the right one by playing.
@@ -64,25 +64,125 @@ MONITORING
 
 ## 8.2 Preferences
 
-A window with a left list of pages (160 px, `surface0`) and a content area:
+A window, 820×600 default (640×420 minimum), in two planes and no divider: the page
+list on `canvas` and the page on `surface0`, where settings sit in cards like Audio
+Setup's. **Decision**: Preferences and Audio Setup share one card language, so the
+Audio page, shown inline, looks like every other page.
 
-- **General**: project folder, autosave interval, recent files count, theme (Dark;
-  light later), accent colour (**Decision**: user accent override is in scope: a
-  swatch row of 6 presets plus hex), UI scale override (Follow system, 100, 125,
-  150, 200%).
-- **Audio**: opens the same Audio Setup content inline.
-- **Recording**: file format (WAV float / WAV 24-bit), recordings folder, count-in
-  default, pre-roll, metronome sound and level, auto-name pattern.
-- **Editing**: snap defaults, default fade length and shape, ripple default,
-  follow playhead.
-- **Plugins**: scan folders list (add/remove), scan on launch toggle, blocklist
-  management, "Open plugin windows on top".
-- **Shortcuts**: a searchable table of actions and keys; click a key cell to rebind;
-  conflicts shown in `warning`; Reset to defaults.
-- **Diagnostics**: crash reporting opt-in, log folder, "Copy system report".
+```
+ ┌──────────────┬─────────────────────────────────────────────────────┐
+ │ ⚙ General    │  General                                            │
+ │ ∿ Audio      │  ┌ PROJECTS ──────────────────────────────────────┐ │
+ │ ● Recording  │  │ Folder     [C:\Users\…\Northlight      ] [Choose…]│ │
+ │ ✎ Editing    │  │            New projects are saved here.         │ │
+ │ ⊓ Plugins    │  │ Recent     [    8 ]                             │ │
+ │ ⌨ Shortcuts  │  │ Autosave   [ 2 min ]                            │ │
+ │ ⌁ Diagnostics│  └────────────────────────────────────────────────┘ │
+ │              │  ┌ APPEARANCE ────────────────────────────────────┐ │
+ │              │  │ Theme      ( Dark | Light )                     │ │
+ │              │  │ Accent     ● ● ● ● ● ●   [#93ABC2]              │ │
+ │              │  └────────────────────────────────────────────────┘ │
+ └──────────────┴─────────────────────────────────────────────────────┘
+```
 
-Each page: `title` heading, settings in rows of label (200 px) and control, `space.md`
-vertical rhythm, section headers in uppercase `caption`.
+### Page list
+
+- 160 px wide on `canvas`, `space.xl` top inset so the first item lines up with the
+  page title, `space.sm` side inset.
+- Items 32 px (`controlLarge`), radius `sm`: a 16 px icon and the name in `body`,
+  `space.sm` apart, `space.md` from the item's left edge. Icons: General
+  `settings`, Audio `trackAudio`, Recording `record`, Editing `pencil`, Plugins
+  `plugin`, Shortcuts `keyboard`, Diagnostics `diagnostics`.
+- Rest: `textSecondary` icon and name. Hover: `surface1` fill, `textPrimary` name.
+  Selected: `surface2` fill, `textPrimary` name, `accent` icon. Keyboard focus: the
+  focus ring around the selected item. Up and Down move between pages, Home and End
+  go to the first and last.
+
+### Page
+
+- `space.xl` inset; the title in `title` `textPrimary` on a 32 px row, `space.lg`
+  above the first card. Cards are at most 600 px wide and left aligned, `space.md`
+  apart; the page scrolls when they do not fit.
+- A card: `surface1`, 1 px `lineSubtle` border, radius `md`, `space.lg` padding, its
+  title in uppercase `caption` `textTertiary` on a 22 px row with `space.md` below.
+- A row: the label in `body` `textSecondary` in a 120 px column (`labelWidth`, the
+  same column as Audio Setup), the control beside it, rows `space.sm` apart. Every
+  label fits its column at 100% without an ellipsis.
+- A hint sits under its control in `small` `textTertiary`, `space.xs` below it, and
+  wraps (never clips) to the control column's width.
+- Controls take the width of what they hold, never the column: combos 200 px,
+  numeric fields 96 px, segmented controls their natural width (their track in
+  `surface0`, a well in the card), buttons their label
+  plus `space.md` each side, path fields the column less the button beside them.
+- Checkboxes stand alone in the control column with no text of their own; the
+  label says what they set and clicking the label toggles them.
+- A setting that is kept but not used yet carries a **Coming soon** badge (`info`
+  at 20% with `info` text) `space.sm` after its control, with the tooltip "Saved
+  now, used in a later version." A choice that does not work yet is disabled in its
+  menu with "(coming soon)" after it. No hint talks about the implementation.
+
+### Pages
+
+- **General**
+  - *Projects*: Folder (a path field with **Choose…**; when empty it shows the
+    default, the Documents folder, as its placeholder; hint "New projects are
+    saved here."), Recent (0 to 20, "Shown in the Project menu."), Autosave (0 to
+    60 min, "Keeps unsaved changes for recovery after a crash. 0 turns it off.").
+  - *Appearance*: Theme (segmented Dark | Light, Light disabled with the tooltip
+    "The light theme is coming soon."), Accent (**Decision**: user accent override
+    is in scope: six presets plus hex), Contrast (segmented Standard | High; "High
+    brightens lines and secondary text."), UI scale (combo: Follow system, 100% to
+    200%; it applies at once). Accent and Contrast note "Applies the next time Northlight starts."
+  - Accent swatches are 20 px circles `space.sm` apart, from the track palette
+    entries named in `track.accentPresets` (Overcast, the default, first), each with
+    its name as tooltip. Hover: a 1 px `lineStrong` ring 2 px outside. Chosen: a
+    2 px `textPrimary` ring 2 px outside. Left and Right move the choice; the focus
+    ring surrounds the row. The hex field (96 px, `value` mono) shows the chosen
+    colour's hex and accepts any `#RRGGBB`; an invalid entry turns its border
+    `danger` and reverts when the field loses focus.
+- **Audio**: the Audio Setup content inline (8.1), its cards on the same left edge
+  as every other page's.
+- **Recording**
+  - *Files*: Format (WAV 32-bit float; WAV 24-bit (coming soon)), Take names (a
+    200 px field, Coming soon; "{track} and {take} become the track name and take
+    number.").
+  - *Count-in and click*: Count-in (segmented Off | 1 bar | 2 bars | 4 bars; "Used
+    when a project opens."), Pre-roll (bars, Coming soon), Click level (dB).
+- **Editing**
+  - *Snap*: Snap (checkbox; "On when a project opens."), Grid (combo: Adaptive, Bar,
+    Beat, 1/8, 1/16, 1/32).
+  - *Edits*: Ripple (checkbox; "On when a project opens."), Fade (ms, Coming soon;
+    "The fade new clips start with.").
+  - *View*: Follow playhead (checkbox; "Scrolls the arrange view to keep the playhead in
+    sight.").
+- **Plugins**
+  - *Folders*: the extra scan folders as 28 px rows in a `surface0` well (radius
+    `sm`): the folder icon, the path in `body` (ellipsis at the start, so the folder
+    name shows) and a ghost remove button (`close`, "Remove folder"); hover
+    `surface2`. Empty: "Only the standard VST3 and CLAP folders are scanned." in
+    `textTertiary`, centred. Four rows show; more scroll. **Add folder…** below,
+    with the hint "Scanned as well as the standard VST3 and CLAP folders."
+  - *Scanning*: Scan on launch (checkbox; "Looks for new and changed plugins when
+    Northlight starts."), Scan (**Scan for changes**), Blocklist ("None" or "3
+    plugins" in `body` `textPrimary`, then **Clear**, which only shows when there are some;
+    "Plugins that crashed or hung while being scanned are skipped until cleared.").
+  - *Windows*: Keep on top (checkbox; "Plugin windows stay above the main window.").
+- **Shortcuts**: the search field (the `search` icon inside it, `space.sm` from its
+  left edge) and a card holding the table, which fills the rest of the page and
+  scrolls. Actions are grouped under uppercase `caption` `textTertiary` headers
+  (Transport, View, Tracks, Editing, Files, App); rows are 28 px with the action in
+  `body` `textPrimary` and its keys right aligned as key caps (the tooltip's:
+  `caption` `textSecondary` on `surface2`, 1 px `lineStrong`, radius `sm`, 18 px
+  high), with "or" in `small` `textTertiary` between alternatives. Hover
+  `surface2`. A search with no match shows "No shortcuts match “…”." centred in
+  `textTertiary`. Rebinding, conflicts and Reset to defaults come with the keyboard
+  map editor.
+- **Diagnostics**
+  - *Crash reports*: Send reports (checkbox, Coming soon; "Reports are always kept on this
+    computer, in the settings folder's Crashes folder.").
+  - *Support*: Settings (the folder's path in `small` `textSecondary`, ellipsis at
+    the start, then **Show in Explorer**), Report (**Copy system report**; "Copies
+    device, plugin and system details for a bug report.").
 
 ## 8.3 First run
 
@@ -147,6 +247,7 @@ shows the same window over the main window, without the progress line and with
 - Audio Setup matches the card layout, 120 px label column, live input meters per
   channel, and the status line with its dot.
 - Calibration shows the inline progress while it runs.
-- Preferences: each page matches the row layout; Shortcuts rebinding and conflict
-  display work.
+- Preferences: each page matches the card and row layout, no control is wider than
+  what it holds, no label or hint clips, every setting not used yet carries its
+  badge, and the Audio page's cards line up with the other pages'.
 - The first-run sheets match and do not appear on a second launch.

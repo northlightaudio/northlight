@@ -15,13 +15,14 @@
 namespace northlight::ui
 {
 
-// Preferences (screens/setup.md 8.2): a 160 px page list on the left and the page's
-// rows (a 200 px label and a control, section headers in uppercase caption) on
-// the right. Pages: General, Audio (the Audio Setup content inline), Recording,
-// Editing, Plugins, Shortcuts (a searchable table of the keyboard map) and
-// Diagnostics. Every value is a user setting read and written through the
-// callbacks; the owner re-applies the ones with an immediate effect when
-// onChanged fires. What has no effect yet says so in its hint.
+// Preferences (screens/setup.md 8.2): the page list on canvas at the left and the
+// page on surface0, its settings in cards like Audio Setup's. A card row is a label
+// in the 120 px column, a control as wide as what it holds, an optional Coming soon
+// badge and a wrapping hint. Pages: General, Audio (the Audio Setup content
+// inline), Recording, Editing, Plugins, Shortcuts (a searchable table of the
+// keyboard map) and Diagnostics. Every value is a user setting read and written
+// through the callbacks; the owner re-applies the ones with an immediate effect
+// when onChanged fires.
 class PreferencesView final : public juce::Component
 {
 public:
@@ -43,6 +44,17 @@ public:
     void showPage(const juce::String& key); // "general", "audio", "recording", "editing", "plugins",
                                             // "shortcuts", "diagnostics"
     juce::String currentPage() const;
+    static const std::vector<juce::String>& pageKeys();
+
+    // The laid-out rows of the page showing, in page coordinates (for tests).
+    struct RowLayout
+    {
+        juce::String label, hint;
+        juce::Rectangle<int> card, labelBounds, control, hintBounds;
+        juce::Component* component = nullptr;
+        bool badge = false, bare = false;
+    };
+    std::vector<RowLayout> rowLayout() const;
 
     void paint(juce::Graphics& g) override;
     void resized() override;
@@ -50,6 +62,7 @@ public:
     static constexpr int preferredWidth = 820;
     static constexpr int preferredHeight = 600;
     static constexpr int listWidth = 160;
+    static constexpr int maxCardWidth = 600;
 
     // The settings keys (shared with the owner, which applies them).
     struct Keys
@@ -57,6 +70,7 @@ public:
         static constexpr const char* projectFolder = "general.projectFolder";
         static constexpr const char* recentCount = "general.recentCount";
         static constexpr const char* autosaveMinutes = "general.autosaveMinutes";
+        static constexpr const char* theme = "general.theme";
         static constexpr const char* accent = "general.accent";
         static constexpr const char* uiScale = "general.uiScale";
         static constexpr const char* contrast = "general.contrast";
@@ -79,8 +93,6 @@ public:
 private:
     class Page;
     class PageList;
-    class Swatches;
-    class Shortcuts;
 
     std::string get(const char* key, const std::string& fallback = {}) const;
     void set(const char* key, const std::string& value);
@@ -89,14 +101,18 @@ private:
     // Writes the user's tokens.json beside the settings from the accent and
     // contrast choices (Theme::initialise reads it at the next launch).
     void writeTokenOverride();
+    // An async folder chooser starting at `start`; `chosen` gets the folder.
+    void chooseFolder(const juce::String& title,
+                      const juce::File& start,
+                      std::function<void(const juce::File&)> chosen);
 
     const Theme& theme_;
     audio::AudioDeviceLayer& audio_;
     const hosting::PluginRegistry& registry_;
     std::unique_ptr<PageList> list_;
     std::vector<std::unique_ptr<Page>> pages_;
-    std::vector<juce::String> keys_;
     juce::Viewport content_;
+    std::unique_ptr<juce::FileChooser> chooser_;
     int current_ = 0;
     bool updating_ = false;
 };

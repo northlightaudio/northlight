@@ -56,6 +56,8 @@ struct Theme
     {
         std::vector<TrackColour> palette;
         std::string defaultBus = "Slate";
+        // Palette entries offered as accent presets in Preferences, the default first.
+        std::vector<std::string> accentPresets;
         float clipBodyAlpha = 0.22f;
         float clipBodySelectedAlpha = 0.32f;
         float clipHeaderAlpha = 0.55f;

@@ -13,6 +13,10 @@ Northlight has not had a release yet. The first release, 0.1.0, will include:
 
 ### Added
 
+- Preferences in cards like Audio Setup's: an icon page list, controls sized to
+  what they hold, accent presets from the track palette, scan folders as a list
+  with Add folder and Remove, a grouped shortcut table with key caps, and a
+  Coming soon badge on settings that are kept but not used yet.
 - Stereo inputs, set up in Audio Setup from any two inputs of an interface and
   chosen by name in a track's input menu; a stereo track records one stereo file and
   monitors in stereo.

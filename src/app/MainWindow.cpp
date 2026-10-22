@@ -3330,6 +3330,19 @@ juce::StringArray MainWindow::capture(const juce::File& folder, float scale)
             visit(*child);
     };
     visit(*content);
+    // Preferences is a window of its own: save each of its pages, then return to the
+    // page it was showing.
+    if (preferencesWindow_ != nullptr && preferencesWindow_->isVisible())
+    {
+        auto& view = preferencesWindow_->view();
+        const auto shown = view.currentPage();
+        for (const auto& page : ui::PreferencesView::pageKeys())
+        {
+            view.showPage(page);
+            save(view, "preferences-" + page);
+        }
+        view.showPage(shown);
+    }
     return saved;
 }
 

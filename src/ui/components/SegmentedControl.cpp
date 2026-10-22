@@ -31,7 +31,7 @@ private:
 };
 } // namespace
 
-SegmentedControl::SegmentedControl(const Theme& theme) : theme_(theme)
+SegmentedControl::SegmentedControl(const Theme& theme) : theme_(theme), track_(theme.colours.surface1)
 {
     setWantsKeyboardFocus(true);
     setRepaintsOnMouseActivity(true);
@@ -43,6 +43,40 @@ void SegmentedControl::setSegments(std::vector<juce::String> labels)
     selected_ = juce::jlimit(0, std::max(0, static_cast<int>(labels_.size()) - 1), selected_);
     resized();
     repaint();
+}
+
+void SegmentedControl::setSegmentEnabled(int index, bool enabled)
+{
+    if (index < 0)
+        return;
+    if (disabled_.size() <= static_cast<size_t>(index))
+        disabled_.resize(static_cast<size_t>(index) + 1, false);
+    disabled_[static_cast<size_t>(index)] = !enabled;
+    repaint();
+}
+
+bool SegmentedControl::isSegmentEnabled(int index) const noexcept
+{
+    return index >= 0 &&
+           (static_cast<size_t>(index) >= disabled_.size() || !disabled_[static_cast<size_t>(index)]);
+}
+
+void SegmentedControl::setSegmentTooltip(int index, const juce::String& tooltip)
+{
+    if (index < 0)
+        return;
+    if (tooltips_.size() <= static_cast<size_t>(index))
+        tooltips_.resize(static_cast<size_t>(index) + 1);
+    tooltips_[static_cast<size_t>(index)] = tooltip;
+}
+
+juce::String SegmentedControl::getTooltip()
+{
+    const auto mouse = getMouseXYRelative().toFloat();
+    for (int i = 0; i < static_cast<int>(tooltips_.size()); ++i)
+        if (tooltips_[static_cast<size_t>(i)].isNotEmpty() && segmentBounds(i).contains(mouse))
+            return tooltips_[static_cast<size_t>(i)];
+    return juce::SettableTooltipClient::getTooltip();
 }
 
 int SegmentedControl::preferredWidth() const
@@ -106,7 +140,7 @@ void SegmentedControl::paint(juce::Graphics& g)
     const auto& c = theme_.colours;
     const auto bounds = getLocalBounds().toFloat();
     const float radius = bounds.getHeight() * 0.5f;
-    g.setColour(c.surface1);
+    g.setColour(track_);
     g.fillRoundedRectangle(bounds, radius);
     if (!labels_.empty())
     {
@@ -117,7 +151,9 @@ void SegmentedControl::paint(juce::Graphics& g)
     g.setFont(theme_.label());
     for (int i = 0; i < static_cast<int>(labels_.size()); ++i)
     {
-        g.setColour(!isEnabled() ? c.textDisabled : i == selected_ ? c.textPrimary : c.textSecondary);
+        g.setColour(!isEnabled() || !isSegmentEnabled(i) ? c.textDisabled
+                    : i == selected_                     ? c.textPrimary
+                                                         : c.textSecondary);
         g.drawText(
             labels_[static_cast<size_t>(i)], segmentBounds(i).toNearestInt(), juce::Justification::centred);
     }
@@ -129,18 +165,26 @@ void SegmentedControl::mouseDown(const juce::MouseEvent& e)
 {
     grabKeyboardFocus();
     for (int i = 0; i < static_cast<int>(labels_.size()); ++i)
-        if (segmentBounds(i).contains(e.position))
+        if (segmentBounds(i).contains(e.position) && isSegmentEnabled(i))
             setSelected(i, juce::sendNotification);
 }
 
 bool SegmentedControl::keyPressed(const juce::KeyPress& key)
 {
+    int step = 0;
     if (key == juce::KeyPress::leftKey)
-        setSelected(selected_ - 1, juce::sendNotification);
+        step = -1;
     else if (key == juce::KeyPress::rightKey)
-        setSelected(selected_ + 1, juce::sendNotification);
+        step = 1;
     else
         return false;
+    // Skip disabled segments.
+    for (int i = selected_ + step; i >= 0 && i < static_cast<int>(labels_.size()); i += step)
+        if (isSegmentEnabled(i))
+        {
+            setSelected(i, juce::sendNotification);
+            break;
+        }
     return true;
 }
 

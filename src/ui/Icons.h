@@ -83,6 +83,7 @@ enum class Icon
     windowMinimise, // the window buttons in the header (custom window chrome)
     windowMaximise,
     windowRestore,
+    keyboard, // a computer keyboard: shortcuts
 };
 
 struct Icons
@@ -94,7 +95,7 @@ struct Icons
     static void draw(juce::Graphics& g, Icon icon, juce::Rectangle<float> bounds, juce::Colour colour);
     static const char* name(Icon icon);
     static const char* svgPath(Icon icon);
-    static constexpr int count = static_cast<int>(Icon::windowRestore) + 1;
+    static constexpr int count = static_cast<int>(Icon::keyboard) + 1;
 };
 
 // An icon button (28×28 default): ghost at rest, the icon in textSecondary,

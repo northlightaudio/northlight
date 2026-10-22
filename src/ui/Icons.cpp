@@ -114,6 +114,7 @@ const Definition definitions[Icons::count] = {
     {"windowMinimise", "M3 8 H13", false},
     {"windowMaximise", "M3.5 3.5 H12.5 V12.5 H3.5 Z", false},
     {"windowRestore", "M5.5 3.5 H12.5 V10.5 M3.5 5.5 H10.5 V12.5 H3.5 Z", false},
+    {"keyboard", "M2 4.5 H14 V11.5 H2 Z M4.5 7 H4.51 M7 7 H7.01 M9 7 H9.01 M11.5 7 H11.51 M5 9.5 H11", false},
 };
 } // namespace
 
