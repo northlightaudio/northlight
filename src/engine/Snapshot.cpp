@@ -62,6 +62,15 @@ std::shared_ptr<const AudioSource> MediaCache::sourceForClip(const core::AudioCl
     return base;
 }
 
+void MediaCache::adopt(const std::string& path, std::shared_ptr<const AudioSource> source)
+{
+    NORTHLIGHT_ASSERT_NOT_REALTIME("MediaCache::adopt");
+    if (source == nullptr)
+        return;
+    errors_.erase(path);
+    sources_[path] = std::move(source);
+}
+
 void MediaCache::prune()
 {
     std::erase_if(instances_, [](const auto& entry) { return entry.second.source.use_count() == 1; });

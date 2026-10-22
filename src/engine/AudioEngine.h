@@ -51,6 +51,19 @@ public:
     void setClipSourceHook(MediaCache::ClipSourceHook hook) { media_.setClipSourceHook(std::move(hook)); }
     void setStretchHook(MediaCache::ClipSourceHook hook) { media_.setStretchHook(std::move(hook)); }
     const std::map<std::string, std::string>& mediaErrors() const noexcept { return media_.errors(); }
+    // Opening a project in steps (ProjectSession): a file decoded elsewhere for
+    // the next compile to use, and an insert's instance made ahead of it (one at
+    // a time, so the UI can repaint between plugins). The caller keeps each
+    // result alive until the compile has taken it; garbage collection drops
+    // what no snapshot holds.
+    void adoptMedia(const std::string& path, std::shared_ptr<const AudioSource> source)
+    {
+        media_.adopt(path, std::move(source));
+    }
+    std::shared_ptr<InsertProcessor> prepareInsert(const core::Insert& insert)
+    {
+        return inserts_.get(insert);
+    }
 
     void play();
     void stop();

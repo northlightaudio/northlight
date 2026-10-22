@@ -247,6 +247,10 @@ public:
     void setStretchHook(ClipSourceHook hook) { stretchHook_ = std::move(hook); }
     std::shared_ptr<const AudioSource> sourceForClip(const core::AudioClip& clip, double sampleRate);
 
+    // A source loaded elsewhere (on a loading thread) for `path`; get() returns it
+    // while its rate is the one asked for.
+    void adopt(const std::string& path, std::shared_ptr<const AudioSource> source);
+
     // Drops entries no snapshot references any more.
     void prune();
 

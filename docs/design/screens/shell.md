@@ -173,6 +173,50 @@ New project with no tracks: the arrange area shows the mark at 48 px in
 a row: "Add audio track", "Add MIDI track", "Import audio…", plus a `small`
 hint "or drop audio files here". No other chrome changes.
 
+## Opening a project
+
+Opening a project (File > Open, a recent file, New from template, or Restore on the
+autosave toast) never freezes the window. A loading sheet shows the progress:
+
+- **Anatomy**: a blocking sheet (design-system.md, "Dialog (sheet)"), 480 wide. Title
+  `title`: "Opening Big", "New project from Band", "Restoring Big" (the file's name
+  without its extension). No body. Under the title a progress row: one line of `body`
+  `textSecondary` (cut with an ellipsis) above a 4 px bar, `surface2` track with the
+  `accent` fill (design-system.md, "Progress"). The button row holds one ghost
+  "Cancel".
+- **Stages and wording**, joined by middle dots:
+  1. "Reading the project" while the file is read and parsed.
+  2. "Reading audio · 3 of 12 · kick.wav" while its audio files are decoded.
+  3. "Loading plugins · 2 of 5 · Reverb Pro" while third-party plugins load, naming
+     the one loading now; "Setting up instruments and effects" when the project uses
+     only built-ins.
+  4. "Preparing playback" while the engine takes the project.
+- **Progress** is determinate and never goes back. It is weighted by the work: each
+  audio file one unit, each third-party plugin two, each built-in a twentieth, reading
+  and preparing playback one each.
+- **Timing**: the sheet holds the window's input from the start but appears only once
+  the load has run `motion.progressDelayMs` (400 ms), with the sheet's usual entrance,
+  so a quick open shows nothing. Third-party plugins are the exception: as soon as the
+  file is read and decoded and any are left to load, the sheet starts its entrance
+  without waiting out the delay, and no plugin loads until the sheet is fully on
+  screen naming it (each one holds the window while it loads). It leaves with the
+  sheet's fade once the project is open. Reduce-motion removes the entrance, not the
+  delay.
+- **While it shows** no key reaches the window and clicks outside the panel do
+  nothing. The current project stays in the window, untouched, while the file is read
+  and the audio decoded. When the plugins start loading the new project replaces it
+  behind the sheet and Cancel turns disabled: from then on the load runs to the end.
+- **Cancel** (or Esc) before then stops the load and leaves the current project as it
+  was; the status bar says "Stopped: Opening Big".
+- **Failure**: the sheet goes and an error toast says why ("Cannot open Big.northlight:
+  file not found"); the current project stays.
+- **Responsiveness**: reading and decoding run off the message thread. Plugins must be
+  made on it, so they are made one at a time and the sheet is painted before each, so
+  the longest pause is one plugin's own load time.
+
+`--show-loading <file> [stage]` opens a file this way and holds the load at a stage,
+so `--capture` can photograph the sheet; `--time-load <file>` prints each stage's time.
+
 ## First run
 
 On first launch, welcome sheets over the empty project choose the audio device and
@@ -189,4 +233,7 @@ scan for plugins (section 8.3). Skipping is allowed; the status bar then shows t
   drop highlight shows over a valid host; layout survives a restart; closing a
   floating panel does not lose it; "Mix" reopens the mixer on its recorded monitor.
 - The empty state and first-run sheet match their descriptions.
+- Opening a large project shows the loading sheet with each stage's wording and a
+  determinate bar; the window repaints throughout, and Cancel before the plugin stage
+  leaves the current project unchanged.
 - No zone draws a border where a surface change already separates it.

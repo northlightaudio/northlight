@@ -6,6 +6,7 @@ add_executable(northlight_juce_tests
     JuceStreamReaderTests.cpp
     AudioCallbackTests.cpp
     ProjectSessionTests.cpp
+    ProjectLoadTests.cpp
     HostedPluginTests.cpp
     ClapPluginTests.cpp
     BounceTests.cpp

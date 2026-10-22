@@ -710,21 +710,193 @@ void ProjectSession::newProject()
 
 std::string ProjectSession::open(const juce::File& file)
 {
+    if (!beginOpen(file))
+        return "another project is still loading";
+    return finishLoadNow();
+}
+
+// ----- loading in steps ----------------------------------------------------------------------
+
+namespace
+{
+double nowMs()
+{
+    return juce::Time::getMillisecondCounterHiRes();
+}
+} // namespace
+
+bool ProjectSession::beginLoad(LoadKind kind, const juce::File& file, std::string readError)
+{
+    if (load_ != nullptr)
+        return false;
+    loadKind_ = kind;
+    loadCommitted_ = false;
+    loadEngineReported_ = false;
+    loadInserts_.clear();
+    loadNextInsert_ = 0;
+    loadHostedDone_ = 0;
+    loadUnitsDone_ = 0.0;
+    loadMade_.clear();
+    load_ = std::make_unique<ProjectLoad>(file, loader_, std::move(readError));
+    return true;
+}
+
+bool ProjectSession::beginOpen(const juce::File& file)
+{
+    return beginLoad(LoadKind::open, file, "could not read project");
+}
+
+bool ProjectSession::beginTemplate(const juce::File& file)
+{
+    return beginLoad(LoadKind::fromTemplate, file, "could not read the template");
+}
+
+bool ProjectSession::beginRestore(const Autosave& autosave)
+{
+    if (!beginLoad(LoadKind::restore, autosave.file, "could not read the autosave"))
+        return false;
+    loadAutosave_ = autosave;
+    return true;
+}
+
+void ProjectSession::cancelLoad()
+{
+    if (canCancelLoad())
+        load_.reset(); // stops between files and waits for the thread
+}
+
+std::string ProjectSession::finishLoadNow()
+{
+    if (load_ != nullptr)
+        load_->wait();
+    for (;;)
+        if (auto outcome = stepLoad(1.0e9))
+            return *outcome;
+}
+
+void ProjectSession::commitLoad()
+{
     removeOwnAutosave();
     hostedSent_.clear();
     untitledStem_.clear();
-    engine_.resetCaches();
-    std::string error;
-    const auto loaded = core::projectFromJson(file.loadFileAsString().toStdString(), &error);
-    if (!loaded.has_value())
-        return error.empty() ? "could not read project" : error;
-    project_ = *loaded;
-    plugins::strip::ensureChannelStrip(project_); // projects saved before the strip existed
+    engine_.resetCaches(); // another project's ids must not reuse these instances
+    project_ = std::move(*load_->project());
     undo_.clear();
-    projectFile_ = file;
-    modified_ = false;
+    switch (loadKind_)
+    {
+        case LoadKind::open:
+            projectFile_ = load_->file();
+            modified_ = false;
+            break;
+        case LoadKind::fromTemplate:
+            project_.name = "Untitled";
+            projectFile_ = juce::File();
+            modified_ = false;
+            matchDeviceSampleRate();
+            break;
+        case LoadKind::restore:
+            projectFile_ = loadAutosave_.project;
+            modified_ = true; // not saved until the user saves it
+            discardAutosave(loadAutosave_);
+            edited();
+            break;
+    }
+    for (const auto& [path, source] : load_->media())
+        engine_.adoptMedia(path, source);
+    // The processors to make, in the order the compile would make them.
+    const auto collect = [this](const core::Channel& channel)
+    {
+        for (const auto* insert : channel.processingChain())
+            loadInserts_.push_back(*insert);
+    };
+    for (const auto& track : project_.tracks)
+        collect(track);
+    for (const auto& bus : project_.buses)
+        collect(bus);
+    loadCommitted_ = true;
+    loadPluginsStartMs_ = nowMs();
+    notify(Change::structure);
+}
+
+std::optional<std::string> ProjectSession::stepLoad(double budgetMs)
+{
+    if (load_ == nullptr)
+        return std::string{};
+    if (!loadCommitted_)
+    {
+        if (!load_->ready())
+            return std::nullopt;
+        if (!load_->project().has_value())
+        {
+            auto error = load_->error();
+            load_.reset();
+            return error;
+        }
+    }
+    const int hostedTotal = load_->timings().hostedPlugins;
+    const auto reportPlugins = [&]
+    {
+        // The next third-party plugin, even with built-ins before it: the line
+        // names what the wait is for.
+        std::string next;
+        for (size_t i = loadNextInsert_; i < loadInserts_.size() && next.empty(); ++i)
+            if (hosting::PluginRegistry::isHostedType(loadInserts_[i].type))
+                next = inserts_.displayName(loadInserts_[i].type);
+        load_->report(LoadProgress::Stage::plugins, loadHostedDone_, hostedTotal, next, loadUnitsDone_);
+    };
+    if (!loadCommitted_)
+    {
+        // The new project replaces the current one, a step of its own: the window
+        // shows it, and the progress names the first plugin, before any is made.
+        commitLoad();
+        reportPlugins();
+        return std::nullopt;
+    }
+    if (loadNextInsert_ < loadInserts_.size())
+    {
+        // Built-ins until the budget runs out; a hosted plugin only as the first
+        // of a step, so the progress naming it has been painted while it loads.
+        const double start = nowMs();
+        int made = 0;
+        while (loadNextInsert_ < loadInserts_.size())
+        {
+            const auto& insert = loadInserts_[loadNextInsert_];
+            const bool hosted = hosting::PluginRegistry::isHostedType(insert.type);
+            if (hosted && made > 0)
+                break;
+            if (auto instance = engine_.prepareInsert(insert))
+                loadMade_.push_back(std::move(instance));
+            ++loadNextInsert_;
+            ++made;
+            loadUnitsDone_ += hosted ? ProjectLoad::hostedUnits : ProjectLoad::builtInUnits;
+            if (hosted)
+            {
+                ++loadHostedDone_;
+                break;
+            }
+            if (nowMs() - start >= budgetMs)
+                break;
+        }
+        reportPlugins();
+        return std::nullopt;
+    }
+    if (!loadEngineReported_)
+    {
+        // One more step, so "Preparing playback" shows while the snapshot compiles.
+        loadEngineReported_ = true;
+        load_->timings().pluginsMs = nowMs() - loadPluginsStartMs_;
+        load_->report(LoadProgress::Stage::engine, 0, 0, {}, 0.0);
+        return std::nullopt;
+    }
+    const double engineStart = nowMs();
     adoptLoadedParameters();
-    return {};
+    load_->timings().engineMs = nowMs() - engineStart;
+    load_->report(LoadProgress::Stage::done, 0, 0, {}, 0.0);
+    lastLoadTimings_ = load_->timings();
+    loadMade_.clear(); // the snapshot holds them now
+    loadInserts_.clear();
+    load_.reset();
+    return std::string{};
 }
 
 std::string ProjectSession::save(const juce::File& file)
@@ -799,23 +971,9 @@ std::string ProjectSession::saveAsTemplate(const juce::String& name)
 
 std::string ProjectSession::newFromTemplate(const juce::File& file)
 {
-    std::string error;
-    const auto loaded = core::projectFromJson(file.loadFileAsString().toStdString(), &error);
-    if (!loaded.has_value())
-        return error.empty() ? "could not read the template" : error;
-    removeOwnAutosave();
-    untitledStem_.clear();
-    engine_.resetCaches();
-    project_ = *loaded;
-    project_.name = "Untitled";
-    hostedSent_.clear();
-    plugins::strip::ensureChannelStrip(project_);
-    undo_.clear();
-    projectFile_ = juce::File();
-    modified_ = false;
-    matchDeviceSampleRate();
-    adoptLoadedParameters();
-    return {};
+    if (!beginTemplate(file))
+        return "another project is still loading";
+    return finishLoadNow();
 }
 
 // ----- media management ------------------------------------------------------------------
@@ -1049,23 +1207,9 @@ std::vector<ProjectSession::Autosave> ProjectSession::leftoverAutosaves() const
 
 std::string ProjectSession::restoreAutosave(const Autosave& autosave)
 {
-    std::string error;
-    const auto loaded = core::projectFromJson(autosave.file.loadFileAsString().toStdString(), &error);
-    if (!loaded.has_value())
-        return error.empty() ? "could not read the autosave" : error;
-    removeOwnAutosave();
-    untitledStem_.clear();
-    hostedSent_.clear();
-    engine_.resetCaches();
-    project_ = *loaded;
-    plugins::strip::ensureChannelStrip(project_);
-    undo_.clear();
-    projectFile_ = autosave.project;
-    modified_ = true; // not saved until the user saves it
-    discardAutosave(autosave);
-    edited();
-    adoptLoadedParameters();
-    return {};
+    if (!beginRestore(autosave))
+        return "another project is still loading";
+    return finishLoadNow();
 }
 
 void ProjectSession::discardAutosave(const Autosave& autosave)

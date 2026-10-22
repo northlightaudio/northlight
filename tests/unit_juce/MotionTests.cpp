@@ -410,3 +410,29 @@ TEST_CASE("render sample tooltips", "[.render]")
     juce::FileOutputStream stream(out);
     juce::PNGImageFormat().writeImageToStream(image, stream);
 }
+
+TEST_CASE("A progress sheet waits out its delay unless hurried, and says when it is fully shown",
+          "[ui][motion]")
+{
+    const juce::ScopedJuceInitialiser_GUI juceInit;
+    const auto& theme = ui::Theme::dark();
+    juce::Component host;
+    host.setBounds(0, 0, 800, 600);
+    ui::SheetOptions options;
+    options.blocking = true;
+    options.appearAfterMs = theme.motion.progressDelayMs;
+    auto* sheet = ui::Sheet::show(
+        host, theme, "Opening Big", {}, {{"Cancel", false, false, true}}, [](int) {}, nullptr, 0, options);
+    CHECK(sheet->getAlpha() == Approx(0.0f).margin(0.01f));
+    CHECK_FALSE(sheet->hasAppeared());
+    // Nothing runs the delay's timer here: only appearNow starts the entrance.
+    ui::motion::Tween::finishAllForTesting();
+    CHECK_FALSE(sheet->hasAppeared());
+    sheet->appearNow();
+    ui::motion::Tween::finishAllForTesting();
+    CHECK(sheet->hasAppeared());
+    CHECK(sheet->getAlpha() == Approx(1.0f));
+    // A blocking sheet keeps every key from the window behind.
+    CHECK(sheet->keyPressed(juce::KeyPress(' ')));
+    delete sheet;
+}

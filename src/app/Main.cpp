@@ -24,6 +24,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <cstdio>
 #include <functional>
 
 namespace northlight
@@ -120,6 +121,10 @@ public:
     //   --no-count-in        record without the count-in
     //   --layout <Mix|Edit>  apply a layout preset
     //   --demo-song <file>   write the demo song (Northern Drift) to the file and open it
+    //   --time-load <file>   open the file, print how long each stage of the load took, quit
+    //   --show-loading <file> [stage]  open the file as File > Open does, with the loading
+    //                        sheet, and hold the load once it reaches the stage (reading,
+    //                        media, plugins, engine; media if not given) for --capture
     //   --instrument-editor  open the first instrument's editor window
     //   --insert-editor      open the editor window of the first insert on the first track that has one
     //   --panel <name>       show a panel: mixer, editor, instruments, pianoRoll, diagnostics, browser,
@@ -259,6 +264,38 @@ public:
                 if (file.replaceWithText(
                         juce::String(core::projectToJson(makeDemoSong(), true, &builtInKeys))))
                     session_->open(file);
+            }
+            else if (arg == "--time-load" && i + 1 < tokens.size())
+            {
+                const auto file = tokens.getReference(++i).resolveAsFile();
+                const auto error = session_->open(file);
+                const auto& t = session_->lastLoadTimings();
+                if (!error.empty())
+                    std::printf("--time-load: %s\n", error.c_str());
+                else
+                    std::printf(
+                        "load %s: read %.0f ms, media %.0f ms (%d files), plugins %.0f ms (%d inserts, "
+                        "%d hosted), engine %.0f ms, total %.0f ms\n",
+                        file.getFileName().toRawUTF8(),
+                        t.readMs,
+                        t.mediaMs,
+                        t.mediaFiles,
+                        t.pluginsMs,
+                        t.inserts,
+                        t.hostedPlugins,
+                        t.engineMs,
+                        t.totalMs());
+                std::fflush(stdout);
+                juce::JUCEApplication::getInstance()->quit();
+                return;
+            }
+            else if (arg == "--show-loading" && i + 1 < tokens.size())
+            {
+                const auto file = tokens.getReference(++i).resolveAsFile();
+                juce::String stage = "media";
+                if (i + 1 < tokens.size() && !tokens.getReference(i + 1).text.startsWith("--"))
+                    stage = tokens.getReference(++i).text;
+                mainWindow_->openWithProgress(file, stage);
             }
             else if (arg == "--import" && i + 1 < tokens.size())
                 session_->importAudioFile(tokens.getReference(++i).resolveAsFile(), 0);

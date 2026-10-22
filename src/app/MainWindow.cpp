@@ -28,6 +28,7 @@
 #include "ui/SplashScreen.h"
 #include "ui/Theme.h"
 #include "ui/components/Meter.h"
+#include "ui/components/ProgressRow.h"
 #include "ui/components/Sheet.h"
 #include "ui/components/Toast.h"
 #include "ui/components/Tooltips.h"
@@ -647,6 +648,8 @@ public:
     // ----- the keyboard map (interaction.md 10.4) ---------------------------------------
     bool keyPressed(const juce::KeyPress& key) override
     {
+        if (session_.isLoading())
+            return true; // the loading sheet holds the window
         using M = juce::ModifierKeys;
         const int mods = key.getModifiers().withoutMouseButtons().getRawFlags();
         const auto is = [&](int code, int with = 0) { return key.getKeyCode() == code && mods == with; };
@@ -1927,17 +1930,146 @@ private:
 
     void newFromTemplate(const juce::File& file)
     {
-        if (session_.isRecording())
+        if (session_.isRecording() || session_.isLoading())
             return;
         session_.stop();
         mixer_.closeEditors();
-        const auto error = session_.newFromTemplate(file);
-        if (!error.empty())
-            toast(ui::ToastStack::Kind::error,
-                  "Cannot use the template: " + juce::String::fromUTF8(error.c_str()));
-        else
-            status_.showMessage("New project from " + file.getFileNameWithoutExtension());
-        refresh();
+        if (!session_.beginTemplate(file))
+            return;
+        watchLoad("New project from " + file.getFileNameWithoutExtension(),
+                  [this, file](const std::string& error)
+                  {
+                      if (!error.empty())
+                          toast(ui::ToastStack::Kind::error,
+                                "Cannot use the template: " + juce::String::fromUTF8(error.c_str()));
+                      else
+                          status_.showMessage("New project from " + file.getFileNameWithoutExtension());
+                      refresh();
+                      grabKeyboardFocus();
+                  });
+    }
+
+    // Restores a crashed session's autosave (the toast's Restore), with progress.
+    void restoreAutosave(const ProjectSession::Autosave& autosave)
+    {
+        if (session_.isRecording() || session_.isLoading())
+            return;
+        session_.stop();
+        mixer_.closeEditors();
+        if (!session_.beginRestore(autosave))
+            return;
+        watchLoad("Restoring " + juce::String::fromUTF8(autosave.name.c_str()),
+                  [this](const std::string& error)
+                  {
+                      if (!error.empty())
+                          toast(ui::ToastStack::Kind::error,
+                                "Cannot restore: " + juce::String::fromUTF8(error.c_str()));
+                      refresh();
+                      grabKeyboardFocus();
+                  });
+    }
+
+    // ----- loading a project in steps (screens/shell.md, "Opening a project") ---------
+    // Shows the loading sheet over the window while the session loads what the
+    // caller began, steps the load from a timer and calls `onFinished` with the
+    // outcome (an error, or empty). The sheet appears only once the load has run
+    // for motion.progressDelayMs, but holds the window's input from the start.
+    // `holdAt` (--show-loading) stops stepping once the load reaches that stage
+    // and shows the sheet at once, so a capture finds it.
+    void watchLoad(const juce::String& title,
+                   std::function<void(const std::string&)> onFinished,
+                   std::optional<LoadProgress::Stage> holdAt = std::nullopt)
+    {
+        loadFinished_ = std::move(onFinished);
+        loadHold_ = holdAt;
+        loadHeld_ = false;
+        auto row = std::make_unique<ui::ProgressRow>(theme_);
+        loadRow_ = row.get();
+        ui::SheetOptions options;
+        options.blocking = true;
+        options.appearAfterMs = holdAt.has_value() ? 0 : theme_.motion.progressDelayMs;
+        const auto name = title;
+        loadSheet_ = ui::Sheet::show(
+            *this,
+            theme_,
+            title,
+            {},
+            {{"Cancel", false, false, true}},
+            [this, name](int)
+            {
+                // Cancel (or Esc) while the current project is still the old one.
+                if (!session_.canCancelLoad())
+                    return;
+                session_.cancelLoad();
+                loadDriver_.stopTimer();
+                loadFinished_ = nullptr;
+                status_.showMessage("Stopped: " + name);
+                grabKeyboardFocus();
+            },
+            std::move(row),
+            ui::ProgressRow::preferredHeight(theme_),
+            options);
+        loadDriver_.tick = [this] { stepLoading(); };
+        stepLoading();
+        if (session_.isLoading() && !loadHeld_)
+            loadDriver_.startTimer(loadStepMs);
+    }
+
+    void stepLoading()
+    {
+        // Slow steps ahead (third-party plugins hold the message thread, so the
+        // sheet's delay and entrance could not run between them): bring the sheet
+        // in now and take no step until it is fully on screen.
+        if (loadSheet_ != nullptr && !loadSheet_->hasAppeared() && session_.loadHasSlowStepsAhead())
+        {
+            loadSheet_->appearNow();
+            showLoadProgress();
+            return;
+        }
+        const bool wasCancellable = session_.canCancelLoad();
+        const auto outcome = session_.stepLoad();
+        if (outcome.has_value())
+        {
+            finishLoading(*outcome);
+            return;
+        }
+        if (wasCancellable && !session_.canCancelLoad())
+        {
+            // The new project is the session's now: the window shows it behind the
+            // sheet, and the load can no longer be cancelled.
+            refresh();
+            if (loadSheet_ != nullptr)
+                loadSheet_->setButtonEnabled(0, false);
+        }
+        const auto progress = showLoadProgress();
+        if (loadHold_.has_value() && progress.stage >= *loadHold_)
+        {
+            loadHeld_ = true;
+            loadDriver_.stopTimer();
+        }
+        // Paint now: the next step may make a plugin that holds the thread a while.
+        if (auto* peer = getPeer())
+            peer->performAnyPendingRepaintsNow();
+    }
+
+    LoadProgress showLoadProgress()
+    {
+        const auto progress = session_.loadProgress();
+        if (loadRow_ != nullptr)
+            loadRow_->setProgress(progress.fraction, juce::String::fromUTF8(describe(progress).c_str()));
+        return progress;
+    }
+
+    void finishLoading(const std::string& error)
+    {
+        loadDriver_.stopTimer();
+        if (loadSheet_ != nullptr)
+            loadSheet_->dismiss();
+        loadSheet_ = nullptr;
+        auto finished = std::move(loadFinished_);
+        loadFinished_ = nullptr;
+        if (finished)
+            finished(error);
     }
 
     void saveTemplate()
@@ -2035,19 +2167,28 @@ private:
                               });
     }
 
-    void openFile(const juce::File& file)
+    void openFile(const juce::File& file, std::optional<LoadProgress::Stage> holdAt = std::nullopt)
     {
+        if (session_.isLoading())
+            return;
         session_.stop();
         mixer_.closeEditors();
-        const auto error = session_.open(file);
-        if (!error.empty())
-            toast(ui::ToastStack::Kind::error,
-                  "Cannot open " + file.getFileName() + ": " + juce::String::fromUTF8(error.c_str()));
-        else
-            rememberRecent(file);
-        refresh();
-        grabKeyboardFocus();
-        owner_.offerRecovery();
+        if (!session_.beginOpen(file))
+            return;
+        watchLoad(
+            "Opening " + file.getFileNameWithoutExtension(),
+            [this, file](const std::string& error)
+            {
+                if (!error.empty())
+                    toast(ui::ToastStack::Kind::error,
+                          "Cannot open " + file.getFileName() + ": " + juce::String::fromUTF8(error.c_str()));
+                else
+                    rememberRecent(file);
+                refresh();
+                grabKeyboardFocus();
+                owner_.offerRecovery();
+            },
+            holdAt);
     }
 
     void saveProject(bool saveAs)
@@ -2751,6 +2892,23 @@ private:
     ui::InspectorPanel inspector_;
     ui::PanelManager panels_; // after the panels: its floating windows go first
     ui::Sheet* sheet_ = nullptr;
+    // The loading sheet and its progress row (they delete themselves), and the
+    // timer that steps the load (watchLoad).
+    static constexpr int loadStepMs = 15;
+    juce::Component::SafePointer<ui::Sheet> loadSheet_;
+    juce::Component::SafePointer<ui::ProgressRow> loadRow_;
+    std::function<void(const std::string&)> loadFinished_;
+    std::optional<LoadProgress::Stage> loadHold_;
+    bool loadHeld_ = false;
+    struct LoadDriver final : juce::Timer
+    {
+        std::function<void()> tick;
+        void timerCallback() override
+        {
+            if (tick)
+                tick();
+        }
+    } loadDriver_;
     std::unique_ptr<juce::FileChooser> chooser_;
     std::string lastRecordingMessage_, lastBounceMessage_, lastPluginMessage_, lastFreezeMessage_;
     bool lastRecording_ = false;
@@ -3155,6 +3313,23 @@ void MainWindow::applyLayoutPreset(const juce::String& name)
         content->panels_.applyPreset(name);
 }
 
+void MainWindow::openWithProgress(const juce::File& file, const juce::String& holdAt)
+{
+    auto* content = dynamic_cast<Content*>(getContentComponent());
+    if (content == nullptr)
+        return;
+    std::optional<LoadProgress::Stage> hold;
+    if (holdAt == "reading")
+        hold = LoadProgress::Stage::reading;
+    else if (holdAt == "media")
+        hold = LoadProgress::Stage::media;
+    else if (holdAt == "plugins")
+        hold = LoadProgress::Stage::plugins;
+    else if (holdAt == "engine")
+        hold = LoadProgress::Stage::engine;
+    content->openFile(file, hold);
+}
+
 void MainWindow::notify(const juce::String& message, bool warning)
 {
     if (auto* content = dynamic_cast<Content*>(getContentComponent()))
@@ -3240,11 +3415,8 @@ void MainWindow::offerRecovery()
             {
                 if (safe == nullptr)
                     return;
-                const auto error = safe->session_.restoreAutosave(autosave);
-                if (!error.empty())
-                    if (auto* c = dynamic_cast<Content*>(safe->getContentComponent()))
-                        c->toast(ui::ToastStack::Kind::error,
-                                 "Cannot restore: " + juce::String::fromUTF8(error.c_str()));
+                if (auto* c = dynamic_cast<Content*>(safe->getContentComponent()))
+                    c->restoreAutosave(autosave);
             },
             "Discard",
             [autosave] { ProjectSession::discardAutosave(autosave); });

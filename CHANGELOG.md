@@ -31,4 +31,7 @@ Northlight has not had a release yet. The first release, 0.1.0, will include:
 - Clip editing, markers and regions, folder tracks and track freezing.
 - Export to WAV, AIFF, FLAC and Ogg Vorbis with loudness normalisation and dither.
 - Autosave, templates, media management and local crash reports.
+- Progress while a project opens: a sheet shows what is loading (the project, each
+  audio file, each plugin by name) with a progress bar, and the window keeps drawing.
+  Opening can be cancelled until the plugins start loading.
 - The Machair dusk design, with a splash screen and About box that show the version.

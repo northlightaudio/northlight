@@ -2,6 +2,7 @@
 
 #include "Bounce.h"
 #include "SampleFiles.h"
+#include "app/ProjectLoad.h"
 #include "audio/JuceMediaLoader.h"
 #include "audio/PeakStore.h"
 #include "core/Command.h"
@@ -191,7 +192,10 @@ public:
 
     // ----- files ------------------------------------------------------------------
     void newProject();
+    // Opens a project file at once (blocking until it has loaded); the window
+    // opens in steps instead (beginOpen). Returns an error or empty.
     std::string open(const juce::File& file);
+
     std::string save(const juce::File& file);
     const juce::File& projectFile() const noexcept { return projectFile_; }
     bool isModified() const noexcept { return modified_; }
@@ -246,6 +250,39 @@ public:
     // Writes the autosave now if there are unsaved changes; returns whether it wrote.
     bool autosaveNow();
     juce::File currentAutosaveFile() const;
+
+    // ----- loading in steps -----------------------------------------------------------
+    // Opening a project, a template or an autosave in steps, so the window can
+    // show progress and repaint while it loads (screens/shell.md, "Opening a
+    // project"). The file is read and parsed and its media decoded on a thread of
+    // its own while the current project stays as it is; then stepLoad(), on the
+    // message thread, replaces the current project with it, makes its plugins a
+    // few at a time and publishes it. open(), newFromTemplate() and
+    // restoreAutosave() run the same steps to the end at once.
+    // False (and nothing started) while another load is running.
+    bool beginOpen(const juce::File& file);
+    bool beginTemplate(const juce::File& file);
+    bool beginRestore(const Autosave& autosave);
+    bool isLoading() const noexcept { return load_ != nullptr; }
+    LoadProgress loadProgress() const { return load_ != nullptr ? load_->progress() : LoadProgress{}; }
+    // The next piece of the load, taking about `budgetMs` (at least one plugin
+    // when there is one to make). Returns nullopt while the load goes on, then
+    // its outcome once: an error, or empty when the project is open.
+    std::optional<std::string> stepLoad(double budgetMs = 12.0);
+    // Until the new project replaces the current one the load can be cancelled,
+    // which leaves the current project as it was.
+    bool canCancelLoad() const noexcept { return load_ != nullptr && !loadCommitted_; }
+    // True once the background part is done and third-party plugins remain to be
+    // made: each next step may hold the message thread for most of a second, so
+    // the window must show its progress before taking one.
+    bool loadHasSlowStepsAhead() const noexcept
+    {
+        return load_ != nullptr && load_->ready() && load_->project().has_value() &&
+               loadHostedDone_ < load_->timings().hostedPlugins;
+    }
+    void cancelLoad();
+    // The stage times of the last finished load (--time-load).
+    const LoadTimings& lastLoadTimings() const noexcept { return lastLoadTimings_; }
 
     // ----- automation writing ---------------------------------------------------------
     // While the transport plays, a gain, pan or built-in parameter moved on a
@@ -344,6 +381,17 @@ private:
     std::string nextMidiTrackName() const;
     // A project just read from a file: its parameters put where the processors want them, then published.
     void adoptLoadedParameters();
+    enum class LoadKind
+    {
+        open,
+        fromTemplate,
+        restore,
+    };
+    bool beginLoad(LoadKind kind, const juce::File& file, std::string readError);
+    // Takes the loaded project as the current one (the end of the background part).
+    void commitLoad();
+    // Runs a load to the end at once (open(), newFromTemplate(), restoreAutosave()).
+    std::string finishLoadNow();
     // Applies through the undo stack; false (and nothing changed) when the command
     // refers to something that is gone.
     bool applyChecked(std::unique_ptr<core::Command> command);
@@ -454,6 +502,21 @@ private:
     double dirtySinceMs_ = 0.0;  // unsaved changes not yet autosaved, since
     double lastEditMs_ = 0.0;
     Change pending_ = Change::parameters; // the widest change notified since the last take
+    // The load in progress (beginLoad), what it is for, and what the steps after
+    // its background part have made so far (held so garbage collection keeps them
+    // until the compile takes them).
+    std::unique_ptr<ProjectLoad> load_;
+    LoadKind loadKind_ = LoadKind::open;
+    Autosave loadAutosave_;
+    bool loadCommitted_ = false;
+    bool loadEngineReported_ = false;
+    double loadUnitsDone_ = 0.0;            // plugin work finished (ProjectLoad's weights)
+    std::vector<core::Insert> loadInserts_; // to make, in chain order
+    size_t loadNextInsert_ = 0;
+    int loadHostedDone_ = 0;
+    std::vector<std::shared_ptr<engine::InsertProcessor>> loadMade_;
+    double loadPluginsStartMs_ = 0.0;
+    LoadTimings lastLoadTimings_;
     std::vector<AutomationPass> passes_;
     bool writePassesStarted_ = false;
     // What each hosted lane last sent, per insert and parameter (to tell an

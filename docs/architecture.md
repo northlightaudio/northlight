@@ -73,7 +73,7 @@ northlight_plugin_scan   Inspects one plugin file per process for the scanner.
 | Render workers | Render tracks in parallel within a block | One packed atomic per batch; a counting semaphore to wake |
 | Disk thread | Keeps every streaming window filled ahead of the play position | Position atomics per window |
 | Record writer | Drains recording rings to WAV files, cuts takes, rewrites headers | Rings, a gap queue and a take-mark queue |
-| Background jobs | Peak building, plugin scanning, time-stretch renders, pitch analysis, bounces, file browsing | Results posted back to the message thread |
+| Background jobs | Peak building, plugin scanning, time-stretch renders, pitch analysis, bounces, file browsing, reading and decoding a project being opened | Results posted back to the message thread |
 
 The audio callback and the workers are time-critical threads. Everything they touch
 is preallocated when a snapshot is compiled or a device is prepared.
@@ -245,6 +245,26 @@ offline windowed-sinc converter, measures integrated loudness and true peak,
 normalises, and dithers (TPDF, optionally noise-shaped) to 16 or 24 bits. Stems are
 normalised together so they still sum to the mix. Freezing a track uses the same
 render and plays the result in place of the track's instrument and inserts.
+
+### Opening a project
+
+A project opens in steps so the window keeps painting (`ProjectSession::beginOpen`
+and `stepLoad`; `app/ProjectLoad`). A thread of its own reads the file, parses and
+migrates it, and decodes each audio file once at the project's rate through the media
+loader, while the current project stays live. On the message thread a timer then calls
+`stepLoad`: it swaps the project in (the commit point; until then the load can be
+cancelled), hands the decoded sources to the engine's media cache, and makes the
+processors one plugin per step (built-ins in batches within a 12 ms budget) through
+the engine's insert cache, so the window can repaint between them. The window takes
+no step that makes a third-party plugin until its loading sheet is fully on screen
+(`loadHasSlowStepsAhead`): its appear delay and entrance run on timers, which cannot
+fire while a plugin holds the thread. The final step
+compiles the snapshot, which finds every source and processor already made. The step
+holds what it made until then, so garbage collection cannot drop it. `open()`,
+`newFromTemplate()` and `restoreAutosave()` run the same steps to the end at once.
+Measured on a 40-track project with eight UADx plugins (debug build): reading 50 ms,
+audio 3.6 s, plugins 6.8 s (about 850 ms each), snapshot 25 ms. Before, all of it
+blocked the message thread; now the longest stall is one plugin.
 
 ## Application services
 

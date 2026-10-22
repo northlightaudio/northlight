@@ -121,6 +121,7 @@ For how the pieces fit together see [architecture.md](architecture.md).
 | 2026-10-20 | Parameters are saved with stable keys and reconciled on load | Saving by position shifts later values whenever a processor gains a parameter. An upgrade chain replaces refusing older files. |
 | 2026-10-20 | Missing media is detected once per project change, not per paint | A file check per clip per frame would stall painting on a slow volume. |
 | 2026-10-19 | First run is detected by the settings file's absence | No flag can go stale, and the first-run sheet never shows again once a setting is saved. |
+| 2026-10-22 | A project opens in steps: reading and decoding on a thread, plugins one per message-loop step | Plugin creation must stay on the message thread (VST3 and CLAP require it), and a plugin can take most of a second, so the window paints the next plugin's name before making it. Swapping the project in only when the plugins start keeps the current one untouched, and cancellable, through the slow file work. |
 
 ### Interface
 

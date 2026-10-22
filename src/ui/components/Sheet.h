@@ -23,6 +23,13 @@ struct SheetOptions
     bool hero = false;
     // The panel's width (narrower when the window is).
     int width = 480;
+    // Holds the window while it shows (a progress sheet): every key stops at the
+    // sheet, Esc cancels only while a button is enabled, and a click outside the
+    // panel does nothing.
+    bool blocking = false;
+    // The sheet takes the window's input at once but stays invisible this long,
+    // so work that finishes quickly never flashes it (motion.progressDelayMs).
+    int appearAfterMs = 0;
 };
 
 // A dialog without a modal loop (design-system.md, "Dialog (sheet)"): an
@@ -38,6 +45,7 @@ public:
         juce::String label;
         bool primary = false;
         bool destructive = false;
+        bool ghost = false; // a progress sheet's Cancel
     };
     // Shows a sheet over `host` (which must outlive it) and returns it; the
     // sheet deletes itself after the callback.
@@ -51,6 +59,14 @@ public:
                        int contentHeight = 0,
                        SheetOptions options = SheetOptions());
     void close() { finish(-1); }
+    // Closes without calling back (the work the sheet showed has finished).
+    void dismiss();
+    // Starts the entrance now if the sheet is still waiting out appearAfterMs
+    // (work that is about to hold the message thread), and whether the entrance
+    // has finished: only then is the sheet fully on screen.
+    void appearNow();
+    bool hasAppeared() const noexcept { return appearance_ == Appearance::shown || finished_; }
+    void setButtonEnabled(int index, bool enabled);
 
     void paint(juce::Graphics& g) override;
     void resized() override;
@@ -66,7 +82,15 @@ private:
           const juce::String& body,
           std::vector<Button> buttons,
           std::function<void(int)> onResult);
-    void finish(int result);
+    void finish(int result, bool callBack = true);
+    void rise(); // the entrance tween
+    enum class Appearance
+    {
+        waiting, // appearAfterMs not yet up
+        rising,
+        shown,
+    };
+    Appearance appearance_ = Appearance::waiting;
     juce::Rectangle<int> panelBounds() const;
     int bodyHeight(int width) const;
     int eyebrowHeight() const;

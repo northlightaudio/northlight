@@ -410,6 +410,7 @@ bool Theme::apply(const juce::var& tokens, Theme& theme, std::string& error)
         readNumber(motion, "menuMs", m.menuMs, error);
         readNumber(motion, "toastMs", m.toastMs, error);
         readNumber(motion, "tooltipDelayMs", m.tooltipDelayMs, error);
+        readNumber(motion, "progressDelayMs", m.progressDelayMs, error);
         readNumber(motion, "meterRiseMs", m.meterRiseMs, error);
         readNumber(motion, "meterFallDbPerSec", m.meterFallDbPerSec, error);
         readNumber(motion, "peakHoldMs", m.peakHoldMs, error);

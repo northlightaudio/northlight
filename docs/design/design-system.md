@@ -191,6 +191,7 @@ Durations from `motion.*`; one easing (`cubic-bezier(0.2, 0, 0, 1)`, deceleratin
 | Track row added / removed | 180 ms | A new row grows from nothing; a removed row's space closes so the rows below glide up |
 | Editor panel cards | 180 ms | When the chain changes (an insert or send added, removed, moved) cards glide to their new places and new ones fade in; switching channels is instant |
 | Tooltip | 500 ms delay, 80 ms fade | No delay when moving between adjacent tooltipped controls |
+| Progress sheet | 400 ms delay, then as Sheet | `motion.progressDelayMs`: work that finishes sooner shows nothing. A delay, so reduce-motion keeps it |
 | Meters, playhead, counters | 0 | Ballistics are in `motion.meterRiseMs`, `meterFallDbPerSec` and `peakHoldMs`, not eased |
 | Clip snap during drag | 0 | Snap is instantaneous; a guide line appears instead |
 
@@ -339,6 +340,11 @@ Never a modal loop. A sheet: `overlay` behind, `surface0` panel radius `lg`, tit
 confirms the primary when it is not destructive. Destructive primaries use Danger
 styling and no Enter shortcut.
 
+A **progress sheet** (opening a project, screens/shell.md) is blocking: every key
+stops at it, a click outside the panel does nothing, and Esc cancels only while its
+ghost Cancel is enabled. It holds the input at once but appears after
+`motion.progressDelayMs`. Its content is a Progress row (below).
+
 ### Toast / notification
 
 Bottom-left of the main window, above the status bar; `surface1` with a 3 px left
@@ -367,6 +373,8 @@ cursor; double-click resets to default size. Panels snap closed below `panelMin`
 
 4 px bar, `surface2` track, `accent` fill; indeterminate: a 30% segment sweeping at
 1.2 s. Always paired with a label and a Cancel ghost button where cancel is possible.
+In a sheet the label sits above the bar in `body` `textSecondary`, one line with an
+ellipsis (`ui::ProgressRow`).
 
 ## 2.8 Density and scale
 

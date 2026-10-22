@@ -41,6 +41,8 @@ add_library(northlight_ui STATIC
     components/Toast.cpp
     components/Sheet.h
     components/Sheet.cpp
+    components/ProgressRow.h
+    components/ProgressRow.cpp
     Icons.h
     Icons.cpp
     shell/Panels.h

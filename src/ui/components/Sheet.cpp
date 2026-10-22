@@ -4,6 +4,8 @@
 #include "ui/Motion.h"
 #include "ui/NorthlightLookAndFeel.h"
 
+#include <algorithm>
+
 namespace northlight::ui
 {
 
@@ -22,6 +24,8 @@ Sheet::Sheet(const Theme& theme,
             button->getProperties().set(NorthlightLookAndFeel::propertyVariant, "danger");
         else if (buttons_[i].primary)
             button->getProperties().set(NorthlightLookAndFeel::propertyVariant, "primary");
+        else if (buttons_[i].ghost)
+            button->getProperties().set(NorthlightLookAndFeel::propertyVariant, "ghost");
         const int index = static_cast<int>(i);
         button->onClick = [this, index] { finish(index); };
         addAndMakeVisible(*button);
@@ -59,32 +63,79 @@ Sheet* Sheet::show(juce::Component& host,
 
 void Sheet::enter()
 {
+    if (options_.appearAfterMs > 0)
+    {
+        // Invisible but already taking the input; it rises once the delay is up.
+        setAlpha(0.0f);
+        juce::Component::SafePointer<Sheet> safe(this);
+        juce::Timer::callAfterDelay(options_.appearAfterMs,
+                                    [safe]
+                                    {
+                                        if (safe != nullptr && !safe->finished_)
+                                            safe->appearNow();
+                                    });
+        return;
+    }
+    rise();
+}
+
+void Sheet::appearNow()
+{
+    if (appearance_ == Appearance::waiting && !finished_)
+        rise();
+}
+
+void Sheet::rise()
+{
+    appearance_ = Appearance::rising;
     const int ms = theme_.motion.ms(theme_.motion.panelMs);
     if (ms <= 0)
+    {
+        setAlpha(1.0f);
+        appearance_ = Appearance::shown;
         return;
+    }
     setAlpha(0.0f);
     rise_ = 8;
     resized();
     juce::Component::SafePointer<Sheet> safe(this);
-    motion::Tween::run(*this,
-                       ms,
-                       [safe](float t)
-                       {
-                           if (safe == nullptr)
-                               return;
-                           safe->setAlpha(t);
-                           safe->rise_ = juce::roundToInt(8.0f * (1.0f - t));
-                           safe->resized();
-                           safe->repaint();
-                       });
+    motion::Tween::run(
+        *this,
+        ms,
+        [safe](float t)
+        {
+            if (safe == nullptr)
+                return;
+            safe->setAlpha(t);
+            safe->rise_ = juce::roundToInt(8.0f * (1.0f - t));
+            safe->resized();
+            safe->repaint();
+        },
+        [safe]
+        {
+            if (safe != nullptr)
+                safe->appearance_ = Appearance::shown;
+        });
 }
 
-void Sheet::finish(int result)
+void Sheet::dismiss()
+{
+    finish(-1, false);
+}
+
+void Sheet::setButtonEnabled(int index, bool enabled)
+{
+    if (index >= 0 && static_cast<size_t>(index) < buttonComponents_.size())
+        buttonComponents_[static_cast<size_t>(index)]->setEnabled(enabled);
+}
+
+void Sheet::finish(int result, bool callBack)
 {
     if (finished_)
         return;
     finished_ = true;
-    auto callback = std::move(onResult_);
+    auto callback = callBack ? std::move(onResult_) : std::function<void(int)>();
+    onResult_ = nullptr;
     setInterceptsMouseClicks(false, false); // the window behind is live again at once
     juce::Component::SafePointer<Sheet> safe(this);
     juce::MessageManager::callAsync(
@@ -267,7 +318,10 @@ bool Sheet::keyPressed(const juce::KeyPress& key)
 {
     if (key == juce::KeyPress::escapeKey)
     {
-        finish(-1);
+        const bool canCancel = std::any_of(
+            buttonComponents_.begin(), buttonComponents_.end(), [](const auto& b) { return b->isEnabled(); });
+        if (!options_.blocking || canCancel)
+            finish(-1);
         return true;
     }
     if (key == juce::KeyPress::returnKey)
@@ -277,12 +331,12 @@ bool Sheet::keyPressed(const juce::KeyPress& key)
                 finish(static_cast<int>(i));
                 return true;
             }
-    return false;
+    return options_.blocking; // a blocking sheet keeps every key from the window
 }
 
 void Sheet::mouseDown(const juce::MouseEvent& e)
 {
-    if (!panelBounds().contains(e.getPosition()))
+    if (!options_.blocking && !panelBounds().contains(e.getPosition()))
         finish(-1);
 }
 

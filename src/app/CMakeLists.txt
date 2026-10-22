@@ -34,6 +34,8 @@ add_library(northlight_app_session STATIC
     Migration.cpp
     ProjectSession.h
     ProjectSession.cpp
+    ProjectLoad.h
+    ProjectLoad.cpp
     SampleFiles.h
     SampleFiles.cpp
     DemoSong.h
