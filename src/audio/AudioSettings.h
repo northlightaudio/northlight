@@ -3,6 +3,7 @@
 #include <map>
 #include <optional>
 #include <string>
+#include <utility>
 #include <vector>
 
 // User-chosen audio device configuration and the persisted loopback calibration.
@@ -31,6 +32,27 @@ struct LatencyCalibration
 
     bool operator==(const LatencyCalibration&) const = default;
 };
+
+// A stereo input made of two hardware inputs of one device, which tracks choose by
+// name (like Cubase's input buses). Channels are device channel indices, as in
+// inputChannelNames(), not positions among the enabled channels, so enabling
+// another channel does not move the bus.
+struct InputBus
+{
+    std::string deviceType;
+    std::string deviceName; // the input device
+    std::string name;
+    int left = -1;
+    int right = -1;
+
+    bool operator==(const InputBus&) const = default;
+};
+
+// Where each bus's two channels sit among the device's active inputs (callback
+// order, as in AudioDeviceLayer::Status::activeInputs), by bus name. A bus whose
+// channels are not both enabled is left out; the first of two equal names wins.
+std::map<std::string, std::pair<int, int>> resolveInputBuses(const std::vector<InputBus>& buses,
+                                                             const std::vector<int>& activeInputs);
 
 struct AudioSettings
 {
@@ -63,6 +85,15 @@ struct AudioSettings
     // the output device name (empty = none).
     std::optional<std::vector<std::string>> midiInputs;
     std::string midiOutput;
+
+    // Stereo input buses of every device the user has set up, kept when they
+    // switch to another device so they come back with it.
+    std::vector<InputBus> inputBuses;
+
+    // The buses of one input device, in the order the user made them.
+    std::vector<InputBus> inputBusesFor(const std::string& type, const std::string& device) const;
+    // Replaces that device's buses, keeping every other device's.
+    void setInputBusesFor(const std::string& type, const std::string& device, std::vector<InputBus> buses);
 
     // True when the stored calibration was made with the given device configuration.
     bool calibrationMatches(const std::string& type,

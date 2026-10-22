@@ -108,3 +108,42 @@ TEST_CASE("Calibration is only valid for the configuration it was measured with"
     CHECK_FALSE(s.calibrationMatches("ASIO", "Other", 48000.0, 64));
     CHECK_FALSE(s.calibrationMatches("Windows Audio", "Dev", 48000.0, 64));
 }
+
+TEST_CASE("Stereo input buses of several devices round-trip and are kept per device", "[audio][settings]")
+{
+    using northlight::audio::InputBus;
+    AudioSettings s;
+    s.setInputBusesFor("ASIO", "Volt", {InputBus{"", "", "Vocals", 0, 1}, InputBus{"", "", "Keys", 3, 2}});
+    s.setInputBusesFor("Windows Audio", "Mic Array", {InputBus{"", "", "Room", 0, 1}});
+
+    const auto restored = AudioSettings::fromKeyValues(s.toKeyValues());
+    CHECK(restored == s);
+    const auto volt = restored.inputBusesFor("ASIO", "Volt");
+    REQUIRE(volt.size() == 2);
+    CHECK(volt[0].name == "Vocals");
+    CHECK(volt[1].name == "Keys");
+    CHECK(volt[1].left == 3);
+    CHECK(volt[1].right == 2);
+    CHECK(volt[0].deviceType == "ASIO");
+
+    // Replacing one device's buses leaves the other device's alone.
+    s.setInputBusesFor("ASIO", "Volt", {});
+    CHECK(s.inputBusesFor("ASIO", "Volt").empty());
+    REQUIRE(s.inputBusesFor("Windows Audio", "Mic Array").size() == 1);
+}
+
+TEST_CASE("Input buses resolve to positions among the enabled inputs, and need both sides enabled",
+          "[audio][settings]")
+{
+    using northlight::audio::InputBus;
+    const std::vector<InputBus> buses{
+        InputBus{"ASIO", "Volt", "Pair 5/6", 4, 5},
+        InputBus{"ASIO", "Volt", "Pair 3/4", 2, 3}, // 3 and 4 are off
+        InputBus{"ASIO", "Volt", "Swapped", 1, 0},
+        InputBus{"ASIO", "Volt", "Swapped", 4, 5}}; // a repeated name: the first wins
+    const auto resolved = northlight::audio::resolveInputBuses(buses, {0, 1, 4, 5});
+    CHECK(resolved.size() == 2);
+    CHECK(resolved.at("Pair 5/6") == std::pair{2, 3});
+    CHECK(resolved.at("Swapped") == std::pair{1, 0});
+    CHECK_FALSE(resolved.contains("Pair 3/4"));
+}

@@ -356,6 +356,10 @@ public:
     // Whether the track is hearing its input right now (monitor mode, arm and
     // transport state combined).
     bool isTrackMonitoring(const core::Track& track) const;
+    // The device inputs a track reads (active inputs, callback order): its channel,
+    // or both sides of its stereo bus; left is -1 when it has none or its bus is
+    // not on this device.
+    engine::InputPair resolvedInput(const core::Track& track) const;
     // Human-readable note about the last recording (dropouts, recovery), if any.
     const std::string& lastRecordingMessage() const noexcept { return recordingMessage_; }
     // The latest plugin that crashed while processing (it was switched off), or empty.
@@ -413,6 +417,9 @@ private:
     std::optional<core::Command::ChangeKind> pendingKind_;
     std::vector<core::Command::ParameterTouch> pendingTouches_;
     void matchDeviceSampleRate();
+    // Brings the engine's input buses in line with the device's; true when they changed.
+    bool refreshInputBuses();
+    std::map<std::string, engine::InputPair> inputBuses_;
     void finishRecording(engine::AudioEngine::FinishedRecording finished);
     void saveRegistry();
     // Every change notification goes through here; a structural one marks the

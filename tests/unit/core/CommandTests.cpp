@@ -1217,3 +1217,32 @@ TEST_CASE("Controller events are edited in bulk, carried by trim, split and dupl
     }
     CHECK(p.tracks.empty());
 }
+
+TEST_CASE("A stereo input bus replaces a track's input channel; undo and redo restore each",
+          "[core][command]")
+{
+    Project p = projectWithTrack();
+    UndoStack stack;
+    const Id id = p.tracks[0].id;
+    CHECK_FALSE(p.tracks[0].hasAudioInput());
+
+    stack.execute(p, std::make_unique<SetTrackInput>(id, 2));
+    stack.execute(p, std::make_unique<SetTrackInput>(id, 5, "Vocal pair")); // the channel is dropped
+    CHECK(p.tracks[0].inputBus == "Vocal pair");
+    CHECK(p.tracks[0].inputChannel == -1);
+    CHECK(p.tracks[0].hasAudioInput());
+
+    REQUIRE(stack.undo(p));
+    CHECK(p.tracks[0].inputBus.empty());
+    CHECK(p.tracks[0].inputChannel == 2);
+    REQUIRE(stack.redo(p));
+    CHECK(p.tracks[0].inputBus == "Vocal pair");
+    CHECK(p.tracks[0].inputChannel == -1);
+
+    // Back to a single input clears the bus.
+    stack.execute(p, std::make_unique<SetTrackInput>(id, 1));
+    CHECK(p.tracks[0].inputBus.empty());
+    CHECK(p.tracks[0].inputChannel == 1);
+    REQUIRE(stack.undo(p));
+    CHECK(p.tracks[0].inputBus == "Vocal pair");
+}

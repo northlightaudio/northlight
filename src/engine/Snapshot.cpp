@@ -184,7 +184,8 @@ std::unique_ptr<Snapshot> compileSnapshot(const core::Project& project,
                                           InsertCache& inserts,
                                           DelayCache* delays,
                                           RuntimeCache* runtimes,
-                                          const std::function<int(const std::string&)>& midiSources)
+                                          const std::function<int(const std::string&)>& midiSources,
+                                          const InputBusResolver& inputBuses)
 {
     NORTHLIGHT_ASSERT_NOT_REALTIME("compileSnapshot");
     auto snapshot = std::make_unique<Snapshot>();
@@ -497,7 +498,17 @@ std::unique_ptr<Snapshot> compileSnapshot(const core::Project& project,
         node.isMidi = track.isMidi();
         node.isInstrument = track.isInstrument() && !track.isFrozen();
         node.isAux = track.isAux();
-        node.inputChannel = track.isAux() ? -1 : track.inputChannel;
+        if (track.isAux())
+            node.inputChannel = -1;
+        else if (!track.inputBus.empty())
+        {
+            const auto pair = inputBuses != nullptr ? inputBuses(track.inputBus) : InputPair{};
+            const bool found = pair.left >= 0 && pair.right >= 0;
+            node.inputChannel = found ? pair.left : -1;
+            node.inputChannelRight = found ? pair.right : -1;
+        }
+        else
+            node.inputChannel = track.inputChannel;
         node.armed = track.armed;
         node.monitor = track.monitor;
         if (node.isMidi)

@@ -423,3 +423,28 @@ TEST_CASE("Project files from when Northlight was Aural still open", "[core][jso
     CHECK(loaded->tracks[0].strip[0].type == "northlight.strip.gate");
     CHECK(currentTypeName("clap:com.vendor.thing") == "clap:com.vendor.thing"); // others untouched
 }
+
+TEST_CASE("A track's stereo input bus round-trips through JSON; version 9 files keep their input channel",
+          "[core][json]")
+{
+    auto p = sampleProject();
+    p.tracks[1].inputChannel = -1;
+    p.tracks[1].inputBus = "Bass DI";
+    const auto text = projectToJson(p);
+    CHECK(text.find("\"inputBus\"") != std::string::npos);
+    const auto restored = projectFromJson(text);
+    REQUIRE(restored.has_value());
+    CHECK(*restored == p);
+
+    // A track without a bus writes no key, and a file from before buses opens as it was.
+    auto older = projectToJson(sampleProject());
+    CHECK(older.find("\"inputBus\"") == std::string::npos);
+    const auto current = "\"version\": " + std::to_string(Project::schemaVersion);
+    const auto at = older.find(current);
+    REQUIRE(at != std::string::npos);
+    older.replace(at, current.size(), "\"version\": 9");
+    const auto loaded = projectFromJson(older);
+    REQUIRE(loaded.has_value());
+    CHECK(loaded->tracks[1].inputChannel == 2);
+    CHECK(loaded->tracks[1].inputBus.empty());
+}

@@ -1,5 +1,6 @@
 #include "audio/AudioSettings.h"
 
+#include <algorithm>
 #include <charconv>
 #include <cstdlib>
 #include <sstream>
@@ -25,6 +26,9 @@ constexpr const char* keyCalType = "audio.calibration.deviceType";
 constexpr const char* keyCalDevice = "audio.calibration.deviceName";
 constexpr const char* keyMidiInputs = "midi.inputs";
 constexpr const char* keyMidiOutput = "midi.output";
+// Input buses: a count, then one group of keys per bus ("audio.inputBus.0.name"...).
+constexpr const char* keyInputBusCount = "audio.inputBus.count";
+const std::string inputBusPrefix = "audio.inputBus.";
 constexpr char nameSeparator = '\t'; // device names never contain a tab
 
 std::string joinNames(const std::vector<std::string>& names)
@@ -172,7 +176,62 @@ AudioSettings::KeyValues AudioSettings::toKeyValues() const
         out[keyCalType] = calibration->deviceType;
         out[keyCalDevice] = calibration->deviceName;
     }
+    if (!inputBuses.empty())
+    {
+        out[keyInputBusCount] = std::to_string(inputBuses.size());
+        for (size_t i = 0; i < inputBuses.size(); ++i)
+        {
+            const auto& bus = inputBuses[i];
+            const auto prefix = inputBusPrefix + std::to_string(i) + ".";
+            out[prefix + "type"] = bus.deviceType;
+            out[prefix + "device"] = bus.deviceName;
+            out[prefix + "name"] = bus.name;
+            out[prefix + "left"] = std::to_string(bus.left);
+            out[prefix + "right"] = std::to_string(bus.right);
+        }
+    }
     return out;
+}
+
+std::map<std::string, std::pair<int, int>> resolveInputBuses(const std::vector<InputBus>& buses,
+                                                             const std::vector<int>& activeInputs)
+{
+    const auto position = [&](int deviceChannel)
+    {
+        const auto it = std::find(activeInputs.begin(), activeInputs.end(), deviceChannel);
+        return it != activeInputs.end() ? static_cast<int>(it - activeInputs.begin()) : -1;
+    };
+    std::map<std::string, std::pair<int, int>> out;
+    for (const auto& bus : buses)
+    {
+        const int left = position(bus.left), right = position(bus.right);
+        if (left >= 0 && right >= 0 && !bus.name.empty())
+            out.emplace(bus.name, std::pair{left, right});
+    }
+    return out;
+}
+
+std::vector<InputBus> AudioSettings::inputBusesFor(const std::string& type, const std::string& device) const
+{
+    std::vector<InputBus> out;
+    for (const auto& bus : inputBuses)
+        if (bus.deviceType == type && bus.deviceName == device)
+            out.push_back(bus);
+    return out;
+}
+
+void AudioSettings::setInputBusesFor(const std::string& type,
+                                     const std::string& device,
+                                     std::vector<InputBus> buses)
+{
+    std::erase_if(inputBuses,
+                  [&](const InputBus& bus) { return bus.deviceType == type && bus.deviceName == device; });
+    for (auto& bus : buses)
+    {
+        bus.deviceType = type;
+        bus.deviceName = device;
+        inputBuses.push_back(std::move(bus));
+    }
 }
 
 AudioSettings AudioSettings::fromKeyValues(const KeyValues& values)
@@ -203,6 +262,20 @@ AudioSettings AudioSettings::fromKeyValues(const KeyValues& values)
         c.deviceName = getString(values, keyCalDevice);
         if (c.roundTripSamples > 0 && c.sampleRate > 0.0)
             s.calibration = c;
+    }
+
+    const int busCount = std::clamp(getInt(values, keyInputBusCount, 0), 0, 1024);
+    for (int i = 0; i < busCount; ++i)
+    {
+        const auto prefix = inputBusPrefix + std::to_string(i) + ".";
+        InputBus bus;
+        bus.deviceType = getString(values, (prefix + "type").c_str());
+        bus.deviceName = getString(values, (prefix + "device").c_str());
+        bus.name = getString(values, (prefix + "name").c_str());
+        bus.left = getInt(values, (prefix + "left").c_str(), -1);
+        bus.right = getInt(values, (prefix + "right").c_str(), -1);
+        if (!bus.name.empty())
+            s.inputBuses.push_back(std::move(bus));
     }
 
     if (s.sampleRate < 0.0)

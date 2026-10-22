@@ -1058,7 +1058,9 @@ private:
 class SetTrackInput final : public Command
 {
 public:
-    SetTrackInput(Id trackId, int inputChannel);
+    // A single device input channel (-1 = none), or a stereo input bus by name,
+    // which takes the place of the channel.
+    SetTrackInput(Id trackId, int inputChannel, std::string inputBus = {});
     std::string name() const override { return "Set track input"; }
     void apply(Project&) override;
     void revert(Project&) override;
@@ -1066,6 +1068,7 @@ public:
 private:
     Id trackId_;
     int value_, previous_ = -1;
+    std::string bus_, previousBus_;
 };
 
 class SetTrackArmed final : public Command

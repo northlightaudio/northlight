@@ -554,8 +554,8 @@ public:
                         ? owner_.midiInputNames_[static_cast<size_t>(index)]
                         : std::string{}));
             }
-            else
-                owner_.onCommand(std::make_unique<core::SetTrackInput>(id_, input_.getSelectedId() - 2));
+            else if (const auto choice = inputs::selected(input_, owner_.inputChoices_))
+                owner_.onCommand(std::make_unique<core::SetTrackInput>(id_, choice->channel, choice->bus));
         };
         addAndMakeVisible(input_);
 
@@ -769,16 +769,7 @@ public:
             input_.setSelectedId(selected, juce::dontSendNotification);
         }
         else if (track != nullptr)
-        {
-            input_.addItem("No input", 1);
-            for (size_t i = 0; i < owner_.inputNames_.size(); ++i)
-                input_.addItem("In " + juce::String(static_cast<int>(i) + 1), static_cast<int>(i) + 2);
-            input_.setSelectedId(track->inputChannel >= 0 &&
-                                         static_cast<size_t>(track->inputChannel) < owner_.inputNames_.size()
-                                     ? track->inputChannel + 2
-                                     : 1,
-                                 juce::dontSendNotification);
-        }
+            inputs::fill(input_, owner_.inputChoices_, *track);
 
         busIds_.clear();
         output_.clear(juce::dontSendNotification);
@@ -1909,11 +1900,11 @@ void MixerView::closeEditors()
     editors_.clear();
 }
 
-void MixerView::setInputNames(std::vector<std::string> audio, std::vector<std::string> midi)
+void MixerView::setInputChoices(std::vector<InputChoice> audio, std::vector<std::string> midi)
 {
-    if (audio == inputNames_ && midi == midiInputNames_)
+    if (audio == inputChoices_ && midi == midiInputNames_)
         return;
-    inputNames_ = std::move(audio);
+    inputChoices_ = std::move(audio);
     midiInputNames_ = std::move(midi);
     rebuildStrips();
 }

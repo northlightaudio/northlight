@@ -123,6 +123,119 @@ private:
     std::vector<bool> enabled_;
 };
 
+// ----- input bus row ----------------------------------------------------------------------
+
+// One stereo input: its name, the device channels of its two sides and Remove.
+class AudioSetupView::InputBusRow final : public juce::Component
+{
+public:
+    explicit InputBusRow(const Theme& theme) : theme_(theme)
+    {
+        name_.setTooltip("The name tracks choose this input by");
+        name_.setSelectAllWhenFocused(true);
+        name_.onReturnKey = [this] { commitName(); };
+        name_.onFocusLost = [this] { commitName(); };
+        name_.onEscapeKey = [this]
+        {
+            name_.setText(juce::String::fromUTF8(shownName_.c_str()), juce::dontSendNotification);
+            name_.giveAwayKeyboardFocus();
+        };
+        addAndMakeVisible(name_);
+        for (auto* label : {&leftLabel_, &rightLabel_})
+        {
+            styleCaption(*label, theme_);
+            label->setJustificationType(juce::Justification::centred);
+            addAndMakeVisible(*label);
+        }
+        leftLabel_.setText("L", juce::dontSendNotification);
+        rightLabel_.setText("R", juce::dontSendNotification);
+        left_.setTooltip("Left input");
+        right_.setTooltip("Right input");
+        for (auto* box : {&left_, &right_})
+        {
+            box->onChange = [this]
+            {
+                if (onChannelsChanged)
+                    onChannelsChanged(left_.getSelectedId() - 1, right_.getSelectedId() - 1);
+            };
+            addAndMakeVisible(*box);
+        }
+        remove_.setButtonText("Remove");
+        remove_.setTooltip("Tracks that use this input will show it as missing");
+        remove_.onClick = [this]
+        {
+            if (onRemove)
+                onRemove();
+        };
+        addAndMakeVisible(remove_);
+    }
+
+    std::function<void(const std::string&)> onNameChanged;
+    std::function<void(int left, int right)> onChannelsChanged;
+    std::function<void()> onRemove;
+
+    // `channels`: the device's input names; `active`: the enabled ones (device indices).
+    void
+    set(const audio::InputBus& bus, const std::vector<std::string>& channels, const std::vector<int>& active)
+    {
+        shownName_ = bus.name;
+        if (!name_.hasKeyboardFocus(true))
+            name_.setText(juce::String::fromUTF8(bus.name.c_str()), juce::dontSendNotification);
+        for (auto* box : {&left_, &right_})
+        {
+            box->clear(juce::dontSendNotification);
+            for (size_t i = 0; i < channels.size(); ++i)
+            {
+                const bool on = std::find(active.begin(), active.end(), static_cast<int>(i)) != active.end();
+                box->addItem(juce::String(static_cast<int>(i) + 1) + ": " +
+                                 juce::String::fromUTF8(channels[i].c_str()) + (on ? "" : " (off)"),
+                             static_cast<int>(i) + 1);
+            }
+        }
+        left_.setSelectedId(bus.left + 1, juce::dontSendNotification);
+        right_.setSelectedId(bus.right + 1, juce::dontSendNotification);
+    }
+
+    void resized() override
+    {
+        const int gap = theme_.spacing.sm;
+        auto row = getLocalBounds();
+        name_.setBounds(row.removeFromLeft(180));
+        remove_.setBounds(row.removeFromRight(90));
+        row.removeFromRight(gap);
+        const int labelW = 20;
+        const int comboW = juce::jmax(80, (row.getWidth() - 2 * labelW - 2 * gap) / 2);
+        row.removeFromLeft(gap);
+        leftLabel_.setBounds(row.removeFromLeft(labelW));
+        left_.setBounds(row.removeFromLeft(comboW));
+        row.removeFromLeft(gap);
+        rightLabel_.setBounds(row.removeFromLeft(labelW));
+        right_.setBounds(row.removeFromLeft(comboW));
+    }
+
+private:
+    void commitName()
+    {
+        const auto text = name_.getText().trim().toStdString();
+        if (text == shownName_)
+            return;
+        if (text.empty())
+        {
+            name_.setText(juce::String::fromUTF8(shownName_.c_str()), juce::dontSendNotification);
+            return;
+        }
+        if (onNameChanged)
+            onNameChanged(text);
+    }
+
+    const Theme& theme_;
+    std::string shownName_;
+    juce::TextEditor name_;
+    juce::Label leftLabel_, rightLabel_;
+    juce::ComboBox left_, right_;
+    juce::TextButton remove_;
+};
+
 // ----- view -------------------------------------------------------------------------------
 
 AudioSetupView::AudioSetupView(audio::AudioDeviceLayer& audio) : audio_(audio), theme_(Theme::dark())
@@ -174,6 +287,20 @@ AudioSetupView::AudioSetupView(audio::AudioDeviceLayer& audio) : audio_(audio), 
         list->setOutlineThickness(1);
         addAndMakeVisible(*list);
     }
+
+    // Input buses
+    inputBusesHint_.setText("Pair two inputs into a stereo input that tracks can record from. Single "
+                            "inputs are always available.",
+                            juce::dontSendNotification);
+    inputBusesHint_.setFont(theme_.caption());
+    inputBusesHint_.setColour(juce::Label::textColourId, theme_.colours.textTertiary);
+    addAndMakeVisible(inputBusesHint_);
+    addInputBusButton_.setButtonText("Add stereo input");
+    addInputBusButton_.onClick = [this] { addInputBus(); };
+    addAndMakeVisible(addInputBusButton_);
+    inputBusesView_.setViewedComponent(&inputBusesHolder_, false);
+    inputBusesView_.setScrollBarsShown(true, false);
+    addAndMakeVisible(inputBusesView_);
 
     // MIDI
     midiInputsModel_ = std::make_unique<ChannelListModel>(theme_, false);
@@ -298,6 +425,7 @@ AudioSetupView::~AudioSetupView()
     inputsList_.setModel(nullptr);
     outputsList_.setModel(nullptr);
     midiInputsList_.setModel(nullptr);
+    inputBusRows_.clear();
 }
 
 // ----- painting and layout ------------------------------------------------------------------
@@ -328,6 +456,7 @@ void AudioSetupView::paint(juce::Graphics& g)
 
     drawSection(deviceSection_, "Device");
     drawSection(channelsSection_, "Channels");
+    drawSection(inputBusesSection_, "Stereo inputs");
     drawSection(midiSection_, "MIDI");
     drawSection(latencySection_, "Latency");
     drawSection(monitoringSection_, "Monitoring");
@@ -351,6 +480,9 @@ void AudioSetupView::resized()
     const int latencyH = titleH + 4 * (rowH + gap) + sp.lg;
     const int monitoringH = titleH + 2 * (rowH + gap) + theme_.sizes.controlCompact + sp.lg;
     const int midiH = titleH + 3 * (rowH + gap) + sp.lg;
+    const int busRowsShown = 4; // more scroll
+    const int inputBusesH =
+        titleH + theme_.sizes.controlCompact + gap + busRowsShown * (rowH + gap) + rowH + sp.lg;
 
     deviceSection_ = bounds.removeFromTop(deviceH);
     bounds.removeFromTop(sp.md);
@@ -359,6 +491,8 @@ void AudioSetupView::resized()
     latencySection_ = bounds.removeFromBottom(latencyH);
     bounds.removeFromBottom(sp.md);
     midiSection_ = bounds.removeFromBottom(midiH);
+    bounds.removeFromBottom(sp.md);
+    inputBusesSection_ = bounds.removeFromBottom(inputBusesH);
     bounds.removeFromBottom(sp.md);
     channelsSection_ = bounds;
 
@@ -406,6 +540,20 @@ void AudioSetupView::resized()
         inputsList_.setBounds(left);
         outputsLabel_.setBounds(area.removeFromTop(rowH));
         outputsList_.setBounds(area);
+    }
+
+    // Stereo inputs: the hint, a scrolling list of rows, then Add.
+    {
+        auto area = inputBusesSection_.reduced(sp.lg).withTrimmedTop(titleH);
+        inputBusesHint_.setBounds(area.removeFromTop(theme_.sizes.controlCompact));
+        area.removeFromTop(gap);
+        addInputBusButton_.setBounds(area.removeFromBottom(rowH).removeFromLeft(170));
+        area.removeFromBottom(gap);
+        inputBusesView_.setBounds(area);
+        const int width = area.getWidth() - inputBusesView_.getScrollBarThickness();
+        inputBusesHolder_.setSize(width, static_cast<int>(inputBusRows_.size()) * (rowH + gap));
+        for (size_t i = 0; i < inputBusRows_.size(); ++i)
+            inputBusRows_[i]->setBounds(0, static_cast<int>(i) * (rowH + gap), width, rowH);
     }
 
     // MIDI: the inputs as a toggle list on the left, the output choice on the right.
@@ -600,6 +748,7 @@ void AudioSetupView::refreshFromDevice()
     outputsList_.updateContent();
     inputsList_.repaint();
     outputsList_.repaint();
+    refreshInputBuses(status);
 
     // MIDI
     midiInputs_ = audio_.midi().inputs();
@@ -806,6 +955,134 @@ void AudioSetupView::channelsChanged()
     s.inputChannels = inputsModel_->enabledIndices();
     s.outputChannels = outputsModel_->enabledIndices();
     applySettings(s);
+}
+
+void AudioSetupView::refreshInputBuses(const audio::AudioDeviceLayer::Status& status)
+{
+    const auto channels = audio_.inputChannelNames();
+    inputBuses_ = audio_.inputBuses();
+    const size_t before = inputBusRows_.size();
+    while (inputBusRows_.size() > inputBuses_.size())
+        inputBusRows_.pop_back();
+    while (inputBusRows_.size() < inputBuses_.size())
+    {
+        const size_t index = inputBusRows_.size();
+        auto row = std::make_unique<InputBusRow>(theme_);
+        row->onNameChanged = [this, index](const std::string& name)
+        {
+            if (index >= inputBuses_.size())
+                return;
+            auto buses = inputBuses_;
+            // Names are how tracks find a bus, so two buses never share one.
+            std::string unique = name;
+            for (int n = 2;; ++n)
+            {
+                bool taken = false;
+                for (size_t i = 0; i < buses.size(); ++i)
+                    taken = taken || (i != index && buses[i].name == unique);
+                if (!taken)
+                    break;
+                unique = name + " " + std::to_string(n);
+            }
+            buses[index].name = unique;
+            commitInputBuses(std::move(buses));
+        };
+        row->onChannelsChanged = [this, index](int left, int right)
+        {
+            if (updating_ || index >= inputBuses_.size())
+                return;
+            auto buses = inputBuses_;
+            buses[index].left = left;
+            buses[index].right = right;
+            commitInputBuses(std::move(buses));
+        };
+        row->onRemove = [this, index]
+        {
+            if (index >= inputBuses_.size())
+                return;
+            auto buses = inputBuses_;
+            buses.erase(buses.begin() + static_cast<std::ptrdiff_t>(index));
+            commitInputBuses(std::move(buses));
+        };
+        inputBusesHolder_.addAndMakeVisible(*row);
+        inputBusRows_.push_back(std::move(row));
+    }
+    for (size_t i = 0; i < inputBuses_.size(); ++i)
+        inputBusRows_[i]->set(inputBuses_[i], channels, status.activeInputs);
+    addInputBusButton_.setEnabled(status.open && channels.size() >= 2);
+    inputBusesHint_.setText(status.open ? "Pair two inputs into a stereo input that tracks can record from. "
+                                          "Single inputs are always available."
+                                        : "Open a device to set up its stereo inputs.",
+                            juce::dontSendNotification);
+    if (inputBusRows_.size() != before)
+        resized();
+}
+
+void AudioSetupView::commitInputBuses(std::vector<audio::InputBus> buses)
+{
+    // A bus reads its channels only while they are enabled: switch on any that are off.
+    const auto status = audio_.status();
+    std::vector<int> enabled = status.activeInputs;
+    bool enabling = false;
+    for (const auto& bus : buses)
+        for (int channel : {bus.left, bus.right})
+            if (channel >= 0 && std::find(enabled.begin(), enabled.end(), channel) == enabled.end())
+            {
+                enabled.push_back(channel);
+                enabling = true;
+            }
+    audio_.setInputBuses(std::move(buses));
+    if (!enabling)
+        return;
+    std::sort(enabled.begin(), enabled.end());
+    audio::AudioSettings s = audio_.settings();
+    s.deviceType = status.deviceType;
+    s.outputDevice = status.outputDevice;
+    s.inputDevice = status.inputDevice;
+    s.sampleRate = status.sampleRate;
+    s.bufferSize = status.bufferSize;
+    s.inputChannels = enabled;
+    s.outputChannels = status.activeOutputs;
+    applySettings(s);
+}
+
+void AudioSetupView::addInputBus()
+{
+    const int channels = static_cast<int>(audio_.inputChannelNames().size());
+    if (channels < 2)
+        return;
+    auto buses = inputBuses_;
+    const auto used = [&](int channel)
+    {
+        for (const auto& bus : buses)
+            if (bus.left == channel || bus.right == channel)
+                return true;
+        return false;
+    };
+    // The first pair of neighbouring inputs (1+2, 3+4...) no bus reads yet.
+    int left = 0;
+    for (int candidate = 0; candidate + 1 < channels; candidate += 2)
+        if (!used(candidate) && !used(candidate + 1))
+        {
+            left = candidate;
+            break;
+        }
+    audio::InputBus bus;
+    bus.left = left;
+    bus.right = left + 1;
+    const std::string base = "Stereo " + std::to_string(left + 1) + "/" + std::to_string(left + 2);
+    bus.name = base;
+    for (int n = 2;; ++n)
+    {
+        bool taken = false;
+        for (const auto& other : buses)
+            taken = taken || other.name == bus.name;
+        if (!taken)
+            break;
+        bus.name = base + " " + std::to_string(n);
+    }
+    buses.push_back(std::move(bus));
+    commitInputBuses(std::move(buses));
 }
 
 void AudioSetupView::midiChanged()

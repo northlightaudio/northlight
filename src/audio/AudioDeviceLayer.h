@@ -108,6 +108,11 @@ public:
     void storeCalibration(const LatencyMeasurement& measurement);
     void clearCalibration();
 
+    // The stereo input buses of the open input device (empty when none is open),
+    // and replacing them. Setting them saves and broadcasts a change.
+    std::vector<InputBus> inputBuses() const;
+    void setInputBuses(std::vector<InputBus> buses);
+
     bool showControlPanel();
 
     // ----- collaborators --------------------------------------------------------

@@ -28,8 +28,8 @@ Northlight is in active development and has not had a release. The core of a wor
 DAW is in place:
 
 - **Audio:** ASIO and Windows Audio devices, with loopback latency calibration.
-- **Recording:** multitrack recording with crash recovery, and loop and punch
-  recording into take lanes with comping.
+- **Recording:** multitrack recording from mono and stereo inputs with crash
+  recovery, and loop and punch recording into take lanes with comping.
 - **Mixing:** a mixer with buses, FX tracks, sends, fader groups and delay
   compensation, plus a six-module channel strip on every channel.
 - **Plugins:** VST3 and CLAP hosting with out-of-process scanning, sidechains and
@@ -69,17 +69,15 @@ in editing, effects and controller work. Each item is to become an issue of its 
 
 ### In order
 
-1. **Stereo recording.** A track records one input channel, so a stereo source needs
-   two tracks. A track should take a stereo pair and record it to one file.
-2. **The master and buses in full.** Master inserts, and buses and the master as
+1. **The master and buses in full.** Master inserts, and buses and the master as
    arrange rows with their own automation (both in the known gaps above).
-3. **Clip mute and fade curves.** The arrange spec draws muted clips, but clips have
+2. **Clip mute and fade curves.** The arrange spec draws muted clips, but clips have
    no mute. Fades and crossfades are linear only and dip in level on music; add
    equal-power, logarithmic and S-curve shapes.
-4. **A modulation effect and a stereo utility** (see the effects below).
-5. **MIDI learn.** Map controller knobs, faders and buttons to any parameter and the
+3. **A modulation effect and a stereo utility** (see the effects below).
+4. **MIDI learn.** Map controller knobs, faders and buttons to any parameter and the
    transport, then Mackie Control and HUI for control surfaces.
-6. **Richer automation.** Lanes for send levels and mute, curve shapes between
+5. **Richer automation.** Lanes for send levels and mute, curve shapes between
    points, and range edits on a lane (copy, scale, thin).
 
 ### Editing and workflow

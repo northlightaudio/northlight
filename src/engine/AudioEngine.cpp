@@ -35,12 +35,14 @@ AudioEngine::~AudioEngine()
 void AudioEngine::setProject(const core::Project& project)
 {
     NORTHLIGHT_ASSERT_NOT_REALTIME("AudioEngine::setProject");
-    auto snapshot = compileSnapshot(project,
-                                    media_,
-                                    inserts_,
-                                    &delays_,
-                                    &runtimes_,
-                                    [this](const std::string& name) { return midiSourceIndex(name); });
+    auto snapshot = compileSnapshot(
+        project,
+        media_,
+        inserts_,
+        &delays_,
+        &runtimes_,
+        [this](const std::string& name) { return midiSourceIndex(name); },
+        [this](const std::string& name) { return inputBus(name); });
     outputLatency_.store(snapshot->outputLatency, std::memory_order_relaxed);
     masterMeterSlot_.store(snapshot->masterMeterSlot, std::memory_order_relaxed);
     publisher_.publish(std::move(snapshot));
@@ -152,6 +154,18 @@ std::optional<AudioEngine::FinishedRecording> AudioEngine::collectRecording()
     finished.results = writer_.takeResults();
     finished.session = std::move(activeRecord_);
     return finished;
+}
+
+void AudioEngine::setInputBuses(std::map<std::string, InputPair> buses)
+{
+    NORTHLIGHT_ASSERT_NOT_REALTIME("AudioEngine::setInputBuses");
+    inputBuses_ = std::move(buses);
+}
+
+InputPair AudioEngine::inputBus(const std::string& name) const
+{
+    const auto it = inputBuses_.find(name);
+    return it != inputBuses_.end() ? it->second : InputPair{};
 }
 
 int AudioEngine::midiSourceIndex(const std::string& name)

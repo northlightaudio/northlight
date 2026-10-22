@@ -248,9 +248,9 @@ void ArrangeView::selectTrack(core::Id trackId)
         onTrackSelected(trackId);
 }
 
-void ArrangeView::setInputNames(std::vector<std::string> names)
+void ArrangeView::setInputChoices(std::vector<InputChoice> choices)
 {
-    inputNames_ = std::move(names);
+    inputChoices_ = std::move(choices);
     rebuildHeaders();
 }
 
@@ -270,10 +270,10 @@ void ArrangeView::rebuildHeaders()
     while (headers_.size() < count)
     {
         auto header = std::make_unique<TrackHeader>(theme_);
-        header->onInputChanged = [this](core::Id id, int channel)
+        header->onInputChanged = [this](core::Id id, int channel, const std::string& bus)
         {
             if (onTrackInputChanged)
-                onTrackInputChanged(id, channel);
+                onTrackInputChanged(id, channel, bus);
         };
         header->onMidiInputChanged = [this](core::Id id, const std::string& name)
         {
@@ -351,14 +351,15 @@ void ArrangeView::rebuildHeaders()
             for (const auto& entry : theme_.track.palette)
                 if (entry.name == "Lichen")
                     shown.colour = entry.value.getARGB();
-        fxHeaders_[i]->setTrack(shown, static_cast<int>(count + i), *project_, inputNames_, midiInputNames_);
+        fxHeaders_[i]->setTrack(
+            shown, static_cast<int>(count + i), *project_, inputChoices_, midiInputNames_);
         fxHeaders_[i]->setSelected(fx[i]->id == selectedTrack_);
         fxHeaders_[i]->setAutomationShown(automation_.isShown(fx[i]->id));
     }
     for (size_t i = 0; i < count; ++i)
     {
         const auto& track = project_->tracks[i];
-        headers_[i]->setTrack(track, static_cast<int>(i), *project_, inputNames_, midiInputNames_);
+        headers_[i]->setTrack(track, static_cast<int>(i), *project_, inputChoices_, midiInputNames_);
         headers_[i]->setAutomationShown(automation_.isShown(track.id));
         headers_[i]->setSelected(track.id == selectedTrack_);
         bool missing = false;

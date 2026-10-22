@@ -377,6 +377,9 @@ struct Track : Channel
     Id auxInsert = invalidId;
     int auxOutput = 0;
     int inputChannel = -1; // device input channel index (callback order), -1 = none
+    // A stereo input bus by name (defined per device in Audio Setup); when set it
+    // replaces inputChannel. A name the device does not define means no input.
+    std::string inputBus;
     std::string midiInput; // MIDI input device name; empty = every enabled input
     // A MIDI track can also play the MIDI output device (the one chosen in Audio
     // Setup) on a channel: its clips and, while monitoring, its live input.
@@ -414,6 +417,8 @@ struct Track : Channel
     bool isFrozen() const noexcept { return !frozenMedia.empty(); }
     // Whether the track makes audio (a MIDI track only makes notes; a folder none).
     bool hasAudio() const noexcept { return kind != TrackKind::midi && kind != TrackKind::folder; }
+    // Whether an audio input is chosen (a channel or a bus, found on the device or not).
+    bool hasAudioInput() const noexcept { return inputChannel >= 0 || !inputBus.empty(); }
     bool operator==(const Track&) const = default;
 };
 
@@ -485,7 +490,8 @@ struct Project
     // 7: take groups (take lanes and comps) on tracks.
     // 8: folder tracks; frozen tracks.
     // 9: controller events (CC, pitch bend, pressure) in MIDI clips.
-    static constexpr int schemaVersion = 9;
+    // 10: stereo input buses on tracks.
+    static constexpr int schemaVersion = 10;
     static constexpr int oldestReadableVersion = 2; // older files are refused
 
     std::string name = "Untitled";

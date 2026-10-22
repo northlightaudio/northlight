@@ -5,6 +5,7 @@
 #include "engine/Loudness.h"
 #include "engine/Meters.h"
 #include "hosting/HostFactory.h"
+#include "ui/InputChoices.h"
 #include "ui/PluginMenu.h"
 #include "ui/PluginWindow.h"
 #include "ui/Theme.h"
@@ -43,7 +44,7 @@ public:
     // Only parameters changed: the open editor windows follow, the strips stay.
     void refreshEditors();
     // The audio inputs (callback order) and the open MIDI inputs for the input combos.
-    void setInputNames(std::vector<std::string> audio, std::vector<std::string> midi);
+    void setInputChoices(std::vector<InputChoice> audio, std::vector<std::string> midi);
     // The selected channel (its strip gets the accent outline); clicks on a name
     // cap report through onSelectChannel.
     void setSelectedChannel(core::Id channelId);
@@ -114,7 +115,8 @@ private:
     const core::Project* project_ = nullptr;
     bool masterClipped_ = false;
     std::vector<rt::MeterBlock::Reading> readings_;
-    std::vector<std::string> inputNames_, midiInputNames_;
+    std::vector<InputChoice> inputChoices_;
+    std::vector<std::string> midiInputNames_;
     core::Id selected_ = core::invalidId;
     double lastMeterMs_ = 0.0;
     // The rows every strip reserves, sized to the busiest strip so that each

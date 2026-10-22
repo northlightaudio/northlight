@@ -48,6 +48,30 @@ bool RecordRing::push(const float* samples, int numSamples) noexcept
     return true;
 }
 
+bool RecordRing::pushFrames(const float* const* channels, int numChannels, int numFrames) noexcept
+{
+    if (numChannels == 1)
+        return push(channels[0], numFrames);
+    if (numFrames <= 0)
+        return true;
+    const auto written = written_.load(std::memory_order_relaxed);
+    const auto read = read_.load(std::memory_order_acquire);
+    const auto count = static_cast<std::size_t>(numFrames) * static_cast<std::size_t>(numChannels);
+    if (data_.size() - static_cast<std::size_t>(written - read) < count)
+        return false;
+
+    auto index = static_cast<std::size_t>(written % data_.size());
+    for (int frame = 0; frame < numFrames; ++frame)
+        for (int ch = 0; ch < numChannels; ++ch)
+        {
+            data_[index] = channels[ch] != nullptr ? channels[ch][frame] : 0.0f;
+            if (++index == data_.size())
+                index = 0;
+        }
+    written_.store(written + count, std::memory_order_release);
+    return true;
+}
+
 int RecordRing::pop(float* dest, int maxSamples) noexcept
 {
     const auto read = read_.load(std::memory_order_relaxed);
@@ -103,6 +127,20 @@ void RecordSession::addInput(core::Id trackId, int inputChannel, std::string pat
     inputs_.push_back(std::move(input));
 }
 
+void RecordSession::addStereoInput(core::Id trackId, int left, int right, std::string path)
+{
+    NORTHLIGHT_ASSERT_NOT_REALTIME("RecordSession::addStereoInput");
+    auto input = std::make_unique<Input>();
+    input->trackId = trackId;
+    input->inputChannel = left;
+    input->rightChannel = right;
+    input->path = std::move(path);
+    // The same seconds of buffering as a mono input: two samples per frame.
+    input->ring = std::make_unique<RecordRing>(ringCapacity_ * 2);
+    input->gaps = std::make_unique<rt::SpscQueue<Gap>>(1024);
+    inputs_.push_back(std::move(input));
+}
+
 void RecordSession::capture(const float* const* inputs,
                             int numInputs,
                             int numSamples,
@@ -110,12 +148,12 @@ void RecordSession::capture(const float* const* inputs,
 {
     if (startPosition_.load(std::memory_order_relaxed) < 0)
         startPosition_.store(position, std::memory_order_release);
+    const auto channel = [&](int index) -> const float*
+    { return index >= 0 && index < numInputs ? inputs[index] : nullptr; };
     for (auto& input : inputs_)
     {
-        const float* samples = input->inputChannel >= 0 && input->inputChannel < numInputs
-                                   ? inputs[input->inputChannel]
-                                   : nullptr;
-        if (!input->ring->push(samples, numSamples))
+        const float* sides[2] = {channel(input->inputChannel), channel(input->rightChannel)};
+        if (!input->ring->pushFrames(sides, input->numChannels(), numSamples))
         {
             input->dropped.fetch_add(static_cast<std::uint64_t>(numSamples), std::memory_order_relaxed);
             input->gaps->push(Gap{input->captured, numSamples}); // a full gap queue: the file runs short
@@ -363,7 +401,7 @@ bool RecordWriter::begin(RecordSession& session)
     {
         InputState state;
         state.writer = std::make_unique<WavWriter>();
-        if (!state.writer->open(input->path, 1, session.sampleRate()))
+        if (!state.writer->open(input->path, input->numChannels(), session.sampleRate()))
             return false;
         states.push_back(std::move(state));
     }
@@ -442,26 +480,37 @@ void RecordWriter::openLiveTake(size_t inputIndex, int takeIndex, core::SamplePo
     live_.push_back(std::move(take));
 }
 
-// Folds `count` written samples into the input's live peaks: the fine level
-// completes a bin every livePeakSamplesPerBin samples, the coarse one every
-// livePeakLevelRatio fine bins. One lock per call, not per bin.
+// Folds `count` written frames into the input's live peaks (both sides of a
+// stereo frame count toward its bin): the fine level completes a bin every
+// livePeakSamplesPerBin frames, the coarse one every livePeakLevelRatio fine bins.
+// One lock per call, not per bin.
 void RecordWriter::addLivePeaks(size_t inputIndex, const float* samples, int count)
 {
     if (count <= 0)
         return;
     auto& state = inputs_[inputIndex];
+    const int channels = session_->inputs()[inputIndex]->numChannels();
     std::vector<float> fineMin, fineMax, coarseMin, coarseMax;
     auto& fine = state.tails[0];
     auto& coarse = state.tails[1];
     for (int i = 0; i < count; ++i)
     {
-        const float v = samples[i];
+        const float* frame = samples + static_cast<std::ptrdiff_t>(i) * channels;
+        float lo = frame[0], hi = frame[0];
+        for (int ch = 1; ch < channels; ++ch)
+        {
+            lo = std::min(lo, frame[ch]);
+            hi = std::max(hi, frame[ch]);
+        }
         if (fine.count == 0)
-            fine.minimum = fine.maximum = v;
+        {
+            fine.minimum = lo;
+            fine.maximum = hi;
+        }
         else
         {
-            fine.minimum = std::min(fine.minimum, v);
-            fine.maximum = std::max(fine.maximum, v);
+            fine.minimum = std::min(fine.minimum, lo);
+            fine.maximum = std::max(fine.maximum, hi);
         }
         if (++fine.count < livePeakSamplesPerBin)
             continue;
@@ -596,7 +645,7 @@ bool RecordWriter::applyEventsAt(size_t inputIndex)
             openLiveTake(inputIndex, state.takeIndex, mark.start);
             state.writer = std::make_unique<WavWriter>();
             if (!state.writer->open(takePath(session_->inputs()[inputIndex]->path, state.takeIndex),
-                                    1,
+                                    session_->inputs()[inputIndex]->numChannels(),
                                     session_->sampleRate()))
             {
                 fail(inputIndex, 0);
@@ -610,9 +659,10 @@ bool RecordWriter::applyEventsAt(size_t inputIndex)
             // Zeros stand in for the dropped block; they pass through writeSamples so a
             // mark inside the span (none expected) would still split correctly.
             int remaining = gap.count;
+            const int channels = session_->inputs()[inputIndex]->numChannels();
             while (remaining > 0)
             {
-                const int n = std::min(remaining, static_cast<int>(zeros_.size()));
+                const int n = std::min(remaining, static_cast<int>(zeros_.size()) / channels);
                 if (!writeSamples(inputIndex, zeros_.data(), n))
                     return false;
                 remaining -= n;
@@ -623,10 +673,11 @@ bool RecordWriter::applyEventsAt(size_t inputIndex)
     }
 }
 
-// Writes samples up to the next event boundary, repeatedly.
+// Writes `count` frames (interleaved) up to the next event boundary, repeatedly.
 bool RecordWriter::writeSamples(size_t inputIndex, const float* samples, int count)
 {
     auto& state = inputs_[inputIndex];
+    const int channels = session_->inputs()[inputIndex]->numChannels();
     while (count > 0)
     {
         std::int64_t boundary = state.written + count;
@@ -651,13 +702,13 @@ bool RecordWriter::writeSamples(size_t inputIndex, const float* samples, int cou
         }
         addLivePeaks(inputIndex, samples, toWrite);
         state.written += toWrite;
-        samples += toWrite;
+        samples += static_cast<std::ptrdiff_t>(toWrite) * channels;
         count -= toWrite;
     }
     return true;
 }
 
-// Writes `count` samples for one input (count may be 0 to flush pending events).
+// Writes `count` frames for one input (count may be 0 to flush pending events).
 bool RecordWriter::writeTo(size_t inputIndex, const float* samples, int count)
 {
     auto& state = inputs_[inputIndex];
@@ -680,13 +731,17 @@ void RecordWriter::drain(bool final)
     for (size_t i = 0; i < inputs.size(); ++i)
     {
         auto& ring = *inputs[i]->ring;
+        const int channels = inputs[i]->numChannels();
+        // Whole frames only: the audio thread pushes whole frames, so a pop of a
+        // multiple of the channel count returns one too.
+        const int maxSamples = static_cast<int>(chunk_.size()) / channels * channels;
         for (;;)
         {
             // Samples first, then the events that may refer to them: the audio thread
             // pushes a mark or gap before the samples that follow it, so once those
             // samples are visible the event is too. The other order could write a
             // take's first block into the previous file.
-            const int got = ring.pop(chunk_.data(), static_cast<int>(chunk_.size()));
+            const int got = ring.pop(chunk_.data(), maxSamples);
             RecordSession::TakeMark mark;
             while (session_->popTakeMark(mark))
                 marks_.push_back(mark);
@@ -704,8 +759,8 @@ void RecordWriter::drain(bool final)
                 }
                 break;
             }
-            writeTo(i, chunk_.data(), got);
-            if (!final && got < static_cast<int>(chunk_.size()))
+            writeTo(i, chunk_.data(), got / channels);
+            if (!final && got < maxSamples)
                 break;
         }
     }

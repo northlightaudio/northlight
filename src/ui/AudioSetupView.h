@@ -15,8 +15,8 @@ namespace northlight::ui
 {
 
 // The Audio Setup screen: driver type, device, sample rate, buffer size, channel
-// enables, MIDI inputs and output, reported and measured latency, calibration and
-// the ASIO control panel.
+// enables, stereo input buses, MIDI inputs and output, reported and measured
+// latency, calibration and the ASIO control panel.
 //
 // The view is a thin reflection of AudioDeviceLayer: every control change is turned
 // into an AudioSettings and applied; every change message from the layer refreshes
@@ -29,7 +29,7 @@ public:
     static constexpr int preferredHeight = 620;
     static constexpr int minimumWidth = 640;
     static constexpr int minimumHeight = 480;
-    static constexpr int contentHeight = 1040;
+    static constexpr int contentHeight = 1280;
 
     // Pass-through switched on while an input is live: the owner shows a toast.
     std::function<void(const juce::String& message)> onWarning;
@@ -42,6 +42,7 @@ public:
 
 private:
     class ChannelListModel;
+    class InputBusRow;
 
     void changeListenerCallback(juce::ChangeBroadcaster* source) override;
     void timerCallback() override;
@@ -56,6 +57,12 @@ private:
     void channelsChanged();
     void midiChanged();
     void applySettings(const audio::AudioSettings& settings);
+
+    // Input buses: the rows follow the device's buses; every edit saves them all,
+    // and enables a channel a bus reads when it is off.
+    void refreshInputBuses(const audio::AudioDeviceLayer::Status& status);
+    void commitInputBuses(std::vector<audio::InputBus> buses);
+    void addInputBus();
 
     void calibrateClicked();
     void calibrationFinished(const audio::LatencyCalibrator::Result& result);
@@ -79,6 +86,14 @@ private:
     juce::Label inputsLabel_, outputsLabel_;
     std::unique_ptr<ChannelListModel> inputsModel_, outputsModel_;
     juce::ListBox inputsList_, outputsList_;
+
+    // Input buses
+    juce::Label inputBusesHint_;
+    juce::TextButton addInputBusButton_;
+    juce::Viewport inputBusesView_;
+    juce::Component inputBusesHolder_;
+    std::vector<std::unique_ptr<InputBusRow>> inputBusRows_;
+    std::vector<audio::InputBus> inputBuses_; // as the rows show them
 
     // MIDI
     juce::Label midiInputsLabel_, midiOutputLabel_;
@@ -110,7 +125,8 @@ private:
     juce::Label statusLabel_;
     juce::Colour statusColour_;
 
-    juce::Rectangle<int> deviceSection_, channelsSection_, midiSection_, latencySection_, monitoringSection_;
+    juce::Rectangle<int> deviceSection_, channelsSection_, inputBusesSection_, midiSection_, latencySection_,
+        monitoringSection_;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(AudioSetupView)
 };

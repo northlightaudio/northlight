@@ -46,6 +46,8 @@ void migrate(json& j, int from)
             case 8: // 9: MIDI clips gain an optional "controllers" array; a clip
                     // without one has no controller events, which is what older
                     // versions meant
+            case 9: // 10: tracks gain an optional "inputBus"; without one the
+                    // track takes its single input channel, as before
                 break;
             default:
                 break;
@@ -403,6 +405,8 @@ json trackToJson(const Track& t)
     if (!t.frozenMedia.empty())
         j["frozen"] = t.frozenMedia;
     j["input"] = t.inputChannel;
+    if (!t.inputBus.empty())
+        j["inputBus"] = t.inputBus;
     if (!t.midiInput.empty())
         j["midiInput"] = t.midiInput;
     if (t.midiOut)
@@ -548,6 +552,9 @@ Track trackFromJson(const json& j)
         t.sortMidiClips();
     }
     t.inputChannel = j.value("input", -1);
+    t.inputBus = j.value("inputBus", std::string{});
+    if (!t.inputBus.empty())
+        t.inputChannel = -1;
     t.armed = j.value("armed", false);
     const auto monitor = j.value("monitor", std::string{"auto"});
     t.monitor = monitor == "off"  ? MonitorMode::off

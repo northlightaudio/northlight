@@ -202,7 +202,14 @@ in-house PSOLA renderer.
 ### Recording
 
 A recording session is built on the controller: one ring and one target file per
-armed input, handed to the record writer and then to the audio thread. The audio
+armed input, handed to the record writer and then to the audio thread. A track's
+input is a device channel or a stereo input bus. Buses are defined per device in
+Audio Setup (`audio::InputBus`, stored in the audio settings) and tracks name
+them; `ProjectSession` resolves the names against the enabled channels whenever the
+device changes and hands the engine a name-to-channel-pair map, which
+`compileSnapshot` uses to give each track node its left and right inputs. A stereo
+track monitors through its pan as a balance, and its ring holds interleaved frames
+that the writer puts in a two-channel file. The audio
 thread only pushes samples into rings and marks events (take boundaries, gaps); the
 writer drains the rings, cuts takes at the marked samples, fills dropped blocks with
 silence so placement stays exact, and rewrites the WAV headers every second. A

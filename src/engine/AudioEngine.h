@@ -150,6 +150,11 @@ public:
     // value TrackNode::midiSource filters on.
     int midiSourceIndex(const std::string& name);
 
+    // The stereo input buses the device offers now, by name (controller thread).
+    // Tracks that choose a bus read these inputs from the next setProject().
+    void setInputBuses(std::map<std::string, InputPair> buses);
+    InputPair inputBus(const std::string& name) const;
+
     // Automation. While the user touches a control to write its lane, the lane
     // is not played (controller thread).
     void setAutomationTouched(core::Id laneId, bool touched);
@@ -240,7 +245,8 @@ private:
     std::vector<int> liveMidiSources_ = std::vector<int>(midiQueueCapacity);
     std::vector<core::Id> liveMidiTargets_ = std::vector<core::Id>(midiQueueCapacity);
     size_t liveMidiCount_ = 0;
-    std::vector<std::string> midiSourceNames_; // index = source
+    std::vector<std::string> midiSourceNames_;    // index = source
+    std::map<std::string, InputPair> inputBuses_; // controller thread
     std::mutex midiMutex_;
     rt::SpscQueue<MidiOutEvent> midiOut_{4096};
     std::int64_t sampleClock_ = 0; // real-time: samples rendered since start

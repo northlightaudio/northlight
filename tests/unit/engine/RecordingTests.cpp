@@ -406,20 +406,27 @@ TEST_CASE("Capturing and monitoring do not allocate on the real-time thread", "[
     NoMediaLoader loader;
     engine::AudioEngine engine(loader, builtIns, 0);
     engine.prepare(48000.0, 64);
+    engine.setInputBuses({{"Pair", engine::InputPair{0, 1}}});
     core::Project p;
     core::Track t;
     t.id = 1;
     t.inputChannel = 0;
     t.monitor = core::MonitorMode::on;
     p.tracks.push_back(t);
+    core::Track stereo;
+    stereo.id = 2;
+    stereo.inputBus = "Pair";
+    stereo.monitor = core::MonitorMode::on;
+    p.tracks.push_back(stereo);
     engine.setProject(p);
     auto session = std::make_unique<engine::RecordSession>(48000.0, 0.5);
     session->addInput(1, 0, tempPath("rec-rt.wav"));
+    session->addStereoInput(2, 0, 1, tempPath("rec-rt-stereo.wav"));
     std::string error;
     REQUIRE(engine.startRecording(std::move(session), error));
 
-    std::vector<float> in0(64, 0.1f);
-    const float* inputs[] = {in0.data()};
+    std::vector<float> in0(64, 0.1f), in1(64, 0.2f);
+    const float* inputs[] = {in0.data(), in1.data()};
     std::vector<float> l(64), r(64);
     float* outputs[] = {l.data(), r.data()};
 
@@ -428,9 +435,9 @@ TEST_CASE("Capturing and monitoring do not allocate on the real-time thread", "[
     {
         rt::ScopedRealtimeSection section;
         for (int block = 0; block < 200; ++block)
-            engine.process(inputs, 1, outputs, 2, 64);
+            engine.process(inputs, 2, outputs, 2, 64);
         engine.stop();
-        engine.process(inputs, 1, outputs, 2, 64);
+        engine.process(inputs, 2, outputs, 2, 64);
     }
     rt::setViolationHandler(previous);
     CHECK(recordViolations == 0);
@@ -438,3 +445,133 @@ TEST_CASE("Capturing and monitoring do not allocate on the real-time thread", "[
     CHECK(engine.collectRecording().has_value());
 }
 #endif
+
+TEST_CASE("The record ring interleaves stereo frames and keeps their order across the wrap",
+          "[engine][record]")
+{
+    engine::RecordRing ring(1024);
+    std::vector<float> left(300), right(300);
+    for (size_t i = 0; i < left.size(); ++i)
+    {
+        left[i] = static_cast<float>(i);
+        right[i] = -static_cast<float>(i);
+    }
+    const float* sides[] = {left.data(), right.data()};
+    CHECK(ring.pushFrames(sides, 2, 300));
+    std::vector<float> out(800);
+    CHECK(ring.pop(out.data(), 400) == 400); // 200 frames
+    CHECK(out[0] == 0.0f);
+    CHECK(out[1] == -0.0f);
+    CHECK(out[398] == 199.0f);
+    CHECK(out[399] == -199.0f);
+    CHECK(ring.pushFrames(sides, 2, 300));       // wraps around the end
+    CHECK_FALSE(ring.pushFrames(sides, 2, 300)); // no room for a whole block: dropped whole
+    CHECK(ring.pop(out.data(), 800) == 800);
+    CHECK(out[0] == 200.0f);
+    CHECK(out[1] == -200.0f);
+    CHECK(out[200] == 0.0f); // the second block starts after the first's 100 remaining frames
+    CHECK(out[201] == -0.0f);
+    CHECK(out[798] == 299.0f);
+    CHECK(out[799] == -299.0f);
+
+    const float* silent[] = {left.data(), nullptr}; // a missing side records silence
+    CHECK(ring.pushFrames(silent, 2, 2));
+    CHECK(ring.pop(out.data(), 4) == 4);
+    CHECK(out[2] == 1.0f);
+    CHECK(out[3] == 0.0f);
+}
+
+TEST_CASE("A stereo input records both sides into one two-channel file", "[engine][record]")
+{
+    NoMediaLoader loader;
+    engine::AudioEngine engine(loader, builtIns, 0);
+    engine.prepare(48000.0, 64);
+    core::Project p;
+    core::Track t;
+    t.id = 1;
+    p.tracks.push_back(t);
+    engine.setProject(p);
+
+    auto session = std::make_unique<engine::RecordSession>(48000.0, 0.5);
+    const auto path = tempPath("rec-stereo.wav");
+    session->addStereoInput(1, 1, 0, path); // left from input 1, right from input 0
+
+    std::vector<float> in0(64), in1(64);
+    const float* inputs[] = {in0.data(), in1.data()};
+    std::vector<float> l(64), r(64);
+    float* outputs[] = {l.data(), r.data()};
+    std::string error;
+    REQUIRE(engine.startRecording(std::move(session), error));
+    std::int64_t sample = 0;
+    for (int block = 0; block < 100; ++block)
+    {
+        for (int i = 0; i < 64; ++i)
+        {
+            in0[static_cast<size_t>(i)] = static_cast<float>(sample + i) / 10000.0f;
+            in1[static_cast<size_t>(i)] = -0.25f;
+        }
+        engine.process(inputs, 2, outputs, 2, 64);
+        sample += 64;
+    }
+    engine.stop();
+    engine.process(inputs, 2, outputs, 2, 64);
+
+    waitForWriter(engine);
+    auto finished = engine.collectRecording();
+    REQUIRE(finished.has_value());
+    REQUIRE(finished->results.size() == 1);
+    CHECK(finished->results[0].ok);
+    CHECK(finished->results[0].samplesWritten == 6400);
+    CHECK(finished->session->totalDropped() == 0);
+
+    std::vector<std::vector<float>> channels;
+    engine::WavInfo info;
+    REQUIRE(engine::readWavSamples(path, channels, &info));
+    CHECK(info.numChannels == 2);
+    REQUIRE(channels.size() == 2);
+    REQUIRE(channels[0].size() == 6400);
+    for (int i = 0; i < 6400; ++i)
+    {
+        REQUIRE(channels[0][static_cast<size_t>(i)] == -0.25f);
+        REQUIRE(channels[1][static_cast<size_t>(i)] == static_cast<float>(i) / 10000.0f);
+    }
+}
+
+TEST_CASE("A track on a stereo input bus monitors both sides through its balance", "[engine][monitor]")
+{
+    NoMediaLoader loader;
+    engine::AudioEngine engine(loader, builtIns, 0);
+    engine.prepare(48000.0, 64);
+    engine.setInputBuses({{"Pair", engine::InputPair{1, 0}}});
+    core::Project p;
+    core::Track t;
+    t.id = 1;
+    t.inputBus = "Pair";
+    t.monitor = core::MonitorMode::on;
+    t.gain = 0.5f;
+    p.tracks.push_back(t);
+    engine.setProject(p);
+
+    std::vector<float> in0(64, 1.0f), in1(64, 0.8f);
+    const float* inputs[] = {in0.data(), in1.data()};
+    std::vector<float> l(64), r(64);
+    float* outputs[] = {l.data(), r.data()};
+    engine.process(inputs, 2, outputs, 2, 64);
+    CHECK(l[10] == Approx(0.4f).margin(1e-6f)); // input 1 on the left
+    CHECK(r[10] == Approx(0.5f).margin(1e-6f)); // input 0 on the right
+
+    // Panned hard left, the balance keeps the left side and drops the right.
+    p.tracks[0].pan = -1.0f;
+    engine.setProject(p);
+    for (int block = 0; block < 4; ++block) // past the pan ramp
+        engine.process(inputs, 2, outputs, 2, 64);
+    CHECK(l[10] == Approx(0.4f).margin(1e-6f));
+    CHECK(r[10] == Approx(0.0f).margin(1e-6f));
+
+    // A bus the device does not offer is no input at all.
+    p.tracks[0].inputBus = "Elsewhere";
+    engine.setProject(p);
+    engine.process(inputs, 2, outputs, 2, 64);
+    CHECK(l[10] == 0.0f);
+    CHECK(r[10] == 0.0f);
+}

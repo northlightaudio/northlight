@@ -321,6 +321,24 @@ void AudioDeviceLayer::clearCalibration()
     sendChangeMessage();
 }
 
+std::vector<InputBus> AudioDeviceLayer::inputBuses() const
+{
+    const auto s = status();
+    if (!s.open)
+        return {};
+    return settings_.inputBusesFor(s.deviceType, s.inputDevice);
+}
+
+void AudioDeviceLayer::setInputBuses(std::vector<InputBus> buses)
+{
+    const auto s = status();
+    if (!s.open)
+        return;
+    settings_.setInputBusesFor(s.deviceType, s.inputDevice, std::move(buses));
+    save();
+    sendChangeMessage();
+}
+
 bool AudioDeviceLayer::showControlPanel()
 {
     JUCE_ASSERT_MESSAGE_THREAD;

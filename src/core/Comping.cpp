@@ -519,6 +519,7 @@ moveTakeToNewTrack(const Project& project, Id trackId, Id groupId, Id takeId)
     t.colour = track->colour;
     t.outputBus = track->outputBus;
     t.inputChannel = track->inputChannel;
+    t.inputBus = track->inputBus;
     t.monitor = track->monitor;
     t.clips.push_back(take->clip);
     commands.push_back(std::make_unique<AddTrack>(std::move(t), project.trackIndex(trackId) + 1));

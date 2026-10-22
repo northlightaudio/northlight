@@ -66,6 +66,7 @@ ProjectSession::ProjectSession(audio::AudioDeviceLayer& audio, juce::File regist
     audio_.midi().setEngine(&engine_);
     audio_.addChangeListener(this);
     matchDeviceSampleRate();
+    refreshInputBuses();
     publish();
     startTimer(garbageTimerMilliseconds);
     hostedAutomation_.startTimerHz(50);
@@ -1490,7 +1491,8 @@ std::string ProjectSession::startRecording()
             session->addMidiTrack(t.id);
             continue;
         }
-        if (!t.armed || t.inputChannel < 0)
+        const auto input = resolvedInput(t);
+        if (!t.armed || input.left < 0)
             continue;
         const auto safeName = juce::File::createLegalFileName(juce::String(t.name)).trim();
         const auto base = uniqueRecordingBase(folder,
@@ -1506,7 +1508,10 @@ std::string ProjectSession::startRecording()
         meta.latencySamples = recordingLatencySamples();
         if (!writeSidecar(folder.getChildFile(base + sidecarSuffix), meta))
             return "could not write to " + folder.getFullPathName().toStdString();
-        session->addInput(t.id, t.inputChannel, file.getFullPathName().toStdString());
+        if (input.right >= 0)
+            session->addStereoInput(t.id, input.left, input.right, file.getFullPathName().toStdString());
+        else
+            session->addInput(t.id, input.left, file.getFullPathName().toStdString());
     }
     if (session->inputs().empty() && session->midiTracks().empty())
         return "arm a track and give it an input first";
@@ -1690,7 +1695,7 @@ bool ProjectSession::isTrackMonitoring(const core::Track& track) const
 {
     engine::TrackNode node;
     node.isMidi = track.isMidi();
-    node.inputChannel = track.inputChannel;
+    node.inputChannel = resolvedInput(track).left;
     node.armed = track.armed;
     node.monitor = track.monitor;
     return node.isMidi ? engine::Renderer::monitorsMidi(node, engine_.isPlaying(), engine_.isRecording())
@@ -1949,11 +1954,34 @@ void ProjectSession::matchDeviceSampleRate()
         project_.sampleRate = status.sampleRate;
 }
 
+bool ProjectSession::refreshInputBuses()
+{
+    const auto status = audio_.status();
+    std::map<std::string, engine::InputPair> buses;
+    if (status.open)
+        for (const auto& [name, pair] : audio::resolveInputBuses(audio_.inputBuses(), status.activeInputs))
+            buses[name] = engine::InputPair{pair.first, pair.second};
+    if (buses == inputBuses_)
+        return false;
+    inputBuses_ = buses;
+    engine_.setInputBuses(std::move(buses));
+    return true;
+}
+
+engine::InputPair ProjectSession::resolvedInput(const core::Track& track) const
+{
+    if (track.inputBus.empty())
+        return {track.inputChannel, -1};
+    const auto it = inputBuses_.find(track.inputBus);
+    return it != inputBuses_.end() ? it->second : engine::InputPair{};
+}
+
 void ProjectSession::changeListenerCallback(juce::ChangeBroadcaster*)
 {
     const double before = project_.sampleRate;
     matchDeviceSampleRate();
-    if (project_.sampleRate != before)
+    const bool busesChanged = refreshInputBuses();
+    if (project_.sampleRate != before || busesChanged)
         publish();
     else
         notify(Change::structure);

@@ -55,7 +55,10 @@ TrackHeader::TrackHeader(const Theme& theme) : theme_(theme), meter_(theme, 2, f
                                        : std::string{});
         }
         else if (onInputChanged)
-            onInputChanged(trackId_, input_.getSelectedId() - 2); // id 1 = none
+        {
+            if (const auto choice = inputs::selected(input_, inputChoices_))
+                onInputChanged(trackId_, choice->channel, choice->bus);
+        }
     };
     addAndMakeVisible(input_);
 
@@ -194,7 +197,7 @@ TrackHeader::~TrackHeader()
 void TrackHeader::setTrack(const core::Track& track,
                            int index,
                            const core::Project& project,
-                           const std::vector<std::string>& inputNames,
+                           const std::vector<InputChoice>& inputs,
                            const std::vector<std::string>& midiInputNames)
 {
     const juce::ScopedValueSetter<bool> guard(updating_, true);
@@ -264,14 +267,8 @@ void TrackHeader::setTrack(const core::Track& track,
     }
     else
     {
-        input_.addItem("No input", 1);
-        for (size_t i = 0; i < inputNames.size(); ++i)
-            input_.addItem("In " + juce::String(static_cast<int>(i) + 1), static_cast<int>(i) + 2);
-        input_.setSelectedId(track.inputChannel >= 0 &&
-                                     static_cast<size_t>(track.inputChannel) < inputNames.size()
-                                 ? track.inputChannel + 2
-                                 : 1,
-                             juce::dontSendNotification);
+        inputChoices_ = inputs;
+        inputs::fill(input_, inputChoices_, track);
     }
 
     output_.clear(juce::dontSendNotification);

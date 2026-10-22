@@ -1696,16 +1696,23 @@ void SetTrackSolo::revert(Project& p)
     requireChannel(p, trackId_).solo = previous_;
 }
 
-SetTrackInput::SetTrackInput(Id trackId, int inputChannel) : trackId_(trackId), value_(inputChannel) {}
+SetTrackInput::SetTrackInput(Id trackId, int inputChannel, std::string inputBus)
+    : trackId_(trackId), value_(inputBus.empty() ? inputChannel : -1), bus_(std::move(inputBus))
+{
+}
 void SetTrackInput::apply(Project& p)
 {
     auto& t = requireTrack(p, trackId_);
     previous_ = t.inputChannel;
+    previousBus_ = t.inputBus;
     t.inputChannel = value_;
+    t.inputBus = bus_;
 }
 void SetTrackInput::revert(Project& p)
 {
-    requireTrack(p, trackId_).inputChannel = previous_;
+    auto& t = requireTrack(p, trackId_);
+    t.inputChannel = previous_;
+    t.inputBus = previousBus_;
 }
 
 SetTrackArmed::SetTrackArmed(Id trackId, bool armed) : trackId_(trackId), value_(armed) {}

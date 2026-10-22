@@ -25,7 +25,8 @@ add_executable(northlight_juce_tests
     CrashReportTests.cpp
     MediaBrowserTests.cpp
     MidiFileTests.cpp
-    MigrationTests.cpp)
+    MigrationTests.cpp
+    InputChoicesTests.cpp)
 
 target_link_libraries(northlight_juce_tests PRIVATE
     northlight_options

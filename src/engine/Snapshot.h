@@ -170,7 +170,8 @@ struct TrackNode : ChannelNode
     InsertProcessor* auxInsert = nullptr; // that instrument
     int auxOutput = 0;                    // its extra pair, 0 = the first beyond main
     std::shared_ptr<InsertProcessor> keepAliveAux;
-    int inputChannel = -1;           // device input (callback order) or -1
+    int inputChannel = -1;           // device input (callback order) or -1; the left one of a stereo bus
+    int inputChannelRight = -1;      // a stereo bus's right input, or -1 for a mono input
     int midiSource = -1;             // live MIDI: -1 = every input, else the engine's index for the device
     bool midiOut = false;            // the span's events also go to the MIDI output device
     std::uint8_t midiOutChannel = 0; // 0..15
@@ -274,14 +275,26 @@ private:
     ClipSourceHook stretchHook_;
 };
 
+// A stereo input bus resolved to the device inputs it reads, as indices into the
+// active inputs in callback order; -1 where the device has no such input enabled.
+struct InputPair
+{
+    int left = -1;
+    int right = -1;
+    bool operator==(const InputPair&) const = default;
+};
+using InputBusResolver = std::function<InputPair(const std::string& name)>;
+
 // `delays` keeps compensation delay lines across compiles; without it each
-// snapshot gets fresh (empty) lines.
+// snapshot gets fresh (empty) lines. `inputBuses` resolves a track's input bus;
+// without it (or for a name it does not know) the track has no input.
 std::unique_ptr<Snapshot> compileSnapshot(const core::Project& project,
                                           MediaCache& media,
                                           InsertCache& inserts,
                                           DelayCache* delays = nullptr,
                                           RuntimeCache* runtimes = nullptr,
-                                          const std::function<int(const std::string&)>& midiSources = {});
+                                          const std::function<int(const std::string&)>& midiSources = {},
+                                          const InputBusResolver& inputBuses = {});
 
 // Meter slot layout used by the compiler: tracks in project order, then buses in
 // project order, then the master.

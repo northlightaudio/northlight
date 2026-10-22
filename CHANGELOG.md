@@ -13,6 +13,9 @@ Northlight has not had a release yet. The first release, 0.1.0, will include:
 
 ### Added
 
+- Stereo inputs, set up in Audio Setup from any two inputs of an interface and
+  chosen by name in a track's input menu; a stereo track records one stereo file and
+  monitors in stereo.
 - Recording from any number of inputs with input monitoring, latency calibration
   through a loopback cable, loop and punch recording into take lanes with swipe
   comping, and recovery of recordings interrupted by a crash.

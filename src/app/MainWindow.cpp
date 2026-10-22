@@ -972,8 +972,8 @@ private:
         tracks_.onLocate = [this](core::SamplePosition p) { session_.locate(p); };
         tracks_.onRegionChanged = [this](core::SamplePosition start, core::SamplePosition end)
         { session_.setRegion(start, end); };
-        tracks_.onTrackInputChanged = [this](core::Id id, int channel)
-        { session_.execute(std::make_unique<core::SetTrackInput>(id, channel)); };
+        tracks_.onTrackInputChanged = [this](core::Id id, int channel, const std::string& bus)
+        { session_.execute(std::make_unique<core::SetTrackInput>(id, channel, bus)); };
         tracks_.onTrackMidiInputChanged = [this](core::Id id, const std::string& name)
         { session_.execute(std::make_unique<core::SetTrackMidiInput>(id, name)); };
         tracks_.onTrackArmChanged = [this](core::Id id, bool armed)
@@ -1339,14 +1339,21 @@ private:
         if (s.open)
             lastDeviceName_ = s.outputDevice;
         {
-            const auto all = audio_.inputChannelNames();
-            std::vector<std::string> names;
-            for (int channel : s.activeInputs)
-                names.push_back(channel >= 0 && static_cast<size_t>(channel) < all.size()
-                                    ? all[static_cast<size_t>(channel)]
-                                    : "Input " + std::to_string(channel + 1));
-            mixer_.setInputNames(names, audio_.midi().openInputNames());
-            tracks_.setInputNames(std::move(names));
+            // The input menus: the stereo buses this device can play, then every
+            // enabled channel, both named by their device channel numbers.
+            std::vector<ui::InputChoice> choices;
+            if (s.open)
+            {
+                const auto in = [](int deviceChannel) { return "In " + std::to_string(deviceChannel + 1); };
+                const auto resolved = audio::resolveInputBuses(audio_.inputBuses(), s.activeInputs);
+                for (const auto& bus : audio_.inputBuses())
+                    if (resolved.contains(bus.name))
+                        choices.push_back({bus.name, in(bus.left) + " + " + in(bus.right), -1, bus.name});
+                for (size_t i = 0; i < s.activeInputs.size(); ++i)
+                    choices.push_back({in(s.activeInputs[i]), {}, static_cast<int>(i), {}});
+            }
+            mixer_.setInputChoices(choices, audio_.midi().openInputNames());
+            tracks_.setInputChoices(std::move(choices));
             tracks_.setMidiInputNames(audio_.midi().openInputNames());
         }
         tracks_.setProject(&session_.project());

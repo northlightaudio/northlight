@@ -3,6 +3,7 @@
 #include "core/Command.h"
 #include "core/Model.h"
 #include "engine/Meters.h"
+#include "ui/InputChoices.h"
 #include "ui/Theme.h"
 #include "ui/components/Knob.h"
 #include "ui/components/Meter.h"
@@ -30,14 +31,14 @@ public:
     explicit TrackHeader(const Theme& theme);
     ~TrackHeader() override;
 
-    // `index`: the track's position (its number and default colour); `inputNames`:
-    // the audio inputs (callback order); `midiInputNames`: the open MIDI inputs.
+    // `index`: the track's position (its number and default colour); `inputs`:
+    // the audio input menu's choices; `midiInputNames`: the open MIDI inputs.
     // A values refresh: volume, pan and the toggles only (no combo refill).
     void setValues(const core::Channel& channel);
     void setTrack(const core::Track& track,
                   int index,
                   const core::Project& project,
-                  const std::vector<std::string>& inputNames,
+                  const std::vector<InputChoice>& inputs,
                   const std::vector<std::string>& midiInputNames);
     // Live indicators: input being heard and a recording in progress.
     void setLiveState(bool monitoring, bool recording);
@@ -52,9 +53,9 @@ public:
     void setMediaMissing(bool missing);
     void startRename();
 
-    std::function<void(core::Id)> onSelected; // a click anywhere on the header
-    std::function<void(core::Id, int)> onInputChanged;
-    std::function<void(core::Id, const std::string&)> onMidiInputChanged; // empty = all
+    std::function<void(core::Id)> onSelected;                              // a click anywhere on the header
+    std::function<void(core::Id, int, const std::string&)> onInputChanged; // channel, or a bus name
+    std::function<void(core::Id, const std::string&)> onMidiInputChanged;  // empty = all
     std::function<void(core::Id, bool)> onArmChanged;
     std::function<void(core::Id, core::MonitorMode)> onMonitorChanged;
     std::function<void(std::unique_ptr<core::Command>)> onCommand;
@@ -127,6 +128,7 @@ private:
     std::vector<core::Id> busIds_;
     juce::Label name_;
     juce::ComboBox input_, output_;
+    std::vector<InputChoice> inputChoices_;
     juce::TextButton mute_{"M"}, solo_{"S"}, arm_{"R"}, monitorButton_, automation_{"A"};
     juce::Slider volume_;
     Meter meter_;

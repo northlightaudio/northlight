@@ -52,6 +52,12 @@ to set a range: **Loop** repeats it and **Punch** records into it. With loop on,
 pass becomes a take; the take lanes show them, and swiping across a lane picks which
 take plays where.
 
+Every enabled input can be picked on its own. For a stereo source (a keyboard, a
+pair of overheads), add a **stereo input** under **Stereo inputs** in Audio Setup:
+name it and choose its left and right inputs. Tracks then list it by name, record it
+to one stereo file and monitor it in stereo. Stereo inputs are kept for each audio
+interface, so every project can use them.
+
 Recordings go to the project's media folder. If Northlight closes during a take, the
 next launch offers to recover the unfinished files and put them back where they were
 recorded.

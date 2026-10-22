@@ -387,9 +387,30 @@ void Renderer::renderTrack(const Snapshot& snapshot,
     }
 
     // Input monitoring: the device input through the track's pan (the fader follows
-    // in the summing stage).
+    // in the summing stage). A stereo bus keeps its sides, panned as a balance like
+    // a stereo clip.
+    const bool stereoInput = track.inputChannelRight >= 0;
     if (monitorsInput(track, context.playing, context.recording) && track.inputChannel < context.numInputs &&
-        context.inputs != nullptr)
+        track.inputChannelRight < context.numInputs && context.inputs != nullptr && stereoInput)
+    {
+        const float* inL = context.inputs[track.inputChannel];
+        const float* inR = context.inputs[track.inputChannelRight];
+        float panLeft0 = 1.0f, panRight0 = 1.0f, panLeft1 = 1.0f, panRight1 = 1.0f;
+        stereoPanGains(pan0, panLeft0, panRight0);
+        stereoPanGains(pan1, panLeft1, panRight1);
+        const float stepL = (panLeft1 - panLeft0) / static_cast<float>(numSamples);
+        const float stepR = (panRight1 - panRight0) / static_cast<float>(numSamples);
+        for (int i = 0; i < numSamples; ++i)
+        {
+            const float t = static_cast<float>(i + 1);
+            if (inL != nullptr)
+                left[i] += inL[i] * (panLeft0 + stepL * t);
+            if (inR != nullptr)
+                right[i] += inR[i] * (panRight0 + stepR * t);
+        }
+    }
+    else if (monitorsInput(track, context.playing, context.recording) &&
+             track.inputChannel < context.numInputs && context.inputs != nullptr && !stereoInput)
     {
         const float* in = context.inputs[track.inputChannel];
         if (in != nullptr)

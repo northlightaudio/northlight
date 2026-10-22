@@ -118,8 +118,12 @@ Rows at `trackRow` 56 default. Contents, left to right, inside `space.sm` paddin
   that cycles off/auto/on with the state in its tooltip: dim when off, `monitor`
   green while the input is heard (on, or auto with the track armed and the
   transport stopped or recording), `warning` yellow while auto is waiting.
-- Row 2 (24 px, hidden below 44 px row height): input select (compact combo, "In 1",
-  "In 1/2" for linked stereo, "No input"), an 8 px tall horizontal meter filling the
+- Row 2 (24 px, hidden below 44 px row height): input select (compact combo: "No
+  input", then the stereo inputs from Audio Setup by name under a "Stereo"
+  heading, then each enabled channel as "In 3" (its device channel number) under
+  "Mono"; the tooltip of a stereo choice names its channels, "Vocals (In 1 + In 2)";
+  a stereo input the device does not have shows as "Vocals (missing)" with a
+  tooltip pointing to Audio Setup), an 8 px tall horizontal meter filling the
   middle, and a compact volume slider on the right (hidden below 200 px header
   width).
 - At `trackRowLarge` 112 the header gains a third row with pan knob, output select and

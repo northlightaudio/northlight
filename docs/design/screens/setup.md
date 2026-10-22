@@ -16,7 +16,12 @@ CHANNELS
   [✓] 1  INPUT 1   ▁▃           [✓] 1  LINE 1
   [✓] 2  INPUT 2   ▁            [✓] 2  LINE 2
   [ ] 3  INPUT 3                [ ] 3  LINE 3
-  link 1+2 as stereo ⟷          link 1+2 ⟷
+
+STEREO INPUTS
+  Pair two inputs into a stereo input that tracks can record from. Single inputs are always available.
+  [Vocals          ]  L [1: INPUT 1 ▾]  R [2: INPUT 2 ▾]   [Remove]
+  [Stereo 3/4      ]  L [3: INPUT 3 (off) ▾]  R [4: INPUT 4 (off) ▾]   [Remove]
+  [Add stereo input]
 
 LATENCY
   Reported      in 2.83 ms (136)  ·  out 1.50 ms (72)  ·  round trip 4.33 ms
@@ -34,8 +39,16 @@ MONITORING
   in `value` mono.
 - Channel rows show a live 8 px input meter next to each enabled input so the user
   can find the right one by playing.
-- Stereo link toggles ("⟷") pair adjacent channels; linked pairs show as "1/2" in
-  track input selects.
+- **Stereo inputs** (like Cubase's input buses): each row is a name (a text field,
+  180 px), the left and right device channels (combos listing every input as
+  "3: INPUT 3", "(off)" after a disabled one) and Remove. **Add stereo input** adds
+  the first neighbouring pair no row uses yet, named "Stereo 1/2". Picking a
+  disabled channel enables it. Names are unique (a repeat gains " 2"); an empty name
+  reverts. Four rows show; more scroll. Without an open device the hint reads "Open
+  a device to set up its stereo inputs." and Add is disabled.
+- Stereo inputs belong to the input device and are kept per device in the user's
+  settings, so switching interfaces and back brings them back; a project stores
+  only the name its tracks chose.
 - Calibrate runs as an inline progress ("Playing click… 3/5") with the measured
   result appearing in `textPrimary` and the reported value dimming to
   `textSecondary` once a measurement exists; Clear resets.

@@ -19,7 +19,9 @@
 //   audio thread  --RecordRing per input-->  RecordWriter thread  --> temp WAV
 //
 // A RecordSession is created on the controller thread with one entry per armed
-// track (its input channel and the file to write). The real-time thread captures
+// track (its input channel, or the two of a stereo input bus, and the file to
+// write). A stereo input's ring holds interleaved frames and its file has two
+// channels; every count below is in frames. The real-time thread captures
 // every block of each input into that entry's ring; the writer thread drains the
 // rings into float WAV files, rewriting the headers every second so a crash loses
 // at most that much. When the session stops, the writer finishes the files and the
@@ -50,6 +52,9 @@ public:
 
     // Audio thread. Returns false (dropping the block) when there is no room.
     bool push(const float* samples, int numSamples) noexcept;
+    // Interleaves numFrames of each channel (a null channel is silence) and pushes
+    // them as one block, or drops the whole block when there is no room.
+    bool pushFrames(const float* const* channels, int numChannels, int numFrames) noexcept;
 
     // Writer thread. Copies up to maxSamples into dest, returns the count.
     int pop(float* dest, int maxSamples) noexcept;
@@ -92,12 +97,15 @@ public:
     struct Input
     {
         core::Id trackId = core::invalidId;
-        int inputChannel = 0; // index into the active device inputs
-        std::string path;     // file the writer records to (first take)
+        int inputChannel = 0;  // index into the active device inputs
+        int rightChannel = -1; // a stereo input's right side, or -1 for mono
+        std::string path;      // file the writer records to (first take)
         std::unique_ptr<RecordRing> ring;
         std::unique_ptr<rt::SpscQueue<Gap>> gaps;
         std::atomic<std::uint64_t> dropped{0};
         std::int64_t captured = 0; // audio thread only
+
+        int numChannels() const noexcept { return rightChannel >= 0 ? 2 : 1; }
     };
 
     struct TakeMark
@@ -122,6 +130,8 @@ public:
 
     // Controller, before the session is handed to the engine.
     void addInput(core::Id trackId, int inputChannel, std::string path);
+    // A stereo input: two device inputs recorded into one two-channel file.
+    void addStereoInput(core::Id trackId, int left, int right, std::string path);
     // A MIDI track whose live input is captured (its source filter is the track's).
     void addMidiTrack(core::Id trackId);
 
