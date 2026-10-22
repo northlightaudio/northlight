@@ -220,13 +220,25 @@ TEST_CASE("A scanner that crashes, hangs or talks nonsense fails the file so it 
 {
     const juce::ScopedJuceInitialiser_GUI juceInit;
     // The stub stands in for the scanner and misbehaves as the environment says.
-    const auto stub = juce::File::getSpecialLocation(juce::File::currentExecutableFile)
-                          .getSiblingFile("northlight_scan_stub.exe");
+#if JUCE_WINDOWS
+    const char* stubName = "northlight_scan_stub.exe";
+#else
+    const char* stubName = "northlight_scan_stub";
+#endif
+    const auto stub =
+        juce::File::getSpecialLocation(juce::File::currentExecutableFile).getSiblingFile(stubName);
     REQUIRE(stub.existsAsFile());
     const auto target =
         juce::File::getSpecialLocation(juce::File::tempDirectory).getChildFile("stub-target.vst3");
     REQUIRE(target.replaceWithText("x"));
-    const auto mode = [](const char* value) { _putenv_s("NORTHLIGHT_SCAN_STUB_MODE", value); };
+    const auto mode = [](const char* value)
+    {
+#if JUCE_WINDOWS
+        _putenv_s("NORTHLIGHT_SCAN_STUB_MODE", value);
+#else
+        setenv("NORTHLIGHT_SCAN_STUB_MODE", value, 1);
+#endif
+    };
 
     std::vector<hosting::PluginInfo> found;
     std::string error;

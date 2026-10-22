@@ -13,7 +13,9 @@ namespace northlight::ui
 ClapEditor::ClapEditor(hosting::HostedClapPlugin& plugin) : plugin_(plugin)
 {
     setOpaque(true);
+#if JUCE_WINDOWS
     addAndMakeVisible(host_);
+#endif
     setSize(400, 300);
 }
 
@@ -21,8 +23,8 @@ ClapEditor::~ClapEditor()
 {
     stopTimer();
     plugin_.closeEditor();
-    host_.setHWND(nullptr);
 #if JUCE_WINDOWS
+    host_.setHWND(nullptr);
     if (child_ != nullptr)
         DestroyWindow(static_cast<HWND>(child_));
 #endif
@@ -76,7 +78,9 @@ void ClapEditor::open()
 
 void ClapEditor::resized()
 {
+#if JUCE_WINDOWS
     host_.setBounds(getLocalBounds());
+#endif
     if (opened_)
         plugin_.editorResized(getWidth(), getHeight());
 }

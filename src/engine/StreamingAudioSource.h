@@ -67,7 +67,10 @@ public:
         int seekGraceMilliseconds = 5;
     };
 
-    StreamingAudioSource(std::unique_ptr<StreamReader> reader, Options options = {});
+    // Two constructors rather than a default argument: GCC and Clang reject `= {}`
+    // for a nested struct with member initialisers while the class is incomplete.
+    explicit StreamingAudioSource(std::unique_ptr<StreamReader> reader);
+    StreamingAudioSource(std::unique_ptr<StreamReader> reader, Options options);
     ~StreamingAudioSource() override;
 
     // AudioSource (real-time read)

@@ -14,6 +14,9 @@ namespace northlight::ui
 // so the GUI sits exactly where the component is (under the window's bar). The
 // plugin's resize requests are picked up on a timer and reported through
 // onPluginResized so the window can follow.
+//
+// Only Windows is supported so far: elsewhere HostedClapPlugin reports no GUI (it
+// asks for the win32 window API), so this component is never opened.
 class ClapEditor final : public juce::Component, private juce::Timer
 {
 public:
@@ -35,7 +38,9 @@ private:
     void open();
 
     hosting::HostedClapPlugin& plugin_;
+#if JUCE_WINDOWS
     juce::HWNDComponent host_;
+#endif
     void* child_ = nullptr; // the HWND the plugin's GUI is parented to
     bool opened_ = false;
 };

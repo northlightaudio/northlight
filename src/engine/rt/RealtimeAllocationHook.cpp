@@ -14,8 +14,35 @@
 #include <cstdlib>
 #include <new>
 
+#if defined(_WIN32)
+#include <malloc.h>
+#endif
+
 namespace
 {
+// Over-aligned blocks: MSVC's CRT has no std::aligned_alloc, and its aligned
+// blocks must be freed with _aligned_free.
+void* alignedMalloc(std::size_t size, std::size_t alignment) noexcept
+{
+#if defined(_WIN32)
+    return _aligned_malloc(size, alignment);
+#else
+    void* p = nullptr;
+    if (alignment < sizeof(void*))
+        alignment = sizeof(void*);
+    return posix_memalign(&p, alignment, size) == 0 ? p : nullptr;
+#endif
+}
+
+void alignedFree(void* p) noexcept
+{
+#if defined(_WIN32)
+    _aligned_free(p);
+#else
+    std::free(p);
+#endif
+}
+
 void checkAllocation() noexcept
 {
     if (northlight::rt::isRealtimeThread())
@@ -45,7 +72,7 @@ void* allocateAligned(std::size_t size, std::align_val_t alignment)
     checkAllocation();
     if (size == 0)
         size = 1;
-    if (void* p = _aligned_malloc(size, static_cast<std::size_t>(alignment)))
+    if (void* p = alignedMalloc(size, static_cast<std::size_t>(alignment)))
         return p;
     throw std::bad_alloc{};
 }
@@ -86,13 +113,13 @@ void* operator new[](std::size_t size, std::align_val_t alignment)
 void* operator new(std::size_t size, std::align_val_t alignment, const std::nothrow_t&) noexcept
 {
     checkAllocation();
-    return _aligned_malloc(size == 0 ? 1 : size, static_cast<std::size_t>(alignment));
+    return alignedMalloc(size == 0 ? 1 : size, static_cast<std::size_t>(alignment));
 }
 
 void* operator new[](std::size_t size, std::align_val_t alignment, const std::nothrow_t&) noexcept
 {
     checkAllocation();
-    return _aligned_malloc(size == 0 ? 1 : size, static_cast<std::size_t>(alignment));
+    return alignedMalloc(size == 0 ? 1 : size, static_cast<std::size_t>(alignment));
 }
 
 void operator delete(void* p) noexcept
@@ -122,25 +149,25 @@ void operator delete[](void* p, std::size_t) noexcept
 void operator delete(void* p, std::align_val_t) noexcept
 {
     checkDeallocation();
-    _aligned_free(p);
+    alignedFree(p);
 }
 
 void operator delete[](void* p, std::align_val_t) noexcept
 {
     checkDeallocation();
-    _aligned_free(p);
+    alignedFree(p);
 }
 
 void operator delete(void* p, std::size_t, std::align_val_t) noexcept
 {
     checkDeallocation();
-    _aligned_free(p);
+    alignedFree(p);
 }
 
 void operator delete[](void* p, std::size_t, std::align_val_t) noexcept
 {
     checkDeallocation();
-    _aligned_free(p);
+    alignedFree(p);
 }
 
 #endif // NORTHLIGHT_RT_CHECKS

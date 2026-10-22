@@ -9,6 +9,11 @@
 namespace northlight::engine
 {
 
+StreamingAudioSource::StreamingAudioSource(std::unique_ptr<StreamReader> reader)
+    : StreamingAudioSource(std::move(reader), Options{})
+{
+}
+
 StreamingAudioSource::StreamingAudioSource(std::unique_ptr<StreamReader> reader, Options options)
     : reader_(std::move(reader)), options_(options)
 {

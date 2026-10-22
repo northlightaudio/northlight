@@ -57,6 +57,35 @@ the repository. Without it Northlight builds with Windows Audio only. To enable 
 
 VST3 hosting needs no external SDK; the VST3 SDK comes with JUCE.
 
+## Linux (experimental)
+
+Windows is the supported platform. The tree also builds and its tests pass with GCC
+on Linux (checked on Arch under WSL, GCC 16), so portability breaks show up early,
+but the result is not a usable DAW yet.
+
+You need CMake 3.28 or later, Ninja, a C++20 compiler and JUCE's Linux dependencies:
+the ALSA, FreeType, fontconfig, X11 (Xrandr, Xinerama, Xcursor, Xext) and OpenGL
+development packages.
+
+```bash
+cmake --preset linux-debug
+cmake --build --preset linux-debug
+ctest --preset linux-debug
+```
+
+What is missing on Linux:
+
+- CLAP plugin windows. Only the win32 window API is hosted, so CLAP plugins show no
+  editor. VST3 editors go through JUCE and are untested.
+- Crash containment around plugin calls (`CrashGuard`) does nothing; a crashing
+  plugin takes the app down. Scanning still runs in a separate process.
+- Render workers run at normal priority (no `SCHED_FIFO` or rtkit request).
+- Audio is ALSA only; JACK is not enabled.
+- Crash reports (minidumps) and the "reduce motion" system setting are Windows only.
+- The UI token check (`check-ui-tokens.ps1`) runs only on Windows.
+- GCC's `-Wextra` warns about partly initialised `ParameterInfo` aggregates, so a
+  warnings-as-errors build does not pass yet.
+
 ## Options
 
 | Option | Default | Meaning |

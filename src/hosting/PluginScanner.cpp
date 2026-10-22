@@ -37,7 +37,7 @@ std::int64_t PluginScanner::modificationTime(const juce::File& file)
     std::int64_t newest = file.getLastModificationTime().toMilliseconds();
     if (file.isDirectory())
         for (const auto& child : file.findChildFiles(juce::File::findFiles, true))
-            newest = std::max(newest, child.getLastModificationTime().toMilliseconds());
+            newest = std::max<std::int64_t>(newest, child.getLastModificationTime().toMilliseconds());
     return newest;
 }
 
@@ -201,9 +201,11 @@ void PluginScanner::run()
     // leaves nothing dangling.
     auto planning = std::make_shared<Planning>();
     planning->candidates = format.searchPathsForPlugins(paths, true, false);
-    // The CLAP folders: %COMMONPROGRAMFILES%\CLAP, the per-user one under the local
-    // (not roaming) application data, and every entry of %CLAP_PATH%.
+    // The CLAP folders. Windows: %COMMONPROGRAMFILES%\CLAP and the per-user one under
+    // the local (not roaming) application data. Linux: ~/.clap and /usr/lib/clap.
+    // Then every entry of CLAP_PATH (';'-separated on Windows, ':' elsewhere).
     juce::FileSearchPath clapPaths;
+#if JUCE_WINDOWS
     const auto commonFiles = juce::SystemStats::getEnvironmentVariable("COMMONPROGRAMFILES", "");
     clapPaths.add(commonFiles.isNotEmpty() ? juce::File(commonFiles).getChildFile("CLAP")
                                            : juce::File("C:\\Program Files\\Common Files\\CLAP"));
@@ -211,8 +213,14 @@ void PluginScanner::run()
                       .getChildFile("Programs")
                       .getChildFile("Common")
                       .getChildFile("CLAP"));
-    for (const auto& entry :
-         juce::StringArray::fromTokens(juce::SystemStats::getEnvironmentVariable("CLAP_PATH", ""), ";", "\""))
+    const char* clapPathSeparator = ";";
+#else
+    clapPaths.add(juce::File::getSpecialLocation(juce::File::userHomeDirectory).getChildFile(".clap"));
+    clapPaths.add(juce::File("/usr/lib/clap"));
+    const char* clapPathSeparator = ":";
+#endif
+    for (const auto& entry : juce::StringArray::fromTokens(
+             juce::SystemStats::getEnvironmentVariable("CLAP_PATH", ""), clapPathSeparator, "\""))
         if (entry.trim().isNotEmpty())
             clapPaths.add(juce::File(entry.trim()));
     for (const auto& extra : extraPaths_)
