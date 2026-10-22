@@ -260,6 +260,18 @@ each becomes a track of its own from the rack's chip or the mixer's Outputs menu
 named that way. The master: Drive, Velocity, Level (applied to every output).
 Kits: Pulsar, Boom Room, Tight Electro, Dusty, Minimal Clicks, Industrial.
 
+The voices follow the TR-808's circuits. The kick and toms are a sine that drops
+gently onto its note (further and faster with Punch), soft-clipped, the kick with
+its trigger's click through a low-pass as bright as Click. The snare is two shell
+modes under high-passed noise (the wires, as loud as Snappy) with a band of noise
+for Crack. The clap is band-passed noise retriggered: three short bursts and a
+longer fourth, then a tail as long as the decay. The hats are six square
+oscillators at the 808's ratios, mixed with noise, through a band-pass and a
+high-pass that open with Bright. The rim is two short modes (about 1.7 kHz and
+460 Hz) clipped together. Velocity drives the kick, toms and snare harder, as the
+808's accent does. Filters are set in hertz and noise is scaled to the sample
+rate, so a pad sounds the same at 44.1 kHz and at 192 kHz.
+
 - Deep space (the canvas darkening around the star) with stars, and the pulsar in
   the top-left corner: a white core, an `Overcast` halo and two beams that turn slowly
   while it plays and flare on every hit, which also sends a ring in the pad's hue

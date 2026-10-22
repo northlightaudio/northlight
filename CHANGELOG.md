@@ -13,6 +13,11 @@ Northlight has not had a release yet. The first release, 0.1.0, will include:
 
 ### Added
 
+- Pulsar drums modelled on the TR-808: a booming kick that drops gently onto its
+  note, a snare with a tuned shell under its wires, a clap of retriggered bursts and
+  a tail, metallic hats from six square oscillators, and a clipped rim shot. Harder
+  hits drive the kick, toms and snare harder, like the 808's accent, and every pad
+  sounds the same at any sample rate.
 - An evenly spaced transport readout: bars, time, tempo and signature sit the same
   distance apart on one baseline, with the signature's chevron right after it.
 - Waveforms in the arrange view, take lanes and audio editor show every sample

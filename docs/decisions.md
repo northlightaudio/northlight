@@ -103,6 +103,7 @@ For how the pieces fit together see [architecture.md](architecture.md).
 | 2026-10-19 | CLAP hosted against the C ABI, VST3 through JUCE, both behind one insert interface | JUCE does not host CLAP. Thread-check answers must be truthful because plugins assert on them. |
 | 2026-10-19 | Plugin scanning runs in a separate executable, one file per process | A plugin that crashes or hangs during a scan must not take the DAW with it; the file is blocklisted with the reason. |
 | 2026-10-19 | Hosted plugins own their state and parameters | State is an opaque blob saved and restored, as in every host. The model's parameter list reaches the plugin only when a command touches it; pushing it on every compile reverted presets loaded from the plugin's own menu. |
+| 2026-10-22 | Pulsar models the TR-808's circuits rather than generic drum recipes | A big pitch sweep, a DC click and filters set as fractions of the sample rate made a laser-like kick and pads that changed with the rate. The 808's own structure (a resonator with a gentle drop, two snare modes, retriggered clap bursts, six squares through band and high passes) is what people expect a drum synth to sound like. Filters in hertz, noise scaled to the rate and an 18 kHz top keep a pad the same at any sample rate. |
 | 2026-10-19 | A CLAP restart creates a fresh instance through the next snapshot, never a deactivation in place | The real-time thread may be inside `process()` at any moment; recreating with state carried over needs no real-time handshake. |
 
 ### MIDI

@@ -27,7 +27,8 @@ TEST_CASE("Each synth renders a fixed phrase as it did when its voices were shar
         // Starbit: re-measured after band-limiting its steps, the even lo-fi holds and
         // the DC blocker (which lifts a pulse's peak: it swings about zero now).
         {"northlight.starbit", {8592.526227236, 4290393.874162215, 0.967896581}},
-        {"northlight.pulsar", {2212.962334298, 1026907.658278, 0.732445359}},
+        // Pulsar: re-measured after its voices were remodelled on the 808's circuits.
+        {"northlight.pulsar", {2771.899556874, 1308191.205925479, 0.724025846}},
     };
     for (const auto& [type, want] : expected)
     {
