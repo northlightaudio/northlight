@@ -194,7 +194,12 @@ Sample-rate conversion on load is a stateless Hermite resampler with no lookback
 delay, so imported media stays aligned to the sample.
 
 Waveform peaks are min/max mipmaps built on a background thread at the project rate
-and cached beside the media. Time-stretch and transposition render in the background
+and cached beside the media. The finest level is 256 samples per bin, so zoomed in
+past that the peak store also decodes the visible part of the file in 65536-sample
+blocks on the same thread, ahead of any peak build, and the views draw those samples
+instead (`WaveformView`). Decoded blocks are held in memory up to 64 MB; one drawn in
+the last two seconds is never evicted, and a new block that would need to is dropped
+(the view keeps drawing peaks there), so loading can never loop. Time-stretch and transposition render in the background
 with Signalsmith Stretch; playback starts on the part already rendered. Vocal pitch
 editing analyses a clip in the background and re-renders edited phrases with an
 in-house PSOLA renderer.

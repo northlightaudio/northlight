@@ -4,6 +4,7 @@
 add_executable(northlight_juce_tests
     ../unit/NoAssertDialogs.cpp
     JuceStreamReaderTests.cpp
+    PeakStoreTests.cpp
     AudioCallbackTests.cpp
     ProjectSessionTests.cpp
     ProjectLoadTests.cpp

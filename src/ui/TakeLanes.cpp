@@ -143,6 +143,13 @@ void TakeLanes::drawWave(juce::Graphics& g,
     const auto peaks = peaks_.peaksFor(clip.mediaPath, geometry.sampleRate());
     if (peaks == nullptr || peaks->empty() || area.isEmpty())
         return;
+    const auto first = clip.sourceAt(geometry.sampleForX(area.getX()) - clip.start);
+    const auto last = clip.sourceAt(geometry.sampleForX(area.getRight()) - clip.start);
+    const auto view = peaks_.viewFor(clip.mediaPath,
+                                     geometry.sampleRate(),
+                                     first,
+                                     last + 1,
+                                     static_cast<double>(last - first) / std::max(1, area.getWidth()));
     const int channels = std::min(2, peaks->numChannels());
     const float laneHeight = static_cast<float>(area.getHeight()) / static_cast<float>(channels);
     const float scale = std::min(1.0f, clip.gain);
@@ -159,7 +166,7 @@ void TakeLanes::drawWave(juce::Graphics& g,
             g.setColour(segment != nullptr && segment->take == clip.id ? lit : dim);
             const auto from = clip.sourceAt(at - clip.start);
             const auto to = clip.sourceAt(geometry.sampleForX(x + 1) - clip.start);
-            const auto r = peaks->lookup(ch, from, std::max(to, from + 1));
+            const auto r = view.lookup(ch, from, std::max(to, from + 1));
             const float top = midY - r.maximum * half;
             const float bottom = midY - r.minimum * half;
             g.fillRect(

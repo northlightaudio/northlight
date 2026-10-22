@@ -60,7 +60,9 @@
   bounds on a 60 Hz timer; the arrange repaints clip rectangles only when the model
   or the view changes; scrolling blits.
 - Waveforms come from the peak cache mip nearest to the pixel density; no mip is
-  computed on the message thread.
+  computed on the message thread. Zoomed in past the finest mip, they draw the
+  file's samples, decoded in the background; until a block arrives that stretch
+  draws from the mip.
 - Text is cached per label; no per-frame font lookups.
 - Images (icons) are vector paths rasterised once per scale.
 - The playhead is drawn by a separate overlay component so the lanes beneath are not

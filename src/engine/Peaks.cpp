@@ -4,6 +4,7 @@
 
 #include <algorithm>
 #include <cstring>
+#include <utility>
 
 namespace northlight::engine
 {
@@ -214,6 +215,78 @@ bool PeakData::deserialise(const std::string& in, PeakData& out)
     }
     out = std::move(data);
     return true;
+}
+
+WaveformView::WaveformView(std::shared_ptr<const PeakData> peaks,
+                           std::int64_t firstBlock,
+                           std::vector<std::shared_ptr<const SampleBlock>> blocks)
+    : peaks_(std::move(peaks)), firstBlock_(firstBlock), blocks_(std::move(blocks))
+{
+}
+
+const SampleBlock* WaveformView::blockAt(std::int64_t sample) const noexcept
+{
+    if (sample < 0)
+        return nullptr;
+    const auto i = sample / SampleBlock::samplesPerBlock - firstBlock_;
+    if (i < 0 || i >= static_cast<std::int64_t>(blocks_.size()))
+        return nullptr;
+    return blocks_[static_cast<size_t>(i)].get();
+}
+
+bool WaveformView::hasSamples(std::int64_t start, std::int64_t end) const noexcept
+{
+    if (empty() || blocks_.empty())
+        return false;
+    start = std::max<std::int64_t>(0, start);
+    end = std::min(end, peaks_->lengthSamples());
+    if (end <= start)
+        return true; // nothing of the file to draw: silence either way
+    for (auto b = start / SampleBlock::samplesPerBlock; b <= (end - 1) / SampleBlock::samplesPerBlock; ++b)
+        if (blockAt(b * SampleBlock::samplesPerBlock) == nullptr)
+            return false;
+    return true;
+}
+
+PeakRange WaveformView::lookup(int channel, std::int64_t start, std::int64_t end) const noexcept
+{
+    if (empty() || end <= start)
+        return {};
+    const auto span = end - start;
+    const auto from = std::max<std::int64_t>(0, start - 1);
+    if (span >= PeakData::defaultBaseSamplesPerBin || !hasSamples(from, end))
+        return peaks_->lookup(channel, start, end);
+
+    PeakRange range{1.0f, -1.0f};
+    const auto to = std::min(end, peaks_->lengthSamples());
+    for (auto s = from; s < to;)
+    {
+        const auto* block = blockAt(s);
+        const auto& samples =
+            block->channels[static_cast<size_t>(channel % static_cast<int>(block->channels.size()))];
+        const auto offset = s - block->start();
+        const auto stop = std::min(to - block->start(), block->length());
+        for (auto i = offset; i < stop; ++i)
+        {
+            range.minimum = std::min(range.minimum, samples[static_cast<size_t>(i)]);
+            range.maximum = std::max(range.maximum, samples[static_cast<size_t>(i)]);
+        }
+        if (stop <= offset)
+            break; // a short block: past the file's end
+        s = block->start() + stop;
+    }
+    if (range.minimum > range.maximum)
+        return {};
+    return range;
+}
+
+BlockSpan blocksFor(std::int64_t start, std::int64_t end, std::int64_t length) noexcept
+{
+    start = std::max<std::int64_t>(0, start - 1); // lookups read one sample early
+    end = std::min(end, length);
+    if (end <= start)
+        return {};
+    return {start / SampleBlock::samplesPerBlock, (end - 1) / SampleBlock::samplesPerBlock + 1};
 }
 
 } // namespace northlight::engine

@@ -4,13 +4,18 @@
 
 #include <cstdint>
 #include <functional>
+#include <memory>
 #include <string>
 #include <vector>
 
 // Mipmapped waveform peaks. Built once per media file on a background thread
-// (PeakBuilder in the audio layer), cached beside the media, and read by the arrange
-// view at whatever zoom level is on screen: lookup() picks the coarsest level whose
-// bins are still finer than the requested span, so painting never scans samples.
+// (PeakStore in the audio layer), cached beside the media, and read by the waveform
+// views at whatever zoom level is on screen: lookup() picks the coarsest level whose
+// bins are still finer than the requested span, so painting never scans much.
+//
+// Zoomed in past the finest level (256 samples per bin) the peaks have no more
+// detail, so the store also decodes the visible part of the file in blocks, and a
+// WaveformView reads those samples directly where they cover the span.
 
 namespace northlight::engine
 {
@@ -67,5 +72,63 @@ private:
     double sampleRate_ = 0.0;
     std::vector<std::vector<PeakLevel>> channels_; // [channel][level]
 };
+
+// Decoded samples for one aligned stretch of a file: samples
+// [index * samplesPerBlock, (index + 1) * samplesPerBlock), shorter at the file's end.
+struct SampleBlock
+{
+    static constexpr std::int64_t samplesPerBlock = 1 << 16;
+
+    std::int64_t index = 0;
+    std::vector<std::vector<float>> channels; // [channel][sample]
+
+    std::int64_t start() const noexcept { return index * samplesPerBlock; }
+    std::int64_t length() const noexcept
+    {
+        return channels.empty() ? 0 : static_cast<std::int64_t>(channels[0].size());
+    }
+};
+
+// What a painter reads for one file: its peaks, plus decoded blocks for the visible
+// range when zoomed in past the finest peak level.
+class WaveformView
+{
+public:
+    WaveformView() = default;
+    // `blocks` holds consecutive block indices from `firstBlock`; null where a block is
+    // not decoded yet.
+    WaveformView(std::shared_ptr<const PeakData> peaks,
+                 std::int64_t firstBlock,
+                 std::vector<std::shared_ptr<const SampleBlock>> blocks);
+
+    bool empty() const noexcept { return peaks_ == nullptr || peaks_->empty(); }
+    int numChannels() const noexcept { return empty() ? 0 : peaks_->numChannels(); }
+    const PeakData* peaks() const noexcept { return peaks_.get(); }
+
+    // Min/max over [start, end). A span shorter than the finest peak bin reads the
+    // decoded samples when blocks cover it, including the sample just before `start`
+    // so neighbouring pixel columns join into a continuous trace. Otherwise it falls
+    // back to the peaks.
+    PeakRange lookup(int channel, std::int64_t start, std::int64_t end) const noexcept;
+
+    // True when [start, end) is wholly covered by decoded blocks (clamped to the file).
+    bool hasSamples(std::int64_t start, std::int64_t end) const noexcept;
+
+private:
+    const SampleBlock* blockAt(std::int64_t sample) const noexcept;
+
+    std::shared_ptr<const PeakData> peaks_;
+    std::int64_t firstBlock_ = 0;
+    std::vector<std::shared_ptr<const SampleBlock>> blocks_;
+};
+
+// The block indices a view needs to draw [start, end) of a file `length` samples
+// long, as a half-open range; empty when the range misses the file.
+struct BlockSpan
+{
+    std::int64_t first = 0;
+    std::int64_t last = 0; // one past
+};
+BlockSpan blocksFor(std::int64_t start, std::int64_t end, std::int64_t length) noexcept;
 
 } // namespace northlight::engine

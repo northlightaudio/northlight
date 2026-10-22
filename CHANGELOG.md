@@ -13,6 +13,8 @@ Northlight has not had a release yet. The first release, 0.1.0, will include:
 
 ### Added
 
+- Waveforms in the arrange view, take lanes and audio editor show every sample
+  when zoomed in, instead of widening the overview.
 - Preferences in cards like Audio Setup's: an icon page list, controls sized to
   what they hold, accent presets from the track palette, scan folders as a list
   with Add folder and Remove, a grouped shortcut table with key caps, and a

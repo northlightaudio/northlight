@@ -1759,7 +1759,8 @@ void ArrangeView::drawClip(juce::Graphics& g,
         g.restoreState();
     }
 
-    // Waveform: one min/max column per pixel from the peak cache, scaled by the
+    // Waveform: one min/max column per pixel from the peak cache (decoded samples
+    // when zoomed past the finest peak level), scaled by the
     // clip gain so a gain change is visible; a darker centre line under it.
     if (missing)
     {
@@ -1774,6 +1775,13 @@ void ArrangeView::drawClip(juce::Graphics& g,
              peaks != nullptr && !peaks->empty())
     {
         const auto wave = body.getIntersection(visible);
+        const auto first = clip.sourceAt(sampleForX(wave.getX()) - clip.start);
+        const auto last = clip.sourceAt(sampleForX(wave.getRight()) - clip.start);
+        const auto view = peaks_.viewFor(clip.mediaPath,
+                                         sampleRate(),
+                                         first,
+                                         last + 1,
+                                         static_cast<double>(last - first) / std::max(1, wave.getWidth()));
         const int channels = std::min(2, peaks->numChannels());
         const float laneHeight = static_cast<float>(wave.getHeight()) / static_cast<float>(channels);
         const float scale = std::min(1.0f, clip.gain);
@@ -1790,7 +1798,7 @@ void ArrangeView::drawClip(juce::Graphics& g,
             {
                 const auto from = clip.sourceAt(sampleForX(x) - clip.start);
                 const auto to = clip.sourceAt(sampleForX(x + 1) - clip.start);
-                const auto r = peaks->lookup(ch, from, std::max(to, from + 1));
+                const auto r = view.lookup(ch, from, std::max(to, from + 1));
                 const float top = midY - r.maximum * half;
                 const float bottom = midY - r.minimum * half;
                 g.fillRect(static_cast<float>(x),

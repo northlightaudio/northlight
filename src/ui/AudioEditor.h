@@ -59,6 +59,8 @@ public:
     void setPlayhead(core::SamplePosition timelinePosition);
     bool zoomLinked() const noexcept { return linked_; }
     void setTimeView(double samplesPerPixel, core::SamplePosition absoluteFirstVisible);
+    // Zooms to `samplesPerPixel` with `secondsIntoClip` at the left edge (launch flags).
+    void zoomTo(double samplesPerPixel, double secondsIntoClip);
 
     enum class Mode
     {

@@ -159,6 +159,8 @@ public:
     //                        sustain, pressure, cc<n>); a clip with no events in it gets a
     //                        demonstration curve first
     //   --audio-editor [pitch]  open the audio editor on the first audio clip (in pitch mode)
+    //   --audio-editor-zoom <samples per pixel> [seconds]  zoom that editor, with the given
+    //                        time into the clip at the left edge (default 0)
     //   --select-clip        select the first audio clip (the inspector shows it)
     //   --correct-pitch      once that clip's pitch is analysed, correct it to the key
     //   --mute-breaths       once that clip's pitch is analysed, mute its breaths
@@ -446,6 +448,14 @@ public:
                         mainWindow_->openAudioEditor(track.id, track.clips.front().id, pitch);
                         break;
                     }
+            }
+            else if (arg == "--audio-editor-zoom" && i + 1 < tokens.size())
+            {
+                const double samplesPerPixel = tokens.getReference(++i).text.getDoubleValue();
+                double seconds = 0.0;
+                if (i + 1 < tokens.size() && tokens.getReference(i + 1).text.containsOnly("0123456789."))
+                    seconds = tokens.getReference(++i).text.getDoubleValue();
+                mainWindow_->zoomAudioEditor(samplesPerPixel, seconds);
             }
             else if (arg == "--select-clip")
             {

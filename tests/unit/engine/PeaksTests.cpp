@@ -2,8 +2,10 @@
 
 #include <catch2/catch_test_macros.hpp>
 
+#include <algorithm>
 #include <cmath>
 #include <memory>
+#include <vector>
 
 using namespace northlight::engine;
 
@@ -33,6 +35,25 @@ public:
 private:
     std::int64_t length_;
 };
+
+// Decoded blocks [first, last) of `reader`, as the peak store would read them.
+std::vector<std::shared_ptr<const SampleBlock>>
+decode(TestReader& reader, std::int64_t first, std::int64_t last)
+{
+    std::vector<std::shared_ptr<const SampleBlock>> blocks;
+    for (auto i = first; i < last; ++i)
+    {
+        auto block = std::make_shared<SampleBlock>();
+        block->index = i;
+        const auto start = i * SampleBlock::samplesPerBlock;
+        const auto count = std::min(SampleBlock::samplesPerBlock, reader.lengthSamples() - start);
+        block->channels.assign(2, std::vector<float>(static_cast<size_t>(count)));
+        float* dest[] = {block->channels[0].data(), block->channels[1].data()};
+        reader.read(start, static_cast<int>(count), dest);
+        blocks.push_back(std::move(block));
+    }
+    return blocks;
+}
 } // namespace
 
 TEST_CASE("Peaks build every level with the expected bin counts", "[engine][peaks]")
@@ -125,4 +146,92 @@ TEST_CASE("Peak building can be aborted through the progress callback", "[engine
     const auto peaks = PeakData::build(reader, 256, 3, [&](double) { return ++calls < 2; });
     CHECK(peaks.empty());
     CHECK(calls == 2);
+}
+
+TEST_CASE("A waveform view reads decoded samples for spans finer than the peaks", "[engine][peaks]")
+{
+    TestReader reader(300000);
+    const auto peaks = std::make_shared<const PeakData>(PeakData::build(reader));
+
+    // Without samples, a one-sample span shows the whole 256-sample bin around it.
+    const WaveformView coarse(peaks, 0, {});
+    auto r = coarse.lookup(1, 100010, 100011);
+    CHECK(r.maximum == 0.9f);
+    CHECK(r.minimum == -0.6f);
+
+    // With samples it shows just that sample (and the one before, to join columns).
+    const WaveformView fine(peaks, 0, decode(reader, 0, 5));
+    r = fine.lookup(1, 100010, 100011);
+    CHECK(r.maximum == 0.0f);
+    CHECK(r.minimum == 0.0f);
+    r = fine.lookup(1, 100000, 100001);
+    CHECK(r.maximum == 0.9f);
+    CHECK(r.minimum == 0.0f);
+    r = fine.lookup(1, 100001, 100002);
+    CHECK(r.maximum == 0.9f);
+    CHECK(r.minimum == -0.6f);
+
+    // Spans of a whole peak bin or more still come from the peaks.
+    r = fine.lookup(1, 99000, 99000 + PeakData::defaultBaseSamplesPerBin);
+    CHECK(r.maximum == peaks->lookup(1, 99000, 99000 + PeakData::defaultBaseSamplesPerBin).maximum);
+}
+
+TEST_CASE("A waveform view lookup spans block boundaries exactly", "[engine][peaks]")
+{
+    TestReader reader(300000);
+    const auto peaks = std::make_shared<const PeakData>(PeakData::build(reader));
+    const WaveformView view(peaks, 0, decode(reader, 0, 5));
+
+    const auto boundary = SampleBlock::samplesPerBlock;
+    std::vector<float> a(1), b(1);
+    float* pa[] = {a.data(), b.data()};
+    float expectedMin = 1.0f, expectedMax = -1.0f;
+    for (auto s = boundary - 3; s < boundary + 2; ++s)
+    {
+        reader.read(s, 1, pa);
+        expectedMin = std::min(expectedMin, a[0]);
+        expectedMax = std::max(expectedMax, a[0]);
+    }
+    const auto r = view.lookup(0, boundary - 2, boundary + 2);
+    CHECK(r.minimum == expectedMin);
+    CHECK(r.maximum == expectedMax);
+}
+
+TEST_CASE("A waveform view falls back to peaks where a block is missing", "[engine][peaks]")
+{
+    TestReader reader(300000);
+    const auto peaks = std::make_shared<const PeakData>(PeakData::build(reader));
+    auto blocks = decode(reader, 0, 5);
+    blocks[1] = nullptr; // the spike at 100000 lives in block 1
+    const WaveformView view(peaks, 0, std::move(blocks));
+    CHECK_FALSE(view.hasSamples(100010, 100011));
+    CHECK(view.hasSamples(10, 11));
+    const auto r = view.lookup(1, 100010, 100011);
+    CHECK(r.maximum == 0.9f); // the coarse bin
+}
+
+TEST_CASE("Block spans cover the range, one sample early, clamped to the file", "[engine][peaks]")
+{
+    const auto n = SampleBlock::samplesPerBlock;
+    auto span = blocksFor(0, 10, 300000);
+    CHECK(span.first == 0);
+    CHECK(span.last == 1);
+    span = blocksFor(n, n + 10, 300000); // needs sample n - 1 too
+    CHECK(span.first == 0);
+    CHECK(span.last == 2);
+    span = blocksFor(-500, 1000000, 300000);
+    CHECK(span.first == 0);
+    CHECK(span.last == (300000 - 1) / n + 1);
+    span = blocksFor(400000, 500000, 300000);
+    CHECK(span.first == span.last);
+}
+
+TEST_CASE("A waveform view with no peaks is empty and reads silence", "[engine][peaks]")
+{
+    const WaveformView view;
+    CHECK(view.empty());
+    CHECK(view.numChannels() == 0);
+    const auto r = view.lookup(0, 0, 10);
+    CHECK(r.maximum == 0.0f);
+    CHECK(r.minimum == 0.0f);
 }

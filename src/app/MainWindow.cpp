@@ -3254,6 +3254,12 @@ void MainWindow::openAudioEditor(core::Id trackId, core::Id clipId, bool pitch)
     }
 }
 
+void MainWindow::zoomAudioEditor(double samplesPerPixel, double secondsIntoClip)
+{
+    if (auto* content = dynamic_cast<Content*>(getContentComponent()))
+        content->audioEditor_.zoomTo(samplesPerPixel, secondsIntoClip);
+}
+
 void MainWindow::selectClip(core::Id trackId, core::Id clipId)
 {
     if (auto* content = dynamic_cast<Content*>(getContentComponent()))

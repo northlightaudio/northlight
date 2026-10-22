@@ -300,6 +300,18 @@ void AudioEditor::setTimeView(double samplesPerPixel, core::SamplePosition absol
     repaint();
 }
 
+void AudioEditor::zoomTo(double samplesPerPixel, double secondsIntoClip)
+{
+    const auto* c = clip();
+    if (c == nullptr || project_ == nullptr)
+        return;
+    samplesPerPixel_ = std::clamp(samplesPerPixel, 1.0, 100000.0);
+    scroll_ = static_cast<double>(c->sourceOffset) + secondsIntoClip * project_->sampleRate;
+    fitPending_ = false;
+    updateScrollbars();
+    repaint();
+}
+
 void AudioEditor::setMode(Mode mode)
 {
     mode_ = mode;
@@ -770,7 +782,11 @@ void AudioEditor::paintWave(juce::Graphics& g)
     if (cl == nullptr || project_ == nullptr)
         return;
     const auto colour = trackColour();
-    const auto peaks = peaks_.peaksFor(cl->mediaPath, project_->sampleRate);
+    const auto peaks = peaks_.viewFor(cl->mediaPath,
+                                      project_->sampleRate,
+                                      sourceForX(static_cast<float>(area.getX())),
+                                      sourceForX(static_cast<float>(area.getRight())) + 1,
+                                      samplesPerPixel_);
     const double clipStart = static_cast<double>(cl->sourceOffset);
     const double clipEnd = clipStart + static_cast<double>(cl->length);
     // Outside the clip the media dims.
@@ -781,14 +797,14 @@ void AudioEditor::paintWave(juce::Graphics& g)
     g.setColour(c.canvas);
     g.fillRect(juce::Rectangle<float>(
         x0, static_cast<float>(area.getY()), std::max(0.0f, x1 - x0), static_cast<float>(area.getHeight())));
-    if (peaks == nullptr || peaks->empty())
+    if (peaks.empty())
     {
         g.setColour(c.textTertiary);
         g.setFont(theme_.caption());
         g.drawText("Reading the waveform", area, juce::Justification::centred);
         return;
     }
-    const int channels = std::clamp(peaks->numChannels(), 1, 2);
+    const int channels = std::clamp(peaks.numChannels(), 1, 2);
     const float channelHeight = static_cast<float>(area.getHeight()) / static_cast<float>(channels);
     const auto envelope = [cl](double source)
     {
@@ -810,7 +826,7 @@ void AudioEditor::paintWave(juce::Graphics& g)
             const auto s0 = sourceForX(static_cast<float>(x));
             const auto s1 = std::max(s0 + 1, sourceForX(static_cast<float>(x + 1)));
             const bool inside = static_cast<double>(s0) >= clipStart && static_cast<double>(s0) < clipEnd;
-            const auto r = peaks->lookup(ch, s0, s1);
+            const auto r = peaks.lookup(ch, s0, s1);
             const float e = inside ? envelope(static_cast<double>(s0)) : 1.0f;
             const float top = mid - std::clamp(r.maximum * e, -1.0f, 1.0f) * channelHeight * 0.45f;
             const float bottom = mid - std::clamp(r.minimum * e, -1.0f, 1.0f) * channelHeight * 0.45f;
