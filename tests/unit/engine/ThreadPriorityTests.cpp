@@ -46,7 +46,10 @@ TEST_CASE("A pro-audio thread joins MMCSS or falls back to time-critical, and re
     thread.join();
 
     INFO("joined MMCSS: " << joined << ", priority inside: " << inside << ", after: " << after);
-    CHECK(inside == THREAD_PRIORITY_TIME_CRITICAL);
+    // MMCSS sets an absolute priority, which GetThreadPriority reports relative to
+    // the process's class: 15 at Normal, higher when the tests run below it
+    // (build.ps1 -LowPriority).
+    CHECK(inside >= THREAD_PRIORITY_TIME_CRITICAL);
     if (joined)
         CHECK(after == THREAD_PRIORITY_NORMAL);
 }

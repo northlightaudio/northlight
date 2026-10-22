@@ -22,6 +22,15 @@ CMake for you:
 .\scripts\build.ps1 -Preset windows-release  # Release build
 ```
 
+To keep the machine usable while it builds (for a game, or a recording session),
+add `-LowPriority` to run the compilers, linker and tests at Idle priority, and
+`-Jobs <n>` to compile at most n files at once (every core by default). `-Run` still
+starts Northlight at normal priority.
+
+```powershell
+.\scripts\build.ps1 -Test -LowPriority -Jobs 4
+```
+
 From a Developer PowerShell for Visual Studio you can use the presets directly:
 
 ```powershell

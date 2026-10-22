@@ -12,6 +12,15 @@
   .\scripts\build.ps1 -Preset windows-release
   .\scripts\build.ps1 -Test                 # build then run ctest
   .\scripts\build.ps1 -Run                  # build then launch northlight.exe
+  .\scripts\build.ps1 -Test -LowPriority -Jobs 4   # stay out of the way of a game
+
+.PARAMETER Jobs
+  Compile at most this many files at once. 0 (the default) uses every core.
+
+.PARAMETER LowPriority
+  Run the build and tests at Idle priority, so other programs get the CPU first.
+  The compilers, linker and test runs inherit it; this shell's priority is put
+  back when the script ends.
 #>
 [CmdletBinding()]
 param(
@@ -19,7 +28,10 @@ param(
     [string]$Preset = 'windows-debug',
     [switch]$Test,
     [switch]$Run,
-    [switch]$Clean
+    [switch]$Clean,
+    [ValidateRange(0, 256)]
+    [int]$Jobs = 0,
+    [switch]$LowPriority
 )
 
 # Native tools (git, cmake, ninja) write progress to stderr. Under 'Stop', Windows
@@ -49,12 +61,21 @@ if ($Clean -and (Test-Path $buildDir)) {
     Remove-Item -Recurse -Force $buildDir
 }
 
+# Windows starts child processes at Idle priority when their parent runs at Idle, so
+# lowering this process covers cmake, ninja, cl, link and the test binaries.
+$self = Get-Process -Id $PID
+$previousPriority = $self.PriorityClass
+if ($LowPriority) { $self.PriorityClass = 'Idle' }
+
+$parallel = @('--parallel')
+if ($Jobs -gt 0) { $parallel += "$Jobs" }
+
 Push-Location $root
 try {
     cmake --preset $Preset
     if ($LASTEXITCODE -ne 0) { throw "configure failed ($LASTEXITCODE)" }
 
-    cmake --build --preset $Preset --parallel
+    cmake --build --preset $Preset @parallel
     if ($LASTEXITCODE -ne 0) { throw "build failed ($LASTEXITCODE)" }
 
     if ($Test) {
@@ -63,11 +84,14 @@ try {
     }
 
     if ($Run) {
+        # The app itself runs at normal priority: its audio threads need it.
+        $self.PriorityClass = $previousPriority
         $exe = Get-ChildItem -Path $buildDir -Recurse -Filter 'Northlight.exe' | Select-Object -First 1
         if (-not $exe) { throw 'Northlight.exe not found in build output' }
         & $exe.FullName
     }
 }
 finally {
+    $self.PriorityClass = $previousPriority
     Pop-Location
 }

@@ -45,7 +45,12 @@ environment:
 ```powershell
 .\scripts\build.ps1 -Test                    # windows-debug build, then ctest
 .\scripts\build.ps1 -Preset ci -Test         # what CI runs: warnings as errors, no ASIO
+.\scripts\build.ps1 -Test -LowPriority -Jobs 4   # when the user is using the machine
 ```
+
+- `-LowPriority` runs the build and tests at Idle priority and `-Jobs <n>` caps the
+  parallel compiles. Use both when the user says they are gaming or otherwise busy
+  on the machine, and do not launch the app (no `--capture` runs) until they are back.
 
 - Presets: `windows-debug` (real-time checks on), `windows-relwithdebinfo`,
   `windows-release`, `ci`. Output goes to `build/<preset>/`.
