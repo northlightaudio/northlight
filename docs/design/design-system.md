@@ -131,6 +131,7 @@ consistent lighting model from the `material` tokens:
 | Fader track | A groove: `groove` fill, `grooveInset` shadow, 1 px `grooveLip` under it. |
 | Fader cap | `capTop` to `capBottom` gradient, `capHighlight` top edge, `capShadow`; the track-colour line gets a 4 px glow of its own colour. |
 | Knob | Rim `knobRim` 3 px with the value arc on it; body a radial gradient `knobBodyLight` (offset to the upper left) to `knobBodyDark`; a faint `knobHighlight` arc at the top; the indicator line `textPrimary`. |
+| VU needle | The needle in `textPrimary`, with `needleShadow` cast on the face beneath it. |
 | Meter | A well: `meterWell` with `meterWellInset`; the signal is LED-segmented at `ledPitchPx` with `ledGapPx` dark gaps, zone colours unchanged; peak hold and clip as in Meter (2.7). |
 | Numeric readouts (time, dB, tempo) | A readout well `readoutWell` with `grooveInset`; text in `readoutText` (no glow); `readoutRecord` while recording. Values in fields that are typed into keep the plain Text field look. |
 | Scrollbars, tabs, menus, tooltips, sheets, toasts, badges, checkboxes, sliders' tracks | Unchanged: flat per their component spec. |

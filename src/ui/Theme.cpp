@@ -475,6 +475,7 @@ bool Theme::apply(const juce::var& tokens, Theme& theme, std::string& error)
         colour("capBottom", m.capBottom);
         colour("capHighlight", m.capHighlight);
         shadow("capShadow", m.capShadow);
+        shadow("needleShadow", m.needleShadow);
         colour("groove", m.groove);
         shadow("grooveInset", m.grooveInset);
         colour("grooveLip", m.grooveLip);

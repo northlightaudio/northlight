@@ -199,8 +199,13 @@ public:
             const float angle = angleOf(needle_.position);
             const auto tip = pivot.getPointOnCircumference(radius + 9.0f, angle);
             const auto base = pivot.getPointOnCircumference(radius * 0.18f, angle);
-            g.setColour(juce::Colours::black.withAlpha(0.3f));
-            g.drawLine(juce::Line<float>(base.translated(2.0f, 2.5f), tip.translated(2.0f, 2.5f)), 1.6f);
+            if (const auto& shadow = theme.material.needleShadow; !shadow.empty())
+            {
+                g.setColour(shadow.colour);
+                g.drawLine(juce::Line<float>(base.translated(shadow.x, shadow.y),
+                                             tip.translated(shadow.x, shadow.y)),
+                           1.6f);
+            }
             g.setColour(c.textPrimary);
             g.drawLine(juce::Line<float>(base, tip), 1.4f);
 

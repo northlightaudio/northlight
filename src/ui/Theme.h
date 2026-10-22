@@ -174,6 +174,7 @@ struct Theme
         Shadow controlShadow, pressedInset;
         juce::Colour capTop, capBottom, capHighlight;
         Shadow capShadow;
+        Shadow needleShadow; // a meter needle's shadow on its face
         juce::Colour groove, grooveLip;
         Shadow grooveInset;
         juce::Colour knobBodyLight, knobBodyDark, knobRim, knobHighlight;
