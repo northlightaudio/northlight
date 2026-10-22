@@ -61,6 +61,71 @@ DAW is in place:
   - Buses and the master aren't shown as arrange rows.
   - The master has no inserts.
 
+## Feature gaps
+
+A review in October 2026 compared Northlight with what people expect from a DAW they
+record and mix in every day. The engine and the recording path hold up; the gaps are
+in editing, effects and controller work. Each item is to become an issue of its own.
+
+### In order
+
+1. **Stereo recording.** A track records one input channel, so a stereo source needs
+   two tracks. A track should take a stereo pair and record it to one file.
+2. **The master and buses in full.** Master inserts, and buses and the master as
+   arrange rows with their own automation (both in the known gaps above).
+3. **Clip mute and fade curves.** The arrange spec draws muted clips, but clips have
+   no mute. Fades and crossfades are linear only and dip in level on music; add
+   equal-power, logarithmic and S-curve shapes.
+4. **A modulation effect and a stereo utility** (see the effects below).
+5. **MIDI learn.** Map controller knobs, faders and buttons to any parameter and the
+   transport, then Mackie Control and HUI for control surfaces.
+6. **Richer automation.** Lanes for send levels and mute, curve shapes between
+   points, and range edits on a lane (copy, scale, thin).
+
+### Editing and workflow
+
+| Gap | What it means |
+|---|---|
+| Undo history | A panel listing the undo steps, to jump back several at once |
+| Keyboard shortcuts | An editor for the key map, which is fixed in code today |
+| Clip operations | Reverse, rename, bounce in place and glue (render several clips into one) |
+| Recording | Pre-roll and post-roll, MIDI overdub and merge, retrospective record, and cue mixes for performers' headphones |
+| Track presets | Save a whole track (instrument, inserts, sends) and add it to another project; strip presets cover the channel strip only |
+| Markers | A marker and region list to see, rename and reorder them |
+| Overview strip | The arrange's mini-map, deferred in the spec, for long projects |
+| Folders | Moving a folder should take its tracks (in the known gaps above) |
+
+### Effects
+
+Northlight ships gain, EQ, compressor, opto compressor, limiter, reverb and delay,
+and the channel strip adds a gate, de-esser and saturation. Missing:
+
+| Area | Effects |
+|---|---|
+| Modulation | Chorus, flanger, phaser, tremolo, auto-pan. None exist yet; this is the largest hole |
+| Utility | Stereo width and mid/side, mono, channel swap, tuner |
+| Metering | Spectrum analyser, phase correlation meter and vectorscope as inserts |
+| Dynamics | Multiband compressor, transient shaper, clipper, bus compressor |
+| Filter | Resonant filter driven by an LFO or an envelope follower |
+| Pitch | Real-time pitch shifter and harmoniser |
+| Reverb | Convolution reverb that loads impulse responses |
+| Colour | Amp and cabinet simulation, bitcrusher, tape echo |
+
+The EQ insert has a high-pass and three bands. A fully parametric EQ (six to eight
+bands with shelves and notches, over a spectrum) would let it serve as the main EQ.
+
+### MIDI, time and output
+
+| Gap | What it means |
+|---|---|
+| MIDI editing | Quantise exists; add humanise, swing and groove quantise, legato, velocity scale and randomise, and chord and scale tools |
+| Note entry | Step input from a MIDI keyboard |
+| Audio to MIDI | Convert a monophonic audio clip, or drum hits, to notes |
+| Warping | Clip stretch is whole-clip; add warp markers inside a clip, transient detection and slicing a loop into the Sampler |
+| MP3 export | MP3 files import but cannot be exported |
+| VCA faders | Fader groups exist; add VCA faders that control a group's levels without summing audio |
+| Freeze | Instruments whose extra outputs feed aux tracks (in the known gaps above) |
+
 ## Open questions
 
 - **Plugin sandboxing.** Hosted plugins run in-process, with their crashes contained
