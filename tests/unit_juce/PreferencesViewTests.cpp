@@ -203,3 +203,23 @@ TEST_CASE("Preferences show the saved settings, read once the owner's callbacks 
     REQUIRE(snap != nullptr);
     CHECK_FALSE(snap->getToggleState());
 }
+
+TEST_CASE("Preferences opened without a page shows General once it is in a window", "[ui][preferences]")
+{
+    // The menu's path: the view is sized at construction, gets its callbacks, and is
+    // added to a window of the same size, so it is never resized and no page is named.
+    const juce::ScopedJuceInitialiser_GUI juceInit;
+    const auto theme = ui::Theme::defaults();
+    MemoryStore store;
+    audio::AudioDeviceLayer audio{store};
+    hosting::PluginRegistry registry;
+    ui::PreferencesView view(theme, audio, registry);
+    view.loadSetting = [](const std::string&) { return std::string(); };
+    view.saveSetting = [](const std::string&, const std::string&) {};
+    CHECK(view.rowLayout().empty());
+    juce::Component window;
+    window.setSize(view.getWidth(), view.getHeight());
+    window.addAndMakeVisible(view);
+    CHECK(view.currentPage() == "general");
+    CHECK_FALSE(view.rowLayout().empty());
+}

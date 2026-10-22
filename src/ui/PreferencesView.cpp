@@ -1700,6 +1700,12 @@ void PreferencesView::paint(juce::Graphics& g)
     g.fillAll(theme_.colours.surface0);
 }
 
+void PreferencesView::parentHierarchyChanged()
+{
+    if (pages_.empty() && loadSetting)
+        resized();
+}
+
 void PreferencesView::resized()
 {
     // The pages read the settings, so they wait for the owner's callbacks.

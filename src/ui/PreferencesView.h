@@ -58,6 +58,9 @@ public:
 
     void paint(juce::Graphics& g) override;
     void resized() override;
+    // The pages are built the first time the view is laid out with its callbacks
+    // set; a window adding it without resizing it lays it out here.
+    void parentHierarchyChanged() override;
 
     static constexpr int preferredWidth = 820;
     static constexpr int preferredHeight = 600;
