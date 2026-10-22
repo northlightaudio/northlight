@@ -78,7 +78,11 @@ environment:
 5. Docs change in the same commit as the behaviour: architecture.md for how a part
    works, decisions.md for a choice worth explaining, the design spec for anything
    visible, and the **Unreleased** section of CHANGELOG.md for user-facing changes.
-6. Token changes pass `python scripts/contrast.py --check` and regenerate
+6. Anything visible meets the design bar in
+   [docs/design/principles.md](docs/design/principles.md#the-design-bar): every
+   element and state is designed, nothing looks like a JUCE default. Check it with
+   `--capture` at 100% and 200% and look at the PNGs; working is not enough.
+7. Token changes pass `python scripts/contrast.py --check` and regenerate
    `docs/design/contrast.md`. Dependency changes rerun
    `python scripts/third-party-notices.py`.
 
@@ -90,6 +94,9 @@ environment:
   `noexcept`; put `NORTHLIGHT_ASSERT_NOT_REALTIME("why")` at the top of unsafe
   helpers. The RT thread never frees; retired snapshots go to a garbage queue.
   Debug builds hook `operator new` and fail when it is called on an RT thread.
+- **No default-looking UI.** A stock JUCE control, an undesigned hover or disabled
+  state, clipped text or a misaligned edge is a bug. If the design system has no
+  pattern for what you need, add it to `docs/design/design-system.md` first.
 - **UI values come from tokens.** Colours, sizes, spacing and fonts come from
   `ui::Theme`, never literals. A new token goes in `docs/design/tokens.json` (with a
   contrast pair if it is text).

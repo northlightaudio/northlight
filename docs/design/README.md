@@ -50,6 +50,9 @@ deliberately and records why.
 
 ## Rules for the implementation
 
+- Every element is designed, never left at a toolkit default. The design bar in
+  [principles.md](principles.md#the-design-bar) lists what that means and how it is
+  checked; a screen that works but falls short of it is not done.
 - Nothing in `src/ui` carries a literal colour or size; everything comes from the
   tokens through `ui::Theme`. A check in the test suite enforces the colours.
 - Stock controls are drawn by `NorthlightLookAndFeel`; dedicated components cover

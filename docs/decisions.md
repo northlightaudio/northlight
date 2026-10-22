@@ -137,3 +137,4 @@ For how the pieces fit together see [architecture.md](architecture.md).
 | 2026-10-20 | Selection has one owner that notifies one listener | Views caching their own selection drifted out of step. |
 | 2026-10-20 | The mixer's sections are real slots and rows, not menus | Signal flow must be visible on the strip; menus keep only what has no control of its own. |
 | 2026-10-19 | Panels are owned by one of three hosts and never destroyed on close | Panels keep their state across moves; closing a floating panel returns it to its default host, so none can be lost. |
+| 2026-10-22 | All UI meets a design bar: every element and state designed, nothing at a toolkit default | Automated checks catch literal colours and contrast, not a screen that looks unconsidered. Reviewing captures against a written list holds visual quality to the same standard as correctness. |

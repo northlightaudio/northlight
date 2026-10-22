@@ -53,6 +53,52 @@ Three words to test any screen against:
    every drag has a visible snap target and a modifier to override it.
 7. **Nothing blocks the audio thread, and nothing blocks the user.** No modal loops;
    long operations (scan, bounce, recovery) run with progress and a cancel.
+8. **Nothing is default.** Every element on screen was designed on purpose: its
+   shape, size, spacing, type, colour and every state. Working and using the tokens
+   is not enough; see the design bar below.
+
+## The design bar
+
+All UI must be well designed, not "default". A screen can pass every automated check
+(tokens only, contrast, no literals) and still look like a stock JUCE application;
+that screen is not done. Each element has to be considered as a piece of design, and
+the reviewer judges it against this list.
+
+- **No stock appearance.** Nothing JUCE draws by default reaches the screen. Every
+  control, popup menu, tooltip, scrollbar, alert, combo arrow, text caret and
+  selection highlight is drawn by `NorthlightLookAndFeel` or a dedicated component,
+  to the design system. A control that still looks like JUCE's default is a bug, even
+  if it works.
+- **Every state is designed.** Default, hover, pressed, focused, disabled and
+  selected or active, and, where they apply, empty, loading, error and overflow. The
+  spec names each state and its tokens; none is left to whatever the toolkit does.
+- **Alignment and rhythm.** Everything sits on the spacing grid (section 2.3). Edges
+  and baselines line up across neighbouring controls, padding is the same inside
+  controls of the same kind, and text is centred optically, not just mathematically.
+  No stray one-pixel offsets.
+- **Typography.** Each piece of text uses a role from the type scale (section 2.2)
+  for size, weight and case. Numbers use tabular figures with units. Text that does
+  not fit is ellipsised or abbreviated by design, never clipped.
+- **Detail.** Icons come from the set and sit on its grid; radii, borders, shadows
+  and glows come from the tokens and follow the material rules (section 2.4). Lines
+  appear only where principle 1 allows them. Everything is crisp at 100%, 125%, 150%
+  and 200%.
+- **The edges are designed too.** The minimum window size, 200% scale, no items,
+  hundreds of items, a 60-character name, the largest and smallest values: each one
+  still looks intended.
+- **It belongs.** A screen matches its neighbours and would not look out of place
+  beside the references below. A pattern the design system lacks is added to
+  [design-system.md](design-system.md) first, then built, so it is designed once and
+  reused.
+- **No placeholders.** No "TODO" text, sample text, debug outlines, temporary
+  colours or unstyled fallbacks in a screen that is called finished.
+
+How it is checked: a change to anything visible is captured with `--capture` at 100%
+and 200% (`--capture-scale`), with each state it touches set up through launch
+flags, and the captures are compared against the spec and this list before the
+change is called done. A screen with no spec gets one, written before or with the
+code. Where the result falls short of the bar, the change is not finished, however
+well it works.
 
 ## References: what to borrow, what to avoid
 
@@ -87,7 +133,8 @@ Three words to test any screen against:
 
 ## What success looks like
 
-- Every screen matches its spec's acceptance checks.
+- Every screen matches its spec's acceptance checks and meets the design bar: no
+  element looks like a toolkit default.
 - 60 fps with 64 tracks visible on a 4K display at 150% scale on the reference
   machine.
 - Every control reachable by keyboard; every colour pair passes the contrast rules in

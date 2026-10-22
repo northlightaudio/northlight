@@ -12,7 +12,10 @@ the project's licence ([LICENSE](LICENSE)).
   and [docs/rt-rules.md](docs/rt-rules.md) before touching anything the audio thread
   runs.
 - For anything user-facing, the screen's specification is in
-  [docs/design/](docs/design/README.md). The spec is the definition of done.
+  [docs/design/](docs/design/README.md). The spec is the definition of done, and
+  every screen must meet the
+  [design bar](docs/design/principles.md#the-design-bar): all of it designed,
+  nothing left looking like a toolkit default.
 - For a large change, open an issue first so the approach can be agreed.
 
 ## Build and check
@@ -33,6 +36,8 @@ A change is ready when:
 - a change to the design tokens still passes `python scripts/contrast.py --check`,
   and `docs/design/contrast.md` is regenerated with
   `python scripts/contrast.py --out docs/design/contrast.md`;
+- a visible change meets the design bar, checked by looking at `--capture`
+  screenshots at 100% and 200% of each state it touches;
 - a dependency change is followed by `python scripts/third-party-notices.py`.
 
 ## Code
@@ -87,6 +92,11 @@ not safe. Engine code never logs; it reports through status values the UI reads.
 Colours, sizes, spacing and fonts come from the design tokens through `ui::Theme`,
 never literals. A new token goes into `docs/design/tokens.json` with a contrast pair
 if it is text.
+
+Tokens alone do not make a screen finished. Every element and state is designed to
+the design system, nothing is drawn by JUCE's defaults, and a pattern the design
+system lacks is added there before it is built. The
+[design bar](docs/design/principles.md#the-design-bar) is the full list.
 
 ### Tests
 
