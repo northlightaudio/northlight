@@ -35,8 +35,12 @@ juce::String DiagnosticsPanel::report() const
     text << "Callback load: p50 " << juce::String(last_.loadP50 * 100.0, 1) << "%, p99 "
          << juce::String(last_.loadP99 * 100.0, 1) << "%, max " << juce::String(last_.loadMax * 100.0, 1)
          << "%\n";
-    text << "Overruns: " << last_.overruns << ", dropouts: " << last_.dropouts
+    text << "Overruns: " << last_.overruns << ", late callbacks: " << last_.lateCallbacks << " (latest "
+         << juce::String(juce::roundToInt(last_.maxLateness * 100.0)) << "% of a block), driver dropouts: "
+         << (last_.driverDropouts < 0 ? juce::String("not reported") : juce::String(last_.driverDropouts))
          << ", disk gaps: " << last_.diskGaps << "\n";
+    if (last_.tapActive)
+        text << "Output tap: " << last_.tapJumps << " jumps, " << last_.tapGaps << " gaps\n";
     text << "Worker threads: " << last_.workerThreads << " (" << last_.mmcssWorkerThreads
          << " MMCSS), output latency: " << last_.outputLatencySamples << " samples\n";
     text << "UI frame time: p50 " << juce::String(last_.frameP50Ms, 2) << " ms, p99 "
@@ -102,7 +106,10 @@ void DiagnosticsPanel::paint(juce::Graphics& g)
         g.drawText(label, r.removeFromLeft(labelW), juce::Justification::centredLeft);
         g.setFont(theme_.value());
         g.setColour(colour);
-        g.drawText(value, r.removeFromLeft(100), juce::Justification::centredLeft);
+        // Rows with a sparkline keep the value short; the others may use the width.
+        g.drawText(value,
+                   r.removeFromLeft(series != nullptr ? 100 : r.getWidth()),
+                   juce::Justification::centredLeft);
         if (series != nullptr)
             drawSparkline(g,
                           r.reduced(theme_.spacing.sm, theme_.spacing.xs)
@@ -114,8 +121,24 @@ void DiagnosticsPanel::paint(juce::Graphics& g)
     row("Callback p99", juce::String(last_.loadP99 * 100.0, 1) + "%", colourFor(last_.loadP99), &p99_);
     row("Callback max", juce::String(last_.loadMax * 100.0, 1) + "%", colourFor(last_.loadMax), &max_);
     row("Overruns", juce::String(last_.overruns), last_.overruns > 0 ? c.warning : c.textPrimary);
-    row("Dropouts", juce::String(last_.dropouts), last_.dropouts > 0 ? c.warning : c.textPrimary);
+    row("Late callbacks",
+        juce::String(last_.lateCallbacks) +
+            (last_.maxLateness > 0.0
+                 ? ", latest " + juce::String(juce::roundToInt(last_.maxLateness * 100.0)) + "% of a block"
+                 : juce::String()),
+        last_.lateCallbacks > 0 ? c.warning : c.textPrimary);
+    if (last_.driverDropouts < 0)
+        row("Driver dropouts", "not reported", c.textTertiary);
+    else
+        row("Driver dropouts",
+            juce::String(last_.driverDropouts),
+            last_.driverDropouts > 0 ? c.warning : c.textPrimary);
     row("Disk gaps", juce::String(last_.diskGaps), last_.diskGaps > 0 ? c.warning : c.textPrimary);
+    if (last_.tapActive)
+        row("Output tap",
+            juce::String(last_.tapJumps) + (last_.tapJumps == 1 ? " jump, " : " jumps, ") +
+                juce::String(last_.tapGaps) + (last_.tapGaps == 1 ? " gap" : " gaps"),
+            last_.tapJumps + last_.tapGaps > 0 ? c.warning : c.textPrimary);
     row("Device",
         last_.device.isEmpty() ? juce::String("none")
                                : last_.device + "  " + juce::String(last_.sampleRate / 1000.0, 1) +

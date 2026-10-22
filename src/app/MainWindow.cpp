@@ -349,7 +349,7 @@ public:
         status_.onDeviceClicked = [this] { owner_.showAudioSetup(); };
         status_.onDropoutsClicked = [this]
         {
-            dropoutBaseline_ = audio_.status().xruns;
+            dropoutBaseline_ = std::max(0, audio_.status().driverXruns);
             overrunBaseline_ = static_cast<std::int64_t>(audio_.callback().stats().summary().overruns);
             diskBaseline_ = session_.diskStarvations();
             dropoutsToasted_ = 0;
@@ -1493,7 +1493,7 @@ private:
         state.loadMax = stats.max;
         // Disk gaps count as dropouts too: they are just as audible.
         const auto diskGaps = static_cast<int>(session_.diskStarvations() - diskBaseline_);
-        state.dropouts = std::max(0, s.xruns - dropoutBaseline_) +
+        state.dropouts = std::max(0, std::max(0, s.driverXruns) - dropoutBaseline_) +
                          static_cast<int>(std::max<std::int64_t>(
                              0, static_cast<std::int64_t>(stats.overruns) - overrunBaseline_)) +
                          diskGaps;
@@ -1620,7 +1620,16 @@ private:
         sample.loadP99 = stats.p99;
         sample.loadMax = stats.max;
         sample.overruns = static_cast<int>(stats.overruns);
-        sample.dropouts = s.xruns;
+        sample.lateCallbacks = static_cast<int>(stats.late);
+        sample.maxLateness = stats.maxLateness;
+        sample.driverDropouts = s.open ? s.driverXruns : -1;
+        if (const auto* tap = audio_.callback().outputTap())
+        {
+            const auto t = tap->totals();
+            sample.tapActive = true;
+            sample.tapJumps = static_cast<int>(t.jumps);
+            sample.tapGaps = static_cast<int>(t.gaps);
+        }
         sample.diskGaps = static_cast<int>(session_.diskStarvations());
         sample.device = s.open ? juce::String::fromUTF8(s.deviceType.c_str()) + " " +
                                      juce::String::fromUTF8(s.outputDevice.c_str())

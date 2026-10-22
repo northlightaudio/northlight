@@ -208,6 +208,9 @@ void AudioCallback::audioDeviceIOCallbackWithContext(const float* const* inputCh
     juce::ScopedNoDenormals noDenormals; // FTZ/DAZ for the rest of the callback
 
     const auto startedAt = std::chrono::steady_clock::now();
+    const double deadline = secondsPerSample_ * numSamples;
+    const double lateness =
+        stats_.recordStart(std::chrono::duration<double>(startedAt.time_since_epoch()).count(), deadline);
     callbackCount_.fetch_add(1, std::memory_order_relaxed);
 
     auto phase = calibrationPhase_.load(std::memory_order_acquire);
@@ -256,9 +259,17 @@ void AudioCallback::audioDeviceIOCallbackWithContext(const float* const* inputCh
 
     const double elapsed =
         std::chrono::duration<double>(std::chrono::steady_clock::now() - startedAt).count();
-    const double deadline = secondsPerSample_ * numSamples;
+    const double load = deadline > 0.0 ? elapsed / deadline : 0.0;
     if (deadline > 0.0)
-        stats_.record(elapsed / deadline);
+        stats_.record(load);
+
+    if (auto* tap = tap_.load(std::memory_order_acquire))
+        tap->capture(outputChannelData,
+                     numOutputChannels,
+                     numSamples,
+                     sampleRate_.load(std::memory_order_relaxed),
+                     lateness,
+                     load);
 }
 
 void AudioCallback::renderCalibration(

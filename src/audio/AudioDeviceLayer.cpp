@@ -214,13 +214,16 @@ AudioDeviceLayer::Status AudioDeviceLayer::status() const
 {
     Status s;
     s.message = message_;
-    s.xruns = manager_.getXRunCount();
     s.deviceType = toStd(manager_.getCurrentAudioDeviceType());
 
     auto* device = manager_.getCurrentAudioDevice();
     if (device == nullptr)
         return s;
 
+    // The device's own count, not AudioDeviceManager's: that one turns "cannot
+    // report" into 0 and adds its own callback-time overruns, which CallbackStats
+    // already counts.
+    s.driverXruns = device->getXRunCount();
     const auto setup = manager_.getAudioDeviceSetup();
     s.open = device->isOpen();
     s.running = device->isPlaying();
@@ -250,6 +253,16 @@ std::optional<LatencyCalibration> AudioDeviceLayer::currentCalibration() const
 
 std::optional<std::string> AudioDeviceLayer::apply(const AudioSettings& requested)
 {
+    return apply(requested, true);
+}
+
+std::optional<std::string> AudioDeviceLayer::applyForThisRun(const AudioSettings& requested)
+{
+    return apply(requested, false);
+}
+
+std::optional<std::string> AudioDeviceLayer::apply(const AudioSettings& requested, bool persist)
+{
     NORTHLIGHT_ASSERT_NOT_REALTIME("AudioDeviceLayer::apply");
     JUCE_ASSERT_MESSAGE_THREAD;
 
@@ -270,15 +283,22 @@ std::optional<std::string> AudioDeviceLayer::apply(const AudioSettings& requeste
         return toStd(error);
     }
 
+    setMessage({});
+    recoveryAttempts_ = 0;
+    hadDevice_ = true;
+    if (!persist)
+    {
+        // settings_ keeps what was saved, so later saves do not store this run's device.
+        sendChangeMessage();
+        return std::nullopt;
+    }
+
     settings_ = requested;
     settings_.masterGain = callback_.masterGain();
     settings_.passThroughEnabled = callback_.isPassThroughEnabled();
     // Calibration survives only for the configuration it was measured with.
     if (previous.calibration.has_value())
         settings_.calibration = previous.calibration;
-    setMessage({});
-    recoveryAttempts_ = 0;
-    hadDevice_ = true;
     save();
     sendChangeMessage();
     return std::nullopt;

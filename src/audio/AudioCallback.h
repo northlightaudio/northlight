@@ -1,6 +1,7 @@
 #pragma once
 
 #include "engine/AudioEngine.h"
+#include "engine/OutputTap.h"
 #include "engine/rt/CallbackStats.h"
 
 #include <juce_audio_devices/juce_audio_devices.h>
@@ -56,9 +57,15 @@ public:
     // Set by audioDeviceError; cleared by the reader.
     bool takeErrorFlag() noexcept;
 
-    // Callback time as a fraction of each block's deadline; reset when the device
-    // starts.
+    // Callback time as a fraction of each block's deadline, and how late each
+    // callback started; reset when the device starts.
     const rt::CallbackStats& stats() const noexcept { return stats_; }
+
+    // Hands every finished output block, with its timing, to the tap (--output-tap).
+    // Message thread; the tap must outlive the device or be removed (nullptr) while
+    // the device is stopped.
+    void setOutputTap(engine::OutputTap* tap) noexcept { tap_.store(tap, std::memory_order_release); }
+    engine::OutputTap* outputTap() const noexcept { return tap_.load(std::memory_order_acquire); }
 
     // ----- loopback calibration ---------------------------------------------------
     // Driven from the message thread by LatencyCalibrator. The phase is a tiny state
@@ -130,6 +137,7 @@ private:
     float currentGain_ = 1.0f; // audio thread only
     std::atomic<bool> passThrough_{false};
     std::atomic<bool> outputMuted_{false};
+    std::atomic<engine::OutputTap*> tap_{nullptr};
 
     std::atomic<std::uint64_t> callbackCount_{0};
     rt::CallbackStats stats_;

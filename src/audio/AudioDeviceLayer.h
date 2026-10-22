@@ -83,7 +83,10 @@ public:
         std::vector<int> activeInputs;  // device channel indices, in callback order
         std::vector<int> activeOutputs; // device channel indices, in callback order
         bool hasControlPanel = false;
-        int xruns = 0;
+        // Dropouts the driver itself reported, or -1 when it cannot report them
+        // (most ASIO drivers). The callback's own overruns and late starts are in
+        // AudioCallback::stats().
+        int driverXruns = -1;
         std::string message; // last error or recovery note, empty when all is well
 
         double inputLatencyMilliseconds() const noexcept;
@@ -102,6 +105,9 @@ public:
     // nullopt is returned; on failure the error is returned and the previous device is
     // reopened where possible.
     std::optional<std::string> apply(const AudioSettings& settings);
+    // The same without saving: the device runs with `settings` until the app quits,
+    // and the saved settings stay as they were (--buffer-size).
+    std::optional<std::string> applyForThisRun(const AudioSettings& settings);
 
     void setMasterGain(float linearGain);
     void setPassThroughEnabled(bool enabled);
@@ -126,6 +132,7 @@ private:
     void timerCallback() override;
 
     juce::String open(const AudioSettings& settings);
+    std::optional<std::string> apply(const AudioSettings& settings, bool persist);
     juce::String openDefault();
     void save();
     void setMessage(std::string message);

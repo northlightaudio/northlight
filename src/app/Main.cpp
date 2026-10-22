@@ -9,6 +9,7 @@
 #include "core/Comping.h"
 #include "core/ProjectJson.h"
 #include "core/TempoMap.h"
+#include "engine/OutputTap.h"
 #include "plugins/BuiltIns.h"
 #include "plugins/ChannelStrip.h"
 #include "plugins/FxTracks.h"
@@ -117,6 +118,9 @@ public:
     //   --play               start the transport
     //   --record <n>         create n armed tracks on inputs 1..n and start recording
     //   --stop-after <s>     stop the transport after s seconds
+    //   --quit-after <s>     quit the app after s seconds
+    //   --buffer-size <n>    run the audio device at n samples for this run only (the saved
+    //                        settings are not changed); prints the device it opened
     //   --loop <from> <to>   set and enable the loop region, in seconds
     //   --no-count-in        record without the count-in
     //   --layout <Mix|Edit>  apply a layout preset
@@ -168,6 +172,11 @@ public:
     //                        from each in turn, its take lanes expanded
     //   --master-gain <dB>   set the master fader (-120 = silent: an unattended check that
     //                        should not be heard; pre-fader displays still move)
+    //   --output-tap <folder>  record what the callback hands the driver to output.wav in the
+    //                        folder (created if needed) until quit, with events.csv (clicks
+    //                        found in it, late callbacks, overruns) and summary.txt. For
+    //                        telling clicks Northlight makes from ones the driver or system
+    //                        makes; the Diagnostics panel shows its counts while it runs
     //   --fx-track <reverb|delay|empty>  add an FX track with a send from every track
     //   --strip-preset <name> apply a factory channel strip preset to every track
     //   --strip <modules>    switch channel strip modules on for every track and show the
@@ -452,6 +461,42 @@ public:
                                    ? [this] { mainWindow_->correctPitchInEditor(); }
                                    : std::function<void()>([this] { mainWindow_->muteBreathsInEditor(); }),
                                60);
+            else if (arg == "--quit-after" && i + 1 < tokens.size())
+            {
+                const int seconds = tokens.getReference(++i).text.getIntValue();
+                juce::Timer::callAfterDelay(std::max(0, seconds) * 1000,
+                                            []
+                                            { juce::JUCEApplication::getInstance()->systemRequestedQuit(); });
+            }
+            else if (arg == "--buffer-size" && i + 1 < tokens.size())
+            {
+                auto settings = audio_->settings();
+                settings.bufferSize = tokens.getReference(++i).text.getIntValue();
+                const auto error = audio_->applyForThisRun(settings);
+                const auto s = audio_->status();
+                std::printf("Audio: %s %s at %.0f Hz, %d samples%s%s\n",
+                            s.deviceType.c_str(),
+                            s.outputDevice.c_str(),
+                            s.sampleRate,
+                            s.bufferSize,
+                            error ? ": " : "",
+                            error ? error->c_str() : "");
+                std::string inputs;
+                for (const auto& name : audio_->inputChannelNames())
+                    inputs += (inputs.empty() ? "" : ", ") + name;
+                std::printf("Inputs: %s\n", inputs.c_str());
+                std::fflush(stdout);
+            }
+            else if (arg == "--output-tap" && i + 1 < tokens.size())
+            {
+                const juce::File folder(tokens.getReference(++i).resolveAsFile());
+                if (folder.createDirectory().wasOk() && outputTap_ == nullptr)
+                {
+                    outputTap_ = std::make_unique<engine::OutputTap>(folder.getFullPathName().toStdString());
+                    audio_->callback().setOutputTap(outputTap_.get());
+                    std::printf("Output tap recording to %s\n", folder.getFullPathName().toRawUTF8());
+                }
+            }
             else if (arg == "--master-gain" && i + 1 < tokens.size())
             {
                 const float db = tokens.getReference(++i).text.getFloatValue();
@@ -805,6 +850,13 @@ public:
     {
         mainWindow_.reset();
         audio_->shutdown(); // stop the device before the engine goes away
+        if (outputTap_ != nullptr)
+        {
+            // The device is stopped: no callback can reach the tap any more.
+            audio_->callback().setOutputTap(nullptr);
+            outputTap_->stop();
+            outputTap_.reset();
+        }
         session_.reset();
         audio_.reset();
         settings_.reset();
@@ -821,6 +873,7 @@ private:
     float captureScale_ = 2.0f; // --capture-scale
     std::unique_ptr<UserSettings> settings_;
     std::unique_ptr<audio::AudioDeviceLayer> audio_;
+    std::unique_ptr<engine::OutputTap> outputTap_; // --output-tap
     std::unique_ptr<ProjectSession> session_;
     std::unique_ptr<MainWindow> mainWindow_;
 };

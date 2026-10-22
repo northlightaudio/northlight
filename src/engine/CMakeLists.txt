@@ -48,6 +48,10 @@ add_library(northlight_engine STATIC
     WavFile.cpp
     Recording.h
     Recording.cpp
+    GlitchDetector.h
+    GlitchDetector.cpp
+    OutputTap.h
+    OutputTap.cpp
     Click.h
     Click.cpp
     Preview.h

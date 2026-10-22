@@ -229,6 +229,50 @@ BS.1770 on the master: momentary, short-term and gated integrated. Every callbac
 duration is recorded as a fraction of its deadline in a lock-free histogram, from
 which the status bar shows percentiles, overruns and driver dropouts.
 
+`rt::CallbackStats` also times when each callback starts, because a callback can do
+its work quickly and still arrive late (another driver holding the CPU, power
+saving, a USB stall), which is heard as a click with no overrun counted. It keeps
+the time the next callback is due (the previous start plus the previous block's
+length). A callback is never early, so an early one moves the due time back to it;
+a slightly late one moves it a little, which absorbs drift between the audio and
+CPU clocks; one half a block and at least 2 ms late counts as a late callback and
+re-anchors the due time. The 2 ms floor is for USB drivers, which hand out small
+blocks on the bus's 1 ms frames: at 64 samples every callback is up to half a block
+off the ideal schedule without anything going wrong. A block that starts within a quarter of the previous block's length
+is the same device period split up, or the driver catching up, and is not judged.
+Late callbacks are shown in Diagnostics but not added to the status bar's dropouts,
+since bursty drivers (Windows Audio in shared mode) can trip them without a gap.
+
+Driver dropouts are the device's own count (`AudioIODevice::getXRunCount`), which is
+-1 when the driver cannot report them, as most ASIO drivers cannot; Diagnostics then
+says "not reported" rather than showing a reassuring 0. `AudioDeviceManager`'s count
+is not used: it hides the -1 and adds its own callback-time overruns, which
+`CallbackStats` already counts.
+
+### Output tap
+
+`--output-tap <folder>` attaches an `engine::OutputTap` to the callback, which hands
+it every finished output block with its lateness and load. The audio thread pushes
+the first two outputs into a `RecordRing` and a block record (frame count, sample
+rate, lateness, load) into an SPSC queue, frames first, so the writer always finds
+a record's frames; neither push allocates and a full ring drops the block, which is
+logged. The writer thread writes `output.wav` (a new file when the sample rate
+changes), runs `engine::GlitchDetector` over it and writes `events.csv`: jumps and
+gaps found in the audio, and late callbacks and overruns, each with its time and its
+offset in the device block. `summary.txt` is written when the tap stops.
+
+`GlitchDetector` fits an order-16 linear predictor to each 1024-frame frame of each
+channel and flags samples whose prediction error is over 12 times the frame's median
+error (and over 0.03): most music is predictable at that order and a discontinuity
+is not. A waveform with hard edges (a naive sawtooth or square) has a step every
+period, so an error that repeats the shape of the error one period earlier (16
+samples to 25 ms) is excused, except at multiples of the device block size, which
+is what a block-boundary bug looks like. Instant attacks (a drum hit, a note with no
+attack) are still reported: they are steps. Samples within 16 of an exact zero are
+skipped, since the predictor has nothing to go on after silence; short runs of exact
+zeros inside a signal are reported as gaps instead. A click Northlight made is in the file; one
+that is not happened in the driver, the system or the hardware.
+
 ## Plugins
 
 Every processor, built-in or hosted, sits behind one interface,

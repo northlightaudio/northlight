@@ -16,6 +16,8 @@ add_executable(northlight_unit_tests
     engine/StreamingTests.cpp
     engine/PeaksTests.cpp
     engine/CallbackStatsTests.cpp
+    engine/GlitchDetectorTests.cpp
+    engine/OutputTapTests.cpp
     engine/WorkerPoolTests.cpp
     engine/ThreadPriorityTests.cpp
     engine/RecordingTests.cpp

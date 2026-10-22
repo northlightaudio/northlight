@@ -794,11 +794,17 @@ void AudioSetupView::refreshFromDevice()
     else if (!status.open)
         setStatus("No audio device is open.", theme_.colours.danger);
     else
+    {
+        // Overruns are counted here; the driver's own dropouts only when it reports them.
+        const auto overruns = static_cast<int>(audio_.callback().stats().summary().overruns);
+        const int dropouts = overruns + std::max(0, status.driverXruns);
         setStatus(juce::String(status.running ? "Running" : "Open") + separator + status.deviceType +
                       separator + juce::String(status.activeInputs.size()) + " in / " +
                       juce::String(status.activeOutputs.size()) + " out" + separator +
-                      juce::String(status.xruns >= 0 ? status.xruns : 0) + " dropouts",
+                      juce::String(dropouts) + (dropouts == 1 ? " dropout" : " dropouts") +
+                      (status.driverXruns < 0 ? " (driver does not report its own)" : ""),
                   theme_.colours.success);
+    }
 
     if (typeChanged)
         resized();

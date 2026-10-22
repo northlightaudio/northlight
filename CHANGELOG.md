@@ -47,3 +47,12 @@ Northlight has not had a release yet. The first release, 0.1.0, will include:
 - The dropout counter also counts gaps where the disk could not keep up with a
   streamed clip, and its warning says when the disk is the cause. Diagnostics shows
   these disk gaps on their own.
+- Diagnostics shows late callbacks: times the audio driver called Northlight late,
+  which is heard as a click even when processing kept up. These usually come from
+  another driver or power saving holding up the computer.
+- Diagnostics says "not reported" for driver dropouts when the audio driver cannot
+  count them (most ASIO drivers), instead of showing 0.
+- An output tap for tracking down clicks: start Northlight with `--output-tap
+  <folder>` and it records exactly what it sends to the audio driver, with a list of
+  any clicks found in it and of late callbacks, so you can tell whether a click comes
+  from Northlight or from the driver and system.

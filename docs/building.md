@@ -141,6 +141,35 @@ windows and panels, build example material (tracks, instruments, automation, tak
 tempo changes), drive the transport and recording, and run benchmarks. The full list
 with what each does is at the top of `src/app/Main.cpp`.
 
+### Finding where clicks come from
+
+`--output-tap <folder>` records exactly what Northlight hands the audio driver,
+until the app quits:
+
+```powershell
+Northlight.exe --output-tap "$env:TEMP	ap" --open "song.northlight" --play
+```
+
+The folder gets `output.wav` (32-bit float, the first two outputs), `events.csv`
+(every jump or gap found in that audio, every late callback and overrun, each with
+its time from the start of the file and its offset in the device block) and, on
+quit, `summary.txt`. A click you heard that is in `output.wav` was made by Northlight
+or a plugin; jumps at block offset 0 point at a block-boundary bug. A click that is
+not in the file happened after it, in the driver, the system or the hardware; late
+callbacks at the same time point at system timing (LatencyMon shows which driver).
+The file grows by about 23 MB a minute at 48 kHz.
+
+To compare buffer sizes unattended, `--buffer-size <n>` runs the device at that size
+for one run without changing the saved settings, and `--quit-after <s>` quits (and so
+finishes the tap's files) after that many seconds:
+
+```powershell
+Northlight.exe --open "song.northlight" --buffer-size 256 --output-tap "$env:TEMP	ap-256" --play --quit-after 40
+```
+
+The tap only sees what Northlight produced. To catch clicks made after it, connect an
+output to an input with a cable and record that input at the same time.
+
 ## User data
 
 | What | Where |
