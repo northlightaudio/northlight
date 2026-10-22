@@ -6,6 +6,7 @@
 
 #include <juce_gui_basics/juce_gui_basics.h>
 
+#include <array>
 #include <functional>
 #include <vector>
 
@@ -34,6 +35,9 @@ public:
     // Secondary: textSecondary at rest instead of the readout colour (the
     // clock time beside the primary bars.beats.ticks).
     void setSecondary(bool secondary);
+    // As wide as the text plus the readout inset on each side (unframed, the
+    // header bar sizes it to this).
+    int idealWidth() const;
     std::function<void(const juce::String&)> onTyped;
     std::function<void(int segment, int steps)> onNudge; // segment from the left, steps up/down
 
@@ -48,6 +52,8 @@ private:
     void beginTyping();
     void endTyping(bool commit);
     int segmentAt(int x) const;
+    juce::Font textFont() const;
+    int textLeft() const;
 
     const Theme& theme_;
     bool primary_;
@@ -155,6 +161,9 @@ public:
     // Pure geometry: Windows asks during its own hit-testing.
     juce::Component::WindowControlKind windowControlAt(juce::Point<float> point) const;
 
+    // The readout well (bars, time, tempo, signature), as last laid out.
+    juce::Rectangle<int> readoutBounds() const noexcept { return readout_; }
+
     void paint(juce::Graphics& g) override;
     void resized() override;
     void mouseDown(const juce::MouseEvent& e) override;
@@ -165,6 +174,8 @@ private:
     class ClipIndicator;
     void refreshFromState();
     juce::Rectangle<int> clipIndicatorBounds() const;
+    // Bars, time, tempo and signature: each field's width for its current text.
+    std::array<int, 4> readoutWidths() const;
 
     const Theme& theme_;
     State state_;
@@ -182,6 +193,7 @@ private:
     // signature); set by resized().
     std::vector<juce::Rectangle<int>> trays_;
     juce::Rectangle<int> readout_;
+    std::array<int, 4> readoutWidths_{};
     bool clipLit_ = false;
     bool lastPlaying_ = false, lastRecording_ = false;
 };

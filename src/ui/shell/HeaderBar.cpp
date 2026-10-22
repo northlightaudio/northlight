@@ -1,8 +1,10 @@
 #include "ui/shell/HeaderBar.h"
 
 #include "ui/NorthlightLookAndFeel.h"
+#include "ui/components/Readout.h"
 
 #include <algorithm>
+#include <array>
 
 namespace northlight::ui
 {
@@ -167,9 +169,32 @@ void TimeDisplay::paint(juce::Graphics& g)
                               : secondary_             ? c.textSecondary
                               : m.enabled              ? m.readoutText
                                                        : c.textPrimary;
-    g.setFont(primary_ ? theme_.timeLarge() : theme_.timeSmall());
+    g.setFont(textFont());
     g.setColour(text);
-    g.drawText(text_, getLocalBounds().reduced(theme_.spacing.sm, 0), juce::Justification::centred);
+    if (framed_)
+    {
+        g.drawText(text_, getLocalBounds().reduced(theme_.spacing.sm, 0), juce::Justification::centred);
+        return;
+    }
+    // In the header's readout well: on the well's shared baseline, so the bars
+    // figure and the smaller fields beside it sit on one line.
+    g.drawSingleLineText(text_, textLeft(), readout::baseline(theme_, getHeight()));
+}
+
+juce::Font TimeDisplay::textFont() const
+{
+    return primary_ ? theme_.timeLarge() : theme_.timeSmall();
+}
+
+int TimeDisplay::textLeft() const
+{
+    const int total = readout::textWidth(textFont(), text_);
+    return framed_ ? (getWidth() - total) / 2 : readout::inset(theme_);
+}
+
+int TimeDisplay::idealWidth() const
+{
+    return readout::textWidth(textFont(), text_) + 2 * readout::inset(theme_);
 }
 
 void TimeDisplay::resized()
@@ -181,9 +206,8 @@ void TimeDisplay::resized()
 int TimeDisplay::segmentAt(int x) const
 {
     // Segments are separated by '.' or ':'; the drag applies to the one under x.
-    const auto font = primary_ ? theme_.timeLarge() : theme_.timeSmall();
-    const int total = juce::GlyphArrangement::getStringWidthInt(font, text_);
-    const int left = (getWidth() - total) / 2;
+    const auto font = textFont();
+    const int left = textLeft();
     int segment = 0;
     juce::String seen;
     for (int i = 0; i < text_.length(); ++i)
@@ -521,7 +545,22 @@ void HeaderBar::refreshFromState()
         clipLit_ = s.masterClipped;
         repaint(clipIndicatorBounds());
     }
+    // The readout's fields hug their text, so a value that gains or loses a
+    // figure (bar 10, a tempo past 100, a count-in's minus) lays the bar out again.
+    if (readoutWidths() != readoutWidths_)
+    {
+        resized();
+        repaint();
+    }
     repaint(getLocalBounds().removeFromLeft(app_.getRight()));
+}
+
+std::array<int, 4> HeaderBar::readoutWidths() const
+{
+    return {bars_.idealWidth(),
+            time_.idealWidth(),
+            tempo_.readoutWidth(),
+            readout::choiceWidth(theme_, signature_.getText())};
 }
 
 juce::Component::WindowControlKind HeaderBar::windowControlAt(juce::Point<float> point) const
@@ -602,12 +641,15 @@ void HeaderBar::mouseDown(const juce::MouseEvent& e)
 
 void HeaderBar::resized()
 {
-    // Every control is controlLarge tall; each cluster sits in a tray (or the
-    // readout well) that adds xs all round, with xxs between the controls in
-    // it (xs between the transport keys, sm between the readout's fields) and
-    // md between trays (screens/transport.md).
+    // Every control is controlLarge tall; each cluster sits in a tray that adds
+    // xs all round, with xxs between the controls in it (xs between the
+    // transport keys) and md between trays (screens/transport.md). The readout
+    // well is the exception: its fields hug their text with the readout inset,
+    // and the well pads them by sm at the ends and spaces them sm apart, so the
+    // text sits md from the well's ends and lg apart.
     const int key = theme_.sizes.controlLarge;
     const int pad = theme_.spacing.xs, inner = theme_.spacing.xxs, between = theme_.spacing.md;
+    const int readoutPad = theme_.spacing.md - readout::inset(theme_);
     const int trayH = key + 2 * pad;
     const int trayY = (getHeight() - trayH) / 2;
     trays_.clear();
@@ -618,9 +660,9 @@ void HeaderBar::resized()
         int w;
     };
     using Items = std::vector<Item>;
-    const auto widthOf = [&](const Items& items, int gap)
+    const auto widthOf = [&](const Items& items, int gap, int ends = -1)
     {
-        int w = 2 * pad - gap;
+        int w = 2 * (ends < 0 ? pad : ends) - gap;
         for (const auto& i : items)
             w += i.w + gap;
         return w;
@@ -628,13 +670,14 @@ void HeaderBar::resized()
     // Places a group at x in a tray (or the readout well) and returns its width.
     const auto group = [&](int x, const Items& items, bool readout, int gap)
     {
-        const int w = widthOf(items, gap);
+        const int ends = readout ? readoutPad : pad;
+        const int w = widthOf(items, gap, ends);
         const juce::Rectangle<int> box(x, trayY, w, trayH);
         if (readout)
             readout_ = box;
         else
             trays_.push_back(box);
-        int cx = x + pad;
+        int cx = x + ends;
         for (const auto& i : items)
         {
             i.c->setBounds(cx, trayY + pad, i.w, key);
@@ -642,7 +685,7 @@ void HeaderBar::resized()
         }
         return w;
     };
-    const int keyGap = theme_.spacing.xs, fieldGap = theme_.spacing.sm;
+    const int keyGap = theme_.spacing.xs, fieldGap = theme_.spacing.lg - 2 * readout::inset(theme_);
 
     // The project title: as wide as its name needs, up to 200 px.
     const int fullProjectW = project_.idealWidth(200);
@@ -651,10 +694,15 @@ void HeaderBar::resized()
     const Items edit{{&snap_, key + theme_.spacing.sm}, {&ripple_, key}, {&zoomFit_, key}};
     const Items panels{{&mixer_, key}, {&editor_, key}, {&browser_, key}};
     const Items history{{&undo_, key}, {&redo_, key}};
+    // The readout's fields, each as wide as its text (they relayout when that changes).
+    readoutWidths_ = readoutWidths();
+    const int barsW = readoutWidths_[0], timeW = readoutWidths_[1], tempoW = readoutWidths_[2],
+              signatureW = readoutWidths_[3];
     const auto readoutItems = [&](bool withTime)
     {
-        return withTime ? Items{{&bars_, 136}, {&time_, 104}, {&tempo_, 92}, {&signature_, 60}}
-                        : Items{{&bars_, 136}, {&tempo_, 92}, {&signature_, 60}};
+        return withTime
+                   ? Items{{&bars_, barsW}, {&time_, timeW}, {&tempo_, tempoW}, {&signature_, signatureW}}
+                   : Items{{&bars_, barsW}, {&tempo_, tempoW}, {&signature_, signatureW}};
     };
 
     // Right, from the edge: the window buttons (custom chrome), the panel toggles,
@@ -700,7 +748,7 @@ void HeaderBar::resized()
     for (const auto& fit : fits)
     {
         const int leftEnd = leftStart + fit.projectW + theme_.spacing.sm + widthOf(history, inner) + between;
-        const int readoutW = widthOf(readoutItems(fit.withTime), fieldGap);
+        const int readoutW = widthOf(readoutItems(fit.withTime), fieldGap, readoutPad);
         if (leftEnd + transportW + flank + readoutW + flank + modesW <= right)
         {
             chosen = fit;
@@ -720,7 +768,7 @@ void HeaderBar::resized()
 
     time_.setVisible(chosen.withTime);
     const auto readout = readoutItems(chosen.withTime);
-    const int readoutW = widthOf(readout, fieldGap);
+    const int readoutW = widthOf(readout, fieldGap, readoutPad);
     const int minX = leftEnd + transportW + flank, maxX = right - modesW - flank - readoutW;
     x = std::max(minX, std::min((getWidth() - readoutW) / 2, maxX));
     group(x - flank - transportW, transport, false, keyGap);

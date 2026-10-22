@@ -28,7 +28,8 @@ add_executable(northlight_juce_tests
     MidiFileTests.cpp
     MigrationTests.cpp
     InputChoicesTests.cpp
-    PreferencesViewTests.cpp)
+    PreferencesViewTests.cpp
+    HeaderBarTests.cpp)
 
 target_link_libraries(northlight_juce_tests PRIVATE
     northlight_options

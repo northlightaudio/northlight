@@ -1,6 +1,7 @@
 #include "ui/NorthlightLookAndFeel.h"
 
 #include "ui/Motion.h"
+#include "ui/components/Readout.h"
 
 #include <atomic>
 #include <cmath>
@@ -557,16 +558,27 @@ void NorthlightLookAndFeel::drawComboBox(juce::Graphics& g,
     if (variantOf(box) == "readout")
     {
         // Part of a readout well (the transport's signature): no face of its own,
-        // a faint lift on hover.
+        // a faint lift on hover. The text is drawn here, on the well's shared
+        // baseline, with the chevron right after it on the figures' centre line
+        // (components/Readout.h); the label child is kept empty.
         if (box.isMouseOver(true) || box.isPopupActive())
         {
             g.setColour(c.textPrimary.withAlpha(0.06f));
             g.fillRoundedRectangle(bounds, theme_.radius.sm);
         }
-        const auto arrow =
-            bounds.removeFromRight(static_cast<float>(theme_.sizes.iconSmall + theme_.spacing.xs));
-        drawChevron(g, arrow, c.textTertiary, true);
-        drawFocusRing(g, box, bounds.withRight(arrow.getRight()), theme_.radius.sm);
+        const auto font = theme_.timeSmall();
+        const auto text = box.getText();
+        const int baseline = readout::baseline(theme_, height);
+        const int x = readout::inset(theme_);
+        g.setFont(font);
+        g.setColour(box.isEnabled() ? box.findColour(juce::ComboBox::textColourId) : c.textDisabled);
+        g.drawSingleLineText(text, x, baseline);
+        const float chevronX =
+            static_cast<float>(x + readout::textWidth(font, text) + readout::chevronGap(theme_));
+        const float middle = static_cast<float>(baseline) - readout::figureMiddle(font);
+        const float w = static_cast<float>(readout::chevronWidth(theme_));
+        drawChevron(g, {chevronX, middle - w * 0.5f, w, w}, c.textTertiary, true);
+        drawFocusRing(g, box, bounds, theme_.radius.sm);
         return;
     }
     if (!box.isEnabled())
@@ -602,8 +614,13 @@ juce::Font NorthlightLookAndFeel::getComboBoxFont(juce::ComboBox& box)
 
 void NorthlightLookAndFeel::positionComboBoxText(juce::ComboBox& box, juce::Label& label)
 {
-    const int chevron = variantOf(box) == "readout" ? theme_.sizes.iconSmall + theme_.spacing.xs
-                                                    : theme_.sizes.icon + theme_.spacing.sm;
+    if (variantOf(box) == "readout")
+    {
+        // drawComboBox draws a readout's text itself, on the shared baseline.
+        label.setBounds({});
+        return;
+    }
+    const int chevron = theme_.sizes.icon + theme_.spacing.sm;
     label.setBounds(theme_.spacing.sm, 1, box.getWidth() - chevron - theme_.spacing.sm, box.getHeight() - 2);
     label.setFont(getComboBoxFont(box));
 }

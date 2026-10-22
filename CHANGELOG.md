@@ -13,6 +13,8 @@ Northlight has not had a release yet. The first release, 0.1.0, will include:
 
 ### Added
 
+- An evenly spaced transport readout: bars, time, tempo and signature sit the same
+  distance apart on one baseline, with the signature's chevron right after it.
 - Waveforms in the arrange view, take lanes and audio editor show every sample
   when zoomed in, instead of widening the overview.
 - Preferences in cards like Audio Setup's: an icon page list, controls sized to

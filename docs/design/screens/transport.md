@@ -16,7 +16,7 @@ Every control in the bar is `controlLarge` (32 px) tall. The bar is `surface1`;
 each cluster sits in a tray recessed into it: `surface0`, radius `md`, the groove's
 inset along the top and a 1 px `lineSubtle` rim, `space.xs` padding, `space.xxs`
 between the controls (`space.xs` between the transport keys), `space.md` between
-trays. The bar has a `lineSubtle` rule along its bottom. The same trays hold the
+trays. The readout well spaces its text instead (part 3). The bar has a `lineSubtle` rule along its bottom. The same trays hold the
 left cluster (project, undo, redo) and the right ones (snap, ripple, zoom; the panel
 toggles). The readout is centred in the window, with the transport buttons on its
 left and the mode toggles on its right, each `space.sm` + `meterWidth` + `space.sm`
@@ -41,14 +41,30 @@ the readout well are recessed with a soft shade fading down 5 px from their top 
    count as a 9 px figure in the corner; right-click or long-press for 0/1/2).
 3. **Readout**: one readout well (the material's `readoutWell`, radius `md`, the
    groove's inset, a `lineSubtle` rim) holding bars, time, tempo and signature
-   with no dividers, `space.sm` apart and told apart by size and colour: the
+   with no dividers, told apart by size and colour: the
    primary in `timeLarge` 22 px mono and the material's `readoutText`, the
    secondary time in `timeSmall` `textSecondary`, tempo and signature in
    `timeSmall` `textPrimary`. After the primary come the secondary time
    (h:mm:ss.mmm, or samples, or timecode via right-click), the tempo with a
-   `caption` "BPM", and the signature with a small chevron. Click a field to
+   `caption` "BPM" `space.xs` after it, and the signature with a 7 px chevron
+   `space.xs` after it, centred on the figures. Click a field to
    type a position; drag vertically on a segment to nudge. The primary shows the
    heard position (delay-compensated).
+
+   Spacing is measured between text, not boxes: the text sits `space.md` in from
+   each end of the well and `space.lg` apart, whatever the values. Each field is
+   as wide as its text plus `space.xs` on each side (its hover and focus area),
+   so the well grows by a figure when the bars reach 10 or 100, when a count-in
+   adds its minus, or when the tempo passes 100, and the bar lays out again.
+   Every field draws on one shared baseline: the one that centres the 22 px
+   primary in the 32 px control height. The smaller text sits on that line
+   rather than being centred on its own.
+
+   ```
+   ╭────────────────────────────────────────────────────╮
+   │ 12 1.1.000 16 0:00.000 16 120.00 BPM 16 4/4 ⌄ 12   │   gaps in px, text to text
+   ╰────────────────────────────────────────────────────╯
+   ```
 4. **Tempo and signature** (in the readout): tempo drags, types, and taps (T while
    focused); the signature opens its list on click.
 5. **Master clip indicator**: a 6×6 square at the far right of the cluster, hidden
@@ -95,6 +111,8 @@ bar. A "Copy report" ghost button copies a text summary for bug reports.
 
 - Every control is 32 px in 40 px trays, with one readout well, a 22 px mono
   primary time and the token colours for each state.
+- The readout's text is 12 px from the well's ends and 16 px apart, on one
+  baseline, at short and long values alike.
 - Recording: solid record button, `record` time text, "●" title prefix, disk
   readout in the status bar.
 - Count-in shows negative bars in `warning`.

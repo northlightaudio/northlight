@@ -24,12 +24,16 @@ public:
     void setUnit(const juce::String& unit);
     void setDecimals(int decimals) { decimals_ = decimals; }
     // Drawn as part of a readout well (the transport's tempo): no field of its
-    // own, the readout's text colour and mono face, centred.
+    // own, the value then its unit from the left on the well's shared baseline
+    // (components/Readout.h).
     void setReadout(bool readout)
     {
         readout_ = readout;
         repaint();
     }
+    // In readout mode: as wide as the value and unit plus the readout inset on
+    // each side.
+    int readoutWidth() const;
     // Formats the value (without the unit); default fixed decimals.
     std::function<juce::String(double)> format;
     std::function<double(const juce::String&)> parse;

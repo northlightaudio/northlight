@@ -1,6 +1,7 @@
 #include "ui/components/NumericField.h"
 
 #include "ui/NorthlightLookAndFeel.h"
+#include "ui/components/Readout.h"
 
 namespace northlight::ui
 {
@@ -74,18 +75,18 @@ void NumericField::paint(juce::Graphics& g)
     {
         if (editor_ != nullptr)
             return;
-        auto area = getLocalBounds().reduced(theme_.spacing.sm, 0);
-        g.setFont(theme_.font(Theme::Face::ui, theme_.fonts.size.caption, theme_.fonts.weight.medium));
-        g.setColour(c.textTertiary);
-        if (unit_.isNotEmpty())
-        {
-            const int w = juce::GlyphArrangement::getStringWidthInt(g.getCurrentFont(), unit_);
-            g.drawText(unit_, area.removeFromRight(w), juce::Justification::centredRight);
-            area.removeFromRight(theme_.spacing.xs);
-        }
+        const int baseline = readout::baseline(theme_, getHeight());
+        int x = readout::inset(theme_);
         g.setFont(theme_.timeSmall());
         g.setColour(isEnabled() ? c.textPrimary : c.textDisabled);
-        g.drawText(text(), area, juce::Justification::centredRight);
+        g.drawSingleLineText(text(), x, baseline);
+        if (unit_.isNotEmpty())
+        {
+            x += readout::textWidth(theme_.timeSmall(), text()) + theme_.spacing.xs;
+            g.setFont(theme_.caption());
+            g.setColour(c.textTertiary);
+            g.drawSingleLineText(unit_, x, baseline);
+        }
         if (auto* lnf = dynamic_cast<NorthlightLookAndFeel*>(&getLookAndFeel()))
             lnf->drawFocusRing(g, *this, bounds, theme_.radius.sm);
         return;
@@ -110,6 +111,14 @@ void NumericField::paint(juce::Graphics& g)
     g.drawText(text(), area, juce::Justification::centredRight);
     if (auto* lnf = dynamic_cast<NorthlightLookAndFeel*>(&getLookAndFeel()))
         lnf->drawFocusRing(g, *this, bounds, theme_.radius.sm);
+}
+
+int NumericField::readoutWidth() const
+{
+    int w = 2 * readout::inset(theme_) + readout::textWidth(theme_.timeSmall(), text());
+    if (unit_.isNotEmpty())
+        w += theme_.spacing.xs + readout::textWidth(theme_.caption(), unit_);
+    return w;
 }
 
 void NumericField::resized()
