@@ -16,6 +16,12 @@
 // ahead of that position, or to rebuild it after a locate. Reads that fall outside
 // the window return silence and count as underruns rather than blocking.
 //
+// Most underruns are expected: the first blocks after a locate play silence while
+// the window is rebuilt. A starvation is the other kind: the window had caught up
+// (filled to the read-ahead since the last rebuild) and playback then ran past its
+// end, so the disk thread fell behind. Starvations are audible gaps in steady
+// playback and are what the dropout counter reports.
+//
 // One window serves one reader: every clip gets its own instance (createInstance,
 // through the factory the loader installs) so two clips of the same file, or a loop
 // longer than the window, never fight over where the window should be.
@@ -85,6 +91,10 @@ public:
     std::shared_ptr<AudioSource> createInstance() const override;
 
     std::uint64_t underruns() const noexcept { return underruns_.load(std::memory_order_relaxed); }
+    // Underruns that were the disk falling behind, not a locate. Counted once per
+    // block (on channel 0), and once per gap: the next block past the window is a
+    // rebuild.
+    std::uint64_t starvations() const noexcept { return starvations_.load(std::memory_order_relaxed); }
     bool hadReadError() const noexcept { return readError_.load(std::memory_order_relaxed); }
 
     // Window currently valid for reads, for tests and diagnostics.
@@ -112,6 +122,8 @@ private:
     std::atomic<std::uint64_t> generation_{0}; // bumped before ring slots a read may hold are rewritten
     mutable std::atomic<std::int64_t> wanted_{0};
     mutable std::atomic<std::uint64_t> underruns_{0};
+    mutable std::atomic<std::uint64_t> starvations_{0};
+    std::atomic<bool> caughtUp_{false}; // filled to the read-ahead since the last rebuild
     std::atomic<bool> readError_{false};
 };
 

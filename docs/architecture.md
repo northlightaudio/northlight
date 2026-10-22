@@ -78,6 +78,13 @@ northlight_plugin_scan   Inspects one plugin file per process for the scanner.
 The audio callback and the workers are time-critical threads. Everything they touch
 is preallocated when a snapshot is compiled or a device is prepared.
 
+The callback thread belongs to the device driver, which sets its priority. The
+render workers join the MMCSS "Pro Audio" task (`rt/ThreadPriority.h`), which puts
+them in the real-time priority band where no ordinary thread can reach them; without
+MMCSS they fall back to `THREAD_PRIORITY_TIME_CRITICAL`. The disk thread runs at
+`THREAD_PRIORITY_HIGHEST`, above normal work and below the workers. Diagnostics
+shows how many workers joined MMCSS.
+
 ## Model and commands
 
 `core::Project` is plain data: channels (audio, MIDI, instrument, aux and folder
@@ -178,6 +185,11 @@ with the tempo, signature and position for its block.
 Files up to 30 seconds are decoded into memory; longer ones stream through a private
 window per clip, which the disk thread keeps filled ahead of the play position. A
 read outside the window returns silence and counts an underrun rather than wait.
+An underrun after a locate is expected while the window is rebuilt. A *starvation*
+is an underrun in steady playback: the window had filled to its read-ahead since the
+last rebuild and playback ran off its end. Starvations are counted once per gap,
+summed by the disk thread across every clip (including deleted ones), and added to
+the status bar's dropout count.
 Sample-rate conversion on load is a stateless Hermite resampler with no lookback
 delay, so imported media stays aligned to the sample.
 

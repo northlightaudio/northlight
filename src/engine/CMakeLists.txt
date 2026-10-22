@@ -7,10 +7,15 @@ add_library(northlight_rt STATIC
     rt/SnapshotPublisher.h
     rt/CallbackStats.h
     rt/Denormals.h
+    rt/ThreadPriority.h
+    rt/ThreadPriority.cpp
     Meters.h)
 
 target_include_directories(northlight_rt PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/..")
 target_link_libraries(northlight_rt PUBLIC northlight_options)
+if(WIN32)
+    target_link_libraries(northlight_rt PRIVATE avrt) # MMCSS for the render workers
+endif()
 
 # The global operator new/delete override must live in the final executable's link,
 # not in a static library (where the linker could discard it). An OBJECT library's

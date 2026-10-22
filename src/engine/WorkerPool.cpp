@@ -2,15 +2,9 @@
 
 #include "engine/rt/Denormals.h"
 #include "engine/rt/RealtimeGuard.h"
+#include "engine/rt/ThreadPriority.h"
 
 #include <algorithm>
-
-#if defined(_WIN32)
-#if !defined(WIN32_LEAN_AND_MEAN)
-#define WIN32_LEAN_AND_MEAN
-#endif
-#include <windows.h>
-#endif
 
 #if defined(_M_X64) || defined(__x86_64__)
 #include <immintrin.h>
@@ -25,13 +19,6 @@ namespace northlight::engine
 namespace
 {
 constexpr int spinsBeforeYield = 2000; // roughly 20-50 us of pausing before yielding the core
-
-void raiseThreadPriority() noexcept
-{
-#if defined(_WIN32)
-    SetThreadPriority(GetCurrentThread(), THREAD_PRIORITY_TIME_CRITICAL);
-#endif
-}
 } // namespace
 
 int WorkerPool::recommendedWorkerCount() noexcept
@@ -75,7 +62,9 @@ void WorkerPool::takeJobs() noexcept
 
 void WorkerPool::workerLoop()
 {
-    raiseThreadPriority();
+    const rt::ScopedProAudioThread priority;
+    if (priority.joinedMmcss())
+        mmcssWorkers_.fetch_add(1, std::memory_order_relaxed);
     while (true)
     {
         wake_.acquire();

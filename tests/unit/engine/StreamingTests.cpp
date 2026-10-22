@@ -112,6 +112,105 @@ TEST_CASE("Reads outside the window are silent underruns and a seek rebuilds the
     CHECK(buffer[63] == expected(50063, 0));
 }
 
+TEST_CASE("Running off a caught-up window counts one starvation; a locate never does", "[engine][stream]")
+{
+    StreamingAudioSource source(std::make_unique<RampReader>(100000, 1), smallOptions());
+    source.prefetch(0);
+    while (source.service())
+    {
+    }
+    source.service(); // sees the window full: caught up
+
+    std::vector<float> buffer(64, 1.0f);
+
+    // A locate lands outside the window: an underrun, not a starvation.
+    source.read(0, 50000, buffer.data(), 64);
+    CHECK(source.underruns() == 1);
+    CHECK(source.starvations() == 0);
+
+    // Straight after the rebuild starts the window has not caught up yet, so
+    // running off its end is still the locate's silence.
+    source.service();
+    REQUIRE(source.windowStart() == 50000);
+    source.read(0, source.windowEnd() - 10, buffer.data(), 64);
+    CHECK(source.underruns() == 2);
+    CHECK(source.starvations() == 0);
+
+    // Once caught up, running off the end is the disk falling behind: counted once
+    // per block (channel 0 only) and once per gap (the next block is a rebuild).
+    while (source.service())
+    {
+    }
+    source.service();
+    const auto end = source.windowEnd();
+    source.read(0, end - 10, buffer.data(), 64);
+    source.read(1, end - 10, buffer.data(), 64);
+    CHECK(source.starvations() == 1);
+    source.read(0, end + 54, buffer.data(), 64);
+    CHECK(source.starvations() == 1);
+    CHECK(source.underruns() == 5);
+}
+
+namespace
+{
+// A RampReader whose reads wait while the gate is closed: a disk that has stalled.
+class GatedReader final : public StreamReader
+{
+public:
+    explicit GatedReader(std::int64_t length) : ramp_(length, 1) {}
+    int numChannels() const noexcept override { return 1; }
+    std::int64_t lengthSamples() const noexcept override { return ramp_.lengthSamples(); }
+    double sampleRate() const noexcept override { return 48000.0; }
+    bool read(std::int64_t start, int numSamples, float* const* dest) override
+    {
+        while (!open.load())
+            std::this_thread::sleep_for(std::chrono::milliseconds(1));
+        return ramp_.read(start, numSamples, dest);
+    }
+    std::atomic<bool> open{true};
+
+private:
+    RampReader ramp_;
+};
+} // namespace
+
+TEST_CASE("The disk thread's starvation total outlives the source that starved", "[engine][stream]")
+{
+    auto reader = std::make_unique<GatedReader>(48000 * 20);
+    auto* gate = reader.get();
+    auto source = std::make_shared<StreamingAudioSource>(std::move(reader), smallOptions());
+    DiskThread disk(1);
+    disk.add(source);
+    source->prefetch(0);
+    disk.poke();
+
+    for (int i = 0; i < 500 && source->windowEnd() < 2048; ++i)
+        std::this_thread::sleep_for(std::chrono::milliseconds(1));
+    REQUIRE(source->windowEnd() == 2048);
+    std::this_thread::sleep_for(std::chrono::milliseconds(20)); // a few idle passes: caught up
+
+    // Stall the disk, then play off the end of the window.
+    gate->open = false;
+    const auto end = source->windowEnd();
+    std::vector<float> buffer(64);
+    source->read(0, end - 10, buffer.data(), 64);
+    CHECK(source->starvations() == 1);
+    CHECK(disk.totalStarvations() == 1);
+
+    // Let the disk catch up far enough that it has made a full pass since the gap,
+    // then drop the source.
+    gate->open = true;
+    for (int i = 0; i < 500 && source->windowEnd() < end + 2048; ++i)
+        std::this_thread::sleep_for(std::chrono::milliseconds(1));
+    REQUIRE(source->windowEnd() >= end + 2048);
+    source.reset();
+    disk.poke();
+    std::this_thread::sleep_for(std::chrono::milliseconds(20));
+
+    CHECK(disk.totalStarvations() == 1);
+    CHECK(disk.totalUnderruns() == 0); // underruns are only summed over live sources
+}
+
 TEST_CASE("Reads straddling the file edges zero-fill without counting underruns", "[engine][stream]")
 {
     StreamingAudioSource source(std::make_unique<RampReader>(1000, 1), smallOptions());
@@ -168,6 +267,7 @@ TEST_CASE("The disk thread keeps a paced reader fed with no underruns after the 
     CHECK(allCorrect);
     CHECK(source->underruns() == 0);
     CHECK(disk.totalUnderruns() == 0);
+    CHECK(disk.totalStarvations() == 0);
     CHECK(rawReader->reads > 10);
 
     // A locate far ahead: the window is rebuilt within a few service rounds.

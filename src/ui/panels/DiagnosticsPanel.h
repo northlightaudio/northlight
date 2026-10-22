@@ -25,10 +25,12 @@ public:
     {
         double loadP50 = 0.0, loadP99 = 0.0, loadMax = 0.0;
         int overruns = 0, dropouts = 0;
+        int diskGaps = 0; // streamed clips that ran dry because the disk fell behind
         juce::String device;
         double sampleRate = 0.0;
         int bufferSize = 0;
         int workerThreads = 0;
+        int mmcssWorkerThreads = 0; // of workerThreads, those in the MMCSS Pro Audio task
         int outputLatencySamples = 0;
         double frameP50Ms = 0.0, frameP99Ms = 0.0, frameMaxMs = 0.0;
         double paintP50Ms = 0.0, paintP99Ms = 0.0, paintMaxMs = 0.0; // the arrange and mixer paints

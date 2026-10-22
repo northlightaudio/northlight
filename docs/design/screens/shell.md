@@ -159,7 +159,10 @@ Left, in `timeSmall` mono, separated by middle dots in `textTertiary`:
 - Load: "CPU 4%" with p99 and max in the tooltip; turns `warning` above 70%, `danger`
   above 90%.
 - Dropouts: hidden when zero; "2 dropouts" in `warning`, click resets, tooltip shows
-  the last one's time.
+  the last one's time. Counts device xruns, late callbacks and disk gaps (a streamed
+  clip that ran dry in steady playback; a locate's silence is not one). The warning
+  toast after ten new dropouts names the disk when most of them are disk gaps, and
+  then has no Audio Setup action, since a bigger buffer would not help.
 - Disk: shown only while recording: "Disk 12 MB/s · 2.4 GB free".
 
 Right: a single line for transient confirmations ("Saved", "Bounced mix.wav") in

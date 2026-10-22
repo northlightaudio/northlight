@@ -11,7 +11,8 @@
 
 // The one disk I/O thread. Services every registered StreamingAudioSource in turn,
 // sleeping briefly when none needs work. Registration happens from the controller
-// thread; the real-time thread never touches this object.
+// thread; the real-time thread never touches this object. It runs above normal
+// priority (rt/ThreadPriority.h) so a busy machine cannot starve the windows.
 
 namespace northlight::engine
 {
@@ -33,10 +34,22 @@ public:
 
     std::uint64_t totalUnderruns() const;
 
+    // Starvations (StreamingAudioSource::starvations) of every source ever added,
+    // including ones since destroyed, so it never goes down. A source destroyed
+    // between two passes of the thread can lose its last few milliseconds of them.
+    std::uint64_t totalStarvations() const;
+
 private:
+    struct Entry
+    {
+        std::weak_ptr<StreamingAudioSource> source;
+        std::uint64_t starvationsSeen = 0;
+    };
+
     void run();
 
-    std::vector<std::weak_ptr<StreamingAudioSource>> sources_;
+    std::vector<Entry> sources_;
+    std::uint64_t foldedStarvations_ = 0; // guarded by mutex_
     mutable std::mutex mutex_;
     std::condition_variable wake_;
     std::atomic<bool> stop_{false};

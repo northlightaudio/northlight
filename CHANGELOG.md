@@ -35,3 +35,8 @@ Northlight has not had a release yet. The first release, 0.1.0, will include:
   audio file, each plugin by name) with a progress bar, and the window keeps drawing.
   Opening can be cancelled until the plugins start loading.
 - The Machair dusk design, with a splash screen and About box that show the version.
+- Steadier playback while the computer is busy (compiling, for example): the render
+  threads and the disk thread now run at higher priority than ordinary programs.
+- The dropout counter also counts gaps where the disk could not keep up with a
+  streamed clip, and its warning says when the disk is the cause. Diagnostics shows
+  these disk gaps on their own.

@@ -78,8 +78,10 @@ numpad as in Pro Tools (0 play, 3 record, 1 go to start). Full map in section 10
 ## Diagnostics panel (dock tab)
 
 A table of engine health: callback time p50/p99/max
-as sparklines over the last 60 s, dropouts with timestamps, disk read-ahead fill,
-plugin latencies per track, worker thread count, device state. All in `small` and
+as sparklines over the last 60 s, dropouts with timestamps, disk gaps (streamed clips
+that ran dry, in `warning` when non-zero), disk read-ahead fill, plugin latencies per
+track, worker thread count with how many joined MMCSS ("15 (15 MMCSS)", in `warning`
+when any did not), device state. All in `small` and
 `value` mono; `warning`/`danger` colouring at the same thresholds as the status
 bar. A "Copy report" ghost button copies a text summary for bug reports.
 

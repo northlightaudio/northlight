@@ -336,6 +336,8 @@ public:
     // measured or reported round-trip latency) when they are ready.
     std::string startRecording();
     bool isRecording() const noexcept { return engine_.isRecording(); }
+    // Gaps in streamed clips because the disk fell behind; never goes down.
+    std::uint64_t diskStarvations() const { return disk_.totalStarvations(); }
     // The folder new recordings go to: next to the project file, or the user's
     // Documents/Northlight/Recordings when the project has not been saved.
     juce::File mediaFolder() const;

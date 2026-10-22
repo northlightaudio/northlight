@@ -351,6 +351,9 @@ public:
         {
             dropoutBaseline_ = audio_.status().xruns;
             overrunBaseline_ = static_cast<std::int64_t>(audio_.callback().stats().summary().overruns);
+            diskBaseline_ = session_.diskStarvations();
+            dropoutsToasted_ = 0;
+            diskGapsToasted_ = 0;
             refreshStatus();
         };
         audio_.addChangeListener(this);
@@ -1481,20 +1484,32 @@ private:
         state.loadP50 = stats.p50;
         state.loadP99 = stats.p99;
         state.loadMax = stats.max;
+        // Disk gaps count as dropouts too: they are just as audible.
+        const auto diskGaps = static_cast<int>(session_.diskStarvations() - diskBaseline_);
         state.dropouts = std::max(0, s.xruns - dropoutBaseline_) +
                          static_cast<int>(std::max<std::int64_t>(
-                             0, static_cast<std::int64_t>(stats.overruns) - overrunBaseline_));
+                             0, static_cast<std::int64_t>(stats.overruns) - overrunBaseline_)) +
+                         diskGaps;
         // Dropouts over the threshold: a toast with the fix, at most once a minute.
+        // The fix depends on the cause; most of the new ones coming from the disk
+        // means a bigger buffer would not help.
         const double now = juce::Time::getMillisecondCounterHiRes();
         if (state.dropouts - dropoutsToasted_ >= 10 && now - lastDropoutToastMs_ > 60000.0)
         {
+            const bool mostlyDisk = 2 * (diskGaps - diskGapsToasted_) > state.dropouts - dropoutsToasted_;
             dropoutsToasted_ = state.dropouts;
+            diskGapsToasted_ = diskGaps;
             lastDropoutToastMs_ = now;
-            toast(ui::ToastStack::Kind::warning,
-                  "Audio dropouts. The buffer is too small for this project on this device. Raise the buffer "
-                  "size in Audio Setup.",
-                  "Audio Setup",
-                  [this] { owner_.showAudioSetup(); });
+            if (mostlyDisk)
+                toast(ui::ToastStack::Kind::warning,
+                      "Audio dropouts. The disk is not keeping up with the streamed clips. Close programs "
+                      "that are using the disk, or move the project to a faster drive.");
+            else
+                toast(ui::ToastStack::Kind::warning,
+                      "Audio dropouts. The buffer is too small for this project on this device. Raise the "
+                      "buffer size in Audio Setup.",
+                      "Audio Setup",
+                      [this] { owner_.showAudioSetup(); });
         }
         state.recording = session_.isRecording();
         if (state.recording)
@@ -1599,12 +1614,14 @@ private:
         sample.loadMax = stats.max;
         sample.overruns = static_cast<int>(stats.overruns);
         sample.dropouts = s.xruns;
+        sample.diskGaps = static_cast<int>(session_.diskStarvations());
         sample.device = s.open ? juce::String::fromUTF8(s.deviceType.c_str()) + " " +
                                      juce::String::fromUTF8(s.outputDevice.c_str())
                                : juce::String();
         sample.sampleRate = s.sampleRate;
         sample.bufferSize = s.bufferSize;
         sample.workerThreads = session_.engine().workerThreads();
+        sample.mmcssWorkerThreads = session_.engine().mmcssWorkerThreads();
         sample.outputLatencySamples = session_.engine().outputLatencySamples();
         sample.recording = session_.isRecording();
         const auto paints = ui::FrameStats::summary();
@@ -2920,6 +2937,8 @@ private:
     bool lastDeviceOpen_ = false;
     std::string lastDeviceName_;
     int dropoutsToasted_ = 0;
+    int diskGapsToasted_ = 0;
+    std::uint64_t diskBaseline_ = 0;
     double lastDropoutToastMs_ = 0.0;
     bool quitAfterSave_ = false;
     double benchmarkEndMs_ = 0.0;

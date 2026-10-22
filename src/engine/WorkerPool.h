@@ -48,6 +48,9 @@ public:
     // How many times run() had to yield while waiting for workers; diagnostics.
     std::uint64_t waitYields() const noexcept { return waitYields_.load(std::memory_order_relaxed); }
 
+    // How many workers joined MMCSS "Pro Audio" (the rest run time-critical); diagnostics.
+    int mmcssWorkers() const noexcept { return mmcssWorkers_.load(std::memory_order_relaxed); }
+
 private:
     void workerLoop();
     void takeJobs() noexcept;
@@ -70,6 +73,7 @@ private:
     std::atomic<int> inBatch_{0};         // workers currently inside takeJobs
     std::atomic<int> permits_{0};         // wake permits released but not yet consumed
     std::atomic<std::uint64_t> waitYields_{0};
+    std::atomic<int> mmcssWorkers_{0};
     Job job_ = nullptr;
     void* context_ = nullptr;
 };

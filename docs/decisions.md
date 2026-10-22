@@ -45,6 +45,8 @@ For how the pieces fit together see [architecture.md](architecture.md).
 | 2026-10-19 | Meters are peak-hold plus last-block RMS in atomics | The UI cannot miss a peak between frames and applies its own ballistics, with no queue. |
 | 2026-10-20 | Editor feedback is a ring of atomics per processor, polled by the UI | Preallocated and non-blocking, with no queue per display; a display tolerates the rare torn frame. |
 | 2026-10-19 | Own Hermite resampler instead of `juce::LagrangeInterpolator` | JUCE's interpolator carries a lookback delay and sequential state, which misaligned media and complicated seeks. A stateless resampler at exact positions is sample-aligned. |
+| 2026-10-22 | Render workers join MMCSS "Pro Audio"; the disk thread runs at `THREAD_PRIORITY_HIGHEST` | Windows boosts busy normal threads as high as time-critical, so a compile could tie with a worker and make the whole block late, whatever the buffer size. MMCSS puts the workers above that range. The disk thread only needs to beat normal work, and staying below the workers keeps file reads from taking a core from rendering. The driver's callback thread is left as the driver set it. |
+| 2026-10-22 | Disk dropouts are starvations, not every underrun | Every locate plays a little silence while the window rebuilds, so counting all underruns would report a dropout on each seek. An underrun only counts when the window had caught up, and only once per gap. |
 | 2026-10-19 | Loops shorter than 64 samples are refused | Each loop pass in a block costs a render span and a worker wake; very short loops have no musical use. |
 
 ### Audio devices and media

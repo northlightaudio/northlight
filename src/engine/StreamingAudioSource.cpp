@@ -68,6 +68,10 @@ void StreamingAudioSource::read(int channel,
     {
         std::fill(dest, dest + numSamples, 0.0f);
         underruns_.fetch_add(1, std::memory_order_relaxed);
+        // Playback ran off the end of a window that had caught up. A locate lands
+        // outside the window instead (or on one still being rebuilt).
+        if (channel == 0 && fileFrom >= start && fileFrom <= end && caughtUp_.load(std::memory_order_acquire))
+            starvations_.fetch_add(1, std::memory_order_relaxed);
         return;
     }
 
@@ -174,6 +178,7 @@ bool StreamingAudioSource::service()
     {
         // Seek: empty the window, let any in-flight read finish, then refill from
         // the wanted position.
+        caughtUp_.store(false, std::memory_order_release);
         bumpGeneration();
         validStart_.store(wanted, std::memory_order_release);
         validEnd_.store(wanted, std::memory_order_release);
@@ -183,7 +188,10 @@ bool StreamingAudioSource::service()
 
     const auto ahead = end - wanted;
     if (ahead >= options_.readAheadSamples || end >= length_)
+    {
+        caughtUp_.store(true, std::memory_order_release);
         return false;
+    }
 
     // Append one chunk. The slots it lands in held [end - ringSize, end - ringSize + count),
     // which must be behind the guard.
