@@ -29,7 +29,8 @@ add_executable(northlight_juce_tests
     MigrationTests.cpp
     InputChoicesTests.cpp
     PreferencesViewTests.cpp
-    HeaderBarTests.cpp)
+    HeaderBarTests.cpp
+    MixerViewTests.cpp)
 
 target_link_libraries(northlight_juce_tests PRIVATE
     northlight_options

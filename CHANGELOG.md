@@ -65,3 +65,8 @@ Northlight has not had a release yet. The first release, 0.1.0, will include:
   <folder>` and it records exactly what it sends to the audio driver, with a list of
   any clicks found in it and of late callbacks, so you can tell whether a click comes
   from Northlight or from the driver and system.
+
+### Fixed
+
+- Automated faders in the mixer hold their automated value steadily while you move
+  another fader, instead of flickering back to their static level.

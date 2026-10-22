@@ -704,6 +704,7 @@ public:
         currentGain_ = channel.gain;
         fader_.setGain(channel.gain, juce::dontSendNotification);
         value_.setValue(db::fromGain(channel.gain), juce::dontSendNotification);
+        showPlayed();
         mute_.setToggleState(channel.mute, juce::dontSendNotification);
         solo_.setToggleState(channel.solo, juce::dontSendNotification);
         phase_.setToggleState(channel.phaseInvert, juce::dontSendNotification);
@@ -746,6 +747,7 @@ public:
         currentGain_ = channel.gain;
         fader_.setGain(channel.gain, juce::dontSendNotification);
         value_.setValue(db::fromGain(channel.gain), juce::dontSendNotification);
+        showPlayed();
         mute_.setToggleState(channel.mute, juce::dontSendNotification);
         solo_.setToggleState(channel.solo, juce::dontSendNotification);
         phase_.setToggleState(channel.phaseInvert, juce::dontSendNotification);
@@ -924,6 +926,14 @@ public:
         const float peaks[2] = {r.peakLeft, r.peakRight};
         meter_.push(peaks, 2, elapsedMs);
         stripRow_.updateReductions(owner_.liveInsert);
+        showPlayed();
+    }
+
+    // An automated fader and pan show what their lanes play. Every refresh ends
+    // here, so a model refresh (another strip's fader drag) never shows the static
+    // value for a frame before the next meter tick moves it back.
+    void showPlayed()
+    {
         if (owner_.automatedValues)
             showAutomated(owner_.automatedValues(id_));
     }
