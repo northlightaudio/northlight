@@ -393,6 +393,30 @@ keyboard, focus ring and tooltip, and its text pairs are in contrast.md.
   shade under its top lip and a faint `highlight` line along its lower edge;
   pressed keys drop 1 px. Lit glass (a display, a meter window) gets a
   `highlight` reflection across its top left.
+- **Rendered parts** (the tape echo's console): a face whose parts are 3D renders
+  (Blender, the scripts and their sources in `scripts/render/<effect>/`) rather
+  than drawn. One lighting for every part: a key from the top of the unit, the same
+  room in every reflection, shadows falling down the panel. The rules that keep it
+  honest:
+  - **Drawn at one size, scaled to fit.** The face has a design size; the card
+    scales it uniformly to its body (never above 100%) and reports its width at a
+    given height (`ModuleCard::preferredWidthAt`), so the dock narrows the card
+    rather than leaving panel beside it. Images are kept at twice the design size.
+  - **What turns is a separate layer.** A knob is its body (with its shadow and
+    highlights, drawn once, never rotated) and a pointer layer turned with the
+    value (`Knob::Style::rendered`, which takes the mouse only on the skirt). A
+    roller turns only its screw slot and drillings. Rotating a lit part would turn
+    its light with it.
+  - **States are renders, not tints:** a lever in each position, a lamp off, lit
+    and alarmed.
+  - **Light is a layer of its own.** A lamp's glow is rendered with every other
+    light off and laid over the base as colour with alpha, so its brightness is its
+    opacity and its spill comes with it. Glass and perspex are their reflections
+    alone, over what is under them.
+  - **Text stays live.** Legends, scales and values are drawn in tokens over the
+    renders (`font.legend`), so they stay sharp, translatable and in contrast.md.
+  - **Every part has a flat fallback** in the `hardware` tokens, as every texture
+    does.
 
 ### Control groups on a card
 

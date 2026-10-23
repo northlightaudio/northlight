@@ -5,5 +5,8 @@ from there, falling back to system fonts when one is missing.
 
 - **Newsreader** (committed), the display face for the wordmark and headings, under
   the SIL Open Font License in `Newsreader-OFL.txt`.
+- **Barlow Condensed** (committed, the SemiBold and Bold cuts), the legend face printed
+  on a hardware face (the tape echo's console), under the SIL Open Font License in
+  `BarlowCondensed-OFL.txt`.
 - **Inter** and **JetBrains Mono**, the interface and number faces, are not committed.
   Add `Inter-Variable.ttf` and `JetBrainsMono-Variable.ttf` here to use them.

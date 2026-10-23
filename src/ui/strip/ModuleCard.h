@@ -98,6 +98,13 @@ public:
     // The height the card's body wants at its preferred width (for an embedded
     // card, whose frame sizes to it).
     virtual int preferredBodyHeight() const { return 220; }
+    // The card's width when its body is `bodyHeight` tall: the preferred width,
+    // unless the card scales its body to fit (a hardware face drawn at one size).
+    virtual int preferredWidthAt(int bodyHeight) const
+    {
+        juce::ignoreUnused(bodyHeight);
+        return preferredWidth();
+    }
 
     // ----- for the displays ------------------------------------------------------
     float param(int index) const noexcept;

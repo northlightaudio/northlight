@@ -180,6 +180,19 @@ public:
         repaint();
     }
 
+    // The card's width at a height: a body that scales to fit narrows with it.
+    int preferredWidthAt(int height) const
+    {
+        if (body_ == nullptr)
+            return preferredWidth();
+        int bodyHeight = height - theme_.sizes.control;
+        if (!instrument_)
+            bodyHeight -= theme_.sizes.controlCompact;
+        if (showsInfoLine())
+            bodyHeight -= theme_.sizes.controlCompact;
+        return body_->preferredWidthAt(bodyHeight);
+    }
+
     int preferredWidth() const noexcept
     {
         if (body_ != nullptr)
@@ -1085,10 +1098,11 @@ void EditorPanel::resized()
     insertsX_ = x;
     for (auto& card : cards_)
     {
+        const int w = card->preferredWidthAt(h - caption);
         place(*card,
-              {x, theme_.spacing.xs + caption, card->preferredWidth(), h - caption},
+              {x, theme_.spacing.xs + caption, w, h - caption},
               "insert:" + std::to_string(card->insertId()));
-        x += card->preferredWidth() + theme_.spacing.sm;
+        x += w + theme_.spacing.sm;
     }
     // The add slot: an empty card the cards' height.
     const int addW = theme_.sizes.controlLarge * 3;

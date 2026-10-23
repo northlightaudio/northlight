@@ -59,6 +59,8 @@ void Knob::setRange(double minimum, double maximum, double defaultValue)
 
 void Knob::setValue(double value, juce::NotificationType notify)
 {
+    if (interval_ > 0.0)
+        value = minimum_ + std::round((value - minimum_) / interval_) * interval_;
     value_ = juce::jlimit(minimum_, maximum_, value);
     // The value is the tooltip only where the knob does not draw it.
     setTooltip(showValue_ ? juce::String() : text());
@@ -181,8 +183,62 @@ void Knob::paintBud(juce::Graphics& g)
         lnf->drawFocusRing(g, *this, ring, size * 0.5f);
 }
 
+bool Knob::hitTest(int x, int y)
+{
+    if (style_ != Style::rendered)
+        return true;
+    // Only the skirt takes the mouse: the rest of the bounds is the pointer
+    // layer's margin, over the panel.
+    const auto centre = getLocalBounds().toFloat().getCentre();
+    return centre.getDistanceFrom({static_cast<float>(x), static_cast<float>(y)}) <=
+           static_cast<float>(ringSize()) * 0.5f + 2.0f;
+}
+
+void Knob::paintRendered(juce::Graphics& g)
+{
+    const auto area = getLocalBounds().toFloat();
+    const auto centre = area.getCentre();
+    const float size = static_cast<float>(ringSize());
+    const bool enabled = isEnabled();
+    const float angle = (static_cast<float>(fraction()) - 0.5f) * sweep;
+    if (renderedPointer_.isValid())
+    {
+        g.setImageResamplingQuality(juce::Graphics::highResamplingQuality);
+        g.setOpacity(enabled ? 1.0f : 0.45f);
+        const auto fit =
+            juce::AffineTransform::scale(area.getWidth() / static_cast<float>(renderedPointer_.getWidth()),
+                                         area.getHeight() / static_cast<float>(renderedPointer_.getHeight()))
+                .translated(area.getX(), area.getY())
+                .rotated(angle, centre.x, centre.y);
+        g.drawImageTransformed(renderedPointer_, fit);
+        g.setOpacity(1.0f);
+    }
+    else
+    {
+        // Without its image: a pointer line over the body the face draws.
+        const auto& hw = theme_.hardware;
+        g.setColour(enabled ? hw.knobPointer : hw.knobPointer.withAlpha(0.4f));
+        g.drawLine(juce::Line<float>(centre.getPointOnCircumference(size * 0.2f, angle),
+                                     centre.getPointOnCircumference(size * 0.48f, angle)),
+                   std::max(2.0f, size * 0.04f));
+    }
+    // Hover and drag: the light picks the knob out a little.
+    if (enabled && (isMouseOver(true) || dragging_))
+    {
+        g.setColour(theme_.hardware.highlight.withAlpha(dragging_ ? 0.1f : 0.07f));
+        g.fillEllipse(juce::Rectangle<float>(size, size).withCentre(centre));
+    }
+    if (auto* lnf = dynamic_cast<NorthlightLookAndFeel*>(&getLookAndFeel()))
+        lnf->drawFocusRing(g, *this, juce::Rectangle<float>(size, size).withCentre(centre), size * 0.5f);
+}
+
 void Knob::paint(juce::Graphics& g)
 {
+    if (style_ == Style::rendered)
+    {
+        paintRendered(g);
+        return;
+    }
     if (style_ == Style::pointer)
     {
         paintPointer(g);
@@ -308,7 +364,10 @@ void Knob::step(double direction, bool fine)
 {
     if (onDragStart)
         onDragStart();
-    setFraction(fraction() + direction * (fine ? 0.005 : 0.02), true);
+    if (interval_ > 0.0)
+        setValue(value_ + direction * interval_, juce::sendNotification);
+    else
+        setFraction(fraction() + direction * (fine ? 0.005 : 0.02), true);
     if (onDragEnd)
         onDragEnd();
 }

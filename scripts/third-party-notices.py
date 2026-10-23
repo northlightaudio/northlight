@@ -90,7 +90,10 @@ def main():
     parts.append("")
     parts.append(
         "Typefaces: Newsreader, the display face (`assets/fonts/Newsreader-Variable.ttf`), is "
-        "distributed under the SIL Open Font License 1.1, in `Newsreader-OFL.txt` beside it. When "
+        "distributed under the SIL Open Font License 1.1, in `Newsreader-OFL.txt` beside it. "
+        "Barlow Condensed, the legend face of the hardware faces (`assets/fonts/BarlowCondensed-*.ttf`, "
+        "copyright 2017 The Barlow Project Authors), is distributed under the same licence, in "
+        "`BarlowCondensed-OFL.txt` beside it. When "
         "the Inter and JetBrains Mono fonts are bundled in `assets/fonts`, they are distributed "
         "under the same licence, and their `OFL.txt` files must be shipped beside them.\n")
     parts.append(

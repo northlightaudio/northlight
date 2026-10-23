@@ -36,6 +36,12 @@ Generated from [tokens.json](tokens.json) (Machair Dusk v2) by `scripts/contrast
 | hardware.displayDim | hardware.displayCentre | 5.50 | A display's preset number | 3:1 only |
 | hardware.glassInk | hardware.glassEdge | 6.01 | Readings on a lit meter window, at its edge | yes |
 | hardware.glassMid | hardware.glassOffEdge | 5.88 | Readings on an unlit window | 3:1 only |
+| hardware.creamInk | hardware.creamPanel | 9.18 | Names on the console's cream panel | yes |
+| hardware.creamInkSoft | hardware.creamPanel | 6.13 | Small legends on the cream panel | yes |
+| hardware.sageInk | hardware.sagePanel | 6.65 | Control names on the sage panel | yes |
+| hardware.sageInkSoft | hardware.sagePanel | 5.22 | Values and positions on the sage panel | yes |
+| hardware.dialInk | hardware.dialFace | 9.64 | The meter's scale | yes |
+| hardware.dialRed | hardware.dialFace | 4.67 | The meter's red zone | yes |
 
 ## Track palette
 

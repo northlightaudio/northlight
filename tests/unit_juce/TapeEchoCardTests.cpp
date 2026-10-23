@@ -1,14 +1,18 @@
 #include "core/Model.h"
+#include "plugins/BeatSync.h"
 #include "plugins/BuiltIns.h"
 #include "plugins/TapeEcho.h"
 #include "ui/Theme.h"
-#include "ui/components/RotarySelector.h"
+#include "ui/components/Knob.h"
 #include "ui/strip/BuiltInCards.h"
 #include "ui/strip/StripStyle.h"
+#include "ui/strip/TapeEchoFace.h"
 
+#include <catch2/catch_approx.hpp>
 #include <catch2/catch_test_macros.hpp>
 
 #include <cmath>
+#include <functional>
 #include <memory>
 #include <vector>
 
@@ -44,18 +48,63 @@ struct Rig
         card->tick(16.0); // starts watching
     }
 
-    std::vector<ui::RotarySelector*> selectors() const
+    // A control on the console by its accessible title ("Heads", "Stereo").
+    juce::Component* control(const juce::String& title) const
     {
-        std::vector<ui::RotarySelector*> found;
+        std::function<juce::Component*(juce::Component&)> find = [&](juce::Component& c) -> juce::Component*
+        {
+            for (auto* child : c.getChildren())
+            {
+                if (child->getTitle() == title)
+                    return child;
+                if (auto* found = find(*child))
+                    return found;
+            }
+            return nullptr;
+        };
+        return find(*card);
+    }
+
+    // The console itself: the card's one child drawn scaled.
+    juce::Component* face() const
+    {
         for (auto* child : card->getChildren())
-            if (auto* s = dynamic_cast<ui::RotarySelector*>(child))
-                found.push_back(s);
-        return found;
+            if (child->isVisible() && child->getWidth() == static_cast<int>(ui::strip::tapeface::width))
+                return child;
+        return nullptr;
     }
 };
 } // namespace
 
-TEST_CASE("The tape echo card reads its machine and its selectors set heads and stereo", "[ui][tapeecho]")
+TEST_CASE("The tape echo's console fits its body by scaling, the card narrowing with it", "[ui][tapeecho]")
+{
+    namespace tf = ui::strip::tapeface;
+    CHECK(tf::fitScale(1160.0f, 600.0f) == 1.0f);
+    CHECK(tf::fitScale(2000.0f, 900.0f) == 1.0f); // never drawn larger than it was made
+    CHECK(tf::fitScale(1160.0f, 300.0f) == Catch::Approx(0.5f));
+    CHECK(tf::fitScale(580.0f, 600.0f) == Catch::Approx(0.5f));
+    CHECK(tf::widthForHeight(300) == 580);
+    CHECK(tf::widthForHeight(900) == 1160);
+
+    const juce::ScopedJuceInitialiser_GUI juceInit;
+    Rig rig;
+    auto* face = rig.face();
+    REQUIRE(face != nullptr);
+    CHECK(face->getTransform().mat00 == Catch::Approx(1.0f)); // at its preferred size, 1:1
+
+    // A dock half as tall: the console at half size, the card half as wide.
+    const auto& theme = ui::Theme::dark();
+    const int body = 300 + 2 * theme.spacing.xs;
+    const int width = rig.card->preferredWidthAt(body);
+    CHECK(width == 580 + 2 * theme.spacing.sm);
+    rig.card->setEmbedded(true);
+    rig.card->setBounds(0, 0, width, body);
+    CHECK(face->getTransform().mat00 == Catch::Approx(0.5f));
+    const auto shown = face->getBounds().toFloat().transformedBy(face->getTransform());
+    CHECK(rig.card->getLocalBounds().toFloat().expanded(1.0f).contains(shown));
+}
+
+TEST_CASE("The tape echo's console reads its machine and its controls set the parameters", "[ui][tapeecho]")
 {
     const juce::ScopedJuceInitialiser_GUI juceInit;
     Rig rig;
@@ -79,23 +128,113 @@ TEST_CASE("The tape echo card reads its machine and its selectors set heads and 
     const auto image = rig.card->createComponentSnapshot(rig.card->getLocalBounds(), true, 1.0f);
     CHECK(image.isValid());
 
-    // Heads (eight combinations) and Stereo (three) are rotary selectors, in that order.
-    const auto selectors = rig.selectors();
-    REQUIRE(selectors.size() == 2);
-    CHECK(selectors[0]->selected() == static_cast<int>(rig.insert.params[te::heads]));
-    CHECK(selectors[0]->getTooltip() == "Heads: Heads 1 + 3");
-    selectors[0]->keyPressed(juce::KeyPress(juce::KeyPress::endKey));
+    // HEADS is a knob with eight positions, named in full.
+    auto* heads = dynamic_cast<ui::Knob*>(rig.control("Heads"));
+    REQUIRE(heads != nullptr);
+    CHECK(heads->accessibleValueText() == "Heads 1 + 3");
+    heads->keyPressed(juce::KeyPress(juce::KeyPress::homeKey)); // a knob's Home is its top
     CHECK(rig.card->param(te::heads) == static_cast<float>(te::headModes.size() - 1));
     CHECK_FALSE(rig.sent.empty());
-    selectors[1]->keyPressed(juce::KeyPress(juce::KeyPress::rightKey));
-    CHECK(rig.card->param(te::stereo) == static_cast<float>(te::stereoPingPong));
 
-    // A model change moves the selector without a command.
+    // STEREO is a three-way lever: Pan, Ping, L/R from the top.
+    auto* stereo = rig.control("Stereo");
+    REQUIRE(stereo != nullptr);
+    stereo->keyPressed(juce::KeyPress(juce::KeyPress::downKey));
+    CHECK(rig.card->param(te::stereo) == static_cast<float>(te::stereoPingPong));
+    stereo->keyPressed(juce::KeyPress(juce::KeyPress::downKey));
+    CHECK(rig.card->param(te::stereo) == static_cast<float>(te::stereoTracks));
+
+    // DRY down kills the dry signal.
+    auto* dry = rig.control("Dry");
+    REQUIRE(dry != nullptr);
+    dry->keyPressed(juce::KeyPress(juce::KeyPress::downKey));
+    CHECK(rig.card->param(te::killDry) == 1.0f);
+
+    // A model change moves the controls without a command.
     const auto commands = rig.sent.size();
     rig.insert.params[te::heads] = 2.0f;
     rig.card->refresh(rig.insert);
-    CHECK(selectors[0]->selected() == 2);
+    CHECK(heads->value() == 2.0);
     CHECK(rig.sent.size() == commands);
+}
+
+TEST_CASE("With SYNC on, the tape echo's REPEAT RATE steps through note values", "[ui][tapeecho]")
+{
+    const juce::ScopedJuceInitialiser_GUI juceInit;
+    Rig rig;
+    auto* rate = dynamic_cast<ui::Knob*>(rig.control("Repeat rate"));
+    auto* sync = rig.control("Sync");
+    REQUIRE(rate != nullptr);
+    REQUIRE(sync != nullptr);
+    CHECK(rate->accessibleValueText() == "180 ms"); // free: the motor's time
+
+    // SYNC up: tempo sync on, at an eighth the first time.
+    sync->keyPressed(juce::KeyPress(juce::KeyPress::upKey));
+    CHECK(plugins::sync::choiceOf(rig.card->param(te::sync)) == 8);
+    CHECK(rate->accessibleValueText() == "1/8");
+    // The knob now steps the note values, one at a time.
+    rate->keyPressed(juce::KeyPress(juce::KeyPress::upKey));
+    CHECK(plugins::sync::choiceOf(rig.card->param(te::sync)) == 9);
+    CHECK(rate->accessibleValueText() == "1/8 D");
+    CHECK(rig.card->param(te::time) == Catch::Approx(rig.insert.params[te::time])); // the motor's time kept
+
+    // SYNC down frees the motor; up again returns to the last note value.
+    sync->keyPressed(juce::KeyPress(juce::KeyPress::downKey));
+    CHECK(rig.card->param(te::sync) == 0.0f);
+    CHECK(rate->accessibleValueText() == "180 ms");
+    sync->keyPressed(juce::KeyPress(juce::KeyPress::upKey));
+    CHECK(plugins::sync::choiceOf(rig.card->param(te::sync)) == 9);
+}
+
+TEST_CASE("The tape echo's meter, lamp, neons and rollers move as the machine does", "[ui][tapeecho]")
+{
+    namespace tf = ui::strip::tapeface;
+    // The VU scale: -20 near the left stop, 0 VU about 71% across, +3 at the right.
+    CHECK(tf::vuAngle(3.0f) == Catch::Approx(50.0f));
+    CHECK(tf::vuAngle(0.0f) == Catch::Approx(-50.0f + 100.0f * std::pow(10.0f, -3.0f / 20.0f)));
+    CHECK(tf::vuAngle(-20.0f) < -40.0f);
+    CHECK(tf::vuAngle(20.0f) == 53.0f);                               // pinned past the end
+    CHECK(tf::vuAngle(-90.0f) == Catch::Approx(-50.0f).margin(0.1f)); // at rest
+    // 0 VU is -10 dBFS on the tape, which saturates towards -6: a healthy record level reads
+    // about 0, a hot one reaches the red.
+    CHECK(tf::vuOf(std::pow(10.0f, -10.0f / 20.0f)) == Catch::Approx(0.0f).margin(1.0e-4));
+    CHECK(tf::vuOf(std::pow(10.0f, -6.0f / 20.0f)) == Catch::Approx(4.0f).margin(1.0e-4));
+
+    // The loop gain lamp: dark while the loop is steady, amber near the edge, red past it.
+    CHECK(tf::lampFor(0.45f, true) == tf::Lamp::dark);
+    CHECK(tf::lampFor(0.9f, true) == tf::Lamp::near);
+    CHECK(tf::lampFor(1.05f, true) == tf::Lamp::singing);
+    CHECK(tf::lampFor(1.05f, false) == tf::Lamp::dark);
+
+    // The needle takes about 300 ms to 99% of a step, and never jumps.
+    tf::VuNeedle needle;
+    double t = 0.0;
+    float previous = 0.0f;
+    while (needle.level < 0.99f && t < 1.0)
+    {
+        needle.advance(1.0f, 0.005);
+        CHECK(needle.level - previous < 0.05f);
+        previous = needle.level;
+        t += 0.005;
+    }
+    CHECK(t == Catch::Approx(0.3).margin(0.03));
+
+    // A neon strikes 42 dB down, is full at full scale, lights at once and dies away.
+    CHECK(tf::neonBrightness(0.0f) == 0.0f);
+    CHECK(tf::neonBrightness(1.0f) == 1.0f);
+    CHECK(tf::neonBrightness(std::pow(10.0f, -21.0f / 20.0f)) == Catch::Approx(0.5f));
+    CHECK(tf::neonFollow(0.2f, 0.9f, 0.016) == 0.9f);
+    const float fading = tf::neonFollow(0.9f, 0.0f, 0.12);
+    CHECK(fading == Catch::Approx(0.9f * std::exp(-1.0f)));
+
+    // The rollers turn with the tape: the smaller faster, both slowed alike when
+    // the fastest would strobe.
+    const double slow = tf::rollerSpeed(1.0, tf::pinchRadius);
+    CHECK(slow == Catch::Approx(1.2 / 0.28));
+    CHECK(tf::rollerSpeed(1.0, tf::tensionRadius) / slow == Catch::Approx(0.28 / 0.15));
+    CHECK(tf::rollerSpeed(0.02, tf::tensionRadius) == Catch::Approx(tf::rollerCap));
+    CHECK(tf::rollerSpeed(0.02, tf::tensionRadius) / tf::rollerSpeed(0.02, tf::pinchRadius) ==
+          Catch::Approx(0.28 / 0.15));
 }
 
 // Renders the card in a few states to PNGs at 100% and 200%, for review (not run
@@ -114,9 +253,8 @@ TEST_CASE("Tape echo card states to PNG", "[.capture]")
     const std::vector<State> states{
         {"default", {}},
         {"selfosc", {{te::feedback, 115.0f}, {te::heads, 7.0f}, {te::bass, 4.0f}, {te::age, 60.0f}}},
-        {"warning", {{te::feedback, 92.0f}, {te::heads, 0.0f}, {te::wow, 100.0f}}},
         {"synced", {{te::sync, 9.0f}, {te::stereo, 1.0f}, {te::heads, 6.0f}, {te::drive, 12.0f}}},
-        {"clamped", {{te::sync, 16.0f}, {te::feedback, 0.0f}, {te::killDry, 1.0f}, {te::spring, 50.0f}}},
+        {"killdry", {{te::sync, 16.0f}, {te::feedback, 0.0f}, {te::killDry, 1.0f}, {te::spring, 50.0f}}},
         {"off", {}, true},
     };
     for (const auto& state : states)
@@ -155,18 +293,18 @@ TEST_CASE("Tape echo card states to PNG", "[.capture]")
     }
 }
 
-TEST_CASE("The tape echo card's controls fit inside it, their tooltips brief", "[ui][tapeecho]")
+TEST_CASE("The tape echo's controls sit on its console, their tooltips brief", "[ui][tapeecho]")
 {
     const juce::ScopedJuceInitialiser_GUI juceInit;
     Rig rig;
-    const auto bounds = rig.card->getLocalBounds();
-    for (auto* child : rig.card->getChildren())
+    auto* face = rig.face();
+    REQUIRE(face != nullptr);
+    const auto bounds = face->getLocalBounds();
+    for (auto* child : face->getChildren())
     {
         if (!child->isVisible())
             continue;
         CHECK(bounds.contains(child->getBounds()));
-        if (dynamic_cast<juce::Label*>(child) != nullptr)
-            continue;
         if (auto* tip = dynamic_cast<juce::SettableTooltipClient*>(child))
             CHECK(tip->getTooltip().length() <= 28);
     }

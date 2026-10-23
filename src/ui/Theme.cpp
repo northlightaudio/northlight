@@ -125,6 +125,18 @@ juce::Colour Theme::Meter::colourAt(float db) const
 
 juce::Font Theme::font(Face face, float size, int weight) const
 {
+    if (face == Face::legend)
+    {
+        // The condensed cut that matches the weight; without it the interface face,
+        // narrowed, so a printed legend keeps its measure.
+        const auto& typeface = weight >= 700 && fonts.legendBold != nullptr ? fonts.legendBold : fonts.legend;
+        if (typeface != nullptr)
+            return juce::Font(juce::FontOptions(typeface).withHeight(size));
+        auto options = juce::FontOptions("Segoe UI", size, juce::Font::plain).withHorizontalScale(0.86f);
+        if (weight >= fonts.weight.semibold)
+            options = options.withStyle("Bold");
+        return juce::Font(options);
+    }
     const auto& typeface = face == Face::mono ? fonts.mono : fonts.ui;
     juce::FontOptions options;
     if (typeface != nullptr)
@@ -314,6 +326,12 @@ bool Theme::apply(const juce::var& tokens, Theme& theme, std::string& error)
         {
             readString(mono, "family", f.monoFamily);
             readString(mono, "file", f.monoFile);
+        }
+        if (const auto& legend = font["legend"]; legend.isObject())
+        {
+            readString(legend, "family", f.legendFamily);
+            readString(legend, "file", f.legendFile);
+            readString(legend, "boldFile", f.legendBoldFile);
         }
         if (const auto& size = font["size"]; size.isObject())
         {
@@ -544,6 +562,19 @@ bool Theme::apply(const juce::var& tokens, Theme& theme, std::string& error)
         colour("lamp", hw.lamp);
         colour("shadow", hw.shadow);
         colour("highlight", hw.highlight);
+        colour("creamPanel", hw.creamPanel);
+        colour("creamInk", hw.creamInk);
+        colour("creamInkSoft", hw.creamInkSoft);
+        colour("sagePanel", hw.sagePanel);
+        colour("sageInk", hw.sageInk);
+        colour("sageInkSoft", hw.sageInkSoft);
+        colour("dialFace", hw.dialFace);
+        colour("dialInk", hw.dialInk);
+        colour("dialRed", hw.dialRed);
+        colour("needle", hw.needle);
+        colour("aluminium", hw.aluminium);
+        colour("tapeWell", hw.tapeWell);
+        colour("neon", hw.neon);
     }
     if (const auto& elevation = tokens["elevation"]; elevation.isObject())
         if (const auto& popup = elevation["popup"]; popup.isObject() && popup["shadow"].isString())
@@ -604,6 +635,8 @@ void Theme::initialise(const juce::File& userOverride)
     const auto fonts = executableAssets().getChildFile("fonts");
     current.fonts.ui = loadTypeface(fonts.getChildFile(juce::String(current.fonts.uiFile)));
     current.fonts.mono = loadTypeface(fonts.getChildFile(juce::String(current.fonts.monoFile)));
+    current.fonts.legend = loadTypeface(fonts.getChildFile(juce::String(current.fonts.legendFile)));
+    current.fonts.legendBold = loadTypeface(fonts.getChildFile(juce::String(current.fonts.legendBoldFile)));
 }
 
 const Theme& Theme::dark()

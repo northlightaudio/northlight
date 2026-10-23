@@ -19,13 +19,16 @@ public:
     explicit Knob(const Theme& theme);
 
     // How the knob is drawn: the house ring; a hardware face's chicken-head
-    // pointer over a printed scale (design-system.md "Hardware face"); or a bud,
-    // a bodiless ring whose value arc ends in a lit tip (design-system.md "Bud knob").
+    // pointer over a printed scale (design-system.md "Hardware face"); a bud,
+    // a bodiless ring whose value arc ends in a lit tip (design-system.md "Bud knob");
+    // or a rendered knob's pointer layer, turning over a body its face draws
+    // (design-system.md "Rendered parts").
     enum class Style
     {
         ring,
         pointer,
         bud,
+        rendered,
     };
     void setStyle(Style style)
     {
@@ -58,11 +61,26 @@ public:
         repaint();
     }
     int ringSize() const noexcept { return ringSize_ > 0 ? ringSize_ : theme_.sizes.knob; }
+    // Style::rendered: the pointer layer, pointing up at rest, drawn over the
+    // knob's whole bounds and turned with the value; the skirt (ringSize) is what
+    // takes the mouse.
+    void setRenderedPointer(juce::Image pointer)
+    {
+        renderedPointer_ = std::move(pointer);
+        repaint();
+    }
+    // Steps the value snaps to (a switch's positions, note values); 0 for none.
+    void setInterval(double interval)
+    {
+        interval_ = interval;
+        setValue(value_, juce::dontSendNotification);
+    }
 
     std::function<void(double)> onValueChanged;
     std::function<void()> onDragStart, onDragEnd;
 
     void paint(juce::Graphics& g) override;
+    bool hitTest(int x, int y) override;
     void mouseDown(const juce::MouseEvent& e) override;
     void mouseDrag(const juce::MouseEvent& e) override;
     void mouseUp(const juce::MouseEvent& e) override;
@@ -77,7 +95,10 @@ public:
     juce::String accessibleValueText() const { return format ? format(value_) : juce::String(value_, 2); }
     void setAccessibleValue(double value) { setValue(value, juce::sendNotification); }
     std::pair<double, double> accessibleRange() const noexcept { return {minimum_, maximum_}; }
-    double accessibleStep() const noexcept { return (maximum_ - minimum_) / 100.0; }
+    double accessibleStep() const noexcept
+    {
+        return interval_ > 0.0 ? interval_ : (maximum_ - minimum_) / 100.0;
+    }
 
 private:
     double fraction() const noexcept;
@@ -86,6 +107,7 @@ private:
     juce::String text() const;
     void paintPointer(juce::Graphics& g);
     void paintBud(juce::Graphics& g);
+    void paintRendered(juce::Graphics& g);
 
     const Theme& theme_;
     double minimum_ = 0.0, maximum_ = 1.0, default_ = 0.0, value_ = 0.0;
@@ -93,6 +115,8 @@ private:
     int ringSize_ = 0; // 0: the theme's knob size
     bool logarithmic_ = false;
     Style style_ = Style::ring;
+    juce::Image renderedPointer_;
+    double interval_ = 0.0;
     juce::Colour arcColour_;
     double dragStartValue_ = 0.0; // the fraction at the start of a drag
     int dragStartY_ = 0;

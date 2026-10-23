@@ -56,6 +56,13 @@ PAIRS = [
     ("hardware.displayDim", "hardware.displayCentre", "A display's preset number", "hint"),
     ("hardware.glassInk", "hardware.glassEdge", "Readings on a lit meter window, at its edge", "body"),
     ("hardware.glassMid", "hardware.glassOffEdge", "Readings on an unlit window", "hint"),
+    # The tape echo's console: ink printed on its enamel and on the meter's dial.
+    ("hardware.creamInk", "hardware.creamPanel", "Names on the console's cream panel", "body"),
+    ("hardware.creamInkSoft", "hardware.creamPanel", "Small legends on the cream panel", "body"),
+    ("hardware.sageInk", "hardware.sagePanel", "Control names on the sage panel", "body"),
+    ("hardware.sageInkSoft", "hardware.sagePanel", "Values and positions on the sage panel", "body"),
+    ("hardware.dialInk", "hardware.dialFace", "The meter's scale", "body"),
+    ("hardware.dialRed", "hardware.dialFace", "The meter's red zone", "body"),
 ]
 
 THRESHOLDS = {"body": 4.5, "large": 3.0, "nontext": 3.0, "hint": 3.0, "exempt": 0.0}

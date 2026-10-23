@@ -85,7 +85,11 @@ struct Theme
         } weight;
         float lineHeight = 1.3f;
         float letterSpacingCaps = 0.04f;
-        juce::Typeface::Ptr ui, mono; // bundled typefaces, null when not bundled
+        // Legends printed on a hardware face (the tape echo's console), never the interface.
+        std::string legendFamily = "Barlow Condensed", legendFile = "BarlowCondensed-SemiBold.ttf",
+                    legendBoldFile = "BarlowCondensed-Bold.ttf";
+        juce::Typeface::Ptr ui, mono;           // bundled typefaces, null when not bundled
+        juce::Typeface::Ptr legend, legendBold; // the same, for Face::legend
     };
 
     struct Spacing
@@ -208,6 +212,13 @@ struct Theme
         juce::Colour knobBody, knobCap, knobPointer;
         juce::Colour lamp; // a pilot lamp's glow
         juce::Colour shadow, highlight;
+        // The tape echo's console (screens/plugins.md 7.2a): its enamel panels without
+        // their textures, the ink printed on each, the meter's dial and needle, the
+        // aluminium of its frames, the transport's well and a neon's glow.
+        juce::Colour creamPanel, creamInk, creamInkSoft;
+        juce::Colour sagePanel, sageInk, sageInkSoft;
+        juce::Colour dialFace, dialInk, dialRed, needle;
+        juce::Colour aluminium, tapeWell, neon;
     };
 
     std::string name = "Northlight Dark";
@@ -229,6 +240,7 @@ struct Theme
     {
         ui,
         mono,
+        legend, // printed on a hardware face; 700 and up is the bold cut
     };
     // A font of the UI or numeric face at a token size and weight (400/500/600).
     juce::Font font(Face face, float size, int weight) const;

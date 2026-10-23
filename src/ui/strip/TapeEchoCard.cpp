@@ -1,486 +1,782 @@
-// The tape echo's card (screens/plugins.md 7.2a): the machine itself, live. The
-// tape loop runs round its rollers at the motor's speed past the record head and
-// the four playback heads (the active ones lit, each with its time); what the
-// record head writes is drawn on the tape as a band as loud as it was and
-// travels round, so each echo can be watched reaching the heads; the heads'
-// feedback runs back to the record head in a line that turns to the warning
-// colour as the loop nears self-oscillation. Inside the loop, the motor (head
-// 1's time as it glides, or its note value, with the sync chip), the loop gain
-// and the tape's saturation. Then the controls in five groups: Time, Heads and
-// Feedback; the loop's tone; the tape; the stereo field; the output.
+// The tape echo's card (screens/plugins.md 7.2a): a 1970s tape echo console, a
+// hardware face (design-system.md "Hardware face") built from rendered parts
+// (assets/tapeecho; "Rendered parts"). The face is drawn at 1160 x 600 and scaled
+// to fit the card's body, the card narrowing with it.
+//
+// The cream panel carries the window onto the tape transport (a neon on each head,
+// lit by the level passing it; the rollers turning with the tape; a smoked lid),
+// the record level's VU meter and the loop gain lamp (amber, red and flickering
+// once the loop sings). The sage panel carries the controls: HEADS, REPEAT RATE
+// (the motor, or with SYNC on head 1's note value), INTENSITY and ECHO VOLUME; the
+// stereo, sync and dry levers; and the loop's tone, the tape and the output on
+// nine small knobs.
 
 #include "plugins/BeatSync.h"
 #include "plugins/TapeEcho.h"
-#include "ui/components/RotarySelector.h"
+#include "ui/NorthlightLookAndFeel.h"
+#include "ui/components/HardwareParts.h"
 #include "ui/strip/ModuleCard.h"
-#include "ui/strip/StripStyle.h"
-#include "ui/strip/SynthParts.h"
+#include "ui/strip/TapeEchoFace.h"
 
 #include <algorithm>
 #include <array>
 #include <cmath>
+#include <functional>
+#include <memory>
 #include <vector>
 
 namespace northlight::ui::strip
 {
 
 namespace te = plugins::tapeecho;
+namespace tf = tapeface;
 
 namespace
 {
 constexpr double frameSeconds = engine::ProcessorFeedback::frameSeconds;
-// The loop gain from which the feedback reads as a warning (the edge of
-// oscillation is 1).
-constexpr float warnLoopGain = 0.85f;
-// The saturation bar's range.
-constexpr float saturationRangeDb = 12.0f;
+constexpr float pi = juce::MathConstants<float>::pi;
 
-// What the card works out once per tick for its display.
-struct Machine
-{
-    double motorSeconds = 0.18;  // head 1's delay as the motor runs now
-    double targetSeconds = 0.18; // where the motor is going
-    float loopGain = 0.0f;
-    std::uint8_t mask = 0;
-    bool synced = false, clamped = false;
-};
+// ----- where things are on the face (pixels at 100%) -----------------------------------------
 
-juce::Colour loopColour(const Theme& theme, juce::Colour hue, float loopGain)
+const juce::Rectangle<float> creamArea{0.0f, 0.0f, tf::width, 260.0f};
+const juce::Rectangle<float> sageArea{0.0f, 268.0f, tf::width, 332.0f};
+const juce::Rectangle<float> trimImage{0.0f, 258.0f, tf::width, 20.0f}; // the trim with its shadow
+const juce::Rectangle<float> trimBand{0.0f, 260.0f, tf::width, 8.0f};
+const juce::Rectangle<float> windowFrame{232.0f, 20.0f, 642.0f, 212.0f};
+const juce::Rectangle<float> windowBezel{212.0f, 0.0f, 682.0f, 277.0f};
+const juce::Rectangle<int> opening{241, 29, 624, 194};    // the transport, under the bezel's lip
+const juce::Rectangle<int> meterArea{876, -12, 280, 230}; // the meter's images (their top 12 px is margin)
+const juce::Rectangle<int> meterBounds = meterArea.withTrimmedTop(12); // the needle's layer, on the face
+const juce::Rectangle<int> lampArea{950, 178, 65, 75};                 // the loop gain lamp's image
+const juce::Point<float> lampCentre{982.4f, 210.0f};
+
+// The meter's images are rendered at 3 px to the face's 1 (an 840 x 690 frame).
+constexpr float meterUnit = 280.0f / 840.0f;
+const juce::Point<float> meterPivot{420.0f, 468.1f}; // in the meter's 840 x 690 frame
+constexpr float meterRadius = 266.0f;
+
+// Inside the transport's window (opening pixels): where each neon and roller is.
+constexpr std::array<float, 5> neonX{127.5f, 197.0f, 254.5f, 312.0f, 369.5f}; // R, 1-4
+constexpr float neonY = 146.8f;
+const juce::Rectangle<float> pinchHub{431.53f, 118.77f, 20.0f, 20.0f};
+const juce::Rectangle<float> tensionHub{265.83f, 39.6f, 24.0f, 24.0f};
+
+// The knobs: the big four's centres, then the nine small ones'.
+constexpr float bigRow = 350.0f, smallRow = 486.0f;
+constexpr std::array<float, 4> bigX{110.0f, 278.0f, 436.0f, 594.0f}; // heads, rate, intensity, volume
+constexpr float bigSkirt = 72.0f, bigImage = 122.4f;
+constexpr float smallSkirt = 44.0f, smallImage = 74.8f;
+float smallX(int i)
 {
-    if (loopGain >= 1.0f)
-        return theme.colours.meterHot;
-    if (loopGain >= warnLoopGain)
-        return theme.colours.warning;
-    return hue;
+    return 76.0f + 126.0f * static_cast<float>(i);
+}
+// The levers: stereo, sync, dry, over the last three small knobs.
+constexpr std::array<float, 3> leverX{832.0f, 958.0f, 1084.0f};
+constexpr float leverY = 350.0f;
+constexpr float leverScale = 0.85f; // of the rendered lever's size
+
+// The heads' names under the window, centred on each head.
+constexpr std::array<float, 6> headLegendX{77.0f, 133.0f, 204.0f, 262.0f, 321.0f, 380.0f};
+
+const juce::Image& part(const char* file)
+{
+    return hardware::image("tapeecho", file);
 }
 
-juce::String msText(double seconds)
+// A legend in the console's face: Barlow Condensed at a size, weight and tracking.
+juce::Font legendFont(const Theme& theme, float size, int weight, float trackingEm)
 {
-    return juce::String(static_cast<int>(std::lround(seconds * 1000.0))) + " ms";
+    return theme.font(Theme::Face::legend, size, weight).withExtraKerningFactor(trackingEm);
 }
 
-const char* noteName(float syncChoice)
+void drawImageIn(juce::Graphics& g,
+                 const juce::Image& image,
+                 juce::Rectangle<float> area,
+                 float opacity = 1.0f)
 {
-    return plugins::sync::noteValues[static_cast<size_t>(plugins::sync::choiceOf(syncChoice))].name;
+    if (!image.isValid())
+        return;
+    g.setOpacity(opacity);
+    g.drawImage(image, area, juce::RectanglePlacement::stretchToFit);
+    g.setOpacity(1.0f);
 }
 
-// A level on the tape (linear) as 0..1 over the bottom 42 dB.
-float levelShare(float linear)
+juce::Point<float> polar(juce::Point<float> centre, float radius, float degrees)
 {
-    return juce::jlimit(0.0f, 1.0f, (toDb(linear) + 42.0f) / 42.0f);
+    const float a = degrees * pi / 180.0f;
+    return {centre.x + radius * std::sin(a), centre.y - radius * std::cos(a)};
 }
 
-float textWidth(const juce::Font& font, const juce::String& text)
+void focusRing(juce::Graphics& g, juce::Component& c, juce::Rectangle<float> r, float radius)
 {
-    return static_cast<float>(juce::GlyphArrangement::getStringWidthInt(font, text));
+    if (auto* lnf = dynamic_cast<NorthlightLookAndFeel*>(&c.getLookAndFeel()))
+        lnf->drawFocusRing(g, c, r, radius);
 }
 
-// ----- the machine -----------------------------------------------------------------------------
+// ----- a lever ---------------------------------------------------------------------------------
 
-class TapeLoopView final : public juce::Component, public juce::SettableTooltipClient
+// A bat-handle toggle on the panel, rendered in each position: up, (centre,) down.
+// A click above its middle moves it up a position, below it down; Up and Down
+// move it, Space flips a two-way lever or steps a three-way one. Only the nut
+// takes the mouse; the rest of its bounds is the image's margin.
+class Lever final : public juce::Component, public juce::SettableTooltipClient
 {
 public:
-    // A readout only: the knobs below set the machine.
-    TapeLoopView(ModuleCard& card, const Machine& machine) : card_(card), machine_(machine) {}
-
-    void advance(double elapsedMs)
+    Lever(const Theme& theme, juce::String name, std::vector<juce::String> positions)
+        : theme_(theme), name_(std::move(name)), positions_(std::move(positions))
     {
-        const double seconds = elapsedMs * 0.001;
-        travel_ += seconds / std::max(0.005, machine_.motorSeconds);
-        wowPhase_ += seconds * 2.0 * juce::MathConstants<double>::pi * 0.55;
-        flutterPhase_ += seconds * 2.0 * juce::MathConstants<double>::pi * 7.0;
-        lastElapsed_ = elapsedMs;
-        repaint();
+        setWantsKeyboardFocus(true);
+        setRepaintsOnMouseActivity(true);
+        setMouseCursor(juce::MouseCursor::PointingHandCursor);
+        setTitle(name_);
+        update();
     }
 
-    // Where the sync chip sits: after the MOTOR caption.
-    juce::Rectangle<int> syncChipBounds(int chipWidth) const
+    std::function<void(int position)> onChoose;
+
+    void setPosition(int position)
     {
-        const auto inside = geometry().inside;
-        const float x = inside.getX() + textWidth(card_.theme().captionCaps(), "MOTOR") + 8.0f;
-        return juce::Rectangle<float>(x, inside.getY() - 2.0f, static_cast<float>(chipWidth), 16.0f)
-            .toNearestInt();
+        position_ = juce::jlimit(0, static_cast<int>(positions_.size()) - 1, position);
+        update();
+        repaint();
+    }
+    int position() const noexcept { return position_; }
+
+    void paint(juce::Graphics& g) override
+    {
+        const auto nut = nutBounds();
+        const char* files[] = {"lever-up.png", "lever-centre.png", "lever-down.png"};
+        const int frame = positions_.size() == 2 && position_ == 1 ? 2 : position_;
+        const auto& image = part(files[frame]);
+        const bool enabled = isEnabled();
+        if (image.isValid())
+            drawImageIn(g, image, getLocalBounds().toFloat(), enabled ? 1.0f : 0.5f);
+        else
+        {
+            // Without its image: a washer and a line for the lever.
+            const auto& hw = theme_.hardware;
+            g.setColour(hw.aluminium);
+            g.fillEllipse(nut.reduced(2.0f));
+            g.setColour(hw.knobBody);
+            if (frame == 1)
+                g.fillEllipse(
+                    juce::Rectangle<float>(10.0f, 10.0f).withCentre(nut.getCentre())); // pointing out
+            else
+                g.drawLine(juce::Line<float>(nut.getCentre(),
+                                             nut.getCentre().translated(0.0f, frame == 0 ? -20.0f : 20.0f)),
+                           6.0f);
+        }
+        if (enabled && isMouseOver(true))
+        {
+            g.setColour(theme_.hardware.highlight.withAlpha(0.08f));
+            g.fillEllipse(nut);
+        }
+        focusRing(g, *this, nut, nut.getWidth() * 0.5f);
+    }
+
+    bool hitTest(int x, int y) override
+    {
+        return nutBounds().contains(static_cast<float>(x), static_cast<float>(y));
+    }
+
+    void mouseDown(const juce::MouseEvent& e) override
+    {
+        grabKeyboardFocus();
+        move(e.position.y < nutBounds().getCentreY() ? -1 : 1);
+    }
+
+    bool keyPressed(const juce::KeyPress& key) override
+    {
+        if (key == juce::KeyPress::upKey)
+            move(-1);
+        else if (key == juce::KeyPress::downKey)
+            move(1);
+        else if (key == juce::KeyPress::spaceKey || key == juce::KeyPress::returnKey)
+            press();
+        else
+            return false;
+        return true;
+    }
+    void focusGained(FocusChangeType) override { repaint(); }
+    void focusLost(FocusChangeType) override { repaint(); }
+
+    std::unique_ptr<juce::AccessibilityHandler> createAccessibilityHandler() override
+    {
+        return std::make_unique<juce::AccessibilityHandler>(
+            *this,
+            juce::AccessibilityRole::button,
+            juce::AccessibilityActions().addAction(juce::AccessibilityActionType::press,
+                                                   [this] { press(); }));
+    }
+
+private:
+    // The washer and nut, at the image's centre: what a hand would push.
+    juce::Rectangle<float> nutBounds() const
+    {
+        const float w = static_cast<float>(getWidth());
+        return juce::Rectangle<float>(w * 0.5f - 26.0f, w * 0.5f - 26.0f, 52.0f, 52.0f);
+    }
+
+    void press()
+    {
+        const int n = static_cast<int>(positions_.size());
+        choose(n == 2 ? 1 - position_ : (position_ + 1) % n);
+    }
+    void move(int by) { choose(juce::jlimit(0, static_cast<int>(positions_.size()) - 1, position_ + by)); }
+    void choose(int position)
+    {
+        if (position == position_)
+            return;
+        setPosition(position);
+        if (onChoose)
+            onChoose(position);
+    }
+    void update()
+    {
+        setTooltip(name_ + ": " + positions_[static_cast<size_t>(position_)]);
+        setDescription(positions_[static_cast<size_t>(position_)]);
+    }
+
+    const Theme& theme_;
+    juce::String name_;
+    std::vector<juce::String> positions_;
+    int position_ = 0;
+};
+
+// ----- the meter -------------------------------------------------------------------------------
+
+// The VU's needle, its shadow on the dial, and the pivot's hood and the glass over
+// them; the body and the printed scale are the face's.
+class Meter final : public juce::Component, public juce::SettableTooltipClient
+{
+public:
+    explicit Meter(const Theme& theme) : theme_(theme)
+    {
+        setInterceptsMouseClicks(false, false);
+        setTitle("Record level");
+    }
+
+    void setReading(float linear)
+    {
+        const float vu = tf::vuOf(linear);
+        const float angle = tf::vuAngle(vu);
+        if (std::abs(angle - angle_) < 0.05f)
+            return;
+        angle_ = angle;
+        setDescription(juce::String(vu, 1) + " VU");
+        repaint();
     }
 
     void paint(juce::Graphics& g) override
     {
-        const auto& theme = card_.theme();
-        const auto area = getLocalBounds().toFloat();
-        drawWell(g, theme, area);
-        const auto geo = geometry();
+        const auto& hw = theme_.hardware;
+        g.addTransform(juce::AffineTransform::scale(meterUnit).translated(
+            0.0f, static_cast<float>(meterArea.getY() - meterBounds.getY())));
+        const auto tip = polar(meterPivot, 285.0f, angle_);
+        g.setColour(hw.shadow.withAlpha(0.22f));
+        g.drawLine(juce::Line<float>(meterPivot.translated(0.0f, 9.0f), tip.translated(0.0f, 9.0f)), 6.0f);
+        g.setColour(hw.needle);
+        g.drawLine(juce::Line<float>(meterPivot, tip), 4.2f);
+        const juce::Rectangle<float> frame(0.0f, 0.0f, 840.0f, 690.0f);
+        if (const auto& hood = part("vu-hood.png"); hood.isValid())
+            drawImageIn(g, hood, frame);
+        else
         {
-            juce::Graphics::ScopedSaveState save(g);
-            g.reduceClipRegion(area.reduced(1.0f).toNearestInt());
-            drawRollers(g, geo);
-            drawTape(g, geo);
-            drawHeads(g, geo);
-            drawFeedbackPath(g, geo);
-            drawReadouts(g, geo);
+            // Without its image: the pivot's hood, a dark trapezoid over the needle's base.
+            juce::Path p;
+            p.startNewSubPath(300.0f, 495.0f);
+            p.lineTo(345.0f, 405.0f);
+            p.lineTo(495.0f, 405.0f);
+            p.lineTo(540.0f, 495.0f);
+            p.closeSubPath();
+            g.setColour(hw.knobBody);
+            g.fillPath(p);
         }
-        drawWellFrame(g, theme, area);
+        drawImageIn(g, part("vu-glass.png"), frame);
     }
 
 private:
-    static constexpr float tapeWidth = 3.0f;
-    static constexpr float maxBand = 12.0f; // the recorded band's width at full level
-    static constexpr float roller = 13.0f;  // the corner rollers' radius (the tape wraps them)
-    static constexpr float markPitch = 14.0f;
+    const Theme& theme_;
+    float angle_ = -53.0f;
+};
 
-    struct Geometry
-    {
-        juce::Rectangle<float> loop;   // the tape's centre line: its top and bottom runs
-        juce::Rectangle<float> inside; // the readouts, inside the loop
-        float recordX = 0.0f;
-        float unit = 1.0f; // pixels between heads
-        float headX(int k) const { return recordX + unit * static_cast<float>(k + 1); }
-    };
+// ----- the transport ---------------------------------------------------------------------------
 
-    Geometry geometry() const
-    {
-        const auto p = getLocalBounds().toFloat().reduced(12.0f, 8.0f);
-        Geometry geo;
-        // Under the bottom run: the heads, their labels and the feedback line.
-        geo.loop = p.withTrimmedTop(maxBand * 0.5f).withTrimmedBottom(36.0f);
-        const float start = geo.loop.getX() + roller + 26.0f;
-        // Room past head 4 for its time ("1500 ms") clear of the capstan.
-        const float end = geo.loop.getRight() - roller - 54.0f;
-        geo.recordX = start;
-        geo.unit = std::max(8.0f, (end - start) / static_cast<float>(te::headCount));
-        geo.inside = geo.loop.reduced(roller + 14.0f, 0.0f).withTrimmedTop(18.0f).withTrimmedBottom(10.0f);
-        return geo;
-    }
+// What moves in the window: each head's neon (its light over the transport, as
+// bright as the level passing it), the screw slots and drillings of the two
+// rollers turning with the tape, and the smoked lid over everything. The
+// transport itself is the face's.
+class Transport final : public juce::Component
+{
+public:
+    explicit Transport(const Theme& theme) : theme_(theme) { setInterceptsMouseClicks(false, false); }
 
-    // The loop's centre line from the record head, in the direction of travel:
-    // right along the bottom past the heads, round the capstan, back along the
-    // top (slack, swinging with the wow) and down to the record head again.
-    juce::Path tapePath(const Geometry& geo) const
-    {
-        const auto& l = geo.loop;
-        const float r = roller;
-        const float pi = juce::MathConstants<float>::pi;
-        const float wow = card_.param(te::wow) * 0.01f, flutter = card_.param(te::flutter) * 0.01f;
-        const float sag = (1.0f + 5.0f * wow) * (0.6f + 0.4f * static_cast<float>(std::sin(wowPhase_))) +
-                          1.0f * flutter * static_cast<float>(std::sin(flutterPhase_));
-        juce::Path path;
-        path.startNewSubPath(geo.recordX, l.getBottom());
-        path.lineTo(l.getRight() - r, l.getBottom());
-        path.addCentredArc(l.getRight() - r, l.getBottom() - r, r, r, 0.0f, pi, pi * 0.5f);
-        path.lineTo(l.getRight(), l.getY() + r);
-        path.addCentredArc(l.getRight() - r, l.getY() + r, r, r, 0.0f, pi * 0.5f, 0.0f);
-        path.quadraticTo(l.getCentreX(), l.getY() + 2.0f * sag, l.getX() + r, l.getY());
-        path.addCentredArc(l.getX() + r, l.getY() + r, r, r, 0.0f, 2.0f * pi, 1.5f * pi);
-        path.lineTo(l.getX(), l.getBottom() - r);
-        path.addCentredArc(l.getX() + r, l.getBottom() - r, r, r, 0.0f, 1.5f * pi, pi);
-        path.lineTo(geo.recordX, l.getBottom());
-        return path;
-    }
+    // 0..1 per neon: R, then heads 1-4.
+    std::array<float, 5> neon{};
+    float pinchAngle = 0.0f, tensionAngle = 0.0f;
 
-    // The tape, then what is recorded on it: a band as wide as the level that
-    // was written, newest at R, fading as it goes round.
-    void drawTape(juce::Graphics& g, const Geometry& geo) const
+    void paint(juce::Graphics& g) override
     {
-        const auto& c = card_.theme().colours;
-        const auto hue = card_.colour();
-        const auto path = tapePath(geo);
-        const float length = path.getLength();
-        g.setColour(c.surface3);
-        g.strokePath(path, juce::PathStrokeType(tapeWidth));
-        const int size = card_.historySize();
-        constexpr float step = 2.0f;
-        // Opaque colours mixed with the well's, so the overlapping steps leave no seams.
-        const auto& theme = card_.theme();
-        const auto well = theme.material.enabled ? theme.material.meterWell : c.canvas;
-        if (size > 0)
-            for (float a = 0.0f; a + step <= length; a += step)
-            {
-                const double age = (a + 0.5 * step) / geo.unit * machine_.motorSeconds;
-                const int frame = size - 1 - static_cast<int>(age / frameSeconds);
-                if (frame < 0)
-                    break;
-                const float share = levelShare(card_.historyAt(frame).extra);
-                if (share <= 0.0f)
-                    continue;
-                const float fade = 1.0f - 0.45f * a / length;
-                g.setColour(well.interpolatedWith(hue, (0.3f + 0.7f * share) * fade));
-                // Round ends, so the band stays smooth round the rollers.
-                juce::Path piece;
-                piece.startNewSubPath(path.getPointAlongPath(a));
-                piece.lineTo(path.getPointAlongPath(a + step));
-                g.strokePath(piece,
-                             juce::PathStrokeType(tapeWidth + (maxBand - tapeWidth) * share,
-                                                  juce::PathStrokeType::curved,
-                                                  juce::PathStrokeType::rounded));
-            }
-        // Marks along the tape show it moving (until it moves too fast to follow).
-        const double pixelsPerSecond = geo.unit / std::max(0.005, machine_.motorSeconds);
-        if (pixelsPerSecond * std::max(1.0, lastElapsed_) * 0.001 < markPitch * 0.45)
+        const auto area = getLocalBounds().toFloat();
+        const char* neonFiles[] = {"neon-R.png", "neon-1.png", "neon-2.png", "neon-3.png", "neon-4.png"};
+        for (size_t i = 0; i < neon.size(); ++i)
         {
-            const auto offset =
-                static_cast<float>(std::fmod(travel_ * geo.unit, static_cast<double>(markPitch)));
-            g.setColour(c.textTertiary.withAlpha(0.6f));
-            for (float a = offset; a < length; a += markPitch)
-                g.fillEllipse(juce::Rectangle<float>(1.5f, 1.5f).withCentre(path.getPointAlongPath(a)));
-        }
-    }
-
-    void drawRollers(juce::Graphics& g, const Geometry& geo) const
-    {
-        const auto& c = card_.theme().colours;
-        const auto& l = geo.loop;
-        const float r = roller;
-        // The rollers turn with the tape: its travel over their circumference.
-        const auto turn =
-            static_cast<float>(std::fmod(travel_ * geo.unit / r, 2.0 * juce::MathConstants<double>::pi));
-        const std::array<juce::Point<float>, 4> centres{{{l.getX() + r, l.getY() + r},
-                                                         {l.getRight() - r, l.getY() + r},
-                                                         {l.getX() + r, l.getBottom() - r},
-                                                         {l.getRight() - r, l.getBottom() - r}}};
-        const float radius = r - tapeWidth * 0.5f;
-        for (size_t i = 0; i < centres.size(); ++i)
-        {
-            const auto centre = centres[i];
-            const bool capstan = i == 3;
-            const auto disc = juce::Rectangle<float>(2.0f * radius, 2.0f * radius).withCentre(centre);
-            g.setColour(c.surface2);
-            g.fillEllipse(disc);
-            g.setColour(c.lineStrong);
-            g.drawEllipse(disc.reduced(0.5f), 1.0f);
-            g.setColour(capstan ? c.textSecondary : c.textTertiary);
-            for (int spoke = 0; spoke < 3; ++spoke)
+            if (neon[i] <= 0.004f)
+                continue;
+            const auto& image = part(neonFiles[i]);
+            if (image.isValid())
+                drawImageIn(g, image, area, neon[i]);
+            else
             {
-                const float angle =
-                    turn + static_cast<float>(spoke) * juce::MathConstants<float>::twoPi / 3.0f;
-                g.drawLine(juce::Line<float>(centre.getPointOnCircumference(2.5f, angle),
-                                             centre.getPointOnCircumference(radius - 2.5f, angle)),
-                           1.2f);
-            }
-            g.fillEllipse(juce::Rectangle<float>(4.0f, 4.0f).withCentre(centre));
-        }
-        // The pinch roller presses the tape onto the capstan from outside.
-        const auto pinch = centres[3].translated(r * 0.95f, r * 0.95f);
-        const auto disc = juce::Rectangle<float>(10.0f, 10.0f).withCentre(pinch);
-        g.setColour(c.surface2);
-        g.fillEllipse(disc);
-        g.setColour(c.lineStrong);
-        g.drawEllipse(disc.reduced(0.5f), 1.0f);
-    }
-
-    // The level on the tape `units` past the record head (what a head there
-    // plays now).
-    float levelAt(double units) const
-    {
-        const int size = card_.historySize();
-        const int frame = size - 1 - static_cast<int>(units * machine_.motorSeconds / frameSeconds);
-        return frame >= 0 && frame < size ? card_.historyAt(frame).extra : 0.0f;
-    }
-
-    static juce::Rectangle<float> labelBox(float x, float tapeY)
-    {
-        return {x - 10.0f, tapeY + 14.0f, 20.0f, 13.0f};
-    }
-
-    void drawHeads(juce::Graphics& g, const Geometry& geo) const
-    {
-        const auto& theme = card_.theme();
-        const auto& c = theme.colours;
-        const auto hue = card_.colour();
-        const float y = geo.loop.getBottom();
-        const auto block = [&](float x) { return juce::Rectangle<float>(x - 7.0f, y + 3.0f, 14.0f, 10.0f); };
-        // The record head, lit by what it writes.
-        {
-            const float level = levelShare(levelAt(0.0));
-            const auto b = block(geo.recordX);
-            g.setColour(c.surface3);
-            g.fillRoundedRectangle(b, 2.0f);
-            g.setColour(c.textSecondary);
-            g.drawRoundedRectangle(b.reduced(0.5f), 2.0f, 1.0f);
-            g.setColour(hue.withAlpha(0.35f + 0.65f * level));
-            g.fillRect(juce::Rectangle<float>(geo.recordX - 0.75f, b.getY(), 1.5f, 4.0f));
-            g.setFont(theme.caption());
-            g.setColour(c.textSecondary);
-            g.drawText("R", labelBox(geo.recordX, y), juce::Justification::centred);
-        }
-        for (int k = 0; k < te::headCount; ++k)
-        {
-            const bool on = ((machine_.mask >> k) & 1) != 0;
-            const float x = geo.headX(k);
-            const auto b = block(x);
-            const float units = te::headSpacing[static_cast<size_t>(k)];
-            const float level = levelShare(levelAt(units));
-            if (on && level > 0.0f)
-            {
-                // The head flares as an echo passes it.
-                g.setColour(hue.withAlpha(0.5f * level));
-                g.fillEllipse(juce::Rectangle<float>(22.0f, 22.0f).withCentre({x, y + 4.0f}));
-            }
-            g.setColour(on ? hue : c.surface2);
-            g.fillRoundedRectangle(b, 2.0f);
-            g.setColour(on ? hue : c.lineStrong);
-            g.drawRoundedRectangle(b.reduced(0.5f), 2.0f, 1.0f);
-            g.setColour(on ? c.textOnColour : c.textTertiary);
-            g.fillRect(juce::Rectangle<float>(x - 0.75f, b.getY(), 1.5f, 4.0f));
-            g.setFont(theme.caption());
-            g.setColour(on ? c.textPrimary : c.textTertiary);
-            g.drawText(juce::String(k + 1), labelBox(x, y), juce::Justification::centred);
-            // Each active head's time, inside the loop above it.
-            if (on)
-            {
-                g.setFont(theme.value());
-                g.setColour(c.textSecondary);
-                g.drawText(msText(machine_.motorSeconds * units),
-                           juce::Rectangle<float>(x - 40.0f, y - maxBand * 0.5f - 17.0f, 80.0f, 13.0f),
-                           juce::Justification::centred);
+                // Without its image: the bulb's glow alone.
+                const juce::Point<float> at(neonX[i], neonY);
+                g.setColour(theme_.hardware.neon.withAlpha(neon[i] * 0.8f));
+                g.fillEllipse(juce::Rectangle<float>(12.0f, 6.0f).withCentre(at));
             }
         }
+        hub(g, part("hub-pinch.png"), pinchHub, pinchAngle);
+        hub(g, part("hub-tension.png"), tensionHub, tensionAngle);
+        drawImageIn(g, part("perspex.png"), area);
     }
 
-    // The heads' feedback, back to the record head: a line from each active head
-    // under its label to a bus that runs back to R, as bright as the feedback and
-    // warning-coloured near self-oscillation; dashed and faint at no feedback.
-    void drawFeedbackPath(juce::Graphics& g, const Geometry& geo) const
+private:
+    void hub(juce::Graphics& g, const juce::Image& image, juce::Rectangle<float> box, float angle) const
     {
-        const auto& theme = card_.theme();
-        const float fb = card_.param(te::feedback) * 0.01f;
-        const float y = geo.loop.getBottom();
-        const float top = y + 28.0f, bus = y + 33.0f;
-        int last = -1;
-        for (int k = 0; k < te::headCount; ++k)
-            if (((machine_.mask >> k) & 1) != 0)
-                last = k;
-        if (last < 0)
+        if (!image.isValid())
             return;
-        juce::Path wire;
-        for (int k = 0; k <= last; ++k)
-            if (((machine_.mask >> k) & 1) != 0)
-            {
-                wire.startNewSubPath(geo.headX(k), top);
-                wire.lineTo(geo.headX(k), bus);
-            }
-        wire.startNewSubPath(geo.headX(last), bus);
-        wire.lineTo(geo.recordX, bus);
-        wire.lineTo(geo.recordX, top + 1.0f);
-        if (fb <= 0.0f)
-        {
-            g.setColour(theme.colours.textTertiary.withAlpha(0.5f));
-            juce::Path dashed;
-            const float dashes[] = {3.0f, 3.0f};
-            juce::PathStrokeType(1.0f).createDashedStroke(dashed, wire, dashes, 2);
-            g.fillPath(dashed);
+        const auto c = box.getCentre();
+        g.drawImageTransformed(
+            image,
+            juce::AffineTransform::scale(box.getWidth() / static_cast<float>(image.getWidth()))
+                .translated(box.getX(), box.getY())
+                .rotated(angle, c.x, c.y));
+    }
+
+    const Theme& theme_;
+};
+
+// ----- the loop gain lamp ----------------------------------------------------------------------
+
+class GainLamp final : public juce::Component, public juce::SettableTooltipClient
+{
+public:
+    explicit GainLamp(const Theme& theme) : theme_(theme)
+    {
+        setInterceptsMouseClicks(true, false);
+        setTitle("Loop gain");
+    }
+
+    void set(float loopGain, bool on, double elapsedMs)
+    {
+        const auto state = tf::lampFor(loopGain, on);
+        const bool singing = state == tf::Lamp::singing;
+        // A singing loop's lamp flickers, unsteady as the loop it shows.
+        flicker_ += elapsedMs * 0.001;
+        const float level =
+            singing && !theme_.motion.reduceMotion
+                ? 0.86f + 0.14f * std::abs(std::sin(static_cast<float>(flicker_) * 11.0f +
+                                                    std::sin(static_cast<float>(flicker_) * 3.1f)))
+                : 1.0f;
+        const auto text = juce::String(loopGain, 2) + (singing ? ", singing" : "");
+        if (state == state_ && std::abs(level - level_) < 0.02f && text == text_)
             return;
-        }
-        const bool warn = machine_.loopGain >= warnLoopGain;
-        g.setColour(loopColour(theme, card_.colour(), machine_.loopGain)
-                        .withAlpha(warn ? 1.0f : 0.4f + 0.6f * std::min(1.0f, fb)));
-        g.strokePath(wire,
-                     juce::PathStrokeType(
-                         warn ? 1.5f : 1.0f, juce::PathStrokeType::mitered, juce::PathStrokeType::square));
-        juce::Path arrow;
-        arrow.addTriangle(
-            geo.recordX - 3.5f, top + 3.0f, geo.recordX + 3.5f, top + 3.0f, geo.recordX, top - 2.0f);
-        g.fillPath(arrow);
+        state_ = state;
+        level_ = level;
+        text_ = text;
+        setTooltip("Loop gain " + text_);
+        setDescription(text_);
+        repaint();
     }
 
-    // Inside the loop: the motor at the left; the loop gain and the
-    // saturation at the right, each a caption with its value over a segment bar.
-    void drawReadouts(juce::Graphics& g, const Geometry& geo) const
+    void paint(juce::Graphics& g) override
     {
-        const auto& theme = card_.theme();
-        const auto& c = theme.colours;
-        const auto in = geo.inside;
-        const auto caption = [&](juce::Rectangle<float> row, const juce::String& text)
-        {
-            g.setFont(theme.captionCaps());
-            g.setColour(c.textTertiary);
-            g.drawText(text, row, juce::Justification::centredLeft);
-        };
-
-        // The motor: head 1's time as it runs (gliding after a change), or the
-        // note value with the time beside it.
-        caption(in.withHeight(12.0f), "MOTOR");
-        const auto bigFont = theme.font(Theme::Face::mono, theme.fonts.size.title, theme.fonts.weight.medium);
-        auto big = juce::Rectangle<float>(in.getX(), in.getY() + 17.0f, 220.0f, 22.0f);
-        const juce::String main =
-            machine_.synced ? juce::String(noteName(card_.param(te::sync))) : msText(machine_.motorSeconds);
-        g.setFont(bigFont);
-        g.setColour(c.textPrimary);
-        g.drawText(main, big, juce::Justification::centredLeft);
-        if (machine_.synced)
-        {
-            g.setFont(theme.value());
-            g.setColour(machine_.clamped ? c.warning : c.textSecondary);
-            g.drawText((machine_.clamped ? "max " : "") + msText(machine_.motorSeconds),
-                       big.withTrimmedLeft(textWidth(bigFont, main) + 8.0f).translated(0.0f, 1.0f),
-                       juce::Justification::centredLeft);
-        }
-
-        // The loop gain and the saturation, from the right.
-        constexpr float column = 150.0f, gap = 24.0f;
-        auto right = in.withTrimmedLeft(in.getWidth() - column);
-        meter(g, right, "SATURATION", saturationRangeDb, card_.reductionReadoutDb(), true);
-        right.translate(-(column + gap), 0.0f);
-        meter(g, right, "LOOP", 1.2f, machine_.loopGain, false);
-    }
-
-    // A caption and value on one row, a bar of twelve segments under them. The
-    // loop's bar marks the edge of oscillation (1.0) and colours by it.
-    void meter(juce::Graphics& g,
-               juce::Rectangle<float> area,
-               const juce::String& name,
-               float range,
-               float value,
-               bool saturation) const
-    {
-        const auto& theme = card_.theme();
-        const auto& c = theme.colours;
-        const auto hue = card_.colour();
-        auto row = area.withHeight(12.0f);
-        g.setFont(theme.captionCaps());
-        g.setColour(c.textTertiary);
-        g.drawText(name, row, juce::Justification::centredLeft);
-        g.setFont(theme.value());
-        juce::String text;
-        juce::Colour colour = c.textSecondary;
-        if (saturation)
-        {
-            text = value >= 0.1f ? juce::String(value, 1) + " dB" : juce::String::fromUTF8("\xe2\x80\x93");
-            colour = value >= 0.1f ? c.textSecondary : c.textTertiary;
-        }
+        const auto& image = part(state_ == tf::Lamp::dark      ? "lamp-off.png"
+                                 : state_ == tf::Lamp::singing ? "lamp-red.png"
+                                                               : "lamp-amber.png");
+        if (image.isValid())
+            drawImageIn(g, image, getLocalBounds().toFloat(), level_);
         else
         {
-            text = juce::String(value, 2);
-            if (value >= warnLoopGain)
-                colour = loopColour(theme, hue, value);
-        }
-        g.setColour(colour);
-        g.drawText(text, row.translated(0.0f, 0.5f), juce::Justification::centredRight);
-
-        constexpr int segments = 12;
-        const auto bar = juce::Rectangle<float>(area.getX(), area.getY() + 24.0f, area.getWidth(), 6.0f);
-        const float segGap = 2.0f;
-        const float w = (bar.getWidth() - segGap * (segments - 1)) / segments;
-        for (int i = 0; i < segments; ++i)
-        {
-            const float at = range * static_cast<float>(i + 1) / segments;
-            const float middle = at - 0.5f * range / segments;
-            const auto seg = juce::Rectangle<float>(
-                bar.getX() + static_cast<float>(i) * (w + segGap), bar.getY(), w, bar.getHeight());
-            const bool lit = value >= middle;
-            g.setColour(!lit ? c.surface2 : saturation ? hue : loopColour(theme, hue, middle));
-            g.fillRoundedRectangle(seg, 1.0f);
-        }
-        if (!saturation)
-        {
-            // The edge: between the segments for 1.0 and 1.1.
-            const float edge = bar.getX() + 10.0f * (w + segGap) - segGap * 0.5f;
-            g.setColour(c.textSecondary);
-            g.fillRect(juce::Rectangle<float>(edge - 0.5f, bar.getY() - 3.0f, 1.0f, bar.getHeight() + 6.0f));
+            const auto& hw = theme_.hardware;
+            const auto lens = juce::Rectangle<float>(28.0f, 28.0f).withCentre({32.5f, 32.5f});
+            g.setColour(hw.aluminium);
+            g.fillEllipse(lens.expanded(4.0f));
+            g.setColour(state_ == tf::Lamp::dark      ? hw.knobBody
+                        : state_ == tf::Lamp::singing ? hw.ledHot
+                                                      : hw.led);
+            g.fillEllipse(lens);
         }
     }
 
-    ModuleCard& card_;
-    const Machine& machine_;
-    double travel_ = 0.0; // head units the tape has moved
-    double wowPhase_ = 0.0, flutterPhase_ = 0.0, lastElapsed_ = 16.0;
+private:
+    const Theme& theme_;
+    tf::Lamp state_ = tf::Lamp::dark;
+    float level_ = 1.0f;
+    double flicker_ = 0.0;
+    juce::String text_;
+};
+
+// ----- the face ----------------------------------------------------------------------------
+
+class TapeEchoCard;
+
+// The console, at its drawn size; the card scales it to fit. Everything that
+// does not move is drawn once per scale into an image.
+class Face final : public juce::Component
+{
+public:
+    explicit Face(const Theme& theme) : theme_(theme)
+    {
+        setSize(static_cast<int>(tf::width), static_cast<int>(tf::height));
+        setOpaque(true);
+    }
+
+    // What changes the static layer: REPEAT RATE's scale reads note values when synced.
+    void setSynced(bool synced)
+    {
+        if (synced == synced_)
+            return;
+        synced_ = synced;
+        cache_ = {};
+        repaint();
+    }
+
+    // The values printed under the knobs and the heads selector's position (its
+    // chosen legend is bold), drawn over the static layer.
+    std::function<juce::String(int bigIndex)> bigValue;
+    std::function<juce::String(int smallIndex)> smallValue;
+    int headsPosition = 0;
+
+    void paint(juce::Graphics& g) override
+    {
+        const float scale = g.getInternalContext().getPhysicalPixelScaleFactor();
+        if (!cache_.isValid() || cacheScale_ != scale)
+        {
+            cacheScale_ = scale;
+            cache_ = juce::Image(juce::Image::RGB,
+                                 std::max(1, juce::roundToInt(tf::width * scale)),
+                                 std::max(1, juce::roundToInt(tf::height * scale)),
+                                 true);
+            juce::Graphics cg(cache_);
+            cg.addTransform(juce::AffineTransform::scale(scale));
+            cg.setImageResamplingQuality(juce::Graphics::highResamplingQuality);
+            paintStatic(cg);
+        }
+        g.drawImage(cache_, getLocalBounds().toFloat(), juce::RectanglePlacement::stretchToFit);
+        paintLive(g);
+    }
+
+private:
+    // ----- the static layer --------------------------------------------------------------------
+    void paintStatic(juce::Graphics& g) const
+    {
+        const auto& hw = theme_.hardware;
+        // The enamel panels and the trim between them.
+        g.setColour(hw.creamPanel);
+        g.fillRect(creamArea);
+        g.setColour(hw.sagePanel);
+        g.fillRect(sageArea);
+        drawImageIn(g, part("panel-cream.jpg"), creamArea);
+        drawImageIn(g, part("panel-sage.jpg"), sageArea);
+        g.setColour(hw.aluminium);
+        g.fillRect(trimBand);
+        drawImageIn(g, part("trim.png"), trimImage);
+
+        paintWindow(g);
+        paintMeter(g);
+        paintCreamLegends(g);
+        paintKnobs(g);
+        paintLeverLegends(g);
+    }
+
+    void paintWindow(juce::Graphics& g) const
+    {
+        const auto& hw = theme_.hardware;
+        g.setColour(hw.tapeWell);
+        g.fillRect(opening);
+        drawImageIn(g, part("transport.jpg"), opening.toFloat());
+        if (!part("display-bezel.png").isValid())
+        {
+            g.setColour(hw.aluminium);
+            g.drawRect(windowFrame, 9.0f);
+        }
+        drawImageIn(g, part("display-bezel.png"), windowBezel);
+        // The heads, named under the window.
+        g.setFont(legendFont(theme_, 16.0f, 600, 0.08f));
+        g.setColour(hw.creamInkSoft);
+        const char* names[] = {"ERASE", "REC", "1", "2", "3", "4"};
+        for (size_t i = 0; i < headLegendX.size(); ++i)
+            g.drawText(
+                names[i],
+                juce::Rectangle<float>(windowFrame.getX() + headLegendX[i] - 30.0f, 236.0f, 60.0f, 20.0f),
+                juce::Justification::centred,
+                false);
+    }
+
+    void paintMeter(juce::Graphics& g) const
+    {
+        const auto& hw = theme_.hardware;
+        const auto area = meterArea.toFloat();
+        const auto& body = part("vu-body.png");
+        if (body.isValid())
+            drawImageIn(g, body, area);
+        else
+        {
+            // Without its image: an aluminium frame round a lit dial.
+            const auto frame =
+                juce::Rectangle<float>(area.getX() + 37.0f, area.getY() + 32.0f, 205.0f, 135.0f);
+            g.setColour(hw.aluminium);
+            g.fillRoundedRectangle(frame, 2.0f);
+            g.setColour(hw.dialFace);
+            g.fillRect(frame.reduced(9.0f));
+        }
+        // The scale, printed on the dial (in the meter's 840 x 690 frame).
+        juce::Graphics::ScopedSaveState save(g);
+        g.addTransform(juce::AffineTransform::scale(meterUnit).translated(area.getX(), area.getY()));
+        const auto arc = [&](float from, float to, float radius, float thickness, juce::Colour colour)
+        {
+            juce::Path p;
+            p.addCentredArc(
+                meterPivot.x, meterPivot.y, radius, radius, 0.0f, from * pi / 180.0f, to * pi / 180.0f, true);
+            g.setColour(colour);
+            g.strokePath(p, juce::PathStrokeType(thickness));
+        };
+        arc(-50.0f, 50.0f, meterRadius, 3.3f, hw.dialInk);
+        arc(tf::vuAngle(0.0f), 50.0f, meterRadius + 7.5f, 13.6f, hw.dialRed);
+        const auto tick = [&](float vu, float outer, float thickness)
+        {
+            const float a = tf::vuAngle(vu);
+            g.setColour(vu > 0.0f ? hw.dialRed : hw.dialInk);
+            g.drawLine(
+                juce::Line<float>(polar(meterPivot, meterRadius - 3.0f, a), polar(meterPivot, outer, a)),
+                thickness);
+        };
+        for (const float vu : {-15.0f, -8.5f, -6.0f, -4.0f, -2.5f, -1.5f, -0.5f, 0.5f, 1.5f, 2.5f})
+            tick(vu, meterRadius + 14.0f, 2.4f);
+        g.setFont(legendFont(theme_, 46.0f, 600, 0.0f));
+        for (const float vu : {-20.0f, -10.0f, -7.0f, -5.0f, -3.0f, -2.0f, -1.0f, 0.0f, 1.0f, 2.0f, 3.0f})
+        {
+            tick(vu, meterRadius + 24.0f, 3.8f);
+            const auto at = polar(meterPivot, meterRadius + 50.0f, tf::vuAngle(vu));
+            g.drawText(juce::String(static_cast<int>(std::abs(vu))),
+                       juce::Rectangle<float>(100.0f, 54.0f).withCentre(at),
+                       juce::Justification::centred,
+                       false);
+        }
+        g.setColour(hw.dialInk);
+        g.setFont(legendFont(theme_, 70.0f, 700, 0.03f));
+        g.drawText(
+            "VU", juce::Rectangle<float>(320.0f, 300.0f, 200.0f, 70.0f), juce::Justification::centred, false);
+    }
+
+    void paintCreamLegends(juce::Graphics& g) const
+    {
+        const auto& hw = theme_.hardware;
+        // The name, its kind, and the model line at the column's foot.
+        g.setColour(hw.creamInk);
+        g.setFont(legendFont(theme_, 46.0f, 700, 0.04f));
+        g.drawText(
+            "TAPE", juce::Rectangle<float>(24.0f, 20.0f, 186.0f, 41.4f), juce::Justification::topLeft, false);
+        g.drawText(
+            "ECHO", juce::Rectangle<float>(24.0f, 57.4f, 186.0f, 41.4f), juce::Justification::topLeft, false);
+        g.setColour(hw.creamInkSoft);
+        g.setFont(legendFont(theme_, 16.0f, 600, 0.12f));
+        g.drawText(juce::String::fromUTF8("FOUR-HEAD \xc2\xb7 SPRING"),
+                   juce::Rectangle<float>(24.0f, 104.0f, 210.0f, 20.0f),
+                   juce::Justification::centredLeft,
+                   false);
+        g.fillRect(juce::Rectangle<float>(24.0f, 195.0f, 28.0f, 1.0f));
+        g.setColour(hw.creamInk);
+        g.setFont(legendFont(theme_, 18.0f, 700, 0.12f));
+        g.drawText("MODEL TE-4",
+                   juce::Rectangle<float>(24.0f, 198.0f, 210.0f, 22.0f),
+                   juce::Justification::centredLeft,
+                   false);
+        g.setColour(hw.creamInkSoft);
+        g.setFont(legendFont(theme_, 14.0f, 600, 0.22f));
+        g.drawText("NORTHLIGHT",
+                   juce::Rectangle<float>(24.0f, 218.0f, 210.0f, 19.0f),
+                   juce::Justification::centredLeft,
+                   false);
+        g.setFont(legendFont(theme_, 15.0f, 600, 0.12f));
+        g.drawText("LOOP GAIN",
+                   juce::Rectangle<float>(lampCentre.x + 28.0f, 200.0f, 130.0f, 20.0f),
+                   juce::Justification::centredLeft,
+                   false);
+    }
+
+    // A knob's printed scale: 11 ticks over 270 degrees, every fifth longer.
+    void scale(juce::Graphics& g, juce::Point<float> c, float inner, float outer, float thickness) const
+    {
+        g.setColour(theme_.hardware.sageInk);
+        for (int i = 0; i <= 10; ++i)
+        {
+            const float a = -135.0f + 27.0f * static_cast<float>(i);
+            const float from = i % 5 == 0 ? inner - 3.0f : inner;
+            juce::Path p;
+            p.startNewSubPath(polar(c, from, a));
+            p.lineTo(polar(c, outer, a));
+            g.strokePath(
+                p,
+                juce::PathStrokeType(thickness, juce::PathStrokeType::curved, juce::PathStrokeType::rounded));
+        }
+    }
+
+    void knobBody(juce::Graphics& g, juce::Point<float> c, float image, float skirt) const
+    {
+        const auto& body = part("knob-body.png");
+        if (body.isValid())
+        {
+            drawImageIn(
+                g, body, juce::Rectangle<float>(c.x - image * 0.5f, c.y - image * 0.5f, image, image * 1.5f));
+            return;
+        }
+        // Without its image: a black knurled body and an aluminium cap.
+        const auto& hw = theme_.hardware;
+        g.setColour(hw.knobBody);
+        g.fillEllipse(juce::Rectangle<float>(skirt, skirt).withCentre(c));
+        g.setColour(hw.aluminium);
+        g.fillEllipse(juce::Rectangle<float>(skirt * 0.6f, skirt * 0.6f).withCentre(c));
+    }
+
+    void paintKnobs(juce::Graphics& g) const
+    {
+        const auto& hw = theme_.hardware;
+        // The big four. HEADS's positions are the live layer's (its chosen one is bold).
+        for (size_t i = 0; i < bigX.size(); ++i)
+        {
+            const juce::Point<float> c(bigX[i], bigRow);
+            if (i > 0)
+            {
+                scale(g, c, 40.0f, 46.0f, 2.0f);
+                g.setColour(hw.sageInk);
+                g.setFont(legendFont(theme_, 18.0f, 600, 0.0f));
+                const bool notes = i == 1 && synced_;
+                const juce::String marks[] = {
+                    notes ? "1/64" : "0", notes ? "1/8" : "5", notes ? "1/1" : "10"};
+                for (int m = 0; m < 3; ++m)
+                {
+                    const auto at = polar(c,
+                                          56.0f + (notes && m != 1 ? 10.0f : 0.0f),
+                                          -135.0f + 135.0f * static_cast<float>(m));
+                    g.drawText(marks[m],
+                               juce::Rectangle<float>(50.0f, 22.0f).withCentre(at),
+                               juce::Justification::centred,
+                               false);
+                }
+            }
+            knobBody(g, c, bigImage, bigSkirt);
+            g.setColour(hw.sageInk);
+            g.setFont(legendFont(theme_, 21.0f, 700, 0.08f));
+            const char* labels[] = {"HEADS", "REPEAT RATE", "INTENSITY", "ECHO VOLUME"};
+            g.drawText(labels[i],
+                       juce::Rectangle<float>(c.x - 80.0f, 400.0f, 160.0f, 25.0f),
+                       juce::Justification::centred,
+                       false);
+        }
+        // The nine small ones.
+        const char* names[] = {
+            "BASS", "TREBLE", "DRIVE", "WOW", "FLUTTER", "AGE", "SPREAD", "SPRING", "OUTPUT"};
+        for (int i = 0; i < 9; ++i)
+        {
+            const juce::Point<float> c(smallX(i), smallRow);
+            scale(g, c, 25.0f, 30.0f, 1.6f);
+            knobBody(g, c, smallImage, smallSkirt);
+            g.setColour(hw.sageInk);
+            g.setFont(legendFont(theme_, 20.0f, 700, 0.06f));
+            g.drawText(names[i],
+                       juce::Rectangle<float>(c.x - 62.0f, 516.0f, 124.0f, 24.0f),
+                       juce::Justification::centred,
+                       false);
+        }
+    }
+
+    void paintLeverLegends(juce::Graphics& g) const
+    {
+        const auto& hw = theme_.hardware;
+        const char* names[] = {"STEREO", "SYNC", "DRY"};
+        const char* tops[] = {"PAN", "ON", "ON"};
+        const char* bottoms[] = {"L/R", "OFF", "KILL"};
+        for (size_t i = 0; i < leverX.size(); ++i)
+        {
+            const float x = leverX[i];
+            g.setColour(hw.sageInk);
+            g.setFont(legendFont(theme_, 19.0f, 700, 0.08f));
+            g.drawText(names[i],
+                       juce::Rectangle<float>(x - 62.0f, 274.0f, 124.0f, 23.0f),
+                       juce::Justification::centred,
+                       false);
+            g.setColour(hw.sageInkSoft);
+            g.setFont(legendFont(theme_, 17.0f, 600, 0.03f));
+            g.drawText(tops[i],
+                       juce::Rectangle<float>(x - 62.0f, 297.0f, 124.0f, 20.0f),
+                       juce::Justification::centred,
+                       false);
+            g.drawText(bottoms[i],
+                       juce::Rectangle<float>(x - 62.0f, 382.0f, 124.0f, 20.0f),
+                       juce::Justification::centred,
+                       false);
+        }
+        // The stereo lever's middle position, beside its nut.
+        g.drawText("PING",
+                   juce::Rectangle<float>(leverX[0] + 27.0f, leverY - 10.0f, 60.0f, 20.0f),
+                   juce::Justification::centredLeft,
+                   false);
+    }
+
+    // ----- what changes with the values -------------------------------------------------------
+    void paintLive(juce::Graphics& g) const
+    {
+        const auto& hw = theme_.hardware;
+        // HEADS's eight positions, the chosen one bold.
+        const juce::Point<float> heads(bigX[0], bigRow);
+        const char* modes[] = {"1",
+                               "2",
+                               "3",
+                               "4",
+                               "1\xc2\xb7"
+                               "3",
+                               "2\xc2\xb7"
+                               "4",
+                               "1\xc2\xb7"
+                               "3\xc2\xb7"
+                               "4",
+                               "ALL"};
+        g.setColour(hw.sageInk);
+        for (int i = 0; i < 8; ++i)
+        {
+            const float a = -135.0f + 270.0f * static_cast<float>(i) / 7.0f;
+            juce::Path p;
+            p.startNewSubPath(polar(heads, 39.0f, a));
+            p.lineTo(polar(heads, 45.0f, a));
+            g.strokePath(
+                p, juce::PathStrokeType(1.6f, juce::PathStrokeType::curved, juce::PathStrokeType::rounded));
+            g.setFont(legendFont(theme_, 17.0f, i == headsPosition ? 700 : 600, 0.0f));
+            g.drawText(juce::String::fromUTF8(modes[i]),
+                       juce::Rectangle<float>(58.0f, 20.0f).withCentre(polar(heads, 57.0f, a)),
+                       juce::Justification::centred,
+                       false);
+        }
+        // The values under the knobs.
+        g.setColour(hw.sageInkSoft);
+        g.setFont(legendFont(theme_, 19.0f, 600, 0.03f));
+        for (int i = 0; i < 4 && bigValue; ++i)
+            g.drawText(bigValue(i),
+                       juce::Rectangle<float>(bigX[static_cast<size_t>(i)] - 80.0f, 424.0f, 160.0f, 23.0f),
+                       juce::Justification::centred,
+                       false);
+        g.setFont(legendFont(theme_, 18.0f, 600, 0.03f));
+        for (int i = 0; i < 9 && smallValue; ++i)
+            g.drawText(smallValue(i),
+                       juce::Rectangle<float>(smallX(i) - 62.0f, 539.0f, 124.0f, 22.0f),
+                       juce::Justification::centred,
+                       false);
+    }
+
+    const Theme& theme_;
+    bool synced_ = false;
+    juce::Image cache_;
+    float cacheScale_ = 0.0f;
 };
 
 // ----- the card ----------------------------------------------------------------------------
@@ -489,271 +785,275 @@ class TapeEchoCard final : public ModuleCard
 {
 public:
     TapeEchoCard(const Theme& theme, CardHost& host, core::Id channelId, const core::Insert& insert)
-        : ModuleCard(theme, host, channelId, insert), loop_(*this, machine_), sync_(theme, colour())
+        : ModuleCard(theme, host, channelId, insert), face_(theme), meter_(theme), transport_(theme),
+          lamp_(theme)
     {
-        addAndMakeVisible(loop_);
+        addAndMakeVisible(face_);
+        face_.addAndMakeVisible(transport_);
+        face_.addAndMakeVisible(meter_);
+        face_.addAndMakeVisible(lamp_);
+        transport_.setBounds(opening);
+        meter_.setBounds(meterBounds);
+        lamp_.setBounds(lampArea);
 
-        time_ = &addKnob(te::time);
-        time_->format = [this](double v)
+        // The knobs bound to their parameters, each a rendered pointer over the
+        // body the face draws, their own labels hidden (the face prints them).
+        const auto bind = [this](int index, juce::Point<float> centre, float skirt, float image) -> Knob&
         {
-            if (synced())
-                return juce::String(noteName(param(te::sync)));
-            return juce::String(static_cast<int>(std::lround(v))) + " ms";
+            auto& k = addKnob(index);
+            prepare(k, centre, skirt, image);
+            if (auto* label = labelFor(k))
+                label->setVisible(false);
+            return k;
         };
-        selector(te::heads, "Heads", "Heads");
-        feedback_ = &addKnob(te::feedback);
-        for (auto* k : {time_, feedback_})
-            k->setRingSize(bigRing);
-
-        bass_ = &addKnob(te::bass);
-        treble_ = &addKnob(te::treble);
-
-        drive_ = &addKnob(te::drive);
-        wow_ = &addKnob(te::wow);
-        flutter_ = &addKnob(te::flutter);
-        age_ = &addKnob(te::age);
-
-        selector(te::stereo, "Stereo", "Stereo");
-        spread_ = &addKnob(te::spread);
-        spring_ = &addKnob(te::spring);
-
-        mix_ = &addKnob(te::mix);
-        output_ = &addKnob(te::output);
-        killDry_ = &addToggle(te::killDry, "Kill");
-        killDry_->setTooltip("Kill dry");
-        killDryLabel_ = makeCaption("Dry");
-
-        for (const auto& name : plugins::sync::choices())
-            sync_.choices.emplace_back(name);
-        sync_.choices.front() = "Sync off";
-        sync_.setTooltip("Tempo sync");
-        sync_.onChoose = [this](int i)
+        heads_ = &bind(te::heads, {bigX[0], bigRow}, bigSkirt, bigImage);
+        heads_->setInterval(1.0);
+        heads_->format = [](double v)
         {
-            beginGesture("Sync");
-            setParam(te::sync, static_cast<float>(i));
-            endGesture();
+            return juce::String::fromUTF8(
+                te::headModes[static_cast<size_t>(juce::jlimit(0, 7, static_cast<int>(std::lround(v))))]
+                    .name);
         };
-        addAndMakeVisible(sync_);
+        feedback_ = &bind(te::feedback, {bigX[2], bigRow}, bigSkirt, bigImage);
+        mix_ = &bind(te::mix, {bigX[3], bigRow}, bigSkirt, bigImage);
+        const int small[] = {te::bass,
+                             te::treble,
+                             te::drive,
+                             te::wow,
+                             te::flutter,
+                             te::age,
+                             te::spread,
+                             te::spring,
+                             te::output};
+        for (int i = 0; i < 9; ++i)
+            small_[static_cast<size_t>(i)] = &bind(small[i], {smallX(i), smallRow}, smallSkirt, smallImage);
+
+        // REPEAT RATE: the motor's time, or with SYNC on, head 1's note value.
+        rate_ = std::make_unique<Knob>(theme_);
+        prepare(*rate_, {bigX[1], bigRow}, bigSkirt, bigImage);
+        rate_->setTitle("Repeat rate");
+        rate_->onDragStart = [this] { beginGesture("Repeat rate"); };
+        rate_->onDragEnd = [this] { endGesture(); };
+        rate_->onValueChanged = [this](double v)
+        {
+            if (updatingRate_)
+                return;
+            setParam(synced() ? te::sync : te::time, static_cast<float>(v));
+            face_.repaint();
+        };
+        face_.addAndMakeVisible(*rate_);
+
+        stereo_ = std::make_unique<Lever>(theme_, "Stereo", std::vector<juce::String>{"Pan", "Ping", "L/R"});
+        sync_ = std::make_unique<Lever>(theme_, "Sync", std::vector<juce::String>{"On", "Off"});
+        dry_ = std::make_unique<Lever>(theme_, "Dry", std::vector<juce::String>{"On", "Kill"});
+        for (size_t i = 0; i < 3; ++i)
+        {
+            auto* lever = std::array<Lever*, 3>{stereo_.get(), sync_.get(), dry_.get()}[i];
+            // The rendered lever's image (119 x 178.5 at full size), its nut at the top square's centre.
+            const float w = 119.0f * leverScale, h = 178.5f * leverScale;
+            lever->setBounds(
+                juce::Rectangle<float>(leverX[i] - w * 0.5f, leverY - w * 0.5f, w, h).toNearestInt());
+            face_.addAndMakeVisible(*lever);
+        }
+        stereo_->onChoose = [this](int p) { leverParam(te::stereo, "Stereo", static_cast<float>(p)); };
+        sync_->onChoose = [this](int p)
+        {
+            // On: the last note value chosen (an eighth the first time); off: free.
+            leverParam(te::sync, "Sync", p == 0 ? static_cast<float>(lastNote_) : 0.0f);
+        };
+        dry_->onChoose = [this](int p) { leverParam(te::killDry, "Kill dry", p == 1 ? 1.0f : 0.0f); };
+
+        face_.bigValue = [this](int i)
+        {
+            Knob* knobs[] = {heads_, rate_.get(), feedback_, mix_};
+            if (i == 0)
+            {
+                // The heads that play, as the selector's label shows them.
+                const auto mask = te::headMask(param(te::heads));
+                juce::StringArray on;
+                for (int k = 0; k < te::headCount; ++k)
+                    if (((mask >> k) & 1) != 0)
+                        on.add(juce::String(k + 1));
+                return on.joinIntoString(" + ");
+            }
+            return knobs[i]->accessibleValueText();
+        };
+        face_.smallValue = [this](int i) { return small_[static_cast<size_t>(i)]->accessibleValueText(); };
         paramsChanged();
     }
 
-    int preferredWidth() const override
+    int preferredWidth() const override { return juce::roundToInt(tf::width) + 2 * theme_.spacing.sm; }
+    int preferredBodyHeight() const override { return juce::roundToInt(tf::height) + 2 * theme_.spacing.xs; }
+    int preferredWidthAt(int bodyHeight) const override
     {
-        return 2 * bigCellWidth + 2 * selectorWidth() + 11 * knobCellWidth() +
-               4 * (2 * theme_.spacing.sm + 1) + 16;
-    }
-    int preferredBodyHeight() const override { return 250; }
-
-    void paint(juce::Graphics& g) override
-    {
-        ModuleCard::paint(g);
-        if (isCollapsed())
-            return;
-        const auto& c = theme_.colours;
-        // Scale marks around the large knobs.
-        for (auto* knob : {time_, feedback_})
-        {
-            const auto b = knob->getBounds().toFloat();
-            const juce::Point<float> centre(b.getCentreX(), b.getY() + bigRing * 0.5f);
-            for (int i = 0; i <= 10; ++i)
-            {
-                const float angle =
-                    juce::MathConstants<float>::pi * (1.25f + 1.5f * static_cast<float>(i) / 10.0f);
-                const auto p = centre.getPointOnCircumference(bigRing * 0.5f + 4.0f, angle);
-                const float d = i % 5 == 0 ? 3.0f : 2.0f;
-                g.setColour(i % 5 == 0 ? c.textSecondary : c.textTertiary);
-                g.fillEllipse(juce::Rectangle<float>(d, d).withCentre(p));
-            }
-        }
-        // Faint rules between the groups.
-        g.setColour(c.lineSubtle);
-        for (const int x : dividers_)
-            g.drawVerticalLine(x, static_cast<float>(dividerTop_), static_cast<float>(dividerBottom_));
+        return tf::widthForHeight(bodyHeight - 2 * theme_.spacing.xs) + 2 * theme_.spacing.sm;
     }
 
 private:
-    static constexpr int bigRing = 46;
-    static constexpr int bigCellWidth = 84;
-    // The heads selector's eight positions reach below its body's centre.
-    static constexpr int selectorExtra = 11;
-
-    int selectorWidth() const noexcept
-    {
-        return selectors_.empty() ? 104 : selectors_.front()->preferredWidth();
-    }
     bool synced() const { return plugins::sync::quarters(param(te::sync)) > 0.0; }
 
-    juce::Label* makeCaption(const juce::String& text)
+    void prepare(Knob& k, juce::Point<float> centre, float skirt, float image)
     {
-        auto& label = captions_.emplace_back(std::make_unique<juce::Label>());
-        label->setText(text, juce::dontSendNotification);
-        label->setFont(theme_.caption());
-        label->setColour(juce::Label::textColourId, theme_.colours.textSecondary);
-        label->setJustificationType(juce::Justification::centred);
-        label->setInterceptsMouseClicks(false, false);
-        addAndMakeVisible(*label);
-        return label.get();
+        k.setStyle(Knob::Style::rendered);
+        k.setRingSize(juce::roundToInt(skirt));
+        k.setShowValue(false);
+        k.setRenderedPointer(part("knob-pointer.png"));
+        const int side = juce::roundToInt(image);
+        k.setBounds(juce::roundToInt(centre.x) - side / 2, juce::roundToInt(centre.y) - side / 2, side, side);
+        // The face, not the card, holds the knob, so it scales with the face.
+        face_.addAndMakeVisible(k);
+        k.onValueChanged = [this, prior = k.onValueChanged](double v)
+        {
+            if (prior)
+                prior(v);
+            face_.repaint();
+        };
     }
 
-    void selector(int index, const juce::String& caption, const juce::String& tooltipName)
+    void leverParam(int index, const juce::String& name, float value)
     {
-        auto& s = selectors_.emplace_back(std::make_unique<RotarySelector>(theme_));
-        std::vector<juce::String> labels, full;
-        if (index == te::heads)
-            for (const auto& m : te::headModes)
-            {
-                labels.push_back(juce::String::fromUTF8(m.label));
-                full.push_back(juce::String::fromUTF8(m.name));
-            }
-        else
-        {
-            labels = {"Pan", "Ping", "L/R"};
-            full = {"Heads panned", "Ping-pong", "Left and right"};
-        }
-        s->setPositions(std::move(labels), std::move(full), tooltipName);
-        s->setHue(colour());
-        s->setDefault(static_cast<int>(std::lround(info(index).defaultValue)));
-        s->setSelected(static_cast<int>(std::lround(param(index))), juce::dontSendNotification);
-        s->onChange = [this, index](int value) { setParam(index, static_cast<float>(value)); };
-        s->onGestureBegin = [this, tooltipName] { beginGesture(tooltipName); };
-        s->onGestureEnd = [this] { endGesture(); };
-        addAndMakeVisible(*s);
-        selectorCaptions_.push_back(makeCaption(caption));
-        selectorParams_.push_back(index);
+        beginGesture(name);
+        setParam(index, value);
+        endGesture();
+        paramsChanged();
     }
 
     void layoutBody(juce::Rectangle<int> body) override
     {
-        const int valueH = static_cast<int>(theme_.fonts.size.value) + 4;
-        const int labelH = static_cast<int>(theme_.fonts.size.caption) + 4;
-        const int bigCellH = bigRing + 6 + valueH + labelH;
-        const int selectorH = selectors_.front()->preferredHeight() + selectorExtra;
-        const int controlsH = std::max({bigCellH, selectorH + labelH, knobCellHeight()});
-        auto display = body.removeFromTop(std::max(120, body.getHeight() - controlsH - 6));
-        body.removeFromTop(6);
-        loop_.setBounds(display);
-        sync_.setBounds(loop_.syncChipBounds(sync_.preferredWidth()) + display.getPosition());
-
-        auto controls = body.removeFromTop(controlsH);
-        dividers_.clear();
-        dividerTop_ = controls.getY() + 6;
-        dividerBottom_ = controls.getY() + controlsH - 4;
-        const auto rule = [&]
-        {
-            controls.removeFromLeft(theme_.spacing.sm);
-            dividers_.push_back(controls.getX());
-            controls.removeFromLeft(theme_.spacing.sm + 1);
-        };
-        // Every label sits on the row's bottom line, whatever the control above it.
-        const auto big = [&](Knob* knob)
-        {
-            auto cell = controls.removeFromLeft(bigCellWidth);
-            if (auto* label = labelFor(*knob))
-                label->setBounds(cell.removeFromBottom(labelH));
-            knob->setBounds(cell.removeFromBottom(bigCellH - labelH - 6));
-        };
-        const auto rotary = [&](size_t i)
-        {
-            auto cell = controls.removeFromLeft(selectorWidth());
-            selectorCaptions_[i]->setBounds(cell.removeFromBottom(labelH));
-            selectors_[i]->setBounds(cell.removeFromBottom(selectorH));
-        };
-        const auto knobs = [&](std::vector<Knob*> row)
-        {
-            const int n = static_cast<int>(row.size());
-            layoutKnobs(
-                controls.removeFromLeft(n * knobCellWidth()).removeFromBottom(knobCellHeight()), n, row);
-        };
-        big(time_);
-        rotary(0);
-        big(feedback_);
-        rule();
-        knobs({bass_, treble_});
-        rule();
-        knobs({drive_, wow_, flutter_, age_});
-        rule();
-        rotary(1);
-        knobs({spread_, spring_});
-        rule();
-        knobs({mix_, output_});
-        // Kill dry: a pill where a knob's ring would be, its name on the baseline.
-        auto cell = controls.removeFromLeft(knobCellWidth()).removeFromBottom(knobCellHeight());
-        killDryLabel_->setBounds(cell.removeFromBottom(labelH));
-        const int ring = theme_.sizes.knob;
-        killDry_->setBounds(cell.getCentreX() - 24, cell.getY() + ring / 2 - 11, 48, 22);
+        const float s =
+            tf::fitScale(static_cast<float>(body.getWidth()), static_cast<float>(body.getHeight()));
+        face_.setVisible(s > 0.0f);
+        if (s <= 0.0f)
+            return;
+        face_.setBounds(0, 0, juce::roundToInt(tf::width), juce::roundToInt(tf::height));
+        const float x =
+            static_cast<float>(body.getX()) + (static_cast<float>(body.getWidth()) - tf::width * s) * 0.5f;
+        face_.setTransform(juce::AffineTransform::scale(s).translated(x, static_cast<float>(body.getY())));
     }
 
     // The motor, the loop gain and the mode, from the parameters and the frames.
     void update()
     {
         const double bpm = tempoBpm();
-        machine_.targetSeconds = te::headOneSeconds(param(te::time), param(te::sync), bpm);
+        targetSeconds_ = te::headOneSeconds(param(te::time), param(te::sync), bpm);
         const Frame f = historySize() > 0 ? historyAt(historySize() - 1) : Frame{};
-        machine_.motorSeconds = f.extra2 > 0.0f ? static_cast<double>(f.extra2) : machine_.targetSeconds;
-        machine_.mask = te::headMask(param(te::heads));
-        machine_.synced = synced();
-        machine_.clamped = te::syncClamped(param(te::sync), bpm);
-        machine_.loopGain = te::loopGain(param(te::feedback),
-                                         param(te::bass),
-                                         param(te::treble),
-                                         param(te::age),
-                                         machine_.targetSeconds,
-                                         sampleRate());
-        // The feedback knob's arc warns too.
-        if (const auto arc = loopColour(theme_, colour(), machine_.loopGain); arc != feedbackArc_)
-        {
-            feedbackArc_ = arc;
-            feedback_->setArcColour(arc);
-        }
+        motorSeconds_ = f.extra2 > 0.0f ? static_cast<double>(f.extra2) : targetSeconds_;
+        mask_ = te::headMask(param(te::heads));
+        loopGain_ = te::loopGain(param(te::feedback),
+                                 param(te::bass),
+                                 param(te::treble),
+                                 param(te::age),
+                                 targetSeconds_,
+                                 sampleRate());
+    }
+
+    // The level on the tape `units` past the record head (what a head there plays now).
+    float levelAt(double units) const
+    {
+        const int size = historySize();
+        const int frame = size - 1 - static_cast<int>(units * motorSeconds_ / frameSeconds);
+        return frame >= 0 && frame < size ? historyAt(frame).extra : 0.0f;
     }
 
     void paramsChanged() override
     {
-        for (size_t i = 0; i < selectors_.size(); ++i)
-            selectors_[i]->setSelected(static_cast<int>(std::lround(param(selectorParams_[i]))),
-                                       juce::dontSendNotification);
-        sync_.selected = plugins::sync::choiceOf(param(te::sync));
-        sync_.repaint();
-        time_->setAlpha(synced() ? 0.5f : 1.0f);
-        time_->repaint();
+        const bool sync = synced();
+        if (sync)
+            lastNote_ = plugins::sync::choiceOf(param(te::sync));
+        // REPEAT RATE follows the mode: the motor's time, or the note values.
+        {
+            const juce::ScopedValueSetter<bool> guard(updatingRate_, true);
+            if (sync)
+            {
+                rate_->setLogarithmic(false);
+                rate_->setRange(1.0, plugins::sync::choiceCount - 1, 8.0);
+                rate_->setInterval(1.0);
+                rate_->format = [](double v)
+                {
+                    return juce::String(plugins::sync::noteValues[static_cast<size_t>(plugins::sync::choiceOf(
+                                                                      static_cast<float>(v)))]
+                                            .name);
+                };
+                rate_->setValue(param(te::sync), juce::dontSendNotification);
+            }
+            else
+            {
+                const auto& i = info(te::time);
+                rate_->setInterval(0.0);
+                rate_->setRange(i.minimum, i.maximum, i.defaultValue);
+                rate_->setLogarithmic(i.logarithmic);
+                rate_->format = [](double v)
+                { return juce::String(static_cast<int>(std::lround(v))) + " ms"; };
+                rate_->setValue(param(te::time), juce::dontSendNotification);
+            }
+        }
+        face_.setSynced(sync);
+        stereo_->setPosition(static_cast<int>(std::lround(param(te::stereo))));
+        sync_->setPosition(sync ? 0 : 1);
+        dry_->setPosition(param(te::killDry) >= 0.5f ? 1 : 0);
+        face_.headsPosition = static_cast<int>(std::lround(param(te::heads)));
         update();
-        loop_.repaint();
+        face_.repaint();
     }
+
     void framesArrived(double elapsedMs) override
     {
         update();
-        loop_.advance(elapsedMs);
+        const double seconds = elapsedMs * 0.001;
+        const bool on = isOn();
+        // The meter reads what the record head writes.
+        needle_.advance(on ? levelAt(0.0) : 0.0f, seconds);
+        meter_.setReading(needle_.level);
+        // Each neon as bright as the level passing its head; a head that does not
+        // play shows it dimmer.
+        bool changed = false;
+        for (size_t i = 0; i < transport_.neon.size(); ++i)
+        {
+            const double units = i == 0 ? 0.0 : te::headSpacing[i - 1];
+            const bool plays = i == 0 || ((mask_ >> (i - 1)) & 1) != 0;
+            const float target =
+                on ? tf::neonBrightness(levelAt(units)) * (plays ? 1.0f : tf::inactiveNeon) : 0.0f;
+            const float shown = tf::neonFollow(transport_.neon[i], target, seconds);
+            changed = changed || std::abs(shown - transport_.neon[i]) > 0.002f;
+            transport_.neon[i] = shown;
+        }
+        // The rollers turn with the tape while the machine runs.
+        if (on && !theme_.motion.reduceMotion)
+        {
+            transport_.pinchAngle = static_cast<float>(std::fmod(
+                transport_.pinchAngle + tf::rollerSpeed(motorSeconds_, tf::pinchRadius) * seconds, 2.0 * pi));
+            transport_.tensionAngle = static_cast<float>(std::fmod(
+                transport_.tensionAngle - tf::rollerSpeed(motorSeconds_, tf::tensionRadius) * seconds,
+                2.0 * pi));
+            changed = true;
+        }
+        if (changed)
+            transport_.repaint();
+        lamp_.set(loopGain_, on, elapsedMs);
     }
+
     juce::String headerStatus() const override
     {
-        return isOn() && machine_.loopGain >= 1.0f ? juce::String("Self-oscillating") : juce::String();
+        return isOn() && loopGain_ >= 1.0f ? juce::String("Self-oscillating") : juce::String();
     }
     juce::Colour headerStatusColour() const override { return theme_.colours.meterHot; }
 
-    Machine machine_;
-    juce::Colour feedbackArc_;
-    TapeLoopView loop_;
-    CornerChoice sync_;
-    Knob* time_ = nullptr;
+    Face face_;
+    Meter meter_;
+    Transport transport_;
+    GainLamp lamp_;
+    Knob* heads_ = nullptr;
     Knob* feedback_ = nullptr;
-    Knob* bass_ = nullptr;
-    Knob* treble_ = nullptr;
-    Knob* drive_ = nullptr;
-    Knob* wow_ = nullptr;
-    Knob* flutter_ = nullptr;
-    Knob* age_ = nullptr;
-    Knob* spread_ = nullptr;
-    Knob* spring_ = nullptr;
     Knob* mix_ = nullptr;
-    Knob* output_ = nullptr;
-    PillToggle* killDry_ = nullptr;
-    juce::Label* killDryLabel_ = nullptr;
-    std::vector<std::unique_ptr<RotarySelector>> selectors_;
-    std::vector<std::unique_ptr<juce::Label>> captions_;
-    std::vector<juce::Label*> selectorCaptions_;
-    std::vector<int> selectorParams_;
-    std::vector<int> dividers_;
-    int dividerTop_ = 0, dividerBottom_ = 0;
+    std::array<Knob*, 9> small_{};
+    std::unique_ptr<Knob> rate_;
+    std::unique_ptr<Lever> stereo_, sync_, dry_;
+    tf::VuNeedle needle_;
+    double motorSeconds_ = 0.18, targetSeconds_ = 0.18;
+    float loopGain_ = 0.0f;
+    std::uint8_t mask_ = 0;
+    int lastNote_ = 8; // an eighth note
+    bool updatingRate_ = false;
 };
 } // namespace
 

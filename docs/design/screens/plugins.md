@@ -56,7 +56,7 @@ Every built-in has an editor in the channel strip's language
 well, then knobs in the module's hue. The same editor is the card's body in the Editor panel
 and the body of its window (under the title, bypass and mix). The hues follow the
 strip: EQ `Overcast`, compressor `Loch`, limiter `Rowan`; gain `Machair`, reverb `Lichen`,
-delay `Gorse`, glue compressor `Thrift`, Patina `Kelp`, exciter `Machair`, Bloom `Heather`, tape echo `Rowan`, stereo widener `Sea grass`. The instruments (7.4b-7.4e) have faces of their own, and so does Patina, a hardware face (design-system.md "Hardware face").
+delay `Gorse`, glue compressor `Thrift`, Patina `Kelp`, exciter `Machair`, Bloom `Heather`, tape echo `Rowan`, stereo widener `Sea grass`. The instruments (7.4b-7.4e) have faces of their own, and so do Patina and the tape echo, hardware faces (design-system.md "Hardware face").
 
 - **Gain**: the input and output history with IN and OUT meters; Gain.
 - **EQ**: the strip's EQ graph with the built-in's four bands (a high-pass,
@@ -429,69 +429,73 @@ delay `Gorse`, glue compressor `Thrift`, Patina `Kelp`, exciter `Machair`, Bloom
     centred), Ping (ping-pong) or L/R. Spread sets the width.
   - Spring is a send to a short dispersive spring (its chirp and drip) on the echoes
     only.
-  - Mix, Output, and a Kill dry pill for use on a send. No latency.
-  - **The machine** (the display, the card's full width; about 154 px tall at the
-    card's 250 px body):
-    - **The tape.** The loop's centre line runs from R right along the bottom past
-      the heads, round four 13 px rollers (the bottom-right is the capstan, with its
-      pinch roller), and back along the top. The top run is slack and sags 1-6 px
-      with Wow, at the wow rate, plus a 1 px flutter shimmer.
-    - The tape is 3 px `surface3` (`textTertiary` while hovered or dragged).
-    - What the record head wrote (the frames' `extra`) is drawn on the tape at its
-      age. Its distance from R is age ÷ the motor's head-1 time, in head units. It
-      shows as a band 3-12 px wide over the bottom 42 dB, in the hue mixed
-      opaquely into the well at 30-100%, fading by up to 45% round the loop.
-    - Each echo can be watched travelling from R to the heads.
-    - 1.5 px `textTertiary` marks every 14 px move with the tape at the motor's
-      speed, and are hidden when they would move more than half their pitch in a
-      frame. The rollers' three spokes turn with the tape.
-    - **The heads.** 14 × 10 px blocks under the bottom run with a 1.5 px gap line.
-      - R is `surface3` with a `textSecondary` rim, its gap lit in the hue by what
-        it writes.
-      - Active heads are filled in the hue, with a `textOnColour` gap line and a
-        22 px halo in the hue that flares as an echo passes.
-      - Inactive heads are `surface2` with a `lineStrong` rim.
-      - Labels R, 1-4 are in `caption`: `textPrimary` for active heads,
-        `textTertiary` for inactive ones, `textSecondary` for R.
-      - Each active head's time sits above it inside the loop, in `value`
-        `textSecondary`.
-    - **Feedback path.** A line from under each active head's label to a bus that
-      runs back to R, ending in an arrow.
-      - Below a loop gain of 0.85 it is the hue at 40-100% with the feedback, 1 px.
-      - From 0.85 it is `warning`, 1.5 px.
-      - At 1 and above it is `meterHot`.
-      - At no feedback it is dashed `textTertiary` at 50%.
-    - **Inside the loop, left.** MOTOR in `captionCaps`, then the Sync chip (the
-      corner chip: "Sync off" or the note value ▾). Below them is head 1's time as
-      the motor runs, in mono `title` `textPrimary`, so it glides after a change.
-      When synced, the note value shows with its ms after it in `value`. A clamped
-      note reads "max 1000 ms" in `warning`.
-    - **Inside the loop, right.** Two 150 px meters, each a `captionCaps` name with a
-      `value` reading on one row and a bar of twelve 6 px segments under it
-      (`surface2` when dark):
-      - **LOOP** is the loop gain over 0-1.2. Segments light in the hue below 0.85,
-        `warning` to 1 and `meterHot` past it. A 1 px `textSecondary` tick marks the
-        edge at 1. The reading turns `warning`/`meterHot` with it.
-      - **SATURATION** is the tape's compression over 0-12 dB, lit in the hue, from
-        the readout ballistics. It reads "–" when there is none.
-    - The machine is a readout only (the Time knob sets the motor), so it has no
-      hover or drag state.
+  - Mix, Output, and Kill dry for use on a send. No latency.
+  - **The face:** a 1970s tape echo console, a hardware face built from rendered
+    parts (design-system.md "Hardware face", "Rendered parts"; assets/tapeecho). It is
+    drawn at 1160 × 600 and scaled to fit the card's body, never above 100%: the plugin
+    window shows it 1:1, and in the Editor dock it scales to the dock's height and the
+    card narrows with it. Legends are Barlow Condensed (`font.legend`) in the
+    `hardware` console inks, printed without a shade on the light enamel.
+    - **Panels.** Cream enamel above (`creamPanel`, inks `creamInk`/`creamInkSoft`),
+      sage below (`sagePanel`, `sageInk`/`sageInkSoft`), one rendered steel plate in
+      two colours with a brushed aluminium trim between them. Worn where hands go:
+      polish round the controls, grime at the edges and the seam, a few chips.
+    - **Name column** (left of the window): TAPE ECHO in 46 px bold, FOUR-HEAD ·
+      SPRING (16 px) under it; at the foot, level with the window's, a 28 px rule,
+      MODEL TE-4 (18 px bold) and NORTHLIGHT (14 px). The heads' names under the
+      window and LOOP GAIN are 16 and 15 px. Legends are sized to stay legible with
+      the face scaled to about half in the dock.
+    - **The transport window** (642 × 212, a slim aluminium bezel, the transport
+      624 × 194 inside it): the tape path under a smoked perspex lid, lit warm by
+      lamps under the window's front edge. Left to right: two flanged guides, the
+      erase and record heads and playback heads 1-4 on brackets, the tension arm, the
+      capstan and pinch roller, and the tape chamber under its printed cover. The
+      heads are named under the bezel (ERASE, REC, 1-4), each centred on its head.
+      - Each record and playback head has a **neon** on its bracket, as bright as
+        the level passing it (the frames' `extra` at the head's distance round the
+        loop): it strikes 42 dB down, is full at full scale, lights at once and dies
+        away over about 120 ms. A head that does not play shows the tape passing it
+        at 35%. The neons are their light alone over the transport, so their spill
+        on the brackets and deck is part of them.
+      - The pinch and tension rollers turn with the tape at the motor's speed (the
+        tension roller, half the size, twice as fast), slowed together so the
+        fastest makes at most three turns a second. Only their screw slots and
+        drillings turn; the chrome and its highlights stay put. Stopped while the
+        card is off and with reduced motion.
+    - **The meter** (a VU, right of the window, its top on the window's): the tape's
+      level at the record head, each frame's peak, 0 VU at -10 dBFS (the tape saturates
+      towards -6, so a healthy level reads about 0 and only a hot tape reaches the
+      red), on a scale linear in voltage (-20 to +3, 0 VU about
+      71% across; red from 0, `dialRed`), its needle moving with a VU's 300 ms
+      ballistics under the pivot's hood and the glass. Tooltip-free; its accessible
+      description is the reading in VU.
+    - **Loop gain lamp** (a jewel lamp under the meter, LOOP GAIN beside it): dark
+      while the loop is steady (a loop gain below 0.85) and while the card is off;
+      amber from 0.85, as the loop nears the edge; red and flickering at 1 and above
+      (steady with reduced motion). Tooltip "Loop gain 0.45", ", singing" past
+      the edge.
+    - **Big knobs** (72 px skirts, a printed 11-tick scale, 0 5 10 in 18 px): HEADS (a stepped
+      knob: eight positions 1, 2, 3, 4, 1·3, 2·4, 1·3·4, ALL printed round it over
+      270°, the chosen one bold; value "1 + 3"), REPEAT RATE, INTENSITY (feedback) and
+      ECHO VOLUME (mix). Name (21 px bold) and value (19 px) under each on one
+      baseline; HEADS's positions in 17 px.
+    - **REPEAT RATE** is the motor's time; with SYNC on it steps through the note
+      values instead, its scale reading 1/64, 1/8 and 1/1 and its value the note.
+    - **Levers** (cream-tipped bat handles at 85% of their render, over the last three
+      small knobs; names 19 px bold, positions 18 px): STEREO
+      three-way (PAN up, PING centre, L/R down), SYNC (ON: tempo sync at the last
+      note value chosen, an eighth the first time; OFF: free), DRY (ON, KILL). A click
+      above a lever's middle moves it up a position, below it down; Up and Down move
+      it, Space flips or steps it. Tooltip "Stereo: Pan".
+    - **Small knobs** (44 px; names 20 px bold, values 17 px): BASS, TREBLE, DRIVE, WOW, FLUTTER, AGE, SPREAD,
+      SPRING, OUTPUT, spread across the panel's width.
+    - **Rendered controls** keep the system's behaviour: drag, wheel, arrows,
+      double-click to reset, focus ring round the skirt or nut, a 7% highlight on
+      hover (10% while dragged), 45-50% when disabled. Every part has a flat token
+      fallback (panels, a dark well, plain knobs and levers, a lit dial with a hood),
+      so the face works without its images.
   - **Header status:** "Self-oscillating" in `meterHot` while the loop gain is at
-    1 or more. The Feedback knob's arc takes the same hue / `warning` / `meterHot`
-    colour.
-  - **Controls.** One row in five groups split by `lineSubtle` rules:
-    - Time and Feedback are 46 px knobs with 0-10 scale dots. Synced, Time dims to
-      50% and shows the note value.
-    - Between them, Heads is a rotary selector with eight positions (1, 2, 3, 4,
-      13, 24, 134, 1234), 38.6° apart over 270°. Its cell is 11 px taller than the
-      selector's preferred height, for the lowest labels.
-    - Bass and Treble.
-    - Drive, Wow, Flutter and Age.
-    - Stereo as a three-position rotary selector (Pan, Ping, L/R; tooltip "Heads
-      panned / Ping-pong / Left and right"), then Spread and Spring.
-    - Mix, Output, and a 48 × 22 px "Kill" pill where a knob's ring would be, named
-      "Dry" on the baseline.
-    - Every label sits on one baseline along the bottom of the row.
+    1 or more.
 - **Stereo Widener** (width per band, a mono-safe spread, and the image on screen):
   the side (L-R) is split into Low, Mid and High by Linkwitz-Riley crossovers (Low
   split 40 Hz-1 kHz, default 250 Hz; High split 1-16 kHz, default 4 kHz) and each band

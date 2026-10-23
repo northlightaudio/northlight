@@ -60,7 +60,11 @@ Northlight has not had a release yet. The first release, 0.1.0, will include:
 - Tape Echo, a tape loop with four playback heads in eight combinations, a motor
   speed that glides and bends the pitch (or syncs to the tempo), wow, flutter and
   tape age, repeats that darken and saturate each pass and self-oscillate past
-  100%, a spring reverb and Kill dry. Its card shows the running machine.
+  100%, a spring reverb and Kill dry. Its card is a 1970s tape echo console: the
+  tape transport behind a smoked lid, a neon on each head glowing with the echoes
+  as they pass, rollers turning with the tape, a VU meter for the record level, a
+  loop gain lamp that turns red when the loop sings, and knobs and levers on cream
+  and sage enamel. It scales to fit the Editor dock.
 - The Stereo Widener: width in three bands with phase-coherent crossovers, Mono
   below, a mono-safe Spread, rotation and balance, a correlation guard and level
   compensation, with a live vectorscope and the width the output measures.
