@@ -124,8 +124,10 @@ an EQ cannot do: it only raises what is already there.
 The display shows the input in grey and what the Exciter adds in colour; drag the
 handles to move the two frequencies.
 
-**Bloom** is a reverb for effects rather than rooms. Turn Decay up to a minute or
-press **Freeze** to hold the tail for good (it keeps moving; the input stays out
+**Bloom** is a reverb for effects rather than rooms. Its display draws the tail as
+a flower: each note opens it and it fades back, the highs first, with now at the
+top and higher pitches further out. Turn Decay up to a minute or press **Freeze**,
+the seed at the flower's heart, to hold the tail for good (it keeps moving; the input stays out
 until you let go). **Shimmer** pitch-shifts the tail inside itself, so it climbs an
 octave or a fifth (or falls) again and again; **Swell** makes the tail build up
 slowly after each note, like a reversed reverb. **Gate** cuts the tail a set time

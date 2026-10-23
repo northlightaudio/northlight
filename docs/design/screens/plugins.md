@@ -340,51 +340,76 @@ delay `Gorse`, glue compressor `Thrift`, Patina `Kelp`, exciter `Machair`, Bloom
   the loop, Pre-delay 0-500 ms or a note value (Sync), Diffusion, Mod depth and Rate,
   Width, Mix. A governor holds the network's energy under a ceiling, so no setting
   runs away. No latency; bypassed, the network keeps running so the tail is current
-  when it comes back. Its editor shows the tail itself:
-  - **Tail field** (the display, flexible width and height): the last five seconds,
-    right to left. Above, a spectrogram of the tail alone (tap 1, before the mix):
-    50 Hz to 16 kHz on a log axis, each column the mean power of its bins
-    (2048-point FFT, Hann), -96 to -24 dB mapped to the hue fading in (alpha
-    `v^1.6 × 0.9`) and warming toward `textPrimary` at the top 20%; drawn from an
-    image held at twice the field's size so it is crisp at 200%, scrolled per tick
-    with up to 16 spectra per tick spread through the new audio. Shimmer shows as
-    partials climbing, damping as a darker top, a gate as a hard edge, a frozen tail
-    as a held texture. Below, under a `lineSubtle` hairline, the **energy lane**
-    (a third of the well, 24-56 px): the dry input's RMS as a `textTertiary` area at
-    34% and the tail's RMS in the hue (area 28%, a 1.5 px line), -60..0 dB, with the
-    legend TAIL (hue) DRY (`textTertiary`) in `captionCaps` on a `meterWell` backing at
-    80% at its top left. A 30 px gutter on the right holds the scales in
-    `caption - 1` mono `textTertiary`: 100, 1k, 10k for the field; -20 and -40 for the
-    lane (-30 alone when the lane is under 44 px). At the field's top left, on the same
-    backing: DECAY with the RT60 (`value`, `textPrimary`), AT 8 KHZ with the highs'
-    RT60 from the damping (`textSecondary`), SIZE in metres, PRE in ms or the note
-    value; captions in `captionCaps` `textTertiary`. **Frozen**: DECAY reads "∞ held",
-    a FROZEN pill (hue at 25% on the backing, a 1 px hue outline at 60%, text in the
-    hue, `captionCaps`) sits at the field's top right, and a 2 px hue line runs along
-    the field's top over every moment the tail was frozen, scrolling with it.
-  - **Envelope** (in the row of large controls, beside Swell, the rest of the row's
-    width): what one hit becomes, -60..0 dB: the dry hit (a 2 px `textTertiary` bar
-    at 0), the pre-delay, the swell rising, the decay falling 60 dB over the RT60
-    (a 1.5 px hue line over a hue gradient from 32% to 4%), the highs' faster fall
-    dashed (hue brightened, 80%), the gate's vertical cut; frozen, a flat line to
-    the edge with ∞ in the hue. Grid at -20 and -40 dB (`gridBeat`); 0 and the span
-    ("6.9 s") under it in `caption - 1` mono.
-  - **Large controls** (46 px rings with 0-10 scale dots, 84 px cells): Decay
-    ("6.0 s"), Size ("27 m"), the **Freeze latch**, | Shimmer (%) and Pitch (st) as a
-    rotary selector (-12, +5, +7, +12, +19, ±12), | Swell ("Off" at the bottom) and
-    the Envelope. `lineSubtle` rules between the groups. Frozen, Shimmer and Pitch
-    dim to 50% (the shimmer has left the loop).
-  - **Secondary controls** (28 px knobs on the 60 px grid) in four groups, each under
-    a `captionCaps` `textTertiary` caption, `lineSubtle` rules between them: SPACE
-    (Pre-delay, Diffusion, Mod, Rate; the Sync chip, a CornerChoice, on the caption
-    row at the right: "Sync off" or the note value, and synced the Pre-delay knob dims
-    and shows the note), TONE (Low cut, Damping, Tilt), DYNAMICS (Duck, Release,
-    Gate, "Off" at the bottom), OUTPUT (Width, Mix). Every label of a row sits on one
-    baseline.
-  - Header readout: "Frozen" in the hue while frozen, else the ducking ("Duck
-    -4.2 dB", `textSecondary`) while it ducks.
-  - Width 789 px (12 knob cells, three rules), body 336 px; the display takes what
-    the controls leave (at least 96 px).
+  when it comes back. Its editor shows the tail as a blossom:
+  - **The face**: the card's body filled `surface0` (radius `md`); the controls'
+    tiles `surface1`, radius `lg`.
+  - **Blossom** (the display, at the left, as tall as the body; its field 1.32 times
+    as wide as it is tall so the corner readouts clear the flower). The tail alone
+    (tap 1, before the mix) over the last five seconds as a flower: time runs
+    clockwise over 330 degrees to now at the top (a 15 degree gap either side, a
+    1.5 px `textPrimary` line and a 6 px dot at 12 o'clock), frequency rises
+    outward, 50 Hz to 16 kHz on a log scale, from a quarter of the radius to 0.885
+    of it. 56 slices by 14 bands of petals, each separated by a hairline (0.7
+    degrees, narrowing outward; 1.2 px between bands), each band the mean power of
+    its bins (2048-point FFT, Hann), -96 to -24 dB, coloured as the hue fading in
+    (alpha `v^1.4 x 0.95`, at most 92%) and warming toward `textPrimary` at the top
+    20%. A slice heard while frozen is coloured in ice (`accent` 40% toward
+    `textPrimary`), so a held tail turns to ice slice by slice. The petals are drawn
+    through a per-pixel lookup into an image held at twice the flower's size, redrawn
+    only when a slice arrives. Ground: a radial gradient from `canvas` 13% toward the
+    hue (ice while frozen) at the heart through 4% at 70% to `canvas` at the rim.
+    Dotted rings (`textPrimary` at 7%) at 100 Hz, 1 kHz and 10 kHz, labelled in the
+    gap at the top in `caption - 1` mono `textTertiary`. **Rim**: the tail's RMS per
+    slice (-60..0 dB) as a band in the hue at 85% on a 0.906 radius track
+    (`textPrimary` at 6%), up to 0.047 of the radius deep; the dry input's RMS as a
+    1.5 px `textSecondary` tick outside it, for slices above a fifth of the scale.
+    **Shimmer** (above 2%, not while frozen): three dotted spirals (1 px dots every
+    5 px, 1.2 px) in the hue at 20% + 45% of the amount, climbing outward (falling
+    inward for -12; one of three inward for ±12). **Corners**: top left DECAY
+    (`captionCaps` `textTertiary`), the RT60 in mono `title + 1` `textPrimary` and the
+    highs' ("2.7 s at 8 kHz", `value` `textSecondary`); frozen, "∞" over "held". Top
+    right SPACE, the size in metres and the pre-delay ("20 ms before", or the note
+    value). Bottom left the legend: a 9 px hue dot TAIL, a 9 x 2 px `textSecondary`
+    bar DRY; bottom right "5 S · NOW AT THE TOP"; captions `captionCaps`
+    `textTertiary`.
+  - **The seed** (Freeze), at the flower's heart, 84% of the inner radius's
+    diameter plus 16 px: a round button. Off: a `canvas` moat at 90% with a hue glow
+    (22% fading out) round it, a body from `canvas` 14% toward the hue to 5%, a
+    1 px hue rim at 40% (70% on hover), a 1.5 px snowflake and FREEZE (`captionCaps`)
+    in `textPrimary` at 85% (full on hover). Held: an ice glow at 45%, an ice body
+    (brighter at the top), a 1 px rim of ice brightened, the snowflake and FROZEN in
+    `canvas`. Pressed darkens the body. Click, Enter or Space toggles it (one undo
+    step); focus draws the focus ring round it; its hit area is the circle.
+  - **Large controls** (right, 644 px wide in all): Decay ("6.0 s"), Size ("27 m"),
+    Shimmer (%) and Swell ("Off" at the bottom) as 52 px bud knobs (design-system.md
+    "Bud knob") in four equal tiles, their names in `label` `textSecondary`. Frozen,
+    Shimmer and the interval pills fade to 50% (the shimmer has left the loop).
+  - **Shimmer interval** (a tile, the row's width less the next tile): SHIMMER
+    INTERVAL in `captionCaps` `textTertiary`, then six 26 px pills 6 px apart: -12,
+    +5, +7, +12, +19, ±12 in `value`. The chosen pill is filled in the hue with its
+    text in `canvas`; the others have a 1 px `textPrimary` outline at 15% and
+    `textSecondary` text, filled `surface2` with `textPrimary` text on hover. Click a
+    pill, or Left, Right, Home and End; focus rings the chosen pill. Tooltip
+    "Shimmer interval".
+  - **One hit** (a 196 px tile beside it): ONE HIT, then the envelope: what one hit
+    becomes, -60..0 dB: the dry hit (a 2 px `textTertiary` bar at 0), the pre-delay,
+    the swell rising, the decay falling 60 dB over the RT60 (a 1.5 px hue line over a
+    hue gradient from 32% to 4%), the highs' faster fall dashed (hue brightened,
+    80%), the gate's vertical cut; frozen, a flat line to the edge with ∞ in the
+    hue. Grid at -20 and -40 dB (`gridBeat`). In a well under 56 px tall it is
+    compact: the curve fills the well (5 x 4 px in) and only the span shows, at the
+    top right, hidden while frozen; taller, 0 and the span sit under it.
+  - **Secondary controls** (28 px bud knobs in 50 px cells) in one row of four
+    groups 14 px apart, each under a `captionCaps` `textTertiary` caption and a 1 px
+    `textPrimary` hairline at 8% running to the group's end: SPACE (Pre-delay,
+    Diffusion, Motion, Rate; the Sync chip, a CornerChoice, at the caption's right,
+    the hairline stopping 8 px short of it: "Sync off" or the note value, and synced
+    the Pre-delay knob dims and shows the note), TONE (Low cut, Damping "6.0 kHz",
+    Tilt), DYNAMICS (Duck, Release, Gate, "Off" at the bottom), OUTPUT (Width, Mix).
+  - Header readout: "Frozen" in ice while frozen, else the ducking ("Duck -4.2 dB",
+    `textSecondary`) while it ducks.
+  - Body 316 px; width the flower's field (1.32 x the body's height less 8 px), a
+    20 px gap and the 644 px of controls.
 - **Tape Echo** (a tape loop machine, the Delay's characterful sibling):
   - A record head and four playback heads at 1, 2, 3 and 4 times head 1's time. Eight
     head combinations: 1, 2, 3, 4, 1+3, 2+4, 1+3+4, all.

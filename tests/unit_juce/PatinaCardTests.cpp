@@ -5,6 +5,7 @@
 #include "ui/components/Knob.h"
 #include "ui/components/RotarySelector.h"
 #include "ui/strip/BuiltInCards.h"
+#include "ui/strip/EffectPresetLibrary.h"
 
 #include <catch2/catch_test_macros.hpp>
 
@@ -145,6 +146,11 @@ TEST_CASE("Patina's card reads its stages live and its tiles switch the controls
 TEST_CASE("Patina's preset keys step through the factory presets as one undo step each", "[ui][patina]")
 {
     const juce::ScopedJuceInitialiser_GUI juceInit;
+    // An empty presets folder: the user's own presets never reach the test.
+    const auto root =
+        juce::File::getSpecialLocation(juce::File::tempDirectory)
+            .getChildFile("northlight-patina-presets-" + juce::String::toHexString(juce::Random().nextInt()));
+    ui::strip::EffectPresetLibrary::instance().setRoot(root);
     const auto& theme = ui::Theme::dark();
     core::Insert insert;
     insert.id = 13;

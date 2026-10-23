@@ -295,6 +295,17 @@ a faint `knobHighlight` arc at the top; indicator line `textPrimary`. Value show
 text below in `value` 12 mono when space allows, else in a tooltip while dragging.
 Vertical drag; double-click resets. Keyboard as Slider.
 
+### Bud knob
+
+For a face that wants its knobs light: a ring with no body (Bloom). The track is a
+270 degree arc in `surface2` (`surface3` on hover or drag), the value arc in the
+module's hue over it (from the centre for a bipolar range), both
+`max(3, 8.5% of the size)` thick with round caps; at the value, the bud: a
+`textPrimary` dot 1.3 strokes across on a hue halo 2.6 strokes across at 25% (40% on
+hover). The value sits under it in `value` `textPrimary`. Sizes, behaviour, keyboard
+and focus ring as the knob (`Knob::Style::bud`). Disabled: everything
+`textDisabled`.
+
 ### Rotary selector (stepped switch)
 
 For a parameter with a few fixed positions that a console would put on a rotary

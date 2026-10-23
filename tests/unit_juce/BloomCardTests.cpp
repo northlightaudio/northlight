@@ -2,7 +2,6 @@
 #include "plugins/Bloom.h"
 #include "plugins/BuiltIns.h"
 #include "ui/Theme.h"
-#include "ui/components/RotarySelector.h"
 #include "ui/strip/BuiltInCards.h"
 
 #include <catch2/catch_test_macros.hpp>
@@ -13,7 +12,8 @@
 using namespace northlight;
 namespace bloom = plugins::bloom;
 
-TEST_CASE("Bloom's card reads its processor, latches Freeze and steps the pitch", "[ui][bloom]")
+TEST_CASE("Bloom's card reads its processor, blooms the tail, seeds Freeze and steps the pitch",
+          "[ui][bloom]")
 {
     const juce::ScopedJuceInitialiser_GUI juceInit;
     const auto& theme = ui::Theme::dark();
@@ -56,24 +56,27 @@ TEST_CASE("Bloom's card reads its processor, latches Freeze and steps the pitch"
     const auto image = card->createComponentSnapshot(card->getLocalBounds(), true, 2.0f);
     CHECK(image.isValid());
 
-    // The tail field's spectrogram has filled across its width as the tail
-    // played (two seconds of a five second field: the right two fifths).
-    juce::Component* field = nullptr;
-    for (auto* child : card->getChildren())
-        if (auto* tip = dynamic_cast<juce::SettableTooltipClient*>(child);
-            tip != nullptr && tip->getTooltip().startsWith("The tail over"))
-            field = child;
+    // The blossom's petals have lit as the tail played (two seconds of the
+    // five round the flower).
+    auto* field = card->findChildWithID("blossom");
     REQUIRE(field != nullptr);
     const auto shot = field->createComponentSnapshot(field->getLocalBounds(), true, 1.0f);
-    const auto lit = [&](int x)
+    // The newest petals sit just left of the top (now), the oldest just right of it.
+    const auto litNear = [&](float degrees)
     {
+        const auto mid = shot.getBounds().toFloat().getCentre();
+        const float r = 0.5f * static_cast<float>(std::min(shot.getWidth(), shot.getHeight()));
         int n = 0;
-        for (int y = 4; y < shot.getHeight() / 2; ++y)
-            n += shot.getPixelAt(x, y).getBrightness() > 0.2f ? 1 : 0;
+        for (float f = 0.3f; f < 0.85f; f += 0.02f)
+        {
+            const auto p = mid.getPointOnCircumference(r * f, juce::degreesToRadians(degrees));
+            n +=
+                shot.getPixelAt(static_cast<int>(p.x), static_cast<int>(p.y)).getBrightness() > 0.35f ? 1 : 0;
+        }
         return n;
     };
-    CHECK(lit(shot.getWidth() * 7 / 10) > 0);
-    CHECK(lit(shot.getWidth() * 9 / 10) > 0);
+    CHECK(litNear(330.0f) > 0);
+    CHECK(litNear(300.0f) > 0);
 
     // Freeze is a latch: a click sets the parameter and sends the command.
     juce::Button* freeze = nullptr;
@@ -96,14 +99,11 @@ TEST_CASE("Bloom's card reads its processor, latches Freeze and steps the pitch"
     CHECK_FALSE(freeze->getToggleState());
     CHECK(sent.size() == commands);
 
-    // The one stepped control is the pitch selector, at +12 by default.
-    std::vector<ui::RotarySelector*> selectors;
-    for (auto* child : card->getChildren())
-        if (auto* s = dynamic_cast<ui::RotarySelector*>(child))
-            selectors.push_back(s);
-    REQUIRE(selectors.size() == 1);
-    CHECK(selectors[0]->selected() == 3);
-    selectors[0]->keyPressed(juce::KeyPress(juce::KeyPress::rightKey));
+    // The shimmer's interval is a row of pills, at +12 by default; Right steps it.
+    auto* pills = card->findChildWithID("interval");
+    REQUIRE(pills != nullptr);
+    CHECK(card->param(bloom::pitch) == 3.0f);
+    pills->keyPressed(juce::KeyPress(juce::KeyPress::rightKey));
     CHECK(card->param(bloom::pitch) == 4.0f);
 
     // Nothing is laid out past the card's edges.

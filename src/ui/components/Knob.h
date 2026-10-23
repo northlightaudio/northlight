@@ -18,12 +18,14 @@ class Knob final : public juce::Component, public juce::SettableTooltipClient
 public:
     explicit Knob(const Theme& theme);
 
-    // How the knob is drawn: the house ring, or a hardware face's chicken-head
-    // pointer over a printed scale (design-system.md "Hardware face").
+    // How the knob is drawn: the house ring; a hardware face's chicken-head
+    // pointer over a printed scale (design-system.md "Hardware face"); or a bud,
+    // a bodiless ring whose value arc ends in a lit tip (design-system.md "Bud knob").
     enum class Style
     {
         ring,
         pointer,
+        bud,
     };
     void setStyle(Style style)
     {
@@ -83,6 +85,7 @@ private:
     void step(double direction, bool fine);
     juce::String text() const;
     void paintPointer(juce::Graphics& g);
+    void paintBud(juce::Graphics& g);
 
     const Theme& theme_;
     double minimum_ = 0.0, maximum_ = 1.0, default_ = 0.0, value_ = 0.0;

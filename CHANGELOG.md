@@ -54,7 +54,9 @@ Northlight has not had a release yet. The first release, 0.1.0, will include:
   Its display shows the harmonics it adds over the input's spectrum.
 - Bloom, an effect reverb for huge and strange tails: decays up to a minute,
   Freeze, Shimmer that climbs by an interval, Swell that builds the tail like a
-  reversed reverb, a gate and ducking. Its display is a live spectrogram of the tail.
+  reversed reverb, a gate and ducking. Its display draws the tail as a blossom that
+  opens with each note and fades, pitch outward and time round to now at the top,
+  with Freeze as the seed at its heart.
 - Tape Echo, a tape loop with four playback heads in eight combinations, a motor
   speed that glides and bends the pitch (or syncs to the tempo), wow, flutter and
   tape age, repeats that darken and saturate each pass and self-oscillate past

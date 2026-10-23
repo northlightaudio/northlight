@@ -3,6 +3,7 @@
 #include "ui/NorthlightLookAndFeel.h"
 #include "ui/components/HardwareParts.h"
 
+#include <algorithm>
 #include <cmath>
 
 namespace northlight::ui
@@ -122,11 +123,73 @@ void Knob::paintPointer(juce::Graphics& g)
         lnf->drawFocusRing(g, *this, ring, size * 0.5f);
 }
 
+void Knob::paintBud(juce::Graphics& g)
+{
+    const auto& c = theme_.colours;
+    const float size = static_cast<float>(ringSize());
+    auto area = getLocalBounds().toFloat();
+    const bool room = showValue_ && area.getHeight() >= size + theme_.fonts.size.value + 2.0f;
+    const auto ring = area.removeFromTop(room ? size : area.getHeight()).withSizeKeepingCentre(size, size);
+    const float stroke = std::max(3.0f, std::round(size * 0.085f));
+    const auto bounds = ring.reduced(stroke * 1.3f);
+    const float radius = bounds.getWidth() * 0.5f;
+    const auto centre = bounds.getCentre();
+    const bool enabled = isEnabled();
+    const bool hot = enabled && (isMouseOver(true) || dragging_);
+    const auto hue = !enabled ? c.textDisabled : arcColour_.isTransparent() ? c.accent : arcColour_;
+    const juce::PathStrokeType line(stroke, juce::PathStrokeType::curved, juce::PathStrokeType::rounded);
+
+    juce::Path track;
+    track.addCentredArc(centre.x, centre.y, radius, radius, 0.0f, startAngle, startAngle + sweep, true);
+    g.setColour(hot ? c.surface3 : c.surface2);
+    g.strokePath(track, line);
+
+    const bool bipolar = minimum_ < 0.0 && maximum_ > 0.0;
+    const float valueAngle = startAngle + static_cast<float>(fraction()) * sweep;
+    const float fromAngle =
+        bipolar ? startAngle + static_cast<float>((0.0 - minimum_) / (maximum_ - minimum_)) * sweep
+                : startAngle;
+    if (std::abs(valueAngle - fromAngle) > 0.01f)
+    {
+        juce::Path arc;
+        arc.addCentredArc(centre.x,
+                          centre.y,
+                          radius,
+                          radius,
+                          0.0f,
+                          std::min(fromAngle, valueAngle),
+                          std::max(fromAngle, valueAngle),
+                          true);
+        g.setColour(hue);
+        g.strokePath(arc, line);
+    }
+    // The bud: a lit tip at the value, with a soft halo in the hue.
+    const auto tip = centre.getPointOnCircumference(radius, valueAngle);
+    g.setColour(hue.withAlpha(hot ? 0.4f : 0.25f));
+    g.fillEllipse(juce::Rectangle<float>(stroke * 2.6f, stroke * 2.6f).withCentre(tip));
+    g.setColour(enabled ? c.textPrimary : c.textDisabled);
+    g.fillEllipse(juce::Rectangle<float>(stroke * 1.3f, stroke * 1.3f).withCentre(tip));
+
+    if (room)
+    {
+        g.setFont(theme_.value());
+        g.setColour(enabled ? c.textPrimary : c.textDisabled);
+        g.drawText(text(), area.toNearestInt(), juce::Justification::centredTop);
+    }
+    if (auto* lnf = dynamic_cast<NorthlightLookAndFeel*>(&getLookAndFeel()))
+        lnf->drawFocusRing(g, *this, ring, size * 0.5f);
+}
+
 void Knob::paint(juce::Graphics& g)
 {
     if (style_ == Style::pointer)
     {
         paintPointer(g);
+        return;
+    }
+    if (style_ == Style::bud)
+    {
+        paintBud(g);
         return;
     }
     const auto& c = theme_.colours;
