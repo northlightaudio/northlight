@@ -213,10 +213,14 @@ struct Snapshot
     // nothing is sidechained.
     std::vector<std::vector<int>> trackLevels;
     float masterGain = 1.0f;
+    // The master's inserts, run in place on the mix before the master fader. Only
+    // the chain parts of the node are used (no routing, sends, key or automation).
+    ChannelNode masterChain;
     MasterRuntime* master = nullptr; // ramped master gain
     std::shared_ptr<MasterRuntime> keepAliveMaster;
     int masterMeterSlot = -1;
-    int outputLatency = 0; // samples the master output lags the timeline (plugin delay compensation)
+    int outputLatency = 0; // samples the master output lags the timeline (plugin delay compensation,
+                           // the master's own inserts included)
     std::vector<DelayLine*> allDelays; // every compensation and dry line, for a flush on locate
     std::vector<float> silence;        // maxBlockSamples zeros: the key of an inaudible source
 };

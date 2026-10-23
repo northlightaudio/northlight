@@ -306,6 +306,7 @@ void DetachedReferences::detach(Project& p, Id removed)
         keys(t);
     for (auto& b : p.buses)
         keys(b);
+    keys(p.master);
 }
 
 void DetachedReferences::restore(Project& p, Id removed) const
@@ -1192,6 +1193,8 @@ void AddInsert::apply(Project& p)
         for (const auto& b : p.buses)
             if (b.findInsert(insert_.id) != nullptr)
                 throw std::logic_error("insert id already in use");
+        if (p.master.findInsert(insert_.id) != nullptr)
+            throw std::logic_error("insert id already in use");
     }
     const int at = index_ < 0 || index_ > static_cast<int>(c.inserts.size())
                        ? static_cast<int>(c.inserts.size())

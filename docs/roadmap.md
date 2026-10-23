@@ -59,7 +59,6 @@ DAW is in place:
   - Moving a folder in the track order doesn't yet take its tracks with it.
   - An instrument whose extra outputs feed aux tracks can't be frozen.
   - Buses and the master aren't shown as arrange rows.
-  - The master has no inserts.
 
 ## Feature gaps
 
@@ -69,8 +68,8 @@ in editing, effects and controller work. Each item is to become an issue of its 
 
 ### In order
 
-1. **The master and buses in full.** Master inserts, and buses and the master as
-   arrange rows with their own automation (both in the known gaps above).
+1. **The master and buses as arrange rows**, with their own automation (in the
+   known gaps above).
 2. **Clip mute and fade curves.** The arrange spec draws muted clips, but clips have
    no mute. Fades and crossfades are linear only and dip in level on music; add
    equal-power, logarithmic and S-curve shapes.

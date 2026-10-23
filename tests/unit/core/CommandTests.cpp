@@ -1246,3 +1246,50 @@ TEST_CASE("A stereo input bus replaces a track's input channel; undo and redo re
     REQUIRE(stack.undo(p));
     CHECK(p.tracks[0].inputBus == "Vocal pair");
 }
+
+TEST_CASE("The master takes inserts like any channel: add, move and remove undo and redo",
+          "[core][command][master]")
+{
+    Project p = projectWithTrack();
+    UndoStack stack;
+    REQUIRE(p.findChannel(masterId) == &p.master);
+    Insert a;
+    a.type = "northlight.glue";
+    Insert b;
+    b.type = "northlight.limiter";
+    stack.execute(p, std::make_unique<AddInsert>(masterId, a));
+    stack.execute(p, std::make_unique<AddInsert>(masterId, b));
+    REQUIRE(p.master.inserts.size() == 2);
+    const Id glue = p.master.inserts[0].id;
+    CHECK(glue != invalidId);
+    CHECK(glue != masterId);
+
+    stack.execute(p, std::make_unique<MoveInsert>(masterId, glue, 1));
+    CHECK(p.master.inserts[1].id == glue);
+    stack.execute(p, std::make_unique<RemoveInsert>(masterId, glue));
+    CHECK(p.master.inserts.size() == 1);
+
+    REQUIRE(stack.undo(p));
+    CHECK(p.master.inserts.size() == 2);
+    CHECK(p.master.inserts[1].id == glue);
+    REQUIRE(stack.undo(p));
+    CHECK(p.master.inserts[0].id == glue);
+    REQUIRE(stack.redo(p));
+    CHECK(p.master.inserts[1].id == glue);
+    while (stack.undo(p))
+    {
+    }
+    CHECK(p.master.inserts.empty());
+}
+
+TEST_CASE("A freeze renders without the master's inserts", "[core][master][freeze]")
+{
+    Project p = projectWithTrack();
+    Insert glue;
+    glue.id = 99;
+    glue.type = "northlight.glue";
+    p.master.inserts.push_back(glue);
+    const auto copy = freezeRenderProject(p, p.tracks[0].id);
+    CHECK(copy.master.inserts.empty());
+    CHECK(p.master.inserts.size() == 1);
+}

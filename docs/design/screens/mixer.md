@@ -44,7 +44,12 @@ scale and a second column for sends):
 - Master strip: 112 px, separated by `space.lg` and a `lineSubtle`, pinned right; its
   meter is 10 px per channel with a scale, and under it the loudness readout
   (M / S / I in `value` mono with a target marker). Master has inserts, no input, no
-  sends, no pan.
+  sends, no pan. Its insert slots sit under the name cap like a channel's (the same
+  slot, hover power and handle, drag to reorder, the same menu without Sidechain
+  and Outputs), filling the room above the fader band when it lines up with the
+  channels and up to six slots otherwise; "+ Insert" adds an effect. They run on
+  the whole mix before the master fader, so the loudness readout and the export
+  hear them.
 - Buses sit after tracks in a group with a slate header line; a vertical `lineSubtle`
   separates tracks from buses.
 - Horizontal scroll with an overlay scrollbar; the master never scrolls.

@@ -598,6 +598,48 @@ std::unique_ptr<Snapshot> compileSnapshot(const core::Project& project,
         snapshot->buses.push_back(std::move(node));
     }
 
+    // ----- the master's inserts ----------------------------------------------------------
+    // Everything has been summed by the time they run, so they take no key: a key
+    // source would have to be held back by the whole graph to line up.
+    {
+        auto& node = snapshot->masterChain;
+        node.id = core::masterId;
+        for (const auto& i : project.master.inserts)
+            if (auto instance = inserts.get(i))
+            {
+                const int latency = std::max(0, instance->latencySamples());
+                node.chainLatency += latency;
+                node.inserts.push_back(instance.get());
+                node.insertMix.push_back(std::clamp(i.mix, 0.0f, 1.0f));
+                DelayLine* dry = nullptr;
+                if (i.mix < 1.0f && latency > 0)
+                {
+                    auto line = (delays != nullptr ? *delays : localDelays)
+                                    .get(DelayKey{i.id, core::invalidId, true}, latency);
+                    dry = line.get();
+                    snapshot->allDelays.push_back(dry);
+                    node.keepAliveDelays.push_back(std::move(line));
+                }
+                node.insertDry.push_back(dry);
+                node.insertKeyTrack.push_back(-1);
+                node.insertKeyBus.push_back(-1);
+                node.insertKeyPostFader.push_back(0);
+                node.insertKeyDelay.push_back(nullptr);
+                node.insertIds.push_back(i.id);
+                node.insertInputLatency.push_back(node.chainLatency - latency);
+                node.keepAlive.push_back(std::move(instance));
+            }
+        if (!node.inserts.empty())
+        {
+            node.keepAliveBuffers = runtimeCache.buffers(core::masterId, n);
+            auto& b = *node.keepAliveBuffers;
+            node.dryLeft = {b.buffer(2), n};
+            node.dryRight = {b.buffer(3), n};
+            node.keyLeft = {b.buffer(10), n};
+            node.keyRight = {b.buffer(11), n};
+        }
+    }
+
     // ----- MIDI tracks into their instrument channels ---------------------------------
     for (int t = 0; t < trackCount; ++t)
     {
@@ -728,7 +770,7 @@ std::unique_ptr<Snapshot> compileSnapshot(const core::Project& project,
             busOut[static_cast<size_t>(b)] = arrival[static_cast<size_t>(b)] + bus.chainLatency;
             offer(bus, busOut[static_cast<size_t>(b)]);
         }
-        snapshot->outputLatency = arrival[static_cast<size_t>(master)];
+        snapshot->outputLatency = arrival[static_cast<size_t>(master)] + snapshot->masterChain.chainLatency;
 
         DelayCache& cache = delays != nullptr ? *delays : localDelays;
         const auto attach = [&](ChannelNode& node, core::Id id, int out)

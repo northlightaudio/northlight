@@ -448,3 +448,34 @@ TEST_CASE("A track's stereo input bus round-trips through JSON; version 9 files 
     CHECK(loaded->tracks[1].inputChannel == 2);
     CHECK(loaded->tracks[1].inputBus.empty());
 }
+
+TEST_CASE("The master's inserts round-trip; version 10 files load without them", "[core][json][master]")
+{
+    auto p = sampleProject();
+    p.master.inserts.push_back(Insert{40, "northlight.glue", false, {-20.0f, 1.0f}, "", 0.8f, 0});
+    p.nextId = 41;
+    const auto text = projectToJson(p);
+    const auto restored = projectFromJson(text);
+    REQUIRE(restored.has_value());
+    CHECK(*restored == p);
+    CHECK(restored->master.id == masterId);
+    CHECK(restored->findChannel(masterId) == &restored->master);
+
+    // A file whose nextId is stale still keeps ids unique past the master's inserts.
+    auto stale = p;
+    stale.nextId = 2;
+    const auto repaired = projectFromJson(projectToJson(stale));
+    REQUIRE(repaired.has_value());
+    CHECK(repaired->nextId > 40);
+
+    // Before master inserts: the master has only its gain.
+    auto older = projectToJson(sampleProject());
+    const auto current = "\"version\": " + std::to_string(Project::schemaVersion);
+    const auto at = older.find(current);
+    REQUIRE(at != std::string::npos);
+    older.replace(at, current.size(), "\"version\": 10");
+    const auto loaded = projectFromJson(older);
+    REQUIRE(loaded.has_value());
+    CHECK(loaded->master.inserts.empty());
+    CHECK(loaded->master.gain == 0.8f);
+}

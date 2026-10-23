@@ -55,6 +55,7 @@ BounceJob::BounceJob(const core::Project& project, const hosting::HostFactory& i
             collect(t);
         for (const auto& b : render->project.buses)
             collect(b);
+        collect(render->project.master);
         renders_.push_back(std::move(render));
     };
     if (!options_.stems)

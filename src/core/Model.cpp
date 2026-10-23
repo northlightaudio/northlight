@@ -261,6 +261,8 @@ int Project::busIndex(Id busId) const noexcept
 
 Channel* Project::findChannel(Id channelId) noexcept
 {
+    if (channelId == masterId)
+        return &master;
     if (auto* t = findTrack(channelId))
         return t;
     return findBus(channelId);
@@ -268,6 +270,8 @@ Channel* Project::findChannel(Id channelId) noexcept
 
 const Channel* Project::findChannel(Id channelId) const noexcept
 {
+    if (channelId == masterId)
+        return &master;
     if (const auto* t = findTrack(channelId))
         return t;
     return findBus(channelId);
@@ -599,6 +603,7 @@ Project freezeRenderProject(const Project& project, Id trackId)
         b.gain = 0.0f;
     }
     copy.master.gain = 1.0f;
+    copy.master.inserts.clear();
     return copy;
 }
 

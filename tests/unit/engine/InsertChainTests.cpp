@@ -347,3 +347,46 @@ TEST_CASE("Rendering a chain of every built-in with ramps and bypass allocates n
     CHECK(chainViolations == 0);
 }
 #endif
+
+TEST_CASE("The master runs its inserts on the whole mix, before its fader", "[engine][inserts][master]")
+{
+    Harness h;
+    core::Project p;
+    p.tracks.push_back(trackWithClip(1));
+    p.tracks.push_back(trackWithClip(2));
+    p.master.inserts.push_back(gainInsert(60, -6.0f));
+    p.master.gain = 0.5f;
+    h.play(p, 60);
+    const float mix = 2.0f * 0.5f * centre;
+    CHECK(h.left[blockSize - 1] == Approx(mix * std::pow(10.0f, -6.0f / 20.0f) * 0.5f).margin(0.003f));
+    REQUIRE(h.engine.insertInstance(60) != nullptr);
+
+    // Undoing the add takes it out of the chain again.
+    core::UndoStack stack;
+    core::Insert more = gainInsert(61, -6.0f);
+    stack.execute(p, std::make_unique<core::AddInsert>(core::masterId, more));
+    h.engine.setProject(p);
+    h.more(60);
+    CHECK(h.left[blockSize - 1] == Approx(mix * std::pow(10.0f, -12.0f / 20.0f) * 0.5f).margin(0.003f));
+    stack.undo(p);
+    h.engine.setProject(p);
+    h.more(60);
+    CHECK(h.left[blockSize - 1] == Approx(mix * std::pow(10.0f, -6.0f / 20.0f) * 0.5f).margin(0.003f));
+}
+
+TEST_CASE("A latent master insert adds its latency to the output latency", "[engine][inserts][master]")
+{
+    Harness h;
+    core::Project p;
+    p.tracks.push_back(trackWithClip(1));
+    core::Insert limiter;
+    limiter.id = 70;
+    limiter.type = plugins::types::limiter;
+    limiter.params = plugins::defaultParameters(limiter.type);
+    p.master.inserts.push_back(limiter);
+    h.engine.setProject(p);
+    const auto instance = h.engine.insertInstance(70);
+    REQUIRE(instance != nullptr);
+    REQUIRE(instance->latencySamples() > 0);
+    CHECK(h.engine.snapshotForTest()->outputLatency == instance->latencySamples());
+}

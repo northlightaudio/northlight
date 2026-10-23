@@ -1241,90 +1241,23 @@ private:
         if (owner_.project_ == nullptr)
             return;
         const auto* channel = owner_.project_->findChannel(id_);
-        const auto* insert = channel != nullptr ? channel->findInsert(insertId) : nullptr;
-        if (insert == nullptr)
+        if (channel == nullptr || !channel->hasInstrument() || insertId != channel->instrument.id)
+        {
+            owner_.showInsertMenu(id_, insertId, !isBus_);
             return;
+        }
+        // The instrument slot: open and bypass, then its own items.
+        const bool bypass = channel->instrument.bypass;
         juce::PopupMenu menu;
         std::vector<std::function<void()>> actions;
         int item = 1;
         menu.addItem(item++, "Open");
         actions.push_back([this, insertId] { owner_.openInsertEditor(id_, insertId); });
-        menu.addItem(item++, "Bypass", true, insert->bypass);
-        const bool bypass = insert->bypass;
+        menu.addItem(item++, "Bypass", true, bypass);
         actions.push_back(
             [this, insertId, bypass]
             { owner_.onCommand(std::make_unique<core::SetInsertBypass>(id_, insertId, !bypass)); });
-        if (channel->hasInstrument() && insertId == channel->instrument.id)
-        {
-            showInstrumentSlotMenu(menu, actions, item);
-            return;
-        }
-        const int index = channel->insertIndex(insertId);
-        menu.addItem(item++, "Move up", index > 0);
-        actions.push_back(
-            [this, insertId, index]
-            { owner_.onCommand(std::make_unique<core::MoveInsert>(id_, insertId, index - 1)); });
-        menu.addItem(item++, "Move down", index + 1 < static_cast<int>(channel->inserts.size()));
-        actions.push_back(
-            [this, insertId, index]
-            { owner_.onCommand(std::make_unique<core::MoveInsert>(id_, insertId, index + 1)); });
-        juce::PopupMenu mix;
-        for (const int percent : {0, 25, 50, 75, 100})
-        {
-            mix.addItem(
-                item++, juce::String(percent) + "%", true, std::abs(insert->mix - percent / 100.0f) < 0.01f);
-            actions.push_back(
-                [this, insertId, percent]
-                { owner_.onCommand(std::make_unique<core::SetInsertMix>(id_, insertId, percent / 100.0f)); });
-        }
-        menu.addSubMenu("Wet/dry", mix);
-        // Key (sidechain) source, for inserts that take one: tracks for anyone,
-        // buses too when this channel is a bus.
-        const auto live = owner_.liveInsert ? owner_.liveInsert(insertId) : nullptr;
-        if (live != nullptr && live->acceptsSidechain())
-        {
-            juce::PopupMenu key;
-            addSidechainItems(key, actions, *owner_.project_, id_, *insert, owner_.onCommand);
-            item = static_cast<int>(actions.size()) + 1;
-            menu.addSubMenu("Sidechain", key);
-        }
-        // Extra outputs of a multi-output instrument: one aux track per pair.
-        if (live != nullptr && live->auxOutputCount() > 0 && !isBus_)
-        {
-            juce::PopupMenu outputs;
-            const auto& project = *owner_.project_;
-            for (int output = 1; output <= live->auxOutputCount(); ++output)
-            {
-                bool exists = false;
-                for (const auto& t : project.tracks)
-                    if (t.isAux() && t.auxTrack == id_ && t.auxInsert == insertId && t.auxOutput == output)
-                        exists = true;
-                outputs.addItem(item++, "Track for output " + juce::String(output + 1), !exists, exists);
-                const std::string name = channel->name;
-                actions.push_back(
-                    [this, insertId, output, name]
-                    {
-                        core::Track aux;
-                        aux.kind = core::TrackKind::aux;
-                        aux.name = name + " out " + std::to_string(output + 1);
-                        aux.auxTrack = id_;
-                        aux.auxInsert = insertId;
-                        aux.auxOutput = output;
-                        owner_.onCommand(std::make_unique<core::AddTrack>(aux));
-                    });
-            }
-            menu.addSubMenu("Outputs", outputs);
-        }
-        menu.addSeparator();
-        menu.addItem(item++, "Remove");
-        actions.push_back([this, insertId]
-                          { owner_.onCommand(std::make_unique<core::RemoveInsert>(id_, insertId)); });
-        menu.showMenuAsync(juce::PopupMenu::Options(),
-                           [actions](int result)
-                           {
-                               if (result >= 1 && static_cast<size_t>(result) <= actions.size())
-                                   actions[static_cast<size_t>(result) - 1]();
-                           });
+        showInstrumentSlotMenu(menu, actions, item);
     }
 
     // The rest of the instrument slot's menu: its outputs as tracks, replace and
@@ -1385,44 +1318,7 @@ private:
                                  });
     }
 
-    void showAddInsertMenu()
-    {
-        // Effects only: an instrument has its own slot.
-        auto built = buildPluginMenu(PluginKind::effect, owner_.pluginSources_);
-        auto& menu = built.menu;
-        std::vector<std::function<void()>> actions;
-        for (const auto& type : built.types)
-            actions.push_back(
-                [this, type]
-                {
-                    core::Insert insert;
-                    insert.type = type;
-                    insert.params = plugins::defaultParameters(type);
-                    owner_.onCommand(std::make_unique<core::AddInsert>(id_, insert));
-                });
-        int item = built.nextItem();
-        menu.addSeparator();
-        menu.addItem(item++, "Scan for plugins...");
-        actions.push_back(
-            [this]
-            {
-                if (owner_.onScanPlugins)
-                    owner_.onScanPlugins();
-            });
-        menu.addItem(item++, "Plugin browser...");
-        actions.push_back(
-            [this]
-            {
-                if (owner_.onOpenPluginBrowser)
-                    owner_.onOpenPluginBrowser();
-            });
-        menu.showMenuAsync(juce::PopupMenu::Options().withTargetComponent(addInsert_),
-                           [actions](int result)
-                           {
-                               if (result >= 1 && static_cast<size_t>(result) <= actions.size())
-                                   actions[static_cast<size_t>(result) - 1]();
-                           });
-    }
+    void showAddInsertMenu() { owner_.showAddInsertMenu(id_, addInsert_); }
 
     void showAddSendMenu()
     {
@@ -1479,12 +1375,21 @@ class MixerView::MasterStrip final : public juce::Component
 {
 public:
     MasterStrip(MixerView& owner, const Theme& theme)
-        : owner_(owner), theme_(theme), cap_(theme), fader_(theme), meter_(theme, 2, true), value_(theme)
+        : owner_(owner), theme_(theme), cap_(theme), addInsert_(theme, "Insert"), fader_(theme),
+          meter_(theme, 2, true), value_(theme)
     {
         setOpaque(true);
         cap_.set("Master", theme_.colours.textPrimary, false, 0, {});
         cap_.setInterceptsMouseClicks(false, false);
         addAndMakeVisible(cap_);
+        // The inserts: on the whole mix, before the master fader.
+        insertsView_.setViewedComponent(&insertsHolder_, false);
+        insertsView_.setScrollBarsShown(false, false, true, false);
+        insertsView_.setScrollBarThickness(4);
+        addAndMakeVisible(insertsView_);
+        addInsert_.setTooltip("Add an insert on the whole mix, before the master fader");
+        addInsert_.onClick = [this] { owner_.showAddInsertMenu(core::masterId, addInsert_); };
+        insertsHolder_.addAndMakeVisible(addInsert_);
         fader_.setMaxDb(static_cast<float>(maxFaderDb));
         fader_.setTrackColour(theme_.colours.textPrimary);
         fader_.onDragStart = [this]
@@ -1525,6 +1430,40 @@ public:
         const juce::ScopedValueSetter<bool> guard(updating_, true);
         fader_.setGain(master.gain, juce::dontSendNotification);
         value_.setValue(db::fromGain(master.gain), juce::dontSendNotification);
+
+        const bool countChanged = inserts_.size() != master.inserts.size();
+        while (inserts_.size() > master.inserts.size())
+            inserts_.pop_back();
+        while (inserts_.size() < master.inserts.size())
+        {
+            auto made = std::make_unique<InsertSlot>(theme_);
+            insertsHolder_.addAndMakeVisible(*made);
+            inserts_.push_back(std::move(made));
+        }
+        for (size_t i = 0; i < master.inserts.size(); ++i)
+        {
+            const auto& insert = master.inserts[i];
+            const core::Id insertId = insert.id;
+            juce::String badge;
+            if (hosting::PluginRegistry::isHostedType(insert.type))
+                badge = insert.type.rfind("clap:", 0) == 0 ? "CLAP" : "VST3";
+            inserts_[i]->set(
+                juce::String::fromUTF8(owner_.insertDisplayName(insert.type).c_str()), badge, insert.bypass);
+            inserts_[i]->onOpen = [this, insertId] { owner_.openInsertEditor(core::masterId, insertId); };
+            inserts_[i]->onBypass = [this, insertId]
+            {
+                if (const auto* ins =
+                        owner_.project_ != nullptr ? owner_.project_->master.findInsert(insertId) : nullptr)
+                    owner_.onCommand(
+                        std::make_unique<core::SetInsertBypass>(core::masterId, insertId, !ins->bypass));
+            };
+            inserts_[i]->onMenu = [this, insertId]
+            { owner_.showInsertMenu(core::masterId, insertId, false); };
+            inserts_[i]->onReorder = [this, insertId](juce::Point<int> screen, bool released)
+            { reorderInsert(insertId, screen, released); };
+        }
+        if (countChanged)
+            resized();
     }
 
     void pushMeter(const rt::MeterBlock::Reading& r, double elapsedMs)
@@ -1548,6 +1487,15 @@ public:
     {
         loudness_ = r;
         repaint(loudnessArea_);
+    }
+
+    void paintOverChildren(juce::Graphics& g) override
+    {
+        if (reorderLineY_ >= 0)
+        {
+            g.setColour(theme_.colours.accent);
+            g.fillRect(insertsView_.getX(), reorderLineY_ - 1, insertsView_.getWidth(), 2);
+        }
     }
 
     void paint(juce::Graphics& g) override
@@ -1585,7 +1533,28 @@ public:
         cap_.setBounds(getLocalBounds().withHeight(control));
         area.removeFromTop(control + pad);
         const int loudnessH = 3 * (static_cast<int>(theme_.fonts.size.value) + 4);
-        if (!band_.isEmpty() && valueY_ + control <= getHeight() && band_.getBottom() + loudnessH <= valueY_)
+        const bool aligned =
+            !band_.isEmpty() && valueY_ + control <= getHeight() && band_.getBottom() + loudnessH <= valueY_;
+        // The inserts fill the room above the fader band (lined up with the
+        // channels), or take up to six slots of their own.
+        {
+            const int wanted = (static_cast<int>(inserts_.size()) + 1) * slotHeight + 4;
+            const int room = aligned ? band_.getY() - area.getY() - pad
+                                     : std::min(wanted, maxVisibleSlots * slotHeight + 4);
+            auto insertsArea = area.removeFromTop(std::max(slotHeight + 4, std::min(room, wanted)));
+            area.removeFromTop(pad);
+            insertsView_.setBounds(insertsArea.reduced(0, 2));
+            insertsHolder_.setSize(insertsView_.getWidth(),
+                                   (static_cast<int>(inserts_.size()) + 1) * slotHeight);
+            int y = 0;
+            for (auto& slot : inserts_)
+            {
+                slot->setBounds(0, y, insertsHolder_.getWidth(), slotHeight - 1);
+                y += slotHeight;
+            }
+            addInsert_.setBounds(0, y, insertsHolder_.getWidth(), slotHeight - 1);
+        }
+        if (aligned)
         {
             // Lined up with the channels: the same fader band and gain row, the
             // loudness readout between them.
@@ -1613,10 +1582,37 @@ public:
     }
 
 private:
+    void reorderInsert(core::Id insertId, juce::Point<int> screen, bool released)
+    {
+        const auto local = insertsHolder_.getLocalPoint(nullptr, screen);
+        const int count = static_cast<int>(inserts_.size());
+        const int index =
+            std::clamp(static_cast<int>(std::lround(static_cast<double>(local.y) / slotHeight)), 0, count);
+        if (!released)
+        {
+            reorderLineY_ = getLocalPoint(&insertsHolder_, juce::Point<int>(0, index * slotHeight)).y;
+            repaint();
+            return;
+        }
+        reorderLineY_ = -1;
+        repaint();
+        if (owner_.project_ == nullptr)
+            return;
+        const int from = owner_.project_->master.insertIndex(insertId);
+        const int to = index > from ? index - 1 : index;
+        if (from >= 0 && to != from)
+            owner_.onCommand(std::make_unique<core::MoveInsert>(core::masterId, insertId, to));
+    }
+
     MixerView& owner_;
     const Theme& theme_;
     bool updating_ = false;
     NameCap cap_;
+    juce::Viewport insertsView_;
+    juce::Component insertsHolder_;
+    std::vector<std::unique_ptr<InsertSlot>> inserts_;
+    AddSlot addInsert_;
+    int reorderLineY_ = -1;
     Fader fader_;
     Meter meter_;
     NumericField value_;
@@ -1662,6 +1658,142 @@ private:
 };
 
 // ----- view ---------------------------------------------------------------------------------
+
+void MixerView::showAddInsertMenu(core::Id channelId, juce::Component& target)
+{
+    // Effects only: an instrument has its own slot.
+    auto built = buildPluginMenu(PluginKind::effect, pluginSources_);
+    auto& menu = built.menu;
+    juce::Component::SafePointer<MixerView> safe(this);
+    std::vector<std::function<void()>> actions;
+    for (const auto& type : built.types)
+        actions.push_back(
+            [safe, channelId, type]
+            {
+                if (safe == nullptr || !safe->onCommand)
+                    return;
+                core::Insert insert;
+                insert.type = type;
+                insert.params = plugins::defaultParameters(type);
+                safe->onCommand(std::make_unique<core::AddInsert>(channelId, insert));
+            });
+    int item = built.nextItem();
+    menu.addSeparator();
+    menu.addItem(item++, "Scan for plugins...");
+    actions.push_back(
+        [safe]
+        {
+            if (safe != nullptr && safe->onScanPlugins)
+                safe->onScanPlugins();
+        });
+    menu.addItem(item++, "Plugin browser...");
+    actions.push_back(
+        [safe]
+        {
+            if (safe != nullptr && safe->onOpenPluginBrowser)
+                safe->onOpenPluginBrowser();
+        });
+    menu.showMenuAsync(juce::PopupMenu::Options().withTargetComponent(target),
+                       [actions](int result)
+                       {
+                           if (result >= 1 && static_cast<size_t>(result) <= actions.size())
+                               actions[static_cast<size_t>(result) - 1]();
+                       });
+}
+
+void MixerView::showInsertMenu(core::Id channelId, core::Id insertId, bool offerOutputs)
+{
+    if (project_ == nullptr)
+        return;
+    const auto* channel = project_->findChannel(channelId);
+    const auto* insert = channel != nullptr ? channel->findInsert(insertId) : nullptr;
+    if (insert == nullptr)
+        return;
+    juce::Component::SafePointer<MixerView> safe(this);
+    const auto command = [safe](std::unique_ptr<core::Command> c)
+    {
+        if (safe != nullptr && safe->onCommand)
+            safe->onCommand(std::move(c));
+    };
+    juce::PopupMenu menu;
+    std::vector<std::function<void()>> actions;
+    int item = 1;
+    menu.addItem(item++, "Open");
+    actions.push_back(
+        [safe, channelId, insertId]
+        {
+            if (safe != nullptr)
+                safe->openInsertEditor(channelId, insertId);
+        });
+    menu.addItem(item++, "Bypass", true, insert->bypass);
+    const bool bypass = insert->bypass;
+    actions.push_back([command, channelId, insertId, bypass]
+                      { command(std::make_unique<core::SetInsertBypass>(channelId, insertId, !bypass)); });
+    const int index = channel->insertIndex(insertId);
+    menu.addItem(item++, "Move up", index > 0);
+    actions.push_back([command, channelId, insertId, index]
+                      { command(std::make_unique<core::MoveInsert>(channelId, insertId, index - 1)); });
+    menu.addItem(item++, "Move down", index + 1 < static_cast<int>(channel->inserts.size()));
+    actions.push_back([command, channelId, insertId, index]
+                      { command(std::make_unique<core::MoveInsert>(channelId, insertId, index + 1)); });
+    juce::PopupMenu mix;
+    for (const int percent : {0, 25, 50, 75, 100})
+    {
+        mix.addItem(
+            item++, juce::String(percent) + "%", true, std::abs(insert->mix - percent / 100.0f) < 0.01f);
+        actions.push_back(
+            [command, channelId, insertId, percent]
+            { command(std::make_unique<core::SetInsertMix>(channelId, insertId, percent / 100.0f)); });
+    }
+    menu.addSubMenu("Wet/dry", mix);
+    // Key (sidechain) source, for inserts that take one: tracks for anyone, buses
+    // too when the channel is a bus. The master's inserts run on the finished mix
+    // and take no key.
+    const auto live = liveInsert ? liveInsert(insertId) : nullptr;
+    if (live != nullptr && live->acceptsSidechain() && channelId != core::masterId)
+    {
+        juce::PopupMenu key;
+        addSidechainItems(key, actions, *project_, channelId, *insert, onCommand);
+        item = static_cast<int>(actions.size()) + 1;
+        menu.addSubMenu("Sidechain", key);
+    }
+    // Extra outputs of a multi-output instrument: one aux track per pair.
+    if (live != nullptr && live->auxOutputCount() > 0 && offerOutputs)
+    {
+        juce::PopupMenu outputs;
+        for (int output = 1; output <= live->auxOutputCount(); ++output)
+        {
+            bool exists = false;
+            for (const auto& t : project_->tracks)
+                if (t.isAux() && t.auxTrack == channelId && t.auxInsert == insertId && t.auxOutput == output)
+                    exists = true;
+            outputs.addItem(item++, "Track for output " + juce::String(output + 1), !exists, exists);
+            const std::string name = channel->name;
+            actions.push_back(
+                [command, channelId, insertId, output, name]
+                {
+                    core::Track aux;
+                    aux.kind = core::TrackKind::aux;
+                    aux.name = name + " out " + std::to_string(output + 1);
+                    aux.auxTrack = channelId;
+                    aux.auxInsert = insertId;
+                    aux.auxOutput = output;
+                    command(std::make_unique<core::AddTrack>(aux));
+                });
+        }
+        menu.addSubMenu("Outputs", outputs);
+    }
+    menu.addSeparator();
+    menu.addItem(item++, "Remove");
+    actions.push_back([command, channelId, insertId]
+                      { command(std::make_unique<core::RemoveInsert>(channelId, insertId)); });
+    menu.showMenuAsync(juce::PopupMenu::Options(),
+                       [actions](int result)
+                       {
+                           if (result >= 1 && static_cast<size_t>(result) <= actions.size())
+                               actions[static_cast<size_t>(result) - 1]();
+                       });
+}
 
 std::string MixerView::insertDisplayName(const std::string& type) const
 {

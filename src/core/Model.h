@@ -4,6 +4,7 @@
 #include <cmath>
 #include <cstdint>
 #include <functional>
+#include <limits>
 #include <string>
 #include <vector>
 
@@ -21,6 +22,8 @@ namespace northlight::core
 
 using Id = std::uint64_t;
 constexpr Id invalidId = 0;
+// The master's channel id: fixed, and never handed out (allocateId counts up from 1).
+constexpr Id masterId = std::numeric_limits<Id>::max();
 using SamplePosition = std::int64_t;
 
 struct AudioClip
@@ -432,9 +435,16 @@ struct Bus : Channel
     bool operator==(const Bus&) const = default;
 };
 
-struct Master
+// The master is a channel so the insert commands, the engine's instance cache
+// and the editors work on its inserts as on any other channel's. Only its gain
+// and inserts are used: it has no pan, sends, strip, routing or automation.
+struct Master : Channel
 {
-    float gain = 1.0f;
+    Master()
+    {
+        id = masterId;
+        name = "Master";
+    }
     bool operator==(const Master&) const = default;
 };
 
@@ -491,7 +501,8 @@ struct Project
     // 8: folder tracks; frozen tracks.
     // 9: controller events (CC, pitch bend, pressure) in MIDI clips.
     // 10: stereo input buses on tracks.
-    static constexpr int schemaVersion = 10;
+    // 11: inserts on the master.
+    static constexpr int schemaVersion = 11;
     static constexpr int oldestReadableVersion = 2; // older files are refused
 
     std::string name = "Untitled";

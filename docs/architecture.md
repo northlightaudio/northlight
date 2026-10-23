@@ -221,6 +221,14 @@ silence so placement stays exact, and rewrites the WAV headers every second. A
 sidecar beside each file describes where it belongs, so after a crash the next launch
 can repair the files and put them back where they were captured.
 
+The master is a `Channel` with a fixed id (`core::masterId`), so the insert
+commands, the engine's instance cache and the editors treat its inserts like any
+channel's. The snapshot compiles them into a chain node of their own
+(`Snapshot::masterChain`) that the renderer runs in place on the summed mix before
+the master fader; its latency adds to the output latency, so playback, recording
+placement and export stay compensated. Master inserts take no key, and a freeze
+renders without them.
+
 Recordings are placed back by the measured round-trip latency (from loopback
 calibration, stored per device, rate and buffer size) or the driver's reported
 latency, plus the graph's output latency. Loop recording produces takes in a take

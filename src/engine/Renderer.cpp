@@ -999,6 +999,15 @@ void Renderer::renderSpan(const Snapshot& snapshot,
         routeChannel(snapshot, bus, context, left, right, numSamples);
     }
 
+    // The master's inserts, before its fader.
+    if (!snapshot.masterChain.inserts.empty())
+        processChain(snapshot,
+                     snapshot.masterChain,
+                     playHeadAt(snapshot, position, context.playing),
+                     left,
+                     right,
+                     numSamples);
+
     const float master1 = snapshot.master != nullptr
                               ? snapshot.master->targetGain.load(std::memory_order_relaxed)
                               : snapshot.masterGain;

@@ -402,6 +402,8 @@ void ProjectSession::mirrorOwnedParameters(const std::vector<core::Command::Para
         for (auto& b : project_.buses)
             if (auto* i = b.findInsert(touch.insertId))
                 insert = i;
+        if (auto* i = project_.master.findInsert(touch.insertId))
+            insert = i;
         if (insert == nullptr)
             continue;
         // Up to the touched parameter (a plugin can have thousands; the list
@@ -814,6 +816,7 @@ void ProjectSession::commitLoad()
         collect(track);
     for (const auto& bus : project_.buses)
         collect(bus);
+    collect(project_.master);
     loadCommitted_ = true;
     loadPluginsStartMs_ = nowMs();
     notify(Change::structure);
@@ -1934,6 +1937,7 @@ void ProjectSession::captureInsertStates()
         capture(t);
     for (auto& b : project_.buses)
         capture(b);
+    capture(project_.master);
 }
 
 // ----- internals ---------------------------------------------------------------------------
@@ -2308,6 +2312,7 @@ void ProjectSession::playHostedAutomation()
             collect(t);
         for (const auto& b : project_.buses)
             collect(b);
+        collect(project_.master);
         for (const auto& [channelId, insertId] : hosted)
         {
             const auto instance = engine_.insertInstance(insertId);
@@ -2395,6 +2400,7 @@ void ProjectSession::checkCrashedPlugins()
         check(track);
     for (const auto& bus : project_.buses)
         check(bus);
+    check(project_.master);
 }
 
 void ProjectSession::poll()

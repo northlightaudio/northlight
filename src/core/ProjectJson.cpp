@@ -40,14 +40,15 @@ void migrate(json& j, int from)
             case 2: // 2 -> 3, ..., 6 -> 7 only add optional fields
             case 3:
             case 4:
-            case 5: // 6 adds the tempo track and clip stretch
-            case 6: // 7 adds take groups; a file without them has none (its clips stay as they are)
-            case 7: // 8 adds folder tracks and frozen tracks
-            case 8: // 9: MIDI clips gain an optional "controllers" array; a clip
-                    // without one has no controller events, which is what older
-                    // versions meant
-            case 9: // 10: tracks gain an optional "inputBus"; without one the
-                    // track takes its single input channel, as before
+            case 5:  // 6 adds the tempo track and clip stretch
+            case 6:  // 7 adds take groups; a file without them has none (its clips stay as they are)
+            case 7:  // 8 adds folder tracks and frozen tracks
+            case 8:  // 9: MIDI clips gain an optional "controllers" array; a clip
+                     // without one has no controller events, which is what older
+                     // versions meant
+            case 9:  // 10: tracks gain an optional "inputBus"; without one the
+                     // track takes its single input channel, as before
+            case 10: // 11: the master gains optional "inserts"; without them it has none
                 break;
             default:
                 break;
@@ -283,6 +284,17 @@ void channelToJson(json& j, const Channel& c)
         j["automation"] =
             json{{"mode", modes[static_cast<int>(c.automationMode)]}, {"lanes", std::move(lanes)}};
     }
+}
+
+// The master keeps only what it uses: its gain and its inserts.
+json masterToJson(const Master& m)
+{
+    json full;
+    channelToJson(full, m);
+    json j{{"gain", m.gain}};
+    if (const auto it = full.find("inserts"); it != full.end())
+        j["inserts"] = *it;
+    return j;
 }
 
 void channelFromJson(const json& j, Channel& c)
@@ -629,7 +641,7 @@ std::string projectToJson(const Project& p, bool pretty, const ParameterKeys* ke
            {"timeSignature",
             json{{"numerator", p.timeSignature.numerator}, {"denominator", p.timeSignature.denominator}}},
            {"nextId", p.nextId},
-           {"master", json{{"gain", p.master.gain}}},
+           {"master", masterToJson(p.master)},
            {"buses", std::move(buses)},
            {"groups", std::move(groups)},
            {"markers", std::move(markers)},
@@ -758,7 +770,12 @@ std::optional<Project> projectFromJson(const std::string& text, std::string* err
                                            m.value("length", SamplePosition{0})});
         p.sortMarkers();
         if (const auto it = j.find("master"); it != j.end() && it->is_object())
-            p.master.gain = it->value("gain", 1.0f);
+        {
+            Master read;
+            channelFromJson(*it, read);
+            p.master.gain = read.gain;
+            p.master.inserts = std::move(read.inserts);
+        }
 
         // Guarantee ids stay unique even if the file's nextId is stale, and give a
         // duplicated clip or insert id (a hand-edited or corrupted file) a fresh one
@@ -784,6 +801,8 @@ std::optional<Project> projectFromJson(const std::string& text, std::string* err
                     maxId = std::max(maxId, e.id);
             }
         }
+        for (const auto& i : p.master.inserts)
+            maxId = std::max(maxId, i.id);
         for (const auto& b : p.buses)
         {
             maxId = std::max(maxId, b.id);
@@ -862,6 +881,8 @@ std::optional<Project> projectFromJson(const std::string& text, std::string* err
             for (auto& l : b.automation)
                 fresh(l.id);
         }
+        for (auto& i : p.master.inserts)
+            fresh(i.id);
         for (auto& g : p.groups)
             fresh(g.id);
         for (auto& m : p.markers)
@@ -941,6 +962,7 @@ bool reconcileParameters(Project& project, const ParameterKeys& keys)
         reconcileChannel(t);
     for (auto& b : project.buses)
         reconcileChannel(b);
+    reconcileChannel(project.master);
     return changed;
 }
 

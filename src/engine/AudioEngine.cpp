@@ -302,6 +302,7 @@ void AudioEngine::applyLiveValues(const core::Project& project)
         channel(t);
     for (const auto& b : project.buses)
         channel(b);
+    channel(project.master);
     runtimes_.master()->targetGain.store(project.master.gain, std::memory_order_relaxed);
 }
 
@@ -321,6 +322,8 @@ void AudioEngine::pushInsertParameters(const core::Project& project,
         for (const auto& b : project.buses)
             if (const auto* i = b.findInsert(touch.insertId))
                 insert = i;
+        if (const auto* i = project.master.findInsert(touch.insertId))
+            insert = i;
         if (insert != nullptr && touch.parameter >= 0 &&
             static_cast<size_t>(touch.parameter) < insert->params.size())
             instance->setParameter(touch.parameter, insert->params[static_cast<size_t>(touch.parameter)]);

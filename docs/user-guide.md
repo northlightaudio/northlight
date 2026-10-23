@@ -80,7 +80,8 @@ once.
 send to. **Inserts** take the built-in processors and any VST3 or CLAP plugin found by
 a scan; a plugin's window has bypass, a wet/dry mix, presets and pin. Compressors can
 be sidechained from another channel. Plugin latency is compensated everywhere,
-including in recordings.
+including in recordings. The master has inserts too, on the whole mix before its
+fader.
 
 ## Automation
 

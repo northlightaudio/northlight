@@ -82,6 +82,8 @@ For how the pieces fit together see [architecture.md](architecture.md).
 
 | Date | Decision | Why |
 |---|---|---|
+| 2026-10-22 | The master is a channel with a fixed id, and its inserts run before its fader | Every insert command, plugin window and the instance cache already work on a channel id, so the master joins them instead of growing a parallel set. Pre-fader keeps the master's chain like every other channel's and lets the fader trim the result. |
+| 2026-10-22 | Master inserts take no sidechain key | Everything has been summed when they run; a key from a track would have to be held back by the whole graph to line up, and keying the mix bus is rare. |
 | 2026-10-19 | Tracks and buses share one Channel type and one set of fader commands | Their fader sections, routing and sends are identical, so undo stays uniform and the mixer draws both with one strip. |
 | 2026-10-19 | Solo-in-place propagates both up and down the routing | Soloing a bus plays what feeds it, and soloing a track keeps its bus and the master alive. Resolving this at compile keeps the real-time path a flag check. |
 | 2026-10-19 | Routing cycles are refused at the command layer | Silently rewiring a cycle would show one graph and play another. |

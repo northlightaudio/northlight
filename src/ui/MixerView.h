@@ -103,6 +103,12 @@ private:
     class MasterStrip;
     class EditorWindow;
 
+    // The insert menus every strip shares, the master's included: adding an effect
+    // (the menu opens on `target`), and an insert's own menu (open, bypass, order,
+    // wet/dry, its key and, where `offerOutputs`, an instrument's extra outputs).
+    void showAddInsertMenu(core::Id channelId, juce::Component& target);
+    void showInsertMenu(core::Id channelId, core::Id insertId, bool offerOutputs);
+
     void timerCallback() override;
     void rebuildStrips();
     void layoutStrips();
