@@ -1,6 +1,7 @@
 #include "ui/shell/Panels.h"
 
 #include "ui/NorthlightLookAndFeel.h"
+#include "ui/OnScreen.h"
 
 #include <cmath>
 
@@ -370,7 +371,8 @@ FloatingPanelWindow::FloatingPanelWindow(const Theme& theme, const PanelInfo& in
     : juce::DocumentWindow(info.title,
                            theme.colours.surface0,
                            juce::DocumentWindow::closeButton | juce::DocumentWindow::minimiseButton |
-                               juce::DocumentWindow::maximiseButton),
+                               juce::DocumentWindow::maximiseButton,
+                           !offscreenMode()),
       theme_(theme), info_(info), panel_(&panel), pin_(theme, Icon::pin, "Keep on top")
 {
     setUsingNativeTitleBar(true);
@@ -550,7 +552,7 @@ void PanelManager::openFloating(Entry& entry)
 {
     if (entry.window != nullptr)
     {
-        entry.window->toFront(true);
+        bringToFront(*entry.window);
         return;
     }
     entry.window = std::make_unique<FloatingPanelWindow>(theme_, entry.info, *entry.panel);
@@ -590,7 +592,7 @@ void PanelManager::openFloating(Entry& entry)
         bounds = bounds.withCentre(displays.getPrimaryDisplay()->userBounds.toNearestInt().getCentre());
     entry.window->setBounds(bounds);
     entry.window->setPinned(entry.pinned);
-    entry.window->setVisible(true);
+    showWindow(*entry.window);
     entry.panel->setVisible(true);
     entry.visible = true;
 }
@@ -703,7 +705,7 @@ bool PanelManager::handleKey(const juce::KeyPress& key)
             {
                 // Already showing: focus it (a floating window comes to the front).
                 if (entry->window != nullptr)
-                    entry->window->toFront(true);
+                    bringToFront(*entry->window);
                 entry->panel->grabKeyboardFocus();
             }
             else

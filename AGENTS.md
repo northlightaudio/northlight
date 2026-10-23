@@ -50,7 +50,8 @@ environment:
 
 - `-LowPriority` runs the build and tests at Idle priority and `-Jobs <n>` caps the
   parallel compiles. Use both when the user says they are gaming or otherwise busy
-  on the machine, and do not launch the app (no `--capture` runs) until they are back.
+  on the machine. Launch the app then only with `--offscreen`, which runs it with
+  no window on screen (captures still work); otherwise wait until they are back.
 
 - Presets: `windows-debug` (real-time checks on), `windows-relwithdebinfo`,
   `windows-release`, `ci`. Output goes to `build/<preset>/`.

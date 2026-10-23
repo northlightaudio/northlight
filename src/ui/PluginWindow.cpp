@@ -2,6 +2,7 @@
 
 #include "ui/Icons.h"
 #include "ui/NorthlightLookAndFeel.h"
+#include "ui/OnScreen.h"
 
 #include <functional>
 #include <vector>
@@ -283,7 +284,8 @@ PluginWindow::PluginWindow(core::Id channelId,
                            bool pinned)
     : juce::DocumentWindow(trackName.isEmpty() ? pluginName : trackName + " - " + pluginName,
                            Theme::dark().colours.canvas,
-                           juce::DocumentWindow::closeButton),
+                           juce::DocumentWindow::closeButton,
+                           !offscreenMode()),
       keepAlive_(std::move(keepAlive)), channelId_(channelId), insertId_(insertId)
 {
     setUsingNativeTitleBar(true);
@@ -293,7 +295,7 @@ PluginWindow::PluginWindow(core::Id channelId,
     setContentOwned(holder.release(), true);
     setResizable(resizable, false);
     setAlwaysOnTop(pinned);
-    setVisible(true);
+    showWindow(*this);
 }
 
 PluginWindow::~PluginWindow()

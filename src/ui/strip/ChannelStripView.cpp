@@ -6,6 +6,7 @@
 #include "plugins/StripPresets.h"
 #include "ui/Motion.h"
 #include "ui/NorthlightLookAndFeel.h"
+#include "ui/OnScreen.h"
 #include "ui/components/Sheet.h"
 #include "ui/strip/UserStripPresets.h"
 
@@ -292,7 +293,7 @@ void ChannelStripView::timerCallback()
     const double now = juce::Time::getMillisecondCounterHiRes();
     const double elapsed = lastTickMs_ > 0.0 ? std::min(100.0, now - lastTickMs_) : 16.0;
     lastTickMs_ = now;
-    const bool showing = isShowing();
+    const bool showing = onScreen(*this);
     if (!showing)
     {
         if (wasShowing_)

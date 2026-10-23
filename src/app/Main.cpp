@@ -15,6 +15,7 @@
 #include "plugins/FxTracks.h"
 #include "plugins/StripPresets.h"
 #include "ui/NorthlightLookAndFeel.h"
+#include "ui/OnScreen.h"
 #include "ui/PianoRoll.h"
 #include "ui/PreferencesView.h"
 #include "ui/SplashScreen.h"
@@ -68,8 +69,10 @@ public:
         juce::LookAndFeel::setDefaultLookAndFeel(lookAndFeel_.get());
 
         // The splash, once the theme is loaded; it reports each step below.
+        // --offscreen: no window of any kind reaches the screen (no splash either).
+        ui::offscreenMode() = commandLine.contains("--offscreen");
         juce::Component::SafePointer<ui::SplashScreen> splash;
-        if (!commandLine.contains("--no-splash"))
+        if (!commandLine.contains("--no-splash") && !ui::offscreenMode())
             splash = ui::SplashScreen::showStartup(ui::Theme::dark(),
                                                    juce::String::fromUTF8(version::display().c_str()));
         const auto step = [&splash](const juce::String& text, float progress)
@@ -114,6 +117,9 @@ public:
     //   --audio-setup        open the Audio Setup window
     //   --about              open the About box (the splash screen, until clicked)
     //   --no-splash          start without the splash screen
+    //   --offscreen          run with no window on screen at all (no splash, nothing that can
+    //                        take the focus); windows still lay out and paint, so --capture
+    //                        works while someone is using the machine
     //   --import <file>      import an audio file onto a new track (repeatable)
     //   --play               start the transport
     //   --record <n>         create n armed tracks on inputs 1..n and start recording
@@ -140,6 +146,9 @@ public:
     //   --benchmark-ui <s>   play and scroll for s seconds, print frame percentiles, quit
     //   --benchmark-panels <n>  open and close the inspector n times with the Editor
     //                        docked, print the slide's frame intervals, quit
+    //   --insert <type>      add a built-in insert (northlight.glue, ...) to the first track that
+    //                        makes audio
+    //   --master-insert <type>  add a built-in insert to the master
     //   --bus                add a bus
     //   --remove-bus         remove the last bus the way the mixer does
     //   --first-run          show the first-run sheet
@@ -605,6 +614,27 @@ public:
             }
             else if (arg == "--strip" && i + 1 < tokens.size())
                 applyStripFlag(tokens.getReference(++i).text.unquoted());
+            else if ((arg == "--insert" || arg == "--master-insert") && i + 1 < tokens.size())
+            {
+                // A built-in insert on the master, or on the first track that makes
+                // audio (the one the Editor panel shows at launch).
+                const auto type = tokens.getReference(++i).text.unquoted().toStdString();
+                core::Id channel = arg == "--master-insert" ? core::masterId : core::invalidId;
+                if (channel == core::invalidId)
+                    for (const auto& t : session_->project().tracks)
+                        if (t.hasAudio())
+                        {
+                            channel = t.id;
+                            break;
+                        }
+                if (channel != core::invalidId)
+                {
+                    core::Insert insert;
+                    insert.type = type;
+                    insert.params = plugins::defaultParameters(type);
+                    session_->execute(std::make_unique<core::AddInsert>(channel, insert));
+                }
+            }
             else if (arg == "--bus")
                 mainWindow_->addBus();
             else if (arg == "--remove-bus")

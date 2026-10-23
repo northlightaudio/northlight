@@ -4,6 +4,7 @@
 #include "ui/Db.h"
 #include "ui/Motion.h"
 #include "ui/NorthlightLookAndFeel.h"
+#include "ui/OnScreen.h"
 #include "ui/PluginMenu.h"
 #include "ui/SendMenu.h"
 #include "ui/SidechainMenu.h"
@@ -786,7 +787,7 @@ void EditorPanel::timerCallback()
     const double elapsed = lastTickMs_ > 0.0 ? std::min(100.0, now - lastTickMs_) : 16.0;
     lastTickMs_ = now;
     // The built-ins' displays, while the panel shows.
-    if (!isShowing())
+    if (!onScreen(*this))
     {
         if (wasShowing_)
         {

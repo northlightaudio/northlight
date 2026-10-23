@@ -24,6 +24,8 @@ class UserSettings;
 class MainWindow final : public juce::DocumentWindow
 {
 public:
+    // With ui::offscreenMode() (--offscreen) the window never gets a native
+    // window: it lays out, ticks and paints for --capture, unseen.
     MainWindow(const juce::String& name,
                audio::AudioDeviceLayer& audio,
                ProjectSession& session,
@@ -107,6 +109,8 @@ private:
     class Content;
     class AudioSetupWindow;
     class PreferencesWindow;
+
+    std::unique_ptr<juce::TimedCallback> offscreenPainter_; // --offscreen only
 
     audio::AudioDeviceLayer& audio_;
     ProjectSession& session_;

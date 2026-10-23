@@ -24,6 +24,7 @@ For how the pieces fit together see [architecture.md](architecture.md).
 | Date | Decision | Why |
 |---|---|---|
 | 2026-10-19 | C++20 and JUCE 8, not Rust | VST3 hosting and plugin-window embedding are mature in JUCE and immature in Rust. |
+| 2026-10-22 | Unattended captures while the machine is in use run with no native window (`--offscreen`), not on another virtual desktop | A window on another desktop switched the user there: Windows follows activation to a window's desktop, and JUCE activates windows as it makes them (a window created on the desktop takes the foreground, `setUsingNativeTitleBar` brings it to the front) and on `grabKeyboardFocus`. Without a native window nothing can be activated; the windows still lay out, tick and paint (four times a second, so parts that load on their first paint are ready for the capture). |
 | 2026-10-19 | Own engine rather than Tracktion Engine | Licensing freedom and control of the threading and data model. |
 | 2026-10-19 | Dependencies via `FetchContent`, no vcpkg yet | Nothing yet needs a package with a real build step. nlohmann::json is header-only and comes the same way. |
 | 2026-10-19 | JUCE modules compiled once into `northlight_juce` and re-exported | JUCE modules add their sources to every consumer, so several consumers would give duplicate symbols. One target also gives every consumer the same module settings. |

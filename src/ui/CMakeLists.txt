@@ -54,6 +54,7 @@ add_library(northlight_ui STATIC
     shell/StatusBar.h
     shell/StatusBar.cpp
     InputChoices.h
+    OnScreen.h
     Selection.h
     Db.h
     Motion.h

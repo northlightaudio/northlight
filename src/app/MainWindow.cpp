@@ -21,6 +21,7 @@
 #include "ui/MediaBrowser.h"
 #include "ui/MixerView.h"
 #include "ui/NorthlightLookAndFeel.h"
+#include "ui/OnScreen.h"
 #include "ui/PianoRoll.h"
 #include "ui/PluginBrowser.h"
 #include "ui/PreferencesView.h"
@@ -2972,7 +2973,8 @@ public:
     AudioSetupWindow(MainWindow& owner, audio::AudioDeviceLayer& audio)
         : juce::DocumentWindow("Audio Setup",
                                ui::Theme::dark().colours.surface0,
-                               juce::DocumentWindow::closeButton | juce::DocumentWindow::minimiseButton),
+                               juce::DocumentWindow::closeButton | juce::DocumentWindow::minimiseButton,
+                               !ui::offscreenMode()),
           owner_(owner)
     {
         setUsingNativeTitleBar(true);
@@ -2988,7 +2990,7 @@ public:
         setResizeLimits(ui::AudioSetupView::minimumWidth, ui::AudioSetupView::minimumHeight, 4000, 4000);
         centreAroundComponent(&owner, getWidth(), getHeight());
         resized();
-        setVisible(true);
+        ui::showWindow(*this);
     }
 
     ~AudioSetupWindow() override
@@ -3040,7 +3042,8 @@ public:
     PreferencesWindow(MainWindow& owner, std::unique_ptr<ui::PreferencesView> view)
         : juce::DocumentWindow("Preferences",
                                ui::Theme::dark().colours.surface0,
-                               juce::DocumentWindow::closeButton | juce::DocumentWindow::minimiseButton),
+                               juce::DocumentWindow::closeButton | juce::DocumentWindow::minimiseButton,
+                               !ui::offscreenMode()),
           owner_(owner), view_(view.get())
     {
         setUsingNativeTitleBar(true);
@@ -3048,7 +3051,7 @@ public:
         setResizable(true, false);
         setResizeLimits(640, 420, 4000, 4000);
         centreAroundComponent(&owner, getWidth(), getHeight());
-        setVisible(true);
+        ui::showWindow(*this);
     }
     ui::PreferencesView& view() noexcept { return *view_; }
     void closeButtonPressed() override
@@ -3082,7 +3085,10 @@ MainWindow::MainWindow(const juce::String& name,
                        audio::AudioDeviceLayer& audio,
                        ProjectSession& session,
                        UserSettings& settings)
-    : juce::DocumentWindow(name, ui::Theme::dark().colours.canvas, juce::DocumentWindow::allButtons),
+    : juce::DocumentWindow(name,
+                           ui::Theme::dark().colours.canvas,
+                           juce::DocumentWindow::allButtons,
+                           !ui::offscreenMode()), // off-screen: never a native window
       audio_(audio), session_(session), settings_(settings)
 {
     // Custom chrome (screens/shell.md): no Windows title bar; the header bar is the
@@ -3094,11 +3100,25 @@ MainWindow::MainWindow(const juce::String& name,
     setResizable(true, false);
     setResizeLimits(1280, 720, 10000, 10000);
     centreWithSize(getWidth(), getHeight());
-    setVisible(true);
+    ui::showWindow(*this); // --offscreen: no native window at all
+    if (ui::offscreenMode())
+    {
+        // Nothing paints a window that is not on screen, and some parts load what
+        // they draw on their first paint (a clip's waveform peaks): paint into a
+        // throwaway image a few times a second, as the screen would.
+        offscreenPainter_ = std::make_unique<juce::TimedCallback>(
+            [this]
+            {
+                if (auto* content = getContentComponent())
+                    content->createComponentSnapshot(content->getLocalBounds(), true, 1.0f);
+            });
+        offscreenPainter_->startTimer(250);
+    }
 }
 
 MainWindow::~MainWindow()
 {
+    offscreenPainter_.reset();
     preferencesWindow_.reset();
     audioSetupWindow_.reset();
 }
@@ -3137,7 +3157,7 @@ void MainWindow::showAudioSetup()
 {
     if (audioSetupWindow_ == nullptr)
         audioSetupWindow_ = std::make_unique<AudioSetupWindow>(*this, audio_);
-    audioSetupWindow_->toFront(true);
+    ui::bringToFront(*audioSetupWindow_);
 }
 
 void MainWindow::closeAudioSetup()
@@ -3180,7 +3200,7 @@ void MainWindow::showPreferences(const juce::String& page)
     }
     if (page.isNotEmpty())
         preferencesWindow_->view().showPage(page);
-    preferencesWindow_->toFront(true);
+    ui::bringToFront(*preferencesWindow_);
 }
 
 void MainWindow::closePreferences()
@@ -3339,7 +3359,7 @@ juce::StringArray MainWindow::capture(const juce::File& folder, float scale)
     std::function<void(juce::Component&)> visit = [&](juce::Component& component)
     {
         const auto id = component.getComponentID();
-        if (id.startsWith("capture:") && component.isShowing() && !component.getLocalBounds().isEmpty())
+        if (id.startsWith("capture:") && ui::onScreen(component) && !component.getLocalBounds().isEmpty())
             save(component, id.fromFirstOccurrenceOf(":", false, false));
         for (auto* child : component.getChildren())
             visit(*child);

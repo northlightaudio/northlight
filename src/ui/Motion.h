@@ -1,5 +1,7 @@
 #pragma once
 
+#include "ui/OnScreen.h"
+
 #include <juce_gui_basics/juce_gui_basics.h>
 
 #include <cmath>
@@ -122,7 +124,7 @@ private:
         }
         if (waiting_)
         {
-            if (!component_->isShowing())
+            if (!onScreen(*component_))
                 return;
             waiting_ = false; // on screen: the clock starts now
             startMs_ = juce::Time::getMillisecondCounterHiRes();

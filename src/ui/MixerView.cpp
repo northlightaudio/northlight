@@ -14,6 +14,7 @@
 #include "ui/InstrumentOutputs.h"
 #include "ui/Motion.h"
 #include "ui/NorthlightLookAndFeel.h"
+#include "ui/OnScreen.h"
 #include "ui/PluginMenu.h"
 #include "ui/SendMenu.h"
 #include "ui/SidechainMenu.h"
@@ -1628,13 +1629,14 @@ class MixerView::EditorWindow final : public juce::DocumentWindow
 {
 public:
     EditorWindow(MixerView& owner, std::unique_ptr<InsertEditor> editor, const juce::String& title)
-        : juce::DocumentWindow(title, Theme::dark().colours.background, juce::DocumentWindow::closeButton),
+        : juce::DocumentWindow(
+              title, Theme::dark().colours.background, juce::DocumentWindow::closeButton, !offscreenMode()),
           owner_(owner), editor_(editor.get())
     {
         setUsingNativeTitleBar(true);
         setContentOwned(editor.release(), true);
         setResizable(false, false);
-        setVisible(true);
+        showWindow(*this);
     }
 
     InsertEditor& editor() noexcept { return *editor_; }
@@ -1805,13 +1807,13 @@ void MixerView::openInsertEditor(core::Id channelId, core::Id insertId)
     for (auto& w : editors_)
         if (w->editor().insertId() == insertId)
         {
-            w->toFront(true);
+            bringToFront(*w);
             return;
         }
     for (auto& w : pluginWindows_)
         if (w->insertId() == insertId)
         {
-            w->toFront(true);
+            bringToFront(*w);
             return;
         }
     if (project_ == nullptr)

@@ -141,6 +141,22 @@ windows and panels, build example material (tracks, instruments, automation, tak
 tempo changes), drive the transport and recording, and run benchmarks. The full list
 with what each does is at the top of `src/app/Main.cpp`.
 
+### Captures while the machine is in use
+
+`--offscreen` runs Northlight with no window on screen at all: no splash, and no
+native window behind the main window, Audio Setup, Preferences, plugin windows or
+floating panels. They are still built, laid out, ticked and painted, so `--capture`
+saves the same PNGs, but nothing can appear, take the focus or switch a virtual
+desktop. Use it for captures while someone works or plays on the machine:
+
+```powershell
+Northlight.exe --offscreen --demo-song "$env:TEMP\demo.northlight" --play --master-gain -120 --capture "$env:TEMP\shots" 6
+```
+
+(An earlier `--other-desktop` put the window on another virtual desktop. Windows
+follows a window's activation to its desktop, and the app grabs the keyboard focus
+in places, so it could switch the user's desktop; it was removed.)
+
 ### Finding where clicks come from
 
 `--output-tap <folder>` records exactly what Northlight hands the audio driver,

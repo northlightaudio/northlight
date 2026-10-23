@@ -2,6 +2,7 @@
 
 #include "plugins/BuiltIns.h"
 #include "ui/NorthlightLookAndFeel.h"
+#include "ui/OnScreen.h"
 #include "ui/strip/BuiltInCards.h"
 
 #include <cmath>
@@ -156,7 +157,7 @@ void InsertEditor::timerCallback()
     lastTickMs_ = now;
     if (body_ == nullptr)
         return;
-    if (isShowing())
+    if (onScreen(*this))
         body_->tick(elapsed);
     else
         body_->stopWatching();
