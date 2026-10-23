@@ -83,6 +83,13 @@ be sidechained from another channel. Plugin latency is compensated everywhere,
 including in recordings. The master has inserts too, on the whole mix before its
 fader.
 
+The **Glue Compressor** is a console-style bus compressor for holding a mix or a
+group together: stepped Ratio, Attack and Release (with Auto) switches, a key
+high-pass so the bass does not pump it, and Mix for parallel compression. Its
+display shows the music's loudness and peaks going in (grey) and coming out
+(colour): a fast attack pulls the peaks toward the body, a slow one keeps the
+punch.
+
 ## Automation
 
 The **A** button on a track header shows its automation. Choose the parameter and the

@@ -221,5 +221,8 @@ createCompressorCard(const Theme& theme, CardHost& host, core::Id channelId, con
 // The opto compressor's card, for the strip module and the "northlight.opto" insert.
 std::unique_ptr<ModuleCard>
 createOptoCard(const Theme& theme, CardHost& host, core::Id channelId, const core::Insert& insert);
+// The glue compressor's card (the "northlight.glue" insert).
+std::unique_ptr<ModuleCard>
+createGlueCard(const Theme& theme, CardHost& host, core::Id channelId, const core::Insert& insert);
 
 } // namespace northlight::ui::strip

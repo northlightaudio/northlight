@@ -36,6 +36,10 @@ Northlight has not had a release yet. The first release, 0.1.0, will include:
   compensation, and a six-module channel strip on every channel with factory and user
   presets.
 - Inserts on the master, on the whole mix before the master fader.
+- The Glue Compressor, a console-style bus compressor with stepped Ratio, Attack and
+  Release (with Auto), a key high-pass and parallel Mix, whose display shows the
+  mix's loudness and peaks going in and coming out and how far the peaks stand
+  above the body (the crest factor).
 - An opto compressor, modelled on vintage optical compressors, that can be swapped in
   for the channel strip's compressor or added as an insert.
 - VST3 and CLAP hosting, with plugin scanning in a separate process, a plugin browser,

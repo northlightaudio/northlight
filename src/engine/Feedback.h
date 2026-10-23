@@ -29,14 +29,16 @@ public:
         float output = 0.0f;    // peak coming out, linear
         float reduction = 0.0f; // the most gain reduction, dB (>= 0)
         float extra = 0.0f;     // processor-specific: a gate's key level, a de-esser's band level
+        float extra2 = 0.0f;    // a second processor-specific value (the glue compressor's output RMS)
     };
     static constexpr int historyLength = 1024;    // frames (about five seconds)
     static constexpr double frameSeconds = 0.005; // 200 frames a second
     static constexpr int tapLength = 16384;       // samples per tap
     static constexpr int tapCount = 2;            // 0 = before the processor, 1 = after
+    static constexpr int valuesPerFrame = 5;
 
     explicit ProcessorFeedback(bool withTaps = false)
-        : history_(new std::atomic<float>[historyLength * 4]()),
+        : history_(new std::atomic<float>[historyLength * valuesPerFrame]()),
           taps_(withTaps ? new std::atomic<float>[tapCount * tapLength]() : nullptr)
     {
     }
@@ -52,9 +54,10 @@ public:
 
     // ----- real-time thread -------------------------------------------------------------
     // One sample's values; a frame is published every frameSeconds of audio.
-    void addSample(float input, float output, float reductionDb, float extra = 0.0f) noexcept
+    void
+    addSample(float input, float output, float reductionDb, float extra = 0.0f, float extra2 = 0.0f) noexcept
     {
-        accumulate(input, output, reductionDb, extra);
+        accumulate(input, output, reductionDb, extra, extra2);
         if (++count_ >= interval_)
             publish();
     }
@@ -62,7 +65,7 @@ public:
     // A block's peaks at once, for values that are only known per block.
     void addBlock(float input, float output, float reductionDb, float extra, int numSamples) noexcept
     {
-        accumulate(input, output, reductionDb, extra);
+        accumulate(input, output, reductionDb, extra, 0.0f);
         count_ += numSamples;
         while (count_ >= interval_)
         {
@@ -161,22 +164,24 @@ public:
     }
 
 private:
-    void accumulate(float input, float output, float reductionDb, float extra) noexcept
+    void accumulate(float input, float output, float reductionDb, float extra, float extra2) noexcept
     {
         building_.input = std::max(building_.input, input);
         building_.output = std::max(building_.output, output);
         building_.reduction = std::max(building_.reduction, reductionDb);
         building_.extra = std::max(building_.extra, extra);
+        building_.extra2 = std::max(building_.extra2, extra2);
     }
 
     void publish() noexcept
     {
         const auto w = written_.load(std::memory_order_relaxed);
-        auto* slot = history_.get() + (w % historyLength) * 4;
+        auto* slot = history_.get() + (w % historyLength) * valuesPerFrame;
         slot[0].store(building_.input, std::memory_order_relaxed);
         slot[1].store(building_.output, std::memory_order_relaxed);
         slot[2].store(building_.reduction, std::memory_order_relaxed);
         slot[3].store(building_.extra, std::memory_order_relaxed);
+        slot[4].store(building_.extra2, std::memory_order_relaxed);
         written_.store(w + 1, std::memory_order_release);
         building_ = {};
         count_ = std::max(0, count_ - interval_);
@@ -184,11 +189,12 @@ private:
 
     Frame frameAt(std::uint64_t index) const noexcept
     {
-        const auto* slot = history_.get() + (index % historyLength) * 4;
+        const auto* slot = history_.get() + (index % historyLength) * valuesPerFrame;
         return {slot[0].load(std::memory_order_relaxed),
                 slot[1].load(std::memory_order_relaxed),
                 slot[2].load(std::memory_order_relaxed),
-                slot[3].load(std::memory_order_relaxed)};
+                slot[3].load(std::memory_order_relaxed),
+                slot[4].load(std::memory_order_relaxed)};
     }
 
     std::unique_ptr<std::atomic<float>[]> history_;

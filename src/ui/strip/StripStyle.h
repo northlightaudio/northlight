@@ -53,6 +53,8 @@ inline juce::Colour moduleColour(const Theme& theme, const std::string& type)
         return paletteColour(theme, "Loch");
     if (type == "northlight.opto")
         return paletteColour(theme, "Straw");
+    if (type == "northlight.glue")
+        return paletteColour(theme, "Thrift"); // apart from the strip compressors' Loch and Straw
     if (type == "northlight.limiter")
         return paletteColour(theme, "Rowan");
     if (type == "northlight.gain")

@@ -816,6 +816,8 @@ createBuiltInCard(const Theme& theme, CardHost& host, core::Id channelId, const 
         return createCompressorCard(theme, host, channelId, insert); // the strip compressor's
     if (insert.type == types::opto)
         return createOptoCard(theme, host, channelId, insert); // the strip opto's
+    if (insert.type == "northlight.glue")
+        return createGlueCard(theme, host, channelId, insert);
     if (insert.type == types::limiter)
         return std::make_unique<LimiterCard>(theme, host, channelId, insert);
     if (insert.type == types::reverb)

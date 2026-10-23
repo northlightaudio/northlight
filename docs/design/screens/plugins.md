@@ -56,7 +56,7 @@ Every built-in has an editor in the channel strip's language
 well, then knobs in the module's hue. The same editor is the card's body in the Editor panel
 and the body of its window (under the title, bypass and mix). The hues follow the
 strip: EQ `Overcast`, compressor `Loch`, limiter `Rowan`; gain `Machair`, reverb `Lichen`,
-delay `Gorse`. The instruments (7.4b-7.4e) have faces of their own.
+delay `Gorse`, glue compressor `Thrift`. The instruments (7.4b-7.4e) have faces of their own.
 
 - **Gain**: the input and output history with IN and OUT meters; Gain.
 - **EQ**: the strip's EQ graph with the built-in's four bands (a high-pass,
@@ -72,6 +72,39 @@ delay `Gorse`. The instruments (7.4b-7.4e) have faces of their own.
   and it, the history's grey trace and the threshold all follow the key.
 - **Limiter**: the history with the ceiling, the ceiling on the IN meter, GR and
   OUT; Release, Lookahead.
+- **Glue Compressor** (a console-style VCA bus compressor, for a mix or a group):
+  feed-forward and stereo linked with a 4 dB soft knee; Ratio 1.5, 2, 4 or 10:1;
+  Attack 0.1, 0.3, 1, 3, 10 or 30 ms; Release 0.1, 0.3, 0.6, 1.2 s or Auto (a fast
+  stage releasing over 0.1 s and a slow one that charges from it over 0.4 s while the
+  compression is held and
+  releases over 1.2 s: quick back from a hit, slow back from held compression);
+  Key HP on the detector (off at 20 Hz, up to 400 Hz) so the low end does not pump
+  it; Makeup 0 to 20 dB; Mix for parallel compression. No latency. Its editor shows
+  what glue does rather than a transfer curve:
+  - **Dynamics ribbon** (the display, flexible width): the last three seconds,
+    each column a band from the 50 ms RMS (the body) to the peak, the input
+    `textTertiary` at 32% under the output in the hue at 42%, with the output's
+    RMS as a 1.5 px line in the hue; -48..0 dB with the dB grid every 12 dB; peaks
+    fall 30 dB a second across the columns, as the other histories. The two bands
+    show what the settings do to the distance between body and peaks: a fast
+    attack holds the peaks and the coloured band sits thinner; a slow attack lets
+    the transients through over a lowered body, and it sits wider. The threshold is the
+    dashed line with its value (drag anywhere in the ribbon, double-click resets).
+    At the top left, **CREST** in `captionCaps` and the crest factor (peak over
+    RMS) of the last second going in and coming out, "14.2 → 9.6 dB", the input
+    figure `textSecondary`, the arrow `textTertiary`, the output in the hue; "–"
+    in silence.
+  - **GR arc** (to its right, up to 120 px, centred in its well with room for its
+    labels): ten LED segments over 240°, 7 px thick, for 0.5, 1,
+    2, 3, 4, 6, 8, 10, 14 and 20 dB, lit in the hue (`meterHot` past 10 dB),
+    `surface2` when dark; the deepest reduction of the last `motion.peakHoldMs`
+    holds as an outlined segment, then falls at 20 dB a second; 1, 4, 10 and 20
+    labelled outside in `caption`; the reading in `value` in the middle (`meterHot`
+    while reducing) over GR in `captionCaps`.
+  - Controls, in three groups split by `lineSubtle` rules: Threshold and Makeup as
+    46 px knobs with 0-10 scale dots; Ratio, Attack (ms) and Release (s) as rotary
+    selectors (design-system.md); Key HP ("Off" at the bottom) and Mix as knobs.
+    Every control's label sits on one baseline along the bottom of the row.
 - **Reverb**: the decay: the dry sound, the pre-delay, early reflections (more and
   longer for a bigger room), the tail falling 60 dB over the decay and the highs'
   faster fall (dashed) for the damping. Drag the tail's start for the pre-delay, its

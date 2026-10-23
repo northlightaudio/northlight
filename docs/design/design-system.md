@@ -295,6 +295,32 @@ a faint `knobHighlight` arc at the top; indicator line `textPrimary`. Value show
 text below in `value` 12 mono when space allows, else in a tooltip while dragging.
 Vertical drag; double-click resets. Keyboard as Slider.
 
+### Rotary selector (stepped switch)
+
+For a parameter with a few fixed positions that a console would put on a rotary
+switch (a bus compressor's ratio, attack and release), where a segmented control
+would be too wide and a knob would hide that the values are steps. A 34 px body in
+the knob material (rim `knobRim`, body `knobBodyLight` to `knobBodyDark`,
+`knobHighlight` arc), with a `textPrimary` pointer and no value arc. The positions
+sit on an arc centred at the top, 45° apart (closer when there are more than six,
+never past 270° in all); each has a 2 px dot just outside the rim and its short
+label (up to four characters, in a 34 px box) in `caption` 18 px further out: the
+selected position's dot in the module's hue and its label in `textPrimary`, the
+others `textTertiary`, the label under the pointer `textSecondary`. The control is
+as wide as its labels need (104 px), so neighbours never share a label's room. Its
+name sits under it as a knob's label does (`caption`, `textSecondary`), with the
+unit when the labels leave it out ("Attack (ms)"), on the same baseline as the
+knob labels beside it.
+
+- Click a label (or its dot) to select it. Vertical drag steps one position per
+  16 px (one undo step for the drag); the wheel steps one position per notch;
+  arrows step; Home and End go to the ends; double-click returns to the default.
+- The pointer turns to a new position over `motion.toggleMs` (none with reduce
+  motion).
+- Hover: the body lightens a little (the knob's hover). Focus: the focus ring
+  around the body. Disabled: pointer, dots and labels `textDisabled`.
+- The tooltip names the control and the full value ("Attack: 10 ms").
+
 ### Meter
 
 Vertical bar `meterWidth` 6 px per channel, `meterGap` 2 px between channels, in a

@@ -5,6 +5,7 @@
 #include "plugins/BeatSync.h"
 #include "plugins/Biquad.h"
 #include "plugins/ChannelStrip.h"
+#include "plugins/Glue.h"
 #include "plugins/MeteredBuiltIn.h"
 #include "plugins/Nebula.h"
 #include "plugins/ProcessorBase.h"
@@ -607,6 +608,7 @@ std::vector<std::string> BuiltInFactory::typeNames() const
             types::eq,
             types::compressor,
             types::opto,
+            glue::type,
             types::limiter,
             types::reverb,
             types::delay,
@@ -636,6 +638,8 @@ std::unique_ptr<engine::InsertProcessor> BuiltInFactory::create(const std::strin
         return strip::createKeyedCompressor(types::compressor); // the channel strip's, with a key
     if (typeName == types::opto)
         return strip::createOpto(types::opto);
+    if (typeName == glue::type)
+        return glue::create();
     if (typeName == types::limiter)
         return std::make_unique<Limiter>();
     if (typeName == aurora::type)
@@ -667,6 +671,8 @@ std::string BuiltInFactory::displayName(const std::string& typeName)
         return "Compressor";
     if (typeName == types::opto)
         return "Opto Compressor";
+    if (typeName == glue::type)
+        return "Glue Compressor";
     if (typeName == types::limiter)
         return "Limiter";
     if (typeName == aurora::type)

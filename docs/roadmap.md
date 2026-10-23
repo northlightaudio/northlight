@@ -102,7 +102,7 @@ and the channel strip adds a gate, de-esser and saturation. Missing:
 | Modulation | Chorus, flanger, phaser, tremolo, auto-pan. None exist yet; this is the largest hole |
 | Utility | Stereo width and mid/side, mono, channel swap, tuner |
 | Metering | Spectrum analyser, phase correlation meter and vectorscope as inserts |
-| Dynamics | Multiband compressor, transient shaper, clipper, bus compressor |
+| Dynamics | Multiband compressor, transient shaper, clipper |
 | Filter | Resonant filter driven by an LFO or an envelope follower |
 | Pitch | Real-time pitch shifter and harmoniser |
 | Reverb | Convolution reverb that loads impulse responses |

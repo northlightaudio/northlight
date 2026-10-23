@@ -19,6 +19,8 @@ add_library(northlight_plugins STATIC
     ProcessorBase.h
     ChannelStrip.h
     ChannelStrip.cpp
+    Glue.h
+    Glue.cpp
     StripPresets.h
     StripPresets.cpp
     FxTracks.h

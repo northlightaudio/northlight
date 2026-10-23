@@ -34,6 +34,8 @@ add_library(northlight_ui STATIC
     components/SegmentedControl.cpp
     components/NumericField.h
     components/NumericField.cpp
+    components/RotarySelector.h
+    components/RotarySelector.cpp
     components/PanelHeader.h
     components/PanelHeader.cpp
     components/Toast.h
@@ -67,6 +69,7 @@ add_library(northlight_ui STATIC
     strip/ModuleCard.cpp
     strip/ModuleCards.cpp
     strip/OptoCard.cpp
+    strip/GlueCard.cpp
     strip/Graphs.h
     strip/Graphs.cpp
     strip/EqGraph.h
