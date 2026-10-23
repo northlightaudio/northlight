@@ -119,7 +119,6 @@ public:
           graph_(*this, HistoryGraph::Style{12.0f, -60.0f, false, true, false, -1, false, 3.0f}),
           bars_(*this, {LevelBars::Kind::input, LevelBars::Kind::output})
     {
-        graph_.setTooltip("Input (grey) and output");
         addAndMakeVisible(graph_);
         addAndMakeVisible(bars_);
         knobs_.push_back(&addKnob(gainp::gain));
@@ -320,7 +319,7 @@ public:
           bars_(*this, {LevelBars::Kind::reduction, LevelBars::Kind::output}),
           ceiling_(*this, limp::ceiling, ThresholdMeter::Level::input, -36.0f, "IN", theme.colours.meterHot)
     {
-        graph_.setTooltip("Input (grey), output and gain reduction; drag to set the ceiling");
+        graph_.setTooltip("Drag: ceiling");
         for (auto* c : std::initializer_list<juce::Component*>{&graph_, &bars_, &ceiling_})
             addAndMakeVisible(c);
         for (int p : {limp::release, limp::lookahead})
@@ -368,10 +367,7 @@ private:
 class ReverbGraph final : public juce::Component, public juce::SettableTooltipClient
 {
 public:
-    explicit ReverbGraph(ModuleCard& card) : card_(card)
-    {
-        setTooltip("Drag the tail's start for the pre-delay, its end for the decay time");
-    }
+    explicit ReverbGraph(ModuleCard& card) : card_(card) { setTooltip("Drag: pre-delay, decay"); }
 
     void paint(juce::Graphics& g) override
     {
@@ -573,10 +569,7 @@ bool delaySynced(const ModuleCard& card)
 class DelayGraph final : public juce::Component, public juce::SettableTooltipClient
 {
 public:
-    explicit DelayGraph(ModuleCard& card) : card_(card)
-    {
-        setTooltip("Drag the first echo for the time, the second for the feedback");
-    }
+    explicit DelayGraph(ModuleCard& card) : card_(card) { setTooltip("Drag: time, feedback"); }
 
     void paint(juce::Graphics& g) override
     {
@@ -744,7 +737,7 @@ public:
         for (const auto& c : plugins::sync::choices())
             sync_.choices.emplace_back(c);
         sync_.choices.front() = "Sync off";
-        sync_.setTooltip("Sync the time to the project tempo");
+        sync_.setTooltip("Tempo sync");
         sync_.onChoose = [this](int i)
         {
             beginGesture("Delay sync");

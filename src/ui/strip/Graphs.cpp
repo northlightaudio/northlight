@@ -565,8 +565,7 @@ ThresholdMeter::ThresholdMeter(ModuleCard& card,
     setOpaque(false);
     setRepaintsOnMouseActivity(true);
     setTitle(juce::String(card.info(parameter).name));
-    setTooltip(juce::String(card.info(parameter).name) +
-               ": drag on the meter (Shift for fine), wheel to step, double-click to reset");
+    setTooltip(juce::String(card.info(parameter).name));
 }
 
 juce::Rectangle<float> ThresholdMeter::bar() const

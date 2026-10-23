@@ -32,8 +32,7 @@ public:
          const core::Insert& insert,
          bool instrument = false)
         : owner_(owner), theme_(theme), channelId_(channelId), insertId_(insert.id), type_(insert.type),
-          instrument_(instrument), power_(theme, Icon::power, "Bypass"),
-          menu_(theme, Icon::menu, "Replace, remove, presets, sidechain")
+          instrument_(instrument), power_(theme, Icon::power, "Bypass"), menu_(theme, Icon::menu, "Menu")
     {
         power_.setClickingTogglesState(true);
         power_.setSize(theme_.sizes.controlCompact, theme_.sizes.controlCompact);
@@ -51,7 +50,7 @@ public:
         mix_.setRange(0.0, 100.0, 1.0);
         mix_.setTextBoxStyle(juce::Slider::NoTextBox, false, 0, 0);
         mix_.setDoubleClickReturnValue(true, 100.0);
-        mix_.setTooltip("Wet/dry mix");
+        mix_.setTooltip("Mix");
         mix_.onDragStart = [this]
         {
             if (owner_.onGestureBegin)
@@ -163,7 +162,7 @@ public:
         const bool hadInfoLine = showsInfoLine();
         bypassed_ = insert.bypass;
         power_.setToggleState(!insert.bypass, juce::dontSendNotification);
-        power_.setTooltip(insert.bypass ? "Bypassed: click to enable" : "Enabled: click to bypass");
+        power_.setTooltip(insert.bypass ? "Switch on" : "Bypass");
         mix_.setValue(insert.mix * 100.0, juce::dontSendNotification);
         sidechain_ = insert.sidechain;
         sidechainPostFader_ = insert.sidechainPostFader;
@@ -399,14 +398,13 @@ private:
             knob->setRange(info.minimum, info.maximum, info.defaultValue);
             const juce::String unit = info.unit.empty() ? juce::String() : " " + juce::String(info.unit);
             knob->format = [unit](double v) { return juce::String(v, std::abs(v) >= 100.0 ? 0 : 2) + unit; };
-            knob->setTooltip(info.name);
             const int index = static_cast<int>(i);
-            knob->onDragStart = [this, index]
+            knob->onDragStart = [this, index, name = info.name]
             {
                 if (const auto l = owner_.liveInsert ? owner_.liveInsert(insertId_) : nullptr)
                     l->beginParameterGesture(index);
                 if (owner_.onGestureBegin)
-                    owner_.onGestureBegin(knobs_[static_cast<size_t>(index)]->getTooltip().toStdString());
+                    owner_.onGestureBegin(name);
             };
             knob->onDragEnd = [this, index]
             {

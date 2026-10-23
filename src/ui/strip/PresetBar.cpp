@@ -134,7 +134,7 @@ void PresetBar::update()
     const auto& list = library.presets(type_);
     const auto name = current_ >= 0 ? list[static_cast<size_t>(current_)].name : juce::String("Custom");
     name_.setButtonText(name);
-    name_.setTooltip("Presets: " + name);
+    name_.setTooltip("Presets");
     const bool any = !list.empty();
     previous_.setEnabled(any);
     next_.setEnabled(any);

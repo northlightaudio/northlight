@@ -234,12 +234,7 @@ public:
     }
 
 private:
-    void updateTooltip()
-    {
-        setTooltip(meterShowsOutput() ? "Output level (0 VU = -18 dBFS); click to show gain reduction"
-                                      : "Gain reduction: the needle falls from 0 as the cell works; "
-                                        "click to show the output level");
-    }
+    void updateTooltip() { setTooltip(meterShowsOutput() ? "Click: show reduction" : "Click: show output"); }
 
     ModuleCard& card_;
     Needle needle_;
@@ -255,11 +250,7 @@ private:
 class CellView final : public juce::Component, public juce::SettableTooltipClient
 {
 public:
-    explicit CellView(ModuleCard& card) : card_(card)
-    {
-        setTooltip("The cell: the lamp lights with the gain reduction. Held down for a while, the "
-                   "photocell remembers, and lets go more slowly: the release below.");
-    }
+    explicit CellView(ModuleCard& card) : card_(card) {}
 
     void advance(double elapsedMs)
     {
@@ -383,23 +374,19 @@ public:
         : ModuleCard(theme, host, channelId, module), meter_(*this), cell_(*this),
           history_(*this, HistoryGraph::Style{0.0f, -48.0f, false, true, true, -1, false, 3.0f, true})
     {
-        history_.setTooltip("Input (grey), output and gain reduction (from the top) over three seconds");
         addAndMakeVisible(meter_);
         addAndMakeVisible(cell_);
         addAndMakeVisible(history_);
         peak_ = &addKnob(po::peakReduction, "Peak reduction");
         peak_->format = [](double v) { return juce::String(static_cast<int>(std::lround(v))); };
         peak_->setValue(param(po::peakReduction), juce::dontSendNotification);
-        peak_->setTooltip("How hard the cell is driven: turn up for more gain reduction");
         gain_ = &addKnob(po::gain);
         for (auto* k : {peak_, gain_})
             k->setRingSize(bigRing);
         mode_ = &addChoice(po::mode);
-        mode_->setTooltip("Compress: a soft ratio near 3:1. Limit: near 10:1, and quicker");
+        mode_->setTooltip("Compress or limit");
         for (int p : {po::emphasis, po::colour, po::mix})
             small_.push_back(&addKnob(p));
-        small_[0]->setTooltip("Lifts the highs in what the cell hears, so the bass pumps it less");
-        small_[1]->setTooltip("The output valve's drive: from clean to warm harmonics");
     }
 
     int preferredWidth() const override { return 8 * knobCellWidth() + 2 * theme_.spacing.sm + 10; }

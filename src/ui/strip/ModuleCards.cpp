@@ -43,8 +43,7 @@ public:
               HistoryGraph::Style{0.0f, -80.0f, true, true, false, ps::gate::threshold, true, 3.0f, false}),
           threshold_(*this, ps::gate::threshold, ThresholdMeter::Level::extra, -80.0f, "KEY", colour_)
     {
-        graph_.setTooltip(
-            "Key level (grey) and output; drag to set the threshold. The lane shows the gate open.");
+        graph_.setTooltip("Drag: threshold");
         addAndMakeVisible(graph_);
         addAndMakeVisible(threshold_);
         for (int p : {ps::gate::range,
@@ -112,10 +111,8 @@ public:
                      theme.colours.meterHot)
     {
         addAndMakeVisible(threshold_);
-        curve_.setTooltip(
-            "The curve with make-up; drag left of the knee for the threshold, right of it for the ratio");
-        history_.setTooltip(
-            "Input (grey), output and gain reduction (from the top); drag to set the threshold");
+        curve_.setTooltip("Drag: threshold, ratio");
+        history_.setTooltip("Drag: threshold");
         addAndMakeVisible(curve_);
         addAndMakeVisible(history_);
         addAndMakeVisible(bars_);
@@ -174,19 +171,12 @@ private:
         const auto name = project != nullptr ? sidechainLabel(*project, insert) : juce::String("?");
         sidechain_->setButtonText(keyed ? "Key: " + name : juce::String("Sidechain"));
         sidechain_->setToggleState(keyed, juce::dontSendNotification);
-        sidechain_->setTooltip(keyed ? "The detector listens to " + name +
-                                           ", not to this channel; click to change the key"
-                                     : juce::String("Key the detector from another channel"));
+        sidechain_->setTooltip(keyed ? "Key: " + name : juce::String("Key input"));
         // Keyed, the input meter and the history's grey trace show the key, and
         // the threshold acts on it.
         threshold_.setCaption(keyed ? "KEY" : "IN");
-        threshold_.setTooltip(keyed ? "Key level (" + name + "); drag to set the threshold"
-                                    : juce::String("Input level; drag to set the threshold"));
-        history_.setTooltip(keyed ? "Key " + name +
-                                        " (grey), output and gain reduction (from the top); drag to set the "
-                                        "threshold"
-                                  : juce::String("Input (grey), output and gain reduction (from the top); "
-                                                 "drag to set the threshold"));
+        threshold_.setTooltip("Drag: threshold");
+        history_.setTooltip("Drag: threshold");
     }
     void showSidechainMenu()
     {
@@ -328,7 +318,7 @@ public:
         {
             auto& band = bands_[static_cast<size_t>(b)];
             band.on = &addToggle(ps::eq::paramIndex(b, ps::eq::on), "On");
-            band.on->setTooltip("Switch the band on or off");
+            band.on->setTooltip("Band on/off");
             band.type = &addChoice(ps::eq::paramIndex(b, ps::eq::type));
             band.frequency = &addKnob(ps::eq::paramIndex(b, ps::eq::frequency), "Frequency");
             if (!ps::eq::isCut(b))
@@ -433,13 +423,13 @@ public:
                      theme.colours.meterHot)
     {
         addAndMakeVisible(threshold_);
-        graph_.setTooltip("The sibilance band's level (grey) and the reduction; drag to set the threshold");
+        graph_.setTooltip("Drag: threshold");
         addAndMakeVisible(graph_);
         for (int p : {ps::deesser::frequency, ps::deesser::range})
             knobs_.push_back(&addKnob(p));
         mode_ = &addChoice(ps::deesser::mode);
         listen_ = &addToggle(ps::deesser::listen, "Listen");
-        listen_->setTooltip("Hear the sibilance band alone");
+        listen_->setTooltip("Listen");
     }
 
     int preferredWidth() const override { return 4 * knobCellWidth() + 2 * theme_.spacing.sm; }
@@ -491,7 +481,6 @@ public:
         : ModuleCard(theme, host, channelId, module), curve_(*this),
           bars_(*this, {LevelBars::Kind::input, LevelBars::Kind::output})
     {
-        curve_.setTooltip("The curve at this drive; the shaded part is what the signal is using");
         addAndMakeVisible(curve_);
         addAndMakeVisible(bars_);
         for (int p :
@@ -551,7 +540,7 @@ public:
               *this, ps::limiter::ceiling, ThresholdMeter::Level::input, -36.0f, "IN", theme.colours.meterHot)
     {
         addAndMakeVisible(ceiling_);
-        graph_.setTooltip("Input (grey), output and gain reduction; drag to set the ceiling");
+        graph_.setTooltip("Drag: ceiling");
         addAndMakeVisible(graph_);
         addAndMakeVisible(bars_);
         for (int p : {ps::limiter::input, ps::limiter::release})

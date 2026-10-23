@@ -69,7 +69,7 @@ EqGraph::EqGraph(ModuleCard& card, EqBands bands)
     fftData_.assign(static_cast<size_t>(fftSize) * 2, 0.0f);
     samples_.assign(static_cast<size_t>(fftSize), 0.0f);
     analyserToggle_.setToggleState(analyser_, juce::dontSendNotification);
-    analyserToggle_.setTooltip("Spectrum analyser: the signal after the EQ (filled) and before it (line)");
+    analyserToggle_.setTooltip("Analyser");
     analyserToggle_.onClick = [this] { setAnalyser(analyserToggle_.getToggleState()); };
     addAndMakeVisible(analyserToggle_);
 }

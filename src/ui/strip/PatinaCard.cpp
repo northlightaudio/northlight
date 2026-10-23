@@ -285,7 +285,6 @@ public:
     {
         const auto& hw = theme_.hardware;
         const bool lit = on_();
-        setTooltip(lit ? "On" : "Off: the insert is bypassed");
         const auto c = getLocalBounds().toFloat().getCentre();
         const auto lens = juce::Rectangle<float>(diameter, diameter).withCentre(c);
         if (lit)
@@ -398,91 +397,57 @@ public:
 
         age_ = &addKnob(pa::age);
         age_->setRingSize(ageRing);
-        age_->setTooltip("Age: every stage's amount at once. Half way plays them as set; down to nothing "
-                         "makes the sound new again, up to full ruins it");
         age_->format = [](double v) { return percentText(v); };
         pace_ = &addKnob(pa::pace);
         pace_->format = [](double v) { return juce::String(0.05 * std::pow(30.0, v * 0.01), 2) + " Hz"; };
-        pace_->setTooltip("How quickly the stages breathe: each stage's Breath lets its amount wander at "
-                          "this pace, every stage on its own path");
 
         // Heat
         auto& heat = panel(pa::heat);
-        selector(heat,
-                 pa::heatCharacter,
-                 {"Tube", "Tape", "Iron", "Fuzz"},
-                 "Character",
-                 {"Tube: a biased valve, soft, with even harmonics",
-                  "Tape: the highs saturate first, with a head bump in the lows",
-                  "Iron: a transformer, the lows driven hardest, a firm knee",
-                  "Fuzz: a broken stage, starved so quiet notes sputter, then clipped"});
-        main(heat, pa::heatDrive, "Drive", "How hard the stage is driven; the level is held as it rises");
-        knob(heat, pa::heatTone, "Tone", "A tilt after the curve, dark to bright", signedPercent);
+        selector(heat, pa::heatCharacter, {"Tube", "Tape", "Iron", "Fuzz"}, "Character");
+        main(heat, pa::heatDrive, "Drive");
+        knob(heat, pa::heatTone, "Tone", signedPercent);
         breath(heat, pa::heatBreath);
 
         // Chamber
         auto& chamber = panel(pa::chamber);
-        selector(chamber,
-                 pa::chamberType,
-                 {"Room", "Spring", "Plate"},
-                 "Space",
-                 {"Room: a small, boxy room",
-                  "Spring: a reverb tank's spring, thin with a chirp",
-                  "Plate: a dense, bright plate"});
-        main(chamber, pa::chamberMix, "Mix", "How much of the space is heard over the sound");
+        selector(chamber, pa::chamberType, {"Room", "Spring", "Plate"}, "Space");
+        main(chamber, pa::chamberMix, "Mix");
         knob(chamber,
              pa::chamberDecay,
              "Decay",
-             "How long the space rings",
              [this](double v)
              {
                  const float s = pa::chamberDecaySeconds(
                      static_cast<int>(std::lround(param(pa::chamberType))), static_cast<float>(v) * 0.01f);
                  return juce::String(s, 1) + " s";
              });
-        knob(chamber, pa::chamberTone, "Tone", "The space's colour, dark to bright", signedPercent);
+        knob(chamber, pa::chamberTone, "Tone", signedPercent);
         breath(chamber, pa::chamberBreath);
 
         // Drift
         auto& drift = panel(pa::drift);
-        selector(drift,
-                 pa::driftMachine,
-                 {"Reel", "Deck", "Disc"},
-                 "Machine",
-                 {"Reel: studio tape, a slow wandering wow and fine flutter",
-                  "Deck: a cassette deck, quicker and rougher, with scrape",
-                  "Disc: a record, a warp turning at 33 rpm"});
-        main(drift, pa::driftWow, "Wow", "The slow pitch wander, never quite regular");
-        knob(drift, pa::driftFlutter, "Flutter", "The fast flutter of the capstan", percentText);
+        selector(drift, pa::driftMachine, {"Reel", "Deck", "Disc"}, "Machine");
+        main(drift, pa::driftWow, "Wow");
+        knob(drift, pa::driftFlutter, "Flutter", percentText);
         knob(drift,
              pa::driftRate,
              "Rate",
-             "The machine's speed of wobble, half to double",
              [](double v)
              {
                  return juce::String(std::pow(2.0, 2.0 * v * 0.01 - 1.0), 2) +
                         juce::String::fromUTF8("\xc3\x97");
              });
-        knob(drift, pa::driftStereo, "Stereo", "How far the two sides wobble apart", percentText);
+        knob(drift, pa::driftStereo, "Stereo", percentText);
         breath(drift, pa::driftBreath);
 
         // Grain
         auto& grain = panel(pa::grain);
-        selector(grain,
-                 pa::grainSource,
-                 {"Vinyl", "Tape", "50Hz", "60Hz", "Air"},
-                 "Source",
-                 {"Vinyl: crackle and pops, surface noise and a low rumble",
-                  "Tape: shaped tape hiss",
-                  "Hum at 50 Hz: mains hum with its harmonics",
-                  "Hum at 60 Hz: mains hum with its harmonics",
-                  "Air: a room's tone, soft and wide over a low drone"});
-        main(grain, pa::grainAmount, "Amount", "The noise's level");
-        texture_ = &knob(grain, pa::grainTexture, "Texture", "", [this](double v) { return textureText(v); });
+        selector(grain, pa::grainSource, {"Vinyl", "Tape", "50Hz", "60Hz", "Air"}, "Source");
+        main(grain, pa::grainAmount, "Amount");
+        texture_ = &knob(grain, pa::grainTexture, "Texture", [this](double v) { return textureText(v); });
         knob(grain,
              pa::grainFollow,
              "Follow",
-             "Left: the noise ducks under the music. Right: it rides with the music and is gone in silence",
              [](double v)
              {
                  const int i = static_cast<int>(std::lround(v));
@@ -493,17 +458,9 @@ public:
 
         // Wear
         auto& wear = panel(pa::wear);
-        main(wear, pa::wearLoss, "Loss", "The highs a worn medium has lost");
-        knob(wear,
-             pa::wearDropouts,
-             "Dropouts",
-             "How often and how deep the level and highs dip",
-             percentText);
-        knob(wear,
-             pa::wearSkew,
-             "Skew",
-             "Azimuth: the sides drift apart in time, tone and level",
-             percentText);
+        main(wear, pa::wearLoss, "Loss");
+        knob(wear, pa::wearDropouts, "Dropouts", percentText);
+        knob(wear, pa::wearSkew, "Skew", percentText);
         breath(wear, pa::wearBreath);
 
         // Crush
@@ -511,32 +468,21 @@ public:
         selector(crush,
                  pa::crushFlavour,
                  {"Soft", "Hard", juce::String::fromUTF8("\xce\xbc-law"), "Jitter"},
-                 "Flavour",
-                 {"Soft: filtered converters, smooth but for the bits",
-                  "Hard: no filters, the aliasing of an early sampler",
-                  "Mu-law: companded, an 8-bit telephone or drum machine",
-                  "Jitter: no filters and an unsteady clock"});
+                 "Flavour");
         main(crush,
              pa::crushBits,
              "Bits",
-             "The converter's bit depth",
              [](double v) { return juce::String(v, std::abs(v - std::round(v)) < 0.05 ? 0 : 1) + " bit"; });
-        knob(
-            crush, pa::crushRate, "Rate", "The converter's sample rate", [](double v) { return shortHz(v); });
+        knob(crush, pa::crushRate, "Rate", [](double v) { return shortHz(v); });
         breath(crush, pa::crushBreath);
 
         // Output
         for (const int index : {pa::tone, pa::lowCut, pa::highCut, pa::width, pa::output})
             outputs_.push_back(&addKnob(index));
         outputs_[0]->format = signedPercent;
-        outputs_[0]->setTooltip("A tilt over everything, dark to bright");
         outputs_[1]->format = [](double hz) { return hz <= 20.5 ? juce::String("Off") : shortHz(hz); };
-        outputs_[1]->setTooltip("Cuts the lows, as a small speaker or a thin medium would");
         outputs_[2]->format = [](double hz) { return hz >= 19900.0 ? juce::String("Off") : shortHz(hz); };
-        outputs_[2]->setTooltip("Cuts the highs: the band of a radio, a phone or an old record");
         outputs_[3]->format = percentText;
-        outputs_[3]->setTooltip("Stereo width: mono at nothing, wider past 100%");
-        outputs_[4]->setTooltip("The level out");
 
         // Every knob is a chicken head over a printed scale, its legends printed on the panel.
         std::vector<Knob*> all{age_, pace_};
@@ -717,14 +663,10 @@ private:
         int index = 0;
     };
 
-    void selector(Panel& p,
-                  int index,
-                  std::vector<juce::String> labels,
-                  const juce::String& caption,
-                  std::vector<juce::String> full)
+    void selector(Panel& p, int index, std::vector<juce::String> labels, const juce::String& caption)
     {
         auto& s = ownedSelectors_.emplace_back(std::make_unique<RotarySelector>(theme_));
-        s->setPositions(std::move(labels), std::move(full), caption);
+        s->setPositions(std::move(labels), {}, caption);
         s->setHue(colour());
         s->setHardware(true);
         s->setDefault(static_cast<int>(std::lround(info(index).defaultValue)));
@@ -748,15 +690,9 @@ private:
     }
 
     // A knob of a stage's panel (hidden until its stage is selected).
-    Knob& knob(Panel& p,
-               int index,
-               const juce::String& label,
-               const juce::String& tooltip,
-               std::function<juce::String(double)> format)
+    Knob& knob(Panel& p, int index, const juce::String& label, std::function<juce::String(double)> format)
     {
         auto& k = addKnob(index, label);
-        if (tooltip.isNotEmpty())
-            k.setTooltip(tooltip);
         k.format = std::move(format);
         k.setVisible(false);
         p.components.push_back(&k);
@@ -772,24 +708,15 @@ private:
     void main(Panel& p,
               int index,
               const juce::String& label,
-              const juce::String& tooltip,
               std::function<juce::String(double)> format = percentText)
     {
-        auto& k = knob(p, index, label, tooltip, std::move(format));
+        auto& k = knob(p, index, label, std::move(format));
         p.knobs.pop_back();
         k.setRingSize(bigRing);
         p.main = &k;
     }
 
-    void breath(Panel& p, int index)
-    {
-        knob(p,
-             index,
-             "Breath",
-             "Lets the stage's amount wander over time, down toward nothing at full and back, at the "
-             "Pace beside Age",
-             percentText);
-    }
+    void breath(Panel& p, int index) { knob(p, index, "Breath", percentText); }
 
     juce::String textureText(double v) const
     {
@@ -804,15 +731,9 @@ private:
     {
         const int source = static_cast<int>(std::lround(param(pa::grainSource)));
         const char* names[] = {"Density", "Colour", "Buzz", "Buzz", "Tone"};
-        const char* tips[] = {"Vinyl: how many crackles a second",
-                              "Tape: the hiss's colour, dark to bright",
-                              "Hum: a pure tone at nothing, a rough buzz at full",
-                              "Hum: a pure tone at nothing, a rough buzz at full",
-                              "Air: the room's tone, dark to bright"};
         const auto i = static_cast<size_t>(std::clamp(source, 0, 4));
         if (auto* l = labelFor(*texture_))
             l->setText(names[i], juce::dontSendNotification);
-        texture_->setTooltip(tips[i]);
         texture_->repaint();
     }
 
@@ -840,7 +761,7 @@ private:
         else
             display_.show(juce::String(i + 1).paddedLeft('0', 2),
                           EffectPresetLibrary::instance().presets(pa::type)[static_cast<size_t>(i)].name);
-        display_.setTooltip("Presets: " + display_.getButtonText());
+        display_.setTooltip("Presets");
     }
 
     void applyPreset(int index)
@@ -1138,7 +1059,6 @@ private:
         updateTexture();
         dimStage();
         showPreset();
-        lamp_.setTooltip(isOn() ? "On" : "Off: Patina is bypassed");
         lamp_.repaint();
         // The decay's seconds depend on the space.
         for (auto* k : panels_[pa::chamber].knobs)
@@ -1213,15 +1133,7 @@ StageTile::StageTile(PatinaCard& card, int stage) : card_(card), stage_(stage), 
     power_.setClickingTogglesState(false);
     power_.onClick = [this] { card_.toggleStage(stage_); };
     addAndMakeVisible(power_);
-    static const char* tips[] = {
-        "Heat: the curve the sound is driven into, with its level riding it, and how much the peaks are "
-        "squashed",
-        "Chamber: the space's level over the last three seconds, and how long it rings",
-        "Drift: the pitch over the last three seconds, the left side dark and the right faint",
-        "Grain: the noise (dark) against the music (faint) over the last three seconds",
-        "Wear: the bandwidth that survives over the last three seconds; dropouts dip it",
-        "Crush: the waveform going in (faint) and coming out (dark), and the bits and rate in effect"};
-    setTooltip(juce::String(tips[stage]) + ". Click to show its controls");
+    setComponentID(juce::String("stage:") + stageNames[static_cast<size_t>(stage)]);
     sync();
 }
 
@@ -1229,8 +1141,7 @@ void StageTile::sync()
 {
     const bool on = card_.stageOn(stage_);
     power_.setToggleState(on, juce::dontSendNotification);
-    power_.setTooltip(juce::String(stageNames[static_cast<size_t>(stage_)]) +
-                      (on ? ": on, click to switch off" : ": off, click to switch on"));
+    power_.setTooltip(on ? "Switch off" : "Switch on");
     repaint();
 }
 

@@ -82,9 +82,7 @@ public:
     explicit HarmonicSpectrum(ModuleCard& card) : card_(card)
     {
         setName("Harmonic spectrum");
-        setTooltip("The input (grey) and what the exciter adds (colour). Drag the handles: the right one "
-                   "sets where the harmonics start, the left one the bass frequency. Double-click one to "
-                   "reset it.");
+        setTooltip("Drag: frequencies");
         window_.resize(fftSize);
         for (int i = 0; i < fftSize; ++i)
             window_[static_cast<size_t>(i)] = 0.5f - 0.5f * std::cos(2.0f * juce::MathConstants<float>::pi *
@@ -472,13 +470,7 @@ private:
 class ExcitationHistory final : public juce::Component, public juce::SettableTooltipClient
 {
 public:
-    explicit ExcitationHistory(ModuleCard& card) : card_(card)
-    {
-        setTooltip("The last three seconds: the input's level in grey, the level of what is added in "
-                   "colour. Static dynamics keep the two a set distance apart; Push widens it on the loud "
-                   "moments, Fill on the quiet ones, and Transients on each onset. ADDED is the added "
-                   "level against the input.");
-    }
+    explicit ExcitationHistory(ModuleCard& card) : card_(card) {}
 
     void refresh()
     {
@@ -636,48 +628,28 @@ public:
         characterLabel_ = &addCaption("Character");
 
         amount_ = &addKnob(px::amount);
-        amount_->setTooltip("How much is added, against the band the harmonics come from: 50% sits 6 dB "
-                            "under it, 100% 6 dB over it");
         drive_ = &addKnob(px::drive);
-        drive_->setTooltip(
-            "How hard the band drives the curve: low drive adds the first few harmonics, high drive a "
-            "denser series. The level stays matched");
         frequency_ = &addKnob(px::frequency, "Frequency");
-        frequency_->setTooltip("Where the harmonics start: only the band above this drives them");
         focus_ = &addKnob(px::focus);
         focus_->format = sided("Dark", "Flat", "Edge");
-        focus_->setTooltip("Tilts what is added: darker and smoother, or toward the top edge");
 
         // Low end.
         bass_ = &addKnob(px::bass, "Amount");
-        bass_->setTooltip(
-            "Psychoacoustic bass: harmonics of the lows, so small speakers suggest a fundamental they "
-            "cannot play");
         bassFrequency_ = &addKnob(px::bassFrequency, "Frequency");
-        bassFrequency_->setTooltip("The lows under this give the bass harmonics");
         for (auto* k : {amount_, bass_})
             k->setRingSize(bigRing);
 
         // Dynamics.
         dynamics_ = &addKnob(px::dynamics);
         dynamics_->format = sided("Fill", "Static", "Push");
-        dynamics_->setTooltip(
-            "Lets the amount follow the music: Push adds more on the loud moments, Fill more in the quiet "
-            "ones and the tails (against the last half second or so)");
         transients_ = &addKnob(px::transients);
-        transients_->setTooltip("Adds more on each onset, for attack and snap");
 
         // Output.
         stereo_ = &addKnob(px::stereo, "Width");
-        stereo_->setTooltip(
-            "Spreads what is added to the sides with a decorrelated copy; the mono sum never changes");
         mix_ = &addKnob(px::mix);
-        mix_->setTooltip("Scales everything added; at 0% the input passes untouched");
         output_ = &addKnob(px::output);
-        output_->setTooltip("Gain after the exciter");
         autoGain_ = &addToggle(px::autoGain, "Match");
-        autoGain_->setTooltip("Auto gain: turns the output down by what the exciter adds to its loudness, so "
-                              "switching it on and off compares like with like");
+        autoGain_->setTooltip("Auto gain");
         autoGainLabel_ = &addCaption("Auto gain");
         paramsChanged();
     }

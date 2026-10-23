@@ -71,7 +71,7 @@ class CollapseButton final : public juce::Button
 public:
     explicit CollapseButton(const Theme& theme) : juce::Button("Collapse"), theme_(theme)
     {
-        setTooltip("Collapse to a tab");
+        setTooltip("Collapse");
     }
     void paintButton(juce::Graphics& g, bool isMouseOver, bool) override
     {
@@ -131,8 +131,7 @@ ModuleCard::ModuleCard(const Theme& theme, CardHost& host, core::Id channelId, c
         modelSwitch_->setSegments(labels);
         modelSwitch_->setSelected(selected, juce::dontSendNotification);
         modelSwitch_->setTitle("Compressor model");
-        modelSwitch_->setTooltip("Clean: a modern feed-forward compressor. "
-                                 "Opto: a vintage optical compressor with a program-dependent release");
+        modelSwitch_->setTooltip("Clean or Opto");
         modelSwitch_->onChange = [this, models](int index)
         {
             if (!updating_ && host_.onSwapModel && index >= 0 && static_cast<size_t>(index) < models.size() &&
@@ -225,7 +224,7 @@ void ModuleCard::refresh(const core::Insert& module)
     bool changed = module.bypass != bypass_;
     bypass_ = module.bypass;
     power_.setToggleState(!bypass_, juce::dontSendNotification);
-    power_.setTooltip(bypass_ ? "Off: click to switch on" : "On: click to switch off");
+    power_.setTooltip(bypass_ ? "Switch on" : "Switch off");
     // Only the model's changes come in: a refresh that repeats a value would
     // pull a control off what automation is playing (tick follows the live
     // processor), flipping between the two every frame.

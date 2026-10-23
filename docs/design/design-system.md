@@ -342,7 +342,7 @@ next (›), each as wide as the bar is high, round the current preset's name in
 reads "Custom" when no preset matches. States: the buttons' ghost hover and
 pressed; disabled arrows when the effect has no presets; focus rings on each
 button. A click on the name opens the presets menu (screens/plugins.md 7.2b).
-Tooltips: "Previous preset", "Next preset", "Presets: <name>". The bar narrows
+Tooltips: "Previous preset", "Next preset", "Presets". The bar narrows
 with its header and hides below 112 px.
 
 ### Stage tile
@@ -483,7 +483,15 @@ items show a check icon in `accent`. Disabled `textDisabled`.
 
 `surface3` fill, radius `sm`, `small` 12 text `textPrimary`, max width
 `tooltipMaxWidth`, `sm` padding, shadow. Shows the control name and, for valued
-controls, the current value and the shortcut. The shortcut (written after two
+controls, the current value and the shortcut.
+
+On an effect's card a tooltip is a few words (28 characters at most), never a
+sentence: the card's labels, values and displays already say what each part is,
+and long tooltips cover the design. A display that only shows (a meter, a history,
+a scope, a spectrum) has none; one you can drag says what a drag sets ("Drag:
+threshold"); a button, toggle or chip names what it does ("Freeze", "Tempo sync",
+"Kill dry"). A knob has none while it draws its value under it; one too small to
+draw it shows the value. The shortcut (written after two
 spaces, keys joined by "+": "Redo  Ctrl+Shift+Z") shows as key caps at the right of
 the first line, one per key: `caption` `textSecondary` on `surface1` with a
 `lineStrong` border, radius `sm`. Delay `tooltipDelayMs`.

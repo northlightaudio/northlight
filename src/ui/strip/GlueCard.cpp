@@ -55,13 +55,7 @@ float crestDb(const ModuleCard& card, int from, int to, bool output)
 class DynamicsRibbon final : public juce::Component, public juce::SettableTooltipClient
 {
 public:
-    explicit DynamicsRibbon(ModuleCard& card) : card_(card)
-    {
-        setTooltip(
-            "Each moment of the last three seconds, from its loudness (RMS) to its peak: the input "
-            "in grey, the output in colour. A fast attack holds the peaks down and narrows the band; a "
-            "slow one lets them through. Drag the line for the threshold.");
-    }
+    explicit DynamicsRibbon(ModuleCard& card) : card_(card) { setTooltip("Drag: threshold"); }
 
     void paint(juce::Graphics& g) override
     {
@@ -294,11 +288,7 @@ public:
         0.5f, 1.0f, 2.0f, 3.0f, 4.0f, 6.0f, 8.0f, 10.0f, 14.0f, 20.0f};
     static constexpr float hotFromDb = 10.0f;
 
-    explicit ReductionArc(ModuleCard& card) : card_(card)
-    {
-        setTooltip("Gain reduction: a segment lights for each step; the brightest outline holds the "
-                   "deepest of the last moment");
-    }
+    explicit ReductionArc(ModuleCard& card) : card_(card) {}
 
     void advance(double elapsedMs)
     {
@@ -401,9 +391,7 @@ public:
         addAndMakeVisible(ribbon_);
         addAndMakeVisible(arc_);
         threshold_ = &addKnob(pg::threshold);
-        threshold_->setTooltip("Where the glue starts: lower it until the reduction moves with the music");
         makeup_ = &addKnob(pg::makeup);
-        makeup_->setTooltip("Gain after the compressor, to match the level going in");
         for (auto* k : {threshold_, makeup_})
             k->setRingSize(bigRing);
 
@@ -442,11 +430,7 @@ public:
         keyHp_ = &addKnob(pg::keyHighPass, "Key HP");
         keyHp_->format = [](double hz)
         { return hz <= pg::keyHighPassOffHz + 0.5 ? juce::String("Off") : formatHz(hz); };
-        keyHp_->setTooltip(
-            "Filters the lows out of what the detector hears, so the kick and bass do not pump "
-            "the mix");
         mix_ = &addKnob(pg::mix);
-        mix_->setTooltip("Blends the dry signal back in: parallel compression");
         paramsChanged();
     }
 

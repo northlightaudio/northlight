@@ -155,7 +155,7 @@ TEST_CASE("Tape echo card states to PNG", "[.capture]")
     }
 }
 
-TEST_CASE("The tape echo card's controls fit inside it, every one with a tooltip", "[ui][tapeecho]")
+TEST_CASE("The tape echo card's controls fit inside it, their tooltips brief", "[ui][tapeecho]")
 {
     const juce::ScopedJuceInitialiser_GUI juceInit;
     Rig rig;
@@ -168,6 +168,6 @@ TEST_CASE("The tape echo card's controls fit inside it, every one with a tooltip
         if (dynamic_cast<juce::Label*>(child) != nullptr)
             continue;
         if (auto* tip = dynamic_cast<juce::SettableTooltipClient*>(child))
-            CHECK(tip->getTooltip().isNotEmpty());
+            CHECK(tip->getTooltip().length() <= 28);
     }
 }

@@ -44,7 +44,7 @@ InsertEditor::InsertEditor(core::Id channelId,
     mix_.setTextBoxStyle(juce::Slider::NoTextBox, false, 0, 0);
     mix_.setDoubleClickReturnValue(true, 100.0);
     mix_.setValue(100.0, juce::dontSendNotification);
-    mix_.setTooltip("Wet/dry mix");
+    mix_.setTooltip("Mix");
     mix_.setVisible(!embedded_);
     mix_.onValueChange = [this]
     {

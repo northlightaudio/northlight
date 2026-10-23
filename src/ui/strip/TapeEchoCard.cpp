@@ -81,13 +81,7 @@ class TapeLoopView final : public juce::Component, public juce::SettableTooltipC
 {
 public:
     // A readout only: the knobs below set the machine.
-    TapeLoopView(ModuleCard& card, const Machine& machine) : card_(card), machine_(machine)
-    {
-        setTooltip("The tape loop: what the record head (R) writes travels round past the playback heads, "
-                   "and the lit heads play it. The line under them is the feedback to the record head, "
-                   "warning-coloured near self-oscillation. Inside: the motor, the loop gain (at 1 the "
-                   "echoes sustain themselves) and the tape's saturation.");
-    }
+    TapeLoopView(ModuleCard& card, const Machine& machine) : card_(card), machine_(machine) {}
 
     void advance(double elapsedMs)
     {
@@ -500,8 +494,6 @@ public:
         addAndMakeVisible(loop_);
 
         time_ = &addKnob(te::time);
-        time_->setTooltip("The motor speed: head 1's time (the other heads are 2, 3 and 4 times it). A "
-                          "change glides, bending the echoes' pitch as the motor settles");
         time_->format = [this](double v)
         {
             if (synced())
@@ -510,44 +502,31 @@ public:
         };
         selector(te::heads, "Heads", "Heads");
         feedback_ = &addKnob(te::feedback);
-        feedback_->setTooltip("How much of the heads goes back to the record head. Past the edge (a loop "
-                              "gain of 1) the echoes build into the tape's saturation and sustain");
         for (auto* k : {time_, feedback_})
             k->setRingSize(bigRing);
 
         bass_ = &addKnob(te::bass);
-        bass_->setTooltip("Low shelf in the loop: each repeat gets more (or less) bass than the one before");
         treble_ = &addKnob(te::treble);
-        treble_->setTooltip("High shelf in the loop: each repeat gets brighter (or darker) than the last");
 
         drive_ = &addKnob(te::drive);
-        drive_->setTooltip("The record level into the tape: more saturation, thicker repeats (their level "
-                           "is compensated by half)");
         wow_ = &addKnob(te::wow);
-        wow_->setTooltip("Slow, wandering speed drift: the echoes' pitch sways");
         flutter_ = &addKnob(te::flutter);
-        flutter_->setTooltip("Fast speed jitter from the capstan: a shimmer on the echoes");
         age_ = &addKnob(te::age);
-        age_->setTooltip("Worn tape: fewer highs on every pass, hiss under the echoes and the odd dropout");
 
         selector(te::stereo, "Stereo", "Stereo");
         spread_ = &addKnob(te::spread);
-        spread_->setTooltip("How wide the echoes sit: the heads' pan, or the width of ping-pong and stereo");
         spring_ = &addKnob(te::spring);
-        spring_->setTooltip("A short spring reverb on the echoes: its chirp and drip, not on the dry signal");
 
         mix_ = &addKnob(te::mix);
-        mix_->setTooltip("The echoes against the dry signal");
         output_ = &addKnob(te::output);
-        output_->setTooltip("The level after the machine");
         killDry_ = &addToggle(te::killDry, "Kill");
-        killDry_->setTooltip("Kill dry: only the echoes come out, whatever the mix (for a send)");
+        killDry_->setTooltip("Kill dry");
         killDryLabel_ = makeCaption("Dry");
 
         for (const auto& name : plugins::sync::choices())
             sync_.choices.emplace_back(name);
         sync_.choices.front() = "Sync off";
-        sync_.setTooltip("Sync the motor to the project tempo: head 1 lands on the note value");
+        sync_.setTooltip("Tempo sync");
         sync_.onChoose = [this](int i)
         {
             beginGesture("Sync");

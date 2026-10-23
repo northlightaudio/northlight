@@ -162,8 +162,7 @@ delay `Gorse`, glue compressor `Thrift`, Patina `Kelp`, exciter `Machair`, Bloom
     the header's preset bar (7.2b), the user's presets too (wrapping; from Custom,
     Next goes to the first); a click on the display shows the preset menu. A preset is one undo step ("Preset
     Worn Cassette"); any change of a value makes it Custom. Tooltips:
-    "Previous preset", "Next preset", "Presets: <name>"; the lamp "On" or "Off:
-    Patina is bypassed". The keys and display take focus and draw the focus
+    "Previous preset", "Next preset", "Presets"; the lamp has none. The keys and display take focus and draw the focus
     ring.
   - **Stage windows** (flexible height, six across, 12 px apart). A window has
     a 20 px header with its name in `captionCaps` `legend` (70% when the stage
@@ -321,8 +320,7 @@ delay `Gorse`, glue compressor `Thrift`, Patina `Kelp`, exciter `Machair`, Bloom
       a knob's ring sits; under it, where a knob shows its value, the live trim
       ("-1.8 dB", or "Off" in `textTertiary`), then its label.
 
-    Every label sits on one baseline along the bottom of the row. Every control
-    has a tooltip that says what it does to the sound.
+    Every label sits on one baseline along the bottom of the row.
   - **Size.** The card is 939 px wide at 100% and its body is 300 px tall.
 - **Bloom** (an extreme reverb for use as an effect: huge, frozen, shimmering,
   swelling, gated or ducked tails): a feedback delay network of eight modulated

@@ -19,15 +19,10 @@ namespace pa = plugins::patina;
 
 namespace
 {
-// The card's stage tiles, found by their tooltips ("Heat: ...").
+// The card's stage windows, by their IDs ("stage:Heat").
 juce::Component* tileFor(juce::Component& card, const juce::String& name)
 {
-    for (auto* child : card.getChildren())
-        if (auto* tip = dynamic_cast<juce::SettableTooltipClient*>(child);
-            tip != nullptr && dynamic_cast<ui::Knob*>(child) == nullptr &&
-            dynamic_cast<ui::RotarySelector*>(child) == nullptr && tip->getTooltip().startsWith(name + ":"))
-            return child;
-    return nullptr;
+    return card.findChildWithID("stage:" + name);
 }
 
 juce::Button* buttonFor(juce::Component& card, const juce::String& tooltip)
@@ -168,7 +163,7 @@ TEST_CASE("Patina's preset keys step through the factory presets as one undo ste
     card->setBounds(0, 0, card->preferredWidth(), card->preferredBodyHeight());
 
     // A new Patina is the first preset; the display names it.
-    auto* display = buttonFor(*card, "Presets: " + juce::String(pa::presets().front().name));
+    auto* display = buttonFor(*card, "Presets");
     REQUIRE(display != nullptr);
     auto* next = buttonFor(*card, "Next preset");
     auto* previous = buttonFor(*card, "Previous preset");

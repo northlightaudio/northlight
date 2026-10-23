@@ -136,7 +136,7 @@ ChannelStripView::ChannelStripView(const Theme& theme) : theme_(theme)
     };
 
     position_.getProperties().set(NorthlightLookAndFeel::propertyVariant, "ghost");
-    position_.setTooltip("Where the strip sits in the channel: click to move it before or after the inserts");
+    position_.setTooltip("Before or after inserts");
     position_.onClick = [this]
     {
         if (host.onCommand && channelId_ != core::invalidId)
@@ -145,7 +145,7 @@ ChannelStripView::ChannelStripView(const Theme& theme) : theme_(theme)
     addAndMakeVisible(position_);
     allOff_.setButtonText("All off");
     allOff_.getProperties().set(NorthlightLookAndFeel::propertyVariant, "ghost");
-    allOff_.setTooltip("Switch every module of the strip off");
+    allOff_.setTooltip("All off");
     allOff_.onClick = [this]
     {
         if (!host.onCommand)
@@ -161,7 +161,7 @@ ChannelStripView::ChannelStripView(const Theme& theme) : theme_(theme)
     addAndMakeVisible(allOff_);
     presets_.setButtonText(juce::String::fromUTF8("Presets \xe2\x96\xbe"));
     presets_.getProperties().set(NorthlightLookAndFeel::propertyVariant, "ghost");
-    presets_.setTooltip("Starting points for vocals, guitars, drums and buses, and your own");
+    presets_.setTooltip("Strip presets");
     presets_.onClick = [this] { showPresetMenu(); };
     addAndMakeVisible(presets_);
     presetFolder = userPresetFolder();

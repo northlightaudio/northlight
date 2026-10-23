@@ -116,12 +116,7 @@ private:
 class Vectorscope final : public juce::Component, public juce::SettableTooltipClient
 {
 public:
-    explicit Vectorscope(ModuleCard& card) : card_(card)
-    {
-        setTooltip("The output's stereo image: a mono sound stands as a vertical line, a wide one "
-                   "spreads into a cloud, and one lying on its side is out of phase. The dashed line is "
-                   "where the rotation has turned the centre.");
-    }
+    explicit Vectorscope(ModuleCard& card) : card_(card) {}
 
     void update(const StereoTaps& taps, bool fresh, double elapsedMs)
     {
@@ -248,12 +243,7 @@ private:
 class CorrelationMeter final : public juce::Component, public juce::SettableTooltipClient
 {
 public:
-    explicit CorrelationMeter(ModuleCard& card) : card_(card)
-    {
-        setTooltip("Correlation of the output's left and right: +1 is mono, 0 wide, below 0 the sides "
-                   "cancel in mono. The small mark is the input's. Drag the line in colour to set where "
-                   "the guard starts narrowing.");
-    }
+    explicit CorrelationMeter(ModuleCard& card) : card_(card) { setTooltip("Drag: guard"); }
 
     void update(double elapsedMs)
     {
@@ -475,9 +465,7 @@ class WidthBands final : public juce::Component, public juce::SettableTooltipCli
 public:
     explicit WidthBands(ModuleCard& card) : card_(card), window_(fftSize, 0.0f), in_(fftSize), out_(fftSize)
     {
-        setTooltip("Each band's width: drag a band up or down to widen or narrow it, drag the lines "
-                   "between them to move the crossovers, and the line at the left for Mono below. The "
-                   "bright line is the width the output measures at each frequency.");
+        setTooltip("Drag: widths, crossovers");
         for (int i = 0; i < fftSize; ++i)
             window_[static_cast<size_t>(i)] =
                 0.5f - 0.5f * std::cos(2.0f * juce::MathConstants<float>::pi * static_cast<float>(i) /
@@ -1016,36 +1004,20 @@ public:
         addAndMakeVisible(meter_);
         addAndMakeVisible(bands_);
 
-        const auto width = [this](int index, const juce::String& label, const juce::String& tip)
+        const auto width = [this](int index, const juce::String& label)
         {
             auto& k = addKnob(index, label);
             k.format = [](double v)
             { return v < 0.5 ? juce::String("Mono") : juce::String(juce::roundToInt(v)) + "%"; };
-            k.setTooltip(tip);
             return &k;
         };
-        widthKnobs_ = {width(pw::lowWidth,
-                             "Low",
-                             "The low band's width: keep it at or below 100% so the bass stays centred"),
-                       width(pw::midWidth,
-                             "Mid",
-                             "The middle band's width: 0 is mono, 100% as it came, 200% twice the side"),
-                       width(pw::highWidth,
-                             "High",
-                             "The high band's width: air and detail open up here without moving the centre")};
+        widthKnobs_ = {width(pw::lowWidth, "Low"), width(pw::midWidth, "Mid"), width(pw::highWidth, "High")};
         monoBelow_ = &addKnob(pw::monoBelow, "Mono below");
         monoBelow_->format = [](double hz)
         { return hz <= pw::monoOffHz + 0.5 ? juce::String("Off") : formatHz(hz); };
-        monoBelow_->setTooltip("Everything below this is mono, whatever the low width: a tight, centred bass "
-                               "that survives a mono club system or a phone");
 
         mode_ = &addChoice(pw::spreadMode);
-        mode_->setTooltip("How Spread widens a mono sound: Diffuse spreads it through allpass filters (no "
-                          "echo, no comb), Haas through a short delay. Both live in the side only, so they "
-                          "cancel in mono.");
-        mode_->setSegmentTooltip(0, "Diffuse: each frequency leans a different way; no echo or comb");
-        mode_->setSegmentTooltip(1,
-                                 "Haas: a short delay against the original; more obvious, slightly hollow");
+        mode_->setTooltip("Spread mode");
         modeCaption_.setText("Mode", juce::dontSendNotification);
         modeCaption_.setFont(theme_.caption());
         modeCaption_.setColour(juce::Label::textColourId, theme_.colours.textSecondary);
@@ -1053,9 +1025,7 @@ public:
         modeCaption_.setInterceptsMouseClicks(false, false);
         addAndMakeVisible(modeCaption_);
         spread_ = &addKnob(pw::spread);
-        spread_->setTooltip("Widens a mono or nearly mono sound by adding a decorrelated copy to the side");
         haasTime_ = &addKnob(pw::haasTime, "Time");
-        haasTime_->setTooltip("The Haas delay: shorter is subtler, longer is wider and more hollow");
 
         rotation_ = &addKnob(pw::rotation);
         rotation_->format = [](double v)
@@ -1063,18 +1033,15 @@ public:
             const int d = juce::roundToInt(v);
             return (d > 0 ? "+" : "") + juce::String(d) + juce::String::fromUTF8("\xc2\xb0");
         };
-        rotation_->setTooltip("Turns the whole image left or right, keeping its width (unlike balance)");
         balance_ = &addKnob(pw::balance);
         balance_->format = [](double v)
         {
             const int b = juce::roundToInt(v);
             return b == 0 ? juce::String("C") : (b < 0 ? "L " : "R ") + juce::String(std::abs(b));
         };
-        balance_->setTooltip("Turns one side down: left below the centre, right above it");
 
         guard_ = &addToggle(pw::guard, "Guard");
-        guard_->setTooltip("Narrows the image while its correlation falls below the line on the meter, so "
-                           "it stays mono compatible");
+        guard_->setTooltip("Mono guard");
         guardCaption_.setText("Mono safe", juce::dontSendNotification);
         guardCaption_.setFont(theme_.caption());
         guardCaption_.setColour(juce::Label::textColourId, theme_.colours.textSecondary);
@@ -1082,7 +1049,6 @@ public:
         guardCaption_.setInterceptsMouseClicks(false, false);
         addAndMakeVisible(guardCaption_);
         output_ = &addKnob(pw::output);
-        output_->setTooltip("The level going out");
         paramsChanged();
     }
 

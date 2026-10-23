@@ -60,7 +60,8 @@ void Knob::setRange(double minimum, double maximum, double defaultValue)
 void Knob::setValue(double value, juce::NotificationType notify)
 {
     value_ = juce::jlimit(minimum_, maximum_, value);
-    setTooltip(text());
+    // The value is the tooltip only where the knob does not draw it.
+    setTooltip(showValue_ ? juce::String() : text());
     repaint();
     if (notify != juce::dontSendNotification && onValueChanged)
         onValueChanged(value_);
