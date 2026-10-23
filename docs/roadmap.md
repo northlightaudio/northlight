@@ -94,19 +94,21 @@ in editing, effects and controller work. Each item is to become an issue of its 
 
 ### Effects
 
-Northlight ships gain, EQ, compressor, opto compressor, limiter, reverb and delay,
-and the channel strip adds a gate, de-esser and saturation. Missing:
+Northlight ships gain, EQ, compressor, opto compressor, glue compressor, limiter,
+reverb and delay, and the effects Patina (retro colour), Exciter, Bloom (effect
+reverb), Tape Echo and Stereo Widener; the channel strip adds a gate, de-esser and
+saturation. Missing:
 
 | Area | Effects |
 |---|---|
 | Modulation | Chorus, flanger, phaser, tremolo, auto-pan. None exist yet; this is the largest hole |
-| Utility | Stereo width and mid/side, mono, channel swap, tuner |
-| Metering | Spectrum analyser, phase correlation meter and vectorscope as inserts |
+| Utility | Mono, channel swap, tuner |
+| Metering | Spectrum analyser as an insert (the Stereo Widener shows a vectorscope and correlation) |
 | Dynamics | Multiband compressor, transient shaper, clipper |
 | Filter | Resonant filter driven by an LFO or an envelope follower |
 | Pitch | Real-time pitch shifter and harmoniser |
 | Reverb | Convolution reverb that loads impulse responses |
-| Colour | Amp and cabinet simulation, bitcrusher, tape echo |
+| Colour | Amp and cabinet simulation (Patina covers tape, tube, bitcrush and vinyl colour) |
 
 The EQ insert has a high-pass and three bands. A fully parametric EQ (six to eight
 bands with shelves and notches, over a spectrum) would let it serve as the main EQ.

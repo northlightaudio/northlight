@@ -224,5 +224,20 @@ createOptoCard(const Theme& theme, CardHost& host, core::Id channelId, const cor
 // The glue compressor's card (the "northlight.glue" insert).
 std::unique_ptr<ModuleCard>
 createGlueCard(const Theme& theme, CardHost& host, core::Id channelId, const core::Insert& insert);
+// The stereo widener's card (the "northlight.widener" insert).
+std::unique_ptr<ModuleCard>
+createWidenerCard(const Theme& theme, CardHost& host, core::Id channelId, const core::Insert& insert);
+// The tape echo's card (the "northlight.tapeecho" insert).
+std::unique_ptr<ModuleCard>
+createTapeEchoCard(const Theme& theme, CardHost& host, core::Id channelId, const core::Insert& insert);
+// Patina's card (the "northlight.patina" insert).
+std::unique_ptr<ModuleCard>
+createPatinaCard(const Theme& theme, CardHost& host, core::Id channelId, const core::Insert& insert);
+// The exciter's card (the "northlight.exciter" insert).
+std::unique_ptr<ModuleCard>
+createExciterCard(const Theme& theme, CardHost& host, core::Id channelId, const core::Insert& insert);
+// Bloom's card (the "northlight.bloom" insert).
+std::unique_ptr<ModuleCard>
+createBloomCard(const Theme& theme, CardHost& host, core::Id channelId, const core::Insert& insert);
 
 } // namespace northlight::ui::strip

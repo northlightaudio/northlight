@@ -30,6 +30,12 @@ add_executable(northlight_unit_tests
     plugins/BuiltInTests.cpp
     plugins/ChannelStripTests.cpp
     plugins/GlueTests.cpp
+    plugins/WidenerTests.cpp
+    plugins/TapeEchoTests.cpp
+    plugins/PatinaTests.cpp
+    plugins/EffectPresetsTests.cpp
+    plugins/ExciterTests.cpp
+    plugins/BloomTests.cpp
     plugins/StripBenchTests.cpp
     plugins/SynthFingerprintTests.cpp
     plugins/ExpressionTests.cpp

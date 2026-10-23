@@ -31,7 +31,13 @@ add_executable(northlight_juce_tests
     PreferencesViewTests.cpp
     HeaderBarTests.cpp
     MixerViewTests.cpp
-    GlueCardTests.cpp)
+    GlueCardTests.cpp
+    WidenerCardTests.cpp
+    TapeEchoCardTests.cpp
+    PatinaCardTests.cpp
+    EffectPresetLibraryTests.cpp
+    ExciterCardTests.cpp
+    BloomCardTests.cpp)
 
 target_link_libraries(northlight_juce_tests PRIVATE
     northlight_options

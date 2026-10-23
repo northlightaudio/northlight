@@ -30,6 +30,12 @@ Generated from [tokens.json](tokens.json) (Machair Dusk v2) by `scripts/contrast
 | meterLow | canvas | 6.75 | Meter zone (non-text) | yes |
 | meterMid | canvas | 9.38 | Meter zone (non-text) | yes |
 | meterHot | canvas | 6.88 | Meter zone (non-text) | yes |
+| hardware.legend | hardware.panel | 6.74 | Legends on a hardware face's panel | yes |
+| hardware.ink | hardware.plate | 8.25 | Nameplate lettering | yes |
+| hardware.displayText | hardware.displayCentre | 10.25 | An amber display's text | yes |
+| hardware.displayDim | hardware.displayCentre | 5.50 | A display's preset number | 3:1 only |
+| hardware.glassInk | hardware.glassEdge | 6.01 | Readings on a lit meter window, at its edge | yes |
+| hardware.glassMid | hardware.glassOffEdge | 5.88 | Readings on an unlit window | 3:1 only |
 
 ## Track palette
 

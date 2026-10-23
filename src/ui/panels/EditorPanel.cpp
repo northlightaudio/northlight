@@ -1,6 +1,7 @@
 #include "ui/panels/EditorPanel.h"
 
 #include "plugins/BuiltIns.h"
+#include "plugins/EffectPresets.h"
 #include "ui/Db.h"
 #include "ui/Motion.h"
 #include "ui/NorthlightLookAndFeel.h"
@@ -11,6 +12,7 @@
 #include "ui/components/Fader.h"
 #include "ui/components/SegmentedControl.h"
 #include "ui/strip/BuiltInCards.h"
+#include "ui/strip/PresetBar.h"
 
 #include <map>
 
@@ -102,6 +104,14 @@ public:
             if (instrument_)
                 body_->setComponentID("capture:instrument"); // --capture saves it by this name
             addAndMakeVisible(*body_);
+            // A built-in effect's presets, in the header (screens/plugins.md 7.2b).
+            if (!instrument_ && !plugins::factoryPresets(type_).empty())
+            {
+                presets_ = std::make_unique<strip::PresetBar>(theme_, type_);
+                presets_->onApply = [this](const std::vector<float>& values, const juce::String& name)
+                { applyPreset(values, name); };
+                addAndMakeVisible(*presets_);
+            }
         }
         else
             rebuildKnobs();
@@ -140,21 +150,34 @@ public:
         dragging_ = false;
     }
 
+    // The line under the header for a key chip or the latency. A built-in's own card
+    // takes the room when it has neither, so its display does not sit under a gap.
+    bool showsInfoLine() const noexcept
+    {
+        return body_ == nullptr || sidechain_ != core::invalidId || latency_ > 0;
+    }
+
     void refresh(const core::Insert& insert)
     {
         const juce::ScopedValueSetter<bool> guard(updating_, true);
+        const bool hadInfoLine = showsInfoLine();
         bypassed_ = insert.bypass;
         power_.setToggleState(!insert.bypass, juce::dontSendNotification);
         power_.setTooltip(insert.bypass ? "Bypassed: click to enable" : "Enabled: click to bypass");
         mix_.setValue(insert.mix * 100.0, juce::dontSendNotification);
         sidechain_ = insert.sidechain;
         sidechainPostFader_ = insert.sidechainPostFader;
+        params_ = insert.params;
+        if (presets_ != nullptr)
+            presets_->setValues(insert.params);
         if (body_ != nullptr)
             body_->refresh(insert);
         const auto live = owner_.liveInsert ? owner_.liveInsert(insertId_) : nullptr;
         for (size_t i = 0; i < knobs_.size() && live != nullptr; ++i)
             knobs_[i]->setValue(live->parameter(static_cast<int>(i)), juce::dontSendNotification);
         latency_ = live != nullptr ? live->latencySamples() : 0;
+        if (showsInfoLine() != hadInfoLine)
+            resized();
         repaint();
     }
 
@@ -180,6 +203,8 @@ public:
         auto header = getLocalBounds().removeFromTop(theme_.sizes.control).reduced(theme_.spacing.xs, 0);
         header.removeFromLeft(theme_.sizes.controlCompact + theme_.spacing.xs);
         header.removeFromRight(theme_.sizes.controlCompact + theme_.spacing.xs);
+        if (presets_ != nullptr && presets_->isVisible())
+            header.removeFromRight(presets_->getWidth() + theme_.spacing.sm);
         // Format badge.
         const auto badge = badgeText();
         if (badge.isNotEmpty())
@@ -267,7 +292,9 @@ public:
             g.setFont(theme_.caption());
             g.drawText(juce::String(latency_) + " smp", info, juce::Justification::centredRight);
         }
-        if (knobs_.empty() && !open_.isVisible() && !missing_)
+        // Built-ins with a card of their own draw it; "No parameters" is only for
+        // an insert with nothing to show (it showed through gaps in a card's layout).
+        if (knobs_.empty() && body_ == nullptr && !open_.isVisible() && !missing_)
         {
             g.setColour(c.textTertiary);
             g.setFont(theme_.small());
@@ -291,13 +318,24 @@ public:
                 .reduced(theme_.spacing.xs, (theme_.sizes.control - theme_.sizes.controlCompact) / 2);
         power_.setBounds(header.removeFromLeft(theme_.sizes.controlCompact));
         menu_.setBounds(header.removeFromRight(theme_.sizes.controlCompact));
+        if (presets_ != nullptr)
+        {
+            // Right of the name, before the menu: as wide as it wants, narrower
+            // on a small card, leaving the name at least a short word's room.
+            header.removeFromRight(theme_.spacing.xs);
+            const int room = header.getWidth() - theme_.spacing.sm - 72;
+            const int w = std::min(presets_->preferredWidth(), room);
+            presets_->setVisible(w >= presets_->minimumWidth());
+            presets_->setBounds(header.removeFromRight(std::max(0, w)));
+        }
         if (!instrument_)
         {
             auto footer = area.removeFromBottom(theme_.sizes.controlCompact).reduced(theme_.spacing.md, 0);
             footer.removeFromLeft(56);
             mix_.setBounds(footer);
         }
-        area.removeFromTop(theme_.sizes.controlCompact); // the info line
+        if (showsInfoLine())
+            area.removeFromTop(theme_.sizes.controlCompact); // the info line
         if (body_ != nullptr)
         {
             body_->setBounds(area);
@@ -396,6 +434,21 @@ private:
         }
     }
 
+    // A preset sets every parameter it changes as one undo step.
+    void applyPreset(const std::vector<float>& values, const juce::String& name)
+    {
+        if (!owner_.onCommand)
+            return;
+        if (owner_.onGestureBegin)
+            owner_.onGestureBegin(("Preset " + name).toStdString());
+        for (size_t i = 0; i < values.size(); ++i)
+            if (i >= params_.size() || params_[i] != values[i])
+                owner_.onCommand(std::make_unique<core::SetInsertParameter>(
+                    channelId_, insertId_, static_cast<int>(i), values[i]));
+        if (owner_.onGestureEnd)
+            owner_.onGestureEnd();
+    }
+
     void showMenu()
     {
         juce::PopupMenu menu;
@@ -453,6 +506,8 @@ private:
     juce::TextButton open_;
     std::vector<std::unique_ptr<Knob>> knobs_;
     std::vector<std::unique_ptr<juce::Label>> labels_;
+    std::unique_ptr<strip::PresetBar> presets_;
+    std::vector<float> params_; // the model's values at the last refresh
     bool bypassed_ = false, updating_ = false, missing_ = false, dragging_ = false;
     core::Id sidechain_ = core::invalidId;
     bool sidechainPostFader_ = false;

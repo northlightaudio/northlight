@@ -7,6 +7,7 @@
 #include "ui/components/Knob.h"
 #include "ui/components/NumericField.h"
 #include "ui/strip/ModuleCard.h"
+#include "ui/strip/PresetBar.h"
 
 #include <juce_gui_basics/juce_gui_basics.h>
 
@@ -95,6 +96,8 @@ private:
     void timerCallback() override;
     strip::CardHost host_;
     std::unique_ptr<strip::ModuleCard> body_;
+    std::unique_ptr<strip::PresetBar> presets_; // a built-in effect's, in the title row
+    std::vector<float> params_;                 // the model's values at the last setInsert
     std::function<std::shared_ptr<engine::InsertProcessor>(core::Id)> live_;
     double lastTickMs_ = 0.0;
     bool instrument_ = false; // a built-in instrument: no mix

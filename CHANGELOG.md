@@ -40,6 +40,28 @@ Northlight has not had a release yet. The first release, 0.1.0, will include:
   Release (with Auto), a key high-pass and parallel Mix, whose display shows the
   mix's loudness and peaks going in and coming out and how far the peaks stand
   above the body (the crest factor).
+- Presets for every built-in effect, chosen from a bar in the effect's header in
+  the Editor panel and in its window: a factory list for each (compressor, EQ,
+  reverb, delay and the rest), and your own, saved from the same menu and kept in
+  Documents/Northlight/Effect Presets.
+- Patina, a vintage colour effect: Heat, Chamber, Drift, Grain, Wear and Crush
+  stages age a sound in their own ways, each with its own Breath, under one Age
+  control, with a live readout of every stage. Its editor is a worn studio rack
+  unit, with twelve factory presets.
+- An Exciter that adds harmonics to flat sounds: four characters (Tube, Tape, Air,
+  Crisp) generated from the band above a crossover, anti-aliased with no latency,
+  following the music, plus psychoacoustic bass, mono-safe width and auto gain.
+  Its display shows the harmonics it adds over the input's spectrum.
+- Bloom, an effect reverb for huge and strange tails: decays up to a minute,
+  Freeze, Shimmer that climbs by an interval, Swell that builds the tail like a
+  reversed reverb, a gate and ducking. Its display is a live spectrogram of the tail.
+- Tape Echo, a tape loop with four playback heads in eight combinations, a motor
+  speed that glides and bends the pitch (or syncs to the tempo), wow, flutter and
+  tape age, repeats that darken and saturate each pass and self-oscillate past
+  100%, a spring reverb and Kill dry. Its card shows the running machine.
+- The Stereo Widener: width in three bands with phase-coherent crossovers, Mono
+  below, a mono-safe Spread, rotation and balance, a correlation guard and level
+  compensation, with a live vectorscope and the width the output measures.
 - An opto compressor, modelled on vintage optical compressors, that can be swapped in
   for the channel strip's compressor or added as an insert.
 - VST3 and CLAP hosting, with plugin scanning in a separate process, a plugin browser,

@@ -35,15 +35,16 @@ std::string writeSpike(const char* name, std::int64_t length, std::int64_t spike
 // Polls the store (its thread fills it in the background) until `ready` holds.
 template <typename Ready> engine::WaveformView waitFor(Ready ready)
 {
-    for (int i = 0; i < 500; ++i)
+    std::optional<engine::WaveformView> found;
+    for (int i = 0; i < 500 && !found.has_value(); ++i)
     {
-        auto view = ready();
-        if (view.has_value())
-            return *view;
-        std::this_thread::sleep_for(std::chrono::milliseconds(10));
+        found = ready();
+        if (!found.has_value())
+            std::this_thread::sleep_for(std::chrono::milliseconds(10));
     }
-    FAIL("timed out waiting for the peak store");
-    return {};
+    INFO("timed out waiting for the peak store");
+    REQUIRE(found.has_value());
+    return *found;
 }
 } // namespace
 

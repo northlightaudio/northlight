@@ -55,6 +55,12 @@ inline juce::Colour moduleColour(const Theme& theme, const std::string& type)
         return paletteColour(theme, "Straw");
     if (type == "northlight.glue")
         return paletteColour(theme, "Thrift"); // apart from the strip compressors' Loch and Straw
+    if (type == "northlight.widener")
+        return paletteColour(theme, "Sea grass");
+    if (type == "northlight.patina")
+        return paletteColour(theme, "Kelp"); // the colour family of the strip saturation
+    if (type == "northlight.exciter")
+        return paletteColour(theme, "Machair");
     if (type == "northlight.limiter")
         return paletteColour(theme, "Rowan");
     if (type == "northlight.gain")
@@ -63,6 +69,10 @@ inline juce::Colour moduleColour(const Theme& theme, const std::string& type)
         return paletteColour(theme, "Lichen");
     if (type == "northlight.delay")
         return paletteColour(theme, "Gorse");
+    if (type == "northlight.tapeecho")
+        return paletteColour(theme, "Rowan");
+    if (type == "northlight.bloom")
+        return paletteColour(theme, "Heather"); // dusk over the moor, apart from the plain reverb's Lichen
     if (type == "northlight.aurora")
         return paletteColour(theme, "Heather");
     if (type == "northlight.pulsar")

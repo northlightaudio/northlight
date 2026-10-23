@@ -90,6 +90,77 @@ display shows the music's loudness and peaks going in (grey) and coming out
 (colour): a fast attack pulls the peaks toward the body, a slow one keeps the
 punch.
 
+**Patina** makes a sound old. Its six stages each add one kind of age: Heat
+drives it into a tube, tape, transformer or broken fuzz; Chamber puts it in a
+small room, a spring or a plate; Drift gives it a tape or record's wow and
+flutter; Grain adds vinyl crackle, tape hiss, mains hum or room air (Follow
+ducks the noise under the music or lets it ride with it); Wear dulls the
+highs and adds dropouts and skew; Crush lowers the bits and sample rate like
+an early sampler. Switch a stage on with the slide switch over its window and
+click the window for its controls; the window shows what that stage is doing
+right now, and the lamps under it how much of the stage is in play. The arrows
+beside the amber display step through the presets; click the display for the
+list.
+Age turns every stage up or down together: half way plays them as set, lower
+cleans the sound up, higher wears it out. Breath lets a stage's amount drift
+on its own, at the Pace beside Age, so the sound never sits still.
+
+The **Exciter** adds harmonics to sounds that are flat or dull, which is something
+an EQ cannot do: it only raises what is already there.
+
+- **Harmonics.** Set **Frequency** to where the harmonics should start; only the
+  sound above it drives them. Pick a **Character**: Tube is warm, Tape has an
+  edge, Air adds a little sheen at the top, Crisp is bright. **Drive** makes the
+  series denser, and **Amount** sets how much is added.
+- **Low end.** **Amount** adds harmonics of the bass, so small speakers suggest
+  notes they cannot play.
+- **Dynamics.** **Dynamics** lets the excitation follow the music: Push gives
+  more on loud moments, Fill more in quiet ones and tails. **Transients** adds
+  snap to onsets.
+- **Output.** **Width** spreads what is added without changing the mono sum.
+  **Auto gain** keeps the level the same when the Exciter is switched on and off,
+  so you hear the difference rather than a louder version.
+
+The display shows the input in grey and what the Exciter adds in colour; drag the
+handles to move the two frequencies.
+
+**Bloom** is a reverb for effects rather than rooms. Turn Decay up to a minute or
+press **Freeze** to hold the tail for good (it keeps moving; the input stays out
+until you let go). **Shimmer** pitch-shifts the tail inside itself, so it climbs an
+octave or a fifth (or falls) again and again; **Swell** makes the tail build up
+slowly after each note, like a reversed reverb. **Gate** cuts the tail a set time
+after the sound stops, for gated drums, and **Duck** lowers the tail while the dry
+sound plays so a huge tail does not bury it. The display shows the tail itself:
+its spectrum over the last five seconds above, its level against the dry sound
+below.
+
+**Tape Echo** is a tape loop machine. Time sets the motor speed (head 1's echo; the
+other heads are 2, 3 and 4 times it), and Sync sets it to a note value instead. Turn
+Time while something plays and the echoes bend in pitch as the motor settles. The
+Heads selector chooses which playback heads sound, from single slaps to the gallop
+of 1+3+4. Feedback sends the heads back to the tape. Each repeat passes through the
+tape again, so Bass, Treble, Age and Drive shape it a little more each time. Watch
+LOOP: past 1.0 (and "Self-oscillating" in the header) the echoes build into the
+tape on their own. Wow and Flutter add the wobble, and Spring adds a short spring
+reverb to the echoes. On an FX track, switch on Kill dry and set Mix to 100%.
+
+**Stereo Widener.** Insert it on a stereo track or bus to change how wide it
+sounds, band by band. Drag the Low, Mid and High blocks up to widen and down to
+narrow (0 is mono); drag the lines between them to move the crossovers, and turn up
+Mono below to keep the bass centred. To widen a mono sound, turn up Spread: Diffuse
+spreads it without echo, Haas uses a short delay you set with Time; either way it
+disappears cleanly when the mix is played in mono. The scope shows the image (a
+vertical line is mono, a cloud is wide) and the meter under it the correlation: keep
+it out of the red. Switch on Guard and the widener narrows itself whenever the image
+would go out of phase; drag the coloured line on the meter to say where.
+
+**Presets.** Every built-in effect has presets in its header, in the Editor panel
+and in its window. The arrows step through them; click the name for the list. The
+name says Custom once you change anything. To keep a setting, choose **Save
+preset...** from the list and name it: it appears under Yours for that effect in
+every project, and **Delete** removes it again. Undo takes back a whole preset at
+once.
+
 ## Automation
 
 The **A** button on a track header shows its automation. Choose the parameter and the

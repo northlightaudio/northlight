@@ -2,6 +2,7 @@
 
 #include "ui/Motion.h"
 #include "ui/NorthlightLookAndFeel.h"
+#include "ui/components/HardwareParts.h"
 
 #include <algorithm>
 #include <cmath>
@@ -135,6 +136,11 @@ void RotarySelector::paint(juce::Graphics& g)
     const auto body = juce::Rectangle<float>(bodySize, bodySize).withCentre(mid);
     const bool hover = enabled && isMouseOver(true) && hoverLabel_ < 0;
 
+    if (hardware_)
+    {
+        paintHardware(g, hover);
+        return;
+    }
     // The rim and the body, as a knob's.
     g.setColour(m.enabled ? m.knobRim : c.surface2);
     g.fillEllipse(body);
@@ -193,6 +199,35 @@ void RotarySelector::paint(juce::Graphics& g)
 
     if (auto* laf = dynamic_cast<NorthlightLookAndFeel*>(&getLookAndFeel()))
         laf->drawFocusRing(g, *this, body, radius);
+}
+
+void RotarySelector::paintHardware(juce::Graphics& g, bool hover)
+{
+    const auto& hw = theme_.hardware;
+    const bool enabled = isEnabled();
+    const auto mid = centre();
+    const float radius = bodySize * 0.5f;
+    // The positions: a printed dot and legend each, the chosen one lit.
+    g.setFont(theme_.caption());
+    for (int i = 0; i < static_cast<int>(labels_.size()); ++i)
+    {
+        const float angle = angleOf(static_cast<float>(i));
+        const bool chosen = i == selected_;
+        const auto dot = mid.getPointOnCircumference(radius + 4.0f, angle);
+        g.setColour(!enabled ? hw.legend.withAlpha(0.3f) : chosen ? hw.led : hw.legend.withAlpha(0.7f));
+        g.fillEllipse(juce::Rectangle<float>(chosen ? 4.0f : 2.5f, chosen ? 4.0f : 2.5f).withCentre(dot));
+        const auto label = juce::Rectangle<float>(2.0f * labelHalfWidth, 12.0f).withCentre(labelCentre(i));
+        const float alpha = !enabled ? 0.35f : chosen ? 1.0f : i == hoverLabel_ ? 0.9f : 0.62f;
+        hardware::drawLegend(g,
+                             theme_,
+                             labels_[static_cast<size_t>(i)],
+                             label,
+                             juce::Justification::centred,
+                             hw.legend.withAlpha(alpha));
+    }
+    hardware::drawPointerKnob(g, theme_, mid, bodySize * 1.05f, angleOf(shown_), enabled, hover);
+    if (auto* laf = dynamic_cast<NorthlightLookAndFeel*>(&getLookAndFeel()))
+        laf->drawFocusRing(g, *this, juce::Rectangle<float>(bodySize, bodySize).withCentre(mid), radius);
 }
 
 void RotarySelector::mouseMove(const juce::MouseEvent& e)

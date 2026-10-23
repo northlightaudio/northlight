@@ -49,6 +49,13 @@ PAIRS = [
     ("meterLow", "canvas", "Meter zone (non-text)", "nontext"),
     ("meterMid", "canvas", "Meter zone (non-text)", "nontext"),
     ("meterHot", "canvas", "Meter zone (non-text)", "nontext"),
+    # A hardware face (Patina's rack unit): its own group, "hardware.<key>".
+    ("hardware.legend", "hardware.panel", "Legends on a hardware face's panel", "body"),
+    ("hardware.ink", "hardware.plate", "Nameplate lettering", "body"),
+    ("hardware.displayText", "hardware.displayCentre", "An amber display's text", "body"),
+    ("hardware.displayDim", "hardware.displayCentre", "A display's preset number", "hint"),
+    ("hardware.glassInk", "hardware.glassEdge", "Readings on a lit meter window, at its edge", "body"),
+    ("hardware.glassMid", "hardware.glassOffEdge", "Readings on an unlit window", "hint"),
 ]
 
 THRESHOLDS = {"body": 4.5, "large": 3.0, "nontext": 3.0, "hint": 3.0, "exempt": 0.0}
@@ -96,8 +103,13 @@ def main():
     name = tokens.get("meta", {}).get("name", "tokens")
     canvas = parse(colours["canvas"])
 
+    def colour(key):
+        # "hardware.legend" is a key of another group; a plain key is one of `color`.
+        group, _, name = key.rpartition(".")
+        return parse((tokens[group] if group else colours)[name])
+
     def opaque(key):
-        return over(parse(colours[key]), canvas)
+        return over(colour(key), canvas)
 
     lines = [
         "# Contrast table",
@@ -113,7 +125,7 @@ def main():
     failures = []
     for fg_key, bg_key, use, kind in PAIRS:
         bg = opaque(bg_key)
-        fg = over(parse(colours[fg_key]), bg)
+        fg = over(colour(fg_key), bg)
         r = ratio(fg, bg)
         threshold = THRESHOLDS[kind]
         if kind == "exempt":

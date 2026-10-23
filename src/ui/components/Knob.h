@@ -18,6 +18,19 @@ class Knob final : public juce::Component, public juce::SettableTooltipClient
 public:
     explicit Knob(const Theme& theme);
 
+    // How the knob is drawn: the house ring, or a hardware face's chicken-head
+    // pointer over a printed scale (design-system.md "Hardware face").
+    enum class Style
+    {
+        ring,
+        pointer,
+    };
+    void setStyle(Style style)
+    {
+        style_ = style;
+        repaint();
+    }
+
     // The value range; bipolar knobs are those whose range crosses zero.
     void setRange(double minimum, double maximum, double defaultValue);
     // Travel proportional to the logarithm of the value (frequencies, times,
@@ -69,12 +82,14 @@ private:
     void setFraction(double f, bool notify);
     void step(double direction, bool fine);
     juce::String text() const;
+    void paintPointer(juce::Graphics& g);
 
     const Theme& theme_;
     double minimum_ = 0.0, maximum_ = 1.0, default_ = 0.0, value_ = 0.0;
     bool showValue_ = true;
     int ringSize_ = 0; // 0: the theme's knob size
     bool logarithmic_ = false;
+    Style style_ = Style::ring;
     juce::Colour arcColour_;
     double dragStartValue_ = 0.0; // the fraction at the start of a drag
     int dragStartY_ = 0;

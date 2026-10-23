@@ -1,6 +1,7 @@
 #include "ui/components/Knob.h"
 
 #include "ui/NorthlightLookAndFeel.h"
+#include "ui/components/HardwareParts.h"
 
 #include <cmath>
 
@@ -90,8 +91,44 @@ juce::String Knob::text() const
     return format ? format(value_) : juce::String(value_, 2);
 }
 
+void Knob::paintPointer(juce::Graphics& g)
+{
+    const auto& hw = theme_.hardware;
+    const float size = static_cast<float>(ringSize());
+    auto area = getLocalBounds().toFloat();
+    const bool room = showValue_ && area.getHeight() >= size + theme_.fonts.size.value + 2.0f;
+    const auto ring = area.removeFromTop(room ? size : area.getHeight()).withSizeKeepingCentre(size, size);
+    const auto centre = ring.getCentre();
+    const bool enabled = isEnabled();
+    hardware::drawScale(g, theme_, centre, size * 0.5f, startAngle, sweep, 11, 5, enabled);
+    hardware::drawPointerKnob(g,
+                              theme_,
+                              centre,
+                              size * 0.72f,
+                              startAngle + static_cast<float>(fraction()) * sweep,
+                              enabled,
+                              isMouseOver(true) || dragging_);
+    if (room)
+    {
+        g.setFont(theme_.value());
+        hardware::drawLegend(g,
+                             theme_,
+                             text(),
+                             area.withHeight(theme_.fonts.size.value + 4.0f),
+                             juce::Justification::centredTop,
+                             enabled ? hw.legend : hw.legend.withAlpha(0.45f));
+    }
+    if (auto* lnf = dynamic_cast<NorthlightLookAndFeel*>(&getLookAndFeel()))
+        lnf->drawFocusRing(g, *this, ring, size * 0.5f);
+}
+
 void Knob::paint(juce::Graphics& g)
 {
+    if (style_ == Style::pointer)
+    {
+        paintPointer(g);
+        return;
+    }
     const auto& c = theme_.colours;
     const float size = static_cast<float>(ringSize());
     auto area = getLocalBounds().toFloat();

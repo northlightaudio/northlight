@@ -21,8 +21,20 @@ add_library(northlight_plugins STATIC
     ChannelStrip.cpp
     Glue.h
     Glue.cpp
+    Widener.h
+    Widener.cpp
+    TapeEcho.h
+    TapeEcho.cpp
+    Patina.h
+    Patina.cpp
+    Exciter.h
+    Exciter.cpp
+    Bloom.h
+    Bloom.cpp
     StripPresets.h
     StripPresets.cpp
+    EffectPresets.h
+    EffectPresets.cpp
     FxTracks.h
     FxTracks.cpp)
 

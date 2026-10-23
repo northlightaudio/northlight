@@ -8,10 +8,12 @@
 #include <string>
 #include <vector>
 
-// The built-in utility processors: gain, a three-band EQ with high-pass, a
-// compressor, an opto compressor, the glue compressor (plugins/Glue.h), a limiter,
-// a reverb and a delay; the instruments (Aurora, Pulsar,
-// Nebula, Starbit, Sampler) are in their own files. JUCE-free, real-time safe after prepare().
+// The built-in processors: gain, a three-band EQ with high-pass, a compressor, an opto
+// compressor, a limiter, a reverb and a delay here; the glue compressor (plugins/Glue.h),
+// Patina, retro colour (plugins/Patina.h), the exciter (plugins/Exciter.h), the effect
+// reverb (plugins/Bloom.h), the tape echo (plugins/TapeEcho.h), the stereo widener
+// (plugins/Widener.h) in files of their own; and the instruments (Aurora, Pulsar, Nebula,
+// Starbit, Sampler) in theirs. JUCE-free, real-time safe after prepare().
 
 namespace northlight::plugins
 {

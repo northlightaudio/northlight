@@ -295,7 +295,20 @@ know nothing format-specific.
 - **Built-ins** (`src/plugins`): utility and effect processors, the six channel strip
   modules, and the instruments. They share a base that crossfades bypass and keeps
   state running while bypassed, and they publish real-time feedback for their
-  editors through rings of atomics.
+  editors through rings of atomics: a five-value frame every 5 ms (input, output,
+  reduction and two processor-specific values) and two sample taps. The larger
+  effects (Glue, Patina, Exciter, Bloom, Tape Echo, Stereo Widener) each have a file
+  of their own and a card in `src/ui/strip`; what their frame values and taps carry
+  is described at the top of each processor. A display that needs more than a frame
+  holds (Patina's six stage readouts) publishes its own telemetry block the same
+  way, so the shared frame stays small. Patina's card is a hardware face: the
+  drawing shared by such faces (pointer knobs, printed legends, images from
+  `assets/<effect>/`) is in `ui/components/HardwareParts`. Every built-in effect's
+  factory presets are in `plugins/EffectPresets` (by parameter name, resolved
+  against the effect's parameter table); `ui/strip/EffectPresetLibrary` adds the
+  user's own (JSON files keyed by parameter name) and tells every `PresetBar` when
+  the list changes, so the card's header, the window's and a face's own control
+  agree.
 - **VST3** is hosted through JUCE. **CLAP** is hosted directly against its C ABI,
   following its thread rules, with parameter events queued into the next block.
 - **Scanning** runs one plugin file per child process with a timeout. A crash, hang

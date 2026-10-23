@@ -188,6 +188,28 @@ struct Theme
         bool enabled = false; // false until a material block is loaded
     };
 
+    // A hardware face (design-system.md "Hardware face"): an effect drawn as a
+    // piece of studio equipment over its own textures (Patina's rack unit).
+    struct Hardware
+    {
+        juce::Colour panel, panelWear;           // the panel without its texture; the worn edge
+        juce::Colour legend, legendShadow;       // printed legends, and the shade under them
+        juce::Colour plate, ink;                 // a nameplate without its image; its lettering
+        juce::Colour bezel, keyTop, keyBottom;   // a recessed slot; a bakelite key's body
+        juce::Colour keyGlyph;                   // the arrow on a key
+        juce::Colour displayCentre, displayEdge; // a lit amber display's glass
+        juce::Colour displayText, displayDim, displayGlow;
+        juce::Colour glassCentre, glassMid, glassEdge; // a lit meter window
+        juce::Colour glassOffCentre, glassOffEdge;     // the same, unlit
+        juce::Colour glassInk;                         // what is drawn on the window
+        juce::Colour glassFrameTop, glassFrameBottom;  // the window's bevelled frame
+        juce::Colour led, ledHot, ledOff;
+        juce::Colour switchDark, switchLight; // a slide switch's two halves
+        juce::Colour knobBody, knobCap, knobPointer;
+        juce::Colour lamp; // a pilot lamp's glow
+        juce::Colour shadow, highlight;
+    };
+
     std::string name = "Northlight Dark";
     Colours colours;
     Track track;
@@ -200,6 +222,7 @@ struct Theme
     Meter meter;
     Elevation elevation;
     Material material;
+    Hardware hardware;
 
     // ----- fonts ---------------------------------------------------------------------
     enum class Face

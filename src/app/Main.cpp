@@ -149,6 +149,11 @@ public:
     //   --insert <type>      add a built-in insert (northlight.glue, ...) to the first track that
     //                        makes audio
     //   --master-insert <type>  add a built-in insert to the master
+    //   --insert-param <name> <value>  set a parameter of the insert the last --insert or
+    //                        --master-insert added, by its name or index (a stepped one also
+    //                        by its choice's text: --insert-param Release Auto)
+    //   --insert-param-at <s> <name> <value>  the same, s seconds after launch (a tail frozen
+    //                        mid-play: --insert-param-at 4 Freeze 1)
     //   --bus                add a bus
     //   --remove-bus         remove the last bus the way the mixer does
     //   --first-run          show the first-run sheet
@@ -633,7 +638,62 @@ public:
                     insert.type = type;
                     insert.params = plugins::defaultParameters(type);
                     session_->execute(std::make_unique<core::AddInsert>(channel, insert));
+                    if (const auto* c = session_->project().findChannel(channel);
+                        c != nullptr && !c->inserts.empty())
+                    {
+                        lastInsertChannel_ = channel;
+                        lastInsertId_ = c->inserts.back().id;
+                    }
                 }
+            }
+            else if ((arg == "--insert-param" && i + 2 < tokens.size()) ||
+                     (arg == "--insert-param-at" && i + 3 < tokens.size()))
+            {
+                // A parameter of the insert the last --insert or --master-insert added,
+                // by name (case ignored) or index; a stepped one also takes its choice's
+                // text. The -at form sets it that many seconds after launch (a tail
+                // frozen mid-play, for a capture).
+                const double after =
+                    arg == "--insert-param-at" ? tokens.getReference(++i).text.getDoubleValue() : 0.0;
+                const auto name = tokens.getReference(++i).text.unquoted();
+                const auto value = tokens.getReference(++i).text.unquoted();
+                const auto set = [this, name, value, channel = lastInsertChannel_, id = lastInsertId_]
+                {
+                    const auto* c = session_->project().findChannel(channel);
+                    const auto* insert = c != nullptr ? c->findInsert(id) : nullptr;
+                    if (insert == nullptr)
+                    {
+                        std::fprintf(stderr, "--insert-param: no insert added yet\n");
+                        return;
+                    }
+                    const auto& infos = plugins::parameterInfo(insert->type);
+                    int index =
+                        name.containsOnly("0123456789") && name.isNotEmpty() ? name.getIntValue() : -1;
+                    if (index >= static_cast<int>(infos.size()))
+                        index = -1;
+                    for (size_t p = 0; p < infos.size(); ++p)
+                        if (juce::String(infos[p].name).equalsIgnoreCase(name))
+                            index = static_cast<int>(p);
+                    if (index < 0)
+                    {
+                        std::fprintf(stderr,
+                                     "--insert-param: %s has no parameter \"%s\"\n",
+                                     insert->type.c_str(),
+                                     name.toRawUTF8());
+                        return;
+                    }
+                    const auto& info = infos[static_cast<size_t>(index)];
+                    float v = value.getFloatValue();
+                    for (size_t k = 0; k < info.choices.size(); ++k)
+                        if (juce::String(info.choices[k]).equalsIgnoreCase(value))
+                            v = static_cast<float>(k);
+                    session_->execute(std::make_unique<core::SetInsertParameter>(
+                        channel, id, index, std::clamp(v, info.minimum, info.maximum)));
+                };
+                if (after > 0.0)
+                    juce::Timer::callAfterDelay(static_cast<int>(after * 1000.0), set);
+                else
+                    set();
             }
             else if (arg == "--bus")
                 mainWindow_->addBus();
@@ -911,6 +971,9 @@ private:
     bool firstRun_ = false;
     bool capture_ = false;      // --capture: its own settings folder, no first-run sheet
     float captureScale_ = 2.0f; // --capture-scale
+    // --insert-param's target: the insert the last --insert or --master-insert added.
+    core::Id lastInsertChannel_ = core::invalidId;
+    core::Id lastInsertId_ = core::invalidId;
     std::unique_ptr<UserSettings> settings_;
     std::unique_ptr<audio::AudioDeviceLayer> audio_;
     std::unique_ptr<engine::OutputTap> outputTap_; // --output-tap

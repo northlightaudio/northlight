@@ -1,6 +1,7 @@
 #include "ui/InsertEditor.h"
 
 #include "plugins/BuiltIns.h"
+#include "plugins/EffectPresets.h"
 #include "ui/NorthlightLookAndFeel.h"
 #include "ui/OnScreen.h"
 #include "ui/strip/BuiltInCards.h"
@@ -141,6 +142,27 @@ void InsertEditor::showBuiltInBody(const core::Insert& insert,
     viewport_.setVisible(false);
     instrument_ = plugins::BuiltInFactory::isInstrument(insert.type);
     mix_.setVisible(!embedded_ && !instrument_); // an instrument has no dry signal to mix
+    // A built-in effect's presets, beside the title (screens/plugins.md 7.2b).
+    if (!embedded_ && !instrument_ && !plugins::factoryPresets(insert.type).empty())
+    {
+        params_ = insert.params;
+        presets_ = std::make_unique<strip::PresetBar>(theme_, insert.type);
+        presets_->setValues(insert.params);
+        presets_->onApply = [this](const std::vector<float>& values, const juce::String& name)
+        {
+            if (!onCommand)
+                return;
+            if (onGestureBegin)
+                onGestureBegin(("Preset " + name).toStdString());
+            for (size_t i = 0; i < values.size(); ++i)
+                if (i >= params_.size() || params_[i] != values[i])
+                    onCommand(std::make_unique<core::SetInsertParameter>(
+                        channelId_, insertId_, static_cast<int>(i), values[i]));
+            if (onGestureEnd)
+                onGestureEnd();
+        };
+        addAndMakeVisible(*presets_);
+    }
     const int header = embedded_     ? 0
                        : instrument_ ? theme_.sizes.control + theme_.spacing.md
                                      : theme_.sizes.control + theme_.spacing.sm +
@@ -183,6 +205,9 @@ void InsertEditor::setInsert(const core::Insert& insert)
     bypass_.setToggleState(insert.bypass, juce::dontSendNotification);
     mix_.setValue(insert.mix * 100.0, juce::dontSendNotification);
     sidechain_ = insert.sidechain;
+    params_ = insert.params;
+    if (presets_ != nullptr)
+        presets_->setValues(insert.params);
     if (body_ != nullptr)
         body_->refresh(insert);
     for (size_t i = 0; i < parameters_.size() && i < insert.params.size(); ++i)
@@ -236,6 +261,14 @@ void InsertEditor::resized()
     {
         auto header = area.removeFromTop(theme_.sizes.control);
         bypass_.setBounds(header.removeFromRight(80));
+        if (presets_ != nullptr)
+        {
+            header.removeFromRight(theme_.spacing.md);
+            const int w = std::min(presets_->preferredWidth(), header.getWidth() - 120);
+            presets_->setVisible(w >= presets_->minimumWidth());
+            presets_->setBounds(header.removeFromRight(std::max(0, w))
+                                    .withSizeKeepingCentre(std::max(0, w), theme_.sizes.controlCompact));
+        }
         title_.setBounds(header);
         if (!instrument_)
         {

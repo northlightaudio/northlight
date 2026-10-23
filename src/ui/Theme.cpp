@@ -502,6 +502,49 @@ bool Theme::apply(const juce::var& tokens, Theme& theme, std::string& error)
         colour("readoutRecord", m.readoutRecord);
         m.enabled = !m.controlTop.isTransparent();
     }
+    if (const auto& hardware = tokens["hardware"]; hardware.isObject())
+    {
+        auto& hw = theme.hardware;
+        const auto colour = [&](const char* key, juce::Colour& out)
+        {
+            if (hardware.hasProperty(key) && !parseColour(hardware[key], out))
+                error += std::string("hardware ") + key + " is not a colour; ";
+        };
+        colour("panel", hw.panel);
+        colour("panelWear", hw.panelWear);
+        colour("legend", hw.legend);
+        colour("legendShadow", hw.legendShadow);
+        colour("plate", hw.plate);
+        colour("ink", hw.ink);
+        colour("bezel", hw.bezel);
+        colour("keyTop", hw.keyTop);
+        colour("keyBottom", hw.keyBottom);
+        colour("keyGlyph", hw.keyGlyph);
+        colour("displayCentre", hw.displayCentre);
+        colour("displayEdge", hw.displayEdge);
+        colour("displayText", hw.displayText);
+        colour("displayDim", hw.displayDim);
+        colour("displayGlow", hw.displayGlow);
+        colour("glassCentre", hw.glassCentre);
+        colour("glassMid", hw.glassMid);
+        colour("glassEdge", hw.glassEdge);
+        colour("glassOffCentre", hw.glassOffCentre);
+        colour("glassOffEdge", hw.glassOffEdge);
+        colour("glassInk", hw.glassInk);
+        colour("glassFrameTop", hw.glassFrameTop);
+        colour("glassFrameBottom", hw.glassFrameBottom);
+        colour("led", hw.led);
+        colour("ledHot", hw.ledHot);
+        colour("ledOff", hw.ledOff);
+        colour("switchDark", hw.switchDark);
+        colour("switchLight", hw.switchLight);
+        colour("knobBody", hw.knobBody);
+        colour("knobCap", hw.knobCap);
+        colour("knobPointer", hw.knobPointer);
+        colour("lamp", hw.lamp);
+        colour("shadow", hw.shadow);
+        colour("highlight", hw.highlight);
+    }
     if (const auto& elevation = tokens["elevation"]; elevation.isObject())
         if (const auto& popup = elevation["popup"]; popup.isObject() && popup["shadow"].isString())
         {

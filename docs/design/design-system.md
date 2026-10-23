@@ -321,6 +321,121 @@ knob labels beside it.
   around the body. Disabled: pointer, dots and labels `textDisabled`.
 - The tooltip names the control and the full value ("Attack: 10 ms").
 
+### Preset bar
+
+For choosing a built-in effect's preset where its name is shown (a card's header,
+a window's title row). A pill `controlCompact` high (`surface0` at 80%, a 1 px
+`lineSubtle` outline, fully rounded) holding three ghost buttons: previous (‹) and
+next (›), each as wide as the bar is high, round the current preset's name in
+`label` with the menu chevron, truncated with an ellipsis when long. The name
+reads "Custom" when no preset matches. States: the buttons' ghost hover and
+pressed; disabled arrows when the effect has no presets; focus rings on each
+button. A click on the name opens the presets menu (screens/plugins.md 7.2b).
+Tooltips: "Previous preset", "Next preset", "Presets: <name>". The bar narrows
+with its header and hides below 112 px.
+
+### Stage tile
+
+For an effect made of several stages that each want a live readout and their
+own controls (Patina). A tile is a stage's readout and its tab at once: a 26 px
+header (the stage's power `IconButton`, its name in `label`, its current choice
+in `caption` `textTertiary` at the right), a display well, and a 4 px amount
+bar (`surface0` track, the module's hue filled to the live amount, a 1 px
+`textPrimary` tick for the set amount). Tiles sit in a row in signal order,
+16 px apart with a `textTertiary` chevron in each gap. States: rest (no fill),
+hover (`surface2` at 50%), selected (`surface2`, 1.5 px hue outline, radius
+`md`), off (well dimmed by `surface1` at 42%, name `textSecondary`, outline
+`textSecondary` when selected), focused (the focus ring round the tile).
+Keyboard: Left/Right move, Enter selects, Space switches the stage. The selected
+tile's controls show in the row below under the stage's name in `captionCaps`.
+Patina draws its tiles as lit meter windows on its hardware face (plugins.md 7.2a).
+
+### Hardware face
+
+For an effect whose character is a piece of studio equipment (Patina's rack
+unit), the card's body may leave the house surfaces, as the instruments do, and
+be drawn as that equipment. It stays inside the system: every colour comes from
+the `hardware` token group, every state is designed, every control keeps its
+keyboard, focus ring and tooltip, and its text pairs are in contrast.md.
+
+- **Textures** are images under `assets/<effect>/`, made for Northlight (their
+  provenance in that folder's README), colour-graded once offline. Each has a
+  flat token fallback (`panel`, `plate`, `lamp`) so the face works without them.
+  A static layer (panel, nameplate, recesses, engraved rules) is drawn into an
+  image once per size and scale.
+- **Legends** printed on a panel are `legend` with a `legendShadow` copy 1 px
+  below (and a fainter one 1 px right), so they read over a worn finish.
+- **Pointer knob** (`Knob::Style::pointer`): a printed scale of 11 ticks over
+  the knob's 270 degrees (every fifth longer, `legend` at 95% and 70%, each
+  with a shade under it) at the ring size, and a black chicken head at 72% of
+  it pointing at the value: `knobBody` lit from the upper left, a 1 px
+  `highlight` edge at 8%, a `knobPointer` line along the pointer and a
+  `knobCap` cap over the base, with a soft `shadow` below. The value is printed
+  under it in `value` `legend`. Hover and drag lighten the body; disabled, the
+  scale and value drop to 35-45% and the line to 40%. Same sizes, behaviour and
+  keyboard as the knob.
+- **Rotary selector, hardware** (`RotarySelector::setHardware`): the chicken
+  head at 105% of the 34 px body as the pointer, each position a printed dot
+  (`legend` at 70%; the chosen one a 4 px `led`) and its label as a legend (62%,
+  90% under the pointer, 100% chosen). Otherwise the rotary selector.
+- **Recessed parts** (a preset selector, a meter window): a darker slot with a
+  shade under its top lip and a faint `highlight` line along its lower edge;
+  pressed keys drop 1 px. Lit glass (a display, a meter window) gets a
+  `highlight` reflection across its top left.
+
+### Control groups on a card
+
+A card with more than about eight controls splits them into groups by purpose:
+
+- Each group has a caption in `captionCaps` `textTertiary`, left-aligned to the
+  group's first cell, on a `space.lg` (16 px) row above the controls.
+- A 1 px `lineSubtle` rule with `space.sm` on each side separates the groups and
+  runs from 2 px under the caption row's top to 4 px above the controls' foot.
+- Labels keep one baseline across all groups.
+
+A toggle that sits in a row of knobs takes a knob cell:
+
+- the pill (20 px tall, the cell's width less `space.sm`) where the ring sits;
+- a live value or "Off" where a knob shows its value;
+- its name on the labels' line.
+
+### Frequency handle (on a spectrum)
+
+A vertical line through a plot marking a frequency that drags sideways:
+
+- **Line.** 1 px in the module's hue at 70% while its section is active, dashed
+  `textTertiary` at 60% while it is not; `textPrimary` at 85% and 1.5 px on
+  hover and drag.
+- **Disc.** The shared handle disc sits near the plot's foot.
+- **Value.** Its value is in `value` beside the disc on a `meterWell` plate at
+  80%.
+- **Mouse.** Within 6 px the cursor is a left-right resize. A press elsewhere
+  takes the nearer handle, and double-click resets the nearer one.
+
+### Latch (large)
+
+For the one defining on/off state of a module that sits among its large knobs
+(Bloom's Freeze), where a pill would be too slight. The size of the large knob's
+ring (46 px): the knob body (`knobBodyLight` to `knobBodyDark`, `knobHighlight` arc)
+inside a 4 px rim, `knobRim` when off; a glyph in the middle (Freeze: a six-armed
+snowflake, 1.5 px strokes); its state under it where a knob shows its value ("Off",
+"Held") in `value`, and its name under that on the row's label baseline.
+
+- On: the rim and the glyph in the module's hue, a halo of the hue at 18% just
+  outside the ring, the state text in the hue.
+- Hover: the body lightens (`surface3` at 22%) and an off glyph turns `textPrimary`.
+  Pressed: `surfacePressed` at 45% over the body. Focus: the focus ring around the
+  ring. Disabled: rim, glyph and text `textDisabled`.
+- Click, Space or Enter toggles (one undo step). Tooltip names what it does.
+
+### Line grip
+
+A line on a display that drags sideways (a crossover, an edge) has a
+  grip, not a disc: a 7 x 16 px upright pill, radius 3.5, `textSecondary` (dim:
+  `textTertiary`) with two 1 px `surface0` notches across its middle; hover and drag
+  turn it `textPrimary` with a `textPrimary` 18% halo 3 px out. Round handles stay
+  for points that drag up and down or freely.
+
 ### Meter
 
 Vertical bar `meterWidth` 6 px per channel, `meterGap` 2 px between channels, in a

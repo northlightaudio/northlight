@@ -36,6 +36,8 @@ add_library(northlight_ui STATIC
     components/NumericField.cpp
     components/RotarySelector.h
     components/RotarySelector.cpp
+    components/HardwareParts.h
+    components/HardwareParts.cpp
     components/PanelHeader.h
     components/PanelHeader.cpp
     components/Toast.h
@@ -71,6 +73,11 @@ add_library(northlight_ui STATIC
     strip/ModuleCards.cpp
     strip/OptoCard.cpp
     strip/GlueCard.cpp
+    strip/WidenerCard.cpp
+    strip/TapeEchoCard.cpp
+    strip/PatinaCard.cpp
+    strip/ExciterCard.cpp
+    strip/BloomCard.cpp
     strip/Graphs.h
     strip/Graphs.cpp
     strip/EqGraph.h
@@ -92,6 +99,10 @@ add_library(northlight_ui STATIC
     strip/ChannelStripView.cpp
     strip/UserStripPresets.h
     strip/UserStripPresets.cpp
+    strip/EffectPresetLibrary.h
+    strip/EffectPresetLibrary.cpp
+    strip/PresetBar.h
+    strip/PresetBar.cpp
     panels/InspectorPanel.h
     panels/InspectorPanel.cpp
     panels/DiagnosticsPanel.h

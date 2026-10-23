@@ -818,12 +818,22 @@ createBuiltInCard(const Theme& theme, CardHost& host, core::Id channelId, const 
         return createOptoCard(theme, host, channelId, insert); // the strip opto's
     if (insert.type == "northlight.glue")
         return createGlueCard(theme, host, channelId, insert);
+    if (insert.type == "northlight.widener")
+        return createWidenerCard(theme, host, channelId, insert);
+    if (insert.type == "northlight.patina")
+        return createPatinaCard(theme, host, channelId, insert);
+    if (insert.type == "northlight.exciter")
+        return createExciterCard(theme, host, channelId, insert);
+    if (insert.type == "northlight.bloom")
+        return createBloomCard(theme, host, channelId, insert);
     if (insert.type == types::limiter)
         return std::make_unique<LimiterCard>(theme, host, channelId, insert);
     if (insert.type == types::reverb)
         return std::make_unique<ReverbCard>(theme, host, channelId, insert);
     if (insert.type == types::delay)
         return std::make_unique<DelayCard>(theme, host, channelId, insert);
+    if (insert.type == "northlight.tapeecho")
+        return createTapeEchoCard(theme, host, channelId, insert);
     if (insert.type == "northlight.aurora")
         return createAuroraEditor(theme, host, channelId, insert);
     if (insert.type == "northlight.pulsar")

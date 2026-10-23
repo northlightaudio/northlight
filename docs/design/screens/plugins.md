@@ -56,7 +56,7 @@ Every built-in has an editor in the channel strip's language
 well, then knobs in the module's hue. The same editor is the card's body in the Editor panel
 and the body of its window (under the title, bypass and mix). The hues follow the
 strip: EQ `Overcast`, compressor `Loch`, limiter `Rowan`; gain `Machair`, reverb `Lichen`,
-delay `Gorse`, glue compressor `Thrift`. The instruments (7.4b-7.4e) have faces of their own.
+delay `Gorse`, glue compressor `Thrift`, Patina `Kelp`, exciter `Machair`, Bloom `Heather`, tape echo `Rowan`, stereo widener `Sea grass`. The instruments (7.4b-7.4e) have faces of their own, and so does Patina, a hardware face (design-system.md "Hardware face").
 
 - **Gain**: the input and output history with IN and OUT meters; Gain.
 - **EQ**: the strip's EQ graph with the built-in's four bands (a high-pass,
@@ -116,9 +116,455 @@ delay `Gorse`, glue compressor `Thrift`. The instruments (7.4b-7.4e) have faces 
   value from 1/64 to 1/1, straight, triplet or dotted, at the project tempo.
   Synced, the Time knob dims and shows the note value, and dragging the first
   echo snaps to the nearest one.
+- **Patina** (a vintage colour processor: six stages that age a sound in
+  different ways, under one Age control): in signal order **Heat** (drive into
+  a Tube, Tape, Iron or Fuzz curve, anti-aliased by ADAA and level-held, with a
+  tilt), **Chamber** (a Room, Spring or Plate, mixed over the sound), **Drift**
+  (wow and flutter of a Reel, a cassette Deck or a Disc, with a rate and a
+  stereo spread), **Grain** (Vinyl crackle, Tape hiss, 50 or 60 Hz Hum, or room
+  Air, which can duck under the music or ride with it), **Wear** (lost highs,
+  dropouts, azimuth skew) and **Crush** (bits and rate, Soft, Hard, Mu-law or
+  Jitter). Each stage has a switch, a main amount and a Breath that lets the
+  amount wander at the Pace beside Age. **Age** scales every stage's amount:
+  half way plays them as set, down to nothing makes the sound new, up to full
+  takes each toward ruin in proportion to how much of it is used. An output
+  section follows: Tone (a tilt about 900 Hz), Low cut and High cut ("Off" at
+  their ends), Width and Output. Every switch and choice fades over 10 ms. No
+  latency. Twelve factory presets (Gentle Age, the defaults, first). Its editor is
+  a hardware face (design-system.md "Hardware face"), a worn 1960s studio rack
+  unit, and shows what each stage is doing, live:
+  - **The panel** fills the body (radius `md`): worn hammertone enamel
+    (`assets/patina/panel-aged.jpg`, cover), the same at every Age; its edges
+    rubbed back toward bare metal in `panelWear`, a 20 px band at 70% fading
+    inward; a 1 px `highlight` at 12% along the top. Without the image, flat
+    `panel`. It is drawn once per size and scale.
+  - **The top row** (40 px). At the left the **nameplate**, nine-sliced from
+    `nameplate.jpg`: its screw ends drawn 14 px square, the edges and middle
+    repeated at that scale, so the screws stay round and the wear even at any
+    width (`plate` without the image). Lettered in `ink`: PATINA at 21 px
+    semibold with 0.3 tracking at 85%, a 1 px rule at 35%, then VINTAGE COLOUR
+    / PROCESSOR at 9 px semibold with 0.18 tracking at 80%; a 2 px `shadow` at
+    60% under the plate. At the right the **pilot lamp**: 26 px, `lamp.jpg` in
+    a circle with a `lamp` glow at 50% out to its 40 px box while the insert is
+    on; bypassed, shaded `shadow` at 60% with no glow. Left of the lamp, 12 px
+    away, the **preset selector**: a 280 x 32 px recess (`bezel`, radius 5, a
+    4 px `shadow` shade under its top lip, a 1 px `highlight` at 14% below it)
+    holding two 28 px bakelite keys round an amber display. A key: radial
+    `keyTop` to `keyBottom`, radius 3, a `highlight` line at 14% along its top
+    and a `shadow` line at 50% along its foot, a `keyGlyph` triangle at 75%
+    (95% on hover); pressed, it drops 1 px and loses its lines. The display:
+    radial `displayCentre` to `displayEdge`, radius 2; the preset's number
+    ("07", "--" for Custom) in `value` at 85% size in `displayDim` at 75%, then
+    its name in capitals in `value` at 105% size, 0.06 tracking, `displayText`
+    over a `displayGlow` halo at 22% (brighter on hover); scan lines every 3 px
+    (`shadow` at 12%), a `highlight` reflection at 13% across its top left and
+    a 4 px shade under the bezel's lip. The keys step through the same list as
+    the header's preset bar (7.2b), the user's presets too (wrapping; from Custom,
+    Next goes to the first); a click on the display shows the preset menu. A preset is one undo step ("Preset
+    Worn Cassette"); any change of a value makes it Custom. Tooltips:
+    "Previous preset", "Next preset", "Presets: <name>"; the lamp "On" or "Off:
+    Patina is bypassed". The keys and display take focus and draw the focus
+    ring.
+  - **Stage windows** (flexible height, six across, 12 px apart). A window has
+    a 20 px header with its name in `captionCaps` `legend` (70% when the stage
+    is off) and, just after the name, the stage's **slide switch**: 22 x 12 px,
+    a `switchDark` slot with a `switchLight` lever in its right half when on and
+    its left when off, a 1 px `shadow` at 60% round it. Under the header the
+    window: a 4 px bevelled frame (`glassFrameTop` to `glassFrameBottom`,
+    radius 4, a `highlight` line at 12% at its foot) round the glass. Lit (the
+    stage on), the glass is a radial `glassCentre` through `glassMid` to
+    `glassEdge` and the readout draws in `glassInk`; unlit, `glassOffCentre` to
+    `glassOffEdge` with the readout in `glassMid`. Where the readouts below say
+    the hue, read the ink; `textSecondary` and `textTertiary` are the ink at
+    55% and 50%, the grid the ink at 16%, and the ring of Heat's dot the
+    glass's centre colour. The figure sits at the top right; the stage's choice
+    is printed at the glass's foot in `captionCaps`, the ink at 70% ("TUBE",
+    "SPRING"). Over the glass, a 6 px `shadow` shade at 45% under the frame's
+    lip and a `highlight` reflection (22% lit, 10% unlit) across its top left.
+    Under the window, a row of eight 9 x 5 px lamps, 3 px apart: lit `led` (the
+    last two `ledHot`) with a 35% halo up to the amount Age and Breath leave
+    right now, dim (the colour at 40%) on to where Age alone puts it, the rest
+    `ledOff`. The window is the stage's tab: hover rings the frame in
+    `highlight` at 30%; selected, a 1.5 px `led` ring with a 3 px `led` halo at
+    25%. Click selects; Left and Right move between windows, Enter selects,
+    Space switches the stage; focus draws the focus ring round the frame. The
+    readouts:
+    - Heat: the static curve at the live amount (input across -1..1, output
+      up, in a square), the unity diagonal dashed, the loudest input of the
+      last 50 ms as a dot riding the curve (a 7 px `textPrimary` disc round a
+      4 px hue one); the figure: how much the curve took off the peaks over the
+      last 200 ms ("−2.7 dB", the hue while above 0.1 dB, else `textTertiary`).
+    - Chamber: the wet level over three seconds (-60..0 dB, a grid line every
+      20 dB) as a hue area at 32% under a 1.5 px hue line; the figure: the decay
+      time ("2.1 s").
+    - Drift: the speed error over three seconds in cents, the left side a
+      1.5 px hue line and (with Stereo above zero) the right a 1 px
+      `textSecondary` line at 70%, about a centre line with dashed limits; the
+      scale grows to fit what plays (±5, 10, 20, 40 cents, its label at the top
+      left in `caption` `textTertiary`); the figure: the widest swing of the
+      last second ("±8.7 c").
+    - Grain: the noise's RMS as a hue area at 36% with a 1 px hue edge and the
+      music's peak as a 1.5 px `textSecondary` line, -84..0 dB, grid every
+      24 dB, so ducking and riding show; the figure: the noise level ("−38 dB",
+      "–" when silent).
+    - Wear: the surviving bandwidth (the high cut on a log axis, 1 to 20 kHz,
+      grid at 2, 5 and 10 kHz, "20k" at the top left) as a hue area at 26% under
+      a hue line; each column keeps its lowest value so dropouts show as
+      notches; the figure: the cutoff ("11 kHz"), or the depth of a dropout
+      while one plays ("−14.2 dB", in the hue).
+    - Crush: a scope of about six of the converter's samples from a rising zero
+      crossing: what goes in as a 1 px `textSecondary` line at 60%, what comes
+      out as 1.5 px hue steps; the figure: the bits and rate in effect
+      ("6 bit · 6.0 kHz").
+  - Controls, one row under the windows in three groups split by engraved rules
+    (a 1 px `shadow` line at 55% beside a 1 px `highlight` at 10%), every label
+    on one baseline. Every knob is the hardware pointer knob and every choice
+    the hardware rotary selector, their labels in `legend`: **Age** as a 56 px
+    knob and **Pace** ("0.16 Hz"); the selected stage's controls under its name
+    printed in `captionCaps` `legend` at 85% (left aligned, in a group as wide
+    as the widest stage's); the output knobs. Each stage: a rotary selector for its
+    choice where it has one, its main amount as a 46 px knob, then 28 px knobs:
+    Heat: Character (Tube, Tape, Iron, Fuzz), Drive, Tone, Breath. Chamber:
+    Space (Room, Spring, Plate), Mix, Decay (in seconds for the space), Tone,
+    Breath. Drift: Machine (Reel, Deck, Disc), Wow, Flutter, Rate ("1.00×"),
+    Stereo, Breath. Grain: Source (Vinyl, Tape, 50Hz, 60Hz, Air), Amount, a
+    texture knob named for the source (Density in crackles a second for Vinyl,
+    Colour for Tape, Buzz for Hum, Tone for Air), Follow ("Duck 40", "Steady",
+    "Ride 40"), Breath. Wear: Loss, Dropouts, Skew, Breath. Crush: Flavour
+    (Soft, Hard, μ-law, Jitter), Bits ("12 bit"), Rate ("22 kHz"), Breath.
+    While the selected stage is off its controls fade to 50% and stay usable. The selected stage is remembered
+    for the session.
+- **Exciter** (adds harmonics to flat sources; psychoacoustic bass):
+  - **How it works.** The band above Frequency (700 Hz-16 kHz, 24 dB/oct) is
+    normalised to a fixed level and driven into one of four curves:
+    - Tube: the octave and the twelfth, warm.
+    - Tape: odd orders, an edge.
+    - Air: mostly the octave, placed an octave above the crossover.
+    - Crisp: a dense even series, bright.
+
+    Only what the curve adds is mixed back: its linear part is taken out, at a
+    level calibrated per curve and drive. So Drive sets the character alone,
+    and Amount sets the harmonics against the band: 50% is 6 dB under it, 100%
+    is 6 dB over it.
+  - **Anti-aliasing.** The curves run at twice the rate (polyphase IIR) with
+    ADAA, on the harmonics only. No latency.
+  - **Gate.** Below -84 dBFS of band level nothing is excited.
+  - **Focus** tilts what is added: Dark to Edge, ±4 dB about three times the
+    crossover.
+  - **Dynamics** runs from Fill (more in the quiet moments and tails) through
+    Static to Push (more on the loud moments), against the band's 600 ms
+    average. **Transients** adds up to 15 dB more on onsets.
+  - **Low end.** Harmonics of the mono band under Bass Freq (30-250 Hz), kept
+    between it and eight times it. Amount 100% matches the low band.
+  - **Output stage.**
+    - Width spreads the harmonics into a decorrelated side copy; the mono sum
+      never changes.
+    - Mix scales everything added.
+    - Output.
+    - Auto gain (on by default) turns the output down by the K-weighted
+      loudness the exciter adds, never up.
+
+  The editor shows what is added, where and when:
+
+  - **Harmonic spectrum** (the display, flexible width; -96..0 dBFS tilted
+    +3 dB/octave about 1 kHz; 20 Hz-20 kHz on the EQ's grid and labels;
+    dB lines every 24 dB in `gridBeat`):
+    - **Traces.** An 8192-point Hann FFT of the processor's two taps, 30 times a
+      second, rising quickly and falling at 40 dB/s:
+      - the input as a `textTertiary` fill at 16% under a 1 px `textSecondary`
+        line at 45%;
+      - what is added as a gradient fill in the hue (45% to 8%) under a 1.5 px
+        hue line.
+
+      Where the colour rises out of the grey, the exciter has made energy that
+      was not there.
+    - **Regions.** The region above the crossover and the region below the bass
+      frequency are tinted with the hue at 7% while their section adds anything.
+    - **Handles.** Each frequency is a vertical handle:
+      - Active: a 1 px hue line at 70%. While its section is at 0%: dashed
+        `textTertiary` at 60%.
+      - Hover or drag: `textPrimary` at 85%, 1.5 px.
+      - The shared 9 px handle disc sits 12 px above the plot's bottom
+        (`textPrimary`, or `textSecondary` while inactive) with a 1.5 px hue
+        ring (2 px on hover).
+      - Its frequency is in `value` beside it, on the side with room, on a
+        `meterWell` plate at 80% (radius `sm`) so traces never cross the figures.
+    - **Mouse.** A press moves the nearer handle to the pointer and drags it (one
+      gesture), and double-click resets the nearer one. The cursor is a
+      left-right resize within 6 px of a handle.
+    - **Legend.** Top left: 8 px rounded swatches with "Input" and "Added" in
+      `caption`.
+    - **Empty state.** When the analyser has nothing: "Play something to see
+      what is added" in `caption` `textTertiary`, centred.
+  - **Excitation history** (to its right, 208 px or a third of the display):
+    - The last three seconds:
+      - the input's 50 ms RMS as a `textTertiary` area at 32%;
+      - the added RMS as a hue area at 42% with a 1.5 px hue line.
+    - Range -72..0 dB, the grid every 12 dB with labels at the right as in the
+      Glue's ribbon.
+    - Static dynamics keep the two a set distance apart. Push widens the gap on
+      loud moments, Fill on quiet ones, and Transients on each onset.
+    - Top left: **ADDED** in `captionCaps`, then the added level against the
+      input over the last 300 ms in `value` in the hue ("-26.8 dB"); "–" in
+      `textTertiary` in silence.
+    - The card header's live readout is the same figure in the hue.
+  - **Controls,** in four groups. Each group has a `captionCaps` caption in
+    `textTertiary` on a 16 px row above it (HARMONICS, LOW END, DYNAMICS,
+    OUTPUT), and `lineSubtle` rules between the groups run from the caption row
+    to the controls' foot:
+    - HARMONICS: Character, a rotary selector (Tube, Tape, Air, Crisp); Amount, a
+      46 px knob with 0-10 scale dots; Drive; Frequency; Focus ("Dark 40",
+      "Flat", "Edge 40").
+    - LOW END: Amount, a 46 px knob with scale dots; Frequency.
+    - DYNAMICS: Dynamics ("Fill 35", "Static", "Push 60"); Transients.
+    - OUTPUT: Width; Mix; Output; Auto gain. Auto gain is a "Match" pill where
+      a knob's ring sits; under it, where a knob shows its value, the live trim
+      ("-1.8 dB", or "Off" in `textTertiary`), then its label.
+
+    Every label sits on one baseline along the bottom of the row. Every control
+    has a tooltip that says what it does to the sound.
+  - **Size.** The card is 939 px wide at 100% and its body is 300 px tall.
+- **Bloom** (an extreme reverb for use as an effect: huge, frozen, shimmering,
+  swelling, gated or ducked tails): a feedback delay network of eight modulated
+  lines with an allpass in each, mixed by a Householder matrix. Decay 0.4 s to 60 s
+  (RT60); Size from a large room to an absurd space (5 to 88 m), gliding like tape;
+  Freeze holds the tail for good, the input kept out, the shimmer and damping out of
+  the loop and a little modulation always on so it keeps moving. Shimmer pitch-shifts
+  part of each pass inside the loop (Pitch -12, +5, +7, +12, +19 or ±12 semitones),
+  so the tail climbs over seconds; Swell feeds the input in through a rising cloud
+  of taps so the tail builds like a reversed reverb (off, or 10 ms to 4 s); Gate cuts
+  the tail a set time after the input stops (off, or 40 ms to 2 s; never while
+  frozen); Duck lowers it under the dry input (up to 24 dB, Release 50 ms to 3 s).
+  Low cut and Damping act inside the loop as shelves: lows and highs past them decay
+  four times faster than the decay at any decay time. Tilt ±6 dB about 900 Hz after
+  the loop, Pre-delay 0-500 ms or a note value (Sync), Diffusion, Mod depth and Rate,
+  Width, Mix. A governor holds the network's energy under a ceiling, so no setting
+  runs away. No latency; bypassed, the network keeps running so the tail is current
+  when it comes back. Its editor shows the tail itself:
+  - **Tail field** (the display, flexible width and height): the last five seconds,
+    right to left. Above, a spectrogram of the tail alone (tap 1, before the mix):
+    50 Hz to 16 kHz on a log axis, each column the mean power of its bins
+    (2048-point FFT, Hann), -96 to -24 dB mapped to the hue fading in (alpha
+    `v^1.6 × 0.9`) and warming toward `textPrimary` at the top 20%; drawn from an
+    image held at twice the field's size so it is crisp at 200%, scrolled per tick
+    with up to 16 spectra per tick spread through the new audio. Shimmer shows as
+    partials climbing, damping as a darker top, a gate as a hard edge, a frozen tail
+    as a held texture. Below, under a `lineSubtle` hairline, the **energy lane**
+    (a third of the well, 24-56 px): the dry input's RMS as a `textTertiary` area at
+    34% and the tail's RMS in the hue (area 28%, a 1.5 px line), -60..0 dB, with the
+    legend TAIL (hue) DRY (`textTertiary`) in `captionCaps` on a `meterWell` backing at
+    80% at its top left. A 30 px gutter on the right holds the scales in
+    `caption - 1` mono `textTertiary`: 100, 1k, 10k for the field; -20 and -40 for the
+    lane (-30 alone when the lane is under 44 px). At the field's top left, on the same
+    backing: DECAY with the RT60 (`value`, `textPrimary`), AT 8 KHZ with the highs'
+    RT60 from the damping (`textSecondary`), SIZE in metres, PRE in ms or the note
+    value; captions in `captionCaps` `textTertiary`. **Frozen**: DECAY reads "∞ held",
+    a FROZEN pill (hue at 25% on the backing, a 1 px hue outline at 60%, text in the
+    hue, `captionCaps`) sits at the field's top right, and a 2 px hue line runs along
+    the field's top over every moment the tail was frozen, scrolling with it.
+  - **Envelope** (in the row of large controls, beside Swell, the rest of the row's
+    width): what one hit becomes, -60..0 dB: the dry hit (a 2 px `textTertiary` bar
+    at 0), the pre-delay, the swell rising, the decay falling 60 dB over the RT60
+    (a 1.5 px hue line over a hue gradient from 32% to 4%), the highs' faster fall
+    dashed (hue brightened, 80%), the gate's vertical cut; frozen, a flat line to
+    the edge with ∞ in the hue. Grid at -20 and -40 dB (`gridBeat`); 0 and the span
+    ("6.9 s") under it in `caption - 1` mono.
+  - **Large controls** (46 px rings with 0-10 scale dots, 84 px cells): Decay
+    ("6.0 s"), Size ("27 m"), the **Freeze latch**, | Shimmer (%) and Pitch (st) as a
+    rotary selector (-12, +5, +7, +12, +19, ±12), | Swell ("Off" at the bottom) and
+    the Envelope. `lineSubtle` rules between the groups. Frozen, Shimmer and Pitch
+    dim to 50% (the shimmer has left the loop).
+  - **Secondary controls** (28 px knobs on the 60 px grid) in four groups, each under
+    a `captionCaps` `textTertiary` caption, `lineSubtle` rules between them: SPACE
+    (Pre-delay, Diffusion, Mod, Rate; the Sync chip, a CornerChoice, on the caption
+    row at the right: "Sync off" or the note value, and synced the Pre-delay knob dims
+    and shows the note), TONE (Low cut, Damping, Tilt), DYNAMICS (Duck, Release,
+    Gate, "Off" at the bottom), OUTPUT (Width, Mix). Every label of a row sits on one
+    baseline.
+  - Header readout: "Frozen" in the hue while frozen, else the ducking ("Duck
+    -4.2 dB", `textSecondary`) while it ducks.
+  - Width 789 px (12 knob cells, three rules), body 336 px; the display takes what
+    the controls leave (at least 96 px).
+- **Tape Echo** (a tape loop machine, the Delay's characterful sibling):
+  - A record head and four playback heads at 1, 2, 3 and 4 times head 1's time. Eight
+    head combinations: 1, 2, 3, 4, 1+3, 2+4, 1+3+4, all.
+  - Feedback is the active heads' mean, so 100% is the edge of oscillation; it goes
+    to 120%.
+  - Time is the motor speed (head 1, 20-1000 ms). Synced, it is head 1's note value.
+    A change glides like a motor with a flywheel: the echoes' pitch bends while it
+    settles, with no crossfade.
+  - Wow and Flutter wobble the tape speed, with randomness. Flutter's rate follows
+    the motor.
+  - Every pass round the loop goes through the record path again: the Bass and
+    Treble shelves, the tape's saturation with pre- and de-emphasis (anti-aliased),
+    and the tape's high loss (darker with Age and at slow speeds). Hiss breathes
+    under the echoes and dropouts travel round the loop, both growing with Age. Each
+    repeat therefore darkens and wears.
+  - Past the edge, the loop sustains into the saturation, bounded.
+  - Drive sets the record level, and the echoes are compensated by half.
+  - Stereo is Pan (the active heads alternate left and right; a lone head is
+    centred), Ping (ping-pong) or L/R. Spread sets the width.
+  - Spring is a send to a short dispersive spring (its chirp and drip) on the echoes
+    only.
+  - Mix, Output, and a Kill dry pill for use on a send. No latency.
+  - **The machine** (the display, the card's full width; about 154 px tall at the
+    card's 250 px body):
+    - **The tape.** The loop's centre line runs from R right along the bottom past
+      the heads, round four 13 px rollers (the bottom-right is the capstan, with its
+      pinch roller), and back along the top. The top run is slack and sags 1-6 px
+      with Wow, at the wow rate, plus a 1 px flutter shimmer.
+    - The tape is 3 px `surface3` (`textTertiary` while hovered or dragged).
+    - What the record head wrote (the frames' `extra`) is drawn on the tape at its
+      age. Its distance from R is age ÷ the motor's head-1 time, in head units. It
+      shows as a band 3-12 px wide over the bottom 42 dB, in the hue mixed
+      opaquely into the well at 30-100%, fading by up to 45% round the loop.
+    - Each echo can be watched travelling from R to the heads.
+    - 1.5 px `textTertiary` marks every 14 px move with the tape at the motor's
+      speed, and are hidden when they would move more than half their pitch in a
+      frame. The rollers' three spokes turn with the tape.
+    - **The heads.** 14 × 10 px blocks under the bottom run with a 1.5 px gap line.
+      - R is `surface3` with a `textSecondary` rim, its gap lit in the hue by what
+        it writes.
+      - Active heads are filled in the hue, with a `textOnColour` gap line and a
+        22 px halo in the hue that flares as an echo passes.
+      - Inactive heads are `surface2` with a `lineStrong` rim.
+      - Labels R, 1-4 are in `caption`: `textPrimary` for active heads,
+        `textTertiary` for inactive ones, `textSecondary` for R.
+      - Each active head's time sits above it inside the loop, in `value`
+        `textSecondary`.
+    - **Feedback path.** A line from under each active head's label to a bus that
+      runs back to R, ending in an arrow.
+      - Below a loop gain of 0.85 it is the hue at 40-100% with the feedback, 1 px.
+      - From 0.85 it is `warning`, 1.5 px.
+      - At 1 and above it is `meterHot`.
+      - At no feedback it is dashed `textTertiary` at 50%.
+    - **Inside the loop, left.** MOTOR in `captionCaps`, then the Sync chip (the
+      corner chip: "Sync off" or the note value ▾). Below them is head 1's time as
+      the motor runs, in mono `title` `textPrimary`, so it glides after a change.
+      When synced, the note value shows with its ms after it in `value`. A clamped
+      note reads "max 1000 ms" in `warning`.
+    - **Inside the loop, right.** Two 150 px meters, each a `captionCaps` name with a
+      `value` reading on one row and a bar of twelve 6 px segments under it
+      (`surface2` when dark):
+      - **LOOP** is the loop gain over 0-1.2. Segments light in the hue below 0.85,
+        `warning` to 1 and `meterHot` past it. A 1 px `textSecondary` tick marks the
+        edge at 1. The reading turns `warning`/`meterHot` with it.
+      - **SATURATION** is the tape's compression over 0-12 dB, lit in the hue, from
+        the readout ballistics. It reads "–" when there is none.
+    - The machine is a readout only (the Time knob sets the motor), so it has no
+      hover or drag state.
+  - **Header status:** "Self-oscillating" in `meterHot` while the loop gain is at
+    1 or more. The Feedback knob's arc takes the same hue / `warning` / `meterHot`
+    colour.
+  - **Controls.** One row in five groups split by `lineSubtle` rules:
+    - Time and Feedback are 46 px knobs with 0-10 scale dots. Synced, Time dims to
+      50% and shows the note value.
+    - Between them, Heads is a rotary selector with eight positions (1, 2, 3, 4,
+      13, 24, 134, 1234), 38.6° apart over 270°. Its cell is 11 px taller than the
+      selector's preferred height, for the lowest labels.
+    - Bass and Treble.
+    - Drive, Wow, Flutter and Age.
+    - Stereo as a three-position rotary selector (Pan, Ping, L/R; tooltip "Heads
+      panned / Ping-pong / Left and right"), then Spread and Spring.
+    - Mix, Output, and a 48 × 22 px "Kill" pill where a knob's ring would be, named
+      "Dry" on the baseline.
+    - Every label sits on one baseline along the bottom of the row.
+- **Stereo Widener** (width per band, a mono-safe spread, and the image on screen):
+  the side (L-R) is split into Low, Mid and High by Linkwitz-Riley crossovers (Low
+  split 40 Hz-1 kHz, default 250 Hz; High split 1-16 kHz, default 4 kHz) and each band
+  scaled from 0 (mono) through 100% (as it came) to 200%; the mid goes through the
+  matching allpasses, so at 100% the sound is unchanged and at any width the mono
+  sum is the mid. Mono below (Off at 20 Hz, up to 500 Hz) takes the side out of the
+  bass with an LR4 high-pass. Spread (0-100%) widens a mono source by adding a copy
+  of the mid to the side only, so it cancels in mono: Diffuse through an allpass
+  network (each frequency leans a different way: no echo, no regular comb), or Haas
+  through a 1-30 ms delay (Time); both high-passed at 120 Hz. Rotation (±45°) turns
+  the image keeping its width; Balance (±100%) turns one side down. The Guard narrows
+  the image (quick in, slow out, to no less than 25% of its side) while its
+  correlation would fall below Guard at (default 0). The level is compensated for the
+  width (the power in over the power out, 300 ms, -6 to +3 dB). Output -24..+12 dB.
+  No latency. Its editor:
+  - **Vectorscope** (left, square, the display's height less the meter's): the
+    output as a goniometer, mid up and side across; L and R on the diagonals in
+    `gridBar` with a circle at full scale, M and S in `gridBeat`; L, M, R in
+    `captionCaps` `textTertiary`. The newest 2048 samples as 1.6 px dots in the hue in
+    four ages, 18% to 84% alpha, newest brightest; the scale follows the level (shrinks
+    at once, grows over 600 ms) so a quiet source still fills it. A rotation other than
+    0 draws a dashed `textSecondary` line from the centre to where a centred sound now
+    sits. Silent for a quarter second: a 3 px dot at the centre and "No signal" in
+    `caption` `textTertiary`.
+  - **Correlation meter** (under the scope, 38 px, its own well): -1 to +1 on an 8 px
+    track tinted by zone at 20%: below 0 `danger`, 0 to 0.3 `warning`, 0.3 up `success`;
+    a `lineStrong` tick at 0; -1, 0, +1 under it in mono `caption` - 1. The reading
+    (300 ms) is a bar from 0 in its zone's colour at 75% with a 2 px `textPrimary` end;
+    the lowest of the last `motion.peakHoldMs` holds as a 1.5 px tick in its zone's
+    colour; the input's correlation is a small `textSecondary` triangle under the
+    track. The guard's threshold is a line with a notch above the track: solid in the
+    hue while the guard is on, dashed `textTertiary` while off; drag it (steps of
+    0.05, double-click resets; hover brightens it and shows a left-right cursor). The
+    reading in `value` at the right in its zone's colour, "–" in silence.
+  - **Width bands** (the rest of the display): 20 Hz-20 kHz across (grid at 50, 100,
+    200, 500, 1k, 2k, 5k, 10k; decades `gridBar`, the rest `gridBeat`; labels in mono
+    `caption` - 1 under the plot), width 0-200% up (100% `lineStrong`, 50 and 150%
+    `gridBeat`; 0%, 100%, 200% labelled at the left). A 20 px row above the plot
+    holds each band's name in `captionCaps` `textTertiary` and its width in `value`
+    `textSecondary` ("Mono" at 0; only the value when the band is narrow, nothing when
+    it is narrower still). Each band is a block in the hue at 14% up to its width
+    with a 2 px line in the hue and a handle (the built-ins' 9 px disc) at its middle;
+    hover or drag raises the fill to 22% and the value to `textPrimary`. Drag anywhere
+    in a band for its width (it settles on 100% and on mono within 3%); double-click
+    resets. The crossovers are 1 px `lineStrong` lines from the top of the well (they
+    divide the caption row too), each with a grip at its foot: a 7 x 16 px upright
+    pill in `textSecondary` with two `surface0` notches, so it reads as "drag sideways"
+    beside the round "drag up and down" handles; hover or drag: line 1.5 px and grip
+    `textPrimary` with a 18% halo, and the frequency in a `surface3` chip near the top.
+    Mono below is a dashed line with its grip at the top; the region under it is
+    `canvas` at 80% (no side there) with MONO in `captionCaps`; Off, the grip sits dim
+    (`textTertiary`) at the left edge. Over everything, the width the output measures
+    at each frequency (side over mid, from a 4096-point FFT of the two taps, 56 log
+    bands each averaged with its neighbours, about 150 ms of averaging) as a 1.25 px
+    `textPrimary` line at 60%, broken where a band is below -80 dBFS or 60 dB under the
+    loudest; it shows what the settings actually did to the sound. While the guard
+    narrows, the width it leaves is a dashed `warning` line in each band.
+  - Controls, in four groups split by `lineSubtle` rules, every label on one baseline:
+    Low, Mid, High ("Mono" at 0) and Mono below ("Off") as knobs; Mode as a segmented
+    control (Diffuse | Haas, centred on the knobs' rings, captioned Mode), Spread and
+    Time (Haas time: disabled, ring and label `textDisabled`, in Diffuse); Rotation
+    ("+12°") and Balance ("C", "L 40", "R 40"); the Guard pill (in the hue when on,
+    captioned "Mono safe") and Output.
+  - Header status while the guard narrows: "Guard −35%" in `warning`.
 
 Draggable points are one handle everywhere: a 9 px `textPrimary` disc with a 1.5 px
 ring in the hue. A display's readout is `value` at its top right.
+
+## 7.2b Built-in presets
+
+Every built-in effect has presets: a factory list (8 to 13 for most, six levels for
+Gain), the first of them its defaults ("Default", or Patina's "Gentle Age"), and the
+user's own. The instruments keep their own preset bars in their faces (7.4b-7.4e).
+
+- **Where.** A preset bar (design-system.md "Preset bar") in the effect card's
+  header in the Editor panel, right of the name and before the menu, and in the
+  effect's window, right of the title and before Bypass. It is 208 px wide, or what
+  the header can spare while leaving the name 72 px; below 112 px it hides (the
+  menu's items stay). A face may also have its own preset control (Patina's amber
+  display); it uses the same list, so the two always show the same preset.
+- **The name** is the preset whose values the effect has right now, or "Custom".
+  Previous and next step through the whole list (factory, then the user's),
+  wrapping; from Custom, next goes to the first and previous to the last.
+- **The menu** (a click on the name): the factory presets, then the user's under
+  a "Yours" section header in name order, the current one ticked; a separator;
+  "Save preset...", "Delete "<name>"" (for a preset of the user's, dimmed
+  otherwise) and "Show presets folder".
+- **Save preset...** opens a sheet asking for a name (the current preset's, or "My
+  preset"); a preset of the user's with the same name is replaced. Every bar for
+  that effect updates at once.
+- **Files.** One JSON file per preset in Documents/Northlight/Effect Presets/<effect
+  name>: the name, the type and each parameter's value by its name. A file from an
+  older version loads with the defaults for parameters it lacks; one for another
+  effect is ignored. Delete moves the file to the recycle bin.
+- **Undo.** Applying a preset sets every parameter it changes in one undo step
+  ("Preset Vocal Plate").
 
 ## 7.3 Generic parameter editor
 

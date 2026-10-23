@@ -4,14 +4,19 @@
 #include "plugins/Aurora.h"
 #include "plugins/BeatSync.h"
 #include "plugins/Biquad.h"
+#include "plugins/Bloom.h"
 #include "plugins/ChannelStrip.h"
+#include "plugins/Exciter.h"
 #include "plugins/Glue.h"
 #include "plugins/MeteredBuiltIn.h"
 #include "plugins/Nebula.h"
+#include "plugins/Patina.h"
 #include "plugins/ProcessorBase.h"
 #include "plugins/Pulsar.h"
 #include "plugins/Sampler.h"
 #include "plugins/Starbit.h"
+#include "plugins/TapeEcho.h"
+#include "plugins/Widener.h"
 
 #include <algorithm>
 #include <array>
@@ -609,9 +614,14 @@ std::vector<std::string> BuiltInFactory::typeNames() const
             types::compressor,
             types::opto,
             glue::type,
+            widener::type,
+            patina::type,
+            exciter::type,
             types::limiter,
             types::reverb,
             types::delay,
+            tapeecho::type,
+            bloom::type,
             aurora::type,
             pulsar::type,
             nebula::type,
@@ -640,6 +650,12 @@ std::unique_ptr<engine::InsertProcessor> BuiltInFactory::create(const std::strin
         return strip::createOpto(types::opto);
     if (typeName == glue::type)
         return glue::create();
+    if (typeName == widener::type)
+        return widener::create();
+    if (typeName == patina::type)
+        return patina::create();
+    if (typeName == exciter::type)
+        return exciter::create();
     if (typeName == types::limiter)
         return std::make_unique<Limiter>();
     if (typeName == aurora::type)
@@ -656,6 +672,10 @@ std::unique_ptr<engine::InsertProcessor> BuiltInFactory::create(const std::strin
         return std::make_unique<Reverb>();
     if (typeName == types::delay)
         return std::make_unique<Delay>();
+    if (typeName == tapeecho::type)
+        return tapeecho::create();
+    if (typeName == bloom::type)
+        return bloom::create();
     return nullptr;
 }
 
@@ -673,6 +693,12 @@ std::string BuiltInFactory::displayName(const std::string& typeName)
         return "Opto Compressor";
     if (typeName == glue::type)
         return "Glue Compressor";
+    if (typeName == widener::type)
+        return "Stereo Widener";
+    if (typeName == patina::type)
+        return "Patina";
+    if (typeName == exciter::type)
+        return "Exciter";
     if (typeName == types::limiter)
         return "Limiter";
     if (typeName == aurora::type)
@@ -689,6 +715,10 @@ std::string BuiltInFactory::displayName(const std::string& typeName)
         return "Reverb";
     if (typeName == types::delay)
         return "Delay";
+    if (typeName == tapeecho::type)
+        return "Tape Echo";
+    if (typeName == bloom::type)
+        return "Bloom";
     return typeName;
 }
 
