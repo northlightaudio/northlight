@@ -528,8 +528,14 @@ delay `Gorse`, glue compressor `Thrift`, Patina `Kelp`, exciter `Machair`, Bloom
     reading in `value` at the right in its zone's colour, "–" in silence.
   - **Width bands** (the rest of the display): 20 Hz-20 kHz across (grid at 50, 100,
     200, 500, 1k, 2k, 5k, 10k; decades `gridBar`, the rest `gridBeat`; labels in mono
-    `caption` - 1 under the plot), width 0-200% up (100% `lineStrong`, 50 and 150%
-    `gridBeat`; 0%, 100%, 200% labelled at the left). A 20 px row above the plot
+    `caption` - 1 under the plot), width 0-200% up on a linear scale (100%
+    `lineStrong`, 50 and 150% `gridBeat`; 0%, 100%, 200% labelled at the left). Above
+    200%, a **headroom strip** across the top of the plot (14% of its height, 16 to
+    26 px; `textPrimary` at 3.5%, a dashed `gridBar` edge at 200%, OVER in
+    `captionCaps` `textTertiary` in the gutter) holds 200 to 800% on a log scale
+    (400% half way) for what the output measures past what a band can be set to.
+    The bands and their drags stay on the linear part (a drag into the strip sets
+    200%). A 20 px row above the plot
     holds each band's name in `captionCaps` `textTertiary` and its width in `value`
     `textSecondary` ("Mono" at 0; only the value when the band is narrow, nothing when
     it is narrower still). Each band is a block in the hue at 14% up to its width
@@ -547,7 +553,12 @@ delay `Gorse`, glue compressor `Thrift`, Patina `Kelp`, exciter `Machair`, Bloom
     at each frequency (side over mid, from a 4096-point FFT of the two taps, 56 log
     bands each averaged with its neighbours, about 150 ms of averaging) as a 1.25 px
     `textPrimary` line at 60%, broken where a band is below -80 dBFS or 60 dB under the
-    loudest; it shows what the settings actually did to the sound. While the guard
+    loudest; it shows what the settings actually did to the sound. It runs on up into
+    the headroom strip; over each run of bands measuring past 200% whose widest
+    reaches 210% (a run that only grazes the edge would flicker), an 8 x 6 px
+    triangle in `warning` points up at the strip's top above the run's widest band,
+    with that width beside it in mono `caption - 1` `warning` ("340%", ">800%" past
+    the strip) where it does not collide with the last. While the guard
     narrows, the width it leaves is a dashed `warning` line in each band.
   - Controls, in four groups split by `lineSubtle` rules, every label on one baseline:
     Low, Mid, High ("Mono" at 0) and Mono below ("Off") as knobs; Mode as a segmented

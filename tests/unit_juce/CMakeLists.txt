@@ -37,6 +37,7 @@ add_executable(northlight_juce_tests
     PatinaCardTests.cpp
     EffectPresetLibraryTests.cpp
     EffectCardTooltipsTests.cpp
+    WidthScaleTests.cpp
     ExciterCardTests.cpp
     BloomCardTests.cpp)
 

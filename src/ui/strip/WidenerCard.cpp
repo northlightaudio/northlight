@@ -9,6 +9,7 @@
 #include "plugins/Widener.h"
 #include "ui/strip/ModuleCard.h"
 #include "ui/strip/StripStyle.h"
+#include "ui/strip/WidthScale.h"
 
 #include <juce_dsp/juce_dsp.h>
 
@@ -30,7 +31,6 @@ constexpr int fftOrder = 12;
 constexpr int fftSize = 1 << fftOrder; // the width spectrum's window (85 ms at 48 kHz)
 constexpr int scopeSamples = 2048;     // the vectorscope's (the newest of the same read)
 constexpr int spectrumBands = 56;      // log-spaced, 20 Hz to 20 kHz
-constexpr float maxShownWidth = 200.0f;
 
 // A draggable point, the same everywhere: a 9 px textPrimary disc with a ring in
 // the hue (as the built-ins' displays).
@@ -663,8 +663,7 @@ public:
             case Drag::mid:
             case Drag::high:
             {
-                const float f = juce::jlimit(0.0f, 1.0f, (p.getBottom() - e.position.y) / p.getHeight());
-                float w = f * maxShownWidth;
+                float w = widthscale::settableAt(e.position.y, p);
                 // Settle on 100% (as it came) and on mono near them.
                 if (std::abs(w - 100.0f) < 3.0f)
                     w = 100.0f;
@@ -765,10 +764,7 @@ private:
     }
     static constexpr int captionRow = 20; // the bands' names above the plot
     static float monoHandleY(juce::Rectangle<float> p) { return p.getY() + 12.0f; }
-    static float widthToY(float w, juce::Rectangle<float> p)
-    {
-        return p.getBottom() - juce::jlimit(0.0f, 1.0f, w / maxShownWidth) * p.getHeight();
-    }
+    static float widthToY(float w, juce::Rectangle<float> p) { return widthscale::toY(w, p); }
 
     int bandAt(float x) const
     {
@@ -829,6 +825,14 @@ private:
             g.setColour(w == 100.0f ? c.lineStrong : c.gridBeat);
             g.drawHorizontalLine(static_cast<int>(y), p.getX(), p.getRight());
         }
+        // The headroom strip over 200%: what the output measures past what a band
+        // can be set to, compressed.
+        const float edge = widthscale::settableTop(p);
+        g.setColour(c.textPrimary.withAlpha(0.035f));
+        g.fillRect(juce::Rectangle<float>::leftTopRightBottom(p.getX(), p.getY(), p.getRight(), edge));
+        const float dashes[] = {3.0f, 3.0f};
+        g.setColour(c.gridBar);
+        g.drawDashedLine({p.getX(), edge, p.getRight(), edge}, dashes, 2, 1.0f);
         g.setColour(c.textTertiary);
         for (const float w : {0.0f, 100.0f, 200.0f})
         {
@@ -837,6 +841,10 @@ private:
                        juce::Rectangle<float>(p.getX() - 34.0f, y - 6.0f, 30.0f, 12.0f),
                        juce::Justification::centredRight);
         }
+        g.setFont(theme.captionCaps());
+        g.drawText("OVER",
+                   juce::Rectangle<float>(p.getX() - 34.0f, p.getY() - 2.0f, 30.0f, 11.0f),
+                   juce::Justification::centredRight);
     }
 
     // A line's grip: a small upright pill, so it reads as "drag sideways" beside
@@ -886,7 +894,7 @@ private:
                 continue;
             }
             const float x = hzToX(centreHz(b), p);
-            const float y = widthToY(std::min(*w, maxShownWidth), p);
+            const float y = widthToY(*w, p);
             if (!drawing)
                 line.startNewSubPath(x, y);
             else
@@ -896,6 +904,62 @@ private:
         g.setColour(card_.theme().colours.textPrimary.withAlpha(0.6f));
         g.strokePath(
             line, juce::PathStrokeType(1.25f, juce::PathStrokeType::curved, juce::PathStrokeType::rounded));
+        drawOverMarkers(g, p);
+    }
+
+    // Over the top: above each run of bands measuring past 210%, a small
+    // triangle in the warning colour at the strip's top, with the run's widest
+    // ("340%", or ">800%" off the strip) beside it where there is room.
+    void drawOverMarkers(juce::Graphics& g, juce::Rectangle<float> p) const
+    {
+        const auto& theme = card_.theme();
+        const auto font =
+            theme.font(Theme::Face::mono, theme.fonts.size.caption - 1.0f, theme.fonts.weight.medium);
+        float lastRight = p.getX() - 1.0f;
+        int b = 0;
+        while (b < spectrumBands)
+        {
+            const auto w = widthOf(b);
+            if (!w || *w <= widthscale::settable)
+            {
+                ++b;
+                continue;
+            }
+            int peak = b;
+            float most = *w;
+            for (; b < spectrumBands; ++b)
+            {
+                const auto v = widthOf(b);
+                if (!v || *v <= widthscale::settable)
+                    break;
+                if (*v > most)
+                {
+                    most = *v;
+                    peak = b;
+                }
+            }
+            // A run that only grazes the edge gets no marker (it would flicker).
+            if (most < widthscale::settable * 1.05f)
+                continue;
+            const float x = hzToX(centreHz(peak), p);
+            const float top = p.getY() + 2.0f;
+            juce::Path arrow;
+            arrow.addTriangle(x - 4.0f, top + 6.0f, x + 4.0f, top + 6.0f, x, top);
+            g.setColour(theme.colours.warning);
+            g.fillPath(arrow);
+            const auto text = most >= widthscale::ceiling
+                                  ? ">" + juce::String(juce::roundToInt(widthscale::ceiling)) + "%"
+                                  : juce::String(juce::roundToInt(most)) + "%";
+            const float textW =
+                static_cast<float>(juce::GlyphArrangement::getStringWidthInt(font, text)) + 2.0f;
+            const auto box = juce::Rectangle<float>(x + 6.0f, top - 2.0f, textW, 11.0f);
+            if (box.getX() > lastRight && box.getRight() < p.getRight() - 2.0f)
+            {
+                g.setFont(font);
+                g.drawText(text, box, juce::Justification::centredLeft);
+                lastRight = box.getRight() + 4.0f;
+            }
+        }
     }
 
     static double bandOf(double hz) { return std::log(hz / minHz) / std::log(maxHz / minHz) * spectrumBands; }
