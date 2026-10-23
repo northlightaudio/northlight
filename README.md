@@ -36,9 +36,8 @@ development with C++** workload. Then:
 .\scripts\build.ps1 -Run
 ```
 
-Everything else is downloaded on the first build. ASIO needs Steinberg's ASIO SDK,
-which cannot be redistributed; [docs/building.md](docs/building.md) explains how to
-add it, and covers the presets, options and tests.
+Everything else, ASIO support included, is downloaded on the first build.
+[docs/building.md](docs/building.md) covers the presets, options and tests.
 
 ## Documentation
 

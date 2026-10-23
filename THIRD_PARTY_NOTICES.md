@@ -6,6 +6,7 @@ Northlight is free software under the GNU Affero General Public License version 
 |---|---|---|
 | JUCE 8 | Application framework: audio devices, plugin hosting, UI, file formats | GNU AGPLv3 (Northlight uses JUCE under its AGPLv3 option) |
 | VST3 SDK (bundled with JUCE) | Hosting VST3 plugins | MIT |
+| Steinberg ASIO SDK header (bundled with JUCE) | ASIO audio devices | GNU GPLv3 (Northlight uses the SDK under its GPLv3 option; GPLv3 section 13 allows combining it with AGPLv3 code) |
 | CLAP | Hosting CLAP plugins | MIT |
 | Signalsmith Stretch | Clip time-stretch and pitch-shift | MIT |
 | Signalsmith Linear | FFT and STFT for Signalsmith Stretch | MIT |
@@ -17,7 +18,6 @@ Northlight is free software under the GNU Affero General Public License version 
 | zlib (bundled with JUCE) | Compression | zlib |
 | HarfBuzz (bundled with JUCE) | Text shaping | Old MIT |
 | SheenBidi (bundled with JUCE) | Bidirectional text | Apache License 2.0 |
-| Steinberg ASIO SDK | ASIO audio devices (builds made with the SDK) | GNU GPLv3 (Northlight uses the SDK under its GPLv3 option; GPLv3 section 13 allows combining it with AGPLv3 code) |
 | Catch2 | Unit tests (not part of the application) | Boost Software License 1.0 |
 
 Typefaces: Newsreader, the display face (`assets/fonts/Newsreader-Variable.ttf`), is distributed under the SIL Open Font License 1.1, in `Newsreader-OFL.txt` beside it. When the Inter and JetBrains Mono fonts are bundled in `assets/fonts`, they are distributed under the same licence, and their `OFL.txt` files must be shipped beside them.
@@ -131,6 +131,58 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 
 //---------------------------------------------------------------------------------
+````
+
+### Steinberg ASIO SDK header (bundled with JUCE)
+
+ASIO audio devices. Licence: GNU GPLv3 (Northlight uses the SDK under its GPLv3 option; GPLv3 section 13 allows combining it with AGPLv3 code).
+
+````text
+//-----------------------------------------------------------------------------
+// LICENSE
+// (c) 2025, Steinberg Media Technologies GmbH, All Rights Reserved
+//-----------------------------------------------------------------------------
+This license applies only to files referencing this license,
+for other files of the Software Development Kit the respective embedded license text
+is applicable.
+
+This Software Development Kit is licensed under the terms of the Steinberg ASIO License,
+or alternatively under the terms of the General Public License (GPL) Version 3.
+You may use the Software Development Kit according to either of these licenses as it is
+most appropriate for your project on a case-by-case basis (commercial or not).
+
+a) Proprietary Steinberg ASIO License
+The Software Development Kit may not be distributed in parts or its entirety
+without prior written agreement by Steinberg Media Technologies GmbH.
+The SDK must not be used to re-engineer or manipulate any technology used
+in any Steinberg or Third-party application or software module,
+unless permitted by law.
+Neither the name of the Steinberg Media Technologies GmbH nor the names of its
+contributors may be used to endorse or promote products derived from this
+software without specific prior written permission.
+Before publishing a software under the proprietary license, you need to obtain a copy
+of the License Agreement signed by Steinberg Media Technologies GmbH.
+The Steinberg ASIO SDK License Agreement can be found at:
+www.steinberg.net/en/company/developers.html
+
+THE SDK IS PROVIDED BY STEINBERG MEDIA TECHNOLOGIES GMBH "AS IS" AND
+ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED
+WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE DISCLAIMED.
+IN NO EVENT SHALL STEINBERG MEDIA TECHNOLOGIES GMBH BE LIABLE FOR ANY DIRECT,
+INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING,
+BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,
+DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF
+LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE
+OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED
+OF THE POSSIBILITY OF SUCH DAMAGE.
+
+b) General Public License (GPL) Version 3
+Details of these licenses can be found at: www.gnu.org/licenses/gpl-3.0.html
+
+Best Practice recommendation:
+Please refer to the Steinberg ASIO usage guidelines for the use of ASIO, ASIO logo and ASIO 
+compatible logos.
+//----------------------------------------------------------------------------------
 ````
 
 ### CLAP
@@ -856,58 +908,6 @@ Bidirectional text. Licence: Apache License 2.0.
    WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
    See the License for the specific language governing permissions and
    limitations under the License.
-````
-
-### Steinberg ASIO SDK
-
-ASIO audio devices (builds made with the SDK). Licence: GNU GPLv3 (Northlight uses the SDK under its GPLv3 option; GPLv3 section 13 allows combining it with AGPLv3 code).
-
-````text
-//-----------------------------------------------------------------------------
-// LICENSE
-// (c) 2025, Steinberg Media Technologies GmbH, All Rights Reserved
-//-----------------------------------------------------------------------------
-This license applies only to files referencing this license,
-for other files of the Software Development Kit the respective embedded license text
-is applicable.
-
-This Software Development Kit is licensed under the terms of the Steinberg ASIO License,
-or alternatively under the terms of the General Public License (GPL) Version 3.
-You may use the Software Development Kit according to either of these licenses as it is
-most appropriate for your project on a case-by-case basis (commercial or not).
-
-a) Proprietary Steinberg ASIO License
-The Software Development Kit may not be distributed in parts or its entirety
-without prior written agreement by Steinberg Media Technologies GmbH.
-The SDK must not be used to re-engineer or manipulate any technology used
-in any Steinberg or Third-party application or software module,
-unless permitted by law.
-Neither the name of the Steinberg Media Technologies GmbH nor the names of its
-contributors may be used to endorse or promote products derived from this
-software without specific prior written permission.
-Before publishing a software under the proprietary license, you need to obtain a copy
-of the License Agreement signed by Steinberg Media Technologies GmbH.
-The Steinberg ASIO SDK License Agreement can be found at:
-www.steinberg.net/en/company/developers.html
-
-THE SDK IS PROVIDED BY STEINBERG MEDIA TECHNOLOGIES GMBH "AS IS" AND
-ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED
-WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE DISCLAIMED.
-IN NO EVENT SHALL STEINBERG MEDIA TECHNOLOGIES GMBH BE LIABLE FOR ANY DIRECT,
-INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING,
-BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,
-DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF
-LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE
-OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED
-OF THE POSSIBILITY OF SUCH DAMAGE.
-
-b) General Public License (GPL) Version 3
-Details of these licenses can be found at: www.gnu.org/licenses/gpl-3.0.html
-
-Best Practice recommendation:
-Please refer to the Steinberg ASIO usage guidelines for the use of ASIO, ASIO logo and ASIO 
-compatible logos.
-//----------------------------------------------------------------------------------
 ````
 
 ## Used only to build and test

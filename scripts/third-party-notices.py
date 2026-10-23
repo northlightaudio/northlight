@@ -1,10 +1,10 @@
 """Writes THIRD_PARTY_NOTICES.md from the licence files of the code the app is built from.
 
 The notices quote each dependency's own licence text, read from its source as
-CMake fetched it (build/<preset>/_deps) and from the ASIO SDK. Run it again when a
-dependency's version changes:
+CMake fetched it (build/<preset>/_deps). Run it again when a dependency's version
+changes:
 
-    python scripts/third-party-notices.py [--deps build/windows-debug/_deps] [--asio H:/Tools/asiosdk]
+    python scripts/third-party-notices.py [--deps build/windows-debug/_deps]
 
 Only what ends up in the shipped application is listed: the JUCE modules the app
 links (and the libraries bundled inside them that those modules compile), the
@@ -25,6 +25,9 @@ ENTRIES = [
      "GNU AGPLv3 (Northlight uses JUCE under its AGPLv3 option)", "juce-src/LICENSE.md", None),
     ("VST3 SDK (bundled with JUCE)", "Hosting VST3 plugins", "MIT",
      JUCE + "juce_audio_processors_headless/format_types/VST3_SDK/LICENSE.txt", None),
+    ("Steinberg ASIO SDK header (bundled with JUCE)", "ASIO audio devices",
+     "GNU GPLv3 (Northlight uses the SDK under its GPLv3 option; GPLv3 section 13 allows "
+     "combining it with AGPLv3 code)", JUCE + "juce_audio_devices/native/asio/LICENSE.txt", None),
     ("CLAP", "Hosting CLAP plugins", "MIT", "clap-src/LICENSE", None),
     ("Signalsmith Stretch", "Clip time-stretch and pitch-shift", "MIT", "signalsmith_stretch-src/LICENSE.txt", None),
     ("Signalsmith Linear", "FFT and STFT for Signalsmith Stretch", "MIT", "signalsmith-linear-src/LICENSE.txt", None),
@@ -44,9 +47,6 @@ ENTRIES = [
     ("SheenBidi (bundled with JUCE)", "Bidirectional text", "Apache License 2.0",
      JUCE + "juce_graphics/unicode/sheenbidi/LICENSE", None),
 ]
-ASIO = ("Steinberg ASIO SDK", "ASIO audio devices (builds made with the SDK)",
-        "GNU GPLv3 (Northlight uses the SDK under its GPLv3 option; GPLv3 section 13 allows "
-        "combining it with AGPLv3 code)", "LICENSE.txt")
 TEST_ONLY = ("Catch2", "Unit tests (not part of the application)", "Boost Software License 1.0",
              "catch2-src/LICENSE.txt")
 
@@ -72,7 +72,6 @@ def section(name, purpose, licence, text):
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--deps", default=os.path.join(ROOT, "build", "windows-debug", "_deps"))
-    parser.add_argument("--asio", default=os.environ.get("NORTHLIGHT_ASIO_SDK_DIR", ""))
     parser.add_argument("--out", default=os.path.join(ROOT, "THIRD_PARTY_NOTICES.md"))
     args = parser.parse_args()
 
@@ -85,8 +84,7 @@ def main():
         "| Component | Used for | Licence |",
         "|---|---|---|",
     ]
-    rows = ENTRIES + [ASIO[:3] + (None,)]
-    for name, purpose, licence, *_ in rows:
+    for name, purpose, licence, *_ in ENTRIES:
         parts.append(f"| {name} | {purpose} | {licence} |")
     parts.append(f"| {TEST_ONLY[0]} | {TEST_ONLY[1]} | {TEST_ONLY[2]} |")
     parts.append("")
@@ -104,10 +102,6 @@ def main():
     parts.append("## Licence texts\n")
     for name, purpose, licence, rel, cut in ENTRIES:
         parts.append(section(name, purpose, licence, read(os.path.join(args.deps, rel), cut)))
-    if args.asio and os.path.isfile(os.path.join(args.asio, ASIO[3])):
-        parts.append(section(ASIO[0], ASIO[1], ASIO[2], read(os.path.join(args.asio, ASIO[3]))))
-    else:
-        sys.exit("the ASIO SDK was not found: pass --asio or set NORTHLIGHT_ASIO_SDK_DIR")
     parts.append("## Used only to build and test\n")
     parts.append(section(TEST_ONLY[0], TEST_ONLY[1], TEST_ONLY[2], read(os.path.join(args.deps, TEST_ONLY[3]))))
 

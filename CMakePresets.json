@@ -12,8 +12,7 @@
       "toolset": { "value": "host=x64", "strategy": "external" },
       "cacheVariables": {
         "CMAKE_C_COMPILER": "cl",
-        "CMAKE_CXX_COMPILER": "cl",
-        "NORTHLIGHT_ASIO_SDK_DIR": "$env{NORTHLIGHT_ASIO_SDK_DIR}"
+        "CMAKE_CXX_COMPILER": "cl"
       }
     },
     {
@@ -36,13 +35,11 @@
     },
     {
       "name": "ci",
-      "displayName": "CI (RelWithDebInfo, warnings as errors, no ASIO)",
+      "displayName": "CI (RelWithDebInfo, warnings as errors)",
       "inherits": "windows-base",
       "cacheVariables": {
         "CMAKE_BUILD_TYPE": "RelWithDebInfo",
-        "NORTHLIGHT_WARNINGS_AS_ERRORS": "ON",
-        "NORTHLIGHT_ASIO_SDK_DIR": "",
-        "NORTHLIGHT_NO_ASIO": "ON"
+        "NORTHLIGHT_WARNINGS_AS_ERRORS": "ON"
       }
     },
     {

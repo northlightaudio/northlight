@@ -25,6 +25,7 @@ target_compile_definitions(northlight_juce PUBLIC
     JUCE_WEB_BROWSER=0
     JUCE_USE_CURL=0
     JUCE_ASIO=${NORTHLIGHT_HAS_ASIO}
+    JUCE_ASIO_USE_EXTERNAL_SDK=${NORTHLIGHT_ASIO_EXTERNAL_SDK}
     JUCE_WASAPI=1
     JUCE_DIRECTSOUND=0
     JUCE_PLUGINHOST_VST3=1
@@ -34,7 +35,7 @@ target_compile_definitions(northlight_juce PUBLIC
     JUCE_MODAL_LOOPS_PERMITTED=0
     JUCE_STRICT_REFCOUNTEDPOINTER=1)
 
-if(NORTHLIGHT_HAS_ASIO)
+if(NORTHLIGHT_ASIO_EXTERNAL_SDK)
     target_include_directories(northlight_juce PRIVATE "${NORTHLIGHT_ASIO_SDK_DIR}/common")
 endif()
 

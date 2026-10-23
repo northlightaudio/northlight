@@ -16,6 +16,7 @@ For how the pieces fit together see [architecture.md](architecture.md).
 | 2026-10-21 | Licensed under the GNU AGPLv3 | It matches JUCE's open licence and takes the ASIO SDK under its GPLv3 option (GPLv3 section 13 allows the combination); every other dependency is permissive. See LICENSE and THIRD_PARTY_NOTICES.md. |
 | 2026-10-21 | Renamed from Aural to Northlight | A name of its own for the public release. Settings and folders from the old name migrate on first start. |
 | 2026-10-21 | Signalsmith Stretch for time-stretch | MIT licensed and very good; Rubber Band would have cost a licence. |
+| 2026-10-23 | ASIO from the header bundled with JUCE, on in every build | JUCE 8.0.11 bundles the ASIO SDK header under the SDK's GPLv3 option, the same option the AGPLv3 decision relies on. Building no longer needs Steinberg's SDK, distributed builds include ASIO, and CI compiles the ASIO code. A local SDK can still replace the header. |
 
 ## Log
 

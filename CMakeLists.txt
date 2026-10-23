@@ -29,16 +29,12 @@ option(NORTHLIGHT_WARNINGS_AS_ERRORS "Treat compiler warnings as errors" OFF)
 # development build, a pre-release such as "beta.1", or empty for a final release.
 set(NORTHLIGHT_VERSION_LABEL "dev" CACHE STRING "Version label: dev, a pre-release such as beta.1, or empty for a release")
 
-# Steinberg SDKs are not vendored. Point this at a local copy of the ASIO SDK
-# (the directory that contains common/, host/, driver/) to enable ASIO support.
-# The VST3 SDK is bundled inside JUCE, so VST3 hosting needs nothing extra.
-set(NORTHLIGHT_ASIO_SDK_DIR "" CACHE PATH "Path to the Steinberg ASIO SDK root (enables ASIO when set)")
-# The variable was AURAL_ASIO_SDK_DIR before the rename: still honoured from the
-# environment when the new one is not set (not for a build that turns ASIO off).
-if(NOT NORTHLIGHT_ASIO_SDK_DIR AND NOT NORTHLIGHT_NO_ASIO AND DEFINED ENV{AURAL_ASIO_SDK_DIR} AND NOT "$ENV{AURAL_ASIO_SDK_DIR}" STREQUAL "")
-    set(NORTHLIGHT_ASIO_SDK_DIR "$ENV{AURAL_ASIO_SDK_DIR}" CACHE PATH "Path to the Steinberg ASIO SDK root (enables ASIO when set)" FORCE)
-    message(STATUS "Northlight: using AURAL_ASIO_SDK_DIR; rename the variable to NORTHLIGHT_ASIO_SDK_DIR")
-endif()
+# ASIO uses the ASIO SDK header that JUCE bundles under the SDK's GPLv3 option, so
+# it needs no download. NORTHLIGHT_ASIO_SDK_DIR optionally points at a local copy of
+# Steinberg's ASIO SDK (the folder that contains common/) to use its header instead.
+# The VST3 SDK is bundled inside JUCE too.
+option(NORTHLIGHT_ASIO "Enable ASIO audio devices (Windows only)" ON)
+set(NORTHLIGHT_ASIO_SDK_DIR "" CACHE PATH "Optional: an ASIO SDK root whose header replaces the one bundled with JUCE")
 
 # ---------------------------------------------------------------------------
 # Dependencies
@@ -91,15 +87,19 @@ endif()
 # ASIO
 # ---------------------------------------------------------------------------
 set(NORTHLIGHT_HAS_ASIO 0)
-if(NORTHLIGHT_ASIO_SDK_DIR)
-    if(EXISTS "${NORTHLIGHT_ASIO_SDK_DIR}/common/iasiodrv.h")
-        set(NORTHLIGHT_HAS_ASIO 1)
-        message(STATUS "Northlight: ASIO enabled (SDK at ${NORTHLIGHT_ASIO_SDK_DIR})")
+set(NORTHLIGHT_ASIO_EXTERNAL_SDK 0)
+if(NORTHLIGHT_ASIO AND WIN32)
+    set(NORTHLIGHT_HAS_ASIO 1)
+    if(NORTHLIGHT_ASIO_SDK_DIR AND EXISTS "${NORTHLIGHT_ASIO_SDK_DIR}/common/iasiodrv.h")
+        set(NORTHLIGHT_ASIO_EXTERNAL_SDK 1)
+        message(STATUS "Northlight: ASIO enabled (header from the SDK at ${NORTHLIGHT_ASIO_SDK_DIR})")
+    elseif(NORTHLIGHT_ASIO_SDK_DIR)
+        message(WARNING "Northlight: NORTHLIGHT_ASIO_SDK_DIR is set but common/iasiodrv.h was not found; using JUCE's bundled ASIO header")
     else()
-        message(WARNING "Northlight: NORTHLIGHT_ASIO_SDK_DIR is set but common/iasiodrv.h was not found; ASIO disabled")
+        message(STATUS "Northlight: ASIO enabled (header bundled with JUCE)")
     endif()
 else()
-    message(STATUS "Northlight: ASIO disabled (set NORTHLIGHT_ASIO_SDK_DIR to enable)")
+    message(STATUS "Northlight: ASIO disabled")
 endif()
 
 # ---------------------------------------------------------------------------

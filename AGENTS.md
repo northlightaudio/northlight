@@ -44,7 +44,7 @@ environment:
 
 ```powershell
 .\scripts\build.ps1 -Test                    # windows-debug build, then ctest
-.\scripts\build.ps1 -Preset ci -Test         # what CI runs: warnings as errors, no ASIO
+.\scripts\build.ps1 -Preset ci -Test         # what CI runs: warnings as errors
 .\scripts\build.ps1 -Test -LowPriority -Jobs 4   # when the user is using the machine
 ```
 
@@ -59,11 +59,9 @@ environment:
 - Test binaries: `build/<preset>/tests/unit/northlight_unit_tests.exe` and
   `build/<preset>/tests/unit_juce/northlight_juce_tests.exe`; both accept Catch2
   filters such as `"[engine]"` or a test name.
-- ASIO needs the Steinberg SDK via `NORTHLIGHT_ASIO_SDK_DIR` (the build also falls
-  back to `AURAL_ASIO_SDK_DIR`). Agent shells often lack the variable; without it the
-  configure step quietly drops ASIO from an existing build directory. Set it in the
-  same command as the build if the machine has the SDK. Never copy any SDK into the
-  repository.
+- ASIO is on in every build and uses the ASIO SDK header bundled with JUCE, so no
+  SDK or environment variable is needed. `-DNORTHLIGHT_ASIO_SDK_DIR=<sdk>` swaps in a
+  local SDK's header. Never copy any SDK into the repository.
 - clang-format lives at `<VS>\VC\Tools\Llvm\x64\bin\clang-format.exe` if it is not on
   PATH.
 

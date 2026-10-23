@@ -163,7 +163,7 @@ where its source is (the AGPLv3 requires it); the tag is that source.
 
 ## Third-party code and SDKs
 
-Dependencies are fetched by CMake, never committed. The Steinberg ASIO SDK cannot be
-redistributed: never add it, or any other SDK, to the repository. A new dependency
-needs a licence compatible with the AGPLv3 and an entry in
+Dependencies are fetched by CMake, never committed; never add an SDK to the
+repository. ASIO comes with JUCE, which bundles the ASIO SDK header under its GPLv3
+option. A new dependency needs a licence compatible with the AGPLv3 and an entry in
 `scripts/third-party-notices.py`.

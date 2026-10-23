@@ -44,7 +44,7 @@ ctest --preset windows-debug
 | `windows-debug` | Debug | Real-time checks on |
 | `windows-relwithdebinfo` | RelWithDebInfo | For profiling |
 | `windows-release` | Release | Real-time checks off |
-| `ci` | RelWithDebInfo | Warnings as errors, no ASIO |
+| `ci` | RelWithDebInfo | Warnings as errors |
 
 The application is `build/<preset>/src/app/northlight_artefacts/<config>/Northlight.exe`.
 The build copies the design tokens, fonts, icons, brand files, the licence and the
@@ -52,17 +52,21 @@ third-party notices beside it.
 
 ## ASIO
 
-Steinberg's licence does not allow the ASIO SDK to be redistributed, so it is not in
-the repository. Without it Northlight builds with Windows Audio only. To enable ASIO:
+ASIO is on in every build. It uses the ASIO SDK header that JUCE bundles under the
+SDK's GPLv3 option, so there is nothing to download, and distributed builds include
+ASIO (see [decisions.md](decisions.md)). Set `NORTHLIGHT_ASIO=OFF` for a build with
+Windows Audio only.
 
-1. Download the ASIO SDK from Steinberg and unzip it outside the repository.
-2. Point `NORTHLIGHT_ASIO_SDK_DIR` at it, as an environment variable before
-   configuring or as a CMake cache variable:
+To use the header from your own copy of Steinberg's ASIO SDK instead, pass the SDK's
+root (the folder that contains `common/`) as a cache variable:
 
-   ```powershell
-   $env:NORTHLIGHT_ASIO_SDK_DIR = 'C:\SDKs\asiosdk'
-   .\scripts\build.ps1
-   ```
+```powershell
+cmake --preset windows-debug -DNORTHLIGHT_ASIO_SDK_DIR=C:/SDKs/asiosdk
+```
+
+The presets do not read a `NORTHLIGHT_ASIO_SDK_DIR` environment variable. A build
+folder keeps the value it was configured with; configure with
+`-DNORTHLIGHT_ASIO_SDK_DIR=` to go back to the bundled header.
 
 VST3 hosting needs no external SDK; the VST3 SDK comes with JUCE.
 
@@ -103,7 +107,8 @@ What is missing on Linux:
 | `NORTHLIGHT_BUILD_HARDWARE_TESTS` | ON | Build the hardware tools (never run by CTest) |
 | `NORTHLIGHT_RT_CHECKS` | ON (OFF in `windows-release`) | Hook allocation to catch it on real-time threads |
 | `NORTHLIGHT_WARNINGS_AS_ERRORS` | OFF (ON in `ci`) | Treat warnings as errors |
-| `NORTHLIGHT_ASIO_SDK_DIR` | empty | The ASIO SDK root |
+| `NORTHLIGHT_ASIO` | ON | ASIO audio devices (Windows only) |
+| `NORTHLIGHT_ASIO_SDK_DIR` | empty | Optional: an ASIO SDK root whose header replaces the one bundled with JUCE |
 | `NORTHLIGHT_VERSION_LABEL` | `dev` | The version's label: `dev`, a pre-release such as `beta.1`, or empty for a release (see [CONTRIBUTING.md](../CONTRIBUTING.md#versions-and-releases)) |
 
 ## Tests
