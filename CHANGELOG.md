@@ -13,6 +13,9 @@ Northlight has not had a release yet. The first release, 0.1.0, will include:
 
 ### Added
 
+- Add an effect between two others in the Editor panel: point at the gap between two
+  insert cards and click the round + that appears. The effect goes in right there,
+  so there is no need to add it at the end and drag it back.
 - Five guitar pedals in a new Guitar group of the effects menu, beside Corona, each a
   stompbox with a few knobs and a footswitch, voiced for guitar and bass: Gravity, a
   compressor and sustainer; Flare, a distortion with silicon, LED and open clipping;

@@ -138,6 +138,8 @@ public:
     //                        media, plugins, engine; media if not given) for --capture
     //   --instrument-editor  open the first instrument's editor window
     //   --insert-editor      open the editor window of the first insert on the first track that has one
+    //   --editor-gap <n>     show the Editor panel's nth gap button (1-based), as the pointer in
+    //                        that gap between two insert cards would
     //   --panel <name>       show a panel: mixer, editor, instruments, pianoRoll, diagnostics, browser,
     //   inspector
     //   --preferences [page] open Preferences (general, audio, recording, editing, plugins, shortcuts,
@@ -762,6 +764,18 @@ public:
                 mainWindow_->applyLayoutPreset(tokens.getReference(++i).text.unquoted());
             else if (arg == "--panel" && i + 1 < tokens.size())
                 mainWindow_->showPanel(tokens.getReference(++i).text.unquoted());
+            else if (arg == "--editor-gap" && i + 1 < tokens.size())
+            {
+                // After the window has settled and the cards are laid out.
+                const int n = tokens.getReference(++i).text.getIntValue();
+                juce::Component::SafePointer<MainWindow> window(mainWindow_.get());
+                juce::Timer::callAfterDelay(1000,
+                                            [window, n]
+                                            {
+                                                if (window != nullptr)
+                                                    window->showEditorGap(n);
+                                            });
+            }
             else if (arg == "--show-menu" && i + 1 < tokens.size())
             {
                 // After the window has settled, so a capture can watch it open.

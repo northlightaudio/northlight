@@ -8,6 +8,7 @@
 #include "ui/PluginMenu.h"
 #include "ui/Theme.h"
 #include "ui/components/AddSlot.h"
+#include "ui/components/GapAddButton.h"
 #include "ui/components/Knob.h"
 #include "ui/strip/ChannelStripView.h"
 
@@ -16,6 +17,7 @@
 #include <functional>
 #include <map>
 #include <memory>
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -27,8 +29,9 @@ namespace northlight::ui
 // before or after them in signal order. Each card has a header (power, name, format
 // badge, menu), a body (knobs for a built-in or GUI-less plugin, an Open button
 // for a plugin with its own GUI) and a footer with the wet/dry mix; a ghost "+"
-// card adds an insert. The owner gives the model, the live instances and the
-// registry, and takes commands back.
+// card adds an insert at the end, and a round "+" in the gap between two cards
+// (shown while the pointer is in the gap) adds one there. The owner gives the model, the live instances and
+// the registry, and takes commands back.
 class EditorPanel final : public juce::Component, public juce::DragAndDropTarget, private juce::Timer
 {
 public:
@@ -73,6 +76,12 @@ public:
     void paint(juce::Graphics& g) override;
     void resized() override;
 
+    // The pointer over the chain, in the scrolled content's coordinates; nullopt
+    // when it left or is dragging. Shows the gap button under it. Public for tests.
+    void pointerAt(std::optional<juce::Point<int>> content);
+    // The gap buttons, one between each two insert cards (for tests).
+    const std::vector<std::unique_ptr<GapAddButton>>& gapButtons() const noexcept { return gaps_; }
+
 private:
     int contentMinimumHeight() const;
     int shownMinimum_ = 0;
@@ -80,7 +89,8 @@ private:
     class SendCard;
     void rebuild();
     void timerCallback() override;
-    void showAddMenu();
+    // The effects menu, from the "+" card (at the end) or a gap button (at `index`).
+    void showAddMenu(juce::Component& target, int index);
     // The instrument menu (built-in and scanned instruments) for the slot.
     void showInstrumentMenu(juce::Component& target);
     void setInstrument(const std::string& type);
@@ -132,6 +142,27 @@ private:
     std::vector<core::Id> builtOrder_;
     core::Id builtChannel_ = core::invalidId; // the channel the cards were built for
     int dropIndex_ = -1;                      // the insertion index while a plugin or card is dragged over
+    // The gap buttons, the area in the content where each shows, and the one
+    // whose menu is open (it stays shown until the menu closes).
+    void rebuildGaps();
+    void refreshGapHover();
+    struct GapHover final : juce::MouseListener
+    {
+        explicit GapHover(EditorPanel& owner) : owner_(owner) {}
+        void mouseEnter(const juce::MouseEvent& e) override { track(e); }
+        void mouseMove(const juce::MouseEvent& e) override { track(e); }
+        void mouseUp(const juce::MouseEvent& e) override { track(e); }
+        void mouseDown(const juce::MouseEvent& e) override { held(e); }
+        void mouseDrag(const juce::MouseEvent& e) override { held(e); }
+        void mouseExit(const juce::MouseEvent& e) override;
+        void track(const juce::MouseEvent& e);
+        void held(const juce::MouseEvent& e);
+        EditorPanel& owner_;
+    };
+    std::vector<std::unique_ptr<GapAddButton>> gaps_;
+    std::vector<juce::Rectangle<int>> gapZones_;
+    int menuGap_ = -1;
+    GapHover gapHover_{*this};
     double lastTickMs_ = 0.0;
     bool wasShowing_ = false;
     int ticks_ = 0;

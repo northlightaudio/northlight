@@ -812,8 +812,9 @@ EditorPanel::EditorPanel(const Theme& theme) : theme_(theme), stripView_(theme)
     viewport_.setScrollBarsShown(true, true);
     addAndMakeVisible(viewport_);
     add_.setTooltip("Add an insert");
-    add_.onClick = [this] { showAddMenu(); };
+    add_.onClick = [this] { showAddMenu(add_, -1); };
     strip_.addAndMakeVisible(add_);
+    strip_.addMouseListener(&gapHover_, true);
     addInstrument_.setTooltip("Choose the instrument this track's MIDI plays");
     addInstrument_.onClick = [this] { showInstrumentMenu(addInstrument_); };
     strip_.addChildComponent(addInstrument_);
@@ -826,6 +827,8 @@ EditorPanel::EditorPanel(const Theme& theme) : theme_(theme), stripView_(theme)
 EditorPanel::~EditorPanel()
 {
     stopTimer();
+    strip_.removeMouseListener(&gapHover_);
+    gaps_.clear();
     instrumentCard_.reset();
     cards_.clear();
     sendCards_.clear();
@@ -920,6 +923,7 @@ void EditorPanel::rebuild()
                 cards_.push_back(std::move(card));
             }
         builtOrder_ = order;
+        rebuildGaps();
     }
     else if (ch != nullptr)
         for (size_t i = 0; i < cards_.size(); ++i)
@@ -1073,6 +1077,7 @@ void EditorPanel::itemDragMove(const SourceDetails& details)
 {
     const auto local = strip_.getLocalPoint(this, details.localPosition);
     dropIndex_ = insertIndexForX(local.x);
+    pointerAt(std::nullopt); // the insertion line shows where it goes
     repaint();
 }
 
@@ -1147,6 +1152,7 @@ void EditorPanel::reorderCard(core::Id insertId, juce::Point<int> screen, bool r
     if (!released)
     {
         dropIndex_ = index;
+        pointerAt(std::nullopt); // the insertion line shows where it goes
         repaint();
         return;
     }
@@ -1254,12 +1260,28 @@ void EditorPanel::resized()
     if (stripFirst)
         placeStrip();
     insertsX_ = x;
-    for (auto& card : cards_)
+    gapZones_.clear();
+    for (size_t i = 0; i < cards_.size(); ++i)
     {
+        auto& card = cards_[i];
         const int w = card->preferredWidthAt(h - caption);
-        place(*card,
-              {x, theme_.spacing.xs + caption, w, h - caption},
-              "insert:" + std::to_string(card->insertId()));
+        const juce::Rectangle<int> bounds{x, theme_.spacing.xs + caption, w, h - caption};
+        if (i > 0 && i - 1 < gaps_.size())
+        {
+            // The gap before this card: its button centred in it, level with the
+            // cards' middle, and the column it shows in (the gap and a little of
+            // each card's edge, and the button itself).
+            const int centre = x - theme_.spacing.sm / 2;
+            const int side = GapAddButton::sizeFor(theme_);
+            const auto button = juce::Rectangle<int>(side, side).withCentre({centre, bounds.getCentreY()});
+            gaps_[i - 1]->setBounds(button);
+            gaps_[i - 1]->toFront(false);
+            const int half = theme_.spacing.sm / 2 + theme_.spacing.xs;
+            gapZones_.push_back(
+                juce::Rectangle<int>(centre - half, bounds.getY(), 2 * half, bounds.getHeight())
+                    .getUnion(button));
+        }
+        place(*card, bounds, "insert:" + std::to_string(card->insertId()));
         x += w + theme_.spacing.sm;
     }
     // The add slot: an empty card the cards' height.
@@ -1349,17 +1371,89 @@ void EditorPanel::showAddSendMenu()
                              });
 }
 
-void EditorPanel::showAddMenu()
+void EditorPanel::showAddMenu(juce::Component& target, int index)
 {
     // Effects only: an instrument has its own slot.
     auto built = buildPluginMenu(PluginKind::effect, pluginSources_);
     juce::Component::SafePointer<EditorPanel> safe(this);
-    built.menu.showMenuAsync(juce::PopupMenu::Options().withTargetComponent(add_),
-                             [safe, built](int choice)
+    // A gap's button stays up while its menu is open.
+    menuGap_ = index >= 0 ? index - 1 : -1;
+    built.menu.showMenuAsync(juce::PopupMenu::Options().withTargetComponent(target),
+                             [safe, built, index](int choice)
                              {
-                                 if (safe != nullptr)
-                                     if (const auto type = built.typeFor(choice); !type.empty())
-                                         safe->addInsert(type, -1);
+                                 if (safe == nullptr)
+                                     return;
+                                 safe->menuGap_ = -1;
+                                 if (const auto type = built.typeFor(choice); !type.empty())
+                                     safe->addInsert(type, index);
+                                 safe->refreshGapHover();
                              });
+}
+
+// ----- the gap buttons ------------------------------------------------------------------------
+
+void EditorPanel::rebuildGaps()
+{
+    gaps_.clear();
+    gapZones_.clear();
+    menuGap_ = -1;
+    const auto nameOf = [this](const std::string& type)
+    { return displayName ? juce::String::fromUTF8(displayName(type).c_str()) : juce::String(type); };
+    for (size_t i = 1; i < cards_.size(); ++i)
+    {
+        auto button = std::make_unique<GapAddButton>(theme_, static_cast<int>(i));
+        const auto tip =
+            "Add an insert between " + nameOf(cards_[i - 1]->type()) + " and " + nameOf(cards_[i]->type());
+        button->setTooltip(tip);
+        button->setTitle(tip);
+        GapAddButton* raw = button.get();
+        button->onClick = [this, raw] { showAddMenu(*raw, raw->index()); };
+        strip_.addAndMakeVisible(*button);
+        gaps_.push_back(std::move(button));
+    }
+}
+
+void EditorPanel::pointerAt(std::optional<juce::Point<int>> content)
+{
+    int hovered = -1;
+    if (content.has_value() && dropIndex_ < 0)
+        for (size_t i = 0; i < gapZones_.size(); ++i)
+            if (gapZones_[i].contains(*content))
+                hovered = static_cast<int>(i);
+    for (size_t i = 0; i < gaps_.size(); ++i)
+        gaps_[i]->setShown(static_cast<int>(i) == hovered || static_cast<int>(i) == menuGap_);
+}
+
+void EditorPanel::refreshGapHover()
+{
+    if (strip_.isMouseOver(true) && !juce::ModifierKeys::currentModifiers.isAnyMouseButtonDown())
+        pointerAt(strip_.getMouseXYRelative());
+    else
+        pointerAt(std::nullopt);
+}
+
+void EditorPanel::GapHover::track(const juce::MouseEvent& e)
+{
+    if (e.mods.isAnyMouseButtonDown())
+        held(e);
+    else
+        owner_.pointerAt(e.getEventRelativeTo(&owner_.strip_).getPosition());
+}
+
+void EditorPanel::GapHover::held(const juce::MouseEvent& e)
+{
+    // A press on a gap button keeps it (it draws its pressed state); any other
+    // press or drag, a card's reorder among them, puts the buttons away.
+    if (dynamic_cast<GapAddButton*>(e.eventComponent) == nullptr)
+        owner_.pointerAt(std::nullopt);
+}
+
+void EditorPanel::GapHover::mouseExit(const juce::MouseEvent& e)
+{
+    // Moving between the cards exits one and enters the next; only leaving
+    // the part of the chain in view puts the buttons away.
+    const auto at = e.getEventRelativeTo(&owner_.strip_).getPosition();
+    if (!owner_.viewport_.getViewArea().contains(at))
+        owner_.pointerAt(std::nullopt);
 }
 } // namespace northlight::ui

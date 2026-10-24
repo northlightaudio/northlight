@@ -95,6 +95,9 @@ public:
     // Opens a menu as a click would ("project", "add-track"), for checking how menus
     // appear (--show-menu).
     void showMenu(const juce::String& key);
+    // Shows the Editor panel's nth gap button (1-based) as the pointer in its gap
+    // would, for captures (--editor-gap).
+    void showEditorGap(int n);
     // The strip drag benchmark (--benchmark-strip-drag).
     void runStripDragBenchmark(int seconds);
     // The hover benchmark (--benchmark-hover).

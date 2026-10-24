@@ -3472,6 +3472,16 @@ void MainWindow::showMenu(const juce::String& key)
         content->tracks_.openAddTrackMenu();
 }
 
+void MainWindow::showEditorGap(int n)
+{
+    auto* content = dynamic_cast<Content*>(getContentComponent());
+    if (content == nullptr)
+        return;
+    const auto& gaps = content->editor_.gapButtons();
+    if (n >= 1 && static_cast<size_t>(n) <= gaps.size())
+        content->editor_.pointerAt(gaps[static_cast<size_t>(n - 1)]->getBounds().getCentre());
+}
+
 juce::StringArray MainWindow::capture(const juce::File& folder, float scale)
 {
     juce::StringArray saved;

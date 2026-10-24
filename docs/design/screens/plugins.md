@@ -32,6 +32,11 @@ strip of device cards, so the whole signal path reads left to right.
 - Bypassed card: body at 50% alpha, power icon `textTertiary`, header name struck.
 - Drag the header to reorder; a 2 px `accent` insertion line between cards. Drag a
   plugin from the browser onto the strip to insert at the line.
+- Between two cards, a round "+" (design-system.md "Gap add button") shows while
+  the pointer is in the gap, centred in it at the cards' middle. It opens the same
+  effects menu as the "+" card, and the chosen effect goes in at that place in the
+  chain, one undo step ("Add insert"). Its tooltip names the two cards. It is put
+  away while a card or a plugin is dragged, so it never sits on the insertion line.
 - The "+" card is a ghost card that opens the plugin menu. Every insert slot's
   effects menu is laid out alike: RECENT (the last effects used), then EFFECTS, a
   submenu per kind with its icon: Dynamics (fx-dynamics), EQ & Filter (fx-eq),

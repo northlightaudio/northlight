@@ -5,6 +5,8 @@
 
 #include <functional>
 #include <memory>
+#include <string>
+#include <vector>
 
 using namespace northlight::core;
 
@@ -360,6 +362,46 @@ TEST_CASE("A fader group moves its members together, keeping their balance", "[c
 
     CHECK_THROWS(SetChannelGroup(b, 999).apply(p));
     CHECK_THROWS(SetGroupGain(999, 1.0f).apply(p));
+}
+
+TEST_CASE("An insert added between two others lands there as one undo step", "[core][command]")
+{
+    Project p = projectWithTrack();
+    UndoStack stack;
+    const Id track = p.tracks[0].id;
+    for (const char* type : {"northlight.eq", "northlight.limiter"})
+    {
+        Insert insert;
+        insert.type = type;
+        stack.execute(p, std::make_unique<AddInsert>(track, insert));
+    }
+    const auto types = [&]
+    {
+        std::vector<std::string> out;
+        for (const auto& insert : p.tracks[0].inserts)
+            out.push_back(insert.type);
+        return out;
+    };
+    const std::vector<std::string> before{"northlight.eq", "northlight.limiter"};
+    const std::vector<std::string> after{"northlight.eq", "northlight.compressor", "northlight.limiter"};
+    Insert comp;
+    comp.type = "northlight.compressor";
+    auto add = std::make_unique<AddInsert>(track, comp, 1);
+    const auto* addPtr = add.get();
+    stack.execute(p, std::move(add));
+    CHECK(types() == after);
+    const Id id = addPtr->insertId();
+    CHECK(p.tracks[0].insertIndex(id) == 1);
+    stack.undo(p);
+    CHECK(types() == before);
+    stack.redo(p);
+    CHECK(types() == after);
+    CHECK(p.tracks[0].insertIndex(id) == 1); // the same insert, back in its place
+    // Past the end it goes last.
+    Insert gain;
+    gain.type = "northlight.gain";
+    stack.execute(p, std::make_unique<AddInsert>(track, gain, 9));
+    CHECK(p.tracks[0].inserts.back().type == "northlight.gain");
 }
 
 TEST_CASE("An insert's wet/dry mix is set, clamped and undone", "[core][command]")

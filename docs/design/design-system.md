@@ -532,6 +532,31 @@ A line on a display that drags sideways (a crossover, an edge) has a
   turn it `textPrimary` with a `textPrimary` 18% halo 3 px out. Round handles stay
   for points that drag up and down or freely.
 
+### Gap add button
+
+A round "+" that adds an item between two others in a row (the Editor panel's
+insert cards), so nothing has to be added at the end and dragged back. It sits
+centred in the gap, level with the items' middle, `iconLarge` 20 px across: a
+disc in the control material (2.4: gradient, top highlight, shadow) with a 1 px
+`lineStrong` outline and the `add` icon's cross (`iconSmall`) in `textSecondary`,
+drawn as two bars snapped to device pixels so it stays crisp at every scale, so it
+reads as a raised key over the cards' edges. It overlaps the items' edges by a few pixels, so it is out of
+sight and takes no clicks until wanted.
+
+- Rest: not drawn.
+- Shown: while the pointer is in the gap's column (the gap, `xs` into each item, and
+  the button), at any height along the items; it appears and goes at once, with no
+  fade. It stays up while its menu is open.
+- Hover: the face a step lighter, icon `textPrimary`. Pressed: the face pressed in
+  (`pressedInset`, gradient reversed).
+- Focused: Tab reaches it even when not shown; it draws itself with the focus ring,
+  and Enter or Space opens its menu.
+- Never during a drag: pressing anywhere else in the row, or dragging an item or a
+  plugin over it, puts it away so the 2 px `accent` insertion line is the one
+  thing that marks a position.
+- Tooltip and accessible title name the neighbours: "Add an insert between EQ and
+  Glue".
+
 ### Meter
 
 Vertical bar `meterWidth` 6 px per channel, `meterGap` 2 px between channels, in a

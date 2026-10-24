@@ -1,5 +1,6 @@
 #include "core/Command.h"
 #include "core/Model.h"
+#include "plugins/BuiltIns.h"
 #include "ui/Theme.h"
 #include "ui/components/Fader.h"
 #include "ui/panels/EditorPanel.h"
@@ -9,6 +10,8 @@
 
 #include <functional>
 #include <memory>
+#include <optional>
+#include <string>
 
 using namespace northlight;
 
@@ -154,4 +157,61 @@ TEST_CASE("An insert popped out into its window shows a note in the Editor panel
     panel.editorWindowsChanged();
     CHECK(!show->isVisible());
     CHECK(controlsShowing());
+}
+
+// A round "+" sits in each gap between two insert cards, out of sight until the
+// pointer is in that gap, and adds at that position.
+TEST_CASE("The Editor panel shows an add button in the gap the pointer is in", "[ui]")
+{
+    const juce::ScopedJuceInitialiser_GUI juceInit;
+    core::Project project;
+    core::Track t;
+    t.id = 1;
+    t.name = "Vox";
+    core::Id next = 5;
+    for (const char* type : {"northlight.gain", "northlight.eq", "northlight.limiter"})
+    {
+        core::Insert insert;
+        insert.id = next++;
+        insert.type = type;
+        insert.params = plugins::defaultParameters(type);
+        t.inserts.push_back(insert);
+    }
+    project.tracks.push_back(t);
+    project.nextId = next;
+
+    const auto& theme = ui::Theme::dark();
+    ui::EditorPanel panel(theme);
+    panel.displayName = [](const std::string& type) { return type.substr(type.find('.') + 1); };
+    panel.setSize(1600, 480);
+    panel.setProject(&project);
+    panel.setChannel(1);
+
+    const auto& gaps = panel.gapButtons();
+    REQUIRE(gaps.size() == 2); // between three cards; the "+" card adds at the end
+    CHECK(gaps[0]->index() == 1);
+    CHECK(gaps[1]->index() == 2);
+    CHECK(gaps[0]->getTooltip() == "Add an insert between gain and eq");
+    CHECK(gaps[1]->getTooltip() == "Add an insert between eq and limiter");
+    // At rest none shows, and none takes a click.
+    for (const auto& gap : gaps)
+    {
+        CHECK_FALSE(gap->isShown());
+        CHECK_FALSE(gap->hitTest(gap->getWidth() / 2, gap->getHeight() / 2));
+    }
+    // The pointer in the second gap shows that one only.
+    panel.pointerAt(gaps[1]->getBounds().getCentre());
+    CHECK_FALSE(gaps[0]->isShown());
+    CHECK(gaps[1]->isShown());
+    CHECK(gaps[1]->hitTest(gaps[1]->getWidth() / 2, gaps[1]->getHeight() / 2));
+    // Up the gap, level with the cards' headers, it still shows.
+    panel.pointerAt(gaps[1]->getBounds().getCentre().withY(gaps[1]->getY() - 100));
+    CHECK(gaps[1]->isShown());
+    // Well inside a card, or gone from the chain: none.
+    panel.pointerAt(gaps[1]->getBounds().getCentre().translated(-60, 0));
+    CHECK_FALSE(gaps[1]->isShown());
+    panel.pointerAt(gaps[0]->getBounds().getCentre());
+    CHECK(gaps[0]->isShown());
+    panel.pointerAt(std::nullopt);
+    CHECK_FALSE(gaps[0]->isShown());
 }
