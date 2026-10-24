@@ -3,11 +3,11 @@
 the top, a broad soft source high above for the sheen, the room in the reflections),
 its shadow caught on a floor of what it sits on and otherwise transparent.
 
-  panel      the whole face, 1160 x 660 page px: slate-green hammertone enamel on
+  panel      the whole face, 1160 x 680 page px: slate-green hammertone enamel on
              steel, the hammered dimples catching the light, a rounded edge.
-  module     a stage's plate, 142 x 548: grey-green satin enamel, a fine orange
+  module     a stage's plate, 142 x 568: grey-green satin enamel, a fine orange
              peel, worn a little at its edges, four slotted screws 9 px in.
-  master     the master plate, 216 x 548, the same enamel and screws.
+  master     the master plate, 216 x 568, the same enamel and screws.
   nameplate  the nameplate, 300 x 56: a flat brushed stainless plate (square
              corners, a hairline edge) after decades on a rack (grime in its edges and round its screws, smudges, fine
              scratches, faint tea-staining), a slotted screw in each corner.
@@ -40,11 +40,11 @@ MARGIN = 12 / 50                 # 12 page px
 HAMMER = "#38433E"               # the face's hammertone
 ENAMEL = "#A3ABA3"               # the plates' grey-green enamel
 ALUMINIUM = "#C8CBCA"
-STAINLESS = "#A8ACAD"
+STAINLESS = "#C3C6C7"
 BLACK = "#141615"
 
 SIZES = {                        # page px
-    "panel": (1160, 660), "module": (142, 548), "master": (216, 548),
+    "panel": (1160, 680), "module": (142, 568), "master": (216, 568),
     "nameplate": (300, 56), "window": (126, 96), "display": (300, 44),
 }
 pw, ph = SIZES[KIND]
@@ -151,8 +151,8 @@ def brushed(colour=ALUMINIUM):
 
 
 def aged_stainless(w2, h2, screws_at):
-    """Brushed stainless steel after decades on a rack: the grain along X, a little
-    duller in smudged patches; grime worked into its edges and round its screws,
+    """Polished, brushed stainless steel after decades on a rack: the grain along
+    X, smooth enough to mirror the room, a little duller in smudged patches; grime worked into its edges and round its screws,
     broken up so it reads as dirt and not a vignette; fine scratches across the
     grain; faint tea-staining (the warm rust film steel takes in damp air) and a
     few pits."""
@@ -207,11 +207,14 @@ def aged_stainless(w2, h2, screws_at):
         ring = C.ramp(nt, C.math_node(nt, "MULTIPLY_ADD", breakup, 0.05, r), 0.08, 0.26, 1.0, 0.0)
         grime = C.math_node(nt, "MAXIMUM", grime, ring)
     # Patches of grime reaching in from the edges, and broad smudges where hands have been.
+    # Handled steel stays bright in its middle: the dirt gathers toward the edges.
+    toward_edge = C.ramp(nt, edge, 0.0, 0.7, 1.0, 0.15)
     blotch = C.ramp(nt, C.noise(nt, co, 3.2, detail=8.0, rough=0.7), 0.5, 0.78, 0.0, 0.8)
-    grime = C.math_node(nt, "MAXIMUM", grime, blotch)
+    grime = C.math_node(nt, "MAXIMUM", grime, C.math_node(nt, "MULTIPLY", blotch, toward_edge))
     smudge = C.ramp(nt, C.noise(nt, co, 1.6, detail=3.0), 0.5, 0.75)
     # Tea staining and pits.
     stain = C.ramp(nt, C.noise(nt, co, 2.4, detail=7.0, rough=0.7), 0.48, 0.8, 0.0, 0.7)
+    stain = C.math_node(nt, "MULTIPLY", stain, C.ramp(nt, edge, 0.0, 0.7, 1.0, 0.3))
     vor = nt.nodes.new("ShaderNodeTexVoronoi")
     vor.inputs["Scale"].default_value = 60.0
     nt.links.new(co, vor.inputs["Vector"])
@@ -239,9 +242,9 @@ def aged_stainless(w2, h2, screws_at):
     nt.links.new(shade.outputs["Color"], tint.inputs["B"])
     nt.links.new(tint.outputs["Result"], p.inputs["Base Color"])
     # Grime and stain dull it; smudges more so; scratches catch a little brighter.
-    rough = C.ramp(nt, streak, 0.3, 0.7, 0.3, 0.42)
+    rough = C.ramp(nt, streak, 0.3, 0.7, 0.1, 0.19)
     rough = C.math_node(nt, "MULTIPLY_ADD", grime, 0.35, rough)
-    rough = C.math_node(nt, "MULTIPLY_ADD", smudge, 0.12, rough)
+    rough = C.math_node(nt, "MULTIPLY_ADD", smudge, 0.08, rough)
     rough = C.math_node(nt, "MULTIPLY_ADD", stain, 0.4, rough)
     rough = C.math_node(nt, "MULTIPLY_ADD", scratches, -0.1, rough, clamp=True)
     nt.links.new(rough, p.inputs["Roughness"])
@@ -574,6 +577,14 @@ C.key_sun(scene, energy=2.3, angle=float(os.environ.get("PLATE_SUN_ANGLE", "12")
 C.area(scene, "TopFall", 30.0, 900, (0, 6 + 4, 7), (0, 0, 0), shape="RECTANGLE", size_y=3.0, glossy=False)
 C.area(scene, "Sheen", 34.0, 1800 * float(os.environ.get("PLATE_SHEEN", "1.0")), (0, 9, 30), (0, 0, 0),
        shape="RECTANGLE", size_y=14.0, diffuse=False, shadow=False)
-C.room(scene)
+if KIND == "nameplate":
+    # Polished steel mirrors what is over it: a broad soft panel of light above,
+    # off to the left and seen only in reflections, lays a bright sheen across the
+    # plate's left that fades into the darker room toward its right.
+    C.area(scene, "Reflection", 9.0, float(os.environ.get("NAMEPLATE_SHEEN", "150")), (-4.5, 1.0, 7.0), (-4.5, 1.0, 0.0),
+           shape="RECTANGLE", size_y=7.0, diffuse=False, shadow=False)
+    C.room(scene, strength=0.55)
+else:
+    C.room(scene)
 C.render(scene, OUT, round(fw * PX), round(fh * PX), samples=1024, transparent=KIND != "panel",
          denoise=os.environ.get("PLATE_DENOISE", "0") == "1")

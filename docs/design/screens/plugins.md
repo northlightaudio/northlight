@@ -140,7 +140,7 @@ delay `Gorse`, glue compressor `Thrift`, Patina `Kelp`, exciter `Machair`, Bloom
   latency. Twelve factory presets (Gentle Age, the defaults, first). Its editor is
   a hardware face built from rendered parts (design-system.md "Rendered parts";
   `assets/patina`, rendered by `scripts/render/patina`), a 1960s broadcast colour
-  processor drawn at 1160 x 660 and scaled to fit the card's body, the card
+  processor drawn at 1160 x 680 and scaled to fit the card's body, the card
   narrowing with it (the tape echo's and Corona's rules; compact below 65%). Every
   control shows at once; nothing on the face is a tab. Text is Barlow legends
   (`legendFont`) set crisply by the face; the inks are `patinaInk` on the enamel
@@ -149,9 +149,10 @@ delay `Gorse`, glue compressor `Thrift`, Patina `Kelp`, exciter `Machair`, Bloom
   - **The panel**: slate-green hammertone enamel (`panel.jpg`, flat
     `patinaPanel` without it) under everything.
   - **The top row**, on the hammertone. At the left the **nameplate**
-    (`nameplate.png`, 300 x 56: a flat brushed stainless plate, square corners and
-    a hairline edge, after decades on a rack: grime, stains and pits, dirt round a
-    screw in each corner; `patinaNameplate`),
+    (`nameplate.png`, 300 x 56: a flat, polished brushed stainless plate, square
+    corners and a hairline edge, catching a sheen across its left; after decades
+    on a rack its middle is still bright and the grime, stains and pits gather
+    toward its edges and round a screw in each corner; `patinaNameplate`),
     etched: the Northlight mark in a 34 px square (a 1.6 px rule), PATINA at 31 px
     bold with 0.34 tracking and under it NORTHLIGHT · STUDIO EQUIPMENT at 11 px
     with 0.26 tracking, left aligned beside the square. Etched means the lettering
@@ -173,7 +174,7 @@ delay `Gorse`, glue compressor `Thrift`, Patina `Kelp`, exciter `Machair`, Bloom
     change of a value makes it Custom. Tooltips: "Previous preset", "Next
     preset", "Presets". Right of them the **pilot lamp** (Corona's red jewel, lit
     while the insert is on).
-  - **Six stage modules** in signal order, 142 x 548 each, 8 px apart, on grey
+  - **Six stage modules** in signal order, 142 x 568 each, 8 px apart, on grey
     enamel plates (`module-1.png` to `module-6.png`, four screws; `patinaPlate`),
     each worn its own way. Every painted part of the face is worn as decades-old
     rack gear: paint chipped back to steel along the edges and corners, flakes
@@ -204,10 +205,11 @@ delay `Gorse`, glue compressor `Thrift`, Patina `Kelp`, exciter `Machair`, Bloom
     - its **main knob** (52 px) over eleven printed ticks, its name under it
       (16 px bold) and its value under that (13 px, `patinaInkSoft`).
     - its **small knobs** (30 px), two to a row in up to two rows (a row's last
-      knob alone is centred), each with its name (13 px bold) and value
-      (12.5 px).
-  - **The master plate** (216 x 548, `master.png`): **Age**, a 96 px knob over
-    eleven ticks with NEW, AS SET and RUINED printed at its ends and top, its
+      knob alone is centred), each with its name (14.5 px bold) and value
+      (13.5 px), the name's capitals a clear 6 px below the scale's ticks.
+  - **The master plate** (216 x 568, `master.png`): **Age**, a 96 px knob over
+    eleven ticks with NEW and RUINED printed at its two ends (16 px bold,
+    `patinaInk`), its
     name at 22 px and value at 15 px; **Pace** under it ("0.16 Hz"); then the
     output section under an OUTPUT caption between two rules: Tone, Low cut,
     High cut in a row, Width and Output centred under them.

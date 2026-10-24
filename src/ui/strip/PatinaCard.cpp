@@ -97,7 +97,7 @@ void focusRing(juce::Graphics& g, juce::Component& c, juce::Rectangle<float> r, 
 
 // ----- where things are on the face (pixels at 100%) ----------------------------------------
 
-constexpr float faceWidth = 1160.0f, faceHeight = 660.0f;
+constexpr float faceWidth = 1160.0f, faceHeight = 680.0f;
 constexpr float shadowMargin = 12.0f; // round each plate's and bezel's image
 
 // Along the top, on the hammertone.
@@ -115,7 +115,7 @@ const juce::Point<float> lampCentre{1124.0f, 42.0f};
 
 // The six stage modules and the master plate.
 constexpr float moduleLeft = 20.0f, moduleTop = 92.0f, moduleWidth = 142.0f, moduleGap = 8.0f;
-constexpr float moduleHeight = 548.0f;
+constexpr float moduleHeight = 568.0f;
 const juce::Rectangle<float> masterArea{924.0f, moduleTop, 216.0f, moduleHeight};
 
 float moduleX(int stage) noexcept
@@ -138,7 +138,7 @@ constexpr int ledCount = 8;
 constexpr float selectorRow = 300.0f, selectorCaptionRow = 337.0f, selectorSkirt = 30.0f;
 constexpr float selectorStep = 52.0f; // degrees between a selector's positions
 constexpr float mainRow = 394.0f, mainSkirt = 52.0f;
-constexpr std::array<float, 2> smallRows{496.0f, 582.0f};
+constexpr std::array<float, 2> smallRows{500.0f, 590.0f};
 constexpr float smallSkirt = 30.0f, smallSpread = 34.0f;
 
 // The master plate.
@@ -428,15 +428,16 @@ private:
             case Control::Kind::main:
                 return 16.0f;
             default:
-                return 13.0f;
+                return 14.5f;
         }
     }
     // Where a control's name sits: under its scale.
     static juce::Rectangle<float> nameArea(const Control& c, float width)
     {
+        // A clear gap from the scale's ticks to the name's capitals.
         const float below = c.kind == Control::Kind::age    ? 52.0f
-                            : c.kind == Control::Kind::main ? 34.0f
-                                                            : 24.0f;
+                            : c.kind == Control::Kind::main ? 38.0f
+                                                            : 30.0f;
         return {c.centre.x - width * 0.5f, c.centre.y + c.skirt * 0.5f + below - 22.0f, width, 22.0f};
     }
     static float nameWidth(const Control& c) noexcept
@@ -635,16 +636,21 @@ private:
                 g, c.centre, r + 3.0f, r + (c.kind == Control::Kind::age ? 9.0f : 6.0f), 11, 1.3f);
         if (c.kind == Control::Kind::age && !isCompact())
         {
-            g.setFont(legendFont(theme_, 12.0f, 700, 0.14f));
+            // The dial's two ends: untouched, and as far as it goes.
+            g.setColour(hw.patinaInk);
+            g.setFont(legendFont(theme_, 16.0f, 700, 0.14f));
+            // On one line, level with the scale's last ticks, each reading outward
+            // from just past its end of the scale.
+            const auto end = polar(c.centre, r + 9.0f, 135.0f);
+            const float y = end.y + 6.0f, gap = end.x - c.centre.x - 6.0f;
             print(g,
                   "NEW",
-                  juce::Rectangle<float>(50.0f, 16.0f).withCentre(polar(c.centre, r + 26.0f, -135.0f)));
-            print(g,
-                  "AS SET",
-                  juce::Rectangle<float>(60.0f, 16.0f).withCentre(polar(c.centre, r + 20.0f, 0.0f)));
+                  juce::Rectangle<float>(c.centre.x - gap - 80.0f, y, 80.0f, 20.0f),
+                  juce::Justification::centredRight);
             print(g,
                   "RUINED",
-                  juce::Rectangle<float>(60.0f, 16.0f).withCentre(polar(c.centre, r + 30.0f, 135.0f)));
+                  juce::Rectangle<float>(c.centre.x + gap, y, 80.0f, 20.0f),
+                  juce::Justification::centredLeft);
         }
         knobBodyIfArt(g, c);
         g.setColour(hw.patinaInk);
@@ -693,7 +699,7 @@ private:
                 continue;
             const float size = c.kind == Control::Kind::age    ? 15.0f
                                : c.kind == Control::Kind::main ? 13.0f
-                                                               : 12.5f;
+                                                               : 13.5f;
             g.setColour(hw.patinaInkSoft);
             g.setFont(legendFont(theme_, size, 600, 0.04f));
             hardware::drawCrispText(
@@ -768,7 +774,7 @@ public:
 
         // Wear has no type: its dropouts and skew take the selector's place, their
         // names just above the selectors' captions.
-        const float wearRow = selectorCaptionRow - smallSkirt * 0.5f - 21.0f;
+        const float wearRow = selectorCaptionRow - smallSkirt * 0.5f - 19.0f;
         control(pa::wearDropouts,
                 {moduleCentre(pa::wear) - smallSpread, wearRow},
                 smallSkirt,

@@ -14,16 +14,16 @@ face, rings worn round its screws, grime in its edges and settling toward its fo
 streaks running down, scuffs; the plates' light enamel yellowed, the dark hammertone
 dusty (`apply_wear` in `plate_render.py`).
 
-They are kept at twice the face's drawn size (1160 x 660), so they are sharp at 200%.
+They are kept at twice the face's drawn size (1160 x 680), so they are sharp at 200%.
 The plates and bezels carry a 12 px margin (24 px in the file) on every side for
 their shadow, so each is placed 12 px up and left of its rectangle on the face.
 
 | File | Size | What it is |
 |---|---|---|
-| `panel.jpg` | 2320 x 1320 | Slate-green hammertone enamel: the panel everything sits on (drawn over the whole face), worn at its edges, dusty |
-| `module-1.png` … `module-6.png` | 332 x 1144 | The stages' plates (142 x 548): grey-green satin enamel gone yellow, four rusty slotted screws, each worn its own way (a different wear seed) so no chip repeats across the face |
-| `master.png` | 480 x 1144 | The master plate (216 x 548), the same enamel and wear |
-| `nameplate.png` | 648 x 160 | The nameplate (300 x 56): a flat brushed stainless plate (square corners, a hairline edge) after decades on a rack (grime in its edges and round its four screws, smudges, scratches, faint tea-staining), its green cast from the room's light mostly taken out in packaging |
+| `panel.jpg` | 2320 x 1360 | Slate-green hammertone enamel: the panel everything sits on (drawn over the whole face), worn at its edges, dusty |
+| `module-1.png` … `module-6.png` | 332 x 1184 | The stages' plates (142 x 568): grey-green satin enamel gone yellow, four rusty slotted screws, each worn its own way (a different wear seed) so no chip repeats across the face |
+| `master.png` | 480 x 1184 | The master plate (216 x 568), the same enamel and wear |
+| `nameplate.png` | 648 x 160 | The nameplate (300 x 56): a flat, polished brushed stainless plate (square corners, a hairline edge) after decades on a rack, a soft light above it laying a sheen across its left; its middle bright, the dirt toward its edges (grime in its edges and round its four screws, smudges, scratches, faint tea-staining), its green cast from the room's light mostly taken out in packaging |
 | `window.png` | 300 x 240 | A stage window's bezel (126 x 96): black crinkle paint worn back at its edges and round its opening, the opening's corners 3 px |
 | `display.png` | 648 x 136 | The preset display's bezel (300 x 44), the same |
 | `knob-body.png`, `knob-pointer.png` | 640 x 960, 640 x 640 | The knob's body and shadow (a flared bakelite skirt, a fluted body, a spun aluminium cap); its red pointer, which turns |
