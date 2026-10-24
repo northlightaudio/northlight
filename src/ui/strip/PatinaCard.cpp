@@ -14,6 +14,7 @@
 // the output section.
 
 #include "plugins/Patina.h"
+#include "ui/Icons.h"
 #include "ui/NorthlightLookAndFeel.h"
 #include "ui/Number.h"
 #include "ui/components/HardwareParts.h"
@@ -83,7 +84,7 @@ juce::String minusDb(float db)
                       : juce::String::fromUTF8("\xe2\x88\x92") + juce::String(db, 1) + " dB";
 }
 
-const juce::Image& part(const char* file)
+const juce::Image& part(const juce::String& file)
 {
     return hardware::image("patina", file);
 }
@@ -100,7 +101,12 @@ constexpr float faceWidth = 1160.0f, faceHeight = 660.0f;
 constexpr float shadowMargin = 12.0f; // round each plate's and bezel's image
 
 // Along the top, on the hammertone.
-const juce::Rectangle<float> nameplateArea{24.0f, 18.0f, 300.0f, 48.0f};
+const juce::Rectangle<float> nameplateArea{24.0f, 14.0f, 300.0f, 56.0f};
+// On the nameplate: the maker's mark etched in a square, then the name and the
+// maker's line beside it.
+const juce::Rectangle<float> nameplateMark{48.0f, 25.0f, 34.0f, 34.0f};
+const juce::Rectangle<float> nameplateName{96.0f, 21.0f, 204.0f, 28.0f};
+const juce::Rectangle<float> nameplateMaker{97.0f, 48.0f, 204.0f, 13.0f};
 const juce::Rectangle<float> modelLine{344.0f, 33.0f, 340.0f, 18.0f};
 const juce::Rectangle<float> previousKey{704.0f, 26.0f, 38.0f, 32.0f};
 const juce::Rectangle<float> displayBezel{750.0f, 20.0f, 300.0f, 44.0f};
@@ -456,7 +462,8 @@ private:
             .withCentre(polar(c.centre, c.skirt * 0.5f + 9.0f + extent, a));
     }
 
-    void plate(juce::Graphics& g, const char* file, juce::Rectangle<float> area, juce::Colour flat) const
+    void
+    plate(juce::Graphics& g, const juce::String& file, juce::Rectangle<float> area, juce::Colour flat) const
     {
         hardware::drawPlate(g, part(file), area, shadowMargin, flat);
     }
@@ -490,16 +497,34 @@ private:
             plate(g, "display.png", displayBezel, hw.patinaBezel);
             for (int s = 0; s < pa::stageCount; ++s)
             {
-                plate(g, "module.png", {moduleX(s), moduleTop, moduleWidth, moduleHeight}, hw.patinaPlate);
+                // Each stage's plate worn its own way (six renders), so no chip repeats.
+                plate(g,
+                      "module-" + juce::String(s + 1) + ".png",
+                      {moduleX(s), moduleTop, moduleWidth, moduleHeight},
+                      hw.patinaPlate);
                 plate(g, "window.png", windowBezelAt.translated(moduleX(s), 0.0f), hw.patinaBezel);
             }
             plate(g, "master.png", masterArea, hw.patinaPlate);
         }
 
-        // The nameplate and the model line.
-        g.setColour(hw.patinaInk);
-        g.setFont(legendFont(theme_, 34.0f, 700, 0.42f));
-        print(g, "PATINA", nameplateArea.reduced(36.0f, 4.0f), juce::Justification::centred, true);
+        // The nameplate, etched: the mark in its square, the name, the maker's line.
+        if (artPass())
+        {
+            const auto etch = [&](juce::Point<float> offset, juce::Colour colour)
+            {
+                g.setColour(colour);
+                g.drawRect(nameplateMark.translated(offset.x, offset.y), 1.6f);
+                Icons::draw(
+                    g, Icon::mark, nameplateMark.reduced(3.5f).translated(offset.x, offset.y), colour);
+            };
+            etch({0.0f, 0.8f}, hw.highlight.withAlpha(0.35f));
+            etch({}, hw.patinaInk.withAlpha(0.9f));
+        }
+        etched(g, "PATINA", nameplateName, legendFont(theme_, 31.0f, 700, 0.34f));
+        etched(g,
+               juce::String::fromUTF8("NORTHLIGHT \xc2\xb7 STUDIO EQUIPMENT"),
+               nameplateMaker,
+               legendFont(theme_, 11.0f, 700, 0.26f));
         if (!isCompact())
         {
             g.setColour(hw.patinaPanelInkSoft);
@@ -549,6 +574,21 @@ private:
         const float r = c.skirt * 0.5f;
         return juce::Rectangle<float>(c.centre.x - 72.0f, c.centre.y - r - 40.0f, 144.0f, 2.0f * r + 120.0f)
             .getSmallestIntegerContainer();
+    }
+
+    // Lettering etched into the nameplate's steel: the ink, and under it a faint
+    // light edge where the cut's lower wall catches the light.
+    void etched(juce::Graphics& g,
+                const juce::String& text,
+                juce::Rectangle<float> area,
+                const juce::Font& font) const
+    {
+        const auto& hw = theme_.hardware;
+        g.setFont(font);
+        g.setColour(hw.highlight.withAlpha(0.35f));
+        print(g, text, area.translated(0.0f, 0.8f), juce::Justification::centredLeft);
+        g.setColour(hw.patinaInk.withAlpha(0.9f));
+        print(g, text, area, juce::Justification::centredLeft);
     }
 
     void paintControl(juce::Graphics& g, const Control& c) const

@@ -9,7 +9,7 @@ The folder holds the renders under the names the README's commands give them.
 import os
 import sys
 
-from PIL import Image
+from PIL import Image, ImageEnhance
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, os.path.join(os.path.dirname(HERE), "corona"))
@@ -34,8 +34,11 @@ def main(src):
 
     # The plates are rendered at their asset size already.
     save(load("panel.png"), "panel.jpg")
-    for name in ("module", "master", "nameplate", "window", "display"):
+    for name in ["master", "window", "display"] + ["module-%d" % i for i in range(1, 7)]:
         save(load(name + ".png"), name + ".png")
+    # The steel takes a green cast from the room's light: most of it taken out,
+    # so it reads as steel against the green panel.
+    save(ImageEnhance.Color(load("nameplate.png")).enhance(0.45), "nameplate.png")
 
     # The knob at Corona's size: the body 640 x 960, the pointer 640 square.
     save(fade_edges(load("knob-body.png").resize((640, 960), Image.LANCZOS)), "knob-body.png")

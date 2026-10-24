@@ -57,18 +57,24 @@ target_link_libraries(northlight_app_session PUBLIC
     northlight_audio_device
     northlight_juce)
 
-# The scanner lives beside the app so the app finds it, and so do the assets:
-# the token file (docs/design/tokens.json is the source) and the bundled fonts
-# and icons under assets/.
+# The scanner lives beside the app so the app finds it.
 add_custom_command(TARGET northlight POST_BUILD
-    COMMAND ${CMAKE_COMMAND} -E copy_if_different $<TARGET_FILE:northlight_plugin_scan> $<TARGET_FILE_DIR:northlight>
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different $<TARGET_FILE:northlight_plugin_scan> $<TARGET_FILE_DIR:northlight>)
+add_dependencies(northlight northlight_plugin_scan)
+
+# So do the assets: the token file (docs/design/tokens.json is the source), the
+# bundled fonts, icons and renders under assets/, the licence and the notices. A
+# target of its own that runs on every build (each copy only if the file differs),
+# so a changed asset reaches the app even when no code changed and nothing relinks.
+add_custom_target(northlight_assets ALL
     COMMAND ${CMAKE_COMMAND} -E make_directory "$<TARGET_FILE_DIR:northlight>/assets"
     COMMAND ${CMAKE_COMMAND} -E copy_if_different "${CMAKE_SOURCE_DIR}/docs/design/tokens.json" "$<TARGET_FILE_DIR:northlight>/assets/tokens.json"
-    COMMAND ${CMAKE_COMMAND} -E copy_directory "${CMAKE_SOURCE_DIR}/assets" "$<TARGET_FILE_DIR:northlight>/assets"
-    # The licence and the third-party notices ship with every build.
+    COMMAND ${CMAKE_COMMAND} -E copy_directory_if_different "${CMAKE_SOURCE_DIR}/assets" "$<TARGET_FILE_DIR:northlight>/assets"
     COMMAND ${CMAKE_COMMAND} -E copy_if_different "${CMAKE_SOURCE_DIR}/LICENSE" "$<TARGET_FILE_DIR:northlight>/LICENSE.txt"
-    COMMAND ${CMAKE_COMMAND} -E copy_if_different "${CMAKE_SOURCE_DIR}/THIRD_PARTY_NOTICES.md" "$<TARGET_FILE_DIR:northlight>/THIRD_PARTY_NOTICES.md")
-add_dependencies(northlight northlight_plugin_scan)
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different "${CMAKE_SOURCE_DIR}/THIRD_PARTY_NOTICES.md" "$<TARGET_FILE_DIR:northlight>/THIRD_PARTY_NOTICES.md"
+    COMMENT "Copying the app's assets"
+    VERBATIM)
+add_dependencies(northlight_assets northlight)
 
 target_sources(northlight PRIVATE
     Main.cpp

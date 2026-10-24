@@ -23,3 +23,5 @@ Thumbs.db
 # Logs and crash dumps
 *.log
 *.dmp
+
+__pycache__/

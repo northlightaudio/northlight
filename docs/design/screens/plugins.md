@@ -149,9 +149,14 @@ delay `Gorse`, glue compressor `Thrift`, Patina `Kelp`, exciter `Machair`, Bloom
   - **The panel**: slate-green hammertone enamel (`panel.jpg`, flat
     `patinaPanel` without it) under everything.
   - **The top row**, on the hammertone. At the left the **nameplate**
-    (`nameplate.png`, 300 x 48, brushed aluminium with a screw at each end;
-    `patinaNameplate`): PATINA in `patinaInk`, 34 px bold with 0.42 tracking,
-    centred on its ink. Beside it the model line, "VINTAGE COLOUR PROCESSOR ·
+    (`nameplate.png`, 300 x 56: a flat brushed stainless plate, square corners and
+    a hairline edge, after decades on a rack: grime, stains and pits, dirt round a
+    screw in each corner; `patinaNameplate`),
+    etched: the Northlight mark in a 34 px square (a 1.6 px rule), PATINA at 31 px
+    bold with 0.34 tracking and under it NORTHLIGHT · STUDIO EQUIPMENT at 11 px
+    with 0.26 tracking, left aligned beside the square. Etched means the lettering
+    in `patinaInk` at 90% over a `highlight` edge at 35% 0.8 px below it, where the
+    cut's lower wall catches the light. Beside it the model line, "VINTAGE COLOUR PROCESSOR ·
     MODEL PT-6", 13 px with 0.24 tracking in `patinaPanelInkSoft` (hidden in
     compact). At the right the **preset selector**: two 38 x 32 bakelite keys
     (the hardware key, an arrow alone on each) either side of the amber display
@@ -169,7 +174,11 @@ delay `Gorse`, glue compressor `Thrift`, Patina `Kelp`, exciter `Machair`, Bloom
     preset", "Presets". Right of them the **pilot lamp** (Corona's red jewel, lit
     while the insert is on).
   - **Six stage modules** in signal order, 142 x 548 each, 8 px apart, on grey
-    enamel plates (`module.png`, four screws; `patinaPlate`). Down a module:
+    enamel plates (`module-1.png` to `module-6.png`, four screws; `patinaPlate`),
+    each worn its own way. Every painted part of the face is worn as decades-old
+    rack gear: paint chipped back to steel along the edges and corners, flakes
+    lifted from the face, grime and streaks, the enamel yellowed, the hammertone
+    dusty. Down a module:
     - its name (18 px bold, 0.14 tracking; 21 px in compact) at the left and its
       **push-button** at the right: a 36 x 24 nickel bezel round an amber lens,
       dark when the stage is off, pressed in and lit when on (`button-off.png`,

@@ -18,7 +18,7 @@ lettering anywhere (all text is drawn live by the app).
 
 | Script | Renders |
 |---|---|
-| `plate_render.py -- <panel\|module\|master\|nameplate\|window\|display> <out>` | A flat part and its shadow, head-on from 80 units (`HAMMER_SCALE` sets the hammertone's dimples) |
+| `plate_render.py -- <panel\|module\|master\|nameplate\|window\|display> <out>` | A flat part and its shadow, head-on from 80 units, worn (`apply_wear`): `PATINA_WEAR` scales the wear (1 as shipped), `PATINA_SEED` varies it (the six module plates are seeds 1 to 6, `module-1.png` to `module-6.png`), `HAMMER_SCALE` sets the hammertone's dimples |
 | `knob_render.py -- <body\|pointer> <out> [size]` | The knob's body and shadow; the pointer alone, the layer that turns (rendered at 1280) |
 | `button_render.py -- <off\|on> <out> [width]` | A stage's push-button, dark and lit (`BUTTON_GLOW` sets the lit lens's emission; rendered at 480) |
 
