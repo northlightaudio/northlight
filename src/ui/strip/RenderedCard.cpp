@@ -18,7 +18,11 @@ struct RenderedCard::Watch final : juce::MouseListener
     }
     void mouseEnter(const juce::MouseEvent&) override { face_.setActiveControl(control_); }
     void mouseDown(const juce::MouseEvent&) override { face_.setActiveControl(control_); }
-    void mouseDrag(const juce::MouseEvent&) override { face_.repaint(); } // the value changes
+    void mouseDrag(const juce::MouseEvent&) override // the value changes, round the knob
+    {
+        if (knob_ != nullptr)
+            face_.repaint(knob_->getBounds().expanded(RenderedCard::controlReach));
+    }
     void mouseExit(const juce::MouseEvent& e) override
     {
         if (!e.mouseWasDraggedSinceMouseDown() || !e.mods.isAnyMouseButtonDown())
@@ -58,6 +62,11 @@ int RenderedCard::preferredBodyHeight() const
     return juce::roundToInt(face_.designHeight()) + 2 * theme_.spacing.xs;
 }
 
+int RenderedCard::minimumBodyHeight() const
+{
+    return juce::roundToInt(face_.designHeight() * 0.5f) + 2 * theme_.spacing.xs;
+}
+
 int RenderedCard::preferredWidthAt(int bodyHeight) const
 {
     return face_.widthForHeight(bodyHeight - 2 * theme_.spacing.xs) + 2 * theme_.spacing.sm;
@@ -89,11 +98,11 @@ Knob& RenderedCard::bindRenderedKnob(
     if (auto* label = labelFor(k))
         label->setVisible(false);
     placeRenderedKnob(k, centre, skirt, imageSize, pointer, index);
-    k.onValueChanged = [this, prior = k.onValueChanged](double v)
+    k.onValueChanged = [this, &k, prior = k.onValueChanged](double v)
     {
         if (prior)
             prior(v);
-        controlMoved();
+        controlMoved(k);
     };
     return k;
 }

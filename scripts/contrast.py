@@ -55,7 +55,6 @@ PAIRS = [
     ("hardware.displayText", "hardware.displayCentre", "An amber display's text", "body"),
     ("hardware.displayDim", "hardware.displayCentre", "A display's preset number", "hint"),
     ("hardware.glassInk", "hardware.glassEdge", "Readings on a lit meter window, at its edge", "body"),
-    ("hardware.glassMid", "hardware.glassOffEdge", "Readings on an unlit window", "hint"),
     # The tape echo's console: ink printed on its enamel and on the meter's dial.
     ("hardware.creamInk", "hardware.creamPanel", "Names on the console's cream panel", "body"),
     ("hardware.creamInkSoft", "hardware.creamPanel", "Small legends on the cream panel", "body"),
@@ -66,6 +65,11 @@ PAIRS = [
     # Corona's amp: ink on its champagne plate and brass badge, legends on the
     # graphite strip and on the cabinet's baffle.
     ("hardware.coronaInk", "hardware.coronaPanel", "Control names on the amp's plate", "body"),
+    ("hardware.patinaInk", "hardware.patinaPlate", "Control names on Patina's stage plates", "body"),
+    ("hardware.patinaInkSoft", "hardware.patinaPlate", "Values and scales on Patina's stage plates", "body"),
+    ("hardware.patinaInk", "hardware.patinaNameplate", "The name on Patina's nameplate", "body"),
+    ("hardware.patinaPanelInk", "hardware.patinaPanel", "The model line on Patina's panel", "body"),
+    ("hardware.patinaPanelInkSoft", "hardware.patinaPanel", "Small print on Patina's panel", "body"),
     ("hardware.coronaInkSoft", "hardware.coronaPanel", "Values and scales on the amp's plate", "body"),
     ("hardware.coronaInk", "hardware.coronaBadge", "The name on the amp's badge", "body"),
     ("hardware.coronaStripInk", "hardware.coronaStrip", "Names on the utility strip", "body"),

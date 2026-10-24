@@ -2272,7 +2272,7 @@ void ArrangeView::paint(juce::Graphics& g)
         g.drawText(
             "Start a project",
             area.withSizeKeepingCentre(area.getWidth(), static_cast<int>(theme_.fonts.size.heading * 2))
-                .translated(0, -theme_.spacing.sm),
+                .translated(0, -theme_.spacing.lg),
             juce::Justification::centred);
         g.setColour(c.textTertiary);
         g.setFont(theme_.small());

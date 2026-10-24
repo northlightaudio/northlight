@@ -308,10 +308,12 @@ void PluginBrowser::paintListBoxItem(int index, juce::Graphics& g, int width, in
     area.removeFromRight(theme_.spacing.sm);
     g.setFont(theme_.body());
     g.setColour(c.textPrimary);
-    const int nameW =
-        std::min(area.getWidth() * 3 / 5,
-                 juce::GlyphArrangement::getStringWidthInt(theme_.body(), row.name) + theme_.spacing.sm);
+    // The name takes up to three fifths of the row, and the maker always starts a
+    // gap after it, even where the name ends in an ellipsis.
+    const int nameW = std::min(area.getWidth() * 3 / 5,
+                               juce::GlyphArrangement::getStringWidthInt(theme_.body(), row.name) + 1);
     g.drawText(row.name, area.removeFromLeft(nameW), juce::Justification::centredLeft, true);
+    area.removeFromLeft(theme_.spacing.sm);
     g.setFont(theme_.small());
     g.setColour(c.textSecondary);
     g.drawText(row.manufacturer, area, juce::Justification::centredLeft, true);

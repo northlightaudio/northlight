@@ -246,7 +246,7 @@ private:
     int rulerOnly = 32;   // size.ruler: the markers row over the bars row
     static constexpr int tempoLaneHeight = 52;
     bool tempoShown_ = false;
-    int headerWidth = 220; // size.trackHeaderWidth; the boundary drags 160..360
+    int headerWidth = 260; // size.trackHeaderWidth; the boundary drags 160..360
     int rowHeight = 56;    // size.trackRow; the corner stepper cycles min/default/large
     // A row being resized: its channel and the height it shows until release.
     core::Id resizeChannel_ = core::invalidId;

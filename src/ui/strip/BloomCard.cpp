@@ -12,6 +12,7 @@
 #include "plugins/BeatSync.h"
 #include "plugins/Bloom.h"
 #include "ui/NorthlightLookAndFeel.h"
+#include "ui/Number.h"
 #include "ui/strip/ModuleCard.h"
 #include "ui/strip/StripStyle.h"
 #include "ui/strip/SynthParts.h"
@@ -57,7 +58,7 @@ juce::String formatSeconds(double s)
 {
     if (s < 1.0)
         return juce::String(static_cast<int>(std::lround(s * 1000.0))) + " ms";
-    return juce::String(s, s < 10.0 ? 1 : 0) + " s";
+    return fixedText(s, s < 10.0 ? 1 : 0) + " s";
 }
 
 juce::String infinity()
@@ -1094,13 +1095,13 @@ private:
         area.removeFromLeft(columnGap);
         auto column = area.removeFromLeft(std::min(controlsWidth, area.getWidth()));
 
-        const int valueH = static_cast<int>(theme_.fonts.size.value) + 4;
-        const int labelH = static_cast<int>(theme_.fonts.size.label) + 4;
         const int gap = theme_.spacing.md;
 
         // Four tiles: the big knobs, each with its value and name.
         {
-            const int tileH = theme_.spacing.sm * 2 + bigRing + 6 + valueH + labelH;
+            // The knob's stack ends `spacing.sm` above the tile's foot, as far as
+            // the ring is from its top.
+            const int tileH = theme_.spacing.sm + knobCellHeight(bigRing, theme_.fonts.size.label);
             auto row = column.removeFromTop(tileH);
             const int tileW = (row.getWidth() - 3 * gap) / 4;
             for (auto* k : {decay_, size_, shimmer_, swell_})
@@ -1108,13 +1109,11 @@ private:
                 auto tile = row.removeFromLeft(tileW);
                 row.removeFromLeft(gap);
                 tiles_.push_back(tile);
-                auto inner = tile.reduced(theme_.spacing.xs, theme_.spacing.sm);
                 if (auto* label = labelFor(*k))
-                {
                     label->setFont(theme_.label());
-                    label->setBounds(inner.removeFromBottom(labelH));
-                }
-                k->setBounds(inner);
+                placeKnob(*k,
+                          tile.reduced(theme_.spacing.xs, 0).withTrimmedTop(theme_.spacing.sm),
+                          theme_.fonts.size.label);
             }
         }
         column.removeFromTop(gap);

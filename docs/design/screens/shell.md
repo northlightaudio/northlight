@@ -35,7 +35,12 @@ audio setup and the plugin browser. The shell has five zones:
 - **B Arrange**: fills the remaining area; specified in section 4.
 - **C Dock**: a bottom panel with tabs. Mixer, Editor (clip/insert generic editor),
   Piano Roll, Diagnostics. Height user-draggable, default 320 px, min
-  `dockMin` 200, snaps closed. `surface0`.
+  `dockMin` 200, snaps closed. `surface0`. A panel shown in the dock can need
+  more: the Editor's minimum is its rows plus its tallest card's layout (a
+  card laid out in pixels at its preferred height, a rendered face at half its
+  size), and the dock grows to it when the panel opens or a taller card arrives.
+  Where the window is too short for that, the Editor scrolls rather than
+  squashing a card.
 - **D Side panel**: right, default 300 px wide, min `panelMin` 240, snaps closed.
   Tabs: Browser (plugins, presets, project media), Inspector (selected track, clip or
   insert). `surface0`.

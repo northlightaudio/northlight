@@ -754,8 +754,8 @@ private:
         repaint();
     }
 
-    // The key caps for a key string, right aligned in `area`.
-    void drawKeys(juce::Graphics& g, const juce::String& keys, juce::Rectangle<int> area) const
+    // The key caps for a key string, right aligned in `area`; returns their width.
+    int drawKeys(juce::Graphics& g, const juce::String& keys, juce::Rectangle<int> area) const
     {
         const auto& c = theme_.colours;
         struct Piece
@@ -789,7 +789,7 @@ private:
                 const int capText =
                     juce::GlyphArrangement::getStringWidthInt(theme_.caption(), keysInChord[k]);
                 pieces.push_back(
-                    {keysInChord[k], true, std::max(keyCapHeight, capText + 2 * theme_.spacing.xs)});
+                    {keysInChord[k], true, std::max(keyCapHeight, capText + 2 * theme_.spacing.sm)});
                 if (k + 1 < keysInChord.size())
                     pieces.push_back({{}, false, theme_.spacing.xxs});
             }
@@ -820,6 +820,7 @@ private:
             }
             x += piece.width;
         }
+        return total;
     }
 
     int getNumRows() override { return static_cast<int>(rows_.size()); }
@@ -846,8 +847,9 @@ private:
             g.fillRoundedRectangle(area.reduced(theme_.spacing.xs, 0).toFloat(), theme_.radius.sm);
         }
         area = area.reduced(theme_.spacing.md, 0);
-        const auto keys = area.removeFromRight(area.getWidth() / 2);
-        drawKeys(g, entry.shortcut->keys, keys);
+        // The keys at the right; the action takes all the width they leave.
+        const int keys = drawKeys(g, entry.shortcut->keys, area);
+        area.removeFromRight(keys + theme_.spacing.lg);
         g.setFont(theme_.body());
         g.setColour(c.textPrimary);
         g.drawText(entry.shortcut->action, area, juce::Justification::centredLeft, true);

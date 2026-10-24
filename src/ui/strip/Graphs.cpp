@@ -1,6 +1,7 @@
 #include "ui/strip/Graphs.h"
 
 #include "plugins/ChannelStrip.h"
+#include "ui/Number.h"
 #include "ui/strip/StripStyle.h"
 
 #include <cmath>
@@ -571,7 +572,7 @@ ThresholdMeter::ThresholdMeter(ModuleCard& card,
 juce::Rectangle<float> ThresholdMeter::bar() const
 {
     const auto& theme = card_.theme();
-    const float captionH = theme.fonts.size.caption + 4.0f;
+    const float captionH = static_cast<float>(theme.lineHeight(theme.fonts.size.caption));
     auto r = getLocalBounds().toFloat();
     r.removeFromTop(captionH);
     r.removeFromBottom(captionH);
@@ -589,7 +590,7 @@ void ThresholdMeter::paint(juce::Graphics& g)
     const auto& theme = card_.theme();
     const auto& c = theme.colours;
     const auto b = bar();
-    const float captionH = theme.fonts.size.caption + 4.0f;
+    const float captionH = static_cast<float>(theme.lineHeight(theme.fonts.size.caption));
     const float threshold = card_.param(parameter_);
     const float level = level_ == Level::input ? card_.inputDb() : card_.extraDb();
     const float ty = dbToY(threshold, 0.0f, bottomDb_, b);
@@ -700,7 +701,7 @@ void LevelBars::paint(juce::Graphics& g)
     const auto& c = theme.colours;
     auto area = getLocalBounds();
     const int columnWidth = area.getWidth() / std::max<int>(1, static_cast<int>(kinds_.size()));
-    const int captionH = static_cast<int>(theme.fonts.size.caption) + 4;
+    const int captionH = theme.lineHeight(theme.fonts.size.caption);
     for (const auto kind : kinds_)
     {
         auto col = area.removeFromLeft(columnWidth);
@@ -717,7 +718,7 @@ void LevelBars::paint(juce::Graphics& g)
             g.setColour(c.meterHot);
             g.fillRect(inner.withHeight(h));
             const float shown = card_.reductionReadoutDb();
-            text = shown >= 0.05f ? "-" + juce::String(shown, shown >= 10.0f ? 0 : 1) : juce::String("0.0");
+            text = shown >= 0.05f ? "-" + fixedText(shown, shown >= 10.0f ? 0 : 1) : juce::String("0.0");
             name = "GR";
         }
         else
@@ -728,7 +729,7 @@ void LevelBars::paint(juce::Graphics& g)
             g.setColour(theme.meter.colourAt(db));
             g.fillRect(fill);
             const float shown = kind == Kind::input ? card_.inputReadoutDb() : card_.outputReadoutDb();
-            text = shown > -99.0f ? juce::String(shown, shown <= -10.0f ? 0 : 1)
+            text = shown > -99.0f ? fixedText(shown, shown <= -10.0f ? 0 : 1)
                                   : juce::String::fromUTF8("-\xe2\x88\x9e");
             name = kind == Kind::input ? "IN" : "OUT";
         }

@@ -499,6 +499,8 @@ void AudioSetupView::resized()
     channelsSection_ = bounds;
 
     // Device
+    // Wide enough for "480 samples  (10.0 ms)" at the label size, unsquashed.
+    const int comboWidth = 176;
     {
         auto area = deviceSection_.reduced(sp.lg).withTrimmedTop(titleH);
         auto row = area.removeFromTop(rowH);
@@ -527,10 +529,10 @@ void AudioSetupView::resized()
 
         row = area.removeFromTop(rowH);
         sampleRateLabel_.setBounds(row.removeFromLeft(labelW));
-        sampleRateBox_.setBounds(row.removeFromLeft(140));
+        sampleRateBox_.setBounds(row.removeFromLeft(comboWidth));
         row.removeFromLeft(sp.xl);
         bufferSizeLabel_.setBounds(row.removeFromLeft(labelW - sp.xl));
-        bufferSizeBox_.setBounds(row.removeFromLeft(140));
+        bufferSizeBox_.setBounds(row.removeFromLeft(comboWidth));
     }
 
     // Channels

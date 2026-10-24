@@ -2,6 +2,7 @@
 
 #include "ui/MeterBallistics.h"
 
+#include <algorithm>
 #include <cmath>
 
 namespace northlight::ui
@@ -77,6 +78,16 @@ int Meter::barsWidth() const noexcept
 {
     const int n = static_cast<int>(channels_.size());
     return n * theme_.sizes.meterWidth + (n - 1) * theme_.sizes.meterGap;
+}
+
+int Meter::scaleWidth() const
+{
+    const auto font = theme_.caption();
+    float widest = 0.0f;
+    for (const float db : theme_.meter.scaleTicksDb)
+        widest = std::max(widest,
+                          juce::GlyphArrangement::getStringWidth(font, juce::String(static_cast<int>(db))));
+    return static_cast<int>(std::ceil(widest)) + theme_.sizes.meterGap + 1;
 }
 
 float Meter::yForDb(float db, juce::Rectangle<float> bar) const noexcept
@@ -168,9 +179,10 @@ void Meter::paint(juce::Graphics& g)
         for (const float db : theme_.meter.scaleTicksDb)
         {
             const float y = yForDb(db, bar);
+            const float lineH = static_cast<float>(theme_.lineHeight(theme_.fonts.size.caption));
             g.drawText(juce::String(static_cast<int>(db)),
-                       scale.withY(y - theme_.fonts.size.caption * 0.6f)
-                           .withHeight(theme_.fonts.size.caption * 1.2f)
+                       scale.withY(juce::jlimit(scale.getY(), scale.getBottom() - lineH, y - lineH * 0.5f))
+                           .withHeight(lineH)
                            .withTrimmedRight(gap)
                            .toNearestInt(),
                        juce::Justification::centredRight);

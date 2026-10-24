@@ -1,5 +1,7 @@
 #include "ui/ExportView.h"
 
+#include "ui/Number.h"
+
 #include <cmath>
 
 namespace northlight::ui
@@ -14,12 +16,12 @@ constexpr int rangeProject = 1, rangeLoop = 2, rangeRegionBase = 10;
 juce::String rateText(double rate)
 {
     const double k = rate / 1000.0;
-    return juce::String(k, std::abs(k - std::round(k)) < 1e-6 ? 0 : 1) + " kHz";
+    return fixedText(k, std::abs(k - std::round(k)) < 1e-6 ? 0 : 1) + " kHz";
 }
 
 juce::String lufsText(double lufs)
 {
-    juce::String text = juce::String(lufs, 0) + " LUFS";
+    juce::String text = fixedText(lufs, 0) + " LUFS";
     if (lufs == -14.0)
         text << "  (streaming)";
     else if (lufs == -16.0)
@@ -227,7 +229,7 @@ juce::String ExportView::summary() const
     text << ".";
     if (s.normalise)
     {
-        text << "\nNormalised to " << juce::String(s.targetLufs, 0) << " LUFS, peaks at most "
+        text << "\nNormalised to " << fixedText(s.targetLufs, 0) << " LUFS, peaks at most "
              << juce::String(s.ceilingDb, 1)
              << (s.peakMode == engine::PeakMode::truePeak ? " dBTP" : " dBFS");
         text << (s.source == engine::ExportSource::mix ? juce::String(".")

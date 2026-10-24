@@ -60,6 +60,7 @@ public:
         ringSize_ = pixels;
         repaint();
     }
+    float valueGap(float below) const;
     int ringSize() const noexcept { return ringSize_ > 0 ? ringSize_ : theme_.sizes.knob; }
     // Style::rendered: the pointer layer, pointing up at rest, drawn over the
     // knob's whole bounds and turned with the value; the skirt (ringSize) is what
@@ -69,6 +70,16 @@ public:
         renderedPointer_ = std::move(pointer);
         repaint();
     }
+    // Style::rendered: how far the pointer turns from the bottom of the range to
+    // the top (radians, centred on 12 o'clock; default 270 degrees). A stepped
+    // selector with few positions turns through less, so they fan across its top.
+    void setSweep(float radians)
+    {
+        sweep_ = radians;
+        repaint();
+    }
+    // Where the pointer points at a value (radians clockwise from 12 o'clock).
+    float pointerAngle() const noexcept { return (static_cast<float>(fraction()) - 0.5f) * sweep_; }
     // Steps the value snaps to (a switch's positions, note values); 0 for none.
     void setInterval(double interval)
     {
@@ -117,6 +128,7 @@ private:
     Style style_ = Style::ring;
     juce::Image renderedPointer_;
     double interval_ = 0.0;
+    float sweep_ = juce::MathConstants<float>::pi * 1.5f;
     juce::Colour arcColour_;
     double dragStartValue_ = 0.0; // the fraction at the start of a drag
     int dragStartY_ = 0;

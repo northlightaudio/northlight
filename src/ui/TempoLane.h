@@ -36,7 +36,7 @@ public:
     // width of the header column on the left.
     std::function<int(core::SamplePosition)> xForSample;
     std::function<core::SamplePosition(int)> sampleForX;
-    int headerWidth = 220;
+    int headerWidth = 260;
     // The song position the header's readout shows.
     std::function<core::SamplePosition()> playhead;
 

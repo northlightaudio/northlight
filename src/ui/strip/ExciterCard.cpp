@@ -726,10 +726,10 @@ private:
 
     void layoutBody(juce::Rectangle<int> body) override
     {
-        const int valueH = static_cast<int>(theme_.fonts.size.value) + 4;
-        const int labelH = static_cast<int>(theme_.fonts.size.caption) + 4;
-        const int bigCellH = bigRing + 6 + valueH + labelH;
-        const int selectorH = character_->preferredHeight() + labelH;
+        const int labelH = theme_.lineHeight(theme_.fonts.size.caption);
+        // The ring sits 6 px down so its scale marks clear the caption above.
+        const int bigCellH = 6 + knobCellHeight(bigRing, theme_.fonts.size.caption);
+        const int selectorH = character_->preferredHeight() + labelH + theme_.spacing.sm;
         const int controlsH = std::max({bigCellH, selectorH, knobCellHeight()});
         const int captionH = theme_.spacing.lg;
         auto display =
@@ -757,13 +757,7 @@ private:
             groupStart = controls.getX();
         };
         // A large knob's cell: the ring, its value and its label, on the row's bottom line.
-        const auto bigCell = [&](Knob* knob)
-        {
-            auto cell = controls.removeFromLeft(bigCellWidth);
-            if (auto* label = labelFor(*knob))
-                label->setBounds(cell.removeFromBottom(labelH));
-            knob->setBounds(cell.removeFromBottom(bigCellH - labelH - 6));
-        };
+        const auto bigCell = [&](Knob* knob) { placeKnob(*knob, controls.removeFromLeft(bigCellWidth)); };
         const auto knobs = [&](std::initializer_list<Knob*> list)
         {
             const int width = static_cast<int>(list.size()) * knobCellWidth();
@@ -774,8 +768,8 @@ private:
 
         {
             auto cell = controls.removeFromLeft(selectorWidth());
-            characterLabel_->setBounds(cell.removeFromBottom(labelH));
-            character_->setBounds(cell.removeFromBottom(character_->preferredHeight()));
+            characterLabel_->setBounds(labelLine(cell));
+            character_->setBounds(aboveLabelLine(cell).removeFromBottom(character_->preferredHeight()));
         }
         bigCell(amount_);
         knobs({drive_, frequency_, focus_});
@@ -790,11 +784,11 @@ private:
             // Auto gain: the pill where a knob's ring sits, its live trim where the
             // value sits, its name on the labels' line.
             auto cell = controls.removeFromLeft(knobCellWidth()).removeFromBottom(knobCellHeight());
-            autoGainLabel_->setBounds(cell.removeFromBottom(labelH));
+            autoGainLabel_->setBounds(labelLine(cell));
             const int ring = theme_.sizes.knob;
             auto ringArea = cell.removeFromTop(ring);
             autoGain_->setBounds(ringArea.withSizeKeepingCentre(knobCellWidth() - theme_.spacing.sm, 20));
-            autoGainValueArea_ = cell;
+            autoGainValueArea_ = aboveLabelLine(cell).withTrimmedTop(theme_.spacing.xs + 2);
         }
         endGroup("OUTPUT", false);
     }

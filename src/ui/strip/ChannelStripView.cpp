@@ -264,6 +264,14 @@ void ChannelStripView::paint(juce::Graphics& g)
     }
 }
 
+int ChannelStripView::minimumHeight() const
+{
+    int cards = 0;
+    for (const auto& card : cards_)
+        cards = std::max(cards, card->minimumHeight());
+    return captionHeight + cards;
+}
+
 void ChannelStripView::resized()
 {
     auto caption = getLocalBounds().removeFromTop(captionHeight);

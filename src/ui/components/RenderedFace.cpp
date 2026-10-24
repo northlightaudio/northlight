@@ -47,7 +47,8 @@ void RenderedFace::setActiveControl(int control)
     if (control == activeControl_)
         return;
     activeControl_ = control;
-    repaint();
+    if (compact_) // only the compact face shows the control in hand (its value for its name)
+        repaint();
 }
 
 int RenderedFace::widthForHeight(int bodyHeight) const noexcept

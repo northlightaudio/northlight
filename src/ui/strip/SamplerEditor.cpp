@@ -620,10 +620,14 @@ public:
     }
 
     int preferredWidth() const override { return 13 * cellW + 4 * 2 * pad + 3 * gap + 2 * theme_.spacing.sm; }
-    int preferredBodyHeight() const override { return 412; }
+    // The header, the sample, then panels two knob rows tall.
+    int preferredBodyHeight() const override
+    {
+        return headerH + 4 + sampleH + gap + 2 * pad + captionH + 2 * knobCellHeight() + 6;
+    }
 
 private:
-    static constexpr int headerH = 46, captionH = 18, cellW = 56, gap = 8, pad = 8;
+    static constexpr int headerH = 46, sampleH = 196, captionH = 18, cellW = 56, gap = 8, pad = 8;
 
     struct Section
     {
@@ -646,7 +650,7 @@ private:
 
         sections_.clear();
         // The sample: the waveform and the keyboard across the whole width.
-        auto top = body.removeFromTop(196);
+        auto top = body.removeFromTop(sampleH);
         sections_.push_back({"SAMPLE", hues_.sample, top});
         auto inner = top.reduced(pad);
         inner.removeFromTop(captionH);

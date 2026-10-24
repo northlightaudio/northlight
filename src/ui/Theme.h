@@ -115,10 +115,10 @@ struct Theme
         int controlCompact = 24, control = 28, controlLarge = 32;
         int iconSmall = 14, icon = 16, iconLarge = 20;
         int headerBar = 48, statusBar = 24, ruler = 32;
-        int trackHeaderWidth = 220, trackHeaderMinWidth = 160, trackHeaderMaxWidth = 360;
+        int trackHeaderWidth = 260, trackHeaderMinWidth = 160, trackHeaderMaxWidth = 360;
         int trackRowMin = 28, trackRow = 56, trackRowLarge = 112, trackRowMax = 240, clipHeader = 18;
         int takeLane = 40; // a take lane under an expanded track (screens/comping.md)
-        int mixerStripWidth = 84, mixerStripWideWidth = 112;
+        int mixerStripWidth = 92, mixerStripWideWidth = 112;
         int faderTravel = 200, faderCapWidth = 36, faderCapHeight = 14, knob = 28;
         int meterWidth = 6, meterGap = 2, scrollbar = 10, splitter = 5;
         int panelMin = 240, dockMin = 200, focusRing = 2, tooltipMaxWidth = 320;
@@ -227,6 +227,11 @@ struct Theme
         juce::Colour coronaBaffle, coronaCone, coronaSpeakerRim;
         juce::Colour coronaJewel;                  // the pilot lamp's glow
         juce::Colour coronaMarkerA, coronaMarkerB; // the two mics' markers on the baffle
+        // Patina's face: the hammertone panel and the enamel plates, the ink on each,
+        // the nameplate's aluminium and the windows' black bezels (flat fallbacks
+        // for the renders).
+        juce::Colour patinaPanel, patinaPlate, patinaInk, patinaInkSoft, patinaPanelInk, patinaPanelInkSoft;
+        juce::Colour patinaNameplate, patinaBezel;
     };
 
     std::string name = "Northlight Dark";
@@ -251,7 +256,14 @@ struct Theme
         legend, // printed on a hardware face; 700 and up is the bold cut
     };
     // A font of the UI or numeric face at a token size and weight (400/500/600).
+    // The size is the em square (its CSS meaning). A legend's size is JUCE's
+    // height (ascent plus descent) in a face's design pixels, as the rendered
+    // faces were laid out.
     juce::Font font(Face face, float size, int weight) const;
+    // One line of text at an em size, in whole px: the face's ascent plus descent,
+    // the taller of the interface and mono faces. Size a text box with this, not
+    // the size plus a guess, since a line is about 1.2 em.
+    int lineHeight(float size) const;
     juce::Font caption() const { return font(Face::ui, fonts.size.caption, fonts.weight.medium); }
     juce::Font small() const { return font(Face::ui, fonts.size.small, fonts.weight.regular); }
     juce::Font body() const { return font(Face::ui, fonts.size.body, fonts.weight.regular); }

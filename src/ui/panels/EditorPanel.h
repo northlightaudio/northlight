@@ -56,6 +56,10 @@ public:
     std::function<bool(core::Id insertId)> isEditorOpen;
     // An insert was added here (the owner remembers the type as recent).
     std::function<void(const std::string& type)> onInserted;
+    // The panel's smallest height (its rows and the tallest card's layout), and
+    // a call when that changes, so the dock can grow to it.
+    int minimumHeight() const;
+    std::function<void()> onMinimumHeightChanged;
 
     bool isInterestedInDragSource(const SourceDetails& details) override;
     void itemDragEnter(const SourceDetails& details) override;
@@ -67,6 +71,8 @@ public:
     void resized() override;
 
 private:
+    int contentMinimumHeight() const;
+    int shownMinimum_ = 0;
     class Card;
     class SendCard;
     void rebuild();

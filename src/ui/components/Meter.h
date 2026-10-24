@@ -31,6 +31,8 @@ public:
     bool clipped() const noexcept;
     // The width the bars take (without the scale), so strips can lay out.
     int barsWidth() const noexcept;
+    // The width the dB scale needs left of the bars for its widest label.
+    int scaleWidth() const;
 
     void paint(juce::Graphics& g) override;
     void mouseDown(const juce::MouseEvent& e) override;

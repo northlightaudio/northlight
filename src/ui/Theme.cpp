@@ -9,6 +9,7 @@
 #include <windows.h>
 #endif
 
+#include <algorithm>
 #include <cmath>
 #include <map>
 #include <memory>
@@ -123,6 +124,13 @@ juce::Colour Theme::Meter::colourAt(float db) const
     return zones.empty() ? juce::Colours::white : zones.back().colour;
 }
 
+int Theme::lineHeight(float size) const
+{
+    const float ui = font(Face::ui, size, fonts.weight.regular).getHeight();
+    const float mono = font(Face::mono, size, fonts.weight.regular).getHeight();
+    return static_cast<int>(std::ceil(std::max(ui, mono)));
+}
+
 juce::Font Theme::font(Face face, float size, int weight) const
 {
     if (face == Face::legend)
@@ -143,7 +151,10 @@ juce::Font Theme::font(Face face, float size, int weight) const
         options = juce::FontOptions(typeface);
     else
         options = juce::FontOptions(face == Face::mono ? "Consolas" : "Segoe UI", size, juce::Font::plain);
-    options = options.withHeight(size);
+    // The size is the em square, as a size means in CSS and in design tools (a
+    // JUCE "height" is the ascent plus the descent, about 1.2 em for Inter, which
+    // drew every size a sixth smaller than its token said).
+    options = options.withPointHeight(size);
     if (weight >= fonts.weight.semibold)
         options = options.withStyle("Bold");
     return juce::Font(options);
@@ -576,6 +587,14 @@ bool Theme::apply(const juce::var& tokens, Theme& theme, std::string& error)
         colour("tapeWell", hw.tapeWell);
         colour("neon", hw.neon);
         colour("coronaTolex", hw.coronaTolex);
+        colour("patinaPanel", hw.patinaPanel);
+        colour("patinaPlate", hw.patinaPlate);
+        colour("patinaInk", hw.patinaInk);
+        colour("patinaInkSoft", hw.patinaInkSoft);
+        colour("patinaPanelInk", hw.patinaPanelInk);
+        colour("patinaPanelInkSoft", hw.patinaPanelInkSoft);
+        colour("patinaNameplate", hw.patinaNameplate);
+        colour("patinaBezel", hw.patinaBezel);
         colour("coronaPanel", hw.coronaPanel);
         colour("coronaInk", hw.coronaInk);
         colour("coronaInkSoft", hw.coronaInkSoft);

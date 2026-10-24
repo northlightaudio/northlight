@@ -250,7 +250,7 @@ void TrackHeader::setTrack(const core::Track& track,
     if (midi_)
     {
         midiNames_ = midiInputNames;
-        input_.addItem("All MIDI inputs", 1);
+        input_.addItem("All MIDI", 1);
         int selected = 1;
         for (size_t i = 0; i < midiNames_.size(); ++i)
         {
@@ -270,6 +270,7 @@ void TrackHeader::setTrack(const core::Track& track,
         inputChoices_ = inputs;
         inputs::fill(input_, inputChoices_, track);
     }
+    resized(); // the input's width follows its text
 
     output_.clear(juce::dontSendNotification);
     output_.addItem("Master", 1);
@@ -592,13 +593,19 @@ void TrackHeader::resized()
         auto row = area.removeFromTop(control);
         if (!aux_ && !instrument_)
         {
-            const int inputW = std::clamp(row.getWidth() / 3, 76, 96);
+            // As wide as the chosen input's name needs, within limits, so the rest
+            // of the row is left to the meter or the instrument it plays.
+            const int textW = juce::GlyphArrangement::getStringWidthInt(theme_.body(), input_.getText());
+            const int inputW =
+                std::clamp(textW + 2 * theme_.spacing.sm + theme_.sizes.iconSmall + theme_.spacing.xs,
+                           76,
+                           std::max(76, row.getWidth() * 2 / 5));
             input_.setBounds(row.removeFromLeft(inputW).withSizeKeepingCentre(inputW, control));
             row.removeFromLeft(theme_.spacing.sm);
         }
         if (volume_.isVisible())
         {
-            volume_.setBounds(row.removeFromRight(std::max(48, row.getWidth() / 3)));
+            volume_.setBounds(row.removeFromRight(midi_ ? 48 : std::max(48, row.getWidth() / 3)));
             row.removeFromRight(theme_.spacing.sm);
         }
         meter_.setBounds(

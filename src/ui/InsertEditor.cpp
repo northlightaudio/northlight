@@ -3,6 +3,7 @@
 #include "plugins/BuiltIns.h"
 #include "plugins/EffectPresets.h"
 #include "ui/NorthlightLookAndFeel.h"
+#include "ui/Number.h"
 #include "ui/OnScreen.h"
 #include "ui/strip/BuiltInCards.h"
 
@@ -79,7 +80,7 @@ InsertEditor::InsertEditor(core::Id channelId,
         row.knob->setShowValue(false);
         row.knob->setTooltip(info.name);
         row.knob->format = [unit](double v)
-        { return juce::String(v, std::abs(v) >= 100.0 ? 0 : 2) + (unit.isEmpty() ? "" : " " + unit); };
+        { return fixedText(v, std::abs(v) >= 100.0 ? 0 : 2) + (unit.isEmpty() ? "" : " " + unit); };
         row.knob->onDragStart = [this, index]
         {
             if (onParameterGestureBegin)

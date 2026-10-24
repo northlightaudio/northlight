@@ -165,10 +165,16 @@ public:
             for (int db : {-20, -10, -7, -5, -3, -2, -1, 0, 1, 2, 3})
             {
                 tick(static_cast<float>(db), 7.0f, 1.2f);
-                const auto centre = at(vuPosition(static_cast<float>(db)), radius + 14.0f);
+                // The numeral's near edge a few px past its tick, whatever its size.
+                const auto text = juce::String(std::abs(db));
+                const float textW = juce::GlyphArrangement::getStringWidth(theme.caption(), text);
+                const float textH = theme.caption().getHeight();
+                const auto base = at(vuPosition(static_cast<float>(db)), radius + 10.0f);
+                const auto dir = (base - pivot) / std::max(1.0f, base.getDistanceFrom(pivot));
+                const float extent = std::abs(dir.x) * textW * 0.5f + std::abs(dir.y) * textH * 0.5f;
                 g.setColour(db > 0 ? c.meterHot : c.textSecondary);
-                g.drawText(juce::String(std::abs(db)),
-                           juce::Rectangle<float>(20.0f, 12.0f).withCentre(centre),
+                g.drawText(text,
+                           juce::Rectangle<float>(textW + 2.0f, textH).withCentre(base + dir * extent),
                            juce::Justification::centred);
             }
             // VU over the pivot, the mode in the lower left, the reading in the lower right.
@@ -177,7 +183,9 @@ public:
             g.drawText("VU",
                        juce::Rectangle<float>(40.0f, 16.0f).withCentre({pivot.x, pivot.y - radius * 0.5f}),
                        juce::Justification::centred);
-            auto bottom = face.withTop(face.getBottom() - 16.0f).reduced(6.0f, 0.0f);
+            auto bottom = face.withTop(face.getBottom() -
+                                       static_cast<float>(theme.lineHeight(theme.fonts.size.caption)) - 6.0f)
+                              .reduced(6.0f, 0.0f);
             g.setFont(theme.captionCaps());
             g.drawText(
                 meterShowsOutput() ? "OUTPUT" : "GAIN REDUCTION", bottom, juce::Justification::centredLeft);
@@ -427,9 +435,7 @@ private:
 
     void layoutBody(juce::Rectangle<int> body) override
     {
-        const int valueH = static_cast<int>(theme_.fonts.size.value) + 4;
-        const int labelH = static_cast<int>(theme_.fonts.size.caption) + 4;
-        const int bigCellH = bigRing + 6 + valueH + labelH;
+        const int bigCellH = 6 + knobCellHeight(bigRing, theme_.fonts.size.caption);
         const int smallH = theme_.sizes.controlCompact + 6 + knobCellHeight();
         const int controlsH = std::max(bigCellH, smallH);
         auto display = body.removeFromTop(std::max(40, body.getHeight() - controlsH - 6));
@@ -442,19 +448,16 @@ private:
         history_.setBounds(display);
 
         auto controls = body.removeFromTop(controlsH);
+        // The big knobs centred down the row beside the mode and the small knobs;
+        // each ring sits 6 px down in its cell so the scale marks clear the display.
         auto big = controls.removeFromLeft(2 * bigCellWidth);
+        big = big.withSizeKeepingCentre(big.getWidth(), bigCellH);
         for (auto* knob : {peak_, gain_})
-        {
-            // The ring sits 6 px down so the scale marks clear the display.
-            auto cell = big.removeFromLeft(bigCellWidth).withHeight(bigCellH).withTrimmedTop(6);
-            if (auto* label = labelFor(*knob))
-                label->setBounds(cell.removeFromBottom(labelH));
-            knob->setBounds(cell);
-        }
+            placeKnob(*knob, big.removeFromLeft(bigCellWidth).withTrimmedTop(6));
         controls.removeFromLeft(theme_.spacing.sm);
         divider_ = controls.getX();
         dividerTop_ = controls.getY() + 6;
-        dividerBottom_ = controls.getY() + bigCellH - 4;
+        dividerBottom_ = controls.getBottom() - theme_.spacing.sm;
         controls.removeFromLeft(theme_.spacing.sm);
         auto options = controls.removeFromTop(theme_.sizes.controlCompact);
         mode_->setBounds(options.withSizeKeepingCentre(std::min(options.getWidth(), mode_->preferredWidth()),

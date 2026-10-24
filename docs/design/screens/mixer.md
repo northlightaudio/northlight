@@ -11,7 +11,7 @@ visible. It lives in the dock (default) or can be popped out to its own window.
 +--+--------+--------+--------+-----+ ... +--------+ | +----------+
 ```
 
-Strip anatomy, top to bottom (`mixerStripWidth` 84 px; wide mode 112 px adds the
+Strip anatomy, top to bottom (`mixerStripWidth` 92 px; wide mode 112 px adds the
 scale and a second column for sends):
 
 ```

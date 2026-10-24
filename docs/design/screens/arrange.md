@@ -29,7 +29,7 @@ Where the recording and the arrangement live. It must stay legible with 4 tracks
 - **R Ruler**: `size.ruler` 32 px, `surface0`. Two rows: 14 px markers row on top,
   18 px bars/beats below with the seconds readout in `caption` `textTertiary` under
   the bar numbers when zoomed out past 1 bar per 80 px.
-- **H Track headers**: `size.trackHeaderWidth` 220 default, resizable 160 to 360,
+- **H Track headers**: `size.trackHeaderWidth` 260 default, resizable 160 to 360,
   `surface0`.
 - **L Lanes**: `canvas` background, one lane per track at the track's row height.
   Each track can have its own height: drag the bottom edge of its header or lane

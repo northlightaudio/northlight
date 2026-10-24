@@ -304,12 +304,16 @@ know nothing format-specific.
   way, so the shared frame stays small. Patina's card is a hardware face: the
   drawing shared by such faces (pointer knobs, printed legends, images from
   `assets/<effect>/`) is in `ui/components/HardwareParts`. Faces built from
-  renders (the tape echo, Corona) share three more layers: `HardwareParts` draws
+  renders (the tape echo, Corona, Patina) share three more layers: `HardwareParts` draws
   renders shrunk to the pixels they land on (`drawScaled`, `drawScaledRotated`,
   `drawPlate`) and holds the printed ticks, the legend font and the fit
   arithmetic; `ui/components/RenderedFace` is the face itself, drawn at one
   design size and scaled to fit, its art cached once per scale and its words
-  printed straight to the screen at every paint; and `ui/strip/RenderedCard` is
+  printed straight to the screen at every paint. Words are costly to set (each
+  is measured by its glyphs' outlines), so a repaint only sets those in the area
+  being repainted (`drawCrispText` skips the rest, and a face may skip a whole
+  control's print), a knob that turns repaints only round itself, and hovering
+  repaints nothing at full size; and `ui/strip/RenderedCard` is
   the card round it, sizing itself to the face and binding rendered knobs and
   levers (`HardwareLever`) to parameters. `HardwareKey` is the bakelite key. Every built-in effect's
   factory presets are in `plugins/EffectPresets` (by parameter name, resolved

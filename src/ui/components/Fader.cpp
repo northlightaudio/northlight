@@ -4,6 +4,7 @@
 #include "ui/NorthlightLookAndFeel.h"
 
 #include <cmath>
+#include <limits>
 
 namespace northlight::ui
 {
@@ -156,7 +157,11 @@ void Fader::paint(juce::Graphics& g)
         g.fillRoundedRectangle(groove, trackW * 0.5f);
     }
     g.setFont(theme_.caption());
-    for (const float db : {maxDb_, 0.0f, -6.0f, -12.0f, -24.0f, -48.0f, minusInfinityDb})
+    // From the bottom up, so where two labels would touch on a short fader the
+    // end stop keeps its label and the one above it drops (its tick stays).
+    const int lineH = theme_.lineHeight(theme_.fonts.size.caption);
+    int labelTop = std::numeric_limits<int>::max();
+    for (const float db : {minusInfinityDb, -48.0f, -24.0f, -12.0f, -6.0f, 0.0f, maxDb_})
     {
         const int y = yForFraction(fractionForDb(db, maxDb_));
         const bool zero = db == 0.0f;
@@ -166,11 +171,15 @@ void Fader::paint(juce::Graphics& g)
         g.setColour(c.textTertiary);
         const auto label = db <= minusInfinityDb ? juce::String(juce::CharPointer_UTF8("\xe2\x88\x9e"))
                                                  : juce::String(static_cast<int>(db));
+        const int top = y - lineH / 2;
+        if (top + lineH > labelTop)
+            continue;
+        labelTop = top;
         g.drawText(label,
                    0,
-                   y - theme_.spacing.sm,
+                   top,
                    static_cast<int>(cx) - theme_.spacing.sm,
-                   theme_.spacing.lg,
+                   lineH,
                    juce::Justification::centredRight);
     }
     // The cap.

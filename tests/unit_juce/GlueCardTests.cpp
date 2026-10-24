@@ -38,12 +38,19 @@ TEST_CASE("A rotary selector steps by key, returns to its default and reports us
     CHECK(changes == std::vector<int>{2, 3, 0});
     CHECK(selector.getTooltip() == "Ratio: 1.5:1");
 
-    // The labels sit around the top, mirrored about the middle, inside the bounds.
+    // The labels sit around the top inside the bounds.
+    for (int i = 0; i < 4; ++i)
+        CHECK(selector.getLocalBounds().toFloat().reduced(4.0f).contains(selector.labelCentre(i)));
+
+    // Labels of the same width mirror about the middle; a wider one sits farther
+    // out, so its near edge keeps the same gap from its dot.
+    selector.setPositions({"10", "2", "4", "10"}, {"10", "2", "4", "10"}, "Ratio");
     const auto first = selector.labelCentre(0), last = selector.labelCentre(3);
     CHECK(std::abs((first.x + last.x) * 0.5f - selector.getWidth() * 0.5f) < 0.5f);
     CHECK(std::abs(first.y - last.y) < 0.5f);
-    for (int i = 0; i < 4; ++i)
-        CHECK(selector.getLocalBounds().toFloat().reduced(4.0f).contains(selector.labelCentre(i)));
+    const float middle = selector.getWidth() * 0.5f;
+    selector.setPositions({"10", "2", "4", "1"}, {"10", "2", "4", "1"}, "Ratio");
+    CHECK(middle - selector.labelCentre(0).x > selector.labelCentre(3).x - middle);
 }
 
 TEST_CASE("The glue card reads its processor and its selectors set the stepped parameters", "[ui][glue]")

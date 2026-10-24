@@ -59,6 +59,7 @@ add_library(northlight_ui STATIC
     OnScreen.h
     Selection.h
     Db.h
+    Number.h
     Motion.h
     SendMenu.h
     SidechainMenu.h

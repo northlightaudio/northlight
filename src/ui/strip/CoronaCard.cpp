@@ -15,6 +15,7 @@
 #include "core/Command.h"
 #include "plugins/Amp.h"
 #include "plugins/Cabinet.h"
+#include "ui/Number.h"
 #include "ui/components/HardwareParts.h"
 #include "ui/components/RenderedFace.h"
 #include "ui/strip/CoronaFace.h"
@@ -1323,7 +1324,7 @@ private:
         if (i.unit.empty() && i.choices.empty() && i.minimum == 1.0f && i.maximum == 10.0f)
             k.format = [](double v) { return juce::String(v, 1); };
         else if (i.unit == "cm")
-            k.format = [](double v) { return juce::String(v, v < 10.0 ? 1 : 0) + " cm"; };
+            k.format = [](double v) { return fixedText(v, v < 10.0 ? 1 : 0) + " cm"; };
         else if (i.unit == "deg")
             k.format = [](double v)
             { return juce::String(juce::roundToInt(v)) + juce::String::fromUTF8("\xc2\xb0"); };
@@ -1418,7 +1419,7 @@ private:
     }
 
     // A knob was turned: everything that shows its value follows.
-    void controlMoved() override { paramsChanged(); }
+    void controlMoved(Knob&) override { paramsChanged(); }
 
     void insertChanged(const core::Insert& insert) override
     {

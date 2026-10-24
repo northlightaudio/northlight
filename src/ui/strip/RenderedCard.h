@@ -29,6 +29,8 @@ public:
 
     int preferredWidth() const override;
     int preferredBodyHeight() const override;
+    // Half the face's size: below that even the compact view's names are too small.
+    int minimumBodyHeight() const override;
     int preferredWidthAt(int bodyHeight) const override;
 
 protected:
@@ -56,8 +58,11 @@ protected:
                             float scale,
                             float nutSize);
 
-    // A rendered knob was turned (default: the face repaints its values).
-    virtual void controlMoved() { face_.repaint(); }
+    // A rendered knob was turned (default: the face repaints round the knob,
+    // where its name and value are printed).
+    virtual void controlMoved(Knob& knob) { face_.repaint(knob.getBounds().expanded(controlReach)); }
+    // How far round a knob its name and value can be printed.
+    static constexpr int controlReach = 72;
 
     void layoutBody(juce::Rectangle<int> body) override { face_.placeIn(body); }
 

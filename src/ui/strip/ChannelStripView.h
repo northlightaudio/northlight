@@ -37,6 +37,8 @@ public:
     void setChannel(const core::Channel* channel);
     core::Id channelId() const noexcept { return channelId_; }
     int preferredWidth() const;
+    // The height its open cards need, with the caption row.
+    int minimumHeight() const;
     int moduleCount() const noexcept { return static_cast<int>(cards_.size()); }
 
     void paint(juce::Graphics& g) override;

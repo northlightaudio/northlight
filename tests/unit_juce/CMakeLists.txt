@@ -36,7 +36,9 @@ add_executable(northlight_juce_tests
     TapeEchoCardTests.cpp
     CoronaCardTests.cpp
     RenderedFaceTests.cpp
+    NumberTests.cpp
     PatinaCardTests.cpp
+    PanelLayoutTests.cpp
     EffectPresetLibraryTests.cpp
     EffectCardTooltipsTests.cpp
     WidthScaleTests.cpp

@@ -69,7 +69,16 @@ void HardwareKey::paint(juce::Graphics& g)
         g.fillRoundedRectangle(key, 2.5f);
     }
     const auto glyph = hw.keyGlyph.withAlpha(enabled ? 1.0f : 0.45f);
-    if (icon)
+    if (icon && label_.isEmpty())
+    {
+        // An icon alone (a preset key's arrow): centred on the key's face.
+        if (hasLed_)
+            paintLed(g, {key.getX() + 8.0f, key.getY() + 8.0f});
+        g.setColour(glyph);
+        const float side = std::round(std::min(key.getWidth(), key.getHeight()) * 0.5f);
+        icon(g, juce::Rectangle<float>(side, side).withCentre(key.getCentre()));
+    }
+    else if (icon)
     {
         // A square key: its LED in the top left corner, the icon over the label at
         // half the space above it, snapped to whole pixels so its lines stay crisp.

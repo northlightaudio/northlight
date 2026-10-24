@@ -1,22 +1,27 @@
-// Patina's card (screens/plugins.md 7.2a), a hardware face: a worn studio rack
-// unit, its hammertone paint rubbed through to bare metal. Along the top a
-// nameplate, the preset selector (two bakelite keys and an amber display) and
-// the pilot lamp. Below them six lit meter windows in signal order, each a live
-// readout of what its stage is doing to the sound right now (Heat's curve with
-// the level riding it, Chamber's tail, Drift's pitch, Grain's noise against the
-// music, Wear's surviving bandwidth, Crush's waveform), with its slide switch
-// and a row of lamps for its amount as Age and Breath leave it. A window is also
-// the stage's tab: the chicken-head knobs under the row are the selected
-// stage's, between Age (the macro) on the left and the output section on the
-// right. The colours are the hardware tokens; the textures are assets/patina.
+// Patina's card (screens/plugins.md 7.2a): a broadcast colour processor's face, a
+// hardware face (design-system.md "Hardware face") built from rendered parts
+// (assets/patina; "Rendered parts"), drawn at 1160 x 660 and scaled to fit the
+// card's body, the card narrowing with it.
+//
+// Slate hammertone carries the nameplate, the preset display between its two keys
+// and the pilot lamp along the top. Below them, six grey enamel modules in signal
+// order, one per stage, each showing every one of its controls: the stage's name
+// and lit push-button, its window (a live readout of what the stage is doing now:
+// Heat's curve with the level riding it, Chamber's tail, Drift's pitch, Grain's
+// noise against the music, Wear's surviving bandwidth, Crush's waveform) with a
+// row of lamps for its amount as Age and Breath leave it, its type selector, its
+// main knob and its small knobs. The master plate at the right holds Age, Pace and
+// the output section.
 
 #include "plugins/Patina.h"
 #include "ui/NorthlightLookAndFeel.h"
+#include "ui/Number.h"
 #include "ui/components/HardwareParts.h"
-#include "ui/components/RotarySelector.h"
+#include "ui/components/RenderedFace.h"
 #include "ui/strip/EffectPresetLibrary.h"
-#include "ui/strip/ModuleCard.h"
+#include "ui/strip/HardwareKey.h"
 #include "ui/strip/PresetBar.h"
+#include "ui/strip/RenderedCard.h"
 #include "ui/strip/StripStyle.h"
 
 #include <algorithm>
@@ -24,6 +29,8 @@
 #include <cmath>
 #include <functional>
 #include <limits>
+#include <map>
+#include <memory>
 #include <vector>
 
 namespace northlight::ui::strip
@@ -34,16 +41,11 @@ namespace pa = plugins::patina;
 namespace
 {
 using Telemetry = pa::Telemetry;
+using hardware::legendFont;
+using hardware::polar;
 constexpr int historyFrames = 600; // three seconds of 5 ms frames
 constexpr std::array<const char*, pa::stageCount> stageNames{
     "Heat", "Chamber", "Drift", "Grain", "Wear", "Crush"};
-
-// The stage the controls show, remembered for the session.
-int& selectedStage()
-{
-    static int stage = pa::heat;
-    return stage;
-}
 
 juce::String percentText(double v)
 {
@@ -81,9 +83,7 @@ juce::String minusDb(float db)
                       : juce::String::fromUTF8("\xe2\x88\x92") + juce::String(db, 1) + " dB";
 }
 
-// The face's images (assets/patina); invalid when missing, and the face falls
-// back to its flat token colours.
-const juce::Image& faceImage(const char* file)
+const juce::Image& part(const char* file)
 {
     return hardware::image("patina", file);
 }
@@ -94,99 +94,119 @@ void focusRing(juce::Graphics& g, juce::Component& c, juce::Rectangle<float> r, 
         laf->drawFocusRing(g, c, r, radius);
 }
 
+// ----- where things are on the face (pixels at 100%) ----------------------------------------
+
+constexpr float faceWidth = 1160.0f, faceHeight = 660.0f;
+constexpr float shadowMargin = 12.0f; // round each plate's and bezel's image
+
+// Along the top, on the hammertone.
+const juce::Rectangle<float> nameplateArea{24.0f, 18.0f, 300.0f, 48.0f};
+const juce::Rectangle<float> modelLine{344.0f, 33.0f, 340.0f, 18.0f};
+const juce::Rectangle<float> previousKey{704.0f, 26.0f, 38.0f, 32.0f};
+const juce::Rectangle<float> displayBezel{750.0f, 20.0f, 300.0f, 44.0f};
+const juce::Rectangle<float> nextKey{1058.0f, 26.0f, 38.0f, 32.0f};
+const juce::Point<float> lampCentre{1124.0f, 42.0f};
+
+// The six stage modules and the master plate.
+constexpr float moduleLeft = 20.0f, moduleTop = 92.0f, moduleWidth = 142.0f, moduleGap = 8.0f;
+constexpr float moduleHeight = 548.0f;
+const juce::Rectangle<float> masterArea{924.0f, moduleTop, 216.0f, moduleHeight};
+
+float moduleX(int stage) noexcept
+{
+    return moduleLeft + static_cast<float>(stage) * (moduleWidth + moduleGap);
+}
+float moduleCentre(int stage) noexcept
+{
+    return moduleX(stage) + moduleWidth * 0.5f;
+}
+
+// Rows down a module.
+constexpr float nameRow = 118.0f;
+constexpr float buttonWidth = 36.0f, buttonHeight = 24.0f;
+const juce::Rectangle<float> windowBezelAt{8.0f, 138.0f, 126.0f, 96.0f}; // x from the module's left
+constexpr float openingRadius = 3.0f; // the bezels' openings' corners, which the glass follows
+constexpr float bezelFrame = 7.0f;    // the glass opening is inset this far
+constexpr float ledRow = 241.0f, ledHeight = 4.0f, ledWidth = 10.0f, ledGap = 3.0f;
+constexpr int ledCount = 8;
+constexpr float selectorRow = 300.0f, selectorCaptionRow = 337.0f, selectorSkirt = 30.0f;
+constexpr float selectorStep = 52.0f; // degrees between a selector's positions
+constexpr float mainRow = 394.0f, mainSkirt = 52.0f;
+constexpr std::array<float, 2> smallRows{496.0f, 582.0f};
+constexpr float smallSkirt = 30.0f, smallSpread = 34.0f;
+
+// The master plate.
+const juce::Point<float> ageCentre{1032.0f, 212.0f};
+constexpr float ageSkirt = 96.0f;
+const juce::Point<float> paceCentre{1032.0f, 380.0f};
+constexpr float paceSkirt = 34.0f;
+constexpr float outputCaptionRow = 452.0f;
+constexpr std::array<float, 3> outputX{966.0f, 1032.0f, 1098.0f};
+
+// A knob's image is this many times its skirt (the skirt is 56% of the render, the
+// rest room for its shadow).
+constexpr float knobImageRatio = 3.4f / 1.9f;
+// The button's image is 60 x 45 round its 36 x 24 bezel.
+constexpr float buttonImageWidth = 60.0f, buttonImageHeight = 45.0f;
+
+juce::Rectangle<float> glassOf(int stage) noexcept
+{
+    return windowBezelAt.translated(moduleX(stage), 0.0f).reduced(bezelFrame);
+}
+
 class PatinaCard;
 
 // ----- the face's small parts ---------------------------------------------------------------------
 
-// A stage's slide switch: the lever to the right is on.
-class StageSwitch final : public juce::Button
+// A stage's lit push-button: its rendered key, dark or lit; a click, Space or
+// Enter switches the stage.
+class StageButton final : public juce::Button
 {
 public:
-    explicit StageSwitch(const Theme& theme) : juce::Button("Switch"), theme_(theme)
+    StageButton(const Theme& theme, int stage)
+        : juce::Button(juce::String(stageNames[static_cast<size_t>(stage)])), theme_(theme)
     {
         setWantsKeyboardFocus(true);
         setMouseCursor(juce::MouseCursor::PointingHandCursor);
     }
-    static constexpr int width = 22, height = 12;
+
+    bool hitTest(int x, int y) override
+    {
+        return bezel().contains(static_cast<float>(x), static_cast<float>(y));
+    }
 
     void paintButton(juce::Graphics& g, bool over, bool down) override
     {
-        const auto& hw = theme_.hardware;
-        const auto r = getLocalBounds().toFloat().withSizeKeepingCentre(width, height);
-        g.setColour(hw.shadow.withAlpha(0.6f));
-        g.fillRoundedRectangle(r.expanded(1.0f), 3.0f);
-        const bool on = getToggleState();
-        // The light lever sits in the right half when on, the left when off.
-        auto lever = r.reduced(1.0f);
-        if (on)
-            lever.removeFromLeft(lever.getWidth() * 0.5f);
+        const bool lit = getToggleState();
+        const auto& image = part(lit ? "button-on.png" : "button-off.png");
+        const auto r = getLocalBounds().toFloat();
+        if (image.isValid())
+            hardware::drawScaled(g, image, down ? r.translated(0.0f, 0.5f) : r);
         else
-            lever.removeFromRight(lever.getWidth() * 0.5f);
-        g.setColour(hw.switchDark);
-        g.fillRoundedRectangle(r.reduced(1.0f), 2.0f);
-        auto light = over || down ? hw.switchLight.brighter(0.1f) : hw.switchLight;
-        g.setGradientFill(juce::ColourGradient(
-            light, 0.0f, lever.getY(), light.darker(0.25f), 0.0f, lever.getBottom(), false));
-        g.fillRoundedRectangle(lever, 1.5f);
-        g.setColour(hw.shadow.withAlpha(0.35f));
-        g.drawVerticalLine(
-            static_cast<int>(on ? lever.getX() : lever.getRight() - 1.0f), lever.getY(), lever.getBottom());
-        focusRing(g, *this, r.expanded(1.0f), 3.0f);
-    }
-
-private:
-    const Theme& theme_;
-};
-
-// A bakelite key beside the preset display, with an arrow.
-class RackKey final : public juce::Button
-{
-public:
-    RackKey(const Theme& theme, bool forward)
-        : juce::Button(forward ? "Next preset" : "Previous preset"), theme_(theme), forward_(forward)
-    {
-        setTooltip(forward ? "Next preset" : "Previous preset");
-        setWantsKeyboardFocus(true);
-        setMouseCursor(juce::MouseCursor::PointingHandCursor);
-    }
-
-    void paintButton(juce::Graphics& g, bool over, bool down) override
-    {
-        const auto& hw = theme_.hardware;
-        auto r = getLocalBounds().toFloat();
-        if (down)
-            r = r.translated(0.0f, 1.0f);
-        const auto top = over && !down ? hw.keyTop.brighter(0.12f) : hw.keyTop;
-        g.setGradientFill(juce::ColourGradient(top,
-                                               r.getX() + r.getWidth() * 0.4f,
-                                               r.getY() + r.getHeight() * 0.25f,
-                                               hw.keyBottom,
-                                               r.getRight(),
-                                               r.getBottom(),
-                                               true));
-        g.fillRoundedRectangle(r, 3.0f);
-        if (!down)
         {
-            g.setColour(hw.highlight.withAlpha(0.14f));
-            g.drawHorizontalLine(static_cast<int>(r.getY()) + 1, r.getX() + 3.0f, r.getRight() - 3.0f);
-            g.setColour(hw.shadow.withAlpha(0.5f));
-            g.drawHorizontalLine(static_cast<int>(r.getBottom()) - 1, r.getX() + 2.0f, r.getRight() - 2.0f);
+            const auto& hw = theme_.hardware;
+            g.setColour(hw.aluminium);
+            g.fillRoundedRectangle(bezel(), 3.0f);
+            g.setColour(lit ? hw.led : hw.ledOff);
+            g.fillRoundedRectangle(bezel().reduced(3.0f), 2.0f);
         }
-        const auto c = r.getCentre();
-        juce::Path arrow;
-        const float s = 4.0f;
-        if (forward_)
-            arrow.addTriangle(c.x - s * 0.7f, c.y - s, c.x - s * 0.7f, c.y + s, c.x + s * 0.8f, c.y);
-        else
-            arrow.addTriangle(c.x + s * 0.7f, c.y - s, c.x + s * 0.7f, c.y + s, c.x - s * 0.8f, c.y);
-        g.setColour(hw.keyGlyph.withAlpha(over ? 0.95f : 0.75f));
-        g.fillPath(arrow);
-        focusRing(g, *this, r, 3.0f);
+        if (over && isEnabled())
+        {
+            g.setColour(theme_.hardware.highlight.withAlpha(0.1f));
+            g.fillRoundedRectangle(bezel().reduced(3.0f), 2.0f);
+        }
+        focusRing(g, *this, bezel().expanded(1.0f), 4.0f);
     }
 
 private:
+    juce::Rectangle<float> bezel() const
+    {
+        return getLocalBounds().toFloat().withSizeKeepingCentre(
+            buttonWidth * static_cast<float>(getWidth()) / buttonImageWidth,
+            buttonHeight * static_cast<float>(getHeight()) / buttonImageHeight);
+    }
+
     const Theme& theme_;
-    const bool forward_;
 };
 
 // The preset's amber display: its number and name; a click lists the presets.
@@ -214,7 +234,7 @@ public:
         const auto r = getLocalBounds().toFloat();
         juce::Graphics::ScopedSaveState save(g);
         juce::Path clip;
-        clip.addRoundedRectangle(r, 2.0f);
+        clip.addRoundedRectangle(r, openingRadius);
         g.reduceClipRegion(clip);
         juce::ColourGradient glass(hw.displayCentre,
                                    r.getCentreX(),
@@ -226,17 +246,27 @@ public:
         g.setGradientFill(glass);
         g.fillRect(r);
 
-        auto line = r.reduced(10.0f, 0.0f);
+        // The name is capitals, so the line is centred on their height, not the
+        // font's (whose descent would leave them high); the number shares its baseline.
         const auto mono = theme_.value();
-        g.setFont(mono.withHeight(mono.getHeight() * 0.85f));
+        auto big = mono.withHeight(mono.getHeight() * 1.2f).withExtraKerningFactor(0.08f);
+        const auto small = mono.withHeight(mono.getHeight() * 0.95f);
+        juce::GlyphArrangement capital;
+        capital.addLineOfText(big, "H", 0.0f, 0.0f);
+        juce::Path capitalPath;
+        capital.createPath(capitalPath);
+        const float baseline = std::round(r.getCentreY() - capitalPath.getBounds().getCentreY());
+        const auto onBaseline = [baseline](juce::Rectangle<float> area, const juce::Font& font)
+        { return area.withY(baseline - font.getAscent()).withHeight(font.getHeight()); };
+        auto line = r.reduced(12.0f, 0.0f);
+        g.setFont(small);
         g.setColour(hw.displayDim.withAlpha(0.75f));
-        const auto numberArea = line.removeFromLeft(18.0f);
-        g.drawText(number_, numberArea, juce::Justification::centredLeft, false);
-        line.removeFromLeft(4.0f);
-        auto big = mono.withHeight(mono.getHeight() * 1.05f).withExtraKerningFactor(0.06f);
+        g.drawText(
+            number_, onBaseline(line.removeFromLeft(22.0f), small), juce::Justification::centredLeft, false);
+        line.removeFromLeft(6.0f);
+        line = onBaseline(line, big);
         g.setFont(big);
         const auto name = name_.toUpperCase();
-        // The glow round the lit letters, then the letters.
         g.setColour(hw.displayGlow.withAlpha(0.22f));
         for (const auto& d : {juce::Point<float>(-1.0f, 0.0f),
                               juce::Point<float>(1.0f, 0.0f),
@@ -246,27 +276,19 @@ public:
         g.setColour(over ? hw.displayText.brighter(0.15f) : hw.displayText);
         g.drawText(name, line, juce::Justification::centredLeft, true);
 
-        // Scan lines, the glass's reflection and its shade under the bezel's lip.
+        // Scan lines, and the shade under the bezel's lip.
         g.setColour(hw.shadow.withAlpha(0.12f));
         for (float y = r.getY() + 1.0f; y < r.getBottom(); y += 3.0f)
             g.fillRect(r.getX(), y, r.getWidth(), 1.0f);
-        g.setGradientFill(juce::ColourGradient(hw.highlight.withAlpha(0.13f),
-                                               r.getX(),
-                                               r.getY(),
-                                               hw.highlight.withAlpha(0.0f),
-                                               r.getX() + r.getWidth() * 0.1f,
-                                               r.getY() + r.getHeight() * 0.45f,
-                                               false));
-        g.fillRect(r);
-        g.setGradientFill(juce::ColourGradient(hw.shadow.withAlpha(0.8f),
+        g.setGradientFill(juce::ColourGradient(hw.shadow.withAlpha(0.45f),
                                                0.0f,
                                                r.getY(),
                                                hw.shadow.withAlpha(0.0f),
                                                0.0f,
-                                               r.getY() + 4.0f,
+                                               r.getY() + 5.0f,
                                                false));
-        g.fillRect(r.withHeight(4.0f));
-        focusRing(g, *this, r, 2.0f);
+        g.fillRect(r.withHeight(5.0f));
+        focusRing(g, *this, r, openingRadius);
     }
 
 private:
@@ -274,57 +296,25 @@ private:
     juce::String number_, name_;
 };
 
-// The pilot lamp: lit while Patina is on.
+// The pilot lamp (Corona's red jewel), lit while the effect is on.
 class Lamp final : public juce::Component, public juce::SettableTooltipClient
 {
 public:
     Lamp(const Theme& theme, std::function<bool()> on) : theme_(theme), on_(std::move(on)) {}
-    static constexpr float diameter = 26.0f;
 
     void paint(juce::Graphics& g) override
     {
-        const auto& hw = theme_.hardware;
         const bool lit = on_();
-        const auto c = getLocalBounds().toFloat().getCentre();
-        const auto lens = juce::Rectangle<float>(diameter, diameter).withCentre(c);
-        if (lit)
+        const auto& image = hardware::image("corona", lit ? "jewel-lit.png" : "jewel-off.png");
+        const auto r = getLocalBounds().toFloat();
+        if (image.isValid())
         {
-            // The glow spilling onto the panel.
-            juce::ColourGradient glow(hw.lamp.withAlpha(0.5f),
-                                      c.x,
-                                      c.y,
-                                      hw.lamp.withAlpha(0.0f),
-                                      c.x + getWidth() * 0.5f,
-                                      c.y,
-                                      true);
-            g.setGradientFill(glow);
-            g.fillEllipse(getLocalBounds().toFloat());
+            hardware::drawScaled(g, image, r);
+            return;
         }
-        g.setColour(hw.shadow.withAlpha(0.7f));
-        g.fillEllipse(lens.translated(0.0f, 2.0f).expanded(1.0f));
-        const auto& image = faceImage("lamp.jpg");
-        {
-            juce::Graphics::ScopedSaveState save(g);
-            juce::Path clip;
-            clip.addEllipse(lens);
-            g.reduceClipRegion(clip);
-            if (image.isValid())
-            {
-                g.setImageResamplingQuality(juce::Graphics::highResamplingQuality);
-                g.drawImage(image, lens, juce::RectanglePlacement::fillDestination);
-            }
-            else
-            {
-                g.setGradientFill(juce::ColourGradient(
-                    hw.lamp.brighter(0.4f), c.x, c.y, hw.lamp.darker(0.6f), lens.getRight(), c.y, true));
-                g.fillEllipse(lens);
-            }
-            if (!lit)
-            {
-                g.setColour(hw.shadow.withAlpha(0.6f));
-                g.fillEllipse(lens);
-            }
-        }
+        const auto& hw = theme_.hardware;
+        g.setColour(lit ? hw.coronaJewel : hw.coronaJewel.darker(0.7f));
+        g.fillEllipse(r.reduced(r.getWidth() * 0.25f));
     }
 
 private:
@@ -332,26 +322,23 @@ private:
     std::function<bool()> on_;
 };
 
-// ----- a stage's window ---------------------------------------------------------------------------
+// ----- a stage's window -------------------------------------------------------------------------
 
-class StageTile final : public juce::Component, public juce::SettableTooltipClient
+// The lit glass in a stage's bezel, its live readout, and the row of lamps under
+// the bezel: the window's bounds run from the glass's top to the lamps' foot, and
+// it draws nothing over the bezel between them.
+class StageWindow final : public juce::Component, public juce::SettableTooltipClient
 {
 public:
-    StageTile(PatinaCard& card, int stage);
+    StageWindow(PatinaCard& card, int stage);
 
     void paint(juce::Graphics& g) override;
-    void paintOverChildren(juce::Graphics& g) override;
-    void resized() override;
-    void mouseDown(const juce::MouseEvent& e) override;
+    bool hitTest(int x, int y) override;
     bool keyPressed(const juce::KeyPress& key) override;
     void focusGained(FocusChangeType) override { repaint(); }
     void focusLost(FocusChangeType) override { repaint(); }
-    void mouseEnter(const juce::MouseEvent&) override { repaint(); }
-    void mouseExit(const juce::MouseEvent&) override { repaint(); }
 
-    void sync();
-    StageSwitch& power() noexcept { return power_; }
-    // The window's glass, where the readout draws.
+    // The window's glass, where the readout draws (its own pixels).
     juce::Rectangle<float> well() const;
 
 private:
@@ -361,7 +348,7 @@ private:
         juce::Colour hue, textPrimary, textSecondary, textTertiary, gridBar, dotRing;
     };
 
-    juce::Rectangle<float> frame() const;
+    void paintLamps(juce::Graphics& g);
     void paintHeat(juce::Graphics& g, juce::Rectangle<float> p);
     void paintChamber(juce::Graphics& g, juce::Rectangle<float> p);
     void paintDrift(juce::Graphics& g, juce::Rectangle<float> p);
@@ -373,151 +360,449 @@ private:
 
     PatinaCard& card_;
     const int stage_;
-    StageSwitch power_;
     Inks inks_;
     std::vector<float> a_, b_; // per column, reused
     std::vector<float> scopeIn_, scopeOut_;
 };
 
+// A strip along the top of each readout for its figure.
+constexpr float readoutRoom = 16.0f;
+
+// ----- the face -----------------------------------------------------------------------------------
+
+// A control printed on the face: where it is, what it is called, and its kind.
+struct Control
+{
+    enum class Kind
+    {
+        main,
+        small,
+        selector,
+        age,
+        pace,
+    };
+    int param = 0;
+    juce::Point<float> centre;
+    float skirt = 0.0f;
+    juce::String name;
+    Kind kind = Kind::small;
+    juce::StringArray legends; // a selector's positions
+};
+
+class Face final : public RenderedFace
+{
+public:
+    explicit Face(const Theme& theme) : RenderedFace(faceWidth, faceHeight), theme_(theme) {}
+
+    std::vector<Control> controls;
+    std::function<juce::String(int param)> value;
+    std::function<float(int param)> paramValue;
+    // A control's name when it depends on a setting (Grain's texture).
+    std::function<juce::String(const Control&)> nameOf;
+
+private:
+    float nameSize(float size) const noexcept { return isCompact() ? size * compactNameScale : size; }
+    float tracking(float t) const noexcept { return isCompact() ? t * 0.4f : t; }
+
+    juce::String nameFor(const Control& c) const
+    {
+        const auto name = nameOf ? nameOf(c) : c.name;
+        if (isCompact() && activeControl() == c.param && value)
+            return value(c.param);
+        return name;
+    }
+
+    // The sizes of a control's print, by kind.
+    static float nameSizeOf(Control::Kind k) noexcept
+    {
+        switch (k)
+        {
+            case Control::Kind::age:
+                return 22.0f;
+            case Control::Kind::main:
+                return 16.0f;
+            default:
+                return 13.0f;
+        }
+    }
+    // Where a control's name sits: under its scale.
+    static juce::Rectangle<float> nameArea(const Control& c, float width)
+    {
+        const float below = c.kind == Control::Kind::age    ? 52.0f
+                            : c.kind == Control::Kind::main ? 34.0f
+                                                            : 24.0f;
+        return {c.centre.x - width * 0.5f, c.centre.y + c.skirt * 0.5f + below - 22.0f, width, 22.0f};
+    }
+    static float nameWidth(const Control& c) noexcept
+    {
+        return c.kind == Control::Kind::small || c.kind == Control::Kind::pace ? 68.0f : 128.0f;
+    }
+
+    // A selector position's angle (degrees clockwise from 12 o'clock).
+    static float positionAngle(const Control& c, int i) noexcept
+    {
+        const int n = c.legends.size();
+        return n <= 1 ? 0.0f : (static_cast<float>(i) - 0.5f * static_cast<float>(n - 1)) * selectorStep;
+    }
+    // A legend's box beyond its dot: its near edge a few px past the dot, whatever its width.
+    juce::Rectangle<float> legendArea(const Control& c, int i, const juce::Font& font) const
+    {
+        const float a = positionAngle(c, i);
+        const float w = juce::GlyphArrangement::getStringWidth(font, c.legends[i]);
+        const float h = font.getHeight();
+        const float rad = juce::degreesToRadians(a);
+        const float extent = std::abs(std::sin(rad)) * w * 0.5f + std::abs(std::cos(rad)) * h * 0.5f;
+        return juce::Rectangle<float>(w + 4.0f, h)
+            .withCentre(polar(c.centre, c.skirt * 0.5f + 9.0f + extent, a));
+    }
+
+    void plate(juce::Graphics& g, const char* file, juce::Rectangle<float> area, juce::Colour flat) const
+    {
+        hardware::drawPlate(g, part(file), area, shadowMargin, flat);
+    }
+
+    void knobBody(juce::Graphics& g, juce::Point<float> c, float skirt) const
+    {
+        const float image = skirt * knobImageRatio;
+        if (const auto& body = part("knob-body.png"); body.isValid())
+        {
+            hardware::drawScaled(
+                g, body, juce::Rectangle<float>(c.x - image * 0.5f, c.y - image * 0.5f, image, image * 1.5f));
+            return;
+        }
+        const auto& hw = theme_.hardware;
+        g.setColour(hw.knobBody);
+        g.fillEllipse(juce::Rectangle<float>(skirt, skirt).withCentre(c));
+        g.setColour(hw.aluminium);
+        g.fillEllipse(juce::Rectangle<float>(skirt * 0.5f, skirt * 0.5f).withCentre(c));
+    }
+
+    // ----- the static layer --------------------------------------------------------------------
+    void paintStatic(juce::Graphics& g) const override
+    {
+        const auto& hw = theme_.hardware;
+        if (artPass())
+        {
+            g.setColour(hw.patinaPanel);
+            g.fillAll();
+            hardware::drawScaled(g, part("panel.jpg"), getLocalBounds().toFloat());
+            plate(g, "nameplate.png", nameplateArea, hw.patinaNameplate);
+            plate(g, "display.png", displayBezel, hw.patinaBezel);
+            for (int s = 0; s < pa::stageCount; ++s)
+            {
+                plate(g, "module.png", {moduleX(s), moduleTop, moduleWidth, moduleHeight}, hw.patinaPlate);
+                plate(g, "window.png", windowBezelAt.translated(moduleX(s), 0.0f), hw.patinaBezel);
+            }
+            plate(g, "master.png", masterArea, hw.patinaPlate);
+        }
+
+        // The nameplate and the model line.
+        g.setColour(hw.patinaInk);
+        g.setFont(legendFont(theme_, 34.0f, 700, 0.42f));
+        print(g, "PATINA", nameplateArea.reduced(36.0f, 4.0f), juce::Justification::centred, true);
+        if (!isCompact())
+        {
+            g.setColour(hw.patinaPanelInkSoft);
+            g.setFont(legendFont(theme_, 13.0f, 600, 0.24f));
+            print(g,
+                  juce::String::fromUTF8("VINTAGE COLOUR PROCESSOR \xc2\xb7 MODEL PT-6"),
+                  modelLine,
+                  juce::Justification::centredLeft);
+        }
+
+        // Each module's name, beside its button.
+        for (int s = 0; s < pa::stageCount; ++s)
+        {
+            g.setColour(hw.patinaInk);
+            g.setFont(legendFont(theme_, isCompact() ? 21.0f : 18.0f, 700, tracking(0.14f)));
+            print(g,
+                  juce::String(stageNames[static_cast<size_t>(s)]).toUpperCase(),
+                  {moduleX(s) + 14.0f, nameRow - 12.0f, moduleWidth - 28.0f - buttonWidth, 24.0f},
+                  juce::Justification::centredLeft);
+        }
+
+        // The master plate's output caption over its knobs, between two rules.
+        {
+            g.setColour(hw.patinaInkSoft);
+            g.setFont(legendFont(theme_, nameSize(13.0f), 700, tracking(0.24f)));
+            const auto area = juce::Rectangle<float>(
+                masterArea.getX() + 16.0f, outputCaptionRow - 9.0f, masterArea.getWidth() - 32.0f, 18.0f);
+            print(g, "OUTPUT", area);
+            if (artPass())
+            {
+                const float text =
+                    juce::GlyphArrangement::getStringWidth(g.getCurrentFont(), "OUTPUT") + 16.0f;
+                const float rule = (area.getWidth() - text) * 0.5f;
+                g.fillRect(juce::Rectangle<float>(area.getX(), outputCaptionRow, rule, 1.0f));
+                g.fillRect(juce::Rectangle<float>(area.getRight() - rule, outputCaptionRow, rule, 1.0f));
+            }
+        }
+
+        for (const auto& c : controls)
+            paintControl(g, c);
+    }
+
+    // Everything a control prints lies in this box round it (its legends, name
+    // and value): outside the area being repainted, its words are skipped whole.
+    static juce::Rectangle<int> reach(const Control& c)
+    {
+        const float r = c.skirt * 0.5f;
+        return juce::Rectangle<float>(c.centre.x - 72.0f, c.centre.y - r - 40.0f, 144.0f, 2.0f * r + 120.0f)
+            .getSmallestIntegerContainer();
+    }
+
+    void paintControl(juce::Graphics& g, const Control& c) const
+    {
+        if (!artPass() && !g.clipRegionIntersects(reach(c)))
+            return;
+        const auto& hw = theme_.hardware;
+        if (c.kind == Control::Kind::selector)
+        {
+            // A dot at each position (the chosen one's lit in the live layer), its legend beyond.
+            if (artPass())
+            {
+                g.setColour(hw.patinaInkSoft);
+                for (int i = 0; i < c.legends.size(); ++i)
+                    g.fillEllipse(
+                        juce::Rectangle<float>(3.0f, 3.0f)
+                            .withCentre(polar(c.centre, c.skirt * 0.5f + 5.0f, positionAngle(c, i))));
+            }
+            knobBodyIfArt(g, c);
+            g.setColour(hw.patinaInkSoft);
+            g.setFont(legendFont(theme_, nameSize(11.5f), 700, tracking(0.12f)));
+            if (isCompact())
+            {
+                // The setting in place of the legends, where the caption would be.
+                const int at = paramValue ? juce::roundToInt(paramValue(c.param)) : 0;
+                g.setColour(hw.patinaInk);
+                print(g,
+                      activeControl() == c.param || c.legends.isEmpty()
+                          ? nameFor(c)
+                          : c.legends[juce::jlimit(0, c.legends.size() - 1, at)],
+                      {c.centre.x - 64.0f, selectorCaptionRow - 11.0f, 128.0f, 22.0f});
+                return;
+            }
+            print(g, c.name, {c.centre.x - 64.0f, selectorCaptionRow - 9.0f, 128.0f, 18.0f});
+            return;
+        }
+
+        // A knob's printed scale: eleven ticks over 270 degrees (the age dial's
+        // with its three legends).
+        const float r = c.skirt * 0.5f;
+        g.setColour(hw.patinaInkSoft);
+        if (artPass())
+            hardware::drawTicks(
+                g, c.centre, r + 3.0f, r + (c.kind == Control::Kind::age ? 9.0f : 6.0f), 11, 1.3f);
+        if (c.kind == Control::Kind::age && !isCompact())
+        {
+            g.setFont(legendFont(theme_, 12.0f, 700, 0.14f));
+            print(g,
+                  "NEW",
+                  juce::Rectangle<float>(50.0f, 16.0f).withCentre(polar(c.centre, r + 26.0f, -135.0f)));
+            print(g,
+                  "AS SET",
+                  juce::Rectangle<float>(60.0f, 16.0f).withCentre(polar(c.centre, r + 20.0f, 0.0f)));
+            print(g,
+                  "RUINED",
+                  juce::Rectangle<float>(60.0f, 16.0f).withCentre(polar(c.centre, r + 30.0f, 135.0f)));
+        }
+        knobBodyIfArt(g, c);
+        g.setColour(hw.patinaInk);
+        // Compact, a small knob's name grows more than the rest: it is the smallest print.
+        const float size = nameSizeOf(c.kind);
+        const bool smallName = c.kind == Control::Kind::small || c.kind == Control::Kind::pace;
+        g.setFont(
+            legendFont(theme_, isCompact() && smallName ? size * 1.5f : nameSize(size), 700, tracking(0.1f)));
+        print(g, nameFor(c), nameArea(c, nameWidth(c)));
+    }
+
+    void knobBodyIfArt(juce::Graphics& g, const Control& c) const
+    {
+        if (artPass())
+            knobBody(g, c.centre, c.skirt);
+    }
+
+    // ----- what changes with the values -------------------------------------------------------
+    void paintLive(juce::Graphics& g) const override
+    {
+        const auto& hw = theme_.hardware;
+        for (const auto& c : controls)
+        {
+            if (!g.clipRegionIntersects(reach(c)))
+                continue;
+            if (c.kind == Control::Kind::selector)
+            {
+                if (isCompact() || !paramValue)
+                    continue;
+                // The chosen position: its dot lit, its legend in full ink.
+                const int at =
+                    juce::jlimit(0, std::max(0, c.legends.size() - 1), juce::roundToInt(paramValue(c.param)));
+                g.setColour(hw.dialRed);
+                g.fillEllipse(juce::Rectangle<float>(4.5f, 4.5f)
+                                  .withCentre(polar(c.centre, c.skirt * 0.5f + 5.0f, positionAngle(c, at))));
+                const auto font = legendFont(theme_, 12.5f, 700, 0.06f);
+                g.setFont(font);
+                for (int i = 0; i < c.legends.size(); ++i)
+                {
+                    g.setColour(i == at ? hw.patinaInk : hw.patinaInkSoft);
+                    hardware::drawCrispText(g, c.legends[i], legendArea(c, i, font));
+                }
+                continue;
+            }
+            if (isCompact() || !value)
+                continue;
+            const float size = c.kind == Control::Kind::age    ? 15.0f
+                               : c.kind == Control::Kind::main ? 13.0f
+                                                               : 12.5f;
+            g.setColour(hw.patinaInkSoft);
+            g.setFont(legendFont(theme_, size, 600, 0.04f));
+            hardware::drawCrispText(
+                g, value(c.param), nameArea(c, nameWidth(c) + 8.0f).translated(0.0f, size + 4.0f));
+        }
+    }
+
+    const Theme& theme_;
+};
+
 // ----- the card -----------------------------------------------------------------------------------
 
-class PatinaCard final : public ModuleCard, private juce::ChangeListener
+class PatinaCard final : public RenderedCard, private juce::ChangeListener
 {
 public:
     PatinaCard(const Theme& theme, CardHost& host, core::Id channelId, const core::Insert& insert)
-        : ModuleCard(theme, host, channelId, insert), history_(static_cast<size_t>(historyFrames)),
-          previous_(theme, false), next_(theme, true), display_(theme),
+        : RenderedCard(theme, host, channelId, insert, face_), face_(theme),
+          history_(static_cast<size_t>(historyFrames)),
+          previous_(theme, juce::String(), "Previous preset", false),
+          next_(theme, juce::String(), "Next preset", false), display_(theme),
           lamp_(theme, [this] { return isOn(); })
     {
+        addAndMakeVisible(face_);
+        face_.value = [this](int index) { return valueText(index); };
+        face_.paramValue = [this](int index) { return param(index); };
+        face_.nameOf = [this](const Control& c)
+        { return c.param == pa::grainTexture ? textureName() : c.name; };
+
         for (int s = 0; s < pa::stageCount; ++s)
         {
-            tiles_[static_cast<size_t>(s)] = std::make_unique<StageTile>(*this, s);
-            addAndMakeVisible(*tiles_[static_cast<size_t>(s)]);
+            auto window = std::make_unique<StageWindow>(*this, s);
+            const auto glass = glassOf(s);
+            window->setBounds(
+                juce::Rectangle<float>(
+                    glass.getX(), glass.getY(), glass.getWidth(), ledRow + ledHeight + 2.0f - glass.getY())
+                    .toNearestInt());
+            face_.addAndMakeVisible(*window);
+            windows_[static_cast<size_t>(s)] = std::move(window);
+
+            auto button = std::make_unique<StageButton>(theme_, s);
+            button->setClickingTogglesState(false);
+            button->onClick = [this, s] { toggleStage(s); };
+            const juce::Point<float> at(moduleX(s) + moduleWidth - 14.0f - buttonWidth * 0.5f, nameRow);
+            button->setBounds(
+                juce::Rectangle<float>(buttonImageWidth, buttonImageHeight).withCentre(at).toNearestInt());
+            face_.addAndMakeVisible(*button);
+            buttons_[static_cast<size_t>(s)] = std::move(button);
         }
 
-        age_ = &addKnob(pa::age);
-        age_->setRingSize(ageRing);
-        age_->format = [](double v) { return percentText(v); };
-        pace_ = &addKnob(pa::pace);
-        pace_->format = [](double v) { return juce::String(0.05 * std::pow(30.0, v * 0.01), 2) + " Hz"; };
+        // The stages, each a module of selector, main knob and small knobs.
+        stage(pa::heat, pa::heatCharacter, "CHARACTER", {"TUBE", "TAPE", "IRON", "FUZZ"});
+        main(pa::heat, pa::heatDrive, "DRIVE");
+        small(pa::heat, {{pa::heatTone, "TONE"}, {pa::heatBreath, "BREATH"}});
 
-        // Heat
-        auto& heat = panel(pa::heat);
-        selector(heat, pa::heatCharacter, {"Tube", "Tape", "Iron", "Fuzz"}, "Character");
-        main(heat, pa::heatDrive, "Drive");
-        knob(heat, pa::heatTone, "Tone", signedPercent);
-        breath(heat, pa::heatBreath);
+        stage(pa::chamber, pa::chamberType, "SPACE", {"ROOM", "SPRING", "PLATE"});
+        main(pa::chamber, pa::chamberMix, "MIX");
+        small(pa::chamber,
+              {{pa::chamberDecay, "DECAY"}, {pa::chamberTone, "TONE"}, {pa::chamberBreath, "BREATH"}});
 
-        // Chamber
-        auto& chamber = panel(pa::chamber);
-        selector(chamber, pa::chamberType, {"Room", "Spring", "Plate"}, "Space");
-        main(chamber, pa::chamberMix, "Mix");
-        knob(chamber,
-             pa::chamberDecay,
-             "Decay",
-             [this](double v)
-             {
-                 const float s = pa::chamberDecaySeconds(
-                     static_cast<int>(std::lround(param(pa::chamberType))), static_cast<float>(v) * 0.01f);
-                 return juce::String(s, 1) + " s";
-             });
-        knob(chamber, pa::chamberTone, "Tone", signedPercent);
-        breath(chamber, pa::chamberBreath);
+        stage(pa::drift, pa::driftMachine, "MACHINE", {"REEL", "DECK", "DISC"});
+        main(pa::drift, pa::driftWow, "WOW");
+        small(pa::drift,
+              {{pa::driftFlutter, "FLUTTER"},
+               {pa::driftRate, "RATE"},
+               {pa::driftStereo, "STEREO"},
+               {pa::driftBreath, "BREATH"}});
 
-        // Drift
-        auto& drift = panel(pa::drift);
-        selector(drift, pa::driftMachine, {"Reel", "Deck", "Disc"}, "Machine");
-        main(drift, pa::driftWow, "Wow");
-        knob(drift, pa::driftFlutter, "Flutter", percentText);
-        knob(drift,
-             pa::driftRate,
-             "Rate",
-             [](double v)
-             {
-                 return juce::String(std::pow(2.0, 2.0 * v * 0.01 - 1.0), 2) +
-                        juce::String::fromUTF8("\xc3\x97");
-             });
-        knob(drift, pa::driftStereo, "Stereo", percentText);
-        breath(drift, pa::driftBreath);
+        stage(pa::grain, pa::grainSource, "SOURCE", {"VINYL", "HISS", "50 HZ", "60 HZ", "AIR"});
+        main(pa::grain, pa::grainAmount, "AMOUNT");
+        small(pa::grain,
+              {{pa::grainTexture, "TEXTURE"}, {pa::grainFollow, "FOLLOW"}, {pa::grainBreath, "BREATH"}});
 
-        // Grain
-        auto& grain = panel(pa::grain);
-        selector(grain, pa::grainSource, {"Vinyl", "Tape", "50Hz", "60Hz", "Air"}, "Source");
-        main(grain, pa::grainAmount, "Amount");
-        texture_ = &knob(grain, pa::grainTexture, "Texture", [this](double v) { return textureText(v); });
-        knob(grain,
-             pa::grainFollow,
-             "Follow",
-             [](double v)
-             {
-                 const int i = static_cast<int>(std::lround(v));
-                 return i == 0 ? juce::String("Steady")
-                               : juce::String(i < 0 ? "Duck " : "Ride ") + juce::String(std::abs(i));
-             });
-        breath(grain, pa::grainBreath);
+        // Wear has no type: its dropouts and skew take the selector's place, their
+        // names just above the selectors' captions.
+        const float wearRow = selectorCaptionRow - smallSkirt * 0.5f - 21.0f;
+        control(pa::wearDropouts,
+                {moduleCentre(pa::wear) - smallSpread, wearRow},
+                smallSkirt,
+                "DROPOUTS",
+                Control::Kind::small);
+        control(pa::wearSkew,
+                {moduleCentre(pa::wear) + smallSpread, wearRow},
+                smallSkirt,
+                "SKEW",
+                Control::Kind::small);
+        main(pa::wear, pa::wearLoss, "LOSS");
+        small(pa::wear, {{pa::wearBreath, "BREATH"}});
 
-        // Wear
-        auto& wear = panel(pa::wear);
-        main(wear, pa::wearLoss, "Loss");
-        knob(wear, pa::wearDropouts, "Dropouts", percentText);
-        knob(wear, pa::wearSkew, "Skew", percentText);
-        breath(wear, pa::wearBreath);
+        stage(pa::crush,
+              pa::crushFlavour,
+              "FLAVOUR",
+              {"SOFT", "HARD", juce::String::fromUTF8("\xce\xbc-LAW"), "JITTER"});
+        main(pa::crush, pa::crushBits, "BITS");
+        small(pa::crush, {{pa::crushRate, "RATE"}, {pa::crushBreath, "BREATH"}});
 
-        // Crush
-        auto& crush = panel(pa::crush);
-        selector(crush,
-                 pa::crushFlavour,
-                 {"Soft", "Hard", juce::String::fromUTF8("\xce\xbc-law"), "Jitter"},
-                 "Flavour");
-        main(crush,
-             pa::crushBits,
-             "Bits",
-             [](double v) { return juce::String(v, std::abs(v - std::round(v)) < 0.05 ? 0 : 1) + " bit"; });
-        knob(crush, pa::crushRate, "Rate", [](double v) { return shortHz(v); });
-        breath(crush, pa::crushBreath);
-
-        // Output
-        for (const int index : {pa::tone, pa::lowCut, pa::highCut, pa::width, pa::output})
-            outputs_.push_back(&addKnob(index));
-        outputs_[0]->format = signedPercent;
-        outputs_[1]->format = [](double hz) { return hz <= 20.5 ? juce::String("Off") : shortHz(hz); };
-        outputs_[2]->format = [](double hz) { return hz >= 19900.0 ? juce::String("Off") : shortHz(hz); };
-        outputs_[3]->format = percentText;
-
-        // Every knob is a chicken head over a printed scale, its legends printed on the panel.
-        std::vector<Knob*> all{age_, pace_};
-        all.insert(all.end(), outputs_.begin(), outputs_.end());
-        for (auto& p : panels_)
-        {
-            all.push_back(p.main);
-            all.insert(all.end(), p.knobs.begin(), p.knobs.end());
-        }
-        for (auto* k : all)
-        {
-            k->setStyle(Knob::Style::pointer);
-            if (auto* l = labelFor(*k))
-                l->setColour(juce::Label::textColourId, theme_.hardware.legend);
-        }
-        for (auto& p : panels_)
-            if (p.caption != nullptr)
-                p.caption->setColour(juce::Label::textColourId, theme_.hardware.legend);
+        // The master plate.
+        control(pa::age, ageCentre, ageSkirt, "AGE", Control::Kind::age);
+        control(pa::pace, paceCentre, paceSkirt, "PACE", Control::Kind::pace);
+        control(pa::tone, {outputX[0], smallRows[0]}, smallSkirt, "TONE", Control::Kind::small);
+        control(pa::lowCut, {outputX[1], smallRows[0]}, smallSkirt, "LOW CUT", Control::Kind::small);
+        control(pa::highCut, {outputX[2], smallRows[0]}, smallSkirt, "HIGH CUT", Control::Kind::small);
+        control(pa::width,
+                {(outputX[0] + outputX[1]) * 0.5f, smallRows[1]},
+                smallSkirt,
+                "WIDTH",
+                Control::Kind::small);
+        control(pa::output,
+                {(outputX[1] + outputX[2]) * 0.5f, smallRows[1]},
+                smallSkirt,
+                "OUTPUT",
+                Control::Kind::small);
 
         // The preset selector and the lamp.
-        previous_.onClick = [this] { stepPreset(-1); };
-        next_.onClick = [this] { stepPreset(1); };
+        const auto arrow = [](bool forward)
+        {
+            return [forward](juce::Graphics& g, juce::Rectangle<float> r)
+            {
+                const auto c = r.getCentre();
+                const float s = std::min(r.getWidth(), r.getHeight()) * 0.32f;
+                juce::Path p;
+                if (forward)
+                    p.addTriangle(c.x - s * 0.7f, c.y - s, c.x - s * 0.7f, c.y + s, c.x + s * 0.8f, c.y);
+                else
+                    p.addTriangle(c.x + s * 0.7f, c.y - s, c.x + s * 0.7f, c.y + s, c.x - s * 0.8f, c.y);
+                g.fillPath(p);
+            };
+        };
+        previous_.icon = arrow(false);
+        next_.icon = arrow(true);
+        previous_.setTooltip("Previous preset");
+        next_.setTooltip("Next preset");
+        previous_.onPress = [this] { stepPreset(-1); };
+        next_.onPress = [this] { stepPreset(1); };
         display_.onClick = [this] { showPresets(); };
+        previous_.setBounds(previousKey.toNearestInt());
+        next_.setBounds(nextKey.toNearestInt());
+        display_.setBounds(displayBezel.reduced(6.0f).toNearestInt());
+        lamp_.setBounds(juce::Rectangle<float>(40.0f, 46.0f).withCentre(lampCentre).toNearestInt());
+        lamp_.setTooltip("On");
         for (auto* c : std::initializer_list<juce::Component*>{&previous_, &next_, &display_, &lamp_})
-            addAndMakeVisible(c);
+            face_.addAndMakeVisible(c);
 
-        select(selectedStage());
         EffectPresetLibrary::instance().addChangeListener(this);
         paramsChanged();
     }
 
     ~PatinaCard() override { EffectPresetLibrary::instance().removeChangeListener(this); }
 
-    // ----- for the tiles ------------------------------------------------------------------------
-    int selected() const noexcept { return selected_; }
+    // ----- for the windows ----------------------------------------------------------------------
     bool stageOn(int stage) const noexcept { return param(pa::onParam(stage)) >= 0.5f; }
     int historyCount() const noexcept { return count_; }
     std::uint64_t historyTotal() const noexcept { return total_; }
@@ -554,35 +839,6 @@ public:
                                 a);
         }
     }
-    // The short name of a stage's choice ("Tube", "Spring").
-    juce::String choiceName(int stage) const
-    {
-        static constexpr int choiceParams[] = {
-            pa::heatCharacter, pa::chamberType, pa::driftMachine, pa::grainSource, -1, pa::crushFlavour};
-        const int index = choiceParams[stage];
-        if (index < 0)
-            return {};
-        const auto& choices = info(index).choices;
-        const auto i = static_cast<size_t>(
-            std::clamp(static_cast<int>(std::lround(param(index))), 0, static_cast<int>(choices.size()) - 1));
-        auto name = juce::String::fromUTF8(choices[i].c_str());
-        return name.replace("Tape hiss", "Hiss").replace("Room air", "Air").replace("Hum ", "");
-    }
-
-    void select(int stage)
-    {
-        selected_ = std::clamp(stage, 0, pa::stageCount - 1);
-        selectedStage() = selected_;
-        for (int s = 0; s < pa::stageCount; ++s)
-            for (auto* c : panels_[static_cast<size_t>(s)].components)
-                c->setVisible(s == selected_ && !isCollapsed());
-        dimStage();
-        for (auto& t : tiles_)
-            t->repaint();
-        if (!getLocalBounds().isEmpty())
-            resized();
-        repaint();
-    }
 
     void toggleStage(int stage)
     {
@@ -593,130 +849,123 @@ public:
         endGesture();
     }
 
-    int preferredWidth() const override
+    // Moves the keyboard focus to a stage's window.
+    void focusWindow(int stage)
     {
-        return ageCellWidth + knobCellWidth() + 2 * ruleWidth() + stagePanelWidth() + 5 * knobCellWidth() +
-               4 * theme_.spacing.sm + 2 * faceInset;
-    }
-    int preferredBodyHeight() const override { return 372; }
-
-    void paint(juce::Graphics& g) override
-    {
-        ModuleCard::paint(g);
-        if (isCollapsed())
-            return;
-        paintFace(g);
-        // The selected stage's name over its controls.
-        g.setFont(theme_.captionCaps());
-        hardware::drawLegend(g,
-                             theme_,
-                             juce::String(stageNames[static_cast<size_t>(selected_)]).toUpperCase(),
-                             captionArea_.toFloat(),
-                             juce::Justification::centredLeft,
-                             theme_.hardware.legend.withAlpha(0.85f));
+        windows_[static_cast<size_t>(std::clamp(stage, 0, pa::stageCount - 1))]->grabKeyboardFocus();
     }
 
 private:
-    static constexpr int ageRing = 56;
-    static constexpr int ageCellWidth = 84;
-    static constexpr int bigRing = 46;
-    static constexpr int bigCellWidth = 84;
-    static constexpr int faceInset = 8; // the panel's margin round its parts
-    static constexpr int headerH = 40;  // the nameplate's row
-    static constexpr int presetW = 280; // the preset selector's bezel
-    static constexpr int presetH = 32;
-    static constexpr int lampBox = 40;         // the lamp with its glow
-    static constexpr int nameplateBorder = 14; // the plate image's screw ends, drawn at this size
-
-    struct Panel
+    // A knob bound to its parameter on the face, its name printed under it.
+    Knob&
+    control(int index, juce::Point<float> centre, float skirt, const juce::String& name, Control::Kind kind)
     {
-        std::vector<juce::Component*> components;
-        RotarySelector* selector = nullptr;
-        juce::Label* caption = nullptr;
-        Knob* main = nullptr;
-        std::vector<Knob*> knobs;
-    };
-
-    int ruleWidth() const noexcept { return 2 * theme_.spacing.sm + 1; }
-    int selectorWidth() const noexcept
-    {
-        return selectors_.empty() ? 104 : selectors_.front().selector->preferredWidth();
-    }
-    int panelWidth(const Panel& p) const noexcept
-    {
-        return (p.selector != nullptr ? selectorWidth() : 0) + bigCellWidth +
-               static_cast<int>(p.knobs.size()) * knobCellWidth();
-    }
-    int stagePanelWidth() const noexcept
-    {
-        int w = 0;
-        for (const auto& p : panels_)
-            w = std::max(w, panelWidth(p));
-        return w;
-    }
-
-    Panel& panel(int stage) { return panels_[static_cast<size_t>(stage)]; }
-
-    struct Selector
-    {
-        RotarySelector* selector = nullptr;
-        int index = 0;
-    };
-
-    void selector(Panel& p, int index, std::vector<juce::String> labels, const juce::String& caption)
-    {
-        auto& s = ownedSelectors_.emplace_back(std::make_unique<RotarySelector>(theme_));
-        s->setPositions(std::move(labels), {}, caption);
-        s->setHue(colour());
-        s->setHardware(true);
-        s->setDefault(static_cast<int>(std::lround(info(index).defaultValue)));
-        s->setSelected(static_cast<int>(std::lround(param(index))), juce::dontSendNotification);
-        s->onChange = [this, index](int value) { setParam(index, static_cast<float>(value)); };
-        const auto name = juce::String(info(index).name);
-        s->onGestureBegin = [this, name] { beginGesture(name); };
-        s->onGestureEnd = [this] { endGesture(); };
-        addChildComponent(*s);
-        auto& label = ownedLabels_.emplace_back(std::make_unique<juce::Label>());
-        label->setText(caption, juce::dontSendNotification);
-        label->setFont(theme_.caption());
-        label->setJustificationType(juce::Justification::centred);
-        label->setInterceptsMouseClicks(false, false);
-        addChildComponent(*label);
-        p.selector = s.get();
-        p.caption = label.get();
-        p.components.push_back(s.get());
-        p.components.push_back(label.get());
-        selectors_.push_back({s.get(), index});
-    }
-
-    // A knob of a stage's panel (hidden until its stage is selected).
-    Knob& knob(Panel& p, int index, const juce::String& label, std::function<juce::String(double)> format)
-    {
-        auto& k = addKnob(index, label);
-        k.format = std::move(format);
-        k.setVisible(false);
-        p.components.push_back(&k);
-        if (auto* l = labelFor(k))
-        {
-            l->setVisible(false);
-            p.components.push_back(l);
-        }
-        p.knobs.push_back(&k);
+        auto& k = bindRenderedKnob(index, centre, skirt, skirt * knobImageRatio, part("knob-pointer.png"));
+        k.format = formatFor(index);
+        knobByParam_[index] = &k;
+        face_.controls.push_back({index, centre, skirt, name, kind, {}});
         return k;
     }
 
-    void main(Panel& p,
-              int index,
-              const juce::String& label,
-              std::function<juce::String(double)> format = percentText)
+    // A stage's type selector: a knob that clicks between its positions, fanned
+    // across its top, their legends printed round it.
+    void stage(int stage, int index, const juce::String& caption, juce::StringArray legends)
     {
-        auto& k = knob(p, index, label, std::move(format));
-        p.knobs.pop_back();
-        k.setRingSize(bigRing);
-        p.main = &k;
+        const juce::Point<float> centre(moduleCentre(stage), selectorRow);
+        auto& k = bindRenderedKnob(
+            index, centre, selectorSkirt, selectorSkirt * knobImageRatio, part("knob-pointer.png"));
+        k.setInterval(1.0);
+        k.setSweep(juce::degreesToRadians(selectorStep * static_cast<float>(legends.size() - 1)));
+        const auto& choices = info(index).choices;
+        knobByParam_[index] = &k;
+        k.format = [choices](double v)
+        {
+            const auto i = static_cast<size_t>(
+                std::clamp(static_cast<int>(std::lround(v)), 0, static_cast<int>(choices.size()) - 1));
+            return juce::String::fromUTF8(choices[i].c_str());
+        };
+        face_.controls.push_back(
+            {index, centre, selectorSkirt, caption, Control::Kind::selector, std::move(legends)});
     }
 
-    void breath(Panel& p, int index) { knob(p, index, "Breath", percentText); }
+    void main(int stage, int index, const juce::String& name)
+    {
+        control(index, {moduleCentre(stage), mainRow}, mainSkirt, name, Control::Kind::main);
+    }
+
+    struct Named
+    {
+        int index;
+        const char* name;
+    };
+    // A stage's small knobs: two to a row, the rows' knobs centred.
+    void small(int stage, std::vector<Named> knobs)
+    {
+        for (size_t i = 0; i < knobs.size(); ++i)
+        {
+            const size_t row = i / 2;
+            const bool alone = row * 2 + 1 >= knobs.size() && i % 2 == 0;
+            const float x =
+                alone ? moduleCentre(stage) : moduleCentre(stage) + (i % 2 == 0 ? -smallSpread : smallSpread);
+            control(knobs[i].index, {x, smallRows[row]}, smallSkirt, knobs[i].name, Control::Kind::small);
+        }
+    }
+
+    std::function<juce::String(double)> formatFor(int index)
+    {
+        switch (index)
+        {
+            case pa::age:
+                return percentText;
+            case pa::pace:
+                return [](double v) { return juce::String(0.05 * std::pow(30.0, v * 0.01), 2) + " Hz"; };
+            case pa::heatTone:
+            case pa::chamberTone:
+            case pa::tone:
+                return signedPercent;
+            case pa::chamberDecay:
+                return [this](double v)
+                {
+                    const float s = pa::chamberDecaySeconds(
+                        static_cast<int>(std::lround(param(pa::chamberType))), static_cast<float>(v) * 0.01f);
+                    return juce::String(s, 1) + " s";
+                };
+            case pa::driftRate:
+                return [](double v)
+                {
+                    return juce::String(std::pow(2.0, 2.0 * v * 0.01 - 1.0), 2) +
+                           juce::String::fromUTF8("\xc3\x97");
+                };
+            case pa::grainTexture:
+                return [this](double v) { return textureText(v); };
+            case pa::grainFollow:
+                return [](double v)
+                {
+                    const int i = static_cast<int>(std::lround(v));
+                    return i == 0 ? juce::String("Steady")
+                                  : juce::String(i < 0 ? "Duck " : "Ride ") + juce::String(std::abs(i));
+                };
+            case pa::crushBits:
+                return [](double v)
+                { return fixedText(v, std::abs(v - std::round(v)) < 0.05 ? 0 : 1) + " bit"; };
+            case pa::crushRate:
+                return [](double v) { return shortHz(v); };
+            case pa::lowCut:
+                return [](double hz) { return hz <= 20.5 ? juce::String("Off") : shortHz(hz); };
+            case pa::highCut:
+                return [](double hz) { return hz >= 19900.0 ? juce::String("Off") : shortHz(hz); };
+            case pa::output:
+                return [](double db)
+                {
+                    const int tenths = juce::roundToInt(db * 10.0);
+                    return (tenths < 0 ? juce::String::fromUTF8("\xe2\x88\x92") : juce::String()) +
+                           juce::String(std::abs(tenths) / 10) + "." + juce::String(std::abs(tenths) % 10) +
+                           " dB";
+                };
+            default:
+                return percentText;
+        }
+    }
 
     juce::String textureText(double v) const
     {
@@ -726,29 +975,74 @@ private:
             return juce::String(static_cast<int>(std::lround(2.0 * std::pow(150.0, t)))) + " /s";
         return percentText(v);
     }
-
-    void updateTexture()
+    juce::String textureName() const
     {
         const int source = static_cast<int>(std::lround(param(pa::grainSource)));
-        const char* names[] = {"Density", "Colour", "Buzz", "Buzz", "Tone"};
-        const auto i = static_cast<size_t>(std::clamp(source, 0, 4));
-        if (auto* l = labelFor(*texture_))
-            l->setText(names[i], juce::dontSendNotification);
-        texture_->repaint();
+        const char* names[] = {"DENSITY", "COLOUR", "BUZZ", "BUZZ", "TONE"};
+        return names[std::clamp(source, 0, 4)];
     }
 
-    // A stage that is off: its controls fade (and stay usable).
-    void dimStage()
+    juce::String valueText(int index) const
     {
-        const float alpha = stageOn(selected_) ? 1.0f : 0.5f;
-        for (auto* c : panels_[static_cast<size_t>(selected_)].components)
-            c->setAlpha(alpha);
+        const auto it = knobByParam_.find(index);
+        return it != knobByParam_.end() && it->second->format ? it->second->format(param(index))
+                                                              : juce::String();
+    }
+
+    // The space sets the decay's seconds and the source names the texture knob and
+    // sets its unit: those two change print beyond their own knob.
+    void controlMoved(Knob& knob) override
+    {
+        if (&knob == knobByParam_[pa::chamberType] || &knob == knobByParam_[pa::grainSource])
+            face_.repaint();
+        else
+            RenderedCard::controlMoved(knob);
+    }
+
+    void paramsChanged() override
+    {
+        for (int s = 0; s < pa::stageCount; ++s)
+        {
+            auto& b = *buttons_[static_cast<size_t>(s)];
+            b.setToggleState(stageOn(s), juce::dontSendNotification);
+            b.setTooltip(juce::String(stageNames[static_cast<size_t>(s)]) + (stageOn(s) ? ": on" : ": off"));
+            windows_[static_cast<size_t>(s)]->repaint();
+        }
+        showPreset();
+        lamp_.repaint();
+        face_.repaint();
+    }
+
+    void framesArrived(double) override
+    {
+        const auto* t = telemetry();
+        if (t != telemetrySource_)
+        {
+            telemetrySource_ = t;
+            cursor_ = t != nullptr ? t->framesWritten() : 0;
+        }
+        if (t != nullptr)
+        {
+            std::array<Telemetry::Frame, 64> frames;
+            for (int n = 64; n == 64;)
+            {
+                n = t->read(cursor_, frames.data(), 64);
+                for (int i = 0; i < n; ++i)
+                {
+                    history_[static_cast<size_t>(head_)] = frames[static_cast<size_t>(i)];
+                    head_ = (head_ + 1) % historyFrames;
+                    count_ = std::min(historyFrames, count_ + 1);
+                    ++total_;
+                }
+            }
+        }
+        for (auto& w : windows_)
+            w->repaint();
     }
 
     // ----- presets ------------------------------------------------------------------------------
     // The same list as the header's preset bar (factory, then the user's), so the
     // two stay in step.
-
     void changeListenerCallback(juce::ChangeBroadcaster*) override { showPreset(); }
 
     int presetIndex() const { return EffectPresetLibrary::instance().match(pa::type, params_); }
@@ -761,7 +1055,6 @@ private:
         else
             display_.show(juce::String(i + 1).paddedLeft('0', 2),
                           EffectPresetLibrary::instance().presets(pa::type)[static_cast<size_t>(i)].name);
-        display_.setTooltip("Presets");
     }
 
     void applyPreset(int index)
@@ -800,451 +1093,66 @@ private:
                        });
     }
 
-    // ----- the face -----------------------------------------------------------------------------
-
-    juce::Font plateTitleFont() const
-    {
-        return theme_.font(Theme::Face::ui, 21.0f, theme_.fonts.weight.semibold).withExtraKerningFactor(0.3f);
-    }
-    juce::Font plateSubtitleFont() const
-    {
-        return theme_.font(Theme::Face::ui, 9.0f, theme_.fonts.weight.semibold).withExtraKerningFactor(0.18f);
-    }
-    int plateWidth() const
-    {
-        const float title = juce::GlyphArrangement::getStringWidth(plateTitleFont(), "PATINA");
-        const float subtitle = juce::GlyphArrangement::getStringWidth(plateSubtitleFont(), "VINTAGE COLOUR");
-        return static_cast<int>(std::ceil(title + subtitle)) + 2 * nameplateBorder + 2 * 12 + 24;
-    }
-
-    // The panel, its worn edge, the nameplate and the preset's bezel: drawn
-    // once per size and scale into an image, as they only change then.
-    void paintFace(juce::Graphics& g)
-    {
-        const float scale = g.getInternalContext().getPhysicalPixelScaleFactor();
-        if (!faceCache_.isValid() || cacheScale_ != scale)
-        {
-            cacheScale_ = scale;
-            const auto w = std::max(1, juce::roundToInt(static_cast<float>(face_.getWidth()) * scale));
-            const auto h = std::max(1, juce::roundToInt(static_cast<float>(face_.getHeight()) * scale));
-            faceCache_ = juce::Image(juce::Image::ARGB, w, h, true);
-            juce::Graphics cg(faceCache_);
-            cg.addTransform(juce::AffineTransform::translation(static_cast<float>(-face_.getX()),
-                                                               static_cast<float>(-face_.getY()))
-                                .scaled(scale));
-            drawFace(cg);
-        }
-        g.drawImage(faceCache_, face_.toFloat());
-    }
-
-    void drawFace(juce::Graphics& g)
-    {
-        const auto& hw = theme_.hardware;
-        const auto bounds = face_.toFloat();
-        juce::Graphics::ScopedSaveState save(g);
-        juce::Path clip;
-        clip.addRoundedRectangle(bounds, theme_.radius.md);
-        g.reduceClipRegion(clip);
-        g.setImageResamplingQuality(juce::Graphics::highResamplingQuality);
-
-        // The panel: worn hammertone, the same at every Age.
-        g.setColour(hw.panel);
-        g.fillRect(bounds);
-        if (const auto& worn = faceImage("panel-aged.jpg"); worn.isValid())
-            g.drawImage(worn, bounds, juce::RectanglePlacement::fillDestination);
-        // The edges rubbed back toward bare metal.
-        constexpr float wearWidth = 20.0f, wearAlpha = 0.7f;
-        for (float d = 0.0f; d < wearWidth; d += 1.0f)
-        {
-            const float t = 1.0f - d / wearWidth;
-            g.setColour(hw.panelWear.withAlpha(wearAlpha * t * t * 0.22f));
-            g.drawRect(bounds.reduced(d), 1.0f);
-        }
-        g.setColour(hw.highlight.withAlpha(0.12f));
-        g.drawHorizontalLine(face_.getY() + 1, bounds.getX(), bounds.getRight());
-
-        drawNameplate(g);
-
-        // The preset selector's recess.
-        const auto bezel = bezel_.toFloat();
-        g.setColour(hw.highlight.withAlpha(0.14f));
-        g.fillRoundedRectangle(bezel.translated(0.0f, 1.0f), 5.0f);
-        g.setColour(hw.bezel);
-        g.fillRoundedRectangle(bezel, 5.0f);
-        g.setGradientFill(juce::ColourGradient(hw.shadow.withAlpha(0.9f),
-                                               0.0f,
-                                               bezel.getY(),
-                                               hw.shadow.withAlpha(0.0f),
-                                               0.0f,
-                                               bezel.getY() + 4.0f,
-                                               false));
-        g.fillRoundedRectangle(bezel.withHeight(5.0f), 5.0f);
-
-        // The rules between the groups of knobs, engraved.
-        for (const int x : dividers_)
-        {
-            g.setColour(hw.shadow.withAlpha(0.55f));
-            g.drawVerticalLine(x, static_cast<float>(dividerTop_), static_cast<float>(dividerBottom_));
-            g.setColour(hw.highlight.withAlpha(0.1f));
-            g.drawVerticalLine(x + 1, static_cast<float>(dividerTop_), static_cast<float>(dividerBottom_));
-        }
-    }
-
-    // The nameplate, nine-sliced from its image so the screws at its ends keep
-    // their shape and the wear its scale at any width.
-    void drawNameplate(juce::Graphics& g)
-    {
-        const auto& hw = theme_.hardware;
-        const auto plate = plate_.toFloat();
-        g.setColour(hw.shadow.withAlpha(0.6f));
-        g.fillRect(plate.translated(0.0f, 2.0f));
-        if (const auto& image = faceImage("nameplate.jpg"); image.isValid())
-        {
-            // The image's border is a third of its height; drawn at nameplateBorder.
-            const int src = image.getHeight() * 3 / 10;
-            const int sw = image.getWidth(), sh = image.getHeight();
-            const float b = static_cast<float>(nameplateBorder);
-            const float scale = b / static_cast<float>(src);
-            const std::array<int, 4> sx{0, src, sw - src, sw}, sy{0, src, sh - src, sh};
-            const std::array<float, 4> dx{
-                plate.getX(), plate.getX() + b, plate.getRight() - b, plate.getRight()};
-            const std::array<float, 4> dy{
-                plate.getY(), plate.getY() + b, plate.getBottom() - b, plate.getBottom()};
-            for (size_t row = 0; row < 3; ++row)
-                for (size_t col = 0; col < 3; ++col)
-                {
-                    const juce::Rectangle<int> source(
-                        sx[col], sy[row], sx[col + 1] - sx[col], sy[row + 1] - sy[row]);
-                    const auto dest = juce::Rectangle<float>::leftTopRightBottom(
-                        dx[col], dy[row], dx[col + 1], dy[row + 1]);
-                    if (source.isEmpty() || dest.isEmpty())
-                        continue;
-                    // Corners as they are; edges and the middle repeated at the corners' scale.
-                    const auto piece = image.getClippedImage(source);
-                    const float tw = static_cast<float>(source.getWidth()) * scale;
-                    const float th = static_cast<float>(source.getHeight()) * scale;
-                    const int nx = col == 1 ? std::max(1, juce::roundToInt(dest.getWidth() / tw)) : 1;
-                    const int ny = row == 1 ? std::max(1, juce::roundToInt(dest.getHeight() / th)) : 1;
-                    const float w = dest.getWidth() / static_cast<float>(nx);
-                    const float h = dest.getHeight() / static_cast<float>(ny);
-                    for (int y = 0; y < ny; ++y)
-                        for (int x = 0; x < nx; ++x)
-                            g.drawImage(piece,
-                                        juce::Rectangle<float>(dest.getX() + w * static_cast<float>(x),
-                                                               dest.getY() + h * static_cast<float>(y),
-                                                               w,
-                                                               h),
-                                        juce::RectanglePlacement::stretchToFit);
-                }
-        }
-        else
-        {
-            g.setColour(hw.plate);
-            g.fillRect(plate);
-        }
-        // The lettering, worn into the enamel.
-        auto text = plate.reduced(static_cast<float>(nameplateBorder) + 6.0f, 0.0f);
-        g.setFont(plateTitleFont());
-        g.setColour(hw.ink.withAlpha(0.85f));
-        const float titleW = juce::GlyphArrangement::getStringWidth(plateTitleFont(), "PATINA");
-        g.drawText("PATINA", text.removeFromLeft(titleW + 4.0f), juce::Justification::centredLeft, false);
-        text.removeFromLeft(8.0f);
-        g.setColour(hw.ink.withAlpha(0.35f));
-        g.fillRect(text.removeFromLeft(1.0f).withSizeKeepingCentre(1.0f, 20.0f));
-        text.removeFromLeft(9.0f);
-        g.setFont(plateSubtitleFont());
-        g.setColour(hw.ink.withAlpha(0.8f));
-        const auto lines = text.withSizeKeepingCentre(text.getWidth(), 24.0f);
-        g.drawText("VINTAGE COLOUR", lines.withHeight(12.0f), juce::Justification::centredLeft, false);
-        g.drawText("PROCESSOR", lines.withTrimmedTop(12.0f), juce::Justification::centredLeft, false);
-    }
-
-    void layoutBody(juce::Rectangle<int> body) override
-    {
-        face_ = body.expanded(theme_.spacing.sm, theme_.spacing.xs);
-        faceCache_ = {};
-        body = body.reduced(faceInset, faceInset / 2);
-
-        // The top row: nameplate left, preset selector and lamp right.
-        auto header = body.removeFromTop(headerH);
-        body.removeFromTop(theme_.spacing.md);
-        plate_ = header.removeFromLeft(plateWidth()).withSizeKeepingCentre(plateWidth(), headerH);
-        lamp_.setBounds(header.removeFromRight(lampBox).withSizeKeepingCentre(lampBox, lampBox));
-        header.removeFromRight(theme_.spacing.md);
-        bezel_ = header.removeFromRight(presetW).withSizeKeepingCentre(presetW, presetH);
-        {
-            auto inner = bezel_.reduced(2);
-            previous_.setBounds(inner.removeFromLeft(presetH - 4));
-            inner.removeFromLeft(2);
-            next_.setBounds(inner.removeFromRight(presetH - 4));
-            inner.removeFromRight(2);
-            display_.setBounds(inner);
-        }
-
-        const int valueH = static_cast<int>(theme_.fonts.size.value) + 4;
-        const int labelH = static_cast<int>(theme_.fonts.size.caption) + 4;
-        const int ageCellH = ageRing + 6 + valueH + labelH;
-        const int bigCellH = bigRing + 6 + valueH + labelH;
-        const int selectorH = selectorWidth() > 0 && !selectors_.empty()
-                                  ? selectors_.front().selector->preferredHeight() + labelH
-                                  : 0;
-        const int captionH = labelH;
-        const int controlsH =
-            std::max({ageCellH, bigCellH + captionH, selectorH + captionH, knobCellHeight() + captionH});
-        auto tiles = body.removeFromTop(std::max(96, body.getHeight() - controlsH - theme_.spacing.sm));
-        body.removeFromTop(theme_.spacing.sm);
-        // Six windows across.
-        const int gap = theme_.spacing.md;
-        const int tileW = (tiles.getWidth() - gap * (pa::stageCount - 1)) / pa::stageCount;
-        for (int s = 0; s < pa::stageCount; ++s)
-        {
-            tiles_[static_cast<size_t>(s)]->setBounds(tiles.removeFromLeft(tileW));
-            tiles.removeFromLeft(gap);
-        }
-
-        auto controls = body.removeFromTop(controlsH);
-        dividers_.clear();
-        dividerTop_ = controls.getY() + 6;
-        dividerBottom_ = controls.getBottom() - 4;
-        const auto rule = [&]
-        {
-            controls.removeFromLeft(theme_.spacing.sm);
-            dividers_.push_back(controls.getX());
-            controls.removeFromLeft(theme_.spacing.sm + 1);
-        };
-        // Every label sits on the row's bottom line.
-        {
-            auto cell = controls.removeFromLeft(ageCellWidth);
-            if (auto* label = labelFor(*age_))
-                label->setBounds(cell.removeFromBottom(labelH));
-            age_->setBounds(cell.removeFromBottom(ageCellH - labelH - 6));
-            layoutKnobs(
-                controls.removeFromLeft(knobCellWidth()).removeFromBottom(knobCellHeight()), 1, {pace_});
-        }
-        rule();
-        auto stageArea = controls.removeFromLeft(stagePanelWidth());
-        captionArea_ = stageArea.withHeight(captionH).withTrimmedLeft(theme_.spacing.xs);
-        for (auto& p : panels_)
-        {
-            auto area = stageArea.withTrimmedTop(captionH);
-            if (p.selector != nullptr)
-            {
-                auto cell = area.removeFromLeft(selectorWidth());
-                p.caption->setBounds(cell.removeFromBottom(labelH));
-                p.selector->setBounds(cell.removeFromBottom(p.selector->preferredHeight()));
-            }
-            {
-                auto cell = area.removeFromLeft(bigCellWidth);
-                if (auto* label = labelFor(*p.main))
-                    label->setBounds(cell.removeFromBottom(labelH));
-                p.main->setBounds(cell.removeFromBottom(bigCellH - labelH - 6));
-            }
-            // The panel is as wide as the widest stage's controls: a stage with fewer
-            // spreads its knobs across the rest, rather than leaving a gap before
-            // the output section.
-            layoutKnobs(area.removeFromBottom(knobCellHeight()), static_cast<int>(p.knobs.size()), p.knobs);
-        }
-        rule();
-        layoutKnobs(
-            controls.removeFromLeft(5 * knobCellWidth()).removeFromBottom(knobCellHeight()), 5, outputs_);
-    }
-
-    void paramsChanged() override
-    {
-        for (const auto& s : selectors_)
-            s.selector->setSelected(static_cast<int>(std::lround(param(s.index))),
-                                    juce::dontSendNotification);
-        for (auto& t : tiles_)
-            t->sync();
-        updateTexture();
-        dimStage();
-        showPreset();
-        lamp_.repaint();
-        // The decay's seconds depend on the space.
-        for (auto* k : panels_[pa::chamber].knobs)
-            k->repaint();
-        repaint();
-    }
-
-    void framesArrived(double) override
-    {
-        const auto* t = telemetry();
-        if (t != telemetrySource_)
-        {
-            telemetrySource_ = t;
-            cursor_ = t != nullptr ? t->framesWritten() : 0;
-        }
-        if (t != nullptr)
-        {
-            std::array<Telemetry::Frame, 64> frames;
-            for (int n = 64; n == 64;)
-            {
-                n = t->read(cursor_, frames.data(), 64);
-                for (int i = 0; i < n; ++i)
-                {
-                    history_[static_cast<size_t>(head_)] = frames[static_cast<size_t>(i)];
-                    head_ = (head_ + 1) % historyFrames;
-                    count_ = std::min(historyFrames, count_ + 1);
-                    ++total_;
-                }
-            }
-        }
-        for (auto& tile : tiles_)
-            tile->repaint();
-    }
-
-    std::array<std::unique_ptr<StageTile>, pa::stageCount> tiles_;
-    std::array<Panel, pa::stageCount> panels_;
-    std::vector<std::unique_ptr<RotarySelector>> ownedSelectors_;
-    std::vector<std::unique_ptr<juce::Label>> ownedLabels_;
-    std::vector<Selector> selectors_;
-    std::vector<Knob*> outputs_;
-    Knob* age_ = nullptr;
-    Knob* pace_ = nullptr;
-    Knob* texture_ = nullptr;
-    int selected_ = pa::heat;
-    std::vector<int> dividers_;
-    int dividerTop_ = 0, dividerBottom_ = 0;
-    juce::Rectangle<int> captionArea_, face_, plate_, bezel_;
-    juce::Image faceCache_;
-    float cacheScale_ = 0.0f;
+    Face face_;
+    std::array<std::unique_ptr<StageWindow>, pa::stageCount> windows_;
+    std::array<std::unique_ptr<StageButton>, pa::stageCount> buttons_;
+    std::map<int, Knob*> knobByParam_;
 
     std::vector<Telemetry::Frame> history_;
     int head_ = 0, count_ = 0;
     std::uint64_t total_ = 0, cursor_ = 0;
     const Telemetry* telemetrySource_ = nullptr;
 
-    RackKey previous_, next_;
+    HardwareKey previous_, next_;
     PresetDisplay display_;
     Lamp lamp_;
 };
 
 // ----- the window, drawn --------------------------------------------------------------------------
 
-constexpr int tileHeader = 20;     // the name and switch over the window
-constexpr float frameWidth = 4.0f; // the window's bevelled frame
-constexpr float ledHeight = 5.0f, ledWidth = 9.0f, ledGap = 3.0f;
-constexpr int ledCount = 8;
-constexpr float readoutRoom = 18.0f; // a strip along the top of each readout for its figure
-
-StageTile::StageTile(PatinaCard& card, int stage) : card_(card), stage_(stage), power_(card.theme())
+StageWindow::StageWindow(PatinaCard& card, int stage) : card_(card), stage_(stage)
 {
     setWantsKeyboardFocus(true);
-    power_.setClickingTogglesState(false);
-    power_.onClick = [this] { card_.toggleStage(stage_); };
-    addAndMakeVisible(power_);
     setComponentID(juce::String("stage:") + stageNames[static_cast<size_t>(stage)]);
-    sync();
+    setTooltip(stageNames[static_cast<size_t>(stage)]);
 }
 
-void StageTile::sync()
+juce::Rectangle<float> StageWindow::well() const
 {
-    const bool on = card_.stageOn(stage_);
-    power_.setToggleState(on, juce::dontSendNotification);
-    power_.setTooltip(on ? "Switch off" : "Switch on");
-    repaint();
+    const auto glass = glassOf(stage_);
+    return {0.0f, 0.0f, glass.getWidth(), glass.getHeight()};
 }
 
-void StageTile::resized()
+bool StageWindow::hitTest(int x, int y)
 {
-    // The switch just after the name, the pair centred over the window.
-    const auto font = card_.theme().captionCaps();
-    const int nameW = juce::GlyphArrangement::getStringWidthInt(
-        font, juce::String(stageNames[static_cast<size_t>(stage_)]).toUpperCase());
-    const int w = nameW + 6 + StageSwitch::width + 4;
-    const int x = (getWidth() - w) / 2 + nameW + 6 - 2;
-    power_.setBounds(
-        x, (tileHeader - (StageSwitch::height + 6)) / 2, StageSwitch::width + 4, StageSwitch::height + 6);
+    return well().contains(static_cast<float>(x), static_cast<float>(y));
 }
 
-juce::Rectangle<float> StageTile::frame() const
+bool StageWindow::keyPressed(const juce::KeyPress& key)
 {
-    auto r = getLocalBounds().toFloat().reduced(2.0f, 0.0f);
-    r.removeFromTop(static_cast<float>(tileHeader));
-    r.removeFromBottom(ledHeight + 2.0f * ledGap + 2.0f);
-    return r;
-}
-
-juce::Rectangle<float> StageTile::well() const
-{
-    return frame().reduced(frameWidth);
-}
-
-void StageTile::mouseDown(const juce::MouseEvent&)
-{
-    card_.select(stage_);
-}
-
-bool StageTile::keyPressed(const juce::KeyPress& key)
-{
-    const auto move = [&](int to)
-    {
-        to = std::clamp(to, 0, pa::stageCount - 1);
-        card_.select(to);
-        if (auto* parent = getParentComponent())
-            for (auto* child : parent->getChildren())
-                if (auto* tile = dynamic_cast<StageTile*>(child); tile != nullptr && tile->stage_ == to)
-                    tile->grabKeyboardFocus();
-    };
     if (key == juce::KeyPress::leftKey || key == juce::KeyPress::rightKey)
-        move(stage_ + (key == juce::KeyPress::leftKey ? -1 : 1));
-    else if (key == juce::KeyPress::returnKey)
-        card_.select(stage_);
-    else if (key == juce::KeyPress::spaceKey)
+        card_.focusWindow(stage_ + (key == juce::KeyPress::leftKey ? -1 : 1));
+    else if (key == juce::KeyPress::spaceKey || key == juce::KeyPress::returnKey)
         card_.toggleStage(stage_);
     else
         return false;
     return true;
 }
 
-void StageTile::paint(juce::Graphics& g)
+void StageWindow::paint(juce::Graphics& g)
 {
     const auto& theme = card_.theme();
     const auto& hw = theme.hardware;
-    const bool selected = card_.selected() == stage_;
     const bool on = card_.stageOn(stage_);
-    const bool hover = isMouseOver(true);
 
-    // The name, printed beside the switch.
-    {
-        const auto font = theme.captionCaps();
-        g.setFont(font);
-        const auto name = juce::String(stageNames[static_cast<size_t>(stage_)]).toUpperCase();
-        const int nameW = juce::GlyphArrangement::getStringWidthInt(font, name);
-        const auto header = getLocalBounds().removeFromTop(tileHeader).toFloat();
-        hardware::drawLegend(g,
-                             theme,
-                             name,
-                             juce::Rectangle<float>(static_cast<float>(power_.getX() - 6 - nameW + 2),
-                                                    header.getY(),
-                                                    static_cast<float>(nameW + 2),
-                                                    header.getHeight()),
-                             juce::Justification::centredRight,
-                             hw.legend.withAlpha(on ? 1.0f : 0.7f));
-    }
-
-    // The window's frame: bevelled metal, lit amber round the selected stage.
-    const auto f = frame();
-    if (selected)
-    {
-        g.setColour(hw.led.withAlpha(0.25f));
-        g.drawRoundedRectangle(f.expanded(2.5f), 6.0f, 3.0f);
-        g.setColour(hw.led.withAlpha(0.9f));
-        g.drawRoundedRectangle(f.expanded(1.0f), 5.0f, 1.5f);
-    }
-    else if (hover)
-    {
-        g.setColour(hw.highlight.withAlpha(0.3f));
-        g.drawRoundedRectangle(f.expanded(1.0f), 5.0f, 1.0f);
-    }
-    g.setGradientFill(juce::ColourGradient(
-        hw.glassFrameTop, 0.0f, f.getY(), hw.glassFrameBottom, 0.0f, f.getBottom(), false));
-    g.fillRoundedRectangle(f, 4.0f);
-    g.setColour(hw.highlight.withAlpha(0.12f));
-    g.drawHorizontalLine(static_cast<int>(f.getBottom()) - 1, f.getX() + 3.0f, f.getRight() - 3.0f);
-
-    // The glass, lit from behind while the stage is on.
+    // The glass, lit from behind while the stage is on, cut to the bezel's opening.
     const auto glass = well();
+    g.saveState();
+    {
+        juce::Path opening;
+        opening.addRoundedRectangle(glass, openingRadius);
+        g.reduceClipRegion(opening);
+    }
     {
         juce::ColourGradient light(on ? hw.glassCentre : hw.glassOffCentre,
                                    glass.getCentreX(),
@@ -1256,7 +1164,7 @@ void StageTile::paint(juce::Graphics& g)
         if (on)
             light.addColour(0.55, hw.glassMid);
         g.setGradientFill(light);
-        g.fillRoundedRectangle(glass, 2.0f);
+        g.fillRect(glass);
     }
     const auto ink = on ? hw.glassInk : hw.glassMid;
     inks_ = {ink,
@@ -1265,6 +1173,8 @@ void StageTile::paint(juce::Graphics& g)
              ink.withAlpha(0.5f),
              ink.withAlpha(0.16f),
              on ? hw.glassCentre : hw.glassOffCentre};
+    // Switched off, the window goes dark: no readout, no grid, no figure.
+    if (on)
     {
         juce::Graphics::ScopedSaveState save(g);
         const auto p = glass.reduced(1.0f);
@@ -1290,20 +1200,8 @@ void StageTile::paint(juce::Graphics& g)
                 paintCrush(g, p);
                 break;
         }
-        // The stage's choice, printed at the foot of the glass.
-        const auto choice = card_.choiceName(stage_);
-        if (choice.isNotEmpty())
-        {
-            g.setFont(theme.captionCaps());
-            g.setColour(ink.withAlpha(0.7f));
-            g.drawText(
-                choice.toUpperCase(),
-                juce::Rectangle<float>(p.getX() + 5.0f, p.getBottom() - 16.0f, p.getWidth() - 10.0f, 14.0f),
-                juce::Justification::centredLeft,
-                false);
-        }
     }
-    // The shade under the frame's lip and the glass's reflection.
+    // The shade under the bezel's lip and the glass's reflection.
     g.setGradientFill(juce::ColourGradient(hw.shadow.withAlpha(0.45f),
                                            0.0f,
                                            glass.getY(),
@@ -1319,9 +1217,17 @@ void StageTile::paint(juce::Graphics& g)
                                            glass.getX() + glass.getWidth() * 0.12f,
                                            glass.getY() + glass.getHeight() * 0.38f,
                                            false));
-    g.fillRoundedRectangle(glass, 2.0f);
+    g.fillRect(glass);
+    g.restoreState();
+    paintLamps(g);
+    focusRing(g, *this, glass.expanded(3.0f), openingRadius + 3.0f);
+}
 
-    // The lamps: the amount Age and Breath leave, live; dim up to where Age alone puts it.
+void StageWindow::paintLamps(juce::Graphics& g)
+{
+    // The amount Age and Breath leave, live; dim up to where Age alone puts it.
+    const auto& hw = card_.theme().hardware;
+    const bool on = card_.stageOn(stage_);
     const float live =
         on ? std::clamp(card_.newest()[static_cast<size_t>(Telemetry::amountHeat + stage_)], 0.0f, 1.0f)
            : 0.0f;
@@ -1329,8 +1235,8 @@ void StageTile::paint(juce::Graphics& g)
     const int lit = juce::roundToInt(live * static_cast<float>(ledCount));
     const int dim = juce::roundToInt(set * static_cast<float>(ledCount));
     const float rowW = ledCount * ledWidth + (ledCount - 1) * ledGap;
-    float x = f.getCentreX() - rowW * 0.5f;
-    const float y = f.getBottom() + ledGap + 1.0f;
+    float x = static_cast<float>(getWidth()) * 0.5f - rowW * 0.5f;
+    const float y = static_cast<float>(getHeight()) - ledHeight - 1.0f;
     for (int i = 0; i < ledCount; ++i, x += ledWidth + ledGap)
     {
         const auto led = juce::Rectangle<float>(x, y, ledWidth, ledHeight);
@@ -1346,24 +1252,19 @@ void StageTile::paint(juce::Graphics& g)
         {
             g.setColour(hw.ledOff);
             g.fillRoundedRectangle(led, 1.0f);
-            g.setColour(i < dim ? colour.withAlpha(0.4f) : hw.shadow.withAlpha(0.5f));
             if (i < dim)
+            {
+                g.setColour(colour.withAlpha(0.4f));
                 g.fillRoundedRectangle(led.reduced(1.0f), 0.5f);
-            else
-                g.drawHorizontalLine(static_cast<int>(led.getY()), led.getX(), led.getRight());
+            }
         }
     }
 }
 
-void StageTile::paintOverChildren(juce::Graphics& g)
-{
-    focusRing(g, *this, frame().expanded(1.0f), 5.0f);
-}
-
-void StageTile::readout(juce::Graphics& g,
-                        juce::Rectangle<float> p,
-                        const juce::String& text,
-                        juce::Colour colour)
+void StageWindow::readout(juce::Graphics& g,
+                          juce::Rectangle<float> p,
+                          const juce::String& text,
+                          juce::Colour colour)
 {
     g.setFont(card_.theme().value());
     g.setColour(colour);
@@ -1372,7 +1273,7 @@ void StageTile::readout(juce::Graphics& g,
                juce::Justification::centredRight);
 }
 
-void StageTile::scaleLabel(juce::Graphics& g, juce::Rectangle<float> p, const juce::String& text)
+void StageWindow::scaleLabel(juce::Graphics& g, juce::Rectangle<float> p, const juce::String& text)
 {
     g.setFont(card_.theme().caption());
     g.setColour(inks_.textTertiary);
@@ -1479,7 +1380,7 @@ traceArea(const std::vector<float>& values, juce::Rectangle<float> p, const std:
 const juce::PathStrokeType traceStroke(1.5f, juce::PathStrokeType::curved, juce::PathStrokeType::rounded);
 } // namespace
 
-void StageTile::paintHeat(juce::Graphics& g, juce::Rectangle<float> p)
+void StageWindow::paintHeat(juce::Graphics& g, juce::Rectangle<float> p)
 {
     const auto& c = inks_;
     const auto hue = inks_.hue;
@@ -1531,7 +1432,7 @@ void StageTile::paintHeat(juce::Graphics& g, juce::Rectangle<float> p)
     readout(g, p, minusDb(squash), squash >= 0.1f ? hue : c.textTertiary);
 }
 
-void StageTile::paintChamber(juce::Graphics& g, juce::Rectangle<float> p)
+void StageWindow::paintChamber(juce::Graphics& g, juce::Rectangle<float> p)
 {
     const auto& c = inks_;
     const auto hue = inks_.hue;
@@ -1553,7 +1454,7 @@ void StageTile::paintChamber(juce::Graphics& g, juce::Rectangle<float> p)
     readout(g, p, juce::String(rt, 1) + " s", c.textSecondary);
 }
 
-void StageTile::paintDrift(juce::Graphics& g, juce::Rectangle<float> p)
+void StageWindow::paintDrift(juce::Graphics& g, juce::Rectangle<float> p)
 {
     const auto& c = inks_;
     const auto hue = inks_.hue;
@@ -1597,7 +1498,7 @@ void StageTile::paintDrift(juce::Graphics& g, juce::Rectangle<float> p)
             recent >= 0.1f ? hue : c.textTertiary);
 }
 
-void StageTile::paintGrain(juce::Graphics& g, juce::Rectangle<float> p)
+void StageWindow::paintGrain(juce::Graphics& g, juce::Rectangle<float> p)
 {
     const auto& c = inks_;
     const auto hue = inks_.hue;
@@ -1626,7 +1527,7 @@ void StageTile::paintGrain(juce::Graphics& g, juce::Rectangle<float> p)
             noise > 1.0e-6f ? hue : c.textTertiary);
 }
 
-void StageTile::paintWear(juce::Graphics& g, juce::Rectangle<float> p)
+void StageWindow::paintWear(juce::Graphics& g, juce::Rectangle<float> p)
 {
     const auto& c = inks_;
     const auto hue = inks_.hue;
@@ -1664,7 +1565,7 @@ void StageTile::paintWear(juce::Graphics& g, juce::Rectangle<float> p)
     readout(g, p, dip >= 1.0f ? minusDb(dip) : shortHz(cutoff), dip >= 1.0f ? hue : c.textSecondary);
 }
 
-void StageTile::paintCrush(juce::Graphics& g, juce::Rectangle<float> p)
+void StageWindow::paintCrush(juce::Graphics& g, juce::Rectangle<float> p)
 {
     const auto& c = inks_;
     const auto hue = inks_.hue;

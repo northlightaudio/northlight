@@ -434,8 +434,11 @@ void EqGraph::paint(juce::Graphics& g)
                 g.drawEllipse(r.expanded(2.5f), 1.0f);
             }
             g.setColour(on ? c.textOnColour : colour);
-            g.setFont(theme.font(Theme::Face::ui, theme.fonts.size.caption, theme.fonts.weight.semibold));
-            g.drawText(bands_.label(b), r, juce::Justification::centred);
+            // The band's letters, fitted to the node (two letters, HP, fill it).
+            g.setFont(
+                theme.font(Theme::Face::ui, theme.fonts.size.caption - 1.0f, theme.fonts.weight.semibold));
+            g.drawFittedText(
+                bands_.label(b), r.expanded(2.0f).toNearestInt(), juce::Justification::centred, 1, 0.8f);
         }
 
     // A readout for the band under the pointer (or being dragged).

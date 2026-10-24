@@ -95,13 +95,24 @@ juce::String Knob::text() const
     return format ? format(value_) : juce::String(value_, 2);
 }
 
+// The gap between the ring and the value under it, up to 6 px (`spacing.xs` and
+// 2), as much as the room left after the value's line allows.
+float Knob::valueGap(float below) const
+{
+    const float line = static_cast<float>(theme_.lineHeight(theme_.fonts.size.value));
+    return juce::jlimit(0.0f, static_cast<float>(theme_.spacing.xs + 2), below - line);
+}
+
 void Knob::paintPointer(juce::Graphics& g)
 {
     const auto& hw = theme_.hardware;
     const float size = static_cast<float>(ringSize());
     auto area = getLocalBounds().toFloat();
-    const bool room = showValue_ && area.getHeight() >= size + theme_.fonts.size.value + 2.0f;
+    const bool room = showValue_ && area.getHeight() >=
+                                        size + static_cast<float>(theme_.lineHeight(theme_.fonts.size.value));
     const auto ring = area.removeFromTop(room ? size : area.getHeight()).withSizeKeepingCentre(size, size);
+    if (room)
+        area.removeFromTop(valueGap(area.getHeight()));
     const auto centre = ring.getCentre();
     const bool enabled = isEnabled();
     hardware::drawScale(g, theme_, centre, size * 0.5f, startAngle, sweep, 11, 5, enabled);
@@ -115,12 +126,13 @@ void Knob::paintPointer(juce::Graphics& g)
     if (room)
     {
         g.setFont(theme_.value());
-        hardware::drawLegend(g,
-                             theme_,
-                             text(),
-                             area.withHeight(theme_.fonts.size.value + 4.0f),
-                             juce::Justification::centredTop,
-                             enabled ? hw.legend : hw.legend.withAlpha(0.45f));
+        hardware::drawLegend(
+            g,
+            theme_,
+            text(),
+            area.withHeight(static_cast<float>(theme_.lineHeight(theme_.fonts.size.value)) + 2.0f),
+            juce::Justification::centredTop,
+            enabled ? hw.legend : hw.legend.withAlpha(0.45f));
     }
     if (auto* lnf = dynamic_cast<NorthlightLookAndFeel*>(&getLookAndFeel()))
         lnf->drawFocusRing(g, *this, ring, size * 0.5f);
@@ -131,8 +143,11 @@ void Knob::paintBud(juce::Graphics& g)
     const auto& c = theme_.colours;
     const float size = static_cast<float>(ringSize());
     auto area = getLocalBounds().toFloat();
-    const bool room = showValue_ && area.getHeight() >= size + theme_.fonts.size.value + 2.0f;
+    const bool room = showValue_ && area.getHeight() >=
+                                        size + static_cast<float>(theme_.lineHeight(theme_.fonts.size.value));
     const auto ring = area.removeFromTop(room ? size : area.getHeight()).withSizeKeepingCentre(size, size);
+    if (room)
+        area.removeFromTop(valueGap(area.getHeight()));
     const float stroke = std::max(3.0f, std::round(size * 0.085f));
     const auto bounds = ring.reduced(stroke * 1.3f);
     const float radius = bounds.getWidth() * 0.5f;
@@ -200,7 +215,7 @@ void Knob::paintRendered(juce::Graphics& g)
     const auto centre = area.getCentre();
     const float size = static_cast<float>(ringSize());
     const bool enabled = isEnabled();
-    const float angle = (static_cast<float>(fraction()) - 0.5f) * sweep;
+    const float angle = pointerAngle();
     if (renderedPointer_.isValid())
     {
         // Shrunk first to the pixels it covers, so turning it only resamples 1:1.
@@ -245,8 +260,11 @@ void Knob::paint(juce::Graphics& g)
     const auto& c = theme_.colours;
     const float size = static_cast<float>(ringSize());
     auto area = getLocalBounds().toFloat();
-    const bool room = showValue_ && area.getHeight() >= size + theme_.fonts.size.value + 2.0f;
+    const bool room = showValue_ && area.getHeight() >=
+                                        size + static_cast<float>(theme_.lineHeight(theme_.fonts.size.value));
     auto ring = area.removeFromTop(room ? size : area.getHeight()).withSizeKeepingCentre(size, size);
+    if (room)
+        area.removeFromTop(valueGap(area.getHeight()));
     const float stroke = size > 40.0f ? 4.0f : 3.0f;
     const auto arcBounds = ring.reduced(stroke * 0.5f + 1.0f);
     const float radius = arcBounds.getWidth() * 0.5f;

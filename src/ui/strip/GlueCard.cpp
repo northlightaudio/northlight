@@ -314,7 +314,7 @@ public:
         const float start = -sweep * 0.5f;
         // Room outside the arc for its labels; the 240 degree arc reaches half its
         // radius below the centre, so it is 1.5 radii tall.
-        constexpr float labelRoom = 16.0f;
+        constexpr float labelRoom = 20.0f;
         const float thickness = 7.0f;
         const float outside = thickness * 0.5f + labelRoom;
         const float radius = std::max(16.0f,
@@ -350,13 +350,19 @@ public:
             // A few of the steps labelled, outside the arc.
             if (db == 1.0f || db == 4.0f || db == 10.0f || db == 20.0f)
             {
-                const auto at = centre.getPointOnCircumference(radius + thickness * 0.5f + labelRoom * 0.5f,
-                                                               a0 + segment * 0.5f);
+                // The near edge a few px off the arc, whatever the numeral's size.
+                const auto text = juce::String(static_cast<int>(db));
+                const float w = juce::GlyphArrangement::getStringWidth(theme.caption(), text);
+                const float h = theme.caption().getHeight();
+                const float angle = a0 + segment * 0.5f;
+                const float extent =
+                    std::abs(std::sin(angle)) * w * 0.5f + std::abs(std::cos(angle)) * h * 0.5f;
+                const auto at =
+                    centre.getPointOnCircumference(radius + thickness * 0.5f + 3.0f + extent, angle);
                 g.setFont(theme.caption());
                 g.setColour(db > hotFromDb ? c.meterHot : c.textTertiary);
-                g.drawText(juce::String(static_cast<int>(db)),
-                           juce::Rectangle<float>(18.0f, 11.0f).withCentre(at),
-                           juce::Justification::centred);
+                g.drawText(
+                    text, juce::Rectangle<float>(w + 2.0f, h).withCentre(at), juce::Justification::centred);
             }
         }
         // The reading in the middle, GR under it.
@@ -477,10 +483,10 @@ private:
 
     void layoutBody(juce::Rectangle<int> body) override
     {
-        const int valueH = static_cast<int>(theme_.fonts.size.value) + 4;
-        const int labelH = static_cast<int>(theme_.fonts.size.caption) + 4;
-        const int bigCellH = bigRing + 6 + valueH + labelH;
-        const int selectorH = selectors_.front()->preferredHeight() + labelH;
+        const int labelH = theme_.lineHeight(theme_.fonts.size.caption);
+        // The ring sits 6 px down so its scale marks clear the display.
+        const int bigCellH = 6 + knobCellHeight(bigRing, theme_.fonts.size.caption);
+        const int selectorH = selectors_.front()->preferredHeight() + labelH + theme_.spacing.sm;
         const int controlsH = std::max({bigCellH, selectorH, knobCellHeight()});
         auto display = body.removeFromTop(std::max(48, body.getHeight() - controlsH - 6));
         body.removeFromTop(6);
@@ -500,18 +506,13 @@ private:
         };
         // Every label sits on the row's bottom line, whatever the control above it.
         for (auto* knob : {threshold_, makeup_})
-        {
-            auto cell = controls.removeFromLeft(bigCellWidth);
-            if (auto* label = labelFor(*knob))
-                label->setBounds(cell.removeFromBottom(labelH));
-            knob->setBounds(cell.removeFromBottom(bigCellH - labelH - 6));
-        }
+            placeKnob(*knob, controls.removeFromLeft(bigCellWidth));
         rule();
         for (size_t i = 0; i < selectors_.size(); ++i)
         {
             auto cell = controls.removeFromLeft(selectorWidth());
-            captions_[i]->setBounds(cell.removeFromBottom(labelH));
-            selectors_[i]->setBounds(cell.removeFromBottom(selectors_[i]->preferredHeight()));
+            captions_[i]->setBounds(labelLine(cell));
+            selectors_[i]->setBounds(aboveLabelLine(cell).removeFromBottom(selectors_[i]->preferredHeight()));
         }
         rule();
         layoutKnobs(controls.removeFromBottom(knobCellHeight()), 2, {keyHp_, mix_});

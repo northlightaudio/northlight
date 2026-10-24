@@ -1533,7 +1533,7 @@ public:
         auto area = getLocalBounds().reduced(pad, 0);
         cap_.setBounds(getLocalBounds().withHeight(control));
         area.removeFromTop(control + pad);
-        const int loudnessH = 3 * (static_cast<int>(theme_.fonts.size.value) + 4);
+        const int loudnessH = 3 * (theme_.lineHeight(theme_.fonts.size.value));
         const bool aligned =
             !band_.isEmpty() && valueY_ + control <= getHeight() && band_.getBottom() + loudnessH <= valueY_;
         // The inserts fill the room above the fader band (lined up with the
@@ -1565,7 +1565,7 @@ public:
                                 .withSizeKeepingCentre(area.getWidth(), loudnessH);
             auto faderArea =
                 juce::Rectangle<int>(area.getX(), band_.getY(), area.getWidth(), band_.getHeight());
-            meter_.setBounds(faderArea.removeFromRight(meter_.barsWidth() + 18));
+            meter_.setBounds(faderArea.removeFromRight(meter_.barsWidth() + meter_.scaleWidth()));
             faderArea.removeFromRight(pad);
             fader_.setBounds(faderArea);
             return;
@@ -1576,7 +1576,7 @@ public:
         area.removeFromBottom(pad);
         auto faderArea = area.withTrimmedTop(pad).withHeight(
             std::clamp(area.getHeight() - pad, 60, maxFaderTravel + 2 * pad));
-        auto meterArea = faderArea.removeFromRight(meter_.barsWidth() + 18);
+        auto meterArea = faderArea.removeFromRight(meter_.barsWidth() + meter_.scaleWidth());
         meter_.setBounds(meterArea);
         faderArea.removeFromRight(pad);
         fader_.setBounds(faderArea);

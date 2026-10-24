@@ -5,6 +5,7 @@
 #include "ui/Db.h"
 #include "ui/Motion.h"
 #include "ui/NorthlightLookAndFeel.h"
+#include "ui/Number.h"
 #include "ui/OnScreen.h"
 #include "ui/PluginMenu.h"
 #include "ui/SendMenu.h"
@@ -178,6 +179,23 @@ public:
         if (showsInfoLine() != hadInfoLine)
             resized();
         repaint();
+    }
+
+    // The height its body's layout needs, with the frame's rows.
+    int minimumHeight() const
+    {
+        if (body_ == nullptr)
+            return 0;
+        return body_->minimumBodyHeight() + frameRows();
+    }
+    int frameRows() const
+    {
+        int rows = theme_.sizes.control;
+        if (!instrument_)
+            rows += theme_.sizes.controlCompact;
+        if (showsInfoLine())
+            rows += theme_.sizes.controlCompact;
+        return rows;
     }
 
     // The card's width at a height: a body that scales to fit narrows with it.
@@ -410,7 +428,7 @@ private:
             auto knob = std::make_unique<Knob>(theme_);
             knob->setRange(info.minimum, info.maximum, info.defaultValue);
             const juce::String unit = info.unit.empty() ? juce::String() : " " + juce::String(info.unit);
-            knob->format = [unit](double v) { return juce::String(v, std::abs(v) >= 100.0 ? 0 : 2) + unit; };
+            knob->format = [unit](double v) { return fixedText(v, std::abs(v) >= 100.0 ? 0 : 2) + unit; };
             const int index = static_cast<int>(i);
             knob->onDragStart = [this, index, name = info.name]
             {
@@ -704,7 +722,7 @@ EditorPanel::EditorPanel(const Theme& theme) : theme_(theme), stripView_(theme)
                        juce::Justification::centredLeft);
     };
     viewport_.setViewedComponent(&strip_, false);
-    viewport_.setScrollBarsShown(false, true);
+    viewport_.setScrollBarsShown(true, true);
     addAndMakeVisible(viewport_);
     add_.setTooltip("Add an insert");
     add_.onClick = [this] { showAddMenu(); };
@@ -1034,13 +1052,44 @@ void EditorPanel::reorderCard(core::Id insertId, juce::Point<int> screen, bool r
         onCommand(std::make_unique<core::MoveInsert>(channelId_, insertId, to));
 }
 
+int EditorPanel::contentMinimumHeight() const
+{
+    const int caption = strip::ChannelStripView::captionHeight;
+    int h = theme_.sizes.dockMin - theme_.sizes.control;
+    if (instrumentCard_ != nullptr)
+        h = std::max(h, caption + instrumentCard_->minimumHeight());
+    for (const auto& card : cards_)
+        h = std::max(h, caption + card->minimumHeight());
+    if (stripView_.isVisible())
+        h = std::max(h, stripView_.minimumHeight());
+    return h;
+}
+
+int EditorPanel::minimumHeight() const
+{
+    return theme_.sizes.control + contentMinimumHeight() + theme_.spacing.md + theme_.sizes.scrollbar;
+}
+
 void EditorPanel::resized()
 {
     auto area = getLocalBounds().withTrimmedTop(theme_.sizes.control);
     viewport_.setBounds(area);
     const int caption = strip::ChannelStripView::captionHeight;
-    const int h = std::max(theme_.sizes.dockMin - theme_.sizes.control,
-                           area.getHeight() - theme_.spacing.md - theme_.sizes.scrollbar);
+    // Never shorter than the cards' layouts need: below that the panel scrolls
+    // rather than squashing a card until its controls overlap.
+    const int h =
+        std::max(contentMinimumHeight(), area.getHeight() - theme_.spacing.md - theme_.sizes.scrollbar);
+    if (const int minimum = minimumHeight(); minimum != shownMinimum_)
+    {
+        shownMinimum_ = minimum;
+        if (onMinimumHeightChanged)
+            juce::MessageManager::callAsync(
+                [safe = juce::Component::SafePointer<EditorPanel>(this)]
+                {
+                    if (safe != nullptr && safe->onMinimumHeightChanged)
+                        safe->onMinimumHeightChanged();
+                });
+    }
     const auto* ch = channel();
     const bool showStrip = stripView_.isVisible();
     const bool stripFirst = showStrip && ch != nullptr && ch->stripPreInserts;

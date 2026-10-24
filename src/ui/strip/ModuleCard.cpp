@@ -474,10 +474,51 @@ juce::Label* ModuleCard::labelFor(const Knob& knob) const
     return nullptr;
 }
 
+// A knob's stack, top down: the ring, `spacing.xs` and 2, the value's line, then
+// the label tucked up into that line's descent so it reads with its value.
+int ModuleCard::labelTop(int ring) const noexcept
+{
+    return ring + theme_.spacing.xs + theme_.lineHeight(theme_.fonts.size.value) - 3;
+}
+
+int ModuleCard::knobCellHeight(int ring, float labelSize) const noexcept
+{
+    // The stack, then a gap to the next row so each label reads as its own knob's.
+    return labelTop(ring) + theme_.lineHeight(labelSize) + theme_.spacing.sm;
+}
+
 int ModuleCard::knobCellHeight() const noexcept
 {
-    return theme_.sizes.knob + static_cast<int>(theme_.fonts.size.value) + 4 +
-           static_cast<int>(theme_.fonts.size.caption) + 4;
+    return knobCellHeight(theme_.sizes.knob, theme_.fonts.size.caption);
+}
+
+void ModuleCard::placeKnob(Knob& knob, juce::Rectangle<int> cell, float labelSize)
+{
+    const int ring = knob.ringSize();
+    const int top = labelTop(ring);
+    const auto stack = cell.withTrimmedBottom(theme_.spacing.sm)
+                           .removeFromBottom(knobCellHeight(ring, labelSize) - theme_.spacing.sm);
+    knob.setBounds(stack.withHeight(top + 5)); // the knob's own box holds the whole value line
+    if (auto* label = labelFor(knob))
+        label->setBounds(stack.withTrimmedTop(top));
+}
+
+juce::Rectangle<int> ModuleCard::labelLine(juce::Rectangle<int> cell) const
+{
+    return cell.withTrimmedBottom(theme_.spacing.sm)
+        .removeFromBottom(theme_.lineHeight(theme_.fonts.size.caption));
+}
+
+juce::Rectangle<int> ModuleCard::aboveLabelLine(juce::Rectangle<int> cell) const
+{
+    return cell.withTrimmedBottom(theme_.spacing.sm + theme_.lineHeight(theme_.fonts.size.caption));
+}
+
+int ModuleCard::minimumHeight() const
+{
+    if (collapsed_)
+        return 0;
+    return (embedded_ ? 0 : headerHeight) + minimumBodyHeight();
 }
 
 void ModuleCard::layoutKnobs(juce::Rectangle<int> area, int perRow, const std::vector<Knob*>& knobs)
@@ -485,15 +526,11 @@ void ModuleCard::layoutKnobs(juce::Rectangle<int> area, int perRow, const std::v
     perRow = std::max(1, perRow);
     const int cellW = area.getWidth() / perRow;
     const int cellH = knobCellHeight();
-    const int labelH = static_cast<int>(theme_.fonts.size.caption) + 4;
     for (size_t i = 0; i < knobs.size(); ++i)
     {
         const int row = static_cast<int>(i) / perRow, col = static_cast<int>(i) % perRow;
-        const auto cell =
-            juce::Rectangle<int>(area.getX() + col * cellW, area.getY() + row * cellH, cellW, cellH);
-        knobs[i]->setBounds(cell.withTrimmedBottom(labelH));
-        if (auto* label = labelFor(*knobs[i]))
-            label->setBounds(cell.withTop(cell.getBottom() - labelH));
+        placeKnob(*knobs[i],
+                  juce::Rectangle<int>(area.getX() + col * cellW, area.getY() + row * cellH, cellW, cellH));
     }
 }
 

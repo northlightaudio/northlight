@@ -842,9 +842,12 @@ private:
                        juce::Justification::centredRight);
         }
         g.setFont(theme.captionCaps());
-        g.drawText("OVER",
-                   juce::Rectangle<float>(p.getX() - 34.0f, p.getY() - 2.0f, 30.0f, 11.0f),
-                   juce::Justification::centredRight);
+        const float overW = juce::GlyphArrangement::getStringWidth(theme.captionCaps(), "OVER");
+        const float lineH = static_cast<float>(theme.lineHeight(theme.fonts.size.caption));
+        g.drawText(
+            "OVER",
+            juce::Rectangle<float>(p.getX() - 4.0f - overW - 2.0f, p.getY() - 3.0f, overW + 2.0f, lineH),
+            juce::Justification::centredRight);
     }
 
     // A line's grip: a small upright pill, so it reads as "drag sideways" beside
@@ -1141,7 +1144,7 @@ private:
 
     void layoutBody(juce::Rectangle<int> body) override
     {
-        const int labelH = static_cast<int>(theme_.fonts.size.caption) + 4;
+        const int labelH = theme_.lineHeight(theme_.fonts.size.caption);
         const int controlsH = knobCellHeight();
         auto display = body.removeFromTop(std::max(96, body.getHeight() - controlsH - theme_.spacing.sm));
         body.removeFromTop(theme_.spacing.sm);

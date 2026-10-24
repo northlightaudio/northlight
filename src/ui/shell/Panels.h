@@ -52,6 +52,8 @@ struct PanelInfo
     int minWidth = 240, minHeight = 200;
     bool canDock = true, canSide = false;
     juce::KeyPress shortcut; // F2..F7: show; with Shift: detach or reattach
+    // The panel's smallest height when it depends on what it shows (else minHeight).
+    std::function<int()> minimumHeight = {};
 };
 
 const char* panelKey(PanelId id); // "mixer", "editor"...
@@ -186,6 +188,10 @@ public:
     bool dockOpen() const noexcept { return !dock_.empty() && dockRequested_ > 0; }
     bool sideOpen() const noexcept { return !side_.empty() && sideRequested_ > 0; }
     void setDockHeight(int height);
+    // The dock's smallest height: its tabs and the tallest minimum of the panels
+    // shown in it. enforceDockMinimum grows the dock to it when it is smaller.
+    int dockMinimum() const;
+    void enforceDockMinimum();
     void setSideWidth(int width);
     std::function<void()> onLayoutChanged;
     std::function<void(PanelId, bool visible)> onPanelVisibilityChanged;

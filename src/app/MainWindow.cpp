@@ -235,7 +235,7 @@ public:
         const std::array<std::pair<const char*, juce::String>, 4> rows{{
             {"Driver",
              asio ? juce::String("The lowest latency, for recording and monitoring")
-                  : juce::String("ASIO, when your interface has it, gives the lowest latency")},
+                  : juce::String("ASIO, if your interface has it, is lowest latency")},
             {"Device", "Where Northlight plays and records"},
             {"Buffer size", "Smaller is more responsive; larger avoids clicks"},
             {"Input", "Play or sing: the meter should move"},
@@ -1077,6 +1077,7 @@ private:
 
         editor_.setRegistry(&session_.pluginRegistry());
         editor_.liveInsert = [this](core::Id insertId) { return session_.liveInsert(insertId); };
+        editor_.onMinimumHeightChanged = [this] { panels_.enforceDockMinimum(); };
         editor_.displayName = [this](const std::string& type) { return mixer_.insertDisplayName(type); };
         editor_.onCommand = [this](std::unique_ptr<core::Command> c) { session_.execute(std::move(c)); };
         editor_.onGestureBegin = [this](const std::string& name) { session_.beginGesture(name); };
@@ -1192,7 +1193,8 @@ private:
                                         200,
                                         true,
                                         true,
-                                        key(juce::KeyPress::F3Key)},
+                                        key(juce::KeyPress::F3Key),
+                                        [this] { return editor_.minimumHeight(); }},
                               editor_);
         panels_.registerPanel(PanelInfo{PanelId::browser,
                                         "Browser",

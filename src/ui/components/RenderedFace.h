@@ -48,7 +48,8 @@ public:
     void setCompact(bool compact);
 
     // The control being hovered or turned (its parameter index, or -1): in
-    // compact a face shows its value where its name is. Set by the card.
+    // compact a face shows its value where its name is (and repaints for it;
+    // at full size nothing changes). Set by the card.
     void setActiveControl(int control);
     int activeControl() const noexcept { return activeControl_; }
 

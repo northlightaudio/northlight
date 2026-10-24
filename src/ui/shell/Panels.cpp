@@ -751,9 +751,30 @@ PanelHost* PanelManager::hostAtScreenPosition(juce::Point<int> screenPosition)
     return nullptr;
 }
 
+int PanelManager::dockMinimum() const
+{
+    int minimum = theme_.sizes.dockMin;
+    for (const auto& entry : entries_)
+        if (entry->host == HostKind::dock && entry->visible)
+            minimum = std::max(minimum,
+                               dock_.headerHeight() + (entry->info.minimumHeight ? entry->info.minimumHeight()
+                                                                                 : entry->info.minHeight));
+    return minimum;
+}
+
+void PanelManager::enforceDockMinimum()
+{
+    if (dockSize_ >= dockMinimum())
+        return;
+    if (dockOpen() && !sliding())
+        setDockHeight(dockSize_);
+    else
+        dockSize_ = dockMinimum();
+}
+
 void PanelManager::setDockHeight(int height)
 {
-    dockSize_ = std::max(theme_.sizes.dockMin, height);
+    dockSize_ = std::max(dockMinimum(), height);
     dockRequested_ = dockSize_;
     dockHeightShown_ = dockSize_;
     if (onLayoutChanged)
@@ -771,6 +792,7 @@ void PanelManager::setSideWidth(int width)
 
 void PanelManager::refreshHosts()
 {
+    dockSize_ = std::max(dockSize_, dockMinimum()); // a panel shown in it may need more
     dockRequested_ = dock_.empty() ? 0 : dockSize_;
     sideRequested_ = side_.empty() ? 0 : sideSize_;
     animate();

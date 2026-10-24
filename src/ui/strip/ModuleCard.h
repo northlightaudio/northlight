@@ -98,6 +98,12 @@ public:
     // The height the card's body wants at its preferred width (for an embedded
     // card, whose frame sizes to it).
     virtual int preferredBodyHeight() const { return 220; }
+    // The smallest body its layout still works at: the preferred height for a
+    // card laid out in pixels; a face that scales (RenderedCard) goes lower.
+    virtual int minimumBodyHeight() const { return preferredBodyHeight(); }
+    // The whole card's smallest height: its header (unless embedded) and body,
+    // or nothing while it is collapsed to a tab.
+    int minimumHeight() const;
     // The card's width when its body is `bodyHeight` tall: the preferred width,
     // unless the card scales its body to fit (a hardware face drawn at one size).
     virtual int preferredWidthAt(int bodyHeight) const
@@ -163,7 +169,21 @@ protected:
     PillToggle& addToggle(int index, const juce::String& text);
     // The knobs added so far, in a grid of `perRow` columns from the top of `area`.
     void layoutKnobs(juce::Rectangle<int> area, int perRow, const std::vector<Knob*>& knobs);
+    // A knob row's height: the ring, value and label, and the gap under them.
     int knobCellHeight() const noexcept;
+    int knobCellHeight(int ring, float labelSize) const noexcept;
+    // A knob (any ring size), its value and label at the bottom of `cell`, the
+    // label ending `spacing.sm` above the cell's bottom: the line every label in
+    // a row of knobs shares, whatever the ring.
+    void placeKnob(Knob& knob, juce::Rectangle<int> cell, float labelSize);
+    void placeKnob(Knob& knob, juce::Rectangle<int> cell)
+    {
+        placeKnob(knob, cell, theme_.fonts.size.caption);
+    }
+    // For a control that is not a knob in such a row: its label's box on that
+    // line, and the room above it.
+    juce::Rectangle<int> labelLine(juce::Rectangle<int> cell) const;
+    juce::Rectangle<int> aboveLabelLine(juce::Rectangle<int> cell) const;
     int knobCellWidth() const noexcept { return 60; }
     juce::Label* labelFor(const Knob& knob) const;
 
@@ -188,6 +208,7 @@ protected:
     std::vector<float> model_; // the model's values at the last refresh
 
 private:
+    int labelTop(int ring) const noexcept;
     juce::Rectangle<int> headerArea() const;
     // The header's name: the slot's ("Compressor") when the card has a model switch.
     juce::String headerName() const;

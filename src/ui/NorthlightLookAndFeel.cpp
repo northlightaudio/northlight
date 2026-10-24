@@ -623,6 +623,10 @@ void NorthlightLookAndFeel::positionComboBoxText(juce::ComboBox& box, juce::Labe
     const int chevron = theme_.sizes.icon + theme_.spacing.sm;
     label.setBounds(theme_.spacing.sm, 1, box.getWidth() - chevron - theme_.spacing.sm, box.getHeight() - 2);
     label.setFont(getComboBoxFont(box));
+    // Never squashed sideways: a text too long for its box ends in an ellipsis.
+    label.setMinimumHorizontalScale(1.0f);
+    // The box's own padding is the inset; the label adds none of its own.
+    label.setBorderSize({1, 0, 1, 0});
 }
 
 void NorthlightLookAndFeel::drawPopupMenuBackgroundWithOptions(juce::Graphics& g,
@@ -727,7 +731,7 @@ void NorthlightLookAndFeel::drawPopupMenuItem(juce::Graphics& g,
         drawChevron(g, row.removeFromRight(theme_.sizes.icon + theme_.spacing.xs).toFloat(), colour, false);
     if (shortcutKeyText.isNotEmpty())
     {
-        g.setFont(theme_.timeSmall().withHeight(theme_.fonts.size.small));
+        g.setFont(theme_.timeSmall().withPointHeight(theme_.fonts.size.small));
         g.setColour(isActive ? c.textTertiary : c.textDisabled);
         const auto hint = row.removeFromRight(
             juce::GlyphArrangement::getStringWidthInt(g.getCurrentFont(), shortcutKeyText) +

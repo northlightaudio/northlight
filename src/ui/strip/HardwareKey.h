@@ -23,7 +23,8 @@ public:
     HardwareKey(const Theme& theme, juce::String label, juce::String title, bool hasLed = true);
 
     std::function<void()> onPress;
-    // An icon drawn over the label (a square key), in the label's colour.
+    // An icon drawn over the label (a square key), in the label's colour; with no
+    // label, the icon alone, centred on the key.
     std::function<void(juce::Graphics&, juce::Rectangle<float>)> icon;
 
     void setLit(bool lit);

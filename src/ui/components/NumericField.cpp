@@ -3,6 +3,8 @@
 #include "ui/NorthlightLookAndFeel.h"
 #include "ui/components/Readout.h"
 
+#include <cmath>
+
 namespace northlight::ui
 {
 
@@ -97,18 +99,24 @@ void NumericField::paint(juce::Graphics& g)
     g.drawRoundedRectangle(bounds, theme_.radius.sm, 1.0f);
     if (editor_ != nullptr)
         return;
-    auto area = getLocalBounds().reduced(theme_.spacing.sm, 0);
+    // The value and its unit share one baseline, the value's centred in the box.
+    const auto area = getLocalBounds().reduced(theme_.spacing.sm, 0);
+    const auto valueFont = theme_.value();
+    const float baseline = std::round(static_cast<float>(area.getCentreY()) +
+                                      0.5f * (valueFont.getAscent() - valueFont.getDescent()));
+    float right = static_cast<float>(area.getRight());
     if (unit_.isNotEmpty())
     {
         g.setFont(theme_.small());
         g.setColour(c.textSecondary);
-        const int w = juce::GlyphArrangement::getStringWidthInt(g.getCurrentFont(), unit_);
-        g.drawText(unit_, area.removeFromRight(w), juce::Justification::centredRight);
-        area.removeFromRight(theme_.spacing.xxs); // a thin space
+        right -= juce::GlyphArrangement::getStringWidth(theme_.small(), unit_);
+        g.drawSingleLineText(unit_, static_cast<int>(std::round(right)), static_cast<int>(baseline));
+        right -= static_cast<float>(theme_.spacing.xs);
     }
-    g.setFont(theme_.value());
+    g.setFont(valueFont);
     g.setColour(isEnabled() ? c.textPrimary : c.textDisabled);
-    g.drawText(text(), area, juce::Justification::centredRight);
+    g.drawSingleLineText(
+        text(), static_cast<int>(std::round(right)), static_cast<int>(baseline), juce::Justification::right);
     if (auto* lnf = dynamic_cast<NorthlightLookAndFeel*>(&getLookAndFeel()))
         lnf->drawFocusRing(g, *this, bounds, theme_.radius.sm);
 }

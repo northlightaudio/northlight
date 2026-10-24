@@ -46,8 +46,10 @@ Northlight has not had a release yet. The first release, 0.1.0, will include:
   Documents/Northlight/Effect Presets.
 - Patina, a vintage colour effect: Heat, Chamber, Drift, Grain, Wear and Crush
   stages age a sound in their own ways, each with its own Breath, under one Age
-  control, with a live readout of every stage. Its editor is a worn studio rack
-  unit, with twelve factory presets.
+  control, with a live readout of every stage. Its editor is a rendered 1960s
+  broadcast processor with every control in view: a module per stage with its
+  lit button, window, type selector and knobs, and a master plate with a large
+  Age dial. Twelve factory presets.
 - An Exciter that adds harmonics to flat sounds: four characters (Tube, Tape, Air,
   Crisp) generated from the band above a crossover, anti-aliased with no latency,
   following the music, plus psychoacoustic bass, mono-safe width and auto gain.
@@ -121,5 +123,18 @@ Northlight has not had a release yet. The first release, 0.1.0, will include:
 
 ### Fixed
 
+- Text across the app is drawn at its intended size: every label, caption and
+  readout was about a sixth smaller than designed. Layouts that were packed around
+  the smaller text now leave room for it, and track headers (260 px) and mixer
+  strips (92 px) are a little wider so names fit.
+- The Editor panel can no longer be dragged so short that effect and instrument
+  controls overlap: the dock stops at the height the tallest card needs, and
+  scrolls when the window itself is shorter.
+- Large knobs on the effect cards share one label line with the small knobs
+  beside them, and their values sit clear of the ring.
+- The tape echo, Corona and Patina no longer drop frames while the mouse moves
+  over them.
+- Level readouts on the effect cards show whole numbers ("-23") instead of being
+  cut off ("-23…").
 - Automated faders in the mixer hold their automated value steadily while you move
   another fader, instead of flickering back to their static level.

@@ -307,8 +307,10 @@ void TakeLanes::paintLanes(juce::Graphics& g, const Row& row) const
             }
             // The take's badge and name at its left, kept in view.
             const int labelX = std::max(block.getX(), area.getX()) + theme_.spacing.xs;
-            const auto label =
-                juce::Rectangle<int>(labelX, block.getY() + 3, block.getRight() - labelX - 4, 14);
+            const auto label = juce::Rectangle<int>(labelX,
+                                                    block.getY() + 3,
+                                                    block.getRight() - labelX - 4,
+                                                    theme_.lineHeight(theme_.fonts.size.caption) + 2);
             if (label.getWidth() > 24)
             {
                 const auto badge = takeBadge(*take);

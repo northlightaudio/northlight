@@ -131,63 +131,86 @@ delay `Gorse`, glue compressor `Thrift`, Patina `Kelp`, exciter `Machair`, Bloom
   section follows: Tone (a tilt about 900 Hz), Low cut and High cut ("Off" at
   their ends), Width and Output. Every switch and choice fades over 10 ms. No
   latency. Twelve factory presets (Gentle Age, the defaults, first). Its editor is
-  a hardware face (design-system.md "Hardware face"), a worn 1960s studio rack
-  unit, and shows what each stage is doing, live:
-  - **The panel** fills the body (radius `md`): worn hammertone enamel
-    (`assets/patina/panel-aged.jpg`, cover), the same at every Age; its edges
-    rubbed back toward bare metal in `panelWear`, a 20 px band at 70% fading
-    inward; a 1 px `highlight` at 12% along the top. Without the image, flat
-    `panel`. It is drawn once per size and scale.
-  - **The top row** (40 px). At the left the **nameplate**, nine-sliced from
-    `nameplate.jpg`: its screw ends drawn 14 px square, the edges and middle
-    repeated at that scale, so the screws stay round and the wear even at any
-    width (`plate` without the image). Lettered in `ink`: PATINA at 21 px
-    semibold with 0.3 tracking at 85%, a 1 px rule at 35%, then VINTAGE COLOUR
-    / PROCESSOR at 9 px semibold with 0.18 tracking at 80%; a 2 px `shadow` at
-    60% under the plate. At the right the **pilot lamp**: 26 px, `lamp.jpg` in
-    a circle with a `lamp` glow at 50% out to its 40 px box while the insert is
-    on; bypassed, shaded `shadow` at 60% with no glow. Left of the lamp, 12 px
-    away, the **preset selector**: a 280 x 32 px recess (`bezel`, radius 5, a
-    4 px `shadow` shade under its top lip, a 1 px `highlight` at 14% below it)
-    holding two 28 px bakelite keys round an amber display. A key: radial
-    `keyTop` to `keyBottom`, radius 3, a `highlight` line at 14% along its top
-    and a `shadow` line at 50% along its foot, a `keyGlyph` triangle at 75%
-    (95% on hover); pressed, it drops 1 px and loses its lines. The display:
-    radial `displayCentre` to `displayEdge`, radius 2; the preset's number
-    ("07", "--" for Custom) in `value` at 85% size in `displayDim` at 75%, then
-    its name in capitals in `value` at 105% size, 0.06 tracking, `displayText`
-    over a `displayGlow` halo at 22% (brighter on hover); scan lines every 3 px
-    (`shadow` at 12%), a `highlight` reflection at 13% across its top left and
-    a 4 px shade under the bezel's lip. The keys step through the same list as
-    the header's preset bar (7.2b), the user's presets too (wrapping; from Custom,
-    Next goes to the first); a click on the display shows the preset menu. A preset is one undo step ("Preset
-    Worn Cassette"); any change of a value makes it Custom. Tooltips:
-    "Previous preset", "Next preset", "Presets"; the lamp has none. The keys and display take focus and draw the focus
-    ring.
-  - **Stage windows** (flexible height, six across, 12 px apart). A window has
-    a 20 px header with its name in `captionCaps` `legend` (70% when the stage
-    is off) and, just after the name, the stage's **slide switch**: 22 x 12 px,
-    a `switchDark` slot with a `switchLight` lever in its right half when on and
-    its left when off, a 1 px `shadow` at 60% round it. Under the header the
-    window: a 4 px bevelled frame (`glassFrameTop` to `glassFrameBottom`,
-    radius 4, a `highlight` line at 12% at its foot) round the glass. Lit (the
-    stage on), the glass is a radial `glassCentre` through `glassMid` to
-    `glassEdge` and the readout draws in `glassInk`; unlit, `glassOffCentre` to
-    `glassOffEdge` with the readout in `glassMid`. Where the readouts below say
-    the hue, read the ink; `textSecondary` and `textTertiary` are the ink at
-    55% and 50%, the grid the ink at 16%, and the ring of Heat's dot the
-    glass's centre colour. The figure sits at the top right; the stage's choice
-    is printed at the glass's foot in `captionCaps`, the ink at 70% ("TUBE",
-    "SPRING"). Over the glass, a 6 px `shadow` shade at 45% under the frame's
-    lip and a `highlight` reflection (22% lit, 10% unlit) across its top left.
-    Under the window, a row of eight 9 x 5 px lamps, 3 px apart: lit `led` (the
-    last two `ledHot`) with a 35% halo up to the amount Age and Breath leave
-    right now, dim (the colour at 40%) on to where Age alone puts it, the rest
-    `ledOff`. The window is the stage's tab: hover rings the frame in
-    `highlight` at 30%; selected, a 1.5 px `led` ring with a 3 px `led` halo at
-    25%. Click selects; Left and Right move between windows, Enter selects,
-    Space switches the stage; focus draws the focus ring round the frame. The
-    readouts:
+  a hardware face built from rendered parts (design-system.md "Rendered parts";
+  `assets/patina`, rendered by `scripts/render/patina`), a 1960s broadcast colour
+  processor drawn at 1160 x 660 and scaled to fit the card's body, the card
+  narrowing with it (the tape echo's and Corona's rules; compact below 65%). Every
+  control shows at once; nothing on the face is a tab. Text is Barlow legends
+  (`legendFont`) set crisply by the face; the inks are `patinaInk` on the enamel
+  (`patinaInkSoft` for values, captions and scales) and `patinaPanelInkSoft` on
+  the hammertone:
+  - **The panel**: slate-green hammertone enamel (`panel.jpg`, flat
+    `patinaPanel` without it) under everything.
+  - **The top row**, on the hammertone. At the left the **nameplate**
+    (`nameplate.png`, 300 x 48, brushed aluminium with a screw at each end;
+    `patinaNameplate`): PATINA in `patinaInk`, 34 px bold with 0.42 tracking,
+    centred on its ink. Beside it the model line, "VINTAGE COLOUR PROCESSOR ·
+    MODEL PT-6", 13 px with 0.24 tracking in `patinaPanelInkSoft` (hidden in
+    compact). At the right the **preset selector**: two 38 x 32 bakelite keys
+    (the hardware key, an arrow alone on each) either side of the amber display
+    in its black bezel (`display.png`, 300 x 44; the display fills its 288 x 32
+    opening): the preset's number ("07", "--" for Custom) in `value` at 95% size
+    in `displayDim` at 75%, then its name in capitals in `value` at 120% size,
+    0.08 tracking, `displayText` over a `displayGlow` halo at 22% (brighter on
+    hover), the line centred on the capitals' height; scan lines every 3 px and a
+    5 px `shadow` shade at 45% under the bezel's lip; the glass follows the
+    opening's 3 px corners. The keys step through the
+    same list as the header's preset bar (7.2b), the user's presets too
+    (wrapping; from Custom, Next goes to the first); a click on the display shows
+    the preset menu. A preset is one undo step ("Preset Worn Cassette"); any
+    change of a value makes it Custom. Tooltips: "Previous preset", "Next
+    preset", "Presets". Right of them the **pilot lamp** (Corona's red jewel, lit
+    while the insert is on).
+  - **Six stage modules** in signal order, 142 x 548 each, 8 px apart, on grey
+    enamel plates (`module.png`, four screws; `patinaPlate`). Down a module:
+    - its name (18 px bold, 0.14 tracking; 21 px in compact) at the left and its
+      **push-button** at the right: a 36 x 24 nickel bezel round an amber lens,
+      dark when the stage is off, pressed in and lit when on (`button-off.png`,
+      `button-on.png`, drawn 60 x 45 with their shadow and glow). A click, Space
+      or Enter switches the stage (one undo step, "Heat on"); hover lightens the
+      lens; focus draws the focus ring round the bezel. Tooltip: "Heat: on".
+    - its **window**: a black crinkle bezel (`window.png`, 126 x 96) round the
+      lit glass (112 x 82, cut to the opening's 3 px corners, which follow the
+      bezel's outer curve), the stage's live readout; under
+      the bezel a row of eight 10 x 4 px lamps, 3 px apart: lit `led` (the last
+      two `ledHot`) with a 35% halo up to the amount Age and Breath leave right
+      now, dim (the colour at 40%) on to where Age alone puts it, the rest
+      `ledOff`. Left and Right move the focus between windows; Space or Enter
+      switches the stage; focus draws the focus ring round the glass.
+    - its **type selector**: a 30 px rendered knob that clicks between its
+      positions, fanned 52 degrees apart across its top; a dot at each position
+      (the chosen one `dialRed`) and its legend beyond it (12.5 px, the chosen
+      one in `patinaInk`, the rest `patinaInkSoft`), each legend's near edge
+      9 px past the knob's rim whatever its width; the caption under it (11.5 px
+      in `patinaInkSoft`). Compact, the legends give way to the setting, printed
+      where the caption is. Wear has no type: its Dropouts and Skew knobs take
+      the selector's place.
+    - its **main knob** (52 px) over eleven printed ticks, its name under it
+      (16 px bold) and its value under that (13 px, `patinaInkSoft`).
+    - its **small knobs** (30 px), two to a row in up to two rows (a row's last
+      knob alone is centred), each with its name (13 px bold) and value
+      (12.5 px).
+  - **The master plate** (216 x 548, `master.png`): **Age**, a 96 px knob over
+    eleven ticks with NEW, AS SET and RUINED printed at its ends and top, its
+    name at 22 px and value at 15 px; **Pace** under it ("0.16 Hz"); then the
+    output section under an OUTPUT caption between two rules: Tone, Low cut,
+    High cut in a row, Width and Output centred under them.
+  - Every knob is the rendered knob (`knob-body.png`, `knob-pointer.png`: a flared
+    black bakelite skirt, a fluted body, a spun aluminium cap with a red pointer
+    line) drawn over its printed ticks; it turns by drag, wheel and keys, a
+    double click resets it. Compact (the Editor dock), values and the selectors'
+    legends drop, names print larger (small knobs' 1.5 times) and the knob in
+    hand shows its value where its name is.
+  - The readouts in the windows. Lit (the stage on), the glass is a radial
+    `glassCentre` through `glassMid` to `glassEdge` and the readout draws in
+    `glassInk`. Switched off, the window goes dark: smoked glass, a radial
+    `glassOffCentre` to `glassOffEdge`, with no readout, grid or figure, and its
+    lamps all `ledOff`. Where the readouts below say the hue, read the ink;
+    `textSecondary` and `textTertiary` are the ink at 55% and 50%, the grid the
+    ink at 16%, and the ring of Heat's dot the glass's centre colour. The figure
+    sits at the top right. Over the glass, a 6 px `shadow` shade at 45% under the
+    bezel's lip and a `highlight` reflection (22% lit, 10% unlit) across its top
+    left.
     - Heat: the static curve at the live amount (input across -1..1, output
       up, in a square), the unity diagonal dashed, the loudest input of the
       last 50 ms as a dot riding the curve (a 7 px `textPrimary` disc round a
@@ -215,24 +238,6 @@ delay `Gorse`, glue compressor `Thrift`, Patina `Kelp`, exciter `Machair`, Bloom
       crossing: what goes in as a 1 px `textSecondary` line at 60%, what comes
       out as 1.5 px hue steps; the figure: the bits and rate in effect
       ("6 bit · 6.0 kHz").
-  - Controls, one row under the windows in three groups split by engraved rules
-    (a 1 px `shadow` line at 55% beside a 1 px `highlight` at 10%), every label
-    on one baseline. Every knob is the hardware pointer knob and every choice
-    the hardware rotary selector, their labels in `legend`: **Age** as a 56 px
-    knob and **Pace** ("0.16 Hz"); the selected stage's controls under its name
-    printed in `captionCaps` `legend` at 85% (left aligned, in a group as wide
-    as the widest stage's); the output knobs. Each stage: a rotary selector for its
-    choice where it has one, its main amount as a 46 px knob, then 28 px knobs:
-    Heat: Character (Tube, Tape, Iron, Fuzz), Drive, Tone, Breath. Chamber:
-    Space (Room, Spring, Plate), Mix, Decay (in seconds for the space), Tone,
-    Breath. Drift: Machine (Reel, Deck, Disc), Wow, Flutter, Rate ("1.00×"),
-    Stereo, Breath. Grain: Source (Vinyl, Tape, 50Hz, 60Hz, Air), Amount, a
-    texture knob named for the source (Density in crackles a second for Vinyl,
-    Colour for Tape, Buzz for Hum, Tone for Air), Follow ("Duck 40", "Steady",
-    "Ride 40"), Breath. Wear: Loss, Dropouts, Skew, Breath. Crush: Flavour
-    (Soft, Hard, μ-law, Jitter), Bits ("12 bit"), Rate ("22 kHz"), Breath.
-    While the selected stage is off its controls fade to 50% and stay usable. The selected stage is remembered
-    for the session.
 - **Exciter** (adds harmonics to flat sources; psychoacoustic bass):
   - **How it works.** The band above Frequency (700 Hz-16 kHz, 24 dB/oct) is
     normalised to a fixed level and driven into one of four curves:

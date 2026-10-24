@@ -108,8 +108,14 @@ float RotarySelector::angleOf(float position) const
 
 juce::Point<float> RotarySelector::labelCentre(int index) const
 {
-    return centre().getPointOnCircumference(bodySize * 0.5f + static_cast<float>(labelReach),
-                                            angleOf(static_cast<float>(index)));
+    // The label's near edge a fixed gap past its dot, whatever its width: a side
+    // label reaches out by half its width, a top one by half its height.
+    const float angle = angleOf(static_cast<float>(index));
+    const auto font = theme_.caption();
+    const float w = juce::GlyphArrangement::getStringWidth(font, labels_[static_cast<size_t>(index)]);
+    const float h = font.getHeight();
+    const float extent = std::abs(std::sin(angle)) * w * 0.5f + std::abs(std::cos(angle)) * h * 0.5f;
+    return centre().getPointOnCircumference(bodySize * 0.5f + 4.0f + 5.0f + extent, angle);
 }
 
 int RotarySelector::positionAt(juce::Point<float> p) const
@@ -182,7 +188,10 @@ void RotarySelector::paint(juce::Graphics& g)
         const auto dot = mid.getPointOnCircumference(radius + 4.0f, angle);
         g.setColour(!enabled ? c.textDisabled : chosen ? hue_ : c.textTertiary);
         g.fillEllipse(juce::Rectangle<float>(chosen ? 3.0f : 2.0f, chosen ? 3.0f : 2.0f).withCentre(dot));
-        const auto label = juce::Rectangle<float>(2.0f * labelHalfWidth, 12.0f).withCentre(labelCentre(i));
+        const auto label =
+            juce::Rectangle<float>(2.0f * labelHalfWidth + 8.0f,
+                                   static_cast<float>(theme_.lineHeight(theme_.fonts.size.caption)))
+                .withCentre(labelCentre(i));
         g.setColour(!enabled           ? c.textDisabled
                     : chosen           ? c.textPrimary
                     : i == hoverLabel_ ? c.textSecondary
@@ -216,7 +225,10 @@ void RotarySelector::paintHardware(juce::Graphics& g, bool hover)
         const auto dot = mid.getPointOnCircumference(radius + 4.0f, angle);
         g.setColour(!enabled ? hw.legend.withAlpha(0.3f) : chosen ? hw.led : hw.legend.withAlpha(0.7f));
         g.fillEllipse(juce::Rectangle<float>(chosen ? 4.0f : 2.5f, chosen ? 4.0f : 2.5f).withCentre(dot));
-        const auto label = juce::Rectangle<float>(2.0f * labelHalfWidth, 12.0f).withCentre(labelCentre(i));
+        const auto label =
+            juce::Rectangle<float>(2.0f * labelHalfWidth + 8.0f,
+                                   static_cast<float>(theme_.lineHeight(theme_.fonts.size.caption)))
+                .withCentre(labelCentre(i));
         const float alpha = !enabled ? 0.35f : chosen ? 1.0f : i == hoverLabel_ ? 0.9f : 0.62f;
         hardware::drawLegend(g,
                              theme_,

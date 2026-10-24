@@ -8,7 +8,7 @@ namespace northlight::ui
 
 namespace
 {
-constexpr int tagRow = 13;                // the time signature tags along the top
+constexpr int tagRow = 16;                // the time signature tags along the top
 constexpr float handleR = 4.0f;           // a handle's radius
 constexpr double minimumGap = 1.0 / 16.0; // quarters between neighbouring changes
 
@@ -246,12 +246,15 @@ void TempoLane::paint(juce::Graphics& g)
             const auto label = bpmText(bpmOf(s, i)) + (i >= 0 && s.tempoChanges[static_cast<size_t>(i)].ramp
                                                            ? juce::String(" ramp")
                                                            : juce::String());
-            const float y = at.y < static_cast<float>(getHeight()) / 2.0f + 4.0f ? at.y + 2.0f : at.y - 16.0f;
+            const int lineH = theme_.lineHeight(theme_.fonts.size.caption);
+            const float y = at.y < static_cast<float>(getHeight()) / 2.0f + 4.0f
+                                ? at.y + 3.0f
+                                : at.y - 3.0f - static_cast<float>(lineH);
             g.drawText(label,
                        static_cast<int>(at.x) + 6,
                        static_cast<int>(y),
                        80,
-                       14,
+                       lineH,
                        juce::Justification::centredLeft);
         }
     }

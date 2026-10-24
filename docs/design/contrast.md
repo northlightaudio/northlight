@@ -35,7 +35,6 @@ Generated from [tokens.json](tokens.json) (Machair Dusk v2) by `scripts/contrast
 | hardware.displayText | hardware.displayCentre | 10.25 | An amber display's text | yes |
 | hardware.displayDim | hardware.displayCentre | 5.50 | A display's preset number | 3:1 only |
 | hardware.glassInk | hardware.glassEdge | 6.01 | Readings on a lit meter window, at its edge | yes |
-| hardware.glassMid | hardware.glassOffEdge | 5.88 | Readings on an unlit window | 3:1 only |
 | hardware.creamInk | hardware.creamPanel | 9.18 | Names on the console's cream panel | yes |
 | hardware.creamInkSoft | hardware.creamPanel | 6.13 | Small legends on the cream panel | yes |
 | hardware.sageInk | hardware.sagePanel | 6.65 | Control names on the sage panel | yes |
@@ -43,6 +42,11 @@ Generated from [tokens.json](tokens.json) (Machair Dusk v2) by `scripts/contrast
 | hardware.dialInk | hardware.dialFace | 9.64 | The meter's scale | yes |
 | hardware.dialRed | hardware.dialFace | 4.67 | The meter's red zone | yes |
 | hardware.coronaInk | hardware.coronaPanel | 8.11 | Control names on the amp's plate | yes |
+| hardware.patinaInk | hardware.patinaPlate | 7.32 | Control names on Patina's stage plates | yes |
+| hardware.patinaInkSoft | hardware.patinaPlate | 4.56 | Values and scales on Patina's stage plates | yes |
+| hardware.patinaInk | hardware.patinaNameplate | 10.56 | The name on Patina's nameplate | yes |
+| hardware.patinaPanelInk | hardware.patinaPanel | 8.33 | The model line on Patina's panel | yes |
+| hardware.patinaPanelInkSoft | hardware.patinaPanel | 5.29 | Small print on Patina's panel | yes |
 | hardware.coronaInkSoft | hardware.coronaPanel | 5.79 | Values and scales on the amp's plate | yes |
 | hardware.coronaInk | hardware.coronaBadge | 5.67 | The name on the amp's badge | yes |
 | hardware.coronaStripInk | hardware.coronaStrip | 13.15 | Names on the utility strip | yes |

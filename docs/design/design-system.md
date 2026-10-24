@@ -90,7 +90,14 @@ Derived uses, all by alpha over the base (see `track.*Alpha`):
   value, tempo and sample-rate readout. Monospace guarantees stable widths while
   values change; Inter's tabular figures are not accessible through JUCE 8.
 
-Scale (px at 100%), from `font.size`:
+Scale (px at 100%), from `font.size`. A size is the em square, as in CSS and
+design tools (JUCE's `withPointHeight`), not JUCE's font height, which is the
+ascent plus the descent and about 1.2 em for Inter. Size a text box with
+`Theme::lineHeight(size)`, one line of either face in whole px, never the size
+plus a guess. The exception is the `legend` face printed on hardware faces: its
+sizes are JUCE heights in the face's design pixels, so legends keep the size the
+rendered art was drawn for. A number with a fixed count of decimals goes through
+`ui::fixedText`: `juce::String(value, 0)` prints every decimal, not none.
 
 | Token | Size | Weight | Use |
 |---|---|---|---|
@@ -104,7 +111,7 @@ Scale (px at 100%), from `font.size`:
 | timeSmall | 13 (mono) | 500 | Secondary counters, status bar |
 | value | 12 (mono) | 500 | dB, pan, tempo, latency values |
 
-Line height 1.3. Uppercase labels (section headers in panels) use `caption` at
+Paragraph line spacing 1.3. Uppercase labels (section headers in panels) use `caption` at
 weight 600 with `letterSpacingCaps` tracking and `textTertiary` colour.
 
 ## 2.3 Spacing, radius, grid
@@ -292,7 +299,10 @@ travel, +6 dB max. Double-click to 0 dB. Shift drag = fine. Keyboard as Slider.
 arc from centre, label L/R; level: from the start); inside it a body with the radial
 gradient `knobBodyLight` (offset upper-left) to `knobBodyDark`, a 1 px dark edge and
 a faint `knobHighlight` arc at the top; indicator line `textPrimary`. Value shown as
-text below in `value` 12 mono when space allows, else in a tooltip while dragging.
+text below in `value` 12 mono when space allows (6 px under the ring), else
+in a tooltip while dragging. In a card the label follows the value directly and
+`space.sm` separates it from the next row's knob, so each label reads as its own
+knob's.
 Vertical drag; double-click resets. Keyboard as Slider.
 
 ### Bud knob
@@ -318,7 +328,9 @@ never past 270° in all); each has a 2 px dot just outside the rim and its short
 label (up to four characters, in a 34 px box) in `caption` 18 px further out: the
 selected position's dot in the module's hue and its label in `textPrimary`, the
 others `textTertiary`, the label under the pointer `textSecondary`. The control is
-as wide as its labels need (104 px), so neighbours never share a label's room. Its
+as wide as its labels need (104 px), so neighbours never share a label's room.
+Each label's near edge sits 5 px past its dot whatever its width, so a wide side
+label reaches farther out instead of touching its dot. Its
 name sits under it as a knob's label does (`caption`, `textSecondary`), with the
 unit when the labels leave it out ("Attack (ms)"), on the same baseline as the
 knob labels beside it.
@@ -359,7 +371,8 @@ hover (`surface2` at 50%), selected (`surface2`, 1.5 px hue outline, radius
 `textSecondary` when selected), focused (the focus ring round the tile).
 Keyboard: Left/Right move, Enter selects, Space switches the stage. The selected
 tile's controls show in the row below under the stage's name in `captionCaps`.
-Patina draws its tiles as lit meter windows on its hardware face (plugins.md 7.2a).
+No effect uses the pattern now: Patina shows every stage's controls at once,
+each stage a module on its rendered face (plugins.md 7.2a).
 
 ### Hardware face
 

@@ -2,6 +2,8 @@
 
 #include "ui/NorthlightLookAndFeel.h"
 
+#include <algorithm>
+
 namespace northlight::ui
 {
 
@@ -81,10 +83,11 @@ juce::String SegmentedControl::getTooltip()
 
 int SegmentedControl::preferredWidth() const
 {
-    int width = 2 * theme_.spacing.xxs;
+    // The segments are equal, so each is as wide as the widest label needs.
+    int widest = 0;
     for (const auto& label : labels_)
-        width += juce::GlyphArrangement::getStringWidthInt(theme_.label(), label) + 2 * theme_.spacing.md;
-    return width;
+        widest = std::max(widest, juce::GlyphArrangement::getStringWidthInt(theme_.label(), label));
+    return 2 * theme_.spacing.xxs + static_cast<int>(labels_.size()) * (widest + 2 * theme_.spacing.md);
 }
 
 juce::Rectangle<float> SegmentedControl::segmentBounds(int index) const noexcept

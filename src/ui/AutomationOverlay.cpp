@@ -3,6 +3,7 @@
 #include "plugins/BuiltIns.h"
 #include "ui/Db.h"
 #include "ui/NorthlightLookAndFeel.h"
+#include "ui/Number.h"
 
 #include <cmath>
 
@@ -261,7 +262,7 @@ juce::String AutomationOverlay::valueText(const core::Channel& track, const Key&
                         0, static_cast<int>(info->choices.size()) - 1, static_cast<int>(std::lround(value))));
                     return juce::String(info->choices[i]);
                 }
-                return juce::String(value, std::abs(value) >= 100.0f ? 0 : 2) +
+                return fixedText(value, std::abs(value) >= 100.0f ? 0 : 2) +
                        (info->unit.empty() ? juce::String() : " " + juce::String(info->unit));
             }
             return juce::String(value, 2);

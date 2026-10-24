@@ -3,13 +3,14 @@
 #include "plugins/Patina.h"
 #include "ui/Theme.h"
 #include "ui/components/Knob.h"
-#include "ui/components/RotarySelector.h"
 #include "ui/strip/BuiltInCards.h"
 #include "ui/strip/EffectPresetLibrary.h"
+#include "ui/strip/HardwareKey.h"
 
 #include <catch2/catch_test_macros.hpp>
 
 #include <cmath>
+#include <functional>
 #include <memory>
 #include <numbers>
 #include <vector>
@@ -19,31 +20,83 @@ namespace pa = plugins::patina;
 
 namespace
 {
-// The card's stage windows, by their IDs ("stage:Heat").
-juce::Component* tileFor(juce::Component& card, const juce::String& name)
+// Every component under `root` (the face holds the controls, not the card).
+void forEachChild(juce::Component& root, const std::function<void(juce::Component&)>& visit)
 {
-    return card.findChildWithID("stage:" + name);
+    for (auto* child : root.getChildren())
+    {
+        visit(*child);
+        forEachChild(*child, visit);
+    }
+}
+
+// A stage's window, by its ID ("stage:Heat").
+juce::Component* windowFor(juce::Component& card, const juce::String& name)
+{
+    juce::Component* found = nullptr;
+    forEachChild(card,
+                 [&](juce::Component& c)
+                 {
+                     if (c.getComponentID() == "stage:" + name)
+                         found = &c;
+                 });
+    return found;
+}
+
+// The knob bound to a parameter (titled with its name).
+ui::Knob* knobFor(juce::Component& card, int index)
+{
+    const auto name = juce::String(plugins::parameterInfo(pa::type)[static_cast<size_t>(index)].name);
+    ui::Knob* found = nullptr;
+    forEachChild(card,
+                 [&](juce::Component& c)
+                 {
+                     if (auto* k = dynamic_cast<ui::Knob*>(&c); k != nullptr && k->getTitle() == name)
+                         found = k;
+                 });
+    return found;
+}
+
+std::vector<ui::Knob*> visibleKnobs(juce::Component& card)
+{
+    std::vector<ui::Knob*> out;
+    forEachChild(card,
+                 [&](juce::Component& c)
+                 {
+                     if (auto* k = dynamic_cast<ui::Knob*>(&c); k != nullptr && k->isVisible())
+                         out.push_back(k);
+                 });
+    return out;
 }
 
 juce::Button* buttonFor(juce::Component& card, const juce::String& tooltip)
 {
-    for (auto* child : card.getChildren())
-        if (auto* b = dynamic_cast<juce::Button*>(child); b != nullptr && b->getTooltip() == tooltip)
-            return b;
-    return nullptr;
+    juce::Button* found = nullptr;
+    forEachChild(card,
+                 [&](juce::Component& c)
+                 {
+                     if (auto* b = dynamic_cast<juce::Button*>(&c);
+                         b != nullptr && b->getTooltip() == tooltip)
+                         found = b;
+                 });
+    return found;
 }
 
-std::vector<ui::RotarySelector*> visibleSelectors(juce::Component& card)
+ui::strip::HardwareKey* keyFor(juce::Component& card, const juce::String& tooltip)
 {
-    std::vector<ui::RotarySelector*> out;
-    for (auto* child : card.getChildren())
-        if (auto* s = dynamic_cast<ui::RotarySelector*>(child); s != nullptr && s->isVisible())
-            out.push_back(s);
-    return out;
+    ui::strip::HardwareKey* found = nullptr;
+    forEachChild(card,
+                 [&](juce::Component& c)
+                 {
+                     if (auto* k = dynamic_cast<ui::strip::HardwareKey*>(&c);
+                         k != nullptr && k->getTooltip() == tooltip)
+                         found = k;
+                 });
+    return found;
 }
 } // namespace
 
-TEST_CASE("Patina's card reads its stages live and its tiles switch the controls shown", "[ui][patina]")
+TEST_CASE("Patina's card reads its stages live and shows every stage's controls at once", "[ui][patina]")
 {
     const juce::ScopedJuceInitialiser_GUI juceInit;
     const auto& theme = ui::Theme::dark();
@@ -62,7 +115,7 @@ TEST_CASE("Patina's card reads its stages live and its tiles switch the controls
     host.onCommand = [&](std::unique_ptr<core::Command> c) { sent.push_back(std::move(c)); };
     auto card = ui::strip::createBuiltInCard(theme, host, core::masterId, insert);
     REQUIRE(card != nullptr);
-    card->setBounds(0, 0, card->preferredWidth(), 420);
+    card->setBounds(0, 0, card->preferredWidth(), card->preferredBodyHeight() + 40);
     card->tick(16.0); // starts watching
 
     // A second of a tone: the stages report and the card draws them.
@@ -84,29 +137,31 @@ TEST_CASE("Patina's card reads its stages live and its tiles switch the controls
     const auto image = card->createComponentSnapshot(card->getLocalBounds(), true, 1.0f);
     CHECK(image.isValid());
 
-    // Six tiles, in signal order.
-    auto* heat = tileFor(*card, "Heat");
-    auto* chamber = tileFor(*card, "Chamber");
+    // Six windows, in signal order.
+    auto* heat = windowFor(*card, "Heat");
+    auto* chamber = windowFor(*card, "Chamber");
     REQUIRE(heat != nullptr);
     REQUIRE(chamber != nullptr);
     for (const auto* name : {"Drift", "Grain", "Wear", "Crush"})
-        CHECK(tileFor(*card, name) != nullptr);
+        CHECK(windowFor(*card, name) != nullptr);
     CHECK(heat->getX() < chamber->getX());
 
-    // Heat is shown: one selector (its character), set from the model.
-    heat->keyPressed(juce::KeyPress(juce::KeyPress::returnKey));
-    auto selectors = visibleSelectors(*card);
-    REQUIRE(selectors.size() == 1);
-    CHECK(selectors[0]->selected() == static_cast<int>(insert.params[pa::heatCharacter]));
-    // The arrow moves to Chamber, whose space selector replaces it.
-    heat->keyPressed(juce::KeyPress(juce::KeyPress::rightKey));
-    selectors = visibleSelectors(*card);
-    REQUIRE(selectors.size() == 1);
-    CHECK(selectors[0]->selected() == static_cast<int>(insert.params[pa::chamberType]));
-    selectors[0]->keyPressed(juce::KeyPress(juce::KeyPress::homeKey));
-    CHECK(card->param(pa::chamberType) == static_cast<float>(pa::room));
+    // Every control shows at once: a knob for each parameter but the six switches.
+    CHECK(visibleKnobs(*card).size() ==
+          static_cast<size_t>(static_cast<int>(pa::count) - static_cast<int>(pa::stageCount)));
 
-    // Space on a tile switches its stage (with a command).
+    // A stage's type selector clicks between its positions, set from the model.
+    auto* character = knobFor(*card, pa::heatCharacter);
+    REQUIRE(character != nullptr);
+    CHECK(character->value() == static_cast<double>(insert.params[pa::heatCharacter]));
+    auto* space = knobFor(*card, pa::chamberType);
+    REQUIRE(space != nullptr);
+    space->keyPressed(juce::KeyPress(juce::KeyPress::endKey));
+    CHECK(card->param(pa::chamberType) == static_cast<float>(pa::room));
+    space->keyPressed(juce::KeyPress(juce::KeyPress::upKey));
+    CHECK(card->param(pa::chamberType) == static_cast<float>(pa::spring));
+
+    // Space on a window switches its stage (with a command).
     const auto commands = sent.size();
     CHECK(card->param(pa::chamberOn) == 0.0f);
     chamber->keyPressed(juce::KeyPress(juce::KeyPress::spaceKey));
@@ -117,24 +172,20 @@ TEST_CASE("Patina's card reads its stages live and its tiles switch the controls
     const auto before = sent.size();
     insert.params[pa::chamberType] = static_cast<float>(pa::plate);
     card->refresh(insert);
-    CHECK(visibleSelectors(*card)[0]->selected() == pa::plate);
+    CHECK(space->value() == static_cast<double>(pa::plate));
     CHECK(sent.size() == before);
 
-    // Every stage draws, at 2x too. With NORTHLIGHT_TEST_CAPTURE set to a
-    // folder, the snapshots are saved there for review.
+    // The face draws at 2x too. With NORTHLIGHT_TEST_CAPTURE set to a folder, the
+    // snapshot is saved there for review.
+    const auto shot = card->createComponentSnapshot(card->getLocalBounds(), true, 2.0f);
+    CHECK(shot.isValid());
     const auto folder = juce::SystemStats::getEnvironmentVariable("NORTHLIGHT_TEST_CAPTURE", {});
-    for (const auto* name : {"Heat", "Chamber", "Drift", "Grain", "Wear", "Crush"})
+    if (folder.isNotEmpty())
     {
-        tileFor(*card, name)->keyPressed(juce::KeyPress(juce::KeyPress::returnKey));
-        const auto shot = card->createComponentSnapshot(card->getLocalBounds(), true, 2.0f);
-        CHECK(shot.isValid());
-        if (folder.isNotEmpty())
-        {
-            const auto file = juce::File(folder).getChildFile(juce::String("patina-") + name + ".png");
-            file.deleteFile();
-            juce::FileOutputStream stream(file);
-            juce::PNGImageFormat().writeImageToStream(shot, stream);
-        }
+        const auto file = juce::File(folder).getChildFile("patina.png");
+        file.deleteFile();
+        juce::FileOutputStream stream(file);
+        juce::PNGImageFormat().writeImageToStream(shot, stream);
     }
 }
 
@@ -165,12 +216,12 @@ TEST_CASE("Patina's preset keys step through the factory presets as one undo ste
     // A new Patina is the first preset; the display names it.
     auto* display = buttonFor(*card, "Presets");
     REQUIRE(display != nullptr);
-    auto* next = buttonFor(*card, "Next preset");
-    auto* previous = buttonFor(*card, "Previous preset");
+    auto* next = keyFor(*card, "Next preset");
+    auto* previous = keyFor(*card, "Previous preset");
     REQUIRE(next != nullptr);
     REQUIRE(previous != nullptr);
 
-    next->onClick();
+    next->onPress();
     const auto& second = pa::presets()[1];
     for (size_t i = 0; i < second.values.size(); ++i)
         CHECK(card->param(static_cast<int>(i)) == second.values[i]);
@@ -179,8 +230,8 @@ TEST_CASE("Patina's preset keys step through the factory presets as one undo ste
     CHECK(display->getButtonText() == juce::String(second.name));
 
     // Back past the first wraps to the last.
-    previous->onClick();
-    previous->onClick();
+    previous->onPress();
+    previous->onPress();
     CHECK(display->getButtonText() == juce::String(pa::presets().back().name));
 
     // A change of any value is no longer a preset.

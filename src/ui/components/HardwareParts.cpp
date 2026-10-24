@@ -234,6 +234,11 @@ void drawCrispText(juce::Graphics& g,
 {
     if (text.isEmpty())
         return;
+    // Nothing to do outside what is being repainted: setting a line measures its
+    // glyphs' outlines, which a face with many words cannot afford on every
+    // small repaint (a knob's hover, a live window).
+    if (!g.clipRegionIntersects(area.getSmallestIntegerContainer().expanded(8)))
+        return;
     const float k = g.getInternalContext().getPhysicalPixelScaleFactor();
     if (k <= 0.0f)
         return;
