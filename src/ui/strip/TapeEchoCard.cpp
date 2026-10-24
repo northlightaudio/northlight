@@ -670,16 +670,18 @@ public:
 
         // REPEAT RATE: the motor's time, or with SYNC on, head 1's note value.
         rate_ = std::make_unique<Knob>(theme_);
-        placeRenderedKnob(*rate_, {bigX[1], bigRow}, bigSkirt, bigImage, part("knob-pointer.png"), te::time);
         rate_->setTitle("Repeat rate");
         rate_->onDragStart = [this] { beginGesture("Repeat rate"); };
         rate_->onDragEnd = [this] { endGesture(); };
+        placeRenderedKnob(*rate_, {bigX[1], bigRow}, bigSkirt, bigImage, part("knob-pointer.png"), te::time);
+        showOnKnob(te::time, *rate_);
+        showOnKnob(te::sync, *rate_);
         rate_->onValueChanged = [this](double v)
         {
             if (updatingRate_)
                 return;
             setParam(synced() ? te::sync : te::time, static_cast<float>(v));
-            face_.repaint();
+            face_.repaint(rate_->getBounds().expanded(controlReach));
         };
 
         const std::array<juce::String, 3> leverFiles{"lever-up.png", "lever-centre.png", "lever-down.png"};
@@ -791,7 +793,16 @@ private:
         dry_->setPosition(param(te::killDry) >= 0.5f ? 1 : 0);
         face_.headsPosition = static_cast<int>(std::lround(param(te::heads)));
         update();
-        face_.repaint();
+        repaintChanged();
+    }
+
+    // The levers, the lamp and the transport draw their own state; the heads'
+    // legends print round the heads knob, and SYNC changes the art (setSynced
+    // redraws it).
+    bool printsWidely(int index) const override
+    {
+        juce::ignoreUnused(index);
+        return false;
     }
 
     void framesArrived(double elapsedMs) override

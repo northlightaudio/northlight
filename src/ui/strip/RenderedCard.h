@@ -5,6 +5,7 @@
 #include "ui/strip/ModuleCard.h"
 
 #include <array>
+#include <map>
 #include <memory>
 #include <vector>
 
@@ -41,7 +42,8 @@ protected:
         int index, juce::Point<float> centre, float skirt, float imageSize, const juce::Image& pointer);
     // The same placement for a knob the card drives itself (one that switches
     // between parameters); `control` is what the face calls it while it is
-    // hovered or turned (a parameter index; -1 for none).
+    // hovered or turned (a parameter index; -1 for none). Set the knob's drag
+    // callbacks before placing it: the placement chains onto them.
     void placeRenderedKnob(Knob& knob,
                            juce::Point<float> centre,
                            float skirt,
@@ -66,13 +68,35 @@ protected:
 
     void layoutBody(juce::Rectangle<int> body) override { face_.placeIn(body); }
 
+    // Repaints what the parameters changed since the last call: round each bound
+    // knob whose value moved (its name and value print there), and the whole face
+    // for one printsWidely() says reaches further, or on the first call. Call it
+    // from paramsChanged() instead of repainting the face.
+    void repaintChanged();
+    // Whether a parameter's change shows beyond its own knob (another control's
+    // value or name, the art). Default: a parameter with no rendered knob does.
+    virtual bool printsWidely(int index) const { return knobFor(index) == nullptr; }
+    // Other parameters whose knobs' print a parameter's change alters (a unit
+    // that follows a mode): those knobs repaint round themselves too.
+    virtual std::vector<int> alsoChanges(int index) const
+    {
+        juce::ignoreUnused(index);
+        return {};
+    }
+    // The rendered knob bound to a parameter, or null.
+    Knob* knobFor(int index) const;
+    // A knob the card drives itself that shows a parameter (a knob switching
+    // between two): its changes repaint round it.
+    void showOnKnob(int index, Knob& knob) { renderedKnobs_[index] = &knob; }
+
     RenderedFace& face_;
 
 private:
     // Tells the face which knob is hovered or turned.
-    struct Watch;
+    void watchActive(Knob& knob, int control);
     std::vector<std::unique_ptr<HardwareLever>> levers_;
-    std::vector<std::unique_ptr<Watch>> watches_;
+    std::map<int, Knob*> renderedKnobs_;
+    std::vector<float> shown_; // the parameters as last painted
 };
 
 } // namespace northlight::ui::strip

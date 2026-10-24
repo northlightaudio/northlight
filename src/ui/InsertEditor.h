@@ -62,7 +62,12 @@ public:
     std::function<void(int)> onParameterGestureEnd;
 
     void paint(juce::Graphics& g) override;
+    void paintOverChildren(juce::Graphics& g) override;
     void resized() override;
+
+    // Set by --benchmark-hover: every editor window's paint, its body and all
+    // its children, is timed into it (ms). Message thread only.
+    static inline std::vector<double>* paintTimes = nullptr;
 
     static constexpr int rowHeight = 28;
     static int preferredHeight(int parameterCount, bool embedded = false) noexcept
@@ -72,6 +77,7 @@ public:
     static constexpr int preferredWidth = 420;
 
 private:
+    double paintStart_ = 0.0;
     struct Row
     {
         std::unique_ptr<juce::Label> name;

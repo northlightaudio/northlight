@@ -1488,7 +1488,17 @@ private:
         if (const auto* live = liveProcessor())
             face_.fileError = juce::String(pa::userResponseError(*live));
         baffle_.repaint();
-        face_.repaint();
+        repaintChanged();
+    }
+
+    // The levers, keys, footswitches, mic handles and the baffle draw their own
+    // settings; the cabinet, its switch and the loaded file change the cabinet
+    // page's art and print.
+    bool printsWidely(int index) const override
+    {
+        if (index == pa::cabinet || index == pa::cabinetOn)
+            return true;
+        return false;
     }
 
     void framesArrived(double elapsedMs) override

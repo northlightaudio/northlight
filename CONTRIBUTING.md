@@ -38,6 +38,11 @@ A change is ready when:
   `python scripts/contrast.py --out docs/design/contrast.md`;
 - a visible change meets the design bar, checked by looking at `--capture`
   screenshots at 100% and 200% of each state it touches;
+- a change to painting stays within the UI performance budgets
+  ([docs/ui-performance.md](docs/ui-performance.md)): the work budgets run in
+  `ctest`; run the paint-time budgets
+  (`.\scripts\build.ps1 -Preset windows-release -Test -Label perf`) too, and
+  `scripts/perf.ps1` before merging a change to how the UI repaints;
 - a dependency change is followed by `python scripts/third-party-notices.py`.
 
 ## Code

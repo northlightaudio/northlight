@@ -89,9 +89,14 @@ public:
 
     std::function<void(double)> onValueChanged;
     std::function<void()> onDragStart, onDragEnd;
+    // The pointer entering (true) or leaving (false) the knob.
+    std::function<void(bool)> onHover;
+    bool isDragging() const noexcept { return dragging_; }
 
     void paint(juce::Graphics& g) override;
     bool hitTest(int x, int y) override;
+    void mouseEnter(const juce::MouseEvent& e) override;
+    void mouseExit(const juce::MouseEvent& e) override;
     void mouseDown(const juce::MouseEvent& e) override;
     void mouseDrag(const juce::MouseEvent& e) override;
     void mouseUp(const juce::MouseEvent& e) override;

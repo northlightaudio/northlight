@@ -44,7 +44,6 @@ constexpr float sweep = juce::MathConstants<float>::pi * 1.5f;       // to 5 o'c
 Knob::Knob(const Theme& theme) : theme_(theme)
 {
     setWantsKeyboardFocus(true);
-    setRepaintsOnMouseActivity(true);
     format = [](double v) { return juce::String(v, 2); };
 }
 
@@ -335,8 +334,24 @@ void Knob::paint(juce::Graphics& g)
         lnf->drawFocusRing(g, *this, ring, size * 0.5f);
 }
 
+// Hover lightens the knob: it repaints itself (only itself) and tells its owner.
+void Knob::mouseEnter(const juce::MouseEvent&)
+{
+    repaint();
+    if (onHover)
+        onHover(true);
+}
+
+void Knob::mouseExit(const juce::MouseEvent&)
+{
+    repaint();
+    if (onHover)
+        onHover(false);
+}
+
 void Knob::mouseDown(const juce::MouseEvent& e)
 {
+    repaint();
     grabKeyboardFocus();
     dragStartValue_ = fraction();
     dragStartY_ = e.y;
@@ -358,6 +373,7 @@ void Knob::mouseUp(const juce::MouseEvent&)
     if (!dragging_)
         return;
     dragging_ = false;
+    repaint();
     if (onDragEnd)
         onDragEnd();
 }

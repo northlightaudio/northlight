@@ -227,8 +227,17 @@ void InsertEditor::setLatency(int samples)
     repaint();
 }
 
+void InsertEditor::paintOverChildren(juce::Graphics&)
+{
+    if (paintTimes != nullptr && paintStart_ > 0.0)
+        paintTimes->push_back(juce::Time::getMillisecondCounterHiRes() - paintStart_);
+    paintStart_ = 0.0;
+}
+
 void InsertEditor::paint(juce::Graphics& g)
 {
+    if (paintTimes != nullptr)
+        paintStart_ = juce::Time::getMillisecondCounterHiRes();
     const auto& c = theme_.colours;
     g.fillAll(c.canvas);
     const auto footer =

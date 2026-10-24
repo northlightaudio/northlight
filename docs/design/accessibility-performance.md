@@ -75,6 +75,9 @@
 - The `--benchmark-ui <seconds>` launch flag plays and scrolls the open project
   unattended and prints the frame-time percentiles, so a budget regression can be
   caught on a reference machine.
+- The tests hold the code to these budgets in three layers (repaint and work
+  budgets in every `ctest`, paint-time budgets in Release builds, frame benchmarks
+  against a per-machine baseline): [ui-performance.md](../ui-performance.md).
 
 ## Acceptance
 

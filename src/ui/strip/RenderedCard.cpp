@@ -3,47 +3,6 @@
 namespace northlight::ui::strip
 {
 
-// Follows one knob's hover and drag for the face: the knob is "active" from the
-// mouse entering it (or pressing it) until it leaves and is let go.
-struct RenderedCard::Watch final : juce::MouseListener
-{
-    Watch(RenderedFace& face, Knob& knob, int control) : face_(face), knob_(&knob), control_(control)
-    {
-        knob.addMouseListener(this, false);
-    }
-    ~Watch() override
-    {
-        if (knob_ != nullptr)
-            knob_->removeMouseListener(this);
-    }
-    void mouseEnter(const juce::MouseEvent&) override { face_.setActiveControl(control_); }
-    void mouseDown(const juce::MouseEvent&) override { face_.setActiveControl(control_); }
-    void mouseDrag(const juce::MouseEvent&) override // the value changes, round the knob
-    {
-        if (knob_ != nullptr)
-            face_.repaint(knob_->getBounds().expanded(RenderedCard::controlReach));
-    }
-    void mouseExit(const juce::MouseEvent& e) override
-    {
-        if (!e.mouseWasDraggedSinceMouseDown() || !e.mods.isAnyMouseButtonDown())
-            release();
-    }
-    void mouseUp(const juce::MouseEvent&) override
-    {
-        if (knob_ != nullptr && !knob_->isMouseOver(true))
-            release();
-    }
-    void release()
-    {
-        if (face_.activeControl() == control_)
-            face_.setActiveControl(-1);
-    }
-
-    RenderedFace& face_;
-    juce::Component::SafePointer<Knob> knob_;
-    int control_;
-};
-
 RenderedCard::~RenderedCard() = default;
 
 RenderedCard::RenderedCard(
@@ -80,7 +39,7 @@ void RenderedCard::placeRenderedKnob(Knob& knob,
                                      int control)
 {
     if (control >= 0)
-        watches_.push_back(std::make_unique<Watch>(face_, knob, control));
+        watchActive(knob, control);
     knob.setStyle(Knob::Style::rendered);
     knob.setRingSize(juce::roundToInt(skirt));
     knob.setShowValue(false);
@@ -91,6 +50,38 @@ void RenderedCard::placeRenderedKnob(Knob& knob,
     face_.addAndMakeVisible(knob);
 }
 
+// The knob is the face's "active" control from the pointer entering it (or
+// pressing it) until it has left and been let go: in compact the face shows its
+// value where its name is.
+void RenderedCard::watchActive(Knob& knob, int control)
+{
+    const auto release = [this, control]
+    {
+        if (face_.activeControl() == control)
+            face_.setActiveControl(-1);
+    };
+    knob.onHover = [this, &knob, control, release](bool inside)
+    {
+        if (inside)
+            face_.setActiveControl(control, knob.getBounds().expanded(controlReach));
+        else if (!knob.isDragging())
+            release();
+    };
+    knob.onDragStart = [this, &knob, control, prior = knob.onDragStart]
+    {
+        if (prior)
+            prior();
+        face_.setActiveControl(control, knob.getBounds().expanded(controlReach));
+    };
+    knob.onDragEnd = [&knob, release, prior = knob.onDragEnd]
+    {
+        if (prior)
+            prior();
+        if (!knob.isMouseOver(true))
+            release();
+    };
+}
+
 Knob& RenderedCard::bindRenderedKnob(
     int index, juce::Point<float> centre, float skirt, float imageSize, const juce::Image& pointer)
 {
@@ -98,6 +89,7 @@ Knob& RenderedCard::bindRenderedKnob(
     if (auto* label = labelFor(k))
         label->setVisible(false);
     placeRenderedKnob(k, centre, skirt, imageSize, pointer, index);
+    renderedKnobs_[index] = &k;
     k.onValueChanged = [this, &k, prior = k.onValueChanged](double v)
     {
         if (prior)
@@ -105,6 +97,40 @@ Knob& RenderedCard::bindRenderedKnob(
         controlMoved(k);
     };
     return k;
+}
+
+Knob* RenderedCard::knobFor(int index) const
+{
+    const auto it = renderedKnobs_.find(index);
+    return it != renderedKnobs_.end() ? it->second : nullptr;
+}
+
+void RenderedCard::repaintChanged()
+{
+    if (shown_.size() != params_.size())
+    {
+        shown_ = params_;
+        face_.repaint();
+        return;
+    }
+    for (size_t i = 0; i < params_.size(); ++i)
+    {
+        if (shown_[i] == params_[i])
+            continue;
+        shown_[i] = params_[i];
+        const int index = static_cast<int>(i);
+        if (printsWidely(index))
+        {
+            shown_ = params_;
+            face_.repaint();
+            return;
+        }
+        for (const int shown : alsoChanges(index))
+            if (auto* k = knobFor(shown))
+                face_.repaint(k->getBounds().expanded(controlReach));
+        if (auto* k = knobFor(index))
+            face_.repaint(k->getBounds().expanded(controlReach));
+    }
 }
 
 HardwareLever& RenderedCard::addLever(const juce::String& name,

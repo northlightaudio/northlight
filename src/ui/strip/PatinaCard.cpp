@@ -862,7 +862,6 @@ private:
     {
         auto& k = bindRenderedKnob(index, centre, skirt, skirt * knobImageRatio, part("knob-pointer.png"));
         k.format = formatFor(index);
-        knobByParam_[index] = &k;
         face_.controls.push_back({index, centre, skirt, name, kind, {}});
         return k;
     }
@@ -877,7 +876,6 @@ private:
         k.setInterval(1.0);
         k.setSweep(juce::degreesToRadians(selectorStep * static_cast<float>(legends.size() - 1)));
         const auto& choices = info(index).choices;
-        knobByParam_[index] = &k;
         k.format = [choices](double v)
         {
             const auto i = static_cast<size_t>(
@@ -984,19 +982,8 @@ private:
 
     juce::String valueText(int index) const
     {
-        const auto it = knobByParam_.find(index);
-        return it != knobByParam_.end() && it->second->format ? it->second->format(param(index))
-                                                              : juce::String();
-    }
-
-    // The space sets the decay's seconds and the source names the texture knob and
-    // sets its unit: those two change print beyond their own knob.
-    void controlMoved(Knob& knob) override
-    {
-        if (&knob == knobByParam_[pa::chamberType] || &knob == knobByParam_[pa::grainSource])
-            face_.repaint();
-        else
-            RenderedCard::controlMoved(knob);
+        const auto* k = knobFor(index);
+        return k != nullptr && k->format ? k->format(param(index)) : juce::String();
     }
 
     void paramsChanged() override
@@ -1010,7 +997,25 @@ private:
         }
         showPreset();
         lamp_.repaint();
-        face_.repaint();
+        repaintChanged();
+    }
+
+    // The stage switches show on their own buttons and windows.
+    bool printsWidely(int index) const override
+    {
+        for (int s = 0; s < pa::stageCount; ++s)
+            if (index == pa::onParam(s))
+                return false;
+        return knobFor(index) == nullptr;
+    }
+    // The space sets the decay's seconds; the source names the texture knob and its unit.
+    std::vector<int> alsoChanges(int index) const override
+    {
+        if (index == pa::chamberType)
+            return {pa::chamberDecay};
+        if (index == pa::grainSource)
+            return {pa::grainTexture};
+        return {};
     }
 
     void framesArrived(double) override
@@ -1096,7 +1101,6 @@ private:
     Face face_;
     std::array<std::unique_ptr<StageWindow>, pa::stageCount> windows_;
     std::array<std::unique_ptr<StageButton>, pa::stageCount> buttons_;
-    std::map<int, Knob*> knobByParam_;
 
     std::vector<Telemetry::Frame> history_;
     int head_ = 0, count_ = 0;

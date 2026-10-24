@@ -14,6 +14,7 @@ a change, and the rules that are easiest to break.
 | Anything a user sees | The screen's spec under [docs/design/](docs/design/README.md). The spec is the definition of done |
 | A design choice that looks odd | [docs/decisions.md](docs/decisions.md) before changing it |
 | Build options, tests, launch flags | [docs/building.md](docs/building.md) |
+| Anything that paints (a view, a card, a face, a repaint) | [docs/ui-performance.md](docs/ui-performance.md) |
 
 ## Layout
 
@@ -81,7 +82,13 @@ environment:
    [docs/design/principles.md](docs/design/principles.md#the-design-bar): every
    element and state is designed, nothing looks like a JUCE default. Check it with
    `--capture` at 100% and 200% and look at the PNGs; working is not enough.
-7. Token changes pass `python scripts/contrast.py --check` and regenerate
+7. Painting stays within the UI performance budgets
+   ([docs/ui-performance.md](docs/ui-performance.md)): the work budgets run in
+   `ctest`; a change to a paint routine, card, face or the mixer also passes
+   `.\scripts\build.ps1 -Preset windows-release -Test -Label perf`, and a change to
+   how the UI repaints runs `scripts/perf.ps1` (in a window, so not while the user
+   is gaming). A new card or editor joins `uiperf::builtInTypes()`.
+8. Token changes pass `python scripts/contrast.py --check` and regenerate
    `docs/design/contrast.md`. Dependency changes rerun
    `python scripts/third-party-notices.py`.
 

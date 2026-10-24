@@ -1,5 +1,6 @@
 #include "ui/components/RenderedFace.h"
 
+#include "ui/PaintStats.h"
 #include "ui/components/HardwareParts.h"
 
 #include <algorithm>
@@ -42,13 +43,23 @@ void RenderedFace::setCompact(bool compact)
     invalidate();
 }
 
-void RenderedFace::setActiveControl(int control)
+void RenderedFace::setActiveControl(int control, juce::Rectangle<int> area)
 {
     if (control == activeControl_)
         return;
     activeControl_ = control;
-    if (compact_) // only the compact face shows the control in hand (its value for its name)
-        repaint();
+    // Only the compact face shows the control in hand (its value for its name),
+    // where the old one and the new one print.
+    if (compact_)
+    {
+        if (activeArea_.isEmpty() && area.isEmpty())
+            repaint();
+        if (!activeArea_.isEmpty())
+            repaint(activeArea_);
+        if (!area.isEmpty())
+            repaint(area);
+    }
+    activeArea_ = control >= 0 ? area : juce::Rectangle<int>();
 }
 
 int RenderedFace::widthForHeight(int bodyHeight) const noexcept
@@ -58,10 +69,12 @@ int RenderedFace::widthForHeight(int bodyHeight) const noexcept
 
 void RenderedFace::paint(juce::Graphics& g)
 {
+    ++paintstats::counters().facePaints;
     const float scale = g.getInternalContext().getPhysicalPixelScaleFactor();
     const int key = cacheKey();
     if (!cacheValid_ || cacheScale_ != scale || cacheKey_ != key)
     {
+        ++paintstats::counters().artRebuilds;
         cacheScale_ = scale;
         cacheKey_ = key;
         cacheValid_ = true;

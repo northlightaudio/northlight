@@ -39,6 +39,8 @@ add_executable(northlight_juce_tests
     NumberTests.cpp
     PatinaCardTests.cpp
     PanelLayoutTests.cpp
+    UiWorkBudgetTests.cpp
+    UiPaintTimeTests.cpp
     EffectPresetLibraryTests.cpp
     EffectCardTooltipsTests.cpp
     WidthScaleTests.cpp
@@ -83,3 +85,10 @@ add_dependencies(northlight_juce_tests northlight_plugin_scan)
 
 include(Catch)
 catch_discover_tests(northlight_juce_tests)
+
+# The UI paint-time budgets (docs/ui-performance.md): timed, so only in a Release
+# build, where the times mean something, and labelled so a run can pick or skip them.
+if(CMAKE_BUILD_TYPE STREQUAL "Release")
+    add_test(NAME ui_paint_time COMMAND northlight_juce_tests "[.painttime]")
+    set_tests_properties(ui_paint_time PROPERTIES LABELS perf RUN_SERIAL TRUE)
+endif()

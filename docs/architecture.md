@@ -315,7 +315,11 @@ know nothing format-specific.
   control's print), a knob that turns repaints only round itself, and hovering
   repaints nothing at full size; and `ui/strip/RenderedCard` is
   the card round it, sizing itself to the face and binding rendered knobs and
-  levers (`HardwareLever`) to parameters. `HardwareKey` is the bakelite key. Every built-in effect's
+  levers (`HardwareLever`) to parameters; its `repaintChanged()` turns a parameter
+  change into repaints round the knobs whose print moved, so neither a turned knob
+  nor the model's refresh repaints the whole face. `ui/PaintStats` counts the words
+  a face sets and its art rebuilds for the UI work budgets
+  ([ui-performance.md](ui-performance.md)). `HardwareKey` is the bakelite key. Every built-in effect's
   factory presets are in `plugins/EffectPresets` (by parameter name, resolved
   against the effect's parameter table); `ui/strip/EffectPresetLibrary` adds the
   user's own (JSON files keyed by parameter name) and tells every `PresetBar` when

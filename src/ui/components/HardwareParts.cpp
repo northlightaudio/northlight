@@ -1,6 +1,7 @@
 #include "ui/components/HardwareParts.h"
 
 #include "ui/NorthlightLookAndFeel.h"
+#include "ui/PaintStats.h"
 
 #include <algorithm>
 #include <cmath>
@@ -239,6 +240,7 @@ void drawCrispText(juce::Graphics& g,
     // small repaint (a knob's hover, a live window).
     if (!g.clipRegionIntersects(area.getSmallestIntegerContainer().expanded(8)))
         return;
+    ++paintstats::counters().wordsSet;
     const float k = g.getInternalContext().getPhysicalPixelScaleFactor();
     if (k <= 0.0f)
         return;

@@ -13,6 +13,14 @@
   .\scripts\build.ps1 -Test                 # build then run ctest
   .\scripts\build.ps1 -Run                  # build then launch northlight.exe
   .\scripts\build.ps1 -Test -LowPriority -Jobs 4   # stay out of the way of a game
+  .\scripts\build.ps1 -Preset windows-release -Test -Label perf   # the UI paint-time budgets
+
+.PARAMETER Target
+  Build only this CMake target (northlight_juce_tests, Northlight, ...).
+
+.PARAMETER Label
+  With -Test, run only the tests with this CTest label (perf: the UI paint-time
+  budgets, registered in a Release build; docs/ui-performance.md).
 
 .PARAMETER Jobs
   Compile at most this many files at once. 0 (the default) uses every core.
@@ -27,6 +35,8 @@ param(
     [ValidateSet('windows-debug', 'windows-relwithdebinfo', 'windows-release', 'ci')]
     [string]$Preset = 'windows-debug',
     [switch]$Test,
+    [string]$Target = '',
+    [string]$Label = '',
     [switch]$Run,
     [switch]$Clean,
     [ValidateRange(0, 256)]
@@ -75,11 +85,15 @@ try {
     cmake --preset $Preset
     if ($LASTEXITCODE -ne 0) { throw "configure failed ($LASTEXITCODE)" }
 
-    cmake --build --preset $Preset @parallel
+    $targets = @()
+    if ($Target) { $targets = @('--target', $Target) }
+    cmake --build --preset $Preset @parallel @targets
     if ($LASTEXITCODE -ne 0) { throw "build failed ($LASTEXITCODE)" }
 
     if ($Test) {
-        ctest --preset $Preset
+        $labels = @()
+        if ($Label) { $labels = @('-L', $Label) }
+        ctest --preset $Preset @labels
         if ($LASTEXITCODE -ne 0) { throw "tests failed ($LASTEXITCODE)" }
     }
 

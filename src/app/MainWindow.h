@@ -97,6 +97,8 @@ public:
     void showMenu(const juce::String& key);
     // The strip drag benchmark (--benchmark-strip-drag).
     void runStripDragBenchmark(int seconds);
+    // The hover benchmark (--benchmark-hover).
+    void runHoverBenchmark(int seconds);
     // Shows a track's automation over its lane in the arrange view.
     void showAutomation(core::Id trackId);
     // Opens a project as File > Open does: the loading sheet shows its progress.

@@ -73,6 +73,7 @@
   "testPresets": [
     { "name": "windows-debug", "configurePreset": "windows-debug", "output": { "outputOnFailure": true } },
     { "name": "windows-relwithdebinfo", "configurePreset": "windows-relwithdebinfo", "output": { "outputOnFailure": true } },
+    { "name": "windows-release", "configurePreset": "windows-release", "output": { "outputOnFailure": true } },
     { "name": "ci", "configurePreset": "ci", "output": { "outputOnFailure": true } },
     { "name": "linux-debug", "configurePreset": "linux-debug", "output": { "outputOnFailure": true } },
     { "name": "linux-relwithdebinfo", "configurePreset": "linux-relwithdebinfo", "output": { "outputOnFailure": true } }

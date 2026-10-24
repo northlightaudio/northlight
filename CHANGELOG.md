@@ -133,7 +133,7 @@ Northlight has not had a release yet. The first release, 0.1.0, will include:
 - Large knobs on the effect cards share one label line with the small knobs
   beside them, and their values sit clear of the ring.
 - The tape echo, Corona and Patina no longer drop frames while the mouse moves
-  over them.
+  over them, a knob is turned or they play: each repaints only what changed.
 - Level readouts on the effect cards show whole numbers ("-23") instead of being
   cut off ("-23…").
 - Automated faders in the mixer hold their automated value steadily while you move

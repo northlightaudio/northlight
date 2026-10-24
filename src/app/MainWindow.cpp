@@ -18,6 +18,7 @@
 #include "ui/ExportView.h"
 #include "ui/FrameStats.h"
 #include "ui/Icons.h"
+#include "ui/InsertEditor.h"
 #include "ui/MediaBrowser.h"
 #include "ui/MixerView.h"
 #include "ui/NorthlightLookAndFeel.h"
@@ -28,6 +29,7 @@
 #include "ui/Selection.h"
 #include "ui/SplashScreen.h"
 #include "ui/Theme.h"
+#include "ui/components/Knob.h"
 #include "ui/components/Meter.h"
 #include "ui/components/ProgressRow.h"
 #include "ui/components/Sheet.h"
@@ -472,16 +474,27 @@ public:
     // prints the intervals between the strip's display ticks, then quits.
     void runStripDragBenchmark(int seconds)
     {
-        const auto& tracks = session_.project().tracks;
-        if (tracks.empty())
-            return;
-        const auto trackId = tracks.front().id;
-        core::Id eq = core::invalidId;
-        for (const auto& m : tracks.front().strip)
-            if (m.type == plugins::strip::types::eq)
-                eq = m.id;
+        // The first track whose strip has an EQ; with none, say so and quit (a
+        // benchmark that never quits hangs the script that ran it).
+        core::Id trackId = core::invalidId, eq = core::invalidId;
+        for (const auto& track : session_.project().tracks)
+        {
+            for (const auto& m : track.strip)
+                if (m.type == plugins::strip::types::eq)
+                    eq = m.id;
+            if (eq != core::invalidId)
+            {
+                trackId = track.id;
+                break;
+            }
+        }
         if (eq == core::invalidId)
+        {
+            std::printf("benchmark-strip-drag: no track has a strip EQ\n");
+            std::fflush(stdout);
+            juce::MessageManager::callAsync([] { juce::JUCEApplication::getInstance()->quit(); });
             return;
+        }
         select(trackId);
         panels_.show(ui::PanelId::editor);
         const double start = juce::Time::getMillisecondCounterHiRes() + 1000.0; // let it settle first
@@ -526,6 +539,118 @@ public:
                 juce::MessageManager::callAsync([] { juce::JUCEApplication::getInstance()->quit(); });
             });
         dragBenchmark_->startTimer(8);
+    }
+
+    // --benchmark-hover: moves the pointer from knob to knob over the open editor
+    // windows, a knob a frame, for `seconds`, and times every paint of those
+    // windows meanwhile (the body and its children, by the window's own renderer);
+    // prints the percentiles, then quits. The hover goes through the knob's own
+    // handlers, so nothing reaches the desktop.
+    void runHoverBenchmark(int seconds)
+    {
+        const double start = juce::Time::getMillisecondCounterHiRes() + 1500.0; // let it settle first
+        const double end = start + seconds * 1000.0;
+        auto state = std::make_shared<HoverRun>();
+        dragBenchmark_ = std::make_unique<juce::TimedCallback>(
+            [this, start, end, state]
+            {
+                const double now = juce::Time::getMillisecondCounterHiRes();
+                if (now < start)
+                    return;
+                if (state->knobs.empty())
+                {
+                    state->knobs = hoverTargets();
+                    ui::InsertEditor::paintTimes = &state->ms;
+                    if (state->knobs.empty())
+                    {
+                        std::printf("benchmark-hover: no knobs to hover\n");
+                        std::fflush(stdout);
+                        juce::MessageManager::callAsync([] { juce::JUCEApplication::getInstance()->quit(); });
+                        dragBenchmark_->stopTimer();
+                        return;
+                    }
+                }
+                if (now < end)
+                {
+                    auto& knobs = state->knobs;
+                    const auto event = [](juce::Component& c)
+                    {
+                        const auto at = c.getLocalBounds().getCentre().toFloat();
+                        const auto time = juce::Time::getCurrentTime();
+                        return juce::MouseEvent(juce::Desktop::getInstance().getMainMouseSource(),
+                                                at,
+                                                juce::ModifierKeys(),
+                                                0.0f,
+                                                0.0f,
+                                                0.0f,
+                                                0.0f,
+                                                0.0f,
+                                                &c,
+                                                &c,
+                                                time,
+                                                at,
+                                                time,
+                                                0,
+                                                false);
+                    };
+                    if (auto* last = state->previous.getComponent())
+                        last->mouseExit(event(*last));
+                    auto* knob = knobs[state->next++ % knobs.size()].getComponent();
+                    if (knob == nullptr)
+                        return;
+                    knob->mouseEnter(event(*knob));
+                    state->previous = knob;
+                    return;
+                }
+                dragBenchmark_->stopTimer();
+                ui::InsertEditor::paintTimes = nullptr;
+                auto& ms = state->ms;
+                std::sort(ms.begin(), ms.end());
+                const auto at = [&](double q)
+                {
+                    return ms.empty() ? 0.0 : ms[std::min(ms.size() - 1, static_cast<size_t>(ms.size() * q))];
+                };
+                juce::String report;
+                report << "benchmark-hover: " << ms.size() << " hovers over " << state->knobs.size()
+                       << " knobs; editor paint ms p50 " << juce::String(at(0.5), 2) << " p95 "
+                       << juce::String(at(0.95), 2) << " max "
+                       << juce::String(ms.empty() ? 0.0 : ms.back(), 2) << "\n";
+                std::printf("%s", report.toRawUTF8());
+                std::fflush(stdout);
+                juce::MessageManager::callAsync([] { juce::JUCEApplication::getInstance()->quit(); });
+            });
+        dragBenchmark_->startTimer(16);
+    }
+
+    struct HoverRun
+    {
+        std::vector<juce::Component::SafePointer<ui::Knob>> knobs;
+        juce::Component::SafePointer<ui::Knob> previous;
+        size_t next = 0;
+        std::vector<double> ms;
+    };
+
+    // The knobs on the open editor windows.
+    std::vector<juce::Component::SafePointer<ui::Knob>> hoverTargets()
+    {
+        std::vector<juce::Component::SafePointer<ui::Knob>> out;
+        std::function<void(juce::Component&)> collect = [&](juce::Component& c)
+        {
+            for (auto* child : c.getChildren())
+            {
+                if (!child->isVisible())
+                    continue;
+                if (auto* k = dynamic_cast<ui::Knob*>(child))
+                    out.emplace_back(k);
+                collect(*child);
+            }
+        };
+        auto& desktop = juce::Desktop::getInstance();
+        for (int i = 0; i < desktop.getNumComponents(); ++i)
+            if (auto* top = desktop.getComponent(i);
+                top != nullptr && top != getTopLevelComponent() && top->isVisible())
+                collect(*top);
+        return out;
     }
 
     void benchmarkTick()
@@ -3304,6 +3429,12 @@ void MainWindow::runStripDragBenchmark(int seconds)
 {
     if (auto* content = dynamic_cast<Content*>(getContentComponent()))
         content->runStripDragBenchmark(seconds);
+}
+
+void MainWindow::runHoverBenchmark(int seconds)
+{
+    if (auto* content = dynamic_cast<Content*>(getContentComponent()))
+        content->runHoverBenchmark(seconds);
 }
 
 void MainWindow::showAutomation(core::Id trackId)

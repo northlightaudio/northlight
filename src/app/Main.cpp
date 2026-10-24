@@ -145,6 +145,9 @@ public:
     //   --benchmark-strip-drag <s>  drag the first track's strip EQ for s seconds, print the
     //                        strip's display tick intervals, quit
     //   --benchmark-ui <s>   play and scroll for s seconds, print frame percentiles, quit
+    //   --benchmark-hover <s>  hover the open editor windows' knobs (else the Editor
+    //                        panel's), one a frame, for s seconds; print the repaint
+    //                        times, quit
     //   --benchmark-panels <n>  open and close the inspector n times with the Editor
     //                        docked, print the slide's frame intervals, quit
     //   --insert <type>      add a built-in insert (northlight.glue, ...) to the first track that
@@ -775,6 +778,8 @@ public:
                 mainWindow_->runStripDragBenchmark(tokens.getReference(++i).text.getIntValue());
             else if (arg == "--benchmark-ui" && i + 1 < tokens.size())
                 mainWindow_->runBenchmark(tokens.getReference(++i).text.getIntValue());
+            else if (arg == "--benchmark-hover" && i + 1 < tokens.size())
+                mainWindow_->runHoverBenchmark(tokens.getReference(++i).text.getIntValue());
             else if (arg == "--benchmark-panels" && i + 1 < tokens.size())
                 mainWindow_->runPanelBenchmark(tokens.getReference(++i).text.getIntValue());
             else if (arg == "--export")

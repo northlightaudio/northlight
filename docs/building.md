@@ -124,6 +124,16 @@ runs both test suites and the source checks. The suites can also be run directly
 - `build/windows-debug/tests/unit_juce/northlight_juce_tests.exe`: JUCE-linked
   code, still without a device.
 
+The UI performance budgets ([ui-performance.md](ui-performance.md)) are in three
+layers: the work budgets run with every `ctest`; the paint-time budgets are a
+Release-only test labelled `perf`; the frame benchmarks run in a window against this
+machine's baseline:
+
+```powershell
+.\scripts\build.ps1 -Preset windows-release -Test -Label perf
+.\scripts\perf.ps1
+```
+
 Two tools under `tests/hardware` need a real device or a long run and are only run by
 hand:
 

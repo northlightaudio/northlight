@@ -50,7 +50,9 @@ public:
     // The control being hovered or turned (its parameter index, or -1): in
     // compact a face shows its value where its name is (and repaints for it;
     // at full size nothing changes). Set by the card.
-    void setActiveControl(int control);
+    // `area` is where its print lies (in the face's pixels), which is all that
+    // repaints; empty, the whole face.
+    void setActiveControl(int control, juce::Rectangle<int> area = {});
     int activeControl() const noexcept { return activeControl_; }
 
     void paint(juce::Graphics& g) final;
@@ -82,6 +84,7 @@ private:
     bool cacheValid_ = false;
     bool compact_ = false;
     int activeControl_ = -1;
+    juce::Rectangle<int> activeArea_;
     enum class Pass
     {
         art,
