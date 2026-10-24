@@ -181,7 +181,11 @@ add, remove, drag-handle, mute, solo, arm, monitor, phase, link (stereo), folder
 file-audio, file-midi, marker, region, warning, info, error, success, loudness,
 cpu, disk, midi-port, and the track kinds: track-audio (a waveform), track-midi (a
 note), track-aux (an output jack); instrument channels use instrument and folder
-tracks folder. Preferences adds keyboard (its Shortcuts page).
+tracks folder. Preferences adds keyboard (its Shortcuts page). The plugin menus add
+the effect types: fx-dynamics (a compressor's bent transfer line), fx-eq (a bell),
+fx-space (a decaying train of echoes: reverb and delay), fx-modulation (a sine),
+fx-drive (a vacuum tube: drive, saturation and amps) and fx-stereo (two overlapping circles: stereo and
+utility); other effects use plugin.
 
 ## 2.6 Motion
 
@@ -558,7 +562,10 @@ the plugin browser (Effects, Instruments, Blocked).
 `surface1` fill, radius `md`, `elevation.popup`, 4 px inset; items 28 px, `body`
 text, `sm` left padding plus 20 px icon column; hover `surface3`; shortcut hint right
 aligned in `textTertiary` mono; separators `lineSubtle`; submenu chevron. Checked
-items show a check icon in `accent`. Disabled `textDisabled`.
+items show a check icon in `accent`. Disabled `textDisabled`. An item's icon sits in
+the icon column at 16 px, centred. A hint about an item that is not a shortcut (a
+plugin's maker) comes after a tab in its text and is drawn right aligned in `small`
+`textTertiary`, dropped when the name needs the room.
 
 ### Tooltip
 

@@ -23,9 +23,31 @@ enum class PluginKind
 // registry calls one (the registry may be null).
 bool isInstrumentType(const std::string& type, const hosting::PluginRegistry* registry);
 
+// The kinds of effect the effects menu groups by (screens/plugins.md 7.1).
+enum class EffectCategory
+{
+    dynamics,   // compressors, limiters, gates
+    eq,         // EQ and filters
+    space,      // reverb and delay
+    modulation, // chorus, flanger, phaser, tremolo
+    drive,      // saturation, distortion, amps, colour
+    stereo,     // stereo and utility: width, gain, metering
+    other,
+};
+constexpr int effectCategoryCount = static_cast<int>(EffectCategory::other) + 1;
+// An effect's kind: a built-in's by what it is, a scanned plugin's from the
+// category it reports (VST3 subcategories, CLAP features); other when unknown.
+EffectCategory effectCategory(const std::string& type, const hosting::PluginRegistry* registry);
+// The kind's name in the menu ("Reverb & Delay").
+const char* effectCategoryName(EffectCategory category);
+
 // A menu of the plugins of a kind: recent and favourites (when `listSetting`
-// gives them), the built-ins, then every scanned plugin by manufacturer. Item
-// `firstItem + i` picks types[i]; ids after the last are the caller's.
+// gives them), then, for effects, a submenu per kind of effect (the built-ins,
+// then the scanned plugins of that kind, each with its kind's icon), and every
+// scanned plugin again by manufacturer under By maker; for instruments, the
+// built-ins, then the scanned instruments by manufacturer. Item `firstItem + i`
+// picks types[i] (a type can appear under more than one item); ids after the
+// last are the caller's.
 struct PluginMenu
 {
     juce::PopupMenu menu;

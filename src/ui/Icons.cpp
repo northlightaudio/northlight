@@ -115,6 +115,15 @@ const Definition definitions[Icons::count] = {
     {"windowMaximise", "M3.5 3.5 H12.5 V12.5 H3.5 Z", false},
     {"windowRestore", "M5.5 3.5 H12.5 V10.5 M3.5 5.5 H10.5 V12.5 H3.5 Z", false},
     {"keyboard", "M2 4.5 H14 V11.5 H2 Z M4.5 7 H4.51 M7 7 H7.01 M9 7 H9.01 M11.5 7 H11.51 M5 9.5 H11", false},
+    {"fxDynamics", "M2.5 2.5 V13.5 H13.5 M2.5 13.5 L7.5 8.5 C8.5 7.5 9.5 7 13.5 5.5", false},
+    {"fxEq", "M1.5 12.5 C4 12.5 5.3 12.5 6.3 8 C7.2 3.5 8.8 3.5 9.7 8 C10.7 12.5 12 12.5 14.5 12.5", false},
+    {"fxSpace", "M3 2.5 V13.5 M6.5 4.5 V11.5 M10 6 V10 M13.5 7.25 V8.75", false},
+    {"fxModulation", "M1.5 8 C3.5 2.5 5.5 2.5 8 8 C10.5 13.5 12.5 13.5 14.5 8", false},
+    {"fxDrive",
+     "M5 11.5 V6.5 A3 3 0 0 1 11 6.5 V11.5 Z M3.5 11.5 H12.5 M6 14 V11.5 M10 14 V11.5 M6.75 9.5 L8 7.5 L9.25 "
+     "9.5",
+     false},
+    {"fxStereo", "M6 4 A4 4 0 1 1 5.99 4 Z M10 4 A4 4 0 1 1 9.99 4 Z", false},
 };
 } // namespace
 

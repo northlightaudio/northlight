@@ -687,7 +687,14 @@ void NorthlightLookAndFeel::getIdealPopupMenuItemSize(const juce::String& text,
     }
     const auto font = theme_.body();
     idealHeight = theme_.sizes.control;
-    idealWidth = juce::GlyphArrangement::getStringWidthInt(font, text) + theme_.spacing.sm * 2 +
+    // A hint after a tab (drawPopupMenuItem) needs its own room after a gap.
+    const int tab = text.indexOfChar('\t');
+    const auto name = tab >= 0 ? text.substring(0, tab) : text;
+    const int hint =
+        tab >= 0 ? juce::GlyphArrangement::getStringWidthInt(theme_.small(), text.substring(tab + 1)) +
+                       theme_.spacing.lg
+                 : 0;
+    idealWidth = juce::GlyphArrangement::getStringWidthInt(font, name) + hint + theme_.spacing.sm * 2 +
                  theme_.sizes.iconLarge + theme_.spacing.xl;
 }
 
@@ -726,7 +733,14 @@ void NorthlightLookAndFeel::drawPopupMenuItem(juce::Graphics& g,
                                                              static_cast<float>(theme_.sizes.iconSmall)),
                   c.accent);
     else if (icon != nullptr)
-        icon->drawWithin(g, iconColumn.toFloat().reduced(2.0f), juce::RectanglePlacement::centred, 1.0f);
+    {
+        // At the house icon size (its 16 px grid keeps the padding), centred.
+        const auto size = static_cast<float>(theme_.sizes.icon);
+        icon->drawWithin(g,
+                         iconColumn.toFloat().withSizeKeepingCentre(size, size),
+                         juce::RectanglePlacement::centred,
+                         1.0f);
+    }
     if (hasSubMenu)
         drawChevron(g, row.removeFromRight(theme_.sizes.icon + theme_.spacing.xs).toFloat(), colour, false);
     if (shortcutKeyText.isNotEmpty())
@@ -739,9 +753,29 @@ void NorthlightLookAndFeel::drawPopupMenuItem(juce::Graphics& g,
         g.drawText(
             shortcutKeyText, hint.withTrimmedRight(theme_.spacing.sm), juce::Justification::centredRight);
     }
+    // Text after a tab is a hint about the item (a plugin's maker): right aligned
+    // in `small` `textTertiary`, the name keeping the room it needs first.
+    auto name = text;
+    if (const int tab = text.indexOfChar('\t'); tab >= 0)
+    {
+        name = text.substring(0, tab);
+        const auto hint = text.substring(tab + 1);
+        g.setFont(theme_.body());
+        const int nameW = juce::GlyphArrangement::getStringWidthInt(g.getCurrentFont(), name);
+        const int room = row.getWidth() - theme_.spacing.sm - nameW - theme_.spacing.lg;
+        if (room > theme_.spacing.xl)
+        {
+            g.setFont(theme_.small());
+            g.setColour(isActive ? c.textTertiary : c.textDisabled);
+            g.drawText(hint,
+                       row.removeFromRight(room).withTrimmedRight(theme_.spacing.sm),
+                       juce::Justification::centredRight,
+                       true);
+        }
+    }
     g.setColour(colour);
     g.setFont(theme_.body());
-    g.drawFittedText(text, row.withTrimmedRight(theme_.spacing.sm), juce::Justification::centredLeft, 1);
+    g.drawFittedText(name, row.withTrimmedRight(theme_.spacing.sm), juce::Justification::centredLeft, 1);
 }
 
 void NorthlightLookAndFeel::drawPopupMenuSectionHeader(juce::Graphics& g,

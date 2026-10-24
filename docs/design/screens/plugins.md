@@ -32,8 +32,17 @@ strip of device cards, so the whole signal path reads left to right.
 - Bypassed card: body at 50% alpha, power icon `textTertiary`, header name struck.
 - Drag the header to reorder; a 2 px `accent` insertion line between cards. Drag a
   plugin from the browser onto the strip to insert at the line.
-- The "+" card is a ghost card that opens the plugin menu (recent, built-ins,
-  favourites, then by manufacturer).
+- The "+" card is a ghost card that opens the plugin menu. Every insert slot's
+  effects menu is laid out alike: RECENT (the last effects used), then EFFECTS, a
+  submenu per kind with its icon: Dynamics (fx-dynamics), EQ & Filter (fx-eq),
+  Reverb & Delay (fx-space), Modulation (fx-modulation), Drive & Colour (fx-drive),
+  Stereo & Utility (fx-stereo), Other (plugin); a kind with nothing in it is left
+  out. In a kind the built-ins come first, then, past a separator, the scanned
+  plugins that report that kind (VST3 subcategories, CLAP features), each with
+  its maker and format as a hint at the right in `small` `textTertiary`. Every
+  effect row carries its kind's icon (16 px, `textSecondary`). FAVOURITES follow,
+  then, past a separator, By maker: the scanned plugins by manufacturer. The
+  instruments menu keeps its built-ins, then the scanned instruments by maker.
 - Sidechain: a small "key: 02 Hats" chip under the header when set, `accentSubtle`
   fill, click to change.
 

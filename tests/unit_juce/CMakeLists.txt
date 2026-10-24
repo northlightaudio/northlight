@@ -41,6 +41,7 @@ add_executable(northlight_juce_tests
     PanelLayoutTests.cpp
     UiWorkBudgetTests.cpp
     UiPaintTimeTests.cpp
+    PluginMenuTests.cpp
     EffectPresetLibraryTests.cpp
     EffectCardTooltipsTests.cpp
     WidthScaleTests.cpp
