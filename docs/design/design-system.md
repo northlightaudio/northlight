@@ -184,7 +184,7 @@ note), track-aux (an output jack); instrument channels use instrument and folder
 tracks folder. Preferences adds keyboard (its Shortcuts page). The plugin menus add
 the effect types: fx-dynamics (a compressor's bent transfer line), fx-eq (a bell),
 fx-space (a decaying train of echoes: reverb and delay), fx-modulation (a sine),
-fx-drive (a vacuum tube: drive, saturation and amps) and fx-stereo (two overlapping circles: stereo and
+fx-drive (a vacuum tube: drive and saturation), fx-guitar (a plectrum: Corona and the pedals) and fx-stereo (two overlapping circles: stereo and
 utility); other effects use plugin.
 
 ## 2.6 Motion

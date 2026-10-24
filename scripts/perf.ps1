@@ -42,6 +42,7 @@ $benchmarks = [ordered]@{
     "hover-patina" = @("--demo-song", $demo, "--insert", "northlight.patina", "--insert-editor", "--play", "--benchmark-hover", "5")
     "hover-corona" = @("--demo-song", $demo, "--insert", "northlight.amp", "--insert-editor", "--play", "--benchmark-hover", "5")
     "hover-tape"   = @("--demo-song", $demo, "--insert", "northlight.tapeecho", "--insert-editor", "--play", "--benchmark-hover", "5")
+    "hover-pedal"  = @("--demo-song", $demo, "--insert", "northlight.flare", "--insert-editor", "--play", "--benchmark-hover", "5")
 }
 
 $results = [ordered]@{}

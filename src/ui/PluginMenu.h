@@ -30,7 +30,8 @@ enum class EffectCategory
     eq,         // EQ and filters
     space,      // reverb and delay
     modulation, // chorus, flanger, phaser, tremolo
-    drive,      // saturation, distortion, amps, colour
+    drive,      // saturation, distortion, colour
+    guitar,     // guitar and bass: Corona and the pedals
     stereo,     // stereo and utility: width, gain, metering
     other,
 };

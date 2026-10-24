@@ -7,6 +7,7 @@
 #include "plugins/Exciter.h"
 #include "plugins/Glue.h"
 #include "plugins/Patina.h"
+#include "plugins/Pedals.h"
 #include "plugins/TapeEcho.h"
 #include "plugins/Widener.h"
 
@@ -774,6 +775,66 @@ std::vector<EffectPreset> ampPresets()
     return l.done();
 }
 
+std::vector<EffectPreset> gravityPresets()
+{
+    List l(gravity::type);
+    l.add("Default", {});
+    l.add("Country Squash", {{"Sustain", 7.5}, {"Attack", 2.0}, {"Level", 2.0}});
+    l.add("Funk Snap", {{"Sustain", 4.0}, {"Attack", 7.0}, {"Blend", 8.0}});
+    l.add("Endless Sustain", {{"Sustain", 10.0}, {"Attack", 3.0}, {"Level", -4.0}});
+    l.add("Clean Leveller", {{"Sustain", 2.5}, {"Attack", 6.0}});
+    l.add("Bass Glue", {{"Sustain", 5.5}, {"Attack", 5.0}, {"Blend", 6.0}});
+    l.add("Slap Bass", {{"Sustain", 7.0}, {"Attack", 8.5}, {"Blend", 7.0}, {"Level", -2.0}});
+    return l.done();
+}
+
+std::vector<EffectPreset> flarePresets()
+{
+    List l(flare::type);
+    l.add("Default", {});
+    l.add("Light Crunch", {{"Drive", 2.5}, {"Tone", 6.0}, {"Level", 6.5}});
+    l.add("Classic Rock", {{"Drive", 6.0}, {"Tone", 5.5}, {"Clip", "LED"}});
+    l.add("Thick Lead", {{"Drive", 8.5}, {"Tone", 4.0}, {"Level", 4.5}});
+    l.add("Wall of Fuzz", {{"Drive", 10.0}, {"Tone", 3.5}, {"Level", 3.0}, {"Clip", "Open"}});
+    l.add("Bright Grit", {{"Drive", 4.5}, {"Tone", 8.0}, {"Clip", "Open"}, {"Level", 4.0}});
+    l.add("Bass Drive", {{"Drive", 4.0}, {"Tone", 4.5}, {"Clip", "LED"}, {"Level", 5.5}});
+    return l.done();
+}
+
+std::vector<EffectPreset> cometPresets()
+{
+    List l(comet::type);
+    l.add("Default", {});
+    l.add("Slapback", {{"Time", 110.0}, {"Repeats", 1.0}, {"Mix", 6.0}});
+    l.add("Rockabilly", {{"Time", 140.0}, {"Repeats", 3.0}, {"Mix", 5.0}});
+    l.add("Lead Trail", {{"Time", 420.0}, {"Repeats", 5.5}, {"Mix", 4.0}, {"Mod", "On"}});
+    l.add("Ambient Wash", {{"Time", 700.0}, {"Repeats", 7.5}, {"Mix", 6.0}, {"Mod", "On"}});
+    l.add("Oscillation", {{"Time", 300.0}, {"Repeats", 9.6}, {"Mix", 6.0}});
+    return l.done();
+}
+
+std::vector<EffectPreset> tidePresets()
+{
+    List l(tide::type);
+    l.add("Default", {});
+    l.add("Shimmer", {{"Rate", 2.0}, {"Depth", 3.5}, {"Mix", 8.0}});
+    l.add("Lush", {{"Rate", 2.5}, {"Depth", 8.0}, {"Mix", 10.0}});
+    l.add("Leslie-ish", {{"Rate", 7.5}, {"Depth", 4.0}, {"Mix", 9.0}});
+    l.add("Seasick Vibrato", {{"Rate", 4.5}, {"Depth", 6.5}, {"Mix", 10.0}, {"Mode", "Vibrato"}});
+    l.add("Bass Chorus", {{"Rate", 2.5}, {"Depth", 5.0}, {"Mix", 7.0}});
+    return l.done();
+}
+
+std::vector<EffectPreset> polarisPresets()
+{
+    List l(polaris::type);
+    l.add("Default", {});
+    l.add("Muted", {{"Mute", "On"}});
+    l.add("A = 432 Hz", {{"Reference", 432.0}});
+    l.add("A = 442 Hz", {{"Reference", 442.0}});
+    return l.done();
+}
+
 // Patina's list lives with it (its card's own display steps through it too).
 std::vector<EffectPreset> patinaPresets()
 {
@@ -800,6 +861,11 @@ const std::map<std::string, std::vector<EffectPreset>>& all()
         {tapeecho::type, tapeEchoPresets()},
         {bloom::type, bloomPresets()},
         {amp::type, ampPresets()},
+        {gravity::type, gravityPresets()},
+        {flare::type, flarePresets()},
+        {comet::type, cometPresets()},
+        {tide::type, tidePresets()},
+        {polaris::type, polarisPresets()},
     };
     return lists;
 }

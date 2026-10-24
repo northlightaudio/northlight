@@ -13,6 +13,13 @@ Northlight has not had a release yet. The first release, 0.1.0, will include:
 
 ### Added
 
+- Five guitar pedals in a new Guitar group of the effects menu, beside Corona, each a
+  stompbox with a few knobs and a footswitch, voiced for guitar and bass: Gravity, a
+  compressor and sustainer; Flare, a distortion with silicon, LED and open clipping;
+  Comet, an analog-style delay whose repeats darken and smear and can run away into
+  oscillation; Tide, a chorus that keeps the bass's low end solid; and Polaris, a
+  chromatic tuner from a five-string bass's low B up, whose footswitch mutes the
+  output so you can tune silently.
 - Pulsar drums modelled on the TR-808: a booming kick that drops gently onto its
   note, a snare with a tuned shell under its wires, a clap of retriggered bursts and
   a tail, metallic hats from six square oscillators, and a clipped rim shot. Harder

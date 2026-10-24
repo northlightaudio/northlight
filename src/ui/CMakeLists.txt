@@ -80,6 +80,7 @@ add_library(northlight_ui STATIC
     strip/TapeEchoCard.cpp
     strip/TapeEchoFace.h
     strip/PatinaCard.cpp
+    strip/PedalCard.cpp
     strip/ExciterCard.cpp
     strip/BloomCard.cpp
     strip/CoronaCard.cpp

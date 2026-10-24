@@ -124,6 +124,9 @@ const Definition definitions[Icons::count] = {
      "9.5",
      false},
     {"fxStereo", "M6 4 A4 4 0 1 1 5.99 4 Z M10 4 A4 4 0 1 1 9.99 4 Z", false},
+    {"fxGuitar",
+     "M8 14 C5.2 11.2 2.5 7.6 2.5 5 C2.5 2.9 5 2 8 2 C11 2 13.5 2.9 13.5 5 C13.5 7.6 10.8 11.2 8 14 Z",
+     false},
 };
 } // namespace
 

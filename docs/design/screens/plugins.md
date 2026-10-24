@@ -36,8 +36,9 @@ strip of device cards, so the whole signal path reads left to right.
   effects menu is laid out alike: RECENT (the last effects used), then EFFECTS, a
   submenu per kind with its icon: Dynamics (fx-dynamics), EQ & Filter (fx-eq),
   Reverb & Delay (fx-space), Modulation (fx-modulation), Drive & Colour (fx-drive),
-  Stereo & Utility (fx-stereo), Other (plugin); a kind with nothing in it is left
-  out. In a kind the built-ins come first, then, past a separator, the scanned
+  Guitar (fx-guitar: Corona and the pedals, each with what it is, "Amp",
+  "Compressor", "Tuner", as its hint), Stereo & Utility (fx-stereo), Other (plugin);
+  a kind with nothing in it is left out. In a kind the built-ins come first, then, past a separator, the scanned
   plugins that report that kind (VST3 subcategories, CLAP features), each with
   its maker and format as a hint at the right in `small` `textTertiary`. Every
   effect row carries its kind's icon (16 px, `textSecondary`). FAVOURITES follow,
@@ -72,7 +73,7 @@ Every built-in has an editor in the channel strip's language
 well, then knobs in the module's hue. The same editor is the card's body in the Editor panel
 and the body of its window (under the title, bypass and mix). The hues follow the
 strip: EQ `Overcast`, compressor `Loch`, limiter `Rowan`; gain `Machair`, reverb `Lichen`,
-delay `Gorse`, glue compressor `Thrift`, Patina `Kelp`, exciter `Machair`, Bloom `Heather`, tape echo `Rowan`, stereo widener `Sea grass`, Corona `Straw`. The instruments (7.4b-7.4e) have faces of their own, and so do Patina, the tape echo and Corona, hardware faces (design-system.md "Hardware face").
+delay `Gorse`, glue compressor `Thrift`, Patina `Kelp`, exciter `Machair`, Bloom `Heather`, tape echo `Rowan`, stereo widener `Sea grass`, Corona `Straw`; the pedals take their family's: Gravity `Loch`, Flare `Rowan`, Comet `Gorse`, Tide `Sea grass`, Polaris `Overcast`. The instruments (7.4b-7.4e) have faces of their own, and so do Patina, the tape echo and Corona, hardware faces (design-system.md "Hardware face").
 
 - **Gain**: the input and output history with IN and OUT meters; Gain.
 - **EQ**: the strip's EQ graph with the built-in's four bands (a high-pass,
@@ -622,6 +623,75 @@ delay `Gorse`, glue compressor `Thrift`, Patina `Kelp`, exciter `Machair`, Bloom
       insert while the app runs; `--corona-page cabinet` opens new cards there.
     - Every rendered part has a flat fallback in the `hardware` tokens.
   - **Header status:** "Line out" while SPEAKER is at LINE.
+- **The guitar pedals** (Gravity, Flare, Comet, Tide, Polaris; plugins/Pedals.h): five
+  stompboxes voiced for guitar and bass, each with the few controls a pedal has.
+  Every knob reads 0..10 but Level (dB), Time (ms) and the tuner's REF (Hz). None
+  adds latency.
+  - **Gravity** (compressor / sustainer): LEVEL (-18..+18 dB), SUSTAIN, ATTACK
+    (0.5 to 40 ms: slow lets the pick through), BLEND (dry to all compressed). A
+    feed-forward compressor whose threshold falls (-10 to -42 dBFS) and ratio rises
+    (2 to 20:1) with SUSTAIN, 10 dB soft knee, make-up that leaves a firmly played
+    note (-14 dBFS) where it was so everything quieter comes up toward it; a
+    detector with a 90 Hz bass cut and a two-stage release (70 ms from a pick, 900
+    ms from held compression); a 1:2 expander below -64 dBFS so the make-up does not
+    lift the hiss; the OTA's soft saturation and a 7 kHz roll-off on the compressed
+    signal.
+  - **Flare** (distortion): LEVEL, DRIVE (6 to 66 dB, the op-amp stage's gain), TONE
+    (a one-pole low-pass, 450 Hz to 14 kHz), and the CLIP toggle: SI (silicon
+    diodes, tight), LED (more headroom, louder, more open), OPEN (no diodes: the
+    op-amp on its rails, gritty, closest to a fuzz). The stage's gain is 15 dB lower
+    below 160 Hz (tight lows under heavy drive) and its gain-bandwidth product
+    rounds the highs off more the higher the gain; the clippers run at 4x. Level is
+    normalised per clipper so switching CLIP does not jump in loudness.
+  - **Comet** (analog delay): MIX, TIME (40 to 800 ms), REPEATS, and the MOD toggle
+    (ON / OFF: the clock's slow wobble). A bucket-brigade line of 4096 stages: the
+    repeats' bandwidth falls as the delay grows (9 kHz down to about 1 kHz), each
+    pass is darkened, thinned below 90 Hz and softly limited, so repeats fade into
+    a warm smear; at the top of REPEATS the loop runs away into a self-oscillation
+    the limit holds. Turning TIME glides the clock (120 ms), bending the repeats'
+    pitch. The dry signal passes untouched.
+  - **Tide** (chorus): RATE (0.1 to 8 Hz), DEPTH (to 5.5 ms either side of a 7 ms
+    delay), MIX, and the MODE toggle (CHO / VIB). A triangle-swept bucket-brigade
+    chorus (7 kHz band limit, soft saturation) whose wet signal is high-passed at
+    160 Hz, so on bass the low end stays solid; stereo out, the right side swept in
+    the opposite phase (it sums to mono without cancelling). VIB crossfades the dry
+    highs out with MIX, leaving pitch vibrato over the dry lows.
+  - **Polaris** (chromatic tuner): REF (A4 at 430 to 450 Hz) and the footswitch,
+    which mutes the output (the lamp, labelled MUTE, lit while it does). From a
+    five-string bass's low B (31 Hz) to the top of a guitar's neck: the mono input
+    decimated to about 8 kHz, YIN over the last 128 ms every 32 ms, its work spread
+    over the blocks that follow; the period measured over as many cycles as fit, so
+    a high note is as exact as a low one (within 3 cents in the tests). The display
+    shows a chord or noise as no note (a clarity under 0.8).
+  - **Face** (a hardware face built from rendered parts, assets/pedals): each pedal
+    a die-cast enclosure seen from above on a pedalboard's dark carpet, drawn at 360
+    x 600 and scaled to fit; its own finish (Gravity cobalt metal-flake, Flare
+    signal orange sand-texture, Comet deep green wrinkle, Tide sea-glass gloss,
+    Polaris graphite hammertone), worn as a pedal is (paint chipped along the
+    rounded edge, boot scuffs round the footswitch). From the top: Corona's red
+    jewel as the lamp (lit while the pedal is on; Polaris's while it mutes), the
+    knobs (black, knurled, a white line; a scale of 11 ticks; the name under each
+    and, at full size, its value under that), the toggle between the top two
+    knobs with its positions printed beside it and its name under it, the pedal's
+    name in large letters with what it is under it, Corona's chrome footswitch
+    button, and NORTHLIGHT at the foot. Three-knob pedals set their knobs in a
+    triangle (two at the top, the third below between them); Gravity's four are a
+    square; Polaris has its display where the knobs would be, and REF under it.
+  - **Footswitch:** a click, Space or Enter switches the pedal on or off (the
+    insert's bypass, as the header's power does; one undo step). Polaris's mutes
+    instead. The button shows pressed while held.
+  - **Polaris's display:** black glass in a black bezel with a shade under its lip
+    and a reflection; 21 LEDs from flat to sharp (one per 5 cents, the middle one
+    green and lit within 3 cents, the reading's LED `tunerOff` with a soft halo,
+    unlit ones `tunerSegmentOff`), the note under them in 76 px legend type with its
+    sharp and octave beside it (green in tune), the cents at the bottom left and the
+    reference at the right. A new note jumps; the same note's cents settle; after
+    the note stops the reading holds 0.6 s, then fades over 0.4 s. Off (the pedal
+    switched off, or no note yet) the LEDs are dark and the note a dash.
+  - **Compact** (below 65%): values and the toggle's positions go, names grow; the
+    knob being turned shows its value in its name's place.
+  - Repaints: a turned or hovered knob repaints only its ticks, name and value
+    (`RenderedCard::printArea`); the tuner repaints its display while it reads.
 - **Stereo Widener** (width per band, a mono-safe spread, and the image on screen):
   the side (L-R) is split into Low, Mid and High by Linkwitz-Riley crossovers (Low
   split 40 Hz-1 kHz, default 250 Hz; High split 1-16 kHz, default 4 kHz) and each band

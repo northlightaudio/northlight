@@ -297,7 +297,8 @@ know nothing format-specific.
   state running while bypassed, and they publish real-time feedback for their
   editors through rings of atomics: a five-value frame every 5 ms (input, output,
   reduction and two processor-specific values) and two sample taps. The larger
-  effects (Glue, Patina, Exciter, Bloom, Tape Echo, Stereo Widener, Corona) each have a file
+  effects (Glue, Patina, Exciter, Bloom, Tape Echo, Stereo Widener, Corona, and the guitar pedals
+  Gravity, Flare, Comet, Tide and Polaris, declared together in `plugins/Pedals.h`) each have a file
   of their own and a card in `src/ui/strip`; what their frame values and taps carry
   is described at the top of each processor. A display that needs more than a frame
   holds (Patina's six stage readouts) publishes its own telemetry block the same
@@ -325,8 +326,13 @@ know nothing format-specific.
   user's own (JSON files keyed by parameter name) and tells every `PresetBar` when
   the list changes, so the card's header, the window's and a face's own control
   agree.
-- **Corona, the amp** (`plugins/Amp`) is built from shared parts that the guitar
-  pedals will reuse: `Oversampler` (cascaded polyphase IIR half-bands, 2x to 8x,
+- **The guitar pedals** share one card, `ui/strip/PedalCard`, which reads a
+  pedal's layout (its finish, knobs, toggle, and whether it is the tuner) from a
+  table, and Corona's rendered footswitch, jewel and toggle. Flare uses the
+  `Oversampler` below. Polaris publishes what it reads through three atomics
+  (`polaris::readingOf`), not the feedback frame, as a pitch does not fit a
+  frame's largest-of-the-frame rule.
+- **Corona, the amp** (`plugins/Amp`) is built from shared parts: `Oversampler` (cascaded polyphase IIR half-bands, 2x to 8x,
   minimum phase, so no latency), `Triode` (a stage's transfer curve solved once
   from Koren's equations on its load line, with grid conduction, read from a table
   with antiderivative anti-aliasing), `ToneStack` (the passive tone stack's exact

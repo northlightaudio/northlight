@@ -85,13 +85,15 @@ enum class Icon
     windowRestore,
     keyboard, // a computer keyboard: shortcuts
     // Effect types (the plugin menus): a compressor's bent transfer line, an EQ's
-    // bell, a decaying train of echoes, a sine, a vacuum tube, two overlapping circles.
+    // bell, a decaying train of echoes, a sine, a vacuum tube, two overlapping circles,
+    // a plectrum.
     fxDynamics,
     fxEq,
     fxSpace,
     fxModulation,
     fxDrive,
     fxStereo,
+    fxGuitar,
 };
 
 struct Icons
@@ -103,7 +105,7 @@ struct Icons
     static void draw(juce::Graphics& g, Icon icon, juce::Rectangle<float> bounds, juce::Colour colour);
     static const char* name(Icon icon);
     static const char* svgPath(Icon icon);
-    static constexpr int count = static_cast<int>(Icon::fxStereo) + 1;
+    static constexpr int count = static_cast<int>(Icon::fxGuitar) + 1;
 };
 
 // An icon button (28×28 default): ghost at rest, the icon in textSecondary,

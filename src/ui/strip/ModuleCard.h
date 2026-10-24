@@ -268,6 +268,10 @@ createExciterCard(const Theme& theme, CardHost& host, core::Id channelId, const 
 std::unique_ptr<ModuleCard>
 createBloomCard(const Theme& theme, CardHost& host, core::Id channelId, const core::Insert& insert);
 
+// A guitar pedal's card (the Gravity, Flare, Comet, Tide and Polaris inserts).
+std::unique_ptr<ModuleCard>
+createPedalCard(const Theme& theme, CardHost& host, core::Id channelId, const core::Insert& insert);
+
 // Corona's card (the "northlight.amp" insert), and its page: the amp or the cabinet.
 std::unique_ptr<ModuleCard>
 createEmberCard(const Theme& theme, CardHost& host, core::Id channelId, const core::Insert& insert);

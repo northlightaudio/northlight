@@ -73,6 +73,17 @@ inline juce::Colour moduleColour(const Theme& theme, const std::string& type)
         return paletteColour(theme, "Straw"); // the warm glow of the valves
     if (type == "northlight.tapeecho")
         return paletteColour(theme, "Rowan");
+    // The pedals take their family's hue: the compressor's Loch, the delay's Gorse.
+    if (type == "northlight.gravity")
+        return paletteColour(theme, "Loch");
+    if (type == "northlight.flare")
+        return paletteColour(theme, "Rowan");
+    if (type == "northlight.comet")
+        return paletteColour(theme, "Gorse");
+    if (type == "northlight.tide")
+        return paletteColour(theme, "Sea grass");
+    if (type == "northlight.polaris")
+        return paletteColour(theme, "Overcast");
     if (type == "northlight.bloom")
         return paletteColour(theme, "Heather"); // dusk over the moor, apart from the plain reverb's Lichen
     if (type == "northlight.aurora")

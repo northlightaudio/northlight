@@ -821,6 +821,10 @@ createBuiltInCard(const Theme& theme, CardHost& host, core::Id channelId, const 
         return createBloomCard(theme, host, channelId, insert);
     if (insert.type == "northlight.amp")
         return createEmberCard(theme, host, channelId, insert);
+    if (insert.type == "northlight.gravity" || insert.type == "northlight.flare" ||
+        insert.type == "northlight.comet" || insert.type == "northlight.tide" ||
+        insert.type == "northlight.polaris")
+        return createPedalCard(theme, host, channelId, insert);
     if (insert.type == types::limiter)
         return std::make_unique<LimiterCard>(theme, host, channelId, insert);
     if (insert.type == types::reverb)

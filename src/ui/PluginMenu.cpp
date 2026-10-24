@@ -34,7 +34,12 @@ EffectCategory builtInCategory(const std::string& type)
         {plugins::types::delay, EffectCategory::space},
         {"northlight.tapeecho", EffectCategory::space},
         {"northlight.bloom", EffectCategory::space},
-        {"northlight.amp", EffectCategory::drive},
+        {"northlight.amp", EffectCategory::guitar},
+        {"northlight.gravity", EffectCategory::guitar},
+        {"northlight.flare", EffectCategory::guitar},
+        {"northlight.comet", EffectCategory::guitar},
+        {"northlight.tide", EffectCategory::guitar},
+        {"northlight.polaris", EffectCategory::guitar},
         {"northlight.exciter", EffectCategory::drive},
         {"northlight.patina", EffectCategory::drive},
         {"northlight.widener", EffectCategory::stereo},
@@ -42,6 +47,21 @@ EffectCategory builtInCategory(const std::string& type)
     };
     const auto it = kinds.find(type);
     return it != kinds.end() ? it->second : EffectCategory::other;
+}
+
+// What a guitar built-in is, as a quiet hint beside its name (the names say little).
+juce::String builtInHint(const std::string& type)
+{
+    static const std::map<std::string, const char*> hints{
+        {"northlight.amp", "Amp"},
+        {"northlight.gravity", "Compressor"},
+        {"northlight.flare", "Distortion"},
+        {"northlight.comet", "Delay"},
+        {"northlight.tide", "Chorus"},
+        {"northlight.polaris", "Tuner"},
+    };
+    const auto it = hints.find(type);
+    return it != hints.end() ? juce::String(it->second) : juce::String();
 }
 
 // A scanned plugin's kind from the words in its category ("Fx|Dynamics",
@@ -56,6 +76,8 @@ EffectCategory reportedCategory(const std::string& category)
                 return true;
         return false;
     };
+    if (any({"guitar", "bass amp", "stomp", "pedal"}))
+        return EffectCategory::guitar;
     if (any({"dynamics", "compressor", "limiter", "gate", "expander", "transient", "de-esser"}))
         return EffectCategory::dynamics;
     if (any({"reverb", "delay", "echo"}))
@@ -93,6 +115,8 @@ Icon iconFor(EffectCategory category)
             return Icon::fxModulation;
         case EffectCategory::drive:
             return Icon::fxDrive;
+        case EffectCategory::guitar:
+            return Icon::fxGuitar;
         case EffectCategory::stereo:
             return Icon::fxStereo;
         default:
@@ -146,6 +170,8 @@ const char* effectCategoryName(EffectCategory category)
             return "Modulation";
         case EffectCategory::drive:
             return "Drive & Colour";
+        case EffectCategory::guitar:
+            return "Guitar";
         case EffectCategory::stereo:
             return "Stereo & Utility";
         default:
@@ -225,7 +251,8 @@ PluginMenu buildPluginMenu(PluginKind kind,
             if (!plugins::BuiltInFactory::isInstrument(type))
                 add(kinds[static_cast<size_t>(builtInCategory(type))],
                     type,
-                    plugins::BuiltInFactory::displayName(type));
+                    plugins::BuiltInFactory::displayName(type),
+                    builtInHint(type));
         if (registry != nullptr)
         {
             std::array<bool, effectCategoryCount> divided{};

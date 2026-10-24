@@ -232,6 +232,14 @@ struct Theme
         // for the renders).
         juce::Colour patinaPanel, patinaPlate, patinaInk, patinaInkSoft, patinaPanelInk, patinaPanelInkSoft;
         juce::Colour patinaNameplate, patinaBezel;
+        // The guitar pedals: each enclosure's paint (flat fallbacks for the renders)
+        // and the ink printed on it; the tuner's display.
+        juce::Colour pedalGravity, pedalGravityInk, pedalGravityInkSoft;
+        juce::Colour pedalFlare, pedalFlareInk, pedalFlareInkSoft;
+        juce::Colour pedalComet, pedalCometInk, pedalCometInkSoft;
+        juce::Colour pedalTide, pedalTideInk, pedalTideInkSoft;
+        juce::Colour pedalPolaris, pedalPolarisInk, pedalPolarisInkSoft;
+        juce::Colour tunerGlass, tunerBezel, tunerSegmentOff, tunerInTune, tunerOff, tunerText;
     };
 
     std::string name = "Northlight Dark";

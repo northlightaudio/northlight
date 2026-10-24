@@ -45,6 +45,12 @@ add_library(northlight_plugins STATIC
     Exciter.cpp
     Bloom.h
     Bloom.cpp
+    Pedals.h
+    Gravity.cpp
+    Flare.cpp
+    Comet.cpp
+    Tide.cpp
+    Polaris.cpp
     StripPresets.h
     StripPresets.cpp
     EffectPresets.h

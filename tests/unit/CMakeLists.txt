@@ -36,6 +36,7 @@ add_executable(northlight_unit_tests
     plugins/EffectPresetsTests.cpp
     plugins/ExciterTests.cpp
     plugins/BloomTests.cpp
+    plugins/PedalTests.cpp
     plugins/AmpPartsTests.cpp
     plugins/AmpTests.cpp
     plugins/StripBenchTests.cpp

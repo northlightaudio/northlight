@@ -63,7 +63,7 @@ void RenderedCard::watchActive(Knob& knob, int control)
     knob.onHover = [this, &knob, control, release](bool inside)
     {
         if (inside)
-            face_.setActiveControl(control, knob.getBounds().expanded(controlReach));
+            face_.setActiveControl(control, printArea(knob));
         else if (!knob.isDragging())
             release();
     };
@@ -71,7 +71,7 @@ void RenderedCard::watchActive(Knob& knob, int control)
     {
         if (prior)
             prior();
-        face_.setActiveControl(control, knob.getBounds().expanded(controlReach));
+        face_.setActiveControl(control, printArea(knob));
     };
     knob.onDragEnd = [&knob, release, prior = knob.onDragEnd]
     {
@@ -127,9 +127,9 @@ void RenderedCard::repaintChanged()
         }
         for (const int shown : alsoChanges(index))
             if (auto* k = knobFor(shown))
-                face_.repaint(k->getBounds().expanded(controlReach));
+                face_.repaint(printArea(*k));
         if (auto* k = knobFor(index))
-            face_.repaint(k->getBounds().expanded(controlReach));
+            face_.repaint(printArea(*k));
     }
 }
 

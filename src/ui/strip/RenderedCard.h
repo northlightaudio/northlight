@@ -62,9 +62,16 @@ protected:
 
     // A rendered knob was turned (default: the face repaints round the knob,
     // where its name and value are printed).
-    virtual void controlMoved(Knob& knob) { face_.repaint(knob.getBounds().expanded(controlReach)); }
+    virtual void controlMoved(Knob& knob) { face_.repaint(printArea(knob)); }
     // How far round a knob its name and value can be printed.
     static constexpr int controlReach = 72;
+    // Where a knob's name and value are printed, with the knob (in the face's
+    // pixels): what repaints when it is turned or hovered. Default: controlReach
+    // round it; a small face whose print sits closer says so.
+    virtual juce::Rectangle<int> printArea(const Knob& knob) const
+    {
+        return knob.getBounds().expanded(controlReach);
+    }
 
     void layoutBody(juce::Rectangle<int> body) override { face_.placeIn(body); }
 

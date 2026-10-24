@@ -71,6 +71,13 @@ TEST_CASE("An effect's kind comes from what a built-in is or what a plugin repor
     CHECK(ui::effectCategory("northlight.tapeecho", &registry) == EffectCategory::space);
     CHECK(ui::effectCategory("northlight.patina", &registry) == EffectCategory::drive);
     CHECK(ui::effectCategory("northlight.widener", &registry) == EffectCategory::stereo);
+    for (const char* guitar : {"northlight.amp",
+                               "northlight.gravity",
+                               "northlight.flare",
+                               "northlight.comet",
+                               "northlight.tide",
+                               "northlight.polaris"})
+        CHECK(ui::effectCategory(guitar, &registry) == EffectCategory::guitar);
     CHECK(ui::effectCategory(plugins::types::eq, &registry) == EffectCategory::eq);
     CHECK(ui::effectCategory("vst3:plate", &registry) == EffectCategory::space);
     CHECK(ui::effectCategory("vst3:comp", &registry) == EffectCategory::dynamics);

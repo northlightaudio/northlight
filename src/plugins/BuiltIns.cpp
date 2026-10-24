@@ -12,6 +12,7 @@
 #include "plugins/MeteredBuiltIn.h"
 #include "plugins/Nebula.h"
 #include "plugins/Patina.h"
+#include "plugins/Pedals.h"
 #include "plugins/ProcessorBase.h"
 #include "plugins/Pulsar.h"
 #include "plugins/Sampler.h"
@@ -610,25 +611,10 @@ private:
 
 std::vector<std::string> BuiltInFactory::typeNames() const
 {
-    return {types::gain,
-            types::eq,
-            types::compressor,
-            types::opto,
-            glue::type,
-            widener::type,
-            patina::type,
-            exciter::type,
-            types::limiter,
-            types::reverb,
-            types::delay,
-            tapeecho::type,
-            bloom::type,
-            amp::type,
-            aurora::type,
-            pulsar::type,
-            nebula::type,
-            starbit::type,
-            sampler::type};
+    return {types::gain,   types::eq,     types::compressor, types::opto,   glue::type,    widener::type,
+            patina::type,  exciter::type, types::limiter,    types::reverb, types::delay,  tapeecho::type,
+            bloom::type,   amp::type,     gravity::type,     flare::type,   comet::type,   tide::type,
+            polaris::type, aurora::type,  pulsar::type,      nebula::type,  starbit::type, sampler::type};
 }
 
 bool BuiltInFactory::isInstrument(const std::string& typeName)
@@ -680,6 +666,16 @@ std::unique_ptr<engine::InsertProcessor> BuiltInFactory::create(const std::strin
         return bloom::create();
     if (typeName == amp::type)
         return amp::create(sampleLoader_);
+    if (typeName == gravity::type)
+        return gravity::create();
+    if (typeName == flare::type)
+        return flare::create();
+    if (typeName == comet::type)
+        return comet::create();
+    if (typeName == tide::type)
+        return tide::create();
+    if (typeName == polaris::type)
+        return polaris::create();
     return nullptr;
 }
 
@@ -725,6 +721,16 @@ std::string BuiltInFactory::displayName(const std::string& typeName)
         return "Bloom";
     if (typeName == amp::type)
         return "Corona";
+    if (typeName == gravity::type)
+        return "Gravity";
+    if (typeName == flare::type)
+        return "Flare";
+    if (typeName == comet::type)
+        return "Comet";
+    if (typeName == tide::type)
+        return "Tide";
+    if (typeName == polaris::type)
+        return "Polaris";
     return typeName;
 }
 

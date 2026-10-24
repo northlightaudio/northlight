@@ -48,6 +48,19 @@ Generated from [tokens.json](tokens.json) (Machair Dusk v2) by `scripts/contrast
 | hardware.patinaPanelInk | hardware.patinaPanel | 8.33 | The model line on Patina's panel | yes |
 | hardware.patinaPanelInkSoft | hardware.patinaPanel | 5.29 | Small print on Patina's panel | yes |
 | hardware.coronaInkSoft | hardware.coronaPanel | 5.79 | Values and scales on the amp's plate | yes |
+| hardware.pedalGravityInk | hardware.pedalGravity | 7.42 | Names on Gravity | yes |
+| hardware.pedalGravityInkSoft | hardware.pedalGravity | 5.03 | Values on Gravity | yes |
+| hardware.pedalFlareInk | hardware.pedalFlare | 4.87 | Names on Flare | yes |
+| hardware.pedalFlareInkSoft | hardware.pedalFlare | 4.54 | Values on Flare | yes |
+| hardware.pedalCometInk | hardware.pedalComet | 6.81 | Names on Comet | yes |
+| hardware.pedalCometInkSoft | hardware.pedalComet | 4.87 | Values on Comet | yes |
+| hardware.pedalTideInk | hardware.pedalTide | 8.51 | Names on Tide | yes |
+| hardware.pedalTideInkSoft | hardware.pedalTide | 5.82 | Values on Tide | yes |
+| hardware.pedalPolarisInk | hardware.pedalPolaris | 10.26 | Names on Polaris | yes |
+| hardware.pedalPolarisInkSoft | hardware.pedalPolaris | 6.07 | Values on Polaris | yes |
+| hardware.tunerText | hardware.tunerGlass | 16.86 | The tuner's note and cents | yes |
+| hardware.tunerInTune | hardware.tunerGlass | 12.01 | The tuner's note in tune | yes |
+| hardware.tunerOff | hardware.tunerGlass | 6.42 | The tuner's out-of-tune LED | yes |
 | hardware.coronaInk | hardware.coronaBadge | 5.67 | The name on the amp's badge | yes |
 | hardware.coronaStripInk | hardware.coronaStrip | 13.15 | Names on the utility strip | yes |
 | hardware.coronaStripInkSoft | hardware.coronaStrip | 7.25 | Values on the utility strip | yes |

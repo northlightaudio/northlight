@@ -72,7 +72,7 @@ reach a screen; not while the machine is in use for a game): `--benchmark-ui`
 (playing and scrolling the demo song: frame intervals, arrange and mixer paint
 times, audio load), `--benchmark-panels` (sliding the side panel),
 `--benchmark-strip-drag` (dragging a strip EQ band) and `--benchmark-hover` (the
-pointer moving knob to knob over Patina's, Corona's and the tape echo's windows,
+pointer moving knob to knob over Patina's, Corona's, the tape echo's and a guitar pedal's (Flare's) windows,
 timing every paint of the window). The script compares the medians and p95/p99s
 with `perf/baselines/<computer>.<preset>.json`; one over its baseline by more than
 30% plus 0.5 ms fails. Max values are shown, not judged.
