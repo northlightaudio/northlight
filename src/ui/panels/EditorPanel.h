@@ -54,6 +54,9 @@ public:
     std::function<void(core::Id channelId, core::Id insertId)> onOpenEditor;
     // Whether an insert's editor window is open (the card shows a dot).
     std::function<bool(core::Id insertId)> isEditorOpen;
+    // An editor window opened or closed: a card whose insert is open in its own
+    // window shows a note in place of its controls.
+    void editorWindowsChanged();
     // An insert was added here (the owner remembers the type as recent).
     std::function<void(const std::string& type)> onInserted;
     // The panel's smallest height (its rows and the tallest card's layout), and

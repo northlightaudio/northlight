@@ -21,6 +21,13 @@ strip of device cards, so the whole signal path reads left to right.
   GUI, a thumbnail placeholder with an "Open" primary button (opens the plugin
   window) and the three most important parameters as knobs if the plugin exposes
   them; for hosted plugins without a GUI, the generic editor.
+- Popped out (its editor open in its own window), a card is edited there, not in
+  two places: its body gives way to a note centred in it, the `detach` icon
+  (`iconLarge`, `textTertiary`), "Open in its own window" in `small`
+  `textSecondary`, "Edit it there" in `small` `textTertiary`, and a "Show window"
+  button that brings the window to the front. The card narrows to 224 px
+  (`controlLarge` × 7); its header and Mix stay. Closing the window brings the
+  controls back. A popped-out card's displays stop reading the processor.
 - Footer 24 px: wet/dry mini slider with "Mix 100%".
 - Bypassed card: body at 50% alpha, power icon `textTertiary`, header name struck.
 - Drag the header to reorder; a 2 px `accent` insertion line between cards. Drag a

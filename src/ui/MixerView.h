@@ -95,10 +95,16 @@ public:
     void closeEditors();
     // Whether an insert's editor (plugin or generic window) is open.
     bool isEditorOpen(core::Id insertId) const;
+    // An insert's editor window opened or closed (the Editor panel shows a popped
+    // out insert as a note instead of its controls).
+    std::function<void()> onEditorWindowsChanged;
     // The display name of an insert type (built-in or hosted), for the editor panel.
     std::string insertDisplayName(const std::string& type) const;
 
 private:
+    // Calls onEditorWindowsChanged when the set of open editor windows has changed.
+    void noteEditorWindows();
+    std::vector<core::Id> shownEditors_;
     class Strip;
     class MasterStrip;
     class EditorWindow;

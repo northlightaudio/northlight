@@ -127,6 +127,8 @@ Northlight has not had a release yet. The first release, 0.1.0, will include:
   readout was about a sixth smaller than designed. Layouts that were packed around
   the smaller text now leave room for it, and track headers (260 px) and mixer
   strips (92 px) are a little wider so names fit.
+- An effect open in its own window is no longer drawn in the Editor panel too: its
+  card shows that it is popped out, with a button that brings its window forward.
 - The Editor panel can no longer be dragged so short that effect and instrument
   controls overlap: the dock stops at the height the tallest card needs, and
   scrolls when the window itself is shorter.

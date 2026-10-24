@@ -78,6 +78,15 @@ public:
                 owner_.onOpenEditor(channelId_, insertId_);
         };
         addChildComponent(open_);
+        // Popped out: the insert's controls are in its own window; this brings it forward.
+        show_.setButtonText("Show window");
+        show_.setTooltip("Bring this effect's window to the front");
+        show_.onClick = [this]
+        {
+            if (owner_.onOpenEditor)
+                owner_.onOpenEditor(channelId_, insertId_);
+        };
+        addChildComponent(show_);
         // A built-in's body is its own editor: a display to drag and its knobs.
         host_.onCommand = [this](std::unique_ptr<core::Command> command)
         {
@@ -116,13 +125,39 @@ public:
         else
             rebuildKnobs();
         refresh(insert);
+        setPoppedOut(owner_.isEditorOpen && owner_.isEditorOpen(insertId_));
     }
+
+    // Whether the insert's editor is open in its own window. Then the card shows a
+    // note and a button that brings the window forward instead of its controls
+    // (one place to edit at a time), and its displays stop reading the processor.
+    void setPoppedOut(bool popped)
+    {
+        if (popped == popped_)
+            return;
+        popped_ = popped;
+        if (body_ != nullptr)
+        {
+            body_->setVisible(!popped);
+            if (popped)
+                body_->stopWatching();
+        }
+        for (auto& k : knobs_)
+            k->setVisible(!popped);
+        for (auto& l : labels_)
+            l->setVisible(!popped);
+        open_.setVisible(wantsOpen_ && !popped);
+        show_.setVisible(popped);
+        resized();
+        repaint();
+    }
+    bool isPoppedOut() const noexcept { return popped_; }
 
     // About 60 times a second while the panel shows: the body's displays read
     // the processor's feedback.
     void tick(double elapsedMs)
     {
-        if (body_ != nullptr)
+        if (body_ != nullptr && !popped_)
             body_->tick(elapsedMs);
     }
     void stopWatching()
@@ -184,6 +219,8 @@ public:
     // The height its body's layout needs, with the frame's rows.
     int minimumHeight() const
     {
+        if (popped_)
+            return frameRows() + poppedBodyHeight();
         if (body_ == nullptr)
             return 0;
         return body_->minimumBodyHeight() + frameRows();
@@ -201,7 +238,7 @@ public:
     // The card's width at a height: a body that scales to fit narrows with it.
     int preferredWidthAt(int height) const
     {
-        if (body_ == nullptr)
+        if (popped_ || body_ == nullptr)
             return preferredWidth();
         int bodyHeight = height - theme_.sizes.control;
         if (!instrument_)
@@ -213,6 +250,8 @@ public:
 
     int preferredWidth() const noexcept
     {
+        if (popped_)
+            return poppedWidth();
         if (body_ != nullptr)
             return body_->preferredWidth();
         const int perRow = 4;
@@ -324,7 +363,9 @@ public:
         }
         // Built-ins with a card of their own draw it; "No parameters" is only for
         // an insert with nothing to show (it showed through gaps in a card's layout).
-        if (knobs_.empty() && body_ == nullptr && !open_.isVisible() && !missing_)
+        if (popped_)
+            paintPoppedOut(g);
+        else if (knobs_.empty() && body_ == nullptr && !open_.isVisible() && !missing_)
         {
             g.setColour(c.textTertiary);
             g.setFont(theme_.small());
@@ -366,6 +407,14 @@ public:
         }
         if (showsInfoLine())
             area.removeFromTop(theme_.sizes.controlCompact); // the info line
+        if (popped_)
+        {
+            show_.setBounds(poppedArea(area)
+                                .removeFromBottom(theme_.sizes.control)
+                                .withSizeKeepingCentre(std::min(area.getWidth() - 2 * theme_.spacing.md, 132),
+                                                       theme_.sizes.control));
+            return;
+        }
         if (body_ != nullptr)
         {
             body_->setBounds(area);
@@ -397,6 +446,42 @@ public:
     }
 
 private:
+    // Popped out: a narrow card, the note and the button centred in its body.
+    int poppedWidth() const noexcept { return theme_.sizes.controlLarge * 7; }
+    int poppedBodyHeight() const noexcept
+    {
+        return theme_.sizes.iconLarge + theme_.spacing.sm + 2 * theme_.lineHeight(theme_.fonts.size.small) +
+               theme_.spacing.md + theme_.sizes.control + 2 * theme_.spacing.md;
+    }
+    // The note's block (icon, two lines, the button) centred in the body.
+    juce::Rectangle<int> poppedArea(juce::Rectangle<int> body) const
+    {
+        return body.withSizeKeepingCentre(body.getWidth(), poppedBodyHeight() - 2 * theme_.spacing.md);
+    }
+    void paintPoppedOut(juce::Graphics& g) const
+    {
+        const auto& c = theme_.colours;
+        auto body = getLocalBounds().withTrimmedTop(theme_.sizes.control);
+        if (!instrument_)
+            body.removeFromBottom(theme_.sizes.controlCompact);
+        if (showsInfoLine())
+            body.removeFromTop(theme_.sizes.controlCompact);
+        auto block = poppedArea(body).reduced(theme_.spacing.md, 0);
+        const auto icon = block.removeFromTop(theme_.sizes.iconLarge);
+        Icons::draw(g,
+                    Icon::detach,
+                    icon.toFloat().withSizeKeepingCentre(static_cast<float>(theme_.sizes.iconLarge),
+                                                         static_cast<float>(theme_.sizes.iconLarge)),
+                    c.textTertiary);
+        block.removeFromTop(theme_.spacing.sm);
+        const int line = theme_.lineHeight(theme_.fonts.size.small);
+        g.setFont(theme_.small());
+        g.setColour(c.textSecondary);
+        g.drawText("Open in its own window", block.removeFromTop(line), juce::Justification::centred, true);
+        g.setColour(c.textTertiary);
+        g.drawText("Edit it there", block.removeFromTop(line), juce::Justification::centred, true);
+    }
+
     juce::String badgeText() const
     {
         if (type_.rfind("vst3:", 0) == 0)
@@ -419,7 +504,8 @@ private:
         {
             // A plugin with its own GUI (every VST3: JUCE gives a GUI-less one a
             // generic editor): open it in its window.
-            open_.setVisible(true);
+            wantsOpen_ = true;
+            open_.setVisible(!popped_);
             return;
         }
         for (size_t i = 0; i < live->parameters().size(); ++i)
@@ -532,7 +618,8 @@ private:
     bool instrument_ = false;
     IconButton power_, menu_;
     juce::Slider mix_;
-    juce::TextButton open_;
+    juce::TextButton open_, show_;
+    bool popped_ = false, wantsOpen_ = false;
     std::vector<std::unique_ptr<Knob>> knobs_;
     std::vector<std::unique_ptr<juce::Label>> labels_;
     std::unique_ptr<strip::PresetBar> presets_;
@@ -778,6 +865,28 @@ void EditorPanel::resolveChannel()
             target != nullptr && target->isInstrument())
             channelId_ = target->id;
     }
+}
+
+void EditorPanel::editorWindowsChanged()
+{
+    bool changed = false;
+    const auto update = [&](Card& card)
+    {
+        const bool popped = isEditorOpen && isEditorOpen(card.insertId());
+        changed = changed || popped != card.isPoppedOut();
+        card.setPoppedOut(popped);
+    };
+    for (auto& card : cards_)
+        update(*card);
+    if (instrumentCard_ != nullptr)
+        update(*instrumentCard_);
+    if (!changed)
+        return;
+    rememberBounds();
+    animateLayout_ = true;
+    resized();
+    animateLayout_ = false;
+    repaint();
 }
 
 void EditorPanel::rebuild()

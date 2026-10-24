@@ -1276,6 +1276,7 @@ private:
         tracks_.onPlayNewInstrument = [this](core::Id midiTrack, const std::string& type)
         { playNewInstrument(midiTrack, type); };
         editor_.isEditorOpen = [this](core::Id insertId) { return mixer_.isEditorOpen(insertId); };
+        mixer_.onEditorWindowsChanged = [this] { editor_.editorWindowsChanged(); };
         pluginSources_.registry = &session_.pluginRegistry();
         pluginSources_.listSetting = [this](const std::string& key)
         {

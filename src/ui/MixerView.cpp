@@ -1648,9 +1648,10 @@ public:
         juce::MessageManager::callAsync(
             [owner, id]
             {
-                if (owner != nullptr)
-                    std::erase_if(owner->editors_,
-                                  [id](const auto& w) { return w->editor().insertId() == id; });
+                if (owner == nullptr)
+                    return;
+                std::erase_if(owner->editors_, [id](const auto& w) { return w->editor().insertId() == id; });
+                owner->noteEditorWindows();
             });
     }
 
@@ -1922,17 +1923,21 @@ void MixerView::openInsertEditor(core::Id channelId, core::Id insertId)
                 juce::MessageManager::callAsync(
                     [safe, insertId]
                     {
-                        if (safe != nullptr)
-                            std::erase_if(safe->pluginWindows_,
-                                          [insertId](const auto& w) { return w->insertId() == insertId; });
+                        if (safe == nullptr)
+                            return;
+                        std::erase_if(safe->pluginWindows_,
+                                      [insertId](const auto& w) { return w->insertId() == insertId; });
+                        safe->noteEditorWindows();
                     });
             };
         }
         window->onClose = [safe, insertId]
         {
-            if (safe != nullptr)
-                std::erase_if(safe->pluginWindows_,
-                              [insertId](const auto& w) { return w->insertId() == insertId; });
+            if (safe == nullptr)
+                return;
+            std::erase_if(safe->pluginWindows_,
+                          [insertId](const auto& w) { return w->insertId() == insertId; });
+            safe->noteEditorWindows();
         };
         window->onCommand = [safe](std::unique_ptr<core::Command> c)
         {
@@ -1971,6 +1976,7 @@ void MixerView::openInsertEditor(core::Id channelId, core::Id insertId)
         };
         window->setInsert(*insert);
         pluginWindows_.push_back(std::move(window));
+        noteEditorWindows();
         return;
     }
 
@@ -2001,6 +2007,7 @@ void MixerView::openInsertEditor(core::Id channelId, core::Id insertId)
     auto window = std::make_unique<EditorWindow>(*this, std::move(editor), title);
     window->centreAroundComponent(getTopLevelComponent(), window->getWidth(), window->getHeight());
     editors_.push_back(std::move(window));
+    noteEditorWindows();
 }
 
 MixerView::MixerView(rt::MeterBlock& meters,
@@ -2042,6 +2049,22 @@ void MixerView::closeEditors()
 {
     pluginWindows_.clear();
     editors_.clear();
+    noteEditorWindows();
+}
+
+void MixerView::noteEditorWindows()
+{
+    std::vector<core::Id> open;
+    for (const auto& w : pluginWindows_)
+        open.push_back(w->insertId());
+    for (const auto& w : editors_)
+        open.push_back(w->editor().insertId());
+    std::sort(open.begin(), open.end());
+    if (open == shownEditors_)
+        return;
+    shownEditors_ = std::move(open);
+    if (onEditorWindowsChanged)
+        onEditorWindowsChanged();
 }
 
 void MixerView::setInputChoices(std::vector<InputChoice> audio, std::vector<std::string> midi)
@@ -2116,6 +2139,7 @@ void MixerView::refreshEditors()
                               w->editor().setLatency(live->latencySamples());
                       return false;
                   });
+    noteEditorWindows();
 }
 
 void MixerView::addBus()
