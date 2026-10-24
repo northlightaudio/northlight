@@ -117,7 +117,10 @@ What is missing on Linux:
 ctest --preset windows-debug
 ```
 
-runs both test suites and the source checks. The suites can also be run directly:
+runs both test suites and the source checks, eight tests at a time, each stopped
+and failed after five minutes so a hang names itself instead of blocking the run
+(the test presets in `CMakePresets.json` set both; a test that must run alone, the
+paint-time budgets, says so with `RUN_SERIAL`). The suites can also be run directly:
 
 - `build/windows-debug/tests/unit/northlight_unit_tests.exe`: the model and the
   engine, with no JUCE and no audio device.
