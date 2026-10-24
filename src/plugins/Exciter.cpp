@@ -3,6 +3,7 @@
 #include "engine/Feedback.h"
 #include "engine/rt/RealtimeGuard.h"
 #include "plugins/Biquad.h"
+#include "plugins/Oversampler.h"
 #include "plugins/ProcessorBase.h"
 
 #include <algorithm>
@@ -166,90 +167,11 @@ Calibration calibrationAt(int curveIndex, float driveDb) noexcept
 
 // ----- 2x oversampling ----------------------------------------------------------------------
 //
-// A polyphase IIR half-band (two chains of first-order all-passes in z^-2, after
-// Laurent de Soras' HIIR design): 8 coefficients, a transition band of 0.04 of
-// the doubled rate, so it passes flat to 20 kHz at 48 kHz and stops the images
-// and the folded harmonics by 100 dB. Only the harmonics go through it; its
-// small phase delay does not touch the dry signal.
-constexpr int halfBandOrder = 8;
-using HalfBandCoefficients = std::array<float, halfBandOrder>;
-
-HalfBandCoefficients designHalfBand(double transition)
-{
-    double k = std::tan((1.0 - transition * 2.0) * std::numbers::pi / 4.0);
-    k *= k;
-    const double kksqrt = std::pow(1.0 - k * k, 0.25);
-    const double e = 0.5 * (1.0 - kksqrt) / (1.0 + kksqrt);
-    const double e4 = e * e * e * e;
-    const double q = e * (1.0 + e4 * (2.0 + e4 * (15.0 + 150.0 * e4)));
-    const int order = halfBandOrder * 2 + 1;
-    HalfBandCoefficients result{};
-    for (int index = 0; index < halfBandOrder; ++index)
-    {
-        const int c = index + 1;
-        double num = 0.0;
-        for (int i = 0, sign = 1;; ++i, sign = -sign)
-        {
-            const double term =
-                std::pow(q, i * (i + 1)) * std::sin((i * 2 + 1) * c * std::numbers::pi / order) * sign;
-            num += term;
-            if (std::abs(term) <= 1.0e-100 || i > 64)
-                break;
-        }
-        double den = 0.0;
-        for (int i = 1, sign = -1;; ++i, sign = -sign)
-        {
-            const double term = std::pow(q, i * i) * std::cos(i * 2 * c * std::numbers::pi / order) * sign;
-            den += term;
-            if (std::abs(term) <= 1.0e-100 || i > 64)
-                break;
-        }
-        num *= std::pow(q, 0.25);
-        den += 0.5;
-        const double ww = num / den;
-        const double wwsq = ww * ww;
-        const double x = std::sqrt((1.0 - wwsq * k) * (1.0 - wwsq / k)) / (1.0 + wwsq);
-        result[static_cast<size_t>(index)] = static_cast<float>((1.0 - x) / (1.0 + x));
-    }
-    return result;
-}
-
-const HalfBandCoefficients halfBand = designHalfBand(0.04);
-
-// The two all-pass chains: even coefficients on path 0, odd on path 1.
-struct HalfBandChains
-{
-    std::array<float, halfBandOrder> x{}, y{};
-
-    void reset() noexcept
-    {
-        x.fill(0.0f);
-        y.fill(0.0f);
-    }
-
-    void run(float& path0, float& path1) noexcept
-    {
-        for (size_t i = 0; i < halfBandOrder; i += 2)
-        {
-            const float t0 = (path0 - y[i]) * halfBand[i] + x[i];
-            const float t1 = (path1 - y[i + 1]) * halfBand[i + 1] + x[i + 1];
-            x[i] = path0;
-            x[i + 1] = path1;
-            y[i] = t0;
-            y[i + 1] = t1;
-            path0 = t0;
-            path1 = t1;
-        }
-    }
-
-    void flush() noexcept
-    {
-        for (auto* v : {&x, &y})
-            for (auto& s : *v)
-                if (std::abs(s) < 1.0e-20f)
-                    s = 0.0f;
-    }
-};
+// The shared polyphase IIR half-band (plugins/Oversampler.h): 8 coefficients, a
+// transition band of 0.04 of the doubled rate, so it passes flat to 20 kHz at
+// 48 kHz and stops the images and the folded harmonics by 100 dB. Only the
+// harmonics go through it; its small phase delay does not touch the dry signal.
+const HalfBandDesign halfBand = designHalfBand(8, 0.04);
 
 // ----- the stereo decorrelator ----------------------------------------------------------------
 
@@ -646,10 +568,10 @@ private:
                         // Up: the two outputs in time order. Down: the later sample
                         // on the first path.
                         float first = band[c] * gain, second = first;
-                        ch.up.run(first, second);
+                        ch.up.run(halfBand, first, second);
                         float a = shape(character_, linear_, first, ch.previous, ch.previousIntegral);
                         float b = shape(character_, linear_, second, ch.previous, ch.previousIntegral);
-                        ch.down.run(b, a);
+                        ch.down.run(halfBand, b, a);
                         const float y = 0.5f * (a + b);
                         h[c] = ch.tilt.process(ch.post.process(y)) * harmonicScale_;
                     }

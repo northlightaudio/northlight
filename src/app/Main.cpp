@@ -19,6 +19,7 @@
 #include "ui/PianoRoll.h"
 #include "ui/PreferencesView.h"
 #include "ui/SplashScreen.h"
+#include "ui/strip/ModuleCard.h"
 #include "version/Version.h"
 
 #include <juce_audio_formats/juce_audio_formats.h>
@@ -149,6 +150,7 @@ public:
     //   --insert <type>      add a built-in insert (northlight.glue, ...) to the first track that
     //                        makes audio
     //   --master-insert <type>  add a built-in insert to the master
+    //   --corona-page <amp|cabinet>  the page Corona's cards open on (give it before --insert)
     //   --insert-param <name> <value>  set a parameter of the insert the last --insert or
     //                        --master-insert added, by its name or index (a stepped one also
     //                        by its choice's text: --insert-param Release Auto)
@@ -204,7 +206,8 @@ public:
     //   --capture <folder> [s]  after s seconds (2 if not given), save the window and its
     //                        showing parts (mixer, channel-strip, instrument, piano-roll,
     //                        audio-editor; with --preferences, every Preferences page as
-    //                        preferences-<page>) as PNGs in the folder, then quit. Uses its own
+    //                        preferences-<page>; any other open window, such as an insert's
+    //                        editor, as window-<name>) as PNGs in the folder, then quit. Uses its own
     //                        settings folder, so the layout is the default one, and sends
     //                        silence to the device, so playback is not heard
     //   --capture-scale <n>  the scale the captures are saved at (2 if not given)
@@ -695,6 +698,8 @@ public:
                 else
                     set();
             }
+            else if (arg == "--corona-page" && i + 1 < tokens.size())
+                ui::strip::setEmberStartPage(tokens.getReference(++i).text.unquoted() == "cabinet");
             else if (arg == "--bus")
                 mainWindow_->addBus();
             else if (arg == "--remove-bus")

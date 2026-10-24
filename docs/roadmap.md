@@ -108,7 +108,8 @@ saturation. Missing:
 | Filter | Resonant filter driven by an LFO or an envelope follower |
 | Pitch | Real-time pitch shifter and harmoniser |
 | Reverb | Convolution reverb that loads impulse responses |
-| Colour | Amp and cabinet simulation (Patina covers tape, tube, bitcrush and vinyl colour) |
+| Colour | More amps (a bass amp, a British amp) beside Corona, and guitar pedals: tuner, drive, fuzz, chorus, compressor, wah (Patina covers tape, tube, bitcrush and vinyl colour) |
+| Monitoring | Low-latency monitoring: leave monitored tracks uncompensated and latent inserts on their path out while recording, so a lookahead limiter elsewhere does not delay what a player hears |
 
 The EQ insert has a high-pass and three bands. A fully parametric EQ (six to eight
 bands with shelves and notches, over a spectrum) would let it serve as the main EQ.

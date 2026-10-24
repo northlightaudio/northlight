@@ -84,7 +84,8 @@ public:
     void muteBreathsInEditor();
     // --capture: saves the window and every part of it tagged "capture:<name>" that is
     // showing (the mixer, the channel strip, the instrument's editor, the piano roll,
-    // the audio editor) as <name>.png in the folder, at `scale` times their size.
+    // the audio editor) as <name>.png in the folder, at `scale` times their size, and
+    // every other open window (an insert's editor) as window-<its name>.png.
     // Returns the file names written.
     juce::StringArray capture(const juce::File& folder, float scale);
     // A layout preset ("Mix", "Edit") for unattended captures and the menu.

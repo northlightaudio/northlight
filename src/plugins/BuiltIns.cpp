@@ -1,6 +1,7 @@
 #include "plugins/BuiltIns.h"
 
 #include "engine/rt/RealtimeGuard.h"
+#include "plugins/Amp.h"
 #include "plugins/Aurora.h"
 #include "plugins/BeatSync.h"
 #include "plugins/Biquad.h"
@@ -622,6 +623,7 @@ std::vector<std::string> BuiltInFactory::typeNames() const
             types::delay,
             tapeecho::type,
             bloom::type,
+            amp::type,
             aurora::type,
             pulsar::type,
             nebula::type,
@@ -676,6 +678,8 @@ std::unique_ptr<engine::InsertProcessor> BuiltInFactory::create(const std::strin
         return tapeecho::create();
     if (typeName == bloom::type)
         return bloom::create();
+    if (typeName == amp::type)
+        return amp::create(sampleLoader_);
     return nullptr;
 }
 
@@ -719,6 +723,8 @@ std::string BuiltInFactory::displayName(const std::string& typeName)
         return "Tape Echo";
     if (typeName == bloom::type)
         return "Bloom";
+    if (typeName == amp::type)
+        return "Corona";
     return typeName;
 }
 

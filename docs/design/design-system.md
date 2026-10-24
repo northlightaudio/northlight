@@ -393,6 +393,24 @@ keyboard, focus ring and tooltip, and its text pairs are in contrast.md.
   shade under its top lip and a faint `highlight` line along its lower edge;
   pressed keys drop 1 px. Lit glass (a display, a meter window) gets a
   `highlight` reflection across its top left.
+- **Hardware key** (Corona's strip and cabinet plate): a bakelite key in a dark
+  `bezel` slot, the gradient `keyTop` to `keyBottom` with a faint `highlight`
+  along its top, its label printed in `keyGlyph` (`font.legend`, 14 px bold), a
+  5 px LED at its left (`ledOff`, `led` with a soft halo while chosen or on). A
+  chosen or latched key sits pressed in by 1 px. Keys in a row act as a radio
+  group (one lit), or alone as a latch (ON, Ø) or a plain button (LOAD IR, no
+  LED). Hover 7%, pressed 10%, disabled at 50%; Space or Enter presses it; a
+  focus ring round the slot. A square key (the page keys) puts its icon over its
+  label (13 px) and its LED in the top left corner.
+- **Two-page face** (Corona): a face too rich for one panel shows one page at a
+  time, as a real unit with a lid or a removable grille would. Both pages share
+  the face's size, its background and a strip along the foot that holds the page
+  keys (a radio pair of square hardware keys, each an icon of its page over its
+  name, the current page lit) and whatever must be
+  reachable from either page; nothing else is on both. Changing page is
+  immediate (no animation), is not a parameter (it is never undone or saved in
+  the project) and is remembered per insert while the app runs, so a card made
+  again opens where it was left. Each page caches its own static layer.
 - **Rendered parts** (the tape echo's console): a face whose parts are 3D renders
   (Blender, the scripts and their sources in `scripts/render/<effect>/`) rather
   than drawn. One lighting for every part: a key from the top of the unit, the same
@@ -415,6 +433,32 @@ keyboard, focus ring and tooltip, and its text pairs are in contrast.md.
     alone, over what is under them.
   - **Text stays live.** Legends, scales and values are drawn in tokens over the
     renders (`font.legend`), so they stay sharp, translatable and in contrast.md.
+    A face that caches its static layer draws its printed words in a second pass
+    straight to the screen, not into the cache, so the window's renderer sets them
+    at their real size.
+  - **Drawn at the size they land.** A render is shrunk to the pixels it covers
+    (halving in steps, then one high-quality pass; `hardware::drawScaled`) before
+    it is drawn, never stretched down in one bilinear step, which turns small
+    highlights into sparkle. Chrome is toned to the panel's light when packaged.
+  - **Compact below two thirds.** Shown below 65% of its size (the Editor dock),
+    a face drops its small print (values under the knobs, printed scale numbers,
+    small position legends, the model line) and prints its names 1.45x larger
+    with tighter tracking, set smaller only to fit their slot. Each name hangs
+    from its top edge under its control with a clear gap (about 20 design px
+    under a knob's skirt), names in a row share one line, and names in a tight
+    band (under a window, over a lever) grow less and keep clear of what bounds
+    them. A stepped
+    selector, its positions no longer printed, shows its setting in its name's
+    place, and the knob being hovered or turned shows its value there. All text
+    on a face is set crisply at its device size on a whole-pixel baseline
+    (`hardware::drawCrispText`), and the face itself sits on a whole pixel.
+  - **One implementation.** A new rendered face derives `RenderedFace` (design
+    size, scaling, cached art, live words) and its card `RenderedCard` (sizing,
+    rendered knobs and levers), and draws with `HardwareParts`; it does not copy
+    another face's helpers.
+  - **Markers, not renders, for what the user places.** A part that is dragged to
+    a position (Corona's mics) is a clean marker in a token colour, not a render
+    that must also read from every angle.
   - **Every part has a flat fallback** in the `hardware` tokens, as every texture
     does.
 

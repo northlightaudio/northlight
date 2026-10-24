@@ -42,6 +42,14 @@ Generated from [tokens.json](tokens.json) (Machair Dusk v2) by `scripts/contrast
 | hardware.sageInkSoft | hardware.sagePanel | 5.22 | Values and positions on the sage panel | yes |
 | hardware.dialInk | hardware.dialFace | 9.64 | The meter's scale | yes |
 | hardware.dialRed | hardware.dialFace | 4.67 | The meter's red zone | yes |
+| hardware.coronaInk | hardware.coronaPanel | 8.11 | Control names on the amp's plate | yes |
+| hardware.coronaInkSoft | hardware.coronaPanel | 5.79 | Values and scales on the amp's plate | yes |
+| hardware.coronaInk | hardware.coronaBadge | 5.67 | The name on the amp's badge | yes |
+| hardware.coronaStripInk | hardware.coronaStrip | 13.15 | Names on the utility strip | yes |
+| hardware.coronaStripInkSoft | hardware.coronaStrip | 7.25 | Values on the utility strip | yes |
+| hardware.coronaStripInk | hardware.coronaBaffle | 15.07 | A mic's label on the baffle | yes |
+| hardware.coronaMarkerA | hardware.coronaCone | 6.86 | Mic A's marker on a speaker cone | yes |
+| hardware.coronaMarkerB | hardware.coronaCone | 6.63 | Mic B's marker on a speaker cone | yes |
 
 ## Track palette
 

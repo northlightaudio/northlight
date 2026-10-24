@@ -1,4 +1,4 @@
-# 7. Inserts, plugin windows, browser
+﻿# 7. Inserts, plugin windows, browser
 
 ## 7.1 Insert chain panel (Editor tab, dock)
 
@@ -56,7 +56,7 @@ Every built-in has an editor in the channel strip's language
 well, then knobs in the module's hue. The same editor is the card's body in the Editor panel
 and the body of its window (under the title, bypass and mix). The hues follow the
 strip: EQ `Overcast`, compressor `Loch`, limiter `Rowan`; gain `Machair`, reverb `Lichen`,
-delay `Gorse`, glue compressor `Thrift`, Patina `Kelp`, exciter `Machair`, Bloom `Heather`, tape echo `Rowan`, stereo widener `Sea grass`. The instruments (7.4b-7.4e) have faces of their own, and so do Patina and the tape echo, hardware faces (design-system.md "Hardware face").
+delay `Gorse`, glue compressor `Thrift`, Patina `Kelp`, exciter `Machair`, Bloom `Heather`, tape echo `Rowan`, stereo widener `Sea grass`, Corona `Straw`. The instruments (7.4b-7.4e) have faces of their own, and so do Patina, the tape echo and Corona, hardware faces (design-system.md "Hardware face").
 
 - **Gain**: the input and output history with IN and OUT meters; Gain.
 - **EQ**: the strip's EQ graph with the built-in's four bands (a high-pass,
@@ -485,8 +485,9 @@ delay `Gorse`, glue compressor `Thrift`, Patina `Kelp`, exciter `Machair`, Bloom
       small knobs; names 19 px bold, positions 18 px): STEREO
       three-way (PAN up, PING centre, L/R down), SYNC (ON: tempo sync at the last
       note value chosen, an eighth the first time; OFF: free), DRY (ON, KILL). A click
-      above a lever's middle moves it up a position, below it down; Up and Down move
-      it, Space flips or steps it. Tooltip "Stereo: Pan".
+      anywhere on SYNC or DRY flips it; on STEREO, a click above its middle moves it
+      up a position, below it down. Up and Down move a lever, Space flips or steps
+      it. Tooltip "Stereo: Pan".
     - **Small knobs** (44 px; names 20 px bold, values 17 px): BASS, TREBLE, DRIVE, WOW, FLUTTER, AGE, SPREAD,
       SPRING, OUTPUT, spread across the panel's width.
     - **Rendered controls** keep the system's behaviour: drag, wheel, arrows,
@@ -494,8 +495,101 @@ delay `Gorse`, glue compressor `Thrift`, Patina `Kelp`, exciter `Machair`, Bloom
       hover (10% while dragged), 45-50% when disabled. Every part has a flat token
       fallback (panels, a dark well, plain knobs and levers, a lit dial with a hood),
       so the face works without its images.
+  - **Compact** (below 65%, the Editor dock): no values, scale marks, HEADS
+    positions, lever positions, dial numbers or model line; names 1.45x; HEADS
+    shows its heads ("1 + 3"); the knob in hand shows its value in its name's
+    place.
   - **Header status:** "Self-oscillating" in `meterHot` while the loop gain is at
     1 or more.
+- **Corona** (a tube guitar amp and its cabinet, for guitar and bass): modelled on the
+  1960s-70s American 2x12 combo with reverb and tremolo, with no trade dress of the
+  original (our own name, plate, cloth and badge; "two-twelve reverb" at most).
+  - The circuit's stages in order, each in volts: V1 (12AX7, 100k plate, bypassed
+    1.5k cathode, 68k grid stopper), the treble / middle / bass stack (the exact
+    passive network, 250k / 10k / 250k pots, 100k slope, 250 pF, 100 nF, 47 nF), the
+    1M audio volume pot with the 120 pF bright cap across its top (BRIGHT: a treble
+    lift that fades as the volume rises), the silverface's pull BOOST (+10 dB in
+    front of V2), V2, the spring tank on a send from V2 (two springs, 33 and 41 ms,
+    about 2.8 s, its driver clipping when hit hard), the mixer stage V3 (unbypassed),
+    the opto tremolo (a lamp's half-wave pulse through a light cell's quick attack and
+    slow release: SPEED 1.5-8 Hz, INTENSITY to a near chop), MASTER, the phase
+    inverter, the push-pull power amp with negative feedback and SAG, the output
+    transformer and the speaker's load (a bump at 95 Hz, a rise above 3 kHz). The
+    triodes are curves solved from Koren's equations on each stage's load line, with
+    grid conduction and the bias shift a loud note leaves.
+  - Clean to about 5 with a strummed chord (a quarter volt at the jack, -12 dBFS at
+    0 dB INPUT), breaking up from 6, crunchy at 10; BOOST breaks it up earlier; MASTER
+    trades loudness for drive.
+  - Everything nonlinear runs oversampled (QUALITY 2x, 4x default, 8x) through
+    minimum-phase half-bands with antiderivative anti-aliasing. **No latency.**
+  - INPUT trims the jack (-24 to +24 dB), GATE is a noise gate in front (Off at the
+    bottom, to -20 dB, 6 dB of hysteresis and a 50 ms hold), OUTPUT is the level out.
+  - The cabinet (plugins/Cabinet.h) is a model that builds a response: five
+    cabinets (2x12 open, 1x12 open, 4x10 closed, and for bass 1x15 and 4x10), or a
+    response file of the user's (IR, cut at 0.5 s), and two mics, each with a type
+    (dynamic, ribbon, condenser), a place on the cone (cap bright, edge dark), a
+    distance 1-100 cm (proximity effect up close, the other speakers and the floor
+    coming in as it backs off), an angle to 45° (duller), level, pan and polarity.
+    The mics' distances set a real time-of-flight offset, so blending them combs.
+    ROOM adds early reflections. SPEAKER's LINE position takes the cabinet out.
+  - **The face:** a hardware face built from rendered parts (assets/corona), drawn
+    at 1160 × 600 and scaled to fit, with two pages (design-system.md "Two-page
+    face"). Legends are Barlow Condensed in the `hardware` corona inks.
+    - **Both pages:** the cabinet's oxblood tolex (`coronaTolex`) behind everything,
+      and the utility strip along the foot (graphite, `coronaStrip`, inks
+      `coronaStripInk`/`coronaStripInkSoft`): INPUT with a ten-LED meter of the
+      trimmed input (lit from -48 dBFS in 6 dB steps, the top two from -3 dBFS
+      warning in `ledHot`), GATE with a LED lit while it holds the signal back, SAG,
+      OUTPUT (38 px knobs, names 14 px, values 13 px); the QUALITY keys (2×, 4×, 8×);
+      the footswitch's REVERB and TREMOLO push-buttons, a LED beside each (the
+      tremolo's pulses with the light cell); and the page keys, AMP and CABINET:
+      two square keys (60 × 68, 8 apart, centred between the last hairline and
+      the strip's screws), each an icon (a combo; a cabinet with two speakers) at
+      half the space over its name, the current page's LED lit in its top left
+      corner.
+      Hairlines part the amp's controls, the footswitch and the pages.
+    - **Keys** are bakelite (`keyTop` to `keyBottom`, the label `keyGlyph` 14 px
+      bold) in a dark slot, a LED at the left lit while chosen or on, pressed in a
+      pixel while down; hover 7%, pressed 10%, disabled 50%; a focus ring round the
+      slot.
+    - **The amp page:** the champagne plate (`coronaPanel`, inks `coronaInk` and
+      `coronaInkSoft`) with captions over hairlines (PREAMP, REVERB, TREMOLO, POWER,
+      14 px tracked), BRIGHT and BOOST as chrome levers (ON up, OFF down; a click
+      anywhere on the lever flips it), eight
+      62 px knobs (VOLUME, TREBLE, MIDDLE, BASS, REVERB, SPEED, INTENSITY, MASTER),
+      each with ten ticks and 1-10 printed round it, its name (17 px bold) and value
+      (15 px, "4.0") under it, and the pilot jewel (DRIVE) glowing with the power
+      amp's drive: 30% at idle, full once it clips, dark while the card is off. The
+      model line along the plate's foot (13 px). Below, the grille cloth framed in
+      brass piping, with the brass badge, CORONA in 46 px tracked 0.24, centred on the brass by its letters' outlines, about twice as far from each rivet as the letters are apart.
+    - **The cabinet page:** the baffle (left, 680 × 464) with the chosen cabinet's
+      speakers laid out to scale (at most 1000 px a metre) and the two mics over the
+      first speaker: each a marker, a 2 px ring in its colour (A `coronaMarkerA`,
+      B `coronaMarkerB`) over a 16% fill and a dark halo, as large as the mic would
+      look from the speaker (smaller the further it is, to 45% at a metre) and
+      narrower the more it is angled, with its type's glyph inside (a dynamic's
+      slim capsule on its clip, a ribbon's slotted box, a condenser's round head)
+      and a label beside it ("A · 3.0 cm", a dot in its colour). A works up and to the right of the cap, B down and to the
+      right, so they never cover each other. Drag a mic along its ray to place it;
+      the wheel or Up and Down move it nearer and further, Left and Right along the
+      cone (Shift: finer), double-click returns it. A mic that is off is a dashed
+      ring at 35%. With a response file or the line out, the speakers dim, the mics go and a
+      band says USING THE LOADED RESPONSE or CABINET OFF · LINE OUT.
+    - The plate beside it: CABINET (a stepped knob, its six positions printed round
+      it, the chosen one bold), SPEAKER (a lever: ON, LINE), ROOM; LOAD IR (a key,
+      opening a file chooser; loading a file switches CABINET to IR) with the file's
+      name or "No response file loaded" (and why, when it cannot be read); then MIC A
+      and MIC B side by side, each with ON and Ø keys, the type keys (DYN, RIB, CON)
+      and DISTANCE, ANGLE, LEVEL and PAN (40 px knobs). A mic's controls dim while
+      it is off, and all of them with a response file or the line out.
+    - **Compact** (below 65%, the Editor dock; design-system.md "Rendered parts"):
+      no values, scale numbers, lever positions or model line; names 1.45x;
+      CABINET shows the chosen cabinet; the knob in hand shows its value in its
+      name's place; the mics' labels larger.
+    - **The page** is not a parameter (nothing to undo). Each card remembers it per
+      insert while the app runs; `--corona-page cabinet` opens new cards there.
+    - Every rendered part has a flat fallback in the `hardware` tokens.
+  - **Header status:** "Line out" while SPEAKER is at LINE.
 - **Stereo Widener** (width per band, a mono-safe spread, and the image on screen):
   the side (L-R) is split into Low, Mid and High by Linkwitz-Riley crossovers (Low
   split 40 Hz-1 kHz, default 250 Hz; High split 1-16 kHz, default 4 kHz) and each band
@@ -577,7 +671,7 @@ ring in the hue. A display's readout is `value` at its top right.
 
 ## 7.2b Built-in presets
 
-Every built-in effect has presets: a factory list (8 to 13 for most, six levels for
+Every built-in effect has presets: a factory list (8 to 14 for most, six levels for
 Gain), the first of them its defaults ("Default", or Patina's "Gentle Age"), and the
 user's own. The instruments keep their own preset bars in their faces (7.4b-7.4e).
 

@@ -297,18 +297,44 @@ know nothing format-specific.
   state running while bypassed, and they publish real-time feedback for their
   editors through rings of atomics: a five-value frame every 5 ms (input, output,
   reduction and two processor-specific values) and two sample taps. The larger
-  effects (Glue, Patina, Exciter, Bloom, Tape Echo, Stereo Widener) each have a file
+  effects (Glue, Patina, Exciter, Bloom, Tape Echo, Stereo Widener, Corona) each have a file
   of their own and a card in `src/ui/strip`; what their frame values and taps carry
   is described at the top of each processor. A display that needs more than a frame
   holds (Patina's six stage readouts) publishes its own telemetry block the same
   way, so the shared frame stays small. Patina's card is a hardware face: the
   drawing shared by such faces (pointer knobs, printed legends, images from
-  `assets/<effect>/`) is in `ui/components/HardwareParts`. Every built-in effect's
+  `assets/<effect>/`) is in `ui/components/HardwareParts`. Faces built from
+  renders (the tape echo, Corona) share three more layers: `HardwareParts` draws
+  renders shrunk to the pixels they land on (`drawScaled`, `drawScaledRotated`,
+  `drawPlate`) and holds the printed ticks, the legend font and the fit
+  arithmetic; `ui/components/RenderedFace` is the face itself, drawn at one
+  design size and scaled to fit, its art cached once per scale and its words
+  printed straight to the screen at every paint; and `ui/strip/RenderedCard` is
+  the card round it, sizing itself to the face and binding rendered knobs and
+  levers (`HardwareLever`) to parameters. `HardwareKey` is the bakelite key. Every built-in effect's
   factory presets are in `plugins/EffectPresets` (by parameter name, resolved
   against the effect's parameter table); `ui/strip/EffectPresetLibrary` adds the
   user's own (JSON files keyed by parameter name) and tells every `PresetBar` when
   the list changes, so the card's header, the window's and a face's own control
   agree.
+- **Corona, the amp** (`plugins/Amp`) is built from shared parts that the guitar
+  pedals will reuse: `Oversampler` (cascaded polyphase IIR half-bands, 2x to 8x,
+  minimum phase, so no latency), `Triode` (a stage's transfer curve solved once
+  from Koren's equations on its load line, with grid conduction, read from a table
+  with antiderivative anti-aliasing), `ToneStack` (the passive tone stack's exact
+  third-order transfer function from a nodal solve, discretised by the bilinear
+  transform) and `Convolver` (zero-latency uniform-partitioned convolution: the
+  first partition direct, the rest by FFT on signalsmith-linear, crossfading when
+  the kernel changes). The cabinet (`plugins/Cabinet`) builds a minimum-phase
+  response from a model of the speaker, the mics and the room. Building takes a
+  few milliseconds, so it never runs on the audio thread: one shared background
+  thread (`plugins/BackgroundJobs`) polls each amp about every 15 ms, rebuilds when
+  the cabinet's parameters (moved by the card or by automation) differ from what it
+  last built, and hands the kernel over through an `rt::SnapshotPublisher`. The
+  published slot also holds the previous kernel, so the convolver can fade from it
+  without the audio thread ever owning or freeing one. A user's response file is
+  the insert's state (the Sampler's encoding of a path), decoded by the Sampler's
+  loader.
 - **VST3** is hosted through JUCE. **CLAP** is hosted directly against its C ABI,
   following its thread rules, with parameter events queued into the next block.
 - **Scanning** runs one plugin file per child process with a timeout. A crash, hang

@@ -1,6 +1,7 @@
 #include "plugins/EffectPresets.h"
 
 #include "engine/rt/RealtimeGuard.h"
+#include "plugins/Amp.h"
 #include "plugins/Bloom.h"
 #include "plugins/BuiltIns.h"
 #include "plugins/Exciter.h"
@@ -687,6 +688,92 @@ std::vector<EffectPreset> bloomPresets()
     return l.done();
 }
 
+std::vector<EffectPreset> ampPresets()
+{
+    List l(amp::type);
+    l.add("Default", {});
+    l.add("Clean Sparkle",
+          {{"Volume", 3.5}, {"Treble", 7.0}, {"Middle", 4.0}, {"Bass", 4.0}, {"Reverb", 2.5}});
+    l.add("Surf", {{"Volume", 4.0}, {"Treble", 7.5}, {"Middle", 4.0}, {"Bass", 3.0}, {"Reverb", 8.0}});
+    l.add("Tremolo Swamp",
+          {{"Bright", "Off"},
+           {"Volume", 4.5},
+           {"Treble", 5.0},
+           {"Reverb", 4.0},
+           {"Tremolo On", "On"},
+           {"Speed", 4.0},
+           {"Intensity", 7.0},
+           {"Mic A Position", 60.0}});
+    l.add("Funk Clean",
+          {{"Volume", 3.0},
+           {"Treble", 8.0},
+           {"Middle", 2.0},
+           {"Bass", 3.0},
+           {"Reverb", 1.5},
+           {"Mic A Position", 15.0}});
+    l.add("Country Twang",
+          {{"Volume", 4.5}, {"Treble", 8.5}, {"Middle", 5.0}, {"Bass", 3.0}, {"Reverb", 2.0}, {"Sag", 10.0}});
+    l.add("Jazz Warm",
+          {{"Bright", "Off"},
+           {"Volume", 3.5},
+           {"Treble", 3.5},
+           {"Middle", 6.0},
+           {"Bass", 6.0},
+           {"Reverb", 2.0},
+           {"Cabinet", "1x12 Open"},
+           {"Mic A Type", "Ribbon"},
+           {"Mic A Distance", 10.0}});
+    l.add("Edge of Breakup",
+          {{"Volume", 6.5}, {"Treble", 6.0}, {"Middle", 6.0}, {"Bass", 4.0}, {"Reverb", 2.0}, {"Sag", 40.0}});
+    l.add("Blues Lead",
+          {{"Volume", 8.0},
+           {"Master", 6.0},
+           {"Treble", 5.0},
+           {"Middle", 7.0},
+           {"Bass", 5.0},
+           {"Reverb", 3.0},
+           {"Sag", 50.0},
+           {"Mic A Position", 45.0}});
+    l.add("Boosted Crunch",
+          {{"Volume", 7.0},
+           {"Boost", "On"},
+           {"Master", 5.0},
+           {"Middle", 7.0},
+           {"Bass", 5.0},
+           {"Reverb", 1.5},
+           {"Gate", -60.0},
+           {"Mic B On", "On"},
+           {"Mic B Distance", 15.0}});
+    l.add("Two Mics, Wide",
+          {{"Mic A Pan", -60.0},
+           {"Mic B On", "On"},
+           {"Mic B Type", "Condenser"},
+           {"Mic B Distance", 40.0},
+           {"Mic B Pan", 60.0},
+           {"Room", 25.0}});
+    l.add("Bass Clean",
+          {{"Bright", "Off"},
+           {"Volume", 3.5},
+           {"Treble", 4.0},
+           {"Middle", 6.0},
+           {"Bass", 7.0},
+           {"Reverb On", "Off"},
+           {"Cabinet", "4x10 Bass"},
+           {"Mic A Type", "Condenser"},
+           {"Mic A Distance", 20.0}});
+    l.add("Bass Growl",
+          {{"Bright", "Off"},
+           {"Volume", 6.5},
+           {"Boost", "On"},
+           {"Master", 5.0},
+           {"Middle", 7.0},
+           {"Bass", 6.0},
+           {"Reverb On", "Off"},
+           {"Cabinet", "1x15 Bass"}});
+    l.add("Line Out, No Cabinet", {{"Cabinet On", "Off"}});
+    return l.done();
+}
+
 // Patina's list lives with it (its card's own display steps through it too).
 std::vector<EffectPreset> patinaPresets()
 {
@@ -712,6 +799,7 @@ const std::map<std::string, std::vector<EffectPreset>>& all()
         {types::delay, delayPresets()},
         {tapeecho::type, tapeEchoPresets()},
         {bloom::type, bloomPresets()},
+        {amp::type, ampPresets()},
     };
     return lists;
 }

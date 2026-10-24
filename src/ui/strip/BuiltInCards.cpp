@@ -819,6 +819,8 @@ createBuiltInCard(const Theme& theme, CardHost& host, core::Id channelId, const 
         return createExciterCard(theme, host, channelId, insert);
     if (insert.type == "northlight.bloom")
         return createBloomCard(theme, host, channelId, insert);
+    if (insert.type == "northlight.amp")
+        return createEmberCard(theme, host, channelId, insert);
     if (insert.type == types::limiter)
         return std::make_unique<LimiterCard>(theme, host, channelId, insert);
     if (insert.type == types::reverb)

@@ -575,6 +575,21 @@ bool Theme::apply(const juce::var& tokens, Theme& theme, std::string& error)
         colour("aluminium", hw.aluminium);
         colour("tapeWell", hw.tapeWell);
         colour("neon", hw.neon);
+        colour("coronaTolex", hw.coronaTolex);
+        colour("coronaPanel", hw.coronaPanel);
+        colour("coronaInk", hw.coronaInk);
+        colour("coronaInkSoft", hw.coronaInkSoft);
+        colour("coronaGrille", hw.coronaGrille);
+        colour("coronaBadge", hw.coronaBadge);
+        colour("coronaStrip", hw.coronaStrip);
+        colour("coronaStripInk", hw.coronaStripInk);
+        colour("coronaStripInkSoft", hw.coronaStripInkSoft);
+        colour("coronaBaffle", hw.coronaBaffle);
+        colour("coronaCone", hw.coronaCone);
+        colour("coronaSpeakerRim", hw.coronaSpeakerRim);
+        colour("coronaJewel", hw.coronaJewel);
+        colour("coronaMarkerA", hw.coronaMarkerA);
+        colour("coronaMarkerB", hw.coronaMarkerB);
     }
     if (const auto& elevation = tokens["elevation"]; elevation.isObject())
         if (const auto& popup = elevation["popup"]; popup.isObject() && popup["shadow"].isString())

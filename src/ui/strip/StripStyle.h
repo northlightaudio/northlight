@@ -69,6 +69,8 @@ inline juce::Colour moduleColour(const Theme& theme, const std::string& type)
         return paletteColour(theme, "Lichen");
     if (type == "northlight.delay")
         return paletteColour(theme, "Gorse");
+    if (type == "northlight.amp")
+        return paletteColour(theme, "Straw"); // the warm glow of the valves
     if (type == "northlight.tapeecho")
         return paletteColour(theme, "Rowan");
     if (type == "northlight.bloom")

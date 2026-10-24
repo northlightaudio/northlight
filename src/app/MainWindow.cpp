@@ -3378,6 +3378,21 @@ juce::StringArray MainWindow::capture(const juce::File& folder, float scale)
         }
         view.showPage(shown);
     }
+    // Other windows (an insert's or an instrument's editor) as window-<name>.
+    for (int i = 0; i < juce::TopLevelWindow::getNumTopLevelWindows(); ++i)
+    {
+        auto* window = juce::TopLevelWindow::getTopLevelWindow(i);
+        if (window == nullptr || window == this || !window->isVisible() ||
+            (preferencesWindow_ != nullptr && window == preferencesWindow_.get()))
+            continue;
+        juce::Component* shown = window;
+        if (auto* document = dynamic_cast<juce::DocumentWindow*>(window);
+            document != nullptr && document->getContentComponent() != nullptr)
+            shown = document->getContentComponent();
+        const auto name =
+            juce::File::createLegalFileName(window->getName()).toLowerCase().replaceCharacter(' ', '-');
+        save(*shown, "window-" + (name.isNotEmpty() ? name : juce::String(i)));
+    }
     return saved;
 }
 

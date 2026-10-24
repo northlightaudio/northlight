@@ -5,6 +5,8 @@
 // scaled to fit its card's body; its meter is a VU, its level lamps neon bulbs,
 // and its rollers turn with the tape.
 
+#include "ui/components/HardwareParts.h"
+
 #include <algorithm>
 #include <cmath>
 
@@ -14,21 +16,16 @@ namespace northlight::ui::strip::tapeface
 // The face as drawn, in pixels at 100%.
 inline constexpr float width = 1160.0f, height = 600.0f;
 
-// The scale at which the face fits a body: as large as fits, never larger than
-// drawn.
+// The scale at which the face fits a body (as large as fits, never larger than
+// drawn), and the face's width at a body height, so the card narrows with it.
 inline float fitScale(float bodyWidth, float bodyHeight) noexcept
 {
-    if (bodyWidth <= 0.0f || bodyHeight <= 0.0f)
-        return 0.0f;
-    return std::min({1.0f, bodyWidth / width, bodyHeight / height});
+    return hardware::fitScale(bodyWidth, bodyHeight, width, height);
 }
 
-// The face's width when the body is `bodyHeight` tall, so the card narrows with
-// it rather than leaving the face beside empty panel.
 inline int widthForHeight(int bodyHeight) noexcept
 {
-    const float scale = std::clamp(static_cast<float>(bodyHeight) / height, 0.0f, 1.0f);
-    return static_cast<int>(std::lround(width * scale));
+    return hardware::widthForHeight(bodyHeight, width, height);
 }
 
 // ----- the meter -----------------------------------------------------------------------------

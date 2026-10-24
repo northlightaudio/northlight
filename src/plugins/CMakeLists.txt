@@ -16,6 +16,20 @@ add_library(northlight_plugins STATIC
     Sampler.h
     Sampler.cpp
     Biquad.h
+    Oversampler.h
+    Oversampler.cpp
+    Triode.h
+    Triode.cpp
+    ToneStack.h
+    ToneStack.cpp
+    BackgroundJobs.h
+    BackgroundJobs.cpp
+    Cabinet.h
+    Cabinet.cpp
+    Amp.h
+    Amp.cpp
+    Convolver.h
+    Convolver.cpp
     ProcessorBase.h
     ChannelStrip.h
     ChannelStrip.cpp
@@ -39,4 +53,4 @@ add_library(northlight_plugins STATIC
     FxTracks.cpp)
 
 target_include_directories(northlight_plugins PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/..")
-target_link_libraries(northlight_plugins PUBLIC northlight_engine)
+target_link_libraries(northlight_plugins PUBLIC northlight_engine PRIVATE signalsmith-linear)

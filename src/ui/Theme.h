@@ -219,6 +219,14 @@ struct Theme
         juce::Colour sagePanel, sageInk, sageInkSoft;
         juce::Colour dialFace, dialInk, dialRed, needle;
         juce::Colour aluminium, tapeWell, neon;
+        // Corona's amp (screens/plugins.md 7.2a): its tolex, the champagne control
+        // plate and its inks, the grille cloth and badge, the graphite utility
+        // strip and its inks, and the cabinet page's baffle and speakers.
+        juce::Colour coronaTolex, coronaPanel, coronaInk, coronaInkSoft, coronaGrille, coronaBadge;
+        juce::Colour coronaStrip, coronaStripInk, coronaStripInkSoft;
+        juce::Colour coronaBaffle, coronaCone, coronaSpeakerRim;
+        juce::Colour coronaJewel;                  // the pilot lamp's glow
+        juce::Colour coronaMarkerA, coronaMarkerB; // the two mics' markers on the baffle
     };
 
     std::string name = "Northlight Dark";

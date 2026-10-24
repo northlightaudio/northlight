@@ -80,6 +80,16 @@ add_library(northlight_ui STATIC
     strip/PatinaCard.cpp
     strip/ExciterCard.cpp
     strip/BloomCard.cpp
+    strip/CoronaCard.cpp
+    strip/CoronaFace.h
+    strip/HardwareLever.h
+    strip/HardwareLever.cpp
+    strip/HardwareKey.h
+    strip/HardwareKey.cpp
+    strip/RenderedCard.h
+    strip/RenderedCard.cpp
+    components/RenderedFace.h
+    components/RenderedFace.cpp
     strip/Graphs.h
     strip/Graphs.cpp
     strip/EqGraph.h

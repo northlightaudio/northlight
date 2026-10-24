@@ -146,6 +146,23 @@ LOOP: past 1.0 (and "Self-oscillating" in the header) the echoes build into the
 tape on their own. Wow and Flutter add the wobble, and Spring adds a short spring
 reverb to the echoes. On an FX track, switch on Kill dry and set Mix to 100%.
 
+**Corona** is a tube guitar amp. Insert it on a guitar or bass track and play
+through it: it adds no latency, so with a small buffer (64 or 128 samples) it can
+be monitored while you record. The knobs read 1 to 10 as an amp's do. It stays
+clean to about half way and breaks up as you turn **Volume** past 6; **Boost**
+breaks it up sooner, and turning **Master** down keeps the drive at a lower level.
+**Bright** adds sparkle at low volumes. **Reverb** and the tremolo's **Speed** and
+**Intensity** have footswitch buttons on the strip at the foot. Set **Input** so
+the LEDs reach about the middle on your hardest playing: the amp responds to how
+hard it is hit, as a real one does. **Gate** quietens hum between notes, and
+**Quality** trades CPU for smoothness (2x is enough for tracking). Press
+**Cabinet** to see the speakers: choose a cabinet (the bass ones are 1x15 and
+4x10), drag each mic across the speaker (the centre is bright, the edge dark),
+scroll to move it nearer or further, and blend two mics; turn **Speaker** to
+**Line** to use your own cabinet simulation, or **Load IR** to load a response
+file. What you record is the dry guitar, so you can change the amp, or swap it for
+another, after recording.
+
 **Stereo Widener.** Insert it on a stereo track or bus to change how wide it
 sounds, band by band. Drag the Low, Mid and High blocks up to widen and down to
 narrow (0 is mono); drag the lines between them to move the crossovers, and turn up

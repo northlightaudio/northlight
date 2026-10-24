@@ -203,15 +203,8 @@ void Knob::paintRendered(juce::Graphics& g)
     const float angle = (static_cast<float>(fraction()) - 0.5f) * sweep;
     if (renderedPointer_.isValid())
     {
-        g.setImageResamplingQuality(juce::Graphics::highResamplingQuality);
-        g.setOpacity(enabled ? 1.0f : 0.45f);
-        const auto fit =
-            juce::AffineTransform::scale(area.getWidth() / static_cast<float>(renderedPointer_.getWidth()),
-                                         area.getHeight() / static_cast<float>(renderedPointer_.getHeight()))
-                .translated(area.getX(), area.getY())
-                .rotated(angle, centre.x, centre.y);
-        g.drawImageTransformed(renderedPointer_, fit);
-        g.setOpacity(1.0f);
+        // Shrunk first to the pixels it covers, so turning it only resamples 1:1.
+        hardware::drawScaledRotated(g, renderedPointer_, area, angle, enabled ? 1.0f : 0.45f);
     }
     else
     {

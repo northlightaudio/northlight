@@ -65,6 +65,24 @@ Northlight has not had a release yet. The first release, 0.1.0, will include:
   as they pass, rollers turning with the tape, a VU meter for the record level, a
   loop gain lamp that turns red when the loop sings, and knobs and levers on cream
   and sage enamel. It scales to fit the Editor dock.
+- Corona, a tube guitar amp modelled on a 1960s-70s American 2x12 combo with reverb
+  and tremolo, for guitar and bass: Bright, Volume, Treble, Middle, Bass, a spring
+  reverb, an opto tremolo, Master with a pull Boost, supply sag, a noise gate and
+  an input trim with a meter. It stays clean to about half way and breaks up as it
+  is turned up, adds no latency so it can be played through while recording, and
+  runs at 2x, 4x or 8x oversampling. A second page shows the cabinet with the
+  grille off: five cabinets (or your own impulse response) and two mics you drag
+  across the speaker and move nearer or further, each a dynamic, ribbon or
+  condenser with its angle, level, pan and polarity, and a room. Recordings keep
+  the dry guitar, so the amp can be changed afterwards. Its card is an amp's front
+  in oxblood and champagne, and it has 14 presets.
+- `--capture` also saves any other open window, such as an insert's editor.
+- Effects with a rendered face (Corona, the tape echo) switch to a compact form in
+  the Editor dock: larger names without the small print, and a knob's value shown
+  in place of its name while you hover or turn it. Their text is sharper.
+- The tape echo's two-way levers flip on a click anywhere on them, and its
+  console draws its knobs, lamps, neons and rollers without sparkle and its
+  legends sharper.
 - The Stereo Widener: width in three bands with phase-coherent crossovers, Mono
   below, a mono-safe Spread, rotation and balance, a correlation guard and level
   compensation, with a live vectorscope and the width the output measures.

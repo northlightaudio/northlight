@@ -247,4 +247,11 @@ createExciterCard(const Theme& theme, CardHost& host, core::Id channelId, const 
 std::unique_ptr<ModuleCard>
 createBloomCard(const Theme& theme, CardHost& host, core::Id channelId, const core::Insert& insert);
 
+// Corona's card (the "northlight.amp" insert), and its page: the amp or the cabinet.
+std::unique_ptr<ModuleCard>
+createEmberCard(const Theme& theme, CardHost& host, core::Id channelId, const core::Insert& insert);
+void showEmberPage(ModuleCard& card, bool cabinet);
+// The page a new Corona card opens on (for the --corona-page launch flag).
+void setEmberStartPage(bool cabinet);
+
 } // namespace northlight::ui::strip

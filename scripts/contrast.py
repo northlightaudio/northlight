@@ -63,6 +63,16 @@ PAIRS = [
     ("hardware.sageInkSoft", "hardware.sagePanel", "Values and positions on the sage panel", "body"),
     ("hardware.dialInk", "hardware.dialFace", "The meter's scale", "body"),
     ("hardware.dialRed", "hardware.dialFace", "The meter's red zone", "body"),
+    # Corona's amp: ink on its champagne plate and brass badge, legends on the
+    # graphite strip and on the cabinet's baffle.
+    ("hardware.coronaInk", "hardware.coronaPanel", "Control names on the amp's plate", "body"),
+    ("hardware.coronaInkSoft", "hardware.coronaPanel", "Values and scales on the amp's plate", "body"),
+    ("hardware.coronaInk", "hardware.coronaBadge", "The name on the amp's badge", "body"),
+    ("hardware.coronaStripInk", "hardware.coronaStrip", "Names on the utility strip", "body"),
+    ("hardware.coronaStripInkSoft", "hardware.coronaStrip", "Values on the utility strip", "body"),
+    ("hardware.coronaStripInk", "hardware.coronaBaffle", "A mic's label on the baffle", "body"),
+    ("hardware.coronaMarkerA", "hardware.coronaCone", "Mic A's marker on a speaker cone", "nontext"),
+    ("hardware.coronaMarkerB", "hardware.coronaCone", "Mic B's marker on a speaker cone", "nontext"),
 ]
 
 THRESHOLDS = {"body": 4.5, "large": 3.0, "nontext": 3.0, "hint": 3.0, "exempt": 0.0}
