@@ -10,6 +10,7 @@
 
 #include "plugins/Nebula.h"
 #include "ui/NorthlightLookAndFeel.h"
+#include "ui/strip/AdsrDisplay.h"
 #include "ui/strip/StripStyle.h"
 #include "ui/strip/SynthParts.h"
 
@@ -230,24 +231,19 @@ private:
 
 // ----- envelope, motion, space --------------------------------------------------------------------
 
-class EnvelopeDisplay final : public juce::Component, public juce::SettableTooltipClient
+// The envelope, filled, with its handles (AdsrDisplay).
+class EnvelopeDisplay final : public AdsrDisplay
 {
 public:
-    EnvelopeDisplay(ModuleCard& card, juce::Colour hue) : card_(card), hue_(hue)
-    {
-        setTooltip("Drag the points: attack, decay and sustain, release");
-    }
+    EnvelopeDisplay(ModuleCard& card, juce::Colour hue) : AdsrDisplay(card), hue_(hue) {}
     void paint(juce::Graphics& g) override
     {
         const auto& theme = card_.theme();
         const auto b = getLocalBounds().toFloat();
         drawScreen(g, theme, b);
-        const auto pts = points();
+        const auto pts = points(ne::attack);
         const auto p = plot();
-        juce::Path env;
-        env.startNewSubPath(p.getX(), p.getBottom());
-        for (const auto& pt : pts)
-            env.lineTo(pt);
+        const auto env = path(pts);
         juce::Path area = env;
         area.lineTo(pts.back().x, p.getBottom());
         area.closeSubPath();
@@ -258,76 +254,14 @@ public:
         g.strokePath(env,
                      juce::PathStrokeType(1.8f, juce::PathStrokeType::curved, juce::PathStrokeType::rounded));
         drawWellFrame(g, theme, b);
-        drawHandle(g, theme, hue_, pts[0], drag_ == 0);
-        drawHandle(g, theme, hue_, pts[1], drag_ == 1);
-        drawHandle(g, theme, hue_, pts[3], drag_ == 3);
-    }
-    void mouseDown(const juce::MouseEvent& e) override
-    {
-        const auto pts = points();
-        float best = 1.0e9f;
-        for (int i : {0, 1, 3})
-            if (const float d = pts[static_cast<size_t>(i)].getDistanceFrom(e.position); d < best)
-            {
-                best = d;
-                drag_ = i;
-            }
-        card_.beginGesture(drag_ == 0 ? "Attack" : drag_ == 1 ? "Decay" : "Release");
-        mouseDrag(e);
-    }
-    void mouseDrag(const juce::MouseEvent& e) override
-    {
-        const auto p = plot();
-        const float quarter = p.getWidth() / 4.0f;
-        const auto msIn = [&](int stage, float x, float maxMs)
-        {
-            return std::pow(
-                maxMs,
-                juce::jlimit(0.0f, 1.0f, (x - (p.getX() + quarter * static_cast<float>(stage))) / quarter));
-        };
-        if (drag_ == 0)
-            card_.setParam(ne::attack, msIn(0, e.position.x, maxMs(ne::attack)));
-        else if (drag_ == 1)
-        {
-            card_.setParam(ne::decay, msIn(1, e.position.x, maxMs(ne::decay)));
-            card_.setParam(ne::sustain,
-                           juce::jlimit(0.0f, 1.0f, (p.getBottom() - e.position.y) / p.getHeight()));
-        }
-        else if (drag_ == 3)
-            card_.setParam(ne::release, msIn(3, e.position.x, maxMs(ne::release)));
-        repaint();
-    }
-    void mouseUp(const juce::MouseEvent&) override
-    {
-        if (drag_ >= 0)
-            card_.endGesture();
-        drag_ = -1;
-        repaint();
+        drawHandles(g, hue_);
     }
 
 private:
-    juce::Rectangle<float> plot() const { return getLocalBounds().toFloat().reduced(8.0f, 8.0f); }
-    // A stage's longest time, the far end of its quarter.
-    float maxMs(int param) const { return card_.info(param).maximum; }
-    std::array<juce::Point<float>, 4> points() const
-    {
-        const auto p = plot();
-        const float quarter = p.getWidth() / 4.0f;
-        const auto along = [&](int stage, float ms, float maxMs)
-        {
-            const float f = std::log(std::max(1.0f, ms)) / std::log(maxMs);
-            return p.getX() + quarter * static_cast<float>(stage) + quarter * juce::jlimit(0.0f, 1.0f, f);
-        };
-        const float sustainY = p.getBottom() - card_.param(ne::sustain) * p.getHeight();
-        return {juce::Point<float>{along(0, card_.param(ne::attack), maxMs(ne::attack)), p.getY()},
-                juce::Point<float>{along(1, card_.param(ne::decay), maxMs(ne::decay)), sustainY},
-                juce::Point<float>{p.getX() + quarter * 3.0f, sustainY},
-                juce::Point<float>{along(3, card_.param(ne::release), maxMs(ne::release)), p.getBottom()}};
-    }
+    int editedAttack() const override { return ne::attack; }
+    juce::Rectangle<float> plot() const override { return getLocalBounds().toFloat().reduced(8.0f, 8.0f); }
 
-    ModuleCard& card_;
     juce::Colour hue_;
-    int drag_ = -1;
 };
 
 // The motion: a slow wave with the live value riding it.

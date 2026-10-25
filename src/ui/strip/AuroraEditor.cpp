@@ -11,6 +11,7 @@
 #include "plugins/Aurora.h"
 #include "plugins/Biquad.h"
 #include "ui/NorthlightLookAndFeel.h"
+#include "ui/strip/AdsrDisplay.h"
 #include "ui/strip/StripStyle.h"
 #include "ui/strip/SynthParts.h"
 
@@ -306,16 +307,13 @@ private:
 };
 
 // Both envelopes: the amp envelope filled, the filter envelope as a dashed
-// line. The one chosen in the corner has the handles: the peak (attack), the
-// sustain point (decay across, level up) and the end (release). Each stage has
-// a quarter of the width, its time on a log scale in it.
-class EnvelopeDisplay final : public juce::Component, public juce::SettableTooltipClient
+// line. The one chosen in the corner has the handles (AdsrDisplay).
+class EnvelopeDisplay final : public AdsrDisplay
 {
 public:
     EnvelopeDisplay(ModuleCard& card, juce::Colour amp, juce::Colour filter)
-        : card_(card), ampHue_(amp), filterHue_(filter), which_(card.theme(), amp)
+        : AdsrDisplay(card), ampHue_(amp), filterHue_(filter), which_(card.theme(), amp)
     {
-        setTooltip("Drag the points: attack, decay and sustain, release");
         which_.choices = {"AMP", "FILTER"};
         which_.setTooltip("The envelope the handles edit");
         which_.onChoose = [this](int i)
@@ -370,97 +368,18 @@ public:
             g.fillPath(dashed);
         }
         drawWellFrame(g, theme, b);
-        const int first = which_.selected == 0 ? au::ampAttack : au::filterAttack;
-        const auto hue = which_.selected == 0 ? ampHue_ : filterHue_;
-        const auto pts = points(first);
-        drawHandle(g, theme, hue, pts[0], drag_ == 0);
-        drawHandle(g, theme, hue, pts[1], drag_ == 1);
-        drawHandle(g, theme, hue, pts[3], drag_ == 3);
-    }
-    void mouseDown(const juce::MouseEvent& e) override
-    {
-        const int first = which_.selected == 0 ? au::ampAttack : au::filterAttack;
-        const auto pts = points(first);
-        drag_ = 3;
-        float best = 1.0e9f;
-        for (int i : {0, 1, 3})
-            if (const float d = pts[static_cast<size_t>(i)].getDistanceFrom(e.position); d < best)
-            {
-                best = d;
-                drag_ = i;
-            }
-        card_.beginGesture(drag_ == 0 ? "Attack" : drag_ == 1 ? "Decay" : "Release");
-        mouseDrag(e);
-    }
-    void mouseDrag(const juce::MouseEvent& e) override
-    {
-        const int first = which_.selected == 0 ? au::ampAttack : au::filterAttack;
-        const auto p = plot();
-        const float quarter = p.getWidth() / 4.0f;
-        const auto msIn = [&](int stage, float x, float maxMs)
-        {
-            const float f =
-                juce::jlimit(0.0f, 1.0f, (x - (p.getX() + quarter * static_cast<float>(stage))) / quarter);
-            return std::pow(maxMs, f);
-        };
-        if (drag_ == 0)
-            card_.setParam(first, msIn(0, e.position.x, maxMs(first)));
-        else if (drag_ == 1)
-        {
-            card_.setParam(first + 1, msIn(1, e.position.x, maxMs(first + 1)));
-            card_.setParam(first + 2,
-                           juce::jlimit(0.0f, 1.0f, (p.getBottom() - e.position.y) / p.getHeight()));
-        }
-        else if (drag_ == 3)
-            card_.setParam(first + 3, msIn(3, e.position.x, maxMs(first + 3)));
-        repaint();
-    }
-    void mouseUp(const juce::MouseEvent&) override
-    {
-        if (drag_ >= 0)
-            card_.endGesture();
-        drag_ = -1;
-        repaint();
+        drawHandles(g, which_.selected == 0 ? ampHue_ : filterHue_);
     }
 
 private:
-    // A stage's longest time, the far end of its quarter.
-    float maxMs(int param) const { return card_.info(param).maximum; }
-    juce::Rectangle<float> plot() const
+    int editedAttack() const override { return which_.selected == 0 ? au::ampAttack : au::filterAttack; }
+    juce::Rectangle<float> plot() const override
     {
         return getLocalBounds().toFloat().reduced(8.0f, 6.0f).withTrimmedTop(16.0f);
     }
-    // The peak, the sustain start, the sustain end and the release end of the
-    // envelope whose attack is parameter `first` (decay, sustain, release follow).
-    std::array<juce::Point<float>, 4> points(int first) const
-    {
-        const auto p = plot();
-        const float quarter = p.getWidth() / 4.0f;
-        const auto along = [&](int stage, float ms, float maxMs)
-        {
-            const float f = std::log(std::max(1.0f, ms)) / std::log(maxMs);
-            return p.getX() + quarter * static_cast<float>(stage) + quarter * juce::jlimit(0.0f, 1.0f, f);
-        };
-        const float sustainY = p.getBottom() - card_.param(first + 2) * p.getHeight();
-        return {juce::Point<float>{along(0, card_.param(first), maxMs(first)), p.getY()},
-                juce::Point<float>{along(1, card_.param(first + 1), maxMs(first + 1)), sustainY},
-                juce::Point<float>{p.getX() + quarter * 3.0f, sustainY},
-                juce::Point<float>{along(3, card_.param(first + 3), maxMs(first + 3)), p.getBottom()}};
-    }
-    juce::Path path(const std::array<juce::Point<float>, 4>& pts) const
-    {
-        const auto p = plot();
-        juce::Path env;
-        env.startNewSubPath(p.getX(), p.getBottom());
-        for (const auto& pt : pts)
-            env.lineTo(pt);
-        return env;
-    }
 
-    ModuleCard& card_;
     juce::Colour ampHue_, filterHue_;
     CornerChoice which_;
-    int drag_ = -1;
 };
 
 // The LFO: one cycle of its shape with the live phase riding it as a dot. The

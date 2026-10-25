@@ -112,6 +112,8 @@ add_library(northlight_ui STATIC
     strip/BuiltInCards.h
     strip/BuiltInCards.cpp
     strip/SynthParts.h
+    strip/AdsrDisplay.h
+    strip/AdsrDisplay.cpp
     strip/AuroraEditor.h
     strip/AuroraEditor.cpp
     strip/PulsarEditor.h
