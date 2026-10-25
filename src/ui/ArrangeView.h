@@ -581,6 +581,9 @@ private:
 
     // editing state
     std::vector<ClipRef> selection_;
+    // The area paint() is repainting (its clip bounds): rows, clips and waveform
+    // columns outside it are skipped. A playhead frame repaints a column.
+    juce::Rectangle<int> paintArea_;
     std::vector<ClipRef> notifiedSelection_; // what onSelectionChanged last reported
     std::vector<ClipRef> pressSelection_;    // the selection when the button went down
     bool snap_ = true;

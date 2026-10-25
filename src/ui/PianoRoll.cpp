@@ -2,6 +2,7 @@
 
 #include "core/NoteNames.h"
 #include "ui/NorthlightLookAndFeel.h"
+#include "ui/PaintStats.h"
 
 #include <algorithm>
 #include <cmath>
@@ -116,12 +117,31 @@ void PianoRoll::setPlayhead(core::SamplePosition position)
     const int oldX = playhead_ >= 0 ? xForSample(playhead_) : -1;
     playhead_ = relative;
     const int x = playhead_ >= 0 ? xForSample(playhead_) : -1;
-    // The playhead's columns and the keyboard (its lit keys) repaint; nothing else.
+    // The playhead's columns and the keys that lit or went out repaint; nothing else.
     if (oldX >= 0)
         repaint(oldX - 2, 0, 5, getHeight());
     if (x >= 0)
         repaint(x - 2, 0, 5, getHeight());
-    repaint(keysArea());
+    const auto lit = soundingKeys();
+    const auto changed = lit ^ lit_;
+    lit_ = lit;
+    if (changed.any())
+    {
+        const auto keys = keysArea();
+        for (int note = 0; note < rows; ++note)
+            if (changed[static_cast<size_t>(note)])
+                repaint(keys.getX(), yForNote(note), keys.getWidth(), rowHeight);
+    }
+}
+
+std::bitset<128> PianoRoll::soundingKeys() const
+{
+    std::bitset<128> lit;
+    if (const auto* c = clip(); c != nullptr && playhead_ >= 0)
+        for (const auto& n : c->notes)
+            if (playhead_ >= n.start && playhead_ < n.end() && n.note >= 0 && n.note < rows)
+                lit.set(static_cast<size_t>(n.note));
+    return lit;
 }
 void PianoRoll::setTimeView(double samplesPerPixel, core::SamplePosition absoluteFirstVisible)
 {
@@ -553,10 +573,13 @@ void PianoRoll::paint(juce::Graphics& g)
 {
     const auto& c = theme_.colours;
     g.fillAll(c.canvas);
+    // Only what the repaint covers is drawn (a playhead frame is a column and a few keys).
+    const auto painted = g.getClipBounds();
     const auto grid = gridArea();
     const auto velocity = velocityArea();
     const auto ruler = rulerArea();
     const auto keys = keysArea();
+    const auto paintedGrid = grid.getIntersection(painted);
     const auto* clipModel = clip();
     const auto* trackModel = track();
     const auto colour = trackColour();
@@ -580,7 +603,7 @@ void PianoRoll::paint(juce::Graphics& g)
     for (int note = 0; note < rows; ++note)
     {
         const int y = yForNote(note);
-        if (y + rowHeight < grid.getY() || y > grid.getBottom())
+        if (y + rowHeight < paintedGrid.getY() || y > paintedGrid.getBottom())
             continue;
         if (isBlackKey(note))
         {
@@ -608,8 +631,8 @@ void PianoRoll::paint(juce::Graphics& g)
     {
         const auto& map = tempoMap_;
         const auto step = gridStep();
-        const auto first = sampleForX(grid.getX());
-        const auto last = sampleForX(grid.getRight());
+        const auto first = sampleForX(paintedGrid.getX());
+        const auto last = sampleForX(paintedGrid.getRight());
         const auto absoluteFirst = std::max<core::SamplePosition>(0, clipModel->start + first);
         const bool subdivisions = static_cast<double>(gridSamples()) / samplesPerPixel_ >= 6.0;
         auto s = map.snap(absoluteFirst, step);
@@ -640,17 +663,22 @@ void PianoRoll::paint(juce::Graphics& g)
     }
 
     // Ghost notes: the track's other clips at 30%.
-    if (trackModel != nullptr && clipModel != nullptr)
+    if (trackModel != nullptr && clipModel != nullptr && !paintedGrid.isEmpty())
         for (const auto& other : trackModel->midiClips)
         {
             if (other.id == clipModel->id)
+                continue;
+            // A clip wholly outside what is painted has no ghost to draw.
+            const int otherLeft = xForSample(other.start - clipModel->start);
+            const int otherRight = xForSample(other.end() - clipModel->start);
+            if (otherRight < paintedGrid.getX() || otherLeft > paintedGrid.getRight())
                 continue;
             for (const auto& n : other.notes)
             {
                 core::MidiNote shifted = n;
                 shifted.start = other.start + n.start - clipModel->start;
                 const auto bounds = noteBounds(shifted).reduced(0, 1);
-                if (bounds.getRight() < grid.getX() || bounds.getX() > grid.getRight())
+                if (!bounds.intersects(paintedGrid))
                     continue;
                 g.setColour(colour.withAlpha(0.3f * theme_.track.waveformAlpha));
                 g.fillRoundedRectangle(bounds.toFloat(), theme_.radius.sm);
@@ -666,8 +694,9 @@ void PianoRoll::paint(juce::Graphics& g)
         {
             const auto note = previewOf(model);
             const auto bounds = noteBounds(note).reduced(0, 1);
-            if (bounds.getRight() < grid.getX() || bounds.getX() > grid.getRight())
+            if (!bounds.intersects(paintedGrid))
                 continue;
+            paintstats::counters().notesDrawn++;
             const bool selected = isSelected(model.id);
             const float t = static_cast<float>(std::clamp(note.velocity, 1, 127) - 1) / 126.0f;
             const auto fill = colour.withAlpha(theme_.track.waveformAlpha);
@@ -726,17 +755,14 @@ void PianoRoll::paint(juce::Graphics& g)
     // notes sound at the playhead (or are held) light in accent.
     g.saveState();
     g.reduceClipRegion(keys);
-    std::vector<bool> lit(rows, false);
-    if (clipModel != nullptr && playhead_ >= 0)
-        for (const auto& n : clipModel->notes)
-            if (playhead_ >= n.start && playhead_ < n.end())
-                lit[static_cast<size_t>(n.note)] = true;
-    if (heldKey_ >= 0)
-        lit[static_cast<size_t>(heldKey_)] = true;
-    for (int note = 0; note < rows; ++note)
+    const auto paintedKeys = keys.getIntersection(painted);
+    auto lit = soundingKeys();
+    if (heldKey_ >= 0 && heldKey_ < rows)
+        lit.set(static_cast<size_t>(heldKey_));
+    for (int note = 0; note < rows && !paintedKeys.isEmpty(); ++note)
     {
         const int y = yForNote(note);
-        if (y + rowHeight < keys.getY() || y > keys.getBottom())
+        if (y + rowHeight < paintedKeys.getY() || y > paintedKeys.getBottom())
             continue;
         const bool black = isBlackKey(note);
         g.setColour(lit[static_cast<size_t>(note)] ? c.accent : black ? c.surface0 : c.surface2);
@@ -765,13 +791,15 @@ void PianoRoll::paint(juce::Graphics& g)
     g.fillRect(0, toolbarHeight, getWidth(), rulerHeight_);
     g.setColour(c.lineSubtle);
     g.fillRect(0, toolbarHeight + rulerHeight_ - 1, getWidth(), 1);
-    if (project_ != nullptr && clipModel != nullptr)
+    if (project_ != nullptr && clipModel != nullptr && ruler.intersects(painted))
     {
         g.saveState();
         g.reduceClipRegion(ruler);
         const auto& map = tempoMap_;
-        const auto first = std::max<core::SamplePosition>(0, clipModel->start + sampleForX(grid.getX()));
-        const auto last = clipModel->start + sampleForX(grid.getRight());
+        // From a bar label's width before what is painted (a label reaches 44 px right).
+        const auto first = std::max<core::SamplePosition>(
+            0, clipModel->start + sampleForX(std::max(grid.getX(), painted.getX() - 44)));
+        const auto last = clipModel->start + sampleForX(std::min(grid.getRight(), painted.getRight()));
         const double beatPixels =
             map.stepSamples({0, core::TempoMap::quartersPerBeat(map.signatureAt(first))}, first) /
             samplesPerPixel_;
@@ -848,15 +876,16 @@ void PianoRoll::paint(juce::Graphics& g)
         paintLane(g, velocity, colour);
         g.restoreState();
     }
-    else if (clipModel != nullptr)
+    else if (clipModel != nullptr && velocity.intersects(painted))
     {
         g.saveState();
         g.reduceClipRegion(velocity);
+        const auto paintedLane = velocity.getIntersection(painted);
         for (const auto& model : clipModel->notes)
         {
             const auto note = previewOf(model);
             const int x = xForSample(note.start);
-            if (x < velocity.getX() - 6 || x > velocity.getRight())
+            if (x < paintedLane.getX() - 6 || x > paintedLane.getRight())
                 continue;
             const int h = (velocity.getHeight() - 10) * note.velocity / 127;
             const bool selected = isSelected(model.id);

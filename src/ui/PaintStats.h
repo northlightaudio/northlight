@@ -15,6 +15,12 @@ struct Counters
     std::uint64_t wordsSet = 0;    // lines set by hardware::drawCrispText
     std::uint64_t artRebuilds = 0; // RenderedFace's art drawn into its cache
     std::uint64_t facePaints = 0;  // RenderedFace::paint calls
+    // The timeline views: paints, clips drawn and waveform columns looked up, so a
+    // budget can hold a playhead frame to the column it repaints.
+    std::uint64_t arrangePaints = 0;
+    std::uint64_t clipsDrawn = 0;
+    std::uint64_t waveColumns = 0;
+    std::uint64_t notesDrawn = 0;
 };
 
 inline Counters& counters() noexcept

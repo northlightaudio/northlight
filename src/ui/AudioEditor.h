@@ -3,6 +3,7 @@
 #include "audio/PeakStore.h"
 #include "core/Command.h"
 #include "core/Model.h"
+#include "core/TempoMap.h"
 #include "engine/pitch/Correction.h"
 #include "engine/pitch/PitchAnalysis.h"
 #include "engine/pitch/VocalService.h"
@@ -200,6 +201,7 @@ private:
     audio::PeakStore& peaks_;
     engine::VocalService& vocal_;
     const core::Project* project_ = nullptr;
+    core::TempoMap tempoMap_; // the project's, rebuilt by setClip (every project change)
     core::Id trackId_ = core::invalidId, clipId_ = core::invalidId;
     Mode mode_ = Mode::wave;
     Tool tool_ = Tool::pitch;

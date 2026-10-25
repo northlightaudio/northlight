@@ -9,6 +9,7 @@
 
 #include <juce_gui_basics/juce_gui_basics.h>
 
+#include <bitset>
 #include <functional>
 #include <map>
 #include <memory>
@@ -230,6 +231,10 @@ private:
     int gridDivision_ = 4;
     bool snap_ = true;
     bool linked_ = false;
+    // The keys whose notes sound at the playhead (lit on the keyboard): a playhead
+    // frame repaints only the keys that changed.
+    std::bitset<128> soundingKeys() const;
+    std::bitset<128> lit_;
     float quantiseStrength_ = 1.0f;
     Tool tool_ = Tool::select;
     core::SamplePosition lastLength_ = 0; // the draw tool's length (0 = a grid step)

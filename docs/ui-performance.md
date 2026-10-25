@@ -42,6 +42,15 @@ rebuilds.
 | Words set by a frame | ≤ 24 | the labels beside a meter (19) |
 | Whole-card repaints, art rebuilds | none, in any interaction | |
 
+The timeline views have budgets of their own
+(`tests/unit_juce/TimelineWorkBudgetTests.cpp`): a playhead frame in the arrange
+view and the piano roll repaints under 2% of the view, and painting it draws at most
+the clips (one per track per column) or the few notes under its columns, counted
+with `paintstats` (`clipsDrawn`, `notesDrawn`, `waveColumns`). The views paint only
+what their clip bounds cover: rows, clips, notes, waveform columns, grid lines and
+labels outside it are skipped, and nothing is copied for a clip that is not being
+dragged.
+
 `northlight_juce_tests "[.measure]"` prints every card's numbers. A budget is
 changed deliberately: a new card or feature that genuinely needs more says why in
 the same commit, here and in the test. A budget is not raised to make a slow
@@ -51,7 +60,8 @@ change pass.
 
 The median of repeated paints at 200% (the software renderer, so slower than the
 app's Direct2D), whole and for what a hover and a live frame repaint, for every
-card and a 12-track mixer. Times depend on the machine and the build, so the test
+card, a 12-track mixer, the arrange view (16 tracks of 20 clips) and the piano roll
+(400 notes), with what a playhead frame repaints. Times depend on the machine and the build, so the test
 is registered only in a Release build (`ui_paint_time`, label `perf`) and never in
 CI:
 
@@ -61,9 +71,10 @@ CI:
 
 | Budget | Limit | Slowest now |
 |---|---|---|
-| Full paint | ≤ 12 ms | the mixer 9.3 ms, Patina 9.1 ms |
-| A hover's repaint | ≤ 1.5 ms | Corona 0.6 ms |
-| A frame's repaint | ≤ 6 ms | Patina 4.2 ms (six live windows) |
+| Full paint | ≤ 12 ms | the arrange view with 16 tracks of 20 clips 10.6 ms, the mixer 7.5 ms |
+| A hover's repaint | ≤ 1.5 ms | Amp 0.5 ms |
+| A frame's repaint | ≤ 6 ms | Patina 3.5 ms (six live windows) |
+| A playhead frame (arrange view, piano roll) | ≤ 1 ms | 0.01 ms |
 
 ## 3. Frame benchmarks (`scripts/perf.ps1`)
 

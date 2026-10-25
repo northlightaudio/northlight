@@ -5,6 +5,7 @@
 #include "engine/pitch/VocalOps.h"
 #include "engine/pitch/VocalRender.h"
 #include "ui/NorthlightLookAndFeel.h"
+#include "ui/PaintStats.h"
 
 #include <algorithm>
 #include <cmath>
@@ -249,6 +250,7 @@ void AudioEditor::setClip(const core::Project* project, core::Id trackId, core::
 {
     const bool same = project == project_ && trackId == trackId_ && clipId == clipId_;
     project_ = project;
+    tempoMap_ = project != nullptr ? core::tempoMapOf(*project) : core::TempoMap();
     trackId_ = trackId;
     clipId_ = clipId;
     const auto* c = clip();
@@ -776,7 +778,7 @@ void AudioEditor::paintRuler(juce::Graphics& g)
         return;
     // The song's bars over the clip's source (a stretched clip's source runs at
     // its stretch against the timeline).
-    const auto map = core::tempoMapOf(*project_);
+    const auto& map = tempoMap_;
     const auto toTimeline = [cl](double source)
     {
         return cl->start + static_cast<core::SamplePosition>(
@@ -824,6 +826,7 @@ void AudioEditor::paintWave(juce::Graphics& g)
 {
     const auto& c = theme_.colours;
     const auto area = contentArea();
+    const auto painted = g.getClipBounds();
     const auto* cl = clip();
     if (cl == nullptr || project_ == nullptr)
         return;
@@ -870,8 +873,11 @@ void AudioEditor::paintWave(juce::Graphics& g)
         const float mid = static_cast<float>(area.getY()) + channelHeight * (static_cast<float>(ch) + 0.5f);
         g.setColour(c.lineSubtle);
         g.fillRect(static_cast<float>(area.getX()), mid, static_cast<float>(area.getWidth()), 1.0f);
-        for (int x = area.getX(); x < area.getRight(); ++x)
+        const int from = std::max(area.getX(), painted.getX());
+        const int to = std::min(area.getRight(), painted.getRight());
+        for (int x = from; x < to; ++x)
         {
+            paintstats::counters().waveColumns++;
             const auto s0 = sourceForX(static_cast<float>(x));
             const auto s1 = std::max(s0 + 1, sourceForX(static_cast<float>(x + 1)));
             const bool inside = static_cast<double>(s0) >= clipStart && static_cast<double>(s0) < clipEnd;
@@ -1158,7 +1164,7 @@ void AudioEditor::paintPitch(juce::Graphics& g)
     // Beat lines.
     if (cl != nullptr && project_ != nullptr)
     {
-        const auto map = core::tempoMapOf(*project_);
+        const auto& map = tempoMap_;
         const auto toTimeline = [cl](double source)
         {
             return cl->start + static_cast<core::SamplePosition>(std::llround(
@@ -1225,15 +1231,27 @@ void AudioEditor::paintPitch(juce::Graphics& g)
     g.reduceClipRegion(grid);
     const auto colour = trackColour();
     const auto& edit = shownEdit();
+    const auto painted = g.getClipBounds();
     for (const auto& n : edit.notes)
+    {
+        // A note's blob, outline and label stay within a label's width of it.
+        const float left = xForSource(static_cast<double>(n.start));
+        const float right = xForSource(static_cast<double>(n.end));
+        if (right + 64.0f < static_cast<float>(painted.getX()) ||
+            left - 64.0f > static_cast<float>(painted.getRight()))
+            continue;
+        paintstats::counters().notesDrawn++;
         paintNote(g, n, colour);
+    }
 
     // The curves: as sung, faint; as edited, bright, through the notes.
     const auto& a = *analysis_;
     const int hop = a.hop;
-    const int f0 = std::max(0, static_cast<int>(sourceForX(static_cast<float>(grid.getX())) / hop) - 1);
+    const int paintedLeft = std::max(grid.getX(), painted.getX());
+    const int paintedRight = std::min(grid.getRight(), painted.getRight());
+    const int f0 = std::max(0, static_cast<int>(sourceForX(static_cast<float>(paintedLeft)) / hop) - 1);
     const int f1 =
-        std::min(a.frames(), static_cast<int>(sourceForX(static_cast<float>(grid.getRight())) / hop) + 2);
+        std::min(a.frames(), static_cast<int>(sourceForX(static_cast<float>(paintedRight)) / hop) + 2);
     const auto strokeCurve = [&](const std::vector<float>& cents, juce::Colour col, float width)
     {
         juce::Path p;

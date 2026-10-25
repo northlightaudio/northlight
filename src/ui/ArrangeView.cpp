@@ -8,6 +8,7 @@
 #include "ui/MediaFiles.h"
 #include "ui/Motion.h"
 #include "ui/NorthlightLookAndFeel.h"
+#include "ui/PaintStats.h"
 #include "ui/PluginMenu.h"
 
 #include <algorithm>
@@ -1577,7 +1578,8 @@ void ArrangeView::drawGrid(juce::Graphics& g, juce::Rectangle<int> area, bool ru
     const int left = std::max(headerWidth, area.getX());
     const int right = std::min(getWidth() - scrollbarWidth, area.getRight());
     g.setFont(theme_.caption());
-    const int firstBar = map.barAtQuarter(map.quartersAt(static_cast<double>(firstVisible)));
+    const auto firstPainted = std::max(firstVisible, sampleForX(left - (ruler ? 100 : 0)));
+    const int firstBar = map.barAtQuarter(map.quartersAt(static_cast<double>(firstPainted)));
     for (int bar = std::max(0, firstBar - 1);; ++bar)
     {
         const double barQuarter = map.barStartQuarter(bar);
@@ -1811,11 +1813,20 @@ void ArrangeView::drawClip(juce::Graphics& g,
                            juce::Rectangle<int> lane)
 {
     const auto& c = theme_.colours;
-    // What is drawn: the model clip, or its preview while it is being edited.
-    core::AudioClip clip = model;
+    // What is drawn: the model clip, or its preview while it is being edited (a
+    // copy only then).
     const bool editing = drag_ != Drag::none && dragClip_.track == track.id && dragClip_.clip == model.id;
+    if (!editing && drag_ == Drag::none)
+    {
+        const int left = xForSample(model.start), right = std::max(left + 2, xForSample(model.end()));
+        if (right < paintArea_.getX() || left > paintArea_.getRight())
+            return; // not in the area being painted
+    }
+    core::AudioClip preview;
     if (editing)
     {
+        preview = model;
+        auto& clip = preview;
         if (drag_ == Drag::trimLeft || drag_ == Drag::trimRight)
         {
             clip.start = trimStart_;
@@ -1841,6 +1852,8 @@ void ArrangeView::drawClip(juce::Graphics& g,
             clip.length = stretchLength_;
         }
     }
+    const core::AudioClip& clip = editing ? preview : model;
+    paintstats::counters().clipsDrawn++;
     const ClipRef ref{track.id, model.id};
     const bool selected = isSelected(track.id, model.id);
     const bool hovered = hoverClip_ == ref;
@@ -1889,10 +1902,13 @@ void ArrangeView::drawClip(juce::Graphics& g,
                    juce::Justification::centredLeft,
                    true);
     }
+    else if (const auto wave = body.getIntersection(visible).getIntersection(paintArea_); wave.isEmpty())
+    {
+        // No waveform column in the area being painted.
+    }
     else if (const auto peaks = peaks_.peaksFor(clip.mediaPath, sampleRate());
              peaks != nullptr && !peaks->empty())
     {
-        const auto wave = body.getIntersection(visible);
         const auto first = clip.sourceAt(sampleForX(wave.getX()) - clip.start);
         const auto last = clip.sourceAt(sampleForX(wave.getRight()) - clip.start);
         const auto view = peaks_.viewFor(clip.mediaPath,
@@ -1927,6 +1943,7 @@ void ArrangeView::drawClip(juce::Graphics& g,
             };
             for (int x = wave.getX(); x < wave.getRight(); ++x)
             {
+                paintstats::counters().waveColumns++;
                 const auto from = clip.sourceAt(sampleForX(x) - clip.start);
                 const auto to = clip.sourceAt(sampleForX(x + 1) - clip.start);
                 const auto r = view.lookup(ch, from, std::max(to, from + 1));
@@ -1990,7 +2007,11 @@ void ArrangeView::drawClip(juce::Graphics& g,
     g.drawRoundedRectangle(block.toFloat().reduced(0.5f), theme_.radius.sm, 1.0f);
 
     // The name in the header (or over the body when the header is hidden).
-    if (showHeader || block.getHeight() >= 14)
+    const auto textArea = (showHeader ? block.withHeight(headerH) : block)
+                              .getIntersection(visible)
+                              .withTrimmedLeft(fadeHandle + 2 > 6 ? fadeHandle + 2 : 6)
+                              .withTrimmedRight(6);
+    if ((showHeader || block.getHeight() >= 14) && textArea.intersects(paintArea_))
     {
         g.setColour(c.textPrimary.withAlpha(dim));
         g.setFont(theme_.caption());
@@ -2011,10 +2032,6 @@ void ArrangeView::drawClip(juce::Graphics& g,
                 label << "  stretching " << juce::String(static_cast<int>(done * 100.0)) << "%";
                 stretchPending_ = true;
             }
-        const auto textArea = (showHeader ? block.withHeight(headerH) : block)
-                                  .getIntersection(visible)
-                                  .withTrimmedLeft(fadeHandle + 2 > 6 ? fadeHandle + 2 : 6)
-                                  .withTrimmedRight(6);
         g.drawText(label, textArea, juce::Justification::centredLeft, true);
     }
 }
@@ -2067,13 +2084,26 @@ void ArrangeView::drawMidiClip(juce::Graphics& g,
 {
     const auto& c = theme_.colours;
     const ClipRef ref{track.id, model.id, true};
-    core::MidiClip clip = model;
+    // Where it is drawn: the model's span, or the trim preview while it is edited.
+    struct
+    {
+        core::SamplePosition start, length;
+        const std::string& name;
+        core::SamplePosition end() const noexcept { return start + length; }
+    } clip{model.start, model.length, model.name};
     const bool editing = drag_ != Drag::none && dragClip_ == ref;
     if (editing && (drag_ == Drag::trimLeft || drag_ == Drag::trimRight))
     {
         clip.start = trimStart_;
         clip.length = trimLength_;
     }
+    if (drag_ == Drag::none)
+    {
+        const int left = xForSample(clip.start), right = std::max(left + 2, xForSample(clip.end()));
+        if (right < paintArea_.getX() || left > paintArea_.getRight())
+            return; // not in the area being painted
+    }
+    paintstats::counters().clipsDrawn++;
     const bool selected = isSelected(ref);
     const bool hovered = hoverClip_ == ref;
     const bool moving = drag_ == Drag::move && selected && draggedFar_;
@@ -2120,7 +2150,8 @@ void ArrangeView::drawMidiClip(juce::Graphics& g,
             const auto start = model.start + n.start;
             const auto nx0 = xForSample(std::max(start, clip.start));
             const auto nx1 = xForSample(std::min(start + n.length, clip.end()));
-            if (nx1 <= nx0 || start >= clip.end() || start + n.length <= clip.start)
+            if (nx1 <= nx0 || start >= clip.end() || start + n.length <= clip.start ||
+                nx1 < paintArea_.getX() || nx0 > paintArea_.getRight())
                 continue;
             const float y = static_cast<float>(inner.getY()) + static_cast<float>(high - n.note) * rowH;
             g.fillRect(static_cast<float>(nx0),
@@ -2131,14 +2162,16 @@ void ArrangeView::drawMidiClip(juce::Graphics& g,
     }
     g.setColour(colour.withAlpha(selected ? 1.0f : hovered || recording ? 0.7f : 0.4f));
     g.drawRoundedRectangle(block.toFloat().reduced(0.5f), theme_.radius.sm, 1.0f);
-    if (showHeader || block.getHeight() >= 14)
+    const auto textArea =
+        (showHeader ? block.withHeight(headerH) : block).getIntersection(visible).reduced(6, 0);
+    if ((showHeader || block.getHeight() >= 14) && textArea.intersects(paintArea_))
     {
         g.setColour(c.textPrimary.withAlpha(dim));
         g.setFont(theme_.caption());
         const auto name = recording ? juce::String::fromUTF8("\xe2\x97\x8f Recording")
                                     : juce::String::fromUTF8(clip.name.c_str());
         g.drawText(name + "  " + juce::String(model.notes.size()) + " notes",
-                   (showHeader ? block.withHeight(headerH) : block).getIntersection(visible).reduced(6, 0),
+                   textArea,
                    juce::Justification::centredLeft,
                    true);
     }
@@ -2202,7 +2235,8 @@ void ArrangeView::drawLiveTake(juce::Graphics& g,
     g.fillRect(static_cast<float>(wave.getX()), midY, static_cast<float>(wave.getWidth()), 1.0f);
     g.setColour(colour.withAlpha(theme_.track.waveformAlpha));
     const float half = static_cast<float>(wave.getHeight()) * 0.48f;
-    for (int x = wave.getX(); x < wave.getRight(); ++x)
+    const auto painted = wave.getIntersection(paintArea_);
+    for (int x = painted.getX(); x < painted.getRight(); ++x)
     {
         const auto from = placement.sourceOffset + (sampleForX(x) - placement.start);
         const auto to = placement.sourceOffset + (sampleForX(x + 1) - placement.start);
@@ -2234,6 +2268,8 @@ void ArrangeView::paint(juce::Graphics& g)
     const FrameStats::Scope timing;
     const auto& c = theme_.colours;
     g.fillAll(c.canvas);
+    paintArea_ = g.getClipBounds();
+    paintstats::counters().arrangePaints++;
 
     const auto lanesArea = juce::Rectangle<int>(
         headerWidth, rulerHeight, getWidth() - headerWidth - scrollbarWidth, lanesHeight());
@@ -2249,7 +2285,7 @@ void ArrangeView::paint(juce::Graphics& g)
             const int h = rowHeightOf(row);
             y = rowTop(row);
             const juce::Rectangle<int> lane(headerWidth, y, lanesArea.getWidth(), h);
-            if (h > 0 && lane.getBottom() >= rulerHeight && lane.getY() <= getHeight())
+            if (h > 0 && lane.intersects(paintArea_))
             {
                 if (track.id == selectedTrack_)
                     g.setColour(c.laneSelected);
@@ -2275,13 +2311,17 @@ void ArrangeView::paint(juce::Graphics& g)
             const int h = rowHeightOf(row);
             y = rowTop(row);
             const juce::Rectangle<int> lane(headerWidth, y, lanesArea.getWidth(), h);
-            if (lane.getBottom() >= rulerHeight && lane.getY() <= getHeight())
+            const auto caption = lane.reduced(theme_.spacing.sm, 0).withHeight(std::min(h, 24));
+            if (lane.intersects(paintArea_))
             {
                 g.setColour(fx->id == selectedTrack_ ? c.laneSelected
                                                      : (row % 2 == 1 ? c.laneAlt : c.canvas));
                 g.fillRect(lane);
                 g.setColour(c.lineSubtle);
                 g.fillRect(lane.withTrimmedTop(h - 1));
+            }
+            if (caption.intersects(paintArea_))
+            {
                 // Who feeds it: sends into an FX track, outputs into a group bus.
                 const auto* bus = project_->findBus(fx->id);
                 int feeders = 0;
@@ -2308,15 +2348,13 @@ void ArrangeView::paint(juce::Graphics& g)
                                         : "Bus: " + channels(feeders == 1 ? "routes here" : "route here"));
                 g.setColour(c.textTertiary);
                 g.setFont(theme_.caption());
-                g.drawText(text,
-                           lane.reduced(theme_.spacing.sm, 0).withHeight(std::min(h, 24)),
-                           juce::Justification::centredLeft);
+                g.drawText(text, caption, juce::Justification::centredLeft);
             }
             y += h;
             ++row;
         }
         automation_.paintBackgrounds(g); // the lanes' rows, under the grid
-        drawGrid(g, lanesArea, false);
+        drawGrid(g, lanesArea.getIntersection(paintArea_), false);
 
         // Loop and punch through the lanes at half the ruler's alpha; the time selection.
         if (regionEnd_ > regionStart_ && (loop_ || punch_))
@@ -2342,9 +2380,10 @@ void ArrangeView::paint(juce::Graphics& g)
             y = rowTop(row);
             const int h = rowHeightOf(row++);
             const juce::Rectangle<int> lane(headerWidth, y, lanesArea.getWidth(), h);
-            if (h > 0 && track.isFolder() && lane.getBottom() >= rulerHeight && lane.getY() <= getHeight())
+            const bool shown = h > 0 && lane.intersects(paintArea_);
+            if (shown && track.isFolder())
                 drawFolderLane(g, track, lane);
-            if (h > 0 && lane.getBottom() >= rulerHeight && lane.getY() <= getHeight())
+            if (shown)
             {
                 for (const auto& clip : track.clips)
                     drawClip(g, track, clip, lane);
@@ -2367,7 +2406,7 @@ void ArrangeView::paint(juce::Graphics& g)
                                lane.withTrimmedLeft(theme_.spacing.sm).withHeight(std::min(h, 20)),
                                juce::Justification::centredLeft);
                 }
-                if (track.isAux())
+                if (track.isAux() && lane.withTrimmedLeft(theme_.spacing.sm).intersects(paintArea_))
                 {
                     const auto* source = project_->findTrack(track.auxTrack);
                     g.setColour(c.textTertiary);
@@ -2379,7 +2418,7 @@ void ArrangeView::paint(juce::Graphics& g)
                                lane.withTrimmedLeft(theme_.spacing.sm),
                                juce::Justification::centredLeft);
                 }
-                if (track.isInstrument())
+                if (track.isInstrument() && lane.withTrimmedLeft(theme_.spacing.sm).intersects(paintArea_))
                 {
                     // An instrument channel: what it is and who plays it.
                     juce::String text = "Instrument channel";
