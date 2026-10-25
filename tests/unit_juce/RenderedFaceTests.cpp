@@ -57,10 +57,21 @@ TEST_CASE("A rendered part is shrunk to the size it is drawn at, once", "[ui][ha
     CHECK(small.getWidth() == 101);
     CHECK(small.getHeight() == 152);
     CHECK(small.getPixelAt(50, 76).getRed() > 200); // still orange
-    // Asked again, the same image comes back (kept, not made again).
-    CHECK(&ui::hardware::scaled(source, 101, 152) == &small);
+    // Asked again, the same pixels come back (kept, not made again).
+    CHECK(ui::hardware::scaled(source, 101, 152).getPixelData() == small.getPixelData());
     // Never enlarged: a size at or above the source's gives the source.
-    CHECK(&ui::hardware::scaled(source, 640, 960) == &source);
+    CHECK(ui::hardware::scaled(source, 640, 960).getPixelData() == source.getPixelData());
+}
+
+TEST_CASE("A scaled image stays valid while its cache lets older sizes go", "[ui][hardware]")
+{
+    const juce::ScopedJuceInitialiser_GUI juceInit;
+    juce::Image source(juce::Image::ARGB, 640, 640, true);
+    const auto held = ui::hardware::scaled(source, 300, 300);
+    for (int size = 10; size < 600; ++size) // more sizes than the cache keeps
+        (void)ui::hardware::scaled(source, size, size);
+    CHECK(held.isValid());
+    CHECK(held.getWidth() == 300);
 }
 
 TEST_CASE("A face fits its body by scaling, never above its drawn size", "[ui][hardware]")

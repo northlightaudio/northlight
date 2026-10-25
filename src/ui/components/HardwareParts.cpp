@@ -5,8 +5,11 @@
 
 #include <algorithm>
 #include <cmath>
+#include <cstdint>
 #include <map>
+#include <string>
 #include <tuple>
+#include <vector>
 
 namespace northlight::ui::hardware
 {
@@ -109,41 +112,69 @@ void drawLegend(juce::Graphics& g,
     g.drawText(text, area, justification, false);
 }
 
-const juce::Image& image(const juce::String& folder, const juce::String& file)
+const juce::Image& image(std::string_view folder, std::string_view file)
 {
     JUCE_ASSERT_MESSAGE_THREAD
-    static std::map<juce::String, juce::Image> cache;
-    const auto key = folder + "/" + file;
-    if (const auto it = cache.find(key); it != cache.end())
+    // Folder, then file: found with the views the caller passes (no allocation).
+    static std::map<std::string, std::map<std::string, juce::Image, std::less<>>, std::less<>> cache;
+    auto inFolder = cache.find(folder);
+    if (inFolder == cache.end())
+        inFolder =
+            cache.emplace(std::string(folder), std::map<std::string, juce::Image, std::less<>>{}).first;
+    auto& images = inFolder->second;
+    if (const auto it = images.find(file); it != images.end())
         return it->second;
-    const auto path = juce::File::getSpecialLocation(juce::File::currentExecutableFile)
-                          .getParentDirectory()
-                          .getChildFile("assets")
-                          .getChildFile(folder)
-                          .getChildFile(file);
-    return cache[key] = path.existsAsFile() ? juce::ImageFileFormat::loadFrom(path) : juce::Image();
+    const auto path =
+        juce::File::getSpecialLocation(juce::File::currentExecutableFile)
+            .getParentDirectory()
+            .getChildFile("assets")
+            .getChildFile(juce::String::fromUTF8(folder.data(), static_cast<int>(folder.size())))
+            .getChildFile(juce::String::fromUTF8(file.data(), static_cast<int>(file.size())));
+    return images[std::string(file)] =
+               path.existsAsFile() ? juce::ImageFileFormat::loadFrom(path) : juce::Image();
 }
 
-const juce::Image& scaled(const juce::Image& source, int width, int height)
+juce::Image scaled(const juce::Image& source, int width, int height)
 {
     JUCE_ASSERT_MESSAGE_THREAD
-    static std::map<std::tuple<const void*, int, int>, juce::Image> cache;
+    struct Entry
+    {
+        juce::Image image;
+        std::uint64_t used = 0;
+    };
+    static std::map<std::tuple<const void*, int, int>, Entry> cache;
+    static std::uint64_t clock = 0;
     width = std::max(1, width);
     height = std::max(1, height);
     if (!source.isValid() || (width >= source.getWidth() && height >= source.getHeight()))
         return source;
     const auto key = std::make_tuple(static_cast<const void*>(source.getPixelData().get()), width, height);
     if (const auto it = cache.find(key); it != cache.end())
-        return it->second;
-    if (cache.size() > 512)
-        cache.clear(); // a face scaled through many sizes: start again rather than grow
+    {
+        it->second.used = ++clock;
+        return it->second.image;
+    }
+    if (cache.size() >= 512)
+    {
+        // A face scaled through many sizes (a dock being resized): the quarter used
+        // longest ago goes, so the sizes on screen stay.
+        std::vector<std::uint64_t> ages;
+        ages.reserve(cache.size());
+        for (const auto& [k, e] : cache)
+            ages.push_back(e.used);
+        std::nth_element(
+            ages.begin(), ages.begin() + static_cast<std::ptrdiff_t>(ages.size() / 4), ages.end());
+        const auto cutoff = ages[ages.size() / 4];
+        std::erase_if(cache, [cutoff](const auto& entry) { return entry.second.used <= cutoff; });
+    }
     auto image = source;
     while (image.getWidth() >= 2 * width && image.getHeight() >= 2 * height)
         image = image.rescaled(
             image.getWidth() / 2, image.getHeight() / 2, juce::Graphics::highResamplingQuality);
     if (image.getWidth() != width || image.getHeight() != height)
         image = image.rescaled(width, height, juce::Graphics::highResamplingQuality);
-    return cache[key] = image;
+    cache[key] = Entry{image, ++clock};
+    return image;
 }
 
 void drawScaled(juce::Graphics& g, const juce::Image& source, juce::Rectangle<float> area, float opacity)

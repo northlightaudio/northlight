@@ -162,7 +162,18 @@ public:
 private:
     const juce::Image& frame(int i) const
     {
-        return part(juce::String::formatted(left_ ? "reel-left-%02d.jpg" : "reel-right-%02d.jpg", i));
+        // The frames' file names, made once (this runs twice a display frame).
+        static const auto names = []
+        {
+            std::array<std::array<juce::String, of::reelFrames>, 2> out;
+            for (int k = 0; k < of::reelFrames; ++k)
+            {
+                out[0][static_cast<size_t>(k)] = juce::String::formatted("reel-left-%02d.jpg", k);
+                out[1][static_cast<size_t>(k)] = juce::String::formatted("reel-right-%02d.jpg", k);
+            }
+            return out;
+        }();
+        return part(names[left_ ? 0 : 1][static_cast<size_t>(std::clamp(i, 0, of::reelFrames - 1))]);
     }
 
     // Without its renders: a flat reel, its three windows turning.

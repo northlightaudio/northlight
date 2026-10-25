@@ -4,6 +4,8 @@
 
 #include <juce_gui_basics/juce_gui_basics.h>
 
+#include <string_view>
+
 // The drawing shared by a hardware face (design-system.md "Hardware face"):
 // an effect drawn as a piece of studio equipment in the hardware tokens.
 namespace northlight::ui::hardware
@@ -41,14 +43,25 @@ void drawLegend(juce::Graphics& g,
                 juce::Colour colour);
 
 // An image under assets/<folder>/ beside the executable, loaded once (invalid
-// when the file is missing: a face falls back to its flat token colours).
-const juce::Image& image(const juce::String& folder, const juce::String& file);
+// when the file is missing: a face falls back to its flat token colours). Looked
+// up without building a string, so a face may call it from paint.
+const juce::Image& image(std::string_view folder, std::string_view file);
+inline const juce::Image& image(const char* folder, const char* file)
+{
+    return image(std::string_view(folder), std::string_view(file));
+}
+inline const juce::Image& image(const juce::String& folder, const juce::String& file)
+{
+    return image(std::string_view(folder.toRawUTF8()), std::string_view(file.toRawUTF8()));
+}
 
 // `source` shrunk to `width` x `height` pixels by halving it step by step and
 // a final high-quality pass, kept for reuse. A rendered part drawn far below
 // its size in one bilinear step aliases its highlights into sparkle; drawn from
 // an image already the size it lands at, it stays clean.
-const juce::Image& scaled(const juce::Image& source, int width, int height);
+// Returned by value (an Image shares its pixels): the cache may let go of old
+// sizes while a caller still holds one.
+juce::Image scaled(const juce::Image& source, int width, int height);
 
 // Draws `source` into `area` from an image shrunk to the pixels the area
 // covers on screen (the context's scale included), so it is drawn 1:1.
