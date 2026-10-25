@@ -8,6 +8,7 @@
 #include "ui/Theme.h"
 #include "ui/components/Knob.h"
 #include "ui/components/SegmentedControl.h"
+#include "ui/strip/FeedbackHistory.h"
 
 #include <juce_gui_basics/juce_gui_basics.h>
 
@@ -129,14 +130,11 @@ public:
     void beginGesture(const juce::String& name);
     void endGesture();
     // The level history, oldest first.
-    int historySize() const noexcept { return count_; }
+    int historySize() const noexcept { return history_.size(); }
     // Frames received since the card was made (the newest is number total - 1):
     // displays group frames by this absolute count so their columns stay put.
-    std::uint64_t historyTotal() const noexcept { return total_; }
-    const Frame& historyAt(int i) const noexcept
-    {
-        return ring_[static_cast<size_t>((head_ - count_ + i + historyCapacity) % historyCapacity)];
-    }
+    std::uint64_t historyTotal() const noexcept { return history_.total(); }
+    const Frame& historyAt(int i) const noexcept { return history_.at(i); }
     // Meter readings in dB, with ballistics.
     float inputDb() const noexcept { return inDb_; }
     float outputDb() const noexcept { return outDb_; }
@@ -245,9 +243,7 @@ private:
     juce::String shownStatus_;
     std::shared_ptr<engine::InsertProcessor> live_;
     std::uint64_t cursor_ = 0;
-    std::vector<Frame> ring_;
-    int head_ = 0, count_ = 0;
-    std::uint64_t total_ = 0;
+    FeedbackHistory<Frame> history_{historyCapacity};
     float inDb_ = -120.0f, outDb_ = -120.0f, grDb_ = 0.0f, extraDb_ = -120.0f;
     MeterReadout inReadout_, outReadout_, grReadout_{0.0f};
 };

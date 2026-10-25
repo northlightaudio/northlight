@@ -96,7 +96,7 @@ private:
 ModuleCard::ModuleCard(const Theme& theme, CardHost& host, core::Id channelId, const core::Insert& module)
     : theme_(theme), host_(host), channelId_(channelId), moduleId_(module.id), type_(module.type),
       colour_(moduleColour(theme, module.type)), infos_(plugins::parameterInfo(module.type)),
-      power_(theme, Icon::power, "Switch on"), ring_(static_cast<size_t>(historyCapacity))
+      power_(theme, Icon::power, "Switch on")
 {
     setOpaque(false);
     power_.setClickingTogglesState(true);
@@ -370,10 +370,7 @@ void ModuleCard::tick(double elapsedMs)
         n = fb->readHistory(cursor_, frames, 256);
         for (int i = 0; i < n; ++i)
         {
-            ring_[static_cast<size_t>(head_)] = frames[i];
-            head_ = (head_ + 1) % historyCapacity;
-            count_ = std::min(historyCapacity, count_ + 1);
-            ++total_;
+            history_.push(frames[i]);
             in = std::max(in, frames[i].input);
             out = std::max(out, frames[i].output);
             gr = std::max(gr, frames[i].reduction);

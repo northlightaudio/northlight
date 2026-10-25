@@ -15,6 +15,7 @@
 #include "ui/Number.h"
 #include "ui/OpticalCentre.h"
 #include "ui/strip/CardParts.h"
+#include "ui/strip/FeedbackHistory.h"
 #include "ui/strip/ModuleCard.h"
 #include "ui/strip/StripStyle.h"
 #include "ui/strip/SynthParts.h"
@@ -116,19 +117,13 @@ public:
     {
         setComponentID("evensong");
         setTooltip("The voice and its tail");
-        frames_.resize(static_cast<size_t>(fieldFrames));
     }
 
     // New frames from the processor, oldest first.
     void add(const pv::Telemetry::Frame* frames, int n)
     {
         for (int i = 0; i < n; ++i)
-        {
-            frames_[static_cast<size_t>(head_)] = frames[i];
-            head_ = (head_ + 1) % fieldFrames;
-            ++total_;
-            count_ = std::min(fieldFrames, count_ + 1);
-        }
+            frames_.push(frames[i]);
         if (n > 0)
         {
             const auto& last = frames[n - 1];
@@ -169,7 +164,7 @@ public:
         }
 
         const bool held = card_.param(pv::catchTail) >= 0.5f;
-        if (count_ > 0)
+        if (!frames_.empty())
         {
             const float colW = plot.getWidth() / static_cast<float>(columns);
             const auto xOf = [&](int col) { return plot.getX() + (static_cast<float>(col) + 0.5f) * colW; };
@@ -332,13 +327,15 @@ private:
     {
         cols_.assign(static_cast<size_t>(columns), {});
         const auto columnOf = [columns](std::int64_t frame) { return frame * columns / fieldFrames; };
-        const std::int64_t newest = columnOf(total_ - 1);
+        const auto total = static_cast<std::int64_t>(frames_.total());
+        const int count = frames_.size();
+        const std::int64_t newest = columnOf(total - 1);
         for (int col = 0; col < columns; ++col)
             cols_[static_cast<size_t>(col)].at = newest - (columns - 1 - col);
-        for (int i = 0; i < count_; ++i)
+        for (int i = 0; i < count; ++i)
         {
-            const auto& f = frames_[static_cast<size_t>((head_ - count_ + i + fieldFrames) % fieldFrames)];
-            const std::int64_t col = columns - 1 - (newest - columnOf(total_ - count_ + i));
+            const auto& f = frames_.at(i);
+            const std::int64_t col = columns - 1 - (newest - columnOf(total - count + i));
             if (col < 0)
                 continue;
             auto& k = cols_[static_cast<size_t>(col)];
@@ -398,9 +395,7 @@ private:
     }
 
     ModuleCard& card_;
-    std::vector<pv::Telemetry::Frame> frames_; // a ring of the last six seconds
-    int head_ = 0, count_ = 0;
-    std::int64_t total_ = 0; // frames received
+    FeedbackHistory<pv::Telemetry::Frame> frames_{fieldFrames}; // the last six seconds
     std::vector<Column> cols_;
     float duckDb_ = 0.0f;
 };

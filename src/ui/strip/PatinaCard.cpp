@@ -21,6 +21,7 @@
 #include "ui/components/RenderedFace.h"
 #include "ui/strip/EffectPresetLibrary.h"
 #include "ui/strip/FaceParts.h"
+#include "ui/strip/FeedbackHistory.h"
 #include "ui/strip/HardwareKey.h"
 #include "ui/strip/PresetBar.h"
 #include "ui/strip/RenderedCard.h"
@@ -661,8 +662,7 @@ class PatinaCard final : public RenderedCard, private juce::ChangeListener
 {
 public:
     PatinaCard(const Theme& theme, CardHost& host, core::Id channelId, const core::Insert& insert)
-        : RenderedCard(theme, host, channelId, insert, face_), face_(theme),
-          history_(static_cast<size_t>(historyFrames)),
+        : RenderedCard(theme, host, channelId, insert, face_), face_(theme), history_(historyFrames),
           previous_(theme, juce::String(), "Previous preset", false),
           next_(theme, juce::String(), "Next preset", false), display_(theme),
           lamp_(theme, [this] { return isOn(); })
@@ -795,16 +795,13 @@ public:
 
     // ----- for the windows ----------------------------------------------------------------------
     bool stageOn(int stage) const noexcept { return param(pa::onParam(stage)) >= 0.5f; }
-    int historyCount() const noexcept { return count_; }
-    std::uint64_t historyTotal() const noexcept { return total_; }
-    const Telemetry::Frame& frameAt(int i) const noexcept
-    {
-        return history_[static_cast<size_t>((head_ - count_ + i + historyFrames) % historyFrames)];
-    }
+    int historyCount() const noexcept { return history_.size(); }
+    std::uint64_t historyTotal() const noexcept { return history_.total(); }
+    const Telemetry::Frame& frameAt(int i) const noexcept { return history_.at(i); }
     const Telemetry::Frame& newest() const noexcept
     {
         static const Telemetry::Frame none{};
-        return count_ > 0 ? frameAt(count_ - 1) : none;
+        return history_.empty() ? none : history_.newest();
     }
     const Telemetry* telemetry() const noexcept { return pa::telemetryOf(liveProcessor()); }
     // The amount a stage is set to after Age (where its lamps' dim tail ends).
@@ -1028,12 +1025,7 @@ private:
                 n = t->read(cursor_, frames.data(), 64);
                 arrived = arrived || n > 0;
                 for (int i = 0; i < n; ++i)
-                {
-                    history_[static_cast<size_t>(head_)] = frames[static_cast<size_t>(i)];
-                    head_ = (head_ + 1) % historyFrames;
-                    count_ = std::min(historyFrames, count_ + 1);
-                    ++total_;
-                }
+                    history_.push(frames[static_cast<size_t>(i)]);
             }
         }
         // The windows of the stages that are on, and only when frames came: an off
@@ -1107,9 +1099,8 @@ private:
     std::array<std::unique_ptr<StageWindow>, pa::stageCount> windows_;
     std::array<std::unique_ptr<StageButton>, pa::stageCount> buttons_;
 
-    std::vector<Telemetry::Frame> history_;
-    int head_ = 0, count_ = 0;
-    std::uint64_t total_ = 0, cursor_ = 0;
+    FeedbackHistory<Telemetry::Frame> history_;
+    std::uint64_t cursor_ = 0;
     const Telemetry* telemetrySource_ = nullptr;
     std::vector<float> matchedParams_; // the values the shown preset was matched against
 
