@@ -1,4 +1,5 @@
 // The shared DSP building blocks in src/plugins/dsp: each piece on its own.
+#include "plugins/dsp/DelayLine.h"
 #include "plugins/dsp/Random.h"
 #include "plugins/dsp/Smoothing.h"
 
@@ -137,4 +138,36 @@ TEST_CASE("A 60 dB decay falls by a factor of 1000 over its time", "[plugins][ds
     // Shorter than a sample still takes one.
     CHECK(dsp::decay60ForMs(0.0, rate) == Approx(0.001));
     CHECK(dsp::decay60ForMs(250.0f, 48000.0f) == Approx(static_cast<float>(pole)));
+}
+
+TEST_CASE("The interpolators pass through their samples and Hermite is exact on a cubic", "[plugins][dsp]")
+{
+    CHECK(dsp::interpolateLinear(2.0f, 4.0f, 0.0f) == 2.0f);
+    CHECK(dsp::interpolateLinear(2.0f, 4.0f, 0.25f) == 2.5f);
+    CHECK(dsp::interpolateHermite(1.0f, 2.0f, 3.0f, 4.0f, 0.0f) == 2.0f);
+    CHECK(dsp::interpolateHermite(1.0f, 2.0f, 3.0f, 4.0f, 1.0f) == Approx(3.0f));
+    // Catmull-Rom reproduces a quadratic exactly: x^2 at -1, 0, 1, 2.
+    CHECK(dsp::interpolateHermite(1.0f, 0.0f, 1.0f, 4.0f, 0.5f) == Approx(0.25f));
+}
+
+TEST_CASE("A delay line reads back what was pushed, whole and fractional", "[plugins][dsp]")
+{
+    dsp::DelayLine line;
+    line.prepare(100);
+    REQUIRE(line.data.size() >= 108);
+    REQUIRE((line.data.size() & (line.data.size() - 1)) == 0);
+    for (int i = 0; i < 300; ++i)
+        line.push(static_cast<float>(i)); // a ramp, so every read is exact
+    CHECK(line.at(0) == 299.0f);
+    CHECK(line.at(10) == 289.0f);
+    CHECK(line.linear(10.5f) == Approx(288.5f));
+    CHECK(line.hermite(20.25f) == Approx(278.75f));
+
+    // The free reads on a ring of the caller's own agree with the line.
+    const int write = line.write; // the next slot, one past the newest
+    CHECK(dsp::readLinear(line.data.data(), line.mask, write, 11.5f) == Approx(288.5f));
+    CHECK(dsp::readHermite(line.data.data(), line.mask, write, 21.25f) == Approx(278.75f));
+
+    line.clear();
+    CHECK(line.at(5) == 0.0f);
 }

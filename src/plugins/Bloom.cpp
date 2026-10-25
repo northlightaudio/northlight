@@ -377,8 +377,8 @@ private:
                     x - dcLow_[static_cast<size_t>(ch)];
             }
             const float pre = std::max(1.0f, pre_);
-            float sendL = fdn::readLinear(inL, inputMask_, inputWrite_, pre);
-            float sendR = fdn::readLinear(inR, inputMask_, inputWrite_, pre);
+            float sendL = dsp::readLinear(inL, inputMask_, inputWrite_, pre);
+            float sendR = dsp::readLinear(inR, inputMask_, inputWrite_, pre);
             // The swell: the input again through the rising cloud of taps.
             if (swellMix_ > 1.0e-4f)
             {
@@ -387,10 +387,10 @@ private:
                 {
                     const auto kk = static_cast<size_t>(k);
                     cloudL += patterns_[0].gain[kk] *
-                              fdn::readLinear(
+                              dsp::readLinear(
                                   inL, inputMask_, inputWrite_, pre + patterns_[0].position[kk] * swell_);
                     cloudR += patterns_[1].gain[kk] *
-                              fdn::readLinear(
+                              dsp::readLinear(
                                   inR, inputMask_, inputWrite_, pre + patterns_[1].position[kk] * swell_);
                 }
                 sendL += (cloudL - sendL) * swellMix_;

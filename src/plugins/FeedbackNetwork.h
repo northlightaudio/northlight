@@ -1,6 +1,7 @@
 #pragma once
 
 #include "plugins/Biquad.h"
+#include "plugins/dsp/DelayLine.h"
 
 #include <algorithm>
 #include <array>
@@ -58,31 +59,6 @@ float onePole(float hz, double sampleRate) noexcept;
 
 // The smallest power of two at least n.
 int powerOfTwoAtLeast(double n) noexcept;
-
-// A linear read `delay` samples behind `write` in a power-of-two buffer.
-inline float readLinear(const float* buffer, int mask, int write, float delay) noexcept
-{
-    const float position = static_cast<float>(write) - delay;
-    const float floor = std::floor(position);
-    const int i = static_cast<int>(floor);
-    const float t = position - floor;
-    return buffer[i & mask] + t * (buffer[(i + 1) & mask] - buffer[i & mask]);
-}
-
-// A cubic Hermite read `delay` samples behind `write` (delay >= 3).
-inline float readHermite(const float* buffer, int mask, int write, float delay) noexcept
-{
-    const float position = static_cast<float>(write) - delay;
-    const float floor = std::floor(position);
-    const int i = static_cast<int>(floor);
-    const float t = position - floor;
-    const float x0 = buffer[(i - 1) & mask], x1 = buffer[i & mask];
-    const float x2 = buffer[(i + 1) & mask], x3 = buffer[(i + 2) & mask];
-    const float c1 = 0.5f * (x2 - x0);
-    const float c2 = x0 - 2.5f * x1 + 2.0f * x2 - 0.5f * x3;
-    const float c3 = 0.5f * (x3 - x0) + 1.5f * (x1 - x2);
-    return ((c3 * t + c2) * t + c1) * t + x1;
-}
 
 // A Schroeder allpass with a fixed length.
 struct Allpass

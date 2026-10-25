@@ -372,7 +372,7 @@ public:
                 v.gain = std::min(1.0f, v.gain + fadeStep_);
             if (v.hz <= 0.0f)
                 continue;
-            const float read = fdn::readLinear(v.buffer.data(), mask_, write_, v.delay);
+            const float read = dsp::readLinear(v.buffer.data(), mask_, write_, v.delay);
             v.low += lowStep_ * (read - v.low);
             const float y = x * v.drive * v.gain + v.feedback * v.low;
             v.buffer[static_cast<size_t>(write_)] = y;
@@ -898,8 +898,8 @@ private:
             input_[0][static_cast<size_t>(inputWrite_)] = dryL * send + strings;
             input_[1][static_cast<size_t>(inputWrite_)] = dryR * send + strings;
             const float pre = std::max(1.0f, pre_);
-            float sendL = fdn::readLinear(inL, inputMask_, inputWrite_, pre);
-            float sendR = fdn::readLinear(inR, inputMask_, inputWrite_, pre);
+            float sendL = dsp::readLinear(inL, inputMask_, inputWrite_, pre);
+            float sendR = dsp::readLinear(inR, inputMask_, inputWrite_, pre);
             // Swell: the line still to come goes in early, rising, so the tail
             // builds into its first word like a reversed reverb.
             if (clock_ >= swellStart_ && clock_ < swellEnd_)
@@ -943,8 +943,8 @@ private:
                     const auto ee = static_cast<size_t>(e);
                     const float at = pre + sp.tapMs[ee] * 0.001f * rate;
                     const float g = sp.tapGain[ee] * inject;
-                    const float tl = fdn::readLinear(inL, inputMask_, inputWrite_, at);
-                    const float tr = fdn::readLinear(inR, inputMask_, inputWrite_, at);
+                    const float tl = dsp::readLinear(inL, inputMask_, inputWrite_, at);
+                    const float tr = dsp::readLinear(inR, inputMask_, inputWrite_, at);
                     if (e % 2 == 0)
                     {
                         outL += g * tl;

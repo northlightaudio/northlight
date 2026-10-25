@@ -366,7 +366,9 @@ know nothing format-specific.
   `Random.h` (xorshift32 and LCG noise with the float mappings the processors use,
   and `Drift`, a smooth random curve), `Smoothing.h` (one-pole coefficients by name:
   `poleFor…`/`stepFor…` for a time constant in seconds or milliseconds, a corner
-  frequency or a once-a-block update, and `decay60ForMs`). Each processor keeps its own seeds,
+  frequency or a once-a-block update, and `decay60ForMs`), `DelayLine.h` (a
+  power-of-two ring with linear and Hermite reads, the reads on a caller's own
+  ring, and the kernels). Each processor keeps its own seeds,
   constants and tolerances, so moving onto the kit never changes its sound.
 - **The guitar pedals** share one card, `ui/strip/PedalCard`, which reads a
   pedal's layout (its finish, knobs, toggle, and whether it is the tuner) from a

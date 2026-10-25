@@ -203,7 +203,7 @@ void FeedbackNetwork::process(
         const float delay =
             std::max(4.0f, baseSamples_[ii] * frame.scale + frame.sweep * (1.0f + line.lfoSin));
         const float* buffer = line.buffer.data();
-        float v = readHermite(buffer, lineMask_, lineWrite_, delay);
+        float v = dsp::readHermite(buffer, lineMask_, lineWrite_, delay);
         if (frame.shimmering)
         {
             // Two heads sweeping the grain window, half a grain apart: the line
@@ -219,8 +219,8 @@ void FeedbackNetwork::process(
             // than they went in, and shifting never moves them on: they would
             // grow for ever, so they stay out of the shifted path.
             const float shifted = line.shiftLowCut.process(
-                grainWindow(a) * readHermite(buffer, lineMask_, lineWrite_, delay + offsetA) +
-                grainWindow(b) * readHermite(buffer, lineMask_, lineWrite_, delay + offsetB));
+                grainWindow(a) * dsp::readHermite(buffer, lineMask_, lineWrite_, delay + offsetA) +
+                grainWindow(b) * dsp::readHermite(buffer, lineMask_, lineWrite_, delay + offsetB));
             v = v * frame.keep + shifted * frame.shift;
         }
         // Damping and low cut: shelves whose depth follows the line's gain (none

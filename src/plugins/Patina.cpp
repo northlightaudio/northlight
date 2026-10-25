@@ -4,6 +4,7 @@
 #include "engine/rt/RealtimeGuard.h"
 #include "plugins/Biquad.h"
 #include "plugins/ProcessorBase.h"
+#include "plugins/dsp/DelayLine.h"
 #include "plugins/dsp/Random.h"
 #include "plugins/dsp/Smoothing.h"
 
@@ -272,53 +273,10 @@ struct Contour
     }
 };
 
-// A delay line on a power-of-two ring. at(0) is the newest sample.
-struct DelayLine
-{
-    std::vector<float> data;
-    int mask = 0, write = 0;
-
-    void prepare(int maxDelay)
-    {
-        NORTHLIGHT_ASSERT_NOT_REALTIME("DelayLine::prepare");
-        int size = 16;
-        while (size < maxDelay + 8)
-            size <<= 1;
-        data.assign(static_cast<size_t>(size), 0.0f);
-        mask = size - 1;
-        write = 0;
-    }
-    void clear() noexcept { std::fill(data.begin(), data.end(), 0.0f); }
-    void push(float x) noexcept
-    {
-        data[static_cast<size_t>(write)] = x;
-        write = (write + 1) & mask;
-    }
-    float at(int d) const noexcept { return data[static_cast<size_t>((write - 1 - d) & mask)]; }
-    float linear(float d) const noexcept
-    {
-        const int i = static_cast<int>(d);
-        const float f = d - static_cast<float>(i);
-        return at(i) + (at(i + 1) - at(i)) * f;
-    }
-    // Four-point Hermite interpolation (d >= 1).
-    float hermite(float d) const noexcept
-    {
-        d = std::max(1.0f, d);
-        const int i = static_cast<int>(d);
-        const float f = d - static_cast<float>(i);
-        const float xm1 = at(i - 1), x0 = at(i), x1 = at(i + 1), x2 = at(i + 2);
-        const float c1 = 0.5f * (x1 - xm1);
-        const float c2 = xm1 - 2.5f * x0 + 2.0f * x1 - 0.5f * x2;
-        const float c3 = 0.5f * (x2 - xm1) + 1.5f * (x0 - x1);
-        return ((c3 * f + c2) * f + c1) * f + x0;
-    }
-};
-
 // A Schroeder allpass of a fixed length; `extra` modulates its delay.
 struct Allpass
 {
-    DelayLine line;
+    dsp::DelayLine line;
     int length = 1;
     void prepare(int samples, int modulation = 0)
     {
@@ -1763,8 +1721,8 @@ private:
     float heatShaped_ = -1, heatToneShaped_ = -1;
 
     // Chamber
-    std::array<DelayLine, 2> roomInput_;
-    std::array<DelayLine, 4> roomLine_;
+    std::array<dsp::DelayLine, 2> roomInput_;
+    std::array<dsp::DelayLine, 4> roomLine_;
     std::array<int, 4> roomLength_{};
     std::array<float, 4> roomGain_{}, roomDamp_{};
     float roomDampK_ = 0.5f;
@@ -1773,13 +1731,13 @@ private:
         float x1 = 0.0f, y1 = 0.0f;
     };
     std::array<std::array<AllpassState, springStages>, 2> springChain_{};
-    std::array<DelayLine, 2> springLine_;
+    std::array<dsp::DelayLine, 2> springLine_;
     std::array<int, 2> springLength_{};
     std::array<float, 2> springGain_{};
     std::array<Biquad, 2> springLow_, springHigh_;
     std::array<Allpass, 4> plateDiffuser_;
     std::array<Allpass, 2> plateTankAp1_, plateTankAp2_;
-    std::array<DelayLine, 2> plateDelay1_, plateDelay2_;
+    std::array<dsp::DelayLine, 2> plateDelay1_, plateDelay2_;
     std::array<float, 2> plateDamp_{};
     std::array<int, 2> plateDelay1Length_{1, 1}, plateDelay2Length_{1, 1};
     std::array<int, 14> plateTap_{};
@@ -1791,7 +1749,7 @@ private:
     float chamberDesigned_ = -1.0e9f;
 
     // Drift
-    std::array<DelayLine, 2> driftLine_;
+    std::array<dsp::DelayLine, 2> driftLine_;
     std::array<Wobble, 2> wobble_;
     std::array<float, 2> driftFrom_{}, driftTo_{}, driftScrape_{};
     float driftWowDepth_ = 0, driftFlutterDepth_ = 0;
@@ -1805,7 +1763,7 @@ private:
     float grainTextureDesigned_ = -1;
 
     // Wear
-    std::array<DelayLine, 2> skewLine_;
+    std::array<dsp::DelayLine, 2> skewLine_;
     std::array<Biquad, 2> wearLow_, wearHigh_, wearBump_;
     std::array<float, 2> skewFrom_{}, skewTo_{}, skewGain_{1.0f, 1.0f}, wearDesigned_{-1.0f, -1.0f};
     Contour skewShape_, skewLevel_;

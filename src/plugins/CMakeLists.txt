@@ -3,6 +3,7 @@
 add_library(northlight_plugins STATIC
     BuiltIns.h
     BuiltIns.cpp
+    dsp/DelayLine.h
     dsp/Random.h
     dsp/Smoothing.h
     MeteredBuiltIn.h

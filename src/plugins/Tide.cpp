@@ -2,6 +2,7 @@
 #include "plugins/Biquad.h"
 #include "plugins/MeteredBuiltIn.h"
 #include "plugins/Pedals.h"
+#include "plugins/dsp/DelayLine.h"
 
 #include <algorithm>
 #include <array>
@@ -147,7 +148,9 @@ private:
         return ch.bbd[1].process(ch.bbd[0].process(std::tanh(k * x) / k));
     }
 
-    // A cubic (Hermite) read `delay` samples behind the write head.
+    // A cubic (Hermite) read `delay` samples behind the write head. The position
+    // wraps by adding the ring's length rather than flooring a negative position
+    // (dsp::readHermite's way, which rounds differently), so only the kernel is shared.
     float readCubic(const std::vector<float>& buffer, float delay) const noexcept
     {
         const int size = static_cast<int>(buffer.size()); // a power of two
@@ -158,11 +161,7 @@ private:
         const int i1 = std::clamp(static_cast<int>(read), 0, size - 1);
         const float t = read - static_cast<float>(i1);
         const auto at = [&](int i) { return buffer[static_cast<size_t>(i & mask)]; };
-        const float y0 = at(i1 - 1), y1 = at(i1), y2 = at(i1 + 1), y3 = at(i1 + 2);
-        const float c1 = 0.5f * (y2 - y0);
-        const float c2 = y0 - 2.5f * y1 + 2.0f * y2 - 0.5f * y3;
-        const float c3 = 0.5f * (y3 - y0) + 1.5f * (y1 - y2);
-        return ((c3 * t + c2) * t + c1) * t + y1;
+        return dsp::interpolateHermite(at(i1 - 1), at(i1), at(i1 + 1), at(i1 + 2), t);
     }
 
     std::array<Channel, 2> channels_;
