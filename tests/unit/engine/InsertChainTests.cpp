@@ -151,6 +151,25 @@ TEST_CASE("Bypass crossfades and keeps the processor running", "[engine][inserts
     CHECK(h.left[blockSize - 1] == Approx(wet).margin(0.002f));
 }
 
+TEST_CASE("A snapshot's work buffers hold the prepared block, not the most one could be", "[engine][memory]")
+{
+    Harness h; // prepared at blockSize
+    core::Project p;
+    p.tracks.push_back(trackWithClip(1));
+    h.play(p, 2);
+    const auto* snapshot = h.engine.snapshotForTest();
+    REQUIRE(snapshot != nullptr);
+    CHECK(snapshot->blockSamples == blockSize);
+    CHECK(snapshot->tracks[0].events.capacity() == 0); // an audio track has no MIDI
+    CHECK(h.left[blockSize - 1] == Approx(0.5f * centre).margin(0.002f));
+
+    // A longer callback than the snapshot holds is rendered in pieces.
+    std::vector<float> l(blockSize * 4), r(blockSize * 4);
+    float* out[2] = {l.data(), r.data()};
+    h.engine.process(out, 2, blockSize * 4);
+    CHECK(l[blockSize * 4 - 1] == Approx(0.5f * centre).margin(0.002f));
+}
+
 TEST_CASE("Live values can be pushed for one channel alone", "[engine][smoothing]")
 {
     Harness h;

@@ -191,7 +191,10 @@ struct TrackNode : ChannelNode
     std::array<std::uint8_t, 130> controllerKeys{};
     MidiRuntime* midi = nullptr; // held notes; set for MIDI tracks
     std::shared_ptr<MidiRuntime> keepAliveMidi;
-    mutable MidiEventList events{1024}; // this span's events for the instrument
+    // This span's events for the instrument (room only on MIDI and instrument
+    // tracks: an audio track has none). Mutable: the renderer fills it on the
+    // audio thread; each track is rendered by one thread per span.
+    mutable MidiEventList events{0};
 
     WorkBuffer scratchLeft, scratchRight; // clip read scratch
 };
@@ -207,6 +210,9 @@ struct Snapshot
     // Largest block a snapshot can render in one call; the engine splits bigger
     // device blocks.
     static constexpr int maxBlockSamples = 8192;
+    // What the work buffers hold: the engine's prepared block (at most
+    // maxBlockSamples); a longer callback is rendered in pieces this long.
+    int blockSamples = maxBlockSamples;
 
     std::uint64_t epoch = 0; // set by the publisher
     double sampleRate = 48000.0;
@@ -231,7 +237,7 @@ struct Snapshot
     int outputLatency = 0; // samples the master output lags the timeline (plugin delay compensation,
                            // the master's own inserts included)
     std::vector<DelayLine*> allDelays; // every compensation and dry line, for a flush on locate
-    std::vector<float> silence;        // maxBlockSamples zeros: the key of an inaudible source
+    std::vector<float> silence;        // blockSamples zeros: the key of an inaudible source
 };
 
 // Caches loaded media by path across snapshot compiles so a re-publish after an edit
@@ -321,7 +327,8 @@ std::unique_ptr<Snapshot> compileSnapshot(const core::Project& project,
                                           DelayCache* delays = nullptr,
                                           RuntimeCache* runtimes = nullptr,
                                           const std::function<int(const std::string&)>& midiSources = {},
-                                          const InputBusResolver& inputBuses = {});
+                                          const InputBusResolver& inputBuses = {},
+                                          int blockSamples = Snapshot::maxBlockSamples);
 
 // Meter slot layout used by the compiler: tracks in project order, then buses in
 // project order, then the master.

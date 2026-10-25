@@ -282,6 +282,9 @@ private:
     std::atomic<bool> countingIn_{false};
     std::atomic<bool> running_{false};
     std::atomic<double> deviceSampleRate_{0.0};
+    // The block prepare() was given: what a compile sizes the work buffers for
+    // (the most a snapshot can hold until the engine is prepared).
+    std::atomic<int> preparedBlock_{Snapshot::maxBlockSamples};
     std::atomic<std::uint64_t> droppedCommands_{0};
 };
 

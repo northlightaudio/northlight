@@ -197,7 +197,8 @@ std::unique_ptr<Snapshot> compileSnapshot(const core::Project& project,
                                           DelayCache* delays,
                                           RuntimeCache* runtimes,
                                           const std::function<int(const std::string&)>& midiSources,
-                                          const InputBusResolver& inputBuses)
+                                          const InputBusResolver& inputBuses,
+                                          int blockSamples)
 {
     NORTHLIGHT_ASSERT_NOT_REALTIME("compileSnapshot");
     auto snapshot = std::make_unique<Snapshot>();
@@ -212,11 +213,14 @@ std::unique_ptr<Snapshot> compileSnapshot(const core::Project& project,
     snapshot->master = snapshot->keepAliveMaster.get();
     snapshot->master->targetGain.store(project.master.gain, std::memory_order_relaxed);
     snapshot->masterMeterSlot = masterMeterSlot(project);
-    snapshot->silence.assign(static_cast<size_t>(Snapshot::maxBlockSamples), 0.0f);
+    // The work buffers hold the engine's prepared block, not the most it could be
+    // (twelve per channel: a 100-track project's at 8192 were 39 MB).
+    snapshot->blockSamples = std::clamp(blockSamples, 1, Snapshot::maxBlockSamples);
+    snapshot->silence.assign(static_cast<size_t>(snapshot->blockSamples), 0.0f);
 
     const auto trackCount = static_cast<int>(project.tracks.size());
     const auto busCount = static_cast<int>(project.buses.size());
-    const auto n = static_cast<size_t>(Snapshot::maxBlockSamples);
+    const auto n = static_cast<size_t>(snapshot->blockSamples);
 
     // ----- routing graph, with bus cycles broken by dropping the offending edge -----
     Routing routing;
@@ -528,6 +532,8 @@ std::unique_ptr<Snapshot> compileSnapshot(const core::Project& project,
         fillChannel(node, track, t, trackMeterSlot(t), false);
         node.isMidi = track.isMidi();
         node.isInstrument = track.isInstrument() && !track.isFrozen();
+        if (node.isMidi || node.isInstrument)
+            node.events = MidiEventList(1024);
         node.isAux = track.isAux();
         if (track.isAux())
             node.inputChannel = -1;

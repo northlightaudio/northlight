@@ -42,7 +42,8 @@ void AudioEngine::setProject(const core::Project& project)
         &delays_,
         &runtimes_,
         [this](const std::string& name) { return midiSourceIndex(name); },
-        [this](const std::string& name) { return inputBus(name); });
+        [this](const std::string& name) { return inputBus(name); },
+        preparedBlock_.load(std::memory_order_relaxed));
     outputLatency_.store(snapshot->outputLatency, std::memory_order_relaxed);
     masterMeterSlot_.store(snapshot->masterMeterSlot, std::memory_order_relaxed);
     publisher_.publish(std::move(snapshot));
@@ -356,6 +357,7 @@ void AudioEngine::prepare(double sampleRate, int maxBlockSize)
 {
     NORTHLIGHT_ASSERT_NOT_REALTIME("AudioEngine::prepare");
     renderer_.prepare(maxBlockSize);
+    preparedBlock_.store(std::clamp(maxBlockSize, 1, Snapshot::maxBlockSamples), std::memory_order_relaxed);
     inserts_.prepare(sampleRate, std::min(maxBlockSize, Snapshot::maxBlockSamples));
     loudness_.prepare(sampleRate);
     preview_.prepare(sampleRate, maxBlockSize);
@@ -491,7 +493,10 @@ void AudioEngine::process(
     int done = 0;
     while (done < numSamples)
     {
-        int count = std::min(numSamples - done, std::max(1, renderer_.maxBlockSize()));
+        // A snapshot compiled before the device asked for a longer block holds less.
+        const int most = snapshot != nullptr ? std::min(renderer_.maxBlockSize(), snapshot->blockSamples)
+                                             : renderer_.maxBlockSize();
+        int count = std::min(numSamples - done, std::max(1, most));
         const bool countingIn = transport_.playing && transport_.countInRemaining > 0;
 
         // Playing at or past the loop end (a locate there, or the loop enabled while
