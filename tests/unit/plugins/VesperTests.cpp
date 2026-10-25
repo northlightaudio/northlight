@@ -2,6 +2,7 @@
 #include "engine/rt/RealtimeGuard.h"
 #include "plugins/Biquad.h"
 #include "plugins/BuiltIns.h"
+#include "plugins/EffectPresets.h"
 #include "plugins/Vesper.h"
 
 #include <catch2/catch_approx.hpp>
@@ -15,6 +16,8 @@
 #include <cstdio>
 #include <memory>
 #include <numbers>
+#include <string>
+#include <utility>
 #include <vector>
 
 using namespace northlight;
@@ -457,6 +460,143 @@ TEST_CASE("Vesper takes a change of lookahead while it plays", "[plugins][vesper
         const auto out = play(*p, singer.audio(), 48000.0);
         for (const float x : out.left)
             REQUIRE(std::isfinite(x));
+    }
+}
+
+namespace
+{
+// How a preset sounds on three sung lines (vowels with an "s" and a "t" in each,
+// 0.7 s between lines, a second of silence before and 2.5 s after), as the
+// reverb's level against the dry voice in the mix.
+struct PresetSound
+{
+    double underDb = 0.0; // the reverb while the singer sings
+    double gapDb = 0.0;   // the reverb in the gaps between lines
+    double swellDb = 0.0; // the reverb in the 0.3 s before the first line
+    double rt60 = 0.0;    // the decay after the last line
+    double peakDb = 0.0;  // the output's peak (the voice at -18 dB RMS)
+};
+
+PresetSound measurePreset(const std::string& name)
+{
+    const auto& presets = plugins::factoryPresets(vesper::type);
+    const auto it = std::find_if(
+        presets.begin(), presets.end(), [&](const plugins::EffectPreset& p) { return p.name == name; });
+    REQUIRE(it != presets.end());
+    const auto& values = it->values;
+
+    constexpr double rate = 48000.0;
+    Singer singer(rate);
+    singer.rest(1.0);
+    std::vector<std::pair<double, double>> lines;
+    for (int line = 0; line < 3; ++line)
+    {
+        const double start = singer.now();
+        singer.vowel(0.35, 220.0f).s(0.08).vowel(0.3, 247.0f).t().vowel(0.45, 262.0f);
+        lines.emplace_back(start, singer.now());
+        if (line < 2)
+            singer.rest(0.7);
+    }
+    const auto& dry = singer.audio();
+
+    const auto run = [&](bool tailOnly)
+    {
+        auto p = plugins::BuiltInFactory().create(vesper::type);
+        p->prepare(rate, block);
+        p->setBypassed(false);
+        for (size_t i = 0; i < values.size(); ++i)
+            p->setParameter(static_cast<int>(i), values[i]);
+        if (tailOnly)
+            p->setParameter(vesper::mix, 100.0f);
+        return std::pair{play(*p, dry, rate, 2.5), p->latencySamples()};
+    };
+    const auto [mixed, latency] = run(false);
+    const auto [tail, unused] = run(true);
+    const double shift = static_cast<double>(latency) / rate;
+    const double wet = values[vesper::mix] * 0.01;
+
+    double singing = 0.0, under = 0.0, gaps = 0.0;
+    for (const auto& [start, end] : lines)
+    {
+        singing += rmsOf(dry, rate, start, end) / 3.0;
+        under += rmsOf(tail.left, rate, start + shift, end + shift) / 3.0;
+    }
+    for (size_t i = 0; i + 1 < lines.size(); ++i)
+        gaps += rmsOf(tail.left, rate, lines[i].second + 0.1 + shift, lines[i].second + 0.6 + shift) / 2.0;
+    const double dryInMix = singing * (1.0 - wet);
+    const double last = lines.back().second + shift;
+    const double fall = db(rmsOf(tail.left, rate, last + 0.5, last + 0.7)) -
+                        db(rmsOf(tail.left, rate, last + 1.2, last + 1.4));
+    float peak = 0.0f;
+    for (const float x : mixed.left)
+        peak = std::max(peak, std::abs(x));
+
+    PresetSound s;
+    s.underDb = db(under * wet) - db(dryInMix);
+    s.gapDb = db(gaps * wet) - db(dryInMix);
+    s.swellDb =
+        db(rmsOf(tail.left, rate, lines[0].first + shift - 0.3, lines[0].first + shift - 0.02) * wet) -
+        db(dryInMix);
+    s.rt60 = fall > 0.1 ? 0.7 * 60.0 / fall : 99.0;
+    s.peakDb = db(peak);
+    return s;
+}
+} // namespace
+
+// Each preset does what its name says, measured on sung lines (the reverb's level
+// against the voice in the mix), so a change to the DSP cannot quietly turn one
+// into something else. Every one keeps the reverb under the voice and headroom.
+TEST_CASE("Vesper's presets each do what their names say", "[plugins][vesper][presets]")
+{
+    for (const auto& preset : plugins::factoryPresets(vesper::type))
+    {
+        INFO(preset.name);
+        const auto s = measurePreset(preset.name);
+        CHECK(s.gapDb < -3.0);
+        CHECK(s.underDb < -8.0);
+        CHECK(s.peakDb < -3.0);
+        if (preset.name == "Vocal Plate") // a moderate plate under the voice
+        {
+            CHECK(s.underDb > -18.0);
+            CHECK(s.rt60 < 3.0);
+        }
+        if (preset.name == "Pop Lead") // out of the way of the words, blooming between lines
+            CHECK(s.gapDb > s.underDb + 3.0);
+        if (preset.name == "Ballad Hall" || preset.name == "Swell In") // long and lush
+        {
+            CHECK(s.rt60 > 3.0);
+            CHECK(s.gapDb > -12.0);
+        }
+        if (preset.name == "Swell In") // the tail rises into a line
+            CHECK(s.swellDb > -35.0);
+        if (preset.name == "Intimate Chamber" || preset.name == "Rap Clarity") // close and dry
+        {
+            CHECK(s.underDb < -18.0);
+            CHECK(s.rt60 < 1.6);
+        }
+        if (preset.name == "Throws Only") // almost nothing under the singing, throws at line ends
+        {
+            CHECK(s.underDb < -22.0);
+            CHECK(s.gapDb > s.underDb + 15.0);
+        }
+    }
+}
+
+// A report, hidden from the default run (northlight_unit_tests "[.presets]"): each
+// preset's sound, for reviewing them against what their names promise.
+TEST_CASE("Vesper's presets, measured", "[.presets][vesper]")
+{
+    std::printf("%-18s %8s %8s %8s %7s %8s\n", "preset", "under", "gaps", "swell", "rt60", "peak");
+    for (const auto& preset : plugins::factoryPresets(vesper::type))
+    {
+        const auto s = measurePreset(preset.name);
+        std::printf("%-18s %7.1f %8.1f %8.1f %7.2f %8.1f\n",
+                    preset.name.c_str(),
+                    s.underDb,
+                    s.gapDb,
+                    s.swellDb,
+                    s.rt60,
+                    s.peakDb);
     }
 }
 

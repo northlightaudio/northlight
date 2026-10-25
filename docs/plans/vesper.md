@@ -15,7 +15,8 @@ costs about 0.45% of a core at 48 kHz (release). Phase 3 is built: `plugins/Vesp
 with no latency, the generic editor, and the presets that need nothing from later
 phases; about 1.6% of a core at 48 kHz (release) with everything on. Phase 4 is
 built: Lookahead, the Long throw, Swell and Catch, and the presets that use them.
-The rest is not built.
+Phase 5 is done: the presets were measured and two were tuned (below). The rest is
+not built.
 
 ## The name and the idea
 
@@ -322,16 +323,42 @@ a demo vocal (a launch flag that loads a test phrase into a track with Vesper on
 
 ## 3. Presets
 
-Through `EffectPresets`:
+Through `EffectPresets`. Those for mixing use Long lookahead; Vocal Plate and Rap
+Clarity stay at none, safe to track through.
 
 - **Vocal Plate** (the defaults).
 - **Pop Lead**: Plate, 1.4 s, Duck 9 dB, Ends 60%, Lookahead Long.
-- **Ballad Hall**: Hall, 3.2 s, Duck 4 dB, Ends 50%, Swell 30%.
-- **Intimate Chamber**: Chamber, 0.9 s, Mix 18%, Clarity 80%.
+- **Ballad Hall**: Hall, 3.2 s, Duck 4 dB, Ends 50%, Swell 30%, Mix 24%, Lookahead
+  Long (Swell needs it).
+- **Intimate Chamber**: Chamber, 0.9 s, Mix 18%, Clarity 80%, Lookahead Short.
 - **Rap Clarity**: Plate, 0.8 s, Duck 12 dB, Clarity 90%, Ends 70%, Gap 180 ms.
-- **Dream Halo**: Hall, 4 s, Halo 50%, Swell 50%, Lookahead Long.
-- **Throws Only**: Duck 18 dB, Ends 100%, Mix 40%, so the reverb is heard almost only
-  at line ends.
+- **Throws Only**: Duck 18 dB, Ends 100%, Mix 20%, Lookahead Long, so the reverb is
+  heard almost only at line ends.
+- **Swell In** (added): Hall, 4 s, Swell 70%, Mix 32%, Lookahead Long.
+- **Dream Halo**: Hall, 4 s, Halo 50%, Swell 50%, Lookahead Long. Joins with Halo.
+
+Reviewed by playing three sung lines through each (`VesperTests.cpp`, "[.presets]"
+prints the table): the reverb against the voice in the mix under the singing and in
+the gaps, the decay after the last line (Ends lengthens it), Swell before the first
+line, and the peak with the voice at -18 dB RMS.
+
+| Preset | Under | Gaps | Swell | Decay | Peak |
+|---|---|---|---|---|---|
+| Vocal Plate | -12.0 dB | -14.9 dB | - | 2.4 s | -6.5 dB |
+| Pop Lead | -16.2 | -10.3 | - | 1.9 | -6.4 |
+| Ballad Hall | -12.8 | -7.5 | -37 | 3.8 | -6.7 |
+| Intimate Chamber | -19.9 | -24.1 | - | 1.1 | -6.1 |
+| Rap Clarity | -21.3 | -26.5 | - | 1.4 | -6.8 |
+| Throws Only | -25.4 | -7.2 | - | 3.0 | -6.2 |
+| Swell In | -11.3 | -5.3 | -26 | 4.5 | -7.7 |
+
+Two were tuned: Throws Only's Mix went from 40% to 20% (at 40% the throws were louder
+than the voice and the reverb only 17 dB under the singing), and Ballad Hall's from
+28% to 24% (its gaps were within 6 dB of the voice). A test holds each preset to its
+character: every one keeps the reverb under the voice in the gaps and 3 dB of
+headroom, Pop Lead blooms between lines, the hall presets are long, Swell In rises
+into a line, the chamber and rap presets are close and short, and Throws Only is
+more than 22 dB down under the singing with its throws 15 dB above that.
 
 ## 4. Tests
 

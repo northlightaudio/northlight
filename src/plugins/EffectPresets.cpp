@@ -634,13 +634,13 @@ std::vector<EffectPreset> vesperPresets()
            {"Decay", 3.2},
            {"Duck", 4.0},
            {"Ends", 50.0},
-           {"Mix", 28.0},
+           {"Mix", 24.0},
            {"Lookahead", "Long"},
            {"Swell", 30.0}});
     l.add("Intimate Chamber",
           {{"Space", "Chamber"}, {"Decay", 0.9}, {"Clarity", 80.0}, {"Mix", 18.0}, {"Lookahead", "Short"}});
     l.add("Rap Clarity", {{"Decay", 0.8}, {"Duck", 12.0}, {"Clarity", 90.0}, {"Ends", 70.0}, {"Gap", 180.0}});
-    l.add("Throws Only", {{"Duck", 18.0}, {"Ends", 100.0}, {"Mix", 40.0}, {"Lookahead", "Long"}});
+    l.add("Throws Only", {{"Duck", 18.0}, {"Ends", 100.0}, {"Mix", 20.0}, {"Lookahead", "Long"}});
     l.add("Swell In",
           {{"Space", "Hall"}, {"Decay", 4.0}, {"Swell", 70.0}, {"Lookahead", "Long"}, {"Mix", 32.0}});
     return l.done();
