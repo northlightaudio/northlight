@@ -322,6 +322,144 @@ TEST_CASE("Vesper falls silent after its tail and stays clean", "[plugins][vespe
     CHECK(rmsOf(out.left, 48000.0, 5.5, 6.4) == 0.0);
 }
 
+TEST_CASE("Vesper reports its lookahead as latency", "[plugins][vesper]")
+{
+    for (const double rate : {48000.0, 96000.0})
+    {
+        auto p = makeVesper(rate);
+        CHECK(p->latencySamples() == 0);
+        p->setParameter(vesper::lookahead, 1.0f);
+        CHECK(p->latencySamples() == static_cast<int>(std::lround(0.03 * rate)));
+        p->setParameter(vesper::lookahead, 2.0f);
+        CHECK(p->latencySamples() == static_cast<int>(std::lround(0.5 * rate)));
+    }
+}
+
+TEST_CASE("Vesper's lookahead delays the dry signal by its latency, bypassed too", "[plugins][vesper]")
+{
+    for (const float choice : {1.0f, 2.0f})
+    {
+        INFO("lookahead " << choice);
+        auto p = makeVesper();
+        p->setParameter(vesper::lookahead, choice);
+        p->setParameter(vesper::mix, 0.0f);
+        const int latency = p->latencySamples();
+        Singer singer(48000.0);
+        singer.vowel(0.4, 220.0f).s(0.1).vowel(0.6, 247.0f);
+        const auto& in = singer.audio();
+        const auto out = play(*p, in, 48000.0);
+        for (size_t i = static_cast<size_t>(latency); i < in.size(); ++i)
+            REQUIRE(out.left[i] == in[i - static_cast<size_t>(latency)]);
+
+        auto q = makeVesper();
+        q->setParameter(vesper::lookahead, choice);
+        q->setBypassed(true);
+        play(*q, std::vector<float>(4800, 0.0f), 48000.0); // the bypass ramp settles
+        const auto bypassed = play(*q, in, 48000.0);
+        for (size_t i = static_cast<size_t>(latency); i < in.size(); ++i)
+            REQUIRE(bypassed.left[i] == in[i - static_cast<size_t>(latency)]);
+    }
+}
+
+TEST_CASE("With lookahead, Clarity has the send down before an s starts", "[plugins][vesper]")
+{
+    const auto tailOfS = [](float clarity)
+    {
+        auto p = makeVesper();
+        p->setParameter(vesper::lookahead, 1.0f);
+        p->setParameter(vesper::clarity, clarity);
+        p->setParameter(vesper::damping, 20000.0f);
+        p->setParameter(vesper::preDelayAuto, 0.0f);
+        p->setParameter(vesper::preDelay, 0.0f);
+        Singer singer(48000.0);
+        singer.rest(0.1).s(0.15);
+        const auto out = play(*p, singer.audio(), 48000.0, 0.4);
+        return rmsOf(out.left, 48000.0, 0.1, 0.6);
+    };
+    CHECK(db(tailOfS(100.0f)) < db(tailOfS(0.0f)) - 20.0);
+}
+
+TEST_CASE("With Long lookahead a line's last word is thrown and Ends starts as it finishes",
+          "[plugins][vesper]")
+{
+    const auto afterWord = [](float choice)
+    {
+        auto p = makeVesper();
+        p->setParameter(vesper::lookahead, choice);
+        p->setParameter(vesper::ends, 100.0f);
+        p->setParameter(vesper::decay, 1.5f);
+        Singer singer(48000.0);
+        singer.rest(0.1).vowel(0.8, 220.0f); // the word ends at 0.9 s
+        const auto out = play(*p, singer.audio(), 48000.0, 2.0);
+        // Read the same moment of the song: just after the word, before the gap.
+        const double shift = vesper::lookaheadSeconds(choice);
+        return rmsOf(out.left, 48000.0, 0.95 + shift, 1.1 + shift);
+    };
+    CHECK(db(afterWord(2.0f)) > db(afterWord(0.0f)) + 3.0);
+}
+
+TEST_CASE("Swell lets the tail rise into a line before it is sung, with Long lookahead only",
+          "[plugins][vesper]")
+{
+    const auto beforeLine = [](float choice, float swell)
+    {
+        auto p = makeVesper();
+        p->setParameter(vesper::lookahead, choice);
+        p->setParameter(vesper::swell, swell);
+        Singer singer(48000.0);
+        singer.rest(1.0).vowel(0.6, 220.0f); // the line starts at 1.0 s
+        const auto out = play(*p, singer.audio(), 48000.0, 0.5);
+        const double start = 1.0 + vesper::lookaheadSeconds(choice);
+        return std::pair{rmsOf(out.left, 48000.0, start - 0.3, start - 0.02),
+                         rmsOf(out.left, 48000.0, start - 0.3, start - 0.15)};
+    };
+    const auto swelled = beforeLine(2.0f, 100.0f);
+    CHECK(db(swelled.first) > -50.0);
+    CHECK(swelled.first > swelled.second); // rising toward the line
+    CHECK(beforeLine(2.0f, 0.0f).first == 0.0);
+    CHECK(beforeLine(1.0f, 100.0f).first == 0.0); // Short cannot see far enough
+}
+
+TEST_CASE("Catch holds the tail as a pad, keeps the input out and lets it go", "[plugins][vesper]")
+{
+    auto p = makeVesper();
+    p->setParameter(vesper::decay, 1.5f);
+    Singer singer(48000.0);
+    singer.rest(0.1).vowel(0.6, 220.0f);
+    play(*p, singer.audio(), 48000.0);
+    p->setParameter(vesper::catchTail, 1.0f);
+    const auto held = play(*p, {}, 48000.0, 3.0);
+    const double start = db(rmsOf(held.left, 48000.0, 0.3, 0.5));
+    CHECK(start > -50.0);
+    CHECK(std::abs(db(rmsOf(held.left, 48000.0, 2.6, 3.0)) - start) < 3.0);
+    // Singing over the pad does not feed it.
+    Singer over(48000.0);
+    over.vowel(1.0, 330.0f, -12.0f);
+    const auto sungOver = play(*p, over.audio(), 48000.0);
+    CHECK(std::abs(db(rmsOf(sungOver.left, 48000.0, 0.5, 1.0)) - start) < 3.0);
+    // Let go: it decays again.
+    p->setParameter(vesper::catchTail, 0.0f);
+    const auto released = play(*p, {}, 48000.0, 3.0);
+    CHECK(db(rmsOf(released.left, 48000.0, 2.5, 3.0)) < start - 40.0);
+}
+
+TEST_CASE("Vesper takes a change of lookahead while it plays", "[plugins][vesper]")
+{
+    auto p = makeVesper();
+    p->setParameter(vesper::ends, 60.0f);
+    p->setParameter(vesper::swell, 50.0f);
+    Singer singer(48000.0);
+    singer.vowel(0.4, 220.0f).rest(0.3).vowel(0.4, 247.0f).rest(0.3);
+    for (const float choice : {2.0f, 1.0f, 0.0f, 2.0f})
+    {
+        p->setParameter(vesper::lookahead, choice);
+        CHECK(p->latencySamples() == vesper::lookaheadSamples(choice, 48000.0));
+        const auto out = play(*p, singer.audio(), 48000.0);
+        for (const float x : out.left)
+            REQUIRE(std::isfinite(x));
+    }
+}
+
 // A benchmark, hidden from the default run (northlight_unit_tests "[.bench]"): what
 // Vesper costs in percent of one core at 48 kHz with 256-sample blocks, on singing,
 // with everything the Listener drives turned on.
@@ -366,6 +504,8 @@ TEST_CASE("Vesper processes without allocating on the real-time thread", "[plugi
     p->setParameter(vesper::mud, 50.0f);
     p->setParameter(vesper::follow, 1.0f);
     p->setParameter(vesper::releaseSync, 8.0f);
+    p->setParameter(vesper::lookahead, 2.0f);
+    p->setParameter(vesper::swell, 60.0f);
     Singer singer(48000.0);
     singer.vowel(0.4, 220.0f).s(0.1).rest(0.4).breath(0.2).vowel(0.3, 330.0f).rest(0.5);
     const auto& in = singer.audio();
@@ -383,6 +523,10 @@ TEST_CASE("Vesper processes without allocating on the real-time thread", "[plugi
             std::copy(l.begin(), l.end(), r.begin());
             if (n == 60)
                 p->setParameter(vesper::space, 1.0f);
+            if (n == 80)
+                p->setParameter(vesper::catchTail, 1.0f);
+            if (n == 100)
+                p->setParameter(vesper::catchTail, 0.0f);
             if (n == 120)
                 p->setBypassed(true);
             p->process(l.data(), r.data(), block);

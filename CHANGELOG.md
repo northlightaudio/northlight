@@ -20,7 +20,11 @@ Northlight has not had a release yet. The first release, 0.1.0, will include:
   end of each line (Ends, Gap). Choose a plate, a chamber or a hall; the pre-delay
   can follow how fast the singing is (Auto); Follow keeps rumble out of the tail
   under the sung note, Mud cuts a muddy build-up, and Centre clears the middle of
-  the tail for the voice. It has no latency. For now it shows the plain parameter
+  the tail for the voice. Lookahead (off by default, so it is safe to track
+  through) lets it listen ahead of the sound: Short has the reverb's send down
+  before an "s" starts, and Long throws the last word of each line into the reverb
+  and lets Swell build the tail into a line before it is sung. Catch holds the
+  tail as a pad under what comes next. For now it shows the plain parameter
   editor; its own face comes later.
 - Orbit, a studio tape machine for glue and colour on a bus or the master, in the
   effects menu's Drive & Colour group. Its tape is modelled from the way magnetic

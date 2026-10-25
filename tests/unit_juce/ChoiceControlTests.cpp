@@ -29,9 +29,15 @@ template <typename T> void findAll(juce::Component& parent, std::vector<T*>& out
     }
 }
 
-// Vesper's stepped parameters: Space (3 choices), Auto pre-delay (2) and the two
-// syncs (17 note values each).
-constexpr int vesperChoices = 4;
+// How many of Vesper's parameters are stepped (Space, Auto pre-delay, the syncs,
+// Lookahead, Catch, ...): each gets a choice control.
+size_t vesperChoices()
+{
+    size_t n = 0;
+    for (const auto& info : plugins::parameterInfo(vesper::type))
+        n += info.choices.empty() ? 0 : 1;
+    return n;
+}
 } // namespace
 
 TEST_CASE("A choice control is segmented up to four choices and a menu past that", "[ui]")
@@ -76,7 +82,7 @@ TEST_CASE("The insert window's generic editor shows choices as choices", "[ui]")
 
     std::vector<ui::ChoiceControl*> choices;
     findAll(editor, choices);
-    REQUIRE(choices.size() == vesperChoices);
+    REQUIRE(choices.size() == vesperChoices());
     CHECK(choices[0]->isSegmented());
     CHECK(choices[0]->selected() == 2); // Hall
     for (auto* c : choices)
@@ -126,7 +132,7 @@ TEST_CASE("The Editor panel's generic card shows choices and grows wide rather t
 
     std::vector<ui::ChoiceControl*> choices;
     findAll(panel, choices);
-    REQUIRE(choices.size() == vesperChoices);
+    REQUIRE(choices.size() == vesperChoices());
     CHECK(choices[0]->isSegmented());
 
     // Every control of the card inside the card.

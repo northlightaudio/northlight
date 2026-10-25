@@ -11,7 +11,9 @@
 #include <algorithm>
 #include <array>
 #include <cmath>
+#include <cstdint>
 #include <string>
+#include <utility>
 #include <vector>
 
 namespace northlight::plugins::vesper
@@ -41,9 +43,28 @@ float followCutoffHz(float heldPitchHz, float octaves) noexcept
     return heldPitchHz / std::exp2(std::clamp(octaves, minFollowOctaves, maxFollowOctaves));
 }
 
+double lookaheadSeconds(float choice) noexcept
+{
+    const int i = std::clamp(static_cast<int>(std::lround(choice)), 0, 2);
+    return i == 0 ? 0.0 : i == 1 ? shortLookaheadSeconds : longLookaheadSeconds;
+}
+
+int lookaheadSamples(float choice, double sampleRate) noexcept
+{
+    return static_cast<int>(std::lround(lookaheadSeconds(choice) * sampleRate));
+}
+
 namespace
 {
 constexpr int spaceCount = 3;
+// Listener frames waiting for the delayed audio to reach them (Long holds 200).
+constexpr int frameQueueSize = 512;
+// Line ends waiting to be thrown: a few at most within a lookahead.
+constexpr int maxPendingEnds = 8;
+// Catch fades in and out over about 150 ms, as Bloom's Freeze; held, the lines
+// keep at least this much movement so the pad never turns static.
+constexpr float catchFadeSeconds = 0.06f;
+constexpr float heldModSeconds = 0.0006f;
 constexpr int maxEarlyTaps = 8;
 constexpr float listenerFrameSeconds = static_cast<float>(vocal::frameSeconds);
 // After the last sung frame the singer still counts as singing this long, so the
@@ -166,7 +187,10 @@ std::vector<engine::ParameterInfo> parameterInfos()
             {"Ends", "%", 0.0f, 100.0f, 40.0f, false},
             {"Gap", "ms", vocal::minGapSeconds * 1000.0f, vocal::maxGapSeconds * 1000.0f, 250.0f, false},
             {"Mix", "%", 0.0f, 100.0f, 25.0f, false},
-            {"Output", "dB", -12.0f, 12.0f, 0.0f, false}};
+            {"Output", "dB", -12.0f, 12.0f, 0.0f, false},
+            choice("Lookahead", {"Off", "Short", "Long"}, 0.0f),
+            {"Swell", "%", 0.0f, 100.0f, 0.0f, false},
+            choice("Catch", {"Off", "On"}, 0.0f)};
 }
 
 void flush(Biquad& f) noexcept
@@ -184,6 +208,13 @@ public:
 
     engine::ProcessorFeedback* feedback() noexcept override { return &feedback_; }
 
+    // The engine reads this to line everything else up; a change of Lookahead
+    // changes it, and the engine compiles the graph again (as the limiter's does).
+    int latencySamples() const noexcept override
+    {
+        return lookaheadSamples(parameter(lookahead), sampleRate_);
+    }
+
 private:
     // ----- preparation (controller thread) --------------------------------------------------
 
@@ -196,6 +227,14 @@ private:
         wetRight_.assign(block, 0.0f);
         bypassLeft_.assign(block, 0.0f);
         bypassRight_.assign(block, 0.0f);
+        delayedLeft_.assign(block, 0.0f);
+        delayedRight_.assign(block, 0.0f);
+
+        // The dry signal's delay for Lookahead, and the frames waiting for it.
+        const int drySize = fdn::powerOfTwoAtLeast(longLookaheadSeconds * sampleRate + 8.0);
+        for (auto& b : dry_)
+            b.assign(static_cast<size_t>(drySize), 0.0f);
+        dryMask_ = drySize - 1;
 
         listener_.prepare(sampleRate);
         for (int k = 0; k < spaceCount; ++k)
@@ -232,6 +271,9 @@ private:
         endsDown_ = perFrame(endsSettleSeconds);
         followStep_ = perFrame(followGlideSeconds);
         mudStep_ = perFrame(0.05f);
+        catchStep_ = smoothing(catchFadeSeconds);
+        leadSamples_ = static_cast<int>(std::lround(listenerLeadSeconds * sampleRate));
+        throwSamples_ = static_cast<std::int64_t>(std::lround(throwSeconds * sampleRate));
         clearState();
         primed_ = false; // the first block takes the parameters as they are (they arrive after prepare)
     }
@@ -244,6 +286,8 @@ private:
         float scale = 1.0f, pre = 0.0f, wet = 0.0f, out = 1.0f, width = 1.0f, midGain = 1.0f;
         float clarity = 0.0f, breaths = 0.0f, duckDb = 0.0f, duckRelease = 0.0f, ends = 0.0f;
         float decay = 1.8f, follow = 1.0f, mud = 0.0f;
+        int lookahead = 0;
+        float swell = 0.0f, held = 0.0f;
     };
 
     Targets targets() const noexcept
@@ -273,7 +317,110 @@ private:
         t.decay = std::clamp(parameter(decay), minDecaySeconds, maxDecaySeconds);
         t.follow = parameter(follow);
         t.mud = std::clamp(parameter(mud) * 0.01f, 0.0f, 1.0f);
+        t.lookahead = std::min(lookaheadSamples(parameter(lookahead), sampleRate_), dryMask_);
+        // Swell needs to know a line is coming long before it does: Long only.
+        t.swell = t.lookahead >= lookaheadSamples(2.0f, sampleRate_)
+                      ? std::clamp(parameter(swell) * 0.01f, 0.0f, 1.0f)
+                      : 0.0f;
+        t.held = parameter(catchTail) >= 0.5f ? 1.0f : 0.0f;
         return t;
+    }
+
+    // The send's cut for what was heard: consonants and sibilance by Clarity,
+    // breaths by Breaths.
+    static float sendCutFor(const vocal::Hearing& h, const Targets& t) noexcept
+    {
+        switch (h.sound)
+        {
+            case vocal::Sound::consonant:
+                return -sendCutDb * t.clarity;
+            case vocal::Sound::voiced:
+                return -sendCutDb * t.clarity * h.sibilance;
+            case vocal::Sound::breath:
+                return -sendCutDb * t.breaths;
+            case vocal::Sound::silence:
+                break;
+        }
+        return 0.0f;
+    }
+
+    // A frame just heard (ahead of the audio by the lookahead). With no lookahead
+    // it applies at once; otherwise it waits for the delayed audio, a little early.
+    // A line end is known before its last word reaches the reverb: that word is
+    // thrown (its send lifted by Ends) and Ends starts as it finishes. A line's
+    // start sets Swell going.
+    void heard(const Targets& t) noexcept
+    {
+        const auto& h = listener_.hearing();
+        liveCutDb_ = sendCutFor(h, t);
+        if (h.lineEnd)
+            lineClosed_ = true;
+        else if (h.sound == vocal::Sound::voiced && lineClosed_)
+        {
+            lineClosed_ = false;
+            if (t.swell > 0.0f)
+            {
+                swellStart_ = clock_;
+                swellEnd_ = clock_ + std::max(1, t.lookahead - leadSamples_);
+            }
+        }
+        if (t.lookahead == 0)
+        {
+            onFrame(h, t);
+            return;
+        }
+        auto queued = h;
+        queued.lineEnd = false; // ends are scheduled on their own
+        if (queuedFrames_ < frameQueueSize)
+        {
+            auto& slot = frames_[static_cast<size_t>((frameRead_ + queuedFrames_) % frameQueueSize)];
+            slot.at = clock_ + std::max(0, t.lookahead - std::min(t.lookahead, leadSamples_));
+            slot.hearing = queued;
+            ++queuedFrames_;
+        }
+        if (h.lineEnd)
+        {
+            // The last word ended `pauseSeconds` ago in the input, so it reaches the
+            // reverb lookahead-less-the-pause from now (now, if that is past).
+            const auto lastWord =
+                clock_ - static_cast<std::int64_t>(h.pauseSeconds * sampleRate_) + t.lookahead;
+            for (auto& e : pendingEnds_)
+                if (!e.active)
+                {
+                    e.active = true;
+                    e.throwAt = std::max(clock_, lastWord - throwSamples_);
+                    e.endAt = std::max(clock_, lastWord);
+                    break;
+                }
+        }
+    }
+
+    // Frames and line ends whose moment the delayed audio has reached.
+    void applyDue(const Targets& t) noexcept
+    {
+        while (queuedFrames_ > 0 && frames_[static_cast<size_t>(frameRead_)].at <= clock_)
+        {
+            onFrame(frames_[static_cast<size_t>(frameRead_)].hearing, t);
+            frameRead_ = (frameRead_ + 1) % frameQueueSize;
+            --queuedFrames_;
+        }
+        for (auto& e : pendingEnds_)
+        {
+            if (!e.active)
+                continue;
+            if (!e.throwing && clock_ >= e.throwAt && e.throwAt < e.endAt)
+            {
+                e.throwing = true;
+                ++throwing_;
+            }
+            if (clock_ >= e.endAt)
+            {
+                if (e.throwing)
+                    --throwing_;
+                e = {};
+                endsTarget_ = 1.0f;
+            }
+        }
     }
 
     void snapTo(const Targets& t) noexcept
@@ -288,25 +435,11 @@ private:
             spaceGain_[static_cast<size_t>(k)] = k == t.space ? 1.0f : 0.0f;
     }
 
-    // A Listener frame: what the send, the duck, Ends and Follow aim for next.
-    void onFrame(const Targets& t) noexcept
+    // A Listener frame as the delayed audio reaches it: what the send, the duck,
+    // Ends and Follow aim for next.
+    void onFrame(const vocal::Hearing& h, const Targets& t) noexcept
     {
-        const auto& h = listener_.hearing();
-        switch (h.sound)
-        {
-            case vocal::Sound::consonant:
-                sendTargetDb_ = -sendCutDb * t.clarity;
-                break;
-            case vocal::Sound::voiced:
-                sendTargetDb_ = -sendCutDb * t.clarity * h.sibilance;
-                break;
-            case vocal::Sound::breath:
-                sendTargetDb_ = -sendCutDb * t.breaths;
-                break;
-            case vocal::Sound::silence:
-                sendTargetDb_ = 0.0f;
-                break;
-        }
+        sendTargetDb_ = sendCutFor(h, t);
         const bool singing = h.sound == vocal::Sound::voiced || h.sound == vocal::Sound::consonant;
         if (singing)
             duckHang_ = duckHangSeconds;
@@ -360,15 +493,26 @@ private:
             snapTo(t);
             primed_ = true;
         }
+        if (t.lookahead != lookahead_)
+        {
+            // A new lookahead: what was waiting for the old one is let go (the
+            // engine lines the graph up again around the new latency).
+            lookahead_ = t.lookahead;
+            queuedFrames_ = 0;
+            for (auto& e : pendingEnds_)
+                e = {};
+            throwing_ = 0;
+            swellEnd_ = swellStart_;
+        }
         if (watched)
             feedback_.tap(0, left, right, numSamples);
 
-        // Silence in, the networks dead: nothing to compute.
+        // Silence in, the networks dead: nothing to compute but the dry delay.
         float inPeak = 0.0f;
         for (int i = 0; i < numSamples; ++i)
             inPeak = std::max(inPeak, std::max(std::abs(left[i]), std::abs(right[i])));
         silentSamples_ = inPeak < 1.0e-7f ? silentSamples_ + numSamples : 0;
-        bool dead = silentSamples_ > inputMask_ + 1;
+        bool dead = silentSamples_ > inputMask_ + 1 && t.held == 0.0f && held_ < 1.0e-4f;
         for (const auto& n : networks_)
             dead = dead && n.energy() < 1.0e-14f;
         if (dead)
@@ -376,9 +520,13 @@ private:
             snapTo(t);
             for (int i = 0; i < numSamples; ++i)
             {
-                left[i] *= (1.0f - t.wet) * t.out;
-                right[i] *= (1.0f - t.wet) * t.out;
-                wetLeft_[static_cast<size_t>(i)] = wetRight_[static_cast<size_t>(i)] = 0.0f;
+                const auto ii = static_cast<size_t>(i);
+                const auto [dryL, dryR] = delay(left[i], right[i]);
+                delayedLeft_[ii] = dryL;
+                delayedRight_[ii] = dryR;
+                left[i] = dryL * (1.0f - t.wet) * t.out;
+                right[i] = dryR * (1.0f - t.wet) * t.out;
+                wetLeft_[ii] = wetRight_[ii] = 0.0f;
                 listener_.push(0.0f);
                 if (watched)
                     feedback_.addSample(0.0f, 0.0f, 0.0f, 0.0f, 0.0f);
@@ -414,12 +562,20 @@ private:
         const float* inR = input_[1].data();
         // Inputs drive the reverb harder at short decays; long ones hold back a little.
         const float decayTrim = std::min(1.0f, std::pow(2.0f / t.decay, 0.25f));
+        const float throwDb = endsLiftDb * t.ends;
 
         for (int n = 0; n < numSamples; ++n)
         {
-            const float dryL = left[n], dryR = right[n];
-            if (listener_.push(0.5f * (dryL + dryR)))
-                onFrame(t);
+            const auto nn = static_cast<size_t>(n);
+            // The Listener hears the input as it arrives; everything else works on
+            // it delayed by the lookahead.
+            const float liveL = left[n], liveR = right[n];
+            const auto [dryL, dryR] = delay(liveL, liveR);
+            delayedLeft_[nn] = dryL;
+            delayedRight_[nn] = dryR;
+            if (listener_.push(0.5f * (liveL + liveR)))
+                heard(t);
+            applyDue(t);
 
             scale_ += (t.scale - scale_) * sizeStep_;
             pre_ += (t.pre - pre_) * glideStep_;
@@ -427,15 +583,30 @@ private:
             out_ += (t.out - out_) * paramStep_;
             width_ += (t.width - width_) * paramStep_;
             midGain_ += (t.midGain - midGain_) * paramStep_;
-            sendDb_ += (sendTargetDb_ - sendDb_) * (sendTargetDb_ < sendDb_ ? sendDown_ : sendUp_);
-            const float send = dbToGain(sendDb_);
+            held_ += (t.held - held_) * catchStep_;
+            const float target = sendTargetDb_ + (throwing_ > 0 ? throwDb : 0.0f);
+            sendDb_ += (target - sendDb_) * (target < sendDb_ ? sendDown_ : sendUp_);
+            // Held, the input stays out of the pad.
+            const float open = 1.0f - held_;
+            const float send = dbToGain(sendDb_) * open;
 
             // The shaped send into the pre-delay.
             input_[0][static_cast<size_t>(inputWrite_)] = dryL * send;
             input_[1][static_cast<size_t>(inputWrite_)] = dryR * send;
             const float pre = std::max(1.0f, pre_);
-            const float sendL = fdn::readLinear(inL, inputMask_, inputWrite_, pre);
-            const float sendR = fdn::readLinear(inR, inputMask_, inputWrite_, pre);
+            float sendL = fdn::readLinear(inL, inputMask_, inputWrite_, pre);
+            float sendR = fdn::readLinear(inR, inputMask_, inputWrite_, pre);
+            // Swell: the line still to come goes in early, rising, so the tail
+            // builds into its first word like a reversed reverb.
+            if (clock_ >= swellStart_ && clock_ < swellEnd_)
+            {
+                const float x =
+                    static_cast<float>(clock_ - swellStart_) / static_cast<float>(swellEnd_ - swellStart_);
+                liveDb_ += (liveCutDb_ - liveDb_) * (liveCutDb_ < liveDb_ ? sendDown_ : sendUp_);
+                const float g = t.swell * swellGain * x * x * dbToGain(liveDb_) * open;
+                sendL += liveL * g;
+                sendR += liveR * g;
+            }
 
             float tailL = 0.0f, tailR = 0.0f;
             fdn::Frame frame;
@@ -450,7 +621,9 @@ private:
                 const float inject = sp.inject * decayTrim * spaceGain_[kk];
                 float l = sendL, r = sendR;
                 networks_[kk].diffuse(l, r);
-                frame.sweep = sp.modSeconds * rate;
+                // Catch holds the current space: no loss, and a little movement.
+                frame.freeze = k == t.space ? held_ : 0.0f;
+                frame.sweep = std::max(sp.modSeconds, heldModSeconds * frame.freeze) * rate;
                 float outL = 0.0f, outR = 0.0f;
                 networks_[kk].process(frame, l * inject, r * inject, outL, outR);
                 // Early reflections, alternating sides, the far side's quieter and inverted.
@@ -496,8 +669,8 @@ private:
             tailL *= shape;
             tailR *= shape;
 
-            wetLeft_[static_cast<size_t>(n)] = tailL;
-            wetRight_[static_cast<size_t>(n)] = tailR;
+            wetLeft_[nn] = tailL;
+            wetRight_[nn] = tailR;
             left[n] = (dryL * (1.0f - wet_) + tailL * wet_) * out_;
             right[n] = (dryR * (1.0f - wet_) + tailR * wet_) * out_;
 
@@ -529,6 +702,8 @@ private:
             drySquare_ = 0.0f;
         if (duck_ < 1.0e-9f)
             duck_ = 0.0f;
+        if (held_ < 1.0e-9f)
+            held_ = 0.0f;
         // Never expected: a non-finite value would ring for ever, so everything starts again.
         for (const auto& net : networks_)
             if (net.diverged())
@@ -538,10 +713,25 @@ private:
             }
     }
 
+    // One sample into the dry delay; the sample `lookahead_` behind it out. The
+    // clock counts the samples in.
+    std::pair<float, float> delay(float l, float r) noexcept
+    {
+        dry_[0][static_cast<size_t>(dryWrite_)] = l;
+        dry_[1][static_cast<size_t>(dryWrite_)] = r;
+        const auto at = static_cast<size_t>((dryWrite_ - lookahead_) & dryMask_);
+        dryWrite_ = (dryWrite_ + 1) & dryMask_;
+        ++clock_;
+        return {dry_[0][at], dry_[1][at]};
+    }
+
     void clearState() noexcept
     {
         for (auto& b : input_)
             std::fill(b.begin(), b.end(), 0.0f);
+        for (auto& b : dry_)
+            std::fill(b.begin(), b.end(), 0.0f);
+        dryWrite_ = 0;
         for (auto& net : networks_)
             net.clear();
         listener_.reset();
@@ -557,36 +747,70 @@ private:
         }
         mudBand_.reset();
         sendDb_ = sendTargetDb_ = 0.0f;
+        liveDb_ = liveCutDb_ = 0.0f;
         duck_ = duckHang_ = 0.0f;
         ends_ = endsTarget_ = 0.0f;
         followHz_ = 0.0f;
         mudDb_ = mudBandPower_ = tailPower_ = 0.0f;
         tailSquare_ = drySquare_ = 0.0f;
+        held_ = 0.0f;
         silentSamples_ = 0;
+        queuedFrames_ = frameRead_ = 0;
+        for (auto& e : pendingEnds_)
+            e = {};
+        throwing_ = 0;
+        lineClosed_ = true;
+        swellStart_ = swellEnd_ = clock_;
     }
 
-    // Bypassed, the reverb keeps running on a copy of the input so the tail
-    // stays current for when it comes back.
+    // Bypassed, the reverb keeps running on a copy of the input so the tail stays
+    // current for when it comes back, and the input comes out delayed by the
+    // lookahead, as the graph was lined up for.
     void processBypassed(float* left, float* right, int numSamples) noexcept override
     {
         std::copy(left, left + numSamples, bypassLeft_.data());
         std::copy(right, right + numSamples, bypassRight_.data());
         processAudio(bypassLeft_.data(), bypassRight_.data(), numSamples);
+        std::copy(delayedLeft_.begin(), delayedLeft_.begin() + numSamples, left);
+        std::copy(delayedRight_.begin(), delayedRight_.begin() + numSamples, right);
     }
+
+    // A Listener frame waiting for the delayed audio to reach the sound it heard.
+    struct QueuedFrame
+    {
+        std::int64_t at = 0;
+        vocal::Hearing hearing;
+    };
+    // A line end waiting for its last word: thrown from `throwAt`, Ends from `endAt`.
+    struct PendingEnd
+    {
+        bool active = false, throwing = false;
+        std::int64_t throwAt = 0, endAt = 0;
+    };
 
     engine::ProcessorFeedback feedback_;
     vocal::Listener listener_;
     std::array<fdn::FeedbackNetwork, spaceCount> networks_;
-    std::array<std::vector<float>, 2> input_;
-    int inputMask_ = 0, inputWrite_ = 0;
-    std::vector<float> wetLeft_, wetRight_, bypassLeft_, bypassRight_;
+    std::array<std::vector<float>, 2> input_, dry_;
+    int inputMask_ = 0, inputWrite_ = 0, dryMask_ = 0, dryWrite_ = 0;
+    std::vector<float> wetLeft_, wetRight_, bypassLeft_, bypassRight_, delayedLeft_, delayedRight_;
     std::array<Biquad, 2> follow_, mudCut_;
     Biquad mudBand_;
+    // Lookahead.
+    int lookahead_ = 0, leadSamples_ = 0;
+    std::int64_t clock_ = 0, throwSamples_ = 0;
+    std::array<QueuedFrame, frameQueueSize> frames_{};
+    int frameRead_ = 0, queuedFrames_ = 0;
+    std::array<PendingEnd, maxPendingEnds> pendingEnds_{};
+    int throwing_ = 0;
+    bool lineClosed_ = true;
+    std::int64_t swellStart_ = 0, swellEnd_ = 0;
     // Smoothed controls.
     float scale_ = 1.0f, pre_ = 0.0f, wet_ = 0.0f, out_ = 1.0f, width_ = 1.0f, midGain_ = 1.0f;
+    float held_ = 0.0f;
     std::array<float, spaceCount> spaceGain_{};
     // What the Listener drives.
-    float sendDb_ = 0.0f, sendTargetDb_ = 0.0f;
+    float sendDb_ = 0.0f, sendTargetDb_ = 0.0f, liveDb_ = 0.0f, liveCutDb_ = 0.0f;
     float duck_ = 0.0f, duckHang_ = 0.0f;
     float ends_ = 0.0f, endsTarget_ = 0.0f;
     float followHz_ = 0.0f;
@@ -597,7 +821,7 @@ private:
     // Coefficients for the rate.
     float sendDown_ = 0.0f, sendUp_ = 0.0f, sizeStep_ = 0.0f, glideStep_ = 0.0f, paramStep_ = 0.0f;
     float spaceStep_ = 0.0f, duckAttack_ = 0.0f, rmsStep_ = 0.0f, mudMeasureStep_ = 0.0f;
-    float endsUp_ = 0.0f, endsDown_ = 0.0f, followStep_ = 0.0f, mudStep_ = 0.0f;
+    float endsUp_ = 0.0f, endsDown_ = 0.0f, followStep_ = 0.0f, mudStep_ = 0.0f, catchStep_ = 0.0f;
 };
 } // namespace
 

@@ -13,8 +13,9 @@ network is `plugins/FeedbackNetwork`, and Bloom's output is bit-identical to bef
 Listener is `plugins/VocalListener`, sharing YIN (`plugins/Yin.h`) with the tuner; it
 costs about 0.45% of a core at 48 kHz (release). Phase 3 is built: `plugins/Vesper`,
 with no latency, the generic editor, and the presets that need nothing from later
-phases; about 1.6% of a core at 48 kHz (release) with everything on. The rest is not
-built.
+phases; about 1.6% of a core at 48 kHz (release) with everything on. Phase 4 is
+built: Lookahead, the Long throw, Swell and Catch, and the presets that use them.
+The rest is not built.
 
 ## The name and the idea
 
@@ -142,18 +143,24 @@ Bloom.
 
 **Lookahead**: Off (0 ms, default), Short (30 ms: no consonant onset slips into the
 send) or Long (500 ms: true throws and Swell). The latency is reported and kept
-while bypassed. Changing it changes the reported latency, so it is not automatable.
+while bypassed. Changing it changes the reported latency and the engine solves the
+graph again, as for the limiter's lookahead. Frames are applied 6 ms before the audio
+they describe, so with Short an "s" is more than 20 dB out of the reverb. With Long
+the last 300 ms of a line go in lifted by Ends (the throw) and Ends starts as the
+last word finishes.
 
 **Swell** (0-100%, Long only): the tail rises into the start of each line, like a
-reversed reverb, without bouncing or flipping audio. Dimmed when lookahead is not
+reversed reverb, without bouncing or flipping audio: when a line starts in the
+input, the input goes into the reverb early, rising as the square of the time
+until the delayed audio reaches it (70% of the send at 100%). Dimmed when lookahead is not
 Long, and the tooltip says why.
 
 ### Catch and Halo
 
 - **Catch** (a latch, automatable): holds the last sung vowel as a pad. The tank's
-  input is kept out and its decay goes to infinite, as Bloom's Freeze does, but it
-  is taken at the end of the last voiced run so no consonant is held. Release fades
-  it out over the decay.
+  input is kept out and its decay goes to infinite, as Bloom's Freeze does, over
+  60 ms, on the current space only. Clarity has already kept consonants out of the
+  tail, so what is held is the vowels. Release fades it out over the decay.
 - **Halo** (0-100%, default 0): a bank of 12 resonators tuned from the Listener's
   notes, so the tail rings at the pitches just sung. Each sung note excites its
   pitch class and the octave above for a few seconds. It is always in tune with the

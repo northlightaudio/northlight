@@ -313,7 +313,10 @@ know nothing format-specific.
   `plugins/Yin.h`, which the tuner (Polaris) uses too. Vesper (`plugins/Vesper`) is
   the Listener in front of three prepared networks, one per space: each Listener
   frame sets the send's cut, the duck, Ends and Follow's high-pass, and the samples
-  between follow them smoothly. A display that needs more than a frame
+  between follow them smoothly. With Lookahead the Listener hears the input as it
+  arrives while the rest runs on it delayed: frames wait in a fixed queue until the
+  delayed audio reaches them (less a 6 ms lead), and a line end schedules its throw
+  and Ends for when its last word gets there. A display that needs more than a frame
   holds (Patina's six stage readouts) publishes its own telemetry block the same
   way, so the shared frame stays small. Patina's card is a hardware face: the
   drawing shared by such faces (pointer knobs, printed legends, images from

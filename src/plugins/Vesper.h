@@ -20,9 +20,14 @@
 //    250-500 Hz, Centre takes the tail's middle down so it sits round the voice;
 //  - Duck lowers the tail while the singer sings (keyed by what the Listener
 //    hears, not the level), Release brings it back (in ms or a note value), and
-//    Ends lifts and lengthens it at each line end.
+//    Ends lifts and lengthens it at each line end;
+//  - Lookahead (Off, Short 30 ms, Long 500 ms, reported as latency) runs the
+//    Listener ahead of the audio: the send is down before a consonant starts,
+//    and with Long a line's last word is thrown into the reverb and Swell lets
+//    the tail rise into each line before it is sung;
+//  - Catch holds the tail as a pad, the input kept out, until it is let go.
 //
-// No latency. JUCE-free.
+// No latency unless Lookahead asks for it. JUCE-free.
 
 namespace northlight::plugins::vesper
 {
@@ -52,6 +57,9 @@ enum Param
     gap,          // ms: how long a pause ends a line
     mix,          // % wet
     output,       // dB
+    lookahead,    // choice: Off, Short, Long (lookaheadSeconds; reported as latency)
+    swell,        // %: the tail rises into each line before it is sung (Long only)
+    catchTail,    // choice: Off, On (the tail holds as a pad; the input stays out)
     count
 };
 
@@ -65,6 +73,20 @@ inline constexpr float sendCutDb = 24.0f; // Clarity or Breaths at 100%
 inline constexpr float mudCutDb = 6.0f;   // Mud at 100%, at the most build-up
 inline constexpr float endsLiftDb = 6.0f; // Ends at 100%
 inline constexpr float endsDecayRatio = 2.0f;
+// Lookahead: Short is enough to have the send down before an "s" starts; Long
+// knows a line has ended while its last word is still to be heard, and the
+// next line's start before it comes.
+inline constexpr double shortLookaheadSeconds = 0.03, longLookaheadSeconds = 0.5;
+// How much earlier than the audio it describes a Listener frame is applied (it
+// hears a sound a few milliseconds after it starts), when the lookahead allows.
+inline constexpr double listenerLeadSeconds = 0.006;
+// With Long, the last this-much of a line goes into the reverb lifted by Ends (a throw).
+inline constexpr double throwSeconds = 0.3;
+inline constexpr float swellGain = 0.7f; // the swell's send at 100%, at its peak
+
+// The lookahead for a choice (Off, Short, Long), and in samples at a rate.
+double lookaheadSeconds(float choice) noexcept;
+int lookaheadSamples(float choice, double sampleRate) noexcept;
 
 // Auto pre-delay for a singing rate (syllables a second): about 90 ms for slow,
 // held lines down to 25 ms for fast ones; 60 ms before anything is sung.
