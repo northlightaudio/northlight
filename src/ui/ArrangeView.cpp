@@ -2740,14 +2740,22 @@ void ArrangeView::clearSelection()
 
 void ArrangeView::setSnapEnabled(bool on)
 {
+    if (on == snap_)
+        return;
     snap_ = on;
     repaint();
+    if (onEditModesChanged)
+        onEditModesChanged();
 }
 
 void ArrangeView::setRippleEnabled(bool on)
 {
+    if (on == ripple_)
+        return;
     ripple_ = on;
     repaint();
+    if (onEditModesChanged)
+        onEditModesChanged();
 }
 
 core::GridStep ArrangeView::gridAt(core::SamplePosition at) const noexcept
@@ -2771,8 +2779,12 @@ core::SamplePosition ArrangeView::lineAtOrAfter(core::SamplePosition s) const no
 
 void ArrangeView::setSnapGrid(int division)
 {
+    if (std::max(0, division) == snapGrid_)
+        return;
     snapGrid_ = std::max(0, division);
     repaint();
+    if (onEditModesChanged)
+        onEditModesChanged();
 }
 
 juce::String ArrangeView::snapGridName() const

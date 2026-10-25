@@ -206,6 +206,9 @@ Northlight has not had a release yet. The first release, 0.1.0, will include:
 
 ### Fixed
 
+- The master's row in the arrange view shows its meter; the arrange view's meters
+  no longer depend on the mixer's own timer.
+
 - Values read the same on every card: one way of writing Hz, kHz, seconds, percent and
   dB, with a true minus sign (some cards wrote "-3.2 dB", others "−3.2 dB";
   2.4 kHz read "2.40 kHz" on one card and "2.4 kHz" on the next).

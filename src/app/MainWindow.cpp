@@ -333,9 +333,9 @@ public:
         : owner_(owner), audio_(audio), session_(session), settings_(settings), header_(theme_),
           tracks_(session.peakStore(), theme_), dock_(theme_, ui::HostKind::dock),
           side_(theme_, ui::HostKind::side), status_(theme_), toasts_(theme_), tooltips_(theme_),
-          dockSplitter_(theme_, true), sideSplitter_(theme_, false),
+          dockSplitter_(theme_, true), sideSplitter_(theme_, false), meters_(session.engine().meters()),
           mixer_(
-              session.engine().meters(),
+              meters_,
               [&session] { return session.engine().loudness(); },
               [&session] { return session.engine().masterMeterSlot(); }),
           editor_(theme_), instruments_(theme_), pianoRoll_(theme_),
@@ -1150,6 +1150,12 @@ private:
         // Audio files and Standard MIDI Files.
         tracks_.setAcceptedExtensions(session_.mediaLoader().supportedExtensions() + ";*.mid;*.midi");
         tracks_.setSelection(&selection_);
+        tracks_.onEditModesChanged = [this]
+        {
+            arrangeModes_ = {tracks_.snapEnabled(), tracks_.rippleEnabled(), tracks_.snapGridName()};
+            refreshHeader();
+        };
+        arrangeModes_ = {tracks_.snapEnabled(), tracks_.rippleEnabled(), tracks_.snapGridName()};
         tracks_.onTrackSelected = [this](core::Id id) { select(id); };
         tracks_.onSelectionChanged = [this]
         {
@@ -1169,11 +1175,10 @@ private:
         tracks_.onCommand = [this](std::unique_ptr<core::Command> c) { session_.execute(std::move(c)); };
         tracks_.onGestureBegin = [this](const std::string& name) { session_.beginGesture(name); };
         tracks_.onGestureEnd = [this] { session_.endGesture(); };
-        tracks_.trackMeter = [this](int index) { return mixer_.lastReading(engine::trackMeterSlot(index)); };
+        tracks_.trackMeter = [this](int index) { return meters_.reading(engine::trackMeterSlot(index)); };
         tracks_.busMeter = [this](int index)
-        { return mixer_.lastReading(engine::busMeterSlot(session_.project(), index)); };
-        tracks_.masterMeter = [this]
-        { return mixer_.lastReading(engine::masterMeterSlot(session_.project())); };
+        { return meters_.reading(engine::busMeterSlot(session_.project(), index)); };
+        tracks_.masterMeter = [this] { return meters_.reading(session_.engine().masterMeterSlot()); };
     }
 
     void wireMixer()
@@ -1606,9 +1611,9 @@ private:
             state.signatureDenominator = signature.denominator;
         }
         state.masterClipped = mixer_.masterClipped();
-        state.snap = tracks_.snapEnabled();
-        state.snapName = tracks_.snapGridName();
-        state.ripple = tracks_.rippleEnabled();
+        state.snap = arrangeModes_.snap;
+        state.snapName = arrangeModes_.snapName;
+        state.ripple = arrangeModes_.ripple;
         state.mixerVisible = panels_.isVisible(ui::PanelId::mixer);
         state.editorVisible = panels_.isVisible(ui::PanelId::editor);
         state.browserVisible = panels_.isVisible(ui::PanelId::browser);
@@ -1702,6 +1707,8 @@ private:
         // The takes being recorded, drawn growing (screens/arrange.md "Recording clip").
         session_.updateLiveRecording(tracks_.liveRecording());
         tracks_.liveRecordingChanged();
+        meters_.tick();
+        mixer_.pushMeters();
         tracks_.pushMeters();
         if (auditionEnd_ >= 0 && (!session_.isPlaying() || session_.position() >= auditionEnd_))
         {
@@ -3084,6 +3091,13 @@ private:
     ui::ToastStack toasts_;
     ui::Tooltips tooltips_; // the floating tooltip for every control
     Splitter dockSplitter_, sideSplitter_;
+    ui::MeterReadings meters_; // every view's meters, read once a tick
+    // The arrange view's snap, grid and ripple as it last reported them (the header shows them).
+    struct ArrangeModes
+    {
+        bool snap = true, ripple = false;
+        juce::String snapName;
+    } arrangeModes_;
     ui::MixerView mixer_;
     ui::EditorPanel editor_;
     ui::InstrumentRack instruments_;

@@ -109,7 +109,8 @@ TEST_CASE("Every card and the mixer paint within their time budgets", "[.paintti
         core::AddTrack(track).apply(project);
     }
     rt::MeterBlock meters;
-    ui::MixerView mixer(meters, nullptr, nullptr);
+    ui::MeterReadings readings(meters);
+    ui::MixerView mixer(readings, nullptr, nullptr);
     mixer.setBounds(0, 0, 1400, 700);
     mixer.setProject(&project);
     const double full = medianPaintMs(mixer, juce::RectangleList<int>(mixer.getLocalBounds()), 15);

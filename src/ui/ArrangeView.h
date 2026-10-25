@@ -130,6 +130,9 @@ public:
     void zoomToSelection();
     void setSnapEnabled(bool on);
     void setRippleEnabled(bool on);
+    // Snap, the snap grid or ripple changed (a key, a menu, a setter): the owner
+    // updates what shows them, instead of asking every frame.
+    std::function<void()> onEditModesChanged;
 
     using ClipRef = edit::ClipRef; // a MIDI clip (Track::midiClips) or an audio clip
     // Double-click on a MIDI clip: open it in the piano roll.

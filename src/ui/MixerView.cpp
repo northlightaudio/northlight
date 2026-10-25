@@ -40,7 +40,6 @@ constexpr double maxFaderDb = 6.0; // matches core::maxChannelGain
 // Colours handed to new fader groups in turn.
 constexpr std::uint32_t groupColours[] = {
     0xff4f8fe8u, 0xffe8a84fu, 0xff5fc96fu, 0xffd65f9eu, 0xff9b6fe8u, 0xff4fc9c9u};
-constexpr int meterHz = 30;
 constexpr int slotHeight = 20;     // an insert slot or a send row
 constexpr int maxVisibleSlots = 6; // inserts shown before the box scrolls
 constexpr int minFaderTravel = 120, maxFaderTravel = 200;
@@ -2069,7 +2068,7 @@ void MixerView::openInsertEditor(core::Id channelId, core::Id insertId)
     noteEditorWindows();
 }
 
-MixerView::MixerView(rt::MeterBlock& meters,
+MixerView::MixerView(const MeterReadings& meters,
                      std::function<engine::LoudnessMeter::Reading()> loudness,
                      std::function<int()> masterMeterSlot)
     : meters_(meters), loudness_(std::move(loudness)), masterMeterSlot_(std::move(masterMeterSlot))
@@ -2085,11 +2084,9 @@ MixerView::MixerView(rt::MeterBlock& meters,
     addBus_.setTooltip("Add a bus or an FX track");
     addBus_.onClick = [this] { addBus(); };
     stripsHolder_.addAndMakeVisible(addBus_);
-    startTimerHz(meterHz);
 }
 MixerView::~MixerView()
 {
-    stopTimer();
     closeEditors();
 }
 
@@ -2311,26 +2308,15 @@ void MixerView::layoutStrips()
     addBus_.setBounds(x, theme_.spacing.xs, 56, theme_.sizes.controlCompact);
     stripsHolder_.setSize(std::max(1, x + 56 + gap), std::max(1, height));
 }
-void MixerView::timerCallback()
+void MixerView::pushMeters()
 {
-    const double now = juce::Time::getMillisecondCounterHiRes();
-    const double elapsed = lastMeterMs_ > 0.0 ? now - lastMeterMs_ : 1000.0 / meterHz;
-    lastMeterMs_ = now;
+    const double elapsed = meters_.elapsedMs();
     for (auto& strip : strips_)
-    {
-        const auto reading = meters_.take(strip->meterSlot());
-        if (strip->meterSlot() >= 0)
-        {
-            if (static_cast<size_t>(strip->meterSlot()) >= readings_.size())
-                readings_.resize(static_cast<size_t>(strip->meterSlot()) + 1);
-            readings_[static_cast<size_t>(strip->meterSlot())] = reading;
-        }
-        strip->pushMeter(reading, elapsed);
-    }
+        strip->pushMeter(meters_.reading(strip->meterSlot()), elapsed);
     if (project_ != nullptr)
     {
         const auto reading =
-            meters_.take(masterMeterSlot_ ? masterMeterSlot_() : engine::masterMeterSlot(*project_));
+            meters_.reading(masterMeterSlot_ ? masterMeterSlot_() : engine::masterMeterSlot(*project_));
         if (reading.peakLeft >= 1.0f || reading.peakRight >= 1.0f)
             masterClipped_ = true;
         master_->pushMeter(reading, elapsed);

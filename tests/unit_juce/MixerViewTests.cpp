@@ -55,7 +55,8 @@ TEST_CASE("Moving one fader leaves an automated fader on its played value", "[ui
     const core::Id automated = addB.trackId();
 
     rt::MeterBlock meters;
-    ui::MixerView mixer(meters, nullptr, nullptr);
+    ui::MeterReadings readings(meters);
+    ui::MixerView mixer(readings, nullptr, nullptr);
     mixer.automatedValues = [automated](core::Id id)
     {
         ui::MixerView::Automated played;
@@ -115,7 +116,8 @@ TEST_CASE("The master strip lists the master's inserts and follows their changes
     insert.apply(project);
 
     rt::MeterBlock meters;
-    ui::MixerView mixer(meters, nullptr, nullptr);
+    ui::MeterReadings readings(meters);
+    ui::MixerView mixer(readings, nullptr, nullptr);
     mixer.setBounds(0, 0, 1200, 700);
     mixer.setProject(&project);
     std::vector<juce::String> tips;

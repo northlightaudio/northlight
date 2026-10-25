@@ -6,6 +6,7 @@
 #include "engine/Meters.h"
 #include "hosting/HostFactory.h"
 #include "ui/InputChoices.h"
+#include "ui/MeterReadings.h"
 #include "ui/PluginMenu.h"
 #include "ui/PluginWindow.h"
 #include "ui/Theme.h"
@@ -30,10 +31,12 @@ namespace northlight::ui
 // right. Every change is issued as a core::Command through onCommand; the view
 // refreshes from the project it is given and drains the meter block on a timer.
 // The selected strip follows the arrange selection and reports clicks back.
-class MixerView final : public juce::Component, private juce::Timer
+class MixerView final : public juce::Component
 {
 public:
-    MixerView(rt::MeterBlock& meters,
+    // The strips' meters come from `meters`, which the window ticks; it calls
+    // pushMeters() after each tick.
+    MixerView(const MeterReadings& meters,
               std::function<engine::LoudnessMeter::Reading()> loudness,
               std::function<int()> masterMeterSlot);
     ~MixerView() override;
@@ -77,14 +80,8 @@ public:
     // The master clipped since the last clear (the header's indicator mirrors it).
     bool masterClipped() const noexcept { return masterClipped_; }
     void clearMasterClip() { masterClipped_ = false; }
-    // The last reading taken for a meter slot (the mixer consumes the meters; the
-    // arrange headers read these copies).
-    rt::MeterBlock::Reading lastReading(int slot) const noexcept
-    {
-        return slot >= 0 && static_cast<size_t>(slot) < readings_.size()
-                   ? readings_[static_cast<size_t>(slot)]
-                   : rt::MeterBlock::Reading{};
-    }
+    // The strips' and the master's meters take the readings' latest frame.
+    void pushMeters();
 
     void paint(juce::Graphics& g) override;
     void resized() override;
@@ -115,22 +112,19 @@ private:
     void showAddInsertMenu(core::Id channelId, juce::Component& target);
     void showInsertMenu(core::Id channelId, core::Id insertId, bool offerOutputs);
 
-    void timerCallback() override;
     void rebuildStrips();
     void layoutStrips();
     void addBus();
 
     const Theme& theme_ = Theme::dark();
-    rt::MeterBlock& meters_;
+    const MeterReadings& meters_;
     std::function<engine::LoudnessMeter::Reading()> loudness_;
     std::function<int()> masterMeterSlot_;
     const core::Project* project_ = nullptr;
     bool masterClipped_ = false;
-    std::vector<rt::MeterBlock::Reading> readings_;
     std::vector<InputChoice> inputChoices_;
     std::vector<std::string> midiInputNames_;
     core::Id selected_ = core::invalidId;
-    double lastMeterMs_ = 0.0;
     // The rows every strip reserves, sized to the busiest strip so that each
     // section (fader, pan, buttons) sits at the same height in all of them.
     struct RowPlan

@@ -533,7 +533,11 @@ hit-testing, so snapping and resizing stay native. Below it are the arrange view
 dock and a side panel, and the status bar. Every secondary view is a panel owned by
 exactly one host at a time (the dock, the side panel or a floating window), so it
 keeps its state across moves and can never be lost. Selection has one owner that
-notifies one listener, which keeps every view on the same channel.
+notifies one listener, which keeps every view on the same channel. The window's
+tick reads the engine's meter block once (`ui::MeterReadings`) and hands the
+readings to the mixer's strips and the arrange view's headers alike, and the
+arrange view reports its snap, grid and ripple when they change rather than
+being asked every frame.
 
 The timeline views (the arrange view and the lanes it hosts, the piano roll, the
 audio editor) map time to pixels through one `ui::TimelineViewport`
