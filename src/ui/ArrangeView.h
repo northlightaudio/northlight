@@ -16,6 +16,7 @@
 #include "ui/TrackHeader.h"
 #include "ui/arrange/ArrangeLayout.h"
 #include "ui/arrange/ArrangeMenus.h"
+#include "ui/arrange/MarkerController.h"
 #include "ui/edit/ClipOps.h"
 #include "ui/timeline/GridLines.h"
 #include "ui/timeline/TimelineViewport.h"
@@ -294,7 +295,7 @@ private:
     int resizeHeight_ = 0, resizeStartHeight_ = 0;
     int scrollbarHeight = 10;
     int scrollbarWidth = 10;
-    static constexpr int markersRowHeight = 14;
+    static constexpr int markersRowHeight = MarkerController::rowHeight;
     static constexpr int edgeZone = 6;   // px at a clip's ends that trim
     static constexpr int fadeHandle = 8; // px square at a clip's top corners
     static constexpr int loopHandle = 8; // px at the loop band's ends
@@ -493,14 +494,10 @@ private:
     bool shownMuted(const ClipRef& ref, bool muted) const noexcept;
     void drawToolOverlay(juce::Graphics& g);
     void hoverAt(juce::Point<int> p, juce::ModifierKeys mods);
-    // Markers.
-    const core::Marker* markerAtRulerPoint(juce::Point<int> p) const noexcept;
-    juce::Rectangle<int> markerFlagBounds(const core::Marker& marker) const noexcept;
-    void drawMarkers(juce::Graphics& g, juce::Rectangle<int> timeRow);
+    // Markers (MarkerController): one at the playhead (or a region from the loop),
+    // and a jump to the previous or next.
     void addMarkerAtPlayhead(bool region);
     void jumpToMarker(int direction);
-    void renameMarker(core::Id markerId);
-    void finishMarkerDrag();
     void mouseDoubleClick(const juce::MouseEvent& e) override;
     juce::MouseCursor cursorFor(Drag zone) const noexcept;
 
@@ -534,7 +531,6 @@ private:
     juce::StringArray dropFiles_;
     bool followPlayhead_ = true;
     int hoverRow_ = -1;
-    core::Id hoverMarker_ = core::invalidId;
     ClipRef hoverClip_;
     juce::Point<int> dragPoint_;
     double zoomStartSpp_ = 1.0;
@@ -582,10 +578,9 @@ private:
     // and its take lanes). MIDI tracks and folders have none.
     int automationHeight(int row) const noexcept;
     juce::Rectangle<int> automationBlock(int row) const noexcept;
-    std::vector<int> valuesTops_;        // the row layout at the last values refresh
-    TempoLane tempoLane_{theme_, view_}; // after theme_ and view_, which it keeps references to
-    std::unique_ptr<juce::TextEditor> markerEditor_;
-    core::Id editingMarker_ = core::invalidId;
+    std::vector<int> valuesTops_;                    // the row layout at the last values refresh
+    TempoLane tempoLane_{theme_, view_};             // after theme_ and view_, which it keeps references to
+    MarkerController markers_{*this, theme_, view_}; // after theme_ and view_
 
     // editing state
     std::vector<ClipRef> selection_;
@@ -651,7 +646,6 @@ private:
     float gainPreview_ = 1.0f;    // preview: gain
     juce::Rectangle<int> lasso_;
     bool draggedFar_ = false;
-    core::Id selectedMarker_ = core::invalidId;
     const Selection* sharedSelection_ = nullptr;
     Selection ownSelection_; // without a shared one
     const Selection& trackSelection() const noexcept
@@ -663,8 +657,6 @@ private:
         import_{"Import audio\xe2\x80\xa6"};
     void layoutEmptyState();
     void selectTrack(core::Id trackId);
-    core::Marker dragMarker_;                // the marker being dragged, as it was
-    core::SamplePosition markerPreview_ = 0; // its position during the drag
     const PluginSources* pluginSources_ = nullptr;
     // Take lanes and comping (screens/comping.md): lanes under a track's row, swipes, boundaries.
     TakeLanes takes_{theme_, peaks_, *this, view_};

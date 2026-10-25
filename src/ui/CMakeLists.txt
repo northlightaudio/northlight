@@ -169,6 +169,8 @@ add_library(northlight_ui STATIC
     timeline/ClipPainter.cpp
     arrange/ArrangeMenus.h
     arrange/ArrangeMenus.cpp
+    arrange/MarkerController.h
+    arrange/MarkerController.cpp
     ArrangeView.h
     ArrangeView.cpp
     TakeLanes.h
