@@ -2,6 +2,7 @@
 #include "plugins/Biquad.h"
 #include "plugins/MeteredBuiltIn.h"
 #include "plugins/Pedals.h"
+#include "plugins/dsp/Dynamics.h"
 #include "plugins/dsp/Smoothing.h"
 
 #include <algorithm>
@@ -28,14 +29,7 @@ constexpr float floorDb = -64.0f;
 
 float reductionDb(const Curve& c, float inputDb) noexcept
 {
-    const float over = inputDb - c.thresholdDb;
-    const float slope = 1.0f - 1.0f / c.ratio;
-    if (over <= -kneeDb * 0.5f)
-        return 0.0f;
-    if (over >= kneeDb * 0.5f)
-        return over * slope;
-    const float x = over + kneeDb * 0.5f;
-    return slope * x * x / (2.0f * kneeDb);
+    return dsp::softKneeReductionDb(inputDb - c.thresholdDb, 1.0f - 1.0f / c.ratio, kneeDb);
 }
 
 float coefficient(float ms, double sampleRate) noexcept

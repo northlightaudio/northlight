@@ -214,6 +214,9 @@ double responseDb(const float* params, double sampleRate, double hz, int band) n
 
 namespace compressor
 {
+// Not dsp::softKneeReductionDb (Glue's and Gravity's): the knee here includes
+// its top edge, where the quadratic and the straight part agree only to within
+// rounding, so sharing it would move the output there; and a knee of 0 is hard.
 float gainReductionDb(float levelDb, float thresholdDb, float ratio, float kneeDb) noexcept
 {
     const float slope = 1.0f - 1.0f / std::max(1.0f, ratio);
@@ -497,10 +500,10 @@ std::vector<engine::ParameterInfo> eqParameters()
 
 // Six bands in a fixed layout of twelve sections (identity where a band is
 // off, skipped). A parameter change ramps the coefficients across the block.
-class Eq final : public FeedbackBuiltIn
+class SixBandEq final : public FeedbackBuiltIn
 {
 public:
-    Eq() : FeedbackBuiltIn(types::eq, eqParameters(), true) {}
+    SixBandEq() : FeedbackBuiltIn(types::eq, eqParameters(), true) {}
 
 private:
     void prepareBuiltIn(double, int) override
@@ -1149,10 +1152,10 @@ std::vector<engine::ParameterInfo> limiterParameters()
 // Zero-latency peak limiter: the gain drops at once to what the sample needs
 // and recovers at the release rate; the output is clamped to the ceiling. No
 // lookahead, so a strip that is switched off adds no delay to the channel.
-class Limiter final : public FeedbackBuiltIn
+class PeakLimiter final : public FeedbackBuiltIn
 {
 public:
-    Limiter() : FeedbackBuiltIn(types::limiter, limiterParameters()) {}
+    PeakLimiter() : FeedbackBuiltIn(types::limiter, limiterParameters()) {}
 
 private:
     void prepareBuiltIn(double, int) override
@@ -1210,7 +1213,7 @@ std::unique_ptr<engine::InsertProcessor> create(const std::string& type)
     if (type == types::gate)
         return std::make_unique<Gate>();
     if (type == types::eq)
-        return std::make_unique<Eq>();
+        return std::make_unique<SixBandEq>();
     if (type == types::compressor)
         return std::make_unique<Compressor>();
     if (type == types::deesser)
@@ -1218,7 +1221,7 @@ std::unique_ptr<engine::InsertProcessor> create(const std::string& type)
     if (type == types::saturation)
         return std::make_unique<Saturation>();
     if (type == types::limiter)
-        return std::make_unique<Limiter>();
+        return std::make_unique<PeakLimiter>();
     return nullptr;
 }
 

@@ -2,6 +2,7 @@
 #include "plugins/Biquad.h"
 #include "plugins/dsp/DelayLine.h"
 #include "plugins/dsp/Denormals.h"
+#include "plugins/dsp/Dynamics.h"
 #include "plugins/dsp/PolyBlep.h"
 #include "plugins/dsp/Random.h"
 #include "plugins/dsp/Shapers.h"
@@ -329,4 +330,17 @@ TEST_CASE("A biquad's denormal flush clears a dead tail and keeps a live one", "
     f.flushDenormals();
     CHECK(f.z1 == 1.0e-3f);
     CHECK(f.z2 == -1.0e-19f);
+}
+
+TEST_CASE("The soft knee reduces nothing below it, the slope above it and meets both inside",
+          "[plugins][dsp]")
+{
+    using northlight::plugins::dsp::softKneeReductionDb;
+    constexpr float slope = 0.75f, knee = 4.0f; // 4:1
+    CHECK(softKneeReductionDb(-2.0f, slope, knee) == 0.0f);
+    CHECK(softKneeReductionDb(-10.0f, slope, knee) == 0.0f);
+    CHECK(softKneeReductionDb(2.0f, slope, knee) == 1.5f);
+    CHECK(softKneeReductionDb(12.0f, slope, knee) == 9.0f);
+    CHECK(softKneeReductionDb(0.0f, slope, knee) == Catch::Approx(slope * knee / 8.0f));
+    CHECK(softKneeReductionDb(1.999f, slope, knee) == Catch::Approx(1.999f * slope).margin(1e-5f));
 }

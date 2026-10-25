@@ -403,7 +403,9 @@ know nothing format-specific.
   `PolyBlep.h` (the band-limited saw and square), `SpringTank.h` (a spring's
   dispersive loop, tuned by a `SpringTuning`), `Shapers.h` (`logCosh`, the
   biased-tanh `tube` curve and their antiderivatives, and the `adaa1`
-  anti-aliasing step) and `Denormals.h` (`flush`, a state to zero below a
+  anti-aliasing step), `Dynamics.h` (the soft-knee gain computer Glue and
+  Gravity share; the strip compressor keeps its own, whose knee includes its top
+  edge) and `Denormals.h` (`flush`, a state to zero below a
   tolerance, which `Biquad::flushDenormals` uses). Each processor keeps its own
   seeds, constants and tolerances, so moving onto the kit never changes its sound.
 - **The guitar pedals** share one card, `ui/strip/PedalCard`, which reads a

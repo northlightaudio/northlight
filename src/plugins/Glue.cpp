@@ -5,6 +5,7 @@
 #include "plugins/Biquad.h"
 #include "plugins/MeteredBuiltIn.h"
 #include "plugins/ParamHelpers.h"
+#include "plugins/dsp/Dynamics.h"
 #include "plugins/dsp/Smoothing.h"
 
 #include <algorithm>
@@ -17,15 +18,7 @@ namespace northlight::plugins::glue
 
 float gainReductionDb(float levelDb, float thresholdDb, float ratio) noexcept
 {
-    const float over = levelDb - thresholdDb;
-    const float slope = 1.0f - 1.0f / std::max(1.0f, ratio);
-    if (2.0f * over <= -kneeDb)
-        return 0.0f;
-    if (2.0f * over >= kneeDb)
-        return over * slope;
-    // Inside the knee: the quadratic that meets both straight parts.
-    const float x = over + 0.5f * kneeDb;
-    return slope * x * x / (2.0f * kneeDb);
+    return dsp::softKneeReductionDb(levelDb - thresholdDb, 1.0f - 1.0f / std::max(1.0f, ratio), kneeDb);
 }
 
 namespace
@@ -107,7 +100,7 @@ private:
     void processAudio(float* left, float* right, int numSamples) noexcept override
     {
         const float thresholdDb = parameter(threshold);
-        const float slope = ratioFor(parameter(ratio));
+        const float ratioValue = ratioFor(parameter(ratio));
         const float attackStep = 1.0f - coefficient(attackMsFor(parameter(attack)) * 0.001f);
         const bool autoMode = isAutoRelease(parameter(release));
         const float releaseStep =
@@ -134,7 +127,7 @@ private:
                 keyR = keyFilter_[1].process(inR);
             }
             const float level = std::max(std::abs(keyL), std::abs(keyR));
-            const float target = gainReductionDb(gainToDb(level), thresholdDb, slope);
+            const float target = gainReductionDb(gainToDb(level), thresholdDb, ratioValue);
             fast_ += (target - fast_) * (target > fast_ ? attackStep : releaseStep);
             float reduction = fast_;
             if (autoMode)

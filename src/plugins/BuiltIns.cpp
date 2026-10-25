@@ -69,7 +69,7 @@ private:
 
 // ----- EQ -------------------------------------------------------------------------------------
 
-class Eq final : public MeteredBuiltIn
+class ThreeBandEq final : public MeteredBuiltIn
 {
 public:
     enum Param
@@ -99,8 +99,8 @@ public:
         return p;
     }
 
-    Eq() : MeteredBuiltIn(types::eq, parameterInfos(),
-                          true) // taps for the editor's analyser
+    ThreeBandEq() : MeteredBuiltIn(types::eq, parameterInfos(),
+                                   true) // taps for the editor's analyser
     {
     }
 
@@ -186,7 +186,7 @@ private:
 // Brickwall with lookahead: the signal is delayed by the lookahead while the gain
 // ramps down ahead of a peak, so the ceiling holds without clipping; the delay is
 // reported as latency and compensated across the graph.
-class Limiter final : public MeteredBuiltIn
+class LookaheadLimiter final : public MeteredBuiltIn
 {
 public:
     enum Param
@@ -208,7 +208,7 @@ public:
         return p;
     }
 
-    Limiter() : MeteredBuiltIn(types::limiter, parameterInfos()) {}
+    LookaheadLimiter() : MeteredBuiltIn(types::limiter, parameterInfos()) {}
 
     // Lookahead: the signal is delayed by L samples while the gain the next L
     // samples need is already known, so a peak is attenuated before it arrives and
@@ -371,6 +371,10 @@ private:
 // matrix, each with the gain that makes it fall 60 dB in the decay time and a
 // one-pole low-pass for damping. Even lines feed the left output, odd the
 // right. Memory is allocated in prepare for the largest size.
+// It stays apart from plugins/FeedbackNetwork (Bloom's and Vesper's core):
+// that network modulates its lines, gives each an allpass, damps with shelves
+// and governs its energy, so this reverb on it would no longer sound the same,
+// and saved projects keep this one's sound.
 class Reverb final : public MeteredBuiltIn
 {
 public:
@@ -668,7 +672,7 @@ const std::vector<BuiltInType>& builtInTypes()
     namespace pl = presetlists;
     static const std::vector<BuiltInType> list{
         {types::gain, "Gain", effect, make<Gain>, pl::gainPresets},
-        {types::eq, "EQ", effect, make<Eq>, pl::eqPresets},
+        {types::eq, "EQ", effect, make<ThreeBandEq>, pl::eqPresets},
         {types::compressor, "Compressor", effect, keyedCompressor, pl::compressorPresets},
         {types::opto, "Opto Compressor", effect, optoCompressor, pl::optoPresets},
         {glue::type, "Glue Compressor", effect, plain<glue::create>, pl::gluePresets},
@@ -676,7 +680,7 @@ const std::vector<BuiltInType>& builtInTypes()
         {patina::type, "Patina", effect, plain<patina::create>, pl::patinaPresets},
         {exciter::type, "Exciter", effect, plain<exciter::create>, pl::exciterPresets},
         {orbit::type, "Orbit", effect, plain<orbit::create>, pl::orbitPresets},
-        {types::limiter, "Limiter", effect, make<Limiter>, pl::limiterPresets},
+        {types::limiter, "Limiter", effect, make<LookaheadLimiter>, pl::limiterPresets},
         {types::reverb, "Reverb", effect, make<Reverb>, pl::reverbPresets},
         {types::delay, "Delay", effect, make<Delay>, pl::delayPresets},
         {tapeecho::type, "Tape Echo", effect, plain<tapeecho::create>, pl::tapeEchoPresets},
