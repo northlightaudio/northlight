@@ -5,6 +5,7 @@
 #include "plugins/SynthVoices.h"
 #include "plugins/dsp/Random.h"
 #include "plugins/dsp/Smoothing.h"
+#include "plugins/dsp/Svf.h"
 
 #include <algorithm>
 #include <array>
@@ -69,26 +70,6 @@ inline float morph(float shape, double phase, double dt) noexcept
     return a + (shapeSample(i + 1, phase, dt) - a) * t;
 }
 
-// A topology-preserving state variable filter (one channel, 12 dB/octave).
-struct Svf
-{
-    float ic1 = 0.0f, ic2 = 0.0f;
-    // Returns low, band and high for one input.
-    void run(float x, float g, float k, float& low, float& band, float& high) noexcept
-    {
-        const float a1 = 1.0f / (1.0f + g * (g + k));
-        const float v3 = x - ic2;
-        const float v1 = a1 * ic1 + g * a1 * v3;
-        const float v2 = ic2 + g * v1;
-        ic1 = 2.0f * v1 - ic1;
-        ic2 = 2.0f * v2 - ic2;
-        low = v2;
-        band = v1;
-        high = x - k * v1 - v2;
-    }
-    void reset() noexcept { ic1 = ic2 = 0.0f; }
-};
-
 using synth::Envelope;
 using synth::Stage;
 
@@ -101,8 +82,8 @@ struct Voice
     std::array<double, maxUnison> phase1{}, phase2{};
     double subPhase = 0.0;
     Envelope amp, filter;
-    std::array<Svf, 2> stage1, stage2; // per channel: the first and (for 24 dB) second stage
-    float g = 0.5f, k = 1.4f;          // filter coefficients, per control interval
+    std::array<dsp::Svf, 2> stage1, stage2; // per channel: the first and (for 24 dB) second stage
+    float g = 0.5f, k = 1.4f;               // filter coefficients, per control interval
     bool active() const noexcept { return amp.stage != Stage::off; }
 };
 

@@ -2,11 +2,13 @@
 #include "plugins/dsp/DelayLine.h"
 #include "plugins/dsp/Random.h"
 #include "plugins/dsp/Smoothing.h"
+#include "plugins/dsp/Svf.h"
 
 #include <catch2/catch_approx.hpp>
 #include <catch2/catch_test_macros.hpp>
 
 #include <algorithm>
+#include <array>
 #include <cmath>
 #include <cstdint>
 #include <numbers>
@@ -170,4 +172,46 @@ TEST_CASE("A delay line reads back what was pushed, whole and fractional", "[plu
 
     line.clear();
     CHECK(line.at(5) == 0.0f);
+}
+
+TEST_CASE("The state-variable filter's outputs split a tone at its cutoff", "[plugins][dsp]")
+{
+    constexpr double rate = 48000.0;
+    const auto g = static_cast<float>(std::tan(std::numbers::pi * 1000.0 / rate));
+    constexpr float k = 1.4142135f; // Q = 1/sqrt(2)
+    const auto levels = [&](double hz)
+    {
+        dsp::Svf svf;
+        double low = 0.0, band = 0.0, high = 0.0, in = 0.0;
+        for (int i = 0; i < 48000; ++i)
+        {
+            const auto x = static_cast<float>(std::sin(2.0 * std::numbers::pi * hz * i / rate));
+            float l, b, h;
+            svf.run(x, g, k, l, b, h);
+            if (i >= 24000)
+            {
+                low += l * l;
+                band += b * b;
+                high += h * h;
+                in += x * x;
+            }
+        }
+        return std::array<double, 3>{
+            10.0 * std::log10(low / in), 10.0 * std::log10(band / in), 10.0 * std::log10(high / in)};
+    };
+    const auto at = levels(1000.0);
+    CHECK(at[0] == Approx(-3.0).margin(0.2)); // Butterworth low and high: -3 dB at the corner
+    CHECK(at[2] == Approx(-3.0).margin(0.2));
+    const auto low = levels(100.0), high = levels(10000.0);
+    CHECK(low[0] > -0.1);
+    CHECK(low[2] < -35.0);
+    CHECK(high[2] > -0.1);
+    CHECK(high[0] < -35.0);
+
+    dsp::Svf svf;
+    float l, b, h;
+    svf.run(1.0f, g, k, l, b, h);
+    svf.reset();
+    CHECK(svf.ic1 == 0.0f);
+    CHECK(svf.ic2 == 0.0f);
 }

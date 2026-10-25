@@ -5,6 +5,7 @@
 #include "plugins/SynthVoices.h"
 #include "plugins/dsp/Random.h"
 #include "plugins/dsp/Smoothing.h"
+#include "plugins/dsp/Svf.h"
 
 #include <algorithm>
 #include <cctype>
@@ -47,13 +48,12 @@ constexpr std::array<PadInfo, padCount> pads{{
 constexpr std::array<double, 6> hatRatios{
     1.0, 1.4827, 1.8002, 2.546, 2.6303, 3.8968}; // 205, 304, 370, 523, 540, 800 Hz
 
-// A topology-preserving state-variable filter (12 dB/octave): its cutoff is in
-// hertz, so a pad sounds the same at any sample rate, and it stays stable up to
-// the top of the band.
-struct Svf
+// The kit's state-variable filter tuned in hertz, so a pad sounds the same at any
+// sample rate, keeping its last outputs for the next stage to read.
+struct TunedSvf
 {
     float g = 0.1f, k = 1.4f;
-    float ic1 = 0.0f, ic2 = 0.0f;
+    dsp::Svf state;
     float low = 0.0f, band = 0.0f, high = 0.0f;
     void set(double hz, float damping, double sampleRate) noexcept
     {
@@ -61,19 +61,12 @@ struct Svf
         g = static_cast<float>(std::tan(std::numbers::pi * f / sampleRate));
         k = damping;
     }
-    void run(float x) noexcept
+    void run(float x) noexcept { state.run(x, g, k, low, band, high); }
+    void reset() noexcept
     {
-        const float a1 = 1.0f / (1.0f + g * (g + k));
-        const float v3 = x - ic2;
-        const float v1 = a1 * ic1 + g * a1 * v3;
-        const float v2 = ic2 + g * v1;
-        ic1 = 2.0f * v1 - ic1;
-        ic2 = 2.0f * v2 - ic2;
-        low = v2;
-        band = v1;
-        high = x - k * v1 - v2;
+        state.reset();
+        low = band = high = 0.0f;
     }
-    void reset() noexcept { ic1 = ic2 = low = band = high = 0.0f; }
 };
 
 std::string lowerCase(const char* text)
@@ -153,8 +146,8 @@ struct Voice
     std::array<double, 6> hatPhase{};
     double time = 0.0; // seconds since the hit
     float choke = 1.0f, chokeCoef = 1.0f;
-    Svf f1, f2, f3;
-    std::array<Svf, 2> top; // the output's low-pass at 18 kHz (two stages)
+    TunedSvf f1, f2, f3;
+    std::array<TunedSvf, 2> top; // the output's low-pass at 18 kHz (two stages)
     int untilUpdate = 0;
     float noiseGain = 1.0f; // white noise's level for the same density per hertz at any rate
     dsp::Lcg rng{0x9E3779B9u};

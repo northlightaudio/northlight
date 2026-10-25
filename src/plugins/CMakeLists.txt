@@ -6,6 +6,7 @@ add_library(northlight_plugins STATIC
     dsp/DelayLine.h
     dsp/Random.h
     dsp/Smoothing.h
+    dsp/Svf.h
     MeteredBuiltIn.h
     Aurora.h
     Aurora.cpp
