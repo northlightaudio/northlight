@@ -162,6 +162,7 @@ void PluginScanner::start(bool rescanAll)
     if (isThreadRunning())
         return;
     rescanAll_ = rescanAll;
+    scanPaths_ = extraPaths_;
     done_.store(0, std::memory_order_relaxed);
     total_.store(0, std::memory_order_relaxed);
     startThread();
@@ -180,7 +181,7 @@ void PluginScanner::run()
 {
     juce::VST3PluginFormat format;
     juce::FileSearchPath paths = format.getDefaultLocationsToSearch();
-    for (const auto& extra : extraPaths_)
+    for (const auto& extra : scanPaths_)
         paths.add(juce::File(juce::String::fromUTF8(extra.c_str())));
 
     // Listing only looks at names; nothing is loaded here. CLAP files live in the
@@ -223,7 +224,7 @@ void PluginScanner::run()
              juce::SystemStats::getEnvironmentVariable("CLAP_PATH", ""), clapPathSeparator, "\""))
         if (entry.trim().isNotEmpty())
             clapPaths.add(juce::File(entry.trim()));
-    for (const auto& extra : extraPaths_)
+    for (const auto& extra : scanPaths_)
         clapPaths.add(juce::File(juce::String::fromUTF8(extra.c_str())));
     for (int i = 0; i < clapPaths.getNumPaths(); ++i)
         for (const auto& file : clapPaths[i].findChildFiles(juce::File::findFiles, true, "*.clap"))

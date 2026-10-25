@@ -24,7 +24,8 @@ public:
     explicit PluginScanner(PluginRegistry& registry);
     ~PluginScanner() override;
 
-    // The default VST3 locations plus any extra folders.
+    // The default VST3 locations plus any extra folders. Any time: a scan already
+    // running keeps the folders it started with.
     void setExtraSearchPaths(std::vector<std::string> folders) { extraPaths_ = std::move(folders); }
 
     // Starts a scan: every file whose modification time changed since it was last
@@ -67,7 +68,8 @@ private:
     // Cleared by the destructor: results the scan thread queued for the message
     // thread that run after the scanner is gone find it false and do nothing.
     std::shared_ptr<std::atomic<bool>> alive_ = std::make_shared<std::atomic<bool>>(true);
-    std::vector<std::string> extraPaths_;
+    std::vector<std::string> extraPaths_; // message thread
+    std::vector<std::string> scanPaths_;  // the running scan's copy, taken by start()
     bool rescanAll_ = false;
     std::atomic<int> done_{0}, total_{0};
     juce::CriticalSection statusLock_;
