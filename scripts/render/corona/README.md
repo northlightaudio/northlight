@@ -5,8 +5,8 @@ page; design-system.md "Rendered parts"), and the packaging that turns the rende
 into `assets/corona`. Re-run them to change a part; nothing in the app runs them.
 
 Needs Blender 4.2 (Cycles on a GPU), Python 3 with Pillow and NumPy, and the HDRI
-`lythwood_lounge_2k.hdr` from Poly Haven (CC0): set `NORTHLIGHT_HDRI` to its path
-(it defaults to `H:\Tools\hdri\lythwood_lounge_2k.hdr`).
+`lythwood_lounge_2k.hdr` (Poly Haven, CC0), bundled in `scripts/render/hdri` and found
+without any setting (`NORTHLIGHT_HDRI` points the scripts at another; scripts/render/render_config.py).
 
 Every part is lit the way the tape echo's are, from one place, `common.py`: a key from
 the top of the unit, the lounge in the reflections only (desaturated, so its warm

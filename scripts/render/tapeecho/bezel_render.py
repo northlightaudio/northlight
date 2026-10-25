@@ -24,7 +24,9 @@ from mathutils import Vector
 
 OUT = sys.argv[sys.argv.index("--") + 1]
 HERE = os.path.dirname(os.path.abspath(__file__))
-ROOM = os.environ.get("NORTHLIGHT_HDRI", r"H:\Tools\hdri\lythwood_lounge_2k.hdr")  # Poly Haven, CC0
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+from render_config import hdri_path  # noqa: E402  (scripts/render: NORTHLIGHT_HDRI or render.local.json)
+ROOM = hdri_path()  # Poly Haven, CC0
 PX = 150
 DIST = 20.0
 MARGIN, MARGIN_BELOW = 0.4, 0.9

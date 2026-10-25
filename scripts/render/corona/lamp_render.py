@@ -23,7 +23,9 @@ from mathutils import Vector
 argv = sys.argv[sys.argv.index("--") + 1:]
 STATE, OUT = argv[0], argv[1]
 HERE = os.path.dirname(os.path.abspath(__file__))
-ROOM = os.environ.get("NORTHLIGHT_HDRI", r"H:\Tools\hdri\lythwood_lounge_2k.hdr")  # Poly Haven, CC0
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+from render_config import hdri_path  # noqa: E402  (scripts/render: NORTHLIGHT_HDRI or render.local.json)
+ROOM = hdri_path()  # Poly Haven, CC0
 BULB = float(os.environ.get("LAMP_BULB", "1.0"))
 PX, DIST = 300, 8.0
 FRAME_W, ABOVE, BELOW = 1.3, 0.65, 0.85

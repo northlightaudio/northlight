@@ -21,7 +21,9 @@ from mathutils import Vector
 argv = sys.argv[sys.argv.index("--") + 1:]
 WEAR, OUT = argv[0], argv[1]
 PX = float(argv[2]) if len(argv) > 2 else 100.0
-ROOM = os.environ.get("NORTHLIGHT_HDRI", r"H:\Tools\hdri\lythwood_lounge_2k.hdr")  # Poly Haven, CC0
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+from render_config import hdri_path  # noqa: E402  (scripts/render: NORTHLIGHT_HDRI or render.local.json)
+ROOM = hdri_path()  # Poly Haven, CC0
 BW, BH = 1160 / 50, 600 / 50
 SEAM_Y = BH / 2 - 264 / 50             # the trim's centre line
 DIST = 30.0

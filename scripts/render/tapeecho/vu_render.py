@@ -24,7 +24,9 @@ from mathutils import Vector
 argv = sys.argv[sys.argv.index("--") + 1:]
 LAYER, OUT = argv[0], argv[1]
 SCALE = float(os.environ.get("VU_SCALE", "1.0"))   # resolution multiplier, for quick tests
-ROOM = os.environ.get("NORTHLIGHT_HDRI", r"H:\Tools\hdri\lythwood_lounge_2k.hdr")  # Poly Haven, CC0
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+from render_config import hdri_path  # noqa: E402  (scripts/render: NORTHLIGHT_HDRI or render.local.json)
+ROOM = hdri_path()  # Poly Haven, CC0
 BULB_W = float(os.environ.get("VU_BULB", "45"))
 DIAL_GLOW = float(os.environ.get("VU_GLOW", "0.3"))
 DIST = 8.0

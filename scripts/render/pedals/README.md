@@ -7,8 +7,8 @@ to change a part; nothing in the app runs them.
 They use Corona's lighting and helpers (`scripts/render/corona/common.py`) so the
 whole Guitar group is lit alike, and Corona's toggle script for the toggles. Needs
 Blender 4.2 (Cycles on a GPU), Python 3 with Pillow and NumPy, and the HDRI
-`lythwood_lounge_2k.hdr` from Poly Haven (CC0) at `NORTHLIGHT_HDRI` (default
-`H:\Tools\hdri\lythwood_lounge_2k.hdr`).
+`lythwood_lounge_2k.hdr` (Poly Haven, CC0), bundled in `scripts/render/hdri` and found
+without any setting (`NORTHLIGHT_HDRI` points the scripts at another; scripts/render/render_config.py).
 
 | Script | Renders |
 |---|---|

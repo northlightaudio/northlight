@@ -25,3 +25,6 @@ Thumbs.db
 *.dmp
 
 __pycache__/
+
+# The render scripts' local settings (scripts/render/render_config.py)
+scripts/render/render.local.json

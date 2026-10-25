@@ -8,12 +8,15 @@ Units are the tape echo's: 50 page px per unit (about 20 mm), the top of the uni
 """
 import math
 import os
+import sys
 
 import bmesh
 import bpy
 from mathutils import Vector
 
-ROOM = os.environ.get("NORTHLIGHT_HDRI", r"H:\Tools\hdri\lythwood_lounge_2k.hdr")  # Poly Haven, CC0
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+from render_config import hdri_path  # noqa: E402  (scripts/render: NORTHLIGHT_HDRI or render.local.json)
+ROOM = hdri_path()  # Poly Haven, CC0
 
 # The face's colours (sRGB), the floors shadows are caught on.
 TOLEX = "#2B1714"

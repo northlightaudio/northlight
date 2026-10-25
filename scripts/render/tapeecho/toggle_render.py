@@ -21,7 +21,9 @@ from mathutils import Vector
 argv = sys.argv[sys.argv.index("--") + 1:]
 STATE, OUT = argv[0], argv[1]
 SIZE = int(argv[2]) if len(argv) > 2 else 512
-HDRI = argv[3] if len(argv) > 3 else os.environ.get("NORTHLIGHT_HDRI", r"H:\Tools\hdri\lythwood_lounge_2k.hdr")
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+from render_config import hdri_path  # noqa: E402  (scripts/render: NORTHLIGHT_HDRI or render.local.json)
+HDRI = argv[3] if len(argv) > 3 else hdri_path()
 TILT = {"up": 32.0, "centre": 0.0, "down": -32.0}[STATE]  # degrees from upright, toward the top of the unit (+Y) when up
 
 bpy.ops.wm.read_factory_settings(use_empty=True)

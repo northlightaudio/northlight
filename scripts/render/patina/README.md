@@ -8,8 +8,8 @@ They share Corona's set-up (`scripts/render/corona/common.py`: the key from the 
 of the unit, the lounge in the reflections only, shadow-catcher floors, the GPU
 render), so Patina is lit exactly as Corona and the tape echo are. Needs what
 Corona's do: Blender 4.2 (Cycles on a GPU), Python 3 with Pillow and NumPy, and the
-HDRI `lythwood_lounge_2k.hdr` from Poly Haven (CC0) at `NORTHLIGHT_HDRI` (default
-`H:\Tools\hdri\lythwood_lounge_2k.hdr`).
+HDRI `lythwood_lounge_2k.hdr` (Poly Haven, CC0), bundled in `scripts/render/hdri` and found
+without any setting (`NORTHLIGHT_HDRI` points the scripts at another; scripts/render/render_config.py).
 
 The look is our own: slate-green hammertone under grey-green satin enamel plates,
 black crinkle bezels round amber windows, brushed aluminium,

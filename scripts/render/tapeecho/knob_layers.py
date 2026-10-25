@@ -22,7 +22,9 @@ SIZE = int(argv[2]) if len(argv) > 2 else 512
 KEY = float(argv[3]) if len(argv) > 3 else 260.0
 FILL = float(argv[4]) if len(argv) > 4 else 40.0
 ROOM_STRENGTH = float(argv[5]) if len(argv) > 5 else 0.8
-ROOM = os.environ.get("NORTHLIGHT_HDRI", r"H:\Tools\hdri\lythwood_lounge_2k.hdr")  # Poly Haven, CC0
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+from render_config import hdri_path  # noqa: E402  (scripts/render: NORTHLIGHT_HDRI or render.local.json)
+ROOM = hdri_path()  # Poly Haven, CC0
 
 bpy.ops.wm.read_factory_settings(use_empty=True)
 scene = bpy.context.scene

@@ -22,7 +22,9 @@ import bpy
 from mathutils import Vector
 
 OUT = sys.argv[sys.argv.index("--") + 1]
-ROOM = os.environ.get("NORTHLIGHT_HDRI", r"H:\Tools\hdri\lythwood_lounge_2k.hdr")  # Poly Haven, CC0
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+from render_config import hdri_path  # noqa: E402  (scripts/render: NORTHLIGHT_HDRI or render.local.json)
+ROOM = hdri_path()  # Poly Haven, CC0
 PX = 150
 LENGTH = 1160 / 50                 # the page's 50 px per unit
 HALF_W, HEIGHT = 0.08, 0.055       # the bar: 0.16 across (8 page px), this tall

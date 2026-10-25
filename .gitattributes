@@ -10,3 +10,4 @@
 *.otf binary
 *.wav binary
 *.flac binary
+*.hdr binary

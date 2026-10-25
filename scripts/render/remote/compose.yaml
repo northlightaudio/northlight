@@ -1,0 +1,19 @@
+# On demand only (profile "render"): nothing stays on the GPU between jobs.
+#   docker compose run --rm blender --python /work/<script> -- <args>
+# /work is ./work: the scripts, fonts and HDRI a job needs are copied there, renders land there.
+services:
+  blender:
+    build: .
+    image: blender-render:4.2.3
+    profiles: ["render"]
+    volumes:
+      - ./work:/work
+    environment:
+      - NVIDIA_DRIVER_CAPABILITIES=all
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]

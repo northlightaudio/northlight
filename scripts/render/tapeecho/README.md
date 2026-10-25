@@ -5,7 +5,8 @@ design-system.md "Rendered parts"), and the packaging that turns the renders int
 `assets/tapeecho`. Re-run them to change a part; nothing in the app runs them.
 
 Needs Blender 4.2 (Cycles on a GPU), Python 3 with Pillow and NumPy, and the HDRI
-`lythwood_lounge_2k.hdr` from Poly Haven (CC0): set `NORTHLIGHT_HDRI` to its path. The
+`lythwood_lounge_2k.hdr` (Poly Haven, CC0), bundled in `scripts/render/hdri` and found
+without any setting (`NORTHLIGHT_HDRI` points the scripts at another; scripts/render/render_config.py). The
 cover plate's printing uses Barlow Condensed from `assets/fonts`.
 
 Every part is lit the same way: a key from the top of the unit, the lounge in its
