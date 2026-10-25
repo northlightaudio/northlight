@@ -223,7 +223,7 @@ TEST_CASE("Orbit's meters, reels and counter follow the machine", "[ui][orbit]")
     CHECK(of::counterText(3723.9) == "01:02:03");
 
     // The needle takes about 300 ms to 99% of a step, and never jumps.
-    of::VuNeedle needle;
+    ui::hardware::VuBallistics needle;
     double t = 0.0;
     float previous = 0.0f;
     while (needle.level < 0.99f && t < 1.0)

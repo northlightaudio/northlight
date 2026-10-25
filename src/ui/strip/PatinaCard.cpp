@@ -20,6 +20,7 @@
 #include "ui/components/HardwareParts.h"
 #include "ui/components/RenderedFace.h"
 #include "ui/strip/EffectPresetLibrary.h"
+#include "ui/strip/FaceParts.h"
 #include "ui/strip/HardwareKey.h"
 #include "ui/strip/PresetBar.h"
 #include "ui/strip/RenderedCard.h"
@@ -58,11 +59,7 @@ const juce::Image& part(const juce::String& file)
     return hardware::image("patina", file);
 }
 
-void focusRing(juce::Graphics& g, juce::Component& c, juce::Rectangle<float> r, float radius)
-{
-    if (auto* laf = dynamic_cast<NorthlightLookAndFeel*>(&c.getLookAndFeel()))
-        laf->drawFocusRing(g, c, r, radius);
-}
+using hardware::drawFocusRing;
 
 // ----- where things are on the face (pixels at 100%) ----------------------------------------
 
@@ -170,7 +167,7 @@ public:
             g.setColour(theme_.hardware.highlight.withAlpha(0.1f));
             g.fillRoundedRectangle(bezel().reduced(3.0f), 2.0f);
         }
-        focusRing(g, *this, bezel().expanded(1.0f), 4.0f);
+        drawFocusRing(g, *this, bezel().expanded(1.0f), 4.0f);
     }
 
 private:
@@ -273,7 +270,7 @@ public:
                                                r.getY() + 5.0f,
                                                false));
         g.fillRect(r.withHeight(5.0f));
-        focusRing(g, *this, r, openingRadius);
+        drawFocusRing(g, *this, r, openingRadius);
     }
 
 private:
@@ -281,32 +278,6 @@ private:
     float capitalHeight_ = -1.0f, capitalCentre_ = 0.0f; // the measured capital, per font size
     const Theme& theme_;
     juce::String number_, name_;
-};
-
-// The pilot lamp (Corona's red jewel), lit while the effect is on.
-class Lamp final : public juce::Component, public juce::SettableTooltipClient
-{
-public:
-    Lamp(const Theme& theme, std::function<bool()> on) : theme_(theme), on_(std::move(on)) {}
-
-    void paint(juce::Graphics& g) override
-    {
-        const bool lit = on_();
-        const auto& image = hardware::image("corona", lit ? "jewel-lit.png" : "jewel-off.png");
-        const auto r = getLocalBounds().toFloat();
-        if (image.isValid())
-        {
-            hardware::drawScaled(g, image, r);
-            return;
-        }
-        const auto& hw = theme_.hardware;
-        g.setColour(lit ? hw.coronaJewel : hw.coronaJewel.darker(0.7f));
-        g.fillEllipse(r.reduced(r.getWidth() * 0.25f));
-    }
-
-private:
-    const Theme& theme_;
-    std::function<bool()> on_;
 };
 
 // ----- a stage's window -------------------------------------------------------------------------
@@ -382,21 +353,14 @@ public:
     explicit Face(const Theme& theme) : RenderedFace(faceWidth, faceHeight), theme_(theme) {}
 
     std::vector<Control> controls;
-    std::function<juce::String(int param)> value;
     std::function<float(int param)> paramValue;
     // A control's name when it depends on a setting (Grain's texture).
     std::function<juce::String(const Control&)> nameOf;
 
 private:
-    float nameSize(float size) const noexcept { return isCompact() ? size * compactNameScale : size; }
-    float tracking(float t) const noexcept { return isCompact() ? t * 0.4f : t; }
-
     juce::String nameFor(const Control& c) const
     {
-        const auto name = nameOf ? nameOf(c) : c.name;
-        if (isCompact() && activeControl() == c.param && value)
-            return value(c.param);
-        return name;
+        return RenderedFace::nameFor(c.param, nameOf ? nameOf(c) : c.name);
     }
 
     // The sizes of a control's print, by kind.
@@ -521,7 +485,7 @@ private:
         for (int s = 0; s < pa::stageCount; ++s)
         {
             g.setColour(hw.patinaInk);
-            g.setFont(legendFont(theme_, isCompact() ? 21.0f : 18.0f, 700, tracking(0.14f)));
+            g.setFont(legendFont(theme_, isCompact() ? 21.0f : 18.0f, 700, nameTracking(0.14f)));
             print(g,
                   juce::String(stageNames[static_cast<size_t>(s)]).toUpperCase(),
                   {moduleX(s) + 14.0f, nameRow - 12.0f, moduleWidth - 28.0f - buttonWidth, 24.0f},
@@ -531,7 +495,7 @@ private:
         // The master plate's output caption over its knobs, between two rules.
         {
             g.setColour(hw.patinaInkSoft);
-            g.setFont(legendFont(theme_, nameSize(13.0f), 700, tracking(0.24f)));
+            g.setFont(legendFont(theme_, nameSize(13.0f), 700, nameTracking(0.24f)));
             const auto area = juce::Rectangle<float>(
                 masterArea.getX() + 16.0f, outputCaptionRow - 9.0f, masterArea.getWidth() - 32.0f, 18.0f);
             print(g, "OUTPUT", area);
@@ -591,7 +555,7 @@ private:
             }
             knobBodyIfArt(g, c);
             g.setColour(hw.patinaInkSoft);
-            g.setFont(legendFont(theme_, nameSize(11.5f), 700, tracking(0.12f)));
+            g.setFont(legendFont(theme_, nameSize(11.5f), 700, nameTracking(0.12f)));
             if (isCompact())
             {
                 // The setting in place of the legends, where the caption would be.
@@ -638,8 +602,8 @@ private:
         // Compact, a small knob's name grows more than the rest: it is the smallest print.
         const float size = nameSizeOf(c.kind);
         const bool smallName = c.kind == Control::Kind::small || c.kind == Control::Kind::pace;
-        g.setFont(
-            legendFont(theme_, isCompact() && smallName ? size * 1.5f : nameSize(size), 700, tracking(0.1f)));
+        g.setFont(legendFont(
+            theme_, isCompact() && smallName ? size * 1.5f : nameSize(size), 700, nameTracking(0.1f)));
         print(g, nameFor(c), nameArea(c, nameWidth(c)));
     }
 
@@ -1154,7 +1118,7 @@ private:
 
     HardwareKey previous_, next_;
     PresetDisplay display_;
-    Lamp lamp_;
+    JewelLamp lamp_; // the pilot lamp, lit while the effect is on
 };
 
 // ----- the window, drawn --------------------------------------------------------------------------
@@ -1269,7 +1233,7 @@ void StageWindow::paint(juce::Graphics& g)
     g.fillRect(glass);
     g.restoreState();
     paintLamps(g);
-    focusRing(g, *this, glass.expanded(3.0f), openingRadius + 3.0f);
+    drawFocusRing(g, *this, glass.expanded(3.0f), openingRadius + 3.0f);
 }
 
 void StageWindow::paintLamps(juce::Graphics& g)

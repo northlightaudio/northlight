@@ -386,7 +386,14 @@ know nothing format-specific.
   change into repaints round the knobs whose print moved, so neither a turned knob
   nor the model's refresh repaints the whole face. `ui/PaintStats` counts the words
   a face sets and its art rebuilds for the UI work budgets
-  ([ui-performance.md](ui-performance.md)). `HardwareKey` is the bakelite key. Every built-in effect's
+  ([ui-performance.md](ui-performance.md)). `HardwareKey` is the bakelite key.
+  `ui/strip/FaceParts` holds the parts several faces share: the VU meter's needle
+  under its rendered hood and glass (the tape echo's and Orbit's, each with its
+  own `Look`; their ballistics and needle angle are `hardware::VuBallistics` and
+  `hardware::vuAngle`), Corona's jewel as a pilot lamp (Patina's, the pedals') and
+  Corona's footswitch (the pedals' without its LED). `RenderedFace` carries the
+  compact print helpers (`nameSize`, `nameTracking`, `nameFor`) and the one
+  `value` hook a card sets for what each control shows. Every built-in effect's
   factory presets are in `plugins/EffectPresets` (by parameter name, resolved
   against the effect's parameter table); Patina and the instruments build theirs
   by parameter index with `PresetBuilder` (`plugins/ParamHelpers.h`, beside the

@@ -208,7 +208,7 @@ TEST_CASE("The tape echo's meter, lamp, neons and rollers move as the machine do
     CHECK(tf::lampFor(1.05f, false) == tf::Lamp::dark);
 
     // The needle takes about 300 ms to 99% of a step, and never jumps.
-    tf::VuNeedle needle;
+    ui::hardware::VuBallistics needle;
     double t = 0.0;
     float previous = 0.0f;
     while (needle.level < 0.99f && t < 1.0)

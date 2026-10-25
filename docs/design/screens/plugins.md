@@ -847,7 +847,9 @@ delay `Gorse`, glue compressor `Thrift`, Patina `Kelp`, exciter `Machair`, Bloom
     square; Polaris has its display where the knobs would be, and REF under it.
   - **Footswitch:** a click, Space or Enter switches the pedal on or off (the
     insert's bypass, as the header's power does; one undo step). Polaris's mutes
-    instead. The button shows pressed while held.
+    instead. The button shows pressed while held. It is Corona's footswitch part
+    without its LED: the same highlight over the button on hover and focus ring
+    round it, and the same flat fallback.
   - **Polaris's display:** black glass in a black bezel with a shade under its lip
     and a reflection; 21 LEDs from flat to sharp (one per 5 cents, the middle one
     green and lit within 3 cents, the reading's LED `tunerOff` with a soft halo,

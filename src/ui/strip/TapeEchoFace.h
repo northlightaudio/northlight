@@ -43,30 +43,13 @@ inline float vuOf(float linear) noexcept
     return engine::gainToDb(linear, -120.0f) - vuReferenceDbfs;
 }
 
-// The needle's angle from upright, in degrees, for a reading in VU. The scale is
-// linear in voltage, as a VU's is: -20 near the left end, 0 about 71% across, +3
-// at the right; 50 degrees each side, and the needle stops 3 degrees past them.
+// The needle's angle from upright, in degrees, for a reading in VU
+// (hardware::vuAngle): 50 degrees each side.
+inline constexpr float vuHalfSweep = 50.0f;
 inline float vuAngle(float vu) noexcept
 {
-    const float share = std::pow(10.0f, vu / 20.0f) / std::pow(10.0f, 3.0f / 20.0f);
-    return std::clamp(-50.0f + 100.0f * share, -53.0f, 53.0f);
+    return hardware::vuAngle(vu, vuHalfSweep);
 }
-
-// The needle's movement: a VU's 300 ms to 99% of a step, as two equal lags (a
-// heavy needle, critically damped, so it never jumps).
-struct VuNeedle
-{
-    float level = 0.0f; // what the needle shows, linear
-    float inner = 0.0f;
-
-    void advance(float target, double seconds) noexcept
-    {
-        constexpr double lag = 0.045; // two of these reach 99% of a step in 0.3 s
-        const auto k = static_cast<float>(1.0 - std::exp(-std::max(0.0, seconds) / lag));
-        inner += (target - inner) * k;
-        level += (inner - level) * k;
-    }
-};
 
 // ----- the loop gain lamp ---------------------------------------------------------------
 

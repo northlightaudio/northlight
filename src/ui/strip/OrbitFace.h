@@ -118,13 +118,12 @@ inline constexpr juce::Point<float> linkKey{1095.0f, 520.0f};
 
 // ----- the meters --------------------------------------------------------------------------
 
-// The needle's angle from upright, in degrees, for a reading in VU: linear in
-// voltage as a VU's scale is, -20 near the left end, 0 about 71% across, +3 at
-// the right, 47 degrees each side; the needle stops 3 degrees past the ends.
+// The needle's angle from upright, in degrees, for a reading in VU
+// (hardware::vuAngle): 47 degrees each side.
+inline constexpr float vuHalfSweep = 47.0f;
 inline float vuAngle(float vu) noexcept
 {
-    const float share = std::pow(10.0f, vu / 20.0f) / std::pow(10.0f, 3.0f / 20.0f);
-    return std::clamp(-47.0f + 94.0f * share, -50.0f, 50.0f);
+    return hardware::vuAngle(vu, vuHalfSweep);
 }
 
 // A meter's reading in VU from the processor's level (a rectified average
@@ -133,20 +132,6 @@ inline float vuOf(float level, float referenceDbfs) noexcept
 {
     return engine::gainToDb(level, -120.0f) - referenceDbfs;
 }
-
-// The needle's movement: a VU's 300 ms to 99% of a step, as two equal lags.
-struct VuNeedle
-{
-    float level = 0.0f;
-    float inner = 0.0f;
-    void advance(float target, double seconds) noexcept
-    {
-        constexpr double lag = 0.045;
-        const auto k = static_cast<float>(1.0 - std::exp(-std::max(0.0, seconds) / lag));
-        inner += (target - inner) * k;
-        level += (inner - level) * k;
-    }
-};
 
 // ----- the reels ---------------------------------------------------------------------------
 

@@ -4,6 +4,8 @@
 
 #include <juce_gui_basics/juce_gui_basics.h>
 
+#include <algorithm>
+#include <cmath>
 #include <string_view>
 
 // The drawing shared by a hardware face (design-system.md "Hardware face"):
@@ -128,6 +130,32 @@ juce::Font legendFont(const Theme& theme, float size, int weight, float tracking
 
 // The system's focus ring round `area`, when `component` has the keyboard focus.
 void drawFocusRing(juce::Graphics& g, juce::Component& component, juce::Rectangle<float> area, float radius);
+
+// A VU needle's angle from upright, in degrees, for a reading in VU. The scale
+// is linear in voltage, as a VU's is: -20 near the left end, 0 about 71% across,
+// +3 at the right; `halfSweep` degrees each side, and the needle stops 3 degrees
+// past them.
+inline float vuAngle(float vu, float halfSweep) noexcept
+{
+    const float share = std::pow(10.0f, vu / 20.0f) / std::pow(10.0f, 3.0f / 20.0f);
+    return std::clamp(-halfSweep + 2.0f * halfSweep * share, -halfSweep - 3.0f, halfSweep + 3.0f);
+}
+
+// A VU needle's movement: a VU's 300 ms to 99% of a step, as two equal lags (a
+// heavy needle, critically damped, so it never jumps).
+struct VuBallistics
+{
+    float level = 0.0f; // what the needle shows, linear
+    float inner = 0.0f;
+
+    void advance(float target, double seconds) noexcept
+    {
+        constexpr double lag = 0.045; // two of these reach 99% of a step in 0.3 s
+        const auto k = static_cast<float>(1.0 - std::exp(-std::max(0.0, seconds) / lag));
+        inner += (target - inner) * k;
+        level += (inner - level) * k;
+    }
+};
 
 // Fitting a face drawn at one size (`faceWidth` x `faceHeight`) to a body: the
 // largest scale that fits, never above 1; and the body's width at a height,

@@ -13,6 +13,7 @@
 #include "plugins/Orbit.h"
 #include "ui/components/HardwareParts.h"
 #include "ui/components/RenderedFace.h"
+#include "ui/strip/FaceParts.h"
 #include "ui/strip/HardwareKey.h"
 #include "ui/strip/OrbitFace.h"
 #include "ui/strip/RenderedCard.h"
@@ -57,68 +58,36 @@ using hardware::polar;
 
 // ----- the meters ------------------------------------------------------------------------------
 
-// A VU's needle and its shadow on the dial, then the dial's hood and glass over
-// them; the dial and the printed scale are the face's.
-class Meter final : public juce::Component, public juce::SettableTooltipClient
+// A VU's needle and its shadow on the dial (clipped to it), then the dial's hood
+// and glass over them; the dial and the printed scale are the face's.
+VuNeedleMeter::Look meterLook(int index)
 {
-public:
-    Meter(const Theme& theme, int index) : theme_(theme), index_(index)
-    {
-        setInterceptsMouseClicks(false, false);
-        setTitle(index == 0 ? "Left meter" : "Right meter");
-        setBounds(of::meterCover(index).toNearestInt());
-    }
-
-    void setReading(float vu)
-    {
-        const float angle = of::vuAngle(vu);
-        if (std::abs(angle - angle_) < 0.05f)
-            return;
-        angle_ = angle;
-        setDescription(juce::String(std::max(vu, -20.0f), 1) + " VU");
-        repaint();
-    }
-
-    void paint(juce::Graphics& g) override
-    {
-        const auto& hw = theme_.hardware;
-        const auto origin = getPosition().toFloat();
-        const auto dial = of::dialArea(index_) - origin;
-        const auto pivot = of::pivot(index_) - origin;
-        {
-            const juce::Graphics::ScopedSaveState save(g);
-            g.reduceClipRegion(dial.toNearestInt());
-            const auto base = polar(pivot, 34.0f, angle_), tip = polar(pivot, 100.0f, angle_);
-            g.setColour(hw.shadow.withAlpha(0.28f));
-            g.drawLine(juce::Line<float>(base.translated(2.0f, 4.0f), tip.translated(2.0f, 4.0f)), 1.8f);
-            g.setColour(hw.orbitNeedle);
-            g.drawLine(juce::Line<float>(base, tip), 1.4f);
-        }
-        const auto all = getLocalBounds().toFloat();
-        const auto& hood = part(index_ == 0 ? "hood-left.png" : "hood-right.png");
-        if (hood.isValid())
-            hardware::drawScaled(g, hood, all);
-        else
-        {
-            // Without its image: the pivot's hood, a dark trapezoid over the needle's foot.
-            const float cx = dial.getCentreX(), foot = dial.getBottom();
-            juce::Path hoodShape;
-            hoodShape.startNewSubPath(cx - 42.5f, foot);
-            hoodShape.lineTo(cx - 27.5f, foot - 22.5f);
-            hoodShape.lineTo(cx + 27.5f, foot - 22.5f);
-            hoodShape.lineTo(cx + 42.5f, foot);
-            hoodShape.closeSubPath();
-            g.setColour(hw.bezel);
-            g.fillPath(hoodShape);
-        }
-        hardware::drawScaled(g, part(index_ == 0 ? "glass-left.png" : "glass-right.png"), all);
-    }
-
-private:
-    const Theme& theme_;
-    int index_;
-    float angle_ = -50.0f;
-};
+    const auto bounds = of::meterCover(index).toNearestInt();
+    const auto origin = bounds.getPosition().toFloat();
+    const auto dial = of::dialArea(index) - origin;
+    VuNeedleMeter::Look look;
+    look.frame = bounds.withZeroOrigin().toFloat();
+    look.clip = dial;
+    look.pivot = of::pivot(index) - origin;
+    look.base = 34.0f;
+    look.tip = 100.0f;
+    look.width = 1.4f;
+    look.needle = &Theme::Hardware::orbitNeedle;
+    look.shadowOffset = {2.0f, 4.0f};
+    look.shadowWidth = 1.8f;
+    look.shadowAlpha = 0.28f;
+    look.folder = "orbit";
+    look.hoodFile = index == 0 ? "hood-left.png" : "hood-right.png";
+    look.glassFile = index == 0 ? "glass-left.png" : "glass-right.png";
+    look.hoodCentreX = dial.getCentreX();
+    look.hoodFoot = dial.getBottom();
+    look.hoodFootHalfWidth = 42.5f;
+    look.hoodTopHalfWidth = 27.5f;
+    look.hoodHeight = 22.5f;
+    look.hood = &Theme::Hardware::bezel;
+    look.halfSweep = of::vuHalfSweep;
+    return look;
+}
 
 // ----- the reels -------------------------------------------------------------------------------
 
@@ -250,9 +219,8 @@ class Face final : public RenderedFace
 public:
     explicit Face(const Theme& theme) : RenderedFace(of::width, of::height), theme_(theme) {}
 
-    // The values printed under the knobs (by knob, in orbitface::knobs' order).
-    std::function<juce::String(int knob)> knobValue;
-    // The control each knob shows (its parameter), for compact's active control.
+    // The parameter each knob shows (in orbitface::knobs' order): its value
+    // (RenderedFace::value) prints under it.
     std::array<int, 6> knobParam{};
     float levelDb = 6.0f; // the operating level, in the meters' caption
     juce::String counter; // the tape counter
@@ -261,8 +229,6 @@ public:
 private:
     static constexpr std::array<const char*, 6> knobNames{
         "INPUT", "BIAS", "HISS", "FLUTTER", "OUTPUT", "MIX"};
-
-    float sized(float size) const noexcept { return isCompact() ? size * compactNameScale : size; }
 
     // ----- the static layer --------------------------------------------------------------------
     void paintStatic(juce::Graphics& g) const override
@@ -357,7 +323,7 @@ private:
     void paintRules(juce::Graphics& g) const
     {
         g.setColour(theme_.hardware.orbitRule);
-        const auto font = legendFont(theme_, sized(14.0f), 700, 0.2f);
+        const auto font = legendFont(theme_, nameSize(14.0f), 700, 0.2f);
         for (const auto& c : of::captions)
         {
             const float text = juce::GlyphArrangement::getStringWidth(font, c.text) + 16.0f;
@@ -410,25 +376,24 @@ private:
         const auto& hw = theme_.hardware;
         // The columns' captions.
         g.setColour(hw.orbitPanelInk);
-        g.setFont(legendFont(theme_, sized(14.0f), 700, 0.2f));
+        g.setFont(legendFont(theme_, nameSize(14.0f), 700, 0.2f));
         for (const auto& c : of::captions)
             print(g,
                   c.text,
                   juce::Rectangle<float>(c.columnWidth + 40.0f, 20.0f).withCentre({c.centreX, of::captionY}));
         // The knobs' names (compact: the knob in hand shows its value instead).
-        g.setFont(legendFont(theme_, sized(15.0f), 600, isCompact() ? 0.03f : 0.08f));
+        g.setFont(legendFont(theme_, nameSize(15.0f), 600, isCompact() ? 0.03f : 0.08f));
         for (size_t i = 0; i < of::knobs.size(); ++i)
         {
             const auto& k = of::knobs[i];
-            const bool active = isCompact() && knobValue && activeControl() == knobParam[i];
             print(g,
-                  active ? knobValue(static_cast<int>(i)) : juce::String(knobNames[i]),
+                  nameFor(knobParam[i], knobNames[i]),
                   juce::Rectangle<float>(isCompact() ? 120.0f : 100.0f, isCompact() ? 26.0f : 18.0f)
                       .withCentre({k.centre.x, k.nameY + (isCompact() ? 4.0f : 0.0f)}));
         }
         // The keys' rows.
         g.setColour(hw.orbitPanelInkSoft);
-        g.setFont(legendFont(theme_, sized(14.0f), 600, isCompact() ? 0.03f : 0.1f));
+        g.setFont(legendFont(theme_, nameSize(14.0f), 600, isCompact() ? 0.03f : 0.1f));
         const char* rows[] = {"SPEED", "EQ", "LEVEL", "TAPE"};
         for (size_t r = 0; r < 4; ++r)
             print(g,
@@ -483,12 +448,12 @@ private:
             return; // the knob in hand shows its value where its name is
         g.setColour(hw.orbitPanelInkSoft);
         g.setFont(legendFont(theme_, 13.5f, 600, 0.04f));
-        for (size_t i = 0; i < of::knobs.size() && knobValue; ++i)
+        for (size_t i = 0; i < of::knobs.size() && value; ++i)
         {
             const auto& k = of::knobs[i];
             print(
                 g,
-                knobValue(static_cast<int>(i)),
+                value(knobParam[i]),
                 juce::Rectangle<float>(100.0f, 16.0f).withCentre({k.centre.x, k.nameY + of::valueBelowName}));
         }
         g.setFont(legendFont(theme_, 12.0f, 600, 0.06f));
@@ -507,13 +472,19 @@ class OrbitCard final : public RenderedCard
 public:
     OrbitCard(const Theme& theme, CardHost& host, core::Id channelId, const core::Insert& insert)
         : RenderedCard(theme, host, channelId, insert, face_), face_(theme), left_(theme, true),
-          right_(theme, false), meters_{{Meter(theme, 0), Meter(theme, 1)}}, lamp_(theme)
+          right_(theme, false),
+          meters_{{VuNeedleMeter(theme, meterLook(0)), VuNeedleMeter(theme, meterLook(1))}}, lamp_(theme)
     {
         addAndMakeVisible(face_);
         face_.addAndMakeVisible(left_);
         face_.addAndMakeVisible(right_);
-        for (auto& m : meters_)
+        for (int i = 0; i < 2; ++i)
+        {
+            auto& m = meters_[static_cast<size_t>(i)];
+            m.setTitle(i == 0 ? "Left meter" : "Right meter");
+            m.setBounds(of::meterCover(i).toNearestInt());
             face_.addAndMakeVisible(m);
+        }
         face_.addAndMakeVisible(lamp_);
 
         // The knobs, each a rendered pointer turning over the body the deck shows.
@@ -547,7 +518,13 @@ public:
         { return v < 0.5 ? juce::String("Off") : juce::String(static_cast<int>(std::lround(v))) + "%"; };
         knobs_[3]->format = [](double v) { return juce::String(v, 2) + "%"; };
         knobs_[5]->format = [](double v) { return juce::String(static_cast<int>(std::lround(v))) + "%"; };
-        face_.knobValue = [this](int i) { return knobs_[static_cast<size_t>(i)]->accessibleValueText(); };
+        face_.value = [this](int index)
+        {
+            for (size_t i = 0; i < face_.knobParam.size(); ++i)
+                if (face_.knobParam[i] == index)
+                    return knobs_[i]->accessibleValueText();
+            return juce::String();
+        };
 
         // The keys: a lit key glows from its patch of the lit render.
         const char* speeds[] = {"7\xc2\xbd", "15", "30"};
@@ -727,14 +704,14 @@ private:
 
     Face face_;
     Reel left_, right_;
-    std::array<Meter, 2> meters_;
+    std::array<VuNeedleMeter, 2> meters_;
     Lamp lamp_;
     std::array<Knob*, 6> knobs_{};
     std::vector<std::unique_ptr<HardwareKey>> keys_;
     std::array<HardwareKey*, 3> speed_{}, level_{}, tape_{}, meter_{};
     std::array<HardwareKey*, 2> eq_{};
     HardwareKey* link_ = nullptr;
-    std::array<of::VuNeedle, 2> needles_{};
+    std::array<hardware::VuBallistics, 2> needles_{};
 };
 } // namespace
 

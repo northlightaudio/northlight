@@ -15,6 +15,7 @@
 #include "plugins/TapeEcho.h"
 #include "ui/components/HardwareParts.h"
 #include "ui/components/RenderedFace.h"
+#include "ui/strip/FaceParts.h"
 #include "ui/strip/HardwareLever.h"
 #include "ui/strip/RenderedCard.h"
 #include "ui/strip/TapeEchoFace.h"
@@ -95,59 +96,34 @@ using hardware::polar;
 // ----- the meter -------------------------------------------------------------------------------
 
 // The VU's needle, its shadow on the dial, and the pivot's hood and the glass over
-// them; the body and the printed scale are the face's.
-class Meter final : public juce::Component, public juce::SettableTooltipClient
+// them, drawn in the meter's 840 x 690 frame; the body and the printed scale are
+// the face's.
+VuNeedleMeter::Look meterLook()
 {
-public:
-    explicit Meter(const Theme& theme) : theme_(theme)
-    {
-        setInterceptsMouseClicks(false, false);
-        setTitle("Record level");
-    }
-
-    void setReading(float linear)
-    {
-        const float vu = tf::vuOf(linear);
-        const float angle = tf::vuAngle(vu);
-        if (std::abs(angle - angle_) < 0.05f)
-            return;
-        angle_ = angle;
-        setDescription(juce::String(vu, 1) + " VU");
-        repaint();
-    }
-
-    void paint(juce::Graphics& g) override
-    {
-        const auto& hw = theme_.hardware;
-        g.addTransform(juce::AffineTransform::scale(meterUnit).translated(
-            0.0f, static_cast<float>(meterArea.getY() - meterBounds.getY())));
-        const auto tip = polar(meterPivot, 285.0f, angle_);
-        g.setColour(hw.shadow.withAlpha(0.22f));
-        g.drawLine(juce::Line<float>(meterPivot.translated(0.0f, 9.0f), tip.translated(0.0f, 9.0f)), 6.0f);
-        g.setColour(hw.needle);
-        g.drawLine(juce::Line<float>(meterPivot, tip), 4.2f);
-        const juce::Rectangle<float> frame(0.0f, 0.0f, 840.0f, 690.0f);
-        if (const auto& hood = part("vu-hood.png"); hood.isValid())
-            hardware::drawScaled(g, hood, frame);
-        else
-        {
-            // Without its image: the pivot's hood, a dark trapezoid over the needle's base.
-            juce::Path p;
-            p.startNewSubPath(300.0f, 495.0f);
-            p.lineTo(345.0f, 405.0f);
-            p.lineTo(495.0f, 405.0f);
-            p.lineTo(540.0f, 495.0f);
-            p.closeSubPath();
-            g.setColour(hw.knobBody);
-            g.fillPath(p);
-        }
-        hardware::drawScaled(g, part("vu-glass.png"), frame);
-    }
-
-private:
-    const Theme& theme_;
-    float angle_ = -53.0f;
-};
+    VuNeedleMeter::Look look;
+    look.transform = juce::AffineTransform::scale(meterUnit).translated(
+        0.0f, static_cast<float>(meterArea.getY() - meterBounds.getY()));
+    look.frame = {0.0f, 0.0f, 840.0f, 690.0f};
+    look.pivot = meterPivot;
+    look.base = 0.0f;
+    look.tip = 285.0f;
+    look.width = 4.2f;
+    look.needle = &Theme::Hardware::needle;
+    look.shadowOffset = {0.0f, 9.0f};
+    look.shadowWidth = 6.0f;
+    look.shadowAlpha = 0.22f;
+    look.folder = "tapeecho";
+    look.hoodFile = "vu-hood.png";
+    look.glassFile = "vu-glass.png";
+    look.hoodCentreX = 420.0f;
+    look.hoodFoot = 495.0f;
+    look.hoodFootHalfWidth = 120.0f;
+    look.hoodTopHalfWidth = 75.0f;
+    look.hoodHeight = 90.0f;
+    look.hood = &Theme::Hardware::knobBody;
+    look.halfSweep = tf::vuHalfSweep;
+    return look;
+}
 
 // ----- the transport ---------------------------------------------------------------------------
 
@@ -276,10 +252,8 @@ public:
         invalidate();
     }
 
-    // The values printed under the knobs and the heads selector's position (its
-    // chosen legend is bold), drawn over the static layer.
-    std::function<juce::String(int bigIndex)> bigValue;
-    std::function<juce::String(int smallIndex)> smallValue;
+    // The heads selector's position (its chosen legend is bold), drawn over the
+    // static layer with the values (RenderedFace::value) under the knobs.
     int headsPosition = 0;
 
 private:
@@ -288,19 +262,11 @@ private:
 
     // Compact (RenderedFace): names larger and tighter; the knob in hand shows
     // its value in place of its name, and HEADS always shows its heads.
-    float nameSize(float size) const noexcept { return isCompact() ? size * compactNameScale : size; }
-    float nameTracking(float tracking) const noexcept { return isCompact() ? tracking * 0.4f : tracking; }
     juce::String bigName(size_t i, const char* name) const
     {
-        if (isCompact() && bigValue && (i == 0 || activeControl() == bigParam[i]))
-            return bigValue(static_cast<int>(i));
-        return name;
-    }
-    juce::String smallName(size_t i, const char* name) const
-    {
-        if (isCompact() && smallValue && activeControl() == smallParam[i])
-            return smallValue(static_cast<int>(i));
-        return name;
+        if (isCompact() && value && i == 0)
+            return value(bigParam[0]);
+        return nameFor(bigParam[i], name);
     }
 
     // ----- the static layer --------------------------------------------------------------------
@@ -534,7 +500,7 @@ private:
             g.setColour(hw.sageInk);
             g.setFont(legendFont(theme_, nameSize(20.0f), 700, nameTracking(0.06f)));
             print(g,
-                  smallName(static_cast<size_t>(i), names[i]),
+                  nameFor(smallParam[static_cast<size_t>(i)], names[i]),
                   isCompact() ? juce::Rectangle<float>(
                                     c.x - 62.0f, smallRow + smallSkirt * 0.5f + 16.0f, 124.0f, 34.0f)
                               : juce::Rectangle<float>(c.x - 62.0f, 516.0f, 124.0f, 24.0f),
@@ -616,15 +582,15 @@ private:
             return;
         g.setColour(hw.sageInkSoft);
         g.setFont(legendFont(theme_, 19.0f, 600, 0.03f));
-        for (int i = 0; i < 4 && bigValue; ++i)
+        for (int i = 0; i < 4 && value; ++i)
             print(g,
-                  bigValue(i),
+                  value(bigParam[static_cast<size_t>(i)]),
                   juce::Rectangle<float>(bigX[static_cast<size_t>(i)] - 80.0f, 424.0f, 160.0f, 23.0f),
                   juce::Justification::centred);
         g.setFont(legendFont(theme_, 18.0f, 600, 0.03f));
-        for (int i = 0; i < 9 && smallValue; ++i)
+        for (int i = 0; i < 9 && value; ++i)
             print(g,
-                  smallValue(i),
+                  value(smallParam[static_cast<size_t>(i)]),
                   juce::Rectangle<float>(smallX(i) - 62.0f, 539.0f, 124.0f, 22.0f),
                   juce::Justification::centred);
     }
@@ -639,8 +605,8 @@ class TapeEchoCard final : public RenderedCard
 {
 public:
     TapeEchoCard(const Theme& theme, CardHost& host, core::Id channelId, const core::Insert& insert)
-        : RenderedCard(theme, host, channelId, insert, face_), face_(theme), meter_(theme), transport_(theme),
-          lamp_(theme)
+        : RenderedCard(theme, host, channelId, insert, face_), face_(theme), meter_(theme, meterLook()),
+          transport_(theme), lamp_(theme)
     {
         addAndMakeVisible(face_);
         face_.addAndMakeVisible(transport_);
@@ -648,6 +614,7 @@ public:
         face_.addAndMakeVisible(lamp_);
         transport_.setBounds(opening);
         meter_.setBounds(meterBounds);
+        meter_.setTitle("Record level");
         lamp_.setBounds(lampArea);
 
         // The knobs bound to their parameters, each a rendered pointer over the
@@ -701,10 +668,9 @@ public:
         };
         dry_->onChoose = [this](int p) { leverParam(te::killDry, "Kill dry", p == 1 ? 1.0f : 0.0f); };
 
-        face_.bigValue = [this](int i)
+        face_.value = [this](int index)
         {
-            Knob* knobs[] = {heads_, rate_.get(), feedback_, mix_};
-            if (i == 0)
+            if (index == te::heads)
             {
                 // The heads that play, as the selector's label shows them.
                 const auto mask = te::headMask(param(te::heads));
@@ -714,9 +680,15 @@ public:
                         on.add(juce::String(k + 1));
                 return on.joinIntoString(" + ");
             }
-            return knobs[i]->accessibleValueText();
+            const Knob* knobs[] = {heads_, rate_.get(), feedback_, mix_};
+            for (size_t i = 0; i < bigParam.size(); ++i)
+                if (bigParam[i] == index)
+                    return knobs[i]->accessibleValueText();
+            for (size_t i = 0; i < smallParam.size(); ++i)
+                if (smallParam[i] == index)
+                    return small_[i]->accessibleValueText();
+            return juce::String();
         };
-        face_.smallValue = [this](int i) { return small_[static_cast<size_t>(i)]->accessibleValueText(); };
         paramsChanged();
     }
 
@@ -812,7 +784,7 @@ private:
         const bool on = isOn();
         // The meter reads what the record head writes.
         needle_.advance(on ? levelAt(0.0) : 0.0f, seconds);
-        meter_.setReading(needle_.level);
+        meter_.setReading(tf::vuOf(needle_.level));
         // Each neon as bright as the level passing its head; a head that does not
         // play shows it dimmer.
         bool changed = false;
@@ -848,7 +820,7 @@ private:
     juce::Colour headerStatusColour() const override { return theme_.colours.meterHot; }
 
     Face face_;
-    Meter meter_;
+    VuNeedleMeter meter_;
     Transport transport_;
     GainLamp lamp_;
     Knob* heads_ = nullptr;
@@ -859,7 +831,7 @@ private:
     HardwareLever* stereo_ = nullptr;
     HardwareLever* sync_ = nullptr;
     HardwareLever* dry_ = nullptr;
-    tf::VuNeedle needle_;
+    hardware::VuBallistics needle_;
     double motorSeconds_ = 0.18, targetSeconds_ = 0.18;
     float loopGain_ = 0.0f;
     std::uint8_t mask_ = 0;

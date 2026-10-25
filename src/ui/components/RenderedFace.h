@@ -2,6 +2,8 @@
 
 #include <juce_gui_basics/juce_gui_basics.h>
 
+#include <functional>
+
 namespace northlight::ui
 {
 
@@ -55,6 +57,11 @@ public:
     void setActiveControl(int control, juce::Rectangle<int> area = {});
     int activeControl() const noexcept { return activeControl_; }
 
+    // The value a control shows, by its parameter's index, set by the card: a
+    // face prints it under its control, and in compact in place of the name of
+    // the control in hand.
+    std::function<juce::String(int param)> value;
+
     void paint(juce::Graphics& g) final;
 
 protected:
@@ -68,6 +75,20 @@ protected:
     virtual int cacheKey() const { return 0; }
 
     bool artPass() const noexcept { return pass_ == Pass::art; }
+
+    // A name's print: compactNameScale larger in compact, and its tracking
+    // compactTracking as wide, so it stays readable at the dock's size.
+    static constexpr float compactTracking = 0.4f;
+    float nameSize(float size) const noexcept { return compact_ ? size * compactNameScale : size; }
+    float nameTracking(float tracking) const noexcept
+    {
+        return compact_ ? tracking * compactTracking : tracking;
+    }
+    // A control's printed name, or in compact its value while it is in hand.
+    juce::String nameFor(int param, const juce::String& name) const
+    {
+        return compact_ && activeControl_ == param && value ? value(param) : name;
+    }
     // Words printed on the face: drawn in the words pass and the live layer,
     // never into the cached art, set crisply (hardware::drawCrispText).
     void print(juce::Graphics& g,

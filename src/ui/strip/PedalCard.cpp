@@ -16,6 +16,7 @@
 #include "ui/Number.h"
 #include "ui/components/HardwareParts.h"
 #include "ui/components/RenderedFace.h"
+#include "ui/strip/FaceParts.h"
 #include "ui/strip/RenderedCard.h"
 
 #include <algorithm>
@@ -193,77 +194,6 @@ const juce::Rectangle<float> tunerWindow{50.0f, 84.0f, 260.0f, 172.0f};
 constexpr float tunerRadius = 6.0f;
 
 // ----- the face's parts -----------------------------------------------------------------------
-
-// The footswitch: Corona's chrome button, pressed while the mouse holds it. A
-// click, Space or Enter stomps it.
-class Footswitch final : public juce::Button
-{
-public:
-    explicit Footswitch(const Theme& theme) : juce::Button("Footswitch"), theme_(theme)
-    {
-        setWantsKeyboardFocus(true);
-        setMouseCursor(juce::MouseCursor::PointingHandCursor);
-    }
-
-    bool hitTest(int x, int y) override
-    {
-        const auto r = getLocalBounds().toFloat();
-        return r.getCentre().getDistanceFrom({static_cast<float>(x), static_cast<float>(y)}) <
-               r.getWidth() * 0.34f;
-    }
-
-    void paintButton(juce::Graphics& g, bool over, bool down) override
-    {
-        const auto r = getLocalBounds().toFloat();
-        const auto& image = hardware::image("corona", down ? "button-down.png" : "button-up.png");
-        if (image.isValid())
-            hardware::drawScaled(g, image, r);
-        else
-        {
-            const auto& hw = theme_.hardware;
-            g.setColour(hw.aluminium.darker(0.3f));
-            g.fillEllipse(r.reduced(r.getWidth() * 0.19f));
-            g.setColour(down ? hw.aluminium.darker(0.15f) : hw.aluminium);
-            g.fillEllipse(r.reduced(r.getWidth() * 0.29f));
-        }
-        if (over && isEnabled() && !down)
-        {
-            g.setColour(theme_.hardware.highlight.withAlpha(0.08f));
-            g.fillEllipse(r.reduced(r.getWidth() * 0.29f));
-        }
-        hardware::drawFocusRing(g, *this, r.reduced(r.getWidth() * 0.17f), r.getWidth() * 0.33f);
-    }
-
-private:
-    const Theme& theme_;
-};
-
-// The lamp: Corona's red jewel, lit while the pedal is on (the tuner's while it mutes).
-class Lamp final : public juce::Component, public juce::SettableTooltipClient
-{
-public:
-    Lamp(const Theme& theme, std::function<bool()> lit) : theme_(theme), lit_(std::move(lit)) {}
-
-    void paint(juce::Graphics& g) override
-    {
-        const bool lit = lit_();
-        const auto& image = hardware::image("corona", lit ? "jewel-lit.png" : "jewel-off.png");
-        const auto r = getLocalBounds().toFloat();
-        if (image.isValid())
-        {
-            hardware::drawScaled(g, image, r);
-            return;
-        }
-        const auto& hw = theme_.hardware;
-        g.setColour(lit ? hw.coronaJewel : hw.coronaJewel.darker(0.7f));
-        g.fillEllipse(juce::Rectangle<float>(r.getWidth() * 0.5f, r.getWidth() * 0.5f)
-                          .withCentre({r.getCentreX(), r.getWidth() * 0.5f}));
-    }
-
-private:
-    const Theme& theme_;
-    std::function<bool()> lit_;
-};
 
 // What the tuner shows: the note, how far off it is, and whether it is in tune.
 struct TunerState
@@ -445,12 +375,9 @@ public:
     }
 
     const PedalSpec& spec() const noexcept { return spec_; }
-    std::function<juce::String(int param)> value;
     std::function<float(int param)> paramValue;
 
 private:
-    float nameSize(float size) const noexcept { return isCompact() ? size * compactNameScale : size; }
-
     juce::Rectangle<float> nameArea(const PedalKnob& k, float width) const
     {
         return {k.centre.x - width * 0.5f, k.centre.y + k.skirt * 0.5f + nameGap, width, 20.0f};
@@ -599,7 +526,7 @@ class PedalCard final : public RenderedCard
 public:
     PedalCard(const Theme& theme, CardHost& host, core::Id channelId, const core::Insert& insert)
         : RenderedCard(theme, host, channelId, insert, face_), face_(theme, specFor(insert.type)),
-          footswitch_(theme), lamp_(theme, [this] { return lampLit(); })
+          footswitch_(theme, "Bypass", false), lamp_(theme, [this] { return lampLit(); })
     {
         addAndMakeVisible(face_);
         const auto& spec = face_.spec();
@@ -642,7 +569,7 @@ public:
             face_.addAndMakeVisible(*display_);
         }
 
-        footswitch_.onClick = [this] { stomp(); };
+        footswitch_.onPress = [this] { stomp(); };
         footswitch_.setBounds(juce::Rectangle<float>(footswitchSize, footswitchSize)
                                   .withCentre(footswitchCentre)
                                   .toNearestInt());
@@ -783,8 +710,8 @@ private:
     }
 
     Face face_;
-    Footswitch footswitch_;
-    Lamp lamp_;
+    Footswitch footswitch_; // Corona's, without its LED
+    JewelLamp lamp_;        // Corona's red jewel, lit while the pedal is on (the tuner's while it mutes)
     HardwareLever* lever_ = nullptr;
     std::unique_ptr<TunerDisplay> display_;
     TunerState tuner_;

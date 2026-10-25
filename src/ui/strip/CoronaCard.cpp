@@ -19,6 +19,7 @@
 #include "ui/components/HardwareParts.h"
 #include "ui/components/RenderedFace.h"
 #include "ui/strip/CoronaFace.h"
+#include "ui/strip/FaceParts.h"
 #include "ui/strip/HardwareKey.h"
 #include "ui/strip/HardwareLever.h"
 #include "ui/strip/RenderedCard.h"
@@ -199,141 +200,6 @@ void drawCabinetIcon(juce::Graphics& g, juce::Rectangle<float> r)
     }
     g.strokePath(p, line);
 }
-
-// ----- a footswitch button -----------------------------------------------------------------
-
-// The footswitch's push-button for REVERB or TREMOLO, a LED over it: lit while
-// on (the tremolo's pulses with the light cell).
-class Footswitch final : public juce::Component, public juce::SettableTooltipClient
-{
-public:
-    // `name` for the tooltip ("Reverb: On"); the accessible title adds "footswitch".
-    Footswitch(const Theme& theme, juce::String name) : theme_(theme), title_(std::move(name))
-    {
-        setWantsKeyboardFocus(true);
-        setRepaintsOnMouseActivity(true);
-        setMouseCursor(juce::MouseCursor::PointingHandCursor);
-        setTitle(title_ + " footswitch");
-        setTooltip(title_ + ": Off");
-    }
-
-    std::function<void()> onPress;
-
-    void set(bool on, float glow)
-    {
-        if (on == on_ && std::abs(glow - glow_) < 0.02f)
-            return;
-        if (on != on_)
-        {
-            setTooltip(title_ + (on ? ": On" : ": Off"));
-            setDescription(on ? "On" : "Off");
-        }
-        on_ = on;
-        glow_ = glow;
-        repaint();
-    }
-
-    void paint(juce::Graphics& g) override
-    {
-        const auto& hw = theme_.hardware;
-        const bool enabled = isEnabled();
-        const auto button = buttonBounds();
-        const auto& image = part(isMouseButtonDown() ? "button-down.png" : "button-up.png");
-        if (image.isValid())
-            hardware::drawScaled(
-                g, image, button.expanded(button.getWidth() * margin), enabled ? 1.0f : 0.5f);
-        else
-        {
-            g.setColour(hw.aluminium.withMultipliedAlpha(enabled ? 1.0f : 0.5f));
-            g.fillEllipse(button);
-            g.setColour(hw.shadow.withAlpha(0.35f));
-            g.drawEllipse(button.reduced(button.getWidth() * 0.18f), 1.5f);
-        }
-        if (enabled && isMouseOver(true))
-        {
-            g.setColour(hw.highlight.withAlpha(isMouseButtonDown() ? 0.10f : 0.07f));
-            g.fillEllipse(button);
-        }
-        // The LED to the button's right.
-        const auto led =
-            juce::Rectangle<float>(7.0f, 7.0f)
-                .withCentre({button.getRight() + button.getWidth() * margin + 4.0f, button.getCentreY()});
-        const float level = on_ ? glow_ : 0.0f;
-        g.setColour(hw.ledOff);
-        g.fillEllipse(led);
-        if (level > 0.0f)
-        {
-            g.setColour(hw.led.withAlpha(level));
-            g.fillEllipse(led);
-            g.setColour(hw.led.withAlpha(0.3f * level));
-            g.fillEllipse(led.expanded(4.0f));
-        }
-        hardware::drawFocusRing(g, *this, button, button.getWidth() * 0.5f);
-    }
-
-    bool hitTest(int x, int y) override
-    {
-        return buttonBounds().expanded(4.0f).contains(static_cast<float>(x), static_cast<float>(y));
-    }
-    void mouseDown(const juce::MouseEvent&) override { repaint(); }
-    void mouseUp(const juce::MouseEvent& e) override
-    {
-        if (isEnabled() && buttonBounds().expanded(4.0f).contains(e.position) && onPress)
-            onPress();
-        repaint();
-    }
-    bool keyPressed(const juce::KeyPress& key) override
-    {
-        if (key != juce::KeyPress::spaceKey && key != juce::KeyPress::returnKey)
-            return false;
-        if (onPress)
-            onPress();
-        return true;
-    }
-    void focusGained(FocusChangeType) override { repaint(); }
-    void focusLost(FocusChangeType) override { repaint(); }
-    std::unique_ptr<juce::AccessibilityHandler> createAccessibilityHandler() override
-    {
-        return std::make_unique<juce::AccessibilityHandler>(
-            *this,
-            juce::AccessibilityRole::toggleButton,
-            juce::AccessibilityActions().addAction(juce::AccessibilityActionType::press,
-                                                   [this]
-                                                   {
-                                                       if (onPress)
-                                                           onPress();
-                                                   }));
-    }
-
-private:
-public:
-    // The share of the button's size its image reaches past it on each side (the
-    // render's rim and shadow), and the room the LED takes to its right.
-    static constexpr float margin = 0.3f;
-    static constexpr float ledRoom = 12.0f;
-    // The component's size for a button `size` across.
-    static juce::Rectangle<float> boundsFor(juce::Point<float> centre, float size)
-    {
-        const float m = size * margin;
-        return {centre.x - size * 0.5f - m,
-                centre.y - size * 0.5f - m,
-                size + 2.0f * m + ledRoom,
-                size + 2.0f * m};
-    }
-
-private:
-    juce::Rectangle<float> buttonBounds() const
-    {
-        const float h = static_cast<float>(getHeight());
-        const float size = h / (1.0f + 2.0f * margin);
-        return {(h - size) * 0.5f, (h - size) * 0.5f, size, size};
-    }
-
-    const Theme& theme_;
-    juce::String title_;
-    bool on_ = false;
-    float glow_ = 1.0f;
-};
 
 // ----- the pilot jewel ---------------------------------------------------------------------
 
@@ -699,26 +565,18 @@ public:
     int model = pc::open2x12;
     bool cabinetOn = true;
     int qualityIndex = 1;
-    // Values drawn over the static layer.
-    std::function<juce::String(int param)> value;
     juce::String fileName, fileError;
     int litInput = 0;
     bool gateShut = false;
 
 private:
-    // Compact (RenderedFace): names larger and tighter, and the control in hand
-    // shows its value in place of its name.
-    float nameSize(float size) const noexcept { return isCompact() ? size * compactNameScale : size; }
-    float nameTracking(float tracking) const noexcept { return isCompact() ? tracking * 0.4f : tracking; }
+    // Compact (RenderedFace): names larger and tighter (nameSize, nameTracking),
+    // and the control in hand shows its value in place of its name (nameFor).
     // A compact name's box: under its control with a clear gap (its skirt's
     // bottom plus `gap`), its text hung from the top.
     static juce::Rectangle<float> under(juce::Point<float> c, float skirt, float width, float gap = 22.0f)
     {
         return {c.x - width * 0.5f, c.y + skirt * 0.5f + gap, width, 32.0f};
-    }
-    juce::String nameFor(int param, const char* name) const
-    {
-        return isCompact() && activeControl() == param && value ? value(param) : juce::String(name);
     }
 
     // The art depends on the page and, on the cabinet page, the cabinet.
@@ -1255,10 +1113,12 @@ public:
         }
         for (int f = 0; f < 2; ++f)
         {
-            auto sw = std::make_unique<Footswitch>(theme_, f == 0 ? "Reverb" : "Tremolo");
-            sw->setBounds(
-                Footswitch::boundsFor({footswitchX[static_cast<size_t>(f)], footswitchY}, footswitchSize)
-                    .toNearestInt());
+            // The footswitch's push-button for REVERB or TREMOLO, a LED beside it: lit
+            // while on (the tremolo's pulses with the light cell).
+            auto sw = std::make_unique<Footswitch>(theme_, f == 0 ? "Reverb" : "Tremolo", true);
+            sw->setBounds(Footswitch::boundsFor(
+                              {footswitchX[static_cast<size_t>(f)], footswitchY}, footswitchSize, true)
+                              .toNearestInt());
             sw->onPress = [this, f]
             { toggleParam(f == 0 ? pa::reverbOn : pa::tremoloOn, f == 0 ? "Reverb" : "Tremolo"); };
             face_.addAndMakeVisible(*sw);
