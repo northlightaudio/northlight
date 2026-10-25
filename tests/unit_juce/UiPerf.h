@@ -9,6 +9,7 @@
 #include "core/Command.h"
 #include "core/Model.h"
 #include "plugins/BuiltIns.h"
+#include "plugins/ChannelStrip.h"
 #include "ui/PaintStats.h"
 #include "ui/Theme.h"
 #include "ui/components/Knob.h"
@@ -114,7 +115,10 @@ public:
         };
         host_.onGestureBegin = [](const std::string&) {};
         host_.onGestureEnd = [] {};
-        card_ = ui::strip::createBuiltInCard(ui::Theme::dark(), host_, core::masterId, insert_);
+        // A channel strip module gets the strip's card, anything else the insert's.
+        card_ = plugins::strip::isStripType(type)
+                    ? ui::strip::createModuleCard(ui::Theme::dark(), host_, core::masterId, insert_)
+                    : ui::strip::createBuiltInCard(ui::Theme::dark(), host_, core::masterId, insert_);
         if (card_ == nullptr)
             return;
         card_->setBounds(0,

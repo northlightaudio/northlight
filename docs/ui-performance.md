@@ -102,6 +102,11 @@ with `perf/baselines/<computer>.<preset>.json`; one over its baseline by more th
   a face, a card or the mixer.
 - Run layer 3 before merging a change to how the UI repaints (timers, repaint
   regions, a face's layers) and update the baseline if it moved for a good reason.
+- A refactor that should not change the look is checked pixel for pixel:
+  `northlight_juce_tests "[.card-snapshots]"` saves every card (the built-ins and
+  the strip modules, played into the same way every run) at 100% and 200%, a
+  rendered face at its smallest too, as PNGs in the folder `NORTHLIGHT_SNAPSHOT_DIR`
+  names. Save them before and after and compare the two folders.
 
 ## How a face keeps its repaints small
 

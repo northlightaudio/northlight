@@ -55,7 +55,8 @@ add_executable(northlight_juce_tests
     EffectCardTooltipsTests.cpp
     WidthScaleTests.cpp
     ExciterCardTests.cpp
-    BloomCardTests.cpp)
+    BloomCardTests.cpp
+    CardSnapshotTests.cpp)
 
 target_link_libraries(northlight_juce_tests PRIVATE
     northlight_options
