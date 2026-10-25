@@ -23,6 +23,7 @@
 #include <memory>
 #include <optional>
 #include <string>
+#include <unordered_map>
 #include <unordered_set>
 #include <vector>
 
@@ -542,6 +543,14 @@ private:
     core::SamplePosition timeSelStart_ = 0, timeSelEnd_ = 0;
     std::vector<core::Id> timeSelTracks_;
     std::unordered_set<std::string> missingMedia_;
+    // When each media file was last looked for on disk, and whether it was there.
+    struct MediaCheck
+    {
+        bool missing = false;
+        juce::uint32 checkedMs = 0; // juce::Time::getMillisecondCounter(); 0 = never
+    };
+    std::unordered_map<std::string, MediaCheck> mediaChecks_;
+    static constexpr juce::uint32 mediaRecheckMs = 2000;
     core::Id reorderFrom_ = core::invalidId;
     int reorderTo_ = -1;
     double lastMeterMs_ = 0.0;

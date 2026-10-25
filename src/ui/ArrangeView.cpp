@@ -200,10 +200,24 @@ void ArrangeView::refreshMissingMedia()
     missingMedia_.clear();
     if (project_ == nullptr)
         return;
+    // Each file is looked for once, and again only after a while: every structural
+    // edit comes here, and a disk lookup per clip per edit stalls the message
+    // thread on a slow or network drive.
+    const auto now = juce::Time::getMillisecondCounter();
     for (const auto& t : project_->tracks)
         for (const auto& clip : t.clips)
-            if (!clip.mediaPath.empty() && !juce::File(clip.mediaPath).existsAsFile())
+        {
+            if (clip.mediaPath.empty())
+                continue;
+            auto& check = mediaChecks_[clip.mediaPath];
+            if (check.checkedMs == 0 || now - check.checkedMs >= mediaRecheckMs)
+            {
+                check.missing = !juce::File(clip.mediaPath).existsAsFile();
+                check.checkedMs = std::max<juce::uint32>(1, now);
+            }
+            if (check.missing)
                 missingMedia_.insert(clip.mediaPath);
+        }
 }
 
 bool ArrangeView::mediaMissing(const std::string& path)
