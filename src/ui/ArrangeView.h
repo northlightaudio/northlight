@@ -15,6 +15,7 @@
 #include "ui/Theme.h"
 #include "ui/TrackHeader.h"
 #include "ui/arrange/ArrangeLayout.h"
+#include "ui/arrange/ArrangeMenus.h"
 #include "ui/edit/ClipOps.h"
 #include "ui/timeline/GridLines.h"
 #include "ui/timeline/TimelineViewport.h"
@@ -155,7 +156,7 @@ public:
     std::function<void()> onAddAudioTrack, onImportRequested, onAddBus;
     // The plugins its "New instrument" menus offer (the shell's shared sources).
     void setPluginSources(const PluginSources* sources) noexcept { pluginSources_ = sources; }
-    void openAddTrackMenu() { addTrackMenu(); } // as the "+" button does
+    void openAddTrackMenu() { menus_.addTrackMenu(); } // as the "+" button does
     // A MIDI track with a new instrument channel playing `type` (empty: the
     // default instrument).
     std::function<void(const std::string& type)> onAddMidiTrack;
@@ -279,6 +280,8 @@ public:
     std::function<void(bool shown)> onTempoTrackShownChanged;
 
 private:
+    friend class ArrangeMenus;
+    ArrangeMenus menus_{*this};
     int rulerHeight = 32; // the ruler and, when shown, the tempo track under it: where the lanes start
     int rulerOnly = 32;   // size.ruler: the markers row over the bars row
     static constexpr int tempoLaneHeight = 52;
@@ -359,25 +362,15 @@ private:
     juce::Rectangle<int> loopBand() const noexcept; // in the bars row, empty without a region
     bool mediaMissing(const std::string& path);
     void refreshMissingMedia();
-    void clipMenu(const ClipRef& ref, juce::Point<int> screen);
     std::vector<const core::Track*> folderChoices(core::Id trackId) const;
     void drawFolderLane(juce::Graphics& g, const core::Track& folder, juce::Rectangle<int> lane);
     void finishStretch();
-    // The track's menu; on an audio clip (clipId) it leads with the clip's items.
-    void trackMenu(core::Id trackId, juce::Point<int> screen, core::Id clipId = core::invalidId);
-    void rulerMenu(juce::Point<int> screen);
-    void addTrackMenu();
     // FX tracks (buses flagged fx) show as rows under the tracks.
     // The rows after the tracks: every bus (groups and FX tracks), then the master.
     std::vector<const core::Channel*> busRows() const;
     int rowCount() const noexcept;
     const core::Channel* channelAtRow(int row) const;
-    void fxTrackMenu(core::Id busId, juce::Point<int> screen); // a bus's row (group or FX track)
-    void masterMenu(juce::Point<int> screen);
-    void targetMenu(core::Id trackId, juce::Rectangle<int> screenArea);
     std::function<std::string(const std::string&)> displayName_;
-    void addFxMenu(juce::PopupMenu& menu, int firstId) const;
-    void addFxTrack(int choice, int firstId, std::vector<core::Id> sendFrom);
     void reorderDrag(core::Id trackId, juce::Point<int> screen, bool released);
     void finishTimeSelection();
     void splitAtSelection();
@@ -500,7 +493,6 @@ private:
     bool shownMuted(const ClipRef& ref, bool muted) const noexcept;
     void drawToolOverlay(juce::Graphics& g);
     void hoverAt(juce::Point<int> p, juce::ModifierKeys mods);
-    void toolsMenu();
     // Markers.
     const core::Marker* markerAtRulerPoint(juce::Point<int> p) const noexcept;
     juce::Rectangle<int> markerFlagBounds(const core::Marker& marker) const noexcept;

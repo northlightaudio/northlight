@@ -2,8 +2,6 @@
 
 #include "core/Command.h"
 #include "core/Comping.h"
-#include "plugins/FxTracks.h"
-#include "ui/ColourMenu.h"
 #include "ui/Db.h"
 #include "ui/FrameStats.h"
 #include "ui/Icons.h"
@@ -48,7 +46,7 @@ ArrangeView::ArrangeView(audio::PeakStore& peaks, const Theme& theme)
     rowHeight = theme_.sizes.trackRow;
     scrollbarHeight = theme_.sizes.scrollbar;
     scrollbarWidth = theme_.sizes.scrollbar;
-    addTrack_.onClick = [this] { addTrackMenu(); };
+    addTrack_.onClick = [this] { menus_.addTrackMenu(); };
     rowsSmaller_.onClick = [this]
     { setRowHeight(rowHeight > theme_.sizes.trackRow ? theme_.sizes.trackRow : theme_.sizes.trackRowMin); };
     rowsLarger_.onClick = [this]
@@ -57,7 +55,7 @@ ArrangeView::ArrangeView(audio::PeakStore& peaks, const Theme& theme)
     for (size_t i = 0; i < tools.size(); ++i)
         tools[i]->onClick = [this, i] { setTool(static_cast<Tool>(i)); };
     toolMenu_.setShowsMenuChevron(true);
-    toolMenu_.onClick = [this] { toolsMenu(); };
+    toolMenu_.onClick = [this] { menus_.toolsMenu(); };
     for (auto* b : {&addTrack_, &rowsSmaller_, &rowsLarger_, &toolMenu_})
     {
         b->setIconSize(theme_.sizes.iconSmall);
@@ -372,8 +370,10 @@ void ArrangeView::rebuildHeaders()
         };
         header->onReorderDrag = [this](core::Id id, juce::Point<int> screen, bool released)
         { reorderDrag(id, screen, released); };
-        header->onContextMenu = [this](core::Id id, juce::Point<int> screen) { trackMenu(id, screen); };
-        header->onTargetMenu = [this](core::Id id, juce::Rectangle<int> area) { targetMenu(id, area); };
+        header->onContextMenu = [this](core::Id id, juce::Point<int> screen)
+        { menus_.trackMenu(id, screen); };
+        header->onTargetMenu = [this](core::Id id, juce::Rectangle<int> area)
+        { menus_.targetMenu(id, area); };
         header->onAutomationToggled = [this](core::Id id, bool shown) { showAutomation(id, shown); };
         header->onAutomationMenu = [this](core::Id id, juce::Rectangle<int> area)
         { automation_.showChannelMenu(id, area); };
@@ -407,9 +407,9 @@ void ArrangeView::rebuildHeaders()
         header->onContextMenu = [this](core::Id id, juce::Point<int> screen)
         {
             if (id == core::masterId)
-                masterMenu(screen);
+                menus_.masterMenu(screen);
             else
-                fxTrackMenu(id, screen);
+                menus_.busMenu(id, screen);
         };
         header->onAutomationToggled = [this](core::Id id, bool shown) { showAutomation(id, shown); };
         header->onAutomationMenu = [this](core::Id id, juce::Rectangle<int> area)
@@ -905,7 +905,7 @@ void ArrangeView::mouseDownRuler(const juce::MouseEvent& e)
 {
     if (e.mods.isPopupMenu())
     {
-        rulerMenu(e.getScreenPosition());
+        menus_.rulerMenu(e.getScreenPosition());
         return;
     }
     // The loop band's handles and body, when the loop is on.
@@ -977,10 +977,10 @@ void ArrangeView::mouseDownLanes(const juce::MouseEvent& e)
                 select(ref, true);
                 notifySelection();
             }
-            clipMenu(ref, e.getScreenPosition());
+            menus_.clipMenu(ref, e.getScreenPosition());
         }
         else if (hit.track != nullptr)
-            trackMenu(hit.track->id, e.getScreenPosition());
+            menus_.trackMenu(hit.track->id, e.getScreenPosition());
         return;
     }
     if (usesClipTool() && mouseDownWithTool(e, hit))
@@ -3213,37 +3213,6 @@ void ArrangeView::drawToolOverlay(juce::Graphics& g)
                     {std::min(block.getRight(), lanesArea.getRight()) - 10, block.getY() - 14});
 }
 
-void ArrangeView::toolsMenu()
-{
-    static constexpr const char* labels[toolCount] = {
-        "Select", "Range", "Pencil", "Erase", "Split", "Glue", "Mute"};
-    juce::PopupMenu menu;
-    const auto tools = toolButtons();
-    for (int i = 0; i < toolCount; ++i)
-    {
-        juce::PopupMenu::Item item(labels[i]);
-        item.itemID = i + 1;
-        item.isTicked = static_cast<Tool>(i) == tool_;
-        item.shortcutKeyDescription = juce::String(i + 1);
-        bool filled = false;
-        auto icon = std::make_unique<juce::DrawablePath>();
-        icon->setPath(Icons::path(tools[static_cast<size_t>(i)]->icon(), filled));
-        icon->setStrokeFill(juce::FillType(theme_.colours.textSecondary));
-        icon->setStrokeType(
-            juce::PathStrokeType(1.5f, juce::PathStrokeType::curved, juce::PathStrokeType::rounded));
-        icon->setFill(filled ? juce::FillType(theme_.colours.textSecondary) : juce::FillType());
-        item.image = std::move(icon);
-        menu.addItem(std::move(item));
-    }
-    juce::Component::SafePointer<ArrangeView> safe(this);
-    menu.showMenuAsync(juce::PopupMenu::Options().withTargetComponent(&toolMenu_),
-                       [safe](int choice)
-                       {
-                           if (safe != nullptr && choice > 0)
-                               safe->setTool(static_cast<Tool>(choice - 1));
-                       });
-}
-
 void ArrangeView::openFirstClipMenu()
 {
     if (project_ == nullptr)
@@ -3263,7 +3232,7 @@ void ArrangeView::openFirstClipMenu()
         notifySelection();
         repaint();
         const auto at = spanBounds(span->start, span->length, static_cast<int>(row)).getCentre();
-        clipMenu(ref, localPointToGlobal(at));
+        menus_.clipMenu(ref, localPointToGlobal(at));
         return;
     }
 }
@@ -3399,173 +3368,6 @@ std::vector<const core::Track*> ArrangeView::folderChoices(core::Id trackId) con
         if (t.isFolder() && !project_->insideFolder(t.id, trackId))
             out.push_back(&t);
     return out;
-}
-
-void ArrangeView::clipMenu(const ClipRef& ref, juce::Point<int> screen)
-{
-    const auto* track = project_ != nullptr ? project_->findTrack(ref.track) : nullptr;
-    const auto* clip = track != nullptr && !ref.midi ? track->findClip(ref.clip) : nullptr;
-    const auto* midiClip = track != nullptr && ref.midi ? track->findMidiClip(ref.clip) : nullptr;
-    const auto span = spanOf(ref);
-    if (track == nullptr || !span || (clip == nullptr && midiClip == nullptr))
-        return;
-    // Where the menu opened, for "Split here".
-    const auto local = getLocalPoint(nullptr, screen);
-    const auto splitHere = splitPosition(local.x, *span);
-    const auto selection = selection_; // the menu acts on the selection (the clip is in it)
-    const bool muted = edit::isMuted(*project_, ref);
-    const bool anyPlaying = std::any_of(
-        selection.begin(), selection.end(), [&](const ClipRef& r) { return !edit::isMuted(*project_, r); });
-    const bool many = selection.size() > 1;
-
-    enum Choice
-    {
-        stretchToTempo = 1,
-        followTempo,
-        resetStretch,
-        trackItem,
-        openInSampler,
-        openEditor,
-        splitHereItem = 20,
-        joinItem,
-        crossfadeItem,
-        muteItem,
-        duplicateItem,
-        normaliseItem,
-        cutItem,
-        copyItem,
-        deleteItem,
-        transposeBase = 150,
-    };
-    juce::PopupMenu menu;
-    const auto add =
-        [&menu](int id, const juce::String& text, const char* keys, bool enabled = true, bool ticked = false)
-    {
-        juce::PopupMenu::Item item(text);
-        item.itemID = id;
-        item.isEnabled = enabled;
-        item.isTicked = ticked;
-        item.shortcutKeyDescription = keys;
-        menu.addItem(std::move(item));
-    };
-    menu.addSectionHeader(
-        juce::String::fromUTF8((clip != nullptr ? clip->name : midiClip->name).c_str()) +
-        (many ? "  +" + juce::String(static_cast<int>(selection.size()) - 1) : juce::String()));
-    add(splitHereItem, "Split here", "", splitHere > span->start && splitHere < span->end());
-    add(joinItem,
-        many ? "Join" : "Join with next",
-        many ? "J" : "",
-        many ? !edit::joinClips(*project_, selection).empty() : edit::canJoinWithNext(*project_, ref));
-    if (!ref.midi)
-        add(crossfadeItem, "Crossfade", "X", !edit::crossfadeClips(*project_, selection).empty());
-    add(muteItem,
-        many ? (anyPlaying ? "Mute clips" : "Unmute clips") : (muted ? "Unmute clip" : "Mute clip"),
-        "Ctrl+M");
-    add(duplicateItem, "Duplicate", "Ctrl+D");
-    if (!ref.midi)
-        add(normaliseItem, "Normalise", "Ctrl+Shift+N", static_cast<bool>(onNormalise));
-    menu.addSeparator();
-    add(cutItem, "Cut", "Ctrl+X");
-    add(copyItem, "Copy", "Ctrl+C");
-    add(deleteItem, "Delete", "Delete");
-    menu.addSeparator();
-    if (clip != nullptr)
-    {
-        menu.addItem(stretchToTempo, "Stretch to project tempo...", static_cast<bool>(onConformClip));
-        menu.addItem(followTempo, "Follow tempo changes", true, clip->followTempo);
-        juce::PopupMenu transpose;
-        for (const int semis : {12, 7, 5, 2, 1, 0, -1, -2, -5, -7, -12})
-            transpose.addItem(transposeBase + semis,
-                              semis == 0 ? juce::String("Original pitch")
-                                         : (semis > 0 ? "+" : "") + juce::String(semis) + " semitones",
-                              true,
-                              std::abs(clip->transpose - semis) < 1.0e-6);
-        menu.addSubMenu("Transpose", transpose);
-        menu.addItem(resetStretch, "Reset stretch and pitch", clip->isStretched());
-        menu.addSeparator();
-        menu.addItem(openInSampler, "Open in Sampler", static_cast<bool>(onOpenInSampler));
-    }
-    else
-    {
-        menu.addItem(openEditor, "Open in piano roll", static_cast<bool>(onOpenMidiClip));
-    }
-    menu.addItem(trackItem, "Track...");
-    juce::Component::SafePointer<ArrangeView> safe(this);
-    const auto original = clip != nullptr ? *clip : core::AudioClip{};
-    const auto trackId = ref.track;
-    menu.showMenuAsync(
-        juce::PopupMenu::Options().withTargetScreenArea({screen.x, screen.y, 1, 1}),
-        [safe, ref, trackId, original, screen, splitHere, selection](int choice)
-        {
-            if (safe == nullptr || choice == 0 || safe->project_ == nullptr)
-                return;
-            auto& view = *safe;
-            const auto& project = *view.project_;
-            const auto run = [&](edit::Edit e) { view.emit(std::move(e.commands), e.name); };
-            const auto set = [&](double stretch, double transpose, core::SamplePosition length, bool follow)
-            {
-                std::vector<std::unique_ptr<core::Command>> commands;
-                commands.push_back(std::make_unique<core::SetClipStretch>(
-                    trackId, original.id, stretch, transpose, length, follow));
-                view.emit(std::move(commands), "Stretch clip");
-            };
-            switch (choice)
-            {
-                case splitHereItem:
-                    run(edit::splitAt(project, selection, splitHere));
-                    return;
-                case joinItem:
-                    run(selection.size() > 1 ? edit::joinClips(project, selection)
-                                             : edit::joinWithNext(project, ref));
-                    return;
-                case crossfadeItem:
-                    run(edit::crossfadeClips(project, selection));
-                    return;
-                case muteItem:
-                    run(edit::toggleMuted(project, selection));
-                    return;
-                case duplicateItem:
-                    run(edit::duplicateClips(project, selection));
-                    return;
-                case normaliseItem:
-                    view.normaliseSelection();
-                    return;
-                case cutItem:
-                    view.cutSelection();
-                    return;
-                case copyItem:
-                    view.copySelection();
-                    return;
-                case deleteItem:
-                    view.removeClips(selection);
-                    return;
-                case stretchToTempo:
-                    if (view.onConformClip)
-                        view.onConformClip(trackId, original.id);
-                    return;
-                case followTempo:
-                    set(original.stretch, original.transpose, original.length, !original.followTempo);
-                    return;
-                case resetStretch:
-                    set(1.0, 0.0, original.sourceLength(), false);
-                    return;
-                case trackItem:
-                    view.trackMenu(trackId, screen);
-                    return;
-                case openInSampler:
-                    if (view.onOpenInSampler)
-                        view.onOpenInSampler(trackId, original.id);
-                    return;
-                case openEditor:
-                    if (view.onOpenMidiClip)
-                        view.onOpenMidiClip(trackId, ref.clip);
-                    return;
-                default:
-                    if (choice >= transposeBase - 12 && choice <= transposeBase + 12)
-                        set(original.stretch, choice - transposeBase, original.length, original.followTempo);
-                    return;
-            }
-        });
 }
 
 void ArrangeView::finishFade(Drag which)
@@ -3708,421 +3510,6 @@ void ArrangeView::reorderDrag(core::Id trackId, juce::Point<int> screen, bool re
     const int to = index > from ? index - 1 : index;
     if (from >= 0 && to != from && onCommand)
         onCommand(std::make_unique<core::MoveTrack>(trackId, to));
-}
-
-void ArrangeView::trackMenu(core::Id trackId, juce::Point<int> screen, core::Id clipId)
-{
-    if (project_ == nullptr || project_->findTrack(trackId) == nullptr)
-        return;
-    juce::PopupMenu menu;
-    if (clipId != core::invalidId && project_->findTrack(trackId)->findClip(clipId) != nullptr &&
-        onOpenInSampler)
-    {
-        menu.addSectionHeader("Clip");
-        menu.addItem(7, "Open in Sampler");
-        menu.addSeparator();
-        menu.addSectionHeader("Track");
-    }
-    menu.addItem(1, "Rename");
-    const auto* track = project_->findTrack(trackId);
-    juce::PopupMenu colours;
-    juce::Component::SafePointer<ArrangeView> view(this);
-    addColourItems(colours,
-                   theme_,
-                   trackColour(*track, project_->trackIndex(trackId)),
-                   100,
-                   [view, trackId](std::uint32_t argb)
-                   {
-                       if (view != nullptr && view->onCommand)
-                           view->onCommand(std::make_unique<core::SetColour>(trackId, argb));
-                   });
-    menu.addSubMenu("Colour", colours);
-    if (track->isMidi())
-    {
-        // MIDI output: the device chosen in Audio Setup, on a channel.
-        const auto device = midiOutputName ? midiOutputName() : std::string{};
-        juce::PopupMenu out;
-        if (device.empty())
-            out.addItem(300, "Choose a MIDI output in Audio Setup", false);
-        else
-        {
-            out.addSectionHeader(juce::String::fromUTF8(device.c_str()));
-            out.addItem(300, "Off", true, !track->midiOut);
-            for (int ch = 1; ch <= 16; ++ch)
-                out.addItem(300 + ch,
-                            "Channel " + juce::String(ch),
-                            true,
-                            track->midiOut && track->midiOutChannel == ch);
-        }
-        menu.addSubMenu("MIDI output", out);
-    }
-    if (track->isMidi())
-        menu.addItem(5, "Plays...");
-    // Sends: tick a bus or FX track to send to it (post-fader, -6 dB), untick to stop.
-    if (track->hasAudio())
-    {
-        juce::PopupMenu sends;
-        for (size_t b = 0; b < project_->buses.size(); ++b)
-        {
-            const auto& bus = project_->buses[b];
-            const bool sending = track->findSend(bus.id) != nullptr;
-            sends.addItem(500 + static_cast<int>(b),
-                          juce::String::fromUTF8(bus.name.c_str()) + (bus.fx ? "" : "  (bus)"),
-                          sending || !project_->wouldCycle(trackId, bus.id),
-                          sending);
-        }
-        sends.addSeparator();
-        juce::PopupMenu newFx;
-        addFxMenu(newFx, 450);
-        sends.addSubMenu("New FX track", newFx);
-        menu.addSubMenu("Send to", sends);
-    }
-    if (track->hasAudio())
-        menu.addItem(4, track->automationOpen ? "Hide automation lanes" : "Show automation lanes");
-    if (track->hasAudio())
-        menu.addItem(800, track->isFrozen() ? "Unfreeze track" : "Freeze track");
-    if (track->isFolder())
-        menu.addItem(802, track->folderOpen ? "Close folder" : "Open folder");
-    {
-        juce::PopupMenu folders;
-        folders.addItem(801, "New folder containing this track");
-        folders.addSeparator();
-        folders.addItem(
-            810, "Not in a folder", track->folder != core::invalidId, track->folder == core::invalidId);
-        const auto choices = folderChoices(trackId);
-        for (size_t i = 0; i < choices.size(); ++i)
-            folders.addItem(811 + static_cast<int>(i),
-                            juce::String::fromUTF8(choices[i]->name.c_str()),
-                            true,
-                            track->folder == choices[i]->id);
-        menu.addSubMenu("Folder", folders);
-    }
-    if (!track->takeGroups.empty())
-        menu.addItem(6, takes_.laneCount(*track) > 0 ? "Hide take lanes" : "Show take lanes");
-    menu.addSeparator();
-    menu.addItem(2, "Delete track");
-    menu.addItem(3, "Add bus");
-    juce::Component::SafePointer<ArrangeView> safe(this);
-    menu.showMenuAsync(
-        juce::PopupMenu::Options().withTargetScreenArea({screen.x, screen.y, 1, 1}),
-        [safe, trackId, clipId](int choice)
-        {
-            if (safe == nullptr || choice == 0)
-                return;
-            if (choice == 7)
-            {
-                if (safe->onOpenInSampler)
-                    safe->onOpenInSampler(trackId, clipId);
-                return;
-            }
-            if (choice == 800)
-            {
-                if (const auto* t = safe->project_ != nullptr ? safe->project_->findTrack(trackId) : nullptr;
-                    t != nullptr && safe->onFreezeTrack)
-                    safe->onFreezeTrack(trackId, !t->isFrozen());
-                return;
-            }
-            if (choice == 801)
-            {
-                if (safe->onCommand)
-                    safe->onCommand(
-                        std::make_unique<core::AddFolderTrack>("Folder", std::vector<core::Id>{trackId}));
-                return;
-            }
-            if (choice >= 810 && choice < 900 && safe->project_ != nullptr && safe->onCommand)
-            {
-                const auto folders = safe->folderChoices(trackId);
-                const auto pick = static_cast<size_t>(choice - 811);
-                safe->onCommand(std::make_unique<core::SetTrackFolder>(
-                    trackId, choice == 810 || pick >= folders.size() ? core::invalidId : folders[pick]->id));
-                return;
-            }
-            if (choice == 802)
-            {
-                if (const auto* t = safe->project_ != nullptr ? safe->project_->findTrack(trackId) : nullptr;
-                    t != nullptr && safe->onCommand)
-                    safe->onCommand(std::make_unique<core::SetFolderOpen>(trackId, !t->folderOpen));
-                return;
-            }
-            if (choice >= 450 && choice < 500)
-            {
-                safe->addFxTrack(choice, 450, {trackId});
-                return;
-            }
-            if (choice >= 500 && safe->project_ != nullptr &&
-                static_cast<size_t>(choice - 500) < safe->project_->buses.size())
-            {
-                const auto busId = safe->project_->buses[static_cast<size_t>(choice - 500)].id;
-                const auto* t = safe->project_->findTrack(trackId);
-                if (t != nullptr && safe->onCommand)
-                {
-                    if (t->findSend(busId) != nullptr)
-                        safe->onCommand(std::make_unique<core::RemoveSend>(trackId, busId));
-                    else
-                        safe->onCommand(std::make_unique<core::SetSend>(trackId, busId, 0.5f, false));
-                }
-                return;
-            }
-            if (choice >= 300 && choice <= 316)
-            {
-                if (safe->onCommand)
-                    safe->onCommand(std::make_unique<core::SetTrackMidiOutput>(
-                        trackId, choice > 300, std::max(1, choice - 300)));
-                return;
-            }
-            if (choice == 4)
-            {
-                if (const auto* t =
-                        safe->project_ != nullptr ? safe->project_->findChannel(trackId) : nullptr)
-                    safe->showAutomation(trackId, !t->automationOpen);
-                return;
-            }
-            if (choice == 6)
-            {
-                if (const auto* t = safe->project_ != nullptr ? safe->project_->findTrack(trackId) : nullptr)
-                    safe->takes_.toggleLanes(*t);
-                return;
-            }
-            if (choice == 5)
-            {
-                const auto mouse = juce::Desktop::getMousePosition();
-                safe->targetMenu(trackId, {mouse.x, mouse.y, 1, 1});
-                return;
-            }
-            if (choice == 1)
-                for (auto& header : safe->headers_)
-                    if (header->trackId() == trackId)
-                        header->startRename();
-            if (choice == 2 && safe->onCommand)
-                safe->onCommand(std::make_unique<core::RemoveTrack>(trackId));
-            if (choice == 3 && safe->onAddBus)
-                safe->onAddBus();
-        });
-}
-
-// What a MIDI track plays: an instrument channel (or none), the MIDI channel it
-// sends on, or a new instrument (a channel for it, just under the track).
-void ArrangeView::targetMenu(core::Id trackId, juce::Rectangle<int> screenArea)
-{
-    const auto* track = project_ != nullptr ? project_->findTrack(trackId) : nullptr;
-    if (track == nullptr || !track->isMidi())
-        return;
-    juce::PopupMenu menu;
-    std::vector<core::Id> channels;
-    menu.addSectionHeader("Plays");
-    for (const auto& t : project_->tracks)
-        if (t.isInstrument())
-        {
-            juce::String text = juce::String::fromUTF8(t.name.c_str());
-            if (t.hasInstrument())
-                text << "  ("
-                     << juce::String::fromUTF8(displayName_ ? displayName_(t.instrument.type).c_str()
-                                                            : t.instrument.type.c_str())
-                     << ")";
-            channels.push_back(t.id);
-            menu.addItem(1000 + static_cast<int>(channels.size()) - 1, text, true, track->midiTarget == t.id);
-        }
-    menu.addItem(999, "Nothing", true, track->midiTarget == core::invalidId);
-    menu.addSeparator();
-    juce::PopupMenu midiChannels;
-    for (int ch = 1; ch <= 16; ++ch)
-        midiChannels.addItem(1100 + ch, "Channel " + juce::String(ch), true, track->midiChannel == ch);
-    menu.addSubMenu("MIDI channel", midiChannels);
-    auto instruments = buildPluginMenu(PluginKind::instrument, pluginSources_, 1200);
-    menu.addSubMenu("New instrument", instruments.menu);
-    juce::Component::SafePointer<ArrangeView> safe(this);
-    menu.showMenuAsync(
-        juce::PopupMenu::Options().withTargetScreenArea(screenArea),
-        [safe, trackId, channels, instruments](int choice)
-        {
-            if (safe == nullptr || choice == 0 || safe->project_ == nullptr)
-                return;
-            const auto* t = safe->project_->findTrack(trackId);
-            if (t == nullptr)
-                return;
-            if (const auto type = instruments.typeFor(choice); !type.empty())
-            {
-                if (safe->onPlayNewInstrument)
-                    safe->onPlayNewInstrument(trackId, type);
-                return;
-            }
-            if (!safe->onCommand)
-                return;
-            if (choice == 999)
-                safe->onCommand(
-                    std::make_unique<core::SetMidiTarget>(trackId, core::invalidId, t->midiChannel));
-            else if (choice >= 1000 && static_cast<size_t>(choice - 1000) < channels.size())
-                safe->onCommand(std::make_unique<core::SetMidiTarget>(
-                    trackId, channels[static_cast<size_t>(choice - 1000)], t->midiChannel));
-            else if (choice > 1100 && choice <= 1116)
-                safe->onCommand(std::make_unique<core::SetMidiTarget>(trackId, t->midiTarget, choice - 1100));
-        });
-}
-
-void ArrangeView::rulerMenu(juce::Point<int> screen)
-{
-    juce::PopupMenu menu;
-    menu.addItem(1, "Follow playhead", true, followPlayhead_);
-    menu.addItem(2, "Zoom to fit");
-    menu.addSeparator();
-    menu.addItem(3, "Add marker at playhead");
-    menu.addItem(4, "Add region from loop", regionEnd_ > regionStart_);
-    menu.addSeparator();
-    menu.addItem(5, "Show tempo track", true, tempoShown_);
-    juce::Component::SafePointer<ArrangeView> safe(this);
-    menu.showMenuAsync(juce::PopupMenu::Options().withTargetScreenArea({screen.x, screen.y, 1, 1}),
-                       [safe](int choice)
-                       {
-                           if (safe == nullptr)
-                               return;
-                           switch (choice)
-                           {
-                               case 1:
-                                   safe->followPlayhead_ = !safe->followPlayhead_;
-                                   break;
-                               case 2:
-                                   safe->zoomToFit();
-                                   break;
-                               case 3:
-                                   safe->addMarkerAtPlayhead(false);
-                                   break;
-                               case 4:
-                                   safe->addMarkerAtPlayhead(true);
-                                   break;
-                               case 5:
-                                   safe->setTempoTrackShown(!safe->tempoShown_);
-                                   break;
-                               default:
-                                   break;
-                           }
-                       });
-}
-
-void ArrangeView::addFxMenu(juce::PopupMenu& menu, int firstId) const
-{
-    const auto choices = plugins::fxTrackEffects();
-    for (size_t i = 0; i < choices.size(); ++i)
-        menu.addItem(firstId + static_cast<int>(i), juce::String(choices[i].name));
-}
-
-void ArrangeView::addFxTrack(int choice, int firstId, std::vector<core::Id> sendFrom)
-{
-    const auto choices = plugins::fxTrackEffects();
-    const auto i = static_cast<size_t>(choice - firstId);
-    if (project_ == nullptr || i >= choices.size())
-        return;
-    emit(plugins::addFxTrackCommands(*project_, choices[i].type, choices[i].name, sendFrom),
-         sendFrom.empty() ? "Add FX track" : "Add FX track and send");
-}
-
-void ArrangeView::fxTrackMenu(core::Id busId, juce::Point<int> screen)
-{
-    if (project_ == nullptr || project_->findBus(busId) == nullptr)
-        return;
-    juce::PopupMenu menu;
-    menu.addItem(1, "Rename");
-    menu.addItem(
-        2, project_->findBus(busId)->automationOpen ? "Hide automation lanes" : "Show automation lanes");
-    menu.addSeparator();
-    menu.addItem(3, project_->findBus(busId)->fx ? "Remove FX track" : "Remove bus");
-    juce::Component::SafePointer<ArrangeView> safe(this);
-    menu.showMenuAsync(juce::PopupMenu::Options().withTargetScreenArea({screen.x, screen.y, 1, 1}),
-                       [safe, busId](int choice)
-                       {
-                           if (safe == nullptr)
-                               return;
-                           if (choice == 1)
-                               for (auto& header : safe->fxHeaders_)
-                                   if (header->trackId() == busId)
-                                       header->startRename();
-                           if (choice == 2)
-                               if (const auto* bus =
-                                       safe->project_ != nullptr ? safe->project_->findBus(busId) : nullptr)
-                                   safe->showAutomation(busId, !bus->automationOpen);
-                           if (choice == 3 && safe->onCommand)
-                               safe->onCommand(std::make_unique<core::RemoveBus>(busId));
-                       });
-}
-
-void ArrangeView::masterMenu(juce::Point<int> screen)
-{
-    if (project_ == nullptr)
-        return;
-    juce::PopupMenu menu;
-    menu.addSectionHeader("Master");
-    menu.addItem(1, project_->master.automationOpen ? "Hide automation lanes" : "Show automation lanes");
-    juce::Component::SafePointer<ArrangeView> safe(this);
-    menu.showMenuAsync(juce::PopupMenu::Options().withTargetScreenArea({screen.x, screen.y, 1, 1}),
-                       [safe](int choice)
-                       {
-                           if (safe != nullptr && choice == 1 && safe->project_ != nullptr)
-                               safe->showAutomation(core::masterId, !safe->project_->master.automationOpen);
-                       });
-}
-
-void ArrangeView::addTrackMenu()
-{
-    juce::PopupMenu menu;
-    menu.addItem(1, "Audio track");
-    // A MIDI track plays an instrument channel: a new one, one already here, or
-    // nothing yet.
-    juce::PopupMenu midi;
-    auto instruments = buildPluginMenu(PluginKind::instrument, pluginSources_, 1200);
-    midi.addSubMenu("With a new instrument", instruments.menu);
-    std::vector<core::Id> channels;
-    if (project_ != nullptr)
-        for (const auto& t : project_->tracks)
-            if (t.isInstrument())
-            {
-                if (channels.empty())
-                    midi.addSectionHeader("Playing");
-                juce::String text = juce::String::fromUTF8(t.name.c_str());
-                if (t.hasInstrument())
-                    text << "  ("
-                         << juce::String::fromUTF8(displayName_ ? displayName_(t.instrument.type).c_str()
-                                                                : t.instrument.type.c_str())
-                         << ")";
-                channels.push_back(t.id);
-                midi.addItem(1000 + static_cast<int>(channels.size()) - 1, text);
-            }
-    midi.addSeparator();
-    midi.addItem(999, "Playing nothing yet");
-    menu.addSubMenu("MIDI track", midi);
-    juce::PopupMenu fx;
-    addFxMenu(fx, 400);
-    menu.addSubMenu("FX track", fx);
-    menu.addItem(3, "Bus");
-    menu.addItem(
-        4, selectedTrack() != core::invalidId ? "Folder track (holding the selected track)" : "Folder track");
-    juce::Component::SafePointer<ArrangeView> safe(this);
-    menu.showMenuAsync(
-        juce::PopupMenu::Options().withTargetComponent(&addTrack_),
-        [safe, instruments, channels](int choice)
-        {
-            if (safe == nullptr)
-                return;
-            if (choice == 4 && safe->onCommand)
-            {
-                std::vector<core::Id> members;
-                if (safe->project_ != nullptr && safe->project_->findTrack(safe->selectedTrack()) != nullptr)
-                    members.push_back(safe->selectedTrack());
-                safe->onCommand(std::make_unique<core::AddFolderTrack>("Folder", members));
-                return;
-            }
-            if (choice == 1 && safe->onAddAudioTrack)
-                safe->onAddAudioTrack();
-            if (const auto type = instruments.typeFor(choice); !type.empty() && safe->onAddMidiTrack)
-                safe->onAddMidiTrack(type);
-            if (choice == 999 && safe->onAddMidiTrackPlaying)
-                safe->onAddMidiTrackPlaying(core::invalidId);
-            if (choice >= 1000 && static_cast<size_t>(choice - 1000) < channels.size() &&
-                safe->onAddMidiTrackPlaying)
-                safe->onAddMidiTrackPlaying(channels[static_cast<size_t>(choice - 1000)]);
-            if (choice == 3 && safe->onAddBus)
-                safe->onAddBus();
-            if (choice >= 400 && choice < 450)
-                safe->addFxTrack(choice, 400, {});
-        });
 }
 
 void ArrangeView::joinSelection()
