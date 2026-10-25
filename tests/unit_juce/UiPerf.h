@@ -112,6 +112,10 @@ public:
             if (auto* set = dynamic_cast<core::SetInsertParameter*>(c.get());
                 set != nullptr && live_ != nullptr)
                 live_->setParameter(set->parameter(), set->value());
+            if (auto* all = dynamic_cast<core::SetInsertParameters*>(c.get());
+                all != nullptr && live_ != nullptr)
+                for (size_t i = 0; i < all->values().size(); ++i)
+                    live_->setParameter(static_cast<int>(i), all->values()[i]);
         };
         host_.onGestureBegin = [](const std::string&) {};
         host_.onGestureEnd = [] {};

@@ -13,6 +13,9 @@ Northlight has not had a release yet. The first release, 0.1.0, will include:
 
 ### Added
 
+- Aurora, Nebula and Starbit's preset bars list your own presets too: save the
+  sound as it is, delete one of yours or show the presets folder, as for the
+  effects. A preset, on an effect or an instrument, is one undo step.
 - Every bus and the master have a row in the arrange view, so they can be
   automated like tracks: the master's volume and its effects' parameters, a bus's
   volume, pan and effects. The master fader in the mixer follows its lane and can

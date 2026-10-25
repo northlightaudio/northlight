@@ -94,16 +94,17 @@ void showSavePresetSheet(juce::Component& from,
 
 // ----- the bar ------------------------------------------------------------------------------------
 
-PresetBar::PresetBar(const Theme& theme, std::string type)
-    : theme_(theme), type_(std::move(type)), previous_(juce::String::fromUTF8("\xe2\x80\xb9")),
-      next_(juce::String::fromUTF8("\xe2\x80\xba"))
+PresetBar::PresetBar(const Theme& theme, std::string type, bool inFace)
+    : theme_(theme), type_(std::move(type)), inFace_(inFace),
+      previous_(juce::String::fromUTF8("\xe2\x80\xb9")), next_(juce::String::fromUTF8("\xe2\x80\xba"))
 {
     for (auto* b : {&previous_, &next_, &name_})
     {
         b->getProperties().set(NorthlightLookAndFeel::propertyVariant, "ghost");
         addAndMakeVisible(b);
     }
-    name_.getProperties().set(NorthlightLookAndFeel::propertyMenu, true);
+    if (!inFace_)
+        name_.getProperties().set(NorthlightLookAndFeel::propertyMenu, true);
     previous_.setTooltip("Previous preset");
     next_.setTooltip("Next preset");
     name_.setMouseCursor(juce::MouseCursor::PointingHandCursor);
@@ -180,6 +181,8 @@ void PresetBar::showMenu()
 
 void PresetBar::paint(juce::Graphics& g)
 {
+    if (inFace_)
+        return; // the face draws the well
     const auto& c = theme_.colours;
     const auto r = getLocalBounds().toFloat();
     g.setColour(c.surface0.withAlpha(0.8f));

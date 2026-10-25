@@ -1561,6 +1561,33 @@ bool SetInsertParameter::revert(Project& p)
     return true;
 }
 
+SetInsertParameters::SetInsertParameters(Id channelId,
+                                         Id insertId,
+                                         std::vector<float> values,
+                                         std::string name)
+    : channelId_(channelId), insertId_(insertId), values_(std::move(values)), name_(std::move(name))
+{
+}
+bool SetInsertParameters::apply(Project& p)
+{
+    auto* i = findInsert(p, channelId_, insertId_);
+    if (i == nullptr)
+        return false;
+    previous_ = i->params;
+    if (i->params.size() < values_.size())
+        i->params.resize(values_.size(), 0.0f);
+    std::copy(values_.begin(), values_.end(), i->params.begin());
+    return true;
+}
+bool SetInsertParameters::revert(Project& p)
+{
+    auto* i = findInsert(p, channelId_, insertId_);
+    if (i == nullptr)
+        return false;
+    i->params = previous_;
+    return true;
+}
+
 SetInsertSidechain::SetInsertSidechain(Id channelId, Id insertId, Id sourceId, bool postFader)
     : channelId_(channelId), insertId_(insertId), value_(sourceId), postFader_(postFader)
 {

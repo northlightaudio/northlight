@@ -893,6 +893,21 @@ std::vector<EffectPreset> patinaPresets()
     return patina::presets();
 }
 
+std::vector<EffectPreset> auroraPresets()
+{
+    return aurora::presets();
+}
+
+std::vector<EffectPreset> nebulaPresets()
+{
+    return nebula::presets();
+}
+
+std::vector<EffectPreset> starbitPresets()
+{
+    return starbit::presets();
+}
+
 } // namespace presetlists
 
 namespace
@@ -972,11 +987,7 @@ std::vector<std::string> typesWithPresets()
 
 std::vector<std::string> factoryPresetErrors()
 {
-    // Build every list, the instruments' (which keep their own) included.
-    all();
-    aurora::presets();
-    nebula::presets();
-    starbit::presets();
+    all(); // builds every list
     const std::scoped_lock lock(errorsMutex);
     return errors();
 }

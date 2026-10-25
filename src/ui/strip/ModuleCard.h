@@ -122,6 +122,9 @@ public:
     const engine::ParameterInfo& info(int index) const;
     // A user edit: updates the card at once and sends the command.
     void setParam(int index, float value);
+    // A whole set of values chosen at once (a preset): every parameter, each
+    // held to its range, as one command named `name`, so one undo step.
+    void applyValues(const std::vector<float>& values, const juce::String& name);
     void beginGesture(const juce::String& name);
     void endGesture();
     // The level history, oldest first.

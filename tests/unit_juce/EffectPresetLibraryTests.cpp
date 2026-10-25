@@ -1,11 +1,20 @@
+#include "core/Command.h"
+#include "plugins/Aurora.h"
 #include "plugins/BuiltIns.h"
 #include "plugins/EffectPresets.h"
+#include "plugins/Nebula.h"
+#include "plugins/Starbit.h"
 #include "ui/Theme.h"
+#include "ui/strip/BuiltInCards.h"
 #include "ui/strip/EffectPresetLibrary.h"
 #include "ui/strip/PresetBar.h"
 
 #include <catch2/catch_test_macros.hpp>
 
+#include <algorithm>
+#include <cmath>
+#include <functional>
+#include <memory>
 #include <string>
 #include <vector>
 
@@ -148,4 +157,72 @@ TEST_CASE("The preset bar names what the effect is set to and steps through the 
     CHECK(EffectPresetLibrary::instance().save(type, "Mine", custom).empty());
     EffectPresetLibrary::instance().dispatchPendingMessages();
     CHECK(bar.shownName() == "Mine");
+}
+
+TEST_CASE("An instrument's presets come from the library and apply as one command", "[ui][presets]")
+{
+    const juce::ScopedJuceInitialiser_GUI juceInit;
+    const TempRoot root;
+    auto& library = EffectPresetLibrary::instance();
+    // The factory lists the instruments build are the library's, as an effect's are.
+    for (const auto* list :
+         {&plugins::aurora::presets(), &plugins::nebula::presets(), &plugins::starbit::presets()})
+        REQUIRE_FALSE(list->empty());
+    for (const auto& [type, list] : {std::pair{plugins::aurora::type, &plugins::aurora::presets()},
+                                     std::pair{plugins::nebula::type, &plugins::nebula::presets()},
+                                     std::pair{plugins::starbit::type, &plugins::starbit::presets()}})
+    {
+        INFO(type);
+        const auto& entries = library.presets(type);
+        REQUIRE(entries.size() == list->size());
+        for (size_t i = 0; i < entries.size(); ++i)
+            CHECK(entries[i].name == juce::String(list->at(i).name));
+    }
+
+    // Aurora's editor, its commands recorded.
+    std::vector<std::unique_ptr<core::Command>> sent;
+    ui::strip::CardHost host;
+    host.onCommand = [&](std::unique_ptr<core::Command> c) { sent.push_back(std::move(c)); };
+    host.onGestureBegin = [](const std::string&) {};
+    host.onGestureEnd = [] {};
+    core::Insert insert;
+    insert.id = 7;
+    insert.type = plugins::aurora::type;
+    insert.params = plugins::defaultParameters(insert.type);
+    auto card = ui::strip::createBuiltInCard(ui::Theme::dark(), host, core::masterId, insert);
+    REQUIRE(card != nullptr);
+    ui::strip::PresetBar* bar = nullptr;
+    std::function<void(juce::Component&)> find = [&](juce::Component& c)
+    {
+        for (auto* child : c.getChildren())
+        {
+            if (auto* b = dynamic_cast<ui::strip::PresetBar*>(child))
+                bar = b;
+            find(*child);
+        }
+    };
+    find(*card);
+    REQUIRE(bar != nullptr);
+    const auto& presets = plugins::aurora::presets();
+    CHECK(bar->shownName() == juce::String(presets[0].name)); // the defaults
+
+    // The next preset: one command, named for it, with every value.
+    bar->step(1);
+    REQUIRE(sent.size() == 1);
+    const auto* set = dynamic_cast<const core::SetInsertParameters*>(sent.front().get());
+    REQUIRE(set != nullptr);
+    CHECK(set->name() == "Preset " + presets[1].name);
+    CHECK(set->values() == presets[1].values);
+    CHECK(bar->shownName() == juce::String(presets[1].name));
+
+    // The model coming back a hair off (a value read back from a file) still
+    // matches, as an effect's does: within a part in ten thousand of the value.
+    insert.params = presets[1].values;
+    const auto largest = std::max_element(insert.params.begin(),
+                                          insert.params.end(),
+                                          [](float a, float b) { return std::abs(a) < std::abs(b); });
+    REQUIRE(std::abs(*largest) > 10.0f);
+    *largest *= 0.99995f;
+    card->refresh(insert);
+    CHECK(bar->shownName() == juce::String(presets[1].name));
 }

@@ -692,11 +692,10 @@ const std::vector<BuiltInType>& builtInTypes()
         {comet::type, "Comet", effect, plain<comet::create>, pl::cometPresets},
         {tide::type, "Tide", effect, plain<tide::create>, pl::tidePresets},
         {polaris::type, "Polaris", effect, plain<polaris::create>, pl::polarisPresets},
-        // The instruments keep their own preset lists (aurora::presets() and the like).
-        {aurora::type, "Aurora", instrument, plain<aurora::create>, nullptr},
+        {aurora::type, "Aurora", instrument, plain<aurora::create>, pl::auroraPresets},
         {pulsar::type, "Pulsar", instrument, plain<pulsar::create>, nullptr},
-        {nebula::type, "Nebula", instrument, plain<nebula::create>, nullptr},
-        {starbit::type, "Starbit", instrument, plain<starbit::create>, nullptr},
+        {nebula::type, "Nebula", instrument, plain<nebula::create>, pl::nebulaPresets},
+        {starbit::type, "Starbit", instrument, plain<starbit::create>, pl::starbitPresets},
         {sampler::type, "Sampler", instrument, sampled, nullptr},
     };
     return list;

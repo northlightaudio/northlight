@@ -11,6 +11,7 @@
 #include "plugins/Nebula.h"
 #include "ui/NorthlightLookAndFeel.h"
 #include "ui/strip/AdsrDisplay.h"
+#include "ui/strip/PresetBar.h"
 #include "ui/strip/StripStyle.h"
 #include "ui/strip/SynthParts.h"
 
@@ -422,18 +423,12 @@ public:
         spaceKnobs_ = {knob(ne::space, "Size", hues_.space, percent),
                        knob(ne::spaceMix, "Mix", hues_.space, percent),
                        knob(ne::tone, "Tone", hues_.space, [](double v) { return compactHzText(v); })};
-        for (auto* b : {&previous_, &next_, &presetName_})
-        {
-            b->getProperties().set(NorthlightLookAndFeel::propertyVariant, "ghost");
-            addAndMakeVisible(b);
-        }
-        previous_.setTooltip("Previous preset");
-        next_.setTooltip("Next preset");
-        presetName_.setTooltip("Presets");
-        previous_.onClick = [this] { stepPreset(-1); };
-        next_.onClick = [this] { stepPreset(1); };
-        presetName_.onClick = [this] { showPresets(); };
-        presetName_.setButtonText(currentPresetName());
+        // The preset bar: the library's list (the factory's and the user's), each
+        // applied as one undo step.
+        presets_.onApply = [this](const std::vector<float>& values, const juce::String& name)
+        { applyValues(values, "Preset " + name); };
+        presets_.setValues(params_);
+        addAndMakeVisible(presets_);
     }
 
     // Fifteen knob columns (the spectrum's six a little wider) in five panels.
@@ -463,9 +458,7 @@ private:
         header.removeFromRight(theme_.spacing.lg);
         auto preset = header.removeFromRight(260).withSizeKeepingCentre(260, theme_.sizes.controlCompact);
         presetBar_ = preset;
-        previous_.setBounds(preset.removeFromLeft(theme_.sizes.controlCompact));
-        next_.setBounds(preset.removeFromRight(theme_.sizes.controlCompact));
-        presetName_.setBounds(preset.reduced(2, 0));
+        presets_.setBounds(preset);
         body.removeFromTop(4);
 
         sections_.clear();
@@ -640,63 +633,11 @@ private:
         }
     }
 
-    // ----- presets ----------------------------------------------------------------------------------
-
-    juce::String currentPresetName() const
-    {
-        for (const auto& p : ne::presets())
-        {
-            bool same = p.values.size() <= params_.size();
-            for (size_t i = 0; same && i < p.values.size(); ++i)
-                same = std::abs(p.values[i] - params_[i]) < 1.0e-4f;
-            if (same)
-                return juce::String(p.name);
-        }
-        return "Custom";
-    }
-    void applyPreset(const plugins::EffectPreset& preset)
-    {
-        beginGesture("Preset " + juce::String(preset.name));
-        for (size_t i = 0; i < preset.values.size(); ++i)
-            setParam(static_cast<int>(i), preset.values[i]);
-        endGesture();
-        presetName_.setButtonText(currentPresetName());
-    }
-    void stepPreset(int direction)
-    {
-        const auto& list = ne::presets();
-        int at = -1;
-        const auto current = currentPresetName();
-        for (size_t i = 0; i < list.size(); ++i)
-            if (juce::String(list[i].name) == current)
-                at = static_cast<int>(i);
-        const int n = static_cast<int>(list.size());
-        applyPreset(
-            list[static_cast<size_t>(at < 0 ? (direction > 0 ? 0 : n - 1) : (at + direction + n) % n)]);
-    }
-    void showPresets()
-    {
-        juce::PopupMenu menu;
-        const auto current = currentPresetName();
-        for (size_t i = 0; i < ne::presets().size(); ++i)
-            menu.addItem(static_cast<int>(i) + 1,
-                         juce::String(ne::presets()[i].name),
-                         true,
-                         current == juce::String(ne::presets()[i].name));
-        juce::Component::SafePointer<NebulaCard> safe(this);
-        menu.showMenuAsync(juce::PopupMenu::Options().withTargetComponent(presetName_),
-                           [safe](int r)
-                           {
-                               if (safe != nullptr && r > 0 && static_cast<size_t>(r) <= ne::presets().size())
-                                   safe->applyPreset(ne::presets()[static_cast<size_t>(r - 1)]);
-                           });
-    }
-
     // ----- live -------------------------------------------------------------------------------------
 
     void paramsChanged() override
     {
-        presetName_.setButtonText(currentPresetName());
+        presets_.setValues(params_);
         for (auto* c :
              std::initializer_list<juce::Component*>{&spectrum_, &cloud_, &envelope_, &motion_, &space_})
             c->repaint();
@@ -743,9 +684,7 @@ private:
     MotionDisplay motion_;
     SpaceDisplay space_;
     std::vector<Knob*> spectrumKnobs_, cloudKnobs_, envelopeKnobs_, motionKnobs_, spaceKnobs_;
-    juce::TextButton previous_{juce::String::fromUTF8("\xe2\x80\xb9")},
-        next_{juce::String::fromUTF8("\xe2\x80\xba")};
-    juce::TextButton presetName_;
+    PresetBar presets_{theme_, ne::type, true};
     std::vector<Section> sections_;
     juce::Rectangle<int> sky_, wordmark_, voices_, presetBar_;
     int activeVoices_ = 0;

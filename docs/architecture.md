@@ -398,10 +398,13 @@ know nothing format-specific.
   against the effect's parameter table); Patina and the instruments build theirs
   by parameter index with `PresetBuilder` (`plugins/ParamHelpers.h`, beside the
   `choice`, `onOff` and `percent` parameter helpers), and both report a value out
-  of range through `factoryPresetErrors()`; `ui/strip/EffectPresetLibrary` adds the
+  of range through `factoryPresetErrors()`; the registry serves Patina's and the
+  instruments' lists with the effects'. `ui/strip/EffectPresetLibrary` adds the
   user's own (JSON files keyed by parameter name) and tells every `PresetBar` when
-  the list changes, so the card's header, the window's and a face's own control
-  agree.
+  the list changes, so the card's header, the window's, an instrument's face and a
+  face's own control agree. A chosen preset is one `core::SetInsertParameters`
+  command (`ModuleCard::applyValues` on a card), so one undo step and one update of
+  the engine and the views.
 - **The DSP kit** (`src/plugins/dsp`, namespace `plugins::dsp`) holds the small
   header-only building blocks the built-ins share, all real-time safe: `Random.h`
   (xorshift32 and LCG noise with the float mappings the processors use, and

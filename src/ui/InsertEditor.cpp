@@ -170,16 +170,10 @@ void InsertEditor::showBuiltInBody(const core::Insert& insert,
         presets_->setValues(insert.params);
         presets_->onApply = [this](const std::vector<float>& values, const juce::String& name)
         {
-            if (!onCommand)
-                return;
-            if (onGestureBegin)
-                onGestureBegin(("Preset " + name).toStdString());
-            for (size_t i = 0; i < values.size(); ++i)
-                if (i >= params_.size() || params_[i] != values[i])
-                    onCommand(std::make_unique<core::SetInsertParameter>(
-                        channelId_, insertId_, static_cast<int>(i), values[i]));
-            if (onGestureEnd)
-                onGestureEnd();
+            // One command: one undo step, one update of the engine and the views.
+            if (onCommand && values != params_)
+                onCommand(std::make_unique<core::SetInsertParameters>(
+                    channelId_, insertId_, values, ("Preset " + name).toStdString()));
         };
         addAndMakeVisible(*presets_);
     }

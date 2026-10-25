@@ -1039,6 +1039,37 @@ private:
     size_t previousSize_ = 0; // the params vector may have grown on apply
 };
 
+// Every parameter of an insert at once (a preset): one command, so one undo
+// step and one update of the engine and the views. Sets params[0..n) to the
+// given values (growing the list if it is shorter); undo restores the list as
+// it was. A preset sets the static values, so it never writes automation.
+class SetInsertParameters final : public Command
+{
+public:
+    ChangeKind changeKind() const noexcept override { return ChangeKind::parameters; }
+    SetInsertParameters(Id channelId, Id insertId, std::vector<float> values, std::string name);
+    std::string name() const override { return name_; }
+    bool apply(Project&) override;
+    bool revert(Project&) override;
+    Id channelId() const noexcept { return channelId_; }
+    Id insertId() const noexcept { return insertId_; }
+    const std::vector<float>& values() const noexcept { return values_; }
+    void touchedParameters(std::vector<ParameterTouch>& out) const override
+    {
+        for (size_t i = 0; i < values_.size(); ++i)
+            out.push_back({insertId_, static_cast<int>(i)});
+    }
+    std::size_t footprint() const noexcept override
+    {
+        return sizeof(*this) + heapBytes(values_) + heapBytes(previous_) + heapBytes(name_);
+    }
+
+private:
+    Id channelId_, insertId_;
+    std::vector<float> values_, previous_;
+    std::string name_;
+};
+
 // Wet/dry mix of one insert slot (0..1).
 class SetInsertMix final : public SetField<OnInsert, &Insert::mix>
 {

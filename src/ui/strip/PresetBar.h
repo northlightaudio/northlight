@@ -37,7 +37,9 @@ void showSavePresetSheet(juce::Component& from,
 class PresetBar final : public juce::Component, private juce::ChangeListener
 {
 public:
-    PresetBar(const Theme& theme, std::string type);
+    // In a face (an instrument's, which draws the bar's well in its own style),
+    // the bar draws no well and its name no menu chevron.
+    PresetBar(const Theme& theme, std::string type, bool inFace = false);
     ~PresetBar() override;
 
     // The effect's parameters now (the name follows them).
@@ -68,6 +70,7 @@ private:
 
     const Theme& theme_;
     const std::string type_;
+    const bool inFace_;
     std::vector<float> params_;
     int current_ = -1;
     juce::TextButton previous_, next_, name_;

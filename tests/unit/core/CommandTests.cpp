@@ -1218,6 +1218,11 @@ TEST_CASE("Every command undoes to the exact project it started from and redoes 
         make<SetInstrument>("SetInstrument", Id{3}, starbit),
         make<MoveInsert>("MoveInsert", Id{1}, Id{20}, 1),
         make<SetInsertParameter>("SetInsertParameter", Id{1}, Id{20}, 0, 0.9f),
+        make<SetInsertParameters>("SetInsertParameters",
+                                  Id{1},
+                                  Id{20},
+                                  std::vector<float>{0.9f, 0.1f, 0.5f},
+                                  std::string("Preset Bright")),
         make<SetInsertMix>("SetInsertMix", Id{1}, Id{20}, 0.5f),
         make<SetInsertSidechain>("SetInsertSidechain", Id{1}, Id{20}, Id{3}),
         make<SetInsertBypass>("SetInsertBypass", Id{1}, Id{20}, true),
@@ -1720,6 +1725,42 @@ TEST_CASE("A setter merges the next setter of the same field and target", "[core
     CHECK(a.mergeWith(b));
     CHECK(a.value() == 0.7f);
     CHECK_FALSE(a.mergeWith(c));
+}
+
+TEST_CASE("A preset sets every parameter of an insert as one undo step", "[core][command][undo]")
+{
+    Project p = projectWithTrack();
+    const Id track = p.tracks[0].id;
+    Insert insert;
+    insert.type = "northlight.eq";
+    insert.params = {1.0f, 2.0f};
+    UndoStack stack;
+    REQUIRE(stack.execute(p, std::make_unique<AddInsert>(track, insert, 0)));
+    const Id id = p.tracks[0].inserts.front().id;
+    const auto before = p.tracks[0].inserts.front().params;
+
+    // Apply: every value, the list grown to hold them.
+    REQUIRE(stack.execute(p,
+                          std::make_unique<SetInsertParameters>(
+                              track, id, std::vector<float>{3.0f, 4.0f, 5.0f}, "Preset Warm")));
+    CHECK(p.tracks[0].inserts.front().params == std::vector<float>{3.0f, 4.0f, 5.0f});
+    CHECK(stack.undoName() == "Preset Warm");
+
+    // One undo restores the list as it was, size and all; redo sets it again.
+    REQUIRE(stack.undo(p));
+    CHECK(p.tracks[0].inserts.front().params == before);
+    REQUIRE(stack.redo(p));
+    CHECK(p.tracks[0].inserts.front().params == std::vector<float>{3.0f, 4.0f, 5.0f});
+
+    // It says which parameters it touches (each goes to the processor), and
+    // fails on an insert that is not there.
+    SetInsertParameters preset(track, id, {1.0f, 2.0f}, "Preset");
+    std::vector<Command::ParameterTouch> touches;
+    preset.touchedParameters(touches);
+    REQUIRE(touches.size() == 2);
+    CHECK(touches[1].insertId == id);
+    CHECK(touches[1].parameter == 1);
+    CHECK_FALSE(SetInsertParameters(track, 999, {1.0f}, "Preset").apply(p));
 }
 
 TEST_CASE("A merged drag undoes and redoes like the ticks it replaced", "[core][command][undo]")

@@ -207,6 +207,22 @@ void ModuleCard::setParam(int index, float value)
         host_.onCommand(std::make_unique<core::SetInsertParameter>(channelId_, moduleId_, index, value));
 }
 
+void ModuleCard::applyValues(const std::vector<float>& values, const juce::String& name)
+{
+    auto next = params_;
+    for (size_t i = 0; i < values.size() && i < next.size(); ++i)
+        next[i] = juce::jlimit(infos_[i].minimum, infos_[i].maximum, values[i]);
+    if (next == params_)
+        return;
+    params_ = next;
+    for (const auto& b : bindings_)
+        updateBinding(b);
+    paramsChanged();
+    if (host_.onCommand)
+        host_.onCommand(
+            std::make_unique<core::SetInsertParameters>(channelId_, moduleId_, params_, name.toStdString()));
+}
+
 void ModuleCard::beginGesture(const juce::String& name)
 {
     if (host_.onGestureBegin)

@@ -4,7 +4,8 @@
 
 #include <vector>
 
-// Each built-in effect's factory preset list, built on first use by
+// Each built-in's factory preset list (the instruments' are built by index in
+// their own files, as Patina's is), built on first use by
 // factoryPresets() (plugins/EffectPresets.h) through the built-ins' registry
 // (builtInTypes() in plugins/BuiltIns.h). Not real-time.
 
@@ -32,5 +33,8 @@ std::vector<EffectPreset> flarePresets();
 std::vector<EffectPreset> cometPresets();
 std::vector<EffectPreset> tidePresets();
 std::vector<EffectPreset> polarisPresets();
+std::vector<EffectPreset> auroraPresets();
+std::vector<EffectPreset> nebulaPresets();
+std::vector<EffectPreset> starbitPresets();
 
 } // namespace northlight::plugins::presetlists

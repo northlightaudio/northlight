@@ -674,16 +674,10 @@ private:
     // A preset sets every parameter it changes as one undo step.
     void applyPreset(const std::vector<float>& values, const juce::String& name)
     {
-        if (!owner_.onCommand)
-            return;
-        if (owner_.onGestureBegin)
-            owner_.onGestureBegin(("Preset " + name).toStdString());
-        for (size_t i = 0; i < values.size(); ++i)
-            if (i >= params_.size() || params_[i] != values[i])
-                owner_.onCommand(std::make_unique<core::SetInsertParameter>(
-                    channelId_, insertId_, static_cast<int>(i), values[i]));
-        if (owner_.onGestureEnd)
-            owner_.onGestureEnd();
+        // One command: one undo step, one update of the engine and the views.
+        if (owner_.onCommand && values != params_)
+            owner_.onCommand(std::make_unique<core::SetInsertParameters>(
+                channelId_, insertId_, values, ("Preset " + name).toStdString()));
     }
 
     void showMenu()

@@ -226,8 +226,11 @@ TEST_CASE("Patina's preset keys step through the factory presets as one undo ste
     const auto& second = pa::presets()[1];
     for (size_t i = 0; i < second.values.size(); ++i)
         CHECK(card->param(static_cast<int>(i)) == second.values[i]);
-    CHECK(gestures == 1);
-    CHECK(!sent.empty());
+    // One command, which is the one undo step (no gesture needed round it).
+    CHECK(gestures == 0);
+    REQUIRE(sent.size() == 1);
+    CHECK(dynamic_cast<const core::SetInsertParameters*>(sent.front().get()) != nullptr);
+    CHECK(sent.front()->name() == "Preset " + second.name);
     CHECK(display->getButtonText() == juce::String(second.name));
 
     // Back past the first wraps to the last.

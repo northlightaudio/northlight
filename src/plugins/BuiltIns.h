@@ -46,8 +46,8 @@ struct BuiltInType
     std::string displayName; // for menus
     BuiltInKind kind = BuiltInKind::effect;
     std::unique_ptr<engine::InsertProcessor> (*create)(const sampler::Loader&) = nullptr;
-    // An effect's factory presets, the first its defaults (null for an
-    // instrument, which keeps its own list).
+    // The factory presets (null for none): an effect's, the first its
+    // defaults, and Aurora's, Nebula's and Starbit's.
     std::vector<EffectPreset> (*presets)() = nullptr;
 };
 const std::vector<BuiltInType>& builtInTypes();

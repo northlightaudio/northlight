@@ -1076,10 +1076,7 @@ private:
         if (index < 0 || static_cast<size_t>(index) >= list.size())
             return;
         const auto preset = list[static_cast<size_t>(index)];
-        beginGesture("Preset " + preset.name);
-        for (size_t i = 0; i < preset.values.size(); ++i)
-            setParam(static_cast<int>(i), preset.values[i]);
-        endGesture();
+        applyValues(preset.values, "Preset " + preset.name);
         showPreset();
     }
 
