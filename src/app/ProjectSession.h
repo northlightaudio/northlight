@@ -409,15 +409,20 @@ private:
     // (deferred to the end of an open Batch). False when the command was stale.
     bool run(std::unique_ptr<core::Command> command, bool mayWriteAutomation = true);
     // Does the engine work for the changes run since the last call: the widest
-    // change kind decides (compile, push values, push parameters, or nothing).
+    // change kind decides (compile, push values, push parameters, or nothing);
+    // `rebuildViews` makes the views refresh in full (a rename, a colour).
     void finishChange(core::Command::ChangeKind kind,
-                      const std::vector<core::Command::ParameterTouch>& touches);
+                      const std::vector<core::Command::ParameterTouch>& touches,
+                      bool rebuildViews);
     // Several runs as one undo step (when named) with the engine work done once,
     // at the end of the outermost batch.
     class Batch;
     int batchDepth_ = 0;
     std::optional<core::Command::ChangeKind> pendingKind_;
     std::vector<core::Command::ParameterTouch> pendingTouches_;
+    bool pendingViews_ = false; // a pending command renames or recolours: the views rebuild
+    // Does the engine work and view refresh the pending commands need.
+    void flushPending();
     void matchDeviceSampleRate();
     // Brings the engine's input buses in line with the device's; true when they changed.
     bool refreshInputBuses();

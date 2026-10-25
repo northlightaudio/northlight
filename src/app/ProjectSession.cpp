@@ -155,13 +155,8 @@ public:
     {
         if (grouped_)
             session_.undo_.endGroup();
-        if (--session_.batchDepth_ > 0 || !session_.pendingKind_.has_value())
-            return;
-        const auto kind = *session_.pendingKind_;
-        auto touches = std::move(session_.pendingTouches_);
-        session_.pendingKind_.reset();
-        session_.pendingTouches_.clear();
-        session_.finishChange(kind, touches);
+        if (--session_.batchDepth_ == 0)
+            session_.flushPending();
     }
     Batch(const Batch&) = delete;
     Batch& operator=(const Batch&) = delete;
@@ -188,38 +183,49 @@ bool ProjectSession::run(std::unique_ptr<core::Command> command, bool mayWriteAu
     const auto kind = applied->changeKind(); // after apply: some commands only know then
     pendingKind_ = std::max(pendingKind_.value_or(core::Command::ChangeKind::cosmetic), kind);
     pendingTouches_.insert(pendingTouches_.end(), touches.begin(), touches.end());
+    pendingViews_ = pendingViews_ || applied->rebuildsViews();
     if (batchDepth_ == 0)
-    {
-        const auto pending = *pendingKind_;
-        auto pendingTouches = std::move(pendingTouches_);
-        pendingKind_.reset();
-        pendingTouches_.clear();
-        finishChange(pending, pendingTouches);
-    }
+        flushPending();
     return true;
 }
 
+void ProjectSession::flushPending()
+{
+    if (!pendingKind_.has_value())
+        return;
+    const auto kind = *pendingKind_;
+    auto touches = std::move(pendingTouches_);
+    const bool views = pendingViews_;
+    pendingKind_.reset();
+    pendingTouches_.clear();
+    pendingViews_ = false;
+    finishChange(kind, touches, views);
+}
+
 void ProjectSession::finishChange(core::Command::ChangeKind kind,
-                                  const std::vector<core::Command::ParameterTouch>& touches)
+                                  const std::vector<core::Command::ParameterTouch>& touches,
+                                  bool rebuildViews)
 {
     using Kind = core::Command::ChangeKind;
     edited();
+    // A rename or a colour: the views rebuild whatever the engine needs.
+    const auto viewChange = [&](Change change) { notify(rebuildViews ? Change::structure : change); };
     switch (kind)
     {
         case Kind::cosmetic:
-            notify(Change::values); // the views redraw; the engine is untouched
+            viewChange(Change::values); // the views redraw; the engine is untouched
             break;
         case Kind::parameters:
             // A parameter goes to its processor alone, without a recompile.
             engine_.pushInsertParameters(project_, touches);
-            notify(Change::parameters);
+            viewChange(Change::parameters);
             break;
         case Kind::values:
             // A gain, pan or bypass: the running graph takes every channel's new
             // values (ramped) without a recompile.
             engine_.applyLiveValues(project_);
             engine_.pushInsertParameters(project_, touches);
-            notify(Change::values);
+            viewChange(Change::values);
             break;
         case Kind::structure:
             publish();
@@ -376,7 +382,7 @@ void ProjectSession::undo()
     const auto* undone = undo_.redoTop();
     std::vector<core::Command::ParameterTouch> touches;
     undone->touchedParameters(touches);
-    finishChange(undone->changeKind(), touches);
+    finishChange(undone->changeKind(), touches, undone->rebuildsViews());
 }
 
 void ProjectSession::redo()
@@ -394,7 +400,7 @@ void ProjectSession::redo()
     const auto* redone = undo_.undoTop();
     std::vector<core::Command::ParameterTouch> touches;
     redone->touchedParameters(touches);
-    finishChange(redone->changeKind(), touches);
+    finishChange(redone->changeKind(), touches, redone->rebuildsViews());
 }
 
 void ProjectSession::mirrorOwnedParameters(const std::vector<core::Command::ParameterTouch>& touches)

@@ -59,6 +59,11 @@ public:
             kind = std::max(kind, c->changeKind());
         return kind;
     }
+    bool rebuildsViews() const noexcept override
+    {
+        return std::any_of(
+            commands_.begin(), commands_.end(), [](const auto& c) { return c->rebuildsViews(); });
+    }
     void touchedParameters(std::vector<ParameterTouch>& out) const override
     {
         for (const auto& c : commands_)

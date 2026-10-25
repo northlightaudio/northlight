@@ -104,10 +104,14 @@ Every change is a `core::Command` with `apply` and `revert`, kept by the
 
 | Kind | Example | Engine work |
 |---|---|---|
-| Cosmetic | A row height, a folder opening | None |
+| Cosmetic | A row height, a folder opening, a name, a colour, a marker | None |
 | Values | A fader or pan move | Push live values into the running graph |
 | Parameters | An insert parameter | Set the processor's atomics |
 | Structure | A clip, a route, an insert added | Compile and publish a new snapshot |
+
+The views refresh separately from the engine: a values or parameters change only
+updates values, and a command that changes labels (`rebuildsViews`: a name, a
+colour, a marker) has them rebuild in full while the engine does nothing.
 
 All edits go through `ProjectSession::run`: single commands, named groups, a
 finished recording, a recovery, an automation pass. A slider drag is a gesture whose

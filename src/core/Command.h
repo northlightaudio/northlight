@@ -28,10 +28,12 @@ public:
     // the new values instead of publishing a new snapshot.
     // What a command changes, from the least costly to the most: the session
     // picks the engine work from it (and from a group's widest member).
-    //   cosmetic:   only what the views show (a row height); no engine work.
+    //   cosmetic:   only what the views show (a row height, a name, a colour); no
+    //               engine work.
     //   parameters: insert parameters; pushed to their processors.
-    //   values:     fader, pan, mute and bypass values the running graph reads
-    //               without a recompile; every channel's values are pushed.
+    //   values:     fader, pan, send level and bypass values the running graph
+    //               reads without a recompile; every channel's values are pushed.
+    //               (Mute and solo are resolved at compile: structure.)
     //   structure:  anything else; a new snapshot is compiled.
     enum class ChangeKind : std::uint8_t
     {
@@ -42,6 +44,9 @@ public:
     };
     virtual ChangeKind changeKind() const noexcept { return ChangeKind::structure; }
     bool isCosmetic() const noexcept { return changeKind() == ChangeKind::cosmetic; }
+    // Whether the views rebuild from the model (a name, a colour, a marker),
+    // whatever the engine needs. Values-only refreshes do not redraw labels.
+    virtual bool rebuildsViews() const noexcept { return changeKind() == ChangeKind::structure; }
     // A command that copies inserts for undo (removing or replacing them) needs
     // the live plugin state pulled into the model first, so undo brings back
     // what the user had rather than what the last save held.
@@ -587,6 +592,9 @@ class AddMarker final : public Command
 public:
     explicit AddMarker(Marker marker); // the id is allocated on apply if invalid
     std::string name() const override { return "Add marker"; }
+    // What the views show: no engine work, but the views rebuild.
+    ChangeKind changeKind() const noexcept override { return ChangeKind::cosmetic; }
+    bool rebuildsViews() const noexcept override { return true; }
     void apply(Project&) override;
     void revert(Project&) override;
     Id markerId() const noexcept { return marker_.id; }
@@ -600,6 +608,9 @@ class RemoveMarker final : public Command
 public:
     explicit RemoveMarker(Id markerId);
     std::string name() const override { return "Remove marker"; }
+    // What the views show: no engine work, but the views rebuild.
+    ChangeKind changeKind() const noexcept override { return ChangeKind::cosmetic; }
+    bool rebuildsViews() const noexcept override { return true; }
     void apply(Project&) override;
     void revert(Project&) override;
 
@@ -614,6 +625,9 @@ class SetMarker final : public Command
 public:
     SetMarker(Id markerId, SamplePosition position, SamplePosition length, std::string name);
     std::string name() const override { return "Edit marker"; }
+    // What the views show: no engine work, but the views rebuild.
+    ChangeKind changeKind() const noexcept override { return ChangeKind::cosmetic; }
+    bool rebuildsViews() const noexcept override { return true; }
     void apply(Project&) override;
     void revert(Project&) override;
 
@@ -689,6 +703,9 @@ class SetColour final : public Command
 public:
     SetColour(Id channelId, std::uint32_t colour);
     std::string name() const override { return "Set colour"; }
+    // What the views show: no engine work, but the views rebuild.
+    ChangeKind changeKind() const noexcept override { return ChangeKind::cosmetic; }
+    bool rebuildsViews() const noexcept override { return true; }
     void apply(Project&) override;
     void revert(Project&) override;
 
@@ -1082,6 +1099,9 @@ class SetTrackName final : public Command
 public:
     SetTrackName(Id trackId, std::string name);
     std::string name() const override { return "Rename track"; }
+    // What the views show: no engine work, but the views rebuild.
+    ChangeKind changeKind() const noexcept override { return ChangeKind::cosmetic; }
+    bool rebuildsViews() const noexcept override { return true; }
     void apply(Project&) override;
     void revert(Project&) override;
 

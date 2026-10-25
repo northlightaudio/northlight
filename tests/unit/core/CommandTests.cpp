@@ -331,6 +331,30 @@ TEST_CASE("Undoing or redoing back to the save point leaves nothing unsaved", "[
     CHECK_FALSE(undo.atSavePoint());
 }
 
+TEST_CASE("Names, colours and markers need no engine work but rebuild the views", "[core][command]")
+{
+    const std::vector<std::unique_ptr<Command>> commands = []
+    {
+        std::vector<std::unique_ptr<Command>> list;
+        list.push_back(std::make_unique<SetTrackName>(1, "Bass"));
+        list.push_back(std::make_unique<SetColour>(1, 0xff336699u));
+        list.push_back(std::make_unique<AddMarker>(Marker{}));
+        list.push_back(std::make_unique<SetMarker>(1, 0, 0, "Verse"));
+        list.push_back(std::make_unique<RemoveMarker>(1));
+        return list;
+    }();
+    for (const auto& c : commands)
+    {
+        INFO(c->name());
+        CHECK(c->changeKind() == Command::ChangeKind::cosmetic);
+        CHECK(c->rebuildsViews());
+    }
+    // A row height only redraws.
+    CHECK_FALSE(SetChannelHeight(1, 80).rebuildsViews());
+    // A structural change always rebuilds.
+    CHECK(AddTrack(Track{}).rebuildsViews());
+}
+
 TEST_CASE("A new command after undo discards the redo history", "[core][command]")
 {
     Project p = projectWithTrack();
