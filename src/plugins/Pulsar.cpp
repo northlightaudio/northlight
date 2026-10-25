@@ -4,6 +4,7 @@
 #include "plugins/MeteredBuiltIn.h"
 #include "plugins/SynthVoices.h"
 #include "plugins/dsp/Random.h"
+#include "plugins/dsp/Smoothing.h"
 
 #include <algorithm>
 #include <cctype>
@@ -86,7 +87,7 @@ std::string lowerCase(const char* text)
 inline float coefficient(double sampleRate, double ms) noexcept
 {
     // Exponential: down 60 dB over the time.
-    return static_cast<float>(std::exp(std::log(0.001) / std::max(1.0, ms * 0.001 * sampleRate)));
+    return static_cast<float>(dsp::decay60ForMs(ms, sampleRate));
 }
 
 // Exponential with a time constant (down to 37% after `ms`).

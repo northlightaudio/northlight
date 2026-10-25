@@ -5,6 +5,7 @@
 #include "engine/rt/SnapshotPublisher.h"
 #include "plugins/MeteredBuiltIn.h"
 #include "plugins/SynthVoices.h"
+#include "plugins/dsp/Smoothing.h"
 
 #include <algorithm>
 #include <array>
@@ -310,8 +311,7 @@ private:
     {
         const auto sr = static_cast<float>(sampleRate_);
         const float attackStep = 1.0f / std::max(1.0f, p_[attack] * 0.001f * sr);
-        const auto coef = [sr](float ms)
-        { return std::exp(std::log(0.001f) / std::max(1.0f, ms * 0.001f * sr)); };
+        const auto coef = [sr](float ms) { return dsp::decay60ForMs(ms, sr); };
         const float decayCoef = coef(p_[decay]);
         const float releaseCoef = coef(p_[release]);
         const float stealCoef = coef(static_cast<float>(stealSeconds * 1000.0));

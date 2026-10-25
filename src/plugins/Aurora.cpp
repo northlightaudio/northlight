@@ -4,6 +4,7 @@
 #include "plugins/MeteredBuiltIn.h"
 #include "plugins/SynthVoices.h"
 #include "plugins/dsp/Random.h"
+#include "plugins/dsp/Smoothing.h"
 
 #include <algorithm>
 #include <array>
@@ -236,8 +237,7 @@ private:
         const float keyAmount = parameter(keyTrack);
         const auto attackStep = [sr](float ms) { return 1.0f / std::max(1.0f, ms * 0.001f * sr); };
         // Exponential: within 60 dB (a factor of 1000) over the time.
-        const auto coefficient = [sr](float ms)
-        { return std::exp(std::log(0.001f) / std::max(1.0f, ms * 0.001f * sr)); };
+        const auto coefficient = [sr](float ms) { return dsp::decay60ForMs(ms, sr); };
         const float ampA = attackStep(parameter(ampAttack)), ampD = coefficient(parameter(ampDecay));
         const float ampS = parameter(ampSustain), ampR = coefficient(parameter(ampRelease));
         const float filA = attackStep(parameter(filterAttack)), filD = coefficient(parameter(filterDecay));

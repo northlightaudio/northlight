@@ -2,6 +2,7 @@
 #include "plugins/Biquad.h"
 #include "plugins/MeteredBuiltIn.h"
 #include "plugins/Pedals.h"
+#include "plugins/dsp/Smoothing.h"
 
 #include <algorithm>
 #include <array>
@@ -81,7 +82,7 @@ private:
             current_ = target;
             primed_ = true;
         }
-        const float glide = 1.0f - std::exp(-1.0f / (glideSeconds * rate));
+        const float glide = dsp::stepForSeconds(glideSeconds, rate);
         // The bandwidth follows the clock (the gliding time), once a block.
         const float bandwidth = bandwidthHz(current_ / rate * 1000.0f);
         if (std::abs(bandwidth - lastBandwidth_) > 1.0f)

@@ -3,6 +3,7 @@
 #include "engine/Feedback.h"
 #include "engine/rt/RealtimeGuard.h"
 #include "plugins/ProcessorBase.h"
+#include "plugins/dsp/Smoothing.h"
 
 #include <algorithm>
 #include <cmath>
@@ -210,7 +211,7 @@ private:
         midIn_ = sideIn_ = sideOut_ = 0.0f;
         guardMid_ = guardSide_ = 0.0f;
         inputCorrelation_ = outputCorrelation_ = {};
-        const auto step = [&](float seconds) { return 1.0f - std::exp(-1.0f / (rate * seconds)); };
+        const auto step = [&](float seconds) { return dsp::stepForSeconds(seconds, rate); };
         smooth_ = step(0.02f);
         slowSmooth_ = step(0.06f);
         correlationStep_ = step(correlationSeconds);
@@ -219,7 +220,7 @@ private:
         guardRelease_ = step(guardReleaseSeconds);
         compensationStep_ = step(compensationSeconds);
         // The crossovers glide over about 30 ms, stepped once a sub-block.
-        crossoverStep_ = 1.0f - std::exp(-static_cast<float>(subBlock) / (rate * 0.03f));
+        crossoverStep_ = dsp::blockStepForSeconds(0.03f, rate, static_cast<float>(subBlock));
     }
 
     float monoTargetHz() const noexcept

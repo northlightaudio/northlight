@@ -4,6 +4,7 @@
 #include "engine/rt/RealtimeGuard.h"
 #include "plugins/Biquad.h"
 #include "plugins/ProcessorBase.h"
+#include "plugins/dsp/Smoothing.h"
 
 #include <algorithm>
 #include <cmath>
@@ -109,7 +110,7 @@ private:
 
     float coefficient(float seconds) const noexcept
     {
-        return std::exp(-1.0f / (static_cast<float>(sampleRate_) * std::max(1.0e-5f, seconds)));
+        return dsp::poleForSeconds(std::max(1.0e-5f, seconds), static_cast<float>(sampleRate_));
     }
 
     void processAudio(float* left, float* right, int numSamples) noexcept override

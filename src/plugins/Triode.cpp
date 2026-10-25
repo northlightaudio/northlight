@@ -1,6 +1,7 @@
 #include "plugins/Triode.h"
 
 #include "engine/rt/RealtimeGuard.h"
+#include "plugins/dsp/Smoothing.h"
 
 #include <algorithm>
 #include <cmath>
@@ -168,8 +169,8 @@ void TriodeStage::retune(double sampleRate) noexcept
     miller_.setLowPass1(sampleRate, millerHz_);
     // The coupling capacitor charges through the conducting grid in a couple of
     // milliseconds and drains through the grid leak over tens.
-    charge_ = 1.0 - std::exp(-1.0 / (0.002 * sampleRate));
-    discharge_ = std::exp(-1.0 / (0.04 * sampleRate));
+    charge_ = dsp::stepForSeconds(0.002, sampleRate);
+    discharge_ = dsp::poleForSeconds(0.04, sampleRate);
     reset();
 }
 

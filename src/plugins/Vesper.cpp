@@ -7,6 +7,7 @@
 #include "plugins/FeedbackNetwork.h"
 #include "plugins/ProcessorBase.h"
 #include "plugins/VocalListener.h"
+#include "plugins/dsp/Smoothing.h"
 
 #include <algorithm>
 #include <array>
@@ -519,7 +520,7 @@ private:
             f.bypass();
 
         const auto rate = static_cast<float>(sampleRate);
-        const auto smoothing = [rate](float seconds) { return 1.0f - std::exp(-1.0f / (seconds * rate)); };
+        const auto smoothing = [rate](float seconds) { return dsp::stepForSeconds(seconds, rate); };
         const auto perFrame = [](float seconds) { return 1.0f - std::exp(-listenerFrameSeconds / seconds); };
         sendDown_ = smoothing(0.002f);
         sendUp_ = smoothing(0.03f);
@@ -577,7 +578,7 @@ private:
         const double releaseSeconds = sync::quarters(parameter(releaseSync)) > 0.0
                                           ? sync::seconds(parameter(releaseSync), playHead().tempoBpm)
                                           : std::max(0.01, parameter(release) * 0.001);
-        t.duckRelease = 1.0f - std::exp(-1.0f / (static_cast<float>(releaseSeconds) * rate));
+        t.duckRelease = dsp::stepForSeconds(static_cast<float>(releaseSeconds), rate);
         t.ends = std::clamp(parameter(ends) * 0.01f, 0.0f, 1.0f);
         t.decay = std::clamp(parameter(decay), minDecaySeconds, maxDecaySeconds);
         t.follow = parameter(follow);

@@ -4,6 +4,7 @@
 #include "plugins/BeatSync.h"
 #include "plugins/MeteredBuiltIn.h"
 #include "plugins/SynthVoices.h"
+#include "plugins/dsp/Smoothing.h"
 
 #include <algorithm>
 #include <cmath>
@@ -282,7 +283,7 @@ private:
             smoothG_ = static_cast<float>(std::tan(std::numbers::pi * cutoff / sampleRate_));
             smoothK_ = 1.41421356f;
             smoothH_ = 1.0f / (1.0f + smoothK_ * smoothG_ + smoothG_ * smoothG_);
-            dcPole_ = static_cast<float>(std::exp(-2.0 * std::numbers::pi * 20.0 / sampleRate_));
+            dcPole_ = static_cast<float>(dsp::poleForHz(20.0, sampleRate_));
         }
         const float echoMix = p[echo];
         const float outGain = dbToGain(p[level]) * 0.3f;

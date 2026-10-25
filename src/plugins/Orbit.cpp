@@ -6,6 +6,7 @@
 #include "plugins/Oversampler.h"
 #include "plugins/ProcessorBase.h"
 #include "plugins/dsp/Random.h"
+#include "plugins/dsp/Smoothing.h"
 
 #include <algorithm>
 #include <array>
@@ -304,10 +305,10 @@ private:
             c.pre = c.post = 0.0;
         }
         write_ = 0;
-        smoothStep_ = 1.0f - std::exp(-1.0f / (0.015f * static_cast<float>(sampleRate)));
-        powerStep_ = 1.0 - std::exp(-1.0 / (0.05 * sampleRate));
+        smoothStep_ = dsp::stepForSeconds(0.015f, static_cast<float>(sampleRate));
+        powerStep_ = dsp::stepForSeconds(0.05, sampleRate);
         // A VU's movement: two equal lags reaching 99% of a step in 300 ms.
-        vuStep_ = 1.0f - std::exp(-1.0f / (0.045f * static_cast<float>(sampleRate)));
+        vuStep_ = dsp::stepForSeconds(0.045f, static_cast<float>(sampleRate));
         wowPhase_ = flutterPhase_ = 0.0;
         wowDrift_ = flutterDrift_ = {};
         rng_ = dsp::XorShift32{noiseSeed};

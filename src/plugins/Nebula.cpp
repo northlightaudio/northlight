@@ -4,6 +4,7 @@
 #include "plugins/MeteredBuiltIn.h"
 #include "plugins/SynthVoices.h"
 #include "plugins/dsp/Random.h"
+#include "plugins/dsp/Smoothing.h"
 
 #include <algorithm>
 #include <array>
@@ -299,14 +300,12 @@ private:
             p[static_cast<size_t>(i)] = parameter(i);
         const float sr = static_cast<float>(sampleRate_);
         const float attackStep = 1.0f / std::max(1.0f, p[attack] * 0.001f * sr);
-        const auto coefficient = [sr](float ms)
-        { return std::exp(std::log(0.001f) / std::max(1.0f, ms * 0.001f * sr)); };
+        const auto coefficient = [sr](float ms) { return dsp::decay60ForMs(ms, sr); };
         const float decayCoef = coefficient(p[decay]), releaseCoef = coefficient(p[release]);
         const float sustainLevel = p[sustain];
         const float subLevel = p[sub] * 0.4f, breathLevel = p[breath] * 0.25f;
         const double motionStep = p[motionRate] / sampleRate_;
-        const float toneCoef =
-            1.0f - std::exp(-2.0f * std::numbers::pi_v<float> * std::min(p[tone], sr * 0.45f) / sr);
+        const float toneCoef = dsp::stepForHz(std::min(p[tone], sr * 0.45f), sr);
         const float mix = p[spaceMix];
         const float outGain = dbToGain(p[level]);
         const int partialCount = std::clamp(static_cast<int>(std::lround(p[partials])), 1, maxPartials);

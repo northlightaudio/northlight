@@ -2,6 +2,7 @@
 
 #include "engine/Gain.h"
 #include "engine/rt/RealtimeGuard.h"
+#include "plugins/dsp/Smoothing.h"
 
 #include <complex>
 #include <numbers>
@@ -44,7 +45,7 @@ float meanAllpassSeconds(const Tuning& tuning) noexcept
 
 float onePole(float hz, double sampleRate) noexcept
 {
-    return 1.0f - std::exp(-2.0f * pi * hz / static_cast<float>(sampleRate));
+    return dsp::stepForHz(hz, static_cast<float>(sampleRate));
 }
 
 int powerOfTwoAtLeast(double n) noexcept
@@ -116,7 +117,7 @@ void FeedbackNetwork::prepare(const Tuning& tuning, double sampleRate)
     governor_ = 1.0f;
 
     const auto rate = static_cast<float>(sampleRate);
-    const auto smoothing = [rate](float seconds) { return 1.0f - std::exp(-1.0f / (seconds * rate)); };
+    const auto smoothing = [rate](float seconds) { return dsp::stepForSeconds(seconds, rate); };
     energyStep_ = smoothing(0.02f); // the governor's measure
     governorDown_ = smoothing(0.005f);
     governorUp_ = smoothing(0.3f);

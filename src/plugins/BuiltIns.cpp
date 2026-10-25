@@ -21,6 +21,7 @@
 #include "plugins/TapeEcho.h"
 #include "plugins/Vesper.h"
 #include "plugins/Widener.h"
+#include "plugins/dsp/Smoothing.h"
 
 #include <algorithm>
 #include <array>
@@ -229,8 +230,7 @@ public:
     void processBuiltIn(float* left, float* right, int numSamples) noexcept override
     {
         const float ceiling = dbToGain(parameter(ceilingDb));
-        const float release =
-            std::exp(-1.0f / (static_cast<float>(sampleRate_) * parameter(releaseMs) * 0.001f));
+        const float release = dsp::poleForMs(parameter(releaseMs), static_cast<float>(sampleRate_));
         const int lookahead = capacity_ > 0 ? lookaheadSamples() : 0; // nothing allocated before prepare
         if (lookahead != length_)
             reset(lookahead); // a changed lookahead restarts the pipeline (no allocation)
@@ -417,8 +417,7 @@ private:
         const int preSamples = std::clamp(static_cast<int>(parameter(reverb::preDelay) * 0.001f * rate),
                                           0,
                                           static_cast<int>(preDelay_.size()) - 2);
-        const float damp =
-            1.0f - std::exp(-2.0f * std::numbers::pi_v<float> * parameter(reverb::damping) / rate);
+        const float damp = dsp::stepForHz(parameter(reverb::damping), rate);
         if (const float lowCut = parameter(reverb::lowCut); lowCut != lastLowCut_)
         {
             lastLowCut_ = lowCut;
@@ -552,9 +551,9 @@ private:
                                                             : parameter(delay::time) * 0.001;
         const float target =
             std::clamp(static_cast<float>(seconds) * rate, 1.0f, static_cast<float>(size - 3));
-        const float slew = 1.0f - std::exp(-1.0f / (0.05f * rate)); // 50 ms glide
+        const float slew = dsp::stepForSeconds(0.05f, rate); // 50 ms glide
         const float feedback = parameter(delay::feedback) * 0.01f;
-        const float tone = 1.0f - std::exp(-2.0f * std::numbers::pi_v<float> * parameter(delay::tone) / rate);
+        const float tone = dsp::stepForHz(parameter(delay::tone), rate);
         const bool pingPong = parameter(delay::pingPong) >= 0.5f;
         const float wet = parameter(delay::mix) * 0.01f;
         if (!primed_)

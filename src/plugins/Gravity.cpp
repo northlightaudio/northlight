@@ -2,6 +2,7 @@
 #include "plugins/Biquad.h"
 #include "plugins/MeteredBuiltIn.h"
 #include "plugins/Pedals.h"
+#include "plugins/dsp/Smoothing.h"
 
 #include <algorithm>
 #include <cmath>
@@ -39,7 +40,7 @@ float reductionDb(const Curve& c, float inputDb) noexcept
 
 float coefficient(float ms, double sampleRate) noexcept
 {
-    return std::exp(-1.0f / (static_cast<float>(sampleRate) * std::max(0.01f, ms) * 0.001f));
+    return dsp::poleForMs(std::max(0.01f, ms), static_cast<float>(sampleRate));
 }
 } // namespace
 

@@ -6,6 +6,7 @@
 #include "plugins/FeedbackNetwork.h"
 #include "plugins/ProcessorBase.h"
 #include "plugins/dsp/Random.h"
+#include "plugins/dsp/Smoothing.h"
 
 #include <algorithm>
 #include <cmath>
@@ -203,7 +204,7 @@ private:
         primed_ = false; // the first block takes the parameters as they are (they arrive after prepare)
 
         const auto rate = static_cast<float>(sampleRate);
-        const auto smoothing = [rate](float seconds) { return 1.0f - std::exp(-1.0f / (seconds * rate)); };
+        const auto smoothing = [rate](float seconds) { return dsp::stepForSeconds(seconds, rate); };
         sizeStep_ = smoothing(0.25f);   // a size change glides, like tape
         freezeStep_ = smoothing(0.06f); // freeze fades in and out over about 150 ms
         glideStep_ = smoothing(0.05f);  // the pre-delay
@@ -265,7 +266,7 @@ private:
         t.tiltLow = dbToGain(-0.5f * tiltDb);
         t.tiltHigh = dbToGain(0.5f * tiltDb);
         t.duckDepthDb = std::clamp(parameter(duck) * 0.01f, 0.0f, 1.0f) * duckMaxDb;
-        t.duckRelease = 1.0f - std::exp(-1.0f / (std::max(0.01f, parameter(duckRelease) * 0.001f) * rate));
+        t.duckRelease = dsp::stepForSeconds(std::max(0.01f, parameter(duckRelease) * 0.001f), rate);
         const float gateMs = parameter(gate);
         t.gateOn = gateMs > gateOffMs + 0.5f;
         t.gateSamples = static_cast<int>(gateMs * 0.001f * rate);

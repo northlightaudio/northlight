@@ -5,6 +5,7 @@
 #include "plugins/Biquad.h"
 #include "plugins/Oversampler.h"
 #include "plugins/ProcessorBase.h"
+#include "plugins/dsp/Smoothing.h"
 
 #include <algorithm>
 #include <array>
@@ -304,7 +305,7 @@ private:
         bassPrevious_ = bassPreviousIntegral_ = 0.0;
 
         const auto step = [&](float seconds)
-        { return 1.0f - std::exp(-1.0f / (static_cast<float>(sampleRate) * seconds)); };
+        { return dsp::stepForSeconds(seconds, static_cast<float>(sampleRate)); };
         bandStep_ = step(bandSeconds);
         bandPeakFall_ = step(0.06f);
         lowStep_ = step(lowSeconds);
@@ -399,7 +400,7 @@ private:
     Targets control(int n) noexcept
     {
         const float fs = static_cast<float>(sampleRate_);
-        const float k = 1.0f - std::exp(-static_cast<float>(n) / (fs * smoothingSeconds));
+        const float k = dsp::blockStepForSeconds(smoothingSeconds, fs, static_cast<float>(n));
         // Close enough lands exactly, so a control at zero adds exactly nothing.
         const auto smooth = [k](float& value, float target)
         {
@@ -439,7 +440,7 @@ private:
         designFilters();
 
         // The band's level against its 600 ms average, for the dynamics.
-        slowMs_ += (bandMs_ - slowMs_) * (1.0f - std::exp(-static_cast<float>(n) / (fs * 0.6f)));
+        slowMs_ += (bandMs_ - slowMs_) * dsp::blockStepForSeconds(0.6f, fs, static_cast<float>(n));
 
         const auto cal = calibrationAt(character_, drive_);
         linear_ = cal.linear;
@@ -491,7 +492,7 @@ private:
             heldCompensationDb_ = target;
         }
         compensationDb_ +=
-            (target - compensationDb_) * (1.0f - std::exp(-static_cast<float>(n) / (fs * 0.25f)));
+            (target - compensationDb_) * dsp::blockStepForSeconds(0.25f, fs, static_cast<float>(n));
         t.outGain = dbToGain(compensationDb_ + output_);
         return t;
     }

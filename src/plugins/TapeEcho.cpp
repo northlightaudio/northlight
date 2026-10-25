@@ -5,6 +5,7 @@
 #include "plugins/BeatSync.h"
 #include "plugins/ProcessorBase.h"
 #include "plugins/dsp/Random.h"
+#include "plugins/dsp/Smoothing.h"
 
 #include <algorithm>
 #include <cmath>
@@ -147,8 +148,7 @@ public:
         loop_.assign(static_cast<size_t>(length_), 0.0f);
         position_ = write_ = 0;
         low_ = 0.0f;
-        lowStep_ =
-            1.0f - std::exp(-2.0f * std::numbers::pi_v<float> * 3200.0f / static_cast<float>(sampleRate));
+        lowStep_ = dsp::stepForHz(3200.0f, static_cast<float>(sampleRate));
         input_.setHighPass(sampleRate, 180.0);
         output_.setLowPass(sampleRate, springTransitionHz, 0.8);
         input_.reset();
@@ -302,9 +302,9 @@ private:
         logDelay_ = std::log(d1);
         motorVelocity_ = 0.0;
         primed_ = false;
-        smoothStep_ = 1.0f - std::exp(-1.0f / (0.015f * static_cast<float>(sampleRate)));
-        envelopeAttack_ = 1.0f - std::exp(-1.0f / (0.01f * static_cast<float>(sampleRate)));
-        envelopeRelease_ = std::exp(-1.0f / (1.5f * static_cast<float>(sampleRate)));
+        smoothStep_ = dsp::stepForSeconds(0.015f, static_cast<float>(sampleRate));
+        envelopeAttack_ = dsp::stepForSeconds(0.01f, static_cast<float>(sampleRate));
+        envelopeRelease_ = dsp::poleForSeconds(1.5f, static_cast<float>(sampleRate));
         smoothed_.fill(0.0f);
         targets_.fill(0.0f);
         wowPhase_ = flutterPhase_ = 0.0;
@@ -419,7 +419,7 @@ private:
     void designFilters(int numSamples, double headOne) noexcept
     {
         const float blockStep =
-            1.0f - std::exp(-static_cast<float>(numSamples) / (0.03f * static_cast<float>(sampleRate_)));
+            dsp::blockStepForSeconds(0.03f, static_cast<float>(sampleRate_), static_cast<float>(numSamples));
         bassDb_ += (parameter(bass) - bassDb_) * blockStep;
         trebleDb_ += (parameter(treble) - trebleDb_) * blockStep;
         const float ageNow = parameter(age);

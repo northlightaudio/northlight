@@ -364,7 +364,9 @@ know nothing format-specific.
 - **The DSP kit** (`src/plugins/dsp`, namespace `plugins::dsp`) holds the small
   header-only building blocks the built-ins share, all real-time safe:
   `Random.h` (xorshift32 and LCG noise with the float mappings the processors use,
-  and `Drift`, a smooth random curve). Each processor keeps its own seeds,
+  and `Drift`, a smooth random curve), `Smoothing.h` (one-pole coefficients by name:
+  `poleFor…`/`stepFor…` for a time constant in seconds or milliseconds, a corner
+  frequency or a once-a-block update, and `decay60ForMs`). Each processor keeps its own seeds,
   constants and tolerances, so moving onto the kit never changes its sound.
 - **The guitar pedals** share one card, `ui/strip/PedalCard`, which reads a
   pedal's layout (its finish, knobs, toggle, and whether it is the tuner) from a

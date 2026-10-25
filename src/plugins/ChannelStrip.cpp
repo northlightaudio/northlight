@@ -4,6 +4,7 @@
 #include "engine/rt/RealtimeGuard.h"
 #include "plugins/BuiltIns.h"
 #include "plugins/ProcessorBase.h"
+#include "plugins/dsp/Smoothing.h"
 
 #include <algorithm>
 #include <array>
@@ -353,7 +354,7 @@ namespace
 {
 float coefficient(double sampleRate, float ms) noexcept
 {
-    return std::exp(-1.0f / (static_cast<float>(sampleRate) * std::max(0.001f, ms) * 0.001f));
+    return dsp::poleForMs(std::max(0.001f, ms), static_cast<float>(sampleRate));
 }
 
 float peakOf(const float* left, const float* right, int numSamples) noexcept
@@ -802,7 +803,7 @@ private:
         drive_ = valveDrive(parameter(opto::colour));
         dcCoefficient_ = 1.0f - static_cast<float>(2.0 * std::numbers::pi * 10.0 / sampleRate_);
         const float sr = static_cast<float>(sampleRate_);
-        const auto step = [sr](float seconds) { return 1.0f - std::exp(-1.0f / (sr * seconds)); };
+        const auto step = [sr](float seconds) { return dsp::stepForSeconds(seconds, sr); };
         envelopeFall_ = coefficient(sampleRate_, 20.0f);
         attackStep_ = step(0.030f);
         fastReleaseStep_ = step(opto::fastReleaseMs * 0.001f);
@@ -862,7 +863,7 @@ private:
         const bool coloured = colour > 0.05f || drive_ > valveDrive(0.05f); // or ramping down to clean
         // The slow stage's release follows the memory (slow enough to set per block).
         const float slowReleaseStep =
-            1.0f - std::exp(-1.0f / (static_cast<float>(sampleRate_) * opto::slowReleaseSeconds(memory_)));
+            dsp::stepForSeconds(opto::slowReleaseSeconds(memory_), static_cast<float>(sampleRate_));
         const float n = static_cast<float>(std::max(1, numSamples));
         const float targetMakeup = dbToGain(parameter(opto::gain));
         const float makeupStep = (targetMakeup - makeup_) / n;

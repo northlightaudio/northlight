@@ -5,6 +5,7 @@
 #include "plugins/Biquad.h"
 #include "plugins/ProcessorBase.h"
 #include "plugins/dsp/Random.h"
+#include "plugins/dsp/Smoothing.h"
 
 #include <algorithm>
 #include <cmath>
@@ -336,12 +337,12 @@ struct Allpass
 
 float onePoleCoefficient(double sampleRate, double hz) noexcept
 {
-    return 1.0f - static_cast<float>(std::exp(-2.0 * std::numbers::pi * hz / sampleRate));
+    return 1.0f - static_cast<float>(dsp::poleForHz(hz, sampleRate));
 }
 
 float smoothingCoefficient(double rate, float seconds) noexcept
 {
-    return 1.0f - std::exp(-1.0f / (static_cast<float>(rate) * std::max(1.0e-4f, seconds)));
+    return dsp::stepForSeconds(std::max(1.0e-4f, seconds), static_cast<float>(rate));
 }
 
 // Pink noise from white (Paul Kellet's economy filter), about unit RMS for

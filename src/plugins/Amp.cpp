@@ -11,6 +11,7 @@
 #include "plugins/ProcessorBase.h"
 #include "plugins/ToneStack.h"
 #include "plugins/Triode.h"
+#include "plugins/dsp/Smoothing.h"
 
 #include <algorithm>
 #include <array>
@@ -158,8 +159,7 @@ public:
         loop_.assign(static_cast<size_t>(length_), 0.0f);
         position_ = write_ = 0;
         low_ = 0.0f;
-        lowStep_ =
-            1.0f - std::exp(-2.0f * std::numbers::pi_v<float> * 3800.0f / static_cast<float>(sampleRate));
+        lowStep_ = dsp::stepForHz(3800.0f, static_cast<float>(sampleRate));
         gain_ = static_cast<float>(std::pow(10.0, -3.0 * loopSeconds / decaySeconds));
     }
 
@@ -467,7 +467,7 @@ private:
         configure();
 
         const auto step = [&](double seconds)
-        { return static_cast<float>(1.0 - std::exp(-1.0 / (seconds * sampleRate))); };
+        { return static_cast<float>(dsp::stepForSeconds(seconds, sampleRate)); };
         smoothStep_ = step(0.02);
         gateAttack_ = step(0.0005);
         gateRelease_ = step(0.02);
@@ -567,7 +567,7 @@ private:
     void designFilters(int numSamples) noexcept
     {
         const float k =
-            1.0f - std::exp(-static_cast<float>(numSamples) / (0.02f * static_cast<float>(sampleRate_)));
+            dsp::blockStepForSeconds(0.02f, static_cast<float>(sampleRate_), static_cast<float>(numSamples));
         const std::array<float, 5> wanted{static_cast<float>(travel(parameter(treble))),
                                           static_cast<float>(travel(parameter(middle))),
                                           static_cast<float>(travel(parameter(bass))),
