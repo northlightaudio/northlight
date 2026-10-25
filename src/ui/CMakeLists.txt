@@ -26,6 +26,7 @@ add_library(northlight_ui STATIC
     PluginMenu.h
     PluginMenu.cpp
     components/AddSlot.h
+    components/Accessibility.h
     components/Fader.h
     components/Fader.cpp
     components/Knob.h
