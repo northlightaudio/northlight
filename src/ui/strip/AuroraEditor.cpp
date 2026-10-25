@@ -802,7 +802,7 @@ private:
         g.setGradientFill(
             juce::ColourGradient(hues_.osc, box.getX(), 0.0f, hues_.envelope, box.getRight(), 0.0f, false));
         g.fillPath(text);
-        g.setFont(theme_.font(Theme::Face::ui, theme_.fonts.size.caption - 1.0f, theme_.fonts.weight.medium));
+        g.setFont(theme_.font(Theme::Face::ui, theme_.fonts.size.micro, theme_.fonts.weight.medium));
         g.setColour(c.textTertiary);
         g.drawText(juce::String::fromUTF8("POLYSYNTH  \xc2\xb7  NORTHLIGHT"),
                    juce::Rectangle<float>(box.getRight() + 10.0f, baseline - 10.0f, 140.0f, 12.0f),

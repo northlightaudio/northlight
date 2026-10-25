@@ -101,6 +101,7 @@ rendered art was drawn for. A number with a fixed count of decimals goes through
 
 | Token | Size | Weight | Use |
 |---|---|---|---|
+| micro | 10 | 400-600 | A display's axis labels and corner chips (the EQ's frequencies, a graph's dB scale); never running text |
 | caption | 11 | 500 | Clip names, ruler labels, meter scale, badges |
 | small | 12 | 400 | Secondary labels, table cells, tooltips |
 | body | 13 | 400 | Default labels, menu items, fields |

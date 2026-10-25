@@ -361,6 +361,7 @@ bool Theme::apply(const juce::var& tokens, Theme& theme, std::string& error)
         }
         if (const auto& size = font["size"]; size.isObject())
         {
+            readNumber(size, "micro", f.size.micro, error);
             readNumber(size, "caption", f.size.caption, error);
             readNumber(size, "small", f.size.small, error);
             readNumber(size, "body", f.size.body, error);

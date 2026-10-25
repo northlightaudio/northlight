@@ -445,8 +445,7 @@ public:
                 g.setColour(c.meterHot);
                 g.fillRect(r.withTop(r.getBottom() - 2.0f).withWidth(r.getWidth() * f));
             }
-            g.setFont(
-                theme_.font(Theme::Face::ui, theme_.fonts.size.caption - 1.0f, theme_.fonts.weight.semibold));
+            g.setFont(theme_.font(Theme::Face::ui, theme_.fonts.size.micro, theme_.fonts.weight.semibold));
             g.setColour(cell.on ? c.textPrimary : c.textTertiary);
             g.drawText(juce::String(plugins::strip::displayName(cell.type)).substring(0, 1),
                        r,

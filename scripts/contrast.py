@@ -31,6 +31,7 @@ PAIRS = [
     ("textSecondary", "surface3", "Hovered secondary", "body"),
     ("textTertiary", "surface0", "Hints, inactive tabs (13 px+ or non-essential)", "hint"),
     ("textTertiary", "canvas", "Ruler seconds, empty-state hints", "hint"),
+    ("textTertiary", "material.meterWell", "A display's axis labels (micro)", "hint"),
     ("textDisabled", "surface1", "Disabled (exempt from the requirement)", "exempt"),
     ("accent", "surface0", "Active icons, links", "body"),
     ("lineFocus", "surface0", "Focus ring (non-text)", "nontext"),

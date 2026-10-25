@@ -147,7 +147,7 @@ public:
         g.setFont(theme.captionCaps());
         g.setColour(selected || glow > 0.3f ? c.textPrimary : c.textSecondary);
         g.drawText(pu::padShortName(pad_), top, juce::Justification::centredLeft);
-        g.setFont(theme.font(Theme::Face::mono, theme.fonts.size.caption - 1.0f, theme.fonts.weight.medium));
+        g.setFont(theme.font(Theme::Face::mono, theme.fonts.size.micro, theme.fonts.weight.medium));
         g.setColour(hue);
         g.drawText(noteName(pu::padNote(pad_)), top, juce::Justification::centredRight);
         if (const int route = pu::padRoute(card_.params(), pad_); route > 0)
@@ -197,7 +197,7 @@ public:
         const auto p = b.reduced(10.0f, 10.0f).withTrimmedTop(10.0f).withTrimmedBottom(12.0f);
         preview_.update(card_.params(), pad, std::max(8, static_cast<int>(p.getWidth())));
         // Time ticks under the sound.
-        g.setFont(theme.font(Theme::Face::mono, theme.fonts.size.caption - 1.0f, theme.fonts.weight.regular));
+        g.setFont(theme.font(Theme::Face::mono, theme.fonts.size.micro, theme.fonts.weight.regular));
         const double span = preview_.seconds;
         double step = 0.01;
         for (const double s : {0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1.0})
@@ -630,7 +630,7 @@ private:
                                                0.0f,
                                                false));
         g.fillPath(text);
-        g.setFont(theme_.font(Theme::Face::ui, theme_.fonts.size.caption - 1.0f, theme_.fonts.weight.medium));
+        g.setFont(theme_.font(Theme::Face::ui, theme_.fonts.size.micro, theme_.fonts.weight.medium));
         g.setColour(theme_.colours.textTertiary);
         g.drawText(juce::String::fromUTF8("DRUM SYNTH  \xc2\xb7  NORTHLIGHT"),
                    juce::Rectangle<float>(box.getRight() + 10.0f, baseline - 10.0f, 150.0f, 12.0f),

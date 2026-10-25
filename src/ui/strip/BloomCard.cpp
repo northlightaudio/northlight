@@ -206,7 +206,7 @@ public:
             g.drawImage(image_, imageBounds(), juce::RectanglePlacement::stretchToFit);
         }
 
-        g.setFont(theme.font(Theme::Face::mono, theme.fonts.size.caption - 1.0f, theme.fonts.weight.regular));
+        g.setFont(theme.font(Theme::Face::mono, theme.fonts.size.micro, theme.fonts.weight.regular));
         g.setColour(c.textTertiary);
         for (const auto& [hz, text] : marks)
         {
@@ -645,8 +645,7 @@ public:
                 g.drawHorizontalLine(static_cast<int>(y(db)), p.getX(), p.getRight());
             }
             // The time across, at its end (in a short well, the span at the top right).
-            g.setFont(
-                theme.font(Theme::Face::mono, theme.fonts.size.caption - 1.0f, theme.fonts.weight.regular));
+            g.setFont(theme.font(Theme::Face::mono, theme.fonts.size.micro, theme.fonts.weight.regular));
             g.setColour(c.textTertiary);
             if (compact && !held)
                 g.drawText(secondsText(span),

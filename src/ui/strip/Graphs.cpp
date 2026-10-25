@@ -16,7 +16,7 @@ constexpr double framesPerSecond = 1.0 / engine::ProcessorFeedback::frameSeconds
 void drawDbGrid(
     juce::Graphics& g, const Theme& theme, juce::Rectangle<float> plot, float topDb, float bottomDb)
 {
-    g.setFont(theme.font(Theme::Face::mono, theme.fonts.size.caption - 1.0f, theme.fonts.weight.regular));
+    g.setFont(theme.font(Theme::Face::mono, theme.fonts.size.micro, theme.fonts.weight.regular));
     for (float db = topDb - 12.0f; db > bottomDb; db -= 12.0f)
     {
         const float y = dbToY(db, topDb, bottomDb, plot);
@@ -735,7 +735,7 @@ void LevelBars::paint(juce::Graphics& g)
             name = kind == Kind::input ? "IN" : "OUT";
         }
         drawWellFrame(g, theme, bar);
-        g.setFont(theme.font(Theme::Face::mono, theme.fonts.size.caption - 1.0f, theme.fonts.weight.medium));
+        g.setFont(theme.font(Theme::Face::mono, theme.fonts.size.micro, theme.fonts.weight.medium));
         g.setColour(c.textSecondary);
         g.drawText(text, value, juce::Justification::centred);
         g.setFont(theme.caption());

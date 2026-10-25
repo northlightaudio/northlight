@@ -79,7 +79,7 @@ void drawTimeGrid(juce::Graphics& g, const Theme& theme, juce::Rectangle<float> 
         }
     if (step == 0.001)
         step = 10.0;
-    g.setFont(theme.font(Theme::Face::mono, theme.fonts.size.caption - 1.0f, theme.fonts.weight.regular));
+    g.setFont(theme.font(Theme::Face::mono, theme.fonts.size.micro, theme.fonts.weight.regular));
     for (double t = step; t < span; t += step)
     {
         const float x = p.getX() + static_cast<float>(t / span) * p.getWidth();
@@ -534,8 +534,7 @@ public:
             drawTimeGrid(g, theme, p, span);
             g.setColour(c.lineStrong);
             g.drawHorizontalLine(static_cast<int>(mid), p.getX(), p.getRight());
-            g.setFont(
-                theme.font(Theme::Face::ui, theme.fonts.size.caption - 1.0f, theme.fonts.weight.medium));
+            g.setFont(theme.font(Theme::Face::ui, theme.fonts.size.micro, theme.fonts.weight.medium));
             g.setColour(c.textTertiary);
             g.drawText("L",
                        juce::Rectangle<float>(p.getRight() - 14.0f, p.getY() + 2.0f, 10.0f, 12.0f),

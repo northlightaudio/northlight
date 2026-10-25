@@ -453,7 +453,7 @@ public:
         const auto block =
             juce::Rectangle<float>(x(0.0), y(-4.0), x(voice) - x(0.0), p.getBottom() - y(-4.0));
         g.fillRect(block);
-        g.setFont(theme.font(Theme::Face::ui, theme.fonts.size.caption - 1.0f, theme.fonts.weight.regular));
+        g.setFont(theme.font(Theme::Face::ui, theme.fonts.size.micro, theme.fonts.weight.regular));
         g.setColour(c.textSecondary);
         g.drawText("voice", block, juce::Justification::centred);
 

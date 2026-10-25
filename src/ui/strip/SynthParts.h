@@ -52,8 +52,7 @@ public:
         g.setColour(hue_.withAlpha(isMouseOver() ? 0.32f : 0.2f));
         g.fillRoundedRectangle(r, r.getHeight() * 0.5f);
         g.setColour(hue_);
-        g.setFont(
-            theme_.font(Theme::Face::ui, theme_.fonts.size.caption - 1.0f, theme_.fonts.weight.semibold));
+        g.setFont(theme_.font(Theme::Face::ui, theme_.fonts.size.micro, theme_.fonts.weight.semibold));
         const auto text = selected >= 0 && static_cast<size_t>(selected) < choices.size()
                               ? choices[static_cast<size_t>(selected)]
                               : juce::String();
@@ -78,8 +77,7 @@ public:
     int preferredWidth() const
     {
         int w = 0;
-        const auto font =
-            theme_.font(Theme::Face::ui, theme_.fonts.size.caption - 1.0f, theme_.fonts.weight.semibold);
+        const auto font = theme_.font(Theme::Face::ui, theme_.fonts.size.micro, theme_.fonts.weight.semibold);
         for (const auto& c : choices)
             w = std::max(w, juce::GlyphArrangement::getStringWidthInt(font, c));
         return w + 26;

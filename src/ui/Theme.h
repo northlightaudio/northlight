@@ -77,8 +77,9 @@ struct Theme
         std::string monoFamily = "JetBrains Mono", monoFile = "JetBrainsMono-Variable.ttf";
         struct Size
         {
-            float caption = 11, small = 12, body = 13, label = 13, title = 16, heading = 20, timeLarge = 22,
-                  timeSmall = 13, value = 12;
+            // micro: a display's axis labels and corner chips, never running text.
+            float micro = 10, caption = 11, small = 12, body = 13, label = 13, title = 16, heading = 20,
+                  timeLarge = 22, timeSmall = 13, value = 12;
         } size;
         struct Weight
         {

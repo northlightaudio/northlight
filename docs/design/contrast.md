@@ -12,6 +12,7 @@ Generated from [tokens.json](tokens.json) (Machair Dusk v2) by `scripts/contrast
 | textSecondary | surface3 | 5.54 | Hovered secondary | yes |
 | textTertiary | surface0 | 4.72 | Hints, inactive tabs (13 px+ or non-essential) | 3:1 only |
 | textTertiary | canvas | 4.93 | Ruler seconds, empty-state hints | 3:1 only |
+| textTertiary | material.meterWell | 5.11 | A display's axis labels (micro) | 3:1 only |
 | textDisabled | surface1 | 2.09 | Disabled (exempt from the requirement) | n/a |
 | accent | surface0 | 7.55 | Active icons, links | yes |
 | lineFocus | surface0 | 4.35 | Focus ring (non-text) | yes |

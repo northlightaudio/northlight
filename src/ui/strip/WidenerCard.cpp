@@ -289,7 +289,7 @@ public:
         zone(0.0f, 0.3f, c.warning);
         zone(0.3f, 1.0f, c.success);
         // The scale under it.
-        g.setFont(theme.font(Theme::Face::mono, theme.fonts.size.caption - 1.0f, theme.fonts.weight.regular));
+        g.setFont(theme.font(Theme::Face::mono, theme.fonts.size.micro, theme.fonts.weight.regular));
         g.setColour(c.textTertiary);
         const float labelY = t.getBottom() + 3.0f;
         g.drawText(juce::String::fromUTF8("\xe2\x88\x92") + "1",
@@ -892,8 +892,7 @@ private:
     void drawOverMarkers(juce::Graphics& g, juce::Rectangle<float> p) const
     {
         const auto& theme = card_.theme();
-        const auto font =
-            theme.font(Theme::Face::mono, theme.fonts.size.caption - 1.0f, theme.fonts.weight.medium);
+        const auto font = theme.font(Theme::Face::mono, theme.fonts.size.micro, theme.fonts.weight.medium);
         float lastRight = p.getX() - 1.0f;
         int b = 0;
         while (b < spectrumBands)

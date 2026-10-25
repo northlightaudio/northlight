@@ -401,8 +401,7 @@ public:
         {
             juce::Graphics::ScopedSaveState save(g);
             g.reduceClipRegion(p.toNearestInt());
-            g.setFont(
-                theme.font(Theme::Face::mono, theme.fonts.size.caption - 1.0f, theme.fonts.weight.regular));
+            g.setFont(theme.font(Theme::Face::mono, theme.fonts.size.micro, theme.fonts.weight.regular));
             for (float db = historyTopDb - 12.0f; db > historyBottomDb; db -= 12.0f)
             {
                 const float y = dbToY(db, historyTopDb, historyBottomDb, p);

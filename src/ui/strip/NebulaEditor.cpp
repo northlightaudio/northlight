@@ -605,7 +605,7 @@ private:
         g.setGradientFill(
             juce::ColourGradient(hues_.envelope, box.getX(), 0.0f, hues_.cloud, box.getRight(), 0.0f, false));
         g.fillPath(text);
-        g.setFont(theme_.font(Theme::Face::ui, theme_.fonts.size.caption - 1.0f, theme_.fonts.weight.medium));
+        g.setFont(theme_.font(Theme::Face::ui, theme_.fonts.size.micro, theme_.fonts.weight.medium));
         g.setColour(theme_.colours.textTertiary);
         g.drawText(juce::String::fromUTF8("PAD SYNTH  \xc2\xb7  NORTHLIGHT"),
                    juce::Rectangle<float>(box.getRight() + 12.0f, baseline - 10.0f, 140.0f, 12.0f),

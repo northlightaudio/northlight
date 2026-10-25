@@ -377,8 +377,7 @@ public:
         }
         if (chord)
         {
-            g.setFont(
-                theme.font(Theme::Face::mono, theme.fonts.size.caption - 1.0f, theme.fonts.weight.semibold));
+            g.setFont(theme.font(Theme::Face::mono, theme.fonts.size.micro, theme.fonts.weight.semibold));
             g.setColour(theme.colours.textTertiary);
             g.drawText("HELD NOTES", grid.removeFromTop(12.0f), juce::Justification::centredRight);
         }
@@ -478,8 +477,7 @@ public:
         g.setColour(hue_);
         g.strokePath(stairs,
                      juce::PathStrokeType(2.0f, juce::PathStrokeType::mitered, juce::PathStrokeType::square));
-        g.setFont(
-            theme.font(Theme::Face::mono, theme.fonts.size.caption - 1.0f, theme.fonts.weight.semibold));
+        g.setFont(theme.font(Theme::Face::mono, theme.fonts.size.micro, theme.fonts.weight.semibold));
         g.setColour(theme.colours.textTertiary);
         g.drawText(juce::String(static_cast<int>(std::round(card_.param(sb::bits)))) + "-BIT",
                    b.reduced(8.0f, 4.0f),
@@ -678,8 +676,7 @@ private:
             g.setColour(c.textSecondary);
             g.drawText(s.title, caption, juce::Justification::centredLeft);
         }
-        g.setFont(
-            theme_.font(Theme::Face::mono, theme_.fonts.size.caption - 1.0f, theme_.fonts.weight.semibold));
+        g.setFont(theme_.font(Theme::Face::mono, theme_.fonts.size.micro, theme_.fonts.weight.semibold));
         g.setColour(c.textTertiary);
         g.drawText("SYNC", arpSyncCaption_, juce::Justification::centred);
         g.setColour(c.surface1);
@@ -732,8 +729,7 @@ private:
                     }
             x += 6.0f * px;
         }
-        g.setFont(
-            theme_.font(Theme::Face::mono, theme_.fonts.size.caption - 1.0f, theme_.fonts.weight.semibold));
+        g.setFont(theme_.font(Theme::Face::mono, theme_.fonts.size.micro, theme_.fonts.weight.semibold));
         g.setColour(theme_.colours.textTertiary);
         g.drawText(juce::String::fromUTF8("CHIP SYNTH  \xc2\xb7  NORTHLIGHT"),
                    juce::Rectangle<float>(x + 6.0f, y + 2.0f * px, 160.0f, 14.0f),

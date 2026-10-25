@@ -29,7 +29,7 @@ void drawFrequencyGrid(juce::Graphics& g,
                        float labelGap)
 {
     const auto& c = theme.colours;
-    g.setFont(theme.font(Theme::Face::mono, theme.fonts.size.caption - 1.0f, theme.fonts.weight.regular));
+    g.setFont(theme.font(Theme::Face::mono, theme.fonts.size.micro, theme.fonts.weight.regular));
     for (const double hz : lines)
     {
         const float x = hzToX(hz, p);

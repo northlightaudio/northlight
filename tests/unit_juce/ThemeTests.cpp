@@ -24,6 +24,7 @@ TEST_CASE("The embedded tokens load with the design system's values", "[ui][them
     CHECK(theme.track.forTrack(0, 11) == theme.track.palette[0].value); // cycles through eleven
     CHECK(theme.track.forTrack(0xff123456, 3) == juce::Colour(0xff123456));
     CHECK(theme.fonts.size.body == 13.0f);
+    CHECK(theme.fonts.size.micro == 10.0f); // a display's axis labels, a size under caption
     CHECK(theme.fonts.size.timeLarge == 22.0f);
     CHECK(theme.spacing.lg == 16);
     CHECK(theme.radius.md == 6.0f);

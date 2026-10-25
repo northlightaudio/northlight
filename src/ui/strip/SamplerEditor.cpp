@@ -160,8 +160,7 @@ public:
                 g.fillRect(x - 0.5f, area.getY(), 1.0f, area.getHeight());
                 const float y = topEdge ? area.getY() : area.getBottom();
                 drawHandle(g, theme, hue, {x, y}, dragging_ == which || hover_ == which);
-                g.setFont(theme.font(
-                    Theme::Face::mono, theme.fonts.size.caption - 1.0f, theme.fonts.weight.semibold));
+                g.setFont(theme.font(Theme::Face::mono, theme.fonts.size.micro, theme.fonts.weight.semibold));
                 g.setColour(hue);
                 const auto text = juce::Rectangle<float>(
                     x + 7.0f, topEdge ? b.getY() + 1.0f : b.getBottom() - 13.0f, 40.0f, 12.0f);
@@ -470,8 +469,7 @@ public:
         g.strokePath(p, juce::PathStrokeType(1.5f));
         if (card_.param(sp::oneShot) >= 0.5f)
         {
-            g.setFont(
-                theme.font(Theme::Face::mono, theme.fonts.size.caption - 1.0f, theme.fonts.weight.semibold));
+            g.setFont(theme.font(Theme::Face::mono, theme.fonts.size.micro, theme.fonts.weight.semibold));
             g.setColour(theme.colours.textTertiary);
             g.drawText("ONE-SHOT", b.reduced(6.0f, 4.0f), juce::Justification::topRight);
         }

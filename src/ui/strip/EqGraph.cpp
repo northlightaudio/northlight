@@ -353,8 +353,7 @@ void EqGraph::paint(juce::Graphics& g)
             }
             g.setColour(on ? c.textOnColour : colour);
             // The band's letters, fitted to the node (two letters, HP, fill it).
-            g.setFont(
-                theme.font(Theme::Face::ui, theme.fonts.size.caption - 1.0f, theme.fonts.weight.semibold));
+            g.setFont(theme.font(Theme::Face::ui, theme.fonts.size.micro, theme.fonts.weight.semibold));
             g.drawFittedText(
                 bands_.label(b), r.expanded(2.0f).toNearestInt(), juce::Justification::centred, 1, 0.8f);
         }
