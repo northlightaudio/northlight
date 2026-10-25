@@ -860,6 +860,7 @@ private:
             heatTiltLow_[ch].reset();
             heatTiltHigh_[ch].reset();
             heatPrevious_[ch] = 0.0;
+            heatPreviousF_[ch].character = -1;
             heatDc_[ch] = heatDcIn_[ch] = 0.0f;
         }
         heatDesigned_ = -1;
@@ -932,10 +933,24 @@ private:
         // ADAA1: the mean of the curve over the step from the previous input.
         const double previous = heatPrevious_[ch];
         const double du = u - previous;
-        const double y = std::abs(du) > 1.0e-6 ? (curveIntegral(character, u, heatDeadZone_) -
-                                                  curveIntegral(character, previous, heatDeadZone_)) /
-                                                     du
-                                               : curve(character, 0.5 * (u + previous), heatDeadZone_);
+        double y = 0.0;
+        if (std::abs(du) > 1.0e-6)
+        {
+            // The integral at the previous sample was worked out then, unless the
+            // curve (character, dead zone) changed since.
+            auto& cached = heatPreviousF_[ch];
+            const double fPrevious = cached.character == character && cached.deadZone == heatDeadZone_
+                                         ? cached.value
+                                         : curveIntegral(character, previous, heatDeadZone_);
+            const double fu = curveIntegral(character, u, heatDeadZone_);
+            y = (fu - fPrevious) / du;
+            cached = {fu, character, heatDeadZone_};
+        }
+        else
+        {
+            y = curve(character, 0.5 * (u + previous), heatDeadZone_);
+            heatPreviousF_[ch].character = -1;
+        }
         heatPrevious_[ch] = u;
         acc_.heatDriven = std::max(acc_.heatDriven, static_cast<float>(std::abs(u)));
         acc_.heatShaped = std::max(acc_.heatShaped, static_cast<float>(std::abs(y)));
@@ -1744,6 +1759,14 @@ private:
     // Heat
     std::array<Biquad, 2> heatPre_, heatPost_, heatBump_, heatTiltLow_, heatTiltHigh_;
     std::array<double, 2> heatPrevious_{};
+    // The curve's integral at heatPrevious_, and what it was worked out with.
+    struct HeatIntegral
+    {
+        double value = 0.0;
+        int character = -1; // -1: not worked out
+        double deadZone = 0.0;
+    };
+    std::array<HeatIntegral, 2> heatPreviousF_{};
     std::array<float, 2> heatDc_{}, heatDcIn_{};
     float heatDriveFrom_ = 0, heatDriveTo_ = 0, heatCompFrom_ = 1, heatCompTo_ = 1;
     double heatDeadZone_ = 0.02;

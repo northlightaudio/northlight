@@ -299,6 +299,7 @@ namespace saturation
 namespace
 {
 constexpr double tubeBias = 0.25;
+const double tanhTubeBias = std::tanh(tubeBias); // the curve's offset, computed once
 
 double logCosh(double x) noexcept
 {
@@ -311,7 +312,7 @@ double shapeD(int type, double x) noexcept
     switch (type)
     {
         case tube:
-            return std::tanh(x + tubeBias) - std::tanh(tubeBias);
+            return std::tanh(x + tubeBias) - tanhTubeBias;
         case clip:
             return std::abs(x) <= 1.0 ? 1.5 * (x - x * x * x / 3.0) : (x > 0.0 ? 1.0 : -1.0);
         default:
@@ -325,7 +326,7 @@ double antiderivative(int type, double x) noexcept
     switch (type)
     {
         case tube:
-            return logCosh(x + tubeBias) - x * std::tanh(tubeBias);
+            return logCosh(x + tubeBias) - x * tanhTubeBias;
         case clip:
             return std::abs(x) <= 1.0 ? 1.5 * (x * x / 2.0 - x * x * x * x / 12.0) : std::abs(x) - 0.375;
         default:
@@ -775,6 +776,7 @@ public:
 
 private:
     static constexpr double valveBias = 0.25; // saturation's tube curve
+    static inline const double valveSlope = 1.0 - std::tanh(valveBias) * std::tanh(valveBias);
     static float valveDrive(float colourPercent) noexcept { return 0.25f + 0.0175f * colourPercent; }
 
     void prepareModule(double, int) override
@@ -807,15 +809,26 @@ private:
         const double x = static_cast<double>(in) * d;
         const double previous = v.previousIn * d;
         const double dx = x - previous;
-        const double shaped = std::abs(dx) > 1.0e-5
-                                  ? (saturation::antiderivative(saturation::tube, x) -
-                                     saturation::antiderivative(saturation::tube, previous)) /
-                                        dx
-                                  : saturation::shapeD(saturation::tube, 0.5 * (x + previous));
+        double shaped = 0.0;
+        if (std::abs(dx) > 1.0e-5)
+        {
+            // The antiderivative at the previous sample is the one worked out then,
+            // unless the drive moved.
+            const double fPrevious =
+                v.primedDrive == d ? v.previousF : saturation::antiderivative(saturation::tube, previous);
+            const double fx = saturation::antiderivative(saturation::tube, x);
+            shaped = (fx - fPrevious) / dx;
+            v.previousF = fx;
+            v.primedDrive = d;
+        }
+        else
+        {
+            shaped = saturation::shapeD(saturation::tube, 0.5 * (x + previous));
+            v.primedDrive = -1.0f; // F(x) not worked out: the next step does both ends
+        }
         v.previousIn = in;
         // Unity gain for small signals: the curve's slope at rest is sech^2(bias).
-        const double slope = 1.0 - std::tanh(valveBias) * std::tanh(valveBias);
-        const double y = shaped / (static_cast<double>(d) * slope);
+        const double y = shaped / (static_cast<double>(d) * valveSlope);
         const double blocked = y - v.dcIn + dcCoefficient_ * v.dcOut;
         v.dcIn = y;
         v.dcOut = blocked;
@@ -882,6 +895,7 @@ private:
                 // does not start from a stale sample.
                 valve_[0].previousIn = outL;
                 valve_[1].previousIn = outR;
+                valve_[0].primedDrive = valve_[1].primedDrive = -1.0f;
             }
             left[i] = inL * (1.0f - wet) + outL * wet;
             right[i] = inR * (1.0f - wet) + outR * wet;
@@ -902,6 +916,8 @@ private:
     struct Valve
     {
         double previousIn = 0.0;
+        double previousF = 0.0;    // the antiderivative at previousIn * primedDrive
+        float primedDrive = -1.0f; // the drive previousF was worked out at (-1: none)
         double dcIn = 0.0, dcOut = 0.0;
     };
     std::array<Valve, 2> valve_;
@@ -1046,7 +1062,10 @@ private:
         {
             type_ = type;
             for (auto& s : state_)
+            {
                 s.previous = 0.0; // the antiderivative changed: restart from silence
+                s.primed = false;
+            }
         }
         const float tone = parameter(saturation::tone);
         const bool ramp = tone != lastTone_;
@@ -1084,10 +1103,22 @@ private:
                 drivenPeak = std::max(drivenPeak, static_cast<float>(std::abs(x)));
                 // ADAA1: the mean of the curve over the step from the previous input.
                 const double dx = x - s.previous;
-                double y = std::abs(dx) > 1.0e-5 ? (saturation::antiderivative(type_, x) -
-                                                    saturation::antiderivative(type_, s.previous)) /
-                                                       dx
-                                                 : saturation::shapeD(type_, 0.5 * (x + s.previous));
+                double y = 0.0;
+                if (std::abs(dx) > 1.0e-5)
+                {
+                    // F at the previous sample was worked out then (x already holds the drive).
+                    const double fPrevious =
+                        s.primed ? s.previousF : saturation::antiderivative(type_, s.previous);
+                    const double fx = saturation::antiderivative(type_, x);
+                    y = (fx - fPrevious) / dx;
+                    s.previousF = fx;
+                    s.primed = true;
+                }
+                else
+                {
+                    y = saturation::shapeD(type_, 0.5 * (x + s.previous));
+                    s.primed = false;
+                }
                 s.previous = x;
                 // DC blocker (the tube curve is asymmetric).
                 const double blocked = y - s.dcIn + dcCoefficient_ * s.dcOut;
@@ -1108,6 +1139,8 @@ private:
     struct Channel
     {
         double previous = 0.0;
+        double previousF = 0.0; // the antiderivative at `previous` (valid when primed)
+        bool primed = false;
         double dcIn = 0.0, dcOut = 0.0;
         Biquad shelf;
     };
