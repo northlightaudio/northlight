@@ -138,13 +138,16 @@ public:
             quietMs_ = peak > 1.0e-4f ? 0.0 : quietMs_ + elapsedMs;
         }
         // The scale: quick to shrink for a louder sound, slow to grow for a quieter.
+        const float before = gain_;
         if (peak_ > 1.0e-4f)
         {
             const float target = 0.92f / std::max(peak_, 0.003f);
             const float k = target < gain_ ? 1.0f : static_cast<float>(std::min(1.0, elapsedMs / 600.0));
             gain_ += (target - gain_) * k;
         }
-        repaint();
+        // No new samples and a settled scale: the dots are where they were.
+        if (fresh || std::abs(gain_ - before) > 1.0e-4f * std::max(1.0f, gain_))
+            repaint();
     }
 
     void paint(juce::Graphics& g) override
@@ -211,7 +214,8 @@ public:
                 const int per = static_cast<int>(points_.size()) / groups;
                 for (int group = 0; group < groups; ++group)
                 {
-                    juce::RectangleList<float> dots;
+                    auto& dots = dots_[static_cast<size_t>(group)]; // kept: no allocation per frame
+                    dots.clear();
                     dots.ensureStorageAllocated(per);
                     for (int i = group * per; i < (group + 1) * per; ++i)
                     {
@@ -230,6 +234,7 @@ public:
 private:
     ModuleCard& card_;
     std::vector<juce::Point<float>> points_;
+    std::array<juce::RectangleList<float>, 4> dots_; // the four ages' dots, reused each paint
     float peak_ = 0.0f, gain_ = 4.0f;
     double quietMs_ = 1.0e9;
 };
@@ -476,8 +481,10 @@ public:
 
     void update(const StereoTaps& taps, bool fresh)
     {
-        if (fresh)
-            analyse(taps);
+        // Drawn from the last analysis: nothing new, nothing to repaint.
+        if (!fresh)
+            return;
+        analyse(taps);
         repaint();
     }
 

@@ -90,6 +90,12 @@ public:
         const float db = meterShowsOutput() ? toDb(frame.output) + 15.0f : -frame.reduction;
         needle_.follow(vuPosition(db), elapsedMs);
         reading_ = meterShowsOutput() ? card_.outputReadoutDb() : card_.reductionReadoutDb();
+        // A needle at rest on an unchanged reading: nothing to draw (the scale's
+        // labels and arcs are the costly part of this paint).
+        if (std::abs(needle_.position - drawnPosition_) < 1.0e-4f && reading_ == drawnReading_)
+            return;
+        drawnPosition_ = needle_.position;
+        drawnReading_ = reading_;
         repaint();
     }
 
@@ -97,6 +103,7 @@ public:
     {
         meterShowsOutput() = !meterShowsOutput();
         updateTooltip();
+        drawnReading_ = std::nanf(""); // the next frame draws whatever it reads
         repaint();
     }
 
@@ -247,6 +254,7 @@ private:
     ModuleCard& card_;
     Needle needle_;
     float reading_ = 0.0f;
+    float drawnPosition_ = -1.0f, drawnReading_ = std::nanf(""); // what the last repaint showed
 };
 
 // ----- the cell -----------------------------------------------------------------------------

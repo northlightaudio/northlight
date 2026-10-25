@@ -1072,12 +1072,14 @@ private:
             telemetrySource_ = t;
             cursor_ = t != nullptr ? t->framesWritten() : 0;
         }
+        bool arrived = false;
         if (t != nullptr)
         {
             std::array<Telemetry::Frame, 64> frames;
             for (int n = 64; n == 64;)
             {
                 n = t->read(cursor_, frames.data(), 64);
+                arrived = arrived || n > 0;
                 for (int i = 0; i < n; ++i)
                 {
                     history_[static_cast<size_t>(head_)] = frames[static_cast<size_t>(i)];
@@ -1087,8 +1089,13 @@ private:
                 }
             }
         }
-        for (auto& w : windows_)
-            w->repaint();
+        // The windows of the stages that are on, and only when frames came: an off
+        // stage's window is still (it repaints when the stage is switched).
+        if (!arrived)
+            return;
+        for (int s = 0; s < pa::stageCount; ++s)
+            if (stageOn(s))
+                windows_[static_cast<size_t>(s)]->repaint();
     }
 
     // ----- presets ------------------------------------------------------------------------------
