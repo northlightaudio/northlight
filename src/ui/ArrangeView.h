@@ -588,7 +588,39 @@ private:
     // holds the peaks, empty until they are built).
     engine::WaveformView waveformIn(const core::AudioClip& clip, juce::Rectangle<int> wave);
     std::vector<ClipRef> notifiedSelection_; // what onSelectionChanged last reported
-    std::vector<ClipRef> pressSelection_;    // the selection when the button went down
+    // A hashed copy of the selection, for the passes that ask about every clip
+    // (paint, snapping, the lasso): built on entry by a SelectionIndex and used by
+    // isSelected while one is alive, so those passes are not quadratic.
+    struct ClipRefHash
+    {
+        size_t operator()(const ClipRef& r) const noexcept
+        {
+            return std::hash<core::Id>()(r.track) * 31u ^ std::hash<core::Id>()(r.clip) ^
+                   (r.midi ? 0x9e37u : 0u);
+        }
+    };
+    mutable std::unordered_set<ClipRef, ClipRefHash> selectionIndex_;
+    mutable int selectionIndexDepth_ = 0;
+    class SelectionIndex
+    {
+    public:
+        explicit SelectionIndex(const ArrangeView& view) : view_(view)
+        {
+            if (view_.selectionIndexDepth_++ == 0)
+                view_.selectionIndex_ = {view_.selection_.begin(), view_.selection_.end()};
+        }
+        ~SelectionIndex()
+        {
+            if (--view_.selectionIndexDepth_ == 0)
+                view_.selectionIndex_.clear();
+        }
+        SelectionIndex(const SelectionIndex&) = delete;
+        SelectionIndex& operator=(const SelectionIndex&) = delete;
+
+    private:
+        const ArrangeView& view_;
+    };
+    std::vector<ClipRef> pressSelection_; // the selection when the button went down
     bool snap_ = true;
     int snapGrid_ = 0;
     bool ripple_ = false;

@@ -2274,6 +2274,7 @@ void ArrangeView::paint(juce::Graphics& g)
     g.fillAll(c.canvas);
     paintArea_ = g.getClipBounds();
     paintstats::counters().arrangePaints++;
+    const SelectionIndex index(*this); // every clip drawn asks whether it is selected
 
     const auto lanesArea = juce::Rectangle<int>(
         headerWidth, rulerHeight, getWidth() - headerWidth - scrollbarWidth, lanesHeight());
@@ -2751,6 +2752,8 @@ const core::MidiClip* ArrangeView::findMidiClip(const ClipRef& ref) const noexce
 
 bool ArrangeView::isSelected(const ClipRef& ref) const noexcept
 {
+    if (selectionIndexDepth_ > 0)
+        return selectionIndex_.contains(ref);
     return std::find(selection_.begin(), selection_.end(), ref) != selection_.end();
 }
 
@@ -2800,7 +2803,7 @@ ArrangeView::Hit ArrangeView::hitTest(juce::Point<int> p) const noexcept
 
 bool ArrangeView::isSelected(core::Id track, core::Id clip) const noexcept
 {
-    return std::find(selection_.begin(), selection_.end(), ClipRef{track, clip}) != selection_.end();
+    return isSelected(ClipRef{track, clip});
 }
 
 void ArrangeView::select(const ClipRef& ref, bool add)
@@ -2808,7 +2811,11 @@ void ArrangeView::select(const ClipRef& ref, bool add)
     if (!add)
         selection_.clear();
     if (!isSelected(ref))
+    {
         selection_.push_back(ref);
+        if (selectionIndexDepth_ > 0)
+            selectionIndex_.insert(ref);
+    }
 }
 
 void ArrangeView::notifySelection()
@@ -2965,49 +2972,62 @@ core::SamplePosition ArrangeView::snapWithTargets(core::SamplePosition wanted,
         return wanted;
     const auto tolerance = static_cast<core::SamplePosition>(6.0 * samplesPerPixel_);
     core::SamplePosition best = -1;
-    juce::String bestName;
-    const auto consider = [&](core::SamplePosition target, const juce::String& name)
+    // The target's name is put together for the winner only (this runs every
+    // drag event, over every clip on the row).
+    const std::string* bestSource = nullptr;
+    const char* bestSuffix = "";
+    const auto consider = [&](core::SamplePosition target, const std::string& source, const char* suffix)
     {
         const auto distance = std::abs(target - wanted);
         if (distance <= tolerance && (best < 0 || distance < std::abs(best - wanted)))
         {
             best = target;
-            bestName = name;
+            bestSource = &source;
+            bestSuffix = suffix;
         }
     };
+    const SelectionIndex index(*this);
     if (row >= 0 && static_cast<size_t>(row) < project_->tracks.size())
     {
         const auto& track = project_->tracks[static_cast<size_t>(row)];
         for (const auto& clip : track.clips)
             if (!isSelected(track.id, clip.id))
             {
-                const auto name = juce::String::fromUTF8(clip.name.c_str());
-                consider(clip.start, name + " start");
-                consider(clip.end(), name + " end");
+                consider(clip.start, clip.name, " start");
+                consider(clip.end(), clip.name, " end");
             }
         for (const auto& clip : track.midiClips)
             if (!isSelected({track.id, clip.id, true}))
             {
-                const auto name = juce::String::fromUTF8(clip.name.c_str());
-                consider(clip.start, name + " start");
-                consider(clip.end(), name + " end");
+                consider(clip.start, clip.name, " start");
+                consider(clip.end(), clip.name, " end");
             }
     }
     for (const auto& m : project_->markers)
     {
-        consider(m.position, juce::String::fromUTF8(m.name.c_str()));
+        consider(m.position, m.name, "");
         if (m.isRegion())
-            consider(m.position + m.length, juce::String::fromUTF8(m.name.c_str()) + " end");
+            consider(m.position + m.length, m.name, " end");
     }
+    static const std::string loopName = "loop", punchInName = "punch in", punchOutName = "punch out",
+                             regionName = "region", playheadName = "playhead";
     if (regionEnd_ > regionStart_)
     {
-        consider(regionStart_, loop_ ? "loop start" : punch_ ? "punch in" : "region start");
-        consider(regionEnd_, loop_ ? "loop end" : punch_ ? "punch out" : "region end");
+        if (punch_ && !loop_)
+        {
+            consider(regionStart_, punchInName, "");
+            consider(regionEnd_, punchOutName, "");
+        }
+        else
+        {
+            consider(regionStart_, loop_ ? loopName : regionName, " start");
+            consider(regionEnd_, loop_ ? loopName : regionName, " end");
+        }
     }
-    consider(playhead_, "playhead");
+    consider(playhead_, playheadName, "");
     if (best >= 0)
     {
-        snapTargetName_ = bestName;
+        snapTargetName_ = juce::String::fromUTF8(bestSource->c_str()) + bestSuffix;
         return best;
     }
     // Relative snap: a clip that did not start on the grid keeps its offset.
@@ -3480,6 +3500,7 @@ void ArrangeView::finishLasso()
         return;
     const auto from = sampleForX(lasso_.getX());
     const auto to = sampleForX(lasso_.getRight());
+    const SelectionIndex index(*this); // each clip in the lasso checks the selection
     for (size_t t = 0; t < project_->tracks.size(); ++t)
     {
         const auto lane = rowBounds(static_cast<int>(t));
