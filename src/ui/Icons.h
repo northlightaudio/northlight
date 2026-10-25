@@ -94,6 +94,9 @@ enum class Icon
     fxDrive,
     fxStereo,
     fxGuitar,
+    // An eye, open and struck through: shown and hidden (an automation lane's hide).
+    visible,
+    hidden,
 };
 
 struct Icons
@@ -105,7 +108,7 @@ struct Icons
     static void draw(juce::Graphics& g, Icon icon, juce::Rectangle<float> bounds, juce::Colour colour);
     static const char* name(Icon icon);
     static const char* svgPath(Icon icon);
-    static constexpr int count = static_cast<int>(Icon::fxGuitar) + 1;
+    static constexpr int count = static_cast<int>(Icon::hidden) + 1;
 };
 
 // An icon button (28×28 default): ghost at rest, the icon in textSecondary,

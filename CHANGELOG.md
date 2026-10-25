@@ -125,7 +125,11 @@ Northlight has not had a release yet. The first release, 0.1.0, will include:
   for the channel strip's compressor or added as an insert.
 - VST3 and CLAP hosting, with plugin scanning in a separate process, a plugin browser,
   presets and automation of plugin parameters.
-- Automation in Read, Touch, Latch and Write modes.
+- Automation in Read, Touch, Latch and Write modes, on lanes of their own under each
+  track: one per automated parameter, all visible at once, each resizable, and
+  collapsible or hideable without losing what it plays. The track's clips stay
+  editable while its lanes are open, and a point at the very start of the song can
+  be edited.
 - MIDI and instruments: a piano roll with controller lanes, Standard MIDI File import
   and export, external MIDI output, and five bundled instruments (Aurora, Pulsar,
   Nebula, Starbit and the Sampler).

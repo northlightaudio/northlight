@@ -66,11 +66,13 @@ public:
     std::function<void(core::Id, juce::Point<int> screen)> onContextMenu;
     // A MIDI track's "plays" chip was clicked: choose its instrument channel.
     std::function<void(core::Id, juce::Rectangle<int> screenArea)> onTargetMenu;
-    // The A toggle: show the track's automation over its lane.
-    std::function<void(core::Id, bool shown)> onAutomationToggled;
-    void setAutomationShown(bool shown);
+    // The A toggle: open or close the track's automation lanes under its row;
+    // a right-click asks for its menu (the mode, the lanes).
+    std::function<void(core::Id, bool open)> onAutomationToggled;
+    std::function<void(core::Id, juce::Rectangle<int> screenArea)> onAutomationMenu;
 
     void paint(juce::Graphics& g) override;
+    void paintOverChildren(juce::Graphics& g) override; // the A toggle's lane count
     void resized() override;
     // The bottom edge belongs to the arrange view, which resizes the row there.
     bool hitTest(int x, int y) override { return y < getHeight() - resizeEdge && x >= 0; }
@@ -81,6 +83,28 @@ public:
     void mouseDoubleClick(const juce::MouseEvent& e) override;
 
 private:
+    // The A toggle: a right-click asks for the menu instead of toggling.
+    struct AutomationButton final : juce::TextButton
+    {
+        AutomationButton() : juce::TextButton("A") {}
+        std::function<void()> onMenu;
+        void mouseDown(const juce::MouseEvent& e) override
+        {
+            if (e.mods.isPopupMenu())
+            {
+                if (onMenu)
+                    onMenu();
+                return;
+            }
+            juce::TextButton::mouseDown(e);
+        }
+        void mouseUp(const juce::MouseEvent& e) override
+        {
+            if (!e.mods.isPopupMenu())
+                juce::TextButton::mouseUp(e);
+        }
+    };
+    void setAutomation(const core::Channel& channel);
     void refreshMonitorButton();
     void showColourMenu();
     void timerCallback() override;
@@ -129,7 +153,9 @@ private:
     juce::Label name_;
     juce::ComboBox input_, output_;
     std::vector<InputChoice> inputChoices_;
-    juce::TextButton mute_{"M"}, solo_{"S"}, arm_{"R"}, monitorButton_, automation_{"A"};
+    juce::TextButton mute_{"M"}, solo_{"S"}, arm_{"R"}, monitorButton_;
+    AutomationButton automation_;
+    int automationLanes_ = 0; // the A toggle's badge
     juce::Slider volume_;
     Meter meter_;
     juce::TextButton target_; // a MIDI track's: "→ Drums: Pulsar", what it plays

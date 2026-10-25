@@ -479,3 +479,41 @@ TEST_CASE("The master's inserts round-trip; version 10 files load without them",
     CHECK(loaded->master.inserts.empty());
     CHECK(loaded->master.gain == 0.8f);
 }
+
+TEST_CASE("Automation lanes' view and open state round-trip; version 11 files load with lanes closed",
+          "[core][json][automation]")
+{
+    auto p = sampleProject();
+    AutomationLane volume;
+    volume.id = 20;
+    volume.points = {{0, 1.0f}, {44100, 0.5f}};
+    volume.view = {72, false, false};
+    AutomationLane pan;
+    pan.id = 21;
+    pan.target = AutomationTarget::pan;
+    pan.points = {{0, -0.5f}};
+    pan.view = {0, true, false};
+    AutomationLane empty; // a lane with no points stays a lane
+    empty.id = 22;
+    empty.target = AutomationTarget::insertParameter;
+    empty.insert = 15;
+    empty.parameter = 1;
+    empty.view = {0, false, true};
+    p.tracks[1].automation = {volume, pan, empty};
+    p.tracks[1].automationOpen = true;
+    p.buses[1].automationOpen = true; // open with no lanes: just the "Add lane" row
+    p.nextId = 23;
+    const auto restored = projectFromJson(projectToJson(p));
+    REQUIRE(restored.has_value());
+    CHECK(*restored == p);
+
+    // Before version 12: no view or open state, which is the default.
+    auto older = projectToJson(sampleProject());
+    const auto current = "\"version\": " + std::to_string(Project::schemaVersion);
+    const auto at = older.find(current);
+    REQUIRE(at != std::string::npos);
+    older.replace(at, current.size(), "\"version\": 11");
+    const auto loaded = projectFromJson(older);
+    REQUIRE(loaded.has_value());
+    CHECK_FALSE(loaded->tracks[1].automationOpen);
+}

@@ -678,6 +678,16 @@ row heights are user-adjustable between `trackRowMin` and `trackRowLarge` for al
 tracks (the corner stepper), and per track between `trackRowMin` and `trackRowMax`
 (drag the row's bottom edge). Expanded take lanes add `takeLane` (40) per lane
 under a track's row (screens/comping.md); the row's own height is unchanged.
+Open automation lanes follow them, each `automationLane` (48) by default and sized
+per lane between `trackRowMin` and `trackRowMax`, `automationLaneCollapsed` (20)
+when collapsed, with a 20 px footer row (screens/arrange.md "Automation").
+
+**Sub-rows under a track** (take lanes, automation lanes) share one pattern: a
+header in the header column on `surface0`, a step below the track header, with the
+track's stripe carried down at 38%; the row's own controls in its header's top
+line (24 px), icon buttons as 14 px icons in `textTertiary` that turn `textPrimary`
+on a `surface2` rounded square when hovered; a `lineSubtle` line under each. A
+sub-row never draws over the track's own row.
 
 ## 2.9 Light theme
 

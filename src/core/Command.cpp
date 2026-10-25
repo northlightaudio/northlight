@@ -1522,11 +1522,14 @@ void AddAutomationLane::apply(Project& p)
         lane_.id = p.allocateId();
     p.nextId = std::max(p.nextId, lane_.id + 1);
     c.automation.push_back(lane_);
+    previousOpen_ = c.automationOpen;
+    c.automationOpen = true;
 }
 void AddAutomationLane::revert(Project& p)
 {
     auto& c = requireChannel(p, channelId_);
     std::erase_if(c.automation, [this](const AutomationLane& l) { return l.id == lane_.id; });
+    c.automationOpen = previousOpen_;
 }
 
 RemoveAutomationLane::RemoveAutomationLane(Id channelId, Id laneId) : channelId_(channelId), laneId_(laneId)
@@ -1583,6 +1586,66 @@ void SetAutomationMode::apply(Project& p)
 void SetAutomationMode::revert(Project& p)
 {
     requireChannel(p, channelId_).automationMode = previous_;
+}
+
+SetAutomationOpen::SetAutomationOpen(Id channelId, bool open) : channelId_(channelId), value_(open) {}
+void SetAutomationOpen::apply(Project& p)
+{
+    auto& c = requireChannel(p, channelId_);
+    previous_ = c.automationOpen;
+    c.automationOpen = value_;
+}
+void SetAutomationOpen::revert(Project& p)
+{
+    requireChannel(p, channelId_).automationOpen = previous_;
+}
+
+SetAutomationLaneView::SetAutomationLaneView(Id channelId,
+                                             Id laneId,
+                                             AutomationLaneView view,
+                                             std::string name)
+    : channelId_(channelId), laneId_(laneId), view_(view), name_(std::move(name))
+{
+    view_.height = std::max(0, view_.height);
+}
+void SetAutomationLaneView::apply(Project& p)
+{
+    auto& lane = requireLane(requireChannel(p, channelId_), laneId_);
+    previous_ = lane.view;
+    lane.view = view_;
+}
+void SetAutomationLaneView::revert(Project& p)
+{
+    requireLane(requireChannel(p, channelId_), laneId_).view = previous_;
+}
+
+SetAutomationLaneTarget::SetAutomationLaneTarget(
+    Id channelId, Id laneId, AutomationTarget target, Id insert, int parameter)
+    : channelId_(channelId), laneId_(laneId), target_(target),
+      insert_(target == AutomationTarget::insertParameter ? insert : invalidId),
+      parameter_(target == AutomationTarget::insertParameter ? parameter : 0)
+{
+}
+void SetAutomationLaneTarget::apply(Project& p)
+{
+    auto& c = requireChannel(p, channelId_);
+    if (const auto* other = c.findLane(target_, insert_, parameter_);
+        other != nullptr && other->id != laneId_)
+        throw std::logic_error("the channel already has a lane for that parameter");
+    auto& lane = requireLane(c, laneId_);
+    previous_ = lane;
+    lane.target = target_;
+    lane.insert = insert_;
+    lane.parameter = parameter_;
+    lane.parameterKey.clear();
+}
+void SetAutomationLaneTarget::revert(Project& p)
+{
+    auto& lane = requireLane(requireChannel(p, channelId_), laneId_);
+    lane.target = previous_.target;
+    lane.insert = previous_.insert;
+    lane.parameter = previous_.parameter;
+    lane.parameterKey = previous_.parameterKey;
 }
 
 SetMediaPaths::SetMediaPaths(std::vector<std::pair<std::string, std::string>> renames)

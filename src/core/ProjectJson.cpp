@@ -49,6 +49,9 @@ void migrate(json& j, int from)
             case 9:  // 10: tracks gain an optional "inputBus"; without one the
                      // track takes its single input channel, as before
             case 10: // 11: the master gains optional "inserts"; without them it has none
+            case 11: // 12: lanes gain an optional "view" and the automation an optional
+                     // "open"; without them a lane shows at the default height and
+                     // the lanes start closed
                 break;
             default:
                 break;
@@ -254,7 +257,7 @@ void channelToJson(json& j, const Channel& c)
         j["inserts"] = insertsToJson(c.inserts);
     if (!c.strip.empty() || c.stripPreInserts)
         j["strip"] = json{{"pre", c.stripPreInserts}, {"modules", insertsToJson(c.strip)}};
-    if (!c.automation.empty() || c.automationMode != AutomationMode::read)
+    if (!c.automation.empty() || c.automationMode != AutomationMode::read || c.automationOpen)
     {
         static const char* modes[] = {"off", "read", "touch", "latch", "write"};
         static const char* targets[] = {"gain", "pan", "parameter"};
@@ -279,10 +282,23 @@ void channelToJson(json& j, const Channel& c)
                 if (!key.empty())
                     lj["parameterKey"] = std::move(key);
             }
+            if (lane.view != AutomationLaneView{})
+            {
+                json view = json::object();
+                if (lane.view.height > 0)
+                    view["height"] = lane.view.height;
+                if (lane.view.collapsed)
+                    view["collapsed"] = true;
+                if (lane.view.hidden)
+                    view["hidden"] = true;
+                lj["view"] = std::move(view);
+            }
             lanes.push_back(std::move(lj));
         }
         j["automation"] =
             json{{"mode", modes[static_cast<int>(c.automationMode)]}, {"lanes", std::move(lanes)}};
+        if (c.automationOpen)
+            j["automation"]["open"] = true;
     }
 }
 
@@ -357,6 +373,7 @@ void channelFromJson(const json& j, Channel& c)
                            : mode == "latch" ? AutomationMode::latch
                            : mode == "write" ? AutomationMode::write
                                              : AutomationMode::read;
+        c.automationOpen = it->value("open", false);
         if (const auto lanes = it->find("lanes"); lanes != it->end() && lanes->is_array())
             for (const auto& l : *lanes)
             {
@@ -369,6 +386,12 @@ void channelFromJson(const json& j, Channel& c)
                 lane.insert = l.value("insert", invalidId);
                 lane.parameter = l.value("parameter", 0);
                 lane.parameterKey = l.value("parameterKey", std::string{});
+                if (const auto view = l.find("view"); view != l.end() && view->is_object())
+                {
+                    lane.view.height = std::max(0, view->value("height", 0));
+                    lane.view.collapsed = view->value("collapsed", false);
+                    lane.view.hidden = view->value("hidden", false);
+                }
                 if (const auto points = l.find("points"); points != l.end() && points->is_array())
                     for (const auto& pt : *points)
                         if (pt.is_array() && pt.size() >= 2)

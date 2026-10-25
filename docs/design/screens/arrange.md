@@ -135,7 +135,7 @@ Rows at `trackRow` 56 default. Contents, left to right, inside `space.sm` paddin
   recording.
 - Drag the icon to reorder tracks; a 2 px `accent` insertion line shows the drop
   position. Right-click opens the track menu (rename, colour, duplicate, delete,
-  freeze, add bus, show automation).
+  freeze, add bus, show automation lanes).
 - Buses appear in the same list after tracks, with a slate stripe and no input row;
   the master is always last, pinned, with a `textPrimary` stripe.
 
@@ -205,7 +205,7 @@ Rows at `trackRow` 56 default. Contents, left to right, inside `space.sm` paddin
   with the same header minus the input and arm (number, name, M, S, A, meter,
   volume), Teal by default. The lane has no clips; a `caption` in `textTertiary`
   says how many channels send there ("FX track: 3 channels send here").
-- Their header menu: Rename, Show/Hide automation, Remove FX track.
+- Their header menu: Rename, Show/Hide automation lanes, Remove FX track.
 - A track's menu has **Send to**: every bus and FX track, ticked where the track
   already sends (untick removes the send), and **New FX track** (Reverb, Delay,
   Empty) that adds one with a send from this track in one step.
@@ -213,28 +213,79 @@ Rows at `trackRow` 56 default. Contents, left to right, inside `space.sm` paddin
 
 ## Automation
 
-- The track header's **A** toggle (fifth of the row-one toggles, after monitor)
-  shows the track's automation over its lane; the lane's clips dim under a
-  `canvas` wash at 55%.
-- Two chips at the lane's top left (18 px, `surface2`, radius `sm`, `caption`):
-  the parameter ("Volume", "Pan", or "EQ: Band 2 gain"; a menu of Volume, Pan and
-  each insert and strip module's parameters, those with a lane marked with a dot,
-  plus Hide automation) and the channel's mode (Off `textTertiary`, Read
-  `success`, Touch and Latch `warning`, Write `record`; the menu explains each).
-- The lane: the curve in `automation` (1.5 px, filled at 12% beneath), points as
-  8 px dots ringed in `canvas` (10 px and a `textPrimary` ring when hovered or
-  dragged); `textTertiary` when the mode is Off. Without a lane the static value
-  shows as a dashed line with "Click to add a point".
-- Vertical scale: Volume from -60 dB at the bottom to +6 dB at the top (silence
-  at the bottom edge), Pan from L100 to R100, a parameter over its range (log for
-  frequencies and times).
-- Click adds a point where clicked (drag to place it before release), drag a
-  point to move it (snapped in time to the grid; Shift keeps its time; points keep
-  their order), double-click removes a point, right-click offers Delete point,
-  Clear lane and Hide automation. The value shows in a `surface3` tag while
-  dragging. Each edit is one undo step.
+A channel's automation shows as lanes of their own under its row (and under its
+take lanes), one lane per automated parameter. Tracks that make sound, instrument
+channels and FX tracks have them; MIDI tracks and folders do not. A closed folder
+hides its tracks' lanes too.
+
+```
+|▌ ∿  Vocals                          [M][S][R][●][A]³|  clips
+|▏  ▾ Volume ▾               −3.8 dB  👁 |  ●───●     ●──  (48 px)
+|▏    −60 … +6 dB                        |
+|▏  ▸ Pan                         L12 👁 |  ─────╲__╱──   (20 px, collapsed)
+|▏    + Add lane              1 hidden ▾ |                 (20 px)
+```
+
+- **The A toggle** (fifth of the row-one toggles, after monitor) opens and closes
+  all of the channel's lanes. Its letter takes the mode's colour, open or closed:
+  Off `textTertiary`, Read `success`, Touch and Latch `warning`, Write `record`;
+  open, it is a toggle on in that colour. A badge at its top right (14 px pill,
+  `surface3`, `caption` `textPrimary`, ringed in `canvas`) counts the lanes, hidden
+  ones included, so closed lanes are never forgotten. Right-click: the mode (each
+  with a line on what it does), Show or Hide lanes, Show the hidden lanes, Expand
+  all, Collapse all, and Add lane (the parameter menu). The **A** key opens or
+  closes the selected track's lanes; the track menu has Show/Hide automation lanes.
+  Opening and closing is saved with the project and is one undo step.
+- **A lane's header** sits in the header column, `surface0` (a step below a track
+  header), with the track's stripe carried down at 38% and a `lineSubtle` line under
+  it. Its top line (24 px): a chevron (collapse or expand), the parameter's name in
+  `small` `textSecondary` with a small chevron (click: the parameter menu), the
+  value at the playhead in `value` `textSecondary` (right aligned, repainted only
+  when it changes), and an eye (hide). The chevron and eye are 14 px icons in
+  `textTertiary` that turn `textPrimary` on a `surface2` rounded square when
+  hovered; the name turns `textPrimary`. At 44 px and taller a second line gives
+  the lane's range in `caption` `textTertiary` ("−60 … +6 dB", "L100 … R100", or the
+  parameter's minimum and maximum).
+- **The lane** to the right: `surface0` under the grid. The curve in `automation`
+  (1.5 px, filled at 12% beneath); points as 8 px dots ringed in `canvas` (10 px
+  and a `textPrimary` ring when hovered or dragged); `textTertiary` when the mode
+  is Off. A point at the song's start is drawn whole, inside the lane's edge, and
+  is as easy to grab as any other. Volume draws a dashed `lineStrong` line at 0 dB
+  and Pan one at the centre. A lane with no points shows the static value as a
+  dashed line with "Click to add a point"; it plays nothing.
+- **Heights:** a new lane is `automationLane` (48 px); drag a lane's bottom edge
+  (the bottom 4 px, an up-down cursor) to size it between `trackRowMin` and
+  `trackRowMax`. The corner stepper sizes track rows only.
+- **Collapse** (the chevron, or the lane's menu) turns a lane into a
+  `automationLaneCollapsed` (20 px) strip: the header in `caption` `textTertiary`,
+  the curve at 75% without fill or points. It is read-only; a click on the strip
+  expands it. **Hide** (the eye) takes the lane out of the view. Neither changes
+  what plays, both are saved with the project and each is one undo step.
+- **The footer row** (20 px) under a channel's open lanes: "+ Add lane" (the
+  parameter menu) at the left and, when lanes are hidden, "2 hidden ▾" at the
+  right (a menu: Show each, Show all). Both are `caption` text buttons with a
+  `surface2` hover.
+- **The parameter menu** lists Volume, Pan and each insert and strip module's
+  parameters, a dot marking those with a lane. From a lane's name it is headed
+  "This lane shows", ticks the lane's parameter and continues with Delete point
+  (when right-clicked on a point), Collapse or Expand lane, Hide lane, Clear points
+  and Delete lane. Choosing another parameter changes an empty lane's parameter;
+  for a lane with points it shows that parameter's lane, or adds one.
+- **Editing:** click adds a point where clicked (drag to place it before release),
+  drag a point to move it (snapped in time to the grid; Shift keeps its time;
+  points keep their order), double-click removes a point. The value shows in a
+  `surface3` tag beside the point while dragging. Each edit is one undo step.
+  Removing a lane's last point keeps the lane; Delete lane removes it and its
+  points (undoable).
+- **Writing:** in Touch, Latch and Write, a control moved with no lane for it gets
+  one when the pass ends, and the channel's lanes open; writing into a hidden or
+  collapsed lane shows it again.
+- The track's row is not covered or dimmed: its clips stay editable while lanes are
+  open.
 - While automation plays, the mixer's fader, value field and pan knob, and the
   channel strip's controls, follow it.
+- **Decision:** lanes are rows under the track, not drawn over it (see
+  decisions.md, 2026-10-25).
 
 ## Selection
 

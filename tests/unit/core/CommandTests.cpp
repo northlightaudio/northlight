@@ -1093,6 +1093,14 @@ TEST_CASE("Every command undoes to the exact project it started from and redoes 
                                   std::vector<AutomationPoint>{{5, 0.2f}},
                                   std::string("Edit automation")),
         make<SetAutomationMode>("SetAutomationMode", Id{1}, AutomationMode::touch),
+        make<SetAutomationOpen>("SetAutomationOpen", Id{1}, true),
+        make<SetAutomationLaneView>("SetAutomationLaneView",
+                                    Id{1},
+                                    Id{30},
+                                    AutomationLaneView{72, true, false},
+                                    std::string("Resize automation lane")),
+        make<SetAutomationLaneTarget>(
+            "SetAutomationLaneTarget", Id{1}, Id{30}, AutomationTarget::insertParameter, Id{20}, 0),
         make<SetTrackName>("SetTrackName", Id{1}, std::string("Renamed")),
         make<SetTrackGain>("SetTrackGain", Id{1}, 0.3f),
         make<SetTrackPan>("SetTrackPan", Id{1}, -0.5f),
@@ -1334,4 +1342,92 @@ TEST_CASE("A freeze renders without the master's inserts", "[core][master][freez
     const auto copy = freezeRenderProject(p, p.tracks[0].id);
     CHECK(copy.master.inserts.empty());
     CHECK(p.master.inserts.size() == 1);
+}
+
+TEST_CASE("Adding an automation lane opens the channel's lanes, and undo closes them again",
+          "[core][command][automation]")
+{
+    Project p;
+    Track t;
+    t.id = 1;
+    p.tracks.push_back(t);
+    p.nextId = 10;
+    UndoStack stack;
+    AutomationLane pan;
+    pan.target = AutomationTarget::pan;
+    stack.execute(p, std::make_unique<AddAutomationLane>(Id{1}, pan));
+    REQUIRE(p.tracks[0].automation.size() == 1);
+    CHECK(p.tracks[0].automation[0].points.empty()); // a lane may have no points
+    CHECK(p.tracks[0].automationOpen);
+    REQUIRE(stack.undo(p));
+    CHECK(p.tracks[0].automation.empty());
+    CHECK_FALSE(p.tracks[0].automationOpen);
+    REQUIRE(stack.redo(p));
+    CHECK(p.tracks[0].automationOpen);
+}
+
+TEST_CASE("Opening lanes and a lane's view are cosmetic: undoable, but no engine work",
+          "[core][command][automation]")
+{
+    Project p;
+    Track t;
+    t.id = 1;
+    AutomationLane lane;
+    lane.id = 5;
+    lane.points = {{0, 1.0f}};
+    t.automation.push_back(lane);
+    p.tracks.push_back(t);
+    UndoStack stack;
+
+    auto open = std::make_unique<SetAutomationOpen>(Id{1}, true);
+    CHECK(open->changeKind() == Command::ChangeKind::cosmetic);
+    stack.execute(p, std::move(open));
+    CHECK(p.tracks[0].automationOpen);
+
+    auto hide = std::make_unique<SetAutomationLaneView>(Id{1}, Id{5}, AutomationLaneView{60, false, true});
+    CHECK(hide->changeKind() == Command::ChangeKind::cosmetic);
+    stack.execute(p, std::move(hide));
+    CHECK(p.tracks[0].automation[0].view == AutomationLaneView{60, false, true});
+    CHECK(p.tracks[0].automation[0].points.size() == 1); // hiding keeps the automation
+
+    REQUIRE(stack.undo(p));
+    CHECK(p.tracks[0].automation[0].view == AutomationLaneView{});
+    REQUIRE(stack.undo(p));
+    CHECK_FALSE(p.tracks[0].automationOpen);
+    REQUIRE(stack.redo(p));
+    REQUIRE(stack.redo(p));
+    CHECK(p.tracks[0].automation[0].view.hidden);
+}
+
+TEST_CASE("A lane can be pointed at another parameter, but not at one that already has a lane",
+          "[core][command][automation]")
+{
+    Project p;
+    Track t;
+    t.id = 1;
+    Insert eq;
+    eq.id = 7;
+    eq.type = "northlight.eq";
+    t.inserts.push_back(eq);
+    AutomationLane volume;
+    volume.id = 5;
+    AutomationLane pan;
+    pan.id = 6;
+    pan.target = AutomationTarget::pan;
+    t.automation = {volume, pan};
+    p.tracks.push_back(t);
+    UndoStack stack;
+
+    stack.execute(
+        p,
+        std::make_unique<SetAutomationLaneTarget>(Id{1}, Id{5}, AutomationTarget::insertParameter, Id{7}, 3));
+    CHECK(p.tracks[0].automation[0].target == AutomationTarget::insertParameter);
+    CHECK(p.tracks[0].automation[0].insert == 7);
+    CHECK(p.tracks[0].automation[0].parameter == 3);
+    REQUIRE(stack.undo(p));
+    CHECK(p.tracks[0].automation[0].target == AutomationTarget::gain);
+    CHECK(p.tracks[0].automation[0].insert == invalidId);
+
+    SetAutomationLaneTarget clash(Id{1}, Id{5}, AutomationTarget::pan, invalidId, 0);
+    CHECK_THROWS(clash.apply(p));
 }

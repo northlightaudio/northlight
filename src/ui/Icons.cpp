@@ -127,6 +127,8 @@ const Definition definitions[Icons::count] = {
     {"fxGuitar",
      "M8 14 C5.2 11.2 2.5 7.6 2.5 5 C2.5 2.9 5 2 8 2 C11 2 13.5 2.9 13.5 5 C13.5 7.6 10.8 11.2 8 14 Z",
      false},
+    {"visible", "M1.5 8 C3.5 4 12.5 4 14.5 8 C12.5 12 3.5 12 1.5 8 Z M8 6 A2 2 0 1 1 7.99 6 Z", false},
+    {"hidden", "M1.5 8 C3.5 4 12.5 4 14.5 8 C12.5 12 3.5 12 1.5 8 Z M2.5 13.5 L13.5 2.5", false},
 };
 } // namespace
 

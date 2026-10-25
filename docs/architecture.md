@@ -91,7 +91,12 @@ shows how many workers joined MMCSS.
 tracks; buses and FX tracks; the master), clips and notes, sends, inserts and the
 channel strip, automation lanes, markers, the tempo and meter changes, take groups,
 fader groups. Tracks and buses share one `Channel` type, so faders, routing, sends,
-inserts and automation work the same on both.
+inserts and automation work the same on both. Some of it is how the views show it,
+saved with the project: row heights, whether a channel's automation lanes are open
+and each lane's height, collapse and hide. Commands that change only those are
+*cosmetic*: undoable, with no engine work. In the arrange view the automation
+lanes are part of their row's block, after the row and its take lanes
+(`ArrangeView::rows()`), drawn and edited by `ui::AutomationLanes`.
 
 Every change is a `core::Command` with `apply` and `revert`, kept by the
 `core::UndoStack`, which groups commands into one step. Each command reports its

@@ -927,7 +927,7 @@ private:
 // ----- automation -----------------------------------------------------------------------
 
 // Adds a lane (its id allocated on apply when invalid). A channel has at most
-// one lane per target.
+// one lane per target. The channel's lanes open so the new one is seen.
 class AddAutomationLane final : public Command
 {
 public:
@@ -940,6 +940,7 @@ public:
 private:
     Id channelId_;
     AutomationLane lane_;
+    bool previousOpen_ = false;
 };
 
 class RemoveAutomationLane final : public Command
@@ -986,6 +987,58 @@ public:
 private:
     Id channelId_;
     AutomationMode value_, previous_ = AutomationMode::read;
+};
+
+// Opens or closes a channel's automation lanes in the arrange view.
+class SetAutomationOpen final : public Command
+{
+public:
+    ChangeKind changeKind() const noexcept override { return ChangeKind::cosmetic; }
+    SetAutomationOpen(Id channelId, bool open);
+    std::string name() const override { return value_ ? "Show automation" : "Hide automation"; }
+    void apply(Project&) override;
+    void revert(Project&) override;
+
+private:
+    Id channelId_;
+    bool value_, previous_ = false;
+};
+
+// How a lane shows in the arrange view: its height, collapsed, hidden.
+class SetAutomationLaneView final : public Command
+{
+public:
+    ChangeKind changeKind() const noexcept override { return ChangeKind::cosmetic; }
+    SetAutomationLaneView(Id channelId,
+                          Id laneId,
+                          AutomationLaneView view,
+                          std::string name = "Change automation lane");
+    std::string name() const override { return name_; }
+    void apply(Project&) override;
+    void revert(Project&) override;
+
+private:
+    Id channelId_, laneId_;
+    AutomationLaneView view_, previous_;
+    std::string name_;
+};
+
+// Points a lane at another parameter. The points keep their values, so the
+// arrange view only does this to a lane that has none.
+class SetAutomationLaneTarget final : public Command
+{
+public:
+    SetAutomationLaneTarget(Id channelId, Id laneId, AutomationTarget target, Id insert, int parameter);
+    std::string name() const override { return "Change automation parameter"; }
+    void apply(Project&) override;
+    void revert(Project&) override;
+
+private:
+    Id channelId_, laneId_;
+    AutomationTarget target_;
+    Id insert_;
+    int parameter_;
+    AutomationLane previous_; // its target, insert, parameter and key
 };
 
 // The fader-section commands below take a track or bus id.

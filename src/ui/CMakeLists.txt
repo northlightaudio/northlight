@@ -132,8 +132,8 @@ add_library(northlight_ui STATIC
     ArrangeView.cpp
     TakeLanes.h
     TakeLanes.cpp
-    AutomationOverlay.h
-    AutomationOverlay.cpp
+    AutomationLanes.h
+    AutomationLanes.cpp
     PianoRoll.h
     PianoRoll.cpp
     AudioEditor.h

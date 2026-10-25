@@ -340,6 +340,12 @@ void NorthlightLookAndFeel::drawButtonBackground(juce::Graphics& g,
             colour = c.textSecondary;
             glow = nullptr;
         }
+        else if (semantic.startsWith("automation"))
+        {
+            // The A toggle: its automation mode's colour, no glow.
+            colour = automationModeColour(semantic);
+            glow = nullptr;
+        }
         if (glow != nullptr)
             drawGlow(g, bounds, radius, *glow);
         if (hardOn)
@@ -428,6 +434,18 @@ void NorthlightLookAndFeel::drawButtonBackground(juce::Graphics& g,
     drawFocusRing(g, button, bounds, radius);
 }
 
+juce::Colour NorthlightLookAndFeel::automationModeColour(const juce::String& semantic) const
+{
+    const auto& c = theme_.colours;
+    if (semantic == "automationRead")
+        return c.success;
+    if (semantic == "automationTouch" || semantic == "automationLatch")
+        return c.warning;
+    if (semantic == "automationWrite")
+        return c.record;
+    return c.textTertiary; // off
+}
+
 void NorthlightLookAndFeel::drawButtonText(juce::Graphics& g,
                                            juce::TextButton& button,
                                            bool isMouseOver,
@@ -456,8 +474,12 @@ void NorthlightLookAndFeel::drawButtonText(juce::Graphics& g,
             colour = c.warning;
         else if (semantic == "phase")
             colour = c.textSecondary;
+        else if (semantic.startsWith("automation"))
+            colour = automationModeColour(semantic);
         text = hardOn ? c.textOnColour : colour;
     }
+    else if (semantic.startsWith("automation"))
+        text = automationModeColour(semantic); // the A toggle shows its mode when closed too
     else if (variant == "primary")
         text = c.textOnPrimary;
     else if (variant == "ghost")

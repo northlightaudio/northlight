@@ -182,10 +182,16 @@ once.
 
 ## Automation
 
-The **A** button on a track header shows its automation. Choose the parameter and the
-mode (Off, Read, Touch, Latch, Write) at the top of the lane; click to add points,
-drag them, double-click to remove. In Touch, Latch and Write, moving a control while
-playing records it, including moves made in a plugin's own window.
+The **A** button on a track header (or the **A** key) opens the track's automation
+lanes under it, one lane per automated parameter; the number on the button counts
+them. Right-click **A** to choose the mode (Off, Read, Touch, Latch, Write) or add a
+lane; **+ Add lane** under the lanes does the same. In a lane, click to add points,
+drag them, double-click to remove. Click a lane's name to change its parameter or to
+clear, collapse, hide or delete it. Drag a lane's bottom edge to size it; the
+arrow collapses it to a thin strip and the eye hides it. A hidden or collapsed lane
+still plays, and **n hidden** under the lanes brings hidden ones back. In Touch,
+Latch and Write, moving a control while playing records it, including moves made in
+a plugin's own window, and adds a lane for it if it has none.
 
 ## Instruments and MIDI
 

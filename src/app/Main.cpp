@@ -187,7 +187,10 @@ public:
     //   --correct-pitch      once that clip's pitch is analysed, correct it to the key
     //   --mute-breaths       once that clip's pitch is analysed, mute its breaths
     //   --browser-files [folder]  show the Browser panel's Files tab (at the folder)
-    //   --automation         add a volume lane to the first track and show it in the arrange view
+    //   --automation         automation lanes on the first track that makes sound, open in
+    //                        the arrange view: volume (a swell), pan (collapsed), an empty
+    //                        lane for the first strip module's first parameter, and a hidden
+    //                        lane for its second
     //   --tempo-demo         a tempo track with a change, a ramp and a 3/4 bar, shown
     //   --freeze <n>         freeze track n (1-based) in the background
     //   --folder <n> <m>     put tracks n..m (1-based) in a new folder track
@@ -583,17 +586,46 @@ public:
             }
             else if (arg == "--automation")
             {
-                // A volume lane on the first track (a slow swell), shown in the arrange view.
-                if (!session_->project().tracks.empty())
+                // Lanes on the first track in each of their states (adding a lane opens them).
+                const auto& tracks = session_->project().tracks;
+                const auto sounding = std::find_if(
+                    tracks.begin(), tracks.end(), [](const core::Track& t) { return t.hasAudio(); });
+                if (sounding != tracks.end())
                 {
-                    const auto trackId = session_->project().tracks.front().id;
+                    const auto& track = *sounding;
+                    const auto trackId = track.id;
                     const double rate = session_->project().sampleRate;
-                    core::AutomationLane lane;
-                    lane.target = core::AutomationTarget::gain;
+                    const auto at = [rate](double seconds)
+                    { return static_cast<core::SamplePosition>(seconds * rate); };
+                    core::AutomationLane volume;
+                    volume.target = core::AutomationTarget::gain;
                     const float values[] = {1.0f, 0.3f, 0.3f, 1.0f, 0.6f, 1.4f, 0.0f};
                     for (int p = 0; p < 7; ++p)
-                        lane.points.push_back({static_cast<core::SamplePosition>(p * 2.5 * rate), values[p]});
-                    session_->execute(std::make_unique<core::AddAutomationLane>(trackId, lane));
+                        volume.points.push_back({at(p * 2.5), values[p]});
+                    volume.view.height = 64;
+                    core::AutomationLane pan;
+                    pan.target = core::AutomationTarget::pan;
+                    pan.points = {
+                        {0, 0.0f}, {at(4.0), 0.0f}, {at(5.0), -0.6f}, {at(8.0), 0.6f}, {at(9.0), 0.0f}};
+                    pan.view.collapsed = true;
+                    std::vector<core::AutomationLane> lanes{volume, pan};
+                    if (!track.strip.empty() && !track.strip.front().params.empty())
+                    {
+                        core::AutomationLane empty;
+                        empty.target = core::AutomationTarget::insertParameter;
+                        empty.insert = track.strip.front().id;
+                        lanes.push_back(empty);
+                        if (track.strip.front().params.size() > 1)
+                        {
+                            core::AutomationLane hidden = empty;
+                            hidden.parameter = 1;
+                            hidden.points = {{0, track.strip.front().params[1]}};
+                            hidden.view.hidden = true;
+                            lanes.push_back(hidden);
+                        }
+                    }
+                    for (const auto& lane : lanes)
+                        session_->execute(std::make_unique<core::AddAutomationLane>(trackId, lane));
                     mainWindow_->showAutomation(trackId);
                 }
             }

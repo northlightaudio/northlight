@@ -6,7 +6,7 @@
 #include "core/TempoMap.h"
 #include "engine/Meters.h"
 #include "engine/Recording.h"
-#include "ui/AutomationOverlay.h"
+#include "ui/AutomationLanes.h"
 #include "ui/Icons.h"
 #include "ui/PluginMenu.h"
 #include "ui/TakeLanes.h"
@@ -217,7 +217,7 @@ public:
     std::function<void(core::Id trackId, const std::string& type)> onInsertPlugin;
     // A MIDI track asked for a new instrument: make a channel for it and aim the track there.
     std::function<void(core::Id midiTrack, const std::string& type)> onPlayNewInstrument;
-    // Names for insert types (the automation chips).
+    // Names for insert types (the automation lanes' names).
     void setDisplayName(std::function<std::string(const std::string&)> name)
     {
         displayName_ = name;
@@ -232,7 +232,7 @@ public:
     {
         automation_.hostedParameters = std::move(find);
     }
-    // Shows or hides a track's automation over its lane (the header's A).
+    // Opens or closes a track's automation lanes under its row (the header's A).
     void showAutomation(core::Id trackId, bool shown);
     // The tempo track under the ruler (TempoLane): its edits arrive here as one
     // command each.
@@ -500,7 +500,12 @@ private:
     // The tools, in the corner beside "+": select, range, pencil.
     IconButton selectTool_, rangeTool_, pencilTool_;
     void refreshToolButtons();
-    AutomationOverlay automation_{theme_};
+    AutomationLanes automation_{theme_};
+    // A row's automation lanes: their height, and where they are (under the row
+    // and its take lanes). MIDI tracks and folders have none.
+    int automationHeight(int row) const noexcept;
+    juce::Rectangle<int> automationBlock(int row) const noexcept;
+    std::vector<int> valuesTops_; // the row layout at the last values refresh
     TempoLane tempoLane_{theme_}; // after theme_, which it keeps a reference to
     std::unique_ptr<juce::TextEditor> markerEditor_;
     core::Id editingMarker_ = core::invalidId;

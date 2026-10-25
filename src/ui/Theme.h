@@ -118,6 +118,9 @@ struct Theme
         int trackHeaderWidth = 260, trackHeaderMinWidth = 160, trackHeaderMaxWidth = 360;
         int trackRowMin = 28, trackRow = 56, trackRowLarge = 112, trackRowMax = 240, clipHeader = 18;
         int takeLane = 40; // a take lane under an expanded track (screens/comping.md)
+        // An automation lane under its track, and one collapsed to a strip (and the
+        // "Add lane" row under a track's lanes) (screens/arrange.md "Automation").
+        int automationLane = 48, automationLaneCollapsed = 20;
         int mixerStripWidth = 92, mixerStripWideWidth = 112;
         int faderTravel = 200, faderCapWidth = 36, faderCapHeight = 14, knob = 28;
         int meterWidth = 6, meterGap = 2, scrollbar = 10, splitter = 5;

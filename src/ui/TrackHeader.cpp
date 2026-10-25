@@ -86,11 +86,19 @@ TrackHeader::TrackHeader(const Theme& theme) : theme_(theme), meter_(theme, 2, f
     toggle(solo_, "solo", "Solo");
     toggle(arm_, "arm", "Arm for recording");
     arm_.getProperties().set(NorthlightLookAndFeel::propertyHardOn, true);
-    toggle(automation_, "", "Show automation (volume, pan, plugin parameters) over the lane");
+    toggle(automation_,
+           "automationRead",
+           "Automation lanes: show or hide them under the track (right-click for the mode)");
+    automation_.setClickingTogglesState(false); // the model says whether the lanes are open
     automation_.onClick = [this]
     {
         if (onAutomationToggled)
-            onAutomationToggled(trackId_, automation_.getToggleState());
+            onAutomationToggled(trackId_, !automation_.getToggleState());
+    };
+    automation_.onMenu = [this]
+    {
+        if (onAutomationMenu)
+            onAutomationMenu(trackId_, automation_.getScreenBounds());
     };
     mute_.onClick = [this]
     {
@@ -303,6 +311,7 @@ void TrackHeader::setTrack(const core::Track& track,
     volume_.setValue(track.gain <= 0.0f ? -60.0 : static_cast<double>(dbOf(track.gain)),
                      juce::dontSendNotification);
     pan_.setValue(track.pan, juce::dontSendNotification);
+    setAutomation(track);
     refreshMonitorButton();
     resized(); // which buttons show depends on the kind of track
     repaint();
@@ -316,6 +325,42 @@ void TrackHeader::setValues(const core::Channel& channel)
     volume_.setValue(channel.gain <= 0.0f ? -60.0 : static_cast<double>(dbOf(channel.gain)),
                      juce::dontSendNotification);
     pan_.setValue(channel.pan, juce::dontSendNotification);
+    setAutomation(channel);
+}
+
+void TrackHeader::setAutomation(const core::Channel& channel)
+{
+    automation_.setToggleState(channel.automationOpen, juce::dontSendNotification);
+    const char* semantic = "automationRead";
+    switch (channel.automationMode)
+    {
+        case core::AutomationMode::off:
+            semantic = "automationOff";
+            break;
+        case core::AutomationMode::read:
+            break;
+        case core::AutomationMode::touch:
+            semantic = "automationTouch";
+            break;
+        case core::AutomationMode::latch:
+            semantic = "automationLatch";
+            break;
+        case core::AutomationMode::write:
+            semantic = "automationWrite";
+            break;
+    }
+    auto& props = automation_.getProperties();
+    if (props[NorthlightLookAndFeel::propertySemantic].toString() != semantic)
+    {
+        props.set(NorthlightLookAndFeel::propertySemantic, semantic);
+        automation_.repaint();
+    }
+    const int lanes = static_cast<int>(channel.automation.size());
+    if (lanes != automationLanes_)
+    {
+        automationLanes_ = lanes;
+        repaint(automation_.getBounds().expanded(theme_.spacing.sm));
+    }
 }
 
 void TrackHeader::setLiveState(bool monitoring, bool recording)
@@ -544,9 +589,25 @@ void TrackHeader::paint(juce::Graphics& g)
     g.fillRect(getLocalBounds().removeFromBottom(1));
 }
 
-void TrackHeader::setAutomationShown(bool shown)
+void TrackHeader::paintOverChildren(juce::Graphics& g)
 {
-    automation_.setToggleState(shown, juce::dontSendNotification);
+    // The A toggle's badge: how many lanes the track has, hidden ones included.
+    if (!automation_.isVisible() || automationLanes_ == 0)
+        return;
+    const auto& c = theme_.colours;
+    const auto text = juce::String(automationLanes_);
+    const auto font = theme_.caption();
+    const int h = theme_.sizes.iconSmall;
+    const int w = std::max(h, juce::GlyphArrangement::getStringWidthInt(font, text) + theme_.spacing.sm);
+    const auto a = automation_.getBounds();
+    const auto badge = juce::Rectangle<int>(a.getRight() - w + 5, a.getY() - 5, w, h).toFloat();
+    g.setColour(c.canvas);
+    g.fillRoundedRectangle(badge.expanded(1.0f), (h + 2) * 0.5f);
+    g.setColour(c.surface3);
+    g.fillRoundedRectangle(badge, h * 0.5f);
+    g.setColour(c.textPrimary);
+    g.setFont(font);
+    g.drawText(text, badge, juce::Justification::centred, false);
 }
 
 void TrackHeader::resized()

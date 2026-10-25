@@ -272,6 +272,16 @@ inline float automationValueAt(const AutomationPoint* points,
     return static_cast<float>(a.value + (b.value - a.value) * t);
 }
 
+// How the arrange view shows a lane, saved with the project. None of it
+// changes what plays: a hidden or collapsed lane still plays.
+struct AutomationLaneView
+{
+    int height = 0;         // the lane's height in pixels, 0 = the view's default
+    bool collapsed = false; // a thin strip with the curve and no points
+    bool hidden = false;    // out of the view
+    bool operator==(const AutomationLaneView&) const = default;
+};
+
 struct AutomationLane
 {
     Id id = invalidId;
@@ -280,7 +290,9 @@ struct AutomationLane
     int parameter = 0;
     std::vector<AutomationPoint> points; // sorted by position
     std::string parameterKey; // as a file named the parameter, until it is resolved (see Insert::paramKeys)
+    AutomationLaneView view;
 
+    // A lane with no points plays nothing (the engine skips it).
     float valueAt(SamplePosition position) const noexcept
     {
         return automationValueAt(points.data(), points.size(), target, position);
@@ -347,6 +359,7 @@ struct Channel
     bool stripPreInserts = false; // the strip runs before the inserts (default: after them)
     std::vector<AutomationLane> automation;
     AutomationMode automationMode = AutomationMode::read;
+    bool automationOpen = false; // the arrange view shows the lanes under the channel's row
 
     Send* findSend(Id busId) noexcept;
     const Send* findSend(Id busId) const noexcept;
@@ -502,7 +515,9 @@ struct Project
     // 9: controller events (CC, pitch bend, pressure) in MIDI clips.
     // 10: stereo input buses on tracks.
     // 11: inserts on the master.
-    static constexpr int schemaVersion = 11;
+    // 12: automation lanes' view (height, collapsed, hidden) and whether a
+    //     channel's lanes are open in the arrange view.
+    static constexpr int schemaVersion = 12;
     static constexpr int oldestReadableVersion = 2; // older files are refused
 
     std::string name = "Untitled";

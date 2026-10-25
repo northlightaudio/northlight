@@ -415,6 +415,8 @@ bool Theme::apply(const juce::var& tokens, Theme& theme, std::string& error)
         readNumber(size, "trackRowLarge", s.trackRowLarge, error);
         readNumber(size, "clipHeader", s.clipHeader, error);
         readNumber(size, "takeLane", s.takeLane, error);
+        readNumber(size, "automationLane", s.automationLane, error);
+        readNumber(size, "automationLaneCollapsed", s.automationLaneCollapsed, error);
         readNumber(size, "mixerStripWidth", s.mixerStripWidth, error);
         readNumber(size, "mixerStripWideWidth", s.mixerStripWideWidth, error);
         readNumber(size, "faderTravel", s.faderTravel, error);

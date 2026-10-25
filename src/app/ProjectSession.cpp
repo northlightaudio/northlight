@@ -2181,8 +2181,9 @@ void ProjectSession::commitPass(const AutomationPass& pass,
     const auto rampIn = static_cast<core::SamplePosition>(rate * rampInSeconds);
     const auto rampOut = static_cast<core::SamplePosition>(rate * rampOutSeconds);
     const float fallback = staticValue(*channel, pass);
+    // A lane with no points has no curve yet: the static value stands in.
     const auto curveAt = [&](core::SamplePosition at)
-    { return lane != nullptr ? lane->valueAt(at) : fallback; };
+    { return lane != nullptr && !lane->points.empty() ? lane->valueAt(at) : fallback; };
 
     std::vector<core::AutomationPoint> points;
     if (lane != nullptr)
@@ -2206,9 +2207,20 @@ void ProjectSession::commitPass(const AutomationPass& pass,
                 points.push_back(p);
 
     if (lane != nullptr)
+    {
         out.push_back(
             std::make_unique<core::SetAutomationPoints>(pass.channel, lane->id, points, "Write automation"));
-    else
+        // What was written shows: the channel's lanes open and the lane in view.
+        if (lane->view.hidden || lane->view.collapsed)
+        {
+            auto view = lane->view;
+            view.hidden = view.collapsed = false;
+            out.push_back(std::make_unique<core::SetAutomationLaneView>(pass.channel, lane->id, view));
+        }
+        if (!channel->automationOpen)
+            out.push_back(std::make_unique<core::SetAutomationOpen>(pass.channel, true));
+    }
+    else // a new lane opens the channel's lanes itself
     {
         core::AutomationLane added;
         added.target = pass.target;

@@ -52,22 +52,34 @@ ArrangeView::ArrangeView(audio::PeakStore& peaks)
     refreshToolButtons();
     automation_.geometry.xForSample = [this](core::SamplePosition s) { return xForSample(s); };
     automation_.geometry.sampleForX = [this](int x) { return sampleForX(x); };
-    automation_.geometry.rowBounds = [this](int row) { return rowBounds(row); };
+    automation_.geometry.snap = [this](core::SamplePosition s) { return snapped(s); };
+    automation_.geometry.headerWidth = [this] { return headerWidth; };
     automation_.geometry.lanesArea = [this]
     {
         return juce::Rectangle<int>(
             headerWidth, rulerHeight, getWidth() - headerWidth - scrollbarWidth, lanesHeight());
     };
-    automation_.geometry.snap = [this](core::SamplePosition s) { return snapped(s); };
     automation_.geometry.rowCount = [this] { return rowCount(); };
     automation_.geometry.channelAt = [this](int row) { return channelAtRow(row); };
+    automation_.geometry.block = [this](int row) { return automationBlock(row); };
+    automation_.geometry.colour = [this](int row)
+    {
+        const auto n = static_cast<int>(headers_.size());
+        if (row >= 0 && row < n)
+            return headers_[static_cast<size_t>(row)]->colour();
+        if (row >= n && row - n < static_cast<int>(fxHeaders_.size()))
+            return fxHeaders_[static_cast<size_t>(row - n)]->colour();
+        return theme_.colours.textTertiary;
+    };
+    automation_.geometry.playhead = [this] { return playhead_; };
     automation_.onEdit = [this](std::vector<std::unique_ptr<core::Command>> commands, const std::string& name)
     { emit(std::move(commands), name); };
-    automation_.onShownChanged = [this](core::Id trackId, bool shown)
+    automation_.onLayoutChanged = [this]
     {
-        for (auto& h : headers_)
-            if (h->trackId() == trackId)
-                h->setAutomationShown(shown);
+        rowsValid_ = false;
+        layoutHeaders();
+        updateScrollbar();
+        repaint();
     };
     addAndMakeVisible(automation_);
     // The tempo track sits over the automation overlay so its handles take the mouse.
@@ -137,7 +149,16 @@ void ArrangeView::setProject(const core::Project* project, bool valuesOnly)
             for (auto& header : *list)
                 if (const auto* channel = project_->findChannel(header->trackId()))
                     header->setValues(*channel);
-        if (automation_.anyShown())
+        // A cosmetic edit (a row or lane height, lanes opened, closed, collapsed
+        // or hidden) moves the rows: lay them out again only then.
+        if (rows().tops != valuesTops_)
+        {
+            valuesTops_ = rows().tops;
+            layoutHeaders();
+            updateScrollbar();
+            repaint();
+        }
+        else
             automation_.repaint();
         return;
     }
@@ -154,6 +175,7 @@ void ArrangeView::setProject(const core::Project* project, bool valuesOnly)
     refreshMissingMedia();
     animateRowChanges();
     rebuildHeaders();
+    valuesTops_ = rows().tops;
     updateScrollbar();
     layoutEmptyState();
     repaint();
@@ -311,6 +333,8 @@ void ArrangeView::rebuildHeaders()
         header->onContextMenu = [this](core::Id id, juce::Point<int> screen) { trackMenu(id, screen); };
         header->onTargetMenu = [this](core::Id id, juce::Rectangle<int> area) { targetMenu(id, area); };
         header->onAutomationToggled = [this](core::Id id, bool shown) { showAutomation(id, shown); };
+        header->onAutomationMenu = [this](core::Id id, juce::Rectangle<int> area)
+        { automation_.showChannelMenu(id, area); };
         addAndMakeVisible(*header);
         headers_.push_back(std::move(header));
     }
@@ -339,6 +363,8 @@ void ArrangeView::rebuildHeaders()
         };
         header->onContextMenu = [this](core::Id id, juce::Point<int> screen) { fxTrackMenu(id, screen); };
         header->onAutomationToggled = [this](core::Id id, bool shown) { showAutomation(id, shown); };
+        header->onAutomationMenu = [this](core::Id id, juce::Rectangle<int> area)
+        { automation_.showChannelMenu(id, area); };
         addAndMakeVisible(*header);
         fxHeaders_.push_back(std::move(header));
     }
@@ -354,13 +380,11 @@ void ArrangeView::rebuildHeaders()
         fxHeaders_[i]->setTrack(
             shown, static_cast<int>(count + i), *project_, inputChoices_, midiInputNames_);
         fxHeaders_[i]->setSelected(fx[i]->id == selectedTrack_);
-        fxHeaders_[i]->setAutomationShown(automation_.isShown(fx[i]->id));
     }
     for (size_t i = 0; i < count; ++i)
     {
         const auto& track = project_->tracks[i];
         headers_[i]->setTrack(track, static_cast<int>(i), *project_, inputChoices_, midiInputNames_);
-        headers_[i]->setAutomationShown(automation_.isShown(track.id));
         headers_[i]->setSelected(track.id == selectedTrack_);
         bool missing = false;
         for (const auto& clip : track.clips)
@@ -506,7 +530,6 @@ void ArrangeView::animateRowChanges()
                     safe->rowsValid_ = false;
                     safe->layoutHeaders();
                     safe->updateScrollbar();
-                    safe->automation_.repaint();
                     safe->repaint();
                 },
                 [safe, id]
@@ -542,7 +565,6 @@ void ArrangeView::animateRowChanges()
                     safe->rowsValid_ = false;
                     safe->layoutHeaders();
                     safe->updateScrollbar();
-                    safe->automation_.repaint();
                     safe->repaint();
                 },
                 [safe]
@@ -598,8 +620,12 @@ const ArrangeView::RowLayout& ArrangeView::rows() const
                 h = std::clamp(channel->height, theme_.sizes.trackRowMin, theme_.sizes.trackRowMax);
             if (const auto growing = rowGrowth_.find(channel->id); growing != rowGrowth_.end())
                 h = std::max(1, juce::roundToInt(static_cast<float>(h) * growing->second));
-            // A track's expanded take lanes sit under its row (rowHeightOf leaves them out).
-            if (const auto index = rows_.tops.size() - 1; index < project_->tracks.size())
+            // A track's expanded take lanes and its automation lanes sit under its
+            // row (rowHeightOf leaves them out).
+            const auto index = rows_.tops.size() - 1;
+            if (index >= project_->tracks.size() || project_->tracks[index].hasAudio())
+                h += automation_.blockHeight(*channel);
+            if (index < project_->tracks.size())
             {
                 h += takes_.lanesHeight(project_->tracks[index]);
                 // A track in a closed folder keeps its row, at no height.
@@ -709,10 +735,10 @@ void ArrangeView::changeListenerCallback(juce::ChangeBroadcaster*)
 
 void ArrangeView::showAutomation(core::Id trackId, bool shown)
 {
-    automation_.setShown(trackId, shown);
-    for (auto& h : headers_)
-        if (h->trackId() == trackId)
-            h->setAutomationShown(shown);
+    const auto* channel = project_ != nullptr ? project_->findChannel(trackId) : nullptr;
+    if (channel == nullptr || channel->automationOpen == shown || !onCommand)
+        return;
+    onCommand(std::make_unique<core::SetAutomationOpen>(trackId, shown));
 }
 
 void ArrangeView::setTempoTrackShown(bool shown)
@@ -2153,6 +2179,7 @@ void ArrangeView::paint(juce::Graphics& g)
             y += h;
             ++row;
         }
+        automation_.paintBackgrounds(g); // the lanes' rows, under the grid
         drawGrid(g, lanesArea, false);
 
         // Loop and punch through the lanes at half the ruler's alpha; the time selection.
@@ -2443,7 +2470,34 @@ int ArrangeView::rowHeightOf(int row) const noexcept
     const int lanes = project_ != nullptr && static_cast<size_t>(row) < project_->tracks.size()
                           ? takes_.lanesHeight(project_->tracks[static_cast<size_t>(row)])
                           : 0;
-    return std::max(0, tops[static_cast<size_t>(row) + 1] - tops[static_cast<size_t>(row)] - lanes);
+    return std::max(0,
+                    tops[static_cast<size_t>(row) + 1] - tops[static_cast<size_t>(row)] - lanes -
+                        automationHeight(row));
+}
+
+int ArrangeView::automationHeight(int row) const noexcept
+{
+    const auto* channel = channelAtRow(row);
+    if (channel == nullptr || project_ == nullptr)
+        return 0;
+    if (static_cast<size_t>(row) < project_->tracks.size())
+    {
+        const auto& track = project_->tracks[static_cast<size_t>(row)];
+        if (!track.hasAudio() || project_->hiddenByFolder(track))
+            return 0;
+    }
+    return automation_.blockHeight(*channel);
+}
+
+juce::Rectangle<int> ArrangeView::automationBlock(int row) const noexcept
+{
+    const int h = automationHeight(row);
+    if (h <= 0)
+        return {};
+    // The lanes end the row's block: under the row and its take lanes.
+    const auto& tops = rows().tops;
+    const int bottom = rulerHeight - verticalScroll_ + tops[static_cast<size_t>(row) + 1];
+    return {0, bottom - h, getWidth() - scrollbarWidth, h};
 }
 
 TakeLanes::Row ArrangeView::takeRow(int row) const
@@ -3224,7 +3278,8 @@ void ArrangeView::trackMenu(core::Id trackId, juce::Point<int> screen, core::Id 
         sends.addSubMenu("New FX track", newFx);
         menu.addSubMenu("Send to", sends);
     }
-    menu.addItem(4, automation_.isShown(trackId) ? "Hide automation" : "Show automation");
+    if (track->hasAudio())
+        menu.addItem(4, track->automationOpen ? "Hide automation lanes" : "Show automation lanes");
     if (track->hasAudio())
         menu.addItem(800, track->isFrozen() ? "Unfreeze track" : "Freeze track");
     if (track->isFolder())
@@ -3318,7 +3373,9 @@ void ArrangeView::trackMenu(core::Id trackId, juce::Point<int> screen, core::Id 
             }
             if (choice == 4)
             {
-                safe->showAutomation(trackId, !safe->automation_.isShown(trackId));
+                if (const auto* t =
+                        safe->project_ != nullptr ? safe->project_->findChannel(trackId) : nullptr)
+                    safe->showAutomation(trackId, !t->automationOpen);
                 return;
             }
             if (choice == 6)
@@ -3475,7 +3532,8 @@ void ArrangeView::fxTrackMenu(core::Id busId, juce::Point<int> screen)
         return;
     juce::PopupMenu menu;
     menu.addItem(1, "Rename");
-    menu.addItem(2, automation_.isShown(busId) ? "Hide automation" : "Show automation");
+    menu.addItem(
+        2, project_->findBus(busId)->automationOpen ? "Hide automation lanes" : "Show automation lanes");
     menu.addSeparator();
     menu.addItem(3, "Remove FX track");
     juce::Component::SafePointer<ArrangeView> safe(this);
@@ -3489,7 +3547,9 @@ void ArrangeView::fxTrackMenu(core::Id busId, juce::Point<int> screen)
                                    if (header->trackId() == busId)
                                        header->startRename();
                            if (choice == 2)
-                               safe->showAutomation(busId, !safe->automation_.isShown(busId));
+                               if (const auto* bus =
+                                       safe->project_ != nullptr ? safe->project_->findBus(busId) : nullptr)
+                                   safe->showAutomation(busId, !bus->automationOpen);
                            if (choice == 3 && safe->onCommand)
                                safe->onCommand(std::make_unique<core::RemoveBus>(busId));
                        });
@@ -3690,6 +3750,17 @@ bool ArrangeView::handleEditKey(const juce::KeyPress& key)
         selectAll();
         return true;
     }
+    // A: the selected track's automation lanes open or close.
+    if (plain('a'))
+        if (const auto* channel = project_ != nullptr ? project_->findChannel(selectedTrack_) : nullptr)
+        {
+            const auto* track = project_->findTrack(selectedTrack_);
+            if (track == nullptr || track->hasAudio())
+            {
+                showAutomation(selectedTrack_, !channel->automationOpen);
+                return true;
+            }
+        }
     if (key ==
         juce::KeyPress('n', juce::ModifierKeys::commandModifier | juce::ModifierKeys::shiftModifier, 0))
     {

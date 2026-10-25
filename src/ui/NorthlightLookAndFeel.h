@@ -78,6 +78,9 @@ public:
                               bool isButtonDown) override;
     void
     drawButtonText(juce::Graphics& g, juce::TextButton& button, bool isMouseOver, bool isButtonDown) override;
+    // The A toggle's text for a semantic of "automationOff", "automationRead",
+    // "automationTouch", "automationLatch" or "automationWrite".
+    juce::Colour automationModeColour(const juce::String& semantic) const;
     juce::Font getTextButtonFont(juce::TextButton&, int buttonHeight) override;
     void drawToggleButton(juce::Graphics& g,
                           juce::ToggleButton& button,
