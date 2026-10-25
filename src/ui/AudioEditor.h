@@ -226,6 +226,10 @@ private:
     // (keys 1 to 5); shown in pitch mode.
     IconButton pitchTool_, splitTool_, driftTool_, vibratoTool_, breathTool_;
     std::array<IconButton*, 5> toolButtons() noexcept;
+    // Pitch edits play only on a clip that is neither stretched nor transposed (the
+    // stretch renders from the media file): pitch mode says so and edits nothing.
+    bool pitchEditable() const noexcept;
+    void paintNotPitchEditable(juce::Graphics& g);
     juce::TextButton correctButton_, breathsButton_, keyButton_;
     IconButton link_, auditionButton_;
     juce::ScrollBar horizontal_{false}, vertical_{true};

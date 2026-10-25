@@ -181,6 +181,8 @@ Northlight has not had a release yet. The first release, 0.1.0, will include:
 
 ### Fixed
 
+- The audio editor's pitch mode says when a clip is stretched or transposed, where
+  pitch edits do not play, instead of taking edits that were never heard.
 - With zoom linked, zooming or scrolling in the piano roll or the audio editor moves
   the arrange view too; before, the arrange view put it straight back.
 - Undoing back to the last save leaves the project unmodified, so closing no longer

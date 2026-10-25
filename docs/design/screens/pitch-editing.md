@@ -160,6 +160,11 @@ undoable command, and any note can be adjusted afterwards.
   - **Breath.**
 - Clicking a note auditions it. The ruler and playhead link to the arrange view, as
   the piano roll's "Link zoom to arrange" does.
+- **A stretched or transposed clip:** pitch edits do not play on it (the stretch
+  renders from the media file), so pitch mode shows, centred in `body`
+  `textSecondary`, "Pitch edits play on clips that are not stretched or transposed",
+  with how to get back; the tools, Correct and Breaths are disabled and the view
+  takes no edits. Wave mode works as usual.
 
 Layout, tokens and states for this panel are not yet specified.
 

@@ -124,3 +124,28 @@ TEST_CASE("Zooming a linked audio editor moves the arrange view's zoom with it",
     CHECK(timelinePerPixel == Approx(80.0));
     CHECK(first >= 10000);
 }
+
+TEST_CASE("Pitch mode takes no edits on a stretched clip", "[ui][audioeditor]")
+{
+    const juce::ScopedJuceInitialiser_GUI juceInit;
+    audio::PeakStore peaks;
+    NoMedia loader;
+    engine::VocalService vocal(loader, true);
+    ui::AudioEditor editor(peaks, vocal);
+    editor.setSize(800, 400);
+    auto project = stretchedClipProject();
+    project.tracks[0].clips[0].vocal.analysisVersion = 1; // it has a vocal edit
+    editor.setClip(&project, 1, 2);
+    int edits = 0;
+    editor.onEdit = [&edits](std::vector<std::unique_ptr<core::Command>>, const std::string&) { ++edits; };
+    editor.setMode(ui::AudioEditor::Mode::pitch);
+    editor.setBreaths(-12.0f, false);
+    CHECK(edits == 0);
+    CHECK_FALSE(editor.keyPressed(juce::KeyPress('2')));
+
+    // Back to no stretch: the same call edits.
+    project.tracks[0].clips[0].stretch = 1.0;
+    editor.setClip(&project, 1, 2);
+    editor.setBreaths(-12.0f, false);
+    CHECK(edits == 1);
+}

@@ -578,7 +578,7 @@ void AudioEditor::updateScrollbars()
     const double rows = static_cast<double>(area.getHeight()) / rowHeight * 100.0;
     vertical_.setRangeLimits(0.0, 12800.0);
     vertical_.setCurrentRange(12800.0 - topCents_, rows, juce::dontSendNotification);
-    vertical_.setVisible(mode_ == Mode::pitch);
+    vertical_.setVisible(mode_ == Mode::pitch && pitchEditable());
     updatingScrollbars_ = false;
 }
 
@@ -1303,6 +1303,8 @@ void AudioEditor::paint(juce::Graphics& g)
     }
     if (mode_ == Mode::wave)
         paintWave(g);
+    else if (!pitchEditable())
+        paintNotPitchEditable(g);
     else
     {
         paintPitch(g);
@@ -1333,7 +1335,7 @@ void AudioEditor::mouseDown(const juce::MouseEvent& e)
 {
     grabKeyboardFocus();
     const auto* cl = clip();
-    if (cl == nullptr)
+    if (cl == nullptr || (mode_ == Mode::pitch && !pitchEditable()))
         return;
     dragStart_ = dragPoint_ = e.getPosition();
     dragged_ = false;
@@ -1688,7 +1690,7 @@ void AudioEditor::mouseExit(const juce::MouseEvent&)
 void AudioEditor::mouseDoubleClick(const juce::MouseEvent& e)
 {
     const auto* cl = clip();
-    if (cl == nullptr)
+    if (cl == nullptr || (mode_ == Mode::pitch && !pitchEditable()))
         return;
     if (mode_ == Mode::wave && contentArea().contains(e.getPosition()))
     {
@@ -1768,7 +1770,7 @@ void AudioEditor::toggleMuteSelection()
 
 bool AudioEditor::keyPressed(const juce::KeyPress& key)
 {
-    if (mode_ != Mode::pitch)
+    if (mode_ != Mode::pitch || !pitchEditable())
         return false;
     const auto code = key.getKeyCode();
     const auto mods = key.getModifiers();
@@ -1805,7 +1807,7 @@ bool AudioEditor::keyPressed(const juce::KeyPress& key)
 void AudioEditor::correctToKey(const pitch::CorrectionOptions& options, const std::string& name)
 {
     const auto* cl = clip();
-    if (cl == nullptr || project_ == nullptr || !cl->vocal.active() || !onEdit)
+    if (cl == nullptr || project_ == nullptr || !cl->vocal.active() || !onEdit || !pitchEditable())
         return;
     std::vector<std::unique_ptr<core::Command>> commands;
     auto key = project_->key;
@@ -1843,15 +1845,38 @@ void AudioEditor::correctToKey(const pitch::CorrectionOptions& options, const st
 void AudioEditor::setBreaths(float gainDb, bool muted)
 {
     const auto* cl = clip();
-    if (cl == nullptr || !cl->vocal.active())
+    if (cl == nullptr || !cl->vocal.active() || !pitchEditable())
         return;
     auto next = cl->vocal;
     pitch::setSegments(next, core::VocalSegmentKind::breath, gainDb, muted);
     emit(std::move(next), muted ? "Mute breaths" : gainDb != 0.0f ? "Reduce breaths" : "Restore breaths");
 }
 
+bool AudioEditor::pitchEditable() const noexcept
+{
+    const auto* cl = clip();
+    return cl != nullptr && !cl->isStretched();
+}
+
+void AudioEditor::paintNotPitchEditable(juce::Graphics& g)
+{
+    const auto area = contentArea();
+    g.setColour(theme_.colours.textSecondary);
+    g.setFont(theme_.body());
+    g.drawFittedText("Pitch edits play on clips that are not stretched or transposed.\n"
+                     "Set the clip's stretch and transpose back to edit its pitch.",
+                     area.reduced(theme_.spacing.lg),
+                     juce::Justification::centred,
+                     3);
+}
+
 void AudioEditor::refreshToolbar()
 {
+    const bool editable = pitchEditable();
+    for (auto* b : toolButtons())
+        b->setEnabled(editable);
+    correctButton_.setEnabled(editable);
+    breathsButton_.setEnabled(editable);
     juce::String key = "No key";
     if (project_ != nullptr && project_->key.isSet())
         key = juce::String(core::pitchClassName(project_->key.root)) + " " +
