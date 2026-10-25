@@ -414,7 +414,8 @@ private:
     // `rebuildViews` makes the views refresh in full (a rename, a colour).
     void finishChange(core::Command::ChangeKind kind,
                       const std::vector<core::Command::ParameterTouch>& touches,
-                      bool rebuildViews);
+                      bool rebuildViews,
+                      core::Id liveChannel = core::invalidId);
     // Several runs as one undo step (when named) with the engine work done once,
     // at the end of the outermost batch.
     class Batch;
@@ -422,7 +423,11 @@ private:
     std::optional<core::Command::ChangeKind> pendingKind_;
     std::vector<core::Command::ParameterTouch> pendingTouches_;
     bool pendingViews_ = false; // a pending command renames or recolours: the views rebuild
-    // Does the engine work and view refresh the pending commands need.
+    // The one channel the pending values changes touch (invalidId: none yet),
+    // or `manyChannels` once they touch more than one.
+    static constexpr core::Id manyChannels = core::masterId - 1;
+    core::Id pendingChannel_ =
+        core::invalidId; // Does the engine work and view refresh the pending commands need.
     void flushPending();
     void matchDeviceSampleRate();
     // Brings the engine's input buses in line with the device's; true when they changed.

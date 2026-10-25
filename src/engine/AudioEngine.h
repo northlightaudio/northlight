@@ -51,6 +51,8 @@ public:
     // What clips play is passed through this before a snapshot uses it (vocal edits).
     void setClipSourceHook(MediaCache::ClipSourceHook hook) { media_.setClipSourceHook(std::move(hook)); }
     void setStretchHook(MediaCache::ClipSourceHook hook) { media_.setStretchHook(std::move(hook)); }
+    // The hooks have something new for unchanged clips: the next compile asks again.
+    void forgetClipSources() { media_.forgetClipSources(); }
     const std::map<std::string, std::string>& mediaErrors() const noexcept { return media_.errors(); }
     // Opening a project in steps (ProjectSession): a file decoded elsewhere for
     // the next compile to use, and an insert's instance made ahead of it (one at
@@ -173,7 +175,8 @@ public:
 
     // Live values: pushed to the running graph without a recompile (the renderer
     // ramps gains and pans; insert parameters are atomics on the instance).
-    void applyLiveValues(const core::Project& project);
+    // `only`: just that channel's values (a fader drag), else every channel's.
+    void applyLiveValues(const core::Project& project, core::Id only = core::invalidId);
     // Pushes the model's value of the given insert parameters to their instances,
     // whether or not the processor owns its parameters (a command touched them).
     void pushInsertParameters(const core::Project& project,

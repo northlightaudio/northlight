@@ -64,6 +64,17 @@ public:
         return std::any_of(
             commands_.begin(), commands_.end(), [](const auto& c) { return c->rebuildsViews(); });
     }
+    Id liveChannel() const noexcept override
+    {
+        // One channel when every member names the same one (a fader gesture).
+        if (commands_.empty())
+            return invalidId;
+        const Id first = commands_.front()->liveChannel();
+        for (const auto& c : commands_)
+            if (c->liveChannel() != first)
+                return invalidId;
+        return first;
+    }
     void touchedParameters(std::vector<ParameterTouch>& out) const override
     {
         for (const auto& c : commands_)

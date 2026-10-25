@@ -55,6 +55,7 @@ ProjectSession::ProjectSession(audio::AudioDeviceLayer& audio, juce::File regist
             for (const auto& c : t.clips)
                 if (c.vocal.changesSound())
                 {
+                    engine_.forgetClipSources(); // the renders are new, the clips are not
                     engine_.setProject(project_);
                     return;
                 }
@@ -189,6 +190,10 @@ bool ProjectSession::run(std::unique_ptr<core::Command> command, bool mayWriteAu
     pendingKind_ = std::max(pendingKind_.value_or(core::Command::ChangeKind::cosmetic), kind);
     pendingTouches_.insert(pendingTouches_.end(), touches.begin(), touches.end());
     pendingViews_ = pendingViews_ || applied->rebuildsViews();
+    if (const auto live = applied->liveChannel(); pendingChannel_ == core::invalidId)
+        pendingChannel_ = live == core::invalidId ? manyChannels : live;
+    else if (live != pendingChannel_)
+        pendingChannel_ = manyChannels;
     if (batchDepth_ == 0)
         flushPending();
     return true;
@@ -201,15 +206,18 @@ void ProjectSession::flushPending()
     const auto kind = *pendingKind_;
     auto touches = std::move(pendingTouches_);
     const bool views = pendingViews_;
+    const auto channel = pendingChannel_ == manyChannels ? core::invalidId : pendingChannel_;
     pendingKind_.reset();
     pendingTouches_.clear();
     pendingViews_ = false;
-    finishChange(kind, touches, views);
+    pendingChannel_ = core::invalidId;
+    finishChange(kind, touches, views, channel);
 }
 
 void ProjectSession::finishChange(core::Command::ChangeKind kind,
                                   const std::vector<core::Command::ParameterTouch>& touches,
-                                  bool rebuildViews)
+                                  bool rebuildViews,
+                                  core::Id liveChannel)
 {
     using Kind = core::Command::ChangeKind;
     edited();
@@ -226,9 +234,9 @@ void ProjectSession::finishChange(core::Command::ChangeKind kind,
             viewChange(Change::parameters);
             break;
         case Kind::values:
-            // A gain, pan or bypass: the running graph takes every channel's new
-            // values (ramped) without a recompile.
-            engine_.applyLiveValues(project_);
+            // A gain, pan or bypass: the running graph takes the new values
+            // (ramped) without a recompile; one channel's when that is all it touched.
+            engine_.applyLiveValues(project_, liveChannel);
             engine_.pushInsertParameters(project_, touches);
             viewChange(Change::values);
             break;
@@ -387,7 +395,7 @@ void ProjectSession::undo()
     const auto* undone = undo_.redoTop();
     std::vector<core::Command::ParameterTouch> touches;
     undone->touchedParameters(touches);
-    finishChange(undone->changeKind(), touches, undone->rebuildsViews());
+    finishChange(undone->changeKind(), touches, undone->rebuildsViews(), undone->liveChannel());
 }
 
 void ProjectSession::redo()
@@ -405,7 +413,7 @@ void ProjectSession::redo()
     const auto* redone = undo_.undoTop();
     std::vector<core::Command::ParameterTouch> touches;
     redone->touchedParameters(touches);
-    finishChange(redone->changeKind(), touches, redone->rebuildsViews());
+    finishChange(redone->changeKind(), touches, redone->rebuildsViews(), redone->liveChannel());
 }
 
 void ProjectSession::mirrorOwnedParameters(const std::vector<core::Command::ParameterTouch>& touches)

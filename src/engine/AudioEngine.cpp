@@ -266,11 +266,13 @@ void AudioEngine::setLivePan(core::Id channelId, float pan)
         runtime->targetPan.store(pan, std::memory_order_relaxed);
 }
 
-void AudioEngine::applyLiveValues(const core::Project& project)
+void AudioEngine::applyLiveValues(const core::Project& project, core::Id only)
 {
     NORTHLIGHT_ASSERT_NOT_REALTIME("AudioEngine::applyLiveValues");
     const auto channel = [&](const core::Channel& c)
     {
+        if (only != core::invalidId && c.id != only)
+            return;
         if (const auto runtime = runtimes_.find(c.id))
         {
             runtime->targetGain.store(c.gain, std::memory_order_relaxed);
@@ -311,7 +313,8 @@ void AudioEngine::applyLiveValues(const core::Project& project)
     for (const auto& b : project.buses)
         channel(b);
     channel(project.master);
-    runtimes_.master()->targetGain.store(project.master.gain, std::memory_order_relaxed);
+    if (only == core::invalidId || only == core::masterId)
+        runtimes_.master()->targetGain.store(project.master.gain, std::memory_order_relaxed);
 }
 
 void AudioEngine::pushInsertParameters(const core::Project& project,

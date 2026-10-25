@@ -259,7 +259,13 @@ public:
     // What a stretched or transposed clip plays (StretchService::sourceFor); a
     // stretched clip is silent without one.
     void setStretchHook(ClipSourceHook hook) { stretchHook_ = std::move(hook); }
+    // Kept per clip while the clip is unchanged, so a compile after an edit
+    // elsewhere does not ask the hooks again (a vocal clip plans its rendered
+    // spans each time it is asked).
     std::shared_ptr<const AudioSource> sourceForClip(const core::AudioClip& clip, double sampleRate);
+    // Forgets the kept clip sources: the hooks have something new for an
+    // unchanged clip (a vocal render finished).
+    void forgetClipSources() { clipSources_.clear(); }
 
     // A source loaded elsewhere (on a loading thread) for `path`; get() returns it
     // while its rate is the one asked for.
@@ -280,9 +286,17 @@ private:
         std::shared_ptr<const AudioSource> source;
     };
 
+    struct ClipSource
+    {
+        core::AudioClip clip; // as it was when the source was made
+        double sampleRate = 0.0;
+        std::shared_ptr<const AudioSource> source;
+    };
+
     MediaLoader& loader_;
     std::map<std::string, std::shared_ptr<const AudioSource>> sources_;
     std::map<core::Id, Instance> instances_;
+    std::map<core::Id, ClipSource> clipSources_;
     std::map<std::string, std::string> errors_;
     ClipSourceHook clipHook_;
     ClipSourceHook stretchHook_;

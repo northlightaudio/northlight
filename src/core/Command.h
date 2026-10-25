@@ -47,6 +47,10 @@ public:
     // Whether the views rebuild from the model (a name, a colour, a marker),
     // whatever the engine needs. Values-only refreshes do not redraw labels.
     virtual bool rebuildsViews() const noexcept { return changeKind() == ChangeKind::structure; }
+    // A values change that touches one channel's live values only (a fader, a
+    // pan, a send level, an insert's bypass or mix): its id, so only that channel's
+    // values are pushed. invalidId: any or every channel.
+    virtual Id liveChannel() const noexcept { return invalidId; }
     // A command that copies inserts for undo (removing or replacing them) needs
     // the live plugin state pulled into the model first, so undo brings back
     // what the user had rather than what the last save held.
@@ -660,6 +664,7 @@ public:
     {
         return existed_ && previous_.preFader == value_.preFader ? ChangeKind::values : ChangeKind::structure;
     }
+    Id liveChannel() const noexcept override { return channelId_; }
     std::string name() const override { return "Set send"; }
     void apply(Project&) override;
     void revert(Project&) override;
@@ -734,6 +739,7 @@ class SetMasterGain final : public Command
 {
 public:
     ChangeKind changeKind() const noexcept override { return ChangeKind::values; }
+    Id liveChannel() const noexcept override { return masterId; }
     explicit SetMasterGain(float gain);
     std::string name() const override { return "Set master gain"; }
     void apply(Project&) override;
@@ -852,6 +858,7 @@ public:
     // A live value: the renderer glides to it (a latent slot always keeps its
     // dry line), so a drag never recompiles.
     ChangeKind changeKind() const noexcept override { return ChangeKind::values; }
+    Id liveChannel() const noexcept override { return channelId_; }
     void apply(Project&) override;
     void revert(Project&) override;
 
@@ -895,6 +902,7 @@ class SetInsertBypass final : public Command
 {
 public:
     ChangeKind changeKind() const noexcept override { return ChangeKind::values; }
+    Id liveChannel() const noexcept override { return channelId_; }
     SetInsertBypass(Id channelId, Id insertId, bool bypass);
     std::string name() const override { return "Bypass insert"; }
     void apply(Project&) override;
@@ -1117,6 +1125,7 @@ class SetTrackGain final : public Command
 {
 public:
     ChangeKind changeKind() const noexcept override { return ChangeKind::values; }
+    Id liveChannel() const noexcept override { return trackId_; }
     SetTrackGain(Id trackId, float gain);
     std::optional<AutomationWrite> automationWrite() const noexcept override
     {
@@ -1137,6 +1146,7 @@ class SetTrackPan final : public Command
 {
 public:
     ChangeKind changeKind() const noexcept override { return ChangeKind::values; }
+    Id liveChannel() const noexcept override { return trackId_; }
     SetTrackPan(Id trackId, float pan);
     std::optional<AutomationWrite> automationWrite() const noexcept override
     {

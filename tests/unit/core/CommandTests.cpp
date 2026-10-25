@@ -355,6 +355,32 @@ TEST_CASE("Names, colours and markers need no engine work but rebuild the views"
     CHECK(AddTrack(Track{}).rebuildsViews());
 }
 
+TEST_CASE("A fader's commands name the one channel whose live values they change", "[core][command]")
+{
+    CHECK(SetTrackGain(5, 0.5f).liveChannel() == 5);
+    CHECK(SetTrackPan(5, 0.2f).liveChannel() == 5);
+    CHECK(SetMasterGain(0.5f).liveChannel() == masterId);
+    CHECK(AddTrack(Track{}).liveChannel() == invalidId);
+
+    // A gesture over one channel names it; over two, none.
+    Project p;
+    Track a, b;
+    a.id = 1;
+    b.id = 2;
+    p.tracks = {a, b};
+    UndoStack undo;
+    undo.beginGroup("Fader");
+    undo.execute(p, std::make_unique<SetTrackGain>(1, 0.5f));
+    undo.execute(p, std::make_unique<SetTrackGain>(1, 0.4f));
+    undo.endGroup();
+    CHECK(undo.undoTop()->liveChannel() == 1);
+    undo.beginGroup("Both");
+    undo.execute(p, std::make_unique<SetTrackGain>(1, 0.5f));
+    undo.execute(p, std::make_unique<SetTrackGain>(2, 0.5f));
+    undo.endGroup();
+    CHECK(undo.undoTop()->liveChannel() == invalidId);
+}
+
 TEST_CASE("A new command after undo discards the redo history", "[core][command]")
 {
     Project p = projectWithTrack();

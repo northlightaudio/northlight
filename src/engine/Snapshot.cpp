@@ -54,12 +54,23 @@ MediaCache::getForClip(const std::string& path, double sampleRate, core::Id clip
 
 std::shared_ptr<const AudioSource> MediaCache::sourceForClip(const core::AudioClip& clip, double sampleRate)
 {
+    if (const auto it = clipSources_.find(clip.id); it != clipSources_.end() &&
+                                                    it->second.sampleRate == sampleRate &&
+                                                    it->second.clip == clip && it->second.source != nullptr)
+        return it->second.source;
     auto base = getForClip(clip.mediaPath, sampleRate, clip.id);
+    std::shared_ptr<const AudioSource> source;
     if (clip.isStretched())
-        return stretchHook_ && base != nullptr ? stretchHook_(clip, sampleRate, std::move(base)) : nullptr;
-    if (clipHook_ && base != nullptr && clip.vocal.active())
-        return clipHook_(clip, sampleRate, std::move(base));
-    return base;
+        source = stretchHook_ && base != nullptr ? stretchHook_(clip, sampleRate, std::move(base)) : nullptr;
+    else if (clipHook_ && base != nullptr && clip.vocal.active())
+        source = clipHook_(clip, sampleRate, std::move(base));
+    else
+        source = std::move(base);
+    if (source != nullptr)
+        clipSources_[clip.id] = ClipSource{clip, sampleRate, source};
+    else
+        clipSources_.erase(clip.id);
+    return source;
 }
 
 void MediaCache::adopt(const std::string& path, std::shared_ptr<const AudioSource> source)
@@ -73,6 +84,7 @@ void MediaCache::adopt(const std::string& path, std::shared_ptr<const AudioSourc
 
 void MediaCache::prune()
 {
+    std::erase_if(clipSources_, [](const auto& entry) { return entry.second.source.use_count() == 1; });
     std::erase_if(instances_, [](const auto& entry) { return entry.second.source.use_count() == 1; });
     std::erase_if(sources_, [](const auto& entry) { return entry.second.use_count() == 1; });
 }

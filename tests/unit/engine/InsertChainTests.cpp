@@ -151,6 +151,27 @@ TEST_CASE("Bypass crossfades and keeps the processor running", "[engine][inserts
     CHECK(h.left[blockSize - 1] == Approx(wet).margin(0.002f));
 }
 
+TEST_CASE("Live values can be pushed for one channel alone", "[engine][smoothing]")
+{
+    Harness h;
+    core::Project p;
+    p.tracks.push_back(trackWithClip(1));
+    p.tracks.push_back(trackWithClip(2));
+    h.play(p, 10);
+    const float both = h.left[blockSize - 1]; // two tracks of 0.5 at unity, panned centre
+    CHECK(both == Approx(2.0f * 0.5f * centre).margin(0.002f));
+
+    // Both faders move in the model, but only track 1's values are pushed.
+    p.tracks[0].gain = 0.5f;
+    p.tracks[1].gain = 0.5f;
+    h.engine.applyLiveValues(p, 1);
+    h.more(20);
+    CHECK(h.left[blockSize - 1] == Approx((0.5f * 0.5f + 0.5f) * centre).margin(0.002f));
+    h.engine.applyLiveValues(p);
+    h.more(20);
+    CHECK(h.left[blockSize - 1] == Approx(2.0f * 0.5f * 0.5f * centre).margin(0.002f));
+}
+
 TEST_CASE("An insert's mix glides to a new value without a recompile", "[engine][inserts][mix]")
 {
     Harness h;
