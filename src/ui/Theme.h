@@ -88,8 +88,12 @@ struct Theme
         // Legends printed on a hardware face (the tape echo's console), never the interface.
         std::string legendFamily = "Barlow Condensed", legendFile = "BarlowCondensed-SemiBold.ttf",
                     legendBoldFile = "BarlowCondensed-Bold.ttf";
-        juce::Typeface::Ptr ui, mono;           // bundled typefaces, null when not bundled
-        juce::Typeface::Ptr legend, legendBold; // the same, for Face::legend
+        // The brand's serif: wordmarks set large and sparingly (Vesper's), never controls.
+        std::string displayFamily = "Newsreader", displayFile = "Newsreader-Variable.ttf",
+                    displayItalicFile = "Newsreader-Italic-Variable.ttf";
+        juce::Typeface::Ptr ui, mono;               // bundled typefaces, null when not bundled
+        juce::Typeface::Ptr legend, legendBold;     // the same, for Face::legend
+        juce::Typeface::Ptr display, displayItalic; // the same, for displayFont()
     };
 
     struct Spacing
@@ -298,6 +302,9 @@ struct Theme
     juce::Font value() const { return font(Face::mono, fonts.size.value, fonts.weight.medium); }
     // Uppercase section captions: caption size, semibold, tracked.
     juce::Font captionCaps() const;
+    // The display serif at an em size, for a wordmark; the italic cut when asked
+    // for and bundled, else the upright (and Georgia without either).
+    juce::Font displayFont(float size, bool italic) const;
 
     // ----- loading -------------------------------------------------------------------
     // The shipped tokens (embedded; replaced by assets/tokens.json beside the

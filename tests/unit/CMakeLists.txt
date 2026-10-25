@@ -82,5 +82,8 @@ target_link_libraries(northlight_unit_tests PRIVATE
     northlight_ui_edit
     Catch2::Catch2WithMain)
 
+# Test material shared by the test targets (tests/support).
+target_include_directories(northlight_unit_tests PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/../support")
+
 include(Catch)
 catch_discover_tests(northlight_unit_tests)

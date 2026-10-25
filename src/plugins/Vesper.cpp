@@ -54,6 +54,35 @@ int lookaheadSamples(float choice, double sampleRate) noexcept
     return static_cast<int>(std::lround(lookaheadSeconds(choice) * sampleRate));
 }
 
+Telemetry::Telemetry() : frames_(new std::atomic<float>[static_cast<size_t>(length) * valueCount]()) {}
+
+void Telemetry::publish(const Frame& values) noexcept
+{
+    const auto w = written_.load(std::memory_order_relaxed);
+    auto* slot = frames_.get() + (w % length) * valueCount;
+    for (int i = 0; i < valueCount; ++i)
+        slot[i].store(values[static_cast<size_t>(i)], std::memory_order_relaxed);
+    written_.store(w + 1, std::memory_order_release);
+}
+
+int Telemetry::read(std::uint64_t& cursor, Frame* out, int maxFrames) const noexcept
+{
+    const auto end = written_.load(std::memory_order_acquire);
+    constexpr std::uint64_t safe = length - 16; // keep clear of the slot being written
+    std::uint64_t start = std::max(cursor, end > safe ? end - safe : 0);
+    if (end - start > static_cast<std::uint64_t>(std::max(0, maxFrames)))
+        start = end - static_cast<std::uint64_t>(std::max(0, maxFrames));
+    int n = 0;
+    for (auto i = start; i < end; ++i, ++n)
+    {
+        const auto* slot = frames_.get() + (i % length) * valueCount;
+        for (int v = 0; v < valueCount; ++v)
+            out[n][static_cast<size_t>(v)] = slot[v].load(std::memory_order_relaxed);
+    }
+    cursor = end;
+    return n;
+}
+
 namespace
 {
 constexpr int spaceCount = 3;
@@ -215,6 +244,8 @@ public:
         return lookaheadSamples(parameter(lookahead), sampleRate_);
     }
 
+    const Telemetry& telemetry() const noexcept { return telemetry_; }
+
 private:
     // ----- preparation (controller thread) --------------------------------------------------
 
@@ -266,6 +297,7 @@ private:
         spaceStep_ = smoothing(0.01f);
         duckAttack_ = smoothing(0.01f);
         rmsStep_ = smoothing(0.05f);
+        fastRmsStep_ = smoothing(0.01f);
         mudMeasureStep_ = smoothing(0.05f);
         endsUp_ = perFrame(endsAttackSeconds);
         endsDown_ = perFrame(endsSettleSeconds);
@@ -274,6 +306,7 @@ private:
         catchStep_ = smoothing(catchFadeSeconds);
         leadSamples_ = static_cast<int>(std::lround(listenerLeadSeconds * sampleRate));
         throwSamples_ = static_cast<std::int64_t>(std::lround(throwSeconds * sampleRate));
+        telemetryInterval_ = std::max(1, static_cast<int>(sampleRate * Telemetry::frameSeconds));
         clearState();
         primed_ = false; // the first block takes the parameters as they are (they arrive after prepare)
     }
@@ -419,6 +452,7 @@ private:
                     --throwing_;
                 e = {};
                 endsTarget_ = 1.0f;
+                lineEndSeen_ = true;
             }
         }
     }
@@ -440,6 +474,10 @@ private:
     void onFrame(const vocal::Hearing& h, const Targets& t) noexcept
     {
         sendTargetDb_ = sendCutFor(h, t);
+        heardSound_ = h.sound;
+        heardPitch_ = h.heldPitchHz;
+        if (h.lineEnd)
+            lineEndSeen_ = true;
         const bool singing = h.sound == vocal::Sound::voiced || h.sound == vocal::Sound::consonant;
         if (singing)
             duckHang_ = duckHangSeconds;
@@ -529,9 +567,12 @@ private:
                 wetLeft_[ii] = wetRight_[ii] = 0.0f;
                 listener_.push(0.0f);
                 if (watched)
+                {
                     feedback_.addSample(0.0f, 0.0f, 0.0f, 0.0f, 0.0f);
+                    observe(0.0f, 0.0f, 0.0f);
+                }
             }
-            tailSquare_ = drySquare_ = 0.0f;
+            tailSquare_ = drySquare_ = dryFast_ = 0.0f;
             if (watched)
                 feedback_.tap(1, wetLeft_.data(), wetRight_.data(), numSamples);
             return;
@@ -678,9 +719,12 @@ private:
             {
                 tailSquare_ += (0.5f * (tailL * tailL + tailR * tailR) - tailSquare_) * rmsStep_;
                 drySquare_ += (0.5f * (dryL * dryL + dryR * dryR) - drySquare_) * rmsStep_;
+                // The card's land follows the voice closely, so a line's end shows where it is.
+                dryFast_ += (0.5f * (dryL * dryL + dryR * dryR) - dryFast_) * fastRmsStep_;
                 const float level = std::max(std::abs(dryL), std::abs(dryR));
                 const float out = std::max(std::abs(left[n]), std::abs(right[n]));
                 feedback_.addSample(level, out, duckDb, std::sqrt(tailSquare_), std::sqrt(drySquare_));
+                observe(std::sqrt(dryFast_), std::sqrt(tailSquare_), duckDb);
             }
         }
         if (watched)
@@ -700,6 +744,8 @@ private:
             tailSquare_ = 0.0f;
         if (drySquare_ < 1.0e-20f)
             drySquare_ = 0.0f;
+        if (dryFast_ < 1.0e-20f)
+            dryFast_ = 0.0f;
         if (duck_ < 1.0e-9f)
             duck_ = 0.0f;
         if (held_ < 1.0e-9f)
@@ -711,6 +757,36 @@ private:
                 clearState();
                 break;
             }
+    }
+
+    // One sample's share of the card's telemetry frame (only while an editor
+    // watches); a frame is published every Telemetry::frameSeconds.
+    void observe(float dryRms, float tailRms, float duckDb) noexcept
+    {
+        auto& f = telemetryFrame_;
+        f[Telemetry::sound] = static_cast<float>(heardSound_);
+        if (heardSound_ == vocal::Sound::voiced)
+            f[Telemetry::voiced] = 1.0f;
+        if (heardSound_ == vocal::Sound::breath)
+            f[Telemetry::breath] = 1.0f;
+        f[Telemetry::keptOutDb] = std::max(f[Telemetry::keptOutDb], -std::min(0.0f, sendDb_));
+        if (lineEndSeen_)
+        {
+            f[Telemetry::lineEnd] = 1.0f;
+            lineEndSeen_ = false;
+        }
+        f[Telemetry::heldPitchHz] = heardPitch_;
+        f[Telemetry::followHz] = followHz_;
+        f[Telemetry::dryRms] = std::max(f[Telemetry::dryRms], dryRms);
+        f[Telemetry::tailRms] = std::max(f[Telemetry::tailRms], tailRms);
+        f[Telemetry::duckDb] = std::max(f[Telemetry::duckDb], duckDb);
+        f[Telemetry::held] = held_;
+        if (++telemetryCount_ >= telemetryInterval_)
+        {
+            telemetry_.publish(f);
+            f = {};
+            telemetryCount_ = 0;
+        }
     }
 
     // One sample into the dry delay; the sample `lookahead_` behind it out. The
@@ -815,15 +891,29 @@ private:
     float ends_ = 0.0f, endsTarget_ = 0.0f;
     float followHz_ = 0.0f;
     float mudDb_ = 0.0f, mudBandPower_ = 0.0f, tailPower_ = 0.0f;
-    float tailSquare_ = 0.0f, drySquare_ = 0.0f;
+    float tailSquare_ = 0.0f, drySquare_ = 0.0f, dryFast_ = 0.0f;
     int silentSamples_ = 0;
     bool primed_ = false;
     // Coefficients for the rate.
     float sendDown_ = 0.0f, sendUp_ = 0.0f, sizeStep_ = 0.0f, glideStep_ = 0.0f, paramStep_ = 0.0f;
-    float spaceStep_ = 0.0f, duckAttack_ = 0.0f, rmsStep_ = 0.0f, mudMeasureStep_ = 0.0f;
+    float spaceStep_ = 0.0f, duckAttack_ = 0.0f, rmsStep_ = 0.0f, fastRmsStep_ = 0.0f, mudMeasureStep_ = 0.0f;
     float endsUp_ = 0.0f, endsDown_ = 0.0f, followStep_ = 0.0f, mudStep_ = 0.0f, catchStep_ = 0.0f;
+    // The card's telemetry: what was last heard (as the delayed audio reaches it)
+    // and the frame being gathered.
+    Telemetry telemetry_;
+    Telemetry::Frame telemetryFrame_{};
+    int telemetryInterval_ = 240, telemetryCount_ = 0;
+    vocal::Sound heardSound_ = vocal::Sound::silence;
+    float heardPitch_ = 0.0f;
+    bool lineEndSeen_ = false;
 };
 } // namespace
+
+const Telemetry* telemetryOf(const engine::InsertProcessor* processor) noexcept
+{
+    const auto* vesper = dynamic_cast<const Vesper*>(processor);
+    return vesper != nullptr ? &vesper->telemetry() : nullptr;
+}
 
 std::unique_ptr<engine::InsertProcessor> create()
 {

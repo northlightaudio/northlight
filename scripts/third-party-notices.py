@@ -89,7 +89,8 @@ def main():
     parts.append(f"| {TEST_ONLY[0]} | {TEST_ONLY[1]} | {TEST_ONLY[2]} |")
     parts.append("")
     parts.append(
-        "Typefaces: Newsreader, the display face (`assets/fonts/Newsreader-Variable.ttf`), is "
+        "Typefaces: Newsreader, the display face (`assets/fonts/Newsreader-Variable.ttf` and its "
+        "italic, `Newsreader-Italic-Variable.ttf`, copyright 2020 The Newsreader Project Authors), is "
         "distributed under the SIL Open Font License 1.1, in `Newsreader-OFL.txt` beside it. "
         "Barlow Condensed, the legend face of the hardware faces (`assets/fonts/BarlowCondensed-*.ttf`, "
         "copyright 2017 The Barlow Project Authors), is distributed under the same licence, in "

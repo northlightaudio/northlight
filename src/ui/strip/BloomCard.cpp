@@ -815,110 +815,6 @@ private:
     juce::Colour hue_;
 };
 
-// ----- the shimmer's interval ---------------------------------------------------------------
-
-// Six pills, one per interval: the chosen one filled in the hue. Click one, or
-// Left and Right (Home, End) to step.
-class IntervalPills final : public juce::Component, public juce::SettableTooltipClient
-{
-public:
-    IntervalPills(const Theme& theme, juce::Colour hue) : theme_(theme), hue_(hue)
-    {
-        setWantsKeyboardFocus(true);
-        setRepaintsOnMouseActivity(true);
-        setTooltip("Shimmer interval");
-        setComponentID("interval");
-    }
-
-    std::vector<juce::String> labels;
-    int selected = 3;
-    std::function<void(int)> onChange;
-
-    void paint(juce::Graphics& g) override
-    {
-        const auto& c = theme_.colours;
-        const int hover = isMouseOver() ? indexAt(getMouseXYRelative().x) : -1;
-        g.setFont(theme_.value());
-        for (int i = 0; i < count(); ++i)
-        {
-            const auto r = pill(i);
-            const bool chosen = i == selected;
-            if (chosen)
-            {
-                g.setColour(isEnabled() ? hue_ : c.textDisabled);
-                g.fillRoundedRectangle(r, r.getHeight() * 0.5f);
-            }
-            else
-            {
-                if (i == hover)
-                {
-                    g.setColour(c.surface2);
-                    g.fillRoundedRectangle(r, r.getHeight() * 0.5f);
-                }
-                g.setColour(c.textPrimary.withAlpha(0.15f));
-                g.drawRoundedRectangle(r.reduced(0.5f), r.getHeight() * 0.5f, 1.0f);
-            }
-            g.setColour(chosen ? c.canvas : i == hover ? c.textPrimary : c.textSecondary);
-            g.drawText(labels[static_cast<size_t>(i)], r, juce::Justification::centred);
-        }
-        if (auto* laf = dynamic_cast<NorthlightLookAndFeel*>(&getLookAndFeel());
-            laf != nullptr && count() > 0)
-            laf->drawFocusRing(g, *this, pill(selected), pill(selected).getHeight() * 0.5f);
-    }
-
-    void mouseDown(const juce::MouseEvent& e) override
-    {
-        if (const int i = indexAt(e.x); i >= 0)
-            choose(i);
-    }
-
-    bool keyPressed(const juce::KeyPress& key) override
-    {
-        if (key == juce::KeyPress::leftKey)
-            choose(std::max(0, selected - 1));
-        else if (key == juce::KeyPress::rightKey)
-            choose(std::min(count() - 1, selected + 1));
-        else if (key == juce::KeyPress::homeKey)
-            choose(0);
-        else if (key == juce::KeyPress::endKey)
-            choose(count() - 1);
-        else
-            return false;
-        return true;
-    }
-
-private:
-    int count() const noexcept { return static_cast<int>(labels.size()); }
-    juce::Rectangle<float> pill(int i) const
-    {
-        constexpr float gap = 6.0f;
-        const auto area = getLocalBounds().toFloat();
-        const float w =
-            (area.getWidth() - gap * static_cast<float>(count() - 1)) / static_cast<float>(count());
-        return juce::Rectangle<float>(
-            area.getX() + (w + gap) * static_cast<float>(i), area.getY(), w, area.getHeight());
-    }
-    int indexAt(int x) const
-    {
-        for (int i = 0; i < count(); ++i)
-            if (pill(i).expanded(3.0f, 0.0f).contains(static_cast<float>(x), pill(i).getCentreY()))
-                return i;
-        return -1;
-    }
-    void choose(int i)
-    {
-        if (i == selected)
-            return;
-        selected = i;
-        repaint();
-        if (onChange)
-            onChange(i);
-    }
-
-    const Theme& theme_;
-    juce::Colour hue_;
-};
-
 // ----- the card -----------------------------------------------------------------------------
 
 class BloomCard final : public ModuleCard
@@ -926,7 +822,7 @@ class BloomCard final : public ModuleCard
 public:
     BloomCard(const Theme& theme, CardHost& host, core::Id channelId, const core::Insert& insert)
         : ModuleCard(theme, host, channelId, insert), field_(*this), envelope_(*this), seed_(theme, colour()),
-          pitch_(theme, colour()), sync_(theme, colour())
+          pitch_(theme, colour(), "Shimmer interval"), sync_(theme, colour())
     {
         addAndMakeVisible(field_);
         addAndMakeVisible(envelope_);
@@ -960,6 +856,7 @@ public:
                          "+19",
                          juce::String::fromUTF8("\xc2\xb1"
                                                 "12")};
+        pitch_.setComponentID("interval");
         pitch_.onChange = [this](int value)
         {
             beginGesture("Pitch");
@@ -1217,7 +1114,7 @@ private:
     BlossomField field_;
     EnvelopeGraph envelope_;
     SeedButton seed_;
-    IntervalPills pitch_;
+    PillRow pitch_;
     CornerChoice sync_;
     Knob *decay_ = nullptr, *size_ = nullptr, *shimmer_ = nullptr, *swell_ = nullptr;
     Knob *preDelay_ = nullptr, *diffusion_ = nullptr, *modulation_ = nullptr, *rate_ = nullptr;

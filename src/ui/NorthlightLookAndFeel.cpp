@@ -1,6 +1,7 @@
 #include "ui/NorthlightLookAndFeel.h"
 
 #include "ui/Motion.h"
+#include "ui/OpticalCentre.h"
 #include "ui/components/Readout.h"
 
 #include <atomic>
@@ -498,6 +499,10 @@ void NorthlightLookAndFeel::drawButtonText(juce::Graphics& g,
     }
     const bool icon = static_cast<bool>(button.getProperties().getWithDefault(propertyIcon, false));
     const int pad = icon ? 0 : std::min(theme_.spacing.md, area.getWidth() / 6);
+    // Centred by its letters, not its line box, which leaves a word low (OpticalCentre.h).
+    juce::Graphics::ScopedSaveState state(g);
+    g.addTransform(
+        juce::AffineTransform::translation(0.0f, opticalShift(g.getCurrentFont(), button.getButtonText())));
     g.drawFittedText(button.getButtonText(), area.reduced(pad, 0), juce::Justification::centred, 1, 1.0f);
 }
 

@@ -17,6 +17,7 @@ add_executable(northlight_juce_tests
     ChannelStripUiTests.cpp
     EditorPanelTests.cpp
     ChoiceControlTests.cpp
+    VesperCardTests.cpp
     CrashGuardTests.cpp
     DbTests.cpp
     MotionTests.cpp
@@ -85,6 +86,9 @@ add_custom_command(TARGET northlight_juce_tests POST_BUILD
     COMMAND ${CMAKE_COMMAND} -E copy_if_different $<TARGET_FILE:northlight_plugin_scan> $<TARGET_FILE_DIR:northlight_juce_tests>
     COMMAND ${CMAKE_COMMAND} -E copy_if_different $<TARGET_FILE:northlight_scan_stub> $<TARGET_FILE_DIR:northlight_juce_tests>)
 add_dependencies(northlight_juce_tests northlight_plugin_scan)
+
+# Test material shared by the test targets (tests/support).
+target_include_directories(northlight_juce_tests PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/../support")
 
 include(Catch)
 catch_discover_tests(northlight_juce_tests)

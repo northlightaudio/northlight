@@ -1,6 +1,7 @@
 #include "ui/components/SegmentedControl.h"
 
 #include "ui/NorthlightLookAndFeel.h"
+#include "ui/OpticalCentre.h"
 
 #include <algorithm>
 
@@ -157,8 +158,7 @@ void SegmentedControl::paint(juce::Graphics& g)
         g.setColour(!isEnabled() || !isSegmentEnabled(i) ? c.textDisabled
                     : i == selected_                     ? c.textPrimary
                                                          : c.textSecondary);
-        g.drawText(
-            labels_[static_cast<size_t>(i)], segmentBounds(i).toNearestInt(), juce::Justification::centred);
+        drawOpticallyCentred(g, labels_[static_cast<size_t>(i)], segmentBounds(i));
     }
     if (auto* lnf = dynamic_cast<NorthlightLookAndFeel*>(&getLookAndFeel()))
         lnf->drawFocusRing(g, *this, bounds, radius);

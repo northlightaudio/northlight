@@ -38,6 +38,32 @@ size_t vesperChoices()
         n += info.choices.empty() ? 0 : 1;
     return n;
 }
+// A GUI-less hosted plugin with Vesper's parameters (stepped ones among them):
+// what the Editor panel shows as a generic grid.
+class FakeClap final : public engine::InsertProcessor
+{
+public:
+    FakeClap() : infos_(plugins::parameterInfo(vesper::type)), values_(infos_.size(), 0.0f) {}
+    const std::string& typeName() const noexcept override { return type_; }
+    const std::vector<engine::ParameterInfo>& parameters() const noexcept override { return infos_; }
+    void prepare(double, int) override {}
+    void setParameter(int index, float value) noexcept override
+    {
+        if (index >= 0 && static_cast<size_t>(index) < values_.size())
+            values_[static_cast<size_t>(index)] = value;
+    }
+    float parameter(int index) const noexcept override
+    {
+        return index >= 0 && static_cast<size_t>(index) < values_.size() ? values_[static_cast<size_t>(index)]
+                                                                         : 0.0f;
+    }
+    void process(float*, float*, int) noexcept override {}
+
+private:
+    std::string type_ = "clap:fake";
+    std::vector<engine::ParameterInfo> infos_;
+    std::vector<float> values_;
+};
 } // namespace
 
 TEST_CASE("A choice control is segmented up to four choices and a menu past that", "[ui]")
@@ -114,13 +140,13 @@ TEST_CASE("The Editor panel's generic card shows choices and grows wide rather t
     t.name = "Vox";
     core::Insert insert;
     insert.id = 5;
-    insert.type = vesper::type;
+    insert.type = "clap:fake";
     insert.params = plugins::defaultParameters(vesper::type);
     t.inserts.push_back(insert);
     project.tracks.push_back(t);
     project.nextId = 6;
 
-    std::shared_ptr<engine::InsertProcessor> live = plugins::BuiltInFactory().create(vesper::type);
+    std::shared_ptr<engine::InsertProcessor> live = std::make_shared<FakeClap>();
     const auto& theme = ui::Theme::dark();
     ui::EditorPanel panel(theme);
     panel.liveInsert = [&](core::Id id) { return id == 5 ? live : nullptr; };

@@ -20,7 +20,7 @@ Northlight is free software under the GNU Affero General Public License version 
 | SheenBidi (bundled with JUCE) | Bidirectional text | Apache License 2.0 |
 | Catch2 | Unit tests (not part of the application) | Boost Software License 1.0 |
 
-Typefaces: Newsreader, the display face (`assets/fonts/Newsreader-Variable.ttf`), is distributed under the SIL Open Font License 1.1, in `Newsreader-OFL.txt` beside it. Barlow Condensed, the legend face of the hardware faces (`assets/fonts/BarlowCondensed-*.ttf`, copyright 2017 The Barlow Project Authors), is distributed under the same licence, in `BarlowCondensed-OFL.txt` beside it. When the Inter and JetBrains Mono fonts are bundled in `assets/fonts`, they are distributed under the same licence, and their `OFL.txt` files must be shipped beside them.
+Typefaces: Newsreader, the display face (`assets/fonts/Newsreader-Variable.ttf` and its italic, `Newsreader-Italic-Variable.ttf`, copyright 2020 The Newsreader Project Authors), is distributed under the SIL Open Font License 1.1, in `Newsreader-OFL.txt` beside it. Barlow Condensed, the legend face of the hardware faces (`assets/fonts/BarlowCondensed-*.ttf`, copyright 2017 The Barlow Project Authors), is distributed under the same licence, in `BarlowCondensed-OFL.txt` beside it. When the Inter and JetBrains Mono fonts are bundled in `assets/fonts`, they are distributed under the same licence, and their `OFL.txt` files must be shipped beside them.
 
 Images: the splash screen's photograph (`assets/splash`) is by Gytis Bukauskas, used under the Unsplash License (https://unsplash.com/license); see `assets/splash/README.md`.
 

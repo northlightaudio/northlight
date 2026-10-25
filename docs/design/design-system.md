@@ -233,6 +233,10 @@ control; it is only drawn for keyboard focus, never for pointer clicks.
 - **Danger**: ghost at rest with `danger` text; hover `danger` fill with
   `textOnColour`.
 - Label `label` 13/500. A trailing chevron marks buttons that open a menu.
+- A label is centred by its letters, not its line box (`ui/OpticalCentre.h`): the
+  box's middle is half way between the baseline and the mean of the cap height and
+  the x-height, or the cap height for a label of capitals alone ("M", "S"). The same
+  for a segmented control's segments and a row of pills.
 
 ### Toggle button
 
@@ -377,6 +381,39 @@ Keyboard: Left/Right move, Enter selects, Space switches the stage. The selected
 tile's controls show in the row below under the stage's name in `captionCaps`.
 No effect uses the pattern now: Patina shows every stage's controls at once,
 each stage a module on its rendered face (plugins.md 7.2a).
+
+### Scene face
+
+For a built-in that is its own product but no piece of studio gear (the
+instruments, Vesper): the card's body is a scene, and the controls sit on glass
+over it. It stays inside the system: every colour is a token or a track hue mixed
+with one, every control is the system's own.
+
+- **The scene** fills the body (radius `md`): a sky graded from `canvas`, drawn
+  once per paint, with the instrument's or effect's own motif (ribbons, a pulsar,
+  clouds, a dusk horizon). A motif that moves repaints only round itself; nothing
+  that moves may repaint the whole face (ui-performance.md), so a sky that would
+  brighten as a whole stays still. Moving parts are still with reduced motion.
+- **The wordmark**: the product's name drawn as an outline, made once per layout,
+  filled with a gradient between two of its hues, and what it is under or beside
+  it in `captionCaps` `textTertiary` ("POLYSYNTH · NORTHLIGHT"). Instruments set
+  it in `font.ui` capitals tracked wide; Vesper in the display serif
+  (`Theme::displayFont`).
+- **Glass**: `surface1` at 72% over the scene, radius `md` (`lg` for a tile), a
+  1 px `textPrimary` highlight at 7% along the top and a `lineSubtle` rim. A
+  panel's caption is `captionCaps` `textSecondary` after a 6 px dot in its hue.
+  A display inside glass is a well of `canvas` at 82%.
+
+### Light button
+
+A round light that is also a latch (Bloom's Freeze seed, Vesper's Catch star): a
+glow in the hue round a body or a motif, a `captionCaps` word saying what it does
+(FREEZE, CATCH) that changes to the held state's (FROZEN, HELD). Off, the glow is
+dim (22%) and brightens on hover (+15%); held, it changes colour (ice for Bloom,
+the gold of Straw for Vesper) and the motif stops moving. Pressed darkens the
+body. Click, Enter or Space toggles it as one undo step; focus draws the ring
+round the light; the hit area is the circle. It may react to the sound (Vesper's
+glow follows the voice) but repaints only itself.
 
 ### Hardware face
 

@@ -15,8 +15,10 @@ costs about 0.45% of a core at 48 kHz (release). Phase 3 is built: `plugins/Vesp
 with no latency, the generic editor, and the presets that need nothing from later
 phases; about 1.6% of a core at 48 kHz (release) with everything on. Phase 4 is
 built: Lookahead, the Long throw, Swell and Catch, and the presets that use them.
-Phase 5 is done: the presets were measured and two were tuned (below). The rest is
-not built.
+Phase 5 is done: the presets were measured and two were tuned (below). Phase 6 is
+built: the face, specified in screens/plugins.md 7.2a (where it differs from this
+plan: no preset bar in the face, a still sky, Lookahead as a segmented control in
+the row of choices, Swell in the TIME group). The rest is not built.
 
 ## The name and the idea
 

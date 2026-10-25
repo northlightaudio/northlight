@@ -78,7 +78,7 @@ Every built-in has an editor in the channel strip's language
 well, then knobs in the module's hue. The same editor is the card's body in the Editor panel
 and the body of its window (under the title, bypass and mix). The hues follow the
 strip: EQ `Overcast`, compressor `Loch`, limiter `Rowan`; gain `Machair`, reverb `Lichen`,
-delay `Gorse`, glue compressor `Thrift`, Patina `Kelp`, exciter `Machair`, Bloom `Heather`, Vesper `Thrift`, tape echo `Rowan`, Orbit `Slate`, stereo widener `Sea grass`, Corona `Straw`; the pedals take their family's: Gravity `Loch`, Flare `Rowan`, Comet `Gorse`, Tide `Sea grass`, Polaris `Overcast`. The instruments (7.4b-7.4e) have faces of their own, and so do Patina, the tape echo, Orbit and Corona, hardware faces (design-system.md "Hardware face").
+delay `Gorse`, glue compressor `Thrift`, Patina `Kelp`, exciter `Machair`, Bloom `Heather`, Vesper `Thrift`, tape echo `Rowan`, Orbit `Slate`, stereo widener `Sea grass`, Corona `Straw`; the pedals take their family's: Gravity `Loch`, Flare `Rowan`, Comet `Gorse`, Tide `Sea grass`, Polaris `Overcast`. The instruments (7.4b-7.4e) have faces of their own, Vesper a scene face, and so do Patina, the tape echo, Orbit and Corona, hardware faces (design-system.md "Hardware face").
 
 - **Gain**: the input and output history with IN and OUT meters; Gain.
 - **EQ**: the strip's EQ graph with the built-in's four bands (a high-pass,
@@ -446,9 +446,93 @@ delay `Gorse`, glue compressor `Thrift`, Patina `Kelp`, exciter `Machair`, Bloom
     `textSecondary`) while it ducks.
   - Body 316 px; width the flower's field (1.32 x the body's height less 8 px), a
     20 px gap and the 644 px of controls.
-- **Vesper** (a reverb for vocals that listens to the singing;
-  [plans/vesper.md](../../plans/vesper.md)): until its face is built it shows the
-  generic parameter editor (7.3), in the Reverb & Delay group of the effects menu.
+- **Vesper** (a reverb for vocals that listens to the singing; in the menu's
+  Reverb & Delay): the Listener hears the dry vocal every 2.5 ms and Vesper shapes
+  the reverb by it: Clarity and Breaths keep consonants, sibilance and breaths out
+  of the send, Duck lowers the tail while the singer sings and Release brings it
+  back, Ends lifts and lengthens it at each line end (a pause as long as Gap),
+  Follow's high-pass tracks the sung note, Mud cuts a 250-500 Hz build-up, Centre
+  clears the tail's middle; a plate, a chamber or a hall; Lookahead (Off, Short
+  30 ms, Long 500 ms, reported as latency) lets it hear ahead, so the send is down
+  before an "s" and, with Long, the last word is thrown and Swell builds the tail
+  into each line; Catch holds the tail as a pad ([plans/vesper.md](../../plans/vesper.md)
+  for the DSP). Its card is a scene face (design-system.md "Scene face"): a dusk
+  sky over the machair behind glass, in the hue Thrift with Straw, the gold low on
+  the horizon, in the scene and the wordmark only.
+  - **The scene**: the body's ground graded from `canvas` at the top through
+    `canvas` 9% toward the hue at 62% to `canvas` 10% toward Straw at the foot; the
+    machair along the foot (low dunes from a fixed formula, `canvas` darkened 30%,
+    a 1 px crest in Straw at 30%) as tall as the panels leave, up to 26 px, so a
+    short dock shows every control. The sky is still (it may not repaint whole
+    while playing); each line end lights a star (2-3.5 px, `textPrimary`, a halo
+    at 8%) at the next place of a fixed sequence in the header's open sky, fading
+    in over 400 ms and out over the decay (lengthened by Ends), up to 24, each
+    repainting only round itself; with reduced motion they appear and go.
+  - **The header row** (56 px, then 10 px to the panels), set on two lines: the
+    wordmark "Vesper" in the display serif's italic at 36 (the upright if the
+    italic is missing), filled from Straw to the hue, its baseline 30 px down; VOCAL
+    REVERB in `captionCaps`, `textTertiary`, on a baseline 20 px under it, clear of
+    the italic's descenders, its ink spanning the wordmark's exactly (from the V's
+    top serif to the end of the r: the tracking is fitted at layout). On the wordmark's
+    baseline, 32 px after it, the Listener's lights: three 6 px lamps on their
+    captions' middle, each caption 14 px after its lamp and the next lamp 24 px
+    on: SINGING (the hue), KEPT OUT (`textSecondary`), LINE END (`textPrimary`),
+    `surface3` dark, lit with a halo at 30% while heard and falling over 120 ms
+    (600 ms for a line end), their captions `captionCaps` `textSecondary` lit,
+    `textTertiary` dark. The evening star at the right, its caption on the
+    subtitle's line. The effect's presets are in the card's header as for every
+    built-in (7.2b).
+  - **The evening star** (Catch; a light button, design-system.md): in a 72 px
+    cell, a 4-point star 7.5 px (9 held) with long thin points fading out to 22 px
+    (26 held), a glow in the hue at 16% + 30% of the voice's level (10 ms RMS,
+    -48..-6 dB) within 28 px, +14% on hover. At a line end the points flare to
+    1.4 times their reach and settle over 300 ms (not with reduced motion). Held:
+    the core warms 20% toward Straw, a 1 px Straw ring at 35% round it, the glow
+    Straw at 40%, HELD in `textPrimary` under it (CATCH `textTertiary`,
+    `textSecondary` on hover). Tooltip "Catch: hold the tail".
+  - **Evensong** (476 px wide, as tall as the panels): glass captioned EVENSONG
+    round a well. The last six seconds, now at the right, from a telemetry frame
+    every 5 ms of the audio as it comes out (`vesper::Telemetry`). The sky: the
+    tail after the duck (50 ms RMS, -60..0 dB) as an area rising from the horizon,
+    the hue at 55% at the horizon through 18% to 6% at the top, its edge a 1.5 px
+    line in the hue (`textPrimary` while Catch holds). The land: the dry voice
+    (10 ms RMS) as a ridge in front of it, `canvas` 4% toward the hue at 97%, its
+    edge 1 px `textSecondary` at 60%, so the sky shows only between the words. The
+    horizon 1 px `textPrimary` at 22%. Follow's cutoff dotted through the sky
+    (1 px `textPrimary` at 20%, 50 Hz to 2 kHz on a log scale up the plot). Under
+    the horizon the lane: sung runs as 3 px hue bars, what was kept out of the send
+    as 1.5 px `textTertiary` ticks 2-10 px tall by how much, breaths dotted. A star
+    (7 px, `textPrimary`) on the horizon at each line end with a glow in the hue at
+    30%, 8 px + 12 px times Ends. Grid at -20 and -40 dB (`gridBeat`), beat ticks
+    along the top at the project tempo. Corners: top left SPACE, "Plate · 1.8 s"
+    in mono `title + 1`, the pre-delay ("Auto pre-delay", "1/8 before", "45 ms
+    before") in `value` `textSecondary`; top right DUCK and the reduction now in
+    the hue ("−5.8 dB", a dash when none); along the foot the legend (TAIL, VOICE,
+    KEPT OUT, LINE END) and 6 S · NOW AT THE RIGHT, `captionCaps` `textTertiary`.
+    It repaints itself as frames arrive. Tooltip "The voice and its tail".
+  - **Controls**, on glass at the right (728 px): Decay, Clarity, Duck and Ends as
+    52 px bud knobs in four tiles; a row of three captioned tiles, each on the
+    Evensong panel's rhythm (the caption 8 px down, its content 28 px tall 8 px
+    under it and 8 px clear of the tile's foot): SPACE (Plate, Chamber, Hall as
+    pills in `label`, the chosen filled in the hue), LOOKAHEAD (a segmented
+    control, Off, Short, Long, its track `surface0`) and ONE LINE (what one sung
+    line becomes: the voice as a block, the tail ducked under it by Duck, coming
+    back over Release, lifted by Ends where the line ends, Gap after the voice,
+    with a star, and falling over the decay, longer by Ends); then one tile of 28
+    px bud knobs in 48 px cells in five groups under `captionCaps` captions and
+    hairlines: TIME (Pre-delay, Swell; a chip at the caption's right: Auto, Free
+    or a note value), DUCK (Release, Gap; a chip: Free or a note value), VOICE
+    (Breaths, Follow "Off" at the bottom, Mud), TONE (Size, Low cut, Damping),
+    OUTPUT (Width, Centre, Mix, Output). The pre-delay knob dims to 50% and reads
+    "Auto" or the note value when it is not the time used; the release knob the
+    same when synced; Swell dims without Long lookahead (tooltip "Swell needs Long
+    lookahead").
+  - **Header readout**: "Held" in `textPrimary` while Catch holds, "Line end" in
+    the hue for 600 ms after one, else "Duck −4.2 dB" in `textSecondary` while it
+    ducks.
+  - Body: the 56 px header row and its 10 px gap, the panels (their knob rows' height) and up to
+    26 px of land; its minimum leaves the land out. Width: Evensong, a 14 px gap
+    and the controls.
 - **Tape Echo** (a tape loop machine, the Delay's characterful sibling):
   - A record head and four playback heads at 1, 2, 3 and 4 times head 1's time. Eight
     head combinations: 1, 2, 3, 4, 1+3, 2+4, 1+3+4, all.

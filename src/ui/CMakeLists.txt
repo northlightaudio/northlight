@@ -16,6 +16,7 @@ target_include_directories(northlight_ui_edit PUBLIC "${CMAKE_CURRENT_SOURCE_DIR
 target_link_libraries(northlight_ui_edit PUBLIC northlight_core northlight_options)
 
 add_library(northlight_ui STATIC
+    OpticalCentre.h
     Theme.h
     Theme.cpp
     NorthlightLookAndFeel.h
@@ -87,6 +88,7 @@ add_library(northlight_ui STATIC
     strip/PedalCard.cpp
     strip/ExciterCard.cpp
     strip/BloomCard.cpp
+    strip/VesperCard.cpp
     strip/CoronaCard.cpp
     strip/CoronaFace.h
     strip/HardwareLever.h

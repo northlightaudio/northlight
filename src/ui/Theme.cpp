@@ -131,6 +131,15 @@ int Theme::lineHeight(float size) const
     return static_cast<int>(std::ceil(std::max(ui, mono)));
 }
 
+juce::Font Theme::displayFont(float size, bool italic) const
+{
+    const auto& typeface = italic && fonts.displayItalic != nullptr ? fonts.displayItalic : fonts.display;
+    auto options = typeface != nullptr
+                       ? juce::FontOptions(typeface)
+                       : juce::FontOptions("Georgia", size, italic ? juce::Font::italic : juce::Font::plain);
+    return juce::Font(options.withPointHeight(size));
+}
+
 juce::Font Theme::font(Face face, float size, int weight) const
 {
     if (face == Face::legend)
@@ -337,6 +346,12 @@ bool Theme::apply(const juce::var& tokens, Theme& theme, std::string& error)
         {
             readString(mono, "family", f.monoFamily);
             readString(mono, "file", f.monoFile);
+        }
+        if (const auto& display = font["display"]; display.isObject())
+        {
+            readString(display, "family", f.displayFamily);
+            readString(display, "file", f.displayFile);
+            readString(display, "italicFile", f.displayItalicFile);
         }
         if (const auto& legend = font["legend"]; legend.isObject())
         {
@@ -718,6 +733,9 @@ void Theme::initialise(const juce::File& userOverride)
     current.fonts.mono = loadTypeface(fonts.getChildFile(juce::String(current.fonts.monoFile)));
     current.fonts.legend = loadTypeface(fonts.getChildFile(juce::String(current.fonts.legendFile)));
     current.fonts.legendBold = loadTypeface(fonts.getChildFile(juce::String(current.fonts.legendBoldFile)));
+    current.fonts.display = loadTypeface(fonts.getChildFile(juce::String(current.fonts.displayFile)));
+    current.fonts.displayItalic =
+        loadTypeface(fonts.getChildFile(juce::String(current.fonts.displayItalicFile)));
 }
 
 const Theme& Theme::dark()

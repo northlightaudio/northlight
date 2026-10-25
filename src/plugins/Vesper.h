@@ -2,6 +2,9 @@
 
 #include "engine/Insert.h"
 
+#include <array>
+#include <atomic>
+#include <cstdint>
 #include <memory>
 #include <string>
 
@@ -98,6 +101,50 @@ double preDelaySeconds(
 // The tail's high-pass for a held pitch: `octaves` under it, or 0 (off) when
 // Follow is off or nothing has been sung.
 float followCutoffHz(float heldPitchHz, float octaves) noexcept;
+
+// What Vesper's card draws, live (screens/plugins.md 7.2a): a frame every 5 ms of
+// the audio as it comes out (after the lookahead), published while an editor
+// watches. The real-time thread writes, the UI reads, lock-free, as
+// engine::ProcessorFeedback.
+class Telemetry
+{
+public:
+    enum Value
+    {
+        sound,       // the Listener's last word on the frame: vocal::Sound as a number
+        voiced,      // 1 if any of the frame was sung
+        keptOutDb,   // the most the send was turned down (dB, >= 0): consonants, sibilance, breaths
+        breath,      // 1 if a breath was heard
+        lineEnd,     // 1 if a line ended (Ends began) in the frame
+        heldPitchHz, // the last sung pitch (0 before any)
+        followHz,    // Follow's high-pass now (0: off)
+        dryRms,      // the dry voice's level (10 ms RMS, linear)
+        tailRms,     // the tail's level after the duck (50 ms RMS, linear, before the mix)
+        duckDb,      // how far the tail is ducked (dB, >= 0)
+        held,        // Catch's hold, 0..1
+        valueCount
+    };
+    static constexpr int length = 2048; // frames, about ten seconds
+    static constexpr double frameSeconds = 0.005;
+    using Frame = std::array<float, valueCount>;
+
+    Telemetry();
+
+    // ----- real-time thread -------------------------------------------------------------
+    void publish(const Frame& values) noexcept;
+
+    // ----- UI thread --------------------------------------------------------------------
+    // Frames since `cursor` (the newest `maxFrames`), oldest first; advances it.
+    int read(std::uint64_t& cursor, Frame* out, int maxFrames) const noexcept;
+    std::uint64_t framesWritten() const noexcept { return written_.load(std::memory_order_acquire); }
+
+private:
+    std::unique_ptr<std::atomic<float>[]> frames_;
+    std::atomic<std::uint64_t> written_{0};
+};
+
+// The telemetry of a live Vesper (null for any other processor).
+const Telemetry* telemetryOf(const engine::InsertProcessor* processor) noexcept;
 
 // What a card reads from each feedback frame: input and output peaks, the
 // ducking (`reduction`, dB), the tail's RMS (`extra`, before the mix) and the

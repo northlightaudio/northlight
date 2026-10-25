@@ -76,14 +76,13 @@ inline double coverage(juce::RectangleList<int> list, juce::Rectangle<int> bound
 // Every built-in with a card or an editor: the effects, then the instruments.
 inline std::vector<std::string> builtInTypes()
 {
-    return {
-        plugins::types::gain,    plugins::types::eq,     plugins::types::compressor, plugins::types::opto,
-        "northlight.glue",       "northlight.widener",   "northlight.patina",        "northlight.exciter",
-        "northlight.orbit",      "northlight.bloom",     "northlight.amp",           "northlight.gravity",
-        "northlight.flare",      "northlight.comet",     "northlight.tide",          "northlight.polaris",
-        plugins::types::limiter, plugins::types::reverb, plugins::types::delay,      "northlight.tapeecho",
-        "northlight.aurora",     "northlight.pulsar",    "northlight.nebula",        "northlight.starbit",
-        "northlight.sampler"};
+    return {plugins::types::gain,  plugins::types::eq,      plugins::types::compressor, plugins::types::opto,
+            "northlight.glue",     "northlight.widener",    "northlight.patina",        "northlight.exciter",
+            "northlight.orbit",    "northlight.bloom",      "northlight.vesper",        "northlight.amp",
+            "northlight.gravity",  "northlight.flare",      "northlight.comet",         "northlight.tide",
+            "northlight.polaris",  plugins::types::limiter, plugins::types::reverb,     plugins::types::delay,
+            "northlight.tapeecho", "northlight.aurora",     "northlight.pulsar",        "northlight.nebula",
+            "northlight.starbit",  "northlight.sampler"};
 }
 
 // A card with its processor live, playing a tone into it, at its preferred

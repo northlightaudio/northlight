@@ -24,8 +24,11 @@ Northlight has not had a release yet. The first release, 0.1.0, will include:
   through) lets it listen ahead of the sound: Short has the reverb's send down
   before an "s" starts, and Long throws the last word of each line into the reverb
   and lets Swell build the tail into a line before it is sung. Catch holds the
-  tail as a pad under what comes next. For now it shows the plain parameter
-  editor; its own face comes later.
+  tail as a pad under what comes next. Its face is a dusk sky over the machair:
+  in its display the voice stands as land in front of the reverb's afterglow, so
+  you can see the reverb get out of the way of the words and bloom between them,
+  with a star at each line end; three lights show what it hears, and the evening
+  star in its corner is Catch.
 - Orbit, a studio tape machine for glue and colour on a bus or the master, in the
   effects menu's Drive & Colour group. Its tape is modelled from the way magnetic
   tape really responds, so pushing INPUT compresses softly, adds mostly odd
