@@ -1,9 +1,13 @@
 #include "core/ProjectJson.h"
 
+#include "core/ProjectIds.h"
+
 #include <nlohmann/json.hpp>
 
 #include <algorithm>
 #include <unordered_set>
+#include <utility>
+#include <vector>
 
 namespace northlight::core
 {
@@ -829,116 +833,39 @@ std::optional<Project> projectFromJson(const std::string& text, std::string* err
         // duplicated clip or insert id (a hand-edited or corrupted file) a fresh one
         // rather than letting two objects share one processor or clip identity.
         Id maxId = 0;
+        forEachId(std::as_const(p), [&maxId](Id id) { maxId = std::max(maxId, id); });
+        p.nextId = std::max(p.nextId, maxId + 1);
+        // The takes' ids before the pass: a comp segment names its take by id.
+        std::vector<std::vector<Id>> takeIds;
         for (const auto& t : p.tracks)
-        {
-            maxId = std::max(maxId, t.id);
-            for (const auto& c : t.clips)
-                maxId = std::max(maxId, c.id);
             for (const auto& g : t.takeGroups)
             {
-                maxId = std::max(maxId, g.id);
+                takeIds.emplace_back();
                 for (const auto& take : g.takes)
-                    maxId = std::max(maxId, take.id());
+                    takeIds.back().push_back(take.id());
             }
-            for (const auto& c : t.midiClips)
-            {
-                maxId = std::max(maxId, c.id);
-                for (const auto& n : c.notes)
-                    maxId = std::max(maxId, n.id);
-                for (const auto& e : c.controllers)
-                    maxId = std::max(maxId, e.id);
-            }
-        }
-        for (const auto& i : p.master.inserts)
-            maxId = std::max(maxId, i.id);
-        for (const auto& l : p.master.automation)
-            maxId = std::max(maxId, l.id);
-        for (const auto& b : p.buses)
-        {
-            maxId = std::max(maxId, b.id);
-            for (const auto& i : b.inserts)
-                maxId = std::max(maxId, i.id);
-            for (const auto& i : b.strip)
-                maxId = std::max(maxId, i.id);
-            for (const auto& l : b.automation)
-                maxId = std::max(maxId, l.id);
-        }
-        for (const auto& t : p.tracks)
-        {
-            if (t.hasInstrument())
-                maxId = std::max(maxId, t.instrument.id);
-            for (const auto& i : t.inserts)
-                maxId = std::max(maxId, i.id);
-            for (const auto& i : t.strip)
-                maxId = std::max(maxId, i.id);
-            for (const auto& l : t.automation)
-                maxId = std::max(maxId, l.id);
-        }
-        for (const auto& g : p.groups)
-            maxId = std::max(maxId, g.id);
-        for (const auto& m : p.markers)
-            maxId = std::max(maxId, m.id);
-        p.nextId = std::max(p.nextId, maxId + 1);
         std::unordered_set<Id> seen; // a set: clips can hold many thousands of events
-        const auto fresh = [&](Id& id)
-        {
-            if (id == invalidId || seen.contains(id))
-                id = p.allocateId();
-            seen.insert(id);
-        };
+        forEachId(p,
+                  [&](Id& id)
+                  {
+                      if (id == invalidId || seen.contains(id))
+                          id = p.allocateId();
+                      seen.insert(id);
+                  });
+        size_t group = 0;
         for (auto& t : p.tracks)
-        {
-            fresh(t.id);
-            for (auto& c : t.clips)
-                fresh(c.id);
             for (auto& g : t.takeGroups)
             {
-                fresh(g.id);
-                for (auto& take : g.takes)
+                const auto& was = takeIds[group++];
+                for (auto& segment : g.comp)
                 {
-                    const auto was = take.clip.id;
-                    fresh(take.clip.id);
-                    for (auto& s : g.comp)
-                        s.take = s.take == was ? take.clip.id : s.take;
+                    const auto it = std::find(was.begin(), was.end(), segment.take);
+                    if (it != was.end())
+                        segment.take = g.takes[static_cast<size_t>(it - was.begin())].clip.id;
                 }
                 // A comp clip that had to change its id (a corrupt file) is no longer the group's.
                 std::erase_if(g.clips, [&t](Id id) { return t.findClip(id) == nullptr; });
             }
-            for (auto& c : t.midiClips)
-            {
-                fresh(c.id);
-                for (auto& n : c.notes)
-                    fresh(n.id);
-                for (auto& e : c.controllers)
-                    fresh(e.id);
-            }
-            if (t.hasInstrument())
-                fresh(t.instrument.id);
-            for (auto& i : t.inserts)
-                fresh(i.id);
-            for (auto& i : t.strip)
-                fresh(i.id);
-            for (auto& l : t.automation)
-                fresh(l.id);
-        }
-        for (auto& b : p.buses)
-        {
-            fresh(b.id);
-            for (auto& i : b.inserts)
-                fresh(i.id);
-            for (auto& i : b.strip)
-                fresh(i.id);
-            for (auto& l : b.automation)
-                fresh(l.id);
-        }
-        for (auto& i : p.master.inserts)
-            fresh(i.id);
-        for (auto& l : p.master.automation)
-            fresh(l.id);
-        for (auto& g : p.groups)
-            fresh(g.id);
-        for (auto& m : p.markers)
-            fresh(m.id);
         return p;
     }
     catch (const json::exception& e)

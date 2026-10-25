@@ -13,6 +13,7 @@ add_library(northlight_core STATIC
     Comping.h
     Comping.cpp
     ProjectJson.h
+    ProjectIds.h
     ProjectJson.cpp)
 
 target_include_directories(northlight_core PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/..")

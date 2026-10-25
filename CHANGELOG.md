@@ -181,6 +181,8 @@ Northlight has not had a release yet. The first release, 0.1.0, will include:
 
 ### Fixed
 
+- Opening a project whose id counter is behind its pitch edits no longer lets new
+  ids repeat a vocal note's or a breath's.
 - Choosing an accent or a contrast in Preferences no longer rewrites, or deletes, a
   hand-edited `tokens.json`; those choices have their own file.
 - Cancelling the Save dialog after choosing Save on close no longer makes the next

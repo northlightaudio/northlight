@@ -128,6 +128,46 @@ TEST_CASE("Missing optional fields take defaults and nextId is repaired", "[core
     CHECK(p->nextId == 43);
 }
 
+TEST_CASE("A stale nextId is repaired past vocal note and segment ids too", "[core][json][ids]")
+{
+    Project p;
+    Track t;
+    t.id = 1;
+    AudioClip c;
+    c.id = 2;
+    c.mediaPath = "v.wav";
+    c.length = 1000;
+    c.vocal.analysisVersion = 1;
+    VocalNote note;
+    note.id = 500;
+    note.end = 400;
+    c.vocal.notes.push_back(note);
+    VocalSegment breath;
+    breath.id = 600;
+    breath.start = 400;
+    breath.end = 500;
+    breath.kind = VocalSegmentKind::breath;
+    c.vocal.segments.push_back(breath);
+    t.clips.push_back(c);
+    // A copy on the same track: its vocal ids repeat the first clip's.
+    c.id = 3;
+    t.clips.push_back(c);
+    p.tracks.push_back(t);
+    p.nextId = 4; // stale: below the vocal ids
+
+    const auto loaded = projectFromJson(projectToJson(p));
+    REQUIRE(loaded.has_value());
+    CHECK(loaded->nextId > 600);
+    const auto& clips = loaded->tracks[0].clips;
+    REQUIRE(clips.size() == 2);
+    CHECK(clips[0].vocal.notes[0].id == 500);
+    CHECK(clips[0].vocal.segments[0].id == 600);
+    // The repeated ids got fresh ones.
+    CHECK(clips[1].vocal.notes[0].id > 600);
+    CHECK(clips[1].vocal.segments[0].id > 600);
+    CHECK(clips[1].vocal.notes[0].id != clips[1].vocal.segments[0].id);
+}
+
 TEST_CASE("Wrongly typed fields are reported rather than crashing", "[core][json]")
 {
     std::string error;
