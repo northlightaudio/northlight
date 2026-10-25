@@ -1,5 +1,7 @@
 #include "engine/pitch/PitchAnalysis.h"
 
+#include "engine/pitch/BoxSmooth.h"
+
 #include <algorithm>
 #include <array>
 #include <atomic>
@@ -301,25 +303,10 @@ std::vector<Run> voicedRuns(const std::vector<float>& cents)
     return runs;
 }
 
-// A zero-phase moving average (two passes of a box of 2 * radius + 1) over [a, b).
+// boxSmooth over [a, b) of v.
 std::vector<float> smoothed(const std::vector<float>& v, int a, int b, int radius)
 {
-    std::vector<float> out(v.begin() + a, v.begin() + b);
-    const int n = b - a;
-    std::vector<double> prefix(static_cast<size_t>(n) + 1);
-    for (int pass = 0; pass < 2; ++pass)
-    {
-        prefix[0] = 0.0;
-        for (int i = 0; i < n; ++i)
-            prefix[static_cast<size_t>(i) + 1] = prefix[static_cast<size_t>(i)] + out[static_cast<size_t>(i)];
-        for (int i = 0; i < n; ++i)
-        {
-            const int lo = std::max(0, i - radius), hi = std::min(n, i + radius + 1);
-            out[static_cast<size_t>(i)] = static_cast<float>(
-                (prefix[static_cast<size_t>(hi)] - prefix[static_cast<size_t>(lo)]) / (hi - lo));
-        }
-    }
-    return out;
+    return boxSmooth(std::vector<float>(v.begin() + a, v.begin() + b), radius);
 }
 
 float median(std::vector<float> v)

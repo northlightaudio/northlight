@@ -74,6 +74,7 @@ add_library(northlight_engine STATIC
     ExportDsp.h
     Gain.h
     ExportDsp.cpp
+    pitch/BoxSmooth.h
     pitch/PitchAnalysis.h
     pitch/PitchAnalysis.cpp
     pitch/VocalRender.h

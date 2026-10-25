@@ -1,6 +1,7 @@
 #include "engine/pitch/VocalRender.h"
 
 #include "engine/Gain.h"
+#include "engine/pitch/BoxSmooth.h"
 
 #include <algorithm>
 #include <cmath>
@@ -17,26 +18,6 @@ constexpr int driftRadius = 16;  // frames: the drift is the pitch averaged over
 constexpr double spanMarginSeconds = 0.025;
 constexpr double noteFadeSeconds = 0.010;
 constexpr double segmentFadeSeconds = 0.015;
-
-std::vector<float> boxSmooth(const std::vector<float>& in, int radius)
-{
-    auto out = in;
-    const int n = static_cast<int>(in.size());
-    std::vector<double> prefix(static_cast<size_t>(n) + 1);
-    for (int pass = 0; pass < 2; ++pass)
-    {
-        prefix[0] = 0.0;
-        for (int i = 0; i < n; ++i)
-            prefix[static_cast<size_t>(i) + 1] = prefix[static_cast<size_t>(i)] + out[static_cast<size_t>(i)];
-        for (int i = 0; i < n; ++i)
-        {
-            const int lo = std::max(0, i - radius), hi = std::min(n, i + radius + 1);
-            out[static_cast<size_t>(i)] = static_cast<float>(
-                (prefix[static_cast<size_t>(hi)] - prefix[static_cast<size_t>(lo)]) / (hi - lo));
-        }
-    }
-    return out;
-}
 
 bool joins(const core::VocalNote& a, const core::VocalNote& b) noexcept
 {

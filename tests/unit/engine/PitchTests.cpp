@@ -2,6 +2,7 @@
 #include "core/ProjectJson.h"
 #include "engine/AudioEngine.h"
 #include "engine/Snapshot.h"
+#include "engine/pitch/BoxSmooth.h"
 #include "engine/pitch/Correction.h"
 #include "engine/pitch/PitchAnalysis.h"
 #include "engine/pitch/VocalOps.h"
@@ -788,4 +789,26 @@ TEST_CASE("The engine plays a vocal edit at its new pitch, offset into the media
     }
     const auto b = analyse({out}, rate);
     CHECK(std::abs(medianCents(b, 0.25, 0.8) - (centsOf(220.0) - 300.0)) < 3.0);
+}
+
+TEST_CASE("Box smoothing keeps a level, averages a step over the box and shrinks at the ends",
+          "[engine][pitch]")
+{
+    CHECK(pitch::boxSmooth({}, 4).empty());
+    const auto flat = pitch::boxSmooth(std::vector<float>(20, 3.0f), 4);
+    for (const float v : flat)
+        CHECK(v == Catch::Approx(3.0f));
+
+    // A step from 0 to 1 at 50: the triangle spreads it over 2 * (2r + 1) - 1 frames,
+    // symmetrically about the step, and leaves the ends alone.
+    std::vector<float> step(100, 0.0f);
+    std::fill(step.begin() + 50, step.end(), 1.0f);
+    const auto s = pitch::boxSmooth(step, 2);
+    CHECK(s[0] == 0.0f);
+    CHECK(s[99] == 1.0f);
+    CHECK(s[45] == 0.0f);
+    CHECK(s[54] == 1.0f);
+    CHECK(s[49] + s[50] == Catch::Approx(1.0f)); // zero phase: the halves mirror
+    for (size_t i = 1; i < s.size(); ++i)
+        CHECK(s[i] >= s[i - 1]);
 }
