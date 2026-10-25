@@ -36,8 +36,16 @@ struct Edit
 struct Span
 {
     core::SamplePosition start = 0, length = 0;
+    core::SamplePosition end() const noexcept { return start + length; }
 };
 std::optional<Span> spanOf(const core::Project& project, const ClipRef& ref);
+
+// A clip only lands on a track of its own kind (MIDI on MIDI, audio on audio),
+// whether it is moved, dragged or pasted.
+bool takesClip(const core::Track& track, bool midi) noexcept;
+// The track a clip lands on when moved `rows` rows (clamped to the tracks): null
+// when that track is of the other kind or the clip's track is gone.
+const core::Track* landingTrack(const core::Project& project, const ClipRef& ref, int rows);
 bool contains(const Selection& selection, const ClipRef& ref);
 
 // Removes the selected clips; with ripple, each audio clip's gap closes (later

@@ -435,14 +435,9 @@ private:
         const core::MidiClip* midiClip = nullptr;
         Drag zone = Drag::none; // move, trimLeft, trimRight, fadeIn, fadeOut
     };
-    // A selected clip's span (audio or MIDI), if it still exists.
-    struct Span
-    {
-        core::SamplePosition start = 0, length = 0;
-        core::SamplePosition end() const noexcept { return start + length; }
-    };
-    std::optional<Span> spanOf(const ClipRef& ref) const noexcept;
-    const core::MidiClip* findMidiClip(const ClipRef& ref) const noexcept;
+    // A selected clip's span (audio or MIDI), if it still exists (edit::spanOf).
+    using Span = edit::Span;
+    std::optional<Span> spanOf(const ClipRef& ref) const;
     bool isSelected(const ClipRef& ref) const noexcept;
     Hit hitTest(juce::Point<int> p) const noexcept;
     bool isSelected(core::Id track, core::Id clip) const noexcept;
@@ -635,9 +630,12 @@ private:
     int snapGrid_ = 0;
     bool ripple_ = false;
     Drag drag_ = Drag::none;
-    ClipRef dragClip_;             // the clip under the pointer when the drag began
-    core::AudioClip dragOriginal_; // its state then
-    juce::Point<int> dragStart_;   // pointer at mouse down
+    ClipRef dragClip_; // the clip under the pointer when the drag began
+    // It as it was: its span (audio or MIDI), and an audio clip's state (its source,
+    // stretch and gain, for trims, stretches and the gain drag).
+    Span dragSpan_;
+    core::AudioClip dragAudio_;
+    juce::Point<int> dragStart_; // pointer at mouse down
     core::SamplePosition dragStartSample_ = 0;
     int dragStartRow_ = -1;
     core::SamplePosition moveDelta_ = 0; // preview: move

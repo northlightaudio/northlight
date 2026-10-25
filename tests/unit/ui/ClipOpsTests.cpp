@@ -164,3 +164,15 @@ TEST_CASE("Muting sets only the clips that differ; toggling mutes while any clip
     CHECK_FALSE(ui::edit::isMuted(after, {1, 10}));
     CHECK_FALSE(ui::edit::isMuted(after, {1, 11}));
 }
+
+TEST_CASE("A moved clip lands only on a track of its own kind", "[ui][edit]")
+{
+    const auto p = editProject(); // track 0 audio, track 1 MIDI
+    CHECK(ui::edit::landingTrack(p, {1, 10}, 0) == &p.tracks[0]);
+    CHECK(ui::edit::landingTrack(p, {1, 10}, 1) == nullptr); // audio onto MIDI
+    CHECK(ui::edit::landingTrack(p, {2, 20, true}, -1) == nullptr);
+    CHECK(ui::edit::landingTrack(p, {2, 20, true}, 5) == &p.tracks[1]); // clamped to the last track
+    CHECK(ui::edit::landingTrack(p, {9, 20, true}, 0) == nullptr);      // its track is gone
+    CHECK(ui::edit::takesClip(p.tracks[1], true));
+    CHECK_FALSE(ui::edit::takesClip(p.tracks[1], false));
+}

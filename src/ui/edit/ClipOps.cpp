@@ -23,6 +23,21 @@ std::optional<Span> spanOf(const core::Project& project, const ClipRef& ref)
     return std::nullopt;
 }
 
+bool takesClip(const core::Track& track, bool midi) noexcept
+{
+    return track.isMidi() == midi;
+}
+
+const core::Track* landingTrack(const core::Project& project, const ClipRef& ref, int rows)
+{
+    const int from = project.trackIndex(ref.track);
+    if (from < 0 || project.tracks.empty())
+        return nullptr;
+    const int to = std::clamp(from + rows, 0, static_cast<int>(project.tracks.size()) - 1);
+    const auto& target = project.tracks[static_cast<size_t>(to)];
+    return takesClip(target, ref.midi) ? &target : nullptr;
+}
+
 bool contains(const Selection& selection, const ClipRef& ref)
 {
     return std::find(selection.begin(), selection.end(), ref) != selection.end();
@@ -314,8 +329,8 @@ Edit pasteClips(const core::Project& project,
     {
         const int target = std::clamp(row + item.trackOffset, 0, static_cast<int>(project.tracks.size()) - 1);
         const auto& track = project.tracks[static_cast<size_t>(target)];
-        if (track.isMidi() != item.midi)
-            continue; // a clip only lands on its own kind of track
+        if (!takesClip(track, item.midi))
+            continue;
         if (item.midi)
         {
             auto clip = item.midiClip;
