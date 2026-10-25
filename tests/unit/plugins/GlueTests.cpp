@@ -27,6 +27,7 @@ std::unique_ptr<engine::InsertProcessor> makeGlue()
     REQUIRE(p != nullptr);
     p->prepare(rate, block);
     p->setBypassed(false);
+    p->feedback()->setWatched(true); // as its card does: the meters run only then
     return p;
 }
 

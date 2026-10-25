@@ -168,11 +168,12 @@ private:
             const float outSquare = 0.5f * (left[i] * left[i] + right[i] * right[i]);
             inMeanSquare_ = rmsCoefficient_ * inMeanSquare_ + (1.0f - rmsCoefficient_) * inSquare;
             outMeanSquare_ = rmsCoefficient_ * outMeanSquare_ + (1.0f - rmsCoefficient_) * outSquare;
-            feedback_.addSample(std::max(std::abs(inL), std::abs(inR)),
-                                std::max(std::abs(left[i]), std::abs(right[i])),
-                                reduction,
-                                std::sqrt(inMeanSquare_),
-                                std::sqrt(outMeanSquare_));
+            if (feedback_.watched()) // the meters cost nothing while no editor shows them
+                feedback_.addSample(std::max(std::abs(inL), std::abs(inR)),
+                                    std::max(std::abs(left[i]), std::abs(right[i])),
+                                    reduction,
+                                    std::sqrt(inMeanSquare_),
+                                    std::sqrt(outMeanSquare_));
         }
         makeup_ = targetMakeup;
         // A long silence leaves the stages creeping toward zero: no denormals.

@@ -105,12 +105,27 @@ public:
     }
 
     bool tapsEnabled() const noexcept { return tapsEnabled_.load(std::memory_order_relaxed); }
-    // Whether an editor is showing this processor (a bypassed processor only
-    // measures its input while one is).
-    bool watched() const noexcept { return watched_.load(std::memory_order_relaxed); }
+    // Whether anything shows this processor's readings: its editor, or the mixer's
+    // strip row (gain reduction). The processor measures only while one does, and
+    // a bypassed one measures its input then.
+    bool watched() const noexcept { return watchers_.load(std::memory_order_relaxed) != 0; }
 
     // ----- UI thread --------------------------------------------------------------------
-    void setWatched(bool watched) noexcept { watched_.store(watched, std::memory_order_relaxed); }
+    // Who is looking: each sets and clears its own flag, so one going away does
+    // not blind the other.
+    enum class Watcher : unsigned
+    {
+        editor = 1u,
+        mixer = 2u,
+    };
+    void setWatched(bool watched, Watcher who = Watcher::editor) noexcept
+    {
+        const auto bit = static_cast<unsigned>(who);
+        if (watched)
+            watchers_.fetch_or(bit, std::memory_order_relaxed);
+        else
+            watchers_.fetch_and(~bit, std::memory_order_relaxed);
+    }
     void setTapsEnabled(bool enabled) noexcept { tapsEnabled_.store(enabled, std::memory_order_relaxed); }
     bool hasTaps() const noexcept { return taps_ != nullptr; }
     double sampleRate() const noexcept { return sampleRate_.load(std::memory_order_relaxed); }
@@ -215,7 +230,7 @@ private:
     std::atomic<double> transportSeconds_{0.0};
     std::atomic<bool> transportPlaying_{false};
     std::atomic<bool> tapsEnabled_{false};
-    std::atomic<bool> watched_{false};
+    std::atomic<unsigned> watchers_{0}; // Watcher bits
     // Real-time side only.
     Frame building_;
     int count_ = 0;

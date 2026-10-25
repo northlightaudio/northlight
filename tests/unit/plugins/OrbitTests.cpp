@@ -29,6 +29,7 @@ std::unique_ptr<engine::InsertProcessor> makeOrbit()
     REQUIRE(p != nullptr);
     p->prepare(rate, block);
     p->setBypassed(false);
+    p->feedback()->setWatched(true); // as its card does: the meters run only then
     p->setParameter(ob::flutter, 0.0f);
     p->setParameter(ob::hiss, 0.0f);
     p->setParameter(ob::mix, 100.0f);

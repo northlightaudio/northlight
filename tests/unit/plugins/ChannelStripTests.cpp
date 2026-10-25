@@ -24,6 +24,8 @@ std::unique_ptr<engine::InsertProcessor> makeModule(const std::string& type)
     auto p = strip::create(type);
     REQUIRE(p != nullptr);
     p->prepare(rate, 256);
+    if (auto* fb = p->feedback())
+        fb->setWatched(true); // as an editor showing it does: the meters run only then
     return p;
 }
 
@@ -259,6 +261,7 @@ TEST_CASE("Feedback publishes 200 frames a second and taps on request", "[plugin
 TEST_CASE("A switched-off module measures its input only while watched", "[plugins][strip][feedback]")
 {
     auto c = makeModule(strip::types::compressor);
+    c->feedback()->setWatched(false); // no editor shows it yet
     c->setBypassed(true);
     c->prepare(rate, 256); // settles the bypass
     std::vector<float> l(2400, 0.25f), r(2400, 0.25f);
@@ -270,6 +273,22 @@ TEST_CASE("A switched-off module measures its input only while watched", "[plugi
     CHECK(c->feedback()->framesWritten() == 10);
     CHECK(c->feedback()->latest().input == Approx(0.25f));
     CHECK(c->feedback()->latest().reduction == 0.0f);
+}
+
+TEST_CASE("A module meters while its editor or the mixer's strip row watches it",
+          "[plugins][strip][feedback]")
+{
+    auto c = makeModule(strip::types::compressor);
+    auto* fb = c->feedback();
+    using W = engine::ProcessorFeedback::Watcher;
+    fb->setWatched(false);
+    CHECK_FALSE(fb->watched());
+    fb->setWatched(true, W::mixer);
+    fb->setWatched(true);  // the editor opens
+    fb->setWatched(false); // and closes: the mixer still reads it
+    CHECK(fb->watched());
+    fb->setWatched(false, W::mixer);
+    CHECK_FALSE(fb->watched());
 }
 
 TEST_CASE("A keyed compressor meters its key as its input", "[plugins][strip][compressor][sidechain]")

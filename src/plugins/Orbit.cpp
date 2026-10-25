@@ -525,8 +525,11 @@ private:
             }
             if (++write_ == lineSize_)
                 write_ = 0;
-            const float reduction = squash > 1.0 ? static_cast<float>(10.0 * std::log10(squash)) : 0.0f;
-            feedback_.addSample(inPeak, outPeak, reduction, meters[0], meters[1]);
+            if (feedback_.watched()) // the meters cost nothing while no editor shows them
+            {
+                const float reduction = squash > 1.0 ? static_cast<float>(10.0 * std::log10(squash)) : 0.0f;
+                feedback_.addSample(inPeak, outPeak, reduction, meters[0], meters[1]);
+            }
         }
         for (auto& c : channels_)
         {

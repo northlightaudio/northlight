@@ -61,6 +61,7 @@ TEST_CASE("A new track has the channel strip; a module switched on runs and repo
     auto live = session.liveInsert(comp.id);
     REQUIRE(live != nullptr);
     REQUIRE(live->feedback() != nullptr);
+    live->feedback()->setWatched(true); // as its card does: the meters run only then
     CHECK(live->isBypassed());
 
     // Switching it on is a live command (no recompile, the same instance).
@@ -158,6 +159,7 @@ TEST_CASE("Swapping the compressor for the opto replaces the live processor and 
         trackId, compId, ps::types::opto, plugins::defaultParameters(ps::types::opto), "Swap to opto"));
     auto live = session.liveInsert(compId);
     REQUIRE(live != nullptr);
+    live->feedback()->setWatched(true); // as its card does: the meters run only then
     CHECK(live->typeName() == ps::types::opto);
     CHECK_FALSE(live->isBypassed());
     runBlocks(session, 400, 0.5f);

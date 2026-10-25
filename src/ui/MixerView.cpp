@@ -380,25 +380,50 @@ public:
         repaint();
     }
 
+    ~StripRow() override { stopWatching(); }
+
     // The live gain reduction of the modules that are on (from their feedback).
+    // The row watches the processors it reads, so they meter while it shows.
     void updateReductions(const std::function<std::shared_ptr<engine::InsertProcessor>(core::Id)>& live)
     {
         bool changed = false;
+        std::vector<std::shared_ptr<engine::InsertProcessor>> watching;
         for (auto& cell : cells_)
         {
             float reduction = 0.0f;
             if (cell.on && live)
                 if (const auto p = live(cell.id))
                     if (auto* fb = p->feedback())
+                    {
+                        fb->setWatched(true, engine::ProcessorFeedback::Watcher::mixer);
+                        watching.push_back(p);
                         reduction = fb->latest().reduction;
+                    }
             if (std::abs(reduction - cell.reduction) > 0.25f)
             {
                 cell.reduction = reduction;
                 changed = true;
             }
         }
+        for (const auto& weak : watching_)
+            if (const auto p = weak.lock();
+                p != nullptr && std::find(watching.begin(), watching.end(), p) == watching.end())
+                p->feedback()->setWatched(false, engine::ProcessorFeedback::Watcher::mixer);
+        watching_.assign(watching.begin(), watching.end());
         if (changed)
             repaint();
+    }
+
+    // Hidden (the mixer closed): the processors need not meter for it.
+    void visibilityChanged() override
+    {
+        if (!isShowing())
+            stopWatching();
+    }
+    void parentHierarchyChanged() override
+    {
+        if (!isShowing())
+            stopWatching();
     }
 
     void paint(juce::Graphics& g) override
@@ -506,6 +531,15 @@ private:
 
     const Theme& theme_;
     std::vector<Cell> cells_;
+    std::vector<std::weak_ptr<engine::InsertProcessor>> watching_; // the processors read, watched for the row
+    void stopWatching()
+    {
+        for (const auto& weak : watching_)
+            if (const auto p = weak.lock())
+                if (auto* fb = p->feedback())
+                    fb->setWatched(false, engine::ProcessorFeedback::Watcher::mixer);
+        watching_.clear();
+    }
 };
 
 class MixerView::Strip final : public juce::Component

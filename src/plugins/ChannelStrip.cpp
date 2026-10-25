@@ -492,10 +492,11 @@ private:
             gain_ += (target - gain_) * (target > gain_ ? attack : release);
             left[i] = inL * gain_;
             right[i] = inR * gain_;
-            feedback_.addSample(std::max(std::abs(inL), std::abs(inR)),
-                                std::max(std::abs(left[i]), std::abs(right[i])),
-                                std::max(0.0f, -gainToDb(gain_)),
-                                key);
+            if (feedback_.watched()) // the meters cost nothing while no editor shows them
+                feedback_.addSample(std::max(std::abs(inL), std::abs(inR)),
+                                    std::max(std::abs(left[i]), std::abs(right[i])),
+                                    std::max(0.0f, -gainToDb(gain_)),
+                                    key);
         }
     }
 
@@ -558,8 +559,10 @@ private:
 
     void processAudio(float* left, float* right, int numSamples) noexcept override
     {
-        feedback_.tap(0, left, right, numSamples);
-        const float inPeak = peakOf(left, right, numSamples);
+        const bool watched = feedback_.watched();
+        if (watched)
+            feedback_.tap(0, left, right, numSamples);
+        const float inPeak = watched ? peakOf(left, right, numSamples) : 0.0f;
         const bool ramp = updateCoefficients();
         bool active[eq::maxSections];
         for (int s = 0; s < eq::maxSections; ++s)
@@ -597,8 +600,11 @@ private:
             for (auto& channel : live_)
                 for (size_t s = 0; s < eq::maxSections; ++s)
                     channel[s].blend(targets_[s], targets_[s], 1.0f);
-        feedback_.addBlock(inPeak, peakOf(left, right, numSamples), 0.0f, 0.0f, numSamples);
-        feedback_.tap(1, left, right, numSamples);
+        if (watched)
+        {
+            feedback_.addBlock(inPeak, peakOf(left, right, numSamples), 0.0f, 0.0f, numSamples);
+            feedback_.tap(1, left, right, numSamples);
+        }
     }
 
     // Recomputes the targets when a parameter changed; true when this block
@@ -730,10 +736,11 @@ private:
             right[i] = inR * mixGain;
             // The input meter shows what the detector hears: the key when there
             // is one (the threshold acts on it), else the audio.
-            feedback_.addSample(std::max(std::abs(keyL), std::abs(keyR)),
-                                std::max(std::abs(left[i]), std::abs(right[i])),
-                                reduction,
-                                displayLevel_);
+            if (feedback_.watched()) // the meters cost nothing while no editor shows them
+                feedback_.addSample(std::max(std::abs(keyL), std::abs(keyR)),
+                                    std::max(std::abs(left[i]), std::abs(right[i])),
+                                    reduction,
+                                    displayLevel_);
         }
         makeup_ = targetMakeup;
     }
@@ -901,10 +908,11 @@ private:
             }
             left[i] = inL * (1.0f - wet) + outL * wet;
             right[i] = inR * (1.0f - wet) + outR * wet;
-            feedback_.addSample(std::max(std::abs(inL), std::abs(inR)),
-                                std::max(std::abs(left[i]), std::abs(right[i])),
-                                reduction,
-                                memory_);
+            if (feedback_.watched()) // the meters cost nothing while no editor shows them
+                feedback_.addSample(std::max(std::abs(inL), std::abs(inR)),
+                                    std::max(std::abs(left[i]), std::abs(right[i])),
+                                    reduction,
+                                    memory_);
         }
         makeup_ = targetMakeup;
         drive_ = targetDrive;
@@ -1010,10 +1018,11 @@ private:
                 left[i] = lowL + bandL * g;
                 right[i] = lowR + bandR * g;
             }
-            feedback_.addSample(std::max(std::abs(inL), std::abs(inR)),
-                                std::max(std::abs(left[i]), std::abs(right[i])),
-                                reduction,
-                                envelope_);
+            if (feedback_.watched()) // the meters cost nothing while no editor shows them
+                feedback_.addSample(std::max(std::abs(inL), std::abs(inR)),
+                                    std::max(std::abs(left[i]), std::abs(right[i])),
+                                    reduction,
+                                    envelope_);
         }
     }
 
@@ -1135,7 +1144,8 @@ private:
         }
         drive_ = targetDrive;
         trim_ = targetTrim;
-        feedback_.addBlock(inPeak, outPeak, 0.0f, drivenPeak, numSamples);
+        if (feedback_.watched())
+            feedback_.addBlock(inPeak, outPeak, 0.0f, drivenPeak, numSamples);
     }
 
     struct Channel
@@ -1191,10 +1201,11 @@ private:
             gain_ = needed < gain_ ? needed : std::min(1.0f, release * gain_ + (1.0f - release));
             left[i] = std::clamp(l * gain_, -ceiling, ceiling);
             right[i] = std::clamp(r * gain_, -ceiling, ceiling);
-            feedback_.addSample(peak,
-                                std::max(std::abs(left[i]), std::abs(right[i])),
-                                std::max(0.0f, -gainToDb(gain_)),
-                                0.0f);
+            if (feedback_.watched()) // the meters cost nothing while no editor shows them
+                feedback_.addSample(peak,
+                                    std::max(std::abs(left[i]), std::abs(right[i])),
+                                    std::max(0.0f, -gainToDb(gain_)),
+                                    0.0f);
         }
         input_ = targetInput;
     }

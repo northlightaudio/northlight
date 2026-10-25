@@ -254,6 +254,11 @@ BS.1770 on the master: momentary, short-term and gated integrated. Every callbac
 duration is recorded as a fraction of its deadline in a lock-free histogram, from
 which the status bar shows percentiles, overruns and driver dropouts.
 
+A processor's own readings for its editor (`engine::ProcessorFeedback`: levels,
+gain reduction, analyser taps) are measured only while something shows them: its
+editor, or the mixer's strip row, each setting its own watcher flag. A processor
+nobody looks at spends nothing on its meters.
+
 `rt::CallbackStats` also times when each callback starts, because a callback can do
 its work quickly and still arrive late (another driver holding the CPU, power
 saving, a USB stall), which is heard as a click with no overrun counted. It keeps
