@@ -65,17 +65,20 @@ float staticGainDb(float sustain, float inputDb) noexcept
 
 namespace
 {
+std::vector<engine::ParameterInfo> parameterInfos()
+{
+    std::vector<engine::ParameterInfo> p(count);
+    p[sustain] = {"Sustain", "", 0.0f, 10.0f, 5.0f, false};
+    p[attack] = {"Attack", "", 0.0f, 10.0f, 4.0f, false};
+    p[blend] = {"Blend", "", 0.0f, 10.0f, 10.0f, false};
+    p[level] = {"Level", "dB", -18.0f, 18.0f, 0.0f, false};
+    return p;
+}
+
 class Gravity final : public MeteredBuiltIn
 {
 public:
-    Gravity()
-        : MeteredBuiltIn(type,
-                         {{"Sustain", "", 0.0f, 10.0f, 5.0f, false},
-                          {"Attack", "", 0.0f, 10.0f, 4.0f, false},
-                          {"Blend", "", 0.0f, 10.0f, 10.0f, false},
-                          {"Level", "dB", -18.0f, 18.0f, 0.0f, false}})
-    {
-    }
+    Gravity() : MeteredBuiltIn(type, parameterInfos()) {}
 
 private:
     void prepareBuiltIn(double sampleRate, int) override

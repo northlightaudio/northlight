@@ -197,18 +197,20 @@ constexpr std::uint32_t noiseSeed = 0x2545F491u;
 
 std::vector<engine::ParameterInfo> parameterInfos()
 {
-    return {{"Input", "dB", -12.0f, 18.0f, 0.0f, false},
-            {"Bias", "%", -100.0f, 100.0f, 0.0f, false},
-            choice("Speed", {"7.5 ips", "15 ips", "30 ips"}, ips15),
-            choice("EQ", {"NAB", "CCIR"}, nab),
-            choice("Level", {"+3 dB", "+6 dB", "+9 dB"}, plus6),
-            choice("Tape", {"Classic", "Hot", "Modern"}, classic),
-            {"Hiss", "%", 0.0f, 100.0f, 0.0f, false},
-            {"Flutter", "%", 0.0f, maxFlutterPercent, 0.03f, false},
-            {"Output", "dB", -24.0f, 12.0f, 0.0f, false},
-            {"Mix", "%", 0.0f, 100.0f, 100.0f, false},
-            choice("Link", {"Off", "On"}, 1.0f),
-            choice("Meter", {"Input", "Tape", "Output"}, meterTape)};
+    std::vector<engine::ParameterInfo> p(count);
+    p[input] = {"Input", "dB", -12.0f, 18.0f, 0.0f, false};
+    p[bias] = {"Bias", "%", -100.0f, 100.0f, 0.0f, false};
+    p[speed] = choice("Speed", {"7.5 ips", "15 ips", "30 ips"}, ips15);
+    p[eq] = choice("EQ", {"NAB", "CCIR"}, nab);
+    p[level] = choice("Level", {"+3 dB", "+6 dB", "+9 dB"}, plus6);
+    p[tape] = choice("Tape", {"Classic", "Hot", "Modern"}, classic);
+    p[hiss] = {"Hiss", "%", 0.0f, 100.0f, 0.0f, false};
+    p[flutter] = {"Flutter", "%", 0.0f, maxFlutterPercent, 0.03f, false};
+    p[output] = {"Output", "dB", -24.0f, 12.0f, 0.0f, false};
+    p[mix] = {"Mix", "%", 0.0f, 100.0f, 100.0f, false};
+    p[link] = choice("Link", {"Off", "On"}, 1.0f);
+    p[meter] = choice("Meter", {"Input", "Tape", "Output"}, meterTape);
+    return p;
 }
 
 // The oversampling for a session rate: the tape runs at about 192 kHz.

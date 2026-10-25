@@ -103,20 +103,22 @@ Section design(Shape shape, double sampleRate, double hz, double q = std::number
 
 std::vector<engine::ParameterInfo> parameterInfos()
 {
-    return {{"Low width", "%", 0.0f, maxWidthPercent, 100.0f, false},
-            {"Mid width", "%", 0.0f, maxWidthPercent, 100.0f, false},
-            {"High width", "%", 0.0f, maxWidthPercent, 100.0f, false},
-            {"Low split", "Hz", minLowSplitHz, maxLowSplitHz, 250.0f, true},
-            {"High split", "Hz", minHighSplitHz, maxHighSplitHz, 4000.0f, true},
-            {"Mono below", "Hz", monoOffHz, maxMonoBelowHz, monoOffHz, true},
-            {"Spread", "%", 0.0f, 100.0f, 0.0f, false},
-            choice("Spread mode", {"Diffuse", "Haas"}, 0.0f),
-            {"Haas time", "ms", minHaasMs, maxHaasMs, 12.0f, true},
-            {"Rotation", "\xc2\xb0", -45.0f, 45.0f, 0.0f, false},
-            {"Balance", "%", -100.0f, 100.0f, 0.0f, false},
-            {"Guard", "", 0.0f, 1.0f, 0.0f, false, {"Off", "On"}},
-            {"Guard at", "", minGuardAt, maxGuardAt, 0.0f, false},
-            {"Output", "dB", -24.0f, 12.0f, 0.0f, false}};
+    std::vector<engine::ParameterInfo> p(count);
+    p[lowWidth] = {"Low width", "%", 0.0f, maxWidthPercent, 100.0f, false};
+    p[midWidth] = {"Mid width", "%", 0.0f, maxWidthPercent, 100.0f, false};
+    p[highWidth] = {"High width", "%", 0.0f, maxWidthPercent, 100.0f, false};
+    p[lowSplit] = {"Low split", "Hz", minLowSplitHz, maxLowSplitHz, 250.0f, true};
+    p[highSplit] = {"High split", "Hz", minHighSplitHz, maxHighSplitHz, 4000.0f, true};
+    p[monoBelow] = {"Mono below", "Hz", monoOffHz, maxMonoBelowHz, monoOffHz, true};
+    p[spread] = {"Spread", "%", 0.0f, 100.0f, 0.0f, false};
+    p[spreadMode] = choice("Spread mode", {"Diffuse", "Haas"}, 0.0f);
+    p[haasTime] = {"Haas time", "ms", minHaasMs, maxHaasMs, 12.0f, true};
+    p[rotation] = {"Rotation", "\xc2\xb0", -45.0f, 45.0f, 0.0f, false};
+    p[balance] = {"Balance", "%", -100.0f, 100.0f, 0.0f, false};
+    p[guard] = {"Guard", "", 0.0f, 1.0f, 0.0f, false, {"Off", "On"}};
+    p[guardAt] = {"Guard at", "", minGuardAt, maxGuardAt, 0.0f, false};
+    p[output] = {"Output", "dB", -24.0f, 12.0f, 0.0f, false};
+    return p;
 }
 
 // A one-pole step toward `target` that lands on it, so a control returned to

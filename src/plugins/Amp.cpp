@@ -211,41 +211,43 @@ std::vector<engine::ParameterInfo> parameterInfos()
         models.emplace_back(cabinet::modelName(i));
     for (int i = 0; i < cabinet::micTypeCount; ++i)
         types.emplace_back(cabinet::micTypeName(i));
-    std::vector<engine::ParameterInfo> p{choice("Bright", {"Off", "On"}, 1.0f),
-                                         knob("Volume", 4.0f),
-                                         knob("Treble", 6.0f),
-                                         knob("Middle", 5.0f),
-                                         knob("Bass", 4.0f),
-                                         knob("Reverb", 3.0f),
-                                         knob("Speed", 5.0f),
-                                         knob("Intensity", 6.0f),
-                                         choice("Reverb On", {"Off", "On"}, 1.0f),
-                                         choice("Tremolo On", {"Off", "On"}, 0.0f),
-                                         knob("Master", 10.0f),
-                                         choice("Boost", {"Off", "On"}, 0.0f),
-                                         {"Input", "dB", -24.0f, 24.0f, 0.0f, false},
-                                         {"Gate", "dB", gateOffDb, -20.0f, gateOffDb, false},
-                                         {"Sag", "%", 0.0f, 100.0f, 30.0f, false},
-                                         choice("Quality", {"2x", "4x", "8x"}, 1.0f),
-                                         {"Output", "dB", -24.0f, 12.0f, 0.0f, false},
-                                         choice("Cabinet On", {"Off", "On"}, 1.0f),
-                                         choice("Cabinet", models, static_cast<float>(cabinet::open2x12))};
+    std::vector<engine::ParameterInfo> p(count);
+    p[bright] = onOff("Bright", true);
+    p[volume] = knob("Volume", 4.0f);
+    p[treble] = knob("Treble", 6.0f);
+    p[middle] = knob("Middle", 5.0f);
+    p[bass] = knob("Bass", 4.0f);
+    p[reverb] = knob("Reverb", 3.0f);
+    p[speed] = knob("Speed", 5.0f);
+    p[intensity] = knob("Intensity", 6.0f);
+    p[reverbOn] = onOff("Reverb On", true);
+    p[tremoloOn] = onOff("Tremolo On", false);
+    p[master] = knob("Master", 10.0f);
+    p[boost] = onOff("Boost", false);
+    p[input] = {"Input", "dB", -24.0f, 24.0f, 0.0f, false};
+    p[gate] = {"Gate", "dB", gateOffDb, -20.0f, gateOffDb, false};
+    p[sag] = {"Sag", "%", 0.0f, 100.0f, 30.0f, false};
+    p[quality] = choice("Quality", {"2x", "4x", "8x"}, 1.0f);
+    p[output] = {"Output", "dB", -24.0f, 12.0f, 0.0f, false};
+    p[cabinetOn] = onOff("Cabinet On", true);
+    p[cabinet] = choice("Cabinet", models, static_cast<float>(cabinet::open2x12));
     const cabinet::Mic a; // the defaults: a dynamic just off the cap, up close
     for (int mic = 0; mic < 2; ++mic)
     {
         const std::string n = mic == 0 ? "Mic A " : "Mic B ";
         const bool first = mic == 0;
-        p.push_back(choice(n + "On", {"Off", "On"}, first ? 1.0f : 0.0f));
-        p.push_back(
-            choice(n + "Type", types, static_cast<float>(first ? cabinet::dynamic : cabinet::ribbon)));
-        p.push_back({n + "Position", "%", 0.0f, 100.0f, first ? a.position * 100.0f : 50.0f, false});
-        p.push_back({n + "Distance", "cm", 1.0f, 100.0f, first ? a.distanceCm : 15.0f, true});
-        p.push_back({n + "Angle", "deg", 0.0f, 45.0f, 0.0f, false});
-        p.push_back({n + "Level", "dB", -24.0f, 6.0f, first ? 0.0f : -3.0f, false});
-        p.push_back({n + "Pan", "%", -100.0f, 100.0f, 0.0f, false});
-        p.push_back(choice(n + "Polarity", {"Normal", "Inverted"}, 0.0f));
+        const auto at = [mic](int field) { return static_cast<size_t>(micParam(mic, field)); };
+        p[at(micOn)] = onOff(n + "On", first);
+        p[at(micType)] =
+            choice(n + "Type", types, static_cast<float>(first ? cabinet::dynamic : cabinet::ribbon));
+        p[at(micPosition)] = {n + "Position", "%", 0.0f, 100.0f, first ? a.position * 100.0f : 50.0f, false};
+        p[at(micDistance)] = {n + "Distance", "cm", 1.0f, 100.0f, first ? a.distanceCm : 15.0f, true};
+        p[at(micAngle)] = {n + "Angle", "deg", 0.0f, 45.0f, 0.0f, false};
+        p[at(micLevel)] = {n + "Level", "dB", -24.0f, 6.0f, first ? 0.0f : -3.0f, false};
+        p[at(micPan)] = {n + "Pan", "%", -100.0f, 100.0f, 0.0f, false};
+        p[at(micPolarity)] = choice(n + "Polarity", {"Normal", "Inverted"}, 0.0f);
     }
-    p.push_back({"Room", "%", 0.0f, 100.0f, 10.0f, false});
+    p[room] = {"Room", "%", 0.0f, 100.0f, 10.0f, false};
     return p;
 }
 

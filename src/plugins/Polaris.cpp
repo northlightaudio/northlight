@@ -77,15 +77,18 @@ Note noteFor(float hz, float referenceHz) noexcept
 
 namespace
 {
+std::vector<engine::ParameterInfo> parameterInfos()
+{
+    std::vector<engine::ParameterInfo> p(count);
+    p[reference] = {"Reference", "Hz", minReferenceHz, maxReferenceHz, 440.0f, false};
+    p[mute] = {"Mute", "", 0.0f, 1.0f, 0.0f, false, {"Off", "On"}};
+    return p;
+}
+
 class Polaris final : public MeteredBuiltIn
 {
 public:
-    Polaris()
-        : MeteredBuiltIn(type,
-                         {{"Reference", "Hz", minReferenceHz, maxReferenceHz, 440.0f, false},
-                          {"Mute", "", 0.0f, 1.0f, 0.0f, false, {"Off", "On"}}})
-    {
-    }
+    Polaris() : MeteredBuiltIn(type, parameterInfos()) {}
 
     Reading reading() const noexcept
     {

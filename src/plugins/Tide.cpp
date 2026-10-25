@@ -37,17 +37,20 @@ float triangle(float phase) noexcept
     return phase < 0.5f ? 4.0f * phase - 1.0f : 3.0f - 4.0f * phase;
 }
 
+std::vector<engine::ParameterInfo> parameterInfos()
+{
+    std::vector<engine::ParameterInfo> p(count);
+    p[rate] = {"Rate", "", 0.0f, 10.0f, 3.0f, false};
+    p[depth] = {"Depth", "", 0.0f, 10.0f, 5.0f, false};
+    p[mix] = {"Mix", "", 0.0f, 10.0f, 7.0f, false};
+    p[mode] = {"Mode", "", 0.0f, 1.0f, 0.0f, false, {"Chorus", "Vibrato"}};
+    return p;
+}
+
 class Tide final : public MeteredBuiltIn
 {
 public:
-    Tide()
-        : MeteredBuiltIn(type,
-                         {{"Rate", "", 0.0f, 10.0f, 3.0f, false},
-                          {"Depth", "", 0.0f, 10.0f, 5.0f, false},
-                          {"Mix", "", 0.0f, 10.0f, 7.0f, false},
-                          {"Mode", "", 0.0f, 1.0f, 0.0f, false, {"Chorus", "Vibrato"}}})
-    {
-    }
+    Tide() : MeteredBuiltIn(type, parameterInfos()) {}
 
 private:
     void prepareBuiltIn(double sampleRate, int) override

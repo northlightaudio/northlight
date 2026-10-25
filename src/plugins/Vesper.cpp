@@ -160,31 +160,33 @@ int choiceIndex(float value, int count) noexcept
 
 std::vector<engine::ParameterInfo> parameterInfos()
 {
-    return {choice("Space", {"Plate", "Chamber", "Hall"}, 0.0f),
-            {"Decay", "s", minDecaySeconds, maxDecaySeconds, 1.8f, true},
-            {"Size", "%", minSizePercent, maxSizePercent, 100.0f, false},
-            {"Pre-delay", "ms", 0.0f, maxPreDelayMs, 45.0f, false},
-            choice("Auto pre-delay", {"Off", "On"}, 1.0f),
-            choice("Pre-delay sync", sync::choices(), 0.0f),
-            {"Clarity", "%", 0.0f, 100.0f, 60.0f, false},
-            {"Breaths", "%", 0.0f, 100.0f, 100.0f, false},
-            {"Follow", "oct", minFollowOctaves, maxFollowOctaves, 1.0f, false},
-            {"Mud", "%", 0.0f, 100.0f, 30.0f, false},
-            {"Low cut", "Hz", 20.0f, 1000.0f, 100.0f, true},
-            {"Damping", "Hz", 2000.0f, 20000.0f, 9000.0f, true},
-            {"Width", "%", 0.0f, 150.0f, 100.0f, false},
-            {"Centre", "%", 0.0f, 100.0f, 40.0f, false},
-            {"Duck", "dB", 0.0f, maxDuckDb, 6.0f, false},
-            {"Release", "ms", 50.0f, 2000.0f, 250.0f, true},
-            choice("Release sync", sync::choices(), 8.0f), // 1/8
-            {"Ends", "%", 0.0f, 100.0f, 40.0f, false},
-            {"Gap", "ms", vocal::minGapSeconds * 1000.0f, vocal::maxGapSeconds * 1000.0f, 250.0f, false},
-            {"Mix", "%", 0.0f, 100.0f, 25.0f, false},
-            {"Output", "dB", -12.0f, 12.0f, 0.0f, false},
-            choice("Lookahead", {"Off", "Short", "Long"}, 0.0f),
-            {"Swell", "%", 0.0f, 100.0f, 0.0f, false},
-            choice("Catch", {"Off", "On"}, 0.0f),
-            {"Halo", "%", 0.0f, 100.0f, 0.0f, false}};
+    std::vector<engine::ParameterInfo> p(count);
+    p[space] = choice("Space", {"Plate", "Chamber", "Hall"}, 0.0f);
+    p[decay] = {"Decay", "s", minDecaySeconds, maxDecaySeconds, 1.8f, true};
+    p[size] = {"Size", "%", minSizePercent, maxSizePercent, 100.0f, false};
+    p[preDelay] = {"Pre-delay", "ms", 0.0f, maxPreDelayMs, 45.0f, false};
+    p[preDelayAuto] = choice("Auto pre-delay", {"Off", "On"}, 1.0f);
+    p[preDelaySync] = choice("Pre-delay sync", sync::choices(), 0.0f);
+    p[clarity] = {"Clarity", "%", 0.0f, 100.0f, 60.0f, false};
+    p[breaths] = {"Breaths", "%", 0.0f, 100.0f, 100.0f, false};
+    p[follow] = {"Follow", "oct", minFollowOctaves, maxFollowOctaves, 1.0f, false};
+    p[mud] = {"Mud", "%", 0.0f, 100.0f, 30.0f, false};
+    p[lowCut] = {"Low cut", "Hz", 20.0f, 1000.0f, 100.0f, true};
+    p[damping] = {"Damping", "Hz", 2000.0f, 20000.0f, 9000.0f, true};
+    p[width] = {"Width", "%", 0.0f, 150.0f, 100.0f, false};
+    p[centre] = {"Centre", "%", 0.0f, 100.0f, 40.0f, false};
+    p[duck] = {"Duck", "dB", 0.0f, maxDuckDb, 6.0f, false};
+    p[release] = {"Release", "ms", 50.0f, 2000.0f, 250.0f, true};
+    p[releaseSync] = choice("Release sync", sync::choices(), 8.0f); // 1/8
+    p[ends] = {"Ends", "%", 0.0f, 100.0f, 40.0f, false};
+    p[gap] = {"Gap", "ms", vocal::minGapSeconds * 1000.0f, vocal::maxGapSeconds * 1000.0f, 250.0f, false};
+    p[mix] = {"Mix", "%", 0.0f, 100.0f, 25.0f, false};
+    p[output] = {"Output", "dB", -12.0f, 12.0f, 0.0f, false};
+    p[lookahead] = choice("Lookahead", {"Off", "Short", "Long"}, 0.0f);
+    p[swell] = {"Swell", "%", 0.0f, 100.0f, 0.0f, false};
+    p[catchTail] = choice("Catch", {"Off", "On"}, 0.0f);
+    p[halo] = {"Halo", "%", 0.0f, 100.0f, 0.0f, false};
+    return p;
 }
 
 // Halo: sympathetic strings. Six feedback combs, each tuned to a note the singer

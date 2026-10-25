@@ -293,54 +293,50 @@ constexpr float denormalFloor = 1.0e-15f;
 
 std::vector<engine::ParameterInfo> parameterInfos()
 {
-    return {percent("Age", 50.0f),
-            percent("Pace", 35.0f),
-
-            onOff("Heat", true),
-            choice("Heat character", {"Tube", "Tape", "Iron", "Fuzz"}, 0.0f),
-            percent("Heat drive", 35.0f),
-            percent("Heat tone", 0.0f, -100.0f, 100.0f),
-            percent("Heat breath", 0.0f),
-
-            onOff("Chamber", false),
-            choice("Chamber space", {"Room", "Spring", "Plate"}, 1.0f),
-            percent("Chamber mix", 30.0f),
-            percent("Chamber decay", 40.0f),
-            percent("Chamber tone", -20.0f, -100.0f, 100.0f),
-            percent("Chamber breath", 0.0f),
-
-            onOff("Drift", true),
-            choice("Drift machine", {"Reel", "Deck", "Disc"}, 0.0f),
-            percent("Drift wow", 25.0f),
-            percent("Drift flutter", 20.0f),
-            percent("Drift rate", 50.0f),
-            percent("Drift stereo", 30.0f),
-            percent("Drift breath", 20.0f),
-
-            onOff("Grain", true),
-            choice("Grain source", {"Vinyl", "Tape hiss", "Hum 50 Hz", "Hum 60 Hz", "Room air"}, 0.0f),
-            percent("Grain amount", 30.0f),
-            percent("Grain texture", 35.0f),
-            percent("Grain follow", 0.0f, -100.0f, 100.0f),
-            percent("Grain breath", 0.0f),
-
-            onOff("Wear", true),
-            percent("Wear loss", 30.0f),
-            percent("Wear dropouts", 10.0f),
-            percent("Wear skew", 20.0f),
-            percent("Wear breath", 0.0f),
-
-            onOff("Crush", false),
-            choice("Crush flavour", {"Soft", "Hard", "Mu-law", "Jitter"}, 1.0f),
-            {"Crush bits", "bits", fewestBits, cleanBits, 12.0f, false},
-            {"Crush rate", "Hz", lowestRate, cleanRate, 22050.0f, true},
-            percent("Crush breath", 0.0f),
-
-            percent("Tone", 0.0f, -100.0f, 100.0f),
-            {"Low cut", "Hz", 20.0f, 600.0f, 20.0f, true},
-            {"High cut", "Hz", 2000.0f, 20000.0f, 20000.0f, true},
-            percent("Width", 100.0f, 0.0f, 200.0f),
-            {"Output", "dB", -24.0f, 12.0f, 0.0f, false}};
+    std::vector<engine::ParameterInfo> p(count);
+    p[age] = percent("Age", 50.0f);
+    p[pace] = percent("Pace", 35.0f);
+    p[heatOn] = onOff("Heat", true);
+    p[heatCharacter] = choice("Heat character", {"Tube", "Tape", "Iron", "Fuzz"}, 0.0f);
+    p[heatDrive] = percent("Heat drive", 35.0f);
+    p[heatTone] = percent("Heat tone", 0.0f, -100.0f, 100.0f);
+    p[heatBreath] = percent("Heat breath", 0.0f);
+    p[chamberOn] = onOff("Chamber", false);
+    p[chamberType] = choice("Chamber space", {"Room", "Spring", "Plate"}, 1.0f);
+    p[chamberMix] = percent("Chamber mix", 30.0f);
+    p[chamberDecay] = percent("Chamber decay", 40.0f);
+    p[chamberTone] = percent("Chamber tone", -20.0f, -100.0f, 100.0f);
+    p[chamberBreath] = percent("Chamber breath", 0.0f);
+    p[driftOn] = onOff("Drift", true);
+    p[driftMachine] = choice("Drift machine", {"Reel", "Deck", "Disc"}, 0.0f);
+    p[driftWow] = percent("Drift wow", 25.0f);
+    p[driftFlutter] = percent("Drift flutter", 20.0f);
+    p[driftRate] = percent("Drift rate", 50.0f);
+    p[driftStereo] = percent("Drift stereo", 30.0f);
+    p[driftBreath] = percent("Drift breath", 20.0f);
+    p[grainOn] = onOff("Grain", true);
+    p[grainSource] =
+        choice("Grain source", {"Vinyl", "Tape hiss", "Hum 50 Hz", "Hum 60 Hz", "Room air"}, 0.0f);
+    p[grainAmount] = percent("Grain amount", 30.0f);
+    p[grainTexture] = percent("Grain texture", 35.0f);
+    p[grainFollow] = percent("Grain follow", 0.0f, -100.0f, 100.0f);
+    p[grainBreath] = percent("Grain breath", 0.0f);
+    p[wearOn] = onOff("Wear", true);
+    p[wearLoss] = percent("Wear loss", 30.0f);
+    p[wearDropouts] = percent("Wear dropouts", 10.0f);
+    p[wearSkew] = percent("Wear skew", 20.0f);
+    p[wearBreath] = percent("Wear breath", 0.0f);
+    p[crushOn] = onOff("Crush", false);
+    p[crushFlavour] = choice("Crush flavour", {"Soft", "Hard", "Mu-law", "Jitter"}, 1.0f);
+    p[crushBits] = {"Crush bits", "bits", fewestBits, cleanBits, 12.0f, false};
+    p[crushRate] = {"Crush rate", "Hz", lowestRate, cleanRate, 22050.0f, true};
+    p[crushBreath] = percent("Crush breath", 0.0f);
+    p[tone] = percent("Tone", 0.0f, -100.0f, 100.0f);
+    p[lowCut] = {"Low cut", "Hz", 20.0f, 600.0f, 20.0f, true};
+    p[highCut] = {"High cut", "Hz", 2000.0f, 20000.0f, 20000.0f, true};
+    p[width] = percent("Width", 100.0f, 0.0f, 200.0f);
+    p[output] = {"Output", "dB", -24.0f, 12.0f, 0.0f, false};
+    return p;
 }
 
 constexpr int subBlock = 32;

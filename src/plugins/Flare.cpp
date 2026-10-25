@@ -53,17 +53,20 @@ float clipCurve(int clipper, float volts) noexcept
 
 namespace
 {
+std::vector<engine::ParameterInfo> parameterInfos()
+{
+    std::vector<engine::ParameterInfo> p(count);
+    p[drive] = {"Drive", "", 0.0f, 10.0f, 5.0f, false};
+    p[tone] = {"Tone", "", 0.0f, 10.0f, 5.0f, false};
+    p[level] = {"Level", "", 0.0f, 10.0f, 5.0f, false};
+    p[clip] = {"Clip", "", 0.0f, 2.0f, 0.0f, false, {"Silicon", "LED", "Open"}};
+    return p;
+}
+
 class Flare final : public MeteredBuiltIn
 {
 public:
-    Flare()
-        : MeteredBuiltIn(type,
-                         {{"Drive", "", 0.0f, 10.0f, 5.0f, false},
-                          {"Tone", "", 0.0f, 10.0f, 5.0f, false},
-                          {"Level", "", 0.0f, 10.0f, 5.0f, false},
-                          {"Clip", "", 0.0f, 2.0f, 0.0f, false, {"Silicon", "LED", "Open"}}})
-    {
-    }
+    Flare() : MeteredBuiltIn(type, parameterInfos()) {}
 
 private:
     void prepareBuiltIn(double sampleRate, int) override

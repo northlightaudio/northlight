@@ -208,19 +208,21 @@ float smoothstep(float t) noexcept
 
 std::vector<engine::ParameterInfo> parameterInfos()
 {
-    return {{"Frequency", "Hz", minFrequency, maxFrequency, 3500.0f, true},
-            {"Drive", "dB", 0.0f, maxDriveDb, 8.0f, false},
-            choice("Character", {"Tube", "Tape", "Air", "Crisp"}, static_cast<float>(tube)),
-            {"Amount", "%", 0.0f, 100.0f, 35.0f, false},
-            {"Focus", "%", -100.0f, 100.0f, 0.0f, false},
-            {"Dynamics", "%", -100.0f, 100.0f, 0.0f, false},
-            {"Transients", "%", 0.0f, 100.0f, 0.0f, false},
-            {"Stereo", "%", 0.0f, 100.0f, 0.0f, false},
-            {"Bass Freq", "Hz", minBassFrequency, maxBassFrequency, 90.0f, true},
-            {"Bass", "%", 0.0f, 100.0f, 0.0f, false},
-            {"Mix", "%", 0.0f, 100.0f, 100.0f, false},
-            {"Output", "dB", -18.0f, 12.0f, 0.0f, false},
-            choice("Auto Gain", {"Off", "On"}, 1.0f)};
+    std::vector<engine::ParameterInfo> p(count);
+    p[frequency] = {"Frequency", "Hz", minFrequency, maxFrequency, 3500.0f, true};
+    p[drive] = {"Drive", "dB", 0.0f, maxDriveDb, 8.0f, false};
+    p[character] = choice("Character", {"Tube", "Tape", "Air", "Crisp"}, static_cast<float>(tube));
+    p[amount] = {"Amount", "%", 0.0f, 100.0f, 35.0f, false};
+    p[focus] = {"Focus", "%", -100.0f, 100.0f, 0.0f, false};
+    p[dynamics] = {"Dynamics", "%", -100.0f, 100.0f, 0.0f, false};
+    p[transients] = {"Transients", "%", 0.0f, 100.0f, 0.0f, false};
+    p[stereo] = {"Stereo", "%", 0.0f, 100.0f, 0.0f, false};
+    p[bassFrequency] = {"Bass Freq", "Hz", minBassFrequency, maxBassFrequency, 90.0f, true};
+    p[bass] = {"Bass", "%", 0.0f, 100.0f, 0.0f, false};
+    p[mix] = {"Mix", "%", 0.0f, 100.0f, 100.0f, false};
+    p[output] = {"Output", "dB", -18.0f, 12.0f, 0.0f, false};
+    p[autoGain] = choice("Auto Gain", {"Off", "On"}, 1.0f);
+    return p;
 }
 
 // ----- the processor ------------------------------------------------------------------------

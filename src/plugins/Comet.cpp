@@ -40,17 +40,20 @@ float feedbackGain(float repeats) noexcept
 
 namespace
 {
+std::vector<engine::ParameterInfo> parameterInfos()
+{
+    std::vector<engine::ParameterInfo> p(count);
+    p[time] = {"Time", "ms", minTimeMs, maxTimeMs, 350.0f, true};
+    p[repeats] = {"Repeats", "", 0.0f, 10.0f, 4.0f, false};
+    p[mix] = {"Mix", "", 0.0f, 10.0f, 5.0f, false};
+    p[mod] = {"Mod", "", 0.0f, 1.0f, 0.0f, false, {"Off", "On"}};
+    return p;
+}
+
 class Comet final : public MeteredBuiltIn
 {
 public:
-    Comet()
-        : MeteredBuiltIn(type,
-                         {{"Time", "ms", minTimeMs, maxTimeMs, 350.0f, true},
-                          {"Repeats", "", 0.0f, 10.0f, 4.0f, false},
-                          {"Mix", "", 0.0f, 10.0f, 5.0f, false},
-                          {"Mod", "", 0.0f, 1.0f, 0.0f, false, {"Off", "On"}}})
-    {
-    }
+    Comet() : MeteredBuiltIn(type, parameterInfos()) {}
 
 private:
     void prepareBuiltIn(double sampleRate, int) override

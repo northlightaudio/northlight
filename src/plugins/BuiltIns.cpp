@@ -81,19 +81,25 @@ public:
         midQ,
         highHz,
         highDb,
+        count
     };
 
-    Eq()
-        : MeteredBuiltIn(types::eq,
-                         {{"High-pass", "Hz", 0.0f, 1000.0f, 0.0f, true},
-                          {"Low freq", "Hz", 30.0f, 1000.0f, 120.0f, true},
-                          {"Low gain", "dB", -18.0f, 18.0f, 0.0f, false},
-                          {"Mid freq", "Hz", 100.0f, 10000.0f, 1000.0f, true},
-                          {"Mid gain", "dB", -18.0f, 18.0f, 0.0f, false},
-                          {"Mid Q", "", 0.3f, 10.0f, 1.0f, true},
-                          {"High freq", "Hz", 1500.0f, 18000.0f, 8000.0f, true},
-                          {"High gain", "dB", -18.0f, 18.0f, 0.0f, false}},
-                         true) // taps for the editor's analyser
+    static std::vector<engine::ParameterInfo> parameterInfos()
+    {
+        std::vector<engine::ParameterInfo> p(count);
+        p[highPassHz] = {"High-pass", "Hz", 0.0f, 1000.0f, 0.0f, true};
+        p[lowHz] = {"Low freq", "Hz", 30.0f, 1000.0f, 120.0f, true};
+        p[lowDb] = {"Low gain", "dB", -18.0f, 18.0f, 0.0f, false};
+        p[midHz] = {"Mid freq", "Hz", 100.0f, 10000.0f, 1000.0f, true};
+        p[midDb] = {"Mid gain", "dB", -18.0f, 18.0f, 0.0f, false};
+        p[midQ] = {"Mid Q", "", 0.3f, 10.0f, 1.0f, true};
+        p[highHz] = {"High freq", "Hz", 1500.0f, 18000.0f, 8000.0f, true};
+        p[highDb] = {"High gain", "dB", -18.0f, 18.0f, 0.0f, false};
+        return p;
+    }
+
+    Eq() : MeteredBuiltIn(types::eq, parameterInfos(),
+                          true) // taps for the editor's analyser
     {
     }
 
@@ -187,17 +193,21 @@ public:
         ceilingDb,
         releaseMs,
         lookaheadMs,
+        count
     };
 
     static constexpr float maxLookaheadMs = 10.0f;
 
-    Limiter()
-        : MeteredBuiltIn(types::limiter,
-                         {{"Ceiling", "dB", -24.0f, 0.0f, -0.3f, false},
-                          {"Release", "ms", 1.0f, 1000.0f, 50.0f, true},
-                          {"Lookahead", "ms", 0.0f, maxLookaheadMs, 1.5f, false}})
+    static std::vector<engine::ParameterInfo> parameterInfos()
     {
+        std::vector<engine::ParameterInfo> p(count);
+        p[ceilingDb] = {"Ceiling", "dB", -24.0f, 0.0f, -0.3f, false};
+        p[releaseMs] = {"Release", "ms", 1.0f, 1000.0f, 50.0f, true};
+        p[lookaheadMs] = {"Lookahead", "ms", 0.0f, maxLookaheadMs, 1.5f, false};
+        return p;
     }
+
+    Limiter() : MeteredBuiltIn(types::limiter, parameterInfos()) {}
 
     // Lookahead: the signal is delayed by L samples while the gain the next L
     // samples need is already known, so a peak is attenuated before it arrives and
@@ -365,17 +375,20 @@ public:
     static constexpr int lines = 8;
     static constexpr float maxPreDelayMs = 250.0f;
 
-    Reverb()
-        : MeteredBuiltIn(types::reverb,
-                         {{"Pre-delay", "ms", 0.0f, maxPreDelayMs, 20.0f, false},
-                          {"Decay", "s", 0.2f, 12.0f, 2.0f, true},
-                          {"Size", "%", 0.0f, 100.0f, 60.0f, false},
-                          {"Damping", "Hz", 1000.0f, 20000.0f, 6000.0f, true},
-                          {"Low cut", "Hz", 20.0f, 1000.0f, 120.0f, true},
-                          {"Width", "%", 0.0f, 100.0f, 100.0f, false},
-                          {"Mix", "%", 0.0f, 100.0f, 30.0f, false}})
+    static std::vector<engine::ParameterInfo> parameterInfos()
     {
+        std::vector<engine::ParameterInfo> p(reverb::count);
+        p[reverb::preDelay] = {"Pre-delay", "ms", 0.0f, maxPreDelayMs, 20.0f, false};
+        p[reverb::decay] = {"Decay", "s", 0.2f, 12.0f, 2.0f, true};
+        p[reverb::size] = {"Size", "%", 0.0f, 100.0f, 60.0f, false};
+        p[reverb::damping] = {"Damping", "Hz", 1000.0f, 20000.0f, 6000.0f, true};
+        p[reverb::lowCut] = {"Low cut", "Hz", 20.0f, 1000.0f, 120.0f, true};
+        p[reverb::width] = {"Width", "%", 0.0f, 100.0f, 100.0f, false};
+        p[reverb::mix] = {"Mix", "%", 0.0f, 100.0f, 30.0f, false};
+        return p;
     }
+
+    Reverb() : MeteredBuiltIn(types::reverb, parameterInfos()) {}
 
 private:
     // Line lengths at 44.1 kHz and size 1 (mutually prime), and the diffusers'.
@@ -517,17 +530,20 @@ public:
     static constexpr float maxTimeMs = 2000.0f;
     static constexpr double bufferSeconds = 4.0;
 
-    Delay()
-        : MeteredBuiltIn(
-              types::delay,
-              {{"Time", "ms", 1.0f, maxTimeMs, 375.0f, true},
-               {"Feedback", "%", 0.0f, 95.0f, 35.0f, false},
-               {"Tone", "Hz", 500.0f, 20000.0f, 8000.0f, true},
-               {"Ping-pong", "", 0.0f, 1.0f, 0.0f, false, {"Off", "On"}},
-               {"Mix", "%", 0.0f, 100.0f, 30.0f, false},
-               {"Sync", "", 0.0f, static_cast<float>(sync::choiceCount - 1), 0.0f, false, sync::choices()}})
+    static std::vector<engine::ParameterInfo> parameterInfos()
     {
+        std::vector<engine::ParameterInfo> p(delay::count);
+        p[delay::time] = {"Time", "ms", 1.0f, maxTimeMs, 375.0f, true};
+        p[delay::feedback] = {"Feedback", "%", 0.0f, 95.0f, 35.0f, false};
+        p[delay::tone] = {"Tone", "Hz", 500.0f, 20000.0f, 8000.0f, true};
+        p[delay::pingPong] = {"Ping-pong", "", 0.0f, 1.0f, 0.0f, false, {"Off", "On"}};
+        p[delay::mix] = {"Mix", "%", 0.0f, 100.0f, 30.0f, false};
+        p[delay::sync] = {
+            "Sync", "", 0.0f, static_cast<float>(sync::choiceCount - 1), 0.0f, false, sync::choices()};
+        return p;
     }
+
+    Delay() : MeteredBuiltIn(types::delay, parameterInfos()) {}
 
 private:
     void prepareBuiltIn(double sampleRate, int) override

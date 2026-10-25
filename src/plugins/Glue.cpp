@@ -61,13 +61,16 @@ namespace
 {
 std::vector<engine::ParameterInfo> parameterInfos()
 {
-    return {{"Threshold", "dB", -40.0f, 0.0f, -18.0f, false},
-            choice("Ratio", {"1.5:1", "2:1", "4:1", "10:1"}, 1.0f),
-            choice("Attack", {"0.1 ms", "0.3 ms", "1 ms", "3 ms", "10 ms", "30 ms"}, 4.0f),
-            choice("Release", {"0.1 s", "0.3 s", "0.6 s", "1.2 s", "Auto"}, static_cast<float>(autoRelease)),
-            {"Makeup", "dB", 0.0f, 20.0f, 0.0f, false},
-            {"Key HP", "Hz", keyHighPassOffHz, 400.0f, keyHighPassOffHz, true},
-            {"Mix", "%", 0.0f, 100.0f, 100.0f, false}};
+    std::vector<engine::ParameterInfo> p(count);
+    p[threshold] = {"Threshold", "dB", -40.0f, 0.0f, -18.0f, false};
+    p[ratio] = choice("Ratio", {"1.5:1", "2:1", "4:1", "10:1"}, 1.0f);
+    p[attack] = choice("Attack", {"0.1 ms", "0.3 ms", "1 ms", "3 ms", "10 ms", "30 ms"}, 4.0f);
+    p[release] =
+        choice("Release", {"0.1 s", "0.3 s", "0.6 s", "1.2 s", "Auto"}, static_cast<float>(autoRelease));
+    p[makeup] = {"Makeup", "dB", 0.0f, 20.0f, 0.0f, false};
+    p[keyHighPass] = {"Key HP", "Hz", keyHighPassOffHz, 400.0f, keyHighPassOffHz, true};
+    p[mix] = {"Mix", "%", 0.0f, 100.0f, 100.0f, false};
+    return p;
 }
 
 // Stereo linked: one detector for both sides, on the louder of the two after the

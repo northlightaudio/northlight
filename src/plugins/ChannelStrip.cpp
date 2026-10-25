@@ -392,23 +392,26 @@ protected:
 
 // ----- gate -----------------------------------------------------------------------------------
 
+std::vector<engine::ParameterInfo> gateParameters()
+{
+    std::vector<engine::ParameterInfo> p(gate::count);
+    p[gate::threshold] = {"Threshold", "dB", -80.0f, 0.0f, -40.0f, false};
+    p[gate::range] = {"Range", "dB", 0.0f, 80.0f, 40.0f, false};
+    p[gate::attack] = {"Attack", "ms", 0.05f, 50.0f, 0.5f, true};
+    p[gate::hold] = {"Hold", "ms", 0.0f, 500.0f, 30.0f, false};
+    p[gate::release] = {"Release", "ms", 5.0f, 2000.0f, 120.0f, true};
+    p[gate::keyHighPass] = {"Key HP", "Hz", 20.0f, 2000.0f, 20.0f, true};
+    p[gate::keyLowPass] = {"Key LP", "Hz", 1000.0f, 20000.0f, 20000.0f, true};
+    return p;
+}
+
 // A key-filtered peak detector opens the gate above the threshold; it closes
 // after the hold time once the key falls `hysteresisDb` below it. The gain
 // moves between unity and -range at the attack and release rates.
 class Gate final : public StripProcessor
 {
 public:
-    Gate()
-        : StripProcessor(types::gate,
-                         {{"Threshold", "dB", -80.0f, 0.0f, -40.0f, false},
-                          {"Range", "dB", 0.0f, 80.0f, 40.0f, false},
-                          {"Attack", "ms", 0.05f, 50.0f, 0.5f, true},
-                          {"Hold", "ms", 0.0f, 500.0f, 30.0f, false},
-                          {"Release", "ms", 5.0f, 2000.0f, 120.0f, true},
-                          {"Key HP", "Hz", 20.0f, 2000.0f, 20.0f, true},
-                          {"Key LP", "Hz", 1000.0f, 20000.0f, 20000.0f, true}})
-    {
-    }
+    Gate() : StripProcessor(types::gate, gateParameters()) {}
 
 private:
     void prepareModule(double, int) override
@@ -639,6 +642,21 @@ private:
 
 // ----- compressor -----------------------------------------------------------------------------
 
+std::vector<engine::ParameterInfo> compressorParameters()
+{
+    std::vector<engine::ParameterInfo> p(compressor::count);
+    p[compressor::threshold] = {"Threshold", "dB", -60.0f, 0.0f, -18.0f, false};
+    p[compressor::ratio] = {"Ratio", ":1", 1.0f, 20.0f, 3.0f, true};
+    p[compressor::attack] = {"Attack", "ms", 0.1f, 100.0f, 10.0f, true};
+    p[compressor::release] = {"Release", "ms", 10.0f, 2000.0f, 120.0f, true};
+    p[compressor::knee] = {"Knee", "dB", 0.0f, 24.0f, 6.0f, false};
+    p[compressor::makeup] = {"Makeup", "dB", 0.0f, 24.0f, 0.0f, false};
+    p[compressor::autoMakeup] = choice("Auto makeup", {"Off", "On"}, 0.0f);
+    p[compressor::detector] = choice("Detector", {"Peak", "RMS"}, 0.0f);
+    p[compressor::mix] = {"Mix", "%", 0.0f, 100.0f, 100.0f, false};
+    return p;
+}
+
 // Feed-forward, stereo-linked: a peak or RMS detector, the soft-knee curve on
 // its level, the reduction smoothed with attack and release (smoothing the
 // curve's output rather than the level keeps a waveform's troughs from
@@ -650,17 +668,7 @@ class Compressor final : public StripProcessor
 {
 public:
     explicit Compressor(const std::string& type = types::compressor, bool keyed = false)
-        : StripProcessor(type,
-                         {{"Threshold", "dB", -60.0f, 0.0f, -18.0f, false},
-                          {"Ratio", ":1", 1.0f, 20.0f, 3.0f, true},
-                          {"Attack", "ms", 0.1f, 100.0f, 10.0f, true},
-                          {"Release", "ms", 10.0f, 2000.0f, 120.0f, true},
-                          {"Knee", "dB", 0.0f, 24.0f, 6.0f, false},
-                          {"Makeup", "dB", 0.0f, 24.0f, 0.0f, false},
-                          choice("Auto makeup", {"Off", "On"}, 0.0f),
-                          choice("Detector", {"Peak", "RMS"}, 0.0f),
-                          {"Mix", "%", 0.0f, 100.0f, 100.0f, false}}),
-          keyed_(keyed)
+        : StripProcessor(type, compressorParameters()), keyed_(keyed)
     {
     }
 
@@ -741,6 +749,18 @@ private:
 
 // ----- opto compressor ------------------------------------------------------------------------
 
+std::vector<engine::ParameterInfo> optoParameters()
+{
+    std::vector<engine::ParameterInfo> p(opto::count);
+    p[opto::peakReduction] = {"Peak reduction", "%", 0.0f, 100.0f, 40.0f, false};
+    p[opto::gain] = {"Gain", "dB", -12.0f, 24.0f, 0.0f, false};
+    p[opto::mode] = choice("Mode", {"Compress", "Limit"}, 0.0f);
+    p[opto::emphasis] = {"Emphasis", "%", 0.0f, 100.0f, 0.0f, false};
+    p[opto::colour] = {"Colour", "%", 0.0f, 100.0f, 30.0f, false};
+    p[opto::mix] = {"Mix", "%", 0.0f, 100.0f, 100.0f, false};
+    return p;
+}
+
 // A model of an LA-2A style optical compressor, stereo-linked:
 //  - Feedback: the detector hears the previous output sample (after the cell,
 //    before the make-up), through an optional high shelf (Emphasis). A peak
@@ -759,16 +779,7 @@ private:
 class Opto final : public StripProcessor
 {
 public:
-    explicit Opto(const std::string& type = types::opto)
-        : StripProcessor(type,
-                         {{"Peak reduction", "%", 0.0f, 100.0f, 40.0f, false},
-                          {"Gain", "dB", -12.0f, 24.0f, 0.0f, false},
-                          choice("Mode", {"Compress", "Limit"}, 0.0f),
-                          {"Emphasis", "%", 0.0f, 100.0f, 0.0f, false},
-                          {"Colour", "%", 0.0f, 100.0f, 30.0f, false},
-                          {"Mix", "%", 0.0f, 100.0f, 100.0f, false}})
-    {
-    }
+    explicit Opto(const std::string& type = types::opto) : StripProcessor(type, optoParameters()) {}
 
 private:
     static constexpr double valveBias = 0.25; // saturation's tube curve
@@ -930,6 +941,17 @@ private:
 
 // ----- de-esser -------------------------------------------------------------------------------
 
+std::vector<engine::ParameterInfo> deesserParameters()
+{
+    std::vector<engine::ParameterInfo> p(deesser::count);
+    p[deesser::frequency] = {"Frequency", "Hz", 2000.0f, 16000.0f, 6000.0f, true};
+    p[deesser::threshold] = {"Threshold", "dB", -60.0f, 0.0f, -30.0f, false};
+    p[deesser::range] = {"Range", "dB", 0.0f, 24.0f, 8.0f, false};
+    p[deesser::mode] = choice("Mode", {"Split", "Wide"}, 0.0f);
+    p[deesser::listen] = choice("Listen", {"Off", "On"}, 0.0f);
+    return p;
+}
+
 // A 24 dB Linkwitz-Riley crossover splits the signal at the frequency (the two
 // bands sum back flat). The high band's envelope above the threshold sets the
 // reduction, applied to the high band alone (split) or the whole signal
@@ -937,15 +959,7 @@ private:
 class DeEsser final : public StripProcessor
 {
 public:
-    DeEsser()
-        : StripProcessor(types::deesser,
-                         {{"Frequency", "Hz", 2000.0f, 16000.0f, 6000.0f, true},
-                          {"Threshold", "dB", -60.0f, 0.0f, -30.0f, false},
-                          {"Range", "dB", 0.0f, 24.0f, 8.0f, false},
-                          choice("Mode", {"Split", "Wide"}, 0.0f),
-                          choice("Listen", {"Off", "On"}, 0.0f)})
-    {
-    }
+    DeEsser() : StripProcessor(types::deesser, deesserParameters()) {}
 
 private:
     void prepareModule(double, int) override
@@ -1020,21 +1034,24 @@ private:
 
 // ----- saturation -----------------------------------------------------------------------------
 
+std::vector<engine::ParameterInfo> saturationParameters()
+{
+    std::vector<engine::ParameterInfo> p(saturation::count);
+    p[saturation::drive] = {"Drive", "dB", 0.0f, 36.0f, 6.0f, false};
+    p[saturation::type] = choice("Type", {"Tape", "Tube", "Clip"}, 0.0f);
+    p[saturation::tone] = {"Tone", "", -1.0f, 1.0f, 0.0f, false};
+    p[saturation::output] = {"Output", "dB", -24.0f, 12.0f, 0.0f, false};
+    p[saturation::mix] = {"Mix", "%", 0.0f, 100.0f, 100.0f, false};
+    return p;
+}
+
 // Drive into a static curve with first-order antiderivative anti-aliasing (no
 // oversampling, so no latency), a DC blocker for the biased curve, a tone
 // shelf, output trim and an internal wet/dry.
 class Saturation final : public StripProcessor
 {
 public:
-    Saturation()
-        : StripProcessor(types::saturation,
-                         {{"Drive", "dB", 0.0f, 36.0f, 6.0f, false},
-                          choice("Type", {"Tape", "Tube", "Clip"}, 0.0f),
-                          {"Tone", "", -1.0f, 1.0f, 0.0f, false},
-                          {"Output", "dB", -24.0f, 12.0f, 0.0f, false},
-                          {"Mix", "%", 0.0f, 100.0f, 100.0f, false}})
-    {
-    }
+    Saturation() : StripProcessor(types::saturation, saturationParameters()) {}
 
 private:
     void prepareModule(double, int) override
@@ -1152,19 +1169,22 @@ private:
 
 // ----- limiter --------------------------------------------------------------------------------
 
+std::vector<engine::ParameterInfo> limiterParameters()
+{
+    std::vector<engine::ParameterInfo> p(limiter::count);
+    p[limiter::input] = {"Input", "dB", 0.0f, 24.0f, 0.0f, false};
+    p[limiter::ceiling] = {"Ceiling", "dB", -12.0f, 0.0f, -0.3f, false};
+    p[limiter::release] = {"Release", "ms", 1.0f, 1000.0f, 60.0f, true};
+    return p;
+}
+
 // Zero-latency peak limiter: the gain drops at once to what the sample needs
 // and recovers at the release rate; the output is clamped to the ceiling. No
 // lookahead, so a strip that is switched off adds no delay to the channel.
 class Limiter final : public StripProcessor
 {
 public:
-    Limiter()
-        : StripProcessor(types::limiter,
-                         {{"Input", "dB", 0.0f, 24.0f, 0.0f, false},
-                          {"Ceiling", "dB", -12.0f, 0.0f, -0.3f, false},
-                          {"Release", "ms", 1.0f, 1000.0f, 60.0f, true}})
-    {
-    }
+    Limiter() : StripProcessor(types::limiter, limiterParameters()) {}
 
 private:
     void prepareModule(double, int) override

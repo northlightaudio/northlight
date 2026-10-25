@@ -137,7 +137,9 @@ reconciled on load, so a processor can gain or reorder parameters without moving
 saved values or automation. A built-in's key comes from its parameter's label unless
 the parameter sets an `id` (`InsertProcessor::parameterKey`), so a label rename
 would change the key: the renamed parameter takes its old key as its `id`. A test
-pins every built-in's keys, so a rename that forgets fails it.
+pins every built-in's keys, so a rename that forgets fails it. Each built-in's
+parameter table is filled by the `Param` enum its processor reads
+(`p[threshold] = ...`), and a test checks every table's size against its enum.
 
 ## The engine
 

@@ -95,25 +95,27 @@ namespace
 {
 std::vector<engine::ParameterInfo> parameterInfos()
 {
-    return {{"Decay", "s", minDecaySeconds, maxDecaySeconds, 6.0f, true},
-            {"Size", "%", 0.0f, 100.0f, 60.0f, false},
-            choice("Freeze", {"Off", "On"}, 0.0f),
-            {"Shimmer", "%", 0.0f, 100.0f, 0.0f, false},
-            choice("Pitch", {"-12", "+5", "+7", "+12", "+19", "+12 / -12"}, 3.0f),
-            {"Swell", "ms", swellOffMs, maxSwellMs, swellOffMs, true},
-            {"Pre-delay", "ms", 0.0f, maxPreDelayMs, 20.0f, false},
-            choice("Pre-delay sync", sync::choices(), 0.0f),
-            {"Diffusion", "%", 0.0f, 100.0f, 80.0f, false},
-            {"Modulation", "%", 0.0f, 100.0f, 30.0f, false},
-            {"Rate", "Hz", 0.05f, 5.0f, 0.5f, true},
-            {"Low cut", "Hz", 20.0f, 1000.0f, 80.0f, true},
-            {"Damping", "Hz", 500.0f, 20000.0f, 6000.0f, true},
-            {"Tilt", "dB", -6.0f, 6.0f, 0.0f, false},
-            {"Duck", "%", 0.0f, 100.0f, 0.0f, false},
-            {"Duck release", "ms", 50.0f, 3000.0f, 400.0f, true},
-            {"Gate", "ms", gateOffMs, maxGateMs, gateOffMs, true},
-            {"Width", "%", 0.0f, 100.0f, 100.0f, false},
-            {"Mix", "%", 0.0f, 100.0f, 35.0f, false}};
+    std::vector<engine::ParameterInfo> p(count);
+    p[decay] = {"Decay", "s", minDecaySeconds, maxDecaySeconds, 6.0f, true};
+    p[size] = {"Size", "%", 0.0f, 100.0f, 60.0f, false};
+    p[freeze] = choice("Freeze", {"Off", "On"}, 0.0f);
+    p[shimmer] = {"Shimmer", "%", 0.0f, 100.0f, 0.0f, false};
+    p[pitch] = choice("Pitch", {"-12", "+5", "+7", "+12", "+19", "+12 / -12"}, 3.0f);
+    p[swell] = {"Swell", "ms", swellOffMs, maxSwellMs, swellOffMs, true};
+    p[preDelay] = {"Pre-delay", "ms", 0.0f, maxPreDelayMs, 20.0f, false};
+    p[sync] = choice("Pre-delay sync", sync::choices(), 0.0f);
+    p[diffusion] = {"Diffusion", "%", 0.0f, 100.0f, 80.0f, false};
+    p[modulation] = {"Modulation", "%", 0.0f, 100.0f, 30.0f, false};
+    p[modRate] = {"Rate", "Hz", 0.05f, 5.0f, 0.5f, true};
+    p[lowCut] = {"Low cut", "Hz", 20.0f, 1000.0f, 80.0f, true};
+    p[damping] = {"Damping", "Hz", 500.0f, 20000.0f, 6000.0f, true};
+    p[tilt] = {"Tilt", "dB", -6.0f, 6.0f, 0.0f, false};
+    p[duck] = {"Duck", "%", 0.0f, 100.0f, 0.0f, false};
+    p[duckRelease] = {"Duck release", "ms", 50.0f, 3000.0f, 400.0f, true};
+    p[gate] = {"Gate", "ms", gateOffMs, maxGateMs, gateOffMs, true};
+    p[width] = {"Width", "%", 0.0f, 100.0f, 100.0f, false};
+    p[mix] = {"Mix", "%", 0.0f, 100.0f, 35.0f, false};
+    return p;
 }
 
 // A fixed pattern of taps the swell reads the input through: positions across

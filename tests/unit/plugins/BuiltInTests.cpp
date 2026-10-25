@@ -1,12 +1,28 @@
 #include "engine/rt/RealtimeGuard.h"
+#include "plugins/Amp.h"
+#include "plugins/Aurora.h"
+#include "plugins/Bloom.h"
 #include "plugins/BuiltIns.h"
 #include "plugins/ChannelStrip.h"
+#include "plugins/Exciter.h"
+#include "plugins/Glue.h"
+#include "plugins/Nebula.h"
+#include "plugins/Orbit.h"
+#include "plugins/Patina.h"
+#include "plugins/Pedals.h"
+#include "plugins/Pulsar.h"
+#include "plugins/Sampler.h"
+#include "plugins/Starbit.h"
+#include "plugins/TapeEcho.h"
+#include "plugins/Vesper.h"
+#include "plugins/Widener.h"
 
 #include <catch2/catch_approx.hpp>
 #include <catch2/catch_test_macros.hpp>
 
 #include <atomic>
 #include <cmath>
+#include <map>
 #include <numbers>
 #include <set>
 #include <vector>
@@ -404,4 +420,63 @@ TEST_CASE("A compressor saved before the merge loads with its settings and the n
     CHECK(params[comp::makeup] == 4.0f);
     CHECK(params[comp::autoMakeup] == 0.0f); // off, so the level is what it was
     CHECK(params[comp::mix] == 100.0f);      // fully wet, as before
+}
+
+TEST_CASE("Every built-in has one parameter per entry of its enum", "[plugins][parameters]")
+{
+    // The processors read their parameters by these enums: a table that drifted
+    // from its enum would send every later value to the wrong control.
+    namespace p = northlight::plugins;
+    namespace s = p::strip;
+    const std::map<std::string, int> counts{
+        {p::types::reverb, p::reverb::count},
+        {p::types::delay, p::delay::count},
+        {p::types::compressor, s::compressor::count},
+        {p::types::opto, s::opto::count},
+        {p::glue::type, p::glue::count},
+        {p::widener::type, p::widener::count},
+        {p::patina::type, p::patina::count},
+        {p::exciter::type, p::exciter::count},
+        {p::orbit::type, p::orbit::count},
+        {p::tapeecho::type, p::tapeecho::count},
+        {p::bloom::type, p::bloom::count},
+        {p::vesper::type, p::vesper::count},
+        {p::amp::type, p::amp::count},
+        {p::gravity::type, p::gravity::count},
+        {p::flare::type, p::flare::count},
+        {p::comet::type, p::comet::count},
+        {p::tide::type, p::tide::count},
+        {p::polaris::type, p::polaris::count},
+        {p::aurora::type, p::aurora::count},
+        {p::pulsar::type, p::pulsar::count},
+        {p::nebula::type, p::nebula::count},
+        {p::starbit::type, p::starbit::count},
+        {p::sampler::type, p::sampler::count},
+        {s::types::gate, s::gate::count},
+        {s::types::eq, s::eq::count},
+        {s::types::compressor, s::compressor::count},
+        {s::types::deesser, s::deesser::count},
+        {s::types::saturation, s::saturation::count},
+        {s::types::limiter, s::limiter::count},
+        {s::types::opto, s::opto::count},
+    };
+    p::BuiltInFactory factory;
+    for (const auto& [type, count] : counts)
+    {
+        INFO(type);
+        const auto processor = factory.create(type);
+        REQUIRE(processor != nullptr);
+        CHECK(static_cast<int>(processor->parameters().size()) == count);
+    }
+    // Every built-in is listed but gain, the EQ and the limiter, whose enums
+    // live inside BuiltIns.cpp (one parameter, or a table indexed by its enum).
+    auto types = factory.typeNames();
+    for (const auto& t : s::moduleTypes())
+        types.push_back(t);
+    types.push_back(s::types::opto);
+    std::set<std::string> unlisted;
+    for (const auto& type : types)
+        if (counts.count(type) == 0)
+            unlisted.insert(type);
+    CHECK(unlisted == std::set<std::string>{p::types::gain, p::types::eq, p::types::limiter});
 }

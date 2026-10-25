@@ -155,22 +155,24 @@ std::vector<engine::ParameterInfo> parameterInfos()
     std::vector<std::string> modes;
     for (const auto& m : headModes)
         modes.emplace_back(m.name);
-    return {choice("Heads", std::move(modes), 4.0f), // heads 1 + 3
-            {"Time", "ms", minTimeMs, maxTimeMs, 180.0f, true},
-            {"Sync", "", 0.0f, static_cast<float>(sync::choiceCount - 1), 0.0f, false, sync::choices()},
-            {"Feedback", "%", 0.0f, maxFeedbackPercent, 45.0f, false},
-            {"Bass", "dB", -12.0f, 12.0f, 0.0f, false},
-            {"Treble", "dB", -12.0f, 12.0f, 0.0f, false},
-            {"Wow", "%", 0.0f, 100.0f, 20.0f, false},
-            {"Flutter", "%", 0.0f, 100.0f, 15.0f, false},
-            {"Age", "%", 0.0f, 100.0f, 30.0f, false},
-            {"Drive", "dB", -12.0f, 18.0f, 0.0f, false},
-            {"Spread", "%", 0.0f, 100.0f, 60.0f, false},
-            choice("Stereo", {"Heads", "Ping-pong", "Stereo"}, 0.0f),
-            {"Spring", "%", 0.0f, 100.0f, 0.0f, false},
-            {"Mix", "%", 0.0f, 100.0f, 35.0f, false},
-            choice("Kill dry", {"Off", "On"}, 0.0f),
-            {"Output", "dB", -24.0f, 12.0f, 0.0f, false}};
+    std::vector<engine::ParameterInfo> p(count);
+    p[heads] = choice("Heads", std::move(modes), 4.0f); // heads 1 + 3
+    p[time] = {"Time", "ms", minTimeMs, maxTimeMs, 180.0f, true};
+    p[sync] = {"Sync", "", 0.0f, static_cast<float>(sync::choiceCount - 1), 0.0f, false, sync::choices()};
+    p[feedback] = {"Feedback", "%", 0.0f, maxFeedbackPercent, 45.0f, false};
+    p[bass] = {"Bass", "dB", -12.0f, 12.0f, 0.0f, false};
+    p[treble] = {"Treble", "dB", -12.0f, 12.0f, 0.0f, false};
+    p[wow] = {"Wow", "%", 0.0f, 100.0f, 20.0f, false};
+    p[flutter] = {"Flutter", "%", 0.0f, 100.0f, 15.0f, false};
+    p[age] = {"Age", "%", 0.0f, 100.0f, 30.0f, false};
+    p[drive] = {"Drive", "dB", -12.0f, 18.0f, 0.0f, false};
+    p[spread] = {"Spread", "%", 0.0f, 100.0f, 60.0f, false};
+    p[stereo] = choice("Stereo", {"Heads", "Ping-pong", "Stereo"}, 0.0f);
+    p[spring] = {"Spring", "%", 0.0f, 100.0f, 0.0f, false};
+    p[mix] = {"Mix", "%", 0.0f, 100.0f, 35.0f, false};
+    p[killDry] = choice("Kill dry", {"Off", "On"}, 0.0f);
+    p[output] = {"Output", "dB", -24.0f, 12.0f, 0.0f, false};
+    return p;
 }
 
 // The per-sample smoothed gains: each head's level, the routing of the inputs
