@@ -1,5 +1,6 @@
 // The shared DSP building blocks in src/plugins/dsp: each piece on its own.
 #include "plugins/dsp/DelayLine.h"
+#include "plugins/dsp/PolyBlep.h"
 #include "plugins/dsp/Random.h"
 #include "plugins/dsp/Smoothing.h"
 #include "plugins/dsp/Svf.h"
@@ -214,4 +215,20 @@ TEST_CASE("The state-variable filter's outputs split a tone at its cutoff", "[pl
     svf.reset();
     CHECK(svf.ic1 == 0.0f);
     CHECK(svf.ic2 == 0.0f);
+}
+
+TEST_CASE("PolyBLEP corrects only the samples either side of a jump", "[plugins][dsp]")
+{
+    constexpr double dt = 0.01;
+    CHECK(dsp::polyBlep(0.5, dt) == 0.0f);
+    CHECK(dsp::polyBlep(0.0, dt) == -1.0f);                  // halfway down the step, from above
+    CHECK(dsp::polyBlep(1.0 - 1.0e-12, dt) == Approx(1.0f)); // and from below
+    // The saw is continuous across its wrap: the corrected ends meet near zero.
+    CHECK(std::abs(dsp::blepSaw(0.0, dt)) < 1.0e-6f);
+    CHECK(std::abs(dsp::blepSaw(1.0 - 1.0e-12, dt)) < 1.0e-6f);
+    // Away from the edges the shapes are the naive ones.
+    CHECK(dsp::blepSaw(0.25, dt) == -0.5f);
+    CHECK(dsp::blepSquare(0.25, dt) == 1.0f);
+    CHECK(dsp::blepSquare(0.75, dt) == -1.0f);
+    CHECK(std::abs(dsp::blepSquare(0.5, dt)) < 1.0e-6f);
 }

@@ -368,7 +368,8 @@ know nothing format-specific.
   `poleFor…`/`stepFor…` for a time constant in seconds or milliseconds, a corner
   frequency or a once-a-block update, and `decay60ForMs`), `DelayLine.h` (a
   power-of-two ring with linear and Hermite reads, the reads on a caller's own
-  ring, and the kernels), `Svf.h` (the trapezoidal state-variable filter). Each processor keeps its own seeds,
+  ring, and the kernels), `Svf.h` (the trapezoidal state-variable filter), `PolyBlep.h` (the
+  band-limited saw and square). Each processor keeps its own seeds,
   constants and tolerances, so moving onto the kit never changes its sound.
 - **The guitar pedals** share one card, `ui/strip/PedalCard`, which reads a
   pedal's layout (its finish, knobs, toggle, and whether it is the tuner) from a

@@ -3,6 +3,7 @@
 #include "engine/rt/RealtimeGuard.h"
 #include "plugins/MeteredBuiltIn.h"
 #include "plugins/SynthVoices.h"
+#include "plugins/dsp/PolyBlep.h"
 #include "plugins/dsp/Random.h"
 #include "plugins/dsp/Smoothing.h"
 #include "plugins/dsp/Svf.h"
@@ -99,27 +100,6 @@ inline float saturate(float x, float drive) noexcept
 inline double wrap(double phase) noexcept
 {
     return phase >= 1.0 ? phase - 1.0 : phase;
-}
-
-// PolyBLEP: the band-limiting correction at a square's edge.
-inline float polyBlep(double t, double dt) noexcept
-{
-    if (t < dt)
-    {
-        const double x = t / dt;
-        return static_cast<float>(x + x - x * x - 1.0);
-    }
-    if (t > 1.0 - dt)
-    {
-        const double x = (t - 1.0) / dt;
-        return static_cast<float>(x * x + x + x + 1.0);
-    }
-    return 0.0f;
-}
-
-inline float square(double phase, double dt) noexcept
-{
-    return (phase < 0.5 ? 1.0f : -1.0f) + polyBlep(phase, dt) - polyBlep(wrap(phase + 0.5), dt);
 }
 
 // When the clap's four bursts start, in spacings: a little uneven, like hands.
@@ -334,7 +314,7 @@ struct Voice
                 {
                     const double inc = hz * hatRatios[i] * dt;
                     hatPhase[i] = wrap(hatPhase[i] + inc);
-                    metal += square(hatPhase[i], inc);
+                    metal += dsp::blepSquare(hatPhase[i], inc);
                 }
                 f1.run(metal / 6.0f * (1.0f - s) + noise * s * 0.7f);
                 f2.run(f1.band);

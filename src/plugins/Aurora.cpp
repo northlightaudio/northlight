@@ -3,6 +3,7 @@
 #include "engine/rt/RealtimeGuard.h"
 #include "plugins/MeteredBuiltIn.h"
 #include "plugins/SynthVoices.h"
+#include "plugins/dsp/PolyBlep.h"
 #include "plugins/dsp/Random.h"
 #include "plugins/dsp/Smoothing.h"
 #include "plugins/dsp/Svf.h"
@@ -21,22 +22,6 @@ namespace
 constexpr double twoPi = 2.0 * std::numbers::pi;
 constexpr int controlInterval = 16; // samples between filter and LFO updates
 
-// PolyBLEP: the band-limiting correction at a discontinuity.
-inline float polyBlep(double t, double dt) noexcept
-{
-    if (t < dt)
-    {
-        const double x = t / dt;
-        return static_cast<float>(x + x - x * x - 1.0);
-    }
-    if (t > 1.0 - dt)
-    {
-        const double x = (t - 1.0) / dt;
-        return static_cast<float>(x * x + x + x + 1.0);
-    }
-    return 0.0f;
-}
-
 // One sample of shape `index` (0 sine, 1 triangle, 2 saw, 3 square), band-limited
 // where it jumps.
 inline float shapeSample(int index, double phase, double dt) noexcept
@@ -48,14 +33,9 @@ inline float shapeSample(int index, double phase, double dt) noexcept
         case 1:
             return static_cast<float>(phase < 0.5 ? 4.0 * phase - 1.0 : 3.0 - 4.0 * phase);
         case 2:
-            return static_cast<float>(2.0 * phase - 1.0) - polyBlep(phase, dt);
+            return dsp::blepSaw(phase, dt);
         default:
-        {
-            double t2 = phase + 0.5;
-            if (t2 >= 1.0)
-                t2 -= 1.0;
-            return (phase < 0.5 ? 1.0f : -1.0f) + polyBlep(phase, dt) - polyBlep(t2, dt);
-        }
+            return dsp::blepSquare(phase, dt);
     }
 }
 
