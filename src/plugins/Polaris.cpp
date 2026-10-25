@@ -160,12 +160,7 @@ private:
                 right[i] *= muteGain_;
             }
         for (auto& f : antiAlias_)
-        {
-            if (std::abs(f.z1) < 1.0e-20f)
-                f.z1 = 0.0f;
-            if (std::abs(f.z2) < 1.0e-20f)
-                f.z2 = 0.0f;
-        }
+            f.flushDenormals();
     }
 
     // A window's analysis, a slice of its lags per block.

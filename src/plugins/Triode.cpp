@@ -1,6 +1,7 @@
 #include "plugins/Triode.h"
 
 #include "engine/rt/RealtimeGuard.h"
+#include "plugins/dsp/Denormals.h"
 #include "plugins/dsp/Shapers.h"
 #include "plugins/dsp/Smoothing.h"
 
@@ -204,14 +205,8 @@ float TriodeStage::process(float grid) noexcept
 void TriodeStage::flush() noexcept
 {
     for (auto* b : {&coupling_, &miller_})
-    {
-        if (std::abs(b->z1) < 1.0e-20f)
-            b->z1 = 0.0f;
-        if (std::abs(b->z2) < 1.0e-20f)
-            b->z2 = 0.0f;
-    }
-    if (std::abs(shift_) < 1.0e-20)
-        shift_ = 0.0;
+        b->flushDenormals();
+    shift_ = dsp::flush(shift_, 1.0e-20);
 }
 
 } // namespace northlight::plugins

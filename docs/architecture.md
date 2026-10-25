@@ -371,7 +371,8 @@ know nothing format-specific.
   ring, and the kernels), `Svf.h` (the trapezoidal state-variable filter), `PolyBlep.h` (the
   band-limited saw and square), `SpringTank.h` (a spring's dispersive loop, tuned
   by a `SpringTuning`), `Shapers.h` (`logCosh`, the biased-tanh `tube` curve and
-  their antiderivatives, and the `adaa1` anti-aliasing step). Each processor keeps its own seeds,
+  their antiderivatives, and the `adaa1` anti-aliasing step), `Denormals.h`
+  (`flush`, a state to zero below a tolerance; `Biquad::flushDenormals` uses it). Each processor keeps its own seeds,
   constants and tolerances, so moving onto the kit never changes its sound.
 - **The guitar pedals** share one card, `ui/strip/PedalCard`, which reads a
   pedal's layout (its finish, knobs, toggle, and whether it is the tuner) from a

@@ -5,6 +5,7 @@
 #include "plugins/Biquad.h"
 #include "plugins/Oversampler.h"
 #include "plugins/ProcessorBase.h"
+#include "plugins/dsp/Denormals.h"
 #include "plugins/dsp/Shapers.h"
 #include "plugins/dsp/Smoothing.h"
 
@@ -197,14 +198,6 @@ struct Diffuser
         return out;
     }
 };
-
-void flush(Biquad& b) noexcept
-{
-    if (std::abs(b.z1) < 1.0e-20f)
-        b.z1 = 0.0f;
-    if (std::abs(b.z2) < 1.0e-20f)
-        b.z2 = 0.0f;
-}
 
 float smoothstep(float t) noexcept
 {
@@ -657,13 +650,13 @@ private:
         for (auto& ch : channels_)
         {
             for (auto& b : ch.band)
-                flush(b);
-            flush(ch.post);
-            flush(ch.tilt);
+                b.flushDenormals();
+            ch.post.flushDenormals();
+            ch.tilt.flushDenormals();
             for (auto& b : ch.weightIn)
-                flush(b);
+                b.flushDenormals();
             for (auto& b : ch.weightWet)
-                flush(b);
+                b.flushDenormals();
             ch.up.flush();
             ch.down.flush();
             if (std::abs(ch.previous) < 1.0e-20)
@@ -674,12 +667,11 @@ private:
         }
         for (auto* chain : {&bassLow_, &bassPost_})
             for (auto& b : *chain)
-                flush(b);
-        flush(bassTop_);
+                b.flushDenormals();
+        bassTop_.flushDenormals();
         for (auto& d : diffusers_)
             for (auto& s : d.buffer)
-                if (std::abs(s) < 1.0e-20f)
-                    s = 0.0f;
+                s = dsp::flush(s, 1.0e-20f);
     }
 
     // Bypassed, the processor keeps measuring while an editor is watching, so

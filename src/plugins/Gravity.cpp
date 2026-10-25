@@ -140,9 +140,9 @@ private:
         blend_ = blendTarget;
         blockExtra_ = peakEnvelope;
         for (auto& f : detector_)
-            flush(f);
+            f.flushDenormals();
         for (auto& f : rollOff_)
-            flush(f);
+            f.flushDenormals();
     }
 
     // The OTA's soft saturation: clean at a played level, rounding the loudest peaks.
@@ -150,14 +150,6 @@ private:
     {
         constexpr float k = 1.4f;
         return std::tanh(k * x) / k;
-    }
-
-    static void flush(Biquad& f) noexcept
-    {
-        if (std::abs(f.z1) < 1.0e-20f)
-            f.z1 = 0.0f;
-        if (std::abs(f.z2) < 1.0e-20f)
-            f.z2 = 0.0f;
     }
 
     Biquad detector_[2], rollOff_[2];

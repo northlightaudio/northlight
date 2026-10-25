@@ -31,13 +31,6 @@ float toDb(float power) noexcept
     return 10.0f * std::log10(power + 1.0e-12f);
 }
 
-void flush(Biquad& f) noexcept
-{
-    if (std::abs(f.z1) < 1.0e-20f)
-        f.z1 = 0.0f;
-    if (std::abs(f.z2) < 1.0e-20f)
-        f.z2 = 0.0f;
-}
 } // namespace
 
 void Listener::prepare(double sampleRate)
@@ -249,12 +242,12 @@ void Listener::analyseFrame() noexcept
     h.syllablesPerSecond = static_cast<float>(count) / rateWindowSeconds;
 
     for (auto& f : antiAlias_)
-        flush(f);
-    flush(rumble_);
+        f.flushDenormals();
+    rumble_.flushDenormals();
     for (auto& f : high_)
-        flush(f);
+        f.flushDenormals();
     for (auto& f : sibilant_)
-        flush(f);
+        f.flushDenormals();
     if (power_ < 1.0e-20f)
         power_ = 0.0f;
     if (highPower_ < 1.0e-20f)

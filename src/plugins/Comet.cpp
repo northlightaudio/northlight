@@ -137,12 +137,7 @@ private:
         blockExtra_ = wetPeak;
         for (auto& ch : channels_)
             for (auto* f : {&ch.highPass, &ch.lowPass[0], &ch.lowPass[1]})
-            {
-                if (std::abs(f->z1) < 1.0e-20f)
-                    f->z1 = 0.0f;
-                if (std::abs(f->z2) < 1.0e-20f)
-                    f->z2 = 0.0f;
-            }
+                f->flushDenormals();
     }
 
     struct Channel

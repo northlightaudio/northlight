@@ -1,6 +1,7 @@
 #pragma once
 
 #include "engine/rt/RealtimeGuard.h"
+#include "plugins/dsp/Denormals.h"
 #include "plugins/dsp/Smoothing.h"
 
 #include <algorithm>
@@ -75,8 +76,7 @@ public:
         loop_[static_cast<size_t>(write_)] = u;
         if (++write_ == length_)
             write_ = 0;
-        if (std::abs(low_) < 1.0e-15f)
-            low_ = 0.0f;
+        low_ = dsp::flush(low_, 1.0e-15f);
         return u;
     }
 

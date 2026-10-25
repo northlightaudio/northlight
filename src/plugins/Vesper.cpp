@@ -7,6 +7,7 @@
 #include "plugins/FeedbackNetwork.h"
 #include "plugins/ProcessorBase.h"
 #include "plugins/VocalListener.h"
+#include "plugins/dsp/Denormals.h"
 #include "plugins/dsp/Smoothing.h"
 
 #include <algorithm>
@@ -224,14 +225,6 @@ std::vector<engine::ParameterInfo> parameterInfos()
             {"Halo", "%", 0.0f, 100.0f, 0.0f, false}};
 }
 
-void flush(Biquad& f) noexcept
-{
-    if (std::abs(f.z1) < 1.0e-20f)
-        f.z1 = 0.0f;
-    if (std::abs(f.z2) < 1.0e-20f)
-        f.z2 = 0.0f;
-}
-
 // Halo: sympathetic strings. Six feedback combs, each tuned to a note the singer
 // held, ring with what goes into the reverb, so
 // the tail sounds the pitches just sung and their harmonics, in tune with the
@@ -414,8 +407,7 @@ public:
     {
         for (auto& v : voices_)
         {
-            if (std::abs(v.low) < 1.0e-20f)
-                v.low = 0.0f;
+            v.low = dsp::flush(v.low, 1.0e-20f);
             if (v.energy < 1.0e-20f)
                 v.energy = 0.0f;
         }
@@ -1009,10 +1001,10 @@ private:
 
         // No denormals after a long silence.
         for (auto& f : follow_)
-            flush(f);
+            f.flushDenormals();
         for (auto& f : mudCut_)
-            flush(f);
-        flush(mudBand_);
+            f.flushDenormals();
+        mudBand_.flushDenormals();
         if (mudBandPower_ < 1.0e-20f)
             mudBandPower_ = 0.0f;
         if (tailPower_ < 1.0e-20f)

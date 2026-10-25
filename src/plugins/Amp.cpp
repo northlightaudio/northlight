@@ -11,6 +11,7 @@
 #include "plugins/ProcessorBase.h"
 #include "plugins/ToneStack.h"
 #include "plugins/Triode.h"
+#include "plugins/dsp/Denormals.h"
 #include "plugins/dsp/Shapers.h"
 #include "plugins/dsp/Smoothing.h"
 #include "plugins/dsp/SpringTank.h"
@@ -713,17 +714,10 @@ private:
         toneStack_.flush();
         for (auto* o : {&upFront_, &downFront_, &upBack_, &downBack_})
             o->flush();
-        if (std::abs(volume_.z) < 1.0e-30)
-            volume_.z = 0.0;
-        if (std::abs(feedbackSample_) < 1.0e-30)
-            feedbackSample_ = 0.0;
+        volume_.z = dsp::flush(volume_.z, 1.0e-30);
+        feedbackSample_ = dsp::flush(feedbackSample_, 1.0e-30);
         for (auto* b : {&transformerHigh_, &transformerLow_, &speakerBump_, &speakerRise_})
-        {
-            if (std::abs(b->z1) < 1.0e-20f)
-                b->z1 = 0.0f;
-            if (std::abs(b->z2) < 1.0e-20f)
-                b->z2 = 0.0f;
-        }
+            b->flushDenormals();
         if (ldr_ < 1.0e-20f)
             ldr_ = 0.0f;
         if (sagEnvelope_ < 1.0e-20f)

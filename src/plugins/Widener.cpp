@@ -3,6 +3,7 @@
 #include "engine/Feedback.h"
 #include "engine/rt/RealtimeGuard.h"
 #include "plugins/ProcessorBase.h"
+#include "plugins/dsp/Denormals.h"
 #include "plugins/dsp/Smoothing.h"
 
 #include <algorithm>
@@ -47,10 +48,8 @@ struct Section
     void reset() noexcept { z1 = z2 = 0.0; }
     void flush() noexcept
     {
-        if (std::abs(z1) < 1.0e-25)
-            z1 = 0.0;
-        if (std::abs(z2) < 1.0e-25)
-            z2 = 0.0;
+        z1 = dsp::flush(z1, 1.0e-25);
+        z2 = dsp::flush(z2, 1.0e-25);
     }
     // Takes the coefficients, keeps the memory.
     void take(const Section& design) noexcept

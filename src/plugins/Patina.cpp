@@ -5,6 +5,7 @@
 #include "plugins/Biquad.h"
 #include "plugins/ProcessorBase.h"
 #include "plugins/dsp/DelayLine.h"
+#include "plugins/dsp/Denormals.h"
 #include "plugins/dsp/Random.h"
 #include "plugins/dsp/Shapers.h"
 #include "plugins/dsp/Smoothing.h"
@@ -312,10 +313,8 @@ struct Pink
     }
 };
 
-inline float flush(float x) noexcept
-{
-    return std::abs(x) < 1.0e-15f ? 0.0f : x;
-}
+// Patina's floor for a decaying state.
+constexpr float denormalFloor = 1.0e-15f;
 
 // ----- the processor ------------------------------------------------------------------------------
 
@@ -486,7 +485,7 @@ private:
             first_ = false;
         }
         for (auto* v : {&inEnv_, &driftScrape_[0], &driftScrape_[1]})
-            *v = flush(*v);
+            *v = dsp::flush(*v, denormalFloor);
     }
 
     void processBypassed(float* left, float* right, int numSamples) noexcept override
@@ -900,7 +899,7 @@ private:
         // A DC blocker: the tube's bias and the fuzz's asymmetry leave an offset.
         const float blocked = out - heatDcIn_[ch] + 0.9995f * heatDc_[ch];
         heatDcIn_[ch] = out;
-        heatDc_[ch] = flush(blocked);
+        heatDc_[ch] = dsp::flush(blocked, denormalFloor);
         out = heatPost_[ch].process(blocked);
         out = heatBump_[ch].process(out);
         return heatTiltHigh_[ch].process(heatTiltLow_[ch].process(out));
@@ -1086,7 +1085,7 @@ private:
                     {
                         const float y = springCoefficient * x + s.x1 - springCoefficient * s.y1;
                         s.x1 = x;
-                        s.y1 = flush(y);
+                        s.y1 = dsp::flush(y, denormalFloor);
                         x = y;
                     }
                     x = springHigh_[ch].process(x);
@@ -1422,8 +1421,8 @@ private:
                 const float click = c.clickTone.process(white * c.clickEnv) * 14.0f;
                 const float popSign = white > 0.0f ? 1.0f : -1.0f;
                 const float pop = c.popTone.process(popSign * c.popEnv) * 3.0f;
-                c.clickEnv = flush(c.clickEnv * c.clickDecay);
-                c.popEnv = flush(c.popEnv * c.popDecay);
+                c.clickEnv = dsp::flush(c.clickEnv * c.clickDecay, denormalFloor);
+                c.popEnv = dsp::flush(c.popEnv * c.popDecay, denormalFloor);
                 const float surface = c.surfaceTop.process(c.surface.process(c.rng.bipolar())) * 2.4f * swish;
                 (ch == 0 ? outL : outR) = click + pop + surface + rumble;
             }

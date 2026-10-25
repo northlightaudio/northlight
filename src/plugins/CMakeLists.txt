@@ -4,6 +4,7 @@ add_library(northlight_plugins STATIC
     BuiltIns.h
     BuiltIns.cpp
     dsp/DelayLine.h
+    dsp/Denormals.h
     dsp/PolyBlep.h
     dsp/Random.h
     dsp/Shapers.h

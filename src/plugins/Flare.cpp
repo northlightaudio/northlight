@@ -142,12 +142,7 @@ private:
         {
             ch.oversampler.flush();
             for (auto* f : {&ch.coupling, &ch.shelf, &ch.bandwidth, &ch.tone, &ch.top})
-            {
-                if (std::abs(f->z1) < 1.0e-20f)
-                    f->z1 = 0.0f;
-                if (std::abs(f->z2) < 1.0e-20f)
-                    f->z2 = 0.0f;
-            }
+                f->flushDenormals();
         }
     }
 

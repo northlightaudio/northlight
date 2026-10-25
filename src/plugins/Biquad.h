@@ -1,5 +1,7 @@
 #pragma once
 
+#include "plugins/dsp/Denormals.h"
+
 #include <algorithm>
 #include <cmath>
 #include <complex>
@@ -18,6 +20,14 @@ struct Biquad
     float z1 = 0.0f, z2 = 0.0f;
 
     void reset() noexcept { z1 = z2 = 0.0f; }
+
+    // The memory to zero once it is below 1e-20, so a tail ends rather than
+    // running on in denormals.
+    void flushDenormals() noexcept
+    {
+        z1 = dsp::flush(z1, 1.0e-20f);
+        z2 = dsp::flush(z2, 1.0e-20f);
+    }
 
     float process(float x) noexcept
     {

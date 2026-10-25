@@ -1,5 +1,7 @@
 // The shared DSP building blocks in src/plugins/dsp: each piece on its own.
+#include "plugins/Biquad.h"
 #include "plugins/dsp/DelayLine.h"
+#include "plugins/dsp/Denormals.h"
 #include "plugins/dsp/PolyBlep.h"
 #include "plugins/dsp/Random.h"
 #include "plugins/dsp/Shapers.h"
@@ -302,4 +304,29 @@ TEST_CASE("An ADAA1 step is the curve's mean over the step, or its middle for a 
     // Below the threshold: the curve at the middle.
     const double z = dsp::adaa1(0.5 + 1.0e-7, 0.5, 123.0, 0.0, 1.0e-6, tanhAt);
     CHECK(z == Approx(std::tanh(0.5 + 0.5e-7)));
+}
+
+TEST_CASE("A flush zeroes only what is below its tolerance", "[plugins][dsp]")
+{
+    CHECK(dsp::flush(1.0e-21f, 1.0e-20f) == 0.0f);
+    CHECK(dsp::flush(-1.0e-21f, 1.0e-20f) == 0.0f);
+    CHECK(dsp::flush(2.0e-20f, 1.0e-20f) == 2.0e-20f);
+    CHECK(dsp::flush(-0.5, 1.0e-30) == -0.5);
+    CHECK(dsp::flush(1.0e-31, 1.0e-30) == 0.0);
+}
+
+TEST_CASE("A biquad's denormal flush clears a dead tail and keeps a live one", "[plugins][dsp]")
+{
+    Biquad f;
+    f.setLowPass(48000.0, 1000.0);
+    f.z1 = 1.0e-25f;
+    f.z2 = -1.0e-22f;
+    f.flushDenormals();
+    CHECK(f.z1 == 0.0f);
+    CHECK(f.z2 == 0.0f);
+    f.z1 = 1.0e-3f;
+    f.z2 = -1.0e-19f;
+    f.flushDenormals();
+    CHECK(f.z1 == 1.0e-3f);
+    CHECK(f.z2 == -1.0e-19f);
 }

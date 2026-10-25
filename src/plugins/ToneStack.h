@@ -1,5 +1,7 @@
 #pragma once
 
+#include "plugins/dsp/Denormals.h"
+
 #include <array>
 #include <complex>
 
@@ -62,8 +64,7 @@ public:
     void flush() noexcept
     {
         for (auto& z : z_)
-            if (std::abs(z) < 1.0e-30)
-                z = 0.0;
+            z = dsp::flush(z, 1.0e-30);
     }
     // |H| at `hz` (linear), from the coefficients as they run.
     double magnitude(double hz, double sampleRate) const noexcept;

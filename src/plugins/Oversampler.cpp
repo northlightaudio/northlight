@@ -1,5 +1,7 @@
 #include "plugins/Oversampler.h"
 
+#include "plugins/dsp/Denormals.h"
+
 #include <algorithm>
 #include <cmath>
 #include <numbers>
@@ -53,8 +55,7 @@ void HalfBandChains::flush() noexcept
 {
     for (auto* v : {&x, &y})
         for (auto& s : *v)
-            if (std::abs(s) < 1.0e-20f)
-                s = 0.0f;
+            s = dsp::flush(s, 1.0e-20f);
 }
 
 namespace
