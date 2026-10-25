@@ -362,8 +362,16 @@ bool ProjectSession::applyChecked(std::unique_ptr<core::Command> command)
 
 void ProjectSession::undo()
 {
-    if (!undo_.undo(project_))
+    try
+    {
+        if (!undo_.undo(project_))
+            return;
+    }
+    catch (const std::logic_error& e)
+    {
+        juce::Logger::writeToLog(juce::String("Could not undo: ") + e.what());
         return;
+    }
     modified_ = true;
     // The engine work the undone command's kind needs, with the parameters it
     // restored (they reach plugins that own theirs).
@@ -375,8 +383,16 @@ void ProjectSession::undo()
 
 void ProjectSession::redo()
 {
-    if (!undo_.redo(project_))
+    try
+    {
+        if (!undo_.redo(project_))
+            return;
+    }
+    catch (const std::logic_error& e)
+    {
+        juce::Logger::writeToLog(juce::String("Could not redo: ") + e.what());
         return;
+    }
     modified_ = true;
     const auto* redone = undo_.undoTop();
     std::vector<core::Command::ParameterTouch> touches;

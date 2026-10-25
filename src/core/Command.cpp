@@ -17,15 +17,37 @@ class UndoStack::Group final : public Command
 public:
     explicit Group(std::string name) : name_(std::move(name)) {}
     std::string name() const override { return name_; }
+    // All or nothing: a member that fails (it throws) has the members before it
+    // put back, so the project is as it was and the group stays where it is.
     void apply(Project& p) override
     {
-        for (auto& c : commands_)
-            c->apply(p);
+        size_t done = 0;
+        try
+        {
+            for (; done < commands_.size(); ++done)
+                commands_[done]->apply(p);
+        }
+        catch (...)
+        {
+            while (done > 0)
+                commands_[--done]->revert(p);
+            throw;
+        }
     }
     void revert(Project& p) override
     {
-        for (auto it = commands_.rbegin(); it != commands_.rend(); ++it)
-            (*it)->revert(p);
+        size_t done = 0;
+        try
+        {
+            for (; done < commands_.size(); ++done)
+                commands_[commands_.size() - 1 - done]->revert(p);
+        }
+        catch (...)
+        {
+            while (done > 0)
+                commands_[commands_.size() - done--]->apply(p);
+            throw;
+        }
     }
     void add(std::unique_ptr<Command> c) { commands_.push_back(std::move(c)); }
     bool empty() const noexcept { return commands_.empty(); }
@@ -66,10 +88,10 @@ bool UndoStack::undo(Project& project)
 {
     if (undo_.empty())
         return false;
-    auto command = std::move(undo_.back());
+    // Revert first: a command that fails stays on the undo side.
+    undo_.back()->revert(project);
+    redo_.push_back(std::move(undo_.back()));
     undo_.pop_back();
-    command->revert(project);
-    redo_.push_back(std::move(command));
     return true;
 }
 
@@ -77,10 +99,9 @@ bool UndoStack::redo(Project& project)
 {
     if (redo_.empty())
         return false;
-    auto command = std::move(redo_.back());
+    redo_.back()->apply(project);
+    undo_.push_back(std::move(redo_.back()));
     redo_.pop_back();
-    command->apply(project);
-    undo_.push_back(std::move(command));
     return true;
 }
 

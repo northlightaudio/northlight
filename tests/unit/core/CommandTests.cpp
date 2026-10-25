@@ -5,6 +5,7 @@
 
 #include <functional>
 #include <memory>
+#include <stdexcept>
 #include <string>
 #include <vector>
 
@@ -254,6 +255,46 @@ TEST_CASE("A group of commands undoes as one step", "[core][command]")
     CHECK(stack.redo(p));
     CHECK(p.tracks[0].gain == 0.5f);
     CHECK(p.tracks[0].pan == 1.0f);
+}
+
+namespace
+{
+// Adds one to the project's tempo on apply; on revert takes it off, or throws when
+// asked to (a command whose target has gone).
+class Counting final : public Command
+{
+public:
+    explicit Counting(bool failRevert = false) : failRevert_(failRevert) {}
+    std::string name() const override { return "Count"; }
+    void apply(Project& p) override { p.tempoBpm += 1.0; }
+    void revert(Project& p) override
+    {
+        if (failRevert_)
+            throw std::logic_error("gone");
+        p.tempoBpm -= 1.0;
+    }
+
+private:
+    bool failRevert_;
+};
+} // namespace
+
+TEST_CASE("An undo that fails part way leaves the project and the history as they were",
+          "[core][command][undo]")
+{
+    Project p;
+    p.tempoBpm = 100.0;
+    UndoStack undo;
+    undo.beginGroup("Both");
+    undo.execute(p, std::make_unique<Counting>(true)); // reverted last: fails
+    undo.execute(p, std::make_unique<Counting>());     // reverted first
+    undo.endGroup();
+    REQUIRE(p.tempoBpm == 102.0);
+
+    CHECK_THROWS_AS(undo.undo(p), std::logic_error);
+    CHECK(p.tempoBpm == 102.0); // the member already reverted was applied again
+    CHECK(undo.undoName() == "Both");
+    CHECK_FALSE(undo.canRedo());
 }
 
 TEST_CASE("A new command after undo discards the redo history", "[core][command]")

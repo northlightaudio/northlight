@@ -78,8 +78,11 @@ public:
     UndoStack(const UndoStack&) = delete;
     UndoStack& operator=(const UndoStack&) = delete;
 
-    // Applies the command and pushes it; clears the redo history.
+    // Applies the command and pushes it; clears the redo history. A command that
+    // throws (it references something that is gone) is not pushed.
     void execute(Project& project, std::unique_ptr<Command> command);
+    // A command whose revert or apply throws stays where it was, and a group puts
+    // back the members it had already done, so a failure changes nothing.
     bool undo(Project& project);
     bool redo(Project& project);
 
