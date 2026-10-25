@@ -7,6 +7,7 @@
 #include "plugins/Biquad.h"
 #include "plugins/Bloom.h"
 #include "plugins/ChannelStrip.h"
+#include "plugins/EffectPresetLists.h"
 #include "plugins/Exciter.h"
 #include "plugins/Glue.h"
 #include "plugins/MeteredBuiltIn.h"
@@ -626,19 +627,96 @@ private:
 
 } // namespace
 
+namespace
+{
+template <typename T> std::unique_ptr<engine::InsertProcessor> make(const sampler::Loader&)
+{
+    return std::make_unique<T>();
+}
+
+template <std::unique_ptr<engine::InsertProcessor> (*Create)()>
+std::unique_ptr<engine::InsertProcessor> plain(const sampler::Loader&)
+{
+    return Create();
+}
+
+std::unique_ptr<engine::InsertProcessor> keyedCompressor(const sampler::Loader&)
+{
+    return strip::createKeyedCompressor(types::compressor); // the channel strip's, with a key
+}
+
+std::unique_ptr<engine::InsertProcessor> optoCompressor(const sampler::Loader&)
+{
+    return strip::createOpto(types::opto);
+}
+
+std::unique_ptr<engine::InsertProcessor> sampled(const sampler::Loader& loader)
+{
+    return sampler::create(loader);
+}
+
+std::unique_ptr<engine::InsertProcessor> corona(const sampler::Loader& loader)
+{
+    return amp::create(loader);
+}
+} // namespace
+
+const std::vector<BuiltInType>& builtInTypes()
+{
+    using enum BuiltInKind;
+    namespace pl = presetlists;
+    static const std::vector<BuiltInType> list{
+        {types::gain, "Gain", effect, make<Gain>, pl::gainPresets},
+        {types::eq, "EQ", effect, make<Eq>, pl::eqPresets},
+        {types::compressor, "Compressor", effect, keyedCompressor, pl::compressorPresets},
+        {types::opto, "Opto Compressor", effect, optoCompressor, pl::optoPresets},
+        {glue::type, "Glue Compressor", effect, plain<glue::create>, pl::gluePresets},
+        {widener::type, "Stereo Widener", effect, plain<widener::create>, pl::widenerPresets},
+        {patina::type, "Patina", effect, plain<patina::create>, pl::patinaPresets},
+        {exciter::type, "Exciter", effect, plain<exciter::create>, pl::exciterPresets},
+        {orbit::type, "Orbit", effect, plain<orbit::create>, pl::orbitPresets},
+        {types::limiter, "Limiter", effect, make<Limiter>, pl::limiterPresets},
+        {types::reverb, "Reverb", effect, make<Reverb>, pl::reverbPresets},
+        {types::delay, "Delay", effect, make<Delay>, pl::delayPresets},
+        {tapeecho::type, "Tape Echo", effect, plain<tapeecho::create>, pl::tapeEchoPresets},
+        {bloom::type, "Bloom", effect, plain<bloom::create>, pl::bloomPresets},
+        {vesper::type, "Vesper", effect, plain<vesper::create>, pl::vesperPresets},
+        {amp::type, "Corona", effect, corona, pl::ampPresets},
+        {gravity::type, "Gravity", effect, plain<gravity::create>, pl::gravityPresets},
+        {flare::type, "Flare", effect, plain<flare::create>, pl::flarePresets},
+        {comet::type, "Comet", effect, plain<comet::create>, pl::cometPresets},
+        {tide::type, "Tide", effect, plain<tide::create>, pl::tidePresets},
+        {polaris::type, "Polaris", effect, plain<polaris::create>, pl::polarisPresets},
+        // The instruments keep their own preset lists (aurora::presets() and the like).
+        {aurora::type, "Aurora", instrument, plain<aurora::create>, nullptr},
+        {pulsar::type, "Pulsar", instrument, plain<pulsar::create>, nullptr},
+        {nebula::type, "Nebula", instrument, plain<nebula::create>, nullptr},
+        {starbit::type, "Starbit", instrument, plain<starbit::create>, nullptr},
+        {sampler::type, "Sampler", instrument, sampled, nullptr},
+    };
+    return list;
+}
+
+const BuiltInType* findBuiltIn(const std::string& typeName)
+{
+    const auto& list = builtInTypes();
+    const auto it =
+        std::find_if(list.begin(), list.end(), [&](const BuiltInType& b) { return b.type == typeName; });
+    return it != list.end() ? &*it : nullptr;
+}
+
 std::vector<std::string> BuiltInFactory::typeNames() const
 {
-    return {types::gain,    types::eq,     types::compressor, types::opto,    glue::type,    widener::type,
-            patina::type,   exciter::type, orbit::type,       types::limiter, types::reverb, types::delay,
-            tapeecho::type, bloom::type,   vesper::type,      amp::type,      gravity::type, flare::type,
-            comet::type,    tide::type,    polaris::type,     aurora::type,   pulsar::type,  nebula::type,
-            starbit::type,  sampler::type};
+    std::vector<std::string> names;
+    for (const auto& builtIn : builtInTypes())
+        names.push_back(builtIn.type);
+    return names;
 }
 
 bool BuiltInFactory::isInstrument(const std::string& typeName)
 {
-    return typeName == aurora::type || typeName == pulsar::type || typeName == nebula::type ||
-           typeName == starbit::type || typeName == sampler::type;
+    const auto* builtIn = findBuiltIn(typeName);
+    return builtIn != nullptr && builtIn->kind == BuiltInKind::instrument;
 }
 
 std::unique_ptr<engine::InsertProcessor> BuiltInFactory::create(const std::string& typeName) const
@@ -646,118 +724,16 @@ std::unique_ptr<engine::InsertProcessor> BuiltInFactory::create(const std::strin
     NORTHLIGHT_ASSERT_NOT_REALTIME("BuiltInFactory::create");
     if (strip::isStripType(typeName))
         return strip::create(typeName);
-    if (typeName == types::gain)
-        return std::make_unique<Gain>();
-    if (typeName == types::eq)
-        return std::make_unique<Eq>();
-    if (typeName == types::compressor)
-        return strip::createKeyedCompressor(types::compressor); // the channel strip's, with a key
-    if (typeName == types::opto)
-        return strip::createOpto(types::opto);
-    if (typeName == glue::type)
-        return glue::create();
-    if (typeName == widener::type)
-        return widener::create();
-    if (typeName == patina::type)
-        return patina::create();
-    if (typeName == exciter::type)
-        return exciter::create();
-    if (typeName == types::limiter)
-        return std::make_unique<Limiter>();
-    if (typeName == aurora::type)
-        return aurora::create();
-    if (typeName == pulsar::type)
-        return pulsar::create();
-    if (typeName == nebula::type)
-        return nebula::create();
-    if (typeName == starbit::type)
-        return starbit::create();
-    if (typeName == sampler::type)
-        return sampler::create(sampleLoader_);
-    if (typeName == types::reverb)
-        return std::make_unique<Reverb>();
-    if (typeName == types::delay)
-        return std::make_unique<Delay>();
-    if (typeName == tapeecho::type)
-        return tapeecho::create();
-    if (typeName == orbit::type)
-        return orbit::create();
-    if (typeName == bloom::type)
-        return bloom::create();
-    if (typeName == vesper::type)
-        return vesper::create();
-    if (typeName == amp::type)
-        return amp::create(sampleLoader_);
-    if (typeName == gravity::type)
-        return gravity::create();
-    if (typeName == flare::type)
-        return flare::create();
-    if (typeName == comet::type)
-        return comet::create();
-    if (typeName == tide::type)
-        return tide::create();
-    if (typeName == polaris::type)
-        return polaris::create();
-    return nullptr;
+    const auto* builtIn = findBuiltIn(typeName);
+    return builtIn != nullptr ? builtIn->create(sampleLoader_) : nullptr;
 }
 
 std::string BuiltInFactory::displayName(const std::string& typeName)
 {
     if (strip::isStripType(typeName))
         return strip::displayName(typeName);
-    if (typeName == types::gain)
-        return "Gain";
-    if (typeName == types::eq)
-        return "EQ";
-    if (typeName == types::compressor)
-        return "Compressor";
-    if (typeName == types::opto)
-        return "Opto Compressor";
-    if (typeName == glue::type)
-        return "Glue Compressor";
-    if (typeName == widener::type)
-        return "Stereo Widener";
-    if (typeName == patina::type)
-        return "Patina";
-    if (typeName == exciter::type)
-        return "Exciter";
-    if (typeName == types::limiter)
-        return "Limiter";
-    if (typeName == aurora::type)
-        return "Aurora";
-    if (typeName == pulsar::type)
-        return "Pulsar";
-    if (typeName == nebula::type)
-        return "Nebula";
-    if (typeName == starbit::type)
-        return "Starbit";
-    if (typeName == sampler::type)
-        return "Sampler";
-    if (typeName == types::reverb)
-        return "Reverb";
-    if (typeName == types::delay)
-        return "Delay";
-    if (typeName == tapeecho::type)
-        return "Tape Echo";
-    if (typeName == orbit::type)
-        return "Orbit";
-    if (typeName == bloom::type)
-        return "Bloom";
-    if (typeName == vesper::type)
-        return "Vesper";
-    if (typeName == amp::type)
-        return "Corona";
-    if (typeName == gravity::type)
-        return "Gravity";
-    if (typeName == flare::type)
-        return "Flare";
-    if (typeName == comet::type)
-        return "Comet";
-    if (typeName == tide::type)
-        return "Tide";
-    if (typeName == polaris::type)
-        return "Polaris";
-    return typeName;
+    const auto* builtIn = findBuiltIn(typeName);
+    return builtIn != nullptr ? builtIn->displayName : typeName;
 }
 
 const std::vector<engine::ParameterInfo>& parameterInfo(const std::string& typeName)

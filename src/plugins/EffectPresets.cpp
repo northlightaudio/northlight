@@ -5,6 +5,7 @@
 #include "plugins/Aurora.h"
 #include "plugins/Bloom.h"
 #include "plugins/BuiltIns.h"
+#include "plugins/EffectPresetLists.h"
 #include "plugins/Exciter.h"
 #include "plugins/Glue.h"
 #include "plugins/Nebula.h"
@@ -91,10 +92,14 @@ private:
     const std::vector<engine::ParameterInfo>& infos_;
     PresetBuilder builder_;
 };
+} // namespace
 
 // ----- the lists ----------------------------------------------------------------------------------
 // Each list starts with "Default" (the effect as it is added) unless the effect
 // names its defaults; the rest are settings a user would reach for first.
+
+namespace presetlists
+{
 
 std::vector<EffectPreset> gainPresets()
 {
@@ -888,31 +893,21 @@ std::vector<EffectPreset> patinaPresets()
     return patina::presets();
 }
 
+} // namespace presetlists
+
+namespace
+{
+// Every effect's list, by type, from the built-ins' registry.
 const std::map<std::string, std::vector<EffectPreset>>& all()
 {
-    static const std::map<std::string, std::vector<EffectPreset>> lists{
-        {types::gain, gainPresets()},
-        {types::eq, eqPresets()},
-        {types::compressor, compressorPresets()},
-        {types::opto, optoPresets()},
-        {glue::type, gluePresets()},
-        {widener::type, widenerPresets()},
-        {patina::type, patinaPresets()},
-        {exciter::type, exciterPresets()},
-        {types::limiter, limiterPresets()},
-        {types::reverb, reverbPresets()},
-        {types::delay, delayPresets()},
-        {tapeecho::type, tapeEchoPresets()},
-        {orbit::type, orbitPresets()},
-        {bloom::type, bloomPresets()},
-        {vesper::type, vesperPresets()},
-        {amp::type, ampPresets()},
-        {gravity::type, gravityPresets()},
-        {flare::type, flarePresets()},
-        {comet::type, cometPresets()},
-        {tide::type, tidePresets()},
-        {polaris::type, polarisPresets()},
-    };
+    static const std::map<std::string, std::vector<EffectPreset>> lists = []
+    {
+        std::map<std::string, std::vector<EffectPreset>> made;
+        for (const auto& builtIn : builtInTypes())
+            if (builtIn.presets != nullptr)
+                made.emplace(builtIn.type, builtIn.presets());
+        return made;
+    }();
     return lists;
 }
 } // namespace

@@ -1,6 +1,16 @@
 #include "ui/PluginMenu.h"
 
+#include "plugins/Amp.h"
+#include "plugins/Bloom.h"
 #include "plugins/BuiltIns.h"
+#include "plugins/Exciter.h"
+#include "plugins/Glue.h"
+#include "plugins/Orbit.h"
+#include "plugins/Patina.h"
+#include "plugins/Pedals.h"
+#include "plugins/TapeEcho.h"
+#include "plugins/Vesper.h"
+#include "plugins/Widener.h"
 #include "ui/Icons.h"
 #include "ui/Theme.h"
 
@@ -27,24 +37,24 @@ EffectCategory builtInCategory(const std::string& type)
     static const std::map<std::string, EffectCategory> kinds{
         {plugins::types::compressor, EffectCategory::dynamics},
         {plugins::types::opto, EffectCategory::dynamics},
-        {"northlight.glue", EffectCategory::dynamics},
+        {plugins::glue::type, EffectCategory::dynamics},
         {plugins::types::limiter, EffectCategory::dynamics},
         {plugins::types::eq, EffectCategory::eq},
         {plugins::types::reverb, EffectCategory::space},
         {plugins::types::delay, EffectCategory::space},
-        {"northlight.tapeecho", EffectCategory::space},
-        {"northlight.bloom", EffectCategory::space},
-        {"northlight.vesper", EffectCategory::space},
-        {"northlight.amp", EffectCategory::guitar},
-        {"northlight.gravity", EffectCategory::guitar},
-        {"northlight.flare", EffectCategory::guitar},
-        {"northlight.comet", EffectCategory::guitar},
-        {"northlight.tide", EffectCategory::guitar},
-        {"northlight.polaris", EffectCategory::guitar},
-        {"northlight.exciter", EffectCategory::drive},
-        {"northlight.patina", EffectCategory::drive},
-        {"northlight.orbit", EffectCategory::drive},
-        {"northlight.widener", EffectCategory::stereo},
+        {plugins::tapeecho::type, EffectCategory::space},
+        {plugins::bloom::type, EffectCategory::space},
+        {plugins::vesper::type, EffectCategory::space},
+        {plugins::amp::type, EffectCategory::guitar},
+        {plugins::gravity::type, EffectCategory::guitar},
+        {plugins::flare::type, EffectCategory::guitar},
+        {plugins::comet::type, EffectCategory::guitar},
+        {plugins::tide::type, EffectCategory::guitar},
+        {plugins::polaris::type, EffectCategory::guitar},
+        {plugins::exciter::type, EffectCategory::drive},
+        {plugins::patina::type, EffectCategory::drive},
+        {plugins::orbit::type, EffectCategory::drive},
+        {plugins::widener::type, EffectCategory::stereo},
         {plugins::types::gain, EffectCategory::stereo},
     };
     const auto it = kinds.find(type);
@@ -55,12 +65,12 @@ EffectCategory builtInCategory(const std::string& type)
 juce::String builtInHint(const std::string& type)
 {
     static const std::map<std::string, const char*> hints{
-        {"northlight.amp", "Amp"},
-        {"northlight.gravity", "Compressor"},
-        {"northlight.flare", "Distortion"},
-        {"northlight.comet", "Delay"},
-        {"northlight.tide", "Chorus"},
-        {"northlight.polaris", "Tuner"},
+        {plugins::amp::type, "Amp"},
+        {plugins::gravity::type, "Compressor"},
+        {plugins::flare::type, "Distortion"},
+        {plugins::comet::type, "Delay"},
+        {plugins::tide::type, "Chorus"},
+        {plugins::polaris::type, "Tuner"},
     };
     const auto it = hints.find(type);
     return it != hints.end() ? juce::String(it->second) : juce::String();

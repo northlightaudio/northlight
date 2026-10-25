@@ -4,9 +4,24 @@
 
 #include "ui/strip/BuiltInCards.h"
 
+#include "plugins/Amp.h"
+#include "plugins/Aurora.h"
 #include "plugins/BeatSync.h"
 #include "plugins/Biquad.h"
+#include "plugins/Bloom.h"
 #include "plugins/BuiltIns.h"
+#include "plugins/Exciter.h"
+#include "plugins/Glue.h"
+#include "plugins/Nebula.h"
+#include "plugins/Orbit.h"
+#include "plugins/Patina.h"
+#include "plugins/Pedals.h"
+#include "plugins/Pulsar.h"
+#include "plugins/Sampler.h"
+#include "plugins/Starbit.h"
+#include "plugins/TapeEcho.h"
+#include "plugins/Vesper.h"
+#include "plugins/Widener.h"
 #include "ui/strip/AuroraEditor.h"
 #include "ui/strip/EqGraph.h"
 #include "ui/strip/Graphs.h"
@@ -804,23 +819,23 @@ createBuiltInCard(const Theme& theme, CardHost& host, core::Id channelId, const 
         return createCompressorCard(theme, host, channelId, insert); // the strip compressor's
     if (insert.type == types::opto)
         return createOptoCard(theme, host, channelId, insert); // the strip opto's
-    if (insert.type == "northlight.glue")
+    if (insert.type == plugins::glue::type)
         return createGlueCard(theme, host, channelId, insert);
-    if (insert.type == "northlight.widener")
+    if (insert.type == plugins::widener::type)
         return createWidenerCard(theme, host, channelId, insert);
-    if (insert.type == "northlight.patina")
+    if (insert.type == plugins::patina::type)
         return createPatinaCard(theme, host, channelId, insert);
-    if (insert.type == "northlight.exciter")
+    if (insert.type == plugins::exciter::type)
         return createExciterCard(theme, host, channelId, insert);
-    if (insert.type == "northlight.bloom")
+    if (insert.type == plugins::bloom::type)
         return createBloomCard(theme, host, channelId, insert);
-    if (insert.type == "northlight.vesper")
+    if (insert.type == plugins::vesper::type)
         return createVesperCard(theme, host, channelId, insert);
-    if (insert.type == "northlight.amp")
+    if (insert.type == plugins::amp::type)
         return createEmberCard(theme, host, channelId, insert);
-    if (insert.type == "northlight.gravity" || insert.type == "northlight.flare" ||
-        insert.type == "northlight.comet" || insert.type == "northlight.tide" ||
-        insert.type == "northlight.polaris")
+    if (insert.type == plugins::gravity::type || insert.type == plugins::flare::type ||
+        insert.type == plugins::comet::type || insert.type == plugins::tide::type ||
+        insert.type == plugins::polaris::type)
         return createPedalCard(theme, host, channelId, insert);
     if (insert.type == types::limiter)
         return std::make_unique<LimiterCard>(theme, host, channelId, insert);
@@ -828,19 +843,19 @@ createBuiltInCard(const Theme& theme, CardHost& host, core::Id channelId, const 
         return std::make_unique<ReverbCard>(theme, host, channelId, insert);
     if (insert.type == types::delay)
         return std::make_unique<DelayCard>(theme, host, channelId, insert);
-    if (insert.type == "northlight.tapeecho")
+    if (insert.type == plugins::tapeecho::type)
         return createTapeEchoCard(theme, host, channelId, insert);
-    if (insert.type == "northlight.orbit")
+    if (insert.type == plugins::orbit::type)
         return createOrbitCard(theme, host, channelId, insert);
-    if (insert.type == "northlight.aurora")
+    if (insert.type == plugins::aurora::type)
         return createAuroraEditor(theme, host, channelId, insert);
-    if (insert.type == "northlight.pulsar")
+    if (insert.type == plugins::pulsar::type)
         return createPulsarEditor(theme, host, channelId, insert);
-    if (insert.type == "northlight.nebula")
+    if (insert.type == plugins::nebula::type)
         return createNebulaEditor(theme, host, channelId, insert);
-    if (insert.type == "northlight.starbit")
+    if (insert.type == plugins::starbit::type)
         return createStarbitEditor(theme, host, channelId, insert);
-    if (insert.type == "northlight.sampler")
+    if (insert.type == plugins::sampler::type)
         return createSamplerEditor(theme, host, channelId, insert);
     return nullptr;
 }

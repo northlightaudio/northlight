@@ -29,81 +29,8 @@ inline juce::Colour paletteColour(const Theme& theme, const char* name)
 }
 
 // Each module's hue, so a module reads the same in the editor, the mixer and
-// the tooltips.
-inline juce::Colour moduleColour(const Theme& theme, const std::string& type)
-{
-    namespace t = plugins::strip::types;
-    if (type == t::gate)
-        return paletteColour(theme, "Sea grass");
-    if (type == t::eq)
-        return paletteColour(theme, "Overcast");
-    if (type == t::compressor)
-        return paletteColour(theme, "Loch");
-    if (type == t::deesser)
-        return paletteColour(theme, "Heather");
-    if (type == t::saturation)
-        return paletteColour(theme, "Kelp");
-    if (type == t::limiter)
-        return paletteColour(theme, "Rowan");
-    if (type == t::opto)
-        return paletteColour(theme, "Straw"); // warm, like the cell's lamp
-    // The built-ins, in the same family (a built-in EQ, compressor or limiter
-    // takes its strip counterpart's hue).
-    if (type == "northlight.eq")
-        return paletteColour(theme, "Overcast");
-    if (type == "northlight.compressor")
-        return paletteColour(theme, "Loch");
-    if (type == "northlight.opto")
-        return paletteColour(theme, "Straw");
-    if (type == "northlight.glue")
-        return paletteColour(theme, "Thrift"); // apart from the strip compressors' Loch and Straw
-    if (type == "northlight.widener")
-        return paletteColour(theme, "Sea grass");
-    if (type == "northlight.patina")
-        return paletteColour(theme, "Kelp"); // the colour family of the strip saturation
-    if (type == "northlight.exciter")
-        return paletteColour(theme, "Machair");
-    if (type == "northlight.limiter")
-        return paletteColour(theme, "Rowan");
-    if (type == "northlight.gain")
-        return paletteColour(theme, "Machair");
-    if (type == "northlight.reverb")
-        return paletteColour(theme, "Lichen");
-    if (type == "northlight.delay")
-        return paletteColour(theme, "Gorse");
-    if (type == "northlight.amp")
-        return paletteColour(theme, "Straw"); // the warm glow of the valves
-    if (type == "northlight.tapeecho")
-        return paletteColour(theme, "Rowan");
-    if (type == "northlight.orbit")
-        return paletteColour(theme, "Slate"); // the machine's aluminium
-    // The pedals take their family's hue: the compressor's Loch, the delay's Gorse.
-    if (type == "northlight.gravity")
-        return paletteColour(theme, "Loch");
-    if (type == "northlight.flare")
-        return paletteColour(theme, "Rowan");
-    if (type == "northlight.comet")
-        return paletteColour(theme, "Gorse");
-    if (type == "northlight.tide")
-        return paletteColour(theme, "Sea grass");
-    if (type == "northlight.polaris")
-        return paletteColour(theme, "Overcast");
-    if (type == "northlight.bloom")
-        return paletteColour(theme, "Heather"); // dusk over the moor, apart from the plain reverb's Lichen
-    if (type == "northlight.vesper")
-        return paletteColour(theme, "Thrift"); // the afterglow
-    if (type == "northlight.aurora")
-        return paletteColour(theme, "Heather");
-    if (type == "northlight.pulsar")
-        return paletteColour(theme, "Rowan");
-    if (type == "northlight.nebula")
-        return paletteColour(theme, "Thrift");
-    if (type == "northlight.starbit")
-        return paletteColour(theme, "Machair");
-    if (type == "northlight.sampler")
-        return paletteColour(theme, "Lichen");
-    return theme.colours.textSecondary;
-}
+// the tooltips (textSecondary for a type with none).
+juce::Colour moduleColour(const Theme& theme, const std::string& type);
 
 // The EQ's band hues: low cut, bands 1-4, high cut.
 inline juce::Colour bandColour(const Theme& theme, int band)

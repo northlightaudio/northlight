@@ -328,7 +328,10 @@ Every processor, built-in or hosted, sits behind one interface,
 know nothing format-specific.
 
 - **Built-ins** (`src/plugins`): utility and effect processors, the six channel strip
-  modules, and the instruments. They share a base that crossfades bypass and keeps
+  modules, and the instruments. One registry, `builtInTypes()` in `plugins/BuiltIns.h`,
+  lists every insert type with its menu name, whether it is an instrument, how to
+  make it and its factory presets; the factory, the menus and `EffectPresets` read
+  it (the strip modules keep their own list, `strip::moduleTypes()`). They share a base that crossfades bypass and keeps
   state running while bypassed, and they publish real-time feedback for their
   editors through rings of atomics: a five-value frame every 5 ms (input, output,
   reduction and two processor-specific values) and two sample taps. The larger

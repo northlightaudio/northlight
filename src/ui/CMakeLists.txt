@@ -74,6 +74,7 @@ add_library(northlight_ui STATIC
     panels/InstrumentRack.cpp
     InstrumentOutputs.h
     strip/StripStyle.h
+    strip/StripStyle.cpp
     strip/ModuleCard.h
     strip/ModuleCard.cpp
     strip/ModuleCards.cpp

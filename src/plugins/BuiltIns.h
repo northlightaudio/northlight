@@ -2,6 +2,7 @@
 
 #include "core/ProjectJson.h"
 #include "engine/Insert.h"
+#include "plugins/EffectPresets.h"
 #include "plugins/Sampler.h"
 
 #include <memory>
@@ -30,6 +31,28 @@ inline const std::string limiter = "northlight.limiter";
 inline const std::string reverb = "northlight.reverb";
 inline const std::string delay = "northlight.delay";
 } // namespace types
+
+// The built-ins' registry: one entry per insert type, in menu order (the
+// channel strip's modules keep their own list, strip::moduleTypes()). The
+// factory, the menus and the factory presets all read it.
+enum class BuiltInKind
+{
+    effect,
+    instrument, // takes MIDI, makes audio
+};
+struct BuiltInType
+{
+    std::string type;
+    std::string displayName; // for menus
+    BuiltInKind kind = BuiltInKind::effect;
+    std::unique_ptr<engine::InsertProcessor> (*create)(const sampler::Loader&) = nullptr;
+    // An effect's factory presets, the first its defaults (null for an
+    // instrument, which keeps its own list).
+    std::vector<EffectPreset> (*presets)() = nullptr;
+};
+const std::vector<BuiltInType>& builtInTypes();
+// The registry's entry for a type (null for a strip module or an unknown type).
+const BuiltInType* findBuiltIn(const std::string& typeName);
 
 class BuiltInFactory final : public engine::InsertFactory
 {
