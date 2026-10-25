@@ -4,6 +4,7 @@
 #include "core/NoteNames.h"
 #include "ui/NorthlightLookAndFeel.h"
 #include "ui/PaintStats.h"
+#include "ui/components/DragTip.h"
 #include "ui/timeline/GridLines.h"
 #include "ui/timeline/TimeGrid.h"
 
@@ -556,19 +557,11 @@ juce::String PianoRoll::noteName(int note)
 
 void PianoRoll::drawTooltip(juce::Graphics& g, const juce::String& text, juce::Point<int> at)
 {
-    const auto& c = theme_.colours;
-    g.setFont(theme_.caption());
-    const int w = juce::GlyphArrangement::getStringWidthInt(theme_.caption(), text) + 2 * theme_.spacing.sm;
-    const int h = theme_.sizes.controlCompact;
-    auto box = juce::Rectangle<int>(at.x + 14, at.y + 18, w, h);
-    if (box.getRight() > getWidth() - scrollbarSize_)
-        box.setX(at.x - w - 6);
-    g.setColour(c.surface2);
-    g.fillRoundedRectangle(box.toFloat(), theme_.radius.sm);
-    g.setColour(c.lineStrong);
-    g.drawRoundedRectangle(box.toFloat().reduced(0.5f), theme_.radius.sm, 1.0f);
-    g.setColour(c.textPrimary);
-    g.drawText(text, box, juce::Justification::centred);
+    paintDragTip(g,
+                 theme_,
+                 text,
+                 at,
+                 getLocalBounds().withTrimmedRight(scrollbarSize_).withTrimmedBottom(scrollbarSize_));
 }
 
 void PianoRoll::paint(juce::Graphics& g)

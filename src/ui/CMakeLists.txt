@@ -48,6 +48,8 @@ add_library(northlight_ui STATIC
     components/HardwareParts.cpp
     components/PanelHeader.h
     components/PanelHeader.cpp
+    components/DragTip.h
+    components/DragTip.cpp
     components/Toast.h
     components/Tooltips.h
     components/Toast.cpp

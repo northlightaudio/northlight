@@ -11,6 +11,7 @@
 #include "ui/NorthlightLookAndFeel.h"
 #include "ui/PaintStats.h"
 #include "ui/PluginMenu.h"
+#include "ui/components/DragTip.h"
 #include "ui/timeline/ClipPainter.h"
 #include "ui/timeline/TimeGrid.h"
 #include "ui/timeline/WaveformPainter.h"
@@ -4445,21 +4446,11 @@ juce::String ArrangeView::positionText(core::SamplePosition position) const
 
 void ArrangeView::drawTooltip(juce::Graphics& g, const juce::String& text, juce::Point<int> at)
 {
-    const auto& c = theme_.colours;
-    g.setFont(theme_.caption());
-    const int w = juce::GlyphArrangement::getStringWidthInt(theme_.caption(), text) + 2 * theme_.spacing.sm;
-    const int h = theme_.sizes.controlCompact;
-    auto box = juce::Rectangle<int>(at.x + 14, at.y + 18, w, h);
-    if (box.getRight() > getWidth() - scrollbarWidth)
-        box.setX(at.x - w - 6);
-    if (box.getBottom() > getHeight() - scrollbarHeight)
-        box.setY(at.y - h - 6);
-    g.setColour(c.surface2);
-    g.fillRoundedRectangle(box.toFloat(), theme_.radius.sm);
-    g.setColour(c.lineStrong);
-    g.drawRoundedRectangle(box.toFloat().reduced(0.5f), theme_.radius.sm, 1.0f);
-    g.setColour(c.textPrimary);
-    g.drawText(text, box, juce::Justification::centred);
+    paintDragTip(g,
+                 theme_,
+                 text,
+                 at,
+                 getLocalBounds().withTrimmedRight(scrollbarWidth).withTrimmedBottom(scrollbarHeight));
 }
 
 void ArrangeView::drawEditOverlay(juce::Graphics& g)
