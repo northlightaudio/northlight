@@ -437,7 +437,9 @@ blocked the message thread; now the longest stall is one plugin.
   and contrast chosen in Preferences go in `appearance-tokens.json` beside it, applied
   after it.
 - **Autosave** writes unsaved projects to the settings folder while edits pause. A
-  normal close removes them, so anything left at launch is offered back.
+  normal close removes them, so anything left at launch is offered back. The plugin
+  states and parameter keys are taken on the message thread; the copy is turned into
+  JSON and written on a worker, and a save or close waits for a write in flight.
 - **Templates** are project files without clips. **Media management** gathers outside
   media into the project folder and moves unused files to the Recycle Bin.
 - **Crash reports** are minidumps written to the settings folder from buffers

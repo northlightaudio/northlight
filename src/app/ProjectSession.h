@@ -19,6 +19,8 @@
 #include <juce_events/juce_events.h>
 #include <juce_gui_basics/juce_gui_basics.h>
 
+#include <atomic>
+#include <cstdint>
 #include <functional>
 #include <map>
 #include <memory>
@@ -251,6 +253,8 @@ public:
     std::string restoreAutosave(const Autosave& autosave);
     static void discardAutosave(const Autosave& autosave);
     // Writes the autosave now if there are unsaved changes; returns whether it wrote.
+    // Writes the autosave now, on the calling (message) thread; the session's own
+    // timer writes it on a worker instead (autosaveInBackground).
     bool autosaveNow();
     juce::File currentAutosaveFile() const;
 
@@ -467,6 +471,19 @@ private:
     void autosaveIfDue();
     // Pulls each hosted plugin's current state into the model before a save.
     void captureInsertStates();
+
+    // ----- autosave writing -------------------------------------------------------------
+    class ResolvedKeys;
+    struct AutosaveJob;
+    std::shared_ptr<AutosaveJob> prepareAutosave();    // message thread: states, a copy, the keys
+    static bool writeAutosave(const AutosaveJob& job); // any thread
+    void finishAutosave(const juce::File& target);     // message thread
+    void autosaveInBackground();
+    void waitForAutosave();
+    bool autosaveWriting_ = false;
+    std::uint64_t autosaveGeneration_ = 0; // moved on by every removal: a copy written before is stale
+    std::shared_ptr<std::atomic<bool>> autosaveAlive_ = std::make_shared<std::atomic<bool>>(true);
+    juce::ThreadPool autosaveWriter_{1};
 
     audio::AudioDeviceLayer& audio_;
     engine::DiskThread disk_;

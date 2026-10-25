@@ -118,7 +118,8 @@ ProjectSession::~ProjectSession()
 {
     stopTimer();
     hostedAutomation_.stopTimer();
-    removeOwnAutosave(); // a normal close: the user saved or chose not to
+    removeOwnAutosave(); // a normal close: the user saved or chose not to (waits for a write)
+    autosaveAlive_->store(false);
     scanner_.cancel();
     audio_.removeChangeListener(this);
     // Stop new callbacks reaching the engine. This does not wait for one already
@@ -1148,31 +1149,90 @@ void ProjectSession::edited()
         dirtySinceMs_ = now;
 }
 
-bool ProjectSession::autosaveNow()
+// Every insert's parameter keys, resolved on the message thread (a hosted plugin's
+// come from its live instance), so the project can be written on another thread.
+class ProjectSession::ResolvedKeys final : public core::ParameterKeys
+{
+public:
+    explicit ResolvedKeys(const ProjectSession& session)
+    {
+        const SessionKeys live(session);
+        const auto resolve = [&](const core::Channel& channel)
+        {
+            for (const auto* insert : channel.processingChain())
+                if (plugins::builtInParameterLayout(insert->type).keys.empty())
+                    layouts_[insert->id] = {insert->type, live.layout(*insert)};
+        };
+        for (const auto& t : session.project_.tracks)
+            resolve(t);
+        for (const auto& b : session.project_.buses)
+            resolve(b);
+        resolve(session.project_.master);
+    }
+    core::ParameterLayout layout(const core::Insert& insert) const override
+    {
+        if (auto builtIn = plugins::builtInParameterLayout(insert.type); !builtIn.keys.empty())
+            return builtIn;
+        const auto it = layouts_.find(insert.id);
+        return it != layouts_.end() && it->second.first == insert.type ? it->second.second
+                                                                       : core::ParameterLayout{};
+    }
+
+private:
+    std::map<core::Id, std::pair<std::string, core::ParameterLayout>> layouts_;
+};
+
+// What writing an autosave needs, taken on the message thread.
+struct ProjectSession::AutosaveJob
+{
+    juce::File target;
+    core::Project project;
+    std::unique_ptr<ResolvedKeys> keys;
+    juce::String projectPath;
+    std::string name;
+    std::uint64_t generation = 0;
+};
+
+std::shared_ptr<ProjectSession::AutosaveJob> ProjectSession::prepareAutosave()
 {
     if (autosaveFolder_ == juce::File() || !isModified())
-        return false;
+        return nullptr;
     if (untitledStem_.isEmpty())
         untitledStem_ = juce::Uuid().toString().substring(0, 8);
-    const auto target = currentAutosaveFile();
     if (!autosaveFolder_.createDirectory().wasOk())
-        return false;
-    captureInsertStates();
+        return nullptr;
+    captureInsertStates(); // plugin state: message thread
+    auto job = std::make_shared<AutosaveJob>();
+    job->target = currentAutosaveFile();
+    job->project = project_;
+    job->keys = std::make_unique<ResolvedKeys>(*this);
+    job->projectPath = projectFile_.getFullPathName();
+    job->name = project_.name;
+    job->generation = autosaveGeneration_;
+    return job;
+}
+
+bool ProjectSession::writeAutosave(const AutosaveJob& job)
+{
     // Written beside the target and moved over it, so a crash mid-write never
     // leaves a torn copy where the last good one was.
-    const auto temp = target.getSiblingFile(target.getFileName() + ".tmp");
-    const SessionKeys keys(*this);
-    if (!temp.replaceWithText(juce::String(core::projectToJson(project_, true, &keys))) ||
-        !temp.moveFileTo(target))
+    const auto temp = job.target.getSiblingFile(job.target.getFileName() + ".tmp");
+    if (!temp.replaceWithText(juce::String(core::projectToJson(job.project, true, job.keys.get()))) ||
+        !temp.moveFileTo(job.target))
     {
         temp.deleteFile();
         return false;
     }
     auto meta = std::make_unique<juce::DynamicObject>();
-    meta->setProperty("project", projectFile_.getFullPathName());
-    meta->setProperty("name", juce::String::fromUTF8(project_.name.c_str()));
+    meta->setProperty("project", job.projectPath);
+    meta->setProperty("name", juce::String::fromUTF8(job.name.c_str()));
     meta->setProperty("time", juce::Time::currentTimeMillis());
-    sidecarOf(target).replaceWithText(juce::JSON::toString(juce::var(meta.release())));
+    sidecarOf(job.target).replaceWithText(juce::JSON::toString(juce::var(meta.release())));
+    return true;
+}
+
+void ProjectSession::finishAutosave(const juce::File& target)
+{
     // A project saved under a new name since the last autosave: the old copy goes.
     if (autosaveWritten_ != juce::File() && autosaveWritten_ != target)
     {
@@ -1180,12 +1240,67 @@ bool ProjectSession::autosaveNow()
         sidecarOf(autosaveWritten_).deleteFile();
     }
     autosaveWritten_ = target;
+}
+
+bool ProjectSession::autosaveNow()
+{
+    waitForAutosave();
+    const auto job = prepareAutosave();
+    if (job == nullptr || !writeAutosave(*job))
+        return false;
+    finishAutosave(job->target);
     dirtySinceMs_ = 0.0;
     return true;
 }
 
+void ProjectSession::autosaveInBackground()
+{
+    if (autosaveWriting_)
+        return; // the last one is still being written: the next tick tries again
+    const auto job = prepareAutosave();
+    if (job == nullptr)
+        return;
+    autosaveWriting_ = true;
+    const double dirtySince = dirtySinceMs_;
+    dirtySinceMs_ = 0.0; // an edit from here on is newer than this copy
+    autosaveWriter_.addJob(
+        [this, job, dirtySince, alive = autosaveAlive_]
+        {
+            const bool ok = writeAutosave(*job);
+            juce::MessageManager::callAsync(
+                [this, job, ok, dirtySince, alive]
+                {
+                    if (!alive->load())
+                        return;
+                    autosaveWriting_ = false;
+                    if (!ok)
+                    {
+                        if (dirtySinceMs_ <= 0.0)
+                            dirtySinceMs_ = dirtySince; // try again at the next tick
+                        return;
+                    }
+                    if (job->generation != autosaveGeneration_)
+                    {
+                        // Saved (or closed) while it was being written: it is stale.
+                        job->target.deleteFile();
+                        sidecarOf(job->target).deleteFile();
+                        return;
+                    }
+                    finishAutosave(job->target);
+                });
+        });
+}
+
+void ProjectSession::waitForAutosave()
+{
+    // At most one job, a project's worth of JSON: a short wait.
+    autosaveWriter_.removeAllJobs(false, 10000);
+}
+
 void ProjectSession::removeOwnAutosave()
 {
+    waitForAutosave(); // a copy being written now would outlive the removal
+    ++autosaveGeneration_;
     if (autosaveWritten_ != juce::File())
     {
         autosaveWritten_.deleteFile();
@@ -1204,7 +1319,7 @@ void ProjectSession::autosaveIfDue()
     // Due once the interval has passed since the first unsaved change, and the
     // edits have paused for a second (not in the middle of a burst of commands).
     if (now - dirtySinceMs_ >= interval * 1000.0 && now - lastEditMs_ >= 1000.0)
-        autosaveNow();
+        autosaveInBackground(); // the plugin states are taken here; the JSON is written off this thread
 }
 
 std::vector<ProjectSession::Autosave> ProjectSession::leftoverAutosaves() const
