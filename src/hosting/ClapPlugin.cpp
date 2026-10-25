@@ -1180,7 +1180,10 @@ void HostedClapPlugin::hostParamsRequestFlush(const clap_host_t* host) noexcept
     self(host).requestMainThread();
 }
 
-void HostedClapPlugin::hostStateMarkDirty(const clap_host_t*) noexcept {}
+void HostedClapPlugin::hostStateMarkDirty(const clap_host_t* host) noexcept
+{
+    self(host).stateDirty_.store(true, std::memory_order_release);
+}
 
 void HostedClapPlugin::hostLatencyChanged(const clap_host_t* host) noexcept
 {

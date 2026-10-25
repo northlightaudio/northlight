@@ -93,7 +93,14 @@ public:
     const Command* undoTop() const noexcept { return undo_.empty() ? nullptr : undo_.back().get(); }
     std::string undoName() const;
     std::string redoName() const;
+    // Empties both histories; the empty history is the save point.
     void clear();
+
+    // The save point: the place in the history the saved file matches. Undoing or
+    // redoing back to it makes the project unmodified again; a new command after
+    // undoing past it makes it unreachable.
+    void markSaved() noexcept;
+    bool atSavePoint() const noexcept;
 
     // Groups the next `execute` calls into one undoable step until endGroup().
     // Groups nest: an inner begin/end pair joins the open group (keeping its
@@ -108,6 +115,9 @@ private:
     std::vector<std::unique_ptr<Command>> redo_;
     std::unique_ptr<Group> openGroup_;
     int groupDepth_ = 0;
+    // undo_.size() at the save point; -1 once it can no longer be reached.
+    std::ptrdiff_t savedDepth_ = 0;
+    void push(std::unique_ptr<Command> command);
 };
 
 // ----- concrete commands ------------------------------------------------------------------

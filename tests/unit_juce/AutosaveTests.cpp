@@ -54,6 +54,26 @@ struct AutosaveFixture
 };
 } // namespace
 
+TEST_CASE("Undoing back to what was saved leaves the project unmodified", "[session][undo]")
+{
+    AutosaveFixture f;
+    auto session = f.makeSession();
+    CHECK_FALSE(session->isModified());
+    f.addTrack(*session, "A");
+    CHECK(session->isModified());
+    const auto file = f.folder.getChildFile("saved.northlight");
+    REQUIRE(session->save(file).empty());
+    CHECK_FALSE(session->isModified());
+    f.addTrack(*session, "B");
+    CHECK(session->isModified());
+    session->undo();
+    CHECK_FALSE(session->isModified());
+    session->undo();
+    CHECK(session->isModified());
+    session->redo();
+    CHECK_FALSE(session->isModified());
+}
+
 TEST_CASE("Unsaved changes are autosaved and a crashed session's copy can be restored", "[session][autosave]")
 {
     AutosaveFixture f;

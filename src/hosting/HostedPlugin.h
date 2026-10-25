@@ -29,7 +29,8 @@ namespace northlight::hosting
 // graph or freezes a tail.
 class HostedPlugin final : public engine::InsertProcessor,
                            public PluginPresets,
-                           private juce::AudioProcessorParameter::Listener
+                           private juce::AudioProcessorParameter::Listener,
+                           private juce::AudioProcessorListener
 {
 public:
     // Which channel layout the plugin accepted (decided once, at creation).
@@ -60,6 +61,10 @@ public:
     void setParameter(int index, float value) noexcept override;
     float parameter(int index) const noexcept override;
     bool takeParameterEdit(ParameterEdit& edit) noexcept override;
+    bool takeStateChanged() noexcept override
+    {
+        return stateChanged_.exchange(false, std::memory_order_acq_rel);
+    }
     bool ownsParameters() const noexcept override { return true; }
     bool crashed() const noexcept override { return crashed_.load(std::memory_order_acquire); }
     // The VST3 ParamID (through JUCE's parameter id): stable across versions.
@@ -122,6 +127,10 @@ private:
     void parameterValueChanged(int parameterIndex, float newValue) override;
     void parameterGestureChanged(int parameterIndex, bool gestureIsStarting) override;
     void pushEdit(const ParameterEdit& edit) noexcept;
+    // The plugin marking its state dirty (VST3 IComponentHandler2::setDirty).
+    void audioProcessorParameterChanged(juce::AudioProcessor*, int, float) override {}
+    void audioProcessorChanged(juce::AudioProcessor*, const ChangeDetails& details) override;
+    std::atomic<bool> stateChanged_{false};
     static constexpr size_t maxEdits = 4096;
     std::mutex editsMutex_;
     std::vector<ParameterEdit> edits_;   // both reserved to maxEdits: swapping keeps the capacity

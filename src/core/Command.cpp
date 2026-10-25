@@ -4,6 +4,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <cstddef>
 #include <stdexcept>
 #include <utility>
 
@@ -80,8 +81,27 @@ void UndoStack::execute(Project& project, std::unique_ptr<Command> command)
         openGroup_->add(std::move(command));
         return;
     }
+    push(std::move(command));
+}
+
+void UndoStack::push(std::unique_ptr<Command> command)
+{
+    // The save point was on the redo side: it goes with the redo history.
+    if (savedDepth_ > static_cast<std::ptrdiff_t>(undo_.size()))
+        savedDepth_ = -1;
     undo_.push_back(std::move(command));
     redo_.clear();
+}
+
+void UndoStack::markSaved() noexcept
+{
+    savedDepth_ = static_cast<std::ptrdiff_t>(undo_.size());
+}
+
+bool UndoStack::atSavePoint() const noexcept
+{
+    return savedDepth_ == static_cast<std::ptrdiff_t>(undo_.size()) &&
+           (openGroup_ == nullptr || openGroup_->empty());
 }
 
 bool UndoStack::undo(Project& project)
@@ -121,6 +141,7 @@ void UndoStack::clear()
     redo_.clear();
     openGroup_.reset();
     groupDepth_ = 0;
+    savedDepth_ = 0;
 }
 
 void UndoStack::beginGroup(std::string name)
@@ -139,10 +160,7 @@ void UndoStack::endGroup()
     groupDepth_ = 0;
     auto group = std::move(openGroup_);
     if (!group->empty())
-    {
-        undo_.push_back(std::move(group));
-        redo_.clear();
-    }
+        push(std::move(group));
 }
 
 // ----- helpers ----------------------------------------------------------------------------

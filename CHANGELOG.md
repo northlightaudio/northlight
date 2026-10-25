@@ -181,6 +181,9 @@ Northlight has not had a release yet. The first release, 0.1.0, will include:
 
 ### Fixed
 
+- Undoing back to the last save leaves the project unmodified, so closing no longer
+  asks to save; a change made in a plugin's own window (a preset, a knob) now marks
+  the project modified.
 - The inspector and the piano roll follow Select all, Esc, and clips that are
   deleted or moved to another track; before, they kept showing the old selection.
 - Opening a project whose id counter is behind its pitch edits no longer lets new

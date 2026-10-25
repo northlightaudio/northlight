@@ -81,6 +81,10 @@ public:
     {
         return edits_ != nullptr && edits_->pop(edit);
     }
+    bool takeStateChanged() noexcept override
+    {
+        return stateDirty_.exchange(false, std::memory_order_acq_rel);
+    }
     void beginParameterGesture(int index) noexcept override;
     void endParameterGesture(int index) noexcept override;
     void process(float* left, float* right, int numSamples) noexcept override;
@@ -349,6 +353,7 @@ private:
     };
     std::atomic<int> latency_{0};
     std::atomic<bool> latencyDirty_{false};
+    std::atomic<bool> stateDirty_{false}; // clap_host_state.mark_dirty
     std::atomic<bool> flushRequested_{false};
     std::atomic<bool> callbackRequested_{false};
     std::atomic<bool> restartRequested_{false};

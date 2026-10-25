@@ -297,6 +297,40 @@ TEST_CASE("An undo that fails part way leaves the project and the history as the
     CHECK_FALSE(undo.canRedo());
 }
 
+TEST_CASE("Undoing or redoing back to the save point leaves nothing unsaved", "[core][command][undo]")
+{
+    Project p;
+    UndoStack undo;
+    CHECK(undo.atSavePoint());
+    undo.execute(p, std::make_unique<Counting>());
+    CHECK_FALSE(undo.atSavePoint());
+    undo.markSaved();
+    CHECK(undo.atSavePoint());
+    undo.execute(p, std::make_unique<Counting>());
+    CHECK_FALSE(undo.atSavePoint());
+    undo.undo(p);
+    CHECK(undo.atSavePoint());
+    undo.undo(p);
+    CHECK_FALSE(undo.atSavePoint());
+    undo.redo(p);
+    CHECK(undo.atSavePoint());
+
+    // A group in progress is a change.
+    undo.beginGroup("Drag");
+    undo.execute(p, std::make_unique<Counting>());
+    CHECK_FALSE(undo.atSavePoint());
+    undo.endGroup();
+    undo.undo(p);
+    CHECK(undo.atSavePoint());
+
+    // Undo past the save point, then a new command: the saved state is gone.
+    undo.undo(p);
+    undo.execute(p, std::make_unique<Counting>());
+    CHECK_FALSE(undo.atSavePoint());
+    undo.undo(p);
+    CHECK_FALSE(undo.atSavePoint());
+}
+
 TEST_CASE("A new command after undo discards the redo history", "[core][command]")
 {
     Project p = projectWithTrack();

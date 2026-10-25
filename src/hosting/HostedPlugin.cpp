@@ -84,6 +84,13 @@ HostedPlugin::HostedPlugin(std::string typeName,
         parameterInfos_.push_back(std::move(info));
         parameterObjects_.push_back(parameter);
     }
+    instance_->addListener(this);
+}
+
+void HostedPlugin::audioProcessorChanged(juce::AudioProcessor*, const ChangeDetails& details)
+{
+    if (details.nonParameterStateChanged && !settingFromHost_)
+        stateChanged_.store(true, std::memory_order_release);
 }
 
 thread_local bool HostedPlugin::settingFromHost_ = false;
@@ -149,6 +156,7 @@ float HostedPlugin::parameter(int index) const noexcept
 HostedPlugin::~HostedPlugin()
 {
     NORTHLIGHT_ASSERT_NOT_REALTIME("HostedPlugin::~HostedPlugin");
+    instance_->removeListener(this);
     for (auto* parameter : parameterObjects_)
         parameter->removeListener(this);
     if (prepared_.load(std::memory_order_acquire))

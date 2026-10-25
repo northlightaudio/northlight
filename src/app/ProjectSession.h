@@ -198,7 +198,9 @@ public:
 
     std::string save(const juce::File& file);
     const juce::File& projectFile() const noexcept { return projectFile_; }
-    bool isModified() const noexcept { return modified_; }
+    // Unsaved changes: the history is away from the save point, or something changed
+    // outside it (a restored autosave, a plugin's own editor).
+    bool isModified() const noexcept { return !undo_.atSavePoint() || changedOutsideHistory_; }
 
     // ----- templates ----------------------------------------------------------------
     // Templates are projects without clips, notes or markers (tracks, buses,
@@ -485,7 +487,7 @@ private:
     core::Project project_;
     core::UndoStack undo_;
     juce::File projectFile_;
-    bool modified_ = false;
+    bool changedOutsideHistory_ = false;
     std::string recordingMessage_;
     std::string pluginMessage_;
     std::set<core::Id> reportedCrashes_; // inserts whose crash the user has been told about

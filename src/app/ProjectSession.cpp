@@ -186,7 +186,6 @@ bool ProjectSession::run(std::unique_ptr<core::Command> command, bool mayWriteAu
     if (!applyChecked(std::move(command)))
         return false;
     const auto kind = applied->changeKind(); // after apply: some commands only know then
-    modified_ = true;
     pendingKind_ = std::max(pendingKind_.value_or(core::Command::ChangeKind::cosmetic), kind);
     pendingTouches_.insert(pendingTouches_.end(), touches.begin(), touches.end());
     if (batchDepth_ == 0)
@@ -372,7 +371,6 @@ void ProjectSession::undo()
         juce::Logger::writeToLog(juce::String("Could not undo: ") + e.what());
         return;
     }
-    modified_ = true;
     // The engine work the undone command's kind needs, with the parameters it
     // restored (they reach plugins that own theirs).
     const auto* undone = undo_.redoTop();
@@ -393,7 +391,6 @@ void ProjectSession::redo()
         juce::Logger::writeToLog(juce::String("Could not redo: ") + e.what());
         return;
     }
-    modified_ = true;
     const auto* redone = undo_.undoTop();
     std::vector<core::Command::ParameterTouch> touches;
     redone->touchedParameters(touches);
@@ -722,7 +719,7 @@ void ProjectSession::newProject()
     project_ = core::Project{};
     undo_.clear();
     projectFile_ = juce::File();
-    modified_ = false;
+    changedOutsideHistory_ = false;
     matchDeviceSampleRate();
     publish();
 }
@@ -805,17 +802,17 @@ void ProjectSession::commitLoad()
     {
         case LoadKind::open:
             projectFile_ = load_->file();
-            modified_ = false;
+            changedOutsideHistory_ = false;
             break;
         case LoadKind::fromTemplate:
             project_.name = "Untitled";
             projectFile_ = juce::File();
-            modified_ = false;
+            changedOutsideHistory_ = false;
             matchDeviceSampleRate();
             break;
         case LoadKind::restore:
             projectFile_ = loadAutosave_.project;
-            modified_ = true; // not saved until the user saves it
+            changedOutsideHistory_ = true; // not saved until the user saves it
             discardAutosave(loadAutosave_);
             edited();
             break;
@@ -927,7 +924,8 @@ std::string ProjectSession::save(const juce::File& file)
     if (!file.replaceWithText(juce::String(text)))
         return "could not write " + file.getFullPathName().toStdString();
     projectFile_ = file;
-    modified_ = false;
+    undo_.markSaved();
+    changedOutsideHistory_ = false;
     removeOwnAutosave();
     notify(Change::structure);
     return {};
@@ -1133,7 +1131,7 @@ void ProjectSession::edited()
 
 bool ProjectSession::autosaveNow()
 {
-    if (autosaveFolder_ == juce::File() || !modified_)
+    if (autosaveFolder_ == juce::File() || !isModified())
         return false;
     if (untitledStem_.isEmpty())
         untitledStem_ = juce::Uuid().toString().substring(0, 8);
@@ -2346,9 +2344,14 @@ void ProjectSession::playHostedAutomation()
             const auto instance = engine_.insertInstance(insertId);
             if (instance == nullptr)
                 continue;
+            // A change made in the plugin's own editor is a change to the project,
+            // kept by the plugin rather than the history.
+            if (instance->takeStateChanged())
+                changedOutsideHistory_ = true;
             engine::InsertProcessor::ParameterEdit edit;
             for (int n = 0; n < 1024 && instance->takeParameterEdit(edit); ++n)
             {
+                changedOutsideHistory_ = true;
                 const auto* channel = project_.findChannel(channelId);
                 const auto* insert = channel != nullptr ? channel->findInsert(insertId) : nullptr;
                 if (insert != nullptr)
