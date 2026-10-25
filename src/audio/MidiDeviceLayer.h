@@ -84,6 +84,9 @@ private:
     };
 
     std::atomic<engine::AudioEngine*> engine_{nullptr};
+    // MIDI callbacks running now (each holds engine_ until it returns): setEngine
+    // waits for them, so a detached engine is never used afterwards.
+    std::atomic<int> callbacksInFlight_{0};
     std::optional<std::vector<std::string>> enabledInputs_;
     std::string outputName_;
     std::vector<OpenInput> open_;

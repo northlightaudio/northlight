@@ -4,6 +4,7 @@
 
 #include <algorithm>
 #include <chrono>
+#include <thread>
 
 namespace northlight::audio
 {
@@ -34,8 +35,14 @@ MidiDeviceLayer::~MidiDeviceLayer()
 
 void MidiDeviceLayer::setEngine(engine::AudioEngine* engine) noexcept
 {
-    const std::lock_guard<std::mutex> lock(engineMutex_);
-    engine_.store(engine, std::memory_order_release);
+    {
+        const std::lock_guard<std::mutex> lock(engineMutex_);
+        engine_.store(engine); // sequentially consistent with the callbacks' count below
+    }
+    // A MIDI callback that loaded the old engine may still be using it: wait for it
+    // to finish, so the caller can destroy the engine once this returns.
+    while (callbacksInFlight_.load() > 0)
+        std::this_thread::yield();
 }
 
 void MidiDeviceLayer::sendDue()
@@ -286,7 +293,14 @@ void MidiDeviceLayer::openEnabledInputs()
 
 void MidiDeviceLayer::handleIncomingMidiMessage(juce::MidiInput* source, const juce::MidiMessage& message)
 {
-    auto* engine = engine_.load(std::memory_order_acquire);
+    // Counted while it holds the engine, so setEngine can wait for it.
+    struct InFlight
+    {
+        std::atomic<int>& count;
+        explicit InFlight(std::atomic<int>& c) noexcept : count(c) { count.fetch_add(1); }
+        ~InFlight() { count.fetch_sub(1); }
+    } inFlight(callbacksInFlight_);
+    auto* engine = engine_.load();
     if (engine == nullptr)
         return;
     // Stamped on arrival: the engine places it in the next block where it fell.
