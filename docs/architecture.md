@@ -134,7 +134,10 @@ compares the whole project each time.
 Project files are versioned JSON (`.northlight`). Each version upgrades step by step
 from the oldest readable one. Processor parameters are saved with stable keys and
 reconciled on load, so a processor can gain or reorder parameters without moving
-saved values or automation.
+saved values or automation. A built-in's key comes from its parameter's label unless
+the parameter sets an `id` (`InsertProcessor::parameterKey`), so a label rename
+would change the key: the renamed parameter takes its old key as its `id`. A test
+pins every built-in's keys, so a rename that forgets fails it.
 
 ## The engine
 

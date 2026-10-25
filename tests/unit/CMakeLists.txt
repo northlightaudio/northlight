@@ -29,6 +29,7 @@ add_executable(northlight_unit_tests
     engine/TakeTests.cpp
     engine/MixerTests.cpp
     plugins/BuiltInTests.cpp
+    plugins/ParameterKeysTests.cpp
     plugins/DspKitTests.cpp
     plugins/ChannelStripTests.cpp
     plugins/GlueTests.cpp
