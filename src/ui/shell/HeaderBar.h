@@ -136,6 +136,7 @@ public:
         bool mixerVisible = false, editorVisible = false, browserVisible = false;
         // The custom window chrome: the bar is the title bar, with window buttons.
         bool windowControls = false, maximised = false;
+        bool operator==(const State&) const = default;
     };
     void setState(const State& state);
     const State& state() const noexcept { return state_; }
@@ -181,7 +182,7 @@ private:
     std::array<int, 4> readoutWidths() const;
 
     const Theme& theme_;
-    State state_;
+    State state_; // what the controls show (the constructor applies the default)
     IconButton app_, undo_, redo_;
     ProjectTitle project_;
     IconButton goToStart_, play_, stop_, record_;

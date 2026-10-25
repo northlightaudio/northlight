@@ -1,3 +1,4 @@
+#include "UiPerf.h"
 #include "ui/NorthlightLookAndFeel.h"
 #include "ui/Theme.h"
 #include "ui/components/NumericField.h"
@@ -121,4 +122,32 @@ TEST_CASE("The transport readout's fields share one baseline", "[ui][transport]"
         CHECK(std::abs(bottom - bottoms.front()) <= 1);
     }
     bar.setLookAndFeel(nullptr);
+}
+
+TEST_CASE("The header repaints nothing when the state it is given has not changed", "[ui][perf][transport]")
+{
+    const juce::ScopedJuceInitialiser_GUI juceInit;
+    const auto theme = ui::Theme::defaults();
+    ui::HeaderBar bar(theme);
+    bar.setSize(1400, 44);
+    bar.setVisible(true);
+    auto state = bar.state();
+    state.projectName = "Song";
+    state.playing = true;
+    bar.setState(state);
+
+    auto* recorder = new uiperf::RepaintRecorder();
+    recorder->setBounds(bar.getLocalBounds());
+    bar.setCachedComponentImage(recorder);
+    recorder->clear();           // attaching it asks for a full repaint
+    for (int i = 0; i < 30; ++i) // a second of ticks, nothing changing
+        bar.setState(state);
+    CHECK(recorder->area.isEmpty());
+
+    // A new position repaints the readout alone.
+    state.timeText = "0:01.000";
+    bar.setState(state);
+    CHECK_FALSE(recorder->area.isEmpty());
+    CHECK(uiperf::coverage(recorder->area, bar.getLocalBounds()) < 0.2);
+    bar.setCachedComponentImage(nullptr);
 }

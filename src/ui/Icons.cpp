@@ -230,6 +230,8 @@ IconButton::IconButton(const Theme& theme, Icon icon, const juce::String& toolti
 
 void IconButton::setIcon(Icon icon)
 {
+    if (icon == icon_ && getName() == Icons::name(icon))
+        return; // the same icon: nothing to repaint (the header sets it every frame)
     icon_ = icon;
     setName(Icons::name(icon));
     repaint();
@@ -237,6 +239,8 @@ void IconButton::setIcon(Icon icon)
 
 void IconButton::setCornerText(const juce::String& cornerText)
 {
+    if (cornerText == corner_)
+        return;
     corner_ = cornerText;
     repaint();
 }

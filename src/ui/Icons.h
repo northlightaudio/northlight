@@ -174,18 +174,24 @@ public:
     // rather than a bare icon that only shows a face on hover.
     void setKey(bool key)
     {
+        if (key == key_)
+            return;
         key_ = key;
         repaint();
     }
     // A warning dot in the top-right corner.
     void setWarningDot(bool show)
     {
+        if (show == warningDot_)
+            return;
         warningDot_ = show;
         repaint();
     }
     // Icon colour at rest when not toggled (default textSecondary).
     void setRestColour(juce::Colour colour)
     {
+        if (colour == restColour_)
+            return;
         restColour_ = colour;
         repaint();
     }

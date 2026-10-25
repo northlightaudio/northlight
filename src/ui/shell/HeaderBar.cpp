@@ -463,6 +463,10 @@ HeaderBar::HeaderBar(const Theme& theme)
 
 void HeaderBar::setState(const State& state)
 {
+    // The tick sets it 30 times a second: nothing is rebuilt or repainted when
+    // nothing shown changed (11.6), as the status bar does.
+    if (state == state_)
+        return;
     state_ = state;
     refreshFromState();
 }
