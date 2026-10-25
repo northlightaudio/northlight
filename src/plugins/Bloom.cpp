@@ -194,6 +194,10 @@ private:
         dcLow_ = {0.0f, 0.0f};
         tiltLow_ = {0.0f, 0.0f};
         duckEnvelope_ = keyEnvelope_ = keyPeak_ = 0.0f;
+        duckCountdown_ = 0;
+        duckDb_ = 0.0f;
+        duckGain_ = 1.0f;
+        duckGainStep_ = 0.0f;
         gateHold_ = 0;
         gateGain_ = 1.0f;
         tailSquare_ = drySquare_ = 0.0f;
@@ -425,13 +429,23 @@ private:
             // Ducking under the dry input.
             const float level = std::max(std::abs(dryL), std::abs(dryR));
             duckEnvelope_ += (level - duckEnvelope_) * (level > duckEnvelope_ ? duckAttack_ : t.duckRelease);
-            float duckDb = 0.0f;
-            if (t.duckDepthDb > 0.0f)
+            // The duck's depth from the envelope in dB, every duckControl samples (a
+            // log and an exp), the gain gliding to it in between.
+            if (--duckCountdown_ <= 0)
             {
-                const float envelopeDb = gainToDb(duckEnvelope_);
-                duckDb = t.duckDepthDb * std::clamp((envelopeDb + 54.0f) / 36.0f, 0.0f, 1.0f);
+                duckCountdown_ = duckControl;
+                duckDb_ = 0.0f;
+                if (t.duckDepthDb > 0.0f)
+                {
+                    const float envelopeDb = gainToDb(duckEnvelope_);
+                    duckDb_ = t.duckDepthDb * std::clamp((envelopeDb + 54.0f) / 36.0f, 0.0f, 1.0f);
+                }
+                const float target = duckDb_ > 0.0f ? std::exp(-duckDb_ * 0.11512925f) : 1.0f;
+                duckGainStep_ = (target - duckGain_) / static_cast<float>(duckControl);
             }
-            const float duckGain = duckDb > 0.0f ? std::exp(-duckDb * 0.11512925f) : 1.0f;
+            duckGain_ += duckGainStep_;
+            const float duckDb = duckDb_;
+            const float duckGain = duckGain_;
 
             // The gate: open while the input is near its recent peak, held for
             // the gate time after it falls away, then closed fast (never while frozen).
@@ -513,6 +527,9 @@ private:
     float tiltLowGain_ = 1.0f, tiltHighGain_ = 1.0f;
     // Followers.
     float duckEnvelope_ = 0.0f, keyEnvelope_ = 0.0f, keyPeak_ = 0.0f, gateGain_ = 1.0f;
+    static constexpr int duckControl = 16; // samples between the duck's depth updates
+    int duckCountdown_ = 0;
+    float duckDb_ = 0.0f, duckGain_ = 1.0f, duckGainStep_ = 0.0f;
     int gateHold_ = 0;
     float tailSquare_ = 0.0f, drySquare_ = 0.0f;
     int silentSamples_ = 0;

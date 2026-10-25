@@ -438,6 +438,9 @@ private:
     void processAudio(float* left, float* right, int numSamples) noexcept override
     {
         const float threshold = parameter(gate::threshold);
+        // The detector is compared as a level, not in dB: no log per sample.
+        const float openLevel = dbToGain(threshold);
+        const float closeLevel = dbToGain(threshold - gate::hysteresisDb);
         const float closedGain = dbToGain(-parameter(gate::range));
         const float attack = 1.0f - coefficient(sampleRate_, parameter(gate::attack));
         const float release = 1.0f - coefficient(sampleRate_, parameter(gate::release));
@@ -473,13 +476,12 @@ private:
             }
             const float key = std::max(std::abs(keyL), std::abs(keyR));
             envelope_ = std::max(key, envelope_ * detectorFall);
-            const float levelDb = gainToDb(envelope_);
-            if (levelDb > threshold)
+            if (envelope_ > openLevel)
             {
                 open_ = true;
                 holdLeft_ = hold;
             }
-            else if (open_ && levelDb < threshold - gate::hysteresisDb)
+            else if (open_ && envelope_ < closeLevel)
             {
                 if (holdLeft_ > 0)
                     --holdLeft_;

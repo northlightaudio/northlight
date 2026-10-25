@@ -312,7 +312,7 @@ private:
                 lfoPhase_ -= 1.0;
                 lfoHeld_ = noiseSample();
             }
-            const double pitchLfo = std::pow(2.0, lfo_ * lfoToPitch / 1200.0);
+            const double pitchLfo = lfoToPitch != 0.0f ? std::pow(2.0, lfo_ * lfoToPitch / 1200.0) : 1.0;
 
             float outL = 0.0f, outR = 0.0f;
             for (auto& v : voices_)

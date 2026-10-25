@@ -876,9 +876,16 @@ private:
             held_ += (t.held - held_) * catchStep_;
             const float target = sendTargetDb_ + (throwing_ > 0 ? throwDb : 0.0f);
             sendDb_ += (target - sendDb_) * (target < sendDb_ ? sendDown_ : sendUp_);
+            if (std::abs(target - sendDb_) < 1.0e-3f)
+                sendDb_ = target; // settled: the gain below is then worked out once
+            if (sendDb_ != sendGainDb_)
+            {
+                sendGainDb_ = sendDb_;
+                sendGain_ = dbToGain(sendDb_);
+            }
             // Held, the input stays out of the pad.
             const float open = 1.0f - held_;
-            const float send = dbToGain(sendDb_) * open;
+            const float send = sendGain_ * open;
 
             // The shaped send into the pre-delay, with Halo's strings, which it plays.
             float strings = 0.0f;
@@ -899,7 +906,14 @@ private:
                 const float x =
                     static_cast<float>(clock_ - swellStart_) / static_cast<float>(swellEnd_ - swellStart_);
                 liveDb_ += (liveCutDb_ - liveDb_) * (liveCutDb_ < liveDb_ ? sendDown_ : sendUp_);
-                const float g = t.swell * swellGain * x * x * dbToGain(liveDb_) * open;
+                if (std::abs(liveCutDb_ - liveDb_) < 1.0e-3f)
+                    liveDb_ = liveCutDb_;
+                if (liveDb_ != liveGainDb_)
+                {
+                    liveGainDb_ = liveDb_;
+                    liveGain_ = dbToGain(liveDb_);
+                }
+                const float g = t.swell * swellGain * x * x * liveGain_ * open;
                 sendL += liveL * g;
                 sendR += liveR * g;
             }
@@ -960,8 +974,15 @@ private:
             // Duck while the singer sings; Ends lifts the tail at a line end.
             const float duckTarget = duckHang_ > 0.0f ? 1.0f : 0.0f;
             duck_ += (duckTarget - duck_) * (duckTarget > duck_ ? duckAttack_ : t.duckRelease);
+            if (std::abs(duckTarget - duck_) < 1.0e-5f)
+                duck_ = duckTarget;
             const float duckDb = t.duckDb * duck_;
-            const float shape = dbToGain(endsLiftDb * t.ends * ends_ - duckDb);
+            if (const float shapeDb = endsLiftDb * t.ends * ends_ - duckDb; shapeDb != shapeDb_)
+            {
+                shapeDb_ = shapeDb;
+                shapeGain_ = dbToGain(shapeDb);
+            }
+            const float shape = shapeGain_;
             tailL *= shape;
             tailR *= shape;
 
@@ -1147,6 +1168,11 @@ private:
     std::array<float, spaceCount> spaceGain_{};
     // What the Listener drives.
     float sendDb_ = 0.0f, sendTargetDb_ = 0.0f, liveDb_ = 0.0f, liveCutDb_ = 0.0f;
+    // The gains of the dB values above, kept while those hold (a pow per sample
+    // otherwise); the dB they were worked out at, NaN-free sentinels to start.
+    float sendGainDb_ = -1.0e9f, sendGain_ = 0.0f;
+    float liveGainDb_ = -1.0e9f, liveGain_ = 0.0f;
+    float shapeDb_ = -1.0e9f, shapeGain_ = 0.0f;
     float duck_ = 0.0f, duckHang_ = 0.0f;
     float ends_ = 0.0f, endsTarget_ = 0.0f;
     float followHz_ = 0.0f;

@@ -520,13 +520,25 @@ private:
                 omega * omega * (logTarget - logDelay_) - 2.0 * motorDamping * omega * motorVelocity_;
             motorVelocity_ = std::clamp(motorVelocity_ + acceleration * dt, -6.0, 6.0);
             logDelay_ += motorVelocity_ * dt;
-            const double headOne = std::exp(logDelay_);
+            // Settled: the motor rests on its speed, so the exp and sqrt below are
+            // worked out once rather than every sample.
+            if (std::abs(motorVelocity_) < 1.0e-12 && std::abs(logTarget - logDelay_) < 1.0e-12)
+            {
+                logDelay_ = logTarget;
+                motorVelocity_ = 0.0;
+            }
+            if (logDelay_ != headLog_)
+            {
+                headLog_ = logDelay_;
+                headOne_ = std::exp(logDelay_);
+                flutterHz_ = std::clamp(7.0 * std::sqrt(0.18 / headOne_), 3.0, 14.0);
+            }
+            const double headOne = headOne_;
             wowPhase_ += wowStep;
             if (wowPhase_ > 2.0 * std::numbers::pi)
                 wowPhase_ -= 2.0 * std::numbers::pi;
             // The capstan's flutter turns with the motor: faster at a higher speed.
-            const double flutterHz = std::clamp(7.0 * std::sqrt(0.18 / headOne), 3.0, 14.0);
-            flutterPhase_ += 2.0 * std::numbers::pi * flutterHz / rate;
+            flutterPhase_ += 2.0 * std::numbers::pi * flutterHz_ / rate;
             if (flutterPhase_ > 2.0 * std::numbers::pi)
                 flutterPhase_ -= 2.0 * std::numbers::pi;
             const float wowShape =
@@ -667,6 +679,8 @@ private:
     int size_ = 1, write_ = 0;
     double tapePosition_ = 0.0;
     double logDelay_ = 0.0, motorVelocity_ = 0.0;
+    // exp(logDelay_) and the flutter rate it sets, kept while logDelay_ holds.
+    double headLog_ = 1.0e300, headOne_ = 1.0, flutterHz_ = 7.0;
     double wowPhase_ = 0.0, flutterPhase_ = 0.0;
     Drift wowDrift_, flutterDrift_;
     Rng rng_;

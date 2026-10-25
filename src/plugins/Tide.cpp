@@ -51,7 +51,10 @@ public:
 private:
     void prepareBuiltIn(double sampleRate, int) override
     {
-        const auto size = static_cast<size_t>(sampleRate * bufferSeconds) + 4;
+        // A power of two, so a read wraps with a mask instead of a modulo.
+        size_t size = 8;
+        while (size < static_cast<size_t>(sampleRate * bufferSeconds) + 4)
+            size *= 2;
         for (auto& ch : channels_)
         {
             ch.buffer.assign(size, 0.0f);
@@ -147,19 +150,14 @@ private:
     // A cubic (Hermite) read `delay` samples behind the write head.
     float readCubic(const std::vector<float>& buffer, float delay) const noexcept
     {
-        const int size = static_cast<int>(buffer.size());
+        const int size = static_cast<int>(buffer.size()); // a power of two
+        const int mask = size - 1;
         float read = static_cast<float>(write_) - delay;
         while (read < 0.0f)
             read += static_cast<float>(size);
         const int i1 = std::clamp(static_cast<int>(read), 0, size - 1);
         const float t = read - static_cast<float>(i1);
-        const auto at = [&](int i)
-        {
-            i %= size;
-            if (i < 0)
-                i += size;
-            return buffer[static_cast<size_t>(i)];
-        };
+        const auto at = [&](int i) { return buffer[static_cast<size_t>(i & mask)]; };
         const float y0 = at(i1 - 1), y1 = at(i1), y2 = at(i1 + 1), y3 = at(i1 + 2);
         const float c1 = 0.5f * (y2 - y0);
         const float c2 = y0 - 2.5f * y1 + 2.0f * y2 - 0.5f * y3;
