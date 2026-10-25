@@ -12,6 +12,7 @@ design comp of the whole face.
 
   ORBIT_LAYER=deck      everything still: the panels, reels at rest, knob bodies, keys unlit
   ORBIT_LAYER=lit       the same with every key and the pilot lamp lit (a lit key's patch)
+  ORBIT_LAYER=pressed   the deck with every key held in; litpressed: lit and held in
   ORBIT_LAYER=pointers  the knobs' pointers alone, each pointing up, as colour with alpha
   ORBIT_LAYER=hood      the meters' shrouds alone (drawn over the needles)
   ORBIT_LAYER=glass     the meters' glass alone: its reflections as colour with alpha
@@ -495,7 +496,7 @@ text("TAPE\nTIME", 1.58, CY, 0.24, ink_soft, align="LEFT", spacing=1.1, line=0.8
 cyl("LampBezel", -1.68, CY, 0.24, 0.0, 0.08, chrome, bev=0.03)
 bpy.ops.mesh.primitive_ico_sphere_add(subdivisions=1, radius=0.17, location=(-1.68, CY, 0.12))
 jewel = bpy.context.active_object
-LIT = COMP or LAYER == "lit"
+LIT = COMP or LAYER in ("lit", "litpressed")
 jewel.data.materials.append(lamp_mat if LIT else plain("LampOff", (0.18, 0.02, 0.01), rough=0.15))
 text("NORTHLIGHT  Â·  MODEL OR-2", 0, V(102), 0.25, ink_soft, font=BOLD, spacing=1.3, z=0.06)
 
@@ -531,13 +532,15 @@ def knob(cx, cy, r, turn, label, value, big):
 
 
 KEY_W, KEY_H = 1.28, 0.6  # every key is 64 x 30 px
+KEY_TRAVEL = 0.14         # how far a key goes in while it is held (ORBIT_LAYER=pressed, litpressed)
 
 
 def key(cx, cy, label, on):
     box("KeyWell", cx - KEY_W / 2 - 0.06, cx + KEY_W / 2 + 0.06, cy - KEY_H / 2 - 0.06, cy + KEY_H / 2 + 0.06,
         0.0, 0.03, well_mat, bev=0.02)
-    lit = on if COMP else LAYER == "lit"
-    box("Key", cx - KEY_W / 2, cx + KEY_W / 2, cy - KEY_H / 2, cy + KEY_H / 2, 0.0, 0.24,
+    lit = on if COMP else LAYER in ("lit", "litpressed")
+    top = 0.24 - (KEY_TRAVEL if LAYER in ("pressed", "litpressed") else 0.0)
+    box("Key", cx - KEY_W / 2, cx + KEY_W / 2, cy - KEY_H / 2, cy + KEY_H / 2, 0.0, top,
         key_lit if lit else key_mat, bev=0.05, seg=4)
     text(label, cx, cy, 0.27, key_ink, z=0.24, extrude=0.002, spacing=1.05)
 
@@ -840,7 +843,7 @@ scene.render.image_settings.file_format = "PNG"
 scene.render.image_settings.color_mode = "RGB"
 
 # ----- the layers ----------------------------------------------------------------------------------
-if not COMP and LAYER in ("deck", "lit"):
+if not COMP and LAYER in ("deck", "lit", "pressed", "litpressed"):
     for ob in POINTERS + GLASSES:
         ob.hide_render = True            # each its own layer
 elif LAYER in ("pointers", "hood", "glass"):

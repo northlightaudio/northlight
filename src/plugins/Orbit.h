@@ -127,8 +127,8 @@ private:
 
 // What the card reads from each frame: input and output peaks; the tape's
 // compression (dB) as the reduction; the meters' point (MeterPoint) as `extra`
-// (left) and `extra2` (right): each channel's rectified average (30 ms), scaled so a
-// sine reads its rms, as a VU's scale is calibrated. The feedback's transport carries
+// (left) and `extra2` (right): each channel's VU reading, the rectified signal through
+// a VU's movement (99% of a step in 300 ms), scaled so a sine reads its rms. The feedback's transport carries
 // the song's position for the tape counter.
 std::unique_ptr<engine::InsertProcessor> create();
 

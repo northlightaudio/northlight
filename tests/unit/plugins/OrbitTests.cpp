@@ -332,7 +332,7 @@ TEST_CASE("Orbit's meters read the chosen point, and the counter the song's posi
     head.playing = true;
     head.samples = 96000;
     p->setPlayHead(head);
-    run(*p, sine(1000.0, 0.01f, 0.2));
+    run(*p, sine(1000.0, 0.01f, 0.6));
     // A VU's level: a sine's rms (0.707 of its peak), steady, 6 dB up after INPUT.
     const auto frame = fb->latest();
     const double rms = 0.01 * std::numbers::sqrt2 / 2.0;
@@ -342,10 +342,36 @@ TEST_CASE("Orbit's meters read the chosen point, and the counter the song's posi
     CHECK(fb->transportPlaying());
     // The output point reads the output: here the same 6 dB louder (Link off).
     p->setParameter(ob::meter, static_cast<float>(ob::meterOutput));
-    run(*p, sine(1000.0, 0.01f, 0.2));
+    run(*p, sine(1000.0, 0.01f, 0.6));
     CHECK(db(fb->latest().extra / rms) == Approx(6.0).margin(0.7));
     // Quiet, the tape is barely compressing.
     CHECK(fb->latest().reduction < 0.5f);
+}
+
+TEST_CASE("Orbit's meters move as a VU's needle: most of a step by 100 ms, there by 300 ms",
+          "[plugins][orbit]")
+{
+    auto p = makeOrbit();
+    p->setParameter(ob::meter, static_cast<float>(ob::meterInput));
+    const auto tone = sine(1000.0, 0.1f, 0.6);
+    const double steady = 0.1 * std::numbers::sqrt2 / 2.0;
+    std::vector<float> l(48), r(48); // 1 ms blocks
+    std::vector<double> reading;
+    for (size_t done = 0; done + 48 <= tone.left.size(); done += 48)
+    {
+        std::copy(tone.left.begin() + done, tone.left.begin() + done + 48, l.begin());
+        r = l;
+        p->process(l.data(), r.data(), 48);
+        reading.push_back(db(p->feedback()->latest().extra / steady));
+    }
+    CHECK(reading[20] < -6.0);                      // 20 ms in: well short
+    CHECK(reading[100] > -4.0);                     // 100 ms: most of the way
+    CHECK(reading[300] == Approx(0.0).margin(0.4)); // 300 ms: there
+    CHECK(reading[550] == Approx(0.0).margin(0.3));
+    // It never jumps: at its steepest a VU rises under 1% of the step a millisecond, so
+    // under 5% from one published frame (5 ms) to the next.
+    for (size_t i = 5; i < reading.size(); i += 5)
+        CHECK(std::pow(10.0, reading[i] / 20.0) - std::pow(10.0, reading[i - 5] / 20.0) < 0.05);
 }
 
 TEST_CASE("Orbit's meters read the average, so a signal's peaks do not pin them", "[plugins][orbit]")

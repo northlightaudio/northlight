@@ -587,10 +587,12 @@ delay `Gorse`, glue compressor `Thrift`, Patina `Kelp`, exciter `Machair`, Bloom
       the needle's pivot hood standing off the dial's foot with two warm bulbs under
       it whose light pools up the dial. They read the point METER chooses (INPUT,
       after the input knob; TAPE, the tape's playback; OUTPUT) as a VU does: each
-      channel's rectified average (30 ms), calibrated so a sine reads its rms, 0 VU at
+      channel's rectified signal through a VU's movement (two equal lags, 99% of a
+      step in 300 ms, in the processor), calibrated so a sine reads its rms, 0 VU at
       -18 dBFS, so music's peaks do not pin it. The scale is linear in voltage (-20 to
       +3, 0 about 71% across, red from 0); the needle passes under the hood and the
-      glass with a VU's 300 ms ballistics. Under them 0 VU = +6 dB
+      glass; the card shows the newest reading, and the needles fall back the same way when
+      the insert is switched off. Under them 0 VU = +6 dB
       OVER 185 nWb/m (the LEVEL chosen). Accessible description: the reading in VU.
     - **The panel** (hammertone, from 337 px): captions RECORD, MACHINE, WEAR and REPRO
       (14 px bold, `orbitPanelInk`) with a rule either side to the column's width.

@@ -28,6 +28,7 @@ face (it is how the face was designed).
 | `python render_all.py <folder>` | Every layer below, one Blender run each, at idle priority on the CPU |
 | `face_render.py` with `ORBIT_LAYER=deck` | Everything still: plate, reels at rest, knob bodies, keys unlit |
 | `ORBIT_LAYER=lit` | The same with every key and the pilot lamp lit |
+| `ORBIT_LAYER=pressed`, `ORBIT_LAYER=litpressed` | The deck, and the lit deck, with every key pushed in (a held key's patch) |
 | `ORBIT_LAYER=pointers` | The knobs' pointers alone, each pointing up, with alpha |
 | `ORBIT_LAYER=hood`, `ORBIT_LAYER=glass` | The meters' shrouds, and their glass's reflections, with alpha |
 | `ORBIT_REEL_ANGLE=<degrees>` | The reels turned anticlockwise: render_all.py makes 30 frames, 4 degrees apart |

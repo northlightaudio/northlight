@@ -2,7 +2,7 @@
 
     python render_all.py <out folder> [--only deck,lit,...] [--frames 30] [--remote [user@host]]
 
-Writes deck.png and lit.png (2320 x 1200), pointers.png, hood.png and glass.png (the same
+Writes deck.png, lit.png, pressed.png and litpressed.png (2320 x 1200), pointers.png, hood.png and glass.png (the same
 size, colour with alpha) and reel-NN.png (1160 x 600, the top of the face only), the reels
 turned NN x 4 degrees anticlockwise. package_assets.py turns them into assets/orbit.
 
@@ -29,7 +29,8 @@ from render_config import blender_path, hdri_path, setting  # noqa: E402  (scrip
 BLENDER = blender_path()
 ROOM = hdri_path()
 REEL_STEP = 4.0  # degrees between frames; 30 of them span the reels' 120-degree symmetry
-LAYERS = (("deck", 256), ("lit", 256), ("pointers", 128), ("hood", 96), ("glass", 128))
+LAYERS = (("deck", 256), ("lit", 256), ("pressed", 256), ("litpressed", 256), ("pointers", 128), ("hood", 96),
+          ("glass", 128))
 
 
 def jobs(only, frames):
@@ -110,7 +111,7 @@ def render_remote(out, todo, host, remote_dir):
 def main():
     p = argparse.ArgumentParser()
     p.add_argument("out")
-    p.add_argument("--only", default="deck,lit,pointers,hood,glass,reels")
+    p.add_argument("--only", default="deck,lit,pressed,litpressed,pointers,hood,glass,reels")
     p.add_argument("--frames", type=int, default=30)
     p.add_argument("--remote", nargs="?", const="",
                    help="render on user@host's GPU (alone: the configured remote_host)")

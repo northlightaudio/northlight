@@ -597,6 +597,8 @@ private:
         HardwareKey::Rendered r;
         r.off = patchOf(part("deck.jpg"), area);
         r.on = patchOf(part("lit.jpg"), area, litTop);
+        r.heldOff = patchOf(part("pressed.jpg"), area, litTop);
+        r.heldOn = patchOf(part("litpressed.jpg"), area, litTop);
         r.face = key - area.getPosition();
         r.ink = hw.orbitKeyInk;
         r.litInk = hw.orbitKeyInkLit;
@@ -665,21 +667,18 @@ private:
     {
         const double seconds = elapsedMs * 0.001;
         const bool on = isOn();
-        // The loudest of the frames since the last tick (a tick spans a few of them).
-        float levels[] = {0.0f, 0.0f};
-        const auto total = historyTotal();
-        const int fresh = static_cast<int>(
-            std::min<std::uint64_t>(total - seenFrames_, static_cast<std::uint64_t>(historySize())));
-        seenFrames_ = total;
-        for (int i = historySize() - std::max(1, fresh); on && i >= 0 && i < historySize(); ++i)
-        {
-            levels[0] = std::max(levels[0], historyAt(i).extra);
-            levels[1] = std::max(levels[1], historyAt(i).extra2);
-        }
+        // The processor's reading already moves as a VU's needle does: show the newest.
+        // Switched off, the needles fall back with the same movement.
+        const Frame f = historySize() > 0 ? historyAt(historySize() - 1) : Frame{};
+        const float levels[] = {f.extra, f.extra2};
         for (size_t m = 0; m < 2; ++m)
         {
-            needles_[m].advance(levels[m], seconds);
-            meters_[m].setReading(of::vuOf(needles_[m].level, ob::vuReferenceDbfs));
+            auto& needle = needles_[m];
+            if (on)
+                needle.level = needle.inner = levels[m];
+            else
+                needle.advance(0.0f, seconds);
+            meters_[m].setReading(of::vuOf(needle.level, ob::vuReferenceDbfs));
         }
         const auto* fb = liveFeedback();
         const bool playing = on && fb != nullptr && fb->transportPlaying();
@@ -725,7 +724,6 @@ private:
     std::array<HardwareKey*, 2> eq_{};
     HardwareKey* link_ = nullptr;
     std::array<of::VuNeedle, 2> needles_{};
-    std::uint64_t seenFrames_ = 0;
 };
 } // namespace
 

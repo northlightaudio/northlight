@@ -423,7 +423,9 @@ keyboard, focus ring and tooltip, and its text pairs are in contrast.md.
   ivory with a faint standby glow from behind when unlit (so its label reads in a
   dark face), amber and glowing brightly when lit, no LED; its label is
   printed over it (`orbitKeyInk`, `orbitKeyInkLit`; 14 px, 19 px on a compact
-  face), and while held the key alone drops 1 px.
+  face). While held it is drawn from a third and fourth render with every key
+  pushed into its well (unlit and lit): its edge and shadow shrink, as a real key's
+  do, with no tint over it.
 - **Two-page face** (Corona): a face too rich for one panel shows one page at a
   time, as a real unit with a lid or a removable grille would. Both pages share
   the face's size, its background and a strip along the foot that holds the page

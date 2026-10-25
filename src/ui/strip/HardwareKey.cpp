@@ -53,25 +53,17 @@ void HardwareKey::paintRendered(juce::Graphics& g)
     const bool enabled = isEnabled();
     const bool pressed = isMouseButtonDown();
     const auto bounds = getLocalBounds().toFloat();
-    const auto face = parts_.face.translated(0.0f, pressed ? 1.0f : 0.0f);
-    const auto& patch = lit_ ? parts_.on : parts_.off;
+    const auto& face = parts_.face;
+    // Held down, the key is its render pushed in (its edge and shadow shrink in its
+    // well); a state is a render, not a tint.
+    const auto& held = lit_ ? parts_.heldOn : parts_.heldOff;
+    const auto& patch = pressed && held.isValid() ? held : lit_ ? parts_.on : parts_.off;
     if (patch.isValid())
-    {
-        // The patch whole (the panel round the key, the glow), then the key alone
-        // a pixel lower while it is held down.
         hardware::drawScaled(g, patch, bounds);
-        if (pressed)
-        {
-            const juce::Graphics::ScopedSaveState save(g);
-            g.reduceClipRegion(face.toNearestInt());
-            hardware::drawScaled(g, patch, bounds.translated(0.0f, 1.0f));
-            g.setColour(hw.shadow.withAlpha(0.12f));
-            g.fillRect(face);
-        }
-    }
     else
     {
-        g.setColour(lit_ ? parts_.flatLit : parts_.flat);
+        // Without the renders: a flat key, a shade darker while held.
+        g.setColour((lit_ ? parts_.flatLit : parts_.flat).darker(pressed ? 0.15f : 0.0f));
         g.fillRoundedRectangle(face, 3.0f);
     }
     if (enabled && isMouseOver(true) && !pressed)

@@ -13,6 +13,7 @@ reels' turning frames at the drawn size, since they are only seen moving.
 |---|---|
 | `deck.jpg` | The whole face, still: the plate, the reels at rest, the panel, knob bodies, keys unlit |
 | `lit.jpg` | The panel from 340 px down with every key lit: a lit key draws its own patch of it |
+| `pressed.jpg`, `litpressed.jpg` | The same panel with every key pushed in, unlit and lit: a key held down draws its patch |
 | `lamp-lit.png` | The pilot lamp lit, with the plate round it |
 | `pointer-<knob>.png` | Each knob's pointer, pointing up: the layer that turns |
 | `hood-left.png`, `hood-right.png` | Each meter's pivot hood over the needle's foot, its bulbs' glow under it in the deck |

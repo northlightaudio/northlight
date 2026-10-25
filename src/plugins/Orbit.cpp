@@ -302,8 +302,8 @@ private:
         Oversampler oversampler;
         Hysteresis tape;
         std::vector<float> line, dry;
-        double pre = 0.0, post = 0.0; // the tape's input and output power, smoothed
-        float vu = 0.0f;              // the meter point's rectified average
+        double pre = 0.0, post = 0.0;    // the tape's input and output power, smoothed
+        float vu = 0.0f, vuInner = 0.0f; // the meter point's VU: the rectified signal through a VU's movement
     };
 
     void prepareAudio(double sampleRate, int) override
@@ -336,7 +336,8 @@ private:
         write_ = 0;
         smoothStep_ = 1.0f - std::exp(-1.0f / (0.015f * static_cast<float>(sampleRate)));
         powerStep_ = 1.0 - std::exp(-1.0 / (0.05 * sampleRate));
-        vuStep_ = 1.0f - std::exp(-1.0f / (0.03f * static_cast<float>(sampleRate)));
+        // A VU's movement: two equal lags reaching 99% of a step in 300 ms.
+        vuStep_ = 1.0f - std::exp(-1.0f / (0.045f * static_cast<float>(sampleRate)));
         wowPhase_ = flutterPhase_ = 0.0;
         wowDrift_ = flutterDrift_ = {};
         rng_ = {};
@@ -516,7 +517,8 @@ private:
                 const float point = std::abs(meterPoint == meterInput  ? dry * inGain_
                                              : meterPoint == meterTape ? played
                                                                        : out);
-                c.vu += (point - c.vu) * vuStep_;
+                c.vuInner += (point - c.vuInner) * vuStep_;
+                c.vu += (c.vuInner - c.vu) * vuStep_;
                 meters[ch] = c.vu * 1.1107207f;
                 if (c.post > 1.0e-12)
                     squash = std::max(squash, c.pre / c.post);
@@ -530,7 +532,7 @@ private:
         {
             c.oversampler.flush();
             if (c.vu < 1.0e-20f)
-                c.vu = 0.0f;
+                c.vu = c.vuInner = 0.0f;
             if (c.pre < 1.0e-30)
                 c.pre = 0.0;
             if (c.post < 1.0e-30)

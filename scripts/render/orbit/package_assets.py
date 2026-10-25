@@ -57,6 +57,8 @@ def main():
     assert deck.size == (2320, 1200), deck.size
     save(deck, "deck.jpg")
     save(lit.crop((0, LIT_TOP * S, 2320, 1200)), "lit.jpg")
+    for name in ("pressed", "litpressed"):  # every key held in, unlit and lit: the panel only
+        save(load(f"{name}.png").convert("RGB").crop((0, LIT_TOP * S, 2320, 1200)), f"{name}.jpg")
     cx, cy, side = LAMP
     save(lit.crop(box(cx, cy, side, side)), "lamp-lit.png")
     pointers = load("pointers.png").convert("RGBA")

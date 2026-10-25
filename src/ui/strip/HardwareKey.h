@@ -34,13 +34,13 @@ public:
     void setLabel(const juce::String& label);
 
     // Drawn from `off` and `on`, patches of the face's renders covering the key's
-    // bounds (unlit, and lit with its glow on the panel round it); `face` is the
-    // key itself within the bounds, where the label is printed in `ink` (or
-    // `litInk` while lit) and what presses in. Without the images, flat keys in
-    // `flat` and `flatLit`.
+    // bounds (unlit, and lit with its glow on the panel round it), and while held
+    // down from `heldOff` and `heldOn` (the same with the key pushed in); `face` is
+    // the key itself within the bounds, where the label is printed in `ink` (or
+    // `litInk` while lit). Without the images, flat keys in `flat` and `flatLit`.
     struct Rendered
     {
-        juce::Image off, on;
+        juce::Image off, on, heldOff, heldOn;
         juce::Rectangle<float> face;
         juce::Colour ink, litInk, flat, flatLit;
     };
