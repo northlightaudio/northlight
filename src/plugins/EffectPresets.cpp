@@ -2,19 +2,24 @@
 
 #include "engine/rt/RealtimeGuard.h"
 #include "plugins/Amp.h"
+#include "plugins/Aurora.h"
 #include "plugins/Bloom.h"
 #include "plugins/BuiltIns.h"
 #include "plugins/Exciter.h"
 #include "plugins/Glue.h"
+#include "plugins/Nebula.h"
 #include "plugins/Orbit.h"
+#include "plugins/ParamHelpers.h"
 #include "plugins/Patina.h"
 #include "plugins/Pedals.h"
+#include "plugins/Starbit.h"
 #include "plugins/TapeEcho.h"
 #include "plugins/Vesper.h"
 #include "plugins/Widener.h"
 
 #include <algorithm>
 #include <map>
+#include <mutex>
 
 namespace northlight::plugins
 {
@@ -32,63 +37,59 @@ struct Setting
     const char* choice = nullptr;
 };
 
+std::mutex errorsMutex;
 std::vector<std::string>& errors()
 {
     static std::vector<std::string> list;
     return list;
 }
 
-// Builds a type's list: each preset starts from the defaults and changes only
-// what it names.
+// Builds a type's list by parameter name: each preset starts from the defaults
+// and changes only what it names.
 class List
 {
 public:
-    explicit List(const std::string& type) : type_(type), infos_(parameterInfo(type))
+    explicit List(const std::string& type) : type_(type), infos_(parameterInfo(type)), builder_(type, infos_)
     {
-        for (const auto& info : infos_)
-            base_.push_back(info.defaultValue);
     }
 
     List& add(const char* name, std::initializer_list<Setting> settings)
     {
-        EffectPreset preset{name, base_};
+        std::vector<PresetBuilder::Setting> resolved;
         for (const auto& s : settings)
         {
             const auto it = std::find_if(
                 infos_.begin(), infos_.end(), [&](const auto& info) { return info.name == s.param; });
             if (it == infos_.end())
             {
-                errors().push_back(type_ + " / " + name + ": no parameter \"" + s.param + "\"");
+                reportPresetError(type_ + " / " + name + ": no parameter \"" + s.param + "\"");
                 continue;
             }
-            const auto index = static_cast<size_t>(it - infos_.begin());
-            float value = static_cast<float>(s.value);
+            const auto index = static_cast<int>(it - infos_.begin());
+            double value = s.value;
             if (s.choice != nullptr)
             {
                 const auto c = std::find(it->choices.begin(), it->choices.end(), std::string(s.choice));
                 if (c == it->choices.end())
                 {
-                    errors().push_back(type_ + " / " + name + " / " + s.param + ": no choice \"" + s.choice +
-                                       "\"");
+                    reportPresetError(type_ + " / " + name + " / " + s.param + ": no choice \"" + s.choice +
+                                      "\"");
                     continue;
                 }
-                value = static_cast<float>(c - it->choices.begin());
+                value = static_cast<double>(c - it->choices.begin());
             }
-            if (value < it->minimum || value > it->maximum)
-                errors().push_back(type_ + " / " + name + " / " + s.param + ": out of range");
-            preset.values[index] = std::clamp(value, it->minimum, it->maximum);
+            resolved.emplace_back(index, value);
         }
-        list_.push_back(std::move(preset));
+        builder_.add(name, resolved);
         return *this;
     }
 
-    std::vector<EffectPreset> done() { return std::move(list_); }
+    std::vector<EffectPreset> done() { return builder_.done(); }
 
 private:
     std::string type_;
     const std::vector<engine::ParameterInfo>& infos_;
-    std::vector<float> base_;
-    std::vector<EffectPreset> list_;
+    PresetBuilder builder_;
 };
 
 // ----- the lists ----------------------------------------------------------------------------------
@@ -884,10 +885,7 @@ std::vector<EffectPreset> orbitPresets()
 
 std::vector<EffectPreset> patinaPresets()
 {
-    std::vector<EffectPreset> list;
-    for (const auto& p : patina::presets())
-        list.push_back({p.name, p.values});
-    return list;
+    return patina::presets();
 }
 
 const std::map<std::string, std::vector<EffectPreset>>& all()
@@ -919,6 +917,47 @@ const std::map<std::string, std::vector<EffectPreset>>& all()
 }
 } // namespace
 
+PresetBuilder::PresetBuilder(std::string type, std::vector<engine::ParameterInfo> infos)
+    : type_(std::move(type)), infos_(std::move(infos))
+{
+    for (const auto& info : infos_)
+        base_.push_back(info.defaultValue);
+}
+
+PresetBuilder& PresetBuilder::add(const std::string& name, const std::vector<Setting>& settings)
+{
+    EffectPreset preset{name, base_};
+    for (const auto& [index, value] : settings)
+    {
+        if (index < 0 || static_cast<size_t>(index) >= infos_.size())
+        {
+            errors_.push_back(type_ + " / " + name + ": no parameter " + std::to_string(index));
+            continue;
+        }
+        const auto& info = infos_[static_cast<size_t>(index)];
+        const auto v = static_cast<float>(value);
+        if (v < info.minimum || v > info.maximum)
+            errors_.push_back(type_ + " / " + name + " / " + info.name + ": out of range");
+        preset.values[static_cast<size_t>(index)] = std::clamp(v, info.minimum, info.maximum);
+    }
+    list_.push_back(std::move(preset));
+    return *this;
+}
+
+std::vector<EffectPreset> PresetBuilder::done()
+{
+    for (auto& error : errors_)
+        reportPresetError(std::move(error));
+    errors_.clear();
+    return std::move(list_);
+}
+
+void reportPresetError(std::string error)
+{
+    const std::scoped_lock lock(errorsMutex);
+    errors().push_back(std::move(error));
+}
+
 const std::vector<EffectPreset>& factoryPresets(const std::string& type)
 {
     NORTHLIGHT_ASSERT_NOT_REALTIME("plugins::factoryPresets");
@@ -936,9 +975,14 @@ std::vector<std::string> typesWithPresets()
     return types;
 }
 
-const std::vector<std::string>& factoryPresetErrors()
+std::vector<std::string> factoryPresetErrors()
 {
+    // Build every list, the instruments' (which keep their own) included.
     all();
+    aurora::presets();
+    nebula::presets();
+    starbit::presets();
+    const std::scoped_lock lock(errorsMutex);
     return errors();
 }
 

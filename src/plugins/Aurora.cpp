@@ -2,6 +2,7 @@
 
 #include "engine/rt/RealtimeGuard.h"
 #include "plugins/MeteredBuiltIn.h"
+#include "plugins/ParamHelpers.h"
 #include "plugins/SynthVoices.h"
 #include "plugins/dsp/PolyBlep.h"
 #include "plugins/dsp/Random.h"
@@ -457,107 +458,98 @@ std::vector<engine::ParameterInfo> parameterInfo()
     return p;
 }
 
-const std::vector<Preset>& presets()
+const std::vector<EffectPreset>& presets()
 {
-    static const std::vector<Preset> list = []
+    static const std::vector<EffectPreset> list = []
     {
-        std::vector<float> base;
-        for (const auto& info : parameterInfo())
-            base.push_back(info.defaultValue);
-        std::vector<Preset> made;
-        const auto preset = [&](const char* name, std::initializer_list<std::pair<Param, float>> values)
-        {
-            Preset p{name, base};
-            for (const auto& [param, value] : values)
-                p.values[static_cast<size_t>(param)] = value;
-            made.push_back(std::move(p));
-        };
-        preset("Northern Lights", {});
-        preset("Solar Wind",
-               {{osc1Shape, 2.0f},
-                {osc2Shape, 2.0f},
-                {osc2Semi, 0.0f},
-                {osc2Fine, -9.0f},
-                {osc2Level, 0.7f},
-                {unison, 7.0f},
-                {spread, 28.0f},
-                {width, 100.0f},
-                {cutoff, 5200.0f},
-                {resonance, 0.15f},
-                {filterEnv, 0.2f},
-                {ampAttack, 4.0f},
-                {ampSustain, 0.85f},
-                {ampRelease, 300.0f},
-                {shimmer, 0.25f},
-                {glide, 40.0f},
-                {level, -9.0f}});
-        preset("Glacier Keys", {{osc1Shape, 1.0f},     {osc2Shape, 0.0f},      {osc2Octave, 1.0f},
-                                {osc2Semi, 0.0f},      {osc2Fine, 3.0f},       {osc2Level, 0.35f},
-                                {unison, 2.0f},        {spread, 6.0f},         {width, 40.0f},
-                                {sub, 0.0f},           {cutoff, 3200.0f},      {filterEnv, 0.45f},
-                                {filterDecay, 700.0f}, {filterSustain, 0.15f}, {ampAttack, 2.0f},
-                                {ampDecay, 1600.0f},   {ampSustain, 0.25f},    {ampRelease, 700.0f},
-                                {shimmer, 0.5f},       {velocity, 0.8f}});
-        preset("Polar Bass",
-               {{osc1Shape, 2.4f}, {osc1Octave, -1.0f}, {osc2Shape, 3.0f},     {osc2Octave, -1.0f},
-                {osc2Semi, 0.0f},  {osc2Fine, 4.0f},    {osc2Level, 0.5f},     {unison, 1.0f},
-                {sub, 0.8f},       {filterMode, 1.0f},  {cutoff, 380.0f},      {resonance, 0.35f},
-                {drive, 0.5f},     {filterEnv, 0.55f},  {filterDecay, 260.0f}, {filterSustain, 0.1f},
-                {keyTrack, 0.3f},  {ampAttack, 2.0f},   {ampSustain, 1.0f},    {ampRelease, 120.0f},
-                {shimmer, 0.0f},   {glide, 60.0f},      {level, -4.0f}});
-        preset("Ice Pluck",
-               {{osc1Shape, 2.6f},
-                {osc2Shape, 1.0f},
-                {osc2Octave, 1.0f},
-                {osc2Semi, 0.0f},
-                {osc2Level, 0.3f},
-                {unison, 3.0f},
-                {spread, 9.0f},
-                {cutoff, 900.0f},
-                {resonance, 0.4f},
-                {filterEnv, 0.8f},
-                {filterAttack, 1.0f},
-                {filterDecay, 180.0f},
-                {filterSustain, 0.0f},
-                {ampAttack, 1.0f},
-                {ampDecay, 380.0f},
-                {ampSustain, 0.0f},
-                {ampRelease, 300.0f},
-                {shimmer, 0.6f}});
-        preset("Starfield",
-               {{osc1Shape, 0.4f},    {osc2Shape, 1.2f},  {osc2Octave, 1.0f},    {osc2Semi, 7.0f},
-                {osc2Level, 0.5f},    {unison, 5.0f},     {spread, 18.0f},       {width, 100.0f},
-                {noise, 0.18f},       {filterMode, 2.0f}, {cutoff, 1800.0f},     {resonance, 0.55f},
-                {filterEnv, 0.0f},    {lfoShape, 4.0f},   {lfoRate, 3.5f},       {lfoCutoff, 1.4f},
-                {ampAttack, 1400.0f}, {ampSustain, 1.0f}, {ampRelease, 3200.0f}, {shimmer, 0.85f},
-                {level, -8.0f}});
-        preset("Comet Lead", {{osc1Shape, 3.0f},  {osc2Shape, 2.0f},  {osc2Semi, 12.0f},    {osc2Fine, 0.0f},
-                              {osc2Level, 0.45f}, {unison, 2.0f},     {spread, 8.0f},       {width, 30.0f},
-                              {cutoff, 2600.0f},  {resonance, 0.45f}, {drive, 0.45f},       {filterEnv, 0.3f},
-                              {lfoShape, 0.0f},   {lfoRate, 5.5f},    {lfoPitch, 18.0f},    {lfoCutoff, 0.0f},
-                              {ampAttack, 6.0f},  {ampSustain, 0.9f}, {ampRelease, 220.0f}, {glide, 90.0f},
-                              {shimmer, 0.2f}});
-        preset("Aurora Drift",
-               {{osc1Shape, 1.6f},
-                {osc2Shape, 0.8f},
-                {osc2Semi, 5.0f},
-                {osc2Level, 0.55f},
-                {unison, 4.0f},
-                {spread, 22.0f},
-                {width, 90.0f},
-                {filterMode, 0.0f},
-                {cutoff, 1500.0f},
-                {resonance, 0.3f},
-                {filterEnv, 0.15f},
-                {lfoShape, 1.0f},
-                {lfoRate, 0.12f},
-                {lfoCutoff, 1.8f},
-                {lfoAmp, 0.15f},
-                {ampAttack, 900.0f},
-                {ampSustain, 0.9f},
-                {ampRelease, 2400.0f},
-                {shimmer, 0.7f}});
-        return made;
+        PresetBuilder made(type, parameterInfo());
+        made.add("Northern Lights", {});
+        made.add("Solar Wind",
+                 {{osc1Shape, 2.0f},
+                  {osc2Shape, 2.0f},
+                  {osc2Semi, 0.0f},
+                  {osc2Fine, -9.0f},
+                  {osc2Level, 0.7f},
+                  {unison, 7.0f},
+                  {spread, 28.0f},
+                  {width, 100.0f},
+                  {cutoff, 5200.0f},
+                  {resonance, 0.15f},
+                  {filterEnv, 0.2f},
+                  {ampAttack, 4.0f},
+                  {ampSustain, 0.85f},
+                  {ampRelease, 300.0f},
+                  {shimmer, 0.25f},
+                  {glide, 40.0f},
+                  {level, -9.0f}});
+        made.add("Glacier Keys", {{osc1Shape, 1.0f},     {osc2Shape, 0.0f},      {osc2Octave, 1.0f},
+                                  {osc2Semi, 0.0f},      {osc2Fine, 3.0f},       {osc2Level, 0.35f},
+                                  {unison, 2.0f},        {spread, 6.0f},         {width, 40.0f},
+                                  {sub, 0.0f},           {cutoff, 3200.0f},      {filterEnv, 0.45f},
+                                  {filterDecay, 700.0f}, {filterSustain, 0.15f}, {ampAttack, 2.0f},
+                                  {ampDecay, 1600.0f},   {ampSustain, 0.25f},    {ampRelease, 700.0f},
+                                  {shimmer, 0.5f},       {velocity, 0.8f}});
+        made.add("Polar Bass",
+                 {{osc1Shape, 2.4f}, {osc1Octave, -1.0f}, {osc2Shape, 3.0f},     {osc2Octave, -1.0f},
+                  {osc2Semi, 0.0f},  {osc2Fine, 4.0f},    {osc2Level, 0.5f},     {unison, 1.0f},
+                  {sub, 0.8f},       {filterMode, 1.0f},  {cutoff, 380.0f},      {resonance, 0.35f},
+                  {drive, 0.5f},     {filterEnv, 0.55f},  {filterDecay, 260.0f}, {filterSustain, 0.1f},
+                  {keyTrack, 0.3f},  {ampAttack, 2.0f},   {ampSustain, 1.0f},    {ampRelease, 120.0f},
+                  {shimmer, 0.0f},   {glide, 60.0f},      {level, -4.0f}});
+        made.add("Ice Pluck",
+                 {{osc1Shape, 2.6f},
+                  {osc2Shape, 1.0f},
+                  {osc2Octave, 1.0f},
+                  {osc2Semi, 0.0f},
+                  {osc2Level, 0.3f},
+                  {unison, 3.0f},
+                  {spread, 9.0f},
+                  {cutoff, 900.0f},
+                  {resonance, 0.4f},
+                  {filterEnv, 0.8f},
+                  {filterAttack, 1.0f},
+                  {filterDecay, 180.0f},
+                  {filterSustain, 0.0f},
+                  {ampAttack, 1.0f},
+                  {ampDecay, 380.0f},
+                  {ampSustain, 0.0f},
+                  {ampRelease, 300.0f},
+                  {shimmer, 0.6f}});
+        made.add("Starfield",
+                 {{osc1Shape, 0.4f},    {osc2Shape, 1.2f},  {osc2Octave, 1.0f},    {osc2Semi, 7.0f},
+                  {osc2Level, 0.5f},    {unison, 5.0f},     {spread, 18.0f},       {width, 100.0f},
+                  {noise, 0.18f},       {filterMode, 2.0f}, {cutoff, 1800.0f},     {resonance, 0.55f},
+                  {filterEnv, 0.0f},    {lfoShape, 4.0f},   {lfoRate, 3.5f},       {lfoCutoff, 1.4f},
+                  {ampAttack, 1400.0f}, {ampSustain, 1.0f}, {ampRelease, 3200.0f}, {shimmer, 0.85f},
+                  {level, -8.0f}});
+        made.add("Comet Lead",
+                 {{osc1Shape, 3.0f},  {osc2Shape, 2.0f},  {osc2Semi, 12.0f},    {osc2Fine, 0.0f},
+                  {osc2Level, 0.45f}, {unison, 2.0f},     {spread, 8.0f},       {width, 30.0f},
+                  {cutoff, 2600.0f},  {resonance, 0.45f}, {drive, 0.45f},       {filterEnv, 0.3f},
+                  {lfoShape, 0.0f},   {lfoRate, 5.5f},    {lfoPitch, 18.0f},    {lfoCutoff, 0.0f},
+                  {ampAttack, 6.0f},  {ampSustain, 0.9f}, {ampRelease, 220.0f}, {glide, 90.0f},
+                  {shimmer, 0.2f}});
+        made.add("Aurora Drift",
+                 {{osc1Shape, 1.6f},
+                  {osc2Shape, 0.8f},
+                  {osc2Semi, 5.0f},
+                  {osc2Level, 0.55f},
+                  {unison, 4.0f},
+                  {spread, 22.0f},
+                  {width, 90.0f},
+                  {filterMode, 0.0f},
+                  {cutoff, 1500.0f},
+                  {resonance, 0.3f},
+                  {filterEnv, 0.15f},
+                  {lfoShape, 1.0f},
+                  {lfoRate, 0.12f},
+                  {lfoCutoff, 1.8f},
+                  {lfoAmp, 0.15f},
+                  {ampAttack, 900.0f},
+                  {ampSustain, 0.9f},
+                  {ampRelease, 2400.0f},
+                  {shimmer, 0.7f}});
+        return made.done();
     }();
     return list;
 }

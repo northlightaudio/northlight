@@ -3,6 +3,7 @@
 #include "engine/Feedback.h"
 #include "engine/rt/RealtimeGuard.h"
 #include "plugins/Biquad.h"
+#include "plugins/ParamHelpers.h"
 #include "plugins/ProcessorBase.h"
 #include "plugins/dsp/Smoothing.h"
 
@@ -58,16 +59,6 @@ float releaseSecondsFor(float choice) noexcept
 
 namespace
 {
-engine::ParameterInfo choice(std::string name, std::vector<std::string> choices, float defaultValue)
-{
-    engine::ParameterInfo info;
-    info.name = std::move(name);
-    info.maximum = static_cast<float>(choices.size() - 1);
-    info.defaultValue = defaultValue;
-    info.choices = std::move(choices);
-    return info;
-}
-
 std::vector<engine::ParameterInfo> parameterInfos()
 {
     return {{"Threshold", "dB", -40.0f, 0.0f, -18.0f, false},

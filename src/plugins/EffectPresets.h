@@ -23,8 +23,9 @@ const std::vector<EffectPreset>& factoryPresets(const std::string& type);
 // The types that have factory presets: every built-in effect.
 std::vector<std::string> typesWithPresets();
 
-// Problems found while building the lists (a parameter or a choice named
-// wrongly): empty when every preset resolved. For the tests.
-const std::vector<std::string>& factoryPresetErrors();
+// Problems found while building the lists, the instruments' too (a parameter
+// or a choice named wrongly, a value out of range): empty when every preset
+// resolved. For the tests.
+std::vector<std::string> factoryPresetErrors();
 
 } // namespace northlight::plugins

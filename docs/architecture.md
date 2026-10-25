@@ -375,7 +375,10 @@ know nothing format-specific.
   a face sets and its art rebuilds for the UI work budgets
   ([ui-performance.md](ui-performance.md)). `HardwareKey` is the bakelite key. Every built-in effect's
   factory presets are in `plugins/EffectPresets` (by parameter name, resolved
-  against the effect's parameter table); `ui/strip/EffectPresetLibrary` adds the
+  against the effect's parameter table); Patina and the instruments build theirs
+  by parameter index with `PresetBuilder` (`plugins/ParamHelpers.h`, beside the
+  `choice`, `onOff` and `percent` parameter helpers), and both report a value out
+  of range through `factoryPresetErrors()`; `ui/strip/EffectPresetLibrary` adds the
   user's own (JSON files keyed by parameter name) and tells every `PresetBar` when
   the list changes, so the card's header, the window's and a face's own control
   agree.

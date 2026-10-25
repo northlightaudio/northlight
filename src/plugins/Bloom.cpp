@@ -4,6 +4,7 @@
 #include "engine/rt/RealtimeGuard.h"
 #include "plugins/BeatSync.h"
 #include "plugins/FeedbackNetwork.h"
+#include "plugins/ParamHelpers.h"
 #include "plugins/ProcessorBase.h"
 #include "plugins/dsp/Random.h"
 #include "plugins/dsp/Smoothing.h"
@@ -92,16 +93,6 @@ float decayAt(float hz, float decaySeconds, float sizePercent, float dampingHz, 
 
 namespace
 {
-engine::ParameterInfo choice(std::string name, std::vector<std::string> choices, float defaultValue)
-{
-    engine::ParameterInfo info;
-    info.name = std::move(name);
-    info.maximum = static_cast<float>(choices.size() - 1);
-    info.defaultValue = defaultValue;
-    info.choices = std::move(choices);
-    return info;
-}
-
 std::vector<engine::ParameterInfo> parameterInfos()
 {
     return {{"Decay", "s", minDecaySeconds, maxDecaySeconds, 6.0f, true},

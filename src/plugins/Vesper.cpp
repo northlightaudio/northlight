@@ -5,6 +5,7 @@
 #include "plugins/BeatSync.h"
 #include "plugins/Biquad.h"
 #include "plugins/FeedbackNetwork.h"
+#include "plugins/ParamHelpers.h"
 #include "plugins/ProcessorBase.h"
 #include "plugins/VocalListener.h"
 #include "plugins/dsp/Denormals.h"
@@ -155,16 +156,6 @@ const std::array<Space, spaceCount>& spaces()
 int choiceIndex(float value, int count) noexcept
 {
     return std::clamp(static_cast<int>(std::lround(value)), 0, count - 1);
-}
-
-engine::ParameterInfo choice(std::string name, std::vector<std::string> choices, float defaultValue)
-{
-    engine::ParameterInfo info;
-    info.name = std::move(name);
-    info.maximum = static_cast<float>(choices.size() - 1);
-    info.defaultValue = defaultValue;
-    info.choices = std::move(choices);
-    return info;
 }
 
 std::vector<engine::ParameterInfo> parameterInfos()

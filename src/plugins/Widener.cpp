@@ -2,6 +2,7 @@
 
 #include "engine/Feedback.h"
 #include "engine/rt/RealtimeGuard.h"
+#include "plugins/ParamHelpers.h"
 #include "plugins/ProcessorBase.h"
 #include "plugins/dsp/Denormals.h"
 #include "plugins/dsp/Smoothing.h"
@@ -98,16 +99,6 @@ Section design(Shape shape, double sampleRate, double hz, double q = std::number
     s.a1 = -2.0 * c / a0;
     s.a2 = (1.0 - alpha) / a0;
     return s;
-}
-
-engine::ParameterInfo choice(std::string name, std::vector<std::string> choices, float defaultValue)
-{
-    engine::ParameterInfo info;
-    info.name = std::move(name);
-    info.maximum = static_cast<float>(choices.size() - 1);
-    info.defaultValue = defaultValue;
-    info.choices = std::move(choices);
-    return info;
 }
 
 std::vector<engine::ParameterInfo> parameterInfos()

@@ -781,7 +781,7 @@ private:
         }
         return "Custom";
     }
-    void applyPreset(const sb::Preset& preset)
+    void applyPreset(const plugins::EffectPreset& preset)
     {
         beginGesture("Preset " + juce::String(preset.name));
         for (size_t i = 0; i < preset.values.size(); ++i)

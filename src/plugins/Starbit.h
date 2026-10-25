@@ -1,6 +1,7 @@
 #pragma once
 
 #include "engine/Insert.h"
+#include "plugins/EffectPresets.h"
 
 #include <array>
 #include <memory>
@@ -80,12 +81,7 @@ constexpr int polyVoices = 4;
 std::unique_ptr<engine::InsertProcessor> create();
 std::vector<engine::ParameterInfo> parameterInfo();
 
-struct Preset
-{
-    std::string name;
-    std::vector<float> values;
-};
-const std::vector<Preset>& presets();
+const std::vector<EffectPreset>& presets();
 
 // The arpeggio's steps (semitone offsets) for a shape (empty for off or chord).
 std::vector<int> arpSteps(int shape);

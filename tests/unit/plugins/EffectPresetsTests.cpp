@@ -1,5 +1,10 @@
+#include "plugins/Aurora.h"
 #include "plugins/BuiltIns.h"
 #include "plugins/EffectPresets.h"
+#include "plugins/Nebula.h"
+#include "plugins/ParamHelpers.h"
+#include "plugins/Patina.h"
+#include "plugins/Starbit.h"
 
 #include <catch2/catch_test_macros.hpp>
 
@@ -88,4 +93,44 @@ TEST_CASE("Every factory preset plays a tone without blowing up", "[plugins][pre
             }
             CHECK(peak < 4.0f);
         }
+}
+
+TEST_CASE("The instruments' and Patina's presets are full and in range", "[plugins][presets]")
+{
+    // They are built by parameter index, so a table that changed under them
+    // shows up here (and in factoryPresetErrors).
+    const auto check = [](const std::string& type, const std::vector<plugins::EffectPreset>& list)
+    {
+        const auto& infos = plugins::parameterInfo(type);
+        REQUIRE_FALSE(list.empty());
+        CHECK(list.front().values == plugins::defaultParameters(type));
+        for (const auto& preset : list)
+        {
+            INFO(type << " / " << preset.name);
+            REQUIRE(preset.values.size() == infos.size());
+            for (size_t i = 0; i < infos.size(); ++i)
+            {
+                INFO(infos[i].name);
+                CHECK(preset.values[i] >= infos[i].minimum);
+                CHECK(preset.values[i] <= infos[i].maximum);
+            }
+        }
+    };
+    check(plugins::aurora::type, plugins::aurora::presets());
+    check(plugins::nebula::type, plugins::nebula::presets());
+    check(plugins::starbit::type, plugins::starbit::presets());
+    check(plugins::patina::type, plugins::patina::presets());
+    CHECK(plugins::factoryPresetErrors().empty());
+}
+
+TEST_CASE("A preset built by index reports a value out of range or a missing parameter", "[plugins][presets]")
+{
+    plugins::PresetBuilder builder("test", {{"Level", "dB", -60.0f, 6.0f, 0.0f, false}});
+    builder.add("Fine", {{0, -6.0}});
+    CHECK(builder.errors().empty());
+    builder.add("Too loud", {{0, 12.0}});
+    builder.add("No such", {{3, 0.0}});
+    REQUIRE(builder.errors().size() == 2);
+    CHECK(builder.errors()[0] == "test / Too loud / Level: out of range");
+    CHECK(builder.errors()[1] == "test / No such: no parameter 3");
 }

@@ -1,6 +1,7 @@
 #pragma once
 
 #include "engine/Insert.h"
+#include "plugins/EffectPresets.h"
 
 #include <memory>
 #include <string>
@@ -66,12 +67,7 @@ std::unique_ptr<engine::InsertProcessor> create();
 std::vector<engine::ParameterInfo> parameterInfo();
 
 // The factory sounds, by name: each a full set of parameter values.
-struct Preset
-{
-    std::string name;
-    std::vector<float> values;
-};
-const std::vector<Preset>& presets();
+const std::vector<EffectPreset>& presets();
 
 // One cycle of a morphing shape (0..3) at phase 0..1, for drawing it.
 float shapeAt(float shape, float phase) noexcept;

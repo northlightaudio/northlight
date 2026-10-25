@@ -3,6 +3,7 @@
 #include "engine/rt/RealtimeGuard.h"
 #include "plugins/BeatSync.h"
 #include "plugins/MeteredBuiltIn.h"
+#include "plugins/ParamHelpers.h"
 #include "plugins/SynthVoices.h"
 #include "plugins/dsp/Smoothing.h"
 
@@ -531,93 +532,83 @@ std::vector<engine::ParameterInfo> parameterInfo()
     return p;
 }
 
-const std::vector<Preset>& presets()
+const std::vector<EffectPreset>& presets()
 {
-    static const std::vector<Preset> list = []
+    static const std::vector<EffectPreset> list = []
     {
-        std::vector<float> base;
-        for (const auto& info : parameterInfo())
-            base.push_back(info.defaultValue);
-        std::vector<Preset> made;
-        // Values as doubles: the wave and arpeggio enumerators go in as they are.
-        const auto preset = [&](const char* name, std::initializer_list<std::pair<int, double>> values)
-        {
-            Preset p{name, base};
-            for (const auto& [param, value] : values)
-                p.values[static_cast<size_t>(param)] = static_cast<float>(value);
-            made.push_back(std::move(p));
-        };
-        preset("Starbit", {});
-        preset("Hero Lead",
-               {{wave, pulse},
-                {duty, 2.0f},
-                {voices, 0.0f},
-                {glide, 40.0f},
-                {vibratoDepth, 0.35f},
-                {vibratoDelay, 250.0f},
-                {decay, 600.0f},
-                {sustain, 0.75f},
-                {echo, 0.3f}});
-        preset("Chord Arp",
-               {{wave, pulse},
-                {duty, 1.0f},
-                {arp, arpChord},
-                {arpRate, 24.0f},
-                {sustain, 0.7f},
-                {release, 80.0f}});
-        preset("Major Sparkle",
-               {{wave, pulse},
-                {duty, 0.0f},
-                {arp, arpMajor},
-                {arpRate, 30.0f},
-                {decay, 400.0f},
-                {sustain, 0.3f},
-                {echo, 0.4f}});
-        preset("Tri Bass",
-               {{wave, triangle},
-                {octave, -1.0f},
-                {voices, 0.0f},
-                {decay, 1.0f},
-                {sustain, 1.0f},
-                {release, 30.0f},
-                {glide, 20.0f}});
-        preset("Wave Pad",
-               {{wave, custom},
-                {attack, 250.0f},
-                {decay, 800.0f},
-                {sustain, 0.7f},
-                {release, 600.0f},
-                {vibratoDepth, 0.15f},
-                {vibratoRate, 4.5f},
-                {echo, 0.35f}});
-        preset("Laser Zap",
-               {{wave, pulse},
-                {duty, 0.0f},
-                {dutySweep, 0.7f},
-                {sweep, 24.0f},
-                {sweepTime, 180.0f},
-                {decay, 220.0f},
-                {sustain, 0.0f},
-                {release, 40.0f}});
-        preset("Noise Snare",
-               {{wave, noise},
-                {noiseMode, 0.0f},
-                {decay, 140.0f},
-                {sustain, 0.0f},
-                {release, 30.0f},
-                {sweep, 5.0f},
-                {sweepTime, 60.0f},
-                {voices, 1.0f}});
-        preset("Metal Hat",
-               {{wave, noise},
-                {noiseMode, 1.0f},
-                {octave, 2.0f},
-                {decay, 60.0f},
-                {sustain, 0.0f},
-                {release, 20.0f}});
-        preset("Crunchy Saw",
-               {{wave, saw}, {bits, 4.0f}, {rate, 8000.0f}, {decay, 500.0f}, {sustain, 0.6f}, {echo, 0.2f}});
-        return made;
+        PresetBuilder made(type, parameterInfo());
+        made.add("Starbit", {});
+        made.add("Hero Lead",
+                 {{wave, pulse},
+                  {duty, 2.0f},
+                  {voices, 0.0f},
+                  {glide, 40.0f},
+                  {vibratoDepth, 0.35f},
+                  {vibratoDelay, 250.0f},
+                  {decay, 600.0f},
+                  {sustain, 0.75f},
+                  {echo, 0.3f}});
+        made.add("Chord Arp",
+                 {{wave, pulse},
+                  {duty, 1.0f},
+                  {arp, arpChord},
+                  {arpRate, 24.0f},
+                  {sustain, 0.7f},
+                  {release, 80.0f}});
+        made.add("Major Sparkle",
+                 {{wave, pulse},
+                  {duty, 0.0f},
+                  {arp, arpMajor},
+                  {arpRate, 30.0f},
+                  {decay, 400.0f},
+                  {sustain, 0.3f},
+                  {echo, 0.4f}});
+        made.add("Tri Bass",
+                 {{wave, triangle},
+                  {octave, -1.0f},
+                  {voices, 0.0f},
+                  {decay, 1.0f},
+                  {sustain, 1.0f},
+                  {release, 30.0f},
+                  {glide, 20.0f}});
+        made.add("Wave Pad",
+                 {{wave, custom},
+                  {attack, 250.0f},
+                  {decay, 800.0f},
+                  {sustain, 0.7f},
+                  {release, 600.0f},
+                  {vibratoDepth, 0.15f},
+                  {vibratoRate, 4.5f},
+                  {echo, 0.35f}});
+        made.add("Laser Zap",
+                 {{wave, pulse},
+                  {duty, 0.0f},
+                  {dutySweep, 0.7f},
+                  {sweep, 24.0f},
+                  {sweepTime, 180.0f},
+                  {decay, 220.0f},
+                  {sustain, 0.0f},
+                  {release, 40.0f}});
+        made.add("Noise Snare",
+                 {{wave, noise},
+                  {noiseMode, 0.0f},
+                  {decay, 140.0f},
+                  {sustain, 0.0f},
+                  {release, 30.0f},
+                  {sweep, 5.0f},
+                  {sweepTime, 60.0f},
+                  {voices, 1.0f}});
+        made.add("Metal Hat",
+                 {{wave, noise},
+                  {noiseMode, 1.0f},
+                  {octave, 2.0f},
+                  {decay, 60.0f},
+                  {sustain, 0.0f},
+                  {release, 20.0f}});
+        made.add(
+            "Crunchy Saw",
+            {{wave, saw}, {bits, 4.0f}, {rate, 8000.0f}, {decay, 500.0f}, {sustain, 0.6f}, {echo, 0.2f}});
+        return made.done();
     }();
     return list;
 }

@@ -2,6 +2,7 @@
 
 #include "engine/rt/RealtimeGuard.h"
 #include "plugins/MeteredBuiltIn.h"
+#include "plugins/ParamHelpers.h"
 #include "plugins/SynthVoices.h"
 #include "plugins/dsp/Random.h"
 #include "plugins/dsp/Smoothing.h"
@@ -450,120 +451,110 @@ std::vector<engine::ParameterInfo> parameterInfo()
     return p;
 }
 
-const std::vector<Preset>& presets()
+const std::vector<EffectPreset>& presets()
 {
-    static const std::vector<Preset> list = []
+    static const std::vector<EffectPreset> list = []
     {
-        std::vector<float> base;
-        for (const auto& info : parameterInfo())
-            base.push_back(info.defaultValue);
-        std::vector<Preset> made;
-        const auto preset = [&](const char* name, std::initializer_list<std::pair<Param, float>> values)
-        {
-            Preset p{name, base};
-            for (const auto& [param, value] : values)
-                p.values[static_cast<size_t>(param)] = value;
-            made.push_back(std::move(p));
-        };
-        preset("Nebula", {});
-        preset("Choir of Dust",
-               {{partials, 18.0f},
-                {brightness, 0.35f},
-                {vowel, 0.28f},
-                {formant, 0.8f},
-                {breath, 0.3f},
-                {drift, 0.7f},
-                {spread, 12.0f},
-                {halo, 0.15f},
-                {attack, 1800.0f},
-                {release, 4500.0f},
-                {motionDepth, 0.55f},
-                {motionRate, 0.09f}});
-        preset("Glass Halo",
-               {{partials, 10.0f},
-                {brightness, 0.7f},
-                {stretch, 0.45f},
-                {oddEven, 0.4f},
-                {formant, 0.1f},
-                {halo, 0.85f},
-                {sub, 0.0f},
-                {drift, 0.3f},
-                {spread, 5.0f},
-                {attack, 600.0f},
-                {sustain, 0.6f},
-                {release, 6000.0f},
-                {space, 0.85f},
-                {spaceMix, 0.6f}});
-        preset("Hollow Moon",
-               {{partials, 16.0f},
-                {oddEven, -1.0f},
-                {brightness, 0.4f},
-                {formant, 0.2f},
-                {sub, 0.35f},
-                {drift, 0.4f},
-                {attack, 2500.0f},
-                {release, 5000.0f},
-                {motionDepth, 0.25f},
-                {tone, 5000.0f}});
-        preset("Solar Breath",
-               {{partials, 22.0f},
-                {brightness, 0.75f},
-                {vowel, 0.6f},
-                {formant, 0.5f},
-                {breath, 0.6f},
-                {halo, 0.5f},
-                {spread, 16.0f},
-                {width, 100.0f},
-                {attack, 900.0f},
-                {motionRate, 0.3f},
-                {motionDepth, 0.7f},
-                {spaceMix, 0.55f}});
-        preset("Deep Field",
-               {{partials, 8.0f},
-                {brightness, 0.2f},
-                {octave, -1.0f},
-                {sub, 0.5f},
-                {formant, 0.0f},
-                {drift, 0.6f},
-                {spread, 20.0f},
-                {attack, 3500.0f},
-                {release, 8000.0f},
-                {space, 1.0f},
-                {spaceMix, 0.7f},
-                {tone, 3200.0f},
-                {level, -2.0f}});
-        preset("Ice Bells",
-               {{partials, 12.0f},
-                {brightness, 0.85f},
-                {stretch, 0.8f},
-                {formant, 0.0f},
-                {halo, 0.4f},
-                {sub, 0.0f},
-                {breath, 0.0f},
-                {drift, 0.2f},
-                {spread, 3.0f},
-                {attack, 5.0f},
-                {decay, 3500.0f},
-                {sustain, 0.0f},
-                {release, 4000.0f},
-                {velocity, 0.8f},
-                {spaceMix, 0.5f}});
-        preset("Drifting Veil",
-               {{partials, 20.0f},
-                {brightness, 0.5f},
-                {vowel, 0.15f},
-                {formant, 0.6f},
-                {drift, 1.0f},
-                {spread, 25.0f},
-                {width, 100.0f},
-                {halo, 0.35f},
-                {attack, 4000.0f},
-                {release, 9000.0f},
-                {motionRate, 0.05f},
-                {motionDepth, 0.9f},
-                {space, 0.9f},
-                {spaceMix, 0.65f}});
-        return made;
+        PresetBuilder made(type, parameterInfo());
+        made.add("Nebula", {});
+        made.add("Choir of Dust",
+                 {{partials, 18.0f},
+                  {brightness, 0.35f},
+                  {vowel, 0.28f},
+                  {formant, 0.8f},
+                  {breath, 0.3f},
+                  {drift, 0.7f},
+                  {spread, 12.0f},
+                  {halo, 0.15f},
+                  {attack, 1800.0f},
+                  {release, 4500.0f},
+                  {motionDepth, 0.55f},
+                  {motionRate, 0.09f}});
+        made.add("Glass Halo",
+                 {{partials, 10.0f},
+                  {brightness, 0.7f},
+                  {stretch, 0.45f},
+                  {oddEven, 0.4f},
+                  {formant, 0.1f},
+                  {halo, 0.85f},
+                  {sub, 0.0f},
+                  {drift, 0.3f},
+                  {spread, 5.0f},
+                  {attack, 600.0f},
+                  {sustain, 0.6f},
+                  {release, 6000.0f},
+                  {space, 0.85f},
+                  {spaceMix, 0.6f}});
+        made.add("Hollow Moon",
+                 {{partials, 16.0f},
+                  {oddEven, -1.0f},
+                  {brightness, 0.4f},
+                  {formant, 0.2f},
+                  {sub, 0.35f},
+                  {drift, 0.4f},
+                  {attack, 2500.0f},
+                  {release, 5000.0f},
+                  {motionDepth, 0.25f},
+                  {tone, 5000.0f}});
+        made.add("Solar Breath",
+                 {{partials, 22.0f},
+                  {brightness, 0.75f},
+                  {vowel, 0.6f},
+                  {formant, 0.5f},
+                  {breath, 0.6f},
+                  {halo, 0.5f},
+                  {spread, 16.0f},
+                  {width, 100.0f},
+                  {attack, 900.0f},
+                  {motionRate, 0.3f},
+                  {motionDepth, 0.7f},
+                  {spaceMix, 0.55f}});
+        made.add("Deep Field",
+                 {{partials, 8.0f},
+                  {brightness, 0.2f},
+                  {octave, -1.0f},
+                  {sub, 0.5f},
+                  {formant, 0.0f},
+                  {drift, 0.6f},
+                  {spread, 20.0f},
+                  {attack, 3500.0f},
+                  {release, 8000.0f},
+                  {space, 1.0f},
+                  {spaceMix, 0.7f},
+                  {tone, 3200.0f},
+                  {level, -2.0f}});
+        made.add("Ice Bells",
+                 {{partials, 12.0f},
+                  {brightness, 0.85f},
+                  {stretch, 0.8f},
+                  {formant, 0.0f},
+                  {halo, 0.4f},
+                  {sub, 0.0f},
+                  {breath, 0.0f},
+                  {drift, 0.2f},
+                  {spread, 3.0f},
+                  {attack, 5.0f},
+                  {decay, 3500.0f},
+                  {sustain, 0.0f},
+                  {release, 4000.0f},
+                  {velocity, 0.8f},
+                  {spaceMix, 0.5f}});
+        made.add("Drifting Veil",
+                 {{partials, 20.0f},
+                  {brightness, 0.5f},
+                  {vowel, 0.15f},
+                  {formant, 0.6f},
+                  {drift, 1.0f},
+                  {spread, 25.0f},
+                  {width, 100.0f},
+                  {halo, 0.35f},
+                  {attack, 4000.0f},
+                  {release, 9000.0f},
+                  {motionRate, 0.05f},
+                  {motionDepth, 0.9f},
+                  {space, 0.9f},
+                  {spaceMix, 0.65f}});
+        return made.done();
     }();
     return list;
 }

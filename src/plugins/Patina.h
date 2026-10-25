@@ -2,6 +2,7 @@
 
 #include "engine/Insert.h"
 #include "engine/rt/TelemetryRing.h"
+#include "plugins/EffectPresets.h"
 
 #include <array>
 #include <atomic>
@@ -220,11 +221,6 @@ std::unique_ptr<engine::InsertProcessor> create();
 
 // The factory settings, by name: each a full set of parameter values. The first
 // is the defaults.
-struct Preset
-{
-    std::string name;
-    std::vector<float> values;
-};
-const std::vector<Preset>& presets();
+const std::vector<EffectPreset>& presets();
 
 } // namespace northlight::plugins::patina

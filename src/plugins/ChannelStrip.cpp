@@ -3,6 +3,7 @@
 #include "engine/Gain.h"
 #include "engine/rt/RealtimeGuard.h"
 #include "plugins/BuiltIns.h"
+#include "plugins/ParamHelpers.h"
 #include "plugins/ProcessorBase.h"
 #include "plugins/dsp/Shapers.h"
 #include "plugins/dsp/Smoothing.h"
@@ -358,17 +359,6 @@ float peakOf(const float* left, const float* right, int numSamples) noexcept
     for (int i = 0; i < numSamples; ++i)
         peak = std::max(peak, std::max(std::abs(left[i]), std::abs(right[i])));
     return peak;
-}
-
-engine::ParameterInfo choice(std::string name, std::vector<std::string> choices, float defaultValue)
-{
-    engine::ParameterInfo info;
-    info.name = std::move(name);
-    info.minimum = 0.0f;
-    info.maximum = static_cast<float>(choices.size() - 1);
-    info.defaultValue = defaultValue;
-    info.choices = std::move(choices);
-    return info;
 }
 
 // What every module shares: the feedback block and, while bypassed, a

@@ -3,6 +3,7 @@
 #include "engine/Feedback.h"
 #include "engine/rt/RealtimeGuard.h"
 #include "plugins/Biquad.h"
+#include "plugins/ParamHelpers.h"
 #include "plugins/ProcessorBase.h"
 #include "plugins/dsp/DelayLine.h"
 #include "plugins/dsp/Denormals.h"
@@ -289,27 +290,6 @@ struct Pink
 constexpr float denormalFloor = 1.0e-15f;
 
 // ----- the processor ------------------------------------------------------------------------------
-
-engine::ParameterInfo choice(std::string name, std::vector<std::string> choices, float defaultValue)
-{
-    engine::ParameterInfo info;
-    info.name = std::move(name);
-    info.maximum = static_cast<float>(choices.size() - 1);
-    info.defaultValue = defaultValue;
-    info.choices = std::move(choices);
-    return info;
-}
-
-engine::ParameterInfo onOff(std::string name, bool on)
-{
-    return choice(std::move(name), {"Off", "On"}, on ? 1.0f : 0.0f);
-}
-
-engine::ParameterInfo
-percent(std::string name, float defaultValue, float minimum = 0.0f, float maximum = 100.0f)
-{
-    return {std::move(name), "%", minimum, maximum, defaultValue, false};
-}
 
 std::vector<engine::ParameterInfo> parameterInfos()
 {
@@ -1763,173 +1743,162 @@ std::unique_ptr<engine::InsertProcessor> create()
     return std::make_unique<Patina>();
 }
 
-const std::vector<Preset>& presets()
+const std::vector<EffectPreset>& presets()
 {
-    static const std::vector<Preset> list = []
+    static const std::vector<EffectPreset> list = []
     {
-        std::vector<float> base;
-        for (const auto& info : parameterInfos())
-            base.push_back(info.defaultValue);
-        std::vector<Preset> made;
-        // Values as doubles so a choice's enumerator converts without loss.
-        const auto preset = [&](const char* name, std::initializer_list<std::pair<Param, double>> values)
-        {
-            Preset p{name, base};
-            for (const auto& [param, value] : values)
-                p.values[static_cast<size_t>(param)] = static_cast<float>(value);
-            made.push_back(std::move(p));
-        };
+        PresetBuilder made(type, parameterInfos());
         constexpr double off = 0.0, on = 1.0;
-        preset("Gentle Age", {});
-        preset("Reel Warmth",
-               {{heatCharacter, tape},
-                {heatDrive, 45.0f},
-                {heatTone, -15.0f},
-                {driftWow, 12.0f},
-                {driftFlutter, 10.0f},
-                {driftBreath, 10.0f},
-                {grainSource, hiss},
-                {grainAmount, 12.0f},
-                {wearLoss, 15.0f},
-                {wearDropouts, 0.0f},
-                {wearSkew, 10.0f}});
-        preset("Worn Cassette",
-               {{heatCharacter, tape},
-                {heatDrive, 40.0f},
-                {driftMachine, deck},
-                {driftWow, 40.0f},
-                {driftFlutter, 35.0f},
-                {driftBreath, 30.0f},
-                {grainSource, hiss},
-                {grainAmount, 35.0f},
-                {grainTexture, 50.0f},
-                {wearLoss, 55.0f},
-                {wearDropouts, 25.0f},
-                {wearSkew, 30.0f},
-                {lowCut, 40.0f},
-                {highCut, 12000.0f}});
-        preset("Dusty Vinyl",
-               {{heatDrive, 25.0f},
-                {driftMachine, disc},
-                {driftWow, 20.0f},
-                {driftFlutter, 5.0f},
-                {grainSource, vinyl},
-                {grainAmount, 45.0f},
-                {grainTexture, 45.0f},
-                {wearLoss, 35.0f},
-                {wearDropouts, 0.0f},
-                {lowCut, 30.0f}});
-        preset("Spring Tank",
-               {{heatDrive, 30.0f},
-                {chamberOn, on},
-                {chamberType, spring},
-                {chamberMix, 40.0f},
-                {chamberDecay, 55.0f},
-                {chamberTone, -10.0f},
-                {driftOn, off},
-                {grainOn, off},
-                {wearLoss, 15.0f},
-                {wearDropouts, 0.0f},
-                {wearSkew, 0.0f}});
-        preset("Plate Memory",
-               {{heatDrive, 20.0f},
-                {chamberOn, on},
-                {chamberType, plate},
-                {chamberMix, 35.0f},
-                {chamberDecay, 60.0f},
-                {driftWow, 15.0f},
-                {driftFlutter, 10.0f},
-                {grainSource, air},
-                {grainAmount, 15.0f},
-                {wearLoss, 20.0f},
-                {wearDropouts, 0.0f}});
-        preset("Old Radio",
-               {{heatCharacter, iron},
-                {heatDrive, 55.0f},
-                {chamberOn, on},
-                {chamberType, room},
-                {chamberMix, 15.0f},
-                {chamberDecay, 20.0f},
-                {driftOn, off},
-                {grainSource, hum50},
-                {grainAmount, 15.0f},
-                {grainTexture, 60.0f},
-                {wearLoss, 40.0f},
-                {wearDropouts, 15.0f},
-                {lowCut, 300.0f},
-                {highCut, 3500.0f},
-                {width, 0.0f}});
-        preset("Phone Line",
-               {{heatCharacter, fuzz},
-                {heatDrive, 30.0f},
-                {driftOn, off},
-                {grainOn, off},
-                {wearLoss, 10.0f},
-                {wearDropouts, 20.0f},
-                {wearSkew, 0.0f},
-                {crushOn, on},
-                {crushFlavour, mulaw},
-                {crushBits, 8.0f},
-                {crushRate, 8000.0f},
-                {lowCut, 400.0f},
-                {highCut, 3400.0f},
-                {width, 0.0f}});
-        preset("Lo-Fi Sampler",
-               {{heatCharacter, tape},
-                {heatDrive, 30.0f},
-                {driftOn, off},
-                {grainOn, off},
-                {wearLoss, 20.0f},
-                {wearDropouts, 0.0f},
-                {wearSkew, 0.0f},
-                {crushOn, on},
-                {crushFlavour, hard},
-                {crushBits, 12.0f},
-                {crushRate, 26000.0f}});
-        preset("Basement Tape",
-               {{heatCharacter, tape},
-                {heatDrive, 50.0f},
-                {chamberOn, on},
-                {chamberType, room},
-                {chamberMix, 20.0f},
-                {driftWow, 30.0f},
-                {driftFlutter, 25.0f},
-                {driftBreath, 40.0f},
-                {grainSource, hiss},
-                {grainAmount, 40.0f},
-                {grainFollow, -40.0f},
-                {wearLoss, 45.0f},
-                {wearSkew, 50.0f}});
-        preset("Faded Film",
-               {{heatDrive, 30.0f},
-                {chamberOn, on},
-                {chamberType, room},
-                {chamberMix, 10.0f},
-                {driftWow, 35.0f},
-                {driftFlutter, 25.0f},
-                {driftBreath, 30.0f},
-                {grainSource, air},
-                {grainAmount, 25.0f},
-                {wearLoss, 50.0f},
-                {wearDropouts, 15.0f},
-                {tone, -30.0f},
-                {width, 70.0f}});
-        preset("Broken Machine",
-               {{age, 85.0f},
-                {heatCharacter, fuzz},
-                {heatDrive, 60.0f},
-                {driftMachine, deck},
-                {driftWow, 60.0f},
-                {driftFlutter, 50.0f},
-                {driftBreath, 50.0f},
-                {grainAmount, 40.0f},
-                {wearLoss, 50.0f},
-                {wearDropouts, 60.0f},
-                {crushOn, on},
-                {crushFlavour, jitter},
-                {crushBits, 10.0f},
-                {crushRate, 16000.0f}});
-        return made;
+        made.add("Gentle Age", {});
+        made.add("Reel Warmth",
+                 {{heatCharacter, tape},
+                  {heatDrive, 45.0f},
+                  {heatTone, -15.0f},
+                  {driftWow, 12.0f},
+                  {driftFlutter, 10.0f},
+                  {driftBreath, 10.0f},
+                  {grainSource, hiss},
+                  {grainAmount, 12.0f},
+                  {wearLoss, 15.0f},
+                  {wearDropouts, 0.0f},
+                  {wearSkew, 10.0f}});
+        made.add("Worn Cassette",
+                 {{heatCharacter, tape},
+                  {heatDrive, 40.0f},
+                  {driftMachine, deck},
+                  {driftWow, 40.0f},
+                  {driftFlutter, 35.0f},
+                  {driftBreath, 30.0f},
+                  {grainSource, hiss},
+                  {grainAmount, 35.0f},
+                  {grainTexture, 50.0f},
+                  {wearLoss, 55.0f},
+                  {wearDropouts, 25.0f},
+                  {wearSkew, 30.0f},
+                  {lowCut, 40.0f},
+                  {highCut, 12000.0f}});
+        made.add("Dusty Vinyl",
+                 {{heatDrive, 25.0f},
+                  {driftMachine, disc},
+                  {driftWow, 20.0f},
+                  {driftFlutter, 5.0f},
+                  {grainSource, vinyl},
+                  {grainAmount, 45.0f},
+                  {grainTexture, 45.0f},
+                  {wearLoss, 35.0f},
+                  {wearDropouts, 0.0f},
+                  {lowCut, 30.0f}});
+        made.add("Spring Tank",
+                 {{heatDrive, 30.0f},
+                  {chamberOn, on},
+                  {chamberType, spring},
+                  {chamberMix, 40.0f},
+                  {chamberDecay, 55.0f},
+                  {chamberTone, -10.0f},
+                  {driftOn, off},
+                  {grainOn, off},
+                  {wearLoss, 15.0f},
+                  {wearDropouts, 0.0f},
+                  {wearSkew, 0.0f}});
+        made.add("Plate Memory",
+                 {{heatDrive, 20.0f},
+                  {chamberOn, on},
+                  {chamberType, plate},
+                  {chamberMix, 35.0f},
+                  {chamberDecay, 60.0f},
+                  {driftWow, 15.0f},
+                  {driftFlutter, 10.0f},
+                  {grainSource, air},
+                  {grainAmount, 15.0f},
+                  {wearLoss, 20.0f},
+                  {wearDropouts, 0.0f}});
+        made.add("Old Radio",
+                 {{heatCharacter, iron},
+                  {heatDrive, 55.0f},
+                  {chamberOn, on},
+                  {chamberType, room},
+                  {chamberMix, 15.0f},
+                  {chamberDecay, 20.0f},
+                  {driftOn, off},
+                  {grainSource, hum50},
+                  {grainAmount, 15.0f},
+                  {grainTexture, 60.0f},
+                  {wearLoss, 40.0f},
+                  {wearDropouts, 15.0f},
+                  {lowCut, 300.0f},
+                  {highCut, 3500.0f},
+                  {width, 0.0f}});
+        made.add("Phone Line",
+                 {{heatCharacter, fuzz},
+                  {heatDrive, 30.0f},
+                  {driftOn, off},
+                  {grainOn, off},
+                  {wearLoss, 10.0f},
+                  {wearDropouts, 20.0f},
+                  {wearSkew, 0.0f},
+                  {crushOn, on},
+                  {crushFlavour, mulaw},
+                  {crushBits, 8.0f},
+                  {crushRate, 8000.0f},
+                  {lowCut, 400.0f},
+                  {highCut, 3400.0f},
+                  {width, 0.0f}});
+        made.add("Lo-Fi Sampler",
+                 {{heatCharacter, tape},
+                  {heatDrive, 30.0f},
+                  {driftOn, off},
+                  {grainOn, off},
+                  {wearLoss, 20.0f},
+                  {wearDropouts, 0.0f},
+                  {wearSkew, 0.0f},
+                  {crushOn, on},
+                  {crushFlavour, hard},
+                  {crushBits, 12.0f},
+                  {crushRate, 26000.0f}});
+        made.add("Basement Tape",
+                 {{heatCharacter, tape},
+                  {heatDrive, 50.0f},
+                  {chamberOn, on},
+                  {chamberType, room},
+                  {chamberMix, 20.0f},
+                  {driftWow, 30.0f},
+                  {driftFlutter, 25.0f},
+                  {driftBreath, 40.0f},
+                  {grainSource, hiss},
+                  {grainAmount, 40.0f},
+                  {grainFollow, -40.0f},
+                  {wearLoss, 45.0f},
+                  {wearSkew, 50.0f}});
+        made.add("Faded Film",
+                 {{heatDrive, 30.0f},
+                  {chamberOn, on},
+                  {chamberType, room},
+                  {chamberMix, 10.0f},
+                  {driftWow, 35.0f},
+                  {driftFlutter, 25.0f},
+                  {driftBreath, 30.0f},
+                  {grainSource, air},
+                  {grainAmount, 25.0f},
+                  {wearLoss, 50.0f},
+                  {wearDropouts, 15.0f},
+                  {tone, -30.0f},
+                  {width, 70.0f}});
+        made.add("Broken Machine",
+                 {{age, 85.0f},
+                  {heatCharacter, fuzz},
+                  {heatDrive, 60.0f},
+                  {driftMachine, deck},
+                  {driftWow, 60.0f},
+                  {driftFlutter, 50.0f},
+                  {driftBreath, 50.0f},
+                  {grainAmount, 40.0f},
+                  {wearLoss, 50.0f},
+                  {wearDropouts, 60.0f},
+                  {crushOn, on},
+                  {crushFlavour, jitter},
+                  {crushBits, 10.0f},
+                  {crushRate, 16000.0f}});
+        return made.done();
     }();
     return list;
 }

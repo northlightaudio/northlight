@@ -1,6 +1,7 @@
 #pragma once
 
 #include "engine/Insert.h"
+#include "plugins/EffectPresets.h"
 
 #include <memory>
 #include <string>
@@ -54,12 +55,7 @@ constexpr int maxPartials = 24;
 std::unique_ptr<engine::InsertProcessor> create();
 std::vector<engine::ParameterInfo> parameterInfo();
 
-struct Preset
-{
-    std::string name;
-    std::vector<float> values;
-};
-const std::vector<Preset>& presets();
+const std::vector<EffectPreset>& presets();
 
 // The level (0..1, the loudest 1) and frequency ratio of each partial for a
 // note at `noteHz`, as the voices compute them with the motion at `motion`
