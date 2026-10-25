@@ -41,6 +41,9 @@ selected track in a ghosted overlay.
 
 - Draw tool: click adds a note of the last-used length at the snapped position;
   drag sets length; Alt disables snap. Double-click in Select mode also adds.
+- The grid (the snap menu: 1/4 to 1/32) divides the beat of the bar where a note
+  falls, so a 6/8 bar after 4/4 snaps to its eighths, as the arrange view's grid
+  follows the tempo track.
 - Select tool: click, Shift/Ctrl as in the arrange; lasso; drag moves (vertical =
   transpose with the pitch shown in a tooltip); edges resize; Ctrl+drag duplicates.
 - Erase: click or drag across notes.

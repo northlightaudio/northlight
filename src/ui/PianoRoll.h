@@ -73,10 +73,11 @@ public:
     int gridDivision() const noexcept { return gridDivision_; }
     void setSnapEnabled(bool on);
     bool snapEnabled() const noexcept { return snap_; }
-    // The grid on the tempo track (a fraction of the beat where the clip starts),
-    // and its length in samples there.
-    core::GridStep gridStep() const noexcept;
-    core::SamplePosition gridSamples() const noexcept;
+    // The grid on the tempo track at a clip-relative position (a fraction of the
+    // beat of the bar there, as the arrange view counts it), and its length in
+    // samples there.
+    core::GridStep gridStep(core::SamplePosition at = 0) const noexcept;
+    core::SamplePosition gridSamples(core::SamplePosition at = 0) const noexcept;
 
     enum class Tool
     {
@@ -173,6 +174,11 @@ private:
     juce::Rectangle<int> velocityArea() const noexcept;
     // The time axis, in clip-relative samples from the keyboard's edge.
     TimelineViewport view() const noexcept { return {keyboardWidth, scroll_, samplesPerPixel_}; }
+    // The same axis in timeline samples, for the grid and the ruler.
+    TimelineViewport timelineView(const core::MidiClip& clip) const noexcept
+    {
+        return {keyboardWidth, clip.start + scroll_, samplesPerPixel_};
+    }
     int xForSample(core::SamplePosition s) const noexcept; // clip-relative
     core::SamplePosition sampleForX(int x) const noexcept;
     int yForNote(int note) const noexcept; // top of the row

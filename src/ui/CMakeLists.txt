@@ -13,7 +13,8 @@ set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS "${NORTHLIGHT_TOK
 add_library(northlight_ui_edit STATIC
     edit/ClipOps.h
     edit/ClipOps.cpp
-    timeline/TimelineViewport.h)
+    timeline/TimelineViewport.h
+    timeline/GridLines.h)
 target_include_directories(northlight_ui_edit PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/..")
 target_link_libraries(northlight_ui_edit PUBLIC northlight_core northlight_options)
 
@@ -157,6 +158,8 @@ add_library(northlight_ui STATIC
     panels/DiagnosticsPanel.cpp
     AudioSetupView.h
     AudioSetupView.cpp
+    timeline/TimeGrid.h
+    timeline/TimeGrid.cpp
     ArrangeView.h
     ArrangeView.cpp
     TakeLanes.h

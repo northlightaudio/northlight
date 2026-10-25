@@ -8,6 +8,7 @@
 #include "engine/pitch/VocalRender.h"
 #include "ui/NorthlightLookAndFeel.h"
 #include "ui/PaintStats.h"
+#include "ui/timeline/TimeGrid.h"
 
 #include <algorithm>
 #include <cmath>
@@ -508,6 +509,13 @@ juce::Rectangle<int> AudioEditor::infoArea() const noexcept
     return {0, lane.getBottom(), getWidth(), infoHeight};
 }
 
+TimelineViewport AudioEditor::timelineView(const core::AudioClip& clip) const noexcept
+{
+    const auto first = clip.start + static_cast<core::SamplePosition>(std::llround(
+                                        static_cast<double>(scroll_ - clip.sourceOffset) * clip.stretch));
+    return {leftEdge(), first, samplesPerPixel_ * clip.stretch};
+}
+
 float AudioEditor::xForSource(double source) const noexcept
 {
     return static_cast<float>(view().exactX(source));
@@ -783,48 +791,7 @@ void AudioEditor::paintRuler(juce::Graphics& g)
         return;
     // The song's bars over the clip's source (a stretched clip's source runs at
     // its stretch against the timeline).
-    const auto& map = tempoMap_;
-    const auto toTimeline = [cl](double source)
-    {
-        return cl->start + static_cast<core::SamplePosition>(
-                               std::llround((source - static_cast<double>(cl->sourceOffset)) * cl->stretch));
-    };
-    const auto toSource = [cl](core::SamplePosition t)
-    { return static_cast<double>(cl->sourceOffset) + static_cast<double>(t - cl->start) / cl->stretch; };
-    const auto first = std::max<core::SamplePosition>(0, toTimeline(static_cast<double>(scroll_)));
-    const auto last = toTimeline(static_cast<double>(sourceForX(static_cast<float>(ruler.getRight()))));
-    const auto step = map.adaptiveStep(samplesPerPixel_ * cl->stretch, 48, first);
-    g.setFont(theme_.caption());
-    auto next = map.snap(first, step);
-    for (int guard = 0; next <= last && guard < 100000; ++guard)
-    {
-        const auto t = next;
-        next = std::max(t + 1, map.snap(map.move(t, step, 1), step));
-        const float x = xForSource(toSource(t));
-        if (x < ruler.getX())
-            continue;
-        const double q = map.quartersAt(static_cast<double>(t));
-        const int barIndex = map.barAtQuarter(q + 1.0e-6);
-        const double beats =
-            (q - map.barStartQuarter(barIndex)) / core::TempoMap::quartersPerBeat(map.signatureAt(t));
-        const bool onBeat = std::abs(beats - std::round(beats)) < 1.0e-4;
-        const bool onBar = onBeat && std::llround(beats) == 0;
-        g.setColour(onBar ? c.gridBar : c.gridBeat);
-        g.fillRect(static_cast<int>(x),
-                   onBar ? ruler.getY() + 4 : ruler.getBottom() - 6,
-                   1,
-                   onBar ? ruler.getHeight() - 4 : 6);
-        if (onBar)
-        {
-            g.setColour(c.rulerText);
-            g.drawText(juce::String(barIndex + 1),
-                       static_cast<int>(x) + 3,
-                       ruler.getY(),
-                       40,
-                       ruler.getHeight(),
-                       juce::Justification::centredLeft);
-        }
-    }
+    paintBarsRuler(g, theme_, tempoMap_, timelineView(*cl), ruler.withTrimmedBottom(1));
 }
 
 void AudioEditor::paintWave(juce::Graphics& g)
@@ -1165,29 +1132,10 @@ void AudioEditor::paintPitch(juce::Graphics& g)
     }
     g.restoreState();
 
-    // Beat lines.
+    // Bar, beat and sub-beat lines, as the arrange view's.
     if (cl != nullptr && project_ != nullptr)
     {
-        const auto& map = tempoMap_;
-        const auto toTimeline = [cl](double source)
-        {
-            return cl->start + static_cast<core::SamplePosition>(std::llround(
-                                   (source - static_cast<double>(cl->sourceOffset)) * cl->stretch));
-        };
-        const auto first = std::max<core::SamplePosition>(0, toTimeline(static_cast<double>(scroll_)));
-        const auto last = toTimeline(static_cast<double>(sourceForX(static_cast<float>(grid.getRight()))));
-        const auto step = map.adaptiveStep(samplesPerPixel_ * cl->stretch, 48, first);
-        g.setColour(c.gridSub);
-        auto next = map.snap(first, step);
-        for (int guard = 0; next <= last && guard < 100000; ++guard)
-        {
-            const auto t = next;
-            next = std::max(t + 1, map.snap(map.move(t, step, 1), step));
-            const float x = xForSource(static_cast<double>(cl->sourceOffset) +
-                                       static_cast<double>(t - cl->start) / cl->stretch);
-            if (x >= grid.getX())
-                g.fillRect(x, static_cast<float>(grid.getY()), 1.0f, static_cast<float>(grid.getHeight()));
-        }
+        paintGridLines(g, theme_, tempoMap_, timelineView(*cl), grid);
         // Outside the clip.
         const float x0 = xForSource(static_cast<double>(cl->sourceOffset));
         const float x1 = xForSource(static_cast<double>(cl->sourceOffset + cl->sourceLength()));

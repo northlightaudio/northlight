@@ -281,3 +281,26 @@ TEST_CASE("The tempo map cache rebuilds only when the tempo changed", "[core][te
     p.tempoChanges.push_back({8.0, 60.0, false});
     CHECK(cache.of(p).bpmAtQuarter(9.0) == Approx(60.0));
 }
+
+TEST_CASE("Quantising to a division of the beat counts each note's beat in its own bar", "[core][tempo]")
+{
+    // 4/4 for two bars, then 6/8 from bar 3 (quarter 8): a beat is a quarter, then an eighth.
+    const TempoMap map(48000.0, 120.0, {4, 4}, {}, {{2, {6, 8}}});
+    Project p;
+    Track t;
+    t.id = 1;
+    MidiClip clip;
+    clip.id = 2;
+    clip.length = map.positionAt(12.0);
+    clip.notes.push_back({3, 60, 100, map.positionAt(1.3), 1000});
+    clip.notes.push_back({4, 62, 100, map.positionAt(8.6), 1000});
+    t.midiClips.push_back(clip);
+    p.tracks.push_back(t);
+    QuantiseNotes quantise(1, 2, {}, map, 1);
+    REQUIRE(quantise.apply(p));
+    const auto& notes = p.tracks[0].midiClips[0].notes;
+    CHECK(notes[0].start == map.positionAt(1.0)); // on a quarter
+    CHECK(notes[1].start == map.positionAt(8.5)); // on an eighth, not the quarter at 9
+    REQUIRE(quantise.revert(p));
+    CHECK(p.tracks[0].midiClips[0].notes[1].start == map.positionAt(8.6));
+}

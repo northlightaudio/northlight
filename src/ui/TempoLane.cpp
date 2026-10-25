@@ -368,10 +368,8 @@ void TempoLane::mouseDrag(const juce::MouseEvent& e)
             without.tempoChanges.erase(without.tempoChanges.begin() + dragging_);
             const auto before = mapOf(without, project_->sampleRate);
             auto at = std::max<core::SamplePosition>(0, view_.sampleAt(e.x));
-            if (!e.mods.isAltDown())
-            {
-                at = before.snap(at, before.adaptiveStep(view_.samplesPerPixel, 16, at));
-            }
+            if (snap)
+                at = snap(before, at);
             const double previous =
                 dragging_ > 0 ? state_.tempoChanges[static_cast<size_t>(dragging_ - 1)].quarter : 0.0;
             const double next = dragging_ + 1 < static_cast<int>(state_.tempoChanges.size())
@@ -454,7 +452,8 @@ void TempoLane::addChange(core::SamplePosition at)
     if (project_ == nullptr)
         return;
     const auto map = mapOf(state_, project_->sampleRate);
-    at = map.snap(at, map.adaptiveStep(view_.samplesPerPixel, 16, at));
+    if (snap)
+        at = snap(map, at);
     const double quarter = map.quartersAt(static_cast<double>(at));
     if (quarter <= minimumGap)
         return;

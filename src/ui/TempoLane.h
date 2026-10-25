@@ -37,6 +37,9 @@ public:
     TempoLane(const Theme& theme, const TimelineViewport& view);
 
     void setProject(const core::Project* project);
+    // The arrange view's snapping rule on a tempo map (a moved change snaps on the
+    // tempo before it); positions are not snapped without it.
+    std::function<core::SamplePosition(const core::TempoMap&, core::SamplePosition)> snap;
     // The song position the header's readout shows.
     std::function<core::SamplePosition()> playhead;
 

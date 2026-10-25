@@ -116,8 +116,8 @@ tempo and signature at the playhead in `caption` `textSecondary`.
   it where there is room ("90 ramp" for a change ramped into).
 - Time signatures as `markerFlag` tags along the lane's top edge at their bars.
 - Drag a handle up or down to set its tempo (Shift: a tenth as fast); drag a
-  change sideways to move it, snapped to the grid of the tempo before it (Alt: no
-  snap). Double-click the lane to add a change; double-click a handle to type a
+  change sideways to move it, snapped to the arrange grid as clips are (G turns
+  snap off, Alt for the drag), counted on the tempo before it. Double-click the lane to add a change; double-click a handle to type a
   tempo. Right-click: a handle (set tempo, ramp from the previous tempo, delete),
   the lane (add a tempo change, a signature from the bar under the pointer, hide
   the lane) or a signature tag (change or remove it). Delete removes the
@@ -172,7 +172,12 @@ Rows at `trackRow` 56 default. Contents, left to right, inside `space.sm` paddin
 - Lane background `canvas`; alternate lanes `laneAlt`; selected `laneSelected`;
   1 px `lineSubtle` under each lane.
 - Grid: bar lines `gridBar`, beats `gridBeat`, sub-beats `gridSub` appear with the
-  same thresholds as the ruler. Grid draws under clips.
+  same thresholds as the ruler (a beat from 12 px, halves from 48 px, quarters from
+  192 px). Grid draws under clips. The piano roll and the audio editor draw the
+  same grid and ruler.
+- Snapping follows the tempo track: the grid's beat and its divisions are counted
+  in the signature of the bar where the snapped position falls, in every view
+  (the piano roll, the automation lanes and the tempo track too).
 - Loop and punch regions extend through the lanes as `loopFill`/`punchFill` bands at
   half the ruler alpha.
 - Drop target: dragging files over a lane highlights the lane `dropTarget` and shows a

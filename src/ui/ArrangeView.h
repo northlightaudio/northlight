@@ -14,6 +14,7 @@
 #include "ui/Theme.h"
 #include "ui/TrackHeader.h"
 #include "ui/edit/ClipOps.h"
+#include "ui/timeline/GridLines.h"
 #include "ui/timeline/TimelineViewport.h"
 
 #include <juce_gui_basics/juce_gui_basics.h>
@@ -281,7 +282,6 @@ private:
     static constexpr int markersRowHeight = 14;
     static constexpr int edgeZone = 6;   // px at a clip's ends that trim
     static constexpr int fadeHandle = 8; // px square at a clip's top corners
-    static constexpr int gridMinPixels = 16;
     static constexpr int loopHandle = 8; // px at the loop band's ends
 
     enum class Drag
@@ -457,6 +457,9 @@ private:
     core::SamplePosition lineAtOrBefore(core::SamplePosition s) const noexcept;
     core::SamplePosition lineAtOrAfter(core::SamplePosition s) const noexcept;
     core::SamplePosition snapped(core::SamplePosition s) const noexcept;
+    // The same rule on another tempo map (the tempo track snaps a moved change on
+    // the tempo before it): the grid, unless snap is off or Alt is held.
+    core::SamplePosition snappedOn(const core::TempoMap& map, core::SamplePosition s) const noexcept;
     const core::AudioClip* findClip(const ClipRef& ref, const core::Track** track = nullptr) const noexcept;
     void emit(std::vector<std::unique_ptr<core::Command>> commands, const std::string& name);
     void finishMove();

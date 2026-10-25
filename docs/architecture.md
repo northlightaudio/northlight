@@ -542,7 +542,12 @@ and the samples per pixel, with one rounding rule both ways (a sample's column i
 its exact x rounded down; a column's first sample is the first that maps into it).
 The take lanes, automation lanes and tempo track keep a reference to the arrange
 view's, so they cannot drift from it, and Ctrl+wheel zooms every view by the same
-smooth factor around the pointer, each within its own range.
+smooth factor around the pointer, each within its own range. The bar, beat and
+sub-beat lines come from one iterator over the tempo map and a viewport
+(`ui::forEachGridLine`, with one set of density thresholds), drawn by one grid and
+one ruler painter (`ui/timeline/TimeGrid`); the audio editor gives them its axis
+in timeline samples. Snapping has one rule too (`ui::snapStepAt`): a beat and its
+divisions are counted in the signature where the position falls.
 
 The specification for every screen is in [design/](design/README.md).
 

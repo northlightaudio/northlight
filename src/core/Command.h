@@ -779,6 +779,14 @@ public:
     // To a grid on the tempo track (bars and beats follow tempo and meter changes).
     QuantiseNotes(
         Id trackId, Id clipId, std::vector<Id> noteIds, TempoMap map, GridStep step, float strength = 1.0f);
+    // To a division of the beat (2 = eighths in 4/4), each note's beat counted in
+    // the signature of the bar it falls in (the piano roll's grid).
+    QuantiseNotes(Id trackId,
+                  Id clipId,
+                  std::vector<Id> noteIds,
+                  TempoMap map,
+                  int divisionsPerBeat,
+                  float strength = 1.0f);
     std::string name() const override { return "Quantise"; }
     bool apply(Project&) override;
     bool revert(Project&) override;
@@ -792,6 +800,7 @@ private:
     std::vector<Id> noteIds_;
     SamplePosition grid_ = 1;
     std::optional<std::pair<TempoMap, GridStep>> tempoGrid_;
+    int divisionsPerBeat_ = 0; // > 0: the step follows each note's signature
     float strength_;
     std::vector<std::pair<Id, SamplePosition>> previous_;
 };

@@ -11,6 +11,7 @@
 #include "ui/NorthlightLookAndFeel.h"
 #include "ui/PaintStats.h"
 #include "ui/PluginMenu.h"
+#include "ui/timeline/TimeGrid.h"
 
 #include <algorithm>
 #include <cmath>
@@ -95,6 +96,7 @@ ArrangeView::ArrangeView(audio::PeakStore& peaks)
     addAndMakeVisible(automation_);
     // The tempo track sits over the automation overlay so its handles take the mouse.
     tempoLane_.playhead = [this] { return playhead_; };
+    tempoLane_.snap = [this](const core::TempoMap& map, core::SamplePosition s) { return snappedOn(map, s); };
     tempoLane_.onEdit = [this](core::TempoState state, const std::string& name)
     {
         if (onTempoEdit)
@@ -1565,82 +1567,16 @@ juce::Rectangle<int> ArrangeView::loopBand() const noexcept
 
 void ArrangeView::drawGrid(juce::Graphics& g, juce::Rectangle<int> area, bool ruler)
 {
-    // Bar lines, beats and sub-beats with the ruler's thresholds (a beat wider than
-    // 48 px shows its halves and quarters); in the ruler the ticks are short and
-    // the bars are numbered.
+    // Bar lines, beats and sub-beats (ui::forEachGridLine's thresholds); in the
+    // ruler the ticks are short and the bars are numbered.
     if (project_ == nullptr)
         return;
-    const auto& c = theme_.colours;
-    const double rate = sampleRate();
-    const auto& map = tempoMap_;
-    // Label every barStep-th bar, from the bar width where the view starts (bars
-    // change width with the tempo and signature, but the labels keep one rhythm).
-    const auto firstVisible = std::max<core::SamplePosition>(0, view_.first);
-    const double viewBarPixels = map.stepSamples({1, 0.0}, firstVisible) / view_.samplesPerPixel;
-    int barStep = 1;
-    while (viewBarPixels * barStep < 80.0 && barStep < (1 << 20))
-        barStep *= 2;
-    const int left = std::max(headerWidth(), area.getX());
-    const int right = std::min(getWidth() - scrollbarWidth, area.getRight());
-    g.setFont(theme_.caption());
-    const auto firstPainted = std::max(firstVisible, sampleForX(left - (ruler ? 100 : 0)));
-    const int firstBar = map.barAtQuarter(map.quartersAt(static_cast<double>(firstPainted)));
-    for (int bar = std::max(0, firstBar - 1);; ++bar)
-    {
-        const double barQuarter = map.barStartQuarter(bar);
-        const auto barStart = map.positionAt(barQuarter);
-        const auto signature = map.signatureAtBar(bar);
-        const int beatsPerBar = std::max(1, signature.numerator);
-        const double beatQuarters = core::TempoMap::quartersPerBeat(signature);
-        const double beatPixels = map.stepSamples({0, beatQuarters}, barStart) / view_.samplesPerPixel;
-        const double barPixels = beatPixels * beatsPerBar;
-        const bool showBeats = beatPixels >= 12.0;
-        const int subdivisions = beatPixels >= 192.0 ? 4 : beatPixels >= 48.0 ? 2 : 1;
-        const int x = xForSample(barStart);
-        if (x > right)
-            break;
-        const bool labelled = bar % barStep == 0;
-        if (x >= left)
-        {
-            g.setColour(c.gridBar);
-            if (ruler)
-            {
-                g.fillRect(x, area.getY(), 1, area.getHeight());
-                if (labelled)
-                {
-                    g.setColour(c.rulerText);
-                    juce::String label(bar + 1);
-                    if (barPixels < 80.0)
-                    {
-                        const double seconds = static_cast<double>(barStart) / rate;
-                        label << "  " << static_cast<int>(seconds) / 60 << ":"
-                              << juce::String(static_cast<int>(seconds) % 60).paddedLeft('0', 2);
-                    }
-                    g.drawText(
-                        label, x + 4, area.getY(), 90, area.getHeight(), juce::Justification::centredLeft);
-                }
-            }
-            else
-                g.fillRect(x, area.getY(), 1, area.getHeight());
-        }
-        if (!showBeats)
-            continue;
-        for (int beat = 0; beat < beatsPerBar; ++beat)
-            for (int sub = 0; sub < subdivisions; ++sub)
-            {
-                if (beat == 0 && sub == 0)
-                    continue;
-                const int bx = xForSample(map.positionAt(
-                    barQuarter + (beat + static_cast<double>(sub) / subdivisions) * beatQuarters));
-                if (bx < left || bx > right)
-                    continue;
-                g.setColour(sub == 0 ? c.gridBeat : c.gridSub);
-                if (ruler)
-                    g.fillRect(bx, area.getBottom() - (sub == 0 ? 6 : 3), 1, sub == 0 ? 6 : 3);
-                else
-                    g.fillRect(bx, area.getY(), 1, area.getHeight());
-            }
-    }
+    const auto columns = area.withLeft(std::max(headerWidth(), area.getX()))
+                             .withRight(std::min(getWidth() - scrollbarWidth, area.getRight()));
+    if (ruler)
+        paintBarsRuler(g, theme_, tempoMap_, view_, columns);
+    else
+        paintGridLines(g, theme_, tempoMap_, view_, columns);
 }
 
 void ArrangeView::drawRuler(juce::Graphics& g, juce::Rectangle<int> area)
@@ -2868,15 +2804,7 @@ void ArrangeView::setRippleEnabled(bool on)
 
 core::GridStep ArrangeView::gridAt(core::SamplePosition at) const noexcept
 {
-    if (snapGrid_ == 1)
-        return {1, 0.0};
-    if (snapGrid_ > 0)
-    {
-        // "Beat" and its divisions count the signature's beat where they snap.
-        const double beat = core::TempoMap::quartersPerBeat(tempoMap_.signatureAt(at));
-        return {0, beat * 4.0 / static_cast<double>(snapGrid_)};
-    }
-    return tempoMap_.adaptiveStep(view_.samplesPerPixel, gridMinPixels, at);
+    return snapStepAt(tempoMap_, at, snapGrid_, view_.samplesPerPixel);
 }
 
 core::SamplePosition ArrangeView::lineAtOrBefore(core::SamplePosition s) const noexcept
@@ -2961,9 +2889,14 @@ void ArrangeView::zoomToSelection()
 
 core::SamplePosition ArrangeView::snapped(core::SamplePosition s) const noexcept
 {
+    return snappedOn(tempoMap_, s);
+}
+
+core::SamplePosition ArrangeView::snappedOn(const core::TempoMap& map, core::SamplePosition s) const noexcept
+{
     const bool alt = juce::ModifierKeys::getCurrentModifiers().isAltDown();
     const auto at = std::max<core::SamplePosition>(0, s);
-    return snap_ && !alt ? std::max<core::SamplePosition>(0, tempoMap_.snap(at, gridAt(at))) : at;
+    return snap_ && !alt ? snappedToGrid(map, at, snapGrid_, view_.samplesPerPixel) : at;
 }
 
 core::SamplePosition ArrangeView::snapWithTargets(core::SamplePosition wanted,

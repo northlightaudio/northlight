@@ -166,6 +166,9 @@ private:
     int leftEdge() const noexcept;
     // The time axis, in the clip's source samples from the left edge.
     TimelineViewport view() const noexcept { return {leftEdge(), scroll_, samplesPerPixel_}; }
+    // The same axis in timeline samples (through the clip's stretch), for the grid
+    // and the ruler.
+    TimelineViewport timelineView(const core::AudioClip& clip) const noexcept;
     float xForSource(double source) const noexcept;
     core::SamplePosition sourceForX(float x) const noexcept;
     float yForCents(float cents) const noexcept;

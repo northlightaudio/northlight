@@ -13,6 +13,12 @@ Northlight has not had a release yet. The first release, 0.1.0, will include:
 
 ### Added
 
+- The piano roll and the audio editor draw the arrange view's grid and ruler:
+  bars, beats and sub-beats by the same zoom thresholds, the bar numbers thinned
+  and timed when zoomed out. The piano roll snaps and quantises to the beat of the
+  bar each note is in, as the arrange view does after a time signature change,
+  and the tempo track's changes snap to the arrange grid (G turns it off).
+
 - The piano roll and the audio editor zoom smoothly with Ctrl+wheel around the
   pointer, as the arrange view does, instead of in fixed steps.
 

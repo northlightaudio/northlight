@@ -1062,6 +1062,13 @@ QuantiseNotes::QuantiseNotes(
       tempoGrid_(std::make_pair(std::move(map), step)), strength_(strength)
 {
 }
+QuantiseNotes::QuantiseNotes(
+    Id trackId, Id clipId, std::vector<Id> noteIds, TempoMap map, int divisionsPerBeat, float strength)
+    : trackId_(trackId), clipId_(clipId), noteIds_(std::move(noteIds)),
+      tempoGrid_(std::make_pair(std::move(map), GridStep{})),
+      divisionsPerBeat_(std::max(1, divisionsPerBeat)), strength_(strength)
+{
+}
 bool QuantiseNotes::apply(Project& p)
 {
     auto* c = findMidiClip(p, trackId_, clipId_);
@@ -1075,8 +1082,16 @@ bool QuantiseNotes::apply(Project& p)
             continue;
         previous_.emplace_back(n.id, n.start);
         const auto absolute = c->start + n.start;
-        const auto target =
-            tempoGrid_ ? tempoGrid_->first.snap(absolute, tempoGrid_->second) : snapToGrid(absolute, grid_);
+        auto target = snapToGrid(absolute, grid_);
+        if (tempoGrid_)
+        {
+            const auto& map = tempoGrid_->first;
+            const auto step =
+                divisionsPerBeat_ > 0
+                    ? GridStep{0, TempoMap::quartersPerBeat(map.signatureAt(absolute)) / divisionsPerBeat_}
+                    : tempoGrid_->second;
+            target = map.snap(absolute, step);
+        }
         const auto moved =
             absolute + static_cast<SamplePosition>(std::llround((target - absolute) * strength));
         n.start = std::max<SamplePosition>(0, moved - c->start);
