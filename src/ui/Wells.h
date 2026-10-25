@@ -18,40 +18,13 @@ inline void drawWell(juce::Graphics& g, const Theme& theme, juce::Rectangle<floa
     g.fillRoundedRectangle(area, theme.radius.sm);
 }
 
-inline void drawWellFrame(juce::Graphics& g, const Theme& theme, juce::Rectangle<float> area)
-{
-    const auto shadow = theme.material.enabled && !theme.material.meterWellInset.empty()
-                            ? theme.material.meterWellInset.colour
-                            : theme.colours.overlay;
-    {
-        juce::Graphics::ScopedSaveState save(g);
-        juce::Path clip;
-        clip.addRoundedRectangle(area, theme.radius.sm);
-        g.reduceClipRegion(clip);
-        const float top = 10.0f, side = 4.0f, bottom = 3.0f;
-        g.setGradientFill(juce::ColourGradient::vertical(shadow.withAlpha(0.0f),
-                                                         area.getBottom() - bottom,
-                                                         shadow.withMultipliedAlpha(0.3f),
-                                                         area.getBottom()));
-        g.fillRect(area.withTop(area.getBottom() - bottom));
-        g.setGradientFill(
-            juce::ColourGradient::vertical(shadow, area.getY(), shadow.withAlpha(0.0f), area.getY() + top));
-        g.fillRect(area.withHeight(top));
-        g.setGradientFill(juce::ColourGradient::horizontal(
-            shadow.withMultipliedAlpha(0.5f), area.getX(), shadow.withAlpha(0.0f), area.getX() + side));
-        g.fillRect(area.withWidth(side));
-        g.setGradientFill(juce::ColourGradient::horizontal(shadow.withAlpha(0.0f),
-                                                           area.getRight() - side,
-                                                           shadow.withMultipliedAlpha(0.5f),
-                                                           area.getRight()));
-        g.fillRect(area.withLeft(area.getRight() - side));
-    }
-    // The rim, then the lip below it.
-    g.setColour(shadow.withMultipliedAlpha(0.9f));
-    g.drawRoundedRectangle(area.reduced(0.5f), theme.radius.sm, 1.0f);
-    g.setColour(theme.material.enabled ? theme.material.grooveLip : theme.colours.lineSubtle);
-    g.drawHorizontalLine(
-        static_cast<int>(area.getBottom()), area.getX() + theme.radius.sm, area.getRight() - theme.radius.sm);
-}
+// Drawn from an image cached per size, scale and colours (the frame's clip path
+// and four gradients cost more than the content they frame, and most wells
+// are redrawn every display frame). Message thread.
+void drawWellFrame(juce::Graphics& g, const Theme& theme, juce::Rectangle<float> area);
+// The frame's art, drawn directly (what the cache holds).
+void paintWellFrame(juce::Graphics& g, const Theme& theme, juce::Rectangle<float> area);
+// How many frames the cache has drawn into images (tests).
+int wellFrameRenders() noexcept;
 
 } // namespace northlight::ui

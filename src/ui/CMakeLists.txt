@@ -22,6 +22,7 @@ add_library(northlight_ui STATIC
     NorthlightLookAndFeel.h
     NorthlightLookAndFeel.cpp
     Wells.h
+    Wells.cpp
     PluginMenu.h
     PluginMenu.cpp
     components/AddSlot.h
