@@ -38,6 +38,7 @@ add_executable(northlight_unit_tests
     plugins/ExciterTests.cpp
     plugins/BloomTests.cpp
     plugins/FeedbackNetworkTests.cpp
+    plugins/VocalListenerTests.cpp
     plugins/PedalTests.cpp
     plugins/AmpPartsTests.cpp
     plugins/AmpTests.cpp

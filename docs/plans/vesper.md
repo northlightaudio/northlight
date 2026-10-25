@@ -9,7 +9,9 @@ Name: **Vesper**. Type `northlight.vesper`. In the effects menu under Reverb & D
 
 **Status (2026-10-25):** the branding is approved. Phase 1 is built: Bloom's
 network is `plugins/FeedbackNetwork`, and Bloom's output is bit-identical to before
-(checked across eight settings, then the check was removed). The rest is not built.
+(checked across eight settings, then the check was removed). Phase 2 is built: the
+Listener is `plugins/VocalListener`, sharing YIN (`plugins/Yin.h`) with the tuner; it
+costs about 0.45% of a core at 48 kHz (release). The rest is not built.
 
 ## The name and the idea
 
@@ -59,16 +61,19 @@ in ─┬───────────────────────�
 
 ### The Listener
 
-It runs on the input's mono sum and decides, every 2.5 ms, what the singer is doing.
-All of it is fixed-size and allocation-free, so it is real-time safe.
+It runs on the input's mono sum and decides, every 2.5 ms, what the singer is doing
+(`plugins/VocalListener`). It decides from the past alone, so it adds no latency; its
+pitch is about 20 ms behind the sound, so the first frames of a sung onset read as a
+consonant. All of it is fixed-size and allocation-free, so it is real-time safe.
 
 | It finds | How |
 |---|---|
-| **Pitch and voicing** | YIN on the input decimated to 11 kHz (a 40 ms window, a 2.5 ms hop), with the tuner's lag search (`Polaris.cpp`, `Lags`) as a start. Voiced when the normalised-difference dip is under 0.2 and the level is above the floor |
-| **Consonants and sibilance** | Unvoiced frames with a high zero-crossing rate and most of their energy above 4 kHz. Sibilance is followed separately by a 5-9 kHz band envelope, so an "s" inside a voiced word is caught too |
-| **Breaths** | Unvoiced, broadband, quiet (12 dB or more under the last line's level), longer than 120 ms, coming before a line |
-| **Line ends** | Voiced or consonant activity followed by a pause at least **Gap** long |
-| **Singing rate** | Syllables per second (voiced onsets over the last 3 s), for Auto pre-delay |
+| **Pitch and voicing** | YIN (shared with the tuner, `plugins/Yin.h`) on the input decimated to at least 11 kHz: a 20 ms window over lags for 65 Hz to 1.1 kHz, every other frame (5 ms). Voiced when the normalised-difference dip is under 0.2 (0.3 at most), the level is above the floor and under half the power is above 4 kHz |
+| **Silence** | Under -60 dBFS, or 30 dB under the line's level (a 3 ms level, so a pause shows within about 20 ms) |
+| **Consonants and sibilance** | Any other sound without pitch. Sibilance is the 5-9 kHz band's share of the power, 0 at -18 dB and 1 at -6 dB, so an "s" inside a voiced word shows too |
+| **Breaths** | Without pitch, not bright (under 55% of the power above 4 kHz), 12 dB or more under the line's level, and 100 ms or more after the last pitch. Decided as it is heard: whether a line follows cannot be known without lookahead |
+| **Line ends** | Voice or consonants, then a pause as long as **Gap**; breaths do not count as singing. Reported once, on the frame the gap is reached |
+| **Singing rate** | Syllables a second over the last 3 s: each voiced start after 30 ms without pitch, and each 6 dB rise from a dip inside a held voice (after a 3 dB fall from the last syllable's peak), for Auto pre-delay |
 
 Without lookahead a line end is only known Gap after the last word, so Ends can only
 lengthen the tail that is already there. With lookahead the Listener runs ahead of

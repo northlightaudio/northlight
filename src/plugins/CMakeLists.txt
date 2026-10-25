@@ -45,6 +45,9 @@ add_library(northlight_plugins STATIC
     Patina.cpp
     Exciter.h
     Exciter.cpp
+    Yin.h
+    VocalListener.h
+    VocalListener.cpp
     FeedbackNetwork.h
     FeedbackNetwork.cpp
     Bloom.h

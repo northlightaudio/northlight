@@ -2,6 +2,7 @@
 #include "plugins/Biquad.h"
 #include "plugins/MeteredBuiltIn.h"
 #include "plugins/Pedals.h"
+#include "plugins/Yin.h"
 
 #include <algorithm>
 #include <array>
@@ -26,81 +27,6 @@ constexpr float yinFallback = 0.35f;
 // Quieter than this (peak) and there is nothing to tune.
 constexpr float silencePeak = 0.002f;
 constexpr float muteRampSeconds = 0.005f;
-
-// The squared difference d(tau) of a window with itself shifted, over the first
-// `span` samples, for tau in [from, to).
-void difference(const float* x, int span, int from, int to, float* d) noexcept
-{
-    for (int tau = from; tau < to; ++tau)
-    {
-        float sum = 0.0f;
-        const float* a = x;
-        const float* b = x + tau;
-        for (int j = 0; j < span; ++j)
-        {
-            const float diff = a[j] - b[j];
-            sum += diff * diff;
-        }
-        d[tau] = sum;
-    }
-}
-
-// YIN's pick from the differences raw[0..tauMax]: the cumulative mean normalised
-// difference (into `d`), the first dip under the threshold (or the deepest under
-// the fallback), refined between samples on the raw differences (YIN's step 5:
-// the normalised curve is skewed between lags). The period in samples (0 for none).
-float pick(const float* raw, float* d, int tauMin, int tauMax, float* clarity) noexcept
-{
-    float running = 0.0f;
-    d[0] = 1.0f;
-    for (int tau = 1; tau <= tauMax; ++tau)
-    {
-        running += raw[tau];
-        d[tau] = running > 0.0f ? raw[tau] * static_cast<float>(tau) / running : 1.0f;
-    }
-    int best = -1;
-    for (int tau = tauMin; tau <= tauMax; ++tau)
-        if (d[tau] < yinThreshold)
-        {
-            while (tau + 1 <= tauMax && d[tau + 1] < d[tau])
-                ++tau;
-            best = tau;
-            break;
-        }
-    if (best < 0)
-    {
-        int deepest = tauMin;
-        for (int tau = tauMin; tau <= tauMax; ++tau)
-            if (d[tau] < d[deepest])
-                deepest = tau;
-        if (d[deepest] < yinFallback)
-            best = deepest;
-    }
-    if (best < 0)
-    {
-        if (clarity != nullptr)
-            *clarity = 0.0f;
-        return 0.0f;
-    }
-    if (clarity != nullptr)
-        *clarity = std::clamp(1.0f - d[best], 0.0f, 1.0f);
-    // A high note's period is a few samples: measured over as many periods as the
-    // lags reach and divided back, its sub-sample error shrinks with them.
-    const int periods = std::max(1, tauMax / best - 1);
-    int at = best * periods;
-    for (int tau = std::max(1, at - periods); tau <= std::min(tauMax - 1, at + periods); ++tau)
-        if (raw[tau] < raw[at])
-            at = tau;
-    float period = static_cast<float>(at);
-    if (at > 1 && at < tauMax)
-    {
-        const float a = raw[at - 1], b = raw[at], c = raw[at + 1];
-        const float denominator = a - 2.0f * b + c;
-        if (std::abs(denominator) > 1.0e-12f)
-            period += std::clamp(0.5f * (a - c) / denominator, -0.5f, 0.5f);
-    }
-    return period / static_cast<float>(periods);
-}
 
 struct Lags
 {
@@ -132,8 +58,9 @@ float detectPitch(const float* samples, int count, double sampleRate, float* cla
     if (lags.tauMax <= lags.tauMin + 2)
         return 0.0f;
     std::vector<float> raw(static_cast<size_t>(lags.tauMax + 2), 0.0f), d(raw.size(), 0.0f);
-    difference(samples, lags.span, 1, lags.tauMax + 1, raw.data());
-    const float period = pick(raw.data(), d.data(), lags.tauMin, lags.tauMax, clarity);
+    yin::difference(samples, lags.span, 1, lags.tauMax + 1, raw.data());
+    const float period =
+        yin::pick(raw.data(), d.data(), lags.tauMin, lags.tauMax, yinThreshold, yinFallback, clarity);
     return period > 0.0f ? static_cast<float>(sampleRate / period) : 0.0f;
 }
 
@@ -283,13 +210,19 @@ private:
                      static_cast<int>(std::ceil(lags * static_cast<double>(numSamples) /
                                                 (decimation_ * static_cast<double>(hop) * 0.7))));
         const int to = std::min(lags_.tauMax + 1, nextLag_ + perBlock);
-        difference(window_.data(), lags_.span, nextLag_, to, diff_.data());
+        yin::difference(window_.data(), lags_.span, nextLag_, to, diff_.data());
         nextLag_ = to;
         if (nextLag_ <= lags_.tauMax)
             return;
         nextLag_ = -1;
         float clarity = 0.0f;
-        const float period = pick(diff_.data(), normalised_.data(), lags_.tauMin, lags_.tauMax, &clarity);
+        const float period = yin::pick(diff_.data(),
+                                       normalised_.data(),
+                                       lags_.tauMin,
+                                       lags_.tauMax,
+                                       yinThreshold,
+                                       yinFallback,
+                                       &clarity);
         hz_.store(period > 0.0f ? static_cast<float>(rate_ / period) : 0.0f, std::memory_order_relaxed);
         clarity_.store(clarity, std::memory_order_relaxed);
     }
