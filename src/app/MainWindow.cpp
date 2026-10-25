@@ -3350,12 +3350,8 @@ void MainWindow::showPreferences(const juce::String& page)
     {
         auto view =
             std::make_unique<ui::PreferencesView>(ui::Theme::dark(), audio_, session_.pluginRegistry());
-        view->loadSetting = [this](const std::string& key)
-        {
-            if (key == "__settingsFolder")
-                return settings_.file().getParentDirectory().getFullPathName().toStdString();
-            return settings_.value(key);
-        };
+        view->settingsFolder = settings_.file().getParentDirectory();
+        view->loadSetting = [this](const std::string& key) { return settings_.value(key); };
         view->saveSetting = [this](const std::string& key, const std::string& value)
         { settings_.setValue(key, value); };
         juce::Component::SafePointer<MainWindow> safe(this);

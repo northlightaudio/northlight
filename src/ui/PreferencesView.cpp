@@ -1269,34 +1269,26 @@ void PreferencesView::writeAccentOverride(const juce::String& hex)
 
 void PreferencesView::writeTokenOverride()
 {
-    if (!loadSetting)
+    if (settingsFolder == juce::File())
         return;
-    const juce::File file = juce::File(juce::String::fromUTF8(loadSetting("__settingsFolder").c_str()))
-                                .getChildFile("tokens.json");
+    const juce::File file = settingsFolder.getChildFile(Theme::preferencesOverrideName);
+    // "#RRGGBB", or "#RRGGBBAA" when translucent: the token file's format.
+    const auto hex = [](juce::Colour colour)
+    {
+        const auto alpha = colour.getAlpha();
+        return "#" + colour.withAlpha(static_cast<juce::uint8>(255)).toDisplayString(false) +
+               (alpha == 255 ? juce::String()
+                             : juce::String::toHexString(static_cast<int>(alpha)).paddedLeft('0', 2));
+    };
     auto* colours = new juce::DynamicObject();
     const auto accent = juce::String::fromUTF8(get(Keys::accent).c_str());
     if (accent.length() == 7 && accent.startsWithChar('#'))
-    {
-        const auto base = juce::Colour::fromString("ff" + accent.substring(1));
-        const auto hex = [](juce::Colour colour, int alpha = 255)
-        {
-            return "#" + colour.withAlpha(static_cast<juce::uint8>(alpha)).toDisplayString(false) +
-                   (alpha == 255 ? juce::String() : juce::String::toHexString(alpha).paddedLeft('0', 2));
-        };
-        colours->setProperty("accent", hex(base));
-        colours->setProperty("accentHover", hex(base.brighter(0.15f)));
-        colours->setProperty("accentPressed", hex(base.darker(0.15f)));
-        colours->setProperty("accentSubtle", hex(base, 0x1f));
-        colours->setProperty("lineFocus", hex(base, 0xb3));
-    }
+        for (const auto& [key, colour] :
+             Theme::accentTokens(juce::Colour::fromString("ff" + accent.substring(1))))
+            colours->setProperty(juce::Identifier(key.c_str()), hex(colour));
     if (get(Keys::contrast, "standard") == "high")
-    {
-        // Lines at 24%, text one step brighter (11.1).
-        colours->setProperty("lineSubtle", "#FFFFFF3D");
-        colours->setProperty("lineStrong", "#FFFFFF52");
-        colours->setProperty("textSecondary", "#" + theme_.colours.textPrimary.toDisplayString(false));
-        colours->setProperty("textTertiary", "#" + theme_.colours.textSecondary.toDisplayString(false));
-    }
+        for (const auto& [key, colour] : theme_.highContrastTokens())
+            colours->setProperty(juce::Identifier(key.c_str()), hex(colour));
     if (colours->getProperties().isEmpty())
     {
         delete colours;
@@ -1634,9 +1626,7 @@ void PreferencesView::buildPages()
                   "Reports are always kept on this computer, in the settings folder's Crashes folder.",
                   true);
         page->addCard("Support");
-        const auto folder = loadSetting
-                                ? juce::File(juce::String::fromUTF8(loadSetting("__settingsFolder").c_str()))
-                                : juce::File();
+        const auto folder = settingsFolder;
         auto readout = std::make_unique<PathReadout>(theme_, folder.getFullPathName(), "Show in Explorer");
         readout->button().onClick = [folder] { folder.revealToUser(); };
         readout->button().setEnabled(folder != juce::File());

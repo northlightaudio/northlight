@@ -181,6 +181,8 @@ Northlight has not had a release yet. The first release, 0.1.0, will include:
 
 ### Fixed
 
+- Choosing an accent or a contrast in Preferences no longer rewrites, or deletes, a
+  hand-edited `tokens.json`; those choices have their own file.
 - Cancelling the Save dialog after choosing Save on close no longer makes the next
   save quit the app.
 - The audio editor follows a stretched clip: its playhead, the clip's end, the fades

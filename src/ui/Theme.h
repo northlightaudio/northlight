@@ -3,6 +3,7 @@
 #include <juce_graphics/juce_graphics.h>
 
 #include <string>
+#include <utility>
 #include <vector>
 
 // Design tokens, loaded from tokens.json (docs/design/tokens.json is the source;
@@ -308,9 +309,17 @@ struct Theme
 
     // ----- loading -------------------------------------------------------------------
     // The shipped tokens (embedded; replaced by assets/tokens.json beside the
-    // executable when present), with the user's override file applied on top.
-    // Call once before the first window; dark() returns the result.
-    static void initialise(const juce::File& userOverride = {});
+    // executable when present), then the user's hand-edited override file, then the
+    // file Preferences writes (accent and contrast). Call once before the first
+    // window; dark() returns the result.
+    static void initialise(const juce::File& userOverride = {}, const juce::File& preferencesOverride = {});
+    // The names of the two override files, beside the settings file.
+    static constexpr const char* userOverrideName = "tokens.json";
+    static constexpr const char* preferencesOverrideName = "appearance-tokens.json";
+    // The colour tokens Preferences overrides: an accent and its derived states, and
+    // the high-contrast lines and text. Key and colour pairs, for the override file.
+    static std::vector<std::pair<std::string, juce::Colour>> accentTokens(juce::Colour accent);
+    std::vector<std::pair<std::string, juce::Colour>> highContrastTokens() const;
     // Applies a token document (the full file, or a partial override) to a theme.
     // Unknown keys are ignored; a bad value is reported through `error` and skipped.
     static bool apply(const juce::var& tokens, Theme& theme, std::string& error);

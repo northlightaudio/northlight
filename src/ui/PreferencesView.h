@@ -31,6 +31,9 @@ public:
                     const hosting::PluginRegistry& registry);
     ~PreferencesView() override;
 
+    // The settings folder: the Support page shows it and the accent and contrast
+    // choices are written there. Set before the view is shown.
+    juce::File settingsFolder;
     std::function<std::string(const std::string& key)> loadSetting;
     std::function<void(const std::string& key, const std::string& value)> saveSetting;
     std::function<void()> onChanged;
@@ -101,8 +104,9 @@ private:
     void set(const char* key, const std::string& value);
     void buildPages();
     void writeAccentOverride(const juce::String& hex);
-    // Writes the user's tokens.json beside the settings from the accent and
-    // contrast choices (Theme::initialise reads it at the next launch).
+    // Writes the accent and contrast choices to their own token file beside the
+    // settings (Theme::initialise reads it at the next launch). The user's
+    // hand-edited tokens.json is never touched.
     void writeTokenOverride();
     // An async folder chooser starting at `start`; `chosen` gets the folder.
     void chooseFolder(const juce::String& title,

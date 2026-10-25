@@ -424,7 +424,9 @@ blocked the message thread; now the longest stall is one plugin.
 ## Application services
 
 - **Settings** are an XML properties file in `%APPDATA%\Northlight`. Design tokens can
-  be overridden from a `tokens.json` beside it.
+  be overridden from a `tokens.json` beside it, which only the user edits; the accent
+  and contrast chosen in Preferences go in `appearance-tokens.json` beside it, applied
+  after it.
 - **Autosave** writes unsaved projects to the settings folder while edits pause. A
   normal close removes them, so anything left at launch is offered back.
 - **Templates** are project files without clips. **Media management** gathers outside

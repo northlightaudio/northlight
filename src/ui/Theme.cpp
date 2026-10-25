@@ -709,7 +709,25 @@ Theme Theme::defaults()
     return theme;
 }
 
-void Theme::initialise(const juce::File& userOverride)
+std::vector<std::pair<std::string, juce::Colour>> Theme::accentTokens(juce::Colour accent)
+{
+    return {{"accent", accent},
+            {"accentHover", accent.brighter(0.15f)},
+            {"accentPressed", accent.darker(0.15f)},
+            {"accentSubtle", accent.withAlpha(static_cast<juce::uint8>(0x1f))},
+            {"lineFocus", accent.withAlpha(static_cast<juce::uint8>(0xb3))}};
+}
+
+std::vector<std::pair<std::string, juce::Colour>> Theme::highContrastTokens() const
+{
+    // Lines at 24% and 32%, text one step brighter (11.1).
+    return {{"lineSubtle", juce::Colours::white.withAlpha(static_cast<juce::uint8>(0x3d))},
+            {"lineStrong", juce::Colours::white.withAlpha(static_cast<juce::uint8>(0x52))},
+            {"textSecondary", colours.textPrimary},
+            {"textTertiary", colours.textSecondary}};
+}
+
+void Theme::initialise(const juce::File& userOverride, const juce::File& preferencesOverride)
 {
     current = defaults();
     currentSource = "embedded";
@@ -721,12 +739,14 @@ void Theme::initialise(const juce::File& userOverride)
         applyText(shipped.loadFileAsString().toStdString(), current, error);
         currentSource = shipped.getFullPathName().toStdString();
     }
-    // The user's override: only the keys it holds.
-    if (userOverride.existsAsFile())
-    {
-        applyText(userOverride.loadFileAsString().toStdString(), current, error);
-        currentSource += " + " + userOverride.getFullPathName().toStdString();
-    }
+    // The overrides: only the keys each holds. Preferences last, as the latest
+    // choice made in the app.
+    for (const auto& file : {userOverride, preferencesOverride})
+        if (file.existsAsFile())
+        {
+            applyText(file.loadFileAsString().toStdString(), current, error);
+            currentSource += " + " + file.getFullPathName().toStdString();
+        }
     // Bundled typefaces.
     const auto fonts = executableAssets().getChildFile("fonts");
     current.fonts.ui = loadTypeface(fonts.getChildFile(juce::String(current.fonts.uiFile)));

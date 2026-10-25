@@ -211,4 +211,4 @@ output to an input with a cable and record that input at the same time.
 | Settings, plugin registry, autosaves, crash reports | `%APPDATA%\Northlight` |
 | Templates, recordings of unsaved projects | `Documents\Northlight` |
 | A project's recordings and media | `<project> Media`, beside the project file |
-| Design token overrides | `tokens.json` beside the settings file |
+| Design token overrides | `tokens.json` (yours) and `appearance-tokens.json` (Preferences) beside the settings file |

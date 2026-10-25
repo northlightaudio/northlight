@@ -63,9 +63,10 @@ public:
         // A crash from here on leaves a report in the settings folder.
         crash::install(settings_->file().getSiblingFile("Crashes").getFullPathName().toWideCharPointer(),
                        getApplicationVersion().toStdString());
-        // The design tokens: shipped beside the app, with the user's tokens.json
-        // beside the settings file applied on top.
-        ui::Theme::initialise(settings_->file().getSiblingFile("tokens.json"));
+        // The design tokens: shipped beside the app, with the user's tokens.json and
+        // the accent and contrast Preferences chose beside the settings file on top.
+        ui::Theme::initialise(settings_->file().getSiblingFile(ui::Theme::userOverrideName),
+                              settings_->file().getSiblingFile(ui::Theme::preferencesOverrideName));
         lookAndFeel_ = std::make_unique<ui::NorthlightLookAndFeel>(ui::Theme::dark());
         juce::LookAndFeel::setDefaultLookAndFeel(lookAndFeel_.get());
 

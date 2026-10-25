@@ -118,6 +118,36 @@ TEST_CASE("Preferences controls are only as wide as what they hold", "[ui][prefe
     CHECK(toggles >= 5);
 }
 
+TEST_CASE("Contrast and accent choices go to their own token file, never the user's", "[ui][preferences]")
+{
+    Fixture f;
+    const auto folder =
+        juce::File::getSpecialLocation(juce::File::tempDirectory).getChildFile("northlight-prefs-tokens");
+    folder.deleteRecursively();
+    REQUIRE(folder.createDirectory());
+    const auto user = folder.getChildFile(ui::Theme::userOverrideName);
+    const juce::String handEdited = R"({"color":{"canvas":"#101010"}})";
+    REQUIRE(user.replaceWithText(handEdited));
+    f.view->settingsFolder = folder;
+    f.view->showPage("general");
+    ui::SegmentedControl* contrast = nullptr;
+    for (const auto& row : f.view->rowLayout())
+        if (row.label == "Contrast")
+            contrast = dynamic_cast<ui::SegmentedControl*>(row.component);
+    REQUIRE(contrast != nullptr);
+
+    const auto appearance = folder.getChildFile(ui::Theme::preferencesOverrideName);
+    contrast->setSelected(1, juce::sendNotificationSync); // High
+    REQUIRE(appearance.existsAsFile());
+    CHECK(appearance.loadFileAsString().contains("lineSubtle"));
+    CHECK(user.loadFileAsString() == handEdited);
+
+    contrast->setSelected(0, juce::sendNotificationSync); // Standard: nothing left to override
+    CHECK_FALSE(appearance.existsAsFile());
+    CHECK(user.loadFileAsString() == handEdited);
+    folder.deleteRecursively();
+}
+
 TEST_CASE("The Audio page's cards line up with every other page's", "[ui][preferences]")
 {
     Fixture f;
