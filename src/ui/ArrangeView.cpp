@@ -3,6 +3,7 @@
 #include "core/Command.h"
 #include "core/Comping.h"
 #include "plugins/FxTracks.h"
+#include "ui/ColourMenu.h"
 #include "ui/Db.h"
 #include "ui/FrameStats.h"
 #include "ui/Icons.h"
@@ -3812,14 +3813,19 @@ void ArrangeView::trackMenu(core::Id trackId, juce::Point<int> screen, core::Id 
         menu.addSectionHeader("Track");
     }
     menu.addItem(1, "Rename");
-    juce::PopupMenu colours;
-    const auto& palette = theme_.track.palette;
-    for (size_t i = 0; i < palette.size(); ++i)
-        colours.addItem(100 + static_cast<int>(i), palette[i].name);
-    colours.addSeparator();
-    colours.addItem(199, "Default");
-    menu.addSubMenu("Colour", colours);
     const auto* track = project_->findTrack(trackId);
+    juce::PopupMenu colours;
+    juce::Component::SafePointer<ArrangeView> view(this);
+    addColourItems(colours,
+                   theme_,
+                   trackColour(*track, project_->trackIndex(trackId)),
+                   100,
+                   [view, trackId](std::uint32_t argb)
+                   {
+                       if (view != nullptr && view->onCommand)
+                           view->onCommand(std::make_unique<core::SetColour>(trackId, argb));
+                   });
+    menu.addSubMenu("Colour", colours);
     if (track->isMidi())
     {
         // MIDI output: the device chosen in Audio Setup, on a channel.
@@ -3972,16 +3978,6 @@ void ArrangeView::trackMenu(core::Id trackId, juce::Point<int> screen, core::Id 
                 safe->targetMenu(trackId, {mouse.x, mouse.y, 1, 1});
                 return;
             }
-            const auto& palette = safe->theme_.track.palette;
-            if (choice >= 100 && choice < 199 && static_cast<size_t>(choice - 100) < palette.size())
-            {
-                if (safe->onCommand)
-                    safe->onCommand(std::make_unique<core::SetColour>(
-                        trackId, palette[static_cast<size_t>(choice - 100)].value.getARGB()));
-                return;
-            }
-            if (choice == 199 && safe->onCommand)
-                safe->onCommand(std::make_unique<core::SetColour>(trackId, 0u));
             if (choice == 1)
                 for (auto& header : safe->headers_)
                     if (header->trackId() == trackId)

@@ -137,7 +137,9 @@ Rows at `trackRow` 56 default. Contents, left to right, inside `space.sm` paddin
 ```
 
 - 4 px track-colour stripe on the left edge (`track.headerStripeWidth`), full row
-  height. Clicking it opens the colour swatch popup.
+  height. Clicking it opens the colour swatch popup: each palette colour by name
+  with its swatch, the current one ticked, then Default. The track menu's and the
+  mixer strip's Colour submenus are the same menu.
 - Row 1 (28 px): the track-kind icon (14 px, `textTertiary`, `textSecondary` when
   selected: audio, MIDI, instrument channel, instrument output, folder; its tooltip
   gives the track number and kind), name `label` `textPrimary`

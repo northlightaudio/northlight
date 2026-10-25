@@ -13,6 +13,9 @@ Northlight has not had a release yet. The first release, 0.1.0, will include:
 
 ### Added
 
+- The Colour submenus in the track menu and the mixer show each colour's swatch
+  and tick the current one, as the header stripe's popup does.
+
 - A clip turned up draws a taller waveform in the arrange view, up to full
   scale, as it already did in the audio editor; takes in the take lanes show
   their fades.

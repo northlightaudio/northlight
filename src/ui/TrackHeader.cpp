@@ -1,6 +1,7 @@
 #include "ui/TrackHeader.h"
 
 #include "core/Command.h"
+#include "ui/ColourMenu.h"
 #include "ui/Db.h"
 #include "ui/Icons.h"
 #include "ui/NorthlightLookAndFeel.h"
@@ -488,36 +489,19 @@ void TrackHeader::mouseDoubleClick(const juce::MouseEvent& e)
 void TrackHeader::showColourMenu()
 {
     juce::PopupMenu menu;
-    const auto& palette = theme_.track.palette;
-    for (size_t i = 0; i < palette.size(); ++i)
-    {
-        juce::Image swatch(juce::Image::ARGB, 14, 14, true);
-        juce::Graphics g(swatch);
-        g.setColour(palette[i].value);
-        g.fillRoundedRectangle(1.0f, 1.0f, 12.0f, 12.0f, 3.0f);
-        auto icon = std::make_unique<juce::DrawableImage>();
-        icon->setImage(swatch);
-        menu.addItem(juce::PopupMenu::Item(palette[i].name)
-                         .setID(static_cast<int>(i) + 1)
-                         .setTicked(palette[i].value == colour_)
-                         .setImage(std::move(icon)));
-    }
-    menu.addSeparator();
-    menu.addItem(1000, "Default");
     juce::Component::SafePointer<TrackHeader> safe(this);
-    menu.showMenuAsync(
-        juce::PopupMenu::Options().withTargetScreenArea(
-            juce::Rectangle<int>(stripeBounds().getWidth(), getHeight()).withPosition(getScreenPosition())),
-        [safe](int choice)
-        {
-            if (safe == nullptr || choice == 0 || !safe->onCommand)
-                return;
-            const auto& palette = safe->theme_.track.palette;
-            const std::uint32_t argb = choice == 1000 || static_cast<size_t>(choice) > palette.size()
-                                           ? 0u
-                                           : palette[static_cast<size_t>(choice - 1)].value.getARGB();
-            safe->onCommand(std::make_unique<core::SetColour>(safe->trackId_, argb));
-        });
+    const auto id = trackId_;
+    addColourItems(menu,
+                   theme_,
+                   colour_,
+                   1,
+                   [safe, id](std::uint32_t argb)
+                   {
+                       if (safe != nullptr && safe->onCommand)
+                           safe->onCommand(std::make_unique<core::SetColour>(id, argb));
+                   });
+    menu.showMenuAsync(juce::PopupMenu::Options().withTargetScreenArea(
+        juce::Rectangle<int>(stripeBounds().getWidth(), getHeight()).withPosition(getScreenPosition())));
 }
 
 // The dot: dim when off; `monitor` green when the input is heard (on, or auto

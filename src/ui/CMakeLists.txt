@@ -175,6 +175,8 @@ add_library(northlight_ui STATIC
     PianoRoll.cpp
     AudioEditor.h
     AudioEditor.cpp
+    ColourMenu.h
+    ColourMenu.cpp
     TrackHeader.h
     TrackHeader.cpp
     TempoLane.h

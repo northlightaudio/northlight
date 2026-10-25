@@ -8,6 +8,7 @@
 #include "plugins/ChannelStrip.h"
 #include "plugins/FxTracks.h"
 #include "ui/ClapEditor.h"
+#include "ui/ColourMenu.h"
 #include "ui/Db.h"
 #include "ui/FrameStats.h"
 #include "ui/Icons.h"
@@ -1233,17 +1234,19 @@ private:
         }
         menu.addSubMenu("Fader group", groups);
         juce::PopupMenu colours;
-        const auto& palette = theme_.track.palette;
-        for (size_t i = 0; i < palette.size(); ++i)
-        {
-            colours.addItem(item++, palette[i].name);
-            const auto argb = palette[i].value.getARGB();
-            actions.push_back([this, id, argb]
-                              { owner_.onCommand(std::make_unique<core::SetColour>(id, argb)); });
-        }
-        colours.addSeparator();
-        colours.addItem(item++, "Default");
-        actions.push_back([this, id] { owner_.onCommand(std::make_unique<core::SetColour>(id, 0u)); });
+        juce::Component::SafePointer<MixerView> view(&owner_);
+        const int firstColour = item;
+        item = addColourItems(colours,
+                              theme_,
+                              colour_,
+                              item,
+                              [view, id](std::uint32_t argb)
+                              {
+                                  if (view != nullptr && view->onCommand)
+                                      view->onCommand(std::make_unique<core::SetColour>(id, argb));
+                              });
+        actions.resize(actions.size() + static_cast<size_t>(item - firstColour),
+                       [] {}); // the items act themselves
         menu.addSubMenu("Colour", colours);
         if (isBus_)
         {
