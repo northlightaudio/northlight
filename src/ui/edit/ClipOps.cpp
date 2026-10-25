@@ -1,6 +1,7 @@
 #include "ui/edit/ClipOps.h"
 
 #include "core/Command.h"
+#include "core/Comping.h"
 
 #include <algorithm>
 
@@ -271,6 +272,112 @@ Edit nudgeClips(const core::Project& project, const Selection& selection, core::
                 edit.commands.push_back(
                     std::make_unique<core::MoveClip>(ref.track, ref.clip, ref.track, start));
         }
+    return edit;
+}
+
+Move moveClips(const core::Project& project, const Selection& selection, core::SamplePosition delta, int rows)
+{
+    Move move;
+    if (delta == 0 && rows == 0)
+        return move;
+    std::vector<core::Id> movedGroups;
+    for (const auto& ref : selection)
+    {
+        const int from = project.trackIndex(ref.track);
+        const auto span = spanOf(project, ref);
+        const auto* target = landingTrack(project, ref, rows);
+        if (from < 0 || !span.has_value() || target == nullptr)
+            continue;
+        // A comp's clip moves its whole take group (takes, comp and clips) once.
+        if (const auto* group =
+                ref.midi ? nullptr : project.tracks[static_cast<size_t>(from)].takeGroupOwning(ref.clip))
+        {
+            if (std::find(movedGroups.begin(), movedGroups.end(), group->id) == movedGroups.end())
+            {
+                movedGroups.push_back(group->id);
+                move.edit.commands.push_back(
+                    std::make_unique<core::MoveTakeGroup>(ref.track, group->id, target->id, delta));
+            }
+            move.moved.push_back({target->id, ref.clip, false});
+            continue;
+        }
+        const auto start = std::max<core::SamplePosition>(0, span->start + delta);
+        if (ref.midi)
+            move.edit.commands.push_back(
+                std::make_unique<core::MoveMidiClip>(ref.track, ref.clip, target->id, start));
+        else
+            move.edit.commands.push_back(
+                std::make_unique<core::MoveClip>(ref.track, ref.clip, target->id, start));
+        move.moved.push_back({target->id, ref.clip, ref.midi});
+    }
+    move.edit.name = move.edit.commands.size() > 1 ? "Move clips" : "Move clip";
+    return move;
+}
+
+namespace
+{
+const core::AudioClip* audioClip(const core::Project& project, const ClipRef& ref)
+{
+    const auto* track = project.findTrack(ref.track);
+    return track != nullptr && !ref.midi ? track->findClip(ref.clip) : nullptr;
+}
+} // namespace
+
+Edit trimClip(const core::Project& project,
+              const ClipRef& ref,
+              core::SamplePosition start,
+              core::SamplePosition length,
+              core::SamplePosition sourceOffset)
+{
+    Edit edit;
+    edit.name = "Trim clip";
+    if (!spanOf(project, ref).has_value())
+        return edit;
+    if (ref.midi)
+        edit.commands.push_back(std::make_unique<core::TrimMidiClip>(ref.track, ref.clip, start, length));
+    else
+        edit.commands.push_back(
+            std::make_unique<core::TrimClip>(ref.track, ref.clip, start, length, sourceOffset));
+    return edit;
+}
+
+Edit stretchClip(const core::Project& project, const ClipRef& ref, core::SamplePosition length)
+{
+    Edit edit;
+    edit.name = "Stretch clip";
+    const auto* clip = audioClip(project, ref);
+    if (clip == nullptr || length == clip->length)
+        return edit;
+    const double stretch = clip->stretch * static_cast<double>(length) /
+                           static_cast<double>(std::max<core::SamplePosition>(1, clip->length));
+    edit.commands.push_back(std::make_unique<core::SetClipStretch>(
+        ref.track, ref.clip, stretch, clip->transpose, length, clip->followTempo));
+    return edit;
+}
+
+Edit setFade(
+    const core::Project& project, const ClipRef& ref, bool fadeIn, core::SamplePosition length, float curve)
+{
+    Edit edit;
+    edit.name = "Set fade";
+    const auto* clip = audioClip(project, ref);
+    if (clip == nullptr)
+        return edit;
+    edit.commands.push_back(std::make_unique<core::SetClipFades>(ref.track,
+                                                                 ref.clip,
+                                                                 fadeIn ? length : clip->fadeIn,
+                                                                 fadeIn ? clip->fadeOut : length,
+                                                                 fadeIn ? curve : clip->fadeInCurve,
+                                                                 fadeIn ? clip->fadeOutCurve : curve));
+    return edit;
+}
+
+Edit setClipGain(const core::Project& project, const ClipRef& ref, float gain)
+{
+    Edit edit;
+    edit.name = "Set clip gain";
+    if (audioClip(project, ref) != nullptr)
+        edit.commands.push_back(std::make_unique<core::SetClipGain>(ref.track, ref.clip, gain));
     return edit;
 }
 

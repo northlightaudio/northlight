@@ -3378,72 +3378,30 @@ void ArrangeView::finishLasso()
 
 void ArrangeView::finishMove()
 {
-    if (project_ == nullptr || (moveDelta_ == 0 && rowDelta_ == 0))
+    if (project_ == nullptr)
         return;
-    std::vector<std::unique_ptr<core::Command>> commands;
-    std::vector<ClipRef> moved;
-    std::vector<core::Id> movedGroups;
-    for (const auto& ref : selection_)
-    {
-        const int from = project_->trackIndex(ref.track);
-        const auto span = spanOf(ref);
-        if (from < 0 || !span.has_value())
-            continue;
-        const auto* landing = edit::landingTrack(*project_, ref, rowDelta_);
-        if (landing == nullptr)
-            continue; // a clip stays on its own kind of track
-        const auto& target = *landing;
-        // A comp's clip moves its whole take group (takes, comp and clips) once.
-        if (const auto* group =
-                ref.midi ? nullptr : project_->tracks[static_cast<size_t>(from)].takeGroupOwning(ref.clip))
-        {
-            if (std::find(movedGroups.begin(), movedGroups.end(), group->id) == movedGroups.end())
-            {
-                movedGroups.push_back(group->id);
-                commands.push_back(
-                    std::make_unique<core::MoveTakeGroup>(ref.track, group->id, target.id, moveDelta_));
-            }
-            moved.push_back({target.id, ref.clip, false});
-            continue;
-        }
-        const auto start = std::max<core::SamplePosition>(0, span->start + moveDelta_);
-        if (ref.midi)
-            commands.push_back(std::make_unique<core::MoveMidiClip>(ref.track, ref.clip, target.id, start));
-        else
-            commands.push_back(std::make_unique<core::MoveClip>(ref.track, ref.clip, target.id, start));
-        moved.push_back({target.id, ref.clip, ref.midi});
-    }
-    selection_ = moved; // the selection follows the clips to their new tracks
-    const std::string name = commands.size() > 1 ? "Move clips" : "Move clip";
-    emit(std::move(commands), name);
+    auto move = edit::moveClips(*project_, selection_, moveDelta_, rowDelta_);
+    if (move.edit.empty())
+        return;
+    selection_ = std::move(move.moved); // the selection follows the clips to their new tracks
+    emit(std::move(move.edit.commands), move.edit.name);
     notifySelection();
 }
 
 void ArrangeView::finishTrim()
 {
-    if (!spanOf(dragClip_).has_value())
+    if (project_ == nullptr)
         return;
-    std::vector<std::unique_ptr<core::Command>> commands;
-    if (dragClip_.midi)
-        commands.push_back(
-            std::make_unique<core::TrimMidiClip>(dragClip_.track, dragClip_.clip, trimStart_, trimLength_));
-    else
-        commands.push_back(std::make_unique<core::TrimClip>(
-            dragClip_.track, dragClip_.clip, trimStart_, trimLength_, trimOffset_));
-    emit(std::move(commands), "Trim clip");
+    auto e = edit::trimClip(*project_, dragClip_, trimStart_, trimLength_, trimOffset_);
+    emit(std::move(e.commands), e.name);
 }
 
 void ArrangeView::finishStretch()
 {
-    const auto* clip = findClip(dragClip_);
-    if (clip == nullptr || stretchLength_ == clip->length)
+    if (project_ == nullptr)
         return;
-    const double stretch = clip->stretch * static_cast<double>(stretchLength_) /
-                           static_cast<double>(std::max<core::SamplePosition>(1, clip->length));
-    std::vector<std::unique_ptr<core::Command>> commands;
-    commands.push_back(std::make_unique<core::SetClipStretch>(
-        dragClip_.track, dragClip_.clip, stretch, clip->transpose, stretchLength_, clip->followTempo));
-    emit(std::move(commands), "Stretch clip");
+    auto e = edit::stretchClip(*project_, dragClip_, stretchLength_);
+    emit(std::move(e.commands), e.name);
 }
 
 std::vector<const core::Track*> ArrangeView::folderChoices(core::Id trackId) const
@@ -3627,18 +3585,10 @@ void ArrangeView::clipMenu(const ClipRef& ref, juce::Point<int> screen)
 
 void ArrangeView::finishFade(Drag which)
 {
-    const auto* clip = findClip(dragClip_);
-    if (clip == nullptr)
+    if (project_ == nullptr)
         return;
-    std::vector<std::unique_ptr<core::Command>> commands;
-    commands.push_back(std::make_unique<core::SetClipFades>(
-        dragClip_.track,
-        dragClip_.clip,
-        which == Drag::fadeIn ? fadePreview_ : clip->fadeIn,
-        which == Drag::fadeOut ? fadePreview_ : clip->fadeOut,
-        which == Drag::fadeIn ? fadeCurvePreview_ : clip->fadeInCurve,
-        which == Drag::fadeOut ? fadeCurvePreview_ : clip->fadeOutCurve));
-    emit(std::move(commands), "Set fade");
+    auto e = edit::setFade(*project_, dragClip_, which == Drag::fadeIn, fadePreview_, fadeCurvePreview_);
+    emit(std::move(e.commands), e.name);
 }
 
 float ArrangeView::fadeCurveFor(int dy) const noexcept
@@ -3659,11 +3609,10 @@ juce::String ArrangeView::fadeCurveText(float curve)
 
 void ArrangeView::finishGain()
 {
-    if (findClip(dragClip_) == nullptr)
+    if (project_ == nullptr)
         return;
-    std::vector<std::unique_ptr<core::Command>> commands;
-    commands.push_back(std::make_unique<core::SetClipGain>(dragClip_.track, dragClip_.clip, gainPreview_));
-    emit(std::move(commands), "Set clip gain");
+    auto e = edit::setClipGain(*project_, dragClip_, gainPreview_);
+    emit(std::move(e.commands), e.name);
 }
 
 void ArrangeView::deleteSelection()

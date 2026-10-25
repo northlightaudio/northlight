@@ -1,4 +1,5 @@
 #include "core/Command.h"
+#include "core/Comping.h"
 #include "ui/edit/ClipOps.h"
 
 #include <catch2/catch_test_macros.hpp>
@@ -175,4 +176,74 @@ TEST_CASE("A moved clip lands only on a track of its own kind", "[ui][edit]")
     CHECK(ui::edit::landingTrack(p, {9, 20, true}, 0) == nullptr);      // its track is gone
     CHECK(ui::edit::takesClip(p.tracks[1], true));
     CHECK_FALSE(ui::edit::takesClip(p.tracks[1], false));
+}
+
+TEST_CASE("A move drag shifts the selection, each clip onto its own kind of track", "[ui][edit]")
+{
+    auto p = editProject();
+    Track second;
+    second.id = 3;
+    p.tracks.push_back(second); // audio, after the MIDI track
+    // Two rows down: the audio clip lands on track 3; the MIDI clip would land on
+    // audio (clamped to the last track) and stays.
+    auto move = ui::edit::moveClips(p, {{1, 12}, {2, 20, true}}, 500, 2);
+    CHECK(move.edit.name == "Move clip");
+    REQUIRE(move.moved.size() == 1);
+    CHECK(move.moved[0] == ClipRef{3, 12});
+    const auto after = apply(p, move.edit);
+    REQUIRE(after.tracks[2].clips.size() == 1);
+    CHECK(after.tracks[2].clips[0].start == 5500);
+
+    // Not before the start; no movement, no edit.
+    move = ui::edit::moveClips(p, {{1, 10}, {1, 12}}, -3000, 0);
+    CHECK(move.edit.name == "Move clips");
+    const auto left = apply(p, move.edit);
+    CHECK(left.tracks[0].findClip(10)->start == 0);
+    CHECK(left.tracks[0].findClip(12)->start == 2000);
+    CHECK(ui::edit::moveClips(p, {{1, 10}}, 0, 0).edit.empty());
+}
+
+TEST_CASE("Moving a comp's clips moves its take group once", "[ui][edit]")
+{
+    auto p = editProject();
+    TakeGroup group;
+    group.id = 50;
+    group.clips = {10, 11};
+    p.tracks[0].takeGroups.push_back(group);
+    const auto move = ui::edit::moveClips(p, {{1, 10}, {1, 11}}, 1000, 0);
+    REQUIRE(move.edit.commands.size() == 1);
+    CHECK(dynamic_cast<const MoveTakeGroup*>(move.edit.commands[0].get()) != nullptr);
+    CHECK(move.moved == ui::edit::Selection{{1, 10}, {1, 11}});
+}
+
+TEST_CASE("Trim, stretch, fade and gain drags make one command for the clip", "[ui][edit]")
+{
+    const auto p = editProject();
+    auto trim = ui::edit::trimClip(p, {1, 11}, 1200, 800, 1200);
+    CHECK(trim.name == "Trim clip");
+    auto after = apply(p, trim);
+    CHECK(after.tracks[0].findClip(11)->start == 1200);
+    CHECK(after.tracks[0].findClip(11)->sourceOffset == 1200);
+    auto trimMidi = ui::edit::trimClip(p, {2, 20, true}, 0, 2000, 0);
+    after = apply(p, trimMidi);
+    CHECK(after.tracks[1].midiClips[0].length == 2000);
+    CHECK(ui::edit::trimClip(p, {1, 99}, 0, 10, 0).empty());
+
+    auto stretch = ui::edit::stretchClip(p, {1, 12}, 1000); // twice as long
+    after = apply(p, stretch);
+    CHECK(after.tracks[0].findClip(12)->length == 1000);
+    CHECK(after.tracks[0].findClip(12)->stretch == 2.0);
+    CHECK(ui::edit::stretchClip(p, {1, 12}, 500).empty());       // the same length
+    CHECK(ui::edit::stretchClip(p, {2, 20, true}, 900).empty()); // MIDI does not stretch
+
+    auto fade = ui::edit::setFade(p, {1, 12}, false, 200, 0.5f);
+    after = apply(p, fade);
+    CHECK(after.tracks[0].findClip(12)->fadeOut == 200);
+    CHECK(after.tracks[0].findClip(12)->fadeOutCurve == 0.5f);
+    CHECK(after.tracks[0].findClip(12)->fadeIn == 0);
+
+    auto gain = ui::edit::setClipGain(p, {1, 12}, 0.5f);
+    CHECK(gain.name == "Set clip gain");
+    after = apply(p, gain);
+    CHECK(after.tracks[0].findClip(12)->gain == 0.5f);
 }

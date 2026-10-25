@@ -552,6 +552,11 @@ drawn by one painter (`ui::paintWaveform`: a min/max column per pixel at the
 level the clip plays, its gain through its fades, clamped to full scale after
 them), and a clip's body, header band, hatching, outline and name by
 `ui::clips` (`ClipPainter`), for audio, MIDI and recording clips and takes alike.
+The arrange view's edits are built by plain functions in `ui::edit` (`ClipOps`, no
+JUCE, unit tested): the keys and menus (delete, split, join, mute, paste) and the
+drags it commits on release (move, with the take-group and same-kind rules,
+trim, stretch, fade and gain); the view only previews a gesture and emits what
+they return.
 
 The specification for every screen is in [design/](design/README.md).
 

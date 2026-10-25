@@ -79,6 +79,33 @@ Edit crossfadeClips(const core::Project& project, const Selection& selection);
 // Moves the selected clips by `step` samples (not before 0).
 Edit nudgeClips(const core::Project& project, const Selection& selection, core::SamplePosition step);
 
+// ----- drags (the arrange view's gestures, committed on release) ---------------------
+
+// Moves the selected clips by `delta` samples (none before 0) and `rows` tracks,
+// each onto a track of its own kind (others stay); a comp's clip moves its whole
+// take group (takes, comp and clips) once. `moved` is where the selection goes.
+struct Move
+{
+    Edit edit;
+    Selection moved;
+};
+Move moveClips(const core::Project& project,
+               const Selection& selection,
+               core::SamplePosition delta,
+               int rows);
+// A clip's new start and length (and, for audio, where its source starts).
+Edit trimClip(const core::Project& project,
+              const ClipRef& ref,
+              core::SamplePosition start,
+              core::SamplePosition length,
+              core::SamplePosition sourceOffset);
+// An audio clip stretched to `length` (its transposition and tempo following kept).
+Edit stretchClip(const core::Project& project, const ClipRef& ref, core::SamplePosition length);
+// One of an audio clip's fades set (the other kept).
+Edit setFade(
+    const core::Project& project, const ClipRef& ref, bool fadeIn, core::SamplePosition length, float curve);
+Edit setClipGain(const core::Project& project, const ClipRef& ref, float gain);
+
 // The clipboard: copies of the clips with their track offsets from the topmost.
 struct ClipboardItem
 {
