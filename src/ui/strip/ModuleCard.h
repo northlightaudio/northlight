@@ -258,6 +258,9 @@ createWidenerCard(const Theme& theme, CardHost& host, core::Id channelId, const 
 // The tape echo's card (the "northlight.tapeecho" insert).
 std::unique_ptr<ModuleCard>
 createTapeEchoCard(const Theme& theme, CardHost& host, core::Id channelId, const core::Insert& insert);
+// Orbit's card (the "northlight.orbit" insert).
+std::unique_ptr<ModuleCard>
+createOrbitCard(const Theme& theme, CardHost& host, core::Id channelId, const core::Insert& insert);
 // Patina's card (the "northlight.patina" insert).
 std::unique_ptr<ModuleCard>
 createPatinaCard(const Theme& theme, CardHost& host, core::Id channelId, const core::Insert& insert);

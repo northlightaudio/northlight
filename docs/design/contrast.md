@@ -67,6 +67,17 @@ Generated from [tokens.json](tokens.json) (Machair Dusk v2) by `scripts/contrast
 | hardware.coronaStripInk | hardware.coronaBaffle | 15.07 | A mic's label on the baffle | yes |
 | hardware.coronaMarkerA | hardware.coronaCone | 6.86 | Mic A's marker on a speaker cone | yes |
 | hardware.coronaMarkerB | hardware.coronaCone | 6.63 | Mic B's marker on a speaker cone | yes |
+| hardware.orbitPlateInk | hardware.orbitPlate | 14.03 | Legends on Orbit's transport plate | yes |
+| hardware.orbitPlateInk | hardware.orbitPlateDark | 7.53 | TAPE TIME on Orbit's plate in shadow | yes |
+| hardware.orbitPlateInkSoft | hardware.orbitPlate | 7.58 | The kind and model line on Orbit's nameplate | yes |
+| hardware.orbitPanelInk | hardware.orbitPanelRim | 6.60 | Names on Orbit's panel, where the rim light falls | yes |
+| hardware.orbitPanelInkSoft | hardware.orbitPanelRim | 4.76 | Values and rows on Orbit's panel, in the rim light | yes |
+| hardware.orbitHeadInk | hardware.orbitHead | 9.07 | The heads' names on Orbit's head block | yes |
+| hardware.orbitDialInk | hardware.orbitDial | 4.81 | Orbit's meter scale | yes |
+| hardware.orbitDialRed | hardware.orbitDial | 4.72 | Orbit's meter red zone | yes |
+| hardware.orbitCounter | hardware.orbitCounterWell | 15.69 | Orbit's tape counter | yes |
+| hardware.orbitKeyInk | hardware.orbitKey | 5.20 | A key's label on Orbit, unlit | yes |
+| hardware.orbitKeyInkLit | hardware.orbitKeyLit | 8.31 | A key's label on Orbit, lit | yes |
 
 ## Track palette
 

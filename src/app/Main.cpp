@@ -137,7 +137,8 @@ public:
     //                        sheet, and hold the load once it reaches the stage (reading,
     //                        media, plugins, engine; media if not given) for --capture
     //   --instrument-editor  open the first instrument's editor window
-    //   --insert-editor      open the editor window of the first insert on the first track that has one
+    //   --insert-editor [type]  open the editor window of the first insert (of that type, if
+    //                        given) on the tracks, else on the master
     //   --editor-gap <n>     show the Editor panel's nth gap button (1-based), as the pointer in
     //                        that gap between two insert cards would
     //   --panel <name>       show a panel: mixer, editor, instruments, pianoRoll, diagnostics, browser,
@@ -828,12 +829,27 @@ public:
             }
             else if (arg == "--insert-editor")
             {
+                // With a type after it, the first insert of that type; else the first
+                // insert. The tracks are searched first, then the master.
+                std::string type;
+                if (i + 1 < tokens.size() && !tokens[i + 1].text.startsWith("--"))
+                    type = tokens.getReference(++i).text.unquoted().toStdString();
+                const auto open = [&](const core::Channel& channel)
+                {
+                    for (const auto& insert : channel.inserts)
+                        if (type.empty() || insert.type == type)
+                        {
+                            mainWindow_->openInsertEditor(channel.id, insert.id);
+                            return true;
+                        }
+                    return false;
+                };
+                bool opened = false;
                 for (const auto& track : session_->project().tracks)
-                    if (!track.inserts.empty())
-                    {
-                        mainWindow_->openInsertEditor(track.id, track.inserts.front().id);
+                    if ((opened = open(track)))
                         break;
-                    }
+                if (!opened)
+                    open(session_->project().master);
             }
             else if (arg == "--instrument-editor")
             {

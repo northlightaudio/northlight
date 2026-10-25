@@ -39,6 +39,8 @@ add_library(northlight_plugins STATIC
     Widener.cpp
     TapeEcho.h
     TapeEcho.cpp
+    Orbit.h
+    Orbit.cpp
     Patina.h
     Patina.cpp
     Exciter.h

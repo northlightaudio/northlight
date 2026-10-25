@@ -42,6 +42,7 @@ EffectCategory builtInCategory(const std::string& type)
         {"northlight.polaris", EffectCategory::guitar},
         {"northlight.exciter", EffectCategory::drive},
         {"northlight.patina", EffectCategory::drive},
+        {"northlight.orbit", EffectCategory::drive},
         {"northlight.widener", EffectCategory::stereo},
         {plugins::types::gain, EffectCategory::stereo},
     };

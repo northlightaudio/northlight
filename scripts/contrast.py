@@ -91,6 +91,17 @@ PAIRS = [
     ("hardware.coronaStripInk", "hardware.coronaBaffle", "A mic's label on the baffle", "body"),
     ("hardware.coronaMarkerA", "hardware.coronaCone", "Mic A's marker on a speaker cone", "nontext"),
     ("hardware.coronaMarkerB", "hardware.coronaCone", "Mic B's marker on a speaker cone", "nontext"),
+    ("hardware.orbitPlateInk", "hardware.orbitPlate", "Legends on Orbit's transport plate", "body"),
+    ("hardware.orbitPlateInk", "hardware.orbitPlateDark", "TAPE TIME on Orbit's plate in shadow", "body"),
+    ("hardware.orbitPlateInkSoft", "hardware.orbitPlate", "The kind and model line on Orbit's nameplate", "body"),
+    ("hardware.orbitPanelInk", "hardware.orbitPanelRim", "Names on Orbit's panel, where the rim light falls", "body"),
+    ("hardware.orbitPanelInkSoft", "hardware.orbitPanelRim", "Values and rows on Orbit's panel, in the rim light", "body"),
+    ("hardware.orbitHeadInk", "hardware.orbitHead", "The heads' names on Orbit's head block", "body"),
+    ("hardware.orbitDialInk", "hardware.orbitDial", "Orbit's meter scale", "body"),
+    ("hardware.orbitDialRed", "hardware.orbitDial", "Orbit's meter red zone", "body"),
+    ("hardware.orbitCounter", "hardware.orbitCounterWell", "Orbit's tape counter", "body"),
+    ("hardware.orbitKeyInk", "hardware.orbitKey", "A key's label on Orbit, unlit", "body"),
+    ("hardware.orbitKeyInkLit", "hardware.orbitKeyLit", "A key's label on Orbit, lit", "body"),
 ]
 
 THRESHOLDS = {"body": 4.5, "large": 3.0, "nontext": 3.0, "hint": 3.0, "exempt": 0.0}

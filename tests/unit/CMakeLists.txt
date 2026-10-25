@@ -32,6 +32,7 @@ add_executable(northlight_unit_tests
     plugins/GlueTests.cpp
     plugins/WidenerTests.cpp
     plugins/TapeEchoTests.cpp
+    plugins/OrbitTests.cpp
     plugins/PatinaTests.cpp
     plugins/EffectPresetsTests.cpp
     plugins/ExciterTests.cpp

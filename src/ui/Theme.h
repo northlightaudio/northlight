@@ -240,6 +240,18 @@ struct Theme
         juce::Colour pedalTide, pedalTideInk, pedalTideInkSoft;
         juce::Colour pedalPolaris, pedalPolarisInk, pedalPolarisInkSoft;
         juce::Colour tunerGlass, tunerBezel, tunerSegmentOff, tunerInTune, tunerOff, tunerText;
+        // Orbit's face: the black nameplate, the transport plate in shadow, the control
+        // panel and where the rim light reaches it (without their renders) and the inks
+        // printed on each, the heads' block, the meters' dials, the
+        // counter, the keys (unlit and lit, and their labels), the reels and the
+        // pilot lamp (flat fallbacks for the renders).
+        juce::Colour orbitPlate, orbitPlateDark, orbitPlateInk, orbitPlateInkSoft;
+        juce::Colour orbitPanel, orbitPanelRim, orbitPanelInk, orbitPanelInkSoft, orbitRule;
+        juce::Colour orbitHead, orbitHeadInk;
+        juce::Colour orbitDial, orbitDialInk, orbitDialRed, orbitNeedle;
+        juce::Colour orbitCounter, orbitCounterWell;
+        juce::Colour orbitKey, orbitKeyLit, orbitKeyInk, orbitKeyInkLit;
+        juce::Colour orbitReel, orbitPack, orbitLamp;
     };
 
     std::string name = "Northlight Dark";

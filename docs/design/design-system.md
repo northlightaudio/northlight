@@ -418,7 +418,12 @@ keyboard, focus ring and tooltip, and its text pairs are in contrast.md.
   group (one lit), or alone as a latch (ON, Ø) or a plain button (LOAD IR, no
   LED). Hover 7%, pressed 10%, disabled at 50%; Space or Enter presses it; a
   focus ring round the slot. A square key (the page keys) puts its icon over its
-  label (13 px) and its LED in the top left corner.
+  label (13 px) and its LED in the top left corner. A rendered key (Orbit's,
+  `HardwareKey::setRendered`) is drawn from patches of its face's renders instead:
+  ivory with a faint standby glow from behind when unlit (so its label reads in a
+  dark face), amber and glowing brightly when lit, no LED; its label is
+  printed over it (`orbitKeyInk`, `orbitKeyInkLit`; 14 px, 19 px on a compact
+  face), and while held the key alone drops 1 px.
 - **Two-page face** (Corona): a face too rich for one panel shows one page at a
   time, as a real unit with a lid or a removable grille would. Both pages share
   the face's size, its background and a strip along the foot that holds the page
@@ -444,6 +449,17 @@ keyboard, focus ring and tooltip, and its text pairs are in contrast.md.
     its light with it.
   - **States are renders, not tints:** a lever in each position, a lamp off, lit
     and alarmed.
+  - **A lit state can be a patch of a second render.** When a part's light falls
+    on the panel round it (Orbit's keys glowing amber), the face is rendered twice,
+    unlit and with every such part lit, and a lit part draws its own patch of the
+    lit render over the still one: its glow, and its light on its neighbours, are
+    exact.
+  - **A part that turns whole is a run of frames.** When a part's light cannot be
+    parted from its turning (a reel under a spotlight: its windows show the pack and
+    throw shadows), it is rendered at even steps over its symmetry (Orbit's reels:
+    30 frames over 120°) and the nearest two are blended. At rest the still render
+    shows it, so the frames can be at the design size; a part that stops coasts on
+    to its next rest angle rather than stopping between frames.
   - **Light is a layer of its own.** A lamp's glow is rendered with every other
     light off and laid over the base as colour with alpha, so its brightness is its
     opacity and its spill comes with it. Glass and perspex are their reflections

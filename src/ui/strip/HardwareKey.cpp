@@ -32,6 +32,64 @@ void HardwareKey::setLabel(const juce::String& label)
     repaint();
 }
 
+void HardwareKey::setRendered(Rendered rendered)
+{
+    parts_ = std::move(rendered);
+    rendered_ = true;
+    repaint();
+}
+
+void HardwareKey::setLabelSize(float size)
+{
+    if (size == labelSize_)
+        return;
+    labelSize_ = size;
+    repaint();
+}
+
+void HardwareKey::paintRendered(juce::Graphics& g)
+{
+    const auto& hw = theme_.hardware;
+    const bool enabled = isEnabled();
+    const bool pressed = isMouseButtonDown();
+    const auto bounds = getLocalBounds().toFloat();
+    const auto face = parts_.face.translated(0.0f, pressed ? 1.0f : 0.0f);
+    const auto& patch = lit_ ? parts_.on : parts_.off;
+    if (patch.isValid())
+    {
+        // The patch whole (the panel round the key, the glow), then the key alone
+        // a pixel lower while it is held down.
+        hardware::drawScaled(g, patch, bounds);
+        if (pressed)
+        {
+            const juce::Graphics::ScopedSaveState save(g);
+            g.reduceClipRegion(face.toNearestInt());
+            hardware::drawScaled(g, patch, bounds.translated(0.0f, 1.0f));
+            g.setColour(hw.shadow.withAlpha(0.12f));
+            g.fillRect(face);
+        }
+    }
+    else
+    {
+        g.setColour(lit_ ? parts_.flatLit : parts_.flat);
+        g.fillRoundedRectangle(face, 3.0f);
+    }
+    if (enabled && isMouseOver(true) && !pressed)
+    {
+        g.setColour(hw.highlight.withAlpha(lit_ ? 0.10f : 0.07f));
+        g.fillRoundedRectangle(face, 3.0f);
+    }
+    if (!enabled)
+    {
+        g.setColour(hw.shadow.withAlpha(0.45f));
+        g.fillRoundedRectangle(face, 3.0f);
+    }
+    g.setColour((lit_ ? parts_.litInk : parts_.ink).withMultipliedAlpha(enabled ? 1.0f : 0.5f));
+    g.setFont(hardware::legendFont(theme_, labelSize_, 700, 0.06f));
+    hardware::drawCrispText(g, label_, face.reduced(3.0f, 0.0f));
+    hardware::drawFocusRing(g, *this, parts_.face, 3.0f);
+}
+
 void HardwareKey::paintLed(juce::Graphics& g, juce::Point<float> centre) const
 {
     const auto& hw = theme_.hardware;
@@ -48,6 +106,11 @@ void HardwareKey::paintLed(juce::Graphics& g, juce::Point<float> centre) const
 
 void HardwareKey::paint(juce::Graphics& g)
 {
+    if (rendered_)
+    {
+        paintRendered(g);
+        return;
+    }
     const auto& hw = theme_.hardware;
     const bool enabled = isEnabled();
     const bool down = lit_ || isMouseButtonDown();

@@ -117,6 +117,15 @@ public:
     // The project tempo the processor last played at (for a synced display).
     double tempoBpm() const noexcept { return tempoBpm_.load(std::memory_order_relaxed); }
     void setTempoBpm(double bpm) noexcept { tempoBpm_.store(bpm, std::memory_order_relaxed); }
+    // Where the song was and whether it was playing, as of the processor's last
+    // block (a tape machine's counter and reels).
+    double transportSeconds() const noexcept { return transportSeconds_.load(std::memory_order_relaxed); }
+    bool transportPlaying() const noexcept { return transportPlaying_.load(std::memory_order_relaxed); }
+    void setTransport(double seconds, bool playing) noexcept
+    {
+        transportSeconds_.store(seconds, std::memory_order_relaxed);
+        transportPlaying_.store(playing, std::memory_order_relaxed);
+    }
 
     // Frames published since `cursor` (the newest `maxFrames` of them), oldest
     // first; advances the cursor. Start with cursor 0.
@@ -203,6 +212,8 @@ private:
     std::atomic<std::uint64_t> tapWritten_[tapCount] = {};
     std::atomic<double> sampleRate_{48000.0};
     std::atomic<double> tempoBpm_{120.0};
+    std::atomic<double> transportSeconds_{0.0};
+    std::atomic<bool> transportPlaying_{false};
     std::atomic<bool> tapsEnabled_{false};
     std::atomic<bool> watched_{false};
     // Real-time side only.

@@ -833,6 +833,8 @@ createBuiltInCard(const Theme& theme, CardHost& host, core::Id channelId, const 
         return std::make_unique<DelayCard>(theme, host, channelId, insert);
     if (insert.type == "northlight.tapeecho")
         return createTapeEchoCard(theme, host, channelId, insert);
+    if (insert.type == "northlight.orbit")
+        return createOrbitCard(theme, host, channelId, insert);
     if (insert.type == "northlight.aurora")
         return createAuroraEditor(theme, host, channelId, insert);
     if (insert.type == "northlight.pulsar")

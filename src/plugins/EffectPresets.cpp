@@ -6,6 +6,7 @@
 #include "plugins/BuiltIns.h"
 #include "plugins/Exciter.h"
 #include "plugins/Glue.h"
+#include "plugins/Orbit.h"
 #include "plugins/Patina.h"
 #include "plugins/Pedals.h"
 #include "plugins/TapeEcho.h"
@@ -836,6 +837,25 @@ std::vector<EffectPreset> polarisPresets()
 }
 
 // Patina's list lives with it (its card's own display steps through it too).
+std::vector<EffectPreset> orbitPresets()
+{
+    List l(orbit::type);
+    l.add("Default", {});
+    l.add("Mix Bus Glue", {{"Input", 3.0}, {"Tape", "Hot"}, {"Flutter", 0.02}});
+    l.add("Master Polish", {{"Input", 1.5}, {"Speed", "30 ips"}, {"Tape", "Modern"}, {"Flutter", 0.0}});
+    l.add("Drum Squash", {{"Input", 9.0}, {"Level", "+9 dB"}, {"Bias", -15.0}});
+    l.add("Warm Vocal", {{"Input", 4.0}, {"Speed", "7.5 ips"}, {"Bias", 10.0}, {"Flutter", 0.04}});
+    l.add("Parallel Saturation", {{"Input", 12.0}, {"Level", "+9 dB"}, {"Mix", 35.0}});
+    l.add("Worn Reel",
+          {{"Input", 5.0},
+           {"Speed", "7.5 ips"},
+           {"Bias", 35.0},
+           {"Hiss", 45.0},
+           {"Flutter", 0.15},
+           {"EQ", "CCIR"}});
+    return l.done();
+}
+
 std::vector<EffectPreset> patinaPresets()
 {
     std::vector<EffectPreset> list;
@@ -859,6 +879,7 @@ const std::map<std::string, std::vector<EffectPreset>>& all()
         {types::reverb, reverbPresets()},
         {types::delay, delayPresets()},
         {tapeecho::type, tapeEchoPresets()},
+        {orbit::type, orbitPresets()},
         {bloom::type, bloomPresets()},
         {amp::type, ampPresets()},
         {gravity::type, gravityPresets()},

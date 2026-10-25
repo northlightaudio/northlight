@@ -13,6 +13,16 @@ Northlight has not had a release yet. The first release, 0.1.0, will include:
 
 ### Added
 
+- Orbit, a studio tape machine for glue and colour on a bus or the master, in the
+  effects menu's Drive & Colour group. Its tape is modelled from the way magnetic
+  tape really responds, so pushing INPUT compresses softly, adds mostly odd
+  harmonics and rounds off the highs first, the louder the more. Choose the speed
+  (7½, 15 or 30 ips, which moves the low-end bump and the top end), the EQ standard,
+  the operating level, the bias and one of three tapes; add hiss and flutter if you
+  want them; LINK keeps the loudness steady while you drive it. Its face is a
+  reel-to-reel under a spotlight, whose reels turn while the song plays, whose
+  counter shows the song's position, and whose VU meters can read the input, the
+  tape or the output.
 - Add an effect between two others in the Editor panel: point at the gap between two
   insert cards and click the round + that appears. The effect goes in right there,
   so there is no need to add it at the end and drag it back.

@@ -79,6 +79,8 @@ add_library(northlight_ui STATIC
     strip/WidthScale.h
     strip/TapeEchoCard.cpp
     strip/TapeEchoFace.h
+    strip/OrbitCard.cpp
+    strip/OrbitFace.h
     strip/PatinaCard.cpp
     strip/PedalCard.cpp
     strip/ExciterCard.cpp

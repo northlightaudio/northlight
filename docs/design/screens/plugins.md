@@ -78,7 +78,7 @@ Every built-in has an editor in the channel strip's language
 well, then knobs in the module's hue. The same editor is the card's body in the Editor panel
 and the body of its window (under the title, bypass and mix). The hues follow the
 strip: EQ `Overcast`, compressor `Loch`, limiter `Rowan`; gain `Machair`, reverb `Lichen`,
-delay `Gorse`, glue compressor `Thrift`, Patina `Kelp`, exciter `Machair`, Bloom `Heather`, tape echo `Rowan`, stereo widener `Sea grass`, Corona `Straw`; the pedals take their family's: Gravity `Loch`, Flare `Rowan`, Comet `Gorse`, Tide `Sea grass`, Polaris `Overcast`. The instruments (7.4b-7.4e) have faces of their own, and so do Patina, the tape echo and Corona, hardware faces (design-system.md "Hardware face").
+delay `Gorse`, glue compressor `Thrift`, Patina `Kelp`, exciter `Machair`, Bloom `Heather`, tape echo `Rowan`, Orbit `Slate`, stereo widener `Sea grass`, Corona `Straw`; the pedals take their family's: Gravity `Loch`, Flare `Rowan`, Comet `Gorse`, Tide `Sea grass`, Polaris `Overcast`. The instruments (7.4b-7.4e) have faces of their own, and so do Patina, the tape echo, Orbit and Corona, hardware faces (design-system.md "Hardware face").
 
 - **Gain**: the input and output history with IN and OUT meters; Gain.
 - **EQ**: the strip's EQ graph with the built-in's four bands (a high-pass,
@@ -539,6 +539,75 @@ delay `Gorse`, glue compressor `Thrift`, Patina `Kelp`, exciter `Machair`, Bloom
     place.
   - **Header status:** "Self-oscillating" in `meterHot` while the loop gain is at
     1 or more.
+- **Orbit** (a studio tape machine, for glue and colour on a bus or the master; in
+  the menu's Drive & Colour):
+  - **The tape** is a Jiles-Atherton hysteresis model: the magnetisation lags the
+    field, so loud passages compress softly and the harmonics are mostly odd, run at
+    2x to 4x the session rate (about 192 kHz). At +6 a tone at 0 VU (-18 dBFS) is
+    about 0.2% distortion; full scale about 8%.
+  - **The machine round it.** The record EQ boosts the highs before the tape and
+    playback takes them back out, so the highs saturate first, the louder the more.
+    SPEED (7½, 15, 30 ips) moves the head bump (about 26, 52 and 105 Hz), the low
+    roll-off under it and the gap loss (13, 19 and 24 kHz). EQ is NAB (50 µs, and
+    3180 µs in the lows) or CCIR (70 µs at 7½, 35 µs at 15); 30 ips is AES (17.5 µs)
+    whichever is chosen. LEVEL (+3, +6, +9 dB over 185 nWb/m) is how hard 0 VU hits
+    the tape. TAPE is Classic (saturates early), Hot or Modern (the most headroom,
+    the cleanest).
+  - **BIAS** (-100 to +100, Cal at 0): under-biased tape shows its hysteresis even
+    quietly and keeps a little more top; over-biased is clean and dark.
+  - **INPUT** drives the tape (-12 to +18 dB); with **LINK** on, OUTPUT follows it the
+    other way, so the loudness holds while the tape works harder. **HISS** (0 is
+    off; more at a slower speed, each track its own) and **FLUTTER** (wow and
+    flutter, weighted rms, to 0.3%: a slow wander and the capstan's flutter, faster
+    at a higher speed) wear it. **MIX** blends the dry signal, delayed to match.
+  - **Latency** 1.5 ms (it holds the flutter's wander), reported, and kept while
+    bypassed.
+  - **The face:** a studio reel-to-reel in a dim mastering room, a hardware face of
+    rendered layers (design-system.md "Hardware face", "Rendered parts";
+    assets/orbit), drawn at 1160 × 600 and scaled to fit the card's body as the tape
+    echo's is. A warm spot pools on the left reel, the right falls into shadow with a
+    cool blue edge, a low warm fill runs along the panel. Every word is printed over
+    the renders in Barlow (`font.legend`) in the `orbit` inks.
+    - **The transport plate** (brushed aluminium, the top 330 px): the two 10½-inch
+      NAB metal reels (centres 190 and 970 px, 165 down), the tape running through
+      the guides, over the erase, record and play heads (named under them, 13 px,
+      `orbitHeadInk`) and past the capstan and pinch roller. ORBIT (50 px bold,
+      tracked) and STUDIO TAPE MACHINE · ½-INCH TWO-TRACK (16 px) at the top centre,
+      NORTHLIGHT · MODEL OR-2 (12.5 px) above the heads, in `orbitPlateInk`.
+    - **The reels** turn anticlockwise while the song plays and the insert is on,
+      each at the tape's speed over its pack's radius (the full supply reel slower
+      than the take-up), and when the song stops they coast on to rest. They are
+      still with reduced motion.
+    - **The counter** (a black window behind glass, 108 × 26) shows the song's
+      position as hh:mm:ss in 19 px `font.mono` (so the digits hold still as they
+      count), in `orbitCounter`, TAPE TIME beside it; the
+      **pilot lamp** (a red jewel left of it) is lit while the insert is on.
+    - **The meters** (two VUs, L and R, 178 × 106 dials), modelled as the tape echo's
+      is: a black bakelite bezel chamfered into its window, the cream dial sunk in it,
+      the needle's pivot hood standing off the dial's foot with two warm bulbs under
+      it whose light pools up the dial. They read the point METER chooses (INPUT,
+      after the input knob; TAPE, the tape's playback; OUTPUT) as a VU does: each
+      channel's rectified average (30 ms), calibrated so a sine reads its rms, 0 VU at
+      -18 dBFS, so music's peaks do not pin it. The scale is linear in voltage (-20 to
+      +3, 0 about 71% across, red from 0); the needle passes under the hood and the
+      glass with a VU's 300 ms ballistics. Under them 0 VU = +6 dB
+      OVER 185 nWb/m (the LEVEL chosen). Accessible description: the reading in VU.
+    - **The panel** (hammertone, from 337 px): captions RECORD, MACHINE, WEAR and REPRO
+      (14 px bold, `orbitPanelInk`) with a rule either side to the column's width.
+      RECORD: INPUT (56 px skirt) over BIAS (38 px). MACHINE: rows of keys, SPEED,
+      EQ, LEVEL and TAPE, named at the left (14 px, `orbitPanelInkSoft`). WEAR: HISS
+      over FLUTTER. REPRO: OUTPUT over MIX, LINK beside MIX (OUT FOLLOWS IN under it,
+      11 px). Knob names 15 px, values 13.5 px under them.
+    - **Keys** (64 × 30, rendered keys: design-system.md "Hardware key"): a row is a
+      radio group, the chosen key lit amber, the others ivory with a faint standby
+      glow; LINK latches. Tooltips "Speed: 15 ips",
+      "Meters read the tape", "Link: output follows input".
+    - **Rendered controls** keep the system's behaviour, as on the tape echo, and
+      every layer has a flat token fallback.
+  - **Compact** (below 65%): no values, dial numbers, subtitle, model line or small
+    print; names 1.45x and keys' labels 19 px; the knob in hand shows its value in
+    its name's place.
+  - **Header status:** "Tape 1.2 dB" while the tape compresses by 0.3 dB or more.
 - **Corona** (a tube guitar amp and its cabinet, for guitar and bass): modelled on the
   1960s-70s American 2x12 combo with reverb and tremolo, with no trade dress of the
   original (our own name, plate, cloth and badge; "two-twelve reverb" at most).
