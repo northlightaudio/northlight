@@ -251,12 +251,7 @@ AudioEngine::AutomatedValues AudioEngine::automatedValues(core::Id channelId) co
 
 void AudioEngine::setLiveGain(core::Id channelId, float gain)
 {
-    // The master's fader ramps in its own runtime (an automation write lands here).
-    if (channelId == core::masterId)
-    {
-        runtimes_.master()->targetGain.store(gain, std::memory_order_relaxed);
-        return;
-    }
+    // The master's fader too (an automation write lands here).
     if (const auto runtime = runtimes_.find(channelId))
         runtime->targetGain.store(gain, std::memory_order_relaxed);
 }
@@ -314,8 +309,6 @@ void AudioEngine::applyLiveValues(const core::Project& project, core::Id only)
     for (const auto& b : project.buses)
         channel(b);
     channel(project.master);
-    if (only == core::invalidId || only == core::masterId)
-        runtimes_.master()->targetGain.store(project.master.gain, std::memory_order_relaxed);
 }
 
 void AudioEngine::pushInsertParameters(const core::Project& project,

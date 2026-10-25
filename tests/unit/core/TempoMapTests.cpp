@@ -11,24 +11,27 @@
 using namespace northlight::core;
 using Catch::Approx;
 
-TEST_CASE("A constant tempo map matches the single-tempo helpers", "[core][tempo]")
+TEST_CASE("A constant tempo map converts samples to bars and beats and back", "[core][tempo]")
 {
     const TempoMap map(48000.0, 120.0, {4, 4});
     CHECK(map.constant());
     CHECK(map.positionAt(1.0) == 24000); // a quarter at 120 BPM is half a second
     CHECK(map.quartersAt(96000.0) == Approx(4.0));
     CHECK(map.barStart(1) == 96000);
+    CHECK(map.barsBeatsAt(0) == BarsBeats{1, 1, 0});
+    CHECK(map.barsBeatsAt(24000) == BarsBeats{1, 2, 0});
+    CHECK(map.barsBeatsAt(96000) == BarsBeats{2, 1, 0});
+    CHECK(map.barsBeatsAt(12000) == BarsBeats{1, 1, 480});
+    CHECK(map.positionAt(BarsBeats{2, 1, 0}) == 96000);
+    CHECK(map.positionAt(BarsBeats{1, 1, 480}) == 12000);
     for (SamplePosition s :
          {SamplePosition{0}, SamplePosition{1234}, SamplePosition{96000}, SamplePosition{500017}})
-    {
-        CHECK(map.barsBeatsAt(s) == samplesToBarsBeats(s, 48000.0, 120.0, {4, 4}));
-        CHECK(map.positionAt(map.barsBeatsAt(s)) ==
-              barsBeatsToSamples(map.barsBeatsAt(s), 48000.0, 120.0, {4, 4}));
-    }
-    // 6/8: beats are eighths, a bar is three quarters.
+        CHECK(std::abs(map.positionAt(map.barsBeatsAt(s)) - s) <= 50); // to the tick
+    // 6/8: beats are eighths (0.25 s at 120 quarters a minute), a bar is three quarters.
     const TempoMap compound(48000.0, 120.0, {6, 8});
     CHECK(compound.barStart(1) == 72000);
     CHECK(compound.barsBeatsAt(12000) == BarsBeats{1, 2, 0});
+    CHECK(compound.barsBeatsAt(6 * 12000) == BarsBeats{2, 1, 0});
 }
 
 TEST_CASE("A tempo change moves later positions and keeps earlier ones", "[core][tempo]")

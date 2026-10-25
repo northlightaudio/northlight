@@ -68,13 +68,6 @@ struct AutomationRuntime
     std::atomic<bool> touched{false};
 };
 
-struct MasterRuntime
-{
-    std::atomic<float> targetGain{1.0f};
-    float gain = 1.0f;
-    bool primed = false;
-};
-
 // One runtime per channel id, kept across compiles. Controller thread only.
 // What a MIDI track's instrument currently holds, and where the last span ended,
 // so a stop, a jump or a loop wrap can end the notes still sounding. Real-time
@@ -179,12 +172,6 @@ public:
         const auto it = automation_.find(laneId);
         return it != automation_.end() ? it->second : nullptr;
     }
-    std::shared_ptr<MasterRuntime> master()
-    {
-        if (master_ == nullptr)
-            master_ = std::make_shared<MasterRuntime>();
-        return master_;
-    }
     // Drops runtimes no snapshot references any more.
     void prune()
     {
@@ -205,7 +192,6 @@ public:
         insertMixes_.clear();
         midi_.clear();
         automation_.clear();
-        master_.reset();
     }
 
 private:
@@ -215,7 +201,6 @@ private:
     std::map<core::Id, std::shared_ptr<InsertMixRuntime>> insertMixes_;           // by insert id
     std::map<core::Id, std::shared_ptr<MidiRuntime>> midi_;
     std::map<core::Id, std::shared_ptr<AutomationRuntime>> automation_;
-    std::shared_ptr<MasterRuntime> master_;
 };
 
 } // namespace northlight::engine

@@ -622,8 +622,9 @@ struct Project
 // sidechain before its fader), and folders mute and solo nothing.
 Project freezeRenderProject(const Project& project, Id trackId);
 
-// Bars/beats display helpers. Beats are counted in the time signature's denominator
-// note value; bars and beats are 1-based for display.
+// A position in bars and beats (core/TempoMap.h converts, following the tempo
+// track). Beats are counted in the time signature's denominator note value; bars
+// and beats are 1-based for display.
 struct BarsBeats
 {
     int bar = 1;
@@ -633,22 +634,8 @@ struct BarsBeats
     bool operator==(const BarsBeats&) const = default;
 };
 
-double samplesPerBeat(double sampleRate, double tempoBpm, TimeSignature signature) noexcept;
-
-// Editing grid. gridSamples picks the finest musical division (bar, beat, half,
-// quarter, eighth of a beat) that is at least `minPixels` wide at the zoom;
-// snapToGrid rounds to the nearest line (the grid starts at zero).
-SamplePosition gridSamples(double sampleRate,
-                           double tempoBpm,
-                           TimeSignature signature,
-                           double samplesPerPixel,
-                           int minPixels) noexcept;
+// Rounds to the nearest line of a fixed grid that starts at zero (a musical grid
+// follows the tempo track: TempoMap::snap).
 SamplePosition snapToGrid(SamplePosition position, SamplePosition grid) noexcept;
-BarsBeats samplesToBarsBeats(SamplePosition position,
-                             double sampleRate,
-                             double tempoBpm,
-                             TimeSignature signature) noexcept;
-SamplePosition
-barsBeatsToSamples(BarsBeats position, double sampleRate, double tempoBpm, TimeSignature signature) noexcept;
 
 } // namespace northlight::core

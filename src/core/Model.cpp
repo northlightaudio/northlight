@@ -619,32 +619,6 @@ SamplePosition Project::length() const noexcept
     return end;
 }
 
-double samplesPerBeat(double sampleRate, double tempoBpm, TimeSignature signature) noexcept
-{
-    // tempoBpm counts quarter notes; scale to the signature's beat value.
-    const double quarterNotesPerBeat = 4.0 / static_cast<double>(std::max(1, signature.denominator));
-    return sampleRate * 60.0 / std::max(1.0, tempoBpm) * quarterNotesPerBeat;
-}
-
-SamplePosition gridSamples(double sampleRate,
-                           double tempoBpm,
-                           TimeSignature signature,
-                           double samplesPerPixel,
-                           int minPixels) noexcept
-{
-    const double beat = samplesPerBeat(sampleRate, tempoBpm, signature);
-    const double bar = beat * std::max(1, signature.numerator);
-    const double minimum = std::max(1.0, samplesPerPixel * std::max(1, minPixels));
-    for (const double division : {beat / 8.0, beat / 4.0, beat / 2.0, beat, bar})
-        if (division >= minimum)
-            return std::max<SamplePosition>(1, static_cast<SamplePosition>(std::llround(division)));
-    // Even a bar is too fine at this zoom: whole multiples of bars.
-    double division = bar;
-    while (division < minimum)
-        division *= 2.0;
-    return std::max<SamplePosition>(1, static_cast<SamplePosition>(std::llround(division)));
-}
-
 SamplePosition snapToGrid(SamplePosition position, SamplePosition grid) noexcept
 {
     if (grid <= 1)
@@ -719,33 +693,6 @@ const char* scaleName(ScaleKind scale) noexcept
             return "chromatic";
     }
     return "";
-}
-
-BarsBeats samplesToBarsBeats(SamplePosition position,
-                             double sampleRate,
-                             double tempoBpm,
-                             TimeSignature signature) noexcept
-{
-    const double spb = samplesPerBeat(sampleRate, tempoBpm, signature);
-    const int beatsPerBar = std::max(1, signature.numerator);
-    const double beatsTotal = static_cast<double>(std::max<SamplePosition>(0, position)) / spb;
-    const auto wholeBeats = static_cast<std::int64_t>(std::floor(beatsTotal));
-    BarsBeats out;
-    out.bar = static_cast<int>(wholeBeats / beatsPerBar) + 1;
-    out.beat = static_cast<int>(wholeBeats % beatsPerBar) + 1;
-    out.tick = static_cast<int>(
-        std::floor((beatsTotal - static_cast<double>(wholeBeats)) * BarsBeats::ticksPerBeat));
-    return out;
-}
-
-SamplePosition
-barsBeatsToSamples(BarsBeats position, double sampleRate, double tempoBpm, TimeSignature signature) noexcept
-{
-    const double spb = samplesPerBeat(sampleRate, tempoBpm, signature);
-    const int beatsPerBar = std::max(1, signature.numerator);
-    const double beats = static_cast<double>((position.bar - 1) * beatsPerBar + (position.beat - 1)) +
-                         static_cast<double>(position.tick) / BarsBeats::ticksPerBeat;
-    return static_cast<SamplePosition>(std::llround(beats * spb));
 }
 
 } // namespace northlight::core

@@ -204,15 +204,9 @@ std::unique_ptr<Snapshot> compileSnapshot(const core::Project& project,
     NORTHLIGHT_ASSERT_NOT_REALTIME("compileSnapshot");
     auto snapshot = std::make_unique<Snapshot>();
     snapshot->sampleRate = project.sampleRate;
-    snapshot->tempoBpm = project.tempoBpm;
-    snapshot->timeSignature = project.timeSignature;
     snapshot->tempoMap = core::tempoMapOf(project);
-    snapshot->masterGain = project.master.gain;
     RuntimeCache localRuntimes;
     RuntimeCache& runtimeCache = runtimes != nullptr ? *runtimes : localRuntimes;
-    snapshot->keepAliveMaster = runtimeCache.master();
-    snapshot->master = snapshot->keepAliveMaster.get();
-    snapshot->master->targetGain.store(project.master.gain, std::memory_order_relaxed);
     snapshot->masterMeterSlot = masterMeterSlot(project);
     // The work buffers hold the engine's prepared block, not the most it could be
     // (twelve per channel: a 100-track project's at 8192 were 39 MB).
@@ -660,12 +654,13 @@ std::unique_ptr<Snapshot> compileSnapshot(const core::Project& project,
         for (const auto& i : project.master.inserts)
             if (auto instance = inserts.get(i))
                 compileSlot(node, i, std::move(instance));
-        // Its lanes (volume and its inserts' parameters) play through a channel
-        // runtime of its own: the renderer reads the automated gain from it, the
-        // mixer what it shows.
+        // Its fader and lanes (volume and its inserts' parameters) play through a
+        // channel runtime of its own: the renderer ramps the gain in it, the mixer
+        // reads what the lanes show.
         node.keepAliveRuntime = runtimeCache.get(core::masterId);
         node.runtime = node.keepAliveRuntime.get();
         node.gain = project.master.gain;
+        node.runtime->targetGain.store(project.master.gain, std::memory_order_relaxed);
         compileAutomation(node, project.master);
         std::erase_if(node.automation,
                       [](const AutomationNode& a) { return a.target == core::AutomationTarget::pan; });

@@ -18,9 +18,14 @@
 // The compiled, immutable form of a Project that the real-time thread renders.
 // Built on the controller thread by compileSnapshot(); published through
 // rt::SnapshotPublisher; never mutated afterwards, except for the per-channel work
-// buffers, which belong to whichever real-time thread renders that channel in the
-// current block (the buffer pool is sized here, at compile time, so rendering never
-// allocates).
+// buffers and a track's `events`, which belong to whichever real-time thread renders
+// that channel in the current block (the buffer pool is sized here, at compile time,
+// so rendering never allocates). The runtime pointers (ChannelRuntime, SendRuntime,
+// InsertMixRuntime, MidiRuntime, AutomationRuntime) lead out of the snapshot to state
+// that outlives it: the audio thread writes their real-time fields (ramps, held
+// notes, what automation played) and the controller only their atomics. Each track
+// is rendered by one thread per span, and buses and the master by the callback
+// thread, so those writes never race.
 //
 // Signal flow (docs/architecture.md, "Rendering"): tracks render in parallel into their own
 // pre-fader buffers; the summing stage applies the fader and routes each channel to
@@ -219,9 +224,7 @@ struct Snapshot
 
     std::uint64_t epoch = 0; // set by the publisher
     double sampleRate = 48000.0;
-    double tempoBpm = 120.0;           // at the song's start
-    core::TimeSignature timeSignature; // at the song's start
-    core::TempoMap tempoMap;           // the tempo track: clicks and the play head
+    core::TempoMap tempoMap; // the tempo track: clicks and the play head
     std::vector<TrackNode> tracks;
     std::vector<BusNode> buses; // in project order
     std::vector<int> busOrder;  // bus indices in dependency order (feeders before fed)
@@ -229,13 +232,11 @@ struct Snapshot
     // after it: each level runs in parallel, the levels in order. One level when
     // nothing is sidechained.
     std::vector<std::vector<int>> trackLevels;
-    float masterGain = 1.0f;
     // The master's inserts, run in place on the mix before the master fader, and
-    // its automation (volume, insert parameters) through the node's runtime. No
-    // routing, sends or key.
+    // its fader and automation (volume, insert parameters) through the node's
+    // runtime: the one place the master's gain lives (its target, ramp and lane).
+    // No routing, sends or key.
     ChannelNode masterChain;
-    MasterRuntime* master = nullptr; // ramped master gain
-    std::shared_ptr<MasterRuntime> keepAliveMaster;
     int masterMeterSlot = -1;
     int outputLatency = 0; // samples the master output lags the timeline (plugin delay compensation,
                            // the master's own inserts included)

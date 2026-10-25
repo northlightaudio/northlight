@@ -416,10 +416,7 @@ public:
             {
                 const auto file = tokens.getReference(++i).resolveAsFile();
                 const auto midiId = session_->addSamplerTrack(file);
-                const auto beat = static_cast<core::SamplePosition>(
-                    core::samplesPerBeat(session_->project().sampleRate,
-                                         session_->project().tempoBpm,
-                                         session_->project().timeSignature));
+                const auto beat = core::tempoMapOf(session_->project()).positionAt(1.0); // a quarter note
                 core::MidiClip clip;
                 clip.name = "Sampler";
                 clip.length = beat * 4;

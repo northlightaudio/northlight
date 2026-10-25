@@ -77,7 +77,7 @@ public:
     SamplePosition nextLine(SamplePosition position, GridStep step) const noexcept;
     // The finest of bar, beat, half, quarter or eighth of a beat that is at least
     // `minPixels` wide at the zoom around `at` (whole bars doubled when even a bar
-    // is too fine), as gridSamples does for one tempo.
+    // is too fine).
     GridStep adaptiveStep(double samplesPerPixel, int minPixels, SamplePosition at) const noexcept;
     // A step's length in samples around a position.
     double stepSamples(GridStep step, SamplePosition at) const noexcept;

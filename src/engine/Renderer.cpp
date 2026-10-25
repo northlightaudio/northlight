@@ -1033,14 +1033,12 @@ void Renderer::renderSpan(const Snapshot& snapshot,
     if (!snapshot.masterChain.inserts.empty())
         processChain(snapshot, snapshot.masterChain, head, left, right, numSamples);
 
-    // The master's fader: its volume lane while one plays, else the fader.
-    const auto* masterRuntime = snapshot.masterChain.runtime;
-    const float master1 =
-        masterRuntime != nullptr && masterRuntime->gainAutomated ? masterRuntime->automatedGain
-        : snapshot.master != nullptr ? snapshot.master->targetGain.load(std::memory_order_relaxed)
-                                     : snapshot.masterGain;
+    // The master's fader: its volume lane while one plays, else the fader, ramped
+    // in the master's runtime.
+    auto* masterRuntime = snapshot.masterChain.runtime;
+    const float master1 = targetGainOf(snapshot.masterChain);
     const float master0 =
-        snapshot.master != nullptr && snapshot.master->primed ? snapshot.master->gain : master1;
+        masterRuntime != nullptr && masterRuntime->gainPrimed ? masterRuntime->gain : master1;
     const float masterStep = (master1 - master0) / static_cast<float>(numSamples);
     for (int i = 0; i < numSamples; ++i)
     {
@@ -1048,10 +1046,10 @@ void Renderer::renderSpan(const Snapshot& snapshot,
         left[i] *= g;
         right[i] *= g;
     }
-    if (snapshot.master != nullptr)
+    if (masterRuntime != nullptr)
     {
-        snapshot.master->gain = master1;
-        snapshot.master->primed = true;
+        masterRuntime->gain = master1;
+        masterRuntime->gainPrimed = true;
     }
     if (context.meters != nullptr)
         context.meters->measure(snapshot.masterMeterSlot, left, right, numSamples);

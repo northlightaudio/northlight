@@ -142,9 +142,9 @@ saved values or automation.
 
 The controller compiles the project into an immutable `Snapshot`: channel nodes with
 mute and solo resolved, clips bound to sources (a muted clip is left out, so the
-audio thread never sees clip mute), the master's inserts and automation (its
-volume lane overrides the master fader while it plays, through a channel runtime
-of its own), insert chains bound to cached
+audio thread never sees clip mute), the master's inserts, fader and automation
+(all through the master's one channel runtime: the fader's target and ramp, and the
+volume lane that overrides it while it plays), insert chains bound to cached
 processor instances, delay lines, automation, the tempo map, MIDI feeds. It is
 published through `rt::SnapshotPublisher`. The audio thread advertises the epoch it
 is using, and the controller frees superseded snapshots only once that epoch has
