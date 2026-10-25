@@ -13,6 +13,11 @@
 // tokens with a tokens.json beside the settings file (keys that are present win;
 // the rest keep the shipped values).
 
+namespace northlight::core
+{
+struct Project;
+}
+
 namespace northlight::ui
 {
 
@@ -56,7 +61,8 @@ struct Theme
     struct Track
     {
         std::vector<TrackColour> palette;
-        std::string defaultBus = "Slate";
+        // Palette names: an uncoloured group bus's and FX track's, and the master's.
+        std::string defaultBus = "Overcast", defaultFxTrack = "Lichen", master = "Slate";
         // Palette entries offered as accent presets in Preferences, the default first.
         std::vector<std::string> accentPresets;
         float clipBodyAlpha = 0.22f;
@@ -65,10 +71,14 @@ struct Theme
         float waveformAlpha = 0.9f;
         float waveformMutedAlpha = 0.35f;
         int headerStripeWidth = 4;
-        // The palette entry for a model colour (0 = default: the slot's cycle colour
-        // for tracks, the default bus colour for buses), or a custom colour.
+        // The palette entry for a track's model colour (0 = default: the slot's
+        // cycle colour), or a custom colour.
         juce::Colour forTrack(std::uint32_t argb, int slot) const;
-        juce::Colour forBus(std::uint32_t argb) const;
+        // A channel's colour as every view shows it (screens/arrange.md "Buses and
+        // the master"): a track's by forTrack; a bus its own, else defaultFxTrack
+        // for an FX track and defaultBus for a group bus; the master always master.
+        juce::Colour forChannel(const core::Project& project, std::uint64_t channel) const;
+        juce::Colour named(const std::string& name) const; // a palette entry by name
     };
 
     struct Fonts

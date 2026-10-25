@@ -166,8 +166,9 @@ Rows at `trackRow` 56 default. Contents, left to right, inside `space.sm` paddin
 - Drag the icon to reorder tracks; a 2 px `accent` insertion line shows the drop
   position. Right-click opens the track menu (rename, colour, duplicate, delete,
   freeze, add bus, show automation lanes).
-- Buses appear in the same list after tracks, with a slate stripe and no input row;
-  the master is always last, pinned, with a `textPrimary` stripe.
+- Buses appear in the same list after tracks, with no input row, in their colour
+  (FX tracks Lichen and group buses Overcast unless coloured); the master is always
+  last, pinned, in Slate. The mixer and the automation lanes use the same colours.
 
 ## Lanes and grid
 

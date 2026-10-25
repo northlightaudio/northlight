@@ -199,7 +199,7 @@ juce::Colour PianoRoll::trackColour() const
     const auto* t = track();
     if (t == nullptr || project_ == nullptr)
         return theme_.colours.midiNote;
-    return theme_.track.forTrack(t->colour, project_->trackIndex(t->id));
+    return theme_.track.forChannel(*project_, t->id);
 }
 
 // ----- geometry -------------------------------------------------------------------------------

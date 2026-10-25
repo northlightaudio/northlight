@@ -1,3 +1,4 @@
+#include "core/Model.h"
 #include "ui/Theme.h"
 #include "ui/components/Fader.h"
 
@@ -19,7 +20,7 @@ TEST_CASE("The embedded tokens load with the design system's values", "[ui][them
     REQUIRE(theme.track.palette.size() == 12);
     CHECK(theme.track.palette[0].name == "Overcast");
     CHECK(theme.track.palette[11].name == "Slate");
-    CHECK(theme.track.forBus(0) == theme.track.palette[11].value);
+    CHECK(theme.track.named("Slate") == theme.track.palette[11].value);
     CHECK(theme.track.forTrack(0, 0) == theme.track.palette[0].value);
     CHECK(theme.track.forTrack(0, 11) == theme.track.palette[0].value); // cycles through eleven
     CHECK(theme.track.forTrack(0xff123456, 3) == juce::Colour(0xff123456));
@@ -89,4 +90,34 @@ TEST_CASE("The fader law puts 0 dB at three quarters of the travel and -inf at t
     // Round trip through the curve.
     for (const float db : {-3.0f, -6.0f, -12.0f, -24.0f, -40.0f, 3.0f})
         CHECK(ui::Fader::dbForFraction(ui::Fader::fractionForDb(db, 6.0f), 6.0f) == Approx(db).margin(0.05f));
+}
+
+TEST_CASE("Every channel takes its colour from one rule", "[ui][theme]")
+{
+    const auto theme = ui::Theme::defaults();
+    core::Project p;
+    core::Track t;
+    t.id = 1;
+    p.tracks.push_back(t);
+    t.id = 2;
+    t.colour = 0xff123456;
+    p.tracks.push_back(t);
+    core::Bus group;
+    group.id = 3;
+    core::Bus fx;
+    fx.id = 4;
+    fx.fx = true;
+    core::Bus coloured;
+    coloured.id = 5;
+    coloured.fx = true;
+    coloured.colour = 0xff654321;
+    p.buses = {group, fx, coloured};
+    p.master.colour = 0xffabcdef; // the master is Slate whatever it holds
+
+    CHECK(theme.track.forChannel(p, 1) == theme.track.forTrack(0, 0));
+    CHECK(theme.track.forChannel(p, 2) == juce::Colour(0xff123456));
+    CHECK(theme.track.forChannel(p, 3) == theme.track.named("Overcast"));
+    CHECK(theme.track.forChannel(p, 4) == theme.track.named("Lichen"));
+    CHECK(theme.track.forChannel(p, 5) == juce::Colour(0xff654321));
+    CHECK(theme.track.forChannel(p, core::masterId) == theme.track.named("Slate"));
 }

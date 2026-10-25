@@ -66,8 +66,11 @@ target LUFS (default -14, user-settable).
 
 Twelve hues tuned to read on the dark base: saturation around 65%, lightness around
 62%, so a clip body at 22% alpha still shows its hue and a waveform at 90% alpha
-is vivid without glowing. New tracks cycle through the first eleven; buses default
-to Slate; the master has no colour. Users can pick any of the twelve from a swatch
+is vivid without glowing. New tracks cycle through the first eleven; an uncoloured
+group bus is Overcast (`track.defaultBus`) and an FX track Lichen
+(`track.defaultFxTrack`); the master is always Slate (`track.master`). Every view
+(arrange headers, lanes and automation, the mixer, the editors) takes a channel's
+colour from the one rule (`Theme::Track::forChannel`). Users can pick any of the twelve from a swatch
 grid or enter a hex.
 
 Derived uses, all by alpha over the base (see `track.*Alpha`):

@@ -80,12 +80,10 @@ ArrangeView::ArrangeView(audio::PeakStore& peaks)
     automation_.geometry.block = [this](int row) { return automationBlock(row); };
     automation_.geometry.colour = [this](int row)
     {
-        const auto n = static_cast<int>(headers_.size());
-        if (row >= 0 && row < n)
-            return headers_[static_cast<size_t>(row)]->colour();
-        if (row >= n && row - n < static_cast<int>(fxHeaders_.size()))
-            return fxHeaders_[static_cast<size_t>(row - n)]->colour();
-        return theme_.colours.textTertiary;
+        // The channel's colour, as its header and clips show it.
+        const auto* channel = channelAtRow(row);
+        return channel != nullptr && project_ != nullptr ? theme_.track.forChannel(*project_, channel->id)
+                                                         : theme_.colours.textTertiary;
     };
     automation_.geometry.playhead = [this] { return playhead_; };
     automation_.onEdit = [this](std::vector<std::unique_ptr<core::Command>> commands, const std::string& name)
@@ -425,13 +423,8 @@ void ArrangeView::rebuildHeaders()
         static_cast<core::Channel&>(shown) = *fx[i];
         shown.kind = core::TrackKind::aux; // no input, no arm
         const bool master = fx[i]->id == core::masterId;
-        const auto* bus = project_->findBus(fx[i]->id);
-        // Unless coloured: FX tracks Lichen, groups Overcast, the master Slate.
-        const char* paletteName = master ? "Slate" : bus != nullptr && bus->fx ? "Lichen" : "Overcast";
-        if (shown.colour == 0 || master)
-            for (const auto& entry : theme_.track.palette)
-                if (entry.name == paletteName)
-                    shown.colour = entry.value.getARGB();
+        // Unless coloured: FX tracks Lichen, groups Overcast, the master Slate (forChannel).
+        shown.colour = theme_.track.forChannel(*project_, fx[i]->id).getARGB();
         fxHeaders_[i]->setMaster(master);
         fxHeaders_[i]->setTrack(
             shown, static_cast<int>(count + i), *project_, inputChoices_, midiInputNames_);

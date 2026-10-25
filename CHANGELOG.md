@@ -13,6 +13,10 @@ Northlight has not had a release yet. The first release, 0.1.0, will include:
 
 ### Added
 
+- Buses, FX tracks and the master have one colour in every view: the mixer's
+  uncoloured group buses are Overcast and its master Slate, as in the arrange
+  view, and automation lanes always take their channel's colour.
+
 - The Colour submenus in the track menu and the mixer show each colour's swatch
   and tick the current one, as the header stripe's popup does.
 

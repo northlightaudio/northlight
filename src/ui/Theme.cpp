@@ -1,5 +1,7 @@
 #include "ui/Theme.h"
 
+#include "core/Model.h"
+
 #include <juce_core/juce_core.h>
 
 #if JUCE_WINDOWS
@@ -106,14 +108,23 @@ juce::Colour Theme::Track::forTrack(std::uint32_t argb, int slot) const
     return palette[static_cast<size_t>(std::max(0, slot)) % cycle].value;
 }
 
-juce::Colour Theme::Track::forBus(std::uint32_t argb) const
+juce::Colour Theme::Track::named(const std::string& name) const
 {
-    if (argb != 0)
-        return juce::Colour(argb);
     for (const auto& entry : palette)
-        if (entry.name == defaultBus)
+        if (entry.name == name)
             return entry.value;
     return palette.empty() ? juce::Colours::grey : palette.back().value;
+}
+
+juce::Colour Theme::Track::forChannel(const core::Project& project, std::uint64_t channel) const
+{
+    if (channel == core::masterId)
+        return named(master);
+    if (const auto* bus = project.findBus(channel))
+        return bus->colour != 0 ? juce::Colour(bus->colour) : named(bus->fx ? defaultFxTrack : defaultBus);
+    if (const auto* t = project.findTrack(channel))
+        return forTrack(t->colour, project.trackIndex(channel));
+    return named(master);
 }
 
 juce::Colour Theme::Meter::colourAt(float db) const
@@ -320,6 +331,8 @@ bool Theme::apply(const juce::var& tokens, Theme& theme, std::string& error)
                 t.palette = std::move(entries);
         }
         readString(track, "defaultBus", t.defaultBus);
+        readString(track, "defaultFxTrack", t.defaultFxTrack);
+        readString(track, "master", t.master);
         if (const auto* presets = track["accentPresets"].getArray())
         {
             t.accentPresets.clear();

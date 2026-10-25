@@ -385,7 +385,7 @@ juce::Colour AudioEditor::trackColour() const
     const auto* t = track();
     if (t == nullptr || project_ == nullptr)
         return theme_.colours.accent;
-    return theme_.track.forTrack(t->colour, project_->trackIndex(t->id));
+    return theme_.track.forChannel(*project_, t->id);
 }
 
 const core::VocalEdit& AudioEditor::shownEdit() const noexcept

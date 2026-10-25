@@ -751,8 +751,7 @@ public:
             inserts_[i]->setBypassed(channel.inserts[i].bypass);
     }
 
-    void
-    setChannel(const core::Channel& channel, bool isBus, const core::Project& project, int slot, int index)
+    void setChannel(const core::Channel& channel, bool isBus, const core::Project& project, int slot)
     {
         const juce::ScopedValueSetter<bool> guard(updating_, true);
         id_ = channel.id;
@@ -763,9 +762,7 @@ public:
         aux_ = track != nullptr && track->isAux();
         const auto* busModel = isBus ? project.findBus(channel.id) : nullptr;
         fx_ = busModel != nullptr && busModel->fx;
-        colour_ = isBus ? (fx_ && channel.colour == 0 ? strip::paletteColour(theme_, "Lichen")
-                                                      : theme_.track.forBus(channel.colour))
-                        : theme_.track.forTrack(channel.colour, index);
+        colour_ = theme_.track.forChannel(project, channel.id);
         fader_.setTrackColour(colour_);
         group_ = channel.group;
         const auto* group = project.findGroup(channel.group);
@@ -1417,7 +1414,7 @@ public:
           meter_(theme, 2, true), value_(theme)
     {
         setOpaque(true);
-        cap_.set("Master", theme_.colours.textPrimary, false, 0, {});
+        cap_.set("Master", theme_.track.named(theme_.track.master), false, 0, {});
         cap_.setInterceptsMouseClicks(false, false);
         addAndMakeVisible(cap_);
         // The inserts: on the whole mix, before the master fader.
@@ -1429,7 +1426,7 @@ public:
         addInsert_.onClick = [this] { owner_.showAddInsertMenu(core::masterId, addInsert_); };
         insertsHolder_.addAndMakeVisible(addInsert_);
         fader_.setMaxDb(static_cast<float>(maxFaderDb));
-        fader_.setTrackColour(theme_.colours.textPrimary);
+        fader_.setTrackColour(theme_.track.named(theme_.track.master));
         fader_.onDragStart = [this]
         {
             if (owner_.onGestureBegin)
@@ -2262,18 +2259,12 @@ void MixerView::rebuildStrips()
         {
             if (!project_->tracks[t].hasAudio())
                 continue;
-            strips_[i++]->setChannel(project_->tracks[t],
-                                     false,
-                                     *project_,
-                                     engine::trackMeterSlot(static_cast<int>(t)),
-                                     static_cast<int>(t));
+            strips_[i++]->setChannel(
+                project_->tracks[t], false, *project_, engine::trackMeterSlot(static_cast<int>(t)));
         }
         for (size_t b = 0; b < project_->buses.size(); ++b, ++i)
-            strips_[i]->setChannel(project_->buses[b],
-                                   true,
-                                   *project_,
-                                   engine::busMeterSlot(*project_, static_cast<int>(b)),
-                                   static_cast<int>(b));
+            strips_[i]->setChannel(
+                project_->buses[b], true, *project_, engine::busMeterSlot(*project_, static_cast<int>(b)));
         master_->setMaster(project_->master);
     }
     layoutStrips();
