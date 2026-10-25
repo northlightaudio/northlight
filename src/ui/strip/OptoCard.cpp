@@ -200,13 +200,12 @@ public:
             if (meterShowsOutput())
             {
                 g.setColour(c.textSecondary);
-                g.drawText(formatDb(reading_), bottom, juce::Justification::centredRight);
+                g.drawText(dbText(reading_), bottom, juce::Justification::centredRight);
             }
             else if (reading_ >= 0.1f)
             {
                 g.setColour(c.meterHot);
-                g.drawText(
-                    "-" + juce::String(reading_, 1) + " dB", bottom, juce::Justification::centredRight);
+                g.drawText(reductionText(reading_), bottom, juce::Justification::centredRight);
             }
 
             // The needle: its shadow on the face, then the needle, from the pivot
@@ -484,7 +483,7 @@ private:
     juce::String headerStatus() const override
     {
         const float db = reductionReadoutDb();
-        return isOn() && db >= 0.1f ? "-" + juce::String(db, 1) + " dB" : juce::String();
+        return isOn() ? reductionText(db) : juce::String();
     }
     juce::Colour headerStatusColour() const override { return theme_.colours.meterHot; }
 

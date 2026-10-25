@@ -524,7 +524,7 @@ public:
         g.strokePath(curve(cutoff), juce::PathStrokeType(1.5f));
         g.setFont(theme.value());
         g.setColour(theme.colours.textSecondary);
-        g.drawText(cutoff >= 19500.0 && std::abs(amount) <= 0.01f ? juce::String("Open") : formatHz(cutoff),
+        g.drawText(cutoff >= 19500.0 && std::abs(amount) <= 0.01f ? juce::String("Open") : hzText(cutoff),
                    b.reduced(6.0f, 3.0f),
                    juce::Justification::topRight);
         drawWellFrame(g, theme, b);
@@ -602,7 +602,7 @@ public:
                           knob(sp::decay, "Decay", hues_.envelope),
                           knob(sp::sustain, "Sustain", hues_.envelope, percent),
                           knob(sp::release, "Release", hues_.envelope)};
-        filterKnobs_ = {knob(sp::cutoff, "Cutoff", hues_.filter, [](double v) { return formatHz(v); }),
+        filterKnobs_ = {knob(sp::cutoff, "Cutoff", hues_.filter, [](double v) { return hzText(v); }),
                         knob(sp::resonance, "Reso", hues_.filter, percent),
                         knob(sp::filterEnv,
                              "Env",

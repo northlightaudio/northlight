@@ -41,23 +41,6 @@ float textWidth(const juce::Font& font, const juce::String& text)
     return static_cast<float>(juce::GlyphArrangement::getStringWidthInt(font, text));
 }
 
-juce::String formatSeconds(double s)
-{
-    if (s < 1.0)
-        return juce::String(static_cast<int>(std::lround(s * 1000.0))) + " ms";
-    return fixedText(s, s < 10.0 ? 1 : 0) + " s";
-}
-
-juce::String formatHz(double hz)
-{
-    return hz >= 1000.0 ? fixedText(hz / 1000.0, 1) + " kHz" : juce::String(juce::roundToInt(hz)) + " Hz";
-}
-
-juce::String minus()
-{
-    return juce::String::fromUTF8("\xe2\x88\x92");
-}
-
 juce::String dot()
 {
     return juce::String::fromUTF8(" \xc2\xb7 ");
@@ -384,7 +367,7 @@ private:
             g.drawText("SPACE", r.removeFromTop(13.0f), juce::Justification::centredLeft);
             g.setFont(big);
             g.setColour(c.textPrimary);
-            g.drawText(juce::String(spaceName(card_)) + dot() + formatSeconds(card_.param(pv::decay)),
+            g.drawText(juce::String(spaceName(card_)) + dot() + secondsText(card_.param(pv::decay)),
                        r.removeFromTop(22.0f),
                        juce::Justification::centredLeft);
             g.setFont(theme.value());
@@ -395,7 +378,7 @@ private:
             else if (preDelaySynced(card_))
                 pre = noteOf(card_.param(pv::preDelaySync)) + " before";
             else
-                pre = formatSeconds(card_.param(pv::preDelay) * 0.001) + " before";
+                pre = secondsText(card_.param(pv::preDelay) * 0.001) + " before";
             g.drawText(pre, r.removeFromTop(15.0f), juce::Justification::centredLeft);
         }
         {
@@ -406,7 +389,7 @@ private:
             g.setFont(big);
             const bool ducking = duckDb_ >= 0.1f;
             g.setColour(ducking ? card_.colour() : c.textSecondary);
-            g.drawText(ducking ? minus() + fixedText(duckDb_, 1) + " dB"
+            g.drawText(ducking ? minusSign() + fixedText(duckDb_, 1) + " dB"
                                : juce::String::fromUTF8("\xe2\x80\x93"),
                        r.removeFromTop(22.0f),
                        juce::Justification::centredRight);
@@ -647,7 +630,7 @@ public:
 
         // The four that make Vesper what it is.
         decay_ = &addKnob(pv::decay);
-        decay_->format = [](double s) { return formatSeconds(s); };
+        decay_->format = [](double s) { return secondsText(s); };
         clarity_ = &addKnob(pv::clarity);
         duck_ = &addKnob(pv::duck);
         duck_->format = [](double db) { return fixedText(db, db < 10.0 ? 1 : 0) + " dB"; };
@@ -664,14 +647,14 @@ public:
                 return juce::String("Auto");
             if (preDelaySynced(*this))
                 return noteOf(param(pv::preDelaySync));
-            return formatSeconds(ms * 0.001);
+            return secondsText(ms * 0.001);
         };
         swell_ = knob(pv::swell, "Swell");
         release_ = knob(pv::release, "Release");
         release_->format = [this](double ms)
-        { return releaseSynced(*this) ? noteOf(param(pv::releaseSync)) : formatSeconds(ms * 0.001); };
+        { return releaseSynced(*this) ? noteOf(param(pv::releaseSync)) : secondsText(ms * 0.001); };
         gap_ = knob(pv::gap, "Gap");
-        gap_->format = [](double ms) { return formatSeconds(ms * 0.001); };
+        gap_->format = [](double ms) { return secondsText(ms * 0.001); };
         breaths_ = knob(pv::breaths, "Breaths");
         follow_ = knob(pv::follow, "Follow");
         follow_->format = [](double oct)
@@ -679,14 +662,14 @@ public:
         mud_ = knob(pv::mud, "Mud");
         size_ = knob(pv::size, "Size");
         lowCut_ = knob(pv::lowCut, "Low cut");
-        lowCut_->format = [](double hz) { return formatHz(hz); };
+        lowCut_->format = [](double hz) { return compactHzText(hz); };
         damping_ = knob(pv::damping, "Damping");
-        damping_->format = [](double hz) { return formatHz(hz); };
+        damping_->format = [](double hz) { return compactHzText(hz); };
         width_ = knob(pv::width, "Width");
         centre_ = knob(pv::centre, "Centre");
         mix_ = knob(pv::mix, "Mix");
         output_ = knob(pv::output, "Output");
-        output_->format = [](double db) { return formatDb(static_cast<float>(db)); };
+        output_->format = [](double db) { return dbText(static_cast<float>(db)); };
         for (auto* k : allKnobs())
             k->setStyle(Knob::Style::bud);
 
@@ -1272,7 +1255,7 @@ private:
         if (clock_ - lineEndAt_ < 0.6)
             return "Line end";
         const float db = reductionReadoutDb();
-        return db >= 0.1f ? "Duck " + minus() + juce::String(db, 1) + " dB" : juce::String();
+        return db >= 0.1f ? "Duck " + minusSign() + juce::String(db, 1) + " dB" : juce::String();
     }
     juce::Colour headerStatusColour() const override
     {

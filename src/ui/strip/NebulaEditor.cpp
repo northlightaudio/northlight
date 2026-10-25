@@ -485,14 +485,7 @@ public:
                         knob(ne::level, "Level", hues_.motion)};
         spaceKnobs_ = {knob(ne::space, "Size", hues_.space, percent),
                        knob(ne::spaceMix, "Mix", hues_.space, percent),
-                       knob(ne::tone,
-                            "Tone",
-                            hues_.space,
-                            [](double v)
-                            {
-                                return v >= 1000.0 ? juce::String(v / 1000.0, 1) + " kHz"
-                                                   : juce::String(static_cast<int>(std::lround(v))) + " Hz";
-                            })};
+                       knob(ne::tone, "Tone", hues_.space, [](double v) { return compactHzText(v); })};
         for (auto* b : {&previous_, &next_, &presetName_})
         {
             b->getProperties().set(NorthlightLookAndFeel::propertyVariant, "ghost");

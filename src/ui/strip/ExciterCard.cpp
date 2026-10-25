@@ -386,7 +386,7 @@ private:
         g.drawEllipse(disc.expanded(0.75f), hot ? 2.0f : 1.5f);
 
         g.setFont(theme.value());
-        const auto text = formatHz(card_.param(param(h)));
+        const auto text = hzText(card_.param(param(h)));
         const float w =
             static_cast<float>(juce::GlyphArrangement::getStringWidthInt(theme.value(), text)) + 2.0f;
         const bool right = x + 8.0f + w <= p.getRight() - 4.0f;
@@ -815,7 +815,7 @@ private:
         if (param(px::autoGain) >= 0.5f)
         {
             const float trim = historySize() > 0 ? historyAt(historySize() - 1).reduction : 0.0f;
-            text = trim >= 0.05f ? "-" + juce::String(trim, 1) + " dB" : juce::String("0.0 dB");
+            text = reductionText(trim, "0.0 dB");
         }
         if (text != autoGainValue_)
         {

@@ -50,38 +50,7 @@ constexpr std::array<const char*, pa::stageCount> stageNames{
 
 juce::String percentText(double v)
 {
-    return juce::String(static_cast<int>(std::lround(v))) + "%";
-}
-
-juce::String signedPercent(double v)
-{
-    const int i = static_cast<int>(std::lround(v));
-    if (i == 0)
-        return "0%";
-    return (i > 0 ? "+" : juce::String::fromUTF8("\xe2\x88\x92")) + juce::String(std::abs(i)) + "%";
-}
-
-juce::String shortHz(double hz)
-{
-    if (hz >= 10000.0)
-        return juce::String(static_cast<int>(std::lround(hz / 1000.0))) + " kHz";
-    if (hz >= 1000.0)
-        return juce::String(hz / 1000.0, 1) + " kHz";
-    return juce::String(static_cast<int>(std::lround(hz))) + " Hz";
-}
-
-// A level in whole dB with a true minus sign.
-juce::String wholeDb(float db)
-{
-    const int i = static_cast<int>(std::lround(db));
-    return (i < 0 ? juce::String::fromUTF8("\xe2\x88\x92") : juce::String()) + juce::String(std::abs(i)) +
-           " dB";
-}
-
-juce::String minusDb(float db)
-{
-    return db < 0.05f ? juce::String("0.0 dB")
-                      : juce::String::fromUTF8("\xe2\x88\x92") + juce::String(db, 1) + " dB";
+    return ui::percentText(v);
 }
 
 const juce::Image& part(const juce::String& file)
@@ -978,7 +947,7 @@ private:
             case pa::heatTone:
             case pa::chamberTone:
             case pa::tone:
-                return signedPercent;
+                return signedPercentText;
             case pa::chamberDecay:
                 return [this](double v)
                 {
@@ -1005,11 +974,11 @@ private:
                 return [](double v)
                 { return fixedText(v, std::abs(v - std::round(v)) < 0.05 ? 0 : 1) + " bit"; };
             case pa::crushRate:
-                return [](double v) { return shortHz(v); };
+                return [](double v) { return compactHzText(v); };
             case pa::lowCut:
-                return [](double hz) { return hz <= 20.5 ? juce::String("Off") : shortHz(hz); };
+                return [](double hz) { return hz <= 20.5 ? juce::String("Off") : compactHzText(hz); };
             case pa::highCut:
-                return [](double hz) { return hz >= 19900.0 ? juce::String("Off") : shortHz(hz); };
+                return [](double hz) { return hz >= 19900.0 ? juce::String("Off") : compactHzText(hz); };
             case pa::output:
                 return [](double db)
                 {
@@ -1507,7 +1476,7 @@ void StageWindow::paintHeat(juce::Graphics& g, juce::Rectangle<float> p)
     float squash = 0.0f;
     for (int i = std::max(0, card_.historyCount() - 40); i < card_.historyCount(); ++i)
         squash = std::max(squash, card_.frameAt(i)[Telemetry::heatSquash]);
-    readout(g, p, minusDb(squash), squash >= 0.1f ? hue : c.textTertiary);
+    readout(g, p, reductionText(squash, "0.0 dB"), squash >= 0.1f ? hue : c.textTertiary);
 }
 
 void StageWindow::paintChamber(juce::Graphics& g, juce::Rectangle<float> p)
@@ -1601,7 +1570,7 @@ void StageWindow::paintGrain(juce::Graphics& g, juce::Rectangle<float> p)
         noise = std::max(noise, card_.frameAt(i)[Telemetry::grainNoise]);
     readout(g,
             p,
-            noise > 1.0e-6f ? wholeDb(toDb(noise)) : juce::String::fromUTF8("\xe2\x80\x93"),
+            noise > 1.0e-6f ? dbText(toDb(noise), 0) : juce::String::fromUTF8("\xe2\x80\x93"),
             noise > 1.0e-6f ? hue : c.textTertiary);
 }
 
@@ -1640,7 +1609,10 @@ void StageWindow::paintWear(juce::Graphics& g, juce::Rectangle<float> p)
     float dip = 0.0f;
     for (int i = std::max(0, card_.historyCount() - 60); i < card_.historyCount(); ++i)
         dip = std::max(dip, card_.frameAt(i)[Telemetry::wearDipDb]);
-    readout(g, p, dip >= 1.0f ? minusDb(dip) : shortHz(cutoff), dip >= 1.0f ? hue : c.textSecondary);
+    readout(g,
+            p,
+            dip >= 1.0f ? reductionText(dip, "0.0 dB") : compactHzText(cutoff),
+            dip >= 1.0f ? hue : c.textSecondary);
 }
 
 void StageWindow::paintCrush(juce::Graphics& g, juce::Rectangle<float> p)
@@ -1705,7 +1677,7 @@ void StageWindow::paintCrush(juce::Graphics& g, juce::Rectangle<float> p)
         }
     }
     const auto text = juce::String(static_cast<int>(std::lround(bits))) + " bit " +
-                      juce::String::fromUTF8("\xc2\xb7 ") + shortHz(hz);
+                      juce::String::fromUTF8("\xc2\xb7 ") + compactHzText(hz);
     readout(g, p, text, live ? c.textSecondary : c.textTertiary);
 }
 

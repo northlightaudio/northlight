@@ -718,7 +718,8 @@ void LevelBars::paint(juce::Graphics& g)
             g.setColour(c.meterHot);
             g.fillRect(inner.withHeight(h));
             const float shown = card_.reductionReadoutDb();
-            text = shown >= 0.05f ? "-" + fixedText(shown, shown >= 10.0f ? 0 : 1) : juce::String("0.0");
+            text =
+                shown >= 0.05f ? minusSign() + fixedText(shown, shown >= 10.0f ? 0 : 1) : juce::String("0.0");
             name = "GR";
         }
         else

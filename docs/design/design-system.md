@@ -114,6 +114,15 @@ rendered art was drawn for. A number with a fixed count of decimals goes through
 Paragraph line spacing 1.3. Uppercase labels (section headers in panels) use `caption` at
 weight 600 with `letterSpacingCaps` tracking and `textTertiary` colour.
 
+**Numbers and units.** A readout (a card, a face, a display, a knob's value) is
+written one way everywhere, by `ui/Number.h`: a true minus sign (U+2212) for a
+negative value, a plus where the sign matters (gains, offsets), a space before the
+unit. Frequencies read "440 Hz", "2.45 kHz", "12.5 kHz" (`hzText`), or "2.5 kHz",
+"13 kHz" in a knob's few characters (`compactHzText`); times "250 ms", "1.8 s",
+"12 s"; a gain reduction "−3.2 dB"; silence "−∞ dB". A field the user
+types into keeps the ASCII hyphen-minus (`db::text`), so what it shows can be typed
+back.
+
 ## 2.3 Spacing, radius, grid
 
 A 4 px base grid: `space.xs` 4, `sm` 8, `md` 12, `lg` 16, `xl` 24, `xxl` 32,

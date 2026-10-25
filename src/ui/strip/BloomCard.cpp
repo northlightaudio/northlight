@@ -55,13 +55,6 @@ juce::String noteName(const ModuleCard& card)
     return plugins::sync::noteValues[static_cast<size_t>(plugins::sync::choiceOf(card.param(pb::sync)))].name;
 }
 
-juce::String formatSeconds(double s)
-{
-    if (s < 1.0)
-        return juce::String(static_cast<int>(std::lround(s * 1000.0))) + " ms";
-    return fixedText(s, s < 10.0 ? 1 : 0) + " s";
-}
-
 juce::String infinity()
 {
     return juce::String::fromUTF8("\xe2\x88\x9e");
@@ -541,19 +534,19 @@ private:
         else
             block(false,
                   "DECAY",
-                  formatSeconds(decay),
-                  formatSeconds(pb::decayAt(highsHz,
-                                            decay,
-                                            card_.param(pb::size),
-                                            card_.param(pb::damping),
-                                            card_.param(pb::lowCut))) +
+                  secondsText(decay),
+                  secondsText(pb::decayAt(highsHz,
+                                          decay,
+                                          card_.param(pb::size),
+                                          card_.param(pb::damping),
+                                          card_.param(pb::lowCut))) +
                       " at 8 kHz");
         const double pre =
             pb::preDelaySeconds(card_.param(pb::preDelay), card_.param(pb::sync), card_.tempoBpm());
         block(true,
               "SPACE",
               juce::String(static_cast<int>(std::lround(pb::sizeMetres(card_.param(pb::size))))) + " m",
-              (synced(card_) ? noteName(card_) : formatSeconds(pre)) + " before");
+              (synced(card_) ? noteName(card_) : secondsText(pre)) + " before");
 
         // Bottom left: the legend; bottom right: what the flower spans.
         auto foot = area.removeFromBottom(14.0f);
@@ -658,7 +651,7 @@ public:
                 theme.font(Theme::Face::mono, theme.fonts.size.caption - 1.0f, theme.fonts.weight.regular));
             g.setColour(c.textTertiary);
             if (compact && !held)
-                g.drawText(formatSeconds(span),
+                g.drawText(secondsText(span),
                            juce::Rectangle<float>(p.getRight() - 60.0f, p.getY() - 1.0f, 60.0f, 11.0f),
                            juce::Justification::centredRight);
             else
@@ -666,7 +659,7 @@ public:
                 g.drawText("0",
                            juce::Rectangle<float>(p.getX(), p.getBottom() + 2.0f, 20.0f, 11.0f),
                            juce::Justification::centredLeft);
-                g.drawText(formatSeconds(span),
+                g.drawText(secondsText(span),
                            juce::Rectangle<float>(p.getRight() - 60.0f, p.getBottom() + 2.0f, 60.0f, 11.0f),
                            juce::Justification::centredRight);
             }
@@ -830,14 +823,14 @@ public:
 
         // The controls that make the tail.
         decay_ = &addKnob(pb::decay);
-        decay_->format = [](double s) { return formatSeconds(s); };
+        decay_->format = [](double s) { return secondsText(s); };
         size_ = &addKnob(pb::size);
         size_->format = [](double v)
         { return juce::String(static_cast<int>(std::lround(pb::sizeMetres(static_cast<float>(v))))) + " m"; };
         shimmer_ = &addKnob(pb::shimmer);
         swell_ = &addKnob(pb::swell);
         swell_->format = [](double ms)
-        { return ms <= pb::swellOffMs + 0.5 ? juce::String("Off") : formatSeconds(ms * 0.001); };
+        { return ms <= pb::swellOffMs + 0.5 ? juce::String("Off") : secondsText(ms * 0.001); };
         for (auto* k : {decay_, size_, shimmer_, swell_})
             k->setRingSize(bigRing);
 
@@ -877,18 +870,14 @@ public:
         rate_->format = [](double hz) { return juce::String(hz, hz < 1.0 ? 2 : 1) + " Hz"; };
         lowCut_ = knob(pb::lowCut, "Low cut");
         damping_ = knob(pb::damping, "Damping");
-        damping_->format = [](double hz)
-        {
-            return hz >= 1000.0 ? juce::String(hz / 1000.0, 1) + " kHz"
-                                : juce::String(juce::roundToInt(hz)) + " Hz";
-        };
+        damping_->format = [](double hz) { return compactHzText(hz); };
         tilt_ = knob(pb::tilt, "Tilt");
-        tilt_->format = [](double db) { return formatDb(static_cast<float>(db)); };
+        tilt_->format = [](double db) { return dbText(static_cast<float>(db)); };
         duck_ = knob(pb::duck, "Duck");
         duckRelease_ = knob(pb::duckRelease, "Release");
         gate_ = knob(pb::gate, "Gate");
         gate_->format = [](double ms)
-        { return ms <= pb::gateOffMs + 0.5 ? juce::String("Off") : formatSeconds(ms * 0.001); };
+        { return ms <= pb::gateOffMs + 0.5 ? juce::String("Off") : secondsText(ms * 0.001); };
         width_ = knob(pb::width, "Width");
         mix_ = knob(pb::mix, "Mix");
 

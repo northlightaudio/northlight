@@ -181,6 +181,9 @@ Northlight has not had a release yet. The first release, 0.1.0, will include:
 
 ### Fixed
 
+- Values read the same on every card: one way of writing Hz, kHz, seconds, percent and
+  dB, with a true minus sign (some cards wrote "-3.2 dB", others "−3.2 dB";
+  2.4 kHz read "2.40 kHz" on one card and "2.4 kHz" on the next).
 - The audio editor's pitch mode says when a clip is stretched or transposed, where
   pitch edits do not play, instead of taking edits that were never heard.
 - With zoom linked, zooming or scrolling in the piano roll or the audio editor moves

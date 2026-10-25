@@ -13,12 +13,6 @@ constexpr int rowCount = 8;
 constexpr int summaryLines = 2;
 constexpr int rangeProject = 1, rangeLoop = 2, rangeRegionBase = 10;
 
-juce::String rateText(double rate)
-{
-    const double k = rate / 1000.0;
-    return fixedText(k, std::abs(k - std::round(k)) < 1e-6 ? 0 : 1) + " kHz";
-}
-
 juce::String lufsText(double lufs)
 {
     juce::String text = fixedText(lufs, 0) + " LUFS";
@@ -78,11 +72,11 @@ ExportView::ExportView(const Theme& theme, const engine::ExportSettings& initial
                          juce::dontSendNotification);
 
     rate_.setTitle("Sample rate");
-    rate_.addItem("Project rate (" + rateText(context_.projectRate) + ")", 1);
+    rate_.addItem("Project rate (" + sampleRateText(context_.projectRate) + ")", 1);
     const auto& rates = engine::exportSampleRates();
     for (size_t i = 0; i < rates.size(); ++i)
     {
-        rate_.addItem(rateText(rates[i]), 2 + static_cast<int>(i));
+        rate_.addItem(sampleRateText(rates[i]), 2 + static_cast<int>(i));
         if (rates[i] == settings_.sampleRate)
             rate_.setSelectedId(2 + static_cast<int>(i), juce::dontSendNotification);
     }
@@ -221,7 +215,7 @@ juce::String ExportView::summary() const
         text << engine::formatName(s.format) << " at " << context_.oggQualities[s.oggQuality];
     else
         text << engine::depthName(engine::depthFor(s.format, s.depth)) << " " << engine::formatName(s.format);
-    text << ", " << rateText(rate);
+    text << ", " << sampleRateText(rate);
     if (rate != context_.projectRate)
         text << " (converted)";
     if (engine::ditherApplies(s))

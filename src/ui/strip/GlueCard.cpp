@@ -369,7 +369,7 @@ public:
         g.setFont(theme.value());
         const float shown = card_.reductionReadoutDb();
         g.setColour(shown >= 0.1f ? c.meterHot : c.textTertiary);
-        g.drawText(shown >= 0.1f ? "-" + juce::String(shown, 1) : juce::String("0.0"),
+        g.drawText(shown >= 0.1f ? minusSign() + juce::String(shown, 1) : juce::String("0.0"),
                    juce::Rectangle<float>(radius * 1.4f, 14.0f).withCentre(centre.translated(0.0f, -2.0f)),
                    juce::Justification::centred);
         g.setFont(theme.captionCaps());
@@ -435,7 +435,7 @@ public:
 
         keyHp_ = &addKnob(pg::keyHighPass, "Key HP");
         keyHp_->format = [](double hz)
-        { return hz <= pg::keyHighPassOffHz + 0.5 ? juce::String("Off") : formatHz(hz); };
+        { return hz <= pg::keyHighPassOffHz + 0.5 ? juce::String("Off") : hzText(hz); };
         mix_ = &addKnob(pg::mix);
         paramsChanged();
     }
@@ -533,7 +533,7 @@ private:
     juce::String headerStatus() const override
     {
         const float db = reductionReadoutDb();
-        return isOn() && db >= 0.1f ? "-" + juce::String(db, 1) + " dB" : juce::String();
+        return isOn() ? reductionText(db) : juce::String();
     }
     juce::Colour headerStatusColour() const override { return theme_.colours.meterHot; }
 

@@ -2,6 +2,7 @@
 
 #include "engine/Gain.h"
 #include "plugins/ChannelStrip.h"
+#include "ui/Number.h"
 #include "ui/Theme.h"
 #include "ui/Wells.h"
 
@@ -142,20 +143,6 @@ inline float yToDb(float y, float topDb, float bottomDb, juce::Rectangle<float> 
 inline float toDb(float linear)
 {
     return engine::gainToDb(linear, static_cast<float>(engine::processorFloorDb));
-}
-
-inline juce::String formatHz(double hz)
-{
-    if (hz >= 1000.0)
-        return juce::String(hz / 1000.0, hz >= 10000.0 ? 1 : 2) + " kHz";
-    return juce::String(static_cast<int>(std::lround(hz))) + " Hz";
-}
-
-inline juce::String formatDb(float db, int decimals = 1)
-{
-    if (db <= -119.0f)
-        return juce::String::fromUTF8("-\xe2\x88\x9e dB");
-    return (db > 0.05f ? "+" : "") + juce::String(db, decimals) + " dB";
 }
 
 // drawWell and drawWellFrame live in ui/Wells.h (shared with the mixer).

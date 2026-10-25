@@ -879,7 +879,7 @@ private:
     {
         const auto& theme = card_.theme();
         const auto p = plot();
-        const auto text = hz <= pw::monoOffHz + 0.5f ? juce::String("Off") : formatHz(hz);
+        const auto text = hz <= pw::monoOffHz + 0.5f ? juce::String("Off") : hzText(hz);
         const float w =
             static_cast<float>(juce::GlyphArrangement::getStringWidthInt(theme.value(), text)) + 10.0f;
         auto box = juce::Rectangle<float>(w, 16.0f).withCentre({x, monoHandleY(p) + 20.0f});
@@ -1088,7 +1088,7 @@ public:
         widthKnobs_ = {width(pw::lowWidth, "Low"), width(pw::midWidth, "Mid"), width(pw::highWidth, "High")};
         monoBelow_ = &addKnob(pw::monoBelow, "Mono below");
         monoBelow_->format = [](double hz)
-        { return hz <= pw::monoOffHz + 0.5 ? juce::String("Off") : formatHz(hz); };
+        { return hz <= pw::monoOffHz + 0.5 ? juce::String("Off") : hzText(hz); };
 
         mode_ = &addChoice(pw::spreadMode);
         mode_->setTooltip("Spread mode");

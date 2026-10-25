@@ -26,11 +26,6 @@ juce::Rectangle<int> takeDisplay(juce::Rectangle<int>& body, int controlsHeight)
     return display;
 }
 
-juce::String gainReductionText(float db)
-{
-    return db >= 0.1f ? "-" + juce::String(db, 1) + " dB" : juce::String();
-}
-
 // ----- gate -------------------------------------------------------------------------------------
 
 class GateCard final : public ModuleCard
@@ -212,7 +207,7 @@ private:
     }
     juce::String headerStatus() const override
     {
-        return isOn() ? gainReductionText(reductionReadoutDb()) : juce::String();
+        return isOn() ? reductionText(reductionReadoutDb()) : juce::String();
     }
     juce::Colour headerStatusColour() const override { return theme_.colours.meterHot; }
 
@@ -461,7 +456,7 @@ private:
     }
     juce::String headerStatus() const override
     {
-        return isOn() ? gainReductionText(reductionReadoutDb()) : juce::String();
+        return isOn() ? reductionText(reductionReadoutDb()) : juce::String();
     }
     juce::Colour headerStatusColour() const override { return theme_.colours.meterHot; }
 
@@ -572,7 +567,7 @@ private:
     }
     juce::String headerStatus() const override
     {
-        return isOn() ? gainReductionText(reductionReadoutDb()) : juce::String();
+        return isOn() ? reductionText(reductionReadoutDb()) : juce::String();
     }
     juce::Colour headerStatusColour() const override { return theme_.colours.meterHot; }
 

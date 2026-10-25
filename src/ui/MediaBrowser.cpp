@@ -3,6 +3,7 @@
 #include "ui/Db.h"
 #include "ui/MediaFiles.h"
 #include "ui/NorthlightLookAndFeel.h"
+#include "ui/Number.h"
 #include "ui/PluginBrowser.h"
 
 #include <juce_audio_formats/juce_audio_formats.h>
@@ -32,16 +33,6 @@ juce::String lengthText(double seconds)
         return juce::String(seconds, seconds < 10.0 ? 2 : 1) + " s";
     const int whole = static_cast<int>(seconds);
     return juce::String(whole / 60) + ":" + juce::String(whole % 60).paddedLeft('0', 2);
-}
-
-juce::String rateText(double rate)
-{
-    if (rate <= 0.0)
-        return {};
-    const double k = rate / 1000.0;
-    return (std::abs(k - std::round(k)) < 0.05 ? juce::String(static_cast<int>(std::round(k)))
-                                               : juce::String(k, 1)) +
-           " kHz";
 }
 
 // A tray (docs/design/design-system.md): surface1, radius md, a subtle rim.
@@ -528,7 +519,7 @@ void MediaBrowser::paintListBoxItem(int index, juce::Graphics& g, int width, int
         // Length and rate at the right, in the value face.
         g.setFont(theme_.value());
         g.setColour(c.textSecondary);
-        const auto rate = rateText(entry.sampleRate);
+        const auto rate = sampleRateText(entry.sampleRate);
         auto right = area.removeFromRight(118);
         g.setColour(c.textTertiary);
         g.drawText(rate, right.removeFromRight(64), juce::Justification::centredRight);

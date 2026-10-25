@@ -50,11 +50,6 @@ juce::Rectangle<int> takeDisplay(juce::Rectangle<int>& body, int controlsHeight)
     return display;
 }
 
-juce::String reductionText(float db)
-{
-    return db >= 0.1f ? "-" + juce::String(db, 1) + " dB" : juce::String();
-}
-
 // A draggable point on a display, the same everywhere: a 9 px textPrimary
 // disc with a ring in the module's hue.
 void drawHandle(juce::Graphics& g, const Theme& theme, juce::Colour hue, juce::Point<float> at, bool active)

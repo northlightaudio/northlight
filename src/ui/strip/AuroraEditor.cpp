@@ -647,13 +647,8 @@ public:
                 return (n > 0 ? "+" : "") + juce::String(n) + suffix;
             };
         };
-        const auto percent = [](double v)
-        { return juce::String(static_cast<int>(std::lround(v * 100.0))) + "%"; };
-        const auto signedPercent = [](double v)
-        {
-            const int n = static_cast<int>(std::lround(v * 100.0));
-            return (n > 0 ? "+" : "") + juce::String(n) + "%";
-        };
+        const auto percent = [](double v) { return percentText(v * 100.0); };
+        const auto signedPercent = [](double v) { return signedPercentText(v * 100.0); };
         oscKnobs_ = {knob(au::osc1Octave, "Oct 1", hues_.osc, integer("")),
                      knob(au::osc1Level, "Level 1", hues_.osc, percent),
                      knob(au::sub, "Sub", hues_.osc, percent),
@@ -668,11 +663,7 @@ public:
                              [](double v) { return juce::String(static_cast<int>(std::lround(v))); }),
                         knob(au::spread, "Spread", hues_.unison, integer(" ct")),
                         knob(au::width, "Width", hues_.unison)};
-        const auto hz = [](double v)
-        {
-            return v >= 1000.0 ? juce::String(v / 1000.0, 1) + " kHz"
-                               : juce::String(static_cast<int>(std::lround(v))) + " Hz";
-        };
+        const auto hz = [](double v) { return compactHzText(v); };
         filterKnobs_ = {knob(au::cutoff, "Cutoff", hues_.filter, hz),
                         knob(au::resonance, "Reso", hues_.filter, percent),
                         knob(au::drive, "Drive", hues_.filter, percent),

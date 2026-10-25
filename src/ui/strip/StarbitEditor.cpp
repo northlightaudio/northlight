@@ -575,14 +575,7 @@ public:
                            "Bits",
                            hues_.lofi,
                            [](double v) { return juce::String(static_cast<int>(std::lround(v))); }),
-                      knob(sb::rate,
-                           "Rate",
-                           hues_.lofi,
-                           [](double v)
-                           {
-                               return v >= 1000.0 ? juce::String(v / 1000.0, 1) + " kHz"
-                                                  : juce::String(static_cast<int>(v)) + " Hz";
-                           }),
+                      knob(sb::rate, "Rate", hues_.lofi, [](double v) { return compactHzText(v); }),
                       knob(sb::echo, "Echo", hues_.lofi, percent),
                       knob(sb::level, "Level", hues_.lofi)};
         for (auto* b : {&previous_, &next_, &presetName_})

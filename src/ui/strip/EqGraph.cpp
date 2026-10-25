@@ -447,7 +447,7 @@ void EqGraph::paint(juce::Graphics& g)
     const int readout = dragging_ >= 0 ? dragging_ : hovered_;
     if (readout >= 0)
     {
-        juce::String text = formatHz(card_.param(index(readout, eq::frequency)));
+        juce::String text = hzText(card_.param(index(readout, eq::frequency)));
         const int typeIndex = index(readout, eq::type);
         if (bands_.isCut(readout))
         {
@@ -462,7 +462,7 @@ void EqGraph::paint(juce::Graphics& g)
             const int shape =
                 typeIndex >= 0 ? static_cast<int>(std::lround(card_.param(typeIndex))) : eq::peak;
             if (shape != eq::notch && index(readout, eq::gain) >= 0)
-                text << "  " << formatDb(card_.param(index(readout, eq::gain)));
+                text << "  " << dbText(card_.param(index(readout, eq::gain)));
             if (index(readout, eq::q) >= 0)
                 text << "  Q " << juce::String(card_.param(index(readout, eq::q)), 2);
         }
@@ -484,8 +484,8 @@ void EqGraph::paint(juce::Graphics& g)
         // The frequency and level under the pointer.
         g.setFont(theme.font(Theme::Face::mono, theme.fonts.size.caption, theme.fonts.weight.regular));
         g.setColour(c.textTertiary);
-        g.drawText(formatHz(xToHz(hoverPoint_.x, p)) + "  " +
-                       formatDb(yToDb(hoverPoint_.y, rangeDb, -rangeDb, p)),
+        g.drawText(hzText(xToHz(hoverPoint_.x, p)) + "  " +
+                       dbText(yToDb(hoverPoint_.y, rangeDb, -rangeDb, p)),
                    p.reduced(6.0f, 4.0f).removeFromTop(14.0f),
                    juce::Justification::centredLeft);
     }

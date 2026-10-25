@@ -21,16 +21,16 @@ juce::String formatValue(const engine::ParameterInfo& info, double v)
         return juce::String(info.choices[i]);
     }
     if (info.unit == "Hz")
-        return formatHz(v);
+        return hzText(v);
     if (info.unit == "ms")
         return v >= 100.0 ? juce::String(static_cast<int>(std::lround(v))) + " ms"
                           : juce::String(v, v >= 10.0 ? 1 : 2) + " ms";
     if (info.unit == "dB")
-        return juce::String(v, std::abs(v) >= 10.0 ? 1 : 1) + " dB";
+        return dbText(v);
     if (info.unit == ":1")
         return juce::String(v, v >= 10.0 ? 1 : 2) + ":1";
     if (info.unit == "%")
-        return juce::String(static_cast<int>(std::lround(v))) + "%";
+        return percentText(v);
     return juce::String(v, 2);
 }
 } // namespace
