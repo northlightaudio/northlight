@@ -48,6 +48,8 @@ selected track in a ghosted overlay.
   in the menu (100% default); Shift+Q also ends.
 - Keyboard: arrows nudge by grid (Shift = fine, Ctrl = octave for vertical), Delete,
   Ctrl+A, +/- transpose semitone, Ctrl+D duplicate.
+- Scrolling and zoom: the wheel scrolls the notes up and down, Shift+wheel scrolls
+  time, and Ctrl+wheel zooms around the pointer, smoothly, as in the arrange view.
 - Recording: incoming notes draw in `record` as they arrive and settle to track colour
   on stop; takes as in audio.
 - MIDI clip in the arrange: body as audio clips with a miniature of the notes instead

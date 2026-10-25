@@ -14,6 +14,7 @@
 #include "ui/Theme.h"
 #include "ui/TrackHeader.h"
 #include "ui/edit/ClipOps.h"
+#include "ui/timeline/TimelineViewport.h"
 
 #include <juce_gui_basics/juce_gui_basics.h>
 
@@ -163,8 +164,9 @@ public:
     core::SamplePosition timeSelectionEnd() const noexcept { return timeSelEnd_; }
     void setFollowPlayhead(bool follow) { followPlayhead_ = follow; }
     // The time view, for views that link their zoom to this one.
-    double samplesPerPixel() const noexcept { return samplesPerPixel_; }
-    core::SamplePosition scrollPosition() const noexcept { return scroll_; }
+    double samplesPerPixel() const noexcept { return view_.samplesPerPixel; }
+    core::SamplePosition scrollPosition() const noexcept { return view_.first; }
+    const TimelineViewport& viewport() const noexcept { return view_; }
     core::SamplePosition visibleSamplesForBenchmark() const noexcept { return visibleSamples(); }
     void setScroll(core::SamplePosition firstVisible);
     // Zoom and scroll together (an editor linked to this view zoomed or scrolled).
@@ -268,8 +270,9 @@ private:
     int rulerOnly = 32;   // size.ruler: the markers row over the bars row
     static constexpr int tempoLaneHeight = 52;
     bool tempoShown_ = false;
-    int headerWidth = 260; // size.trackHeaderWidth; the boundary drags 160..360
-    int rowHeight = 56;    // size.trackRow; the corner stepper cycles min/default/large
+    // size.trackHeaderWidth (the boundary drags 160..360): where the lanes, and time, start.
+    int headerWidth() const noexcept { return view_.originX; }
+    int rowHeight = 56; // size.trackRow; the corner stepper cycles min/default/large
     // A row being resized: its channel and the height it shows until release.
     core::Id resizeChannel_ = core::invalidId;
     int resizeHeight_ = 0, resizeStartHeight_ = 0;
@@ -522,8 +525,9 @@ private:
     std::vector<std::unique_ptr<TrackHeader>> fxHeaders_; // one per FX track, after the tracks'
     std::vector<InputChoice> inputChoices_;
     std::vector<std::string> midiInputNames_;
-    double samplesPerPixel_ = 48000.0 / 40.0; // 40 px per second at 48 kHz
-    core::SamplePosition scroll_ = 0;         // first visible sample
+    // The time axis: from the headers' edge, the first visible sample, 40 px a
+    // second at 48 kHz to begin with. The lanes below keep a reference to it.
+    TimelineViewport view_{260, 0, 48000.0 / 40.0};
     juce::ScrollBar scrollbar_{false};
     juce::ScrollBar verticalScrollbar_{true};
     int verticalScroll_ = 0; // pixels
@@ -578,13 +582,13 @@ private:
     std::vector<ClipRef> sweep_;
     std::optional<bool> sweepMute_;
     juce::Point<int> pointer_{-1, -1}; // the last hover position
-    AutomationLanes automation_{theme_};
+    AutomationLanes automation_{theme_, view_};
     // A row's automation lanes: their height, and where they are (under the row
     // and its take lanes). MIDI tracks and folders have none.
     int automationHeight(int row) const noexcept;
     juce::Rectangle<int> automationBlock(int row) const noexcept;
-    std::vector<int> valuesTops_; // the row layout at the last values refresh
-    TempoLane tempoLane_{theme_}; // after theme_, which it keeps a reference to
+    std::vector<int> valuesTops_;        // the row layout at the last values refresh
+    TempoLane tempoLane_{theme_, view_}; // after theme_ and view_, which it keeps references to
     std::unique_ptr<juce::TextEditor> markerEditor_;
     core::Id editingMarker_ = core::invalidId;
 
@@ -659,7 +663,7 @@ private:
     core::SamplePosition markerPreview_ = 0; // its position during the drag
     const PluginSources* pluginSources_ = nullptr;
     // Take lanes and comping (screens/comping.md): lanes under a track's row, swipes, boundaries.
-    TakeLanes takes_{theme_, peaks_, *this};
+    TakeLanes takes_{theme_, peaks_, *this, view_};
     TakeLanes::Row takeRow(int row) const; // a track row, for TakeLanes
 };
 

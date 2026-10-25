@@ -535,6 +535,15 @@ exactly one host at a time (the dock, the side panel or a floating window), so i
 keeps its state across moves and can never be lost. Selection has one owner that
 notifies one listener, which keeps every view on the same channel.
 
+The timeline views (the arrange view and the lanes it hosts, the piano roll, the
+audio editor) map time to pixels through one `ui::TimelineViewport`
+(`src/ui/timeline/`, no JUCE): the x where time starts, the first visible sample
+and the samples per pixel, with one rounding rule both ways (a sample's column is
+its exact x rounded down; a column's first sample is the first that maps into it).
+The take lanes, automation lanes and tempo track keep a reference to the arrange
+view's, so they cannot drift from it, and Ctrl+wheel zooms every view by the same
+smooth factor around the pointer, each within its own range.
+
 The specification for every screen is in [design/](design/README.md).
 
 ## Testing

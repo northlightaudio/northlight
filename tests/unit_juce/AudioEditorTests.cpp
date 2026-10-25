@@ -119,10 +119,11 @@ TEST_CASE("Zooming a linked audio editor moves the arrange view's zoom with it",
     wheel.deltaY = 1.0f; // in
     editor.mouseWheelMove(
         wheelAt(editor, 400.0f, 200.0f, juce::ModifierKeys(juce::ModifierKeys::ctrlModifier)), wheel);
-    // The editor zoomed in (0.8 of 50 source samples a pixel) and reported it in
-    // timeline samples (stretch 2).
-    CHECK(editor.sourceSamplesPerPixel() == Approx(40.0));
-    CHECK(timelinePerPixel == Approx(80.0));
+    // The editor zoomed in (by the wheel factor every timeline view shares, from 50
+    // source samples a pixel) and reported it in timeline samples (stretch 2).
+    const double zoomed = 50.0 * ui::TimelineViewport::wheelZoomFactor(1.0);
+    CHECK(editor.sourceSamplesPerPixel() == Approx(zoomed));
+    CHECK(timelinePerPixel == Approx(2.0 * zoomed));
     CHECK(first >= 10000);
 }
 

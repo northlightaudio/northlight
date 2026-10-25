@@ -49,7 +49,8 @@ juce::String ellipsis()
 
 } // namespace
 
-AutomationLanes::AutomationLanes(const Theme& theme) : theme_(theme)
+AutomationLanes::AutomationLanes(const Theme& theme, const TimelineViewport& view)
+    : theme_(theme), view_(view)
 {
     setInterceptsMouseClicks(true, false);
     setRepaintsOnMouseActivity(false);
@@ -151,7 +152,7 @@ juce::Rectangle<int> AutomationLanes::curveArea(const Slot& slot) const
 
 juce::Rectangle<int> AutomationLanes::headerOf(const Slot& slot) const
 {
-    return slot.bounds.withWidth(geometry.headerWidth());
+    return slot.bounds.withWidth(view_.originX);
 }
 
 // The header's top line: a control's height, or the whole of a collapsed lane.
@@ -219,7 +220,7 @@ bool AutomationLanes::onResizeEdge(const Slot& slot, juce::Point<int> p) const
 
 AutomationLanes::Part AutomationLanes::partAt(const Slot& slot, juce::Point<int> p) const
 {
-    if (p.x >= geometry.headerWidth())
+    if (p.x >= view_.originX)
         return Part::none;
     if (slot.lane < 0)
     {
@@ -413,7 +414,7 @@ float AutomationLanes::pointX(const Slot& slot, core::SamplePosition position) c
 {
     // A point at the lane's left edge (the song's start) is drawn whole.
     const auto area = curveArea(slot);
-    return std::max(static_cast<float>(geometry.xForSample(position)),
+    return std::max(static_cast<float>(view_.xOf(position)),
                     static_cast<float>(area.getX() + pointRadius + 1));
 }
 
@@ -688,8 +689,7 @@ void AutomationLanes::paintLane(juce::Graphics& g, const Slot& slot) const
     juce::Path curve;
     for (int x = area.getX(); x <= area.getRight(); x += 2)
     {
-        const float v =
-            core::automationValueAt(points.data(), points.size(), key.target, geometry.sampleForX(x));
+        const float v = core::automationValueAt(points.data(), points.size(), key.target, view_.sampleAt(x));
         const float y = yOf(v);
         if (x == area.getX())
             curve.startNewSubPath(static_cast<float>(x), y);
@@ -788,7 +788,7 @@ void AutomationLanes::mouseMove(const juce::MouseEvent& e)
             pointer = juce::MouseCursor::UpDownResizeCursor;
         else if (part != Part::none)
             pointer = juce::MouseCursor::PointingHandCursor;
-        else if (l != nullptr && e.x >= geometry.headerWidth())
+        else if (l != nullptr && e.x >= view_.originX)
         {
             lane = l->id;
             point = pointAt(*slot, e.getPosition());
@@ -803,7 +803,7 @@ void AutomationLanes::mouseMove(const juce::MouseEvent& e)
     if (part != hoverPart_ || row != hoverRow_ || slotLane != hoverSlotLane_)
     {
         if (hoverPart_ != Part::none || part != Part::none)
-            repaint(0, 0, geometry.headerWidth(), getHeight());
+            repaint(0, 0, view_.originX, getHeight());
         hoverPart_ = part;
         hoverRow_ = row;
         hoverSlotLane_ = slotLane;
@@ -845,7 +845,7 @@ void AutomationLanes::mouseDown(const juce::MouseEvent& e)
         return;
     }
 
-    if (e.x < geometry.headerWidth())
+    if (e.x < view_.originX)
     {
         const auto part = partAt(*slot, e.getPosition());
         if (slot->lane < 0)
@@ -912,7 +912,7 @@ void AutomationLanes::mouseDown(const juce::MouseEvent& e)
     {
         const auto area = curveArea(*slot);
         core::AutomationPoint p;
-        p.position = std::max<core::SamplePosition>(0, geometry.snap(geometry.sampleForX(e.x)));
+        p.position = std::max<core::SamplePosition>(0, geometry.snap(view_.sampleAt(e.x)));
         p.value = fromNorm(
             *track, key, static_cast<float>(area.getBottom() - e.y) / static_cast<float>(area.getHeight()));
         auto at = std::upper_bound(dragPoints_.begin(),
@@ -962,7 +962,7 @@ void AutomationLanes::mouseDrag(const juce::MouseEvent& e)
     auto& p = dragPoints_[static_cast<size_t>(dragIndex_)];
     if (!e.mods.isShiftDown())
     {
-        auto position = std::max<core::SamplePosition>(0, geometry.snap(geometry.sampleForX(e.x)));
+        auto position = std::max<core::SamplePosition>(0, geometry.snap(view_.sampleAt(e.x)));
         // Points keep their order: a point stays between its neighbours.
         if (dragIndex_ > 0)
             position = std::max(position, dragPoints_[static_cast<size_t>(dragIndex_ - 1)].position + 1);
@@ -1015,7 +1015,7 @@ void AutomationLanes::mouseUp(const juce::MouseEvent& e)
 void AutomationLanes::mouseDoubleClick(const juce::MouseEvent& e)
 {
     const auto slot = slotAt(e.getPosition());
-    if (!slot.has_value() || e.x < geometry.headerWidth())
+    if (!slot.has_value() || e.x < view_.originX)
         return;
     const auto* track = channelOf(*slot);
     const auto* lane = laneOf(*slot);

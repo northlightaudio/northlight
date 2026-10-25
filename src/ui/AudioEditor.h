@@ -10,6 +10,7 @@
 #include "ui/Icons.h"
 #include "ui/Theme.h"
 #include "ui/components/SegmentedControl.h"
+#include "ui/timeline/TimelineViewport.h"
 
 #include <juce_gui_basics/juce_gui_basics.h>
 
@@ -65,7 +66,7 @@ public:
     // stretch against the timeline).
     core::SamplePosition playheadSource() const noexcept { return playhead_; }
     double sourceSamplesPerPixel() const noexcept { return samplesPerPixel_; }
-    double firstVisibleSource() const noexcept { return scroll_; }
+    double firstVisibleSource() const noexcept { return static_cast<double>(scroll_); }
     void setTimeView(double samplesPerPixel, core::SamplePosition absoluteFirstVisible);
     // While linked, a zoom or scroll here: the timeline samples per pixel and the
     // first visible timeline sample, for the owner to set on the arrange view.
@@ -163,6 +164,8 @@ private:
     juce::Rectangle<int> infoArea() const noexcept;
     juce::Rectangle<int> rulerArea() const noexcept;
     int leftEdge() const noexcept;
+    // The time axis, in the clip's source samples from the left edge.
+    TimelineViewport view() const noexcept { return {leftEdge(), scroll_, samplesPerPixel_}; }
     float xForSource(double source) const noexcept;
     core::SamplePosition sourceForX(float x) const noexcept;
     float yForCents(float cents) const noexcept;
@@ -207,8 +210,8 @@ private:
     Tool tool_ = Tool::pitch;
     core::SamplePosition playhead_ = -1; // source samples
     double samplesPerPixel_ = 200.0;
-    double scroll_ = 0.0;      // first visible source sample
-    float topCents_ = 7900.0f; // the pitch at the top of the grid
+    core::SamplePosition scroll_ = 0; // first visible source sample
+    float topCents_ = 7900.0f;        // the pitch at the top of the grid
     bool linked_ = false;
     bool audition_ = false;
     bool fitPending_ = true;
@@ -249,7 +252,7 @@ private:
     juce::Rectangle<int> lasso_;
     float dragGainDb_ = 0.0f;
     core::SamplePosition dragFade_ = 0;
-    double panScroll_ = 0.0;
+    core::SamplePosition panScroll_ = 0;
     float panTop_ = 0.0f;
     core::Id hoverNote_ = core::invalidId;
     core::Id hoverJoin_ = core::invalidId; // the left note of the join under the pointer

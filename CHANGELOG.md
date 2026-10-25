@@ -13,6 +13,9 @@ Northlight has not had a release yet. The first release, 0.1.0, will include:
 
 ### Added
 
+- The piano roll and the audio editor zoom smoothly with Ctrl+wheel around the
+  pointer, as the arrange view does, instead of in fixed steps.
+
 - The Limiter insert's header shows its gain reduction while it limits, as the
   channel strip's limiter does.
 - Aurora, Nebula and Starbit's preset bars list your own presets too: save the

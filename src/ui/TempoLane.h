@@ -4,6 +4,7 @@
 #include "core/Model.h"
 #include "core/TempoMap.h"
 #include "ui/Theme.h"
+#include "ui/timeline/TimelineViewport.h"
 
 #include <juce_gui_basics/juce_gui_basics.h>
 
@@ -30,14 +31,12 @@ namespace northlight::ui
 class TempoLane final : public juce::Component
 {
 public:
-    explicit TempoLane(const Theme& theme);
+    // `view` is the arrange view's time axis (the lane sits at its left edge, so
+    // its x is the view's), kept up to date by it; the header column is left of
+    // view.originX.
+    TempoLane(const Theme& theme, const TimelineViewport& view);
 
     void setProject(const core::Project* project);
-    // The arrange view's time axis: x of a timeline position and back, and the
-    // width of the header column on the left.
-    std::function<int(core::SamplePosition)> xForSample;
-    std::function<core::SamplePosition(int)> sampleForX;
-    int headerWidth = 260;
     // The song position the header's readout shows.
     std::function<core::SamplePosition()> playhead;
 
@@ -75,6 +74,8 @@ private:
     void updateRange();
 
     const Theme& theme_;
+    const TimelineViewport& view_;
+    int headerWidth() const noexcept { return view_.originX; }
     const core::Project* project_ = nullptr;
     core::TempoState state_;
     std::optional<core::TempoState> editing_; // while a handle is dragged

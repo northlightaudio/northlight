@@ -319,10 +319,11 @@ void AudioEditor::setTimeView(double samplesPerPixel, core::SamplePosition absol
     const double source = static_cast<double>(c->sourceOffset) +
                           toSourceSpan(*c, static_cast<double>(absoluteFirstVisible - c->start));
     const double sourcePerPixel = std::max(1.0, toSourceSpan(*c, samplesPerPixel));
-    if (std::abs(sourcePerPixel - samplesPerPixel_) < 1.0e-9 && std::abs(source - scroll_) < 0.5)
+    const auto first = static_cast<core::SamplePosition>(std::llround(source));
+    if (std::abs(sourcePerPixel - samplesPerPixel_) < 1.0e-9 && first == scroll_)
         return;
     samplesPerPixel_ = sourcePerPixel;
-    scroll_ = source;
+    scroll_ = first;
     updateScrollbars();
     repaint();
 }
@@ -333,7 +334,8 @@ void AudioEditor::zoomTo(double samplesPerPixel, double secondsIntoClip)
     if (c == nullptr || project_ == nullptr)
         return;
     samplesPerPixel_ = std::clamp(samplesPerPixel, 1.0, 100000.0);
-    scroll_ = static_cast<double>(c->sourceOffset) + toSourceSpan(*c, secondsIntoClip * project_->sampleRate);
+    scroll_ = c->sourceOffset + static_cast<core::SamplePosition>(
+                                    std::llround(toSourceSpan(*c, secondsIntoClip * project_->sampleRate)));
     fitPending_ = false;
     updateScrollbars();
     repaint();
@@ -508,12 +510,12 @@ juce::Rectangle<int> AudioEditor::infoArea() const noexcept
 
 float AudioEditor::xForSource(double source) const noexcept
 {
-    return static_cast<float>(leftEdge() + (source - scroll_) / samplesPerPixel_);
+    return static_cast<float>(view().exactX(source));
 }
 
 core::SamplePosition AudioEditor::sourceForX(float x) const noexcept
 {
-    return static_cast<core::SamplePosition>(std::llround(scroll_ + (x - leftEdge()) * samplesPerPixel_));
+    return view().sampleAt(static_cast<double>(x));
 }
 
 float AudioEditor::yForCents(float cents) const noexcept
@@ -534,7 +536,7 @@ void AudioEditor::fitToClip()
         return;
     samplesPerPixel_ = std::max(
         1.0, static_cast<double>(std::max<core::SamplePosition>(1, c->sourceLength())) / (width - 16));
-    scroll_ = static_cast<double>(c->sourceOffset);
+    scroll_ = c->sourceOffset;
     fitPending_ = false;
     updateScrollbars();
 }
@@ -576,8 +578,9 @@ void AudioEditor::updateScrollbars()
         const double start = static_cast<double>(c->sourceOffset);
         const double length = static_cast<double>(std::max<core::SamplePosition>(1, c->sourceLength()));
         const double visible = area.getWidth() * samplesPerPixel_;
-        horizontal_.setRangeLimits(std::min(start, scroll_), std::max(start + length, scroll_ + visible));
-        horizontal_.setCurrentRange(scroll_, visible, juce::dontSendNotification);
+        const double first = static_cast<double>(scroll_);
+        horizontal_.setRangeLimits(std::min(start, first), std::max(start + length, first + visible));
+        horizontal_.setCurrentRange(first, visible, juce::dontSendNotification);
     }
     const double rows = static_cast<double>(area.getHeight()) / rowHeight * 100.0;
     vertical_.setRangeLimits(0.0, 12800.0);
@@ -592,7 +595,7 @@ void AudioEditor::scrollBarMoved(juce::ScrollBar* bar, double newRangeStart)
         return;
     if (bar == &horizontal_)
     {
-        scroll_ = newRangeStart;
+        scroll_ = static_cast<core::SamplePosition>(std::llround(newRangeStart));
         notifyTimeView();
     }
     else
@@ -605,7 +608,7 @@ void AudioEditor::notifyTimeView()
     const auto* c = clip();
     if (!linked_ || c == nullptr || !onTimeViewChanged)
         return;
-    const double first = toTimelineSpan(*c, scroll_ - static_cast<double>(c->sourceOffset));
+    const double first = toTimelineSpan(*c, static_cast<double>(scroll_ - c->sourceOffset));
     onTimeViewChanged(toTimelineSpan(*c, samplesPerPixel_),
                       c->start + static_cast<core::SamplePosition>(std::llround(first)));
 }
@@ -788,7 +791,7 @@ void AudioEditor::paintRuler(juce::Graphics& g)
     };
     const auto toSource = [cl](core::SamplePosition t)
     { return static_cast<double>(cl->sourceOffset) + static_cast<double>(t - cl->start) / cl->stretch; };
-    const auto first = std::max<core::SamplePosition>(0, toTimeline(scroll_));
+    const auto first = std::max<core::SamplePosition>(0, toTimeline(static_cast<double>(scroll_)));
     const auto last = toTimeline(static_cast<double>(sourceForX(static_cast<float>(ruler.getRight()))));
     const auto step = map.adaptiveStep(samplesPerPixel_ * cl->stretch, 48, first);
     g.setFont(theme_.caption());
@@ -1171,7 +1174,7 @@ void AudioEditor::paintPitch(juce::Graphics& g)
             return cl->start + static_cast<core::SamplePosition>(std::llround(
                                    (source - static_cast<double>(cl->sourceOffset)) * cl->stretch));
         };
-        const auto first = std::max<core::SamplePosition>(0, toTimeline(scroll_));
+        const auto first = std::max<core::SamplePosition>(0, toTimeline(static_cast<double>(scroll_)));
         const auto last = toTimeline(static_cast<double>(sourceForX(static_cast<float>(grid.getRight()))));
         const auto step = map.adaptiveStep(samplesPerPixel_ * cl->stretch, 48, first);
         g.setColour(c.gridSub);
@@ -1511,7 +1514,7 @@ void AudioEditor::mouseDrag(const juce::MouseEvent& e)
     switch (drag_)
     {
         case Drag::pan:
-            scroll_ = panScroll_ - dx * samplesPerPixel_;
+            scroll_ = panScroll_ - static_cast<core::SamplePosition>(std::llround(dx * samplesPerPixel_));
             topCents_ = panTop_ - static_cast<float>(dy) / rowHeight * 100.0f;
             updateScrollbars();
             break;
@@ -1729,15 +1732,14 @@ void AudioEditor::mouseWheelMove(const juce::MouseEvent& e, const juce::MouseWhe
 {
     if (e.mods.isCtrlDown())
     {
-        const auto anchor = static_cast<double>(sourceForX(static_cast<float>(e.x)));
-        const double factor = wheel.deltaY > 0 ? 0.8 : 1.25;
-        samplesPerPixel_ = std::clamp(samplesPerPixel_ * factor, 1.0, 100000.0);
-        scroll_ = anchor - (e.x - leftEdge()) * samplesPerPixel_;
+        const auto zoomed = view().wheelZoomed(wheel.deltaY, e.x, 1.0, 100000.0);
+        samplesPerPixel_ = zoomed.samplesPerPixel;
+        scroll_ = zoomed.first;
         notifyTimeView();
     }
     else if (e.mods.isShiftDown() || mode_ == Mode::wave)
     {
-        scroll_ -= wheel.deltaY * 200.0 * samplesPerPixel_;
+        scroll_ -= static_cast<core::SamplePosition>(std::llround(wheel.deltaY * 200.0 * samplesPerPixel_));
         notifyTimeView();
     }
     else

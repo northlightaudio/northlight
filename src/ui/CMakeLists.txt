@@ -8,10 +8,12 @@ file(READ "${NORTHLIGHT_TOKENS_FILE}" NORTHLIGHT_TOKENS_JSON)
 configure_file(TokensEmbedded.inc.in "${CMAKE_CURRENT_BINARY_DIR}/generated/TokensEmbedded.inc" @ONLY)
 set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS "${NORTHLIGHT_TOKENS_FILE}")
 
-# The arrange view's clip edits as plain functions (JUCE-free, unit tested).
+# The timeline views' logic that needs no JUCE (unit tested): the arrange view's
+# clip edits as plain functions, and the time axis every timeline view shares.
 add_library(northlight_ui_edit STATIC
     edit/ClipOps.h
-    edit/ClipOps.cpp)
+    edit/ClipOps.cpp
+    timeline/TimelineViewport.h)
 target_include_directories(northlight_ui_edit PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/..")
 target_link_libraries(northlight_ui_edit PUBLIC northlight_core northlight_options)
 

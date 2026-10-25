@@ -4,6 +4,7 @@
 #include "core/Model.h"
 #include "engine/Insert.h"
 #include "ui/Theme.h"
+#include "ui/timeline/TimelineViewport.h"
 
 #include <juce_gui_basics/juce_gui_basics.h>
 
@@ -36,15 +37,14 @@ namespace northlight::ui
 class AutomationLanes final : public juce::Component
 {
 public:
-    explicit AutomationLanes(const Theme& theme);
+    // `view` is the arrange view's time axis (this component covers the view, so
+    // its coordinates are the same), kept up to date by it.
+    AutomationLanes(const Theme& theme, const TimelineViewport& view);
 
-    // The arrange view's mapping, in this component's coordinates (it covers the view).
+    // The arrange view's rows, in this component's coordinates (it covers the view).
     struct Geometry
     {
-        std::function<int(core::SamplePosition)> xForSample;
-        std::function<core::SamplePosition(int)> sampleForX;
         std::function<core::SamplePosition(core::SamplePosition)> snap;
-        std::function<int()> headerWidth;
         std::function<juce::Rectangle<int>()> lanesArea; // right of the headers, under the ruler
         // The rows: tracks, then FX tracks.
         std::function<int()> rowCount;
@@ -152,6 +152,7 @@ private:
                     const std::string& name);
 
     const Theme& theme_;
+    const TimelineViewport& view_;
     const core::Project* project_ = nullptr;
 
     // The drag: a preview of a lane's points with one moving.

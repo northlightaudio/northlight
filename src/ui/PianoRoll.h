@@ -6,6 +6,7 @@
 #include "ui/Icons.h"
 #include "ui/Theme.h"
 #include "ui/components/SegmentedControl.h"
+#include "ui/timeline/TimelineViewport.h"
 
 #include <juce_gui_basics/juce_gui_basics.h>
 
@@ -170,6 +171,8 @@ private:
     juce::Rectangle<int> rulerArea() const noexcept;
     juce::Rectangle<int> keysArea() const noexcept;
     juce::Rectangle<int> velocityArea() const noexcept;
+    // The time axis, in clip-relative samples from the keyboard's edge.
+    TimelineViewport view() const noexcept { return {keyboardWidth, scroll_, samplesPerPixel_}; }
     int xForSample(core::SamplePosition s) const noexcept; // clip-relative
     core::SamplePosition sampleForX(int x) const noexcept;
     int yForNote(int note) const noexcept; // top of the row

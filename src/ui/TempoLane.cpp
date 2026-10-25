@@ -37,7 +37,7 @@ juce::String bpmText(double bpm)
 }
 } // namespace
 
-TempoLane::TempoLane(const Theme& theme) : theme_(theme)
+TempoLane::TempoLane(const Theme& theme, const TimelineViewport& view) : theme_(theme), view_(view)
 {
     setWantsKeyboardFocus(true);
     setMouseClickGrabsKeyboardFocus(true);
@@ -76,7 +76,7 @@ core::TempoState TempoLane::shown() const
 
 juce::Rectangle<int> TempoLane::lane() const noexcept
 {
-    return getLocalBounds().withTrimmedLeft(headerWidth);
+    return getLocalBounds().withTrimmedLeft(headerWidth());
 }
 
 float TempoLane::yForBpm(double bpm) const noexcept
@@ -104,32 +104,32 @@ double TempoLane::bpmOf(const core::TempoState& state, int index) const noexcept
 juce::Point<float> TempoLane::handlePosition(int index) const
 {
     const auto s = shown();
-    if (!xForSample || project_ == nullptr)
+    if (project_ == nullptr)
         return {};
     if (index < 0)
-        return {static_cast<float>(xForSample(0)), yForBpm(s.bpm)};
+        return {static_cast<float>(view_.xOf(0)), yForBpm(s.bpm)};
     const auto map = mapOf(s, project_->sampleRate);
     const auto& change = s.tempoChanges[static_cast<size_t>(index)];
-    return {static_cast<float>(xForSample(map.positionAt(change.quarter))), yForBpm(change.bpm)};
+    return {static_cast<float>(view_.xOf(map.positionAt(change.quarter))), yForBpm(change.bpm)};
 }
 
 std::vector<juce::Point<float>> TempoLane::handlePositions() const
 {
     const auto s = shown();
     std::vector<juce::Point<float>> out;
-    if (!xForSample || project_ == nullptr)
+    if (project_ == nullptr)
         return out;
     out.reserve(s.tempoChanges.size() + 1);
-    out.push_back({static_cast<float>(xForSample(0)), yForBpm(s.bpm)});
+    out.push_back({static_cast<float>(view_.xOf(0)), yForBpm(s.bpm)});
     const auto map = mapOf(s, project_->sampleRate);
     for (const auto& change : s.tempoChanges)
-        out.push_back({static_cast<float>(xForSample(map.positionAt(change.quarter))), yForBpm(change.bpm)});
+        out.push_back({static_cast<float>(view_.xOf(map.positionAt(change.quarter))), yForBpm(change.bpm)});
     return out;
 }
 
 std::optional<int> TempoLane::handleAt(juce::Point<int> p) const
 {
-    if (p.x < headerWidth)
+    if (p.x < headerWidth())
         return std::nullopt;
     const auto s = shown();
     const auto positions = handlePositions();
@@ -153,13 +153,13 @@ std::optional<int> TempoLane::handleAt(juce::Point<int> p) const
 
 std::optional<int> TempoLane::meterAt(juce::Point<int> p) const
 {
-    if (p.y >= tagRow || p.x < headerWidth || project_ == nullptr || !xForSample)
+    if (p.y >= tagRow || p.x < headerWidth() || project_ == nullptr)
         return std::nullopt;
     const auto map = mapOf(shown(), project_->sampleRate);
     const auto& points = map.meterPoints();
     for (int i = static_cast<int>(points.size()) - 1; i >= 0; --i)
     {
-        const int x = xForSample(map.positionAt(points[static_cast<size_t>(i)].quarter));
+        const int x = view_.xOf(map.positionAt(points[static_cast<size_t>(i)].quarter));
         if (p.x >= x && p.x <= x + 30)
             return i - 1; // -1: the song's start
     }
@@ -175,17 +175,18 @@ void TempoLane::paint(juce::Graphics& g)
     g.setColour(c.laneAlt);
     g.fillRect(area);
     g.setColour(c.surface0);
-    g.fillRect(0, 0, headerWidth, getHeight());
+    g.fillRect(0, 0, headerWidth(), getHeight());
     g.setColour(c.lineSubtle);
     g.fillRect(0, getHeight() - 1, getWidth(), 1);
-    g.fillRect(headerWidth - 1, 0, 1, getHeight());
+    g.fillRect(headerWidth() - 1, 0, 1, getHeight());
 
     // The header: the lane's name and the tempo at the playhead.
     const auto s = shown();
     const double rate = project_ != nullptr ? project_->sampleRate : 48000.0;
     const auto map = mapOf(s, rate);
     {
-        auto header = juce::Rectangle<int>(0, 0, headerWidth - 1, getHeight()).reduced(theme_.spacing.sm, 0);
+        auto header =
+            juce::Rectangle<int>(0, 0, headerWidth() - 1, getHeight()).reduced(theme_.spacing.sm, 0);
         g.setColour(c.textTertiary);
         g.setFont(theme_.captionCaps());
         g.drawText("TEMPO",
@@ -199,7 +200,7 @@ void TempoLane::paint(juce::Graphics& g)
                    header.withTrimmedBottom(4),
                    juce::Justification::topLeft);
     }
-    if (project_ == nullptr || !xForSample || !sampleForX)
+    if (project_ == nullptr)
         return;
 
     g.saveState();
@@ -211,7 +212,7 @@ void TempoLane::paint(juce::Graphics& g)
     bool started = false;
     for (int x = left - 2; x <= right + 2; x += 2)
     {
-        const auto at = std::max<core::SamplePosition>(0, sampleForX(x));
+        const auto at = std::max<core::SamplePosition>(0, view_.sampleAt(x));
         const float y = yForBpm(map.bpmAt(at));
         if (!started)
         {
@@ -234,7 +235,7 @@ void TempoLane::paint(juce::Graphics& g)
     g.setFont(theme_.caption());
     for (const auto& m : map.meterPoints())
     {
-        const int x = xForSample(map.positionAt(m.quarter));
+        const int x = view_.xOf(map.positionAt(m.quarter));
         if (x < left - 30 || x > right)
             continue;
         g.setColour(c.markerFlag);
@@ -282,7 +283,7 @@ void TempoLane::paint(juce::Graphics& g)
     // The playhead runs through the lane as it does through the tracks.
     if (playhead)
     {
-        const int x = xForSample(playhead());
+        const int x = view_.xOf(playhead());
         if (x >= left && x < right)
         {
             g.setColour(c.playhead);
@@ -304,7 +305,7 @@ void TempoLane::commit(core::TempoState state, const std::string& name)
 
 void TempoLane::mouseDown(const juce::MouseEvent& e)
 {
-    if (project_ == nullptr || e.x < headerWidth)
+    if (project_ == nullptr || e.x < headerWidth())
         return;
     draggedFar_ = false;
     movedSideways_ = false;
@@ -332,8 +333,8 @@ void TempoLane::mouseDown(const juce::MouseEvent& e)
     }
     selected_ = -2;
     repaint();
-    if (e.mods.isPopupMenu() && sampleForX)
-        laneMenu(std::max<core::SamplePosition>(0, sampleForX(e.x)), e.getScreenPosition());
+    if (e.mods.isPopupMenu())
+        laneMenu(std::max<core::SamplePosition>(0, view_.sampleAt(e.x)), e.getScreenPosition());
 }
 
 void TempoLane::mouseDrag(const juce::MouseEvent& e)
@@ -361,17 +362,15 @@ void TempoLane::mouseDrag(const juce::MouseEvent& e)
         // song, snapped to the grid of the tempo before it.
         if (!movedSideways_ && std::abs(delta.x) > 6 && std::abs(delta.x) > std::abs(delta.y))
             movedSideways_ = true;
-        if (movedSideways_ && sampleForX)
+        if (movedSideways_)
         {
             auto without = state_;
             without.tempoChanges.erase(without.tempoChanges.begin() + dragging_);
             const auto before = mapOf(without, project_->sampleRate);
-            auto at = std::max<core::SamplePosition>(0, sampleForX(e.x));
+            auto at = std::max<core::SamplePosition>(0, view_.sampleAt(e.x));
             if (!e.mods.isAltDown())
             {
-                const double samplesPerPixel =
-                    static_cast<double>(sampleForX(e.x + 100) - sampleForX(e.x)) / 100.0;
-                at = before.snap(at, before.adaptiveStep(samplesPerPixel, 16, at));
+                at = before.snap(at, before.adaptiveStep(view_.samplesPerPixel, 16, at));
             }
             const double previous =
                 dragging_ > 0 ? state_.tempoChanges[static_cast<size_t>(dragging_ - 1)].quarter : 0.0;
@@ -428,12 +427,12 @@ void TempoLane::mouseExit(const juce::MouseEvent&)
 
 void TempoLane::mouseDoubleClick(const juce::MouseEvent& e)
 {
-    if (project_ == nullptr || e.x < headerWidth)
+    if (project_ == nullptr || e.x < headerWidth())
         return;
     if (const auto handle = handleAt(e.getPosition()))
         typeTempo(*handle);
-    else if (sampleForX && e.y >= tagRow)
-        addChange(std::max<core::SamplePosition>(0, sampleForX(e.x)));
+    else if (e.y >= tagRow)
+        addChange(std::max<core::SamplePosition>(0, view_.sampleAt(e.x)));
 }
 
 bool TempoLane::keyPressed(const juce::KeyPress& key)
@@ -455,12 +454,7 @@ void TempoLane::addChange(core::SamplePosition at)
     if (project_ == nullptr)
         return;
     const auto map = mapOf(state_, project_->sampleRate);
-    if (sampleForX && xForSample)
-    {
-        const int x = xForSample(at);
-        const double samplesPerPixel = static_cast<double>(sampleForX(x + 100) - sampleForX(x)) / 100.0;
-        at = map.snap(at, map.adaptiveStep(samplesPerPixel, 16, at));
-    }
+    at = map.snap(at, map.adaptiveStep(view_.samplesPerPixel, 16, at));
     const double quarter = map.quartersAt(static_cast<double>(at));
     if (quarter <= minimumGap)
         return;

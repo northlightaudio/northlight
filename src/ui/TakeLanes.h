@@ -4,6 +4,7 @@
 #include "core/CommandFwd.h"
 #include "core/Model.h"
 #include "ui/Theme.h"
+#include "ui/timeline/TimelineViewport.h"
 
 #include <juce_gui_basics/juce_gui_basics.h>
 
@@ -34,17 +35,14 @@ namespace northlight::ui
 class TakeLanes
 {
 public:
-    TakeLanes(const Theme& theme, audio::PeakStore& peaks, juce::Component& owner);
+    // `view` is the owner's time axis (its coordinates), kept up to date by it.
+    TakeLanes(const Theme& theme,
+              audio::PeakStore& peaks,
+              juce::Component& owner,
+              const TimelineViewport& view);
     ~TakeLanes();
 
-    struct Geometry
-    {
-        std::function<int(core::SamplePosition)> xForSample;
-        std::function<core::SamplePosition(int)> sampleForX;
-        std::function<core::SamplePosition(core::SamplePosition)> snap; // the view's grid, when on
-        std::function<double()> samplesPerPixel;
-        std::function<double()> sampleRate;
-    } geometry;
+    std::function<core::SamplePosition(core::SamplePosition)> snap; // the view's grid, when on
     // An edit: commands run as one undo step with this name.
     std::function<void(std::vector<std::unique_ptr<core::Command>>, const std::string&)> onEdit;
     std::function<void()> onRepaint;
@@ -121,6 +119,8 @@ private:
                   juce::Colour colour,
                   const core::TakeGroup& group) const;
     void emit(std::unique_ptr<core::Command> command, const std::string& name);
+    double sampleRate() const noexcept;
+    core::SamplePosition snapped(core::SamplePosition at) const;
     void laneMenu(const core::Track& track,
                   const core::TakeGroup& group,
                   const core::Take& take,
@@ -131,6 +131,7 @@ private:
     const Theme& theme_;
     audio::PeakStore& peaks_;
     juce::Component& owner_;
+    const TimelineViewport& view_;
     const core::Project* project_ = nullptr;
     Press press_;
     // Hover: the boundary under the pointer (group id and position), for its highlight.

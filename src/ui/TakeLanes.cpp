@@ -27,12 +27,25 @@ bool inComp(const core::TakeGroup& group, core::Id take) noexcept
 }
 } // namespace
 
-TakeLanes::TakeLanes(const Theme& theme, audio::PeakStore& peaks, juce::Component& owner)
-    : theme_(theme), peaks_(peaks), owner_(owner)
+TakeLanes::TakeLanes(const Theme& theme,
+                     audio::PeakStore& peaks,
+                     juce::Component& owner,
+                     const TimelineViewport& view)
+    : theme_(theme), peaks_(peaks), owner_(owner), view_(view)
 {
 }
 
 TakeLanes::~TakeLanes() = default;
+
+double TakeLanes::sampleRate() const noexcept
+{
+    return project_ != nullptr && project_->sampleRate > 0.0 ? project_->sampleRate : 48000.0;
+}
+
+core::SamplePosition TakeLanes::snapped(core::SamplePosition at) const
+{
+    return snap ? snap(at) : at;
+}
 
 int TakeLanes::laneCount(const core::Track& track) const noexcept
 {
@@ -79,7 +92,7 @@ const core::TakeGroup* TakeLanes::headerGroup(const Row& row, int lane) const no
             continue;
         if (first == nullptr)
             first = &g;
-        if (geometry.xForSample(g.end()) > row.headerWidth) // the first one still in view
+        if (view_.xOf(g.end()) > row.headerWidth) // the first one still in view
             return &g;
     }
     return first;
@@ -87,7 +100,7 @@ const core::TakeGroup* TakeLanes::headerGroup(const Row& row, int lane) const no
 
 juce::Rectangle<int> TakeLanes::chipBounds(const core::TakeGroup& group, const Row& row) const
 {
-    const int x0 = std::max(geometry.xForSample(group.start()), row.main.getX()) + theme_.spacing.xs;
+    const int x0 = std::max(view_.xOf(group.start()), row.main.getX()) + theme_.spacing.xs;
     const auto text = juce::String(group.takes.size()) + (group.takes.size() == 1 ? " take" : " takes");
     const int w = theme_.sizes.iconSmall + theme_.spacing.xs +
                   juce::GlyphArrangement::getStringWidthInt(theme_.caption(), text) + 2 * theme_.spacing.sm;
@@ -105,7 +118,7 @@ TakeLanes::boundaryAt(const core::TakeGroup& group, const Row& row, juce::Point<
     int bestDistance = boundaryReach + 1;
     for (size_t k = 1; k < group.comp.size(); ++k)
     {
-        const int d = std::abs(geometry.xForSample(group.comp[k].start) - p.x);
+        const int d = std::abs(view_.xOf(group.comp[k].start) - p.x);
         if (d < bestDistance)
         {
             bestDistance = d;
@@ -141,13 +154,13 @@ void TakeLanes::drawWave(juce::Graphics& g,
                          juce::Colour colour,
                          const core::TakeGroup& group) const
 {
-    const auto peaks = peaks_.peaksFor(clip.mediaPath, geometry.sampleRate());
+    const auto peaks = peaks_.peaksFor(clip.mediaPath, sampleRate());
     if (peaks == nullptr || peaks->empty() || area.isEmpty())
         return;
-    const auto first = clip.sourceAt(geometry.sampleForX(area.getX()) - clip.start);
-    const auto last = clip.sourceAt(geometry.sampleForX(area.getRight()) - clip.start);
+    const auto first = clip.sourceAt(view_.sampleAt(area.getX()) - clip.start);
+    const auto last = clip.sourceAt(view_.sampleAt(area.getRight()) - clip.start);
     const auto view = peaks_.viewFor(clip.mediaPath,
-                                     geometry.sampleRate(),
+                                     sampleRate(),
                                      first,
                                      last + 1,
                                      static_cast<double>(last - first) / std::max(1, area.getWidth()));
@@ -162,11 +175,11 @@ void TakeLanes::drawWave(juce::Graphics& g,
         const float half = laneHeight * 0.48f * scale;
         for (int x = area.getX(); x < area.getRight(); ++x)
         {
-            const auto at = geometry.sampleForX(x);
+            const auto at = view_.sampleAt(x);
             const auto* segment = core::segmentAt(group, at);
             g.setColour(segment != nullptr && segment->take == clip.id ? lit : dim);
             const auto from = clip.sourceAt(at - clip.start);
-            const auto to = clip.sourceAt(geometry.sampleForX(x + 1) - clip.start);
+            const auto to = clip.sourceAt(view_.sampleAt(x + 1) - clip.start);
             const auto r = view.lookup(ch, from, std::max(to, from + 1));
             const float top = midY - r.maximum * half;
             const float bottom = midY - r.minimum * half;
@@ -195,7 +208,7 @@ void TakeLanes::paintMain(juce::Graphics& g, const Row& row) const
                 const auto* take = segment != nullptr ? group.findTake(segment->take) : nullptr;
                 if (take == nullptr)
                     continue;
-                const int x0 = geometry.xForSample(clip.start), x1 = geometry.xForSample(clip.end());
+                const int x0 = view_.xOf(clip.start), x1 = view_.xOf(clip.end());
                 if (x1 - x0 < 64)
                     continue;
                 const auto strip =
@@ -217,7 +230,7 @@ void TakeLanes::paintMain(juce::Graphics& g, const Row& row) const
             const bool lit = (hoverGroup_ == group.id && hoverBoundary_ == group.comp[k].start) ||
                              (press_.kind == PressKind::boundary && press_.group == group.id &&
                               press_.anchor == group.comp[k].start);
-            const int x = geometry.xForSample(at);
+            const int x = view_.xOf(at);
             g.setColour(lit ? c.accent : c.textPrimary.withAlpha(0.35f));
             g.fillRect(lit ? x - 1 : x, top, lit ? 2 : 1, std::max(0, bottom - top));
         }
@@ -265,8 +278,8 @@ void TakeLanes::paintLanes(juce::Graphics& g, const Row& row) const
             if (take == nullptr)
                 continue;
             const auto& clip = take->clip;
-            const int x0 = geometry.xForSample(clip.start);
-            const int x1 = std::max(x0 + 2, geometry.xForSample(clip.end()));
+            const int x0 = view_.xOf(clip.start);
+            const int x1 = std::max(x0 + 2, view_.xOf(clip.end()));
             const auto block = juce::Rectangle<int>(x0, area.getY() + 2, x1 - x0, area.getHeight() - 5);
             if (block.getRight() < area.getX() || block.getX() > area.getRight())
                 continue;
@@ -276,9 +289,8 @@ void TakeLanes::paintLanes(juce::Graphics& g, const Row& row) const
             for (const auto& s : group.comp)
                 if (s.take == take->id())
                 {
-                    const int s0 = std::max(block.getX(), geometry.xForSample(std::max(s.start, clip.start)));
-                    const int s1 =
-                        std::min(block.getRight(), geometry.xForSample(std::min(s.end, clip.end())));
+                    const int s0 = std::max(block.getX(), view_.xOf(std::max(s.start, clip.start)));
+                    const int s1 = std::min(block.getRight(), view_.xOf(std::min(s.end, clip.end())));
                     if (s1 <= s0)
                         continue;
                     const auto lit = juce::Rectangle<int>(s0, block.getY(), s1 - s0, block.getHeight());
@@ -296,7 +308,7 @@ void TakeLanes::paintLanes(juce::Graphics& g, const Row& row) const
             {
                 const auto from = std::max(std::min(press_.anchor, press_.current), clip.start);
                 const auto to = std::min(std::max(press_.anchor, press_.current), clip.end());
-                const int s0 = geometry.xForSample(from), s1 = geometry.xForSample(to);
+                const int s0 = view_.xOf(from), s1 = view_.xOf(to);
                 if (s1 > s0)
                 {
                     const auto swipe = juce::Rectangle<int>(s0, block.getY(), s1 - s0, block.getHeight());
@@ -382,7 +394,7 @@ bool TakeLanes::mouseDown(const juce::MouseEvent& e, const Row& row)
         return false;
     const auto& track = *row.track;
     const auto p = e.getPosition();
-    const auto at = geometry.sampleForX(p.x);
+    const auto at = view_.sampleAt(p.x);
 
     // The lanes and their headers.
     if (const int lane = laneAt(row, p.y); lane >= 0)
@@ -418,7 +430,7 @@ bool TakeLanes::mouseDown(const juce::MouseEvent& e, const Row& row)
             press_.group = group.id;
             press_.take = take->id();
             press_.lane = lane;
-            press_.anchor = press_.current = geometry.snap(at);
+            press_.anchor = press_.current = snapped(at);
             press_.start = p;
             return true;
         }
@@ -461,7 +473,7 @@ void TakeLanes::mouseDrag(const juce::MouseEvent& e)
     if (press_.kind == PressKind::none)
         return;
     press_.moved = press_.moved || std::abs(e.x - press_.start.x) >= 3;
-    const auto at = geometry.snap(geometry.sampleForX(e.x));
+    const auto at = snapped(view_.sampleAt(e.x));
     if (at != press_.current)
     {
         press_.current = at;

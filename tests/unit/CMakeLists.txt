@@ -70,7 +70,8 @@ add_executable(northlight_unit_tests
     engine/FreezeTests.cpp
     hosting/PluginRegistryTests.cpp
     ui/SelectionTests.cpp
-    ui/ClipOpsTests.cpp)
+    ui/ClipOpsTests.cpp
+    ui/TimelineViewportTests.cpp)
 
 target_link_libraries(northlight_unit_tests PRIVATE
     northlight_options

@@ -160,6 +160,9 @@ undoable command, and any note can be adjusted afterwards.
   - **Breath.**
 - Clicking a note auditions it. The ruler and playhead link to the arrange view, as
   the piano roll's "Link zoom to arrange" does.
+- Scrolling and zoom: in wave mode the wheel scrolls time; in pitch mode it scrolls
+  the pitches and Shift+wheel scrolls time. Ctrl+wheel zooms around the pointer,
+  smoothly, as in the arrange view.
 - **A stretched or transposed clip:** pitch edits do not play on it (the stretch
   renders from the media file), so pitch mode shows, centred in `body`
   `textSecondary`, "Pitch edits play on clips that are not stretched or transposed",

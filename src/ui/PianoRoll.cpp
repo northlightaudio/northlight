@@ -230,12 +230,12 @@ juce::Rectangle<int> PianoRoll::velocityArea() const noexcept
 
 int PianoRoll::xForSample(core::SamplePosition s) const noexcept
 {
-    return keyboardWidth + static_cast<int>(std::floor(static_cast<double>(s - scroll_) / samplesPerPixel_));
+    return view().xOf(s);
 }
 
 core::SamplePosition PianoRoll::sampleForX(int x) const noexcept
 {
-    return scroll_ + static_cast<core::SamplePosition>(std::floor((x - keyboardWidth) * samplesPerPixel_));
+    return view().sampleAt(x);
 }
 
 int PianoRoll::yForNote(int note) const noexcept
@@ -468,11 +468,9 @@ void PianoRoll::mouseWheelMove(const juce::MouseEvent& e, const juce::MouseWheel
 {
     if (e.mods.isCtrlDown())
     {
-        const auto anchor = sampleForX(e.x);
-        const double factor = wheel.deltaY > 0 ? 0.8 : 1.25;
-        samplesPerPixel_ = std::clamp(samplesPerPixel_ * factor, 1.0, 100000.0);
-        scroll_ = std::max<core::SamplePosition>(
-            0, anchor - static_cast<core::SamplePosition>((e.x - keyboardWidth) * samplesPerPixel_));
+        const auto zoomed = view().wheelZoomed(wheel.deltaY, e.x, 1.0, 100000.0);
+        samplesPerPixel_ = zoomed.samplesPerPixel;
+        scroll_ = std::max<core::SamplePosition>(0, zoomed.first);
         notifyTimeView();
     }
     else if (e.mods.isShiftDown())

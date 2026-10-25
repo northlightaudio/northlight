@@ -39,7 +39,7 @@ ArrangeView::ArrangeView(audio::PeakStore& peaks)
     setOpaque(true);
     rulerOnly = theme_.sizes.ruler;
     rulerHeight = rulerOnly;
-    headerWidth = theme_.sizes.trackHeaderWidth;
+    view_.originX = theme_.sizes.trackHeaderWidth;
     rowHeight = theme_.sizes.trackRow;
     scrollbarHeight = theme_.sizes.scrollbar;
     scrollbarWidth = theme_.sizes.scrollbar;
@@ -64,14 +64,11 @@ ArrangeView::ArrangeView(audio::PeakStore& peaks)
         addAndMakeVisible(*b);
     }
     refreshToolButtons();
-    automation_.geometry.xForSample = [this](core::SamplePosition s) { return xForSample(s); };
-    automation_.geometry.sampleForX = [this](int x) { return sampleForX(x); };
     automation_.geometry.snap = [this](core::SamplePosition s) { return snapped(s); };
-    automation_.geometry.headerWidth = [this] { return headerWidth; };
     automation_.geometry.lanesArea = [this]
     {
         return juce::Rectangle<int>(
-            headerWidth, rulerHeight, getWidth() - headerWidth - scrollbarWidth, lanesHeight());
+            headerWidth(), rulerHeight, getWidth() - headerWidth() - scrollbarWidth, lanesHeight());
     };
     automation_.geometry.rowCount = [this] { return rowCount(); };
     automation_.geometry.channelAt = [this](int row) { return channelAtRow(row); };
@@ -97,8 +94,6 @@ ArrangeView::ArrangeView(audio::PeakStore& peaks)
     };
     addAndMakeVisible(automation_);
     // The tempo track sits over the automation overlay so its handles take the mouse.
-    tempoLane_.xForSample = [this](core::SamplePosition s) { return xForSample(s); };
-    tempoLane_.sampleForX = [this](int x) { return sampleForX(x); };
     tempoLane_.playhead = [this] { return playhead_; };
     tempoLane_.onEdit = [this](core::TempoState state, const std::string& name)
     {
@@ -107,11 +102,7 @@ ArrangeView::ArrangeView(audio::PeakStore& peaks)
     };
     tempoLane_.onHide = [this] { setTempoTrackShown(false); };
     addChildComponent(tempoLane_);
-    takes_.geometry.xForSample = [this](core::SamplePosition at) { return xForSample(at); };
-    takes_.geometry.sampleForX = [this](int x) { return sampleForX(x); };
-    takes_.geometry.snap = [this](core::SamplePosition at) { return snapped(at); };
-    takes_.geometry.samplesPerPixel = [this] { return samplesPerPixel_; };
-    takes_.geometry.sampleRate = [this] { return sampleRate(); };
+    takes_.snap = [this](core::SamplePosition at) { return snapped(at); };
     takes_.onEdit = [this](std::vector<std::unique_ptr<core::Command>> commands, const std::string& name)
     { emit(std::move(commands), name); };
     takes_.onRepaint = [this] { repaint(); };
@@ -455,7 +446,7 @@ void ArrangeView::layoutHeaders()
             const int h = rowHeightOf(row++);
             const bool visible = h > 0 && y + h > rulerHeight && y < getHeight() - scrollbarHeight;
             header->setVisible(visible);
-            header->setBounds(0, y, headerWidth, h);
+            header->setBounds(0, y, headerWidth(), h);
             y += h;
         }
 }
@@ -481,7 +472,7 @@ void ArrangeView::setPlayhead(core::SamplePosition position, bool playing, bool 
     if (playing_ && followPlayhead_)
     {
         const auto visible = visibleSamples();
-        if (playhead_ >= scroll_ + visible * 9 / 10 || playhead_ < scroll_)
+        if (playhead_ >= view_.first + visible * 9 / 10 || playhead_ < view_.first)
         {
             setScroll(playhead_ - visible / 10);
             return; // setScroll repainted everything
@@ -507,18 +498,19 @@ double ArrangeView::sampleRate() const noexcept
 
 int ArrangeView::xForSample(core::SamplePosition s) const noexcept
 {
-    return headerWidth + static_cast<int>(std::floor(static_cast<double>(s - scroll_) / samplesPerPixel_));
+    return view_.xOf(s);
 }
 
 core::SamplePosition ArrangeView::sampleForX(int x) const noexcept
 {
-    return scroll_ + static_cast<core::SamplePosition>(std::max(0.0, (x - headerWidth) * samplesPerPixel_));
+    // Over the headers: the first visible sample.
+    return view_.sampleAt(std::max(x, headerWidth()));
 }
 
 core::SamplePosition ArrangeView::visibleSamples() const noexcept
 {
-    return static_cast<core::SamplePosition>(std::max(1, getWidth() - headerWidth - scrollbarWidth) *
-                                             samplesPerPixel_);
+    return static_cast<core::SamplePosition>(std::max(1, getWidth() - headerWidth() - scrollbarWidth) *
+                                             view_.samplesPerPixel);
 }
 
 std::vector<const core::Channel*> ArrangeView::busRows() const
@@ -731,24 +723,22 @@ core::SamplePosition ArrangeView::contentLength() const noexcept
 
 void ArrangeView::setZoom(double samplesPerPixel, int anchorX)
 {
-    const auto anchorSample = sampleForX(anchorX);
-    samplesPerPixel_ = std::clamp(samplesPerPixel, minSamplesPerPixel, maxSamplesPerPixel);
     // Keep the sample under the pointer where it is.
-    const auto newScroll =
-        anchorSample - static_cast<core::SamplePosition>((anchorX - headerWidth) * samplesPerPixel_);
-    setScroll(newScroll);
+    view_ = view_.zoomedAround(std::clamp(samplesPerPixel, minSamplesPerPixel, maxSamplesPerPixel),
+                               std::max(anchorX, headerWidth()));
+    setScroll(view_.first);
 }
 
 void ArrangeView::setTimeView(double samplesPerPixel, core::SamplePosition firstVisible)
 {
-    samplesPerPixel_ = std::clamp(samplesPerPixel, minSamplesPerPixel, maxSamplesPerPixel);
+    view_.samplesPerPixel = std::clamp(samplesPerPixel, minSamplesPerPixel, maxSamplesPerPixel);
     setScroll(firstVisible);
 }
 
 void ArrangeView::setScroll(core::SamplePosition firstVisible)
 {
     const auto maxScroll = std::max<core::SamplePosition>(0, contentLength() - visibleSamples());
-    scroll_ = std::clamp<core::SamplePosition>(firstVisible, 0, maxScroll);
+    view_.first = std::clamp<core::SamplePosition>(firstVisible, 0, maxScroll);
     updateScrollbar();
     repaint();
 }
@@ -757,7 +747,7 @@ void ArrangeView::updateScrollbar()
 {
     const juce::ScopedValueSetter<bool> guard(updatingScrollbar_, true);
     scrollbar_.setRangeLimits(0.0, static_cast<double>(contentLength()));
-    scrollbar_.setCurrentRange(static_cast<double>(scroll_), static_cast<double>(visibleSamples()));
+    scrollbar_.setCurrentRange(static_cast<double>(view_.first), static_cast<double>(visibleSamples()));
     verticalScrollbar_.setRangeLimits(0.0, static_cast<double>(std::max(contentHeight(), lanesHeight())));
     verticalScrollbar_.setCurrentRange(static_cast<double>(verticalScroll_),
                                        static_cast<double>(lanesHeight()));
@@ -774,7 +764,7 @@ void ArrangeView::scrollBarMoved(juce::ScrollBar* bar, double newRangeStart)
     }
     else
     {
-        scroll_ = static_cast<core::SamplePosition>(newRangeStart);
+        view_.first = static_cast<core::SamplePosition>(newRangeStart);
     }
     repaint();
 }
@@ -812,15 +802,14 @@ void ArrangeView::resized()
 {
     layoutEmptyState();
     automation_.setBounds(getLocalBounds());
-    tempoLane_.headerWidth = headerWidth;
     tempoLane_.setBounds(0, rulerOnly, getWidth() - scrollbarWidth, tempoLaneHeight);
-    scrollbar_.setBounds(headerWidth,
+    scrollbar_.setBounds(headerWidth(),
                          getHeight() - scrollbarHeight,
-                         getWidth() - headerWidth - scrollbarWidth,
+                         getWidth() - headerWidth() - scrollbarWidth,
                          scrollbarHeight);
     verticalScrollbar_.setBounds(getWidth() - scrollbarWidth, rulerHeight, scrollbarWidth, lanesHeight());
     // The corner: "+" at the left, the row-height stepper at the right.
-    auto corner = juce::Rectangle<int>(0, 0, headerWidth, rulerOnly).reduced(theme_.spacing.xs, 0);
+    auto corner = juce::Rectangle<int>(0, 0, headerWidth(), rulerOnly).reduced(theme_.spacing.xs, 0);
     const int button = theme_.sizes.controlCompact;
     addTrack_.setBounds(corner.removeFromLeft(button).withSizeKeepingCentre(button, button));
     rowsLarger_.setBounds(corner.removeFromRight(button).withSizeKeepingCentre(button, button));
@@ -862,7 +851,7 @@ void ArrangeView::mouseDown(const juce::MouseEvent& e)
     if (markerEditor_ != nullptr)
         markerEditor_.reset();
     // The boundary between the headers and the lanes resizes the headers.
-    if (e.y >= rulerHeight && std::abs(e.x - headerWidth) <= 2)
+    if (e.y >= rulerHeight && std::abs(e.x - headerWidth()) <= 2)
     {
         drag_ = Drag::headerResize;
         return;
@@ -871,7 +860,7 @@ void ArrangeView::mouseDown(const juce::MouseEvent& e)
     if (e.mods.isMiddleButtonDown())
     {
         drag_ = Drag::pan;
-        panScroll_ = scroll_;
+        panScroll_ = view_.first;
         panVertical_ = verticalScroll_;
         return;
     }
@@ -894,7 +883,7 @@ void ArrangeView::mouseDown(const juce::MouseEvent& e)
                 drag_ = Drag::takes;
             return;
         }
-    if (e.x < headerWidth || e.x >= getWidth() - scrollbarWidth || e.y >= getHeight() - scrollbarHeight)
+    if (e.x < headerWidth() || e.x >= getWidth() - scrollbarWidth || e.y >= getHeight() - scrollbarHeight)
         return;
     if (e.y < rulerHeight)
     {
@@ -954,7 +943,7 @@ void ArrangeView::mouseDownRuler(const juce::MouseEvent& e)
     }
     selectedMarker_ = core::invalidId;
     drag_ = Drag::region;
-    zoomStartSpp_ = samplesPerPixel_;
+    zoomStartSpp_ = view_.samplesPerPixel;
     dragAnchor_ = sampleForX(e.x);
     return;
 }
@@ -1181,12 +1170,13 @@ void ArrangeView::mouseDrag(const juce::MouseEvent& e)
         return;
     draggedFar_ = draggedFar_ || e.mouseWasDraggedSinceMouseDown();
     dragPoint_ = e.getPosition();
-    const int x = std::clamp(e.x, headerWidth, getWidth() - scrollbarWidth);
+    const int x = std::clamp(e.x, headerWidth(), getWidth() - scrollbarWidth);
     const auto at = sampleForX(x);
     switch (drag_)
     {
         case Drag::headerResize:
-            headerWidth = std::clamp(e.x, theme_.sizes.trackHeaderMinWidth, theme_.sizes.trackHeaderMaxWidth);
+            view_.originX =
+                std::clamp(e.x, theme_.sizes.trackHeaderMinWidth, theme_.sizes.trackHeaderMaxWidth);
             resized();
             layoutHeaders();
             break;
@@ -1223,7 +1213,7 @@ void ArrangeView::mouseDrag(const juce::MouseEvent& e)
             break;
         case Drag::pan:
             setScroll(panScroll_ -
-                      static_cast<core::SamplePosition>((e.x - dragStart_.x) * samplesPerPixel_));
+                      static_cast<core::SamplePosition>((e.x - dragStart_.x) * view_.samplesPerPixel));
             setVerticalScroll(panVertical_ - (e.y - dragStart_.y));
             break;
         case Drag::zoom:
@@ -1478,7 +1468,7 @@ void ArrangeView::hoverAt(juce::Point<int> p, juce::ModifierKeys mods)
     pointer_ = p;
     if (tool_ == Tool::split)
         updateSplitHover(p, mods);
-    if (p.y >= rulerHeight && std::abs(p.x - headerWidth) <= 2)
+    if (p.y >= rulerHeight && std::abs(p.x - headerWidth()) <= 2)
     {
         setMouseCursor(juce::MouseCursor::LeftRightResizeCursor);
         return;
@@ -1546,20 +1536,20 @@ void ArrangeView::mouseWheelMove(const juce::MouseEvent& e, const juce::MouseWhe
 {
     if (e.mods.isCtrlDown() || e.mods.isCommandDown())
     {
-        const double factor = std::pow(1.25, -wheel.deltaY * 4.0);
-        setZoom(samplesPerPixel_ * factor, std::max(headerWidth, e.x));
+        setZoom(view_.samplesPerPixel * TimelineViewport::wheelZoomFactor(wheel.deltaY),
+                std::max(headerWidth(), e.x));
         return;
     }
     // The wheel scrolls time; Shift+wheel (or a vertical wheel over the headers)
     // scrolls the tracks.
-    const bool vertical = e.mods.isShiftDown() || (e.x < headerWidth && wheel.deltaX == 0.0f);
+    const bool vertical = e.mods.isShiftDown() || (e.x < headerWidth() && wheel.deltaX == 0.0f);
     const float delta = wheel.deltaX != 0.0f ? wheel.deltaX : wheel.deltaY;
     if (delta == 0.0f)
         return;
     if (vertical)
         setVerticalScroll(verticalScroll_ - static_cast<int>(delta * static_cast<float>(rowHeight) * 3.0f));
     else
-        setScroll(scroll_ -
+        setScroll(view_.first -
                   static_cast<core::SamplePosition>(delta * static_cast<float>(visibleSamples()) * 0.5f));
 }
 // ----- painting ------------------------------------------------------------------------------
@@ -1585,12 +1575,12 @@ void ArrangeView::drawGrid(juce::Graphics& g, juce::Rectangle<int> area, bool ru
     const auto& map = tempoMap_;
     // Label every barStep-th bar, from the bar width where the view starts (bars
     // change width with the tempo and signature, but the labels keep one rhythm).
-    const auto firstVisible = std::max<core::SamplePosition>(0, scroll_);
-    const double viewBarPixels = map.stepSamples({1, 0.0}, firstVisible) / samplesPerPixel_;
+    const auto firstVisible = std::max<core::SamplePosition>(0, view_.first);
+    const double viewBarPixels = map.stepSamples({1, 0.0}, firstVisible) / view_.samplesPerPixel;
     int barStep = 1;
     while (viewBarPixels * barStep < 80.0 && barStep < (1 << 20))
         barStep *= 2;
-    const int left = std::max(headerWidth, area.getX());
+    const int left = std::max(headerWidth(), area.getX());
     const int right = std::min(getWidth() - scrollbarWidth, area.getRight());
     g.setFont(theme_.caption());
     const auto firstPainted = std::max(firstVisible, sampleForX(left - (ruler ? 100 : 0)));
@@ -1602,7 +1592,7 @@ void ArrangeView::drawGrid(juce::Graphics& g, juce::Rectangle<int> area, bool ru
         const auto signature = map.signatureAtBar(bar);
         const int beatsPerBar = std::max(1, signature.numerator);
         const double beatQuarters = core::TempoMap::quartersPerBeat(signature);
-        const double beatPixels = map.stepSamples({0, beatQuarters}, barStart) / samplesPerPixel_;
+        const double beatPixels = map.stepSamples({0, beatQuarters}, barStart) / view_.samplesPerPixel;
         const double barPixels = beatPixels * beatsPerBar;
         const bool showBeats = beatPixels >= 12.0;
         const int subdivisions = beatPixels >= 192.0 ? 4 : beatPixels >= 48.0 ? 2 : 1;
@@ -1661,7 +1651,7 @@ void ArrangeView::drawRuler(juce::Graphics& g, juce::Rectangle<int> area)
     const auto markersRow = area.removeFromTop(markersRowHeight);
     const auto barsRow = area.withTrimmedBottom(1);
     g.saveState();
-    g.reduceClipRegion(headerWidth, 0, getWidth() - headerWidth - scrollbarWidth, rulerHeight);
+    g.reduceClipRegion(headerWidth(), 0, getWidth() - headerWidth() - scrollbarWidth, rulerHeight);
     drawGrid(g, barsRow, true);
 
     // The loop band in the bars row (or a faint band for a region that is neither
@@ -1700,7 +1690,7 @@ void ArrangeView::drawRuler(juce::Graphics& g, juce::Rectangle<int> area)
     g.restoreState();
     g.setColour(c.lineSubtle);
     g.fillRect(0, rulerOnly - 1, getWidth(), 1);
-    g.fillRect(headerWidth - 1, 0, 1, rulerOnly);
+    g.fillRect(headerWidth() - 1, 0, 1, rulerOnly);
 }
 // ----- drag and drop ------------------------------------------------------------------------
 
@@ -1748,7 +1738,7 @@ void ArrangeView::itemDropped(const SourceDetails& details)
         dragOver_ = false;
         repaint();
         if (onImportFiles && file.existsAsFile())
-            onImportFiles({file}, sampleForX(std::max(headerWidth, details.localPosition.x)));
+            onImportFiles({file}, sampleForX(std::max(headerWidth(), details.localPosition.x)));
         return;
     }
     const int row = rowAtY(details.localPosition.y);
@@ -1814,7 +1804,7 @@ void ArrangeView::filesDropped(const juce::StringArray& files, int x, int)
             accepted.push_back(file);
     }
     if (!accepted.empty())
-        onImportFiles(accepted, sampleForX(std::max(headerWidth, x)));
+        onImportFiles(accepted, sampleForX(std::max(headerWidth(), x)));
 }
 
 juce::Colour ArrangeView::trackColour(const core::Track& track, int row) const
@@ -1877,12 +1867,12 @@ void ArrangeView::drawClip(juce::Graphics& g,
 
     const int x0 = xForSample(clip.start);
     const int x1 = std::max(x0 + 2, xForSample(clip.end()));
-    if (x1 < headerWidth || x0 > getWidth())
+    if (x1 < headerWidth() || x0 > getWidth())
         return;
 
     const auto block = spanBounds(clip.start, clip.length, project_->trackIndex(track.id));
     const auto visible =
-        block.getIntersection(lane.withLeft(headerWidth).withRight(getWidth() - scrollbarWidth));
+        block.getIntersection(lane.withLeft(headerWidth()).withRight(getWidth() - scrollbarWidth));
     if (visible.isEmpty())
         return;
 
@@ -1973,7 +1963,7 @@ void ArrangeView::drawClip(juce::Graphics& g,
     {
         if (fade <= 0)
             return;
-        const float w = static_cast<float>(fade) / static_cast<float>(samplesPerPixel_);
+        const float w = static_cast<float>(fade) / static_cast<float>(view_.samplesPerPixel);
         const float top = static_cast<float>(body.getY());
         const float bottom = static_cast<float>(body.getBottom());
         const float edge = in ? static_cast<float>(x0) : static_cast<float>(x1);
@@ -2128,12 +2118,12 @@ void ArrangeView::drawMidiClip(juce::Graphics& g,
     const bool moving = drag_ == Drag::move && selected && draggedFar_;
     const int x0 = xForSample(clip.start);
     const int x1 = std::max(x0 + 2, xForSample(clip.end()));
-    if (x1 < headerWidth || x0 > getWidth())
+    if (x1 < headerWidth() || x0 > getWidth())
         return;
     const int row = project_->trackIndex(track.id);
     const auto block = spanBounds(clip.start, clip.length, row);
     const auto visible =
-        block.getIntersection(lane.withLeft(headerWidth).withRight(getWidth() - scrollbarWidth));
+        block.getIntersection(lane.withLeft(headerWidth()).withRight(getWidth() - scrollbarWidth));
     if (visible.isEmpty())
         return;
     const auto colour = recording ? c.record : trackColour(track, row);
@@ -2234,7 +2224,7 @@ void ArrangeView::drawLiveTake(juce::Graphics& g,
     const int row = project_->trackIndex(track.id);
     const auto block = spanBounds(placement.start, placement.length, row);
     const auto visible =
-        block.getIntersection(lane.withLeft(headerWidth).withRight(getWidth() - scrollbarWidth));
+        block.getIntersection(lane.withLeft(headerWidth()).withRight(getWidth() - scrollbarWidth));
     if (visible.isEmpty())
         return;
     const auto colour = c.record;
@@ -2292,7 +2282,7 @@ void ArrangeView::paint(juce::Graphics& g)
     const SelectionIndex index(*this); // every clip drawn asks whether it is selected
 
     const auto lanesArea = juce::Rectangle<int>(
-        headerWidth, rulerHeight, getWidth() - headerWidth - scrollbarWidth, lanesHeight());
+        headerWidth(), rulerHeight, getWidth() - headerWidth() - scrollbarWidth, lanesHeight());
     int y = rulerHeight - verticalScroll_;
     if (project_ != nullptr)
     {
@@ -2304,7 +2294,7 @@ void ArrangeView::paint(juce::Graphics& g)
         {
             const int h = rowHeightOf(row);
             y = rowTop(row);
-            const juce::Rectangle<int> lane(headerWidth, y, lanesArea.getWidth(), h);
+            const juce::Rectangle<int> lane(headerWidth(), y, lanesArea.getWidth(), h);
             if (h > 0 && lane.intersects(paintArea_))
             {
                 if (track.id == selectedTrack_)
@@ -2330,7 +2320,7 @@ void ArrangeView::paint(juce::Graphics& g)
         {
             const int h = rowHeightOf(row);
             y = rowTop(row);
-            const juce::Rectangle<int> lane(headerWidth, y, lanesArea.getWidth(), h);
+            const juce::Rectangle<int> lane(headerWidth(), y, lanesArea.getWidth(), h);
             const auto caption = lane.reduced(theme_.spacing.sm, 0).withHeight(std::min(h, 24));
             if (lane.intersects(paintArea_))
             {
@@ -2399,7 +2389,7 @@ void ArrangeView::paint(juce::Graphics& g)
         {
             y = rowTop(row);
             const int h = rowHeightOf(row++);
-            const juce::Rectangle<int> lane(headerWidth, y, lanesArea.getWidth(), h);
+            const juce::Rectangle<int> lane(headerWidth(), y, lanesArea.getWidth(), h);
             const bool shown = h > 0 && lane.intersects(paintArea_);
             if (shown && track.isFolder())
                 drawFolderLane(g, track, lane);
@@ -2472,7 +2462,7 @@ void ArrangeView::paint(juce::Graphics& g)
 
         // The take lanes' headers, in the header column under each expanded track's header.
         g.saveState();
-        g.reduceClipRegion(0, rulerHeight, headerWidth, lanesHeight());
+        g.reduceClipRegion(0, rulerHeight, headerWidth(), lanesHeight());
         for (size_t t = 0; t < project_->tracks.size(); ++t)
             if (takes_.laneCount(project_->tracks[t]) > 0)
                 takes_.paintLaneHeaders(g, takeRow(static_cast<int>(t)));
@@ -2535,7 +2525,7 @@ void ArrangeView::paint(juce::Graphics& g)
 
     // The playhead: a 1 px line with a 7 px head in the ruler.
     const int px = xForSample(playhead_);
-    if (px >= headerWidth && px < getWidth() - scrollbarWidth)
+    if (px >= headerWidth() && px < getWidth() - scrollbarWidth)
     {
         g.setColour(recording_ ? c.playheadRecording : c.playhead);
         g.fillRect(px, 0, 1, getHeight() - scrollbarHeight);
@@ -2554,7 +2544,7 @@ void ArrangeView::paint(juce::Graphics& g)
     {
         const int ly = rowTop(reorderTo_);
         g.setColour(c.accent);
-        g.fillRect(0, ly - 1, headerWidth, 2);
+        g.fillRect(0, ly - 1, headerWidth(), 2);
     }
 
     // The pencil's clip while it draws: the clip it will make, in the track's colour.
@@ -2581,9 +2571,9 @@ void ArrangeView::paint(juce::Graphics& g)
         if (row >= 0)
         {
             g.setColour(c.dropTarget);
-            g.fillRect(rowBounds(row).withLeft(headerWidth));
+            g.fillRect(rowBounds(row).withLeft(headerWidth()));
         }
-        const int x = xForSample(snapped(sampleForX(std::max(headerWidth, dropPoint_.x))));
+        const int x = xForSample(snapped(sampleForX(std::max(headerWidth(), dropPoint_.x))));
         const int ghostY =
             row >= 0 ? rowBounds(row).getY() + 2 : std::max(rulerHeight, dropPoint_.y - rowHeight / 2);
         const auto ghost = juce::Rectangle<int>(x, ghostY, 160, rowHeight - 4);
@@ -2606,7 +2596,7 @@ void ArrangeView::paint(juce::Graphics& g)
             g.setFont(theme_.caption());
             g.drawText(
                 dropFiles_.size() == 1 ? "New track" : juce::String(dropFiles_.size()) + " new tracks",
-                juce::Rectangle<int>(0, ghostY, headerWidth, rowHeight - 4).reduced(theme_.spacing.sm, 0),
+                juce::Rectangle<int>(0, ghostY, headerWidth(), rowHeight - 4).reduced(theme_.spacing.sm, 0),
                 juce::Justification::centredLeft);
         }
     }
@@ -2620,10 +2610,10 @@ void ArrangeView::paint(juce::Graphics& g)
 
     // The corner over the headers.
     g.setColour(c.surface0);
-    g.fillRect(0, 0, headerWidth, rulerOnly);
+    g.fillRect(0, 0, headerWidth(), rulerOnly);
     g.setColour(c.lineSubtle);
-    g.fillRect(0, rulerOnly - 1, headerWidth, 1);
-    g.fillRect(headerWidth - 1, 0, 1, rulerOnly);
+    g.fillRect(0, rulerOnly - 1, headerWidth(), 1);
+    g.fillRect(headerWidth() - 1, 0, 1, rulerOnly);
     // (The selection count is in the status bar: the corner is the tools'.)
 }
 // ----- editing -------------------------------------------------------------------------------
@@ -2691,8 +2681,8 @@ TakeLanes::Row ArrangeView::takeRow(int row) const
     if (project_ == nullptr || row < 0 || static_cast<size_t>(row) >= project_->tracks.size())
         return r;
     r.track = &project_->tracks[static_cast<size_t>(row)];
-    r.main = rowBounds(row).withLeft(headerWidth);
-    r.headerWidth = headerWidth;
+    r.main = rowBounds(row).withLeft(headerWidth());
+    r.headerWidth = headerWidth();
     r.colour = trackColour(*r.track, row);
     return r;
 }
@@ -2775,7 +2765,7 @@ bool ArrangeView::isSelected(const ClipRef& ref) const noexcept
 ArrangeView::Hit ArrangeView::hitTest(juce::Point<int> p) const noexcept
 {
     Hit hit;
-    if (p.x < headerWidth || p.x >= getWidth() - scrollbarWidth)
+    if (p.x < headerWidth() || p.x >= getWidth() - scrollbarWidth)
         return hit;
     hit.row = rowAtY(p.y);
     if (hit.row < 0)
@@ -2886,7 +2876,7 @@ core::GridStep ArrangeView::gridAt(core::SamplePosition at) const noexcept
         const double beat = core::TempoMap::quartersPerBeat(tempoMap_.signatureAt(at));
         return {0, beat * 4.0 / static_cast<double>(snapGrid_)};
     }
-    return tempoMap_.adaptiveStep(samplesPerPixel_, gridMinPixels, at);
+    return tempoMap_.adaptiveStep(view_.samplesPerPixel, gridMinPixels, at);
 }
 
 core::SamplePosition ArrangeView::lineAtOrBefore(core::SamplePosition s) const noexcept
@@ -2926,17 +2916,18 @@ juce::String ArrangeView::snapGridName() const
 
 void ArrangeView::zoomBy(double factor)
 {
-    setZoom(samplesPerPixel_ * factor, headerWidth + (getWidth() - headerWidth - scrollbarWidth) / 2);
+    setZoom(view_.samplesPerPixel * factor,
+            headerWidth() + (getWidth() - headerWidth() - scrollbarWidth) / 2);
     updateScrollbar();
     repaint();
 }
 
 void ArrangeView::zoomToFit()
 {
-    const int width = std::max(1, getWidth() - headerWidth - scrollbarWidth - theme_.spacing.xl);
+    const int width = std::max(1, getWidth() - headerWidth() - scrollbarWidth - theme_.spacing.xl);
     const auto length = std::max<core::SamplePosition>(project_ != nullptr ? project_->length() : 0,
                                                        static_cast<core::SamplePosition>(sampleRate() * 4.0));
-    samplesPerPixel_ =
+    view_.samplesPerPixel =
         std::clamp(static_cast<double>(length) / width, minSamplesPerPixel, maxSamplesPerPixel);
     setScroll(0);
     updateScrollbar();
@@ -2959,11 +2950,11 @@ void ArrangeView::zoomToSelection()
         }
     if (from < 0 || to <= from)
         return;
-    const int width = std::max(1, getWidth() - headerWidth - scrollbarWidth - theme_.spacing.xl);
-    samplesPerPixel_ =
+    const int width = std::max(1, getWidth() - headerWidth() - scrollbarWidth - theme_.spacing.xl);
+    view_.samplesPerPixel =
         std::clamp(static_cast<double>(to - from) / width, minSamplesPerPixel, maxSamplesPerPixel);
     setScroll(std::max<core::SamplePosition>(
-        0, from - static_cast<core::SamplePosition>(theme_.spacing.md * samplesPerPixel_)));
+        0, from - static_cast<core::SamplePosition>(theme_.spacing.md * view_.samplesPerPixel)));
     updateScrollbar();
     repaint();
 }
@@ -2985,7 +2976,7 @@ core::SamplePosition ArrangeView::snapWithTargets(core::SamplePosition wanted,
     wanted = std::max<core::SamplePosition>(0, wanted);
     if (!snap_ || alt || project_ == nullptr)
         return wanted;
-    const auto tolerance = static_cast<core::SamplePosition>(6.0 * samplesPerPixel_);
+    const auto tolerance = static_cast<core::SamplePosition>(6.0 * view_.samplesPerPixel);
     core::SamplePosition best = -1;
     // The target's name is put together for the winner only (this runs every
     // drag event, over every clip on the row).
@@ -3178,7 +3169,7 @@ void ArrangeView::updateSplitHover(juce::Point<int> p, juce::ModifierKeys mods)
     splitAll_ = all;
     splitFree_ = mods.isAltDown();
     splitPoint_ = p;
-    const bool inLanes = p.x >= headerWidth && p.x < getWidth() - scrollbarWidth && p.y >= rulerHeight &&
+    const bool inLanes = p.x >= headerWidth() && p.x < getWidth() - scrollbarWidth && p.y >= rulerHeight &&
                          p.y < getHeight() - scrollbarHeight;
     if (inLanes && project_ != nullptr)
     {
@@ -3328,7 +3319,7 @@ void ArrangeView::drawToolOverlay(juce::Graphics& g)
     if (project_ == nullptr)
         return;
     const auto lanesArea = juce::Rectangle<int>(
-        headerWidth, rulerHeight, getWidth() - headerWidth - scrollbarWidth, lanesHeight());
+        headerWidth(), rulerHeight, getWidth() - headerWidth() - scrollbarWidth, lanesHeight());
     // The split line: through the clip under the pointer, or every lane with Alt.
     if (tool_ == Tool::split && splitAt_ >= 0 && drag_ == Drag::none)
     {
@@ -4601,7 +4592,8 @@ void ArrangeView::drawEditOverlay(juce::Graphics& g)
     if (project_ == nullptr)
         return;
     g.saveState();
-    g.reduceClipRegion(headerWidth, rulerHeight, getWidth() - headerWidth - scrollbarWidth, lanesHeight());
+    g.reduceClipRegion(
+        headerWidth(), rulerHeight, getWidth() - headerWidth() - scrollbarWidth, lanesHeight());
     if (drag_ == Drag::lasso && draggedFar_)
     {
         g.setColour(c.selectionFill);
@@ -4708,13 +4700,14 @@ void ArrangeView::drawMarkers(juce::Graphics& g, juce::Rectangle<int> row)
         return;
     const auto& c = theme_.colours;
     g.saveState();
-    g.reduceClipRegion(headerWidth, row.getY(), getWidth() - headerWidth - scrollbarWidth, row.getHeight());
+    g.reduceClipRegion(
+        headerWidth(), row.getY(), getWidth() - headerWidth() - scrollbarWidth, row.getHeight());
     g.setFont(theme_.caption());
     for (size_t i = 0; i < project_->markers.size(); ++i)
     {
         const auto& m = project_->markers[i];
         const auto flag = markerFlagBounds(m);
-        if (flag.getRight() < headerWidth || flag.getX() > getWidth())
+        if (flag.getRight() < headerWidth() || flag.getX() > getWidth())
             continue;
         const bool selected = m.id == selectedMarker_;
         const bool hovered = m.id == hoverMarker_;
