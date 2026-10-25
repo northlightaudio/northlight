@@ -349,28 +349,14 @@ private:
     void layoutHeaders();
     int contentHeight() const noexcept;
     int lanesHeight() const noexcept { return getHeight() - rulerHeight - scrollbarHeight; }
-    void drawRuler(juce::Graphics& g, juce::Rectangle<int> area);
-    void drawClip(juce::Graphics& g,
-                  const core::Track& track,
-                  const core::AudioClip& clip,
-                  juce::Rectangle<int> lane);
-    void drawMidiClip(juce::Graphics& g,
-                      const core::Track& track,
-                      const core::MidiClip& model,
-                      juce::Rectangle<int> lane,
-                      bool recording = false);
-    void drawLiveTake(juce::Graphics& g,
-                      const core::Track& track,
-                      const engine::LiveTake& take,
-                      juce::Rectangle<int> lane);
-    void drawGrid(juce::Graphics& g, juce::Rectangle<int> area, bool ruler);
+    // Painting (arrange/ArrangePainter): one made per paint, for the area repainted.
+    class Painter;
     void drawTooltip(juce::Graphics& g, const juce::String& text, juce::Point<int> at);
     juce::Colour trackColour(const core::Track& track, int row) const;
     juce::Rectangle<int> loopBand() const noexcept; // in the bars row, empty without a region
     bool mediaMissing(const std::string& path);
     void refreshMissingMedia();
     std::vector<const core::Track*> folderChoices(core::Id trackId) const;
-    void drawFolderLane(juce::Graphics& g, const core::Track& folder, juce::Rectangle<int> lane);
     // FX tracks (buses flagged fx) show as rows under the tracks.
     // The rows after the tracks: every bus (groups and FX tracks), then the master.
     std::vector<const core::Channel*> busRows() const;
@@ -481,7 +467,6 @@ private:
     juce::Rectangle<int> splitArea() const;
     // On the grid (unless `free`: Alt) where the grid line falls inside the clip.
     core::SamplePosition splitPosition(int x, const Span& clip, bool free = false) const noexcept;
-    void drawToolOverlay(juce::Graphics& g);
     void hoverAt(juce::Point<int> p, juce::ModifierKeys mods);
     // Markers (MarkerController): one at the playhead (or a region from the loop),
     // and a jump to the previous or next.
@@ -565,12 +550,6 @@ private:
 
     // editing state
     std::vector<ClipRef> selection_;
-    // The area paint() is repainting (its clip bounds): rows, clips and waveform
-    // columns outside it are skipped. A playhead frame repaints a column.
-    juce::Rectangle<int> paintArea_;
-    // The clip's waveform over `wave` (one look into the peak store; the view
-    // holds the peaks, empty until they are built).
-    engine::WaveformView waveformIn(const core::AudioClip& clip, juce::Rectangle<int> wave);
     std::vector<ClipRef> notifiedSelection_; // what onSelectionChanged last reported
     // A hashed copy of the selection, for the passes that ask about every clip
     // (paint, snapping, the lasso): built on entry by a SelectionIndex and used by
