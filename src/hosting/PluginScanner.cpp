@@ -195,7 +195,9 @@ void PluginScanner::run()
     struct Planning
     {
         juce::StringArray candidates;
+        std::vector<std::int64_t> modified; // per candidate, read on this thread
         std::vector<Job> jobs;
+        std::vector<std::string> known; // the registry's files, to look for on this thread
         juce::WaitableEvent ready;
     };
     // Shared with the message thread so a cancel while it is still planning
@@ -229,6 +231,10 @@ void PluginScanner::run()
     for (int i = 0; i < clapPaths.getNumPaths(); ++i)
         for (const auto& file : clapPaths[i].findChildFiles(juce::File::findFiles, true, "*.clap"))
             planning->candidates.addIfNotAlreadyThere(file.getFullPathName());
+    // The disk is read here: every candidate's time now, the registry's files below.
+    planning->modified.reserve(static_cast<size_t>(planning->candidates.size()));
+    for (const auto& path : planning->candidates)
+        planning->modified.push_back(modificationTime(juce::File(path)));
     {
         // The registry belongs to the message thread: decide there which files
         // need a look, so the scan thread never touches it.
@@ -238,29 +244,39 @@ void PluginScanner::run()
             {
                 if (!alive->load())
                     return;
-                for (const auto& path : planning->candidates)
+                for (int i = 0; i < planning->candidates.size(); ++i)
                 {
-                    const juce::File file(path);
-                    const auto modified = modificationTime(file);
+                    const auto& path = planning->candidates[i];
+                    const auto modified = planning->modified[static_cast<size_t>(i)];
                     if (rescanAll ? !registry_.isBlocked(path.toStdString())
                                   : registry_.needsScan(path.toStdString(), modified))
-                        planning->jobs.push_back({file, modified});
+                        planning->jobs.push_back({juce::File(path), modified});
                 }
-                // Files the registry knows that are gone from disk are forgotten.
-                std::vector<std::string> gone;
                 for (const auto& [path, time] : registry_.scannedFiles())
-                    if (!juce::File(juce::String::fromUTF8(path.c_str())).exists())
-                        gone.push_back(path);
+                    planning->known.push_back(path);
                 for (const auto& [path, reason] : registry_.blocked())
-                    if (!juce::File(juce::String::fromUTF8(path.c_str())).exists())
-                        gone.push_back(path);
-                for (const auto& path : gone)
-                    registry_.removeFile(path);
+                    planning->known.push_back(path);
                 planning->ready.signal();
             });
         while (!planning->ready.wait(50))
             if (threadShouldExit())
                 return;
+    }
+    // Files the registry knows that are gone from disk are forgotten.
+    {
+        std::vector<std::string> gone;
+        for (const auto& path : planning->known)
+            if (!juce::File(juce::String::fromUTF8(path.c_str())).exists())
+                gone.push_back(path);
+        if (!gone.empty())
+            juce::MessageManager::callAsync(
+                [this, alive = alive_, gone = std::move(gone)]
+                {
+                    if (!alive->load())
+                        return;
+                    for (const auto& path : gone)
+                        registry_.removeFile(path);
+                });
     }
     const auto& jobs = planning->jobs;
     total_.store(static_cast<int>(jobs.size()), std::memory_order_relaxed);
