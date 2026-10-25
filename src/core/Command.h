@@ -4,6 +4,7 @@
 #include "core/TempoMap.h"
 
 #include <algorithm>
+#include <cstddef>
 #include <memory>
 #include <optional>
 #include <string>
@@ -17,6 +18,29 @@
 
 namespace northlight::core
 {
+
+// Rough heap memory a model object holds (beyond its own sizeof), for
+// Command::footprint: what an undo step costs to keep.
+inline std::size_t heapBytes(const std::string& s) noexcept
+{
+    return s.capacity();
+}
+template <class T> std::size_t heapBytes(const std::vector<T>& v) noexcept
+{
+    std::size_t bytes = v.capacity() * sizeof(T);
+    if constexpr (requires(const T& x) { heapBytes(x); })
+        for (const auto& x : v)
+            bytes += heapBytes(x);
+    return bytes;
+}
+std::size_t heapBytes(const VocalEdit& edit) noexcept;
+std::size_t heapBytes(const AudioClip& clip) noexcept;
+std::size_t heapBytes(const MidiClip& clip) noexcept;
+std::size_t heapBytes(const AutomationLane& lane) noexcept;
+std::size_t heapBytes(const Insert& insert) noexcept;
+std::size_t heapBytes(const TakeGroup& group) noexcept;
+std::size_t heapBytes(const Channel& channel) noexcept;
+std::size_t heapBytes(const Track& track) noexcept;
 
 class Command
 {
@@ -88,6 +112,10 @@ public:
     // gesture). This command then reverts to its own previous value and applies
     // next's value, so undoing it does what undoing both did. False: left apart.
     virtual bool mergeWith(Command& /*next*/) { return false; }
+    // Roughly how much memory the command keeps once applied (what it copied to
+    // revert or redo), so the history can be capped by size as well as by count.
+    // A command that copies tracks, clips or lanes says so; the rest are small.
+    virtual std::size_t footprint() const noexcept { return 128; }
 };
 
 class UndoStack
@@ -110,8 +138,17 @@ public:
     bool canUndo() const noexcept { return !undo_.empty(); }
     bool canRedo() const noexcept { return !redo_.empty(); }
     // The command a successful undo() moved to the redo side, and vice versa.
-    const Command* redoTop() const noexcept { return redo_.empty() ? nullptr : redo_.back().get(); }
-    const Command* undoTop() const noexcept { return undo_.empty() ? nullptr : undo_.back().get(); }
+    const Command* redoTop() const noexcept { return redo_.empty() ? nullptr : redo_.back().command.get(); }
+    const Command* undoTop() const noexcept { return undo_.empty() ? nullptr : undo_.back().command.get(); }
+
+    // The history keeps at most this many steps and about this much memory
+    // (Command::footprint); a new step past either drops the oldest ones, though
+    // never the newest. A save point dropped with them can no longer be reached.
+    static constexpr std::size_t defaultMaxSteps = 1000;
+    static constexpr std::size_t defaultMaxBytes = std::size_t{256} << 20;
+    void setLimits(std::size_t maxSteps, std::size_t maxBytes);
+    std::size_t undoCount() const noexcept { return undo_.size(); }
+    std::size_t historyBytes() const noexcept { return bytes_; }
     std::string undoName() const;
     std::string redoName() const;
     // Empties both histories; the empty history is the save point.
@@ -134,13 +171,22 @@ public:
 
 private:
     class Group;
-    std::vector<std::unique_ptr<Command>> undo_;
-    std::vector<std::unique_ptr<Command>> redo_;
+    struct Step
+    {
+        std::unique_ptr<Command> command;
+        std::size_t bytes = 0; // its footprint when it was pushed
+    };
+    std::vector<Step> undo_;
+    std::vector<Step> redo_;
     std::unique_ptr<Group> openGroup_;
     int groupDepth_ = 0;
     // undo_.size() at the save point; -1 once it can no longer be reached.
     std::ptrdiff_t savedDepth_ = 0;
+    std::size_t bytes_ = 0; // of every step on both sides
+    std::size_t maxSteps_ = defaultMaxSteps;
+    std::size_t maxBytes_ = defaultMaxBytes;
     void push(std::unique_ptr<Command> command);
+    void trim();
 };
 
 // ----- one-field setters ------------------------------------------------------------------
@@ -247,6 +293,13 @@ public:
         value_ = std::move(later.value_);
         return true;
     }
+    std::size_t footprint() const noexcept override
+    {
+        if constexpr (requires(const Value& v) { heapBytes(v); })
+            return sizeof(*this) + heapBytes(value_) + heapBytes(previous_);
+        else
+            return sizeof(*this);
+    }
     const Target& target() const noexcept { return target_; }
     const Value& value() const noexcept { return value_; }
 
@@ -272,6 +325,7 @@ public:
     // Gives the track these strip modules when it has none (the session supplies
     // the default strip; ids are allocated on apply). Before apply only.
     void setDefaultStrip(const std::vector<Insert>& modules) override;
+    std::size_t footprint() const noexcept override { return sizeof(*this) + heapBytes(track_); }
 
 private:
     Track track_;
@@ -292,6 +346,10 @@ public:
     Id midiTrackId() const noexcept { return midi_.id; }
     // The channel strip for the instrument channel (the MIDI track has none).
     void setDefaultStrip(const std::vector<Insert>& modules) override;
+    std::size_t footprint() const noexcept override
+    {
+        return sizeof(*this) + heapBytes(channel_) + heapBytes(midi_);
+    }
 
 private:
     Track channel_, midi_;
@@ -334,6 +392,7 @@ public:
     std::string name() const override { return "Remove track"; }
     bool apply(Project&) override;
     bool revert(Project&) override;
+    std::size_t footprint() const noexcept override { return sizeof(*this) + heapBytes(removed_); }
 
 private:
     Id trackId_;
@@ -365,6 +424,7 @@ public:
     bool revert(Project&) override;
     Id busId() const noexcept { return bus_.id; }
     void setDefaultStrip(const std::vector<Insert>& modules) override;
+    std::size_t footprint() const noexcept override { return sizeof(*this) + heapBytes(bus_); }
 
 private:
     Bus bus_;
@@ -381,6 +441,10 @@ public:
     std::string name() const override { return "Remove bus"; }
     bool apply(Project&) override;
     bool revert(Project&) override;
+    std::size_t footprint() const noexcept override
+    {
+        return sizeof(*this) + heapBytes(removed_) + detachedSends_.capacity() * sizeof(DetachedSend);
+    }
 
 private:
     Id busId_;
@@ -526,6 +590,7 @@ public:
     bool apply(Project&) override;
     bool revert(Project&) override;
     Id clipId() const noexcept { return clip_.id; }
+    std::size_t footprint() const noexcept override { return sizeof(*this) + heapBytes(clip_); }
 
 private:
     Id trackId_;
@@ -539,6 +604,7 @@ public:
     std::string name() const override { return "Remove MIDI clip"; }
     bool apply(Project&) override;
     bool revert(Project&) override;
+    std::size_t footprint() const noexcept override { return sizeof(*this) + heapBytes(removed_); }
 
 private:
     Id trackId_, clipId_;
@@ -567,6 +633,7 @@ public:
     std::string name() const override { return "Trim MIDI clip"; }
     bool apply(Project&) override;
     bool revert(Project&) override;
+    std::size_t footprint() const noexcept override { return sizeof(*this) + heapBytes(previous_); }
 
 private:
     Id trackId_, clipId_;
@@ -586,6 +653,10 @@ public:
     bool apply(Project&) override;
     bool revert(Project&) override;
     Id rightClipId() const noexcept { return right_.id; }
+    std::size_t footprint() const noexcept override
+    {
+        return sizeof(*this) + heapBytes(original_) + heapBytes(right_);
+    }
 
 private:
     Id trackId_, clipId_;
@@ -602,6 +673,7 @@ public:
     bool apply(Project&) override;
     bool revert(Project&) override;
     Id newClipId() const noexcept { return copy_.id; }
+    std::size_t footprint() const noexcept override { return sizeof(*this) + heapBytes(copy_); }
 
 private:
     Id trackId_, clipId_;
@@ -620,6 +692,10 @@ public:
     bool apply(Project&) override;
     bool revert(Project&) override;
     static bool canJoin(const MidiClip& left, const MidiClip& right) noexcept;
+    std::size_t footprint() const noexcept override
+    {
+        return sizeof(*this) + heapBytes(previousLeft_) + heapBytes(removedRight_);
+    }
 
 private:
     Id trackId_, leftId_, rightId_;
@@ -683,6 +759,10 @@ public:
     bool apply(Project&) override;
     bool revert(Project&) override;
     const std::vector<MidiControllerEvent>& events() const noexcept { return events_; }
+    std::size_t footprint() const noexcept override
+    {
+        return sizeof(*this) + heapBytes(events_) + heapBytes(previous_);
+    }
 
 private:
     Id trackId_, clipId_;
@@ -704,6 +784,10 @@ public:
     std::string name() const override { return "Quantise"; }
     bool apply(Project&) override;
     bool revert(Project&) override;
+    std::size_t footprint() const noexcept override
+    {
+        return sizeof(*this) + heapBytes(noteIds_) + heapBytes(previous_);
+    }
 
 private:
     Id trackId_, clipId_;
@@ -880,6 +964,7 @@ public:
     std::string name() const override { return "Remove insert"; }
     bool apply(Project&) override;
     bool revert(Project&) override;
+    std::size_t footprint() const noexcept override { return sizeof(*this) + heapBytes(removed_); }
 
 private:
     Id channelId_, insertId_;
@@ -903,6 +988,10 @@ public:
     bool apply(Project&) override;
     bool revert(Project&) override;
     Id instrumentId() const noexcept { return instrument_.id; }
+    std::size_t footprint() const noexcept override
+    {
+        return sizeof(*this) + heapBytes(instrument_) + heapBytes(previous_) + heapBytes(previousLanes_);
+    }
 
 private:
     Id trackId_;
@@ -1033,6 +1122,10 @@ public:
     std::string name() const override { return name_; }
     bool apply(Project&) override;
     bool revert(Project&) override;
+    std::size_t footprint() const noexcept override
+    {
+        return sizeof(*this) + heapBytes(params_) + heapBytes(previous_) + heapBytes(previousLanes_);
+    }
 
 private:
     Id channelId_, moduleId_;
@@ -1061,6 +1154,10 @@ public:
     std::string name() const override { return name_; }
     bool apply(Project&) override;
     bool revert(Project&) override;
+    std::size_t footprint() const noexcept override
+    {
+        return sizeof(*this) + heapBytes(modules_) + previous_.capacity() * sizeof(Previous);
+    }
 
 private:
     Id channelId_;
@@ -1087,6 +1184,7 @@ public:
     bool apply(Project&) override;
     bool revert(Project&) override;
     Id laneId() const noexcept { return lane_.id; }
+    std::size_t footprint() const noexcept override { return sizeof(*this) + heapBytes(lane_); }
 
 private:
     Id channelId_;
@@ -1101,6 +1199,7 @@ public:
     std::string name() const override { return "Remove automation"; }
     bool apply(Project&) override;
     bool revert(Project&) override;
+    std::size_t footprint() const noexcept override { return sizeof(*this) + heapBytes(removed_); }
 
 private:
     Id channelId_, laneId_;
@@ -1268,6 +1367,7 @@ public:
     bool apply(Project&) override;
     bool revert(Project&) override;
     Id clipId() const noexcept { return clip_.id; }
+    std::size_t footprint() const noexcept override { return sizeof(*this) + heapBytes(clip_); }
 
 private:
     Id trackId_;
@@ -1281,6 +1381,7 @@ public:
     std::string name() const override { return "Remove clip"; }
     bool apply(Project&) override;
     bool revert(Project&) override;
+    std::size_t footprint() const noexcept override { return sizeof(*this) + heapBytes(removed_); }
 
 private:
     Id trackId_, clipId_;
@@ -1348,6 +1449,10 @@ public:
     bool apply(Project&) override;
     bool revert(Project&) override;
     Id rightClipId() const noexcept { return right_.id; }
+    std::size_t footprint() const noexcept override
+    {
+        return sizeof(*this) + heapBytes(original_) + heapBytes(right_);
+    }
 
 private:
     Id trackId_, clipId_;
@@ -1365,6 +1470,10 @@ public:
     bool apply(Project&) override;
     bool revert(Project&) override;
     static bool canJoin(const AudioClip& left, const AudioClip& right) noexcept;
+    std::size_t footprint() const noexcept override
+    {
+        return sizeof(*this) + heapBytes(previousLeft_) + heapBytes(removedRight_);
+    }
 
 private:
     Id trackId_, leftId_, rightId_;
@@ -1380,6 +1489,7 @@ public:
     bool apply(Project&) override;
     bool revert(Project&) override;
     Id newClipId() const noexcept { return copy_.id; }
+    std::size_t footprint() const noexcept override { return sizeof(*this) + heapBytes(copy_); }
 
 private:
     Id trackId_, clipId_;
@@ -1412,6 +1522,10 @@ public:
     std::string name() const override { return "Shift clips"; }
     bool apply(Project&) override;
     bool revert(Project&) override;
+    std::size_t footprint() const noexcept override
+    {
+        return sizeof(*this) + heapBytes(previous_) + heapBytes(shiftedGroups_);
+    }
 
 private:
     Id trackId_;
@@ -1474,6 +1588,10 @@ public:
     bool apply(Project&) override;
     bool revert(Project&) override;
     const VocalEdit& edit() const noexcept { return value_; }
+    std::size_t footprint() const noexcept override
+    {
+        return sizeof(*this) + heapBytes(value_) + heapBytes(previous_);
+    }
 
 private:
     Id trackId_, clipId_;
@@ -1501,6 +1619,10 @@ public:
     bool apply(Project&) override;
     bool revert(Project&) override;
     Id folderId() const noexcept { return folder_.id; }
+    std::size_t footprint() const noexcept override
+    {
+        return sizeof(*this) + heapBytes(folder_) + heapBytes(previousOrder_);
+    }
 
 private:
     Track folder_;
@@ -1567,6 +1689,7 @@ class MusicalPositions
 public:
     void capture(const Project& p);
     void restore(Project& p) const;
+    std::size_t footprint() const noexcept;
 
 private:
     std::vector<std::vector<MidiClip>> midi_;
@@ -1584,6 +1707,7 @@ public:
     std::string name() const override { return name_; }
     bool apply(Project&) override;
     bool revert(Project&) override;
+    std::size_t footprint() const noexcept override { return sizeof(*this) + positions_.footprint(); }
 
 private:
     TempoState value_, previous_;
@@ -1601,6 +1725,7 @@ public:
     std::string name() const override { return "Stretch clip"; }
     bool apply(Project&) override;
     bool revert(Project&) override;
+    std::size_t footprint() const noexcept override { return sizeof(*this) + heapBytes(previous_); }
 
 private:
     Id trackId_, clipId_;
@@ -1629,6 +1754,7 @@ public:
     std::string name() const override { return "Set tempo"; }
     bool apply(Project&) override;
     bool revert(Project&) override;
+    std::size_t footprint() const noexcept override { return sizeof(*this) + positions_.footprint(); }
 
 private:
     double value_, previous_ = 120.0;

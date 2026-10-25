@@ -56,6 +56,7 @@ class TakeGroupEdit : public Command
 public:
     bool apply(Project& project) final;
     bool revert(Project& project) final;
+    std::size_t footprint() const noexcept final;
     Id groupId() const noexcept { return groupId_; }
 
 protected:

@@ -78,6 +78,13 @@ public:
         for (const auto& c : commands_)
             c->touchedParameters(out);
     }
+    std::size_t footprint() const noexcept override
+    {
+        std::size_t bytes = sizeof(*this) + commands_.capacity() * sizeof(commands_[0]);
+        for (const auto& c : commands_)
+            bytes += c->footprint();
+        return bytes;
+    }
 
 private:
     std::string name_;
@@ -103,8 +110,34 @@ void UndoStack::push(std::unique_ptr<Command> command)
     // The save point was on the redo side: it goes with the redo history.
     if (savedDepth_ > static_cast<std::ptrdiff_t>(undo_.size()))
         savedDepth_ = -1;
-    undo_.push_back(std::move(command));
+    for (const auto& step : redo_)
+        bytes_ -= step.bytes;
     redo_.clear();
+    const auto bytes = command->footprint();
+    undo_.push_back({std::move(command), bytes});
+    bytes_ += bytes;
+    trim();
+}
+
+void UndoStack::trim()
+{
+    size_t drop = 0;
+    for (size_t kept = undo_.size(); kept > 1 && (kept > maxSteps_ || bytes_ > maxBytes_); --kept)
+        bytes_ -= undo_[drop++].bytes;
+    if (drop == 0)
+        return;
+    undo_.erase(undo_.begin(), undo_.begin() + static_cast<std::ptrdiff_t>(drop));
+    // The save point moves down with the history, or goes with the dropped steps.
+    savedDepth_ = savedDepth_ >= static_cast<std::ptrdiff_t>(drop)
+                      ? savedDepth_ - static_cast<std::ptrdiff_t>(drop)
+                      : -1;
+}
+
+void UndoStack::setLimits(std::size_t maxSteps, std::size_t maxBytes)
+{
+    maxSteps_ = std::max<std::size_t>(1, maxSteps);
+    maxBytes_ = maxBytes;
+    trim();
 }
 
 void UndoStack::markSaved() noexcept
@@ -123,7 +156,7 @@ bool UndoStack::undo(Project& project)
     if (undo_.empty())
         return false;
     // Revert first: a command that fails stays on the undo side.
-    if (!undo_.back()->revert(project))
+    if (!undo_.back().command->revert(project))
         return false;
     redo_.push_back(std::move(undo_.back()));
     undo_.pop_back();
@@ -134,7 +167,7 @@ bool UndoStack::redo(Project& project)
 {
     if (redo_.empty())
         return false;
-    if (!redo_.back()->apply(project))
+    if (!redo_.back().command->apply(project))
         return false;
     undo_.push_back(std::move(redo_.back()));
     redo_.pop_back();
@@ -143,18 +176,19 @@ bool UndoStack::redo(Project& project)
 
 std::string UndoStack::undoName() const
 {
-    return undo_.empty() ? std::string{} : undo_.back()->name();
+    return undo_.empty() ? std::string{} : undo_.back().command->name();
 }
 
 std::string UndoStack::redoName() const
 {
-    return redo_.empty() ? std::string{} : redo_.back()->name();
+    return redo_.empty() ? std::string{} : redo_.back().command->name();
 }
 
 void UndoStack::clear()
 {
     undo_.clear();
     redo_.clear();
+    bytes_ = 0;
     openGroup_.reset();
     groupDepth_ = 0;
     savedDepth_ = 0;
@@ -180,6 +214,54 @@ void UndoStack::endGroup()
 }
 
 // ----- helpers ----------------------------------------------------------------------------
+
+std::size_t heapBytes(const VocalEdit& edit) noexcept
+{
+    return heapBytes(edit.notes) + heapBytes(edit.segments);
+}
+
+std::size_t heapBytes(const AudioClip& clip) noexcept
+{
+    return heapBytes(clip.name) + heapBytes(clip.mediaPath) + heapBytes(clip.vocal);
+}
+
+std::size_t heapBytes(const MidiClip& clip) noexcept
+{
+    return heapBytes(clip.name) + heapBytes(clip.notes) + heapBytes(clip.controllers);
+}
+
+std::size_t heapBytes(const AutomationLane& lane) noexcept
+{
+    return heapBytes(lane.points) + heapBytes(lane.parameterKey);
+}
+
+std::size_t heapBytes(const Insert& insert) noexcept
+{
+    return heapBytes(insert.type) + heapBytes(insert.params) + heapBytes(insert.state) +
+           heapBytes(insert.paramKeys);
+}
+
+std::size_t heapBytes(const TakeGroup& group) noexcept
+{
+    std::size_t bytes =
+        heapBytes(group.comp) + heapBytes(group.clips) + group.takes.capacity() * sizeof(Take);
+    for (const auto& take : group.takes)
+        bytes += heapBytes(take.clip);
+    return bytes;
+}
+
+std::size_t heapBytes(const Channel& channel) noexcept
+{
+    return heapBytes(channel.name) + heapBytes(channel.sends) + heapBytes(channel.instrument) +
+           heapBytes(channel.inserts) + heapBytes(channel.strip) + heapBytes(channel.automation);
+}
+
+std::size_t heapBytes(const Track& track) noexcept
+{
+    return heapBytes(static_cast<const Channel&>(track)) + heapBytes(track.inputBus) +
+           heapBytes(track.midiInput) + heapBytes(track.clips) + heapBytes(track.midiClips) +
+           heapBytes(track.takeGroups) + heapBytes(track.frozenMedia);
+}
 
 namespace
 {
@@ -2407,6 +2489,12 @@ void MusicalPositions::capture(const Project& p)
     for (const auto& b : p.buses)
         busLanes_.push_back(b.automation);
     markers_ = p.markers;
+}
+
+std::size_t MusicalPositions::footprint() const noexcept
+{
+    return sizeof(*this) + heapBytes(midi_) + heapBytes(audio_) + heapBytes(trackLanes_) +
+           heapBytes(busLanes_) + heapBytes(markers_);
 }
 
 void MusicalPositions::restore(Project& p) const

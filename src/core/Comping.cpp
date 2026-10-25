@@ -276,6 +276,12 @@ bool TakeGroupEdit::apply(Project& p)
     return true;
 }
 
+std::size_t TakeGroupEdit::footprint() const noexcept
+{
+    return sizeof(*this) + (before_ ? heapBytes(*before_) : 0) + (after_ ? heapBytes(*after_) : 0) +
+           heapBytes(removed_) + heapBytes(added_);
+}
+
 bool TakeGroupEdit::revert(Project& p)
 {
     if (result_ == Result::refuse)

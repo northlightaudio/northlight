@@ -125,7 +125,10 @@ All edits go through `ProjectSession::run`: single commands, named groups, a
 finished recording, a recovery, an automation pass. A slider drag is a gesture whose
 commands become one undo step; inside it, a setter of the field the previous
 command set merges into that command (`Command::mergeWith`), so a ten-second drag
-keeps one command, not one per tick. A test applies, undoes and redoes every command and
+keeps one command, not one per tick. The history is capped at 1000 steps and about
+256 MB (each command estimates what it keeps, `Command::footprint`); a new step
+past either drops the oldest, and a save point dropped with them can no longer be
+reached, so the project stays modified. A test applies, undoes and redoes every command and
 compares the whole project each time.
 
 Project files are versioned JSON (`.northlight`). Each version upgrades step by step

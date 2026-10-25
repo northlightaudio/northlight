@@ -1771,3 +1771,111 @@ TEST_CASE("A stale command fails and leaves the project as it was", "[core][comm
     CHECK(p == before);
     CHECK(stack.undoName() == "Add clip");
 }
+
+namespace
+{
+// Adds one to the tempo, and says it keeps `bytes` for undo.
+class Sized final : public Command
+{
+public:
+    explicit Sized(std::size_t bytes) : bytes_(bytes) {}
+    std::string name() const override { return "Sized"; }
+    bool apply(Project& p) override
+    {
+        p.tempoBpm += 1.0;
+        return true;
+    }
+    bool revert(Project& p) override
+    {
+        p.tempoBpm -= 1.0;
+        return true;
+    }
+    std::size_t footprint() const noexcept override { return bytes_; }
+
+private:
+    std::size_t bytes_;
+};
+} // namespace
+
+TEST_CASE("The undo history drops its oldest steps past its step limit", "[core][command][undo]")
+{
+    Project p;
+    p.tempoBpm = 100.0;
+    UndoStack undo;
+    undo.setLimits(3, UndoStack::defaultMaxBytes);
+    for (int i = 0; i < 5; ++i)
+        undo.execute(p, std::make_unique<Sized>(10));
+    CHECK(undo.undoCount() == 3);
+    CHECK(undo.historyBytes() == 30);
+    while (undo.undo(p))
+        ;
+    CHECK(p.tempoBpm == 102.0); // the two oldest can no longer be undone
+    CHECK(undo.canRedo());
+}
+
+TEST_CASE("The undo history drops its oldest steps past its memory limit, never the newest",
+          "[core][command][undo]")
+{
+    Project p;
+    UndoStack undo;
+    undo.setLimits(100, 250);
+    undo.execute(p, std::make_unique<Sized>(100));
+    undo.execute(p, std::make_unique<Sized>(100));
+    CHECK(undo.undoCount() == 2);
+    undo.execute(p, std::make_unique<Sized>(100));
+    CHECK(undo.undoCount() == 2);
+    CHECK(undo.historyBytes() == 200);
+    undo.execute(p, std::make_unique<Sized>(1000)); // alone past the limit: kept
+    CHECK(undo.undoCount() == 1);
+    CHECK(undo.historyBytes() == 1000);
+
+    // Undone steps are freed when a new command replaces them.
+    undo.setLimits(100, 10000);
+    undo.execute(p, std::make_unique<Sized>(100));
+    REQUIRE(undo.undo(p));
+    undo.execute(p, std::make_unique<Sized>(50));
+    CHECK(undo.historyBytes() == 1050);
+}
+
+TEST_CASE("A save point dropped from the history can no longer be reached", "[core][command][undo]")
+{
+    Project p;
+    UndoStack undo;
+    undo.setLimits(3, UndoStack::defaultMaxBytes);
+    undo.execute(p, std::make_unique<Sized>(10));
+    undo.execute(p, std::make_unique<Sized>(10));
+    undo.markSaved(); // after two steps
+    undo.execute(p, std::make_unique<Sized>(10));
+    undo.execute(p, std::make_unique<Sized>(10)); // drops the first: the save point is one deep
+    REQUIRE(undo.undoCount() == 3);
+    CHECK_FALSE(undo.atSavePoint());
+    undo.undo(p);
+    undo.undo(p);
+    CHECK(undo.atSavePoint());
+    undo.redo(p);
+    undo.redo(p);
+
+    undo.execute(p, std::make_unique<Sized>(10)); // the save point is the oldest state left
+    undo.execute(p, std::make_unique<Sized>(10)); // and now it is gone
+    while (undo.canUndo())
+    {
+        CHECK_FALSE(undo.atSavePoint());
+        undo.undo(p);
+    }
+    CHECK_FALSE(undo.atSavePoint());
+}
+
+TEST_CASE("Commands that copy tracks or clips report what they keep", "[core][command][undo]")
+{
+    Project p = projectWithTrack();
+    const Id id = p.tracks[0].id;
+    AudioClip clip;
+    clip.length = 10;
+    clip.vocal.notes.resize(1000);
+    p.tracks[0].clips.push_back(clip);
+    RemoveTrack remove(id);
+    const auto before = remove.footprint();
+    REQUIRE(remove.apply(p));
+    CHECK(remove.footprint() >= before + 1000 * sizeof(VocalNote));
+    CHECK(SetTrackGain(id, 0.5f).footprint() < 1024);
+}
