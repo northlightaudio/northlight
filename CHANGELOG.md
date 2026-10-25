@@ -181,6 +181,8 @@ Northlight has not had a release yet. The first release, 0.1.0, will include:
 
 ### Fixed
 
+- The inspector and the piano roll follow Select all, Esc, and clips that are
+  deleted or moved to another track; before, they kept showing the old selection.
 - Opening a project whose id counter is behind its pitch edits no longer lets new
   ids repeat a vocal note's or a breath's.
 - Choosing an accent or a contrast in Preferences no longer rewrites, or deletes, a

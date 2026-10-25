@@ -191,6 +191,7 @@ void ArrangeView::setProject(const core::Project* project, bool valuesOnly)
     updateScrollbar();
     layoutEmptyState();
     repaint();
+    notifySelection(); // clips that are gone left the selection
 }
 
 void ArrangeView::refreshMissingMedia()
@@ -957,8 +958,7 @@ void ArrangeView::mouseDownLanes(const juce::MouseEvent& e)
             {
                 selection_.clear();
                 select(ref, true);
-                if (onSelectionChanged)
-                    onSelectionChanged();
+                notifySelection();
             }
             clipMenu(ref, e.getScreenPosition());
         }
@@ -1415,8 +1415,7 @@ void ArrangeView::mouseUp(const juce::MouseEvent& e)
         // A clip picked on another track moves the track selection with it.
         if (!selection_.empty())
             setSelectedTrack(selection_.back().track);
-        if (onSelectionChanged)
-            onSelectionChanged();
+        notifySelection();
     }
     repaint();
 }
@@ -2763,6 +2762,15 @@ void ArrangeView::select(const ClipRef& ref, bool add)
         selection_.push_back(ref);
 }
 
+void ArrangeView::notifySelection()
+{
+    if (selection_ == notifiedSelection_)
+        return;
+    notifiedSelection_ = selection_;
+    if (onSelectionChanged)
+        onSelectionChanged();
+}
+
 void ArrangeView::selectAll()
 {
     selection_.clear();
@@ -2774,12 +2782,14 @@ void ArrangeView::selectAll()
             for (const auto& m : t.midiClips)
                 selection_.push_back({t.id, m.id, true});
         }
+    notifySelection();
     repaint();
 }
 
 void ArrangeView::clearSelection()
 {
     selection_.clear();
+    notifySelection();
     repaint();
 }
 
@@ -3335,8 +3345,7 @@ void ArrangeView::openFirstClipMenu()
             continue;
         const auto span = spanOf(ref);
         selection_.assign(1, ref);
-        if (onSelectionChanged)
-            onSelectionChanged();
+        notifySelection();
         repaint();
         const auto at = spanBounds(span->start, span->length, static_cast<int>(row)).getCentre();
         clipMenu(ref, localPointToGlobal(at));
@@ -3363,8 +3372,7 @@ void ArrangeView::addMidiClip(core::Id trackId, core::SamplePosition start, core
             {
                 selection_.clear();
                 select({trackId, c.id, true}, true);
-                if (onSelectionChanged)
-                    onSelectionChanged();
+                notifySelection();
             }
     repaint();
 }
@@ -3477,6 +3485,7 @@ void ArrangeView::finishMove()
     selection_ = moved; // the selection follows the clips to their new tracks
     const std::string name = commands.size() > 1 ? "Move clips" : "Move clip";
     emit(std::move(commands), name);
+    notifySelection();
 }
 
 void ArrangeView::finishTrim()
@@ -3749,6 +3758,7 @@ void ArrangeView::removeClips(const std::vector<ClipRef>& clips)
                 e.commands.push_back(std::make_unique<core::RemoveTakeGroup>(track.id, group.id));
     std::erase_if(selection_, [&](const ClipRef& ref) { return edit::contains(clips, ref); });
     emit(std::move(e.commands), e.name);
+    notifySelection();
 }
 
 void ArrangeView::toggleMuteSelection()

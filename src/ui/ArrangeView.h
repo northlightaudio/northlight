@@ -442,6 +442,9 @@ private:
     Hit hitTest(juce::Point<int> p) const noexcept;
     bool isSelected(core::Id track, core::Id clip) const noexcept;
     void select(const ClipRef& ref, bool add);
+    // Tells the owner (onSelectionChanged) when the clip selection differs from what
+    // it last heard. Every path that changes selection_ ends here.
+    void notifySelection();
     // The snap grid at a position (bars, beats and divisions follow the tempo track).
     core::GridStep gridAt(core::SamplePosition at) const noexcept;
     // The grid line at or before / at or after a position.
@@ -576,7 +579,8 @@ private:
 
     // editing state
     std::vector<ClipRef> selection_;
-    std::vector<ClipRef> pressSelection_; // the selection when the button went down
+    std::vector<ClipRef> notifiedSelection_; // what onSelectionChanged last reported
+    std::vector<ClipRef> pressSelection_;    // the selection when the button went down
     bool snap_ = true;
     int snapGrid_ = 0;
     bool ripple_ = false;
