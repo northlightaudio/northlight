@@ -585,6 +585,10 @@ void ModuleCard::paint(juce::Graphics& g)
                    juce::Justification::centredLeft);
         return;
     }
+    // A live display's frame repaints inside the body: the header (its clip path
+    // and the measured status) is drawn only when the repaint reaches it.
+    if (!g.getClipBounds().intersects(headerArea().withY(0).withHeight(headerHeight)))
+        return;
     // The hue line along the top: full when on, faint when off.
     {
         juce::Graphics::ScopedSaveState save(g);

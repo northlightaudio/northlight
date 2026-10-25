@@ -992,6 +992,10 @@ private:
         const auto hue = colour();
         const auto straw = strawOf(theme_);
         const auto face = face_.toFloat();
+        // The Evensong display's frames repaint inside it: every layer below skips
+        // itself when the repaint does not reach it (the land's and the
+        // wordmark's paths, the panels and the captions are the costly ones).
+        const auto painted = g.getClipBounds().toFloat();
         juce::Graphics::ScopedSaveState save(g);
         juce::Path clip;
         clip.addRoundedRectangle(face, theme_.radius.md);
@@ -1021,13 +1025,18 @@ private:
             }
 
         // The land, its crest catching the last light.
-        g.setColour(c.canvas.darker(0.3f));
-        g.fillPath(landPath_);
-        g.setColour(straw.withAlpha(0.3f));
-        g.strokePath(landPath_, juce::PathStrokeType(1.0f));
+        if (landPath_.getBounds().expanded(1.0f).intersects(painted))
+        {
+            g.setColour(c.canvas.darker(0.3f));
+            g.fillPath(landPath_);
+            g.setColour(straw.withAlpha(0.3f));
+            g.strokePath(landPath_, juce::PathStrokeType(1.0f));
+        }
 
         // The wordmark: gold into the hue, and what it is under it.
-        if (!wordmark_.isEmpty())
+        if (!wordmark_.isEmpty() && wordmark_.getBounds()
+                                        .withBottom(static_cast<float>(subtitleBaseline_) + 4.0f)
+                                        .intersects(painted))
         {
             const auto box = wordmark_.getBounds();
             g.setGradientFill(
@@ -1038,12 +1047,15 @@ private:
             g.setColour(c.textTertiary);
             g.drawSingleLineText(subtitle, juce::roundToInt(subtitleX_), juce::roundToInt(subtitleBaseline_));
         }
-        paintLights(g);
+        if (lights_.toFloat().intersects(painted))
+            paintLights(g);
 
         // The glass panels.
         for (const auto& p : panels_)
         {
             const auto r = p.bounds.toFloat();
+            if (!r.intersects(painted))
+                continue;
             g.setColour(c.surface1.withAlpha(0.72f));
             g.fillRoundedRectangle(r, theme_.radius.lg);
             g.setColour(c.textPrimary.withAlpha(0.07f));
@@ -1067,6 +1079,9 @@ private:
         g.setFont(theme_.captionCaps());
         for (const auto& cap : captions_)
         {
+            if (!cap.area.withRight(cap.ruleEnd > 0.0f ? cap.ruleEnd : cap.area.getRight())
+                     .intersects(painted))
+                continue;
             g.setColour(c.textTertiary);
             g.drawText(cap.text, cap.area, juce::Justification::centredLeft);
             const float x = cap.area.getX() + textWidth(theme_.captionCaps(), cap.text) + 8.0f;
