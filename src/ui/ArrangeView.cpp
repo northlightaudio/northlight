@@ -723,6 +723,12 @@ void ArrangeView::setZoom(double samplesPerPixel, int anchorX)
     setScroll(newScroll);
 }
 
+void ArrangeView::setTimeView(double samplesPerPixel, core::SamplePosition firstVisible)
+{
+    samplesPerPixel_ = std::clamp(samplesPerPixel, minSamplesPerPixel, maxSamplesPerPixel);
+    setScroll(firstVisible);
+}
+
 void ArrangeView::setScroll(core::SamplePosition firstVisible)
 {
     const auto maxScroll = std::max<core::SamplePosition>(0, contentLength() - visibleSamples());

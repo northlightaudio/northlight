@@ -399,10 +399,20 @@ void PianoRoll::scrollBarMoved(juce::ScrollBar* bar, double newRangeStart)
     if (updatingScrollbars_)
         return;
     if (bar == &horizontal_)
+    {
         scroll_ = static_cast<core::SamplePosition>(newRangeStart);
+        notifyTimeView();
+    }
     else
         verticalScroll_ = static_cast<int>(newRangeStart);
     repaint();
+}
+
+void PianoRoll::notifyTimeView()
+{
+    const auto* c = clip();
+    if (linked_ && c != nullptr && onTimeViewChanged)
+        onTimeViewChanged(samplesPerPixel_, c->start + scroll_);
 }
 
 void PianoRoll::resized()
@@ -442,11 +452,13 @@ void PianoRoll::mouseWheelMove(const juce::MouseEvent& e, const juce::MouseWheel
         samplesPerPixel_ = std::clamp(samplesPerPixel_ * factor, 1.0, 100000.0);
         scroll_ = std::max<core::SamplePosition>(
             0, anchor - static_cast<core::SamplePosition>((e.x - keyboardWidth) * samplesPerPixel_));
+        notifyTimeView();
     }
     else if (e.mods.isShiftDown())
     {
         scroll_ = std::max<core::SamplePosition>(
             0, scroll_ - static_cast<core::SamplePosition>(wheel.deltaY * 200.0 * samplesPerPixel_));
+        notifyTimeView();
     }
     else
     {

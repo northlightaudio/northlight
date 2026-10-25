@@ -1242,6 +1242,12 @@ private:
         { session_.executeGroup(name, std::move(commands)); };
         audioEditor_.onGestureBegin = [this](const std::string& name) { session_.beginGesture(name); };
         audioEditor_.onGestureEnd = [this] { session_.endGesture(); };
+        // A linked editor's own zoom and scroll move the arrange view, which the
+        // tick then feeds back to every linked editor.
+        audioEditor_.onTimeViewChanged = [this](double samplesPerPixel, core::SamplePosition first)
+        { tracks_.setTimeView(samplesPerPixel, first); };
+        pianoRoll_.onTimeViewChanged = [this](double samplesPerPixel, core::SamplePosition first)
+        { tracks_.setTimeView(samplesPerPixel, first); };
         audioEditor_.onUndo = [this] { session_.undo(); };
         audioEditor_.onAudition = [this](core::SamplePosition from, core::SamplePosition to)
         {

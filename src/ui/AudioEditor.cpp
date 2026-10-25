@@ -587,10 +587,23 @@ void AudioEditor::scrollBarMoved(juce::ScrollBar* bar, double newRangeStart)
     if (updatingScrollbars_)
         return;
     if (bar == &horizontal_)
+    {
         scroll_ = newRangeStart;
+        notifyTimeView();
+    }
     else
         topCents_ = static_cast<float>(12800.0 - newRangeStart);
     repaint();
+}
+
+void AudioEditor::notifyTimeView()
+{
+    const auto* c = clip();
+    if (!linked_ || c == nullptr || !onTimeViewChanged)
+        return;
+    const double first = toTimelineSpan(*c, scroll_ - static_cast<double>(c->sourceOffset));
+    onTimeViewChanged(toTimelineSpan(*c, samplesPerPixel_),
+                      c->start + static_cast<core::SamplePosition>(std::llround(first)));
 }
 
 void AudioEditor::resized()
@@ -1701,9 +1714,13 @@ void AudioEditor::mouseWheelMove(const juce::MouseEvent& e, const juce::MouseWhe
         const double factor = wheel.deltaY > 0 ? 0.8 : 1.25;
         samplesPerPixel_ = std::clamp(samplesPerPixel_ * factor, 1.0, 100000.0);
         scroll_ = anchor - (e.x - leftEdge()) * samplesPerPixel_;
+        notifyTimeView();
     }
     else if (e.mods.isShiftDown() || mode_ == Mode::wave)
+    {
         scroll_ -= wheel.deltaY * 200.0 * samplesPerPixel_;
+        notifyTimeView();
+    }
     else
         topCents_ = std::clamp(topCents_ + wheel.deltaY * 600.0f, 1200.0f, 12800.0f);
     updateScrollbars();

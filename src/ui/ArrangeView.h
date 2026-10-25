@@ -166,6 +166,8 @@ public:
     core::SamplePosition scrollPosition() const noexcept { return scroll_; }
     core::SamplePosition visibleSamplesForBenchmark() const noexcept { return visibleSamples(); }
     void setScroll(core::SamplePosition firstVisible);
+    // Zoom and scroll together (an editor linked to this view zoomed or scrolled).
+    void setTimeView(double samplesPerPixel, core::SamplePosition firstVisible);
     bool followPlayhead() const noexcept { return followPlayhead_; }
     // The row height: size.trackRowMin, trackRow or trackRowLarge.
     void setRowHeight(int height);

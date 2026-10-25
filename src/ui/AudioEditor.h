@@ -66,6 +66,9 @@ public:
     double sourceSamplesPerPixel() const noexcept { return samplesPerPixel_; }
     double firstVisibleSource() const noexcept { return scroll_; }
     void setTimeView(double samplesPerPixel, core::SamplePosition absoluteFirstVisible);
+    // While linked, a zoom or scroll here: the timeline samples per pixel and the
+    // first visible timeline sample, for the owner to set on the arrange view.
+    std::function<void(double samplesPerPixel, core::SamplePosition firstVisible)> onTimeViewChanged;
     // Zooms to `samplesPerPixel` with `secondsIntoClip` at the left edge (launch flags).
     void zoomTo(double samplesPerPixel, double secondsIntoClip);
 
@@ -140,6 +143,7 @@ private:
 
     void timerCallback() override;
     void scrollBarMoved(juce::ScrollBar* bar, double newRangeStart) override;
+    void notifyTimeView(); // tells a linked owner where the view went
     void changeListenerCallback(juce::ChangeBroadcaster*) override;
 
     const core::AudioClip* clip() const noexcept;

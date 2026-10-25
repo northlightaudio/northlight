@@ -181,6 +181,8 @@ Northlight has not had a release yet. The first release, 0.1.0, will include:
 
 ### Fixed
 
+- With zoom linked, zooming or scrolling in the piano roll or the audio editor moves
+  the arrange view too; before, the arrange view put it straight back.
 - Undoing back to the last save leaves the project unmodified, so closing no longer
   asks to save; a change made in a plugin's own window (a preset, a knob) now marks
   the project modified.

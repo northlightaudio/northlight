@@ -59,9 +59,12 @@ public:
     // Hearing notes while editing them (the toolbar's speaker toggle).
     void setAudition(bool on);
     bool audition() const noexcept { return audition_; }
-    // The "link zoom to arrange" toggle: the owner feeds setTimeView while linked.
+    // The "link zoom to arrange" toggle: the owner feeds setTimeView while linked,
+    // and a zoom or scroll here goes back through onTimeViewChanged (timeline samples
+    // per pixel, the first visible timeline sample), so the link works both ways.
     bool zoomLinked() const noexcept { return linked_; }
     void setTimeView(double samplesPerPixel, core::SamplePosition absoluteFirstVisible);
+    std::function<void(double samplesPerPixel, core::SamplePosition firstVisible)> onTimeViewChanged;
 
     // The grid as a fraction of a beat (1 = a beat, 4 = a sixteenth); snap on/off.
     void setGridDivision(int division);
@@ -158,6 +161,7 @@ private:
     };
 
     void scrollBarMoved(juce::ScrollBar* bar, double newRangeStart) override;
+    void notifyTimeView(); // tells a linked owner where the view went
     const core::MidiClip* clip() const noexcept;
     const core::Track* track() const noexcept;
     juce::Colour trackColour() const;
