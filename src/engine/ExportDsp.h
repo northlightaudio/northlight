@@ -13,6 +13,7 @@
 namespace northlight::engine
 {
 
+// The export's figures, floored at measurementFloorDb (engine/Gain.h).
 double gainToDb(double gain) noexcept;
 double dbToGain(double db) noexcept;
 

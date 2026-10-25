@@ -1,5 +1,6 @@
 #pragma once
 
+#include "engine/Gain.h"
 #include "plugins/ChannelStrip.h"
 #include "ui/Theme.h"
 #include "ui/Wells.h"
@@ -140,7 +141,7 @@ inline float yToDb(float y, float topDb, float bottomDb, juce::Rectangle<float> 
 
 inline float toDb(float linear)
 {
-    return linear > 1.0e-6f ? 20.0f * std::log10(linear) : -120.0f;
+    return engine::gainToDb(linear, static_cast<float>(engine::processorFloorDb));
 }
 
 inline juce::String formatHz(double hz)

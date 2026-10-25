@@ -1,5 +1,6 @@
 #include "ui/MediaBrowser.h"
 
+#include "ui/Db.h"
 #include "ui/MediaFiles.h"
 #include "ui/NorthlightLookAndFeel.h"
 #include "ui/PluginBrowser.h"
@@ -641,8 +642,8 @@ void MediaBrowser::paint(juce::Graphics& g)
     g.setFont(theme_.caption());
     g.setColour(c.textTertiary);
     const auto gain = volume_.getValue() * volume_.getValue();
-    const auto db = gain > 1.0e-6 ? 20.0 * std::log10(gain) : -120.0;
-    g.drawText(db <= -119.0 ? juce::String::fromUTF8("-\xe2\x88\x9e dB") : juce::String(db, 1) + " dB",
+    const auto db = db::fromGain(static_cast<float>(gain));
+    g.drawText(db <= db::silence ? juce::String::fromUTF8("-\xe2\x88\x9e dB") : juce::String(db, 1) + " dB",
                volume_.getBounds()
                    .withX(volume_.getRight())
                    .withWidth(footer.getRight() - volume_.getRight() - theme_.spacing.sm),

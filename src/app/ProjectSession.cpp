@@ -11,6 +11,7 @@
 #include "plugins/BuiltIns.h"
 #include "plugins/ChannelStrip.h"
 #include "plugins/Pulsar.h"
+#include "ui/Db.h"
 
 #include <algorithm>
 #include <cmath>
@@ -306,7 +307,7 @@ std::string ProjectSession::normaliseClip(core::Id trackId, core::Id clipId, flo
         }
     if (peak <= 0.0f)
         return "the clip is silent";
-    const float target = std::pow(10.0f, targetDb / 20.0f);
+    const float target = ui::db::toGain(targetDb);
     execute(std::make_unique<core::SetClipGain>(trackId, clipId, target / peak));
     return {};
 }

@@ -1,5 +1,6 @@
 #pragma once
 
+#include "engine/Gain.h"
 #include "engine/Insert.h"
 
 #include <algorithm>
@@ -16,16 +17,16 @@
 namespace northlight::plugins
 {
 
-constexpr float minusInfinityDb = -120.0f;
+constexpr float minusInfinityDb = static_cast<float>(engine::processorFloorDb);
 
 inline float dbToGain(float db) noexcept
 {
-    return db <= minusInfinityDb ? 0.0f : std::pow(10.0f, db / 20.0f);
+    return engine::dbToGain(db, minusInfinityDb);
 }
 
 inline float gainToDb(float gain) noexcept
 {
-    return gain > 0.0f ? 20.0f * std::log10(gain) : minusInfinityDb;
+    return engine::gainToDb(gain, minusInfinityDb);
 }
 
 // Shared parameter storage: atomics the real-time thread snapshots per block.

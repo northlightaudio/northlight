@@ -1307,8 +1307,8 @@ void ArrangeView::mouseDrag(const juce::MouseEvent& e)
         {
             // A quarter of a dB per pixel, up 24 dB at most.
             const float db = static_cast<float>(dragStart_.y - e.y) * 0.25f;
-            const float base = 20.0f * std::log10(std::max(dragOriginal_.gain, 1.0e-4f));
-            gainPreview_ = std::pow(10.0f, std::clamp(base + db, -60.0f, 24.0f) / 20.0f);
+            const float base = static_cast<float>(db::fromGain(dragOriginal_.gain));
+            gainPreview_ = db::toGain(std::clamp(base + db, -60.0f, 24.0f));
             break;
         }
         case Drag::none:

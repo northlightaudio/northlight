@@ -1,5 +1,6 @@
 #include "plugins/ChannelStrip.h"
 
+#include "engine/Gain.h"
 #include "engine/rt/RealtimeGuard.h"
 #include "plugins/BuiltIns.h"
 #include "plugins/ProcessorBase.h"
@@ -200,7 +201,7 @@ double responseDb(const float* params, double sampleRate, double hz, int band) n
     for (const auto& s : sections)
         if (!s.isIdentity())
             magnitude *= s.magnitude(hz, sampleRate);
-    double db = 20.0 * std::log10(std::max(1.0e-9, magnitude));
+    double db = engine::gainToDb(magnitude, engine::magnitudeFloorDb);
     if (band < 0)
         db += params[output];
     return db;

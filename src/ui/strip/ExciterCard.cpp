@@ -6,6 +6,7 @@
 // level as a readout, and the controls in four groups: harmonics, low end,
 // dynamics and output.
 
+#include "engine/Gain.h"
 #include "plugins/Exciter.h"
 #include "ui/components/RotarySelector.h"
 #include "ui/strip/ModuleCard.h"
@@ -426,7 +427,7 @@ private:
         const auto binDb = [&](int bin)
         {
             const double m = fftData_[static_cast<size_t>(juce::jlimit(0, fftSize / 2, bin))] / reference;
-            return 20.0 * std::log10(std::max(1.0e-9, m));
+            return engine::gainToDb(m, engine::magnitudeFloorDb);
         };
         for (int col = 0; col < columns; ++col)
         {

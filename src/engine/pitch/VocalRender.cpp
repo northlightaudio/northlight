@@ -1,5 +1,7 @@
 #include "engine/pitch/VocalRender.h"
 
+#include "engine/Gain.h"
+
 #include <algorithm>
 #include <cmath>
 
@@ -70,7 +72,7 @@ gainEnvelope(const core::VocalEdit& edit, double rate, std::int64_t start, std::
     {
         if (e <= start || s >= end || e <= s)
             return;
-        const float g = muted ? 0.0f : std::pow(10.0f, gainDb / 20.0f);
+        const float g = muted ? 0.0f : dbToGain(gainDb, static_cast<float>(processorFloorDb));
         const auto fade = std::max<std::int64_t>(
             1, std::min<std::int64_t>(static_cast<std::int64_t>(fadeSeconds * rate), (e - s) / 2));
         for (std::int64_t t = std::max(s, start); t < std::min(e, end); ++t)

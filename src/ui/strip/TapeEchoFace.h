@@ -5,6 +5,7 @@
 // scaled to fit its card's body; its meter is a VU, its level lamps neon bulbs,
 // and its rollers turn with the tape.
 
+#include "engine/Gain.h"
 #include "ui/components/HardwareParts.h"
 
 #include <algorithm>
@@ -39,7 +40,7 @@ inline constexpr float vuReferenceDbfs = -10.0f;
 // A level (linear, full scale 1) in VU.
 inline float vuOf(float linear) noexcept
 {
-    return 20.0f * std::log10(std::max(linear, 1.0e-6f)) - vuReferenceDbfs;
+    return engine::gainToDb(linear, -120.0f) - vuReferenceDbfs;
 }
 
 // The needle's angle from upright, in degrees, for a reading in VU. The scale is
@@ -91,7 +92,7 @@ inline Lamp lampFor(float loopGain, bool on) noexcept
 // 42 dB down and is full at full scale.
 inline float neonBrightness(float linear) noexcept
 {
-    const float db = 20.0f * std::log10(std::max(linear, 1.0e-6f));
+    const float db = engine::gainToDb(linear, -120.0f);
     return std::clamp((db + 42.0f) / 42.0f, 0.0f, 1.0f);
 }
 

@@ -11,6 +11,7 @@
 
 #include "core/Command.h"
 #include "core/NoteNames.h"
+#include "engine/Gain.h"
 #include "plugins/Sampler.h"
 #include "ui/MediaFiles.h"
 #include "ui/NorthlightLookAndFeel.h"
@@ -503,8 +504,7 @@ public:
                 const float px = r.getX() + r.getWidth() * static_cast<float>(i) / 64.0f;
                 const double w = xToHz(px, r) / cutoffHz;
                 const double mag = 1.0 / std::sqrt((1.0 - w * w) * (1.0 - w * w) + (k * w) * (k * w));
-                const float py =
-                    dbToY(static_cast<float>(20.0 * std::log10(std::max(mag, 1.0e-6))), 18.0f, -36.0f, r);
+                const float py = dbToY(static_cast<float>(engine::gainToDb(mag, -120.0)), 18.0f, -36.0f, r);
                 if (i == 0)
                     p.startNewSubPath(px, py);
                 else

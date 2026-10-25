@@ -9,6 +9,7 @@
 // beside the shape of one hit, then the rest in four groups: Space, Tone,
 // Dynamics, Output.
 
+#include "engine/Gain.h"
 #include "plugins/BeatSync.h"
 #include "plugins/Bloom.h"
 #include "ui/NorthlightLookAndFeel.h"
@@ -359,7 +360,7 @@ private:
                 power +=
                     static_cast<double>(fftData_[static_cast<size_t>(i)]) * fftData_[static_cast<size_t>(i)];
             const double m = std::sqrt(power / std::max(1, count));
-            const float db = static_cast<float>(20.0 * std::log10(std::max(1.0e-9, m / reference)));
+            const float db = static_cast<float>(engine::gainToDb(m / reference, engine::magnitudeFloorDb));
             column_[b] = juce::jlimit(0.0f, 1.0f, (db - fieldFloorDb) / (fieldTopDb - fieldFloorDb));
         }
     }

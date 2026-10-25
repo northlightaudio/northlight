@@ -1,5 +1,6 @@
 #include "plugins/FeedbackNetwork.h"
 
+#include "engine/Gain.h"
 #include "engine/rt/RealtimeGuard.h"
 
 #include <complex>
@@ -71,7 +72,7 @@ float decayAt(
     const auto high = lowPass(dampingHz);
     const auto low = lowPass(lowCutHz);
     const double shelves = std::abs(high + k * (1.0 - high)) * std::abs((1.0 - low) + k * low);
-    const double passDb = 20.0 * std::log10(std::max(1.0e-9, g * shelves));
+    const double passDb = engine::gainToDb(g * shelves, engine::magnitudeFloorDb);
     return static_cast<float>(passDb < -1.0e-9 ? -60.0 * length / passDb : rt);
 }
 

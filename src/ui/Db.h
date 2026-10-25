@@ -1,5 +1,7 @@
 #pragma once
 
+#include "engine/Gain.h"
+
 #include <juce_core/juce_core.h>
 
 #include <algorithm>
@@ -16,12 +18,12 @@ constexpr double silence = -100.0;
 
 inline float toGain(double db) noexcept
 {
-    return db <= silence ? 0.0f : static_cast<float>(std::pow(10.0, db / 20.0));
+    return static_cast<float>(engine::dbToGain(db, silence));
 }
 
 inline double fromGain(float gain) noexcept
 {
-    return gain > 0.0f ? std::max(silence, 20.0 * std::log10(static_cast<double>(gain))) : silence;
+    return engine::gainToDb(static_cast<double>(gain), silence);
 }
 
 // A control whose travel stops above `silence` (a slider down to -60 dB): its

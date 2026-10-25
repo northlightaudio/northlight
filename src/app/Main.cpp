@@ -9,6 +9,7 @@
 #include "core/Comping.h"
 #include "core/ProjectJson.h"
 #include "core/TempoMap.h"
+#include "engine/Gain.h"
 #include "engine/OutputTap.h"
 #include "plugins/BuiltIns.h"
 #include "plugins/ChannelStrip.h"
@@ -566,7 +567,7 @@ public:
             {
                 const float db = tokens.getReference(++i).text.getFloatValue();
                 session_->execute(std::make_unique<core::SetMasterGain>(
-                    db <= -120.0f ? 0.0f : std::pow(10.0f, db / 20.0f)));
+                    engine::dbToGain(db, static_cast<float>(engine::processorFloorDb))));
             }
             else if (arg == "--takes-demo")
             {

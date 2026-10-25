@@ -1,5 +1,6 @@
 #include "engine/ExportDsp.h"
 
+#include "engine/Gain.h"
 #include "engine/Loudness.h"
 
 #include <algorithm>
@@ -114,12 +115,12 @@ struct TruePeakFilter
 
 double gainToDb(double gain) noexcept
 {
-    return gain > 1e-10 ? 20.0 * std::log10(gain) : -200.0;
+    return gainToDb(gain, measurementFloorDb);
 }
 
 double dbToGain(double db) noexcept
 {
-    return std::pow(10.0, db / 20.0);
+    return dbToGain(db, measurementFloorDb);
 }
 
 // ----- sample-rate conversion ------------------------------------------------------------

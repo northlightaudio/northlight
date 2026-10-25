@@ -1,5 +1,6 @@
 #include "plugins/Cabinet.h"
 
+#include "engine/Gain.h"
 #include "engine/rt/RealtimeGuard.h"
 
 #if defined(_MSC_VER)
@@ -203,7 +204,7 @@ double bandMeanDb(const std::function<double(double)>& magnitude)
     for (int i = 0; i < points; ++i)
     {
         const double hz = 150.0 * std::pow(4000.0 / 150.0, static_cast<double>(i) / (points - 1));
-        sum += 20.0 * std::log10(std::max(1.0e-9, magnitude(hz)));
+        sum += engine::gainToDb(magnitude(hz), engine::magnitudeFloorDb);
     }
     return sum / points;
 }
@@ -350,7 +351,7 @@ int responseLength(double sampleRate) noexcept
 double directDb(int model, const Mic& mic, double hz) noexcept
 {
     const double mean = bandMeanDb([&](double f) { return rawMagnitude(model, mic, f, 0.0, false); });
-    return 20.0 * std::log10(std::max(1.0e-9, rawMagnitude(model, mic, hz, 0.0, false))) - mean;
+    return engine::gainToDb(rawMagnitude(model, mic, hz, 0.0, false), engine::magnitudeFloorDb) - mean;
 }
 
 Layout layout(int model)

@@ -2,6 +2,7 @@
 
 #include "core/NoteNames.h"
 #include "core/TempoMap.h"
+#include "engine/Gain.h"
 #include "engine/pitch/VocalOps.h"
 #include "engine/pitch/VocalRender.h"
 #include "ui/NorthlightLookAndFeel.h"
@@ -890,8 +891,7 @@ void AudioEditor::paintWave(juce::Graphics& g)
         }
     }
     // Gain line and fade handles.
-    const float gainDb =
-        drag_ == Drag::gain ? dragGainDb_ : (cl->gain > 0.0f ? 20.0f * std::log10(cl->gain) : gainMinDb);
+    const float gainDb = drag_ == Drag::gain ? dragGainDb_ : engine::gainToDb(cl->gain, gainMinDb);
     const float gy =
         static_cast<float>(area.getY()) +
         static_cast<float>(area.getHeight()) *
@@ -1373,7 +1373,7 @@ void AudioEditor::mouseDown(const juce::MouseEvent& e)
         const float fi = xForSource(static_cast<double>(cl->sourceOffset) +
                                     toSourceSpan(*cl, static_cast<double>(cl->fadeIn)));
         const float fo = xForSource(sourceEnd(*cl) - toSourceSpan(*cl, static_cast<double>(cl->fadeOut)));
-        const float gainDb = cl->gain > 0.0f ? 20.0f * std::log10(cl->gain) : gainMinDb;
+        const float gainDb = engine::gainToDb(cl->gain, gainMinDb);
         const float gy =
             static_cast<float>(area.getY()) +
             static_cast<float>(area.getHeight()) *
@@ -1634,9 +1634,7 @@ void AudioEditor::mouseUp(const juce::MouseEvent&)
                 {
                     std::vector<std::unique_ptr<core::Command>> commands;
                     commands.push_back(std::make_unique<core::SetClipGain>(
-                        trackId_,
-                        clipId_,
-                        dragGainDb_ <= gainMinDb ? 0.0f : std::pow(10.0f, dragGainDb_ / 20.0f)));
+                        trackId_, clipId_, engine::dbToGain(dragGainDb_, gainMinDb)));
                     onEdit(std::move(commands), "Set clip gain");
                 }
                 break;

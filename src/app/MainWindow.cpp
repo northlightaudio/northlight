@@ -16,6 +16,7 @@
 #include "ui/ArrangeView.h"
 #include "ui/AudioEditor.h"
 #include "ui/AudioSetupView.h"
+#include "ui/Db.h"
 #include "ui/ExportView.h"
 #include "ui/FrameStats.h"
 #include "ui/Icons.h"
@@ -381,7 +382,7 @@ public:
         juce::Desktop::getInstance().setGlobalScaleFactor(
             static_cast<float>(scale > 0.0 ? scale / 100.0 : 1.0));
         const double levelDb = juce::String(value(Keys::metronomeLevel, "-6")).getDoubleValue();
-        session_.setMetronomeLevel(static_cast<float>(std::pow(10.0, levelDb / 20.0)));
+        session_.setMetronomeLevel(ui::db::toGain(levelDb));
         std::vector<std::string> paths;
         for (const auto& item : juce::StringArray::fromTokens(
                  juce::String::fromUTF8(value(Keys::pluginPaths, "").c_str()), "\t", ""))

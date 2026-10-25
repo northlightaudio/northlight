@@ -1,5 +1,6 @@
 #include "ui/components/Meter.h"
 
+#include "ui/Db.h"
 #include "ui/MeterBallistics.h"
 
 #include <algorithm>
@@ -12,7 +13,7 @@ namespace
 {
 float toDb(float linear) noexcept
 {
-    return linear > 0.0f ? 20.0f * std::log10(linear) : -100.0f;
+    return static_cast<float>(db::fromGain(linear));
 }
 } // namespace
 

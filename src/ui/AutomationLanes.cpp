@@ -267,8 +267,10 @@ float AutomationLanes::toNorm(const core::Channel& track, const Key& key, float 
         case core::AutomationTarget::gain:
             if (value <= 1.0e-6f)
                 return 0.0f;
-            return juce::jlimit(
-                0.0f, 1.0f, (20.0f * std::log10(value) - gainBottomDb) / (gainTopDb - gainBottomDb));
+            return juce::jlimit(0.0f,
+                                1.0f,
+                                (static_cast<float>(db::fromGain(value)) - gainBottomDb) /
+                                    (gainTopDb - gainBottomDb));
         case core::AutomationTarget::pan:
             return juce::jlimit(0.0f, 1.0f, (value + 1.0f) * 0.5f);
         case core::AutomationTarget::insertParameter:
@@ -294,7 +296,7 @@ float AutomationLanes::fromNorm(const core::Channel& track, const Key& key, floa
         case core::AutomationTarget::gain:
             if (norm <= 0.002f)
                 return 0.0f;
-            return std::pow(10.0f, (gainBottomDb + norm * (gainTopDb - gainBottomDb)) / 20.0f);
+            return db::toGain(gainBottomDb + norm * (gainTopDb - gainBottomDb));
         case core::AutomationTarget::pan:
             return norm * 2.0f - 1.0f;
         case core::AutomationTarget::insertParameter:

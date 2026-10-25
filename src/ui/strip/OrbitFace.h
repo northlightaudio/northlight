@@ -5,6 +5,7 @@
 // can hold them. The positions mirror scripts/render/orbit/face_render.py (50 px
 // to its unit): move a part in both.
 
+#include "engine/Gain.h"
 #include "ui/components/HardwareParts.h"
 
 #include <algorithm>
@@ -130,7 +131,7 @@ inline float vuAngle(float vu) noexcept
 // calibrated to a sine's rms): 0 VU is the processor's reference level.
 inline float vuOf(float level, float referenceDbfs) noexcept
 {
-    return 20.0f * std::log10(std::max(level, 1.0e-6f)) - referenceDbfs;
+    return engine::gainToDb(level, -120.0f) - referenceDbfs;
 }
 
 // The needle's movement: a VU's 300 ms to 99% of a step, as two equal lags.

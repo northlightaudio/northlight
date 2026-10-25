@@ -7,6 +7,7 @@
 
 #include "ui/strip/AuroraEditor.h"
 
+#include "engine/Gain.h"
 #include "plugins/Aurora.h"
 #include "plugins/Biquad.h"
 #include "ui/NorthlightLookAndFeel.h"
@@ -233,7 +234,7 @@ public:
             double m = one.magnitude(hz, rate);
             if (mode == 1)
                 m *= two.magnitude(hz, rate);
-            const float db = static_cast<float>(20.0 * std::log10(std::max(1.0e-9, m)));
+            const float db = static_cast<float>(engine::gainToDb(m, engine::magnitudeFloorDb));
             const float y = dbToY(juce::jlimit(bottomDb - 4.0f, topDb, db), topDb, bottomDb, p);
             if (i == 0)
             {
