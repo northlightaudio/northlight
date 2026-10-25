@@ -10,8 +10,9 @@ namespace northlight::ui
 // The one owner of what is selected: a channel (a track, an FX track or a bus)
 // and the audio clip on it the inspector shows. Everything that selects goes
 // through select(); one listener (the shell's) brings every view to it, so no
-// view can be left showing another channel. The arrange view keeps its own set
-// of selected clips for editing, and reports the one in focus here.
+// view can be left showing another channel. The arrange view reads the selected
+// channel from here (it keeps no copy); it keeps its own set of selected clips
+// for editing, and reports the one in focus here.
 class Selection
 {
 public:

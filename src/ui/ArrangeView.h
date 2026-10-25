@@ -9,6 +9,7 @@
 #include "ui/AutomationLanes.h"
 #include "ui/Icons.h"
 #include "ui/PluginMenu.h"
+#include "ui/Selection.h"
 #include "ui/TakeLanes.h"
 #include "ui/TempoLane.h"
 #include "ui/Theme.h"
@@ -137,8 +138,14 @@ public:
     // Track selection (a click on a header or a lane) and clip selection changes.
     std::function<void(core::Id trackId)> onTrackSelected;
     std::function<void()> onSelectionChanged;
+    // The selected track is ui::Selection's, the one owner: the shell's, given
+    // here, or (without one, as in tests) the view's own. A click on a header or
+    // lane asks for it through onTrackSelected; the owner selects, and calls
+    // setSelectedTrack to have the view show it.
+    void setSelection(const Selection* selection);
+    // Shows the selection's track (without a shared Selection, selects it first).
     void setSelectedTrack(core::Id trackId);
-    core::Id selectedTrack() const noexcept { return selectedTrack_; }
+    core::Id selectedTrack() const noexcept { return trackSelection().channel(); }
     // The empty state's actions (screens/shell.md).
     std::function<void()> onAddAudioTrack, onImportRequested, onAddBus;
     // The plugins its "New instrument" menus offer (the shell's shared sources).
@@ -649,7 +656,13 @@ private:
     juce::Rectangle<int> lasso_;
     bool draggedFar_ = false;
     core::Id selectedMarker_ = core::invalidId;
-    core::Id selectedTrack_ = core::invalidId;
+    const Selection* sharedSelection_ = nullptr;
+    Selection ownSelection_; // without a shared one
+    const Selection& trackSelection() const noexcept
+    {
+        return sharedSelection_ != nullptr ? *sharedSelection_ : ownSelection_;
+    }
+    void showSelectedTrack();
     juce::TextButton addAudio_{"Add audio track"}, addInstrument_{"Add MIDI track"},
         import_{"Import audio\xe2\x80\xa6"};
     void layoutEmptyState();

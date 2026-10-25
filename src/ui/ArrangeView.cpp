@@ -181,8 +181,9 @@ void ArrangeView::setProject(const core::Project* project, bool valuesOnly)
     std::erase_if(selection_, [this](const ClipRef& ref) { return !spanOf(ref).has_value(); });
     if (project_ == nullptr || project_->findMarker(selectedMarker_) == nullptr)
         selectedMarker_ = core::invalidId;
-    if (project_ == nullptr || project_->findChannel(selectedTrack_) == nullptr) // a track or an FX track
-        selectedTrack_ = core::invalidId;
+    if (sharedSelection_ == nullptr &&
+        (project_ == nullptr || project_->findChannel(selectedTrack()) == nullptr))
+        ownSelection_.select(core::invalidId); // a track or an FX track that went
     refreshMissingMedia();
     animateRowChanges();
     rebuildHeaders();
@@ -282,20 +283,33 @@ void ArrangeView::layoutEmptyState()
     import_.setBounds(row.removeFromLeft(buttonW));
 }
 
+void ArrangeView::setSelection(const Selection* selection)
+{
+    sharedSelection_ = selection;
+    showSelectedTrack();
+}
+
 void ArrangeView::setSelectedTrack(core::Id trackId)
 {
-    if (selectedTrack_ == trackId)
-        return;
-    selectedTrack_ = trackId;
+    if (sharedSelection_ == nullptr)
+        ownSelection_.select(trackId);
+    showSelectedTrack();
+}
+
+void ArrangeView::showSelectedTrack()
+{
+    const auto selected = selectedTrack();
     for (auto* list : {&headers_, &fxHeaders_})
         for (auto& header : *list)
-            header->setSelected(header->trackId() == trackId);
+            header->setSelected(header->trackId() == selected);
     repaint();
 }
 
 void ArrangeView::selectTrack(core::Id trackId)
 {
-    setSelectedTrack(trackId);
+    // The owner selects (and has this view show it); on its own, the view does.
+    if (sharedSelection_ == nullptr)
+        setSelectedTrack(trackId);
     if (onTrackSelected)
         onTrackSelected(trackId);
 }
@@ -421,13 +435,13 @@ void ArrangeView::rebuildHeaders()
         fxHeaders_[i]->setMaster(master);
         fxHeaders_[i]->setTrack(
             shown, static_cast<int>(count + i), *project_, inputChoices_, midiInputNames_);
-        fxHeaders_[i]->setSelected(fx[i]->id == selectedTrack_);
+        fxHeaders_[i]->setSelected(fx[i]->id == selectedTrack());
     }
     for (size_t i = 0; i < count; ++i)
     {
         const auto& track = project_->tracks[i];
         headers_[i]->setTrack(track, static_cast<int>(i), *project_, inputChoices_, midiInputNames_);
-        headers_[i]->setSelected(track.id == selectedTrack_);
+        headers_[i]->setSelected(track.id == selectedTrack());
         bool missing = false;
         for (const auto& clip : track.clips)
             missing = missing || mediaMissing(clip.mediaPath);
@@ -1425,7 +1439,7 @@ void ArrangeView::mouseUp(const juce::MouseEvent& e)
     {
         // A clip picked on another track moves the track selection with it.
         if (!selection_.empty())
-            setSelectedTrack(selection_.back().track);
+            selectTrack(selection_.back().track);
         notifySelection();
     }
     repaint();
@@ -2190,7 +2204,7 @@ void ArrangeView::paint(juce::Graphics& g)
             const juce::Rectangle<int> lane(headerWidth(), y, lanesArea.getWidth(), h);
             if (h > 0 && lane.intersects(paintArea_))
             {
-                if (track.id == selectedTrack_)
+                if (track.id == selectedTrack())
                     g.setColour(c.laneSelected);
                 else if (row == hoverRow_)
                     g.setColour(c.laneHover);
@@ -2217,8 +2231,8 @@ void ArrangeView::paint(juce::Graphics& g)
             const auto caption = lane.reduced(theme_.spacing.sm, 0).withHeight(std::min(h, 24));
             if (lane.intersects(paintArea_))
             {
-                g.setColour(fx->id == selectedTrack_ ? c.laneSelected
-                                                     : (row % 2 == 1 ? c.laneAlt : c.canvas));
+                g.setColour(fx->id == selectedTrack() ? c.laneSelected
+                                                      : (row % 2 == 1 ? c.laneAlt : c.canvas));
                 g.fillRect(lane);
                 g.setColour(c.lineSubtle);
                 g.fillRect(lane.withTrimmedTop(h - 1));
@@ -3326,7 +3340,7 @@ void ArrangeView::paste()
         return;
     auto e = edit::pasteClips(*project_,
                               clipboard_,
-                              project_->trackIndex(selectedTrack_),
+                              project_->trackIndex(selectedTrack()),
                               playheadForEdits ? playheadForEdits() : playhead_);
     emit(std::move(e.commands), e.name);
 }
@@ -3334,7 +3348,7 @@ void ArrangeView::paste()
 void ArrangeView::renameSelectedTrack()
 {
     for (auto& header : headers_)
-        if (header->trackId() == selectedTrack_)
+        if (header->trackId() == selectedTrack())
             header->startRename();
 }
 const core::AudioClip* ArrangeView::findClip(const ClipRef& ref, const core::Track** track) const noexcept
@@ -3691,8 +3705,8 @@ void ArrangeView::finishTimeSelection()
     for (const auto& ref : selection_)
         if (std::find(timeSelTracks_.begin(), timeSelTracks_.end(), ref.track) == timeSelTracks_.end())
             timeSelTracks_.push_back(ref.track);
-    if (timeSelTracks_.empty() && selectedTrack_ != core::invalidId)
-        timeSelTracks_.push_back(selectedTrack_);
+    if (timeSelTracks_.empty() && selectedTrack() != core::invalidId)
+        timeSelTracks_.push_back(selectedTrack());
     if (timeSelTracks_.empty() && project_ != nullptr)
         for (const auto& t : project_->tracks)
             timeSelTracks_.push_back(t.id);
@@ -4108,7 +4122,7 @@ void ArrangeView::addTrackMenu()
     menu.addSubMenu("FX track", fx);
     menu.addItem(3, "Bus");
     menu.addItem(
-        4, selectedTrack_ != core::invalidId ? "Folder track (holding the selected track)" : "Folder track");
+        4, selectedTrack() != core::invalidId ? "Folder track (holding the selected track)" : "Folder track");
     juce::Component::SafePointer<ArrangeView> safe(this);
     menu.showMenuAsync(
         juce::PopupMenu::Options().withTargetComponent(&addTrack_),
@@ -4119,8 +4133,8 @@ void ArrangeView::addTrackMenu()
             if (choice == 4 && safe->onCommand)
             {
                 std::vector<core::Id> members;
-                if (safe->project_ != nullptr && safe->project_->findTrack(safe->selectedTrack_) != nullptr)
-                    members.push_back(safe->selectedTrack_);
+                if (safe->project_ != nullptr && safe->project_->findTrack(safe->selectedTrack()) != nullptr)
+                    members.push_back(safe->selectedTrack());
                 safe->onCommand(std::make_unique<core::AddFolderTrack>("Folder", members));
                 return;
             }
@@ -4254,7 +4268,7 @@ bool ArrangeView::handleEditKey(const juce::KeyPress& key)
         return true;
     }
     // Take lanes: Alt+Up / Alt+Down cycle the take at the playhead, Alt+T shows or hides the lanes.
-    if (const auto* track = project_ != nullptr ? project_->findTrack(selectedTrack_) : nullptr;
+    if (const auto* track = project_ != nullptr ? project_->findTrack(selectedTrack()) : nullptr;
         track != nullptr && key.getModifiers() == juce::ModifierKeys::altModifier)
     {
         if (key.getKeyCode() == juce::KeyPress::upKey || key.getKeyCode() == juce::KeyPress::downKey)
@@ -4278,12 +4292,12 @@ bool ArrangeView::handleEditKey(const juce::KeyPress& key)
     }
     // A: the selected track's automation lanes open or close.
     if (plain('a'))
-        if (const auto* channel = project_ != nullptr ? project_->findChannel(selectedTrack_) : nullptr)
+        if (const auto* channel = project_ != nullptr ? project_->findChannel(selectedTrack()) : nullptr)
         {
-            const auto* track = project_->findTrack(selectedTrack_);
+            const auto* track = project_->findTrack(selectedTrack());
             if (track == nullptr || track->hasAudio())
             {
-                showAutomation(selectedTrack_, !channel->automationOpen);
+                showAutomation(selectedTrack(), !channel->automationOpen);
                 return true;
             }
         }
@@ -4641,7 +4655,7 @@ void ArrangeView::mouseDoubleClick(const juce::MouseEvent& e)
             const auto at = sampleForX(e.x);
             for (const auto& t : project_->tracks)
             {
-                if (selectedTrack_ != core::invalidId && t.id != selectedTrack_)
+                if (selectedTrack() != core::invalidId && t.id != selectedTrack())
                     continue;
                 for (const auto& clip : t.clips)
                     if (at >= clip.start && at < clip.end())

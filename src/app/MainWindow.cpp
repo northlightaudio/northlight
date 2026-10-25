@@ -1148,6 +1148,7 @@ private:
         tracks_.playheadForEdits = [this] { return session_.position(); };
         // Audio files and Standard MIDI Files.
         tracks_.setAcceptedExtensions(session_.mediaLoader().supportedExtensions() + ";*.mid;*.midi");
+        tracks_.setSelection(&selection_);
         tracks_.onTrackSelected = [this](core::Id id) { select(id); };
         tracks_.onSelectionChanged = [this]
         {
