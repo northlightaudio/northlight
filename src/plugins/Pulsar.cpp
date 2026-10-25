@@ -3,6 +3,7 @@
 #include "engine/rt/RealtimeGuard.h"
 #include "plugins/MeteredBuiltIn.h"
 #include "plugins/SynthVoices.h"
+#include "plugins/dsp/Random.h"
 
 #include <algorithm>
 #include <cctype>
@@ -44,16 +45,6 @@ constexpr std::array<PadInfo, padCount> pads{{
 // The 808's hat oscillators: six squares at these ratios to the lowest.
 constexpr std::array<double, 6> hatRatios{
     1.0, 1.4827, 1.8002, 2.546, 2.6303, 3.8968}; // 205, 304, 370, 523, 540, 800 Hz
-
-struct Rng
-{
-    std::uint32_t state = 0x9E3779B9u;
-    float next() noexcept
-    {
-        state = state * 1664525u + 1013904223u;
-        return static_cast<float>(static_cast<double>(state >> 8) / 8388608.0 - 1.0);
-    }
-};
 
 // A topology-preserving state-variable filter (12 dB/octave): its cutoff is in
 // hertz, so a pad sounds the same at any sample rate, and it stays stable up to
@@ -165,7 +156,7 @@ struct Voice
     std::array<Svf, 2> top; // the output's low-pass at 18 kHz (two stages)
     int untilUpdate = 0;
     float noiseGain = 1.0f; // white noise's level for the same density per hertz at any rate
-    Rng rng;
+    dsp::Lcg rng{0x9E3779B9u};
 
     void trigger(int which, float vel, const float* params, double sampleRate) noexcept
     {
@@ -275,7 +266,7 @@ struct Voice
             setFilters(t, s, hz, sampleRate);
             untilUpdate = filterInterval;
         }
-        const float noise = rng.next() * noiseGain;
+        const float noise = rng.bipolar() * noiseGain;
         // Velocity drives the analogue voices harder (the 808's accent).
         const float drive = 0.5f + 0.9f * velocity;
         float out = 0.0f;

@@ -3,6 +3,7 @@
 add_library(northlight_plugins STATIC
     BuiltIns.h
     BuiltIns.cpp
+    dsp/Random.h
     MeteredBuiltIn.h
     Aurora.h
     Aurora.cpp

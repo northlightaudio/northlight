@@ -3,6 +3,7 @@
 #include "engine/rt/RealtimeGuard.h"
 #include "plugins/MeteredBuiltIn.h"
 #include "plugins/SynthVoices.h"
+#include "plugins/dsp/Random.h"
 
 #include <algorithm>
 #include <array>
@@ -152,8 +153,8 @@ private:
             // sounds wide from the first cycle.
             for (int u = 0; u < maxUnison; ++u)
             {
-                voice->phase1[static_cast<size_t>(u)] = random01();
-                voice->phase2[static_cast<size_t>(u)] = random01();
+                voice->phase1[static_cast<size_t>(u)] = rng_.unitDouble();
+                voice->phase2[static_cast<size_t>(u)] = rng_.unitDouble();
             }
             voice->subPhase = 0.0;
             for (auto& s : voice->stage1)
@@ -193,13 +194,6 @@ private:
                 }
             });
     }
-
-    double random01() noexcept
-    {
-        seed_ = seed_ * 1664525u + 1013904223u;
-        return static_cast<double>(seed_ >> 8) / 16777216.0;
-    }
-    float noiseSample() noexcept { return static_cast<float>(random01() * 2.0 - 1.0); }
 
     float lfoValue(int shape) noexcept
     {
@@ -310,7 +304,7 @@ private:
             if (lfoPhase_ >= 1.0)
             {
                 lfoPhase_ -= 1.0;
-                lfoHeld_ = noiseSample();
+                lfoHeld_ = rng_.bipolar();
             }
             const double pitchLfo = lfoToPitch != 0.0f ? std::pow(2.0, lfo_ * lfoToPitch / 1200.0) : 1.0;
 
@@ -343,7 +337,7 @@ private:
                         v.phase2[su] -= 1.0;
                 }
                 const float centre = subLevel * static_cast<float>(std::sin(twoPi * v.subPhase)) +
-                                     noiseLevel * noiseSample() * 0.5f;
+                                     noiseLevel * rng_.bipolar() * 0.5f;
                 v.subPhase += std::min(0.45, base * ratio1 * 0.5);
                 if (v.subPhase >= 1.0)
                     v.subPhase -= 1.0;
@@ -435,7 +429,7 @@ private:
 
     std::array<Voice, voiceCount> voices_{};
     std::uint32_t age_ = 0;
-    std::uint32_t seed_ = 0x2545F491u;
+    dsp::Lcg rng_{0x2545F491u};
     synth::Expression expression_;
     double expressionRatio_ = 1.0;
     double lfoPhase_ = 0.0;

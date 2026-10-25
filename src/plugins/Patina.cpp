@@ -4,6 +4,7 @@
 #include "engine/rt/RealtimeGuard.h"
 #include "plugins/Biquad.h"
 #include "plugins/ProcessorBase.h"
+#include "plugins/dsp/Random.h"
 
 #include <algorithm>
 #include <cmath>
@@ -246,28 +247,12 @@ bool Telemetry::readScope(float* in, float* out, int n) const noexcept
 
 namespace
 {
-// xorshift32: cheap, deterministic, allocation-free noise.
-struct Rng
-{
-    std::uint32_t state = 0x9e3779b9u;
-    Rng(std::uint32_t seed = 1u) : state(seed != 0 ? seed : 1u) {}
-    std::uint32_t next() noexcept
-    {
-        state ^= state << 13;
-        state ^= state >> 17;
-        state ^= state << 5;
-        return state;
-    }
-    float uniform() noexcept { return static_cast<float>(next() >> 8) * (1.0f / 16777216.0f); } // [0, 1)
-    float bipolar() noexcept { return 2.0f * uniform() - 1.0f; }                                // [-1, 1)
-};
-
 // A smooth random contour, 0..1: a new random target about every 1/hz seconds,
 // followed through two one-pole stages, so it wanders rather than steps.
 struct Contour
 {
     float a = 0.0f, b = 0.0f, target = 0.0f, timer = 0.0f;
-    float step(float seconds, float hz, Rng& rng) noexcept
+    float step(float seconds, float hz, dsp::XorShift32& rng) noexcept
     {
         timer -= seconds * hz;
         if (timer <= 0.0f)
@@ -280,7 +265,10 @@ struct Contour
         b += (a - b) * k;
         return b;
     }
-    float bipolar(float seconds, float hz, Rng& rng) noexcept { return 2.0f * step(seconds, hz, rng) - 1.0f; }
+    float bipolar(float seconds, float hz, dsp::XorShift32& rng) noexcept
+    {
+        return 2.0f * step(seconds, hz, rng) - 1.0f;
+    }
 };
 
 // A delay line on a power-of-two ring. at(0) is the newest sample.
@@ -1239,7 +1227,7 @@ private:
     {
         float wowPhase = 0.0f, flutterPhase = 0.0f;
         Contour wowRate, wowShape, wowOffset, flutterShape;
-        Rng rng;
+        dsp::XorShift32 rng;
     };
 
     void resetDrift() noexcept
@@ -1248,7 +1236,7 @@ private:
         {
             driftLine_[ch].clear();
             wobble_[ch] = {};
-            wobble_[ch].rng = Rng(ch == 0 ? 0x1234567u : 0x7654321u);
+            wobble_[ch].rng = dsp::XorShift32(ch == 0 ? 0x1234567u : 0x7654321u);
             wobble_[ch].flutterPhase = ch == 0 ? 0.0f : 1.7f;
             driftFrom_[ch] = driftTo_[ch] = 0.0f;
             driftScrape_[ch] = 0.0f;
@@ -1338,7 +1326,7 @@ private:
     // ----- Grain --------------------------------------------------------------------------------
     struct NoiseChannel
     {
-        Rng rng;
+        dsp::XorShift32 rng;
         float clickEnv = 0.0f, clickDecay = 0.0f, popEnv = 0.0f, popDecay = 0.0f;
         Biquad clickTone, popTone, surface, surfaceTop, rumble, hissLow, hissPeak, hissTop, airTop, airDrone;
         Pink pink;
@@ -1350,7 +1338,7 @@ private:
         for (size_t ch = 0; ch < 2; ++ch)
         {
             noise_[ch] = {};
-            noise_[ch].rng = Rng(ch == 0 ? 0x2468aceu : 0x13579bdu);
+            noise_[ch].rng = dsp::XorShift32(ch == 0 ? 0x2468aceu : 0x13579bdu);
         }
         humPhase_ = 0.0f;
         humLevel_ = {};
@@ -1744,7 +1732,7 @@ private:
     std::array<StageGate, stageCount> gate_{};
     std::array<float, stageCount> fadeFrom_{}, amount_{}, breathGain_{};
     std::array<Contour, stageCount> breath_{};
-    Rng breathRng_{0xb4ea7u};
+    dsp::XorShift32 breathRng_{0xb4ea7u};
     int frameInterval_ = 240, frameCount_ = 0;
     Accumulator acc_;
 
@@ -1820,7 +1808,7 @@ private:
     std::array<Biquad, 2> wearLow_, wearHigh_, wearBump_;
     std::array<float, 2> skewFrom_{}, skewTo_{}, skewGain_{1.0f, 1.0f}, wearDesigned_{-1.0f, -1.0f};
     Contour skewShape_, skewLevel_;
-    Rng wearRng_{0xd3a7u};
+    dsp::XorShift32 wearRng_{0xd3a7u};
     int dropRemaining_ = 0;
     float dropDip_ = 0, dropDepthDb_ = 0, dropFrom_ = 1, dropTo_ = 1;
 
@@ -1830,7 +1818,7 @@ private:
     float crushPhase_ = 1, crushThreshold_ = 1, crushDesigned_ = -1, crushBitsNow_ = 16,
           crushRateNow_ = 48000, crushLevels_ = 32768;
     bool crushFiltered_ = false, crushTick_ = false;
-    Rng crushRng_{0xc0ffeeu};
+    dsp::XorShift32 crushRng_{0xc0ffeeu};
 
     // Output
     std::array<Biquad, 2> tiltLow_, tiltHigh_, outLowCut_, outHighCut_;

@@ -5,6 +5,7 @@
 #include "plugins/BeatSync.h"
 #include "plugins/FeedbackNetwork.h"
 #include "plugins/ProcessorBase.h"
+#include "plugins/dsp/Random.h"
 
 #include <algorithm>
 #include <cmath>
@@ -136,19 +137,15 @@ struct SwellPattern
 std::array<SwellPattern, 2> makeSwellPatterns() noexcept
 {
     std::array<SwellPattern, 2> patterns{};
-    std::uint32_t seed = 0x9e3779b9u;
-    const auto next = [&seed]
-    {
-        seed = seed * 1664525u + 1013904223u;
-        return static_cast<float>(seed >> 8) / 16777216.0f; // 0..1
-    };
+    dsp::Lcg rng{0x9e3779b9u};
     for (auto& p : patterns)
     {
         float energy = 0.0f;
         for (int k = 0; k < swellTaps; ++k)
         {
-            const float at = (static_cast<float>(k) + 0.15f + 0.7f * next()) / static_cast<float>(swellTaps);
-            const float g = std::pow(at, 1.6f) * (next() < 0.5f ? -1.0f : 1.0f);
+            const float at =
+                (static_cast<float>(k) + 0.15f + 0.7f * rng.unit()) / static_cast<float>(swellTaps);
+            const float g = std::pow(at, 1.6f) * (rng.unit() < 0.5f ? -1.0f : 1.0f);
             p.position[static_cast<size_t>(k)] = at;
             p.gain[static_cast<size_t>(k)] = g;
             energy += g * g;

@@ -361,6 +361,11 @@ know nothing format-specific.
   user's own (JSON files keyed by parameter name) and tells every `PresetBar` when
   the list changes, so the card's header, the window's and a face's own control
   agree.
+- **The DSP kit** (`src/plugins/dsp`, namespace `plugins::dsp`) holds the small
+  header-only building blocks the built-ins share, all real-time safe:
+  `Random.h` (xorshift32 and LCG noise with the float mappings the processors use,
+  and `Drift`, a smooth random curve). Each processor keeps its own seeds,
+  constants and tolerances, so moving onto the kit never changes its sound.
 - **The guitar pedals** share one card, `ui/strip/PedalCard`, which reads a
   pedal's layout (its finish, knobs, toggle, and whether it is the tuner) from a
   table, and Corona's rendered footswitch, jewel and toggle. Flare uses the

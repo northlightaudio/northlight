@@ -5,6 +5,7 @@
 #include "plugins/Biquad.h"
 #include "plugins/Oversampler.h"
 #include "plugins/ProcessorBase.h"
+#include "plugins/dsp/Random.h"
 
 #include <algorithm>
 #include <array>
@@ -189,39 +190,8 @@ double Hysteresis::process(double h) noexcept
 
 namespace
 {
-// xorshift32: allocation-free noise for the hiss and the flutter's wander.
-struct Rng
-{
-    std::uint32_t state = 0x2545F491u;
-    float next() noexcept // -1..1
-    {
-        state ^= state << 13;
-        state ^= state >> 17;
-        state ^= state << 5;
-        return static_cast<float>(state) * (2.0f / 4294967296.0f) - 1.0f;
-    }
-    float unit() noexcept { return 0.5f * (next() + 1.0f); }
-};
-
-// A smooth random curve in -1..1: a new point every period (jittered), eased between.
-struct Drift
-{
-    float from = 0.0f, to = 0.0f;
-    int left = 0, length = 1;
-    float next(Rng& rng, float periodSamples) noexcept
-    {
-        if (left <= 0)
-        {
-            from = to;
-            to = rng.next();
-            length = std::max(1, static_cast<int>(periodSamples * (0.6f + 0.8f * rng.unit())));
-            left = length;
-        }
-        const float t = 1.0f - static_cast<float>(left) / static_cast<float>(length);
-        --left;
-        return from + (to - from) * t * t * (3.0f - 2.0f * t);
-    }
-};
+// The noise for the hiss and the flutter's wander starts here on every reset.
+constexpr std::uint32_t noiseSeed = 0x2545F491u;
 
 engine::ParameterInfo choice(std::string name, std::vector<std::string> choices, float defaultValue)
 {
@@ -340,7 +310,7 @@ private:
         vuStep_ = 1.0f - std::exp(-1.0f / (0.045f * static_cast<float>(sampleRate)));
         wowPhase_ = flutterPhase_ = 0.0;
         wowDrift_ = flutterDrift_ = {};
-        rng_ = {};
+        rng_ = dsp::XorShift32{noiseSeed};
         designed_ = false;
         primed_ = false;
     }
@@ -503,7 +473,7 @@ private:
                 v = c.dip.process(c.bump.process(v));
                 v = c.gapLoss.process(c.lowCut.process(v));
                 if (hissGain > 0.0f)
-                    v += c.hissColour.process(rng_.next() * hissGain);
+                    v += c.hissColour.process(rng_.bipolarWord() * hissGain);
 
                 // The transport's wander, then the output.
                 c.line[static_cast<size_t>(write_)] = v;
@@ -573,8 +543,8 @@ private:
     double makeup_ = 1.0;
     double tapeDelay_ = 72.0; // the line's share of the latency (the oversampler takes the rest)
     double wowPhase_ = 0.0, flutterPhase_ = 0.0;
-    Drift wowDrift_, flutterDrift_;
-    Rng rng_;
+    dsp::Drift wowDrift_, flutterDrift_;
+    dsp::XorShift32 rng_{noiseSeed};
     float designedSpeed_ = -1.0f, designedEq_ = -1.0f, designedBias_ = -1000.0f, designedTape_ = -1.0f;
     bool designed_ = false, primed_ = false;
 };

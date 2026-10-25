@@ -4,9 +4,11 @@
 #include "engine/rt/RealtimeGuard.h"
 #include "plugins/BeatSync.h"
 #include "plugins/ProcessorBase.h"
+#include "plugins/dsp/Random.h"
 
 #include <algorithm>
 #include <cmath>
+#include <cstdint>
 #include <numbers>
 #include <string>
 #include <vector>
@@ -93,40 +95,8 @@ namespace
 // A whole note at 60 bpm on head 4, with room for the motor's overshoot and the wow.
 constexpr double bufferSeconds = headSpacing.back() * maxTimeMs * 0.001 * 1.15 + 0.05;
 
-// xorshift32: cheap, allocation-free noise for the wobble, hiss and dropouts.
-struct Rng
-{
-    std::uint32_t state = 0x9E3779B9u;
-    float next() noexcept // -1..1
-    {
-        state ^= state << 13;
-        state ^= state >> 17;
-        state ^= state << 5;
-        return static_cast<float>(state) * (2.0f / 4294967296.0f) - 1.0f;
-    }
-    float unit() noexcept { return 0.5f * (next() + 1.0f); } // 0..1
-};
-
-// A smooth random curve in -1..1: a new random point every period (jittered
-// +-40%), eased between, so the drift has no corners.
-struct Drift
-{
-    float from = 0.0f, to = 0.0f;
-    int left = 0, length = 1;
-    float next(Rng& rng, float periodSamples) noexcept
-    {
-        if (left <= 0)
-        {
-            from = to;
-            to = rng.next();
-            length = std::max(1, static_cast<int>(periodSamples * (0.6f + 0.8f * rng.unit())));
-            left = length;
-        }
-        const float t = 1.0f - static_cast<float>(left) / static_cast<float>(length);
-        --left;
-        return from + (to - from) * t * t * (3.0f - 2.0f * t);
-    }
-};
+// The noise for the wobble, hiss and dropouts starts here on every reset.
+constexpr std::uint32_t noiseSeed = 0x9E3779B9u;
 
 // The tape's saturation: tanh scaled to the headroom, with first-order
 // antiderivative anti-aliasing (the mean of the curve over each step).
@@ -339,7 +309,7 @@ private:
         targets_.fill(0.0f);
         wowPhase_ = flutterPhase_ = 0.0;
         wowDrift_ = flutterDrift_ = {};
-        rng_ = {};
+        rng_ = dsp::XorShift32{noiseSeed};
         dropoutLeft_ = 0;
         dropoutLength_ = 1;
         dropoutDepth_ = 1.0f;
@@ -604,10 +574,11 @@ private:
             }
             else if (dropoutRate > 0.0f && --nextDropout_ <= 0)
             {
-                dropoutLength_ = std::max(1, static_cast<int>(fs * (0.015f + 0.045f * rng_.unit())));
+                dropoutLength_ = std::max(1, static_cast<int>(fs * (0.015f + 0.045f * rng_.unitWord())));
                 dropoutLeft_ = dropoutLength_;
-                dropoutDepth_ = dbToGain(-(1.5f + 6.0f * rng_.unit()) * ageAmount);
-                nextDropout_ = static_cast<int>(-std::log(std::max(1.0e-6f, rng_.unit())) * fs / dropoutRate);
+                dropoutDepth_ = dbToGain(-(1.5f + 6.0f * rng_.unitWord()) * ageAmount);
+                nextDropout_ =
+                    static_cast<int>(-std::log(std::max(1.0e-6f, rng_.unitWord())) * fs / dropoutRate);
             }
             const float inL = left[n], inR = right[n];
             const float in[2] = {s[g::in00] * inL + s[g::in01] * inR, s[g::in10] * inL + s[g::in11] * inR};
@@ -632,7 +603,7 @@ private:
                     tr.envelope = 0.0f;
                 // Hiss under the echoes: it breathes with what is on the tape
                 // rather than hissing over silence.
-                y += rng_.next() * hiss * std::min(1.0f, tr.envelope * 8.0f);
+                y += rng_.bipolarWord() * hiss * std::min(1.0f, tr.envelope * 8.0f);
                 y = tr.loop.highLoss.process(y) * dropout;
                 tr.tape[static_cast<size_t>(write_)] = y;
                 recorded = std::max(recorded, std::abs(y));
@@ -682,8 +653,8 @@ private:
     // exp(logDelay_) and the flutter rate it sets, kept while logDelay_ holds.
     double headLog_ = 1.0e300, headOne_ = 1.0, flutterHz_ = 7.0;
     double wowPhase_ = 0.0, flutterPhase_ = 0.0;
-    Drift wowDrift_, flutterDrift_;
-    Rng rng_;
+    dsp::Drift wowDrift_, flutterDrift_;
+    dsp::XorShift32 rng_{noiseSeed};
     int dropoutLeft_ = 0, dropoutLength_ = 1, nextDropout_ = 48000;
     float dropoutDepth_ = 1.0f;
     float smoothStep_ = 0.01f, envelopeAttack_ = 0.01f, envelopeRelease_ = 0.999f;

@@ -3,6 +3,7 @@
 #include "engine/rt/RealtimeGuard.h"
 #include "plugins/MeteredBuiltIn.h"
 #include "plugins/SynthVoices.h"
+#include "plugins/dsp/Random.h"
 
 #include <algorithm>
 #include <array>
@@ -70,16 +71,6 @@ inline float ratioOf(const float* p, int k) noexcept
     // Stretch pulls the partials sharp, the further up the more (a bell's spectrum).
     return static_cast<float>(k) * std::pow(static_cast<float>(k), p[stretch] * 0.12f);
 }
-
-struct Rng
-{
-    std::uint32_t state = 0x7F4A7C15u;
-    float next() noexcept // -1..1
-    {
-        state = state * 1664525u + 1013904223u;
-        return static_cast<float>(static_cast<double>(state >> 8) / 8388608.0 - 1.0);
-    }
-};
 
 using synth::Envelope;
 using synth::Stage;
@@ -201,11 +192,11 @@ private:
             // Random phases and drifts: no two notes start alike.
             for (auto& side : voice->phase)
                 for (auto& ph : side)
-                    ph = 0.5 * (rng_.next() + 1.0f);
+                    ph = 0.5 * (rng_.bipolar() + 1.0f);
             for (int i = 0; i < slots; ++i)
             {
-                voice->driftNow[static_cast<size_t>(i)] = rng_.next();
-                voice->driftTarget[static_cast<size_t>(i)] = rng_.next();
+                voice->driftNow[static_cast<size_t>(i)] = rng_.bipolar();
+                voice->driftTarget[static_cast<size_t>(i)] = rng_.bipolar();
                 voice->amp[static_cast<size_t>(i)] = 0.0f;
             }
         }
@@ -266,7 +257,7 @@ private:
                 auto& to = v.driftTarget[static_cast<size_t>(s)];
                 now += (to - now) * 0.004f;
                 if (std::abs(to - now) < 0.05f)
-                    to = rng_.next();
+                    to = rng_.bipolar();
                 const double cents = now * driftCents;
                 const double a = std::pow(2.0, (cents + spreadCents * 0.5) / 1200.0);
                 const double b = std::pow(2.0, (cents - spreadCents * 0.5) / 1200.0);
@@ -384,7 +375,7 @@ private:
                     std::min(1.2f,
                              2.0f * std::sin(std::numbers::pi_v<float> *
                                              std::min(static_cast<float>(v.hz) * 3.0f, sr * 0.2f) / sr));
-                const float noise = rng_.next();
+                const float noise = rng_.bipolar();
                 v.breathLow += f * v.breathBand;
                 const float high = noise - v.breathLow - 1.2f * v.breathBand;
                 v.breathBand += f * high;
@@ -414,7 +405,7 @@ private:
     std::array<Voice, voiceCount> voices_{};
     std::array<float, slots> panL_{}, panR_{};
     std::uint32_t age_ = 0;
-    Rng rng_;
+    dsp::Lcg rng_{0x7F4A7C15u};
     double motionPhase_ = 0.0;
     float motion_ = 0.0f;
     int countdown_ = 0;
