@@ -90,6 +90,8 @@ add_library(northlight_ui STATIC
     strip/GlueCard.cpp
     strip/WidenerCard.cpp
     strip/WidthScale.h
+    strip/WidthBands.h
+    strip/WidthBands.cpp
     strip/TapeEchoCard.cpp
     strip/TapeEchoFace.h
     strip/OrbitCard.cpp
