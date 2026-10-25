@@ -80,14 +80,14 @@ struct WorkBuffer
 struct InsertSlot
 {
     InsertProcessor* processor = nullptr;
-    core::Id id = core::invalidId; // the insert's
-    float mix = 1.0f;              // wet/dry (1 = all wet)
-    DelayLine* dry = nullptr;      // aligns the dry path to a latent insert (null = none)
-    int keyTrack = -1;             // sidechain source: a track index, or -1
-    int keyBus = -1;               // or a bus index, or -1
-    bool keyPostFader = false;     // the key taps after the source's fader
-    DelayLine* keyDelay = nullptr; // lines an early key up (null = none)
-    int inputLatency = 0;          // what the chain adds before this slot
+    core::Id id = core::invalidId;   // the insert's
+    InsertMixRuntime* mix = nullptr; // wet/dry (1 = all wet), ramped; outlives the snapshot
+    DelayLine* dry = nullptr;        // aligns the dry path to a latent insert (null = none)
+    int keyTrack = -1;               // sidechain source: a track index, or -1
+    int keyBus = -1;                 // or a bus index, or -1
+    bool keyPostFader = false;       // the key taps after the source's fader
+    DelayLine* keyDelay = nullptr;   // lines an early key up (null = none)
+    int inputLatency = 0;            // what the chain adds before this slot
 };
 
 // What tracks and buses share once compiled.
@@ -107,9 +107,10 @@ struct ChannelNode
     std::vector<SendNode> sends;
     std::vector<InsertSlot> inserts;                         // in chain order
     std::vector<std::shared_ptr<InsertProcessor>> keepAlive; // controller-side ownership
-    WorkBuffer dryLeft, dryRight;                            // the dry copy for a mixed slot
-    int chainLatency = 0;                                    // samples the inserts add
-    DelayLine* outputDelay = nullptr;                        // compensation on the output edge
+    std::vector<std::shared_ptr<InsertMixRuntime>> keepAliveMixes;
+    WorkBuffer dryLeft, dryRight;     // the dry copy for a mixed slot
+    int chainLatency = 0;             // samples the inserts add
+    DelayLine* outputDelay = nullptr; // compensation on the output edge
     std::vector<std::shared_ptr<DelayLine>> keepAliveDelays;
     WorkBuffer delayScratchLeft, delayScratchRight; // a delayed copy for one edge
 

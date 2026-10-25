@@ -42,6 +42,16 @@ struct SendRuntime
     bool primed = false; // real-time: the first span jumps to the target
 };
 
+// An insert slot's wet/dry mix, kept across compiles like a send's level: a mix
+// change is pushed here (the renderer ramps to it over the span) instead of
+// recompiling.
+struct InsertMixRuntime
+{
+    std::atomic<float> targetMix{1.0f};
+    float mix = 1.0f;    // real-time: where the ramp is
+    bool primed = false; // real-time: the first span jumps to the target
+};
+
 // One automation lane's run-time state, kept across compiles: while the user
 // touches its control (writing), the lane is not played.
 struct AutomationRuntime
@@ -136,6 +146,18 @@ public:
         const auto it = sends_.find({channelId, busId});
         return it != sends_.end() ? it->second : nullptr;
     }
+    std::shared_ptr<InsertMixRuntime> insertMix(core::Id insertId)
+    {
+        auto& r = insertMixes_[insertId];
+        if (r == nullptr)
+            r = std::make_shared<InsertMixRuntime>();
+        return r;
+    }
+    std::shared_ptr<InsertMixRuntime> findInsertMix(core::Id insertId) const
+    {
+        const auto it = insertMixes_.find(insertId);
+        return it != insertMixes_.end() ? it->second : nullptr;
+    }
     std::shared_ptr<AutomationRuntime> automation(core::Id laneId)
     {
         auto& r = automation_[laneId];
@@ -160,6 +182,7 @@ public:
         std::erase_if(channels_, [](const auto& entry) { return entry.second.use_count() == 1; });
         std::erase_if(buffers_, [](const auto& entry) { return entry.second.use_count() == 1; });
         std::erase_if(sends_, [](const auto& entry) { return entry.second.use_count() == 1; });
+        std::erase_if(insertMixes_, [](const auto& entry) { return entry.second.use_count() == 1; });
         std::erase_if(midi_, [](const auto& entry) { return entry.second.use_count() == 1; });
         std::erase_if(automation_,
                       [](const auto& entry)
@@ -170,6 +193,7 @@ public:
         channels_.clear();
         buffers_.clear();
         sends_.clear();
+        insertMixes_.clear();
         midi_.clear();
         automation_.clear();
         master_.reset();
@@ -179,6 +203,7 @@ private:
     std::map<core::Id, std::shared_ptr<ChannelRuntime>> channels_;
     std::map<core::Id, std::shared_ptr<ChannelBuffers>> buffers_;
     std::map<std::pair<core::Id, core::Id>, std::shared_ptr<SendRuntime>> sends_; // (channel, bus)
+    std::map<core::Id, std::shared_ptr<InsertMixRuntime>> insertMixes_;           // by insert id
     std::map<core::Id, std::shared_ptr<MidiRuntime>> midi_;
     std::map<core::Id, std::shared_ptr<AutomationRuntime>> automation_;
     std::shared_ptr<MasterRuntime> master_;

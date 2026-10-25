@@ -849,6 +849,9 @@ class SetInsertMix final : public Command
 public:
     SetInsertMix(Id channelId, Id insertId, float mix);
     std::string name() const override { return "Set insert mix"; }
+    // A live value: the renderer glides to it (a latent slot always keeps its
+    // dry line), so a drag never recompiles.
+    ChangeKind changeKind() const noexcept override { return ChangeKind::values; }
     void apply(Project&) override;
     void revert(Project&) override;
 

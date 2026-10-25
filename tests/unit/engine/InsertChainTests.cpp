@@ -151,6 +151,32 @@ TEST_CASE("Bypass crossfades and keeps the processor running", "[engine][inserts
     CHECK(h.left[blockSize - 1] == Approx(wet).margin(0.002f));
 }
 
+TEST_CASE("An insert's mix glides to a new value without a recompile", "[engine][inserts][mix]")
+{
+    Harness h;
+    core::Project p;
+    auto t = trackWithClip(1);
+    t.inserts.push_back(gainInsert(10, -20.0f));
+    p.tracks.push_back(t);
+    h.play(p, 60);
+    const float wet = 0.5f * centre * std::pow(10.0f, -20.0f / 20.0f);
+    const float dry = 0.5f * centre;
+    CHECK(h.left[blockSize - 1] == Approx(wet).margin(0.002f));
+    const auto* compiled = h.engine.snapshotForTest();
+
+    core::SetInsertMix half(1, 10, 0.5f);
+    CHECK(half.changeKind() == core::Command::ChangeKind::values);
+    half.apply(p);
+    h.engine.applyLiveValues(p);
+    h.more(1);
+    // A glide across the block from all wet to half.
+    CHECK(h.left[0] < wet + 0.01f);
+    CHECK(h.left[blockSize - 1] == Approx((wet + dry) * 0.5f).margin(0.002f));
+    h.more(1);
+    CHECK(h.left[0] == Approx((wet + dry) * 0.5f).margin(0.002f));
+    CHECK(h.engine.snapshotForTest() == compiled); // no new snapshot
+}
+
 TEST_CASE("Fader, pan and master moves ramp across a block instead of stepping", "[engine][smoothing]")
 {
     Harness h;

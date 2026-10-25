@@ -302,6 +302,8 @@ void AudioEngine::applyLiveValues(const core::Project& project)
                     }
                 }
                 instance->setBypassed(i.bypass);
+                if (const auto mix = runtimes_.findInsertMix(i.id))
+                    mix->targetMix.store(std::clamp(i.mix, 0.0f, 1.0f), std::memory_order_relaxed);
             }
     };
     for (const auto& t : project.tracks)

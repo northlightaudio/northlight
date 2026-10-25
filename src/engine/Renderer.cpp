@@ -711,7 +711,15 @@ void Renderer::processChain(const Snapshot& snapshot,
     for (const auto& slot : channel.inserts)
     {
         auto* insert = slot.processor;
-        const float mix = slot.mix;
+        // The mix glides from where it was to its target across the span.
+        float from = 1.0f, to = 1.0f;
+        if (auto* m = slot.mix)
+        {
+            to = m->targetMix.load(std::memory_order_relaxed);
+            from = m->primed ? m->mix : to;
+            m->mix = to;
+            m->primed = true;
+        }
         // The key signal: the source channel's output before or after its fader,
         // already rendered (tracks by level, buses by order).
         const float* keyL = nullptr;
@@ -753,13 +761,17 @@ void Renderer::processChain(const Snapshot& snapshot,
             else
                 insert->process(l, r, numSamples);
         };
-        if (mix >= 1.0f)
+        float* dryL = channel.dryLeft.data();
+        float* dryR = channel.dryRight.data();
+        if (from >= 1.0f && to >= 1.0f)
         {
+            // All wet. A latent slot's dry line keeps running, so moving the mix
+            // later finds it full of the right audio.
+            if (auto* dry = slot.dry)
+                dry->process(left, right, dryL, dryR, numSamples);
             run(left, right);
             continue;
         }
-        float* dryL = channel.dryLeft.data();
-        float* dryR = channel.dryRight.data();
         if (auto* dry = slot.dry)
             dry->process(left, right, dryL, dryR, numSamples);
         else
@@ -767,7 +779,7 @@ void Renderer::processChain(const Snapshot& snapshot,
             std::copy(left, left + numSamples, dryL);
             std::copy(right, right + numSamples, dryR);
         }
-        if (mix > 0.0f)
+        if (from > 0.0f || to > 0.0f)
             run(left, right);
         else
         {
@@ -778,11 +790,12 @@ void Renderer::processChain(const Snapshot& snapshot,
             run(dryL, dryR); // scratch, discarded
             continue;
         }
-        const float dryGain = 1.0f - mix;
+        const float step = (to - from) / static_cast<float>(std::max(1, numSamples));
         for (int i = 0; i < numSamples; ++i)
         {
-            left[i] = dryL[i] * dryGain + left[i] * mix;
-            right[i] = dryR[i] * dryGain + right[i] * mix;
+            const float mix = from + step * static_cast<float>(i + 1);
+            left[i] = dryL[i] + (left[i] - dryL[i]) * mix;
+            right[i] = dryR[i] + (right[i] - dryR[i]) * mix;
         }
     }
 }

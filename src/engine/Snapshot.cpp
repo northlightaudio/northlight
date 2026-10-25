@@ -390,8 +390,8 @@ std::unique_ptr<Snapshot> compileSnapshot(const core::Project& project,
             node.automation.push_back(std::move(a));
         }
     };
-    // One slot of a chain: the processor, its mix and the dry path a partly dry
-    // latent slot needs. The key source is the caller's (the master's take none).
+    // One slot of a chain: the processor, its mix and the dry path a latent slot
+    // needs. The key source is the caller's (the master's take none).
     const auto compileSlot =
         [&](ChannelNode& node, const core::Insert& i, std::shared_ptr<InsertProcessor> instance)
     {
@@ -404,11 +404,14 @@ std::unique_ptr<Snapshot> compileSnapshot(const core::Project& project,
         InsertSlot s;
         s.processor = instance.get();
         s.id = i.id;
-        s.mix = std::clamp(i.mix, 0.0f, 1.0f);
+        auto mix = runtimeCache.insertMix(i.id);
+        mix->targetMix.store(std::clamp(i.mix, 0.0f, 1.0f), std::memory_order_relaxed);
+        s.mix = mix.get();
+        node.keepAliveMixes.push_back(std::move(mix));
         s.inputLatency = node.chainLatency - latency;
-        // A partly dry slot needs its dry copy held back by the insert's latency
-        // so the two halves line up.
-        if (i.mix < 1.0f && latency > 0)
+        // A latent slot keeps its dry copy held back by the insert's latency, so
+        // the two halves line up whatever the mix is moved to without a recompile.
+        if (latency > 0)
         {
             auto line = (delays != nullptr ? *delays : localDelays)
                             .get(DelayKey{i.id, core::invalidId, true}, latency);
