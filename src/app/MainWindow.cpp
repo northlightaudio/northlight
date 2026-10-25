@@ -1722,10 +1722,10 @@ private:
         status_.setSelectedClips(static_cast<int>(tracks_.selection().size()));
         if (ticks_ % 5 == 0)
         {
-            std::vector<bool> monitoring;
+            monitoring_.clear(); // kept: no allocation per tick
             for (const auto& track : session_.project().tracks)
-                monitoring.push_back(session_.isTrackMonitoring(track));
-            tracks_.setMonitoringStates(monitoring, recording);
+                monitoring_.push_back(session_.isTrackMonitoring(track));
+            tracks_.setMonitoringStates(monitoring_, recording);
         }
         if (ticks_ % 15 == 0)
             refreshStatus();
@@ -3115,6 +3115,7 @@ private:
     std::string lastRecordingMessage_, lastBounceMessage_, lastPluginMessage_, lastFreezeMessage_;
     bool lastRecording_ = false;
     int ticks_ = 0;
+    std::vector<bool> monitoring_; // which tracks monitor their input, for the headers
     int dropoutBaseline_ = 0;
     std::int64_t overrunBaseline_ = 0;
     double lastTickMs_ = 0.0;
