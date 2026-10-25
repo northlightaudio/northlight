@@ -180,8 +180,7 @@ float heatTransfer(int character, float amount, float x) noexcept
 // ----- telemetry ----------------------------------------------------------------------------------
 
 Telemetry::Telemetry()
-    : frames_(new std::atomic<float>[static_cast<size_t>(length) * valueCount]()),
-      scopeIn_(new std::atomic<float>[scopeLength]()), scopeOut_(new std::atomic<float>[scopeLength]())
+    : scopeIn_(new std::atomic<float>[scopeLength]()), scopeOut_(new std::atomic<float>[scopeLength]())
 {
 }
 
@@ -190,39 +189,12 @@ void Telemetry::prepare(double sampleRate) noexcept
     sampleRate_.store(sampleRate, std::memory_order_relaxed);
 }
 
-void Telemetry::publish(const std::array<float, valueCount>& values) noexcept
-{
-    const auto w = written_.load(std::memory_order_relaxed);
-    auto* slot = frames_.get() + (w % length) * valueCount;
-    for (int i = 0; i < valueCount; ++i)
-        slot[i].store(values[static_cast<size_t>(i)], std::memory_order_relaxed);
-    written_.store(w + 1, std::memory_order_release);
-}
-
 void Telemetry::scope(float in, float out) noexcept
 {
     const auto w = scopeWritten_.load(std::memory_order_relaxed);
     scopeIn_[w % scopeLength].store(in, std::memory_order_relaxed);
     scopeOut_[w % scopeLength].store(out, std::memory_order_relaxed);
     scopeWritten_.store(w + 1, std::memory_order_release);
-}
-
-int Telemetry::read(std::uint64_t& cursor, Frame* out, int maxFrames) const noexcept
-{
-    const auto end = written_.load(std::memory_order_acquire);
-    constexpr std::uint64_t safe = length - 16;
-    std::uint64_t start = std::max(cursor, end > safe ? end - safe : 0);
-    if (end - start > static_cast<std::uint64_t>(std::max(0, maxFrames)))
-        start = end - static_cast<std::uint64_t>(std::max(0, maxFrames));
-    int n = 0;
-    for (auto i = start; i < end; ++i, ++n)
-    {
-        const auto* slot = frames_.get() + (i % length) * valueCount;
-        for (int v = 0; v < valueCount; ++v)
-            out[n][static_cast<size_t>(v)] = slot[v].load(std::memory_order_relaxed);
-    }
-    cursor = end;
-    return n;
 }
 
 bool Telemetry::readScope(float* in, float* out, int n) const noexcept

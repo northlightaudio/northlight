@@ -1,9 +1,11 @@
 #include "engine/rt/RealtimeGuard.h"
 #include "engine/rt/SnapshotPublisher.h"
 #include "engine/rt/SpscQueue.h"
+#include "engine/rt/TelemetryRing.h"
 
 #include <catch2/catch_test_macros.hpp>
 
+#include <array>
 #include <atomic>
 #include <cstdint>
 #include <memory>
@@ -152,3 +154,34 @@ TEST_CASE("Queue and publisher real-time operations do not allocate", "[rt][queu
     CHECK(rtViolations == 0);
 }
 #endif
+
+TEST_CASE("A telemetry ring hands each reader the frames since its cursor, oldest first", "[rt][telemetry]")
+{
+    using Ring = TelemetryRing<3, 64>;
+    Ring ring;
+    std::uint64_t cursor = 0;
+    std::array<Ring::Frame, 64> out{};
+    CHECK(ring.read(cursor, out.data(), 64) == 0);
+
+    for (int i = 0; i < 5; ++i)
+        ring.publish({static_cast<float>(i), static_cast<float>(10 * i), -1.0f});
+    CHECK(ring.framesWritten() == 5);
+    REQUIRE(ring.read(cursor, out.data(), 64) == 5);
+    CHECK(cursor == 5);
+    CHECK(out[0][0] == 0.0f);
+    CHECK(out[4][1] == 40.0f);
+    CHECK(out[4][2] == -1.0f);
+    CHECK(ring.read(cursor, out.data(), 64) == 0); // nothing new
+
+    // A slow reader gets the newest it asked for, and never the slots by the head.
+    for (int i = 5; i < 200; ++i)
+        ring.publish({static_cast<float>(i), 0.0f, 0.0f});
+    std::uint64_t late = 0;
+    CHECK(ring.read(late, out.data(), 3) == 3);
+    CHECK(out[0][0] == 197.0f);
+    CHECK(out[2][0] == 199.0f);
+    std::uint64_t behind = 0;
+    CHECK(ring.read(behind, out.data(), 64) == 64 - 16);
+    CHECK(out[0][0] == static_cast<float>(200 - 48));
+    CHECK(behind == 200);
+}

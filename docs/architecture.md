@@ -332,7 +332,9 @@ know nothing format-specific.
   frame sets the send's cut, the duck, Ends and Follow's high-pass, and the samples
   between follow them smoothly. Its card reads `vesper::Telemetry`, a frame every
   5 ms of what was heard and done (published only while an editor watches), as
-  Patina's does. With Lookahead the Listener hears the input as it
+  Patina's does; both keep their frames in an `rt::TelemetryRing`
+  (`engine/rt/TelemetryRing.h`), a lock-free ring of float frames any number of
+  readers follow with their own cursors. With Lookahead the Listener hears the input as it
   arrives while the rest runs on it delayed: frames wait in a fixed queue until the
   delayed audio reaches them (less a 6 ms lead), and a line end schedules its throw
   and Ends for when its last word gets there. A display that needs more than a frame

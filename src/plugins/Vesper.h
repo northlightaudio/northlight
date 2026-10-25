@@ -1,6 +1,7 @@
 #pragma once
 
 #include "engine/Insert.h"
+#include "engine/rt/TelemetryRing.h"
 
 #include <array>
 #include <atomic>
@@ -132,19 +133,19 @@ public:
     static constexpr double frameSeconds = 0.005;
     using Frame = std::array<float, valueCount>;
 
-    Telemetry();
-
     // ----- real-time thread -------------------------------------------------------------
-    void publish(const Frame& values) noexcept;
+    void publish(const Frame& values) noexcept { frames_.publish(values); }
 
     // ----- UI thread --------------------------------------------------------------------
     // Frames since `cursor` (the newest `maxFrames`), oldest first; advances it.
-    int read(std::uint64_t& cursor, Frame* out, int maxFrames) const noexcept;
-    std::uint64_t framesWritten() const noexcept { return written_.load(std::memory_order_acquire); }
+    int read(std::uint64_t& cursor, Frame* out, int maxFrames) const noexcept
+    {
+        return frames_.read(cursor, out, maxFrames);
+    }
+    std::uint64_t framesWritten() const noexcept { return frames_.framesWritten(); }
 
 private:
-    std::unique_ptr<std::atomic<float>[]> frames_;
-    std::atomic<std::uint64_t> written_{0};
+    rt::TelemetryRing<valueCount, length> frames_;
 };
 
 // The telemetry of a live Vesper (null for any other processor).

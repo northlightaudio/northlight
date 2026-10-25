@@ -1,6 +1,7 @@
 #pragma once
 
 #include "engine/Insert.h"
+#include "engine/rt/TelemetryRing.h"
 
 #include <array>
 #include <atomic>
@@ -190,22 +191,25 @@ public:
 
     // ----- real-time thread -------------------------------------------------------------
     // A frame of values (published when frameSeconds have passed).
-    void publish(const std::array<float, valueCount>& values) noexcept;
+    void publish(const std::array<float, valueCount>& values) noexcept { frames_.publish(values); }
     void scope(float in, float out) noexcept;
 
     // ----- UI thread --------------------------------------------------------------------
     using Frame = std::array<float, valueCount>;
     // Frames since `cursor` (the newest `maxFrames`), oldest first; advances it.
-    int read(std::uint64_t& cursor, Frame* out, int maxFrames) const noexcept;
-    std::uint64_t framesWritten() const noexcept { return written_.load(std::memory_order_acquire); }
+    int read(std::uint64_t& cursor, Frame* out, int maxFrames) const noexcept
+    {
+        return frames_.read(cursor, out, maxFrames);
+    }
+    std::uint64_t framesWritten() const noexcept { return frames_.framesWritten(); }
     // The newest `n` (<= scopeLength / 2) scope samples, oldest first.
     bool readScope(float* in, float* out, int n) const noexcept;
     double sampleRate() const noexcept { return sampleRate_.load(std::memory_order_relaxed); }
 
 private:
-    std::unique_ptr<std::atomic<float>[]> frames_;
+    rt::TelemetryRing<valueCount, length> frames_;
     std::unique_ptr<std::atomic<float>[]> scopeIn_, scopeOut_;
-    std::atomic<std::uint64_t> written_{0}, scopeWritten_{0};
+    std::atomic<std::uint64_t> scopeWritten_{0};
     std::atomic<double> sampleRate_{48000.0};
 };
 

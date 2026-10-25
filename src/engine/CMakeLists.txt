@@ -7,6 +7,7 @@ add_library(northlight_rt STATIC
     rt/SnapshotPublisher.h
     rt/CallbackStats.h
     rt/Denormals.h
+    rt/TelemetryRing.h
     rt/ThreadPriority.h
     rt/ThreadPriority.cpp
     Meters.h)
