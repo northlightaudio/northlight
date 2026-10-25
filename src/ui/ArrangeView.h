@@ -14,6 +14,7 @@
 #include "ui/TempoLane.h"
 #include "ui/Theme.h"
 #include "ui/TrackHeader.h"
+#include "ui/arrange/ArrangeLayout.h"
 #include "ui/edit/ClipOps.h"
 #include "ui/timeline/GridLines.h"
 #include "ui/timeline/TimelineViewport.h"
@@ -392,12 +393,11 @@ private:
     // ----- editing helpers --------------------------------------------------------
     int rowAtY(int y) const noexcept;        // track index or -1
     int channelRowAtY(int y) const noexcept; // any row, FX tracks included, or -1
-    // Every row's channel and top (content coordinates; tops has one more entry,
-    // the content's end), rebuilt when invalidated.
+    // Every row's channel, height and top (ArrangeLayout, content coordinates),
+    // rebuilt when invalidated.
     struct RowLayout
     {
-        std::vector<const core::Channel*> channels;
-        std::vector<int> tops;
+        ArrangeLayout layout;
         // What it was built from: an edit that reallocated or resized either list
         // (before the refresh that follows it) rebuilds it rather than leaving
         // pointers into the old storage.

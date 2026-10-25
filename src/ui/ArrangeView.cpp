@@ -160,9 +160,9 @@ void ArrangeView::setProject(const core::Project* project, bool valuesOnly)
                     header->setValues(*channel);
         // A cosmetic edit (a row or lane height, lanes opened, closed, collapsed
         // or hidden) moves the rows: lay them out again only then.
-        if (rows().tops != valuesTops_)
+        if (rows().layout.tops() != valuesTops_)
         {
-            valuesTops_ = rows().tops;
+            valuesTops_ = rows().layout.tops();
             layoutHeaders();
             updateScrollbar();
             repaint();
@@ -185,7 +185,7 @@ void ArrangeView::setProject(const core::Project* project, bool valuesOnly)
     refreshMissingMedia();
     animateRowChanges();
     rebuildHeaders();
-    valuesTops_ = rows().tops;
+    valuesTops_ = rows().layout.tops();
     updateScrollbar();
     layoutEmptyState();
     repaint();
@@ -628,11 +628,11 @@ void ArrangeView::animateRowChanges()
     rowsValid_ = false;
     shownRowIds_ = ids;
     shownRowHeights_.clear();
-    const auto& r = rows();
-    for (size_t i = 0; i + 1 < r.tops.size() && i < ids.size(); ++i)
+    const auto& r = rows().layout;
+    for (int i = 0; i < r.count() && static_cast<size_t>(i) < ids.size(); ++i)
     {
         // The row's own height (not its growth or the gap): what a removal closes.
-        const auto* channel = r.channels[i];
+        const auto* channel = r.channel(i);
         int h = rowHeight;
         if (channel->height > 0)
             h = std::clamp(channel->height, theme_.sizes.trackRowMin, theme_.sizes.trackRowMax);
@@ -653,63 +653,56 @@ const ArrangeView::RowLayout& ArrangeView::rows() const
     rows_.tracksSize = project_ != nullptr ? project_->tracks.size() : 0;
     rows_.busesData = project_ != nullptr ? project_->buses.data() : nullptr;
     rows_.busesSize = project_ != nullptr ? project_->buses.size() : 0;
-    rows_.channels.clear();
-    rows_.tops.assign(1, 0);
+    std::vector<ArrangeRow> specs;
     if (project_ != nullptr)
     {
+        std::vector<const core::Channel*> channels;
         for (const auto& t : project_->tracks)
-            rows_.channels.push_back(&t);
+            channels.push_back(&t);
         for (const auto* channel : busRows())
-            rows_.channels.push_back(channel);
-        for (const auto* channel : rows_.channels)
+            channels.push_back(channel);
+        for (size_t index = 0; index < channels.size(); ++index)
         {
-            int h = rowHeight;
+            const auto* channel = channels[index];
+            ArrangeRow row{channel, rowHeight, 0};
             if (channel->id == resizeChannel_)
-                h = resizeHeight_;
+                row.height = resizeHeight_;
             else if (channel->height > 0)
-                h = std::clamp(channel->height, theme_.sizes.trackRowMin, theme_.sizes.trackRowMax);
+                row.height = std::clamp(channel->height, theme_.sizes.trackRowMin, theme_.sizes.trackRowMax);
             if (const auto growing = rowGrowth_.find(channel->id); growing != rowGrowth_.end())
-                h = std::max(1, juce::roundToInt(static_cast<float>(h) * growing->second));
-            // A track's expanded take lanes and its automation lanes sit under its
-            // row (rowHeightOf leaves them out).
-            const auto index = rows_.tops.size() - 1;
+                row.height = std::max(1, juce::roundToInt(static_cast<float>(row.height) * growing->second));
+            // A track's expanded take lanes and its automation lanes sit under its row.
             if (index >= project_->tracks.size() || project_->tracks[index].hasAudio())
-                h += automation_.blockHeight(*channel);
+                row.below += automation_.blockHeight(*channel);
             if (index < project_->tracks.size())
             {
-                h += takes_.lanesHeight(project_->tracks[index]);
+                row.below += takes_.lanesHeight(project_->tracks[index]);
                 // A track in a closed folder keeps its row, at no height.
                 if (project_->hiddenByFolder(project_->tracks[index]))
-                    h = 0;
+                    row.height = row.below = 0;
             }
-            rows_.tops.push_back(rows_.tops.back() + h);
+            specs.push_back(row);
         }
-        // A removed row's space, closing: everything from its place down sits lower.
-        if (gapRow_ >= 0 && gapHeight_ > 0.0f)
-            for (size_t k = static_cast<size_t>(std::min(gapRow_, static_cast<int>(rows_.tops.size()) - 1));
-                 k < rows_.tops.size();
-                 ++k)
-                rows_.tops[k] += juce::roundToInt(gapHeight_);
     }
+    // A removed row's space, closing: everything from its place down sits lower.
+    rows_.layout.build(std::move(specs), gapRow_, gapHeight_ > 0.0f ? juce::roundToInt(gapHeight_) : 0);
     rowsValid_ = true;
     return rows_;
 }
 
 int ArrangeView::rowCount() const noexcept
 {
-    return static_cast<int>(rows().channels.size());
+    return rows().layout.count();
 }
 
 const core::Channel* ArrangeView::channelAtRow(int row) const
 {
-    const auto& r = rows();
-    return row >= 0 && static_cast<size_t>(row) < r.channels.size() ? r.channels[static_cast<size_t>(row)]
-                                                                    : nullptr;
+    return rows().layout.channel(row);
 }
 
 int ArrangeView::contentHeight() const noexcept
 {
-    return rows().tops.back();
+    return rows().layout.end();
 }
 
 void ArrangeView::setVerticalScroll(int firstRowPixel)
@@ -2522,12 +2515,7 @@ int ArrangeView::channelRowAtY(int y) const noexcept
 {
     if (project_ == nullptr || y < rulerHeight || y >= getHeight() - scrollbarHeight)
         return -1;
-    const auto& tops = rows().tops;
-    const int content = y - rulerHeight + verticalScroll_;
-    // The last top at or above the point (tops are ascending; tops.back() is the end).
-    const auto it = std::upper_bound(tops.begin(), tops.end(), content);
-    const int row = static_cast<int>(it - tops.begin()) - 1;
-    return row >= 0 && row < rowCount() ? row : -1;
+    return rows().layout.rowAt(y - rulerHeight + verticalScroll_);
 }
 
 int ArrangeView::rowAtY(int y) const noexcept
@@ -2539,15 +2527,8 @@ int ArrangeView::rowAtY(int y) const noexcept
 
 int ArrangeView::rowHeightOf(int row) const noexcept
 {
-    const auto& tops = rows().tops;
-    if (row < 0 || static_cast<size_t>(row) + 1 >= tops.size())
-        return rowHeight;
-    const int lanes = project_ != nullptr && static_cast<size_t>(row) < project_->tracks.size()
-                          ? takes_.lanesHeight(project_->tracks[static_cast<size_t>(row)])
-                          : 0;
-    return std::max(0,
-                    tops[static_cast<size_t>(row) + 1] - tops[static_cast<size_t>(row)] - lanes -
-                        automationHeight(row));
+    const auto& layout = rows().layout;
+    return row >= 0 && row < layout.count() ? layout.height(row) : rowHeight;
 }
 
 int ArrangeView::automationHeight(int row) const noexcept
@@ -2570,8 +2551,7 @@ juce::Rectangle<int> ArrangeView::automationBlock(int row) const noexcept
     if (h <= 0)
         return {};
     // The lanes end the row's block: under the row and its take lanes.
-    const auto& tops = rows().tops;
-    const int bottom = rulerHeight - verticalScroll_ + tops[static_cast<size_t>(row) + 1];
+    const int bottom = rulerHeight - verticalScroll_ + rows().layout.top(row + 1);
     return {0, bottom - h, getWidth() - scrollbarWidth, h};
 }
 
@@ -2589,9 +2569,7 @@ TakeLanes::Row ArrangeView::takeRow(int row) const
 
 int ArrangeView::rowTop(int row) const noexcept
 {
-    const auto& tops = rows().tops;
-    const auto at = static_cast<size_t>(std::clamp(row, 0, static_cast<int>(tops.size()) - 1));
-    return rulerHeight - verticalScroll_ + tops[at];
+    return rulerHeight - verticalScroll_ + rows().layout.top(row);
 }
 
 int ArrangeView::resizeEdgeAt(juce::Point<int> p) const noexcept
@@ -2601,19 +2579,7 @@ int ArrangeView::resizeEdgeAt(juce::Point<int> p) const noexcept
         return -1;
     // The row whose bottom edge is nearest the point, within the edge's reach
     // (the bottom of the row's own height: take lanes under it do not resize it).
-    const auto& tops = rows().tops;
-    const int content = p.y - rulerHeight + verticalScroll_;
-    const auto it = std::upper_bound(tops.begin(), tops.end(), content);
-    const int at = static_cast<int>(it - tops.begin()) - 1; // the row the point is in
-    for (const int row : {at - 1, at})
-    {
-        if (row < 0 || static_cast<size_t>(row) + 1 >= tops.size())
-            continue;
-        const int bottom = tops[static_cast<size_t>(row)] + rowHeightOf(row);
-        if (content >= bottom - TrackHeader::resizeEdge && content <= bottom + 1)
-            return row;
-    }
-    return -1;
+    return rows().layout.resizeEdgeAt(p.y - rulerHeight + verticalScroll_, TrackHeader::resizeEdge);
 }
 
 juce::Rectangle<int> ArrangeView::rowBounds(int row) const noexcept

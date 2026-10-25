@@ -72,7 +72,8 @@ add_executable(northlight_unit_tests
     ui/SelectionTests.cpp
     ui/ClipOpsTests.cpp
     ui/TimelineViewportTests.cpp
-    ui/GridLinesTests.cpp)
+    ui/GridLinesTests.cpp
+    ui/ArrangeLayoutTests.cpp)
 
 target_link_libraries(northlight_unit_tests PRIVATE
     northlight_options
