@@ -17,7 +17,13 @@
 namespace northlight::engine
 {
 
-struct ChannelRuntime
+// On a cache line of its own: workers rendering neighbouring tracks write their
+// runtimes' ramps at once, and two runtimes sharing a line would make it bounce.
+#if defined(_MSC_VER)
+#pragma warning(push)
+#pragma warning(disable : 4324) // padded to the alignment: that is the point
+#endif
+struct alignas(64) ChannelRuntime
 {
     std::atomic<float> targetGain{1.0f};
     std::atomic<float> targetPan{0.0f};
@@ -32,6 +38,9 @@ struct ChannelRuntime
     std::atomic<float> shownGain{1.0f}, shownPan{0.0f};
     std::atomic<int> automated{0};
 };
+#if defined(_MSC_VER)
+#pragma warning(pop)
+#endif
 
 // A send's level, kept across compiles like a channel's gain: a level change is
 // pushed here (the renderer ramps to it over the span) instead of recompiling.

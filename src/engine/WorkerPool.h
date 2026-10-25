@@ -1,6 +1,7 @@
 #pragma once
 
 #include <atomic>
+#include <cstddef>
 #include <cstdint>
 #include <semaphore>
 #include <thread>
@@ -22,6 +23,11 @@
 namespace northlight::engine
 {
 
+// The batch counters are padded to cache lines (below).
+#if defined(_MSC_VER)
+#pragma warning(push)
+#pragma warning(disable : 4324) // padded to the alignment: that is the point
+#endif
 class WorkerPool
 {
 public:
@@ -67,15 +73,21 @@ private:
     std::atomic<bool> stop_{false};
 
     // Batch state: job_/context_ are written before the release store of state_
-    // and read after the acquire fetch_add on it.
-    std::atomic<std::uint64_t> state_{0}; // (count << 32) | next index
-    std::atomic<int> remaining_{0};       // jobs not yet finished
-    std::atomic<int> inBatch_{0};         // workers currently inside takeJobs
-    std::atomic<int> permits_{0};         // wake permits released but not yet consumed
+    // and read after the acquire fetch_add on it. Each counter the workers and the
+    // callback hammer has a cache line to itself: sharing one, every claim of a
+    // job or finish of one made the others' lines bounce between cores.
+    static constexpr std::size_t cacheLine = 64;
+    alignas(cacheLine) std::atomic<std::uint64_t> state_{0}; // (count << 32) | next index
+    alignas(cacheLine) std::atomic<int> remaining_{0};       // jobs not yet finished
+    alignas(cacheLine) std::atomic<int> inBatch_{0};         // workers currently inside takeJobs
+    alignas(cacheLine) std::atomic<int> permits_{0};         // wake permits released but not yet consumed
     std::atomic<std::uint64_t> waitYields_{0};
     std::atomic<int> mmcssWorkers_{0};
     Job job_ = nullptr;
     void* context_ = nullptr;
 };
+#if defined(_MSC_VER)
+#pragma warning(pop)
+#endif
 
 } // namespace northlight::engine
