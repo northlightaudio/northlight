@@ -59,6 +59,12 @@ public:
     core::Id clipId() const noexcept { return clipId_; }
     void setPlayhead(core::SamplePosition timelinePosition);
     bool zoomLinked() const noexcept { return linked_; }
+    void setZoomLinked(bool linked);
+    // The view in the clip's source samples (a stretched clip's source runs at its
+    // stretch against the timeline).
+    core::SamplePosition playheadSource() const noexcept { return playhead_; }
+    double sourceSamplesPerPixel() const noexcept { return samplesPerPixel_; }
+    double firstVisibleSource() const noexcept { return scroll_; }
     void setTimeView(double samplesPerPixel, core::SamplePosition absoluteFirstVisible);
     // Zooms to `samplesPerPixel` with `secondsIntoClip` at the left edge (launch flags).
     void zoomTo(double samplesPerPixel, double secondsIntoClip);

@@ -18,6 +18,21 @@ namespace
 {
 using core::isBlackKey;
 
+// The editor's x axis is the clip's source; the model keeps the clip's length and
+// fades in timeline samples, which a stretch scales (Model.h).
+double sourceEnd(const core::AudioClip& c) noexcept
+{
+    return static_cast<double>(c.sourceOffset + c.sourceLength());
+}
+double toSourceSpan(const core::AudioClip& c, double timelineSamples) noexcept
+{
+    return timelineSamples / c.stretch;
+}
+double toTimelineSpan(const core::AudioClip& c, double sourceSamples) noexcept
+{
+    return sourceSamples * c.stretch;
+}
+
 juce::String signedCents(float cents)
 {
     const int c = static_cast<int>(std::lround(cents));
@@ -266,7 +281,7 @@ void AudioEditor::setPlayhead(core::SamplePosition timelinePosition)
 {
     const auto* c = clip();
     const auto source = c != nullptr && timelinePosition >= c->start && timelinePosition < c->end()
-                            ? timelinePosition - c->start + c->sourceOffset
+                            ? c->sourceAt(timelinePosition - c->start)
                             : -1;
     if (source == playhead_)
         return;
@@ -284,15 +299,25 @@ void AudioEditor::setPlayhead(core::SamplePosition timelinePosition)
     repaintAt(playhead_);
 }
 
+void AudioEditor::setZoomLinked(bool linked)
+{
+    link_.setToggleState(linked, juce::dontSendNotification);
+    linked_ = linked;
+    repaint();
+}
+
 void AudioEditor::setTimeView(double samplesPerPixel, core::SamplePosition absoluteFirstVisible)
 {
     const auto* c = clip();
     if (!linked_ || c == nullptr)
         return;
-    const double source = static_cast<double>(absoluteFirstVisible - c->start + c->sourceOffset);
-    if (std::abs(samplesPerPixel - samplesPerPixel_) < 1.0e-9 && std::abs(source - scroll_) < 0.5)
+    // The arrange view's zoom is in timeline samples; the editor's in source samples.
+    const double source = static_cast<double>(c->sourceOffset) +
+                          toSourceSpan(*c, static_cast<double>(absoluteFirstVisible - c->start));
+    const double sourcePerPixel = std::max(1.0, toSourceSpan(*c, samplesPerPixel));
+    if (std::abs(sourcePerPixel - samplesPerPixel_) < 1.0e-9 && std::abs(source - scroll_) < 0.5)
         return;
-    samplesPerPixel_ = std::max(1.0, samplesPerPixel);
+    samplesPerPixel_ = sourcePerPixel;
     scroll_ = source;
     updateScrollbars();
     repaint();
@@ -304,7 +329,7 @@ void AudioEditor::zoomTo(double samplesPerPixel, double secondsIntoClip)
     if (c == nullptr || project_ == nullptr)
         return;
     samplesPerPixel_ = std::clamp(samplesPerPixel, 1.0, 100000.0);
-    scroll_ = static_cast<double>(c->sourceOffset) + secondsIntoClip * project_->sampleRate;
+    scroll_ = static_cast<double>(c->sourceOffset) + toSourceSpan(*c, secondsIntoClip * project_->sampleRate);
     fitPending_ = false;
     updateScrollbars();
     repaint();
@@ -503,8 +528,8 @@ void AudioEditor::fitToClip()
     const int width = contentArea().getWidth();
     if (c == nullptr || width < 32)
         return;
-    samplesPerPixel_ =
-        std::max(1.0, static_cast<double>(std::max<core::SamplePosition>(1, c->length)) / (width - 16));
+    samplesPerPixel_ = std::max(
+        1.0, static_cast<double>(std::max<core::SamplePosition>(1, c->sourceLength())) / (width - 16));
     scroll_ = static_cast<double>(c->sourceOffset);
     fitPending_ = false;
     updateScrollbars();
@@ -520,7 +545,8 @@ void AudioEditor::fitPitchRange()
     float lo = 1.0e9f, hi = -1.0e9f;
     for (const auto& n : notes)
     {
-        if (n.end < c->sourceOffset || n.start > c->sourceOffset + c->length)
+        if (static_cast<double>(n.end) < static_cast<double>(c->sourceOffset) ||
+            static_cast<double>(n.start) > sourceEnd(*c))
             continue;
         lo = std::min({lo, n.centre, n.target});
         hi = std::max({hi, n.centre, n.target});
@@ -544,7 +570,7 @@ void AudioEditor::updateScrollbars()
     if (c != nullptr)
     {
         const double start = static_cast<double>(c->sourceOffset);
-        const double length = static_cast<double>(std::max<core::SamplePosition>(1, c->length));
+        const double length = static_cast<double>(std::max<core::SamplePosition>(1, c->sourceLength()));
         const double visible = area.getWidth() * samplesPerPixel_;
         horizontal_.setRangeLimits(std::min(start, scroll_), std::max(start + length, scroll_ + visible));
         horizontal_.setCurrentRange(scroll_, visible, juce::dontSendNotification);
@@ -795,7 +821,7 @@ void AudioEditor::paintWave(juce::Graphics& g)
                                       sourceForX(static_cast<float>(area.getRight())) + 1,
                                       samplesPerPixel_);
     const double clipStart = static_cast<double>(cl->sourceOffset);
-    const double clipEnd = clipStart + static_cast<double>(cl->length);
+    const double clipEnd = sourceEnd(*cl);
     // Outside the clip the media dims.
     g.setColour(c.laneAlt);
     g.fillRect(area);
@@ -815,7 +841,7 @@ void AudioEditor::paintWave(juce::Graphics& g)
     const float channelHeight = static_cast<float>(area.getHeight()) / static_cast<float>(channels);
     const auto envelope = [cl](double source)
     {
-        const double rel = source - static_cast<double>(cl->sourceOffset);
+        const double rel = toTimelineSpan(*cl, source - static_cast<double>(cl->sourceOffset));
         double e = cl->gain;
         if (cl->fadeIn > 0 && rel < static_cast<double>(cl->fadeIn))
             e *= core::fadeShape(static_cast<float>(rel / static_cast<double>(cl->fadeIn)),
@@ -862,8 +888,8 @@ void AudioEditor::paintWave(juce::Graphics& g)
                juce::Justification::centredLeft);
     const auto fadeIn = drag_ == Drag::fadeIn ? dragFade_ : cl->fadeIn;
     const auto fadeOut = drag_ == Drag::fadeOut ? dragFade_ : cl->fadeOut;
-    const float fi = xForSource(clipStart + static_cast<double>(fadeIn));
-    const float fo = xForSource(clipEnd - static_cast<double>(fadeOut));
+    const float fi = xForSource(clipStart + toSourceSpan(*cl, static_cast<double>(fadeIn)));
+    const float fo = xForSource(clipEnd - toSourceSpan(*cl, static_cast<double>(fadeOut)));
     g.setColour(c.textSecondary);
     // Each fade's curve, from its silent end (at the clip's edge) to full level.
     const auto curve = [&](float silent, float full, float k)
@@ -1311,8 +1337,9 @@ void AudioEditor::mouseDown(const juce::MouseEvent& e)
         const auto area = contentArea();
         if (!area.contains(e.getPosition()))
             return;
-        const float fi = xForSource(static_cast<double>(cl->sourceOffset + cl->fadeIn));
-        const float fo = xForSource(static_cast<double>(cl->sourceOffset + cl->length - cl->fadeOut));
+        const float fi = xForSource(static_cast<double>(cl->sourceOffset) +
+                                    toSourceSpan(*cl, static_cast<double>(cl->fadeIn)));
+        const float fo = xForSource(sourceEnd(*cl) - toSourceSpan(*cl, static_cast<double>(cl->fadeOut)));
         const float gainDb = cl->gain > 0.0f ? 20.0f * std::log10(cl->gain) : gainMinDb;
         const float gy =
             static_cast<float>(area.getY()) +
@@ -1426,8 +1453,10 @@ void AudioEditor::mouseDown(const juce::MouseEvent& e)
             dragNote_ = note->id;
             drag_ = tool_ == Tool::pitch ? Drag::pitch : tool_ == Tool::drift ? Drag::drift : Drag::vibrato;
             if (audition_ && onAudition)
-                onAudition(cl->start + note->start - cl->sourceOffset,
-                           cl->start + note->end - cl->sourceOffset);
+                onAudition(cl->start + static_cast<core::SamplePosition>(std::llround(toTimelineSpan(
+                                           *cl, static_cast<double>(note->start - cl->sourceOffset)))),
+                           cl->start + static_cast<core::SamplePosition>(std::llround(toTimelineSpan(
+                                           *cl, static_cast<double>(note->end - cl->sourceOffset)))));
             repaint();
             return;
         case Tool::breath:
@@ -1466,10 +1495,12 @@ void AudioEditor::mouseDrag(const juce::MouseEvent& e)
         case Drag::fadeOut:
         {
             const auto s = sourceForX(static_cast<float>(e.x));
-            dragFade_ =
-                drag_ == Drag::fadeIn
-                    ? std::clamp<core::SamplePosition>(s - cl->sourceOffset, 0, cl->length)
-                    : std::clamp<core::SamplePosition>(cl->sourceOffset + cl->length - s, 0, cl->length);
+            const double sourceFade = drag_ == Drag::fadeIn ? static_cast<double>(s - cl->sourceOffset)
+                                                            : sourceEnd(*cl) - static_cast<double>(s);
+            dragFade_ = std::clamp<core::SamplePosition>(
+                static_cast<core::SamplePosition>(std::llround(toTimelineSpan(*cl, sourceFade))),
+                0,
+                cl->length);
             dragTip_ =
                 juce::String(static_cast<double>(dragFade_) * 1000.0 / project_->sampleRate, 0) + " ms";
             break;
@@ -1686,7 +1717,7 @@ void AudioEditor::selectAll()
     selection_.clear();
     if (const auto* cl = clip())
         for (const auto& n : cl->vocal.notes)
-            if (n.end > cl->sourceOffset && n.start < cl->sourceOffset + cl->length)
+            if (n.end > cl->sourceOffset && static_cast<double>(n.start) < sourceEnd(*cl))
                 selection_.push_back(n.id);
     repaint();
 }
@@ -1774,7 +1805,7 @@ void AudioEditor::correctToKey(const pitch::CorrectionOptions& options, const st
     for (size_t i = 0; i < cl->vocal.notes.size(); ++i)
     {
         const auto& n = cl->vocal.notes[i];
-        const bool inClip = n.end > cl->sourceOffset && n.start < cl->sourceOffset + cl->length;
+        const bool inClip = n.end > cl->sourceOffset && static_cast<double>(n.start) < sourceEnd(*cl);
         if (inClip && (selection_.empty() || isSelected(n.id)))
         {
             subset.push_back(n);
