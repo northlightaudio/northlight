@@ -61,6 +61,16 @@ TEST_CASE("Every card, saved as pictures", "[.card-snapshots]")
         for (const float scale : {1.0f, 2.0f})
             save(card.createComponentSnapshot(card.getLocalBounds(), true, scale),
                  dir.getChildFile(prefix + "-" + juce::String(juce::roundToInt(scale * 100)) + ".png"));
+        if (type == "northlight.amp")
+        {
+            // Corona's cabinet page too (its baffle, mics and handles).
+            ui::strip::showEmberPage(card, true);
+            for (const float scale : {1.0f, 2.0f})
+                save(card.createComponentSnapshot(card.getLocalBounds(), true, scale),
+                     dir.getChildFile(prefix + "-cabinet-" + juce::String(juce::roundToInt(scale * 100)) +
+                                      ".png"));
+            ui::strip::showEmberPage(card, false);
+        }
         if (hasRenderedFace(card))
         {
             const int body = card.minimumBodyHeight();

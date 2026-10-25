@@ -104,6 +104,8 @@ add_library(northlight_ui STATIC
     strip/VesperCard.cpp
     strip/CoronaCard.cpp
     strip/CoronaFace.h
+    strip/CoronaCabinet.h
+    strip/CoronaCabinet.cpp
     strip/FaceParts.h
     strip/FaceParts.cpp
     strip/HardwareLever.h
