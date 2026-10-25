@@ -43,6 +43,8 @@ add_library(northlight_plugins STATIC
     Patina.cpp
     Exciter.h
     Exciter.cpp
+    FeedbackNetwork.h
+    FeedbackNetwork.cpp
     Bloom.h
     Bloom.cpp
     Pedals.h

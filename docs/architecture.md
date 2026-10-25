@@ -300,7 +300,14 @@ know nothing format-specific.
   effects (Glue, Patina, Exciter, Bloom, Tape Echo, Stereo Widener, Corona, and the guitar pedals
   Gravity, Flare, Comet, Tide and Polaris, declared together in `plugins/Pedals.h`) each have a file
   of their own and a card in `src/ui/strip`; what their frame values and taps carry
-  is described at the top of each processor. A display that needs more than a frame
+  is described at the top of each processor. Bloom's reverb core is
+  `plugins/FeedbackNetwork`, for any reverb that wants one (Vesper next,
+  [plans/vesper.md](plans/vesper.md)): eight modulated lines with an allpass each, a
+  Householder mix, input diffusers, damping and low cut as shelves in the loop,
+  freeze, shimmer and the energy governor. An effect gives it a `Tuning` (line and
+  allpass lengths, how far the lines stretch, room for shimmer), sets it once a
+  block and passes its own smoothed controls in each sample, so pre-delay, tone,
+  ducking and mix stay the effect's. A display that needs more than a frame
   holds (Patina's six stage readouts) publishes its own telemetry block the same
   way, so the shared frame stays small. Patina's card is a hardware face: the
   drawing shared by such faces (pointer knobs, printed legends, images from

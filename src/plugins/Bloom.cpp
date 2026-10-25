@@ -3,12 +3,11 @@
 #include "engine/Feedback.h"
 #include "engine/rt/RealtimeGuard.h"
 #include "plugins/BeatSync.h"
-#include "plugins/Biquad.h"
+#include "plugins/FeedbackNetwork.h"
 #include "plugins/ProcessorBase.h"
 
 #include <algorithm>
 #include <cmath>
-#include <complex>
 #include <cstdint>
 #include <numbers>
 #include <string>
@@ -19,47 +18,42 @@ namespace northlight::plugins::bloom
 
 namespace
 {
-constexpr int lineCount = static_cast<int>(lineMs.size());
+constexpr int lineCount = fdn::lineCount;
+static_assert(lineCount == static_cast<int>(lineMs.size()));
 constexpr float pi = std::numbers::pi_v<float>;
-// Highs above the damping (and lows below the low cut) decay this many times
-// faster than the decay: a shelf in each line whose depth follows the line's
-// gain, so the ratio holds at every decay and vanishes as the decay grows long.
-constexpr float bandDecayRatio = 4.0f;
 constexpr float speedOfSound = 343.0f;
-// The diffused input in the tail before the network's first pass returns.
-constexpr float earlyGain = 0.6f;
 // The size whose level the others are matched to (the default).
 constexpr float referenceSizePercent = 60.0f;
-// Below this the shimmer's heads add in phase (a gain above one), so the shifted path is cut there.
-constexpr double shiftLowCutHz = 60.0;
 // Full shimmer turns each pass this far (radians) from the unshifted sound to the shifted.
 constexpr float maxShimmerAngle = 0.7f;
 
-float meanLineSeconds() noexcept
+// Bloom's network: long lines that stretch from a large room to an absurd space,
+// with room for the shimmer's grain.
+const fdn::Tuning& tuning() noexcept
 {
-    float sum = 0.0f;
-    for (const float ms : lineMs)
-        sum += ms;
-    return sum * 0.001f / static_cast<float>(lineCount);
-}
-
-float meanAllpassSeconds() noexcept
-{
-    float sum = 0.0f;
-    for (const float ms : loopAllpassMs)
-        sum += ms;
-    return sum * 0.001f / static_cast<float>(lineCount);
+    static const fdn::Tuning t = []
+    {
+        fdn::Tuning x;
+        x.lineMs = lineMs;
+        x.allpassMs = loopAllpassMs;
+        x.diffuserLeftMs = {1.7f, 2.9f, 5.3f, 7.9f};
+        x.diffuserRightMs = {1.9f, 3.1f, 5.9f, 8.3f};
+        x.maxScale = maxScale;
+        x.maxModSeconds = maxModSeconds;
+        x.shimmerWindowSeconds = shimmerWindowSeconds;
+        // Highs above the damping (and lows below the low cut) decay four times
+        // faster than the decay.
+        x.bandDecayRatio = 4.0f;
+        x.earlyGain = 0.6f;
+        x.energyCeiling = energyCeiling;
+        return x;
+    }();
+    return t;
 }
 
 int choiceIndex(float value, int count) noexcept
 {
     return std::clamp(static_cast<int>(std::lround(value)), 0, count - 1);
-}
-
-// The one-pole coefficient for a corner frequency.
-float onePole(float hz, double sampleRate) noexcept
-{
-    return 1.0f - std::exp(-2.0f * pi * hz / static_cast<float>(sampleRate));
 }
 } // namespace
 
@@ -71,7 +65,7 @@ float sizeScale(float percent) noexcept
 
 float sizeMetres(float percent) noexcept
 {
-    return meanLineSeconds() * sizeScale(percent) * speedOfSound;
+    return fdn::meanLineSeconds(tuning()) * sizeScale(percent) * speedOfSound;
 }
 
 float pitchRatio(float choice, int line) noexcept
@@ -91,22 +85,7 @@ double preDelaySeconds(float preDelayMs, float syncChoice, double tempoBpm) noex
 
 float decayAt(float hz, float decaySeconds, float sizePercent, float dampingHz, float lowCutHz) noexcept
 {
-    constexpr double rate = 48000.0;
-    const double length = meanLineSeconds() * sizeScale(sizePercent) + meanAllpassSeconds();
-    const double rt = std::clamp(static_cast<double>(decaySeconds), 0.01, 1.0e6);
-    const double g = std::pow(10.0, -3.0 * length / rt);
-    const double k = std::pow(g, bandDecayRatio - 1.0);
-    const std::complex<double> z1 = std::polar(1.0, -2.0 * std::numbers::pi * hz / rate);
-    const auto lowPass = [&](float corner)
-    {
-        const double a = onePole(corner, rate);
-        return a / (1.0 - (1.0 - a) * z1);
-    };
-    const auto high = lowPass(dampingHz);
-    const auto low = lowPass(lowCutHz);
-    const double shelves = std::abs(high + k * (1.0 - high)) * std::abs((1.0 - low) + k * low);
-    const double passDb = 20.0 * std::log10(std::max(1.0e-9, g * shelves));
-    return static_cast<float>(passDb < -1.0e-9 ? -60.0 * length / passDb : rt);
+    return fdn::decayAt(tuning(), hz, decaySeconds, sizeScale(sizePercent), dampingHz, lowCutHz);
 }
 
 namespace
@@ -181,69 +160,6 @@ std::array<SwellPattern, 2> makeSwellPatterns() noexcept
     return patterns;
 }
 
-// A Schroeder allpass with a fixed length.
-struct Allpass
-{
-    std::vector<float> buffer;
-    int pos = 0;
-
-    float process(float x, float g) noexcept
-    {
-        const float delayed = buffer[static_cast<size_t>(pos)];
-        const float w = x + g * delayed;
-        buffer[static_cast<size_t>(pos)] = w;
-        if (++pos == static_cast<int>(buffer.size()))
-            pos = 0;
-        return delayed - g * w;
-    }
-    void prepare(float seconds, double sampleRate)
-    {
-        buffer.assign(static_cast<size_t>(std::max(1.0, seconds * sampleRate)), 0.0f);
-        pos = 0;
-    }
-    void clear() noexcept { std::fill(buffer.begin(), buffer.end(), 0.0f); }
-};
-
-int powerOfTwoAtLeast(double n) noexcept
-{
-    int size = 1;
-    while (size < n)
-        size <<= 1;
-    return size;
-}
-
-// A cubic Hermite read `delay` samples behind `write` (delay >= 3).
-inline float readHermite(const float* buffer, int mask, int write, float delay) noexcept
-{
-    const float position = static_cast<float>(write) - delay;
-    const float floor = std::floor(position);
-    const int i = static_cast<int>(floor);
-    const float t = position - floor;
-    const float x0 = buffer[(i - 1) & mask], x1 = buffer[i & mask];
-    const float x2 = buffer[(i + 1) & mask], x3 = buffer[(i + 2) & mask];
-    const float c1 = 0.5f * (x2 - x0);
-    const float c2 = x0 - 2.5f * x1 + 2.0f * x2 - 0.5f * x3;
-    const float c3 = 0.5f * (x3 - x0) + 1.5f * (x1 - x2);
-    return ((c3 * t + c2) * t + c1) * t + x1;
-}
-
-inline float readLinear(const float* buffer, int mask, int write, float delay) noexcept
-{
-    const float position = static_cast<float>(write) - delay;
-    const float floor = std::floor(position);
-    const int i = static_cast<int>(floor);
-    const float t = position - floor;
-    return buffer[i & mask] + t * (buffer[(i + 1) & mask] - buffer[i & mask]);
-}
-
-// sin(pi x) for x in 0..1 (Bhaskara's approximation, within 0.2%): the shimmer's
-// grain window, whose two heads half a grain apart sum to constant power.
-inline float grainWindow(float x) noexcept
-{
-    const float p = x * (1.0f - x);
-    return 16.0f * p / (5.0f - 4.0f * p);
-}
-
 class Bloom final : public ProcessorBase
 {
 public:
@@ -268,47 +184,15 @@ private:
         const double inputSeconds =
             std::max(maxSyncedPreDelaySeconds, static_cast<double>(maxPreDelayMs) * 0.001) +
             static_cast<double>(maxSwellMs) * 0.001 + 0.01;
-        const int inputSize = powerOfTwoAtLeast(inputSeconds * sampleRate + 8.0);
+        const int inputSize = fdn::powerOfTwoAtLeast(inputSeconds * sampleRate + 8.0);
         for (auto& b : input_)
             b.assign(static_cast<size_t>(inputSize), 0.0f);
         inputMask_ = inputSize - 1;
         inputWrite_ = 0;
 
-        // The lines: the longest line at the largest size, the deepest
-        // modulation and the shimmer's window.
-        const double lineSeconds =
-            lineMs.back() * 0.001 * maxScale + 2.0 * maxModSeconds + shimmerWindowSeconds + 0.002;
-        const int lineSize = powerOfTwoAtLeast(lineSeconds * sampleRate + 8.0);
-        for (auto& line : lines_)
-        {
-            line.buffer.assign(static_cast<size_t>(lineSize), 0.0f);
-            line.high = line.low = 0.0f;
-            line.guard.reset();
-            line.shiftLowCut.setHighPass(sampleRate, shiftLowCutHz);
-            line.shiftLowCut.reset();
-        }
-        guardPitch_ = -1.0f; // designed again at this rate
-        lineMask_ = lineSize - 1;
-        lineWrite_ = 0;
-        for (int i = 0; i < lineCount; ++i)
-        {
-            lines_[static_cast<size_t>(i)].allpass.prepare(loopAllpassMs[static_cast<size_t>(i)] * 0.001f,
-                                                           sampleRate);
-            // Each line's modulation at its own rate and phase, its grain at its own phase.
-            lines_[static_cast<size_t>(i)].lfoCos = std::cos(2.0f * pi * static_cast<float>(i) / lineCount);
-            lines_[static_cast<size_t>(i)].lfoSin = std::sin(2.0f * pi * static_cast<float>(i) / lineCount);
-            lines_[static_cast<size_t>(i)].grain = static_cast<float>(i) / lineCount;
-        }
-        constexpr std::array<float, 4> leftMs{1.7f, 2.9f, 5.3f, 7.9f}, rightMs{1.9f, 3.1f, 5.9f, 8.3f};
-        for (size_t i = 0; i < diffusers_[0].size(); ++i)
-        {
-            diffusers_[0][i].prepare(leftMs[i] * 0.001f, sampleRate);
-            diffusers_[1][i].prepare(rightMs[i] * 0.001f, sampleRate);
-        }
+        network_.prepare(tuning(), sampleRate);
         dcLow_ = {0.0f, 0.0f};
         tiltLow_ = {0.0f, 0.0f};
-        energy_ = 0.0f;
-        governor_ = 1.0f;
         duckEnvelope_ = keyEnvelope_ = keyPeak_ = 0.0f;
         gateHold_ = 0;
         gateGain_ = 1.0f;
@@ -324,18 +208,14 @@ private:
         glideStep_ = smoothing(0.05f);  // the pre-delay
         swellStep_ = smoothing(0.2f);   // the swell's spread
         paramStep_ = smoothing(0.02f);  // the levels
-        energyStep_ = smoothing(0.02f); // the governor's measure
-        governorDown_ = smoothing(0.005f);
-        governorUp_ = smoothing(0.3f);
         duckAttack_ = smoothing(0.005f);
         keyRelease_ = smoothing(0.02f);
         keyPeakFall_ = std::pow(10.0f, -12.0f / 20.0f / rate); // the key's reference falls 12 dB a second
         gateOpen_ = smoothing(0.001f);
         gateClose_ = smoothing(0.004f);
         rmsStep_ = smoothing(0.05f);
-        dcStep_ = onePole(15.0f, sampleRate);
-        tiltStep_ = onePole(tiltHz, sampleRate);
-        windowSamples_ = shimmerWindowSeconds * rate;
+        dcStep_ = fdn::onePole(15.0f, sampleRate);
+        tiltStep_ = fdn::onePole(tiltHz, sampleRate);
     }
 
     // ----- per block --------------------------------------------------------------------------
@@ -426,7 +306,7 @@ private:
         for (int i = 0; i < numSamples; ++i)
             inPeak = std::max(inPeak, std::max(std::abs(left[i]), std::abs(right[i])));
         silentSamples_ = inPeak < 1.0e-7f ? silentSamples_ + numSamples : 0;
-        idle_ = silentSamples_ > inputMask_ + 1 && energy_ < 1.0e-14f;
+        idle_ = silentSamples_ > inputMask_ + 1 && network_.energy() < 1.0e-14f;
         if (idle_)
         {
             snapTo(t);
@@ -445,65 +325,22 @@ private:
         }
 
         const auto rate = static_cast<float>(sampleRate_);
-        const float diffuserGain = 0.7f * t.diffusion;
-        const float loopAllpassGain = 0.5f * t.diffusion;
-        const float dampStep = onePole(std::clamp(parameter(damping), 500.0f, 20000.0f), sampleRate_);
-        const float lowStep = onePole(std::clamp(parameter(lowCut), 20.0f, 1000.0f), sampleRate_);
-        const float rt = std::clamp(parameter(decay), minDecaySeconds, maxDecaySeconds);
-        const float lfoHz = std::max(0.01f, parameter(modRate));
-        float ratio[lineCount], grainStep[lineCount], lfoRotCos[lineCount], lfoRotSin[lineCount];
-        bool up[lineCount];
-        constexpr std::array<float, lineCount> lfoSpread{
-            1.0f, 1.13f, 0.87f, 1.29f, 0.71f, 1.07f, 0.93f, 1.21f};
-        const bool pitchMoved = parameter(pitch) != guardPitch_;
-        guardPitch_ = parameter(pitch);
+        fdn::BlockSettings block;
+        block.decaySeconds = std::clamp(parameter(decay), minDecaySeconds, maxDecaySeconds);
+        // The decay at the size this block ends near.
+        block.endScale = scale_ + (t.scale - scale_) * std::min(1.0f, sizeStep_ * numSamples);
+        block.modSamples = modSamples_;
+        block.dampingHz = std::clamp(parameter(damping), 500.0f, 20000.0f);
+        block.lowCutHz = std::clamp(parameter(lowCut), 20.0f, 1000.0f);
+        block.diffusion = t.diffusion;
+        block.lfoHz = std::max(0.01f, parameter(modRate));
         for (int i = 0; i < lineCount; ++i)
-        {
-            ratio[i] = pitchRatio(parameter(pitch), i);
-            up[i] = ratio[i] >= 1.0f;
-            // What a line holds is band-limited below where shifting it up would
-            // fold it back down (and pile up at the top for ever).
-            if (pitchMoved)
-            {
-                auto& guard = lines_[static_cast<size_t>(i)].guard;
-                if (up[i])
-                    guard.setLowPass(sampleRate_, std::min(18000.0, 0.4 * sampleRate_ / ratio[i]));
-                else
-                    guard.setLowPass(sampleRate_, std::min(18000.0, 0.4 * sampleRate_));
-            }
-            grainStep[i] = std::abs(ratio[i] - 1.0f) / windowSamples_;
-            const float w = 2.0f * pi * lfoHz * lfoSpread[static_cast<size_t>(i)] / rate;
-            lfoRotCos[i] = std::cos(w);
-            lfoRotSin[i] = std::sin(w);
-        }
-        // The lines' gains for the decay, at the start and end of the block (the
-        // size glides, so the lengths do too).
-        const float allpassSamples[lineCount] = {loopAllpassMs[0] * 0.001f * rate,
-                                                 loopAllpassMs[1] * 0.001f * rate,
-                                                 loopAllpassMs[2] * 0.001f * rate,
-                                                 loopAllpassMs[3] * 0.001f * rate,
-                                                 loopAllpassMs[4] * 0.001f * rate,
-                                                 loopAllpassMs[5] * 0.001f * rate,
-                                                 loopAllpassMs[6] * 0.001f * rate,
-                                                 loopAllpassMs[7] * 0.001f * rate};
-        float baseSamples[lineCount];
-        for (int i = 0; i < lineCount; ++i)
-            baseSamples[i] = lineMs[static_cast<size_t>(i)] * 0.001f * rate;
+            block.pitchRatios[static_cast<size_t>(i)] = pitchRatio(parameter(pitch), i);
+        network_.beginBlock(block);
         const float shimmerTarget = t.shimmer * (1.0f - t.freeze);
         const bool shimmering = shimmerTarget > 1.0e-4f || shimmer_ > 1.0e-4f;
         const float* inL = input_[0].data();
         const float* inR = input_[1].data();
-        float lineGain[lineCount], bandGain[lineCount];
-        {
-            // The decay at the size this block ends near.
-            const float scale = scale_ + (t.scale - scale_) * std::min(1.0f, sizeStep_ * numSamples);
-            for (int i = 0; i < lineCount; ++i)
-            {
-                const float length = baseSamples[i] * scale + allpassSamples[i] + modSamples_;
-                lineGain[i] = std::pow(10.0f, -3.0f * length / (rate * rt));
-                bandGain[i] = std::pow(lineGain[i], bandDecayRatio - 1.0f);
-            }
-        }
 
         for (int n = 0; n < numSamples; ++n)
         {
@@ -538,8 +375,8 @@ private:
                     x - dcLow_[static_cast<size_t>(ch)];
             }
             const float pre = std::max(1.0f, pre_);
-            float sendL = readLinear(inL, inputMask_, inputWrite_, pre);
-            float sendR = readLinear(inR, inputMask_, inputWrite_, pre);
+            float sendL = fdn::readLinear(inL, inputMask_, inputWrite_, pre);
+            float sendR = fdn::readLinear(inR, inputMask_, inputWrite_, pre);
             // The swell: the input again through the rising cloud of taps.
             if (swellMix_ > 1.0e-4f)
             {
@@ -547,101 +384,36 @@ private:
                 for (int k = 0; k < swellTaps; ++k)
                 {
                     const auto kk = static_cast<size_t>(k);
-                    cloudL +=
-                        patterns_[0].gain[kk] *
-                        readLinear(inL, inputMask_, inputWrite_, pre + patterns_[0].position[kk] * swell_);
-                    cloudR +=
-                        patterns_[1].gain[kk] *
-                        readLinear(inR, inputMask_, inputWrite_, pre + patterns_[1].position[kk] * swell_);
+                    cloudL += patterns_[0].gain[kk] *
+                              fdn::readLinear(
+                                  inL, inputMask_, inputWrite_, pre + patterns_[0].position[kk] * swell_);
+                    cloudR += patterns_[1].gain[kk] *
+                              fdn::readLinear(
+                                  inR, inputMask_, inputWrite_, pre + patterns_[1].position[kk] * swell_);
                 }
                 sendL += (cloudL - sendL) * swellMix_;
                 sendR += (cloudR - sendR) * swellMix_;
             }
             inputWrite_ = (inputWrite_ + 1) & inputMask_;
             // Diffusion.
-            for (auto& d : diffusers_[0])
-                sendL = d.process(sendL, diffuserGain);
-            for (auto& d : diffusers_[1])
-                sendR = d.process(sendR, diffuserGain);
+            network_.diffuse(sendL, sendR);
             const float inject = inputGain_ * thaw;
             sendL *= inject;
             sendR *= inject;
 
             // The network.
-            const float sweep = std::max(modSamples_, frozenModSeconds * rate * freeze_);
-            float outs[lineCount];
-            float energy = 0.0f, sum = 0.0f;
-            for (int i = 0; i < lineCount; ++i)
-            {
-                auto& line = lines_[static_cast<size_t>(i)];
-                // The modulation: a sine per line, kept on the unit circle.
-                const float c = line.lfoCos * lfoRotCos[i] - line.lfoSin * lfoRotSin[i];
-                line.lfoSin = line.lfoSin * lfoRotCos[i] + line.lfoCos * lfoRotSin[i];
-                line.lfoCos = c;
-                const float delay = std::max(4.0f, baseSamples[i] * scale_ + sweep * (1.0f + line.lfoSin));
-                const float* buffer = line.buffer.data();
-                float v = readHermite(buffer, lineMask_, lineWrite_, delay);
-                if (shimmering)
-                {
-                    // Two heads sweeping the grain window, half a grain apart:
-                    // the line read faster (up) or slower (down) than it is written.
-                    line.grain += grainStep[i];
-                    if (line.grain >= 1.0f)
-                        line.grain -= 1.0f;
-                    const float a = line.grain;
-                    const float b = a < 0.5f ? a + 0.5f : a - 0.5f;
-                    const float offsetA = up[i] ? windowSamples_ * (1.0f - a) : windowSamples_ * a;
-                    const float offsetB = up[i] ? windowSamples_ * (1.0f - b) : windowSamples_ * b;
-                    // The lowest frequencies come out of the two heads in phase,
-                    // louder than they went in, and shifting never moves them on:
-                    // they would grow for ever, so they stay out of the shifted path.
-                    const float shifted = line.shiftLowCut.process(
-                        grainWindow(a) * readHermite(buffer, lineMask_, lineWrite_, delay + offsetA) +
-                        grainWindow(b) * readHermite(buffer, lineMask_, lineWrite_, delay + offsetB));
-                    v = v * keep + shifted * shift;
-                }
-                // Damping and low cut: shelves whose depth follows the line's
-                // gain (none while frozen).
-                const float gain = (lineGain[i] + (1.0f - lineGain[i]) * freeze_) * governor_;
-                const float band = bandGain[i] + (1.0f - bandGain[i]) * freeze_;
-                line.high += dampStep * (v - line.high);
-                v = line.high + band * (v - line.high);
-                line.low += lowStep * (v - line.low);
-                v = (v - line.low) + band * line.low;
-                v = line.allpass.process(v * gain, loopAllpassGain);
-                outs[i] = v;
-                sum += v;
-                energy += v * v;
-            }
-            // Householder feedback, the input into alternate lines (and into the
-            // tail at once, as its first, diffused reflections).
-            const float householder = sum * (2.0f / lineCount);
+            fdn::Frame frame;
+            frame.scale = scale_;
+            frame.sweep = std::max(modSamples_, frozenModSeconds * rate * freeze_);
+            frame.freeze = freeze_;
+            frame.shimmer = shimmer_;
+            frame.keep = keep;
+            frame.shift = shift;
+            frame.shimmering = shimmering;
             float tailL = 0.0f, tailR = 0.0f;
-            for (int i = 0; i < lineCount; ++i)
-            {
-                auto& line = lines_[static_cast<size_t>(i)];
-                const float sign = (i / 2) % 2 == 0 ? 1.0f : -1.0f;
-                const float in = (i % 2 == 0 ? sendL : sendR) * sign;
-                float write = outs[i] - householder + in;
-                if (shimmering)
-                    write += (line.guard.process(write) - write) * shimmer_;
-                line.buffer[static_cast<size_t>(lineWrite_)] = std::clamp(write, -8.0f, 8.0f);
-                (i % 2 == 0 ? tailL : tailR) += outs[i] * sign;
-            }
-            lineWrite_ = (lineWrite_ + 1) & lineMask_;
-            tailL += earlyGain * sendL;
-            tailR += earlyGain * sendR;
-
-            // The governor: above the ceiling, the loop's gain comes down until
-            // the energy is back under it.
-            energy_ += (energy * (1.0f / lineCount) - energy_) * energyStep_;
-            const float rms = std::sqrt(energy_);
-            const float target = rms > energyCeiling ? energyCeiling / rms : 1.0f;
-            governor_ += (target - governor_) * (target < governor_ ? governorDown_ : governorUp_);
+            network_.process(frame, sendL, sendR, tailL, tailR);
 
             // The tail: tilt, width.
-            tailL *= 0.5f;
-            tailR *= 0.5f;
             tiltLow_[0] += tiltStep_ * (tailL - tiltLow_[0]);
             tiltLow_[1] += tiltStep_ * (tailR - tiltLow_[1]);
             tailL = tiltLow_[0] * tiltLowGain_ + (tailL - tiltLow_[0]) * tiltHighGain_;
@@ -702,7 +474,7 @@ private:
         if (drySquare_ < 1.0e-20f)
             drySquare_ = 0.0f;
         // Never expected: a non-finite value would ring for ever, so the network starts again.
-        if (!std::isfinite(energy_) || !std::isfinite(governor_))
+        if (network_.diverged())
             clearState();
     }
 
@@ -714,19 +486,7 @@ private:
     {
         for (auto& b : input_)
             std::fill(b.begin(), b.end(), 0.0f);
-        for (auto& line : lines_)
-        {
-            std::fill(line.buffer.begin(), line.buffer.end(), 0.0f);
-            line.allpass.clear();
-            line.guard.reset();
-            line.shiftLowCut.reset();
-            line.high = line.low = 0.0f;
-        }
-        for (auto& channel : diffusers_)
-            for (auto& d : channel)
-                d.clear();
-        energy_ = 0.0f;
-        governor_ = 1.0f;
+        network_.clear();
         tiltLow_ = {0.0f, 0.0f};
         dcLow_ = {0.0f, 0.0f};
     }
@@ -740,24 +500,11 @@ private:
         processAudio(bypassLeft_.data(), bypassRight_.data(), numSamples);
     }
 
-    struct Line
-    {
-        std::vector<float> buffer;
-        Allpass allpass;
-        float high = 0.0f, low = 0.0f; // the damping's and the low cut's one-pole memories
-        float lfoCos = 1.0f, lfoSin = 0.0f;
-        float grain = 0.0f; // the shimmer's grain phase, 0..1
-        Biquad guard;       // the shimmer's anti-alias low-pass on what is written
-        Biquad shiftLowCut; // the shifted path's high-pass
-    };
-
     engine::ProcessorFeedback feedback_;
     std::array<SwellPattern, 2> patterns_;
     std::array<std::vector<float>, 2> input_;
     int inputMask_ = 0, inputWrite_ = 0;
-    std::array<Line, lineCount> lines_;
-    int lineMask_ = 0, lineWrite_ = 0;
-    std::array<std::array<Allpass, 4>, 2> diffusers_;
+    fdn::FeedbackNetwork network_;
     std::vector<float> wetLeft_, wetRight_, bypassLeft_, bypassRight_;
     std::array<float, 2> dcLow_{}, tiltLow_{};
     // Smoothed controls.
@@ -765,7 +512,6 @@ private:
     float modSamples_ = 0.0f, inputGain_ = 1.0f, wet_ = 0.0f, width_ = 1.0f;
     float tiltLowGain_ = 1.0f, tiltHighGain_ = 1.0f;
     // Followers.
-    float energy_ = 0.0f, governor_ = 1.0f;
     float duckEnvelope_ = 0.0f, keyEnvelope_ = 0.0f, keyPeak_ = 0.0f, gateGain_ = 1.0f;
     int gateHold_ = 0;
     float tailSquare_ = 0.0f, drySquare_ = 0.0f;
@@ -773,10 +519,9 @@ private:
     bool idle_ = false, primed_ = false;
     // Coefficients for the rate.
     float sizeStep_ = 0.0f, freezeStep_ = 0.0f, glideStep_ = 0.0f, swellStep_ = 0.0f, paramStep_ = 0.0f;
-    float energyStep_ = 0.0f, governorDown_ = 0.0f, governorUp_ = 0.0f, duckAttack_ = 0.0f;
+    float duckAttack_ = 0.0f;
     float keyRelease_ = 0.0f, keyPeakFall_ = 1.0f, gateOpen_ = 0.0f, gateClose_ = 0.0f, rmsStep_ = 0.0f;
-    float dcStep_ = 0.0f, tiltStep_ = 0.0f, windowSamples_ = 1.0f;
-    float guardPitch_ = -1.0f; // the pitch the guards were designed for
+    float dcStep_ = 0.0f, tiltStep_ = 0.0f;
 };
 } // namespace
 
