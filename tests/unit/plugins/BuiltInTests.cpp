@@ -25,6 +25,7 @@
 #include <map>
 #include <numbers>
 #include <set>
+#include <thread>
 #include <vector>
 
 using namespace northlight;
@@ -479,4 +480,33 @@ TEST_CASE("Every built-in has one parameter per entry of its enum", "[plugins][p
         if (counts.count(type) == 0)
             unlisted.insert(type);
     CHECK(unlisted == std::set<std::string>{p::types::gain, p::types::eq, p::types::limiter});
+}
+
+TEST_CASE("Parameter descriptions are made once and read safely from several threads",
+          "[plugins][parameters]")
+{
+    // The message thread and the autosave worker both ask for them.
+    const auto types = northlight::plugins::BuiltInFactory().typeNames();
+    std::vector<std::vector<const std::vector<northlight::engine::ParameterInfo>*>> seen(4);
+    std::vector<std::thread> threads;
+    for (size_t t = 0; t < seen.size(); ++t)
+        threads.emplace_back(
+            [&, t]
+            {
+                for (const auto& type : types)
+                    seen[t].push_back(&northlight::plugins::parameterInfo(type));
+            });
+    for (auto& thread : threads)
+        thread.join();
+    for (size_t t = 1; t < seen.size(); ++t)
+        CHECK(seen[t] == seen[0]); // one description per type, whoever asked first
+    for (size_t i = 0; i < types.size(); ++i)
+    {
+        INFO(types[i]);
+        std::vector<float> defaults;
+        for (const auto& info : *seen[0][i])
+            defaults.push_back(info.defaultValue);
+        CHECK(northlight::plugins::defaultParameters(types[i]) == defaults);
+        CHECK(northlight::plugins::builtInParameterLayout(types[i]).defaults == defaults);
+    }
 }

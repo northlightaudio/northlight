@@ -102,7 +102,8 @@ enum Param
 };
 } // namespace delay
 
-// Default parameter values for a type, for creating a model insert.
+// Default parameter values for a type, for creating a model insert (from
+// parameterInfo(), so no processor is made per call).
 std::vector<float> defaultParameters(const std::string& typeName);
 // A built-in's parameter keys and defaults (empty for a type that is not a
 // built-in), for saving and reconciling projects. Cached; not real-time.
@@ -117,7 +118,7 @@ public:
     }
 };
 // A built-in's (or strip module's) parameter descriptions, made once per type
-// (empty for an unknown type). Not real-time safe.
+// (empty for an unknown type). Thread-safe; not real-time safe.
 const std::vector<engine::ParameterInfo>& parameterInfo(const std::string& typeName);
 
 } // namespace northlight::plugins

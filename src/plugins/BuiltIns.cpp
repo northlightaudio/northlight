@@ -739,7 +739,11 @@ std::string BuiltInFactory::displayName(const std::string& typeName)
 const std::vector<engine::ParameterInfo>& parameterInfo(const std::string& typeName)
 {
     NORTHLIGHT_ASSERT_NOT_REALTIME("plugins::parameterInfo");
+    // Read from the message thread and the autosave worker. A map's entries
+    // never move, so a reference handed out stays valid after the lock.
+    static std::mutex mutex;
     static std::map<std::string, std::vector<engine::ParameterInfo>> cache;
+    const std::scoped_lock lock(mutex);
     auto it = cache.find(typeName);
     if (it == cache.end())
     {
@@ -753,11 +757,9 @@ const std::vector<engine::ParameterInfo>& parameterInfo(const std::string& typeN
 
 std::vector<float> defaultParameters(const std::string& typeName)
 {
-    const auto processor = BuiltInFactory().create(typeName);
     std::vector<float> values;
-    if (processor != nullptr)
-        for (const auto& p : processor->parameters())
-            values.push_back(p.defaultValue);
+    for (const auto& p : parameterInfo(typeName))
+        values.push_back(p.defaultValue);
     return values;
 }
 
