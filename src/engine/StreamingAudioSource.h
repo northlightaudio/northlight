@@ -117,8 +117,29 @@ private:
     std::int64_t length_ = 0;
     double sampleRate_ = 0.0;
 
-    std::vector<std::vector<float>> ring_; // [channel][ringSamples]
-    std::vector<float*> chunkPointers_;    // scratch for reader_->read into the ring
+    // [channel][ringSamples]. Shared by the disk thread (writing) and the reader:
+    // every access goes through std::atomic_ref (relaxed, plain moves on x86), so
+    // the seqlock below decides validity without a data race in the C++ model.
+    std::vector<std::vector<float>> ring_;
+    std::vector<std::vector<float>> decoded_; // [channel][chunkSamples]: the disk thread's scratch
+    std::vector<float*> chunkPointers_;       // into decoded_, for reader_->read
+
+    // A block's channels are read one after another; the first copies them all and
+    // checks the seqlock once, so a torn read silences every channel or none.
+    static constexpr int pairCapacity = 8192;
+    void copyFrame(std::int64_t sourceStart, int numSamples) const noexcept;
+    static constexpr int maxFrameChannels = 8;
+    void copyChannels(std::int64_t sourceStart, int numSamples) const noexcept;
+    void copyChannel(int channel, std::int64_t sourceStart, float* dest, int numSamples) const noexcept;
+    // Copies `channels` channels from `firstChannel` on, checking the window once.
+    void readInto(float* const* dests,
+                  int channels,
+                  std::int64_t sourceStart,
+                  int numSamples,
+                  int firstChannel = 0) const noexcept;
+    mutable std::vector<float> frame_; // [channel][pairCapacity]
+    mutable std::int64_t frameStart_ = -1;
+    mutable int frameCount_ = 0;
 
     std::atomic<std::int64_t> validStart_{0};
     std::atomic<std::int64_t> validEnd_{0};
