@@ -334,7 +334,10 @@ know nothing format-specific.
   it (the strip modules keep their own list, `strip::moduleTypes()`). They share a base that crossfades bypass and keeps
   state running while bypassed, and they publish real-time feedback for their
   editors through rings of atomics: a five-value frame every 5 ms (input, output,
-  reduction and two processor-specific values) and two sample taps.
+  reduction and two processor-specific values) and two sample taps. The editors
+  analyse a tap with `ui/strip/TapSpectrum` (a Hann window, an FFT, one smoothed
+  value per column of a log-frequency plot: the EQ's analyser, the exciter's
+  spectrum) and draw that axis with `drawFrequencyGrid` (`ui/strip/StripStyle.h`).
   `FeedbackBuiltIn` (`plugins/MeteredBuiltIn.h`) owns that block for every built-in
   and strip module, and `MeteredBuiltIn` on it measures a block's peaks and taps
   around the processing; bypassed, a watched built-in measures what passes, unless

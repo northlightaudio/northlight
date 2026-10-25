@@ -3,8 +3,8 @@
 #include "plugins/Biquad.h"
 #include "plugins/ChannelStrip.h"
 #include "ui/strip/ModuleCard.h"
+#include "ui/strip/TapSpectrum.h"
 
-#include <juce_dsp/juce_dsp.h>
 #include <juce_gui_basics/juce_gui_basics.h>
 
 #include <array>
@@ -89,7 +89,6 @@ private:
     bool bandOn(int band) const;
     void showBandMenu(int band);
     void rebuildCurve();
-    void analyse(int tap, std::vector<float>& smoothed, double elapsedMs);
 
     int index(int band, EqBands::Field field) const { return bands_.index(band, field); }
 
@@ -108,13 +107,8 @@ private:
     float lastOutput_ = 0.0f;
     double lastRate_ = 0.0;
 
-    // The analyser.
-    static constexpr int fftOrder = 13; // 8192 points
-    static constexpr int fftSize = 1 << fftOrder;
-    juce::dsp::FFT fft_{fftOrder};
-    std::vector<float> window_, fftData_, samples_;
-    std::array<std::vector<float>, 2> spectrum_; // per column, dBFS (smoothed); 0 = before, 1 = after
-    std::array<std::uint64_t, 2> lastTap_{};
+    // The analyser: tap 0 before the EQ, 1 after it.
+    TapSpectrum spectrum_{2};
     double sinceAnalysisMs_ = 0.0;
     PillToggle analyserToggle_;
 };

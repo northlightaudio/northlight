@@ -11,8 +11,7 @@
 #include "ui/components/RotarySelector.h"
 #include "ui/strip/ModuleCard.h"
 #include "ui/strip/StripStyle.h"
-
-#include <juce_dsp/juce_dsp.h>
+#include "ui/strip/TapSpectrum.h"
 
 #include <algorithm>
 #include <array>
@@ -29,9 +28,7 @@ namespace px = plugins::exciter;
 namespace
 {
 constexpr double framesPerSecond = 1.0 / engine::ProcessorFeedback::frameSeconds;
-constexpr float spectrumTopDb = 0.0f, spectrumBottomDb = -96.0f;
-// Tilted so a typical mix (falling about 3 dB an octave) reads level, as the EQ's analyser.
-constexpr double tiltDbPerOctave = 3.0;
+constexpr float spectrumTopDb = TapSpectrum::topDb, spectrumBottomDb = TapSpectrum::bottomDb;
 constexpr float historySeconds = 3.0f, historyTopDb = 0.0f, historyBottomDb = -72.0f;
 // The added level's readout: the power ratio over this much of the history.
 constexpr float readoutSeconds = 0.3f;
@@ -84,12 +81,6 @@ public:
     {
         setName("Harmonic spectrum");
         setTooltip("Drag: frequencies");
-        window_.resize(fftSize);
-        for (int i = 0; i < fftSize; ++i)
-            window_[static_cast<size_t>(i)] = 0.5f - 0.5f * std::cos(2.0f * juce::MathConstants<float>::pi *
-                                                                     static_cast<float>(i) / (fftSize - 1));
-        fftData_.assign(static_cast<size_t>(fftSize) * 2, 0.0f);
-        samples_.assign(static_cast<size_t>(fftSize), 0.0f);
     }
 
     ~HarmonicSpectrum() override
@@ -109,8 +100,8 @@ public:
         sinceAnalysisMs_ += elapsedMs;
         if (sinceAnalysisMs_ < 30.0)
             return;
-        analyse(0, spectrum_[0], sinceAnalysisMs_);
-        analyse(1, spectrum_[1], sinceAnalysisMs_);
+        spectrum_.analyse(*fb, 0, plot(), sinceAnalysisMs_);
+        spectrum_.analyse(*fb, 1, plot(), sinceAnalysisMs_);
         sinceAnalysisMs_ = 0.0;
         repaint();
     }
@@ -118,15 +109,11 @@ public:
     // Whether the input has shown in the analyser (for the empty state and tests).
     bool showingSignal() const noexcept
     {
-        const auto& input = spectrum_[0];
+        const auto& input = spectrum_.spectrum(0);
         return std::any_of(input.begin(), input.end(), [](float v) { return v > spectrumBottomDb + 6.0f; });
     }
 
-    void resized() override
-    {
-        for (auto& s : spectrum_)
-            s.clear();
-    }
+    void resized() override { spectrum_.clear(); }
 
     void paint(juce::Graphics& g) override
     {
@@ -183,17 +170,19 @@ public:
                 area.closeSubPath();
                 return area;
             };
-            const bool ready = columns > 1 && static_cast<int>(spectrum_[0].size()) == columns &&
-                               static_cast<int>(spectrum_[1].size()) == columns;
+            const auto& inputSpectrum = spectrum_.spectrum(0);
+            const auto& addedSpectrum = spectrum_.spectrum(1);
+            const bool ready = columns > 1 && static_cast<int>(inputSpectrum.size()) == columns &&
+                               static_cast<int>(addedSpectrum.size()) == columns;
             if (ready)
             {
-                const auto input = outline(spectrum_[0]);
+                const auto input = outline(inputSpectrum);
                 g.setColour(c.textTertiary.withAlpha(0.16f));
                 g.fillPath(filled(input));
                 g.setColour(c.textSecondary.withAlpha(0.45f));
                 g.strokePath(input, juce::PathStrokeType(1.0f));
                 // What is added, over the input: where it rises out of the grey is new energy.
-                const auto added = outline(spectrum_[1]);
+                const auto added = outline(addedSpectrum);
                 g.setGradientFill(juce::ColourGradient(
                     hue.withAlpha(0.45f), 0.0f, p.getY(), hue.withAlpha(0.08f), 0.0f, p.getBottom(), false));
                 g.fillPath(filled(added));
@@ -270,8 +259,6 @@ private:
         crossover,
         bass
     };
-    static constexpr int fftOrder = 13; // 8192 points: 6 Hz bins at 48 kHz, for the bass
-    static constexpr int fftSize = 1 << fftOrder;
     static constexpr float handleReach = 6.0f;
     static constexpr float handleSize = 9.0f;
 
@@ -310,23 +297,7 @@ private:
     {
         const auto& theme = card_.theme();
         const auto& c = theme.colours;
-        g.setFont(theme.font(Theme::Face::mono, theme.fonts.size.caption - 1.0f, theme.fonts.weight.regular));
-        for (const double hz :
-             {30.0, 50.0, 100.0, 200.0, 300.0, 500.0, 1000.0, 2000.0, 3000.0, 5000.0, 10000.0, 20000.0})
-        {
-            const float x = hzToX(hz, p);
-            const bool major = hz == 100.0 || hz == 1000.0 || hz == 10000.0;
-            g.setColour(major ? c.gridBar : c.gridBeat);
-            g.drawVerticalLine(static_cast<int>(x), p.getY(), p.getBottom());
-            if (hz == 30.0 || hz == 20000.0)
-                continue;
-            g.setColour(c.textTertiary);
-            const auto label = hz >= 1000.0 ? juce::String(static_cast<int>(hz / 1000.0)) + "k"
-                                            : juce::String(static_cast<int>(hz));
-            g.drawText(label,
-                       juce::Rectangle<float>(x - 16.0f, p.getBottom() + 1.0f, 32.0f, 12.0f),
-                       juce::Justification::centred);
-        }
+        drawFrequencyGrid(g, theme, p);
         for (float db = spectrumTopDb - 24.0f; db > spectrumBottomDb; db -= 24.0f)
         {
             g.setColour(c.gridBeat);
@@ -399,70 +370,9 @@ private:
         g.drawText(text, box, right ? juce::Justification::centredLeft : juce::Justification::centredRight);
     }
 
-    void analyse(int tap, std::vector<float>& smoothed, double elapsedMs)
-    {
-        auto* fb = card_.liveFeedback();
-        const auto p = plot();
-        const int columns = std::max(1, static_cast<int>(p.getWidth()));
-        if (static_cast<int>(smoothed.size()) != columns)
-            smoothed.assign(static_cast<size_t>(columns), spectrumBottomDb);
-        const float fall = static_cast<float>(elapsedMs * 0.001 * 40.0); // dB per second
-        const auto position = fb->tapPosition(tap);
-        const bool fresh = position != lastTap_[static_cast<size_t>(tap)];
-        lastTap_[static_cast<size_t>(tap)] = position;
-        if (!fresh || !fb->readTap(tap, samples_.data(), fftSize))
-        {
-            // Nothing new (the device stopped): let it fall away.
-            for (auto& v : smoothed)
-                v = std::max(spectrumBottomDb, v - fall);
-            return;
-        }
-        std::fill(fftData_.begin(), fftData_.end(), 0.0f);
-        for (int i = 0; i < fftSize; ++i)
-            fftData_[static_cast<size_t>(i)] =
-                samples_[static_cast<size_t>(i)] * window_[static_cast<size_t>(i)];
-        fft_.performFrequencyOnlyForwardTransform(fftData_.data(), true);
-        const double binHz = fb->sampleRate() / fftSize;
-        const double reference = fftSize / 4.0; // a full-scale sine through the Hann window
-        const auto binDb = [&](int bin)
-        {
-            const double m = fftData_[static_cast<size_t>(juce::jlimit(0, fftSize / 2, bin))] / reference;
-            return engine::gainToDb(m, engine::magnitudeFloorDb);
-        };
-        for (int col = 0; col < columns; ++col)
-        {
-            const double f0 = xToHz(p.getX() + static_cast<float>(col), p);
-            const double f1 = xToHz(p.getX() + static_cast<float>(col) + 1.0f, p);
-            const double b0 = f0 / binHz, b1 = f1 / binHz;
-            double db;
-            if (b1 - b0 < 1.0)
-            {
-                // Narrower than a bin: interpolate between the neighbours.
-                const double centre = 0.5 * (b0 + b1);
-                const int lo = static_cast<int>(std::floor(centre));
-                const double t = centre - lo;
-                db = binDb(lo) * (1.0 - t) + binDb(lo + 1) * t;
-            }
-            else
-            {
-                db = -200.0;
-                for (int bin = static_cast<int>(std::ceil(b0)); bin <= static_cast<int>(b1); ++bin)
-                    db = std::max(db, binDb(bin));
-            }
-            db += tiltDbPerOctave * std::log2(0.5 * (f0 + f1) / 1000.0);
-            const float v =
-                static_cast<float>(juce::jlimit<double>(spectrumBottomDb, spectrumTopDb + 12.0, db));
-            auto& s = smoothed[static_cast<size_t>(col)];
-            s = v > s ? s + (v - s) * 0.6f : std::max(v, s - fall);
-        }
-    }
-
     ModuleCard& card_;
     Handle hovered_ = Handle::none, dragging_ = Handle::none;
-    juce::dsp::FFT fft_{fftOrder};
-    std::vector<float> window_, fftData_, samples_;
-    std::array<std::vector<float>, 2> spectrum_; // per column, dBFS (smoothed); 0 = input, 1 = added
-    std::array<std::uint64_t, 2> lastTap_{};
+    TapSpectrum spectrum_{2}; // tap 0 the input, 1 what is added
     double sinceAnalysisMs_ = 0.0;
 };
 

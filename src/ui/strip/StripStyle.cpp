@@ -22,6 +22,31 @@
 namespace northlight::ui::strip
 {
 
+void drawFrequencyGrid(juce::Graphics& g,
+                       const Theme& theme,
+                       juce::Rectangle<float> p,
+                       std::span<const double> lines,
+                       float labelGap)
+{
+    const auto& c = theme.colours;
+    g.setFont(theme.font(Theme::Face::mono, theme.fonts.size.caption - 1.0f, theme.fonts.weight.regular));
+    for (const double hz : lines)
+    {
+        const float x = hzToX(hz, p);
+        const bool decade = hz == 100.0 || hz == 1000.0 || hz == 10000.0;
+        g.setColour(decade ? c.gridBar : c.gridBeat);
+        g.drawVerticalLine(static_cast<int>(x), p.getY(), p.getBottom());
+        if (hz < 40.0 || hz >= 20000.0)
+            continue;
+        g.setColour(c.textTertiary);
+        const auto label = hz >= 1000.0 ? juce::String(static_cast<int>(hz / 1000.0)) + "k"
+                                        : juce::String(static_cast<int>(hz));
+        g.drawText(label,
+                   juce::Rectangle<float>(x - 16.0f, p.getBottom() + labelGap, 32.0f, 12.0f),
+                   juce::Justification::centred);
+    }
+}
+
 juce::Colour moduleColour(const Theme& theme, const std::string& type)
 {
     namespace p = plugins;

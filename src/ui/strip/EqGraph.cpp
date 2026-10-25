@@ -20,9 +20,7 @@ bool& analyserPreference()
     return on;
 }
 
-constexpr float analyserTopDb = 0.0f, analyserBottomDb = -96.0f;
-// Tilt so a typical mix (falling about 3 dB an octave) reads flat-ish.
-constexpr double tiltDbPerOctave = 3.0;
+constexpr float analyserTopDb = TapSpectrum::topDb, analyserBottomDb = TapSpectrum::bottomDb;
 } // namespace
 
 EqBands stripEqBands()
@@ -63,12 +61,6 @@ EqGraph::EqGraph(ModuleCard& card, EqBands bands)
         { c.setParam(index(band, eq::on), on ? 1.0f : 0.0f); };
     bandDb_.resize(static_cast<size_t>(bands_.count));
     bandKeys_.resize(static_cast<size_t>(bands_.count));
-    window_.resize(fftSize);
-    for (int i = 0; i < fftSize; ++i)
-        window_[static_cast<size_t>(i)] = 0.5f - 0.5f * std::cos(2.0f * juce::MathConstants<float>::pi *
-                                                                 static_cast<float>(i) / (fftSize - 1));
-    fftData_.assign(static_cast<size_t>(fftSize) * 2, 0.0f);
-    samples_.assign(static_cast<size_t>(fftSize), 0.0f);
     analyserToggle_.setToggleState(analyser_, juce::dontSendNotification);
     analyserToggle_.setTooltip("Analyser");
     analyserToggle_.onClick = [this] { setAnalyser(analyserToggle_.getToggleState()); };
@@ -96,8 +88,7 @@ void EqGraph::setAnalyser(bool on)
     analyserToggle_.setToggleState(on, juce::dontSendNotification);
     if (auto* fb = card_.liveFeedback())
         fb->setTapsEnabled(on);
-    for (auto& s : spectrum_)
-        s.clear();
+    spectrum_.clear();
     repaint();
 }
 
@@ -111,8 +102,7 @@ void EqGraph::resized()
 {
     analyserToggle_.setBounds(getLocalBounds().removeFromTop(22).removeFromRight(72).reduced(3));
     curveValid_ = false;
-    for (auto& s : spectrum_)
-        s.clear();
+    spectrum_.clear();
 }
 
 bool EqGraph::bandOn(int band) const
@@ -210,72 +200,14 @@ void EqGraph::update(double elapsedMs)
         sinceAnalysisMs_ += elapsedMs;
         if (sinceAnalysisMs_ >= 30.0)
         {
-            analyse(1, spectrum_[1], sinceAnalysisMs_);
-            analyse(0, spectrum_[0], sinceAnalysisMs_);
+            spectrum_.analyse(*fb, 1, plot(), sinceAnalysisMs_);
+            spectrum_.analyse(*fb, 0, plot(), sinceAnalysisMs_);
             sinceAnalysisMs_ = 0.0;
             repaint();
         }
     }
     if (std::abs(card_.sampleRate() - lastRate_) > 0.5)
         invalidateCurve();
-}
-
-void EqGraph::analyse(int tap, std::vector<float>& smoothed, double elapsedMs)
-{
-    auto* fb = card_.liveFeedback();
-    const auto p = plot();
-    const int columns = std::max(1, static_cast<int>(p.getWidth()));
-    if (static_cast<int>(smoothed.size()) != columns)
-        smoothed.assign(static_cast<size_t>(columns), analyserBottomDb);
-    const float fall = static_cast<float>(elapsedMs * 0.001 * 40.0); // dB per second
-    const auto position = fb->tapPosition(tap);
-    const bool fresh = position != lastTap_[static_cast<size_t>(tap)];
-    lastTap_[static_cast<size_t>(tap)] = position;
-    if (!fresh || !fb->readTap(tap, samples_.data(), fftSize))
-    {
-        // Nothing new (the device stopped): let it fall away.
-        for (auto& v : smoothed)
-            v = std::max(analyserBottomDb, v - fall);
-        return;
-    }
-    std::fill(fftData_.begin(), fftData_.end(), 0.0f);
-    for (int i = 0; i < fftSize; ++i)
-        fftData_[static_cast<size_t>(i)] = samples_[static_cast<size_t>(i)] * window_[static_cast<size_t>(i)];
-    fft_.performFrequencyOnlyForwardTransform(fftData_.data(), true);
-    const double rate = fb->sampleRate();
-    const double binHz = rate / fftSize;
-    const double reference = fftSize / 4.0; // a full-scale sine through the Hann window
-    const auto binDb = [&](int bin)
-    {
-        const double m = fftData_[static_cast<size_t>(juce::jlimit(0, fftSize / 2, bin))] / reference;
-        return engine::gainToDb(m, engine::magnitudeFloorDb);
-    };
-    for (int col = 0; col < columns; ++col)
-    {
-        const double f0 = xToHz(p.getX() + static_cast<float>(col), p);
-        const double f1 = xToHz(p.getX() + static_cast<float>(col) + 1.0f, p);
-        const double b0 = f0 / binHz, b1 = f1 / binHz;
-        double db;
-        if (b1 - b0 < 1.0)
-        {
-            // Narrower than a bin: interpolate between the neighbours.
-            const double centre = 0.5 * (b0 + b1);
-            const int lo = static_cast<int>(std::floor(centre));
-            const double t = centre - lo;
-            db = binDb(lo) * (1.0 - t) + binDb(lo + 1) * t;
-        }
-        else
-        {
-            db = -200.0;
-            for (int bin = static_cast<int>(std::ceil(b0)); bin <= static_cast<int>(b1); ++bin)
-                db = std::max(db, binDb(bin));
-        }
-        const double hz = 0.5 * (f0 + f1);
-        db += tiltDbPerOctave * std::log2(hz / 1000.0);
-        const float v = static_cast<float>(juce::jlimit<double>(analyserBottomDb, analyserTopDb + 12.0, db));
-        auto& s = smoothed[static_cast<size_t>(col)];
-        s = v > s ? s + (v - s) * 0.6f : std::max(v, s - fall);
-    }
 }
 
 void EqGraph::paint(juce::Graphics& g)
@@ -292,24 +224,8 @@ void EqGraph::paint(juce::Graphics& g)
     {
         juce::Graphics::ScopedSaveState save(g);
         g.reduceClipRegion(getLocalBounds().reduced(1));
-        // Frequency grid and labels.
-        g.setFont(theme.font(Theme::Face::mono, theme.fonts.size.caption - 1.0f, theme.fonts.weight.regular));
-        for (const double hz :
-             {30.0, 50.0, 100.0, 200.0, 300.0, 500.0, 1000.0, 2000.0, 3000.0, 5000.0, 10000.0, 20000.0})
-        {
-            const float x = hzToX(hz, p);
-            const bool major = hz == 100.0 || hz == 1000.0 || hz == 10000.0;
-            g.setColour(major ? c.gridBar : c.gridBeat);
-            g.drawVerticalLine(static_cast<int>(x), p.getY(), p.getBottom());
-            if (hz == 30.0 || hz == 20000.0)
-                continue;
-            g.setColour(c.textTertiary);
-            const auto label = hz >= 1000.0 ? juce::String(static_cast<int>(hz / 1000.0)) + "k"
-                                            : juce::String(static_cast<int>(hz));
-            g.drawText(label,
-                       juce::Rectangle<float>(x - 16.0f, p.getBottom() + 1.0f, 32.0f, 12.0f),
-                       juce::Justification::centred);
-        }
+        // Frequency grid and labels (the dB labels share their font).
+        drawFrequencyGrid(g, theme, p);
         for (float db = -18.0f; db <= 18.0f; db += 6.0f)
         {
             const float y = yDb(db);
@@ -329,7 +245,7 @@ void EqGraph::paint(juce::Graphics& g)
         if (analyser_)
         {
             const auto yA = [&](float db) { return dbToY(db, analyserTopDb, analyserBottomDb, p); };
-            const auto& after = spectrum_[1];
+            const auto& after = spectrum_.spectrum(1);
             if (static_cast<int>(after.size()) == columns && columns > 1)
             {
                 juce::Path fill;
@@ -354,7 +270,7 @@ void EqGraph::paint(juce::Graphics& g)
                                                        false));
                 g.fillPath(fill);
             }
-            const auto& before = spectrum_[0];
+            const auto& before = spectrum_.spectrum(0);
             if (static_cast<int>(before.size()) == columns && columns > 1)
             {
                 juce::Path line;

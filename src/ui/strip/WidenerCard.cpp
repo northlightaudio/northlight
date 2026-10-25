@@ -9,6 +9,7 @@
 #include "plugins/Widener.h"
 #include "ui/strip/ModuleCard.h"
 #include "ui/strip/StripStyle.h"
+#include "ui/strip/TapSpectrum.h"
 #include "ui/strip/WidthScale.h"
 
 #include <juce_dsp/juce_dsp.h>
@@ -468,13 +469,10 @@ private:
 class WidthBands final : public juce::Component, public juce::SettableTooltipClient
 {
 public:
-    explicit WidthBands(ModuleCard& card) : card_(card), window_(fftSize, 0.0f), in_(fftSize), out_(fftSize)
+    explicit WidthBands(ModuleCard& card)
+        : card_(card), window_(hannWindow(fftSize)), in_(fftSize), out_(fftSize)
     {
         setTooltip("Drag: widths, crossovers");
-        for (int i = 0; i < fftSize; ++i)
-            window_[static_cast<size_t>(i)] =
-                0.5f - 0.5f * std::cos(2.0f * juce::MathConstants<float>::pi * static_cast<float>(i) /
-                                       static_cast<float>(fftSize - 1));
         mid_.fill(0.0f);
         side_.fill(0.0f);
     }
@@ -810,22 +808,8 @@ private:
     {
         const auto& theme = card_.theme();
         const auto& c = theme.colours;
-        const auto small =
-            theme.font(Theme::Face::mono, theme.fonts.size.caption - 1.0f, theme.fonts.weight.regular);
-        g.setFont(small);
-        for (const double hz : {50.0, 100.0, 200.0, 500.0, 1000.0, 2000.0, 5000.0, 10000.0})
-        {
-            const float x = hzToX(hz, p);
-            const bool decade = hz == 100.0 || hz == 1000.0 || hz == 10000.0;
-            g.setColour(decade ? c.gridBar : c.gridBeat);
-            g.drawVerticalLine(static_cast<int>(x), p.getY(), p.getBottom());
-            g.setColour(c.textTertiary);
-            const auto text = hz >= 1000.0 ? juce::String(static_cast<int>(hz / 1000.0)) + "k"
-                                           : juce::String(static_cast<int>(hz));
-            g.drawText(text,
-                       juce::Rectangle<float>(32.0f, 12.0f).withCentre({x, p.getBottom() + 8.0f}),
-                       juce::Justification::centred);
-        }
+        static constexpr std::array lines{50.0, 100.0, 200.0, 500.0, 1000.0, 2000.0, 5000.0, 10000.0};
+        drawFrequencyGrid(g, theme, p, lines, 2.0f); // the width labels share its font
         for (const float w : {50.0f, 100.0f, 150.0f})
         {
             const float y = widthToY(w, p);

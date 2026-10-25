@@ -8,7 +8,9 @@
 
 #include <juce_gui_basics/juce_gui_basics.h>
 
+#include <array>
 #include <cmath>
+#include <span>
 #include <string>
 
 // Shared drawing for the channel strip editors (screens/channel-strip.md): module
@@ -53,6 +55,21 @@ inline double xToHz(float x, juce::Rectangle<float> area)
     const double f = juce::jlimit(0.0, 1.0, static_cast<double>((x - area.getX()) / area.getWidth()));
     return minHz * std::pow(maxHz / minHz, f);
 }
+
+// The frequency lines a log-frequency plot shows by default, 30 Hz to 20 kHz.
+inline constexpr std::array<double, 12> frequencyLines{
+    30.0, 50.0, 100.0, 200.0, 300.0, 500.0, 1000.0, 2000.0, 3000.0, 5000.0, 10000.0, 20000.0};
+
+// A log-frequency plot's vertical grid over `p`: a line at each of `lines`
+// (gridBar on the decades, gridBeat between), each labelled under the plot
+// ("50", "2k") in textTertiary, its 12 px box `labelGap` below the plot. The
+// lines at the ends of the range (under 40 Hz, 20 kHz) have no label. Leaves
+// the labels' font set.
+void drawFrequencyGrid(juce::Graphics& g,
+                       const Theme& theme,
+                       juce::Rectangle<float> p,
+                       std::span<const double> lines = frequencyLines,
+                       float labelGap = 1.0f);
 
 // dB on a linear axis from `topDb` at the top to `bottomDb` at the bottom.
 inline float dbToY(float db, float topDb, float bottomDb, juce::Rectangle<float> area)

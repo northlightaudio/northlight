@@ -17,6 +17,7 @@
 #include "ui/strip/ModuleCard.h"
 #include "ui/strip/StripStyle.h"
 #include "ui/strip/SynthParts.h"
+#include "ui/strip/TapSpectrum.h"
 
 #include <juce_dsp/juce_dsp.h>
 
@@ -108,11 +109,7 @@ public:
     explicit BlossomField(ModuleCard& card) : card_(card)
     {
         setComponentID("blossom");
-        window_.resize(fftSize);
-        for (int i = 0; i < fftSize; ++i)
-            window_[static_cast<size_t>(i)] =
-                0.5f - 0.5f * std::cos(2.0f * juce::MathConstants<float>::pi * static_cast<float>(i) /
-                                       static_cast<float>(fftSize - 1));
+        window_ = hannWindow(fftSize);
         fftData_.assign(static_cast<size_t>(fftSize) * 2, 0.0f);
         recent_.assign(static_cast<size_t>(engine::ProcessorFeedback::tapLength / 2), 0.0f);
         levels_.assign(static_cast<size_t>(slices * bands), 0.0f);

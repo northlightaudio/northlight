@@ -103,6 +103,8 @@ add_library(northlight_ui STATIC
     components/RenderedFace.cpp
     strip/Graphs.h
     strip/Graphs.cpp
+    strip/TapSpectrum.h
+    strip/TapSpectrum.cpp
     strip/EqGraph.h
     strip/EqGraph.cpp
     strip/BuiltInCards.h
