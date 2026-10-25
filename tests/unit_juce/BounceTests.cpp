@@ -10,6 +10,17 @@
 #include <catch2/catch_test_macros.hpp>
 
 #include <cmath>
+#include <memory>
+
+#if defined(_WIN32)
+#ifndef NOMINMAX
+#define NOMINMAX
+#endif
+#ifndef WIN32_LEAN_AND_MEAN
+#define WIN32_LEAN_AND_MEAN
+#endif
+#include <windows.h>
+#endif
 #include <vector>
 
 using namespace northlight;
@@ -99,6 +110,52 @@ TEST_CASE("Bouncing the mix renders the range to a stereo float WAV, compensated
     out.deleteFile();
     a.deleteFile();
     b.deleteFile();
+}
+
+TEST_CASE("A bounce destroyed before its completion is delivered reports nothing", "[app][bounce]")
+{
+    const juce::ScopedJuceInitialiser_GUI juceInit;
+    const auto a = constantWav("bounce-gone.wav", 0.5f, 0.5);
+    core::Project p;
+    core::Track t;
+    t.id = 1;
+    t.clips.push_back({10, "a", a.getFullPathName().toStdString(), 0, 24000, 0, 1.0f});
+    p.tracks = {t};
+    p.nextId = 100;
+    hosting::PluginRegistry registry;
+    hosting::HostFactory factory(registry);
+    const auto out =
+        juce::File::getSpecialLocation(juce::File::tempDirectory).getChildFile("bounce-gone-mix.wav");
+    BounceJob::Options options;
+    options.output = out;
+    bool reported = false;
+    {
+        auto job = std::make_unique<BounceJob>(p, factory, options);
+        job->onFinished = [&reported](const BounceJob::Result&) { reported = true; };
+        job->start();
+        while (job->isRunning())
+            juce::Thread::sleep(5);
+        // The completion is queued now; the job goes before it is delivered (a new
+        // bounce replacing it does this).
+    }
+#if defined(_WIN32)
+    // Deliver what the job queued (the app's message loop would).
+    for (int i = 0; i < 10; ++i)
+    {
+        MSG message;
+        while (PeekMessageW(&message, nullptr, 0, 0, PM_REMOVE) != 0)
+        {
+            TranslateMessage(&message);
+            DispatchMessageW(&message);
+        }
+        juce::Thread::sleep(5);
+    }
+    CHECK_FALSE(reported);
+#else
+    SKIP("delivers the message queue with Win32 calls");
+#endif
+    out.deleteFile();
+    a.deleteFile();
 }
 
 TEST_CASE("Bouncing a MIDI track renders its instrument", "[app][bounce][midi]")

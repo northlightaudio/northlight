@@ -90,6 +90,9 @@ BounceJob::BounceJob(const core::Project& project, const hosting::HostFactory& i
 
 BounceJob::~BounceJob()
 {
+    // A finished render may still have its completion queued on the message
+    // thread; it checks this and does nothing once the job is gone.
+    alive_->store(false, std::memory_order_release);
     cancel();
     stopThread(10000);
 }
@@ -115,9 +118,9 @@ void BounceJob::run()
 {
     renderAll();
     juce::MessageManager::callAsync(
-        [this]
+        [this, alive = alive_]
         {
-            if (onFinished)
+            if (alive->load(std::memory_order_acquire) && onFinished)
                 onFinished(result_);
         });
 }

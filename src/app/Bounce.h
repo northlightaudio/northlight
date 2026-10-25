@@ -130,6 +130,8 @@ private:
     std::vector<std::unique_ptr<Render>> renders_;
     std::atomic<float> progress_{0.0f};
     std::atomic<bool> cancel_{false};
+    // False once the job is destroyed: guards the completion queued by run().
+    std::shared_ptr<std::atomic<bool>> alive_ = std::make_shared<std::atomic<bool>>(true);
     Result result_;
     double sharedGainDb_ = 0.0; // stems: the gain the mix render found
 };
