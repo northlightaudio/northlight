@@ -302,32 +302,37 @@ private:
     static constexpr int fadeHandle = 8; // px square at a clip's top corners
     static constexpr int loopHandle = 8; // px at the loop band's ends
 
-    enum class Drag
+    // Where a press on a clip lands.
+    enum class Zone
     {
         none,
-        region,
-        lasso,
         move,
         trimLeft,
         trimRight,
         fadeIn,
         fadeOut,
-        gain,
-        marker,
-        zoom,         // a vertical drag in the ruler
-        loopMove,     // the loop band dragged along
-        loopStart,    // its left handle
-        loopEnd,      // its right handle
-        timeSelect,   // Shift+drag in the bars row: a time range
-        headerResize, // the boundary between headers and lanes
-        rowResize,    // a row's bottom edge: that track's height
-        draw,         // the pencil drawing a new MIDI clip
-        pan,          // the middle button drags the view
-        stretch,      // Alt+drag of an audio clip's right edge: time-stretch
-        takes,        // a swipe or a comp boundary (TakeLanes)
-        erase,        // the erase tool sweeping over clips
-        mute,         // the mute tool sweeping over clips
     };
+    // The drag in progress, one object per kind (arrange/ArrangeGestures.h): it
+    // keeps its own preview state, and the view asks it how the clips it touches
+    // look meanwhile. Null when nothing is dragged.
+    class Gesture;
+    class HeaderResizeGesture;
+    class PanGesture;
+    class RowResizeGesture;
+    class TakesGesture;
+    class DrawGesture;
+    class RegionGesture;
+    class LoopGesture;
+    class TimeSelectGesture;
+    class MarkerGesture;
+    class LassoGesture;
+    class MoveGesture;
+    class TrimGesture;
+    class StretchGesture;
+    class FadeGesture;
+    class GainGesture;
+    class SweepGesture;
+    std::unique_ptr<Gesture> gesture_;
 
     void changeListenerCallback(juce::ChangeBroadcaster*) override;
     void scrollBarMoved(juce::ScrollBar*, double newRangeStart) override;
@@ -358,7 +363,6 @@ private:
                       const core::Track& track,
                       const engine::LiveTake& take,
                       juce::Rectangle<int> lane);
-    void drawEditOverlay(juce::Graphics& g);
     void drawGrid(juce::Graphics& g, juce::Rectangle<int> area, bool ruler);
     void drawTooltip(juce::Graphics& g, const juce::String& text, juce::Point<int> at);
     juce::Colour trackColour(const core::Track& track, int row) const;
@@ -367,7 +371,6 @@ private:
     void refreshMissingMedia();
     std::vector<const core::Track*> folderChoices(core::Id trackId) const;
     void drawFolderLane(juce::Graphics& g, const core::Track& folder, juce::Rectangle<int> lane);
-    void finishStretch();
     // FX tracks (buses flagged fx) show as rows under the tracks.
     // The rows after the tracks: every bus (groups and FX tracks), then the master.
     std::vector<const core::Channel*> busRows() const;
@@ -418,15 +421,8 @@ private:
     // Mouse handling, by where it began and what it drags.
     void mouseDownRuler(const juce::MouseEvent& e);
     void mouseDownLanes(const juce::MouseEvent& e);
-    void dragRowResize(const juce::MouseEvent& e);
-    void dragRegion(const juce::MouseEvent& e, core::SamplePosition at);
-    void dragMoveClips(const juce::MouseEvent& e, core::SamplePosition at);
-    void dragTrimLeft(core::SamplePosition at);
     // A new empty MIDI clip on a MIDI track over [start, end), selected.
     void addMidiClip(core::Id trackId, core::SamplePosition start, core::SamplePosition end);
-    // The pencil's clip while it draws.
-    core::Id drawTrack_ = core::invalidId;
-    core::SamplePosition drawAnchor_ = 0, drawStart_ = 0, drawEnd_ = 0;
     int rowHeightOf(int row) const noexcept;             // a row's height (its own, or the default)
     int rowTop(int row) const noexcept;                  // a row's top edge in view coordinates
     int resizeEdgeAt(juce::Point<int> p) const noexcept; // the row whose bottom edge is at p, or -1
@@ -440,7 +436,7 @@ private:
         const core::Track* track = nullptr;
         const core::AudioClip* clip = nullptr;
         const core::MidiClip* midiClip = nullptr;
-        Drag zone = Drag::none; // move, trimLeft, trimRight, fadeIn, fadeOut
+        Zone zone = Zone::none;
     };
     // A selected clip's span (audio or MIDI), if it still exists (edit::spanOf).
     using Span = edit::Span;
@@ -463,14 +459,9 @@ private:
     core::SamplePosition snappedOn(const core::TempoMap& map, core::SamplePosition s) const noexcept;
     const core::AudioClip* findClip(const ClipRef& ref, const core::Track** track = nullptr) const noexcept;
     void emit(std::vector<std::unique_ptr<core::Command>> commands, const std::string& name);
-    void finishMove();
-    void finishTrim();
-    void finishFade(Drag which); // fadeIn or fadeOut (drag_ is already none on release)
-    // A fade drag's curve: up bends it fast (bowed up), down slow; a detent at linear.
-    float fadeCurveFor(int dy) const noexcept;
-    static juce::String fadeCurveText(float curve);
-    void finishGain();
-    void finishLasso();
+    // Adds the clips a lasso (view coordinates) touches to the selection.
+    void selectInLasso(juce::Rectangle<int> lasso);
+    juce::Rectangle<int> lanesBounds() const noexcept; // right of the headers, under the ruler
     void deleteSelection();
     void duplicateSelection();
     void splitAtPlayhead();
@@ -490,10 +481,6 @@ private:
     juce::Rectangle<int> splitArea() const;
     // On the grid (unless `free`: Alt) where the grid line falls inside the clip.
     core::SamplePosition splitPosition(int x, const Span& clip, bool free = false) const noexcept;
-    void sweepOver(const ClipRef& ref);
-    void finishSweep(bool erase);
-    bool swept(const ClipRef& ref) const noexcept;
-    bool shownMuted(const ClipRef& ref, bool muted) const noexcept;
     void drawToolOverlay(juce::Graphics& g);
     void hoverAt(juce::Point<int> p, juce::ModifierKeys mods);
     // Markers (MarkerController): one at the playhead (or a region from the loop),
@@ -501,7 +488,7 @@ private:
     void addMarkerAtPlayhead(bool region);
     void jumpToMarker(int direction);
     void mouseDoubleClick(const juce::MouseEvent& e) override;
-    juce::MouseCursor cursorFor(Drag zone) const noexcept;
+    juce::MouseCursor cursorFor(Zone zone) const noexcept;
 
     const Theme& theme_;
     audio::PeakStore& peaks_;
@@ -514,7 +501,6 @@ private:
     bool hadLive_ = false;
     core::SamplePosition regionStart_ = 0, regionEnd_ = 0;
     bool loop_ = false, punch_ = false;
-    core::SamplePosition dragAnchor_ = 0;
     std::vector<std::unique_ptr<TrackHeader>> headers_;
     std::vector<std::unique_ptr<TrackHeader>> fxHeaders_; // one per FX track, after the tracks'
     std::vector<InputChoice> inputChoices_;
@@ -535,8 +521,6 @@ private:
     int hoverRow_ = -1;
     ClipRef hoverClip_;
     juce::Point<int> dragPoint_;
-    double zoomStartSpp_ = 1.0;
-    core::SamplePosition loopOriginalStart_ = 0, loopOriginalEnd_ = 0;
     core::SamplePosition timeSelStart_ = 0, timeSelEnd_ = 0;
     std::vector<core::Id> timeSelTracks_;
     std::unordered_set<std::string> missingMedia_;
@@ -553,8 +537,6 @@ private:
     double lastMeterMs_ = 0.0;
     Tool tool_ = Tool::select;
     juce::String snapTargetName_;
-    core::SamplePosition panScroll_ = 0;
-    int panVertical_ = 0;
     std::vector<edit::ClipboardItem> clipboard_;
     int lastPlayheadX_ = -1;
     IconButton addTrack_, rowsSmaller_, rowsLarger_;
@@ -564,16 +546,13 @@ private:
     IconButton toolMenu_;
     std::array<IconButton*, toolCount> toolButtons() noexcept;
     void refreshToolButtons();
-    // The edit tools' state: the split line under the pointer, and the clips an
-    // erase or mute sweep has passed over (with what the mute tool sets them to).
+    // The split tool's line under the pointer.
     core::SamplePosition splitAt_ = -1;
     int splitRow_ = -1;      // the hovered clip's row, or -1 with Shift (every row)
     bool splitAll_ = false;  // Shift: every track
     bool splitFree_ = false; // Alt: off the grid
     Span splitClip_;         // the hovered clip's span
     juce::Point<int> splitPoint_;
-    std::vector<ClipRef> sweep_;
-    std::optional<bool> sweepMute_;
     juce::Point<int> pointer_{-1, -1}; // the last hover position
     AutomationLanes automation_{theme_, view_};
     // A row's automation lanes: their height, and where they are (under the row
@@ -629,25 +608,9 @@ private:
     bool snap_ = true;
     int snapGrid_ = 0;
     bool ripple_ = false;
-    Drag drag_ = Drag::none;
-    ClipRef dragClip_; // the clip under the pointer when the drag began
-    // It as it was: its span (audio or MIDI), and an audio clip's state (its source,
-    // stretch and gain, for trims, stretches and the gain drag).
-    Span dragSpan_;
-    core::AudioClip dragAudio_;
-    juce::Point<int> dragStart_; // pointer at mouse down
-    core::SamplePosition dragStartSample_ = 0;
-    int dragStartRow_ = -1;
-    core::SamplePosition moveDelta_ = 0; // preview: move
-    int rowDelta_ = 0;
-    core::SamplePosition trimStart_ = 0, trimLength_ = 0, trimOffset_ = 0; // preview: trim
-    core::SamplePosition fadePreview_ = 0;                                 // preview: fade length
-    float fadeCurvePreview_ = 0.0f, fadeCurveStart_ = 0.0f;                // the dragged fade's curve
-    core::SamplePosition stretchLength_ = 0;                               // preview: stretched length
+    juce::Point<int> dragStart_;  // pointer at mouse down
+    bool draggedFar_ = false;     // the pointer moved since
     bool stretchPending_ = false; // a drawn clip's stretch is still rendering: repaint next frame
-    float gainPreview_ = 1.0f;    // preview: gain
-    juce::Rectangle<int> lasso_;
-    bool draggedFar_ = false;
     const Selection* sharedSelection_ = nullptr;
     Selection ownSelection_; // without a shared one
     const Selection& trackSelection() const noexcept

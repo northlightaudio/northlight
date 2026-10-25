@@ -167,6 +167,8 @@ add_library(northlight_ui STATIC
     timeline/WaveformPainter.h
     timeline/ClipPainter.h
     timeline/ClipPainter.cpp
+    arrange/ArrangeGestures.h
+    arrange/ArrangeGestures.cpp
     arrange/ArrangeKeymap.h
     arrange/ArrangeKeymap.cpp
     arrange/ArrangeMenus.h

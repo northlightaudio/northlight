@@ -10,6 +10,7 @@
 #include "ui/NorthlightLookAndFeel.h"
 #include "ui/PaintStats.h"
 #include "ui/PluginMenu.h"
+#include "ui/arrange/ArrangeGestures.h"
 #include "ui/components/DragTip.h"
 #include "ui/timeline/ClipPainter.h"
 #include "ui/timeline/TimeGrid.h"
@@ -865,25 +866,19 @@ void ArrangeView::mouseDown(const juce::MouseEvent& e)
     // The boundary between the headers and the lanes resizes the headers.
     if (e.y >= rulerHeight && std::abs(e.x - headerWidth()) <= 2)
     {
-        drag_ = Drag::headerResize;
+        gesture_ = std::make_unique<HeaderResizeGesture>(*this);
         return;
     }
     // The middle button pans.
     if (e.mods.isMiddleButtonDown())
     {
-        drag_ = Drag::pan;
-        panScroll_ = view_.first;
-        panVertical_ = verticalScroll_;
+        gesture_ = std::make_unique<PanGesture>(*this);
         return;
     }
     // A row's bottom edge (under its header or across its lane) resizes that track.
     if (const int edge = resizeEdgeAt(e.getPosition()); edge >= 0 && !e.mods.isPopupMenu())
     {
-        resizeStartHeight_ = rowHeightOf(edge);
-        resizeHeight_ = resizeStartHeight_;
-        resizeChannel_ = channelAtRow(edge)->id;
-        rowsValid_ = false;
-        drag_ = Drag::rowResize;
+        gesture_ = std::make_unique<RowResizeGesture>(*this, edge);
         return;
     }
     // Take lanes (their headers too) and the comp's chip, boundaries and menu on the main lane.
@@ -892,7 +887,7 @@ void ArrangeView::mouseDown(const juce::MouseEvent& e)
         {
             selectTrack(project_->tracks[static_cast<size_t>(row)].id);
             if (takes_.dragging())
-                drag_ = Drag::takes;
+                gesture_ = std::make_unique<TakesGesture>(*this);
             return;
         }
     if (e.x < headerWidth() || e.x >= getWidth() - scrollbarWidth || e.y >= getHeight() - scrollbarHeight)
@@ -918,24 +913,20 @@ void ArrangeView::mouseDownRuler(const juce::MouseEvent& e)
     const auto band = loopBand();
     if (loop_ && !band.isEmpty() && e.y >= band.getY())
     {
-        loopOriginalStart_ = regionStart_;
-        loopOriginalEnd_ = regionEnd_;
-        dragAnchor_ = sampleForX(e.x);
+        const auto at = sampleForX(e.x);
         if (std::abs(e.x - band.getX()) <= loopHandle)
-            drag_ = Drag::loopStart;
+            gesture_ = std::make_unique<LoopGesture>(*this, LoopGesture::Part::start, at);
         else if (std::abs(e.x - band.getRight()) <= loopHandle)
-            drag_ = Drag::loopEnd;
+            gesture_ = std::make_unique<LoopGesture>(*this, LoopGesture::Part::end, at);
         else if (band.contains(e.getPosition()))
-            drag_ = Drag::loopMove;
-        if (drag_ != Drag::none)
+            gesture_ = std::make_unique<LoopGesture>(*this, LoopGesture::Part::band, at);
+        if (gesture_ != nullptr)
             return;
     }
     // Shift+drag in the bars row: a time selection across the selected tracks.
     if (e.mods.isShiftDown() && e.y >= markersRowHeight)
     {
-        drag_ = Drag::timeSelect;
-        dragAnchor_ = snapped(sampleForX(e.x));
-        timeSelStart_ = timeSelEnd_ = dragAnchor_;
+        gesture_ = std::make_unique<TimeSelectGesture>(*this, sampleForX(e.x));
         return;
     }
     // A marker flag: select it, locate to it, and a drag moves it. Elsewhere
@@ -943,16 +934,13 @@ void ArrangeView::mouseDownRuler(const juce::MouseEvent& e)
     if (const auto* marker = markers_.markerAt(e.getPosition()))
     {
         selection_.clear();
-        drag_ = Drag::marker;
         markers_.press(*marker, sampleForX(e.x));
+        gesture_ = std::make_unique<MarkerGesture>(*this);
         repaint();
         return;
     }
     markers_.clearSelection();
-    drag_ = Drag::region;
-    zoomStartSpp_ = view_.samplesPerPixel;
-    dragAnchor_ = sampleForX(e.x);
-    return;
+    gesture_ = std::make_unique<RegionGesture>(*this, sampleForX(e.x));
 }
 
 // The lanes: select the track, then pick up a clip (move, trim, fade or gain by
@@ -961,9 +949,8 @@ void ArrangeView::mouseDownLanes(const juce::MouseEvent& e)
 {
     markers_.clearSelection();
 
-    dragStartSample_ = sampleForX(e.x);
+    const auto at = sampleForX(e.x);
     const auto hit = hitTest(e.getPosition());
-    dragStartRow_ = hit.row;
     if (hit.track != nullptr)
         selectTrack(hit.track->id);
     else if (const int row = channelRowAtY(e.y); row >= 0)
@@ -988,8 +975,8 @@ void ArrangeView::mouseDownLanes(const juce::MouseEvent& e)
         return;
     if (hit.midiClip != nullptr)
     {
+        // MIDI clips move and trim.
         const ClipRef ref{hit.track->id, hit.midiClip->id, true};
-        drag_ = hit.zone;
         if (e.mods.isShiftDown() || e.mods.isCtrlDown())
             select(ref, true);
         else if (!isSelected(ref))
@@ -997,64 +984,42 @@ void ArrangeView::mouseDownLanes(const juce::MouseEvent& e)
             selection_.clear();
             select(ref, true);
         }
-        dragClip_ = ref;
-        dragSpan_ = {hit.midiClip->start, hit.midiClip->length};
-        dragAudio_ = core::AudioClip{};
-        moveDelta_ = 0;
-        rowDelta_ = 0;
-        trimStart_ = hit.midiClip->start;
-        trimLength_ = hit.midiClip->length;
-        trimOffset_ = 0;
+        ArrangeClipPress press{ref, {hit.midiClip->start, hit.midiClip->length}, {}, at, hit.row};
+        if (hit.zone == Zone::move)
+            gesture_ = std::make_unique<MoveGesture>(*this, std::move(press));
+        else
+            gesture_ = std::make_unique<TrimGesture>(*this, std::move(press), hit.zone == Zone::trimLeft);
         repaint();
         return;
     }
     if (tool_ == Tool::pencil && hit.clip == nullptr && hit.track != nullptr && hit.track->isMidi())
     {
         // The pencil: a new clip from the grid line at or before the press.
-        drag_ = Drag::draw;
-        drawTrack_ = hit.track->id;
-        const auto from = std::max<core::SamplePosition>(0, dragStartSample_);
-        drawAnchor_ = snapEnabled() ? lineAtOrBefore(from) : from;
-        drawStart_ = drawAnchor_;
-        drawEnd_ = tempoMap_.move(drawAnchor_, {1, 0.0}, 1);
+        gesture_ = std::make_unique<DrawGesture>(*this, hit.track->id, at);
         repaint();
         return;
     }
     if (hit.clip == nullptr && tool_ == Tool::range)
     {
         // The range tool: a drag in a lane selects a time range.
-        drag_ = Drag::timeSelect;
-        dragAnchor_ = snapped(dragStartSample_);
-        timeSelStart_ = timeSelEnd_ = dragAnchor_;
+        gesture_ = std::make_unique<TimeSelectGesture>(*this, at);
         return;
     }
     if (hit.clip == nullptr)
     {
         // Empty lane: a drag lassos, a click locates (and clears the selection).
-        drag_ = Drag::lasso;
-        lasso_ = juce::Rectangle<int>(e.x, e.y, 0, 0);
-        dragAnchor_ = dragStartSample_;
+        gesture_ = std::make_unique<LassoGesture>(*this, e.getPosition(), at);
         return;
     }
 
     const ClipRef ref{hit.track->id, hit.clip->id};
-    if (e.mods.isCtrlDown() && hit.zone == Drag::move)
-    {
-        // Ctrl+drag on the body: gain. (Ctrl+click alone toggles the selection.)
-        drag_ = Drag::gain;
-    }
-    else if (hit.zone == Drag::trimRight && e.mods.isAltDown())
-    {
-        // Alt+drag of the right edge: stretch the clip to the new length.
-        drag_ = Drag::stretch;
-    }
-    else
-    {
-        drag_ = hit.zone;
-    }
+    // Ctrl+drag on the body: gain (Ctrl+click alone toggles the selection); Alt+drag
+    // of the right edge: stretch.
+    const bool gain = e.mods.isCtrlDown() && hit.zone == Zone::move;
+    const bool stretch = hit.zone == Zone::trimRight && e.mods.isAltDown();
     if (e.mods.isShiftDown())
         select(ref, true);
-    else if (e.mods.isCtrlDown() && drag_ != Drag::gain)
+    else if (e.mods.isCtrlDown() && !gain)
         select(ref, true); // toggle happens on mouse up if nothing was dragged
     else if (!isSelected(ref.track, ref.clip))
     {
@@ -1066,361 +1031,38 @@ void ArrangeView::mouseDownLanes(const juce::MouseEvent& e)
         for (const auto id : group->clips)
             if (hit.track->findClip(id) != nullptr)
                 select({hit.track->id, id}, true);
-    dragClip_ = ref;
-    dragSpan_ = {hit.clip->start, hit.clip->length};
-    dragAudio_ = *hit.clip;
-    moveDelta_ = 0;
-    rowDelta_ = 0;
-    trimStart_ = hit.clip->start;
-    trimLength_ = hit.clip->length;
-    trimOffset_ = hit.clip->sourceOffset;
-    fadePreview_ = drag_ == Drag::fadeOut ? hit.clip->fadeOut : hit.clip->fadeIn;
-    fadeCurveStart_ = drag_ == Drag::fadeOut ? hit.clip->fadeOutCurve : hit.clip->fadeInCurve;
-    fadeCurvePreview_ = fadeCurveStart_;
-    gainPreview_ = hit.clip->gain;
-    stretchLength_ = hit.clip->length;
+    ArrangeClipPress press{ref, {hit.clip->start, hit.clip->length}, *hit.clip, at, hit.row};
+    if (gain)
+        gesture_ = std::make_unique<GainGesture>(*this, std::move(press));
+    else if (stretch)
+        gesture_ = std::make_unique<StretchGesture>(*this, std::move(press));
+    else if (hit.zone == Zone::fadeIn || hit.zone == Zone::fadeOut)
+        gesture_ = std::make_unique<FadeGesture>(*this, std::move(press), hit.zone == Zone::fadeIn);
+    else if (hit.zone == Zone::trimLeft || hit.zone == Zone::trimRight)
+        gesture_ = std::make_unique<TrimGesture>(*this, std::move(press), hit.zone == Zone::trimLeft);
+    else
+        gesture_ = std::make_unique<MoveGesture>(*this, std::move(press));
     repaint();
-}
-
-void ArrangeView::dragRowResize(const juce::MouseEvent& e)
-{
-    const int h = std::clamp(
-        resizeStartHeight_ + e.y - dragStart_.y, theme_.sizes.trackRowMin, theme_.sizes.trackRowMax);
-    if (h != resizeHeight_)
-    {
-        resizeHeight_ = h;
-        rowsValid_ = false;
-        layoutHeaders();
-        updateScrollbar();
-        automation_.repaint();
-        repaint();
-    }
-}
-
-// A drag in the bars row: the loop/punch region, unless the first movement is
-// mostly vertical, which turns it into a zoom.
-void ArrangeView::dragRegion(const juce::MouseEvent& e, core::SamplePosition at)
-{
-    if (!draggedFar_)
-        return;
-    // The first movement decides: mostly vertical zooms, otherwise the region.
-    if (std::abs(e.y - dragStart_.y) > std::abs(e.x - dragStart_.x) && std::abs(e.y - dragStart_.y) > 6)
-    {
-        drag_ = Drag::zoom;
-        return;
-    }
-    regionStart_ = snapped(std::min(dragAnchor_, at));
-    regionEnd_ = snapped(std::max(dragAnchor_, at));
-}
-
-// The dragged clip's new start snaps; the rest of the selection follows by the
-// same delta, and rows by the same count, never before zero, outside the
-// tracks or onto a track of the other kind.
-void ArrangeView::dragMoveClips(const juce::MouseEvent& e, core::SamplePosition at)
-{
-    const auto wanted = dragSpan_.start + (at - dragStartSample_);
-    moveDelta_ = snapWithTargets(wanted, dragStartRow_ + rowDelta_, true, dragSpan_.start) - dragSpan_.start;
-    core::SamplePosition earliest = dragSpan_.start;
-    int lowestRow = dragStartRow_, highestRow = dragStartRow_;
-    if (project_ != nullptr)
-        for (const auto& ref : selection_)
-            if (const auto span = spanOf(ref))
-            {
-                const int t = project_->trackIndex(ref.track);
-                earliest = std::min(earliest, span->start);
-                lowestRow = std::min(lowestRow, t);
-                highestRow = std::max(highestRow, t);
-            }
-    moveDelta_ = std::max(moveDelta_, -earliest);
-    const int row = rowAtY(e.y);
-    const int trackCount = project_ != nullptr ? static_cast<int>(project_->tracks.size()) : 0;
-    int wantedRows = row >= 0 ? row - dragStartRow_ : rowDelta_;
-    wantedRows = std::clamp(wantedRows, -lowestRow, std::max(0, trackCount - 1 - highestRow));
-    // Every clip must land on a track of its own kind.
-    const bool kindsMatch = project_ != nullptr &&
-                            std::all_of(selection_.begin(),
-                                        selection_.end(),
-                                        [&](const ClipRef& ref)
-                                        {
-                                            return project_->trackIndex(ref.track) < 0 ||
-                                                   edit::landingTrack(*project_, ref, wantedRows) != nullptr;
-                                        });
-    if (kindsMatch)
-        rowDelta_ = wantedRows;
-}
-
-void ArrangeView::dragTrimLeft(core::SamplePosition at)
-{
-    const auto sourceStart =
-        dragClip_.midi ? core::SamplePosition{0}
-                       : dragSpan_.start - static_cast<core::SamplePosition>(
-                                               std::llround(static_cast<double>(dragAudio_.sourceOffset) *
-                                                            dragAudio_.stretch)); // source sample 0
-    const auto newStart = std::clamp(snapWithTargets(at, dragStartRow_),
-                                     std::max<core::SamplePosition>(0, sourceStart),
-                                     dragSpan_.end() - 1);
-    trimStart_ = newStart;
-    trimLength_ = dragSpan_.end() - newStart;
-    trimOffset_ = dragClip_.midi
-                      ? newStart - dragSpan_.start
-                      : std::max<core::SamplePosition>(0, dragAudio_.sourceAt(newStart - dragSpan_.start));
 }
 
 void ArrangeView::mouseDrag(const juce::MouseEvent& e)
 {
-    if (drag_ == Drag::none)
+    if (gesture_ == nullptr)
         return;
     draggedFar_ = draggedFar_ || e.mouseWasDraggedSinceMouseDown();
     dragPoint_ = e.getPosition();
     const int x = std::clamp(e.x, headerWidth(), getWidth() - scrollbarWidth);
-    const auto at = sampleForX(x);
-    switch (drag_)
-    {
-        case Drag::headerResize:
-            view_.originX =
-                std::clamp(e.x, theme_.sizes.trackHeaderMinWidth, theme_.sizes.trackHeaderMaxWidth);
-            resized();
-            layoutHeaders();
-            break;
-        case Drag::rowResize:
-            dragRowResize(e);
-            break;
-        case Drag::takes:
-            takes_.mouseDrag(e);
-            break;
-        case Drag::draw:
-            if (draggedFar_)
-            {
-                const bool grid = snapEnabled();
-                const auto cell = [this, grid](core::SamplePosition s, bool up)
-                {
-                    s = std::max<core::SamplePosition>(0, s);
-                    return !grid ? s : up ? lineAtOrAfter(s) : lineAtOrBefore(s);
-                };
-                // At least one grid step long.
-                const auto oneStep =
-                    grid ? std::max(drawAnchor_ + 1, tempoMap_.move(drawAnchor_, gridAt(drawAnchor_), 1))
-                         : drawAnchor_ + 1;
-                if (at >= drawAnchor_)
-                {
-                    drawStart_ = drawAnchor_;
-                    drawEnd_ = std::max(oneStep, cell(at, true));
-                }
-                else
-                {
-                    drawStart_ = cell(at, false);
-                    drawEnd_ = oneStep;
-                }
-            }
-            break;
-        case Drag::pan:
-            setScroll(panScroll_ -
-                      static_cast<core::SamplePosition>((e.x - dragStart_.x) * view_.samplesPerPixel));
-            setVerticalScroll(panVertical_ - (e.y - dragStart_.y));
-            break;
-        case Drag::zoom:
-        {
-            // A vertical drag zooms around where it began (Logic style): 80 px per octave.
-            const double factor = std::pow(2.0, static_cast<double>(e.y - dragStart_.y) / 80.0);
-            setZoom(zoomStartSpp_ * factor, dragStart_.x);
-            break;
-        }
-        case Drag::region:
-            dragRegion(e, at);
-            break;
-        case Drag::loopMove:
-        {
-            const auto delta = snapped(loopOriginalStart_ + (at - dragAnchor_)) - loopOriginalStart_;
-            const auto start = std::max<core::SamplePosition>(0, loopOriginalStart_ + delta);
-            regionEnd_ = start + (loopOriginalEnd_ - loopOriginalStart_);
-            regionStart_ = start;
-            break;
-        }
-        case Drag::loopStart:
-            regionStart_ = std::min(snapped(at), loopOriginalEnd_ - 1);
-            break;
-        case Drag::loopEnd:
-            regionEnd_ = std::max(snapped(at), loopOriginalStart_ + 1);
-            break;
-        case Drag::timeSelect:
-            timeSelStart_ = std::min(dragAnchor_, snapped(at));
-            timeSelEnd_ = std::max(dragAnchor_, snapped(at));
-            break;
-        case Drag::marker:
-            markers_.dragTo(at);
-            break;
-        case Drag::lasso:
-            lasso_ = juce::Rectangle<int>::leftTopRightBottom(std::min(dragStart_.x, x),
-                                                              std::min(dragStart_.y, e.y),
-                                                              std::max(dragStart_.x, x),
-                                                              std::max(dragStart_.y, e.y));
-            break;
-        case Drag::move:
-            dragMoveClips(e, at);
-            break;
-        case Drag::trimLeft:
-            dragTrimLeft(at);
-            break;
-        case Drag::trimRight:
-        {
-            const auto newEnd = std::max(snapWithTargets(at, dragStartRow_), dragSpan_.start + 1);
-            trimLength_ = newEnd - dragSpan_.start;
-            break;
-        }
-        case Drag::stretch:
-        {
-            // Alt is held for the gesture, so the grid snaps here unless it is off.
-            auto end = std::max<core::SamplePosition>(at, dragSpan_.start + 1);
-            if (snap_)
-                end = tempoMap_.snap(end, gridAt(end));
-            // From a twentieth to twenty times the source's own length.
-            const double source = static_cast<double>(dragAudio_.sourceLength());
-            stretchLength_ = std::clamp<core::SamplePosition>(
-                end - dragSpan_.start,
-                std::max<core::SamplePosition>(1, std::llround(source * 0.05)),
-                std::llround(source * 20.0));
-            break;
-        }
-        case Drag::fadeIn:
-            fadePreview_ = std::clamp<core::SamplePosition>(at - dragSpan_.start, 0, dragSpan_.length);
-            fadeCurvePreview_ = fadeCurveFor(e.y - dragStart_.y);
-            break;
-        case Drag::fadeOut:
-            fadePreview_ = std::clamp<core::SamplePosition>(dragSpan_.end() - at, 0, dragSpan_.length);
-            fadeCurvePreview_ = fadeCurveFor(e.y - dragStart_.y);
-            break;
-        case Drag::erase:
-        case Drag::mute:
-            if (const auto ref = clipAt(hitTest(e.getPosition())); ref.clip != core::invalidId)
-                sweepOver(ref);
-            break;
-        case Drag::gain:
-        {
-            // A quarter of a dB per pixel, up 24 dB at most.
-            const float db = static_cast<float>(dragStart_.y - e.y) * 0.25f;
-            const float base = static_cast<float>(db::fromGain(dragAudio_.gain));
-            gainPreview_ = db::toGain(std::clamp(base + db, -60.0f, 24.0f));
-            break;
-        }
-        case Drag::none:
-            break;
-    }
+    gesture_->drag(e, sampleForX(x));
     repaint();
 }
 
 void ArrangeView::mouseUp(const juce::MouseEvent& e)
 {
-    const auto drag = drag_;
-    drag_ = Drag::none;
+    // The drag is over (nothing reads it while it finishes).
+    const auto gesture = std::move(gesture_);
     const auto before = std::exchange(pressSelection_, {});
-    switch (drag)
-    {
-        case Drag::takes:
-            takes_.mouseUp(e);
-            break;
-        case Drag::draw:
-        {
-            const auto track = std::exchange(drawTrack_, core::invalidId);
-            addMidiClip(track, drawStart_, drawEnd_);
-            break;
-        }
-        case Drag::rowResize:
-        {
-            const auto channel = resizeChannel_;
-            resizeChannel_ = core::invalidId;
-            rowsValid_ = false;
-            if (resizeHeight_ != resizeStartHeight_ && project_ != nullptr &&
-                project_->findChannel(channel) != nullptr)
-            {
-                std::vector<std::unique_ptr<core::Command>> commands;
-                commands.push_back(std::make_unique<core::SetChannelHeight>(channel, resizeHeight_));
-                emit(std::move(commands), "Resize track");
-            }
-            layoutHeaders();
-            updateScrollbar();
-            break;
-        }
-        case Drag::headerResize:
-        case Drag::zoom:
-        case Drag::pan:
-            break;
-        case Drag::region:
-            if (draggedFar_)
-            {
-                if (onRegionChanged)
-                    onRegionChanged(regionStart_, regionEnd_);
-            }
-            else if (onLocate)
-            {
-                onLocate(dragAnchor_);
-            }
-            break;
-        case Drag::loopMove:
-        case Drag::loopStart:
-        case Drag::loopEnd:
-            if (onRegionChanged)
-                onRegionChanged(regionStart_, regionEnd_);
-            break;
-        case Drag::timeSelect:
-            finishTimeSelection();
-            break;
-        case Drag::lasso:
-            if (draggedFar_)
-            {
-                finishLasso();
-            }
-            else
-            {
-                if (!e.mods.isShiftDown())
-                    selection_.clear();
-                if (onLocate)
-                    onLocate(dragAnchor_);
-            }
-            break;
-        case Drag::move:
-            if (draggedFar_)
-                finishMove();
-            else if (e.mods.isCtrlDown())
-            {
-                // Ctrl+click: toggle membership.
-                std::erase(selection_, dragClip_);
-            }
-            else if (!e.mods.isShiftDown())
-            {
-                selection_.clear();
-                select(dragClip_, true);
-            }
-            break;
-        case Drag::trimLeft:
-        case Drag::trimRight:
-            if (draggedFar_)
-                finishTrim();
-            break;
-        case Drag::stretch:
-            if (draggedFar_)
-                finishStretch();
-            break;
-        case Drag::fadeIn:
-        case Drag::fadeOut:
-            if (draggedFar_)
-                finishFade(drag);
-            break;
-        case Drag::gain:
-            if (draggedFar_)
-                finishGain();
-            else
-                std::erase(selection_, dragClip_); // Ctrl+click without a drag toggles
-            break;
-        case Drag::marker:
-            markers_.finishDrag(draggedFar_);
-            break;
-        case Drag::erase:
-        case Drag::mute:
-            finishSweep(drag == Drag::erase);
-            break;
-        case Drag::none:
-            break;
-    }
+    if (gesture != nullptr)
+        gesture->release(e);
     if (selection_ != before)
     {
         // A clip picked on another track moves the track selection with it.
@@ -1433,7 +1075,7 @@ void ArrangeView::mouseUp(const juce::MouseEvent& e)
 
 void ArrangeView::mouseMove(const juce::MouseEvent& e)
 {
-    if (drag_ != Drag::none)
+    if (gesture_ != nullptr)
         return;
     hoverAt(e.getPosition(), e.mods);
 }
@@ -1457,7 +1099,7 @@ juce::Point<int> ArrangeView::pointOnRow(int row, double bar) const
 void ArrangeView::modifierKeysChanged(const juce::ModifierKeys& mods)
 {
     // Shift turns the split line into one across every track; Alt takes it off the grid.
-    if (tool_ == Tool::split && drag_ == Drag::none && pointer_.x >= 0 &&
+    if (tool_ == Tool::split && gesture_ == nullptr && pointer_.x >= 0 &&
         (mods.isShiftDown() != splitAll_ || mods.isAltDown() != splitFree_))
         updateSplitHover(pointer_, mods);
 }
@@ -1747,51 +1389,22 @@ void ArrangeView::drawClip(juce::Graphics& g,
                            juce::Rectangle<int> lane)
 {
     const auto& c = theme_.colours;
-    // What is drawn: the model clip, or its preview while it is being edited (a
-    // copy only then).
-    const bool editing = drag_ != Drag::none && dragClip_.track == track.id && dragClip_.clip == model.id;
-    if (!editing && drag_ == Drag::none)
+    // What is drawn: the model clip, or its preview while a drag edits it (a copy
+    // only then). While nothing is dragged, a clip outside the area being painted
+    // is skipped.
+    const ClipRef ref{track.id, model.id};
+    core::AudioClip preview;
+    const bool editing = gesture_ != nullptr && gesture_->preview(ref, model, preview);
+    if (gesture_ == nullptr)
     {
         const int left = xForSample(model.start), right = std::max(left + 2, xForSample(model.end()));
         if (right < paintArea_.getX() || left > paintArea_.getRight())
             return; // not in the area being painted
     }
-    core::AudioClip preview;
-    if (editing)
-    {
-        preview = model;
-        auto& clip = preview;
-        if (drag_ == Drag::trimLeft || drag_ == Drag::trimRight)
-        {
-            clip.start = trimStart_;
-            clip.length = trimLength_;
-            clip.sourceOffset = trimOffset_;
-        }
-        else if (drag_ == Drag::fadeIn)
-        {
-            clip.fadeIn = fadePreview_;
-            clip.fadeInCurve = fadeCurvePreview_;
-        }
-        else if (drag_ == Drag::fadeOut)
-        {
-            clip.fadeOut = fadePreview_;
-            clip.fadeOutCurve = fadeCurvePreview_;
-        }
-        else if (drag_ == Drag::gain)
-            clip.gain = gainPreview_;
-        else if (drag_ == Drag::stretch)
-        {
-            clip.stretch = model.stretch * static_cast<double>(stretchLength_) /
-                           static_cast<double>(std::max<core::SamplePosition>(1, model.length));
-            clip.length = stretchLength_;
-        }
-    }
     const core::AudioClip& clip = editing ? preview : model;
     paintstats::counters().clipsDrawn++;
-    const ClipRef ref{track.id, model.id};
     const bool selected = isSelected(track.id, model.id);
     const bool hovered = hoverClip_ == ref;
-    const bool moving = drag_ == Drag::move && selected && draggedFar_;
     const bool missing = mediaMissing(clip.mediaPath);
 
     const int x0 = xForSample(clip.start);
@@ -1806,8 +1419,9 @@ void ArrangeView::drawClip(juce::Graphics& g,
         return;
 
     const auto colour = trackColour(track, project_->trackIndex(track.id));
-    const float dim = moving || (drag_ == Drag::erase && swept(ref)) ? 0.4f : 1.0f;
-    const bool muted = track.mute || shownMuted(ref, model.muted);
+    const float dim = gesture_ != nullptr ? gesture_->dim(ref, selected) : 1.0f;
+    const bool muted =
+        track.mute || (gesture_ != nullptr ? gesture_->shownMuted(ref).value_or(model.muted) : model.muted);
     const bool showHeader = lane.getHeight() >= 24;
     const int headerH = showHeader ? theme_.sizes.clipHeader : 0;
     const auto body = block.withTrimmedTop(headerH);
@@ -2008,13 +1622,12 @@ void ArrangeView::drawMidiClip(juce::Graphics& g,
         const std::string& name;
         core::SamplePosition end() const noexcept { return start + length; }
     } clip{model.start, model.length, model.name};
-    const bool editing = drag_ != Drag::none && dragClip_ == ref;
-    if (editing && (drag_ == Drag::trimLeft || drag_ == Drag::trimRight))
+    if (Span trimmed; gesture_ != nullptr && gesture_->previewSpan(ref, trimmed))
     {
-        clip.start = trimStart_;
-        clip.length = trimLength_;
+        clip.start = trimmed.start;
+        clip.length = trimmed.length;
     }
-    if (drag_ == Drag::none)
+    if (gesture_ == nullptr)
     {
         const int left = xForSample(clip.start), right = std::max(left + 2, xForSample(clip.end()));
         if (right < paintArea_.getX() || left > paintArea_.getRight())
@@ -2023,7 +1636,6 @@ void ArrangeView::drawMidiClip(juce::Graphics& g,
     paintstats::counters().clipsDrawn++;
     const bool selected = isSelected(ref);
     const bool hovered = hoverClip_ == ref;
-    const bool moving = drag_ == Drag::move && selected && draggedFar_;
     const int x0 = xForSample(clip.start);
     const int x1 = std::max(x0 + 2, xForSample(clip.end()));
     if (x1 < headerWidth() || x0 > getWidth())
@@ -2035,8 +1647,9 @@ void ArrangeView::drawMidiClip(juce::Graphics& g,
     if (visible.isEmpty())
         return;
     const auto colour = recording ? c.record : trackColour(track, row);
-    const float dim = moving || (drag_ == Drag::erase && swept(ref)) ? 0.4f : 1.0f;
-    const bool muted = track.mute || shownMuted(ref, model.muted);
+    const float dim = gesture_ != nullptr ? gesture_->dim(ref, selected) : 1.0f;
+    const bool muted =
+        track.mute || (gesture_ != nullptr ? gesture_->shownMuted(ref).value_or(model.muted) : model.muted);
     const bool showHeader = lane.getHeight() >= 24;
     const int headerH = showHeader ? theme_.sizes.clipHeader : 0;
     clips::paintBody(
@@ -2387,7 +2000,15 @@ void ArrangeView::paint(juce::Graphics& g)
     markers_.paintLines(g, lanesArea);
 
     drawRuler(g, getLocalBounds().removeFromTop(rulerOnly));
-    drawEditOverlay(g);
+    // What a drag shows: over the lanes, then over everything (its tag).
+    if (gesture_ != nullptr && project_ != nullptr)
+    {
+        g.saveState();
+        g.reduceClipRegion(lanesBounds());
+        gesture_->paintLanes(g);
+        g.restoreState();
+        gesture_->paintTop(g);
+    }
     drawToolOverlay(g);
 
     // The playhead: a 1 px line with a 7 px head in the ruler.
@@ -2414,20 +2035,9 @@ void ArrangeView::paint(juce::Graphics& g)
         g.fillRect(0, ly - 1, headerWidth(), 2);
     }
 
-    // The pencil's clip while it draws: the clip it will make, in the track's colour.
-    if (drag_ == Drag::draw && project_ != nullptr)
-        if (const int row = project_->trackIndex(drawTrack_); row >= 0)
-        {
-            g.saveState();
-            g.reduceClipRegion(lanesArea);
-            const auto r = spanBounds(drawStart_, drawEnd_ - drawStart_, row).toFloat().reduced(0.5f, 1.5f);
-            const auto colour = trackColour(project_->tracks[static_cast<size_t>(row)], row);
-            g.setColour(colour.withAlpha(0.35f));
-            g.fillRoundedRectangle(r, theme_.radius.sm);
-            g.setColour(colour);
-            g.drawRoundedRectangle(r, theme_.radius.sm, 1.0f);
-            g.restoreState();
-        }
+    // What a drag draws last (the pencil's clip).
+    if (gesture_ != nullptr)
+        gesture_->paintLate(g);
 
     // Files dragged over: the lane lights up and a ghost clip shows where they land.
     if (dragOver_)
@@ -2602,9 +2212,9 @@ ArrangeView::Hit ArrangeView::hitTest(juce::Point<int> p) const noexcept
         if (!bounds.contains(p))
             continue;
         hit.midiClip = &*it;
-        hit.zone = p.x < bounds.getX() + edgeZone        ? Drag::trimLeft
-                   : p.x >= bounds.getRight() - edgeZone ? Drag::trimRight
-                                                         : Drag::move;
+        hit.zone = p.x < bounds.getX() + edgeZone        ? Zone::trimLeft
+                   : p.x >= bounds.getRight() - edgeZone ? Zone::trimRight
+                                                         : Zone::move;
         return hit;
     }
     // Later clips draw on top, so they win the hit.
@@ -2616,15 +2226,15 @@ ArrangeView::Hit ArrangeView::hitTest(juce::Point<int> p) const noexcept
         hit.clip = &*it;
         const bool topRow = p.y < bounds.getY() + fadeHandle;
         if (topRow && p.x < bounds.getX() + fadeHandle && bounds.getWidth() > 2 * fadeHandle + 4)
-            hit.zone = Drag::fadeIn;
+            hit.zone = Zone::fadeIn;
         else if (topRow && p.x >= bounds.getRight() - fadeHandle && bounds.getWidth() > 2 * fadeHandle + 4)
-            hit.zone = Drag::fadeOut;
+            hit.zone = Zone::fadeOut;
         else if (p.x < bounds.getX() + edgeZone)
-            hit.zone = Drag::trimLeft;
+            hit.zone = Zone::trimLeft;
         else if (p.x >= bounds.getRight() - edgeZone)
-            hit.zone = Drag::trimRight;
+            hit.zone = Zone::trimRight;
         else
-            hit.zone = Drag::move;
+            hit.zone = Zone::move;
         return hit;
     }
     return hit;
@@ -3063,17 +2673,15 @@ bool ArrangeView::mouseDownWithTool(const juce::MouseEvent& e, const Hit& hit)
         case Tool::erase:
         case Tool::mute:
         {
-            drag_ = tool_ == Tool::erase ? Drag::erase : Drag::mute;
-            sweep_.clear();
-            sweepMute_.reset();
+            auto sweep = std::make_unique<SweepGesture>(*this, tool_ == Tool::erase);
             if (onClip)
             {
                 // The clip pressed decides what the sweep does: a playing clip mutes the rest.
-                if (tool_ == Tool::mute)
-                    sweepMute_ = !edit::isMuted(*project_, ref);
+                sweep->over(ref);
                 for (const auto& r : targets())
-                    sweepOver(r);
+                    sweep->over(r);
             }
+            gesture_ = std::move(sweep);
             repaint();
             return true;
         }
@@ -3085,48 +2693,6 @@ bool ArrangeView::mouseDownWithTool(const juce::MouseEvent& e, const Hit& hit)
     return false;
 }
 
-void ArrangeView::sweepOver(const ClipRef& ref)
-{
-    if (project_ == nullptr || swept(ref))
-        return;
-    if (drag_ == Drag::mute && !sweepMute_)
-        sweepMute_ = !edit::isMuted(*project_, ref);
-    sweep_.push_back(ref);
-    // A comp's clips erase together, as they select together.
-    if (drag_ == Drag::erase && !ref.midi)
-        if (const auto* track = project_->findTrack(ref.track))
-            if (const auto* group = track->takeGroupOwning(ref.clip))
-                for (const auto id : group->clips)
-                    if (track->findClip(id) != nullptr && !swept({ref.track, id}))
-                        sweep_.push_back({ref.track, id});
-    repaint();
-}
-
-bool ArrangeView::swept(const ClipRef& ref) const noexcept
-{
-    return std::find(sweep_.begin(), sweep_.end(), ref) != sweep_.end();
-}
-
-bool ArrangeView::shownMuted(const ClipRef& ref, bool muted) const noexcept
-{
-    return drag_ == Drag::mute && sweepMute_ && swept(ref) ? *sweepMute_ : muted;
-}
-
-void ArrangeView::finishSweep(bool erase)
-{
-    const auto clips = std::exchange(sweep_, {});
-    const auto muted = std::exchange(sweepMute_, std::nullopt);
-    if (project_ == nullptr || clips.empty())
-        return;
-    if (erase)
-    {
-        removeClips(clips);
-        return;
-    }
-    auto e = edit::setMuted(*project_, clips, muted.value_or(true));
-    emit(std::move(e.commands), e.name);
-}
-
 void ArrangeView::drawToolOverlay(juce::Graphics& g)
 {
     const auto& c = theme_.colours;
@@ -3135,7 +2701,7 @@ void ArrangeView::drawToolOverlay(juce::Graphics& g)
     const auto lanesArea = juce::Rectangle<int>(
         headerWidth(), rulerHeight, getWidth() - headerWidth() - scrollbarWidth, lanesHeight());
     // The split line: through the clip under the pointer, or every lane with Alt.
-    if (tool_ == Tool::split && splitAt_ >= 0 && drag_ == Drag::none)
+    if (tool_ == Tool::split && splitAt_ >= 0 && gesture_ == nullptr)
     {
         const int x = xForSample(splitAt_);
         const auto line = splitRow_ >= 0 ? spanBounds(splitClip_.start, splitClip_.length, splitRow_)
@@ -3149,7 +2715,7 @@ void ArrangeView::drawToolOverlay(juce::Graphics& g)
             g, (splitAll_ ? "Split all at " : "Split at ") + positionText(splitAt_), {x, splitPoint_.y});
         return;
     }
-    if (drag_ != Drag::none || hoverClip_.clip == core::invalidId)
+    if (gesture_ != nullptr || hoverClip_.clip == core::invalidId)
         return;
     const int row = project_->trackIndex(hoverClip_.track);
     const auto span = spanOf(hoverClip_);
@@ -3283,17 +2849,17 @@ void ArrangeView::emit(std::vector<std::unique_ptr<core::Command>> commands, con
         onEdit(std::move(commands), name);
 }
 
-void ArrangeView::finishLasso()
+void ArrangeView::selectInLasso(juce::Rectangle<int> lasso)
 {
     if (project_ == nullptr)
         return;
-    const auto from = sampleForX(lasso_.getX());
-    const auto to = sampleForX(lasso_.getRight());
+    const auto from = sampleForX(lasso.getX());
+    const auto to = sampleForX(lasso.getRight());
     const SelectionIndex index(*this); // each clip in the lasso checks the selection
     for (size_t t = 0; t < project_->tracks.size(); ++t)
     {
         const auto lane = rowBounds(static_cast<int>(t));
-        if (lane.getBottom() <= lasso_.getY() || lane.getY() >= lasso_.getBottom())
+        if (lane.getBottom() <= lasso.getY() || lane.getY() >= lasso.getBottom())
             continue;
         for (const auto& c : project_->tracks[t].clips)
             if (c.end() > from && c.start < to)
@@ -3302,34 +2868,6 @@ void ArrangeView::finishLasso()
             if (m.end() > from && m.start < to)
                 select({project_->tracks[t].id, m.id, true}, true);
     }
-}
-
-void ArrangeView::finishMove()
-{
-    if (project_ == nullptr)
-        return;
-    auto move = edit::moveClips(*project_, selection_, moveDelta_, rowDelta_);
-    if (move.edit.empty())
-        return;
-    selection_ = std::move(move.moved); // the selection follows the clips to their new tracks
-    emit(std::move(move.edit.commands), move.edit.name);
-    notifySelection();
-}
-
-void ArrangeView::finishTrim()
-{
-    if (project_ == nullptr)
-        return;
-    auto e = edit::trimClip(*project_, dragClip_, trimStart_, trimLength_, trimOffset_);
-    emit(std::move(e.commands), e.name);
-}
-
-void ArrangeView::finishStretch()
-{
-    if (project_ == nullptr)
-        return;
-    auto e = edit::stretchClip(*project_, dragClip_, stretchLength_);
-    emit(std::move(e.commands), e.name);
 }
 
 std::vector<const core::Track*> ArrangeView::folderChoices(core::Id trackId) const
@@ -3342,38 +2880,6 @@ std::vector<const core::Track*> ArrangeView::folderChoices(core::Id trackId) con
         if (t.isFolder() && !project_->insideFolder(t.id, trackId))
             out.push_back(&t);
     return out;
-}
-
-void ArrangeView::finishFade(Drag which)
-{
-    if (project_ == nullptr)
-        return;
-    auto e = edit::setFade(*project_, dragClip_, which == Drag::fadeIn, fadePreview_, fadeCurvePreview_);
-    emit(std::move(e.commands), e.name);
-}
-
-float ArrangeView::fadeCurveFor(int dy) const noexcept
-{
-    // 80 px from linear to either end; within 4 px of where linear is, linear.
-    constexpr float pixelsPerUnit = 80.0f;
-    const float curve = std::clamp(fadeCurveStart_ - static_cast<float>(dy) / pixelsPerUnit, -1.0f, 1.0f);
-    return std::abs(curve) * pixelsPerUnit < 4.0f ? 0.0f : curve;
-}
-
-juce::String ArrangeView::fadeCurveText(float curve)
-{
-    if (curve == 0.0f)
-        return "linear";
-    return juce::String(curve > 0.0f ? "fast " : "slow ") +
-           juce::String(juce::roundToInt(std::abs(curve) * 100.0f)) + "%";
-}
-
-void ArrangeView::finishGain()
-{
-    if (project_ == nullptr)
-        return;
-    auto e = edit::setClipGain(*project_, dragClip_, gainPreview_);
-    emit(std::move(e.commands), e.name);
 }
 
 void ArrangeView::deleteSelection()
@@ -3538,18 +3044,17 @@ bool ArrangeView::handleEditKey(const juce::KeyPress& key)
     return ArrangeKeymap::handle(*this, key);
 }
 
-juce::MouseCursor ArrangeView::cursorFor(Drag zone) const noexcept
+juce::MouseCursor ArrangeView::cursorFor(Zone zone) const noexcept
 {
     switch (zone)
     {
-        case Drag::trimLeft:
-        case Drag::trimRight:
-        case Drag::stretch:
+        case Zone::trimLeft:
+        case Zone::trimRight:
             return juce::MouseCursor::LeftRightResizeCursor;
-        case Drag::fadeIn:
-        case Drag::fadeOut:
+        case Zone::fadeIn:
+        case Zone::fadeOut:
             return juce::MouseCursor::PointingHandCursor;
-        case Drag::move:
+        case Zone::move:
             return juce::MouseCursor::DraggingHandCursor;
         default:
             return juce::MouseCursor::NormalCursor;
@@ -3574,87 +3079,9 @@ void ArrangeView::drawTooltip(juce::Graphics& g, const juce::String& text, juce:
                  getLocalBounds().withTrimmedRight(scrollbarWidth).withTrimmedBottom(scrollbarHeight));
 }
 
-void ArrangeView::drawEditOverlay(juce::Graphics& g)
+juce::Rectangle<int> ArrangeView::lanesBounds() const noexcept
 {
-    const auto& c = theme_.colours;
-    if (project_ == nullptr)
-        return;
-    g.saveState();
-    g.reduceClipRegion(
-        headerWidth(), rulerHeight, getWidth() - headerWidth() - scrollbarWidth, lanesHeight());
-    if (drag_ == Drag::lasso && draggedFar_)
-    {
-        g.setColour(c.selectionFill);
-        g.fillRect(lasso_);
-        g.setColour(c.selectionOutline);
-        g.drawRect(lasso_, 1);
-    }
-    if (drag_ == Drag::move && draggedFar_)
-    {
-        // Ghosts of the selection where it would land, and the snap guide at the
-        // dragged clip's new start.
-        for (const auto& ref : selection_)
-        {
-            const int from = project_->trackIndex(ref.track);
-            const auto span = spanOf(ref);
-            if (from < 0 || !span.has_value())
-                continue;
-            const int to = std::clamp(from + rowDelta_, 0, static_cast<int>(project_->tracks.size()) - 1);
-            const auto bounds =
-                spanBounds(std::max<core::SamplePosition>(0, span->start + moveDelta_), span->length, to);
-            const auto colour = trackColour(project_->tracks[static_cast<size_t>(from)], from);
-            g.setColour(colour.withAlpha(theme_.track.clipBodySelectedAlpha));
-            g.fillRoundedRectangle(bounds.toFloat(), theme_.radius.sm);
-            g.setColour(colour);
-            g.drawRoundedRectangle(bounds.toFloat().reduced(0.5f), theme_.radius.sm, 1.0f);
-        }
-        const auto newStart = std::max<core::SamplePosition>(0, dragSpan_.start + moveDelta_);
-        const int gx = xForSample(newStart);
-        g.setColour(c.snapGuide);
-        g.fillRect(gx, rulerHeight, 1, lanesHeight());
-        // The move in beats of the signature where the clip starts.
-        const double beatQuarters = core::TempoMap::quartersPerBeat(tempoMap_.signatureAt(dragSpan_.start));
-        const double deltaBeats = (tempoMap_.quartersAt(static_cast<double>(newStart)) -
-                                   tempoMap_.quartersAt(static_cast<double>(dragSpan_.start))) /
-                                  beatQuarters;
-        drawTooltip(g,
-                    positionText(newStart) + "  " + (deltaBeats >= 0 ? "+" : "") +
-                        juce::String(deltaBeats, 2) + " beats" +
-                        (snapTargetName_.isNotEmpty() ? "  to " + snapTargetName_ : juce::String()),
-                    dragPoint_);
-    }
-    if ((drag_ == Drag::trimLeft || drag_ == Drag::trimRight) && draggedFar_)
-    {
-        const double beatQuarters = core::TempoMap::quartersPerBeat(tempoMap_.signatureAt(trimStart_));
-        const double beats = (tempoMap_.quartersAt(static_cast<double>(trimStart_ + trimLength_)) -
-                              tempoMap_.quartersAt(static_cast<double>(trimStart_))) /
-                             beatQuarters;
-        drawTooltip(g, "Length " + juce::String(beats, 2) + " beats", dragPoint_);
-    }
-    if (drag_ == Drag::stretch && draggedFar_)
-        drawTooltip(
-            g,
-            "Speed " +
-                juce::String(100.0 * static_cast<double>(dragSpan_.length) /
-                                 (dragAudio_.stretch *
-                                  static_cast<double>(std::max<core::SamplePosition>(1, stretchLength_))),
-                             1) +
-                "%  " + positionText(dragSpan_.start + stretchLength_),
-            dragPoint_);
-    if ((drag_ == Drag::fadeIn || drag_ == Drag::fadeOut) && draggedFar_)
-        drawTooltip(g,
-                    "Fade " + juce::String(static_cast<double>(fadePreview_) / sampleRate(), 2) + " s  " +
-                        fadeCurveText(fadeCurvePreview_),
-                    dragPoint_);
-    if (drag_ == Drag::gain && draggedFar_)
-        drawTooltip(g, db::gainText(gainPreview_) + " dB", dragPoint_);
-    g.restoreState();
-    if ((drag_ == Drag::loopMove || drag_ == Drag::loopStart || drag_ == Drag::loopEnd ||
-         drag_ == Drag::region) &&
-        draggedFar_)
-        drawTooltip(g, positionText(regionStart_) + " - " + positionText(regionEnd_), dragPoint_);
-    if (drag_ == Drag::timeSelect && draggedFar_)
-        drawTooltip(g, positionText(timeSelStart_) + " - " + positionText(timeSelEnd_), dragPoint_);
+    return {headerWidth(), rulerHeight, getWidth() - headerWidth() - scrollbarWidth, lanesHeight()};
 }
 // ----- markers -------------------------------------------------------------------------------
 
