@@ -42,12 +42,22 @@ public:
     const juce::String getApplicationVersion() override { return juce::String(version::full()); }
     bool moreThanOneInstanceAllowed() override { return true; }
 
+    // Whether a flag is on the command line as its own argument (not part of a
+    // longer flag such as --capture-scale, or of a path).
+    static bool hasFlag(const juce::String& commandLine, const char* flag)
+    {
+        for (const auto& arg : juce::ArgumentList("Northlight", commandLine).arguments)
+            if (arg == flag)
+                return true;
+        return false;
+    }
+
     void initialise(const juce::String& commandLine) override
     {
         // --capture keeps its settings in a folder of its own, emptied each run, so a
         // capture always shows the default layout and the built-in plugins, and leaves
         // the user's settings alone.
-        if (commandLine.contains("--capture"))
+        if (hasFlag(commandLine, "--capture"))
         {
             capture_ = true;
             UserSettings::useFolder("Northlight Capture");
@@ -72,9 +82,9 @@ public:
 
         // The splash, once the theme is loaded; it reports each step below.
         // --offscreen: no window of any kind reaches the screen (no splash either).
-        ui::offscreenMode() = commandLine.contains("--offscreen");
+        ui::offscreenMode() = hasFlag(commandLine, "--offscreen");
         juce::Component::SafePointer<ui::SplashScreen> splash;
-        if (!commandLine.contains("--no-splash") && !ui::offscreenMode())
+        if (!hasFlag(commandLine, "--no-splash") && !ui::offscreenMode())
             splash = ui::SplashScreen::showStartup(ui::Theme::dark(),
                                                    juce::String::fromUTF8(version::display().c_str()));
         const auto step = [&splash](const juce::String& text, float progress)
@@ -111,13 +121,21 @@ public:
         mainWindow_->offerRecovery();
 
         applyLaunchFlags(commandLine);
-        if ((firstRun_ && !capture_) || commandLine.contains("--first-run"))
+        if ((firstRun_ && !capture_) || hasFlag(commandLine, "--first-run"))
             mainWindow_->showFirstRun();
     }
 
     // Developer conveniences for unattended checks:
     //   --audio-setup        open the Audio Setup window
     //   --about              open the About box (the splash screen, until clicked)
+    //   --open <file>        open a project file
+    //   --save <file>        save the project to the file: half a second after launch, or two
+    //                        seconds after a --stop-after given before it
+    //   --recover            recover partial recordings without asking (unattended checks)
+    //   --scan-plugins       rescan every plugin
+    //   --plugins            show the plugin browser
+    //   --mixer              show the mixer
+    //   --marker <s>         add a marker at s seconds
     //   --no-splash          start without the splash screen
     //   --offscreen          run with no window on screen at all (no splash, nothing that can
     //                        take the focus); windows still lay out and paint, so --capture
