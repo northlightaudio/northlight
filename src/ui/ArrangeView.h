@@ -14,6 +14,7 @@
 #include "ui/TempoLane.h"
 #include "ui/Theme.h"
 #include "ui/TrackHeader.h"
+#include "ui/arrange/ArrangeKeymap.h"
 #include "ui/arrange/ArrangeLayout.h"
 #include "ui/arrange/ArrangeMenus.h"
 #include "ui/arrange/MarkerController.h"
@@ -282,6 +283,7 @@ public:
 
 private:
     friend class ArrangeMenus;
+    friend class ArrangeKeymap;
     ArrangeMenus menus_{*this};
     int rulerHeight = 32; // the ruler and, when shown, the tempo track under it: where the lanes start
     int rulerOnly = 32;   // size.ruler: the markers row over the bars row

@@ -37,6 +37,7 @@ add_executable(northlight_juce_tests
     AudioEditorTests.cpp
     ArrangeSelectionTests.cpp
     MarkerControllerTests.cpp
+    ArrangeKeymapTests.cpp
     TimelineWorkBudgetTests.cpp
     WellsTests.cpp
     MixerViewTests.cpp
