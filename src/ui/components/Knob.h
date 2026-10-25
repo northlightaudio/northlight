@@ -5,6 +5,7 @@
 #include <juce_gui_basics/juce_gui_basics.h>
 
 #include <functional>
+#include <vector>
 
 namespace northlight::ui
 {
@@ -87,10 +88,21 @@ public:
         setValue(value_, juce::dontSendNotification);
     }
 
+    // The owner's callbacks.
     std::function<void(double)> onValueChanged;
     std::function<void()> onDragStart, onDragEnd;
     // The pointer entering (true) or leaving (false) the knob.
     std::function<void(bool)> onHover;
+    // Others that follow the knob besides its owner (a rendered face tracking the
+    // control in hand): each told after the owner's callbacks, in the order they
+    // were added, whenever that was. The owner's callbacks stay its own.
+    struct Watcher
+    {
+        std::function<void(double)> valueChanged;
+        std::function<void()> dragStart, dragEnd;
+        std::function<void(bool inside)> hover;
+    };
+    void addWatcher(Watcher watcher) { watchers_.push_back(std::move(watcher)); }
     bool isDragging() const noexcept { return dragging_; }
 
     void paint(juce::Graphics& g) override;
@@ -117,6 +129,13 @@ public:
     }
 
 private:
+    // The owner's callback, then every watcher's.
+    void notifyValue();
+    void notifyDragStart();
+    void notifyDragEnd();
+    void notifyHover(bool inside);
+    std::vector<Watcher> watchers_;
+
     double fraction() const noexcept;
     void setFraction(double f, bool notify);
     void step(double direction, bool fine);

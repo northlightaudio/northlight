@@ -60,26 +60,21 @@ void RenderedCard::watchActive(Knob& knob, int control)
         if (face_.activeControl() == control)
             face_.setActiveControl(-1);
     };
-    knob.onHover = [this, &knob, control, release](bool inside)
+    Knob::Watcher watcher;
+    watcher.hover = [this, &knob, control, release](bool inside)
     {
         if (inside)
             face_.setActiveControl(control, printArea(knob));
         else if (!knob.isDragging())
             release();
     };
-    knob.onDragStart = [this, &knob, control, prior = knob.onDragStart]
+    watcher.dragStart = [this, &knob, control] { face_.setActiveControl(control, printArea(knob)); };
+    watcher.dragEnd = [&knob, release]
     {
-        if (prior)
-            prior();
-        face_.setActiveControl(control, printArea(knob));
-    };
-    knob.onDragEnd = [&knob, release, prior = knob.onDragEnd]
-    {
-        if (prior)
-            prior();
         if (!knob.isMouseOver(true))
             release();
     };
+    knob.addWatcher(std::move(watcher));
 }
 
 Knob& RenderedCard::bindRenderedKnob(
@@ -90,12 +85,9 @@ Knob& RenderedCard::bindRenderedKnob(
         label->setVisible(false);
     placeRenderedKnob(k, centre, skirt, imageSize, pointer, index);
     renderedKnobs_[index] = &k;
-    k.onValueChanged = [this, &k, prior = k.onValueChanged](double v)
-    {
-        if (prior)
-            prior(v);
-        controlMoved(k);
-    };
+    Knob::Watcher watcher;
+    watcher.valueChanged = [this, &k](double) { controlMoved(k); };
+    k.addWatcher(std::move(watcher));
     return k;
 }
 

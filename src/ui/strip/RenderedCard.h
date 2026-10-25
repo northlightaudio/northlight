@@ -42,8 +42,9 @@ protected:
         int index, juce::Point<float> centre, float skirt, float imageSize, const juce::Image& pointer);
     // The same placement for a knob the card drives itself (one that switches
     // between parameters); `control` is what the face calls it while it is
-    // hovered or turned (a parameter index; -1 for none). Set the knob's drag
-    // callbacks before placing it: the placement chains onto them.
+    // hovered or turned (a parameter index; -1 for none). The face watches the
+    // knob (Knob::addWatcher), so the knob's own callbacks can be set before or
+    // after.
     void placeRenderedKnob(Knob& knob,
                            juce::Point<float> centre,
                            float skirt,

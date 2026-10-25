@@ -1,10 +1,14 @@
 // The shared drawing for rendered hardware faces: images shrunk to the size
 // they land at, the fit arithmetic, and RenderedFace's cached art and live words.
+#include "ui/Theme.h"
 #include "ui/components/HardwareParts.h"
+#include "ui/components/Knob.h"
 #include "ui/components/RenderedFace.h"
 
 #include <catch2/catch_approx.hpp>
 #include <catch2/catch_test_macros.hpp>
+
+#include <string>
 
 using namespace northlight;
 
@@ -151,4 +155,40 @@ TEST_CASE("A rendered face goes compact below two thirds of its size", "[ui][har
     CHECK_FALSE(face.isCompact());
     face.setActiveControl(4);
     CHECK(face.activeControl() == 4);
+}
+
+TEST_CASE("A knob's watchers hear it after its owner, whenever either was set", "[ui][knob]")
+{
+    const juce::ScopedJuceInitialiser_GUI juceInit;
+    ui::Knob knob(ui::Theme::dark());
+    knob.setRange(0.0, 10.0, 5.0);
+    std::string heard;
+    // A watcher first (as a face places a knob), then the owner's callbacks.
+    ui::Knob::Watcher watcher;
+    watcher.dragStart = [&] { heard += "W<"; };
+    watcher.valueChanged = [&](double) { heard += "Wv"; };
+    watcher.dragEnd = [&] { heard += "W>"; };
+    knob.addWatcher(std::move(watcher));
+    knob.onDragStart = [&] { heard += "O<"; };
+    knob.onValueChanged = [&](double) { heard += "Ov"; };
+    knob.onDragEnd = [&] { heard += "O>"; };
+
+    knob.setValue(2.0, juce::dontSendNotification);
+    knob.mouseDoubleClick(juce::MouseEvent(juce::Desktop::getInstance().getMainMouseSource(),
+                                           {},
+                                           {},
+                                           0.0f,
+                                           0.0f,
+                                           0.0f,
+                                           0.0f,
+                                           0.0f,
+                                           &knob,
+                                           &knob,
+                                           juce::Time(),
+                                           {},
+                                           juce::Time(),
+                                           2,
+                                           false)); // back to its default: one gesture
+    CHECK(heard == "O<W<OvWvO>W>");
+    CHECK(knob.value() == 5.0);
 }

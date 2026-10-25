@@ -64,8 +64,44 @@ void Knob::setValue(double value, juce::NotificationType notify)
     // The value is the tooltip only where the knob does not draw it.
     setTooltip(showValue_ ? juce::String() : text());
     repaint();
-    if (notify != juce::dontSendNotification && onValueChanged)
+    if (notify != juce::dontSendNotification)
+        notifyValue();
+}
+
+void Knob::notifyValue()
+{
+    if (onValueChanged)
         onValueChanged(value_);
+    for (const auto& w : watchers_)
+        if (w.valueChanged)
+            w.valueChanged(value_);
+}
+
+void Knob::notifyDragStart()
+{
+    if (onDragStart)
+        onDragStart();
+    for (const auto& w : watchers_)
+        if (w.dragStart)
+            w.dragStart();
+}
+
+void Knob::notifyDragEnd()
+{
+    if (onDragEnd)
+        onDragEnd();
+    for (const auto& w : watchers_)
+        if (w.dragEnd)
+            w.dragEnd();
+}
+
+void Knob::notifyHover(bool inside)
+{
+    if (onHover)
+        onHover(inside);
+    for (const auto& w : watchers_)
+        if (w.hover)
+            w.hover(inside);
 }
 
 void Knob::setLogarithmic(bool logarithmic)
@@ -338,15 +374,13 @@ void Knob::paint(juce::Graphics& g)
 void Knob::mouseEnter(const juce::MouseEvent&)
 {
     repaint();
-    if (onHover)
-        onHover(true);
+    notifyHover(true);
 }
 
 void Knob::mouseExit(const juce::MouseEvent&)
 {
     repaint();
-    if (onHover)
-        onHover(false);
+    notifyHover(false);
 }
 
 void Knob::mouseDown(const juce::MouseEvent& e)
@@ -356,8 +390,7 @@ void Knob::mouseDown(const juce::MouseEvent& e)
     dragStartValue_ = fraction();
     dragStartY_ = e.y;
     dragging_ = true;
-    if (onDragStart)
-        onDragStart();
+    notifyDragStart();
 }
 
 void Knob::mouseDrag(const juce::MouseEvent& e)
@@ -374,29 +407,24 @@ void Knob::mouseUp(const juce::MouseEvent&)
         return;
     dragging_ = false;
     repaint();
-    if (onDragEnd)
-        onDragEnd();
+    notifyDragEnd();
 }
 
 void Knob::mouseDoubleClick(const juce::MouseEvent&)
 {
-    if (onDragStart)
-        onDragStart();
+    notifyDragStart();
     setValue(default_, juce::sendNotification);
-    if (onDragEnd)
-        onDragEnd();
+    notifyDragEnd();
 }
 
 void Knob::step(double direction, bool fine)
 {
-    if (onDragStart)
-        onDragStart();
+    notifyDragStart();
     if (interval_ > 0.0)
         setValue(value_ + direction * interval_, juce::sendNotification);
     else
         setFraction(fraction() + direction * (fine ? 0.005 : 0.02), true);
-    if (onDragEnd)
-        onDragEnd();
+    notifyDragEnd();
 }
 
 void Knob::mouseWheelMove(const juce::MouseEvent& e, const juce::MouseWheelDetails& wheel)
