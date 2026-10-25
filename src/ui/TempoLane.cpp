@@ -113,17 +113,34 @@ juce::Point<float> TempoLane::handlePosition(int index) const
     return {static_cast<float>(xForSample(map.positionAt(change.quarter))), yForBpm(change.bpm)};
 }
 
+std::vector<juce::Point<float>> TempoLane::handlePositions() const
+{
+    const auto s = shown();
+    std::vector<juce::Point<float>> out;
+    if (!xForSample || project_ == nullptr)
+        return out;
+    out.reserve(s.tempoChanges.size() + 1);
+    out.push_back({static_cast<float>(xForSample(0)), yForBpm(s.bpm)});
+    const auto map = mapOf(s, project_->sampleRate);
+    for (const auto& change : s.tempoChanges)
+        out.push_back({static_cast<float>(xForSample(map.positionAt(change.quarter))), yForBpm(change.bpm)});
+    return out;
+}
+
 std::optional<int> TempoLane::handleAt(juce::Point<int> p) const
 {
     if (p.x < headerWidth)
         return std::nullopt;
     const auto s = shown();
+    const auto positions = handlePositions();
+    if (positions.size() != s.tempoChanges.size() + 1)
+        return std::nullopt;
     // The nearest within 7 px, changes before the start (they sit later).
     std::optional<int> best;
     float bestDistance = 7.0f;
     for (int i = -1; i < static_cast<int>(s.tempoChanges.size()); ++i)
     {
-        const auto at = handlePosition(i);
+        const auto at = positions[static_cast<size_t>(i + 1)];
         const float d = at.getDistanceFrom(p.toFloat());
         if (d <= bestDistance)
         {
@@ -226,9 +243,12 @@ void TempoLane::paint(juce::Graphics& g)
     }
 
     // The handles, with their tempos beside them where there is room.
-    for (int i = -1; i < static_cast<int>(s.tempoChanges.size()); ++i)
+    const auto positions = handlePositions();
+    for (int i = -1;
+         i < static_cast<int>(s.tempoChanges.size()) && positions.size() == s.tempoChanges.size() + 1;
+         ++i)
     {
-        const auto at = handlePosition(i);
+        const auto at = positions[static_cast<size_t>(i + 1)];
         if (at.x < static_cast<float>(left) - 40.0f || at.x > static_cast<float>(right) + handleR)
             continue;
         const bool selected = i == selected_;
@@ -238,8 +258,9 @@ void TempoLane::paint(juce::Graphics& g)
         g.fillEllipse(at.x - r, at.y - r, 2.0f * r, 2.0f * r);
         g.setColour(c.canvas);
         g.drawEllipse(at.x - r, at.y - r, 2.0f * r, 2.0f * r, 1.0f);
-        const float nextX = i + 1 < static_cast<int>(s.tempoChanges.size()) ? handlePosition(i + 1).x
-                                                                            : static_cast<float>(right);
+        const float nextX = i + 1 < static_cast<int>(s.tempoChanges.size())
+                                ? positions[static_cast<size_t>(i + 2)].x
+                                : static_cast<float>(right);
         if (nextX - at.x > 44.0f || hovered || selected)
         {
             g.setColour(c.rulerText);

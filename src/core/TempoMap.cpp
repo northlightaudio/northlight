@@ -102,6 +102,23 @@ TempoMap tempoMapOf(const Project& project)
                     project.meterChanges);
 }
 
+const TempoMap& TempoMapCache::of(const Project& project)
+{
+    if (!valid_ || project.sampleRate != sampleRate_ || project.tempoBpm != bpm_ ||
+        !(project.timeSignature == signature_) || project.tempoChanges != tempoChanges_ ||
+        project.meterChanges != meterChanges_)
+    {
+        sampleRate_ = project.sampleRate;
+        bpm_ = project.tempoBpm;
+        signature_ = project.timeSignature;
+        tempoChanges_ = project.tempoChanges;
+        meterChanges_ = project.meterChanges;
+        map_ = tempoMapOf(project);
+        valid_ = true;
+    }
+    return map_;
+}
+
 // ----- time --------------------------------------------------------------------------
 
 size_t TempoMap::tempoIndexAtQuarter(double quarters) const noexcept

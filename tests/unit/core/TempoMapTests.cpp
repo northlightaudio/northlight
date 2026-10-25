@@ -262,3 +262,19 @@ TEST_CASE("Splitting a stretched clip keeps the source continuous", "[core][temp
     const auto& left = *p.tracks[0].findClip(c.id);
     CHECK(JoinClips::canJoin(left, *right));
 }
+
+TEST_CASE("The tempo map cache rebuilds only when the tempo changed", "[core][tempo]")
+{
+    Project p;
+    p.tempoBpm = 120.0;
+    TempoMapCache cache;
+    const auto& first = cache.of(p);
+    CHECK(first.bpmAt(0) == Approx(120.0));
+    p.name = "Renamed"; // not the tempo
+    CHECK(&cache.of(p) == &first);
+    CHECK(cache.of(p).bpmAt(0) == Approx(120.0));
+    p.tempoBpm = 90.0;
+    CHECK(cache.of(p).bpmAt(0) == Approx(90.0));
+    p.tempoChanges.push_back({8.0, 60.0, false});
+    CHECK(cache.of(p).bpmAtQuarter(9.0) == Approx(60.0));
+}

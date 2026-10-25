@@ -11,6 +11,7 @@
 #include <memory>
 #include <optional>
 #include <string>
+#include <vector>
 
 namespace northlight::ui
 {
@@ -57,6 +58,9 @@ private:
     std::optional<int> handleAt(juce::Point<int> p) const;
     std::optional<int> meterAt(juce::Point<int> p) const;
     juce::Point<float> handlePosition(int index) const;
+    // Every handle's position (the start's first), from one tempo map: what paint
+    // and hit testing walk, instead of a map per handle.
+    std::vector<juce::Point<float>> handlePositions() const;
     float yForBpm(double bpm) const noexcept;
     double bpmForY(float y) const noexcept;
     juce::Rectangle<int> lane() const noexcept;

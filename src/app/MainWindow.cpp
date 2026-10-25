@@ -60,9 +60,9 @@ namespace northlight
 
 namespace
 {
-juce::String barsText(const core::Project& project, core::SamplePosition position)
+juce::String barsText(const core::TempoMap& map, core::SamplePosition position)
 {
-    const auto bb = core::tempoMapOf(project).barsBeatsAt(std::abs(position));
+    const auto bb = map.barsBeatsAt(std::abs(position));
     return juce::String(position < 0 ? "-" : "") + juce::String(bb.bar) + "." + juce::String(bb.beat) + "." +
            juce::String(bb.tick).paddedLeft('0', 3);
 }
@@ -78,7 +78,7 @@ juce::String timeText(const core::Project& project, core::SamplePosition positio
 }
 
 // "b.b.t" -> samples, or -1 when the text is not a position.
-core::SamplePosition parseBars(const core::Project& project, const juce::String& text)
+core::SamplePosition parseBars(const core::TempoMap& map, const juce::String& text)
 {
     const auto parts = juce::StringArray::fromTokens(text.trim(), ".", "");
     if (parts.isEmpty() || parts[0].getIntValue() < 1)
@@ -87,7 +87,7 @@ core::SamplePosition parseBars(const core::Project& project, const juce::String&
     bb.bar = parts[0].getIntValue();
     bb.beat = parts.size() > 1 ? std::max(1, parts[1].getIntValue()) : 1;
     bb.tick = parts.size() > 2 ? std::max(0, parts[2].getIntValue()) : 0;
-    return core::tempoMapOf(project).positionAt(bb);
+    return map.positionAt(bb);
 }
 
 // "m:ss.mmm" or "ss.mmm" -> samples, or -1.
@@ -1006,7 +1006,7 @@ private:
         header_.onCountInBars = [this](int bars) { session_.setCountInBars(bars); };
         header_.onBarsTyped = [this](const juce::String& text)
         {
-            if (const auto at = parseBars(session_.project(), text); at >= 0)
+            if (const auto at = parseBars(session_.tempoMap(), text); at >= 0)
                 session_.locate(at);
         };
         header_.onTimeTyped = [this](const juce::String& text)
@@ -1017,7 +1017,7 @@ private:
         header_.onBarsNudged = [this](int segment, int steps)
         {
             // Bars, beats or ticks on the tempo track at the position.
-            const auto map = core::tempoMapOf(session_.project());
+            const auto map = session_.tempoMap(); // a copy: the handler may change the tempo
             const auto at = session_.position();
             const double beat = core::TempoMap::quartersPerBeat(map.signatureAt(at));
             const core::GridStep step = segment == 0 ? core::GridStep{1, 0.0}
@@ -1037,7 +1037,7 @@ private:
         header_.onTempo = [this](double bpm)
         {
             const auto& p = session_.project();
-            const auto map = core::tempoMapOf(p);
+            const auto map = session_.tempoMap(); // a copy: the handler may change the tempo
             const double q = map.quartersAt(static_cast<double>(heardPosition()));
             int index = -1;
             for (int i = 0; i < static_cast<int>(p.tempoChanges.size()); ++i)
@@ -1055,7 +1055,7 @@ private:
         header_.onSignature = [this](int n, int d)
         {
             const auto& p = session_.project();
-            const auto map = core::tempoMapOf(p);
+            const auto map = session_.tempoMap(); // a copy: the handler may change the tempo
             const int bar = map.barAtQuarter(map.quartersAt(static_cast<double>(heardPosition())));
             int index = -1;
             for (int i = 0; i < static_cast<int>(p.meterChanges.size()); ++i)
@@ -1591,11 +1591,11 @@ private:
         state.click = session_.metronomeEnabled();
         state.countInBars = session_.countInBars();
         state.deviceReady = audio_.status().open;
-        state.barsText = barsText(p, heardPosition());
+        state.barsText = barsText(session_.tempoMap(), heardPosition());
         state.timeText = timeText(p, heardPosition());
         {
             // The tempo and signature at the heard position.
-            const auto map = core::tempoMapOf(p);
+            const auto& map = session_.tempoMap();
             const auto at = std::max<core::SamplePosition>(0, heardPosition());
             const auto signature = map.signatureAt(at);
             state.tempo = map.bpmAt(at);

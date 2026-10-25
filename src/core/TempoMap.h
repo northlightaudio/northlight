@@ -124,6 +124,23 @@ private:
 
 TempoMap tempoMapOf(const Project& project);
 
+// The project's tempo map, rebuilt only when what it is made of (the rate, the
+// tempo and signature, the change lists) differs from last time: comparing them
+// costs far less than a rebuild, so a view or a tick can ask every frame.
+class TempoMapCache
+{
+public:
+    const TempoMap& of(const Project& project);
+
+private:
+    bool valid_ = false;
+    double sampleRate_ = 0.0, bpm_ = 0.0;
+    TimeSignature signature_;
+    std::vector<TempoChange> tempoChanges_;
+    std::vector<MeterChange> meterChanges_;
+    TempoMap map_;
+};
+
 // Rewrites every musical position (MIDI clips and notes, clips that follow the
 // tempo, automation points, markers) from one tempo map to another, keeping its
 // place in bars and beats. Clips that follow the tempo also keep their length in

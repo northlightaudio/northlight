@@ -7,6 +7,7 @@
 #include "audio/PeakStore.h"
 #include "core/Command.h"
 #include "core/Model.h"
+#include "core/TempoMap.h"
 #include "engine/AudioEngine.h"
 #include "engine/DiskThread.h"
 #include "engine/Stretch.h"
@@ -48,6 +49,8 @@ public:
     ~ProjectSession() override;
 
     const core::Project& project() const noexcept { return project_; }
+    // The project's tempo map, kept between calls (rebuilt when the tempo changed).
+    const core::TempoMap& tempoMap() const { return tempoMapCache_.of(project_); }
     engine::AudioEngine& engine() noexcept { return engine_; }
     audio::JuceMediaLoader& mediaLoader() noexcept { return loader_; }
     // Vocal pitch editing: analyses, and the renders the engine plays.
@@ -554,6 +557,7 @@ private:
     double dirtySinceMs_ = 0.0;  // unsaved changes not yet autosaved, since
     double lastEditMs_ = 0.0;
     Change pending_ = Change::progress; // the widest change notified since the last take
+    mutable core::TempoMapCache tempoMapCache_;
     // The load in progress (beginLoad), what it is for, and what the steps after
     // its background part have made so far (held so garbage collection keeps them
     // until the compile takes them).
