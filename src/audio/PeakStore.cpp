@@ -27,12 +27,13 @@ PeakStore::~PeakStore()
 std::shared_ptr<const engine::PeakData> PeakStore::peaksFor(const std::string& path, double sampleRate)
 {
     NORTHLIGHT_ASSERT_NOT_REALTIME("PeakStore::peaksFor");
-    const Key key{path, sampleRate};
+    const KeyView view{path, sampleRate}; // no copy of the path unless it is queued
     const std::lock_guard<std::mutex> lock(mutex_);
-    if (const auto it = ready_.find(key); it != ready_.end())
+    if (const auto it = ready_.find(view); it != ready_.end())
         return it->second;
-    if (!queued_.contains(key))
+    if (queued_.find(view) == queued_.end())
     {
+        const Key key{path, sampleRate};
         queued_[key] = true;
         queue_.push_back(key);
         notify();
@@ -58,14 +59,14 @@ engine::WaveformView PeakStore::viewFor(
         const std::lock_guard<std::mutex> lock(mutex_);
         for (auto i = span.first; i < span.last; ++i)
         {
-            BlockKey key{{path, sampleRate}, i};
-            if (const auto it = blocks_.find(key); it != blocks_.end())
+            if (const auto it = blocks_.find(BlockKeyView{{path, sampleRate}, i}); it != blocks_.end())
             {
                 it->second.lastUse = now;
                 blocks.push_back(it->second.block);
                 continue;
             }
             blocks.push_back(nullptr);
+            const BlockKey key{{path, sampleRate}, i};
             if (blockQueued_.insert(key).second)
             {
                 blockQueue_.push_back(std::move(key));

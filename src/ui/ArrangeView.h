@@ -584,6 +584,9 @@ private:
     // The area paint() is repainting (its clip bounds): rows, clips and waveform
     // columns outside it are skipped. A playhead frame repaints a column.
     juce::Rectangle<int> paintArea_;
+    // The clip's waveform over `wave` (one look into the peak store; the view
+    // holds the peaks, empty until they are built).
+    engine::WaveformView waveformIn(const core::AudioClip& clip, juce::Rectangle<int> wave);
     std::vector<ClipRef> notifiedSelection_; // what onSelectionChanged last reported
     std::vector<ClipRef> pressSelection_;    // the selection when the button went down
     bool snap_ = true;

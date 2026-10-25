@@ -12,6 +12,7 @@
 #include <mutex>
 #include <set>
 #include <string>
+#include <string_view>
 
 // Waveform peaks for the arrange view. peaksFor() returns the peaks for a media
 // file if they are ready; otherwise it queues a build on the background thread and
@@ -66,6 +67,29 @@ private:
             return path < o.path || (path == o.path && sampleRate < o.sampleRate);
         }
     };
+    // A key looked up without copying its path (a view paints this per clip).
+    struct KeyView
+    {
+        std::string_view path;
+        double sampleRate;
+    };
+    struct KeyLess
+    {
+        using is_transparent = void;
+        static bool less(std::string_view ap, double ar, std::string_view bp, double br) noexcept
+        {
+            return ap < bp || (ap == bp && ar < br);
+        }
+        bool operator()(const Key& a, const Key& b) const noexcept { return a < b; }
+        bool operator()(const Key& a, const KeyView& b) const noexcept
+        {
+            return less(a.path, a.sampleRate, b.path, b.sampleRate);
+        }
+        bool operator()(const KeyView& a, const Key& b) const noexcept
+        {
+            return less(a.path, a.sampleRate, b.path, b.sampleRate);
+        }
+    };
 
     struct BlockKey
     {
@@ -74,6 +98,33 @@ private:
         bool operator<(const BlockKey& o) const noexcept
         {
             return file < o.file || (!(o.file < file) && index < o.index);
+        }
+    };
+    struct BlockKeyView
+    {
+        KeyView file;
+        std::int64_t index;
+    };
+    struct BlockKeyLess
+    {
+        using is_transparent = void;
+        static bool less(const KeyView& a, std::int64_t ai, const KeyView& b, std::int64_t bi) noexcept
+        {
+            if (KeyLess::less(a.path, a.sampleRate, b.path, b.sampleRate))
+                return true;
+            if (KeyLess::less(b.path, b.sampleRate, a.path, a.sampleRate))
+                return false;
+            return ai < bi;
+        }
+        static KeyView view(const Key& k) noexcept { return {k.path, k.sampleRate}; }
+        bool operator()(const BlockKey& a, const BlockKey& b) const noexcept { return a < b; }
+        bool operator()(const BlockKey& a, const BlockKeyView& b) const noexcept
+        {
+            return less(view(a.file), a.index, b.file, b.index);
+        }
+        bool operator()(const BlockKeyView& a, const BlockKey& b) const noexcept
+        {
+            return less(a.file, a.index, view(b.file), b.index);
         }
     };
     struct CachedBlock
@@ -91,12 +142,12 @@ private:
 
     juce::AudioFormatManager formats_;
     mutable std::mutex mutex_;
-    std::map<Key, std::shared_ptr<const engine::PeakData>> ready_;
+    std::map<Key, std::shared_ptr<const engine::PeakData>, KeyLess> ready_;
     std::deque<Key> queue_;
-    std::map<Key, bool> queued_;
+    std::map<Key, bool, KeyLess> queued_;
     bool building_ = false;
 
-    std::map<BlockKey, CachedBlock> blocks_;
+    std::map<BlockKey, CachedBlock, BlockKeyLess> blocks_;
     std::deque<BlockKey> blockQueue_;
     std::set<BlockKey> blockQueued_;
     std::int64_t blockSamples_ = 0; // held in blocks_, all channels

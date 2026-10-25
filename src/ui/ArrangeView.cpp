@@ -1906,17 +1906,10 @@ void ArrangeView::drawClip(juce::Graphics& g,
     {
         // No waveform column in the area being painted.
     }
-    else if (const auto peaks = peaks_.peaksFor(clip.mediaPath, sampleRate());
-             peaks != nullptr && !peaks->empty())
+    else if (const auto view = waveformIn(clip, wave); !view.empty())
     {
-        const auto first = clip.sourceAt(sampleForX(wave.getX()) - clip.start);
-        const auto last = clip.sourceAt(sampleForX(wave.getRight()) - clip.start);
-        const auto view = peaks_.viewFor(clip.mediaPath,
-                                         sampleRate(),
-                                         first,
-                                         last + 1,
-                                         static_cast<double>(last - first) / std::max(1, wave.getWidth()));
-        const int channels = std::min(2, peaks->numChannels());
+        // One look into the peak store per clip (the view holds the peaks).
+        const int channels = std::min(2, view.numChannels());
         const float laneHeight = static_cast<float>(wave.getHeight()) / static_cast<float>(channels);
         const float scale = std::min(1.0f, clip.gain);
         const auto waveColour =
@@ -2035,6 +2028,17 @@ void ArrangeView::drawClip(juce::Graphics& g,
         g.drawText(label, textArea, juce::Justification::centredLeft, true);
     }
 }
+engine::WaveformView ArrangeView::waveformIn(const core::AudioClip& clip, juce::Rectangle<int> wave)
+{
+    const auto first = clip.sourceAt(sampleForX(wave.getX()) - clip.start);
+    const auto last = clip.sourceAt(sampleForX(wave.getRight()) - clip.start);
+    return peaks_.viewFor(clip.mediaPath,
+                          sampleRate(),
+                          first,
+                          last + 1,
+                          static_cast<double>(last - first) / std::max(1, wave.getWidth()));
+}
+
 void ArrangeView::drawFolderLane(juce::Graphics& g, const core::Track& folder, juce::Rectangle<int> lane)
 {
     // What the folder holds, at a glance: each track's clips as thin bars in its
