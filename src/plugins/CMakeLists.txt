@@ -7,6 +7,7 @@ add_library(northlight_plugins STATIC
     dsp/PolyBlep.h
     dsp/Random.h
     dsp/Smoothing.h
+    dsp/SpringTank.h
     dsp/Svf.h
     MeteredBuiltIn.h
     Aurora.h

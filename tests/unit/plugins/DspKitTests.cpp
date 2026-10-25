@@ -3,6 +3,7 @@
 #include "plugins/dsp/PolyBlep.h"
 #include "plugins/dsp/Random.h"
 #include "plugins/dsp/Smoothing.h"
+#include "plugins/dsp/SpringTank.h"
 #include "plugins/dsp/Svf.h"
 
 #include <catch2/catch_approx.hpp>
@@ -13,6 +14,7 @@
 #include <cmath>
 #include <cstdint>
 #include <numbers>
+#include <vector>
 
 using namespace northlight::plugins;
 using Catch::Approx;
@@ -231,4 +233,35 @@ TEST_CASE("PolyBLEP corrects only the samples either side of a jump", "[plugins]
     CHECK(dsp::blepSquare(0.25, dt) == 1.0f);
     CHECK(dsp::blepSquare(0.75, dt) == -1.0f);
     CHECK(std::abs(dsp::blepSquare(0.5, dt)) < 1.0e-6f);
+}
+
+TEST_CASE("A spring tank returns an impulse a loop later, chirped, and dies away", "[plugins][dsp]")
+{
+    constexpr double rate = 48000.0, loopSeconds = 0.04;
+    dsp::SpringTank tank;
+    tank.prepare(dsp::SpringTuning{}, rate, loopSeconds, 4000.0, 0.7f);
+    std::vector<float> out(48000);
+    for (size_t i = 0; i < out.size(); ++i)
+        out[i] = tank.process(i == 0 ? 1.0f : 0.0f);
+
+    // Energy in each loop-long window: the second pass is quieter than the first,
+    // and the tail has died away by the end.
+    const auto loop = static_cast<size_t>(loopSeconds * rate);
+    const auto energy = [&](size_t from)
+    {
+        double e = 0.0;
+        for (size_t i = from; i < from + loop; ++i)
+            e += static_cast<double>(out[i]) * out[i];
+        return e;
+    };
+    const double first = energy(0), second = energy(loop), late = energy(out.size() - loop);
+    CHECK(first > 0.0);
+    CHECK(second < first);
+    CHECK(late < first * 1.0e-6);
+
+    tank.reset();
+    float sum = 0.0f;
+    for (int i = 0; i < 4000; ++i)
+        sum += std::abs(tank.process(0.0f));
+    CHECK(sum == 0.0f);
 }

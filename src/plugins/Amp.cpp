@@ -12,6 +12,7 @@
 #include "plugins/ToneStack.h"
 #include "plugins/Triode.h"
 #include "plugins/dsp/Smoothing.h"
+#include "plugins/dsp/SpringTank.h"
 
 #include <algorithm>
 #include <array>
@@ -152,54 +153,16 @@ public:
     void prepare(double sampleRate, double loopSeconds, double transitionHz)
     {
         NORTHLIGHT_ASSERT_NOT_REALTIME("amp Spring::prepare");
-        k_ = std::max(1, static_cast<int>(std::lround(sampleRate / (2.0 * transitionHz))));
-        memory_.assign(static_cast<size_t>(stages * k_), 0.0f);
-        const double cascadeSamples = stages * k_ * (1.0 - coefficient) / (1.0 + coefficient);
-        length_ = std::max(8, static_cast<int>(sampleRate * loopSeconds - cascadeSamples));
-        loop_.assign(static_cast<size_t>(length_), 0.0f);
-        position_ = write_ = 0;
-        low_ = 0.0f;
-        lowStep_ = dsp::stepForHz(3800.0f, static_cast<float>(sampleRate));
-        gain_ = static_cast<float>(std::pow(10.0, -3.0 * loopSeconds / decaySeconds));
+        const auto gain = static_cast<float>(std::pow(10.0, -3.0 * loopSeconds / decaySeconds));
+        tank_.prepare(tuning, sampleRate, loopSeconds, transitionHz, gain);
     }
-
-    void reset() noexcept
-    {
-        std::fill(memory_.begin(), memory_.end(), 0.0f);
-        std::fill(loop_.begin(), loop_.end(), 0.0f);
-        low_ = 0.0f;
-    }
-
-    float process(float x) noexcept
-    {
-        const float back = loop_[static_cast<size_t>(write_)];
-        low_ += lowStep_ * (back - low_);
-        float u = x + gain_ * low_;
-        auto* m = memory_.data() + position_;
-        for (int s = 0; s < stages; ++s, m += k_)
-        {
-            const float old = *m;
-            const float w = u - coefficient * old;
-            u = coefficient * w + old;
-            *m = w;
-        }
-        if (++position_ == k_)
-            position_ = 0;
-        loop_[static_cast<size_t>(write_)] = u;
-        if (++write_ == length_)
-            write_ = 0;
-        if (std::abs(low_) < 1.0e-15f)
-            low_ = 0.0f;
-        return u;
-    }
+    void reset() noexcept { tank_.reset(); }
+    float process(float x) noexcept { return tank_.process(x); }
 
 private:
-    static constexpr int stages = 60;
-    static constexpr float coefficient = 0.65f;
+    static constexpr dsp::SpringTuning tuning{60, 0.65f, 3800.0f};
     static constexpr double decaySeconds = 2.8;
-    std::vector<float> memory_, loop_;
-    int k_ = 1, position_ = 0, length_ = 8, write_ = 0;
-    float low_ = 0.0f, lowStep_ = 0.5f, gain_ = 0.9f;
+    dsp::SpringTank tank_;
 };
 
 class Tank

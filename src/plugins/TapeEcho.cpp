@@ -6,6 +6,7 @@
 #include "plugins/ProcessorBase.h"
 #include "plugins/dsp/Random.h"
 #include "plugins/dsp/Smoothing.h"
+#include "plugins/dsp/SpringTank.h"
 
 #include <algorithm>
 #include <cmath>
@@ -125,63 +126,27 @@ struct Saturator
     }
 };
 
-// A short spring: the dispersion of a stretched allpass cascade (each stage
-// (a + z^-K) / (1 + a z^-K), K putting its whole sweep below the spring's
-// transition frequency, so the highs arrive later than the lows: the chirp)
-// inside a delay loop that sends each chirp round again, more dispersed, with a
-// one-pole darkening it. Band-limited in and out, as a spring tank is.
+// A short spring: the kit's tank, band-limited in and out as a spring tank is.
 class Spring
 {
 public:
-    static constexpr int stages = 80;
-    static constexpr float coefficient = 0.7f;
+    static constexpr dsp::SpringTuning tuning{80, 0.7f, 3200.0f};
     static constexpr float loopGain = 0.72f;
 
     void prepare(double sampleRate, double loopSeconds)
     {
         NORTHLIGHT_ASSERT_NOT_REALTIME("Spring::prepare");
-        k_ = std::max(1, static_cast<int>(std::lround(sampleRate / (2.0 * springTransitionHz))));
-        memory_.assign(static_cast<size_t>(stages * k_), 0.0f);
-        // The cascade itself delays the signal; the line makes up the rest of the loop.
-        const double cascadeSamples = stages * k_ * (1.0 - coefficient) / (1.0 + coefficient);
-        length_ = std::max(8, static_cast<int>(sampleRate * loopSeconds - cascadeSamples));
-        loop_.assign(static_cast<size_t>(length_), 0.0f);
-        position_ = write_ = 0;
-        low_ = 0.0f;
-        lowStep_ = dsp::stepForHz(3200.0f, static_cast<float>(sampleRate));
+        tank_.prepare(tuning, sampleRate, loopSeconds, springTransitionHz, loopGain);
         input_.setHighPass(sampleRate, 180.0);
         output_.setLowPass(sampleRate, springTransitionHz, 0.8);
         input_.reset();
         output_.reset();
     }
 
-    float process(float x) noexcept
-    {
-        const float back = loop_[static_cast<size_t>(write_)]; // the oldest sample: a full loop ago
-        low_ += lowStep_ * (back - low_);
-        float u = input_.process(x) + loopGain * low_;
-        auto* m = memory_.data() + position_;
-        for (int s = 0; s < stages; ++s, m += k_)
-        {
-            const float old = *m;
-            const float w = u - coefficient * old;
-            u = coefficient * w + old;
-            *m = w;
-        }
-        if (++position_ == k_)
-            position_ = 0;
-        loop_[static_cast<size_t>(write_)] = u;
-        if (++write_ == length_)
-            write_ = 0;
-        if (std::abs(low_) < 1.0e-15f)
-            low_ = 0.0f;
-        return output_.process(u);
-    }
+    float process(float x) noexcept { return output_.process(tank_.process(input_.process(x))); }
 
 private:
-    std::vector<float> memory_, loop_;
-    int k_ = 1, position_ = 0, length_ = 8, write_ = 0;
-    float low_ = 0.0f, lowStep_ = 0.5f;
+    dsp::SpringTank tank_;
     Biquad input_, output_;
 };
 
