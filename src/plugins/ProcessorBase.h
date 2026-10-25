@@ -109,10 +109,15 @@ public:
             processBypassed(left, right, numSamples);
             return;
         }
-        std::copy(left, left + numSamples, dryLeft_.data());
-        std::copy(right, right + numSamples, dryRight_.data());
+        // The dry copy only matters while the bypass crossfades.
+        const bool ramping = bypassMix_ != target;
+        if (ramping)
+        {
+            std::copy(left, left + numSamples, dryLeft_.data());
+            std::copy(right, right + numSamples, dryRight_.data());
+        }
         processAudio(left, right, numSamples);
-        if (bypassMix_ == target)
+        if (!ramping)
             return;
         // The bypassed signal for the ramp is the dry input (a latent processor's
         // bypassed path only differs by its delay, which the ramp hides).
