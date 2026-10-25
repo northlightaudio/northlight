@@ -175,7 +175,13 @@ private:
 // ----- setup ----------------------------------------------------------------------------------
 
 AudioEditor::AudioEditor(audio::PeakStore& peaks, engine::VocalService& vocal)
-    : peaks_(peaks), vocal_(vocal), link_(theme_, Icon::link, "Link zoom to the arrange view"),
+    : peaks_(peaks), vocal_(vocal),
+      pitchTool_(theme_, Icon::pitchTool, "Pitch: drag a note to a semitone, Alt in cents  1"),
+      splitTool_(theme_, Icon::scissors, "Split: click a note to split it, a join to merge two  2"),
+      driftTool_(theme_, Icon::driftTool, "Drift: drag a note down to steady its slow drift  3"),
+      vibratoTool_(theme_, Icon::vibratoTool, "Vibrato: drag a note down to flatten its vibrato  4"),
+      breathTool_(theme_, Icon::breathTool, "Breath: click a breath to mute or unmute it  5"),
+      link_(theme_, Icon::link, "Link zoom to the arrange view"),
       auditionButton_(theme_, Icon::monitor, "Hear a note when it is clicked")
 {
     setOpaque(true);
@@ -190,10 +196,14 @@ AudioEditor::AudioEditor(audio::PeakStore& peaks, engine::VocalService& vocal)
     modes_.setSelected(0, juce::dontSendNotification);
     modes_.onChange = [this](int index) { setMode(index == 1 ? Mode::pitch : Mode::wave); };
     addAndMakeVisible(modes_);
-    tools_.setSegments({"Pitch", "Split", "Drift", "Vibrato", "Breath"});
-    tools_.setSelected(0, juce::dontSendNotification);
-    tools_.onChange = [this](int index) { setTool(static_cast<Tool>(index)); };
-    addChildComponent(tools_);
+    const auto tools = toolButtons();
+    for (size_t i = 0; i < tools.size(); ++i)
+    {
+        tools[i]->setIconSize(theme_.sizes.iconSmall);
+        tools[i]->onClick = [this, i] { setTool(static_cast<Tool>(i)); };
+        tools[i]->setToggleState(i == 0, juce::dontSendNotification);
+        addChildComponent(*tools[i]);
+    }
     for (auto* b : {&correctButton_, &breathsButton_, &keyButton_})
     {
         b->getProperties().set(NorthlightLookAndFeel::propertyVariant, "ghost");
@@ -326,8 +336,15 @@ void AudioEditor::setMode(Mode mode)
 void AudioEditor::setTool(Tool tool)
 {
     tool_ = tool;
-    tools_.setSelected(static_cast<int>(tool), juce::dontSendNotification);
+    const auto tools = toolButtons();
+    for (size_t i = 0; i < tools.size(); ++i)
+        tools[i]->setToggleState(static_cast<Tool>(i) == tool_, juce::dontSendNotification);
     repaint();
+}
+
+std::array<IconButton*, 5> AudioEditor::toolButtons() noexcept
+{
+    return {&pitchTool_, &splitTool_, &driftTool_, &vibratoTool_, &breathTool_};
 }
 
 const core::Track* AudioEditor::track() const noexcept
@@ -570,13 +587,15 @@ void AudioEditor::resized()
     modes_.setBounds(bar.removeFromLeft(std::min(bar.getWidth(), modes_.preferredWidth())));
     bar.removeFromLeft(theme_.spacing.sm);
     const bool pitchMode = mode_ == Mode::pitch;
-    tools_.setVisible(pitchMode);
+    for (auto* b : toolButtons())
+        b->setVisible(pitchMode);
     correctButton_.setVisible(pitchMode);
     breathsButton_.setVisible(pitchMode);
     keyButton_.setVisible(pitchMode);
     if (pitchMode)
     {
-        tools_.setBounds(bar.removeFromLeft(std::min(bar.getWidth(), tools_.preferredWidth())));
+        for (auto* b : toolButtons())
+            b->setBounds(bar.removeFromLeft(theme_.sizes.controlCompact));
         bar.removeFromLeft(theme_.spacing.sm);
         correctButton_.setBounds(bar.removeFromLeft(72));
         bar.removeFromLeft(theme_.spacing.xs);
@@ -811,9 +830,12 @@ void AudioEditor::paintWave(juce::Graphics& g)
         const double rel = source - static_cast<double>(cl->sourceOffset);
         double e = cl->gain;
         if (cl->fadeIn > 0 && rel < static_cast<double>(cl->fadeIn))
-            e *= std::max(0.0, rel / static_cast<double>(cl->fadeIn));
+            e *= core::fadeShape(static_cast<float>(rel / static_cast<double>(cl->fadeIn)),
+                                 core::fadeShapeK(cl->fadeInCurve));
         if (cl->fadeOut > 0 && rel > static_cast<double>(cl->length - cl->fadeOut))
-            e *= std::max(0.0, static_cast<double>(cl->length) - rel) / static_cast<double>(cl->fadeOut);
+            e *= core::fadeShape(static_cast<float>((static_cast<double>(cl->length) - rel) /
+                                                    static_cast<double>(cl->fadeOut)),
+                                 core::fadeShapeK(cl->fadeOutCurve));
         return static_cast<float>(e);
     };
     for (int ch = 0; ch < channels; ++ch)
@@ -855,18 +877,28 @@ void AudioEditor::paintWave(juce::Graphics& g)
     const float fi = xForSource(clipStart + static_cast<double>(fadeIn));
     const float fo = xForSource(clipEnd - static_cast<double>(fadeOut));
     g.setColour(c.textSecondary);
+    // Each fade's curve, from its silent end (at the clip's edge) to full level.
+    const auto curve = [&](float silent, float full, float k)
+    {
+        juce::Path path;
+        constexpr int steps = 24;
+        for (int i = 0; i <= steps; ++i)
+        {
+            const float t = static_cast<float>(i) / static_cast<float>(steps);
+            const float x = silent + (full - silent) * t;
+            const float y = static_cast<float>(area.getBottom()) -
+                            core::fadeShape(t, k) * static_cast<float>(area.getHeight());
+            if (i == 0)
+                path.startNewSubPath(x, y);
+            else
+                path.lineTo(x, y);
+        }
+        g.strokePath(path, juce::PathStrokeType(1.0f));
+    };
     if (fadeIn > 0)
-        g.drawLine(xForSource(clipStart),
-                   static_cast<float>(area.getBottom()),
-                   fi,
-                   static_cast<float>(area.getY()),
-                   1.0f);
+        curve(xForSource(clipStart), fi, core::fadeShapeK(cl->fadeInCurve));
     if (fadeOut > 0)
-        g.drawLine(fo,
-                   static_cast<float>(area.getY()),
-                   xForSource(clipEnd),
-                   static_cast<float>(area.getBottom()),
-                   1.0f);
+        curve(xForSource(clipEnd), fo, core::fadeShapeK(cl->fadeOutCurve));
     g.setColour(c.textPrimary);
     g.fillRect(fi - 4.0f, static_cast<float>(area.getY()) + 2.0f, 8.0f, 8.0f);
     g.fillRect(fo - 4.0f, static_cast<float>(area.getY()) + 2.0f, 8.0f, 8.0f);
@@ -1608,7 +1640,7 @@ void AudioEditor::mouseMove(const juce::MouseEvent& e)
     }
     setMouseCursor(join != nullptr && tool_ == Tool::pitch   ? juce::MouseCursor::LeftRightResizeCursor
                    : note != nullptr && tool_ == Tool::pitch ? juce::MouseCursor::UpDownResizeCursor
-                   : tool_ == Tool::split && note != nullptr ? juce::MouseCursor::IBeamCursor
+                   : tool_ == Tool::split && note != nullptr ? Icons::toolCursor(theme_, Icon::scissors)
                                                              : juce::MouseCursor::NormalCursor);
 }
 

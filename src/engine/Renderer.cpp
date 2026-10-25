@@ -366,9 +366,10 @@ void Renderer::renderTrack(const Snapshot& snapshot,
             else
                 sr = sl;
 
-            // Fades: a linear ramp over the first fadeIn and last fadeOut samples
-            // of the clip (overlapping clips with matching fades crossfade at
-            // constant sum). Only the spans inside a fade pay for the ramp.
+            // Fades: a ramp over the first fadeIn and last fadeOut samples of the
+            // clip, shaped by its curve (core::fadeShape: one division, linear when
+            // the curve is; overlapping clips with matching linear fades crossfade
+            // at constant sum). Only the spans inside a fade pay for the ramp.
             const auto clipPos = from - clip.start; // position of sl[0] within the clip
             const auto fadeOutStart = clip.length - clip.fadeOut;
             for (int i = 0; i < count; ++i)
@@ -376,9 +377,12 @@ void Renderer::renderTrack(const Snapshot& snapshot,
                 float f = 1.0f;
                 const auto pos = clipPos + i;
                 if (pos < clip.fadeIn)
-                    f = static_cast<float>(pos) / static_cast<float>(clip.fadeIn);
+                    f = core::fadeShape(static_cast<float>(pos) / static_cast<float>(clip.fadeIn),
+                                        clip.fadeInK);
                 if (pos >= fadeOutStart && clip.fadeOut > 0)
-                    f *= static_cast<float>(clip.length - pos) / static_cast<float>(clip.fadeOut);
+                    f *= core::fadeShape(static_cast<float>(clip.length - pos) /
+                                             static_cast<float>(clip.fadeOut),
+                                         clip.fadeOutK);
                 const float t = static_cast<float>(offset + i + 1);
                 left[offset + i] += sl[i] * clip.gain * (panLeft0 + stepL * t) * f;
                 right[offset + i] += sr[i] * clip.gain * (panRight0 + stepR * t) * f;
@@ -931,6 +935,10 @@ void Renderer::renderSpan(const Snapshot& snapshot,
         if (!bus.automation.empty() ||
             (bus.runtime != nullptr && bus.runtime->automated.load(std::memory_order_relaxed) != 0))
             applyAutomation(bus, position + numSamples);
+    if (const auto& master = snapshot.masterChain;
+        !master.automation.empty() ||
+        (master.runtime != nullptr && master.runtime->automated.load(std::memory_order_relaxed) != 0))
+        applyAutomation(master, position + numSamples);
 
     // Tracks render in parallel within a level; levels in order so a keyed track
     // sees its source finished.
@@ -1008,9 +1016,12 @@ void Renderer::renderSpan(const Snapshot& snapshot,
                      right,
                      numSamples);
 
-    const float master1 = snapshot.master != nullptr
-                              ? snapshot.master->targetGain.load(std::memory_order_relaxed)
-                              : snapshot.masterGain;
+    // The master's fader: its volume lane while one plays, else the fader.
+    const auto* masterRuntime = snapshot.masterChain.runtime;
+    const float master1 =
+        masterRuntime != nullptr && masterRuntime->gainAutomated ? masterRuntime->automatedGain
+        : snapshot.master != nullptr ? snapshot.master->targetGain.load(std::memory_order_relaxed)
+                                     : snapshot.masterGain;
     const float master0 =
         snapshot.master != nullptr && snapshot.master->primed ? snapshot.master->gain : master1;
     const float masterStep = (master1 - master0) / static_cast<float>(numSamples);

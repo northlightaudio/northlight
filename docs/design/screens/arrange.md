@@ -18,14 +18,42 @@ Where the recording and the arrangement live. It must stay legible with 4 tracks
 ```
 
 - **Corner**: 220×32, `surface0`; holds the "+" add-track button (ghost, left), the
-  tools after it (select, range, pencil; the current one lit; keys 1, 2, 3) and the
-  row-height stepper (two tiny icon buttons).
+  tools after it (select, range, pencil, erase, split, glue, mute; the current one
+  lit; keys 1 to 7) and the row-height stepper (two tiny icon buttons). When the
+  headers are too narrow for all seven, one button shows the current tool with a
+  chevron and opens a menu of them (icon, name, key; the current one ticked). The
+  piano roll's tools are the same buttons, icons and cursors (select, pencil,
+  erase).
 - **Pencil**: on a MIDI track's empty space a drag draws a new empty clip in whole
   grid cells from the grid line at the press (either direction), previewed in the
   track's colour; a click draws a bar. The new clip is selected (double-click opens
   it in the piano roll). On a clip the pencil acts as the select tool; on an audio
   track it draws nothing. With any tool, a double-click on a MIDI track's empty
   space makes a bar-long clip on the bar there.
+- **Erase** (4, as in the piano roll): a click on a clip deletes it; a drag sweeps,
+  and each clip it passes over dims to 40% until the release removes them all as one
+  undo step. A comp's clips go together, and ripple (E) applies as with Delete. The
+  clip under the eraser shows a 1 px `danger` outline.
+- **Split** (5): a 1 px `accent` line runs through the clip under the pointer at the
+  grid line nearest it (at the pointer when no grid line falls inside the clip),
+  with the position in a tag ("Split at 5.1.000"). A click cuts there. Shift runs
+  the line through every lane and the click cuts every track ("Split all at");
+  Alt takes the line off the grid. On empty space a click locates and a drag
+  lassos, as with the select tool.
+- **Glue** (6): over a clip that can join the next one, a 1 px `accent` outline
+  round both shows the clip they will make, with each seam marked 2 px; a click
+  joins them. Audio joins when the next clip continues the same recording (a split
+  undone); a MIDI clip joins the next one across any gap, taking its notes. Over a
+  clip that cannot, a tag beside it says why: "Joins only a clip that continues
+  this one" or "No clip after this one to join". Muted and playing clips do not
+  join each other.
+- **Mute** (7): a click mutes a playing clip or unmutes a muted one; a drag sweeps,
+  giving each clip it passes what the first one got, shown as it goes; one undo
+  step. **Ctrl+M** mutes the selected clips with any tool (unmutes them when all are
+  muted).
+- With erase, split, glue and mute, a press anywhere on a clip uses the tool: edges
+  and corners do not trim or fade, and the cursor is the tool's icon over the whole
+  lane. A press on a clip of a larger selection acts on the selection.
 - **R Ruler**: `size.ruler` 32 px, `surface0`. Two rows: 14 px markers row on top,
   18 px bars/beats below with the seconds readout in `caption` `textTertiary` under
   the bar numbers when zoomed out past 1 bar per 80 px.
@@ -172,9 +200,15 @@ Rows at `trackRow` 56 default. Contents, left to right, inside `space.sm` paddin
   1 px darker centre line (track colour at 30%). Stereo shows two half-height
   channels. Gain changes scale the envelope; muted clips use `waveformMutedAlpha`
   and a hatched body (45°, 6 px spacing, body colour at 10%).
-- Fades: a `textPrimary` curve over the faded region with the body dimmed under it;
-  handles are 8 px squares at the top corners, visible on hover, dragged horizontally.
-  Crossfades show both curves.
+- Fades: a `textPrimary` curve over the faded region with the body above it dimmed;
+  handles are 8 px squares at the top corners, visible on hover. Dragging a handle
+  sideways sets the fade's length and up or down its curve: up bows it up (fast,
+  full level sooner), down bows it down (slow), 80 px to either end, with a 4 px
+  detent at linear (the default). The curve is drawn as it plays, and the waveform
+  under a fade is scaled by it, so a faded edge looks as quiet as it sounds (the
+  audio editor's waveform already was); the tooltip gives
+  both ("Fade 0.50 s  fast 40%", or "linear"). One undo step. Crossfades show both
+  curves.
 - Selected: body at `clipBodySelectedAlpha`, outline track colour at 100%, header
   text `textPrimary`. Multi-selection identical per clip.
 - Hover: outline brightens to 70%; the cursor changes at the edges (trim, 6 px
@@ -191,21 +225,39 @@ Rows at `trackRow` 56 default. Contents, left to right, inside `space.sm` paddin
   "stretching 40%" while its render is not finished. Right-click a clip for
   "Stretch to project tempo...", "Follow tempo changes", Transpose and "Reset
   stretch and pitch".
-- Split: a thin `accent` line follows the pointer in split mode (S key or tool) and
-  clicking splits at the snapped position.
+- Split: the split tool (above), or **S** at the playhead and **Alt+S** at the time
+  selection, for the selected clips (every clip with none selected).
+- Muted clips: a clip muted on its own draws as the clips of a muted track do: the
+  hatched body, the waveform at `waveformMutedAlpha`, MIDI notes in `textDisabled`.
+  It stays on the timeline and editable, saved with the project, and plays nothing.
+- Clip menu (right-click a clip; it is selected first if it was not): the clip's
+  name ("+2" when more are selected), then Split here (at the snapped position under
+  the click), Join with next (Join for a selection), Crossfade (audio), Mute clip or
+  Unmute clip, Duplicate, Normalise (audio); Cut, Copy, Delete; then for audio the
+  stretch and pitch items and Open in Sampler, for MIDI Open in piano roll; and
+  Track.... Each item shows its key; an item that would do nothing is disabled. The
+  edits act on the selection.
 - Recording clip: a growing clip in `record` at 22% body, with the live waveform
   appended from the recording peaks, header "● Recording".
 - Takes: a take group's comp plays on the lane as clips with a take badge each; the
   takes expand into lanes under the row for swipe comping (screens/comping.md).
   Stacked clips from older projects stay stacked, the top one audible.
 
-## FX tracks
+## Buses and the master
 
-- FX tracks (buses fed by sends) follow the tracks as rows of the same height,
-  with the same header minus the input and arm (number, name, M, S, A, meter,
-  volume), Teal by default. The lane has no clips; a `caption` in `textTertiary`
-  says how many channels send there ("FX track: 3 channels send here").
-- Their header menu: Rename, Show/Hide automation lanes, Remove FX track.
+- Every bus follows the tracks as a row of the same height, in project order:
+  group buses (tracks route their output there) and FX tracks (fed by sends). The
+  header is a track's minus the input and arm (number, name, M, S, A, meter,
+  volume); FX tracks are Lichen and group buses Overcast unless coloured. The lane
+  has no clips; a `caption` in `textTertiary` says who feeds it ("FX track: 3
+  channels send here", "Bus: 2 channels route here").
+- The master is the last row: name, A, meter and volume (the master fader), in
+  Slate, with no M, S, pan or rename; its lane reads "Master: the whole mix, after
+  every track and bus". Its lanes are Volume and its inserts' parameters (it has
+  no pan). Its header menu: Show/Hide automation lanes.
+- A bus's header menu: Rename, Show/Hide automation lanes, Remove FX track (or
+  Remove bus).
+- So every channel that makes sound can be automated from the arrange view.
 - A track's menu has **Send to**: every bus and FX track, ticked where the track
   already sends (untick removes the send), and **New FX track** (Reverb, Delay,
   Empty) that adds one with a send from this track in one step.
@@ -215,7 +267,7 @@ Rows at `trackRow` 56 default. Contents, left to right, inside `space.sm` paddin
 
 A channel's automation shows as lanes of their own under its row (and under its
 take lanes), one lane per automated parameter. Tracks that make sound, instrument
-channels and FX tracks have them; MIDI tracks and folders do not. A closed folder
+channels, buses and the master have them; MIDI tracks and folders do not. A closed folder
 hides its tracks' lanes too.
 
 ```
@@ -322,4 +374,8 @@ hides its tracks' lanes too.
   playhead moving (section 11 method).
 - Every drag state (move, trim, fade, lasso, time selection, file drop) matches its
   description mid-drag, including the snap guide and tooltip.
+- Each tool's hover and sweep state (the split line and its tag, with Shift too; the
+  glue outline or its reason; the eraser's outline and swept clips; the mute sweep)
+  matches its description, and every tool fits the corner at the default header
+  width.
 - Clip, header and lane hover and selected states are each distinct at a glance.

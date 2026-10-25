@@ -52,6 +52,9 @@ public:
     juce::String getTooltip() override;
     void setMediaMissing(bool missing);
     void startRename();
+    // The master's row: no mute, solo, pan, output or rename; its volume is the
+    // master fader. Set before setTrack.
+    void setMaster(bool master);
 
     std::function<void(core::Id)> onSelected;                              // a click anywhere on the header
     std::function<void(core::Id, int, const std::string&)> onInputChanged; // channel, or a bus name
@@ -135,6 +138,7 @@ private:
     bool aux_ = false;
     bool instrument_ = false; // an instrument channel: no input or arm (its MIDI tracks have them)
     bool folder_ = false;     // a folder track: M, S and its disclosure only
+    bool master_ = false;     // the master's row (setMaster)
     bool folderOpen_ = true;
     int depth_ = 0; // folders it sits in: the header is indented by that much
     int indent() const noexcept { return depth_ * 12; }

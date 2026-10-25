@@ -39,6 +39,10 @@ public:
     void showMessage(const juce::String& message);
     // A one-line description of the control under the pointer (10.5).
     void setHint(const juce::String& hint);
+    // How many clips are selected in the arrange view: "2 clips selected" at the
+    // right end, with the message or hint to its left; nothing when none are.
+    void setSelectedClips(int count);
+    static juce::String selectionText(int count);
 
     std::function<void()> onDeviceClicked, onDropoutsClicked;
 
@@ -62,6 +66,7 @@ private:
     State state_;
     std::vector<Segment> segments_;
     juce::String message_, hint_;
+    int selectedClips_ = 0;
     double messageShownAt_ = 0.0;
     int hoverSegment_ = -1;
     static constexpr int messageMs = 4000;

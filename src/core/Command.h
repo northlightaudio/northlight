@@ -462,6 +462,23 @@ private:
     MidiClip copy_;
 };
 
+// Joins a MIDI clip with a later one on the same track (the glue tool): the left
+// grows to the right's end, across any gap, and takes the right's notes and
+// controller events; the right goes.
+class JoinMidiClips final : public Command
+{
+public:
+    JoinMidiClips(Id trackId, Id leftClipId, Id rightClipId);
+    std::string name() const override { return "Join MIDI clips"; }
+    void apply(Project&) override;
+    void revert(Project&) override;
+    static bool canJoin(const MidiClip& left, const MidiClip& right) noexcept;
+
+private:
+    Id trackId_, leftId_, rightId_;
+    MidiClip previousLeft_, removedRight_;
+};
+
 class AddNote final : public Command
 {
 public:
@@ -691,6 +708,11 @@ public:
     std::string name() const override { return "Set master gain"; }
     void apply(Project&) override;
     void revert(Project&) override;
+    // While playing in a writing mode, the master's fader writes its volume lane.
+    std::optional<AutomationWrite> automationWrite() const noexcept override
+    {
+        return AutomationWrite{masterId, AutomationTarget::gain, invalidId, 0, value_};
+    }
 
 private:
     float value_, previous_ = 1.0f;
@@ -1220,11 +1242,17 @@ private:
     SamplePosition previousStart_ = 0, previousLength_ = 0, previousOffset_ = 0;
 };
 
-// Fade lengths in samples, clamped to the clip.
+// Fade lengths in samples, clamped to the clip, and (when given) their curves
+// from -1 to 1; a curve not given stays as it is.
 class SetClipFades final : public Command
 {
 public:
-    SetClipFades(Id trackId, Id clipId, SamplePosition fadeIn, SamplePosition fadeOut);
+    SetClipFades(Id trackId,
+                 Id clipId,
+                 SamplePosition fadeIn,
+                 SamplePosition fadeOut,
+                 std::optional<float> fadeInCurve = std::nullopt,
+                 std::optional<float> fadeOutCurve = std::nullopt);
     std::string name() const override { return "Set clip fades"; }
     void apply(Project&) override;
     void revert(Project&) override;
@@ -1232,6 +1260,8 @@ public:
 private:
     Id trackId_, clipId_;
     SamplePosition fadeIn_, fadeOut_, previousIn_ = 0, previousOut_ = 0;
+    std::optional<float> inCurve_, outCurve_;
+    float previousInCurve_ = 0.0f, previousOutCurve_ = 0.0f;
 };
 
 // Splits a clip at a timeline position strictly inside it. The left part keeps
@@ -1327,6 +1357,22 @@ public:
 private:
     Id trackId_, clipId_;
     float value_, previous_ = 1.0f;
+};
+
+// Mutes or unmutes an audio clip (`midi` false) or a MIDI clip: it stays on the
+// timeline and plays nothing.
+class SetClipMute final : public Command
+{
+public:
+    SetClipMute(Id trackId, Id clipId, bool midi, bool muted);
+    std::string name() const override { return value_ ? "Mute clip" : "Unmute clip"; }
+    void apply(Project&) override;
+    void revert(Project&) override;
+
+private:
+    bool& flag(Project& p) const;
+    Id trackId_, clipId_;
+    bool midi_, value_, previous_ = false;
 };
 
 // Points every clip using a media file at another path (consolidating media

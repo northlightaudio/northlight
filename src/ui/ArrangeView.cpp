@@ -27,7 +27,12 @@ ArrangeView::ArrangeView(audio::PeakStore& peaks)
       rowsSmaller_(theme_, Icon::zoomOut, "Smaller rows"), rowsLarger_(theme_, Icon::zoomIn, "Larger rows"),
       selectTool_(theme_, Icon::pointer, "Select tool: move, trim and select clips  1"),
       rangeTool_(theme_, Icon::rangeTool, "Range tool: select a time range across tracks  2"),
-      pencilTool_(theme_, Icon::pencil, "Pencil: draw a MIDI clip on a MIDI track  3")
+      pencilTool_(theme_, Icon::pencil, "Pencil: draw a MIDI clip on a MIDI track  3"),
+      eraseTool_(theme_, Icon::eraser, "Erase: click or sweep over clips to delete them  4"),
+      splitTool_(theme_, Icon::scissors, "Split: click a clip to cut it there, Shift+click every track  5"),
+      glueTool_(theme_, Icon::glue, "Glue: click a clip to join it with the next  6"),
+      muteTool_(theme_, Icon::muteClip, "Mute: click or sweep over clips to mute or unmute them  7"),
+      toolMenu_(theme_, Icon::pointer, "Tools: 1 to 7")
 {
     setOpaque(true);
     rulerOnly = theme_.sizes.ruler;
@@ -41,10 +46,17 @@ ArrangeView::ArrangeView(audio::PeakStore& peaks)
     { setRowHeight(rowHeight > theme_.sizes.trackRow ? theme_.sizes.trackRow : theme_.sizes.trackRowMin); };
     rowsLarger_.onClick = [this]
     { setRowHeight(rowHeight < theme_.sizes.trackRow ? theme_.sizes.trackRow : theme_.sizes.trackRowLarge); };
-    selectTool_.onClick = [this] { setTool(Tool::select); };
-    rangeTool_.onClick = [this] { setTool(Tool::range); };
-    pencilTool_.onClick = [this] { setTool(Tool::pencil); };
-    for (auto* b : {&addTrack_, &rowsSmaller_, &rowsLarger_, &selectTool_, &rangeTool_, &pencilTool_})
+    const auto tools = toolButtons();
+    for (size_t i = 0; i < tools.size(); ++i)
+        tools[i]->onClick = [this, i] { setTool(static_cast<Tool>(i)); };
+    toolMenu_.setShowsMenuChevron(true);
+    toolMenu_.onClick = [this] { toolsMenu(); };
+    for (auto* b : {&addTrack_, &rowsSmaller_, &rowsLarger_, &toolMenu_})
+    {
+        b->setIconSize(theme_.sizes.iconSmall);
+        addAndMakeVisible(*b);
+    }
+    for (auto* b : tools)
     {
         b->setIconSize(theme_.sizes.iconSmall);
         addAndMakeVisible(*b);
@@ -228,8 +240,12 @@ void ArrangeView::pushMeters()
     if (busMeter && project_ != nullptr)
         for (auto& header : fxHeaders_)
             if (header->isVisible())
+            {
                 if (const int bus = project_->busIndex(header->trackId()); bus >= 0)
                     header->pushMeter(busMeter(bus), elapsed);
+                else if (header->trackId() == core::masterId && masterMeter)
+                    header->pushMeter(masterMeter(), elapsed);
+            }
 }
 
 void ArrangeView::layoutEmptyState()
@@ -338,8 +354,9 @@ void ArrangeView::rebuildHeaders()
         addAndMakeVisible(*header);
         headers_.push_back(std::move(header));
     }
-    // FX tracks: the same header, shown as a channel without an input or arm.
-    const auto fx = fxTracks();
+    // Buses and the master: the same header, shown as a channel without an input
+    // or arm (the master without mute, solo or pan either).
+    const auto fx = busRows();
     while (fxHeaders_.size() > fx.size())
         fxHeaders_.pop_back();
     while (fxHeaders_.size() < fx.size())
@@ -361,7 +378,13 @@ void ArrangeView::rebuildHeaders()
             if (onGestureEnd)
                 onGestureEnd();
         };
-        header->onContextMenu = [this](core::Id id, juce::Point<int> screen) { fxTrackMenu(id, screen); };
+        header->onContextMenu = [this](core::Id id, juce::Point<int> screen)
+        {
+            if (id == core::masterId)
+                masterMenu(screen);
+            else
+                fxTrackMenu(id, screen);
+        };
         header->onAutomationToggled = [this](core::Id id, bool shown) { showAutomation(id, shown); };
         header->onAutomationMenu = [this](core::Id id, juce::Rectangle<int> area)
         { automation_.showChannelMenu(id, area); };
@@ -373,10 +396,15 @@ void ArrangeView::rebuildHeaders()
         core::Track shown;
         static_cast<core::Channel&>(shown) = *fx[i];
         shown.kind = core::TrackKind::aux; // no input, no arm
-        if (shown.colour == 0)
+        const bool master = fx[i]->id == core::masterId;
+        const auto* bus = project_->findBus(fx[i]->id);
+        // Unless coloured: FX tracks Lichen, groups Overcast, the master Slate.
+        const char* paletteName = master ? "Slate" : bus != nullptr && bus->fx ? "Lichen" : "Overcast";
+        if (shown.colour == 0 || master)
             for (const auto& entry : theme_.track.palette)
-                if (entry.name == "Lichen")
+                if (entry.name == paletteName)
                     shown.colour = entry.value.getARGB();
+        fxHeaders_[i]->setMaster(master);
         fxHeaders_[i]->setTrack(
             shown, static_cast<int>(count + i), *project_, inputChoices_, midiInputNames_);
         fxHeaders_[i]->setSelected(fx[i]->id == selectedTrack_);
@@ -476,13 +504,14 @@ core::SamplePosition ArrangeView::visibleSamples() const noexcept
                                              samplesPerPixel_);
 }
 
-std::vector<const core::Bus*> ArrangeView::fxTracks() const
+std::vector<const core::Channel*> ArrangeView::busRows() const
 {
-    std::vector<const core::Bus*> list;
-    if (project_ != nullptr)
-        for (const auto& b : project_->buses)
-            if (b.fx)
-                list.push_back(&b);
+    std::vector<const core::Channel*> list;
+    if (project_ == nullptr)
+        return list;
+    for (const auto& b : project_->buses)
+        list.push_back(&b);
+    list.push_back(&project_->master);
     return list;
 }
 
@@ -608,9 +637,8 @@ const ArrangeView::RowLayout& ArrangeView::rows() const
     {
         for (const auto& t : project_->tracks)
             rows_.channels.push_back(&t);
-        for (const auto& b : project_->buses)
-            if (b.fx)
-                rows_.channels.push_back(&b);
+        for (const auto* channel : busRows())
+            rows_.channels.push_back(channel);
         for (const auto* channel : rows_.channels)
         {
             int h = rowHeight;
@@ -774,14 +802,20 @@ void ArrangeView::resized()
     addTrack_.setBounds(corner.removeFromLeft(button).withSizeKeepingCentre(button, button));
     rowsLarger_.setBounds(corner.removeFromRight(button).withSizeKeepingCentre(button, button));
     rowsSmaller_.setBounds(corner.removeFromRight(button).withSizeKeepingCentre(button, button));
-    // The tools after "+", a group of their own.
+    // The tools after "+", a group of their own; when they do not all fit, one
+    // button for the current tool opens a menu of them.
     corner.removeFromLeft(theme_.spacing.sm);
-    for (auto* b : {&selectTool_, &rangeTool_, &pencilTool_})
+    const bool allFit = corner.getWidth() >= toolCount * button;
+    for (auto* b : toolButtons())
     {
-        b->setVisible(corner.getWidth() >= button);
-        if (b->isVisible())
+        b->setVisible(allFit);
+        if (allFit)
             b->setBounds(corner.removeFromLeft(button).withSizeKeepingCentre(button, button));
     }
+    const int menuWidth = button + theme_.spacing.sm;
+    toolMenu_.setVisible(!allFit && corner.getWidth() >= menuWidth);
+    if (toolMenu_.isVisible())
+        toolMenu_.setBounds(corner.removeFromLeft(menuWidth).withSizeKeepingCentre(menuWidth, button));
     setVerticalScroll(verticalScroll_);
 }
 // ----- input -------------------------------------------------------------------------------
@@ -797,6 +831,8 @@ void ArrangeView::setRegion(core::SamplePosition start, core::SamplePosition end
 
 void ArrangeView::mouseDown(const juce::MouseEvent& e)
 {
+    // A press changes the selection itself; the release reports any change since.
+    pressSelection_ = selection_;
     draggedFar_ = false;
     dragStart_ = e.getPosition();
     dragPoint_ = e.getPosition();
@@ -915,19 +951,23 @@ void ArrangeView::mouseDownLanes(const juce::MouseEvent& e)
         selectTrack(channelAtRow(row)->id); // an FX track's lane
     if (e.mods.isPopupMenu())
     {
-        if (hit.clip != nullptr)
+        if (const auto ref = clipAt(hit); ref.clip != core::invalidId)
         {
-            if (!isSelected(hit.track->id, hit.clip->id))
+            if (!isSelected(ref))
             {
                 selection_.clear();
-                select({hit.track->id, hit.clip->id}, true);
+                select(ref, true);
+                if (onSelectionChanged)
+                    onSelectionChanged();
             }
-            clipMenu(hit.track->id, hit.clip->id, e.getScreenPosition());
+            clipMenu(ref, e.getScreenPosition());
         }
         else if (hit.track != nullptr)
             trackMenu(hit.track->id, e.getScreenPosition());
         return;
     }
+    if (usesClipTool() && mouseDownWithTool(e, hit))
+        return;
     if (hit.midiClip != nullptr)
     {
         const ClipRef ref{hit.track->id, hit.midiClip->id, true};
@@ -1017,6 +1057,8 @@ void ArrangeView::mouseDownLanes(const juce::MouseEvent& e)
     trimLength_ = hit.clip->length;
     trimOffset_ = hit.clip->sourceOffset;
     fadePreview_ = drag_ == Drag::fadeOut ? hit.clip->fadeOut : hit.clip->fadeIn;
+    fadeCurveStart_ = drag_ == Drag::fadeOut ? hit.clip->fadeOutCurve : hit.clip->fadeInCurve;
+    fadeCurvePreview_ = fadeCurveStart_;
     gainPreview_ = hit.clip->gain;
     stretchLength_ = hit.clip->length;
     repaint();
@@ -1228,10 +1270,17 @@ void ArrangeView::mouseDrag(const juce::MouseEvent& e)
         case Drag::fadeIn:
             fadePreview_ =
                 std::clamp<core::SamplePosition>(at - dragOriginal_.start, 0, dragOriginal_.length);
+            fadeCurvePreview_ = fadeCurveFor(e.y - dragStart_.y);
             break;
         case Drag::fadeOut:
             fadePreview_ =
                 std::clamp<core::SamplePosition>(dragOriginal_.end() - at, 0, dragOriginal_.length);
+            fadeCurvePreview_ = fadeCurveFor(e.y - dragStart_.y);
+            break;
+        case Drag::erase:
+        case Drag::mute:
+            if (const auto ref = clipAt(hitTest(e.getPosition())); ref.clip != core::invalidId)
+                sweepOver(ref);
             break;
         case Drag::gain:
         {
@@ -1251,7 +1300,7 @@ void ArrangeView::mouseUp(const juce::MouseEvent& e)
 {
     const auto drag = drag_;
     drag_ = Drag::none;
-    const auto before = selection_;
+    const auto before = std::exchange(pressSelection_, {});
     switch (drag)
     {
         case Drag::takes:
@@ -1342,7 +1391,7 @@ void ArrangeView::mouseUp(const juce::MouseEvent& e)
         case Drag::fadeIn:
         case Drag::fadeOut:
             if (draggedFar_)
-                finishFade();
+                finishFade(drag);
             break;
         case Drag::gain:
             if (draggedFar_)
@@ -1353,6 +1402,10 @@ void ArrangeView::mouseUp(const juce::MouseEvent& e)
         case Drag::marker:
             if (draggedFar_)
                 finishMarkerDrag();
+            break;
+        case Drag::erase:
+        case Drag::mute:
+            finishSweep(drag == Drag::erase);
             break;
         case Drag::none:
             break;
@@ -1372,24 +1425,56 @@ void ArrangeView::mouseMove(const juce::MouseEvent& e)
 {
     if (drag_ != Drag::none)
         return;
-    if (e.y >= rulerHeight && std::abs(e.x - headerWidth) <= 2)
+    hoverAt(e.getPosition(), e.mods);
+}
+
+void ArrangeView::pointerAt(juce::Point<int> p, juce::ModifierKeys mods)
+{
+    hoverAt(p, mods);
+}
+
+juce::Point<int> ArrangeView::pointOnRow(int row, double bar) const
+{
+    bar -= 1.0; // the tempo map counts bars from 0
+    const int whole = static_cast<int>(std::floor(bar));
+    const auto from = tempoMap_.barStart(whole);
+    const auto to = tempoMap_.barStart(whole + 1);
+    const auto at = from + static_cast<core::SamplePosition>((bar - static_cast<double>(whole)) *
+                                                             static_cast<double>(to - from));
+    return {xForSample(at), rowBounds(row).getCentreY()};
+}
+
+void ArrangeView::modifierKeysChanged(const juce::ModifierKeys& mods)
+{
+    // Shift turns the split line into one across every track; Alt takes it off the grid.
+    if (tool_ == Tool::split && drag_ == Drag::none && pointer_.x >= 0 &&
+        (mods.isShiftDown() != splitAll_ || mods.isAltDown() != splitFree_))
+        updateSplitHover(pointer_, mods);
+}
+
+void ArrangeView::hoverAt(juce::Point<int> p, juce::ModifierKeys mods)
+{
+    pointer_ = p;
+    if (tool_ == Tool::split)
+        updateSplitHover(p, mods);
+    if (p.y >= rulerHeight && std::abs(p.x - headerWidth) <= 2)
     {
         setMouseCursor(juce::MouseCursor::LeftRightResizeCursor);
         return;
     }
-    if (resizeEdgeAt(e.getPosition()) >= 0)
+    if (resizeEdgeAt(p) >= 0)
     {
         setMouseCursor(juce::MouseCursor::UpDownResizeCursor);
         return;
     }
-    if (e.y < rulerHeight)
+    if (p.y < rulerHeight)
     {
         const auto band = loopBand();
         const bool handle =
-            loop_ && !band.isEmpty() && e.y >= band.getY() &&
-            (std::abs(e.x - band.getX()) <= loopHandle || std::abs(e.x - band.getRight()) <= loopHandle);
+            loop_ && !band.isEmpty() && p.y >= band.getY() &&
+            (std::abs(p.x - band.getX()) <= loopHandle || std::abs(p.x - band.getRight()) <= loopHandle);
         setMouseCursor(handle ? juce::MouseCursor::LeftRightResizeCursor : juce::MouseCursor::NormalCursor);
-        const auto* marker = markerAtRulerPoint(e.getPosition());
+        const auto* marker = markerAtRulerPoint(p);
         const auto hoverId = marker != nullptr ? marker->id : core::invalidId;
         if (hoverId != hoverMarker_)
         {
@@ -1399,12 +1484,13 @@ void ArrangeView::mouseMove(const juce::MouseEvent& e)
         return;
     }
     // Take lanes, a comp boundary or the comp's chip set their own cursor.
-    const auto takeArea = takeRow(rowAtY(e.y));
-    const auto takeCursor = takes_.hover(e.getPosition(), takeArea.track != nullptr ? &takeArea : nullptr);
-    const auto hit = hitTest(e.getPosition());
-    setMouseCursor(takeCursor
-                       ? *takeCursor
-                       : cursorFor(hit.clip != nullptr || hit.midiClip != nullptr ? hit.zone : Drag::none));
+    const auto takeArea = takeRow(rowAtY(p.y));
+    const auto takeCursor = takes_.hover(p, takeArea.track != nullptr ? &takeArea : nullptr);
+    const auto hit = hitTest(p);
+    // On a clip the select, range and pencil tools trim, fade and move; the
+    // other tools act on the whole clip, so their cursor stays.
+    const bool onClip = hit.clip != nullptr || hit.midiClip != nullptr;
+    setMouseCursor(takeCursor ? *takeCursor : usesClipTool() || !onClip ? toolCursor() : cursorFor(hit.zone));
     const ClipRef clip = hit.clip != nullptr       ? ClipRef{hit.track->id, hit.clip->id}
                          : hit.midiClip != nullptr ? ClipRef{hit.track->id, hit.midiClip->id, true}
                                                    : ClipRef{};
@@ -1420,6 +1506,12 @@ void ArrangeView::mouseMove(const juce::MouseEvent& e)
 
 void ArrangeView::mouseExit(const juce::MouseEvent&)
 {
+    pointer_ = {-1, -1};
+    if (splitAt_ >= 0)
+    {
+        repaint(splitArea());
+        splitAt_ = -1;
+    }
     if (hoverRow_ == -1 && hoverClip_ == ClipRef{} && hoverMarker_ == core::invalidId)
         return;
     hoverRow_ = -1;
@@ -1726,9 +1818,15 @@ void ArrangeView::drawClip(juce::Graphics& g,
             clip.sourceOffset = trimOffset_;
         }
         else if (drag_ == Drag::fadeIn)
+        {
             clip.fadeIn = fadePreview_;
+            clip.fadeInCurve = fadeCurvePreview_;
+        }
         else if (drag_ == Drag::fadeOut)
+        {
             clip.fadeOut = fadePreview_;
+            clip.fadeOutCurve = fadeCurvePreview_;
+        }
         else if (drag_ == Drag::gain)
             clip.gain = gainPreview_;
         else if (drag_ == Drag::stretch)
@@ -1756,7 +1854,8 @@ void ArrangeView::drawClip(juce::Graphics& g,
         return;
 
     const auto colour = trackColour(track, project_->trackIndex(track.id));
-    const float dim = moving ? 0.4f : 1.0f;
+    const float dim = moving || (drag_ == Drag::erase && swept(ref)) ? 0.4f : 1.0f;
+    const bool muted = track.mute || shownMuted(ref, model.muted);
     const bool showHeader = lane.getHeight() >= 24;
     const int headerH = showHeader ? theme_.sizes.clipHeader : 0;
     const auto body = block.withTrimmedTop(headerH);
@@ -1770,20 +1869,8 @@ void ArrangeView::drawClip(juce::Graphics& g,
     if (showHeader)
         fillClipHeader(
             g, block, headerH, (missing ? c.warning : colour).withAlpha(theme_.track.clipHeaderAlpha * dim));
-    if (track.mute && !missing)
-    {
-        // A hatched body for muted clips: 45 degrees, 6 px apart.
-        g.saveState();
-        g.reduceClipRegion(body.getIntersection(visible));
-        g.setColour(colour.withAlpha(0.10f * dim));
-        for (int x = visible.getX() - body.getHeight(); x < visible.getRight(); x += 6)
-            g.drawLine(static_cast<float>(x),
-                       static_cast<float>(body.getBottom()),
-                       static_cast<float>(x + body.getHeight()),
-                       static_cast<float>(body.getY()),
-                       1.0f);
-        g.restoreState();
-    }
+    if (muted && !missing)
+        hatch(g, body, visible, colour, dim);
 
     // Waveform: one min/max column per pixel from the peak cache (decoded samples
     // when zoomed past the finest peak level), scaled by the
@@ -1811,8 +1898,8 @@ void ArrangeView::drawClip(juce::Graphics& g,
         const int channels = std::min(2, peaks->numChannels());
         const float laneHeight = static_cast<float>(wave.getHeight()) / static_cast<float>(channels);
         const float scale = std::min(1.0f, clip.gain);
-        const auto waveColour = colour.withAlpha(
-            (track.mute ? theme_.track.waveformMutedAlpha : theme_.track.waveformAlpha) * dim);
+        const auto waveColour =
+            colour.withAlpha((muted ? theme_.track.waveformMutedAlpha : theme_.track.waveformAlpha) * dim);
         for (int ch = 0; ch < channels; ++ch)
         {
             const float midY = static_cast<float>(wave.getY()) + laneHeight * (static_cast<float>(ch) + 0.5f);
@@ -1820,13 +1907,27 @@ void ArrangeView::drawClip(juce::Graphics& g,
             g.fillRect(static_cast<float>(wave.getX()), midY, static_cast<float>(wave.getWidth()), 1.0f);
             g.setColour(waveColour);
             const float half = laneHeight * 0.48f * scale;
+            // The fades scale the waveform as they scale the sound (core::fadeShape),
+            // so a faded edge reads as quiet.
+            const float inK = core::fadeShapeK(clip.fadeInCurve), outK = core::fadeShapeK(clip.fadeOutCurve);
+            const auto fadeGain = [&](core::SamplePosition pos)
+            {
+                float f = 1.0f;
+                if (clip.fadeIn > 0 && pos < clip.fadeIn)
+                    f = core::fadeShape(static_cast<float>(pos) / static_cast<float>(clip.fadeIn), inK);
+                if (clip.fadeOut > 0 && pos > clip.length - clip.fadeOut)
+                    f *= core::fadeShape(
+                        static_cast<float>(clip.length - pos) / static_cast<float>(clip.fadeOut), outK);
+                return f;
+            };
             for (int x = wave.getX(); x < wave.getRight(); ++x)
             {
                 const auto from = clip.sourceAt(sampleForX(x) - clip.start);
                 const auto to = clip.sourceAt(sampleForX(x + 1) - clip.start);
                 const auto r = view.lookup(ch, from, std::max(to, from + 1));
-                const float top = midY - r.maximum * half;
-                const float bottom = midY - r.minimum * half;
+                const float faded = half * fadeGain(sampleForX(x) - clip.start);
+                const float top = midY - r.maximum * faded;
+                const float bottom = midY - r.minimum * faded;
                 g.fillRect(static_cast<float>(x),
                            std::min(top, bottom),
                            1.0f,
@@ -1836,7 +1937,9 @@ void ArrangeView::drawClip(juce::Graphics& g,
     }
 
     // Fades: the body dimmed under a textPrimary curve; handles on hover or selection.
-    const auto fadeWedge = [&](core::SamplePosition fade, bool in)
+    // The curve runs from the clip's edge (silent) to full level, shaped as it plays
+    // (core::fadeShape); the part of the body above it is dimmed.
+    const auto fadeWedge = [&](core::SamplePosition fade, float curve, bool in)
     {
         if (fade <= 0)
             return;
@@ -1845,18 +1948,31 @@ void ArrangeView::drawClip(juce::Graphics& g,
         const float bottom = static_cast<float>(body.getBottom());
         const float edge = in ? static_cast<float>(x0) : static_cast<float>(x1);
         const float inner = in ? edge + w : edge - w;
-        juce::Path wedge;
-        wedge.startNewSubPath(edge, top);
+        const float k = core::fadeShapeK(curve);
+        const int steps = std::clamp(static_cast<int>(w / 3.0f), 1, 32); // straight when linear or tiny
+        juce::Path line;
+        for (int i = 0; i <= (k == 1.0f ? 1 : steps); ++i)
+        {
+            const float t =
+                k == 1.0f ? static_cast<float>(i) : static_cast<float>(i) / static_cast<float>(steps);
+            const juce::Point<float> point(edge + (inner - edge) * t,
+                                           bottom - core::fadeShape(t, k) * (bottom - top));
+            if (i == 0)
+                line.startNewSubPath(point);
+            else
+                line.lineTo(point);
+        }
+        juce::Path wedge(line);
         wedge.lineTo(inner, top);
-        wedge.lineTo(edge, bottom);
+        wedge.lineTo(edge, top);
         wedge.closeSubPath();
         g.setColour(c.canvas.withAlpha(0.45f));
         g.fillPath(wedge);
         g.setColour(c.textPrimary.withAlpha(0.85f * dim));
-        g.drawLine(edge, bottom, inner, top, 1.0f);
+        g.strokePath(line, juce::PathStrokeType(1.0f));
     };
-    fadeWedge(clip.fadeIn, true);
-    fadeWedge(clip.fadeOut, false);
+    fadeWedge(clip.fadeIn, clip.fadeInCurve, true);
+    fadeWedge(clip.fadeOut, clip.fadeOutCurve, false);
     if ((hovered || selected) && block.getWidth() > 2 * fadeHandle + 4)
     {
         g.setColour(c.textPrimary.withAlpha(0.9f));
@@ -1967,7 +2083,8 @@ void ArrangeView::drawMidiClip(juce::Graphics& g,
     if (visible.isEmpty())
         return;
     const auto colour = recording ? c.record : trackColour(track, row);
-    const float dim = moving ? 0.4f : 1.0f;
+    const float dim = moving || (drag_ == Drag::erase && swept(ref)) ? 0.4f : 1.0f;
+    const bool muted = track.mute || shownMuted(ref, model.muted);
     const bool showHeader = lane.getHeight() >= 24;
     const int headerH = showHeader ? theme_.sizes.clipHeader : 0;
     g.setColour(
@@ -1975,6 +2092,8 @@ void ArrangeView::drawMidiClip(juce::Graphics& g,
     g.fillRoundedRectangle(block.toFloat(), theme_.radius.sm);
     if (showHeader)
         fillClipHeader(g, block, headerH, colour.withAlpha(theme_.track.clipHeaderAlpha * dim));
+    if (muted)
+        hatch(g, block.withTrimmedTop(headerH), visible, colour, dim);
 
     // Notes: a bar per note, pitch on a range that fits the clip's notes.
     if (!model.notes.empty())
@@ -1989,7 +2108,7 @@ void ArrangeView::drawMidiClip(juce::Graphics& g,
         high = std::min(127, high + 2);
         const auto inner = block.withTrimmedTop(headerH).reduced(1, 2);
         const float rowH = static_cast<float>(inner.getHeight()) / static_cast<float>(high - low + 1);
-        g.setColour((track.mute ? c.textDisabled : c.midiNote).withAlpha(dim));
+        g.setColour((muted ? c.textDisabled : c.midiNote).withAlpha(dim));
         for (const auto& n : model.notes)
         {
             // Only the part inside the clip shows (trimmed clips keep their notes).
@@ -2145,8 +2264,8 @@ void ArrangeView::paint(juce::Graphics& g)
             y += h;
             ++row;
         }
-        // FX tracks: a lane with no clips, saying who feeds it.
-        for (const auto* fx : fxTracks())
+        // Buses and the master: a lane with no clips, saying who feeds it.
+        for (const auto* fx : busRows())
         {
             const int h = rowHeightOf(row);
             y = rowTop(row);
@@ -2158,21 +2277,33 @@ void ArrangeView::paint(juce::Graphics& g)
                 g.fillRect(lane);
                 g.setColour(c.lineSubtle);
                 g.fillRect(lane.withTrimmedTop(h - 1));
-                int senders = 0;
+                // Who feeds it: sends into an FX track, outputs into a group bus.
+                const auto* bus = project_->findBus(fx->id);
+                int feeders = 0;
                 const auto counts = [&](const core::Channel& ch)
                 {
-                    for (const auto& send : ch.sends)
-                        senders += send.bus == fx->id ? 1 : 0;
+                    if (bus != nullptr && bus->fx)
+                        for (const auto& send : ch.sends)
+                            feeders += send.bus == fx->id ? 1 : 0;
+                    else if (bus != nullptr)
+                        feeders += ch.outputBus == fx->id ? 1 : 0;
                 };
                 for (const auto& t : project_->tracks)
                     counts(t);
                 for (const auto& b : project_->buses)
                     counts(b);
+                const auto channels = [&](const char* verb)
+                { return juce::String(feeders) + (feeders == 1 ? " channel " : " channels ") + verb; };
+                const juce::String text =
+                    bus == nullptr ? juce::String("Master: the whole mix, after every track and bus")
+                    : bus->fx
+                        ? (feeders == 0 ? juce::String("FX track: no sends yet (a track's menu, Send to)")
+                                        : "FX track: " + channels(feeders == 1 ? "sends here" : "send here"))
+                        : (feeders == 0 ? juce::String("Bus: nothing routes here yet (a track's output)")
+                                        : "Bus: " + channels(feeders == 1 ? "routes here" : "route here"));
                 g.setColour(c.textTertiary);
                 g.setFont(theme_.caption());
-                g.drawText(senders == 0 ? juce::String("FX track: no sends yet (a track's menu, Send to)")
-                                        : "FX track: " + juce::String(senders) +
-                                              (senders == 1 ? " channel sends here" : " channels send here"),
+                g.drawText(text,
                            lane.reduced(theme_.spacing.sm, 0).withHeight(std::min(h, 24)),
                            juce::Justification::centredLeft);
             }
@@ -2336,6 +2467,7 @@ void ArrangeView::paint(juce::Graphics& g)
 
     drawRuler(g, getLocalBounds().removeFromTop(rulerOnly));
     drawEditOverlay(g);
+    drawToolOverlay(g);
 
     // The playhead: a 1 px line with a 7 px head in the ruler.
     const int px = xForSample(playhead_);
@@ -2428,18 +2560,7 @@ void ArrangeView::paint(juce::Graphics& g)
     g.setColour(c.lineSubtle);
     g.fillRect(0, rulerOnly - 1, headerWidth, 1);
     g.fillRect(headerWidth - 1, 0, 1, rulerOnly);
-    if (!selection_.empty())
-    {
-        g.setColour(c.textTertiary);
-        g.setFont(theme_.caption());
-        g.drawText(juce::String(selection_.size()) + " selected",
-                   juce::Rectangle<int>(theme_.sizes.controlCompact + theme_.spacing.sm,
-                                        0,
-                                        headerWidth - 3 * theme_.sizes.controlCompact - 2 * theme_.spacing.sm,
-                                        rulerOnly),
-                   juce::Justification::centredLeft,
-                   true);
-    }
+    // (The selection count is in the status bar: the corner is the tools'.)
 }
 // ----- editing -------------------------------------------------------------------------------
 
@@ -2838,38 +2959,389 @@ core::SamplePosition ArrangeView::snapWithTargets(core::SamplePosition wanted,
     return tempoMap_.snap(wanted, step);
 }
 
-namespace
-{
-// The pencil as a cursor: the icon in the primary text colour over a dark
-// outline, its tip (bottom left) the hot spot.
-juce::MouseCursor pencilCursor(const Theme& theme)
-{
-    juce::Image image(juce::Image::ARGB, 20, 20, true);
-    juce::Graphics g(image);
-    Icons::draw(g, Icon::pencil, juce::Rectangle<float>(1.0f, 1.0f, 18.0f, 18.0f), theme.colours.canvas);
-    Icons::draw(g, Icon::pencil, juce::Rectangle<float>(0.0f, 0.0f, 18.0f, 18.0f), theme.colours.textPrimary);
-    return juce::MouseCursor(image, 2, 17);
-}
-} // namespace
-
 void ArrangeView::setTool(Tool tool)
 {
     if (tool == tool_)
         return;
     tool_ = tool;
-    setMouseCursor(tool == Tool::range    ? juce::MouseCursor(juce::MouseCursor::IBeamCursor)
-                   : tool == Tool::pencil ? pencilCursor(theme_)
-                                          : juce::MouseCursor(juce::MouseCursor::NormalCursor));
+    setMouseCursor(toolCursor());
+    if (splitAt_ >= 0)
+    {
+        repaint(splitArea());
+        splitAt_ = -1;
+    }
+    if (tool_ == Tool::split && pointer_.x >= 0)
+        updateSplitHover(pointer_, juce::ModifierKeys::currentModifiers);
     refreshToolButtons();
+    repaint(); // the glue and erase tools mark the hovered clip
     if (onToolChanged)
         onToolChanged(tool);
 }
 
+std::array<IconButton*, ArrangeView::toolCount> ArrangeView::toolButtons() noexcept
+{
+    return {&selectTool_, &rangeTool_, &pencilTool_, &eraseTool_, &splitTool_, &glueTool_, &muteTool_};
+}
+
 void ArrangeView::refreshToolButtons()
 {
-    selectTool_.setToggleState(tool_ == Tool::select, juce::dontSendNotification);
-    rangeTool_.setToggleState(tool_ == Tool::range, juce::dontSendNotification);
-    pencilTool_.setToggleState(tool_ == Tool::pencil, juce::dontSendNotification);
+    const auto tools = toolButtons();
+    for (size_t i = 0; i < tools.size(); ++i)
+        tools[i]->setToggleState(static_cast<Tool>(i) == tool_, juce::dontSendNotification);
+    toolMenu_.setIcon(tools[static_cast<size_t>(tool_)]->icon());
+    toolMenu_.setToggleState(tool_ != Tool::select, juce::dontSendNotification);
+}
+
+const char* ArrangeView::toolName(Tool tool) noexcept
+{
+    switch (tool)
+    {
+        case Tool::select:
+            return "select";
+        case Tool::range:
+            return "range";
+        case Tool::pencil:
+            return "pencil";
+        case Tool::erase:
+            return "erase";
+        case Tool::split:
+            return "split";
+        case Tool::glue:
+            return "glue";
+        case Tool::mute:
+            return "mute";
+    }
+    return "select";
+}
+
+bool ArrangeView::usesClipTool() const noexcept
+{
+    return tool_ == Tool::erase || tool_ == Tool::split || tool_ == Tool::glue || tool_ == Tool::mute;
+}
+
+ArrangeView::ClipRef ArrangeView::clipAt(const Hit& hit) const noexcept
+{
+    if (hit.clip != nullptr)
+        return {hit.track->id, hit.clip->id};
+    if (hit.midiClip != nullptr)
+        return {hit.track->id, hit.midiClip->id, true};
+    return {};
+}
+
+juce::MouseCursor ArrangeView::toolCursor() const
+{
+    switch (tool_)
+    {
+        case Tool::select:
+            return juce::MouseCursor::NormalCursor;
+        case Tool::range:
+            return juce::MouseCursor::IBeamCursor;
+        case Tool::pencil:
+            return Icons::toolCursor(theme_, Icon::pencil);
+        case Tool::erase:
+            return Icons::toolCursor(theme_, Icon::eraser);
+        case Tool::split:
+            return Icons::toolCursor(theme_, Icon::scissors);
+        case Tool::glue:
+            return Icons::toolCursor(theme_, Icon::glue);
+        case Tool::mute:
+            return Icons::toolCursor(theme_, Icon::muteClip);
+    }
+    return juce::MouseCursor::NormalCursor;
+}
+
+core::SamplePosition ArrangeView::splitPosition(int x, const Span& clip, bool free) const noexcept
+{
+    // On the grid when the grid line falls inside the clip, else at the pointer.
+    auto at = free ? sampleForX(x) : snapped(sampleForX(x));
+    if (at <= clip.start || at >= clip.end())
+        at = sampleForX(x);
+    return std::clamp(at, clip.start + 1, std::max(clip.start + 1, clip.end() - 1));
+}
+
+juce::Rectangle<int> ArrangeView::splitArea() const
+{
+    if (splitAt_ < 0)
+        return {};
+    const int x = xForSample(splitAt_);
+    const auto line =
+        splitRow_ >= 0 ? spanBounds(splitClip_.start, splitClip_.length, splitRow_).withX(x - 1).withWidth(3)
+                       : juce::Rectangle<int>(x - 1, rulerHeight, 3, lanesHeight());
+    // The position tag beside it (drawTooltip may put it on either side).
+    const int tag = 160;
+    return line.getUnion({x - tag - 8,
+                          splitPoint_.y - 2 * theme_.sizes.controlCompact - 8,
+                          2 * tag + 24,
+                          4 * theme_.sizes.controlCompact + 16});
+}
+
+void ArrangeView::updateSplitHover(juce::Point<int> p, juce::ModifierKeys mods)
+{
+    const auto old = splitArea();
+    const bool all = mods.isShiftDown();
+    splitAt_ = -1;
+    splitRow_ = -1;
+    splitAll_ = all;
+    splitFree_ = mods.isAltDown();
+    splitPoint_ = p;
+    const bool inLanes = p.x >= headerWidth && p.x < getWidth() - scrollbarWidth && p.y >= rulerHeight &&
+                         p.y < getHeight() - scrollbarHeight;
+    if (inLanes && project_ != nullptr)
+    {
+        const auto hit = hitTest(p);
+        if (const auto ref = clipAt(hit); ref.clip != core::invalidId)
+            if (const auto span = spanOf(ref))
+            {
+                splitClip_ = *span;
+                splitRow_ = all ? -1 : hit.row;
+                splitAt_ = splitPosition(p.x, *span, splitFree_);
+            }
+        if (splitAt_ < 0 && all)
+            splitAt_ =
+                std::max<core::SamplePosition>(0, splitFree_ ? sampleForX(p.x) : snapped(sampleForX(p.x)));
+    }
+    if (!old.isEmpty())
+        repaint(old);
+    if (splitAt_ >= 0)
+        repaint(splitArea());
+}
+
+bool ArrangeView::mouseDownWithTool(const juce::MouseEvent& e, const Hit& hit)
+{
+    if (project_ == nullptr)
+        return false;
+    const auto ref = clipAt(hit);
+    const bool onClip = ref.clip != core::invalidId;
+    // A press on a clip of a larger selection acts on the whole selection.
+    const auto targets = [&]
+    { return onClip && isSelected(ref) && selection_.size() > 1 ? selection_ : std::vector<ClipRef>{ref}; };
+    switch (tool_)
+    {
+        case Tool::split:
+        {
+            const bool all = e.mods.isShiftDown(), free = e.mods.isAltDown();
+            if (!onClip && !all)
+                return false; // empty space: a click locates, a drag lassos
+            const auto span = onClip ? spanOf(ref) : std::nullopt;
+            const auto at =
+                span ? splitPosition(e.x, *span, free)
+                     : std::max<core::SamplePosition>(0, free ? sampleForX(e.x) : snapped(sampleForX(e.x)));
+            // Shift cuts every clip there, on every track.
+            auto edit = edit::splitAt(*project_, all ? edit::Selection{} : targets(), at);
+            emit(std::move(edit.commands), edit.name);
+            updateSplitHover(e.getPosition(), e.mods);
+            return true;
+        }
+        case Tool::glue:
+        {
+            if (!onClip)
+                return false;
+            const auto clips = targets();
+            auto edit =
+                clips.size() > 1 ? edit::joinClips(*project_, clips) : edit::joinWithNext(*project_, ref);
+            emit(std::move(edit.commands), edit.name);
+            return true;
+        }
+        case Tool::erase:
+        case Tool::mute:
+        {
+            drag_ = tool_ == Tool::erase ? Drag::erase : Drag::mute;
+            sweep_.clear();
+            sweepMute_.reset();
+            if (onClip)
+            {
+                // The clip pressed decides what the sweep does: a playing clip mutes the rest.
+                if (tool_ == Tool::mute)
+                    sweepMute_ = !edit::isMuted(*project_, ref);
+                for (const auto& r : targets())
+                    sweepOver(r);
+            }
+            repaint();
+            return true;
+        }
+        case Tool::select:
+        case Tool::range:
+        case Tool::pencil:
+            break;
+    }
+    return false;
+}
+
+void ArrangeView::sweepOver(const ClipRef& ref)
+{
+    if (project_ == nullptr || swept(ref))
+        return;
+    if (drag_ == Drag::mute && !sweepMute_)
+        sweepMute_ = !edit::isMuted(*project_, ref);
+    sweep_.push_back(ref);
+    // A comp's clips erase together, as they select together.
+    if (drag_ == Drag::erase && !ref.midi)
+        if (const auto* track = project_->findTrack(ref.track))
+            if (const auto* group = track->takeGroupOwning(ref.clip))
+                for (const auto id : group->clips)
+                    if (track->findClip(id) != nullptr && !swept({ref.track, id}))
+                        sweep_.push_back({ref.track, id});
+    repaint();
+}
+
+bool ArrangeView::swept(const ClipRef& ref) const noexcept
+{
+    return std::find(sweep_.begin(), sweep_.end(), ref) != sweep_.end();
+}
+
+bool ArrangeView::shownMuted(const ClipRef& ref, bool muted) const noexcept
+{
+    return drag_ == Drag::mute && sweepMute_ && swept(ref) ? *sweepMute_ : muted;
+}
+
+void ArrangeView::finishSweep(bool erase)
+{
+    const auto clips = std::exchange(sweep_, {});
+    const auto muted = std::exchange(sweepMute_, std::nullopt);
+    if (project_ == nullptr || clips.empty())
+        return;
+    if (erase)
+    {
+        removeClips(clips);
+        return;
+    }
+    auto e = edit::setMuted(*project_, clips, muted.value_or(true));
+    emit(std::move(e.commands), e.name);
+}
+
+void ArrangeView::hatch(juce::Graphics& g,
+                        juce::Rectangle<int> body,
+                        juce::Rectangle<int> visible,
+                        juce::Colour colour,
+                        float dim)
+{
+    // A hatched body for muted clips: 45 degrees, 6 px apart.
+    g.saveState();
+    g.reduceClipRegion(body.getIntersection(visible));
+    g.setColour(colour.withAlpha(0.10f * dim));
+    for (int x = visible.getX() - body.getHeight(); x < visible.getRight(); x += 6)
+        g.drawLine(static_cast<float>(x),
+                   static_cast<float>(body.getBottom()),
+                   static_cast<float>(x + body.getHeight()),
+                   static_cast<float>(body.getY()),
+                   1.0f);
+    g.restoreState();
+}
+
+void ArrangeView::drawToolOverlay(juce::Graphics& g)
+{
+    const auto& c = theme_.colours;
+    if (project_ == nullptr)
+        return;
+    const auto lanesArea = juce::Rectangle<int>(
+        headerWidth, rulerHeight, getWidth() - headerWidth - scrollbarWidth, lanesHeight());
+    // The split line: through the clip under the pointer, or every lane with Alt.
+    if (tool_ == Tool::split && splitAt_ >= 0 && drag_ == Drag::none)
+    {
+        const int x = xForSample(splitAt_);
+        const auto line = splitRow_ >= 0 ? spanBounds(splitClip_.start, splitClip_.length, splitRow_)
+                                         : juce::Rectangle<int>(x, rulerHeight, 1, lanesHeight());
+        g.saveState();
+        g.reduceClipRegion(lanesArea);
+        g.setColour(c.accent);
+        g.fillRect(x, line.getY(), 1, line.getHeight());
+        g.restoreState();
+        drawTooltip(
+            g, (splitAll_ ? "Split all at " : "Split at ") + positionText(splitAt_), {x, splitPoint_.y});
+        return;
+    }
+    if (drag_ != Drag::none || hoverClip_.clip == core::invalidId)
+        return;
+    const int row = project_->trackIndex(hoverClip_.track);
+    const auto span = spanOf(hoverClip_);
+    if (row < 0 || !span)
+        return;
+    const auto block = spanBounds(span->start, span->length, row);
+    g.saveState();
+    g.reduceClipRegion(lanesArea);
+    if (tool_ == Tool::erase)
+    {
+        // The clip the eraser would take, outlined in danger.
+        g.setColour(c.danger);
+        g.drawRoundedRectangle(block.toFloat().reduced(0.5f), theme_.radius.sm, 1.0f);
+    }
+    else if (tool_ == Tool::glue)
+    {
+        // What the click would make: one outline round both clips, the seam marked.
+        if (edit::canJoinWithNext(*project_, hoverClip_))
+        {
+            const auto next = spanOf(*edit::nextClip(*project_, hoverClip_));
+            const auto joined =
+                spanBounds(span->start, std::max(span->end(), next->end()) - span->start, row);
+            g.setColour(c.accent);
+            g.drawRoundedRectangle(joined.toFloat().reduced(0.5f), theme_.radius.sm, 1.0f);
+            for (const auto seam : {span->end(), next->start})
+                g.fillRect(xForSample(seam) - 1, joined.getY(), 2, joined.getHeight());
+        }
+    }
+    g.restoreState();
+    // A clip the glue cannot join says why, beside it.
+    if (tool_ == Tool::glue && !edit::canJoinWithNext(*project_, hoverClip_))
+        drawTooltip(g,
+                    edit::nextClip(*project_, hoverClip_) ? "Joins only a clip that continues this one"
+                                                          : "No clip after this one to join",
+                    {std::min(block.getRight(), lanesArea.getRight()) - 10, block.getY() - 14});
+}
+
+void ArrangeView::toolsMenu()
+{
+    static constexpr const char* labels[toolCount] = {
+        "Select", "Range", "Pencil", "Erase", "Split", "Glue", "Mute"};
+    juce::PopupMenu menu;
+    const auto tools = toolButtons();
+    for (int i = 0; i < toolCount; ++i)
+    {
+        juce::PopupMenu::Item item(labels[i]);
+        item.itemID = i + 1;
+        item.isTicked = static_cast<Tool>(i) == tool_;
+        item.shortcutKeyDescription = juce::String(i + 1);
+        bool filled = false;
+        auto icon = std::make_unique<juce::DrawablePath>();
+        icon->setPath(Icons::path(tools[static_cast<size_t>(i)]->icon(), filled));
+        icon->setStrokeFill(juce::FillType(theme_.colours.textSecondary));
+        icon->setStrokeType(
+            juce::PathStrokeType(1.5f, juce::PathStrokeType::curved, juce::PathStrokeType::rounded));
+        icon->setFill(filled ? juce::FillType(theme_.colours.textSecondary) : juce::FillType());
+        item.image = std::move(icon);
+        menu.addItem(std::move(item));
+    }
+    juce::Component::SafePointer<ArrangeView> safe(this);
+    menu.showMenuAsync(juce::PopupMenu::Options().withTargetComponent(&toolMenu_),
+                       [safe](int choice)
+                       {
+                           if (safe != nullptr && choice > 0)
+                               safe->setTool(static_cast<Tool>(choice - 1));
+                       });
+}
+
+void ArrangeView::openFirstClipMenu()
+{
+    if (project_ == nullptr)
+        return;
+    for (size_t row = 0; row < project_->tracks.size(); ++row)
+    {
+        const auto& track = project_->tracks[row];
+        ClipRef ref;
+        if (!track.clips.empty())
+            ref = {track.id, track.clips.front().id};
+        else if (!track.midiClips.empty())
+            ref = {track.id, track.midiClips.front().id, true};
+        else
+            continue;
+        const auto span = spanOf(ref);
+        selection_.assign(1, ref);
+        if (onSelectionChanged)
+            onSelectionChanged();
+        repaint();
+        const auto at = spanBounds(span->start, span->length, static_cast<int>(row)).getCentre();
+        clipMenu(ref, localPointToGlobal(at));
+        return;
+    }
 }
 
 void ArrangeView::addMidiClip(core::Id trackId, core::SamplePosition start, core::SamplePosition end)
@@ -3046,37 +3518,107 @@ std::vector<const core::Track*> ArrangeView::folderChoices(core::Id trackId) con
     return out;
 }
 
-void ArrangeView::clipMenu(core::Id trackId, core::Id clipId, juce::Point<int> screen)
+void ArrangeView::clipMenu(const ClipRef& ref, juce::Point<int> screen)
 {
-    const auto* track = project_ != nullptr ? project_->findTrack(trackId) : nullptr;
-    const auto* clip = track != nullptr ? track->findClip(clipId) : nullptr;
-    if (clip == nullptr)
+    const auto* track = project_ != nullptr ? project_->findTrack(ref.track) : nullptr;
+    const auto* clip = track != nullptr && !ref.midi ? track->findClip(ref.clip) : nullptr;
+    const auto* midiClip = track != nullptr && ref.midi ? track->findMidiClip(ref.clip) : nullptr;
+    const auto span = spanOf(ref);
+    if (track == nullptr || !span || (clip == nullptr && midiClip == nullptr))
         return;
+    // Where the menu opened, for "Split here".
+    const auto local = getLocalPoint(nullptr, screen);
+    const auto splitHere = splitPosition(local.x, *span);
+    const auto selection = selection_; // the menu acts on the selection (the clip is in it)
+    const bool muted = edit::isMuted(*project_, ref);
+    const bool anyPlaying = std::any_of(
+        selection.begin(), selection.end(), [&](const ClipRef& r) { return !edit::isMuted(*project_, r); });
+    const bool many = selection.size() > 1;
+
+    enum Choice
+    {
+        stretchToTempo = 1,
+        followTempo,
+        resetStretch,
+        trackItem,
+        openInSampler,
+        openEditor,
+        splitHereItem = 20,
+        joinItem,
+        crossfadeItem,
+        muteItem,
+        duplicateItem,
+        normaliseItem,
+        cutItem,
+        copyItem,
+        deleteItem,
+        transposeBase = 150,
+    };
     juce::PopupMenu menu;
-    menu.addSectionHeader(juce::String::fromUTF8(clip->name.c_str()));
-    menu.addItem(1, "Stretch to project tempo...", static_cast<bool>(onConformClip));
-    menu.addItem(2, "Follow tempo changes", true, clip->followTempo);
-    juce::PopupMenu transpose;
-    for (const int semis : {12, 7, 5, 2, 1, 0, -1, -2, -5, -7, -12})
-        transpose.addItem(100 + semis + 50,
-                          semis == 0 ? juce::String("Original pitch")
-                                     : (semis > 0 ? "+" : "") + juce::String(semis) + " semitones",
-                          true,
-                          std::abs(clip->transpose - semis) < 1.0e-6);
-    menu.addSubMenu("Transpose", transpose);
-    menu.addItem(3, "Reset stretch and pitch", clip->isStretched());
+    const auto add =
+        [&menu](int id, const juce::String& text, const char* keys, bool enabled = true, bool ticked = false)
+    {
+        juce::PopupMenu::Item item(text);
+        item.itemID = id;
+        item.isEnabled = enabled;
+        item.isTicked = ticked;
+        item.shortcutKeyDescription = keys;
+        menu.addItem(std::move(item));
+    };
+    menu.addSectionHeader(
+        juce::String::fromUTF8((clip != nullptr ? clip->name : midiClip->name).c_str()) +
+        (many ? "  +" + juce::String(static_cast<int>(selection.size()) - 1) : juce::String()));
+    add(splitHereItem, "Split here", "", splitHere > span->start && splitHere < span->end());
+    add(joinItem,
+        many ? "Join" : "Join with next",
+        many ? "J" : "",
+        many ? !edit::joinClips(*project_, selection).empty() : edit::canJoinWithNext(*project_, ref));
+    if (!ref.midi)
+        add(crossfadeItem, "Crossfade", "X", !edit::crossfadeClips(*project_, selection).empty());
+    add(muteItem,
+        many ? (anyPlaying ? "Mute clips" : "Unmute clips") : (muted ? "Unmute clip" : "Mute clip"),
+        "Ctrl+M");
+    add(duplicateItem, "Duplicate", "Ctrl+D");
+    if (!ref.midi)
+        add(normaliseItem, "Normalise", "Ctrl+Shift+N", static_cast<bool>(onNormalise));
     menu.addSeparator();
-    menu.addItem(5, "Open in Sampler", static_cast<bool>(onOpenInSampler));
-    menu.addItem(4, "Track...");
+    add(cutItem, "Cut", "Ctrl+X");
+    add(copyItem, "Copy", "Ctrl+C");
+    add(deleteItem, "Delete", "Delete");
+    menu.addSeparator();
+    if (clip != nullptr)
+    {
+        menu.addItem(stretchToTempo, "Stretch to project tempo...", static_cast<bool>(onConformClip));
+        menu.addItem(followTempo, "Follow tempo changes", true, clip->followTempo);
+        juce::PopupMenu transpose;
+        for (const int semis : {12, 7, 5, 2, 1, 0, -1, -2, -5, -7, -12})
+            transpose.addItem(transposeBase + semis,
+                              semis == 0 ? juce::String("Original pitch")
+                                         : (semis > 0 ? "+" : "") + juce::String(semis) + " semitones",
+                              true,
+                              std::abs(clip->transpose - semis) < 1.0e-6);
+        menu.addSubMenu("Transpose", transpose);
+        menu.addItem(resetStretch, "Reset stretch and pitch", clip->isStretched());
+        menu.addSeparator();
+        menu.addItem(openInSampler, "Open in Sampler", static_cast<bool>(onOpenInSampler));
+    }
+    else
+    {
+        menu.addItem(openEditor, "Open in piano roll", static_cast<bool>(onOpenMidiClip));
+    }
+    menu.addItem(trackItem, "Track...");
     juce::Component::SafePointer<ArrangeView> safe(this);
-    const auto original = *clip;
+    const auto original = clip != nullptr ? *clip : core::AudioClip{};
+    const auto trackId = ref.track;
     menu.showMenuAsync(
         juce::PopupMenu::Options().withTargetScreenArea({screen.x, screen.y, 1, 1}),
-        [safe, trackId, original, screen](int choice)
+        [safe, ref, trackId, original, screen, splitHere, selection](int choice)
         {
-            if (safe == nullptr || choice == 0)
+            if (safe == nullptr || choice == 0 || safe->project_ == nullptr)
                 return;
             auto& view = *safe;
+            const auto& project = *view.project_;
+            const auto run = [&](edit::Edit e) { view.emit(std::move(e.commands), e.name); };
             const auto set = [&](double stretch, double transpose, core::SamplePosition length, bool follow)
             {
                 std::vector<std::unique_ptr<core::Command>> commands;
@@ -3084,33 +3626,95 @@ void ArrangeView::clipMenu(core::Id trackId, core::Id clipId, juce::Point<int> s
                     trackId, original.id, stretch, transpose, length, follow));
                 view.emit(std::move(commands), "Stretch clip");
             };
-            if (choice == 1 && view.onConformClip)
-                view.onConformClip(trackId, original.id);
-            else if (choice == 2)
-                set(original.stretch, original.transpose, original.length, !original.followTempo);
-            else if (choice == 3)
-                set(1.0, 0.0, original.sourceLength(), false);
-            else if (choice == 4)
-                view.trackMenu(trackId, screen);
-            else if (choice == 5 && view.onOpenInSampler)
-                view.onOpenInSampler(trackId, original.id);
-            else if (choice >= 100 - 12 + 50 && choice <= 100 + 12 + 50)
-                set(original.stretch, choice - 150, original.length, original.followTempo);
+            switch (choice)
+            {
+                case splitHereItem:
+                    run(edit::splitAt(project, selection, splitHere));
+                    return;
+                case joinItem:
+                    run(selection.size() > 1 ? edit::joinClips(project, selection)
+                                             : edit::joinWithNext(project, ref));
+                    return;
+                case crossfadeItem:
+                    run(edit::crossfadeClips(project, selection));
+                    return;
+                case muteItem:
+                    run(edit::toggleMuted(project, selection));
+                    return;
+                case duplicateItem:
+                    run(edit::duplicateClips(project, selection));
+                    return;
+                case normaliseItem:
+                    view.normaliseSelection();
+                    return;
+                case cutItem:
+                    view.cutSelection();
+                    return;
+                case copyItem:
+                    view.copySelection();
+                    return;
+                case deleteItem:
+                    view.removeClips(selection);
+                    return;
+                case stretchToTempo:
+                    if (view.onConformClip)
+                        view.onConformClip(trackId, original.id);
+                    return;
+                case followTempo:
+                    set(original.stretch, original.transpose, original.length, !original.followTempo);
+                    return;
+                case resetStretch:
+                    set(1.0, 0.0, original.sourceLength(), false);
+                    return;
+                case trackItem:
+                    view.trackMenu(trackId, screen);
+                    return;
+                case openInSampler:
+                    if (view.onOpenInSampler)
+                        view.onOpenInSampler(trackId, original.id);
+                    return;
+                case openEditor:
+                    if (view.onOpenMidiClip)
+                        view.onOpenMidiClip(trackId, ref.clip);
+                    return;
+                default:
+                    if (choice >= transposeBase - 12 && choice <= transposeBase + 12)
+                        set(original.stretch, choice - transposeBase, original.length, original.followTempo);
+                    return;
+            }
         });
 }
 
-void ArrangeView::finishFade()
+void ArrangeView::finishFade(Drag which)
 {
     const auto* clip = findClip(dragClip_);
     if (clip == nullptr)
         return;
     std::vector<std::unique_ptr<core::Command>> commands;
-    commands.push_back(
-        std::make_unique<core::SetClipFades>(dragClip_.track,
-                                             dragClip_.clip,
-                                             drag_ == Drag::fadeIn ? fadePreview_ : clip->fadeIn,
-                                             drag_ == Drag::fadeOut ? fadePreview_ : clip->fadeOut));
+    commands.push_back(std::make_unique<core::SetClipFades>(
+        dragClip_.track,
+        dragClip_.clip,
+        which == Drag::fadeIn ? fadePreview_ : clip->fadeIn,
+        which == Drag::fadeOut ? fadePreview_ : clip->fadeOut,
+        which == Drag::fadeIn ? fadeCurvePreview_ : clip->fadeInCurve,
+        which == Drag::fadeOut ? fadeCurvePreview_ : clip->fadeOutCurve));
     emit(std::move(commands), "Set fade");
+}
+
+float ArrangeView::fadeCurveFor(int dy) const noexcept
+{
+    // 80 px from linear to either end; within 4 px of where linear is, linear.
+    constexpr float pixelsPerUnit = 80.0f;
+    const float curve = std::clamp(fadeCurveStart_ - static_cast<float>(dy) / pixelsPerUnit, -1.0f, 1.0f);
+    return std::abs(curve) * pixelsPerUnit < 4.0f ? 0.0f : curve;
+}
+
+juce::String ArrangeView::fadeCurveText(float curve)
+{
+    if (curve == 0.0f)
+        return "linear";
+    return juce::String(curve > 0.0f ? "fast " : "slow ") +
+           juce::String(juce::roundToInt(std::abs(curve) * 100.0f)) + "%";
 }
 
 void ArrangeView::finishGain()
@@ -3124,19 +3728,34 @@ void ArrangeView::finishGain()
 
 void ArrangeView::deleteSelection()
 {
-    if (project_ == nullptr || selection_.empty())
+    removeClips(std::vector<ClipRef>(selection_));
+}
+
+void ArrangeView::removeClips(const std::vector<ClipRef>& clips)
+{
+    if (project_ == nullptr || clips.empty())
         return;
-    auto e = edit::deleteClips(*project_, selection_, ripple_);
+    auto e = edit::deleteClips(*project_, clips, ripple_);
     // A take group whose comp clips are all deleted goes too, takes and all.
     for (const auto& track : project_->tracks)
         for (const auto& group : track.takeGroups)
-            if (!group.clips.empty() &&
-                std::all_of(group.clips.begin(),
-                            group.clips.end(),
-                            [&](core::Id id)
-                            { return track.findClip(id) == nullptr || isSelected(track.id, id); }))
+            if (!group.clips.empty() && std::all_of(group.clips.begin(),
+                                                    group.clips.end(),
+                                                    [&](core::Id id)
+                                                    {
+                                                        return track.findClip(id) == nullptr ||
+                                                               edit::contains(clips, {track.id, id});
+                                                    }))
                 e.commands.push_back(std::make_unique<core::RemoveTakeGroup>(track.id, group.id));
-    selection_.clear();
+    std::erase_if(selection_, [&](const ClipRef& ref) { return edit::contains(clips, ref); });
+    emit(std::move(e.commands), e.name);
+}
+
+void ArrangeView::toggleMuteSelection()
+{
+    if (project_ == nullptr || selection_.empty())
+        return;
+    auto e = edit::toggleMuted(*project_, selection_);
     emit(std::move(e.commands), e.name);
 }
 
@@ -3535,7 +4154,7 @@ void ArrangeView::fxTrackMenu(core::Id busId, juce::Point<int> screen)
     menu.addItem(
         2, project_->findBus(busId)->automationOpen ? "Hide automation lanes" : "Show automation lanes");
     menu.addSeparator();
-    menu.addItem(3, "Remove FX track");
+    menu.addItem(3, project_->findBus(busId)->fx ? "Remove FX track" : "Remove bus");
     juce::Component::SafePointer<ArrangeView> safe(this);
     menu.showMenuAsync(juce::PopupMenu::Options().withTargetScreenArea({screen.x, screen.y, 1, 1}),
                        [safe, busId](int choice)
@@ -3552,6 +4171,22 @@ void ArrangeView::fxTrackMenu(core::Id busId, juce::Point<int> screen)
                                    safe->showAutomation(busId, !bus->automationOpen);
                            if (choice == 3 && safe->onCommand)
                                safe->onCommand(std::make_unique<core::RemoveBus>(busId));
+                       });
+}
+
+void ArrangeView::masterMenu(juce::Point<int> screen)
+{
+    if (project_ == nullptr)
+        return;
+    juce::PopupMenu menu;
+    menu.addSectionHeader("Master");
+    menu.addItem(1, project_->master.automationOpen ? "Hide automation lanes" : "Show automation lanes");
+    juce::Component::SafePointer<ArrangeView> safe(this);
+    menu.showMenuAsync(juce::PopupMenu::Options().withTargetScreenArea({screen.x, screen.y, 1, 1}),
+                       [safe](int choice)
+                       {
+                           if (safe != nullptr && choice == 1 && safe->project_ != nullptr)
+                               safe->showAutomation(core::masterId, !safe->project_->master.automationOpen);
                        });
 }
 
@@ -3722,9 +4357,15 @@ bool ArrangeView::handleEditKey(const juce::KeyPress& key)
         paste();
         return true;
     }
-    if (plain('1') || plain('2') || plain('3'))
+    for (int i = 0; i < toolCount; ++i)
+        if (plain(static_cast<juce::juce_wchar>('1' + i)))
+        {
+            setTool(static_cast<Tool>(i));
+            return true;
+        }
+    if (ctrl('m'))
     {
-        setTool(plain('1') ? Tool::select : plain('2') ? Tool::range : Tool::pencil);
+        toggleMuteSelection();
         return true;
     }
     // Take lanes: Alt+Up / Alt+Down cycle the take at the playhead, Alt+T shows or hides the lanes.
@@ -3928,7 +4569,8 @@ void ArrangeView::drawEditOverlay(juce::Graphics& g)
             dragPoint_);
     if ((drag_ == Drag::fadeIn || drag_ == Drag::fadeOut) && draggedFar_)
         drawTooltip(g,
-                    "Fade " + juce::String(static_cast<double>(fadePreview_) / sampleRate(), 2) + " s",
+                    "Fade " + juce::String(static_cast<double>(fadePreview_) / sampleRate(), 2) + " s  " +
+                        fadeCurveText(fadeCurvePreview_),
                     dragPoint_);
     if (drag_ == Drag::gain && draggedFar_)
         drawTooltip(g, db::gainText(gainPreview_) + " dB", dragPoint_);

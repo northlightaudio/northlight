@@ -716,6 +716,48 @@ void DuplicateMidiClip::revert(Project& p)
     std::erase_if(t.midiClips, [this](const MidiClip& c) { return c.id == copy_.id; });
 }
 
+bool JoinMidiClips::canJoin(const MidiClip& left, const MidiClip& right) noexcept
+{
+    return left.id != right.id && right.start >= left.start && left.muted == right.muted;
+}
+JoinMidiClips::JoinMidiClips(Id trackId, Id leftClipId, Id rightClipId)
+    : trackId_(trackId), leftId_(leftClipId), rightId_(rightClipId)
+{
+}
+void JoinMidiClips::apply(Project& p)
+{
+    auto& t = requireTrack(p, trackId_);
+    auto& left = requireMidiClip(t, leftId_);
+    const auto& right = requireMidiClip(t, rightId_);
+    if (!canJoin(left, right))
+        throw std::logic_error("the right clip does not follow the left");
+    previousLeft_ = left;
+    removedRight_ = right;
+    // The right's times are relative to its own start; they move to the left's.
+    const auto offset = right.start - left.start;
+    for (auto n : right.notes)
+    {
+        n.start += offset;
+        left.notes.push_back(n);
+    }
+    for (auto e : right.controllers)
+    {
+        e.time += offset;
+        left.controllers.push_back(e);
+    }
+    left.length = std::max(left.end(), right.end()) - left.start;
+    left.sortNotes();
+    left.sortControllers();
+    std::erase_if(t.midiClips, [this](const MidiClip& c) { return c.id == rightId_; });
+}
+void JoinMidiClips::revert(Project& p)
+{
+    auto& t = requireTrack(p, trackId_);
+    requireMidiClip(t, leftId_) = previousLeft_;
+    t.midiClips.push_back(removedRight_);
+    t.sortMidiClips();
+}
+
 AddNote::AddNote(Id trackId, Id clipId, MidiNote note) : trackId_(trackId), clipId_(clipId), note_(note) {}
 void AddNote::apply(Project& p)
 {
@@ -1897,8 +1939,14 @@ void TrimClip::revert(Project& p)
     t.sortClips();
 }
 
-SetClipFades::SetClipFades(Id trackId, Id clipId, SamplePosition fadeIn, SamplePosition fadeOut)
-    : trackId_(trackId), clipId_(clipId), fadeIn_(fadeIn), fadeOut_(fadeOut)
+SetClipFades::SetClipFades(Id trackId,
+                           Id clipId,
+                           SamplePosition fadeIn,
+                           SamplePosition fadeOut,
+                           std::optional<float> fadeInCurve,
+                           std::optional<float> fadeOutCurve)
+    : trackId_(trackId), clipId_(clipId), fadeIn_(fadeIn), fadeOut_(fadeOut), inCurve_(fadeInCurve),
+      outCurve_(fadeOutCurve)
 {
 }
 void SetClipFades::apply(Project& p)
@@ -1906,14 +1954,22 @@ void SetClipFades::apply(Project& p)
     auto& c = requireClip(requireTrack(p, trackId_), clipId_);
     previousIn_ = c.fadeIn;
     previousOut_ = c.fadeOut;
+    previousInCurve_ = c.fadeInCurve;
+    previousOutCurve_ = c.fadeOutCurve;
     c.fadeIn = std::clamp<SamplePosition>(fadeIn_, 0, c.length);
     c.fadeOut = std::clamp<SamplePosition>(fadeOut_, 0, c.length);
+    if (inCurve_)
+        c.fadeInCurve = std::clamp(*inCurve_, -1.0f, 1.0f);
+    if (outCurve_)
+        c.fadeOutCurve = std::clamp(*outCurve_, -1.0f, 1.0f);
 }
 void SetClipFades::revert(Project& p)
 {
     auto& c = requireClip(requireTrack(p, trackId_), clipId_);
     c.fadeIn = previousIn_;
     c.fadeOut = previousOut_;
+    c.fadeInCurve = previousInCurve_;
+    c.fadeOutCurve = previousOutCurve_;
 }
 
 SplitClip::SplitClip(Id trackId, Id clipId, SamplePosition at) : trackId_(trackId), clipId_(clipId), at_(at)
@@ -1939,6 +1995,8 @@ void SplitClip::apply(Project& p)
     right_.gain = c.gain;
     right_.fadeIn = 0;
     right_.fadeOut = std::min(c.fadeOut, right_.length);
+    right_.fadeOutCurve = c.fadeOutCurve;
+    right_.muted = c.muted;
     right_.vocal = c.vocal; // in source samples: both halves keep the notes they play
     c.length = at_ - c.start;
     c.fadeOut = 0;
@@ -1960,7 +2018,7 @@ bool JoinClips::canJoin(const AudioClip& left, const AudioClip& right) noexcept
     return left.mediaPath == right.mediaPath && right.start == left.end() &&
            std::abs(right.sourceOffset - expected) <= (left.stretch == 1.0 ? 0 : 1) &&
            left.gain == right.gain && left.vocal == right.vocal && left.stretch == right.stretch &&
-           left.transpose == right.transpose;
+           left.transpose == right.transpose && left.muted == right.muted;
 }
 JoinClips::JoinClips(Id trackId, Id leftClipId, Id rightClipId)
     : trackId_(trackId), leftId_(leftClipId), rightId_(rightClipId)
@@ -1977,6 +2035,7 @@ void JoinClips::apply(Project& p)
     removedRight_ = right;
     left.length += right.length;
     left.fadeOut = right.fadeOut;
+    left.fadeOutCurve = right.fadeOutCurve;
     std::erase_if(t.clips, [this](const AudioClip& c) { return c.id == rightId_; });
 }
 void JoinClips::revert(Project& p)
@@ -2095,6 +2154,26 @@ void SetClipGain::apply(Project& p)
 void SetClipGain::revert(Project& p)
 {
     requireClip(requireTrack(p, trackId_), clipId_).gain = previous_;
+}
+
+SetClipMute::SetClipMute(Id trackId, Id clipId, bool midi, bool muted)
+    : trackId_(trackId), clipId_(clipId), midi_(midi), value_(muted)
+{
+}
+bool& SetClipMute::flag(Project& p) const
+{
+    auto& t = requireTrack(p, trackId_);
+    return midi_ ? requireMidiClip(t, clipId_).muted : requireClip(t, clipId_).muted;
+}
+void SetClipMute::apply(Project& p)
+{
+    auto& muted = flag(p);
+    previous_ = muted;
+    muted = value_;
+}
+void SetClipMute::revert(Project& p)
+{
+    flag(p) = previous_;
 }
 
 // ----- vocal pitch editing ----------------------------------------------------------------

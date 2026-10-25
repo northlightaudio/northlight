@@ -126,8 +126,98 @@ Edit joinClips(const core::Project& project, const Selection& selection)
             left = &c;
             merged = c;
         }
+        const core::MidiClip* first = nullptr;
+        for (const auto& m : t.midiClips) // sorted by start
+        {
+            if (!contains(selection, {t.id, m.id, true}))
+                continue;
+            if (first == nullptr)
+                first = &m;
+            else if (core::JoinMidiClips::canJoin(*first, m))
+                edit.commands.push_back(std::make_unique<core::JoinMidiClips>(t.id, first->id, m.id));
+        }
     }
     return edit;
+}
+
+std::optional<ClipRef> nextClip(const core::Project& project, const ClipRef& ref)
+{
+    const auto* track = project.findTrack(ref.track);
+    if (track == nullptr)
+        return std::nullopt;
+    const auto after = [&](const auto& clips) -> std::optional<ClipRef>
+    {
+        for (size_t i = 0; i + 1 < clips.size(); ++i) // sorted by start
+            if (clips[i].id == ref.clip)
+                return ClipRef{ref.track, clips[i + 1].id, ref.midi};
+        return std::nullopt;
+    };
+    return ref.midi ? after(track->midiClips) : after(track->clips);
+}
+
+bool canJoinWithNext(const core::Project& project, const ClipRef& ref)
+{
+    const auto next = nextClip(project, ref);
+    const auto* track = project.findTrack(ref.track);
+    if (!next || track == nullptr)
+        return false;
+    if (ref.midi)
+    {
+        const auto* left = track->findMidiClip(ref.clip);
+        const auto* right = track->findMidiClip(next->clip);
+        return left != nullptr && right != nullptr && core::JoinMidiClips::canJoin(*left, *right);
+    }
+    const auto* left = track->findClip(ref.clip);
+    const auto* right = track->findClip(next->clip);
+    return left != nullptr && right != nullptr && core::JoinClips::canJoin(*left, *right);
+}
+
+Edit joinWithNext(const core::Project& project, const ClipRef& ref)
+{
+    Edit edit;
+    edit.name = "Join clips";
+    if (!canJoinWithNext(project, ref))
+        return edit;
+    const auto next = *nextClip(project, ref);
+    if (ref.midi)
+        edit.commands.push_back(std::make_unique<core::JoinMidiClips>(ref.track, ref.clip, next.clip));
+    else
+        edit.commands.push_back(std::make_unique<core::JoinClips>(ref.track, ref.clip, next.clip));
+    return edit;
+}
+
+bool isMuted(const core::Project& project, const ClipRef& ref)
+{
+    const auto* track = project.findTrack(ref.track);
+    if (track == nullptr)
+        return false;
+    if (ref.midi)
+    {
+        const auto* m = track->findMidiClip(ref.clip);
+        return m != nullptr && m->muted;
+    }
+    const auto* a = track->findClip(ref.clip);
+    return a != nullptr && a->muted;
+}
+
+Edit setMuted(const core::Project& project, const Selection& selection, bool muted)
+{
+    Edit edit;
+    edit.name = muted ? "Mute clips" : "Unmute clips";
+    for (const auto& ref : selection)
+        if (spanOf(project, ref).has_value() && isMuted(project, ref) != muted)
+            edit.commands.push_back(
+                std::make_unique<core::SetClipMute>(ref.track, ref.clip, ref.midi, muted));
+    return edit;
+}
+
+Edit toggleMuted(const core::Project& project, const Selection& selection)
+{
+    const bool anyPlaying = std::any_of(
+        selection.begin(),
+        selection.end(),
+        [&](const ClipRef& ref) { return spanOf(project, ref).has_value() && !isMuted(project, ref); });
+    return setMuted(project, selection, anyPlaying);
 }
 
 Edit crossfadeClips(const core::Project& project, const Selection& selection)

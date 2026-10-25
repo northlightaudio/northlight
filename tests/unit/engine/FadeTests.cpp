@@ -93,3 +93,26 @@ TEST_CASE("Overlapping clips with matching fades crossfade at a constant sum", "
         CHECK(out[static_cast<size_t>(i)] == Approx(centre).margin(0.03f));
     CHECK(out[250] == Approx(0.0f));
 }
+
+TEST_CASE("A shaped fade plays its curve: fast is louder half way in, slow quieter", "[engine][fades]")
+{
+    Harness h;
+    core::Project p;
+    core::Track t;
+    t.id = 1;
+    core::AudioClip clip{10, "c", "ones.wav", 0, 200, 0, 1.0f};
+    clip.fadeIn = 100;
+    clip.fadeInCurve = 0.5f;
+    clip.fadeOut = 100;
+    clip.fadeOutCurve = -0.5f;
+    t.clips.push_back(clip);
+    p.tracks.push_back(t);
+    const auto out = h.render(p, 4);
+    const float fast = core::fadeShape(0.5f, core::fadeShapeK(0.5f));
+    const float slow = core::fadeShape(0.5f, core::fadeShapeK(-0.5f));
+    CHECK(out[50] == Approx(fast * centre).margin(1e-5f));
+    CHECK(out[150] == Approx(slow * centre).margin(1e-5f));
+    CHECK(out[50] > 0.6f * centre);
+    CHECK(out[150] < 0.4f * centre);
+    CHECK(out[0] == Approx(0.0f));
+}

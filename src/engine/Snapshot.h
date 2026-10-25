@@ -37,7 +37,8 @@ struct ClipNode
     core::SamplePosition length = 0;
     core::SamplePosition sourceOffset = 0;
     float gain = 1.0f;
-    core::SamplePosition fadeIn = 0, fadeOut = 0; // linear, in samples
+    core::SamplePosition fadeIn = 0, fadeOut = 0; // in samples
+    float fadeInK = 1.0f, fadeOutK = 1.0f;        // the curves' constants (core::fadeShape)
     const AudioSource* source = nullptr;          // null when the media failed to load
     std::shared_ptr<const AudioSource> keepAlive; // controller-side ownership only
 
@@ -213,8 +214,9 @@ struct Snapshot
     // nothing is sidechained.
     std::vector<std::vector<int>> trackLevels;
     float masterGain = 1.0f;
-    // The master's inserts, run in place on the mix before the master fader. Only
-    // the chain parts of the node are used (no routing, sends, key or automation).
+    // The master's inserts, run in place on the mix before the master fader, and
+    // its automation (volume, insert parameters) through the node's runtime. No
+    // routing, sends or key.
     ChannelNode masterChain;
     MasterRuntime* master = nullptr; // ramped master gain
     std::shared_ptr<MasterRuntime> keepAliveMaster;

@@ -166,7 +166,11 @@ single repeating fill, not per-segment rectangles.
   punch, metronome, count-in, snap, ripple, zoom, view toggles, bypass, pin) are
   icon buttons with a tooltip that gives the name, state and shortcut. A toggle
   that carries a small value (count-in bars, snap grid) overlays it as a 9 px
-  figure in the corner or adds a chevron. Text is used where it carries a value or
+  figure in the corner or adds a chevron. A toggle whose chevron opens a menu
+  (snap) is a split button: a square for the icon as wide as the button is tall,
+  then a 16 px (`lg`) slot for the chevron, each centred in its part; the slot opens
+  the menu on press, the square toggles; hover and press light only the part under the pointer,
+  with a `lineSubtle` hairline between the parts. Text is used where it carries a value or
   a name (time, tempo, device, track, plugin), for navigation (tabs, menu items),
   for the conventional M/S/R letters, and for actions whose icon would be
   ambiguous (Calibrate, Scan, Export) where a short label is clearer.

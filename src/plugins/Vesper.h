@@ -63,6 +63,7 @@ enum Param
     lookahead,    // choice: Off, Short, Long (lookaheadSeconds; reported as latency)
     swell,        // %: the tail rises into each line before it is sung (Long only)
     catchTail,    // choice: Off, On (the tail holds as a pad; the input stays out)
+    halo,         // %: strings tuned to the notes sung ring into the tail
     count
 };
 
@@ -86,6 +87,9 @@ inline constexpr double listenerLeadSeconds = 0.006;
 // With Long, the last this-much of a line goes into the reverb lifted by Ends (a throw).
 inline constexpr double throwSeconds = 0.3;
 inline constexpr float swellGain = 0.7f; // the swell's send at 100%, at its peak
+// Halo's strings ring for the Decay times this, and never less than haloMinSeconds;
+// at 100% they go into the reverb at haloLevel times what a held note gives them.
+inline constexpr float haloDecayRatio = 2.0f, haloMinSeconds = 3.0f, haloLevel = 4.0f;
 
 // The lookahead for a choice (Off, Short, Long), and in samples at a rate.
 double lookaheadSeconds(float choice) noexcept;

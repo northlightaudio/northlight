@@ -507,8 +507,13 @@ delay `Gorse`, glue compressor `Thrift`, Patina `Kelp`, exciter `Machair`, Bloom
     along the top at the project tempo. Corners: top left SPACE, "Plate · 1.8 s"
     in mono `title + 1`, the pre-delay ("Auto pre-delay", "1/8 before", "45 ms
     before") in `value` `textSecondary`; top right DUCK and the reduction now in
-    the hue ("−5.8 dB", a dash when none); along the foot the legend (TAIL, VOICE,
-    KEPT OUT, LINE END) and 6 S · NOW AT THE RIGHT, `captionCaps` `textTertiary`.
+    the hue ("−5.8 dB", a dash when none). No key: the user guide explains the
+    display. The plot runs to 30 px above the well's foot, room for the lane and
+    its ticks. Each column takes the frames of its own slice of time (a frame's
+    column is its count since the first frame times the columns over the frames
+    in six seconds), and the ticks and breath dots fall on columns by their place
+    in time (a tick per three columns, the most kept out among them), so the
+    picture scrolls a whole column at a time and nothing shimmers as it moves.
     It repaints itself as frames arrive. Tooltip "The voice and its tail".
   - **Controls**, on glass at the right (728 px): Decay, Clarity, Duck and Ends as
     52 px bud knobs in four tiles; a row of three captioned tiles, each on the

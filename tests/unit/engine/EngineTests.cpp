@@ -200,6 +200,17 @@ TEST_CASE("Track gain, clip gain, mute and solo are applied", "[engine]")
         h.block();
         CHECK(h.left[50] == Approx(sampleAt(50) * 0.25f).margin(1e-6f));
     }
+    SECTION("a muted clip plays nothing; its track still plays its other clips")
+    {
+        p.tracks[1].clips[0].muted = true;
+        p.tracks[1].clips.push_back({12, "", "ramp:100", 64, 100, 0, 1.0f}); // from the next block
+        h.engine.setProject(p);
+        h.engine.play();
+        h.block();
+        CHECK(h.left[50] == Approx(sampleAt(50) * 0.25f).margin(1e-6f));
+        h.block();
+        CHECK(h.left[10] == Approx(sampleAt(74) * 0.25f + sampleAt(10)).margin(1e-6f));
+    }
     SECTION("solo keeps only soloed tracks")
     {
         p.tracks[1].solo = true;

@@ -4,6 +4,7 @@
 #include "core/Model.h"
 
 #include <memory>
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -50,8 +51,21 @@ Edit splitAtRange(const core::Project& project,
                   const Selection& selection,
                   core::SamplePosition start,
                   core::SamplePosition end);
-// Joins runs of selected audio clips that continue each other's source.
+// Joins runs of selected audio clips that continue each other's source, and
+// each track's selected MIDI clips into its earliest (across any gaps).
 Edit joinClips(const core::Project& project, const Selection& selection);
+// The next clip of the same kind on the clip's track (by start), if any.
+std::optional<ClipRef> nextClip(const core::Project& project, const ClipRef& ref);
+// Joins a clip with the next one (the glue tool), when they can join: audio
+// that continues the same source, or any later MIDI clip. Empty otherwise.
+Edit joinWithNext(const core::Project& project, const ClipRef& ref);
+bool canJoinWithNext(const core::Project& project, const ClipRef& ref);
+// Clip mute: whether a clip is muted, and the commands that set the clips'
+// state (only for those that differ).
+bool isMuted(const core::Project& project, const ClipRef& ref);
+Edit setMuted(const core::Project& project, const Selection& selection, bool muted);
+// Ctrl+M: mutes the clips when any of them plays, otherwise unmutes them.
+Edit toggleMuted(const core::Project& project, const Selection& selection);
 // Crossfades selected audio clips that overlap their predecessor on a track.
 Edit crossfadeClips(const core::Project& project, const Selection& selection);
 // Moves the selected clips by `step` samples (not before 0).

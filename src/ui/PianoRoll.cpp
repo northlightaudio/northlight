@@ -31,7 +31,10 @@ bool isBlackKey(int note) noexcept
 } // namespace
 
 PianoRoll::PianoRoll()
-    : tools_(theme_), link_(theme_, Icon::link, "Link zoom to the arrange view"),
+    : selectTool_(theme_, Icon::pointer, "Select tool: move, resize and select notes  1"),
+      pencilTool_(theme_, Icon::pencil, "Pencil: click to add a note, drag to set its length  3"),
+      eraseTool_(theme_, Icon::eraser, "Erase: click or sweep over notes to delete them  4"),
+      link_(theme_, Icon::link, "Link zoom to the arrange view"),
       auditionButton_(theme_, Icon::monitor, "Hear notes while drawing and moving them")
 {
     setOpaque(true);
@@ -46,13 +49,15 @@ PianoRoll::PianoRoll()
     }
     verticalScroll_ = (rows - 84) * rowHeight; // start around C3..C6
 
-    tools_.setSegments({"Draw", "Select", "Erase"});
-    tools_.setSelected(1, juce::dontSendNotification);
-    tools_.onChange = [this](int index)
+    selectTool_.onClick = [this] { setTool(Tool::select); };
+    pencilTool_.onClick = [this] { setTool(Tool::draw); };
+    eraseTool_.onClick = [this] { setTool(Tool::erase); };
+    for (auto* b : {&selectTool_, &pencilTool_, &eraseTool_})
     {
-        setTool(index == 0 ? Tool::draw : index == 2 ? Tool::erase : Tool::select);
-    };
-    addAndMakeVisible(tools_);
+        b->setIconSize(theme_.sizes.iconSmall);
+        addAndMakeVisible(*b);
+    }
+    refreshToolButtons();
     snapButton_.getProperties().set(NorthlightLookAndFeel::propertyVariant, "ghost");
     snapButton_.getProperties().set(NorthlightLookAndFeel::propertyMenu, true);
     snapButton_.setTooltip("Snap grid");
@@ -147,9 +152,23 @@ void PianoRoll::setTimeView(double samplesPerPixel, core::SamplePosition absolut
 void PianoRoll::setTool(Tool tool)
 {
     tool_ = tool;
-    tools_.setSelected(tool == Tool::draw ? 0 : tool == Tool::erase ? 2 : 1, juce::dontSendNotification);
-    setMouseCursor(tool == Tool::draw ? juce::MouseCursor::CrosshairCursor : juce::MouseCursor::NormalCursor);
+    refreshToolButtons();
+    setMouseCursor(toolCursor());
     repaint();
+}
+
+void PianoRoll::refreshToolButtons()
+{
+    selectTool_.setToggleState(tool_ == Tool::select, juce::dontSendNotification);
+    pencilTool_.setToggleState(tool_ == Tool::draw, juce::dontSendNotification);
+    eraseTool_.setToggleState(tool_ == Tool::erase, juce::dontSendNotification);
+}
+
+juce::MouseCursor PianoRoll::toolCursor() const
+{
+    return tool_ == Tool::draw    ? Icons::toolCursor(theme_, Icon::pencil)
+           : tool_ == Tool::erase ? Icons::toolCursor(theme_, Icon::eraser)
+                                  : juce::MouseCursor(juce::MouseCursor::NormalCursor);
 }
 
 const core::MidiClip* PianoRoll::clip() const noexcept
@@ -405,7 +424,8 @@ void PianoRoll::resized()
     auto bar = getLocalBounds()
                    .removeFromTop(toolbarHeight)
                    .reduced(theme_.spacing.sm, (toolbarHeight - theme_.sizes.controlCompact) / 2);
-    tools_.setBounds(bar.removeFromLeft(std::min(bar.getWidth(), tools_.preferredWidth())));
+    for (auto* b : {&selectTool_, &pencilTool_, &eraseTool_})
+        b->setBounds(bar.removeFromLeft(theme_.sizes.controlCompact));
     bar.removeFromLeft(theme_.spacing.sm);
     snapButton_.setBounds(bar.removeFromLeft(72));
     bar.removeFromLeft(theme_.spacing.sm);
@@ -1224,8 +1244,10 @@ void PianoRoll::mouseMove(const juce::MouseEvent& e)
         return;
     bool onEdge = false;
     const auto* note = noteAt(e.getPosition(), onEdge);
-    if (tool_ == Tool::draw && note == nullptr)
-        setMouseCursor(juce::MouseCursor::CrosshairCursor);
+    // The pencil on a note and the select tool move and resize it; the eraser
+    // keeps its cursor everywhere.
+    if (tool_ == Tool::erase || (tool_ == Tool::draw && note == nullptr))
+        setMouseCursor(toolCursor());
     else
         setMouseCursor(note == nullptr ? juce::MouseCursor::NormalCursor
                        : onEdge        ? juce::MouseCursor::LeftRightResizeCursor

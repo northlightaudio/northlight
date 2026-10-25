@@ -151,7 +151,10 @@ public:
     std::function<void(double)> onTempo;
     std::function<void(int, int)> onSignature;
     std::function<void()> onMasterClipClicked;
+    // The snap button: the magnet toggles snap (keeping the grid), its chevron
+    // opens the grid menu, placed under `snapButton()`.
     std::function<void()> onToggleSnap, onSnapMenu, onToggleRipple, onZoomFit;
+    juce::Component& snapButton() noexcept { return snap_; }
     std::function<void()> onToggleMixer, onToggleEditor, onToggleBrowser;
     std::function<void()> onDeviceWarning;
     std::function<void()> onMinimise, onMaximise, onCloseWindow;

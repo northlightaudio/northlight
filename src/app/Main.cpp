@@ -139,6 +139,16 @@ public:
     //   --instrument-editor  open the first instrument's editor window
     //   --insert-editor [type]  open the editor window of the first insert (of that type, if
     //                        given) on the tracks, else on the master
+    //   --arrange-tool <name>  pick the arrange view's tool: select, range, pencil, erase,
+    //                        split, glue, mute
+    //   --arrange-pointer <track> <bar> [shift|alt]  rest the pointer on a track row (0-based)
+    //                        at a bar (fractions allowed), with Shift or Alt held if given,
+    //                        once the window has settled (the split line, the glue preview)
+    //   --mute-clips         mute the first audio clip and the first MIDI clip
+    //   --clip-fades <in s> <out s> <in curve> <out curve>  give the first audio clip
+    //                        fades of those lengths and curves (-1 slow to 1 fast)
+    //   --show-menu <name>   open a menu as a click would: project, add-track, clip (the
+    //                        first clip's)
     //   --editor-gap <n>     show the Editor panel's nth gap button (1-based), as the pointer in
     //                        that gap between two insert cards would
     //   --panel <name>       show a panel: mixer, editor, instruments, pianoRoll, diagnostics, browser,
@@ -808,6 +818,66 @@ public:
                                                 if (window != nullptr)
                                                     window->showEditorGap(n);
                                             });
+            }
+            else if (arg == "--arrange-tool" && i + 1 < tokens.size())
+            {
+                const auto name = tokens.getReference(++i).text;
+                if (!mainWindow_->setArrangeTool(name))
+                    std::fprintf(stderr, "--arrange-tool: no tool \"%s\"\n", name.toRawUTF8());
+            }
+            else if (arg == "--arrange-pointer" && i + 2 < tokens.size())
+            {
+                const int row = tokens.getReference(++i).text.getIntValue();
+                const double bar = tokens.getReference(++i).text.getDoubleValue();
+                juce::ModifierKeys mods;
+                if (i + 1 < tokens.size() &&
+                    (tokens.getReference(i + 1).text == "shift" || tokens.getReference(i + 1).text == "alt"))
+                    mods = juce::ModifierKeys(tokens.getReference(++i).text == "shift"
+                                                  ? juce::ModifierKeys::shiftModifier
+                                                  : juce::ModifierKeys::altModifier);
+                juce::Component::SafePointer<MainWindow> window(mainWindow_.get());
+                juce::Timer::callAfterDelay(1500,
+                                            [window, row, bar, mods]
+                                            {
+                                                if (window != nullptr)
+                                                    window->arrangePointer(row, bar, mods);
+                                            });
+            }
+            else if (arg == "--clip-fades" && i + 4 < tokens.size())
+            {
+                const double rate = session_->project().sampleRate;
+                const auto in =
+                    static_cast<core::SamplePosition>(tokens.getReference(++i).text.getDoubleValue() * rate);
+                const auto out =
+                    static_cast<core::SamplePosition>(tokens.getReference(++i).text.getDoubleValue() * rate);
+                const float inCurve = tokens.getReference(++i).text.getFloatValue();
+                const float outCurve = tokens.getReference(++i).text.getFloatValue();
+                for (const auto& track : session_->project().tracks)
+                    if (!track.clips.empty())
+                    {
+                        session_->execute(std::make_unique<core::SetClipFades>(
+                            track.id, track.clips.front().id, in, out, inCurve, outCurve));
+                        break;
+                    }
+            }
+            else if (arg == "--mute-clips")
+            {
+                bool audio = false, midi = false;
+                for (const auto& track : session_->project().tracks)
+                {
+                    if (!audio && !track.clips.empty())
+                    {
+                        session_->execute(std::make_unique<core::SetClipMute>(
+                            track.id, track.clips.front().id, false, true));
+                        audio = true;
+                    }
+                    if (!midi && !track.midiClips.empty())
+                    {
+                        session_->execute(std::make_unique<core::SetClipMute>(
+                            track.id, track.midiClips.front().id, true, true));
+                        midi = true;
+                    }
+                }
             }
             else if (arg == "--show-menu" && i + 1 < tokens.size())
             {

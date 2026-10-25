@@ -1101,7 +1101,8 @@ void AutomationLanes::addParameters(juce::PopupMenu& menu,
                      current != nullptr && k == *current);
     };
     add(menu, "Volume", Key{core::AutomationTarget::gain});
-    add(menu, "Pan", Key{core::AutomationTarget::pan});
+    if (track.id != core::masterId) // the master has no pan
+        add(menu, "Pan", Key{core::AutomationTarget::pan});
     bool separator = false;
     for (const auto* insert : track.processingChain())
     {

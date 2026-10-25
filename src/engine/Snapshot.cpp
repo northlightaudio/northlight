@@ -355,6 +355,38 @@ std::unique_ptr<Snapshot> compileSnapshot(const core::Project& project,
     // The latency a channel's signal has gathered through each insert of its
     // chain, that insert included: an instrument's extra outputs leave there.
     std::map<core::Id, int> latencyThrough;
+    // Automation: the lanes with points, when the mode reads. An insert
+    // parameter plays only on a processor whose parameters the model owns
+    // (built-ins and the strip; a hosted plugin owns its own) and that is in the
+    // node's chain, so the chain is filled first.
+    const auto compileAutomation = [&](ChannelNode& node, const core::Channel& c)
+    {
+        const bool reads = c.automationMode == core::AutomationMode::read ||
+                           c.automationMode == core::AutomationMode::touch ||
+                           c.automationMode == core::AutomationMode::latch;
+        for (const auto& lane : c.automation)
+        {
+            if (!reads || lane.points.empty())
+                continue;
+            AutomationNode a;
+            a.target = lane.target;
+            a.parameter = lane.parameter;
+            if (lane.target == core::AutomationTarget::insertParameter)
+            {
+                const auto instance = inserts.find(lane.insert);
+                if (instance == nullptr || instance->ownsParameters() || lane.parameter < 0 ||
+                    lane.parameter >= static_cast<int>(instance->parameters().size()) ||
+                    std::find(node.inserts.begin(), node.inserts.end(), instance.get()) == node.inserts.end())
+                    continue;
+                a.processor = instance.get();
+            }
+            a.points = lane.points;
+            auto runtime = runtimeCache.automation(lane.id);
+            a.runtime = runtime.get();
+            node.keepAliveAutomation.push_back(std::move(runtime));
+            node.automation.push_back(std::move(a));
+        }
+    };
     const auto fillChannel = [&](ChannelNode& node, const core::Channel& c, int index, int slot, bool isBus)
     {
         node.id = c.id;
@@ -427,34 +459,7 @@ std::unique_ptr<Snapshot> compileSnapshot(const core::Project& project,
                 node.insertInputLatency.push_back(node.chainLatency - latency);
                 node.keepAlive.push_back(std::move(instance));
             }
-        // Automation: the lanes with points, when the mode reads. An insert
-        // parameter plays only on a processor whose parameters the model owns
-        // (built-ins and the strip; a hosted plugin owns its own).
-        const bool reads = c.automationMode == core::AutomationMode::read ||
-                           c.automationMode == core::AutomationMode::touch ||
-                           c.automationMode == core::AutomationMode::latch;
-        for (const auto& lane : c.automation)
-        {
-            if (!reads || lane.points.empty())
-                continue;
-            AutomationNode a;
-            a.target = lane.target;
-            a.parameter = lane.parameter;
-            if (lane.target == core::AutomationTarget::insertParameter)
-            {
-                const auto instance = inserts.find(lane.insert);
-                if (instance == nullptr || instance->ownsParameters() || lane.parameter < 0 ||
-                    lane.parameter >= static_cast<int>(instance->parameters().size()) ||
-                    std::find(node.inserts.begin(), node.inserts.end(), instance.get()) == node.inserts.end())
-                    continue;
-                a.processor = instance.get();
-            }
-            a.points = lane.points;
-            auto runtime = runtimeCache.automation(lane.id);
-            a.runtime = runtime.get();
-            node.keepAliveAutomation.push_back(std::move(runtime));
-            node.automation.push_back(std::move(a));
-        }
+        compileAutomation(node, c);
         // The work buffers, kept per channel across compiles (none allocated for a
         // channel the last snapshot had).
         node.keepAliveBuffers = runtimeCache.buffers(c.id, n);
@@ -527,6 +532,8 @@ std::unique_ptr<Snapshot> compileSnapshot(const core::Project& project,
             node.midiMuted = track.mute || project.mutedByFolder(track);
             for (const auto& c : track.midiClips)
             {
+                if (c.muted)
+                    continue; // a muted clip is left out, so it plays nothing
                 MidiClipNode clip;
                 clip.start = c.start;
                 clip.length = c.length;
@@ -567,6 +574,8 @@ std::unique_ptr<Snapshot> compileSnapshot(const core::Project& project,
         {
             if (!playsClips)
                 break;
+            if (c.muted)
+                continue;
             ClipNode clip;
             clip.start = c.start;
             clip.length = c.length;
@@ -577,6 +586,8 @@ std::unique_ptr<Snapshot> compileSnapshot(const core::Project& project,
             clip.gain = c.gain;
             clip.fadeIn = std::clamp<core::SamplePosition>(c.fadeIn, 0, c.length);
             clip.fadeOut = std::clamp<core::SamplePosition>(c.fadeOut, 0, c.length);
+            clip.fadeInK = core::fadeShapeK(c.fadeInCurve); // off the audio thread: exp2 here
+            clip.fadeOutK = core::fadeShapeK(c.fadeOutCurve);
             clip.keepAlive = media.sourceForClip(c, project.sampleRate);
             clip.source = clip.keepAlive.get();
             node.clips.push_back(std::move(clip));
@@ -629,6 +640,15 @@ std::unique_ptr<Snapshot> compileSnapshot(const core::Project& project,
                 node.insertInputLatency.push_back(node.chainLatency - latency);
                 node.keepAlive.push_back(std::move(instance));
             }
+        // Its lanes (volume and its inserts' parameters) play through a channel
+        // runtime of its own: the renderer reads the automated gain from it, the
+        // mixer what it shows.
+        node.keepAliveRuntime = runtimeCache.get(core::masterId);
+        node.runtime = node.keepAliveRuntime.get();
+        node.gain = project.master.gain;
+        compileAutomation(node, project.master);
+        std::erase_if(node.automation,
+                      [](const AutomationNode& a) { return a.target == core::AutomationTarget::pan; });
         if (!node.inserts.empty())
         {
             node.keepAliveBuffers = runtimeCache.buffers(core::masterId, n);

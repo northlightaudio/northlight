@@ -17,8 +17,9 @@ selected track in a ghosted overlay.
 +------+---------------------------------------------------------------+
 ```
 
-- **Toolbar** (left column top, 32 px): segmented control for tool (Draw, Select,
-  Erase), snap chevron, quantise button with strength menu, "Link zoom to arrange"
+- **Toolbar** (left column top, 32 px): the tools as in the arrange view's corner,
+  the same icon buttons, keys and cursors: select (1), pencil (3, draws notes) and
+  erase (4), the current one lit; then the snap chevron, quantise button with strength menu, "Link zoom to arrange"
   toggle, an audition toggle (speaker icon, on by default: drawing, clicking or
   re-pitching a note sounds it through the track's instrument, armed or not), and a
   scale/key display ("C minor") for the highlight.

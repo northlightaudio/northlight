@@ -73,10 +73,19 @@ enum class Icon
     pianoRoll,
     diagnostics,
     menu,
-    instrument,     // a keyboard: the instruments rack
-    pointer,        // the select tool
-    rangeTool,      // the range tool: an I-beam between brackets
-    pencil,         // the pencil tool: draws MIDI clips
+    instrument, // a keyboard: the instruments rack
+    pointer,    // the select tool
+    rangeTool,  // the range tool: an I-beam between brackets
+    pencil,     // the pencil tool: draws MIDI clips
+    eraser,     // the erase tool: an eraser on its edge, over a line
+    scissors,   // the split tool: open scissors, blades up
+    glue,       // the glue tool: two clips bridged into one
+    muteClip,   // the mute tool: a clip struck through
+    // The audio editor's pitch tools (split uses the scissors).
+    pitchTool,      // a note with an arrow up and down
+    driftTool,      // a slow wander settling into a straight line
+    vibratoTool,    // a quick wave
+    breathTool,     // a breath of wind
     trackAudio,     // track kinds (ui/TrackIcon.h): a waveform
     trackMidi,      // an eighth note
     trackAux,       // an output jack with an arrow: an instrument's extra output
@@ -108,6 +117,11 @@ struct Icons
     static void draw(juce::Graphics& g, Icon icon, juce::Rectangle<float> bounds, juce::Colour colour);
     static const char* name(Icon icon);
     static const char* svgPath(Icon icon);
+    // An edit tool's icon as its cursor (pencil, eraser, scissors, glue,
+    // muteClip): the icon in textPrimary over a canvas outline, with the hot spot
+    // where the tool acts. Built once per icon. The arrange view and the piano
+    // roll share them.
+    static juce::MouseCursor toolCursor(const Theme& theme, Icon icon);
     static constexpr int count = static_cast<int>(Icon::hidden) + 1;
 };
 
@@ -140,6 +154,16 @@ public:
         chevron_ = show;
         repaint();
     }
+    // A split button: the chevron's part opens a menu on press (as does a
+    // right-click anywhere), the rest clicks as usual. Hover and press light the
+    // part under the pointer, with a hairline between the two.
+    void setMenuPart(std::function<void()> onMenu)
+    {
+        onMenu_ = std::move(onMenu);
+        chevron_ = static_cast<bool>(onMenu_);
+        repaint();
+    }
+    juce::Rectangle<int> menuPart() const noexcept;
     // The whole button fills with the on colour (the recording state).
     void setSolidWhenOn(bool solid)
     {
@@ -167,9 +191,17 @@ public:
     }
 
     void paintButton(juce::Graphics& g, bool isMouseOver, bool isButtonDown) override;
+    void mouseMove(const juce::MouseEvent& e) override;
+    void mouseExit(const juce::MouseEvent& e) override;
+    void mouseDown(const juce::MouseEvent& e) override;
+    void mouseDrag(const juce::MouseEvent& e) override;
+    void mouseUp(const juce::MouseEvent& e) override;
 
 private:
+    void setOverMenu(bool over);
     const Theme& theme_;
+    std::function<void()> onMenu_;
+    bool overMenu_ = false, menuPressed_ = false;
     Icon icon_;
     juce::Colour onColour_, restColour_;
     juce::String corner_;

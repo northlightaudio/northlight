@@ -106,6 +106,21 @@ const Definition definitions[Icons::count] = {
      "M6.5 3 H9.5 M8 3 V13 M6.5 13 H9.5 M3.5 5.5 L2 8 L3.5 10.5 M12.5 5.5 L14 8 L12.5 10.5",
      false},
     {"pencil", "M10.5 2.5 L13.5 5.5 L5.5 13.5 H2.5 V10.5 Z M9 4 L12 7", false},
+    {"eraser", "M9.5 2.5 L13.5 6.5 L7 13 H4.5 L2.5 11 Z M6 6 L10 10 M7 13 H13.5", false},
+    {"scissors",
+     "M4.5 9.5 A2 2 0 1 1 4.49 9.5 Z M11.5 9.5 A2 2 0 1 1 11.49 9.5 Z M5.9 10.1 L11.5 2.5 M10.1 10.1 L4.5 "
+     "2.5",
+     false},
+    {"glue", "M2.5 4.5 H7 V11.5 H2.5 Z M9 4.5 H13.5 V11.5 H9 Z M5.5 8 H10.5", false},
+    {"muteClip", "M2.5 4.5 H13.5 V11.5 H2.5 Z M3 13.5 L13 2.5", false},
+    {"pitchTool",
+     "M2 7 H9 V10 H2 Z M12.5 2.5 V13.5 M10.5 4.5 L12.5 2.5 L14.5 4.5 M10.5 11.5 L12.5 13.5 L14.5 11.5",
+     false},
+    {"driftTool", "M1.5 11 C3.5 4 6 4 8 8 H14.5", false},
+    {"vibratoTool",
+     "M1.5 8 C2.5 5 3.5 5 4.5 8 C5.5 11 6.5 11 7.5 8 C8.5 5 9.5 5 10.5 8 C11.5 11 12.5 11 13.5 8",
+     false},
+    {"breathTool", "M2 6 H9.5 A2 2 0 1 0 7.5 4 M2 9.5 H12 A2 2 0 1 1 10 11.5 M2 13 H6", false},
     // Track kinds (instrument channels use "instrument", folders "folder").
     {"trackAudio", "M1.5 8 H3.5 L5 5 L6.5 11 L8 3 L9.5 13 L11 6 L12.5 8 H14.5", false},
     {"trackMidi", "M6 9.25 A2.25 2.25 0 1 1 5.99 9.25 Z M8.25 11.5 V2.5 C9 4.5 12.5 4.5 12.5 7.5", false},
@@ -181,6 +196,26 @@ void Icons::draw(juce::Graphics& g, Icon icon, juce::Rectangle<float> bounds, ju
             transform);
 }
 
+juce::MouseCursor Icons::toolCursor(const Theme& theme, Icon icon)
+{
+    static std::map<int, juce::MouseCursor> cache;
+    if (const auto it = cache.find(static_cast<int>(icon)); it != cache.end())
+        return it->second;
+    // The hot spot on the 20 px image (the icon drawn at 18 px): the pencil's
+    // tip, the eraser's edge, between the scissors' blades, else the middle.
+    const juce::Point<int> spot = icon == Icon::pencil     ? juce::Point<int>{2, 17}
+                                  : icon == Icon::eraser   ? juce::Point<int>{3, 15}
+                                  : icon == Icon::scissors ? juce::Point<int>{9, 3}
+                                                           : juce::Point<int>{9, 9};
+    juce::Image image(juce::Image::ARGB, 20, 20, true);
+    {
+        juce::Graphics g(image);
+        draw(g, icon, juce::Rectangle<float>(1.0f, 1.0f, 18.0f, 18.0f), theme.colours.canvas);
+        draw(g, icon, juce::Rectangle<float>(0.0f, 0.0f, 18.0f, 18.0f), theme.colours.textPrimary);
+    }
+    return cache.emplace(static_cast<int>(icon), juce::MouseCursor(image, spot.x, spot.y)).first->second;
+}
+
 // ----- icon button --------------------------------------------------------------------------
 
 IconButton::IconButton(const Theme& theme, Icon icon, const juce::String& tooltip)
@@ -206,6 +241,65 @@ void IconButton::setCornerText(const juce::String& cornerText)
     repaint();
 }
 
+juce::Rectangle<int> IconButton::menuPart() const noexcept
+{
+    // The chevron's slot at the right: lg (16 px), beside an icon part as wide as
+    // the button is tall.
+    return getLocalBounds().removeFromRight(theme_.spacing.lg);
+}
+
+void IconButton::setOverMenu(bool over)
+{
+    if (over != overMenu_)
+    {
+        overMenu_ = over;
+        repaint();
+    }
+}
+
+void IconButton::mouseMove(const juce::MouseEvent& e)
+{
+    setOverMenu(onMenu_ && menuPart().contains(e.getPosition()));
+    juce::Button::mouseMove(e);
+}
+
+void IconButton::mouseExit(const juce::MouseEvent& e)
+{
+    setOverMenu(false);
+    juce::Button::mouseExit(e);
+}
+
+void IconButton::mouseDown(const juce::MouseEvent& e)
+{
+    menuPressed_ = false;
+    if (onMenu_ && isEnabled() && (e.mods.isPopupMenu() || menuPart().contains(e.getPosition())))
+    {
+        // Menus open on press; the button itself is not clicked.
+        menuPressed_ = true;
+        setOverMenu(menuPart().contains(e.getPosition()));
+        repaint();
+        onMenu_();
+        return;
+    }
+    juce::Button::mouseDown(e);
+}
+
+void IconButton::mouseDrag(const juce::MouseEvent& e)
+{
+    if (!menuPressed_)
+        juce::Button::mouseDrag(e);
+}
+
+void IconButton::mouseUp(const juce::MouseEvent& e)
+{
+    if (std::exchange(menuPressed_, false))
+    {
+        repaint();
+        return;
+    }
+    juce::Button::mouseUp(e);
+}
+
 void IconButton::paintButton(juce::Graphics& g, bool isMouseOver, bool isButtonDown)
 {
     const auto& c = theme_.colours;
@@ -215,6 +309,19 @@ void IconButton::paintButton(juce::Graphics& g, bool isMouseOver, bool isButtonD
     auto* lnf = dynamic_cast<NorthlightLookAndFeel*>(&getLookAndFeel());
 
     juce::Colour iconColour = restColour_;
+    // A split button lights only the part under the pointer.
+    const bool split = static_cast<bool>(onMenu_);
+    const auto part = !split      ? bounds
+                      : overMenu_ ? menuPart().toFloat()
+                                  : bounds.withTrimmedRight(static_cast<float>(menuPart().getWidth()));
+    const auto fillPart = [&](juce::Colour colour)
+    {
+        g.saveState();
+        g.reduceClipRegion(part.toNearestInt());
+        g.setColour(colour);
+        g.fillRoundedRectangle(bounds.reduced(1.0f), radius);
+        g.restoreState();
+    };
     // A key keeps its face in every state except solid-on, which fills it.
     const bool keyFace = key_ && !(on && solidOn_);
     if (keyFace)
@@ -252,45 +359,62 @@ void IconButton::paintButton(juce::Graphics& g, bool isMouseOver, bool isButtonD
         }
         else
         {
-            g.setColour(onColour_.withAlpha(isMouseOver || isButtonDown ? 0.28f : 0.2f));
+            g.setColour(onColour_.withAlpha(0.2f));
             g.fillRoundedRectangle(bounds.reduced(1.0f), radius);
+            if (isMouseOver || isButtonDown || menuPressed_)
+                fillPart(onColour_.withAlpha(0.08f));
             g.setColour(onColour_);
             g.drawRoundedRectangle(bounds.reduced(1.5f), radius, 1.0f);
             iconColour = onColour_;
         }
     }
-    else if (isButtonDown)
+    else if (isButtonDown || menuPressed_)
     {
         if (!keyFace)
-        {
-            g.setColour(c.surfacePressed);
-            g.fillRoundedRectangle(bounds.reduced(1.0f), radius);
-        }
+            fillPart(c.surfacePressed);
         iconColour = c.textPrimary;
     }
     else if (isMouseOver)
     {
         if (!keyFace)
-        {
-            g.setColour(c.surface2);
-            g.fillRoundedRectangle(bounds.reduced(1.0f), radius);
-        }
+            fillPart(c.surface2);
         iconColour = c.textPrimary;
     }
+    // On a split button the icon and the chevron light apart: the part not
+    // under the pointer keeps its colour at rest.
+    auto chevronColour = iconColour;
+    if (split && isEnabled() && !on && (isMouseOver || isButtonDown || menuPressed_))
+    {
+        if (overMenu_)
+            iconColour = restColour_;
+        else
+            chevronColour = restColour_;
+    }
+    if (split && isEnabled() && (isMouseOver || menuPressed_))
+    {
+        g.setColour(c.lineSubtle);
+        g.fillRect(juce::Rectangle<float>(
+            static_cast<float>(menuPart().getX()), bounds.getY() + 5.0f, 1.0f, bounds.getHeight() - 10.0f));
+    }
 
+    // A split button centres the icon in its part and the chevron in its slot;
+    // a plain menu button nudges the icon left for a chevron at its edge.
+    const auto iconPart = split ? bounds.withTrimmedRight(static_cast<float>(menuPart().getWidth())) : bounds;
     auto iconArea =
-        bounds.withSizeKeepingCentre(static_cast<float>(iconSize_), static_cast<float>(iconSize_));
-    if (chevron_)
+        iconPart.withSizeKeepingCentre(static_cast<float>(iconSize_), static_cast<float>(iconSize_));
+    if (chevron_ && !split)
         iconArea.translate(-static_cast<float>(theme_.spacing.xs) * 0.5f, 0.0f);
     Icons::draw(g, icon_, iconArea, iconColour);
     if (chevron_)
-        Icons::draw(g,
-                    Icon::chevronDown,
-                    juce::Rectangle<float>(bounds.getRight() - static_cast<float>(theme_.spacing.sm) - 2.0f,
+    {
+        const auto chevronArea =
+            split ? menuPart().toFloat().withSizeKeepingCentre(8.0f, 8.0f).translated(0.0f, 1.0f)
+                  : juce::Rectangle<float>(bounds.getRight() - static_cast<float>(theme_.spacing.sm) - 2.0f,
                                            bounds.getCentreY() - 3.0f,
                                            8.0f,
-                                           8.0f),
-                    iconColour.withMultipliedAlpha(0.8f));
+                                           8.0f);
+        Icons::draw(g, Icon::chevronDown, chevronArea, chevronColour.withMultipliedAlpha(0.8f));
+    }
     if (corner_.isNotEmpty())
     {
         g.setFont(theme_.font(Theme::Face::ui, 9.0f, theme_.fonts.weight.semibold));

@@ -365,8 +365,13 @@ HeaderBar::HeaderBar(const Theme& theme)
         if (onCountInBars)
             onCountInBars((state_.countInBars + 1) % 3);
     };
-    snap_.setShowsMenuChevron(true);
-    snap_.setSize(theme_.sizes.control + theme_.spacing.sm, theme_.sizes.control);
+    snap_.setMenuPart(
+        [this]
+        {
+            if (onSnapMenu)
+                onSnapMenu();
+        });
+    snap_.setSize(theme_.sizes.control + theme_.spacing.lg, theme_.sizes.control);
 
     // The mark at the brand's in-app size, a step up from the toolbar icons so it
     // balances the two-line title beside it.
@@ -526,7 +531,8 @@ void HeaderBar::refreshFromState()
         }
     }
     snap_.setToggleState(s.snap, juce::dontSendNotification);
-    snap_.setTooltip("Snap: " + (s.snap ? s.snapName : juce::String("off")) + "  N");
+    snap_.setTooltip("Snap: " + (s.snap ? s.snapName : juce::String("off")) +
+                     "  N\nThe arrow picks the grid");
     ripple_.setToggleState(s.ripple, juce::dontSendNotification);
     ripple_.setTooltip(s.ripple ? "Ripple: on  Shift+N" : "Ripple: off  Shift+N");
     mixer_.setToggleState(s.mixerVisible, juce::dontSendNotification);
@@ -691,7 +697,8 @@ void HeaderBar::resized()
     const int fullProjectW = project_.idealWidth(200);
     const Items transport{{&goToStart_, key}, {&play_, key}, {&stop_, key}, {&record_, key}};
     const Items modes{{&loop_, key}, {&punch_, key}, {&click_, key}, {&countIn_, key}};
-    const Items edit{{&snap_, key + theme_.spacing.sm}, {&ripple_, key}, {&zoomFit_, key}};
+    // The snap split button: a key's square for the magnet, the chevron's slot after it.
+    const Items edit{{&snap_, key + theme_.spacing.lg}, {&ripple_, key}, {&zoomFit_, key}};
     const Items panels{{&mixer_, key}, {&editor_, key}, {&browser_, key}};
     const Items history{{&undo_, key}, {&redo_, key}};
     // The readout's fields, each as wide as its text (they relayout when that changes).

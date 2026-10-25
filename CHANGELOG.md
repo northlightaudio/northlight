@@ -13,6 +13,24 @@ Northlight has not had a release yet. The first release, 0.1.0, will include:
 
 ### Added
 
+- Every bus and the master have a row in the arrange view, so they can be
+  automated like tracks: the master's volume and its effects' parameters, a bus's
+  volume, pan and effects. The master fader in the mixer follows its lane and can
+  write automation in Touch, Latch and Write.
+- The window opens at the size and position it had when Northlight last closed,
+  maximised if it was, or centred when that place is no longer on a screen.
+- Fade curves: drag a fade's handle up or down while setting its length to make it
+  fast (full level sooner) or slow; the clip shows the curve as it plays, and the
+  waveform under a fade shrinks with it. Linear stays the default.
+- Four more tools in the arrange view, keys 4 to 7 after select, range and pencil:
+  erase (click or sweep over clips to delete them), split (click a clip to cut it
+  where the line shows; Shift+click cuts every track there, Alt cuts off the grid),
+  glue (click a clip to join it with the next, including MIDI clips across a gap)
+  and mute. Clips can now be muted on their own, with the mute tool or Ctrl+M: a
+  muted clip stays in place, hatched, and plays nothing. Right-clicking a clip
+  offers the edits too (split here, join, crossfade, mute, duplicate, normalise,
+  cut, copy, delete), for MIDI clips as well as audio ones.
+
 - Vesper, a reverb for vocals, in the effects menu's Reverb & Delay group. It
   listens to the singing: consonants, "s" sounds and breaths are kept out of the
   reverb (Clarity, Breaths), the tail ducks while the singer sings and comes back in
@@ -162,6 +180,18 @@ Northlight has not had a release yet. The first release, 0.1.0, will include:
   without Steinberg's ASIO SDK.
 
 ### Fixed
+
+- Dragging a clip's fade handle in the arrange view sets the fade; before, the fade
+  sprang back on release.
+- Tooltips over the built-in effects' faces appear by the pointer at their usual
+  size, instead of small and well above it.
+- Selecting a MIDI clip shows it in the piano roll, and clicking a clip always
+  updates the inspector; a plain click on a clip used to go unnoticed.
+- The snap button's arrow opens the grid menu (Adaptive, Bar, Beat, 1/8, 1/16,
+  1/32, Off); the magnet still turns snap on and off, keeping the grid.
+- The count of selected clips no longer covers the arrange view's tools: it is at
+  the right end of the status bar. The piano roll's tools and the audio editor's
+  pitch tools are icon buttons like the arrange view's, with the same cursors.
 
 - The plain parameter editor shows a setting with a few fixed choices as a row of
   buttons and one with many as a menu, instead of a knob reading a number; in the

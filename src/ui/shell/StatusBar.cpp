@@ -30,6 +30,22 @@ void StatusBar::setState(const State& state)
     repaint();
 }
 
+void StatusBar::setSelectedClips(int count)
+{
+    count = std::max(0, count);
+    if (count == selectedClips_)
+        return;
+    selectedClips_ = count;
+    repaint();
+}
+
+juce::String StatusBar::selectionText(int count)
+{
+    if (count <= 0)
+        return {};
+    return juce::String(count) + (count == 1 ? " clip selected" : " clips selected");
+}
+
 void StatusBar::showMessage(const juce::String& message)
 {
     message_ = message;
@@ -181,13 +197,34 @@ void StatusBar::paint(juce::Graphics& g)
     }
     else
         rightText = hint_;
+    // The selection count at the right end, the message or hint before it.
+    int right = getWidth() - theme_.spacing.md;
+    if (const auto selection = selectionText(selectedClips_); selection.isNotEmpty())
+    {
+        g.setFont(theme_.small());
+        const int w = juce::GlyphArrangement::getStringWidthInt(theme_.small(), selection);
+        g.setColour(c.textSecondary);
+        g.drawText(selection, right - w, 0, w, getHeight(), juce::Justification::centredRight);
+        right -= w;
+        if (rightText.isNotEmpty())
+        {
+            g.setColour(c.textTertiary);
+            g.drawText(juce::String::fromUTF8("\xc2\xb7"),
+                       right - theme_.spacing.xl,
+                       0,
+                       theme_.spacing.xl,
+                       getHeight(),
+                       juce::Justification::centred);
+        }
+        right -= theme_.spacing.xl;
+    }
     if (rightText.isNotEmpty())
     {
         g.setColour(c.textSecondary.withMultipliedAlpha(alpha));
         g.setFont(theme_.small());
         const int left = segments_.empty() ? 0 : segments_.back().bounds.getRight() + theme_.spacing.xl;
         g.drawText(rightText,
-                   juce::Rectangle<int>(left, 0, getWidth() - left - theme_.spacing.md, getHeight()),
+                   juce::Rectangle<int>(left, 0, std::max(0, right - left), getHeight()),
                    juce::Justification::centredRight,
                    true);
     }

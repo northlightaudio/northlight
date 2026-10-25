@@ -219,7 +219,8 @@ std::vector<engine::ParameterInfo> parameterInfos()
             {"Output", "dB", -12.0f, 12.0f, 0.0f, false},
             choice("Lookahead", {"Off", "Short", "Long"}, 0.0f),
             {"Swell", "%", 0.0f, 100.0f, 0.0f, false},
-            choice("Catch", {"Off", "On"}, 0.0f)};
+            choice("Catch", {"Off", "On"}, 0.0f),
+            {"Halo", "%", 0.0f, 100.0f, 0.0f, false}};
 }
 
 void flush(Biquad& f) noexcept
@@ -229,6 +230,236 @@ void flush(Biquad& f) noexcept
     if (std::abs(f.z2) < 1.0e-20f)
         f.z2 = 0.0f;
 }
+
+// Halo: sympathetic strings. Six feedback combs, each tuned to a note the singer
+// held, ring with what goes into the reverb, so
+// the tail sounds the pitches just sung and their harmonics, in tune with the
+// singer however the singer is tuned. A note is held when its pitch runs on for
+// 120 ms without a jump (100 cents in a frame) or a glide of 150 cents away from its
+// centre (its average pitch), so a vibrato counts; the string follows the centre
+// while the note is sung. A note no string holds goes to a free or
+// the quietest one, faded out over 30 ms first so a retune never clicks. A one-pole
+// low-pass in each loop makes them ring like strings, not buzz; its delay is taken
+// off the loop so the pitch stays true. Mono in and out. Real-time safe after
+// prepare().
+class HaloBank
+{
+public:
+    static constexpr int voiceCount = 6;
+    static constexpr float jumpCents = 100.0f, glideCents = 150.0f, sameNoteCents = 50.0f;
+    static constexpr double steadySeconds = 0.12, centreSeconds = 0.3, retuneSeconds = 0.03;
+    static constexpr float dampingHz = 4000.0f;
+
+    void prepare(double sampleRate)
+    {
+        NORTHLIGHT_ASSERT_NOT_REALTIME("HaloBank::prepare");
+        sampleRate_ = sampleRate;
+        const int size = fdn::powerOfTwoAtLeast(sampleRate / vocal::lowestHz + 8.0);
+        for (auto& v : voices_)
+            v.buffer.assign(static_cast<size_t>(size), 0.0f);
+        mask_ = size - 1;
+        lowStep_ = fdn::onePole(dampingHz, sampleRate);
+        loopLag_ = (1.0f - lowStep_) / lowStep_; // the low-pass's delay at low frequencies, samples
+        fadeStep_ = static_cast<float>(1.0 / (retuneSeconds * sampleRate));
+        steadyFrames_ = static_cast<int>(std::lround(steadySeconds / vocal::frameSeconds));
+        centreStep_ = static_cast<float>(1.0 - std::exp(-vocal::frameSeconds / centreSeconds));
+        envelopeStep_ = 1.0f - std::exp(-1.0f / static_cast<float>(0.05 * sampleRate));
+        clear();
+    }
+
+    void clear() noexcept
+    {
+        for (auto& v : voices_)
+        {
+            std::fill(v.buffer.begin(), v.buffer.end(), 0.0f);
+            v.hz = v.pendingHz = 0.0f;
+            v.delay = 1.0f;
+            v.feedback = v.drive = v.gain = v.low = v.energy = 0.0f;
+            v.lastHeard = 0;
+        }
+        write_ = 0;
+        candidateHz_ = centre_ = last_ = 0.0f;
+        steady_ = 0;
+        current_ = -1;
+        clock_ = 0;
+    }
+
+    // Once a block: how long a string rings (RT60).
+    void setDecay(float seconds) noexcept { decaySeconds_ = std::max(0.1f, seconds); }
+
+    // A Listener frame: a note held that no string holds is given one, and the
+    // string holding the note being sung follows its centre.
+    void hear(const vocal::Hearing& h) noexcept
+    {
+        ++clock_;
+        if (h.sound != vocal::Sound::voiced || !(h.pitchHz > 0.0f))
+        {
+            steady_ = 0;
+            current_ = -1;
+            return;
+        }
+        // The centre is the note's average pitch in octaves so far, then over its
+        // last 300 ms or so; a jump or a glide away from it starts a new note.
+        const float octaves = std::log2(h.pitchHz);
+        if (candidateHz_ > 0.0f && std::abs(1200.0f * (octaves - last_)) < jumpCents &&
+            std::abs(1200.0f * (octaves - centre_)) < glideCents)
+        {
+            steady_ = std::min(steady_ + 1, 1 << 20);
+            centre_ += (octaves - centre_) * std::max(centreStep_, 1.0f / static_cast<float>(steady_ + 1));
+        }
+        else
+        {
+            centre_ = octaves;
+            steady_ = 0;
+            current_ = -1;
+        }
+        last_ = octaves;
+        candidateHz_ = std::exp2(centre_);
+        if (steady_ < steadyFrames_)
+            return;
+        if (current_ >= 0)
+        {
+            auto& v = voices_[static_cast<size_t>(current_)];
+            (v.pendingHz > 0.0f ? v.pendingHz : v.hz) = candidateHz_;
+            v.lastHeard = clock_;
+            return;
+        }
+        for (size_t i = 0; i < voices_.size(); ++i)
+        {
+            auto& v = voices_[i];
+            const float held = v.pendingHz > 0.0f ? v.pendingHz : v.hz;
+            if (held > 0.0f && std::abs(cents(candidateHz_, held)) < sameNoteCents)
+            {
+                current_ = static_cast<int>(i);
+                v.lastHeard = clock_;
+                return;
+            }
+        }
+        // A free string, else the quietest (the longest unheard of equals).
+        size_t pick = 0;
+        for (size_t i = 0; i < voices_.size(); ++i)
+        {
+            const auto& v = voices_[i];
+            const auto& best = voices_[pick];
+            if (v.hz <= 0.0f && v.pendingHz <= 0.0f)
+            {
+                pick = i;
+                break;
+            }
+            if (v.energy < best.energy || (v.energy == best.energy && v.lastHeard < best.lastHeard))
+                pick = i;
+        }
+        voices_[pick].pendingHz = candidateHz_;
+        voices_[pick].lastHeard = clock_;
+        current_ = static_cast<int>(pick);
+    }
+
+    // One sample in; the strings' sum out.
+    float process(float x) noexcept
+    {
+        float out = 0.0f;
+        for (auto& v : voices_)
+        {
+            // A string to retune fades out, then starts again silent at its new note.
+            if (v.pendingHz > 0.0f)
+            {
+                v.gain = std::max(0.0f, v.gain - fadeStep_);
+                if (v.gain <= 0.0f)
+                    retune(v);
+            }
+            else if (v.hz > 0.0f && v.gain < 1.0f)
+                v.gain = std::min(1.0f, v.gain + fadeStep_);
+            if (v.hz <= 0.0f)
+                continue;
+            const float read = fdn::readLinear(v.buffer.data(), mask_, write_, v.delay);
+            v.low += lowStep_ * (read - v.low);
+            const float y = x * v.drive * v.gain + v.feedback * v.low;
+            v.buffer[static_cast<size_t>(write_)] = y;
+            const float sound = v.low * v.gain;
+            v.energy += (sound * sound - v.energy) * envelopeStep_;
+            out += sound;
+        }
+        write_ = (write_ + 1) & mask_;
+        return out;
+    }
+
+    // Whether any string still sounds (or is about to).
+    bool ringing() const noexcept
+    {
+        for (const auto& v : voices_)
+            if (v.pendingHz > 0.0f || (v.hz > 0.0f && v.energy > 1.0e-12f))
+                return true;
+        return false;
+    }
+
+    // The notes held, for the tests.
+    std::array<float, voiceCount> notes() const noexcept
+    {
+        std::array<float, voiceCount> n{};
+        for (size_t i = 0; i < n.size(); ++i)
+            n[i] = voices_[i].hz;
+        return n;
+    }
+
+    // Once a block, after setDecay: each string's loop gain for its note.
+    void tune() noexcept
+    {
+        for (auto& v : voices_)
+            if (v.hz > 0.0f)
+                setLoop(v);
+    }
+
+    void flushDenormals() noexcept
+    {
+        for (auto& v : voices_)
+        {
+            if (std::abs(v.low) < 1.0e-20f)
+                v.low = 0.0f;
+            if (v.energy < 1.0e-20f)
+                v.energy = 0.0f;
+        }
+    }
+
+private:
+    struct Voice
+    {
+        std::vector<float> buffer;
+        float hz = 0.0f, pendingHz = 0.0f;
+        float delay = 1.0f, feedback = 0.0f, drive = 0.0f, gain = 0.0f, low = 0.0f, energy = 0.0f;
+        std::int64_t lastHeard = 0;
+    };
+
+    static float cents(float a, float b) noexcept { return 1200.0f * std::log2(a / b); }
+
+    void retune(Voice& v) noexcept
+    {
+        std::fill(v.buffer.begin(), v.buffer.end(), 0.0f);
+        v.hz = v.pendingHz;
+        v.pendingHz = 0.0f;
+        v.low = 0.0f;
+        v.energy = 0.0f;
+        setLoop(v);
+    }
+
+    void setLoop(Voice& v) noexcept
+    {
+        const auto period = static_cast<float>(sampleRate_ / v.hz);
+        v.delay = std::clamp(period - loopLag_, 2.0f, static_cast<float>(mask_ - 2));
+        v.feedback = std::pow(10.0f, -3.0f * period / (static_cast<float>(sampleRate_) * decaySeconds_));
+        // The comb's gain at its note is about 1 / (1 - feedback): driven by that much
+        // less, a held matching note rings about as loud as it went in.
+        v.drive = 1.0f - v.feedback;
+    }
+
+    std::array<Voice, voiceCount> voices_;
+    double sampleRate_ = 48000.0;
+    int mask_ = 0, write_ = 0;
+    float lowStep_ = 0.0f, loopLag_ = 0.0f, fadeStep_ = 0.0f, envelopeStep_ = 0.0f;
+    float decaySeconds_ = 3.0f;
+    float candidateHz_ = 0.0f, centre_ = 0.0f, last_ = 0.0f, centreStep_ = 0.0f;
+    int steady_ = 0, steadyFrames_ = 48, current_ = -1;
+    std::int64_t clock_ = 0;
+};
 
 class Vesper final : public ProcessorBase
 {
@@ -268,6 +499,7 @@ private:
         dryMask_ = drySize - 1;
 
         listener_.prepare(sampleRate);
+        halo_.prepare(sampleRate);
         for (int k = 0; k < spaceCount; ++k)
             networks_[static_cast<size_t>(k)].prepare(spaces()[static_cast<size_t>(k)].tuning, sampleRate);
 
@@ -320,7 +552,7 @@ private:
         float clarity = 0.0f, breaths = 0.0f, duckDb = 0.0f, duckRelease = 0.0f, ends = 0.0f;
         float decay = 1.8f, follow = 1.0f, mud = 0.0f;
         int lookahead = 0;
-        float swell = 0.0f, held = 0.0f;
+        float swell = 0.0f, held = 0.0f, halo = 0.0f;
     };
 
     Targets targets() const noexcept
@@ -356,6 +588,7 @@ private:
                       ? std::clamp(parameter(swell) * 0.01f, 0.0f, 1.0f)
                       : 0.0f;
         t.held = parameter(catchTail) >= 0.5f ? 1.0f : 0.0f;
+        t.halo = std::clamp(parameter(halo) * 0.01f, 0.0f, 1.0f);
         return t;
     }
 
@@ -474,6 +707,8 @@ private:
     void onFrame(const vocal::Hearing& h, const Targets& t) noexcept
     {
         sendTargetDb_ = sendCutFor(h, t);
+        if (t.halo > 0.0f)
+            halo_.hear(h);
         heardSound_ = h.sound;
         heardPitch_ = h.heldPitchHz;
         if (h.lineEnd)
@@ -550,7 +785,8 @@ private:
         for (int i = 0; i < numSamples; ++i)
             inPeak = std::max(inPeak, std::max(std::abs(left[i]), std::abs(right[i])));
         silentSamples_ = inPeak < 1.0e-7f ? silentSamples_ + numSamples : 0;
-        bool dead = silentSamples_ > inputMask_ + 1 && t.held == 0.0f && held_ < 1.0e-4f;
+        bool dead = silentSamples_ > inputMask_ + 1 && t.held == 0.0f && held_ < 1.0e-4f &&
+                    !(haloGain_ > 0.0f && halo_.ringing());
         for (const auto& n : networks_)
             dead = dead && n.energy() < 1.0e-14f;
         if (dead)
@@ -604,6 +840,19 @@ private:
         // Inputs drive the reverb harder at short decays; long ones hold back a little.
         const float decayTrim = std::min(1.0f, std::pow(2.0f / t.decay, 0.25f));
         const float throwDb = endsLiftDb * t.ends;
+        // Halo's strings ring longer than the tail.
+        // Turned off and faded out, they stop and are cleared.
+        if (t.halo == 0.0f && haloGain_ > 0.0f && haloGain_ < 1.0e-4f)
+        {
+            halo_.clear();
+            haloGain_ = 0.0f;
+        }
+        const bool haloOn = t.halo > 0.0f || haloGain_ > 0.0f;
+        if (haloOn)
+        {
+            halo_.setDecay(std::max(haloMinSeconds, t.decay * haloDecayRatio));
+            halo_.tune();
+        }
 
         for (int n = 0; n < numSamples; ++n)
         {
@@ -631,9 +880,15 @@ private:
             const float open = 1.0f - held_;
             const float send = dbToGain(sendDb_) * open;
 
-            // The shaped send into the pre-delay.
-            input_[0][static_cast<size_t>(inputWrite_)] = dryL * send;
-            input_[1][static_cast<size_t>(inputWrite_)] = dryR * send;
+            // The shaped send into the pre-delay, with Halo's strings, which it plays.
+            float strings = 0.0f;
+            if (haloOn)
+            {
+                haloGain_ += (t.halo - haloGain_) * paramStep_;
+                strings = halo_.process(0.5f * (dryL + dryR) * send) * haloGain_ * haloLevel * open;
+            }
+            input_[0][static_cast<size_t>(inputWrite_)] = dryL * send + strings;
+            input_[1][static_cast<size_t>(inputWrite_)] = dryR * send + strings;
             const float pre = std::max(1.0f, pre_);
             float sendL = fdn::readLinear(inL, inputMask_, inputWrite_, pre);
             float sendR = fdn::readLinear(inR, inputMask_, inputWrite_, pre);
@@ -750,6 +1005,7 @@ private:
             duck_ = 0.0f;
         if (held_ < 1.0e-9f)
             held_ = 0.0f;
+        halo_.flushDenormals();
         // Never expected: a non-finite value would ring for ever, so everything starts again.
         for (const auto& net : networks_)
             if (net.diverged())
@@ -811,6 +1067,8 @@ private:
         for (auto& net : networks_)
             net.clear();
         listener_.reset();
+        halo_.clear();
+        haloGain_ = 0.0f;
         for (auto& f : follow_)
         {
             f.bypass();
@@ -866,6 +1124,8 @@ private:
 
     engine::ProcessorFeedback feedback_;
     vocal::Listener listener_;
+    HaloBank halo_;
+    float haloGain_ = 0.0f;
     std::array<fdn::FeedbackNetwork, spaceCount> networks_;
     std::array<std::vector<float>, 2> input_, dry_;
     int inputMask_ = 0, inputWrite_ = 0, dryMask_ = 0, dryWrite_ = 0;

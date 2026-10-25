@@ -106,3 +106,60 @@ TEST_CASE("Copy and paste keep track offsets and land only on matching tracks", 
     auto shifted = ui::edit::pasteClips(p, clipboard, 1, 8000);
     CHECK(shifted.commands.size() == 1);
 }
+
+TEST_CASE("The glue tool joins a clip with the next when they can join", "[ui][edit]")
+{
+    auto p = editProject();
+    // Audio: a and b continue one recording; b and c do not.
+    CHECK(ui::edit::nextClip(p, {1, 10}) == ClipRef{1, 11});
+    CHECK_FALSE(ui::edit::nextClip(p, {1, 12}).has_value());
+    CHECK(ui::edit::canJoinWithNext(p, {1, 10}));
+    CHECK_FALSE(ui::edit::canJoinWithNext(p, {1, 11}));
+    CHECK(ui::edit::joinWithNext(p, {1, 11}).empty());
+    auto join = ui::edit::joinWithNext(p, {1, 10});
+    auto after = apply(p, join);
+    REQUIRE(after.tracks[0].clips.size() == 2);
+    CHECK(after.tracks[0].clips[0].length == 2000);
+
+    // MIDI: any later clip joins, across the gap.
+    MidiClip later;
+    later.id = 30;
+    later.start = 8000;
+    later.length = 1000;
+    later.notes = {{31, 62, 100, 0, 100}};
+    p.tracks[1].midiClips.push_back(later);
+    CHECK(ui::edit::canJoinWithNext(p, {2, 20, true}));
+    after = apply(p, join = ui::edit::joinWithNext(p, {2, 20, true}));
+    REQUIRE(after.tracks[1].midiClips.size() == 1);
+    CHECK(after.tracks[1].midiClips[0].length == 9000);
+    CHECK(after.tracks[1].midiClips[0].notes.size() == 2);
+
+    // A MIDI selection joins into its earliest clip.
+    auto selected = ui::edit::joinClips(p, {{2, 20, true}, {2, 30, true}});
+    after = apply(p, selected);
+    CHECK(after.tracks[1].midiClips.size() == 1);
+}
+
+TEST_CASE("Muting sets only the clips that differ; toggling mutes while any clip plays", "[ui][edit]")
+{
+    const auto p = editProject();
+    auto mute = ui::edit::setMuted(p, {{1, 10}, {2, 20, true}}, true);
+    CHECK(mute.name == "Mute clips");
+    CHECK(mute.commands.size() == 2);
+    auto after = apply(p, mute);
+    CHECK(ui::edit::isMuted(after, {1, 10}));
+    CHECK(ui::edit::isMuted(after, {2, 20, true}));
+    CHECK_FALSE(ui::edit::isMuted(after, {1, 11}));
+    CHECK(ui::edit::setMuted(after, {{1, 10}}, true).empty()); // already muted
+
+    // One muted, one playing: the toggle mutes both; then it unmutes both.
+    auto toggle = ui::edit::toggleMuted(after, {{1, 10}, {1, 11}});
+    CHECK(toggle.name == "Mute clips");
+    CHECK(toggle.commands.size() == 1);
+    after = apply(after, toggle);
+    toggle = ui::edit::toggleMuted(after, {{1, 10}, {1, 11}});
+    CHECK(toggle.name == "Unmute clips");
+    after = apply(after, toggle);
+    CHECK_FALSE(ui::edit::isMuted(after, {1, 10}));
+    CHECK_FALSE(ui::edit::isMuted(after, {1, 11}));
+}

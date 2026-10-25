@@ -436,3 +436,193 @@ TEST_CASE("A progress sheet waits out its delay unless hurried, and says when it
     CHECK(sheet->keyPressed(juce::KeyPress(' ')));
     delete sheet;
 }
+
+namespace
+{
+// An audio track with two clips cut from one recording (bars 2-3 and 3-4, a
+// split undone by the glue) and a MIDI track with a clip on bars 2-3.
+struct ToolFixture : DrawFixture
+{
+    ToolFixture()
+    {
+        project.tracks[1].clips.push_back({20, "a", "a.wav", 96000, 96000, 0, 1.0f});
+        project.tracks[1].clips.push_back({21, "b", "a.wav", 192000, 96000, 96000, 1.0f});
+        core::MidiClip clip;
+        clip.id = 22;
+        clip.start = 96000;
+        clip.length = 96000;
+        clip.notes = {{23, 60, 100, 0, 1000}};
+        project.tracks[0].midiClips.push_back(clip);
+        project.nextId = 30;
+        view.setProject(&project);
+    }
+    juce::Point<int> at(int row, double bar) { return view.pointOnRow(row, bar); }
+    int rowTop(int row)
+    {
+        return headerFor(view, project.tracks[static_cast<size_t>(row)].id)->getBounds().getY();
+    }
+    void click(juce::Point<int> p)
+    {
+        view.mouseDown(mouseAt(view, p.x, p.y));
+        view.mouseUp(mouseAt(view, p.x, p.y));
+    }
+    void drag(juce::Point<int> from, juce::Point<int> to)
+    {
+        view.mouseDown(mouseAt(view, from.x, from.y));
+        view.mouseDrag(mouseAt(view, to.x, to.y, 1, true));
+        view.mouseUp(mouseAt(view, to.x, to.y, 1, true));
+    }
+};
+} // namespace
+
+TEST_CASE("Dragging a clip's fade handle sets its fade, one undo step", "[ui][arrange]")
+{
+    ToolFixture f;
+    const auto clipStart = f.at(1, 2.0);
+    const int top = f.rowTop(1) + 3; // the handle at the clip's top left corner
+    f.drag({clipStart.x + 2, top}, {f.at(1, 2.5).x, top});
+    const auto& clip = *f.project.tracks[1].findClip(20);
+    CHECK(clip.fadeIn > 40000); // about half a bar (48000 samples)
+    CHECK(clip.fadeIn < 56000);
+    CHECK(clip.fadeOut == 0);
+    REQUIRE(f.undo.undo(f.project));
+    CHECK(f.project.tracks[1].findClip(20)->fadeIn == 0);
+
+    // And the fade out from the top right corner.
+    f.view.setProject(&f.project);
+    const auto clipEnd = f.at(1, 3.0);
+    f.drag({clipEnd.x - 3, top}, {f.at(1, 2.75).x, top});
+    CHECK(f.project.tracks[1].findClip(20)->fadeOut > 16000);
+    CHECK(f.project.tracks[1].findClip(20)->fadeIn == 0);
+}
+
+TEST_CASE("The split tool cuts the clip under the pointer on the grid; Shift cuts every track",
+          "[ui][arrange][tools]")
+{
+    ToolFixture f;
+    f.view.setTool(ui::ArrangeView::Tool::split);
+    f.click(f.at(1, 2.51)); // snaps to the grid line at 2.5 (a beat at this zoom, at least)
+    REQUIRE(f.project.tracks[1].clips.size() == 3);
+    CHECK(f.project.tracks[1].clips[0].length + f.project.tracks[1].clips[1].length == 96000);
+    CHECK(f.project.tracks[0].midiClips.size() == 1); // the other track is untouched
+
+    // Shift+click: every clip under the line, on every track.
+    const auto p = f.at(1, 2.25);
+    const auto e = mouseAt(f.view, p.x, p.y);
+    const juce::MouseEvent shifted(
+        e.source,
+        e.position,
+        juce::ModifierKeys(juce::ModifierKeys::leftButtonModifier | juce::ModifierKeys::shiftModifier),
+        1.0f,
+        0.0f,
+        0.0f,
+        0.0f,
+        0.0f,
+        &f.view,
+        &f.view,
+        e.eventTime,
+        e.position,
+        e.eventTime,
+        1,
+        false);
+    f.view.mouseDown(shifted);
+    f.view.mouseUp(shifted);
+    CHECK(f.project.tracks[1].clips.size() == 4);
+    CHECK(f.project.tracks[0].midiClips.size() == 2);
+}
+
+TEST_CASE("The erase tool deletes the clips a sweep passes over as one undo step", "[ui][arrange][tools]")
+{
+    ToolFixture f;
+    // One edit (one undo step in the app) for the whole sweep.
+    std::vector<std::string> edits;
+    f.view.onEdit = [&](std::vector<std::unique_ptr<core::Command>> commands, const std::string& name)
+    {
+        edits.push_back(name);
+        for (auto& c : commands)
+            f.undo.execute(f.project, std::move(c));
+        f.view.setProject(&f.project);
+    };
+    f.view.setTool(ui::ArrangeView::Tool::erase);
+    f.view.mouseDown(mouseAt(f.view, f.at(1, 2.5).x, f.at(1, 2.5).y));
+    f.view.mouseDrag(mouseAt(f.view, f.at(1, 3.5).x, f.at(1, 3.5).y, 1, true));
+    CHECK(f.project.tracks[1].clips.size() == 2); // nothing goes until the release
+    f.view.mouseUp(mouseAt(f.view, f.at(1, 3.5).x, f.at(1, 3.5).y, 1, true));
+    CHECK(f.project.tracks[1].clips.empty());
+    CHECK(edits == std::vector<std::string>{"Delete clips"});
+}
+
+TEST_CASE("The glue tool joins a clip with the next; the mute tool mutes and unmutes", "[ui][arrange][tools]")
+{
+    ToolFixture f;
+    f.view.setTool(ui::ArrangeView::Tool::glue);
+    f.click(f.at(1, 2.5));
+    REQUIRE(f.project.tracks[1].clips.size() == 1);
+    CHECK(f.project.tracks[1].clips[0].length == 192000);
+
+    f.view.setTool(ui::ArrangeView::Tool::mute);
+    f.click(f.at(0, 2.5));
+    CHECK(f.project.tracks[0].midiClips[0].muted);
+    f.click(f.at(0, 2.5));
+    CHECK_FALSE(f.project.tracks[0].midiClips[0].muted);
+}
+
+TEST_CASE("A click that selects a clip reports the new selection", "[ui][arrange]")
+{
+    ToolFixture f;
+    int reports = 0;
+    f.view.onSelectionChanged = [&] { ++reports; };
+    f.click(f.at(0, 2.5)); // the MIDI clip
+    CHECK(reports == 1);
+    REQUIRE(f.view.selection().size() == 1);
+    CHECK(f.view.selection().front() == ui::ArrangeView::ClipRef{1, 22, true});
+    f.click(f.at(0, 2.5)); // the same clip again: nothing changed
+    CHECK(reports == 1);
+    f.click(f.at(1, 2.5)); // an audio clip
+    CHECK(reports == 2);
+}
+
+TEST_CASE("Dragging a fade handle up bends the fade fast, down slow; a small move stays linear",
+          "[ui][arrange]")
+{
+    ToolFixture f;
+    const auto clipStart = f.at(1, 2.0);
+    const int top = f.rowTop(1) + 3;
+    const int x = f.at(1, 2.5).x;
+    f.view.mouseDown(mouseAt(f.view, clipStart.x + 2, top));
+    f.view.mouseDrag(mouseAt(f.view, x, top - 40, 1, true));
+    f.view.mouseUp(mouseAt(f.view, x, top - 40, 1, true));
+    CHECK(f.project.tracks[1].findClip(20)->fadeInCurve == Catch::Approx(0.5f));
+    CHECK(f.project.tracks[1].findClip(20)->fadeIn > 40000);
+
+    f.view.setProject(&f.project);
+    const auto clipEnd = f.at(1, 3.0);
+    f.view.mouseDown(mouseAt(f.view, clipEnd.x - 3, top));
+    f.view.mouseDrag(mouseAt(f.view, f.at(1, 2.75).x, top + 3, 1, true)); // within the detent
+    f.view.mouseUp(mouseAt(f.view, f.at(1, 2.75).x, top + 3, 1, true));
+    CHECK(f.project.tracks[1].findClip(20)->fadeOutCurve == 0.0f);
+    CHECK(f.project.tracks[1].findClip(20)->fadeOut > 16000);
+    CHECK(f.project.tracks[1].findClip(20)->fadeInCurve == Catch::Approx(0.5f)); // untouched
+}
+
+TEST_CASE("Every bus and the master have a row in the arrange view, the master last", "[ui][arrange]")
+{
+    DrawFixture f;
+    core::Bus group;
+    group.id = 5;
+    group.name = "Drums";
+    core::Bus fx;
+    fx.id = 6;
+    fx.name = "Hall";
+    fx.fx = true;
+    f.project.buses = {group, fx};
+    f.view.setProject(&f.project);
+    const auto* groupHeader = headerFor(f.view, 5);
+    const auto* fxHeader = headerFor(f.view, 6);
+    const auto* masterHeader = headerFor(f.view, core::masterId);
+    REQUIRE(groupHeader != nullptr);
+    REQUIRE(fxHeader != nullptr);
+    REQUIRE(masterHeader != nullptr);
+    CHECK(groupHeader->getY() < fxHeader->getY());
+    CHECK(fxHeader->getY() < masterHeader->getY());
+}

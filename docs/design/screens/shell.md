@@ -143,14 +143,23 @@ Left to right, with `space.md` gaps between groups and `space.xl` between cluste
 3. Undo / Redo: icon buttons, disabled when there is nothing to undo; the tooltip
    names the action ("Undo Move clip").
 4. Transport cluster: section 6.
-5. Right cluster, all icon toggles 28×28 with tooltips: Snap (magnet icon with a
-   chevron that opens the grid menu; the tooltip reads "Snap: Adaptive"), Ripple,
+5. Right cluster, all icon toggles 28×28 with tooltips: Snap (a split button: the
+   magnet toggles snap and keeps the grid it had; its chevron, or a right-click,
+   opens the grid menu under it; the tooltip reads "Snap: Adaptive"), Ripple,
    Zoom to fit, a `lineStrong` divider, then Mixer, Editor and Browser as icon
    toggles that light `accent` when their panel is open.
 
 The header shows no text except the project name, the time displays and the
 tempo/signature values. Everything in the header has a keyboard shortcut shown in
 its tooltip.
+
+## The window
+
+The main window opens where it was when Northlight last closed: the same size,
+position and maximised state, kept in the user's settings. If its header bar would
+not be on a screen (its monitor is unplugged, or it was dragged off), it opens
+centred on the main screen at the default size instead. The first launch is
+centred at 1280×720.
 
 ## Status bar detail
 
@@ -172,7 +181,9 @@ Left, in `timeSmall` mono, separated by middle dots in `textTertiary`:
 
 Right: a single line for transient confirmations ("Saved", "Bounced mix.wav") in
 `textSecondary`, fading after 4 s. Anything requiring action is a toast, not a status
-message.
+message. At the right end, while clips are selected in the arrange view, the count
+in `small` `textSecondary` ("2 clips selected"), a middle dot between it and the
+message or hint.
 
 ## Empty state
 

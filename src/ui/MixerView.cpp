@@ -1428,9 +1428,13 @@ public:
 
     void setMaster(const core::Master& master)
     {
+        {
+            const juce::ScopedValueSetter<bool> guard(updating_, true);
+            fader_.setGain(master.gain, juce::dontSendNotification);
+            value_.setValue(db::fromGain(master.gain), juce::dontSendNotification);
+        }
+        showPlayed(); // an automated fader never shows its static value for a frame
         const juce::ScopedValueSetter<bool> guard(updating_, true);
-        fader_.setGain(master.gain, juce::dontSendNotification);
-        value_.setValue(db::fromGain(master.gain), juce::dontSendNotification);
 
         const bool countChanged = inserts_.size() != master.inserts.size();
         while (inserts_.size() > master.inserts.size())
@@ -1471,6 +1475,26 @@ public:
     {
         const float peaks[2] = {r.peakLeft, r.peakRight};
         meter_.push(peaks, 2, elapsedMs);
+        showPlayed();
+    }
+
+    // An automated master fader shows what its volume lane plays, as a channel's.
+    void showPlayed()
+    {
+        if (!owner_.automatedValues)
+            return;
+        const auto a = owner_.automatedValues(core::masterId);
+        const juce::ScopedValueSetter<bool> guard(updating_, true);
+        if (a.gain && !fader_.isMouseButtonDown() && !value_.isMouseButtonDown())
+        {
+            fader_.setGain(a.gainValue, juce::dontSendNotification);
+            value_.setValue(db::fromGain(a.gainValue), juce::dontSendNotification);
+        }
+        if (a.gain != automatedShown_)
+        {
+            automatedShown_ = a.gain;
+            fader_.setTooltip(a.gain ? "Master (automated: the fader follows its lane)" : "Master");
+        }
     }
 
     // The channel strips' fader band and gain field row, to line up with; an
@@ -1608,6 +1632,7 @@ private:
     MixerView& owner_;
     const Theme& theme_;
     bool updating_ = false;
+    bool automatedShown_ = false;
     NameCap cap_;
     juce::Viewport insertsView_;
     juce::Component insertsHolder_;

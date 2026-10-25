@@ -142,6 +142,7 @@ public:
         {
             frames_[static_cast<size_t>(head_)] = frames[i];
             head_ = (head_ + 1) % fieldFrames;
+            ++total_;
             count_ = std::min(fieldFrames, count_ + 1);
         }
         if (n > 0)
@@ -277,18 +278,23 @@ public:
                 else
                     ++col;
             }
+            // Breaths dotted and what was kept out as ticks, one per three columns:
+            // each column keeps its place in time, so they scroll whole and do not shimmer.
             g.setColour(c.textTertiary);
-            int lastTick = -100;
             for (int col = 0; col < columns; ++col)
             {
                 const auto& k = cols_[static_cast<size_t>(col)];
-                if (k.breath && col % 4 == 0)
+                if (k.breath && k.at % 4 == 0)
                     g.fillEllipse(juce::Rectangle<float>(1.6f, 1.6f).withCentre({xOf(col), lane + 1.5f}));
-                if (k.keptOut > 1.5f && col - lastTick >= 3)
+                if (k.at % tickColumns != 0)
+                    continue;
+                float kept = 0.0f;
+                for (int i = col; i < std::min(columns, col + tickColumns); ++i)
+                    kept = std::max(kept, cols_[static_cast<size_t>(i)].keptOut);
+                if (kept > 1.5f)
                 {
-                    const float h = 2.0f + 8.0f * std::min(1.0f, k.keptOut / pv::sendCutDb);
+                    const float h = 2.0f + 8.0f * std::min(1.0f, kept / pv::sendCutDb);
                     g.fillRect(juce::Rectangle<float>(xOf(col) - 0.75f, lane + 6.0f, 1.5f, h));
-                    lastTick = col;
                 }
             }
 
@@ -312,31 +318,45 @@ public:
         drawCorners(g, area);
     }
 
-    // The plot inside the well: room above for the readouts, below for the lane and legend.
+    // The plot inside the well: room above for the readouts, below for the lane.
     juce::Rectangle<float> plotArea() const
     {
-        return getLocalBounds().toFloat().reduced(14.0f, 0.0f).withTrimmedTop(70.0f).withTrimmedBottom(46.0f);
+        return getLocalBounds()
+            .toFloat()
+            .reduced(14.0f, 0.0f)
+            .withTrimmedTop(70.0f)
+            .withTrimmedBottom(laneDepth);
     }
 
 private:
+    // Below the horizon: the lane and its ticks.
+    static constexpr float laneDepth = 30.0f;
+    static constexpr int tickColumns = 3;
+
     struct Column
     {
         float tail = 0.0f, dry = 0.0f, keptOut = 0.0f, follow = 0.0f;
         bool voiced = false, breath = false, lineEnd = false;
+        std::int64_t at = 0; // the column's place in time, counted in columns since the first frame
     };
 
     // The frames under each column: the loudest, and whether anything happened.
+    // A frame's column comes from its place in time, not from where it sits in the
+    // field, so the same frames share a column from one repaint to the next and the
+    // picture scrolls a whole column at a time.
     void gather(int columns)
     {
         cols_.assign(static_cast<size_t>(columns), {});
-        if (count_ == 0)
-            return;
-        // Frame i of the field (0 the oldest of six seconds) lands in column i * columns / fieldFrames.
-        const int missing = fieldFrames - count_;
+        const auto columnOf = [columns](std::int64_t frame) { return frame * columns / fieldFrames; };
+        const std::int64_t newest = columnOf(total_ - 1);
+        for (int col = 0; col < columns; ++col)
+            cols_[static_cast<size_t>(col)].at = newest - (columns - 1 - col);
         for (int i = 0; i < count_; ++i)
         {
             const auto& f = frames_[static_cast<size_t>((head_ - count_ + i + fieldFrames) % fieldFrames)];
-            const int col = std::min(columns - 1, (missing + i) * columns / fieldFrames);
+            const std::int64_t col = columns - 1 - (newest - columnOf(total_ - count_ + i));
+            if (col < 0)
+                continue;
             auto& k = cols_[static_cast<size_t>(col)];
             k.tail = std::max(k.tail, f[pv::Telemetry::tailRms]);
             k.dry = std::max(k.dry, f[pv::Telemetry::dryRms]);
@@ -348,8 +368,7 @@ private:
         }
     }
 
-    // Top left the space and decay over the pre-delay, top right the duck now;
-    // along the foot the legend and what the field spans.
+    // Top left the space and decay over the pre-delay, top right the duck now.
     void drawCorners(juce::Graphics& g, juce::Rectangle<float> area) const
     {
         const auto& theme = card_.theme();
@@ -392,39 +411,12 @@ private:
                        r.removeFromTop(22.0f),
                        juce::Justification::centredRight);
         }
-
-        auto foot = area.reduced(14.0f, 10.0f).removeFromBottom(14.0f);
-        g.setFont(caps);
-        g.setColour(card_.colour());
-        g.fillEllipse(foot.removeFromLeft(8.0f).withSizeKeepingCentre(8.0f, 8.0f));
-        foot.removeFromLeft(5.0f);
-        g.setColour(c.textTertiary);
-        g.drawText("TAIL", foot.removeFromLeft(textWidth(caps, "TAIL")), juce::Justification::centredLeft);
-        foot.removeFromLeft(12.0f);
-        g.setColour(c.textSecondary);
-        g.fillRect(foot.removeFromLeft(10.0f).withSizeKeepingCentre(10.0f, 2.0f));
-        foot.removeFromLeft(5.0f);
-        g.setColour(c.textTertiary);
-        g.drawText("VOICE", foot.removeFromLeft(textWidth(caps, "VOICE")), juce::Justification::centredLeft);
-        foot.removeFromLeft(12.0f);
-        g.fillRect(foot.removeFromLeft(1.5f).withSizeKeepingCentre(1.5f, 8.0f));
-        foot.removeFromLeft(5.0f);
-        g.drawText(
-            "KEPT OUT", foot.removeFromLeft(textWidth(caps, "KEPT OUT")), juce::Justification::centredLeft);
-        foot.removeFromLeft(12.0f);
-        g.setColour(c.textPrimary);
-        g.fillPath(fourPointStar(foot.removeFromLeft(9.0f).getCentre(), 4.5f));
-        foot.removeFromLeft(5.0f);
-        g.setColour(c.textTertiary);
-        g.drawText(
-            "LINE END", foot.removeFromLeft(textWidth(caps, "LINE END")), juce::Justification::centredLeft);
-        g.drawText(
-            juce::String::fromUTF8("6 S \xc2\xb7 NOW AT THE RIGHT"), foot, juce::Justification::centredRight);
     }
 
     ModuleCard& card_;
     std::vector<pv::Telemetry::Frame> frames_; // a ring of the last six seconds
     int head_ = 0, count_ = 0;
+    std::int64_t total_ = 0; // frames received
     std::vector<Column> cols_;
     float duckDb_ = 0.0f;
 };

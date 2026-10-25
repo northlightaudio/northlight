@@ -26,6 +26,22 @@ constexpr Id invalidId = 0;
 constexpr Id masterId = std::numeric_limits<Id>::max();
 using SamplePosition = std::int64_t;
 
+// A fade's gain at x, from 0 at its silent end to 1 at full level, for a curve
+// constant k = fadeShapeK(curve): x / (x + k (1 - x)). k = 1 is linear (exactly
+// x), k < 1 rises at once (fast, the curve bowed up), k > 1 stays low and rises
+// late (slow). One division per sample, so the audio thread can afford it.
+inline float fadeShapeK(float curve) noexcept
+{
+    return std::exp2(-3.0f * std::clamp(curve, -1.0f, 1.0f)); // 1/8 to 8
+}
+inline float fadeShape(float x, float k) noexcept
+{
+    x = std::clamp(x, 0.0f, 1.0f);
+    if (k == 1.0f)
+        return x;
+    return x / (x + k * (1.0f - x));
+}
+
 struct AudioClip
 {
     Id id = invalidId;
@@ -35,9 +51,13 @@ struct AudioClip
     SamplePosition length = 0;       // samples on the timeline
     SamplePosition sourceOffset = 0; // first source sample used, in source samples
     float gain = 1.0f;               // linear
-    SamplePosition fadeIn = 0;       // samples of linear fade at the start
+    SamplePosition fadeIn = 0;       // samples of fade at the start
     SamplePosition fadeOut = 0;      // and at the end (overlapping clips crossfade this way)
-    VocalEdit vocal;                 // pitch edits (core/Vocal.h); inactive = the media as recorded
+    // Each fade's curve (fadeShape): -1 slow, 0 linear (the default, which sums to
+    // constant level in a crossfade of correlated material), +1 fast.
+    float fadeInCurve = 0.0f;
+    float fadeOutCurve = 0.0f;
+    VocalEdit vocal; // pitch edits (core/Vocal.h); inactive = the media as recorded
     // Time-stretch and pitch-shift: timeline samples per source sample (2 = half
     // speed, twice as long) and a transposition in semitones that keeps the
     // timing. sourceOffset stays in source samples; the clip plays
@@ -47,6 +67,8 @@ struct AudioClip
     // Musical time base: a tempo change moves the clip with its bar and stretches
     // it to keep its length in beats (MIDI clips always follow the tempo).
     bool followTempo = false;
+    // A muted clip stays on the timeline, drawn hatched, and plays nothing.
+    bool muted = false;
 
     SamplePosition end() const noexcept { return start + length; }
     bool isStretched() const noexcept { return stretch != 1.0 || transpose != 0.0; }
@@ -124,6 +146,7 @@ struct MidiClip
     SamplePosition length = 0;
     std::vector<MidiNote> notes;                  // kept sorted by start
     std::vector<MidiControllerEvent> controllers; // kept sorted by time
+    bool muted = false;                           // stays on the timeline, plays nothing
 
     SamplePosition end() const noexcept { return start + length; }
     MidiNote* findNote(Id noteId) noexcept;
@@ -449,8 +472,9 @@ struct Bus : Channel
 };
 
 // The master is a channel so the insert commands, the engine's instance cache
-// and the editors work on its inserts as on any other channel's. Only its gain
-// and inserts are used: it has no pan, sends, strip, routing or automation.
+// and the editors work on its inserts as on any other channel's. It uses its
+// gain, inserts, automation (volume and its inserts' parameters; no pan) and
+// the height of its arrange row: no pan, sends, strip or routing.
 struct Master : Channel
 {
     Master()
@@ -517,7 +541,7 @@ struct Project
     // 11: inserts on the master.
     // 12: automation lanes' view (height, collapsed, hidden) and whether a
     //     channel's lanes are open in the arrange view.
-    static constexpr int schemaVersion = 12;
+    static constexpr int schemaVersion = 15;
     static constexpr int oldestReadableVersion = 2; // older files are refused
 
     std::string name = "Untitled";

@@ -36,8 +36,16 @@ drag a clip to move it, drag an edge to trim, drag a top corner for a fade, and
 Ctrl+drag for clip gain. Moves snap to the grid (**G**). **Delete** removes (with
 ripple on, **E**, later clips close the gap), **Ctrl+D** duplicates, **S** splits at
 the playhead, **J** joins, **X** crossfades overlapping clips, **Ctrl+Shift+N**
-normalises. **M** drops a marker, **Shift+M** a region from the loop range, and
-comma and full stop jump between markers.
+normalises, **Ctrl+M** mutes or unmutes the selected clips. **M** drops a marker,
+**Shift+M** a region from the loop range, and comma and full stop jump between
+markers. Right-click a clip for the same edits in a menu, with Split here.
+
+The tools sit at the top left of the track list, keys **1** to **7**: select, range
+(drag a time range), pencil (draw MIDI clips), **erase** (click or sweep over clips
+to delete them), **split** (click a clip to cut it at the line; Shift+click cuts
+every track, Alt cuts off the grid), **glue** (click a clip to join it with the
+next: audio that a split cut apart, or any later MIDI clip) and **mute** (click or
+sweep to mute or unmute clips; a muted clip is hatched and stays where it is).
 
 The tempo track holds tempo and time signature changes, including ramps. Audio clips
 can be stretched and transposed, or stretched to the project tempo. The audio editor
@@ -135,6 +143,23 @@ after the sound stops, for gated drums, and **Duck** lowers the tail while the d
 sound plays so a huge tail does not bury it. The display shows the tail itself:
 its spectrum over the last five seconds above, its level against the dry sound
 below.
+
+**Vesper** is a reverb for vocals. It listens to the singer and shapes the reverb
+around the words: **Clarity** keeps consonants and sibilance out of it,
+**Breaths** keeps breaths out, **Duck** lowers the tail while the singer sings
+and **Ends** lifts and lengthens it where a line ends. **Lookahead** lets it hear
+a little ahead (Short) or half a second ahead (Long, which also throws a line's
+last word and makes **Swell** possible: the tail rises into each line before it
+is sung); it adds that much latency, which Northlight makes up for. The evening
+star at the top right is **Catch**: press it to hold the tail as a pad. The
+display, Evensong, shows the last six seconds with now at the right. The coloured
+sky is the reverb's tail and the dark land in front of it is the voice, so the
+sky shows between the words. Under the horizon, coloured bars mark where the
+singer sang, small ticks hanging below them where Clarity kept a consonant or an
+s out of the reverb (the longer the tick, the more it took out), and dots mark
+breaths. A star on the horizon marks each line end. The dotted line through the
+sky follows the sung note (Follow's cutoff). The three lights by the name show
+what Vesper hears now: SINGING, KEPT OUT and LINE END.
 
 **Tape Echo** is a tape loop machine. Time sets the motor speed (head 1's echo; the
 other heads are 2, 3 and 4 times it), and Sync sets it to a note value instead. Turn

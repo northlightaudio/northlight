@@ -14,6 +14,7 @@
 #include <cmath>
 #include <cstdint>
 #include <cstdio>
+#include <cstdlib>
 #include <memory>
 #include <numbers>
 #include <string>
@@ -103,7 +104,138 @@ std::vector<float> noise(double seconds, double rate, float amplitude, std::uint
     }
     return v;
 }
+// The level of one frequency in `x` between two times (a Hann-windowed DFT bin).
+double levelAt(const std::vector<float>& x, double rate, double hz, double from, double to)
+{
+    const auto a = std::min(x.size(), static_cast<size_t>(from * rate));
+    const auto b = std::min(x.size(), static_cast<size_t>(to * rate));
+    double re = 0.0, im = 0.0, weights = 0.0;
+    for (size_t i = a; i < b; ++i)
+    {
+        const double t = static_cast<double>(i - a) / static_cast<double>(b - a);
+        const double w = 0.5 - 0.5 * std::cos(2.0 * std::numbers::pi * t);
+        const double phase = 2.0 * std::numbers::pi * hz * static_cast<double>(i) / rate;
+        re += w * x[i] * std::cos(phase);
+        im += w * x[i] * std::sin(phase);
+        weights += w;
+    }
+    return weights > 0.0 ? 2.0 * std::sqrt(re * re + im * im) / weights : 0.0;
+}
+
+// The tail after a phrase, at Halo off and at `halo`: how much Halo lifts each
+// frequency in it, in dB.
+std::vector<double> haloLift(const Singer& singer, float halo, const std::vector<double>& hz)
+{
+    const auto tailOf = [&](float amount)
+    {
+        auto p = makeVesper();
+        p->setParameter(vesper::halo, amount);
+        return play(*p, singer.audio(), 48000.0, 1.5).left;
+    };
+    const auto off = tailOf(0.0f), on = tailOf(halo);
+    const double end = singer.now();
+    std::vector<double> lift;
+    for (const double f : hz)
+        lift.push_back(db(levelAt(on, 48000.0, f, end + 0.3, end + 1.2)) -
+                       db(levelAt(off, 48000.0, f, end + 0.3, end + 1.2)));
+    return lift;
+}
 } // namespace
+
+TEST_CASE("Halo rings the note sung in the tail, and not the notes beside it", "[plugins][vesper]")
+{
+    Singer singer(48000.0);
+    singer.rest(0.1).vowel(1.0, 220.0f);
+    // 220 Hz and its octave, then a semitone above and a tritone between.
+    const auto lift = haloLift(singer, 100.0f, {220.0, 440.0, 233.1, 311.1});
+    CHECK(lift[0] > 6.0);
+    CHECK(lift[1] > 6.0);
+    CHECK(lift[0] > lift[2] + 6.0);
+    CHECK(lift[0] > lift[3] + 6.0);
+}
+
+TEST_CASE("Halo holds two notes sung one after the other", "[plugins][vesper]")
+{
+    Singer singer(48000.0);
+    singer.rest(0.1).vowel(0.6, 220.0f).rest(0.05).vowel(0.6, 330.0f);
+    // The second note has a fresh tail of its own, so Halo lifts it less.
+    const auto lift = haloLift(singer, 100.0f, {220.0, 330.0, 277.2});
+    CHECK(lift[0] > 6.0);
+    CHECK(lift[1] > 3.0);
+    CHECK(lift[0] > lift[2] + 3.0);
+    CHECK(lift[1] > lift[2] + 3.0);
+}
+
+TEST_CASE("Halo tunes a note sung with a wide vibrato to its centre", "[plugins][vesper]")
+{
+    // An "ah" at 220 Hz with a 5.5 Hz vibrato of 60 cents either way.
+    constexpr double rate = 48000.0;
+    Singer singer(rate);
+    singer.rest(0.1);
+    std::vector<float> in = singer.audio();
+    const auto length = static_cast<size_t>(1.2 * rate);
+    double phase = 0.0;
+    for (size_t n = 0; n < length; ++n)
+    {
+        const double t = static_cast<double>(n) / rate;
+        phase += 2.0 * std::numbers::pi * 220.0 *
+                 std::exp2(0.6 / 12.0 * std::sin(2.0 * std::numbers::pi * 5.5 * t)) / rate;
+        double x = 0.0;
+        for (int k = 1; k <= 10; ++k)
+            x += std::sin(k * phase) / k;
+        const double fade = std::min({1.0, t / 0.02, (1.2 - t) / 0.02});
+        in.push_back(static_cast<float>(0.08 * x * fade));
+    }
+    const auto tailOf = [&](float halo)
+    {
+        auto p = makeVesper();
+        p->setParameter(vesper::halo, halo);
+        return play(*p, in, rate, 1.5).left;
+    };
+    const auto off = tailOf(0.0f), on = tailOf(100.0f);
+    const double end = static_cast<double>(in.size()) / rate;
+    const auto lift = [&](double hz)
+    {
+        return db(levelAt(on, rate, hz, end + 0.3, end + 1.2)) -
+               db(levelAt(off, rate, hz, end + 0.3, end + 1.2));
+    };
+    CHECK(lift(220.0) > 6.0);
+    CHECK(lift(220.0) > lift(233.1) + 6.0);
+}
+
+TEST_CASE("Halo stays stable at its longest, on loud singing and noise", "[plugins][vesper]")
+{
+    Singer singer(48000.0);
+    const float notes[] = {110.0f, 147.0f, 196.0f, 262.0f, 349.0f, 466.0f, 622.0f, 831.0f};
+    for (const float hz : notes)
+        singer.vowel(0.5, hz, -3.0f).s(0.1, -6.0f).breath(0.1, -12.0f);
+    const auto peakOf = [&](float halo)
+    {
+        auto p = makeVesper();
+        p->setParameter(vesper::halo, halo);
+        p->setParameter(vesper::decay, vesper::maxDecaySeconds);
+        const auto out = play(*p, singer.audio(), 48000.0, 4.0);
+        float peak = 0.0f;
+        for (const float x : out.left)
+            peak = std::isfinite(x) ? std::max(peak, std::abs(x)) : 1.0e9f;
+        return peak;
+    };
+    // No louder than the reverb alone by more than a little, and never unbounded.
+    CHECK(peakOf(100.0f) < 1.25f * peakOf(0.0f));
+}
+
+TEST_CASE("Halo turned off stops its strings and Vesper falls silent", "[plugins][vesper]")
+{
+    auto p = makeVesper();
+    p->setParameter(vesper::halo, 100.0f);
+    p->setParameter(vesper::decay, 1.0f);
+    Singer singer(48000.0);
+    singer.rest(0.1).vowel(0.8, 220.0f);
+    play(*p, singer.audio(), 48000.0);
+    p->setParameter(vesper::halo, 0.0f);
+    const auto after = play(*p, {}, 48000.0, 6.0);
+    CHECK(std::all_of(after.left.end() - 24000, after.left.end(), [](float x) { return x == 0.0f; }));
+}
 
 TEST_CASE("Vesper's helpers: Auto pre-delay, the pre-delay's sources and Follow's cutoff",
           "[plugins][vesper]")
@@ -612,6 +744,7 @@ TEST_CASE("Vesper cost", "[.bench][vesper]")
     p->setParameter(vesper::mud, 30.0f);
     p->setParameter(vesper::follow, 1.0f);
     p->setParameter(vesper::space, 2.0f);
+    p->setParameter(vesper::halo, 50.0f);
     Singer singer(48000.0);
     while (singer.now() < 10.0)
         singer.vowel(0.4, 220.0f).s(0.1).vowel(0.3, 262.0f).rest(0.3).breath(0.2, -38.0f);
@@ -621,6 +754,94 @@ TEST_CASE("Vesper cost", "[.bench][vesper]")
     const double percent = 100.0 * elapsed / singer.now();
     std::printf("Vesper: %.3f%% of a core\n", percent);
     CHECK(percent < 10.0); // generous: a debug build is slow
+}
+
+// Renders for listening, hidden from the default run: a sung phrase through
+// presets with Halo off, at 50% and at 100%, as 32-bit float WAV files in the
+// folder named by NORTHLIGHT_RENDER_DIR (northlight_unit_tests "[.render]").
+// NORTHLIGHT_RENDER_INPUT names a recording to use instead of the synthetic
+// singer: raw 32-bit float samples, mono, 48 kHz.
+namespace
+{
+void writeWav(const std::string& path, const Played& audio, int rate)
+{
+    std::FILE* f = std::fopen(path.c_str(), "wb");
+    REQUIRE(f != nullptr);
+    const auto frames = static_cast<std::uint32_t>(audio.left.size());
+    const std::uint32_t bytes = frames * 2u * 4u;
+    const auto u32 = [f](std::uint32_t v) { std::fwrite(&v, 4, 1, f); };
+    const auto u16 = [f](std::uint16_t v) { std::fwrite(&v, 2, 1, f); };
+    std::fwrite("RIFF", 1, 4, f);
+    u32(36u + bytes);
+    std::fwrite("WAVEfmt ", 1, 8, f);
+    u32(16u);
+    u16(3u); // IEEE float
+    u16(2u);
+    u32(static_cast<std::uint32_t>(rate));
+    u32(static_cast<std::uint32_t>(rate) * 8u);
+    u16(8u);
+    u16(32u);
+    std::fwrite("data", 1, 4, f);
+    u32(bytes);
+    for (size_t i = 0; i < audio.left.size(); ++i)
+    {
+        std::fwrite(&audio.left[i], 4, 1, f);
+        std::fwrite(&audio.right[i], 4, 1, f);
+    }
+    std::fclose(f);
+}
+} // namespace
+
+TEST_CASE("Vesper renders for listening", "[.render][vesper]")
+{
+    const char* folder = std::getenv("NORTHLIGHT_RENDER_DIR");
+    if (folder == nullptr)
+        SKIP("NORTHLIGHT_RENDER_DIR is not set");
+    constexpr double rate = 48000.0;
+    // Two sung lines, A minor: a rising line and an answer, with consonants and a breath.
+    Singer singer(rate);
+    singer.rest(0.5);
+    singer.vowel(0.4, 220.0f).t().vowel(0.35, 262.0f).s(0.08).vowel(0.35, 294.0f).vowel(0.9, 330.0f, -18.0f);
+    singer.rest(0.6).breath(0.3, -38.0f).rest(0.1);
+    singer.vowel(0.35, 294.0f).t().vowel(0.35, 262.0f).s(0.08).vowel(0.4, 247.0f).vowel(1.2, 220.0f, -18.0f);
+    std::vector<float> phrase = singer.audio();
+    if (const char* input = std::getenv("NORTHLIGHT_RENDER_INPUT"))
+    {
+        std::FILE* f = std::fopen(input, "rb");
+        REQUIRE(f != nullptr);
+        phrase.clear();
+        float x = 0.0f;
+        while (std::fread(&x, 4, 1, f) == 1)
+            phrase.push_back(x);
+        std::fclose(f);
+    }
+    for (const std::string preset : {"Vocal Plate", "Ballad Hall"})
+    {
+        const auto& presets = plugins::factoryPresets(vesper::type);
+        const auto it = std::find_if(
+            presets.begin(), presets.end(), [&](const plugins::EffectPreset& p) { return p.name == preset; });
+        REQUIRE(it != presets.end());
+        for (const float halo : {0.0f, 50.0f, 100.0f})
+        {
+            auto p = plugins::BuiltInFactory().create(vesper::type);
+            p->prepare(rate, block);
+            p->setBypassed(false);
+            for (size_t i = 0; i < it->values.size(); ++i)
+                p->setParameter(static_cast<int>(i), it->values[i]);
+            p->setParameter(vesper::halo, halo);
+            auto out = play(*p, phrase, rate, 4.0);
+            // The lookahead's delay taken off, so every file lines up.
+            const auto shift = static_cast<std::ptrdiff_t>(p->latencySamples());
+            out.left.erase(out.left.begin(), out.left.begin() + shift);
+            out.right.erase(out.right.begin(), out.right.begin() + shift);
+            std::string name = preset;
+            std::replace(name.begin(), name.end(), ' ', '-');
+            writeWav(std::string(folder) + "/" + name + "-halo-" + std::to_string(static_cast<int>(halo)) +
+                         ".wav",
+                     out,
+                     static_cast<int>(rate));
+        }
+    }
 }
 
 #if defined(NORTHLIGHT_RT_CHECKS)
@@ -646,6 +867,7 @@ TEST_CASE("Vesper processes without allocating on the real-time thread", "[plugi
     p->setParameter(vesper::releaseSync, 8.0f);
     p->setParameter(vesper::lookahead, 2.0f);
     p->setParameter(vesper::swell, 60.0f);
+    p->setParameter(vesper::halo, 70.0f);
     Singer singer(48000.0);
     singer.vowel(0.4, 220.0f).s(0.1).rest(0.4).breath(0.2).vowel(0.3, 330.0f).rest(0.5);
     const auto& in = singer.audio();
@@ -667,6 +889,8 @@ TEST_CASE("Vesper processes without allocating on the real-time thread", "[plugi
                 p->setParameter(vesper::catchTail, 1.0f);
             if (n == 100)
                 p->setParameter(vesper::catchTail, 0.0f);
+            if (n == 110)
+                p->setParameter(vesper::halo, 0.0f);
             if (n == 120)
                 p->setBypassed(true);
             p->process(l.data(), r.data(), block);

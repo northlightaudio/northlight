@@ -3,6 +3,7 @@
 #include "CrashReports.h"
 #include "ProjectSession.h"
 #include "UserSettings.h"
+#include "WindowPlacement.h"
 #include "audio/AudioDeviceLayer.h"
 #include "core/Command.h"
 #include "core/Model.h"
@@ -1147,7 +1148,11 @@ private:
         // Audio files and Standard MIDI Files.
         tracks_.setAcceptedExtensions(session_.mediaLoader().supportedExtensions() + ";*.mid;*.midi");
         tracks_.onTrackSelected = [this](core::Id id) { select(id); };
-        tracks_.onSelectionChanged = [this] { select(tracks_.selectedTrack()); };
+        tracks_.onSelectionChanged = [this]
+        {
+            select(tracks_.selectedTrack());
+            followMidiSelection();
+        };
         selection_.onChanged = [this] { applySelection(); };
         tracks_.onAddAudioTrack = [this] { addAudioTrack(); };
         tracks_.onAddMidiTrack = [this](const std::string& type) { addMidiTrack(type); };
@@ -1164,6 +1169,8 @@ private:
         tracks_.trackMeter = [this](int index) { return mixer_.lastReading(engine::trackMeterSlot(index)); };
         tracks_.busMeter = [this](int index)
         { return mixer_.lastReading(engine::busMeterSlot(session_.project(), index)); };
+        tracks_.masterMeter = [this]
+        { return mixer_.lastReading(engine::masterMeterSlot(session_.project())); };
     }
 
     void wireMixer()
@@ -1698,6 +1705,7 @@ private:
                 pianoRoll_.setTimeView(tracks_.samplesPerPixel(), tracks_.scrollPosition());
         }
         refreshHeader();
+        status_.setSelectedClips(static_cast<int>(tracks_.selection().size()));
         if (ticks_ % 5 == 0)
         {
             std::vector<bool> monitoring;
@@ -1798,6 +1806,20 @@ private:
 
     // Everything that selects comes here; selection_ notifies applySelection.
     void select(core::Id channel) { selection_.select(channel, focusedClipOn(channel)); }
+
+    // The piano roll shows the most recently selected MIDI clip (a selection with
+    // none keeps the clip it shows).
+    void followMidiSelection()
+    {
+        const auto& clips = tracks_.selection();
+        for (auto it = clips.rbegin(); it != clips.rend(); ++it)
+            if (it->midi)
+            {
+                if (it->clip != pianoRoll_.clipId() || it->track != pianoRoll_.trackId())
+                    pianoRoll_.setClip(&session_.project(), it->track, it->clip);
+                return;
+            }
+    }
 
     // The audio clip on the channel the inspector shows: the arrange view's most
     // recently selected one there, if any.
@@ -2885,7 +2907,7 @@ private:
         menu.addSeparator();
         menu.addItem(7, "Off", true, !tracks_.snapEnabled());
         juce::Component::SafePointer<Content> safe(this);
-        menu.showMenuAsync(juce::PopupMenu::Options().withTargetComponent(&header_),
+        menu.showMenuAsync(juce::PopupMenu::Options().withTargetComponent(&header_.snapButton()),
                            [safe](int choice)
                            {
                                if (safe == nullptr || choice == 0)
@@ -3228,6 +3250,7 @@ MainWindow::MainWindow(const juce::String& name,
     setResizable(true, false);
     setResizeLimits(1280, 720, 10000, 10000);
     centreWithSize(getWidth(), getHeight());
+    restorePlacement();
     ui::showWindow(*this); // --offscreen: no native window at all
     if (ui::offscreenMode())
     {
@@ -3246,9 +3269,34 @@ MainWindow::MainWindow(const juce::String& name,
 
 MainWindow::~MainWindow()
 {
+    savePlacement();
     offscreenPainter_.reset();
     preferencesWindow_.reset();
     audioSetupWindow_.reset();
+}
+
+void MainWindow::restorePlacement()
+{
+    if (ui::offscreenMode())
+        return;
+    const auto state = juce::String::fromUTF8(settings_.value(placementKey).c_str());
+    const auto saved = app::parsePlacement(state);
+    if (!saved)
+        return; // the first launch, or nothing usable: centred at the default size
+    std::vector<juce::Rectangle<int>> workAreas;
+    for (const auto& display : juce::Desktop::getInstance().getDisplays().displays)
+        workAreas.push_back(display.userBounds.toNearestInt());
+    if (!app::reachable(saved->bounds, workAreas))
+        return; // its screen is gone (or it was dragged off): centred instead
+    restoreWindowStateFromString(state);
+}
+
+void MainWindow::savePlacement()
+{
+    if (ui::offscreenMode() || !isOnDesktop())
+        return;
+    settings_.setValue(placementKey, getWindowStateAsString().toStdString());
+    settings_.flush();
 }
 
 void MainWindow::closeButtonPressed()
@@ -3470,6 +3518,28 @@ void MainWindow::showMenu(const juce::String& key)
         content->projectMenu();
     else if (key == "add-track")
         content->tracks_.openAddTrackMenu();
+    else if (key == "clip")
+        content->tracks_.openFirstClipMenu();
+}
+
+bool MainWindow::setArrangeTool(const juce::String& name)
+{
+    auto* content = dynamic_cast<Content*>(getContentComponent());
+    if (content == nullptr)
+        return false;
+    for (int i = 0; i < ui::ArrangeView::toolCount; ++i)
+        if (name == ui::ArrangeView::toolName(static_cast<ui::ArrangeView::Tool>(i)))
+        {
+            content->tracks_.setTool(static_cast<ui::ArrangeView::Tool>(i));
+            return true;
+        }
+    return false;
+}
+
+void MainWindow::arrangePointer(int row, double bar, juce::ModifierKeys mods)
+{
+    if (auto* content = dynamic_cast<Content*>(getContentComponent()))
+        content->tracks_.pointerAt(content->tracks_.pointOnRow(row, bar), mods);
 }
 
 void MainWindow::showEditorGap(int n)

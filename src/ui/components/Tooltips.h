@@ -21,6 +21,12 @@ public:
 
     static constexpr int fadeMs = 80;
 
+    // The app's scale, not the hovered control's. JUCE's tooltip window takes the
+    // scale of the component under the mouse, so over a rendered face (scaled to
+    // fit its card) it shrank and was placed in the shrunken coordinates: well
+    // above and left of the pointer. Every tooltip is the same size, by the pointer.
+    float getDesktopScaleFactor() const override { return juce::Component::getDesktopScaleFactor(); }
+
 private:
     void visibilityChanged() override
     {

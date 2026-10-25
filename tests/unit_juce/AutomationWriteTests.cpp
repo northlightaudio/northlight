@@ -156,3 +156,23 @@ TEST_CASE("A built-in parameter writes too; read mode does not write", "[session
     CHECK(f.model().findInsert(comp.id)->params[0] == -30.0f);
     CHECK(lane->valueAt(f.session->position() - 64 * 30) == Approx(-40.0f));
 }
+
+TEST_CASE("The master fader writes its volume lane in Touch and leaves the static gain",
+          "[session][automation]")
+{
+    WriteFixture f;
+    f.session->execute(
+        std::make_unique<core::SetAutomationMode>(core::masterId, core::AutomationMode::touch));
+    f.session->play();
+    f.blocks(10);
+    f.session->beginGesture("Master fader");
+    f.session->execute(std::make_unique<core::SetMasterGain>(0.5f));
+    f.blocks(50);
+    f.session->endGesture();
+    const auto& master = f.session->project().master;
+    CHECK(master.gain == Approx(1.0f));
+    const auto* lane = master.findLane(core::AutomationTarget::gain);
+    REQUIRE(lane != nullptr);
+    CHECK(lane->valueAt(700) == Approx(0.5f).margin(0.01f));
+    CHECK(master.automationOpen); // a new lane opens the master's lanes
+}

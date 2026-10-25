@@ -35,8 +35,9 @@ until the pointer moves.
   - Ctrl: toggle selection, duplicate on drag, coarse adjustment on fields.
   - Alt: override snap, trim content instead of edges, break group link.
 - Cursors: default, hand (clip header), resize-horizontal (trim and splitters), fade
-  (custom: a small curve), split (custom: a thin bar), move (four arrows), not-allowed
-  (invalid drop), crosshair (draw tool).
+  (custom: a small curve), move (four arrows), not-allowed (invalid drop), I-beam
+  (range tool), and the edit tools' icons (custom: pencil, eraser, scissors, glue,
+  struck-through clip) with the hot spot where the tool acts.
 
 ## 10.3 Snapping
 
@@ -76,7 +77,8 @@ Defaults; all rebindable in Preferences. Shown in tooltips and menus.
 | Nudge selection | Alt+Left / Right (grid), Alt+Shift (fine) |
 | Newer / older take at the playhead (comp) | Alt+Up / Alt+Down |
 | Show / hide take lanes | Alt+T |
-| Tools: select / range / pencil (draws MIDI clips) | 1 / 2 / 3 |
+| Tools: select / range / pencil / erase / split / glue / mute | 1 to 7 |
+| Mute / unmute selected clips | Ctrl+M |
 | Snap on/off | N |
 | Ripple on/off | Shift+N |
 | New / open / save / save as | Ctrl+N / Ctrl+O / Ctrl+S / Ctrl+Shift+S |

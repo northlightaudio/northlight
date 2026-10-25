@@ -92,9 +92,13 @@ public:
     void applyLayoutPreset(const juce::String& name);
     // Shows a panel by its key (mixer, editor, pianoRoll, diagnostics, browser, inspector).
     void showPanel(const juce::String& key);
-    // Opens a menu as a click would ("project", "add-track"), for checking how menus
-    // appear (--show-menu).
+    // Opens a menu as a click would ("project", "add-track", "clip": the first
+    // clip's), for checking how menus appear (--show-menu).
     void showMenu(const juce::String& key);
+    // The arrange view's tool by name ("select", "split", ...; --arrange-tool) and
+    // the pointer resting on a track row at a bar (--arrange-pointer), for captures.
+    bool setArrangeTool(const juce::String& name);
+    void arrangePointer(int row, double bar, juce::ModifierKeys mods);
     // Shows the Editor panel's nth gap button (1-based) as the pointer in its gap
     // would, for captures (--editor-gap).
     void showEditorGap(int n);
@@ -117,6 +121,13 @@ private:
     class PreferencesWindow;
 
     std::unique_ptr<juce::TimedCallback> offscreenPainter_; // --offscreen only
+
+    // The window's size, position and maximised state, kept in the user's settings
+    // when it closes and restored at launch if it would still be on a screen. Not
+    // with --offscreen, whose window is never shown.
+    void restorePlacement();
+    void savePlacement();
+    static constexpr const char* placementKey = "window.placement";
 
     audio::AudioDeviceLayer& audio_;
     ProjectSession& session_;

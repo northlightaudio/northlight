@@ -151,7 +151,10 @@ TrackHeader::TrackHeader(const Theme& theme) : theme_(theme), meter_(theme, 2, f
             return;
         const double db = volume_.getValue();
         const float gain = db::toGain(db, volumeBottomDb);
-        onCommand(std::make_unique<core::SetTrackGain>(trackId_, gain));
+        if (master_)
+            onCommand(std::make_unique<core::SetMasterGain>(gain));
+        else
+            onCommand(std::make_unique<core::SetTrackGain>(trackId_, gain));
     };
     addAndMakeVisible(volume_);
     addAndMakeVisible(meter_);
@@ -405,7 +408,17 @@ void TrackHeader::setMediaMissing(bool missing)
 
 void TrackHeader::startRename()
 {
-    name_.showEditor();
+    if (!master_)
+        name_.showEditor();
+}
+
+void TrackHeader::setMaster(bool master)
+{
+    if (master == master_)
+        return;
+    master_ = master;
+    name_.setEditable(false, !master, false);
+    resized();
 }
 
 void TrackHeader::timerCallback()
@@ -636,6 +649,8 @@ void TrackHeader::resized()
     };
     place(mute_);
     place(solo_);
+    mute_.setVisible(!master_);
+    solo_.setVisible(!master_ && !midi_);
     place(arm_);
     place(monitorButton_);
     place(automation_);
@@ -675,7 +690,7 @@ void TrackHeader::resized()
     }
 
     // Row 3 at the large height: pan, output, sends summary.
-    const bool row3 = getHeight() >= theme_.sizes.trackRowLarge && !folder_;
+    const bool row3 = getHeight() >= theme_.sizes.trackRowLarge && !folder_ && !master_;
     pan_.setVisible(row3);
     output_.setVisible(row3);
     if (row3)

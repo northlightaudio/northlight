@@ -148,7 +148,11 @@ undoable command, and any note can be adjusted afterwards.
   - the piano roll's keyboard and scale-highlighted grid;
   - notes drawn as blobs shaped by their loudness;
   - the original pitch curve faint, the edited curve bright.
-- **Tools:**
+- **Tools:** icon buttons as in the arrange view's corner and the piano roll (the
+  current one lit, keys 1 to 5), after the Wave/Pitch switch, shown in pitch mode:
+  pitch (a note between arrows), split (the scissors, which are also its cursor over
+  a note), drift (a wander settling flat), vibrato (a quick wave), breath (a breath
+  of wind). Each tooltip names what a drag or click does.
   - **Pitch:** drag vertically to snap to semitones; Alt moves in free cents.
   - **Split and merge:** double-click splits.
   - **Drift and vibrato:** drag vertically to scale them.

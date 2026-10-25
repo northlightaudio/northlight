@@ -1307,3 +1307,18 @@ TEST_CASE("MIDI events convert to their MIDI 1.0 bytes", "[engine][midi][control
     CHECK(b[1] == 74);
     CHECK(b[2] == 12);
 }
+
+TEST_CASE("A muted MIDI clip sends no notes", "[engine][midi]")
+{
+    core::MidiClip clip;
+    clip.start = 10;
+    clip.length = 1000;
+    clip.notes.push_back({20, 60, 127, 5, 100});
+    clip.muted = true;
+    Harness h;
+    h.engine.setProject(keysProject(clip));
+    h.engine.play();
+    const auto out = h.render(4);
+    for (const float s : out)
+        CHECK(s == Approx(0.0f));
+}

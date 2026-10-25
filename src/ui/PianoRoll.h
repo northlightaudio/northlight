@@ -233,8 +233,11 @@ private:
     int rulerHeight_ = 32;
     int scrollbarSize_ = 10;
 
-    // The toolbar.
-    SegmentedControl tools_;
+    // The toolbar: the tools as in the arrange view's corner (select, pencil,
+    // erase; the same icons, keys 1, 3, 4 and cursors).
+    IconButton selectTool_, pencilTool_, eraseTool_;
+    void refreshToolButtons();
+    juce::MouseCursor toolCursor() const;
     juce::TextButton snapButton_, quantiseButton_;
     IconButton link_, auditionButton_;
     juce::TextButton scaleButton_;

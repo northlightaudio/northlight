@@ -55,6 +55,8 @@ const Shortcut shortcuts[] = {
     {"Split at playhead / at selection", "S / Alt+S", "Editing"},
     {"Join", "J", "Editing"},
     {"Crossfade", "X", "Editing"},
+    {"Mute / unmute selected clips", "Ctrl+M", "Editing"},
+    {"Select, range, pencil, erase, split, glue, mute tool", "1 to 7", "Editing"},
     {"Normalise", "Ctrl+Shift+N", "Editing"},
     {"Nudge left / right", "Left / Right", "Editing"},
     {"Select all", "Ctrl+A", "Editing"},

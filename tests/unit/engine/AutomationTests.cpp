@@ -212,3 +212,33 @@ TEST_CASE("A pan lane and an insert parameter lane play", "[engine][automation]"
     CHECK(h.right[blockSize - 1] == Approx(0.0f).margin(1e-4f));
     CHECK(h.engine.insertInstance(7)->parameter(0) == Approx(-6.0206f).margin(1e-3f));
 }
+
+TEST_CASE("The master's volume lane plays and the mixer can show it; a pan lane does nothing",
+          "[engine][automation][master]")
+{
+    auto p = projectWithTrack();
+    p.master.automation.push_back(gainLane({{0, 1.0f}, {48000, 0.25f}}));
+    core::AutomationLane pan;
+    pan.id = 51;
+    pan.target = core::AutomationTarget::pan;
+    pan.points = {{0, -1.0f}};
+    p.master.automation.push_back(pan);
+    Harness h;
+    h.engine.setProject(p);
+    h.engine.play();
+    h.playTo(24000);
+    CHECK(h.last() == Approx(0.5f * centre * 0.5f).margin(1e-4f));               // -6 dB half way
+    CHECK(h.right[blockSize - 1] == Approx(0.5f * centre * 0.5f).margin(1e-4f)); // not panned
+    const auto shown = h.engine.automatedValues(core::masterId);
+    CHECK(shown.gain);
+    CHECK(shown.gainValue == Approx(0.5f).margin(1e-3f));
+    h.playTo(48000);
+    CHECK(h.last() == Approx(0.5f * centre * 0.25f).margin(1e-4f));
+
+    // Mode off: the master fader again.
+    p.master.automationMode = core::AutomationMode::off;
+    p.master.gain = 1.0f;
+    h.engine.setProject(p);
+    h.playTo(48000 + 64 * 4);
+    CHECK(h.last() == Approx(0.5f * centre).margin(1e-4f));
+}

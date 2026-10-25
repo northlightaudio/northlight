@@ -52,6 +52,12 @@ void migrate(json& j, int from)
             case 11: // 12: lanes gain an optional "view" and the automation an optional
                      // "open"; without them a lane shows at the default height and
                      // the lanes start closed
+            case 12: // 13: audio and MIDI clips gain an optional "muted"; without it
+                     // a clip plays, as before
+            case 13: // 14: audio clips gain optional "fadeInCurve" and "fadeOutCurve";
+                     // without them a fade is linear, as before
+            case 14: // 15: the master gains optional "automation" and "height"; without
+                     // them it has no lanes, reads, and has the default row height
                 break;
             default:
                 break;
@@ -102,12 +108,18 @@ json clipToJson(const AudioClip& c)
         j["fadeIn"] = c.fadeIn;
     if (c.fadeOut > 0)
         j["fadeOut"] = c.fadeOut;
+    if (c.fadeInCurve != 0.0f)
+        j["fadeInCurve"] = c.fadeInCurve;
+    if (c.fadeOutCurve != 0.0f)
+        j["fadeOutCurve"] = c.fadeOutCurve;
     if (c.stretch != 1.0)
         j["stretch"] = c.stretch;
     if (c.transpose != 0.0)
         j["transpose"] = c.transpose;
     if (c.followTempo)
         j["followTempo"] = true;
+    if (c.muted)
+        j["muted"] = true;
     if (c.vocal.active())
     {
         json notes = json::array();
@@ -164,9 +176,12 @@ AudioClip clipFromJson(const json& j)
     c.gain = j.value("gain", 1.0f);
     c.fadeIn = j.value("fadeIn", SamplePosition{0});
     c.fadeOut = j.value("fadeOut", SamplePosition{0});
+    c.fadeInCurve = std::clamp(j.value("fadeInCurve", 0.0f), -1.0f, 1.0f);
+    c.fadeOutCurve = std::clamp(j.value("fadeOutCurve", 0.0f), -1.0f, 1.0f);
     c.stretch = std::clamp(j.value("stretch", 1.0), 0.05, 20.0);
     c.transpose = std::clamp(j.value("transpose", 0.0), -48.0, 48.0);
     c.followTempo = j.value("followTempo", false);
+    c.muted = j.value("muted", false);
     if (const auto it = j.find("vocal"); it != j.end() && it->is_object())
     {
         c.vocal.analysisVersion = it->value("analysis", 0);
@@ -302,14 +317,15 @@ void channelToJson(json& j, const Channel& c)
     }
 }
 
-// The master keeps only what it uses: its gain and its inserts.
+// The master keeps only what it uses: its gain, inserts, automation and row height.
 json masterToJson(const Master& m)
 {
     json full;
     channelToJson(full, m);
     json j{{"gain", m.gain}};
-    if (const auto it = full.find("inserts"); it != full.end())
-        j["inserts"] = *it;
+    for (const char* key : {"inserts", "automation", "height"})
+        if (const auto it = full.find(key); it != full.end())
+            j[key] = *it;
     return j;
 }
 
@@ -462,6 +478,8 @@ json trackToJson(const Track& t)
                       {"start", c.start},
                       {"length", c.length},
                       {"notes", std::move(notes)}};
+            if (c.muted)
+                clip["muted"] = true;
             // Controller events as compact arrays: [id, type, number, value, time].
             if (!c.controllers.empty())
             {
@@ -555,6 +573,7 @@ Track trackFromJson(const json& j)
             c.name = cj.value("name", std::string{});
             c.start = cj.value("start", SamplePosition{0});
             c.length = cj.value("length", SamplePosition{0});
+            c.muted = cj.value("muted", false);
             if (const auto notes = cj.find("notes"); notes != cj.end() && notes->is_array())
                 for (const auto& nj : *notes)
                     if (nj.is_array() && nj.size() == 5)
@@ -798,6 +817,12 @@ std::optional<Project> projectFromJson(const std::string& text, std::string* err
             channelFromJson(*it, read);
             p.master.gain = read.gain;
             p.master.inserts = std::move(read.inserts);
+            p.master.automation = std::move(read.automation);
+            std::erase_if(p.master.automation, // the master has no pan
+                          [](const AutomationLane& lane) { return lane.target == AutomationTarget::pan; });
+            p.master.automationMode = read.automationMode;
+            p.master.automationOpen = read.automationOpen;
+            p.master.height = read.height;
         }
 
         // Guarantee ids stay unique even if the file's nextId is stale, and give a
@@ -826,6 +851,8 @@ std::optional<Project> projectFromJson(const std::string& text, std::string* err
         }
         for (const auto& i : p.master.inserts)
             maxId = std::max(maxId, i.id);
+        for (const auto& l : p.master.automation)
+            maxId = std::max(maxId, l.id);
         for (const auto& b : p.buses)
         {
             maxId = std::max(maxId, b.id);
@@ -906,6 +933,8 @@ std::optional<Project> projectFromJson(const std::string& text, std::string* err
         }
         for (auto& i : p.master.inserts)
             fresh(i.id);
+        for (auto& l : p.master.automation)
+            fresh(l.id);
         for (auto& g : p.groups)
             fresh(g.id);
         for (auto& m : p.markers)

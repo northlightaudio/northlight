@@ -219,6 +219,8 @@ chordTonesUnder(const core::Project& project, core::Id trackId, const core::Audi
             for (const auto& mc : t.midiClips)
                 for (const auto& note : mc.notes)
                 {
+                    if (mc.muted)
+                        break; // a muted clip plays nothing
                     const auto s = mc.start + note.start, e = mc.start + note.end();
                     if (s < to && e > from && s < mc.end())
                         mask = static_cast<std::uint16_t>(mask | (1u << (note.note % 12)));

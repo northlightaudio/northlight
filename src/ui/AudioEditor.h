@@ -12,6 +12,7 @@
 
 #include <juce_gui_basics/juce_gui_basics.h>
 
+#include <array>
 #include <functional>
 #include <memory>
 #include <string>
@@ -210,7 +211,11 @@ private:
     float levelTop_ = -6.0f;    // ... to here onto a blob's height
 
     // The toolbar.
-    SegmentedControl modes_{theme_}, tools_{theme_};
+    SegmentedControl modes_{theme_};
+    // The pitch tools as icon buttons, as the arrange view's and the piano roll's
+    // (keys 1 to 5); shown in pitch mode.
+    IconButton pitchTool_, splitTool_, driftTool_, vibratoTool_, breathTool_;
+    std::array<IconButton*, 5> toolButtons() noexcept;
     juce::TextButton correctButton_, breathsButton_, keyButton_;
     IconButton link_, auditionButton_;
     juce::ScrollBar horizontal_{false}, vertical_{true};

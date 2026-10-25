@@ -991,6 +991,12 @@ Project everyCommandFixture()
     clip.length = 4000;
     clip.notes = {{41, 60, 100, 10, 500}, {42, 64, 90, 1000, 500}};
     midi.midiClips.push_back(clip);
+    MidiClip later; // a second clip, after a gap, for the join
+    later.id = 43;
+    later.start = 6000;
+    later.length = 1000;
+    later.notes = {{44, 67, 80, 0, 200}};
+    midi.midiClips.push_back(later);
     Track channel;
     channel.id = 3;
     channel.name = "Keys";
@@ -1061,6 +1067,8 @@ TEST_CASE("Every command undoes to the exact project it started from and redoes 
         make<TrimMidiClip>("TrimMidiClip", Id{2}, Id{40}, SamplePosition{0}, SamplePosition{2000}),
         make<SplitMidiClip>("SplitMidiClip", Id{2}, Id{40}, SamplePosition{800}),
         make<DuplicateMidiClip>("DuplicateMidiClip", Id{2}, Id{40}, SamplePosition{-1}),
+        make<JoinMidiClips>("JoinMidiClips", Id{2}, Id{40}, Id{43}),
+        make<SetClipMute>("SetClipMute MIDI", Id{2}, Id{40}, true, true),
         make<AddNote>("AddNote", Id{2}, Id{40}, MidiNote{invalidId, 67, 100, 0, 100}),
         make<RemoveNote>("RemoveNote", Id{2}, Id{40}, Id{41}),
         make<SetNote>("SetNote", Id{2}, Id{40}, MidiNote{41, 61, 90, 20, 100}),
@@ -1120,6 +1128,7 @@ TEST_CASE("Every command undoes to the exact project it started from and redoes 
         make<DuplicateClip>("DuplicateClip", Id{1}, Id{10}, SamplePosition{-1}),
         make<ShiftClips>("ShiftClips", Id{1}, SamplePosition{0}, SamplePosition{100}),
         make<SetClipGain>("SetClipGain", Id{1}, Id{10}, 0.5f),
+        make<SetClipMute>("SetClipMute audio", Id{1}, Id{10}, false, true),
         make<SetMediaPaths>("SetMediaPaths", renames),
         make<SetTimeSignature>("SetTimeSignature", 3, 4),
         make<SetTempo>("SetTempo", 100.0),
@@ -1430,4 +1439,126 @@ TEST_CASE("A lane can be pointed at another parameter, but not at one that alrea
 
     SetAutomationLaneTarget clash(Id{1}, Id{5}, AutomationTarget::pan, invalidId, 0);
     CHECK_THROWS(clash.apply(p));
+}
+
+TEST_CASE("Muting a clip keeps it on the timeline; undo and redo restore the state", "[core][command]")
+{
+    Project p;
+    Track audio;
+    audio.id = 1;
+    audio.clips.push_back({10, "a", "a.wav", 0, 1000, 0, 1.0f});
+    Track midi;
+    midi.id = 2;
+    midi.kind = TrackKind::midi;
+    MidiClip clip;
+    clip.id = 20;
+    clip.length = 1000;
+    midi.midiClips.push_back(clip);
+    p.tracks = {audio, midi};
+    p.nextId = 30;
+    UndoStack stack;
+
+    auto mute = std::make_unique<SetClipMute>(1, 10, false, true);
+    CHECK(mute->name() == "Mute clip");
+    stack.execute(p, std::move(mute));
+    CHECK(p.tracks[0].clips[0].muted);
+    CHECK(p.tracks[0].clips.size() == 1);
+    stack.execute(p, std::make_unique<SetClipMute>(2, 20, true, true));
+    CHECK(p.tracks[1].midiClips[0].muted);
+
+    stack.undo(p);
+    CHECK_FALSE(p.tracks[1].midiClips[0].muted);
+    stack.undo(p);
+    CHECK_FALSE(p.tracks[0].clips[0].muted);
+    stack.redo(p);
+    CHECK(p.tracks[0].clips[0].muted);
+    CHECK(SetClipMute(1, 10, false, false).name() == "Unmute clip");
+    CHECK_THROWS(SetClipMute(1, 20, false, true).apply(p)); // 20 is a MIDI clip, not an audio one
+}
+
+TEST_CASE("Joining MIDI clips moves the later clip's notes and events into the earlier, across the gap",
+          "[core][command][midi]")
+{
+    Project p;
+    Track midi;
+    midi.id = 1;
+    midi.kind = TrackKind::midi;
+    MidiClip left;
+    left.id = 10;
+    left.start = 1000;
+    left.length = 1000;
+    left.notes = {{11, 60, 100, 100, 200}};
+    MidiClip right;
+    right.id = 20;
+    right.start = 3000;
+    right.length = 500;
+    right.notes = {{21, 64, 90, 50, 100}};
+    right.controllers = {{22, MidiControllerType::controller, 1, 64, 10}};
+    midi.midiClips = {left, right};
+    p.tracks = {midi};
+    p.nextId = 30;
+    UndoStack stack;
+
+    REQUIRE(JoinMidiClips::canJoin(left, right));
+    CHECK_FALSE(JoinMidiClips::canJoin(right, left)); // the right must not start first
+    stack.execute(p, std::make_unique<JoinMidiClips>(1, 10, 20));
+    REQUIRE(p.tracks[0].midiClips.size() == 1);
+    const auto& joined = p.tracks[0].midiClips[0];
+    CHECK(joined.id == 10);
+    CHECK(joined.start == 1000);
+    CHECK(joined.length == 2500); // to the right clip's end, the gap included
+    REQUIRE(joined.notes.size() == 2);
+    CHECK(joined.notes[1].id == 21);
+    CHECK(joined.notes[1].start == 2050); // 3000 + 50, now relative to 1000
+    REQUIRE(joined.controllers.size() == 1);
+    CHECK(joined.controllers[0].time == 2010);
+
+    stack.undo(p);
+    REQUIRE(p.tracks[0].midiClips.size() == 2);
+    CHECK(p.tracks[0].midiClips[0] == left);
+    CHECK(p.tracks[0].midiClips[1] == right);
+    stack.redo(p);
+    CHECK(p.tracks[0].midiClips.size() == 1);
+
+    // A muted clip joins only another muted clip, so a join never changes what plays.
+    right.muted = true;
+    CHECK_FALSE(JoinMidiClips::canJoin(left, right));
+    AudioClip a{1, "a", "a.wav", 0, 100, 0, 1.0f};
+    AudioClip b{2, "b", "a.wav", 100, 100, 100, 1.0f};
+    CHECK(JoinClips::canJoin(a, b));
+    b.muted = true;
+    CHECK_FALSE(JoinClips::canJoin(a, b));
+}
+
+TEST_CASE("Fade curves are set with their lengths, kept when not given, and undone", "[core][command]")
+{
+    Project p;
+    Track audio;
+    audio.id = 1;
+    audio.clips.push_back({10, "a", "a.wav", 0, 1000, 0, 1.0f});
+    p.tracks = {audio};
+    p.nextId = 20;
+    UndoStack stack;
+    stack.execute(p, std::make_unique<SetClipFades>(1, 10, 100, 200, 0.5f, -2.0f));
+    const auto& c = p.tracks[0].clips[0];
+    CHECK(c.fadeIn == 100);
+    CHECK(c.fadeInCurve == 0.5f);
+    CHECK(c.fadeOutCurve == -1.0f);                                    // clamped
+    stack.execute(p, std::make_unique<SetClipFades>(1, 10, 300, 200)); // lengths only
+    CHECK(p.tracks[0].clips[0].fadeIn == 300);
+    CHECK(p.tracks[0].clips[0].fadeInCurve == 0.5f);
+    stack.undo(p);
+    stack.undo(p);
+    CHECK(p.tracks[0].clips[0].fadeInCurve == 0.0f);
+    CHECK(p.tracks[0].clips[0].fadeOutCurve == 0.0f);
+    stack.redo(p);
+    CHECK(p.tracks[0].clips[0].fadeInCurve == 0.5f);
+
+    // A split gives the right part the fade-out and its curve; a join takes them back.
+    auto split = std::make_unique<SplitClip>(1, 10, 500);
+    auto* splitPtr = split.get();
+    stack.execute(p, std::move(split));
+    CHECK(p.tracks[0].findClip(splitPtr->rightClipId())->fadeOutCurve == -1.0f);
+    stack.execute(p, std::make_unique<JoinClips>(1, 10, splitPtr->rightClipId()));
+    CHECK(p.tracks[0].clips[0].fadeOutCurve == -1.0f);
 }

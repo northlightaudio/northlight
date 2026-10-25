@@ -517,3 +517,95 @@ TEST_CASE("Automation lanes' view and open state round-trip; version 11 files lo
     REQUIRE(loaded.has_value());
     CHECK_FALSE(loaded->tracks[1].automationOpen);
 }
+
+TEST_CASE("Muted clips round-trip; version 12 files load with every clip playing", "[core][json]")
+{
+    auto p = sampleProject();
+    REQUIRE_FALSE(p.tracks.empty());
+    AudioClip muted{90, "m", "m.wav", 10000000, 100, 0, 1.0f}; // after the others: clips load sorted
+    muted.muted = true;
+    p.tracks[0].clips.push_back(muted);
+    Track midi;
+    midi.id = 91;
+    midi.kind = TrackKind::midi;
+    MidiClip clip;
+    clip.id = 92;
+    clip.length = 100;
+    clip.muted = true;
+    midi.midiClips.push_back(clip);
+    p.tracks.push_back(midi);
+    p.nextId = 93;
+    const auto text = projectToJson(p);
+    const auto restored = projectFromJson(text);
+    REQUIRE(restored.has_value());
+    CHECK(*restored == p);
+
+    // Only muted clips carry the field, so a version 12 file reads as all playing.
+    auto older = projectToJson(sampleProject());
+    CHECK(older.find("\"muted\"") == std::string::npos);
+    const auto current = "\"version\": " + std::to_string(Project::schemaVersion);
+    const auto at = older.find(current);
+    REQUIRE(at != std::string::npos);
+    older.replace(at, current.size(), "\"version\": 12");
+    const auto loaded = projectFromJson(older);
+    REQUIRE(loaded.has_value());
+    for (const auto& t : loaded->tracks)
+        for (const auto& c : t.clips)
+            CHECK_FALSE(c.muted);
+}
+
+TEST_CASE("Fade curves round-trip; version 13 files load with linear fades", "[core][json]")
+{
+    auto p = sampleProject();
+    AudioClip shaped{95, "s", "s.wav", 20000000, 1000, 0, 1.0f};
+    shaped.fadeIn = 100;
+    shaped.fadeInCurve = 0.4f;
+    shaped.fadeOut = 200;
+    shaped.fadeOutCurve = -0.75f;
+    p.tracks[0].clips.push_back(shaped);
+    p.nextId = 96;
+    const auto restored = projectFromJson(projectToJson(p));
+    REQUIRE(restored.has_value());
+    CHECK(*restored == p);
+
+    auto older = projectToJson(sampleProject());
+    CHECK(older.find("Curve") == std::string::npos); // linear fades write nothing
+    const auto current = "\"version\": " + std::to_string(Project::schemaVersion);
+    const auto at = older.find(current);
+    REQUIRE(at != std::string::npos);
+    older.replace(at, current.size(), "\"version\": 13");
+    const auto loaded = projectFromJson(older);
+    REQUIRE(loaded.has_value());
+    for (const auto& t : loaded->tracks)
+        for (const auto& c : t.clips)
+        {
+            CHECK(c.fadeInCurve == 0.0f);
+            CHECK(c.fadeOutCurve == 0.0f);
+        }
+}
+
+TEST_CASE("The master's automation round-trips; version 14 files load with none", "[core][json][master]")
+{
+    auto p = sampleProject();
+    AutomationLane volume;
+    volume.id = 97;
+    volume.points = {{0, 1.0f}, {48000, 0.5f}};
+    p.master.automation = {volume};
+    p.master.automationMode = AutomationMode::touch;
+    p.master.automationOpen = true;
+    p.master.height = 90;
+    p.nextId = 98;
+    const auto restored = projectFromJson(projectToJson(p));
+    REQUIRE(restored.has_value());
+    CHECK(*restored == p);
+
+    auto older = projectToJson(sampleProject());
+    const auto current = "\"version\": " + std::to_string(Project::schemaVersion);
+    const auto at = older.find(current);
+    REQUIRE(at != std::string::npos);
+    older.replace(at, current.size(), "\"version\": 14");
+    const auto loaded = projectFromJson(older);
+    REQUIRE(loaded.has_value());
+    CHECK(loaded->master.automation.empty());
+    CHECK(loaded->master.automationMode == AutomationMode::read);
+}
