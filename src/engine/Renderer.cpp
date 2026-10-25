@@ -95,6 +95,35 @@ void Renderer::prepare(int maxBlockSize)
     mixRight_.assign(n, 0.0f);
 }
 
+namespace
+{
+// The gains a pan glides through over a span, from where the last span left it to
+// its target, a step per sample (sample i at step i + 1, so the span ends on the
+// target). Mono sources pan at constant power; stereo ones balance.
+struct PanRamp
+{
+    float left0 = 1.0f, right0 = 1.0f, stepL = 0.0f, stepR = 0.0f;
+    PanRamp(float from, float to, bool mono, int numSamples) noexcept
+    {
+        float left1 = 1.0f, right1 = 1.0f;
+        if (mono)
+        {
+            Renderer::monoPanGains(from, left0, right0);
+            Renderer::monoPanGains(to, left1, right1);
+        }
+        else
+        {
+            Renderer::stereoPanGains(from, left0, right0);
+            Renderer::stereoPanGains(to, left1, right1);
+        }
+        stepL = (left1 - left0) / static_cast<float>(numSamples);
+        stepR = (right1 - right0) / static_cast<float>(numSamples);
+    }
+    float left(int i) const noexcept { return left0 + stepL * static_cast<float>(i + 1); }
+    float right(int i) const noexcept { return right0 + stepR * static_cast<float>(i + 1); }
+};
+} // namespace
+
 void Renderer::monoPanGains(float pan, float& left, float& right) noexcept
 {
     const float p = std::clamp(pan, -1.0f, 1.0f);
@@ -226,6 +255,17 @@ void Renderer::renderTrack(const Snapshot& snapshot,
                            int numSamples,
                            const RenderContext& context) noexcept
 {
+    renderTrack(
+        snapshot, track, position, numSamples, context, playHeadAt(snapshot, position, context.playing));
+}
+
+void Renderer::renderTrack(const Snapshot& snapshot,
+                           const TrackNode& track,
+                           core::SamplePosition position,
+                           int numSamples,
+                           const RenderContext& context,
+                           const PlayHead& head) noexcept
+{
     numSamples = std::min(numSamples, static_cast<int>(track.outLeft.size()));
     float* left = track.outLeft.data();
     float* right = track.outRight.data();
@@ -243,17 +283,12 @@ void Renderer::renderTrack(const Snapshot& snapshot,
     // polarity applies after the chain.
     const auto finishStereo = [&]
     {
-        float panLeft0 = 1.0f, panRight0 = 1.0f, panLeft1 = 1.0f, panRight1 = 1.0f;
-        stereoPanGains(pan0, panLeft0, panRight0);
-        stereoPanGains(pan1, panLeft1, panRight1);
-        const float stepL = (panLeft1 - panLeft0) / static_cast<float>(numSamples);
-        const float stepR = (panRight1 - panRight0) / static_cast<float>(numSamples);
+        const PanRamp ramp(pan0, pan1, false, numSamples);
         const float sign = track.phaseInvert ? -1.0f : 1.0f;
         for (int i = 0; i < numSamples; ++i)
         {
-            const float t = static_cast<float>(i + 1);
-            left[i] *= sign * (panLeft0 + stepL * t);
-            right[i] *= sign * (panRight0 + stepR * t);
+            left[i] *= sign * ramp.left(i);
+            right[i] *= sign * ramp.right(i);
         }
         if (track.runtime != nullptr)
         {
@@ -275,8 +310,7 @@ void Renderer::renderTrack(const Snapshot& snapshot,
             std::copy(auxL, auxL + numSamples, left);
             std::copy(auxR, auxR + numSamples, right);
         }
-        processChain(
-            snapshot, track, playHeadAt(snapshot, position, context.playing), left, right, numSamples);
+        processChain(snapshot, track, head, left, right, numSamples);
         finishStereo();
         return;
     }
@@ -312,13 +346,7 @@ void Renderer::renderTrack(const Snapshot& snapshot,
             }
         }
         events.sortByTime();
-        processChain(snapshot,
-                     track,
-                     playHeadAt(snapshot, position, context.playing),
-                     left,
-                     right,
-                     numSamples,
-                     &events);
+        processChain(snapshot, track, head, left, right, numSamples, &events);
         finishStereo();
         return;
     }
@@ -326,8 +354,14 @@ void Renderer::renderTrack(const Snapshot& snapshot,
     if (context.playing)
     {
         const core::SamplePosition spanEnd = position + numSamples;
-        for (const auto& clip : track.clips)
+        // The first clip that can reach the span: clips are sorted by start, and
+        // clipEndsBy[k] is the furthest any of the first k + 1 reaches.
+        const auto firstReaching =
+            static_cast<size_t>(std::upper_bound(track.clipEndsBy.begin(), track.clipEndsBy.end(), position) -
+                                track.clipEndsBy.begin());
+        for (size_t k = firstReaching; k < track.clips.size(); ++k)
         {
+            const auto& clip = track.clips[k];
             if (clip.source == nullptr || clip.length <= 0)
                 continue;
             if (clip.start >= spanEnd)
@@ -343,20 +377,8 @@ void Renderer::renderTrack(const Snapshot& snapshot,
 
             // Pan ramps from where the last block left it to the target over this
             // block (per sample, so a pan move glides).
-            float panLeft0 = 1.0f, panRight0 = 1.0f, panLeft1 = 1.0f, panRight1 = 1.0f;
             const bool mono = clip.source->numChannels() == 1;
-            if (mono)
-            {
-                monoPanGains(pan0, panLeft0, panRight0);
-                monoPanGains(pan1, panLeft1, panRight1);
-            }
-            else
-            {
-                stereoPanGains(pan0, panLeft0, panRight0);
-                stereoPanGains(pan1, panLeft1, panRight1);
-            }
-            const float stepL = (panLeft1 - panLeft0) / static_cast<float>(numSamples);
-            const float stepR = (panRight1 - panRight0) / static_cast<float>(numSamples);
+            const PanRamp ramp(pan0, pan1, mono, numSamples);
 
             float* sl = track.scratchLeft.data();
             float* sr = track.scratchRight.data();
@@ -383,9 +405,8 @@ void Renderer::renderTrack(const Snapshot& snapshot,
                     f *= core::fadeShape(static_cast<float>(clip.length - pos) /
                                              static_cast<float>(clip.fadeOut),
                                          clip.fadeOutK);
-                const float t = static_cast<float>(offset + i + 1);
-                left[offset + i] += sl[i] * clip.gain * (panLeft0 + stepL * t) * f;
-                right[offset + i] += sr[i] * clip.gain * (panRight0 + stepR * t) * f;
+                left[offset + i] += sl[i] * clip.gain * ramp.left(offset + i) * f;
+                right[offset + i] += sr[i] * clip.gain * ramp.right(offset + i) * f;
             }
         }
     }
@@ -399,18 +420,13 @@ void Renderer::renderTrack(const Snapshot& snapshot,
     {
         const float* inL = context.inputs[track.inputChannel];
         const float* inR = context.inputs[track.inputChannelRight];
-        float panLeft0 = 1.0f, panRight0 = 1.0f, panLeft1 = 1.0f, panRight1 = 1.0f;
-        stereoPanGains(pan0, panLeft0, panRight0);
-        stereoPanGains(pan1, panLeft1, panRight1);
-        const float stepL = (panLeft1 - panLeft0) / static_cast<float>(numSamples);
-        const float stepR = (panRight1 - panRight0) / static_cast<float>(numSamples);
+        const PanRamp ramp(pan0, pan1, false, numSamples);
         for (int i = 0; i < numSamples; ++i)
         {
-            const float t = static_cast<float>(i + 1);
             if (inL != nullptr)
-                left[i] += inL[i] * (panLeft0 + stepL * t);
+                left[i] += inL[i] * ramp.left(i);
             if (inR != nullptr)
-                right[i] += inR[i] * (panRight0 + stepR * t);
+                right[i] += inR[i] * ramp.right(i);
         }
     }
     else if (monitorsInput(track, context.playing, context.recording) &&
@@ -419,16 +435,11 @@ void Renderer::renderTrack(const Snapshot& snapshot,
         const float* in = context.inputs[track.inputChannel];
         if (in != nullptr)
         {
-            float panLeft0 = 1.0f, panRight0 = 1.0f, panLeft1 = 1.0f, panRight1 = 1.0f;
-            monoPanGains(pan0, panLeft0, panRight0);
-            monoPanGains(pan1, panLeft1, panRight1);
-            const float stepL = (panLeft1 - panLeft0) / static_cast<float>(numSamples);
-            const float stepR = (panRight1 - panRight0) / static_cast<float>(numSamples);
+            const PanRamp ramp(pan0, pan1, true, numSamples);
             for (int i = 0; i < numSamples; ++i)
             {
-                const float t = static_cast<float>(i + 1);
-                left[i] += in[i] * (panLeft0 + stepL * t);
-                right[i] += in[i] * (panRight0 + stepR * t);
+                left[i] += in[i] * ramp.left(i);
+                right[i] += in[i] * ramp.right(i);
             }
         }
     }
@@ -445,7 +456,7 @@ void Renderer::renderTrack(const Snapshot& snapshot,
             right[i] = -right[i];
         }
 
-    processChain(snapshot, track, playHeadAt(snapshot, position, context.playing), left, right, numSamples);
+    processChain(snapshot, track, head, left, right, numSamples);
 }
 
 namespace
@@ -805,7 +816,7 @@ void Renderer::trackJob(void* context, int index) noexcept
     const auto& job = *static_cast<const SpanJob*>(context);
     const int track = (*job.tracks)[static_cast<size_t>(index)];
     const auto& node = job.snapshot->tracks[static_cast<size_t>(track)];
-    renderTrack(*job.snapshot, node, job.position, job.numSamples, *job.context);
+    renderTrack(*job.snapshot, node, job.position, job.numSamples, *job.context, *job.head);
     writePostFaderKey(node, job.numSamples);
 }
 
@@ -953,11 +964,14 @@ void Renderer::renderSpan(const Snapshot& snapshot,
         (master.runtime != nullptr && master.runtime->automated.load(std::memory_order_relaxed) != 0))
         applyAutomation(master, position + numSamples);
 
+    // Where the song is for every processor this span (several tempo map searches).
+    const PlayHead head = playHeadAt(snapshot, position, context.playing);
+
     // Tracks render in parallel within a level; levels in order so a keyed track
     // sees its source finished.
     for (const auto& level : snapshot.trackLevels)
     {
-        SpanJob job{&snapshot, &context, position, numSamples, &level};
+        SpanJob job{&snapshot, &context, position, numSamples, &level, &head};
         const int count = static_cast<int>(level.size());
         if (pool != nullptr && pool->numWorkers() > 0)
             pool->run(count, &trackJob, &job);
@@ -996,38 +1010,28 @@ void Renderer::renderSpan(const Snapshot& snapshot,
         // and phase.
         const float pan1 = targetPanOf(bus);
         const float pan0 = bus.runtime != nullptr && bus.runtime->panPrimed ? bus.runtime->pan : pan1;
-        float panLeft0 = 1.0f, panRight0 = 1.0f, panLeft1 = 1.0f, panRight1 = 1.0f;
-        stereoPanGains(pan0, panLeft0, panRight0);
-        stereoPanGains(pan1, panLeft1, panRight1);
-        const float stepL = (panLeft1 - panLeft0) / static_cast<float>(numSamples);
-        const float stepR = (panRight1 - panRight0) / static_cast<float>(numSamples);
+        const PanRamp ramp(pan0, pan1, false, numSamples);
         const float sign = bus.phaseInvert ? -1.0f : 1.0f;
         float* outL = bus.outLeft.data();
         float* outR = bus.outRight.data();
         for (int i = 0; i < numSamples; ++i)
         {
-            const float t = static_cast<float>(i + 1);
-            outL[i] = bus.sumLeft[static_cast<size_t>(i)] * (panLeft0 + stepL * t) * sign;
-            outR[i] = bus.sumRight[static_cast<size_t>(i)] * (panRight0 + stepR * t) * sign;
+            outL[i] = bus.sumLeft[static_cast<size_t>(i)] * ramp.left(i) * sign;
+            outR[i] = bus.sumRight[static_cast<size_t>(i)] * ramp.right(i) * sign;
         }
         if (bus.runtime != nullptr)
         {
             bus.runtime->pan = pan1;
             bus.runtime->panPrimed = true;
         }
-        processChain(snapshot, bus, playHeadAt(snapshot, position, context.playing), outL, outR, numSamples);
+        processChain(snapshot, bus, head, outL, outR, numSamples);
         writePostFaderKey(bus, numSamples);
         routeChannel(snapshot, bus, context, left, right, numSamples);
     }
 
     // The master's inserts, before its fader.
     if (!snapshot.masterChain.inserts.empty())
-        processChain(snapshot,
-                     snapshot.masterChain,
-                     playHeadAt(snapshot, position, context.playing),
-                     left,
-                     right,
-                     numSamples);
+        processChain(snapshot, snapshot.masterChain, head, left, right, numSamples);
 
     // The master's fader: its volume lane while one plays, else the fader.
     const auto* masterRuntime = snapshot.masterChain.runtime;

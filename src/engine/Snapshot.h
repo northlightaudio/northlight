@@ -185,7 +185,10 @@ struct TrackNode : ChannelNode
     std::uint8_t midiOutChannel = 0; // 0..15
     bool armed = false;
     core::MonitorMode monitor = core::MonitorMode::automatic;
-    std::vector<ClipNode> clips;         // sorted by start
+    std::vector<ClipNode> clips; // sorted by start
+    // Per clip: the furthest end of it and every clip before it (non-decreasing),
+    // so the renderer finds the first clip a span can reach by binary search.
+    std::vector<core::SamplePosition> clipEndsBy;
     std::vector<MidiClipNode> midiClips; // sorted by start
     // The chase keys any of its clips sets (1 where one does).
     std::array<std::uint8_t, 130> controllerKeys{};

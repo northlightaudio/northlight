@@ -5,6 +5,7 @@
 #include <algorithm>
 #include <cmath>
 #include <functional>
+#include <limits>
 #include <map>
 #include <optional>
 
@@ -624,6 +625,15 @@ std::unique_ptr<Snapshot> compileSnapshot(const core::Project& project,
             clip.source = clip.keepAlive.get();
             node.clips.push_back(std::move(clip));
         }
+        // Sorted by start, with the furthest end so far beside each (the renderer
+        // binary-searches it for the first clip a span reaches).
+        std::stable_sort(node.clips.begin(),
+                         node.clips.end(),
+                         [](const ClipNode& a, const ClipNode& b) { return a.start < b.start; });
+        node.clipEndsBy.reserve(node.clips.size());
+        core::SamplePosition furthest = std::numeric_limits<core::SamplePosition>::min();
+        for (const auto& c : node.clips)
+            node.clipEndsBy.push_back(furthest = std::max(furthest, c.end()));
         node.scratchLeft = {node.keepAliveBuffers->buffer(6), n};
         node.scratchRight = {node.keepAliveBuffers->buffer(7), n};
         snapshot->tracks.push_back(std::move(node));

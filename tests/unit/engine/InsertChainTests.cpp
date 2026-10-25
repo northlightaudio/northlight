@@ -170,6 +170,21 @@ TEST_CASE("A snapshot's work buffers hold the prepared block, not the most one c
     CHECK(l[blockSize * 4 - 1] == Approx(0.5f * centre).margin(0.002f));
 }
 
+TEST_CASE("A long clip under later short ones still plays where they have ended", "[engine][clips]")
+{
+    Harness h;
+    core::Project p;
+    auto t = trackWithClip(1); // 0 .. 100000
+    t.clips.push_back({150, "short", "x.wav", 1000, 2000, 0, 1.0f});
+    t.clips.push_back({151, "short", "x.wav", 4000, 2000, 0, 1.0f});
+    p.tracks.push_back(t);
+    h.engine.setProject(p);
+    h.engine.locate(50000); // past the short ones: only the long clip reaches here
+    h.engine.play();
+    h.more(4);
+    CHECK(h.left[blockSize - 1] == Approx(0.5f * centre).margin(0.002f));
+}
+
 TEST_CASE("Live values can be pushed for one channel alone", "[engine][smoothing]")
 {
     Harness h;

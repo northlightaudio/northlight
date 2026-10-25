@@ -95,6 +95,14 @@ public:
                             core::SamplePosition position,
                             int numSamples,
                             const RenderContext& context) noexcept;
+    // The same with the span's playhead already worked out (renderSpan does it
+    // once for every track and bus).
+    static void renderTrack(const Snapshot& snapshot,
+                            const TrackNode& track,
+                            core::SamplePosition position,
+                            int numSamples,
+                            const RenderContext& context,
+                            const PlayHead& head) noexcept;
 
 private:
     struct SpanJob
@@ -104,6 +112,7 @@ private:
         core::SamplePosition position;
         int numSamples;
         const std::vector<int>* tracks; // the level being rendered
+        const PlayHead* head;           // the span's, worked out once
     };
     static void trackJob(void* context, int index) noexcept;
     // Runs a channel's insert chain in place, blending each slot's wet/dry mix and
