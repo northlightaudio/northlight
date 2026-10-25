@@ -30,6 +30,8 @@ add_library(northlight_ui STATIC
     components/Knob.cpp
     components/Meter.h
     components/Meter.cpp
+    components/ChoiceControl.h
+    components/ChoiceControl.cpp
     components/SegmentedControl.h
     components/SegmentedControl.cpp
     components/NumericField.h

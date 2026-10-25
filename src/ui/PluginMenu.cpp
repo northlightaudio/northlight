@@ -34,6 +34,7 @@ EffectCategory builtInCategory(const std::string& type)
         {plugins::types::delay, EffectCategory::space},
         {"northlight.tapeecho", EffectCategory::space},
         {"northlight.bloom", EffectCategory::space},
+        {"northlight.vesper", EffectCategory::space},
         {"northlight.amp", EffectCategory::guitar},
         {"northlight.gravity", EffectCategory::guitar},
         {"northlight.flare", EffectCategory::guitar},

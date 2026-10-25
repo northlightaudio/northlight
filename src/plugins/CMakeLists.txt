@@ -50,6 +50,8 @@ add_library(northlight_plugins STATIC
     VocalListener.cpp
     FeedbackNetwork.h
     FeedbackNetwork.cpp
+    Vesper.h
+    Vesper.cpp
     Bloom.h
     Bloom.cpp
     Pedals.h

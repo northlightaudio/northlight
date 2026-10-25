@@ -10,6 +10,7 @@
 #include "ui/PluginMenu.h"
 #include "ui/SendMenu.h"
 #include "ui/SidechainMenu.h"
+#include "ui/components/ChoiceControl.h"
 #include "ui/components/Fader.h"
 #include "ui/components/SegmentedControl.h"
 #include "ui/strip/BuiltInCards.h"
@@ -142,10 +143,8 @@ public:
             if (popped)
                 body_->stopWatching();
         }
-        for (auto& k : knobs_)
-            k->setVisible(!popped);
-        for (auto& l : labels_)
-            l->setVisible(!popped);
+        for (auto& cell : cells_)
+            cell.setVisible(!popped);
         open_.setVisible(wantsOpen_ && !popped);
         show_.setVisible(popped);
         resized();
@@ -208,8 +207,8 @@ public:
         if (body_ != nullptr)
             body_->refresh(insert);
         const auto live = owner_.liveInsert ? owner_.liveInsert(insertId_) : nullptr;
-        for (size_t i = 0; i < knobs_.size() && live != nullptr; ++i)
-            knobs_[i]->setValue(live->parameter(static_cast<int>(i)), juce::dontSendNotification);
+        for (size_t i = 0; i < cells_.size() && live != nullptr; ++i)
+            cells_[i].show(live->parameter(static_cast<int>(i)));
         latency_ = live != nullptr ? live->latencySamples() : 0;
         if (showsInfoLine() != hadInfoLine)
             resized();
@@ -238,8 +237,16 @@ public:
     // The card's width at a height: a body that scales to fit narrows with it.
     int preferredWidthAt(int height) const
     {
-        if (popped_ || body_ == nullptr)
+        if (popped_)
             return preferredWidth();
+        if (body_ == nullptr)
+        {
+            // The generic grid: as many columns as its cells need to fit the height.
+            if (cells_.empty())
+                return preferredWidth();
+            const int gridHeight = height - frameRows() - 2 * theme_.spacing.xs;
+            return gridWidth(columnsFor(gridHeight));
+        }
         int bodyHeight = height - theme_.sizes.control;
         if (!instrument_)
             bodyHeight -= theme_.sizes.controlCompact;
@@ -248,17 +255,13 @@ public:
         return body_->preferredWidthAt(bodyHeight);
     }
 
-    int preferredWidth() const noexcept
+    int preferredWidth() const
     {
         if (popped_)
             return poppedWidth();
         if (body_ != nullptr)
             return body_->preferredWidth();
-        const int perRow = 4;
-        const int knobW = theme_.sizes.knob + theme_.spacing.xl;
-        return std::max(160,
-                        std::min(perRow, std::max(1, static_cast<int>(knobs_.size()))) * knobW +
-                            2 * theme_.spacing.md);
+        return gridWidth(std::min(minColumns, std::max(1, static_cast<int>(cells_.size()))));
     }
 
     void paint(juce::Graphics& g) override
@@ -365,7 +368,7 @@ public:
         // an insert with nothing to show (it showed through gaps in a card's layout).
         if (popped_)
             paintPoppedOut(g);
-        else if (knobs_.empty() && body_ == nullptr && !open_.isVisible() && !missing_)
+        else if (cells_.empty() && body_ == nullptr && !open_.isVisible() && !missing_)
         {
             g.setColour(c.textTertiary);
             g.setFont(theme_.small());
@@ -426,22 +429,36 @@ public:
             open_.setBounds(area.withSizeKeepingCentre(std::min(area.getWidth(), 120), theme_.sizes.control));
             return;
         }
-        const int perRow = 4;
-        const int cellW = area.getWidth() / std::max(1, std::min(perRow, static_cast<int>(knobs_.size())));
-        const int cellH = theme_.sizes.knob + static_cast<int>(theme_.fonts.size.value) +
-                          static_cast<int>(theme_.fonts.size.caption) + theme_.spacing.sm;
-        for (size_t i = 0; i < knobs_.size(); ++i)
+        if (cells_.empty())
+            return;
+        const int columns = std::min(columnsFor(area.getHeight()), static_cast<int>(cells_.size()));
+        const int cellW = area.getWidth() / std::max(1, columns);
+        const int cellH = cellHeight();
+        const int captionH = static_cast<int>(theme_.fonts.size.caption) + theme_.spacing.xxs;
+        int row = 0, col = 0;
+        for (auto& c : cells_)
         {
-            const int row = static_cast<int>(i) / perRow, col = static_cast<int>(i) % perRow;
-            const auto cell =
-                juce::Rectangle<int>(area.getX() + col * cellW, area.getY() + row * cellH, cellW, cellH);
-            knobs_[i]->setBounds(
-                cell.withTrimmedBottom(static_cast<int>(theme_.fonts.size.caption) + theme_.spacing.xxs)
-                    .reduced(theme_.spacing.xs, 0));
-            labels_[i]->setBounds(
-                cell.withTop(cell.getBottom() - static_cast<int>(theme_.fonts.size.caption) -
-                             theme_.spacing.xxs)
-                    .withHeight(static_cast<int>(theme_.fonts.size.caption) + theme_.spacing.xxs));
+            const int span = spanOf(c, cellW, columns);
+            if (col + span > columns)
+            {
+                ++row;
+                col = 0;
+            }
+            const auto cell = juce::Rectangle<int>(
+                area.getX() + col * cellW, area.getY() + row * cellH, span * cellW, cellH);
+            const auto control = cell.withTrimmedBottom(captionH);
+            if (c.choice != nullptr)
+            {
+                // A choice sits in the middle of a knob's dial and value, as wide as
+                // it needs, so its name is close under it.
+                const int w =
+                    std::min(control.getWidth() - 2 * theme_.spacing.xs, c.choice->preferredWidth());
+                c.choice->setBounds(control.withSizeKeepingCentre(w, theme_.sizes.controlCompact));
+            }
+            else
+                c.knob->setBounds(control.reduced(theme_.spacing.xs, 0));
+            c.label->setBounds(cell.withTop(cell.getBottom() - captionH).withHeight(captionH));
+            col += span;
         }
     }
 
@@ -493,8 +510,7 @@ private:
 
     void rebuildKnobs()
     {
-        knobs_.clear();
-        labels_.clear();
+        cells_.clear();
         const auto live = owner_.liveInsert ? owner_.liveInsert(insertId_) : nullptr;
         const bool hosted = hosting::PluginRegistry::isHostedType(type_);
         missing_ = live == nullptr && hosted;
@@ -511,11 +527,48 @@ private:
         for (size_t i = 0; i < live->parameters().size(); ++i)
         {
             const auto& info = live->parameters()[i];
+            const int index = static_cast<int>(i);
+            Cell cell;
+            cell.label = std::make_unique<juce::Label>();
+            cell.label->setText(info.name, juce::dontSendNotification);
+            cell.label->setFont(theme_.caption());
+            cell.label->setColour(juce::Label::textColourId, theme_.colours.textSecondary);
+            cell.label->setJustificationType(juce::Justification::centred);
+            cell.label->setMinimumHorizontalScale(0.7f);
+            addAndMakeVisible(*cell.label);
+            if (!info.choices.empty())
+            {
+                cell.choice = std::make_unique<ChoiceControl>(theme_, info.choices, juce::String(info.name));
+                cell.choice->setOnCard(true);
+                cell.choice->setValue(live->parameter(index));
+                cell.choice->onChange = [this, index](float value)
+                {
+                    // A choice is one change: its own gesture, so automation sees a touch.
+                    const auto l = owner_.liveInsert ? owner_.liveInsert(insertId_) : nullptr;
+                    if (l != nullptr)
+                        l->beginParameterGesture(index);
+                    if (!updating_ && owner_.onCommand)
+                        owner_.onCommand(
+                            std::make_unique<core::SetInsertParameter>(channelId_, insertId_, index, value));
+                    if (l != nullptr)
+                        l->endParameterGesture(index);
+                };
+                addAndMakeVisible(*cell.choice);
+                cells_.push_back(std::move(cell));
+                continue;
+            }
             auto knob = std::make_unique<Knob>(theme_);
             knob->setRange(info.minimum, info.maximum, info.defaultValue);
-            const juce::String unit = info.unit.empty() ? juce::String() : " " + juce::String(info.unit);
-            knob->format = [unit](double v) { return fixedText(v, std::abs(v) >= 100.0 ? 0 : 2) + unit; };
-            const int index = static_cast<int>(i);
+            // Few figures, so the value fits its cell: fewer decimals as it grows, kHz past 1000 Hz.
+            const juce::String unit = info.unit.empty() ? juce::String() : juce::String(info.unit);
+            knob->format = [unit](double v)
+            {
+                if (unit == "Hz" && std::abs(v) >= 1000.0)
+                    return fixedText(v / 1000.0, std::abs(v) >= 10000.0 ? 0 : 1) + " kHz";
+                const double a = std::abs(v);
+                const int decimals = a >= 100.0 ? 0 : a >= 10.0 ? 1 : 2;
+                return fixedText(v, decimals) + (unit.isEmpty() ? juce::String() : " " + unit);
+            };
             knob->onDragStart = [this, index, name = info.name]
             {
                 if (const auto l = owner_.liveInsert ? owner_.liveInsert(insertId_) : nullptr)
@@ -537,16 +590,84 @@ private:
                         channelId_, insertId_, index, static_cast<float>(value)));
             };
             addAndMakeVisible(*knob);
-            auto label = std::make_unique<juce::Label>();
-            label->setText(info.name, juce::dontSendNotification);
-            label->setFont(theme_.caption());
-            label->setColour(juce::Label::textColourId, theme_.colours.textSecondary);
-            label->setJustificationType(juce::Justification::centred);
-            label->setMinimumHorizontalScale(0.7f);
-            addAndMakeVisible(*label);
-            knobs_.push_back(std::move(knob));
-            labels_.push_back(std::move(label));
+            cell.knob = std::move(knob);
+            cells_.push_back(std::move(cell));
         }
+    }
+
+    // A generic grid cell: a knob, or a choice control for a stepped parameter.
+    struct Cell
+    {
+        std::unique_ptr<Knob> knob;
+        std::unique_ptr<ChoiceControl> choice;
+        std::unique_ptr<juce::Label> label;
+        void show(float v) const
+        {
+            if (choice != nullptr)
+                choice->setValue(v);
+            else
+                knob->setValue(v, juce::dontSendNotification);
+        }
+        void setVisible(bool visible) const
+        {
+            if (knob != nullptr)
+                knob->setVisible(visible);
+            if (choice != nullptr)
+                choice->setVisible(visible);
+            label->setVisible(visible);
+        }
+    };
+
+    // The generic grid: knobs in cells four or more to a row, a choice spanning
+    // as many cells as it needs, more columns when the height runs out.
+    static constexpr int minColumns = 4;
+    // Wide enough for the knob and for a value of eight figures and unit ("-12.0 dB",
+    // "1.00 oct") under it.
+    int knobCellWidth() const
+    {
+        static const juce::String widest = "-12.0 dB";
+        return std::max(theme_.sizes.knob + theme_.spacing.xl,
+                        juce::GlyphArrangement::getStringWidthInt(theme_.value(), widest) +
+                            2 * theme_.spacing.sm);
+    }
+    int cellHeight() const noexcept
+    {
+        return theme_.sizes.knob + static_cast<int>(theme_.fonts.size.value) +
+               static_cast<int>(theme_.fonts.size.caption) + theme_.spacing.sm;
+    }
+    int gridWidth(int columns) const
+    {
+        return std::max(160, columns * knobCellWidth() + 2 * theme_.spacing.md);
+    }
+    int spanOf(const Cell& c, int cellW, int columns) const
+    {
+        if (c.choice == nullptr)
+            return 1;
+        const int need = c.choice->preferredWidth() + 2 * theme_.spacing.xs;
+        return std::clamp((need + cellW - 1) / std::max(1, cellW), 1, std::max(1, columns));
+    }
+    int rowsFor(int columns) const
+    {
+        int rows = 1, col = 0;
+        for (const auto& c : cells_)
+        {
+            const int span = spanOf(c, knobCellWidth(), columns);
+            if (col + span > columns)
+            {
+                ++rows;
+                col = 0;
+            }
+            col += span;
+        }
+        return rows;
+    }
+    int columnsFor(int gridHeight) const
+    {
+        const int fit = std::max(1, gridHeight / cellHeight());
+        int columns = minColumns;
+        while (columns < static_cast<int>(cells_.size()) && rowsFor(columns) > fit)
+            ++columns;
+        return columns;
     }
 
     // A preset sets every parameter it changes as one undo step.
@@ -620,8 +741,7 @@ private:
     juce::Slider mix_;
     juce::TextButton open_, show_;
     bool popped_ = false, wantsOpen_ = false;
-    std::vector<std::unique_ptr<Knob>> knobs_;
-    std::vector<std::unique_ptr<juce::Label>> labels_;
+    std::vector<Cell> cells_;
     std::unique_ptr<strip::PresetBar> presets_;
     std::vector<float> params_; // the model's values at the last refresh
     bool bypassed_ = false, updating_ = false, missing_ = false, dragging_ = false;

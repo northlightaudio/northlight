@@ -13,6 +13,15 @@ Northlight has not had a release yet. The first release, 0.1.0, will include:
 
 ### Added
 
+- Vesper, a reverb for vocals, in the effects menu's Reverb & Delay group. It
+  listens to the singing: consonants, "s" sounds and breaths are kept out of the
+  reverb (Clarity, Breaths), the tail ducks while the singer sings and comes back in
+  the gaps (Duck, Release in ms or a note value), and it lifts and lengthens at the
+  end of each line (Ends, Gap). Choose a plate, a chamber or a hall; the pre-delay
+  can follow how fast the singing is (Auto); Follow keeps rumble out of the tail
+  under the sung note, Mud cuts a muddy build-up, and Centre clears the middle of
+  the tail for the voice. It has no latency. For now it shows the plain parameter
+  editor; its own face comes later.
 - Orbit, a studio tape machine for glue and colour on a bus or the master, in the
   effects menu's Drive & Colour group. Its tape is modelled from the way magnetic
   tape really responds, so pushing INPUT compresses softly, adds mostly odd
@@ -143,6 +152,10 @@ Northlight has not had a release yet. The first release, 0.1.0, will include:
 
 ### Fixed
 
+- The plain parameter editor shows a setting with a few fixed choices as a row of
+  buttons and one with many as a menu, instead of a knob reading a number; in the
+  Editor panel a long list of parameters widens the card instead of running past
+  its edge, and the knobs' values are no longer cut short.
 - Text across the app is drawn at its intended size: every label, caption and
   readout was about a sixth smaller than designed. Layouts that were packed around
   the smaller text now leave room for it, and track headers (260 px) and mixer

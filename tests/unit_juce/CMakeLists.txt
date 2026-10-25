@@ -16,6 +16,7 @@ add_executable(northlight_juce_tests
     KeyboardMapTests.cpp
     ChannelStripUiTests.cpp
     EditorPanelTests.cpp
+    ChoiceControlTests.cpp
     CrashGuardTests.cpp
     DbTests.cpp
     MotionTests.cpp

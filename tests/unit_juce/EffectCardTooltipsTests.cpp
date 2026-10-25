@@ -29,6 +29,12 @@ TEST_CASE("The effect cards' tooltips are a few words at most", "[ui][tooltips]"
         insert.type = type;
         insert.params = plugins::defaultParameters(type);
         auto card = ui::strip::createBuiltInCard(theme, host, core::masterId, insert);
+        // Effects still on the generic editor (no card yet) have no tooltips of their own.
+        if (type == "northlight.vesper")
+        {
+            CHECK(card == nullptr);
+            continue;
+        }
         REQUIRE(card != nullptr);
         card->setBounds(0, 0, card->preferredWidth(), card->preferredBodyHeight() + 40);
         // Every part of the card, all the way down: a short hint or nothing.

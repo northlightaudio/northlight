@@ -19,6 +19,7 @@
 #include "plugins/Sampler.h"
 #include "plugins/Starbit.h"
 #include "plugins/TapeEcho.h"
+#include "plugins/Vesper.h"
 #include "plugins/Widener.h"
 
 #include <algorithm>
@@ -612,11 +613,11 @@ private:
 
 std::vector<std::string> BuiltInFactory::typeNames() const
 {
-    return {types::gain,   types::eq,    types::compressor, types::opto,   glue::type,
-            widener::type, patina::type, exciter::type,     orbit::type,   types::limiter,
-            types::reverb, types::delay, tapeecho::type,    bloom::type,   amp::type,
-            gravity::type, flare::type,  comet::type,       tide::type,    polaris::type,
-            aurora::type,  pulsar::type, nebula::type,      starbit::type, sampler::type};
+    return {types::gain,    types::eq,     types::compressor, types::opto,    glue::type,    widener::type,
+            patina::type,   exciter::type, orbit::type,       types::limiter, types::reverb, types::delay,
+            tapeecho::type, bloom::type,   vesper::type,      amp::type,      gravity::type, flare::type,
+            comet::type,    tide::type,    polaris::type,     aurora::type,   pulsar::type,  nebula::type,
+            starbit::type,  sampler::type};
 }
 
 bool BuiltInFactory::isInstrument(const std::string& typeName)
@@ -668,6 +669,8 @@ std::unique_ptr<engine::InsertProcessor> BuiltInFactory::create(const std::strin
         return orbit::create();
     if (typeName == bloom::type)
         return bloom::create();
+    if (typeName == vesper::type)
+        return vesper::create();
     if (typeName == amp::type)
         return amp::create(sampleLoader_);
     if (typeName == gravity::type)
@@ -725,6 +728,8 @@ std::string BuiltInFactory::displayName(const std::string& typeName)
         return "Orbit";
     if (typeName == bloom::type)
         return "Bloom";
+    if (typeName == vesper::type)
+        return "Vesper";
     if (typeName == amp::type)
         return "Corona";
     if (typeName == gravity::type)

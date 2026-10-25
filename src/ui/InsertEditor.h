@@ -4,6 +4,7 @@
 #include "core/Model.h"
 #include "engine/Insert.h"
 #include "ui/Theme.h"
+#include "ui/components/ChoiceControl.h"
 #include "ui/components/Knob.h"
 #include "ui/components/NumericField.h"
 #include "ui/strip/ModuleCard.h"
@@ -78,11 +79,15 @@ public:
 
 private:
     double paintStart_ = 0.0;
+    // A continuous parameter has a knob and a value field; a stepped one (with
+    // choices) has a choice control in their place.
     struct Row
     {
         std::unique_ptr<juce::Label> name;
         std::unique_ptr<Knob> knob;
         std::unique_ptr<NumericField> value;
+        std::unique_ptr<ChoiceControl> choice;
+        void show(float v) const;
     };
     void setParameter(int index, float value);
 

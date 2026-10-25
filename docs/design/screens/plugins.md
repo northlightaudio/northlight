@@ -78,7 +78,7 @@ Every built-in has an editor in the channel strip's language
 well, then knobs in the module's hue. The same editor is the card's body in the Editor panel
 and the body of its window (under the title, bypass and mix). The hues follow the
 strip: EQ `Overcast`, compressor `Loch`, limiter `Rowan`; gain `Machair`, reverb `Lichen`,
-delay `Gorse`, glue compressor `Thrift`, Patina `Kelp`, exciter `Machair`, Bloom `Heather`, tape echo `Rowan`, Orbit `Slate`, stereo widener `Sea grass`, Corona `Straw`; the pedals take their family's: Gravity `Loch`, Flare `Rowan`, Comet `Gorse`, Tide `Sea grass`, Polaris `Overcast`. The instruments (7.4b-7.4e) have faces of their own, and so do Patina, the tape echo, Orbit and Corona, hardware faces (design-system.md "Hardware face").
+delay `Gorse`, glue compressor `Thrift`, Patina `Kelp`, exciter `Machair`, Bloom `Heather`, Vesper `Thrift`, tape echo `Rowan`, Orbit `Slate`, stereo widener `Sea grass`, Corona `Straw`; the pedals take their family's: Gravity `Loch`, Flare `Rowan`, Comet `Gorse`, Tide `Sea grass`, Polaris `Overcast`. The instruments (7.4b-7.4e) have faces of their own, and so do Patina, the tape echo, Orbit and Corona, hardware faces (design-system.md "Hardware face").
 
 - **Gain**: the input and output history with IN and OUT meters; Gain.
 - **EQ**: the strip's EQ graph with the built-in's four bands (a high-pass,
@@ -446,6 +446,9 @@ delay `Gorse`, glue compressor `Thrift`, Patina `Kelp`, exciter `Machair`, Bloom
     `textSecondary`) while it ducks.
   - Body 316 px; width the flower's field (1.32 x the body's height less 8 px), a
     20 px gap and the 644 px of controls.
+- **Vesper** (a reverb for vocals that listens to the singing;
+  [plans/vesper.md](../../plans/vesper.md)): until its face is built it shows the
+  generic parameter editor (7.3), in the Reverb & Delay group of the effects menu.
 - **Tape Echo** (a tape loop machine, the Delay's characterful sibling):
   - A record head and four playback heads at 1, 2, 3 and 4 times head 1's time. Eight
     head combinations: 1, 2, 3, 4, 1+3, 2+4, 1+3+4, all.
@@ -886,6 +889,14 @@ For GUI-less hosted plugins. A scrollable grid of parameter rows:
 - Sections (from the plugin's group info or the built-in's layout) as uppercase
   `caption` headers with `space.lg` above.
 - Drag on a knob begins a gesture (one undo step); the value field commits on Enter.
+  A choice is a segmented control (two to four choices) or a combo (more), right
+  aligned where the value fields end; a pick is one undo step and one automation
+  touch. Hosted plugins do not report their choices yet, so theirs stay knobs.
+- In the Editor panel a built-in without a card of its own shows the same
+  parameters as a grid: a knob over its value and name per cell, four or more cells
+  to a row, a choice spanning as many cells as it needs (its name under it). When
+  the dock's height runs out the grid adds columns and the card widens, so nothing
+  runs past its edge.
 - Sidechain and latency shown in a footer line.
 
 ## 7.4 Plugin browser (side panel tab and window)

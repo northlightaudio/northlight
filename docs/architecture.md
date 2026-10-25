@@ -310,7 +310,10 @@ know nothing format-specific.
   ducking and mix stay the effect's. `plugins/VocalListener` hears a vocal for
   Vesper (voice and pitch, consonants and sibilance, breaths, line ends, the singing
   rate), deciding every 2.5 ms from the past alone; its pitch is YIN from
-  `plugins/Yin.h`, which the tuner (Polaris) uses too. A display that needs more than a frame
+  `plugins/Yin.h`, which the tuner (Polaris) uses too. Vesper (`plugins/Vesper`) is
+  the Listener in front of three prepared networks, one per space: each Listener
+  frame sets the send's cut, the duck, Ends and Follow's high-pass, and the samples
+  between follow them smoothly. A display that needs more than a frame
   holds (Patina's six stage readouts) publishes its own telemetry block the same
   way, so the shared frame stays small. Patina's card is a hardware face: the
   drawing shared by such faces (pointer knobs, printed legends, images from

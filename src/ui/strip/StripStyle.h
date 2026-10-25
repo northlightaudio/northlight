@@ -88,6 +88,8 @@ inline juce::Colour moduleColour(const Theme& theme, const std::string& type)
         return paletteColour(theme, "Overcast");
     if (type == "northlight.bloom")
         return paletteColour(theme, "Heather"); // dusk over the moor, apart from the plain reverb's Lichen
+    if (type == "northlight.vesper")
+        return paletteColour(theme, "Thrift"); // the afterglow
     if (type == "northlight.aurora")
         return paletteColour(theme, "Heather");
     if (type == "northlight.pulsar")

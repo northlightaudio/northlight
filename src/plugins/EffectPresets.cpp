@@ -10,6 +10,7 @@
 #include "plugins/Patina.h"
 #include "plugins/Pedals.h"
 #include "plugins/TapeEcho.h"
+#include "plugins/Vesper.h"
 #include "plugins/Widener.h"
 
 #include <algorithm>
@@ -620,6 +621,20 @@ std::vector<EffectPreset> tapeEchoPresets()
     return l.done();
 }
 
+// The first of Vesper's presets (docs/plans/vesper.md); those that need
+// lookahead, Swell or Halo join when those are built.
+std::vector<EffectPreset> vesperPresets()
+{
+    List l(vesper::type);
+    l.add("Vocal Plate", {});
+    l.add("Pop Lead", {{"Decay", 1.4}, {"Duck", 9.0}, {"Ends", 60.0}});
+    l.add("Ballad Hall", {{"Space", "Hall"}, {"Decay", 3.2}, {"Duck", 4.0}, {"Ends", 50.0}, {"Mix", 28.0}});
+    l.add("Intimate Chamber", {{"Space", "Chamber"}, {"Decay", 0.9}, {"Clarity", 80.0}, {"Mix", 18.0}});
+    l.add("Rap Clarity", {{"Decay", 0.8}, {"Duck", 12.0}, {"Clarity", 90.0}, {"Ends", 70.0}, {"Gap", 180.0}});
+    l.add("Throws Only", {{"Duck", 18.0}, {"Ends", 100.0}, {"Mix", 40.0}});
+    return l.done();
+}
+
 std::vector<EffectPreset> bloomPresets()
 {
     List l(bloom::type);
@@ -881,6 +896,7 @@ const std::map<std::string, std::vector<EffectPreset>>& all()
         {tapeecho::type, tapeEchoPresets()},
         {orbit::type, orbitPresets()},
         {bloom::type, bloomPresets()},
+        {vesper::type, vesperPresets()},
         {amp::type, ampPresets()},
         {gravity::type, gravityPresets()},
         {flare::type, flarePresets()},

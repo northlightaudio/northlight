@@ -73,6 +73,24 @@ InsertEditor::InsertEditor(core::Id channelId,
         row.name->setMinimumHorizontalScale(1.0f);
         rows_.addAndMakeVisible(*row.name);
 
+        if (!info.choices.empty())
+        {
+            row.choice = std::make_unique<ChoiceControl>(theme_, info.choices, juce::String(info.name));
+            row.choice->setValue(info.defaultValue);
+            row.choice->onChange = [this, index](float value)
+            {
+                // A choice is one change: its own gesture, so automation sees a touch.
+                if (onParameterGestureBegin)
+                    onParameterGestureBegin(index);
+                setParameter(index, value);
+                if (onParameterGestureEnd)
+                    onParameterGestureEnd(index);
+            };
+            rows_.addAndMakeVisible(*row.choice);
+            parameters_.push_back(std::move(row));
+            continue;
+        }
+
         const juce::String unit = info.unit.empty() ? juce::String() : juce::String(info.unit);
         const double step = info.unit == "Hz" ? 1.0 : (info.maximum - info.minimum) > 10.0 ? 0.1 : 0.01;
         row.knob = std::make_unique<Knob>(theme_);
@@ -186,15 +204,24 @@ void InsertEditor::timerCallback()
         body_->stopWatching();
 }
 
+void InsertEditor::Row::show(float v) const
+{
+    if (choice != nullptr)
+    {
+        choice->setValue(v);
+        return;
+    }
+    knob->setValue(v, juce::dontSendNotification);
+    value->setValue(v, juce::dontSendNotification);
+}
+
 void InsertEditor::setParameter(int index, float value)
 {
     if (updating_)
         return;
     {
         const juce::ScopedValueSetter<bool> guard(updating_, true);
-        auto& row = parameters_[static_cast<size_t>(index)];
-        row.knob->setValue(value, juce::dontSendNotification);
-        row.value->setValue(value, juce::dontSendNotification);
+        parameters_[static_cast<size_t>(index)].show(value);
     }
     if (onCommand)
         onCommand(std::make_unique<core::SetInsertParameter>(channelId_, insertId_, index, value));
@@ -212,10 +239,7 @@ void InsertEditor::setInsert(const core::Insert& insert)
     if (body_ != nullptr)
         body_->refresh(insert);
     for (size_t i = 0; i < parameters_.size() && i < insert.params.size(); ++i)
-    {
-        parameters_[i].knob->setValue(insert.params[i], juce::dontSendNotification);
-        parameters_[i].value->setValue(insert.params[i], juce::dontSendNotification);
-    }
+        parameters_[i].show(insert.params[i]);
     repaint();
 }
 
@@ -302,6 +326,14 @@ void InsertEditor::resized()
     {
         auto r = juce::Rectangle<int>(0, y, width, rowHeight);
         row.name->setBounds(r.removeFromLeft(std::min(160, width / 2)));
+        if (row.choice != nullptr)
+        {
+            // Right-aligned, ending where the value fields end.
+            const int w = std::min(r.getWidth(), row.choice->preferredWidth());
+            row.choice->setBounds(r.removeFromRight(w).withSizeKeepingCentre(w, theme_.sizes.controlCompact));
+            y += rowHeight;
+            continue;
+        }
         row.value->setBounds(r.removeFromRight(80).withSizeKeepingCentre(80, theme_.sizes.controlCompact));
         row.knob->setBounds(r.withSizeKeepingCentre(theme_.sizes.knob, theme_.sizes.knob));
         y += rowHeight;

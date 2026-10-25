@@ -11,7 +11,10 @@ Name: **Vesper**. Type `northlight.vesper`. In the effects menu under Reverb & D
 network is `plugins/FeedbackNetwork`, and Bloom's output is bit-identical to before
 (checked across eight settings, then the check was removed). Phase 2 is built: the
 Listener is `plugins/VocalListener`, sharing YIN (`plugins/Yin.h`) with the tuner; it
-costs about 0.45% of a core at 48 kHz (release). The rest is not built.
+costs about 0.45% of a core at 48 kHz (release). Phase 3 is built: `plugins/Vesper`,
+with no latency, the generic editor, and the presets that need nothing from later
+phases; about 1.6% of a core at 48 kHz (release) with everything on. The rest is not
+built.
 
 ## The name and the idea
 
@@ -84,7 +87,9 @@ only changes how early the Listener sees each event.
 ### Send shaper
 
 - **Clarity** (0-100%, default 60%): turns consonants and sibilance down in the send
-  only, by up to 24 dB. The dry vocal is never touched. A 2 ms attack and a 30 ms
+  only, by up to 24 dB. Without lookahead the first few milliseconds of an "s" get in
+  before the Listener hears it, so an "s" is about 12-15 dB lower in the reverb, not
+  20; Short lookahead closes that. The dry vocal is never touched. A 2 ms attack and a 30 ms
   release, smoothed in dB, so the send does not click.
 - **Breaths** (0-100%, default 100%): how far breaths are turned down in the send.
 

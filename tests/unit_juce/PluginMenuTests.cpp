@@ -115,7 +115,8 @@ TEST_CASE("The effects menu groups effects by kind, with recent first and makers
     for (const auto* item : itemsOf(*space))
         if (!item->isSeparator)
             names.push_back(nameOf(*item));
-    CHECK(names == std::vector<juce::String>{"Reverb", "Delay", "Tape Echo", "Bloom", "Pure Plate"});
+    CHECK(names ==
+          std::vector<juce::String>{"Reverb", "Delay", "Tape Echo", "Bloom", "Vesper", "Pure Plate"});
     for (const auto* item : itemsOf(*space))
         if (nameOf(*item) == "Pure Plate")
         {
