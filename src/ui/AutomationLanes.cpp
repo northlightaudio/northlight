@@ -643,7 +643,8 @@ void AutomationLanes::paintLane(juce::Graphics& g, const Slot& slot) const
     const auto yOf = [&](float value)
     { return static_cast<float>(area.getBottom()) - toNorm(*track, key, value) * h; };
     const bool active = track->automationMode != core::AutomationMode::off;
-    const auto colour = active ? c.automation : c.textTertiary;
+    // The track's own colour, so a lane reads as its track's; grey when the mode is Off.
+    const auto colour = !active ? c.textTertiary : geometry.colour ? geometry.colour(slot.row) : c.automation;
     const float dashes[] = {4.0f, 4.0f};
 
     // The reference: unity gain or the centre.

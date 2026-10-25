@@ -246,10 +246,10 @@ hides its tracks' lanes too.
   hovered; the name turns `textPrimary`. At 44 px and taller a second line gives
   the lane's range in `caption` `textTertiary` ("−60 … +6 dB", "L100 … R100", or the
   parameter's minimum and maximum).
-- **The lane** to the right: `surface0` under the grid. The curve in `automation`
-  (1.5 px, filled at 12% beneath); points as 8 px dots ringed in `canvas` (10 px
-  and a `textPrimary` ring when hovered or dragged); `textTertiary` when the mode
-  is Off. A point at the song's start is drawn whole, inside the lane's edge, and
+- **The lane** to the right: `surface0` under the grid. The curve in the track's
+  colour (1.5 px, filled at 12% beneath), so each lane reads as its track's;
+  points as 8 px dots ringed in `canvas` (10 px and a `textPrimary` ring when
+  hovered or dragged); `textTertiary` when the mode is Off. A point at the song's start is drawn whole, inside the lane's edge, and
   is as easy to grab as any other. Volume draws a dashed `lineStrong` line at 0 dB
   and Pan one at the centre. A lane with no points shows the static value as a
   dashed line with "Click to add a point"; it plays nothing.
