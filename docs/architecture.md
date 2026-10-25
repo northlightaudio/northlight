@@ -334,7 +334,14 @@ know nothing format-specific.
   it (the strip modules keep their own list, `strip::moduleTypes()`). They share a base that crossfades bypass and keeps
   state running while bypassed, and they publish real-time feedback for their
   editors through rings of atomics: a five-value frame every 5 ms (input, output,
-  reduction and two processor-specific values) and two sample taps. The editors
+  reduction and two processor-specific values) and two sample taps. Every
+  editor is a `ui/strip/ModuleCard`, the hub of three parts: `CardFrame` (the
+  header chrome, the dimming of a switched-off body, the collapsed tab),
+  `ParamBinder` (the values the card shows, held to their ranges, the controls
+  bound to them, and only the model's changes taken in, so a refresh never pulls
+  a control off what automation plays) and `LiveFollower` (the engine's instance,
+  its frames in a `FeedbackHistory` ring, the meters' ballistics; it marks the
+  processor watched only while the card reads it). The editors
   analyse a tap with `ui/strip/TapSpectrum` (a Hann window, an FFT, one smoothed
   value per column of a log-frequency plot: the EQ's analyser, the exciter's
   spectrum) and draw that axis with `drawFrequencyGrid` (`ui/strip/StripStyle.h`).

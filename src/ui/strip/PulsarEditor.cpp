@@ -418,7 +418,7 @@ private:
     void select(int pad)
     {
         selected_ = pad;
-        route_.selected = pu::padRoute(params_.data(), pad);
+        route_.selected = pu::padRoute(params(), pad);
         route_.repaint();
         display_.pad = pad;
         for (int p = 0; p < pu::padCount; ++p)
@@ -643,9 +643,9 @@ private:
     {
         for (const auto& k : pu::kits())
         {
-            bool same = k.values.size() <= params_.size();
+            bool same = k.values.size() <= values().size();
             for (size_t i = 0; same && i < k.values.size(); ++i)
-                same = std::abs(k.values[i] - params_[i]) < 1.0e-4f;
+                same = std::abs(k.values[i] - values()[i]) < 1.0e-4f;
             if (same)
                 return juce::String(k.name);
         }
@@ -719,7 +719,7 @@ private:
 
     void paramsChanged() override
     {
-        route_.selected = pu::padRoute(params_.data(), selected_);
+        route_.selected = pu::padRoute(params(), selected_);
         route_.repaint();
         kitName_.setButtonText(currentKitName());
         for (auto& t : tiles_)

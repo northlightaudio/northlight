@@ -76,6 +76,12 @@ add_library(northlight_ui STATIC
     strip/StripStyle.h
     strip/StripStyle.cpp
     strip/FeedbackHistory.h
+    strip/CardFrame.h
+    strip/CardFrame.cpp
+    strip/ParamBinder.h
+    strip/ParamBinder.cpp
+    strip/LiveFollower.h
+    strip/LiveFollower.cpp
     strip/ModuleCard.h
     strip/ModuleCard.cpp
     strip/ModuleCards.cpp

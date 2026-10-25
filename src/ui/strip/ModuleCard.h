@@ -4,11 +4,12 @@
 #include "core/Model.h"
 #include "engine/Insert.h"
 #include "ui/Icons.h"
-#include "ui/MeterBallistics.h"
 #include "ui/Theme.h"
 #include "ui/components/Knob.h"
 #include "ui/components/SegmentedControl.h"
-#include "ui/strip/FeedbackHistory.h"
+#include "ui/strip/CardFrame.h"
+#include "ui/strip/LiveFollower.h"
+#include "ui/strip/ParamBinder.h"
 
 #include <juce_gui_basics/juce_gui_basics.h>
 
@@ -54,7 +55,7 @@ private:
     juce::Colour onColour_;
 };
 
-// One channel strip module (screens/channel-strip.md 12.2): a card with a 28 px
+// One channel strip module (screens/channel-strip.md 12.2): a card with a 34 px
 // header (power in the module's hue, name, a live status readout), a display
 // with real-time feedback, and the module's controls. The card keeps the
 // model's values (the truth for built-ins) and polls the live processor's
@@ -62,6 +63,11 @@ private:
 // gain-reduction meters with their ballistics. Switched off, the body dims but
 // stays live: the display keeps showing the input so a threshold can be set
 // before the module is switched on.
+//
+// The card is the hub of three collaborators: CardFrame (the header chrome,
+// the dimming, the collapsed tab), ParamBinder (the values and the controls
+// bound to them) and LiveFollower (the live processor's frames and meters). A
+// subclass lays out its body and draws its displays.
 class ModuleCard : public juce::Component
 {
 public:
@@ -75,7 +81,7 @@ public:
     core::Id channelId() const noexcept { return channelId_; }
     const std::string& type() const noexcept { return type_; }
     juce::Colour colour() const noexcept { return colour_; }
-    bool isOn() const noexcept { return !bypass_; }
+    bool isOn() const noexcept { return !frame_.bypassed(); }
     const Theme& theme() const noexcept { return theme_; }
 
     // The model changed (values, bypass).
@@ -90,9 +96,9 @@ public:
     // Collapsed, a card is a narrow tab: the power button and the name running
     // down it. A click on it expands it.
     void setCollapsed(bool collapsed);
-    bool isCollapsed() const noexcept { return collapsed_; }
-    int layoutWidth() const { return collapsed_ ? collapsedWidth : preferredWidth(); }
-    static constexpr int collapsedWidth = 34;
+    bool isCollapsed() const noexcept { return frame_.isCollapsed(); }
+    int layoutWidth() const { return isCollapsed() ? collapsedWidth : preferredWidth(); }
+    static constexpr int collapsedWidth = CardFrame::collapsedWidth;
     // Embedded: the card is the body of another frame (an insert's card in the
     // Editor panel), which draws the surface, the header and the bypass dimming;
     // the card shows only its display and controls.
@@ -115,13 +121,12 @@ public:
     }
 
     // ----- for the displays ------------------------------------------------------
-    float param(int index) const noexcept;
-    bool hasParam(int index) const noexcept
-    {
-        return index >= 0 && static_cast<size_t>(index) < params_.size();
-    }
-    const float* params() const noexcept { return params_.data(); }
-    const engine::ParameterInfo& info(int index) const;
+    float param(int index) const noexcept { return binder_.value(index); }
+    bool hasParam(int index) const noexcept { return binder_.has(index); }
+    const float* params() const noexcept { return binder_.values().data(); }
+    // Every value the card shows, in parameter order.
+    const std::vector<float>& values() const noexcept { return binder_.values(); }
+    const engine::ParameterInfo& info(int index) const { return binder_.info(index); }
     // A user edit: updates the card at once and sends the command.
     void setParam(int index, float value);
     // A whole set of values chosen at once (a preset): every parameter, each
@@ -130,25 +135,25 @@ public:
     void beginGesture(const juce::String& name);
     void endGesture();
     // The level history, oldest first.
-    int historySize() const noexcept { return history_.size(); }
+    int historySize() const noexcept { return live_.history().size(); }
     // Frames received since the card was made (the newest is number total - 1):
     // displays group frames by this absolute count so their columns stay put.
-    std::uint64_t historyTotal() const noexcept { return history_.total(); }
-    const Frame& historyAt(int i) const noexcept { return history_.at(i); }
+    std::uint64_t historyTotal() const noexcept { return live_.history().total(); }
+    const Frame& historyAt(int i) const noexcept { return live_.history().at(i); }
     // Meter readings in dB, with ballistics.
-    float inputDb() const noexcept { return inDb_; }
-    float outputDb() const noexcept { return outDb_; }
-    float reductionDb() const noexcept { return grDb_; }
-    float extraDb() const noexcept { return extraDb_; }
+    float inputDb() const noexcept { return live_.inputDb(); }
+    float outputDb() const noexcept { return live_.outputDb(); }
+    float reductionDb() const noexcept { return live_.reductionDb(); }
+    float extraDb() const noexcept { return live_.extraDb(); }
     // The same as numbers for a readout: the loudest of each quarter second, so
     // a printed value is readable rather than flickering every frame.
-    float inputReadoutDb() const noexcept { return inReadout_.value(); }
-    float outputReadoutDb() const noexcept { return outReadout_.value(); }
-    float reductionReadoutDb() const noexcept { return grReadout_.value(); }
+    float inputReadoutDb() const noexcept { return live_.inputReadoutDb(); }
+    float outputReadoutDb() const noexcept { return live_.outputReadoutDb(); }
+    float reductionReadoutDb() const noexcept { return live_.reductionReadoutDb(); }
     // The live processor's feedback (null before the engine has an instance).
-    engine::ProcessorFeedback* liveFeedback() const noexcept;
+    engine::ProcessorFeedback* liveFeedback() const noexcept { return live_.feedback(); }
     // The live processor itself (null before the engine has an instance).
-    const engine::InsertProcessor* liveProcessor() const noexcept { return live_.get(); }
+    const engine::InsertProcessor* liveProcessor() const noexcept { return live_.processor(); }
     double sampleRate() const noexcept;
     // The project tempo the live processor plays at (120 before it has played).
     double tempoBpm() const noexcept;
@@ -161,8 +166,8 @@ public:
     void mouseUp(const juce::MouseEvent& e) override;
     void mouseMove(const juce::MouseEvent& e) override;
 
-    static constexpr int headerHeight = 34;
-    static constexpr int hueLine = 2;
+    static constexpr int headerHeight = CardFrame::headerHeight;
+    static constexpr int hueLine = CardFrame::hueLine;
 
     // ----- laying out the controls (for the card and the parts it uses) ----------
     // The knobs added so far, in a grid of `perRow` columns from the top of `area`.
@@ -183,7 +188,7 @@ public:
     juce::Rectangle<int> labelLine(juce::Rectangle<int> cell) const;
     juce::Rectangle<int> aboveLabelLine(juce::Rectangle<int> cell) const;
     int knobCellWidth() const noexcept { return 60; }
-    juce::Label* labelFor(const Knob& knob) const;
+    juce::Label* labelFor(const Knob& knob) const { return binder_.labelFor(knob); }
 
 protected:
     // Controls bound to parameters (refreshed from the model, sending commands).
@@ -214,38 +219,15 @@ protected:
     core::Id channelId_, moduleId_;
     std::string type_;
     juce::Colour colour_;
-    std::vector<engine::ParameterInfo> infos_;
-    std::vector<float> params_;
-    std::vector<float> model_; // the model's values at the last refresh
 
 private:
     int labelTop(int ring) const noexcept;
-    juce::Rectangle<int> headerArea() const;
-    // The header's name: the slot's ("Compressor") when the card has a model switch.
-    juce::String headerName() const;
-    struct Binding
-    {
-        int index = -1;
-        Knob* knob = nullptr;
-        SegmentedControl* choice = nullptr;
-        PillToggle* toggle = nullptr;
-        juce::Label* label = nullptr;
-    };
-    void updateBinding(const Binding& b);
 
-    std::vector<Binding> bindings_;
+    ParamBinder binder_;
+    CardFrame frame_;
+    LiveFollower live_{historyCapacity};
     std::vector<std::unique_ptr<juce::Component>> owned_;
-    IconButton power_;
-    std::unique_ptr<juce::Button> collapse_;
-    std::unique_ptr<SegmentedControl> modelSwitch_; // a slot with several models (Clean / Opto)
-    bool bypass_ = true, updating_ = false, dragging_ = false, collapsed_ = false, embedded_ = false;
-    std::vector<juce::Component::SafePointer<juce::Component>> hiddenByCollapse_;
-    juce::String shownStatus_;
-    std::shared_ptr<engine::InsertProcessor> live_;
-    std::uint64_t cursor_ = 0;
-    FeedbackHistory<Frame> history_{historyCapacity};
-    float inDb_ = -120.0f, outDb_ = -120.0f, grDb_ = 0.0f, extraDb_ = -120.0f;
-    MeterReadout inReadout_, outReadout_, grReadout_{0.0f};
+    bool dragging_ = false;
 };
 
 // The card for a module type (null for an unknown type).

@@ -107,21 +107,21 @@ Knob* RenderedCard::knobFor(int index) const
 
 void RenderedCard::repaintChanged()
 {
-    if (shown_.size() != params_.size())
+    if (shown_.size() != values().size())
     {
-        shown_ = params_;
+        shown_ = values();
         face_.repaint();
         return;
     }
-    for (size_t i = 0; i < params_.size(); ++i)
+    for (size_t i = 0; i < values().size(); ++i)
     {
-        if (shown_[i] == params_[i])
+        if (shown_[i] == values()[i])
             continue;
-        shown_[i] = params_[i];
+        shown_[i] = values()[i];
         const int index = static_cast<int>(i);
         if (printsWidely(index))
         {
-            shown_ = params_;
+            shown_ = values();
             face_.repaint();
             return;
         }

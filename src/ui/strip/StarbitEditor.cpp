@@ -581,7 +581,7 @@ public:
         // applied as one undo step.
         presets_.onApply = [this](const std::vector<float>& values, const juce::String& name)
         { applyValues(values, "Preset " + name); };
-        presets_.setValues(params_);
+        presets_.setValues(values());
         addAndMakeVisible(presets_);
     }
 
@@ -760,7 +760,7 @@ private:
 
     void paramsChanged() override
     {
-        presets_.setValues(params_);
+        presets_.setValues(values());
         arpSync_.selected = plugins::sync::choiceOf(param(sb::arpSync));
         arpSync_.repaint();
         arpKnobs_.front()->setAlpha(arpSync_.selected > 0 ? 0.5f : 1.0f);

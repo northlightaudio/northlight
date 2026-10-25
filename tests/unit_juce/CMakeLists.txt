@@ -57,7 +57,8 @@ add_executable(northlight_juce_tests
     ExciterCardTests.cpp
     BloomCardTests.cpp
     CardSnapshotTests.cpp
-    FeedbackHistoryTests.cpp)
+    FeedbackHistoryTests.cpp
+    ParamBinderTests.cpp)
 
 target_link_libraries(northlight_juce_tests PRIVATE
     northlight_options

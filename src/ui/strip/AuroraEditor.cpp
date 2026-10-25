@@ -611,7 +611,7 @@ public:
         // applied as one undo step.
         presets_.onApply = [this](const std::vector<float>& values, const juce::String& name)
         { applyValues(values, "Preset " + name); };
-        presets_.setValues(params_);
+        presets_.setValues(values());
         addAndMakeVisible(presets_);
     }
 
@@ -834,7 +834,7 @@ private:
 
     void paramsChanged() override
     {
-        presets_.setValues(params_);
+        presets_.setValues(values());
         for (auto* c : std::initializer_list<juce::Component*>{&osc_, &unison_, &filter_, &envelope_, &lfo_})
             c->repaint();
     }

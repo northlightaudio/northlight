@@ -1045,15 +1045,15 @@ private:
         showPreset(true);
     } // the library changed
 
-    int presetIndex() const { return EffectPresetLibrary::instance().match(pa::type, params_); }
+    int presetIndex() const { return EffectPresetLibrary::instance().match(pa::type, values()); }
 
     void showPreset(bool force = false)
     {
         // Matched again only when the values moved (a stage switch or a lamp
         // repaints here too, and automation calls it every frame).
-        if (!force && params_ == matchedParams_)
+        if (!force && values() == matchedParams_)
             return;
-        matchedParams_ = params_;
+        matchedParams_ = values();
         const int i = presetIndex();
         if (i < 0)
             display_.show(juce::String::fromUTF8("\xe2\x80\x93\xe2\x80\x93"), "Custom");
@@ -1087,7 +1087,7 @@ private:
         showPresetMenu(display_,
                        theme_,
                        pa::type,
-                       params_,
+                       values(),
                        [safe](int index)
                        {
                            if (safe != nullptr)
