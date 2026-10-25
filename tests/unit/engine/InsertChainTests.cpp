@@ -104,7 +104,7 @@ TEST_CASE("Inserts run in chain order and the instances survive a recompile", "[
     stack.execute(p, std::make_unique<core::MoveInsert>(1, 11, 0));
     h.engine.setProject(p);
     CHECK(h.engine.insertInstance(10) == first);
-    CHECK(h.engine.snapshotForTest()->tracks[0].inserts[0] == second.get());
+    CHECK(h.engine.snapshotForTest()->tracks[0].inserts[0].processor == second.get());
 }
 
 TEST_CASE("A bus runs its inserts on the sum of what feeds it", "[engine][inserts]")

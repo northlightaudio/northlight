@@ -338,10 +338,10 @@ TEST_CASE("An early key is delayed to line up with the audio at its slot", "[eng
     h.play(p);
     const auto* snapshot = h.engine.snapshotForTest();
     REQUIRE(snapshot != nullptr);
-    REQUIRE(snapshot->tracks[0].insertKeyDelay.size() == 2);
-    CHECK(snapshot->tracks[0].insertKeyDelay[0] == nullptr);
-    REQUIRE(snapshot->tracks[0].insertKeyDelay[1] != nullptr);
-    CHECK(snapshot->tracks[0].insertKeyDelay[1]->delay() == LatentInsert::latency);
+    REQUIRE(snapshot->tracks[0].inserts.size() == 2);
+    CHECK(snapshot->tracks[0].inserts[0].keyDelay == nullptr);
+    REQUIRE(snapshot->tracks[0].inserts[1].keyDelay != nullptr);
+    CHECK(snapshot->tracks[0].inserts[1].keyDelay->delay() == LatentInsert::latency);
     // Track 2's own output is compensated to the master by the same amount, so
     // both impulses land together at sample 32.
     CHECK(h.left[0] == Approx(0.0f).margin(1e-6f));
@@ -352,7 +352,7 @@ TEST_CASE("An early key is delayed to line up with the audio at its slot", "[eng
     h.engine.setProject(p);
     h.engine.locate(0);
     h.engine.process(h.outputs, 2, blockSize);
-    CHECK(h.engine.snapshotForTest()->tracks[0].insertKeyDelay[0] == nullptr);
+    CHECK(h.engine.snapshotForTest()->tracks[0].inserts[0].keyDelay == nullptr);
     // Now the key copy runs through the latent insert after the key slot.
     CHECK(h.left[LatentInsert::latency] == Approx(2.0f * centre));
 }
@@ -366,7 +366,7 @@ TEST_CASE("A key from a source with more latency is not delayed", "[engine][side
     h.play(p);
     const auto* snapshot = h.engine.snapshotForTest();
     REQUIRE(snapshot != nullptr);
-    CHECK(snapshot->tracks[0].insertKeyDelay[0] == nullptr);
+    CHECK(snapshot->tracks[0].inserts[0].keyDelay == nullptr);
     // The key is used as it arrives: track 1's copy is 32 samples late in its
     // own buffer and then delayed another 32 to meet track 2 at the master.
     CHECK(h.left[LatentInsert::latency] == Approx(centre));

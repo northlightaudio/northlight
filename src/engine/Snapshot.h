@@ -76,6 +76,20 @@ struct WorkBuffer
     float& operator[](size_t i) const noexcept { return ptr[i]; }
 };
 
+// One insert slot of a compiled chain.
+struct InsertSlot
+{
+    InsertProcessor* processor = nullptr;
+    core::Id id = core::invalidId; // the insert's
+    float mix = 1.0f;              // wet/dry (1 = all wet)
+    DelayLine* dry = nullptr;      // aligns the dry path to a latent insert (null = none)
+    int keyTrack = -1;             // sidechain source: a track index, or -1
+    int keyBus = -1;               // or a bus index, or -1
+    bool keyPostFader = false;     // the key taps after the source's fader
+    DelayLine* keyDelay = nullptr; // lines an early key up (null = none)
+    int inputLatency = 0;          // what the chain adds before this slot
+};
+
 // What tracks and buses share once compiled.
 struct ChannelNode
 {
@@ -91,15 +105,7 @@ struct ChannelNode
     int outputBus = -1; // index into Snapshot::buses, -1 = master
     int meterSlot = -1;
     std::vector<SendNode> sends;
-    std::vector<InsertProcessor*> inserts;        // in chain order
-    std::vector<float> insertMix;                 // wet/dry per slot (1 = all wet)
-    std::vector<DelayLine*> insertDry;            // aligns the dry path to a latent insert
-    std::vector<int> insertKeyTrack;              // per slot: sidechain source track index or -1
-    std::vector<int> insertKeyBus;                // per slot: sidechain source bus index or -1
-    std::vector<std::uint8_t> insertKeyPostFader; // per slot: the key taps after the source's fader
-    std::vector<DelayLine*> insertKeyDelay;       // per slot: lines an early key up (null = none)
-    std::vector<core::Id> insertIds;              // per slot: the insert's id
-    std::vector<int> insertInputLatency;          // per slot: what the chain adds before it
+    std::vector<InsertSlot> inserts;                         // in chain order
     std::vector<std::shared_ptr<InsertProcessor>> keepAlive; // controller-side ownership
     WorkBuffer dryLeft, dryRight;                            // the dry copy for a mixed slot
     int chainLatency = 0;                                    // samples the inserts add

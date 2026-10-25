@@ -376,7 +376,10 @@ std::unique_ptr<Snapshot> compileSnapshot(const core::Project& project,
                 const auto instance = inserts.find(lane.insert);
                 if (instance == nullptr || instance->ownsParameters() || lane.parameter < 0 ||
                     lane.parameter >= static_cast<int>(instance->parameters().size()) ||
-                    std::find(node.inserts.begin(), node.inserts.end(), instance.get()) == node.inserts.end())
+                    std::none_of(
+                        node.inserts.begin(),
+                        node.inserts.end(),
+                        [&](const InsertSlot& s) { return s.processor == instance.get(); }))
                     continue;
                 a.processor = instance.get();
             }
@@ -386,6 +389,36 @@ std::unique_ptr<Snapshot> compileSnapshot(const core::Project& project,
             node.keepAliveAutomation.push_back(std::move(runtime));
             node.automation.push_back(std::move(a));
         }
+    };
+    // One slot of a chain: the processor, its mix and the dry path a partly dry
+    // latent slot needs. The key source is the caller's (the master's take none).
+    const auto compileSlot =
+        [&](ChannelNode& node, const core::Insert& i, std::shared_ptr<InsertProcessor> instance)
+    {
+        // Latency counts whether or not the slot is bypassed: a bypassed
+        // processor still delays by it (plugins through processBlockBypassed,
+        // the limiter through its lookahead), so toggling bypass never
+        // re-solves the graph.
+        const int latency = std::max(0, instance->latencySamples());
+        node.chainLatency += latency;
+        InsertSlot s;
+        s.processor = instance.get();
+        s.id = i.id;
+        s.mix = std::clamp(i.mix, 0.0f, 1.0f);
+        s.inputLatency = node.chainLatency - latency;
+        // A partly dry slot needs its dry copy held back by the insert's latency
+        // so the two halves line up.
+        if (i.mix < 1.0f && latency > 0)
+        {
+            auto line = (delays != nullptr ? *delays : localDelays)
+                            .get(DelayKey{i.id, core::invalidId, true}, latency);
+            s.dry = line.get();
+            snapshot->allDelays.push_back(s.dry);
+            node.keepAliveDelays.push_back(std::move(line));
+        }
+        node.inserts.push_back(s);
+        node.keepAlive.push_back(std::move(instance));
+        return &node.inserts.back();
     };
     const auto fillChannel = [&](ChannelNode& node, const core::Channel& c, int index, int slot, bool isBus)
     {
@@ -417,27 +450,9 @@ std::unique_ptr<Snapshot> compileSnapshot(const core::Project& project,
         for (const auto* chained : c.processingChain())
             if (const auto& i = *chained; auto instance = inserts.get(i))
             {
-                // Latency counts whether or not the slot is bypassed: a bypassed
-                // processor still delays by it (plugins through processBlockBypassed,
-                // the limiter through its lookahead), so toggling bypass never
-                // re-solves the graph.
-                const int latency = std::max(0, instance->latencySamples());
-                node.chainLatency += latency;
+                const bool keyed = instance->acceptsSidechain();
+                auto* s = compileSlot(node, i, std::move(instance));
                 latencyThrough[i.id] = node.chainLatency;
-                node.inserts.push_back(instance.get());
-                node.insertMix.push_back(std::clamp(i.mix, 0.0f, 1.0f));
-                // A partly dry slot needs its dry copy held back by the insert's
-                // latency so the two halves line up.
-                DelayLine* dry = nullptr;
-                if (i.mix < 1.0f && latency > 0)
-                {
-                    auto line = (delays != nullptr ? *delays : localDelays)
-                                    .get(DelayKey{i.id, core::invalidId, true}, latency);
-                    dry = line.get();
-                    snapshot->allDelays.push_back(dry);
-                    node.keepAliveDelays.push_back(std::move(line));
-                }
-                node.insertDry.push_back(dry);
                 // The key source: a track for anyone; a bus only for a bus insert,
                 // and only one that survived the ordering above.
                 int keyTrack = project.trackIndex(i.sidechain);
@@ -451,13 +466,9 @@ std::unique_ptr<Snapshot> compileSnapshot(const core::Project& project,
                 }
                 if (!isBus && keyTrack == index)
                     keyTrack = -1; // a track keying from itself: meaningless
-                node.insertKeyTrack.push_back(instance->acceptsSidechain() ? keyTrack : -1);
-                node.insertKeyBus.push_back(instance->acceptsSidechain() ? keyBus : -1);
-                node.insertKeyPostFader.push_back(i.sidechainPostFader ? 1 : 0);
-                node.insertKeyDelay.push_back(nullptr); // set with the compensation below
-                node.insertIds.push_back(i.id);
-                node.insertInputLatency.push_back(node.chainLatency - latency);
-                node.keepAlive.push_back(std::move(instance));
+                s->keyTrack = keyed ? keyTrack : -1;
+                s->keyBus = keyed ? keyBus : -1;
+                s->keyPostFader = i.sidechainPostFader; // its delay is set with the compensation below
             }
         compileAutomation(node, c);
         // The work buffers, kept per channel across compiles (none allocated for a
@@ -617,29 +628,7 @@ std::unique_ptr<Snapshot> compileSnapshot(const core::Project& project,
         node.id = core::masterId;
         for (const auto& i : project.master.inserts)
             if (auto instance = inserts.get(i))
-            {
-                const int latency = std::max(0, instance->latencySamples());
-                node.chainLatency += latency;
-                node.inserts.push_back(instance.get());
-                node.insertMix.push_back(std::clamp(i.mix, 0.0f, 1.0f));
-                DelayLine* dry = nullptr;
-                if (i.mix < 1.0f && latency > 0)
-                {
-                    auto line = (delays != nullptr ? *delays : localDelays)
-                                    .get(DelayKey{i.id, core::invalidId, true}, latency);
-                    dry = line.get();
-                    snapshot->allDelays.push_back(dry);
-                    node.keepAliveDelays.push_back(std::move(line));
-                }
-                node.insertDry.push_back(dry);
-                node.insertKeyTrack.push_back(-1);
-                node.insertKeyBus.push_back(-1);
-                node.insertKeyPostFader.push_back(0);
-                node.insertKeyDelay.push_back(nullptr);
-                node.insertIds.push_back(i.id);
-                node.insertInputLatency.push_back(node.chainLatency - latency);
-                node.keepAlive.push_back(std::move(instance));
-            }
+                compileSlot(node, i, std::move(instance));
         // Its lanes (volume and its inserts' parameters) play through a channel
         // runtime of its own: the renderer reads the automated gain from it, the
         // mixer what it shows.
@@ -710,8 +699,8 @@ std::unique_ptr<Snapshot> compileSnapshot(const core::Project& project,
                 if (level[static_cast<size_t>(t)] >= 0)
                     continue;
                 bool ready = true;
-                for (const int source : snapshot->tracks[static_cast<size_t>(t)].insertKeyTrack)
-                    if (source >= 0 && level[static_cast<size_t>(source)] < 0)
+                for (const auto& slot : snapshot->tracks[static_cast<size_t>(t)].inserts)
+                    if (slot.keyTrack >= 0 && level[static_cast<size_t>(slot.keyTrack)] < 0)
                         ready = false;
                 if (const int source = snapshot->tracks[static_cast<size_t>(t)].auxSourceTrack;
                     source >= 0 && level[static_cast<size_t>(source)] < 0)
@@ -730,9 +719,9 @@ std::unique_ptr<Snapshot> compileSnapshot(const core::Project& project,
                 for (int t = 0; t < trackCount; ++t)
                     if (level[static_cast<size_t>(t)] < 0)
                     {
-                        for (auto& source : snapshot->tracks[static_cast<size_t>(t)].insertKeyTrack)
-                            if (source >= 0 && level[static_cast<size_t>(source)] < 0)
-                                source = -1;
+                        for (auto& slot : snapshot->tracks[static_cast<size_t>(t)].inserts)
+                            if (slot.keyTrack >= 0 && level[static_cast<size_t>(slot.keyTrack)] < 0)
+                                slot.keyTrack = -1;
                         if (auto& aux = snapshot->tracks[static_cast<size_t>(t)].auxSourceTrack;
                             aux >= 0 && level[static_cast<size_t>(aux)] < 0)
                         {
@@ -825,24 +814,24 @@ std::unique_ptr<Snapshot> compileSnapshot(const core::Project& project,
         // difference; one that arrives late cannot be pulled earlier and plays as is.
         const auto keys = [&](ChannelNode& node, int inputLag)
         {
-            for (size_t k = 0; k < node.insertKeyTrack.size(); ++k)
+            for (auto& slot : node.inserts)
             {
-                const int t = node.insertKeyTrack[k];
-                const int b = node.insertKeyBus[k];
+                const int t = slot.keyTrack;
+                const int b = slot.keyBus;
                 if (t < 0 && b < 0)
                     continue;
                 ChannelNode* source =
                     t >= 0 ? static_cast<ChannelNode*>(&snapshot->tracks[static_cast<size_t>(t)])
                            : static_cast<ChannelNode*>(&snapshot->buses[static_cast<size_t>(b)]);
-                if (node.insertKeyPostFader[k] != 0)
+                if (slot.keyPostFader)
                     source->keyPostFader = true;
                 const int keyLag = t >= 0 ? trackOut[static_cast<size_t>(t)] : busOut[static_cast<size_t>(b)];
-                const int needed = inputLag + node.insertInputLatency[k] - keyLag;
+                const int needed = inputLag + slot.inputLatency - keyLag;
                 if (needed <= 0)
                     continue;
-                auto line = cache.get(DelayKey{node.insertIds[k], source->id, false}, needed);
+                auto line = cache.get(DelayKey{slot.id, source->id, false}, needed);
                 snapshot->allDelays.push_back(line.get());
-                node.insertKeyDelay[k] = line.get();
+                slot.keyDelay = line.get();
                 node.keepAliveDelays.push_back(std::move(line));
             }
         };

@@ -708,24 +708,24 @@ void Renderer::processChain(const Snapshot& snapshot,
                             const MidiEventList* midi) noexcept
 {
     bool midiDelivered = false;
-    for (size_t k = 0; k < channel.inserts.size(); ++k)
+    for (const auto& slot : channel.inserts)
     {
-        auto* insert = channel.inserts[k];
-        const float mix = k < channel.insertMix.size() ? channel.insertMix[k] : 1.0f;
+        auto* insert = slot.processor;
+        const float mix = slot.mix;
         // The key signal: the source channel's output before or after its fader,
         // already rendered (tracks by level, buses by order).
         const float* keyL = nullptr;
         const float* keyR = nullptr;
         const ChannelNode* keySource = nullptr;
-        if (const int t = k < channel.insertKeyTrack.size() ? channel.insertKeyTrack[k] : -1; t >= 0)
-            keySource = &snapshot.tracks[static_cast<size_t>(t)];
-        else if (const int b = k < channel.insertKeyBus.size() ? channel.insertKeyBus[k] : -1; b >= 0)
-            keySource = &snapshot.buses[static_cast<size_t>(b)];
+        if (slot.keyTrack >= 0)
+            keySource = &snapshot.tracks[static_cast<size_t>(slot.keyTrack)];
+        else if (slot.keyBus >= 0)
+            keySource = &snapshot.buses[static_cast<size_t>(slot.keyBus)];
         if (keySource != nullptr)
         {
             // A source that is muted (or un-soloed) still renders, but its key is
             // silence: mute wins.
-            const bool post = k < channel.insertKeyPostFader.size() && channel.insertKeyPostFader[k] != 0;
+            const bool post = slot.keyPostFader;
             keyL = !keySource->audible ? snapshot.silence.data()
                    : post              ? keySource->postLeft.data()
                                        : keySource->outLeft.data();
@@ -733,7 +733,7 @@ void Renderer::processChain(const Snapshot& snapshot,
                    : post              ? keySource->postRight.data()
                                        : keySource->outRight.data();
             // Delay compensation: an early key waits for the audio it acts on.
-            if (auto* delay = k < channel.insertKeyDelay.size() ? channel.insertKeyDelay[k] : nullptr)
+            if (auto* delay = slot.keyDelay)
             {
                 delay->process(keyL, keyR, channel.keyLeft.data(), channel.keyRight.data(), numSamples);
                 keyL = channel.keyLeft.data();
@@ -760,7 +760,7 @@ void Renderer::processChain(const Snapshot& snapshot,
         }
         float* dryL = channel.dryLeft.data();
         float* dryR = channel.dryRight.data();
-        if (auto* dry = k < channel.insertDry.size() ? channel.insertDry[k] : nullptr)
+        if (auto* dry = slot.dry)
             dry->process(left, right, dryL, dryR, numSamples);
         else
         {
