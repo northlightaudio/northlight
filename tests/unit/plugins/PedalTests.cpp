@@ -1,3 +1,4 @@
+#include "core/NoteNames.h"
 #include "plugins/BuiltIns.h"
 #include "plugins/Pedals.h"
 #include "plugins/ProcessorBase.h"
@@ -442,18 +443,18 @@ TEST_CASE("Polaris names the nearest note and how far off it is", "[plugins][pol
     auto n = pol::noteFor(440.0f, 440.0f);
     CHECK(n.midi == 69);
     CHECK(n.cents == Approx(0.0f).margin(0.01f));
-    CHECK(std::string(pol::noteName(n.midi)) == "A");
-    CHECK(pol::octaveOf(n.midi) == 4);
+    CHECK(std::string(core::pitchClassName(n.midi)) == "A");
+    CHECK(core::octaveOf(n.midi) == 3);
     n = pol::noteFor(445.0f, 440.0f);
     CHECK(n.midi == 69);
     CHECK(n.cents == Approx(19.56f).margin(0.05f));
     n = pol::noteFor(82.41f, 440.0f);
-    CHECK(std::string(pol::noteName(n.midi)) == "E");
-    CHECK(pol::octaveOf(n.midi) == 2);
+    CHECK(std::string(core::pitchClassName(n.midi)) == "E");
+    CHECK(core::octaveOf(n.midi) == 1);
     n = pol::noteFor(432.0f, 432.0f);
     CHECK(n.midi == 69);
     CHECK(std::abs(n.cents) < 0.01f);
-    CHECK(std::string(pol::noteName(61)) == "C#");
+    CHECK(std::string(core::pitchClassName(61)) == "C#");
 }
 
 TEST_CASE("Polaris reads a played string and its footswitch mutes the output", "[plugins][polaris]")

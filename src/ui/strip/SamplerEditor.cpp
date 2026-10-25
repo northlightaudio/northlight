@@ -10,6 +10,7 @@
 #include "ui/strip/SamplerEditor.h"
 
 #include "core/Command.h"
+#include "core/NoteNames.h"
 #include "plugins/Sampler.h"
 #include "ui/MediaFiles.h"
 #include "ui/NorthlightLookAndFeel.h"
@@ -40,7 +41,7 @@ struct Hues
 
 juce::String noteText(double v)
 {
-    return juce::String(sp::noteName(static_cast<int>(std::lround(v))));
+    return juce::String(core::noteName(static_cast<int>(std::lround(v))));
 }
 
 // What the displays need from the card beyond its parameters.
@@ -365,7 +366,7 @@ public:
         const int low = noteParam(sp::keyLow), high = noteParam(sp::keyHigh), root = noteParam(sp::root);
         for (int n = 0; n < 128; ++n)
         {
-            const bool black = isBlack(n);
+            const bool black = core::isBlackKey(n);
             auto r = juce::Rectangle<float>(keys.getX() + n * w, keys.getY(), w, keys.getHeight());
             if (black)
                 r = r.withHeight(keys.getHeight() * 0.62f);
@@ -382,7 +383,7 @@ public:
         {
             g.setColour(c.textTertiary);
             g.drawText(
-                juce::String(sp::noteName(n)),
+                juce::String(core::noteName(n)),
                 juce::Rectangle<float>(keys.getX() + n * w + 1.0f, keys.getBottom() - 11.0f, 24.0f, 10.0f),
                 juce::Justification::centredLeft);
         }
@@ -419,11 +420,6 @@ public:
     }
 
 private:
-    static bool isBlack(int note)
-    {
-        const int k = note % 12;
-        return k == 1 || k == 3 || k == 6 || k == 8 || k == 10;
-    }
     juce::Rectangle<float> keyArea() const { return getLocalBounds().toFloat().reduced(6.0f, 4.0f); }
     int noteAt(float x) const
     {

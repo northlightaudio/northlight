@@ -102,7 +102,4 @@ struct VoiceInfo
 };
 std::vector<VoiceInfo> soundingVoices(const engine::InsertProcessor& processor);
 
-// A note name for a MIDI note number ("C4" = 60).
-std::string noteName(int note);
-
 } // namespace northlight::plugins::sampler

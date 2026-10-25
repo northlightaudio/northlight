@@ -1,5 +1,6 @@
 #include "ui/AudioEditor.h"
 
+#include "core/NoteNames.h"
 #include "core/TempoMap.h"
 #include "engine/pitch/VocalOps.h"
 #include "engine/pitch/VocalRender.h"
@@ -15,20 +16,7 @@ namespace pitch = engine::pitch;
 
 namespace
 {
-bool isBlackKey(int note) noexcept
-{
-    switch (((note % 12) + 12) % 12)
-    {
-        case 1:
-        case 3:
-        case 6:
-        case 8:
-        case 10:
-            return true;
-        default:
-            return false;
-    }
-}
+using core::isBlackKey;
 
 juce::String signedCents(float cents)
 {
@@ -690,7 +678,7 @@ const core::VocalNote* AudioEditor::joinAt(juce::Point<int> p) const
 juce::String AudioEditor::noteName(float cents)
 {
     const int note = static_cast<int>(std::lround(cents / 100.0f));
-    return juce::String(core::pitchClassName(note)) + juce::String(note / 12 - 2);
+    return juce::String(core::noteName(note));
 }
 
 void AudioEditor::drawTooltip(juce::Graphics& g, const juce::String& text, juce::Point<int> at)

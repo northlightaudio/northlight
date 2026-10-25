@@ -1,5 +1,7 @@
 #pragma once
 
+#include "core/NoteNames.h"
+
 #include <cstdint>
 #include <vector>
 
@@ -136,6 +138,5 @@ struct MusicalKey
 };
 
 const char* scaleName(ScaleKind scale) noexcept;
-const char* pitchClassName(int pitchClass) noexcept; // "C", "C#", ...
 
 } // namespace northlight::core

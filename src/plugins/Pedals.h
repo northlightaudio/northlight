@@ -206,9 +206,6 @@ struct Note
     float cents = 0.0f;
 };
 Note noteFor(float hz, float referenceHz) noexcept;
-// A note's name in sharps ("A", "C#") and its octave (A4 = MIDI 69).
-const char* noteName(int midi) noexcept;
-int octaveOf(int midi) noexcept;
 
 // What the tuner reads now (the controller thread, any time): the pitch (0 for
 // none), its clarity and the input's level (linear peak).

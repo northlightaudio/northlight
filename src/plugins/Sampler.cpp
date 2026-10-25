@@ -570,11 +570,4 @@ std::vector<VoiceInfo> soundingVoices(const engine::InsertProcessor& processor)
     return s != nullptr ? s->sounding() : std::vector<VoiceInfo>{};
 }
 
-std::string noteName(int note)
-{
-    static const char* names[] = {"C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"};
-    note = std::clamp(note, 0, 127);
-    return std::string(names[note % 12]) + std::to_string(note / 12 - 1);
-}
-
 } // namespace northlight::plugins::sampler

@@ -1,5 +1,6 @@
 #include "ui/PianoRoll.h"
 
+#include "core/NoteNames.h"
 #include "ui/NorthlightLookAndFeel.h"
 
 #include <algorithm>
@@ -14,20 +15,7 @@ namespace
 constexpr int rows = 128;
 constexpr core::SamplePosition minNoteLength = 1;
 
-bool isBlackKey(int note) noexcept
-{
-    switch (note % 12)
-    {
-        case 1:
-        case 3:
-        case 6:
-        case 8:
-        case 10:
-            return true;
-        default:
-            return false;
-    }
-}
+using core::isBlackKey;
 } // namespace
 
 PianoRoll::PianoRoll()
@@ -529,8 +517,7 @@ void PianoRoll::showQuantiseMenu()
 
 juce::String PianoRoll::noteName(int note)
 {
-    static const char* const names[] = {"C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"};
-    return juce::String(names[note % 12]) + juce::String(note / 12 - 2);
+    return juce::String(core::noteName(note));
 }
 
 void PianoRoll::drawTooltip(juce::Graphics& g, const juce::String& text, juce::Point<int> at)

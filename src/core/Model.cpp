@@ -721,12 +721,6 @@ const char* scaleName(ScaleKind scale) noexcept
     return "";
 }
 
-const char* pitchClassName(int pitchClass) noexcept
-{
-    static const char* const names[] = {"C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"};
-    return names[((pitchClass % 12) + 12) % 12];
-}
-
 BarsBeats samplesToBarsBeats(SamplePosition position,
                              double sampleRate,
                              double tempoBpm,

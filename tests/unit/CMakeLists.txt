@@ -11,6 +11,7 @@ add_executable(northlight_unit_tests
     core/TempoMapTests.cpp
     core/FolderTests.cpp
     core/CompingTests.cpp
+    core/NoteNamesTests.cpp
     engine/RtPrimitivesTests.cpp
     engine/EngineTests.cpp
     engine/StreamingTests.cpp

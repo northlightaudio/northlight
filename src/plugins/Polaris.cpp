@@ -75,17 +75,6 @@ Note noteFor(float hz, float referenceHz) noexcept
     return n;
 }
 
-const char* noteName(int midi) noexcept
-{
-    static const char* names[] = {"C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"};
-    return names[((midi % 12) + 12) % 12];
-}
-
-int octaveOf(int midi) noexcept
-{
-    return static_cast<int>(std::floor(static_cast<double>(midi) / 12.0)) - 1;
-}
-
 namespace
 {
 class Polaris final : public MeteredBuiltIn

@@ -8,6 +8,7 @@
 // insert's bypass), as the header's power button does; the tuner's mutes its
 // output instead, and the tuner has its display where the others have knobs.
 
+#include "core/NoteNames.h"
 #include "plugins/Pedals.h"
 #include "ui/Icons.h"
 #include "ui/NorthlightLookAndFeel.h"
@@ -357,7 +358,7 @@ public:
         const auto ink = inTune ? hw.tunerInTune : hw.tunerText;
         if (live)
         {
-            const juce::String name = plugins::polaris::noteName(state_.midi);
+            const juce::String name = core::pitchClassName(state_.midi);
             const auto big = legendFont(theme_, 76.0f, 700, 0.0f);
             const auto small = legendFont(theme_, 24.0f, 700, 0.0f);
             const float letterW = juce::GlyphArrangement::getStringWidth(big, name.substring(0, 1));
@@ -377,7 +378,7 @@ public:
                                         {right, noteArea.getY() + 6.0f, 30.0f, 26.0f},
                                         juce::Justification::centredLeft);
             hardware::drawCrispText(g,
-                                    juce::String(plugins::polaris::octaveOf(state_.midi)),
+                                    juce::String(core::octaveOf(state_.midi)),
                                     {right, noteArea.getBottom() - 32.0f, 30.0f, 26.0f},
                                     juce::Justification::centredLeft);
         }

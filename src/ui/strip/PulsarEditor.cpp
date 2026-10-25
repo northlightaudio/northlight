@@ -8,6 +8,7 @@
 
 #include "ui/strip/PulsarEditor.h"
 
+#include "core/NoteNames.h"
 #include "plugins/Pulsar.h"
 #include "ui/NorthlightLookAndFeel.h"
 #include "ui/strip/StripStyle.h"
@@ -32,8 +33,7 @@ juce::Colour padHue(const Theme& theme, int pad)
 
 juce::String noteName(int note)
 {
-    static const char* names[] = {"C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"};
-    return juce::String(names[note % 12]) + juce::String(note / 12 - 2);
+    return juce::String(core::noteName(note));
 }
 
 // A pad's sound, rendered once per change of its settings and reduced to a

@@ -6,6 +6,8 @@ add_library(northlight_core STATIC
     TempoMap.h
     TempoMap.cpp
     Vocal.h
+    NoteNames.h
+    NoteNames.cpp
     Command.h
     Command.cpp
     Comping.h
