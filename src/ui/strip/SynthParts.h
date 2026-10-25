@@ -1,5 +1,6 @@
 #pragma once
 
+#include "engine/Insert.h"
 #include "ui/NorthlightLookAndFeel.h"
 #include "ui/OpticalCentre.h"
 #include "ui/Theme.h"
@@ -52,6 +53,13 @@ public:
     }
     std::vector<juce::String> choices;
     int selected = 0;
+    // The choices of a stepped parameter, as the processor names them.
+    void setChoices(const engine::ParameterInfo& info)
+    {
+        choices.clear();
+        for (const auto& c : info.choices)
+            choices.push_back(juce::String::fromUTF8(c.c_str()));
+    }
     std::function<void(int)> onChoose;
 
     void paint(juce::Graphics& g) override

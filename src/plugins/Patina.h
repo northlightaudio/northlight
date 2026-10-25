@@ -144,6 +144,12 @@ float heatTransfer(int character, float amount, float x) noexcept;
 float heatDriveDb(float amount) noexcept;
 // The chamber's decay time (seconds to fall 60 dB) for a space and decay (0..1).
 float chamberDecaySeconds(int space, float decay) noexcept;
+// Pace's rate (Hz) for a pace (0..1): 0.05 to 1.5 Hz.
+float paceHz(float pace) noexcept;
+// Drift rate's scale of the machine's wow and flutter for a rate (0..1): 0.5x to 2x.
+float driftRateScale(float rate) noexcept;
+// Vinyl crackle's clicks a second for a texture (0..1): 2 to 300.
+float crackleRate(float texture) noexcept;
 // Wear's high cut (Hz) for a loss (0..1).
 float wearCutoffHz(float loss) noexcept;
 // Crush's bits and rate as an amount (0 = clean .. 1 = the most) and back.

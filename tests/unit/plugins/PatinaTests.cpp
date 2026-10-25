@@ -588,3 +588,15 @@ TEST_CASE("Patina's presets are full, named once, within range and play", "[plug
     for (size_t i = 0; i < infos.size(); ++i)
         CHECK(list.front().values[i] == infos[i].defaultValue);
 }
+
+TEST_CASE("Patina's pace, drift rate and crackle curves span their documented ranges", "[plugins][patina]")
+{
+    // The card prints these, so what it shows is what runs.
+    CHECK(pa::paceHz(0.0f) == Approx(0.05f));
+    CHECK(pa::paceHz(1.0f) == Approx(1.5f));
+    CHECK(pa::driftRateScale(0.0f) == Approx(0.5f));
+    CHECK(pa::driftRateScale(0.5f) == Approx(1.0f));
+    CHECK(pa::driftRateScale(1.0f) == Approx(2.0f));
+    CHECK(pa::crackleRate(0.0f) == Approx(2.0f));
+    CHECK(pa::crackleRate(1.0f) == Approx(300.0f));
+}

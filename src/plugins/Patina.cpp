@@ -72,6 +72,21 @@ float chamberDecaySeconds(int space, float decay) noexcept
     }
 }
 
+float paceHz(float pace) noexcept
+{
+    return 0.05f * std::pow(30.0f, pace);
+}
+
+float driftRateScale(float rate) noexcept
+{
+    return std::pow(2.0f, 2.0f * rate - 1.0f);
+}
+
+float crackleRate(float texture) noexcept
+{
+    return 2.0f * std::pow(150.0f, texture);
+}
+
 float wearCutoffHz(float loss) noexcept
 {
     return 20000.0f * std::pow(0.12f, std::clamp(loss, 0.0f, 1.0f));
@@ -512,12 +527,12 @@ private:
     {
         const auto& p = p_;
         const float seconds = static_cast<float>(n) / static_cast<float>(fs_);
-        const float paceHz = 0.05f * std::pow(30.0f, p.pace); // 0.05 .. 1.5 Hz
+        const float paceRate = paceHz(p.pace);
         for (int s = 0; s < stageCount; ++s)
         {
             const auto i = static_cast<size_t>(s);
             const float contour =
-                breath_[i].step(seconds, paceHz * (0.8f + 0.1f * static_cast<float>(s)), breathRng_);
+                breath_[i].step(seconds, paceRate * (0.8f + 0.1f * static_cast<float>(s)), breathRng_);
             breathGain_[i] = 1.0f - p.breath[i] * contour;
         }
         const auto amount = [&](int stage, float value)
@@ -1184,7 +1199,7 @@ private:
     void driftControls(int n) noexcept
     {
         const float seconds = static_cast<float>(n) / static_cast<float>(fs_);
-        const float rateScale = std::pow(2.0f, 2.0f * driftRate_ - 1.0f); // 0.5x .. 2x
+        const float rateScale = driftRateScale(driftRate_);
         const int machine = gate_[drift].choice;
         const float wowHz = (machine == deck ? 0.9f : machine == disc ? 0.5556f : 0.45f) * rateScale;
         const float flutterHz = (machine == deck ? 11.0f : machine == disc ? 7.5f : 6.5f) * rateScale;
@@ -1283,8 +1298,7 @@ private:
             for (auto& amp : humAmp_)
                 amp *= norm;
         }
-        // Crackle density: 2 to 300 a second.
-        clickProbability_ = 2.0f * std::pow(150.0f, grainTexture_) / static_cast<float>(fs_);
+        clickProbability_ = crackleRate(grainTexture_) / static_cast<float>(fs_);
         humLevel_.step(seconds, 0.2f, noise_[0].rng);
     }
 

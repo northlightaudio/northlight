@@ -152,13 +152,13 @@ public:
         : card_(card), hue_(hue), shape_(card.theme(), hue), duty_(card.theme(), hue),
           noise_(card.theme(), hue)
     {
-        shape_.choices = {"Pulse", "Triangle", "Saw", "Noise", "Wave"};
+        shape_.setChoices(card.info(sb::wave));
         shape_.setTooltip("Wave");
         shape_.onChoose = [this](int i) { choose(sb::wave, i, "Wave"); };
-        duty_.choices = {"12.5%", "25%", "50%", "75%"};
+        duty_.setChoices(card.info(sb::duty));
         duty_.setTooltip("Duty cycle");
         duty_.onChoose = [this](int i) { choose(sb::duty, i, "Duty"); };
-        noise_.choices = {"Long", "Short"};
+        noise_.setChoices(card.info(sb::noiseMode));
         noise_.setTooltip("Noise: long (hiss) or short (metallic)");
         noise_.onChoose = [this](int i) { choose(sb::noiseMode, i, "Noise mode"); };
         for (auto* c : {&shape_, &duty_, &noise_})
@@ -320,10 +320,10 @@ public:
     ArpDisplay(ModuleCard& card, juce::Colour hue)
         : card_(card), hue_(hue), mode_(card.theme(), hue), voices_(card.theme(), hue)
     {
-        mode_.choices = {"Off", "Chord", "Octave", "Major", "Minor", "Power", "Maj7", "Min7"};
+        mode_.setChoices(card.info(sb::arp));
         mode_.setTooltip("Arpeggio: Chord cycles the notes you hold");
         mode_.onChoose = [this](int i) { choose(sb::arp, i, "Arpeggio"); };
-        voices_.choices = {"Mono", "Poly"};
+        voices_.setChoices(card.info(sb::voices));
         voices_.setTooltip("Voices");
         voices_.onChoose = [this](int i) { choose(sb::voices, i, "Voices"); };
         addAndMakeVisible(mode_);

@@ -943,7 +943,8 @@ private:
             case pa::age:
                 return percentText;
             case pa::pace:
-                return [](double v) { return juce::String(0.05 * std::pow(30.0, v * 0.01), 2) + " Hz"; };
+                return [](double v)
+                { return juce::String(pa::paceHz(static_cast<float>(v) * 0.01f), 2) + " Hz"; };
             case pa::heatTone:
             case pa::chamberTone:
             case pa::tone:
@@ -958,7 +959,7 @@ private:
             case pa::driftRate:
                 return [](double v)
                 {
-                    return juce::String(std::pow(2.0, 2.0 * v * 0.01 - 1.0), 2) +
+                    return juce::String(pa::driftRateScale(static_cast<float>(v) * 0.01f), 2) +
                            juce::String::fromUTF8("\xc3\x97");
                 };
             case pa::grainTexture:
@@ -995,9 +996,10 @@ private:
     juce::String textureText(double v) const
     {
         const int source = static_cast<int>(std::lround(param(pa::grainSource)));
-        const double t = v * 0.01;
         if (source == pa::vinyl)
-            return juce::String(static_cast<int>(std::lround(2.0 * std::pow(150.0, t)))) + " /s";
+            return juce::String(
+                       static_cast<int>(std::lround(pa::crackleRate(static_cast<float>(v) * 0.01f)))) +
+                   " /s";
         return percentText(v);
     }
     juce::String textureName() const

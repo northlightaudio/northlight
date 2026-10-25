@@ -191,7 +191,7 @@ public:
     FilterDisplay(ModuleCard& card, juce::Colour hue) : card_(card), hue_(hue), mode_(card.theme(), hue)
     {
         setTooltip("Drag across for the cutoff, up and down for the resonance");
-        mode_.choices = {"LP12", "LP24", "BP", "HP"};
+        mode_.setChoices(card.info(au::filterMode));
         mode_.setTooltip("Filter mode");
         mode_.onChoose = [this](int m)
         {
@@ -404,15 +404,15 @@ public:
             return std::pow(maxMs, f);
         };
         if (drag_ == 0)
-            card_.setParam(first, msIn(0, e.position.x, maxAttack));
+            card_.setParam(first, msIn(0, e.position.x, maxMs(first)));
         else if (drag_ == 1)
         {
-            card_.setParam(first + 1, msIn(1, e.position.x, maxDecay));
+            card_.setParam(first + 1, msIn(1, e.position.x, maxMs(first + 1)));
             card_.setParam(first + 2,
                            juce::jlimit(0.0f, 1.0f, (p.getBottom() - e.position.y) / p.getHeight()));
         }
         else if (drag_ == 3)
-            card_.setParam(first + 3, msIn(3, e.position.x, maxRelease));
+            card_.setParam(first + 3, msIn(3, e.position.x, maxMs(first + 3)));
         repaint();
     }
     void mouseUp(const juce::MouseEvent&) override
@@ -424,7 +424,8 @@ public:
     }
 
 private:
-    static constexpr float maxAttack = 5000.0f, maxDecay = 8000.0f, maxRelease = 10000.0f;
+    // A stage's longest time, the far end of its quarter.
+    float maxMs(int param) const { return card_.info(param).maximum; }
     juce::Rectangle<float> plot() const
     {
         return getLocalBounds().toFloat().reduced(8.0f, 6.0f).withTrimmedTop(16.0f);
@@ -441,10 +442,10 @@ private:
             return p.getX() + quarter * static_cast<float>(stage) + quarter * juce::jlimit(0.0f, 1.0f, f);
         };
         const float sustainY = p.getBottom() - card_.param(first + 2) * p.getHeight();
-        return {juce::Point<float>{along(0, card_.param(first), maxAttack), p.getY()},
-                juce::Point<float>{along(1, card_.param(first + 1), maxDecay), sustainY},
+        return {juce::Point<float>{along(0, card_.param(first), maxMs(first)), p.getY()},
+                juce::Point<float>{along(1, card_.param(first + 1), maxMs(first + 1)), sustainY},
                 juce::Point<float>{p.getX() + quarter * 3.0f, sustainY},
-                juce::Point<float>{along(3, card_.param(first + 3), maxRelease), p.getBottom()}};
+                juce::Point<float>{along(3, card_.param(first + 3), maxMs(first + 3)), p.getBottom()}};
     }
     juce::Path path(const std::array<juce::Point<float>, 4>& pts) const
     {
@@ -469,7 +470,7 @@ class LfoDisplay final : public juce::Component
 public:
     LfoDisplay(ModuleCard& card, juce::Colour hue) : card_(card), hue_(hue), shape_(card.theme(), hue)
     {
-        shape_.choices = {"Sine", "Tri", "Saw", "Square", "Random"};
+        shape_.setChoices(card.info(au::lfoShape));
         shape_.setTooltip("LFO shape");
         shape_.onChoose = [this](int s)
         {

@@ -286,15 +286,15 @@ public:
                 juce::jlimit(0.0f, 1.0f, (x - (p.getX() + quarter * static_cast<float>(stage))) / quarter));
         };
         if (drag_ == 0)
-            card_.setParam(ne::attack, msIn(0, e.position.x, 10000.0f));
+            card_.setParam(ne::attack, msIn(0, e.position.x, maxMs(ne::attack)));
         else if (drag_ == 1)
         {
-            card_.setParam(ne::decay, msIn(1, e.position.x, 10000.0f));
+            card_.setParam(ne::decay, msIn(1, e.position.x, maxMs(ne::decay)));
             card_.setParam(ne::sustain,
                            juce::jlimit(0.0f, 1.0f, (p.getBottom() - e.position.y) / p.getHeight()));
         }
         else if (drag_ == 3)
-            card_.setParam(ne::release, msIn(3, e.position.x, 15000.0f));
+            card_.setParam(ne::release, msIn(3, e.position.x, maxMs(ne::release)));
         repaint();
     }
     void mouseUp(const juce::MouseEvent&) override
@@ -307,6 +307,8 @@ public:
 
 private:
     juce::Rectangle<float> plot() const { return getLocalBounds().toFloat().reduced(8.0f, 8.0f); }
+    // A stage's longest time, the far end of its quarter.
+    float maxMs(int param) const { return card_.info(param).maximum; }
     std::array<juce::Point<float>, 4> points() const
     {
         const auto p = plot();
@@ -317,10 +319,10 @@ private:
             return p.getX() + quarter * static_cast<float>(stage) + quarter * juce::jlimit(0.0f, 1.0f, f);
         };
         const float sustainY = p.getBottom() - card_.param(ne::sustain) * p.getHeight();
-        return {juce::Point<float>{along(0, card_.param(ne::attack), 10000.0f), p.getY()},
-                juce::Point<float>{along(1, card_.param(ne::decay), 10000.0f), sustainY},
+        return {juce::Point<float>{along(0, card_.param(ne::attack), maxMs(ne::attack)), p.getY()},
+                juce::Point<float>{along(1, card_.param(ne::decay), maxMs(ne::decay)), sustainY},
                 juce::Point<float>{p.getX() + quarter * 3.0f, sustainY},
-                juce::Point<float>{along(3, card_.param(ne::release), 15000.0f), p.getBottom()}};
+                juce::Point<float>{along(3, card_.param(ne::release), maxMs(ne::release)), p.getBottom()}};
     }
 
     ModuleCard& card_;
