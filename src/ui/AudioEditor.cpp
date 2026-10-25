@@ -1,5 +1,6 @@
 #include "ui/AudioEditor.h"
 
+#include "core/Command.h"
 #include "core/NoteNames.h"
 #include "core/TempoMap.h"
 #include "engine/Gain.h"

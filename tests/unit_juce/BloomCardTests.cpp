@@ -1,3 +1,4 @@
+#include "core/Command.h"
 #include "core/Model.h"
 #include "plugins/Bloom.h"
 #include "plugins/BuiltIns.h"

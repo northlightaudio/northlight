@@ -1,6 +1,7 @@
 #include "app/ProjectSession.h"
 #include "audio/AudioDeviceLayer.h"
 #include "audio/AudioSettings.h"
+#include "core/Command.h"
 #include "engine/AudioEngine.h"
 #include "engine/AudioSource.h"
 #include "engine/Insert.h"

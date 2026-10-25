@@ -1,5 +1,6 @@
 #include "ui/PianoRoll.h"
 
+#include "core/Command.h"
 #include "core/NoteNames.h"
 #include "ui/NorthlightLookAndFeel.h"
 #include "ui/PaintStats.h"

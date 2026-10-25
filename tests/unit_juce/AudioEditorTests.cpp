@@ -1,4 +1,5 @@
 #include "audio/PeakStore.h"
+#include "core/Command.h"
 #include "engine/AudioSource.h"
 #include "engine/pitch/VocalService.h"
 #include "ui/AudioEditor.h"

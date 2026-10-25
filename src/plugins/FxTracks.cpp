@@ -1,5 +1,6 @@
 #include "plugins/FxTracks.h"
 
+#include "core/Command.h"
 #include "plugins/BuiltIns.h"
 
 namespace northlight::plugins

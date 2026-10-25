@@ -1,5 +1,6 @@
 #include "plugins/StripPresets.h"
 
+#include "core/Command.h"
 #include "plugins/BuiltIns.h"
 #include "plugins/ChannelStrip.h"
 

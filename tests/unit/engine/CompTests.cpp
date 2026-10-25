@@ -1,3 +1,4 @@
+#include "core/Command.h"
 #include "core/Comping.h"
 #include "engine/AudioEngine.h"
 #include "engine/AudioSource.h"

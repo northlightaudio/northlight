@@ -1,5 +1,6 @@
 #include "ui/TrackHeader.h"
 
+#include "core/Command.h"
 #include "ui/Db.h"
 #include "ui/Icons.h"
 #include "ui/NorthlightLookAndFeel.h"

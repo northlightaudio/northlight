@@ -1,3 +1,4 @@
+#include "core/Command.h"
 #include "core/Model.h"
 #include "plugins/BeatSync.h"
 #include "plugins/BuiltIns.h"

@@ -1,5 +1,6 @@
 #include "ui/TakeLanes.h"
 
+#include "core/Command.h"
 #include "core/Comping.h"
 #include "ui/Icons.h"
 

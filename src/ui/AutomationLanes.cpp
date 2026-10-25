@@ -1,5 +1,6 @@
 #include "ui/AutomationLanes.h"
 
+#include "core/Command.h"
 #include "plugins/BuiltIns.h"
 #include "ui/Db.h"
 #include "ui/Icons.h"

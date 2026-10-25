@@ -1,7 +1,7 @@
 #pragma once
 
-#include "core/Command.h"
 #include "core/Model.h"
+#include "core/ParameterTouch.h"
 #include "engine/Loudness.h"
 #include "engine/Meters.h"
 #include "engine/Midi.h"
@@ -179,8 +179,7 @@ public:
     void applyLiveValues(const core::Project& project, core::Id only = core::invalidId);
     // Pushes the model's value of the given insert parameters to their instances,
     // whether or not the processor owns its parameters (a command touched them).
-    void pushInsertParameters(const core::Project& project,
-                              const std::vector<core::Command::ParameterTouch>& touches);
+    void pushInsertParameters(const core::Project& project, const std::vector<core::ParameterTouch>& touches);
     // The meter slot of the master in the current snapshot.
     int masterMeterSlot() const noexcept { return masterMeterSlot_.load(std::memory_order_relaxed); }
     // Restarts the integrated loudness measurement.

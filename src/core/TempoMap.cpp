@@ -463,4 +463,9 @@ void remapMusicalTime(Project& project, const TempoMap& from, const TempoMap& to
     project.sortMarkers();
 }
 
+TempoState TempoState::of(const Project& p)
+{
+    return {p.tempoBpm, p.timeSignature, p.tempoChanges, p.meterChanges};
+}
+
 } // namespace northlight::core

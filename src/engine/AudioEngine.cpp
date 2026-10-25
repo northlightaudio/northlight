@@ -312,7 +312,7 @@ void AudioEngine::applyLiveValues(const core::Project& project, core::Id only)
 }
 
 void AudioEngine::pushInsertParameters(const core::Project& project,
-                                       const std::vector<core::Command::ParameterTouch>& touches)
+                                       const std::vector<core::ParameterTouch>& touches)
 {
     NORTHLIGHT_ASSERT_NOT_REALTIME("AudioEngine::pushInsertParameters");
     for (const auto& touch : touches)

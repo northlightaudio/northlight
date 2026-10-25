@@ -1,4 +1,5 @@
 #include "SyntheticSinger.h"
+#include "core/Command.h"
 #include "core/Model.h"
 #include "plugins/BuiltIns.h"
 #include "plugins/Vesper.h"

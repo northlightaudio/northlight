@@ -1,6 +1,6 @@
 #pragma once
 
-#include "core/Command.h"
+#include "core/CommandFwd.h"
 #include "core/Model.h"
 #include "engine/Loudness.h"
 #include "engine/Meters.h"

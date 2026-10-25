@@ -1,5 +1,6 @@
 #include "ui/panels/InspectorPanel.h"
 
+#include "core/Command.h"
 #include "ui/Db.h"
 #include "ui/NorthlightLookAndFeel.h"
 #include "ui/TrackIcon.h"

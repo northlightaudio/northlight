@@ -124,6 +124,18 @@ private:
 
 TempoMap tempoMapOf(const Project& project);
 
+// The tempo track as the project holds it: the start tempo and signature and the
+// changes after them (what a tempo edit sets, core::SetTempoMap).
+struct TempoState
+{
+    double bpm = 120.0;
+    TimeSignature signature;
+    std::vector<TempoChange> tempoChanges;
+    std::vector<MeterChange> meterChanges;
+    bool operator==(const TempoState&) const = default;
+    static TempoState of(const Project& p);
+};
+
 // The project's tempo map, rebuilt only when what it is made of (the rate, the
 // tempo and signature, the change lists) differs from last time: comparing them
 // costs far less than a rebuild, so a view or a tick can ask every frame.

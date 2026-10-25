@@ -1,5 +1,6 @@
 #include "ui/InsertEditor.h"
 
+#include "core/Command.h"
 #include "plugins/BuiltIns.h"
 #include "plugins/EffectPresets.h"
 #include "ui/NorthlightLookAndFeel.h"

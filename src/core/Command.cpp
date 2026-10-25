@@ -2469,11 +2469,6 @@ bool SetTrackFrozen::revert(Project& p)
     return true;
 }
 
-TempoState TempoState::of(const Project& p)
-{
-    return {p.tempoBpm, p.timeSignature, p.tempoChanges, p.meterChanges};
-}
-
 void MusicalPositions::capture(const Project& p)
 {
     midi_.clear();

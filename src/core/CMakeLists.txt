@@ -9,6 +9,8 @@ add_library(northlight_core STATIC
     NoteNames.h
     NoteNames.cpp
     Command.h
+    CommandFwd.h
+    ParameterTouch.h
     Command.cpp
     Comping.h
     Comping.cpp

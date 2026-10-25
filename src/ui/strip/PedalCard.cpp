@@ -8,6 +8,7 @@
 // insert's bypass), as the header's power button does; the tuner's mutes its
 // output instead, and the tuner has its display where the others have knobs.
 
+#include "core/Command.h"
 #include "core/NoteNames.h"
 #include "plugins/Pedals.h"
 #include "ui/Icons.h"

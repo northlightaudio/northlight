@@ -1,5 +1,6 @@
 #include "ui/panels/InstrumentRack.h"
 
+#include "core/Command.h"
 #include "plugins/BuiltIns.h"
 #include "ui/InstrumentOutputs.h"
 #include "ui/NorthlightLookAndFeel.h"

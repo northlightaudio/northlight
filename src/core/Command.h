@@ -1,6 +1,8 @@
 #pragma once
 
+#include "core/CommandFwd.h"
 #include "core/Model.h"
+#include "core/ParameterTouch.h"
 #include "core/TempoMap.h"
 
 #include <algorithm>
@@ -101,11 +103,7 @@ public:
     virtual std::optional<AutomationWrite> automationWrite() const noexcept { return std::nullopt; }
     // The insert parameters this command sets (or restores on undo), so the
     // session can push exactly those to processors that own their parameters.
-    struct ParameterTouch
-    {
-        Id insertId = invalidId;
-        int parameter = 0;
-    };
+    using ParameterTouch = core::ParameterTouch;
     virtual void touchedParameters(std::vector<ParameterTouch>&) const {}
     // Folds `next`, applied right after this command, into this one: the same
     // field of the same target set again (a fader drag's ticks inside one
@@ -1671,19 +1669,10 @@ private:
     std::string media_, previous_;
 };
 
-// What a tempo edit changes and restores: the tempo track, and every position
-// that follows it (MIDI clips, clips that follow the tempo, automation, markers),
-// captured whole so undo puts them back exactly rather than remapping again.
-struct TempoState
-{
-    double bpm = 120.0;
-    TimeSignature signature;
-    std::vector<TempoChange> tempoChanges;
-    std::vector<MeterChange> meterChanges;
-    bool operator==(const TempoState&) const = default;
-    static TempoState of(const Project& p);
-};
-
+// What a tempo edit changes and restores: the tempo track (core/TempoMap.h
+// TempoState), and every position that follows it (MIDI clips, clips that
+// follow the tempo, automation, markers), captured whole so undo puts them back
+// exactly rather than remapping again.
 class MusicalPositions
 {
 public:

@@ -1,5 +1,6 @@
 #include "ui/PluginWindow.h"
 
+#include "core/Command.h"
 #include "ui/Icons.h"
 #include "ui/NorthlightLookAndFeel.h"
 #include "ui/OnScreen.h"

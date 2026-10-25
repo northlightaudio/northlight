@@ -1,5 +1,7 @@
 #include "ui/edit/ClipOps.h"
 
+#include "core/Command.h"
+
 #include <algorithm>
 
 namespace northlight::ui::edit

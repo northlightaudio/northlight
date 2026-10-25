@@ -1,7 +1,7 @@
 #pragma once
 
 #include "audio/PeakStore.h"
-#include "core/Command.h"
+#include "core/CommandFwd.h"
 #include "core/Model.h"
 #include "core/TempoMap.h"
 #include "engine/Meters.h"

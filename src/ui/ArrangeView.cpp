@@ -1,5 +1,6 @@
 #include "ui/ArrangeView.h"
 
+#include "core/Command.h"
 #include "core/Comping.h"
 #include "plugins/FxTracks.h"
 #include "ui/Db.h"

@@ -1,5 +1,6 @@
 #include "ui/strip/ModuleCard.h"
 
+#include "core/Command.h"
 #include "plugins/BuiltIns.h"
 #include "plugins/ChannelStrip.h"
 #include "ui/NorthlightLookAndFeel.h"
