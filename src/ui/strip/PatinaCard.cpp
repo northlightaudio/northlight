@@ -228,8 +228,11 @@ public:
 
     void show(const juce::String& number, const juce::String& name)
     {
+        if (number == number_ && name == name_)
+            return;
         number_ = number;
         name_ = name;
+        upperName_ = name.toUpperCase();
         setButtonText(name);
         repaint();
     }
@@ -257,11 +260,18 @@ public:
         const auto mono = theme_.value();
         auto big = mono.withHeight(mono.getHeight() * 1.2f).withExtraKerningFactor(0.08f);
         const auto small = mono.withHeight(mono.getHeight() * 0.95f);
-        juce::GlyphArrangement capital;
-        capital.addLineOfText(big, "H", 0.0f, 0.0f);
-        juce::Path capitalPath;
-        capital.createPath(capitalPath);
-        const float baseline = std::round(r.getCentreY() - capitalPath.getBounds().getCentreY());
+        // Where a capital's middle sits below its baseline: measured once per font
+        // size (a glyph's outline is laid out and flattened to find it).
+        if (capitalHeight_ != big.getHeight())
+        {
+            juce::GlyphArrangement capital;
+            capital.addLineOfText(big, "H", 0.0f, 0.0f);
+            juce::Path capitalPath;
+            capital.createPath(capitalPath);
+            capitalCentre_ = capitalPath.getBounds().getCentreY();
+            capitalHeight_ = big.getHeight();
+        }
+        const float baseline = std::round(r.getCentreY() - capitalCentre_);
         const auto onBaseline = [baseline](juce::Rectangle<float> area, const juce::Font& font)
         { return area.withY(baseline - font.getAscent()).withHeight(font.getHeight()); };
         auto line = r.reduced(12.0f, 0.0f);
@@ -272,7 +282,7 @@ public:
         line.removeFromLeft(6.0f);
         line = onBaseline(line, big);
         g.setFont(big);
-        const auto name = name_.toUpperCase();
+        const auto& name = upperName_;
         g.setColour(hw.displayGlow.withAlpha(0.22f));
         for (const auto& d : {juce::Point<float>(-1.0f, 0.0f),
                               juce::Point<float>(1.0f, 0.0f),
@@ -298,6 +308,8 @@ public:
     }
 
 private:
+    juce::String upperName_;                             // the name as drawn
+    float capitalHeight_ = -1.0f, capitalCentre_ = 0.0f; // the measured capital, per font size
     const Theme& theme_;
     juce::String number_, name_;
 };
@@ -1101,12 +1113,20 @@ private:
     // ----- presets ------------------------------------------------------------------------------
     // The same list as the header's preset bar (factory, then the user's), so the
     // two stay in step.
-    void changeListenerCallback(juce::ChangeBroadcaster*) override { showPreset(); }
+    void changeListenerCallback(juce::ChangeBroadcaster*) override
+    {
+        showPreset(true);
+    } // the library changed
 
     int presetIndex() const { return EffectPresetLibrary::instance().match(pa::type, params_); }
 
-    void showPreset()
+    void showPreset(bool force = false)
     {
+        // Matched again only when the values moved (a stage switch or a lamp
+        // repaints here too, and automation calls it every frame).
+        if (!force && params_ == matchedParams_)
+            return;
+        matchedParams_ = params_;
         const int i = presetIndex();
         if (i < 0)
             display_.show(juce::String::fromUTF8("\xe2\x80\x93\xe2\x80\x93"), "Custom");
@@ -1159,6 +1179,7 @@ private:
     int head_ = 0, count_ = 0;
     std::uint64_t total_ = 0, cursor_ = 0;
     const Telemetry* telemetrySource_ = nullptr;
+    std::vector<float> matchedParams_; // the values the shown preset was matched against
 
     HardwareKey previous_, next_;
     PresetDisplay display_;
