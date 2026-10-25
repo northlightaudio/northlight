@@ -80,6 +80,7 @@ protected:
     // for one printsWidely() says reaches further, or on the first call. Call it
     // from paramsChanged() instead of repainting the face.
     void repaintChanged();
+    bool repaintsChangedParameters() const noexcept override { return true; }
     // Whether a parameter's change shows beyond its own knob (another control's
     // value or name, the art). Default: a parameter with no rendered knob does.
     virtual bool printsWidely(int index) const { return knobFor(index) == nullptr; }

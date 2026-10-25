@@ -40,7 +40,7 @@ rebuilds.
 | Words set by a turn | ≤ 64 | Corona's knob row (53) |
 | Frame repaints | ≤ 30% on a rendered face, ≤ 75% with a display | the live parts only |
 | Words set by a frame | ≤ 24 | the labels beside a meter (19) |
-| Whole-card repaints, art rebuilds | none, in any interaction | |
+| Whole-card repaints, art rebuilds | none, in any interaction, an undo or preset on a rendered face included | |
 
 The timeline views have budgets of their own
 (`tests/unit_juce/TimelineWorkBudgetTests.cpp`): a playhead frame in the arrange

@@ -221,7 +221,8 @@ void ModuleCard::endGesture()
 void ModuleCard::refresh(const core::Insert& module)
 {
     const juce::ScopedValueSetter<bool> guard(updating_, true);
-    bool changed = module.bypass != bypass_;
+    const bool bypassChanged = module.bypass != bypass_;
+    bool changed = bypassChanged;
     bypass_ = module.bypass;
     power_.setToggleState(!bypass_, juce::dontSendNotification);
     power_.setTooltip(bypass_ ? "Switch on" : "Switch off");
@@ -245,7 +246,10 @@ void ModuleCard::refresh(const core::Insert& module)
     for (const auto& b : bindings_)
         updateBinding(b);
     paramsChanged();
-    repaint();
+    // Undo, a preset or automation: a rendered face repaints round what moved
+    // (docs/ui-performance.md); the whole card only when bypass dims it.
+    if (bypassChanged || !repaintsChangedParameters())
+        repaint();
 }
 
 void ModuleCard::updateBinding(const Binding& b)

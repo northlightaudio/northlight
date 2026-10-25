@@ -148,6 +148,19 @@ public:
         card_->tick(1000.0 / 60.0);
     }
 
+    // A change from the model (an undo, a preset, automation): parameter `index`
+    // to `value`, through the card's refresh as the strip does it.
+    void modelChange(int index, float value)
+    {
+        if (index < 0 || static_cast<size_t>(index) >= insert_.params.size())
+            return;
+        insert_.params[static_cast<size_t>(index)] = value;
+        if (live_ != nullptr)
+            live_->setParameter(index, value);
+        card_->refresh(insert_);
+    }
+    const core::Insert& insert() const noexcept { return insert_; }
+
     // Starts recording what repaints.
     RepaintRecorder& record()
     {

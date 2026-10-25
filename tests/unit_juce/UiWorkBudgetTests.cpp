@@ -5,6 +5,7 @@
 
 #include "UiPerf.h"
 #include "ui/components/RenderedFace.h"
+#include "ui/strip/RenderedCard.h"
 
 #include <catch2/catch_test_macros.hpp>
 
@@ -148,6 +149,33 @@ TEST_CASE("Every card keeps hovering, turning and playing within its repaint bud
         {
             CHECK(!x->everything);
             CHECK(x->rebuilds == 0);
+        }
+    }
+}
+
+TEST_CASE("An undo on a rendered card repaints round the knob that moved, not the card", "[ui][perf]")
+{
+    const juce::ScopedJuceInitialiser_GUI juceInit;
+    for (const auto& type : uiperf::builtInTypes())
+    {
+        uiperf::CardUnderTest t(type);
+        if (t.card() == nullptr || dynamic_cast<ui::strip::RenderedCard*>(t.card()) == nullptr)
+            continue;
+        INFO(type);
+        const auto info = plugins::BuiltInFactory().create(type)->parameters();
+        // The first continuous parameter, a tenth of its range away.
+        for (size_t i = 0; i < info.size(); ++i)
+        {
+            if (!info[i].choices.empty())
+                continue;
+            const float range = info[i].maximum - info[i].minimum;
+            auto& rec = t.record();
+            t.modelChange(static_cast<int>(i),
+                          std::min(info[i].maximum, t.insert().params[i] + range * 0.1f));
+            // What the face repaints is its own call (a parameter it prints widely
+            // may repaint most of it); the card is never repainted whole.
+            CHECK_FALSE(rec.everything);
+            break;
         }
     }
 }

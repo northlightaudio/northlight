@@ -189,6 +189,10 @@ protected:
 
     virtual void layoutBody(juce::Rectangle<int> body) = 0;
     virtual void paramsChanged() {}
+    // A card that repaints exactly what a model change moved (RenderedCard's
+    // repaintChanged, called from paramsChanged) is not repainted whole by
+    // refresh(); any other card is.
+    virtual bool repaintsChangedParameters() const noexcept { return false; }
     // Every model refresh, before the parameters (for state beyond them, such
     // as the key source).
     virtual void insertChanged(const core::Insert& insert) { juce::ignoreUnused(insert); }
