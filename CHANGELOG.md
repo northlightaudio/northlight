@@ -181,6 +181,8 @@ Northlight has not had a release yet. The first release, 0.1.0, will include:
 
 ### Fixed
 
+- Cancelling the Save dialog after choosing Save on close no longer makes the next
+  save quit the app.
 - The audio editor follows a stretched clip: its playhead, the clip's end, the fades
   and a zoom linked to the arrange view all sat in the wrong place before.
 - Notes have one name everywhere: middle C is C3 in the Sampler and on the Polaris

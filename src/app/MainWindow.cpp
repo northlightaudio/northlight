@@ -1904,10 +1904,7 @@ private:
                                 if (result == 1)
                                     juce::JUCEApplication::getInstance()->quit();
                                 else if (result == 2)
-                                {
-                                    quitAfterSave_ = true;
-                                    saveProject(false);
-                                }
+                                    saveProject(false, AfterSave::quit);
                             });
     }
 
@@ -2375,11 +2372,19 @@ private:
             holdAt);
     }
 
-    void saveProject(bool saveAs)
+    // What happens once a save succeeds. Passed along rather than kept in a member,
+    // so a cancelled or failed save leaves nothing behind for the next one.
+    enum class AfterSave
+    {
+        stay,
+        quit,
+    };
+
+    void saveProject(bool saveAs, AfterSave after = AfterSave::stay)
     {
         if (!saveAs && session_.projectFile().getFullPathName().isNotEmpty())
         {
-            saveTo(session_.projectFile());
+            saveTo(session_.projectFile(), after);
             return;
         }
         chooser_ = std::make_unique<juce::FileChooser>(
@@ -2387,31 +2392,30 @@ private:
         chooser_->launchAsync(juce::FileBrowserComponent::saveMode |
                                   juce::FileBrowserComponent::canSelectFiles |
                                   juce::FileBrowserComponent::warnAboutOverwriting,
-                              [this](const juce::FileChooser& fc)
+                              [this, after](const juce::FileChooser& fc)
                               {
                                   auto file = fc.getResult();
                                   if (file == juce::File())
                                       return;
                                   if (!file.hasFileExtension("northlight"))
                                       file = file.withFileExtension("northlight");
-                                  saveTo(file);
+                                  saveTo(file, after);
                                   grabKeyboardFocus();
                               });
     }
 
-    void saveTo(const juce::File& file)
+    void saveTo(const juce::File& file, AfterSave after = AfterSave::stay)
     {
         const auto error = session_.save(file);
         if (!error.empty())
         {
-            quitAfterSave_ = false;
             toast(ui::ToastStack::Kind::error, "Cannot save: " + juce::String::fromUTF8(error.c_str()));
         }
         else
         {
             status_.showMessage("Saved " + file.getFileName());
             rememberRecent(file);
-            if (quitAfterSave_)
+            if (after == AfterSave::quit)
                 juce::JUCEApplication::getInstance()->quit();
         }
         refresh();
@@ -3107,7 +3111,6 @@ private:
     int diskGapsToasted_ = 0;
     std::uint64_t diskBaseline_ = 0;
     double lastDropoutToastMs_ = 0.0;
-    bool quitAfterSave_ = false;
     double benchmarkEndMs_ = 0.0;
     bool slideCached_ = false;        // the views are drawn from cached images during a panel slide
     std::vector<double> slidePaints_; // --benchmark-panels
