@@ -36,7 +36,7 @@ ProjectSession::ProjectSession(audio::AudioDeviceLayer& audio, juce::File regist
     if (registryFile_.existsAsFile())
         if (auto loaded = hosting::PluginRegistry::fromJson(registryFile_.loadFileAsString().toStdString()))
             registry_ = std::move(*loaded);
-    scanner_.onProgress = [this] { notify(Change::structure); };
+    scanner_.onProgress = [this] { notify(Change::progress); }; // the status and the browser, not every view
     scanner_.onFinished = [this]
     {
         saveRegistry();
@@ -45,6 +45,11 @@ ProjectSession::ProjectSession(audio::AudioDeviceLayer& audio, juce::File regist
     };
     vocal_.onChanged = [this] { vocalUpdates_.triggerAsyncUpdate(); };
     vocalUpdates_.onUpdate = [this]
+    {
+        if (!vocalRecompile_.isTimerRunning())
+            vocalRecompile_.startTimer(vocalRecompileMilliseconds);
+    };
+    vocalRecompile_.onDue = [this]
     {
         for (const auto& t : project_.tracks)
             for (const auto& c : t.clips)
@@ -127,7 +132,7 @@ ProjectSession::~ProjectSession()
 
 void ProjectSession::notify(Change change)
 {
-    // structure < values < parameters: keep the widest.
+    // structure < values < parameters < progress: keep the widest.
     if (static_cast<int>(change) < static_cast<int>(pending_))
         pending_ = change;
     sendChangeMessage();
@@ -136,7 +141,7 @@ void ProjectSession::notify(Change change)
 ProjectSession::Change ProjectSession::takeChange() noexcept
 {
     const auto change = pending_;
-    pending_ = Change::parameters;
+    pending_ = Change::progress;
     return change;
 }
 

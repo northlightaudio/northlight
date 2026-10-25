@@ -1419,6 +1419,14 @@ private:
         // parameters: the strip cards and insert cards follow the processors
         // themselves. That leaves the message thread free for the analysers.
         const auto change = source == &session_ ? session_.takeChange() : ProjectSession::Change::structure;
+        if (change == ProjectSession::Change::progress)
+        {
+            // A plugin scanned: the browser's list and status and the status bar.
+            browser_.setStatus(session_.pluginScanStatus());
+            browser_.refresh();
+            refreshStatus();
+            return;
+        }
         if (change != ProjectSession::Change::structure)
         {
             pendingParametersOnly_ = pendingParametersOnly_ && change == ProjectSession::Change::parameters;

@@ -108,6 +108,7 @@ public:
         structure,  // anything: refresh everything
         values,     // live values only (gain, pan, mute, bypass, parameters)
         parameters, // insert and strip parameters only
+        progress,   // background work moved on (a plugin scanned): its status only
     };
     Change takeChange() noexcept;
     // See the implementation: the model's parameter list of a plugin that owns its
@@ -482,6 +483,19 @@ private:
                 onUpdate();
         }
     } vocalUpdates_, stretchUpdates_;
+    // Renders finish in bursts (a span each): the recompile they need waits a
+    // little, so a burst costs one compile rather than one per span.
+    struct VocalRecompile final : juce::Timer
+    {
+        std::function<void()> onDue;
+        void timerCallback() override
+        {
+            stopTimer();
+            if (onDue)
+                onDue();
+        }
+    } vocalRecompile_;
+    static constexpr int vocalRecompileMilliseconds = 150;
     audio::JuceMediaLoader vocalLoader_{disk_, true}; // whole files: the renderer reads anywhere
     engine::VocalService vocal_{vocalLoader_};
     // Stretched and transposed clips render in the background (two workers); a
@@ -517,7 +531,7 @@ private:
     juce::String untitledStem_;  // the autosave name of an unsaved project
     double dirtySinceMs_ = 0.0;  // unsaved changes not yet autosaved, since
     double lastEditMs_ = 0.0;
-    Change pending_ = Change::parameters; // the widest change notified since the last take
+    Change pending_ = Change::progress; // the widest change notified since the last take
     // The load in progress (beginLoad), what it is for, and what the steps after
     // its background part have made so far (held so garbage collection keeps them
     // until the compile takes them).
