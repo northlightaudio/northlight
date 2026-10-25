@@ -119,7 +119,9 @@ colour, a marker) has them rebuild in full while the engine does nothing.
 
 All edits go through `ProjectSession::run`: single commands, named groups, a
 finished recording, a recovery, an automation pass. A slider drag is a gesture whose
-commands become one undo step. A test applies, undoes and redoes every command and
+commands become one undo step; inside it, a setter of the field the previous
+command set merges into that command (`Command::mergeWith`), so a ten-second drag
+keeps one command, not one per tick. A test applies, undoes and redoes every command and
 compares the whole project each time.
 
 Project files are versioned JSON (`.northlight`). Each version upgrades step by step

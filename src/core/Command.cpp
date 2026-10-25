@@ -50,7 +50,14 @@ public:
             throw;
         }
     }
-    void add(std::unique_ptr<Command> c) { commands_.push_back(std::move(c)); }
+    // A member that sets what the last one set (a drag's next tick) folds
+    // into it, so a gesture keeps one command per field, not one per tick.
+    void add(std::unique_ptr<Command> c)
+    {
+        if (!commands_.empty() && commands_.back()->mergeWith(*c))
+            return;
+        commands_.push_back(std::move(c));
+    }
     bool empty() const noexcept { return commands_.empty(); }
     ChangeKind changeKind() const noexcept override
     {
@@ -1325,6 +1332,16 @@ void SetInsertParameter::apply(Project& p)
         i.params.resize(static_cast<size_t>(parameter_) + 1, 0.0f);
     previous_ = i.params[static_cast<size_t>(parameter_)];
     i.params[static_cast<size_t>(parameter_)] = value_;
+}
+bool SetInsertParameter::mergeWith(Command& next)
+{
+    // The same parameter again: the first previous value (and list size) stay.
+    const auto* later = dynamic_cast<const SetInsertParameter*>(&next);
+    if (later == nullptr || later->channelId_ != channelId_ || later->insertId_ != insertId_ ||
+        later->parameter_ != parameter_)
+        return false;
+    value_ = later->value_;
+    return true;
 }
 void SetInsertParameter::revert(Project& p)
 {

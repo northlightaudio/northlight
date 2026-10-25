@@ -7,6 +7,7 @@
 #include <memory>
 #include <optional>
 #include <string>
+#include <typeinfo>
 #include <utility>
 #include <vector>
 
@@ -78,6 +79,11 @@ public:
         int parameter = 0;
     };
     virtual void touchedParameters(std::vector<ParameterTouch>&) const {}
+    // Folds `next`, applied right after this command, into this one: the same
+    // field of the same target set again (a fader drag's ticks inside one
+    // gesture). This command then reverts to its own previous value and applies
+    // next's value, so undoing it does what undoing both did. False: left apart.
+    virtual bool mergeWith(Command& /*next*/) { return false; }
 };
 
 class UndoStack
@@ -114,7 +120,9 @@ public:
 
     // Groups the next `execute` calls into one undoable step until endGroup().
     // Groups nest: an inner begin/end pair joins the open group (keeping its
-    // name) and only the outermost endGroup() commits it.
+    // name) and only the outermost endGroup() commits it. Inside a group, a
+    // command that sets what the one before it set merges into it
+    // (Command::mergeWith).
     void beginGroup(std::string name);
     void endGroup();
     bool groupOpen() const noexcept { return openGroup_ != nullptr; }
@@ -213,6 +221,18 @@ public:
         field = value_;
     }
     void revert(Project& p) override { fieldIn(p) = previous_; }
+    // The same setter on the same target: keep the first previous value and
+    // take the later value.
+    bool mergeWith(Command& next) override
+    {
+        if (typeid(next) != typeid(*this))
+            return false;
+        auto& later = static_cast<SetField&>(next);
+        if (!(later.target_ == target_))
+            return false;
+        value_ = std::move(later.value_);
+        return true;
+    }
     const Target& target() const noexcept { return target_; }
     const Value& value() const noexcept { return value_; }
 
@@ -918,6 +938,7 @@ public:
     {
         out.push_back({insertId_, parameter_});
     }
+    bool mergeWith(Command& next) override;
 
 private:
     Id channelId_, insertId_;

@@ -1687,3 +1687,64 @@ TEST_CASE("Fade curves are set with their lengths, kept when not given, and undo
     stack.execute(p, std::make_unique<JoinClips>(1, 10, splitPtr->rightClipId()));
     CHECK(p.tracks[0].clips[0].fadeOutCurve == -1.0f);
 }
+
+TEST_CASE("A setter merges the next setter of the same field and target", "[core][command][undo]")
+{
+    Project p = projectWithTrack();
+    const Id id = p.tracks[0].id;
+    SetTrackGain first(id, 0.5f);
+    SetTrackGain second(id, 0.25f);
+    first.apply(p);
+    second.apply(p);
+    CHECK(first.mergeWith(second));
+    CHECK(first.value() == 0.25f);
+    first.revert(p);
+    CHECK(p.tracks[0].gain == 1.0f); // the first previous value
+    first.apply(p);
+    CHECK(p.tracks[0].gain == 0.25f); // the last value
+
+    SetTrackGain other(masterId, 0.5f);
+    SetMasterGain master(0.5f);
+    SetTrackPan pan(id, 0.5f);
+    CHECK_FALSE(first.mergeWith(other));  // another target
+    CHECK_FALSE(other.mergeWith(master)); // another command, same field
+    CHECK_FALSE(first.mergeWith(pan));    // another field
+
+    SetInsertParameter a(id, 20, 1, 0.5f);
+    SetInsertParameter b(id, 20, 1, 0.7f);
+    SetInsertParameter c(id, 20, 2, 0.7f);
+    CHECK(a.mergeWith(b));
+    CHECK(a.value() == 0.7f);
+    CHECK_FALSE(a.mergeWith(c));
+}
+
+TEST_CASE("A merged drag undoes and redoes like the ticks it replaced", "[core][command][undo]")
+{
+    Project p = projectWithTrack();
+    const Id id = p.tracks[0].id;
+    p.tracks[0].automation.push_back({7, AutomationTarget::gain, invalidId, 0, {{0, 1.0f}}});
+    const Project before = p;
+    UndoStack stack;
+
+    stack.beginGroup("Drag");
+    for (int tick = 1; tick <= 600; ++tick)
+        stack.execute(p, std::make_unique<SetTrackGain>(id, 1.0f - static_cast<float>(tick) / 1000.0f));
+    for (int tick = 1; tick <= 600; ++tick)
+        stack.execute(p,
+                      std::make_unique<SetAutomationPoints>(
+                          id, 7, std::vector<AutomationPoint>{{0, 1.0f}, {tick, 0.5f}}));
+    stack.execute(p, std::make_unique<SetTrackPan>(id, -0.5f));
+    stack.execute(p, std::make_unique<SetTrackGain>(id, 0.1f)); // after a pan: its own member
+    stack.endGroup();
+    const Project after = p;
+    CHECK(p.tracks[0].gain == 0.1f);
+    CHECK(p.tracks[0].pan == -0.5f);
+    CHECK(p.tracks[0].automation[0].points.back().position == 600);
+
+    REQUIRE(stack.undo(p));
+    CHECK(p == before);
+    REQUIRE(stack.redo(p));
+    CHECK(p == after);
+    REQUIRE(stack.undo(p));
+    CHECK(p == before);
+}
