@@ -331,15 +331,16 @@ public:
             ProjectSession& session,
             UserSettings& settings)
         : owner_(owner), audio_(audio), session_(session), settings_(settings), header_(theme_),
-          tracks_(session.peakStore()), dock_(theme_, ui::HostKind::dock), side_(theme_, ui::HostKind::side),
-          status_(theme_), toasts_(theme_), tooltips_(theme_), dockSplitter_(theme_, true),
-          sideSplitter_(theme_, false), mixer_(
-                                            session.engine().meters(),
-                                            [&session] { return session.engine().loudness(); },
-                                            [&session] { return session.engine().masterMeterSlot(); }),
-          editor_(theme_), instruments_(theme_), audioEditor_(session.peakStore(), session.vocal()),
-          diagnostics_(theme_), browser_(session.pluginRegistry()), inspector_(theme_),
-          panels_(theme_, dock_, side_)
+          tracks_(session.peakStore(), theme_), dock_(theme_, ui::HostKind::dock),
+          side_(theme_, ui::HostKind::side), status_(theme_), toasts_(theme_), tooltips_(theme_),
+          dockSplitter_(theme_, true), sideSplitter_(theme_, false),
+          mixer_(
+              session.engine().meters(),
+              [&session] { return session.engine().loudness(); },
+              [&session] { return session.engine().masterMeterSlot(); }),
+          editor_(theme_), instruments_(theme_), pianoRoll_(theme_),
+          audioEditor_(session.peakStore(), session.vocal(), theme_), diagnostics_(theme_),
+          browser_(session.pluginRegistry()), inspector_(theme_), panels_(theme_, dock_, side_)
     {
         setSize(1280, 800);
         setOpaque(true);

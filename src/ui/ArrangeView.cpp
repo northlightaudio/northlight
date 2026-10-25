@@ -29,8 +29,8 @@ constexpr double minSamplesPerPixel = 1.0;
 constexpr double maxSamplesPerPixel = 48000.0 * 16.0; // eight bars per pixel at 120 bpm
 } // namespace
 
-ArrangeView::ArrangeView(audio::PeakStore& peaks)
-    : peaks_(peaks), addTrack_(theme_, Icon::add, "Add track"),
+ArrangeView::ArrangeView(audio::PeakStore& peaks, const Theme& theme)
+    : theme_(theme), peaks_(peaks), addTrack_(theme_, Icon::add, "Add track"),
       rowsSmaller_(theme_, Icon::zoomOut, "Smaller rows"), rowsLarger_(theme_, Icon::zoomIn, "Larger rows"),
       selectTool_(theme_, Icon::pointer, "Select tool: move, trim and select clips  1"),
       rangeTool_(theme_, Icon::rangeTool, "Range tool: select a time range across tracks  2"),

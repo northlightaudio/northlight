@@ -183,8 +183,8 @@ private:
 
 // ----- setup ----------------------------------------------------------------------------------
 
-AudioEditor::AudioEditor(audio::PeakStore& peaks, engine::VocalService& vocal)
-    : peaks_(peaks), vocal_(vocal),
+AudioEditor::AudioEditor(audio::PeakStore& peaks, engine::VocalService& vocal, const Theme& theme)
+    : theme_(theme), peaks_(peaks), vocal_(vocal),
       pitchTool_(theme_, Icon::pitchTool, "Pitch: drag a note to a semitone, Alt in cents  1"),
       splitTool_(theme_, Icon::scissors, "Split: click a note to split it, a join to merge two  2"),
       driftTool_(theme_, Icon::driftTool, "Drift: drag a note down to steady its slow drift  3"),

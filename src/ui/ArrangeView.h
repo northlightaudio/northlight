@@ -65,7 +65,8 @@ class ArrangeView final : public juce::Component,
                           private juce::ScrollBar::Listener
 {
 public:
-    explicit ArrangeView(audio::PeakStore& peaks);
+    // The theme is the shell's (Theme::dark() unless given), as the other views take it.
+    explicit ArrangeView(audio::PeakStore& peaks, const Theme& theme = Theme::dark());
     ~ArrangeView() override;
 
     // `valuesOnly`: only values moved (gains, pans, parameters): the headers
@@ -508,7 +509,7 @@ private:
     void mouseDoubleClick(const juce::MouseEvent& e) override;
     juce::MouseCursor cursorFor(Drag zone) const noexcept;
 
-    const Theme& theme_ = Theme::dark();
+    const Theme& theme_;
     audio::PeakStore& peaks_;
     const core::Project* project_ = nullptr;
     core::TempoMap tempoMap_; // the project's, rebuilt on every setProject

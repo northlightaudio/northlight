@@ -53,7 +53,7 @@ class AudioEditor final : public juce::Component,
                           private juce::ChangeListener
 {
 public:
-    AudioEditor(audio::PeakStore& peaks, engine::VocalService& vocal);
+    AudioEditor(audio::PeakStore& peaks, engine::VocalService& vocal, const Theme& theme = Theme::dark());
     ~AudioEditor() override;
 
     void setClip(const core::Project* project, core::Id trackId, core::Id clipId);
@@ -203,7 +203,7 @@ private:
     void nudgeSelection(float cents);
     void toggleMuteSelection();
 
-    const Theme& theme_ = Theme::dark();
+    const Theme& theme_;
     audio::PeakStore& peaks_;
     engine::VocalService& vocal_;
     const core::Project* project_ = nullptr;

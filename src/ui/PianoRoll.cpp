@@ -23,8 +23,8 @@ constexpr core::SamplePosition minNoteLength = 1;
 using core::isBlackKey;
 } // namespace
 
-PianoRoll::PianoRoll()
-    : selectTool_(theme_, Icon::pointer, "Select tool: move, resize and select notes  1"),
+PianoRoll::PianoRoll(const Theme& theme)
+    : theme_(theme), selectTool_(theme_, Icon::pointer, "Select tool: move, resize and select notes  1"),
       pencilTool_(theme_, Icon::pencil, "Pencil: click to add a note, drag to set its length  3"),
       eraseTool_(theme_, Icon::eraser, "Erase: click or sweep over notes to delete them  4"),
       link_(theme_, Icon::link, "Link zoom to the arrange view"),

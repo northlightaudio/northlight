@@ -44,7 +44,7 @@ namespace northlight::ui
 class PianoRoll final : public juce::Component, private juce::ScrollBar::Listener
 {
 public:
-    PianoRoll();
+    explicit PianoRoll(const Theme& theme = Theme::dark());
     ~PianoRoll() override;
 
     // The clip to edit (null project or a missing clip shows nothing).
@@ -227,7 +227,7 @@ private:
     void auditionNote(int note);
     void stopAudition();
 
-    const Theme& theme_ = Theme::dark();
+    const Theme& theme_;
     const core::Project* project_ = nullptr;
     core::TempoMap tempoMap_;
     core::Id trackId_ = core::invalidId, clipId_ = core::invalidId;
