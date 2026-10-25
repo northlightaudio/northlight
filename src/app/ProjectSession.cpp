@@ -366,30 +366,22 @@ void ProjectSession::conformClipTempo(core::Id trackId, core::Id clipId, double 
 bool ProjectSession::applyChecked(std::unique_ptr<core::Command> command)
 {
     // A command can arrive stale: a menu opened on a track that an undo has
-    // since removed. Commands check what they reference and throw; that drops
-    // the command instead of ending the app.
-    try
-    {
-        undo_.execute(project_, std::move(command));
+    // since removed. Commands check what they reference and fail without
+    // changing anything; the command is dropped.
+    const auto name = command->name();
+    if (undo_.execute(project_, std::move(command)))
         return true;
-    }
-    catch (const std::logic_error& e)
-    {
-        juce::Logger::writeToLog(juce::String("Dropped a stale edit: ") + e.what());
-        return false;
-    }
+    juce::Logger::writeToLog("Dropped a stale edit: " + juce::String::fromUTF8(name.c_str()));
+    return false;
 }
 
 void ProjectSession::undo()
 {
-    try
+    if (!undo_.canUndo())
+        return;
+    if (!undo_.undo(project_))
     {
-        if (!undo_.undo(project_))
-            return;
-    }
-    catch (const std::logic_error& e)
-    {
-        juce::Logger::writeToLog(juce::String("Could not undo: ") + e.what());
+        juce::Logger::writeToLog("Could not undo: " + juce::String::fromUTF8(undo_.undoName().c_str()));
         return;
     }
     // The engine work the undone command's kind needs, with the parameters it
@@ -402,14 +394,11 @@ void ProjectSession::undo()
 
 void ProjectSession::redo()
 {
-    try
+    if (!undo_.canRedo())
+        return;
+    if (!undo_.redo(project_))
     {
-        if (!undo_.redo(project_))
-            return;
-    }
-    catch (const std::logic_error& e)
-    {
-        juce::Logger::writeToLog(juce::String("Could not redo: ") + e.what());
+        juce::Logger::writeToLog("Could not redo: " + juce::String::fromUTF8(undo_.redoName().c_str()));
         return;
     }
     const auto* redone = undo_.undoTop();

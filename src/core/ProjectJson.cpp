@@ -28,6 +28,20 @@ std::vector<std::string> keysFor(const Insert& insert)
     return insert.paramKeys.size() == insert.params.size() ? insert.paramKeys : std::vector<std::string>{};
 }
 
+// Whether `entry` is an array whose first `count` elements are all numbers: a
+// note, point or event written as a tuple. One that is not (a hand-edited or
+// damaged file) is skipped, as an unknown controller kind is, rather than
+// failing the whole file.
+bool numberTuple(const json& entry, size_t count)
+{
+    if (!entry.is_array() || entry.size() < count)
+        return false;
+    for (size_t i = 0; i < count; ++i)
+        if (!entry[i].is_number())
+            return false;
+    return true;
+}
+
 const Insert* findChannelInsert(const Channel& c, Id insertId)
 {
     return const_cast<Channel&>(c).findInsert(insertId);
@@ -362,10 +376,11 @@ void channelFromJson(const json& j, Channel& c)
             insert.sidechain = i.value("sidechain", invalidId);
             insert.sidechainPostFader = insert.sidechain != invalidId && i.value("sidechainPostFader", false);
             if (const auto params = i.find("params"); params != i.end() && params->is_array())
-                for (const auto& v : *params)
-                    insert.params.push_back(v.get<float>());
+                for (const auto& v : *params) // positional: a value that is not a number reads 0
+                    insert.params.push_back(v.is_number() ? v.get<float>() : 0.0f);
             if (const auto keys = i.find("paramKeys");
-                keys != i.end() && keys->is_array() && keys->size() == insert.params.size())
+                keys != i.end() && keys->is_array() && keys->size() == insert.params.size() &&
+                std::all_of(keys->begin(), keys->end(), [](const json& k) { return k.is_string(); }))
                 for (const auto& k : *keys)
                     insert.paramKeys.push_back(k.get<std::string>());
             into.push_back(std::move(insert));
@@ -414,7 +429,7 @@ void channelFromJson(const json& j, Channel& c)
                 }
                 if (const auto points = l.find("points"); points != l.end() && points->is_array())
                     for (const auto& pt : *points)
-                        if (pt.is_array() && pt.size() >= 2)
+                        if (numberTuple(pt, 2))
                             lane.points.push_back({pt[0].get<SamplePosition>(), pt[1].get<float>()});
                 std::stable_sort(lane.points.begin(),
                                  lane.points.end(),
@@ -580,7 +595,7 @@ Track trackFromJson(const json& j)
             c.muted = cj.value("muted", false);
             if (const auto notes = cj.find("notes"); notes != cj.end() && notes->is_array())
                 for (const auto& nj : *notes)
-                    if (nj.is_array() && nj.size() == 5)
+                    if (nj.size() == 5 && numberTuple(nj, 5))
                         c.notes.push_back(MidiNote{nj[0].get<Id>(),
                                                    nj[1].get<int>(),
                                                    nj[2].get<int>(),
@@ -589,7 +604,8 @@ Track trackFromJson(const json& j)
             if (const auto ctl = cj.find("controllers"); ctl != cj.end() && ctl->is_array())
                 for (const auto& ej : *ctl)
                 {
-                    if (!ej.is_array() || ej.size() != 5 || !ej[1].is_string())
+                    if (!ej.is_array() || ej.size() != 5 || !ej[1].is_string() || !ej[0].is_number() ||
+                        !ej[2].is_number() || !ej[3].is_number() || !ej[4].is_number())
                         continue;
                     const auto type = controllerTypeFromName(ej[1].get<std::string>());
                     if (!type.has_value())
@@ -632,7 +648,7 @@ Track trackFromJson(const json& j)
                     g.takes.push_back(Take{clipFromJson(tj), tj.value("number", 1)});
             if (const auto comp = gj.find("comp"); comp != gj.end() && comp->is_array())
                 for (const auto& sj : *comp)
-                    if (sj.is_array() && sj.size() == 3)
+                    if (sj.size() == 3 && numberTuple(sj, 3))
                         g.comp.push_back(CompSegment{
                             sj[0].get<SamplePosition>(), sj[1].get<SamplePosition>(), sj[2].get<Id>()});
             if (const auto clips = gj.find("clips"); clips != gj.end() && clips->is_array())

@@ -106,7 +106,7 @@ TEST_CASE("Automation lanes, points and modes are undoable commands and survive 
     CHECK(p.tracks[0].findLane(laneId)->points.front().position == 0);
     CHECK(p.tracks[0].findLane(core::AutomationTarget::pan) != nullptr);
     // One lane per target.
-    CHECK_THROWS(undo.execute(p, std::make_unique<core::AddAutomationLane>(1, lane)));
+    CHECK_FALSE(undo.execute(p, std::make_unique<core::AddAutomationLane>(1, lane)));
 
     undo.execute(p,
                  std::make_unique<core::SetAutomationPoints>(

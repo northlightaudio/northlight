@@ -5,7 +5,6 @@
 
 #include <functional>
 #include <memory>
-#include <stdexcept>
 #include <string>
 #include <vector>
 
@@ -232,7 +231,7 @@ TEST_CASE("Buses, routing and sends are added, changed and undone", "[core][comm
     CHECK(p.tracks[0].height == 0);
     CHECK(p.master.gain == 1.0f);
 
-    CHECK_THROWS(SetOutputBus(track, 999).apply(p));
+    CHECK_FALSE(SetOutputBus(track, 999).apply(p));
 }
 
 TEST_CASE("A group of commands undoes as one step", "[core][command]")
@@ -259,19 +258,24 @@ TEST_CASE("A group of commands undoes as one step", "[core][command]")
 
 namespace
 {
-// Adds one to the project's tempo on apply; on revert takes it off, or throws when
+// Adds one to the project's tempo on apply; on revert takes it off, or fails when
 // asked to (a command whose target has gone).
 class Counting final : public Command
 {
 public:
     explicit Counting(bool failRevert = false) : failRevert_(failRevert) {}
     std::string name() const override { return "Count"; }
-    void apply(Project& p) override { p.tempoBpm += 1.0; }
-    void revert(Project& p) override
+    bool apply(Project& p) override
+    {
+        p.tempoBpm += 1.0;
+        return true;
+    }
+    bool revert(Project& p) override
     {
         if (failRevert_)
-            throw std::logic_error("gone");
+            return false;
         p.tempoBpm -= 1.0;
+        return true;
     }
 
 private:
@@ -291,7 +295,7 @@ TEST_CASE("An undo that fails part way leaves the project and the history as the
     undo.endGroup();
     REQUIRE(p.tempoBpm == 102.0);
 
-    CHECK_THROWS_AS(undo.undo(p), std::logic_error);
+    CHECK_FALSE(undo.undo(p));
     CHECK(p.tempoBpm == 102.0); // the member already reverted was applied again
     CHECK(undo.undoName() == "Both");
     CHECK_FALSE(undo.canRedo());
@@ -421,7 +425,7 @@ TEST_CASE("Moving a track reorders the list and undoes back", "[core][command]")
     CHECK(p.tracks[2].name == "Third");
     stack.redo(p);
     CHECK(p.trackIndex(first) == 2);
-    CHECK_THROWS(stack.execute(p, std::make_unique<MoveTrack>(Id{999999}, 0)));
+    CHECK_FALSE(stack.execute(p, std::make_unique<MoveTrack>(Id{999999}, 0)));
 }
 
 TEST_CASE("A fader group moves its members together, keeping their balance", "[core][command][group]")
@@ -485,8 +489,8 @@ TEST_CASE("A fader group moves its members together, keeping their balance", "[c
     CHECK(p.groups.empty());
     CHECK(p.tracks[0].group == invalidId);
 
-    CHECK_THROWS(SetChannelGroup(b, 999).apply(p));
-    CHECK_THROWS(SetGroupGain(999, 1.0f).apply(p));
+    CHECK_FALSE(SetChannelGroup(b, 999).apply(p));
+    CHECK_FALSE(SetGroupGain(999, 1.0f).apply(p));
 }
 
 TEST_CASE("An insert added between two others lands there as one undo step", "[core][command]")
@@ -584,17 +588,17 @@ TEST_CASE("An insert's sidechain source is set to an existing channel and undone
     clear.revert(p);
     CHECK(p.tracks[0].inserts[0].sidechain == kick);
     CHECK(p.tracks[0].inserts[0].sidechainPostFader);
-    CHECK_THROWS(SetInsertSidechain(track, id, 999).apply(p));
+    CHECK_FALSE(SetInsertSidechain(track, id, 999).apply(p));
     // A loop: keying the track from itself, or from a bus it feeds (directly or
     // through another key), is refused.
-    CHECK_THROWS(SetInsertSidechain(track, id, track).apply(p));
+    CHECK_FALSE(SetInsertSidechain(track, id, track).apply(p));
     Bus bus;
     bus.name = "Drums";
     stack.execute(p, std::make_unique<AddBus>(bus));
     const Id drums = p.buses[0].id;
     stack.execute(p, std::make_unique<SetOutputBus>(track, drums));
     CHECK(p.keyWouldCycle(track, drums));
-    CHECK_THROWS(SetInsertSidechain(track, id, drums).apply(p));
+    CHECK_FALSE(SetInsertSidechain(track, id, drums).apply(p));
     // The kick feeds the track's key, which feeds the bus: keying the kick from
     // the bus would loop; without that key it would not.
     CHECK(p.keyWouldCycle(kick, drums));
@@ -647,7 +651,7 @@ TEST_CASE("Clips split, join, duplicate, fade and crossfade with undo", "[core][
     CHECK(p.tracks[0].clips[1].sourceOffset == 450);
     CHECK(p.tracks[0].clips[1].fadeIn == 0);
     CHECK(p.tracks[0].clips[1].fadeOut == 30);
-    CHECK_THROWS(SplitClip(t, left, 1000).apply(p)); // not strictly inside
+    CHECK_FALSE(SplitClip(t, left, 1000).apply(p)); // not strictly inside
 
     // Join puts it back together.
     CHECK(JoinClips::canJoin(p.tracks[0].clips[0], p.tracks[0].clips[1]));
@@ -678,7 +682,7 @@ TEST_CASE("Clips split, join, duplicate, fade and crossfade with undo", "[core][
     stack.execute(p, std::make_unique<SetClipFades>(t, copy, 5000, 10));
     CHECK(p.tracks[0].clips[1].fadeIn == 600);
     CHECK(p.tracks[0].clips[1].fadeOut == 10);
-    CHECK_THROWS(CrossfadeClips(t, left, copy).apply(p));
+    CHECK_FALSE(CrossfadeClips(t, left, copy).apply(p));
     stack.execute(p, std::make_unique<MoveClip>(t, copy, t, 1500)); // now overlapping by 100
     stack.execute(p, std::make_unique<CrossfadeClips>(t, left, copy));
     CHECK(p.tracks[0].clips[0].fadeOut == 100);
@@ -756,7 +760,7 @@ TEST_CASE("Markers and regions are added, moved, renamed, removed and kept in or
     stack.undo(p);
     REQUIRE(p.markers.size() == 2);
     CHECK(p.findMarker(verse) != nullptr);
-    CHECK_THROWS(RemoveMarker(999).apply(p));
+    CHECK_FALSE(RemoveMarker(999).apply(p));
     while (stack.undo(p))
     {
     }
@@ -860,7 +864,7 @@ TEST_CASE("MIDI clips and notes are added, moved, trimmed, split, edited, quanti
     Track audio;
     audio.name = "Audio";
     stack.execute(p, std::make_unique<AddTrack>(audio));
-    CHECK_THROWS(MoveMidiClip(track, dupPtr->newClipId(), p.tracks[1].id, 0).apply(p));
+    CHECK_FALSE(MoveMidiClip(track, dupPtr->newClipId(), p.tracks[1].id, 0).apply(p));
     stack.execute(p, std::make_unique<MoveMidiClip>(track, dupPtr->newClipId(), track, 5000));
     CHECK(p.tracks[0].midiClips[1].start == 5000);
     stack.execute(p, std::make_unique<RemoveMidiClip>(track, dupPtr->newClipId()));
@@ -1563,7 +1567,7 @@ TEST_CASE("A lane can be pointed at another parameter, but not at one that alrea
     CHECK(p.tracks[0].automation[0].insert == invalidId);
 
     SetAutomationLaneTarget clash(Id{1}, Id{5}, AutomationTarget::pan, invalidId, 0);
-    CHECK_THROWS(clash.apply(p));
+    CHECK_FALSE(clash.apply(p));
 }
 
 TEST_CASE("Muting a clip keeps it on the timeline; undo and redo restore the state", "[core][command]")
@@ -1598,7 +1602,7 @@ TEST_CASE("Muting a clip keeps it on the timeline; undo and redo restore the sta
     stack.redo(p);
     CHECK(p.tracks[0].clips[0].muted);
     CHECK(SetClipMute(1, 10, false, false).name() == "Unmute clip");
-    CHECK_THROWS(SetClipMute(1, 20, false, true).apply(p)); // 20 is a MIDI clip, not an audio one
+    CHECK_FALSE(SetClipMute(1, 20, false, true).apply(p)); // 20 is a MIDI clip, not an audio one
 }
 
 TEST_CASE("Joining MIDI clips moves the later clip's notes and events into the earlier, across the gap",
@@ -1747,4 +1751,23 @@ TEST_CASE("A merged drag undoes and redoes like the ticks it replaced", "[core][
     CHECK(p == after);
     REQUIRE(stack.undo(p));
     CHECK(p == before);
+}
+
+TEST_CASE("A stale command fails and leaves the project as it was", "[core][command][undo]")
+{
+    Project p = projectWithTrack();
+    const Id track = p.tracks[0].id;
+    AudioClip clip;
+    clip.length = 100;
+    UndoStack stack;
+    REQUIRE(stack.execute(p, std::make_unique<AddClip>(track, clip)));
+    const Id clipId = p.tracks[0].clips[0].id;
+    const Project before = p;
+
+    // The destination is gone: the clip stays where it is.
+    CHECK_FALSE(stack.execute(p, std::make_unique<MoveClip>(track, clipId, Id{999}, 50)));
+    CHECK_FALSE(stack.execute(p, std::make_unique<SetTrackGain>(Id{999}, 0.5f)));
+    CHECK_FALSE(stack.execute(p, std::make_unique<SetClipGain>(track, Id{999}, 0.5f)));
+    CHECK(p == before);
+    CHECK(stack.undoName() == "Add clip");
 }

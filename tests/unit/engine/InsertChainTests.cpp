@@ -316,10 +316,10 @@ TEST_CASE("Routing and send cycles are refused at the command layer", "[core][co
     CHECK(p.wouldCycle(3, 1)); // C -> A would close the loop
     CHECK(p.wouldCycle(2, 2)); // a bus to itself
     CHECK(p.wouldCycle(3, 2)); // C -> B closes B -> C -> B
-    CHECK_THROWS(core::SetOutputBus(3, 1).apply(p));
-    CHECK_THROWS(core::SetSend(3, 1, 1.0f, false).apply(p));
-    CHECK_THROWS(core::SetSend(2, 2, 1.0f, false).apply(p));
-    CHECK_THROWS(core::SetOutputBus(1, 1).apply(p));
+    CHECK_FALSE(core::SetOutputBus(3, 1).apply(p));
+    CHECK_FALSE(core::SetSend(3, 1, 1.0f, false).apply(p));
+    CHECK_FALSE(core::SetSend(2, 2, 1.0f, false).apply(p));
+    CHECK_FALSE(core::SetOutputBus(1, 1).apply(p));
     // Undo leaves the routing exactly as it was.
     stack.undo(p);
     stack.undo(p);
@@ -354,7 +354,7 @@ TEST_CASE("Insert commands undo exactly and round-trip through JSON", "[core][co
     REQUIRE(back.has_value());
     CHECK(*back == p);
     // A used id is refused; a duplicated id in a file is repaired on load.
-    CHECK_THROWS(core::AddInsert(1, gainInsert(id, 0.0f)).apply(p));
+    CHECK_FALSE(core::AddInsert(1, gainInsert(id, 0.0f)).apply(p));
     auto dup = p;
     dup.tracks[0].inserts.push_back(gainInsert(id, 0.0f));
     const auto repaired = core::projectFromJson(core::projectToJson(dup));

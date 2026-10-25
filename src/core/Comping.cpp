@@ -2,21 +2,12 @@
 
 #include <algorithm>
 #include <cmath>
-#include <stdexcept>
 
 namespace northlight::core
 {
 
 namespace
 {
-Track& trackOrThrow(Project& p, Id id)
-{
-    auto* t = p.findTrack(id);
-    if (t == nullptr)
-        throw std::logic_error("command references a track that does not exist");
-    return *t;
-}
-
 void sortGroups(Track& t)
 {
     std::stable_sort(t.takeGroups.begin(),
@@ -211,9 +202,12 @@ bool recordingMakesTakes(const Track& track, const std::vector<AudioClip>& passe
 
 TakeGroupEdit::TakeGroupEdit(Id trackId, Id groupId) : trackId_(trackId), groupId_(groupId) {}
 
-void TakeGroupEdit::apply(Project& p)
+bool TakeGroupEdit::apply(Project& p)
 {
-    auto& t = trackOrThrow(p, trackId_);
+    auto* track = p.findTrack(trackId_);
+    if (track == nullptr)
+        return false;
+    auto& t = *track;
     if (!computed_)
     {
         computed_ = true;
@@ -226,7 +220,7 @@ void TakeGroupEdit::apply(Project& p)
             if (found == nullptr)
             {
                 result_ = Result::refuse;
-                return;
+                return true;
             }
             before_ = *found;
             g = *found;
@@ -238,7 +232,7 @@ void TakeGroupEdit::apply(Project& p)
         }
         result_ = edit(p, t, g);
         if (result_ == Result::refuse)
-            return;
+            return true;
         groupId_ = g.id;
         if (result_ == Result::rebuild)
         {
@@ -262,7 +256,7 @@ void TakeGroupEdit::apply(Project& p)
         }
     }
     if (result_ == Result::refuse)
-        return;
+        return true;
 
     removed_.clear();
     if (before_ && result_ != Result::flatten)
@@ -279,13 +273,17 @@ void TakeGroupEdit::apply(Project& p)
     for (const auto& c : added_)
         t.clips.push_back(c);
     t.sortClips();
+    return true;
 }
 
-void TakeGroupEdit::revert(Project& p)
+bool TakeGroupEdit::revert(Project& p)
 {
     if (result_ == Result::refuse)
-        return;
-    auto& t = trackOrThrow(p, trackId_);
+        return true;
+    auto* track = p.findTrack(trackId_);
+    if (track == nullptr)
+        return false;
+    auto& t = *track;
     for (const auto& c : added_)
         std::erase_if(t.clips, [&c](const AudioClip& clip) { return clip.id == c.id; });
     std::erase_if(t.takeGroups, [this](const TakeGroup& g) { return g.id == groupId_; });
@@ -295,6 +293,7 @@ void TakeGroupEdit::revert(Project& p)
     for (const auto& c : removed_)
         t.clips.push_back(c);
     t.sortClips();
+    return true;
 }
 
 // ----- the comp commands -----------------------------------------------------------------------
@@ -420,19 +419,27 @@ SetTakeLanesExpanded::SetTakeLanesExpanded(Id trackId, Id groupId, bool expanded
 {
 }
 
-void SetTakeLanesExpanded::apply(Project& p)
+bool SetTakeLanesExpanded::apply(Project& p)
 {
-    if (auto* g = trackOrThrow(p, trackId_).findTakeGroup(groupId_))
+    auto* t = p.findTrack(trackId_);
+    if (t == nullptr)
+        return false;
+    if (auto* g = t->findTakeGroup(groupId_))
     {
         previous_ = g->expanded;
         g->expanded = expanded_;
     }
+    return true;
 }
 
-void SetTakeLanesExpanded::revert(Project& p)
+bool SetTakeLanesExpanded::revert(Project& p)
 {
-    if (auto* g = trackOrThrow(p, trackId_).findTakeGroup(groupId_))
+    auto* t = p.findTrack(trackId_);
+    if (t == nullptr)
+        return false;
+    if (auto* g = t->findTakeGroup(groupId_))
         g->expanded = previous_;
+    return true;
 }
 
 RemoveTakeGroup::RemoveTakeGroup(Id trackId, Id groupId) : TakeGroupEdit(trackId, groupId) {}
@@ -447,12 +454,17 @@ MoveTakeGroup::MoveTakeGroup(Id fromTrackId, Id groupId, Id toTrackId, SamplePos
 {
 }
 
-void MoveTakeGroup::move(Project& p, Id from, Id to, SamplePosition delta)
+bool MoveTakeGroup::move(Project& p, Id from, Id to, SamplePosition delta)
 {
-    auto& source = trackOrThrow(p, from);
+    auto* sourceTrack = p.findTrack(from);
+    auto* targetTrack = p.findTrack(to);
+    if (sourceTrack == nullptr || targetTrack == nullptr)
+        return false;
+    auto& source = *sourceTrack;
+    auto& target = *targetTrack;
     auto* found = source.findTakeGroup(groupId_);
     if (found == nullptr)
-        return;
+        return true;
     TakeGroup g = std::move(*found);
     std::erase_if(source.takeGroups, [this](const TakeGroup& x) { return x.id == groupId_; });
     std::vector<AudioClip> clips;
@@ -470,7 +482,6 @@ void MoveTakeGroup::move(Project& p, Id from, Id to, SamplePosition delta)
         s.start += delta;
         s.end += delta;
     }
-    auto& target = trackOrThrow(p, to);
     for (auto& c : clips)
     {
         c.start += delta;
@@ -479,29 +490,31 @@ void MoveTakeGroup::move(Project& p, Id from, Id to, SamplePosition delta)
     target.takeGroups.push_back(std::move(g));
     sortGroups(target);
     target.sortClips();
+    return true;
 }
 
-void MoveTakeGroup::apply(Project& p)
+bool MoveTakeGroup::apply(Project& p)
 {
-    const auto& from = trackOrThrow(p, fromTrackId_);
-    const auto* group = from.findTakeGroup(groupId_);
-    moved_ = group != nullptr && trackOrThrow(p, toTrackId_).hasAudio() &&
-             !trackOrThrow(p, toTrackId_).isInstrument() && !trackOrThrow(p, toTrackId_).isAux();
+    const auto* from = p.findTrack(fromTrackId_);
+    const auto* to = p.findTrack(toTrackId_);
+    if (from == nullptr || to == nullptr)
+        return false;
+    const auto* group = from->findTakeGroup(groupId_);
+    moved_ = group != nullptr && to->hasAudio() && !to->isInstrument() && !to->isAux();
     if (!moved_)
-        return;
+        return true;
     // Pinned at zero: neither a take nor a comp clip may start before it.
     SamplePosition earliest = group->start();
-    for (const auto& c : from.clips)
+    for (const auto& c : from->clips)
         if (group->ownsClip(c.id))
             earliest = std::min(earliest, c.start);
     applied_ = std::max(delta_, -earliest);
-    move(p, fromTrackId_, toTrackId_, applied_);
+    return move(p, fromTrackId_, toTrackId_, applied_);
 }
 
-void MoveTakeGroup::revert(Project& p)
+bool MoveTakeGroup::revert(Project& p)
 {
-    if (moved_)
-        move(p, toTrackId_, fromTrackId_, -applied_);
+    return !moved_ || move(p, toTrackId_, fromTrackId_, -applied_);
 }
 
 std::vector<std::unique_ptr<Command>>

@@ -74,8 +74,8 @@ TEST_CASE("Folders nest, hide, mute and solo what they hold", "[core][folder]")
     p.findTrack(innerId)->solo = true;
     CHECK(p.soloedByFolder(*p.findTrack(kick->id)));
     // A folder cannot go inside itself or a folder it holds.
-    CHECK_THROWS(SetTrackFolder(outerId, innerId).apply(p));
-    CHECK_THROWS(SetTrackFolder(outerId, outerId).apply(p));
+    CHECK_FALSE(SetTrackFolder(outerId, innerId).apply(p));
+    CHECK_FALSE(SetTrackFolder(outerId, outerId).apply(p));
     // Moving out of a folder.
     stack.execute(p, std::make_unique<SetTrackFolder>(kick->id, invalidId));
     CHECK(p.folderOf(*p.findTrack(kick->id)) == nullptr);
@@ -93,7 +93,7 @@ TEST_CASE("Freezing a track is a command; only tracks with audio freeze", "[core
     CHECK(p.tracks[0].isFrozen());
     stack.undo(p);
     CHECK_FALSE(p.tracks[0].isFrozen());
-    CHECK_THROWS(SetTrackFrozen(midi.id, "x.wav").apply(p));
+    CHECK_FALSE(SetTrackFrozen(midi.id, "x.wav").apply(p));
 }
 
 TEST_CASE("The freeze render hears only the frozen track before its fader", "[core][freeze]")

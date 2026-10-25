@@ -5,7 +5,6 @@
 #include <algorithm>
 #include <cmath>
 #include <cstddef>
-#include <stdexcept>
 #include <utility>
 
 namespace northlight::core
@@ -18,37 +17,29 @@ class UndoStack::Group final : public Command
 public:
     explicit Group(std::string name) : name_(std::move(name)) {}
     std::string name() const override { return name_; }
-    // All or nothing: a member that fails (it throws) has the members before it
-    // put back, so the project is as it was and the group stays where it is.
-    void apply(Project& p) override
+    // All or nothing: a member that fails has the members before it put back,
+    // so the project is as it was and the group stays where it is.
+    bool apply(Project& p) override
     {
-        size_t done = 0;
-        try
-        {
-            for (; done < commands_.size(); ++done)
-                commands_[done]->apply(p);
-        }
-        catch (...)
-        {
-            while (done > 0)
-                commands_[--done]->revert(p);
-            throw;
-        }
+        for (size_t done = 0; done < commands_.size(); ++done)
+            if (!commands_[done]->apply(p))
+            {
+                while (done > 0)
+                    commands_[--done]->revert(p);
+                return false;
+            }
+        return true;
     }
-    void revert(Project& p) override
+    bool revert(Project& p) override
     {
-        size_t done = 0;
-        try
-        {
-            for (; done < commands_.size(); ++done)
-                commands_[commands_.size() - 1 - done]->revert(p);
-        }
-        catch (...)
-        {
-            while (done > 0)
-                commands_[commands_.size() - done--]->apply(p);
-            throw;
-        }
+        for (size_t done = 0; done < commands_.size(); ++done)
+            if (!commands_[commands_.size() - 1 - done]->revert(p))
+            {
+                while (done > 0)
+                    commands_[commands_.size() - done--]->apply(p);
+                return false;
+            }
+        return true;
     }
     // A member that sets what the last one set (a drag's next tick) folds
     // into it, so a gesture keeps one command per field, not one per tick.
@@ -96,15 +87,15 @@ private:
 UndoStack::UndoStack() = default;
 UndoStack::~UndoStack() = default;
 
-void UndoStack::execute(Project& project, std::unique_ptr<Command> command)
+bool UndoStack::execute(Project& project, std::unique_ptr<Command> command)
 {
-    command->apply(project);
+    if (!command->apply(project))
+        return false;
     if (openGroup_ != nullptr)
-    {
         openGroup_->add(std::move(command));
-        return;
-    }
-    push(std::move(command));
+    else
+        push(std::move(command));
+    return true;
 }
 
 void UndoStack::push(std::unique_ptr<Command> command)
@@ -132,7 +123,8 @@ bool UndoStack::undo(Project& project)
     if (undo_.empty())
         return false;
     // Revert first: a command that fails stays on the undo side.
-    undo_.back()->revert(project);
+    if (!undo_.back()->revert(project))
+        return false;
     redo_.push_back(std::move(undo_.back()));
     undo_.pop_back();
     return true;
@@ -142,7 +134,8 @@ bool UndoStack::redo(Project& project)
 {
     if (redo_.empty())
         return false;
-    redo_.back()->apply(project);
+    if (!redo_.back()->apply(project))
+        return false;
     undo_.push_back(std::move(redo_.back()));
     redo_.pop_back();
     return true;
@@ -188,43 +181,28 @@ void UndoStack::endGroup()
 
 // ----- helpers ----------------------------------------------------------------------------
 
-void detail::staleTarget()
-{
-    throw std::logic_error("command references something that does not exist");
-}
-
 namespace
 {
-Track& requireTrack(Project& p, Id id)
+// Two-level lookups (null when either is gone).
+AudioClip* findClip(Project& p, Id track, Id clip) noexcept
 {
-    auto* t = p.findTrack(id);
-    if (t == nullptr)
-        throw std::logic_error("command references a track that does not exist");
-    return *t;
+    return OnClip{track, clip}.find(p);
 }
 
-Channel& requireChannel(Project& p, Id id)
+MidiClip* findMidiClip(Project& p, Id track, Id clip) noexcept
 {
-    auto* c = p.findChannel(id);
-    if (c == nullptr)
-        throw std::logic_error("command references a channel that does not exist");
-    return *c;
+    auto* t = p.findTrack(track);
+    return t != nullptr ? t->findMidiClip(clip) : nullptr;
 }
 
-Bus& requireBus(Project& p, Id id)
+Insert* findInsert(Project& p, Id channel, Id insert) noexcept
 {
-    auto* b = p.findBus(id);
-    if (b == nullptr)
-        throw std::logic_error("command references a bus that does not exist");
-    return *b;
+    return OnInsert{channel, insert}.find(p);
 }
 
-AudioClip& requireClip(Track& t, Id id)
+AutomationLane* findLane(Project& p, Id channel, Id lane) noexcept
 {
-    auto* c = t.findClip(id);
-    if (c == nullptr)
-        throw std::logic_error("command references a clip that does not exist");
-    return *c;
+    return OnLane{channel, lane}.find(p);
 }
 
 // Gives a new channel, and each of its parts that has none, an id. Ids
@@ -277,20 +255,22 @@ void AddTrack::setDefaultStrip(const std::vector<Insert>& modules)
         track_.strip = modules;
 }
 
-void AddTrack::apply(Project& p)
+bool AddTrack::apply(Project& p)
 {
     allocateIds(p, track_);
     const int at =
         index_ < 0 || index_ > static_cast<int>(p.tracks.size()) ? static_cast<int>(p.tracks.size()) : index_;
     index_ = at;
     p.tracks.insert(p.tracks.begin() + at, track_);
+    return true;
 }
 
-void AddTrack::revert(Project& p)
+bool AddTrack::revert(Project& p)
 {
     const int i = p.trackIndex(track_.id);
     if (i >= 0)
         p.tracks.erase(p.tracks.begin() + i);
+    return true;
 }
 
 AddInstrumentTrack::AddInstrumentTrack(Track instrumentChannel, Track midiTrack, int index)
@@ -306,7 +286,7 @@ void AddInstrumentTrack::setDefaultStrip(const std::vector<Insert>& modules)
         channel_.strip = modules;
 }
 
-void AddInstrumentTrack::apply(Project& p)
+bool AddInstrumentTrack::apply(Project& p)
 {
     allocateIds(p, midi_);
     allocateIds(p, channel_);
@@ -316,11 +296,13 @@ void AddInstrumentTrack::apply(Project& p)
     index_ = at;
     p.tracks.insert(p.tracks.begin() + at, channel_);
     p.tracks.insert(p.tracks.begin() + at, midi_); // the MIDI track above its instrument
+    return true;
 }
 
-void AddInstrumentTrack::revert(Project& p)
+bool AddInstrumentTrack::revert(Project& p)
 {
     std::erase_if(p.tracks, [this](const Track& t) { return t.id == midi_.id || t.id == channel_.id; });
+    return true;
 }
 
 SetMidiTarget::SetMidiTarget(Id trackId, Id target, int midiChannel)
@@ -328,24 +310,26 @@ SetMidiTarget::SetMidiTarget(Id trackId, Id target, int midiChannel)
 {
 }
 
-void SetMidiTarget::apply(Project& p)
+bool SetMidiTarget::apply(Project& p)
 {
     auto* t = p.findTrack(trackId_);
     if (t == nullptr || !t->isMidi())
-        throw std::logic_error("command references a MIDI track that does not exist");
+        return false;
     previousTarget_ = t->midiTarget;
     previousChannel_ = t->midiChannel;
     t->midiTarget = target_;
     t->midiChannel = channel_;
+    return true;
 }
 
-void SetMidiTarget::revert(Project& p)
+bool SetMidiTarget::revert(Project& p)
 {
     if (auto* t = p.findTrack(trackId_))
     {
         t->midiTarget = previousTarget_;
         t->midiChannel = previousChannel_;
     }
+    return true;
 }
 
 RemoveTrack::RemoveTrack(Id trackId) : trackId_(trackId) {}
@@ -399,41 +383,45 @@ void DetachedReferences::restore(Project& p, Id removed) const
                 insert->sidechain = removed;
 }
 
-void RemoveTrack::apply(Project& p)
+bool RemoveTrack::apply(Project& p)
 {
     index_ = p.trackIndex(trackId_);
     if (index_ < 0)
-        throw std::logic_error("command references a track that does not exist");
+        return false;
     removed_ = p.tracks[static_cast<size_t>(index_)];
     p.tracks.erase(p.tracks.begin() + index_);
     detached_.detach(p, trackId_);
+    return true;
 }
 
-void RemoveTrack::revert(Project& p)
+bool RemoveTrack::revert(Project& p)
 {
     const int at = std::clamp(index_, 0, static_cast<int>(p.tracks.size()));
     p.tracks.insert(p.tracks.begin() + at, removed_);
     detached_.restore(p, trackId_);
+    return true;
 }
 
 MoveTrack::MoveTrack(Id trackId, int newIndex) : trackId_(trackId), newIndex_(newIndex) {}
 
-void MoveTrack::apply(Project& p)
+bool MoveTrack::apply(Project& p)
 {
     oldIndex_ = p.trackIndex(trackId_);
     if (oldIndex_ < 0)
-        throw std::logic_error("command references a track that does not exist");
+        return false;
     newIndex_ = std::clamp(newIndex_, 0, static_cast<int>(p.tracks.size()) - 1);
     Track moved = std::move(p.tracks[static_cast<size_t>(oldIndex_)]);
     p.tracks.erase(p.tracks.begin() + oldIndex_);
     p.tracks.insert(p.tracks.begin() + newIndex_, std::move(moved));
+    return true;
 }
 
-void MoveTrack::revert(Project& p)
+bool MoveTrack::revert(Project& p)
 {
     Track moved = std::move(p.tracks[static_cast<size_t>(newIndex_)]);
     p.tracks.erase(p.tracks.begin() + newIndex_);
     p.tracks.insert(p.tracks.begin() + oldIndex_, std::move(moved));
+    return true;
 }
 
 AddBus::AddBus(Bus bus, int index) : bus_(std::move(bus)), index_(index) {}
@@ -444,29 +432,31 @@ void AddBus::setDefaultStrip(const std::vector<Insert>& modules)
         bus_.strip = modules;
 }
 
-void AddBus::apply(Project& p)
+bool AddBus::apply(Project& p)
 {
     allocateIds(p, bus_);
     const int at =
         index_ < 0 || index_ > static_cast<int>(p.buses.size()) ? static_cast<int>(p.buses.size()) : index_;
     index_ = at;
     p.buses.insert(p.buses.begin() + at, bus_);
+    return true;
 }
 
-void AddBus::revert(Project& p)
+bool AddBus::revert(Project& p)
 {
     const int i = p.busIndex(bus_.id);
     if (i >= 0)
         p.buses.erase(p.buses.begin() + i);
+    return true;
 }
 
 RemoveBus::RemoveBus(Id busId) : busId_(busId) {}
 
-void RemoveBus::apply(Project& p)
+bool RemoveBus::apply(Project& p)
 {
     index_ = p.busIndex(busId_);
     if (index_ < 0)
-        throw std::logic_error("command references a bus that does not exist");
+        return false;
     removed_ = p.buses[static_cast<size_t>(index_)];
     detachedOutputs_.clear();
     detachedSends_.clear();
@@ -495,9 +485,10 @@ void RemoveBus::apply(Project& p)
             detach(b);
     p.buses.erase(p.buses.begin() + index_);
     detached_.detach(p, busId_);
+    return true;
 }
 
-void RemoveBus::revert(Project& p)
+bool RemoveBus::revert(Project& p)
 {
     const int at = std::clamp(index_, 0, static_cast<int>(p.buses.size()));
     p.buses.insert(p.buses.begin() + at, removed_);
@@ -511,28 +502,13 @@ void RemoveBus::revert(Project& p)
         if (auto* c = p.findChannel(d.channel))
             c->sends.insert(
                 c->sends.begin() + static_cast<std::ptrdiff_t>(std::min(d.index, c->sends.size())), d.send);
+    return true;
 }
 
 // ----- MIDI ----------------------------------------------------------------------------------
 
 namespace
 {
-MidiClip& requireMidiClip(Track& t, Id id)
-{
-    auto* c = t.findMidiClip(id);
-    if (c == nullptr)
-        throw std::logic_error("command references a MIDI clip that does not exist");
-    return *c;
-}
-
-MidiNote& requireNote(MidiClip& c, Id id)
-{
-    auto* n = c.findNote(id);
-    if (n == nullptr)
-        throw std::logic_error("command references a note that does not exist");
-    return *n;
-}
-
 void clampNote(MidiNote& n)
 {
     n.note = std::clamp(n.note, 0, 127);
@@ -550,9 +526,11 @@ void clampController(MidiControllerEvent& e)
 } // namespace
 
 AddMidiClip::AddMidiClip(Id trackId, MidiClip clip) : trackId_(trackId), clip_(std::move(clip)) {}
-void AddMidiClip::apply(Project& p)
+bool AddMidiClip::apply(Project& p)
 {
-    auto& t = requireTrack(p, trackId_);
+    auto* t = p.findTrack(trackId_);
+    if (t == nullptr)
+        return false;
     if (clip_.id == invalidId)
         clip_.id = p.allocateId();
     for (auto& n : clip_.notes)
@@ -571,106 +549,142 @@ void AddMidiClip::apply(Project& p)
     clip_.length = std::max<SamplePosition>(0, clip_.length);
     clip_.sortNotes();
     clip_.sortControllers();
-    t.midiClips.push_back(clip_);
-    t.sortMidiClips();
+    t->midiClips.push_back(clip_);
+    t->sortMidiClips();
+    return true;
 }
-void AddMidiClip::revert(Project& p)
+bool AddMidiClip::revert(Project& p)
 {
-    auto& t = requireTrack(p, trackId_);
-    std::erase_if(t.midiClips, [this](const MidiClip& c) { return c.id == clip_.id; });
+    auto* t = p.findTrack(trackId_);
+    if (t == nullptr)
+        return false;
+    std::erase_if(t->midiClips, [this](const MidiClip& c) { return c.id == clip_.id; });
+    return true;
 }
 
 RemoveMidiClip::RemoveMidiClip(Id trackId, Id clipId) : trackId_(trackId), clipId_(clipId) {}
-void RemoveMidiClip::apply(Project& p)
+bool RemoveMidiClip::apply(Project& p)
 {
-    auto& t = requireTrack(p, trackId_);
-    removed_ = requireMidiClip(t, clipId_);
-    std::erase_if(t.midiClips, [this](const MidiClip& c) { return c.id == clipId_; });
+    auto* t = p.findTrack(trackId_);
+    if (t == nullptr)
+        return false;
+    const auto* found = t->findMidiClip(clipId_);
+    if (found == nullptr)
+        return false;
+    removed_ = *found;
+    std::erase_if(t->midiClips, [this](const MidiClip& c) { return c.id == clipId_; });
+    return true;
 }
-void RemoveMidiClip::revert(Project& p)
+bool RemoveMidiClip::revert(Project& p)
 {
-    auto& t = requireTrack(p, trackId_);
-    t.midiClips.push_back(removed_);
-    t.sortMidiClips();
+    auto* t = p.findTrack(trackId_);
+    if (t == nullptr)
+        return false;
+    t->midiClips.push_back(removed_);
+    t->sortMidiClips();
+    return true;
 }
 
 MoveMidiClip::MoveMidiClip(Id fromTrackId, Id clipId, Id toTrackId, SamplePosition newStart)
     : fromTrackId_(fromTrackId), clipId_(clipId), toTrackId_(toTrackId), newStart_(newStart)
 {
 }
-void MoveMidiClip::apply(Project& p)
+bool MoveMidiClip::apply(Project& p)
 {
-    auto& from = requireTrack(p, fromTrackId_);
-    auto& to = requireTrack(p, toTrackId_);
-    if (!to.isMidi())
-        throw std::logic_error("a MIDI clip can only live on a MIDI track");
-    MidiClip clip = requireMidiClip(from, clipId_);
+    auto* from = p.findTrack(fromTrackId_);
+    auto* to = p.findTrack(toTrackId_);
+    if (from == nullptr || to == nullptr || !to->isMidi()) // a MIDI clip only lives on a MIDI track
+        return false;
+    const auto* found = from->findMidiClip(clipId_);
+    if (found == nullptr)
+        return false;
+    MidiClip clip = *found;
     previousStart_ = clip.start;
     clip.start = std::max<SamplePosition>(0, newStart_);
-    std::erase_if(from.midiClips, [this](const MidiClip& c) { return c.id == clipId_; });
-    to.midiClips.push_back(clip);
-    to.sortMidiClips();
+    std::erase_if(from->midiClips, [this](const MidiClip& c) { return c.id == clipId_; });
+    to->midiClips.push_back(clip);
+    to->sortMidiClips();
+    return true;
 }
-void MoveMidiClip::revert(Project& p)
+bool MoveMidiClip::revert(Project& p)
 {
-    auto& to = requireTrack(p, toTrackId_);
-    MidiClip clip = requireMidiClip(to, clipId_);
+    auto* to = p.findTrack(toTrackId_);
+    auto* from = p.findTrack(fromTrackId_);
+    const auto* found = to != nullptr ? to->findMidiClip(clipId_) : nullptr;
+    if (found == nullptr || from == nullptr)
+        return false;
+    MidiClip clip = *found;
     clip.start = previousStart_;
-    std::erase_if(to.midiClips, [this](const MidiClip& c) { return c.id == clipId_; });
-    auto& from = requireTrack(p, fromTrackId_);
-    from.midiClips.push_back(clip);
-    from.sortMidiClips();
+    std::erase_if(to->midiClips, [this](const MidiClip& c) { return c.id == clipId_; });
+    from->midiClips.push_back(clip);
+    from->sortMidiClips();
+    return true;
 }
 
 TrimMidiClip::TrimMidiClip(Id trackId, Id clipId, SamplePosition start, SamplePosition length)
     : trackId_(trackId), clipId_(clipId), start_(start), length_(length)
 {
 }
-void TrimMidiClip::apply(Project& p)
+bool TrimMidiClip::apply(Project& p)
 {
-    auto& t = requireTrack(p, trackId_);
-    auto& c = requireMidiClip(t, clipId_);
-    previous_ = c;
+    auto* t = p.findTrack(trackId_);
+    if (t == nullptr)
+        return false;
+    auto* c = t->findMidiClip(clipId_);
+    if (c == nullptr)
+        return false;
+    previous_ = *c;
     const auto newStart = std::max<SamplePosition>(0, start_);
-    const auto shift = c.start - newStart; // notes move the other way to stay put
-    for (auto& n : c.notes)
+    const auto shift = c->start - newStart; // notes move the other way to stay put
+    for (auto& n : c->notes)
         n.start += shift;
-    for (auto& e : c.controllers) // before the start (negative) they still set the opening value
+    for (auto& e : c->controllers) // before the start (negative) they still set the opening value
         e.time += shift;
-    c.start = newStart;
-    c.length = std::max<SamplePosition>(0, length_);
-    t.sortMidiClips();
+    c->start = newStart;
+    c->length = std::max<SamplePosition>(0, length_);
+    t->sortMidiClips();
+    return true;
 }
-void TrimMidiClip::revert(Project& p)
+bool TrimMidiClip::revert(Project& p)
 {
-    auto& t = requireTrack(p, trackId_);
-    requireMidiClip(t, clipId_) = previous_;
-    t.sortMidiClips();
+    auto* t = p.findTrack(trackId_);
+    if (t == nullptr)
+        return false;
+    auto* found = t->findMidiClip(clipId_);
+    if (found == nullptr)
+        return false;
+    *found = previous_;
+    t->sortMidiClips();
+    return true;
 }
 
 SplitMidiClip::SplitMidiClip(Id trackId, Id clipId, SamplePosition at)
     : trackId_(trackId), clipId_(clipId), at_(at)
 {
 }
-void SplitMidiClip::apply(Project& p)
+bool SplitMidiClip::apply(Project& p)
 {
-    auto& t = requireTrack(p, trackId_);
-    auto& c = requireMidiClip(t, clipId_);
-    if (at_ <= c.start || at_ >= c.end())
-        throw std::logic_error("split point is not inside the clip");
-    original_ = c;
-    const auto offset = at_ - c.start; // the split, clip-relative
+    auto* t = p.findTrack(trackId_);
+    if (t == nullptr)
+        return false;
+    auto* c = t->findMidiClip(clipId_);
+    if (c == nullptr)
+        return false;
+    if (at_ <= c->start || at_ >= c->end())
+        return false;
+    original_ = *c;
+    const auto offset = at_ - c->start; // the split, clip-relative
     if (right_.id == invalidId)
         right_.id = p.allocateId();
-    right_.name = c.name;
+    right_.name = c->name;
     right_.start = at_;
-    right_.length = c.end() - at_;
+    right_.length = c->end() - at_;
     right_.notes.clear();
     right_.controllers.clear();
     // The right part opens with each controller's value at the split, unless an
     // event of that controller falls exactly on it.
     std::vector<MidiControllerEvent> opening;
-    for (const auto& e : c.controllers)
+    for (const auto& e : c->controllers)
     {
         if (e.time >= offset)
             break; // sorted by time
@@ -686,8 +700,8 @@ void SplitMidiClip::apply(Project& p)
                   [&](const MidiControllerEvent& o)
                   {
                       return o.type == MidiControllerType::polyPressure ||
-                             std::any_of(c.controllers.begin(),
-                                         c.controllers.end(),
+                             std::any_of(c->controllers.begin(),
+                                         c->controllers.end(),
                                          [&](const MidiControllerEvent& e)
                                          { return e.time == offset && e.sameLane(o.type, o.number); });
                   });
@@ -701,7 +715,7 @@ void SplitMidiClip::apply(Project& p)
         right_.controllers.push_back(e);
     }
     std::vector<MidiControllerEvent> leftControllers;
-    for (const auto& e : c.controllers)
+    for (const auto& e : c->controllers)
     {
         if (e.time >= offset)
         {
@@ -712,9 +726,9 @@ void SplitMidiClip::apply(Project& p)
         else
             leftControllers.push_back(e);
     }
-    c.controllers = std::move(leftControllers);
+    c->controllers = std::move(leftControllers);
     std::vector<MidiNote> left;
-    for (const auto& n : c.notes)
+    for (const auto& n : c->notes)
     {
         if (n.start >= offset)
         {
@@ -729,44 +743,59 @@ void SplitMidiClip::apply(Project& p)
             left.push_back(kept);
         }
     }
-    c.notes = std::move(left);
-    c.length = offset;
-    t.midiClips.push_back(right_);
-    t.sortMidiClips();
+    c->notes = std::move(left);
+    c->length = offset;
+    t->midiClips.push_back(right_);
+    t->sortMidiClips();
+    return true;
 }
-void SplitMidiClip::revert(Project& p)
+bool SplitMidiClip::revert(Project& p)
 {
-    auto& t = requireTrack(p, trackId_);
-    std::erase_if(t.midiClips, [this](const MidiClip& c) { return c.id == right_.id; });
-    requireMidiClip(t, clipId_) = original_;
-    t.sortMidiClips();
+    auto* t = p.findTrack(trackId_);
+    if (t == nullptr)
+        return false;
+    auto* found = t->findMidiClip(clipId_);
+    if (found == nullptr)
+        return false;
+    std::erase_if(t->midiClips, [this](const MidiClip& c) { return c.id == right_.id; });
+    *found = original_;
+    t->sortMidiClips();
+    return true;
 }
 
 DuplicateMidiClip::DuplicateMidiClip(Id trackId, Id clipId, SamplePosition at)
     : trackId_(trackId), clipId_(clipId), at_(at)
 {
 }
-void DuplicateMidiClip::apply(Project& p)
+bool DuplicateMidiClip::apply(Project& p)
 {
-    auto& t = requireTrack(p, trackId_);
-    const auto& c = requireMidiClip(t, clipId_);
+    auto* t = p.findTrack(trackId_);
+    if (t == nullptr)
+        return false;
+    const auto* c = t->findMidiClip(clipId_);
+    if (c == nullptr)
+        return false;
     const bool fresh = copy_.id == invalidId;
     const auto keep = copy_;
-    copy_ = c;
+    copy_ = *c;
     copy_.id = fresh ? p.allocateId() : keep.id;
     for (size_t i = 0; i < copy_.notes.size(); ++i)
         copy_.notes[i].id = fresh || i >= keep.notes.size() ? p.allocateId() : keep.notes[i].id;
     for (size_t i = 0; i < copy_.controllers.size(); ++i)
         copy_.controllers[i].id =
             fresh || i >= keep.controllers.size() ? p.allocateId() : keep.controllers[i].id;
-    copy_.start = at_ >= 0 ? at_ : c.end();
-    t.midiClips.push_back(copy_);
-    t.sortMidiClips();
+    copy_.start = at_ >= 0 ? at_ : c->end();
+    t->midiClips.push_back(copy_);
+    t->sortMidiClips();
+    return true;
 }
-void DuplicateMidiClip::revert(Project& p)
+bool DuplicateMidiClip::revert(Project& p)
 {
-    auto& t = requireTrack(p, trackId_);
-    std::erase_if(t.midiClips, [this](const MidiClip& c) { return c.id == copy_.id; });
+    auto* t = p.findTrack(trackId_);
+    if (t == nullptr)
+        return false;
+    std::erase_if(t->midiClips, [this](const MidiClip& c) { return c.id == copy_.id; });
+    return true;
 }
 
 bool JoinMidiClips::canJoin(const MidiClip& left, const MidiClip& right) noexcept
@@ -777,87 +806,126 @@ JoinMidiClips::JoinMidiClips(Id trackId, Id leftClipId, Id rightClipId)
     : trackId_(trackId), leftId_(leftClipId), rightId_(rightClipId)
 {
 }
-void JoinMidiClips::apply(Project& p)
+bool JoinMidiClips::apply(Project& p)
 {
-    auto& t = requireTrack(p, trackId_);
-    auto& left = requireMidiClip(t, leftId_);
-    const auto& right = requireMidiClip(t, rightId_);
-    if (!canJoin(left, right))
-        throw std::logic_error("the right clip does not follow the left");
-    previousLeft_ = left;
-    removedRight_ = right;
+    auto* t = p.findTrack(trackId_);
+    if (t == nullptr)
+        return false;
+    auto* left = t->findMidiClip(leftId_);
+    if (left == nullptr)
+        return false;
+    const auto* right = t->findMidiClip(rightId_);
+    if (right == nullptr)
+        return false;
+    if (!canJoin(*left, *right))
+        return false;
+    previousLeft_ = *left;
+    removedRight_ = *right;
     // The right's times are relative to its own start; they move to the left's.
-    const auto offset = right.start - left.start;
-    for (auto n : right.notes)
+    const auto offset = right->start - left->start;
+    for (auto n : right->notes)
     {
         n.start += offset;
-        left.notes.push_back(n);
+        left->notes.push_back(n);
     }
-    for (auto e : right.controllers)
+    for (auto e : right->controllers)
     {
         e.time += offset;
-        left.controllers.push_back(e);
+        left->controllers.push_back(e);
     }
-    left.length = std::max(left.end(), right.end()) - left.start;
-    left.sortNotes();
-    left.sortControllers();
-    std::erase_if(t.midiClips, [this](const MidiClip& c) { return c.id == rightId_; });
+    left->length = std::max(left->end(), right->end()) - left->start;
+    left->sortNotes();
+    left->sortControllers();
+    std::erase_if(t->midiClips, [this](const MidiClip& c) { return c.id == rightId_; });
+    return true;
 }
-void JoinMidiClips::revert(Project& p)
+bool JoinMidiClips::revert(Project& p)
 {
-    auto& t = requireTrack(p, trackId_);
-    requireMidiClip(t, leftId_) = previousLeft_;
-    t.midiClips.push_back(removedRight_);
-    t.sortMidiClips();
+    auto* t = p.findTrack(trackId_);
+    if (t == nullptr)
+        return false;
+    auto* found = t->findMidiClip(leftId_);
+    if (found == nullptr)
+        return false;
+    *found = previousLeft_;
+    t->midiClips.push_back(removedRight_);
+    t->sortMidiClips();
+    return true;
 }
 
 AddNote::AddNote(Id trackId, Id clipId, MidiNote note) : trackId_(trackId), clipId_(clipId), note_(note) {}
-void AddNote::apply(Project& p)
+bool AddNote::apply(Project& p)
 {
-    auto& c = requireMidiClip(requireTrack(p, trackId_), clipId_);
+    auto* c = findMidiClip(p, trackId_, clipId_);
+    if (c == nullptr)
+        return false;
     if (note_.id == invalidId)
         note_.id = p.allocateId();
     clampNote(note_);
-    c.notes.push_back(note_);
-    c.sortNotes();
+    c->notes.push_back(note_);
+    c->sortNotes();
+    return true;
 }
-void AddNote::revert(Project& p)
+bool AddNote::revert(Project& p)
 {
-    auto& c = requireMidiClip(requireTrack(p, trackId_), clipId_);
-    std::erase_if(c.notes, [this](const MidiNote& n) { return n.id == note_.id; });
+    auto* c = findMidiClip(p, trackId_, clipId_);
+    if (c == nullptr)
+        return false;
+    std::erase_if(c->notes, [this](const MidiNote& n) { return n.id == note_.id; });
+    return true;
 }
 
 RemoveNote::RemoveNote(Id trackId, Id clipId, Id noteId) : trackId_(trackId), clipId_(clipId), noteId_(noteId)
 {
 }
-void RemoveNote::apply(Project& p)
+bool RemoveNote::apply(Project& p)
 {
-    auto& c = requireMidiClip(requireTrack(p, trackId_), clipId_);
-    removed_ = requireNote(c, noteId_);
-    std::erase_if(c.notes, [this](const MidiNote& n) { return n.id == noteId_; });
+    auto* c = findMidiClip(p, trackId_, clipId_);
+    if (c == nullptr)
+        return false;
+    const auto* found = c->findNote(noteId_);
+    if (found == nullptr)
+        return false;
+    removed_ = *found;
+    std::erase_if(c->notes, [this](const MidiNote& n) { return n.id == noteId_; });
+    return true;
 }
-void RemoveNote::revert(Project& p)
+bool RemoveNote::revert(Project& p)
 {
-    auto& c = requireMidiClip(requireTrack(p, trackId_), clipId_);
-    c.notes.push_back(removed_);
-    c.sortNotes();
+    auto* c = findMidiClip(p, trackId_, clipId_);
+    if (c == nullptr)
+        return false;
+    c->notes.push_back(removed_);
+    c->sortNotes();
+    return true;
 }
 
 SetNote::SetNote(Id trackId, Id clipId, MidiNote value) : trackId_(trackId), clipId_(clipId), value_(value) {}
-void SetNote::apply(Project& p)
+bool SetNote::apply(Project& p)
 {
-    auto& c = requireMidiClip(requireTrack(p, trackId_), clipId_);
-    auto& n = requireNote(c, value_.id);
-    previous_ = n;
-    n = value_;
-    clampNote(n);
-    c.sortNotes();
+    auto* c = findMidiClip(p, trackId_, clipId_);
+    if (c == nullptr)
+        return false;
+    auto* n = c->findNote(value_.id);
+    if (n == nullptr)
+        return false;
+    previous_ = *n;
+    *n = value_;
+    clampNote(*n);
+    c->sortNotes();
+    return true;
 }
-void SetNote::revert(Project& p)
+bool SetNote::revert(Project& p)
 {
-    auto& c = requireMidiClip(requireTrack(p, trackId_), clipId_);
-    requireNote(c, value_.id) = previous_;
-    c.sortNotes();
+    auto* c = findMidiClip(p, trackId_, clipId_);
+    if (c == nullptr)
+        return false;
+    auto* found = c->findNote(value_.id);
+    if (found == nullptr)
+        return false;
+    *found = previous_;
+    c->sortNotes();
+    return true;
 }
 
 EditMidiControllers::EditMidiControllers(
@@ -866,32 +934,39 @@ EditMidiControllers::EditMidiControllers(
       name_(std::move(name))
 {
 }
-void EditMidiControllers::apply(Project& p)
+bool EditMidiControllers::apply(Project& p)
 {
-    auto& c = requireMidiClip(requireTrack(p, trackId_), clipId_);
-    previous_ = c.controllers;
+    auto* c = findMidiClip(p, trackId_, clipId_);
+    if (c == nullptr)
+        return false;
+    previous_ = c->controllers;
     if (!remove_.empty())
-        std::erase_if(c.controllers,
+        std::erase_if(c->controllers,
                       [this](const MidiControllerEvent& e)
                       { return std::find(remove_.begin(), remove_.end(), e.id) != remove_.end(); });
     for (auto& e : events_)
     {
         clampController(e);
         if (e.id != invalidId)
-            if (auto* existing = c.findController(e.id))
+            if (auto* existing = c->findController(e.id))
             {
                 *existing = e;
                 continue;
             }
         if (e.id == invalidId)
             e.id = p.allocateId();
-        c.controllers.push_back(e);
+        c->controllers.push_back(e);
     }
-    c.sortControllers();
+    c->sortControllers();
+    return true;
 }
-void EditMidiControllers::revert(Project& p)
+bool EditMidiControllers::revert(Project& p)
 {
-    requireMidiClip(requireTrack(p, trackId_), clipId_).controllers = previous_;
+    auto* c = findMidiClip(p, trackId_, clipId_);
+    if (c == nullptr)
+        return false;
+    c->controllers = previous_;
+    return true;
 }
 
 QuantiseNotes::QuantiseNotes(
@@ -905,49 +980,44 @@ QuantiseNotes::QuantiseNotes(
       tempoGrid_(std::make_pair(std::move(map), step)), strength_(strength)
 {
 }
-void QuantiseNotes::apply(Project& p)
+bool QuantiseNotes::apply(Project& p)
 {
-    auto& c = requireMidiClip(requireTrack(p, trackId_), clipId_);
+    auto* c = findMidiClip(p, trackId_, clipId_);
+    if (c == nullptr)
+        return false;
     previous_.clear();
     const float strength = std::clamp(strength_, 0.0f, 1.0f);
-    for (auto& n : c.notes)
+    for (auto& n : c->notes)
     {
         if (!noteIds_.empty() && std::find(noteIds_.begin(), noteIds_.end(), n.id) == noteIds_.end())
             continue;
         previous_.emplace_back(n.id, n.start);
-        const auto absolute = c.start + n.start;
+        const auto absolute = c->start + n.start;
         const auto target =
             tempoGrid_ ? tempoGrid_->first.snap(absolute, tempoGrid_->second) : snapToGrid(absolute, grid_);
         const auto moved =
             absolute + static_cast<SamplePosition>(std::llround((target - absolute) * strength));
-        n.start = std::max<SamplePosition>(0, moved - c.start);
+        n.start = std::max<SamplePosition>(0, moved - c->start);
     }
-    c.sortNotes();
+    c->sortNotes();
+    return true;
 }
-void QuantiseNotes::revert(Project& p)
+bool QuantiseNotes::revert(Project& p)
 {
-    auto& c = requireMidiClip(requireTrack(p, trackId_), clipId_);
+    auto* c = findMidiClip(p, trackId_, clipId_);
+    if (c == nullptr)
+        return false;
     for (const auto& [id, start] : previous_)
-        if (auto* n = c.findNote(id))
+        if (auto* n = c->findNote(id))
             n->start = start;
-    c.sortNotes();
+    c->sortNotes();
+    return true;
 }
 
 // ----- markers -------------------------------------------------------------------------------
 
-namespace
-{
-Marker& requireMarker(Project& p, Id id)
-{
-    auto* m = p.findMarker(id);
-    if (m == nullptr)
-        throw std::logic_error("command references a marker that does not exist");
-    return *m;
-}
-} // namespace
-
 AddMarker::AddMarker(Marker marker) : marker_(std::move(marker)) {}
-void AddMarker::apply(Project& p)
+bool AddMarker::apply(Project& p)
 {
     if (marker_.id == invalidId)
         marker_.id = p.allocateId();
@@ -955,22 +1025,29 @@ void AddMarker::apply(Project& p)
     marker_.length = std::max<SamplePosition>(0, marker_.length);
     p.markers.push_back(marker_);
     p.sortMarkers();
+    return true;
 }
-void AddMarker::revert(Project& p)
+bool AddMarker::revert(Project& p)
 {
     std::erase_if(p.markers, [this](const Marker& m) { return m.id == marker_.id; });
+    return true;
 }
 
 RemoveMarker::RemoveMarker(Id markerId) : markerId_(markerId) {}
-void RemoveMarker::apply(Project& p)
+bool RemoveMarker::apply(Project& p)
 {
-    removed_ = requireMarker(p, markerId_);
+    const auto* found = p.findMarker(markerId_);
+    if (found == nullptr)
+        return false;
+    removed_ = *found;
     std::erase_if(p.markers, [this](const Marker& m) { return m.id == markerId_; });
+    return true;
 }
-void RemoveMarker::revert(Project& p)
+bool RemoveMarker::revert(Project& p)
 {
     p.markers.push_back(removed_);
     p.sortMarkers();
+    return true;
 }
 
 SetMarker::SetMarker(Id markerId, SamplePosition position, SamplePosition length, std::string name)
@@ -981,54 +1058,51 @@ SetMarker::SetMarker(Id markerId, SamplePosition position, SamplePosition length
     value_.length = std::max<SamplePosition>(0, length);
     value_.name = std::move(name);
 }
-void SetMarker::apply(Project& p)
+bool SetMarker::apply(Project& p)
 {
-    auto& m = requireMarker(p, markerId_);
-    previous_ = m;
-    m = value_;
+    auto* m = p.findMarker(markerId_);
+    if (m == nullptr)
+        return false;
+    previous_ = *m;
+    *m = value_;
     p.sortMarkers();
+    return true;
 }
-void SetMarker::revert(Project& p)
+bool SetMarker::revert(Project& p)
 {
-    requireMarker(p, markerId_) = previous_;
+    auto* found = p.findMarker(markerId_);
+    if (found == nullptr)
+        return false;
+    *found = previous_;
     p.sortMarkers();
+    return true;
 }
 
 // ----- fader groups ----------------------------------------------------------------------------
-
-namespace
-{
-Group& requireGroup(Project& p, Id id)
-{
-    auto* g = p.findGroup(id);
-    if (g == nullptr)
-        throw std::logic_error("command references a group that does not exist");
-    return *g;
-}
-} // namespace
 
 AddGroup::AddGroup(Group group, std::vector<Id> members)
     : group_(std::move(group)), members_(std::move(members))
 {
 }
 
-void AddGroup::apply(Project& p)
+bool AddGroup::apply(Project& p)
 {
-    for (const auto id : members_)
-        requireChannel(p, id);
+    if (std::any_of(members_.begin(), members_.end(), [&p](Id id) { return p.findChannel(id) == nullptr; }))
+        return false;
     if (group_.id == invalidId)
         group_.id = p.allocateId();
     p.groups.push_back(group_);
     previousGroups_.clear();
     for (const auto id : members_)
     {
-        auto& c = requireChannel(p, id);
-        previousGroups_.emplace_back(id, c.group);
-        c.group = group_.id;
+        auto* c = p.findChannel(id);
+        previousGroups_.emplace_back(id, c->group);
+        c->group = group_.id;
     }
+    return true;
 }
 
-void AddGroup::revert(Project& p)
+bool AddGroup::revert(Project& p)
 {
     for (const auto& [id, previous] : previousGroups_)
         if (auto* c = p.findChannel(id))
@@ -1036,15 +1110,16 @@ void AddGroup::revert(Project& p)
     const int i = p.groupIndex(group_.id);
     if (i >= 0)
         p.groups.erase(p.groups.begin() + i);
+    return true;
 }
 
 RemoveGroup::RemoveGroup(Id groupId) : groupId_(groupId) {}
 
-void RemoveGroup::apply(Project& p)
+bool RemoveGroup::apply(Project& p)
 {
     index_ = p.groupIndex(groupId_);
     if (index_ < 0)
-        throw std::logic_error("command references a group that does not exist");
+        return false;
     removed_ = p.groups[static_cast<size_t>(index_)];
     members_.clear();
     for (auto* c : p.groupMembers(groupId_))
@@ -1053,51 +1128,63 @@ void RemoveGroup::apply(Project& p)
         c->group = invalidId;
     }
     p.groups.erase(p.groups.begin() + index_);
+    return true;
 }
 
-void RemoveGroup::revert(Project& p)
+bool RemoveGroup::revert(Project& p)
 {
     const int at = std::clamp(index_, 0, static_cast<int>(p.groups.size()));
     p.groups.insert(p.groups.begin() + at, removed_);
     for (const auto id : members_)
         if (auto* c = p.findChannel(id))
             c->group = groupId_;
+    return true;
 }
 
 SetChannelGroup::SetChannelGroup(Id channelId, Id groupId) : channelId_(channelId), value_(groupId) {}
 
-void SetChannelGroup::apply(Project& p)
+bool SetChannelGroup::apply(Project& p)
 {
-    auto& c = requireChannel(p, channelId_);
-    if (value_ != invalidId)
-        requireGroup(p, value_);
-    previous_ = c.group;
-    c.group = value_;
+    auto* c = p.findChannel(channelId_);
+    if (c == nullptr)
+        return false;
+    if (value_ != invalidId && p.findGroup(value_) == nullptr)
+        return false;
+    previous_ = c->group;
+    c->group = value_;
+    return true;
 }
 
-void SetChannelGroup::revert(Project& p)
+bool SetChannelGroup::revert(Project& p)
 {
-    requireChannel(p, channelId_).group = previous_;
+    auto* c = p.findChannel(channelId_);
+    if (c == nullptr)
+        return false;
+    c->group = previous_;
+    return true;
 }
 
 SetGroupGain::SetGroupGain(Id groupId, float ratio) : groupId_(groupId), ratio_(ratio) {}
 
-void SetGroupGain::apply(Project& p)
+bool SetGroupGain::apply(Project& p)
 {
-    requireGroup(p, groupId_);
+    if (p.findGroup(groupId_) == nullptr)
+        return false;
     previous_.clear();
     for (auto* c : p.groupMembers(groupId_))
     {
         previous_.emplace_back(c->id, c->gain);
         c->gain = std::clamp(c->gain * ratio_, 0.0f, maxChannelGain);
     }
+    return true;
 }
 
-void SetGroupGain::revert(Project& p)
+bool SetGroupGain::revert(Project& p)
 {
     for (const auto& [id, gain] : previous_)
         if (auto* c = p.findChannel(id))
             c->gain = gain;
+    return true;
 }
 
 SetGroupSwitch::SetGroupSwitch(Id groupId, bool Channel::* field, bool value)
@@ -1105,51 +1192,64 @@ SetGroupSwitch::SetGroupSwitch(Id groupId, bool Channel::* field, bool value)
 {
 }
 
-void SetGroupSwitch::apply(Project& p)
+bool SetGroupSwitch::apply(Project& p)
 {
-    requireGroup(p, groupId_);
+    if (p.findGroup(groupId_) == nullptr)
+        return false;
     previous_.clear();
     for (auto* c : p.groupMembers(groupId_))
     {
         previous_.emplace_back(c->id, c->*field_);
         c->*field_ = value_;
     }
+    return true;
 }
 
-void SetGroupSwitch::revert(Project& p)
+bool SetGroupSwitch::revert(Project& p)
 {
     for (const auto& [id, value] : previous_)
         if (auto* c = p.findChannel(id))
             c->*field_ = value;
+    return true;
 }
 
 SetOutputBus::SetOutputBus(Id channelId, Id busId) : channelId_(channelId), value_(busId) {}
-void SetOutputBus::apply(Project& p)
+bool SetOutputBus::apply(Project& p)
 {
-    auto& c = requireChannel(p, channelId_);
-    if (value_ != invalidId)
-        requireBus(p, value_);
+    auto* c = p.findChannel(channelId_);
+    if (c == nullptr)
+        return false;
+    if (value_ != invalidId && p.findBus(value_) == nullptr)
+        return false;
     if (p.wouldCycle(channelId_, value_))
-        throw std::logic_error("routing would form a cycle");
-    previous_ = c.outputBus;
-    c.outputBus = value_;
+        return false;
+    previous_ = c->outputBus;
+    c->outputBus = value_;
+    return true;
 }
-void SetOutputBus::revert(Project& p)
+bool SetOutputBus::revert(Project& p)
 {
-    requireChannel(p, channelId_).outputBus = previous_;
+    auto* c = p.findChannel(channelId_);
+    if (c == nullptr)
+        return false;
+    c->outputBus = previous_;
+    return true;
 }
 
 SetSend::SetSend(Id channelId, Id busId, float level, bool preFader)
     : channelId_(channelId), value_{busId, level, preFader}
 {
 }
-void SetSend::apply(Project& p)
+bool SetSend::apply(Project& p)
 {
-    auto& c = requireChannel(p, channelId_);
-    requireBus(p, value_.bus);
+    auto* c = p.findChannel(channelId_);
+    if (c == nullptr)
+        return false;
+    if (p.findBus(value_.bus) == nullptr)
+        return false;
     if (p.wouldCycle(channelId_, value_.bus))
-        throw std::logic_error("send would form a cycle");
-    if (auto* existing = c.findSend(value_.bus))
+        return false;
+    if (auto* existing = c->findSend(value_.bus))
     {
         existed_ = true;
         previous_ = *existing;
@@ -1158,57 +1258,60 @@ void SetSend::apply(Project& p)
     else
     {
         existed_ = false;
-        c.sends.push_back(value_);
+        c->sends.push_back(value_);
     }
+    return true;
 }
-void SetSend::revert(Project& p)
+bool SetSend::revert(Project& p)
 {
-    auto& c = requireChannel(p, channelId_);
+    auto* c = p.findChannel(channelId_);
+    if (c == nullptr)
+        return false;
     if (existed_)
     {
-        if (auto* existing = c.findSend(value_.bus))
+        if (auto* existing = c->findSend(value_.bus))
             *existing = previous_;
     }
     else
-        std::erase_if(c.sends, [this](const Send& s) { return s.bus == value_.bus; });
+        std::erase_if(c->sends, [this](const Send& s) { return s.bus == value_.bus; });
+    return true;
 }
 
 RemoveSend::RemoveSend(Id channelId, Id busId) : channelId_(channelId), busId_(busId) {}
-void RemoveSend::apply(Project& p)
+bool RemoveSend::apply(Project& p)
 {
-    auto& c = requireChannel(p, channelId_);
+    auto* c = p.findChannel(channelId_);
+    if (c == nullptr)
+        return false;
     existed_ = false;
-    if (auto* existing = c.findSend(busId_))
+    if (auto* existing = c->findSend(busId_))
     {
         existed_ = true;
         previous_ = *existing;
-        std::erase_if(c.sends, [this](const Send& s) { return s.bus == busId_; });
+        std::erase_if(c->sends, [this](const Send& s) { return s.bus == busId_; });
     }
+    return true;
 }
-void RemoveSend::revert(Project& p)
+bool RemoveSend::revert(Project& p)
 {
-    if (existed_)
-        requireChannel(p, channelId_).sends.push_back(previous_);
+    if (!existed_)
+        return true;
+    auto* c = p.findChannel(channelId_);
+    if (c == nullptr)
+        return false;
+    c->sends.push_back(previous_);
+    return true;
 }
-
-namespace
-{
-Insert& requireInsert(Channel& c, Id id)
-{
-    auto* i = c.findInsert(id);
-    if (i == nullptr)
-        throw std::logic_error("command references an insert that does not exist");
-    return *i;
-}
-} // namespace
 
 AddInsert::AddInsert(Id channelId, Insert insert, int index)
     : channelId_(channelId), insert_(std::move(insert)), index_(index)
 {
 }
-void AddInsert::apply(Project& p)
+bool AddInsert::apply(Project& p)
 {
-    auto& c = requireChannel(p, channelId_);
+    auto* c = p.findChannel(channelId_);
+    if (c == nullptr)
+        return false;
     if (insert_.id == invalidId)
         insert_.id = p.allocateId();
     else
@@ -1217,51 +1320,61 @@ void AddInsert::apply(Project& p)
         // one processor instance.
         for (const auto& t : p.tracks)
             if (t.findInsert(insert_.id) != nullptr)
-                throw std::logic_error("insert id already in use");
+                return false;
         for (const auto& b : p.buses)
             if (b.findInsert(insert_.id) != nullptr)
-                throw std::logic_error("insert id already in use");
+                return false;
         if (p.master.findInsert(insert_.id) != nullptr)
-            throw std::logic_error("insert id already in use");
+            return false;
     }
-    const int at = index_ < 0 || index_ > static_cast<int>(c.inserts.size())
-                       ? static_cast<int>(c.inserts.size())
+    const int at = index_ < 0 || index_ > static_cast<int>(c->inserts.size())
+                       ? static_cast<int>(c->inserts.size())
                        : index_;
     index_ = at;
-    c.inserts.insert(c.inserts.begin() + at, insert_);
+    c->inserts.insert(c->inserts.begin() + at, insert_);
+    return true;
 }
-void AddInsert::revert(Project& p)
+bool AddInsert::revert(Project& p)
 {
-    auto& c = requireChannel(p, channelId_);
-    std::erase_if(c.inserts, [this](const Insert& i) { return i.id == insert_.id; });
+    auto* c = p.findChannel(channelId_);
+    if (c == nullptr)
+        return false;
+    std::erase_if(c->inserts, [this](const Insert& i) { return i.id == insert_.id; });
+    return true;
 }
 
 RemoveInsert::RemoveInsert(Id channelId, Id insertId) : channelId_(channelId), insertId_(insertId) {}
-void RemoveInsert::apply(Project& p)
+bool RemoveInsert::apply(Project& p)
 {
-    auto& c = requireChannel(p, channelId_);
-    index_ = c.insertIndex(insertId_);
+    auto* c = p.findChannel(channelId_);
+    if (c == nullptr)
+        return false;
+    index_ = c->insertIndex(insertId_);
     if (index_ < 0)
-        throw std::logic_error("command references an insert that does not exist");
-    removed_ = c.inserts[static_cast<size_t>(index_)];
-    c.inserts.erase(c.inserts.begin() + index_);
+        return false;
+    removed_ = c->inserts[static_cast<size_t>(index_)];
+    c->inserts.erase(c->inserts.begin() + index_);
+    return true;
 }
-void RemoveInsert::revert(Project& p)
+bool RemoveInsert::revert(Project& p)
 {
-    auto& c = requireChannel(p, channelId_);
-    const int at = std::clamp(index_, 0, static_cast<int>(c.inserts.size()));
-    c.inserts.insert(c.inserts.begin() + at, removed_);
+    auto* c = p.findChannel(channelId_);
+    if (c == nullptr)
+        return false;
+    const int at = std::clamp(index_, 0, static_cast<int>(c->inserts.size()));
+    c->inserts.insert(c->inserts.begin() + at, removed_);
+    return true;
 }
 
 SetInstrument::SetInstrument(Id trackId, Insert instrument)
     : trackId_(trackId), instrument_(std::move(instrument))
 {
 }
-void SetInstrument::apply(Project& p)
+bool SetInstrument::apply(Project& p)
 {
     auto* t = p.findTrack(trackId_);
     if (t == nullptr)
-        throw std::logic_error("command references a track that does not exist");
+        return false;
     previous_ = t->instrument;
     if (!instrument_.type.empty())
     {
@@ -1281,57 +1394,68 @@ void SetInstrument::apply(Project& p)
             { return lane.target == AutomationTarget::insertParameter && lane.insert == previous_.id; });
     }
     t->instrument = instrument_.type.empty() ? Insert{} : instrument_;
+    return true;
 }
-void SetInstrument::revert(Project& p)
+bool SetInstrument::revert(Project& p)
 {
     auto* t = p.findTrack(trackId_);
     if (t == nullptr)
-        return;
+        return true;
     t->instrument = previous_;
     t->automation = previousLanes_;
+    return true;
 }
 
 MoveInsert::MoveInsert(Id channelId, Id insertId, int newIndex)
     : channelId_(channelId), insertId_(insertId), newIndex_(newIndex)
 {
 }
-void MoveInsert::apply(Project& p)
+bool MoveInsert::apply(Project& p)
 {
-    auto& c = requireChannel(p, channelId_);
-    previousIndex_ = c.insertIndex(insertId_);
+    auto* c = p.findChannel(channelId_);
+    if (c == nullptr)
+        return false;
+    previousIndex_ = c->insertIndex(insertId_);
     if (previousIndex_ < 0)
-        throw std::logic_error("command references an insert that does not exist");
-    Insert moved = c.inserts[static_cast<size_t>(previousIndex_)];
-    c.inserts.erase(c.inserts.begin() + previousIndex_);
-    const int at = std::clamp(newIndex_, 0, static_cast<int>(c.inserts.size()));
-    c.inserts.insert(c.inserts.begin() + at, moved);
+        return false;
+    Insert moved = c->inserts[static_cast<size_t>(previousIndex_)];
+    c->inserts.erase(c->inserts.begin() + previousIndex_);
+    const int at = std::clamp(newIndex_, 0, static_cast<int>(c->inserts.size()));
+    c->inserts.insert(c->inserts.begin() + at, moved);
+    return true;
 }
-void MoveInsert::revert(Project& p)
+bool MoveInsert::revert(Project& p)
 {
-    auto& c = requireChannel(p, channelId_);
-    const int current = c.insertIndex(insertId_);
+    auto* c = p.findChannel(channelId_);
+    if (c == nullptr)
+        return false;
+    const int current = c->insertIndex(insertId_);
     if (current < 0)
-        return;
-    Insert moved = c.inserts[static_cast<size_t>(current)];
-    c.inserts.erase(c.inserts.begin() + current);
-    const int at = std::clamp(previousIndex_, 0, static_cast<int>(c.inserts.size()));
-    c.inserts.insert(c.inserts.begin() + at, moved);
+        return true;
+    Insert moved = c->inserts[static_cast<size_t>(current)];
+    c->inserts.erase(c->inserts.begin() + current);
+    const int at = std::clamp(previousIndex_, 0, static_cast<int>(c->inserts.size()));
+    c->inserts.insert(c->inserts.begin() + at, moved);
+    return true;
 }
 
 SetInsertParameter::SetInsertParameter(Id channelId, Id insertId, int parameter, float value)
     : channelId_(channelId), insertId_(insertId), parameter_(parameter), value_(value)
 {
 }
-void SetInsertParameter::apply(Project& p)
+bool SetInsertParameter::apply(Project& p)
 {
-    auto& i = requireInsert(requireChannel(p, channelId_), insertId_);
+    auto* i = findInsert(p, channelId_, insertId_);
+    if (i == nullptr)
+        return false;
     if (parameter_ < 0)
-        throw std::logic_error("negative parameter index");
-    previousSize_ = i.params.size();
-    if (static_cast<size_t>(parameter_) >= i.params.size())
-        i.params.resize(static_cast<size_t>(parameter_) + 1, 0.0f);
-    previous_ = i.params[static_cast<size_t>(parameter_)];
-    i.params[static_cast<size_t>(parameter_)] = value_;
+        return false;
+    previousSize_ = i->params.size();
+    if (static_cast<size_t>(parameter_) >= i->params.size())
+        i->params.resize(static_cast<size_t>(parameter_) + 1, 0.0f);
+    previous_ = i->params[static_cast<size_t>(parameter_)];
+    i->params[static_cast<size_t>(parameter_)] = value_;
+    return true;
 }
 bool SetInsertParameter::mergeWith(Command& next)
 {
@@ -1343,63 +1467,78 @@ bool SetInsertParameter::mergeWith(Command& next)
     value_ = later->value_;
     return true;
 }
-void SetInsertParameter::revert(Project& p)
+bool SetInsertParameter::revert(Project& p)
 {
-    auto& i = requireInsert(requireChannel(p, channelId_), insertId_);
-    if (static_cast<size_t>(parameter_) < i.params.size())
-        i.params[static_cast<size_t>(parameter_)] = previous_;
-    if (i.params.size() > previousSize_)
-        i.params.resize(previousSize_);
+    auto* i = findInsert(p, channelId_, insertId_);
+    if (i == nullptr)
+        return false;
+    if (static_cast<size_t>(parameter_) < i->params.size())
+        i->params[static_cast<size_t>(parameter_)] = previous_;
+    if (i->params.size() > previousSize_)
+        i->params.resize(previousSize_);
+    return true;
 }
 
 SetInsertSidechain::SetInsertSidechain(Id channelId, Id insertId, Id sourceId, bool postFader)
     : channelId_(channelId), insertId_(insertId), value_(sourceId), postFader_(postFader)
 {
 }
-void SetInsertSidechain::apply(Project& p)
+bool SetInsertSidechain::apply(Project& p)
 {
-    auto& i = requireInsert(requireChannel(p, channelId_), insertId_);
+    auto* i = findInsert(p, channelId_, insertId_);
+    if (i == nullptr)
+        return false;
     if (value_ != invalidId && p.findChannel(value_) == nullptr)
-        throw std::logic_error("sidechain source does not exist");
+        return false;
     if (p.keyWouldCycle(channelId_, value_))
-        throw std::logic_error("sidechain source would form a feedback loop");
-    previous_ = i.sidechain;
-    previousPostFader_ = i.sidechainPostFader;
-    i.sidechain = value_;
-    i.sidechainPostFader = value_ != invalidId && postFader_;
+        return false;
+    previous_ = i->sidechain;
+    previousPostFader_ = i->sidechainPostFader;
+    i->sidechain = value_;
+    i->sidechainPostFader = value_ != invalidId && postFader_;
+    return true;
 }
-void SetInsertSidechain::revert(Project& p)
+bool SetInsertSidechain::revert(Project& p)
 {
-    auto& i = requireInsert(requireChannel(p, channelId_), insertId_);
-    i.sidechain = previous_;
-    i.sidechainPostFader = previousPostFader_;
+    auto* i = findInsert(p, channelId_, insertId_);
+    if (i == nullptr)
+        return false;
+    i->sidechain = previous_;
+    i->sidechainPostFader = previousPostFader_;
+    return true;
 }
 
 MoveStripModule::MoveStripModule(Id channelId, Id moduleId, int newIndex)
     : channelId_(channelId), moduleId_(moduleId), newIndex_(newIndex)
 {
 }
-void MoveStripModule::apply(Project& p)
+bool MoveStripModule::apply(Project& p)
 {
-    auto& c = requireChannel(p, channelId_);
-    previousIndex_ = c.stripIndex(moduleId_);
+    auto* c = p.findChannel(channelId_);
+    if (c == nullptr)
+        return false;
+    previousIndex_ = c->stripIndex(moduleId_);
     if (previousIndex_ < 0)
-        throw std::logic_error("command references a strip module that does not exist");
-    Insert moved = c.strip[static_cast<size_t>(previousIndex_)];
-    c.strip.erase(c.strip.begin() + previousIndex_);
-    const int at = std::clamp(newIndex_, 0, static_cast<int>(c.strip.size()));
-    c.strip.insert(c.strip.begin() + at, moved);
+        return false;
+    Insert moved = c->strip[static_cast<size_t>(previousIndex_)];
+    c->strip.erase(c->strip.begin() + previousIndex_);
+    const int at = std::clamp(newIndex_, 0, static_cast<int>(c->strip.size()));
+    c->strip.insert(c->strip.begin() + at, moved);
+    return true;
 }
-void MoveStripModule::revert(Project& p)
+bool MoveStripModule::revert(Project& p)
 {
-    auto& c = requireChannel(p, channelId_);
-    const int current = c.stripIndex(moduleId_);
+    auto* c = p.findChannel(channelId_);
+    if (c == nullptr)
+        return false;
+    const int current = c->stripIndex(moduleId_);
     if (current < 0)
-        return;
-    Insert moved = c.strip[static_cast<size_t>(current)];
-    c.strip.erase(c.strip.begin() + current);
-    const int at = std::clamp(previousIndex_, 0, static_cast<int>(c.strip.size()));
-    c.strip.insert(c.strip.begin() + at, moved);
+        return true;
+    Insert moved = c->strip[static_cast<size_t>(current)];
+    c->strip.erase(c->strip.begin() + current);
+    const int at = std::clamp(previousIndex_, 0, static_cast<int>(c->strip.size()));
+    c->strip.insert(c->strip.begin() + at, moved);
+    return true;
 }
 
 SetStripModuleType::SetStripModuleType(
@@ -1408,45 +1547,53 @@ SetStripModuleType::SetStripModuleType(
       name_(std::move(name))
 {
 }
-void SetStripModuleType::apply(Project& p)
+bool SetStripModuleType::apply(Project& p)
 {
-    auto& c = requireChannel(p, channelId_);
-    const int index = c.stripIndex(moduleId_);
+    auto* c = p.findChannel(channelId_);
+    if (c == nullptr)
+        return false;
+    const int index = c->stripIndex(moduleId_);
     if (index < 0)
-        throw std::logic_error("command references a strip module that does not exist");
-    auto& module = c.strip[static_cast<size_t>(index)];
+        return false;
+    auto& module = c->strip[static_cast<size_t>(index)];
     previous_ = module;
-    previousLanes_ = c.automation;
+    previousLanes_ = c->automation;
     if (module.type != type_)
         std::erase_if(
-            c.automation,
+            c->automation,
             [this](const AutomationLane& lane)
             { return lane.target == AutomationTarget::insertParameter && lane.insert == moduleId_; });
     module.type = type_;
     module.params = params_;
     module.paramKeys.clear();
     module.state.clear();
+    return true;
 }
-void SetStripModuleType::revert(Project& p)
+bool SetStripModuleType::revert(Project& p)
 {
-    auto& c = requireChannel(p, channelId_);
-    const int index = c.stripIndex(moduleId_);
+    auto* c = p.findChannel(channelId_);
+    if (c == nullptr)
+        return false;
+    const int index = c->stripIndex(moduleId_);
     if (index < 0)
-        return;
-    c.strip[static_cast<size_t>(index)] = previous_;
-    c.automation = previousLanes_;
+        return true;
+    c->strip[static_cast<size_t>(index)] = previous_;
+    c->automation = previousLanes_;
+    return true;
 }
 
 SetStripState::SetStripState(Id channelId, std::vector<Insert> modules, std::string name)
     : channelId_(channelId), modules_(std::move(modules)), name_(std::move(name))
 {
 }
-void SetStripState::apply(Project& p)
+bool SetStripState::apply(Project& p)
 {
-    auto& c = requireChannel(p, channelId_);
+    auto* c = p.findChannel(channelId_);
+    if (c == nullptr)
+        return false;
     previous_.clear();
     for (const auto& wanted : modules_)
-        for (auto& module : c.strip)
+        for (auto& module : c->strip)
             if (module.type == wanted.type)
             {
                 previous_.push_back({module.id, module.bypass, module.params});
@@ -1454,16 +1601,20 @@ void SetStripState::apply(Project& p)
                 module.params = wanted.params;
                 break;
             }
+    return true;
 }
-void SetStripState::revert(Project& p)
+bool SetStripState::revert(Project& p)
 {
-    auto& c = requireChannel(p, channelId_);
+    auto* c = p.findChannel(channelId_);
+    if (c == nullptr)
+        return false;
     for (const auto& before : previous_)
-        if (auto* module = c.findInsert(before.id))
+        if (auto* module = c->findInsert(before.id))
         {
             module->bypass = before.bypass;
             module->params = before.params;
         }
+    return true;
 }
 
 // ----- automation -------------------------------------------------------------------------
@@ -1478,13 +1629,6 @@ void sortPoints(std::vector<AutomationPoint>& points)
                      { return a.position < b.position; });
 }
 
-AutomationLane& requireLane(Channel& c, Id laneId)
-{
-    auto* lane = c.findLane(laneId);
-    if (lane == nullptr)
-        throw std::logic_error("command references an automation lane that does not exist");
-    return *lane;
-}
 } // namespace
 
 AddAutomationLane::AddAutomationLane(Id channelId, AutomationLane lane)
@@ -1492,46 +1636,57 @@ AddAutomationLane::AddAutomationLane(Id channelId, AutomationLane lane)
 {
     sortPoints(lane_.points);
 }
-void AddAutomationLane::apply(Project& p)
+bool AddAutomationLane::apply(Project& p)
 {
-    auto& c = requireChannel(p, channelId_);
-    if (c.findLane(lane_.target, lane_.insert, lane_.parameter) != nullptr)
-        throw std::logic_error("the channel already has a lane for that parameter");
+    auto* c = p.findChannel(channelId_);
+    if (c == nullptr)
+        return false;
+    if (c->findLane(lane_.target, lane_.insert, lane_.parameter) != nullptr)
+        return false;
     if (lane_.id == invalidId)
         lane_.id = p.allocateId();
     p.nextId = std::max(p.nextId, lane_.id + 1);
-    c.automation.push_back(lane_);
-    previousOpen_ = c.automationOpen;
-    c.automationOpen = true;
+    c->automation.push_back(lane_);
+    previousOpen_ = c->automationOpen;
+    c->automationOpen = true;
+    return true;
 }
-void AddAutomationLane::revert(Project& p)
+bool AddAutomationLane::revert(Project& p)
 {
-    auto& c = requireChannel(p, channelId_);
-    std::erase_if(c.automation, [this](const AutomationLane& l) { return l.id == lane_.id; });
-    c.automationOpen = previousOpen_;
+    auto* c = p.findChannel(channelId_);
+    if (c == nullptr)
+        return false;
+    std::erase_if(c->automation, [this](const AutomationLane& l) { return l.id == lane_.id; });
+    c->automationOpen = previousOpen_;
+    return true;
 }
 
 RemoveAutomationLane::RemoveAutomationLane(Id channelId, Id laneId) : channelId_(channelId), laneId_(laneId)
 {
 }
-void RemoveAutomationLane::apply(Project& p)
+bool RemoveAutomationLane::apply(Project& p)
 {
-    auto& c = requireChannel(p, channelId_);
-    for (size_t i = 0; i < c.automation.size(); ++i)
-        if (c.automation[i].id == laneId_)
+    auto* c = p.findChannel(channelId_);
+    if (c == nullptr)
+        return false;
+    for (size_t i = 0; i < c->automation.size(); ++i)
+        if (c->automation[i].id == laneId_)
         {
-            removed_ = c.automation[i];
+            removed_ = c->automation[i];
             index_ = static_cast<int>(i);
-            c.automation.erase(c.automation.begin() + static_cast<std::ptrdiff_t>(i));
-            return;
+            c->automation.erase(c->automation.begin() + static_cast<std::ptrdiff_t>(i));
+            return true;
         }
-    throw std::logic_error("command references an automation lane that does not exist");
+    return false;
 }
-void RemoveAutomationLane::revert(Project& p)
+bool RemoveAutomationLane::revert(Project& p)
 {
-    auto& c = requireChannel(p, channelId_);
-    const int at = std::clamp(index_, 0, static_cast<int>(c.automation.size()));
-    c.automation.insert(c.automation.begin() + at, removed_);
+    auto* c = p.findChannel(channelId_);
+    if (c == nullptr)
+        return false;
+    const int at = std::clamp(index_, 0, static_cast<int>(c->automation.size()));
+    c->automation.insert(c->automation.begin() + at, removed_);
+    return true;
 }
 
 SetAutomationLaneTarget::SetAutomationLaneTarget(
@@ -1541,26 +1696,34 @@ SetAutomationLaneTarget::SetAutomationLaneTarget(
       parameter_(target == AutomationTarget::insertParameter ? parameter : 0)
 {
 }
-void SetAutomationLaneTarget::apply(Project& p)
+bool SetAutomationLaneTarget::apply(Project& p)
 {
-    auto& c = requireChannel(p, channelId_);
-    if (const auto* other = c.findLane(target_, insert_, parameter_);
+    auto* c = p.findChannel(channelId_);
+    if (c == nullptr)
+        return false;
+    if (const auto* other = c->findLane(target_, insert_, parameter_);
         other != nullptr && other->id != laneId_)
-        throw std::logic_error("the channel already has a lane for that parameter");
-    auto& lane = requireLane(c, laneId_);
-    previous_ = lane;
-    lane.target = target_;
-    lane.insert = insert_;
-    lane.parameter = parameter_;
-    lane.parameterKey.clear();
+        return false;
+    auto* lane = c->findLane(laneId_);
+    if (lane == nullptr)
+        return false;
+    previous_ = *lane;
+    lane->target = target_;
+    lane->insert = insert_;
+    lane->parameter = parameter_;
+    lane->parameterKey.clear();
+    return true;
 }
-void SetAutomationLaneTarget::revert(Project& p)
+bool SetAutomationLaneTarget::revert(Project& p)
 {
-    auto& lane = requireLane(requireChannel(p, channelId_), laneId_);
-    lane.target = previous_.target;
-    lane.insert = previous_.insert;
-    lane.parameter = previous_.parameter;
-    lane.parameterKey = previous_.parameterKey;
+    auto* lane = findLane(p, channelId_, laneId_);
+    if (lane == nullptr)
+        return false;
+    lane->target = previous_.target;
+    lane->insert = previous_.insert;
+    lane->parameter = previous_.parameter;
+    lane->parameterKey = previous_.parameterKey;
+    return true;
 }
 
 SetAutomationPoints::SetAutomationPoints(Id channelId,
@@ -1576,7 +1739,7 @@ SetMediaPaths::SetMediaPaths(std::vector<std::pair<std::string, std::string>> re
     : renames_(std::move(renames))
 {
 }
-void SetMediaPaths::apply(Project& p)
+bool SetMediaPaths::apply(Project& p)
 {
     changed_.clear();
     const auto repoint = [this](Id track, AudioClip& c)
@@ -1597,87 +1760,116 @@ void SetMediaPaths::apply(Project& p)
             for (auto& take : g.takes)
                 repoint(t.id, take.clip);
     }
+    return true;
 }
-void SetMediaPaths::revert(Project& p)
+bool SetMediaPaths::revert(Project& p)
 {
     for (const auto& change : changed_)
         if (auto* t = p.findTrack(change.track))
             if (auto* c = t->findClip(change.clip) != nullptr ? t->findClip(change.clip)
                                                               : t->findTakeClip(change.clip))
                 c->mediaPath = change.previous;
+    return true;
 }
 
 SetTrackMidiOutput::SetTrackMidiOutput(Id trackId, bool on, int channel)
     : trackId_(trackId), on_(on), channel_(std::clamp(channel, 1, 16))
 {
 }
-void SetTrackMidiOutput::apply(Project& p)
+bool SetTrackMidiOutput::apply(Project& p)
 {
-    auto& t = requireTrack(p, trackId_);
-    previousOn_ = t.midiOut;
-    previousChannel_ = t.midiOutChannel;
-    t.midiOut = on_;
-    t.midiOutChannel = channel_;
+    auto* t = p.findTrack(trackId_);
+    if (t == nullptr)
+        return false;
+    previousOn_ = t->midiOut;
+    previousChannel_ = t->midiOutChannel;
+    t->midiOut = on_;
+    t->midiOutChannel = channel_;
+    return true;
 }
-void SetTrackMidiOutput::revert(Project& p)
+bool SetTrackMidiOutput::revert(Project& p)
 {
-    auto& t = requireTrack(p, trackId_);
-    t.midiOut = previousOn_;
-    t.midiOutChannel = previousChannel_;
+    auto* t = p.findTrack(trackId_);
+    if (t == nullptr)
+        return false;
+    t->midiOut = previousOn_;
+    t->midiOutChannel = previousChannel_;
+    return true;
 }
 
 SetTrackInput::SetTrackInput(Id trackId, int inputChannel, std::string inputBus)
     : trackId_(trackId), value_(inputBus.empty() ? inputChannel : -1), bus_(std::move(inputBus))
 {
 }
-void SetTrackInput::apply(Project& p)
+bool SetTrackInput::apply(Project& p)
 {
-    auto& t = requireTrack(p, trackId_);
-    previous_ = t.inputChannel;
-    previousBus_ = t.inputBus;
-    t.inputChannel = value_;
-    t.inputBus = bus_;
+    auto* t = p.findTrack(trackId_);
+    if (t == nullptr)
+        return false;
+    previous_ = t->inputChannel;
+    previousBus_ = t->inputBus;
+    t->inputChannel = value_;
+    t->inputBus = bus_;
+    return true;
 }
-void SetTrackInput::revert(Project& p)
+bool SetTrackInput::revert(Project& p)
 {
-    auto& t = requireTrack(p, trackId_);
-    t.inputChannel = previous_;
-    t.inputBus = previousBus_;
+    auto* t = p.findTrack(trackId_);
+    if (t == nullptr)
+        return false;
+    t->inputChannel = previous_;
+    t->inputBus = previousBus_;
+    return true;
 }
 
 // ----- clips ------------------------------------------------------------------------------
 
 AddClip::AddClip(Id trackId, AudioClip clip) : trackId_(trackId), clip_(std::move(clip)) {}
 
-void AddClip::apply(Project& p)
+bool AddClip::apply(Project& p)
 {
-    auto& t = requireTrack(p, trackId_);
+    auto* t = p.findTrack(trackId_);
+    if (t == nullptr)
+        return false;
     if (clip_.id == invalidId)
         clip_.id = p.allocateId();
-    t.clips.push_back(clip_);
-    t.sortClips();
+    t->clips.push_back(clip_);
+    t->sortClips();
+    return true;
 }
 
-void AddClip::revert(Project& p)
+bool AddClip::revert(Project& p)
 {
-    auto& t = requireTrack(p, trackId_);
-    std::erase_if(t.clips, [this](const AudioClip& c) { return c.id == clip_.id; });
+    auto* t = p.findTrack(trackId_);
+    if (t == nullptr)
+        return false;
+    std::erase_if(t->clips, [this](const AudioClip& c) { return c.id == clip_.id; });
+    return true;
 }
 
 RemoveClip::RemoveClip(Id trackId, Id clipId) : trackId_(trackId), clipId_(clipId) {}
 
-void RemoveClip::apply(Project& p)
+bool RemoveClip::apply(Project& p)
 {
-    auto& t = requireTrack(p, trackId_);
-    removed_ = requireClip(t, clipId_);
-    std::erase_if(t.clips, [this](const AudioClip& c) { return c.id == clipId_; });
+    auto* t = p.findTrack(trackId_);
+    if (t == nullptr)
+        return false;
+    const auto* found = t->findClip(clipId_);
+    if (found == nullptr)
+        return false;
+    removed_ = *found;
+    std::erase_if(t->clips, [this](const AudioClip& c) { return c.id == clipId_; });
+    return true;
 }
 
-void RemoveClip::revert(Project& p)
+bool RemoveClip::revert(Project& p)
 {
-    auto& t = requireTrack(p, trackId_);
-    t.clips.push_back(removed_);
-    t.sortClips();
+    auto* t = p.findTrack(trackId_);
+    if (t == nullptr)
+        return false;
+    t->clips.push_back(removed_);
+    t->sortClips();
+    return true;
 }
 
 MoveClip::MoveClip(Id fromTrackId, Id clipId, Id toTrackId, SamplePosition newStart)
@@ -1685,27 +1877,35 @@ MoveClip::MoveClip(Id fromTrackId, Id clipId, Id toTrackId, SamplePosition newSt
 {
 }
 
-void MoveClip::apply(Project& p)
+bool MoveClip::apply(Project& p)
 {
-    auto& from = requireTrack(p, fromTrackId_);
-    AudioClip clip = requireClip(from, clipId_);
+    auto* from = p.findTrack(fromTrackId_);
+    auto* to = p.findTrack(toTrackId_);
+    const auto* found = from != nullptr ? from->findClip(clipId_) : nullptr;
+    if (found == nullptr || to == nullptr)
+        return false;
+    AudioClip clip = *found;
     previousStart_ = clip.start;
     clip.start = newStart_;
-    std::erase_if(from.clips, [this](const AudioClip& c) { return c.id == clipId_; });
-    auto& to = requireTrack(p, toTrackId_);
-    to.clips.push_back(clip);
-    to.sortClips();
+    std::erase_if(from->clips, [this](const AudioClip& c) { return c.id == clipId_; });
+    to->clips.push_back(clip);
+    to->sortClips();
+    return true;
 }
 
-void MoveClip::revert(Project& p)
+bool MoveClip::revert(Project& p)
 {
-    auto& to = requireTrack(p, toTrackId_);
-    AudioClip clip = requireClip(to, clipId_);
+    auto* to = p.findTrack(toTrackId_);
+    auto* from = p.findTrack(fromTrackId_);
+    const auto* found = to != nullptr ? to->findClip(clipId_) : nullptr;
+    if (found == nullptr || from == nullptr)
+        return false;
+    AudioClip clip = *found;
     clip.start = previousStart_;
-    std::erase_if(to.clips, [this](const AudioClip& c) { return c.id == clipId_; });
-    auto& from = requireTrack(p, fromTrackId_);
-    from.clips.push_back(clip);
-    from.sortClips();
+    std::erase_if(to->clips, [this](const AudioClip& c) { return c.id == clipId_; });
+    from->clips.push_back(clip);
+    from->sortClips();
+    return true;
 }
 
 TrimClip::TrimClip(
@@ -1714,27 +1914,37 @@ TrimClip::TrimClip(
 {
 }
 
-void TrimClip::apply(Project& p)
+bool TrimClip::apply(Project& p)
 {
-    auto& t = requireTrack(p, trackId_);
-    auto& c = requireClip(t, clipId_);
-    previousStart_ = c.start;
-    previousLength_ = c.length;
-    previousOffset_ = c.sourceOffset;
-    c.start = start_;
-    c.length = std::max<SamplePosition>(0, length_);
-    c.sourceOffset = std::max<SamplePosition>(0, sourceOffset_);
-    t.sortClips();
+    auto* t = p.findTrack(trackId_);
+    if (t == nullptr)
+        return false;
+    auto* c = t->findClip(clipId_);
+    if (c == nullptr)
+        return false;
+    previousStart_ = c->start;
+    previousLength_ = c->length;
+    previousOffset_ = c->sourceOffset;
+    c->start = start_;
+    c->length = std::max<SamplePosition>(0, length_);
+    c->sourceOffset = std::max<SamplePosition>(0, sourceOffset_);
+    t->sortClips();
+    return true;
 }
 
-void TrimClip::revert(Project& p)
+bool TrimClip::revert(Project& p)
 {
-    auto& t = requireTrack(p, trackId_);
-    auto& c = requireClip(t, clipId_);
-    c.start = previousStart_;
-    c.length = previousLength_;
-    c.sourceOffset = previousOffset_;
-    t.sortClips();
+    auto* t = p.findTrack(trackId_);
+    if (t == nullptr)
+        return false;
+    auto* c = t->findClip(clipId_);
+    if (c == nullptr)
+        return false;
+    c->start = previousStart_;
+    c->length = previousLength_;
+    c->sourceOffset = previousOffset_;
+    t->sortClips();
+    return true;
 }
 
 SetClipFades::SetClipFades(Id trackId,
@@ -1747,67 +1957,84 @@ SetClipFades::SetClipFades(Id trackId,
       outCurve_(fadeOutCurve)
 {
 }
-void SetClipFades::apply(Project& p)
+bool SetClipFades::apply(Project& p)
 {
-    auto& c = requireClip(requireTrack(p, trackId_), clipId_);
-    previousIn_ = c.fadeIn;
-    previousOut_ = c.fadeOut;
-    previousInCurve_ = c.fadeInCurve;
-    previousOutCurve_ = c.fadeOutCurve;
-    c.fadeIn = std::clamp<SamplePosition>(fadeIn_, 0, c.length);
-    c.fadeOut = std::clamp<SamplePosition>(fadeOut_, 0, c.length);
+    auto* c = findClip(p, trackId_, clipId_);
+    if (c == nullptr)
+        return false;
+    previousIn_ = c->fadeIn;
+    previousOut_ = c->fadeOut;
+    previousInCurve_ = c->fadeInCurve;
+    previousOutCurve_ = c->fadeOutCurve;
+    c->fadeIn = std::clamp<SamplePosition>(fadeIn_, 0, c->length);
+    c->fadeOut = std::clamp<SamplePosition>(fadeOut_, 0, c->length);
     if (inCurve_)
-        c.fadeInCurve = std::clamp(*inCurve_, -1.0f, 1.0f);
+        c->fadeInCurve = std::clamp(*inCurve_, -1.0f, 1.0f);
     if (outCurve_)
-        c.fadeOutCurve = std::clamp(*outCurve_, -1.0f, 1.0f);
+        c->fadeOutCurve = std::clamp(*outCurve_, -1.0f, 1.0f);
+    return true;
 }
-void SetClipFades::revert(Project& p)
+bool SetClipFades::revert(Project& p)
 {
-    auto& c = requireClip(requireTrack(p, trackId_), clipId_);
-    c.fadeIn = previousIn_;
-    c.fadeOut = previousOut_;
-    c.fadeInCurve = previousInCurve_;
-    c.fadeOutCurve = previousOutCurve_;
+    auto* c = findClip(p, trackId_, clipId_);
+    if (c == nullptr)
+        return false;
+    c->fadeIn = previousIn_;
+    c->fadeOut = previousOut_;
+    c->fadeInCurve = previousInCurve_;
+    c->fadeOutCurve = previousOutCurve_;
+    return true;
 }
 
 SplitClip::SplitClip(Id trackId, Id clipId, SamplePosition at) : trackId_(trackId), clipId_(clipId), at_(at)
 {
 }
-void SplitClip::apply(Project& p)
+bool SplitClip::apply(Project& p)
 {
-    auto& t = requireTrack(p, trackId_);
-    auto& c = requireClip(t, clipId_);
-    if (at_ <= c.start || at_ >= c.end())
-        throw std::logic_error("split point is not inside the clip");
-    original_ = c;
+    auto* t = p.findTrack(trackId_);
+    if (t == nullptr)
+        return false;
+    auto* c = t->findClip(clipId_);
+    if (c == nullptr)
+        return false;
+    if (at_ <= c->start || at_ >= c->end())
+        return false;
+    original_ = *c;
     if (right_.id == invalidId)
         right_.id = p.allocateId();
-    right_.name = c.name;
-    right_.mediaPath = c.mediaPath;
+    right_.name = c->name;
+    right_.mediaPath = c->mediaPath;
     right_.start = at_;
-    right_.length = c.end() - at_;
-    right_.sourceOffset = c.sourceAt(at_ - c.start);
-    right_.stretch = c.stretch;
-    right_.transpose = c.transpose;
-    right_.followTempo = c.followTempo;
-    right_.gain = c.gain;
+    right_.length = c->end() - at_;
+    right_.sourceOffset = c->sourceAt(at_ - c->start);
+    right_.stretch = c->stretch;
+    right_.transpose = c->transpose;
+    right_.followTempo = c->followTempo;
+    right_.gain = c->gain;
     right_.fadeIn = 0;
-    right_.fadeOut = std::min(c.fadeOut, right_.length);
-    right_.fadeOutCurve = c.fadeOutCurve;
-    right_.muted = c.muted;
-    right_.vocal = c.vocal; // in source samples: both halves keep the notes they play
-    c.length = at_ - c.start;
-    c.fadeOut = 0;
-    c.fadeIn = std::min(c.fadeIn, c.length);
-    t.clips.push_back(right_);
-    t.sortClips();
+    right_.fadeOut = std::min(c->fadeOut, right_.length);
+    right_.fadeOutCurve = c->fadeOutCurve;
+    right_.muted = c->muted;
+    right_.vocal = c->vocal; // in source samples: both halves keep the notes they play
+    c->length = at_ - c->start;
+    c->fadeOut = 0;
+    c->fadeIn = std::min(c->fadeIn, c->length);
+    t->clips.push_back(right_);
+    t->sortClips();
+    return true;
 }
-void SplitClip::revert(Project& p)
+bool SplitClip::revert(Project& p)
 {
-    auto& t = requireTrack(p, trackId_);
-    std::erase_if(t.clips, [this](const AudioClip& c) { return c.id == right_.id; });
-    requireClip(t, clipId_) = original_;
-    t.sortClips();
+    auto* t = p.findTrack(trackId_);
+    if (t == nullptr)
+        return false;
+    auto* found = t->findClip(clipId_);
+    if (found == nullptr)
+        return false;
+    std::erase_if(t->clips, [this](const AudioClip& c) { return c.id == right_.id; });
+    *found = original_;
+    t->sortClips();
+    return true;
 }
 
 bool JoinClips::canJoin(const AudioClip& left, const AudioClip& right) noexcept
@@ -1822,91 +2049,128 @@ JoinClips::JoinClips(Id trackId, Id leftClipId, Id rightClipId)
     : trackId_(trackId), leftId_(leftClipId), rightId_(rightClipId)
 {
 }
-void JoinClips::apply(Project& p)
+bool JoinClips::apply(Project& p)
 {
-    auto& t = requireTrack(p, trackId_);
-    auto& left = requireClip(t, leftId_);
-    const auto& right = requireClip(t, rightId_);
-    if (!canJoin(left, right))
-        throw std::logic_error("clips are not contiguous in the same source");
-    previousLeft_ = left;
-    removedRight_ = right;
-    left.length += right.length;
-    left.fadeOut = right.fadeOut;
-    left.fadeOutCurve = right.fadeOutCurve;
-    std::erase_if(t.clips, [this](const AudioClip& c) { return c.id == rightId_; });
+    auto* t = p.findTrack(trackId_);
+    if (t == nullptr)
+        return false;
+    auto* left = t->findClip(leftId_);
+    if (left == nullptr)
+        return false;
+    const auto* right = t->findClip(rightId_);
+    if (right == nullptr)
+        return false;
+    if (!canJoin(*left, *right))
+        return false;
+    previousLeft_ = *left;
+    removedRight_ = *right;
+    left->length += right->length;
+    left->fadeOut = right->fadeOut;
+    left->fadeOutCurve = right->fadeOutCurve;
+    std::erase_if(t->clips, [this](const AudioClip& c) { return c.id == rightId_; });
+    return true;
 }
-void JoinClips::revert(Project& p)
+bool JoinClips::revert(Project& p)
 {
-    auto& t = requireTrack(p, trackId_);
-    requireClip(t, leftId_) = previousLeft_;
-    t.clips.push_back(removedRight_);
-    t.sortClips();
+    auto* t = p.findTrack(trackId_);
+    if (t == nullptr)
+        return false;
+    auto* found = t->findClip(leftId_);
+    if (found == nullptr)
+        return false;
+    *found = previousLeft_;
+    t->clips.push_back(removedRight_);
+    t->sortClips();
+    return true;
 }
 
 DuplicateClip::DuplicateClip(Id trackId, Id clipId, SamplePosition at)
     : trackId_(trackId), clipId_(clipId), at_(at)
 {
 }
-void DuplicateClip::apply(Project& p)
+bool DuplicateClip::apply(Project& p)
 {
-    auto& t = requireTrack(p, trackId_);
-    const auto& c = requireClip(t, clipId_);
+    auto* t = p.findTrack(trackId_);
+    if (t == nullptr)
+        return false;
+    const auto* c = t->findClip(clipId_);
+    if (c == nullptr)
+        return false;
     const Id keep = copy_.id;
-    copy_ = c;
+    copy_ = *c;
     copy_.id = keep == invalidId ? p.allocateId() : keep;
-    copy_.start = at_ >= 0 ? at_ : c.end();
-    t.clips.push_back(copy_);
-    t.sortClips();
+    copy_.start = at_ >= 0 ? at_ : c->end();
+    t->clips.push_back(copy_);
+    t->sortClips();
+    return true;
 }
-void DuplicateClip::revert(Project& p)
+bool DuplicateClip::revert(Project& p)
 {
-    auto& t = requireTrack(p, trackId_);
-    std::erase_if(t.clips, [this](const AudioClip& c) { return c.id == copy_.id; });
+    auto* t = p.findTrack(trackId_);
+    if (t == nullptr)
+        return false;
+    std::erase_if(t->clips, [this](const AudioClip& c) { return c.id == copy_.id; });
+    return true;
 }
 
 CrossfadeClips::CrossfadeClips(Id trackId, Id leftClipId, Id rightClipId)
     : trackId_(trackId), leftId_(leftClipId), rightId_(rightClipId)
 {
 }
-void CrossfadeClips::apply(Project& p)
+bool CrossfadeClips::apply(Project& p)
 {
-    auto& t = requireTrack(p, trackId_);
-    auto& left = requireClip(t, leftId_);
-    auto& right = requireClip(t, rightId_);
-    const auto overlap = std::min(left.end(), right.end()) - std::max(left.start, right.start);
-    if (right.start <= left.start || overlap <= 0)
-        throw std::logic_error("clips do not overlap left to right");
-    previousOut_ = left.fadeOut;
-    previousIn_ = right.fadeIn;
-    left.fadeOut = std::min(overlap, left.length);
-    right.fadeIn = std::min(overlap, right.length);
+    auto* t = p.findTrack(trackId_);
+    if (t == nullptr)
+        return false;
+    auto* left = t->findClip(leftId_);
+    if (left == nullptr)
+        return false;
+    auto* right = t->findClip(rightId_);
+    if (right == nullptr)
+        return false;
+    const auto overlap = std::min(left->end(), right->end()) - std::max(left->start, right->start);
+    if (right->start <= left->start || overlap <= 0)
+        return false;
+    previousOut_ = left->fadeOut;
+    previousIn_ = right->fadeIn;
+    left->fadeOut = std::min(overlap, left->length);
+    right->fadeIn = std::min(overlap, right->length);
+    return true;
 }
-void CrossfadeClips::revert(Project& p)
+bool CrossfadeClips::revert(Project& p)
 {
-    auto& t = requireTrack(p, trackId_);
-    requireClip(t, leftId_).fadeOut = previousOut_;
-    requireClip(t, rightId_).fadeIn = previousIn_;
+    auto* t = p.findTrack(trackId_);
+    if (t == nullptr)
+        return false;
+    auto* left = t->findClip(leftId_);
+    auto* right = t->findClip(rightId_);
+    if (left == nullptr || right == nullptr)
+        return false;
+    left->fadeOut = previousOut_;
+    right->fadeIn = previousIn_;
+    return true;
 }
 
 ShiftClips::ShiftClips(Id trackId, SamplePosition from, SamplePosition delta)
     : trackId_(trackId), from_(from), delta_(delta)
 {
 }
-void ShiftClips::apply(Project& p)
+bool ShiftClips::apply(Project& p)
 {
-    auto& t = requireTrack(p, trackId_);
+    auto* t = p.findTrack(trackId_);
+    if (t == nullptr)
+        return false;
     previous_.clear();
-    for (auto& c : t.clips)
+    for (auto& c : t->clips)
         if (c.start >= from_)
         {
             previous_.emplace_back(c.id, c.start);
             c.start = std::max<SamplePosition>(0, c.start + delta_);
         }
-    t.sortClips();
+    t->sortClips();
     // A take group that starts at or after the position moves with its clips.
     shiftedGroups_.clear();
-    for (auto& g : t.takeGroups)
+    for (auto& g : t->takeGroups)
         if (g.start() >= from_)
         {
             const auto delta = std::max(delta_, -g.start());
@@ -1919,16 +2183,19 @@ void ShiftClips::apply(Project& p)
                 s.end += delta;
             }
         }
+    return true;
 }
-void ShiftClips::revert(Project& p)
+bool ShiftClips::revert(Project& p)
 {
-    auto& t = requireTrack(p, trackId_);
+    auto* t = p.findTrack(trackId_);
+    if (t == nullptr)
+        return false;
     for (const auto& [id, start] : previous_)
-        if (auto* c = t.findClip(id))
+        if (auto* c = t->findClip(id))
             c->start = start;
-    t.sortClips();
+    t->sortClips();
     for (const auto& [id, delta] : shiftedGroups_)
-        if (auto* g = t.findTakeGroup(id))
+        if (auto* g = t->findTakeGroup(id))
         {
             for (auto& take : g->takes)
                 take.clip.start -= delta;
@@ -1938,26 +2205,39 @@ void ShiftClips::revert(Project& p)
                 s.end -= delta;
             }
         }
+    return true;
 }
 
 SetClipMute::SetClipMute(Id trackId, Id clipId, bool midi, bool muted)
     : trackId_(trackId), clipId_(clipId), midi_(midi), value_(muted)
 {
 }
-bool& SetClipMute::flag(Project& p) const
+bool* SetClipMute::flag(Project& p) const
 {
-    auto& t = requireTrack(p, trackId_);
-    return midi_ ? requireMidiClip(t, clipId_).muted : requireClip(t, clipId_).muted;
+    if (midi_)
+    {
+        auto* c = findMidiClip(p, trackId_, clipId_);
+        return c != nullptr ? &c->muted : nullptr;
+    }
+    auto* c = findClip(p, trackId_, clipId_);
+    return c != nullptr ? &c->muted : nullptr;
 }
-void SetClipMute::apply(Project& p)
+bool SetClipMute::apply(Project& p)
 {
-    auto& muted = flag(p);
-    previous_ = muted;
-    muted = value_;
+    auto* muted = flag(p);
+    if (muted == nullptr)
+        return false;
+    previous_ = *muted;
+    *muted = value_;
+    return true;
 }
-void SetClipMute::revert(Project& p)
+bool SetClipMute::revert(Project& p)
 {
-    flag(p) = previous_;
+    auto* muted = flag(p);
+    if (muted == nullptr)
+        return false;
+    *muted = previous_;
+    return true;
 }
 
 // ----- vocal pitch editing ----------------------------------------------------------------
@@ -1972,39 +2252,48 @@ SetVocalEdit::SetVocalEdit(Id trackId, Id clipId, VocalEdit edit, std::string na
               value_.segments.end(),
               [](const VocalSegment& a, const VocalSegment& b) { return a.start < b.start; });
 }
-void SetVocalEdit::apply(Project& p)
+bool SetVocalEdit::apply(Project& p)
 {
-    auto& c = requireClip(requireTrack(p, trackId_), clipId_);
-    previous_ = c.vocal;
+    auto* c = findClip(p, trackId_, clipId_);
+    if (c == nullptr)
+        return false;
+    previous_ = c->vocal;
     for (auto& n : value_.notes)
         if (n.id == invalidId)
             n.id = p.allocateId();
     for (auto& s : value_.segments)
         if (s.id == invalidId)
             s.id = p.allocateId();
-    c.vocal = value_;
+    c->vocal = value_;
+    return true;
 }
-void SetVocalEdit::revert(Project& p)
+bool SetVocalEdit::revert(Project& p)
 {
-    requireClip(requireTrack(p, trackId_), clipId_).vocal = previous_;
+    auto* c = findClip(p, trackId_, clipId_);
+    if (c == nullptr)
+        return false;
+    c->vocal = previous_;
+    return true;
 }
 
 // ----- project ----------------------------------------------------------------------------
 
 SetTempo::SetTempo(double bpm) : value_(bpm) {}
 
-void SetTempo::apply(Project& p)
+bool SetTempo::apply(Project& p)
 {
     previous_ = p.tempoBpm;
     positions_.capture(p);
     const auto before = tempoMapOf(p);
     p.tempoBpm = std::clamp(value_, 1.0, 999.0);
     remapMusicalTime(p, before, tempoMapOf(p));
+    return true;
 }
-void SetTempo::revert(Project& p)
+bool SetTempo::revert(Project& p)
 {
     p.tempoBpm = previous_;
     positions_.restore(p);
+    return true;
 }
 
 AddFolderTrack::AddFolderTrack(std::string name, std::vector<Id> members, int index)
@@ -2014,7 +2303,7 @@ AddFolderTrack::AddFolderTrack(std::string name, std::vector<Id> members, int in
     folder_.kind = TrackKind::folder;
     folder_.inputChannel = -1;
 }
-void AddFolderTrack::apply(Project& p)
+bool AddFolderTrack::apply(Project& p)
 {
     allocateIds(p, folder_);
     previousOrder_ = p.tracks;
@@ -2042,42 +2331,60 @@ void AddFolderTrack::apply(Project& p)
         t.folder = folder_.id;
     p.tracks.insert(p.tracks.begin() + at, folder_);
     p.tracks.insert(p.tracks.begin() + at + 1, moved.begin(), moved.end());
+    return true;
 }
-void AddFolderTrack::revert(Project& p)
+bool AddFolderTrack::revert(Project& p)
 {
     p.tracks = previousOrder_;
+    return true;
 }
 
 SetTrackFolder::SetTrackFolder(Id trackId, Id folderId) : trackId_(trackId), folderId_(folderId) {}
-void SetTrackFolder::apply(Project& p)
+bool SetTrackFolder::apply(Project& p)
 {
-    auto& t = requireTrack(p, trackId_);
+    auto* t = p.findTrack(trackId_);
+    if (t == nullptr)
+        return false;
     if (folderId_ != invalidId)
     {
-        const auto& f = requireTrack(p, folderId_);
-        if (!f.isFolder() || p.insideFolder(folderId_, trackId_))
-            throw std::logic_error("a track cannot go into that folder");
+        const auto* f = p.findTrack(folderId_);
+        if (f == nullptr)
+            return false;
+        if (!f->isFolder() || p.insideFolder(folderId_, trackId_))
+            return false;
     }
-    previous_ = t.folder;
-    t.folder = folderId_;
+    previous_ = t->folder;
+    t->folder = folderId_;
+    return true;
 }
-void SetTrackFolder::revert(Project& p)
+bool SetTrackFolder::revert(Project& p)
 {
-    requireTrack(p, trackId_).folder = previous_;
+    auto* t = p.findTrack(trackId_);
+    if (t == nullptr)
+        return false;
+    t->folder = previous_;
+    return true;
 }
 
 SetTrackFrozen::SetTrackFrozen(Id trackId, std::string media) : trackId_(trackId), media_(std::move(media)) {}
-void SetTrackFrozen::apply(Project& p)
+bool SetTrackFrozen::apply(Project& p)
 {
-    auto& t = requireTrack(p, trackId_);
-    if (!t.hasAudio() && !media_.empty())
-        throw std::logic_error("only a track that makes audio can be frozen");
-    previous_ = t.frozenMedia;
-    t.frozenMedia = media_;
+    auto* t = p.findTrack(trackId_);
+    if (t == nullptr)
+        return false;
+    if (!t->hasAudio() && !media_.empty())
+        return false;
+    previous_ = t->frozenMedia;
+    t->frozenMedia = media_;
+    return true;
 }
-void SetTrackFrozen::revert(Project& p)
+bool SetTrackFrozen::revert(Project& p)
 {
-    requireTrack(p, trackId_).frozenMedia = previous_;
+    auto* t = p.findTrack(trackId_);
+    if (t == nullptr)
+        return false;
+    t->frozenMedia = previous_;
+    return true;
 }
 
 TempoState TempoState::of(const Project& p)
@@ -2119,7 +2426,7 @@ SetTempoMap::SetTempoMap(TempoState state, std::string name)
     : value_(std::move(state)), name_(std::move(name))
 {
 }
-void SetTempoMap::apply(Project& p)
+bool SetTempoMap::apply(Project& p)
 {
     previous_ = TempoState::of(p);
     positions_.capture(p);
@@ -2140,14 +2447,16 @@ void SetTempoMap::apply(Project& p)
                      p.meterChanges.end(),
                      [](const MeterChange& a, const MeterChange& b) { return a.bar < b.bar; });
     remapMusicalTime(p, before, tempoMapOf(p));
+    return true;
 }
-void SetTempoMap::revert(Project& p)
+bool SetTempoMap::revert(Project& p)
 {
     p.tempoBpm = previous_.bpm;
     p.timeSignature = previous_.signature;
     p.tempoChanges = previous_.tempoChanges;
     p.meterChanges = previous_.meterChanges;
     positions_.restore(p);
+    return true;
 }
 
 SetClipStretch::SetClipStretch(
@@ -2156,22 +2465,33 @@ SetClipStretch::SetClipStretch(
       transpose_(std::clamp(transpose, -48.0, 48.0)), length_(length), followTempo_(followTempo)
 {
 }
-void SetClipStretch::apply(Project& p)
+bool SetClipStretch::apply(Project& p)
 {
-    auto& t = requireTrack(p, trackId_);
-    auto& c = requireClip(t, clipId_);
-    previous_ = c;
-    c.stretch = stretch_;
-    c.transpose = transpose_;
-    c.followTempo = followTempo_;
-    c.length = std::max<SamplePosition>(1, length_);
-    c.fadeIn = std::min(c.fadeIn, c.length);
-    c.fadeOut = std::min(c.fadeOut, c.length);
+    auto* t = p.findTrack(trackId_);
+    if (t == nullptr)
+        return false;
+    auto* c = t->findClip(clipId_);
+    if (c == nullptr)
+        return false;
+    previous_ = *c;
+    c->stretch = stretch_;
+    c->transpose = transpose_;
+    c->followTempo = followTempo_;
+    c->length = std::max<SamplePosition>(1, length_);
+    c->fadeIn = std::min(c->fadeIn, c->length);
+    c->fadeOut = std::min(c->fadeOut, c->length);
+    return true;
 }
-void SetClipStretch::revert(Project& p)
+bool SetClipStretch::revert(Project& p)
 {
-    auto& t = requireTrack(p, trackId_);
-    requireClip(t, clipId_) = previous_;
+    auto* t = p.findTrack(trackId_);
+    if (t == nullptr)
+        return false;
+    auto* found = t->findClip(clipId_);
+    if (found == nullptr)
+        return false;
+    *found = previous_;
+    return true;
 }
 
 } // namespace northlight::core

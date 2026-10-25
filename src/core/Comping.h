@@ -54,8 +54,8 @@ bool recordingMakesTakes(const Track& track, const std::vector<AudioClip>& passe
 class TakeGroupEdit : public Command
 {
 public:
-    void apply(Project& project) final;
-    void revert(Project& project) final;
+    bool apply(Project& project) final;
+    bool revert(Project& project) final;
     Id groupId() const noexcept { return groupId_; }
 
 protected:
@@ -166,8 +166,8 @@ public:
     SetTakeLanesExpanded(Id trackId, Id groupId, bool expanded);
     std::string name() const override { return expanded_ ? "Show take lanes" : "Hide take lanes"; }
     ChangeKind changeKind() const noexcept override { return ChangeKind::cosmetic; }
-    void apply(Project&) override;
-    void revert(Project&) override;
+    bool apply(Project&) override;
+    bool revert(Project&) override;
 
 private:
     Id trackId_, groupId_;
@@ -193,11 +193,11 @@ class MoveTakeGroup final : public Command
 public:
     MoveTakeGroup(Id fromTrackId, Id groupId, Id toTrackId, SamplePosition delta);
     std::string name() const override { return "Move takes"; }
-    void apply(Project&) override;
-    void revert(Project&) override;
+    bool apply(Project&) override;
+    bool revert(Project&) override;
 
 private:
-    void move(Project& p, Id from, Id to, SamplePosition delta);
+    bool move(Project& p, Id from, Id to, SamplePosition delta); // false: a track is gone
     Id fromTrackId_, groupId_, toTrackId_;
     SamplePosition delta_, applied_ = 0;
     bool moved_ = false;

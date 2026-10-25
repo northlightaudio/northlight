@@ -23,8 +23,12 @@ class Command
 public:
     virtual ~Command() = default;
     virtual std::string name() const = 0;
-    virtual void apply(Project& project) = 0;
-    virtual void revert(Project& project) = 0;
+    // Both return false, having changed nothing, when the command cannot run:
+    // what it refers to is gone (a stale command: a menu opened on a track an
+    // undo has since removed) or the edit is impossible (a routing cycle, a
+    // split outside the clip).
+    virtual bool apply(Project& project) = 0;
+    virtual bool revert(Project& project) = 0;
     // A live command changes a value the engine takes from the model without a
     // recompile (gains, pans, insert parameters and bypass): the session pushes
     // the new values instead of publishing a new snapshot.
@@ -95,10 +99,11 @@ public:
     UndoStack& operator=(const UndoStack&) = delete;
 
     // Applies the command and pushes it; clears the redo history. A command that
-    // throws (it references something that is gone) is not pushed.
-    void execute(Project& project, std::unique_ptr<Command> command);
-    // A command whose revert or apply throws stays where it was, and a group puts
-    // back the members it had already done, so a failure changes nothing.
+    // fails (it references something that is gone) is not pushed: false.
+    bool execute(Project& project, std::unique_ptr<Command> command);
+    // False when there is nothing to undo or redo, or the command fails: it
+    // stays where it was, and a group puts back the members it had already
+    // done, so a failure changes nothing.
     bool undo(Project& project);
     bool redo(Project& project);
 
@@ -204,7 +209,6 @@ template <class Object, class Value> struct FieldType<Value Object::*>
 {
     using type = Value;
 };
-[[noreturn]] void staleTarget();
 } // namespace detail
 
 // Sets one field of one object (a channel's gain, an insert's bypass) and puts
@@ -214,13 +218,23 @@ template <class Target, auto Field> class SetField : public Command
 {
 public:
     using Value = typename detail::FieldType<decltype(Field)>::type;
-    void apply(Project& p) override
+    bool apply(Project& p) override
     {
-        auto& field = fieldIn(p);
-        previous_ = field;
-        field = value_;
+        auto* object = target_.find(p);
+        if (object == nullptr)
+            return false;
+        previous_ = object->*Field;
+        object->*Field = value_;
+        return true;
     }
-    void revert(Project& p) override { fieldIn(p) = previous_; }
+    bool revert(Project& p) override
+    {
+        auto* object = target_.find(p);
+        if (object == nullptr)
+            return false;
+        object->*Field = previous_;
+        return true;
+    }
     // The same setter on the same target: keep the first previous value and
     // take the later value.
     bool mergeWith(Command& next) override
@@ -241,15 +255,6 @@ protected:
     Target target_;
     Value value_;
     Value previous_{};
-
-private:
-    Value& fieldIn(Project& p) const
-    {
-        auto* object = target_.find(p);
-        if (object == nullptr)
-            detail::staleTarget();
-        return object->*Field;
-    }
 };
 
 // ----- concrete commands ------------------------------------------------------------------
@@ -261,8 +266,8 @@ public:
     // id is allocated on apply if it is invalidId.
     AddTrack(Track track, int index = -1);
     std::string name() const override { return "Add track"; }
-    void apply(Project&) override;
-    void revert(Project&) override;
+    bool apply(Project&) override;
+    bool revert(Project&) override;
     Id trackId() const noexcept { return track_.id; }
     // Gives the track these strip modules when it has none (the session supplies
     // the default strip; ids are allocated on apply). Before apply only.
@@ -281,8 +286,8 @@ class AddInstrumentTrack final : public Command
 public:
     AddInstrumentTrack(Track instrumentChannel, Track midiTrack, int index = -1);
     std::string name() const override { return "Add MIDI track and instrument"; }
-    void apply(Project&) override;
-    void revert(Project&) override;
+    bool apply(Project&) override;
+    bool revert(Project&) override;
     Id channelId() const noexcept { return channel_.id; }
     Id midiTrackId() const noexcept { return midi_.id; }
     // The channel strip for the instrument channel (the MIDI track has none).
@@ -299,8 +304,8 @@ class SetMidiTarget final : public Command
 public:
     SetMidiTarget(Id trackId, Id target, int midiChannel);
     std::string name() const override { return "Set MIDI target"; }
-    void apply(Project&) override;
-    void revert(Project&) override;
+    bool apply(Project&) override;
+    bool revert(Project&) override;
 
 private:
     Id trackId_, target_;
@@ -327,8 +332,8 @@ public:
     explicit RemoveTrack(Id trackId);
     bool capturesInsertState() const noexcept override { return true; }
     std::string name() const override { return "Remove track"; }
-    void apply(Project&) override;
-    void revert(Project&) override;
+    bool apply(Project&) override;
+    bool revert(Project&) override;
 
 private:
     Id trackId_;
@@ -343,8 +348,8 @@ class MoveTrack final : public Command
 public:
     MoveTrack(Id trackId, int newIndex);
     std::string name() const override { return "Move track"; }
-    void apply(Project&) override;
-    void revert(Project&) override;
+    bool apply(Project&) override;
+    bool revert(Project&) override;
 
 private:
     Id trackId_;
@@ -356,8 +361,8 @@ class AddBus final : public Command
 public:
     AddBus(Bus bus, int index = -1);
     std::string name() const override { return "Add bus"; }
-    void apply(Project&) override;
-    void revert(Project&) override;
+    bool apply(Project&) override;
+    bool revert(Project&) override;
     Id busId() const noexcept { return bus_.id; }
     void setDefaultStrip(const std::vector<Insert>& modules) override;
 
@@ -374,8 +379,8 @@ public:
     bool capturesInsertState() const noexcept override { return true; }
     Id busId() const noexcept { return busId_; }
     std::string name() const override { return "Remove bus"; }
-    void apply(Project&) override;
-    void revert(Project&) override;
+    bool apply(Project&) override;
+    bool revert(Project&) override;
 
 private:
     Id busId_;
@@ -401,8 +406,8 @@ public:
     // in the same step (and leave it again on undo).
     explicit AddGroup(Group group, std::vector<Id> members = {});
     std::string name() const override { return "Add group"; }
-    void apply(Project&) override;
-    void revert(Project&) override;
+    bool apply(Project&) override;
+    bool revert(Project&) override;
     Id groupId() const noexcept { return group_.id; }
 
 private:
@@ -417,8 +422,8 @@ class RemoveGroup final : public Command
 public:
     explicit RemoveGroup(Id groupId);
     std::string name() const override { return "Remove group"; }
-    void apply(Project&) override;
-    void revert(Project&) override;
+    bool apply(Project&) override;
+    bool revert(Project&) override;
 
 private:
     Id groupId_;
@@ -433,8 +438,8 @@ class SetChannelGroup final : public Command
 public:
     SetChannelGroup(Id channelId, Id groupId);
     std::string name() const override { return "Set group"; }
-    void apply(Project&) override;
-    void revert(Project&) override;
+    bool apply(Project&) override;
+    bool revert(Project&) override;
 
 private:
     Id channelId_, value_, previous_ = invalidId;
@@ -448,8 +453,8 @@ public:
     ChangeKind changeKind() const noexcept override { return ChangeKind::values; }
     SetGroupGain(Id groupId, float ratio);
     std::string name() const override { return "Set group gain"; }
-    void apply(Project&) override;
-    void revert(Project&) override;
+    bool apply(Project&) override;
+    bool revert(Project&) override;
 
 private:
     Id groupId_;
@@ -462,8 +467,8 @@ private:
 class SetGroupSwitch : public Command
 {
 public:
-    void apply(Project&) override;
-    void revert(Project&) override;
+    bool apply(Project&) override;
+    bool revert(Project&) override;
 
 protected:
     SetGroupSwitch(Id groupId, bool Channel::* field, bool value);
@@ -504,8 +509,8 @@ class SetTrackMidiOutput final : public Command
 public:
     SetTrackMidiOutput(Id trackId, bool on, int channel);
     std::string name() const override { return "Set MIDI output"; }
-    void apply(Project&) override;
-    void revert(Project&) override;
+    bool apply(Project&) override;
+    bool revert(Project&) override;
 
 private:
     Id trackId_;
@@ -518,8 +523,8 @@ class AddMidiClip final : public Command
 public:
     AddMidiClip(Id trackId, MidiClip clip); // ids (clip and notes) allocated on apply if invalid
     std::string name() const override { return "Add MIDI clip"; }
-    void apply(Project&) override;
-    void revert(Project&) override;
+    bool apply(Project&) override;
+    bool revert(Project&) override;
     Id clipId() const noexcept { return clip_.id; }
 
 private:
@@ -532,8 +537,8 @@ class RemoveMidiClip final : public Command
 public:
     RemoveMidiClip(Id trackId, Id clipId);
     std::string name() const override { return "Remove MIDI clip"; }
-    void apply(Project&) override;
-    void revert(Project&) override;
+    bool apply(Project&) override;
+    bool revert(Project&) override;
 
 private:
     Id trackId_, clipId_;
@@ -545,8 +550,8 @@ class MoveMidiClip final : public Command
 public:
     MoveMidiClip(Id fromTrackId, Id clipId, Id toTrackId, SamplePosition newStart);
     std::string name() const override { return "Move MIDI clip"; }
-    void apply(Project&) override;
-    void revert(Project&) override;
+    bool apply(Project&) override;
+    bool revert(Project&) override;
 
 private:
     Id fromTrackId_, clipId_, toTrackId_;
@@ -560,8 +565,8 @@ class TrimMidiClip final : public Command
 public:
     TrimMidiClip(Id trackId, Id clipId, SamplePosition start, SamplePosition length);
     std::string name() const override { return "Trim MIDI clip"; }
-    void apply(Project&) override;
-    void revert(Project&) override;
+    bool apply(Project&) override;
+    bool revert(Project&) override;
 
 private:
     Id trackId_, clipId_;
@@ -578,8 +583,8 @@ class SplitMidiClip final : public Command
 public:
     SplitMidiClip(Id trackId, Id clipId, SamplePosition at);
     std::string name() const override { return "Split MIDI clip"; }
-    void apply(Project&) override;
-    void revert(Project&) override;
+    bool apply(Project&) override;
+    bool revert(Project&) override;
     Id rightClipId() const noexcept { return right_.id; }
 
 private:
@@ -594,8 +599,8 @@ class DuplicateMidiClip final : public Command
 public:
     DuplicateMidiClip(Id trackId, Id clipId, SamplePosition at = -1);
     std::string name() const override { return "Duplicate MIDI clip"; }
-    void apply(Project&) override;
-    void revert(Project&) override;
+    bool apply(Project&) override;
+    bool revert(Project&) override;
     Id newClipId() const noexcept { return copy_.id; }
 
 private:
@@ -612,8 +617,8 @@ class JoinMidiClips final : public Command
 public:
     JoinMidiClips(Id trackId, Id leftClipId, Id rightClipId);
     std::string name() const override { return "Join MIDI clips"; }
-    void apply(Project&) override;
-    void revert(Project&) override;
+    bool apply(Project&) override;
+    bool revert(Project&) override;
     static bool canJoin(const MidiClip& left, const MidiClip& right) noexcept;
 
 private:
@@ -626,8 +631,8 @@ class AddNote final : public Command
 public:
     AddNote(Id trackId, Id clipId, MidiNote note); // id allocated on apply if invalid
     std::string name() const override { return "Add note"; }
-    void apply(Project&) override;
-    void revert(Project&) override;
+    bool apply(Project&) override;
+    bool revert(Project&) override;
     Id noteId() const noexcept { return note_.id; }
 
 private:
@@ -640,8 +645,8 @@ class RemoveNote final : public Command
 public:
     RemoveNote(Id trackId, Id clipId, Id noteId);
     std::string name() const override { return "Remove note"; }
-    void apply(Project&) override;
-    void revert(Project&) override;
+    bool apply(Project&) override;
+    bool revert(Project&) override;
 
 private:
     Id trackId_, clipId_, noteId_;
@@ -654,8 +659,8 @@ class SetNote final : public Command
 public:
     SetNote(Id trackId, Id clipId, MidiNote value);
     std::string name() const override { return "Edit note"; }
-    void apply(Project&) override;
-    void revert(Project&) override;
+    bool apply(Project&) override;
+    bool revert(Project&) override;
 
 private:
     Id trackId_, clipId_;
@@ -675,8 +680,8 @@ public:
                         std::vector<Id> remove = {},
                         std::string name = "Edit controllers");
     std::string name() const override { return name_; }
-    void apply(Project&) override;
-    void revert(Project&) override;
+    bool apply(Project&) override;
+    bool revert(Project&) override;
     const std::vector<MidiControllerEvent>& events() const noexcept { return events_; }
 
 private:
@@ -697,8 +702,8 @@ public:
     QuantiseNotes(
         Id trackId, Id clipId, std::vector<Id> noteIds, TempoMap map, GridStep step, float strength = 1.0f);
     std::string name() const override { return "Quantise"; }
-    void apply(Project&) override;
-    void revert(Project&) override;
+    bool apply(Project&) override;
+    bool revert(Project&) override;
 
 private:
     Id trackId_, clipId_;
@@ -719,8 +724,8 @@ public:
     // What the views show: no engine work, but the views rebuild.
     ChangeKind changeKind() const noexcept override { return ChangeKind::cosmetic; }
     bool rebuildsViews() const noexcept override { return true; }
-    void apply(Project&) override;
-    void revert(Project&) override;
+    bool apply(Project&) override;
+    bool revert(Project&) override;
     Id markerId() const noexcept { return marker_.id; }
 
 private:
@@ -735,8 +740,8 @@ public:
     // What the views show: no engine work, but the views rebuild.
     ChangeKind changeKind() const noexcept override { return ChangeKind::cosmetic; }
     bool rebuildsViews() const noexcept override { return true; }
-    void apply(Project&) override;
-    void revert(Project&) override;
+    bool apply(Project&) override;
+    bool revert(Project&) override;
 
 private:
     Id markerId_;
@@ -752,8 +757,8 @@ public:
     // What the views show: no engine work, but the views rebuild.
     ChangeKind changeKind() const noexcept override { return ChangeKind::cosmetic; }
     bool rebuildsViews() const noexcept override { return true; }
-    void apply(Project&) override;
-    void revert(Project&) override;
+    bool apply(Project&) override;
+    bool revert(Project&) override;
 
 private:
     Id markerId_;
@@ -766,8 +771,8 @@ class SetOutputBus final : public Command
 public:
     SetOutputBus(Id channelId, Id busId);
     std::string name() const override { return "Set output"; }
-    void apply(Project&) override;
-    void revert(Project&) override;
+    bool apply(Project&) override;
+    bool revert(Project&) override;
 
 private:
     Id channelId_, value_, previous_ = invalidId;
@@ -786,8 +791,8 @@ public:
     }
     Id liveChannel() const noexcept override { return channelId_; }
     std::string name() const override { return "Set send"; }
-    void apply(Project&) override;
-    void revert(Project&) override;
+    bool apply(Project&) override;
+    bool revert(Project&) override;
 
 private:
     Id channelId_;
@@ -801,8 +806,8 @@ class RemoveSend final : public Command
 public:
     RemoveSend(Id channelId, Id busId);
     std::string name() const override { return "Remove send"; }
-    void apply(Project&) override;
-    void revert(Project&) override;
+    bool apply(Project&) override;
+    bool revert(Project&) override;
 
 private:
     Id channelId_, busId_;
@@ -857,8 +862,8 @@ public:
     // Inserts at `index` (or the end when index < 0); the id is allocated on apply.
     AddInsert(Id channelId, Insert insert, int index = -1);
     std::string name() const override { return "Add insert"; }
-    void apply(Project&) override;
-    void revert(Project&) override;
+    bool apply(Project&) override;
+    bool revert(Project&) override;
     Id insertId() const noexcept { return insert_.id; }
 
 private:
@@ -873,8 +878,8 @@ public:
     bool capturesInsertState() const noexcept override { return true; }
     RemoveInsert(Id channelId, Id insertId);
     std::string name() const override { return "Remove insert"; }
-    void apply(Project&) override;
-    void revert(Project&) override;
+    bool apply(Project&) override;
+    bool revert(Project&) override;
 
 private:
     Id channelId_, insertId_;
@@ -895,8 +900,8 @@ public:
     {
         return instrument_.type.empty() ? "Remove instrument" : "Set instrument";
     }
-    void apply(Project&) override;
-    void revert(Project&) override;
+    bool apply(Project&) override;
+    bool revert(Project&) override;
     Id instrumentId() const noexcept { return instrument_.id; }
 
 private:
@@ -910,8 +915,8 @@ class MoveInsert final : public Command
 public:
     MoveInsert(Id channelId, Id insertId, int newIndex);
     std::string name() const override { return "Move insert"; }
-    void apply(Project&) override;
-    void revert(Project&) override;
+    bool apply(Project&) override;
+    bool revert(Project&) override;
 
 private:
     Id channelId_, insertId_;
@@ -928,8 +933,8 @@ public:
         return AutomationWrite{channelId_, AutomationTarget::insertParameter, insertId_, parameter_, value_};
     }
     std::string name() const override { return "Set parameter"; }
-    void apply(Project&) override;
-    void revert(Project&) override;
+    bool apply(Project&) override;
+    bool revert(Project&) override;
     Id channelId() const noexcept { return channelId_; }
     Id insertId() const noexcept { return insertId_; }
     int parameter() const noexcept { return parameter_; }
@@ -970,8 +975,8 @@ class SetInsertSidechain final : public Command
 public:
     SetInsertSidechain(Id channelId, Id insertId, Id sourceId, bool postFader = false);
     std::string name() const override { return "Set insert sidechain"; }
-    void apply(Project&) override;
-    void revert(Project&) override;
+    bool apply(Project&) override;
+    bool revert(Project&) override;
 
 private:
     Id channelId_, insertId_, value_, previous_ = invalidId;
@@ -1008,8 +1013,8 @@ class MoveStripModule final : public Command
 public:
     MoveStripModule(Id channelId, Id moduleId, int newIndex);
     std::string name() const override { return "Move strip module"; }
-    void apply(Project&) override;
-    void revert(Project&) override;
+    bool apply(Project&) override;
+    bool revert(Project&) override;
 
 private:
     Id channelId_, moduleId_;
@@ -1026,8 +1031,8 @@ public:
     SetStripModuleType(
         Id channelId, Id moduleId, std::string type, std::vector<float> params, std::string name);
     std::string name() const override { return name_; }
-    void apply(Project&) override;
-    void revert(Project&) override;
+    bool apply(Project&) override;
+    bool revert(Project&) override;
 
 private:
     Id channelId_, moduleId_;
@@ -1054,8 +1059,8 @@ class SetStripState final : public Command
 public:
     SetStripState(Id channelId, std::vector<Insert> modules, std::string name = "Apply strip preset");
     std::string name() const override { return name_; }
-    void apply(Project&) override;
-    void revert(Project&) override;
+    bool apply(Project&) override;
+    bool revert(Project&) override;
 
 private:
     Id channelId_;
@@ -1079,8 +1084,8 @@ class AddAutomationLane final : public Command
 public:
     AddAutomationLane(Id channelId, AutomationLane lane);
     std::string name() const override { return "Add automation"; }
-    void apply(Project&) override;
-    void revert(Project&) override;
+    bool apply(Project&) override;
+    bool revert(Project&) override;
     Id laneId() const noexcept { return lane_.id; }
 
 private:
@@ -1094,8 +1099,8 @@ class RemoveAutomationLane final : public Command
 public:
     RemoveAutomationLane(Id channelId, Id laneId);
     std::string name() const override { return "Remove automation"; }
-    void apply(Project&) override;
-    void revert(Project&) override;
+    bool apply(Project&) override;
+    bool revert(Project&) override;
 
 private:
     Id channelId_, laneId_;
@@ -1160,8 +1165,8 @@ class SetAutomationLaneTarget final : public Command
 public:
     SetAutomationLaneTarget(Id channelId, Id laneId, AutomationTarget target, Id insert, int parameter);
     std::string name() const override { return "Change automation parameter"; }
-    void apply(Project&) override;
-    void revert(Project&) override;
+    bool apply(Project&) override;
+    bool revert(Project&) override;
 
 private:
     Id channelId_, laneId_;
@@ -1224,8 +1229,8 @@ public:
     // which takes the place of the channel.
     SetTrackInput(Id trackId, int inputChannel, std::string inputBus = {});
     std::string name() const override { return "Set track input"; }
-    void apply(Project&) override;
-    void revert(Project&) override;
+    bool apply(Project&) override;
+    bool revert(Project&) override;
 
 private:
     Id trackId_;
@@ -1260,8 +1265,8 @@ public:
     // The clip's id is allocated on apply if it is invalidId.
     AddClip(Id trackId, AudioClip clip);
     std::string name() const override { return "Add clip"; }
-    void apply(Project&) override;
-    void revert(Project&) override;
+    bool apply(Project&) override;
+    bool revert(Project&) override;
     Id clipId() const noexcept { return clip_.id; }
 
 private:
@@ -1274,8 +1279,8 @@ class RemoveClip final : public Command
 public:
     RemoveClip(Id trackId, Id clipId);
     std::string name() const override { return "Remove clip"; }
-    void apply(Project&) override;
-    void revert(Project&) override;
+    bool apply(Project&) override;
+    bool revert(Project&) override;
 
 private:
     Id trackId_, clipId_;
@@ -1288,8 +1293,8 @@ public:
     // Moves a clip to a new start position, optionally onto another track.
     MoveClip(Id fromTrackId, Id clipId, Id toTrackId, SamplePosition newStart);
     std::string name() const override { return "Move clip"; }
-    void apply(Project&) override;
-    void revert(Project&) override;
+    bool apply(Project&) override;
+    bool revert(Project&) override;
 
 private:
     Id fromTrackId_, clipId_, toTrackId_;
@@ -1302,8 +1307,8 @@ public:
     // Sets new start/length/sourceOffset together (trim either edge, slip).
     TrimClip(Id trackId, Id clipId, SamplePosition start, SamplePosition length, SamplePosition sourceOffset);
     std::string name() const override { return "Trim clip"; }
-    void apply(Project&) override;
-    void revert(Project&) override;
+    bool apply(Project&) override;
+    bool revert(Project&) override;
 
 private:
     Id trackId_, clipId_;
@@ -1323,8 +1328,8 @@ public:
                  std::optional<float> fadeInCurve = std::nullopt,
                  std::optional<float> fadeOutCurve = std::nullopt);
     std::string name() const override { return "Set clip fades"; }
-    void apply(Project&) override;
-    void revert(Project&) override;
+    bool apply(Project&) override;
+    bool revert(Project&) override;
 
 private:
     Id trackId_, clipId_;
@@ -1340,8 +1345,8 @@ class SplitClip final : public Command
 public:
     SplitClip(Id trackId, Id clipId, SamplePosition at);
     std::string name() const override { return "Split clip"; }
-    void apply(Project&) override;
-    void revert(Project&) override;
+    bool apply(Project&) override;
+    bool revert(Project&) override;
     Id rightClipId() const noexcept { return right_.id; }
 
 private:
@@ -1357,8 +1362,8 @@ class JoinClips final : public Command
 public:
     JoinClips(Id trackId, Id leftClipId, Id rightClipId);
     std::string name() const override { return "Join clips"; }
-    void apply(Project&) override;
-    void revert(Project&) override;
+    bool apply(Project&) override;
+    bool revert(Project&) override;
     static bool canJoin(const AudioClip& left, const AudioClip& right) noexcept;
 
 private:
@@ -1372,8 +1377,8 @@ class DuplicateClip final : public Command
 public:
     DuplicateClip(Id trackId, Id clipId, SamplePosition at = -1);
     std::string name() const override { return "Duplicate clip"; }
-    void apply(Project&) override;
-    void revert(Project&) override;
+    bool apply(Project&) override;
+    bool revert(Project&) override;
     Id newClipId() const noexcept { return copy_.id; }
 
 private:
@@ -1389,8 +1394,8 @@ class CrossfadeClips final : public Command
 public:
     CrossfadeClips(Id trackId, Id leftClipId, Id rightClipId);
     std::string name() const override { return "Crossfade clips"; }
-    void apply(Project&) override;
-    void revert(Project&) override;
+    bool apply(Project&) override;
+    bool revert(Project&) override;
 
 private:
     Id trackId_, leftId_, rightId_;
@@ -1405,8 +1410,8 @@ class ShiftClips final : public Command
 public:
     ShiftClips(Id trackId, SamplePosition from, SamplePosition delta);
     std::string name() const override { return "Shift clips"; }
-    void apply(Project&) override;
-    void revert(Project&) override;
+    bool apply(Project&) override;
+    bool revert(Project&) override;
 
 private:
     Id trackId_;
@@ -1429,11 +1434,11 @@ class SetClipMute final : public Command
 public:
     SetClipMute(Id trackId, Id clipId, bool midi, bool muted);
     std::string name() const override { return value_ ? "Mute clip" : "Unmute clip"; }
-    void apply(Project&) override;
-    void revert(Project&) override;
+    bool apply(Project&) override;
+    bool revert(Project&) override;
 
 private:
-    bool& flag(Project& p) const;
+    bool* flag(Project& p) const; // null when the clip is gone
     Id trackId_, clipId_;
     bool midi_, value_, previous_ = false;
 };
@@ -1445,8 +1450,8 @@ class SetMediaPaths final : public Command
 public:
     explicit SetMediaPaths(std::vector<std::pair<std::string, std::string>> renames);
     std::string name() const override { return "Consolidate media"; }
-    void apply(Project&) override;
-    void revert(Project&) override;
+    bool apply(Project&) override;
+    bool revert(Project&) override;
 
 private:
     std::vector<std::pair<std::string, std::string>> renames_;
@@ -1466,8 +1471,8 @@ class SetVocalEdit final : public Command
 public:
     SetVocalEdit(Id trackId, Id clipId, VocalEdit edit, std::string name = "Edit pitch");
     std::string name() const override { return name_; }
-    void apply(Project&) override;
-    void revert(Project&) override;
+    bool apply(Project&) override;
+    bool revert(Project&) override;
     const VocalEdit& edit() const noexcept { return value_; }
 
 private:
@@ -1493,8 +1498,8 @@ class AddFolderTrack final : public Command
 public:
     AddFolderTrack(std::string name, std::vector<Id> members, int index = -1);
     std::string name() const override { return "Add folder track"; }
-    void apply(Project&) override;
-    void revert(Project&) override;
+    bool apply(Project&) override;
+    bool revert(Project&) override;
     Id folderId() const noexcept { return folder_.id; }
 
 private:
@@ -1514,8 +1519,8 @@ public:
     {
         return folderId_ == invalidId ? "Remove from folder" : "Move into folder";
     }
-    void apply(Project&) override;
-    void revert(Project&) override;
+    bool apply(Project&) override;
+    bool revert(Project&) override;
 
 private:
     Id trackId_, folderId_, previous_ = invalidId;
@@ -1536,8 +1541,8 @@ class SetTrackFrozen final : public Command
 public:
     SetTrackFrozen(Id trackId, std::string media);
     std::string name() const override { return media_.empty() ? "Unfreeze track" : "Freeze track"; }
-    void apply(Project&) override;
-    void revert(Project&) override;
+    bool apply(Project&) override;
+    bool revert(Project&) override;
 
 private:
     Id trackId_;
@@ -1577,8 +1582,8 @@ class SetTempoMap final : public Command
 public:
     explicit SetTempoMap(TempoState state, std::string name = "Edit tempo track");
     std::string name() const override { return name_; }
-    void apply(Project&) override;
-    void revert(Project&) override;
+    bool apply(Project&) override;
+    bool revert(Project&) override;
 
 private:
     TempoState value_, previous_;
@@ -1594,8 +1599,8 @@ public:
     SetClipStretch(
         Id trackId, Id clipId, double stretch, double transpose, SamplePosition length, bool followTempo);
     std::string name() const override { return "Stretch clip"; }
-    void apply(Project&) override;
-    void revert(Project&) override;
+    bool apply(Project&) override;
+    bool revert(Project&) override;
 
 private:
     Id trackId_, clipId_;
@@ -1622,8 +1627,8 @@ class SetTempo final : public Command
 public:
     explicit SetTempo(double bpm);
     std::string name() const override { return "Set tempo"; }
-    void apply(Project&) override;
-    void revert(Project&) override;
+    bool apply(Project&) override;
+    bool revert(Project&) override;
 
 private:
     double value_, previous_ = 120.0;

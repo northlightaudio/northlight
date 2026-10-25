@@ -100,7 +100,11 @@ lanes are part of their row's block, after the row and its take lanes
 
 Every change is a `core::Command` with `apply` and `revert`, kept by the
 `core::UndoStack`, which groups commands into one step. Each command reports its
-`ChangeKind`, which is how the engine learns what to do. Most commands that set
+`ChangeKind`, which is how the engine learns what to do. `apply` and `revert`
+return false, having changed nothing, when a command cannot run (what it names is
+gone: a menu opened on a track an undo has since removed); the stack then drops it,
+or leaves an undo or redo where it was, and a group puts back the members it had
+already done. Most commands that set
 one field of one object (a gain, a bypass, a lane's points) are thin subclasses of
 `core::SetField<Target, &Object::field>`, which finds the target by id, keeps the
 value it replaces and puts it back; the subclass only names itself and says what

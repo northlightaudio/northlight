@@ -649,3 +649,52 @@ TEST_CASE("The master's automation round-trips; version 14 files load with none"
     CHECK(loaded->master.automation.empty());
     CHECK(loaded->master.automationMode == AutomationMode::read);
 }
+
+TEST_CASE("A wrongly typed note, point or value in a file is skipped, not the whole file", "[core][json]")
+{
+    Project p;
+    Track t;
+    t.id = p.allocateId();
+    t.kind = TrackKind::midi;
+    MidiClip c;
+    c.id = p.allocateId();
+    c.length = 100;
+    t.midiClips.push_back(c);
+    Track audio;
+    audio.id = p.allocateId();
+    Insert eq;
+    eq.id = p.allocateId();
+    eq.type = "northlight.eq";
+    eq.params = {0.25f, 0.5f};
+    audio.inserts.push_back(eq);
+    AutomationLane lane;
+    lane.id = p.allocateId();
+    lane.points = {{0, 1.0f}};
+    audio.automation.push_back(lane);
+    p.tracks.push_back(t);
+    p.tracks.push_back(audio);
+    auto text = projectToJson(p, false);
+    const auto replace = [&text](const std::string& from, const std::string& to)
+    {
+        const auto at = text.find(from);
+        REQUIRE(at != std::string::npos);
+        text.replace(at, from.size(), to);
+    };
+    replace("\"notes\":[]", "\"notes\":[[0,\"C4\",100,0,10],[0,60,100,0,10]]");
+    replace("\"points\":[[0,1.0]]", "\"points\":[[0,1.0],[\"later\",0.5],[20,0.5]]");
+    replace("\"params\":[0.25,0.5]", "\"params\":[0.25,\"loud\"]");
+
+    std::string error;
+    const auto loaded = projectFromJson(text, &error);
+    REQUIRE(loaded.has_value());
+    const auto& notes = loaded->tracks[0].midiClips[0].notes;
+    REQUIRE(notes.size() == 1);
+    CHECK(notes[0].note == 60);
+    const auto& points = loaded->tracks[1].automation[0].points;
+    REQUIRE(points.size() == 2);
+    CHECK(points[1].position == 20);
+    const auto& params = loaded->tracks[1].inserts[0].params;
+    REQUIRE(params.size() == 2); // the parameters keep their places
+    CHECK(params[0] == 0.25f);
+    CHECK(params[1] == 0.0f);
+}
