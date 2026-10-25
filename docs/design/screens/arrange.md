@@ -203,7 +203,8 @@ Rows at `trackRow` 56 default. Contents, left to right, inside `space.sm` paddin
 - Waveform: the peak-cache mip nearest to 1 px per bucket, drawn as a filled min/max
   envelope in track colour at `waveformAlpha`, centred vertically in the body, with a
   1 px darker centre line (track colour at 30%). Stereo shows two half-height
-  channels. Gain changes scale the envelope; muted clips use `waveformMutedAlpha`
+  channels. Gain changes scale the envelope (a boost up to full scale, as in the
+  audio editor and the take lanes); muted clips use `waveformMutedAlpha`
   and a hatched body (45°, 6 px spacing, body colour at 10%).
 - Fades: a `textPrimary` curve over the faded region with the body above it dimmed;
   handles are 8 px squares at the top corners, visible on hover. Dragging a handle

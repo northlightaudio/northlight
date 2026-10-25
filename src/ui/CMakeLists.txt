@@ -160,6 +160,9 @@ add_library(northlight_ui STATIC
     AudioSetupView.cpp
     timeline/TimeGrid.h
     timeline/TimeGrid.cpp
+    timeline/WaveformPainter.h
+    timeline/ClipPainter.h
+    timeline/ClipPainter.cpp
     ArrangeView.h
     ArrangeView.cpp
     TakeLanes.h

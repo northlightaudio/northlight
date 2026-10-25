@@ -11,7 +11,9 @@
 #include "ui/NorthlightLookAndFeel.h"
 #include "ui/PaintStats.h"
 #include "ui/PluginMenu.h"
+#include "ui/timeline/ClipPainter.h"
 #include "ui/timeline/TimeGrid.h"
+#include "ui/timeline/WaveformPainter.h"
 
 #include <algorithm>
 #include <cmath>
@@ -1820,20 +1822,21 @@ void ArrangeView::drawClip(juce::Graphics& g,
     const auto body = block.withTrimmedTop(headerH);
 
     // Body and header.
-    g.setColour(
+    clips::paintBody(
+        g,
+        theme_,
+        block,
+        headerH,
         missing ? c.surface2
                 : colour.withAlpha(
-                      (selected ? theme_.track.clipBodySelectedAlpha : theme_.track.clipBodyAlpha) * dim));
-    g.fillRoundedRectangle(block.toFloat(), theme_.radius.sm);
-    if (showHeader)
-        fillClipHeader(
-            g, block, headerH, (missing ? c.warning : colour).withAlpha(theme_.track.clipHeaderAlpha * dim));
+                      (selected ? theme_.track.clipBodySelectedAlpha : theme_.track.clipBodyAlpha) * dim),
+        (missing ? c.warning : colour).withAlpha(theme_.track.clipHeaderAlpha * dim));
     if (muted && !missing)
-        hatch(g, body, visible, colour, dim);
+        clips::paintHatch(g, body, visible, colour, dim);
 
     // Waveform: one min/max column per pixel from the peak cache (decoded samples
-    // when zoomed past the finest peak level), scaled by the
-    // clip gain so a gain change is visible; a darker centre line under it.
+    // when zoomed past the finest peak level), at the level the clip plays (its
+    // gain through its fades, so a faded edge reads as quiet); a darker centre line.
     if (missing)
     {
         g.setColour(c.warning);
@@ -1850,46 +1853,23 @@ void ArrangeView::drawClip(juce::Graphics& g,
     else if (const auto view = waveformIn(clip, wave); !view.empty())
     {
         // One look into the peak store per clip (the view holds the peaks).
-        const int channels = std::min(2, view.numChannels());
-        const float laneHeight = static_cast<float>(wave.getHeight()) / static_cast<float>(channels);
-        const float scale = std::min(1.0f, clip.gain);
         const auto waveColour =
             colour.withAlpha((muted ? theme_.track.waveformMutedAlpha : theme_.track.waveformAlpha) * dim);
-        for (int ch = 0; ch < channels; ++ch)
-        {
-            const float midY = static_cast<float>(wave.getY()) + laneHeight * (static_cast<float>(ch) + 0.5f);
-            g.setColour(colour.withAlpha(0.3f * dim));
-            g.fillRect(static_cast<float>(wave.getX()), midY, static_cast<float>(wave.getWidth()), 1.0f);
-            g.setColour(waveColour);
-            const float half = laneHeight * 0.48f * scale;
-            // The fades scale the waveform as they scale the sound (core::fadeShape),
-            // so a faded edge reads as quiet.
-            const float inK = core::fadeShapeK(clip.fadeInCurve), outK = core::fadeShapeK(clip.fadeOutCurve);
-            const auto fadeGain = [&](core::SamplePosition pos)
-            {
-                float f = 1.0f;
-                if (clip.fadeIn > 0 && pos < clip.fadeIn)
-                    f = core::fadeShape(static_cast<float>(pos) / static_cast<float>(clip.fadeIn), inK);
-                if (clip.fadeOut > 0 && pos > clip.length - clip.fadeOut)
-                    f *= core::fadeShape(
-                        static_cast<float>(clip.length - pos) / static_cast<float>(clip.fadeOut), outK);
-                return f;
-            };
-            for (int x = wave.getX(); x < wave.getRight(); ++x)
-            {
-                paintstats::counters().waveColumns++;
-                const auto from = clip.sourceAt(sampleForX(x) - clip.start);
-                const auto to = clip.sourceAt(sampleForX(x + 1) - clip.start);
-                const auto r = view.lookup(ch, from, std::max(to, from + 1));
-                const float faded = half * fadeGain(sampleForX(x) - clip.start);
-                const float top = midY - r.maximum * faded;
-                const float bottom = midY - r.minimum * faded;
-                g.fillRect(static_cast<float>(x),
-                           std::min(top, bottom),
-                           1.0f,
-                           std::max(1.0f, std::abs(bottom - top)));
-            }
-        }
+        const WaveformStyle style{waveColour, waveColour, colour.withAlpha(0.3f * dim)};
+        paintWaveform(g,
+                      wave,
+                      std::min(2, view.numChannels()),
+                      wave.getX(),
+                      wave.getRight(),
+                      style,
+                      [&](int ch, int x)
+                      {
+                          const auto at = sampleForX(x) - clip.start;
+                          const auto from = clip.sourceAt(at);
+                          const auto to = clip.sourceAt(sampleForX(x + 1) - clip.start);
+                          const auto r = view.lookup(ch, from, std::max(to, from + 1));
+                          return WaveColumn{r.minimum, r.maximum, clipLevelAt(clip, at)};
+                      });
     }
 
     // Fades: the body dimmed under a textPrimary curve; handles on hover or selection.
@@ -1937,18 +1917,19 @@ void ArrangeView::drawClip(juce::Graphics& g,
     }
 
     // Outline: 40% at rest, 70% hovered, full when selected; warning when missing.
-    g.setColour(missing ? c.warning : colour.withAlpha(selected ? 1.0f : hovered ? 0.7f : 0.4f));
-    g.drawRoundedRectangle(block.toFloat().reduced(0.5f), theme_.radius.sm, 1.0f);
+    clips::paintOutline(g,
+                        theme_,
+                        block,
+                        missing ? c.warning
+                                : colour.withAlpha(selected  ? 1.0f
+                                                   : hovered ? 0.7f
+                                                             : 0.4f));
 
     // The name in the header (or over the body when the header is hidden).
-    const auto textArea = (showHeader ? block.withHeight(headerH) : block)
-                              .getIntersection(visible)
-                              .withTrimmedLeft(fadeHandle + 2 > 6 ? fadeHandle + 2 : 6)
-                              .withTrimmedRight(6);
+    const auto textArea =
+        clips::labelArea(block, visible, headerH, fadeHandle + 2 > 6 ? fadeHandle + 2 : 6, 6);
     if ((showHeader || block.getHeight() >= 14) && textArea.intersects(paintArea_))
     {
-        g.setColour(c.textPrimary.withAlpha(dim));
-        g.setFont(theme_.caption());
         juce::String label = juce::String::fromUTF8(clip.name.c_str());
         if (std::abs(clip.gain - 1.0f) > 1.0e-3f)
             label << "  " << db::gainText(clip.gain) << " dB";
@@ -1966,7 +1947,7 @@ void ArrangeView::drawClip(juce::Graphics& g,
                 label << "  stretching " << juce::String(static_cast<int>(done * 100.0)) << "%";
                 stretchPending_ = true;
             }
-        g.drawText(label, textArea, juce::Justification::centredLeft, true);
+        clips::paintLabel(g, theme_, textArea, label, c.textPrimary.withAlpha(dim));
     }
 }
 engine::WaveformView ArrangeView::waveformIn(const core::AudioClip& clip, juce::Rectangle<int> wave)
@@ -2067,13 +2048,15 @@ void ArrangeView::drawMidiClip(juce::Graphics& g,
     const bool muted = track.mute || shownMuted(ref, model.muted);
     const bool showHeader = lane.getHeight() >= 24;
     const int headerH = showHeader ? theme_.sizes.clipHeader : 0;
-    g.setColour(
-        colour.withAlpha((selected ? theme_.track.clipBodySelectedAlpha : theme_.track.clipBodyAlpha) * dim));
-    g.fillRoundedRectangle(block.toFloat(), theme_.radius.sm);
-    if (showHeader)
-        fillClipHeader(g, block, headerH, colour.withAlpha(theme_.track.clipHeaderAlpha * dim));
+    clips::paintBody(
+        g,
+        theme_,
+        block,
+        headerH,
+        colour.withAlpha((selected ? theme_.track.clipBodySelectedAlpha : theme_.track.clipBodyAlpha) * dim),
+        colour.withAlpha(theme_.track.clipHeaderAlpha * dim));
     if (muted)
-        hatch(g, block.withTrimmedTop(headerH), visible, colour, dim);
+        clips::paintHatch(g, block.withTrimmedTop(headerH), visible, colour, dim);
 
     // Notes: a bar per note, pitch on a range that fits the clip's notes.
     if (!model.notes.empty())
@@ -2105,41 +2088,23 @@ void ArrangeView::drawMidiClip(juce::Graphics& g,
                        std::max(1.0f, rowH - 1.0f));
         }
     }
-    g.setColour(colour.withAlpha(selected ? 1.0f : hovered || recording ? 0.7f : 0.4f));
-    g.drawRoundedRectangle(block.toFloat().reduced(0.5f), theme_.radius.sm, 1.0f);
-    const auto textArea =
-        (showHeader ? block.withHeight(headerH) : block).getIntersection(visible).reduced(6, 0);
+    clips::paintOutline(g,
+                        theme_,
+                        block,
+                        colour.withAlpha(selected               ? 1.0f
+                                         : hovered || recording ? 0.7f
+                                                                : 0.4f));
+    const auto textArea = clips::labelArea(block, visible, headerH, 6, 6);
     if ((showHeader || block.getHeight() >= 14) && textArea.intersects(paintArea_))
     {
-        g.setColour(c.textPrimary.withAlpha(dim));
-        g.setFont(theme_.caption());
         const auto name = recording ? juce::String::fromUTF8("\xe2\x97\x8f Recording")
                                     : juce::String::fromUTF8(clip.name.c_str());
-        g.drawText(name + "  " + juce::String(model.notes.size()) + " notes",
-                   textArea,
-                   juce::Justification::centredLeft,
-                   true);
+        clips::paintLabel(g,
+                          theme_,
+                          textArea,
+                          name + "  " + juce::String(model.notes.size()) + " notes",
+                          c.textPrimary.withAlpha(dim));
     }
-}
-
-void ArrangeView::fillClipHeader(juce::Graphics& g,
-                                 juce::Rectangle<int> block,
-                                 int headerH,
-                                 juce::Colour colour)
-{
-    g.setColour(colour);
-    juce::Path header;
-    header.addRoundedRectangle(static_cast<float>(block.getX()),
-                               static_cast<float>(block.getY()),
-                               static_cast<float>(block.getWidth()),
-                               static_cast<float>(headerH),
-                               theme_.radius.sm,
-                               theme_.radius.sm,
-                               true,
-                               true,
-                               false,
-                               false);
-    g.fillPath(header);
 }
 
 // A take being recorded (screens/arrange.md "Recording clip"): a clip in `record` at
@@ -2167,45 +2132,42 @@ void ArrangeView::drawLiveTake(juce::Graphics& g,
     const bool showHeader = lane.getHeight() >= 24;
     const int headerH = showHeader ? theme_.sizes.clipHeader : 0;
     const auto body = block.withTrimmedTop(headerH);
-    g.setColour(colour.withAlpha(theme_.track.clipBodyAlpha));
-    g.fillRoundedRectangle(block.toFloat(), theme_.radius.sm);
-    if (showHeader)
-        fillClipHeader(g, block, headerH, colour.withAlpha(theme_.track.clipHeaderAlpha));
+    clips::paintBody(g,
+                     theme_,
+                     block,
+                     headerH,
+                     colour.withAlpha(theme_.track.clipBodyAlpha),
+                     colour.withAlpha(theme_.track.clipHeaderAlpha));
 
     // Waveform: one min/max column per pixel from the peaks written so far; the
     // unwritten tail (at most a bin and the writer's lag) reads as silence.
     const auto wave = body.getIntersection(visible);
-    const float midY = static_cast<float>(wave.getY()) + static_cast<float>(wave.getHeight()) * 0.5f;
-    g.setColour(colour.withAlpha(0.3f));
-    g.fillRect(static_cast<float>(wave.getX()), midY, static_cast<float>(wave.getWidth()), 1.0f);
-    g.setColour(colour.withAlpha(theme_.track.waveformAlpha));
-    const float half = static_cast<float>(wave.getHeight()) * 0.48f;
     const auto painted = wave.getIntersection(paintArea_);
-    for (int x = painted.getX(); x < painted.getRight(); ++x)
-    {
-        const auto from = placement.sourceOffset + (sampleForX(x) - placement.start);
-        const auto to = placement.sourceOffset + (sampleForX(x + 1) - placement.start);
-        float minimum = 0.0f, maximum = 0.0f;
-        take.lookup(from, std::max(to, from + 1), minimum, maximum);
-        const float top = midY - maximum * half;
-        const float bottom = midY - minimum * half;
-        g.fillRect(
-            static_cast<float>(x), std::min(top, bottom), 1.0f, std::max(1.0f, std::abs(bottom - top)));
-    }
+    const WaveformStyle style{colour.withAlpha(theme_.track.waveformAlpha),
+                              colour.withAlpha(theme_.track.waveformAlpha),
+                              colour.withAlpha(0.3f)};
+    paintWaveform(g,
+                  wave,
+                  1,
+                  painted.getX(),
+                  painted.getRight(),
+                  style,
+                  [&](int, int x)
+                  {
+                      const auto from = placement.sourceOffset + (sampleForX(x) - placement.start);
+                      const auto to = placement.sourceOffset + (sampleForX(x + 1) - placement.start);
+                      WaveColumn column;
+                      take.lookup(from, std::max(to, from + 1), column.minimum, column.maximum);
+                      return column;
+                  });
 
-    g.setColour(colour.withAlpha(0.7f));
-    g.drawRoundedRectangle(block.toFloat().reduced(0.5f), theme_.radius.sm, 1.0f);
+    clips::paintOutline(g, theme_, block, colour.withAlpha(0.7f));
     if (showHeader || block.getHeight() >= 14)
     {
-        g.setColour(c.textPrimary);
-        g.setFont(theme_.caption());
         juce::String label = juce::String::fromUTF8("\xe2\x97\x8f Recording");
         if (take.takeIndex > 0)
             label << "  take " << (take.takeIndex + 1);
-        g.drawText(label,
-                   (showHeader ? block.withHeight(headerH) : block).getIntersection(visible).reduced(6, 0),
-                   juce::Justification::centredLeft,
-                   true);
+        clips::paintLabel(g, theme_, clips::labelArea(block, visible, headerH, 6, 6), label, c.textPrimary);
     }
 }
 void ArrangeView::paint(juce::Graphics& g)
@@ -3225,25 +3187,6 @@ void ArrangeView::finishSweep(bool erase)
     }
     auto e = edit::setMuted(*project_, clips, muted.value_or(true));
     emit(std::move(e.commands), e.name);
-}
-
-void ArrangeView::hatch(juce::Graphics& g,
-                        juce::Rectangle<int> body,
-                        juce::Rectangle<int> visible,
-                        juce::Colour colour,
-                        float dim)
-{
-    // A hatched body for muted clips: 45 degrees, 6 px apart.
-    g.saveState();
-    g.reduceClipRegion(body.getIntersection(visible));
-    g.setColour(colour.withAlpha(0.10f * dim));
-    for (int x = visible.getX() - body.getHeight(); x < visible.getRight(); x += 6)
-        g.drawLine(static_cast<float>(x),
-                   static_cast<float>(body.getBottom()),
-                   static_cast<float>(x + body.getHeight()),
-                   static_cast<float>(body.getY()),
-                   1.0f);
-    g.restoreState();
 }
 
 void ArrangeView::drawToolOverlay(juce::Graphics& g)

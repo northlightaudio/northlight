@@ -9,6 +9,7 @@
 #include "ui/NorthlightLookAndFeel.h"
 #include "ui/PaintStats.h"
 #include "ui/timeline/TimeGrid.h"
+#include "ui/timeline/WaveformPainter.h"
 
 #include <algorithm>
 #include <cmath>
@@ -825,42 +826,27 @@ void AudioEditor::paintWave(juce::Graphics& g)
         g.drawText("Reading the waveform", area, juce::Justification::centred);
         return;
     }
-    const int channels = std::clamp(peaks.numChannels(), 1, 2);
-    const float channelHeight = static_cast<float>(area.getHeight()) / static_cast<float>(channels);
-    const auto envelope = [cl](double source)
-    {
-        const double rel = toTimelineSpan(*cl, source - static_cast<double>(cl->sourceOffset));
-        double e = cl->gain;
-        if (cl->fadeIn > 0 && rel < static_cast<double>(cl->fadeIn))
-            e *= core::fadeShape(static_cast<float>(rel / static_cast<double>(cl->fadeIn)),
-                                 core::fadeShapeK(cl->fadeInCurve));
-        if (cl->fadeOut > 0 && rel > static_cast<double>(cl->length - cl->fadeOut))
-            e *= core::fadeShape(static_cast<float>((static_cast<double>(cl->length) - rel) /
-                                                    static_cast<double>(cl->fadeOut)),
-                                 core::fadeShapeK(cl->fadeOutCurve));
-        return static_cast<float>(e);
-    };
-    for (int ch = 0; ch < channels; ++ch)
-    {
-        const float mid = static_cast<float>(area.getY()) + channelHeight * (static_cast<float>(ch) + 0.5f);
-        g.setColour(c.lineSubtle);
-        g.fillRect(static_cast<float>(area.getX()), mid, static_cast<float>(area.getWidth()), 1.0f);
-        const int from = std::max(area.getX(), painted.getX());
-        const int to = std::min(area.getRight(), painted.getRight());
-        for (int x = from; x < to; ++x)
+    // At the level the clip plays (its gain through its fades); outside the clip
+    // the media dims and plays as it is.
+    const WaveformStyle style{
+        colour.withAlpha(theme_.track.waveformAlpha), colour.withAlpha(0.25f), c.lineSubtle, 0.45f};
+    paintWaveform(
+        g,
+        area,
+        std::clamp(peaks.numChannels(), 1, 2),
+        painted.getX(),
+        painted.getRight(),
+        style,
+        [&](int ch, int x)
         {
-            paintstats::counters().waveColumns++;
             const auto s0 = sourceForX(static_cast<float>(x));
             const auto s1 = std::max(s0 + 1, sourceForX(static_cast<float>(x + 1)));
             const bool inside = static_cast<double>(s0) >= clipStart && static_cast<double>(s0) < clipEnd;
             const auto r = peaks.lookup(ch, s0, s1);
-            const float e = inside ? envelope(static_cast<double>(s0)) : 1.0f;
-            const float top = mid - std::clamp(r.maximum * e, -1.0f, 1.0f) * channelHeight * 0.45f;
-            const float bottom = mid - std::clamp(r.minimum * e, -1.0f, 1.0f) * channelHeight * 0.45f;
-            g.setColour(inside ? colour.withAlpha(theme_.track.waveformAlpha) : colour.withAlpha(0.25f));
-            g.fillRect(static_cast<float>(x), top, 1.0f, std::max(1.0f, bottom - top));
-        }
-    }
+            const auto offset = static_cast<core::SamplePosition>(
+                std::llround(toTimelineSpan(*cl, static_cast<double>(s0 - cl->sourceOffset))));
+            return WaveColumn{r.minimum, r.maximum, inside ? clipLevelAt(*cl, offset) : 1.0f, inside};
+        });
     // Gain line and fade handles.
     const float gainDb = drag_ == Drag::gain ? dragGainDb_ : engine::gainToDb(cl->gain, gainMinDb);
     const float gy =

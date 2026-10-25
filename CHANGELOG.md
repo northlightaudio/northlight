@@ -13,6 +13,10 @@ Northlight has not had a release yet. The first release, 0.1.0, will include:
 
 ### Added
 
+- A clip turned up draws a taller waveform in the arrange view, up to full
+  scale, as it already did in the audio editor; takes in the take lanes show
+  their fades.
+
 - The piano roll and the audio editor draw the arrange view's grid and ruler:
   bars, beats and sub-beats by the same zoom thresholds, the bar numbers thinned
   and timed when zoomed out. The piano roll snaps and quantises to the beat of the

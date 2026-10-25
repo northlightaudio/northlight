@@ -340,7 +340,6 @@ private:
                       const core::Track& track,
                       const engine::LiveTake& take,
                       juce::Rectangle<int> lane);
-    void fillClipHeader(juce::Graphics& g, juce::Rectangle<int> block, int headerH, juce::Colour colour);
     void drawEditOverlay(juce::Graphics& g);
     void drawGrid(juce::Graphics& g, juce::Rectangle<int> area, bool ruler);
     void drawTooltip(juce::Graphics& g, const juce::String& text, juce::Point<int> at);
@@ -494,11 +493,6 @@ private:
     bool swept(const ClipRef& ref) const noexcept;
     bool shownMuted(const ClipRef& ref, bool muted) const noexcept;
     void drawToolOverlay(juce::Graphics& g);
-    void hatch(juce::Graphics& g,
-               juce::Rectangle<int> body,
-               juce::Rectangle<int> visible,
-               juce::Colour colour,
-               float dim);
     void hoverAt(juce::Point<int> p, juce::ModifierKeys mods);
     void toolsMenu();
     // Markers.

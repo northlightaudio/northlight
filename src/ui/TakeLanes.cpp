@@ -3,6 +3,8 @@
 #include "core/Command.h"
 #include "core/Comping.h"
 #include "ui/Icons.h"
+#include "ui/timeline/ClipPainter.h"
+#include "ui/timeline/WaveformPainter.h"
 
 #include <algorithm>
 #include <cmath>
@@ -164,29 +166,28 @@ void TakeLanes::drawWave(juce::Graphics& g,
                                      first,
                                      last + 1,
                                      static_cast<double>(last - first) / std::max(1, area.getWidth()));
-    const int channels = std::min(2, peaks->numChannels());
-    const float laneHeight = static_cast<float>(area.getHeight()) / static_cast<float>(channels);
-    const float scale = std::min(1.0f, clip.gain);
-    const auto lit = colour.withAlpha(theme_.track.waveformAlpha);
-    const auto dim = colour.withAlpha(theme_.track.waveformMutedAlpha);
-    for (int ch = 0; ch < channels; ++ch)
-    {
-        const float midY = static_cast<float>(area.getY()) + laneHeight * (static_cast<float>(ch) + 0.5f);
-        const float half = laneHeight * 0.48f * scale;
-        for (int x = area.getX(); x < area.getRight(); ++x)
-        {
-            const auto at = view_.sampleAt(x);
-            const auto* segment = core::segmentAt(group, at);
-            g.setColour(segment != nullptr && segment->take == clip.id ? lit : dim);
-            const auto from = clip.sourceAt(at - clip.start);
-            const auto to = clip.sourceAt(view_.sampleAt(x + 1) - clip.start);
-            const auto r = view.lookup(ch, from, std::max(to, from + 1));
-            const float top = midY - r.maximum * half;
-            const float bottom = midY - r.minimum * half;
-            g.fillRect(
-                static_cast<float>(x), std::min(top, bottom), 1.0f, std::max(1.0f, std::abs(bottom - top)));
-        }
-    }
+    // Lit where the comp plays this take, dim elsewhere; at the level the take plays.
+    const WaveformStyle style{colour.withAlpha(theme_.track.waveformAlpha),
+                              colour.withAlpha(theme_.track.waveformMutedAlpha),
+                              std::nullopt};
+    paintWaveform(g,
+                  area,
+                  std::min(2, peaks->numChannels()),
+                  area.getX(),
+                  area.getRight(),
+                  style,
+                  [&](int ch, int x)
+                  {
+                      const auto at = view_.sampleAt(x);
+                      const auto* segment = core::segmentAt(group, at);
+                      const auto from = clip.sourceAt(at - clip.start);
+                      const auto to = clip.sourceAt(view_.sampleAt(x + 1) - clip.start);
+                      const auto r = view.lookup(ch, from, std::max(to, from + 1));
+                      return WaveColumn{r.minimum,
+                                        r.maximum,
+                                        clipLevelAt(clip, at - clip.start),
+                                        segment != nullptr && segment->take == clip.id};
+                  });
 }
 
 void TakeLanes::paintMain(juce::Graphics& g, const Row& row) const
@@ -284,8 +285,8 @@ void TakeLanes::paintLanes(juce::Graphics& g, const Row& row) const
             if (block.getRight() < area.getX() || block.getX() > area.getRight())
                 continue;
             // The take, dim; the stretches the comp plays from it, lit.
-            g.setColour(row.colour.withAlpha(theme_.track.clipBodyAlpha * 0.5f));
-            g.fillRoundedRectangle(block.toFloat(), theme_.radius.sm);
+            clips::paintBody(
+                g, theme_, block, 0, row.colour.withAlpha(theme_.track.clipBodyAlpha * 0.5f), {});
             for (const auto& s : group.comp)
                 if (s.take == take->id())
                 {
@@ -300,8 +301,7 @@ void TakeLanes::paintLanes(juce::Graphics& g, const Row& row) const
                     g.drawRect(lit, 1);
                 }
             drawWave(g, clip, block.reduced(0, 2).getIntersection(area), row.colour, group);
-            g.setColour(row.colour.withAlpha(0.4f));
-            g.drawRoundedRectangle(block.toFloat().reduced(0.5f), theme_.radius.sm, 1.0f);
+            clips::paintOutline(g, theme_, block, row.colour.withAlpha(0.4f));
             // The swipe in progress: the range the take will play over.
             if (press_.kind == PressKind::swipe && press_.group == group.id && press_.take == take->id() &&
                 press_.moved)
