@@ -5,6 +5,7 @@
 #include "plugins/Biquad.h"
 #include "plugins/Oversampler.h"
 #include "plugins/ProcessorBase.h"
+#include "plugins/dsp/Shapers.h"
 #include "plugins/dsp/Smoothing.h"
 
 #include <algorithm>
@@ -26,12 +27,6 @@ constexpr double crispSoftness = 0.1;
 constexpr int bassCurve = characterCount;
 constexpr double bassSoftness = 0.05;
 constexpr float bassDriveDb = 9.0f;
-
-double logCosh(double x) noexcept
-{
-    const double a = std::abs(x);
-    return a + std::log1p(std::exp(-2.0 * a)) - std::numbers::ln2;
-}
 
 double softAbs(double x, double e) noexcept
 {
@@ -62,7 +57,7 @@ double curve(int character, double x) noexcept
     switch (character)
     {
         case tube:
-            return std::tanh(x + tubeBias) - std::tanh(tubeBias);
+            return dsp::tube(x, tubeBias);
         case tape:
             return std::tanh(x);
         case air:
@@ -81,9 +76,9 @@ double curveIntegral(int character, double x) noexcept
     switch (character)
     {
         case tube:
-            return logCosh(x + tubeBias) - x * std::tanh(tubeBias);
+            return dsp::tubeIntegral(x, tubeBias);
         case tape:
-            return logCosh(x);
+            return dsp::logCosh(x);
         case air:
         {
             const double a = std::abs(x);
@@ -93,7 +88,7 @@ double curveIntegral(int character, double x) noexcept
         case crisp:
             return softAbsIntegral(x, crispSoftness);
         case bassCurve:
-            return 0.6 * softAbsIntegral(x, bassSoftness) + 0.4 * logCosh(x);
+            return 0.6 * softAbsIntegral(x, bassSoftness) + 0.4 * dsp::logCosh(x);
         default:
             return 0.0;
     }
@@ -503,10 +498,13 @@ private:
     shape(int curveIndex, float linear, double x, double& previous, double& previousIntegral) noexcept
     {
         const double integral = curveIntegral(curveIndex, x);
-        const double dx = x - previous;
         const double middle = 0.5 * (x + previous);
-        const double y =
-            std::abs(dx) > 1.0e-6 ? (integral - previousIntegral) / dx : curve(curveIndex, middle);
+        const double y = dsp::adaa1(x,
+                                    previous,
+                                    integral,
+                                    previousIntegral,
+                                    1.0e-6,
+                                    [curveIndex](double m) { return curve(curveIndex, m); });
         previous = x;
         previousIntegral = integral;
         return static_cast<float>(y - static_cast<double>(linear) * middle);

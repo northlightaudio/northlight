@@ -5,6 +5,7 @@
 #include "plugins/BeatSync.h"
 #include "plugins/ProcessorBase.h"
 #include "plugins/dsp/Random.h"
+#include "plugins/dsp/Shapers.h"
 #include "plugins/dsp/Smoothing.h"
 #include "plugins/dsp/SpringTank.h"
 
@@ -110,16 +111,14 @@ struct Saturator
     static double integral(double x) noexcept
     {
         constexpr double h = tapeHeadroom;
-        const double a = std::abs(x / h);
-        return h * h * (a + std::log1p(std::exp(-2.0 * a)) - std::numbers::ln2);
+        return h * h * dsp::logCosh(x / h);
     }
     void reset() noexcept { previousX = previousF = 0.0; }
     float process(float in) noexcept
     {
         const double x = in;
         const double f = integral(x);
-        const double dx = x - previousX;
-        const double y = std::abs(dx) > 1.0e-5 ? (f - previousF) / dx : curve(0.5 * (x + previousX));
+        const double y = dsp::adaa1(x, previousX, f, previousF, 1.0e-5, curve);
         previousX = x;
         previousF = f;
         return static_cast<float>(y);

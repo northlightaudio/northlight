@@ -4,6 +4,7 @@
 #include "engine/rt/RealtimeGuard.h"
 #include "plugins/BuiltIns.h"
 #include "plugins/ProcessorBase.h"
+#include "plugins/dsp/Shapers.h"
 #include "plugins/dsp/Smoothing.h"
 
 #include <algorithm>
@@ -303,18 +304,12 @@ namespace
 constexpr double tubeBias = 0.25;
 const double tanhTubeBias = std::tanh(tubeBias); // the curve's offset, computed once
 
-double logCosh(double x) noexcept
-{
-    const double a = std::abs(x);
-    return a + std::log1p(std::exp(-2.0 * a)) - std::numbers::ln2;
-}
-
 double shapeD(int type, double x) noexcept
 {
     switch (type)
     {
         case tube:
-            return std::tanh(x + tubeBias) - tanhTubeBias;
+            return dsp::tube(x, tubeBias, tanhTubeBias);
         case clip:
             return std::abs(x) <= 1.0 ? 1.5 * (x - x * x * x / 3.0) : (x > 0.0 ? 1.0 : -1.0);
         default:
@@ -328,11 +323,11 @@ double antiderivative(int type, double x) noexcept
     switch (type)
     {
         case tube:
-            return logCosh(x + tubeBias) - x * tanhTubeBias;
+            return dsp::tubeIntegral(x, tubeBias, tanhTubeBias);
         case clip:
             return std::abs(x) <= 1.0 ? 1.5 * (x * x / 2.0 - x * x * x * x / 12.0) : std::abs(x) - 0.375;
         default:
-            return logCosh(x);
+            return dsp::logCosh(x);
     }
 }
 } // namespace

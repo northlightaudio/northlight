@@ -2,6 +2,7 @@
 #include "plugins/dsp/DelayLine.h"
 #include "plugins/dsp/PolyBlep.h"
 #include "plugins/dsp/Random.h"
+#include "plugins/dsp/Shapers.h"
 #include "plugins/dsp/Smoothing.h"
 #include "plugins/dsp/SpringTank.h"
 #include "plugins/dsp/Svf.h"
@@ -264,4 +265,41 @@ TEST_CASE("A spring tank returns an impulse a loop later, chirped, and dies away
     for (int i = 0; i < 4000; ++i)
         sum += std::abs(tank.process(0.0f));
     CHECK(sum == 0.0f);
+}
+
+TEST_CASE("logCosh is tanh's antiderivative and stays finite far out", "[plugins][dsp]")
+{
+    CHECK(dsp::logCosh(0.0) == 0.0);
+    for (const double x : {-3.0, -0.4, 0.2, 1.5})
+    {
+        constexpr double h = 1.0e-5;
+        CHECK((dsp::logCosh(x + h) - dsp::logCosh(x - h)) / (2.0 * h) == Approx(std::tanh(x)).margin(1.0e-8));
+        CHECK(dsp::logCosh(x) == Approx(std::log(std::cosh(x))));
+    }
+    CHECK(dsp::logCosh(1000.0) == Approx(1000.0 - std::numbers::ln2));
+}
+
+TEST_CASE("The tube curve passes through zero and its integral is its antiderivative", "[plugins][dsp]")
+{
+    for (const double bias : {0.25, 0.3})
+    {
+        CHECK(dsp::tube(0.0, bias) == 0.0);
+        CHECK(dsp::tube(0.7, bias) == dsp::tube(0.7, bias, std::tanh(bias)));
+        CHECK(dsp::tube(0.5, bias) < -dsp::tube(-0.5, bias)); // asymmetric: the top flattens first
+        constexpr double h = 1.0e-5;
+        const double x = 0.6;
+        CHECK((dsp::tubeIntegral(x + h, bias) - dsp::tubeIntegral(x - h, bias)) / (2.0 * h) ==
+              Approx(dsp::tube(x, bias)).margin(1.0e-8));
+    }
+}
+
+TEST_CASE("An ADAA1 step is the curve's mean over the step, or its middle for a tiny one", "[plugins][dsp]")
+{
+    const auto tanhAt = [](double m) { return std::tanh(m); };
+    // A long step: the antiderivative's slope.
+    const double y = dsp::adaa1(1.0, 0.0, dsp::logCosh(1.0), dsp::logCosh(0.0), 1.0e-6, tanhAt);
+    CHECK(y == Approx(dsp::logCosh(1.0)));
+    // Below the threshold: the curve at the middle.
+    const double z = dsp::adaa1(0.5 + 1.0e-7, 0.5, 123.0, 0.0, 1.0e-6, tanhAt);
+    CHECK(z == Approx(std::tanh(0.5 + 0.5e-7)));
 }

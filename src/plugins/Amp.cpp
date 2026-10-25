@@ -11,6 +11,7 @@
 #include "plugins/ProcessorBase.h"
 #include "plugins/ToneStack.h"
 #include "plugins/Triode.h"
+#include "plugins/dsp/Shapers.h"
 #include "plugins/dsp/Smoothing.h"
 #include "plugins/dsp/SpringTank.h"
 
@@ -125,18 +126,12 @@ struct SoftClip
 {
     double previous = 0.0, previousIntegral = 0.0;
 
-    static double logCosh(double x) noexcept
-    {
-        const double a = std::abs(x);
-        return a + std::log1p(std::exp(-2.0 * a)) - std::numbers::ln2;
-    }
     void reset() noexcept { previous = previousIntegral = 0.0; }
     double process(double x) noexcept
     {
-        const double integral = logCosh(x);
-        const double dx = x - previous;
-        const double y =
-            std::abs(dx) > 1.0e-6 ? (integral - previousIntegral) / dx : std::tanh(0.5 * (x + previous));
+        const double integral = dsp::logCosh(x);
+        const double y = dsp::adaa1(
+            x, previous, integral, previousIntegral, 1.0e-6, [](double m) { return std::tanh(m); });
         previous = x;
         previousIntegral = integral;
         return y;

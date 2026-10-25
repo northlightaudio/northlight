@@ -6,6 +6,7 @@ add_library(northlight_plugins STATIC
     dsp/DelayLine.h
     dsp/PolyBlep.h
     dsp/Random.h
+    dsp/Shapers.h
     dsp/Smoothing.h
     dsp/SpringTank.h
     dsp/Svf.h

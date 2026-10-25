@@ -6,6 +6,7 @@
 #include "plugins/ProcessorBase.h"
 #include "plugins/dsp/DelayLine.h"
 #include "plugins/dsp/Random.h"
+#include "plugins/dsp/Shapers.h"
 #include "plugins/dsp/Smoothing.h"
 
 #include <algorithm>
@@ -103,12 +104,6 @@ constexpr double tubeBias = 0.3;
 constexpr double fuzzPositiveClip = 0.7, fuzzNegativeClip = 1.0;
 constexpr double heatReference = 0.25; // the level (-12 dBFS) the compensation holds
 
-double logCosh(double x) noexcept
-{
-    const double a = std::abs(x);
-    return a + std::log1p(std::exp(-2.0 * a)) - std::numbers::ln2;
-}
-
 double fuzzDeadZone(double amount) noexcept
 {
     return 0.02 + 0.1 * amount;
@@ -134,7 +129,7 @@ double curve(int character, double u, double deadZone) noexcept
     switch (character)
     {
         case tube:
-            return std::tanh(u + tubeBias) - std::tanh(tubeBias);
+            return dsp::tube(u, tubeBias);
         case iron:
             // A cubic with unity slope at zero that flattens at 1.5.
             return std::abs(u) <= 1.5 ? u - (4.0 / 27.0) * u * u * u : (u > 0.0 ? 1.0 : -1.0);
@@ -152,14 +147,14 @@ double curveIntegral(int character, double u, double deadZone) noexcept
     switch (character)
     {
         case tube:
-            return logCosh(u + tubeBias) - u * std::tanh(tubeBias);
+            return dsp::tubeIntegral(u, tubeBias);
         case iron:
             return std::abs(u) <= 1.5 ? 0.5 * u * u - u * u * u * u / 27.0 : std::abs(u) - 0.5625;
         case fuzz:
             return u >= 0.0 ? fuzzHalfIntegral(u, deadZone, fuzzPositiveClip)
                             : fuzzHalfIntegral(-u, deadZone, fuzzNegativeClip);
         default:
-            return logCosh(u);
+            return dsp::logCosh(u);
     }
 }
 

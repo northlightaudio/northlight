@@ -1,6 +1,7 @@
 #include "plugins/Triode.h"
 
 #include "engine/rt/RealtimeGuard.h"
+#include "plugins/dsp/Shapers.h"
 #include "plugins/dsp/Smoothing.h"
 
 #include <algorithm>
@@ -193,9 +194,8 @@ float TriodeStage::process(float grid) noexcept
     shift_ *= discharge_;
     x -= shift_;
     const double integral = table.integral(x);
-    const double dx = x - previous_;
-    const double y =
-        std::abs(dx) > 1.0e-6 ? (integral - previousIntegral_) / dx : table.value(0.5 * (x + previous_));
+    const double y = dsp::adaa1(
+        x, previous_, integral, previousIntegral_, 1.0e-6, [&table](double m) { return table.value(m); });
     previous_ = x;
     previousIntegral_ = integral;
     return miller_.process(static_cast<float>(y));
