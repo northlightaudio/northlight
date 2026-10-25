@@ -111,6 +111,8 @@ add_library(northlight_ui STATIC
     strip/EqGraph.cpp
     strip/BuiltInCards.h
     strip/BuiltInCards.cpp
+    strip/CardParts.h
+    strip/CardParts.cpp
     strip/SynthParts.h
     strip/AdsrDisplay.h
     strip/AdsrDisplay.cpp

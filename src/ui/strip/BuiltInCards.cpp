@@ -23,6 +23,7 @@
 #include "plugins/Vesper.h"
 #include "plugins/Widener.h"
 #include "ui/strip/AuroraEditor.h"
+#include "ui/strip/CardParts.h"
 #include "ui/strip/EqGraph.h"
 #include "ui/strip/Graphs.h"
 #include "ui/strip/NebulaEditor.h"
@@ -56,30 +57,6 @@ constexpr int ceiling = 0, release = 1, lookahead = 2;
 }
 namespace rev = plugins::reverb;
 namespace del = plugins::delay;
-
-// The display takes the body above `controlsHeight` of controls.
-juce::Rectangle<int> takeDisplay(juce::Rectangle<int>& body, int controlsHeight)
-{
-    auto display = body.removeFromTop(std::max(40, body.getHeight() - controlsHeight - 6));
-    body.removeFromTop(6);
-    return display;
-}
-
-// A draggable point on a display, the same everywhere: a 9 px textPrimary
-// disc with a ring in the module's hue.
-void drawHandle(juce::Graphics& g, const Theme& theme, juce::Colour hue, juce::Point<float> at, bool active)
-{
-    const auto r = juce::Rectangle<float>(9.0f, 9.0f).withCentre(at);
-    if (active)
-    {
-        g.setColour(hue.withAlpha(0.25f));
-        g.fillEllipse(r.expanded(4.0f));
-    }
-    g.setColour(theme.colours.textPrimary.withAlpha(active ? 1.0f : 0.85f));
-    g.fillEllipse(r);
-    g.setColour(hue);
-    g.drawEllipse(r, 1.5f);
-}
 
 // A readout in the display's top-right corner (the handles start at the left).
 void drawReadout(juce::Graphics& g, const Theme& theme, juce::Rectangle<float> plot, const juce::String& text)
@@ -126,7 +103,7 @@ class GainCard final : public ModuleCard
 public:
     GainCard(const Theme& theme, CardHost& host, core::Id channelId, const core::Insert& insert)
         : ModuleCard(theme, host, channelId, insert),
-          graph_(*this, HistoryGraph::Style{12.0f, -60.0f, false, true, false, -1, false, 3.0f}),
+          graph_(*this, HistoryGraph::Style{.topDb = 12.0f, .reductionFromTop = false}),
           bars_(*this, {LevelBars::Kind::input, LevelBars::Kind::output})
     {
         addAndMakeVisible(graph_);
@@ -238,10 +215,10 @@ EqBands builtInEqBands()
     return b;
 }
 
-class EqCard final : public ModuleCard
+class ThreeBandEqCard final : public ModuleCard
 {
 public:
-    EqCard(const Theme& theme, CardHost& host, core::Id channelId, const core::Insert& insert)
+    ThreeBandEqCard(const Theme& theme, CardHost& host, core::Id channelId, const core::Insert& insert)
         : ModuleCard(theme, host, channelId, insert), graph_(*this, builtInEqBands())
     {
         addAndMakeVisible(graph_);
@@ -316,55 +293,6 @@ private:
     std::vector<std::vector<Knob*>> knobs_;
     juce::Rectangle<int> caption_;
     int selected_ = 2;
-};
-
-// ----- limiter ------------------------------------------------------------------------------------
-
-class LimiterCard final : public ModuleCard
-{
-public:
-    LimiterCard(const Theme& theme, CardHost& host, core::Id channelId, const core::Insert& insert)
-        : ModuleCard(theme, host, channelId, insert),
-          graph_(*this, HistoryGraph::Style{0.0f, -36.0f, false, true, true, limp::ceiling, false, 3.0f}),
-          bars_(*this, {LevelBars::Kind::reduction, LevelBars::Kind::output}),
-          ceiling_(*this, limp::ceiling, ThresholdMeter::Level::input, -36.0f, "IN", theme.colours.meterHot)
-    {
-        graph_.setTooltip("Drag: ceiling");
-        for (auto* c : std::initializer_list<juce::Component*>{&graph_, &bars_, &ceiling_})
-            addAndMakeVisible(c);
-        for (int p : {limp::release, limp::lookahead})
-            knobs_.push_back(&addKnob(p));
-    }
-
-    int preferredWidth() const override { return 320; }
-    int preferredBodyHeight() const override { return 150 + knobCellHeight(); }
-
-private:
-    void layoutBody(juce::Rectangle<int> body) override
-    {
-        auto display = takeDisplay(body, knobCellHeight());
-        bars_.setBounds(display.removeFromRight(bars_.preferredWidth()));
-        ceiling_.setBounds(display.removeFromRight(ThresholdMeter::preferredWidth));
-        display.removeFromRight(4);
-        graph_.setBounds(display);
-        layoutKnobs(body.removeFromTop(knobCellHeight()).removeFromLeft(2 * knobCellWidth()), 2, knobs_);
-    }
-    void paramsChanged() override
-    {
-        graph_.repaint();
-        ceiling_.repaint();
-    }
-    void framesArrived(double) override
-    {
-        graph_.repaint();
-        bars_.repaint();
-        ceiling_.repaint();
-    }
-
-    HistoryGraph graph_;
-    LevelBars bars_;
-    ThresholdMeter ceiling_;
-    std::vector<Knob*> knobs_;
 };
 
 // ----- reverb -------------------------------------------------------------------------------------
@@ -814,7 +742,7 @@ createBuiltInCard(const Theme& theme, CardHost& host, core::Id channelId, const 
     if (insert.type == types::gain)
         return std::make_unique<GainCard>(theme, host, channelId, insert);
     if (insert.type == types::eq)
-        return std::make_unique<EqCard>(theme, host, channelId, insert);
+        return std::make_unique<ThreeBandEqCard>(theme, host, channelId, insert);
     if (insert.type == types::compressor)
         return createCompressorCard(theme, host, channelId, insert); // the strip compressor's
     if (insert.type == types::opto)
@@ -838,7 +766,12 @@ createBuiltInCard(const Theme& theme, CardHost& host, core::Id channelId, const 
         insert.type == plugins::polaris::type)
         return createPedalCard(theme, host, channelId, insert);
     if (insert.type == types::limiter)
-        return std::make_unique<LimiterCard>(theme, host, channelId, insert);
+        return createLimiterCard(
+            theme,
+            host,
+            channelId,
+            insert,
+            LimiterLayout{limp::ceiling, {limp::release, limp::lookahead}, 320, 150, true});
     if (insert.type == types::reverb)
         return std::make_unique<ReverbCard>(theme, host, channelId, insert);
     if (insert.type == types::delay)

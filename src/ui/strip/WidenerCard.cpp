@@ -7,6 +7,7 @@
 // time; rotation and balance; the guard and the output.
 
 #include "plugins/Widener.h"
+#include "ui/strip/CardParts.h"
 #include "ui/strip/ModuleCard.h"
 #include "ui/strip/StripStyle.h"
 #include "ui/strip/TapSpectrum.h"
@@ -32,22 +33,6 @@ constexpr int fftOrder = 12;
 constexpr int fftSize = 1 << fftOrder; // the width spectrum's window (85 ms at 48 kHz)
 constexpr int scopeSamples = 2048;     // the vectorscope's (the newest of the same read)
 constexpr int spectrumBands = 56;      // log-spaced, 20 Hz to 20 kHz
-
-// A draggable point, the same everywhere: a 9 px textPrimary disc with a ring in
-// the hue (as the built-ins' displays).
-void drawHandle(juce::Graphics& g, const Theme& theme, juce::Colour hue, juce::Point<float> at, bool active)
-{
-    const auto r = juce::Rectangle<float>(9.0f, 9.0f).withCentre(at);
-    if (active)
-    {
-        g.setColour(hue.withAlpha(0.25f));
-        g.fillEllipse(r.expanded(4.0f));
-    }
-    g.setColour(theme.colours.textPrimary.withAlpha(active ? 1.0f : 0.85f));
-    g.fillEllipse(r);
-    g.setColour(hue);
-    g.drawEllipse(r, 1.5f);
-}
 
 // The correlation's zone colour: out of phase, borderline, safe.
 juce::Colour zoneColour(const Theme& theme, float correlation)

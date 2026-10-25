@@ -563,6 +563,13 @@ A toggle that sits in a row of knobs takes a knob cell:
 - a live value or "Off" where a knob shows its value;
 - its name on the labels' line.
 
+### Handle (a point to drag)
+
+A point on a display that drags (an envelope's stages, a curve's node, a
+frequency's disc) is one disc everywhere (`drawHandle`): 9 px, `textPrimary` at
+85% (full while held), with a 1.5 px ring in the module's hue; while held, a
+halo of the hue at 25%, 4 px out.
+
 ### Frequency handle (on a spectrum)
 
 A vertical line through a plot marking a frequency that drags sideways:

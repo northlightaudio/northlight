@@ -5,6 +5,7 @@
 #include "ui/OpticalCentre.h"
 #include "ui/Theme.h"
 #include "ui/Wells.h"
+#include "ui/strip/CardParts.h"
 
 #include <juce_gui_basics/juce_gui_basics.h>
 
@@ -12,29 +13,12 @@
 #include <functional>
 #include <vector>
 
-// Pieces the bundled synths' editors share (screens/plugins.md 7.4b-7.4d): the
-// drag handle, a display's screen, a corner chip that opens a list, and a row of
+// Pieces the bundled synths' editors share (screens/plugins.md 7.4b-7.4d): a
+// display's screen, a corner chip that opens a list, and a row of
 // pills (shared with the effects: Bloom's interval, Vesper's space).
 
 namespace northlight::ui::strip
 {
-
-// A draggable point: a 9 px textPrimary disc with a ring in the hue (and a
-// halo while it is held).
-inline void
-drawHandle(juce::Graphics& g, const Theme& theme, juce::Colour hue, juce::Point<float> at, bool active)
-{
-    const auto r = juce::Rectangle<float>(9.0f, 9.0f).withCentre(at);
-    if (active)
-    {
-        g.setColour(hue.withAlpha(0.3f));
-        g.fillEllipse(r.expanded(4.0f));
-    }
-    g.setColour(theme.colours.textPrimary.withAlpha(active ? 1.0f : 0.85f));
-    g.fillEllipse(r);
-    g.setColour(hue);
-    g.drawEllipse(r, 1.5f);
-}
 
 // A display's glass: darker than the panel, with the well's frame.
 inline void drawScreen(juce::Graphics& g, const Theme& theme, juce::Rectangle<float> r)

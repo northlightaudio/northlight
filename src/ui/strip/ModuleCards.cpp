@@ -4,6 +4,7 @@
 #include "plugins/BuiltIns.h"
 #include "plugins/ChannelStrip.h"
 #include "ui/SidechainMenu.h"
+#include "ui/strip/CardParts.h"
 #include "ui/strip/EqGraph.h"
 #include "ui/strip/Graphs.h"
 #include "ui/strip/ModuleCard.h"
@@ -16,16 +17,6 @@ namespace ps = plugins::strip;
 
 namespace
 {
-// The display takes the body above `controlsHeight` of controls. The controls
-// come first: in a short dock the display shrinks (to 40 px at worst) rather
-// than pushing the knobs out of the card.
-juce::Rectangle<int> takeDisplay(juce::Rectangle<int>& body, int controlsHeight)
-{
-    auto display = body.removeFromTop(std::max(40, body.getHeight() - controlsHeight - 6));
-    body.removeFromTop(6);
-    return display;
-}
-
 // ----- gate -------------------------------------------------------------------------------------
 
 class GateCard final : public ModuleCard
@@ -33,9 +24,13 @@ class GateCard final : public ModuleCard
 public:
     GateCard(const Theme& theme, CardHost& host, core::Id channelId, const core::Insert& module)
         : ModuleCard(theme, host, channelId, module),
-          graph_(
-              *this,
-              HistoryGraph::Style{0.0f, -80.0f, true, true, false, ps::gate::threshold, true, 3.0f, false}),
+          graph_(*this,
+                 HistoryGraph::Style{.bottomDb = -80.0f,
+                                     .levelFromExtra = true,
+                                     .reductionFromTop = false,
+                                     .thresholdParam = ps::gate::threshold,
+                                     .gateLane = true,
+                                     .outputFill = false}),
           threshold_(*this, ps::gate::threshold, ThresholdMeter::Level::extra, -80.0f, "KEY", colour_)
     {
         graph_.setTooltip("Drag: threshold");
@@ -94,9 +89,7 @@ class CompressorCard final : public ModuleCard
 public:
     CompressorCard(const Theme& theme, CardHost& host, core::Id channelId, const core::Insert& module)
         : ModuleCard(theme, host, channelId, module), curve_(*this),
-          history_(
-              *this,
-              HistoryGraph::Style{0.0f, -60.0f, false, true, true, ps::compressor::threshold, false, 3.0f}),
+          history_(*this, HistoryGraph::Style{.thresholdParam = ps::compressor::threshold}),
           bars_(*this, {LevelBars::Kind::reduction, LevelBars::Kind::output}),
           threshold_(*this,
                      ps::compressor::threshold,
@@ -409,7 +402,8 @@ public:
     DeEsserCard(const Theme& theme, CardHost& host, core::Id channelId, const core::Insert& module)
         : ModuleCard(theme, host, channelId, module),
           graph_(*this,
-                 HistoryGraph::Style{0.0f, -60.0f, true, false, true, ps::deesser::threshold, false, 3.0f}),
+                 HistoryGraph::Style{
+                     .levelFromExtra = true, .outputLine = false, .thresholdParam = ps::deesser::threshold}),
           threshold_(*this,
                      ps::deesser::threshold,
                      ThresholdMeter::Level::extra,
@@ -523,26 +517,39 @@ private:
 
 // ----- limiter ------------------------------------------------------------------------------------
 
+// The strip's limiter and the built-in one: the reduction history with the
+// ceiling to drag, the input against the ceiling, the reduction and output
+// bars, and two knobs under them.
 class LimiterCard final : public ModuleCard
 {
 public:
-    LimiterCard(const Theme& theme, CardHost& host, core::Id channelId, const core::Insert& module)
-        : ModuleCard(theme, host, channelId, module),
-          graph_(*this,
-                 HistoryGraph::Style{0.0f, -36.0f, false, true, true, ps::limiter::ceiling, false, 3.0f}),
+    LimiterCard(const Theme& theme,
+                CardHost& host,
+                core::Id channelId,
+                const core::Insert& module,
+                LimiterLayout layout)
+        : ModuleCard(theme, host, channelId, module), layout_(layout),
+          graph_(*this, HistoryGraph::Style{.bottomDb = -36.0f, .thresholdParam = layout.ceiling}),
           bars_(*this, {LevelBars::Kind::reduction, LevelBars::Kind::output}),
-          ceiling_(
-              *this, ps::limiter::ceiling, ThresholdMeter::Level::input, -36.0f, "IN", theme.colours.meterHot)
+          ceiling_(*this, layout.ceiling, ThresholdMeter::Level::input, -36.0f, "IN", theme.colours.meterHot)
     {
         addAndMakeVisible(ceiling_);
         graph_.setTooltip("Drag: ceiling");
         addAndMakeVisible(graph_);
         addAndMakeVisible(bars_);
-        for (int p : {ps::limiter::input, ps::limiter::release})
+        for (int p : layout.knobs)
             knobs_.push_back(&addKnob(p));
     }
 
-    int preferredWidth() const override { return 3 * knobCellWidth() + 78 + 2 * theme_.spacing.sm + 10; }
+    int preferredWidth() const override
+    {
+        return layout_.width > 0 ? layout_.width : 3 * knobCellWidth() + 78 + 2 * theme_.spacing.sm + 10;
+    }
+    int preferredBodyHeight() const override
+    {
+        return layout_.displayHeight > 0 ? layout_.displayHeight + knobCellHeight()
+                                         : ModuleCard::preferredBodyHeight();
+    }
 
 private:
     void layoutBody(juce::Rectangle<int> body) override
@@ -552,7 +559,8 @@ private:
         ceiling_.setBounds(display.removeFromRight(ThresholdMeter::preferredWidth));
         display.removeFromRight(4);
         graph_.setBounds(display);
-        layoutKnobs(body.removeFromTop(knobCellHeight()), 2, knobs_);
+        auto row = body.removeFromTop(knobCellHeight());
+        layoutKnobs(layout_.knobColumns ? row.removeFromLeft(2 * knobCellWidth()) : row, 2, knobs_);
     }
     void paramsChanged() override
     {
@@ -571,6 +579,7 @@ private:
     }
     juce::Colour headerStatusColour() const override { return theme_.colours.meterHot; }
 
+    LimiterLayout layout_;
     HistoryGraph graph_;
     LevelBars bars_;
     ThresholdMeter ceiling_;
@@ -595,8 +604,19 @@ createModuleCard(const Theme& theme, CardHost& host, core::Id channelId, const c
     if (module.type == t::saturation)
         return std::make_unique<SaturationCard>(theme, host, channelId, module);
     if (module.type == t::limiter)
-        return std::make_unique<LimiterCard>(theme, host, channelId, module);
+        return std::make_unique<LimiterCard>(
+            theme,
+            host,
+            channelId,
+            module,
+            LimiterLayout{ps::limiter::ceiling, {ps::limiter::input, ps::limiter::release}});
     return nullptr;
+}
+
+std::unique_ptr<ModuleCard> createLimiterCard(
+    const Theme& theme, CardHost& host, core::Id channelId, const core::Insert& insert, LimiterLayout layout)
+{
+    return std::make_unique<LimiterCard>(theme, host, channelId, insert, layout);
 }
 
 std::unique_ptr<ModuleCard>

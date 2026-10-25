@@ -11,6 +11,7 @@
 
 #include <juce_gui_basics/juce_gui_basics.h>
 
+#include <array>
 #include <cstdint>
 #include <functional>
 #include <memory>
@@ -165,11 +166,7 @@ public:
     static constexpr int headerHeight = 34;
     static constexpr int hueLine = 2;
 
-protected:
-    // Controls bound to parameters (refreshed from the model, sending commands).
-    Knob& addKnob(int index, const juce::String& label = {});
-    SegmentedControl& addChoice(int index);
-    PillToggle& addToggle(int index, const juce::String& text);
+    // ----- laying out the controls (for the card and the parts it uses) ----------
     // The knobs added so far, in a grid of `perRow` columns from the top of `area`.
     void layoutKnobs(juce::Rectangle<int> area, int perRow, const std::vector<Knob*>& knobs);
     // A knob row's height: the ring, value and label, and the gap under them.
@@ -189,6 +186,15 @@ protected:
     juce::Rectangle<int> aboveLabelLine(juce::Rectangle<int> cell) const;
     int knobCellWidth() const noexcept { return 60; }
     juce::Label* labelFor(const Knob& knob) const;
+
+protected:
+    // Controls bound to parameters (refreshed from the model, sending commands).
+    Knob& addKnob(int index, const juce::String& label = {});
+    SegmentedControl& addChoice(int index);
+    PillToggle& addToggle(int index, const juce::String& text);
+    // A name on the knobs' label line for a control that is not a knob (a
+    // selector, a toggle): set as a knob's label is.
+    juce::Label& addLabel(const juce::String& text);
 
     virtual void layoutBody(juce::Rectangle<int> body) = 0;
     virtual void paramsChanged() {}
@@ -253,6 +259,19 @@ createModuleCard(const Theme& theme, CardHost& host, core::Id channelId, const c
 // "northlight.compressor" insert as well as the strip module).
 std::unique_ptr<ModuleCard>
 createCompressorCard(const Theme& theme, CardHost& host, core::Id channelId, const core::Insert& insert);
+// The limiter's card, for the strip module and the "northlight.limiter" insert:
+// which parameters are the ceiling and the two knobs, and its size (0: the
+// strip's width and body; knobColumns: the knobs in two knob-wide columns at the
+// left rather than across the row).
+struct LimiterLayout
+{
+    int ceiling = 0;
+    std::array<int, 2> knobs{};
+    int width = 0, displayHeight = 0;
+    bool knobColumns = false;
+};
+std::unique_ptr<ModuleCard> createLimiterCard(
+    const Theme& theme, CardHost& host, core::Id channelId, const core::Insert& insert, LimiterLayout layout);
 // The opto compressor's card, for the strip module and the "northlight.opto" insert.
 std::unique_ptr<ModuleCard>
 createOptoCard(const Theme& theme, CardHost& host, core::Id channelId, const core::Insert& insert);

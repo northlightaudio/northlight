@@ -14,6 +14,7 @@
 #include "plugins/Bloom.h"
 #include "ui/NorthlightLookAndFeel.h"
 #include "ui/Number.h"
+#include "ui/strip/CardParts.h"
 #include "ui/strip/ModuleCard.h"
 #include "ui/strip/StripStyle.h"
 #include "ui/strip/SynthParts.h"
@@ -933,22 +934,7 @@ public:
             g.setColour(c.surface1);
             g.fillRoundedRectangle(tile.toFloat(), theme_.radius.lg);
         }
-        g.setFont(theme_.captionCaps());
-        for (const auto& caption : captions_)
-        {
-            g.setColour(c.textTertiary);
-            g.drawText(caption.text, caption.area, juce::Justification::centredLeft);
-            if (caption.rule)
-            {
-                const float x = caption.area.getX() + textWidth(theme_.captionCaps(), caption.text) + 8.0f;
-                const float right = caption.ruleEnd > 0.0f ? caption.ruleEnd : caption.area.getRight();
-                if (right > x)
-                {
-                    g.setColour(c.textPrimary.withAlpha(0.08f));
-                    g.fillRect(juce::Rectangle<float>(x, caption.area.getCentreY(), right - x, 1.0f));
-                }
-            }
-        }
+        groups_.paint(g, theme_, g.getClipBounds().toFloat());
     }
 
 private:
@@ -962,7 +948,7 @@ private:
     {
         face_ = body.expanded(theme_.spacing.sm, theme_.spacing.xs);
         tiles_.clear();
-        captions_.clear();
+        groups_.clear();
         auto area = body.reduced(theme_.spacing.xs, theme_.spacing.xs);
 
         // The blossom: as tall as the body, its field a little wider for the
@@ -986,19 +972,8 @@ private:
             // The knob's stack ends `spacing.sm` above the tile's foot, as far as
             // the ring is from its top.
             const int tileH = theme_.spacing.sm + knobCellHeight(bigRing, theme_.fonts.size.label);
-            auto row = column.removeFromTop(tileH);
-            const int tileW = (row.getWidth() - 3 * gap) / 4;
-            for (auto* k : {decay_, size_, shimmer_, swell_})
-            {
-                auto tile = row.removeFromLeft(tileW);
-                row.removeFromLeft(gap);
-                tiles_.push_back(tile);
-                if (auto* label = labelFor(*k))
-                    label->setFont(theme_.label());
-                placeKnob(*k,
-                          tile.reduced(theme_.spacing.xs, 0).withTrimmedTop(theme_.spacing.sm),
-                          theme_.fonts.size.label);
-            }
+            tiles_ =
+                placeBigKnobs(*this, column.removeFromTop(tileH), {decay_, size_, shimmer_, swell_}, gap);
         }
         column.removeFromTop(gap);
 
@@ -1011,45 +986,24 @@ private:
             tiles_.push_back(row);
             tiles_.push_back(shape);
             auto pills = row.reduced(theme_.spacing.md, theme_.spacing.sm);
-            captions_.push_back({"SHIMMER INTERVAL", pills.removeFromTop(14).toFloat(), false, 0.0f});
+            groups_.addCaption("SHIMMER INTERVAL", pills.removeFromTop(14).toFloat(), false);
             pitch_.setBounds(pills.withSizeKeepingCentre(pills.getWidth(), 26));
             auto inner = shape.reduced(theme_.spacing.md, theme_.spacing.sm);
-            captions_.push_back({"ONE HIT", inner.removeFromTop(14).toFloat(), false, 0.0f});
+            groups_.addCaption("ONE HIT", inner.removeFromTop(14).toFloat(), false);
             envelope_.setBounds(inner.withTrimmedTop(2));
         }
         column.removeFromTop(gap + theme_.spacing.xs);
 
         // The rest in one row of groups, a caption and hairline over each.
-        const int captionH = 16;
-        struct Group
-        {
-            const char* title;
-            std::vector<Knob*> knobs;
-        };
-        const std::array<Group, 4> groups{Group{"SPACE", {preDelay_, diffusion_, modulation_, rate_}},
-                                          Group{"TONE", {lowCut_, damping_, tilt_}},
-                                          Group{"DYNAMICS", {duck_, duckRelease_, gate_}},
-                                          Group{"OUTPUT", {width_, mix_}}};
-        auto row = column.removeFromTop(captionH + theme_.spacing.xs + knobCellHeight());
-        for (size_t i = 0; i < groups.size(); ++i)
-        {
-            if (i > 0)
-                row.removeFromLeft(groupGap);
-            const int count = static_cast<int>(groups[i].knobs.size());
-            auto cell = row.removeFromLeft(count * smallCellWidth);
-            auto caption = cell.removeFromTop(captionH);
-            float ruleEnd = 0.0f;
-            if (i == 0)
-            {
-                // The pre-delay's sync chip at the caption's right end.
-                const int w = std::min(caption.getWidth() / 2, sync_.preferredWidth());
-                sync_.setBounds(caption.removeFromRight(w).withSizeKeepingCentre(w, 16));
-                ruleEnd = static_cast<float>(sync_.getX() - 8);
-            }
-            captions_.push_back({groups[i].title, caption.toFloat(), true, ruleEnd});
-            cell.removeFromTop(theme_.spacing.xs);
-            layoutKnobs(cell, count, groups[i].knobs);
-        }
+        // (The pre-delay's sync chip at SPACE's right end.)
+        const KnobGroups::Spacing spacing{.cellWidth = smallCellWidth, .gap = groupGap};
+        groups_.layout(*this,
+                       column.removeFromTop(spacing.captionHeight + theme_.spacing.xs + knobCellHeight()),
+                       {{"SPACE", {preDelay_, diffusion_, modulation_, rate_}, &sync_},
+                        {"TONE", {lowCut_, damping_, tilt_}},
+                        {"DYNAMICS", {duck_, duckRelease_, gate_}},
+                        {"OUTPUT", {width_, mix_}}},
+                       spacing);
     }
 
     void paramsChanged() override
@@ -1090,14 +1044,6 @@ private:
         return frozen(*this) ? iceOf(theme_) : theme_.colours.textSecondary;
     }
 
-    struct Caption
-    {
-        juce::String text;
-        juce::Rectangle<float> area;
-        bool rule = false;
-        float ruleEnd = 0.0f; // where the hairline stops (0: the caption's right edge)
-    };
-
     BlossomField field_;
     EnvelopeGraph envelope_;
     SeedButton seed_;
@@ -1110,7 +1056,7 @@ private:
     Knob *width_ = nullptr, *mix_ = nullptr;
     juce::Rectangle<int> face_;
     std::vector<juce::Rectangle<int>> tiles_;
-    std::vector<Caption> captions_;
+    KnobGroups groups_; // the captioned groups of small knobs, and the tiles' captions
     double shownTempo_ = 0.0;
 };
 } // namespace

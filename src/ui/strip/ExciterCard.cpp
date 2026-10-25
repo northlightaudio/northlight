@@ -536,7 +536,7 @@ public:
         character_->onGestureBegin = [this] { beginGesture("Character"); };
         character_->onGestureEnd = [this] { endGesture(); };
         addAndMakeVisible(*character_);
-        characterLabel_ = &addCaption("Character");
+        characterLabel_ = &addLabel("Character");
 
         amount_ = &addKnob(px::amount);
         drive_ = &addKnob(px::drive);
@@ -561,7 +561,7 @@ public:
         output_ = &addKnob(px::output);
         autoGain_ = &addToggle(px::autoGain, "Match");
         autoGain_->setTooltip("Auto gain");
-        autoGainLabel_ = &addCaption("Auto gain");
+        autoGainLabel_ = &addLabel("Auto gain");
         paramsChanged();
     }
 
@@ -621,19 +621,6 @@ private:
     };
 
     int selectorWidth() const noexcept { return character_ != nullptr ? character_->preferredWidth() : 104; }
-
-    juce::Label& addCaption(const juce::String& text)
-    {
-        auto& label = captions_.emplace_back(std::make_unique<juce::Label>());
-        label->setText(text, juce::dontSendNotification);
-        label->setFont(theme_.caption());
-        label->setColour(juce::Label::textColourId, theme_.colours.textSecondary);
-        label->setJustificationType(juce::Justification::centred);
-        label->setMinimumHorizontalScale(0.75f);
-        label->setInterceptsMouseClicks(false, false);
-        addAndMakeVisible(*label);
-        return *label;
-    }
 
     void layoutBody(juce::Rectangle<int> body) override
     {
@@ -745,7 +732,6 @@ private:
     ExcitationHistory history_;
     static constexpr int historyWidth = 208;
     std::unique_ptr<RotarySelector> character_;
-    std::vector<std::unique_ptr<juce::Label>> captions_;
     juce::Label* characterLabel_ = nullptr;
     juce::Label* autoGainLabel_ = nullptr;
     Knob *amount_ = nullptr, *drive_ = nullptr, *frequency_ = nullptr, *focus_ = nullptr;

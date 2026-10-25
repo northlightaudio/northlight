@@ -14,6 +14,7 @@
 #include "ui/NorthlightLookAndFeel.h"
 #include "ui/Number.h"
 #include "ui/OpticalCentre.h"
+#include "ui/strip/CardParts.h"
 #include "ui/strip/ModuleCard.h"
 #include "ui/strip/StripStyle.h"
 #include "ui/strip/SynthParts.h"
@@ -746,12 +747,6 @@ private:
         juce::Rectangle<int> bounds;
         const char* title = nullptr;
     };
-    struct Caption
-    {
-        juce::String text;
-        juce::Rectangle<float> area;
-        float ruleEnd = 0.0f;
-    };
     struct Star
     {
         juce::Point<float> at;
@@ -800,7 +795,7 @@ private:
     {
         face_ = body.expanded(theme_.spacing.sm, theme_.spacing.xs);
         panels_.clear();
-        captions_.clear();
+        groups_.clear();
         auto area = body.reduced(theme_.spacing.xs, theme_.spacing.xs);
 
         // The header row: the wordmark, the lights, the sky where stars come out, the star.
@@ -839,21 +834,9 @@ private:
         const int gap = theme_.spacing.sm;
 
         // Four tiles: the big knobs.
-        {
-            auto row = column.removeFromTop(bigTileHeight());
-            const int tileW = (row.getWidth() - 3 * gap) / 4;
-            for (auto* k : {decay_, clarity_, duck_, ends_})
-            {
-                auto tile = row.removeFromLeft(tileW);
-                row.removeFromLeft(gap);
-                panels_.push_back({tile, nullptr});
-                if (auto* label = labelFor(*k))
-                    label->setFont(theme_.label());
-                placeKnob(*k,
-                          tile.reduced(theme_.spacing.xs, 0).withTrimmedTop(theme_.spacing.sm),
-                          theme_.fonts.size.label);
-            }
-        }
+        for (const auto& tile : placeBigKnobs(
+                 *this, column.removeFromTop(bigTileHeight()), {decay_, clarity_, duck_, ends_}, gap))
+            panels_.push_back({tile, nullptr});
         column.removeFromTop(gap);
 
         // The space, the lookahead, one sung line.
@@ -883,36 +866,15 @@ private:
         // The rest in one glass tile, in groups under captions and hairlines.
         auto groups = column;
         panels_.push_back({groups, nullptr});
-        auto row = groups.reduced(theme_.spacing.sm, theme_.spacing.sm);
-        struct Group
-        {
-            const char* title;
-            std::vector<Knob*> knobs;
-            CornerChoice* chip;
-        };
-        const std::array<Group, 5> list{Group{"TIME", {preDelay_, swell_}, &preDelayMode_},
-                                        Group{"DUCK", {release_, gap_}, &releaseMode_},
-                                        Group{"VOICE", {breaths_, follow_, mud_}, nullptr},
-                                        Group{"TONE", {size_, lowCut_, damping_}, nullptr},
-                                        Group{"OUTPUT", {width_, centre_, mix_, output_}, nullptr}};
-        for (size_t i = 0; i < list.size(); ++i)
-        {
-            if (i > 0)
-                row.removeFromLeft(groupGap - 2);
-            const int count = static_cast<int>(list[i].knobs.size());
-            auto cell = row.removeFromLeft(count * smallCellWidth);
-            auto caption = cell.removeFromTop(16);
-            float ruleEnd = 0.0f;
-            if (list[i].chip != nullptr)
-            {
-                const int w = std::min(caption.getWidth() / 2 + 8, list[i].chip->preferredWidth());
-                list[i].chip->setBounds(caption.removeFromRight(w).withSizeKeepingCentre(w, 16));
-                ruleEnd = static_cast<float>(list[i].chip->getX() - 6);
-            }
-            captions_.push_back({list[i].title, caption.toFloat(), ruleEnd});
-            cell.removeFromTop(theme_.spacing.xs);
-            layoutKnobs(cell, count, list[i].knobs);
-        }
+        groups_.layout(
+            *this,
+            groups.reduced(theme_.spacing.sm, theme_.spacing.sm),
+            {{"TIME", {preDelay_, swell_}, &preDelayMode_},
+             {"DUCK", {release_, gap_}, &releaseMode_},
+             {"VOICE", {breaths_, follow_, mud_}},
+             {"TONE", {size_, lowCut_, damping_}},
+             {"OUTPUT", {width_, centre_, mix_, output_}}},
+            {.cellWidth = smallCellWidth, .gap = groupGap - 2, .chipExtra = 8, .chipClearance = 6.0f});
     }
 
     // The subtitle's tracking and start, so its ink spans the wordmark's exactly:
@@ -1059,22 +1021,7 @@ private:
                 g.drawText(p.title, caption, juce::Justification::centredLeft);
             }
         }
-        g.setFont(theme_.captionCaps());
-        for (const auto& cap : captions_)
-        {
-            if (!cap.area.withRight(cap.ruleEnd > 0.0f ? cap.ruleEnd : cap.area.getRight())
-                     .intersects(painted))
-                continue;
-            g.setColour(c.textTertiary);
-            g.drawText(cap.text, cap.area, juce::Justification::centredLeft);
-            const float x = cap.area.getX() + textWidth(theme_.captionCaps(), cap.text) + 8.0f;
-            const float right = cap.ruleEnd > 0.0f ? cap.ruleEnd : cap.area.getRight();
-            if (right > x)
-            {
-                g.setColour(c.textPrimary.withAlpha(0.08f));
-                g.fillRect(juce::Rectangle<float>(x, cap.area.getCentreY(), right - x, 1.0f));
-            }
-        }
+        groups_.paint(g, theme_, painted);
     }
 
     // The lights' run: each a lamp, its caption 14 px on, 24 px to the next.
@@ -1281,7 +1228,7 @@ private:
     juce::Rectangle<float> landArea_;
     juce::Path wordmark_, landPath_;
     std::vector<Panel> panels_;
-    std::vector<Caption> captions_;
+    KnobGroups groups_; // the captioned groups of small knobs
     std::array<float, 3> lit_{};
     std::array<Star, maxStars> stars_{};
     int placed_ = 0;

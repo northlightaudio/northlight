@@ -92,8 +92,9 @@ delay `Gorse`, glue compressor `Thrift`, Patina `Kelp`, exciter `Machair`, Bloom
   it (the same items as the slot menu) and, while a key is set, lights in the
   module's hue as "Key: Kick (post)"; the threshold meter's caption reads KEY
   and it, the history's grey trace and the threshold all follow the key.
-- **Limiter**: the history with the ceiling, the ceiling on the IN meter, GR and
-  OUT; Release, Lookahead.
+- **Limiter**: the channel strip limiter's card: the history with the ceiling, the
+  ceiling on the IN meter, GR and OUT; Release, Lookahead. The header shows the
+  gain reduction in `meterHot` while it limits, as the strip's does.
 - **Glue Compressor** (a console-style VCA bus compressor, for a mix or a group):
   feed-forward and stereo linked with a 4 dB soft knee; Ratio 1.5, 2, 4 or 10:1;
   Attack 0.1, 0.3, 1, 3, 10 or 30 ms; Release 0.1, 0.3, 0.6, 1.2 s or Auto (a fast

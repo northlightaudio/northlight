@@ -387,7 +387,11 @@ know nothing format-specific.
   nor the model's refresh repaints the whole face. `ui/PaintStats` counts the words
   a face sets and its art rebuilds for the UI work budgets
   ([ui-performance.md](ui-performance.md)). `HardwareKey` is the bakelite key.
-  `ui/strip/FaceParts` holds the parts several faces share: the VU meter's needle
+  `ui/strip/CardParts` holds what the flat cards share: the display's share of a
+  body (`takeDisplay`), the handle disc (`drawHandle`), big knobs on tiles
+  (`placeBigKnobs`) and captioned knob groups (`KnobGroups`, Bloom's and
+  Vesper's); the strip's limiter card serves the built-in limiter too, laid out
+  by a `LimiterLayout`. `ui/strip/FaceParts` holds the parts several faces share: the VU meter's needle
   under its rendered hood and glass (the tape echo's and Orbit's, each with its
   own `Look`; their ballistics and needle angle are `hardware::VuBallistics` and
   `hardware::vuAngle`), Corona's jewel as a pilot lamp (Patina's, the pedals') and

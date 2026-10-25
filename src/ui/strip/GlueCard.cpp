@@ -419,13 +419,7 @@ public:
             s->onGestureEnd = [this] { endGesture(); };
             addAndMakeVisible(*s);
             // Named as a knob is, so the labels of the row read as one.
-            auto& label = captions_.emplace_back(std::make_unique<juce::Label>());
-            label->setText(caption, juce::dontSendNotification);
-            label->setFont(theme_.caption());
-            label->setColour(juce::Label::textColourId, theme_.colours.textSecondary);
-            label->setJustificationType(juce::Justification::centred);
-            label->setInterceptsMouseClicks(false, false);
-            addAndMakeVisible(*label);
+            captions_.push_back(&addLabel(caption));
             selectorParams_.push_back(index);
         };
         selector(pg::ratio, {"1.5", "2", "4", "10"}, "Ratio", "Ratio");
@@ -544,7 +538,7 @@ private:
     Knob* keyHp_ = nullptr;
     Knob* mix_ = nullptr;
     std::vector<std::unique_ptr<RotarySelector>> selectors_;
-    std::vector<std::unique_ptr<juce::Label>> captions_;
+    std::vector<juce::Label*> captions_;
     std::vector<int> selectorParams_;
     std::vector<int> dividers_;
     int dividerTop_ = 0, dividerBottom_ = 0;

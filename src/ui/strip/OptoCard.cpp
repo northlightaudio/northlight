@@ -387,7 +387,7 @@ class OptoCard final : public ModuleCard
 public:
     OptoCard(const Theme& theme, CardHost& host, core::Id channelId, const core::Insert& module)
         : ModuleCard(theme, host, channelId, module), meter_(*this), cell_(*this),
-          history_(*this, HistoryGraph::Style{0.0f, -48.0f, false, true, true, -1, false, 3.0f, true})
+          history_(*this, HistoryGraph::Style{.bottomDb = -48.0f})
     {
         addAndMakeVisible(meter_);
         addAndMakeVisible(cell_);

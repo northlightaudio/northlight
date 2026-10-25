@@ -423,22 +423,28 @@ Knob& ModuleCard::addKnob(int index, const juce::String& label)
             setParam(index, static_cast<float>(v));
     };
     addAndMakeVisible(*knob);
-    auto text = std::make_unique<juce::Label>();
-    text->setText(label.isNotEmpty() ? label : juce::String(i.name), juce::dontSendNotification);
-    text->setFont(theme_.caption());
-    text->setColour(juce::Label::textColourId, theme_.colours.textSecondary);
-    text->setJustificationType(juce::Justification::centred);
-    text->setMinimumHorizontalScale(0.75f);
-    text->setInterceptsMouseClicks(false, false);
-    addAndMakeVisible(*text);
     Binding b;
     b.index = index;
     b.knob = knob.get();
-    b.label = text.get();
+    b.label = &addLabel(label.isNotEmpty() ? label : juce::String(i.name));
     bindings_.push_back(b);
     auto& result = *knob;
     owned_.push_back(std::move(knob));
-    owned_.push_back(std::move(text));
+    return result;
+}
+
+juce::Label& ModuleCard::addLabel(const juce::String& text)
+{
+    auto label = std::make_unique<juce::Label>();
+    label->setText(text, juce::dontSendNotification);
+    label->setFont(theme_.caption());
+    label->setColour(juce::Label::textColourId, theme_.colours.textSecondary);
+    label->setJustificationType(juce::Justification::centred);
+    label->setMinimumHorizontalScale(0.75f);
+    label->setInterceptsMouseClicks(false, false);
+    addAndMakeVisible(*label);
+    auto& result = *label;
+    owned_.push_back(std::move(label));
     return result;
 }
 
