@@ -181,6 +181,11 @@ void UndoStack::endGroup()
 
 // ----- helpers ----------------------------------------------------------------------------
 
+void detail::staleTarget()
+{
+    throw std::logic_error("command references something that does not exist");
+}
+
 namespace
 {
 Track& requireTrack(Project& p, Id id)
@@ -214,6 +219,45 @@ AudioClip& requireClip(Track& t, Id id)
         throw std::logic_error("command references a clip that does not exist");
     return *c;
 }
+
+// Gives a new channel, and each of its parts that has none, an id. Ids
+// allocated here stay in the command, so a redo brings back the same ones
+// (later commands in the history refer to them); a caller-chosen id is never
+// handed out again.
+void allocateChannelId(Project& p, Channel& c)
+{
+    if (c.id == invalidId)
+        c.id = p.allocateId();
+    p.nextId = std::max(p.nextId, c.id + 1);
+}
+
+void allocateProcessorIds(Project& p, Channel& c)
+{
+    if (c.hasInstrument() && c.instrument.id == invalidId)
+        c.instrument.id = p.allocateId();
+    for (auto* list : {&c.inserts, &c.strip})
+        for (auto& i : *list)
+            if (i.id == invalidId)
+                i.id = p.allocateId();
+}
+
+void allocateIds(Project& p, Bus& b)
+{
+    allocateChannelId(p, b);
+    allocateProcessorIds(p, b);
+}
+
+void allocateIds(Project& p, Track& t)
+{
+    allocateChannelId(p, t);
+    for (auto& c : t.clips)
+        if (c.id == invalidId)
+            c.id = p.allocateId();
+    for (auto& c : t.midiClips)
+        if (c.id == invalidId)
+            c.id = p.allocateId();
+    allocateProcessorIds(p, t);
+}
 } // namespace
 
 // ----- tracks -----------------------------------------------------------------------------
@@ -228,22 +272,7 @@ void AddTrack::setDefaultStrip(const std::vector<Insert>& modules)
 
 void AddTrack::apply(Project& p)
 {
-    if (track_.id == invalidId)
-        track_.id = p.allocateId();
-    p.nextId = std::max(p.nextId, track_.id + 1); // a caller-chosen id is never handed out again
-    for (auto& c : track_.clips)
-        if (c.id == invalidId)
-            c.id = p.allocateId();
-    // Ids allocated here stay in the command, so a redo brings back the same
-    // ones (later commands in the history refer to them).
-    if (track_.hasInstrument() && track_.instrument.id == invalidId)
-        track_.instrument.id = p.allocateId();
-    for (auto& i : track_.inserts)
-        if (i.id == invalidId)
-            i.id = p.allocateId();
-    for (auto& m : track_.strip)
-        if (m.id == invalidId)
-            m.id = p.allocateId();
+    allocateIds(p, track_);
     const int at =
         index_ < 0 || index_ > static_cast<int>(p.tracks.size()) ? static_cast<int>(p.tracks.size()) : index_;
     index_ = at;
@@ -272,23 +301,8 @@ void AddInstrumentTrack::setDefaultStrip(const std::vector<Insert>& modules)
 
 void AddInstrumentTrack::apply(Project& p)
 {
-    for (auto* t : {&midi_, &channel_})
-    {
-        if (t->id == invalidId)
-            t->id = p.allocateId();
-        p.nextId = std::max(p.nextId, t->id + 1);
-        if (t->hasInstrument() && t->instrument.id == invalidId)
-            t->instrument.id = p.allocateId();
-        for (auto& i : t->inserts)
-            if (i.id == invalidId)
-                i.id = p.allocateId();
-        for (auto& m : t->strip)
-            if (m.id == invalidId)
-                m.id = p.allocateId();
-        for (auto& c : t->midiClips)
-            if (c.id == invalidId)
-                c.id = p.allocateId();
-    }
+    allocateIds(p, midi_);
+    allocateIds(p, channel_);
     midi_.midiTarget = channel_.id;
     const int at =
         index_ < 0 || index_ > static_cast<int>(p.tracks.size()) ? static_cast<int>(p.tracks.size()) : index_;
@@ -425,15 +439,7 @@ void AddBus::setDefaultStrip(const std::vector<Insert>& modules)
 
 void AddBus::apply(Project& p)
 {
-    if (bus_.id == invalidId)
-        bus_.id = p.allocateId();
-    p.nextId = std::max(p.nextId, bus_.id + 1);
-    for (auto& i : bus_.inserts)
-        if (i.id == invalidId)
-            i.id = p.allocateId();
-    for (auto& m : bus_.strip)
-        if (m.id == invalidId)
-            m.id = p.allocateId();
+    allocateIds(p, bus_);
     const int at =
         index_ < 0 || index_ > static_cast<int>(p.buses.size()) ? static_cast<int>(p.buses.size()) : index_;
     index_ = at;
@@ -535,21 +541,6 @@ void clampController(MidiControllerEvent& e)
     e.time = std::max<SamplePosition>(0, e.time);
 }
 } // namespace
-
-SetTrackMidiInput::SetTrackMidiInput(Id trackId, std::string deviceName)
-    : trackId_(trackId), value_(std::move(deviceName))
-{
-}
-void SetTrackMidiInput::apply(Project& p)
-{
-    auto& t = requireTrack(p, trackId_);
-    previous_ = t.midiInput;
-    t.midiInput = value_;
-}
-void SetTrackMidiInput::revert(Project& p)
-{
-    requireTrack(p, trackId_).midiInput = previous_;
-}
 
 AddMidiClip::AddMidiClip(Id trackId, MidiClip clip) : trackId_(trackId), clip_(std::move(clip)) {}
 void AddMidiClip::apply(Project& p)
@@ -1102,44 +1093,27 @@ void SetGroupGain::revert(Project& p)
             c->gain = gain;
 }
 
-SetGroupMute::SetGroupMute(Id groupId, bool mute) : groupId_(groupId), value_(mute) {}
+SetGroupSwitch::SetGroupSwitch(Id groupId, bool Channel::* field, bool value)
+    : groupId_(groupId), field_(field), value_(value)
+{
+}
 
-void SetGroupMute::apply(Project& p)
+void SetGroupSwitch::apply(Project& p)
 {
     requireGroup(p, groupId_);
     previous_.clear();
     for (auto* c : p.groupMembers(groupId_))
     {
-        previous_.emplace_back(c->id, c->mute);
-        c->mute = value_;
+        previous_.emplace_back(c->id, c->*field_);
+        c->*field_ = value_;
     }
 }
 
-void SetGroupMute::revert(Project& p)
+void SetGroupSwitch::revert(Project& p)
 {
-    for (const auto& [id, mute] : previous_)
+    for (const auto& [id, value] : previous_)
         if (auto* c = p.findChannel(id))
-            c->mute = mute;
-}
-
-SetGroupSolo::SetGroupSolo(Id groupId, bool solo) : groupId_(groupId), value_(solo) {}
-
-void SetGroupSolo::apply(Project& p)
-{
-    requireGroup(p, groupId_);
-    previous_.clear();
-    for (auto* c : p.groupMembers(groupId_))
-    {
-        previous_.emplace_back(c->id, c->solo);
-        c->solo = value_;
-    }
-}
-
-void SetGroupSolo::revert(Project& p)
-{
-    for (const auto& [id, solo] : previous_)
-        if (auto* c = p.findChannel(id))
-            c->solo = solo;
+            c->*field_ = value;
 }
 
 SetOutputBus::SetOutputBus(Id channelId, Id busId) : channelId_(channelId), value_(busId) {}
@@ -1208,56 +1182,6 @@ void RemoveSend::revert(Project& p)
 {
     if (existed_)
         requireChannel(p, channelId_).sends.push_back(previous_);
-}
-
-SetPhaseInvert::SetPhaseInvert(Id channelId, bool invert) : channelId_(channelId), value_(invert) {}
-void SetPhaseInvert::apply(Project& p)
-{
-    auto& c = requireChannel(p, channelId_);
-    previous_ = c.phaseInvert;
-    c.phaseInvert = value_;
-}
-void SetPhaseInvert::revert(Project& p)
-{
-    requireChannel(p, channelId_).phaseInvert = previous_;
-}
-
-SetColour::SetColour(Id channelId, std::uint32_t colour) : channelId_(channelId), value_(colour) {}
-void SetColour::apply(Project& p)
-{
-    auto& c = requireChannel(p, channelId_);
-    previous_ = c.colour;
-    c.colour = value_;
-}
-void SetColour::revert(Project& p)
-{
-    requireChannel(p, channelId_).colour = previous_;
-}
-
-SetChannelHeight::SetChannelHeight(Id channelId, int height)
-    : channelId_(channelId), value_(std::max(0, height))
-{
-}
-void SetChannelHeight::apply(Project& p)
-{
-    auto& c = requireChannel(p, channelId_);
-    previous_ = c.height;
-    c.height = value_;
-}
-void SetChannelHeight::revert(Project& p)
-{
-    requireChannel(p, channelId_).height = previous_;
-}
-
-SetMasterGain::SetMasterGain(float gain) : value_(gain) {}
-void SetMasterGain::apply(Project& p)
-{
-    previous_ = p.master.gain;
-    p.master.gain = value_;
-}
-void SetMasterGain::revert(Project& p)
-{
-    p.master.gain = previous_;
 }
 
 namespace
@@ -1411,21 +1335,6 @@ void SetInsertParameter::revert(Project& p)
         i.params.resize(previousSize_);
 }
 
-SetInsertMix::SetInsertMix(Id channelId, Id insertId, float mix)
-    : channelId_(channelId), insertId_(insertId), value_(std::clamp(mix, 0.0f, 1.0f))
-{
-}
-void SetInsertMix::apply(Project& p)
-{
-    auto& i = requireInsert(requireChannel(p, channelId_), insertId_);
-    previous_ = i.mix;
-    i.mix = value_;
-}
-void SetInsertMix::revert(Project& p)
-{
-    requireInsert(requireChannel(p, channelId_), insertId_).mix = previous_;
-}
-
 SetInsertSidechain::SetInsertSidechain(Id channelId, Id insertId, Id sourceId, bool postFader)
     : channelId_(channelId), insertId_(insertId), value_(sourceId), postFader_(postFader)
 {
@@ -1447,36 +1356,6 @@ void SetInsertSidechain::revert(Project& p)
     auto& i = requireInsert(requireChannel(p, channelId_), insertId_);
     i.sidechain = previous_;
     i.sidechainPostFader = previousPostFader_;
-}
-
-SetInsertState::SetInsertState(Id channelId, Id insertId, std::string state, std::string name)
-    : channelId_(channelId), insertId_(insertId), value_(std::move(state)), name_(std::move(name))
-{
-}
-void SetInsertState::apply(Project& p)
-{
-    auto& i = requireInsert(requireChannel(p, channelId_), insertId_);
-    previous_ = i.state;
-    i.state = value_;
-}
-void SetInsertState::revert(Project& p)
-{
-    requireInsert(requireChannel(p, channelId_), insertId_).state = previous_;
-}
-
-SetInsertBypass::SetInsertBypass(Id channelId, Id insertId, bool bypass)
-    : channelId_(channelId), insertId_(insertId), value_(bypass)
-{
-}
-void SetInsertBypass::apply(Project& p)
-{
-    auto& i = requireInsert(requireChannel(p, channelId_), insertId_);
-    previous_ = i.bypass;
-    i.bypass = value_;
-}
-void SetInsertBypass::revert(Project& p)
-{
-    requireInsert(requireChannel(p, channelId_), insertId_).bypass = previous_;
 }
 
 MoveStripModule::MoveStripModule(Id channelId, Id moduleId, int newIndex)
@@ -1570,20 +1449,6 @@ void SetStripState::revert(Project& p)
         }
 }
 
-SetStripPosition::SetStripPosition(Id channelId, bool preInserts) : channelId_(channelId), value_(preInserts)
-{
-}
-void SetStripPosition::apply(Project& p)
-{
-    auto& c = requireChannel(p, channelId_);
-    previous_ = c.stripPreInserts;
-    c.stripPreInserts = value_;
-}
-void SetStripPosition::revert(Project& p)
-{
-    requireChannel(p, channelId_).stripPreInserts = previous_;
-}
-
 // ----- automation -------------------------------------------------------------------------
 
 namespace
@@ -1652,70 +1517,6 @@ void RemoveAutomationLane::revert(Project& p)
     c.automation.insert(c.automation.begin() + at, removed_);
 }
 
-SetAutomationPoints::SetAutomationPoints(Id channelId,
-                                         Id laneId,
-                                         std::vector<AutomationPoint> points,
-                                         std::string name)
-    : channelId_(channelId), laneId_(laneId), points_(std::move(points)), name_(std::move(name))
-{
-    sortPoints(points_);
-}
-void SetAutomationPoints::apply(Project& p)
-{
-    auto& lane = requireLane(requireChannel(p, channelId_), laneId_);
-    previous_ = lane.points;
-    lane.points = points_;
-}
-void SetAutomationPoints::revert(Project& p)
-{
-    requireLane(requireChannel(p, channelId_), laneId_).points = previous_;
-}
-
-SetAutomationMode::SetAutomationMode(Id channelId, AutomationMode mode) : channelId_(channelId), value_(mode)
-{
-}
-void SetAutomationMode::apply(Project& p)
-{
-    auto& c = requireChannel(p, channelId_);
-    previous_ = c.automationMode;
-    c.automationMode = value_;
-}
-void SetAutomationMode::revert(Project& p)
-{
-    requireChannel(p, channelId_).automationMode = previous_;
-}
-
-SetAutomationOpen::SetAutomationOpen(Id channelId, bool open) : channelId_(channelId), value_(open) {}
-void SetAutomationOpen::apply(Project& p)
-{
-    auto& c = requireChannel(p, channelId_);
-    previous_ = c.automationOpen;
-    c.automationOpen = value_;
-}
-void SetAutomationOpen::revert(Project& p)
-{
-    requireChannel(p, channelId_).automationOpen = previous_;
-}
-
-SetAutomationLaneView::SetAutomationLaneView(Id channelId,
-                                             Id laneId,
-                                             AutomationLaneView view,
-                                             std::string name)
-    : channelId_(channelId), laneId_(laneId), view_(view), name_(std::move(name))
-{
-    view_.height = std::max(0, view_.height);
-}
-void SetAutomationLaneView::apply(Project& p)
-{
-    auto& lane = requireLane(requireChannel(p, channelId_), laneId_);
-    previous_ = lane.view;
-    lane.view = view_;
-}
-void SetAutomationLaneView::revert(Project& p)
-{
-    requireLane(requireChannel(p, channelId_), laneId_).view = previous_;
-}
-
 SetAutomationLaneTarget::SetAutomationLaneTarget(
     Id channelId, Id laneId, AutomationTarget target, Id insert, int parameter)
     : channelId_(channelId), laneId_(laneId), target_(target),
@@ -1743,6 +1544,15 @@ void SetAutomationLaneTarget::revert(Project& p)
     lane.insert = previous_.insert;
     lane.parameter = previous_.parameter;
     lane.parameterKey = previous_.parameterKey;
+}
+
+SetAutomationPoints::SetAutomationPoints(Id channelId,
+                                         Id laneId,
+                                         std::vector<AutomationPoint> points,
+                                         std::string name)
+    : SetField({channelId, laneId}, std::move(points)), name_(std::move(name))
+{
+    sortPoints(value_);
 }
 
 SetMediaPaths::SetMediaPaths(std::vector<std::pair<std::string, std::string>> renames)
@@ -1799,66 +1609,6 @@ void SetTrackMidiOutput::revert(Project& p)
     t.midiOutChannel = previousChannel_;
 }
 
-SetTrackName::SetTrackName(Id trackId, std::string name) : trackId_(trackId), value_(std::move(name)) {}
-void SetTrackName::apply(Project& p)
-{
-    auto& t = requireChannel(p, trackId_);
-    previous_ = t.name;
-    t.name = value_;
-}
-void SetTrackName::revert(Project& p)
-{
-    requireChannel(p, trackId_).name = previous_;
-}
-
-SetTrackGain::SetTrackGain(Id trackId, float gain) : trackId_(trackId), value_(gain) {}
-void SetTrackGain::apply(Project& p)
-{
-    auto& t = requireChannel(p, trackId_);
-    previous_ = t.gain;
-    t.gain = value_;
-}
-void SetTrackGain::revert(Project& p)
-{
-    requireChannel(p, trackId_).gain = previous_;
-}
-
-SetTrackPan::SetTrackPan(Id trackId, float pan) : trackId_(trackId), value_(pan) {}
-void SetTrackPan::apply(Project& p)
-{
-    auto& t = requireChannel(p, trackId_);
-    previous_ = t.pan;
-    t.pan = value_;
-}
-void SetTrackPan::revert(Project& p)
-{
-    requireChannel(p, trackId_).pan = previous_;
-}
-
-SetTrackMute::SetTrackMute(Id trackId, bool mute) : trackId_(trackId), value_(mute) {}
-void SetTrackMute::apply(Project& p)
-{
-    auto& t = requireChannel(p, trackId_);
-    previous_ = t.mute;
-    t.mute = value_;
-}
-void SetTrackMute::revert(Project& p)
-{
-    requireChannel(p, trackId_).mute = previous_;
-}
-
-SetTrackSolo::SetTrackSolo(Id trackId, bool solo) : trackId_(trackId), value_(solo) {}
-void SetTrackSolo::apply(Project& p)
-{
-    auto& t = requireChannel(p, trackId_);
-    previous_ = t.solo;
-    t.solo = value_;
-}
-void SetTrackSolo::revert(Project& p)
-{
-    requireChannel(p, trackId_).solo = previous_;
-}
-
 SetTrackInput::SetTrackInput(Id trackId, int inputChannel, std::string inputBus)
     : trackId_(trackId), value_(inputBus.empty() ? inputChannel : -1), bus_(std::move(inputBus))
 {
@@ -1876,30 +1626,6 @@ void SetTrackInput::revert(Project& p)
     auto& t = requireTrack(p, trackId_);
     t.inputChannel = previous_;
     t.inputBus = previousBus_;
-}
-
-SetTrackArmed::SetTrackArmed(Id trackId, bool armed) : trackId_(trackId), value_(armed) {}
-void SetTrackArmed::apply(Project& p)
-{
-    auto& t = requireTrack(p, trackId_);
-    previous_ = t.armed;
-    t.armed = value_;
-}
-void SetTrackArmed::revert(Project& p)
-{
-    requireTrack(p, trackId_).armed = previous_;
-}
-
-SetTrackMonitor::SetTrackMonitor(Id trackId, MonitorMode mode) : trackId_(trackId), value_(mode) {}
-void SetTrackMonitor::apply(Project& p)
-{
-    auto& t = requireTrack(p, trackId_);
-    previous_ = t.monitor;
-    t.monitor = value_;
-}
-void SetTrackMonitor::revert(Project& p)
-{
-    requireTrack(p, trackId_).monitor = previous_;
 }
 
 // ----- clips ------------------------------------------------------------------------------
@@ -2197,20 +1923,6 @@ void ShiftClips::revert(Project& p)
         }
 }
 
-SetClipGain::SetClipGain(Id trackId, Id clipId, float gain) : trackId_(trackId), clipId_(clipId), value_(gain)
-{
-}
-void SetClipGain::apply(Project& p)
-{
-    auto& c = requireClip(requireTrack(p, trackId_), clipId_);
-    previous_ = c.gain;
-    c.gain = value_;
-}
-void SetClipGain::revert(Project& p)
-{
-    requireClip(requireTrack(p, trackId_), clipId_).gain = previous_;
-}
-
 SetClipMute::SetClipMute(Id trackId, Id clipId, bool midi, bool muted)
     : trackId_(trackId), clipId_(clipId), midi_(midi), value_(muted)
 {
@@ -2260,33 +1972,9 @@ void SetVocalEdit::revert(Project& p)
     requireClip(requireTrack(p, trackId_), clipId_).vocal = previous_;
 }
 
-SetProjectKey::SetProjectKey(MusicalKey key) : value_(key) {}
-void SetProjectKey::apply(Project& p)
-{
-    previous_ = p.key;
-    p.key = value_;
-}
-void SetProjectKey::revert(Project& p)
-{
-    p.key = previous_;
-}
-
 // ----- project ----------------------------------------------------------------------------
 
 SetTempo::SetTempo(double bpm) : value_(bpm) {}
-SetTimeSignature::SetTimeSignature(int numerator, int denominator)
-    : value_{std::clamp(numerator, 1, 32), std::clamp(denominator, 1, 32)}
-{
-}
-void SetTimeSignature::apply(Project& p)
-{
-    previous_ = p.timeSignature;
-    p.timeSignature = value_;
-}
-void SetTimeSignature::revert(Project& p)
-{
-    p.timeSignature = previous_;
-}
 
 void SetTempo::apply(Project& p)
 {
@@ -2311,8 +1999,7 @@ AddFolderTrack::AddFolderTrack(std::string name, std::vector<Id> members, int in
 }
 void AddFolderTrack::apply(Project& p)
 {
-    if (folder_.id == invalidId)
-        folder_.id = p.allocateId();
+    allocateIds(p, folder_);
     previousOrder_ = p.tracks;
     // The folder takes the place of its first member (or `index`), its members follow.
     int at =
@@ -2360,18 +2047,6 @@ void SetTrackFolder::apply(Project& p)
 void SetTrackFolder::revert(Project& p)
 {
     requireTrack(p, trackId_).folder = previous_;
-}
-
-SetFolderOpen::SetFolderOpen(Id folderId, bool open) : folderId_(folderId), open_(open) {}
-void SetFolderOpen::apply(Project& p)
-{
-    auto& f = requireTrack(p, folderId_);
-    previous_ = f.folderOpen;
-    f.folderOpen = open_;
-}
-void SetFolderOpen::revert(Project& p)
-{
-    requireTrack(p, folderId_).folderOpen = previous_;
 }
 
 SetTrackFrozen::SetTrackFrozen(Id trackId, std::string media) : trackId_(trackId), media_(std::move(media)) {}

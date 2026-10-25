@@ -3,6 +3,7 @@
 #include "core/Model.h"
 #include "core/TempoMap.h"
 
+#include <algorithm>
 #include <memory>
 #include <optional>
 #include <string>
@@ -127,6 +128,108 @@ private:
     // undo_.size() at the save point; -1 once it can no longer be reached.
     std::ptrdiff_t savedDepth_ = 0;
     void push(std::unique_ptr<Command> command);
+};
+
+// ----- one-field setters ------------------------------------------------------------------
+
+// What a setter command addresses, found by id each time it runs (null: gone).
+struct OnChannel // a track, a bus or the master
+{
+    Id channel = invalidId;
+    Channel* find(Project& p) const noexcept { return p.findChannel(channel); }
+    bool operator==(const OnChannel&) const = default;
+};
+
+struct OnTrack
+{
+    Id track = invalidId;
+    Track* find(Project& p) const noexcept { return p.findTrack(track); }
+    bool operator==(const OnTrack&) const = default;
+};
+
+struct OnInsert // an insert, a strip module or the instrument
+{
+    Id channel = invalidId;
+    Id insert = invalidId;
+    Insert* find(Project& p) const noexcept
+    {
+        auto* c = p.findChannel(channel);
+        return c != nullptr ? c->findInsert(insert) : nullptr;
+    }
+    bool operator==(const OnInsert&) const = default;
+};
+
+struct OnLane
+{
+    Id channel = invalidId;
+    Id lane = invalidId;
+    AutomationLane* find(Project& p) const noexcept
+    {
+        auto* c = p.findChannel(channel);
+        return c != nullptr ? c->findLane(lane) : nullptr;
+    }
+    bool operator==(const OnLane&) const = default;
+};
+
+struct OnClip // an audio clip
+{
+    Id track = invalidId;
+    Id clip = invalidId;
+    AudioClip* find(Project& p) const noexcept
+    {
+        auto* t = p.findTrack(track);
+        return t != nullptr ? t->findClip(clip) : nullptr;
+    }
+    bool operator==(const OnClip&) const = default;
+};
+
+struct OnProject
+{
+    Project* find(Project& p) const noexcept { return &p; }
+    bool operator==(const OnProject&) const = default;
+};
+
+namespace detail
+{
+template <class> struct FieldType;
+template <class Object, class Value> struct FieldType<Value Object::*>
+{
+    using type = Value;
+};
+[[noreturn]] void staleTarget();
+} // namespace detail
+
+// Sets one field of one object (a channel's gain, an insert's bypass) and puts
+// back the value it replaced on revert. Each setter is a thin subclass that
+// names itself and says what it changes (changeKind, liveChannel, ...).
+template <class Target, auto Field> class SetField : public Command
+{
+public:
+    using Value = typename detail::FieldType<decltype(Field)>::type;
+    void apply(Project& p) override
+    {
+        auto& field = fieldIn(p);
+        previous_ = field;
+        field = value_;
+    }
+    void revert(Project& p) override { fieldIn(p) = previous_; }
+    const Target& target() const noexcept { return target_; }
+    const Value& value() const noexcept { return value_; }
+
+protected:
+    SetField(Target target, Value value) : target_(target), value_(std::move(value)) {}
+    Target target_;
+    Value value_;
+    Value previous_{};
+
+private:
+    Value& fieldIn(Project& p) const
+    {
+        auto* object = target_.find(p);
+        if (object == nullptr)
+            detail::staleTarget();
+        return object->*Field;
+    }
 };
 
 // ----- concrete commands ------------------------------------------------------------------
@@ -334,48 +437,45 @@ private:
     std::vector<std::pair<Id, float>> previous_;
 };
 
-// Mutes or solos every member; undo restores each member's own state.
-class SetGroupMute final : public Command
+// Sets one switch (mute or solo) on every member; undo restores each member's
+// own state.
+class SetGroupSwitch : public Command
 {
 public:
-    SetGroupMute(Id groupId, bool mute);
-    std::string name() const override { return "Set group mute"; }
     void apply(Project&) override;
     void revert(Project&) override;
 
+protected:
+    SetGroupSwitch(Id groupId, bool Channel::* field, bool value);
+
 private:
     Id groupId_;
+    bool Channel::* field_;
     bool value_;
     std::vector<std::pair<Id, bool>> previous_;
 };
 
-class SetGroupSolo final : public Command
+class SetGroupMute final : public SetGroupSwitch
 {
 public:
-    SetGroupSolo(Id groupId, bool solo);
-    std::string name() const override { return "Set group solo"; }
-    void apply(Project&) override;
-    void revert(Project&) override;
+    SetGroupMute(Id groupId, bool mute) : SetGroupSwitch(groupId, &Channel::mute, mute) {}
+    std::string name() const override { return "Set group mute"; }
+};
 
-private:
-    Id groupId_;
-    bool value_;
-    std::vector<std::pair<Id, bool>> previous_;
+class SetGroupSolo final : public SetGroupSwitch
+{
+public:
+    SetGroupSolo(Id groupId, bool solo) : SetGroupSwitch(groupId, &Channel::solo, solo) {}
+    std::string name() const override { return "Set group solo"; }
 };
 
 // ----- MIDI ----------------------------------------------------------------------------------
 
-class SetTrackMidiInput final : public Command
+class SetTrackMidiInput final : public SetField<OnTrack, &Track::midiInput>
 {
 public:
-    SetTrackMidiInput(Id trackId, std::string deviceName);
+    SetTrackMidiInput(Id trackId, std::string deviceName) : SetField({trackId}, std::move(deviceName)) {}
     std::string name() const override { return "Set MIDI input"; }
-    void apply(Project&) override;
-    void revert(Project&) override;
-
-private:
-    Id trackId_;
-    std::string value_, previous_;
 };
 
 // Whether a MIDI track plays the MIDI output device, and on which channel (1..16).
@@ -690,68 +790,45 @@ private:
     Send previous_;
 };
 
-class SetPhaseInvert final : public Command
+class SetPhaseInvert final : public SetField<OnChannel, &Channel::phaseInvert>
 {
 public:
-    SetPhaseInvert(Id channelId, bool invert);
+    SetPhaseInvert(Id channelId, bool invert) : SetField({channelId}, invert) {}
     std::string name() const override { return "Invert phase"; }
-    void apply(Project&) override;
-    void revert(Project&) override;
-
-private:
-    Id channelId_;
-    bool value_, previous_ = false;
 };
 
-class SetColour final : public Command
+class SetColour final : public SetField<OnChannel, &Channel::colour>
 {
 public:
-    SetColour(Id channelId, std::uint32_t colour);
+    SetColour(Id channelId, std::uint32_t colour) : SetField({channelId}, colour) {}
     std::string name() const override { return "Set colour"; }
     // What the views show: no engine work, but the views rebuild.
     ChangeKind changeKind() const noexcept override { return ChangeKind::cosmetic; }
     bool rebuildsViews() const noexcept override { return true; }
-    void apply(Project&) override;
-    void revert(Project&) override;
-
-private:
-    Id channelId_;
-    std::uint32_t value_, previous_ = 0;
 };
 
 // A track's (or FX track's) row height in the arrange view; 0 returns it to
 // the view's default.
-class SetChannelHeight final : public Command
+class SetChannelHeight final : public SetField<OnChannel, &Channel::height>
 {
 public:
     ChangeKind changeKind() const noexcept override { return ChangeKind::cosmetic; }
-    SetChannelHeight(Id channelId, int height);
+    SetChannelHeight(Id channelId, int height) : SetField({channelId}, std::max(0, height)) {}
     std::string name() const override { return "Resize track"; }
-    void apply(Project&) override;
-    void revert(Project&) override;
-
-private:
-    Id channelId_;
-    int value_, previous_ = 0;
 };
 
-class SetMasterGain final : public Command
+class SetMasterGain final : public SetField<OnChannel, &Channel::gain>
 {
 public:
     ChangeKind changeKind() const noexcept override { return ChangeKind::values; }
     Id liveChannel() const noexcept override { return masterId; }
-    explicit SetMasterGain(float gain);
+    explicit SetMasterGain(float gain) : SetField({masterId}, gain) {}
     std::string name() const override { return "Set master gain"; }
-    void apply(Project&) override;
-    void revert(Project&) override;
     // While playing in a writing mode, the master's fader writes its volume lane.
     std::optional<AutomationWrite> automationWrite() const noexcept override
     {
         return AutomationWrite{masterId, AutomationTarget::gain, invalidId, 0, value_};
     }
-
-private:
-    float value_, previous_ = 1.0f;
 };
 
 class AddInsert final : public Command
@@ -850,21 +927,18 @@ private:
 };
 
 // Wet/dry mix of one insert slot (0..1).
-class SetInsertMix final : public Command
+class SetInsertMix final : public SetField<OnInsert, &Insert::mix>
 {
 public:
-    SetInsertMix(Id channelId, Id insertId, float mix);
+    SetInsertMix(Id channelId, Id insertId, float mix)
+        : SetField({channelId, insertId}, std::clamp(mix, 0.0f, 1.0f))
+    {
+    }
     std::string name() const override { return "Set insert mix"; }
     // A live value: the renderer glides to it (a latent slot always keeps its
     // dry line), so a drag never recompiles.
     ChangeKind changeKind() const noexcept override { return ChangeKind::values; }
-    Id liveChannel() const noexcept override { return channelId_; }
-    void apply(Project&) override;
-    void revert(Project&) override;
-
-private:
-    Id channelId_, insertId_;
-    float value_, previous_ = 1.0f;
+    Id liveChannel() const noexcept override { return target_.channel; }
 };
 
 // The sidechain (key) source of one insert slot: a track or bus id, invalidId
@@ -885,32 +959,26 @@ private:
 
 // The opaque state of a built-in that keeps state beyond its parameters (the
 // Sampler's file): the engine passes the new state to the live instance.
-class SetInsertState final : public Command
+class SetInsertState final : public SetField<OnInsert, &Insert::state>
 {
 public:
-    SetInsertState(Id channelId, Id insertId, std::string state, std::string name = "Set insert state");
+    SetInsertState(Id channelId, Id insertId, std::string state, std::string name = "Set insert state")
+        : SetField({channelId, insertId}, std::move(state)), name_(std::move(name))
+    {
+    }
     std::string name() const override { return name_; }
-    void apply(Project&) override;
-    void revert(Project&) override;
 
 private:
-    Id channelId_, insertId_;
-    std::string value_, previous_, name_;
+    std::string name_;
 };
 
-class SetInsertBypass final : public Command
+class SetInsertBypass final : public SetField<OnInsert, &Insert::bypass>
 {
 public:
     ChangeKind changeKind() const noexcept override { return ChangeKind::values; }
-    Id liveChannel() const noexcept override { return channelId_; }
-    SetInsertBypass(Id channelId, Id insertId, bool bypass);
+    Id liveChannel() const noexcept override { return target_.channel; }
+    SetInsertBypass(Id channelId, Id insertId, bool bypass) : SetField({channelId, insertId}, bypass) {}
     std::string name() const override { return "Bypass insert"; }
-    void apply(Project&) override;
-    void revert(Project&) override;
-
-private:
-    Id channelId_, insertId_;
-    bool value_, previous_ = false;
 };
 
 // Moves a strip module to another place in the strip (processing order).
@@ -950,17 +1018,11 @@ private:
 };
 
 // Whether the channel strip runs before the inserts or after them.
-class SetStripPosition final : public Command
+class SetStripPosition final : public SetField<OnChannel, &Channel::stripPreInserts>
 {
 public:
-    SetStripPosition(Id channelId, bool preInserts);
+    SetStripPosition(Id channelId, bool preInserts) : SetField({channelId}, preInserts) {}
     std::string name() const override { return "Move channel strip"; }
-    void apply(Project&) override;
-    void revert(Project&) override;
-
-private:
-    Id channelId_;
-    bool value_, previous_ = false;
 };
 
 // Sets the strip's modules from a preset: for each given module, the channel's
@@ -1022,7 +1084,7 @@ private:
 
 // Replaces a lane's points (sorted on construction): every point edit and
 // every recorded pass is one of these.
-class SetAutomationPoints final : public Command
+class SetAutomationPoints final : public SetField<OnLane, &AutomationLane::points>
 {
 public:
     SetAutomationPoints(Id channelId,
@@ -1030,59 +1092,43 @@ public:
                         std::vector<AutomationPoint> points,
                         std::string name = "Edit automation");
     std::string name() const override { return name_; }
-    void apply(Project&) override;
-    void revert(Project&) override;
 
 private:
-    Id channelId_, laneId_;
-    std::vector<AutomationPoint> points_, previous_;
     std::string name_;
 };
 
-class SetAutomationMode final : public Command
+class SetAutomationMode final : public SetField<OnChannel, &Channel::automationMode>
 {
 public:
-    SetAutomationMode(Id channelId, AutomationMode mode);
+    SetAutomationMode(Id channelId, AutomationMode mode) : SetField({channelId}, mode) {}
     std::string name() const override { return "Set automation mode"; }
-    void apply(Project&) override;
-    void revert(Project&) override;
-
-private:
-    Id channelId_;
-    AutomationMode value_, previous_ = AutomationMode::read;
 };
 
 // Opens or closes a channel's automation lanes in the arrange view.
-class SetAutomationOpen final : public Command
+class SetAutomationOpen final : public SetField<OnChannel, &Channel::automationOpen>
 {
 public:
     ChangeKind changeKind() const noexcept override { return ChangeKind::cosmetic; }
-    SetAutomationOpen(Id channelId, bool open);
+    SetAutomationOpen(Id channelId, bool open) : SetField({channelId}, open) {}
     std::string name() const override { return value_ ? "Show automation" : "Hide automation"; }
-    void apply(Project&) override;
-    void revert(Project&) override;
-
-private:
-    Id channelId_;
-    bool value_, previous_ = false;
 };
 
 // How a lane shows in the arrange view: its height, collapsed, hidden.
-class SetAutomationLaneView final : public Command
+class SetAutomationLaneView final : public SetField<OnLane, &AutomationLane::view>
 {
 public:
     ChangeKind changeKind() const noexcept override { return ChangeKind::cosmetic; }
     SetAutomationLaneView(Id channelId,
                           Id laneId,
                           AutomationLaneView view,
-                          std::string name = "Change automation lane");
+                          std::string name = "Change automation lane")
+        : SetField({channelId, laneId}, view), name_(std::move(name))
+    {
+        value_.height = std::max(0, value_.height);
+    }
     std::string name() const override { return name_; }
-    void apply(Project&) override;
-    void revert(Project&) override;
 
 private:
-    Id channelId_, laneId_;
-    AutomationLaneView view_, previous_;
     std::string name_;
 };
 
@@ -1105,75 +1151,49 @@ private:
 };
 
 // The fader-section commands below take a track or bus id.
-class SetTrackName final : public Command
+class SetTrackName final : public SetField<OnChannel, &Channel::name>
 {
 public:
-    SetTrackName(Id trackId, std::string name);
+    SetTrackName(Id trackId, std::string name) : SetField({trackId}, std::move(name)) {}
     std::string name() const override { return "Rename track"; }
     // What the views show: no engine work, but the views rebuild.
     ChangeKind changeKind() const noexcept override { return ChangeKind::cosmetic; }
     bool rebuildsViews() const noexcept override { return true; }
-    void apply(Project&) override;
-    void revert(Project&) override;
-
-private:
-    Id trackId_;
-    std::string value_, previous_;
 };
 
-class SetTrackGain final : public Command
+class SetTrackGain final : public SetField<OnChannel, &Channel::gain>
 {
 public:
     ChangeKind changeKind() const noexcept override { return ChangeKind::values; }
-    Id liveChannel() const noexcept override { return trackId_; }
-    SetTrackGain(Id trackId, float gain);
+    Id liveChannel() const noexcept override { return target_.channel; }
+    SetTrackGain(Id trackId, float gain) : SetField({trackId}, gain) {}
     std::optional<AutomationWrite> automationWrite() const noexcept override
     {
-        return AutomationWrite{trackId_, AutomationTarget::gain, invalidId, 0, value_};
+        return AutomationWrite{target_.channel, AutomationTarget::gain, invalidId, 0, value_};
     }
     std::string name() const override { return "Set track gain"; }
-    void apply(Project&) override;
-    void revert(Project&) override;
-    Id channelId() const noexcept { return trackId_; }
-    float value() const noexcept { return value_; }
-
-private:
-    Id trackId_;
-    float value_, previous_ = 1.0f;
+    Id channelId() const noexcept { return target_.channel; }
 };
 
-class SetTrackPan final : public Command
+class SetTrackPan final : public SetField<OnChannel, &Channel::pan>
 {
 public:
     ChangeKind changeKind() const noexcept override { return ChangeKind::values; }
-    Id liveChannel() const noexcept override { return trackId_; }
-    SetTrackPan(Id trackId, float pan);
+    Id liveChannel() const noexcept override { return target_.channel; }
+    SetTrackPan(Id trackId, float pan) : SetField({trackId}, pan) {}
     std::optional<AutomationWrite> automationWrite() const noexcept override
     {
-        return AutomationWrite{trackId_, AutomationTarget::pan, invalidId, 0, value_};
+        return AutomationWrite{target_.channel, AutomationTarget::pan, invalidId, 0, value_};
     }
     std::string name() const override { return "Set track pan"; }
-    void apply(Project&) override;
-    void revert(Project&) override;
-    Id channelId() const noexcept { return trackId_; }
-    float value() const noexcept { return value_; }
-
-private:
-    Id trackId_;
-    float value_, previous_ = 0.0f;
+    Id channelId() const noexcept { return target_.channel; }
 };
 
-class SetTrackMute final : public Command
+class SetTrackMute final : public SetField<OnChannel, &Channel::mute>
 {
 public:
-    SetTrackMute(Id trackId, bool mute);
+    SetTrackMute(Id trackId, bool mute) : SetField({trackId}, mute) {}
     std::string name() const override { return "Mute track"; }
-    void apply(Project&) override;
-    void revert(Project&) override;
-
-private:
-    Id trackId_;
-    bool value_, previous_ = false;
 };
 
 class SetTrackInput final : public Command
@@ -1192,43 +1212,25 @@ private:
     std::string bus_, previousBus_;
 };
 
-class SetTrackArmed final : public Command
+class SetTrackArmed final : public SetField<OnTrack, &Track::armed>
 {
 public:
-    SetTrackArmed(Id trackId, bool armed);
+    SetTrackArmed(Id trackId, bool armed) : SetField({trackId}, armed) {}
     std::string name() const override { return "Arm track"; }
-    void apply(Project&) override;
-    void revert(Project&) override;
-
-private:
-    Id trackId_;
-    bool value_, previous_ = false;
 };
 
-class SetTrackMonitor final : public Command
+class SetTrackMonitor final : public SetField<OnTrack, &Track::monitor>
 {
 public:
-    SetTrackMonitor(Id trackId, MonitorMode mode);
+    SetTrackMonitor(Id trackId, MonitorMode mode) : SetField({trackId}, mode) {}
     std::string name() const override { return "Set track monitoring"; }
-    void apply(Project&) override;
-    void revert(Project&) override;
-
-private:
-    Id trackId_;
-    MonitorMode value_, previous_ = MonitorMode::automatic;
 };
 
-class SetTrackSolo final : public Command
+class SetTrackSolo final : public SetField<OnChannel, &Channel::solo>
 {
 public:
-    SetTrackSolo(Id trackId, bool solo);
+    SetTrackSolo(Id trackId, bool solo) : SetField({trackId}, solo) {}
     std::string name() const override { return "Solo track"; }
-    void apply(Project&) override;
-    void revert(Project&) override;
-
-private:
-    Id trackId_;
-    bool value_, previous_ = false;
 };
 
 class AddClip final : public Command
@@ -1392,17 +1394,11 @@ private:
     std::vector<std::pair<Id, SamplePosition>> shiftedGroups_; // take group id, delta applied
 };
 
-class SetClipGain final : public Command
+class SetClipGain final : public SetField<OnClip, &AudioClip::gain>
 {
 public:
-    SetClipGain(Id trackId, Id clipId, float gain);
+    SetClipGain(Id trackId, Id clipId, float gain) : SetField({trackId, clipId}, gain) {}
     std::string name() const override { return "Set clip gain"; }
-    void apply(Project&) override;
-    void revert(Project&) override;
-
-private:
-    Id trackId_, clipId_;
-    float value_, previous_ = 1.0f;
 };
 
 // Mutes or unmutes an audio clip (`midi` false) or a MIDI clip: it stays on the
@@ -1459,17 +1455,12 @@ private:
     std::string name_;
 };
 
-class SetProjectKey final : public Command
+class SetProjectKey final : public SetField<OnProject, &Project::key>
 {
 public:
-    explicit SetProjectKey(MusicalKey key);
+    explicit SetProjectKey(MusicalKey key) : SetField({}, key) {}
     std::string name() const override { return "Set key"; }
     ChangeKind changeKind() const noexcept override { return ChangeKind::cosmetic; }
-    void apply(Project&) override;
-    void revert(Project&) override;
-
-private:
-    MusicalKey value_, previous_;
 };
 
 // ----- folders and freezing ------------------------------------------------------------------
@@ -1510,18 +1501,12 @@ private:
 };
 
 // Opens or closes a folder (what the arrange view shows; no engine work).
-class SetFolderOpen final : public Command
+class SetFolderOpen final : public SetField<OnTrack, &Track::folderOpen>
 {
 public:
-    SetFolderOpen(Id folderId, bool open);
-    std::string name() const override { return open_ ? "Open folder" : "Close folder"; }
+    SetFolderOpen(Id folderId, bool open) : SetField({folderId}, open) {}
+    std::string name() const override { return value_ ? "Open folder" : "Close folder"; }
     ChangeKind changeKind() const noexcept override { return ChangeKind::cosmetic; }
-    void apply(Project&) override;
-    void revert(Project&) override;
-
-private:
-    Id folderId_;
-    bool open_, previous_ = true;
 };
 
 // Freezes a track to a render of its output (`media`), or unfreezes it (empty).
@@ -1599,16 +1584,14 @@ private:
     AudioClip previous_;
 };
 
-class SetTimeSignature final : public Command
+class SetTimeSignature final : public SetField<OnProject, &Project::timeSignature>
 {
 public:
-    SetTimeSignature(int numerator, int denominator);
+    SetTimeSignature(int numerator, int denominator)
+        : SetField({}, TimeSignature{std::clamp(numerator, 1, 32), std::clamp(denominator, 1, 32)})
+    {
+    }
     std::string name() const override { return "Set time signature"; }
-    void apply(Project&) override;
-    void revert(Project&) override;
-
-private:
-    TimeSignature value_, previous_;
 };
 
 // The tempo at the song's start (what the header sets when there are no tempo
