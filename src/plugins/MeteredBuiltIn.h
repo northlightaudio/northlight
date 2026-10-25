@@ -20,14 +20,17 @@ inline float peakOf(const float* left, const float* right, int numSamples) noexc
     return peak;
 }
 
-// What every built-in shares: the feedback block its inline editor reads
-// (levels in and out, a block's gain reduction and a processor-specific
-// extra, and the before/after taps for an analyser), measured only while an
-// editor is watching. Bypassed, a watched built-in measures its input.
-class MeteredBuiltIn : public ProcessorBase
+// What every built-in with an editor shares: the feedback block the editor
+// reads (levels in and out, a block's gain reduction and processor-specific
+// extras, and the before/after taps for an analyser), measured only while
+// something is watching (Watcher::editor or Watcher::mixer). The processor
+// writes its frames itself while running; bypassed, a watched built-in
+// measures what passes (its input, or a latent one's input delayed), unless its
+// bypassed upkeep measured what it would do instead.
+class FeedbackBuiltIn : public ProcessorBase
 {
 public:
-    MeteredBuiltIn(std::string typeName, std::vector<engine::ParameterInfo> infos, bool taps = false)
+    FeedbackBuiltIn(std::string typeName, std::vector<engine::ParameterInfo> infos, bool taps = false)
         : ProcessorBase(std::move(typeName), std::move(infos)), feedback_(taps)
     {
     }
@@ -40,7 +43,31 @@ protected:
         feedback_.prepare(sampleRate);
         prepareBuiltIn(sampleRate, maxBlockSize);
     }
+    virtual void prepareBuiltIn(double sampleRate, int maxBlockSize) = 0;
 
+    void processBypassed(float* left, float* right, int numSamples) noexcept final
+    {
+        if (!bypassedBuiltIn(left, right, numSamples))
+            feedback_.addBypassed(left, right, numSamples);
+    }
+    // The settled bypass's own work: by default none (the input passes
+    // untouched). A processor that keeps running while bypassed (a tape's
+    // delay line, a reverb's tail) does it here, leaving in left/right what
+    // passes. It returns true when it measured for a watching editor itself
+    // (what it would add, say), false to have what passes measured.
+    virtual bool bypassedBuiltIn(float*, float*, int) noexcept { return false; }
+
+    engine::ProcessorFeedback feedback_;
+};
+
+// A built-in measured per block: its input and output peaks and taps around
+// processBuiltIn, which sets the block's gain reduction and extra.
+class MeteredBuiltIn : public FeedbackBuiltIn
+{
+public:
+    using FeedbackBuiltIn::FeedbackBuiltIn;
+
+protected:
     void processAudio(float* left, float* right, int numSamples) noexcept final
     {
         const bool watched = feedback_.watched();
@@ -61,21 +88,12 @@ protected:
         }
     }
 
-    void processBypassed(float* left, float* right, int numSamples) noexcept override
-    {
-        feedback_.addBypassed(left, right, numSamples);
-    }
-
-    virtual void prepareBuiltIn(double sampleRate, int maxBlockSize) = 0;
     virtual void processBuiltIn(float* left, float* right, int numSamples) noexcept = 0;
 
     // Set by processBuiltIn for the block's frame: the most gain reduction (dB)
     // and the processor's extra (a detector level, linear).
     float blockReduction_ = 0.0f;
     float blockExtra_ = 0.0f;
-
-private:
-    engine::ProcessorFeedback feedback_;
 };
 
 } // namespace northlight::plugins

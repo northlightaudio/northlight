@@ -5,8 +5,8 @@
 #include "plugins/BeatSync.h"
 #include "plugins/Biquad.h"
 #include "plugins/FeedbackNetwork.h"
+#include "plugins/MeteredBuiltIn.h"
 #include "plugins/ParamHelpers.h"
-#include "plugins/ProcessorBase.h"
 #include "plugins/VocalListener.h"
 #include "plugins/dsp/Denormals.h"
 #include "plugins/dsp/Smoothing.h"
@@ -418,12 +418,10 @@ private:
     std::int64_t clock_ = 0;
 };
 
-class Vesper final : public ProcessorBase
+class Vesper final : public FeedbackBuiltIn
 {
 public:
-    Vesper() : ProcessorBase(type, parameterInfos()), feedback_(true) {}
-
-    engine::ProcessorFeedback* feedback() noexcept override { return &feedback_; }
+    Vesper() : FeedbackBuiltIn(type, parameterInfos(), true) {}
 
     // The engine reads this to line everything else up; a change of Lookahead
     // changes it, and the engine compiles the graph again (as the limiter's does).
@@ -437,10 +435,9 @@ public:
 private:
     // ----- preparation (controller thread) --------------------------------------------------
 
-    void prepareAudio(double sampleRate, int maxBlockSize) override
+    void prepareBuiltIn(double sampleRate, int maxBlockSize) override
     {
-        NORTHLIGHT_ASSERT_NOT_REALTIME("Vesper::prepareAudio");
-        feedback_.prepare(sampleRate);
+        NORTHLIGHT_ASSERT_NOT_REALTIME("Vesper::prepareBuiltIn");
         const auto block = static_cast<size_t>(std::max(1, maxBlockSize));
         wetLeft_.assign(block, 0.0f);
         wetRight_.assign(block, 0.0f);
@@ -1077,14 +1074,16 @@ private:
 
     // Bypassed, the reverb keeps running on a copy of the input so the tail stays
     // current for when it comes back, and the input comes out delayed by the
-    // lookahead, as the graph was lined up for.
-    void processBypassed(float* left, float* right, int numSamples) noexcept override
+    // lookahead, as the graph was lined up for. A watching editor sees the run
+    // on the copy (the tail it would add).
+    bool bypassedBuiltIn(float* left, float* right, int numSamples) noexcept override
     {
         std::copy(left, left + numSamples, bypassLeft_.data());
         std::copy(right, right + numSamples, bypassRight_.data());
         processAudio(bypassLeft_.data(), bypassRight_.data(), numSamples);
         std::copy(delayedLeft_.begin(), delayedLeft_.begin() + numSamples, left);
         std::copy(delayedRight_.begin(), delayedRight_.begin() + numSamples, right);
+        return true;
     }
 
     // A Listener frame waiting for the delayed audio to reach the sound it heard.
@@ -1100,7 +1099,6 @@ private:
         std::int64_t throwAt = 0, endAt = 0;
     };
 
-    engine::ProcessorFeedback feedback_;
     vocal::Listener listener_;
     HaloBank halo_;
     float haloGain_ = 0.0f;

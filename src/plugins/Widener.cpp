@@ -2,8 +2,8 @@
 
 #include "engine/Feedback.h"
 #include "engine/rt/RealtimeGuard.h"
+#include "plugins/MeteredBuiltIn.h"
 #include "plugins/ParamHelpers.h"
-#include "plugins/ProcessorBase.h"
 #include "plugins/dsp/Denormals.h"
 #include "plugins/dsp/Smoothing.h"
 
@@ -159,20 +159,17 @@ struct Correlator
     }
 };
 
-class Widener final : public ProcessorBase
+class Widener final : public FeedbackBuiltIn
 {
 public:
-    Widener() : ProcessorBase(type, parameterInfos()), feedback_(true) {}
-
-    engine::ProcessorFeedback* feedback() noexcept override { return &feedback_; }
+    Widener() : FeedbackBuiltIn(type, parameterInfos(), true) {}
 
 private:
     static constexpr int subBlock = 32; // the crossovers move this often while smoothing
 
-    void prepareAudio(double sampleRate, int) override
+    void prepareBuiltIn(double sampleRate, int) override
     {
-        NORTHLIGHT_ASSERT_NOT_REALTIME("Widener::prepareAudio");
-        feedback_.prepare(sampleRate);
+        NORTHLIGHT_ASSERT_NOT_REALTIME("Widener::prepareBuiltIn");
         const auto rate = static_cast<float>(sampleRate);
         haasLine_.assign(static_cast<size_t>(std::ceil(maxHaasMs * 0.001f * rate)) + 4, 0.0f);
         haasWrite_ = 0;
@@ -467,18 +464,18 @@ private:
 
     // Settled bypass: the input passes; while an editor watches, it still shows
     // the image and the correlation going through.
-    void processBypassed(float* left, float* right, int numSamples) noexcept override
+    bool bypassedBuiltIn(float* left, float* right, int numSamples) noexcept override
     {
         if (!feedback_.watched())
-            return;
+            return true; // nothing to measure for
         for (int i = 0; i < numSamples; ++i)
             measure(left[i], right[i], left[i], right[i], 1.0f);
         tapOutput(left, right, numSamples);
         inputCorrelation_.flush();
         outputCorrelation_.flush();
+        return true;
     }
 
-    engine::ProcessorFeedback feedback_;
     // The side's mono-below high-pass, the three-band split and the mid's allpasses.
     Section sideMonoA_, sideMonoB_, lowA_, lowB_, lowAllPass_, restA_, restB_, midA_, midB_, highA_, highB_;
     Section midMono_, midLow_, midHigh_;

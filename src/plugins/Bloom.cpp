@@ -4,8 +4,8 @@
 #include "engine/rt/RealtimeGuard.h"
 #include "plugins/BeatSync.h"
 #include "plugins/FeedbackNetwork.h"
+#include "plugins/MeteredBuiltIn.h"
 #include "plugins/ParamHelpers.h"
-#include "plugins/ProcessorBase.h"
 #include "plugins/dsp/Random.h"
 #include "plugins/dsp/Smoothing.h"
 
@@ -151,20 +151,17 @@ std::array<SwellPattern, 2> makeSwellPatterns() noexcept
     return patterns;
 }
 
-class Bloom final : public ProcessorBase
+class Bloom final : public FeedbackBuiltIn
 {
 public:
-    Bloom() : ProcessorBase(type, parameterInfos()), feedback_(true), patterns_(makeSwellPatterns()) {}
-
-    engine::ProcessorFeedback* feedback() noexcept override { return &feedback_; }
+    Bloom() : FeedbackBuiltIn(type, parameterInfos(), true), patterns_(makeSwellPatterns()) {}
 
 private:
     // ----- preparation (controller thread) --------------------------------------------------
 
-    void prepareAudio(double sampleRate, int maxBlockSize) override
+    void prepareBuiltIn(double sampleRate, int maxBlockSize) override
     {
-        NORTHLIGHT_ASSERT_NOT_REALTIME("Bloom::prepareAudio");
-        feedback_.prepare(sampleRate);
+        NORTHLIGHT_ASSERT_NOT_REALTIME("Bloom::prepareBuiltIn");
         const auto block = static_cast<size_t>(std::max(1, maxBlockSize));
         wetLeft_.assign(block, 0.0f);
         wetRight_.assign(block, 0.0f);
@@ -497,15 +494,16 @@ private:
     }
 
     // Bypassed, the network keeps running on a copy of the input so the tail
-    // stays current (and a frozen tail stays held) for when it comes back.
-    void processBypassed(float* left, float* right, int numSamples) noexcept override
+    // stays current (and a frozen tail stays held) for when it comes back; a
+    // watching editor sees that run (the tail it would add).
+    bool bypassedBuiltIn(float* left, float* right, int numSamples) noexcept override
     {
         std::copy(left, left + numSamples, bypassLeft_.data());
         std::copy(right, right + numSamples, bypassRight_.data());
         processAudio(bypassLeft_.data(), bypassRight_.data(), numSamples);
+        return true;
     }
 
-    engine::ProcessorFeedback feedback_;
     std::array<SwellPattern, 2> patterns_;
     std::array<std::vector<float>, 2> input_;
     int inputMask_ = 0, inputWrite_ = 0;

@@ -334,7 +334,12 @@ know nothing format-specific.
   it (the strip modules keep their own list, `strip::moduleTypes()`). They share a base that crossfades bypass and keeps
   state running while bypassed, and they publish real-time feedback for their
   editors through rings of atomics: a five-value frame every 5 ms (input, output,
-  reduction and two processor-specific values) and two sample taps. The larger
+  reduction and two processor-specific values) and two sample taps.
+  `FeedbackBuiltIn` (`plugins/MeteredBuiltIn.h`) owns that block for every built-in
+  and strip module, and `MeteredBuiltIn` on it measures a block's peaks and taps
+  around the processing; bypassed, a watched built-in measures what passes, unless
+  its bypassed upkeep shows what it would do (the exciter's harmonics, the
+  widener's image, Bloom's and Vesper's tails). The larger
   effects (Glue, Patina, Exciter, Bloom, Tape Echo, Stereo Widener, Corona, and the guitar pedals
   Gravity, Flare, Comet, Tide and Polaris, declared together in `plugins/Pedals.h`) each have a file
   of their own and a card in `src/ui/strip`; what their frame values and taps carry

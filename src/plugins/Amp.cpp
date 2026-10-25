@@ -7,9 +7,9 @@
 #include "plugins/Biquad.h"
 #include "plugins/Cabinet.h"
 #include "plugins/Convolver.h"
+#include "plugins/MeteredBuiltIn.h"
 #include "plugins/Oversampler.h"
 #include "plugins/ParamHelpers.h"
-#include "plugins/ProcessorBase.h"
 #include "plugins/ToneStack.h"
 #include "plugins/Triode.h"
 #include "plugins/dsp/Denormals.h"
@@ -253,10 +253,10 @@ std::vector<engine::ParameterInfo> parameterInfos()
 
 // ----- the processor ------------------------------------------------------------------------
 
-class Amp final : public ProcessorBase, public background::Job
+class Amp final : public FeedbackBuiltIn, public background::Job
 {
 public:
-    explicit Amp(sampler::Loader loader) : ProcessorBase(type, parameterInfos()), loader_(std::move(loader))
+    explicit Amp(sampler::Loader loader) : FeedbackBuiltIn(type, parameterInfos()), loader_(std::move(loader))
     {
     }
 
@@ -265,8 +265,6 @@ public:
         if (registered_)
             background::remove(this);
     }
-
-    engine::ProcessorFeedback* feedback() noexcept override { return &feedback_; }
 
     std::string state() const override
     {
@@ -394,11 +392,10 @@ private:
         return factor;
     }
 
-    void prepareAudio(double sampleRate, int maxBlockSize) override
+    void prepareBuiltIn(double sampleRate, int maxBlockSize) override
     {
-        NORTHLIGHT_ASSERT_NOT_REALTIME("Amp::prepareAudio");
+        NORTHLIGHT_ASSERT_NOT_REALTIME("Amp::prepareBuiltIn");
         const auto& c = curves();
-        feedback_.prepare(sampleRate);
         const auto size = static_cast<size_t>(std::max(1, maxBlockSize));
         for (auto* v : {&mono_, &wetLeft_, &wetRight_, &gains_, &levels_, &drives_, &lamps_, &reductions_})
             v->assign(size, 0.0f);
@@ -476,11 +473,6 @@ private:
     }
 
     // ----- processing --------------------------------------------------------------------------
-
-    void processBypassed(float* left, float* right, int numSamples) noexcept override
-    {
-        feedback_.addBypassed(left, right, numSamples);
-    }
 
     // The smoothed controls, per sample.
     enum Smooth
@@ -722,7 +714,6 @@ private:
     static constexpr int blockSize = 64; // the convolver's partitions
 
     sampler::Loader loader_;
-    engine::ProcessorFeedback feedback_;
 
     // The cabinet's builder (buildMutex_ guards these).
     mutable std::mutex buildMutex_;

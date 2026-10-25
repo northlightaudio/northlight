@@ -3,9 +3,9 @@
 #include "engine/Feedback.h"
 #include "engine/rt/RealtimeGuard.h"
 #include "plugins/Biquad.h"
+#include "plugins/MeteredBuiltIn.h"
 #include "plugins/Oversampler.h"
 #include "plugins/ParamHelpers.h"
-#include "plugins/ProcessorBase.h"
 #include "plugins/dsp/Random.h"
 #include "plugins/dsp/Smoothing.h"
 
@@ -251,12 +251,11 @@ double roundTripDelay(int factor, double sampleRate) noexcept
     return std::clamp(phase / (2.0 * std::numbers::pi * hz / sampleRate), 0.0, 16.0);
 }
 
-class Orbit final : public ProcessorBase
+class Orbit final : public FeedbackBuiltIn
 {
 public:
-    Orbit() : ProcessorBase(type, parameterInfos()) {}
+    Orbit() : FeedbackBuiltIn(type, parameterInfos()) {}
 
-    engine::ProcessorFeedback* feedback() noexcept override { return &feedback_; }
     int latencySamples() const noexcept override { return delaySamples_; }
 
 private:
@@ -270,10 +269,9 @@ private:
         float vu = 0.0f, vuInner = 0.0f; // the meter point's VU: the rectified signal through a VU's movement
     };
 
-    void prepareAudio(double sampleRate, int) override
+    void prepareBuiltIn(double sampleRate, int) override
     {
-        NORTHLIGHT_ASSERT_NOT_REALTIME("Orbit::prepareAudio");
-        feedback_.prepare(sampleRate);
+        NORTHLIGHT_ASSERT_NOT_REALTIME("Orbit::prepareBuiltIn");
         factor_ = factorFor(sampleRate);
         delaySamples_ = static_cast<int>(std::lround(flutterDelaySeconds * sampleRate));
         tapeDelay_ = static_cast<double>(delaySamples_) - roundTripDelay(factor_, sampleRate);
@@ -508,7 +506,7 @@ private:
     }
 
     // Bypassed, the input passes delayed by the latency the graph was solved with.
-    void processBypassed(float* left, float* right, int numSamples) noexcept override
+    bool bypassedBuiltIn(float* left, float* right, int numSamples) noexcept override
     {
         publishTransport();
         float* io[2] = {left, right};
@@ -524,10 +522,9 @@ private:
             if (++write_ == lineSize_)
                 write_ = 0;
         }
-        feedback_.addBypassed(left, right, numSamples);
+        return false;
     }
 
-    engine::ProcessorFeedback feedback_;
     std::array<Channel, 2> channels_;
     int factor_ = 4, delaySamples_ = 72, lineSize_ = 160, write_ = 0;
     float smoothStep_ = 0.01f;

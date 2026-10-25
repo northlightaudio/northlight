@@ -450,10 +450,10 @@ private:
         }
     }
 
-    void processBypassed(float* left, float* right, int numSamples) noexcept override
+    bool bypassedBuiltIn(float*, float*, int numSamples) noexcept override
     {
         clearAux(numSamples); // off: the extra outputs are silent too
-        MeteredBuiltIn::processBypassed(left, right, numSamples);
+        return false;
     }
 
     void processBuiltIn(float* left, float* right, int numSamples) noexcept override

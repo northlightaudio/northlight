@@ -3,8 +3,8 @@
 #include "engine/Feedback.h"
 #include "engine/rt/RealtimeGuard.h"
 #include "plugins/BeatSync.h"
+#include "plugins/MeteredBuiltIn.h"
 #include "plugins/ParamHelpers.h"
-#include "plugins/ProcessorBase.h"
 #include "plugins/dsp/Random.h"
 #include "plugins/dsp/Shapers.h"
 #include "plugins/dsp/Smoothing.h"
@@ -205,12 +205,10 @@ enum
 };
 }
 
-class TapeEcho final : public ProcessorBase
+class TapeEcho final : public FeedbackBuiltIn
 {
 public:
-    TapeEcho() : ProcessorBase(type, parameterInfos()) {}
-
-    engine::ProcessorFeedback* feedback() noexcept override { return &feedback_; }
+    TapeEcho() : FeedbackBuiltIn(type, parameterInfos()) {}
 
 private:
     struct Track
@@ -222,10 +220,9 @@ private:
         float envelope = 0.0f;
     };
 
-    void prepareAudio(double sampleRate, int maxBlockSize) override
+    void prepareBuiltIn(double sampleRate, int maxBlockSize) override
     {
-        NORTHLIGHT_ASSERT_NOT_REALTIME("TapeEcho::prepareAudio");
-        feedback_.prepare(sampleRate);
+        NORTHLIGHT_ASSERT_NOT_REALTIME("TapeEcho::prepareBuiltIn");
         size_ = static_cast<int>(sampleRate * bufferSeconds) + 8;
         for (auto& t : tracks_)
         {
@@ -293,13 +290,13 @@ private:
     // Bypassed, the machine keeps running on the input (so switching it back on
     // brings in echoes of what just played, not of what played before); the
     // input passes untouched.
-    void processBypassed(float* left, float* right, int numSamples) noexcept override
+    bool bypassedBuiltIn(float* left, float* right, int numSamples) noexcept override
     {
         const int n = std::min(numSamples, static_cast<int>(scratchLeft_.size()));
         std::copy(left, left + n, scratchLeft_.data());
         std::copy(right, right + n, scratchRight_.data());
         render(scratchLeft_.data(), scratchRight_.data(), n, false);
-        feedback_.addBypassed(left, right, numSamples);
+        return false;
     }
 
     void setTargets() noexcept
@@ -597,7 +594,6 @@ private:
             motorVelocity_ = 0.0;
     }
 
-    engine::ProcessorFeedback feedback_;
     std::array<Track, 2> tracks_;
     std::vector<double> positions_; // the tape position each slot was recorded at
     std::vector<float> scratchLeft_, scratchRight_;

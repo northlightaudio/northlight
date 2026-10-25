@@ -3,9 +3,9 @@
 #include "engine/Feedback.h"
 #include "engine/rt/RealtimeGuard.h"
 #include "plugins/Biquad.h"
+#include "plugins/MeteredBuiltIn.h"
 #include "plugins/Oversampler.h"
 #include "plugins/ParamHelpers.h"
-#include "plugins/ProcessorBase.h"
 #include "plugins/dsp/Denormals.h"
 #include "plugins/dsp/Shapers.h"
 #include "plugins/dsp/Smoothing.h"
@@ -237,12 +237,10 @@ std::vector<engine::ParameterInfo> parameterInfos()
 // frequency, at the base rate, its harmonics kept between the bass frequency and
 // eight times it. The control values (envelope ratios, coefficients, smoothed
 // parameters) are worked out every 16 samples and ramp across them.
-class Exciter final : public ProcessorBase
+class Exciter final : public FeedbackBuiltIn
 {
 public:
-    Exciter() : ProcessorBase(type, parameterInfos()) {}
-
-    engine::ProcessorFeedback* feedback() noexcept override { return &feedback_; }
+    Exciter() : FeedbackBuiltIn(type, parameterInfos(), true) {}
 
 private:
     static constexpr int controlInterval = 16;
@@ -262,10 +260,9 @@ private:
         std::array<Biquad, 2> weightIn, weightWet;     // K-weighting for the auto gain
     };
 
-    void prepareAudio(double sampleRate, int maxBlockSize) override
+    void prepareBuiltIn(double sampleRate, int maxBlockSize) override
     {
-        NORTHLIGHT_ASSERT_NOT_REALTIME("Exciter::prepareAudio");
-        feedback_.prepare(sampleRate);
+        NORTHLIGHT_ASSERT_NOT_REALTIME("Exciter::prepareBuiltIn");
         const auto size = static_cast<size_t>(std::max(1, maxBlockSize));
         for (auto* v : {&inLeft_, &inRight_, &addLeft_, &addRight_, &scratchLeft_, &scratchRight_})
             v->assign(size, 0.0f);
@@ -669,16 +666,16 @@ private:
 
     // Bypassed, the processor keeps measuring while an editor is watching, so
     // the display shows what it would add; the audio passes untouched.
-    void processBypassed(float* left, float* right, int numSamples) noexcept override
+    bool bypassedBuiltIn(float* left, float* right, int numSamples) noexcept override
     {
         if (!feedback_.watched())
-            return;
+            return true; // nothing to measure for
         std::copy(left, left + numSamples, scratchLeft_.data());
         std::copy(right, right + numSamples, scratchRight_.data());
         processAudio(scratchLeft_.data(), scratchRight_.data(), numSamples);
+        return true;
     }
 
-    engine::ProcessorFeedback feedback_{true};
     std::array<Channel, 2> channels_;
     std::array<Biquad, 2> bassLow_, bassPost_;
     Biquad bassTop_;

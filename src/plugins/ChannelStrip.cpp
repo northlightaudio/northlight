@@ -3,6 +3,7 @@
 #include "engine/Gain.h"
 #include "engine/rt/RealtimeGuard.h"
 #include "plugins/BuiltIns.h"
+#include "plugins/MeteredBuiltIn.h"
 #include "plugins/ParamHelpers.h"
 #include "plugins/ProcessorBase.h"
 #include "plugins/dsp/Shapers.h"
@@ -353,42 +354,9 @@ float coefficient(double sampleRate, float ms) noexcept
     return dsp::poleForMs(std::max(0.001f, ms), static_cast<float>(sampleRate));
 }
 
-float peakOf(const float* left, const float* right, int numSamples) noexcept
-{
-    float peak = 0.0f;
-    for (int i = 0; i < numSamples; ++i)
-        peak = std::max(peak, std::max(std::abs(left[i]), std::abs(right[i])));
-    return peak;
-}
-
-// What every module shares: the feedback block and, while bypassed, a
-// measurement of the input for an editor that is watching (so the threshold
-// can be set against the signal before the module is switched on).
-class StripProcessor : public ProcessorBase
-{
-public:
-    StripProcessor(std::string typeName, std::vector<engine::ParameterInfo> infos, bool taps = false)
-        : ProcessorBase(std::move(typeName), std::move(infos)), feedback_(taps)
-    {
-    }
-
-    engine::ProcessorFeedback* feedback() noexcept override { return &feedback_; }
-
-protected:
-    void prepareAudio(double sampleRate, int maxBlockSize) final
-    {
-        feedback_.prepare(sampleRate);
-        prepareModule(sampleRate, maxBlockSize);
-    }
-    virtual void prepareModule(double sampleRate, int maxBlockSize) = 0;
-
-    void processBypassed(float* left, float* right, int numSamples) noexcept override
-    {
-        feedback_.addBypassed(left, right, numSamples);
-    }
-
-    engine::ProcessorFeedback feedback_;
-};
+// Every module is a FeedbackBuiltIn (plugins/MeteredBuiltIn.h): bypassed, a
+// watched module measures its input, so the threshold can be set against the
+// signal before it is switched on.
 
 // ----- gate -----------------------------------------------------------------------------------
 
@@ -408,13 +376,13 @@ std::vector<engine::ParameterInfo> gateParameters()
 // A key-filtered peak detector opens the gate above the threshold; it closes
 // after the hold time once the key falls `hysteresisDb` below it. The gain
 // moves between unity and -range at the attack and release rates.
-class Gate final : public StripProcessor
+class Gate final : public FeedbackBuiltIn
 {
 public:
-    Gate() : StripProcessor(types::gate, gateParameters()) {}
+    Gate() : FeedbackBuiltIn(types::gate, gateParameters()) {}
 
 private:
-    void prepareModule(double, int) override
+    void prepareBuiltIn(double, int) override
     {
         for (auto& f : filters_)
             f.reset();
@@ -529,13 +497,13 @@ std::vector<engine::ParameterInfo> eqParameters()
 
 // Six bands in a fixed layout of twelve sections (identity where a band is
 // off, skipped). A parameter change ramps the coefficients across the block.
-class Eq final : public StripProcessor
+class Eq final : public FeedbackBuiltIn
 {
 public:
-    Eq() : StripProcessor(types::eq, eqParameters(), true) {}
+    Eq() : FeedbackBuiltIn(types::eq, eqParameters(), true) {}
 
 private:
-    void prepareModule(double, int) override
+    void prepareBuiltIn(double, int) override
     {
         for (auto& channel : live_)
             for (auto& s : channel)
@@ -664,18 +632,18 @@ std::vector<engine::ParameterInfo> compressorParameters()
 // wet/dry for parallel compression. The one compressor: the channel strip's
 // module, and (keyed) the "northlight.compressor" insert, whose detector listens to
 // a sidechain key when one is chosen.
-class Compressor final : public StripProcessor
+class Compressor final : public FeedbackBuiltIn
 {
 public:
     explicit Compressor(const std::string& type = types::compressor, bool keyed = false)
-        : StripProcessor(type, compressorParameters()), keyed_(keyed)
+        : FeedbackBuiltIn(type, compressorParameters()), keyed_(keyed)
     {
     }
 
     bool acceptsSidechain() const noexcept override { return keyed_; }
 
 private:
-    void prepareModule(double, int) override
+    void prepareBuiltIn(double, int) override
     {
         reductionDb_ = 0.0f;
         displayLevel_ = 0.0f;
@@ -776,17 +744,17 @@ std::vector<engine::ParameterInfo> optoParameters()
 //    first-order antiderivative anti-aliasing, unity gain for small signals,
 //    and a DC blocker. Then the internal wet/dry.
 // No lookahead, no latency.
-class Opto final : public StripProcessor
+class Opto final : public FeedbackBuiltIn
 {
 public:
-    explicit Opto(const std::string& type = types::opto) : StripProcessor(type, optoParameters()) {}
+    explicit Opto(const std::string& type = types::opto) : FeedbackBuiltIn(type, optoParameters()) {}
 
 private:
     static constexpr double valveBias = 0.25; // saturation's tube curve
     static inline const double valveSlope = 1.0 - std::tanh(valveBias) * std::tanh(valveBias);
     static float valveDrive(float colourPercent) noexcept { return 0.25f + 0.0175f * colourPercent; }
 
-    void prepareModule(double, int) override
+    void prepareBuiltIn(double, int) override
     {
         envelope_ = fast_ = slow_ = memory_ = 0.0f;
         feedbackL_ = feedbackR_ = 0.0f;
@@ -956,13 +924,13 @@ std::vector<engine::ParameterInfo> deesserParameters()
 // bands sum back flat). The high band's envelope above the threshold sets the
 // reduction, applied to the high band alone (split) or the whole signal
 // (wide). Listen plays the band.
-class DeEsser final : public StripProcessor
+class DeEsser final : public FeedbackBuiltIn
 {
 public:
-    DeEsser() : StripProcessor(types::deesser, deesserParameters()) {}
+    DeEsser() : FeedbackBuiltIn(types::deesser, deesserParameters()) {}
 
 private:
-    void prepareModule(double, int) override
+    void prepareBuiltIn(double, int) override
     {
         for (auto& f : filters_)
             f.reset();
@@ -1048,13 +1016,13 @@ std::vector<engine::ParameterInfo> saturationParameters()
 // Drive into a static curve with first-order antiderivative anti-aliasing (no
 // oversampling, so no latency), a DC blocker for the biased curve, a tone
 // shelf, output trim and an internal wet/dry.
-class Saturation final : public StripProcessor
+class Saturation final : public FeedbackBuiltIn
 {
 public:
-    Saturation() : StripProcessor(types::saturation, saturationParameters()) {}
+    Saturation() : FeedbackBuiltIn(types::saturation, saturationParameters()) {}
 
 private:
-    void prepareModule(double, int) override
+    void prepareBuiltIn(double, int) override
     {
         for (auto& s : state_)
             s = {};
@@ -1181,13 +1149,13 @@ std::vector<engine::ParameterInfo> limiterParameters()
 // Zero-latency peak limiter: the gain drops at once to what the sample needs
 // and recovers at the release rate; the output is clamped to the ceiling. No
 // lookahead, so a strip that is switched off adds no delay to the channel.
-class Limiter final : public StripProcessor
+class Limiter final : public FeedbackBuiltIn
 {
 public:
-    Limiter() : StripProcessor(types::limiter, limiterParameters()) {}
+    Limiter() : FeedbackBuiltIn(types::limiter, limiterParameters()) {}
 
 private:
-    void prepareModule(double, int) override
+    void prepareBuiltIn(double, int) override
     {
         gain_ = 1.0f;
         input_ = dbToGain(parameter(limiter::input));

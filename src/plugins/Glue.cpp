@@ -3,8 +3,8 @@
 #include "engine/Feedback.h"
 #include "engine/rt/RealtimeGuard.h"
 #include "plugins/Biquad.h"
+#include "plugins/MeteredBuiltIn.h"
 #include "plugins/ParamHelpers.h"
-#include "plugins/ProcessorBase.h"
 #include "plugins/dsp/Smoothing.h"
 
 #include <algorithm>
@@ -80,18 +80,15 @@ std::vector<engine::ParameterInfo> parameterInfos()
 // compression is held and releases over 1.2 s, and the reduction is the larger. A short burst barely
 // charges the slow stage and recovers quickly; seconds of compression charge it
 // and recover slowly, without pumping.
-class Glue final : public ProcessorBase
+class Glue final : public FeedbackBuiltIn
 {
 public:
-    Glue() : ProcessorBase(type, parameterInfos()) {}
-
-    engine::ProcessorFeedback* feedback() noexcept override { return &feedback_; }
+    Glue() : FeedbackBuiltIn(type, parameterInfos()) {}
 
 private:
-    void prepareAudio(double sampleRate, int) override
+    void prepareBuiltIn(double, int) override
     {
-        NORTHLIGHT_ASSERT_NOT_REALTIME("Glue::prepareAudio");
-        feedback_.prepare(sampleRate);
+        NORTHLIGHT_ASSERT_NOT_REALTIME("Glue::prepareBuiltIn");
         fast_ = slow_ = 0.0f;
         inMeanSquare_ = outMeanSquare_ = 0.0f;
         for (auto& f : keyFilter_)
@@ -182,12 +179,6 @@ private:
             outMeanSquare_ = 0.0f;
     }
 
-    void processBypassed(float* left, float* right, int numSamples) noexcept override
-    {
-        feedback_.addBypassed(left, right, numSamples);
-    }
-
-    engine::ProcessorFeedback feedback_;
     std::array<Biquad, 2> keyFilter_;
     float lastKeyHz_ = -1.0f;
     float fast_ = 0.0f, slow_ = 0.0f;

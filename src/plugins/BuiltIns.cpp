@@ -230,12 +230,13 @@ public:
     int latencySamples() const noexcept override { return lookaheadSamples(); }
 
     // Bypassed: the signal still goes through the lookahead delay (the latency
-    // the graph was solved with) with unity gain.
-    void processBypassed(float* left, float* right, int numSamples) noexcept override
+    // the graph was solved with) with unity gain, measured as it passes.
+    bool bypassedBuiltIn(float* left, float* right, int numSamples) noexcept override
     {
         bypassedRun_ = true;
         processAudio(left, right, numSamples);
         bypassedRun_ = false;
+        return true;
     }
 
     void processBuiltIn(float* left, float* right, int numSamples) noexcept override

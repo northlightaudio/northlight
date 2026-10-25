@@ -3,8 +3,8 @@
 #include "engine/Feedback.h"
 #include "engine/rt/RealtimeGuard.h"
 #include "plugins/Biquad.h"
+#include "plugins/MeteredBuiltIn.h"
 #include "plugins/ParamHelpers.h"
-#include "plugins/ProcessorBase.h"
 #include "plugins/dsp/DelayLine.h"
 #include "plugins/dsp/Denormals.h"
 #include "plugins/dsp/Random.h"
@@ -362,22 +362,20 @@ struct StageGate
     bool idle(float from) const noexcept { return from == 0.0f && fade == 0.0f; }
 };
 
-class Patina final : public ProcessorBase
+class Patina final : public FeedbackBuiltIn
 {
 public:
-    Patina() : ProcessorBase(type, parameterInfos()) {}
+    Patina() : FeedbackBuiltIn(type, parameterInfos()) {}
 
-    engine::ProcessorFeedback* feedback() noexcept override { return &feedback_; }
     const Telemetry& telemetry() const noexcept { return telemetry_; }
 
 private:
     // ----- preparing ----------------------------------------------------------------------------
-    void prepareAudio(double sampleRate, int) override
+    void prepareBuiltIn(double sampleRate, int) override
     {
-        NORTHLIGHT_ASSERT_NOT_REALTIME("Patina::prepareAudio");
+        NORTHLIGHT_ASSERT_NOT_REALTIME("Patina::prepareBuiltIn");
         fs_ = sampleRate;
         const float rate = static_cast<float>(sampleRate);
-        feedback_.prepare(sampleRate);
         telemetry_.prepare(sampleRate);
         frameInterval_ = std::max(1, static_cast<int>(sampleRate * Telemetry::frameSeconds));
         frameCount_ = 0;
@@ -434,11 +432,6 @@ private:
         }
         for (auto* v : {&inEnv_, &driftScrape_[0], &driftScrape_[1]})
             *v = dsp::flush(*v, denormalFloor);
-    }
-
-    void processBypassed(float* left, float* right, int numSamples) noexcept override
-    {
-        feedback_.addBypassed(left, right, numSamples);
     }
 
     struct Params
@@ -1624,7 +1617,6 @@ private:
     static constexpr float springCoefficient = 0.62f;
     static constexpr size_t springStages = 20;
 
-    engine::ProcessorFeedback feedback_;
     Telemetry telemetry_;
     double fs_ = 48000.0;
     Params p_;

@@ -510,3 +510,44 @@ TEST_CASE("Parameter descriptions are made once and read safely from several thr
         CHECK(northlight::plugins::builtInParameterLayout(types[i]).defaults == defaults);
     }
 }
+
+TEST_CASE("Bypassed and watched, a built-in measures what passes unless it shows what it would do",
+          "[plugins][feedback]")
+{
+    namespace p = northlight::plugins;
+    // These show what they would do while bypassed: the harmonics they would
+    // add, the image, the tail.
+    const std::set<std::string> showWhatTheyWouldDo{
+        p::exciter::type, p::widener::type, p::bloom::type, p::vesper::type};
+    auto types = p::BuiltInFactory().typeNames();
+    for (const auto& t : p::strip::moduleTypes())
+        types.push_back(t);
+    p::BuiltInFactory factory;
+    constexpr int block = 256;
+    for (const auto& type : types)
+    {
+        if (showWhatTheyWouldDo.count(type) != 0 || p::BuiltInFactory::isInstrument(type))
+            continue;
+        INFO(type);
+        auto processor = factory.create(type);
+        REQUIRE(processor != nullptr);
+        processor->prepare(rate, block);
+        processor->setBypassed(true);
+        auto* feedback = processor->feedback();
+        REQUIRE(feedback != nullptr);
+        feedback->setWatched(true);
+        std::vector<float> l(block), r(block);
+        for (int b = 0; b < 200; ++b)
+        {
+            for (int i = 0; i < block; ++i)
+                l[static_cast<size_t>(i)] = r[static_cast<size_t>(i)] =
+                    0.5f *
+                    static_cast<float>(std::sin(2.0 * std::numbers::pi * 220.0 * (b * block + i) / rate));
+            processor->process(l.data(), r.data(), block);
+        }
+        const auto frame = feedback->latest();
+        CHECK(frame.input == Approx(0.5f).margin(0.01f));
+        CHECK(frame.output == Approx(frame.input).margin(0.01f)); // a latent one passes it delayed
+        CHECK(frame.reduction == 0.0f);
+    }
+}
