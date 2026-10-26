@@ -372,7 +372,9 @@ know nothing format-specific.
   Vesper (voice and pitch, consonants and sibilance, breaths, line ends, the singing
   rate), deciding every 2.5 ms from the past alone; its pitch is YIN from
   `plugins/Yin.h`, which the tuner (Polaris) uses too. Vesper (`plugins/Vesper`) is
-  the Listener in front of three prepared networks, one per space: each Listener
+  the Listener in front of three prepared networks, one per space (their tunings in
+  `plugins/vesper/Spaces`, Halo's strings in `vesper/HaloBank`; the block runs in
+  named steps, from `beginBlock` to `endBlock`): each Listener
   frame sets the send's cut, the duck, Ends and Follow's high-pass, and the samples
   between follow them smoothly. Its card reads `vesper::Telemetry`, a frame every
   5 ms of what was heard and done (published only while an editor watches), as

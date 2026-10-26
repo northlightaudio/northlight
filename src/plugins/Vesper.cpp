@@ -8,8 +8,10 @@
 #include "plugins/MeteredBuiltIn.h"
 #include "plugins/ParamHelpers.h"
 #include "plugins/VocalListener.h"
-#include "plugins/dsp/Denormals.h"
+#include "plugins/dsp/DelayLine.h"
 #include "plugins/dsp/Smoothing.h"
+#include "plugins/vesper/HaloBank.h"
+#include "plugins/vesper/Spaces.h"
 
 #include <algorithm>
 #include <array>
@@ -59,7 +61,6 @@ int lookaheadSamples(float choice, double sampleRate) noexcept
 
 namespace
 {
-constexpr int spaceCount = 3;
 // Listener frames waiting for the delayed audio to reach them (Long holds 200).
 constexpr int frameQueueSize = 512;
 // Line ends waiting to be thrown: a few at most within a lookahead.
@@ -68,7 +69,6 @@ constexpr int maxPendingEnds = 8;
 // keep at least this much movement so the pad never turns static.
 constexpr float catchFadeSeconds = 0.06f;
 constexpr float heldModSeconds = 0.0006f;
-constexpr int maxEarlyTaps = 8;
 constexpr float listenerFrameSeconds = static_cast<float>(vocal::frameSeconds);
 // After the last sung frame the singer still counts as singing this long, so the
 // duck holds across the dips between syllables.
@@ -76,82 +76,6 @@ constexpr float duckHangSeconds = 0.04f;
 constexpr float endsAttackSeconds = 0.08f, endsSettleSeconds = 0.4f;
 constexpr float followGlideSeconds = 0.08f;
 constexpr float mudHz = 350.0f;
-
-// One space: its network's tuning, how hard the send drives it, how much it
-// diffuses, how it moves, and its early reflections (none for the plate).
-struct Space
-{
-    fdn::Tuning tuning;
-    float inject = 1.0f;
-    float diffusion = 0.8f;
-    float modSeconds = 0.0003f, modHz = 0.6f;
-    int taps = 0;
-    std::array<float, maxEarlyTaps> tapMs{}, tapGain{};
-};
-
-std::array<Space, spaceCount> makeSpaces()
-{
-    std::array<Space, spaceCount> s{};
-    const auto base = [](Space& x)
-    {
-        x.tuning.maxScale = maxSizePercent / 100.0f;
-        x.tuning.maxModSeconds = 0.001f;
-        x.tuning.shimmerWindowSeconds = 0.0f;
-        x.tuning.energyCeiling = 0.5f;
-    };
-    // Plate: dense at once and bright, no early reflections, the highs damped late.
-    auto& plate = s[0];
-    base(plate);
-    plate.tuning.lineMs = {13.1f, 15.7f, 17.9f, 20.3f, 23.1f, 25.7f, 28.9f, 31.9f};
-    plate.tuning.allpassMs = {1.3f, 1.9f, 2.3f, 2.9f, 3.1f, 3.7f, 4.1f, 4.7f};
-    plate.tuning.diffuserLeftMs = {0.9f, 1.4f, 2.1f, 3.3f};
-    plate.tuning.diffuserRightMs = {1.0f, 1.6f, 2.3f, 3.6f};
-    plate.tuning.bandDecayRatio = 3.0f;
-    plate.tuning.earlyGain = 0.7f;
-    plate.inject = 1.0f;
-    plate.diffusion = 0.9f;
-    plate.modSeconds = 0.0003f;
-    plate.modHz = 0.7f;
-    // Chamber: a small live room, a little early slap, warm.
-    auto& chamber = s[1];
-    base(chamber);
-    chamber.tuning.lineMs = {17.3f, 19.9f, 23.3f, 26.1f, 29.7f, 33.1f, 37.3f, 41.9f};
-    chamber.tuning.allpassMs = {1.9f, 2.7f, 3.3f, 4.1f, 4.9f, 5.7f, 6.3f, 7.1f};
-    chamber.tuning.diffuserLeftMs = {1.3f, 2.3f, 3.7f, 5.3f};
-    chamber.tuning.diffuserRightMs = {1.5f, 2.5f, 4.1f, 5.9f};
-    chamber.tuning.bandDecayRatio = 4.0f;
-    chamber.tuning.earlyGain = 0.45f;
-    chamber.inject = 0.9f;
-    chamber.diffusion = 0.7f;
-    chamber.modSeconds = 0.0002f;
-    chamber.modHz = 0.5f;
-    chamber.taps = 6;
-    chamber.tapMs = {8.3f, 11.9f, 15.7f, 19.1f, 23.9f, 29.3f};
-    chamber.tapGain = {0.45f, 0.4f, 0.35f, 0.3f, 0.25f, 0.2f};
-    // Hall: big and slow to build, for ballads.
-    auto& hall = s[2];
-    base(hall);
-    hall.tuning.lineMs = {28.5f, 33.6f, 37.7f, 42.4f, 48.0f, 53.9f, 60.4f, 66.5f};
-    hall.tuning.allpassMs = {2.9f, 3.9f, 5.1f, 6.3f, 7.5f, 8.7f, 10.1f, 11.5f};
-    hall.tuning.diffuserLeftMs = {1.7f, 2.9f, 5.3f, 7.9f};
-    hall.tuning.diffuserRightMs = {1.9f, 3.1f, 5.9f, 8.3f};
-    hall.tuning.bandDecayRatio = 4.0f;
-    hall.tuning.earlyGain = 0.35f;
-    hall.inject = 0.8f;
-    hall.diffusion = 0.75f;
-    hall.modSeconds = 0.0005f;
-    hall.modHz = 0.35f;
-    hall.taps = 8;
-    hall.tapMs = {12.1f, 17.3f, 23.9f, 29.7f, 36.1f, 43.3f, 51.7f, 59.9f};
-    hall.tapGain = {0.35f, 0.32f, 0.3f, 0.27f, 0.24f, 0.2f, 0.17f, 0.14f};
-    return s;
-}
-
-const std::array<Space, spaceCount>& spaces()
-{
-    static const auto s = makeSpaces();
-    return s;
-}
 
 int choiceIndex(float value, int count) noexcept
 {
@@ -188,235 +112,6 @@ std::vector<engine::ParameterInfo> parameterInfos()
     p[halo] = {"Halo", "%", 0.0f, 100.0f, 0.0f, false};
     return p;
 }
-
-// Halo: sympathetic strings. Six feedback combs, each tuned to a note the singer
-// held, ring with what goes into the reverb, so
-// the tail sounds the pitches just sung and their harmonics, in tune with the
-// singer however the singer is tuned. A note is held when its pitch runs on for
-// 120 ms without a jump (100 cents in a frame) or a glide of 150 cents away from its
-// centre (its average pitch), so a vibrato counts; the string follows the centre
-// while the note is sung. A note no string holds goes to a free or
-// the quietest one, faded out over 30 ms first so a retune never clicks. A one-pole
-// low-pass in each loop makes them ring like strings, not buzz; its delay is taken
-// off the loop so the pitch stays true. Mono in and out. Real-time safe after
-// prepare().
-class HaloBank
-{
-public:
-    static constexpr int voiceCount = 6;
-    static constexpr float jumpCents = 100.0f, glideCents = 150.0f, sameNoteCents = 50.0f;
-    static constexpr double steadySeconds = 0.12, centreSeconds = 0.3, retuneSeconds = 0.03;
-    static constexpr float dampingHz = 4000.0f;
-
-    void prepare(double sampleRate)
-    {
-        NORTHLIGHT_ASSERT_NOT_REALTIME("HaloBank::prepare");
-        sampleRate_ = sampleRate;
-        const int size = fdn::powerOfTwoAtLeast(sampleRate / vocal::lowestHz + 8.0);
-        for (auto& v : voices_)
-            v.buffer.assign(static_cast<size_t>(size), 0.0f);
-        mask_ = size - 1;
-        lowStep_ = fdn::onePole(dampingHz, sampleRate);
-        loopLag_ = (1.0f - lowStep_) / lowStep_; // the low-pass's delay at low frequencies, samples
-        fadeStep_ = static_cast<float>(1.0 / (retuneSeconds * sampleRate));
-        steadyFrames_ = static_cast<int>(std::lround(steadySeconds / vocal::frameSeconds));
-        centreStep_ = static_cast<float>(1.0 - std::exp(-vocal::frameSeconds / centreSeconds));
-        envelopeStep_ = 1.0f - std::exp(-1.0f / static_cast<float>(0.05 * sampleRate));
-        clear();
-    }
-
-    void clear() noexcept
-    {
-        for (auto& v : voices_)
-        {
-            std::fill(v.buffer.begin(), v.buffer.end(), 0.0f);
-            v.hz = v.pendingHz = 0.0f;
-            v.delay = 1.0f;
-            v.feedback = v.drive = v.gain = v.low = v.energy = 0.0f;
-            v.lastHeard = 0;
-        }
-        write_ = 0;
-        candidateHz_ = centre_ = last_ = 0.0f;
-        steady_ = 0;
-        current_ = -1;
-        clock_ = 0;
-    }
-
-    // Once a block: how long a string rings (RT60).
-    void setDecay(float seconds) noexcept { decaySeconds_ = std::max(0.1f, seconds); }
-
-    // A Listener frame: a note held that no string holds is given one, and the
-    // string holding the note being sung follows its centre.
-    void hear(const vocal::Hearing& h) noexcept
-    {
-        ++clock_;
-        if (h.sound != vocal::Sound::voiced || !(h.pitchHz > 0.0f))
-        {
-            steady_ = 0;
-            current_ = -1;
-            return;
-        }
-        // The centre is the note's average pitch in octaves so far, then over its
-        // last 300 ms or so; a jump or a glide away from it starts a new note.
-        const float octaves = std::log2(h.pitchHz);
-        if (candidateHz_ > 0.0f && std::abs(1200.0f * (octaves - last_)) < jumpCents &&
-            std::abs(1200.0f * (octaves - centre_)) < glideCents)
-        {
-            steady_ = std::min(steady_ + 1, 1 << 20);
-            centre_ += (octaves - centre_) * std::max(centreStep_, 1.0f / static_cast<float>(steady_ + 1));
-        }
-        else
-        {
-            centre_ = octaves;
-            steady_ = 0;
-            current_ = -1;
-        }
-        last_ = octaves;
-        candidateHz_ = std::exp2(centre_);
-        if (steady_ < steadyFrames_)
-            return;
-        if (current_ >= 0)
-        {
-            auto& v = voices_[static_cast<size_t>(current_)];
-            (v.pendingHz > 0.0f ? v.pendingHz : v.hz) = candidateHz_;
-            v.lastHeard = clock_;
-            return;
-        }
-        for (size_t i = 0; i < voices_.size(); ++i)
-        {
-            auto& v = voices_[i];
-            const float held = v.pendingHz > 0.0f ? v.pendingHz : v.hz;
-            if (held > 0.0f && std::abs(cents(candidateHz_, held)) < sameNoteCents)
-            {
-                current_ = static_cast<int>(i);
-                v.lastHeard = clock_;
-                return;
-            }
-        }
-        // A free string, else the quietest (the longest unheard of equals).
-        size_t pick = 0;
-        for (size_t i = 0; i < voices_.size(); ++i)
-        {
-            const auto& v = voices_[i];
-            const auto& best = voices_[pick];
-            if (v.hz <= 0.0f && v.pendingHz <= 0.0f)
-            {
-                pick = i;
-                break;
-            }
-            if (v.energy < best.energy || (v.energy == best.energy && v.lastHeard < best.lastHeard))
-                pick = i;
-        }
-        voices_[pick].pendingHz = candidateHz_;
-        voices_[pick].lastHeard = clock_;
-        current_ = static_cast<int>(pick);
-    }
-
-    // One sample in; the strings' sum out.
-    float process(float x) noexcept
-    {
-        float out = 0.0f;
-        for (auto& v : voices_)
-        {
-            // A string to retune fades out, then starts again silent at its new note.
-            if (v.pendingHz > 0.0f)
-            {
-                v.gain = std::max(0.0f, v.gain - fadeStep_);
-                if (v.gain <= 0.0f)
-                    retune(v);
-            }
-            else if (v.hz > 0.0f && v.gain < 1.0f)
-                v.gain = std::min(1.0f, v.gain + fadeStep_);
-            if (v.hz <= 0.0f)
-                continue;
-            const float read = dsp::readLinear(v.buffer.data(), mask_, write_, v.delay);
-            v.low += lowStep_ * (read - v.low);
-            const float y = x * v.drive * v.gain + v.feedback * v.low;
-            v.buffer[static_cast<size_t>(write_)] = y;
-            const float sound = v.low * v.gain;
-            v.energy += (sound * sound - v.energy) * envelopeStep_;
-            out += sound;
-        }
-        write_ = (write_ + 1) & mask_;
-        return out;
-    }
-
-    // Whether any string still sounds (or is about to).
-    bool ringing() const noexcept
-    {
-        for (const auto& v : voices_)
-            if (v.pendingHz > 0.0f || (v.hz > 0.0f && v.energy > 1.0e-12f))
-                return true;
-        return false;
-    }
-
-    // The notes held, for the tests.
-    std::array<float, voiceCount> notes() const noexcept
-    {
-        std::array<float, voiceCount> n{};
-        for (size_t i = 0; i < n.size(); ++i)
-            n[i] = voices_[i].hz;
-        return n;
-    }
-
-    // Once a block, after setDecay: each string's loop gain for its note.
-    void tune() noexcept
-    {
-        for (auto& v : voices_)
-            if (v.hz > 0.0f)
-                setLoop(v);
-    }
-
-    void flushDenormals() noexcept
-    {
-        for (auto& v : voices_)
-        {
-            v.low = dsp::flush(v.low, 1.0e-20f);
-            if (v.energy < 1.0e-20f)
-                v.energy = 0.0f;
-        }
-    }
-
-private:
-    struct Voice
-    {
-        std::vector<float> buffer;
-        float hz = 0.0f, pendingHz = 0.0f;
-        float delay = 1.0f, feedback = 0.0f, drive = 0.0f, gain = 0.0f, low = 0.0f, energy = 0.0f;
-        std::int64_t lastHeard = 0;
-    };
-
-    static float cents(float a, float b) noexcept { return 1200.0f * std::log2(a / b); }
-
-    void retune(Voice& v) noexcept
-    {
-        std::fill(v.buffer.begin(), v.buffer.end(), 0.0f);
-        v.hz = v.pendingHz;
-        v.pendingHz = 0.0f;
-        v.low = 0.0f;
-        v.energy = 0.0f;
-        setLoop(v);
-    }
-
-    void setLoop(Voice& v) noexcept
-    {
-        const auto period = static_cast<float>(sampleRate_ / v.hz);
-        v.delay = std::clamp(period - loopLag_, 2.0f, static_cast<float>(mask_ - 2));
-        v.feedback = std::pow(10.0f, -3.0f * period / (static_cast<float>(sampleRate_) * decaySeconds_));
-        // The comb's gain at its note is about 1 / (1 - feedback): driven by that much
-        // less, a held matching note rings about as loud as it went in.
-        v.drive = 1.0f - v.feedback;
-    }
-
-    std::array<Voice, voiceCount> voices_;
-    double sampleRate_ = 48000.0;
-    int mask_ = 0, write_ = 0;
-    float lowStep_ = 0.0f, loopLag_ = 0.0f, fadeStep_ = 0.0f, envelopeStep_ = 0.0f;
-    float decaySeconds_ = 3.0f;
-    float candidateHz_ = 0.0f, centre_ = 0.0f, last_ = 0.0f, centreStep_ = 0.0f;
-    int steady_ = 0, steadyFrames_ = 48, current_ = -1;
-    std::int64_t clock_ = 0;
-};
 
 class Vesper final : public FeedbackBuiltIn
 {
@@ -709,9 +404,38 @@ private:
         }
     }
 
+    // ----- the block, in its steps -------------------------------------------------------------
+
     void processAudio(float* left, float* right, int numSamples) noexcept override
     {
         const bool watched = feedback_.watched();
+        const auto t = beginBlock(left, right, numSamples, watched);
+        if (rungOut(t, left, right, numSamples))
+        {
+            passDry(t, left, right, numSamples, watched);
+            return;
+        }
+        const auto b = beginSpaces(t, numSamples);
+        for (int n = 0; n < numSamples; ++n)
+            processSample(t, b, left, right, n, watched);
+        if (watched)
+            feedback_.tap(1, wetLeft_.data(), wetRight_.data(), numSamples);
+        endBlock();
+    }
+
+    // What a block's samples share once the spaces have begun it.
+    struct Block
+    {
+        float rate = 48000.0f;
+        std::array<bool, spaceCount> running{}; // a space faded out and rung out is skipped
+        float decayTrim = 1.0f, throwDb = 0.0f;
+        bool haloOn = false;
+    };
+
+    // The block's targets; the first block snaps to them, and a new lookahead
+    // lets go of what was waiting for the old one.
+    Targets beginBlock(const float* left, const float* right, int numSamples, bool watched) noexcept
+    {
         feedback_.setTempoBpm(playHead().tempoBpm);
         listener_.setGapSeconds(parameter(gap) * 0.001f);
         const auto t = targets();
@@ -733,8 +457,13 @@ private:
         }
         if (watched)
             feedback_.tap(0, left, right, numSamples);
+        return t;
+    }
 
-        // Silence in, the networks dead: nothing to compute but the dry delay.
+    // Silence in for longer than the send holds, nothing held and the networks
+    // and strings dead: there is nothing to compute but the dry delay.
+    bool rungOut(const Targets& t, const float* left, const float* right, int numSamples) noexcept
+    {
         float inPeak = 0.0f;
         for (int i = 0; i < numSamples; ++i)
             inPeak = std::max(inPeak, std::max(std::abs(left[i]), std::abs(right[i])));
@@ -743,57 +472,61 @@ private:
                     !(haloGain_ > 0.0f && halo_.ringing());
         for (const auto& n : networks_)
             dead = dead && n.energy() < 1.0e-14f;
-        if (dead)
-        {
-            snapTo(t);
-            for (int i = 0; i < numSamples; ++i)
-            {
-                const auto ii = static_cast<size_t>(i);
-                const auto [dryL, dryR] = delay(left[i], right[i]);
-                delayedLeft_[ii] = dryL;
-                delayedRight_[ii] = dryR;
-                left[i] = dryL * (1.0f - t.wet) * t.out;
-                right[i] = dryR * (1.0f - t.wet) * t.out;
-                wetLeft_[ii] = wetRight_[ii] = 0.0f;
-                listener_.push(0.0f);
-                if (watched)
-                {
-                    feedback_.addSample(0.0f, 0.0f, 0.0f, 0.0f, 0.0f);
-                    observe(0.0f, 0.0f, 0.0f);
-                }
-            }
-            tailSquare_ = drySquare_ = dryFast_ = 0.0f;
-            if (watched)
-                feedback_.tap(1, wetLeft_.data(), wetRight_.data(), numSamples);
-            return;
-        }
+        return dead;
+    }
 
-        const auto rate = static_cast<float>(sampleRate_);
-        // Each space's network for this block; a space faded out and rung out is skipped.
+    // A rung-out block: the dry signal through the lookahead's delay, the Listener
+    // kept hearing (silence).
+    void passDry(const Targets& t, float* left, float* right, int numSamples, bool watched) noexcept
+    {
+        snapTo(t);
+        for (int i = 0; i < numSamples; ++i)
+        {
+            const auto ii = static_cast<size_t>(i);
+            const auto [dryL, dryR] = delay(left[i], right[i]);
+            delayedLeft_[ii] = dryL;
+            delayedRight_[ii] = dryR;
+            left[i] = dryL * (1.0f - t.wet) * t.out;
+            right[i] = dryR * (1.0f - t.wet) * t.out;
+            wetLeft_[ii] = wetRight_[ii] = 0.0f;
+            listener_.push(0.0f);
+            if (watched)
+            {
+                feedback_.addSample(0.0f, 0.0f, 0.0f, 0.0f, 0.0f);
+                observe(0.0f, 0.0f, 0.0f);
+            }
+        }
+        tailSquare_ = drySquare_ = dryFast_ = 0.0f;
+        if (watched)
+            feedback_.tap(1, wetLeft_.data(), wetRight_.data(), numSamples);
+    }
+
+    // Each running space's network for this block, and Halo's strings.
+    Block beginSpaces(const Targets& t, int numSamples) noexcept
+    {
+        Block b;
+        b.rate = static_cast<float>(sampleRate_);
         const float endScale = scale_ + (t.scale - scale_) * std::min(1.0f, sizeStep_ * numSamples);
-        bool running[spaceCount];
         for (int k = 0; k < spaceCount; ++k)
         {
             const auto kk = static_cast<size_t>(k);
-            running[k] = k == t.space || spaceGain_[kk] > 1.0e-4f || networks_[kk].energy() > 1.0e-12f;
-            if (!running[k])
+            b.running[kk] = k == t.space || spaceGain_[kk] > 1.0e-4f || networks_[kk].energy() > 1.0e-12f;
+            if (!b.running[kk])
                 continue;
             const auto& sp = spaces()[kk];
             fdn::BlockSettings block;
             block.decaySeconds = t.decay * (1.0f + (endsDecayRatio - 1.0f) * t.ends * ends_);
             block.endScale = endScale;
-            block.modSamples = sp.modSeconds * rate;
+            block.modSamples = sp.modSeconds * b.rate;
             block.dampingHz = std::clamp(parameter(damping), 2000.0f, 20000.0f);
             block.lowCutHz = std::clamp(parameter(lowCut), 20.0f, 1000.0f);
             block.diffusion = sp.diffusion;
             block.lfoHz = sp.modHz;
             networks_[kk].beginBlock(block);
         }
-        const float* inL = input_[0].data();
-        const float* inR = input_[1].data();
         // Inputs drive the reverb harder at short decays; long ones hold back a little.
-        const float decayTrim = std::min(1.0f, std::pow(2.0f / t.decay, 0.25f));
-        const float throwDb = endsLiftDb * t.ends;
+        b.decayTrim = std::min(1.0f, std::pow(2.0f / t.decay, 0.25f));
+        b.throwDb = endsLiftDb * t.ends;
         // Halo's strings ring longer than the tail.
         // Turned off and faded out, they stop and are cleared.
         if (t.halo == 0.0f && haloGain_ > 0.0f && haloGain_ < 1.0e-4f)
@@ -801,166 +534,227 @@ private:
             halo_.clear();
             haloGain_ = 0.0f;
         }
-        const bool haloOn = t.halo > 0.0f || haloGain_ > 0.0f;
-        if (haloOn)
+        b.haloOn = t.halo > 0.0f || haloGain_ > 0.0f;
+        if (b.haloOn)
         {
             halo_.setDecay(std::max(haloMinSeconds, t.decay * haloDecayRatio));
             halo_.tune();
         }
+        return b;
+    }
 
-        for (int n = 0; n < numSamples; ++n)
-        {
-            const auto nn = static_cast<size_t>(n);
-            // The Listener hears the input as it arrives; everything else works on
-            // it delayed by the lookahead.
-            const float liveL = left[n], liveR = right[n];
-            const auto [dryL, dryR] = delay(liveL, liveR);
-            delayedLeft_[nn] = dryL;
-            delayedRight_[nn] = dryR;
-            if (listener_.push(0.5f * (liveL + liveR)))
-                heard(t);
-            applyDue(t);
+    // One sample: the Listener, the controls' glide, the send into the pre-delay,
+    // the spaces, the tail's shaping and the mix.
+    void
+    processSample(const Targets& t, const Block& b, float* left, float* right, int n, bool watched) noexcept
+    {
+        const auto nn = static_cast<size_t>(n);
+        // The Listener hears the input as it arrives; everything else works on
+        // it delayed by the lookahead.
+        const float liveL = left[n], liveR = right[n];
+        const auto [dryL, dryR] = delay(liveL, liveR);
+        delayedLeft_[nn] = dryL;
+        delayedRight_[nn] = dryR;
+        if (listener_.push(0.5f * (liveL + liveR)))
+            heard(t);
+        applyDue(t);
 
-            scale_ += (t.scale - scale_) * sizeStep_;
-            pre_ += (t.pre - pre_) * glideStep_;
-            wet_ += (t.wet - wet_) * paramStep_;
-            out_ += (t.out - out_) * paramStep_;
-            width_ += (t.width - width_) * paramStep_;
-            midGain_ += (t.midGain - midGain_) * paramStep_;
-            held_ += (t.held - held_) * catchStep_;
-            const float target = sendTargetDb_ + (throwing_ > 0 ? throwDb : 0.0f);
-            sendDb_ += (target - sendDb_) * (target < sendDb_ ? sendDown_ : sendUp_);
-            if (std::abs(target - sendDb_) < 1.0e-3f)
-                sendDb_ = target; // settled: the gain below is then worked out once
-            if (sendDb_ != sendGainDb_)
-            {
-                sendGainDb_ = sendDb_;
-                sendGain_ = dbToGain(sendDb_);
-            }
-            // Held, the input stays out of the pad.
-            const float open = 1.0f - held_;
-            const float send = sendGain_ * open;
+        glide(t, b.throwDb);
+        // Held, the input stays out of the pad.
+        const float open = 1.0f - held_;
+        const float send = sendGain_ * open;
 
-            // The shaped send into the pre-delay, with Halo's strings, which it plays.
-            float strings = 0.0f;
-            if (haloOn)
-            {
-                haloGain_ += (t.halo - haloGain_) * paramStep_;
-                strings = halo_.process(0.5f * (dryL + dryR) * send) * haloGain_ * haloLevel * open;
-            }
-            input_[0][static_cast<size_t>(inputWrite_)] = dryL * send + strings;
-            input_[1][static_cast<size_t>(inputWrite_)] = dryR * send + strings;
-            const float pre = std::max(1.0f, pre_);
-            float sendL = dsp::readLinear(inL, inputMask_, inputWrite_, pre);
-            float sendR = dsp::readLinear(inR, inputMask_, inputWrite_, pre);
-            // Swell: the line still to come goes in early, rising, so the tail
-            // builds into its first word like a reversed reverb.
-            if (clock_ >= swellStart_ && clock_ < swellEnd_)
-            {
-                const float x =
-                    static_cast<float>(clock_ - swellStart_) / static_cast<float>(swellEnd_ - swellStart_);
-                liveDb_ += (liveCutDb_ - liveDb_) * (liveCutDb_ < liveDb_ ? sendDown_ : sendUp_);
-                if (std::abs(liveCutDb_ - liveDb_) < 1.0e-3f)
-                    liveDb_ = liveCutDb_;
-                if (liveDb_ != liveGainDb_)
-                {
-                    liveGainDb_ = liveDb_;
-                    liveGain_ = dbToGain(liveDb_);
-                }
-                const float g = t.swell * swellGain * x * x * liveGain_ * open;
-                sendL += liveL * g;
-                sendR += liveR * g;
-            }
+        float sendL = 0.0f, sendR = 0.0f;
+        const float pre = feedPreDelay(t, b, dryL, dryR, send, open, sendL, sendR);
+        addSwell(t, liveL, liveR, open, sendL, sendR);
+        float tailL = 0.0f, tailR = 0.0f;
+        runSpaces(t, b, sendL, sendR, pre, tailL, tailR);
+        inputWrite_ = (inputWrite_ + 1) & inputMask_;
 
-            float tailL = 0.0f, tailR = 0.0f;
-            fdn::Frame frame;
-            frame.scale = scale_;
-            for (int k = 0; k < spaceCount; ++k)
-            {
-                if (!running[k])
-                    continue;
-                const auto kk = static_cast<size_t>(k);
-                const auto& sp = spaces()[kk];
-                spaceGain_[kk] += ((k == t.space ? 1.0f : 0.0f) - spaceGain_[kk]) * spaceStep_;
-                const float inject = sp.inject * decayTrim * spaceGain_[kk];
-                float l = sendL, r = sendR;
-                networks_[kk].diffuse(l, r);
-                // Catch holds the current space: no loss, and a little movement.
-                frame.freeze = k == t.space ? held_ : 0.0f;
-                frame.sweep = std::max(sp.modSeconds, heldModSeconds * frame.freeze) * rate;
-                float outL = 0.0f, outR = 0.0f;
-                networks_[kk].process(frame, l * inject, r * inject, outL, outR);
-                // Early reflections, alternating sides, the far side's quieter and inverted.
-                for (int e = 0; e < sp.taps; ++e)
-                {
-                    const auto ee = static_cast<size_t>(e);
-                    const float at = pre + sp.tapMs[ee] * 0.001f * rate;
-                    const float g = sp.tapGain[ee] * inject;
-                    const float tl = dsp::readLinear(inL, inputMask_, inputWrite_, at);
-                    const float tr = dsp::readLinear(inR, inputMask_, inputWrite_, at);
-                    if (e % 2 == 0)
-                    {
-                        outL += g * tl;
-                        outR -= 0.6f * g * tr;
-                    }
-                    else
-                    {
-                        outR += g * tr;
-                        outL -= 0.6f * g * tl;
-                    }
-                }
-                tailL += outL;
-                tailR += outR;
-            }
-            inputWrite_ = (inputWrite_ + 1) & inputMask_;
+        shapeTail(tailL, tailR);
+        const float duckDb = duckAndLift(t, tailL, tailR);
 
-            // The tail: Follow, Mud, then width and centre.
-            tailL = mudCut_[0].process(follow_[0].process(tailL));
-            tailR = mudCut_[1].process(follow_[1].process(tailR));
-            const float tailMono = 0.5f * (tailL + tailR);
-            const float band = mudBand_.process(tailMono);
-            mudBandPower_ += (band * band - mudBandPower_) * mudMeasureStep_;
-            tailPower_ += (tailMono * tailMono - tailPower_) * mudMeasureStep_;
-            const float mid = 0.5f * (tailL + tailR) * midGain_, side = 0.5f * (tailL - tailR) * width_;
-            tailL = mid + side;
-            tailR = mid - side;
+        wetLeft_[nn] = tailL;
+        wetRight_[nn] = tailR;
+        left[n] = (dryL * (1.0f - wet_) + tailL * wet_) * out_;
+        right[n] = (dryR * (1.0f - wet_) + tailR * wet_) * out_;
 
-            // Duck while the singer sings; Ends lifts the tail at a line end.
-            const float duckTarget = duckHang_ > 0.0f ? 1.0f : 0.0f;
-            duck_ += (duckTarget - duck_) * (duckTarget > duck_ ? duckAttack_ : t.duckRelease);
-            if (std::abs(duckTarget - duck_) < 1.0e-5f)
-                duck_ = duckTarget;
-            const float duckDb = t.duckDb * duck_;
-            if (const float shapeDb = endsLiftDb * t.ends * ends_ - duckDb; shapeDb != shapeDb_)
-            {
-                shapeDb_ = shapeDb;
-                shapeGain_ = dbToGain(shapeDb);
-            }
-            const float shape = shapeGain_;
-            tailL *= shape;
-            tailR *= shape;
-
-            wetLeft_[nn] = tailL;
-            wetRight_[nn] = tailR;
-            left[n] = (dryL * (1.0f - wet_) + tailL * wet_) * out_;
-            right[n] = (dryR * (1.0f - wet_) + tailR * wet_) * out_;
-
-            if (watched)
-            {
-                tailSquare_ += (0.5f * (tailL * tailL + tailR * tailR) - tailSquare_) * rmsStep_;
-                drySquare_ += (0.5f * (dryL * dryL + dryR * dryR) - drySquare_) * rmsStep_;
-                // The card's land follows the voice closely, so a line's end shows where it is.
-                dryFast_ += (0.5f * (dryL * dryL + dryR * dryR) - dryFast_) * fastRmsStep_;
-                const float level = std::max(std::abs(dryL), std::abs(dryR));
-                const float out = std::max(std::abs(left[n]), std::abs(right[n]));
-                feedback_.addSample(level, out, duckDb, std::sqrt(tailSquare_), std::sqrt(drySquare_));
-                observe(std::sqrt(dryFast_), std::sqrt(tailSquare_), duckDb);
-            }
-        }
         if (watched)
-            feedback_.tap(1, wetLeft_.data(), wetRight_.data(), numSamples);
+            meter(dryL, dryR, tailL, tailR, left[n], right[n], duckDb);
+    }
 
-        // No denormals after a long silence.
+    // The smoothed controls toward their targets, and the send's level toward
+    // what the Listener and a throw ask for.
+    void glide(const Targets& t, float throwDb) noexcept
+    {
+        scale_ += (t.scale - scale_) * sizeStep_;
+        pre_ += (t.pre - pre_) * glideStep_;
+        wet_ += (t.wet - wet_) * paramStep_;
+        out_ += (t.out - out_) * paramStep_;
+        width_ += (t.width - width_) * paramStep_;
+        midGain_ += (t.midGain - midGain_) * paramStep_;
+        held_ += (t.held - held_) * catchStep_;
+        const float target = sendTargetDb_ + (throwing_ > 0 ? throwDb : 0.0f);
+        sendDb_ += (target - sendDb_) * (target < sendDb_ ? sendDown_ : sendUp_);
+        if (std::abs(target - sendDb_) < 1.0e-3f)
+            sendDb_ = target; // settled: the gain below is then worked out once
+        if (sendDb_ != sendGainDb_)
+        {
+            sendGainDb_ = sendDb_;
+            sendGain_ = dbToGain(sendDb_);
+        }
+    }
+
+    // The shaped send into the pre-delay, with Halo's strings, which it plays;
+    // what the pre-delay gives back now. Returns the pre-delay in samples.
+    float feedPreDelay(const Targets& t,
+                       const Block& b,
+                       float dryL,
+                       float dryR,
+                       float send,
+                       float open,
+                       float& sendL,
+                       float& sendR) noexcept
+    {
+        float strings = 0.0f;
+        if (b.haloOn)
+        {
+            haloGain_ += (t.halo - haloGain_) * paramStep_;
+            strings = halo_.process(0.5f * (dryL + dryR) * send) * haloGain_ * haloLevel * open;
+        }
+        input_[0][static_cast<size_t>(inputWrite_)] = dryL * send + strings;
+        input_[1][static_cast<size_t>(inputWrite_)] = dryR * send + strings;
+        const float pre = std::max(1.0f, pre_);
+        sendL = dsp::readLinear(input_[0].data(), inputMask_, inputWrite_, pre);
+        sendR = dsp::readLinear(input_[1].data(), inputMask_, inputWrite_, pre);
+        return pre;
+    }
+
+    // Swell: the line still to come goes in early, rising, so the tail builds
+    // into its first word like a reversed reverb.
+    void addSwell(const Targets& t, float liveL, float liveR, float open, float& sendL, float& sendR) noexcept
+    {
+        if (clock_ >= swellStart_ && clock_ < swellEnd_)
+        {
+            const float x =
+                static_cast<float>(clock_ - swellStart_) / static_cast<float>(swellEnd_ - swellStart_);
+            liveDb_ += (liveCutDb_ - liveDb_) * (liveCutDb_ < liveDb_ ? sendDown_ : sendUp_);
+            if (std::abs(liveCutDb_ - liveDb_) < 1.0e-3f)
+                liveDb_ = liveCutDb_;
+            if (liveDb_ != liveGainDb_)
+            {
+                liveGainDb_ = liveDb_;
+                liveGain_ = dbToGain(liveDb_);
+            }
+            const float g = t.swell * swellGain * x * x * liveGain_ * open;
+            sendL += liveL * g;
+            sendR += liveR * g;
+        }
+    }
+
+    // The running spaces on the send, each with its early reflections; their sum.
+    void runSpaces(const Targets& t,
+                   const Block& b,
+                   float sendL,
+                   float sendR,
+                   float pre,
+                   float& tailL,
+                   float& tailR) noexcept
+    {
+        const float* inL = input_[0].data();
+        const float* inR = input_[1].data();
+        fdn::Frame frame;
+        frame.scale = scale_;
+        for (int k = 0; k < spaceCount; ++k)
+        {
+            const auto kk = static_cast<size_t>(k);
+            if (!b.running[kk])
+                continue;
+            const auto& sp = spaces()[kk];
+            spaceGain_[kk] += ((k == t.space ? 1.0f : 0.0f) - spaceGain_[kk]) * spaceStep_;
+            const float inject = sp.inject * b.decayTrim * spaceGain_[kk];
+            float l = sendL, r = sendR;
+            networks_[kk].diffuse(l, r);
+            // Catch holds the current space: no loss, and a little movement.
+            frame.freeze = k == t.space ? held_ : 0.0f;
+            frame.sweep = std::max(sp.modSeconds, heldModSeconds * frame.freeze) * b.rate;
+            float outL = 0.0f, outR = 0.0f;
+            networks_[kk].process(frame, l * inject, r * inject, outL, outR);
+            // Early reflections, alternating sides, the far side's quieter and inverted.
+            for (int e = 0; e < sp.taps; ++e)
+            {
+                const auto ee = static_cast<size_t>(e);
+                const float at = pre + sp.tapMs[ee] * 0.001f * b.rate;
+                const float g = sp.tapGain[ee] * inject;
+                const float tl = dsp::readLinear(inL, inputMask_, inputWrite_, at);
+                const float tr = dsp::readLinear(inR, inputMask_, inputWrite_, at);
+                if (e % 2 == 0)
+                {
+                    outL += g * tl;
+                    outR -= 0.6f * g * tr;
+                }
+                else
+                {
+                    outR += g * tr;
+                    outL -= 0.6f * g * tl;
+                }
+            }
+            tailL += outL;
+            tailR += outR;
+        }
+    }
+
+    // The tail: Follow, Mud (and the measures Mud decides by), then width and centre.
+    void shapeTail(float& tailL, float& tailR) noexcept
+    {
+        tailL = mudCut_[0].process(follow_[0].process(tailL));
+        tailR = mudCut_[1].process(follow_[1].process(tailR));
+        const float tailMono = 0.5f * (tailL + tailR);
+        const float band = mudBand_.process(tailMono);
+        mudBandPower_ += (band * band - mudBandPower_) * mudMeasureStep_;
+        tailPower_ += (tailMono * tailMono - tailPower_) * mudMeasureStep_;
+        const float mid = 0.5f * (tailL + tailR) * midGain_, side = 0.5f * (tailL - tailR) * width_;
+        tailL = mid + side;
+        tailR = mid - side;
+    }
+
+    // Duck while the singer sings; Ends lifts the tail at a line end. Returns the duck (dB).
+    float duckAndLift(const Targets& t, float& tailL, float& tailR) noexcept
+    {
+        const float duckTarget = duckHang_ > 0.0f ? 1.0f : 0.0f;
+        duck_ += (duckTarget - duck_) * (duckTarget > duck_ ? duckAttack_ : t.duckRelease);
+        if (std::abs(duckTarget - duck_) < 1.0e-5f)
+            duck_ = duckTarget;
+        const float duckDb = t.duckDb * duck_;
+        if (const float shapeDb = endsLiftDb * t.ends * ends_ - duckDb; shapeDb != shapeDb_)
+        {
+            shapeDb_ = shapeDb;
+            shapeGain_ = dbToGain(shapeDb);
+        }
+        const float shape = shapeGain_;
+        tailL *= shape;
+        tailR *= shape;
+        return duckDb;
+    }
+
+    // The meters and the card's telemetry for one sample (only while an editor watches).
+    void
+    meter(float dryL, float dryR, float tailL, float tailR, float outL, float outR, float duckDb) noexcept
+    {
+        tailSquare_ += (0.5f * (tailL * tailL + tailR * tailR) - tailSquare_) * rmsStep_;
+        drySquare_ += (0.5f * (dryL * dryL + dryR * dryR) - drySquare_) * rmsStep_;
+        // The card's land follows the voice closely, so a line's end shows where it is.
+        dryFast_ += (0.5f * (dryL * dryL + dryR * dryR) - dryFast_) * fastRmsStep_;
+        const float level = std::max(std::abs(dryL), std::abs(dryR));
+        const float out = std::max(std::abs(outL), std::abs(outR));
+        feedback_.addSample(level, out, duckDb, std::sqrt(tailSquare_), std::sqrt(drySquare_));
+        observe(std::sqrt(dryFast_), std::sqrt(tailSquare_), duckDb);
+    }
+
+    // After the samples: no denormals after a long silence, and a network that
+    // diverged starts everything again.
+    void endBlock() noexcept
+    {
         for (auto& f : follow_)
             f.flushDenormals();
         for (auto& f : mudCut_)

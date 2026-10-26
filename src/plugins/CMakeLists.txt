@@ -86,6 +86,10 @@ add_library(northlight_plugins STATIC
     FeedbackNetwork.cpp
     Vesper.h
     Vesper.cpp
+    vesper/Spaces.h
+    vesper/Spaces.cpp
+    vesper/HaloBank.h
+    vesper/HaloBank.cpp
     Bloom.h
     Bloom.cpp
     Pedals.h

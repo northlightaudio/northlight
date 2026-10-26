@@ -31,7 +31,9 @@
 //    the tail rise into each line before it is sung;
 //  - Catch holds the tail as a pad, the input kept out, until it is let go.
 //
-// No latency unless Lookahead asks for it. JUCE-free.
+// No latency unless Lookahead asks for it. JUCE-free. The processor is in
+// Vesper.cpp, its block in named steps; the spaces' tunings are in
+// plugins/vesper/Spaces and Halo's strings in plugins/vesper/HaloBank.
 
 namespace northlight::plugins::vesper
 {
