@@ -86,6 +86,8 @@ target_sources(northlight PRIVATE
     LaunchRun.cpp
     Benchmarks.h
     Benchmarks.cpp
+    LoadDriver.h
+    LoadDriver.cpp
     MainWindow.h
     MainWindow.cpp)
 
