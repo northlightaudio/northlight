@@ -345,6 +345,7 @@ bool Theme::apply(const juce::var& tokens, Theme& theme, std::string& error)
         readNumber(track, "waveformAlpha", t.waveformAlpha, error);
         readNumber(track, "waveformMutedAlpha", t.waveformMutedAlpha, error);
         readNumber(track, "headerStripeWidth", t.headerStripeWidth, error);
+        readNumber(track, "headerNameMinWidth", t.headerNameMinWidth, error);
     }
 
     if (const auto& font = tokens["font"]; font.isObject())
@@ -439,6 +440,8 @@ bool Theme::apply(const juce::var& tokens, Theme& theme, std::string& error)
         readNumber(size, "trackHeaderWidth", s.trackHeaderWidth, error);
         readNumber(size, "trackHeaderMinWidth", s.trackHeaderMinWidth, error);
         readNumber(size, "trackHeaderMaxWidth", s.trackHeaderMaxWidth, error);
+        readNumber(size, "compactSelectMinWidth", s.compactSelectMinWidth, error);
+        readNumber(size, "compactVolumeMinWidth", s.compactVolumeMinWidth, error);
         readNumber(size, "trackRowMin", s.trackRowMin, error);
         readNumber(size, "trackRow", s.trackRow, error);
         readNumber(size, "trackRowLarge", s.trackRowLarge, error);

@@ -48,6 +48,9 @@ public:
     core::Id trackId() const noexcept { return trackId_; }
     juce::Colour colour() const noexcept { return colour_; }
     bool mediaMissing() const noexcept { return missing_; }
+    // Where the third row's sends summary is drawn: empty when it is hidden or does
+    // not fit whole.
+    juce::Rectangle<int> sendsSummaryBounds() const noexcept { return sendsArea_; }
     // Over the icon: the track's number and kind (the rest of the header has none).
     juce::String getTooltip() override;
     void setMediaMissing(bool missing);
@@ -141,9 +144,12 @@ private:
     bool armed_ = false;
     bool midi_ = false;
     bool aux_ = false;
-    bool instrument_ = false; // an instrument channel: no input or arm (its MIDI tracks have them)
-    bool folder_ = false;     // a folder track: M, S and its disclosure only
-    bool master_ = false;     // the master's row (setMaster)
+    bool instrument_ = false;    // an instrument channel: no input or arm (its MIDI tracks have them)
+    bool folder_ = false;        // a folder track: M, S and its disclosure only
+    bool master_ = false;        // the master's row (setMaster)
+    bool takesInput_ = false;    // has input, R and monitor (set by setTrack; the layout places them)
+    bool hasAutomation_ = false; // has the A toggle (set by setTrack; the layout places it)
+    bool narrow_ = false;        // the narrow layout: R, monitor and A moved to row 2
     bool folderOpen_ = true;
     int depth_ = 0; // folders it sits in: the header is indented by that much
     int indent() const noexcept { return depth_ * 12; }
@@ -155,7 +161,8 @@ private:
     int index_ = 0;
     core::TrackKind kind_ = core::TrackKind::audio;
     int sends_ = 0;
-    float pulse_ = 0.0f; // the stripe pulse when arming, 1 -> 0 over toggleMs
+    juce::Rectangle<int> sendsArea_; // the sends summary, empty when it does not fit whole
+    float pulse_ = 0.0f;             // the stripe pulse when arming, 1 -> 0 over toggleMs
     double pulseStartMs_ = 0.0;
     std::vector<std::string> midiNames_;
     std::vector<core::Id> busIds_;

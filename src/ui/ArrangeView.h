@@ -209,6 +209,9 @@ public:
     bool followPlayhead() const noexcept { return followPlayhead_; }
     // The row height: size.trackRowMin, trackRow or trackRowLarge.
     void setRowHeight(int height);
+    // The track headers' width (size.trackHeaderWidth), as the boundary drag sets it,
+    // clamped to 160..360.
+    void setHeaderWidth(int width);
     int currentRowHeight() const noexcept { return rowHeight; }
     // The tools (interaction.md), keys 1 to 7: select; range (a drag in a lane
     // selects a time range across the selected tracks); pencil (a drag in a MIDI

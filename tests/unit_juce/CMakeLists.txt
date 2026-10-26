@@ -21,6 +21,7 @@ add_executable(northlight_juce_tests
     CrashGuardTests.cpp
     DbTests.cpp
     MotionTests.cpp
+    TrackHeaderTests.cpp
     MeterBallisticsTests.cpp
     AutosaveTests.cpp
     AutomationWriteTests.cpp

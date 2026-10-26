@@ -71,6 +71,9 @@ struct Theme
         float waveformAlpha = 0.9f;
         float waveformMutedAlpha = 0.35f;
         int headerStripeWidth = 4;
+        // The least width a track header keeps for the name; narrower, the header
+        // moves R, monitor and A to its second row (screens/arrange.md).
+        int headerNameMinWidth = 64;
         // The palette entry for a track's model colour (0 = default: the slot's
         // cycle colour), or a custom colour.
         juce::Colour forTrack(std::uint32_t argb, int slot) const;
@@ -138,6 +141,8 @@ struct Theme
         // "Add lane" row under a track's lanes) (screens/arrange.md "Automation").
         int automationLane = 48, automationLaneCollapsed = 20;
         int mixerStripWidth = 92, mixerStripWideWidth = 112;
+        // A track header's compact selects (input, output) and volume slider at their narrowest.
+        int compactSelectMinWidth = 76, compactVolumeMinWidth = 48;
         int faderTravel = 200, faderCapWidth = 36, faderCapHeight = 14, knob = 28;
         int meterWidth = 6, meterGap = 2, scrollbar = 10, splitter = 5;
         int panelMin = 240, dockMin = 200, focusRing = 2, tooltipMaxWidth = 320;

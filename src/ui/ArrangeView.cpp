@@ -294,6 +294,13 @@ juce::Rectangle<int> ArrangeView::locateLinkBounds(const core::AudioClip& clip, 
     return {x, text.getCentreY() - h / 2, w, h};
 }
 
+void ArrangeView::setHeaderWidth(int width)
+{
+    view_.originX = std::clamp(width, theme_.sizes.trackHeaderMinWidth, theme_.sizes.trackHeaderMaxWidth);
+    resized();
+    layoutHeaders();
+}
+
 void ArrangeView::setRowHeight(int height)
 {
     height = std::clamp(height, theme_.sizes.trackRowMin, theme_.sizes.trackRowLarge);

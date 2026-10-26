@@ -20,6 +20,11 @@ float dbOf(float gain) noexcept
 {
     return static_cast<float>(db::fromGain(gain, volumeBottomDb, 6.0));
 }
+// The third row's summary of the track's sends.
+juce::String sendsSummary(int sends)
+{
+    return sends == 0 ? juce::String("no sends") : juce::String(sends) + (sends == 1 ? " send" : " sends");
+}
 } // namespace
 
 TrackHeader::TrackHeader(const Theme& theme) : theme_(theme), meter_(theme, 2, false), pan_(theme)
@@ -231,13 +236,15 @@ void TrackHeader::setTrack(const core::Track& track,
     setTitle("Track " + juce::String(index + 1) + ": " + juce::String::fromUTF8(track.name.c_str()));
     setDescription(trackKindName(track.kind));
     const bool takesInput = !aux_ && !instrument_ && !folder_; // an instrument channel's MIDI tracks take it
+    takesInput_ = takesInput;
     input_.setVisible(takesInput);
     arm_.setVisible(takesInput);
     monitorButton_.setVisible(takesInput);
     // A MIDI track makes notes, not sound: no solo or automation of its own; its
     // volume scales velocities; the chip says what it plays.
     solo_.setVisible(!midi_);
-    automation_.setVisible(!midi_ && !folder_);
+    hasAutomation_ = !midi_ && !folder_;
+    automation_.setVisible(hasAutomation_);
     mute_.setTooltip(folder_ ? "Mute every track in the folder" : "Mute");
     solo_.setTooltip(folder_ ? "Solo every track in the folder" : "Solo");
     volume_.setTooltip(midi_ ? "Velocity: scales the notes this track sends" : "Volume");
@@ -569,21 +576,12 @@ void TrackHeader::paint(juce::Graphics& g)
         g.fillEllipse(dot);
     }
 
-    // The sends summary on the third row.
-    if (output_.isVisible())
+    // The sends summary on the third row (laid out in resized()).
+    if (output_.isVisible() && !sendsArea_.isEmpty())
     {
         g.setFont(theme_.caption());
         g.setColour(c.textTertiary);
-        const auto row =
-            juce::Rectangle<int>(output_.getRight() + theme_.spacing.sm,
-                                 output_.getY(),
-                                 std::max(0, getWidth() - output_.getRight() - 2 * theme_.spacing.sm),
-                                 output_.getHeight());
-        g.drawText(sends_ == 0 ? juce::String("no sends")
-                               : juce::String(sends_) + (sends_ == 1 ? " send" : " sends"),
-                   row,
-                   juce::Justification::centredLeft,
-                   true);
+        g.drawText(sendsSummary(sends_), sendsArea_, juce::Justification::centredLeft, false);
     }
 
     g.setColour(c.lineSubtle);
@@ -601,7 +599,10 @@ void TrackHeader::paintOverChildren(juce::Graphics& g)
     const int h = theme_.sizes.iconSmall;
     const int w = std::max(h, juce::GlyphArrangement::getStringWidthInt(font, text) + theme_.spacing.sm);
     const auto a = automation_.getBounds();
-    const auto badge = juce::Rectangle<int>(a.getRight() - w + 5, a.getY() - 5, w, h).toFloat();
+    // Over A's top right corner; in the narrow layout A sits under S, so the badge
+    // keeps to A's row rather than covering S.
+    const int top = narrow_ ? a.getY() - 2 : a.getY() - 5;
+    const auto badge = juce::Rectangle<int>(a.getRight() - w + 5, top, w, h).toFloat();
     g.setColour(c.canvas);
     g.fillRoundedRectangle(badge.expanded(1.0f), (h + 2) * 0.5f);
     g.setColour(c.surface3);
@@ -617,65 +618,134 @@ void TrackHeader::resized()
     auto area = getLocalBounds().withTrimmedLeft(stripe + indent()).reduced(theme_.spacing.sm, 0);
     const int control = theme_.sizes.controlCompact;
 
-    // Row 1: number, (a folder's disclosure,) name, M S R monitor.
+    const int gap = theme_.spacing.xxs;
+    const auto span = [&](int buttons) { return buttons * control + std::max(0, buttons - 1) * gap; };
+    // Lays buttons out left to right from the left of `r`, each in a 24 px place.
+    const auto lay = [&](juce::Rectangle<int>& r, std::initializer_list<juce::Component*> buttons)
+    {
+        for (auto* b : buttons)
+        {
+            b->setBounds(r.removeFromLeft(control).withSizeKeepingCentre(control, control));
+            r.removeFromLeft(gap);
+        }
+    };
+    const bool row2 = getHeight() >= 44 && !folder_;
+    mute_.setVisible(!master_);
+    solo_.setVisible(!master_ && !midi_);
+
+    // Row 1: number, (a folder's disclosure,) name, then the buttons. Five button
+    // places, so the buttons line up from row to row (a folder has M and S only),
+    // when that leaves the name its minimum; narrower, the narrow layout below.
     auto row1 = area.removeFromTop(theme_.sizes.control);
     row1.removeFromLeft(numberBounds().getWidth());
     if (folder_)
         fold_.setBounds(row1.removeFromLeft(control).withSizeKeepingCentre(control, control));
-    // Five button places, so the buttons line up from row to row; a folder has
-    // only M and S, and its name takes the rest.
-    int buttons = 5;
-    if (folder_)
-        buttons = 2;
-    auto trio = row1.removeFromRight(buttons * control + std::max(0, buttons - 1) * theme_.spacing.xxs);
-    const auto place = [&](juce::Component& b)
+    const int nameMin = theme_.track.headerNameMinWidth;
+    narrow_ = !folder_ && row1.getWidth() - span(5) - theme_.spacing.sm < nameMin;
+    bool armPlaced = takesInput_, automationPlaced = hasAutomation_;
+    if (!narrow_)
     {
-        if (folder_ && &b != &mute_ && &b != &solo_)
-            return;
-        b.setBounds(trio.removeFromLeft(control).withSizeKeepingCentre(control, control));
-        trio.removeFromLeft(theme_.spacing.xxs);
-    };
-    place(mute_);
-    place(solo_);
-    mute_.setVisible(!master_);
-    solo_.setVisible(!master_ && !midi_);
-    place(arm_);
-    place(monitorButton_);
-    place(automation_);
+        auto places = row1.removeFromRight(span(folder_ ? 2 : 5));
+        if (folder_)
+            lay(places, {&mute_, &solo_});
+        else
+            lay(places, {&mute_, &solo_, &arm_, &monitorButton_, &automation_});
+    }
+    else
+    {
+        // Narrow: M and S stay by the name (only the ones the track has, packed to
+        // the right); R, monitor and A move to row 2.
+        std::vector<juce::Component*> ms;
+        if (mute_.isVisible())
+            ms.push_back(&mute_);
+        if (solo_.isVisible())
+            ms.push_back(&solo_);
+        auto places = row1.removeFromRight(span(static_cast<int>(ms.size())));
+        for (auto* b : ms)
+            lay(places, {b});
+    }
     name_.setBounds(row1.withTrimmedRight(theme_.spacing.sm)
                         .withSizeKeepingCentre(std::max(0, row1.getWidth() - theme_.spacing.sm),
                                                theme_.sizes.controlCompact - theme_.spacing.xs));
 
-    // Row 2: input, meter, volume (the row hides below 44 px; the slider below 200 px width).
-    const bool row2 = getHeight() >= 44 && !folder_;
-    input_.setVisible(row2 && !aux_ && !instrument_);
-    meter_.setVisible(row2 && !midi_);
-    target_.setVisible(row2 && midi_);
-    volume_.setVisible(row2 && getWidth() >= 200);
+    // Row 2: input, meter (or a MIDI track's instrument), volume; in the narrow
+    // layout R, monitor and A at its right end. The row hides below 44 px.
+    input_.setVisible(row2 && takesInput_);
     if (row2)
     {
         auto row = area.removeFromTop(control);
-        if (!aux_ && !instrument_)
+        // The input select is as wide as the chosen input's name needs, so it reads
+        // whole; in the wide layout no more than 2/5 of the row, leaving the rest
+        // to the meter or the instrument.
+        int inputW = 0;
+        if (takesInput_)
         {
-            // As wide as the chosen input's name needs, within limits, so the rest
-            // of the row is left to the meter or the instrument it plays.
             const int textW = juce::GlyphArrangement::getStringWidthInt(theme_.body(), input_.getText());
-            const int inputW =
-                std::clamp(textW + 2 * theme_.spacing.sm + theme_.sizes.iconSmall + theme_.spacing.xs,
-                           76,
-                           std::max(76, row.getWidth() * 2 / 5));
+            const int natural =
+                std::max(theme_.sizes.compactSelectMinWidth,
+                         textW + 2 * theme_.spacing.sm + theme_.sizes.iconSmall + theme_.spacing.xs);
+            inputW = narrow_ ? natural
+                             : std::min(natural,
+                                        std::max(theme_.sizes.compactSelectMinWidth, row.getWidth() * 2 / 5));
+        }
+        if (narrow_)
+        {
+            // R and monitor (a track that takes input) or A (one that does not) at
+            // the right end; an audio track's A too when the row still has room.
+            std::vector<juce::Component*> right;
+            if (takesInput_)
+            {
+                right = {&arm_, &monitorButton_};
+                automationPlaced = hasAutomation_ && row.getWidth() - inputW - theme_.spacing.xs >= span(3);
+                if (automationPlaced)
+                    right.push_back(&automation_);
+            }
+            else if (hasAutomation_)
+                right = {&automation_};
+            const int need = span(static_cast<int>(right.size()));
+            if (takesInput_)
+                inputW = std::min(inputW, std::max(0, row.getWidth() - need - theme_.spacing.xs));
+            auto places = row.removeFromRight(need);
+            for (auto* b : right)
+                lay(places, {b});
+            // A closer gap than the wide layout's, so "No input" reads whole at 160 px.
+            if (!right.empty())
+                row.removeFromRight(theme_.spacing.xs);
+        }
+        if (takesInput_)
+        {
             input_.setBounds(row.removeFromLeft(inputW).withSizeKeepingCentre(inputW, control));
             row.removeFromLeft(theme_.spacing.sm);
         }
-        if (volume_.isVisible())
+        // What is left: the volume slider (from 200 px header width, and only with
+        // room beside it), then the meter or the instrument chip when they have a
+        // useful width.
+        const int volumeMin = theme_.sizes.compactVolumeMinWidth;
+        const bool volume = getWidth() >= 200 && row.getWidth() >= volumeMin + theme_.spacing.sm + control;
+        volume_.setVisible(volume);
+        if (volume)
         {
-            volume_.setBounds(row.removeFromRight(midi_ ? 48 : std::max(48, row.getWidth() / 3)));
+            volume_.setBounds(
+                row.removeFromRight(midi_ ? volumeMin : std::max(volumeMin, row.getWidth() / 3)));
             row.removeFromRight(theme_.spacing.sm);
         }
+        meter_.setVisible(!midi_ && row.getWidth() >= control);
+        target_.setVisible(midi_ && row.getWidth() >= 2 * control);
         meter_.setBounds(
             row.withSizeKeepingCentre(row.getWidth(), 2 * theme_.sizes.meterWidth + theme_.sizes.meterGap));
         target_.setBounds(row.withSizeKeepingCentre(row.getWidth(), control));
     }
+    else
+    {
+        meter_.setVisible(false);
+        target_.setVisible(false);
+        volume_.setVisible(false);
+        if (narrow_)
+            armPlaced = automationPlaced = false; // no row 2 to put them on
+    }
+    arm_.setVisible(takesInput_ && armPlaced);
+    monitorButton_.setVisible(takesInput_ && armPlaced);
+    automation_.setVisible(hasAutomation_ && automationPlaced);
 
     // Row 3 at the large height: pan, output, sends summary.
     const bool row3 = getHeight() >= theme_.sizes.trackRowLarge && !folder_ && !master_;
@@ -688,9 +758,23 @@ void TrackHeader::resized()
         pan_.setBounds(row.removeFromLeft(theme_.sizes.knob)
                            .withSizeKeepingCentre(theme_.sizes.knob, theme_.sizes.knob));
         row.removeFromLeft(theme_.spacing.sm);
-        output_.setBounds(row.removeFromLeft(std::min(96, row.getWidth() / 2))
-                              .withSizeKeepingCentre(std::min(96, row.getWidth() / 2), control));
+        // The output select is as wide as its target's name needs, like the input
+        // above, so "Master" or a bus name never shrinks to an ellipsis in a narrow
+        // header; the sends summary takes what is left and shows only when it fits
+        // whole.
+        const int textW = juce::GlyphArrangement::getStringWidthInt(theme_.body(), output_.getText());
+        const int outputW =
+            std::min(row.getWidth(),
+                     std::max(theme_.sizes.compactSelectMinWidth,
+                              textW + 2 * theme_.spacing.sm + theme_.sizes.iconSmall + theme_.spacing.xs));
+        output_.setBounds(row.removeFromLeft(outputW).withSizeKeepingCentre(outputW, control));
+        row.removeFromLeft(theme_.spacing.sm);
+        const int summaryW =
+            juce::GlyphArrangement::getStringWidthInt(theme_.caption(), sendsSummary(sends_));
+        sendsArea_ = summaryW <= row.getWidth() ? row.withWidth(summaryW + 1) : juce::Rectangle<int>();
     }
+    else
+        sendsArea_ = {};
 }
 
 } // namespace northlight::ui

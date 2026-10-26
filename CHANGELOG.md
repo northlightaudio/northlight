@@ -358,6 +358,13 @@ Northlight has not had a release yet. The first release, 0.1.0, will include:
 
 ### Fixed
 
+- A narrow track header (down to its 160 px minimum) keeps the track's name and a
+  whole input select: R, monitor and A move to the second row, next to the input,
+  instead of pushing the name out.
+- A tall track header's output menu is as wide as its name needs, so it reads
+  "Master" rather than "..." in a narrow header; the sends count beside it shows only
+  when it fits.
+
 - Arming a track, changing its input monitoring or its input are no longer undo
   steps, so Ctrl+Z after arming undoes the edit before it. They still count as
   unsaved changes.

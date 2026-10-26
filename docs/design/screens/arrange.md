@@ -159,8 +159,19 @@ Rows at `trackRow` 56 default. Contents, left to right, inside `space.sm` paddin
   tooltip pointing to Audio Setup), an 8 px tall horizontal meter filling the
   middle, and a compact volume slider on the right (hidden below 200 px header
   width).
+- Narrow headers: when the five button places would leave the name less than
+  `track.headerNameMinWidth` (64 px), row 1 keeps only M and S (the ones the track
+  has, packed right) and R, monitor and A move to the right end of row 2, 4 px from
+  the input select, which keeps its full width (`size.compactSelectMinWidth` 76 at
+  least). An audio track's A shows there only when the row has room (from about
+  185 px; the A key and the track menu reach the lanes otherwise); the meter, a MIDI
+  track's instrument chip and the volume slider take what is left and hide when it is
+  too little to use. With no row 2 (below 44 px row height) R, monitor and A hide. The
+  lane-count badge keeps to A's row, clear of S above it.
 - At `trackRowLarge` 112 the header gains a third row with pan knob, output select and
-  a sends summary ("2 sends").
+  a sends summary ("2 sends"). The output select is as wide as its target's name
+  needs (at least 76 px), like the input select, so it never shortens to an ellipsis;
+  the summary takes the rest of the row and shows only when it fits whole.
 - Selected track: header `laneSelected` fill and name `textPrimary`; the lane gets
   the same fill. Several tracks can be selected (click, Ctrl+click toggles,
   Shift+click a run, Up/Down move, Shift+Up/Down extend); each shows the same, and

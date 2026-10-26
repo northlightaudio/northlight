@@ -13,9 +13,7 @@ namespace northlight::ui
 
 void ArrangeView::HeaderResizeGesture::drag(const juce::MouseEvent& e, core::SamplePosition)
 {
-    v.view_.originX = std::clamp(e.x, v.theme_.sizes.trackHeaderMinWidth, v.theme_.sizes.trackHeaderMaxWidth);
-    v.resized();
-    v.layoutHeaders();
+    v.setHeaderWidth(e.x);
 }
 
 ArrangeView::PanGesture::PanGesture(ArrangeView& view) noexcept

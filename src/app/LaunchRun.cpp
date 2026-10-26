@@ -1180,6 +1180,35 @@ const std::vector<LaunchFlag<LaunchRun>>& LaunchRun::flags()
                                  view->selectRows(first, last);
                          });
          }},
+        {"--header-width",
+         "<px>",
+         1,
+         "make the arrange view's track headers this wide (160 to 360), once the window has settled",
+         [](LaunchRun& r, Args& a)
+         {
+             const int width = a.integer();
+             whenSettled(r,
+                         [&r, width]
+                         {
+                             if (auto* view = r.window.arrangeView())
+                                 view->setHeaderWidth(width);
+                         });
+         }},
+        {"--row-height",
+         "<px>",
+         1,
+         "make the arrange view's rows this tall (112 shows the headers' third row), once the window has "
+         "settled",
+         [](LaunchRun& r, Args& a)
+         {
+             const int height = a.integer();
+             whenSettled(r,
+                         [&r, height]
+                         {
+                             if (auto* view = r.window.arrangeView())
+                                 view->setRowHeight(height);
+                         });
+         }},
         {"--time-selection",
          "<bar> <bar>",
          2,
