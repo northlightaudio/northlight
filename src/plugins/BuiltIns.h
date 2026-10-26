@@ -9,8 +9,9 @@
 #include <string>
 #include <vector>
 
-// The built-in processors: gain, a three-band EQ with high-pass, a compressor, an opto
-// compressor, a limiter, a reverb and a delay here; the glue compressor (plugins/Glue.h),
+// The built-in processors' registry and factory: gain, a three-band EQ with high-pass,
+// a limiter, a reverb and a delay (plugins/Classic.h); the compressor and the opto
+// compressor (the channel strip's, plugins/ChannelStrip.h); the glue compressor (plugins/Glue.h),
 // Patina, retro colour (plugins/Patina.h), the exciter (plugins/Exciter.h), the effect
 // reverb (plugins/Bloom.h), the tape echo (plugins/TapeEcho.h), Orbit the tape machine
 // (plugins/Orbit.h), the stereo widener

@@ -330,7 +330,9 @@ know nothing format-specific.
 - **Built-ins** (`src/plugins`): utility and effect processors, the six channel strip
   modules, and the instruments. One registry, `builtInTypes()` in `plugins/BuiltIns.h`,
   lists every insert type with its menu name, whether it is an instrument, how to
-  make it and its factory presets; the factory, the menus and `EffectPresets` read
+  make it and its factory presets (`plugins/BuiltIns.cpp` is the registry and the factory
+  alone; the first built-ins, gain, EQ, limiter, reverb and delay, are in
+  `plugins/Classic`); the factory, the menus and `EffectPresets` read
   it (the strip modules keep their own list, `strip::moduleTypes()`, with the slots and
   `strip::create` in `plugins/ChannelStrip.cpp`; each module's processor is a file in
   `src/plugins/strip` (`Gate`, `Eq`, `Compressor`, `Opto`, `DeEsser`, `Saturation`,

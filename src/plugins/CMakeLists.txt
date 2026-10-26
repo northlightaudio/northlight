@@ -3,6 +3,8 @@
 add_library(northlight_plugins STATIC
     BuiltIns.h
     BuiltIns.cpp
+    Classic.h
+    Classic.cpp
     dsp/DelayLine.h
     dsp/Denormals.h
     dsp/PolyBlep.h
