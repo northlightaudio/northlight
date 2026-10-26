@@ -60,6 +60,24 @@ Northlight has not had a release yet. The first release, 0.1.0, will include:
   the effects menu), filters by kind of effect, says when nothing matches, keeps
   16 recent plugins, and a slot's format badge opens it on that plugin.
 
+- The arrange view selects several tracks (Ctrl+click, Shift+click, Up/Down with
+  Shift): arm, mute, solo, colour, delete, duplicate, freeze, folder moves and drags
+  act on all of them. Tracks can be duplicated with their clips, inserts, sends and
+  automation; new tracks go after the selected one, in its folder. Dragging a track
+  into or out of a folder's tracks changes its folder, a folder moves with its
+  tracks, and buses can be reordered.
+- Ctrl+drag copies clips (clip gain moved to Ctrl+Shift+drag), and automation moves
+  with clips moved along their track. Clips can be renamed (F2 or the clip menu) and
+  given a colour of their own.
+- The range tool works over clips and across tracks; a time range can be deleted
+  (with ripple), cut, copied, pasted, looped or made a region.
+- Automation lanes: select points (click, Shift, Ctrl, marquee), move, delete, cut,
+  copy and paste them, delete a stretch of time, draw freehand with the pencil and
+  sweep points away with the eraser.
+- Triplet and dotted snap grids, in submenus of the snap menu and in Preferences.
+- A new marker is named as it is added, and Alt+M makes a region from the time
+  selection.
+
 - A plugin's card in the Editor panel shows a faceplate: its kind, its full name,
   its maker, the format and its latency, with an Open editor button (or
   double-click it). A plugin that is not installed says so in the same place.
@@ -289,6 +307,13 @@ Northlight has not had a release yet. The first release, 0.1.0, will include:
 
 - The send menu no longer sends you to the track list when there is nothing to
   send to: it offers a new FX track there.
+
+- Audio files dropped on an audio track's lane land on that track at the snapped
+  position shown; only a drop below the last lane makes new tracks.
+- The mouse wheel scrolls the arrange view's tracks and Shift+wheel scrolls time, as
+  the other views do.
+- Ctrl+click on an unselected clip adds it to the selection (it was taken out again
+  on release).
 
 - Opening a plugin's window no longer switches the dock to the mixer: the Editor
   panel stays up.

@@ -477,6 +477,9 @@ void TrackHeader::mouseUp(const juce::MouseEvent& e)
 {
     if (reordering_ && onReorderDrag && e.mouseWasDraggedSinceMouseDown())
         onReorderDrag(trackId_, e.getScreenPosition(), true);
+    else if (!e.mouseWasDraggedSinceMouseDown() && !e.mods.isPopupMenu() && onClicked &&
+             !stripeBounds().expanded(2, 0).contains(e.getMouseDownPosition()))
+        onClicked(trackId_, e.mods);
     reordering_ = false;
 }
 

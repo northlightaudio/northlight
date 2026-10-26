@@ -114,7 +114,7 @@ void ArrangeView::Painter::drawClip(juce::Graphics& g,
     if (visible.isEmpty())
         return;
 
-    const auto colour = v.trackColour(track, v.project_->trackIndex(track.id));
+    const auto colour = v.clipColour(track, model.colour);
     const float dim = v.gesture_ != nullptr ? v.gesture_->dim(ref, selected) : 1.0f;
     const bool muted =
         track.mute ||
@@ -347,7 +347,7 @@ void ArrangeView::Painter::drawMidiClip(juce::Graphics& g,
         block.getIntersection(lane.withLeft(v.headerWidth()).withRight(v.getWidth() - v.scrollbarWidth));
     if (visible.isEmpty())
         return;
-    const auto colour = recording ? c.record : v.trackColour(track, row);
+    const auto colour = recording ? c.record : v.clipColour(track, model.colour);
     const float dim = v.gesture_ != nullptr ? v.gesture_->dim(ref, selected) : 1.0f;
     const bool muted =
         track.mute ||
@@ -503,7 +503,7 @@ void ArrangeView::Painter::paint(juce::Graphics& g)
             const juce::Rectangle<int> lane(v.headerWidth(), y, lanesArea.getWidth(), h);
             if (h > 0 && lane.intersects(paintArea_))
             {
-                if (track.id == v.selectedTrack())
+                if (v.inTrackSet(track.id))
                     g.setColour(c.laneSelected);
                 else if (row == v.hoverRow_)
                     g.setColour(c.laneHover);
@@ -530,8 +530,7 @@ void ArrangeView::Painter::paint(juce::Graphics& g)
             const auto caption = lane.reduced(v.theme_.spacing.sm, 0).withHeight(std::min(h, 24));
             if (lane.intersects(paintArea_))
             {
-                g.setColour(fx->id == v.selectedTrack() ? c.laneSelected
-                                                        : (row % 2 == 1 ? c.laneAlt : c.canvas));
+                g.setColour(v.inTrackSet(fx->id) ? c.laneSelected : (row % 2 == 1 ? c.laneAlt : c.canvas));
                 g.fillRect(lane);
                 g.setColour(c.lineSubtle);
                 g.fillRect(lane.withTrimmedTop(h - 1));
@@ -735,9 +734,11 @@ void ArrangeView::Painter::paint(juce::Graphics& g)
     // The reorder insertion line over the headers.
     if (v.reorderFrom_ != core::invalidId && v.reorderTo_ >= 0)
     {
+        // Indented to the folder depth the tracks will have.
         const int ly = v.rowTop(v.reorderTo_);
+        const int lx = v.theme_.track.headerStripeWidth + v.reorderDepth_ * 12;
         g.setColour(c.accent);
-        g.fillRect(0, ly - 1, v.headerWidth(), 2);
+        g.fillRect(lx, ly - 1, v.headerWidth() - lx, 2);
     }
 
     // What a drag draws last (the pencil's clip).
@@ -747,7 +748,10 @@ void ArrangeView::Painter::paint(juce::Graphics& g)
     // Files dragged over: the lane lights up and a ghost clip shows where they land.
     if (v.dragOver_)
     {
-        const int row = v.rowAtY(v.dropPoint_.y);
+        // The lane that takes the files lights up with the ghost on it; elsewhere
+        // the ghost sits under the last lane, where the new tracks will be.
+        const auto target = v.dropTrackAt(v.dropPoint_.y, v.dropFiles_);
+        const int row = target != core::invalidId ? v.project_->trackIndex(target) : -1;
         g.saveState();
         g.reduceClipRegion(lanesArea);
         if (row >= 0)
@@ -755,9 +759,10 @@ void ArrangeView::Painter::paint(juce::Graphics& g)
             g.setColour(c.dropTarget);
             g.fillRect(v.rowBounds(row).withLeft(v.headerWidth()));
         }
-        const int x = v.xForSample(v.snapped(v.sampleForX(std::max(v.headerWidth(), v.dropPoint_.x))));
-        const int ghostY = row >= 0 ? v.rowBounds(row).getY() + 2
-                                    : std::max(v.rulerHeight, v.dropPoint_.y - v.rowHeight / 2);
+        const int x = v.xForSample(v.dropPosition(v.dropPoint_.x));
+        const int tracksEnd =
+            v.project_ != nullptr ? v.rowTop(static_cast<int>(v.project_->tracks.size())) : v.rulerHeight;
+        const int ghostY = row >= 0 ? v.rowBounds(row).getY() + 2 : std::max(v.rulerHeight, tracksEnd + 2);
         const auto ghost = juce::Rectangle<int>(x, ghostY, 160, v.rowHeight - 4);
         g.setColour(c.accent);
         g.drawRoundedRectangle(ghost.toFloat().reduced(0.5f), v.theme_.radius.sm, 1.0f);

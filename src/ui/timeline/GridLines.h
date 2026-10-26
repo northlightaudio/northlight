@@ -1,6 +1,7 @@
 #pragma once
 
 #include "core/TempoMap.h"
+#include "ui/timeline/SnapGrids.h"
 #include "ui/timeline/TimelineViewport.h"
 
 #include <algorithm>
@@ -84,18 +85,18 @@ void forEachGridLine(
 }
 
 // The snap grid (interaction.md 10.3) at a position, on the tempo track:
-// `division` 0 is adaptive (the finest of bar, beat and its divisions at least
-// 16 px wide at the zoom), 1 a bar, 4 a beat, 8, 16 and 32 its divisions, each
-// beat counted in the signature where the position falls.
+// `division` is a SnapGrids.h code: 0 adaptive (the finest of bar, beat and its
+// divisions at least 16 px wide at the zoom), 1 a bar, 4 a beat, 8, 16 and 32 its
+// divisions and their triplet and dotted variants, each beat counted in the
+// signature where the position falls.
 inline core::GridStep
 snapStepAt(const core::TempoMap& map, core::SamplePosition at, int division, double samplesPerPixel) noexcept
 {
     constexpr int adaptiveMinPixels = 16;
     if (division == 1)
         return {1, 0.0};
-    if (division > 0)
-        return {0,
-                core::TempoMap::quartersPerBeat(map.signatureAt(at)) * 4.0 / static_cast<double>(division)};
+    if (const double quarters = snapGridQuarters(division, map.signatureAt(at)); quarters > 0.0)
+        return {0, quarters};
     return map.adaptiveStep(samplesPerPixel, adaptiveMinPixels, at);
 }
 

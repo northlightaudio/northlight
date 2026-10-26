@@ -1,5 +1,6 @@
 #include "ui/arrange/ArrangeMenus.h"
 
+#include "core/ArrangeCommands.h"
 #include "core/Command.h"
 #include "core/Comping.h"
 #include "plugins/FxTracks.h"
@@ -160,6 +161,33 @@ void ArrangeMenus::clipMenu(const edit::ClipRef& ref, juce::Point<int> screen)
               true,
               false,
               Shortcuts::keyText(Command::duplicate));
+    items.add(
+        "Rename...",
+        [safe, ref]
+        {
+            if (safe != nullptr)
+                safe->renameClip(ref);
+        },
+        true,
+        false,
+        Shortcuts::keyText(Command::renameTrack));
+    {
+        // The clip's colour (Default: its track's), for every selected clip.
+        const auto own = clip != nullptr ? clip->colour : midiClip->colour;
+        juce::PopupMenu colours;
+        next = addColourItems(colours,
+                              v.theme_,
+                              v.clipColour(*track, own),
+                              next,
+                              [safe, selection](std::uint32_t argb)
+                              {
+                                  if (safe == nullptr || safe->project_ == nullptr)
+                                      return;
+                                  auto e = edit::setClipColour(*safe->project_, selection, argb);
+                                  safe->emit(std::move(e.commands), e.name);
+                              });
+        menu.addSubMenu("Colour", colours);
+    }
     if (!ref.midi)
         items.add(
             "Normalise",
@@ -276,9 +304,39 @@ void ArrangeMenus::trackMenu(core::Id trackId, juce::Point<int> screen, core::Id
                 safe->onCommand(make());
         };
     };
+    // The menu acts on every selected track when it opened on one of them.
+    std::vector<core::Id> targets;
+    if (v.inTrackSet(trackId))
+        for (const auto id : v.selectedTracks())
+            if (project->findTrack(id) != nullptr)
+                targets.push_back(id);
+    if (targets.size() < 2)
+        targets.assign(1, trackId);
+    const bool many = targets.size() > 1;
+    // Runs one command per target track as one undo step.
+    const auto forEach =
+        [safe, targets](std::function<std::unique_ptr<core::Command>(core::Id)> make, std::string name)
+    {
+        return [safe, targets, make, name]
+        {
+            if (safe == nullptr || safe->project_ == nullptr)
+                return;
+            std::vector<std::unique_ptr<core::Command>> commands;
+            for (const auto id : targets)
+                if (safe->project_->findTrack(id) != nullptr)
+                    if (auto c = make(id))
+                        commands.push_back(std::move(c));
+            if (commands.size() == 1 && safe->onCommand)
+                safe->onCommand(std::move(commands.front()));
+            else
+                safe->emit(std::move(commands), name);
+        };
+    };
     juce::PopupMenu menu;
     int next = 1;
     const Items items{menu, next};
+    if (many)
+        menu.addSectionHeader(juce::String(static_cast<int>(targets.size())) + " tracks");
     if (clipId != core::invalidId && track->findClip(clipId) != nullptr && v.onOpenInSampler)
     {
         menu.addSectionHeader("Clip");
@@ -304,12 +362,17 @@ void ArrangeMenus::trackMenu(core::Id trackId, juce::Point<int> screen, core::Id
                           v.theme_,
                           v.trackColour(*track, project->trackIndex(trackId)),
                           next,
-                          [safe, trackId](std::uint32_t argb)
+                          [forEach](std::uint32_t argb)
                           {
-                              if (safe != nullptr && safe->onCommand)
-                                  safe->onCommand(std::make_unique<core::SetColour>(trackId, argb));
+                              forEach([argb](core::Id id)
+                                      { return std::make_unique<core::SetColour>(id, argb); },
+                                      "Colour tracks")();
                           });
     menu.addSubMenu("Colour", colours);
+    if (!track->isFolder())
+        items.add(many ? "Duplicate tracks" : "Duplicate track",
+                  forEach([](core::Id id) { return std::make_unique<core::DuplicateTrack>(id); },
+                          "Duplicate tracks"));
     if (track->isMidi())
     {
         // MIDI output: the device chosen in Audio Setup, on a channel.
@@ -383,14 +446,22 @@ void ArrangeMenus::trackMenu(core::Id trackId, juce::Point<int> screen, core::Id
                                               : nullptr)
                           safe->showAutomation(trackId, !t->automationOpen);
                   });
-        items.add(track->isFrozen() ? "Unfreeze track" : "Freeze track",
-                  [safe, trackId]
+        items.add(juce::String(track->isFrozen() ? "Unfreeze " : "Freeze ") + (many ? "tracks" : "track"),
+                  [safe, trackId, targets]
                   {
-                      if (const auto* t = safe != nullptr && safe->project_ != nullptr
-                                              ? safe->project_->findTrack(trackId)
-                                              : nullptr;
-                          t != nullptr && safe->onFreezeTrack)
-                          safe->onFreezeTrack(trackId, !t->isFrozen());
+                      const auto* t = safe != nullptr && safe->project_ != nullptr
+                                          ? safe->project_->findTrack(trackId)
+                                          : nullptr;
+                      if (t == nullptr || !safe->onFreezeTrack)
+                          return;
+                      // Each selected track that makes sound goes the way this one does.
+                      const bool freeze = !t->isFrozen();
+                      for (const auto id : targets)
+                          if (const auto* other = safe != nullptr && safe->project_ != nullptr
+                                                      ? safe->project_->findTrack(id)
+                                                      : nullptr;
+                              other != nullptr && other->hasAudio() && other->isFrozen() != freeze)
+                              safe->onFreezeTrack(id, freeze);
                   });
     }
     if (track->isFolder())
@@ -406,27 +477,34 @@ void ArrangeMenus::trackMenu(core::Id trackId, juce::Point<int> screen, core::Id
     {
         juce::PopupMenu folders;
         const Items folderItems{folders, next};
-        folderItems.add("New folder containing this track",
-                        command(
-                            [trackId]
-                            {
-                                return std::make_unique<core::AddFolderTrack>("Folder",
-                                                                              std::vector<core::Id>{trackId});
-                            }));
-        folders.addSeparator();
         folderItems.add(
-            "Not in a folder",
-            command([trackId] { return std::make_unique<core::SetTrackFolder>(trackId, core::invalidId); }),
-            track->folder != core::invalidId,
-            track->folder == core::invalidId);
+            many ? "New folder containing these tracks" : "New folder containing this track",
+            command([targets] { return std::make_unique<core::AddFolderTrack>("Folder", targets); }));
+        folders.addSeparator();
+        folderItems.add("Not in a folder",
+                        forEach([](core::Id id)
+                                { return std::make_unique<core::SetTrackFolder>(id, core::invalidId); },
+                                "Remove from folder"),
+                        track->folder != core::invalidId || many,
+                        !many && track->folder == core::invalidId);
         for (const auto* folder : v.folderChoices(trackId))
         {
             const auto folderId = folder->id;
+            if (std::find(targets.begin(), targets.end(), folderId) != targets.end())
+                continue;
             folderItems.add(juce::String::fromUTF8(folder->name.c_str()),
-                            command([trackId, folderId]
-                                    { return std::make_unique<core::SetTrackFolder>(trackId, folderId); }),
+                            forEach(
+                                [folderId, safe](core::Id id) -> std::unique_ptr<core::Command>
+                                {
+                                    // Not a folder into itself or one inside it.
+                                    if (safe == nullptr || safe->project_ == nullptr ||
+                                        safe->project_->insideFolder(folderId, id))
+                                        return nullptr;
+                                    return std::make_unique<core::SetTrackFolder>(id, folderId);
+                                },
+                                "Move into folder"),
                             true,
-                            track->folder == folderId);
+                            !many && track->folder == folderId);
         }
         menu.addSubMenu("Folder", folders);
     }
@@ -440,7 +518,8 @@ void ArrangeMenus::trackMenu(core::Id trackId, juce::Point<int> screen, core::Id
                           safe->takes_.toggleLanes(*t);
                   });
     menu.addSeparator();
-    items.add("Delete track", command([trackId] { return std::make_unique<core::RemoveTrack>(trackId); }));
+    items.add(many ? "Delete tracks" : "Delete track",
+              forEach([](core::Id id) { return std::make_unique<core::RemoveTrack>(id); }, "Delete tracks"));
     items.add("Add bus",
               [safe]
               {
@@ -531,15 +610,78 @@ void ArrangeMenus::rulerMenu(juce::Point<int> screen)
               v.followPlayhead_);
     items.add("Zoom to fit", act([](ArrangeView& a) { a.zoomToFit(); }));
     menu.addSeparator();
-    items.add("Add marker at playhead", act([](ArrangeView& a) { a.addMarkerAtPlayhead(false); }));
-    items.add("Add region from loop",
+    items.add("Add marker at playhead",
+              act([](ArrangeView& a) { a.addMarkerAtPlayhead(false); }),
+              true,
+              false,
+              Shortcuts::keyText(Command::addMarker));
+    items.add(v.hasTimeSelection() ? "Add region from selection" : "Add region from loop",
               act([](ArrangeView& a) { a.addMarkerAtPlayhead(true); }),
-              v.regionEnd_ > v.regionStart_);
+              v.hasTimeSelection() || v.regionEnd_ > v.regionStart_,
+              false,
+              Shortcuts::keyText(Command::addRegion));
     menu.addSeparator();
     items.add("Show tempo track",
               act([](ArrangeView& a) { a.setTempoTrackShown(!a.tempoShown_); }),
               true,
               v.tempoShown_);
+    items.add("Move automation with clips",
+              act([](ArrangeView& a) { a.setAutomationFollowsClips(!a.automationFollowsClips()); }),
+              true,
+              v.automationFollows_);
+    menu.showMenuAsync(at(screen));
+}
+
+void ArrangeMenus::rangeMenu(juce::Point<int> screen)
+{
+    auto& v = view_;
+    if (!v.hasTimeSelection())
+        return;
+    Safe safe(&v);
+    const auto act = [safe](std::function<void(ArrangeView&)> f)
+    {
+        return [safe, f]
+        {
+            if (safe != nullptr)
+                f(*safe);
+        };
+    };
+    juce::PopupMenu menu;
+    int next = 1;
+    const Items items{menu, next};
+    menu.addSectionHeader(v.positionText(v.timeSelStart_) + juce::String::fromUTF8(" \xe2\x80\x93 ") +
+                          v.positionText(v.timeSelEnd_));
+    items.add(v.ripple_ ? "Ripple delete range" : "Delete range",
+              act([](ArrangeView& a) { a.deleteTimeRange(); }),
+              true,
+              false,
+              Shortcuts::keyText(Command::deleteSelection));
+    items.add(
+        "Cut", act([](ArrangeView& a) { a.cutTimeRange(); }), true, false, Shortcuts::keyText(Command::cut));
+    items.add("Copy",
+              act([](ArrangeView& a) { a.copyTimeRange(); }),
+              true,
+              false,
+              Shortcuts::keyText(Command::copy));
+    items.add("Paste at playhead",
+              act([](ArrangeView& a) { a.paste(); }),
+              !v.clipboard_.empty() || !v.automation_.clipboardEmpty(),
+              false,
+              Shortcuts::keyText(Command::paste));
+    menu.addSeparator();
+    items.add("Split at range",
+              act([](ArrangeView& a) { a.splitAtSelection(); }),
+              true,
+              false,
+              Shortcuts::keyText(Command::splitAtSelection));
+    items.add("Loop selection", act([](ArrangeView& a) { a.loopTimeSelection(); }));
+    items.add("Add region from selection",
+              act([](ArrangeView& a) { a.addMarkerAtPlayhead(true); }),
+              true,
+              false,
+              Shortcuts::keyText(Command::addRegion));
+    menu.addSeparator();
+    items.add("Clear selection", act([](ArrangeView& a) { a.clearTimeSelection(); }));
     menu.showMenuAsync(at(screen));
 }
 
@@ -594,17 +736,24 @@ void ArrangeMenus::addTrackMenu()
                   if (safe != nullptr && safe->onAddBus)
                       safe->onAddBus();
               });
-    items.add(
-        v.selectedTrack() != core::invalidId ? "Folder track (holding the selected track)" : "Folder track",
-        [safe]
-        {
-            if (safe == nullptr || !safe->onCommand)
-                return;
-            std::vector<core::Id> members;
-            if (safe->project_ != nullptr && safe->project_->findTrack(safe->selectedTrack()) != nullptr)
-                members.push_back(safe->selectedTrack());
-            safe->onCommand(std::make_unique<core::AddFolderTrack>("Folder", members));
-        });
+    int selectedCount = 0;
+    if (v.project_ != nullptr)
+        for (const auto id : v.selectedTracks())
+            selectedCount += v.project_->findTrack(id) != nullptr ? 1 : 0;
+    items.add(selectedCount > 1    ? "Folder track (holding the selected tracks)"
+              : selectedCount == 1 ? "Folder track (holding the selected track)"
+                                   : "Folder track",
+              [safe]
+              {
+                  if (safe == nullptr || !safe->onCommand)
+                      return;
+                  std::vector<core::Id> members;
+                  if (safe->project_ != nullptr)
+                      for (const auto id : safe->selectedTracks())
+                          if (safe->project_->findTrack(id) != nullptr)
+                              members.push_back(id);
+                  safe->onCommand(std::make_unique<core::AddFolderTrack>("Folder", members));
+              });
     menu.showMenuAsync(juce::PopupMenu::Options().withTargetComponent(&v.addTrack_),
                        [safe, instruments](int choice)
                        {

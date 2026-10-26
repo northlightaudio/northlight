@@ -69,7 +69,11 @@ public:
     void gatherMedia();
     void removeUnusedMedia();
     void importAudio();
-    void importFiles(const std::vector<juce::File>& files, core::SamplePosition at);
+    // `track`: the track they were dropped on (audio files go on it one after
+    // another, a MIDI file plays what it plays); invalidId: new tracks.
+    void importFiles(const std::vector<juce::File>& files,
+                     core::SamplePosition at,
+                     core::Id track = core::invalidId);
     void importMidi();
     void exportMidi();
 

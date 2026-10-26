@@ -491,7 +491,7 @@ std::string ProjectSession::nextMidiTrackName() const
     return "MIDI " + std::to_string(count + 1);
 }
 
-core::Id ProjectSession::addMidiTrack(const std::string& instrumentType)
+core::Id ProjectSession::addMidiTrack(const std::string& instrumentType, core::TrackPlace place)
 {
     // A MIDI track with a new instrument: the instrument channel and the MIDI
     // track aimed at it, as one step.
@@ -499,14 +499,17 @@ core::Id ProjectSession::addMidiTrack(const std::string& instrumentType)
     core::Track midi;
     midi.name = nextMidiTrackName();
     midi.armed = true;
-    auto command = std::make_unique<core::AddInstrumentTrack>(makeInstrumentChannel(type), midi);
+    midi.folder = place.folder;
+    auto channel = makeInstrumentChannel(type);
+    channel.folder = place.folder;
+    auto command = std::make_unique<core::AddInstrumentTrack>(std::move(channel), midi, place.index);
     const auto* raw = command.get(); // kept alive by the undo history
     if (!run(std::move(command)))
         return core::invalidId;
     return raw->midiTrackId();
 }
 
-core::Id ProjectSession::addMidiTrackPlaying(core::Id channel)
+core::Id ProjectSession::addMidiTrackPlaying(core::Id channel, core::TrackPlace place)
 {
     core::Track midi;
     midi.name = nextMidiTrackName();
@@ -517,6 +520,11 @@ core::Id ProjectSession::addMidiTrackPlaying(core::Id channel)
     {
         midi.midiTarget = channel;
         index = project_.trackIndex(channel);
+    }
+    if (place.index >= 0)
+    {
+        index = place.index;
+        midi.folder = place.folder;
     }
     auto command = std::make_unique<core::AddTrack>(midi, index);
     const auto* raw = command.get();
@@ -622,7 +630,7 @@ void ProjectSession::stopPreview()
     pumpPreview();
 }
 
-std::string ProjectSession::importAudioFile(const juce::File& file, core::SamplePosition at)
+std::string ProjectSession::importAudioFile(const juce::File& file, core::SamplePosition at, core::Id target)
 {
     std::string error;
     const auto info = loader_.probe(file.getFullPathName().toStdString(), error);
@@ -636,9 +644,15 @@ std::string ProjectSession::importAudioFile(const juce::File& file, core::Sample
     clip.mediaPath = file.getFullPathName().toStdString();
     clip.start = std::max<core::SamplePosition>(0, at);
     clip.length = info->lengthAt(project_.sampleRate);
-    track.clips.push_back(clip);
-
-    execute(std::make_unique<core::AddTrack>(track));
+    // On the audio track it was dropped on, or a track of its own.
+    if (const auto* onto = project_.findTrack(target);
+        onto != nullptr && onto->kind == core::TrackKind::audio)
+        execute(std::make_unique<core::AddClip>(target, clip));
+    else
+    {
+        track.clips.push_back(clip);
+        execute(std::make_unique<core::AddTrack>(track));
+    }
 
     const auto& errors = engine_.mediaErrors();
     if (const auto it = errors.find(clip.mediaPath); it != errors.end())

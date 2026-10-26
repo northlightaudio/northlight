@@ -6,6 +6,7 @@
 #include "ui/Shortcuts.h"
 #include "ui/components/NumericField.h"
 #include "ui/components/SegmentedControl.h"
+#include "ui/timeline/SnapGrids.h"
 
 #include <algorithm>
 #include <cmath>
@@ -1280,12 +1281,10 @@ void PreferencesView::buildEditing(Page& page)
 {
     page.addCard("Snap");
     page.add("Snap", makeCheckbox(settings::snap), theme_.sizes.icon, "On when a project opens.");
-    page.add(
-        "Grid",
-        makeCombo(
-            {{"Adaptive", "0"}, {"Bar", "1"}, {"Beat", "4"}, {"1/8", "8"}, {"1/16", "16"}, {"1/32", "32"}},
-            settings::snapGrid),
-        comboWidth);
+    std::vector<Choice> grids; // the snap menu's grids (ui/timeline/SnapGrids.h)
+    for (const auto& grid : snapGridChoices())
+        grids.push_back({grid.name, std::to_string(grid.code)});
+    page.add("Grid", makeCombo(grids, settings::snapGrid), comboWidth);
     page.addCard("Edits");
     page.add("Ripple", makeCheckbox(settings::ripple), theme_.sizes.icon, "On when a project opens.");
     page.add("Fade",

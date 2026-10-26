@@ -281,15 +281,22 @@ void FileActions::importAudio()
                           });
 }
 
-void FileActions::importFiles(const std::vector<juce::File>& files, core::SamplePosition at)
+void FileActions::importFiles(const std::vector<juce::File>& files, core::SamplePosition at, core::Id track)
 {
     for (const auto& file : files)
     {
-        // A MIDI file plays the selected instrument (or the one the selected
-        // MIDI track plays), else a new one.
+        // A MIDI file plays the track it was dropped on, or the selected
+        // instrument (or the one the selected MIDI track plays), else a new one.
         const bool midi = file.hasFileExtension("mid;midi");
-        const auto error = midi ? host_.session.importMidiFile(file, at, host_.selectedChannel())
-                                : host_.session.importAudioFile(file, at);
+        const auto error = midi ? host_.session.importMidiFile(
+                                      file, at, track != core::invalidId ? track : host_.selectedChannel())
+                                : host_.session.importAudioFile(file, at, track);
+        // Audio files dropped on a track go one after another.
+        if (!midi && error.empty())
+            if (const auto* onto = host_.session.project().findTrack(track))
+                for (const auto& clip : onto->clips)
+                    if (clip.start == at)
+                        at = std::max(at, clip.end());
         if (!error.empty())
             host_.toast(ui::ToastStack::Kind::error,
                         file.getFileName() + ": " + juce::String::fromUTF8(error.c_str()));

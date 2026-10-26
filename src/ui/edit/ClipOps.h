@@ -93,6 +93,33 @@ Move moveClips(const core::Project& project,
                const Selection& selection,
                core::SamplePosition delta,
                int rows);
+// Ctrl+drag: copies of the selected clips `delta` samples and `rows` tracks
+// away (each onto a track of its own kind; none before 0), the originals kept.
+// A comp's clips copy as plain clips. `moved` names each copy's track (its
+// clip id is the command's, given on apply), in the order of the commands.
+Move copyClipsTo(const core::Project& project,
+                 const Selection& selection,
+                 core::SamplePosition delta,
+                 int rows);
+// The automation under clips that move (or are copied) by `delta` on their own
+// tracks: each lane's points inside a clip's span go with it, replacing the
+// points where they land (with `copy` the originals stay). One SetAutomationPoints
+// per lane that changes.
+Edit moveAutomation(const core::Project& project,
+                    const Selection& selection,
+                    core::SamplePosition delta,
+                    bool copy);
+// A clip's name, and the selected clips' colour (0: the track's).
+Edit renameClip(const core::Project& project, const ClipRef& ref, const std::string& name);
+Edit setClipColour(const core::Project& project, const Selection& selection, std::uint32_t colour);
+// Removes [start, end) from the tracks (their clips, and with `automation` their
+// lanes), closing the gap with `ripple` (core::RemoveTimeRange).
+Edit deleteRange(const core::Project& project,
+                 const std::vector<core::Id>& tracks,
+                 core::SamplePosition start,
+                 core::SamplePosition end,
+                 bool ripple,
+                 bool automation);
 // A clip's new start and length (and, for audio, where its source starts).
 Edit trimClip(const core::Project& project,
               const ClipRef& ref,
@@ -115,11 +142,20 @@ struct ClipboardItem
     int trackOffset = 0; // rows from the first copied clip's track
 };
 std::vector<ClipboardItem> copyClips(const core::Project& project, const Selection& selection);
+// The parts of the tracks' clips inside [start, end) (a range copy), with track
+// offsets from the first of the tracks that has any.
+std::vector<ClipboardItem> copyRange(const core::Project& project,
+                                     const std::vector<core::Id>& tracks,
+                                     core::SamplePosition start,
+                                     core::SamplePosition end);
 // Pastes at `at` with the topmost clip on track row `row`; a clip only lands on
-// its own kind of track (MIDI on MIDI, audio on audio).
+// its own kind of track (MIDI on MIDI, audio on audio). The earliest clip lands
+// at `at`, or, given an `origin` (a range copy's start), each clip keeps its
+// distance from it.
 Edit pasteClips(const core::Project& project,
                 const std::vector<ClipboardItem>& clipboard,
                 int row,
-                core::SamplePosition at);
+                core::SamplePosition at,
+                std::optional<core::SamplePosition> origin = std::nullopt);
 
 } // namespace northlight::ui::edit

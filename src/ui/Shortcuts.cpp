@@ -151,6 +151,14 @@ std::vector<Shortcut>& table()
                "Play the newer or older take",
                editing,
                {code(KP::upKey, alt), code(KP::downKey, alt)});
+        family(Command::selectTrack,
+               "selectTrack",
+               "Select the track above or below (Shift extends)",
+               tracks,
+               {code(KP::upKey),
+                code(KP::downKey),
+                code(KP::upKey, shift, false),
+                code(KP::downKey, shift, false)});
         add(Command::takeLanes, "takeLanes", "Show or hide the take lanes", editing, {code('T', alt)});
         family(Command::nudgeFine,
                "nudgeFine",

@@ -218,20 +218,48 @@ void ArrangeView::LoopGesture::paintTop(juce::Graphics& g)
         v.drawTooltip(g, v.positionText(v.regionStart_) + " - " + v.positionText(v.regionEnd_), v.dragPoint_);
 }
 
-ArrangeView::TimeSelectGesture::TimeSelectGesture(ArrangeView& view, core::SamplePosition at)
-    : Gesture(view), anchor_(view.snapped(at))
+ArrangeView::TimeSelectGesture::TimeSelectGesture(ArrangeView& view, core::SamplePosition at, int row)
+    : Gesture(view), anchor_(view.snapped(at)), row_(row), tracksBefore_(view.selectedTracks())
 {
     v.timeSelStart_ = v.timeSelEnd_ = anchor_;
+    v.finishTimeSelection(); // (empty: no tracks)
 }
 
-void ArrangeView::TimeSelectGesture::drag(const juce::MouseEvent&, core::SamplePosition at)
+void ArrangeView::TimeSelectGesture::drag(const juce::MouseEvent& e, core::SamplePosition at)
 {
     v.timeSelStart_ = std::min(anchor_, v.snapped(at));
     v.timeSelEnd_ = std::max(anchor_, v.snapped(at));
+    // From a lane: the tracks between the press and the pointer are the selection
+    // (the pressed one alone until the pointer leaves its row).
+    if (row_ >= 0 && v.project_ != nullptr)
+    {
+        const int count = static_cast<int>(v.project_->tracks.size());
+        const int now = v.rowAtY(e.y) >= 0 ? v.rowAtY(e.y) : (e.y < v.rulerHeight ? 0 : count - 1);
+        std::vector<core::Id> tracks;
+        for (int r = std::min(row_, now); r <= std::max(row_, now) && r < count; ++r)
+            if (v.rowHeightOf(r) > 0)
+                tracks.push_back(v.project_->tracks[static_cast<size_t>(r)].id);
+        // The pressed track keeps the focus.
+        const auto pressed = v.project_->tracks[static_cast<size_t>(std::min(row_, count - 1))].id;
+        std::erase(tracks, pressed);
+        tracks.insert(tracks.begin(), pressed);
+        if (tracks != v.selectedTracks())
+            v.selectTracks(tracks);
+    }
+    v.finishTimeSelection();
 }
 
-void ArrangeView::TimeSelectGesture::release(const juce::MouseEvent&)
+void ArrangeView::TimeSelectGesture::release(const juce::MouseEvent& e)
 {
+    if (!v.draggedFar_)
+    {
+        // A click: no range; it locates, as a click in a lane does.
+        v.clearTimeSelection();
+        if (v.onLocate)
+            v.onLocate(anchor_);
+        juce::ignoreUnused(e);
+        return;
+    }
     v.finishTimeSelection();
 }
 
@@ -293,13 +321,18 @@ void ArrangeView::LassoGesture::paintLanes(juce::Graphics& g)
     g.drawRect(lasso_, 1);
 }
 
-ArrangeView::MoveGesture::MoveGesture(ArrangeView& view, ArrangeClipPress press) noexcept
-    : Gesture(view), press_(std::move(press))
+ArrangeView::MoveGesture::MoveGesture(ArrangeView& view, ArrangeClipPress press, bool copy) noexcept
+    : Gesture(view), press_(std::move(press)), copy_(copy),
+      wasSelected_(edit::contains(view.pressSelection_, press_.clip))
 {
 }
 
 void ArrangeView::MoveGesture::drag(const juce::MouseEvent& e, core::SamplePosition at)
 {
+    // Ctrl can be pressed or let go mid-drag: what it is at the release counts.
+    copy_ = e.mods.isCtrlDown();
+    v.setMouseCursor(copy_ && v.draggedFar_ ? juce::MouseCursor::CopyingCursor
+                                            : juce::MouseCursor::DraggingHandCursor);
     // The dragged clip's new start snaps; the rest of the selection follows by the
     // same delta, and rows by the same count, never before zero, outside the
     // tracks or onto a track of the other kind.
@@ -336,17 +369,53 @@ void ArrangeView::MoveGesture::release(const juce::MouseEvent& e)
 {
     if (v.draggedFar_)
     {
-        if (v.project_ == nullptr)
+        if (v.project_ == nullptr || (delta_ == 0 && rows_ == 0))
             return;
+        // The automation under the clips goes with them along their own tracks.
+        auto automation = v.automationFollows_ && rows_ == 0
+                              ? edit::moveAutomation(*v.project_, v.selection_, delta_, copy_)
+                              : edit::Edit{};
+        if (copy_)
+        {
+            auto copy = edit::copyClipsTo(*v.project_, v.selection_, delta_, rows_);
+            if (copy.edit.empty())
+                return;
+            // The copies are the selection (their ids come with the edit's apply).
+            std::vector<std::pair<const core::Command*, ClipRef>> made;
+            for (size_t i = 0; i < copy.edit.commands.size() && i < copy.moved.size(); ++i)
+                made.emplace_back(copy.edit.commands[i].get(), copy.moved[i]);
+            auto commands = std::move(copy.edit.commands);
+            for (auto& c : automation.commands)
+                commands.push_back(std::move(c));
+            v.emit(std::move(commands), copy.edit.name);
+            v.selection_.clear();
+            for (auto [command, ref] : made)
+            {
+                if (const auto* audio = dynamic_cast<const core::AddClip*>(command))
+                    ref.clip = audio->clipId();
+                else if (const auto* midi = dynamic_cast<const core::AddMidiClip*>(command))
+                    ref.clip = midi->clipId();
+                if (v.spanOf(ref).has_value())
+                    v.select(ref, true);
+            }
+            v.notifySelection();
+            return;
+        }
         auto move = edit::moveClips(*v.project_, v.selection_, delta_, rows_);
         if (move.edit.empty())
             return;
+        for (auto& c : automation.commands)
+            move.edit.commands.push_back(std::move(c));
         v.selection_ = std::move(move.moved); // the selection follows the clips to their new tracks
         v.emit(std::move(move.edit.commands), move.edit.name);
         v.notifySelection();
     }
     else if (e.mods.isCtrlDown())
-        std::erase(v.selection_, press_.clip); // Ctrl+click: toggle membership
+    {
+        // Ctrl+click: toggle membership (the press added it if it was not in).
+        if (wasSelected_)
+            std::erase(v.selection_, press_.clip);
+    }
     else if (!e.mods.isShiftDown())
     {
         v.selection_.clear();
@@ -356,7 +425,8 @@ void ArrangeView::MoveGesture::release(const juce::MouseEvent& e)
 
 float ArrangeView::MoveGesture::dim(const ClipRef&, bool selected) const
 {
-    return selected && v.draggedFar_ ? 0.4f : 1.0f;
+    // A copy leaves the originals where they are, at full strength.
+    return selected && v.draggedFar_ && !copy_ ? 0.4f : 1.0f;
 }
 
 void ArrangeView::MoveGesture::paintLanes(juce::Graphics& g)
@@ -393,8 +463,8 @@ void ArrangeView::MoveGesture::paintLanes(juce::Graphics& g)
                                map.quartersAt(static_cast<double>(press_.span.start))) /
                               beatQuarters;
     v.drawTooltip(g,
-                  v.positionText(newStart) + "  " + (deltaBeats >= 0 ? "+" : "") +
-                      juce::String(deltaBeats, 2) + " beats" +
+                  juce::String(copy_ ? "Copy to " : "") + v.positionText(newStart) + "  " +
+                      (deltaBeats >= 0 ? "+" : "") + juce::String(deltaBeats, 2) + " beats" +
                       (v.snapTargetName_.isNotEmpty() ? "  to " + v.snapTargetName_ : juce::String()),
                   v.dragPoint_);
 }
@@ -599,12 +669,7 @@ void ArrangeView::GainGesture::drag(const juce::MouseEvent& e, core::SamplePosit
 
 void ArrangeView::GainGesture::release(const juce::MouseEvent&)
 {
-    if (!v.draggedFar_)
-    {
-        std::erase(v.selection_, press_.clip); // Ctrl+click without a drag toggles
-        return;
-    }
-    if (v.project_ == nullptr)
+    if (!v.draggedFar_ || v.project_ == nullptr)
         return;
     auto e = edit::setClipGain(*v.project_, press_.clip, gain_);
     v.emit(std::move(e.commands), e.name);

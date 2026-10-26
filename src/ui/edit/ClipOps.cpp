@@ -1,5 +1,6 @@
 #include "ui/edit/ClipOps.h"
 
+#include "core/ArrangeCommands.h"
 #include "core/Command.h"
 #include "core/Comping.h"
 
@@ -323,6 +324,146 @@ const core::AudioClip* audioClip(const core::Project& project, const ClipRef& re
 }
 } // namespace
 
+Move copyClipsTo(const core::Project& project,
+                 const Selection& selection,
+                 core::SamplePosition delta,
+                 int rows)
+{
+    Move move;
+    auto& edit = move.edit;
+    for (const auto& ref : selection)
+    {
+        const auto* source = project.findTrack(ref.track);
+        const auto* target = landingTrack(project, ref, rows);
+        if (source == nullptr || target == nullptr)
+            continue;
+        if (ref.midi)
+        {
+            const auto* m = source->findMidiClip(ref.clip);
+            if (m == nullptr)
+                continue;
+            auto clip = *m;
+            clip.id = core::invalidId;
+            for (auto& n : clip.notes)
+                n.id = core::invalidId;
+            for (auto& c : clip.controllers)
+                c.id = core::invalidId;
+            clip.start = std::max<core::SamplePosition>(0, clip.start + delta);
+            edit.commands.push_back(std::make_unique<core::AddMidiClip>(target->id, clip));
+            move.moved.push_back({target->id, core::invalidId, true});
+        }
+        else
+        {
+            const auto* a = source->findClip(ref.clip);
+            if (a == nullptr)
+                continue;
+            auto clip = *a;
+            clip.id = core::invalidId;
+            clip.start = std::max<core::SamplePosition>(0, clip.start + delta);
+            edit.commands.push_back(std::make_unique<core::AddClip>(target->id, clip));
+            move.moved.push_back({target->id, core::invalidId, false});
+        }
+    }
+    edit.name = edit.commands.size() > 1 ? "Copy clips" : "Copy clip";
+    return move;
+}
+
+Edit moveAutomation(const core::Project& project,
+                    const Selection& selection,
+                    core::SamplePosition delta,
+                    bool copy)
+{
+    Edit edit;
+    edit.name = "Move automation";
+    if (delta == 0)
+        return edit;
+    for (const auto& track : project.tracks)
+    {
+        if (!track.hasAudio() || track.automation.empty())
+            continue;
+        std::vector<Span> spans; // where the track's selected clips were
+        for (const auto& ref : selection)
+            if (ref.track == track.id)
+                if (const auto span = spanOf(project, ref))
+                    spans.push_back(*span);
+        if (spans.empty())
+            continue;
+        const auto inside = [&](core::SamplePosition at, core::SamplePosition offset)
+        {
+            return std::any_of(spans.begin(),
+                               spans.end(),
+                               [&](const Span& s)
+                               { return at >= s.start + offset && at < s.end() + offset; });
+        };
+        for (const auto& lane : track.automation)
+        {
+            std::vector<core::AutomationPoint> points, moved;
+            for (const auto& p : lane.points)
+            {
+                if (inside(p.position, 0))
+                {
+                    moved.push_back({std::max<core::SamplePosition>(0, p.position + delta), p.value});
+                    if (!copy)
+                        continue;
+                }
+                points.push_back(p);
+            }
+            if (moved.empty())
+                continue;
+            // What was where they land gives way to them.
+            std::erase_if(points, [&](const core::AutomationPoint& p) { return inside(p.position, delta); });
+            points.insert(points.end(), moved.begin(), moved.end());
+            std::stable_sort(points.begin(),
+                             points.end(),
+                             [](const core::AutomationPoint& a, const core::AutomationPoint& b)
+                             { return a.position < b.position; });
+            if (points != lane.points)
+                edit.commands.push_back(std::make_unique<core::SetAutomationPoints>(
+                    track.id, lane.id, std::move(points), edit.name));
+        }
+    }
+    return edit;
+}
+
+Edit renameClip(const core::Project& project, const ClipRef& ref, const std::string& name)
+{
+    Edit edit;
+    edit.name = "Rename clip";
+    if (spanOf(project, ref).has_value() && !name.empty())
+        edit.commands.push_back(std::make_unique<core::SetClipName>(ref.track, ref.clip, ref.midi, name));
+    return edit;
+}
+
+Edit setClipColour(const core::Project& project, const Selection& selection, std::uint32_t colour)
+{
+    Edit edit;
+    edit.name = selection.size() > 1 ? "Colour clips" : "Colour clip";
+    for (const auto& ref : selection)
+        if (spanOf(project, ref).has_value())
+            edit.commands.push_back(
+                std::make_unique<core::SetClipColour>(ref.track, ref.clip, ref.midi, colour));
+    return edit;
+}
+
+Edit deleteRange(const core::Project& project,
+                 const std::vector<core::Id>& tracks,
+                 core::SamplePosition start,
+                 core::SamplePosition end,
+                 bool ripple,
+                 bool automation)
+{
+    Edit edit;
+    edit.name = ripple ? "Ripple delete range" : "Delete range";
+    std::vector<core::Id> present;
+    for (const auto id : tracks)
+        if (project.findTrack(id) != nullptr)
+            present.push_back(id);
+    if (end > start && !present.empty())
+        edit.commands.push_back(
+            std::make_unique<core::RemoveTimeRange>(std::move(present), start, end, ripple, automation));
+    return edit;
+}
+
 Edit trimClip(const core::Project& project,
               const ClipRef& ref,
               core::SamplePosition start,
@@ -416,10 +557,49 @@ std::vector<ClipboardItem> copyClips(const core::Project& project, const Selecti
     return items;
 }
 
+std::vector<ClipboardItem> copyRange(const core::Project& project,
+                                     const std::vector<core::Id>& tracks,
+                                     core::SamplePosition start,
+                                     core::SamplePosition end)
+{
+    std::vector<ClipboardItem> items;
+    int firstRow = -1;
+    for (int row = 0; row < static_cast<int>(project.tracks.size()); ++row)
+    {
+        const auto& track = project.tracks[static_cast<size_t>(row)];
+        if (std::find(tracks.begin(), tracks.end(), track.id) == tracks.end())
+            continue;
+        const auto add = [&](ClipboardItem item)
+        {
+            if (firstRow < 0)
+                firstRow = row;
+            item.trackOffset = row - firstRow;
+            items.push_back(std::move(item));
+        };
+        for (const auto& c : track.clips)
+            if (auto part = core::clipPart(c, start, end))
+            {
+                ClipboardItem item;
+                item.audio = *part;
+                add(std::move(item));
+            }
+        for (const auto& m : track.midiClips)
+            if (auto part = core::midiClipPart(m, start, end))
+            {
+                ClipboardItem item;
+                item.midi = true;
+                item.midiClip = *part;
+                add(std::move(item));
+            }
+    }
+    return items;
+}
+
 Edit pasteClips(const core::Project& project,
                 const std::vector<ClipboardItem>& clipboard,
                 int row,
-                core::SamplePosition at)
+                core::SamplePosition at,
+                std::optional<core::SamplePosition> origin)
 {
     Edit edit;
     edit.name = "Paste clips";
@@ -432,6 +612,8 @@ Edit pasteClips(const core::Project& project,
         const auto start = item.midi ? item.midiClip.start : item.audio.start;
         earliest = earliest < 0 ? start : std::min(earliest, start);
     }
+    if (origin)
+        earliest = *origin;
     for (const auto& item : clipboard)
     {
         const int target = std::clamp(row + item.trackOffset, 0, static_cast<int>(project.tracks.size()) - 1);

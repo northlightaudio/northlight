@@ -6,6 +6,7 @@
 #include "app/ProjectLoad.h"
 #include "audio/JuceMediaLoader.h"
 #include "audio/PeakStore.h"
+#include "core/ArrangeCommands.h"
 #include "core/Command.h"
 #include "core/Model.h"
 #include "core/TempoMap.h"
@@ -139,9 +140,11 @@ public:
     std::string redoName() const { return undo_.redoName(); }
     bool canRedo() const noexcept { return undo_.canRedo(); }
 
-    // Adds a track with the file as a clip starting at `at`. Returns an error
-    // message or empty on success.
-    std::string importAudioFile(const juce::File& file, core::SamplePosition at);
+    // Adds a track with the file as a clip starting at `at` or, given an audio
+    // track (`target`), puts the clip on it there. Returns an error message or
+    // empty on success.
+    std::string
+    importAudioFile(const juce::File& file, core::SamplePosition at, core::Id target = core::invalidId);
     // Imports a Standard MIDI File (type 0 or 1) at `at` (moved back to its bar):
     // a MIDI track per file track (and per channel, where a track uses several),
     // each with one clip, aimed at `target` (an instrument channel, or the one a
@@ -159,10 +162,11 @@ public:
     // listening to every input. Returns the new track's id.
     // A MIDI track playing a new instrument channel (Aurora unless a type is
     // given); returns the MIDI track.
-    core::Id addMidiTrack(const std::string& instrumentType = {});
+    // `place`: where it goes (core::placeAfter the selected track); the end by default.
+    core::Id addMidiTrack(const std::string& instrumentType = {}, core::TrackPlace place = {});
     // A MIDI track that plays an existing instrument channel (placed just above
     // it), or plays nothing when `channel` is invalidId (placed at the end).
-    core::Id addMidiTrackPlaying(core::Id channel);
+    core::Id addMidiTrackPlaying(core::Id channel, core::TrackPlace place = {});
     // A new instrument channel playing `type`, placed under the MIDI track, which
     // is aimed at it (one step). Returns the channel's id, or invalidId.
     core::Id playNewInstrument(core::Id midiTrack, const std::string& type);

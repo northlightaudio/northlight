@@ -647,8 +647,17 @@ them), and a clip's body, header band, hatching, outline and name by
 The arrange view's edits are built by plain functions in `ui::edit` (`ClipOps`, no
 JUCE, unit tested): the keys and menus (delete, split, join, mute, paste) and the
 drags it commits on release (move, with the take-group and same-kind rules,
-trim, stretch, fade and gain); the view only previews a gesture and emits what
-they return.
+copy, the automation that follows moved clips, trim, stretch, fade and gain, and
+the time range's delete, copy and paste); the view only previews a gesture and
+emits what they return. The track and range edits they need are commands of
+their own in `core/ArrangeCommands` (duplicate a track, move tracks as a block
+into or out of folders, reorder buses, a clip's name and colour, remove a time
+range), and `core::placeAfter` says where a new track goes. The arrange view keeps
+the set of selected tracks beside the shared `ui::Selection` (which holds the one
+in focus), and `AutomationLanes` keeps its own point selection and clipboard,
+which the arrange view's Delete, cut, copy and paste ask first. The snap grids
+(straight, triplet, dotted) are one table, `ui/timeline/SnapGrids.h`, that every
+view's snapping and the snap menu read.
 
 The arrange view itself is split by job under `src/ui/arrange/`: `ArrangeLayout`
 (the rows' heights and tops, no JUCE, tested), `ArrangeView::Painter` (one per

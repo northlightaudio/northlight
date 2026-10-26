@@ -47,7 +47,7 @@ namespace northlight::ui
 // Editing (Phase 6): click selects a clip (Shift adds, Ctrl toggles), drag on
 // empty space lassos, drag a clip body moves the selection (across tracks too),
 // drag a clip's edge trims it, drag the handle at a clip's top corner sets its
-// fade, Ctrl+drag a body vertically sets its gain. Moves and trims snap to the
+// fade, Ctrl+drag copies, Ctrl+Shift+drag a body vertically sets its gain. Moves and trims snap to the
 // grid (G toggles). Keys: Delete removes (E toggles ripple: later clips close the
 // gap), Ctrl+D duplicates, S splits at the playhead, J joins, X crossfades
 // overlapping neighbours, Ctrl+Shift+N normalises, Left/Right nudge by a grid
@@ -55,7 +55,7 @@ namespace northlight::ui
 // commands through onEdit (one undo step each).
 //
 // Markers and regions live in the ruler's lower row: M adds a marker at the
-// playhead, Shift+M a region from the loop region, comma and full stop jump to
+// playhead, Alt+M a region from the time selection or the loop, comma and full stop jump to
 // the previous and next marker, a click on a flag selects it (and locates), a
 // drag moves it (snapped), a double-click renames it, Delete removes it.
 //
@@ -100,8 +100,10 @@ public:
     std::function<void(core::Id, const std::string&)> onTrackMidiInputChanged;
     std::function<void(core::Id, bool)> onTrackArmChanged;
     std::function<void(core::Id, core::MonitorMode)> onTrackMonitorChanged;
-    // Files dropped on the view, with the timeline position under the pointer.
-    std::function<void(const std::vector<juce::File>&, core::SamplePosition)> onImportFiles;
+    // Files dropped on the view, with the timeline position under the pointer
+    // (snapped) and the audio track they land on: invalidId when dropped below
+    // the last lane (or on a lane that takes no audio), for a new track per file.
+    std::function<void(const std::vector<juce::File>&, core::SamplePosition, core::Id track)> onImportFiles;
     // Extensions the drop target accepts, e.g. "*.wav;*.flac".
     void setAcceptedExtensions(const juce::String& wildcards);
 
@@ -154,6 +156,21 @@ public:
     // Shows the selection's track (without a shared Selection, selects it first).
     void setSelectedTrack(core::Id trackId);
     core::Id selectedTrack() const noexcept { return trackSelection().channel(); }
+    // Several tracks can be selected (a click selects one, Ctrl+click toggles,
+    // Shift+click selects the run from the last one, Up/Down move): the shared
+    // Selection holds the one in focus, this view the rest. Track actions (arm,
+    // mute, solo, colour, delete, move, folder, freeze, duplicate) apply to all
+    // of them, and a time range spans them. In row order; the selected channel
+    // alone when it is the only one.
+    std::vector<core::Id> selectedTracks() const;
+    void selectTracks(const std::vector<core::Id>& tracks); // the first takes the focus
+    // Up / Down: the track above or below (Shift extends the selection).
+    void moveTrackSelection(int direction, bool extend);
+    // Shift+M / Shift+S / Shift+R: the selected tracks' mute, solo or arm, all set
+    // to the opposite of the focused one's.
+    void toggleMuteSelectedTracks();
+    void toggleSoloSelectedTracks();
+    void toggleArmSelectedTracks();
     // The empty state's actions (screens/shell.md).
     std::function<void()> onAddAudioTrack, onImportRequested, onAddBus;
     // The plugins its "New instrument" menus offer (the shell's shared sources).
@@ -222,11 +239,41 @@ public:
     // Launch flags and captures: the clip menu on the first clip, and the
     // pointer resting at a point in the view (as if the mouse were there).
     void openFirstClipMenu();
+    // Launch flags and captures: the selected track's menu (at its header), the
+    // time selection's menu, rows first..last selected, a bar's position (from 1),
+    // and points first..last of the first open automation lane with points.
+    void openTrackMenu();
+    void openRangeMenu();
+    void selectRows(int first, int last);
+    core::SamplePosition positionOfBar(double bar) const;
+    void selectAutomationPoints(int first, int last);
     void pointerAt(juce::Point<int> p, juce::ModifierKeys mods = {});
     juce::Point<int> pointOnRow(int row, double bar) const; // bar as the ruler counts, from 1
     bool clipboardEmpty() const noexcept { return clipboard_.empty(); }
     // Renames the selected track inline (F2).
     void renameSelectedTrack();
+    // F2 (interaction.md 10.4): the selected clip's name when a clip is selected,
+    // otherwise the selected track's.
+    void renameSelected();
+    // An inline field over the clip's header (Enter renames, Esc or focus loss cancels).
+    void renameClip(const ClipRef& ref);
+    // Clips moved or copied in time take their track's automation under them
+    // along (screens/arrange.md "Automation"); on by default, in the ruler's menu.
+    void setAutomationFollowsClips(bool on) { automationFollows_ = on; }
+    bool automationFollowsClips() const noexcept { return automationFollows_; }
+    bool hasTimeSelection() const noexcept { return timeSelEnd_ > timeSelStart_; }
+    // The time selection (the range tool, Shift+drag in the ruler) and its edits:
+    // a range across the selected tracks. Delete removes it (closing the gap with
+    // ripple), cut and copy take its clips' parts, paste puts them at the playhead,
+    // and the loop can be set to it.
+    void setTimeSelection(core::SamplePosition start, core::SamplePosition end);
+    void deleteTimeRange();
+    void copyTimeRange();
+    void cutTimeRange();
+    void loopTimeSelection();
+    void clearTimeSelection();
+    // Asks the owner to set the loop region and turn looping on.
+    std::function<void(core::SamplePosition, core::SamplePosition)> onLoopRange;
     void selectAll();
     void clearSelection();
 
@@ -254,6 +301,10 @@ public:
     void itemDragExit(const SourceDetails& details) override;
     void itemDropped(const SourceDetails& details) override;
     std::function<void(core::Id trackId, const std::string& type)> onInsertPlugin;
+    // Where dropped files land: the lane's track when it takes them (invalidId: new
+    // tracks), at the snapped position under the pointer.
+    core::Id dropTrackAt(int y, const juce::StringArray& files) const;
+    core::SamplePosition dropPosition(int x) const;
     // A MIDI track asked for a new instrument: make a channel for it and aim the track there.
     std::function<void(core::Id midiTrack, const std::string& type)> onPlayNewInstrument;
     // Names for insert types (the automation lanes' names).
@@ -353,6 +404,8 @@ private:
     class Painter;
     void drawTooltip(juce::Graphics& g, const juce::String& text, juce::Point<int> at);
     juce::Colour trackColour(const core::Track& track, int row) const;
+    // A clip's own colour, or its track's (clip colour 0).
+    juce::Colour clipColour(const core::Track& track, std::uint32_t colour) const;
     juce::Rectangle<int> loopBand() const noexcept; // in the bars row, empty without a region
     bool mediaMissing(const std::string& path);
     void refreshMissingMedia();
@@ -364,6 +417,35 @@ private:
     const core::Channel* channelAtRow(int row) const;
     std::function<std::string(const std::string&)> displayName_;
     void reorderDrag(core::Id trackId, juce::Point<int> screen, bool released);
+    // Where a track drag would drop: the track to go before (invalidId: the end of
+    // the tracks), the folder the moved tracks join, and the insertion line's row
+    // and indent. Buses reorder among the buses.
+    struct ReorderTarget
+    {
+        core::Id before = core::invalidId;
+        core::Id folder = core::invalidId;
+        int row = -1;  // the row whose top the line marks (the row count: the end)
+        int depth = 0; // folder levels, for the line's indent
+        bool valid = false;
+    };
+    ReorderTarget reorderTarget(const std::vector<core::Id>& moving, juce::Point<int> local) const;
+    void busReorderDrag(core::Id busId, juce::Point<int> screen, bool released);
+    // Multi-track selection (selectedTracks): the set beyond the shared Selection's
+    // channel, and the track a Shift+click runs from.
+    std::vector<core::Id> trackSet_;
+    core::Id trackAnchor_ = core::invalidId;
+    void pressTrack(core::Id id, juce::ModifierKeys mods, bool onControl);
+    bool inTrackSet(core::Id id) const noexcept;
+    void pruneTrackSet();
+    // A header's command, made for every selected track when the header's track is
+    // one of several selected (mute, solo, colour).
+    void headerCommand(std::unique_ptr<core::Command> command);
+    void armTracks(core::Id pressed, bool armed);
+    bool automationFollows_ = true;
+    // The clipboard: clips (with, for a range copy, where the range began) or
+    // automation points (AutomationLanes keeps those); the last copy pastes.
+    std::optional<core::SamplePosition> clipboardOrigin_;
+    std::unique_ptr<juce::TextEditor> clipNameEditor_;
     void finishTimeSelection();
     void splitAtSelection();
     juce::String positionText(core::SamplePosition position) const;
@@ -519,6 +601,7 @@ private:
     static constexpr juce::uint32 mediaRecheckMs = 2000;
     core::Id reorderFrom_ = core::invalidId;
     int reorderTo_ = -1;
+    int reorderDepth_ = 0;
     double lastMeterMs_ = 0.0;
     Tool tool_ = Tool::select;
     juce::String snapTargetName_;

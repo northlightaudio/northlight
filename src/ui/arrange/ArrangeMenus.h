@@ -30,6 +30,9 @@ public:
     // sends on, or a new instrument (a channel for it, just under the track).
     void targetMenu(core::Id trackId, juce::Rectangle<int> screenArea);
     void rulerMenu(juce::Point<int> screen);
+    // A right-click inside the time selection: its edits (delete, cut, copy, paste,
+    // split, loop, a region from it).
+    void rangeMenu(juce::Point<int> screen);
     void addTrackMenu();
     void busMenu(core::Id busId, juce::Point<int> screen); // a group bus's or an FX track's row
     void masterMenu(juce::Point<int> screen);

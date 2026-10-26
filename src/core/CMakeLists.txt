@@ -15,6 +15,8 @@ add_library(northlight_core STATIC
     Command.cpp
     Comping.h
     Comping.cpp
+    ArrangeCommands.h
+    ArrangeCommands.cpp
     ProjectJson.h
     ProjectIds.h
     ProjectJson.cpp)

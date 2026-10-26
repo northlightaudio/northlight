@@ -64,7 +64,8 @@ Where the recording and the arrangement live. It must stay legible with 4 tracks
   (an up-down cursor shows there), 28 to 240 px; double-click the edge to return to
   the default the corner stepper sets. The height is saved with the project and
   the resize is undoable.
-- **Overview strip** (**Decision**: deferred; keep the slot).
+- **Overview strip** (**Decision**: deferred; keep the slot. Still deferred
+  2026-10-26: it needs its own design for how it shows clips and the view box.)
 
 ## Ruler
 
@@ -80,7 +81,9 @@ Where the recording and the arrangement live. It must stay legible with 4 tracks
   `caption` to its right, clipped at the next marker; regions as a `regionFill` span
   with the name at its start. Selected marker: `accent` flag and name. Hover: name
   turns `textPrimary`. Drag moves on the grid; double-click renames inline (a text
-  field over the name, Enter/Esc).
+  field over the name, Enter/Esc). A marker or region just added (M, Alt+M) opens
+  that field at once, so it is named as it is added (Esc keeps "Marker 3"). Alt+M
+  makes the region from the time selection when there is one, else the loop.
 - Playhead: 1 px `playhead` line across ruler and lanes with a 7 px downward triangle
   head in the ruler. `playheadRecording` while recording. Click in the ruler locates;
   drag scrubs the position (no audio scrub in v1).
@@ -159,13 +162,23 @@ Rows at `trackRow` 56 default. Contents, left to right, inside `space.sm` paddin
 - At `trackRowLarge` 112 the header gains a third row with pan knob, output select and
   a sends summary ("2 sends").
 - Selected track: header `laneSelected` fill and name `textPrimary`; the lane gets
-  the same fill. Hover: `laneHover`.
+  the same fill. Several tracks can be selected (click, Ctrl+click toggles,
+  Shift+click a run, Up/Down move, Shift+Up/Down extend); each shows the same, and
+  arm, mute, solo, colour and Shift+M/S/R act on them all. Hover: `laneHover`.
 - Armed: the R button is solid `arm`; the stripe pulses once (120 ms) when arming.
   Recording: the whole header's stripe becomes `record` and the input meter shows
   recording.
-- Drag the icon to reorder tracks; a 2 px `accent` insertion line shows the drop
-  position. Right-click opens the track menu (rename, colour, duplicate, delete,
-  freeze, add bus, show automation lanes).
+- Drag the icon to reorder tracks (every selected track when the dragged one is
+  selected; a folder brings its tracks); a 2 px `accent` insertion line shows the
+  drop position, indented 12 px per folder level to show where the tracks land. Over
+  a folder's tracks the drop joins that folder, below its last track the pointer's
+  distance from the left picks the depth (in the folder, or out of it), and dropping
+  under an open folder's header puts them first in it. Buses reorder among the buses
+  the same way (the master stays last). Right-click opens the track menu (rename,
+  colour, duplicate, delete, freeze, folder, add bus, show automation lanes), which
+  acts on every selected track ("3 tracks" heads it).
+- New tracks (audio, MIDI) go right after the selected track, in its folder; a
+  selected folder takes them at the end of what it holds.
 - Buses appear in the same list after tracks, with no input row, in their colour
   (FX tracks Lichen and group buses Overcast unless coloured); the master is always
   last, pinned, in Slate. The mixer and the automation lanes use the same colours.
@@ -183,9 +196,12 @@ Rows at `trackRow` 56 default. Contents, left to right, inside `space.sm` paddin
   (the piano roll, the automation lanes and the tempo track too).
 - Loop and punch regions extend through the lanes as `loopFill`/`punchFill` bands at
   half the ruler alpha.
-- Drop target: dragging files over a lane highlights the lane `dropTarget` and shows a
-  ghost clip outline at the snapped drop position with the file name; dropping below
-  the last lane creates a track per file.
+- Drop target: dragging files over a lane that takes them (audio files on an audio
+  track, MIDI files on a MIDI track or instrument channel) highlights the lane
+  `dropTarget` and shows a ghost clip outline at the snapped drop position with the
+  file name; the drop puts them there (several one after another). Over any other
+  lane, or below the last lane, the ghost sits under the last track with "New track"
+  ("3 new tracks") in the header column, and the drop creates a track per file.
 
 ## Clips
 
@@ -224,7 +240,14 @@ Rows at `trackRow` 56 default. Contents, left to right, inside `space.sm` paddin
   zone), header (move), lower corners (fade).
 - During a move drag: the original stays at 40% alpha, the ghost moves with the
   pointer, snapped; a 1 px `snapGuide` vertical line marks the snap target through
-  all lanes; a tooltip shows the new start in bars.beats and the delta.
+  all lanes; a tooltip shows the new start in bars.beats and the delta. With Ctrl
+  held (when released) it is a copy: the originals stay at full strength, the cursor
+  is the copy cursor, the tooltip starts "Copy to", and the copies are selected.
+- Clip gain: Ctrl+Shift+drag an audio clip's body up or down (a quarter dB a pixel,
+  -60 to +24 dB); the header shows the gain and a tooltip the value while dragging.
+- Automation follows clips: moving or copying clips along their track takes the
+  automation under them along (points where they land give way). On by default; the
+  ruler's menu has "Move automation with clips".
 - Trim drag: the clip edge follows; the waveform does not move (source stays put);
   tooltip shows the new length.
 - Stretch drag: Alt+drag of the right edge stretches the clip to the new end
@@ -242,7 +265,10 @@ Rows at `trackRow` 56 default. Contents, left to right, inside `space.sm` paddin
 - Clip menu (right-click a clip; it is selected first if it was not): the clip's
   name ("+2" when more are selected), then Split here (at the snapped position under
   the click), Join with next (Join for a selection), Crossfade (audio), Mute clip or
-  Unmute clip, Duplicate, Normalise (audio); Cut, Copy, Delete; then for audio the
+  Unmute clip, Duplicate, Rename... (F2; an inline field over the clip's header,
+  Enter renames, Esc cancels), Colour (the track palette, Default gives the clip its
+  track's colour back; the clip's body, header and waveform take it), Normalise
+  (audio); Cut, Copy, Delete; then for audio the
   stretch and pitch items and Open in Sampler, for MIDI Open in piano roll; and
   Track.... Each item shows its key; an item that would do nothing is disabled. The
   edits act on the selection.
@@ -338,6 +364,19 @@ hides its tracks' lanes too.
   `surface3` tag beside the point while dragging. Each edit is one undo step.
   Removing a lane's last point keeps the lane; Delete lane removes it and its
   points (undoable).
+- **Selecting points:** a click on a point selects it, Shift+click adds,
+  Ctrl+click toggles, and a Shift or Ctrl drag over empty curve space draws a
+  marquee (`selectionFill`, 1 px `selectionOutline`) that adds what it covers.
+  Selected points are ringed 1.5 px in `selectionOutline`. Dragging one of several
+  selected moves them together (snapped by the dragged one; Shift keeps their
+  times), between the points either side. Delete removes them, Ctrl+X/C/V cut, copy
+  and paste them (a paste goes into the selected or last pressed lane at the
+  playhead, replacing what was there). Esc or a press outside the lanes clears it.
+- **Tools in lanes:** the range tool drags a stretch of time in one lane (drawn as
+  the time selection is); Delete removes its points keeping the value at both ends,
+  copy takes its exact shape. The pencil draws freehand (a point every 4 px or more,
+  replacing the points under the stroke); the eraser removes a clicked point or
+  every point it sweeps over. Each is one undo step.
 - **Writing:** in Touch, Latch and Write, a control moved with no lane for it gets
   one when the pass ends, and the channel's lanes open; writing into a hidden or
   collapsed lane shows it again.
@@ -353,14 +392,23 @@ hides its tracks' lanes too.
 - Click selects a clip or track; Shift+click extends; Ctrl+click toggles; lasso from
   empty lane space draws a `selectionOutline` 1 px rectangle with `selectionFill`.
 - Time selection: drag in the ruler's bars row with Shift, or in a lane with the
-  range tool (key 2), to select a time range across the selected tracks, shown as
-  `selectionFill` through those lanes. Used by split-at-range, bounce range, loop
-  from selection.
+  range tool (key 2; over clips too), to select a time range across the selected
+  tracks, shown as `selectionFill` through those lanes. A range drag across rows
+  selects the tracks it spans. Delete removes the range from those tracks (clips
+  inside go, clips across an end are cut, automation keeps its value at both ends;
+  with ripple the rest closes up), Ctrl+X/C cut and copy its clips' parts, Ctrl+V
+  pastes them at the playhead keeping their distance from the range's start. Its
+  right-click menu: Delete range (Ripple delete range), Cut, Copy, Paste at
+  playhead, Split at range, Loop selection (the loop takes it and turns on), Add
+  region from selection, Clear selection. A click with the range tool, or any other
+  press in a lane, ends it. Used by split-at-range, bounce range, loop from
+  selection and Alt+M.
 - Esc clears selection.
 
 ## Scrolling and zoom
 
-- Horizontal: wheel; vertical: Shift+wheel; both via overlay scrollbars. The view
+- Vertical (the tracks): wheel; horizontal (time): Shift+wheel or a sideways
+  wheel or swipe (interaction.md 10.2); both via overlay scrollbars. The view
   follows the playhead during playback ("page" scrolling: jumps by a screen when the
   playhead reaches 90% of the width), toggleable in the ruler's right-click menu.
 - Zoom range: from 1 px per 256 samples to 1 px per 8 bars; zoom steps are smooth

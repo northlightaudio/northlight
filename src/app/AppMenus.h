@@ -41,7 +41,8 @@ struct ProjectMenu
 };
 juce::PopupMenu projectMenu(const ProjectMenu& menu);
 
-// The snap grids the header's snap menu offers (divisions of a bar; 0 is adaptive).
+// The snap grids the header's snap menu offers (ui/timeline/SnapGrids.h codes; 0 is
+// adaptive), in menu order: the straight grids, then triplets and dotted ones.
 struct SnapGrid
 {
     int divisions;

@@ -567,6 +567,14 @@ A toggle that sits in a row of knobs takes a knob cell:
 - a live value or "Off" where a knob shows its value;
 - its name on the labels' line.
 
+### Selected points (automation)
+
+A point on a timeline curve that is selected (the arrange view's automation lanes)
+keeps its dot and gains a 1.5 px `selectionOutline` ring, 1.5 px out; a marquee
+over a lane is the lasso's pattern (`selectionFill`, 1 px `selectionOutline`), and
+a stretch of time chosen in one lane is the time selection's band clipped to that
+lane, with 1 px `selectionOutline` ends.
+
 ### Handle (a point to drag)
 
 A point on a display that drags (an envelope's stages, a curve's node, a

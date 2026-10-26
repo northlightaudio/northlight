@@ -1,5 +1,6 @@
 #include "ui/ArrangeView.h"
 
+#include "core/ArrangeCommands.h"
 #include "core/Command.h"
 #include "core/Comping.h"
 #include "ui/Db.h"
@@ -103,6 +104,7 @@ ArrangeView::ArrangeView(audio::PeakStore& peaks, const Theme& theme)
                                                          : theme_.colours.textTertiary;
     };
     automation_.geometry.playhead = [this] { return playhead_; };
+    automation_.geometry.tool = [this] { return static_cast<int>(tool_); };
     automation_.onEdit = [this](std::vector<std::unique_ptr<core::Command>> commands, const std::string& name)
     { emit(std::move(commands), name); };
     automation_.onLayoutChanged = [this]
@@ -206,6 +208,11 @@ void ArrangeView::setProject(const core::Project* project, bool valuesOnly)
     if (sharedSelection_ == nullptr &&
         (project_ == nullptr || project_->findChannel(selectedTrack()) == nullptr))
         ownSelection_.select(core::invalidId); // a track or an FX track that went
+    pruneTrackSet();
+    if (timeSelEnd_ > timeSelStart_)
+        std::erase_if(timeSelTracks_,
+                      [this](core::Id id)
+                      { return project_ == nullptr || project_->findTrack(id) == nullptr; });
     refreshMissingMedia();
     animateRowChanges();
     rebuildHeaders();
@@ -315,16 +322,239 @@ void ArrangeView::setSelectedTrack(core::Id trackId)
 {
     if (sharedSelection_ == nullptr)
         ownSelection_.select(trackId);
+    // A channel chosen elsewhere (the mixer, a new track) is selected alone; the
+    // focus moving within this view's selection keeps it.
+    if (std::find(trackSet_.begin(), trackSet_.end(), trackId) == trackSet_.end())
+    {
+        trackSet_.assign(1, trackId);
+        trackAnchor_ = trackId;
+    }
     showSelectedTrack();
 }
 
 void ArrangeView::showSelectedTrack()
 {
-    const auto selected = selectedTrack();
     for (auto* list : {&headers_, &fxHeaders_})
         for (auto& header : *list)
-            header->setSelected(header->trackId() == selected);
+            header->setSelected(inTrackSet(header->trackId()));
     repaint();
+}
+
+bool ArrangeView::inTrackSet(core::Id id) const noexcept
+{
+    if (id == core::invalidId)
+        return false;
+    return id == selectedTrack() || std::find(trackSet_.begin(), trackSet_.end(), id) != trackSet_.end();
+}
+
+void ArrangeView::pruneTrackSet()
+{
+    std::erase_if(trackSet_,
+                  [this](core::Id id)
+                  { return project_ == nullptr || project_->findChannel(id) == nullptr; });
+}
+
+std::vector<core::Id> ArrangeView::selectedTracks() const
+{
+    std::vector<core::Id> out;
+    if (project_ == nullptr)
+    {
+        if (selectedTrack() != core::invalidId)
+            out.push_back(selectedTrack());
+        return out;
+    }
+    for (const auto& t : project_->tracks)
+        if (inTrackSet(t.id))
+            out.push_back(t.id);
+    for (const auto* channel : busRows())
+        if (inTrackSet(channel->id))
+            out.push_back(channel->id);
+    return out;
+}
+
+void ArrangeView::selectTracks(const std::vector<core::Id>& tracks)
+{
+    if (tracks.empty())
+        return;
+    trackSet_ = tracks;
+    trackAnchor_ = tracks.front();
+    if (tracks.front() == selectedTrack())
+        showSelectedTrack();
+    else
+        selectTrack(tracks.front());
+}
+
+void ArrangeView::pressTrack(core::Id id, juce::ModifierKeys mods, bool onControl)
+{
+    markers_.clearSelection();
+    if (mods.isCtrlDown() || mods.isCommandDown())
+    {
+        // Ctrl: in or out of the selection (the focus goes to the last one left).
+        if (inTrackSet(id) && selectedTracks().size() > 1)
+        {
+            auto now = selectedTracks();
+            std::erase(now, id);
+            trackSet_ = now;
+            selectTrack(id == selectedTrack() ? trackSet_.back() : selectedTrack());
+            showSelectedTrack();
+            return;
+        }
+        if (!inTrackSet(id))
+        {
+            trackSet_ = selectedTracks();
+            trackSet_.push_back(id);
+        }
+        trackAnchor_ = id;
+        selectTrack(id);
+        showSelectedTrack();
+        return;
+    }
+    if (mods.isShiftDown() && project_ != nullptr && trackAnchor_ != core::invalidId &&
+        project_->findChannel(trackAnchor_) != nullptr)
+    {
+        // Shift: every row from the anchor to this one.
+        std::vector<core::Id> rows;
+        for (int r = 0; r < rowCount(); ++r)
+            rows.push_back(channelAtRow(r)->id);
+        const auto a = std::find(rows.begin(), rows.end(), trackAnchor_);
+        const auto b = std::find(rows.begin(), rows.end(), id);
+        if (a != rows.end() && b != rows.end())
+        {
+            trackSet_.assign(std::min(a, b), std::max(a, b) + 1);
+            selectTrack(id);
+            showSelectedTrack();
+            return;
+        }
+    }
+    // A press on one of several selected tracks keeps them (a control or a drag
+    // acts on them all); a click on the header alone selects it alone (onClicked).
+    juce::ignoreUnused(onControl);
+    if (!inTrackSet(id))
+        trackSet_.assign(1, id);
+    trackAnchor_ = id;
+    selectTrack(id);
+    showSelectedTrack();
+}
+
+void ArrangeView::moveTrackSelection(int direction, bool extend)
+{
+    if (project_ == nullptr || rowCount() == 0)
+        return;
+    int row = -1;
+    for (int r = 0; r < rowCount(); ++r)
+        if (channelAtRow(r)->id == selectedTrack())
+            row = r;
+    // The next row with any height (a closed folder's tracks have none).
+    int next = row;
+    do
+        next += direction;
+    while (next >= 0 && next < rowCount() && rowHeightOf(next) <= 0);
+    if (row < 0)
+        next = direction > 0 ? 0 : rowCount() - 1;
+    if (next < 0 || next >= rowCount())
+        return;
+    const auto id = channelAtRow(next)->id;
+    if (extend)
+        pressTrack(id, juce::ModifierKeys(juce::ModifierKeys::shiftModifier), false);
+    else
+        selectTracks({id});
+    // Keep it in view.
+    const auto bounds = rowBounds(next);
+    if (bounds.getY() < rulerHeight)
+        setVerticalScroll(verticalScroll_ - (rulerHeight - bounds.getY()));
+    else if (bounds.getBottom() > rulerHeight + lanesHeight())
+        setVerticalScroll(verticalScroll_ + bounds.getBottom() - (rulerHeight + lanesHeight()));
+}
+
+void ArrangeView::headerCommand(std::unique_ptr<core::Command> command)
+{
+    // A mute, solo or colour from the header of one of several selected tracks
+    // sets every selected track (the master has none of them).
+    const auto many = [this](core::Id pressed)
+    {
+        std::vector<core::Id> ids;
+        if (!inTrackSet(pressed))
+            return ids;
+        for (const auto id : selectedTracks())
+            if (id != core::masterId)
+                ids.push_back(id);
+        if (ids.size() < 2)
+            ids.clear();
+        return ids;
+    };
+    std::vector<std::unique_ptr<core::Command>> commands;
+    std::string name;
+    if (const auto* mute = dynamic_cast<const core::SetTrackMute*>(command.get()))
+    {
+        for (const auto id : many(mute->target().channel))
+            commands.push_back(std::make_unique<core::SetTrackMute>(id, mute->value()));
+        name = mute->value() ? "Mute tracks" : "Unmute tracks";
+    }
+    else if (const auto* solo = dynamic_cast<const core::SetTrackSolo*>(command.get()))
+    {
+        for (const auto id : many(solo->target().channel))
+            commands.push_back(std::make_unique<core::SetTrackSolo>(id, solo->value()));
+        name = solo->value() ? "Solo tracks" : "Unsolo tracks";
+    }
+    else if (const auto* colour = dynamic_cast<const core::SetColour*>(command.get()))
+    {
+        for (const auto id : many(colour->target().channel))
+            commands.push_back(std::make_unique<core::SetColour>(id, colour->value()));
+        name = "Colour tracks";
+    }
+    if (!commands.empty())
+    {
+        emit(std::move(commands), name);
+        return;
+    }
+    if (onCommand)
+        onCommand(std::move(command));
+}
+
+void ArrangeView::armTracks(core::Id pressed, bool armed)
+{
+    std::vector<std::unique_ptr<core::Command>> commands;
+    if (project_ != nullptr && inTrackSet(pressed))
+        for (const auto id : selectedTracks())
+            if (const auto* t = project_->findTrack(id);
+                t != nullptr && (t->kind == core::TrackKind::audio || t->isMidi()))
+                commands.push_back(std::make_unique<core::SetTrackArmed>(id, armed));
+    if (commands.size() > 1)
+        emit(std::move(commands), armed ? "Arm tracks" : "Disarm tracks");
+    else if (onTrackArmChanged)
+        onTrackArmChanged(pressed, armed);
+}
+
+void ArrangeView::toggleMuteSelectedTracks()
+{
+    const auto* focus = project_ != nullptr ? project_->findChannel(selectedTrack()) : nullptr;
+    if (focus == nullptr || focus->id == core::masterId)
+        return;
+    std::vector<std::unique_ptr<core::Command>> commands;
+    for (const auto id : selectedTracks())
+        if (id != core::masterId)
+            commands.push_back(std::make_unique<core::SetTrackMute>(id, !focus->mute));
+    emit(std::move(commands), focus->mute ? "Unmute tracks" : "Mute tracks");
+}
+
+void ArrangeView::toggleSoloSelectedTracks()
+{
+    const auto* focus = project_ != nullptr ? project_->findChannel(selectedTrack()) : nullptr;
+    if (focus == nullptr || focus->id == core::masterId)
+        return;
+    std::vector<std::unique_ptr<core::Command>> commands;
+    for (const auto id : selectedTracks())
+        if (id != core::masterId)
+            commands.push_back(std::make_unique<core::SetTrackSolo>(id, !focus->solo));
+    emit(std::move(commands), focus->solo ? "Unsolo tracks" : "Solo tracks");
+}
+
+void ArrangeView::toggleArmSelectedTracks()
+{
+    const auto* focus = project_ != nullptr ? project_->findTrack(selectedTrack()) : nullptr;
+    if (focus == nullptr)
+        return;
+    armTracks(focus->id, !focus->armed);
 }
 
 void ArrangeView::selectTrack(core::Id trackId)
@@ -368,22 +598,21 @@ void ArrangeView::rebuildHeaders()
             if (onTrackMidiInputChanged)
                 onTrackMidiInputChanged(id, name);
         };
-        header->onArmChanged = [this](core::Id id, bool armed)
+        header->onArmChanged = [this](core::Id id, bool armed) { armTracks(id, armed); };
+        header->onSelected = [this](core::Id id, juce::ModifierKeys mods, bool onControl)
+        { pressTrack(id, mods, onControl); };
+        header->onClicked = [this](core::Id id, juce::ModifierKeys mods)
         {
-            if (onTrackArmChanged)
-                onTrackArmChanged(id, armed);
+            if (!mods.isCtrlDown() && !mods.isCommandDown() && !mods.isShiftDown())
+                selectTracks({id});
         };
-        header->onSelected = [this](core::Id id) { selectTrack(id); };
         header->onMonitorChanged = [this](core::Id id, core::MonitorMode mode)
         {
             if (onTrackMonitorChanged)
                 onTrackMonitorChanged(id, mode);
         };
         header->onCommand = [this](std::unique_ptr<core::Command> command)
-        {
-            if (onCommand)
-                onCommand(std::move(command));
-        };
+        { headerCommand(std::move(command)); };
         header->onGestureBegin = [this](const std::string& name)
         {
             if (onGestureBegin)
@@ -414,12 +643,18 @@ void ArrangeView::rebuildHeaders()
     while (fxHeaders_.size() < fx.size())
     {
         auto header = std::make_unique<TrackHeader>(theme_);
-        header->onSelected = [this](core::Id id) { selectTrack(id); };
-        header->onCommand = [this](std::unique_ptr<core::Command> command)
+        header->onSelected = [this](core::Id id, juce::ModifierKeys mods, bool onControl)
+        { pressTrack(id, mods, onControl); };
+        header->onClicked = [this](core::Id id, juce::ModifierKeys mods)
         {
-            if (onCommand)
-                onCommand(std::move(command));
+            if (!mods.isCtrlDown() && !mods.isCommandDown() && !mods.isShiftDown())
+                selectTracks({id});
         };
+        header->onCommand = [this](std::unique_ptr<core::Command> command)
+        { headerCommand(std::move(command)); };
+        // Buses reorder among the buses by their number, as tracks do (the master stays last).
+        header->onReorderDrag = [this](core::Id id, juce::Point<int> screen, bool released)
+        { busReorderDrag(id, screen, released); };
         header->onGestureBegin = [this](const std::string& name)
         {
             if (onGestureBegin)
@@ -454,13 +689,13 @@ void ArrangeView::rebuildHeaders()
         fxHeaders_[i]->setMaster(master);
         fxHeaders_[i]->setTrack(
             shown, static_cast<int>(count + i), *project_, inputChoices_, midiInputNames_);
-        fxHeaders_[i]->setSelected(fx[i]->id == selectedTrack());
+        fxHeaders_[i]->setSelected(inTrackSet(fx[i]->id));
     }
     for (size_t i = 0; i < count; ++i)
     {
         const auto& track = project_->tracks[i];
         headers_[i]->setTrack(track, static_cast<int>(i), *project_, inputChoices_, midiInputNames_);
-        headers_[i]->setSelected(track.id == selectedTrack());
+        headers_[i]->setSelected(inTrackSet(track.id));
         bool missing = false;
         for (const auto& clip : track.clips)
             missing = missing || mediaMissing(clip.mediaPath);
@@ -881,6 +1116,7 @@ void ArrangeView::mouseDown(const juce::MouseEvent& e)
     dragStart_ = e.getPosition();
     dragPoint_ = e.getPosition();
     markers_.closeEditor();
+    automation_.clearSelection(); // (a press in the lanes' rows goes to them, not here)
     // The boundary between the headers and the lanes resizes the headers.
     if (e.y >= rulerHeight && std::abs(e.x - headerWidth()) <= 2)
     {
@@ -944,7 +1180,7 @@ void ArrangeView::mouseDownRuler(const juce::MouseEvent& e)
     // Shift+drag in the bars row: a time selection across the selected tracks.
     if (e.mods.isShiftDown() && e.y >= markersRowHeight)
     {
-        gesture_ = std::make_unique<TimeSelectGesture>(*this, sampleForX(e.x));
+        gesture_ = std::make_unique<TimeSelectGesture>(*this, sampleForX(e.x), -1);
         return;
     }
     // A marker flag: select it, locate to it, and a drag moves it. Elsewhere
@@ -969,12 +1205,20 @@ void ArrangeView::mouseDownLanes(const juce::MouseEvent& e)
 
     const auto at = sampleForX(e.x);
     const auto hit = hitTest(e.getPosition());
+    // The lane's track: selected (alone, unless it is one of several selected).
     if (hit.track != nullptr)
-        selectTrack(hit.track->id);
+        pressTrack(hit.track->id, {}, true);
     else if (const int row = channelRowAtY(e.y); row >= 0)
-        selectTrack(channelAtRow(row)->id); // an FX track's lane
+        pressTrack(channelAtRow(row)->id, {}, true); // an FX track's lane
     if (e.mods.isPopupMenu())
     {
+        // Inside the time selection: the range's menu.
+        if (hasTimeSelection() && hit.track != nullptr && at >= timeSelStart_ && at < timeSelEnd_ &&
+            std::find(timeSelTracks_.begin(), timeSelTracks_.end(), hit.track->id) != timeSelTracks_.end())
+        {
+            menus_.rangeMenu(e.getScreenPosition());
+            return;
+        }
         if (const auto ref = clipAt(hit); ref.clip != core::invalidId)
         {
             if (!isSelected(ref))
@@ -989,11 +1233,20 @@ void ArrangeView::mouseDownLanes(const juce::MouseEvent& e)
             menus_.trackMenu(hit.track->id, e.getScreenPosition());
         return;
     }
+    if (tool_ == Tool::range && hit.track != nullptr)
+    {
+        // The range tool: a drag in a lane, over clips or not, selects a time
+        // range; dragged across rows it selects those tracks.
+        gesture_ = std::make_unique<TimeSelectGesture>(*this, at, hit.row);
+        return;
+    }
+    // Any other press in a lane ends the time selection.
+    clearTimeSelection();
     if (usesClipTool() && mouseDownWithTool(e, hit))
         return;
     if (hit.midiClip != nullptr)
     {
-        // MIDI clips move and trim.
+        // MIDI clips move (Ctrl+drag: a copy) and trim.
         const ClipRef ref{hit.track->id, hit.midiClip->id, true};
         if (e.mods.isShiftDown() || e.mods.isCtrlDown())
             select(ref, true);
@@ -1004,7 +1257,7 @@ void ArrangeView::mouseDownLanes(const juce::MouseEvent& e)
         }
         ArrangeClipPress press{ref, {hit.midiClip->start, hit.midiClip->length}, {}, at, hit.row};
         if (hit.zone == Zone::move)
-            gesture_ = std::make_unique<MoveGesture>(*this, std::move(press));
+            gesture_ = std::make_unique<MoveGesture>(*this, std::move(press), e.mods.isCtrlDown());
         else
             gesture_ = std::make_unique<TrimGesture>(*this, std::move(press), hit.zone == Zone::trimLeft);
         repaint();
@@ -1017,12 +1270,6 @@ void ArrangeView::mouseDownLanes(const juce::MouseEvent& e)
         repaint();
         return;
     }
-    if (hit.clip == nullptr && tool_ == Tool::range)
-    {
-        // The range tool: a drag in a lane selects a time range.
-        gesture_ = std::make_unique<TimeSelectGesture>(*this, at);
-        return;
-    }
     if (hit.clip == nullptr)
     {
         // Empty lane: a drag lassos, a click locates (and clears the selection).
@@ -1031,13 +1278,21 @@ void ArrangeView::mouseDownLanes(const juce::MouseEvent& e)
     }
 
     const ClipRef ref{hit.track->id, hit.clip->id};
-    // Ctrl+drag on the body: gain (Ctrl+click alone toggles the selection); Alt+drag
-    // of the right edge: stretch.
-    const bool gain = e.mods.isCtrlDown() && hit.zone == Zone::move;
+    // Ctrl+drag on the body: a copy (Ctrl+click alone toggles the selection);
+    // Ctrl+Shift+drag: the clip's gain; Alt+drag of the right edge: stretch.
+    const bool gain = e.mods.isCtrlDown() && e.mods.isShiftDown() && hit.zone == Zone::move;
     const bool stretch = hit.zone == Zone::trimRight && e.mods.isAltDown();
-    if (e.mods.isShiftDown())
+    if (gain)
+    {
+        if (!isSelected(ref))
+        {
+            selection_.clear();
+            select(ref, true);
+        }
+    }
+    else if (e.mods.isShiftDown())
         select(ref, true);
-    else if (e.mods.isCtrlDown() && !gain)
+    else if (e.mods.isCtrlDown())
         select(ref, true); // toggle happens on mouse up if nothing was dragged
     else if (!isSelected(ref.track, ref.clip))
     {
@@ -1059,7 +1314,7 @@ void ArrangeView::mouseDownLanes(const juce::MouseEvent& e)
     else if (hit.zone == Zone::trimLeft || hit.zone == Zone::trimRight)
         gesture_ = std::make_unique<TrimGesture>(*this, std::move(press), hit.zone == Zone::trimLeft);
     else
-        gesture_ = std::make_unique<MoveGesture>(*this, std::move(press));
+        gesture_ = std::make_unique<MoveGesture>(*this, std::move(press), e.mods.isCtrlDown());
     repaint();
 }
 
@@ -1085,7 +1340,7 @@ void ArrangeView::mouseUp(const juce::MouseEvent& e)
     {
         // A clip picked on another track moves the track selection with it.
         if (!selection_.empty())
-            selectTrack(selection_.back().track);
+            pressTrack(selection_.back().track, {}, true);
         notifySelection();
     }
     repaint();
@@ -1105,13 +1360,7 @@ void ArrangeView::pointerAt(juce::Point<int> p, juce::ModifierKeys mods)
 
 juce::Point<int> ArrangeView::pointOnRow(int row, double bar) const
 {
-    bar -= 1.0; // the tempo map counts bars from 0
-    const int whole = static_cast<int>(std::floor(bar));
-    const auto from = tempoMap_.barStart(whole);
-    const auto to = tempoMap_.barStart(whole + 1);
-    const auto at = from + static_cast<core::SamplePosition>((bar - static_cast<double>(whole)) *
-                                                             static_cast<double>(to - from));
-    return {xForSample(at), rowBounds(row).getCentreY()};
+    return {xForSample(positionOfBar(bar)), rowBounds(row).getCentreY()};
 }
 
 void ArrangeView::modifierKeysChanged(const juce::ModifierKeys& mods)
@@ -1195,9 +1444,9 @@ void ArrangeView::mouseWheelMove(const juce::MouseEvent& e, const juce::MouseWhe
                 std::max(headerWidth(), e.x));
         return;
     }
-    // The wheel scrolls time; Shift+wheel (or a vertical wheel over the headers)
-    // scrolls the tracks.
-    const bool vertical = e.mods.isShiftDown() || (e.x < headerWidth() && wheel.deltaX == 0.0f);
+    // The wheel scrolls the tracks; Shift+wheel (or a sideways wheel or swipe)
+    // scrolls time (interaction.md 10.2).
+    const bool vertical = !e.mods.isShiftDown() && wheel.deltaX == 0.0f;
     const float delta = wheel.deltaX != 0.0f ? wheel.deltaX : wheel.deltaY;
     if (delta == 0.0f)
         return;
@@ -1257,6 +1506,31 @@ void ArrangeView::itemDragExit(const SourceDetails&)
     repaint();
 }
 
+core::Id ArrangeView::dropTrackAt(int y, const juce::StringArray& files) const
+{
+    // A lane takes the files when it is a track of their kind (audio files on an
+    // audio track, MIDI files on a MIDI track or an instrument channel); else (or
+    // below the last lane) each file makes a track of its own.
+    const int row = rowAtY(y);
+    if (row < 0 || files.isEmpty() || project_ == nullptr)
+        return core::invalidId;
+    const auto& track = project_->tracks[static_cast<size_t>(row)];
+    for (const auto& f : files)
+    {
+        const bool midi = juce::File(f).hasFileExtension("mid;midi");
+        const bool takes = midi ? track.isMidi() || track.isInstrument()
+                                : track.kind == core::TrackKind::audio && !track.isFrozen();
+        if (!takes)
+            return core::invalidId;
+    }
+    return track.id;
+}
+
+core::SamplePosition ArrangeView::dropPosition(int x) const
+{
+    return snapped(sampleForX(std::max(headerWidth(), x)));
+}
+
 void ArrangeView::itemDropped(const SourceDetails& details)
 {
     if (const auto file = fileFromDragDescription(details.description); file != juce::File())
@@ -1264,7 +1538,9 @@ void ArrangeView::itemDropped(const SourceDetails& details)
         dragOver_ = false;
         repaint();
         if (onImportFiles && file.existsAsFile())
-            onImportFiles({file}, sampleForX(std::max(headerWidth(), details.localPosition.x)));
+            onImportFiles({file},
+                          dropPosition(details.localPosition.x),
+                          dropTrackAt(details.localPosition.y, juce::StringArray(file.getFullPathName())));
         return;
     }
     const int row = rowAtY(details.localPosition.y);
@@ -1315,27 +1591,37 @@ void ArrangeView::fileDragExit(const juce::StringArray&)
     repaint();
 }
 
-void ArrangeView::filesDropped(const juce::StringArray& files, int x, int)
+void ArrangeView::filesDropped(const juce::StringArray& files, int x, int y)
 {
     dragOver_ = false;
     repaint();
     if (!onImportFiles)
         return;
     std::vector<juce::File> accepted;
+    juce::StringArray paths;
     for (const auto& f : files)
     {
         const juce::File file(f);
         if (acceptedExtensions_.isEmpty() ||
             acceptedExtensions_.contains(file.getFileExtension().toLowerCase()))
+        {
             accepted.push_back(file);
+            paths.add(f);
+        }
     }
     if (!accepted.empty())
-        onImportFiles(accepted, sampleForX(std::max(headerWidth(), x)));
+        onImportFiles(accepted, dropPosition(x), dropTrackAt(y, paths));
 }
 
 juce::Colour ArrangeView::trackColour(const core::Track& track, int row) const
 {
     return theme_.track.forTrack(track.colour, row);
+}
+
+juce::Colour ArrangeView::clipColour(const core::Track& track, std::uint32_t colour) const
+{
+    const int row = project_ != nullptr ? project_->trackIndex(track.id) : 0;
+    return colour != 0 ? theme_.track.forTrack(colour, row) : trackColour(track, row);
 }
 
 void ArrangeView::paint(juce::Graphics& g)
@@ -1534,6 +1820,8 @@ void ArrangeView::selectAll()
 void ArrangeView::clearSelection()
 {
     selection_.clear();
+    clearTimeSelection();
+    automation_.clearSelection();
     notifySelection();
     repaint();
 }
@@ -1967,6 +2255,47 @@ void ArrangeView::openFirstClipMenu()
     }
 }
 
+void ArrangeView::openTrackMenu()
+{
+    for (auto& header : headers_)
+        if (header->trackId() == selectedTrack())
+            menus_.trackMenu(selectedTrack(),
+                             header->localPointToGlobal(header->getLocalBounds().getCentre()));
+}
+
+void ArrangeView::openRangeMenu()
+{
+    if (!hasTimeSelection() || project_ == nullptr || timeSelTracks_.empty())
+        return;
+    const int row = project_->trackIndex(timeSelTracks_.front());
+    const auto at = juce::Point<int>((xForSample(timeSelStart_) + xForSample(timeSelEnd_)) / 2,
+                                     rowBounds(row).getCentreY());
+    menus_.rangeMenu(localPointToGlobal(at));
+}
+
+void ArrangeView::selectRows(int first, int last)
+{
+    std::vector<core::Id> ids;
+    for (int r = std::max(0, first); r <= last && r < rowCount(); ++r)
+        ids.push_back(channelAtRow(r)->id);
+    selectTracks(ids);
+}
+
+core::SamplePosition ArrangeView::positionOfBar(double bar) const
+{
+    bar -= 1.0; // the tempo map counts bars from 0
+    const int whole = static_cast<int>(std::floor(bar));
+    const auto from = tempoMap_.barStart(whole);
+    const auto to = tempoMap_.barStart(whole + 1);
+    return from + static_cast<core::SamplePosition>((bar - static_cast<double>(whole)) *
+                                                    static_cast<double>(to - from));
+}
+
+void ArrangeView::selectAutomationPoints(int first, int last)
+{
+    automation_.selectFirstLanePoints(first, last);
+}
+
 void ArrangeView::addMidiClip(core::Id trackId, core::SamplePosition start, core::SamplePosition end)
 {
     const auto* track = project_ != nullptr ? project_->findTrack(trackId) : nullptr;
@@ -1993,12 +2322,40 @@ void ArrangeView::addMidiClip(core::Id trackId, core::SamplePosition start, core
 
 void ArrangeView::copySelection()
 {
-    if (project_ != nullptr)
+    // Selected automation points first, then a time range, then the clips.
+    if (automation_.copySelection())
+    {
+        clipboard_.clear();
+        clipboardOrigin_.reset();
+        return;
+    }
+    if (hasTimeSelection())
+    {
+        copyTimeRange();
+        return;
+    }
+    if (project_ != nullptr && !selection_.empty())
+    {
         clipboard_ = edit::copyClips(*project_, selection_);
+        clipboardOrigin_.reset();
+        automation_.clearClipboard();
+    }
 }
 
 void ArrangeView::cutSelection()
 {
+    if (automation_.copySelection())
+    {
+        clipboard_.clear();
+        clipboardOrigin_.reset();
+        automation_.deleteSelection();
+        return;
+    }
+    if (hasTimeSelection())
+    {
+        cutTimeRange();
+        return;
+    }
     copySelection();
     if (!clipboard_.empty())
         deleteSelection();
@@ -2006,20 +2363,89 @@ void ArrangeView::cutSelection()
 
 void ArrangeView::paste()
 {
+    const auto at = playheadForEdits ? playheadForEdits() : playhead_;
+    if (automation_.paste(at))
+        return;
     if (project_ == nullptr || clipboard_.empty())
         return;
-    auto e = edit::pasteClips(*project_,
-                              clipboard_,
-                              project_->trackIndex(selectedTrack()),
-                              playheadForEdits ? playheadForEdits() : playhead_);
+    auto e =
+        edit::pasteClips(*project_, clipboard_, project_->trackIndex(selectedTrack()), at, clipboardOrigin_);
     emit(std::move(e.commands), e.name);
 }
 
 void ArrangeView::renameSelectedTrack()
 {
-    for (auto& header : headers_)
-        if (header->trackId() == selectedTrack())
-            header->startRename();
+    for (auto* list : {&headers_, &fxHeaders_})
+        for (auto& header : *list)
+            if (header->trackId() == selectedTrack() && header->trackId() != core::masterId)
+                header->startRename();
+}
+
+void ArrangeView::renameSelected()
+{
+    if (!selection_.empty() && spanOf(selection_.back()).has_value())
+        renameClip(selection_.back());
+    else
+        renameSelectedTrack();
+}
+
+void ArrangeView::renameClip(const ClipRef& ref)
+{
+    const auto span = spanOf(ref);
+    const auto* track = project_ != nullptr ? project_->findTrack(ref.track) : nullptr;
+    if (!span || track == nullptr)
+        return;
+    const auto* audio = ref.midi ? nullptr : track->findClip(ref.clip);
+    const auto* midi = ref.midi ? track->findMidiClip(ref.clip) : nullptr;
+    const auto name = juce::String::fromUTF8((audio != nullptr ? audio->name : midi->name).c_str());
+    const int row = project_->trackIndex(ref.track);
+    // Over the clip's header (its name's place), at least wide enough to type in.
+    auto bounds = spanBounds(span->start, span->length, row)
+                      .withHeight(std::max(theme_.sizes.clipHeader, theme_.sizes.controlCompact))
+                      .getIntersection(lanesBounds());
+    bounds = bounds.withWidth(std::max(bounds.getWidth(), 160)).constrainedWithin(lanesBounds());
+    if (bounds.isEmpty())
+        return;
+    clipNameEditor_ = std::make_unique<juce::TextEditor>();
+    clipNameEditor_->setFont(theme_.caption());
+    clipNameEditor_->setText(name, false);
+    clipNameEditor_->setSelectAllWhenFocused(true);
+    clipNameEditor_->setBounds(bounds);
+    juce::Component::SafePointer<ArrangeView> safe(this);
+    clipNameEditor_->onReturnKey = [safe, ref, name]
+    {
+        if (safe == nullptr || safe->clipNameEditor_ == nullptr)
+            return;
+        const auto text = safe->clipNameEditor_->getText().trim();
+        juce::MessageManager::callAsync(
+            [safe]
+            {
+                if (safe != nullptr)
+                    safe->clipNameEditor_.reset();
+            });
+        safe->clipNameEditor_->setVisible(false);
+        if (text.isEmpty() || text == name || safe->project_ == nullptr)
+            return;
+        auto e = edit::renameClip(*safe->project_, ref, text.toStdString());
+        safe->emit(std::move(e.commands), e.name);
+        safe->grabKeyboardFocus();
+    };
+    clipNameEditor_->onEscapeKey = [safe]
+    {
+        if (safe == nullptr || safe->clipNameEditor_ == nullptr)
+            return;
+        safe->clipNameEditor_->setVisible(false);
+        juce::MessageManager::callAsync(
+            [safe]
+            {
+                if (safe != nullptr)
+                    safe->clipNameEditor_.reset();
+            });
+        safe->grabKeyboardFocus();
+    };
+    clipNameEditor_->onFocusLost = clipNameEditor_->onEscapeKey;
+    addAndMakeVisible(*clipNameEditor_);
+    clipNameEditor_->grabKeyboardFocus();
 }
 const core::AudioClip* ArrangeView::findClip(const ClipRef& ref, const core::Track** track) const noexcept
 {
@@ -2074,6 +2500,15 @@ std::vector<const core::Track*> ArrangeView::folderChoices(core::Id trackId) con
 
 void ArrangeView::deleteSelection()
 {
+    // Selected automation points (or a range in a lane) first, then the time
+    // selection, then the clips.
+    if (automation_.deleteSelection())
+        return;
+    if (hasTimeSelection())
+    {
+        deleteTimeRange();
+        return;
+    }
     removeClips(std::vector<ClipRef>(selection_));
 }
 
@@ -2142,17 +2577,144 @@ void ArrangeView::finishTimeSelection()
         timeSelTracks_.clear();
         return;
     }
-    // The range applies to the selected tracks: the clip selection's tracks, else
-    // the selected track, else every track.
+    // The range spans the selected tracks (buses have no clips), else every track.
     timeSelTracks_.clear();
-    for (const auto& ref : selection_)
-        if (std::find(timeSelTracks_.begin(), timeSelTracks_.end(), ref.track) == timeSelTracks_.end())
-            timeSelTracks_.push_back(ref.track);
-    if (timeSelTracks_.empty() && selectedTrack() != core::invalidId)
-        timeSelTracks_.push_back(selectedTrack());
-    if (timeSelTracks_.empty() && project_ != nullptr)
+    if (project_ == nullptr)
+        return;
+    for (const auto id : selectedTracks())
+        if (project_->findTrack(id) != nullptr)
+            timeSelTracks_.push_back(id);
+    if (timeSelTracks_.empty())
         for (const auto& t : project_->tracks)
             timeSelTracks_.push_back(t.id);
+}
+
+void ArrangeView::setTimeSelection(core::SamplePosition start, core::SamplePosition end)
+{
+    timeSelStart_ = std::max<core::SamplePosition>(0, std::min(start, end));
+    timeSelEnd_ = std::max<core::SamplePosition>(0, std::max(start, end));
+    finishTimeSelection();
+    repaint();
+}
+
+void ArrangeView::clearTimeSelection()
+{
+    if (timeSelEnd_ <= timeSelStart_ && timeSelTracks_.empty())
+        return;
+    timeSelStart_ = timeSelEnd_ = 0;
+    timeSelTracks_.clear();
+    repaint();
+}
+
+void ArrangeView::deleteTimeRange()
+{
+    if (project_ == nullptr || !hasTimeSelection())
+        return;
+    auto e =
+        edit::deleteRange(*project_, timeSelTracks_, timeSelStart_, timeSelEnd_, ripple_, automationFollows_);
+    emit(std::move(e.commands), e.name);
+    // With ripple the range closed; without it, it stays selected (now empty).
+    if (ripple_)
+        clearTimeSelection();
+    std::erase_if(selection_, [this](const ClipRef& ref) { return !spanOf(ref).has_value(); });
+    notifySelection();
+    repaint();
+}
+
+void ArrangeView::copyTimeRange()
+{
+    if (project_ == nullptr || !hasTimeSelection())
+        return;
+    clipboard_ = edit::copyRange(*project_, timeSelTracks_, timeSelStart_, timeSelEnd_);
+    clipboardOrigin_ = timeSelStart_;
+    automation_.clearClipboard(); // the last copy pastes
+}
+
+void ArrangeView::cutTimeRange()
+{
+    copyTimeRange();
+    deleteTimeRange();
+}
+
+void ArrangeView::loopTimeSelection()
+{
+    if (!hasTimeSelection())
+        return;
+    if (onLoopRange)
+        onLoopRange(timeSelStart_, timeSelEnd_);
+    else if (onRegionChanged)
+        onRegionChanged(timeSelStart_, timeSelEnd_);
+}
+
+ArrangeView::ReorderTarget ArrangeView::reorderTarget(const std::vector<core::Id>& moving,
+                                                      juce::Point<int> local) const
+{
+    ReorderTarget target;
+    if (project_ == nullptr || moving.empty())
+        return target;
+    const auto& tracks = project_->tracks;
+    const int count = static_cast<int>(tracks.size());
+    const auto isMoving = [&](core::Id id)
+    { return std::find(moving.begin(), moving.end(), id) != moving.end(); };
+    // The row boundary nearest the pointer, outside the moving block.
+    int index = -1;
+    for (int i = 0; i <= count; ++i)
+    {
+        const bool inBlock = i > 0 && i < count && isMoving(tracks[static_cast<size_t>(i - 1)].id) &&
+                             isMoving(tracks[static_cast<size_t>(i)].id);
+        // (A hidden row's top is the next shown row's: a closed folder's tracks
+        // stay together.)
+        if (inBlock || (i < count && rowHeightOf(i) <= 0))
+            continue;
+        if (index < 0 || std::abs(rowTop(i) - local.y) < std::abs(rowTop(index) - local.y))
+            index = i;
+    }
+    if (index < 0)
+        return target;
+    // The tracks either side of the line, the moving ones left out.
+    const core::Track* above = nullptr;
+    for (int i = index - 1; i >= 0 && above == nullptr; --i)
+        if (!isMoving(tracks[static_cast<size_t>(i)].id) && rowHeightOf(i) > 0)
+            above = &tracks[static_cast<size_t>(i)];
+    const core::Track* below = nullptr;
+    for (int i = index; i < count && below == nullptr; ++i)
+        if (!isMoving(tracks[static_cast<size_t>(i)].id))
+            below = &tracks[static_cast<size_t>(i)];
+    // How deep the moved tracks sit: from the track below's depth to one inside
+    // the track above (inside it when it is an open folder), chosen by how far
+    // right the pointer is, 12 px a level as the headers indent.
+    const auto depthOf = [&](const core::Track* t) { return t != nullptr ? project_->folderDepth(*t) : 0; };
+    const int deepest =
+        above == nullptr ? 0 : depthOf(above) + (above->isFolder() && above->folderOpen ? 1 : 0);
+    const int shallowest = std::min(deepest, depthOf(below));
+    const int wanted =
+        (local.x - theme_.track.headerStripeWidth - theme_.spacing.sm + 6) / 12; // the nearest level
+    int depth = std::clamp(wanted, shallowest, deepest);
+    if (above != nullptr && above->isFolder() && above->folderOpen && below != nullptr &&
+        below->folder == above->id)
+        depth = deepest; // between a folder and its first track: inside it
+    // The folder at that depth: the one above (or one it sits in) holding depth - 1.
+    core::Id folder = core::invalidId;
+    if (depth > 0 && above != nullptr)
+    {
+        const core::Track* f = above->isFolder() && above->folderOpen && depthOf(above) == depth - 1
+                                   ? above
+                                   : project_->folderOf(*above);
+        while (f != nullptr && depthOf(f) > depth - 1)
+            f = project_->folderOf(*f);
+        if (f != nullptr && depthOf(f) == depth - 1)
+            folder = f->id;
+    }
+    // Never into a folder that moves (or one inside it).
+    for (const auto id : moving)
+        if (folder != core::invalidId && project_->insideFolder(folder, id))
+            folder = core::invalidId;
+    target.before = below != nullptr ? below->id : core::invalidId;
+    target.folder = folder;
+    target.depth = folder != core::invalidId ? depthOf(project_->findTrack(folder)) + 1 : 0;
+    target.row = index;
+    target.valid = true;
+    return target;
 }
 
 void ArrangeView::reorderDrag(core::Id trackId, juce::Point<int> screen, bool released)
@@ -2160,26 +2722,76 @@ void ArrangeView::reorderDrag(core::Id trackId, juce::Point<int> screen, bool re
     if (project_ == nullptr)
         return;
     const auto local = getLocalPoint(nullptr, screen);
-    const int count = static_cast<int>(project_->tracks.size());
-    // The insertion index: the row boundary nearest the pointer.
-    int index = 0;
-    for (int i = 1; i <= count; ++i)
-        if (std::abs(rowTop(i) - local.y) < std::abs(rowTop(index) - local.y))
-            index = i;
+    // The selected tracks move together when the dragged one is among them; a
+    // folder takes what it holds along.
+    std::vector<core::Id> picked;
+    if (inTrackSet(trackId))
+        for (const auto id : selectedTracks())
+            if (project_->findTrack(id) != nullptr)
+                picked.push_back(id);
+    if (picked.empty())
+        picked.push_back(trackId);
+    const auto moving = core::withFolderContents(*project_, picked);
+    const auto target = reorderTarget(moving, local);
     if (!released)
     {
         reorderFrom_ = trackId;
-        reorderTo_ = index;
+        reorderTo_ = target.valid ? target.row : -1;
+        reorderDepth_ = target.depth;
         repaint();
         return;
     }
-    const int from = project_->trackIndex(trackId);
+    reorderFrom_ = core::invalidId;
+    reorderTo_ = -1;
+    repaint();
+    if (!target.valid || !onCommand)
+        return;
+    // Nothing to do when the order and the folders would stay as they are.
+    std::vector<core::Id> order;
+    for (const auto& t : project_->tracks)
+        if (std::find(moving.begin(), moving.end(), t.id) == moving.end())
+            order.push_back(t.id);
+    const auto at = std::find(order.begin(), order.end(), target.before);
+    order.insert(at, moving.begin(), moving.end());
+    bool same = true;
+    for (size_t i = 0; i < order.size(); ++i)
+        same = same && order[i] == project_->tracks[i].id;
+    for (const auto id : moving)
+        if (const auto* t = project_->findTrack(id);
+            std::find(moving.begin(), moving.end(), t->folder) == moving.end())
+            same = same && t->folder == target.folder;
+    if (!same)
+        onCommand(std::make_unique<core::MoveTracks>(moving, target.before, target.folder));
+}
+
+void ArrangeView::busReorderDrag(core::Id busId, juce::Point<int> screen, bool released)
+{
+    if (project_ == nullptr)
+        return;
+    const int from = project_->busIndex(busId);
+    if (from < 0)
+        return;
+    const auto local = getLocalPoint(nullptr, screen);
+    const int first = static_cast<int>(project_->tracks.size());
+    const int count = static_cast<int>(project_->buses.size());
+    int index = 0;
+    for (int i = 1; i <= count; ++i)
+        if (std::abs(rowTop(first + i) - local.y) < std::abs(rowTop(first + index) - local.y))
+            index = i;
+    if (!released)
+    {
+        reorderFrom_ = busId;
+        reorderTo_ = first + index;
+        reorderDepth_ = 0;
+        repaint();
+        return;
+    }
     reorderFrom_ = core::invalidId;
     reorderTo_ = -1;
     repaint();
     const int to = index > from ? index - 1 : index;
-    if (from >= 0 && to != from && onCommand)
-        onCommand(std::make_unique<core::MoveTrack>(trackId, to));
+    if (to != from && onCommand)
+        onCommand(std::make_unique<core::MoveBus>(busId, to));
 }
 
 void ArrangeView::joinSelection()
@@ -2277,7 +2889,18 @@ juce::Rectangle<int> ArrangeView::lanesBounds() const noexcept
 
 void ArrangeView::addMarkerAtPlayhead(bool region)
 {
-    markers_.addMarker(playheadForEdits ? playheadForEdits() : playhead_, region, regionStart_, regionEnd_);
+    // A region spans the time selection, else the loop. The new marker's name is
+    // open for typing at once (Enter keeps it, Esc keeps the numbered name).
+    const bool fromSelection = region && hasTimeSelection();
+    const auto id = markers_.addMarker(playheadForEdits ? playheadForEdits() : playhead_,
+                                       region,
+                                       fromSelection ? timeSelStart_ : regionStart_,
+                                       fromSelection ? timeSelEnd_ : regionEnd_);
+    if (id != core::invalidId)
+    {
+        repaint(0, 0, getWidth(), rulerHeight);
+        markers_.rename(id);
+    }
 }
 
 void ArrangeView::jumpToMarker(int direction)

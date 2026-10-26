@@ -15,6 +15,7 @@
 #include "plugins/FxTracks.h"
 #include "plugins/Sampler.h"
 #include "plugins/StripPresets.h"
+#include "ui/ArrangeView.h"
 #include "ui/PianoRoll.h"
 #include "ui/strip/ModuleCard.h"
 
@@ -1044,11 +1045,59 @@ const std::vector<LaunchFlag<LaunchRun>>& LaunchRun::flags()
                  mods = juce::ModifierKeys(juce::ModifierKeys::altModifier);
              whenSettled(r, [&r, row, bar, mods] { r.window.arrangePointer(row, bar, mods); });
          }},
+        {"--select-tracks",
+         "<first> <last>",
+         2,
+         "select the arrange view's rows first to last (0-based, tracks then buses), once the window has "
+         "settled",
+         [](LaunchRun& r, Args& a)
+         {
+             const int first = a.integer();
+             const int last = a.integer();
+             whenSettled(r,
+                         [&r, first, last]
+                         {
+                             if (auto* view = r.window.arrangeView())
+                                 view->selectRows(first, last);
+                         });
+         }},
+        {"--time-selection",
+         "<bar> <bar>",
+         2,
+         "a time selection from one bar to another (from 1, fractions allowed) across the selected tracks, "
+         "once the window has settled",
+         [](LaunchRun& r, Args& a)
+         {
+             const double from = a.number();
+             const double to = a.number();
+             whenSettled(r,
+                         [&r, from, to]
+                         {
+                             if (auto* view = r.window.arrangeView())
+                                 view->setTimeSelection(view->positionOfBar(from), view->positionOfBar(to));
+                         });
+         }},
+        {"--automation-points",
+         "<first> <last>",
+         2,
+         "select points first to last (0-based) of the first open automation lane that has points, once the "
+         "window has settled",
+         [](LaunchRun& r, Args& a)
+         {
+             const int first = a.integer();
+             const int last = a.integer();
+             whenSettled(r,
+                         [&r, first, last]
+                         {
+                             if (auto* view = r.window.arrangeView())
+                                 view->selectAutomationPoints(first, last);
+                         });
+         }},
         {"--show-menu",
          "<name>",
          1,
          "open a menu as a click would, once the window has settled: project, add-track, clip (the first "
-         "clip's)",
+         "clip's), track (the selected track's), range (the time selection's)",
          [](LaunchRun& r, Args& a)
          {
              const auto key = a.text().unquoted();

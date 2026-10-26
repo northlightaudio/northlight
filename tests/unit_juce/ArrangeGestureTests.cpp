@@ -99,13 +99,61 @@ TEST_CASE("Dragging a clip's right edge trims it to the grid", "[ui][arrange][ge
     CHECK(f.clip().length == 96000); // its end from 72 000 to 120 000
 }
 
-TEST_CASE("Ctrl+dragging a clip's body up sets its gain", "[ui][arrange][gesture]")
+TEST_CASE("Ctrl+Shift+dragging a clip's body up sets its gain", "[ui][arrange][gesture]")
 {
     Fixture f;
-    f.drag({clipLeft + 10, bodyY}, {clipLeft + 10, bodyY - 24}, juce::ModifierKeys::ctrlModifier);
+    f.drag({clipLeft + 10, bodyY},
+           {clipLeft + 10, bodyY - 24},
+           juce::ModifierKeys(juce::ModifierKeys::ctrlModifier | juce::ModifierKeys::shiftModifier));
     CHECK(f.edits == std::vector<std::string>{"Set clip gain"});
     CHECK(f.clip().gain > 1.9f); // +6 dB
     CHECK(f.clip().gain < 2.1f);
+}
+
+TEST_CASE("Ctrl+dragging a clip's body copies it there and selects the copy", "[ui][arrange][gesture]")
+{
+    Fixture f;
+    f.drag({clipLeft + 10, bodyY}, {clipLeft + 10 + 41, bodyY}, juce::ModifierKeys::ctrlModifier);
+    CHECK(f.edits == std::vector<std::string>{"Copy clip"});
+    REQUIRE(f.project.tracks[0].clips.size() == 2);
+    CHECK(f.project.tracks[0].clips[0].start == 24000); // the original stays
+    CHECK(f.project.tracks[0].clips[1].start == 24000 + 48000);
+    REQUIRE(f.view.selection().size() == 1);
+    CHECK(f.view.selection()[0].clip == f.project.tracks[0].clips[1].id);
+}
+
+TEST_CASE("The range tool selects time over a clip, and Delete removes that range", "[ui][arrange][gesture]")
+{
+    Fixture f;
+    f.view.setTool(ui::ArrangeView::Tool::range);
+    f.drag({clipLeft + 11, bodyY}, {clipLeft + 41, bodyY}); // from beat 2 to beat 3, over the clip
+    REQUIRE(f.view.hasTimeSelection());
+    CHECK(f.view.timeSelectionStart() == 48000);
+    CHECK(f.view.timeSelectionEnd() == 72000);
+    f.view.deleteTimeRange(); // (what Delete does with a time selection)
+    CHECK(f.edits == std::vector<std::string>{"Delete range"});
+    REQUIRE(f.project.tracks[0].clips.size() == 1);
+    CHECK(f.clip().start == 24000);
+    CHECK(f.clip().length == 24000);
+}
+
+TEST_CASE("Mute from the keys acts on every selected track", "[ui][arrange]")
+{
+    Fixture f;
+    core::Track second;
+    second.id = 2;
+    f.project.tracks.push_back(second);
+    f.view.setProject(&f.project);
+    f.view.selectTracks({1, 2});
+    CHECK(f.view.selectedTracks() == std::vector<core::Id>{1, 2});
+    f.view.toggleMuteSelectedTracks();
+    CHECK(f.edits == std::vector<std::string>{"Mute tracks"});
+    CHECK(f.project.tracks[0].mute);
+    CHECK(f.project.tracks[1].mute);
+    // A track chosen elsewhere (not among the selected) is selected alone.
+    f.view.selectTracks({2});
+    f.view.setSelectedTrack(1);
+    CHECK(f.view.selectedTracks() == std::vector<core::Id>{1});
 }
 
 TEST_CASE("Dragging a fade handle sets the fade", "[ui][arrange][gesture]")

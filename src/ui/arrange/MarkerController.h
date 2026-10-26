@@ -52,11 +52,13 @@ public:
     void finishDrag(bool moved);          // moves it (one command) if it moved
     bool dragging() const noexcept { return dragging_; }
 
-    // M: a marker at `at`; Shift+M: a region over [regionStart, regionEnd).
-    void addMarker(core::SamplePosition at,
-                   bool region,
-                   core::SamplePosition regionStart,
-                   core::SamplePosition regionEnd);
+    // M: a marker at `at`; Alt+M: a region over [regionStart, regionEnd) (the time
+    // selection or the loop). The new marker is selected; its id (invalidId when
+    // nothing was added).
+    core::Id addMarker(core::SamplePosition at,
+                       bool region,
+                       core::SamplePosition regionStart,
+                       core::SamplePosition regionEnd);
     // , and .: the previous or next marker from `at` (the start before the first).
     void jump(int direction, core::SamplePosition at);
     // Delete: removes the selected marker; false when none is selected.

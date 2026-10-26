@@ -30,6 +30,12 @@ namespace northlight::ui
 // Editing a curve: click adds a point (dragging places it), drag a point to
 // move it (snapped in time; Shift keeps its time), double-click a point
 // removes it. A drag is previewed and committed on release as one command.
+// Points select: a click selects one, Shift+click adds, Ctrl+click toggles, a
+// Shift or Ctrl drag over empty space draws a marquee; dragging a point of a
+// larger selection moves them all. The arrange view's tools work in the lanes
+// too: the range tool selects a stretch of time in one lane, the pencil draws
+// freehand, the eraser removes the points it passes. Delete, cut, copy and
+// paste act on the selection (the arrange view's keys ask this first).
 //
 // The arrange view lays the rows out (blockHeight gives each channel's share)
 // and paints the lanes' backgrounds under its grid (paintBackgrounds); this
@@ -54,8 +60,24 @@ public:
         std::function<juce::Rectangle<int>(int row)> block;
         std::function<juce::Colour(int row)> colour; // the track's colour
         std::function<core::SamplePosition()> playhead;
+        // The arrange view's tool (its tool order: 0 select, 1 range, 2 pencil, 3 erase; the rest act as
+        // select).
+        std::function<int()> tool;
     };
     Geometry geometry;
+
+    // The selected points (in one lane) or a range of time in one lane, and the
+    // automation clipboard. Each returns whether it did anything.
+    bool hasSelection() const noexcept;
+    bool deleteSelection();
+    bool copySelection();
+    // Into the lane last edited or selected, at `at`, replacing what was there.
+    bool paste(core::SamplePosition at);
+    void clearSelection();
+    // Captures: points first..last of the first open lane that has points.
+    void selectFirstLanePoints(int first, int last);
+    void clearClipboard() noexcept { clipboard_.clear(); }
+    bool clipboardEmpty() const noexcept { return clipboard_.empty(); }
 
     void setProject(const core::Project* project);
 
@@ -164,6 +186,50 @@ private:
     int dragIndex_ = -1;
     bool dragNew_ = false;
     core::SamplePosition dragPosition_ = 0; // the moving point's position at mouse down
+    // What else a press in a lane can start, previewed in dragPoints_ until the release.
+    enum class Mode
+    {
+        none,
+        point,     // one point (dragIndex_)
+        selection, // the selected points together
+        marquee,   // Shift/Ctrl drag over empty space: a selection rectangle
+        range,     // the range tool: a stretch of time
+        draw,      // the pencil: freehand
+        erase,     // the eraser: points swept away
+    };
+    Mode mode_ = Mode::none;
+    bool previewing_ = false;                       // dragPoints_ shows instead of the lane's points
+    std::vector<core::AutomationPoint> dragOrigin_; // the lane's points at the press
+    std::vector<int> grabbed_;                      // the selected indices at the press (selection, marquee)
+    int grabIndex_ = -1;                            // the point pressed (selection)
+    juce::Point<int> pressAt_;
+    juce::Rectangle<int> marquee_;
+    std::vector<core::AutomationPoint> drawn_; // the pencil's points so far
+    std::vector<int> erased_;                  // indices into dragOrigin_
+    std::vector<char> previewMoved_;           // per dragPoints_ point: one of the moved selection
+    // The selection: points of one lane (indices into its points), or with the
+    // range tool a stretch of time in it.
+    core::Id selChannel_ = core::invalidId, selLane_ = core::invalidId;
+    std::vector<int> selected_;
+    core::SamplePosition rangeStart_ = 0, rangeEnd_ = 0;
+    bool hasRange() const noexcept { return rangeEnd_ > rangeStart_; }
+    bool isSelected(core::Id lane, int index) const noexcept;
+    void select(core::Id channel, core::Id lane, std::vector<int> points);
+    // The lane a paste goes to: the one last pressed.
+    core::Id activeChannel_ = core::invalidId, activeLane_ = core::invalidId;
+    // Copied points, at positions from the copy's start, and the span they cover.
+    std::vector<core::AutomationPoint> clipboard_;
+    core::SamplePosition clipboardLength_ = 0;
+    std::optional<Slot> slotOf(core::Id channel, core::Id lane) const;
+    juce::Point<float> pointPosition(const Slot& slot,
+                                     const core::Channel& track,
+                                     const Key& key,
+                                     const core::AutomationPoint& point) const;
+    // The points a stretch of time removes: those inside go, the value at each end stays.
+    static std::vector<core::AutomationPoint>
+    withoutRange(const core::AutomationLane& lane, core::SamplePosition start, core::SamplePosition end);
+    void previewMove(const juce::MouseEvent& e, const Slot& slot, const core::Channel& track, const Key& key);
+    void previewDraw(const juce::MouseEvent& e, const Slot& slot, const core::Channel& track, const Key& key);
     // A lane being resized, at its previewed height.
     core::Id resizeLane_ = core::invalidId, resizeChannel_ = core::invalidId;
     int resizeHeight_ = 0, resizeStartHeight_ = 0;

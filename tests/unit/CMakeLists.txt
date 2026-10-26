@@ -13,6 +13,7 @@ add_executable(northlight_unit_tests
     core/TempoMapTests.cpp
     core/FolderTests.cpp
     core/CompingTests.cpp
+    core/ArrangeCommandsTests.cpp
     core/NoteNamesTests.cpp
     engine/RtPrimitivesTests.cpp
     engine/EngineTests.cpp
@@ -74,6 +75,7 @@ add_executable(northlight_unit_tests
     hosting/PluginRegistryTests.cpp
     ui/SelectionTests.cpp
     ui/ClipOpsTests.cpp
+    ui/ArrangeEditsTests.cpp
     ui/TimelineViewportTests.cpp
     ui/GridLinesTests.cpp
     ui/ArrangeLayoutTests.cpp)

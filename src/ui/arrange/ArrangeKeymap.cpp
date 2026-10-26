@@ -79,6 +79,13 @@ const std::vector<ArrangeKey>& ArrangeKeymap::bindings()
                                                                           : v.playhead_,
                                                        k.getKeyCode() == Press::upKey ? 1 : -1);
                          }));
+        b.push_back(bind(Command::selectTrack,
+                         [](ArrangeView& v, const Press& k)
+                         {
+                             v.moveTrackSelection(k.getKeyCode() == Press::upKey ? -1 : 1,
+                                                  k.getModifiers().isShiftDown());
+                             return true;
+                         }));
         b.push_back(bind(Command::takeLanes,
                          [](ArrangeView& v, const Press&)
                          {

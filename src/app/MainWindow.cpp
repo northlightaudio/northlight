@@ -416,7 +416,7 @@ public:
                 // (10.4); elsewhere it is the mixer's panel key.
                 if (!tracks_.hasKeyboardFocus(true) || selection_.channel() == core::invalidId)
                     return false;
-                tracks_.renameSelectedTrack();
+                tracks_.renameSelected(); // the selected clip's name, else the track's
                 return true;
             case C::findPlugin:
                 panels_.show(ui::PanelId::browser);
@@ -469,13 +469,11 @@ public:
                 tracks_.setRippleEnabled(!tracks_.rippleEnabled());
                 refreshHeader();
                 return true;
-            case C::muteTrack:
-                if (const auto* t = selectedTrack())
-                    session_.execute(std::make_unique<core::SetTrackMute>(t->id, !t->mute));
+            case C::muteTrack: // every selected track
+                tracks_.toggleMuteSelectedTracks();
                 return true;
             case C::soloTrack:
-                if (const auto* t = selectedTrack())
-                    session_.execute(std::make_unique<core::SetTrackSolo>(t->id, !t->solo));
+                tracks_.toggleSoloSelectedTracks();
                 return true;
             case C::newProject:
                 fileActions_.newProject();
@@ -661,8 +659,14 @@ private:
         { session_.execute(std::make_unique<core::SetTrackArmed>(id, armed)); };
         tracks_.onTrackMonitorChanged = [this](core::Id id, core::MonitorMode mode)
         { session_.execute(std::make_unique<core::SetTrackMonitor>(id, mode)); };
-        tracks_.onImportFiles = [this](const std::vector<juce::File>& files, core::SamplePosition at)
-        { fileActions_.importFiles(files, at); };
+        tracks_.onImportFiles =
+            [this](const std::vector<juce::File>& files, core::SamplePosition at, core::Id track)
+        { fileActions_.importFiles(files, at, track); };
+        tracks_.onLoopRange = [this](core::SamplePosition start, core::SamplePosition end)
+        {
+            session_.setRegion(start, end);
+            session_.setLoopEnabled(true);
+        };
         tracks_.onEdit = [this](std::vector<std::unique_ptr<core::Command>> commands, const std::string& name)
         { session_.executeGroup(name, std::move(commands)); };
         tracks_.onOpenMidiClip = [this](core::Id trackId, core::Id clipId)
@@ -719,7 +723,8 @@ private:
         tracks_.onAddMidiTrack = [this](const std::string& type) { addMidiTrack(type); };
         tracks_.onAddMidiTrackPlaying = [this](core::Id channel)
         {
-            const auto id = session_.addMidiTrackPlaying(channel);
+            const auto id = session_.addMidiTrackPlaying(
+                channel, core::placeAfter(session_.project(), selection_.channel()));
             select(id);
         };
         tracks_.onAddBus = [this] { addBus(); };
@@ -1488,8 +1493,7 @@ private:
 
     void armSelected()
     {
-        if (const auto* t = selectedTrack())
-            session_.execute(std::make_unique<core::SetTrackArmed>(t->id, !t->armed));
+        tracks_.toggleArmSelectedTracks(); // every selected track
     }
 
     // ----- actions -------------------------------------------------------------------------
@@ -1562,7 +1566,10 @@ private:
             if (t.kind == core::TrackKind::audio)
                 ++count;
         track.name = "Audio " + std::to_string(count + 1);
-        auto command = std::make_unique<core::AddTrack>(track);
+        // After the selected track, in its folder (screens/arrange.md).
+        const auto place = core::placeAfter(session_.project(), selection_.channel());
+        track.folder = place.folder;
+        auto command = std::make_unique<core::AddTrack>(track, place.index);
         const auto* added = command.get(); // the undo history keeps it alive
         session_.execute(std::move(command));
         const auto id = added->trackId(); // allocated on apply
@@ -1631,7 +1638,8 @@ private:
     // `type` is empty).
     void addMidiTrack(const std::string& type)
     {
-        const auto id = session_.addMidiTrack(type);
+        const auto id =
+            session_.addMidiTrack(type, core::placeAfter(session_.project(), selection_.channel()));
         if (!type.empty())
             browser_.rememberRecent(type);
         select(id);
@@ -2400,6 +2408,10 @@ void MainWindow::showMenu(const juce::String& key)
         content->tracks_.openAddTrackMenu();
     else if (key == "clip")
         content->tracks_.openFirstClipMenu();
+    else if (key == "track")
+        content->tracks_.openTrackMenu();
+    else if (key == "range")
+        content->tracks_.openRangeMenu();
 }
 
 bool MainWindow::setArrangeTool(const juce::String& name)
@@ -2414,6 +2426,11 @@ bool MainWindow::setArrangeTool(const juce::String& name)
             return true;
         }
     return false;
+}
+
+ui::ArrangeView* MainWindow::arrangeView()
+{
+    return content_ != nullptr ? &content_->tracks_ : nullptr;
 }
 
 void MainWindow::arrangePointer(int row, double bar, juce::ModifierKeys mods)

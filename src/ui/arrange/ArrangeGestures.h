@@ -139,17 +139,21 @@ private:
     core::SamplePosition anchor_, start_, end_; // the press, and the loop then
 };
 
-// Shift+drag in the bars row, or the range tool in a lane: a time range.
+// Shift+drag in the bars row, or the range tool in a lane (`row`, -1 for the
+// ruler): a time range; from a lane, dragged across rows, it selects the tracks
+// it spans.
 class ArrangeView::TimeSelectGesture final : public Gesture
 {
 public:
-    TimeSelectGesture(ArrangeView& view, core::SamplePosition at);
+    TimeSelectGesture(ArrangeView& view, core::SamplePosition at, int row);
     void drag(const juce::MouseEvent& e, core::SamplePosition at) override;
     void release(const juce::MouseEvent&) override;
     void paintTop(juce::Graphics& g) override;
 
 private:
     core::SamplePosition anchor_;
+    int row_;
+    std::vector<core::Id> tracksBefore_; // the track selection at the press
 };
 
 // A marker's flag dragged along (MarkerController).
@@ -188,11 +192,13 @@ struct ArrangeClipPress
     int row = -1;
 };
 
-// A clip's body: the selection moves (across tracks of its kind), snapped.
+// A clip's body: the selection moves (across tracks of its kind), snapped; with
+// Ctrl held (at the release) a copy goes there instead and the originals stay.
+// The automation under the clips goes with them when they stay on their tracks.
 class ArrangeView::MoveGesture final : public Gesture
 {
 public:
-    MoveGesture(ArrangeView& view, ArrangeClipPress press) noexcept;
+    MoveGesture(ArrangeView& view, ArrangeClipPress press, bool copy) noexcept;
     void drag(const juce::MouseEvent& e, core::SamplePosition at) override;
     void release(const juce::MouseEvent& e) override;
     void paintLanes(juce::Graphics& g) override;
@@ -202,6 +208,8 @@ private:
     ArrangeClipPress press_;
     core::SamplePosition delta_ = 0;
     int rows_ = 0;
+    bool copy_;
+    bool wasSelected_; // before the press (a Ctrl+click toggles it)
 };
 
 // A clip's left or right edge: a trim, snapped (the source stays put).
@@ -257,7 +265,7 @@ private:
     float curve_, startCurve_;
 };
 
-// Ctrl+drag of a clip's body: its gain (Ctrl+click alone toggles the selection).
+// Ctrl+Shift+drag of an audio clip's body up or down: its gain.
 class ArrangeView::GainGesture final : public Gesture
 {
 public:

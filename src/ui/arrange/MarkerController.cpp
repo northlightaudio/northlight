@@ -153,13 +153,13 @@ void MarkerController::finishDrag(bool moved)
          "Move marker");
 }
 
-void MarkerController::addMarker(core::SamplePosition at,
-                                 bool region,
-                                 core::SamplePosition regionStart,
-                                 core::SamplePosition regionEnd)
+core::Id MarkerController::addMarker(core::SamplePosition at,
+                                     bool region,
+                                     core::SamplePosition regionStart,
+                                     core::SamplePosition regionEnd)
 {
-    if (project_ == nullptr)
-        return;
+    if (project_ == nullptr || !onEdit)
+        return core::invalidId;
     core::Marker marker;
     if (region && regionEnd > regionStart)
     {
@@ -172,7 +172,14 @@ void MarkerController::addMarker(core::SamplePosition at,
         marker.position = at;
         marker.name = "Marker " + std::to_string(project_->markers.size() + 1);
     }
-    emit(std::make_unique<core::AddMarker>(marker), region ? "Add region" : "Add marker");
+    auto command = std::make_unique<core::AddMarker>(marker);
+    const auto* added = command.get(); // the undo history keeps it alive
+    emit(std::move(command), region ? "Add region" : "Add marker");
+    const auto id = added->markerId(); // allocated on apply
+    if (project_->findMarker(id) == nullptr)
+        return core::invalidId;
+    selected_ = id;
+    return id;
 }
 
 void MarkerController::jump(int direction, core::SamplePosition at)

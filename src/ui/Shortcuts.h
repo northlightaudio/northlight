@@ -78,6 +78,7 @@ enum class Command
     pickTool, // 1 to 7, in the tools' order
     muteClips,
     cycleTake,
+    selectTrack, // Up / Down (Shift extends)
     takeLanes,
     nudgeFine, // Alt+Left / Right (Shift: a quarter step)
     selectAll,

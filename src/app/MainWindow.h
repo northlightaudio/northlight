@@ -10,6 +10,10 @@ namespace northlight::audio
 {
 class AudioDeviceLayer;
 }
+namespace northlight::ui
+{
+class ArrangeView;
+}
 
 namespace northlight
 {
@@ -102,6 +106,9 @@ public:
     // the pointer resting on a track row at a bar (--arrange-pointer), for captures.
     bool setArrangeTool(const juce::String& name);
     void arrangePointer(int row, double bar, juce::ModifierKeys mods);
+    // The arrange view itself, for launch flags that set up its state (track and
+    // time selections, captures of its menus). Null before the content exists.
+    ui::ArrangeView* arrangeView();
     // Shows the Editor panel's nth gap button (1-based) as the pointer in its gap
     // would, for captures (--editor-gap).
     void showEditorGap(int n);

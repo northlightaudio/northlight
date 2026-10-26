@@ -32,7 +32,9 @@ until the pointer moves.
   inserts open the plugin).
 - Modifiers, consistent everywhere:
   - Shift: fine adjustment, extend selection, constrain drag axis.
-  - Ctrl: toggle selection, duplicate on drag, coarse adjustment on fields.
+  - Ctrl: toggle selection, duplicate on drag (a clip, Ctrl+drag: a copy lands
+    where it is dropped), coarse adjustment on fields. Ctrl+Shift+drag on an audio
+    clip's body sets its gain.
   - Alt: override snap, trim content instead of edges, break group link.
 - Cursors: default, hand (clip header), resize-horizontal (trim and splitters), fade
   (custom: a small curve), move (four arrows), not-allowed (invalid drop), I-beam
@@ -42,8 +44,11 @@ until the pointer moves.
 ## 10.3 Snapping
 
 - Grid snap is on by default at "Adaptive" (bar/beat/sub-beat depending on zoom);
-  options: Adaptive, Bar, Beat, 1/8, 1/16, 1/32, Off; triplet and dotted variants in
-  a submenu.
+  options: Adaptive, Bar, Beat, 1/8, 1/16, 1/32, Off; triplet (Beat, 1/8, 1/16, 1/32)
+  and dotted (Beat, 1/8, 1/16) variants in two submenus. One table
+  (`ui/timeline/SnapGrids.h`) defines them for every view; a beat and its divisions
+  are counted in the signature of the bar a position falls in, and a step that does
+  not fill a bar evenly (a dotted eighth in 4/4) restarts at each bar line.
 - Snap targets in priority: clip edges on the same track, markers, loop and punch
   edges, playhead, grid. Within 6 px of a target the ghost snaps and a 1 px
   `snapGuide` vertical line is drawn through all lanes; the tooltip names the target
@@ -94,9 +99,10 @@ while the arrange view has the focus and shows the mixer elsewhere.
 
 | Action | Key |
 |---|---|
-| Rename the selected track | F2 while the arrange view has the focus |
+| Rename the selected clip, else the selected track | F2 while the arrange view has the focus |
+| Select the track above / below (Shift extends) | Up / Down (fixed) |
 | Previous / next marker | , / . |
-| Add marker / region from the loop | M / Alt+M |
+| Add marker / region (from the time selection, else the loop) | M / Alt+M |
 | Cut / copy / paste / duplicate / delete | Ctrl+X / Ctrl+C / Ctrl+V / Ctrl+D / Delete or Backspace |
 | Select all / clear the selection | Ctrl+A / Esc (Esc also gives the arrange view the focus) |
 | Split at the playhead / at the time selection | S / Alt+S |
@@ -133,7 +139,7 @@ while the arrange view has the focus and shows the mixer elsewhere.
 | Select every note / clear the selection | Ctrl+A / Esc |
 
 **Not keys**: tap tempo is T while the tempo field is focused; a clip stretches with
-Alt+drag of its right edge, and its gain follows a Ctrl+drag on its body
+Alt+drag of its right edge, Ctrl+drag copies clips, and a clip's gain follows a Ctrl+Shift+drag on its body
 (screens/arrange.md). In the mixer, Ctrl+click on a channel's S solos it alone (exclusive solo), and
 Ctrl held at the drop copies an insert instead of moving it (screens/mixer.md).
 

@@ -81,6 +81,8 @@ void migrate(json& j, int from)
                      // optional "windowOpen" and "pluginName"; without them a send
                      // is centred and on, a channel plays to its bus, no window
                      // reopens and a missing plugin is unnamed
+            case 16: // 17: audio and MIDI clips gain an optional "colour"; without it a
+                     // clip takes its track's colour, as before
                 break;
             default:
                 break;
@@ -143,6 +145,8 @@ json clipToJson(const AudioClip& c)
         j["followTempo"] = true;
     if (c.muted)
         j["muted"] = true;
+    if (c.colour != 0)
+        j["colour"] = c.colour;
     if (c.vocal.active())
     {
         json notes = json::array();
@@ -205,6 +209,7 @@ AudioClip clipFromJson(const json& j)
     c.transpose = std::clamp(j.value("transpose", 0.0), -48.0, 48.0);
     c.followTempo = j.value("followTempo", false);
     c.muted = j.value("muted", false);
+    c.colour = j.value("colour", std::uint32_t{0});
     if (const auto it = j.find("vocal"); it != j.end() && it->is_object())
     {
         c.vocal.analysisVersion = it->value("analysis", 0);
@@ -530,6 +535,8 @@ json trackToJson(const Track& t)
                       {"notes", std::move(notes)}};
             if (c.muted)
                 clip["muted"] = true;
+            if (c.colour != 0)
+                clip["colour"] = c.colour;
             // Controller events as compact arrays: [id, type, number, value, time].
             if (!c.controllers.empty())
             {
@@ -624,6 +631,7 @@ Track trackFromJson(const json& j)
             c.start = cj.value("start", SamplePosition{0});
             c.length = cj.value("length", SamplePosition{0});
             c.muted = cj.value("muted", false);
+            c.colour = cj.value("colour", std::uint32_t{0});
             if (const auto notes = cj.find("notes"); notes != cj.end() && notes->is_array())
                 for (const auto& nj : *notes)
                     if (nj.size() == 5 && numberTuple(nj, 5))

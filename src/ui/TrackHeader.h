@@ -56,7 +56,12 @@ public:
     // master fader. Set before setTrack.
     void setMaster(bool master);
 
-    std::function<void(core::Id)> onSelected;                              // a click anywhere on the header
+    // A press anywhere on the header (`onControl`: on one of its controls, not
+    // its background), with the modifiers held: the arrange view selects from it
+    // (Ctrl toggles, Shift extends). A click on the background with no drag
+    // follows as onClicked.
+    std::function<void(core::Id, juce::ModifierKeys mods, bool onControl)> onSelected;
+    std::function<void(core::Id, juce::ModifierKeys mods)> onClicked;
     std::function<void(core::Id, int, const std::string&)> onInputChanged; // channel, or a bus name
     std::function<void(core::Id, const std::string&)> onMidiInputChanged;  // empty = all
     std::function<void(core::Id, bool)> onArmChanged;
@@ -121,10 +126,10 @@ private:
     struct SelectOnPress final : juce::MouseListener
     {
         explicit SelectOnPress(TrackHeader& header) : header_(header) {}
-        void mouseDown(const juce::MouseEvent&) override
+        void mouseDown(const juce::MouseEvent& e) override
         {
-            if (header_.onSelected)
-                header_.onSelected(header_.trackId_);
+            if (header_.onSelected && !e.mods.isPopupMenu())
+                header_.onSelected(header_.trackId_, e.mods, e.eventComponent != &header_);
         }
         TrackHeader& header_;
     } selectOnPress_{*this};

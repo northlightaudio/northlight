@@ -69,6 +69,7 @@ struct AudioClip
     bool followTempo = false;
     // A muted clip stays on the timeline, drawn hatched, and plays nothing.
     bool muted = false;
+    std::uint32_t colour = 0; // 0xAARRGGBB; 0 = the track's colour
 
     SamplePosition end() const noexcept { return start + length; }
     bool isStretched() const noexcept { return stretch != 1.0 || transpose != 0.0; }
@@ -147,6 +148,7 @@ struct MidiClip
     std::vector<MidiNote> notes;                  // kept sorted by start
     std::vector<MidiControllerEvent> controllers; // kept sorted by time
     bool muted = false;                           // stays on the timeline, plays nothing
+    std::uint32_t colour = 0;                     // 0xAARRGGBB; 0 = the track's colour
 
     SamplePosition end() const noexcept { return start + length; }
     MidiNote* findNote(Id noteId) noexcept;
@@ -557,7 +559,8 @@ struct Project
     //     channel's lanes are open in the arrange view.
     // 16: send pan and mute; a channel's hardware output, solo safe and hidden
     //     strip; inserts whose window was open and a hosted plugin's name.
-    static constexpr int schemaVersion = 16;
+    // 17: audio and MIDI clips may carry a colour of their own.
+    static constexpr int schemaVersion = 17;
     static constexpr int oldestReadableVersion = 2; // older files are refused
 
     std::string name = "Untitled";

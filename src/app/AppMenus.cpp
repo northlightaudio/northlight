@@ -1,6 +1,7 @@
 #include "app/AppMenus.h"
 
 #include "ui/Shortcuts.h"
+#include "ui/timeline/SnapGrids.h"
 
 namespace northlight::menus
 {
@@ -120,18 +121,42 @@ juce::PopupMenu projectMenu(const ProjectMenu& m)
 
 const std::vector<SnapGrid>& snapGrids()
 {
-    static const std::vector<SnapGrid> grids{
-        {0, "Adaptive"}, {1, "Bar"}, {4, "Beat"}, {8, "1/8"}, {16, "1/16"}, {32, "1/32"}};
+    static const std::vector<SnapGrid> grids = []
+    {
+        std::vector<SnapGrid> list;
+        for (const auto& c : ui::snapGridChoices())
+            list.push_back({c.code, c.name});
+        return list;
+    }();
     return grids;
 }
 
 juce::PopupMenu snapMenu(bool snapOn, int grid, std::function<void(int divisions)> chosen)
 {
+    // The straight grids at the top; triplets and dotted grids in submenus
+    // (interaction.md 10.3), each ticked where the current grid is.
     int id = 1;
-    juce::PopupMenu menu;
-    Builder items(menu, id);
-    for (const auto& g : snapGrids())
-        items.add(g.name, bind(chosen, g.divisions), true, snapOn && grid == g.divisions);
+    juce::PopupMenu menu, triplets, dotted;
+    Builder items(menu, id), tripletItems(triplets, id), dottedItems(dotted, id);
+    bool inTriplets = false, inDotted = false;
+    for (const auto& c : ui::snapGridChoices())
+    {
+        const bool current = snapOn && grid == c.code;
+        if (c.family == ui::SnapFamily::triplet)
+        {
+            tripletItems.add(c.name, bind(chosen, c.code), true, current);
+            inTriplets = inTriplets || current;
+        }
+        else if (c.family == ui::SnapFamily::dotted)
+        {
+            dottedItems.add(c.name, bind(chosen, c.code), true, current);
+            inDotted = inDotted || current;
+        }
+        else
+            items.add(c.name, bind(chosen, c.code), true, current);
+    }
+    menu.addSubMenu("Triplet", triplets, true, nullptr, inTriplets);
+    menu.addSubMenu("Dotted", dotted, true, nullptr, inDotted);
     menu.addSeparator();
     items.add("Off", bind(chosen, -1), true, !snapOn);
     return menu;

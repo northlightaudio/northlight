@@ -35,14 +35,33 @@ Ctrl+wheel zooms around the pointer, the wheel scrolls tracks and Shift+wheel
 scrolls time.
 
 Click a clip to select it (Shift adds, Ctrl toggles), drag on empty space to lasso,
-drag a clip to move it, drag an edge to trim, drag a top corner for a fade, and
-Ctrl+drag a clip's body up or down for its gain. Moves snap to the grid (**N** turns
-snap on and off). **Delete** removes (with ripple on, **Shift+N**, later clips close
-the gap), **Ctrl+D** duplicates, **S** splits at the playhead and **Alt+S** at the
-time selection, **J** joins, **X** crossfades overlapping clips, **Ctrl+Shift+N**
+drag a clip to move it (Ctrl+drag copies it), drag an edge to trim, drag a top
+corner for a fade, and Ctrl+Shift+drag up or down for clip gain. Automation under a
+clip moves with it (turn that off in the ruler's menu). Moves snap to the grid
+(**N** turns snap on and off); the snap menu has triplet and dotted grids too. **Delete** removes (with
+ripple on, **Shift+N**, later clips close the gap), **Ctrl+D** duplicates, **S** splits at
+the playhead and **Alt+S** at the time selection, **J** joins, **X** crossfades overlapping clips, **Ctrl+Shift+N**
 normalises, **Ctrl+M** mutes or unmutes the selected clips. **M** drops a marker,
-**Alt+M** a region from the loop range, and comma and full stop jump between
-markers. Right-click a clip for the same edits in a menu, with Split here.
+**Alt+M** a region from the time selection (or the loop range); a new marker's
+name is ready to type. Comma and full stop jump between markers. Right-click a clip
+for the same edits in a menu, with Split here, Rename (**F2**) and Colour.
+
+Click a track header to select it, Ctrl+click to add or remove one, Shift+click for
+a run of tracks, and **Up**/**Down** to move (Shift extends). Arm, mute, solo,
+colour, delete, duplicate, freeze, folder moves and drags apply to every selected
+track. Drag a track by its icon to reorder it: dropped inside a folder's tracks it
+joins the folder (how far right the pointer is picks the depth), and a folder takes
+its tracks with it. Buses reorder the same way. Files dropped on an audio track land
+on it at the snapped position; dropped below the last track, each makes a track.
+
+The range tool selects a stretch of time across the tracks you drag over (over clips
+too): **Delete** removes it (closing the gap with ripple on), **Ctrl+X**/**Ctrl+C**
+cut and copy its parts, **Ctrl+V** pastes them at the playhead, and its right-click
+menu also splits at it, loops it and makes a region of it. In an automation lane,
+click a point to select it (Shift adds, Ctrl toggles, Shift-drag draws a marquee),
+drag to move the selection, and use Delete, cut, copy and paste on it; the range
+tool selects a stretch of a lane, the pencil draws freehand and the eraser sweeps
+points away.
 
 The tools sit at the top left of the track list, keys **1** to **7**: select, range
 (drag a time range), pencil (draw MIDI clips), **erase** (click or sweep over clips

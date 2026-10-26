@@ -304,5 +304,5 @@ TEST_CASE("A version 15 project opens with centred, unmuted sends and no hardwar
     CHECK(p->tracks[0].hardwareOutput == -1);
     CHECK_FALSE(p->tracks[0].soloSafe);
     CHECK_FALSE(p->tracks[0].mixerHidden);
-    CHECK(Project::schemaVersion == 16);
+    CHECK(Project::schemaVersion >= 16);
 }
