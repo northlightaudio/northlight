@@ -368,10 +368,11 @@ HeaderBar::HeaderBar(const Theme& theme)
     record_.setRestColour(theme_.colours.record);
     record_.setSolidWhenOn(true);
     punch_.setOnColour(theme_.colours.record);
+    // Off, 1, 2 and 4 bars: the choices Preferences offers.
     countIn_.onClick = [this]
     {
         if (onCountInBars)
-            onCountInBars((state_.countInBars + 1) % 3);
+            onCountInBars(nextCountIn(state_.countInBars));
     };
     snap_.setMenuPart(
         [this]
@@ -479,6 +480,22 @@ void HeaderBar::setState(const State& state)
     refreshFromState();
 }
 
+int HeaderBar::nextCountIn(int bars) noexcept
+{
+    return bars <= 0 ? 1 : bars == 1 ? 2 : bars < 4 ? 4 : 0;
+}
+
+void HeaderBar::refreshTooltips()
+{
+    goToStart_.setTooltip(Shortcuts::withKey("Go to start", Command::returnToStart));
+    stop_.setTooltip(Shortcuts::withKey("Stop", Command::playStop));
+    zoomFit_.setTooltip(Shortcuts::withKey("Zoom to fit", Command::zoomToFit));
+    mixer_.setTooltip(Shortcuts::withKey("Mixer", Command::showMixer));
+    editor_.setTooltip(Shortcuts::withKey("Editor", Command::showEditor));
+    browser_.setTooltip(Shortcuts::withKey("Browser", Command::showBrowser));
+    refreshFromState();
+}
+
 void HeaderBar::refreshFromState()
 {
     const auto& s = state_;
@@ -498,7 +515,9 @@ void HeaderBar::refreshFromState()
     redo_.setTooltip(
         Shortcuts::withKey(s.canRedo ? "Redo " + s.redoName : juce::String("Redo"), Command::redo));
     play_.setIcon(s.playing ? Icon::pause : Icon::play);
-    play_.setTooltip(Shortcuts::withKey(s.playing ? "Stop" : "Play", Command::playStop));
+    // While playing, Play is Pause: it keeps the position (Stop or Space returns).
+    play_.setTooltip(s.playing ? Shortcuts::withKey("Pause", Command::pause)
+                               : Shortcuts::withKey("Play", Command::playStop));
     play_.setToggleState(s.playing, juce::dontSendNotification);
     stop_.setRestColour(s.playing ? theme_.colours.textSecondary : theme_.colours.textPrimary);
     record_.setToggleState(s.recording, juce::dontSendNotification);

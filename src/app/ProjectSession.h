@@ -306,10 +306,23 @@ public:
     void playHostedAutomation();
 
     // ----- transport --------------------------------------------------------------
+    // stop() halts where the transport is (what loading, auditioning and closing
+    // use). The user's Stop is stopTransport(): with return on stop (the default)
+    // the playhead goes back to where playback started. Pause keeps the position,
+    // and the next play resumes from it (still returning to the first start on
+    // the Stop after); a locate forgets the pause. Space is togglePlay.
     void play();
     void stop();
+    void stopTransport();
+    void pause();
     void togglePlay();
+    void togglePause(); // playing: pause; else play
     void returnToStart();
+    void setReturnOnStop(bool enabled) noexcept { returnOnStop_ = enabled; }
+    bool returnOnStop() const noexcept { return returnOnStop_; }
+    bool isPaused() const noexcept { return paused_; }
+    // Where the current or last playback started (where Stop returns to).
+    core::SamplePosition playStart() const noexcept { return playStart_; }
     void locate(core::SamplePosition position);
     bool isPlaying() const noexcept { return engine_.isPlaying(); }
     core::SamplePosition position() const noexcept { return engine_.position(); }
@@ -526,6 +539,7 @@ private:
     core::UndoStack undo_;
     juce::File projectFile_;
     bool changedOutsideHistory_ = false;
+    std::unique_ptr<core::Command> lastOutsideHistory_; // the last command kept out of the history
     NoticeQueue notices_;
     std::set<core::Id> reportedCrashes_; // inserts whose crash the user has been told about
     void checkCrashedPlugins();
@@ -535,6 +549,11 @@ private:
     bool metronome_ = false;
     float metronomeGain_ = 0.5f;
     int countInBars_ = 1;
+    // Transport: where playback started (Stop returns there) and whether it is paused.
+    void beginPlayback();
+    core::SamplePosition playStart_ = 0;
+    bool paused_ = false;
+    bool returnOnStop_ = true;
     core::SamplePosition regionStart_ = 0, regionEnd_ = 0;
     bool loop_ = false;
     bool punch_ = false;

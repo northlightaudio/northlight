@@ -368,7 +368,18 @@ bool ProjectSession::applyChecked(std::unique_ptr<core::Command> command)
     // since removed. Commands check what they reference and fail without
     // changing anything; the command is dropped.
     const auto name = command->name();
-    if (undo_.execute(project_, std::move(command)))
+    // Arming, monitoring and inputs stay out of the history (Command::undoable):
+    // applied and kept, the project modified, nothing to undo.
+    if (!command->undoable())
+    {
+        if (command->apply(project_))
+        {
+            changedOutsideHistory_ = true;
+            lastOutsideHistory_ = std::move(command); // run() reads it after this
+            return true;
+        }
+    }
+    else if (undo_.execute(project_, std::move(command)))
         return true;
     juce::Logger::writeToLog("Dropped a stale edit: " + juce::String::fromUTF8(name.c_str()));
     return false;
@@ -1364,8 +1375,19 @@ void ProjectSession::discardAutosave(const Autosave& autosave)
 void ProjectSession::play()
 {
     if (!engine_.isPlaying())
+    {
         engine_.resetIntegratedLoudness();
+        beginPlayback();
+    }
     engine_.play();
+}
+
+void ProjectSession::beginPlayback()
+{
+    // Resuming from a pause keeps the first start, so Stop still returns there.
+    if (!paused_)
+        playStart_ = engine_.position();
+    paused_ = false;
 }
 
 void ProjectSession::stop()
@@ -1374,23 +1396,63 @@ void ProjectSession::stop()
     engine_.stop();
 }
 
+void ProjectSession::stopTransport()
+{
+    const bool rolling = engine_.isPlaying() || engine_.isRecording();
+    if (!rolling && !paused_)
+        return;
+    stop();
+    paused_ = false;
+    if (returnOnStop_)
+    {
+        engine_.locate(playStart_);
+        disk_.poke();
+    }
+}
+
+void ProjectSession::pause()
+{
+    if (!engine_.isPlaying() && !engine_.isRecording())
+        return;
+    stop();
+    paused_ = true;
+}
+
 void ProjectSession::togglePlay()
 {
     if (engine_.isPlaying() || engine_.isRecording())
-        stop();
+        stopTransport();
     else
+    {
+        beginPlayback();
         engine_.play();
+    }
+}
+
+void ProjectSession::togglePause()
+{
+    if (engine_.isPlaying() || engine_.isRecording())
+        pause();
+    else
+    {
+        beginPlayback();
+        engine_.play();
+    }
 }
 
 void ProjectSession::returnToStart()
 {
-    engine_.locate(0);
+    locate(0);
 }
 
 void ProjectSession::locate(core::SamplePosition position)
 {
     engine_.locate(position);
     disk_.poke(); // streamed clips rebuild their windows at the new position sooner
+    // A jump forgets a pause; while rolling, Stop returns to where it jumped to.
+    paused_ = false;
+    if (engine_.isPlaying() || engine_.isRecording())
+        playStart_ = position;
 }
 
 std::string ProjectSession::sampleRateWarning() const
@@ -1590,6 +1652,8 @@ std::string ProjectSession::startRecording()
 {
     if (engine_.isRecording())
         return {};
+    const auto startedAt = engine_.position(); // where Stop returns to (when not already rolling)
+    const bool wasRolling = engine_.isPlaying();
     if (!engine_.isRunning())
         return "no audio device is running";
     // The session captures at the device rate and the files are stamped with the
@@ -1666,6 +1730,12 @@ std::string ProjectSession::startRecording()
         return error;
     }
     recordingPunched_ = punching;
+    if (!wasRolling)
+    {
+        if (!paused_)
+            playStart_ = startedAt;
+        paused_ = false;
+    }
     notify(Change::structure);
     return {};
 }

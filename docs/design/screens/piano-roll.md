@@ -49,8 +49,11 @@ selected track in a ghosted overlay.
 - Erase: click or drag across notes.
 - Quantise: Q quantises selected (or all) note starts to the grid at the strength set
   in the menu (100% default); Shift+Q also ends.
-- Keyboard: arrows nudge by grid (Shift = fine, Ctrl = octave for vertical), Delete,
-  Ctrl+A, +/- transpose semitone, Ctrl+D duplicate.
+- Keyboard (while the piano roll has the focus; all but the arrows rebindable,
+  interaction.md 10.4): arrows nudge by grid (Shift = fine, Ctrl = octave for
+  vertical), Delete, Ctrl+A, Esc clears the selection, = (or +) and - transpose a
+  semitone, Ctrl+D duplicate, 1 / 3 / 4 the select, pencil and erase tools, G snap,
+  Q quantise (Shift+Q the ends too), [ and ] a coarser or finer grid.
 - Scrolling and zoom: the wheel scrolls the notes up and down, Shift+wheel scrolls
   time, and Ctrl+wheel zooms around the pointer, smoothly, as in the arrange view.
 - Recording: incoming notes draw in `record` as they arrive and settle to track colour

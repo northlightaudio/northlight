@@ -219,6 +219,7 @@ add_library(northlight_ui STATIC
     PluginBrowser.cpp
     PreferencesView.cpp
     Shortcuts.h
+    ShortcutEditor.cpp
     Shortcuts.cpp
     SplashScreen.h
     SplashScreen.cpp

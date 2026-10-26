@@ -679,3 +679,96 @@ TEST_CASE("The window shows each notice as its kind says: a toast, a revealed fi
     CHECK(action == "Show in folder");
     CHECK(notices.dropouts() == 0); // no device, nothing dropped
 }
+
+TEST_CASE_METHOD(SessionFixture,
+                 "Stop returns to where playback started; pause keeps the position and play resumes from it",
+                 "[app][session][transport]")
+{
+    prepareDevice(48000.0);
+    session->locate(4800);
+    runBlocks(1);
+    session->togglePlay(); // Space
+    runBlocks(100);
+    REQUIRE(session->isPlaying());
+    CHECK(session->playStart() == 4800);
+    CHECK(session->position() > 4800);
+
+    SECTION("Stop goes back to the start position")
+    {
+        session->togglePlay();
+        runBlocks(1);
+        CHECK_FALSE(session->isPlaying());
+        CHECK(session->position() == 4800);
+    }
+    SECTION("With return on stop off, Stop stays where it is")
+    {
+        session->setReturnOnStop(false);
+        session->stopTransport();
+        runBlocks(1);
+        CHECK_FALSE(session->isPlaying());
+        CHECK(session->position() > 4800);
+    }
+    SECTION("Pause keeps the position; play resumes, and the Stop after returns to the first start")
+    {
+        session->togglePause(); // Shift+Space
+        runBlocks(1);
+        CHECK_FALSE(session->isPlaying());
+        CHECK(session->isPaused());
+        const auto paused = session->position();
+        CHECK(paused > 4800);
+        runBlocks(10);
+        CHECK(session->position() == paused);
+        session->togglePlay();
+        runBlocks(1);
+        CHECK(session->isPlaying());
+        CHECK(session->position() >= paused);
+        CHECK(session->playStart() == 4800);
+        session->stopTransport();
+        runBlocks(1);
+        CHECK(session->position() == 4800);
+    }
+    SECTION("A locate while paused forgets the pause")
+    {
+        session->pause();
+        runBlocks(1);
+        session->locate(96000);
+        runBlocks(1);
+        CHECK_FALSE(session->isPaused());
+        session->togglePlay();
+        runBlocks(10);
+        CHECK(session->playStart() == 96000);
+    }
+}
+
+TEST_CASE_METHOD(SessionFixture,
+                 "Arming, monitoring and inputs stay out of the undo history but still modify the project",
+                 "[app][session][undo]")
+{
+    core::Track t;
+    t.id = 1;
+    t.name = "Vocal";
+    session->execute(std::make_unique<core::AddTrack>(t));
+    REQUIRE(session->save(folder.getChildFile("song.northlight")).empty());
+    REQUIRE_FALSE(session->isModified());
+    const auto before = session->undoName();
+
+    session->execute(std::make_unique<core::SetTrackArmed>(1, true));
+    session->execute(std::make_unique<core::SetTrackMonitor>(1, core::MonitorMode::on));
+    session->execute(std::make_unique<core::SetTrackInput>(1, 1));
+    CHECK(session->project().tracks[0].armed);
+    CHECK(session->project().tracks[0].monitor == core::MonitorMode::on);
+    CHECK(session->project().tracks[0].inputChannel == 1);
+    CHECK(session->undoName() == before); // nothing to undo
+    CHECK(session->isModified());
+
+    // Undo undoes the edit before, and the arming stays.
+    session->undo();
+    CHECK(session->project().tracks.empty());
+    session->redo();
+    REQUIRE(session->project().tracks.size() == 1);
+
+    session->execute(std::make_unique<core::SetTrackArmed>(1, true));
+    REQUIRE(session->save(folder.getChildFile("song.northlight")).empty());
+    CHECK_FALSE(session->isModified());
+    CHECK(session->project().tracks[0].armed);
+}

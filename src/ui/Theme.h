@@ -324,6 +324,10 @@ struct Theme
     // file Preferences writes (accent and contrast). Call once before the first
     // window; dark() returns the result.
     static void initialise(const juce::File& userOverride = {}, const juce::File& preferencesOverride = {});
+    // Loads the colours again from the same sources, into the current theme (whose
+    // address every view holds), leaving everything else: the accent and contrast
+    // apply while the app runs. The owner then repaints (applyLive in the app).
+    static void reloadColours(const juce::File& userOverride, const juce::File& preferencesOverride);
     // The names of the two override files, beside the settings file.
     static constexpr const char* userOverrideName = "tokens.json";
     static constexpr const char* preferencesOverrideName = "appearance-tokens.json";

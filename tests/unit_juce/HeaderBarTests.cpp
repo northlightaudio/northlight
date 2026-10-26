@@ -1,4 +1,5 @@
 #include "UiPerf.h"
+#include "ui/Icons.h"
 #include "ui/NorthlightLookAndFeel.h"
 #include "ui/Theme.h"
 #include "ui/components/NumericField.h"
@@ -150,4 +151,37 @@ TEST_CASE("The header repaints nothing when the state it is given has not change
     CHECK_FALSE(recorder->area.isEmpty());
     CHECK(uiperf::coverage(recorder->area, bar.getLocalBounds()) < 0.2);
     bar.setCachedComponentImage(nullptr);
+}
+
+TEST_CASE("The count-in toggle steps Off, 1, 2 and 4 bars, as Preferences offers", "[ui][transport]")
+{
+    CHECK(ui::HeaderBar::nextCountIn(0) == 1);
+    CHECK(ui::HeaderBar::nextCountIn(1) == 2);
+    CHECK(ui::HeaderBar::nextCountIn(2) == 4);
+    CHECK(ui::HeaderBar::nextCountIn(4) == 0);
+    CHECK(ui::HeaderBar::nextCountIn(3) == 4); // a value from elsewhere moves on to the next choice
+}
+
+TEST_CASE("While playing, Play is Pause: its icon and tooltip say so", "[ui][transport]")
+{
+    const juce::ScopedJuceInitialiser_GUI juceInit;
+    const auto theme = ui::Theme::defaults();
+    ui::HeaderBar bar(theme);
+    bar.setSize(1400, 44);
+    const auto tooltipOf = [&](const juce::String& name)
+    {
+        for (auto* child : bar.getChildren())
+            if (auto* button = dynamic_cast<ui::IconButton*>(child);
+                button != nullptr && button->getName() == name)
+                return button->getTooltip();
+        return juce::String("(none)");
+    };
+    auto state = bar.state();
+    state.deviceReady = true;
+    bar.setState(state);
+    CHECK(tooltipOf(ui::Icons::name(ui::Icon::play)) == "Play  Space");
+    state.playing = true;
+    bar.setState(state);
+    CHECK(tooltipOf(ui::Icons::name(ui::Icon::pause)) == "Pause  Shift+Space"); // the pause icon
+    CHECK(tooltipOf(ui::Icons::name(ui::Icon::stop)) == "Stop  Space");
 }

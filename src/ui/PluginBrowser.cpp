@@ -3,6 +3,7 @@
 #include "plugins/BuiltIns.h"
 #include "ui/Icons.h"
 #include "ui/NorthlightLookAndFeel.h"
+#include "ui/Shortcuts.h"
 
 #include <algorithm>
 
@@ -396,7 +397,7 @@ void PluginBrowser::showScanMenu()
 
 bool PluginBrowser::keyPressed(const juce::KeyPress& key)
 {
-    if (key == juce::KeyPress('f', juce::ModifierKeys::commandModifier, 0))
+    if (Shortcuts::matches(Command::findPlugin, key)) // the keyboard map's search key
     {
         search_.grabKeyboardFocus();
         return true;

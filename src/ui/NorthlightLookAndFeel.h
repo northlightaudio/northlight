@@ -25,6 +25,13 @@ public:
     ~NorthlightLookAndFeel() override;
 
     const Theme& theme() const noexcept { return theme_; }
+    // Sets the stock components' colours from the theme again (the accent or
+    // contrast changed while the app runs).
+    void refreshColours();
+    // Gives the components under `root` that were handed a colour token at
+    // construction (a label's text, a field's placeholder) its new value.
+    static void
+    remapColours(juce::Component& root, const Theme::Colours& before, const Theme::Colours& after);
 
     // ----- component properties that pick a variant ------------------------------
     // Button: "variant" = "secondary" (default) | "primary" | "ghost" | "danger".

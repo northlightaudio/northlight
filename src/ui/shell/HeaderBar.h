@@ -139,6 +139,8 @@ public:
         bool operator==(const State&) const = default;
     };
     void setState(const State& state);
+    // Rewrites the tooltips that carry a key (after the user rebinds one).
+    void refreshTooltips();
     const State& state() const noexcept { return state_; }
 
     // Actions
@@ -173,6 +175,8 @@ public:
     void mouseDown(const juce::MouseEvent& e) override;
 
     static constexpr int windowButtonWidth = 46; // as the Windows caption buttons
+    // The count-in a click on its toggle moves to: Off, 1, 2, 4 bars, then Off.
+    static int nextCountIn(int bars) noexcept;
 
 private:
     class ClipIndicator;

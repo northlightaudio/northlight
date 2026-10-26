@@ -2,6 +2,7 @@
 
 #include "ui/Icons.h"
 #include "ui/NorthlightLookAndFeel.h"
+#include "ui/ShortcutEditor.h"
 #include "ui/Shortcuts.h"
 #include "ui/components/NumericField.h"
 #include "ui/components/SegmentedControl.h"
@@ -21,7 +22,6 @@ constexpr int hexWidth = 96;
 constexpr int swatchSize = 20;
 constexpr int cardTitleHeight = 22;
 constexpr int badgeHeight = 18;
-constexpr int keyCapHeight = 18;
 const char* const comingSoonTooltip = "Saved now, used in a later version.";
 
 juce::String ellipsis()
@@ -582,241 +582,6 @@ private:
     std::unique_ptr<juce::TextButton> add_;
 };
 
-// ----- the shortcuts table ---------------------------------------------------------------------
-
-class ShortcutTable final : public juce::Component, private juce::ListBoxModel
-{
-public:
-    explicit ShortcutTable(const Theme& theme) : theme_(theme), icon_(theme)
-    {
-        setUpTextField(theme_, search_, theme_.body());
-        search_.setIndents(theme_.spacing.sm + theme_.sizes.icon + theme_.spacing.sm, 0);
-        search_.setTextToShowWhenEmpty("Search shortcuts", theme_.colours.textTertiary);
-        search_.setTitle("Search shortcuts");
-        search_.onTextChange = [this] { filter(); };
-        search_.onEscapeKey = [this] { search_.clear(); };
-        addAndMakeVisible(search_);
-        icon_.setInterceptsMouseClicks(false, false);
-        addAndMakeVisible(icon_);
-        list_.setModel(this);
-        list_.setRowHeight(theme_.sizes.rowHeight);
-        list_.setColour(juce::ListBox::backgroundColourId, juce::Colours::transparentBlack);
-        list_.setOutlineThickness(0);
-        list_.setTitle("Shortcuts");
-        list_.addMouseListener(this, true);
-        addAndMakeVisible(list_);
-        filter();
-    }
-    int rows() const noexcept { return static_cast<int>(rows_.size()); }
-    void paint(juce::Graphics& g) override
-    {
-        const auto& c = theme_.colours;
-        const auto card = cardBounds().toFloat();
-        g.setColour(c.surface1);
-        g.fillRoundedRectangle(card, theme_.radius.md);
-        g.setColour(c.lineSubtle);
-        g.drawRoundedRectangle(card.reduced(0.5f), theme_.radius.md, 1.0f);
-        if (rows_.empty())
-        {
-            g.setFont(theme_.body());
-            g.setColour(c.textTertiary);
-            g.drawText("No shortcuts match " + juce::String::fromUTF8("\xe2\x80\x9c") +
-                           search_.getText().trim() + juce::String::fromUTF8("\xe2\x80\x9d") + ".",
-                       cardBounds().reduced(theme_.spacing.lg),
-                       juce::Justification::centred,
-                       true);
-        }
-    }
-    void resized() override
-    {
-        auto area = getLocalBounds();
-        search_.setBounds(area.removeFromTop(theme_.sizes.control));
-        icon_.setBounds(search_.getBounds()
-                            .withWidth(theme_.spacing.sm + theme_.sizes.icon)
-                            .withTrimmedLeft(theme_.spacing.sm));
-        list_.setBounds(cardBounds().reduced(theme_.spacing.xxs, theme_.spacing.sm));
-    }
-    void mouseMove(const juce::MouseEvent& e) override { setHover(e); }
-    void mouseExit(const juce::MouseEvent&) override
-    {
-        hover_ = -1;
-        list_.repaint();
-    }
-
-private:
-    // The rows come from the shortcut table (ui/Shortcuts.h). Keys are space-separated
-    // tokens: a chord ("Ctrl+Shift+S", one cap per key) or a joining word ("/" pairs
-    // with the action's own "/", "or" is an alternative, "to" a range).
-    struct Entry
-    {
-        const Shortcuts::Row* shortcut = nullptr; // null: a group header
-        juce::String group;
-    };
-    class SearchIcon final : public juce::Component
-    {
-    public:
-        explicit SearchIcon(const Theme& theme) : theme_(theme) {}
-        void paint(juce::Graphics& g) override
-        {
-            Icons::draw(g,
-                        Icon::search,
-                        getLocalBounds()
-                            .withSizeKeepingCentre(theme_.sizes.icon, theme_.sizes.icon)
-                            .withX(0)
-                            .toFloat(),
-                        theme_.colours.textTertiary);
-        }
-
-    private:
-        const Theme& theme_;
-    };
-
-    juce::Rectangle<int> cardBounds() const
-    {
-        return getLocalBounds().withTrimmedTop(theme_.sizes.control + theme_.spacing.md);
-    }
-    void setHover(const juce::MouseEvent& e)
-    {
-        const auto p = e.getEventRelativeTo(&list_).getPosition();
-        const int row = list_.getRowContainingPosition(p.x, p.y);
-        if (row != hover_)
-        {
-            hover_ = row;
-            list_.repaint();
-        }
-    }
-    void filter()
-    {
-        rows_.clear();
-        const auto needle = search_.getText().trim();
-        juce::String group;
-        for (const auto& s : Shortcuts::pageRows())
-        {
-            if (needle.isNotEmpty() && !s.action.containsIgnoreCase(needle) &&
-                !s.keys.containsIgnoreCase(needle) && !s.group.containsIgnoreCase(needle))
-                continue;
-            if (group != s.group)
-            {
-                group = s.group;
-                rows_.push_back({nullptr, s.group});
-            }
-            rows_.push_back({&s, s.group});
-        }
-        hover_ = -1;
-        list_.updateContent();
-        list_.repaint();
-        repaint();
-    }
-
-    // The key caps for a key string, right aligned in `area`; returns their width.
-    int drawKeys(juce::Graphics& g, const juce::String& keys, juce::Rectangle<int> area) const
-    {
-        const auto& c = theme_.colours;
-        struct Piece
-        {
-            juce::String text;
-            bool cap;
-            int width;
-        };
-        std::vector<Piece> pieces;
-        juce::StringArray tokens;
-        tokens.addTokens(keys, " ", "");
-        for (int t = 0; t < tokens.size(); ++t)
-        {
-            const auto& token = tokens[t];
-            if (token == "/" || token == "or" || token == "to")
-            {
-                pieces.push_back({token,
-                                  false,
-                                  juce::GlyphArrangement::getStringWidthInt(theme_.small(), token) +
-                                      2 * theme_.spacing.sm});
-                continue;
-            }
-            // A chord: one cap per key ("Ctrl++" would be Ctrl and +).
-            juce::StringArray keysInChord;
-            keysInChord.addTokens(token, "+", "");
-            if (token.endsWith("+") && token.length() > 1)
-                keysInChord.add("+");
-            keysInChord.removeEmptyStrings();
-            for (int k = 0; k < keysInChord.size(); ++k)
-            {
-                const int capText =
-                    juce::GlyphArrangement::getStringWidthInt(theme_.caption(), keysInChord[k]);
-                pieces.push_back(
-                    {keysInChord[k], true, std::max(keyCapHeight, capText + 2 * theme_.spacing.sm)});
-                if (k + 1 < keysInChord.size())
-                    pieces.push_back({{}, false, theme_.spacing.xxs});
-            }
-        }
-        int total = 0;
-        for (const auto& piece : pieces)
-            total += piece.width;
-        int x = area.getRight() - total;
-        for (const auto& piece : pieces)
-        {
-            const auto r = juce::Rectangle<int>(x, area.getY(), piece.width, area.getHeight());
-            if (piece.cap)
-            {
-                const auto cap = r.withSizeKeepingCentre(piece.width, keyCapHeight).toFloat();
-                g.setColour(c.surface2);
-                g.fillRoundedRectangle(cap, theme_.radius.sm);
-                g.setColour(c.lineStrong);
-                g.drawRoundedRectangle(cap.reduced(0.5f), theme_.radius.sm, 1.0f);
-                g.setFont(theme_.caption());
-                g.setColour(c.textSecondary);
-                g.drawText(piece.text, cap.toNearestInt(), juce::Justification::centred, false);
-            }
-            else if (piece.text.isNotEmpty())
-            {
-                g.setFont(theme_.small());
-                g.setColour(c.textTertiary);
-                g.drawText(piece.text, r, juce::Justification::centred, false);
-            }
-            x += piece.width;
-        }
-        return total;
-    }
-
-    int getNumRows() override { return static_cast<int>(rows_.size()); }
-    void paintListBoxItem(int row, juce::Graphics& g, int width, int height, bool) override
-    {
-        if (row < 0 || static_cast<size_t>(row) >= rows_.size())
-            return;
-        const auto& c = theme_.colours;
-        const auto& entry = rows_[static_cast<size_t>(row)];
-        auto area = juce::Rectangle<int>(0, 0, width, height);
-        if (entry.shortcut == nullptr)
-        {
-            g.setFont(theme_.captionCaps());
-            g.setColour(c.textTertiary);
-            g.drawText(entry.group.toUpperCase(),
-                       area.reduced(theme_.spacing.md, 0).withTrimmedBottom(theme_.spacing.xs),
-                       juce::Justification::bottomLeft,
-                       false);
-            return;
-        }
-        if (row == hover_)
-        {
-            g.setColour(c.surface2);
-            g.fillRoundedRectangle(area.reduced(theme_.spacing.xs, 0).toFloat(), theme_.radius.sm);
-        }
-        area = area.reduced(theme_.spacing.md, 0);
-        // The keys at the right; the action takes all the width they leave.
-        const int keys = drawKeys(g, entry.shortcut->keys, area);
-        area.removeFromRight(keys + theme_.spacing.lg);
-        g.setFont(theme_.body());
-        g.setColour(c.textPrimary);
-        g.drawText(entry.shortcut->action, area, juce::Justification::centredLeft, true);
-    }
-
-    const Theme& theme_;
-    juce::TextEditor search_;
-    SearchIcon icon_;
-    juce::ListBox list_;
-    std::vector<Entry> rows_;
-    int hover_ = -1;
-};
-
 } // namespace
 
 // ----- a page ----------------------------------------------------------------------------------
@@ -1196,7 +961,8 @@ void PreferencesView::set(const settings::Setting& setting, const std::string& v
         return;
     if (saveSetting)
         saveSetting(std::string(setting.key), value);
-    if (setting.key == settings::contrast.key)
+    // The token file first: the owner reloads the colours from it on onChanged.
+    if (setting.key == settings::contrast.key || setting.key == settings::accent.key)
         writeTokenOverride();
     if (onChanged)
         onChanged();
@@ -1205,10 +971,8 @@ void PreferencesView::set(const settings::Setting& setting, const std::string& v
 void PreferencesView::writeAccentOverride(const juce::String& hex)
 {
     set(settings::accent, hex.toStdString());
-    writeTokenOverride();
     if (onNotice)
-        onNotice(hex.isEmpty() ? "Accent reset. Restart Northlight to apply."
-                               : "Accent set to " + hex + ". Restart Northlight to apply.");
+        onNotice(hex.isEmpty() ? juce::String("Accent reset.") : "Accent set to " + hex + ".");
 }
 
 void PreferencesView::writeTokenOverride()
@@ -1412,11 +1176,6 @@ std::pair<std::unique_ptr<juce::TextButton>, int> PreferencesView::makeButtonRow
 
 // ----- the pages -------------------------------------------------------------------------------
 
-namespace
-{
-const juce::String restartNote = "Applies the next time Northlight starts.";
-} // namespace
-
 void PreferencesView::buildGeneral(Page& page)
 {
     page.addCard("Projects");
@@ -1462,13 +1221,10 @@ void PreferencesView::buildGeneral(Page& page)
         writeAccentOverride(hex);
     };
     const int swatchesWidth = swatches->preferredWidth();
-    page.add("Accent", std::move(swatches), swatchesWidth, restartNote);
+    page.add("Accent", std::move(swatches), swatchesWidth);
     auto contrast = makeSegmented({{"Standard", "standard"}, {"High", "high"}}, settings::contrast);
     const int contrastWidth = contrast->preferredWidth();
-    page.add("Contrast",
-             std::move(contrast),
-             contrastWidth,
-             "High brightens lines and secondary text. " + restartNote);
+    page.add("Contrast", std::move(contrast), contrastWidth, "High brightens lines and secondary text.");
     page.add("UI scale",
              makeCombo(
                  {{"Follow system", "0"}, {"100%", "100"}, {"125%", "125"}, {"150%", "150"}, {"200%", "200"}},
@@ -1512,6 +1268,12 @@ void PreferencesView::buildRecording(Page& page)
              {},
              settings::preRoll.comingSoon);
     page.add("Click level", makeNumber(settings::metronomeLevel, -40, 0, 0.5, "dB", 1), numberWidth);
+    page.addCard("Transport");
+    page.add("Return on stop",
+             makeCheckbox(settings::returnOnStop),
+             theme_.sizes.icon,
+             "Stop takes the playhead back to where playback started. Pause (" +
+                 Shortcuts::keyText(Command::pause) + ") leaves it where it is.");
 }
 
 void PreferencesView::buildEditing(Page& page)
@@ -1604,7 +1366,9 @@ void PreferencesView::buildPlugins(Page& page)
 
 void PreferencesView::buildShortcuts(Page& page)
 {
-    page.addFill(std::make_unique<ShortcutTable>(theme_));
+    auto editor = std::make_unique<ShortcutEditor>(theme_);
+    editor->onChanged = [this](const std::string& bindings) { set(settings::shortcuts, bindings); };
+    page.addFill(std::move(editor));
 }
 
 void PreferencesView::buildDiagnostics(Page& page)

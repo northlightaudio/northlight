@@ -13,6 +13,23 @@ Northlight has not had a release yet. The first release, 0.1.0, will include:
 
 ### Added
 
+- Shortcuts can be changed: on Preferences > Shortcuts click an action's keys and
+  press the new one. A key another action uses names that action and offers
+  Replace or Cancel; a changed key has a reset button, and Reset all puts every key
+  back. Changes apply at once, in tooltips and menus too. The page now also lists
+  the piano roll's and the audio editor's keys.
+
+- The App and Project menus show each item's shortcut.
+
+- Pause: Shift+Space, or Play while playing, stops and stays there; the next Play
+  carries on from that point. Stop (and Space) now takes the playhead back to where
+  playback started; turn Return on stop off in Preferences > Recording to keep the
+  old behaviour.
+
+- The numeric keypad's 0, 3 and 1 play, record and go to the start.
+
+- Accent and contrast changes in Preferences show at once, without a restart.
+
 - A plugin's card in the Editor panel shows a faceplate: its kind, its full name,
   its maker, the format and its latency, with an Open editor button (or
   double-click it). A plugin that is not installed says so in the same place.
@@ -223,6 +240,19 @@ Northlight has not had a release yet. The first release, 0.1.0, will include:
   without Steinberg's ASIO SDK.
 
 ### Fixed
+
+- Arming a track, changing its input monitoring or its input are no longer undo
+  steps, so Ctrl+Z after arming undoes the edit before it. They still count as
+  unsaved changes.
+
+- The header's count-in steps through Off, 1, 2 and 4 bars, as Preferences offers;
+  it stopped at 2.
+
+- The Play button's tooltip says Pause while playing (it said Stop).
+
+- The user guide's shortcuts match the app: the Mixer is F2 (Ctrl+M mutes clips),
+  snap and ripple are N and Shift+N, and Shift+R arms the selected track. G and E no
+  longer duplicate snap and ripple in the track list.
 
 - Opening a plugin's window no longer switches the dock to the mixer: the Editor
   panel stays up.

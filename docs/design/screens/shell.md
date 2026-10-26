@@ -96,8 +96,9 @@ Interactions:
   the dock or side panel; the host highlights with `dropTarget` while a valid drop is
   over it; releasing inserts the tab at the pointer position.
 - Keyboard: the panel's view shortcut (F2 Mixer, F3 Editor, F4 Browser, F5
-  Inspector, F6 Piano Roll, F7 Diagnostics) shows the panel in its current host and
-  focuses it; Shift+Fn toggles it between docked and floating.
+  Inspector, F6 Piano Roll, F7 Diagnostics, F8 Instruments, F9 Audio Editor;
+  rebindable) shows the panel in its current host and focuses it; the same key with
+  Shift added toggles it between docked and floating.
 - Closing a floating panel returns it to its default host, hidden, so it is never
   lost; the view toggle in the header lights only while the panel is visible
   somewhere.
@@ -138,7 +139,9 @@ keep native title bars.
 Left to right, with `space.md` gaps between groups and `space.xl` between clusters:
 
 1. App button: 28×28 ghost with the mark; menu: About, Preferences, Audio Setup,
-   Plugins, Quit.
+   Plugins, Quit. Every menu item that has a shortcut (here and in the project
+   menu) shows its current key at the right, from the keyboard map, so a rebinding
+   shows the next time the menu opens.
 2. Project title: as described under A.
 3. Undo / Redo: icon buttons, disabled when there is nothing to undo; the tooltip
    names the action ("Undo Move clip").

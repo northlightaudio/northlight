@@ -54,45 +54,86 @@ until the pointer moves.
 
 ## 10.4 Keyboard map
 
-Defaults; all rebindable in Preferences. Shown in tooltips and menus. As implemented,
-the keys live in one table (`ui/Shortcuts`) that the window, the panels and the arrange
-view dispatch from and the Shortcuts page, tooltips and menus print.
+Defaults; every action except the fixed families (tools by number, the arrow keys)
+is rebindable on the Preferences Shortcuts page (screens/setup.md 8.2), and the keys
+show in tooltips and menus. As implemented, the keys live in one registry
+(`ui/Shortcuts`): each action has an id, a name, a section, a context and its
+default keys, and the window, the panels, the arrange view, the piano roll and the
+audio editor dispatch from it while the Shortcuts page, tooltips and menus print
+it. A context is where a key works: **global** keys work anywhere in the main
+window; **arrange** keys when the key reaches the arrange view (the focus is not
+in a view that takes it); **piano roll** and **audio editor** keys while that view
+has the focus, and they are tried before the global ones. So a key may be bound
+once per context, and a view's key and a global key collide (the page warns).
+**Decision**: the one default overlap is F2, which renames the selected track
+while the arrange view has the focus and shows the mixer elsewhere.
+
+**Global**
 
 | Action | Key |
 |---|---|
-| Play / stop | Space |
-| Pause | Shift+Space |
-| Record | R (Ctrl+R to arm the selected track) |
-| Go to start / end | Enter / Shift+Enter, Home / End |
-| Loop on/off | L |
-| Punch on/off | P |
-| Click on/off | C |
-| Previous / next marker | , / . |
-| Add marker / region | M / Alt+M |
+| Play / stop | Space (or Num0) |
+| Pause (keeps the position; Play resumes from it) | Shift+Space |
+| Record | R (or Num3) |
+| Go to start / end | Enter, Home or Num1 / Shift+Enter, End |
+| Loop / punch / click on or off | L / P / C |
 | Zoom in / out / fit / selection | Ctrl+= / Ctrl+- / Z / Shift+Z |
-| Undo / redo | Ctrl+Z / Ctrl+Y (also Ctrl+Shift+Z) |
-| Cut / copy / paste / duplicate / delete | Ctrl+X / Ctrl+C / Ctrl+V / Ctrl+D / Delete |
-| Select all / none | Ctrl+A / Esc |
-| Split at playhead / at selection | S / Alt+S |
-| Join | J |
-| Mute / solo / arm selected track | Shift+M / Shift+S / Shift+R |
-| Nudge selection | Alt+Left / Right (grid), Alt+Shift (fine) |
-| Newer / older take at the playhead (comp) | Alt+Up / Alt+Down |
-| Show / hide take lanes | Alt+T |
-| Tools: select / range / pencil / erase / split / glue / mute | 1 to 7 |
-| Mute / unmute selected clips | Ctrl+M |
-| Snap on/off | N |
-| Ripple on/off | Shift+N |
+| Snap / ripple on or off | N / Shift+N |
+| Undo / redo | Ctrl+Z / Ctrl+Y or Ctrl+Shift+Z |
+| Mute / solo / arm the selected track | Shift+M / Shift+S / Shift+R |
+| Add audio / MIDI track / bus | Ctrl+T / Ctrl+Shift+T / Ctrl+B |
 | New / open / save / save as | Ctrl+N / Ctrl+O / Ctrl+S / Ctrl+Shift+S |
 | Import audio | Ctrl+I |
 | Export (bounce) | Ctrl+E |
-| Mixer / editor / browser / inspector / piano roll / diagnostics / instruments / audio editor | F2 to F9 (Shift+Fn detaches or reattaches) |
-| Audio setup / plugins / preferences | Ctrl+, (preferences), Ctrl+Shift+A, Ctrl+Shift+P |
-| Add audio / MIDI track / bus | Ctrl+T / Ctrl+Shift+T / Ctrl+B |
-| Rename selected | F2 when a track or clip is selected (overrides mixer toggle) |
-| Tap tempo | T while the tempo field is focused |
-| Stretch a clip | Alt+drag its right edge |
-| Focus search | Ctrl+F (browser) |
+| Mixer, Editor, Browser, Inspector, Piano Roll, Diagnostics, Instruments, Audio Editor | F2 to F9; with Shift added, the panel detaches or reattaches |
+| Audio Setup / Plugins / Preferences | Ctrl+Shift+A / Ctrl+Shift+P / Ctrl+, |
+| Search the browser | Ctrl+F |
+
+**Arrange view**
+
+| Action | Key |
+|---|---|
+| Rename the selected track | F2 while the arrange view has the focus |
+| Previous / next marker | , / . |
+| Add marker / region from the loop | M / Alt+M |
+| Cut / copy / paste / duplicate / delete | Ctrl+X / Ctrl+C / Ctrl+V / Ctrl+D / Delete or Backspace |
+| Select all / clear the selection | Ctrl+A / Esc (Esc also gives the arrange view the focus) |
+| Split at the playhead / at the time selection | S / Alt+S |
+| Join / crossfade | J / X |
+| Normalise | Ctrl+Shift+N |
+| Mute / unmute the selected clips | Ctrl+M |
+| Open or close the selected track's automation lanes | A |
+| Show / hide take lanes | Alt+T |
+| Tools: select, range, pencil, erase, split, glue, mute | 1 to 7 (fixed) |
+| Nudge the selection | Left / Right (fixed); Alt+Left / Right by a grid step, with Shift a quarter (fixed) |
+| Newer / older take at the playhead (comp) | Alt+Up / Alt+Down (fixed) |
+
+**Piano roll** (while it has the focus)
+
+| Action | Key |
+|---|---|
+| Select / pencil / erase tool | 1 / 3 / 4 |
+| Delete / duplicate the selected notes | Delete or Backspace / Ctrl+D |
+| Select every note / clear the selection | Ctrl+A / Esc |
+| Snap on or off | G |
+| Quantise starts / starts and ends | Q / Shift+Q |
+| Coarser / finer grid | [ / ] |
+| Transpose up / down a semitone | = (or +) / - |
+| Nudge by a grid step (Shift: fine) | Left / Right (fixed) |
+| Move up or down a semitone (Ctrl: an octave) | Up / Down (fixed) |
+
+**Audio editor** (pitch mode, while it has the focus)
+
+| Action | Key |
+|---|---|
+| Tools: pitch, split, drift, vibrato, breath | 1 to 5 (fixed) |
+| Move notes up or down a semitone (Shift: 10 cents) | Up / Down (fixed) |
+| Mute or unmute the selected notes | M |
+| Select every note / clear the selection | Ctrl+A / Esc |
+
+**Not keys**: tap tempo is T while the tempo field is focused; a clip stretches with
+Alt+drag of its right edge, and its gain follows a Ctrl+drag on its body
+(screens/arrange.md).
 
 Focus model: the arrange view owns focus by default; Tab cycles header controls,
 track headers, lanes, dock, side panel, status bar; Esc returns focus to the arrange
@@ -132,7 +173,9 @@ drags) are one undo step each; typing in a field is one step per commit.
 ## Acceptance
 
 - Every component on every screen implements every state in 10.1.
-- An automated test posts the keyboard map's key events to the main window and
-  checks the resulting commands.
+- An automated test posts the keyboard map's key events to the main window's
+  handler and checks the resulting commands, before and after a rebinding
+  (`tests/unit_juce/ShortcutsTests.cpp`); another checks no context has two actions
+  on one default key.
 - Every error path listed in sections 4 to 8 produces the specified toast or sheet
   wording.

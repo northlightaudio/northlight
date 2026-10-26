@@ -2,10 +2,12 @@
 
 #include <catch2/catch_test_macros.hpp>
 
+#include <algorithm>
 #include <set>
 
 using namespace northlight;
 using ui::Command;
+using ui::Context;
 using ui::Shortcuts;
 
 namespace
@@ -13,78 +15,197 @@ namespace
 using Key = juce::KeyPress;
 using Mods = juce::ModifierKeys;
 
-juce::String rowKeys(const juce::String& action)
+// Puts the defaults back however a test leaves the bindings.
+struct Defaults
 {
-    for (const auto& row : Shortcuts::pageRows())
-        if (row.action == action)
-            return row.keys;
-    return "(no row)";
-}
+    Defaults() { Shortcuts::resetAll(); }
+    ~Defaults() { Shortcuts::resetAll(); }
+};
 } // namespace
 
-TEST_CASE("The Shortcuts page lists the keys the table dispatches", "[ui][shortcuts]")
+TEST_CASE("Every command has one entry, in the order of the enum, with a unique id", "[ui][shortcuts]")
 {
-    CHECK(rowKeys("Play / stop") == "Space");
-    CHECK(rowKeys("Return to start") == "Enter or Home");
-    CHECK(rowKeys("Zoom in / out") == "Ctrl+= / Ctrl+-");
-    CHECK(rowKeys("Undo / redo") == "Ctrl+Z / Ctrl+Y");
-    CHECK(rowKeys("Add marker / region") == "M / Alt+M");
-    CHECK(rowKeys("Nudge left / right") == "Left / Right");
-    CHECK(rowKeys("Select, range, pencil, erase, split, glue, mute tool") == "1 to 7");
-    CHECK(rowKeys("Detach or reattach a panel") == "Shift+F2 to Shift+F9");
-    CHECK(rowKeys("Preferences") == "Ctrl+,");
+    const auto& all = Shortcuts::all();
+    std::set<juce::String> ids;
+    for (size_t i = 0; i < all.size(); ++i)
+    {
+        INFO(all[i].id);
+        CHECK(static_cast<size_t>(all[i].command) == i);
+        CHECK(ids.insert(all[i].id).second);
+        CHECK(Shortcuts::find(all[i].id) == &all[i]);
+        CHECK(juce::String(all[i].name).isNotEmpty());
+        const auto& sections = Shortcuts::sections();
+        CHECK(std::any_of(sections.begin(),
+                          sections.end(),
+                          [&](const char* section) { return juce::String(section) == all[i].section; }));
+    }
+    CHECK(all.back().command == Command::audioEditorClearSelection);
 }
 
-TEST_CASE("Every listed key is on the Shortcuts page", "[ui][shortcuts]")
+TEST_CASE("No two commands in a context share a default key", "[ui][shortcuts]")
 {
-    juce::String page;
-    for (const auto& row : Shortcuts::pageRows())
-        page << " " << row.keys << " ";
+    const Defaults defaults;
+    const auto& all = Shortcuts::all();
+    for (size_t a = 0; a < all.size(); ++a)
+        for (size_t b = a + 1; b < all.size(); ++b)
+        {
+            if (all[a].context != all[b].context)
+                continue;
+            for (const auto& x : all[a].defaults)
+                for (const auto& y : all[b].defaults)
+                {
+                    INFO(all[a].id << " and " << all[b].id << ": " << x.text());
+                    CHECK_FALSE(x.sameAs(y));
+                }
+        }
+    // Across contexts, the one deliberate overlap: F2 renames the selected track in
+    // the arrange view and shows the mixer elsewhere (interaction.md 10.4).
+    for (const auto& s : Shortcuts::all())
+        for (const auto& key : s.defaults)
+        {
+            INFO(s.id << ": " << key.text());
+            const auto others = Shortcuts::conflicts(s.command, key);
+            if (s.command == Command::showMixer)
+                CHECK(others == std::vector<Command>{Command::renameTrack});
+            else if (s.command == Command::renameTrack)
+                CHECK(others == std::vector<Command>{Command::showMixer});
+            else
+                CHECK(others.empty());
+        }
+}
+
+TEST_CASE("Every global key posted to the window's handler runs the command bound to it", "[ui][shortcuts]")
+{
+    const Defaults defaults;
+    std::vector<Command> ran;
+    const auto post = [&](const juce::KeyPress& press)
+    {
+        ran.clear();
+        // The window's handler offers the press to each command bound to it; this
+        // perform takes the first, as MainWindow's does for every global command.
+        return Shortcuts::dispatch(press,
+                                   [&](Command c)
+                                   {
+                                       ran.push_back(c);
+                                       return true;
+                                   });
+    };
+    const auto everyKeyRunsItsCommand = [&]
+    {
+        for (const auto& s : Shortcuts::all())
+        {
+            if (s.context != Context::global)
+                continue;
+            for (const auto& key : s.keys)
+            {
+                INFO(s.id << ": " << key.text());
+                CHECK(post(key.keyPress()));
+                CHECK(ran == std::vector<Command>{s.command});
+            }
+        }
+    };
+    everyKeyRunsItsCommand();
+    CHECK_FALSE(post(Key('q', Mods(), 'q')));
+    CHECK(post(Key('Z', Mods::commandModifier | Mods::shiftModifier, 0)));
+    CHECK(ran == std::vector<Command>{Command::redo});
+    CHECK(post(Key('R', Mods::shiftModifier, 'R')));
+    CHECK(ran == std::vector<Command>{Command::armSelected});
+    CHECK(post(Key(Key::numberPad0)));
+    CHECK(ran == std::vector<Command>{Command::playStop});
+    CHECK(post(Key(Key::spaceKey, Mods::shiftModifier, ' ')));
+    CHECK(ran == std::vector<Command>{Command::pause});
+
+    // After a rebinding the new key runs the command and the old one nothing.
+    Shortcuts::bind(Command::loop, ui::Key{'L', Mods::commandModifier | Mods::altModifier});
+    everyKeyRunsItsCommand();
+    CHECK_FALSE(post(Key('l', Mods(), 'l')));
+    CHECK(post(Key('L', Mods::commandModifier | Mods::altModifier, 0)));
+    CHECK(ran == std::vector<Command>{Command::loop});
+}
+
+TEST_CASE("Each view's keys match the commands bound to them", "[ui][shortcuts]")
+{
+    const Defaults defaults;
     for (const auto& s : Shortcuts::all())
         for (const auto& key : s.keys)
-            if (key.listed && s.command != Command::pickTool && // ranges: "1 to 7", "F2 to F9"
-                (s.command < Command::showMixer || s.command > Command::showAudioEditor))
-            {
-                INFO(s.name << ": " << key.text());
-                CHECK(page.contains(" " + key.text() + " "));
-            }
-}
-
-TEST_CASE("A key press finds the window command it is bound to", "[ui][shortcuts]")
-{
-    const auto commands = [](const Key& k) { return Shortcuts::windowCommandsFor(k); };
-    CHECK(commands(Key(Key::spaceKey)) == std::vector<Command>{Command::playStop});
-    CHECK(commands(Key('Z', Mods::commandModifier | Mods::shiftModifier, 0)) ==
-          std::vector<Command>{Command::redo});
-    CHECK(commands(Key('y', Mods::commandModifier, 0)) == std::vector<Command>{Command::redo});
-    CHECK(commands(Key('R', Mods::shiftModifier, 'R')) == std::vector<Command>{Command::armSelected});
-    CHECK(commands(Key('r', Mods(), 'r')) == std::vector<Command>{Command::record});
-    // F2: renaming first (when the arrange view has the focus), then the mixer's panel key.
-    CHECK(commands(Key(Key::F2Key)) == std::vector<Command>{Command::renameTrack});
-    CHECK(commands(Key('q', Mods(), 'q')).empty());
+        {
+            INFO(s.id << ": " << key.text());
+            const auto commands = Shortcuts::commandsFor(key.keyPress(), s.context);
+            REQUIRE_FALSE(commands.empty());
+            CHECK(commands.front() == s.command);
+        }
+    CHECK(Shortcuts::matchIndex(Command::pickTool, Key('5')) == 4);
+    CHECK(Shortcuts::matchIndex(Command::audioEditorTool, Key('2')) == 1);
+    CHECK(Shortcuts::matches(Command::pianoRollTransposeUp, Key('=', Mods::shiftModifier, '+')));
+    // Ctrl+= is the window's zoom, not a transpose.
+    CHECK_FALSE(Shortcuts::matches(Command::pianoRollTransposeUp, Key('=', Mods::commandModifier, 0)));
 }
 
 TEST_CASE("Tooltips and menus print a command's first listed key", "[ui][shortcuts]")
 {
+    const Defaults defaults;
     CHECK(Shortcuts::withKey("Undo", Command::undo) == "Undo  Ctrl+Z");
     CHECK(Shortcuts::withKey("Redo", Command::redo) == "Redo  Ctrl+Y");
     CHECK(Shortcuts::keyText(Command::normalise) == "Ctrl+Shift+N");
     CHECK(Shortcuts::keyText(Command::showMixer) == "F2");
-    CHECK(Shortcuts::withKey("Find", Command::findPlugin) == "Find"); // none listed
-    CHECK(Shortcuts::matchIndex(Command::pickTool, Key('5')) == 4);
+    CHECK(Shortcuts::keyText(Command::returnToStart) == "Enter");
+    CHECK(ui::Key{juce::KeyPress::numberPad1}.text() == "Num1");
+    Shortcuts::bind(Command::undo, ui::Key{'U', Mods::commandModifier});
+    CHECK(Shortcuts::withKey("Undo", Command::undo) == "Undo  Ctrl+U");
 }
 
-TEST_CASE("No two window commands share a key", "[ui][shortcuts]")
+TEST_CASE("A rebinding finds the actions it collides with, and Replace takes the key", "[ui][shortcuts]")
 {
-    std::set<std::pair<int, int>> seen;
-    for (const auto& s : Shortcuts::all())
-    {
-        if (s.command == Command::showMixer)
-            break;
-        for (const auto& key : s.keys)
-        {
-            INFO(s.name << ": " << key.text());
-            CHECK(seen.insert({key.character ? -key.code : key.code, key.modifiers}).second);
-        }
-    }
+    const Defaults defaults;
+    const ui::Key ctrlM{'M', Mods::commandModifier};
+    // Ctrl+M mutes clips in the arrange view: a global command taking it collides.
+    CHECK(Shortcuts::conflicts(Command::loop, ctrlM) == std::vector<Command>{Command::muteClips});
+    // The piano roll and the arrange view never see the same press.
+    CHECK(Shortcuts::conflicts(Command::pianoRollSnap, ctrlM).empty());
+    Shortcuts::bind(Command::loop, ctrlM, Shortcuts::conflicts(Command::loop, ctrlM));
+    CHECK(Shortcuts::keyText(Command::loop) == "Ctrl+M");
+    CHECK(Shortcuts::of(Command::muteClips).keys.empty());
+    CHECK(Shortcuts::keyText(Command::muteClips).isEmpty());
+    CHECK_FALSE(Shortcuts::isDefault(Command::muteClips));
+    Shortcuts::reset(Command::muteClips);
+    CHECK(Shortcuts::isDefault(Command::muteClips));
+    // A fixed family keeps its keys.
+    Shortcuts::bind(Command::pickTool, ui::Key{'Q'});
+    CHECK(Shortcuts::isDefault(Command::pickTool));
+}
+
+TEST_CASE("Rebound keys save as settings text and load back; the defaults save as nothing", "[ui][shortcuts]")
+{
+    const Defaults defaults;
+    CHECK(Shortcuts::save().empty());
+    CHECK(Shortcuts::allDefault());
+    Shortcuts::bind(Command::loop, ui::Key{'L', Mods::commandModifier});
+    Shortcuts::bind(Command::muteClips, ui::Key{'L', Mods::commandModifier}, {Command::loop}); // loop: none
+    const auto text = Shortcuts::save();
+    CHECK(text.find("loop=") != std::string::npos);
+    CHECK(text.find("muteClips=") != std::string::npos);
+    Shortcuts::resetAll();
+    CHECK(Shortcuts::allDefault());
+    Shortcuts::load(text + " nosuchCommand=2.65 zoomIn=junk pickTool=0.81");
+    CHECK(Shortcuts::of(Command::loop).keys.empty());
+    CHECK(Shortcuts::keyText(Command::muteClips) == "Ctrl+L");
+    CHECK(Shortcuts::isDefault(Command::zoomIn));   // a bad key is skipped
+    CHECK(Shortcuts::isDefault(Command::pickTool)); // fixed families do not load
+    CHECK(Shortcuts::save() == text);
+    Shortcuts::load({});
+    CHECK(Shortcuts::allDefault());
+}
+
+TEST_CASE("Tagged tooltips print the current key after a rebinding", "[ui][shortcuts]")
+{
+    const Defaults defaults;
+    const juce::ScopedJuceInitialiser_GUI juceInit;
+    juce::Component root;
+    juce::TextButton mute;
+    root.addAndMakeVisible(mute);
+    Shortcuts::tag(mute, "Mute", Command::muteTrack);
+    CHECK(mute.getTooltip() == "Mute  Shift+M");
+    Shortcuts::bind(Command::muteTrack, ui::Key{'M', Mods::altModifier | Mods::shiftModifier});
+    Shortcuts::retag(root);
+    CHECK(mute.getTooltip() == "Mute  Shift+Alt+M");
 }

@@ -219,8 +219,7 @@ juce::MouseCursor Icons::toolCursor(const Theme& theme, Icon icon)
 // ----- icon button --------------------------------------------------------------------------
 
 IconButton::IconButton(const Theme& theme, Icon icon, const juce::String& tooltip)
-    : juce::Button(Icons::name(icon)), theme_(theme), icon_(icon), onColour_(theme.colours.accent),
-      restColour_(theme.colours.textSecondary)
+    : juce::Button(Icons::name(icon)), theme_(theme), icon_(icon)
 {
     setTooltip(tooltip);
     setTitle(tooltip.upToFirstOccurrenceOf("  ", false, false)); // the name, without the shortcut
@@ -311,8 +310,11 @@ void IconButton::paintButton(juce::Graphics& g, bool isMouseOver, bool isButtonD
     const float radius = theme_.radius.sm;
     const bool on = getToggleState();
     auto* lnf = dynamic_cast<NorthlightLookAndFeel*>(&getLookAndFeel());
+    // Unset colours follow the theme, so an accent or contrast change shows at once.
+    const auto onColour = onColour_.isTransparent() ? c.accent : onColour_;
+    const auto restColour = restColour_.isTransparent() ? c.textSecondary : restColour_;
 
-    juce::Colour iconColour = restColour_;
+    juce::Colour iconColour = restColour;
     // A split button lights only the part under the pointer.
     const bool split = static_cast<bool>(onMenu_);
     const auto part = !split      ? bounds
@@ -347,29 +349,29 @@ void IconButton::paintButton(juce::Graphics& g, bool isMouseOver, bool isButtonD
         if (lnf != nullptr)
         {
             const auto& m = theme_.material;
-            const auto& glow = onColour_ == c.record || onColour_ == c.arm ? m.glowRecord
-                               : onColour_ == c.solo                       ? m.glowSolo
-                               : onColour_ == c.monitor                    ? m.glowMonitor
-                                                                           : m.glowAccent;
+            const auto& glow = onColour == c.record || onColour == c.arm ? m.glowRecord
+                               : onColour == c.solo                      ? m.glowSolo
+                               : onColour == c.monitor                   ? m.glowMonitor
+                                                                         : m.glowAccent;
             lnf->drawGlow(g, bounds.reduced(2.0f), radius, glow);
         }
         if (solidOn_)
         {
-            g.setColour(isButtonDown  ? onColour_.darker(0.15f)
-                        : isMouseOver ? onColour_.brighter(0.1f)
-                                      : onColour_);
+            g.setColour(isButtonDown  ? onColour.darker(0.15f)
+                        : isMouseOver ? onColour.brighter(0.1f)
+                                      : onColour);
             g.fillRoundedRectangle(bounds.reduced(1.0f), radius);
             iconColour = c.textOnColour;
         }
         else
         {
-            g.setColour(onColour_.withAlpha(0.2f));
+            g.setColour(onColour.withAlpha(0.2f));
             g.fillRoundedRectangle(bounds.reduced(1.0f), radius);
             if (isMouseOver || isButtonDown || menuPressed_)
-                fillPart(onColour_.withAlpha(0.08f));
-            g.setColour(onColour_);
+                fillPart(onColour.withAlpha(0.08f));
+            g.setColour(onColour);
             g.drawRoundedRectangle(bounds.reduced(1.5f), radius, 1.0f);
-            iconColour = onColour_;
+            iconColour = onColour;
         }
     }
     else if (isButtonDown || menuPressed_)
@@ -390,9 +392,9 @@ void IconButton::paintButton(juce::Graphics& g, bool isMouseOver, bool isButtonD
     if (split && isEnabled() && !on && (isMouseOver || isButtonDown || menuPressed_))
     {
         if (overMenu_)
-            iconColour = restColour_;
+            iconColour = restColour;
         else
-            chevronColour = restColour_;
+            chevronColour = restColour;
     }
     if (split && isEnabled() && (isMouseOver || menuPressed_))
     {

@@ -113,10 +113,6 @@ const std::vector<ArrangeKey>& ArrangeKeymap::bindings()
         b.push_back(bind(Command::splitAtSelection, always([](ArrangeView& v) { v.splitAtSelection(); })));
         b.push_back(bind(Command::join, always([](ArrangeView& v) { v.joinSelection(); })));
         b.push_back(bind(Command::crossfade, always([](ArrangeView& v) { v.crossfadeSelection(); })));
-        b.push_back(
-            bind(Command::snapInArrange, always([](ArrangeView& v) { v.setSnapEnabled(!v.snapEnabled()); })));
-        b.push_back(bind(Command::rippleInArrange,
-                         always([](ArrangeView& v) { v.setRippleEnabled(!v.rippleEnabled()); })));
         b.push_back(bind(Command::nudge,
                          [](ArrangeView& v, const Press& k)
                          {

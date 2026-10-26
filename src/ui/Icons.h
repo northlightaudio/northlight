@@ -209,7 +209,7 @@ private:
     std::function<void()> onMenu_;
     bool overMenu_ = false, menuPressed_ = false;
     Icon icon_;
-    juce::Colour onColour_, restColour_;
+    juce::Colour onColour_, restColour_; // transparent: the theme's accent and textSecondary
     juce::String corner_;
     int iconSize_ = 16;
     bool chevron_ = false, solidOn_ = false, warningDot_ = false, key_ = false;

@@ -33,6 +33,8 @@ public:
 
     // The static layer changed (a page, a mode): draw it again.
     void invalidate();
+    // The theme's colours changed (Preferences' accent or contrast).
+    void lookAndFeelChanged() override { invalidate(); }
 
     // Places the face in `body` (in its parent's pixels): scaled to fit and
     // centred across, at the body's top; hidden when there is no room.

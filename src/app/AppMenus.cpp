@@ -1,5 +1,7 @@
 #include "app/AppMenus.h"
 
+#include "ui/Shortcuts.h"
+
 namespace northlight::menus
 {
 
@@ -18,6 +20,17 @@ public:
         item.isEnabled = enabled && action != nullptr;
         item.isTicked = ticked;
         item.action = std::move(action);
+        menu_.addItem(std::move(item));
+    }
+    // An item with its key from the keyboard map (the current binding, so a
+    // rebinding shows the next time the menu opens).
+    void add(const juce::String& text, std::function<void()> action, ui::Command key)
+    {
+        juce::PopupMenu::Item item(text);
+        item.itemID = nextId_++;
+        item.isEnabled = action != nullptr;
+        item.action = std::move(action);
+        item.shortcutKeyDescription = ui::Shortcuts::keyText(key);
         menu_.addItem(std::move(item));
     }
 
@@ -42,9 +55,9 @@ juce::PopupMenu appMenu(const AppMenu& a)
     Builder items(menu, id);
     items.add("About Northlight", a.about);
     menu.addSeparator();
-    items.add("Audio Setup...", a.audioSetup);
-    items.add("Plugins...", a.plugins);
-    items.add("Preferences...", a.preferences);
+    items.add("Audio Setup...", a.audioSetup, ui::Command::audioSetup);
+    items.add("Plugins...", a.plugins, ui::Command::plugins);
+    items.add("Preferences...", a.preferences, ui::Command::preferences);
     juce::PopupMenu layout;
     Builder layouts(layout, id);
     layouts.add("Edit", bind(a.layout, juce::String("Edit")));
@@ -62,21 +75,21 @@ juce::PopupMenu projectMenu(const ProjectMenu& m)
     int id = 1;
     juce::PopupMenu menu;
     Builder items(menu, id);
-    items.add("New", m.newProject);
+    items.add("New", m.newProject, ui::Command::newProject);
     juce::PopupMenu fromTemplate;
     Builder templates(fromTemplate, id);
     for (const auto& file : m.templates)
         templates.add(file.getFileNameWithoutExtension(), bind(m.newFromTemplate, file));
     menu.addSubMenu("New from template", fromTemplate, !m.templates.empty());
-    items.add("Open...", m.open);
+    items.add("Open...", m.open, ui::Command::open);
     juce::PopupMenu recent;
     Builder recents(recent, id);
     for (const auto& file : m.recent)
         recents.add(file.getFileNameWithoutExtension(), bind(m.openRecent, file));
     menu.addSubMenu("Recent", recent, !m.recent.empty());
     menu.addSeparator();
-    items.add("Save", m.save);
-    items.add("Save As...", m.saveAs);
+    items.add("Save", m.save, ui::Command::save);
+    items.add("Save As...", m.saveAs, ui::Command::saveAs);
     items.add("Save as template...", m.saveTemplate);
     menu.addSeparator();
     juce::PopupMenu media;
@@ -85,18 +98,18 @@ juce::PopupMenu projectMenu(const ProjectMenu& m)
     mediaItems.add("Remove unused media...", m.removeUnusedMedia, m.saved);
     menu.addSubMenu("Media", media);
     menu.addSeparator();
-    items.add("Import audio...", m.importAudio);
+    items.add("Import audio...", m.importAudio, ui::Command::importAudio);
     items.add("Import MIDI file...", m.importMidi);
-    items.add("Add audio track", m.addAudioTrack);
-    items.add("Add MIDI track", m.addMidiTrack);
+    items.add("Add audio track", m.addAudioTrack, ui::Command::addAudioTrack);
+    items.add("Add MIDI track", m.addMidiTrack, ui::Command::addMidiTrack);
     juce::PopupMenu fxTracks;
     Builder fx(fxTracks, id);
     for (size_t i = 0; i < m.fxTracks.size(); ++i)
         fx.add(juce::String(m.fxTracks[i]), bind(m.addFxTrack, i));
     menu.addSubMenu("Add FX track", fxTracks);
-    items.add("Add bus", m.addBus);
+    items.add("Add bus", m.addBus, ui::Command::addBus);
     menu.addSeparator();
-    items.add("Export...", m.exportMix);
+    items.add("Export...", m.exportMix, ui::Command::exportMix);
     items.add("Export MIDI clips...", m.exportMidi);
     return menu;
 }

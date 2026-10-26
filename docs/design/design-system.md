@@ -734,6 +734,34 @@ Rows 28 px, `body`, zebra `laneAlt`, hover `surface1`, selected `selectionFill` 
 `textPrimary`; header `caption` 600 uppercase `textTertiary`, sortable with a
 chevron; column resize handles. Keyboard: arrows, Home/End, type-ahead.
 
+### Key binding
+
+A table row that shows an action's keys and records a new one (the Preferences
+Shortcuts page). The keys are right aligned as the tooltip's key caps, `space.lg`
+from the action's name, with a 24 px slot after them for the reset button.
+
+- **Rest**: the caps; "None" in `small` `textTertiary` when the action has no key.
+- **Hover**: the row `surface2`; over the keys, a `surface3` rounded rectangle
+  (radius `sm`) behind the caps, `space.xs` wider than them on each side, marks
+  them as the thing to click. The row's tooltip says "Click the keys to change them."
+- **Recording** (click the keys, or Enter on the selected row): the keys become a
+  field at least 112 px wide, `surface2` with a 1 px `accent` border, radius `sm`,
+  reading "Press a key…" in `small` `textSecondary`. The next key with its
+  modifiers is the binding. Esc, Tab or a click elsewhere cancels; modifiers alone
+  do nothing.
+- **Conflict**: when another action that sees the same press (the same context, or
+  either is global) has the key, nothing changes yet; a line opens under the row,
+  indented `space.lg`: "Ctrl+M is used by “Mute or unmute the selected clips”." in
+  `small` `warning` (an ellipsis when it does not fit), with **Cancel** (ghost) and
+  **Replace** (secondary, last) compact buttons at the right. Replace binds the key
+  and removes it from the other action, which may be left with none. Esc cancels.
+- **Rebound**: a ghost `undo` icon button in the reset slot, tooltip "Reset to
+  Ctrl+M" (the default keys); absent while the action has its default keys.
+- **Fixed** (a family of keys that work as a set: tools by number, arrows): the
+  caps as at rest; hover lights the row but not the keys, nothing records, and the
+  tooltip says "These keys work as a set and cannot be changed."
+- **Focused** (keyboard): the selected row `surface2`; Enter records.
+
 ### Splitter
 
 5 px invisible hit area over a 1 px `lineSubtle`; hover shows `accent` 1 px; drag

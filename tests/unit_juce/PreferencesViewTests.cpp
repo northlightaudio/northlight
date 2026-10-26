@@ -1,7 +1,10 @@
 #include "audio/AudioDeviceLayer.h"
 #include "audio/AudioSettings.h"
 #include "hosting/PluginRegistry.h"
+#include "ui/NorthlightLookAndFeel.h"
 #include "ui/PreferencesView.h"
+#include "ui/ShortcutEditor.h"
+#include "ui/Shortcuts.h"
 #include "ui/Theme.h"
 #include "ui/components/NumericField.h"
 #include "ui/components/SegmentedControl.h"
@@ -277,4 +280,130 @@ TEST_CASE("Each Preferences page opens by its key, in list order", "[ui][prefere
         f.view->showPage(key);
         CHECK(f.view->currentPage() == key);
     }
+}
+
+TEST_CASE("The Shortcuts page rebinds a key, warns of a conflict and saves the bindings",
+          "[ui][preferences][shortcuts]")
+{
+    ui::Shortcuts::resetAll();
+    Fixture f;
+    f.view->showPage("shortcuts");
+    ui::ShortcutEditor* editor = nullptr;
+    for (const auto& row : f.view->rowLayout())
+        if (auto* e = dynamic_cast<ui::ShortcutEditor*>(row.component))
+            editor = e;
+    REQUIRE(editor != nullptr);
+    // Every action is listed, the piano roll's and audio editor's too.
+    size_t listed = 0;
+    for (const auto* action : editor->listedActions())
+        listed += action != nullptr ? 1 : 0;
+    CHECK(listed == ui::Shortcuts::all().size());
+
+    using Mods = juce::ModifierKeys;
+    // A free key binds at once and is saved.
+    editor->startRecording(ui::Command::click);
+    CHECK(editor->isRecording());
+    editor->recordKey(juce::KeyPress('K', Mods::commandModifier | Mods::altModifier, 0));
+    CHECK_FALSE(editor->isRecording());
+    CHECK(ui::Shortcuts::keyText(ui::Command::click) == "Ctrl+Alt+K");
+    CHECK(juce::String(f.settings["shortcuts.bindings"]).contains("click="));
+
+    // A key in use opens the conflict line; Cancel keeps both as they were.
+    editor->startRecording(ui::Command::loop);
+    editor->recordKey(juce::KeyPress('M', Mods::commandModifier, 0));
+    CHECK(editor->conflictText().contains("Mute or unmute the selected clips"));
+    editor->cancelRecording();
+    CHECK(editor->conflictText().isEmpty());
+    CHECK(ui::Shortcuts::keyText(ui::Command::loop) == "L");
+    // Replace takes it.
+    editor->startRecording(ui::Command::loop);
+    editor->recordKey(juce::KeyPress('M', Mods::commandModifier, 0));
+    editor->replace();
+    CHECK(ui::Shortcuts::keyText(ui::Command::loop) == "Ctrl+M");
+    CHECK(ui::Shortcuts::keyText(ui::Command::muteClips).isEmpty());
+
+    // Esc cancels a recording; a fixed family does not record.
+    editor->startRecording(ui::Command::undo);
+    editor->recordKey(juce::KeyPress(juce::KeyPress::escapeKey));
+    CHECK(ui::Shortcuts::isDefault(ui::Command::undo));
+    editor->startRecording(ui::Command::pickTool);
+    CHECK_FALSE(editor->isRecording());
+
+    // The search finds actions by key; Reset all puts every key back and saves nothing.
+    editor->setSearch("Ctrl+Alt+K");
+    CHECK(editor->rows() == 2); // the section header and Click
+    editor->resetAll();
+    CHECK(ui::Shortcuts::allDefault());
+    CHECK(f.settings["shortcuts.bindings"].empty());
+}
+
+TEST_CASE("Return on stop is a Recording setting, on by default", "[ui][preferences]")
+{
+    Fixture f;
+    f.view->showPage("recording");
+    bool found = false;
+    for (const auto& row : f.view->rowLayout())
+        if (row.label == "Return on stop")
+        {
+            found = true;
+            auto* box = dynamic_cast<juce::ToggleButton*>(row.component);
+            REQUIRE(box != nullptr);
+            CHECK(box->getToggleState());
+            box->setToggleState(false, juce::dontSendNotification);
+            box->onClick(); // what a click does after toggling
+            CHECK(f.settings["transport.returnOnStop"] == "0");
+        }
+    CHECK(found);
+}
+
+// Pictures of the Shortcuts page in each of its states, hidden from the default run
+// (northlight_juce_tests "[.shortcut-snapshots]"), saved at 100% and 200% in the
+// folder NORTHLIGHT_SNAPSHOT_DIR names.
+TEST_CASE("The Shortcuts page's states, saved as pictures", "[.shortcut-snapshots]")
+{
+    ui::Shortcuts::resetAll();
+    const auto folder = juce::SystemStats::getEnvironmentVariable("NORTHLIGHT_SNAPSHOT_DIR", {});
+    REQUIRE(folder.isNotEmpty());
+    const juce::File dir(folder);
+    REQUIRE(dir.createDirectory());
+    Fixture f;
+    ui::NorthlightLookAndFeel lnf(f.theme);
+    juce::LookAndFeel::setDefaultLookAndFeel(&lnf);
+    f.view->sendLookAndFeelChange();
+    f.view->showPage("shortcuts");
+    ui::ShortcutEditor* editor = nullptr;
+    for (const auto& row : f.view->rowLayout())
+        if (auto* e = dynamic_cast<ui::ShortcutEditor*>(row.component))
+            editor = e;
+    REQUIRE(editor != nullptr);
+    const auto save = [&](const juce::String& name)
+    {
+        for (const float scale : {1.0f, 2.0f})
+        {
+            const auto image = f.view->createComponentSnapshot(f.view->getLocalBounds(), true, scale);
+            const auto file = dir.getChildFile(name + (scale > 1.0f ? "@2x" : "") + ".png");
+            file.deleteFile();
+            juce::FileOutputStream out(file);
+            REQUIRE(out.openedOk());
+            CHECK(juce::PNGImageFormat().writeImageToStream(image, out));
+        }
+    };
+    save("shortcuts-rest");
+    ui::Shortcuts::bind(ui::Command::click, ui::Key{'K', juce::ModifierKeys::commandModifier});
+    editor->setSearch({}); // rebuilds the rows: Click shows its reset button
+    editor->startRecording(ui::Command::punch);
+    save("shortcuts-recording");
+    editor->recordKey(juce::KeyPress('M', juce::ModifierKeys::commandModifier, 0));
+    save("shortcuts-conflict");
+    editor->cancelRecording();
+    ui::Shortcuts::bind(ui::Command::muteClips,
+                        ui::Key{'Q', juce::ModifierKeys::altModifier}); // fills Editing
+    ui::Shortcuts::bind(
+        ui::Command::loop, ui::Key{'M', juce::ModifierKeys::commandModifier}, {ui::Command::muteClips});
+    editor->setSearch("clips");
+    save("shortcuts-search");
+    editor->setSearch("nothing like this");
+    save("shortcuts-nomatch");
+    juce::LookAndFeel::setDefaultLookAndFeel(nullptr);
+    ui::Shortcuts::resetAll();
 }

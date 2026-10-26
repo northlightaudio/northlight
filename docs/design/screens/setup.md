@@ -132,7 +132,10 @@ Audio page, shown inline, looks like every other page.
     "The light theme is coming soon."), Accent (**Decision**: user accent override
     is in scope: six presets plus hex), Contrast (segmented Standard | High; "High
     brightens lines and secondary text."), UI scale (combo: Follow system, 100% to
-    200%; it applies at once). Accent and Contrast note "Applies the next time Northlight starts."
+    200%). All three apply at once: the colours load again into the running theme
+    and every window repaints. The Light segment stays disabled (`textDisabled`, no
+    hover, skipped by the arrow keys) with its tooltip until the light theme lands
+    (design-system.md 2.9).
   - Accent swatches are 20 px circles `space.sm` apart, from the track palette
     entries named in `track.accentPresets` (Overcast, the default, first), each with
     its name as tooltip. Hover: a 1 px `lineStrong` ring 2 px outside. Chosen: a
@@ -147,7 +150,10 @@ Audio page, shown inline, looks like every other page.
     200 px field, Coming soon; "{track} and {take} become the track name and take
     number.").
   - *Count-in and click*: Count-in (segmented Off | 1 bar | 2 bars | 4 bars; "Used
-    when a project opens."), Pre-roll (bars, Coming soon), Click level (dB).
+    when a project opens."; the header's count-in toggle steps through the same
+    four), Pre-roll (bars, Coming soon), Click level (dB).
+  - *Transport*: Return on stop (checkbox, on by default; "Stop takes the playhead
+    back to where playback started. Pause (Shift+Space) leaves it where it is.").
 - **Editing**
   - *Snap*: Snap (checkbox; "On when a project opens."), Grid (combo: Adaptive, Bar,
     Beat, 1/8, 1/16, 1/32).
@@ -167,16 +173,24 @@ Audio page, shown inline, looks like every other page.
     plugins" in `body` `textPrimary`, then **Clear**, which only shows when there are some;
     "Plugins that crashed or hung while being scanned are skipped until cleared.").
   - *Windows*: Keep on top (checkbox; "Plugin windows stay above the main window.").
-- **Shortcuts**: the search field (the `search` icon inside it, `space.sm` from its
-  left edge) and a card holding the table, which fills the rest of the page and
-  scrolls. Actions are grouped under uppercase `caption` `textTertiary` headers
-  (Transport, View, Tracks, Editing, Files, App); rows are 28 px with the action in
-  `body` `textPrimary` and its keys right aligned as key caps (the tooltip's:
-  `caption` `textSecondary` on `surface2`, 1 px `lineStrong`, radius `sm`, 18 px
-  high), with "or" in `small` `textTertiary` between alternatives. Hover
-  `surface2`. A search with no match shows "No shortcuts match “…”." centred in
-  `textTertiary`. Rebinding, conflicts and Reset to defaults come with the keyboard
-  map editor.
+- **Shortcuts** (the keyboard map editor; design-system.md "Key binding"): the
+  search field (the `search` icon inside it, `space.sm` from its left edge) with
+  **Reset all** (secondary, disabled while every key is the default) `space.sm` to
+  its right; under them the hint "Click a shortcut's keys to change them. Shift
+  with a panel's key detaches or reattaches it." in `small` `textTertiary`; then a
+  card holding the table, which fills the rest of the page and scrolls. Actions are
+  grouped under uppercase `caption` `textTertiary` headers (Transport, View,
+  Tracks, Editing, Files, App, Piano Roll, Audio Editor), one row per action of the
+  registry (interaction.md 10.4); rows are 28 px with the action in `body`
+  `textPrimary` and its keys right aligned as key caps (the tooltip's: `caption`
+  `textSecondary` on `surface2`, 1 px `lineStrong`, radius `sm`, 18 px high), with
+  "or" in `small` `textTertiary` between alternatives, "/" between a fixed
+  family's keys and "to" for a run of digits ("1 to 7"); an action with no key
+  shows "None" in `small` `textTertiary`. Hover `surface2`. The search matches the
+  action, its keys and its section; no match shows "No shortcuts match “…”."
+  centred in `textTertiary`. Rebinding, conflicts and resets work as the Key
+  binding pattern says; every change applies at once (keys, tooltips, menus) and
+  is saved in the user settings.
 - **Diagnostics**
   - *Crash reports*: Send reports (checkbox, Coming soon; "Reports are always kept on this
     computer, in the settings folder's Crashes folder.").

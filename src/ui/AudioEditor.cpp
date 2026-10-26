@@ -8,6 +8,7 @@
 #include "engine/pitch/VocalRender.h"
 #include "ui/NorthlightLookAndFeel.h"
 #include "ui/PaintStats.h"
+#include "ui/Shortcuts.h"
 #include "ui/audioeditor/CorrectSheet.h"
 #include "ui/audioeditor/PitchEditing.h"
 #include "ui/audioeditor/PitchGrid.h"
@@ -1532,28 +1533,29 @@ bool AudioEditor::keyPressed(const juce::KeyPress& key)
         return false;
     const auto code = key.getKeyCode();
     const auto mods = key.getModifiers();
-    if (code >= '1' && code <= '5' && !mods.isAnyModifierKeyDown())
+    // The keys come from the keyboard map (ui/Shortcuts.h), so a rebinding applies.
+    if (const int tool = Shortcuts::matchIndex(Command::audioEditorTool, key); tool >= 0)
     {
-        setTool(static_cast<Tool>(code - '1'));
+        setTool(static_cast<Tool>(tool));
         return true;
     }
-    if (code == juce::KeyPress::upKey || code == juce::KeyPress::downKey)
+    if (Shortcuts::matches(Command::audioEditorNudgePitch, key))
     {
         const float step = mods.isShiftDown() ? 10.0f : 100.0f;
         nudgeSelection(code == juce::KeyPress::upKey ? step : -step);
         return true;
     }
-    if ((code == 'M' || code == 'm') && !mods.isAnyModifierKeyDown())
+    if (Shortcuts::matches(Command::audioEditorMute, key))
     {
         toggleMuteSelection();
         return true;
     }
-    if ((code == 'A' || code == 'a') && mods.isCommandDown())
+    if (Shortcuts::matches(Command::audioEditorSelectAll, key))
     {
         selectAll();
         return true;
     }
-    if (code == juce::KeyPress::escapeKey)
+    if (Shortcuts::matches(Command::audioEditorClearSelection, key))
     {
         selection_.clear();
         repaint();

@@ -26,16 +26,20 @@ clip uses to the Recycle Bin.
 
 ## Playing and editing
 
-Import audio from the project menu, or drop files onto the arrange view. Space plays
-and stops, Return goes back to the start, and a click in the ruler locates.
+Import audio from the project menu (Ctrl+I), or drop files onto the arrange view.
+Space plays and stops, Shift+Space pauses (Space or Play then carries on from
+there), Enter or Home goes to the start and End to the end, and a click in the ruler
+locates. When playback stops, the playhead goes back to where it started; turn
+**Return on stop** off in Preferences > Recording to leave it where it stopped.
 Ctrl+wheel zooms around the pointer, the wheel scrolls tracks and Shift+wheel
 scrolls time.
 
 Click a clip to select it (Shift adds, Ctrl toggles), drag on empty space to lasso,
 drag a clip to move it, drag an edge to trim, drag a top corner for a fade, and
-Ctrl+drag for clip gain. Moves snap to the grid (**G**). **Delete** removes (with
-ripple on, **E**, later clips close the gap), **Ctrl+D** duplicates, **S** splits at
-the playhead, **J** joins, **X** crossfades overlapping clips, **Ctrl+Shift+N**
+Ctrl+drag a clip's body up or down for its gain. Moves snap to the grid (**N** turns
+snap on and off). **Delete** removes (with ripple on, **Shift+N**, later clips close
+the gap), **Ctrl+D** duplicates, **S** splits at the playhead and **Alt+S** at the
+time selection, **J** joins, **X** crossfades overlapping clips, **Ctrl+Shift+N**
 normalises, **Ctrl+M** mutes or unmutes the selected clips. **M** drops a marker,
 **Alt+M** a region from the loop range, and comma and full stop jump between
 markers. Right-click a clip for the same edits in a menu, with Split here.
@@ -53,9 +57,12 @@ corrects and shapes the pitch of a vocal and handles its breaths.
 
 ## Recording
 
-Pick an input in a track's header, arm it with **R**, choose input monitoring with
-**I** (off, automatic or on), and press **Record** or Ctrl+R. **Click** turns on the
-metronome and **Count-in** sets the bars of click before a take. Drag in the ruler
+Pick an input in a track's header, arm it with its **R** button (or **Shift+R** for
+the selected track), choose input monitoring with **I** (off, automatic or on), and
+press **Record** or the R key. Arming, monitoring and the input are not undo steps:
+Ctrl+Z after arming undoes the edit before it, as in other DAWs. The project still
+counts them as changes and saves them. **Click** turns on the
+metronome and **Count-in** steps through Off, 1, 2 and 4 bars of click before a take. Drag in the ruler
 to set a range: **Loop** repeats it and **Punch** records into it. With loop on, each
 pass becomes a take; the take lanes show them, and swiping across a lane picks which
 take plays where.
@@ -72,7 +79,7 @@ recorded.
 
 ## Mixing
 
-The **Mixer** (Ctrl+M) has a strip for every track, bus and FX track: inserts, sends,
+The **Mixer** (F2) has a strip for every track, bus and FX track: inserts, sends,
 pan, mute, solo, phase, fader and meters, with the master's loudness meter. Strips
 can join a fader group, so their faders, mutes and solos move together.
 
@@ -242,3 +249,21 @@ Northlight.exe --demo-song "$env:USERPROFILE\Music\Northern Drift.northlight"
 **Export** (Ctrl+E) renders the mix or every track as stems, over the whole song or a
 range, to WAV, AIFF, FLAC or Ogg Vorbis, at the project rate or another, with loudness
 normalisation and dither. **Freeze** renders a track in place to save processing.
+
+## Keyboard shortcuts
+
+**Preferences > Shortcuts** lists every key, grouped as Transport, View, Tracks,
+Editing, Files, App, Piano Roll and Audio Editor, and searchable by action or key.
+Click an action's keys and press the new one to rebind it; if another action already
+uses that key, the page says which and offers **Replace** (the other action loses the
+key) or **Cancel**. A rebound action has a reset button, and **Reset all** puts every
+key back. Changes apply at once, in tooltips and menus too. The tools' number keys
+and the arrow keys work as sets and cannot be rebound.
+
+The defaults most used: Space play/stop, Shift+Space pause, R record, Enter go to
+start, L loop, P punch, C click, N snap, Shift+N ripple, Z zoom to fit, Ctrl+Z undo,
+Ctrl+Y redo, Shift+M / Shift+S / Shift+R mute, solo and arm the selected track, F2 to
+F9 the panels (Mixer, Editor, Browser, Inspector, Piano Roll, Diagnostics,
+Instruments, Audio Editor; Shift with the key detaches the panel), and F2 renames the
+selected track while the track list has the focus. The piano roll's keys (G snap, Q
+quantise, [ and ] the grid, = and - transpose) work while it has the focus.

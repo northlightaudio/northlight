@@ -149,7 +149,9 @@ undoable command, and any note can be adjusted afterwards.
   - notes drawn as blobs shaped by their loudness;
   - the original pitch curve faint, the edited curve bright.
 - **Tools:** icon buttons as in the arrange view's corner and the piano roll (the
-  current one lit, keys 1 to 5), after the Wave/Pitch switch, shown in pitch mode:
+  current one lit, keys 1 to 5; with the editor focused, Up and Down move the
+  selected notes a semitone (Shift: 10 cents), M mutes them, Ctrl+A selects every
+  note and Esc clears), after the Wave/Pitch switch, shown in pitch mode:
   pitch (a note between arrows), split (the scissors, which are also its cursor over
   a note), drift (a wander settling flat), vibrato (a quick wave), breath (a breath
   of wind). Each tooltip names what a drag or click does.

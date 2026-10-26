@@ -114,6 +114,10 @@ public:
     // revert or redo), so the history can be capped by size as well as by count.
     // A command that copies tracks, clips or lanes says so; the rest are small.
     virtual std::size_t footprint() const noexcept { return 128; }
+    // False for a change to how a track is set up for recording (arming, input
+    // monitoring, the input): the session applies it outside the undo history,
+    // as other DAWs do, and the project is still modified and saves it.
+    virtual bool undoable() const noexcept { return true; }
 };
 
 class UndoStack
@@ -563,6 +567,7 @@ class SetTrackMidiInput final : public SetField<OnTrack, &Track::midiInput>
 public:
     SetTrackMidiInput(Id trackId, std::string deviceName) : SetField({trackId}, std::move(deviceName)) {}
     std::string name() const override { return "Set MIDI input"; }
+    bool undoable() const noexcept override { return false; }
 };
 
 // Whether a MIDI track plays the MIDI output device, and on which channel (1..16).
@@ -1366,6 +1371,7 @@ public:
     // which takes the place of the channel.
     SetTrackInput(Id trackId, int inputChannel, std::string inputBus = {});
     std::string name() const override { return "Set track input"; }
+    bool undoable() const noexcept override { return false; }
     bool apply(Project&) override;
     bool revert(Project&) override;
 
@@ -1380,6 +1386,7 @@ class SetTrackArmed final : public SetField<OnTrack, &Track::armed>
 public:
     SetTrackArmed(Id trackId, bool armed) : SetField({trackId}, armed) {}
     std::string name() const override { return "Arm track"; }
+    bool undoable() const noexcept override { return false; }
 };
 
 class SetTrackMonitor final : public SetField<OnTrack, &Track::monitor>
@@ -1387,6 +1394,7 @@ class SetTrackMonitor final : public SetField<OnTrack, &Track::monitor>
 public:
     SetTrackMonitor(Id trackId, MonitorMode mode) : SetField({trackId}, mode) {}
     std::string name() const override { return "Set track monitoring"; }
+    bool undoable() const noexcept override { return false; }
 };
 
 class SetTrackSolo final : public SetField<OnChannel, &Channel::solo>

@@ -4,6 +4,7 @@
 #include "core/NoteNames.h"
 #include "ui/NorthlightLookAndFeel.h"
 #include "ui/PaintStats.h"
+#include "ui/Shortcuts.h"
 #include "ui/components/DragTip.h"
 #include "ui/timeline/GridLines.h"
 #include "ui/timeline/TimeGrid.h"
@@ -53,13 +54,15 @@ PianoRoll::PianoRoll(const Theme& theme)
     refreshToolButtons();
     snapButton_.getProperties().set(NorthlightLookAndFeel::propertyVariant, "ghost");
     snapButton_.getProperties().set(NorthlightLookAndFeel::propertyMenu, true);
-    snapButton_.setTooltip("Snap grid");
+    Shortcuts::tag(snapButton_, "Snap grid", Command::pianoRollSnap);
     snapButton_.onClick = [this] { showSnapMenu(); };
     addAndMakeVisible(snapButton_);
     quantiseButton_.setButtonText("Quantise");
     quantiseButton_.getProperties().set(NorthlightLookAndFeel::propertyVariant, "ghost");
     quantiseButton_.getProperties().set(NorthlightLookAndFeel::propertyMenu, true);
-    quantiseButton_.setTooltip("Quantise the selected notes (Q); the strength is in the menu");
+    Shortcuts::tag(quantiseButton_,
+                   "Quantise the selected notes; the strength is in the menu",
+                   Command::pianoRollQuantise);
     quantiseButton_.onClick = [this] { showQuantiseMenu(); };
     addAndMakeVisible(quantiseButton_);
     link_.setClickingTogglesState(true);
@@ -1528,11 +1531,9 @@ void PianoRoll::setSnapEnabled(bool on)
 
 bool PianoRoll::handleEditKey(const juce::KeyPress& key)
 {
-    const auto plain = [&](juce::juce_wchar ch)
-    { return key == juce::KeyPress(ch, juce::ModifierKeys(), 0); };
-    const auto ctrl = [&](juce::juce_wchar ch)
-    { return key == juce::KeyPress(ch, juce::ModifierKeys::commandModifier, 0); };
-    if (key == juce::KeyPress::deleteKey || key == juce::KeyPress::backspaceKey)
+    // The keys come from the keyboard map (ui/Shortcuts.h), so a rebinding applies.
+    const auto is = [&](Command command) { return Shortcuts::matches(command, key); };
+    if (is(Command::pianoRollDelete))
     {
         if (laneFocus_ && !controllerLane_.selection().empty())
             controllerLane_.deleteSelection();
@@ -1540,12 +1541,14 @@ bool PianoRoll::handleEditKey(const juce::KeyPress& key)
             deleteSelection();
         return true;
     }
-    if (plain('1') || plain('3') || plain('4'))
+    if (is(Command::pianoRollSelectTool) || is(Command::pianoRollDrawTool) || is(Command::pianoRollEraseTool))
     {
-        setTool(plain('3') ? Tool::draw : plain('4') ? Tool::erase : Tool::select);
+        setTool(is(Command::pianoRollDrawTool)    ? Tool::draw
+                : is(Command::pianoRollEraseTool) ? Tool::erase
+                                                  : Tool::select);
         return true;
     }
-    if (ctrl('a'))
+    if (is(Command::pianoRollSelectAll))
     {
         if (laneFocus_ && !lane_.velocity)
             controllerLane_.selectAll();
@@ -1553,48 +1556,48 @@ bool PianoRoll::handleEditKey(const juce::KeyPress& key)
             selectAll();
         return true;
     }
-    if (ctrl('d'))
+    if (is(Command::pianoRollDuplicate))
     {
         duplicateSelection();
         return true;
     }
-    if (key == juce::KeyPress::escapeKey)
+    if (is(Command::pianoRollClearSelection))
     {
         controllerLane_.clearSelection();
         clearSelection();
         return true;
     }
-    if (plain('g'))
+    if (is(Command::pianoRollSnap))
     {
         setSnapEnabled(!snap_);
         return true;
     }
-    if (plain('q'))
+    if (is(Command::pianoRollQuantise))
     {
         quantiseSelection(quantiseStrength_, false);
         return true;
     }
-    if (key == juce::KeyPress('q', juce::ModifierKeys::shiftModifier, 0) || key == juce::KeyPress('Q'))
+    if (is(Command::pianoRollQuantiseEnds))
     {
         quantiseSelection(quantiseStrength_, true);
         return true;
     }
-    if (plain('[') || plain(']'))
+    if (is(Command::pianoRollCoarserGrid) || is(Command::pianoRollFinerGrid))
     {
-        setGridDivision(plain('[') ? gridDivision_ / 2 : gridDivision_ * 2);
+        setGridDivision(is(Command::pianoRollCoarserGrid) ? gridDivision_ / 2 : gridDivision_ * 2);
         return true;
     }
-    if (key.getTextCharacter() == '+' || key.getTextCharacter() == '=' || key.getTextCharacter() == '-')
+    if (is(Command::pianoRollTransposeUp) || is(Command::pianoRollTransposeDown))
     {
-        transposeSelection(key.getTextCharacter() == '-' ? -1 : 1);
+        transposeSelection(is(Command::pianoRollTransposeDown) ? -1 : 1);
         return true;
     }
-    if (key == juce::KeyPress::leftKey || key == juce::KeyPress::rightKey)
+    if (is(Command::pianoRollNudge))
     {
         nudgeSelection(key == juce::KeyPress::leftKey ? -1 : 1, 0, key.getModifiers().isShiftDown());
         return true;
     }
-    if (key == juce::KeyPress::upKey || key == juce::KeyPress::downKey)
+    if (is(Command::pianoRollNudgePitch))
     {
         const int step = key.getModifiers().isCtrlDown() ? 12 : 1;
         nudgeSelection(0, key == juce::KeyPress::upKey ? step : -step);

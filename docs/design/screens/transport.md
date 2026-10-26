@@ -30,15 +30,24 @@ the readout well are recessed with a soft shade fading down 5 px from their top 
 1. **Transport buttons** (32 px, `controlLarge`): Go to start, Play, Stop, Record.
    Keys in the control material (section 2.4): a `surface2` face at rest, 16 px
    icons in `textSecondary`; the active one glows. While playing, Play is solid
-   `accent` with a `textOnColour` icon. Play toggles to Pause while playing (**Decision**:
-   Space is play/stop, not play/pause; Pause exists for Shift+Space). Record is a
+   `accent` with a `textOnColour` icon. Play toggles to Pause while playing: its icon
+   is the pause bars and its tooltip "Pause  Shift+Space"; a click pauses, keeping
+   the position, and the next Play resumes from it. Stop ("Stop  Space") stops and,
+   with **Return on stop** on (the default, Preferences > Recording > Transport),
+   takes the playhead back to where playback started (after a pause, where the
+   first Play started; after a locate while playing, where it jumped to); Stop
+   after a pause does the same. **Decision**: Space is play/stop, not play/pause;
+   Pause is Shift+Space and the Play button while playing. Return on stop has no
+   header toggle: the header has no room in the mode tray that would not crowd the
+   count-in, and it is a set-once preference. Record is a
    `record`-coloured icon at rest; while recording the button is solid `record` with
    `textOnColour` and the time display turns `record`.
 2. **Mode toggles** (28×28 icon toggles, 8 px apart, each with a tooltip naming
    the mode, its state and shortcut): Loop (two arrows cycling), Punch (in/out
    brackets around a dot; on state uses `record` instead of `accent`), Click
    (metronome), Count-in (metronome with the pendulum the other way and the bar
-   count as a 9 px figure in the corner; right-click or long-press for 0/1/2).
+   count as a 9 px figure in the corner; a click steps Off, 1, 2, 4 bars, the
+   choices Preferences offers, and its tooltip names the count).
 3. **Readout**: one readout well (the material's `readoutWell`, radius `md`, the
    groove's inset, a `lineSubtle` rim) holding bars, time, tempo and signature
    with no dividers, told apart by size and colour: the
@@ -89,7 +98,8 @@ the readout well are recessed with a soft shade fading down 5 px from their top 
 Space play/stop, Shift+Space pause, R record (with confirmation if no track is
 armed: a toast "Arm a track to record" with an "Arm selected" action), Enter go to
 start, L loop, P punch, C click, Home/End, comma/full stop previous/next marker,
-numpad as in Pro Tools (0 play, 3 record, 1 go to start). Full map in section 10.
+numpad as in Pro Tools (0 play, 3 record, 1 go to start). All rebindable; full map
+in interaction.md 10.4.
 
 ## Diagnostics panel (dock tab)
 

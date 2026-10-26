@@ -108,7 +108,9 @@ already done. Most commands that set
 one field of one object (a gain, a bypass, a lane's points) are thin subclasses of
 `core::SetField<Target, &Object::field>`, which finds the target by id, keeps the
 value it replaces and puts it back; the subclass only names itself and says what
-it changes.
+it changes. A command whose `undoable()` is false (arming, input monitoring and a
+track's audio or MIDI input) is applied by the session outside the history: it
+marks the project changed (`changedOutsideHistory_`) and saves, but Ctrl+Z skips it.
 
 | Kind | Example | Engine work |
 |---|---|---|
@@ -527,7 +529,13 @@ blocked the message thread; now the longest stall is one plugin.
 - **Settings** are an XML properties file in `%APPDATA%\Northlight`. Design tokens can
   be overridden from a `tokens.json` beside it, which only the user edits; the accent
   and contrast chosen in Preferences go in `appearance-tokens.json` beside it, applied
-  after it. The settings Preferences shows are one schema (`core/Settings.h`: each
+  after it. A change to either applies at once: `Theme::reloadColours` loads the
+  colours again into the one theme every view holds (by reference), the look and feel
+  sets its stock colours again, `NorthlightLookAndFeel::remapColours` updates the few
+  components handed a token at construction (labels, placeholders), and every window
+  gets `sendLookAndFeelChange`, which repaints and drops cached images (rendered
+  faces invalidate on it). The user's rebound keys are the `shortcuts.bindings`
+  setting (`ui::Shortcuts::save`), loaded at launch and whenever it changes. The settings Preferences shows are one schema (`core/Settings.h`: each
   key, its type and its default); Preferences binds its controls to it and the app
   reads them through its typed `settings::Reader`, so no default is written twice.
 - **Autosave** writes unsaved projects to the settings folder while edits pause. A
@@ -606,10 +614,13 @@ paint, for the area repainted), one `ArrangeView::Gesture` per kind of drag
 (`ArrangeGestures`: each keeps its own preview and commits through `ui::edit` on
 release), `ArrangeMenus` (every item carries its action), `MarkerController`
 and `ArrangeKeymap` (the keys it acts on). Every key the app answers is in one
-table, `ui::Shortcuts` (a command, its keys and whether they are listed): the main
-window dispatches its commands from it, the panels take their F-keys from it, the
-arrange keymap matches through it, and the Shortcuts page, tooltips and menu items
-print its keys. The mixer's strips live in
+registry, `ui::Shortcuts`: each command's id, name, section, context (global,
+arrange, piano roll, audio editor), default keys and current keys. The main window
+dispatches its global commands from it (`Shortcuts::dispatch`), the panels take
+their keys from it (`PanelManager::setShortcut` after a rebinding), the arrange
+keymap, piano roll and audio editor match through it, and the Shortcuts page
+(`ui::ShortcutEditor`, which rebinds), tooltips (`Shortcuts::tag` and `retag`) and
+menu items (`AppMenus`, `ArrangeMenus`) print its current keys. The mixer's strips live in
 `src/ui/mixer/`, the piano roll's controller lane is a component of its own
 (`ui::ControllerLane`), and the audio editor's Correct sheet, pitch grid and
 pitch rules are in `src/ui/audioeditor/`.

@@ -2,15 +2,19 @@
 
 #include <juce_gui_basics/juce_gui_basics.h>
 
-#include <optional>
+#include <string>
 #include <vector>
 
-// The keyboard map (interaction.md 10.4 as implemented) as one table: every key a
-// command answers, what the command is called and where it is listed. The main
-// window dispatches its commands from it, the panels take their keys from it,
-// the arrange view's keymap matches through it, the Preferences Shortcuts page
-// lists it, and tooltips and menus print the keys it gives. A command's first
-// listed key is the one tooltips and menus show.
+// The keyboard map (interaction.md 10.4 as implemented) as one registry: every
+// action a key can run, with a stable id, the name the Shortcuts page shows, the
+// section it is listed under, the context it works in (the whole window, the
+// arrange view, the piano roll or the audio editor) and its default keys. The
+// user may rebind an action on the Preferences Shortcuts page; the bindings are
+// kept in the user settings and loaded here, so everything that reads a key reads
+// the current one: the main window dispatches from it, the panels take their keys
+// from it, the arrange view, piano roll and audio editor match through it, and the
+// Shortcuts page, tooltips and menus print it. A command's first listed key is the
+// one tooltips and menus show. Message thread only.
 
 namespace northlight::ui
 {
@@ -18,7 +22,6 @@ namespace northlight::ui
 enum class Command
 {
     // The window's (MainWindow dispatches these).
-    renameTrack, // F2 while the arrange view has the focus
     findPlugin,
     playStop,
     pause,
@@ -51,7 +54,7 @@ enum class Command
     addAudioTrack,
     addMidiTrack,
     addBus,
-    // The panels' (F-keys show one; with Shift, detach or reattach it).
+    // The panels' (with Shift, the key detaches or reattaches the panel).
     showMixer,
     showEditor,
     showBrowser,
@@ -60,7 +63,8 @@ enum class Command
     showDiagnostics,
     showInstruments,
     showAudioEditor,
-    // The arrange view's (ArrangeKeymap acts on these).
+    // The arrange view's (ArrangeKeymap acts on these; the window on renameTrack).
+    renameTrack, // F2 while the arrange view has the focus
     deleteSelection,
     addMarker,
     addRegion,
@@ -83,9 +87,40 @@ enum class Command
     splitAtSelection,
     join,
     crossfade,
-    snapInArrange,
-    rippleInArrange,
     nudge,
+    // The piano roll's (while it has the focus).
+    pianoRollDelete,
+    pianoRollSelectTool,
+    pianoRollDrawTool,
+    pianoRollEraseTool,
+    pianoRollSelectAll,
+    pianoRollDuplicate,
+    pianoRollClearSelection,
+    pianoRollSnap,
+    pianoRollQuantise,
+    pianoRollQuantiseEnds,
+    pianoRollFinerGrid,
+    pianoRollCoarserGrid,
+    pianoRollTransposeUp,
+    pianoRollTransposeDown,
+    pianoRollNudge,      // Left / Right (Shift: fine)
+    pianoRollNudgePitch, // Up / Down (Ctrl: an octave)
+                         // The audio editor's (in pitch mode, while it has the focus).
+    audioEditorTool,     // 1 to 5, in the tools' order
+    audioEditorNudgePitch,
+    audioEditorMute,
+    audioEditorSelectAll,
+    audioEditorClearSelection,
+};
+
+// Where a command's keys work. A view's keys are tried before the window's while
+// it has the focus, so a key bound both in a view and globally is a conflict.
+enum class Context
+{
+    global,
+    arrange,
+    pianoRoll,
+    audioEditor,
 };
 
 // One key: a key code (or the character typed, for keys whose shifted form is
@@ -98,24 +133,39 @@ struct Key
     bool listed = true;     // shown on the Shortcuts page, in tooltips and menus
 
     bool matches(const juce::KeyPress& press) const noexcept;
-    // "Ctrl+Shift+S", "Space", "F2", ",".
+    // The same key as `other`, however each is written ('r' typed is the R key).
+    bool sameAs(const Key& other) const noexcept;
+    // "Ctrl+Shift+S", "Space", "F2", ",", "Num0".
     juce::String text() const;
-    juce::KeyPress keyPress() const { return juce::KeyPress(code, juce::ModifierKeys(modifiers), 0); }
+    // The press a keyboard sends for this key (what tests post).
+    juce::KeyPress keyPress() const;
+    // The key a press records on the Shortcuts page: its code and modifiers.
+    static Key fromPress(const juce::KeyPress& press);
+    // False for presses the Shortcuts page will not record (Tab moves the focus).
+    static bool bindable(const juce::KeyPress& press);
 };
 
 struct Shortcut
 {
     Command command;
-    const char* name; // what it does, for tests and tools
-    std::vector<Key> keys;
+    const char* id;      // stable, for the settings file ("playStop")
+    const char* name;    // what it does, as the Shortcuts page lists it
+    const char* section; // the Shortcuts page's group
+    Context context = Context::global;
+    std::vector<Key> defaults;
+    // A family of keys that work as a set (the tools' 1 to 7, the arrows): listed,
+    // not rebindable.
+    bool fixed = false;
+    std::vector<Key> keys; // the current keys: the defaults or the user's binding
 };
 
 class Shortcuts
 {
 public:
-    // Every command, in dispatch order within its owner.
+    // Every command, in dispatch order within its context.
     static const std::vector<Shortcut>& all();
     static const Shortcut& of(Command command);
+    static const Shortcut* find(const juce::String& id);
     static bool matches(Command command, const juce::KeyPress& press);
     // The index of the key that matched (pickTool: which tool), -1 for none.
     static int matchIndex(Command command, const juce::KeyPress& press);
@@ -123,16 +173,47 @@ public:
     static juce::String keyText(Command command);
     // "Undo  Ctrl+Z": the tooltip form, which the look and feel draws as key caps.
     static juce::String withKey(const juce::String& text, Command command);
-    // The commands the window dispatches matching `press`, in order.
+    // Gives a control the tooltip `text` with the command's key, and remembers both,
+    // so retag() can print the key again after the user rebinds it.
+    static void tag(juce::Component& control, const juce::String& text, Command command);
+    // Rewrites the tagged tooltips under `root` with the current keys.
+    static void retag(juce::Component& root);
+    // The commands of a context that `press` runs, in dispatch order.
+    static std::vector<Command> commandsFor(const juce::KeyPress& press, Context context);
+    // The window's commands for `press`: the global context's.
     static std::vector<Command> windowCommandsFor(const juce::KeyPress& press);
-
-    // The Shortcuts page: a row per action (several commands can share one, "Zoom
-    // in / out"), keys as space-separated tokens joined by "/", "or" and "to".
-    struct Row
+    // The main window's handler: offers `press` to each global command bound to it
+    // until `perform` takes one. True when one did.
+    template <typename Perform> static bool dispatch(const juce::KeyPress& press, Perform&& perform)
     {
-        juce::String action, keys, group;
-    };
-    static const std::vector<Row>& pageRows();
+        for (const auto command : windowCommandsFor(press))
+            if (perform(command))
+                return true;
+        return false;
+    }
+
+    // ----- rebinding ------------------------------------------------------------------
+    // Whether two contexts see the same key press (either is global, or both the same).
+    static bool overlaps(Context a, Context b) noexcept;
+    // The other commands `key` would collide with if `command` took it.
+    static std::vector<Command> conflicts(Command command, const Key& key);
+    // Binds `command` to `key` alone, replacing its keys, after taking the key away
+    // from the commands in `takeFrom`. A fixed command ignores it.
+    static void bind(Command command, const Key& key, const std::vector<Command>& takeFrom = {});
+    static void reset(Command command);
+    static void resetAll();
+    static bool isDefault(Command command);
+    static bool allDefault();
+    // The user's bindings as settings text, one "id=mods.code,mods.code" per changed
+    // command, space-separated ("id=" is unbound), and back. Unknown ids and bad
+    // keys are skipped; a command the text does not name takes its defaults.
+    static std::string save();
+    static void load(const std::string& text);
+    // Bumped by every change to the bindings.
+    static int generation() noexcept;
+
+    // The Shortcuts page's sections, in order.
+    static const std::vector<const char*>& sections();
 };
 
 } // namespace northlight::ui

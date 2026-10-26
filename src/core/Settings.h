@@ -47,6 +47,8 @@ inline constexpr Setting namePattern{"recording.namePattern", Type::text, "{trac
 inline constexpr Setting countIn{"recording.countIn", Type::choice, "1"}; // bars
 inline constexpr Setting preRoll{"recording.preRollBars", Type::number, "0", true};
 inline constexpr Setting metronomeLevel{"recording.metronomeLevelDb", Type::number, "-6"};
+// Stop returns the playhead to where playback started (Pause keeps it).
+inline constexpr Setting returnOnStop{"transport.returnOnStop", Type::flag, "1"};
 // Editing
 inline constexpr Setting snap{"editing.snap", Type::flag, "1"};
 inline constexpr Setting snapGrid{
@@ -60,15 +62,17 @@ inline constexpr Setting scanOnLaunch{"plugins.scanOnLaunch", Type::flag, "0"};
 inline constexpr Setting pluginsOnTop{"plugins.pin", Type::flag, "0"};
 // Diagnostics
 inline constexpr Setting crashReports{"diagnostics.crashReports", Type::flag, "0", true};
+// Shortcuts: the user's rebound keys (ui::Shortcuts::save's text; empty is the defaults).
+inline constexpr Setting shortcuts{"shortcuts.bindings", Type::text, ""};
 
 // Every setting above, in Preferences order (for tests and tools).
 inline const std::vector<const Setting*>& all()
 {
     static const std::vector<const Setting*> list{
-        &projectFolder, &recentCount,     &autosaveMinutes, &theme,   &accent,         &uiScale,
-        &contrast,      &recordingFormat, &namePattern,     &countIn, &preRoll,        &metronomeLevel,
-        &snap,          &snapGrid,        &ripple,          &fadeMs,  &followPlayhead, &pluginPaths,
-        &scanOnLaunch,  &pluginsOnTop,    &crashReports};
+        &projectFolder, &recentCount,     &autosaveMinutes, &theme,        &accent,         &uiScale,
+        &contrast,      &recordingFormat, &namePattern,     &countIn,      &preRoll,        &metronomeLevel,
+        &snap,          &snapGrid,        &ripple,          &fadeMs,       &followPlayhead, &pluginPaths,
+        &scanOnLaunch,  &pluginsOnTop,    &crashReports,    &returnOnStop, &shortcuts};
     return list;
 }
 

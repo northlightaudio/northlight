@@ -694,7 +694,10 @@ bool PanelManager::handleKey(const juce::KeyPress& key)
             continue;
         if (key.getKeyCode() != shortcut.getKeyCode())
             continue;
-        if (key.getModifiers().isShiftDown())
+        // The key with Shift added (when it has none of its own) detaches.
+        const auto mods = key.getModifiers().withoutMouseButtons();
+        if (!shortcut.getModifiers().isShiftDown() &&
+            mods == shortcut.getModifiers().withFlags(juce::ModifierKeys::shiftModifier))
         {
             detachOrReattach(entry->info.id);
             return true;
@@ -714,6 +717,13 @@ bool PanelManager::handleKey(const juce::KeyPress& key)
         }
     }
     return false;
+}
+
+void PanelManager::setShortcut(PanelId id, const juce::KeyPress& key)
+{
+    for (auto& entry : entries_)
+        if (entry->info.id == id)
+            entry->info.shortcut = key;
 }
 
 void PanelManager::headerDragged(PanelId id, juce::Point<int> screenPosition, bool released)

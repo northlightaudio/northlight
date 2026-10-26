@@ -40,10 +40,18 @@ bool NorthlightLookAndFeel::keyboardFocusVisible() noexcept
 
 NorthlightLookAndFeel::NorthlightLookAndFeel(const Theme& theme) : theme_(theme)
 {
-    const auto& c = theme_.colours;
     if (theme_.fonts.ui != nullptr)
         setDefaultSansSerifTypeface(theme_.fonts.ui);
+    refreshColours();
 
+    // Any click ends keyboard-driven focus rings; a Tab or arrow press (reported
+    // by the window) turns them back on.
+    juce::Desktop::getInstance().addGlobalMouseListener(this);
+}
+
+void NorthlightLookAndFeel::refreshColours()
+{
+    const auto& c = theme_.colours;
     setColour(juce::ResizableWindow::backgroundColourId, c.canvas);
     setColour(juce::DocumentWindow::textColourId, c.textPrimary);
 
@@ -118,10 +126,39 @@ NorthlightLookAndFeel::NorthlightLookAndFeel(const Theme& theme) : theme_(theme)
     setColour(juce::TabbedButtonBar::frontTextColourId, c.textPrimary);
     setColour(juce::TabbedComponent::backgroundColourId, c.surface0);
     setColour(juce::TabbedComponent::outlineColourId, juce::Colours::transparentBlack);
+}
 
-    // Any click ends keyboard-driven focus rings; a Tab or arrow press (reported
-    // by the window) turns them back on.
-    juce::Desktop::getInstance().addGlobalMouseListener(this);
+void NorthlightLookAndFeel::remapColours(juce::Component& root,
+                                         const Theme::Colours& before,
+                                         const Theme::Colours& after)
+{
+    // The tokens Preferences can change (the accent and contrast).
+    const std::pair<juce::Colour, juce::Colour> changed[]{{before.accent, after.accent},
+                                                          {before.textSecondary, after.textSecondary},
+                                                          {before.textTertiary, after.textTertiary},
+                                                          {before.lineSubtle, after.lineSubtle},
+                                                          {before.lineStrong, after.lineStrong}};
+    const auto remap = [&](juce::Component& c, int id)
+    {
+        if (!c.isColourSpecified(id))
+            return;
+        const auto colour = c.findColour(id);
+        for (const auto& [was, now] : changed)
+            if (colour == was && was != now)
+            {
+                c.setColour(id, now);
+                return;
+            }
+    };
+    remap(root, juce::Label::textColourId);
+    remap(root, juce::TextEditor::textColourId);
+    remap(root, juce::TextEditor::outlineColourId);
+    if (auto* field = dynamic_cast<juce::TextEditor*>(&root); field != nullptr)
+        if (const auto placeholder = field->getTextToShowWhenEmpty(); placeholder.isNotEmpty())
+            field->setTextToShowWhenEmpty(placeholder,
+                                          after.textTertiary); // every placeholder is textTertiary
+    for (auto* child : root.getChildren())
+        remapColours(*child, before, after);
 }
 
 NorthlightLookAndFeel::~NorthlightLookAndFeel()
@@ -1036,9 +1073,11 @@ NorthlightLookAndFeel::TooltipParts NorthlightLookAndFeel::splitShortcut(const j
     {
         const auto& k = keys[i];
         const bool last = i == keys.size() - 1;
-        const bool isKey =
-            (k.length() == 1 && !juce::CharacterFunctions::isWhitespace(k[0])) || named.contains(k) ||
-            (k.length() >= 2 && k.length() <= 3 && k[0] == 'F' && k.substring(1).containsOnly("0123456789"));
+        const bool isKey = (k.length() == 1 && !juce::CharacterFunctions::isWhitespace(k[0])) ||
+                           named.contains(k) ||
+                           (k.length() >= 2 && k.length() <= 3 && k[0] == 'F' &&
+                            k.substring(1).containsOnly("0123456789")) ||
+                           (k.length() == 4 && k.startsWith("Num")) || k == "Insert";
         if (last ? !isKey : !modifiers.contains(k))
             return {tip, {}};
     }

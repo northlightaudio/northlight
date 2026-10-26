@@ -32,7 +32,7 @@ Where the recording and the arrangement live. It must stay legible with 4 tracks
   space makes a bar-long clip on the bar there.
 - **Erase** (4, as in the piano roll): a click on a clip deletes it; a drag sweeps,
   and each clip it passes over dims to 40% until the release removes them all as one
-  undo step. A comp's clips go together, and ripple (E) applies as with Delete. The
+  undo step. A comp's clips go together, and ripple (Shift+N) applies as with Delete. The
   clip under the eraser shows a 1 px `danger` outline.
 - **Split** (5): a 1 px `accent` line runs through the clip under the pointer at the
   grid line nearest it (at the pointer when no grid line falls inside the clip),
@@ -225,6 +225,9 @@ Rows at `trackRow` 56 default. Contents, left to right, inside `space.sm` paddin
 - During a move drag: the original stays at 40% alpha, the ghost moves with the
   pointer, snapped; a 1 px `snapGuide` vertical line marks the snap target through
   all lanes; a tooltip shows the new start in bars.beats and the delta.
+- Gain drag: Ctrl+drag on a clip's body up or down sets the clip's gain, the
+  waveform scaling as it goes; one undo step. (So in the arrange view Duplicate is
+  Ctrl+D, not a Ctrl+drag.)
 - Trim drag: the clip edge follows; the waveform does not move (source stays put);
   tooltip shows the new length.
 - Stretch drag: Alt+drag of the right edge stretches the clip to the new end
@@ -353,7 +356,7 @@ hides its tracks' lanes too.
 - Click selects a clip or track; Shift+click extends; Ctrl+click toggles; lasso from
   empty lane space draws a `selectionOutline` 1 px rectangle with `selectionFill`.
 - Time selection: drag in the ruler's bars row with Shift, or in a lane with the
-  range tool (R key), to select a time range across the selected tracks, shown as
+  range tool (key 2), to select a time range across the selected tracks, shown as
   `selectionFill` through those lanes. Used by split-at-range, bounce range, loop
   from selection.
 - Esc clears selection.

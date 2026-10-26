@@ -772,6 +772,19 @@ void Theme::initialise(const juce::File& userOverride, const juce::File& prefere
         loadTypeface(fonts.getChildFile(juce::String(current.fonts.displayItalicFile)));
 }
 
+void Theme::reloadColours(const juce::File& userOverride, const juce::File& preferencesOverride)
+{
+    Theme fresh = defaults();
+    std::string error;
+    const auto shipped = executableAssets().getChildFile("tokens.json");
+    if (shipped.existsAsFile())
+        applyText(shipped.loadFileAsString().toStdString(), fresh, error);
+    for (const auto& file : {userOverride, preferencesOverride})
+        if (file.existsAsFile())
+            applyText(file.loadFileAsString().toStdString(), fresh, error);
+    current.colours = fresh.colours;
+}
+
 const Theme& Theme::dark()
 {
     static const bool initialised = []

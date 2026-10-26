@@ -5,6 +5,7 @@
 #include "ui/NorthlightLookAndFeel.h"
 #include "ui/Number.h"
 #include "ui/PluginBrowser.h"
+#include "ui/Shortcuts.h"
 
 #include <juce_audio_formats/juce_audio_formats.h>
 
@@ -599,7 +600,7 @@ bool MediaBrowser::keyPressed(const juce::KeyPress& key)
         goUp();
         return true;
     }
-    if (key == juce::KeyPress('f', juce::ModifierKeys::commandModifier, 0))
+    if (Shortcuts::matches(Command::findPlugin, key)) // the keyboard map's search key
     {
         search_.grabKeyboardFocus();
         return true;

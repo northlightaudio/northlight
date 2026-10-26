@@ -1,4 +1,5 @@
 #include "core/Model.h"
+#include "ui/NorthlightLookAndFeel.h"
 #include "ui/Theme.h"
 #include "ui/components/Fader.h"
 
@@ -120,4 +121,34 @@ TEST_CASE("Every channel takes its colour from one rule", "[ui][theme]")
     CHECK(theme.track.forChannel(p, 4) == theme.track.named("Lichen"));
     CHECK(theme.track.forChannel(p, 5) == juce::Colour(0xff654321));
     CHECK(theme.track.forChannel(p, core::masterId) == theme.track.named("Slate"));
+}
+
+TEST_CASE("An accent change reloads into the running theme, and constructed colours follow it", "[ui][theme]")
+{
+    const juce::ScopedJuceInitialiser_GUI juceInit;
+    const auto folder =
+        juce::File::getSpecialLocation(juce::File::tempDirectory).getChildFile("northlight-theme-reload");
+    folder.deleteRecursively();
+    REQUIRE(folder.createDirectory());
+    const auto appearance = folder.getChildFile(ui::Theme::preferencesOverrideName);
+    const auto& theme = ui::Theme::dark(); // what every view holds
+    const auto before = theme.colours;
+    REQUIRE(appearance.replaceWithText(R"({"color":{"accent":"#C25E4A","textTertiary":"#A0A0A0"}})"));
+    ui::Theme::reloadColours({}, appearance);
+    CHECK(theme.colours.accent == juce::Colour(0xffc25e4a));
+    CHECK(theme.colours.textTertiary == juce::Colour(0xffa0a0a0));
+    CHECK(theme.spacing.lg == 16); // only the colours reload
+
+    // A label handed textTertiary at construction takes the new value.
+    juce::Component root;
+    juce::Label hint;
+    hint.setColour(juce::Label::textColourId, before.textTertiary);
+    root.addAndMakeVisible(hint);
+    ui::NorthlightLookAndFeel::remapColours(root, before, theme.colours);
+    CHECK(hint.findColour(juce::Label::textColourId) == juce::Colour(0xffa0a0a0));
+
+    appearance.deleteFile();
+    ui::Theme::reloadColours({}, appearance);
+    CHECK(theme.colours.accent == before.accent);
+    folder.deleteRecursively();
 }

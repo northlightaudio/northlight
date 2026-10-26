@@ -37,10 +37,12 @@ TEST_CASE("Every arrange key reaches a binding that says what it does", "[ui][ar
                             Key(Key::escapeKey),
                             Key('s'),
                             Key('s', Mods::altModifier, 0),
-                            Key('g'),
                             Key(Key::rightKey)})
         CHECK(firstMatch(key) != nullptr);
     CHECK(firstMatch(juce::KeyPress('q')) == nullptr);
+    // Snap and ripple are the window's N and Shift+N; G and E are not arrange keys.
+    CHECK(firstMatch(juce::KeyPress('g')) == nullptr);
+    CHECK(firstMatch(juce::KeyPress('e')) == nullptr);
     // A key two bindings could take goes to the first ('M' typed alone is not Alt+M).
     CHECK(juce::String(firstMatch(juce::KeyPress('m'))) == "Add a marker at the playhead");
     CHECK(juce::String(firstMatch(juce::KeyPress('m', juce::ModifierKeys::altModifier, 0))) ==

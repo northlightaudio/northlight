@@ -51,7 +51,7 @@ struct PanelInfo
     HostKind defaultHost;
     int minWidth = 240, minHeight = 200;
     bool canDock = true, canSide = false;
-    juce::KeyPress shortcut; // F2..F7: show; with Shift: detach or reattach
+    juce::KeyPress shortcut; // F2..F9 by default: show; with Shift: detach or reattach
     // The panel's smallest height when it depends on what it shows (else minHeight).
     std::function<int()> minimumHeight = {};
 };
@@ -162,6 +162,8 @@ public:
     // Shift+Fn: docked -> floating; floating -> its default host.
     void detachOrReattach(PanelId id);
     bool handleKey(const juce::KeyPress& key);
+    // A panel's key after the user rebinds it (an invalid key: none).
+    void setShortcut(PanelId id, const juce::KeyPress& key);
     const PanelInfo* info(PanelId id) const;
 
     // Host sizes, animated over motion.panelMs when they open or close; the owner

@@ -236,6 +236,22 @@ public:
                 paths.push_back(item.toStdString());
         session_.setPluginSearchPaths(std::move(paths));
         tracks_.setFollowPlayhead(read.flag(settings::followPlayhead));
+        session_.setReturnOnStop(read.flag(settings::returnOnStop));
+        // The keys: loaded when the setting differs from the registry (the Shortcuts
+        // page changes the registry itself), applied whenever the registry changed.
+        if (const auto bindings = read.text(settings::shortcuts); bindings != ui::Shortcuts::save())
+            ui::Shortcuts::load(bindings);
+        if (atLaunch || ui::Shortcuts::generation() != shortcutsApplied_)
+        {
+            applyShortcuts();
+            shortcutsApplied_ = ui::Shortcuts::generation();
+        }
+        // Accent and contrast apply at once: the colours load again into the theme
+        // every view holds, and every window repaints.
+        const auto appearance = read.text(settings::accent) + "|" + read.text(settings::contrast);
+        if (!atLaunch && appearance != appearance_)
+            applyAppearance();
+        appearance_ = appearance;
         if (atLaunch)
         {
             session_.setCountInBars(read.integer(settings::countIn));
@@ -325,14 +341,67 @@ public:
             return true; // the loading sheet holds the window
         if (key.getKeyCode() == juce::KeyPress::tabKey)
             ui::NorthlightLookAndFeel::setKeyboardFocusVisible(true);
-        // The window's commands from the shortcut table (ui/Shortcuts.h), then the
-        // panels' F-keys, then the arrange view's keys.
-        for (const auto command : ui::Shortcuts::windowCommandsFor(key))
-            if (perform(command))
-                return true;
+        // The keyboard map (ui/Shortcuts.h): renaming while the arrange view has the
+        // focus (F2 there), the window's commands, the panels' keys, then the
+        // arrange view's. The piano roll and audio editor took theirs first, while
+        // they had the focus.
+        if (ui::Shortcuts::matches(ui::Command::renameTrack, key) && perform(ui::Command::renameTrack))
+            return true;
+        if (ui::Shortcuts::dispatch(key, [this](ui::Command command) { return perform(command); }))
+            return true;
         if (panels_.handleKey(key))
             return true;
-        return tracks_.handleEditKey(key);
+        if (!tracks_.handleEditKey(key))
+            return false;
+        // Esc clears the selection and gives the arrange view the focus back (10.4).
+        if (ui::Shortcuts::matches(ui::Command::clearSelection, key) && !tracks_.hasKeyboardFocus(true))
+            tracks_.grabKeyboardFocus();
+        return true;
+    }
+
+    void applyAppearance()
+    {
+        const auto before = theme_.colours;
+        ui::Theme::reloadColours(settings_.file().getSiblingFile(ui::Theme::userOverrideName),
+                                 settings_.file().getSiblingFile(ui::Theme::preferencesOverrideName));
+        if (auto* lnf = dynamic_cast<ui::NorthlightLookAndFeel*>(&juce::LookAndFeel::getDefaultLookAndFeel()))
+            lnf->refreshColours();
+        auto& desktop = juce::Desktop::getInstance();
+        std::vector<juce::Component*> windows{&owner_};
+        for (int i = 0; i < desktop.getNumComponents(); ++i)
+            if (auto* window = desktop.getComponent(i); window != &owner_)
+                windows.push_back(window);
+        for (auto* window : windows)
+        {
+            ui::NorthlightLookAndFeel::remapColours(*window, before, theme_.colours);
+            window->sendLookAndFeelChange(); // repaints, and drops cached images
+        }
+    }
+
+    // The keys the user rebound reach what reads them outside the table: the
+    // panels' keys and the tooltips set once.
+    void applyShortcuts()
+    {
+        using C = ui::Command;
+        const std::pair<ui::PanelId, C> panelKeys[]{{ui::PanelId::mixer, C::showMixer},
+                                                    {ui::PanelId::editor, C::showEditor},
+                                                    {ui::PanelId::browser, C::showBrowser},
+                                                    {ui::PanelId::inspector, C::showInspector},
+                                                    {ui::PanelId::pianoRoll, C::showPianoRoll},
+                                                    {ui::PanelId::audioEditor, C::showAudioEditor},
+                                                    {ui::PanelId::instruments, C::showInstruments},
+                                                    {ui::PanelId::diagnostics, C::showDiagnostics}};
+        for (const auto& [panel, command] : panelKeys)
+        {
+            const auto& keys = ui::Shortcuts::of(command).keys;
+            panels_.setShortcut(panel, keys.empty() ? juce::KeyPress() : keys.front().keyPress());
+        }
+        header_.refreshTooltips();
+        ui::Shortcuts::retag(owner_);
+        for (int i = 0; i < juce::Desktop::getInstance().getNumComponents(); ++i)
+            if (auto* window = juce::Desktop::getInstance().getComponent(i); window != &owner_)
+                ui::Shortcuts::retag(*window);
+        refreshHeader();
     }
 
     // Runs one of the window's keyboard commands; false when it does not apply now
@@ -357,7 +426,7 @@ public:
                 session_.togglePlay();
                 return true;
             case C::pause:
-                session_.stop();
+                session_.togglePause();
                 return true;
             case C::record:
                 toggleRecord();
@@ -473,8 +542,10 @@ private:
         header_.onUndo = [this] { undo(); };
         header_.onRedo = [this] { redo(); };
         header_.onGoToStart = [this] { session_.returnToStart(); };
-        header_.onPlayStop = [this] { session_.togglePlay(); };
-        header_.onStop = [this] { session_.stop(); };
+        // Play turns into Pause while playing (transport.md); Stop returns to where
+        // playback started when that preference is on.
+        header_.onPlayStop = [this] { session_.togglePause(); };
+        header_.onStop = [this] { session_.stopTransport(); };
         header_.onRecord = [this] { toggleRecord(); };
         header_.onDeviceWarning = [this] { owner_.showAudioSetup(); };
         header_.onMinimise = [this] { owner_.minimiseButtonPressed(); };
@@ -799,9 +870,12 @@ private:
         using ui::Icon;
         using ui::PanelId;
         using ui::PanelInfo;
-        // Each panel's key comes from the shortcut table.
+        // Each panel's key comes from the shortcut table (applyShortcuts keeps it current).
         const auto key = [](ui::Command command)
-        { return ui::Shortcuts::of(command).keys.front().keyPress(); };
+        {
+            const auto& keys = ui::Shortcuts::of(command).keys;
+            return keys.empty() ? juce::KeyPress() : keys.front().keyPress();
+        };
         panels_.registerPanel(PanelInfo{PanelId::mixer,
                                         "Mixer",
                                         Icon::mixer,
@@ -1412,7 +1486,7 @@ private:
     {
         if (session_.isRecording())
         {
-            session_.stop();
+            session_.stopTransport();
             return;
         }
         if (!audio_.status().open)
@@ -1849,7 +1923,9 @@ private:
     std::deque<double> frames_;
     bool lastDeviceOpen_ = false;
     std::string lastDeviceName_;
-    bool slideCached_ = false; // the views are drawn from cached images during a panel slide
+    std::string appearance_;    // the accent and contrast the colours were last loaded with
+    int shortcutsApplied_ = -1; // the ui::Shortcuts generation applyShortcuts last saw
+    bool slideCached_ = false;  // the views are drawn from cached images during a panel slide
     juce::Component::SafePointer<juce::Component> hoverComponent_;
     double hoverSinceMs_ = 0.0;
     // The developer benchmarks (Benchmarks.h); last, since they refer to the parts above.

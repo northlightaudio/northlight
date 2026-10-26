@@ -79,9 +79,12 @@ InspectorPanel::InspectorPanel(const Theme& theme)
         b.setTooltip(tip);
         addAndMakeVisible(b);
     };
-    toggle(mute_, "mute", Shortcuts::withKey("Mute", Command::muteTrack));
-    toggle(solo_, "solo", Shortcuts::withKey("Solo", Command::soloTrack));
-    toggle(arm_, "arm", Shortcuts::withKey("Arm for recording", Command::armSelected));
+    toggle(mute_, "mute", {});
+    toggle(solo_, "solo", {});
+    toggle(arm_, "arm", {});
+    Shortcuts::tag(mute_, "Mute", Command::muteTrack);
+    Shortcuts::tag(solo_, "Solo", Command::soloTrack);
+    Shortcuts::tag(arm_, "Arm for recording", Command::armSelected);
     arm_.getProperties().set(NorthlightLookAndFeel::propertyHardOn, true);
     mute_.onClick = [this]
     {

@@ -1,4 +1,5 @@
 #include "app/AppMenus.h"
+#include "ui/Shortcuts.h"
 
 #include <catch2/catch_test_macros.hpp>
 
@@ -76,4 +77,32 @@ TEST_CASE("The snap menu ticks the grid in use and reports the one chosen", "[ap
     CHECK(chosen == 16);
     find(items, "Off")->action();
     CHECK(chosen == -1);
+}
+
+TEST_CASE("Menu items show their current key from the keyboard map", "[app][menus][shortcuts]")
+{
+    const juce::ScopedJuceInitialiser_GUI juceInit;
+    ui::Shortcuts::resetAll();
+    menus::ProjectMenu m;
+    m.save = [] {};
+    m.exportMix = [] {};
+    m.addBus = [] {};
+    const auto keyOf = [](const juce::PopupMenu& menu, const juce::String& text)
+    {
+        std::vector<const juce::PopupMenu::Item*> items;
+        collect(menu, items);
+        const auto* item = find(items, text);
+        return item != nullptr ? item->shortcutKeyDescription : juce::String("(no item)");
+    };
+    CHECK(keyOf(menus::projectMenu(m), "Save") == "Ctrl+S");
+    CHECK(keyOf(menus::projectMenu(m), "Export...") == "Ctrl+E");
+    CHECK(keyOf(menus::projectMenu(m), "Add bus") == "Ctrl+B");
+    CHECK(keyOf(menus::projectMenu(m), "Save as template...").isEmpty());
+    menus::AppMenu a;
+    a.preferences = [] {};
+    CHECK(keyOf(menus::appMenu(a), "Preferences...") == "Ctrl+,");
+    // A rebinding shows the next time the menu is built.
+    ui::Shortcuts::bind(ui::Command::save, ui::Key{'W', juce::ModifierKeys::commandModifier});
+    CHECK(keyOf(menus::projectMenu(m), "Save") == "Ctrl+W");
+    ui::Shortcuts::resetAll();
 }
