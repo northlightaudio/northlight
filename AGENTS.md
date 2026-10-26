@@ -26,7 +26,7 @@ src/plugins    Built-in processors, channel strip, instruments. No JUCE.
 src/hosting    VST3 (via JUCE) and CLAP hosting, registry, out-of-process scanner.
 src/audio      Device layer (ASIO, Windows Audio, MIDI), audio callback, media loading.
 src/ui         Theme (design tokens), look and feel, components, views.
-src/app        Main window, project session, settings, bounce/export, launch flags (Main.cpp).
+src/app        Main window, project session, settings, bounce/export, launch flags (LaunchRun.cpp).
 tests/unit       Catch2, no JUCE, mirrors src/ by module.
 tests/unit_juce  Catch2, JUCE-linked code. Never needs an audio device.
 tests/hardware   Tools that need a device; built, never run by CTest.
@@ -127,8 +127,8 @@ Do not drive the GUI with synthetic mouse or keyboard input: the window may open
 behind whatever the user is doing, and clicks land there instead. Instead:
 
 - **Launch flags** set up any state from the command line: open panels, build demo
-  material, drive the transport, run benchmarks. The full list is the comment block
-  in `src/app/Main.cpp` above `applyLaunchFlags`. Example:
+  material, drive the transport, run benchmarks. The full list is the table in
+  `src/app/LaunchRun.cpp` (`Northlight.exe --help` prints it). Example:
   `Northlight.exe --no-splash --demo-song "$env:TEMP\demo.northlight" --play --master-gain -120`
   (`--master-gain -120` keeps it silent). If a screen has no flag, add one.
 - **`--capture <folder> [seconds]`** saves the window and its visible panels as PNGs,

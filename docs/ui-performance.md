@@ -78,7 +78,7 @@ CI:
 
 ## 3. Frame benchmarks (`scripts/perf.ps1`)
 
-The app's own benchmark flags (`src/app/Main.cpp`), each in a window (frames must
+The app's own benchmark flags (`src/app/LaunchRun.cpp`), each in a window (frames must
 reach a screen; not while the machine is in use for a game): `--benchmark-ui`
 (playing and scrolling the demo song: frame intervals, arrange and mixer paint
 times, audio load), `--benchmark-panels` (sliding the side panel),

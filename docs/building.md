@@ -157,7 +157,9 @@ Northlight.exe --no-splash --demo-song "$env:TEMP\demo.northlight" --play --mast
 writes and opens the demo song, plays it and keeps it silent. The options open
 windows and panels, build example material (tracks, instruments, automation, takes,
 tempo changes), drive the transport and recording, and run benchmarks. The full list
-with what each does is at the top of `src/app/Main.cpp`.
+with what each does is the table in `src/app/LaunchRun.cpp`; `Northlight.exe --help`
+prints it. Work a flag leaves for later (a capture, a save, a pointer once the window
+has settled) goes through one schedule that is dropped as the app shuts down.
 
 ### Captures while the machine is in use
 
