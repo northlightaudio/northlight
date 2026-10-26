@@ -87,7 +87,12 @@ sweep to mute or unmute clips; a muted clip is hatched and stays where it is).
 
 The tempo track holds tempo and time signature changes, including ramps. Audio clips
 can be stretched and transposed, or stretched to the project tempo. The audio editor
-corrects and shapes the pitch of a vocal and handles its breaths.
+corrects and shapes the pitch of a vocal and handles its breaths, on a stretched or
+transposed clip too (the stretch plays the corrected voice). In its pitch mode
+Left and Right step through the notes, a double-click splits a note, the Correct
+sheet shows the key it aims at (the vocal's detected key when the project has none)
+for you to confirm or change, and the Inspector shows the selected notes' pitch,
+drift, vibrato, slides and gain to type in.
 
 ## Recording
 
@@ -99,7 +104,9 @@ counts them as changes and saves them. **Click** turns on the
 metronome and **Count-in** steps through Off, 1, 2 and 4 bars of click before a take. Drag in the ruler
 to set a range: **Loop** repeats it and **Punch** records into it. With loop on, each
 pass becomes a take; the take lanes show them, and swiping across a lane picks which
-take plays where.
+take plays where. MIDI tracks record takes the same way; the **Recording** card in a
+MIDI track's Inspector switches it to **Merge** (overdub into the clip under the
+pass) or **Replace** (replace what that clip had where you played).
 
 Every enabled input can be picked on its own. For a stereo source (a keyboard, a
 pair of overheads), add a **stereo input** under **Stereo inputs** in Audio Setup:
@@ -284,9 +291,24 @@ multi-output instrument becomes a track of its own in one click. A MIDI track ca
 play an external instrument through a MIDI output.
 
 The **piano roll** edits notes and velocities, with controller lanes for pitch bend,
-the mod wheel and any control change. Standard MIDI Files import and export.
+the mod wheel and any control change; the lane menu stacks up to four lanes and a
+lane's top edge drags its height. Its tools match the arrange view's (**1**, **3** to
+**7**: select, pencil, erase, split, glue, mute; a muted note is hollow and silent).
+**Ctrl+C**, **Ctrl+X** and **Ctrl+V** copy, cut and paste notes (at the playhead, or
+where the pointer was), **Ctrl+D** duplicates, and right-click opens a menu of note
+edits: quantise, humanise, velocity (set, scale, compress, randomise), length and
+legato, transpose, mute, split, join and select all of a pitch. The grid menu has
+triplet and dotted values, and the Quantise menu swing and humanise. Dragging a
+velocity bar moves the selected notes together, keeping their dynamics (Alt sets them
+all). **Ctrl+Left/Right** step through the notes, **Alt+Left/Right** shorten and
+lengthen them, **Z** zooms to the notes and **Ctrl+Shift+wheel** zooms the rows. The
+selected notes show in the Inspector to type in. A drum kit names its rows (Kick,
+Snare...), and the filter button hides the rest; the ghost button shows the other
+MIDI tracks' notes; the key button at the right sets the project's key. Standard MIDI
+Files import and export.
 
-To hear everything together, write and open the demo song, "Northern Drift":
+To hear everything together, write and open the demo song, "Northern Drift" (its sung
+voice is written next to it as a WAV):
 
 ```powershell
 Northlight.exe --demo-song "$env:USERPROFILE\Music\Northern Drift.northlight"

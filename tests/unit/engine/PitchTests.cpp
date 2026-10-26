@@ -2,6 +2,7 @@
 #include "core/ProjectJson.h"
 #include "engine/AudioEngine.h"
 #include "engine/Snapshot.h"
+#include "engine/Stretch.h"
 #include "engine/pitch/BoxSmooth.h"
 #include "engine/pitch/Correction.h"
 #include "engine/pitch/PitchAnalysis.h"
@@ -789,6 +790,113 @@ TEST_CASE("The engine plays a vocal edit at its new pitch, offset into the media
     }
     const auto b = analyse({out}, rate);
     CHECK(std::abs(medianCents(b, 0.25, 0.8) - (centsOf(220.0) - 300.0)) < 3.0);
+}
+
+TEST_CASE("A stretched and transposed clip plays its pitch edits", "[engine][pitch][stretch]")
+{
+    // Playback, bounce and freeze all compile through the media cache: the vocal
+    // hook runs first and the stretch renders the edited voice.
+    const plugins::BuiltInFactory builtIns;
+    ToneLoader loader;
+    loader.files["voice"] = steadyA3();
+    VocalService vocal(loader, true);
+    StretchService stretch(loader, true);
+    AudioEngine engine(loader, builtIns, 0);
+    engine.setClipSourceHook(
+        [&vocal](const core::AudioClip& clip, double sampleRate, std::shared_ptr<const AudioSource> base)
+        { return vocal.sourceFor(clip, sampleRate, std::move(base)); });
+    engine.setStretchHook(
+        [&stretch](const core::AudioClip& clip, double sampleRate, std::shared_ptr<const AudioSource> base)
+        { return stretch.sourceFor(clip, sampleRate, base); });
+    engine.prepare(rate, 256);
+
+    const auto a = vocal.analysis("voice", rate);
+    REQUIRE(a != nullptr);
+    core::Project p;
+    core::Track t;
+    t.id = 1;
+    core::AudioClip clip{2, "voice", "voice", 4800, 48000, 4800, 1.0f};
+    clip.stretch = 1.25; // 38400 source samples over 48000
+    clip.transpose = 2.0;
+    clip.vocal = a->initialEdit();
+    clip.vocal.notes[0].target -= 300.0f;
+    t.clips.push_back(clip);
+    p.tracks.push_back(t);
+    p.nextId = 3;
+    engine.setProject(p);
+    engine.play();
+
+    std::vector<float> left(256), right(256), out;
+    float* outputs[2] = {left.data(), right.data()};
+    while (engine.position() < 52800)
+    {
+        engine.process(outputs, 2, 256);
+        out.insert(out.end(), left.begin(), left.end());
+    }
+    const auto b = analyse({out}, rate);
+    // The edit's -300 cents and the clip's +2 semitones, both heard.
+    CHECK(std::abs(medianCents(b, 0.3, 0.9) - (centsOf(220.0) - 300.0 + 200.0)) < 5.0);
+}
+
+TEST_CASE("The media cache hands a stretched clip's pitch-edited source to the stretch hook",
+          "[engine][pitch][stretch]")
+{
+    ToneLoader loader;
+    loader.files["voice"] = steadyA3();
+    MediaCache cache(loader);
+    std::vector<std::string> calls;
+    cache.setClipSourceHook(
+        [&calls](const core::AudioClip&, double, std::shared_ptr<const AudioSource> base)
+        {
+            calls.push_back("vocal");
+            return std::make_shared<PitchEditedSource>(std::move(base),
+                                                       std::vector<std::shared_ptr<const RenderedSpan>>{});
+        });
+    bool gotEdited = false;
+    cache.setStretchHook(
+        [&](const core::AudioClip&, double, std::shared_ptr<const AudioSource> base)
+        {
+            calls.push_back("stretch");
+            gotEdited = dynamic_cast<const PitchEditedSource*>(base.get()) != nullptr;
+            return base;
+        });
+    core::AudioClip clip;
+    clip.id = 1;
+    clip.mediaPath = "voice";
+    clip.length = 1000;
+    clip.stretch = 2.0;
+    clip.vocal.analysisVersion = 1;
+    CHECK(cache.sourceForClip(clip, rate) != nullptr);
+    CHECK(calls == std::vector<std::string>{"vocal", "stretch"});
+    CHECK(gotEdited);
+}
+
+TEST_CASE("A stretched source plays its earlier render until the new one is ready", "[engine][stretch]")
+{
+    const auto make = [](float value, std::int64_t ready)
+    {
+        auto r = std::make_shared<StretchRender>();
+        r->start = 100;
+        r->length = 8;
+        r->channels = {std::vector<float>(8, value)};
+        r->ready.store(ready);
+        r->finished.store(ready == 8);
+        return r;
+    };
+    const auto earlier = make(1.0f, 8);
+    const auto fresh = make(2.0f, 3);
+    StretchedSource source(1, 200, rate, fresh, earlier);
+    std::vector<float> out(10, -1.0f);
+    {
+        rt::ScopedRealtimeSection section;
+        source.read(0, 99, out.data(), 10);
+    }
+    CHECK(out == std::vector<float>{0.0f, 2.0f, 2.0f, 2.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 0.0f});
+    // Once the new render has finished the earlier one is not read.
+    auto done = make(3.0f, 8);
+    StretchedSource finished(1, 200, rate, done, make(1.0f, 8));
+    finished.read(0, 100, out.data(), 8);
+    CHECK(out[7] == 3.0f);
 }
 
 TEST_CASE("Box smoothing keeps a level, averages a step over the box and shrinks at the ends",

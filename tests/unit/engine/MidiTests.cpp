@@ -1322,3 +1322,26 @@ TEST_CASE("A muted MIDI clip sends no notes", "[engine][midi]")
     for (const float s : out)
         CHECK(s == Approx(0.0f));
 }
+
+TEST_CASE("A muted note stays in its clip and plays nothing", "[engine][midi]")
+{
+    core::MidiClip clip;
+    clip.start = 10;
+    clip.length = 1000;
+    clip.notes.push_back({20, 60, 127, 5, 100});
+    clip.notes.back().muted = true;
+    Harness h;
+    h.engine.setProject(keysProject(clip));
+    h.engine.play();
+    for (const float s : h.render(4))
+        CHECK(s == Approx(0.0f));
+    // Unmuted, the same note sounds.
+    clip.notes.back().muted = false;
+    Harness sounding;
+    sounding.engine.setProject(keysProject(clip));
+    sounding.engine.play();
+    float peak = 0.0f;
+    for (const float s : sounding.render(4))
+        peak = std::max(peak, std::abs(s));
+    CHECK(peak > 0.0f);
+}

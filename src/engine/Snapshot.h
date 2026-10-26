@@ -276,7 +276,8 @@ public:
         const core::AudioClip& clip, double sampleRate, std::shared_ptr<const AudioSource> base)>;
     void setClipSourceHook(ClipSourceHook hook) { clipHook_ = std::move(hook); }
     // What a stretched or transposed clip plays (StretchService::sourceFor); a
-    // stretched clip is silent without one.
+    // stretched clip is silent without one. A clip with pitch edits passes
+    // through the clip hook first, and the stretch hook gets the edited source.
     void setStretchHook(ClipSourceHook hook) { stretchHook_ = std::move(hook); }
     // Kept per clip while the clip is unchanged, so a compile after an edit
     // elsewhere does not ask the hooks again (a vocal clip plans its rendered

@@ -804,12 +804,23 @@ private:
         instruments_.onAddMidiTrack = [this](const std::string& type) { addMidiTrack(type); };
 
         inspector_.onCommand = [this](std::unique_ptr<core::Command> c) { session_.execute(std::move(c)); };
+        inspector_.onCommands =
+            [this](std::vector<std::unique_ptr<core::Command>> commands, const std::string& name)
+        { session_.executeGroup(name, std::move(commands)); };
         inspector_.onGestureBegin = [this](const std::string& name) { session_.beginGesture(name); };
         inspector_.onGestureEnd = [this] { session_.endGesture(); };
 
         pianoRoll_.onEdit =
             [this](std::vector<std::unique_ptr<core::Command>> commands, const std::string& name)
         { session_.executeGroup(name, std::move(commands)); };
+        // The editors' note selections show (and edit) in the inspector.
+        pianoRoll_.onSelectionChanged = [this]
+        { inspector_.setNotes(pianoRoll_.trackId(), pianoRoll_.clipId(), pianoRoll_.selection()); };
+        audioEditor_.onSelectionChanged = [this]
+        {
+            inspector_.setVocalNotes(audioEditor_.trackId(), audioEditor_.clipId(), audioEditor_.selection());
+        };
+        pianoRoll_.setLiveRecording(&tracks_.liveRecording());
 
         audioEditor_.onEdit =
             [this](std::vector<std::unique_ptr<core::Command>> commands, const std::string& name)
@@ -836,7 +847,7 @@ private:
             engine::MidiEvent event;
             event.type = on ? engine::MidiEvent::Type::noteOn : engine::MidiEvent::Type::noteOff;
             event.note = static_cast<std::uint8_t>(std::clamp(note, 0, 127));
-            event.velocity = on ? 100 : 0;
+            event.velocity = static_cast<std::uint8_t>(on ? pianoRoll_.defaultVelocity() : 0);
             session_.engine().pushMidiPreview(event, trackId);
         };
         browser_.onScan = [this](bool all) { session_.scanPlugins(all); };
@@ -1259,6 +1270,7 @@ private:
             pianoRoll_.setPlayhead(session_.position());
             if (pianoRoll_.zoomLinked())
                 pianoRoll_.setTimeView(tracks_.samplesPerPixel(), tracks_.scrollPosition());
+            pianoRoll_.liveRecordingChanged(); // notes coming in draw as they arrive
         }
         refreshHeader();
         status_.setSelectedClips(static_cast<int>(tracks_.selection().size()));
@@ -2328,6 +2340,60 @@ void MainWindow::setPianoRollLane(const juce::String& key)
 {
     if (auto* content = content_)
         content->pianoRoll_.setLane(ui::PianoRoll::laneForKey(key));
+}
+
+void MainWindow::configurePianoRoll(const juce::String& options)
+{
+    auto* content = content_;
+    if (content == nullptr)
+        return;
+    auto& roll = content->pianoRoll_;
+    juce::StringArray items;
+    items.addTokens(options, ",", "");
+    for (auto item : items)
+    {
+        item = item.trim();
+        if (item == "ghosts")
+            roll.setGhostTracks(true);
+        else if (item == "named")
+            roll.setNamedRowsOnly(true);
+        else if (item == "follow")
+            roll.setFollowPlayhead(true);
+        else if (item == "select")
+            roll.selectAll();
+        else if (item == "select-one" && roll.clipId() != core::invalidId)
+        {
+            if (const auto* t = session_.project().findTrack(roll.trackId()))
+                if (const auto* c = t->findMidiClip(roll.clipId()); c != nullptr && !c->notes.empty())
+                {
+                    roll.setSelection({c->notes.front().id});
+                    // Again once the window has settled (its first track selection
+                    // lands after the launch flags), so the inspector shows the note.
+                    juce::Component::SafePointer<ui::PianoRoll> safe(&roll);
+                    juce::Timer::callAfterDelay(1500,
+                                                [safe]
+                                                {
+                                                    if (safe != nullptr && safe->onSelectionChanged)
+                                                        safe->onSelectionChanged();
+                                                });
+                }
+        }
+        else if (item == "mute")
+            roll.toggleMuteSelection();
+        else if (item == "fit")
+            roll.zoomToFitNotes();
+        else if (item.startsWith("lane="))
+            roll.addLane(ui::PianoRoll::laneForKey(item.fromFirstOccurrenceOf("=", false, false)));
+        else if (item.startsWith("rows="))
+            roll.setRowHeight(item.fromFirstOccurrenceOf("=", false, false).getIntValue());
+        else if (item.startsWith("grid="))
+        {
+            const auto label = item.fromFirstOccurrenceOf("=", false, false).toStdString();
+            for (std::size_t i = 0; i < ui::noteGrids.size(); ++i)
+                if (ui::noteGrids[i].label == label)
+                    roll.setGrid(i);
+        }
+    }
 }
 
 void MainWindow::openAudioEditor(core::Id trackId, core::Id clipId, bool pitch)

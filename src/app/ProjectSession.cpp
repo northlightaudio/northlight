@@ -68,7 +68,17 @@ ProjectSession::ProjectSession(audio::AudioDeviceLayer& audio, juce::File regist
         [this](const core::AudioClip& clip, double rate, std::shared_ptr<const engine::AudioSource> base)
         { return stretch_.sourceFor(clip, rate, base); });
     stretch_.onChanged = [this] { stretchUpdates_.triggerAsyncUpdate(); };
-    stretchUpdates_.onUpdate = [this] { notify(Change::values); };
+    stretchUpdates_.onUpdate = [this]
+    {
+        // A render that replaced an earlier one (new pitch edits on a stretched
+        // clip) is ready: recompile so the earlier one is let go.
+        if (stretch_.takeRecompileRequest())
+        {
+            engine_.forgetClipSources();
+            engine_.setProject(project_);
+        }
+        notify(Change::values);
+    };
     audio_.callback().setEngine(&engine_);
     audio_.midi().setEngine(&engine_);
     audio_.addChangeListener(this);
@@ -2173,7 +2183,11 @@ void ProjectSession::finishRecording(engine::AudioEngine::FinishedRecording fini
     }
     // MIDI takes: the captured events become clips, placed like the audio (the
     // player heard the instrument late by the output path, and played to that).
+    // What a track's passes become is its record mode: takes (a take group for
+    // loop passes, a punch, or passes over a MIDI group; else a clip each), or
+    // merged into (replacing over their range in) the clip under them.
     int midiClips = 0;
+    std::map<core::Id, std::vector<core::MidiClip>> midiPasses;
     for (auto& take : engine::buildMidiTakes(
              finished.session->capturedMidi(), finished.session->takeSpans(), midiRecordingLatencySamples()))
         if (const auto* track = project_.findTrack(take.trackId))
@@ -2181,8 +2195,23 @@ void ProjectSession::finishRecording(engine::AudioEngine::FinishedRecording fini
             ++midiClips;
             take.clip.name = takeName(takeNamePattern_, track->name, ++takesBefore[take.trackId]);
             savedUpTo = std::max(savedUpTo, take.clip.start + take.clip.length);
-            run(std::make_unique<core::AddMidiClip>(take.trackId, take.clip), false);
+            midiPasses[take.trackId].push_back(std::move(take.clip));
         }
+    for (auto& [trackId, list] : midiPasses)
+    {
+        const auto* track = project_.findTrack(trackId);
+        if (track == nullptr)
+            continue;
+        if (track->midiRecordMode != core::MidiRecordMode::takes)
+            run(std::make_unique<core::RecordMidiPasses>(
+                    trackId, std::move(list), track->midiRecordMode == core::MidiRecordMode::replace),
+                false);
+        else if (core::recordingMakesTakes(*track, list, recordingPunched_))
+            run(std::make_unique<core::RecordTakes>(trackId, std::move(list)), false);
+        else
+            for (auto& clip : list)
+                run(std::make_unique<core::AddMidiClip>(trackId, std::move(clip)), false);
+    }
     removeOrphanSidecars(mediaFolder());
     if (cutShort)
     {

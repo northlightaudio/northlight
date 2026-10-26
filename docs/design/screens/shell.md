@@ -46,7 +46,10 @@ audio setup and the plugin browser. The shell has five zones:
   squashing a card.
 - **D Side panel**: right, default 300 px wide, min `panelMin` 240, snaps closed.
   Tabs: Browser (plugins, presets, project media), Inspector (selected track, clip or
-  insert). `surface0`.
+  insert; a MIDI track adds a Recording card, the record mode as a segmented control:
+  Takes, Merge, Replace; the piano roll's selected notes show as a Note card and the
+  audio editor's as a Vocal note card, piano-roll.md and pitch-editing.md, until the
+  next track or clip selection). `surface0`.
 - **E Status bar**: `size.statusBar` 24 px, `surface0`, `timeSmall` mono text.
 
 Splitters between B/C and B/D per the Splitter component. Dock and side panel

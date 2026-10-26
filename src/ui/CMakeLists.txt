@@ -13,6 +13,9 @@ set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS "${NORTHLIGHT_TOK
 add_library(northlight_ui_edit STATIC
     edit/ClipOps.h
     edit/ClipOps.cpp
+    edit/NoteGrid.h
+    edit/NoteOps.h
+    edit/NoteOps.cpp
     timeline/TimelineViewport.h
     timeline/GridLines.h
     arrange/ArrangeLayout.h
@@ -61,6 +64,8 @@ add_library(northlight_ui STATIC
     components/Sheet.cpp
     components/ProgressRow.h
     components/ProgressRow.cpp
+    components/KeyMenu.h
+    components/KeyMenu.cpp
     Icons.h
     Icons.cpp
     shell/Panels.h

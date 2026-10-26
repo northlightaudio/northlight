@@ -248,7 +248,15 @@ the last two seconds is never evicted, and a new block that would need to is dro
 (the view keeps drawing peaks there), so loading can never loop. Time-stretch and transposition render in the background
 with Signalsmith Stretch; playback starts on the part already rendered. Vocal pitch
 editing analyses a clip in the background and re-renders edited phrases with an
-in-house PSOLA renderer.
+in-house PSOLA renderer. The two compose in `MediaCache::sourceForClip`: the vocal hook
+runs first and returns a `PitchEditedSource` (the rendered phrases over the media),
+then a stretched or transposed clip goes through the stretch hook, which takes that
+source's spans into its render key and lays them over the media it loads itself before
+stretching, so playback, bounce and freeze (which build their own engine with both
+services) hear the edits through the stretch. A new set of spans renders again in the
+background; the `StretchedSource` reads the clip's previous render where the new one
+is not ready yet (two atomic loads and copies, no allocation), and the stretch service
+asks for a recompile when it has finished, so the old render is let go.
 
 ### Recording
 
@@ -279,7 +287,13 @@ Recordings are placed back by the measured round-trip latency (from loopback
 calibration, stored per device, rate and buffer size) or the driver's reported
 latency, plus the graph's output latency. Loop recording produces takes in a take
 group, and comping is an ordinary set of crossfaded clips derived from the takes, so
-the engine knows nothing about takes.
+the engine knows nothing about takes. MIDI passes (`engine::buildMidiTakes`) go by the
+MIDI track's record mode: takes make a MIDI take group (`TakeGroup::midi`, each take's
+notes and controller events kept with it, the comp materialised as MIDI clips by
+`core::compMidiClips`); merge and replace go through `core::RecordMidiPasses`, which
+writes the passes into the clip under each and keeps the track's MIDI clips as they
+were for undo. While recording, the piano roll draws the incoming notes from the
+arrange view's `engine::LiveRecording`.
 
 ### Metering and statistics
 
@@ -706,9 +720,15 @@ their keys from it (`PanelManager::setShortcut` after a rebinding), the arrange
 keymap, piano roll and audio editor match through it, and the Shortcuts page
 (`ui::ShortcutEditor`, which rebinds), tooltips (`Shortcuts::tag` and `retag`) and
 menu items (`AppMenus`, `ArrangeMenus`) print its current keys. The mixer's strips live in
-`src/ui/mixer/`, the piano roll's controller lane is a component of its own
-(`ui::ControllerLane`), and the audio editor's Correct sheet, pitch grid and
-pitch rules are in `src/ui/audioeditor/`.
+`src/ui/mixer/`, the piano roll's controller lanes are components of their own
+(`ui::ControllerLane`, one per controller lane the roll stacks), its note edits
+(clipboard, quantise with swing, humanise, velocity, legato, split, join, mute) are
+plain functions in `ui::noteops` (`src/ui/edit/NoteOps`, no JUCE, unit tested) that
+return what to set, add and remove, and its grid values are one table
+(`ui/edit/NoteGrid.h`). The audio editor's Correct sheet, pitch grid and pitch rules
+are in `src/ui/audioeditor/`; the key menu the piano roll, the audio editor and the
+Correct sheet share is `ui::keymenu`. The names an instrument gives its notes (a drum
+kit's pads) come from the built-in registry (`plugins::builtInNoteName`).
 
 The specification for every screen is in [design/](design/README.md).
 

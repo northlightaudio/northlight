@@ -1403,6 +1403,16 @@ public:
     bool undoable() const noexcept override { return false; }
 };
 
+// What a MIDI track's next recorded passes become: no engine work.
+class SetMidiRecordMode final : public SetField<OnTrack, &Track::midiRecordMode>
+{
+public:
+    SetMidiRecordMode(Id trackId, MidiRecordMode mode) : SetField({trackId}, mode) {}
+    std::string name() const override { return "Set MIDI record mode"; }
+    ChangeKind changeKind() const noexcept override { return ChangeKind::cosmetic; }
+    bool rebuildsViews() const noexcept override { return true; }
+};
+
 class SetTrackSolo final : public SetField<OnChannel, &Channel::solo>
 {
 public:

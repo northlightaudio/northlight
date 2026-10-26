@@ -289,9 +289,10 @@ Move moveClips(const core::Project& project, const Selection& selection, core::S
         const auto* target = landingTrack(project, ref, rows);
         if (from < 0 || !span.has_value() || target == nullptr)
             continue;
-        // A comp's clip moves its whole take group (takes, comp and clips) once.
-        if (const auto* group =
-                ref.midi ? nullptr : project.tracks[static_cast<size_t>(from)].takeGroupOwning(ref.clip))
+        // A comp's clip moves its whole take group (takes, comp and clips) once
+        // (a MIDI group's clips are MIDI clips).
+        if (const auto* group = project.tracks[static_cast<size_t>(from)].takeGroupOwning(ref.clip);
+            group != nullptr && group->midi == ref.midi)
         {
             if (std::find(movedGroups.begin(), movedGroups.end(), group->id) == movedGroups.end())
             {
@@ -299,7 +300,7 @@ Move moveClips(const core::Project& project, const Selection& selection, core::S
                 move.edit.commands.push_back(
                     std::make_unique<core::MoveTakeGroup>(ref.track, group->id, target->id, delta));
             }
-            move.moved.push_back({target->id, ref.clip, false});
+            move.moved.push_back({target->id, ref.clip, ref.midi});
             continue;
         }
         const auto start = std::max<core::SamplePosition>(0, span->start + delta);

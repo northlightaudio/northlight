@@ -95,6 +95,15 @@ enum class Command
     pianoRollSelectTool,
     pianoRollDrawTool,
     pianoRollEraseTool,
+    pianoRollSplitTool,
+    pianoRollGlueTool,
+    pianoRollMuteTool,
+    pianoRollCopy,
+    pianoRollCut,
+    pianoRollPaste,
+    pianoRollMuteNotes,
+    pianoRollSplitAtPlayhead,
+    pianoRollJoin,
     pianoRollSelectAll,
     pianoRollDuplicate,
     pianoRollClearSelection,
@@ -106,10 +115,13 @@ enum class Command
     pianoRollTransposeUp,
     pianoRollTransposeDown,
     pianoRollNudge,         // Left / Right (Shift: fine)
+    pianoRollStepSelection, // Ctrl+Left / Right (Shift extends)
+    pianoRollLength,        // Alt+Left / Right (Shift: fine)
     pianoRollNudgePitch,    // Up / Down (Ctrl: an octave)
                             // The audio editor's (in pitch mode, while it has the focus).
     audioEditorTool,        // 1 to 5, in the tools' order
     audioEditorNudgePitch,
+    audioEditorStepSelection, // Left / Right (Shift extends)
     audioEditorMute,
     audioEditorSelectAll,
     audioEditorClearSelection,

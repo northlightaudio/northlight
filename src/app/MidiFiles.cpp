@@ -315,8 +315,8 @@ juce::MidiMessageSequence sequenceFromClips(const std::vector<const core::MidiCl
                 controller(e, clip->start + e.time);
         for (const auto& n : clip->notes)
         {
-            if (n.start < 0 || n.start >= clip->length)
-                continue;
+            if (n.start < 0 || n.start >= clip->length || n.muted)
+                continue; // a muted note plays nothing, so it is not written
             const auto end = std::min(n.end(), clip->length);
             add(juce::MidiMessage::noteOn(
                     ch, std::clamp(n.note, 0, 127), static_cast<juce::uint8>(std::clamp(n.velocity, 1, 127))),

@@ -119,7 +119,11 @@ while the arrange view has the focus and shows the mixer elsewhere.
 
 | Action | Key |
 |---|---|
-| Select / pencil / erase tool | 1 / 3 / 4 |
+| Select / pencil / erase / split / glue / mute tool | 1 / 3 / 4 / 5 / 6 / 7 |
+| Cut / copy / paste notes | Ctrl+X / Ctrl+C / Ctrl+V |
+| Mute or unmute the selected notes | Ctrl+M |
+| Split the selected notes at the playhead / join them | S / J |
+| Zoom to the notes / zoom time in and out | Z / Ctrl+= and Ctrl+- (the window's zoom keys) |
 | Delete / duplicate the selected notes | Delete or Backspace / Ctrl+D |
 | Select every note / clear the selection | Ctrl+A / Esc |
 | Snap on or off | G |
@@ -128,6 +132,8 @@ while the arrange view has the focus and shows the mixer elsewhere.
 | Transpose up / down a semitone | = (or +) / - |
 | Nudge by a grid step (Shift: fine) | Left / Right (fixed) |
 | Move up or down a semitone (Ctrl: an octave) | Up / Down (fixed) |
+| Select the previous / next note (Shift extends) | Ctrl+Left / Ctrl+Right (fixed) |
+| Shorten / lengthen by a grid step (Shift: fine) | Alt+Left / Alt+Right (fixed) |
 
 **Audio editor** (pitch mode, while it has the focus)
 
@@ -135,6 +141,7 @@ while the arrange view has the focus and shows the mixer elsewhere.
 |---|---|
 | Tools: pitch, split, drift, vibrato, breath | 1 to 5 (fixed) |
 | Move notes up or down a semitone (Shift: 10 cents) | Up / Down (fixed) |
+| Select the previous / next note (Shift extends) | Left / Right (fixed) |
 | Mute or unmute the selected notes | M |
 | Select every note / clear the selection | Ctrl+A / Esc |
 

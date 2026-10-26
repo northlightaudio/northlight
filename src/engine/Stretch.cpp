@@ -1,5 +1,6 @@
 #include "engine/Stretch.h"
 
+#include "engine/pitch/VocalService.h"
 #include "engine/rt/RealtimeGuard.h"
 
 #if defined(_MSC_VER)
@@ -122,16 +123,19 @@ void stretchAudio(const std::vector<const float*>& input,
 StretchedSource::StretchedSource(int numChannels,
                                  std::int64_t length,
                                  double sampleRate,
-                                 std::shared_ptr<const StretchRender> render)
+                                 std::shared_ptr<const StretchRender> render,
+                                 std::shared_ptr<const StretchRender> fallback)
     : numChannels_(std::max(1, numChannels)), length_(length), sampleRate_(sampleRate),
-      render_(std::move(render))
+      render_(std::move(render)), fallback_(std::move(fallback))
 {
 }
 
-void StretchedSource::read(int channel, std::int64_t sourceStart, float* dest, int numSamples) const noexcept
+namespace
 {
-    std::fill(dest, dest + numSamples, 0.0f);
-    const auto& r = *render_;
+// Copies what `r` has finished of [sourceStart, sourceStart + numSamples) into dest.
+void readReady(
+    const StretchRender& r, int channel, std::int64_t sourceStart, float* dest, int numSamples) noexcept
+{
     const auto ready = r.ready.load(std::memory_order_acquire);
     if (ready <= 0 || r.channels.empty())
         return;
@@ -143,6 +147,17 @@ void StretchedSource::read(int channel, std::int64_t sourceStart, float* dest, i
     std::memcpy(dest + (from - sourceStart),
                 samples.data() + (from - r.start),
                 static_cast<size_t>(to - from) * sizeof(float));
+}
+} // namespace
+
+void StretchedSource::read(int channel, std::int64_t sourceStart, float* dest, int numSamples) const noexcept
+{
+    std::fill(dest, dest + numSamples, 0.0f);
+    // The earlier render first, then this one over it where it is ready (both
+    // cover the same range, so what this one has finished replaces it).
+    if (fallback_ != nullptr && !render_->finished.load(std::memory_order_acquire))
+        readReady(*fallback_, channel, sourceStart, dest, numSamples);
+    readReady(*render_, channel, sourceStart, dest, numSamples);
 }
 
 // ----- the service ---------------------------------------------------------------------------
@@ -192,8 +207,18 @@ std::shared_ptr<const AudioSource> StretchService::sourceFor(const core::AudioCl
     const auto [from, to] = sourceRange(clip, sampleRate, mediaLength);
     if (to <= from)
         return nullptr;
-    const Key key{clip.mediaPath, sampleRate, clip.stretch, clip.transpose, from, to};
-    std::shared_ptr<StretchRender> render;
+    // A vocal edit's spans (in media samples) that reach the range the render covers.
+    std::vector<std::shared_ptr<const pitch::RenderedSpan>> spans;
+    std::vector<const pitch::RenderedSpan*> spanKey;
+    if (const auto* edited = dynamic_cast<const PitchEditedSource*>(base.get()))
+        for (const auto& span : edited->spans())
+            if (span != nullptr && span->start < to && span->start + span->length() > from)
+            {
+                spans.push_back(span);
+                spanKey.push_back(span.get());
+            }
+    const Key key{clip.mediaPath, sampleRate, clip.stretch, clip.transpose, from, to, std::move(spanKey)};
+    std::shared_ptr<StretchRender> render, fallback;
     bool fresh = false;
     {
         std::lock_guard lock(mutex_);
@@ -213,11 +238,23 @@ std::shared_ptr<const AudioSource> StretchService::sourceFor(const core::AudioCl
                 static_cast<std::int64_t>(std::llround(static_cast<double>(to) * clip.stretch)) -
                     slot->start);
             slot->numChannels = std::max(1, base->numChannels());
+            slot->spans = std::move(spans);
             fresh = true;
             if (!synchronous_)
                 queue_.push_back(slot);
         }
         render = slot;
+        // The clip's previous render of the same range (other pitch edits) plays
+        // where this one is not ready yet.
+        if (!synchronous_ && !render->finished.load())
+            if (const auto previous = clipRenders_[clip.id].lock();
+                previous != nullptr && previous != render && sameRange(*previous, *render))
+            {
+                fallback = previous;
+                render->supersedes = true;
+            }
+        clipRenders_[clip.id] = render;
+        std::erase_if(clipRenders_, [](const auto& entry) { return entry.second.expired(); });
     }
     if (fresh && synchronous_)
         renderNow(*render);
@@ -225,7 +262,15 @@ std::shared_ptr<const AudioSource> StretchService::sourceFor(const core::AudioCl
         wake_.notify_one();
     const auto length =
         static_cast<std::int64_t>(std::llround(static_cast<double>(mediaLength) * clip.stretch));
-    return std::make_shared<StretchedSource>(render->numChannels, length, sampleRate, render);
+    return std::make_shared<StretchedSource>(
+        render->numChannels, length, sampleRate, render, std::move(fallback));
+}
+
+bool StretchService::sameRange(const StretchRender& a, const StretchRender& b) noexcept
+{
+    return a.path == b.path && a.sampleRate == b.sampleRate && a.stretch == b.stretch &&
+           a.transpose == b.transpose && a.sourceFrom == b.sourceFrom && a.sourceTo == b.sourceTo &&
+           a.start == b.start && a.length == b.length && a.numChannels == b.numChannels;
 }
 
 std::shared_ptr<const AudioSource> StretchService::media(const std::string& path, double sampleRate)
@@ -247,7 +292,10 @@ std::shared_ptr<const AudioSource> StretchService::media(const std::string& path
 
 void StretchService::renderNow(StretchRender& render)
 {
-    const auto source = media(render.path, render.sampleRate);
+    std::shared_ptr<const AudioSource> source = media(render.path, render.sampleRate);
+    // Pitch edits first: their rendered spans over the media, then the stretch.
+    if (source != nullptr && !render.spans.empty())
+        source = std::make_shared<PitchEditedSource>(source, render.spans);
     if (source == nullptr)
     {
         render.failed.store(true);
@@ -308,6 +356,8 @@ void StretchService::workerLoop()
         renderNow(*job);
         {
             std::lock_guard lock(mutex_);
+            if (job->supersedes)
+                recompile_.store(true);
             --running_;
             prune();
             if (queue_.empty() && running_ == 0)
@@ -334,6 +384,20 @@ double StretchService::progress(const core::AudioClip& clip, double sampleRate) 
     if (!clip.isStretched())
         return 1.0;
     std::lock_guard lock(mutex_);
+    const auto fraction = [](const StretchRender& r)
+    {
+        if (r.finished.load())
+            return 1.0;
+        return static_cast<double>(r.ready.load()) / static_cast<double>(std::max<std::int64_t>(1, r.length));
+    };
+    // The render the clip last played (its pitch edits' one), else any of its range.
+    if (const auto it = clipRenders_.find(clip.id); it != clipRenders_.end())
+        if (const auto render = it->second.lock();
+            render != nullptr && render->path == clip.mediaPath && render->sampleRate == sampleRate &&
+            render->stretch == clip.stretch && render->transpose == clip.transpose &&
+            render->sourceFrom <= clip.sourceOffset &&
+            render->sourceTo >= clip.sourceOffset + clip.sourceLength())
+            return fraction(*render);
     for (const auto& [key, render] : renders_)
         if (render->path == clip.mediaPath && render->sampleRate == sampleRate &&
             render->stretch == clip.stretch && render->transpose == clip.transpose &&

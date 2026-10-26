@@ -246,7 +246,7 @@ std::size_t heapBytes(const TakeGroup& group) noexcept
     std::size_t bytes =
         heapBytes(group.comp) + heapBytes(group.clips) + group.takes.capacity() * sizeof(Take);
     for (const auto& take : group.takes)
-        bytes += heapBytes(take.clip);
+        bytes += heapBytes(take.clip) + heapBytes(take.notes) + heapBytes(take.controllers);
     return bytes;
 }
 
@@ -2310,10 +2310,11 @@ bool ShiftClips::apply(Project& p)
             c.start = std::max<SamplePosition>(0, c.start + delta_);
         }
     t->sortClips();
-    // A take group that starts at or after the position moves with its clips.
+    // A take group that starts at or after the position moves with its clips
+    // (audio ones: the shift moves audio clips only).
     shiftedGroups_.clear();
     for (auto& g : t->takeGroups)
-        if (g.start() >= from_)
+        if (!g.midi && g.start() >= from_)
         {
             const auto delta = std::max(delta_, -g.start());
             shiftedGroups_.emplace_back(g.id, delta);

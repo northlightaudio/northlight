@@ -127,7 +127,7 @@ TEST_CASE("Zooming a linked audio editor moves the arrange view's zoom with it",
     CHECK(first >= 10000);
 }
 
-TEST_CASE("Pitch mode takes no edits on a stretched clip", "[ui][audioeditor]")
+TEST_CASE("Pitch mode edits a stretched clip (its stretch plays the edits)", "[ui][audioeditor]")
 {
     const juce::ScopedJuceInitialiser_GUI juceInit;
     audio::PeakStore peaks;
@@ -142,12 +142,128 @@ TEST_CASE("Pitch mode takes no edits on a stretched clip", "[ui][audioeditor]")
     editor.onEdit = [&edits](std::vector<std::unique_ptr<core::Command>>, const std::string&) { ++edits; };
     editor.setMode(ui::AudioEditor::Mode::pitch);
     editor.setBreaths(-12.0f, false);
-    CHECK(edits == 0);
-    CHECK_FALSE(editor.keyPressed(juce::KeyPress('2')));
-
-    // Back to no stretch: the same call edits.
-    project.tracks[0].clips[0].stretch = 1.0;
-    editor.setClip(&project, 1, 2);
-    editor.setBreaths(-12.0f, false);
     CHECK(edits == 1);
+    CHECK(editor.keyPressed(juce::KeyPress('2')));
+    CHECK(editor.tool() == ui::AudioEditor::Tool::split);
+}
+
+namespace
+{
+// A clip of three vocal notes (no media: the edit alone), not stretched.
+core::Project vocalProject(double transpose = 0.0)
+{
+    auto p = stretchedClipProject();
+    auto& c = p.tracks[0].clips[0];
+    c.stretch = 1.0;
+    c.transpose = transpose;
+    c.length = 40000;
+    c.vocal.analysisVersion = 1;
+    for (int i = 0; i < 3; ++i)
+    {
+        core::VocalNote n;
+        n.id = static_cast<core::Id>(10 + i);
+        n.start = 1000 + i * 12000;
+        n.end = n.start + 10000; // long enough for a full correction
+        n.centre = n.target = 6000.0f + 200.0f * static_cast<float>(i);
+        c.vocal.notes.push_back(n);
+    }
+    return p;
+}
+} // namespace
+
+TEST_CASE("Left and Right step the audio editor's note selection", "[ui][audioeditor]")
+{
+    const juce::ScopedJuceInitialiser_GUI juceInit;
+    audio::PeakStore peaks;
+    NoMedia loader;
+    engine::VocalService vocal(loader, true);
+    ui::AudioEditor editor(peaks, vocal);
+    editor.setSize(800, 400);
+    const auto project = vocalProject();
+    editor.setClip(&project, 1, 2);
+    editor.setMode(ui::AudioEditor::Mode::pitch);
+    int changes = 0;
+    editor.onSelectionChanged = [&changes] { ++changes; };
+    CHECK(editor.keyPressed(juce::KeyPress(juce::KeyPress::rightKey)));
+    CHECK(editor.selection() == std::vector<core::Id>{10});
+    CHECK(editor.keyPressed(juce::KeyPress(juce::KeyPress::rightKey)));
+    CHECK(editor.selection() == std::vector<core::Id>{11});
+    CHECK(editor.keyPressed(juce::KeyPress(juce::KeyPress::rightKey, juce::ModifierKeys::shiftModifier, 0)));
+    CHECK(editor.selection().size() == 2);
+    CHECK(editor.keyPressed(juce::KeyPress(juce::KeyPress::leftKey)));
+    CHECK(editor.selection() == std::vector<core::Id>{10});
+    CHECK(changes == 4);
+}
+
+TEST_CASE("The audio editor auditions by default and follows the playhead when asked", "[ui][audioeditor]")
+{
+    const juce::ScopedJuceInitialiser_GUI juceInit;
+    audio::PeakStore peaks;
+    NoMedia loader;
+    engine::VocalService vocal(loader, true);
+    ui::AudioEditor editor(peaks, vocal);
+    editor.setSize(800, 400);
+    const auto project = stretchedClipProject();
+    editor.setClip(&project, 1, 2);
+    CHECK(editor.audition()); // as the piano roll's
+    editor.zoomTo(1.0, 0.0);  // a sample a pixel: 2 000 source samples is wider than the view
+    const auto first = editor.firstVisibleSource();
+    editor.setPlayhead(10000 + 3000);            // 1 500 source samples in: off the right edge
+    CHECK(editor.firstVisibleSource() == first); // not following: the view stays
+    editor.setFollowPlayhead(true);
+    editor.setPlayhead(10000 + 3200);
+    CHECK(editor.firstVisibleSource() > first); // the page turned
+}
+
+TEST_CASE("Ctrl+Shift+wheel zooms the audio editor's pitches", "[ui][audioeditor]")
+{
+    const juce::ScopedJuceInitialiser_GUI juceInit;
+    audio::PeakStore peaks;
+    NoMedia loader;
+    engine::VocalService vocal(loader, true);
+    ui::AudioEditor editor(peaks, vocal);
+    editor.setSize(800, 400);
+    const auto project = vocalProject();
+    editor.setClip(&project, 1, 2);
+    editor.setMode(ui::AudioEditor::Mode::pitch);
+    const float before = editor.semitoneHeight();
+    juce::MouseWheelDetails wheel{};
+    wheel.deltaY = 0.5f;
+    editor.mouseWheelMove(
+        wheelAt(editor,
+                400.0f,
+                200.0f,
+                juce::ModifierKeys(juce::ModifierKeys::ctrlModifier | juce::ModifierKeys::shiftModifier)),
+        wheel);
+    CHECK(editor.semitoneHeight() > before);
+}
+
+TEST_CASE("Correct to key aims at the pitch a transposed clip plays", "[ui][audioeditor]")
+{
+    const juce::ScopedJuceInitialiser_GUI juceInit;
+    audio::PeakStore peaks;
+    NoMedia loader;
+    engine::VocalService vocal(loader, true);
+    ui::AudioEditor editor(peaks, vocal);
+    editor.setSize(800, 400);
+    // Sung C, D, E (a little flat) and played a semitone up: C# D# F, which C major does not hold.
+    auto project = vocalProject(1.0);
+    for (auto& n : project.tracks[0].clips[0].vocal.notes)
+        n.centre = n.target = n.target - 30.0f;
+    project.key = core::MusicalKey{1, core::ScaleKind::major}; // C# major holds them
+    editor.setClip(&project, 1, 2);
+    std::vector<std::unique_ptr<core::Command>> got;
+    editor.onEdit = [&](std::vector<std::unique_ptr<core::Command>> commands, const std::string&)
+    {
+        for (auto& c : commands)
+            got.push_back(std::move(c));
+    };
+    editor.correctToKey({});
+    REQUIRE(got.size() == 1);
+    core::UndoStack undo;
+    REQUIRE(undo.execute(project, std::move(got.front())));
+    // Each moved towards its own semitone (by 85%), not to C major's neighbours.
+    const auto& notes = project.tracks[0].clips[0].vocal.notes;
+    CHECK(notes[0].target == Approx(6000.0f - 30.0f * 0.15f).margin(1.0f));
+    CHECK(notes[2].target == Approx(6400.0f - 30.0f * 0.15f).margin(1.0f));
 }

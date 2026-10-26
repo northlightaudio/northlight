@@ -83,6 +83,10 @@ void migrate(json& j, int from)
                      // reopens and a missing plugin is unnamed
             case 16: // 17: audio and MIDI clips gain an optional "colour"; without it a
                      // clip takes its track's colour, as before
+            case 17: // 18: a note may carry a sixth element (muted); a take group an
+                     // optional "midi" with "notes" and "controllers" on its takes;
+                     // a MIDI track an optional "recordMode". Without them notes
+                     // play, groups are audio and passes become takes, as before
                 break;
             default:
                 break;
@@ -118,6 +122,73 @@ std::optional<MidiControllerType> controllerTypeFromName(const std::string& name
     if (name == "poly")
         return MidiControllerType::polyPressure;
     return std::nullopt;
+}
+
+// Notes as compact arrays: [id, note, velocity, start, length], with a sixth
+// element 1 for a muted note.
+json notesToJson(const std::vector<MidiNote>& notes)
+{
+    json out = json::array();
+    for (const auto& n : notes)
+    {
+        auto a = json::array({n.id, n.note, n.velocity, n.start, n.length});
+        if (n.muted)
+            a.push_back(1);
+        out.push_back(std::move(a));
+    }
+    return out;
+}
+
+std::vector<MidiNote> notesFromJson(const json& j)
+{
+    std::vector<MidiNote> out;
+    if (!j.is_array())
+        return out;
+    for (const auto& nj : j)
+        if ((nj.size() == 5 || nj.size() == 6) && numberTuple(nj, nj.size()))
+        {
+            MidiNote n{nj[0].get<Id>(),
+                       nj[1].get<int>(),
+                       nj[2].get<int>(),
+                       nj[3].get<SamplePosition>(),
+                       nj[4].get<SamplePosition>()};
+            n.muted = nj.size() == 6 && nj[5].get<int>() != 0;
+            out.push_back(n);
+        }
+    return out;
+}
+
+// Controller events as compact arrays: [id, type, number, value, time].
+json controllersToJson(const std::vector<MidiControllerEvent>& events)
+{
+    json out = json::array();
+    for (const auto& e : events)
+        out.push_back(json::array({e.id, controllerTypeName(e.type), e.number, e.value, e.time}));
+    return out;
+}
+
+std::vector<MidiControllerEvent> controllersFromJson(const json& j)
+{
+    std::vector<MidiControllerEvent> out;
+    if (!j.is_array())
+        return out;
+    for (const auto& ej : j)
+    {
+        if (!ej.is_array() || ej.size() != 5 || !ej[1].is_string() || !ej[0].is_number() ||
+            !ej[2].is_number() || !ej[3].is_number() || !ej[4].is_number())
+            continue;
+        const auto type = controllerTypeFromName(ej[1].get<std::string>());
+        if (!type.has_value())
+            continue; // a kind this version does not know
+        MidiControllerEvent e;
+        e.id = ej[0].get<Id>();
+        e.type = *type;
+        e.number = std::clamp(ej[2].get<int>(), 0, 127);
+        e.value = std::clamp(ej[3].get<int>(), midiControllerMinimum(e.type), midiControllerMaximum(e.type));
+        e.time = ej[4].get<SamplePosition>();
+        out.push_back(e);
+    }
+    return out;
 }
 
 json clipToJson(const AudioClip& c)
@@ -519,33 +590,25 @@ json trackToJson(const Track& t)
         j["midiOut"] = json{{"channel", t.midiOutChannel}};
     j["armed"] = t.armed;
     j["monitor"] = monitor;
+    if (t.midiRecordMode != MidiRecordMode::takes)
+        j["recordMode"] = t.midiRecordMode == MidiRecordMode::merge ? "merge" : "replace";
     j["clips"] = std::move(clips);
     if (!t.midiClips.empty())
     {
         json midiClips = json::array();
         for (const auto& c : t.midiClips)
         {
-            json notes = json::array();
-            for (const auto& n : c.notes)
-                notes.push_back(json::array({n.id, n.note, n.velocity, n.start, n.length}));
             json clip{{"id", c.id},
                       {"name", c.name},
                       {"start", c.start},
                       {"length", c.length},
-                      {"notes", std::move(notes)}};
+                      {"notes", notesToJson(c.notes)}};
             if (c.muted)
                 clip["muted"] = true;
             if (c.colour != 0)
                 clip["colour"] = c.colour;
-            // Controller events as compact arrays: [id, type, number, value, time].
             if (!c.controllers.empty())
-            {
-                json controllers = json::array();
-                for (const auto& e : c.controllers)
-                    controllers.push_back(
-                        json::array({e.id, controllerTypeName(e.type), e.number, e.value, e.time}));
-                clip["controllers"] = std::move(controllers);
-            }
+                clip["controllers"] = controllersToJson(c.controllers);
             midiClips.push_back(std::move(clip));
         }
         j["midiClips"] = std::move(midiClips);
@@ -560,17 +623,26 @@ json trackToJson(const Track& t)
             {
                 auto tj = clipToJson(take.clip);
                 tj["number"] = take.number;
+                if (g.midi)
+                {
+                    tj["notes"] = notesToJson(take.notes);
+                    if (!take.controllers.empty())
+                        tj["controllers"] = controllersToJson(take.controllers);
+                }
                 takes.push_back(std::move(tj));
             }
             json comp = json::array();
             for (const auto& s : g.comp)
                 comp.push_back(json::array({s.start, s.end, s.take}));
-            groups.push_back(json{{"id", g.id},
-                                  {"takes", std::move(takes)},
-                                  {"comp", std::move(comp)},
-                                  {"clips", g.clips},
-                                  {"crossfade", g.crossfade},
-                                  {"expanded", g.expanded}});
+            json gj{{"id", g.id},
+                    {"takes", std::move(takes)},
+                    {"comp", std::move(comp)},
+                    {"clips", g.clips},
+                    {"crossfade", g.crossfade},
+                    {"expanded", g.expanded}};
+            if (g.midi)
+                gj["midi"] = true;
+            groups.push_back(std::move(gj));
         }
         j["takeGroups"] = std::move(groups);
     }
@@ -632,38 +704,20 @@ Track trackFromJson(const json& j)
             c.length = cj.value("length", SamplePosition{0});
             c.muted = cj.value("muted", false);
             c.colour = cj.value("colour", std::uint32_t{0});
-            if (const auto notes = cj.find("notes"); notes != cj.end() && notes->is_array())
-                for (const auto& nj : *notes)
-                    if (nj.size() == 5 && numberTuple(nj, 5))
-                        c.notes.push_back(MidiNote{nj[0].get<Id>(),
-                                                   nj[1].get<int>(),
-                                                   nj[2].get<int>(),
-                                                   nj[3].get<SamplePosition>(),
-                                                   nj[4].get<SamplePosition>()});
-            if (const auto ctl = cj.find("controllers"); ctl != cj.end() && ctl->is_array())
-                for (const auto& ej : *ctl)
-                {
-                    if (!ej.is_array() || ej.size() != 5 || !ej[1].is_string() || !ej[0].is_number() ||
-                        !ej[2].is_number() || !ej[3].is_number() || !ej[4].is_number())
-                        continue;
-                    const auto type = controllerTypeFromName(ej[1].get<std::string>());
-                    if (!type.has_value())
-                        continue; // a kind this version does not know
-                    MidiControllerEvent e;
-                    e.id = ej[0].get<Id>();
-                    e.type = *type;
-                    e.number = std::clamp(ej[2].get<int>(), 0, 127);
-                    e.value = std::clamp(
-                        ej[3].get<int>(), midiControllerMinimum(e.type), midiControllerMaximum(e.type));
-                    e.time = ej[4].get<SamplePosition>();
-                    c.controllers.push_back(e);
-                }
+            if (const auto notes = cj.find("notes"); notes != cj.end())
+                c.notes = notesFromJson(*notes);
+            if (const auto ctl = cj.find("controllers"); ctl != cj.end())
+                c.controllers = controllersFromJson(*ctl);
             c.sortNotes();
             c.sortControllers();
             t.midiClips.push_back(std::move(c));
         }
         t.sortMidiClips();
     }
+    const auto recordMode = j.value("recordMode", std::string{"takes"});
+    t.midiRecordMode = recordMode == "merge"     ? MidiRecordMode::merge
+                       : recordMode == "replace" ? MidiRecordMode::replace
+                                                 : MidiRecordMode::takes;
     t.inputChannel = j.value("input", -1);
     t.inputBus = j.value("inputBus", std::string{});
     if (!t.inputBus.empty())
@@ -682,9 +736,28 @@ Track trackFromJson(const json& j)
         {
             TakeGroup g;
             g.id = gj.value("id", invalidId);
+            g.midi = gj.value("midi", false);
             if (const auto takes = gj.find("takes"); takes != gj.end() && takes->is_array())
                 for (const auto& tj : *takes)
-                    g.takes.push_back(Take{clipFromJson(tj), tj.value("number", 1)});
+                {
+                    Take take{clipFromJson(tj), tj.value("number", 1), {}, {}};
+                    if (g.midi)
+                    {
+                        if (const auto notes = tj.find("notes"); notes != tj.end())
+                            take.notes = notesFromJson(*notes);
+                        if (const auto ctl = tj.find("controllers"); ctl != tj.end())
+                            take.controllers = controllersFromJson(*ctl);
+                        std::stable_sort(take.notes.begin(),
+                                         take.notes.end(),
+                                         [](const MidiNote& a, const MidiNote& b)
+                                         { return a.start < b.start; });
+                        std::stable_sort(take.controllers.begin(),
+                                         take.controllers.end(),
+                                         [](const MidiControllerEvent& a, const MidiControllerEvent& b)
+                                         { return a.time < b.time; });
+                    }
+                    g.takes.push_back(std::move(take));
+                }
             if (const auto comp = gj.find("comp"); comp != gj.end() && comp->is_array())
                 for (const auto& sj : *comp)
                     if (sj.size() == 3 && numberTuple(sj, 3))
@@ -692,7 +765,8 @@ Track trackFromJson(const json& j)
                             sj[0].get<SamplePosition>(), sj[1].get<SamplePosition>(), sj[2].get<Id>()});
             if (const auto clips = gj.find("clips"); clips != gj.end() && clips->is_array())
                 for (const auto& id : *clips)
-                    if (id.is_number_unsigned() && t.findClip(id.get<Id>()) != nullptr)
+                    if (id.is_number_unsigned() && (g.midi ? t.findMidiClip(id.get<Id>()) != nullptr
+                                                           : t.findClip(id.get<Id>()) != nullptr))
                         g.clips.push_back(id.get<Id>());
             g.crossfade = std::max<SamplePosition>(0, gj.value("crossfade", SamplePosition{0}));
             g.expanded = gj.value("expanded", false);
@@ -919,7 +993,9 @@ std::optional<Project> projectFromJson(const std::string& text, std::string* err
                         segment.take = g.takes[static_cast<size_t>(it - was.begin())].clip.id;
                 }
                 // A comp clip that had to change its id (a corrupt file) is no longer the group's.
-                std::erase_if(g.clips, [&t](Id id) { return t.findClip(id) == nullptr; });
+                std::erase_if(g.clips,
+                              [&t, &g](Id id)
+                              { return g.midi ? t.findMidiClip(id) == nullptr : t.findClip(id) == nullptr; });
             }
         return p;
     }

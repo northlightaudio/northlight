@@ -70,6 +70,77 @@ std::vector<AudioClip> compClips(const TakeGroup& group)
     return out;
 }
 
+std::vector<MidiClip> compMidiClips(const TakeGroup& group)
+{
+    std::vector<MidiClip> out;
+    for (const auto& s : group.comp)
+    {
+        const auto* take = group.findTake(s.take);
+        if (take == nullptr)
+            continue;
+        const auto& frame = take->clip;
+        const auto start = std::max(s.start, frame.start);
+        const auto end = std::min(s.end, frame.end());
+        if (end <= start)
+            continue;
+        MidiClip c;
+        c.name = frame.name;
+        c.start = start;
+        c.length = end - start;
+        for (const auto& n : take->notes)
+        {
+            const auto at = frame.start + n.start;
+            if (at < start || at >= end)
+                continue;
+            auto note = n;
+            note.start = at - start;
+            note.length = std::max<SamplePosition>(1, std::min(n.length, end - at));
+            c.notes.push_back(note);
+        }
+        // Each controller's value at the segment's start, then its events in it.
+        std::vector<MidiControllerEvent> chased;
+        for (const auto& e : take->controllers)
+        {
+            const auto at = frame.start + e.time;
+            if (at >= start)
+                continue;
+            auto it =
+                std::find_if(chased.begin(),
+                             chased.end(),
+                             [&e](const MidiControllerEvent& x) { return x.sameLane(e.type, e.number); });
+            if (it == chased.end())
+                chased.push_back(e);
+            else
+                *it = e;
+        }
+        for (const auto& e : take->controllers)
+        {
+            const auto at = frame.start + e.time;
+            if (at < start || at >= end)
+                continue;
+            auto event = e;
+            event.time = at - start;
+            c.controllers.push_back(event);
+        }
+        for (auto e : chased)
+        {
+            const bool opens = std::any_of(c.controllers.begin(),
+                                           c.controllers.end(),
+                                           [&e](const MidiControllerEvent& x)
+                                           { return x.time == 0 && x.sameLane(e.type, e.number); });
+            if (opens)
+                continue;
+            e.id = invalidId; // a copy: its own id
+            e.time = 0;
+            c.controllers.push_back(e);
+        }
+        c.sortNotes();
+        c.sortControllers();
+        out.push_back(std::move(c));
+    }
+    return out;
+}
+
 void normaliseComp(TakeGroup& group)
 {
     auto& comp = group.comp;
@@ -193,7 +264,20 @@ bool recordingMakesTakes(const Track& track, const std::vector<AudioClip>& passe
         return true;
     const auto& pass = passes.front();
     for (const auto& g : track.takeGroups)
-        if (pass.start < g.end() && pass.end() > g.start())
+        if (!g.midi && pass.start < g.end() && pass.end() > g.start())
+            return true;
+    return false;
+}
+
+bool recordingMakesTakes(const Track& track, const std::vector<MidiClip>& passes, bool punch)
+{
+    if (passes.empty())
+        return false;
+    if (passes.size() >= 2 || punch)
+        return true;
+    const auto& pass = passes.front();
+    for (const auto& g : track.takeGroups)
+        if (g.midi && pass.start < g.end() && pass.end() > g.start())
             return true;
     return false;
 }
@@ -237,20 +321,38 @@ bool TakeGroupEdit::apply(Project& p)
         if (result_ == Result::rebuild)
         {
             normaliseComp(g);
-            added_ = compClips(g);
             // The ids of the clips this replaces (those still on the track) go to
             // the new ones first, so a rebuilt comp keeps its identities.
             std::vector<Id> reuse;
             if (before_)
                 for (const auto id : before_->clips)
-                    if (t.findClip(id) != nullptr)
+                    if (g.midi ? t.findMidiClip(id) != nullptr : t.findClip(id) != nullptr)
                         reuse.push_back(id);
             size_t next = 0;
             g.clips.clear();
-            for (auto& c : added_)
+            if (g.midi)
             {
-                c.id = next < reuse.size() ? reuse[next++] : p.allocateId();
-                g.clips.push_back(c.id);
+                addedMidi_ = compMidiClips(g);
+                for (auto& c : addedMidi_)
+                {
+                    c.id = next < reuse.size() ? reuse[next++] : p.allocateId();
+                    // Copies of the take's events: ids of their own (ids are unique
+                    // in a project).
+                    for (auto& n : c.notes)
+                        n.id = p.allocateId();
+                    for (auto& e : c.controllers)
+                        e.id = p.allocateId();
+                    g.clips.push_back(c.id);
+                }
+            }
+            else
+            {
+                added_ = compClips(g);
+                for (auto& c : added_)
+                {
+                    c.id = next < reuse.size() ? reuse[next++] : p.allocateId();
+                    g.clips.push_back(c.id);
+                }
             }
             after_ = std::move(g);
         }
@@ -259,13 +361,21 @@ bool TakeGroupEdit::apply(Project& p)
         return true;
 
     removed_.clear();
+    removedMidi_.clear();
     if (before_ && result_ != Result::flatten)
         for (const auto id : before_->clips)
-            if (const auto* c = t.findClip(id))
+        {
+            if (const auto* c = t.findClip(id); c != nullptr && !before_->midi)
             {
                 removed_.push_back(*c);
                 std::erase_if(t.clips, [id](const AudioClip& clip) { return clip.id == id; });
             }
+            if (const auto* c = t.findMidiClip(id); c != nullptr && before_->midi)
+            {
+                removedMidi_.push_back(*c);
+                std::erase_if(t.midiClips, [id](const MidiClip& clip) { return clip.id == id; });
+            }
+        }
     std::erase_if(t.takeGroups, [this](const TakeGroup& g) { return g.id == groupId_; });
     if (after_)
         t.takeGroups.push_back(*after_);
@@ -273,13 +383,16 @@ bool TakeGroupEdit::apply(Project& p)
     for (const auto& c : added_)
         t.clips.push_back(c);
     t.sortClips();
+    for (const auto& c : addedMidi_)
+        t.midiClips.push_back(c);
+    t.sortMidiClips();
     return true;
 }
 
 std::size_t TakeGroupEdit::footprint() const noexcept
 {
     return sizeof(*this) + (before_ ? heapBytes(*before_) : 0) + (after_ ? heapBytes(*after_) : 0) +
-           heapBytes(removed_) + heapBytes(added_);
+           heapBytes(removed_) + heapBytes(added_) + heapBytes(removedMidi_) + heapBytes(addedMidi_);
 }
 
 bool TakeGroupEdit::revert(Project& p)
@@ -292,6 +405,8 @@ bool TakeGroupEdit::revert(Project& p)
     auto& t = *track;
     for (const auto& c : added_)
         std::erase_if(t.clips, [&c](const AudioClip& clip) { return clip.id == c.id; });
+    for (const auto& c : addedMidi_)
+        std::erase_if(t.midiClips, [&c](const MidiClip& clip) { return clip.id == c.id; });
     std::erase_if(t.takeGroups, [this](const TakeGroup& g) { return g.id == groupId_; });
     if (before_)
         t.takeGroups.push_back(*before_);
@@ -299,6 +414,9 @@ bool TakeGroupEdit::revert(Project& p)
     for (const auto& c : removed_)
         t.clips.push_back(c);
     t.sortClips();
+    for (const auto& c : removedMidi_)
+        t.midiClips.push_back(c);
+    t.sortMidiClips();
     return true;
 }
 
@@ -309,18 +427,29 @@ RecordTakes::RecordTakes(Id trackId, std::vector<AudioClip> passes)
 {
 }
 
+RecordTakes::RecordTakes(Id trackId, std::vector<MidiClip> passes)
+    : TakeGroupEdit(trackId, invalidId), midiPasses_(std::move(passes)), midi_(true)
+{
+}
+
 Id RecordTakes::chooseGroup(const Track& track) const
 {
-    if (passes_.empty())
-        return invalidId;
-    SamplePosition from = passes_.front().start, to = passes_.front().end();
+    // The range the passes cover.
+    std::vector<std::pair<SamplePosition, SamplePosition>> ranges;
     for (const auto& c : passes_)
+        ranges.emplace_back(c.start, c.end());
+    for (const auto& c : midiPasses_)
+        ranges.emplace_back(c.start, c.end());
+    if (ranges.empty())
+        return invalidId;
+    SamplePosition from = ranges.front().first, to = ranges.front().second;
+    for (const auto& [a, b] : ranges)
     {
-        from = std::min(from, c.start);
-        to = std::max(to, c.end());
+        from = std::min(from, a);
+        to = std::max(to, b);
     }
     for (const auto& g : track.takeGroups)
-        if (from < g.end() && to > g.start())
+        if (g.midi == midi_ && from < g.end() && to > g.start())
             return g.id;
     return invalidId;
 }
@@ -330,6 +459,10 @@ TakeGroupEdit::Result RecordTakes::edit(Project& p, Track&, TakeGroup& g)
     int number = 0;
     for (const auto& t : g.takes)
         number = std::max(number, t.number);
+    if (g.takes.empty())
+        g.midi = midi_;
+    if (g.midi != midi_)
+        return Result::refuse;
     std::vector<Id> added;
     for (auto clip : passes_)
     {
@@ -340,6 +473,27 @@ TakeGroupEdit::Result RecordTakes::edit(Project& p, Track&, TakeGroup& g)
         take.number = ++number;
         clip.name = "Take " + std::to_string(take.number);
         take.clip = std::move(clip);
+        added.push_back(take.id());
+        g.takes.push_back(std::move(take));
+    }
+    for (auto& pass : midiPasses_)
+    {
+        if (pass.length <= 0)
+            continue;
+        Take take;
+        take.number = ++number;
+        take.clip.id = p.allocateId();
+        take.clip.name = "Take " + std::to_string(take.number);
+        take.clip.start = pass.start;
+        take.clip.length = pass.length;
+        take.notes = pass.notes;
+        take.controllers = pass.controllers;
+        for (auto& n : take.notes)
+            if (n.id == invalidId)
+                n.id = p.allocateId();
+        for (auto& e : take.controllers)
+            if (e.id == invalidId)
+                e.id = p.allocateId();
         added.push_back(take.id());
         g.takes.push_back(std::move(take));
     }
@@ -474,13 +628,22 @@ bool MoveTakeGroup::move(Project& p, Id from, Id to, SamplePosition delta)
     TakeGroup g = std::move(*found);
     std::erase_if(source.takeGroups, [this](const TakeGroup& x) { return x.id == groupId_; });
     std::vector<AudioClip> clips;
+    std::vector<MidiClip> midiClips;
     for (const auto id : g.clips)
-        if (const auto* c = source.findClip(id))
+    {
+        if (const auto* c = source.findClip(id); c != nullptr && !g.midi)
         {
             clips.push_back(*c);
             std::erase_if(source.clips, [id](const AudioClip& clip) { return clip.id == id; });
         }
+        if (const auto* c = source.findMidiClip(id); c != nullptr && g.midi)
+        {
+            midiClips.push_back(*c);
+            std::erase_if(source.midiClips, [id](const MidiClip& clip) { return clip.id == id; });
+        }
+    }
     source.sortClips();
+    source.sortMidiClips();
     for (auto& take : g.takes)
         take.clip.start += delta;
     for (auto& s : g.comp)
@@ -493,9 +656,15 @@ bool MoveTakeGroup::move(Project& p, Id from, Id to, SamplePosition delta)
         c.start += delta;
         target.clips.push_back(std::move(c));
     }
+    for (auto& c : midiClips)
+    {
+        c.start += delta;
+        target.midiClips.push_back(std::move(c));
+    }
     target.takeGroups.push_back(std::move(g));
     sortGroups(target);
     target.sortClips();
+    target.sortMidiClips();
     return true;
 }
 
@@ -506,12 +675,16 @@ bool MoveTakeGroup::apply(Project& p)
     if (from == nullptr || to == nullptr)
         return false;
     const auto* group = from->findTakeGroup(groupId_);
-    moved_ = group != nullptr && to->hasAudio() && !to->isInstrument() && !to->isAux();
+    moved_ = group != nullptr &&
+             (group->midi ? to->isMidi() : to->hasAudio() && !to->isInstrument() && !to->isAux());
     if (!moved_)
         return true;
     // Pinned at zero: neither a take nor a comp clip may start before it.
     SamplePosition earliest = group->start();
     for (const auto& c : from->clips)
+        if (group->ownsClip(c.id))
+            earliest = std::min(earliest, c.start);
+    for (const auto& c : from->midiClips)
         if (group->ownsClip(c.id))
             earliest = std::min(earliest, c.start);
     applied_ = std::max(delta_, -earliest);
@@ -533,17 +706,159 @@ moveTakeToNewTrack(const Project& project, Id trackId, Id groupId, Id takeId)
     if (take == nullptr)
         return commands;
     Track t;
-    t.kind = TrackKind::audio;
     t.name = track->name + " " + take->clip.name;
     t.colour = track->colour;
-    t.outputBus = track->outputBus;
-    t.inputChannel = track->inputChannel;
-    t.inputBus = track->inputBus;
     t.monitor = track->monitor;
-    t.clips.push_back(take->clip);
+    if (group->midi)
+    {
+        // A MIDI track playing the same instrument, the take as its clip.
+        t.kind = TrackKind::midi;
+        t.midiTarget = track->midiTarget;
+        t.midiChannel = track->midiChannel;
+        t.midiInput = track->midiInput;
+        t.midiRecordMode = track->midiRecordMode;
+        MidiClip clip;
+        clip.name = take->clip.name;
+        clip.start = take->clip.start;
+        clip.length = take->clip.length;
+        clip.notes = take->notes;
+        clip.controllers = take->controllers;
+        t.midiClips.push_back(std::move(clip));
+    }
+    else
+    {
+        t.kind = TrackKind::audio;
+        t.outputBus = track->outputBus;
+        t.inputChannel = track->inputChannel;
+        t.inputBus = track->inputBus;
+        t.clips.push_back(take->clip);
+    }
     commands.push_back(std::make_unique<AddTrack>(std::move(t), project.trackIndex(trackId) + 1));
     commands.push_back(std::make_unique<RemoveTake>(trackId, groupId, takeId));
     return commands;
+}
+
+// ----- MIDI merge and replace ------------------------------------------------------------------
+
+namespace
+{
+SamplePosition overlap(const MidiClip& c, SamplePosition from, SamplePosition to) noexcept
+{
+    return std::max<SamplePosition>(0, std::min(c.end(), to) - std::max(c.start, from));
+}
+
+// One pass into the clips (see RecordMidiPasses).
+void recordPass(Project& p, std::vector<MidiClip>& clips, MidiClip pass, bool replace)
+{
+    const auto from = pass.start, to = pass.end();
+    MidiClip* target = nullptr;
+    SamplePosition best = 0;
+    for (auto& c : clips)
+        if (const auto o = overlap(c, from, to); o > best)
+        {
+            best = o;
+            target = &c;
+        }
+    for (auto& n : pass.notes)
+        n.id = n.id == invalidId ? p.allocateId() : n.id;
+    for (auto& e : pass.controllers)
+        e.id = e.id == invalidId ? p.allocateId() : e.id;
+    if (target == nullptr)
+    {
+        pass.id = p.allocateId();
+        pass.sortNotes();
+        pass.sortControllers();
+        clips.push_back(std::move(pass));
+        std::stable_sort(clips.begin(),
+                         clips.end(),
+                         [](const MidiClip& a, const MidiClip& b) { return a.start < b.start; });
+        return;
+    }
+    auto& c = *target;
+    // Grow the clip to hold the pass (its contents keep their timeline places).
+    if (from < c.start)
+    {
+        const auto shift = c.start - from;
+        for (auto& n : c.notes)
+            n.start += shift;
+        for (auto& e : c.controllers)
+            e.time += shift;
+        c.length += shift;
+        c.start = from;
+    }
+    c.length = std::max(c.end(), to) - c.start;
+    if (replace)
+    {
+        std::erase_if(c.notes,
+                      [&](const MidiNote& n)
+                      {
+                          const auto at = c.start + n.start;
+                          return at >= from && at < to;
+                      });
+        std::erase_if(c.controllers,
+                      [&](const MidiControllerEvent& e)
+                      {
+                          const auto at = c.start + e.time;
+                          if (at < from || at >= to)
+                              return false;
+                          return std::any_of(pass.controllers.begin(),
+                                             pass.controllers.end(),
+                                             [&e](const MidiControllerEvent& x)
+                                             { return x.sameLane(e.type, e.number); });
+                      });
+    }
+    for (auto n : pass.notes)
+    {
+        n.start += pass.start - c.start;
+        c.notes.push_back(n);
+    }
+    for (auto e : pass.controllers)
+    {
+        e.time += pass.start - c.start;
+        c.controllers.push_back(e);
+    }
+    c.sortNotes();
+    c.sortControllers();
+    std::stable_sort(
+        clips.begin(), clips.end(), [](const MidiClip& a, const MidiClip& b) { return a.start < b.start; });
+}
+} // namespace
+
+RecordMidiPasses::RecordMidiPasses(Id trackId, std::vector<MidiClip> passes, bool replace)
+    : trackId_(trackId), passes_(std::move(passes)), replace_(replace)
+{
+}
+
+bool RecordMidiPasses::apply(Project& p)
+{
+    auto* t = p.findTrack(trackId_);
+    if (t == nullptr)
+        return false;
+    if (!after_)
+    {
+        before_ = t->midiClips;
+        auto clips = t->midiClips;
+        for (const auto& pass : passes_)
+            recordPass(p, clips, pass, replace_);
+        after_ = std::move(clips);
+    }
+    t->midiClips = *after_;
+    return true;
+}
+
+bool RecordMidiPasses::revert(Project& p)
+{
+    auto* t = p.findTrack(trackId_);
+    if (t == nullptr || !before_)
+        return false;
+    t->midiClips = *before_;
+    return true;
+}
+
+std::size_t RecordMidiPasses::footprint() const noexcept
+{
+    return sizeof(*this) + heapBytes(passes_) + (before_ ? heapBytes(*before_) : 0) +
+           (after_ ? heapBytes(*after_) : 0);
 }
 
 } // namespace northlight::core

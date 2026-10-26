@@ -158,10 +158,14 @@ TEST_CASE("A rebinding finds the actions it collides with, and Replace takes the
 {
     const Defaults defaults;
     const ui::Key ctrlM{'M', Mods::commandModifier};
-    // Ctrl+M mutes clips in the arrange view: a global command taking it collides.
-    CHECK(Shortcuts::conflicts(Command::loop, ctrlM) == std::vector<Command>{Command::muteClips});
-    // The piano roll and the arrange view never see the same press.
-    CHECK(Shortcuts::conflicts(Command::pianoRollSnap, ctrlM).empty());
+    // Ctrl+M mutes clips in the arrange view and notes in the piano roll: a global
+    // command taking it collides with both.
+    CHECK(Shortcuts::conflicts(Command::loop, ctrlM) ==
+          std::vector<Command>{Command::muteClips, Command::pianoRollMuteNotes});
+    // The piano roll and the arrange view never see the same press: Ctrl+Shift+N
+    // normalises in the arrange view only.
+    const ui::Key ctrlShiftN{'N', Mods::commandModifier | Mods::shiftModifier};
+    CHECK(Shortcuts::conflicts(Command::pianoRollSnap, ctrlShiftN).empty());
     Shortcuts::bind(Command::loop, ctrlM, Shortcuts::conflicts(Command::loop, ctrlM));
     CHECK(Shortcuts::keyText(Command::loop) == "Ctrl+M");
     CHECK(Shortcuts::of(Command::muteClips).keys.empty());

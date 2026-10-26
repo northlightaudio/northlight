@@ -106,6 +106,10 @@ enum class Icon
     // An eye, open and struck through: shown and hidden (an automation lane's hide).
     visible,
     hidden,
+    // The editors' toolbars: a playhead with an arrow (follow the playhead), and a
+    // solid note over an outlined one (show other tracks' notes as ghosts).
+    followPlayhead,
+    ghostNotes,
 };
 
 struct Icons
@@ -122,7 +126,7 @@ struct Icons
     // where the tool acts. Built once per icon. The arrange view and the piano
     // roll share them.
     static juce::MouseCursor toolCursor(const Theme& theme, Icon icon);
-    static constexpr int count = static_cast<int>(Icon::hidden) + 1;
+    static constexpr int count = static_cast<int>(Icon::ghostNotes) + 1;
 };
 
 // An icon button (28×28 default): ghost at rest, the icon in textSecondary,

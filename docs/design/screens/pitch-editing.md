@@ -28,7 +28,7 @@ vibrato and the singer's own slides between notes.
 | Audio clip editor | `src/ui/AudioEditor.*`; opened by double-clicking an audio clip | Same shape as the piano roll: one clip, edits out as commands |
 | Analysis and rendering | `src/engine/pitch/` (no JUCE), with `engine::VocalService` as the cache and render service; analyses cached beside the media as `<file>.<rate>.northlight-pitch` | Derived data that can be rebuilt, kept out of the project file; the bounce uses the same code without JUCE |
 | Edits | `core::VocalEdit` on `AudioClip`: notes with their parameters, breath segments with their gain | Splitting, merging and every parameter go through the undo stack, so they belong in the model |
-| Playback | `PitchEditedSource`: rendered phrases where they exist, the original audio elsewhere | Re-rendering runs off the audio thread and publishes immutable results; nothing allocates on the audio thread |
+| Playback | `PitchEditedSource`: rendered phrases where they exist, the original audio elsewhere; a stretched clip's stretch renders from it | Re-rendering runs off the audio thread and publishes immutable results; nothing allocates on the audio thread |
 | Bounce | Renders the clip's vocal edits before it starts | Bounce builds its own engine, so it cannot rely on the live render cache |
 
 A **phrase** (a voiced run between pauses) is the unit of rendering. The
@@ -126,9 +126,12 @@ undoable command, and any note can be adjusted afterwards.
    - Notes shorter than about 90 ms (ornaments, melismas) get much weaker correction.
    - No note moves more than about a semitone automatically. Larger moves are flagged
      for the user to check.
-4. **The sheet:** key, strength, tolerance, drift %, keep vibrato, chord-aware.
-   Changes preview live inside one gesture; Apply, or clicking away, keeps the
-   result; Cancel undoes it.
+4. **The sheet:** key (the project's; when none is set, the key detected from the
+   vocal, marked "(detected)", which the menu lets the user confirm or change; the key
+   applied becomes the project's), strength, tolerance, drift %, keep vibrato (on by
+   default; off, a slider sets how much is kept), chord-aware. Changes preview live
+   inside one gesture; Apply, or clicking away, keeps the result; Cancel undoes it.
+   A transposed clip is corrected at the pitch it plays.
 
 ## Breaths
 
@@ -141,7 +144,11 @@ undoable command, and any note can be adjusted afterwards.
 
 ## The audio clip editor
 
-- **Wave mode:** a zoomable detailed waveform, clip gain and fades.
+- **Wave mode:** a zoomable detailed waveform, clip gain and fades. A fade handle
+  dragged sideways sets the fade's length and up or down its curve, as the arrange
+  view's does (80 px to either end, a 4 px detent at linear; the tooltip gives both).
+  Double-clicking the gain line resets it to 0 dB and a fade handle removes its fade;
+  a double-click elsewhere does nothing (pitch mode is the Wave/Pitch switch).
 - **Pitch mode:** entering it the first time starts the analysis, with a progress
   bar, and adds an "Analyse pitch" undo step that stores the notes found (nothing
   audible changes). Then:
@@ -156,20 +163,30 @@ undoable command, and any note can be adjusted afterwards.
   a note), drift (a wander settling flat), vibrato (a quick wave), breath (a breath
   of wind). Each tooltip names what a drag or click does.
   - **Pitch:** drag vertically to snap to semitones; Alt moves in free cents.
-  - **Split and merge:** double-click splits.
+  - **Split and merge:** double-click splits a note where it is clicked; on a join,
+    merges the two notes. Snapping a note to the nearest semitone is in its menu.
   - **Drift and vibrato:** drag vertically to scale them.
   - **Transition handles** at the joins between notes.
   - **Breath.**
-- Clicking a note auditions it. The ruler and playhead link to the arrange view, as
-  the piano roll's "Link zoom to arrange" does.
-- Scrolling and zoom: in wave mode the wheel scrolls time; in pitch mode it scrolls
-  the pitches and Shift+wheel scrolls time. Ctrl+wheel zooms around the pointer,
-  smoothly, as in the arrange view.
-- **A stretched or transposed clip:** pitch edits do not play on it (the stretch
-  renders from the media file), so pitch mode shows, centred in `body`
-  `textSecondary`, "Pitch edits play on clips that are not stretched or transposed",
-  with how to get back; the tools, Correct and Breaths are disabled and the view
-  takes no edits. Wave mode works as usual.
+- Clicking a note auditions it (the speaker toggle, on by default as the piano
+  roll's). The ruler and playhead link to the arrange view, as the piano roll's
+  "Link zoom to arrange" does, and the follow toggle turns the page as the playhead
+  plays, as the piano roll's does.
+- Keys: 1 to 5 the tools, Up/Down a semitone (Shift: 10 cents), Left/Right select the
+  previous or next note (Shift extends), M mutes, Ctrl+A, Esc.
+- The selected notes show in the Inspector as a Vocal note card: pitch as it plays
+  (typed in cents, shown as the note and its offset), drift %, vibrato %, slide in
+  and slide out (the transition times, ms), gain and Mute, each typeable.
+- Scrolling and zoom (interaction.md 10.2): in pitch mode the wheel scrolls the
+  pitches and Shift+wheel scrolls time; wave mode has nothing to scroll up and down,
+  so its wheel scrolls time too. Ctrl+wheel zooms around the pointer, smoothly, as in
+  the arrange view; Ctrl+Shift+wheel (or Alt+wheel) zooms the pitches (6 to 40 px a
+  semitone), as the piano roll's rows.
+- **A stretched or transposed clip:** edits as any clip. The stretch renders the
+  pitch-edited voice (the edits first, in the media's time and pitch, then the
+  stretch and transposition), in playback, bounce and freeze; while a new edit's
+  render runs, the previous one plays on. Pitch mode shows a transposed clip's notes
+  at the pitch they play.
 
 Layout, tokens and states for this panel are not yet specified.
 

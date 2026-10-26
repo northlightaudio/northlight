@@ -218,6 +218,51 @@ void takesDemo(LaunchRun& r, Args& a)
     r.session.execute(std::make_unique<core::SetTakeLanesExpanded>(trackId, groupId, true));
 }
 
+// A MIDI take group on the first MIDI track with a clip: three passes over its
+// first clip's range (its notes, then nudged and re-voiced, as a player's takes
+// differ), recorded as takes, comped a third from each, the lanes expanded.
+void midiTakesDemo(LaunchRun& r, Args&)
+{
+    const auto& tracks = r.session.project().tracks;
+    const auto it = std::find_if(tracks.begin(),
+                                 tracks.end(),
+                                 [](const core::Track& t) { return t.isMidi() && !t.midiClips.empty(); });
+    if (it == tracks.end())
+        return;
+    const auto trackId = it->id;
+    const auto source = it->midiClips.front();
+    std::vector<core::MidiClip> passes;
+    for (int k = 0; k < 3; ++k)
+    {
+        auto pass = source;
+        pass.id = core::invalidId;
+        for (auto& n : pass.notes)
+        {
+            n.id = core::invalidId;
+            n.start = std::max<core::SamplePosition>(0, n.start + (k == 1 ? 600 : k == 2 ? -400 : 0));
+            n.velocity = std::clamp(n.velocity + (k == 2 ? -20 : k == 1 ? 10 : 0), 1, 127);
+            if (k == 2 && n.note % 2 == 0)
+                n.note = std::min(127, n.note + 2);
+        }
+        for (auto& e : pass.controllers)
+            e.id = core::invalidId;
+        passes.push_back(std::move(pass));
+    }
+    r.session.execute(std::make_unique<core::RemoveMidiClip>(trackId, source.id));
+    r.session.execute(std::make_unique<core::RecordTakes>(trackId, passes));
+    const auto* track = r.session.project().findTrack(trackId);
+    if (track == nullptr || track->takeGroups.empty())
+        return;
+    const auto& group = track->takeGroups.front();
+    const auto groupId = group.id;
+    const auto from = source.start, third = source.length / 3;
+    const auto first = group.takes[0].id(), second = group.takes[1].id();
+    r.session.execute(std::make_unique<core::SelectTake>(trackId, groupId, first, from, from + third));
+    r.session.execute(
+        std::make_unique<core::SelectTake>(trackId, groupId, second, from + third, from + 2 * third));
+    r.session.execute(std::make_unique<core::SetTakeLanesExpanded>(trackId, groupId, true));
+}
+
 // Lanes on the first track that makes sound, in each of their states (adding a
 // lane opens them).
 void automation(LaunchRun& r, Args&)
@@ -549,13 +594,15 @@ const std::vector<LaunchFlag<LaunchRun>>& LaunchRun::flags()
         {"--demo-song",
          "<file>",
          1,
-         "write the demo song (Northern Drift) to the file and open it",
+         "write the demo song (Northern Drift) to the file, its voice beside it, and open it",
          [](LaunchRun& r, Args& a)
          {
              const auto file = a.file();
              file.getParentDirectory().createDirectory();
              const plugins::BuiltInParameterKeys builtInKeys;
-             if (file.replaceWithText(juce::String(core::projectToJson(makeDemoSong(), true, &builtInKeys))))
+             // The voice renders next to the project.
+             const auto song = makeDemoSong(file.getParentDirectory().getFullPathName().toStdString());
+             if (file.replaceWithText(juce::String(core::projectToJson(song, true, &builtInKeys))))
                  r.session.open(file);
          }},
         {"--time-load",
@@ -1023,6 +1070,32 @@ const std::vector<LaunchFlag<LaunchRun>>& LaunchRun::flags()
                      return;
                  }
          }},
+        {"--piano-roll-on",
+         "<track>",
+         1,
+         "open the piano roll on the first MIDI clip of the MIDI track with that name",
+         [](LaunchRun& r, Args& a)
+         {
+             const auto name = a.text().unquoted().toStdString();
+             for (const auto& track : r.session.project().tracks)
+                 if (track.isMidi() && track.name == name && !track.midiClips.empty())
+                 {
+                     r.window.openPianoRoll(track.id, track.midiClips.front().id);
+                     return;
+                 }
+         }},
+        {"--piano-roll-view",
+         "<options>",
+         1,
+         "set up the piano roll: a comma list of ghosts, named, follow, select, mute, fit, lane=<key>, "
+         "rows=<px>, grid=<label>",
+         [](LaunchRun& r, Args& a) { r.window.configurePianoRoll(a.text().unquoted()); }},
+        {"--midi-takes-demo",
+         "",
+         0,
+         "three loop passes of the first MIDI clip (varied) as takes on its track, comped from each, the "
+         "take lanes expanded",
+         midiTakesDemo},
         {"--cc-lane",
          "<lane>",
          1,

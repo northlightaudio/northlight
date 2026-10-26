@@ -202,7 +202,21 @@ tracks folder. Preferences adds keyboard (its Shortcuts page). The plugin menus 
 the effect types: fx-dynamics (a compressor's bent transfer line), fx-eq (a bell),
 fx-space (a decaying train of echoes: reverb and delay), fx-modulation (a sine),
 fx-drive (a vacuum tube: drive and saturation), fx-guitar (a plectrum: Corona and the pedals) and fx-stereo (two overlapping circles: stereo and
-utility); other effects use plugin.
+utility); other effects use plugin. The editors' toolbars add follow-playhead (a
+playhead with an arrow: turn the page as it plays) and ghost-notes (a solid note
+over an outlined one: other tracks' notes as ghosts); the piano roll's named-rows
+toggle uses filter.
+
+**Note states (piano roll).** A note's states, each distinct at a glance: at rest
+(the track colour, alpha by velocity), selected (`textPrimary` outline over
+`selectionFill`), muted (hollow: the track colour at 12% inside, a 1 px outline at
+70%, a hairline through the middle at 50%), recording (`record` at 85%), a ghost of
+the clip's own track (its colour at 30%) and a ghost of another track (that track's
+colour at 20% with a 1 px outline at 45%, so it reads as another part).
+
+**Resizable lane edge.** A row under an editor's grid (the piano roll's lanes) is
+resized by its top edge: 3 px either side of it take the press, the cursor is
+up-down, and the 1 px `lineSubtle` rule turns 2 px `accent` while hovered or dragged.
 
 ## 2.6 Motion
 

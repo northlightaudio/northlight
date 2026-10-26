@@ -41,7 +41,22 @@ style.
   and plays over its range.
 - A single pass anywhere else is a plain clip. Clips already on the track are not
   folded into a group: a pass over an ordinary clip overlaps it.
-- MIDI loop recording keeps a clip per pass.
+- MIDI recording follows the same rules for a MIDI track in the Takes record mode
+  (piano-roll.md "Recording"): loop passes, a punch, or a pass over a MIDI take group
+  make takes in a MIDI take group. In Merge or Replace mode the passes go into the
+  clip under them instead.
+
+## MIDI take groups
+
+- A MIDI take is the pass as played: its notes and controller events, with the take
+  number and name. The comp is MIDI clips, one per segment, holding the notes of its
+  take that start there (a note belongs to the segment it starts in and is cut at its
+  end) and its controller events there, opened with each controller's value at the
+  segment's start. No crossfades.
+- Everything else is as audio: the take lanes (a take draws a miniature of its
+  notes, lit where the comp plays it), swipes, boundaries, the chip, the menus, the
+  keys, flatten, delete, move (onto another MIDI track) and "Move take to new track"
+  (a MIDI track playing the same instrument on the same channel).
 
 ## Arrange view
 
@@ -97,7 +112,6 @@ style.
 
 ## Deferred
 
-- MIDI take lanes.
 - Trimming a comp's outer edges (a trim acts on that clip alone and the next
   comp edit rebuilds it).
 - Turning existing overlapping clips into a take group.

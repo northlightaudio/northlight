@@ -104,6 +104,45 @@ Northlight has not had a release yet. The first release, 0.1.0, will include:
   ("the recording was saved up to 3:12"); when Northlight switches to another device
   it stays stopped and says which one plays.
 
+- Pitch edits now play on stretched and transposed clips (and "Follow tempo
+  changes" clips), in playback, export and freeze: the stretch plays the corrected
+  voice. The audio editor no longer refuses to edit such a clip, and shows a
+  transposed clip's notes at the pitch they play.
+
+- MIDI loop recording makes takes, comped in the take lanes as audio is. A MIDI
+  track's Inspector has a Recording card: Takes, Merge (overdub into the clip under
+  the pass) or Replace. Notes coming in draw in the record colour in the piano roll.
+
+- Piano roll: cut, copy, paste and duplicate notes; a right-click menu of note edits
+  (quantise, humanise, velocity set, scale, compress and randomise, length and
+  legato, transpose, mute, split, join, select all of a pitch); the arrange view's
+  split, glue and mute tools (5, 6, 7) and muted notes; triplet and dotted grids,
+  Bar and Adaptive; swing and humanise in the Quantise menu; up to four stacked,
+  resizable lanes; vertical zoom (Ctrl+Shift+wheel) and Z to fit the notes; follow
+  the playhead; the other tracks' notes as ghosts; a key button that sets the
+  project key; keys to step through notes (Ctrl+Left/Right), change their length
+  (Alt+Left/Right), mute (Ctrl+M), split at the playhead (S) and join (J).
+
+- Dragging a velocity bar moves the selected notes together, keeping their
+  dynamics (Alt sets them all to one value), and new notes take the last velocity
+  edited, shown and set in the piano roll's toolbar.
+
+- A drum kit's piano roll shows its pad names (Kick, Snare, Hats...) on the keys,
+  and a button hides the rows the kit does not play.
+
+- The Inspector shows the notes selected in the piano roll (pitch, start, length,
+  velocity, mute) and the audio editor (pitch, drift, vibrato, slides in and out,
+  gain, mute), each typeable.
+
+- Audio editor: the Correct sheet shows the key it aims at (the vocal's detected
+  key when the project has none) to confirm or change, and a Keep vibrato switch;
+  Left and Right step through the notes; a fade handle's vertical drag shapes its
+  curve as in the arrange view; follow the playhead; Ctrl+Shift+wheel zooms the
+  pitches; audition is on by default, as in the piano roll.
+
+- The demo song has a sung voice through the verse, so the audio editor and pitch
+  editing have something to show, and its drum outputs sit in a closed folder.
+
 - A plugin's card in the Editor panel shows a faceplate: its kind, its full name,
   its maker, the format and its latency, with an Open editor button (or
   double-click it). A plugin that is not installed says so in the same place.
@@ -309,6 +348,13 @@ Northlight has not had a release yet. The first release, 0.1.0, will include:
   from Northlight or from the driver and system.
 - ASIO drivers work in every build of Northlight, including ones built from source
   without Steinberg's ASIO SDK.
+
+### Changed
+
+- In the audio editor's pitch mode a double-click splits a note (on a join, merges
+  the two), as the spec says; snapping to the semitone is in the note's menu. In
+  wave mode a double-click resets the gain line or removes a fade instead of
+  switching to pitch mode.
 
 ### Fixed
 

@@ -1,11 +1,14 @@
 #include "ui/panels/InspectorPanel.h"
 
 #include "core/Command.h"
+#include "core/NoteNames.h"
+#include "core/TempoMap.h"
 #include "ui/Db.h"
 #include "ui/NorthlightLookAndFeel.h"
 #include "ui/Shortcuts.h"
 #include "ui/TrackIcon.h"
 
+#include <algorithm>
 #include <cmath>
 
 namespace northlight::ui
@@ -145,6 +148,235 @@ InspectorPanel::InspectorPanel(const Theme& theme)
         };
         addChildComponent(*field);
     }
+
+    // A MIDI track's record mode.
+    recordMode_.setSegments({"Takes", "Merge", "Replace"});
+    recordMode_.setTrackColour(theme_.colours.surface0);
+    recordMode_.setSegmentTooltip(0, "Each pass is a take; loop passes make takes to comp");
+    recordMode_.setSegmentTooltip(1, "The notes join the clip under them (overdub)");
+    recordMode_.setSegmentTooltip(2, "The notes replace what the clip under them had over the pass");
+    recordMode_.onChange = [this](int index)
+    {
+        if (updating_ || !onCommand)
+            return;
+        onCommand(std::make_unique<core::SetMidiRecordMode>(trackId_,
+                                                            index == 1   ? core::MidiRecordMode::merge
+                                                            : index == 2 ? core::MidiRecordMode::replace
+                                                                         : core::MidiRecordMode::takes));
+    };
+    addChildComponent(recordMode_);
+
+    // The piano roll's notes.
+    notePitch_.setRange(0.0, 127.0, 1.0);
+    notePitch_.setDecimals(0);
+    notePitch_.format = [](double v)
+    { return juce::String(core::noteName(static_cast<int>(std::lround(v)))); };
+    notePitch_.parse = [](const juce::String& text)
+    {
+        // "C3", "F#2", "Bb1" or a number.
+        const auto t = text.trim();
+        if (t.containsOnly("0123456789"))
+            return t.getDoubleValue();
+        static const char* names[] = {"C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"};
+        for (int pc = 11; pc >= 0; --pc)
+            for (const bool flat : {false, true})
+            {
+                juce::String name = names[pc];
+                if (flat)
+                {
+                    if (!name.endsWith("#"))
+                        continue;
+                    name = juce::String(names[(pc + 1) % 12]) + "b";
+                }
+                if (t.startsWithIgnoreCase(name) &&
+                    t.substring(name.length()).trim().containsOnly("-0123456789") &&
+                    t.substring(name.length()).trim().isNotEmpty())
+                    return static_cast<double>(std::clamp(
+                        (t.substring(name.length()).trim().getIntValue() - core::middleCOctave) * 12 +
+                            core::middleC + pc,
+                        0,
+                        127));
+            }
+        return t.getDoubleValue();
+    };
+    notePitch_.setTooltip("The note's pitch: type C3, F#2 or a number");
+    noteStart_.setRange(0.0, 1.0e9, 1.0);
+    noteStart_.setDecimals(0);
+    noteStart_.setTooltip("Where the note starts: bar.beat.tick (960 ticks a beat)");
+    noteLength_.setRange(1.0 / 64.0, 1024.0, 1.0 / 16.0);
+    noteLength_.setDecimals(3);
+    noteLength_.setUnit("beats");
+    noteLength_.setTooltip("The note's length in beats (0.25: a sixteenth)");
+    noteVelocity_.setRange(1.0, 127.0, 1.0);
+    noteVelocity_.setDecimals(0);
+    noteVelocity_.setTooltip("Velocity, 1 to 127");
+    noteMute_.setClickingTogglesState(true);
+    noteMute_.getProperties().set(NorthlightLookAndFeel::propertySemantic, "mute");
+    noteMute_.setTooltip("A muted note stays in the clip and plays nothing");
+    gesture(notePitch_, "Set note pitch");
+    gesture(noteStart_, "Move notes");
+    gesture(noteLength_, "Set note length");
+    gesture(noteVelocity_, "Set velocity");
+    notePitch_.onValueChanged = [this](double v)
+    {
+        const auto first = selectedNotes();
+        if (updating_ || first.empty())
+            return;
+        const int delta = static_cast<int>(std::lround(v)) - first.front().note;
+        editNotes("Set note pitch",
+                  [delta](core::MidiNote& n) { n.note = std::clamp(n.note + delta, 0, 127); });
+    };
+    noteStart_.onValueChanged = [this](double v)
+    {
+        const auto first = selectedNotes();
+        const auto* c = midiClip();
+        if (updating_ || first.empty() || c == nullptr)
+            return;
+        const auto delta = static_cast<core::SamplePosition>(v) - (c->start + first.front().start);
+        editNotes("Move notes",
+                  [delta](core::MidiNote& n)
+                  { n.start = std::max<core::SamplePosition>(0, n.start + delta); });
+    };
+    noteLength_.onValueChanged = [this](double beats)
+    {
+        const auto first = selectedNotes();
+        const auto* c = midiClip();
+        if (updating_ || first.empty() || c == nullptr || project_ == nullptr)
+            return;
+        const auto map = core::tempoMapOf(*project_);
+        const auto at = c->start + first.front().start;
+        const auto quarters = beats * core::TempoMap::quartersPerBeat(map.signatureAt(at));
+        const auto delta =
+            std::max<core::SamplePosition>(1, std::llround(map.stepSamples({0, quarters}, at))) -
+            first.front().length;
+        editNotes("Set note length",
+                  [delta](core::MidiNote& n)
+                  { n.length = std::max<core::SamplePosition>(1, n.length + delta); });
+    };
+    noteVelocity_.onValueChanged = [this](double v)
+    {
+        const auto first = selectedNotes();
+        if (updating_ || first.empty())
+            return;
+        const int delta = static_cast<int>(std::lround(v)) - first.front().velocity;
+        editNotes("Set velocity",
+                  [delta](core::MidiNote& n) { n.velocity = std::clamp(n.velocity + delta, 1, 127); });
+    };
+    noteMute_.onClick = [this]
+    {
+        if (updating_)
+            return;
+        const bool muted = noteMute_.getToggleState();
+        if (vocal_)
+            editVocalNotes(muted ? "Mute notes" : "Unmute notes",
+                           [muted](core::VocalNote& n) { n.muted = muted; });
+        else
+            editNotes(muted ? "Mute notes" : "Unmute notes", [muted](core::MidiNote& n) { n.muted = muted; });
+    };
+    for (auto* f : {&notePitch_, &noteStart_, &noteLength_, &noteVelocity_})
+        addChildComponent(*f);
+    addChildComponent(noteMute_);
+
+    // The audio editor's vocal notes.
+    vocalPitch_.setRange(0.0, 12700.0, 1.0);
+    vocalPitch_.setDecimals(0);
+    vocalPitch_.setUnit("ct");
+    vocalPitch_.format = [](double cents)
+    {
+        const int note = static_cast<int>(std::lround(cents / 100.0));
+        const int offset = static_cast<int>(std::lround(cents - note * 100.0));
+        return juce::String(core::noteName(note)) +
+               (offset == 0 ? juce::String() : (offset > 0 ? " +" : " ") + juce::String(offset));
+    };
+    vocalPitch_.setTooltip("The pitch the note plays: drag (Shift fine) or type cents (6900 = A3)");
+    vocalDrift_.setRange(0.0, 100.0, 1.0);
+    vocalDrift_.setDecimals(0);
+    vocalDrift_.setUnit("%");
+    vocalDrift_.setTooltip("How much of the slow drift is kept");
+    vocalVibrato_.setRange(0.0, 200.0, 1.0);
+    vocalVibrato_.setDecimals(0);
+    vocalVibrato_.setUnit("%");
+    vocalVibrato_.setTooltip("How much vibrato: 100% as sung");
+    for (auto* f : {&slideIn_, &slideOut_})
+    {
+        f->setRange(0.0, 2000.0, 1.0);
+        f->setDecimals(0);
+        f->setUnit("ms");
+    }
+    slideIn_.setTooltip("The slide into the note from the one before");
+    slideOut_.setTooltip("The slide out of the note into the next");
+    vocalGain_.setRange(-48.0, 12.0, 0.1);
+    vocalGain_.setDecimals(1);
+    vocalGain_.setUnit("dB");
+    gesture(vocalPitch_, "Move pitch");
+    gesture(vocalDrift_, "Set drift");
+    gesture(vocalVibrato_, "Set vibrato");
+    gesture(slideIn_, "Set slide");
+    gesture(slideOut_, "Set slide");
+    gesture(vocalGain_, "Set note gain");
+    const auto transpose = [this]
+    {
+        const auto* c = vocalClip();
+        return c != nullptr ? static_cast<float>(c->transpose * 100.0) : 0.0f;
+    };
+    vocalPitch_.onValueChanged = [this, transpose](double v)
+    {
+        const auto first = selectedVocalNotes();
+        if (updating_ || first.empty())
+            return;
+        const float delta = static_cast<float>(v) - (first.front().target + transpose());
+        editVocalNotes("Move pitch",
+                       [delta](core::VocalNote& n)
+                       { n.target = std::clamp(n.target + delta, 2400.0f, 10800.0f); });
+    };
+    vocalDrift_.onValueChanged = [this](double v)
+    {
+        if (!updating_)
+            editVocalNotes("Set drift", [v](core::VocalNote& n) { n.drift = static_cast<float>(v / 100.0); });
+    };
+    vocalVibrato_.onValueChanged = [this](double v)
+    {
+        if (!updating_)
+            editVocalNotes("Set vibrato",
+                           [v](core::VocalNote& n) { n.vibrato = static_cast<float>(v / 100.0); });
+    };
+    const auto slide = [this](bool in, double ms)
+    {
+        if (updating_)
+            return;
+        const auto samples = static_cast<core::SamplePosition>(std::llround(ms * sampleRate() / 1000.0));
+        editVocalNotes("Set slide",
+                       [in, samples](core::VocalNote& n)
+                       {
+                           // At most two fifths of the note, as the editor's handles allow.
+                           const auto limit = n.length() * 2 / 5;
+                           (in ? n.transitionIn : n.transitionOut) =
+                               std::clamp<core::SamplePosition>(samples, 0, limit);
+                       });
+    };
+    slideIn_.onValueChanged = [slide](double ms) { slide(true, ms); };
+    slideOut_.onValueChanged = [slide](double ms) { slide(false, ms); };
+    vocalGain_.onValueChanged = [this](double db)
+    {
+        if (!updating_)
+            editVocalNotes("Set note gain", [db](core::VocalNote& n) { n.gainDb = static_cast<float>(db); });
+    };
+    for (auto* f : {&vocalPitch_, &vocalDrift_, &vocalVibrato_, &slideIn_, &slideOut_, &vocalGain_})
+        addChildComponent(*f);
+}
+
+void InspectorPanel::gesture(NumericField& field, const std::string& name)
+{
+    field.onDragStart = [this, name]
+    {
+        if (onGestureBegin)
+            onGestureBegin(name);
+    };
+    field.onDragEnd = [this]
+    {
+        if (onGestureEnd)
+            onGestureEnd();
+    };
 }
 
 void InspectorPanel::setProject(const core::Project* project)
@@ -157,7 +389,108 @@ void InspectorPanel::setSelection(core::Id trackId, core::Id clipId)
 {
     trackId_ = trackId;
     clipId_ = clipId;
+    notes_.clear();
     refresh();
+}
+
+void InspectorPanel::setNotes(core::Id trackId, core::Id clipId, std::vector<core::Id> notes)
+{
+    const bool showing = !notes_.empty() && !vocal_;
+    if (notes.empty() && !showing)
+        return; // another editor's selection, or the track's, stays
+    notesTrack_ = trackId;
+    notesClip_ = clipId;
+    notes_ = std::move(notes);
+    vocal_ = false;
+    refresh();
+}
+
+void InspectorPanel::setVocalNotes(core::Id trackId, core::Id clipId, std::vector<core::Id> notes)
+{
+    const bool showing = !notes_.empty() && vocal_;
+    if (notes.empty() && !showing)
+        return;
+    notesTrack_ = trackId;
+    notesClip_ = clipId;
+    notes_ = std::move(notes);
+    vocal_ = true;
+    refresh();
+}
+
+InspectorPanel::Shows InspectorPanel::shows() const noexcept
+{
+    if (!notes_.empty())
+        return vocal_ ? Shows::vocalNotes : Shows::notes;
+    if (track() == nullptr)
+        return Shows::nothing;
+    return clip() != nullptr ? Shows::clip : Shows::track;
+}
+
+const core::AudioClip* InspectorPanel::vocalClip() const
+{
+    const auto* t = project_ != nullptr ? project_->findTrack(notesTrack_) : nullptr;
+    return t != nullptr ? t->findClip(notesClip_) : nullptr;
+}
+
+const core::MidiClip* InspectorPanel::midiClip() const
+{
+    const auto* t = project_ != nullptr ? project_->findTrack(notesTrack_) : nullptr;
+    return t != nullptr ? t->findMidiClip(notesClip_) : nullptr;
+}
+
+std::vector<core::MidiNote> InspectorPanel::selectedNotes() const
+{
+    std::vector<core::MidiNote> out;
+    if (const auto* c = midiClip(); c != nullptr && !vocal_)
+        for (const auto& n : c->notes)
+            if (std::find(notes_.begin(), notes_.end(), n.id) != notes_.end())
+                out.push_back(n);
+    std::stable_sort(out.begin(), out.end(), [](const auto& a, const auto& b) { return a.start < b.start; });
+    return out;
+}
+
+std::vector<core::VocalNote> InspectorPanel::selectedVocalNotes() const
+{
+    std::vector<core::VocalNote> out;
+    if (const auto* c = vocalClip(); c != nullptr && vocal_)
+        for (const auto& n : c->vocal.notes)
+            if (std::find(notes_.begin(), notes_.end(), n.id) != notes_.end())
+                out.push_back(n);
+    return out;
+}
+
+void InspectorPanel::editNotes(const std::string& name, const std::function<void(core::MidiNote&)>& change)
+{
+    std::vector<std::unique_ptr<core::Command>> commands;
+    for (auto n : selectedNotes())
+    {
+        const auto before = n;
+        change(n);
+        if (!(n == before))
+            commands.push_back(std::make_unique<core::SetNote>(notesTrack_, notesClip_, n));
+    }
+    if (commands.empty())
+        return;
+    if (onCommands)
+        onCommands(std::move(commands), name);
+    else if (onCommand)
+        for (auto& c : commands)
+            onCommand(std::move(c));
+}
+
+void InspectorPanel::editVocalNotes(const std::string& name,
+                                    const std::function<void(core::VocalNote&)>& change)
+{
+    const auto* c = vocalClip();
+    if (c == nullptr || !onCommand)
+        return;
+    auto edit = c->vocal;
+    for (auto& n : edit.notes)
+        if (std::find(notes_.begin(), notes_.end(), n.id) != notes_.end())
+            change(n);
+    if (edit == c->vocal)
+        return;
+    onCommand(std::make_unique<core::SetVocalEdit>(notesTrack_, notesClip_, std::move(edit), name));
 }
 
 const core::Track* InspectorPanel::track() const
@@ -179,8 +512,90 @@ double InspectorPanel::sampleRate() const noexcept
 void InspectorPanel::refresh()
 {
     const juce::ScopedValueSetter<bool> guard(updating_, true);
-    const auto* t = track();
-    const auto* c = clip();
+    // Notes gone from the model (deleted, undone) leave the selection; none left:
+    // back to the track or clip.
+    if (!notes_.empty())
+    {
+        const auto still = [this](core::Id id)
+        {
+            if (vocal_)
+            {
+                const auto* c = vocalClip();
+                return c != nullptr && c->vocal.findNote(id) != nullptr;
+            }
+            const auto* c = midiClip();
+            return c != nullptr && c->findNote(id) != nullptr;
+        };
+        std::erase_if(notes_, [&](core::Id id) { return !still(id); });
+    }
+    const auto showing = shows();
+    const bool notesMode = showing == Shows::notes, vocalMode = showing == Shows::vocalNotes;
+    for (auto* f : {&notePitch_, &noteStart_, &noteLength_, &noteVelocity_})
+        f->setVisible(notesMode);
+    for (auto* f : {&vocalPitch_, &vocalDrift_, &vocalVibrato_, &slideIn_, &slideOut_, &vocalGain_})
+        f->setVisible(vocalMode);
+    noteMute_.setVisible(notesMode || vocalMode);
+    if (notesMode)
+    {
+        const auto first = selectedNotes();
+        const auto* c = midiClip();
+        if (!first.empty() && c != nullptr && project_ != nullptr)
+        {
+            const auto& n = first.front();
+            const auto map = core::tempoMapOf(*project_);
+            const auto at = c->start + n.start;
+            notePitch_.setValue(n.note, juce::dontSendNotification);
+            noteStart_.setValue(static_cast<double>(at), juce::dontSendNotification);
+            noteStart_.format = [map](double v)
+            {
+                const auto bb = map.barsBeatsAt(static_cast<core::SamplePosition>(v));
+                return juce::String(bb.bar) + "." + juce::String(bb.beat) + "." +
+                       juce::String(bb.tick).paddedLeft('0', 3);
+            };
+            noteStart_.parse = [map](const juce::String& text)
+            {
+                juce::StringArray parts;
+                parts.addTokens(text.trim(), ".:", "");
+                core::BarsBeats bb;
+                bb.bar = std::max(1, parts.size() > 0 ? parts[0].getIntValue() : 1);
+                bb.beat = std::max(1, parts.size() > 1 ? parts[1].getIntValue() : 1);
+                bb.tick = std::clamp(
+                    parts.size() > 2 ? parts[2].getIntValue() : 0, 0, core::BarsBeats::ticksPerBeat - 1);
+                return static_cast<double>(map.positionAt(bb));
+            };
+            // One step: a tick at the note's tempo.
+            const double quarters = core::TempoMap::quartersPerBeat(map.signatureAt(at));
+            noteStart_.setRange(
+                0.0,
+                1.0e10,
+                std::max(1.0, map.stepSamples({0, quarters / core::BarsBeats::ticksPerBeat}, at)));
+            noteLength_.setValue(static_cast<double>(n.length) /
+                                     std::max(1.0, map.stepSamples({0, quarters}, at)),
+                                 juce::dontSendNotification);
+            noteVelocity_.setValue(n.velocity, juce::dontSendNotification);
+            noteMute_.setToggleState(n.muted, juce::dontSendNotification);
+        }
+    }
+    if (vocalMode)
+    {
+        const auto first = selectedVocalNotes();
+        const auto* c = vocalClip();
+        if (!first.empty() && c != nullptr)
+        {
+            const auto& n = first.front();
+            const double sr = sampleRate();
+            vocalPitch_.setValue(n.target + c->transpose * 100.0, juce::dontSendNotification);
+            vocalDrift_.setValue(n.drift * 100.0, juce::dontSendNotification);
+            vocalVibrato_.setValue(n.vibrato * 100.0, juce::dontSendNotification);
+            slideIn_.setValue(static_cast<double>(n.transitionIn) * 1000.0 / sr, juce::dontSendNotification);
+            slideOut_.setValue(static_cast<double>(n.transitionOut) * 1000.0 / sr,
+                               juce::dontSendNotification);
+            vocalGain_.setValue(n.gainDb, juce::dontSendNotification);
+            noteMute_.setToggleState(n.muted, juce::dontSendNotification);
+        }
+    }
+    const auto* t = notesMode || vocalMode ? nullptr : track();
+    const auto* c = notesMode || vocalMode ? nullptr : clip();
     const bool clipMode = c != nullptr;
     name_.setVisible(t != nullptr && !clipMode);
     gain_.setVisible(t != nullptr && !clipMode);
@@ -188,6 +603,7 @@ void InspectorPanel::refresh()
     mute_.setVisible(t != nullptr && !clipMode);
     solo_.setVisible(t != nullptr && !clipMode);
     arm_.setVisible(t != nullptr && !clipMode && !t->isAux() && !t->isInstrument());
+    recordMode_.setVisible(t != nullptr && !clipMode && t->isMidi());
     for (auto* f : {&start_, &length_, &clipGain_, &fadeIn_, &fadeOut_})
         f->setVisible(clipMode);
     if (t == nullptr)
@@ -196,6 +612,11 @@ void InspectorPanel::refresh()
         repaint();
         return;
     }
+    if (t->isMidi())
+        recordMode_.setSelected(t->midiRecordMode == core::MidiRecordMode::merge     ? 1
+                                : t->midiRecordMode == core::MidiRecordMode::replace ? 2
+                                                                                     : 0,
+                                juce::dontSendNotification);
     if (!clipMode)
         name_.setText(juce::String::fromUTF8(t->name.c_str()), juce::dontSendNotification);
     if (clipMode)
@@ -243,7 +664,8 @@ void InspectorPanel::paint(juce::Graphics& g)
 {
     const auto& c = theme_.colours;
     g.fillAll(c.surface0);
-    const auto* t = track();
+    const bool notesMode = shows() == Shows::notes || shows() == Shows::vocalNotes;
+    const auto* t = notesMode && project_ != nullptr ? project_->findTrack(notesTrack_) : track();
     if (t == nullptr)
     {
         g.setColour(c.textTertiary);
@@ -253,8 +675,8 @@ void InspectorPanel::paint(juce::Graphics& g)
                    juce::Justification::centred);
         return;
     }
-    const int slot = project_ != nullptr ? project_->trackIndex(trackId_) : 0;
-    const auto colour = theme_.track.forTrack(t->colour, slot);
+    const auto colour =
+        project_ != nullptr ? theme_.track.forChannel(*project_, t->id) : theme_.track.forTrack(t->colour, 0);
 
     // Cards, the identity card with a stripe in the track's colour.
     for (size_t i = 0; i < cards_.size(); ++i)
@@ -317,6 +739,8 @@ void InspectorPanel::paint(juce::Graphics& g)
                    juce::Justification::centredRight);
     }
 
+    if (notesMode)
+        return;
     if (const auto* cl = clip())
     {
         g.setFont(theme_.label());
@@ -350,10 +774,12 @@ void InspectorPanel::resized()
     clipName_ = {};
     panValue_ = {};
     swatchArea_ = {};
-    const auto* t = track();
+    const auto showing = shows();
+    const bool notesMode = showing == Shows::notes || showing == Shows::vocalNotes;
+    const auto* t = notesMode && project_ != nullptr ? project_->findTrack(notesTrack_) : track();
     if (t == nullptr)
         return;
-    const auto* cl = clip();
+    const auto* cl = notesMode ? nullptr : clip();
     const auto& sp = theme_.spacing;
     const int rowH = theme_.sizes.control;
     const int captionH = sp.lg;
@@ -391,6 +817,37 @@ void InspectorPanel::resized()
         y += height;
         return r;
     };
+
+    if (notesMode)
+    {
+        const int fieldWide = std::min(w - 72, 120);
+        const int count = static_cast<int>(notes_.size());
+        const auto caption =
+            (showing == Shows::vocalNotes ? juce::String("VOCAL NOTE") : juce::String("NOTE")) +
+            (count > 1 ? "S (" + juce::String(count) + ")" : juce::String());
+        open(caption, juce::String::fromUTF8(t->name.c_str()));
+        captions_.back().icon = showing == Shows::vocalNotes ? Icon::pitchTool : Icon::fileMidi;
+        if (showing == Shows::notes)
+        {
+            notePitch_.setBounds(row("Pitch", rowH).removeFromRight(fieldWide));
+            noteStart_.setBounds(row("Start", rowH).removeFromRight(fieldWide));
+            noteLength_.setBounds(row("Length", rowH).removeFromRight(fieldWide));
+            noteVelocity_.setBounds(row("Velocity", rowH).removeFromRight(fieldWide));
+        }
+        else
+        {
+            vocalPitch_.setBounds(row("Pitch", rowH).removeFromRight(fieldWide));
+            vocalDrift_.setBounds(row("Drift", rowH).removeFromRight(fieldWide));
+            vocalVibrato_.setBounds(row("Vibrato", rowH).removeFromRight(fieldWide));
+            slideIn_.setBounds(row("Slide in", rowH).removeFromRight(fieldWide));
+            slideOut_.setBounds(row("Slide out", rowH).removeFromRight(fieldWide));
+            vocalGain_.setBounds(row("Gain", rowH).removeFromRight(fieldWide));
+        }
+        y += sp.xs;
+        noteMute_.setBounds(row({}, rowH));
+        close();
+        return;
+    }
 
     if (cl != nullptr)
     {
@@ -459,6 +916,14 @@ void InspectorPanel::resized()
         toggles.removeFromLeft(sp.xs);
     }
     close();
+
+    // A MIDI track: what its recorded passes become.
+    if (t->isMidi())
+    {
+        open("RECORDING", {});
+        recordMode_.setBounds(row({}, rowH));
+        close();
+    }
 }
 
 void InspectorPanel::mouseDown(const juce::MouseEvent& e)

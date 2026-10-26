@@ -13,6 +13,7 @@
 #include "ui/audioeditor/PitchEditing.h"
 #include "ui/audioeditor/PitchGrid.h"
 #include "ui/components/DragTip.h"
+#include "ui/components/KeyMenu.h"
 #include "ui/timeline/TimeGrid.h"
 #include "ui/timeline/WaveformPainter.h"
 
@@ -57,6 +58,23 @@ juce::String decibels(float db)
 }
 
 constexpr float gainMinDb = -48.0f, gainMaxDb = 6.0f;
+
+// A fade handle dragged up or down shapes the curve as the arrange view's does
+// (screens/arrange.md "Fades"): 80 px from linear to either end, a 4 px detent at linear.
+float fadeCurveFor(float startCurve, int dy) noexcept
+{
+    constexpr float pixelsPerUnit = 80.0f;
+    const float curve = std::clamp(startCurve - static_cast<float>(dy) / pixelsPerUnit, -1.0f, 1.0f);
+    return std::abs(curve) * pixelsPerUnit < 4.0f ? 0.0f : curve;
+}
+
+juce::String fadeCurveText(float curve)
+{
+    if (curve == 0.0f)
+        return "linear";
+    return juce::String(curve > 0.0f ? "fast " : "slow ") +
+           juce::String(juce::roundToInt(std::abs(curve) * 100.0f)) + "%";
+}
 } // namespace
 
 // ----- setup ----------------------------------------------------------------------------------
@@ -69,6 +87,7 @@ AudioEditor::AudioEditor(audio::PeakStore& peaks, engine::VocalService& vocal, c
       vibratoTool_(theme_, Icon::vibratoTool, "Vibrato: drag a note down to flatten its vibrato  4"),
       breathTool_(theme_, Icon::breathTool, "Breath: click a breath to mute or unmute it  5"),
       link_(theme_, Icon::link, "Link zoom to the arrange view"),
+      followButton_(theme_, Icon::followPlayhead, "Follow the playhead: turn the page as it plays"),
       auditionButton_(theme_, Icon::monitor, "Hear a note when it is clicked")
 {
     setOpaque(true);
@@ -114,7 +133,11 @@ AudioEditor::AudioEditor(audio::PeakStore& peaks, engine::VocalService& vocal, c
         repaint();
     };
     addAndMakeVisible(link_);
+    followButton_.setClickingTogglesState(true);
+    followButton_.onClick = [this] { setFollowPlayhead(followButton_.getToggleState()); };
+    addAndMakeVisible(followButton_);
     auditionButton_.setClickingTogglesState(true);
+    auditionButton_.setToggleState(audition_, juce::dontSendNotification);
     auditionButton_.onClick = [this] { audition_ = auditionButton_.getToggleState(); };
     addAndMakeVisible(auditionButton_);
     peaks_.addChangeListener(this);
@@ -144,10 +167,17 @@ void AudioEditor::setClip(const core::Project* project, core::Id trackId, core::
         repaint();
         return;
     }
+    const auto selected = selection_.size();
     std::erase_if(selection_, [c](core::Id id) { return c->vocal.findNote(id) == nullptr; });
+    if (selection_.size() != selected)
+        selectionChanged();
     if (!same)
     {
-        selection_.clear();
+        if (!selection_.empty())
+        {
+            selection_.clear();
+            selectionChanged();
+        }
         flagged_.clear();
         fitPending_ = true;
         pitchFitted_ = false;
@@ -171,6 +201,21 @@ void AudioEditor::setPlayhead(core::SamplePosition timelinePosition)
     if (source == playhead_)
         return;
     const auto area = contentArea();
+    // Following: a playhead past either edge turns the page (it lands an eighth in).
+    if (follow_ && source >= 0 && area.getWidth() > 16)
+    {
+        const float x = xForSource(static_cast<double>(source));
+        if (x < static_cast<float>(area.getX()) || x > static_cast<float>(area.getRight() - 8))
+        {
+            playhead_ = source;
+            scroll_ = source - static_cast<core::SamplePosition>(
+                                   std::llround(area.getWidth() / 8.0 * samplesPerPixel_));
+            updateScrollbars();
+            notifyTimeView();
+            repaint();
+            return;
+        }
+    }
     const auto repaintAt = [&](core::SamplePosition s)
     {
         if (s >= 0)
@@ -182,6 +227,87 @@ void AudioEditor::setPlayhead(core::SamplePosition timelinePosition)
     repaintAt(playhead_);
     playhead_ = source;
     repaintAt(playhead_);
+}
+
+void AudioEditor::setFollowPlayhead(bool on)
+{
+    follow_ = on;
+    followButton_.setToggleState(on, juce::dontSendNotification);
+}
+
+void AudioEditor::setSemitoneHeight(float pixels)
+{
+    semitoneHeight_ = std::clamp(pixels, minSemitoneHeight, maxSemitoneHeight);
+    updateScrollbars();
+    repaint();
+}
+
+void AudioEditor::zoomPitch(float factor, float aroundY)
+{
+    // The pitch under the pointer stays put.
+    const float display = centsForY(aroundY) + pitchOffset();
+    semitoneHeight_ = std::clamp(semitoneHeight_ * factor, minSemitoneHeight, maxSemitoneHeight);
+    topCents_ =
+        std::clamp(display + (aroundY - static_cast<float>(gridArea().getY())) / semitoneHeight_ * 100.0f,
+                   1200.0f,
+                   12800.0f);
+    updateScrollbars();
+    repaint();
+}
+
+float AudioEditor::pitchOffset() const noexcept
+{
+    const auto* c = clip();
+    return c != nullptr ? static_cast<float>(c->transpose * 100.0) : 0.0f;
+}
+
+void AudioEditor::selectionChanged()
+{
+    if (onSelectionChanged)
+        onSelectionChanged();
+}
+
+void AudioEditor::stepSelection(int direction, bool extend)
+{
+    // The next (or previous) note the clip plays after the last selected one (or
+    // before the first); with nothing selected, the first or last.
+    const auto* cl = clip();
+    if (cl == nullptr || cl->vocal.notes.empty())
+        return;
+    const auto& notes = cl->vocal.notes;
+    int at = -1;
+    for (int i = 0; i < static_cast<int>(notes.size()); ++i)
+        if (isSelected(notes[static_cast<size_t>(i)].id))
+        {
+            if (direction > 0 || at < 0)
+                at = i;
+            if (direction < 0)
+                break;
+        }
+    const auto inClip = [&](const core::VocalNote& n)
+    { return n.end > cl->sourceOffset && static_cast<double>(n.start) < sourceEnd(*cl); };
+    int next = at < 0 ? (direction > 0 ? 0 : static_cast<int>(notes.size()) - 1) : at + direction;
+    while (next >= 0 && next < static_cast<int>(notes.size()) && !inClip(notes[static_cast<size_t>(next)]))
+        next += direction;
+    if (next < 0 || next >= static_cast<int>(notes.size()))
+        return;
+    const auto& n = notes[static_cast<size_t>(next)];
+    if (!extend)
+        selection_.clear();
+    if (!isSelected(n.id))
+        selection_.push_back(n.id);
+    // Keep it in view.
+    const auto area = gridArea();
+    if (xForSource(static_cast<double>(n.start)) < static_cast<float>(area.getX()) ||
+        xForSource(static_cast<double>(n.end)) > static_cast<float>(area.getRight()))
+    {
+        scroll_ = n.start -
+                  static_cast<core::SamplePosition>(std::llround(area.getWidth() / 4.0 * samplesPerPixel_));
+        updateScrollbars();
+        notifyTimeView();
+    }
+    selectionChanged();
+    repaint();
 }
 
 void AudioEditor::setZoomLinked(bool linked)
@@ -406,14 +532,16 @@ core::SamplePosition AudioEditor::sourceForX(float x) const noexcept
     return view().sampleAt(static_cast<double>(x));
 }
 
+// `cents` are the edit's (the media's pitch); the grid shows the pitch as it plays.
 float AudioEditor::yForCents(float cents) const noexcept
 {
-    return static_cast<float>(gridArea().getY()) + (topCents_ - cents) / 100.0f * rowHeight;
+    return static_cast<float>(gridArea().getY()) +
+           (topCents_ - (cents + pitchOffset())) / 100.0f * semitoneHeight_;
 }
 
 float AudioEditor::centsForY(float y) const noexcept
 {
-    return topCents_ - (y - static_cast<float>(gridArea().getY())) / rowHeight * 100.0f;
+    return topCents_ - (y - static_cast<float>(gridArea().getY())) / semitoneHeight_ * 100.0f - pitchOffset();
 }
 
 void AudioEditor::fitToClip()
@@ -450,7 +578,9 @@ void AudioEditor::fitPitchRange()
         lo = 4800.0f;
         hi = 7200.0f;
     }
-    const float visible = static_cast<float>(gridArea().getHeight()) / rowHeight * 100.0f;
+    lo += pitchOffset();
+    hi += pitchOffset();
+    const float visible = static_cast<float>(gridArea().getHeight()) / semitoneHeight_ * 100.0f;
     const float middle = 0.5f * (lo + hi);
     topCents_ = std::round((std::max(hi + 300.0f, middle + 0.5f * visible)) / 100.0f) * 100.0f + 50.0f;
     updateScrollbars();
@@ -470,7 +600,7 @@ void AudioEditor::updateScrollbars()
         horizontal_.setRangeLimits(std::min(start, first), std::max(start + length, first + visible));
         horizontal_.setCurrentRange(first, visible, juce::dontSendNotification);
     }
-    const double rows = static_cast<double>(area.getHeight()) / rowHeight * 100.0;
+    const double rows = static_cast<double>(area.getHeight()) / semitoneHeight_ * 100.0;
     vertical_.setRangeLimits(0.0, 12800.0);
     vertical_.setCurrentRange(12800.0 - topCents_, rows, juce::dontSendNotification);
     vertical_.setVisible(mode_ == Mode::pitch && pitchEditable());
@@ -528,6 +658,8 @@ void AudioEditor::resized()
     }
     link_.setBounds(bar.removeFromLeft(theme_.sizes.controlCompact));
     bar.removeFromLeft(theme_.spacing.xs);
+    followButton_.setBounds(bar.removeFromLeft(theme_.sizes.controlCompact));
+    bar.removeFromLeft(theme_.spacing.xs);
     auditionButton_.setBounds(bar.removeFromLeft(theme_.sizes.controlCompact));
     auditionButton_.setVisible(pitchMode);
 
@@ -566,7 +698,7 @@ const core::VocalNote* AudioEditor::noteAt(juce::Point<int> p) const
         sourceForX(static_cast<float>(p.x)),
         static_cast<float>(p.y),
         [this](float cents) { return yForCents(cents); },
-        static_cast<float>(rowHeight));
+        static_cast<float>(semitoneHeight_));
 }
 
 const core::VocalSegment* AudioEditor::segmentAt(juce::Point<int> p) const
@@ -588,7 +720,7 @@ const core::VocalNote* AudioEditor::joinAt(juce::Point<int> p) const
         static_cast<float>(p.y),
         [this](double source) { return xForSource(source); },
         [this](float cents) { return yForCents(cents); },
-        static_cast<float>(rowHeight));
+        static_cast<float>(semitoneHeight_));
 }
 
 // ----- painting -------------------------------------------------------------------------------
@@ -631,7 +763,8 @@ void AudioEditor::paintToolbarBackground(juce::Graphics& g)
     g.setFont(theme_.caption());
     g.setColour(c.textTertiary);
     auto right = getLocalBounds().removeFromTop(toolbarHeight).reduced(theme_.spacing.sm, 0);
-    right.setLeft(auditionButton_.getRight() + theme_.spacing.sm);
+    right.setLeft((auditionButton_.isVisible() ? auditionButton_ : followButton_).getRight() +
+                  theme_.spacing.sm);
     g.drawText(status, right, juce::Justification::centredRight, true);
 }
 
@@ -741,10 +874,12 @@ void AudioEditor::paintWave(juce::Graphics& g)
         }
         g.strokePath(path, juce::PathStrokeType(1.0f));
     };
+    const float inCurve = drag_ == Drag::fadeIn ? dragCurve_ : cl->fadeInCurve;
+    const float outCurve = drag_ == Drag::fadeOut ? dragCurve_ : cl->fadeOutCurve;
     if (fadeIn > 0)
-        curve(xForSource(clipStart), fi, core::fadeShapeK(cl->fadeInCurve));
+        curve(xForSource(clipStart), fi, core::fadeShapeK(inCurve));
     if (fadeOut > 0)
-        curve(xForSource(clipEnd), fo, core::fadeShapeK(cl->fadeOutCurve));
+        curve(xForSource(clipEnd), fo, core::fadeShapeK(outCurve));
     g.setColour(c.textPrimary);
     g.fillRect(fi - 4.0f, static_cast<float>(area.getY()) + 2.0f, 8.0f, 8.0f);
     g.fillRect(fo - 4.0f, static_cast<float>(area.getY()) + 2.0f, 8.0f, 8.0f);
@@ -759,7 +894,7 @@ void AudioEditor::paintNote(juce::Graphics& g, const core::VocalNote& note, juce
     if (x1 < grid.getX() || x0 > grid.getRight())
         return;
     const float yc = yForCents(note.target);
-    if (yc < grid.getY() - rowHeight * 2 || yc > grid.getBottom() + rowHeight * 2)
+    if (yc < grid.getY() - semitoneHeight_ * 2 || yc > grid.getBottom() + semitoneHeight_ * 2)
         return;
     // The blob: as thick as the note is loud.
     juce::Path blob;
@@ -768,7 +903,7 @@ void AudioEditor::paintNote(juce::Graphics& g, const core::VocalNote& note, juce
     for (float x = x0; x <= x1; x += step)
     {
         const float level = levelAt(sourceForX(std::min(x, x1)));
-        top.emplace_back(x, yc - (1.5f + level * rowHeight * 0.75f));
+        top.emplace_back(x, yc - (1.5f + level * semitoneHeight_ * 0.75f));
     }
     top.emplace_back(x1, yc - 1.5f);
     blob.startNewSubPath(x0, yc);
@@ -789,14 +924,14 @@ void AudioEditor::paintNote(juce::Graphics& g, const core::VocalNote& note, juce
     // The label: the note it now plays and how far from it.
     if (x1 - x0 > 44.0f)
     {
-        juce::String label = pitchedit::label(note.target);
+        juce::String label = pitchedit::label(note.target + pitchOffset());
         if (note.muted)
             label += "  muted";
         g.setFont(theme_.caption());
         g.setColour(selected ? c.textPrimary : c.textSecondary);
         g.drawText(label,
                    static_cast<int>(x0) + 2,
-                   static_cast<int>(yc - rowHeight * 1.9f),
+                   static_cast<int>(yc - semitoneHeight_ * 1.9f),
                    static_cast<int>(x1 - x0),
                    12,
                    juce::Justification::centredLeft,
@@ -880,10 +1015,11 @@ void AudioEditor::paintInfo(juce::Graphics& g)
     {
         if (const auto* n = edit.findNote(selection_[0]))
         {
-            const float nearest = std::round(n->target / 100.0f) * 100.0f;
-            text << noteName(n->target) << "  " << pitchedit::signedCents(n->target - nearest)
-                 << "   \xc2\xb7   sung " << noteName(n->centre) << " "
-                 << pitchedit::signedCents(n->centre - std::round(n->centre / 100.0f) * 100.0f)
+            const float target = n->target + pitchOffset(), centre = n->centre + pitchOffset();
+            const float nearest = std::round(target / 100.0f) * 100.0f;
+            text << noteName(target) << "  " << pitchedit::signedCents(target - nearest)
+                 << "   \xc2\xb7   sung " << noteName(centre) << " "
+                 << pitchedit::signedCents(centre - std::round(centre / 100.0f) * 100.0f)
                  << "   \xc2\xb7   drift " << percent(n->drift) << "   \xc2\xb7   vibrato "
                  << percent(n->vibrato) << "   \xc2\xb7   "
                  << (n->muted ? juce::String("muted") : decibels(n->gainDb));
@@ -899,7 +1035,7 @@ void AudioEditor::paintInfo(juce::Graphics& g)
         {
             case Tool::pitch:
                 text = "Drag a note up or down (Alt: in cents). Drag a join to set its slide. Double-click "
-                       "snaps.";
+                       "splits a note (a join: merges).";
                 break;
             case Tool::split:
                 text = "Click a note to split it; click a join to merge the two notes.";
@@ -927,7 +1063,7 @@ void AudioEditor::paintPitch(juce::Graphics& g)
     const core::MusicalKey key = project_ != nullptr ? project_->key : core::MusicalKey{};
 
     // Rows: one per semitone; black keys darker, out-of-key rows darker still; the keyboard.
-    paintPitchGrid(g, theme_, grid, keys, topCents_, static_cast<float>(rowHeight), key);
+    paintPitchGrid(g, theme_, grid, keys, topCents_, static_cast<float>(semitoneHeight_), key);
 
     // Bar, beat and sub-beat lines, as the arrange view's.
     if (cl != nullptr && project_ != nullptr)
@@ -1070,8 +1206,6 @@ void AudioEditor::paint(juce::Graphics& g)
     }
     if (mode_ == Mode::wave)
         paintWave(g);
-    else if (!pitchEditable())
-        paintNotPitchEditable(g);
     else
     {
         paintPitch(g);
@@ -1131,11 +1265,13 @@ void AudioEditor::mouseDown(const juce::MouseEvent& e)
         {
             drag_ = Drag::fadeIn;
             dragFade_ = cl->fadeIn;
+            dragCurve_ = dragCurveStart_ = cl->fadeInCurve;
         }
         else if (e.y < area.getY() + 14 && std::abs(static_cast<float>(e.x) - fo) < 7.0f)
         {
             drag_ = Drag::fadeOut;
             dragFade_ = cl->fadeOut;
+            dragCurve_ = dragCurveStart_ = cl->fadeOutCurve;
         }
         else if (std::abs(static_cast<float>(e.y) - gy) < 5.0f)
         {
@@ -1175,7 +1311,10 @@ void AudioEditor::mouseDown(const juce::MouseEvent& e)
         if (note != nullptr)
         {
             if (!isSelected(note->id))
+            {
                 selection_ = {note->id};
+                selectionChanged();
+            }
             showNoteMenu(*note);
         }
         repaint();
@@ -1260,7 +1399,7 @@ void AudioEditor::mouseDrag(const juce::MouseEvent& e)
     {
         case Drag::pan:
             scroll_ = panScroll_ - static_cast<core::SamplePosition>(std::llround(dx * samplesPerPixel_));
-            topCents_ = panTop_ - static_cast<float>(dy) / rowHeight * 100.0f;
+            topCents_ = panTop_ - static_cast<float>(dy) / semitoneHeight_ * 100.0f;
             updateScrollbars();
             break;
         case Drag::gain:
@@ -1283,8 +1422,11 @@ void AudioEditor::mouseDrag(const juce::MouseEvent& e)
                 static_cast<core::SamplePosition>(std::llround(toTimelineSpan(*cl, sourceFade))),
                 0,
                 cl->length);
-            dragTip_ =
-                juce::String(static_cast<double>(dragFade_) * 1000.0 / project_->sampleRate, 0) + " ms";
+            // Up or down shapes the curve, as the arrange view's handles do.
+            dragCurve_ = fadeCurveFor(dragCurveStart_, dy);
+            dragTip_ = "Fade " +
+                       juce::String(static_cast<double>(dragFade_) * 1000.0 / project_->sampleRate, 0) +
+                       " ms  " + fadeCurveText(dragCurve_);
             break;
         }
         case Drag::lasso:
@@ -1307,14 +1449,16 @@ void AudioEditor::mouseDrag(const juce::MouseEvent& e)
             const auto* dragged = dragBase_.findNote(dragNote_);
             if (dragged == nullptr)
                 break;
-            const float delta = pitchedit::dragDelta(
-                dragged->target, -static_cast<float>(dy) / rowHeight * 100.0f, e.mods.isAltDown());
+            // Snapped to the semitones the note plays at (a transposed clip's too).
+            const float delta = pitchedit::dragDelta(dragged->target + pitchOffset(),
+                                                     -static_cast<float>(dy) / semitoneHeight_ * 100.0f,
+                                                     e.mods.isAltDown());
             preview_ = dragBase_;
             for (auto& n : preview_.notes)
                 if (isSelected(n.id))
                     n.target = std::clamp(n.target + delta, 2400.0f, 10800.0f);
             previewing_ = true;
-            dragTip_ = pitchedit::label(preview_.findNote(dragNote_)->target);
+            dragTip_ = pitchedit::label(preview_.findNote(dragNote_)->target + pitchOffset());
             break;
         }
         case Drag::transition:
@@ -1391,7 +1535,9 @@ void AudioEditor::mouseUp(const juce::MouseEvent&)
                         trackId_,
                         clipId_,
                         finished == Drag::fadeIn ? dragFade_ : cl->fadeIn,
-                        finished == Drag::fadeOut ? dragFade_ : cl->fadeOut));
+                        finished == Drag::fadeOut ? dragFade_ : cl->fadeOut,
+                        finished == Drag::fadeIn ? dragCurve_ : cl->fadeInCurve,
+                        finished == Drag::fadeOut ? dragCurve_ : cl->fadeOutCurve));
                     onEdit(std::move(commands), "Set clip fades");
                 }
                 break;
@@ -1415,6 +1561,8 @@ void AudioEditor::mouseUp(const juce::MouseEvent&)
                 break;
         }
     previewing_ = false;
+    if (mode_ == Mode::pitch)
+        selectionChanged(); // clicks and lassos change it
     repaint();
 }
 
@@ -1452,24 +1600,65 @@ void AudioEditor::mouseDoubleClick(const juce::MouseEvent& e)
     const auto* cl = clip();
     if (cl == nullptr || (mode_ == Mode::pitch && !pitchEditable()))
         return;
-    if (mode_ == Mode::wave && contentArea().contains(e.getPosition()))
+    // Wave mode (interaction.md 10.2, double-click resets a control): the gain
+    // line goes back to 0 dB, a fade handle removes its fade.
+    if (mode_ == Mode::wave)
     {
-        setMode(Mode::pitch);
+        const auto area = contentArea();
+        if (!area.contains(e.getPosition()) || !onEdit)
+            return;
+        const float fi = xForSource(static_cast<double>(cl->sourceOffset) +
+                                    toSourceSpan(*cl, static_cast<double>(cl->fadeIn)));
+        const float fo = xForSource(sourceEnd(*cl) - toSourceSpan(*cl, static_cast<double>(cl->fadeOut)));
+        const float gainDb = engine::gainToDb(cl->gain, gainMinDb);
+        const float gy =
+            static_cast<float>(area.getY()) +
+            static_cast<float>(area.getHeight()) *
+                (1.0f - (std::clamp(gainDb, gainMinDb, gainMaxDb) - gainMinDb) / (gainMaxDb - gainMinDb));
+        std::vector<std::unique_ptr<core::Command>> commands;
+        const bool onFadeIn = e.y < area.getY() + 14 && std::abs(static_cast<float>(e.x) - fi) < 7.0f;
+        const bool onFadeOut = e.y < area.getY() + 14 && std::abs(static_cast<float>(e.x) - fo) < 7.0f;
+        if (onFadeIn || onFadeOut)
+        {
+            commands.push_back(std::make_unique<core::SetClipFades>(
+                trackId_, clipId_, onFadeIn ? 0 : cl->fadeIn, onFadeOut ? 0 : cl->fadeOut));
+            onEdit(std::move(commands), "Remove fade");
+        }
+        else if (std::abs(static_cast<float>(e.y) - gy) < 5.0f && cl->gain != 1.0f)
+        {
+            commands.push_back(std::make_unique<core::SetClipGain>(trackId_, clipId_, 1.0f));
+            onEdit(std::move(commands), "Reset clip gain");
+        }
         return;
     }
-    if (mode_ != Mode::pitch || analysis_ == nullptr || tool_ != Tool::pitch)
+    // Pitch mode, the pitch tool (pitch-editing.md "Split and merge: double-click
+    // splits"): a note splits where it is double-clicked; a join merges its notes.
+    if (analysis_ == nullptr || tool_ != Tool::pitch || !cl->vocal.active())
         return;
-    if (const auto* note = noteAt(e.getPosition()))
+    auto next = cl->vocal;
+    const auto* note = noteAt(e.getPosition());
+    if (const auto* join = joinAt(e.getPosition()); join != nullptr && note == nullptr)
     {
-        auto next = cl->vocal;
-        std::vector<core::Id> ids = isSelected(note->id) ? selection_ : std::vector<core::Id>{note->id};
-        pitch::snapToSemitones(next, ids);
-        emit(std::move(next), "Snap pitch");
+        if (pitch::mergeWithNext(next, *analysis_, join->id))
+            emit(std::move(next), "Merge notes");
+    }
+    else if (note != nullptr)
+    {
+        if (pitch::splitNote(next, *analysis_, note->id, sourceForX(static_cast<float>(e.x))))
+            emit(std::move(next), "Split note");
     }
 }
 
 void AudioEditor::mouseWheelMove(const juce::MouseEvent& e, const juce::MouseWheelDetails& wheel)
 {
+    // Ctrl+Shift+wheel (or Alt+wheel) zooms the pitches around the pointer.
+    if (mode_ == Mode::pitch && ((e.mods.isCtrlDown() && e.mods.isShiftDown()) || e.mods.isAltDown()))
+    {
+        const float delta = wheel.deltaY != 0.0f ? wheel.deltaY : wheel.deltaX;
+        zoomPitch(static_cast<float>(1.0 / TimelineViewport::wheelZoomFactor(delta)),
+                  static_cast<float>(e.y));
+        return;
+    }
     if (e.mods.isCtrlDown())
     {
         const auto zoomed = view().wheelZoomed(wheel.deltaY, e.x, 1.0, 100000.0);
@@ -1497,6 +1686,7 @@ void AudioEditor::selectAll()
         for (const auto& n : cl->vocal.notes)
             if (n.end > cl->sourceOffset && static_cast<double>(n.start) < sourceEnd(*cl))
                 selection_.push_back(n.id);
+    selectionChanged();
     repaint();
 }
 
@@ -1545,6 +1735,11 @@ bool AudioEditor::keyPressed(const juce::KeyPress& key)
         nudgeSelection(code == juce::KeyPress::upKey ? step : -step);
         return true;
     }
+    if (Shortcuts::matches(Command::audioEditorStepSelection, key))
+    {
+        stepSelection(code == juce::KeyPress::leftKey ? -1 : 1, mods.isShiftDown());
+        return true;
+    }
     if (Shortcuts::matches(Command::audioEditorMute, key))
     {
         toggleMuteSelection();
@@ -1558,24 +1753,53 @@ bool AudioEditor::keyPressed(const juce::KeyPress& key)
     if (Shortcuts::matches(Command::audioEditorClearSelection, key))
     {
         selection_.clear();
+        selectionChanged();
         repaint();
         return true;
     }
     return false;
 }
 
+core::MusicalKey AudioEditor::suggestedKey() const
+{
+    if (project_ != nullptr && project_->key.isSet())
+        return project_->key;
+    return detectedKey();
+}
+
+core::MusicalKey AudioEditor::detectedKey() const
+{
+    const auto* cl = clip();
+    if (cl == nullptr || !cl->vocal.active())
+        return {};
+    // Detected at the pitch the clip plays (a transposed clip's notes moved by it).
+    auto notes = cl->vocal.notes;
+    for (auto& n : notes)
+    {
+        n.centre += pitchOffset();
+        n.target += pitchOffset();
+    }
+    return pitch::detectKey(notes);
+}
+
 void AudioEditor::correctToKey(const pitch::CorrectionOptions& options, const std::string& name)
+{
+    correctToKey(options, suggestedKey(), name);
+}
+
+void AudioEditor::correctToKey(const pitch::CorrectionOptions& options,
+                               core::MusicalKey key,
+                               const std::string& name)
 {
     const auto* cl = clip();
     if (cl == nullptr || project_ == nullptr || !cl->vocal.active() || !onEdit || !pitchEditable())
         return;
     std::vector<std::unique_ptr<core::Command>> commands;
-    auto key = project_->key;
     if (!key.isSet())
-    {
-        key = pitch::detectKey(cl->vocal.notes);
+        key = suggestedKey();
+    // The key Correct aims at is the project's (shared with the piano roll's scale).
+    if (key.isSet() && !(key == project_->key))
         commands.push_back(std::make_unique<core::SetProjectKey>(key));
-    }
     // The selected notes, or every note the clip plays.
     std::vector<core::VocalNote> subset;
     std::vector<std::uint16_t> chords;
@@ -1587,7 +1811,11 @@ void AudioEditor::correctToKey(const pitch::CorrectionOptions& options, const st
         const bool inClip = n.end > cl->sourceOffset && static_cast<double>(n.start) < sourceEnd(*cl);
         if (inClip && (selection_.empty() || isSelected(n.id)))
         {
-            subset.push_back(n);
+            // At the pitch it plays: a transposed clip's key is the heard one.
+            auto shifted = n;
+            shifted.centre += pitchOffset();
+            shifted.target += pitchOffset();
+            subset.push_back(shifted);
             chords.push_back(i < allChords.size() ? allChords[i] : 0);
         }
     }
@@ -1595,7 +1823,11 @@ void AudioEditor::correctToKey(const pitch::CorrectionOptions& options, const st
     auto next = cl->vocal;
     for (const auto& corrected : result.notes)
         if (auto* n = next.findNote(corrected.id))
+        {
             *n = corrected;
+            n->centre -= pitchOffset();
+            n->target -= pitchOffset();
+        }
     flagged_ = result.flagged;
     commands.push_back(std::make_unique<core::SetVocalEdit>(trackId_, clipId_, std::move(next), name));
     onEdit(std::move(commands), name);
@@ -1614,20 +1846,8 @@ void AudioEditor::setBreaths(float gainDb, bool muted)
 
 bool AudioEditor::pitchEditable() const noexcept
 {
-    const auto* cl = clip();
-    return cl != nullptr && !cl->isStretched();
-}
-
-void AudioEditor::paintNotPitchEditable(juce::Graphics& g)
-{
-    const auto area = contentArea();
-    g.setColour(theme_.colours.textSecondary);
-    g.setFont(theme_.body());
-    g.drawFittedText("Pitch edits play on clips that are not stretched or transposed.\n"
-                     "Set the clip's stretch and transpose back to edit its pitch.",
-                     area.reduced(theme_.spacing.lg),
-                     juce::Justification::centred,
-                     3);
+    // A stretched or transposed clip stretches its edited voice (MediaCache).
+    return clip() != nullptr;
 }
 
 void AudioEditor::refreshToolbar()
@@ -1637,11 +1857,7 @@ void AudioEditor::refreshToolbar()
         b->setEnabled(editable);
     correctButton_.setEnabled(editable);
     breathsButton_.setEnabled(editable);
-    juce::String key = "No key";
-    if (project_ != nullptr && project_->key.isSet())
-        key = juce::String(core::pitchClassName(project_->key.root)) + " " +
-              core::scaleName(project_->key.scale);
-    keyButton_.setButtonText(key);
+    keyButton_.setButtonText(keymenu::name(project_ != nullptr ? project_->key : core::MusicalKey{}));
 }
 
 void AudioEditor::showCorrectSheet()
@@ -1680,45 +1896,26 @@ void AudioEditor::showBreathMenu()
 
 void AudioEditor::showKeyMenu()
 {
-    juce::PopupMenu menu;
-    const core::ScaleKind scales[] = {core::ScaleKind::major,
-                                      core::ScaleKind::minor,
-                                      core::ScaleKind::harmonicMinor,
-                                      core::ScaleKind::dorian,
-                                      core::ScaleKind::mixolydian,
-                                      core::ScaleKind::majorPentatonic,
-                                      core::ScaleKind::minorPentatonic};
     const auto current = project_ != nullptr ? project_->key : core::MusicalKey{};
-    menu.addItem(1, "Detect from this vocal");
-    menu.addItem(2, "No key", true, !current.isSet());
-    menu.addSeparator();
-    for (int s = 0; s < 7; ++s)
-    {
-        juce::PopupMenu roots;
-        for (int r = 0; r < 12; ++r)
-            roots.addItem(100 + s * 12 + r,
-                          juce::String(core::pitchClassName(r)) + " " + core::scaleName(scales[s]),
-                          true,
-                          current.isSet() && current.root == r && current.scale == scales[s]);
-        juce::String title = core::scaleName(scales[s]);
-        menu.addSubMenu(title.substring(0, 1).toUpperCase() + title.substring(1), roots);
-    }
+    const auto* cl = clip();
+    auto menu = keymenu::build(current, cl != nullptr && cl->vocal.active());
     juce::Component::SafePointer<AudioEditor> safe(this);
     menu.showMenuAsync(juce::PopupMenu::Options().withTargetComponent(keyButton_),
-                       [safe, scales](int choice)
+                       [safe](int choice)
                        {
                            if (safe == nullptr || choice == 0 || !safe->onEdit)
                                return;
                            core::MusicalKey key;
-                           if (choice == 1)
+                           if (choice == keymenu::detectItem)
                            {
-                               const auto* cl = safe->clip();
-                               if (cl == nullptr || !cl->vocal.active())
+                               key = safe->detectedKey(); // from the notes as they play
+                               if (!key.isSet())
                                    return;
-                               key = engine::pitch::detectKey(cl->vocal.notes);
                            }
-                           else if (choice >= 100)
-                               key = core::MusicalKey{(choice - 100) % 12, scales[(choice - 100) / 12]};
+                           else if (const auto chosen = keymenu::keyFor(choice))
+                               key = *chosen;
+                           else
+                               return;
                            std::vector<std::unique_ptr<core::Command>> commands;
                            commands.push_back(std::make_unique<core::SetProjectKey>(key));
                            safe->onEdit(std::move(commands), "Set key");

@@ -94,6 +94,7 @@ struct MidiNote
     int velocity = 100; // 1..127
     SamplePosition start = 0;
     SamplePosition length = 0;
+    bool muted = false; // stays in the clip, drawn hollow, plays nothing
     SamplePosition end() const noexcept { return start + length; }
     bool operator==(const MidiNote&) const = default;
 };
@@ -167,10 +168,18 @@ struct MidiClip
 // boundaries) and remembers their ids, so the engine, bounce and every clip
 // edit see plain clips. The comp commands (core/Comping.h) rebuild those clips
 // from the takes and segments; "flatten" drops the group and keeps the clips.
+//
+// A MIDI track's group (TakeGroup::midi) works the same way: each take's clip
+// gives its id, name, start and length (no media), its notes and controller
+// events (times from the take's start) are the pass as played, and the comp
+// materialises as ordinary MIDI clips in Track::midiClips.
 struct Take
 {
     AudioClip clip; // the pass as recorded; clip.id is the take's id, clip.name its name
     int number = 1; // shown as "T<n>"; numbers are not reused within a group
+    // A MIDI take's notes and controller events, relative to clip.start.
+    std::vector<MidiNote> notes;
+    std::vector<MidiControllerEvent> controllers;
     Id id() const noexcept { return clip.id; }
     bool operator==(const Take&) const = default;
 };
@@ -190,9 +199,10 @@ struct TakeGroup
     Id id = invalidId;
     std::vector<Take> takes;       // oldest first; the lanes show the newest on top
     std::vector<CompSegment> comp; // sorted, contiguous, covering [start(), end())
-    std::vector<Id> clips;         // the Track::clips the comp is materialised as
+    std::vector<Id> clips;         // the Track::clips (Track::midiClips) the comp is materialised as
     SamplePosition crossfade = 0;  // at each boundary between segments (0: butt splices)
     bool expanded = false;         // the take lanes show under the track's row
+    bool midi = false;             // MIDI takes (Take::notes); the comp is MIDI clips
 
     SamplePosition start() const noexcept; // of the earliest take
     SamplePosition end() const noexcept;   // of the latest take
@@ -217,6 +227,14 @@ enum class MonitorMode
     off,       // never hear the input through the track
     automatic, // hear the input while the track is armed and the transport is not playing back
     on,        // always hear the input
+};
+
+// What a MIDI track's recorded passes become (screens/piano-roll.md "Recording").
+enum class MidiRecordMode : std::uint8_t
+{
+    takes,   // each pass is a take; loop passes make a take group (comped as audio)
+    merge,   // the notes join the clip under them (overdub; loop passes pile up)
+    replace, // the notes replace what the clip under them had over the pass
 };
 
 // An aux send from a track or bus into a bus.
@@ -442,8 +460,9 @@ struct Track : Channel
     int midiOutChannel = 1; // 1..16
     bool armed = false;     // records when the transport records
     MonitorMode monitor = MonitorMode::automatic;
-    std::vector<AudioClip> clips;      // kept sorted by start
-    std::vector<MidiClip> midiClips;   // kept sorted by start
+    MidiRecordMode midiRecordMode = MidiRecordMode::takes; // a MIDI track's
+    std::vector<AudioClip> clips;                          // kept sorted by start
+    std::vector<MidiClip> midiClips;                       // kept sorted by start
     std::vector<TakeGroup> takeGroups; // take lanes and comps (core/Comping.h), sorted by start
     // The folder track this track sits in (invalidId: none); a folder's own
     // tracks show under it while it is open.
@@ -560,7 +579,8 @@ struct Project
     // 16: send pan and mute; a channel's hardware output, solo safe and hidden
     //     strip; inserts whose window was open and a hosted plugin's name.
     // 17: audio and MIDI clips may carry a colour of their own.
-    static constexpr int schemaVersion = 17;
+    // 18: muted MIDI notes; MIDI take groups; a MIDI track's record mode.
+    static constexpr int schemaVersion = 18;
     static constexpr int oldestReadableVersion = 2; // older files are refused
 
     std::string name = "Untitled";

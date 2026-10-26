@@ -60,11 +60,13 @@ std::shared_ptr<const AudioSource> MediaCache::sourceForClip(const core::AudioCl
                                                     it->second.clip == clip && it->second.source != nullptr)
         return it->second.source;
     auto base = getForClip(clip.mediaPath, sampleRate, clip.id);
+    // Pitch edits first (they are in the media's own time and pitch), then the
+    // stretch and transposition over the edited voice.
+    if (clipHook_ && base != nullptr && clip.vocal.active())
+        base = clipHook_(clip, sampleRate, std::move(base));
     std::shared_ptr<const AudioSource> source;
     if (clip.isStretched())
         source = stretchHook_ && base != nullptr ? stretchHook_(clip, sampleRate, std::move(base)) : nullptr;
-    else if (clipHook_ && base != nullptr && clip.vocal.active())
-        source = clipHook_(clip, sampleRate, std::move(base));
     else
         source = std::move(base);
     if (source != nullptr)
@@ -586,6 +588,8 @@ std::unique_ptr<Snapshot> compileSnapshot(const core::Project& project,
                 clip.length = c.length;
                 for (const auto& source : c.notes)
                 {
+                    if (source.muted)
+                        continue; // a muted note stays in the clip and plays nothing
                     MidiNoteNode note;
                     note.start = c.start + source.start;
                     note.end = std::min(c.start + source.end(), c.end());

@@ -51,7 +51,13 @@ template <class ProjectT, class F> void forEachId(ProjectT& project, F&& f)
         {
             f(g.id);
             for (auto& take : g.takes)
+            {
                 detail::forEachIdInAudioClip(take.clip, f);
+                for (auto& n : take.notes) // a MIDI take's
+                    f(n.id);
+                for (auto& e : take.controllers)
+                    f(e.id);
+            }
         }
         for (auto& c : t.midiClips)
         {

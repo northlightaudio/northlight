@@ -190,6 +190,41 @@ void TakeLanes::drawWave(juce::Graphics& g,
                   });
 }
 
+void TakeLanes::drawNotes(juce::Graphics& g,
+                          const core::Take& take,
+                          juce::Rectangle<int> area,
+                          juce::Colour colour,
+                          const core::TakeGroup& group) const
+{
+    // A MIDI take: a miniature of its notes over the pitch range it plays (as the
+    // arrange view draws a MIDI clip), lit where the comp plays it.
+    if (take.notes.empty() || area.getHeight() < 4)
+        return;
+    int low = 127, high = 0;
+    for (const auto& n : take.notes)
+    {
+        low = std::min(low, n.note);
+        high = std::max(high, n.note);
+    }
+    const int span = std::max(1, high - low + 1);
+    const float rowH = std::max(1.0f, static_cast<float>(area.getHeight() - 4) / static_cast<float>(span));
+    for (const auto& n : take.notes)
+    {
+        const auto at = take.clip.start + n.start;
+        const int x0 = view_.xOf(at), x1 = std::max(x0 + 1, view_.xOf(at + n.length));
+        if (x1 < area.getX() || x0 > area.getRight())
+            continue;
+        const auto* segment = core::segmentAt(group, at);
+        const bool lit = segment != nullptr && segment->take == take.id();
+        const float y =
+            static_cast<float>(area.getBottom() - 2) - static_cast<float>(n.note - low + 1) * rowH;
+        g.setColour(colour.withAlpha(lit ? theme_.track.waveformAlpha : theme_.track.waveformMutedAlpha));
+        g.fillRect(juce::Rectangle<float>(
+                       static_cast<float>(x0), y, static_cast<float>(x1 - x0), std::max(1.0f, rowH - 1.0f))
+                       .getIntersection(area.toFloat()));
+    }
+}
+
 void TakeLanes::paintMain(juce::Graphics& g, const Row& row) const
 {
     if (row.track == nullptr || row.track->takeGroups.empty())
@@ -199,26 +234,31 @@ void TakeLanes::paintMain(juce::Graphics& g, const Row& row) const
     const bool header = row.main.getHeight() >= 24;
     for (const auto& group : track.takeGroups)
     {
-        // The take badge on each comp clip's header, at its right.
-        if (header)
+        // The take badge on each comp clip's header, at its right (a MIDI group's
+        // clips are MIDI clips).
+        const auto badge = [&](core::Id id, core::SamplePosition start, core::SamplePosition length)
+        {
+            if (!group.ownsClip(id))
+                return;
+            const auto* segment = core::segmentAt(group, start + length / 2);
+            const auto* take = segment != nullptr ? group.findTake(segment->take) : nullptr;
+            if (take == nullptr)
+                return;
+            const int x0 = view_.xOf(start), x1 = view_.xOf(start + length);
+            if (x1 - x0 < 64)
+                return;
+            const auto strip =
+                juce::Rectangle<int>(x0, row.main.getY() + 2, x1 - x0, theme_.sizes.clipHeader).reduced(0, 3);
+            const auto text = takeBadge(*take);
+            const int w = juce::GlyphArrangement::getStringWidthInt(theme_.caption(), text) + 12;
+            drawBadge(g, text, strip.withTrimmedRight(theme_.spacing.xs).removeFromRight(w), true);
+        };
+        if (header && !group.midi)
             for (const auto& clip : track.clips)
-            {
-                if (!group.ownsClip(clip.id))
-                    continue;
-                const auto* segment = core::segmentAt(group, clip.start + clip.length / 2);
-                const auto* take = segment != nullptr ? group.findTake(segment->take) : nullptr;
-                if (take == nullptr)
-                    continue;
-                const int x0 = view_.xOf(clip.start), x1 = view_.xOf(clip.end());
-                if (x1 - x0 < 64)
-                    continue;
-                const auto strip =
-                    juce::Rectangle<int>(x0, row.main.getY() + 2, x1 - x0, theme_.sizes.clipHeader)
-                        .reduced(0, 3);
-                const auto text = takeBadge(*take);
-                const int w = juce::GlyphArrangement::getStringWidthInt(theme_.caption(), text) + 12;
-                drawBadge(g, text, strip.withTrimmedRight(theme_.spacing.xs).removeFromRight(w), true);
-            }
+                badge(clip.id, clip.start, clip.length);
+        if (header && group.midi)
+            for (const auto& clip : track.midiClips)
+                badge(clip.id, clip.start, clip.length);
         // Comp boundaries: a faint line through the body; the one under the pointer lit.
         const int top = row.main.getY() + 2 + (header ? theme_.sizes.clipHeader : 0);
         const int bottom = row.main.getBottom() - 3;
@@ -300,7 +340,10 @@ void TakeLanes::paintLanes(juce::Graphics& g, const Row& row) const
                     g.setColour(row.colour);
                     g.drawRect(lit, 1);
                 }
-            drawWave(g, clip, block.reduced(0, 2).getIntersection(area), row.colour, group);
+            if (group.midi)
+                drawNotes(g, *take, block.reduced(0, 2).getIntersection(area), row.colour, group);
+            else
+                drawWave(g, clip, block.reduced(0, 2).getIntersection(area), row.colour, group);
             clips::paintOutline(g, theme_, block, row.colour.withAlpha(0.4f));
             // The swipe in progress: the range the take will play over.
             if (press_.kind == PressKind::swipe && press_.group == group.id && press_.take == take->id() &&

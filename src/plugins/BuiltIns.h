@@ -53,10 +53,17 @@ struct BuiltInType
     // What it is, in one short line for the browser and the effects menu
     // ("Clean three-band EQ with a high-pass").
     const char* description = "";
+    // An instrument that names its notes (a drum kit's pads: Pulsar's "Kick" on
+    // 36): the name of a note, or null for one it does not play (null: none named).
+    const char* (*noteName)(int note) = nullptr;
 };
 const std::vector<BuiltInType>& builtInTypes();
 // The registry's entry for a type (null for a strip module or an unknown type).
 const BuiltInType* findBuiltIn(const std::string& typeName);
+// The name an instrument gives a note ("Snare"), empty when it names none (the
+// piano roll labels its rows with these and can hide the rest).
+std::string builtInNoteName(const std::string& typeName, int note);
+bool builtInNamesNotes(const std::string& typeName);
 
 class BuiltInFactory final : public engine::InsertFactory
 {

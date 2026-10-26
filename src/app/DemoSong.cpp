@@ -1,5 +1,6 @@
 #include "DemoSong.h"
 
+#include "engine/WavFile.h"
 #include "plugins/Aurora.h"
 #include "plugins/BuiltIns.h"
 #include "plugins/ChannelStrip.h"
@@ -8,6 +9,7 @@
 #include "plugins/Pulsar.h"
 #include "plugins/Starbit.h"
 
+#include <algorithm>
 #include <array>
 #include <cmath>
 #include <string>
@@ -235,9 +237,169 @@ const std::vector<Builder::Note>& phraseB()
     };
     return p;
 }
+
+// The voice's line through the verse (beats from the verse's start): four
+// two-bar phrases with a breath before each, and how far off pitch each note is
+// sung (cents), so Correct has work to do.
+struct SungNote
+{
+    int pitch;
+    double start, length;
+    float cents;
+    int vowel; // 0 ah, 1 oh, 2 ee, 3 eh
+};
+const std::vector<SungNote>& voiceLine()
+{
+    static const std::vector<SungNote> line{
+        // Am F
+        {64, 0.0, 1.5, 0.0f, 0},
+        {62, 1.5, 0.5, -20.0f, 1},
+        {60, 2.0, 1.0, 8.0f, 0},
+        {57, 3.0, 1.0, -30.0f, 3},
+        {60, 4.0, 1.0, 5.0f, 2},
+        {62, 5.0, 1.0, 18.0f, 1},
+        {60, 6.0, 1.5, -12.0f, 0},
+        // C G
+        {64, 8.0, 1.0, -6.0f, 3},
+        {67, 9.0, 1.0, -35.0f, 0},
+        {64, 10.0, 1.5, 10.0f, 1},
+        {62, 11.5, 0.5, 0.0f, 2},
+        {62, 12.0, 1.0, -18.0f, 0},
+        {59, 13.0, 1.0, 22.0f, 3},
+        {62, 14.0, 1.5, -8.0f, 1},
+        // Am F
+        {69, 16.0, 1.5, -25.0f, 0},
+        {67, 17.5, 0.5, 6.0f, 2},
+        {64, 18.0, 1.0, -10.0f, 1},
+        {60, 19.0, 1.0, 15.0f, 0},
+        {65, 20.0, 1.0, -28.0f, 3},
+        {64, 21.0, 0.5, 4.0f, 0},
+        {62, 21.5, 0.5, -14.0f, 2},
+        {60, 22.0, 1.5, 9.0f, 1},
+        // C G, the last note held
+        {64, 24.0, 1.0, 0.0f, 0},
+        {67, 25.0, 0.5, 12.0f, 3},
+        {72, 25.5, 1.5, -32.0f, 0},
+        {67, 27.0, 1.0, 8.0f, 1},
+        {62, 28.0, 1.0, -16.0f, 2},
+        {59, 29.0, 1.0, 20.0f, 0},
+        {62, 30.0, 1.75, -6.0f, 1},
+    };
+    return line;
+}
 } // namespace
 
-core::Project makeDemoSong()
+std::vector<float> demoVoice(double rate)
+{
+    constexpr double pi = 3.14159265358979323846;
+    const double secondsPerBeat = 60.0 / tempo;
+    const auto total = static_cast<size_t>(32.0 * secondsPerBeat * rate); // eight bars
+    std::vector<float> out(total, 0.0f);
+    const auto& line = voiceLine();
+    // The vowels' formants (Hz) and the soft resonance they make.
+    constexpr double formants[4][3] = {
+        {730, 1090, 2440}, {570, 840, 2410}, {300, 2200, 2900}, {530, 1840, 2480}};
+    const auto envelope = [&](double hz, double f1, double f2, double f3)
+    {
+        const auto peak = [hz](double f, double w) { return std::exp(-((hz - f) / w) * ((hz - f) / w)); };
+        return 0.25 + peak(f1, 120.0) + 0.6 * peak(f2, 150.0) + 0.3 * peak(f3, 220.0);
+    };
+    std::uint32_t noise = 0x1234567u;
+    const auto random = [&noise]
+    {
+        noise = noise * 1664525u + 1013904223u;
+        return static_cast<double>(noise >> 8) / static_cast<double>(1u << 24) * 2.0 - 1.0;
+    };
+    double phase = 0.0, breath = 0.0, level = 0.0;
+    double f1 = formants[0][0], f2 = formants[0][1], f3 = formants[0][2];
+    std::array<double, 64> amps{};
+    int harmonics = 0;
+    for (size_t i = 0; i < total; ++i)
+    {
+        const double t = static_cast<double>(i) / rate;
+        const double beat = t / secondsPerBeat;
+        // The note sung now (or the one just before, ringing out), and its neighbours.
+        int current = -1;
+        for (int k = 0; k < static_cast<int>(line.size()); ++k)
+            if (beat >= line[static_cast<size_t>(k)].start &&
+                beat < line[static_cast<size_t>(k)].start + line[static_cast<size_t>(k)].length)
+                current = k;
+        double target = 0.0; // amplitude
+        double hz = 0.0;
+        if (current >= 0)
+        {
+            const auto& n = line[static_cast<size_t>(current)];
+            const double into = (beat - n.start) * secondsPerBeat;
+            const double left = (n.start + n.length - beat) * secondsPerBeat;
+            double cents = (n.pitch - 69) * 100.0 + n.cents;
+            // The way in: a slide from the note before when it is joined (legato),
+            // else a scoop up from 60 cents under.
+            const bool joined =
+                current > 0 && std::abs(line[static_cast<size_t>(current - 1)].start +
+                                        line[static_cast<size_t>(current - 1)].length - n.start) < 1.0e-9;
+            if (into < 0.04)
+            {
+                const double s = into / 0.04;
+                const double ease = s * s * (3.0 - 2.0 * s);
+                const double from = joined ? (line[static_cast<size_t>(current - 1)].pitch - 69) * 100.0 +
+                                                 line[static_cast<size_t>(current - 1)].cents
+                                           : cents - 60.0;
+                cents = from + (cents - from) * ease;
+            }
+            // Vibrato on held notes, growing in after a quarter of a second.
+            const double depth = std::clamp((into - 0.25) / 0.3, 0.0, 1.0) * 32.0;
+            cents += depth * std::sin(2.0 * pi * 5.4 * into);
+            // A little slow drift.
+            cents += 6.0 * std::sin(2.0 * pi * 0.7 * t + current);
+            hz = 440.0 * std::pow(2.0, cents / 1200.0);
+            target = std::clamp(into / 0.03, 0.0, 1.0) * std::clamp(left / 0.05, 0.0, 1.0);
+            const auto& v = formants[n.vowel];
+            f1 += (v[0] - f1) * 0.0015;
+            f2 += (v[1] - f2) * 0.0015;
+            f3 += (v[2] - f3) * 0.0015;
+        }
+        level += (target - level) * 0.004; // ~5 ms smoothing
+        double s = 0.0;
+        if (hz > 0.0 || level > 1.0e-4)
+        {
+            if (hz <= 0.0)
+                hz = 220.0;
+            phase += 2.0 * pi * hz / rate;
+            if (phase > 2.0 * pi * 1000.0)
+                phase -= 2.0 * pi * 1000.0;
+            // The harmonics' levels through the formants, updated every 32 samples.
+            if (i % 32 == 0 || harmonics == 0)
+            {
+                harmonics = std::min(static_cast<int>(amps.size()), static_cast<int>(5000.0 / hz));
+                for (int k = 1; k <= harmonics; ++k)
+                    amps[static_cast<size_t>(k - 1)] = envelope(k * hz, f1, f2, f3) / k;
+            }
+            if (level > 1.0e-4)
+                for (int k = 1; k <= harmonics; ++k)
+                    s += amps[static_cast<size_t>(k - 1)] * std::sin(k * phase);
+        }
+        // Breaths: noise for a third of a second before each phrase.
+        double air = 0.0;
+        for (const double phraseStart : {0.0, 8.0, 16.0, 24.0})
+        {
+            const double before = (phraseStart - beat) * secondsPerBeat;
+            if (before > 0.0 && before < 0.35)
+                air = std::sin(pi * before / 0.35);
+        }
+        breath += 0.2 * (random() - breath);
+        out[i] = static_cast<float>(0.22 * level * s + 0.05 * air * breath);
+    }
+    // To -6 dBFS.
+    float peak = 0.0f;
+    for (const float v : out)
+        peak = std::max(peak, std::abs(v));
+    if (peak > 0.0f)
+        for (auto& v : out)
+            v *= 0.5f / peak;
+    return out;
+}
+
+core::Project makeDemoSong(const std::string& mediaFolder)
 {
     namespace au = plugins::aurora;
     namespace ne = plugins::nebula;
@@ -258,6 +420,33 @@ core::Project makeDemoSong()
     s.instrumentTrack("Keys", au::type, preset(au::presets(), "Glacier Keys"));
     s.instrumentTrack("Arp", sb::type, preset(sb::presets(), "Chord Arp"));
     s.instrumentTrack("Lead", sb::type, preset(sb::presets(), "Hero Lead"));
+    // The voice through the verse: an audio clip, rendered next to the project.
+    bool hasVoice = false;
+    if (!mediaFolder.empty())
+    {
+        const auto path = mediaFolder + "/Northern Drift - Voice.wav";
+        const auto samples = demoVoice(sampleRate);
+        engine::WavWriter writer;
+        const float* channels[] = {samples.data()};
+        if (writer.open(path, 1, sampleRate) && writer.write(channels, static_cast<int>(samples.size())) &&
+            writer.close())
+        {
+            core::Track voice;
+            voice.id = s.id();
+            voice.name = "Voice";
+            voice.kind = core::TrackKind::audio;
+            core::AudioClip c;
+            c.id = s.id();
+            c.name = "Voice";
+            c.mediaPath = path;
+            c.start = verse * barLength;
+            c.length = static_cast<core::SamplePosition>(samples.size());
+            c.fadeOut = at(0.5);
+            voice.clips.push_back(std::move(c));
+            p.tracks.push_back(std::move(voice));
+            hasVoice = true;
+        }
+    }
     // Each part: its MIDI track (the notes) and its instrument channel (the sound).
     auto& drumsMidi = p.tracks[0];
     auto& drums = p.tracks[1];
@@ -418,6 +607,13 @@ core::Project makeDemoSong()
     send(drums, hall.id, 0.12f);
     send(lead, echo.id, 0.35f);
     send(arp, echo.id, 0.25f);
+    if (hasVoice)
+    {
+        send(p.tracks[12], hall.id, 0.3f);
+        send(p.tracks[12], echo.id, 0.15f);
+        p.tracks[12].gain = 0.8f;
+        p.tracks[12].pan = -0.05f;
+    }
     p.buses.push_back(std::move(hall));
     p.buses.push_back(std::move(echo));
 
@@ -440,6 +636,8 @@ core::Project makeDemoSong()
     on(drums, plugins::strip::types::limiter);
     on(lead, plugins::strip::types::compressor);
     on(keys, plugins::strip::types::eq);
+    if (hasVoice)
+        on(p.tracks[12], plugins::strip::types::compressor);
 
     // ----- automation ----------------------------------------------------------------------------
     using T = core::AutomationTarget;
@@ -475,13 +673,20 @@ core::Project makeDemoSong()
     marker("End", ending, bars);
     p.sortMarkers();
 
-    // ----- the drum outputs: a track each, under the drums' channel ---------------------------
+    // ----- the drum outputs: a track each, in a closed folder under the drums' channel -------
     // (Last: inserting tracks moves the ones the references above point at.)
     {
         const auto drumsChannel = p.tracks[1];
         const char* names[] = {"", "Snares", "Hats", "Toms"};
         const float gains[] = {1.0f, 0.9f, 0.7f, 0.85f};
         std::vector<core::Track> outputs;
+        core::Track folder;
+        folder.id = s.id();
+        folder.kind = core::TrackKind::folder;
+        folder.name = "Drum outputs";
+        folder.colour = drumsChannel.colour;
+        folder.folderOpen = false; // the song reads as its parts; open it for the kit's pairs
+        outputs.push_back(std::move(folder));
         for (int o = 1; o <= 3; ++o)
         {
             core::Track out;
@@ -493,10 +698,11 @@ core::Project makeDemoSong()
             out.auxInsert = drumsChannel.instrument.id;
             out.auxOutput = o;
             out.gain = gains[o];
+            out.folder = outputs.front().id;
             outputs.push_back(std::move(out));
         }
-        outputs[0].sends.push_back({p.buses[0].id, 0.2f, false}); // the snares into the hall
-        outputs[1].pan = 0.15f;                                   // the hats a little right
+        outputs[1].sends.push_back({p.buses[0].id, 0.2f, false}); // the snares into the hall
+        outputs[2].pan = 0.15f;                                   // the hats a little right
         p.tracks.insert(p.tracks.begin() + 2, outputs.begin(), outputs.end());
         plugins::strip::ensureChannelStrip(p); // their strips (off)
     }

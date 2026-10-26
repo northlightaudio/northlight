@@ -29,21 +29,32 @@ namespace northlight::ui
 // Wave mode shows the clip's waveform with its gain line (drag it) and fade handles
 // (drag the squares at the top corners).
 //
+// Wave mode: dragging a fade handle sideways sets its length and up or down its
+// curve (as the arrange view's); double-clicking the gain line resets it to 0 dB
+// and a fade handle removes the fade.
+//
 // Pitch mode analyses the clip's media the first time (a progress line shows while
 // it runs) and shows its notes as blobs shaped by their loudness on a keyboard grid,
 // the pitch curve as sung (faint) and as edited (bright) through them, and the
-// breaths, consonants and silence in a lane below. Tools:
+// breaths, consonants and silence in a lane below. A transposed clip shows its
+// notes at the pitch they play (the media's pitch plus the transposition). Tools:
 //   Pitch    click selects (Shift adds, Ctrl toggles), drag in empty space lassos,
 //            drag a note up or down to move it (snaps to semitones; Alt moves in
 //            cents), drag the handle at a join to set the transition, double-click
-//            snaps a note to the nearest semitone
+//            splits a note there (on a join, merges the two)
 //   Split    click a note to split it there; click a join to merge the two notes
 //   Drift    drag up or down to keep more or less of the slow drift
 //   Vibrato  drag up or down to deepen or flatten the vibrato
 //   Breath   click a segment in the lane to mute or unmute it
-// Keys: 1-5 tools, Up/Down move the selection a semitone (Shift: 10 cents), M mutes,
-// Ctrl+A selects all, Esc clears. The toolbar has Correct (to the key, with live
-// preview), Breaths (mute or reduce them all) and the key.
+// Keys: 1-5 tools, Up/Down move the selection a semitone (Shift: 10 cents),
+// Left/Right select the previous or next note (Shift extends), M mutes, Ctrl+A
+// selects all, Esc clears. The toolbar has Correct (to the key, which the sheet
+// confirms, with live preview), Breaths (mute or reduce them all), the key, link,
+// follow the playhead and audition (on by default, as the piano roll's).
+//
+// Wheel: scrolls the pitches in pitch mode (time in wave mode, which has nothing
+// to scroll up and down); Shift+wheel scrolls time; Ctrl+wheel zooms time at the
+// pointer; Ctrl+Shift+wheel (or Alt+wheel) zooms the pitches.
 //
 // Edits go out as SetVocalEdit commands through onEdit; the owner refreshes the view
 // from the model (setClip) like the piano roll.
@@ -68,6 +79,16 @@ public:
     double sourceSamplesPerPixel() const noexcept { return samplesPerPixel_; }
     double firstVisibleSource() const noexcept { return static_cast<double>(scroll_); }
     void setTimeView(double samplesPerPixel, core::SamplePosition absoluteFirstVisible);
+    // Following the playhead (the toolbar toggle): while playing, a playhead that
+    // leaves the view turns the page so it stays in view.
+    void setFollowPlayhead(bool on);
+    bool followPlayhead() const noexcept { return follow_; }
+    bool audition() const noexcept { return audition_; }
+    // A semitone's height in pitch mode (the vertical zoom).
+    float semitoneHeight() const noexcept { return semitoneHeight_; }
+    void setSemitoneHeight(float pixels);
+    // The selection changed (the inspector shows the selected notes).
+    std::function<void()> onSelectionChanged;
     // While linked, a zoom or scroll here: the timeline samples per pixel and the
     // first visible timeline sample, for the owner to set on the arrange view.
     std::function<void(double samplesPerPixel, core::SamplePosition firstVisible)> onTimeViewChanged;
@@ -104,6 +125,15 @@ public:
     // The tools' actions, also for the menus and launch flags.
     void correctToKey(const engine::pitch::CorrectionOptions& options,
                       const std::string& name = "Correct pitch");
+    // To `key` (unset: suggestedKey()); a key other than the project's becomes the
+    // project's in the same step.
+    void correctToKey(const engine::pitch::CorrectionOptions& options,
+                      core::MusicalKey key,
+                      const std::string& name);
+    // The project's key, or (none set) the one detected from this clip's notes at
+    // the pitch they play: what the Correct sheet offers to confirm.
+    core::MusicalKey suggestedKey() const;
+    core::MusicalKey detectedKey() const;
     void setBreaths(float gainDb, bool muted);
     void selectAll();
     const std::vector<core::Id>& selection() const noexcept { return selection_; }
@@ -123,7 +153,8 @@ public:
 
     static constexpr int toolbarHeight = 32;
     static constexpr int keyboardWidth = 64;
-    static constexpr int rowHeight = 14;  // a semitone
+    static constexpr int rowHeight = 14; // a semitone, at the default vertical zoom
+    static constexpr float minSemitoneHeight = 6.0f, maxSemitoneHeight = 40.0f;
     static constexpr int laneHeight = 24; // the breaths and consonants
     static constexpr int infoHeight = 24;
 
@@ -194,6 +225,13 @@ private:
     void drawTooltip(juce::Graphics& g, const juce::String& text, juce::Point<int> at);
     static juce::String noteName(float cents);
 
+    // A transposed clip's notes show at the pitch they play: cents in the edit
+    // (the media's) plus this.
+    float pitchOffset() const noexcept;
+    void stepSelection(int direction, bool extend);
+    void selectionChanged();
+    void zoomPitch(float factor, float aroundY);
+
     void showNoteMenu(const core::VocalNote& note);
     void showSegmentMenu(const core::VocalSegment& segment);
     void showBreathMenu();
@@ -214,9 +252,11 @@ private:
     core::SamplePosition playhead_ = -1; // source samples
     double samplesPerPixel_ = 200.0;
     core::SamplePosition scroll_ = 0; // first visible source sample
-    float topCents_ = 7900.0f;        // the pitch at the top of the grid
+    float topCents_ = 7900.0f;        // the pitch at the top of the grid (as it plays)
+    float semitoneHeight_ = static_cast<float>(rowHeight);
     bool linked_ = false;
-    bool audition_ = false;
+    bool follow_ = false;
+    bool audition_ = true;
     bool fitPending_ = true;
     bool pitchFitted_ = false;
     core::Id editRequestedFor_ = core::invalidId; // the clip whose edit was created from its analysis
@@ -234,12 +274,11 @@ private:
     // (keys 1 to 5); shown in pitch mode.
     IconButton pitchTool_, splitTool_, driftTool_, vibratoTool_, breathTool_;
     std::array<IconButton*, 5> toolButtons() noexcept;
-    // Pitch edits play only on a clip that is neither stretched nor transposed (the
-    // stretch renders from the media file): pitch mode says so and edits nothing.
+    // Pitch edits play on any clip (a stretched one stretches the edited voice):
+    // pitch mode edits whenever there is a clip.
     bool pitchEditable() const noexcept;
-    void paintNotPitchEditable(juce::Graphics& g);
     juce::TextButton correctButton_, breathsButton_, keyButton_;
-    IconButton link_, auditionButton_;
+    IconButton link_, followButton_, auditionButton_;
     juce::ScrollBar horizontal_{false}, vertical_{true};
     bool updatingScrollbars_ = false;
 
@@ -255,6 +294,7 @@ private:
     juce::Rectangle<int> lasso_;
     float dragGainDb_ = 0.0f;
     core::SamplePosition dragFade_ = 0;
+    float dragCurve_ = 0.0f, dragCurveStart_ = 0.0f; // the fade's curve while its handle drags
     core::SamplePosition panScroll_ = 0;
     float panTop_ = 0.0f;
     core::Id hoverNote_ = core::invalidId;

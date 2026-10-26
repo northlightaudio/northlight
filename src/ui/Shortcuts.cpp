@@ -199,6 +199,23 @@ std::vector<Shortcut>& table()
         add(Command::pianoRollSelectTool, "pianoRollSelectTool", "Select tool", pianoRoll, {code('1')});
         add(Command::pianoRollDrawTool, "pianoRollDrawTool", "Draw tool", pianoRoll, {code('3')});
         add(Command::pianoRollEraseTool, "pianoRollEraseTool", "Erase tool", pianoRoll, {code('4')});
+        add(Command::pianoRollSplitTool, "pianoRollSplitTool", "Split tool", pianoRoll, {code('5')});
+        add(Command::pianoRollGlueTool, "pianoRollGlueTool", "Glue tool", pianoRoll, {code('6')});
+        add(Command::pianoRollMuteTool, "pianoRollMuteTool", "Mute tool", pianoRoll, {code('7')});
+        add(Command::pianoRollCopy, "pianoRollCopy", "Copy notes", pianoRoll, {code('C', ctrl)});
+        add(Command::pianoRollCut, "pianoRollCut", "Cut notes", pianoRoll, {code('X', ctrl)});
+        add(Command::pianoRollPaste, "pianoRollPaste", "Paste notes", pianoRoll, {code('V', ctrl)});
+        add(Command::pianoRollMuteNotes,
+            "pianoRollMuteNotes",
+            "Mute or unmute the selected notes",
+            pianoRoll,
+            {code('M', ctrl)});
+        add(Command::pianoRollSplitAtPlayhead,
+            "pianoRollSplitAtPlayhead",
+            "Split the selected notes at the playhead",
+            pianoRoll,
+            {code('s')});
+        add(Command::pianoRollJoin, "pianoRollJoin", "Join the selected notes", pianoRoll, {code('j')});
         add(Command::pianoRollSelectAll,
             "pianoRollSelectAll",
             "Select every note",
@@ -241,6 +258,22 @@ std::vector<Shortcut>& table()
                 code(KP::rightKey),
                 code(KP::leftKey, shift, false),
                 code(KP::rightKey, shift, false)});
+        family(Command::pianoRollStepSelection,
+               "pianoRollStepSelection",
+               "Select the previous or next note (Shift extends)",
+               pianoRoll,
+               {code(KP::leftKey, ctrl),
+                code(KP::rightKey, ctrl),
+                code(KP::leftKey, ctrl | shift, false),
+                code(KP::rightKey, ctrl | shift, false)});
+        family(Command::pianoRollLength,
+               "pianoRollLength",
+               "Shorten or lengthen notes by a grid step (Shift: fine)",
+               pianoRoll,
+               {code(KP::leftKey, alt),
+                code(KP::rightKey, alt),
+                code(KP::leftKey, alt | shift, false),
+                code(KP::rightKey, alt | shift, false)});
         family(Command::pianoRollNudgePitch,
                "pianoRollNudgePitch",
                "Move notes up or down a semitone (Ctrl: an octave)",
@@ -264,6 +297,14 @@ std::vector<Shortcut>& table()
                 code(KP::downKey),
                 code(KP::upKey, shift, false),
                 code(KP::downKey, shift, false)});
+        family(Command::audioEditorStepSelection,
+               "audioEditorStepSelection",
+               "Select the previous or next note (Shift extends)",
+               audioEditor,
+               {code(KP::leftKey),
+                code(KP::rightKey),
+                code(KP::leftKey, shift, false),
+                code(KP::rightKey, shift, false)});
         add(Command::audioEditorMute,
             "audioEditorMute",
             "Mute or unmute the selected notes",

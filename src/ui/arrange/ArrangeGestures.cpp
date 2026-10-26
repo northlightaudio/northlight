@@ -710,12 +710,18 @@ void ArrangeView::SweepGesture::over(const ClipRef& ref)
         mute_ = !edit::isMuted(*v.project_, ref);
     swept_.push_back(ref);
     // A comp's clips erase together, as they select together.
-    if (erase_ && !ref.midi)
+    if (erase_)
         if (const auto* track = v.project_->findTrack(ref.track))
-            if (const auto* group = track->takeGroupOwning(ref.clip))
+            if (const auto* group = track->takeGroupOwning(ref.clip);
+                group != nullptr && group->midi == ref.midi)
                 for (const auto id : group->clips)
-                    if (track->findClip(id) != nullptr && !swept({ref.track, id}))
-                        swept_.push_back({ref.track, id});
+                {
+                    const ClipRef other{ref.track, id, ref.midi};
+                    const bool exists =
+                        ref.midi ? track->findMidiClip(id) != nullptr : track->findClip(id) != nullptr;
+                    if (exists && !swept(other))
+                        swept_.push_back(other);
+                }
     v.repaint();
 }
 

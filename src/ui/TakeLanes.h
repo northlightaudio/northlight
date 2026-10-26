@@ -118,6 +118,11 @@ private:
                   juce::Rectangle<int> area,
                   juce::Colour colour,
                   const core::TakeGroup& group) const;
+    void drawNotes(juce::Graphics& g,
+                   const core::Take& take,
+                   juce::Rectangle<int> area,
+                   juce::Colour colour,
+                   const core::TakeGroup& group) const;
     void emit(std::unique_ptr<core::Command> command, const std::string& name);
     double sampleRate() const noexcept;
     core::SamplePosition snapped(core::SamplePosition at) const;

@@ -27,6 +27,13 @@ SamplePosition defaultCompCrossfade(double sampleRate) noexcept;
 // constant sum; where a take does not reach across the boundary the splice is
 // butt-joined. A segment plays only where its take has audio.
 std::vector<AudioClip> compClips(const TakeGroup& group);
+// A MIDI group's comp (TakeGroup::midi): one MIDI clip per segment (the clip's
+// id left invalid, its events copies of the take's), holding the notes of its take that
+// start in the segment, each cut at the segment's end, and the take's
+// controller events there, opened with each controller's value at the
+// segment's start (as a split MIDI clip is), so a segment sounds as its take did.
+// No crossfades: a note belongs to the segment it starts in.
+std::vector<MidiClip> compMidiClips(const TakeGroup& group);
 
 // Sorts the comp, drops segments of missing takes and empty ones, closes gaps
 // (the earlier segment extends), clips it to the group's range and merges
@@ -47,6 +54,9 @@ const TakeGroup* takeGroupAt(const Track& track, SamplePosition position) noexce
 // plain clips: several passes (loop recording), a punch, or passes over a
 // take group already on the track.
 bool recordingMakesTakes(const Track& track, const std::vector<AudioClip>& passes, bool punch);
+// The same for a MIDI track's passes (its record mode must be takes): loop
+// passes, a punch, or a pass over a MIDI take group already there.
+bool recordingMakesTakes(const Track& track, const std::vector<MidiClip>& passes, bool punch);
 
 // Changes one take group: the subclass edits a copy, and the command replaces
 // the group and rebuilds its clips (or drops it, or flattens it) in one step.
@@ -82,21 +92,49 @@ private:
     Result result_ = Result::refuse;
     std::optional<TakeGroup> before_, after_;
     std::vector<AudioClip> removed_, added_;
+    std::vector<MidiClip> removedMidi_, addedMidi_; // a MIDI group's comp clips
 };
 
 // A finished recording's passes on one track (in recording order) as takes:
 // they join the take group they overlap, or form a new one, and each newest
-// pass plays over its own range.
+// pass plays over its own range. MIDI passes (a MIDI track's clips) make or join
+// a MIDI group.
 class RecordTakes final : public TakeGroupEdit
 {
 public:
     RecordTakes(Id trackId, std::vector<AudioClip> passes);
+    RecordTakes(Id trackId, std::vector<MidiClip> passes);
     std::string name() const override { return "Record takes"; }
 
 private:
     Result edit(Project&, Track&, TakeGroup&) override;
     Id chooseGroup(const Track& track) const override;
     std::vector<AudioClip> passes_;
+    std::vector<MidiClip> midiPasses_;
+    bool midi_ = false;
+};
+
+// A MIDI track's recorded passes in its merge or replace mode
+// (Track::midiRecordMode): each pass's notes and controller events go into the
+// MIDI clip under the pass (the one it overlaps most, grown to hold the pass);
+// a pass over no clip becomes a clip, which later passes then join. Replace first
+// removes what that clip had over the pass's range (its notes starting there and,
+// for each controller the pass sends, its events there). One step; the track's
+// MIDI clips as they were come back on undo.
+class RecordMidiPasses final : public Command
+{
+public:
+    RecordMidiPasses(Id trackId, std::vector<MidiClip> passes, bool replace);
+    std::string name() const override { return replace_ ? "Record (replace)" : "Record (merge)"; }
+    bool apply(Project&) override;
+    bool revert(Project&) override;
+    std::size_t footprint() const noexcept override;
+
+private:
+    Id trackId_;
+    std::vector<MidiClip> passes_;
+    bool replace_;
+    std::optional<std::vector<MidiClip>> before_, after_;
 };
 
 // Swipe comping: a take plays over a range (start >= end: over all of the take,
@@ -187,8 +225,9 @@ private:
 };
 
 // Moves a take group (its takes, its comp and the comp's clips as they are) by
-// `delta` samples, onto another audio track when `toTrackId` differs; the group
-// is pinned at zero. Moving a comp clip in the arrange view moves its group.
+// `delta` samples, onto another audio track (a MIDI group: MIDI track) when
+// `toTrackId` differs; the group is pinned at zero. Moving a comp clip in the
+// arrange view moves its group.
 class MoveTakeGroup final : public Command
 {
 public:
@@ -206,7 +245,8 @@ private:
 
 // "Move to new track": a new audio track right under the take's track, with the
 // take as its clip, and the take deleted from the group (one undo step when run
-// as a group). Empty when the take does not exist.
+// as a group). A MIDI take goes to a new MIDI track playing the same instrument
+// on the same channel. Empty when the take does not exist.
 std::vector<std::unique_ptr<Command>>
 moveTakeToNewTrack(const Project& project, Id trackId, Id groupId, Id takeId);
 

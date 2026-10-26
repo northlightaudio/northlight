@@ -205,7 +205,7 @@ TEST_CASE("A recording over a take group joins it as the newest take", "[core][c
     CHECK(recordingMakesTakes(p.tracks[0], {pass("x.wav", 1500, 1000)}, false));
     CHECK_FALSE(recordingMakesTakes(p.tracks[0], {pass("x.wav", 5000, 1000)}, false));
     CHECK(recordingMakesTakes(p.tracks[0], {pass("x.wav", 5000, 1000)}, true)); // a punch
-    CHECK_FALSE(recordingMakesTakes(p.tracks[0], {}, true));
+    CHECK_FALSE(recordingMakesTakes(p.tracks[0], std::vector<AudioClip>{}, true));
 
     const auto groupId = onlyGroup(p).id;
     stack.execute(p, std::make_unique<RecordTakes>(1, std::vector<AudioClip>{pass("t3.wav", 1500, 1000)}));
@@ -421,4 +421,241 @@ TEST_CASE("Take groups round-trip through JSON, and version 5 files load without
     REQUIRE(old.has_value());
     CHECK(old->tracks[0].clips.size() == 2); // overlapping clips stay as they were
     CHECK(old->tracks[0].takeGroups.empty());
+}
+
+// ----- MIDI takes ------------------------------------------------------------------------------
+
+namespace
+{
+MidiClip
+midiPass(SamplePosition start, SamplePosition length, std::vector<std::pair<int, SamplePosition>> notes)
+{
+    MidiClip c;
+    c.name = "pass";
+    c.start = start;
+    c.length = length;
+    for (const auto& [pitch, at] : notes)
+    {
+        MidiNote n;
+        n.note = pitch;
+        n.start = at;
+        n.length = 100;
+        n.velocity = 90;
+        c.notes.push_back(n);
+    }
+    return c;
+}
+
+// A project with one MIDI track (id 1).
+Project midiProject()
+{
+    Project p;
+    p.sampleRate = 48000.0;
+    p.nextId = 2;
+    Track t;
+    t.id = 1;
+    t.kind = TrackKind::midi;
+    t.name = "Keys";
+    p.tracks.push_back(t);
+    return p;
+}
+} // namespace
+
+TEST_CASE("Loop-recorded MIDI passes become takes in a MIDI take group, comped as MIDI clips",
+          "[core][comping][midi]")
+{
+    UndoStack stack;
+    auto p = midiProject();
+    const auto empty = p;
+    std::vector<MidiClip> passes{midiPass(1000, 4000, {{60, 0}, {62, 2000}}),
+                                 midiPass(1000, 4000, {{64, 500}, {65, 3000}})};
+    CHECK(recordingMakesTakes(p.tracks[0], passes, false));
+    REQUIRE(stack.execute(p, std::make_unique<RecordTakes>(1, passes)));
+    const auto& g = onlyGroup(p);
+    CHECK(g.midi);
+    REQUIRE(g.takes.size() == 2);
+    CHECK(g.takes[0].notes.size() == 2);
+    CHECK(g.takes[1].clip.name == "Take 2");
+    // The newest plays: one MIDI clip with its notes, no audio clips.
+    REQUIRE(p.tracks[0].midiClips.size() == 1);
+    CHECK(p.tracks[0].clips.empty());
+    CHECK(g.ownsClip(p.tracks[0].midiClips[0].id));
+    REQUIRE(p.tracks[0].midiClips[0].notes.size() == 2);
+    CHECK(p.tracks[0].midiClips[0].notes[0].note == 64);
+    const auto after = p;
+
+    // Swipe the first take over the first half: two clips, each with its take's notes there.
+    REQUIRE(stack.execute(p, std::make_unique<SelectTake>(1, g.id, g.takes[0].id(), 1000, 3000)));
+    REQUIRE(p.tracks[0].midiClips.size() == 2);
+    const auto& left = p.tracks[0].midiClips[0];
+    const auto& right = p.tracks[0].midiClips[1];
+    CHECK(left.start == 1000);
+    CHECK(left.length == 2000);
+    REQUIRE(left.notes.size() == 1);
+    CHECK(left.notes[0].note == 60);
+    CHECK(right.start == 3000);
+    REQUIRE(right.notes.size() == 1);
+    CHECK(right.notes[0].note == 65);
+    CHECK(right.notes[0].start == 1000);
+
+    // Undo and redo.
+    CHECK(stack.undo(p));
+    CHECK(same(p, after));
+    CHECK(stack.undo(p));
+    CHECK(same(p, empty));
+    CHECK(stack.redo(p));
+    CHECK(same(p, after));
+}
+
+TEST_CASE("A MIDI comp's segment cuts notes at its end and opens with the controllers' values",
+          "[core][comping][midi]")
+{
+    TakeGroup g;
+    g.midi = true;
+    Take take;
+    take.clip.id = 10;
+    take.clip.start = 0;
+    take.clip.length = 1000;
+    MidiNote long_;
+    long_.id = 20;
+    long_.note = 60;
+    long_.start = 100;
+    long_.length = 800;
+    take.notes.push_back(long_);
+    take.controllers.push_back({21, MidiControllerType::controller, 1, 64, 50});
+    g.takes.push_back(take);
+    g.comp = {{0, 500, 10}, {500, 1000, 10}};
+    const auto clips = compMidiClips(g);
+    REQUIRE(clips.size() == 2);
+    REQUIRE(clips[0].notes.size() == 1);
+    CHECK(clips[0].notes[0].length == 400); // cut at the segment's end
+    CHECK(clips[1].notes.empty());          // a note belongs to the segment it starts in
+    REQUIRE(clips[1].controllers.size() == 1);
+    CHECK(clips[1].controllers[0].time == 0); // the mod wheel's value at 500
+    CHECK(clips[1].controllers[0].value == 64);
+}
+
+TEST_CASE("MIDI passes merge into the clip under them, or replace what it had there", "[core][comping][midi]")
+{
+    UndoStack stack;
+    auto p = midiProject();
+    MidiClip existing = midiPass(0, 4000, {{60, 0}, {62, 1500}, {64, 3500}});
+    existing.id = p.allocateId();
+    for (auto& n : existing.notes)
+        n.id = p.allocateId();
+    p.tracks[0].midiClips.push_back(existing);
+    const auto before = p;
+
+    SECTION("merge: the notes join, the clip grows to hold the pass")
+    {
+        REQUIRE(
+            stack.execute(p,
+                          std::make_unique<RecordMidiPasses>(
+                              1, std::vector<MidiClip>{midiPass(1000, 4000, {{67, 0}, {69, 3500}})}, false)));
+        REQUIRE(p.tracks[0].midiClips.size() == 1);
+        const auto& c = p.tracks[0].midiClips[0];
+        CHECK(c.id == existing.id);
+        CHECK(c.length == 5000);
+        CHECK(c.notes.size() == 5);
+        CHECK(c.notes[1].note == 67);
+        CHECK(c.notes[1].start == 1000);
+    }
+    SECTION("replace: the notes the pass covers go first")
+    {
+        REQUIRE(stack.execute(p,
+                              std::make_unique<RecordMidiPasses>(
+                                  1, std::vector<MidiClip>{midiPass(1000, 2000, {{67, 0}})}, true)));
+        const auto& c = p.tracks[0].midiClips[0];
+        REQUIRE(c.notes.size() == 3); // 60 and 64 stay, 62 (at 1500) is replaced by 67
+        CHECK(c.notes[0].note == 60);
+        CHECK(c.notes[1].note == 67);
+        CHECK(c.notes[2].note == 64);
+    }
+    SECTION("a pass over no clip becomes one, and loop passes pile into it")
+    {
+        REQUIRE(stack.execute(
+            p,
+            std::make_unique<RecordMidiPasses>(
+                1,
+                std::vector<MidiClip>{midiPass(10000, 2000, {{60, 0}}), midiPass(10000, 2000, {{64, 500}})},
+                false)));
+        REQUIRE(p.tracks[0].midiClips.size() == 2);
+        CHECK(p.tracks[0].midiClips[1].notes.size() == 2);
+    }
+    const auto after = p;
+    CHECK(stack.undo(p));
+    CHECK(same(p, before));
+    CHECK(stack.redo(p));
+    CHECK(p == after);
+}
+
+TEST_CASE("A MIDI take group moves to another MIDI track, not an audio one", "[core][comping][midi]")
+{
+    UndoStack stack;
+    auto p = midiProject();
+    Track other;
+    other.id = 50;
+    other.kind = TrackKind::midi;
+    p.tracks.push_back(other);
+    Track audio;
+    audio.id = 51;
+    p.tracks.push_back(audio);
+    p.nextId = 60;
+    stack.execute(
+        p,
+        std::make_unique<RecordTakes>(
+            1, std::vector<MidiClip>{midiPass(1000, 1000, {{60, 0}}), midiPass(1000, 1000, {{62, 0}})}));
+    const auto groupId = onlyGroup(p).id;
+    REQUIRE(stack.execute(p, std::make_unique<MoveTakeGroup>(1, groupId, 51, 500)));
+    CHECK(p.tracks[2].takeGroups.empty()); // refused: an audio track
+    REQUIRE(stack.execute(p, std::make_unique<MoveTakeGroup>(1, groupId, 50, 500)));
+    REQUIRE(p.tracks[1].takeGroups.size() == 1);
+    CHECK(p.tracks[1].takeGroups[0].start() == 1500);
+    REQUIRE(p.tracks[1].midiClips.size() == 1);
+    CHECK(p.tracks[1].midiClips[0].start == 1500);
+    CHECK(p.tracks[0].midiClips.empty());
+
+    // Move take to new track: a MIDI track with the take as its clip.
+    const auto commands = moveTakeToNewTrack(p, 50, groupId, p.tracks[1].takeGroups[0].takes[0].id());
+    REQUIRE(commands.size() == 2);
+}
+
+TEST_CASE("MIDI take groups and muted notes round-trip through JSON", "[core][json][comping][midi]")
+{
+    UndoStack stack;
+    auto p = midiProject();
+    p.tracks[0].midiRecordMode = MidiRecordMode::replace;
+    stack.execute(p,
+                  std::make_unique<RecordTakes>(
+                      1, std::vector<MidiClip>{midiPass(0, 1000, {{60, 0}}), midiPass(0, 1000, {{62, 10}})}));
+    p.tracks[0].midiClips[0].notes[0].muted = true;
+    std::string error;
+    const auto loaded = projectFromJson(projectToJson(p), &error);
+    INFO(error);
+    REQUIRE(loaded.has_value());
+    CHECK(*loaded == p);
+    CHECK(loaded->tracks[0].midiRecordMode == MidiRecordMode::replace);
+    CHECK(loaded->tracks[0].takeGroups[0].midi);
+    CHECK(loaded->tracks[0].midiClips[0].notes[0].muted);
+
+    // A version 15 file: notes of five numbers play, groups are audio, passes are takes.
+    const auto old = projectFromJson(R"({"format":"northlight.project","version":15,"tracks":[
+        {"id":1,"name":"K","kind":"midi","clips":[],"midiClips":[{"id":2,"name":"c","start":0,"length":10,
+         "notes":[[3,60,100,0,5]]}]}]})",
+                                     &error);
+    REQUIRE(old.has_value());
+    CHECK_FALSE(old->tracks[0].midiClips[0].notes[0].muted);
+    CHECK(old->tracks[0].midiRecordMode == MidiRecordMode::takes);
+}
+
+TEST_CASE("Setting a MIDI track's record mode applies, undoes and redoes", "[core][command][midi]")
+{
+    UndoStack stack;
+    auto p = midiProject();
+    REQUIRE(stack.execute(p, std::make_unique<SetMidiRecordMode>(1, MidiRecordMode::merge)));
+    CHECK(p.tracks[0].midiRecordMode == MidiRecordMode::merge);
+    CHECK(stack.undo(p));
+    CHECK(p.tracks[0].midiRecordMode == MidiRecordMode::takes);
+    CHECK(stack.redo(p));
+    CHECK(p.tracks[0].midiRecordMode == MidiRecordMode::merge);
 }

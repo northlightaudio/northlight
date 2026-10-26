@@ -1303,6 +1303,12 @@ void ArrangeView::mouseDownLanes(const juce::MouseEvent& e)
             selection_.clear();
             select(ref, true);
         }
+        // A MIDI comp's clips select together, as an audio comp's do.
+        if (const auto* group = hit.track->takeGroupOwning(hit.midiClip->id);
+            group != nullptr && group->midi && isSelected(ref))
+            for (const auto id : group->clips)
+                if (hit.track->findMidiClip(id) != nullptr)
+                    select({hit.track->id, id, true}, true);
         ArrangeClipPress press{ref, {hit.midiClip->start, hit.midiClip->length}, {}, at, hit.row};
         if (hit.zone == Zone::move)
             gesture_ = std::make_unique<MoveGesture>(*this, std::move(press), e.mods.isCtrlDown());
@@ -2568,13 +2574,16 @@ void ArrangeView::removeClips(const std::vector<ClipRef>& clips)
     // A take group whose comp clips are all deleted goes too, takes and all.
     for (const auto& track : project_->tracks)
         for (const auto& group : track.takeGroups)
-            if (!group.clips.empty() && std::all_of(group.clips.begin(),
-                                                    group.clips.end(),
-                                                    [&](core::Id id)
-                                                    {
-                                                        return track.findClip(id) == nullptr ||
-                                                               edit::contains(clips, {track.id, id});
-                                                    }))
+            if (!group.clips.empty() &&
+                std::all_of(group.clips.begin(),
+                            group.clips.end(),
+                            [&](core::Id id)
+                            {
+                                if (group.midi)
+                                    return track.findMidiClip(id) == nullptr ||
+                                           edit::contains(clips, {track.id, id, true});
+                                return track.findClip(id) == nullptr || edit::contains(clips, {track.id, id});
+                            }))
                 e.commands.push_back(std::make_unique<core::RemoveTakeGroup>(track.id, group.id));
     std::erase_if(selection_, [&](const ClipRef& ref) { return edit::contains(clips, ref); });
     emit(std::move(e.commands), e.name);

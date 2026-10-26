@@ -81,6 +81,10 @@ public:
     void openPianoRoll(core::Id trackId, core::Id clipId);
     // The piano roll's lane by key (ui::PianoRoll::laneForKey: "velocity", "bend", "mod", "cc74").
     void setPianoRollLane(const juce::String& key);
+    // The piano roll's view for captures (launch flag --piano-roll-view): a comma
+    // list of ghosts, named, follow, select (all notes), mute (the selection),
+    // lane=<key> (another lane), rows=<px>, grid=<label> ("1/8T"), fit.
+    void configurePianoRoll(const juce::String& options);
     // The audio editor on an audio clip, in pitch mode when asked.
     void openAudioEditor(core::Id trackId, core::Id clipId, bool pitch = false);
     void zoomAudioEditor(double samplesPerPixel, double secondsIntoClip);

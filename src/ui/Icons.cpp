@@ -144,6 +144,8 @@ const Definition definitions[Icons::count] = {
      false},
     {"visible", "M1.5 8 C3.5 4 12.5 4 14.5 8 C12.5 12 3.5 12 1.5 8 Z M8 6 A2 2 0 1 1 7.99 6 Z", false},
     {"hidden", "M1.5 8 C3.5 4 12.5 4 14.5 8 C12.5 12 3.5 12 1.5 8 Z M2.5 13.5 L13.5 2.5", false},
+    {"followPlayhead", "M5 2.5 V13.5 M3 2.5 H7 M8.5 8 H13.5 M11 5.5 L13.5 8 L11 10.5", false},
+    {"ghostNotes", "M7.5 9.5 H13.5 V12.5 H7.5 Z", false, "M2 3.5 H9.5 V7 H2 Z"},
 };
 } // namespace
 

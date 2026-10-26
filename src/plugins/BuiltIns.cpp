@@ -58,6 +58,13 @@ std::unique_ptr<engine::InsertProcessor> corona(const sampler::Loader& loader)
 {
     return amp::create(loader);
 }
+
+// Pulsar's pads by note ("Kick" on 36).
+const char* pulsarNoteName(int note)
+{
+    const int pad = pulsar::padForNote(note);
+    return pad >= 0 ? pulsar::padName(pad) : nullptr;
+}
 } // namespace
 
 const std::vector<BuiltInType>& builtInTypes()
@@ -142,7 +149,13 @@ const std::vector<BuiltInType>& builtInTypes()
         {tide::type, "Tide", effect, plain<tide::create>, pl::tidePresets, "Chorus pedal"},
         {polaris::type, "Polaris", effect, plain<polaris::create>, pl::polarisPresets, "Tuner pedal"},
         {aurora::type, "Aurora", instrument, plain<aurora::create>, pl::auroraPresets, "Polyphonic synth"},
-        {pulsar::type, "Pulsar", instrument, plain<pulsar::create>, nullptr, "Eight-pad drum synth"},
+        {pulsar::type,
+         "Pulsar",
+         instrument,
+         plain<pulsar::create>,
+         nullptr,
+         "Eight-pad drum synth",
+         pulsarNoteName},
         {nebula::type, "Nebula", instrument, plain<nebula::create>, pl::nebulaPresets, "Airy pad synth"},
         {starbit::type, "Starbit", instrument, plain<starbit::create>, pl::starbitPresets, "Chiptune synth"},
         {sampler::type, "Sampler", instrument, sampled, nullptr, "One sample across the keys"},
@@ -156,6 +169,21 @@ const BuiltInType* findBuiltIn(const std::string& typeName)
     const auto it =
         std::find_if(list.begin(), list.end(), [&](const BuiltInType& b) { return b.type == typeName; });
     return it != list.end() ? &*it : nullptr;
+}
+
+std::string builtInNoteName(const std::string& typeName, int note)
+{
+    const auto* builtIn = findBuiltIn(typeName);
+    if (builtIn == nullptr || builtIn->noteName == nullptr)
+        return {};
+    const char* name = builtIn->noteName(note);
+    return name != nullptr ? std::string(name) : std::string{};
+}
+
+bool builtInNamesNotes(const std::string& typeName)
+{
+    const auto* builtIn = findBuiltIn(typeName);
+    return builtIn != nullptr && builtIn->noteName != nullptr;
 }
 
 std::vector<std::string> BuiltInFactory::typeNames() const
