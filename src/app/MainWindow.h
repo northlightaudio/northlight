@@ -120,6 +120,8 @@ private:
     class AudioSetupWindow;
     class PreferencesWindow;
 
+    // The content, owned by the window (setContentOwned); typed so the facade reaches it directly.
+    Content* content_ = nullptr;
     std::unique_ptr<juce::TimedCallback> offscreenPainter_; // --offscreen only
 
     // The window's size, position and maximised state, kept in the user's settings

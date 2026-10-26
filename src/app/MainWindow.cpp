@@ -3172,7 +3172,9 @@ MainWindow::MainWindow(const juce::String& name,
     // edge resizing and the Snap Layouts flyout native.
     setUsingNativeTitleBar(false);
     setTitleBarHeight(0);
-    setContentOwned(new Content(*this, audio_, session_, settings_), true);
+    auto content = std::make_unique<Content>(*this, audio_, session_, settings_);
+    content_ = content.get();
+    setContentOwned(content.release(), true);
     setResizable(true, false);
     setResizeLimits(1280, 720, 10000, 10000);
     centreWithSize(getWidth(), getHeight());
@@ -3227,7 +3229,7 @@ void MainWindow::savePlacement()
 
 void MainWindow::closeButtonPressed()
 {
-    if (auto* content = dynamic_cast<Content*>(getContentComponent()))
+    if (auto* content = content_)
         content->confirmClose();
     else
         juce::JUCEApplication::getInstance()->systemRequestedQuit();
@@ -3290,7 +3292,7 @@ void MainWindow::showPreferences(const juce::String& page)
         view->onWarning = [this](const juce::String& message) { notify(message, true); };
         view->systemReport = [this]
         {
-            if (auto* content = dynamic_cast<Content*>(getContentComponent()))
+            if (auto* content = content_)
                 return content->diagnostics_.report();
             return juce::String();
         };
@@ -3308,26 +3310,26 @@ void MainWindow::closePreferences()
 
 void MainWindow::showMixer()
 {
-    if (auto* content = dynamic_cast<Content*>(getContentComponent()))
+    if (auto* content = content_)
         content->panels_.show(ui::PanelId::mixer);
 }
 
 void MainWindow::showTempoTrack()
 {
-    if (auto* content = dynamic_cast<Content*>(getContentComponent()))
+    if (auto* content = content_)
         content->tracks_.setTempoTrackShown(true);
 }
 
 void MainWindow::openInsertEditor(core::Id channelId, core::Id insertId)
 {
     showMixer();
-    if (auto* content = dynamic_cast<Content*>(getContentComponent()))
+    if (auto* content = content_)
         content->mixer_.openInsertEditor(channelId, insertId);
 }
 
 void MainWindow::showFilesBrowser(const juce::File& folder)
 {
-    if (auto* content = dynamic_cast<Content*>(getContentComponent()))
+    if (auto* content = content_)
     {
         content->browserPanel_.showFiles();
         if (folder.isDirectory())
@@ -3338,7 +3340,7 @@ void MainWindow::showFilesBrowser(const juce::File& folder)
 
 void MainWindow::showPluginBrowser()
 {
-    if (auto* content = dynamic_cast<Content*>(getContentComponent()))
+    if (auto* content = content_)
     {
         content->browserPanel_.showPlugins();
         content->panels_.moveTo(ui::PanelId::browser, ui::HostKind::floating);
@@ -3348,7 +3350,7 @@ void MainWindow::showPluginBrowser()
 
 void MainWindow::openPianoRoll(core::Id trackId, core::Id clipId)
 {
-    if (auto* content = dynamic_cast<Content*>(getContentComponent()))
+    if (auto* content = content_)
     {
         content->pianoRoll_.setClip(&session_.project(), trackId, clipId);
         content->panels_.show(ui::PanelId::pianoRoll);
@@ -3357,13 +3359,13 @@ void MainWindow::openPianoRoll(core::Id trackId, core::Id clipId)
 
 void MainWindow::setPianoRollLane(const juce::String& key)
 {
-    if (auto* content = dynamic_cast<Content*>(getContentComponent()))
+    if (auto* content = content_)
         content->pianoRoll_.setLane(ui::PianoRoll::laneForKey(key));
 }
 
 void MainWindow::openAudioEditor(core::Id trackId, core::Id clipId, bool pitch)
 {
-    if (auto* content = dynamic_cast<Content*>(getContentComponent()))
+    if (auto* content = content_)
     {
         content->audioEditor_.setClip(&session_.project(), trackId, clipId);
         if (pitch)
@@ -3374,49 +3376,49 @@ void MainWindow::openAudioEditor(core::Id trackId, core::Id clipId, bool pitch)
 
 void MainWindow::zoomAudioEditor(double samplesPerPixel, double secondsIntoClip)
 {
-    if (auto* content = dynamic_cast<Content*>(getContentComponent()))
+    if (auto* content = content_)
         content->audioEditor_.zoomTo(samplesPerPixel, secondsIntoClip);
 }
 
 void MainWindow::selectClip(core::Id trackId, core::Id clipId)
 {
-    if (auto* content = dynamic_cast<Content*>(getContentComponent()))
+    if (auto* content = content_)
         content->selection_.select(trackId, clipId);
 }
 
 void MainWindow::correctPitchInEditor()
 {
-    if (auto* content = dynamic_cast<Content*>(getContentComponent()))
+    if (auto* content = content_)
         content->audioEditor_.correctToKey({});
 }
 
 void MainWindow::muteBreathsInEditor()
 {
-    if (auto* content = dynamic_cast<Content*>(getContentComponent()))
+    if (auto* content = content_)
         content->audioEditor_.setBreaths(0.0f, true);
 }
 
 void MainWindow::runStripDragBenchmark(int seconds)
 {
-    if (auto* content = dynamic_cast<Content*>(getContentComponent()))
+    if (auto* content = content_)
         content->runStripDragBenchmark(seconds);
 }
 
 void MainWindow::runHoverBenchmark(int seconds)
 {
-    if (auto* content = dynamic_cast<Content*>(getContentComponent()))
+    if (auto* content = content_)
         content->runHoverBenchmark(seconds);
 }
 
 void MainWindow::showAutomation(core::Id trackId)
 {
-    if (auto* content = dynamic_cast<Content*>(getContentComponent()))
+    if (auto* content = content_)
         content->tracks_.showAutomation(trackId, true);
 }
 
 void MainWindow::showPanel(const juce::String& key)
 {
-    auto* content = dynamic_cast<Content*>(getContentComponent());
+    auto* content = content_;
     if (content == nullptr)
         return;
     for (const auto id : {ui::PanelId::mixer,
@@ -3433,7 +3435,7 @@ void MainWindow::showPanel(const juce::String& key)
 
 void MainWindow::showMenu(const juce::String& key)
 {
-    auto* content = dynamic_cast<Content*>(getContentComponent());
+    auto* content = content_;
     if (content == nullptr)
         return;
     if (key == "project")
@@ -3446,7 +3448,7 @@ void MainWindow::showMenu(const juce::String& key)
 
 bool MainWindow::setArrangeTool(const juce::String& name)
 {
-    auto* content = dynamic_cast<Content*>(getContentComponent());
+    auto* content = content_;
     if (content == nullptr)
         return false;
     for (int i = 0; i < ui::ArrangeView::toolCount; ++i)
@@ -3460,13 +3462,13 @@ bool MainWindow::setArrangeTool(const juce::String& name)
 
 void MainWindow::arrangePointer(int row, double bar, juce::ModifierKeys mods)
 {
-    if (auto* content = dynamic_cast<Content*>(getContentComponent()))
+    if (auto* content = content_)
         content->tracks_.pointerAt(content->tracks_.pointOnRow(row, bar), mods);
 }
 
 void MainWindow::showEditorGap(int n)
 {
-    auto* content = dynamic_cast<Content*>(getContentComponent());
+    auto* content = content_;
     if (content == nullptr)
         return;
     const auto& gaps = content->editor_.gapButtons();
@@ -3534,13 +3536,13 @@ juce::StringArray MainWindow::capture(const juce::File& folder, float scale)
 
 void MainWindow::applyLayoutPreset(const juce::String& name)
 {
-    if (auto* content = dynamic_cast<Content*>(getContentComponent()))
+    if (auto* content = content_)
         content->panels_.applyPreset(name);
 }
 
 void MainWindow::openWithProgress(const juce::File& file, const juce::String& holdAt)
 {
-    auto* content = dynamic_cast<Content*>(getContentComponent());
+    auto* content = content_;
     if (content == nullptr)
         return;
     std::optional<LoadProgress::Stage> hold;
@@ -3557,7 +3559,7 @@ void MainWindow::openWithProgress(const juce::File& file, const juce::String& ho
 
 void MainWindow::notify(const juce::String& message, bool warning)
 {
-    if (auto* content = dynamic_cast<Content*>(getContentComponent()))
+    if (auto* content = content_)
     {
         if (warning)
             content->toast(ui::ToastStack::Kind::warning, message);
@@ -3568,43 +3570,43 @@ void MainWindow::notify(const juce::String& message, bool warning)
 
 void MainWindow::addBus()
 {
-    if (auto* content = dynamic_cast<Content*>(getContentComponent()))
+    if (auto* content = content_)
         content->addBus();
 }
 
 void MainWindow::removeLastBus()
 {
-    if (auto* content = dynamic_cast<Content*>(getContentComponent()))
+    if (auto* content = content_)
         content->removeLastBus();
 }
 
 void MainWindow::runPanelBenchmark(int cycles)
 {
-    if (auto* content = dynamic_cast<Content*>(getContentComponent()))
+    if (auto* content = content_)
         content->runPanelBenchmark(std::max(1, cycles));
 }
 
 void MainWindow::runBenchmark(int seconds)
 {
-    if (auto* content = dynamic_cast<Content*>(getContentComponent()))
+    if (auto* content = content_)
         content->runBenchmark(std::max(1, seconds));
 }
 
 void MainWindow::showFirstRun()
 {
-    if (auto* content = dynamic_cast<Content*>(getContentComponent()))
+    if (auto* content = content_)
         content->showFirstRun();
 }
 
 void MainWindow::showExport()
 {
-    if (auto* content = dynamic_cast<Content*>(getContentComponent()))
+    if (auto* content = content_)
         content->showExportSheet();
 }
 
 void MainWindow::offerRecovery()
 {
-    auto* content = dynamic_cast<Content*>(getContentComponent());
+    auto* content = content_;
     if (content == nullptr)
         return;
     juce::Component::SafePointer<MainWindow> safe(this);
