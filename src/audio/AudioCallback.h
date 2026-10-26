@@ -3,6 +3,7 @@
 #include "engine/AudioEngine.h"
 #include "engine/OutputTap.h"
 #include "engine/rt/CallbackStats.h"
+#include "engine/rt/PeakHistory.h"
 
 #include <juce_audio_devices/juce_audio_devices.h>
 
@@ -50,9 +51,10 @@ public:
     int numActiveOutputs() const noexcept;
     double currentSampleRate() const noexcept;
 
-    // Peak absolute sample since the last call; the caller resets by reading.
-    float takeInputPeak() noexcept;
-    float takeOutputPeak() noexcept;
+    // Each block's peak absolute sample, in and out. Every meter keeps its own
+    // rt::PeakHistory::Reader, so meters open at once never take each other's peaks.
+    const rt::PeakHistory& inputPeaks() const noexcept { return inputPeaks_; }
+    const rt::PeakHistory& outputPeaks() const noexcept { return outputPeaks_; }
 
     // Set by audioDeviceError; cleared by the reader.
     bool takeErrorFlag() noexcept;
@@ -146,8 +148,8 @@ private:
     std::atomic<int> numInputs_{0};
     std::atomic<int> numOutputs_{0};
     std::atomic<double> sampleRate_{0.0};
-    std::atomic<float> inputPeak_{0.0f};
-    std::atomic<float> outputPeak_{0.0f};
+    rt::PeakHistory inputPeaks_;
+    rt::PeakHistory outputPeaks_;
     std::atomic<bool> errorFlag_{false};
 
     std::atomic<CalibrationPhase> calibrationPhase_{CalibrationPhase::idle};

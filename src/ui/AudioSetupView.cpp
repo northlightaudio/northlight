@@ -637,8 +637,8 @@ void AudioSetupView::timerCallback()
     const double now = juce::Time::getMillisecondCounterHiRes();
     const double elapsed = lastMeterMs_ > 0.0 ? now - lastMeterMs_ : 1000.0 / uiTimerHz;
     lastMeterMs_ = now;
-    const float inputPeak = audio_.callback().takeInputPeak();
-    const float outputPeak = audio_.callback().takeOutputPeak();
+    const float inputPeak = inputPeaks_.take(audio_.callback().inputPeaks());
+    const float outputPeak = outputPeaks_.take(audio_.callback().outputPeaks());
     lastInputPeak_ = inputPeak;
     inputMeter_->push(&inputPeak, 1, elapsed);
     outputMeter_->push(&outputPeak, 1, elapsed);
@@ -731,7 +731,8 @@ void AudioSetupView::refreshFromDevice()
     }
     bufferSizeBox_.clear(juce::dontSendNotification);
     id = 1;
-    for (int size : audio_.availableBufferSizes())
+    bufferSizes_ = status.open ? audio_.bufferSizeChoices() : std::vector<int>{};
+    for (int size : bufferSizes_)
     {
         juce::String text(size);
         if (status.sampleRate > 0.0)
@@ -887,18 +888,17 @@ void AudioSetupView::deviceTypeChanged()
 {
     if (updating_)
         return;
-    audio::AudioSettings s = audio_.settings();
-    s.deviceType = selectedDeviceType();
-    deviceNames_ = audio_.deviceNames(s.deviceType);
-    const auto pick = [](const std::vector<std::string>& names, int defaultIndex)
-    {
-        if (names.empty())
-            return std::string{};
-        return names[static_cast<size_t>(juce::jlimit(0, static_cast<int>(names.size()) - 1, defaultIndex))];
-    };
-    s.outputDevice = pick(deviceNames_.outputs, deviceNames_.defaultOutput);
-    s.inputDevice = selectedTypeHasSeparateInputs() ? pick(deviceNames_.inputs, deviceNames_.defaultInput)
-                                                    : s.outputDevice;
+    const int index = deviceTypeBox_.getSelectedId() - 1;
+    if (index < 0 || static_cast<size_t>(index) >= deviceTypes_.size())
+        return;
+    const auto& type = deviceTypes_[static_cast<size_t>(index)];
+    deviceNames_ = audio_.deviceNames(type.name);
+    const auto& outputs = deviceNames_.outputs;
+    const auto output = outputs.empty()
+                            ? std::string{}
+                            : outputs[static_cast<size_t>(juce::jlimit(
+                                  0, static_cast<int>(outputs.size()) - 1, deviceNames_.defaultOutput))];
+    auto s = audio::AudioDeviceLayer::withDevice(audio_.settings(), type, deviceNames_, output);
     s.sampleRate = 0.0;
     s.bufferSize = 0;
     s.inputChannels.reset();
@@ -943,10 +943,9 @@ void AudioSetupView::formatChanged()
     s.sampleRate = rateIndex >= 0 && static_cast<size_t>(rateIndex) < rates.size()
                        ? rates[static_cast<size_t>(rateIndex)]
                        : 0.0;
-    const auto sizes = audio_.availableBufferSizes();
     const int sizeIndex = bufferSizeBox_.getSelectedId() - 1;
-    s.bufferSize = sizeIndex >= 0 && static_cast<size_t>(sizeIndex) < sizes.size()
-                       ? sizes[static_cast<size_t>(sizeIndex)]
+    s.bufferSize = sizeIndex >= 0 && static_cast<size_t>(sizeIndex) < bufferSizes_.size()
+                       ? bufferSizes_[static_cast<size_t>(sizeIndex)]
                        : 0;
     applySettings(s);
 }

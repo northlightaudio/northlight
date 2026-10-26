@@ -1,4 +1,5 @@
 #include "engine/rt/MpscQueue.h"
+#include "engine/rt/PeakHistory.h"
 #include "engine/rt/RealtimeGuard.h"
 #include "engine/rt/SnapshotPublisher.h"
 #include "engine/rt/SpscQueue.h"
@@ -240,4 +241,25 @@ TEST_CASE("A telemetry ring hands each reader the frames since its cursor, oldes
     CHECK(ring.read(behind, out.data(), 64) == 64 - 16);
     CHECK(out[0][0] == static_cast<float>(200 - 48));
     CHECK(behind == 200);
+}
+
+TEST_CASE("Peak history gives every reader the peak since its own last look", "[rt][peaks]")
+{
+    PeakHistory history;
+    PeakHistory::Reader a, b;
+    CHECK(a.take(history) == 0.0f);
+    history.publish(0.5f);
+    history.publish(0.25f);
+    CHECK(a.take(history) == 0.5f);
+    CHECK(a.take(history) == 0.0f); // nothing new for a
+    history.publish(0.125f);
+    CHECK(b.take(history) == 0.5f); // b still sees everything since it last looked
+    CHECK(a.take(history) == 0.125f);
+
+    // A reader far behind sees the last `length` blocks.
+    PeakHistory::Reader late;
+    history.publish(0.9f);
+    for (std::size_t i = 0; i < PeakHistory::length; ++i)
+        history.publish(0.1f);
+    CHECK(late.take(history) == 0.1f);
 }

@@ -25,15 +25,6 @@ float blockPeak(const float* const* channels, int numChannels, int numSamples) n
     }
     return peak;
 }
-
-void raisePeak(std::atomic<float>& target, float candidate) noexcept
-{
-    float current = target.load(std::memory_order_relaxed);
-    while (candidate > current &&
-           !target.compare_exchange_weak(current, candidate, std::memory_order_relaxed))
-    {
-    }
-}
 } // namespace
 
 AudioCallback::AudioCallback() = default;
@@ -91,16 +82,6 @@ int AudioCallback::numActiveOutputs() const noexcept
 double AudioCallback::currentSampleRate() const noexcept
 {
     return sampleRate_.load(std::memory_order_relaxed);
-}
-
-float AudioCallback::takeInputPeak() noexcept
-{
-    return inputPeak_.exchange(0.0f, std::memory_order_relaxed);
-}
-
-float AudioCallback::takeOutputPeak() noexcept
-{
-    return outputPeak_.exchange(0.0f, std::memory_order_relaxed);
 }
 
 bool AudioCallback::takeErrorFlag() noexcept
@@ -169,8 +150,6 @@ void AudioCallback::audioDeviceAboutToStart(juce::AudioIODevice* device)
     currentGain_ = targetGain_.load(std::memory_order_relaxed);
     secondsPerSample_ = device->getCurrentSampleRate() > 0.0 ? 1.0 / device->getCurrentSampleRate() : 0.0;
     stats_.reset();
-    inputPeak_.store(0.0f, std::memory_order_relaxed);
-    outputPeak_.store(0.0f, std::memory_order_relaxed);
     // AudioDeviceManager splits oversized blocks, so the device buffer size bounds
     // numSamples.
     if (auto* engine = engine_.load(std::memory_order_acquire))
@@ -220,7 +199,7 @@ void AudioCallback::audioDeviceIOCallbackWithContext(const float* const* inputCh
         phase = CalibrationPhase::idle;
     }
 
-    raisePeak(inputPeak_, blockPeak(inputChannelData, numInputChannels, numSamples));
+    inputPeaks_.publish(blockPeak(inputChannelData, numInputChannels, numSamples));
 
     if (phase == CalibrationPhase::running)
     {
@@ -255,7 +234,7 @@ void AudioCallback::audioDeviceIOCallbackWithContext(const float* const* inputCh
     if (outputMuted_.load(std::memory_order_relaxed))
         renderSilence(outputChannelData, numOutputChannels, numSamples);
 
-    raisePeak(outputPeak_, blockPeak(outputChannelData, numOutputChannels, numSamples));
+    outputPeaks_.publish(blockPeak(outputChannelData, numOutputChannels, numSamples));
 
     const double elapsed =
         std::chrono::duration<double>(std::chrono::steady_clock::now() - startedAt).count();

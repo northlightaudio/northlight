@@ -13,6 +13,11 @@ Northlight has not had a release yet. The first release, 0.1.0, will include:
 
 ### Added
 
+- The Audio Setup window, the Preferences Audio page and the first-run sheet can
+  be open together and every input and output meter shows the full signal; they
+  used to take the peaks from one another. The first-run sheet offers the buffer
+  sizes the device itself offers, and picks a Windows Audio device's default input.
+
 - Buses, FX tracks and the master have one colour in every view: the mixer's
   uncoloured group buses are Overcast and its master Slate, as in the arrange
   view, and automation lanes always take their channel's colour.

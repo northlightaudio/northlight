@@ -1,4 +1,5 @@
 #include "audio/AudioCallback.h"
+#include "audio/AudioDeviceLayer.h"
 #include "engine/AudioEngine.h"
 #include "engine/Recording.h"
 #include "engine/WavFile.h"
@@ -230,4 +231,66 @@ TEST_CASE("A device stopping mid-recording finishes the recording so its files c
     const auto info = engine::readWavInfo(path);
     REQUIRE(info.has_value());
     CHECK(info->lengthSamples == 128); // the header was finalised, not left at zero
+}
+
+TEST_CASE("Two meters on the callback's peaks do not take each other's", "[audio][callback]")
+{
+    audio::AudioCallback callback;
+    FakeDevice device;
+    callback.audioDeviceAboutToStart(&device);
+    std::vector<float> in0(64, 0.25f), in1(64, -0.5f);
+    const float* inputs[] = {in0.data(), in1.data()};
+    std::vector<float> out0(64), out1(64);
+    float* outputs[] = {out0.data(), out1.data()};
+    juce::AudioIODeviceCallbackContext context;
+    callback.audioDeviceIOCallbackWithContext(inputs, 2, outputs, 2, 64, context);
+
+    rt::PeakHistory::Reader setup, firstRun;
+    CHECK(setup.take(callback.inputPeaks()) == 0.5f);
+    CHECK(firstRun.take(callback.inputPeaks()) == 0.5f);
+    CHECK(setup.take(callback.inputPeaks()) == 0.0f);
+    callback.audioDeviceStopped();
+}
+
+namespace
+{
+class MemoryStore final : public audio::AudioSettingsStore
+{
+public:
+    audio::AudioSettings loadAudioSettings() override { return saved; }
+    void saveAudioSettings(const audio::AudioSettings& settings) override { saved = settings; }
+    audio::AudioSettings saved;
+};
+} // namespace
+
+TEST_CASE("The master gain and pass-through have one home: the callback", "[audio][device]")
+{
+    const juce::ScopedJuceInitialiser_GUI juceInit;
+    MemoryStore store;
+    audio::AudioDeviceLayer layer(store);
+    layer.setMasterGain(0.5f);
+    layer.setPassThroughEnabled(true);
+    CHECK(layer.callback().masterGain() == Approx(0.5f));
+    CHECK(layer.settings().masterGain == Approx(0.5f));
+    CHECK(layer.settings().passThroughEnabled);
+    CHECK(store.saved.masterGain == Approx(0.5f));
+    CHECK(store.saved.passThroughEnabled);
+}
+
+TEST_CASE("A picked device brings its input: the same device, or the driver's default input",
+          "[audio][device]")
+{
+    audio::AudioDeviceLayer::DeviceNames names;
+    names.outputs = {"Speakers", "Volt"};
+    names.inputs = {"Mic", "Line", "Volt"};
+    names.defaultInput = 1;
+    const auto asio = audio::AudioDeviceLayer::withDevice({}, {"ASIO", false}, names, "Volt");
+    CHECK(asio.deviceType == "ASIO");
+    CHECK(asio.outputDevice == "Volt");
+    CHECK(asio.inputDevice == "Volt");
+    const auto wasapi = audio::AudioDeviceLayer::withDevice({}, {"Windows Audio", true}, names, "Speakers");
+    CHECK(wasapi.outputDevice == "Speakers");
+    CHECK(wasapi.inputDevice == "Line");
+    CHECK(audio::AudioDeviceLayer::indexOf(names.outputs, "Volt") == 1);
+    CHECK(audio::AudioDeviceLayer::indexOf(names.outputs, "Gone") == -1);
 }

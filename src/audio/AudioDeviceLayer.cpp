@@ -194,6 +194,42 @@ std::vector<int> AudioDeviceLayer::availableBufferSizes() const
     return out;
 }
 
+std::vector<int> AudioDeviceLayer::bufferSizeChoices() const
+{
+    auto sizes = availableBufferSizes();
+    if (sizes.empty())
+        sizes = {32, 64, 128, 256, 512, 1024};
+    if (auto* device = manager_.getCurrentAudioDevice())
+        if (const int current = device->getCurrentBufferSizeSamples(); current > 0)
+            sizes.push_back(current); // Windows Audio often runs at a size it does not list
+    std::sort(sizes.begin(), sizes.end());
+    sizes.erase(std::unique(sizes.begin(), sizes.end()), sizes.end());
+    return sizes;
+}
+
+AudioSettings AudioDeviceLayer::withDevice(AudioSettings settings,
+                                           const DeviceType& type,
+                                           const DeviceNames& names,
+                                           const std::string& output)
+{
+    settings.deviceType = type.name;
+    settings.outputDevice = output;
+    if (!type.separateInputsAndOutputs)
+        settings.inputDevice = output;
+    else if (names.inputs.empty())
+        settings.inputDevice.clear();
+    else
+        settings.inputDevice = names.inputs[static_cast<size_t>(
+            std::clamp(names.defaultInput, 0, static_cast<int>(names.inputs.size()) - 1))];
+    return settings;
+}
+
+int AudioDeviceLayer::indexOf(const std::vector<std::string>& names, const std::string& name)
+{
+    const auto found = std::find(names.begin(), names.end(), name);
+    return found == names.end() ? -1 : static_cast<int>(found - names.begin());
+}
+
 std::vector<std::string> AudioDeviceLayer::inputChannelNames() const
 {
     if (auto* device = manager_.getCurrentAudioDevice())
@@ -294,8 +330,6 @@ std::optional<std::string> AudioDeviceLayer::apply(const AudioSettings& requeste
     }
 
     settings_ = requested;
-    settings_.masterGain = callback_.masterGain();
-    settings_.passThroughEnabled = callback_.isPassThroughEnabled();
     // Calibration survives only for the configuration it was measured with.
     if (previous.calibration.has_value())
         settings_.calibration = previous.calibration;
@@ -307,14 +341,12 @@ std::optional<std::string> AudioDeviceLayer::apply(const AudioSettings& requeste
 void AudioDeviceLayer::setMasterGain(float linearGain)
 {
     callback_.setMasterGain(linearGain);
-    settings_.masterGain = callback_.masterGain();
     save();
 }
 
 void AudioDeviceLayer::setPassThroughEnabled(bool enabled)
 {
     callback_.setPassThroughEnabled(enabled);
-    settings_.passThroughEnabled = enabled;
     save();
 }
 
@@ -384,9 +416,17 @@ juce::String AudioDeviceLayer::openDefault()
     return manager_.initialiseWithDefaultDevices(defaultChannelsNeeded, defaultChannelsNeeded);
 }
 
+AudioSettings AudioDeviceLayer::settings() const
+{
+    auto s = settings_;
+    s.masterGain = callback_.masterGain();
+    s.passThroughEnabled = callback_.isPassThroughEnabled();
+    return s;
+}
+
 void AudioDeviceLayer::save()
 {
-    store_.saveAudioSettings(settings_);
+    store_.saveAudioSettings(settings());
 }
 
 void AudioDeviceLayer::setMessage(std::string message)

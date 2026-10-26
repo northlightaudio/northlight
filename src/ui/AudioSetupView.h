@@ -115,6 +115,8 @@ private:
     juce::Label passThroughHint_;
     bool warnedPassThrough_ = false;
     float lastInputPeak_ = 0.0f;
+    rt::PeakHistory::Reader inputPeaks_, outputPeaks_; // this view's own place in the callback's peaks
+    std::vector<int> bufferSizes_;                     // as the buffer size box lists them
     double lastMeterMs_ = 0.0;
     juce::Label levelLabel_;
     juce::Slider levelSlider_;

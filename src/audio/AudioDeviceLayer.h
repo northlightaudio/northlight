@@ -65,6 +65,17 @@ public:
     // Capabilities of the device that is currently open (empty when none is).
     std::vector<double> availableSampleRates() const;
     std::vector<int> availableBufferSizes() const;
+    // The buffer sizes a picker offers: the open device's own (the usual 32 to 1024
+    // when it reports none, or none is open), always with the size it runs at; sorted.
+    std::vector<int> bufferSizeChoices() const;
+    // `settings` with the driver `type` and the output `output`; the input is the
+    // same device, or for a driver with separate inputs its default input.
+    static AudioSettings withDevice(AudioSettings settings,
+                                    const DeviceType& type,
+                                    const DeviceNames& names,
+                                    const std::string& output);
+    // Where `name` is in `names`; -1 when it is not there.
+    static int indexOf(const std::vector<std::string>& names, const std::string& name);
     std::vector<std::string> inputChannelNames() const;
     std::vector<std::string> outputChannelNames() const;
 
@@ -95,7 +106,8 @@ public:
     Status status() const;
 
     // What the user asked for (persisted). May differ from status() after a fallback.
-    const AudioSettings& settings() const noexcept { return settings_; }
+    // The master gain and pass-through in it are the callback's, which holds them.
+    AudioSettings settings() const;
 
     // The stored calibration, if it was made with the currently open configuration.
     std::optional<LatencyCalibration> currentCalibration() const;
@@ -143,7 +155,7 @@ private:
     AudioCallback callback_;
     MidiDeviceLayer midi_;
     LatencyCalibrator calibrator_;
-    AudioSettings settings_;
+    AudioSettings settings_; // its masterGain and passThroughEnabled are unused: callback_ holds them
     std::string message_;
     bool initialised_ = false;
     bool hadDevice_ = false;

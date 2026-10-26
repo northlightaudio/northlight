@@ -5,7 +5,7 @@ add_library(northlight_rt STATIC
     rt/RealtimeGuard.cpp
     rt/SpscQueue.h
     rt/MpscQueue.h
-    rt/MpscQueue.h
+    rt/PeakHistory.h
     rt/SnapshotPublisher.h
     rt/CallbackStats.h
     rt/Denormals.h

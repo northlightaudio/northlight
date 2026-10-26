@@ -17,11 +17,6 @@ add_library(northlight_hosting STATIC
     ParameterEditQueue.h
     ClapEditor.h
     ClapEditor.cpp
-    PluginPresets.cpp
-    PluginEditor.h
-    ParameterEditQueue.h
-    ClapEditor.h
-    ClapEditor.cpp
     PluginScanner.h
     PluginScanner.cpp
     HostedPlugin.h

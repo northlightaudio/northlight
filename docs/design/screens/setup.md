@@ -205,8 +205,9 @@ button row with a footnote (`caption`, `textTertiary`) at its left.
    - Driver: "The lowest latency, for recording and monitoring" when ASIO is
      chosen, else "ASIO, when your interface has it, gives the lowest latency".
    - Device: "Where Northlight plays and records".
-   - Buffer size: "Smaller is more responsive; larger avoids clicks". Each size
-     reads "128 samples · 2.7 ms" at the device's rate; the device's own size is
+   - Buffer size: "Smaller is more responsive; larger avoids clicks". The sizes
+     the device offers (32 to 1024 when it lists none), as Audio Setup lists them,
+     each reading "128 samples · 2.7 ms" at the device's rate; the size it runs at is
      always in the list (Windows Audio often runs at 480).
    - Input: a live meter; "Play or sing: the meter should move".
    Footnote "You can change this any time in Audio Setup."; "Skip" and "Use this

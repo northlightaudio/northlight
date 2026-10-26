@@ -185,14 +185,10 @@ public:
             repaint(); // the driver's hint
         };
         fillDevices();
-        // The usual sizes, and the device's own when it is something else (Windows
-        // Audio often runs at 480), each with what it costs in latency.
-        std::vector<int> sizes{32, 64, 128, 256, 512, 1024};
-        if (status.bufferSize > 0 && std::find(sizes.begin(), sizes.end(), status.bufferSize) == sizes.end())
-            sizes.push_back(status.bufferSize);
-        std::sort(sizes.begin(), sizes.end());
+        // The sizes the device offers, its own among them (Windows Audio often runs
+        // at 480), each with what it costs in latency.
         const double rate = status.sampleRate > 0.0 ? status.sampleRate : 48000.0;
-        for (const int size : sizes)
+        for (const int size : audio_.bufferSizeChoices())
             buffer_.addItem(juce::String(size) + " samples  " +
                                 juce::String(juce::CharPointer_UTF8("\xc2\xb7")) + "  " +
                                 juce::String(1000.0 * size / rate, 1) + " ms",
@@ -207,17 +203,13 @@ public:
     {
         audio::AudioSettings settings = audio_.settings();
         const int type = driver_.getSelectedId() - 1;
-        if (type >= 0 && static_cast<size_t>(type) < types_.size())
-            settings.deviceType = types_[static_cast<size_t>(type)].name;
         const int device = device_.getSelectedId() - 1;
-        if (device >= 0 && static_cast<size_t>(device) < names_.outputs.size())
-        {
-            settings.outputDevice = names_.outputs[static_cast<size_t>(device)];
-            settings.inputDevice =
-                names_.inputs.empty()
-                    ? settings.outputDevice
-                    : names_.inputs[std::min(names_.inputs.size() - 1, static_cast<size_t>(device))];
-        }
+        if (type >= 0 && static_cast<size_t>(type) < types_.size() && device >= 0 &&
+            static_cast<size_t>(device) < names_.outputs.size())
+            settings = audio::AudioDeviceLayer::withDevice(settings,
+                                                           types_[static_cast<size_t>(type)],
+                                                           names_,
+                                                           names_.outputs[static_cast<size_t>(device)]);
         settings.bufferSize = buffer_.getSelectedId();
         return audio_.apply(settings);
     }
@@ -294,16 +286,16 @@ private:
         names_ = audio_.deviceNames(types_[static_cast<size_t>(type)].name);
         for (size_t i = 0; i < names_.outputs.size(); ++i)
             device_.addItem(names_.outputs[i], static_cast<int>(i) + 1);
-        const auto current = audio_.status().outputDevice;
-        for (size_t i = 0; i < names_.outputs.size(); ++i)
-            if (names_.outputs[i] == current)
-                device_.setSelectedId(static_cast<int>(i) + 1, juce::dontSendNotification);
+        if (const int current =
+                audio::AudioDeviceLayer::indexOf(names_.outputs, audio_.status().outputDevice);
+            current >= 0)
+            device_.setSelectedId(current + 1, juce::dontSendNotification);
         if (device_.getSelectedId() == 0 && names_.defaultOutput >= 0)
             device_.setSelectedId(names_.defaultOutput + 1, juce::dontSendNotification);
     }
     void timerCallback() override
     {
-        const float peak = audio_.callback().takeInputPeak();
+        const float peak = peaks_.take(audio_.callback().inputPeaks());
         meter_.push(&peak, 1, 50.0);
     }
 
@@ -311,6 +303,7 @@ private:
     audio::AudioDeviceLayer& audio_;
     juce::ComboBox driver_, device_, buffer_;
     ui::Meter meter_;
+    rt::PeakHistory::Reader peaks_; // the sheet's own place in the input peaks
     std::vector<audio::AudioDeviceLayer::DeviceType> types_;
     audio::AudioDeviceLayer::DeviceNames names_;
 };
