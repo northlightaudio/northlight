@@ -45,7 +45,9 @@ add_library(northlight_app_session STATIC
     Bounce.cpp
     MidiFiles.h
     MidiFiles.cpp
-    LaunchFlags.h)
+    LaunchFlags.h
+    AppMenus.h
+    AppMenus.cpp)
 
 target_include_directories(northlight_app_session PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/..")
 target_link_libraries(northlight_app_session PUBLIC

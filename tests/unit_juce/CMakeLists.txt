@@ -40,6 +40,7 @@ add_executable(northlight_juce_tests
     ArrangeKeymapTests.cpp
     ShortcutsTests.cpp
     LaunchFlagsTests.cpp
+    AppMenusTests.cpp
     ArrangeGestureTests.cpp
     ControllerLaneTests.cpp
     TimelinePartsTests.cpp

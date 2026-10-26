@@ -3,6 +3,7 @@
 #include "CrashReports.h"
 #include "ProjectSession.h"
 #include "UserSettings.h"
+#include "app/AppMenus.h"
 #include "app/Benchmarks.h"
 #include "app/WindowPlacement.h"
 #include "audio/AudioDeviceLayer.h"
@@ -2345,59 +2346,35 @@ private:
 
     // While a bounce runs its progress is in the status bar; when it ends a toast
     // gives the outcome (the measured loudness and any gain), with the file to hand.
-    // ----- menus ---------------------------------------------------------------------------
+    // ----- menus (AppMenus.h: every item carries its action) -------------------------------
+    // An action that runs on this content if it still exists when the item is clicked.
+    std::function<void()> whenAlive(std::function<void(Content&)> f)
+    {
+        juce::Component::SafePointer<Content> safe(this);
+        return [safe, f = std::move(f)]
+        {
+            if (safe != nullptr)
+                f(*safe);
+        };
+    }
+
     void appMenu()
     {
-        juce::PopupMenu menu;
-        menu.addItem(1, "About Northlight");
-        menu.addSeparator();
-        menu.addItem(2, "Audio Setup...");
-        menu.addItem(3, "Plugins...");
-        menu.addItem(6, "Preferences...");
-        juce::PopupMenu layout;
-        layout.addItem(10, "Edit");
-        layout.addItem(11, "Mix");
-        layout.addSeparator();
-        layout.addItem(12, "Reset layout");
-        menu.addSubMenu("Layout", layout);
-        menu.addSeparator();
-        menu.addItem(4, "Quit");
         juce::Component::SafePointer<Content> safe(this);
-        menu.showMenuAsync(juce::PopupMenu::Options().withTargetComponent(&header_).withMinimumWidth(200),
-                           [safe](int choice)
-                           {
-                               if (safe == nullptr)
-                                   return;
-                               switch (choice)
-                               {
-                                   case 1:
-                                       safe->about();
-                                       break;
-                                   case 2:
-                                       safe->owner_.showAudioSetup();
-                                       break;
-                                   case 3:
-                                       safe->owner_.showPluginBrowser();
-                                       break;
-                                   case 6:
-                                       safe->owner_.showPreferences();
-                                       break;
-                                   case 10:
-                                       safe->panels_.applyPreset("Edit");
-                                       break;
-                                   case 11:
-                                       safe->panels_.applyPreset("Mix");
-                                       break;
-                                   case 12:
-                                       safe->panels_.resetLayout();
-                                       break;
-                                   case 4:
-                                       juce::JUCEApplication::getInstance()->systemRequestedQuit();
-                                       break;
-                                   default:
-                                       break;
-                               }
-                           });
+        menus::AppMenu actions;
+        actions.about = whenAlive([](Content& c) { c.about(); });
+        actions.audioSetup = whenAlive([](Content& c) { c.owner_.showAudioSetup(); });
+        actions.plugins = whenAlive([](Content& c) { c.owner_.showPluginBrowser(); });
+        actions.preferences = whenAlive([](Content& c) { c.owner_.showPreferences(); });
+        actions.layout = [safe](const juce::String& preset)
+        {
+            if (safe != nullptr)
+                safe->panels_.applyPreset(preset);
+        };
+        actions.resetLayout = whenAlive([](Content& c) { c.panels_.resetLayout(); });
+        actions.quit = [] { juce::JUCEApplication::getInstance()->systemRequestedQuit(); };
+        menus::appMenu(actions).showMenuAsync(
+            juce::PopupMenu::Options().withTargetComponent(&header_).withMinimumWidth(200));
     }
 
     void about()
@@ -2408,146 +2385,73 @@ private:
 
     void projectMenu()
     {
-        juce::PopupMenu menu;
-        menu.addItem(1, "New");
-        juce::PopupMenu fromTemplate;
-        const auto templateFiles = session_.templates();
-        for (size_t i = 0; i < templateFiles.size(); ++i)
-            fromTemplate.addItem(200 + static_cast<int>(i), templateFiles[i].getFileNameWithoutExtension());
-        menu.addSubMenu("New from template", fromTemplate, !templateFiles.empty());
-        menu.addItem(2, "Open...");
-        juce::PopupMenu recent;
+        juce::Component::SafePointer<Content> safe(this);
+        menus::ProjectMenu m;
+        m.templates = session_.templates();
         auto files = recentFiles();
         if (const int count = preferences().integer(settings::recentCount);
             static_cast<size_t>(std::max(0, count)) < files.size())
             files.resize(static_cast<size_t>(std::max(0, count)));
-        for (size_t i = 0; i < files.size(); ++i)
-            recent.addItem(100 + static_cast<int>(i), juce::File(files[i]).getFileNameWithoutExtension());
-        menu.addSubMenu("Recent", recent, !files.empty());
-        menu.addSeparator();
-        menu.addItem(3, "Save");
-        menu.addItem(4, "Save As...");
-        menu.addItem(9, "Save as template...");
-        menu.addSeparator();
-        juce::PopupMenu media;
-        media.addItem(10, "Gather media into the project folder", session_.projectFile() != juce::File());
-        media.addItem(11, "Remove unused media...", session_.projectFile() != juce::File());
-        menu.addSubMenu("Media", media);
-        menu.addSeparator();
-        menu.addItem(5, "Import audio...");
-        menu.addItem(12, "Import MIDI file...");
-        menu.addItem(6, "Add audio track");
-        menu.addItem(7, "Add MIDI track");
-        juce::PopupMenu fxTracks;
-        const auto fxChoices = plugins::fxTrackEffects();
-        for (size_t i = 0; i < fxChoices.size(); ++i)
-            fxTracks.addItem(300 + static_cast<int>(i), juce::String(fxChoices[i].name));
-        menu.addSubMenu("Add FX track", fxTracks);
-        menu.addItem(8, "Add bus");
-        menu.addSeparator();
-        menu.addItem(21, "Export...");
-        menu.addItem(24, "Export MIDI clips...");
-        juce::Component::SafePointer<Content> safe(this);
-        menu.showMenuAsync(
-            juce::PopupMenu::Options().withTargetComponent(&header_).withMinimumWidth(220),
-            [safe, files, templateFiles](int choice)
-            {
-                if (safe == nullptr)
-                    return;
-                if (choice >= 300 && choice < 320)
-                {
-                    const auto fx = plugins::fxTrackEffects();
-                    const auto i = static_cast<size_t>(choice - 300);
-                    if (i < fx.size())
-                        safe->session_.executeGroup(
-                            "Add FX track",
-                            plugins::addFxTrackCommands(safe->session_.project(), fx[i].type, fx[i].name));
-                    return;
-                }
-                if (choice >= 200 && static_cast<size_t>(choice - 200) < templateFiles.size())
-                {
-                    safe->newFromTemplate(templateFiles[static_cast<size_t>(choice - 200)]);
-                    return;
-                }
-                if (choice >= 100 && static_cast<size_t>(choice - 100) < files.size())
-                {
-                    safe->openFile(juce::File(files[static_cast<size_t>(choice - 100)]));
-                    return;
-                }
-                switch (choice)
-                {
-                    case 1:
-                        safe->newProject();
-                        break;
-                    case 2:
-                        safe->openProject();
-                        break;
-                    case 3:
-                        safe->saveProject(false);
-                        break;
-                    case 4:
-                        safe->saveProject(true);
-                        break;
-                    case 5:
-                        safe->importAudio();
-                        break;
-                    case 6:
-                        safe->addAudioTrack();
-                        break;
-                    case 7:
-                        safe->addMidiTrack({});
-                        break;
-                    case 8:
-                        safe->addBus();
-                        break;
-                    case 9:
-                        safe->saveTemplate();
-                        break;
-                    case 10:
-                        safe->gatherMedia();
-                        break;
-                    case 11:
-                        safe->removeUnusedMedia();
-                        break;
-                    case 12:
-                        safe->importMidi();
-                        break;
-                    case 24:
-                        safe->exportMidi();
-                        break;
-                    case 21:
-                        safe->showExportSheet();
-                        break;
-                    default:
-                        break;
-                }
-            });
+        for (const auto& file : files)
+            m.recent.emplace_back(file);
+        for (const auto& choice : plugins::fxTrackEffects())
+            m.fxTracks.push_back(choice.name);
+        m.saved = session_.projectFile() != juce::File();
+        m.newProject = whenAlive([](Content& c) { c.newProject(); });
+        m.open = whenAlive([](Content& c) { c.openProject(); });
+        m.save = whenAlive([](Content& c) { c.saveProject(false); });
+        m.saveAs = whenAlive([](Content& c) { c.saveProject(true); });
+        m.saveTemplate = whenAlive([](Content& c) { c.saveTemplate(); });
+        m.gatherMedia = whenAlive([](Content& c) { c.gatherMedia(); });
+        m.removeUnusedMedia = whenAlive([](Content& c) { c.removeUnusedMedia(); });
+        m.importAudio = whenAlive([](Content& c) { c.importAudio(); });
+        m.importMidi = whenAlive([](Content& c) { c.importMidi(); });
+        m.addAudioTrack = whenAlive([](Content& c) { c.addAudioTrack(); });
+        m.addMidiTrack = whenAlive([](Content& c) { c.addMidiTrack({}); });
+        m.addBus = whenAlive([](Content& c) { c.addBus(); });
+        m.exportMix = whenAlive([](Content& c) { c.showExportSheet(); });
+        m.exportMidi = whenAlive([](Content& c) { c.exportMidi(); });
+        m.newFromTemplate = [safe](const juce::File& file)
+        {
+            if (safe != nullptr)
+                safe->newFromTemplate(file);
+        };
+        m.openRecent = [safe](const juce::File& file)
+        {
+            if (safe != nullptr)
+                safe->openFile(file);
+        };
+        m.addFxTrack = [safe](size_t i)
+        {
+            const auto fx = plugins::fxTrackEffects();
+            if (safe != nullptr && i < fx.size())
+                safe->session_.executeGroup(
+                    "Add FX track",
+                    plugins::addFxTrackCommands(safe->session_.project(), fx[i].type, fx[i].name));
+        };
+        menus::projectMenu(m).showMenuAsync(
+            juce::PopupMenu::Options().withTargetComponent(&header_).withMinimumWidth(220));
     }
 
     void snapMenu()
     {
-        static constexpr int divisions[] = {0, 1, 4, 8, 16, 32};
-        static const char* const names[] = {"Adaptive", "Bar", "Beat", "1/8", "1/16", "1/32"};
-        juce::PopupMenu menu;
-        for (int i = 0; i < 6; ++i)
-            menu.addItem(i + 1, names[i], true, tracks_.snapEnabled() && tracks_.snapGrid() == divisions[i]);
-        menu.addSeparator();
-        menu.addItem(7, "Off", true, !tracks_.snapEnabled());
         juce::Component::SafePointer<Content> safe(this);
-        menu.showMenuAsync(juce::PopupMenu::Options().withTargetComponent(&header_.snapButton()),
-                           [safe](int choice)
-                           {
-                               if (safe == nullptr || choice == 0)
-                                   return;
-                               if (choice >= 1 && choice <= 6)
-                               {
-                                   safe->tracks_.setSnapGrid(divisions[choice - 1]);
-                                   safe->tracks_.setSnapEnabled(true);
-                               }
-                               else
-                                   safe->tracks_.setSnapEnabled(false);
-                               safe->refreshHeader();
-                           });
+        menus::snapMenu(tracks_.snapEnabled(),
+                        tracks_.snapGrid(),
+                        [safe](int divisions)
+                        {
+                            if (safe == nullptr)
+                                return;
+                            if (divisions >= 0)
+                            {
+                                safe->tracks_.setSnapGrid(divisions);
+                                safe->tracks_.setSnapEnabled(true);
+                            }
+                            else
+                                safe->tracks_.setSnapEnabled(false);
+                            safe->refreshHeader();
+                        })
+            .showMenuAsync(juce::PopupMenu::Options().withTargetComponent(&header_.snapButton()));
     }
 
     // ----- clip tempo --------------------------------------------------------------------------
