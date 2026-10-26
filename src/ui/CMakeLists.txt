@@ -194,6 +194,9 @@ add_library(northlight_ui STATIC
     TempoLane.h
     TempoLane.cpp
     MeterReadings.h
+    mixer/StripParts.h
+    mixer/MixerStrip.h
+    mixer/MasterStrip.h
     MixerView.h
     MixerView.cpp
     InsertEditor.h
