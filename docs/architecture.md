@@ -554,6 +554,17 @@ readings to the mixer's strips and the arrange view's headers alike, and the
 arrange view reports its snap, grid and ripple when they change rather than
 being asked every frame.
 
+The main window's content (`app/MainWindow.cpp`) lays the parts out, wires them,
+ticks them at 30 Hz and dispatches the window's keys from the shortcut table; the
+rest is in collaborators of its own, each handed only what it needs: `FileActions`
+(new, open, save, templates, media, imports, MIDI export, recent files),
+`LoadDriver` (a project load in steps behind the loading sheet), `ExportController`
+(the export sheet and the bounce it starts), `AppMenus` (the app, project and snap
+menus, every item with its action), `SessionNotices` (the session's notices and the
+dropout warnings), `FirstRun` (the first-run sheets), `Benchmarks` (the developer
+benchmarks) and `LaunchRun` (the launch flags). The `MainWindow` facade holds its
+content by a typed pointer.
+
 The timeline views (the arrange view and the lanes it hosts, the piano roll, the
 audio editor) map time to pixels through one `ui::TimelineViewport`
 (`src/ui/timeline/`, no JUCE): the x where time starts, the first visible sample
