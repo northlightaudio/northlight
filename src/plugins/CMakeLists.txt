@@ -43,6 +43,15 @@ add_library(northlight_plugins STATIC
     ProcessorBase.h
     ChannelStrip.h
     ChannelStrip.cpp
+    strip/Modules.h
+    strip/Curves.cpp
+    strip/Gate.cpp
+    strip/Eq.cpp
+    strip/Compressor.cpp
+    strip/Opto.cpp
+    strip/DeEsser.cpp
+    strip/Saturation.cpp
+    strip/Limiter.cpp
     Glue.h
     Glue.cpp
     Widener.h

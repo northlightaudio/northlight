@@ -331,7 +331,10 @@ know nothing format-specific.
   modules, and the instruments. One registry, `builtInTypes()` in `plugins/BuiltIns.h`,
   lists every insert type with its menu name, whether it is an instrument, how to
   make it and its factory presets; the factory, the menus and `EffectPresets` read
-  it (the strip modules keep their own list, `strip::moduleTypes()`). They share a base that crossfades bypass and keeps
+  it (the strip modules keep their own list, `strip::moduleTypes()`, with the slots and
+  `strip::create` in `plugins/ChannelStrip.cpp`; each module's processor is a file in
+  `src/plugins/strip` (`Gate`, `Eq`, `Compressor`, `Opto`, `DeEsser`, `Saturation`,
+  `Limiter`), and the curves their editors draw are in `strip/Curves.cpp`). They share a base that crossfades bypass and keeps
   state running while bypassed, and they publish real-time feedback for their
   editors through rings of atomics: a five-value frame every 5 ms (input, output,
   reduction and two processor-specific values) and two sample taps. Every

@@ -19,6 +19,10 @@
 // The parameter layouts below are part of the project format: append, never
 // reorder. The curve functions are shared by the processors and the editors so
 // what the editor draws is what runs.
+//
+// This file's registry is in ChannelStrip.cpp; each module's processor is a
+// file in src/plugins/strip (Gate, Eq, Compressor, Opto, DeEsser, Saturation,
+// Limiter, made through strip/Modules.h), and the curves are in strip/Curves.cpp.
 
 namespace northlight::plugins::strip
 {
