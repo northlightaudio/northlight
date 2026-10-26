@@ -187,6 +187,10 @@ add_library(northlight_ui STATIC
     pianoroll/ControllerLane.cpp
     PianoRoll.h
     PianoRoll.cpp
+    audioeditor/CorrectSheet.h
+    audioeditor/CorrectSheet.cpp
+    audioeditor/PitchGrid.h
+    audioeditor/PitchGrid.cpp
     AudioEditor.h
     AudioEditor.cpp
     ColourMenu.h
