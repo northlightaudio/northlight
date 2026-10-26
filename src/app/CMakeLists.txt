@@ -90,6 +90,8 @@ target_sources(northlight PRIVATE
     LoadDriver.cpp
     ExportController.h
     ExportController.cpp
+    FileActions.h
+    FileActions.cpp
     MainWindow.h
     MainWindow.cpp)
 

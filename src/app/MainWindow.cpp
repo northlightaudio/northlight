@@ -6,6 +6,7 @@
 #include "app/AppMenus.h"
 #include "app/Benchmarks.h"
 #include "app/ExportController.h"
+#include "app/FileActions.h"
 #include "app/LoadDriver.h"
 #include "app/WindowPlacement.h"
 #include "audio/AudioDeviceLayer.h"
@@ -400,16 +401,6 @@ public:
         refreshHeader();
     }
 
-    // The folder new projects are saved to and opened from.
-    juce::File projectFolder() const
-    {
-        const auto chosen = preferences().text(settings::projectFolder);
-        if (!chosen.empty())
-            if (const juce::File folder(juce::String::fromUTF8(chosen.c_str())); folder.isDirectory())
-                return folder;
-        return juce::File::getSpecialLocation(juce::File::userDocumentsDirectory);
-    }
-
     ~Content() override
     {
         stopTimer();
@@ -571,19 +562,19 @@ public:
                     session_.execute(std::make_unique<core::SetTrackSolo>(t->id, !t->solo));
                 return true;
             case C::newProject:
-                newProject();
+                fileActions_.newProject();
                 return true;
             case C::open:
-                openProject();
+                fileActions_.openProject();
                 return true;
             case C::save:
-                saveProject(false);
+                fileActions_.saveProject(false);
                 return true;
             case C::saveAs:
-                saveProject(true);
+                fileActions_.saveProject(true);
                 return true;
             case C::importAudio:
-                importAudio();
+                fileActions_.importAudio();
                 return true;
             case C::exportMix:
                 exporter_.showSheet();
@@ -750,7 +741,7 @@ private:
         tracks_.onTrackMonitorChanged = [this](core::Id id, core::MonitorMode mode)
         { session_.execute(std::make_unique<core::SetTrackMonitor>(id, mode)); };
         tracks_.onImportFiles = [this](const std::vector<juce::File>& files, core::SamplePosition at)
-        { importFiles(files, at); };
+        { fileActions_.importFiles(files, at); };
         tracks_.onEdit = [this](std::vector<std::unique_ptr<core::Command>> commands, const std::string& name)
         { session_.executeGroup(name, std::move(commands)); };
         tracks_.onOpenMidiClip = [this](core::Id trackId, core::Id clipId)
@@ -811,7 +802,7 @@ private:
             select(id);
         };
         tracks_.onAddBus = [this] { addBus(); };
-        tracks_.onImportRequested = [this] { importAudio(); };
+        tracks_.onImportRequested = [this] { fileActions_.importAudio(); };
         tracks_.onCommand = [this](std::unique_ptr<core::Command> c) { session_.execute(std::move(c)); };
         tracks_.onGestureBegin = [this](const std::string& name) { session_.beginGesture(name); };
         tracks_.onGestureEnd = [this] { session_.endGesture(); };
@@ -1196,24 +1187,17 @@ private:
             toast(kind, text);
     }
 
-    juce::String projectName() const
-    {
-        return session_.projectFile().getFullPathName().isNotEmpty()
-                   ? session_.projectFile().getFileNameWithoutExtension()
-                   : juce::String("Untitled");
-    }
-
     void refreshTitle()
     {
         owner_.setName((session_.isRecording() ? juce::String::fromUTF8("\xe2\x97\x8f ") : juce::String()) +
-                       projectName() + (session_.isModified() ? "*" : "") + " - Northlight");
+                       fileActions_.projectName() + (session_.isModified() ? "*" : "") + " - Northlight");
     }
 
     void refreshHeader()
     {
         ui::HeaderBar::State state;
         const auto& p = session_.project();
-        state.projectName = projectName();
+        state.projectName = fileActions_.projectName();
         state.projectPath = session_.projectFile().getFullPathName();
         state.modified = session_.isModified();
         state.canUndo = session_.canUndo();
@@ -1549,7 +1533,7 @@ private:
         sheet_ =
             ui::Sheet::show(*this,
                             theme_,
-                            "Save changes to " + projectName() + "?",
+                            "Save changes to " + fileActions_.projectName() + "?",
                             "Unsaved changes will be lost if you close without saving.",
                             {{"Cancel", false, false}, {"Don't save", false, true}, {"Save", true, false}},
                             [this](int result)
@@ -1558,7 +1542,7 @@ private:
                                 if (result == 1)
                                     juce::JUCEApplication::getInstance()->quit();
                                 else if (result == 2)
-                                    saveProject(false, AfterSave::quit);
+                                    fileActions_.saveProject(false, FileActions::AfterSave::quit);
                             });
     }
 
@@ -1688,7 +1672,8 @@ private:
         files_.isPreviewing = [this] { return session_.isPreviewing(); };
         files_.onPump = [this] { session_.pumpPreview(); };
         files_.onPreviewGain = [this](float gain) { session_.setPreviewGain(gain); };
-        files_.onImport = [this](const juce::File& file) { importFiles({file}, session_.position()); };
+        files_.onImport = [this](const juce::File& file)
+        { fileActions_.importFiles({file}, session_.position()); };
         browserPanel_.onTabChanged = [this](bool files)
         { settings_.setValue("browser.tab", files ? "files" : "plugins"); };
         if (settings_.value("browser.tab") == "files")
@@ -1753,301 +1738,6 @@ private:
             mixer_.onCommand(std::make_unique<core::RemoveBus>(buses.back().id));
     }
 
-    void newProject()
-    {
-        if (session_.isRecording())
-            return;
-        session_.stop();
-        mixer_.closeEditors();
-        session_.newProject();
-        refresh();
-    }
-
-    void newFromTemplate(const juce::File& file)
-    {
-        if (session_.isRecording() || session_.isLoading())
-            return;
-        session_.stop();
-        mixer_.closeEditors();
-        if (!session_.beginTemplate(file))
-            return;
-        loader_.watch("New project from " + file.getFileNameWithoutExtension(),
-                      [this, file](const std::string& error)
-                      {
-                          if (!error.empty())
-                              toast(ui::ToastStack::Kind::error,
-                                    "Cannot use the template: " + juce::String::fromUTF8(error.c_str()));
-                          else
-                              status_.showMessage("New project from " + file.getFileNameWithoutExtension());
-                          refresh();
-                          grabKeyboardFocus();
-                      });
-    }
-
-    // Restores a crashed session's autosave (the toast's Restore), with progress.
-    void restoreAutosave(const ProjectSession::Autosave& autosave)
-    {
-        if (session_.isRecording() || session_.isLoading())
-            return;
-        session_.stop();
-        mixer_.closeEditors();
-        if (!session_.beginRestore(autosave))
-            return;
-        loader_.watch("Restoring " + juce::String::fromUTF8(autosave.name.c_str()),
-                      [this](const std::string& error)
-                      {
-                          if (!error.empty())
-                              toast(ui::ToastStack::Kind::error,
-                                    "Cannot restore: " + juce::String::fromUTF8(error.c_str()));
-                          refresh();
-                          grabKeyboardFocus();
-                      });
-    }
-
-    void saveTemplate()
-    {
-        auto field = std::make_unique<juce::TextEditor>();
-        field->setText(juce::String::fromUTF8(session_.project().name.c_str()) == "Untitled"
-                           ? juce::String("My template")
-                           : juce::String::fromUTF8(session_.project().name.c_str()));
-        field->selectAll();
-        auto* raw = field.get();
-        sheet_ = ui::Sheet::show(
-            *this,
-            theme_,
-            "Save as template",
-            "The tracks, buses, routing, inserts and channel strips, without clips or markers. "
-            "New from template in the Project menu starts a project from it.",
-            {{"Cancel", false, false}, {"Save", true, false}},
-            [this, raw](int result)
-            {
-                const auto name = raw->getText();
-                sheet_ = nullptr;
-                if (result != 1)
-                    return;
-                const auto error = session_.saveAsTemplate(name);
-                if (!error.empty())
-                    toast(ui::ToastStack::Kind::error,
-                          "Cannot save the template: " + juce::String::fromUTF8(error.c_str()));
-                else
-                    toast(ui::ToastStack::Kind::success, "Saved the template \"" + name.trim() + "\"");
-            },
-            std::move(field),
-            theme_.sizes.control);
-    }
-
-    void gatherMedia()
-    {
-        int copied = 0;
-        const auto error = session_.consolidateMedia(copied);
-        if (!error.empty())
-            toast(ui::ToastStack::Kind::error,
-                  "Cannot gather media: " + juce::String::fromUTF8(error.c_str()));
-        else if (copied == 0)
-            toast(ui::ToastStack::Kind::info, "All media is already in the project folder.");
-        else
-            toast(ui::ToastStack::Kind::success,
-                  "Copied " + juce::String(copied) + (copied == 1 ? " file" : " files") +
-                      " into the project folder. Save to keep the new paths.");
-    }
-
-    void removeUnusedMedia()
-    {
-        const auto report = session_.mediaReport();
-        if (report.unused.empty())
-        {
-            toast(ui::ToastStack::Kind::info, "No unused media in the project folder.");
-            return;
-        }
-        juce::int64 bytes = 0;
-        for (const auto& f : report.unused)
-            bytes += f.getSize();
-        sheet_ =
-            ui::Sheet::show(*this,
-                            theme_,
-                            "Remove unused media",
-                            juce::String(static_cast<int>(report.unused.size())) +
-                                (report.unused.size() == 1 ? " file" : " files") + " (" +
-                                juce::File::descriptionOfSizeInBytes(bytes) +
-                                ") in the project folder are not used by any clip. They go to the "
-                                "Recycle Bin, so an undo that brings a clip back can still find them there.",
-                            {{"Cancel", false, false}, {"Move to Recycle Bin", true, true}},
-                            [this](int result)
-                            {
-                                sheet_ = nullptr;
-                                if (result != 1)
-                                    return;
-                                const int moved = session_.removeUnusedMedia();
-                                toast(ui::ToastStack::Kind::success,
-                                      "Moved " + juce::String(moved) + (moved == 1 ? " file" : " files") +
-                                          " to the Recycle Bin.");
-                            });
-    }
-
-    void openProject()
-    {
-        if (session_.isRecording())
-            return;
-        chooser_ =
-            std::make_unique<juce::FileChooser>("Open project", projectFolder(), "*.northlight;*.aural");
-        chooser_->launchAsync(juce::FileBrowserComponent::openMode |
-                                  juce::FileBrowserComponent::canSelectFiles,
-                              [this](const juce::FileChooser& fc)
-                              {
-                                  if (const auto file = fc.getResult(); file != juce::File())
-                                      openFile(file);
-                              });
-    }
-
-    void openFile(const juce::File& file, std::optional<LoadProgress::Stage> holdAt = std::nullopt)
-    {
-        if (session_.isLoading())
-            return;
-        session_.stop();
-        mixer_.closeEditors();
-        if (!session_.beginOpen(file))
-            return;
-        loader_.watch(
-            "Opening " + file.getFileNameWithoutExtension(),
-            [this, file](const std::string& error)
-            {
-                if (!error.empty())
-                    toast(ui::ToastStack::Kind::error,
-                          "Cannot open " + file.getFileName() + ": " + juce::String::fromUTF8(error.c_str()));
-                else
-                    rememberRecent(file);
-                refresh();
-                grabKeyboardFocus();
-                owner_.offerRecovery();
-            },
-            holdAt);
-    }
-
-    // What happens once a save succeeds. Passed along rather than kept in a member,
-    // so a cancelled or failed save leaves nothing behind for the next one.
-    enum class AfterSave
-    {
-        stay,
-        quit,
-    };
-
-    void saveProject(bool saveAs, AfterSave after = AfterSave::stay)
-    {
-        if (!saveAs && session_.projectFile().getFullPathName().isNotEmpty())
-        {
-            saveTo(session_.projectFile(), after);
-            return;
-        }
-        chooser_ = std::make_unique<juce::FileChooser>(
-            "Save project", projectFolder().getChildFile("Untitled.northlight"), "*.northlight");
-        chooser_->launchAsync(juce::FileBrowserComponent::saveMode |
-                                  juce::FileBrowserComponent::canSelectFiles |
-                                  juce::FileBrowserComponent::warnAboutOverwriting,
-                              [this, after](const juce::FileChooser& fc)
-                              {
-                                  auto file = fc.getResult();
-                                  if (file == juce::File())
-                                      return;
-                                  if (!file.hasFileExtension("northlight"))
-                                      file = file.withFileExtension("northlight");
-                                  saveTo(file, after);
-                                  grabKeyboardFocus();
-                              });
-    }
-
-    void saveTo(const juce::File& file, AfterSave after = AfterSave::stay)
-    {
-        const auto error = session_.save(file);
-        if (!error.empty())
-        {
-            toast(ui::ToastStack::Kind::error, "Cannot save: " + juce::String::fromUTF8(error.c_str()));
-        }
-        else
-        {
-            status_.showMessage("Saved " + file.getFileName());
-            rememberRecent(file);
-            if (after == AfterSave::quit)
-                juce::JUCEApplication::getInstance()->quit();
-        }
-        refresh();
-    }
-
-    static constexpr int recentCount = 20; // the list's capacity; the menu shows the preferred count
-
-    std::vector<juce::String> recentFiles() const
-    {
-        std::vector<juce::String> files;
-        for (int i = 0; i < recentCount; ++i)
-            if (const auto path = settings_.value("recent." + std::to_string(i)); !path.empty())
-                files.push_back(juce::String::fromUTF8(path.c_str()));
-        return files;
-    }
-
-    void rememberRecent(const juce::File& file)
-    {
-        auto files = recentFiles();
-        files.erase(std::remove(files.begin(), files.end(), file.getFullPathName()), files.end());
-        files.insert(files.begin(), file.getFullPathName());
-        for (int i = 0; i < recentCount; ++i)
-            settings_.setValue("recent." + std::to_string(i),
-                               static_cast<size_t>(i) < files.size()
-                                   ? files[static_cast<size_t>(i)].toStdString()
-                                   : std::string{});
-    }
-
-    void importAudio()
-    {
-        chooser_ = std::make_unique<juce::FileChooser>(
-            "Import audio",
-            juce::File::getSpecialLocation(juce::File::userMusicDirectory),
-            session_.mediaLoader().supportedExtensions());
-        chooser_->launchAsync(juce::FileBrowserComponent::openMode |
-                                  juce::FileBrowserComponent::canSelectFiles |
-                                  juce::FileBrowserComponent::canSelectMultipleItems,
-                              [this](const juce::FileChooser& fc)
-                              {
-                                  std::vector<juce::File> files;
-                                  for (const auto& f : fc.getResults())
-                                      files.push_back(f);
-                                  importFiles(files, 0);
-                              });
-    }
-
-    void importFiles(const std::vector<juce::File>& files, core::SamplePosition at)
-    {
-        for (const auto& file : files)
-        {
-            // A MIDI file plays the selected instrument (or the one the selected
-            // MIDI track plays), else a new one.
-            const bool midi = file.hasFileExtension("mid;midi");
-            const auto error = midi ? session_.importMidiFile(file, at, selection_.channel())
-                                    : session_.importAudioFile(file, at);
-            if (!error.empty())
-                toast(ui::ToastStack::Kind::error,
-                      file.getFileName() + ": " + juce::String::fromUTF8(error.c_str()));
-        }
-        refresh();
-        grabKeyboardFocus();
-    }
-
-    void importMidi()
-    {
-        chooser_ = std::make_unique<juce::FileChooser>(
-            "Import MIDI file",
-            juce::File::getSpecialLocation(juce::File::userMusicDirectory),
-            "*.mid;*.midi");
-        chooser_->launchAsync(juce::FileBrowserComponent::openMode |
-                                  juce::FileBrowserComponent::canSelectFiles |
-                                  juce::FileBrowserComponent::canSelectMultipleItems,
-                              [this](const juce::FileChooser& fc)
-                              {
-                                  std::vector<juce::File> files;
-                                  for (const auto& f : fc.getResults())
-                                      files.push_back(f);
-                                  importFiles(files, session_.position());
-                              });
-    }
-
     // The MIDI clips an export takes: those selected in the arrange view, else
     // every clip of the selected MIDI track, else every MIDI clip.
     std::vector<std::pair<core::Id, core::Id>> midiClipsToExport() const
@@ -2068,35 +1758,6 @@ private:
             for (const auto& c : track.midiClips)
                 clips.emplace_back(track.id, c.id);
         return clips;
-    }
-
-    void exportMidi()
-    {
-        const auto clips = midiClipsToExport();
-        if (clips.empty())
-        {
-            toast(ui::ToastStack::Kind::error, "Export MIDI: there are no MIDI clips");
-            return;
-        }
-        chooser_ = std::make_unique<juce::FileChooser>(
-            "Export MIDI", projectFolder().getChildFile(projectName() + ".mid"), "*.mid");
-        chooser_->launchAsync(juce::FileBrowserComponent::saveMode |
-                                  juce::FileBrowserComponent::canSelectFiles |
-                                  juce::FileBrowserComponent::warnAboutOverwriting,
-                              [this, clips](const juce::FileChooser& fc)
-                              {
-                                  auto file = fc.getResult();
-                                  if (file == juce::File())
-                                      return;
-                                  if (!file.hasFileExtension("mid;midi"))
-                                      file = file.withFileExtension("mid");
-                                  const auto error = session_.exportMidiFile(file, clips);
-                                  if (!error.empty())
-                                      toast(ui::ToastStack::Kind::error,
-                                            "Export MIDI: " + juce::String::fromUTF8(error.c_str()));
-                                  else
-                                      toast(ui::ToastStack::Kind::success, "Exported " + file.getFileName());
-                              });
     }
 
     // ----- export ----------------------------------------------------------------------------
@@ -2159,7 +1820,7 @@ private:
         juce::Component::SafePointer<Content> safe(this);
         menus::ProjectMenu m;
         m.templates = session_.templates();
-        auto files = recentFiles();
+        auto files = fileActions_.recentFiles();
         if (const int count = preferences().integer(settings::recentCount);
             static_cast<size_t>(std::max(0, count)) < files.size())
             files.resize(static_cast<size_t>(std::max(0, count)));
@@ -2168,29 +1829,29 @@ private:
         for (const auto& choice : plugins::fxTrackEffects())
             m.fxTracks.push_back(choice.name);
         m.saved = session_.projectFile() != juce::File();
-        m.newProject = whenAlive([](Content& c) { c.newProject(); });
-        m.open = whenAlive([](Content& c) { c.openProject(); });
-        m.save = whenAlive([](Content& c) { c.saveProject(false); });
-        m.saveAs = whenAlive([](Content& c) { c.saveProject(true); });
-        m.saveTemplate = whenAlive([](Content& c) { c.saveTemplate(); });
-        m.gatherMedia = whenAlive([](Content& c) { c.gatherMedia(); });
-        m.removeUnusedMedia = whenAlive([](Content& c) { c.removeUnusedMedia(); });
-        m.importAudio = whenAlive([](Content& c) { c.importAudio(); });
-        m.importMidi = whenAlive([](Content& c) { c.importMidi(); });
+        m.newProject = whenAlive([](Content& c) { c.fileActions_.newProject(); });
+        m.open = whenAlive([](Content& c) { c.fileActions_.openProject(); });
+        m.save = whenAlive([](Content& c) { c.fileActions_.saveProject(false); });
+        m.saveAs = whenAlive([](Content& c) { c.fileActions_.saveProject(true); });
+        m.saveTemplate = whenAlive([](Content& c) { c.fileActions_.saveTemplate(); });
+        m.gatherMedia = whenAlive([](Content& c) { c.fileActions_.gatherMedia(); });
+        m.removeUnusedMedia = whenAlive([](Content& c) { c.fileActions_.removeUnusedMedia(); });
+        m.importAudio = whenAlive([](Content& c) { c.fileActions_.importAudio(); });
+        m.importMidi = whenAlive([](Content& c) { c.fileActions_.importMidi(); });
         m.addAudioTrack = whenAlive([](Content& c) { c.addAudioTrack(); });
         m.addMidiTrack = whenAlive([](Content& c) { c.addMidiTrack({}); });
         m.addBus = whenAlive([](Content& c) { c.addBus(); });
         m.exportMix = whenAlive([](Content& c) { c.exporter_.showSheet(); });
-        m.exportMidi = whenAlive([](Content& c) { c.exportMidi(); });
+        m.exportMidi = whenAlive([](Content& c) { c.fileActions_.exportMidi(); });
         m.newFromTemplate = [safe](const juce::File& file)
         {
             if (safe != nullptr)
-                safe->newFromTemplate(file);
+                safe->fileActions_.newFromTemplate(file);
         };
         m.openRecent = [safe](const juce::File& file)
         {
             if (safe != nullptr)
-                safe->openFile(file);
+                safe->fileActions_.openFile(file);
         };
         m.addFxTrack = [safe](size_t i)
         {
@@ -2390,8 +2051,8 @@ private:
                                 settings_,
                                 sheet_,
                                 [this] { return selectedTrackIds(); },
-                                [this] { return projectFolder(); },
-                                [this] { return projectName(); },
+                                [this] { return fileActions_.projectFolder(); },
+                                [this] { return fileActions_.projectName(); },
                                 [this](const juce::String& message)
                                 { toast(ui::ToastStack::Kind::error, message); },
                                 [this] { refresh(); }}};
@@ -2405,7 +2066,21 @@ private:
                             status_.showMessage("Stopped: " + title);
                             grabKeyboardFocus();
                         }}};
-    std::unique_ptr<juce::FileChooser> chooser_;
+    // New, open, save, templates, media, imports and MIDI export (FileActions.h).
+    FileActions fileActions_{{*this,
+                              theme_,
+                              session_,
+                              settings_,
+                              loader_,
+                              sheet_,
+                              [this] { mixer_.closeEditors(); },
+                              [this] { refresh(); },
+                              [this](ui::ToastStack::Kind kind, const juce::String& text)
+                              { toast(kind, text); },
+                              [this](const juce::String& text) { status_.showMessage(text); },
+                              [this] { owner_.offerRecovery(); },
+                              [this] { return selection_.channel(); },
+                              [this] { return midiClipsToExport(); }}};
     bool lastRecording_ = false;
     int ticks_ = 0;
     std::vector<bool> monitoring_; // which tracks monitor their input, for the headers
@@ -2675,7 +2350,7 @@ void MainWindow::showPreferences(const juce::String& page)
         view->onChanged = [safe]
         {
             if (safe != nullptr)
-                if (auto* content = dynamic_cast<Content*>(safe->getContentComponent()))
+                if (auto* content = safe->content_)
                     content->applyPreferences(false);
         };
         view->onClearBlocklist = [this] { session_.clearPluginBlocklist(); };
@@ -2946,7 +2621,7 @@ void MainWindow::openWithProgress(const juce::File& file, const juce::String& ho
         hold = LoadProgress::Stage::plugins;
     else if (holdAt == "engine")
         hold = LoadProgress::Stage::engine;
-    content->openFile(file, hold);
+    content->fileActions_.openFile(file, hold);
 }
 
 void MainWindow::notify(const juce::String& message, bool warning)
@@ -3034,8 +2709,8 @@ void MainWindow::offerRecovery()
             {
                 if (safe == nullptr)
                     return;
-                if (auto* c = dynamic_cast<Content*>(safe->getContentComponent()))
-                    c->restoreAutosave(autosave);
+                if (auto* c = safe->content_)
+                    c->fileActions_.restoreAutosave(autosave);
             },
             "Discard",
             [autosave] { ProjectSession::discardAutosave(autosave); });
