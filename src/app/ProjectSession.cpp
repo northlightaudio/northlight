@@ -1665,7 +1665,6 @@ std::string ProjectSession::startRecording()
         removeOrphanSidecars(folder);
         return error;
     }
-    recordingMessage_.clear();
     recordingPunched_ = punching;
     notify(Change::structure);
     return {};
@@ -1753,19 +1752,21 @@ void ProjectSession::finishRecording(engine::AudioEngine::FinishedRecording fini
     removeOrphanSidecars(mediaFolder());
 
     if (failures > 0)
-        recordingMessage_ = "Recording failed on " + std::to_string(failures) +
-                            " file(s): " + std::to_string(lost) +
-                            " samples never reached the disk; what did is placed";
+        notices_.push(Notice::Kind::warning,
+                      "Recording failed on " + std::to_string(failures) + " file(s): " +
+                          std::to_string(lost) + " samples never reached the disk; what did is placed");
     else if (dropped > 0)
-        recordingMessage_ =
-            "Recording has " + std::to_string(dropped) + " samples of silence from disk overruns";
+        notices_.push(Notice::Kind::warning,
+                      "Recording has " + std::to_string(dropped) + " samples of silence from disk overruns");
     else if (finished.session->inputs().empty())
-        recordingMessage_ = midiClips > 0 ? "Recorded " + std::to_string(midiClips) + " MIDI clip(s)"
-                                          : std::string("Recorded no MIDI: nothing was played");
+        notices_.push(Notice::Kind::success,
+                      midiClips > 0 ? "Recorded " + std::to_string(midiClips) + " MIDI clip(s)"
+                                    : std::string("Recorded no MIDI: nothing was played"));
     else
-        recordingMessage_ = "Recorded " + std::to_string(finished.session->inputs().size()) + " track(s)" +
-                            (takes > 1 ? ", " + std::to_string(takes) + " takes" : std::string{}) +
-                            ", placed " + std::to_string(latency) + " samples early for latency";
+        notices_.push(Notice::Kind::success,
+                      "Recorded " + std::to_string(finished.session->inputs().size()) + " track(s)" +
+                          (takes > 1 ? ", " + std::to_string(takes) + " takes" : std::string{}) +
+                          ", placed " + std::to_string(latency) + " samples early for latency");
     batch.reset(); // ends the step and publishes
     notify(Change::structure);
 }
@@ -1927,7 +1928,8 @@ int ProjectSession::recoverPartialRecordings()
     batch.reset(); // ends the step and publishes
     removeOrphanSidecars(folder);
     if (recovered > 0)
-        recordingMessage_ = "Recovered " + std::to_string(recovered) + " unfinished recording(s)";
+        notices_.push(Notice::Kind::success,
+                      "Recovered " + std::to_string(recovered) + " unfinished recording(s)");
     return recovered;
 }
 
@@ -1950,12 +1952,22 @@ std::string ProjectSession::startBounce(BounceJob::Options options)
     bounce_ = std::make_unique<BounceJob>(project_, inserts_, options);
     bounce_->onFinished = [this, options, outputRate](const BounceJob::Result& result)
     {
-        bounceResult_ = result;
-        bounceMessage_ = BounceJob::describe(result, options, outputRate);
+        // An error, a cancel or nothing written is told plainly; a mix held at
+        // the ceiling is a warning; a finished export offers its file.
+        auto kind = Notice::Kind::success;
+        if (!result.error.empty())
+            kind = Notice::Kind::error;
+        else if (result.cancelled || result.files.empty())
+            kind = Notice::Kind::info;
+        else if (result.limitedByCeiling)
+            kind = Notice::Kind::warning;
+        notices_.push(kind,
+                      BounceJob::describe(result, options, outputRate),
+                      kind == Notice::Kind::success || kind == Notice::Kind::warning ? result.files.front()
+                                                                                     : juce::File{});
         notify(Change::structure);
     };
-    bounceResult_ = BounceJob::Result{};
-    bounceMessage_ = "Bouncing...";
+    notices_.push(Notice::Kind::status, "Bouncing...");
     bounce_->start();
     notify(Change::structure);
     return {};
@@ -1995,23 +2007,23 @@ std::string ProjectSession::freezeTrack(core::Id trackId)
     {
         if (!result.error.empty() || result.cancelled)
         {
-            freezeMessage_ =
-                "Freezing " + name + " failed: " + (result.cancelled ? "cancelled" : result.error);
+            notices_.push(Notice::Kind::warning,
+                          "Freezing " + name + " failed: " + (result.cancelled ? "cancelled" : result.error));
             file.deleteFile();
         }
         else if (project_.findTrack(trackId) == nullptr)
         {
-            freezeMessage_ = "The track was removed while it was being frozen.";
+            notices_.push(Notice::Kind::warning, "The track was removed while it was being frozen.");
             file.deleteFile();
         }
         else
         {
             execute(std::make_unique<core::SetTrackFrozen>(trackId, file.getFullPathName().toStdString()));
-            freezeMessage_ = "Froze " + name + ": it plays its render until you unfreeze it.";
+            notices_.push(Notice::Kind::success,
+                          "Froze " + name + ": it plays its render until you unfreeze it.");
         }
         notify(Change::structure);
     };
-    freezeMessage_.clear();
     freeze_->start();
     notify(Change::structure);
     return {};
@@ -2543,10 +2555,10 @@ void ProjectSession::checkCrashedPlugins()
             if (const auto live = liveInsert(insert->id);
                 live != nullptr && live->crashed() && reportedCrashes_.insert(insert->id).second)
             {
-                pluginMessage_ =
-                    inserts_.displayName(insert->type) + " on " + channel.name +
-                    " crashed and was switched off. Save your project and restart Northlight to use "
-                    "it again.";
+                notices_.push(Notice::Kind::error,
+                              inserts_.displayName(insert->type) + " on " + channel.name +
+                                  " crashed and was switched off. Save your project and restart Northlight "
+                                  "to use it again.");
                 notify(Change::structure);
             }
     };

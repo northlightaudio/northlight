@@ -524,6 +524,10 @@ blocked the message thread; now the longest stall is one plugin.
   media into the project folder and moves unused files to the Recycle Bin.
 - **Crash reports** are minidumps written to the settings folder from buffers
   prepared at start-up. Nothing is sent anywhere.
+- **Notices** are what the session tells the user once each (a recording's
+  outcome, a plugin that crashed, an export or a freeze finishing): it pushes a
+  typed `Notice` (kind, text, a file to reveal) and the window drains the queue on
+  its next refresh into toasts, or the status bar for one still in progress.
 - **Migration** brings settings and folders across from the project's earlier name,
   Aural, once.
 

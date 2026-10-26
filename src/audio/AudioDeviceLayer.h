@@ -99,6 +99,8 @@ public:
         // AudioCallback::stats().
         int driverXruns = -1;
         std::string message; // last error or recovery note, empty when all is well
+        // A fallback device runs because the preferred one is unavailable.
+        bool preferredUnavailable = false;
 
         double inputLatencyMilliseconds() const noexcept;
         double outputLatencyMilliseconds() const noexcept;
@@ -147,7 +149,7 @@ private:
     std::optional<std::string> apply(const AudioSettings& settings, bool persist);
     juce::String openDefault();
     void save();
-    void setMessage(std::string message);
+    void setMessage(std::string message, bool preferredUnavailable = false);
     void handleDeviceLost();
 
     AudioSettingsStore& store_;
@@ -157,6 +159,7 @@ private:
     LatencyCalibrator calibrator_;
     AudioSettings settings_; // its masterGain and passThroughEnabled are unused: callback_ holds them
     std::string message_;
+    bool preferredUnavailable_ = false;
     bool initialised_ = false;
     bool hadDevice_ = false;
     int recoveryAttempts_ = 0;

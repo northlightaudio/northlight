@@ -250,6 +250,7 @@ AudioDeviceLayer::Status AudioDeviceLayer::status() const
 {
     Status s;
     s.message = message_;
+    s.preferredUnavailable = preferredUnavailable_;
     s.deviceType = toStd(manager_.getCurrentAudioDeviceType());
 
     auto* device = manager_.getCurrentAudioDevice();
@@ -429,9 +430,10 @@ void AudioDeviceLayer::save()
     store_.saveAudioSettings(settings());
 }
 
-void AudioDeviceLayer::setMessage(std::string message)
+void AudioDeviceLayer::setMessage(std::string message, bool preferredUnavailable)
 {
     message_ = std::move(message);
+    preferredUnavailable_ = preferredUnavailable;
 }
 
 void AudioDeviceLayer::changeListenerCallback(juce::ChangeBroadcaster* source)
@@ -453,7 +455,7 @@ void AudioDeviceLayer::changeListenerCallback(juce::ChangeBroadcaster* source)
         // list changed; say so rather than silently showing the wrong name.
         const auto s = status();
         if (s.deviceType != settings_.deviceType || s.outputDevice != settings_.outputDevice)
-            setMessage("The preferred audio device is unavailable; using " + s.outputDevice + ".");
+            setMessage("The preferred audio device is unavailable; using " + s.outputDevice + ".", true);
     }
     sendChangeMessage();
 }
@@ -511,7 +513,7 @@ void AudioDeviceLayer::timerCallback()
         if (openDefault().isEmpty())
         {
             hadDevice_ = true;
-            setMessage("The preferred audio device is unavailable; using the system default.");
+            setMessage("The preferred audio device is unavailable; using the system default.", true);
             sendChangeMessage();
         }
     }

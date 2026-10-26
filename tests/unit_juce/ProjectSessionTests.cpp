@@ -224,7 +224,10 @@ TEST_CASE_METHOD(SessionFixture,
     CHECK(clip.notes[0].velocity == 90);
     CHECK(clip.notes[0].start == 128);
     CHECK(clip.notes[0].length == 64);
-    CHECK(session->lastRecordingMessage().find("MIDI clip") != std::string::npos);
+    const auto notices = session->takeNotices();
+    REQUIRE(notices.size() == 1);
+    CHECK(notices[0].kind == Notice::Kind::success);
+    CHECK(notices[0].text.find("MIDI clip") != std::string::npos);
     CHECK(files("*.wav").isEmpty()); // no audio was recorded
     CHECK(session->canUndo());
     session->undo();
@@ -338,7 +341,9 @@ TEST_CASE_METHOD(SessionFixture,
     CHECK(group.comp[1].take == group.takes[1].id());
     CHECK(track.clips.size() == 2); // the comp's clips, not three stacked takes
     CHECK(files("*.wav").size() == 3);
-    CHECK(session->lastRecordingMessage().find("3 takes") != std::string::npos);
+    const auto notices = session->takeNotices();
+    REQUIRE_FALSE(notices.empty());
+    CHECK(notices.back().text.find("3 takes") != std::string::npos);
 
     // A second recording over the group's range (no loop) becomes its fourth take.
     session->setLoopEnabled(false);
@@ -626,4 +631,20 @@ TEST_CASE_METHOD(SessionFixture,
     CHECK(sp::currentSample(*again)->path == other.getFullPathName().toStdString());
     session->undo();
     CHECK(sp::currentSample(*again)->path == wav.getFullPathName().toStdString());
+}
+
+TEST_CASE("Notices are told once each, in order, the same sentence twice included", "[app][notices]")
+{
+    NoticeQueue queue;
+    CHECK(queue.empty());
+    queue.push(Notice::Kind::success, "Recorded 1 track(s)");
+    queue.push(Notice::Kind::success, "Recorded 1 track(s)");
+    queue.push(Notice::Kind::error, "Gain on Vocal crashed");
+    const auto first = queue.take();
+    REQUIRE(first.size() == 3);
+    CHECK(first[0].text == first[1].text);
+    CHECK(first[2].kind == Notice::Kind::error);
+    CHECK(queue.take().empty()); // taken: not told again
+    queue.push(Notice::Kind::success, "Recorded 1 track(s)");
+    CHECK(queue.take().size() == 1);
 }

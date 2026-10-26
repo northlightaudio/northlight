@@ -33,6 +33,7 @@ add_library(northlight_app_session STATIC
     Migration.h
     Migration.cpp
     ProjectSession.h
+    Notices.h
     ProjectSession.cpp
     ProjectLoad.h
     ProjectLoad.cpp

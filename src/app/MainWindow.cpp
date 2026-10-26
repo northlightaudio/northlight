@@ -1524,39 +1524,27 @@ private:
         refreshHeader();
         refreshStatus();
         refreshTitle();
-        // The session's accumulated messages become toasts once.
-        const auto recording = session_.lastRecordingMessage();
-        if (recording != lastRecordingMessage_)
+        // What the session has to tell the user, each once.
+        for (const auto& notice : session_.takeNotices())
+            showNotice(notice);
+    }
+
+    void showNotice(const Notice& notice)
+    {
+        const auto text = juce::String::fromUTF8(notice.text.c_str());
+        if (notice.kind == Notice::Kind::status)
         {
-            lastRecordingMessage_ = recording;
-            if (!recording.empty())
-            {
-                const bool trouble = recording.find("failed") != std::string::npos ||
-                                     recording.find("overrun") != std::string::npos;
-                toast(trouble ? ui::ToastStack::Kind::warning : ui::ToastStack::Kind::success,
-                      juce::String::fromUTF8(recording.c_str()));
-            }
+            status_.showMessage(text);
+            return;
         }
-        if (const auto& crash = session_.lastPluginMessage(); crash != lastPluginMessage_)
-        {
-            lastPluginMessage_ = crash;
-            if (!crash.empty())
-                toast(ui::ToastStack::Kind::error, juce::String::fromUTF8(crash.c_str()));
-        }
-        const auto bounce = session_.lastBounceMessage();
-        if (bounce != lastBounceMessage_)
-        {
-            lastBounceMessage_ = bounce;
-            showBounceOutcome(bounce);
-        }
-        if (const auto& freeze = session_.lastFreezeMessage(); freeze != lastFreezeMessage_)
-        {
-            lastFreezeMessage_ = freeze;
-            if (!freeze.empty())
-                toast(freeze.rfind("Froze", 0) == 0 ? ui::ToastStack::Kind::success
-                                                    : ui::ToastStack::Kind::warning,
-                      juce::String::fromUTF8(freeze.c_str()));
-        }
+        const auto kind = notice.kind == Notice::Kind::error     ? ui::ToastStack::Kind::error
+                          : notice.kind == Notice::Kind::warning ? ui::ToastStack::Kind::warning
+                          : notice.kind == Notice::Kind::success ? ui::ToastStack::Kind::success
+                                                                 : ui::ToastStack::Kind::info;
+        if (notice.reveal != juce::File{})
+            toast(kind, text, "Show in folder", [file = notice.reveal] { file.revealToUser(); });
+        else
+            toast(kind, text);
     }
 
     juce::String projectName() const
@@ -1628,7 +1616,7 @@ private:
         ui::StatusBar::State state;
         const auto s = audio_.status();
         state.deviceOpen = s.open;
-        state.devicePreferredUnavailable = s.open && s.message.find("preferred") != std::string::npos;
+        state.devicePreferredUnavailable = s.open && s.preferredUnavailable;
         state.driver = juce::String::fromUTF8(s.deviceType.c_str());
         state.device = juce::String::fromUTF8(s.outputDevice.c_str());
         state.sampleRate = s.sampleRate;
@@ -2710,34 +2698,6 @@ private:
 
     // While a bounce runs its progress is in the status bar; when it ends a toast
     // gives the outcome (the measured loudness and any gain), with the file to hand.
-    void showBounceOutcome(const std::string& message)
-    {
-        if (message.empty())
-            return;
-        const auto text = juce::String::fromUTF8(message.c_str());
-        if (session_.isBouncing())
-        {
-            status_.showMessage(text);
-            return;
-        }
-        const auto& result = session_.lastBounceResult();
-        if (!result.error.empty())
-        {
-            toast(ui::ToastStack::Kind::error, text);
-            return;
-        }
-        if (result.cancelled || result.files.empty())
-        {
-            toast(ui::ToastStack::Kind::info, text);
-            return;
-        }
-        const auto file = result.files.front();
-        toast(result.limitedByCeiling ? ui::ToastStack::Kind::warning : ui::ToastStack::Kind::success,
-              text,
-              "Show in folder",
-              [file] { file.revealToUser(); });
-    }
-
     // ----- menus ---------------------------------------------------------------------------
     void appMenu()
     {
@@ -3122,7 +3082,6 @@ private:
         }
     } loadDriver_;
     std::unique_ptr<juce::FileChooser> chooser_;
-    std::string lastRecordingMessage_, lastBounceMessage_, lastPluginMessage_, lastFreezeMessage_;
     bool lastRecording_ = false;
     int ticks_ = 0;
     std::vector<bool> monitoring_; // which tracks monitor their input, for the headers

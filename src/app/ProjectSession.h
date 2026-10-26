@@ -2,6 +2,7 @@
 
 #include "Bounce.h"
 #include "SampleFiles.h"
+#include "app/Notices.h"
 #include "app/ProjectLoad.h"
 #include "audio/JuceMediaLoader.h"
 #include "audio/PeakStore.h"
@@ -81,14 +82,8 @@ public:
     std::string freezeTrack(core::Id trackId);
     bool isFreezing() const noexcept { return freeze_ != nullptr && freeze_->isRunning(); }
     float freezeProgress() const noexcept { return freeze_ != nullptr ? freeze_->progress() : 0.0f; }
-    // The last freeze's outcome for a toast ("" while none has finished).
-    const std::string& lastFreezeMessage() const noexcept { return freezeMessage_; }
     bool isBouncing() const noexcept { return bounce_ != nullptr && bounce_->isRunning(); }
     float bounceProgress() const noexcept { return bounce_ != nullptr ? bounce_->progress() : 0.0f; }
-    // The last bounce's outcome, as a sentence for the completion toast ("Bouncing..."
-    // while it runs), and its result (the files, for Show in folder).
-    const std::string& lastBounceMessage() const noexcept { return bounceMessage_; }
-    const BounceJob::Result& lastBounceResult() const noexcept { return bounceResult_; }
 
     // ----- plugins ----------------------------------------------------------------
     // Scans the VST3 folders in the background (changed files only unless `all`);
@@ -370,10 +365,9 @@ public:
     // or both sides of its stereo bus; left is -1 when it has none or its bus is
     // not on this device.
     engine::InputPair resolvedInput(const core::Track& track) const;
-    // Human-readable note about the last recording (dropouts, recovery), if any.
-    const std::string& lastRecordingMessage() const noexcept { return recordingMessage_; }
-    // The latest plugin that crashed while processing (it was switched off), or empty.
-    const std::string& lastPluginMessage() const noexcept { return pluginMessage_; }
+    // What the session has told the user since the last call (app/Notices.h): a
+    // recording's outcome, a plugin that crashed, an export or a freeze finishing.
+    std::vector<Notice> takeNotices() { return notices_.take(); }
     // Brings `into` up to date with the recording in progress (its audio takes'
     // peaks so far and its MIDI takes), for the arrange view to draw it growing;
     // clears it when nothing is recording. Call once per UI frame. Finished
@@ -532,15 +526,11 @@ private:
     core::UndoStack undo_;
     juce::File projectFile_;
     bool changedOutsideHistory_ = false;
-    std::string recordingMessage_;
-    std::string pluginMessage_;
+    NoticeQueue notices_;
     std::set<core::Id> reportedCrashes_; // inserts whose crash the user has been told about
     void checkCrashedPlugins();
-    std::string bounceMessage_;
-    BounceJob::Result bounceResult_;
     std::unique_ptr<BounceJob> bounce_;
     std::unique_ptr<BounceJob> freeze_;
-    std::string freezeMessage_;
     bool gestureOpen_ = false;
     bool metronome_ = false;
     float metronomeGain_ = 0.5f;
