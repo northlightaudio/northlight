@@ -562,6 +562,16 @@ drags it commits on release (move, with the take-group and same-kind rules,
 trim, stretch, fade and gain); the view only previews a gesture and emits what
 they return.
 
+The arrange view itself is split by job under `src/ui/arrange/`: `ArrangeLayout`
+(the rows' heights and tops, no JUCE, tested), `ArrangeView::Painter` (one per
+paint, for the area repainted), one `ArrangeView::Gesture` per kind of drag
+(`ArrangeGestures`: each keeps its own preview and commits through `ui::edit` on
+release), `ArrangeMenus` (every item carries its action), `MarkerController`
+and `ArrangeKeymap` (the keys as one table). The mixer's strips live in
+`src/ui/mixer/`, the piano roll's controller lane is a component of its own
+(`ui::ControllerLane`), and the audio editor's Correct sheet, pitch grid and
+pitch rules are in `src/ui/audioeditor/`.
+
 The specification for every screen is in [design/](design/README.md).
 
 ## Testing
