@@ -1,4 +1,5 @@
 #include "app/ProjectSession.h"
+#include "app/SessionNotices.h"
 #include "audio/AudioDeviceLayer.h"
 #include "audio/AudioSettings.h"
 #include "core/Command.h"
@@ -647,4 +648,34 @@ TEST_CASE("Notices are told once each, in order, the same sentence twice include
     CHECK(queue.take().empty()); // taken: not told again
     queue.push(Notice::Kind::success, "Recorded 1 track(s)");
     CHECK(queue.take().size() == 1);
+}
+
+TEST_CASE("The window shows each notice as its kind says: a toast, a revealed file or a status line",
+          "[app][notices]")
+{
+    SessionFixture f;
+    std::vector<std::pair<ui::ToastStack::Kind, juce::String>> toasts;
+    juce::String action, status;
+    SessionNotices notices({*f.session,
+                            f.audio,
+                            [&](ui::ToastStack::Kind kind,
+                                const juce::String& text,
+                                const juce::String& a,
+                                std::function<void()>)
+                            {
+                                toasts.emplace_back(kind, text);
+                                action = a;
+                            },
+                            [&](const juce::String& text) { status = text; },
+                            [] {}});
+    notices.show({Notice::Kind::status, "Bouncing...", {}});
+    CHECK(status == "Bouncing...");
+    CHECK(toasts.empty());
+    notices.show({Notice::Kind::warning, "Recording has 10 samples of silence", {}});
+    notices.show({Notice::Kind::success, "Exported mix.wav", juce::File::getCurrentWorkingDirectory()});
+    REQUIRE(toasts.size() == 2);
+    CHECK(toasts[0].first == ui::ToastStack::Kind::warning);
+    CHECK(toasts[1].first == ui::ToastStack::Kind::success);
+    CHECK(action == "Show in folder");
+    CHECK(notices.dropouts() == 0); // no device, nothing dropped
 }

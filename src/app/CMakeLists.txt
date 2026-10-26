@@ -47,7 +47,9 @@ add_library(northlight_app_session STATIC
     MidiFiles.cpp
     LaunchFlags.h
     AppMenus.h
-    AppMenus.cpp)
+    AppMenus.cpp
+    SessionNotices.h
+    SessionNotices.cpp)
 
 target_include_directories(northlight_app_session PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/..")
 target_link_libraries(northlight_app_session PUBLIC
@@ -92,6 +94,8 @@ target_sources(northlight PRIVATE
     ExportController.cpp
     FileActions.h
     FileActions.cpp
+    FirstRun.h
+    FirstRun.cpp
     MainWindow.h
     MainWindow.cpp)
 
