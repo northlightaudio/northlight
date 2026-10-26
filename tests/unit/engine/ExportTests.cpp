@@ -251,6 +251,17 @@ TEST_CASE("Resampling at equal rates is a copy", "[engine][export][resample]")
     CHECK(resampledLength(48000, 48000.0, 44100.0) == 44100);
 }
 
+TEST_CASE("A set stop flag ends a conversion and a measurement early", "[engine][export][resample]")
+{
+    const auto in = sine(440.0, 0.3, 48000.0, 48000);
+    const std::atomic<bool> stop{true};
+    CHECK(resample(in.data(), in.size(), 48000.0, 44100.0, &stop).empty());
+    // Stopped before the first gating block: nothing is measured.
+    CHECK(integratedLoudness({in, in}, 48000.0, &stop) == Approx(-100.0));
+    const std::atomic<bool> go{false};
+    CHECK(resample(in.data(), in.size(), 48000.0, 44100.0, &go).size() == 44100);
+}
+
 // ----- measurement and normalisation -----------------------------------------------------
 
 TEST_CASE("True peak finds the peak between the samples", "[engine][export][peak]")

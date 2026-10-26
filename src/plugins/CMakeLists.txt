@@ -21,6 +21,8 @@ add_library(northlight_plugins STATIC
     Nebula.cpp
     Starbit.h
     Starbit.cpp
+    SampleLoader.h
+    SampleLoader.h
     Sampler.h
     Sampler.cpp
     Biquad.h

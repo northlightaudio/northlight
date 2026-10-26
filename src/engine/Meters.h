@@ -1,5 +1,7 @@
 #pragma once
 
+#include "core/Model.h"
+
 #include <algorithm>
 #include <array>
 #include <atomic>
@@ -101,3 +103,23 @@ private:
 };
 
 } // namespace northlight::rt
+
+namespace northlight::engine
+{
+
+// Meter slot layout used by the snapshot compiler: tracks in project order, then
+// buses in project order, then the master.
+inline int trackMeterSlot(int trackIndex) noexcept
+{
+    return trackIndex;
+}
+inline int busMeterSlot(const core::Project& project, int busIndex) noexcept
+{
+    return static_cast<int>(project.tracks.size()) + busIndex;
+}
+inline int masterMeterSlot(const core::Project& project) noexcept
+{
+    return static_cast<int>(project.tracks.size() + project.buses.size());
+}
+
+} // namespace northlight::engine

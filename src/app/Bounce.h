@@ -36,6 +36,9 @@ namespace northlight
 // dither, and written. Stems are normalised together: a render of the mix is
 // measured first and its gain applied to every stem, so they still sum to the
 // normalised mix. Progress is polled; onFinished fires on the message thread.
+// cancel() is seen within one render block and within a few thousand samples of
+// the conversion, measurement and write, so destroying a running job (which
+// cancels it and waits for the thread) holds the message thread only that long.
 class BounceJob final : private juce::Thread
 {
 public:

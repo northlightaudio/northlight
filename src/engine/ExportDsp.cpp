@@ -132,7 +132,18 @@ std::size_t resampledLength(std::size_t length, double fromRate, double toRate) 
     return static_cast<std::size_t>(std::llround(static_cast<double>(length) * toRate / fromRate));
 }
 
-std::vector<float> resample(const float* input, std::size_t length, double fromRate, double toRate)
+namespace
+{
+// Whether a long offline pass should end now: checked once per this many samples.
+constexpr std::size_t stopCheckInterval = 4096;
+bool stopped(const std::atomic<bool>* stop) noexcept
+{
+    return stop != nullptr && stop->load(std::memory_order_acquire);
+}
+} // namespace
+
+std::vector<float> resample(
+    const float* input, std::size_t length, double fromRate, double toRate, const std::atomic<bool>* stop)
 {
     if (fromRate == toRate || fromRate <= 0.0 || toRate <= 0.0)
         return std::vector<float>(input, input + length);
@@ -147,6 +158,8 @@ std::vector<float> resample(const float* input, std::size_t length, double fromR
     const auto last = static_cast<std::int64_t>(length) - 1;
     for (std::size_t j = 0; j < outLength; ++j)
     {
+        if (j % stopCheckInterval == 0 && stopped(stop))
+            return {};
         const double p = static_cast<double>(j) * ratio;
         const auto centre = static_cast<std::int64_t>(std::floor(p));
         const auto from = std::max<std::int64_t>(0, centre - reach + 1);
@@ -169,7 +182,7 @@ float samplePeak(const float* signal, std::size_t length) noexcept
     return peak;
 }
 
-float truePeak(const float* signal, std::size_t length) noexcept
+float truePeak(const float* signal, std::size_t length, const std::atomic<bool>* stop) noexcept
 {
     const auto& filter = TruePeakFilter::instance();
     constexpr int half = TruePeakFilter::half;
@@ -177,6 +190,8 @@ float truePeak(const float* signal, std::size_t length) noexcept
     const auto n = static_cast<std::int64_t>(length);
     for (std::int64_t i = 0; i < n; ++i)
     {
+        if (static_cast<std::size_t>(i) % stopCheckInterval == 0 && stopped(stop))
+            break;
         // Interpolated values between sample i and i + 1.
         const std::int64_t first = i - half + 1;
         for (int m = 1; m < TruePeakFilter::phases; ++m)
@@ -194,7 +209,9 @@ float truePeak(const float* signal, std::size_t length) noexcept
     return peak;
 }
 
-double integratedLoudness(const std::vector<std::vector<float>>& channels, double sampleRate)
+double integratedLoudness(const std::vector<std::vector<float>>& channels,
+                          double sampleRate,
+                          const std::atomic<bool>* stop)
 {
     if (channels.empty() || channels[0].empty())
         return -100.0;
@@ -204,7 +221,7 @@ double integratedLoudness(const std::vector<std::vector<float>>& channels, doubl
     const bool stereo = channels.size() > 1;
     std::vector<float> silence(stereo ? 0 : 4096, 0.0f);
     constexpr std::size_t chunk = 4096;
-    for (std::size_t at = 0; at < length; at += chunk)
+    for (std::size_t at = 0; at < length && !stopped(stop); at += chunk)
     {
         const auto n = static_cast<int>(std::min(chunk, length - at));
         meter.processBlock(channels[0].data() + at, stereo ? channels[1].data() + at : silence.data(), n);
@@ -212,16 +229,19 @@ double integratedLoudness(const std::vector<std::vector<float>>& channels, doubl
     return meter.integratedLufs();
 }
 
-ExportAnalysis analyse(const std::vector<std::vector<float>>& channels, double sampleRate, bool withTruePeak)
+ExportAnalysis analyse(const std::vector<std::vector<float>>& channels,
+                       double sampleRate,
+                       bool withTruePeak,
+                       const std::atomic<bool>* stop)
 {
     ExportAnalysis a;
-    a.integratedLufs = integratedLoudness(channels, sampleRate);
+    a.integratedLufs = integratedLoudness(channels, sampleRate, stop);
     float sample = 0.0f, trueP = 0.0f;
     for (const auto& c : channels)
     {
         sample = std::max(sample, samplePeak(c.data(), c.size()));
         if (withTruePeak)
-            trueP = std::max(trueP, truePeak(c.data(), c.size()));
+            trueP = std::max(trueP, truePeak(c.data(), c.size(), stop));
     }
     a.samplePeakDb = gainToDb(sample);
     a.truePeakDb = withTruePeak ? gainToDb(trueP) : a.samplePeakDb;

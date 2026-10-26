@@ -1,6 +1,7 @@
 #pragma once
 
 #include "engine/Insert.h"
+#include "plugins/SampleLoader.h"
 
 #include <cstdint>
 #include <functional>
@@ -28,21 +29,7 @@ namespace northlight::plugins::sampler
 
 inline const std::string type = "northlight.sampler";
 
-// A decoded sample, immutable once made and shared by every processor that
-// plays the file.
-struct Sample
-{
-    std::string path;
-    double sampleRate = 48000.0;
-    std::vector<float> left, right; // right is empty for a mono file
-
-    std::int64_t frames() const noexcept { return static_cast<std::int64_t>(left.size()); }
-    bool stereo() const noexcept { return !right.empty(); }
-};
-
-// Decodes a file for the sampler (controller thread; may block on disk). Null
-// with `error` set when the file cannot be read.
-using Loader = std::function<std::shared_ptr<const Sample>(const std::string& path, std::string& error)>;
+// Sample, Loader and the state encoding are in plugins/SampleLoader.h.
 
 enum Param
 {
@@ -78,11 +65,6 @@ constexpr int voicePool = maxVoices + 8;
 
 std::unique_ptr<engine::InsertProcessor> create(Loader loader = {});
 std::vector<engine::ParameterInfo> parameterInfo();
-
-// The state string for a sample path (base64 of the path) and back; an empty
-// path is an empty state.
-std::string encodeState(const std::string& path);
-std::string decodeState(const std::string& state);
 
 // ----- for the editor and tests (controller thread; `processor` may be any insert) -------
 

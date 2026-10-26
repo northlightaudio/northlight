@@ -92,6 +92,9 @@ BounceJob::~BounceJob()
 {
     // A finished render may still have its completion queued on the message
     // thread; it checks this and does nothing once the job is gone.
+    // A cancel ends the render within one block and the conversion, measurement
+    // or write within a few thousand samples (each checks cancel_), so this waits
+    // for at most one plugin block or chunk; the timeout is only a backstop.
     alive_->store(false, std::memory_order_release);
     cancel();
     stopThread(10000);
@@ -163,7 +166,7 @@ bool BounceJob::renderOne(Render& render, int index, int count)
     const double toRate = engine::outputRate(settings, fromRate);
     if (toRate != fromRate)
         for (auto& channel : channels)
-            channel = engine::resample(channel.data(), channel.size(), fromRate, toRate);
+            channel = engine::resample(channel.data(), channel.size(), fromRate, toRate, &cancel_);
     if (cancel_.load(std::memory_order_acquire))
     {
         result_.cancelled = true;
@@ -171,7 +174,12 @@ bool BounceJob::renderOne(Render& render, int index, int count)
     }
     setProgress(index, count, 0.9f);
     const bool truePeak = settings.normalise && settings.peakMode == engine::PeakMode::truePeak;
-    const auto analysis = engine::analyse(channels, toRate, truePeak);
+    const auto analysis = engine::analyse(channels, toRate, truePeak, &cancel_);
+    if (cancel_.load(std::memory_order_acquire))
+    {
+        result_.cancelled = true;
+        return false;
+    }
     const double peakDb = truePeak ? analysis.truePeakDb : analysis.samplePeakDb;
     const auto own =
         engine::normalisationGain(analysis.integratedLufs, peakDb, settings.targetLufs, settings.ceilingDb);
@@ -195,7 +203,11 @@ bool BounceJob::renderOne(Render& render, int index, int count)
         gainDb = options_.stems ? sharedGainDb_ : own.gainDb;
     engine::applyGain(channels, static_cast<float>(engine::dbToGain(gainDb)));
     if (!writeFile(render.file, channels, toRate))
+    {
+        if (cancel_.load(std::memory_order_acquire))
+            result_.cancelled = true;
         return false;
+    }
     result_.files.push_back(render.file);
     result_.length = channels.empty() ? 0 : static_cast<core::SamplePosition>(channels[0].size());
     if (!(options_.stems && settings.normalise))
@@ -310,6 +322,12 @@ bool BounceJob::writeFile(const juce::File& file,
         std::vector<float> interleaved(chunk * static_cast<size_t>(numChannels));
         for (size_t at = 0; at < length; at += chunk)
         {
+            if (cancel_.load(std::memory_order_acquire))
+            {
+                writer.close();
+                file.deleteFile();
+                return false;
+            }
             const auto n = std::min(chunk, length - at);
             for (size_t i = 0; i < n; ++i)
                 for (int c = 0; c < numChannels; ++c)
@@ -375,7 +393,7 @@ bool BounceJob::writeFile(const juce::File& file,
     {
         // The encoder takes floats.
         std::vector<const float*> pointers(static_cast<size_t>(numChannels));
-        for (size_t at = 0; at < length && ok; at += chunk)
+        for (size_t at = 0; at < length && ok && !cancel_.load(std::memory_order_acquire); at += chunk)
         {
             for (int c = 0; c < numChannels; ++c)
                 pointers[static_cast<size_t>(c)] = channels[static_cast<size_t>(c)].data() + at;
@@ -395,7 +413,7 @@ bool BounceJob::writeFile(const juce::File& file,
         const int shift = 32 - bits;
         std::vector<std::vector<int>> buffers(static_cast<size_t>(numChannels), std::vector<int>(chunk));
         std::vector<const int*> pointers(static_cast<size_t>(numChannels) + 1, nullptr); // null-terminated
-        for (size_t at = 0; at < length && ok; at += chunk)
+        for (size_t at = 0; at < length && ok && !cancel_.load(std::memory_order_acquire); at += chunk)
         {
             const auto n = std::min(chunk, length - at);
             for (int c = 0; c < numChannels; ++c)
@@ -411,6 +429,11 @@ bool BounceJob::writeFile(const juce::File& file,
         }
     }
     writer.reset(); // finishes the file (header sizes, encoder tail)
+    if (cancel_.load(std::memory_order_acquire))
+    {
+        file.deleteFile();
+        return false;
+    }
     if (!ok)
     {
         result_.error = "write failed: " + path;

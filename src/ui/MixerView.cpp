@@ -1,7 +1,7 @@
 #include "ui/MixerView.h"
 
 #include "core/Command.h"
-#include "engine/Snapshot.h"
+#include "engine/Meters.h"
 #include "hosting/ClapPlugin.h"
 #include "hosting/HostedPlugin.h"
 #include "plugins/BuiltIns.h"

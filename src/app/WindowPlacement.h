@@ -10,7 +10,7 @@
 // then being the ones it restores to), and checked against today's screens before
 // it is used, so a window saved on a monitor that has gone opens centred instead.
 
-namespace northlight::app
+namespace northlight
 {
 
 struct WindowPlacement
@@ -63,4 +63,4 @@ inline bool reachable(juce::Rectangle<int> bounds,
     return false;
 }
 
-} // namespace northlight::app
+} // namespace northlight

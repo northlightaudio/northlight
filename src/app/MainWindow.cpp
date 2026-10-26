@@ -3,7 +3,7 @@
 #include "CrashReports.h"
 #include "ProjectSession.h"
 #include "UserSettings.h"
-#include "WindowPlacement.h"
+#include "app/WindowPlacement.h"
 #include "audio/AudioDeviceLayer.h"
 #include "core/Command.h"
 #include "core/Model.h"
@@ -3315,13 +3315,13 @@ void MainWindow::restorePlacement()
     if (ui::offscreenMode())
         return;
     const auto state = juce::String::fromUTF8(settings_.value(placementKey).c_str());
-    const auto saved = app::parsePlacement(state);
+    const auto saved = parsePlacement(state);
     if (!saved)
         return; // the first launch, or nothing usable: centred at the default size
     std::vector<juce::Rectangle<int>> workAreas;
     for (const auto& display : juce::Desktop::getInstance().getDisplays().displays)
         workAreas.push_back(display.userBounds.toNearestInt());
-    if (!app::reachable(saved->bounds, workAreas))
+    if (!reachable(saved->bounds, workAreas))
         return; // its screen is gone (or it was dragged off): centred instead
     restoreWindowStateFromString(state);
 }

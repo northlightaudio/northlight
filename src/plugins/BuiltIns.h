@@ -3,7 +3,7 @@
 #include "core/ProjectJson.h"
 #include "engine/Insert.h"
 #include "plugins/EffectPresets.h"
-#include "plugins/Sampler.h"
+#include "plugins/SampleLoader.h"
 
 #include <memory>
 #include <string>

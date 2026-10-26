@@ -314,3 +314,32 @@ TEST_CASE("The demo song bounces to a full, unclipped mix with every section sou
     if (kept.isEmpty())
         out.deleteFile();
 }
+
+TEST_CASE("A cancelled bounce reports it and leaves no file", "[app][bounce]")
+{
+    const juce::ScopedJuceInitialiser_GUI juceInit;
+    const auto a = constantWav("bounce-cancel.wav", 0.5f, 1.0);
+    core::Project p;
+    core::Track t;
+    t.id = 1;
+    t.name = "A";
+    t.clips.push_back({10, "a", a.getFullPathName().toStdString(), 0, 48000, 0, 1.0f});
+    p.tracks = {t};
+    p.nextId = 100;
+
+    hosting::PluginRegistry registry;
+    hosting::HostFactory factory(registry);
+    const auto out =
+        juce::File::getSpecialLocation(juce::File::tempDirectory).getChildFile("bounce-cancel-out.wav");
+    out.deleteFile();
+    BounceJob::Options options;
+    options.output = out;
+    options.format.sampleRate = 44100; // through the conversion too
+    BounceJob job(p, factory, options);
+    job.cancel();
+    const auto result = job.runSynchronously();
+    CHECK(result.cancelled);
+    CHECK(result.error.empty());
+    CHECK(result.files.empty());
+    CHECK_FALSE(out.existsAsFile());
+}

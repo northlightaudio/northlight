@@ -479,7 +479,9 @@ a background thread, as fast as it can. Export then converts the sample rate wit
 offline windowed-sinc converter, measures integrated loudness and true peak,
 normalises, and dithers (TPDF, optionally noise-shaped) to 16 or 24 bits. Stems are
 normalised together so they still sum to the mix. Freezing a track uses the same
-render and plays the result in place of the track's instrument and inserts.
+render and plays the result in place of the track's instrument and inserts. A
+cancel is seen within one render block and within a few thousand samples of the
+conversion, measurement and write, so closing during an export waits only that long.
 
 ### Opening a project
 

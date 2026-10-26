@@ -1,7 +1,7 @@
 #pragma once
 
 #include "engine/Insert.h"
-#include "plugins/Sampler.h"
+#include "plugins/SampleLoader.h"
 
 #include <memory>
 #include <string>

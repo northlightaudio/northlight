@@ -402,7 +402,7 @@ void AudioEngine::applyCommand(const TransportCommand& command) noexcept
             applyTransportCommand(transport_, command);
             break;
         case TransportCommand::Type::locate:
-            // Locating during a recording ends it (a punch region comes in Phase 3b).
+            // Locating during a recording ends it (the punch range is handled in process(), not by locating).
             if (recordSession_ != nullptr)
                 endRecordingOnRt();
             applyTransportCommand(transport_, command);

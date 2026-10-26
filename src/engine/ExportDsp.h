@@ -2,6 +2,7 @@
 
 #include "engine/ExportSettings.h"
 
+#include <atomic>
 #include <cstddef>
 #include <cstdint>
 #include <vector>
@@ -26,8 +27,14 @@ std::size_t resampledLength(std::size_t length, double fromRate, double toRate) 
 // about 90 dB stop band, the cut-off at 92% of the lower Nyquist frequency so a
 // 44.1 kHz result is flat to about 19 kHz). Output sample j sits at input position
 // j * fromRate / toRate exactly: no delay, any ratio. Samples outside the input
-// read as silence. Equal rates return a copy.
-std::vector<float> resample(const float* input, std::size_t length, double fromRate, double toRate);
+// read as silence. Equal rates return a copy. A set `stop` (checked every few
+// thousand samples) ends it early with an empty result, so a cancelled export does
+// not finish converting an hour of audio first.
+std::vector<float> resample(const float* input,
+                            std::size_t length,
+                            double fromRate,
+                            double toRate,
+                            const std::atomic<bool>* stop = nullptr);
 
 // ----- measurement -----------------------------------------------------------------------
 
@@ -35,11 +42,13 @@ std::vector<float> resample(const float* input, std::size_t length, double fromR
 float samplePeak(const float* signal, std::size_t length) noexcept;
 // The true peak (linear): the largest absolute value of the signal 4x oversampled
 // by windowed-sinc interpolation, the method of ITU-R BS.1770-4 Annex 2.
-float truePeak(const float* signal, std::size_t length) noexcept;
+float truePeak(const float* signal, std::size_t length, const std::atomic<bool>* stop = nullptr) noexcept;
 
 // Integrated loudness (LUFS, BS.1770-4 gated) of one or two channels; -100 when
 // nothing passes the gates. A mono signal is measured as one channel.
-double integratedLoudness(const std::vector<std::vector<float>>& channels, double sampleRate);
+double integratedLoudness(const std::vector<std::vector<float>>& channels,
+                          double sampleRate,
+                          const std::atomic<bool>* stop = nullptr);
 
 struct ExportAnalysis
 {
@@ -47,7 +56,11 @@ struct ExportAnalysis
     double samplePeakDb = -200.0;
     double truePeakDb = -200.0; // only measured when asked for (it costs an oversampling pass)
 };
-ExportAnalysis analyse(const std::vector<std::vector<float>>& channels, double sampleRate, bool withTruePeak);
+// A set `stop` ends the measurement early (its figures are then meaningless).
+ExportAnalysis analyse(const std::vector<std::vector<float>>& channels,
+                       double sampleRate,
+                       bool withTruePeak,
+                       const std::atomic<bool>* stop = nullptr);
 
 // ----- normalisation ---------------------------------------------------------------------
 
