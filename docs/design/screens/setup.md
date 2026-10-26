@@ -143,7 +143,7 @@ Audio page, shown inline, looks like every other page.
 - **Audio**: the Audio Setup content inline (8.1), its cards on the same left edge
   as every other page's.
 - **Recording**
-  - *Files*: Format (WAV 32-bit float; WAV 24-bit (coming soon)), Take names (a
+  - *Files*: Format (Coming soon; WAV 32-bit float; WAV 24-bit (coming soon)), Take names (a
     200 px field, Coming soon; "{track} and {take} become the track name and take
     number.").
   - *Count-in and click*: Count-in (segmented Off | 1 bar | 2 bars | 4 bars; "Used

@@ -217,7 +217,7 @@ TEST_CASE("A disabled segment cannot be chosen, and the arrow keys step over it"
 
 TEST_CASE("Preferences show the saved settings, read once the owner's callbacks are set", "[ui][preferences]")
 {
-    Fixture f({{ui::PreferencesView::Keys::recentCount, "12"}, {ui::PreferencesView::Keys::snap, "0"}});
+    Fixture f({{std::string(settings::recentCount.key), "12"}, {std::string(settings::snap.key), "0"}});
     const auto find = [&f](const juce::String& label) -> juce::Component*
     {
         for (const auto& row : f.view->rowLayout())
@@ -252,4 +252,15 @@ TEST_CASE("Preferences opened without a page shows General once it is in a windo
     window.addAndMakeVisible(view);
     CHECK(view.currentPage() == "general");
     CHECK_FALSE(view.rowLayout().empty());
+}
+
+TEST_CASE("Every setting not read yet carries the Coming soon badge", "[ui][preferences]")
+{
+    Fixture f;
+    f.view->showPage("recording");
+    bool formatBadged = false;
+    for (const auto& row : f.view->rowLayout())
+        if (row.label == "Format")
+            formatBadged = row.badge;
+    CHECK(formatBadged);
 }

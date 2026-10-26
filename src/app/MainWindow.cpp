@@ -362,35 +362,35 @@ public:
         startTimerHz(30);
     }
 
+    // The user's settings, typed and defaulted by the schema (core/Settings.h).
+    settings::Reader preferences() const
+    {
+        return settings::Reader([this](const std::string& key) { return settings_.value(key); });
+    }
+
     // The preferences with an immediate effect (screens/setup.md 8.2); `atLaunch` also
     // applies the defaults a project starts with.
     void applyPreferences(bool atLaunch)
     {
-        using Keys = ui::PreferencesView::Keys;
-        const auto value = [this](const char* key, const std::string& fallback)
-        {
-            const auto v = settings_.value(key);
-            return v.empty() ? fallback : v;
-        };
-        const double scale = juce::String(value(Keys::uiScale, "0")).getDoubleValue();
+        const auto read = preferences();
+        const double scale = read.number(settings::uiScale);
         juce::Desktop::getInstance().setGlobalScaleFactor(
             static_cast<float>(scale > 0.0 ? scale / 100.0 : 1.0));
-        const double levelDb = juce::String(value(Keys::metronomeLevel, "-6")).getDoubleValue();
-        session_.setMetronomeLevel(ui::db::toGain(levelDb));
+        session_.setMetronomeLevel(ui::db::toGain(read.number(settings::metronomeLevel)));
         std::vector<std::string> paths;
         for (const auto& item : juce::StringArray::fromTokens(
-                 juce::String::fromUTF8(value(Keys::pluginPaths, "").c_str()), "\t", ""))
+                 juce::String::fromUTF8(read.text(settings::pluginPaths).c_str()), "\t", ""))
             if (item.isNotEmpty())
                 paths.push_back(item.toStdString());
         session_.setPluginSearchPaths(std::move(paths));
-        tracks_.setFollowPlayhead(value(Keys::followPlayhead, "1") == "1");
+        tracks_.setFollowPlayhead(read.flag(settings::followPlayhead));
         if (atLaunch)
         {
-            session_.setCountInBars(juce::String(value(Keys::countIn, "1")).getIntValue());
-            tracks_.setSnapEnabled(value(Keys::snap, "1") == "1");
-            tracks_.setSnapGrid(juce::String(value(Keys::snapGrid, "0")).getIntValue());
-            tracks_.setRippleEnabled(value(Keys::ripple, "0") == "1");
-            if (value(Keys::scanOnLaunch, "0") == "1")
+            session_.setCountInBars(read.integer(settings::countIn));
+            tracks_.setSnapEnabled(read.flag(settings::snap));
+            tracks_.setSnapGrid(read.integer(settings::snapGrid));
+            tracks_.setRippleEnabled(read.flag(settings::ripple));
+            if (read.flag(settings::scanOnLaunch))
                 session_.scanPlugins(false);
         }
         refreshHeader();
@@ -693,7 +693,7 @@ public:
     // The folder new projects are saved to and opened from.
     juce::File projectFolder() const
     {
-        const auto chosen = settings_.value(ui::PreferencesView::Keys::projectFolder);
+        const auto chosen = preferences().text(settings::projectFolder);
         if (!chosen.empty())
             if (const juce::File folder(juce::String::fromUTF8(chosen.c_str())); folder.isDirectory())
                 return folder;
@@ -2771,8 +2771,7 @@ private:
         menu.addItem(2, "Open...");
         juce::PopupMenu recent;
         auto files = recentFiles();
-        const auto shown = settings_.value(ui::PreferencesView::Keys::recentCount);
-        if (const int count = shown.empty() ? 8 : juce::String(shown).getIntValue();
+        if (const int count = preferences().integer(settings::recentCount);
             static_cast<size_t>(std::max(0, count)) < files.size())
             files.resize(static_cast<size_t>(std::max(0, count)));
         for (size_t i = 0; i < files.size(); ++i)

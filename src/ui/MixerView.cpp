@@ -1,6 +1,7 @@
 #include "ui/MixerView.h"
 
 #include "core/Command.h"
+#include "core/Settings.h"
 #include "engine/Meters.h"
 #include "hosting/HostFactory.h"
 #include "plugins/BuiltIns.h"
@@ -247,7 +248,7 @@ void MixerView::openInsertEditor(core::Id channelId, core::Id insertId)
         const juce::String format = hosting::PluginRegistry::isClapType(insert->type) ? "CLAP" : "VST3";
         const auto setting = [this](const std::string& key)
         { return loadSetting ? loadSetting(key) : std::string{}; };
-        const bool pinned = setting("plugins.pin") == "1";
+        const bool pinned = settings::Reader(setting).flag(settings::pluginsOnTop);
 
         // The plugin's own editor, whatever its format.
         auto plugin = hosting::HostFactory::createEditor(*live);
@@ -336,7 +337,7 @@ void MixerView::openInsertEditor(core::Id channelId, core::Id insertId)
         window->onPinChanged = [safe](bool pin)
         {
             if (safe != nullptr && safe->saveSetting)
-                safe->saveSetting("plugins.pin", pin ? "1" : "0");
+                safe->saveSetting(std::string(settings::pluginsOnTop.key), settings::flagText(pin));
         };
         // Where this plugin's window was last left, and its size, per plugin type,
         // if still on screen.

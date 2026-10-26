@@ -2,6 +2,7 @@
 # tested without a message loop and reused by the scanner process later.
 add_library(northlight_core STATIC
     Model.h
+    Settings.h
     Model.cpp
     TempoMap.h
     TempoMap.cpp

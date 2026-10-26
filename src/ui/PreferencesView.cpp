@@ -1240,19 +1240,18 @@ const std::vector<juce::String>& PreferencesView::pageKeys()
     return keys;
 }
 
-std::string PreferencesView::get(const char* key, const std::string& fallback) const
+std::string PreferencesView::get(const settings::Setting& setting) const
 {
-    const auto value = loadSetting ? loadSetting(key) : std::string{};
-    return value.empty() ? fallback : value;
+    return settings::Reader(loadSetting).text(setting);
 }
 
-void PreferencesView::set(const char* key, const std::string& value)
+void PreferencesView::set(const settings::Setting& setting, const std::string& value)
 {
     if (updating_)
         return;
     if (saveSetting)
-        saveSetting(key, value);
-    if (std::string(key) == Keys::contrast)
+        saveSetting(std::string(setting.key), value);
+    if (setting.key == settings::contrast.key)
         writeTokenOverride();
     if (onChanged)
         onChanged();
@@ -1260,7 +1259,7 @@ void PreferencesView::set(const char* key, const std::string& value)
 
 void PreferencesView::writeAccentOverride(const juce::String& hex)
 {
-    set(Keys::accent, hex.toStdString());
+    set(settings::accent, hex.toStdString());
     writeTokenOverride();
     if (onNotice)
         onNotice(hex.isEmpty() ? "Accent reset. Restart Northlight to apply."
@@ -1281,12 +1280,12 @@ void PreferencesView::writeTokenOverride()
                              : juce::String::toHexString(static_cast<int>(alpha)).paddedLeft('0', 2));
     };
     auto* colours = new juce::DynamicObject();
-    const auto accent = juce::String::fromUTF8(get(Keys::accent).c_str());
+    const auto accent = juce::String::fromUTF8(get(settings::accent).c_str());
     if (accent.length() == 7 && accent.startsWithChar('#'))
         for (const auto& [key, colour] :
              Theme::accentTokens(juce::Colour::fromString("ff" + accent.substring(1))))
             colours->setProperty(juce::Identifier(key.c_str()), hex(colour));
-    if (get(Keys::contrast, "standard") == "high")
+    if (get(settings::contrast) == "high")
         for (const auto& [key, colour] : theme_.highContrastTokens())
             colours->setProperty(juce::Identifier(key.c_str()), hex(colour));
     if (colours->getProperties().isEmpty())
@@ -1327,10 +1326,10 @@ void PreferencesView::buildPages()
         std::string value;
         bool comingSoon = false;
     };
-    const auto combo = [this](const std::vector<Choice>& items, const char* key, const std::string& fallback)
+    const auto combo = [this](const std::vector<Choice>& items, const settings::Setting& key)
     {
         auto box = std::make_unique<juce::ComboBox>();
-        const auto current = get(key, fallback);
+        const auto current = get(key);
         for (size_t i = 0; i < items.size(); ++i)
         {
             const int id = static_cast<int>(i) + 1;
@@ -1342,7 +1341,7 @@ void PreferencesView::buildPages()
         if (box->getSelectedId() == 0)
             box->setSelectedId(1, juce::dontSendNotification);
         auto* raw = box.get();
-        box->onChange = [this, raw, items, key]
+        box->onChange = [this, raw, items, &key]
         {
             const int index = raw->getSelectedId() - 1;
             if (index >= 0 && static_cast<size_t>(index) < items.size())
@@ -1350,8 +1349,7 @@ void PreferencesView::buildPages()
         };
         return box;
     };
-    const auto segmented =
-        [this](const std::vector<Choice>& items, const char* key, const std::string& fallback)
+    const auto segmented = [this](const std::vector<Choice>& items, const settings::Setting& key)
     {
         auto control = std::make_unique<SegmentedControl>(theme_);
         control->setTrackColour(theme_.colours.surface0); // a well in the surface1 card
@@ -1359,41 +1357,40 @@ void PreferencesView::buildPages()
         for (const auto& item : items)
             labels.push_back(item.text);
         control->setSegments(labels);
-        const auto current = get(key, fallback);
+        const auto current = get(key);
         for (size_t i = 0; i < items.size(); ++i)
         {
             control->setSegmentEnabled(static_cast<int>(i), !items[i].comingSoon);
             if (items[i].value == current)
                 control->setSelected(static_cast<int>(i), juce::dontSendNotification);
         }
-        control->onChange = [this, items, key](int index)
+        control->onChange = [this, items, &key](int index)
         {
             if (index >= 0 && static_cast<size_t>(index) < items.size())
                 set(key, items[static_cast<size_t>(index)].value);
         };
         return control;
     };
-    const auto checkbox = [this](const char* key, bool fallback)
+    const auto checkbox = [this](const settings::Setting& key)
     {
         auto t = std::make_unique<juce::ToggleButton>();
-        t->setToggleState(get(key, fallback ? "1" : "0") == "1", juce::dontSendNotification);
+        t->setToggleState(settings::Reader(loadSetting).flag(key), juce::dontSendNotification);
         auto* raw = t.get();
-        t->onClick = [this, raw, key] { set(key, raw->getToggleState() ? "1" : "0"); };
+        t->onClick = [this, raw, &key] { set(key, settings::flagText(raw->getToggleState())); };
         return t;
     };
-    const auto text = [this](const char* key, const std::string& fallback, const juce::String& placeholder)
+    const auto text = [this](const settings::Setting& key, const juce::String& placeholder)
     {
         auto e = std::make_unique<juce::TextEditor>();
         setUpTextField(theme_, *e, theme_.body());
-        e->setText(juce::String::fromUTF8(get(key, fallback).c_str()), false);
+        e->setText(juce::String::fromUTF8(get(key).c_str()), false);
         e->setTextToShowWhenEmpty(placeholder, theme_.colours.textTertiary);
         auto* raw = e.get();
-        e->onReturnKey = [this, raw, key] { set(key, raw->getText().trim().toStdString()); };
+        e->onReturnKey = [this, raw, &key] { set(key, raw->getText().trim().toStdString()); };
         e->onFocusLost = e->onReturnKey;
         return e;
     };
-    const auto number = [this](const char* key,
-                               double fallback,
+    const auto number = [this](const settings::Setting& key,
                                double lo,
                                double hi,
                                double step,
@@ -1404,9 +1401,8 @@ void PreferencesView::buildPages()
         f->setRange(lo, hi, step);
         f->setDecimals(decimals);
         f->setUnit(unit);
-        f->setValue(juce::String(get(key, std::to_string(fallback))).getDoubleValue(),
-                    juce::dontSendNotification);
-        f->onValueChanged = [this, key](double v) { set(key, juce::String(v, 2).toStdString()); };
+        f->setValue(settings::Reader(loadSetting).number(key), juce::dontSendNotification);
+        f->onValueChanged = [this, &key](double v) { set(key, juce::String(v, 2).toStdString()); };
         return f;
     };
     const auto button = [this](const juce::String& label, std::function<void()> action)
@@ -1424,10 +1420,10 @@ void PreferencesView::buildPages()
         page->addCard("Projects");
         const auto documents = juce::File::getSpecialLocation(juce::File::userDocumentsDirectory);
         auto folder = std::make_unique<PathField>(theme_, documents.getFullPathName());
-        folder->setPath(juce::String::fromUTF8(get(Keys::projectFolder).c_str()), false);
+        folder->setPath(juce::String::fromUTF8(get(settings::projectFolder).c_str()), false);
         auto* rawFolder = folder.get();
         folder->onChanged = [this](const juce::String& path)
-        { set(Keys::projectFolder, path.toStdString()); };
+        { set(settings::projectFolder, path.toStdString()); };
         folder->onChoose = [this, rawFolder, documents]
         {
             const juce::File start(rawFolder->path().isNotEmpty() ? juce::File(rawFolder->path())
@@ -1443,21 +1439,21 @@ void PreferencesView::buildPages()
         };
         page->add("Folder", std::move(folder), 0, "New projects are saved here.");
         page->add("Recent",
-                  number(Keys::recentCount, 8, 0, 20, 1, "", 0),
+                  number(settings::recentCount, 0, 20, 1, "", 0),
                   numberWidth,
                   "Shown in the Project menu.");
         page->add("Autosave",
-                  number(Keys::autosaveMinutes, 2, 0, 60, 1, "min", 0),
+                  number(settings::autosaveMinutes, 0, 60, 1, "min", 0),
                   numberWidth,
                   "Keeps unsaved changes for recovery after a crash. 0 turns it off.");
 
         page->addCard("Appearance");
-        auto themeControl = segmented({{"Dark", "dark"}, {"Light", "light", true}}, Keys::theme, "dark");
+        auto themeControl = segmented({{"Dark", "dark"}, {"Light", "light", true}}, settings::theme);
         themeControl->setSegmentTooltip(1, "The light theme is coming soon.");
         const int themeWidth = themeControl->preferredWidth();
         page->add("Theme", std::move(themeControl), themeWidth);
         auto swatches = std::make_unique<Swatches>(theme_);
-        swatches->setValue(juce::String::fromUTF8(get(Keys::accent).c_str()));
+        swatches->setValue(juce::String::fromUTF8(get(settings::accent).c_str()));
         auto* rawSwatches = swatches.get();
         swatches->onChanged = [this, rawSwatches](const juce::String& hex)
         {
@@ -1466,7 +1462,7 @@ void PreferencesView::buildPages()
         };
         const int swatchesWidth = swatches->preferredWidth();
         page->add("Accent", std::move(swatches), swatchesWidth, restartNote);
-        auto contrast = segmented({{"Standard", "standard"}, {"High", "high"}}, Keys::contrast, "standard");
+        auto contrast = segmented({{"Standard", "standard"}, {"High", "high"}}, settings::contrast);
         const int contrastWidth = contrast->preferredWidth();
         page->add("Contrast",
                   std::move(contrast),
@@ -1476,8 +1472,7 @@ void PreferencesView::buildPages()
             "UI scale",
             combo(
                 {{"Follow system", "0"}, {"100%", "100"}, {"125%", "125"}, {"150%", "150"}, {"200%", "200"}},
-                Keys::uiScale,
-                "0"),
+                settings::uiScale),
             comboWidth);
         pages_.push_back(std::move(page));
     }
@@ -1497,30 +1492,35 @@ void PreferencesView::buildPages()
     {
         auto page = std::make_unique<Page>(theme_, "Recording");
         page->addCard("Files");
-        page->add("Format",
-                  combo({{"WAV 32-bit float", "float"}, {"WAV 24-bit", "24", true}},
-                        Keys::recordingFormat,
-                        "float"),
-                  comboWidth);
+        page->add(
+            "Format",
+            combo({{"WAV 32-bit float", "float"}, {"WAV 24-bit", "24", true}}, settings::recordingFormat),
+            comboWidth,
+            {},
+            settings::recordingFormat.comingSoon);
         page->add("Take names",
-                  text(Keys::namePattern, "{track} {take}", "{track} {take}"),
+                  text(settings::namePattern, "{track} {take}"),
                   textWidth,
                   "{track} and {take} become the track name and take number.",
-                  true);
+                  settings::namePattern.comingSoon);
         page->addCard("Count-in and click");
         auto countIn =
-            segmented({{"Off", "0"}, {"1 bar", "1"}, {"2 bars", "2"}, {"4 bars", "4"}}, Keys::countIn, "1");
+            segmented({{"Off", "0"}, {"1 bar", "1"}, {"2 bars", "2"}, {"4 bars", "4"}}, settings::countIn);
         const int countInWidth = countIn->preferredWidth();
         page->add("Count-in", std::move(countIn), countInWidth, "Used when a project opens.");
-        page->add("Pre-roll", number(Keys::preRoll, 0, 0, 8, 1, "bars", 0), numberWidth, {}, true);
-        page->add("Click level", number(Keys::metronomeLevel, -6, -40, 0, 0.5, "dB", 1), numberWidth);
+        page->add("Pre-roll",
+                  number(settings::preRoll, 0, 8, 1, "bars", 0),
+                  numberWidth,
+                  {},
+                  settings::preRoll.comingSoon);
+        page->add("Click level", number(settings::metronomeLevel, -40, 0, 0.5, "dB", 1), numberWidth);
         pages_.push_back(std::move(page));
     }
     // Editing
     {
         auto page = std::make_unique<Page>(theme_, "Editing");
         page->addCard("Snap");
-        page->add("Snap", checkbox(Keys::snap, true), theme_.sizes.icon, "On when a project opens.");
+        page->add("Snap", checkbox(settings::snap), theme_.sizes.icon, "On when a project opens.");
         page->add("Grid",
                   combo({{"Adaptive", "0"},
                          {"Bar", "1"},
@@ -1528,19 +1528,18 @@ void PreferencesView::buildPages()
                          {"1/8", "8"},
                          {"1/16", "16"},
                          {"1/32", "32"}},
-                        Keys::snapGrid,
-                        "0"),
+                        settings::snapGrid),
                   comboWidth);
         page->addCard("Edits");
-        page->add("Ripple", checkbox(Keys::ripple, false), theme_.sizes.icon, "On when a project opens.");
+        page->add("Ripple", checkbox(settings::ripple), theme_.sizes.icon, "On when a project opens.");
         page->add("Fade",
-                  number(Keys::fadeMs, 10, 0, 2000, 1, "ms", 0),
+                  number(settings::fadeMs, 0, 2000, 1, "ms", 0),
                   numberWidth,
                   "The fade new clips start with.",
-                  true);
+                  settings::fadeMs.comingSoon);
         page->addCard("View");
         page->add("Follow playhead",
-                  checkbox(Keys::followPlayhead, true),
+                  checkbox(settings::followPlayhead),
                   theme_.sizes.icon,
                   "Scrolls the arrange view to keep the playhead in sight.");
         pages_.push_back(std::move(page));
@@ -1551,12 +1550,12 @@ void PreferencesView::buildPages()
         page->addCard("Folders");
         auto folders = std::make_unique<FolderList>(theme_);
         juce::StringArray paths;
-        paths.addTokens(juce::String::fromUTF8(get(Keys::pluginPaths).c_str()), "\t", "");
+        paths.addTokens(juce::String::fromUTF8(get(settings::pluginPaths).c_str()), "\t", "");
         paths.removeEmptyStrings();
         folders->setFolders(paths);
         auto* rawFolders = folders.get();
         folders->onChanged = [this](const juce::StringArray& list)
-        { set(Keys::pluginPaths, list.joinIntoString("\t").toStdString()); };
+        { set(settings::pluginPaths, list.joinIntoString("\t").toStdString()); };
         folders->onAdd = [this, rawFolders]
         {
             juce::Component::SafePointer<FolderList> safe(rawFolders);
@@ -1578,7 +1577,7 @@ void PreferencesView::buildPages()
 
         page->addCard("Scanning");
         page->add("Scan on launch",
-                  checkbox(Keys::scanOnLaunch, false),
+                  checkbox(settings::scanOnLaunch),
                   theme_.sizes.icon,
                   "Looks for new and changed plugins when Northlight starts.");
         auto [scan, scanWidth] = button("Scan for changes",
@@ -1605,7 +1604,7 @@ void PreferencesView::buildPages()
 
         page->addCard("Windows");
         page->add("Keep on top",
-                  checkbox(Keys::pluginsOnTop, false),
+                  checkbox(settings::pluginsOnTop),
                   theme_.sizes.icon,
                   "Plugin windows stay above the main window.");
         pages_.push_back(std::move(page));
@@ -1621,10 +1620,10 @@ void PreferencesView::buildPages()
         auto page = std::make_unique<Page>(theme_, "Diagnostics");
         page->addCard("Crash reports");
         page->add("Send reports",
-                  checkbox(Keys::crashReports, false),
+                  checkbox(settings::crashReports),
                   theme_.sizes.icon,
                   "Reports are always kept on this computer, in the settings folder's Crashes folder.",
-                  true);
+                  settings::crashReports.comingSoon);
         page->addCard("Support");
         const auto folder = settingsFolder;
         auto readout = std::make_unique<PathReadout>(theme_, folder.getFullPathName(), "Show in Explorer");

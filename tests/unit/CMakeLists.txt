@@ -6,6 +6,7 @@ add_executable(northlight_unit_tests
     audio/LatencyDetectorTests.cpp
     audio/PassThroughTests.cpp
     core/ModelTests.cpp
+    core/SettingsTests.cpp
     core/CommandTests.cpp
     core/ProjectJsonTests.cpp
     core/TempoMapTests.cpp

@@ -515,7 +515,9 @@ blocked the message thread; now the longest stall is one plugin.
 - **Settings** are an XML properties file in `%APPDATA%\Northlight`. Design tokens can
   be overridden from a `tokens.json` beside it, which only the user edits; the accent
   and contrast chosen in Preferences go in `appearance-tokens.json` beside it, applied
-  after it.
+  after it. The settings Preferences shows are one schema (`core/Settings.h`: each
+  key, its type and its default); Preferences binds its controls to it and the app
+  reads them through its typed `settings::Reader`, so no default is written twice.
 - **Autosave** writes unsaved projects to the settings folder while edits pause. A
   normal close removes them, so anything left at launch is offered back. The plugin
   states and parameter keys are taken on the message thread; the copy is turned into

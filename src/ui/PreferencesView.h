@@ -1,6 +1,7 @@
 #pragma once
 
 #include "audio/AudioDeviceLayer.h"
+#include "core/Settings.h"
 #include "hosting/PluginRegistry.h"
 #include "ui/AudioSetupView.h"
 #include "ui/Theme.h"
@@ -21,8 +22,9 @@ namespace northlight::ui
 // badge and a wrapping hint. Pages: General, Audio (the Audio Setup content
 // inline), Recording, Editing, Plugins, Shortcuts (a searchable table of the
 // keyboard map) and Diagnostics. Every value is a user setting read and written
-// through the callbacks; the owner re-applies the ones with an immediate effect
-// when onChanged fires.
+// through the callbacks, keyed and defaulted by the settings schema
+// (core/Settings.h); the owner re-applies the ones with an immediate effect when
+// onChanged fires.
 class PreferencesView final : public juce::Component
 {
 public:
@@ -70,38 +72,13 @@ public:
     static constexpr int listWidth = 160;
     static constexpr int maxCardWidth = 600;
 
-    // The settings keys (shared with the owner, which applies them).
-    struct Keys
-    {
-        static constexpr const char* projectFolder = "general.projectFolder";
-        static constexpr const char* recentCount = "general.recentCount";
-        static constexpr const char* autosaveMinutes = "general.autosaveMinutes";
-        static constexpr const char* theme = "general.theme";
-        static constexpr const char* accent = "general.accent";
-        static constexpr const char* uiScale = "general.uiScale";
-        static constexpr const char* contrast = "general.contrast";
-        static constexpr const char* recordingFormat = "recording.format";
-        static constexpr const char* countIn = "recording.countIn";
-        static constexpr const char* preRoll = "recording.preRollBars";
-        static constexpr const char* metronomeLevel = "recording.metronomeLevelDb";
-        static constexpr const char* namePattern = "recording.namePattern";
-        static constexpr const char* snap = "editing.snap";
-        static constexpr const char* snapGrid = "editing.snapGrid";
-        static constexpr const char* fadeMs = "editing.fadeMs";
-        static constexpr const char* ripple = "editing.ripple";
-        static constexpr const char* followPlayhead = "editing.followPlayhead";
-        static constexpr const char* pluginPaths = "plugins.paths";
-        static constexpr const char* scanOnLaunch = "plugins.scanOnLaunch";
-        static constexpr const char* pluginsOnTop = "plugins.pin";
-        static constexpr const char* crashReports = "diagnostics.crashReports";
-    };
-
 private:
     class Page;
     class PageList;
 
-    std::string get(const char* key, const std::string& fallback = {}) const;
-    void set(const char* key, const std::string& value);
+    // A setting's stored text, or its default (core/Settings.h).
+    std::string get(const settings::Setting& setting) const;
+    void set(const settings::Setting& setting, const std::string& value);
     void buildPages();
     void writeAccentOverride(const juce::String& hex);
     // Writes the accent and contrast choices to their own token file beside the

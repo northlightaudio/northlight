@@ -13,6 +13,9 @@ Northlight has not had a release yet. The first release, 0.1.0, will include:
 
 ### Added
 
+- Preferences marks Recording > Format as coming soon: recordings are always
+  32-bit float WAV so far, whatever it showed.
+
 - The Audio Setup window, the Preferences Audio page and the first-run sheet can
   be open together and every input and output meter shows the full signal; they
   used to take the peaks from one another. The first-run sheet offers the buffer

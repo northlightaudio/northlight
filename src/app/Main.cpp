@@ -104,9 +104,9 @@ public:
         session_->setAutosave(settings_->file().getSiblingFile("Autosave"),
                               [this]
                               {
-                                  const auto minutes =
-                                      settings_->value(ui::PreferencesView::Keys::autosaveMinutes);
-                                  return (minutes.empty() ? 2 : juce::String(minutes).getIntValue()) * 60;
+                                  const settings::Reader read([this](const std::string& key)
+                                                              { return settings_->value(key); });
+                                  return read.integer(settings::autosaveMinutes) * 60;
                               });
         step("Opening the main window", 0.65f);
         mainWindow_ = std::make_unique<MainWindow>(getApplicationName(), *audio_, *session_, *settings_);
