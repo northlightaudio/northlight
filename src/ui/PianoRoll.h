@@ -182,6 +182,22 @@ private:
     void fitToClip();
     core::MidiNote previewOf(const core::MidiNote& note) const noexcept;
     void drawTooltip(juce::Graphics& g, const juce::String& text, juce::Point<int> at);
+    // paint() in parts, over what one paint covers.
+    struct PaintFrame
+    {
+        juce::Rectangle<int> painted, grid, paintedGrid, velocity, ruler, keys;
+        const core::MidiClip* clip = nullptr;
+        const core::Track* track = nullptr;
+        juce::Colour colour;
+        core::MusicalKey key;
+    };
+    void paintToolbar(juce::Graphics& g, const PaintFrame& f);
+    void paintRows(juce::Graphics& g, const PaintFrame& f);
+    void paintNotes(juce::Graphics& g, const PaintFrame& f);
+    void paintGridOverlay(juce::Graphics& g, const PaintFrame& f);
+    void paintKeys(juce::Graphics& g, const PaintFrame& f);
+    void paintRuler(juce::Graphics& g, const PaintFrame& f);
+    void paintLaneRow(juce::Graphics& g, const PaintFrame& f);
     // The controller lane.
     juce::Rectangle<int> laneLabelArea() const noexcept;
     int yForValue(int value) const noexcept; // the controller lane's, in this view's coordinates

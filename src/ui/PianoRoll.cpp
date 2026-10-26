@@ -586,21 +586,11 @@ void PianoRoll::drawTooltip(juce::Graphics& g, const juce::String& text, juce::P
                  getLocalBounds().withTrimmedRight(scrollbarSize_).withTrimmedBottom(scrollbarSize_));
 }
 
-void PianoRoll::paint(juce::Graphics& g)
+// The toolbar's background and the key at its right.
+void PianoRoll::paintToolbar(juce::Graphics& g, const PaintFrame& f)
 {
     const auto& c = theme_.colours;
-    g.fillAll(c.canvas);
-    // Only what the repaint covers is drawn (a playhead frame is a column and a few keys).
-    const auto painted = g.getClipBounds();
-    const auto grid = gridArea();
-    const auto velocity = velocityArea();
-    const auto ruler = rulerArea();
-    const auto keys = keysArea();
-    const auto paintedGrid = grid.getIntersection(painted);
-    const auto* clipModel = clip();
-    const auto* trackModel = track();
-    const auto colour = trackColour();
-
+    const auto& key = f.key;
     // The toolbar.
     g.setColour(c.surface0);
     g.fillRect(0, 0, getWidth(), toolbarHeight);
@@ -608,15 +598,21 @@ void PianoRoll::paint(juce::Graphics& g)
     g.fillRect(0, toolbarHeight - 1, getWidth(), 1);
     g.setFont(theme_.caption());
     g.setColour(c.textTertiary);
-    const core::MusicalKey key = project_ != nullptr ? project_->key : core::MusicalKey{};
     g.drawText(key.isSet() ? juce::String(core::pitchClassName(key.root)) + " " + core::scaleName(key.scale)
                            : juce::String("No key"),
                getLocalBounds().removeFromTop(toolbarHeight).reduced(theme_.spacing.sm, 0),
                juce::Justification::centredRight);
+}
 
+// The note rows (black keys, the scale, octave lines) and, over them, the timeline grid.
+void PianoRoll::paintRows(juce::Graphics& g, const PaintFrame& f)
+{
+    const auto& c = theme_.colours;
+    const auto& grid = f.grid;
+    const auto& paintedGrid = f.paintedGrid;
+    const auto& key = f.key;
+    const auto* clipModel = f.clip;
     // Rows: laneAlt on the black keys, an octave line under each C.
-    g.saveState();
-    g.reduceClipRegion(grid);
     for (int note = 0; note < rows; ++note)
     {
         const int y = yForNote(note);
@@ -658,7 +654,16 @@ void PianoRoll::paint(juce::Graphics& g)
         g.setColour(c.lineStrong);
         g.fillRect(xForSample(clipModel->length), grid.getY(), 1, grid.getHeight());
     }
+}
 
+// The other clips' notes as ghosts, then this clip's notes and the note being drawn.
+void PianoRoll::paintNotes(juce::Graphics& g, const PaintFrame& f)
+{
+    const auto& c = theme_.colours;
+    const auto& paintedGrid = f.paintedGrid;
+    const auto* clipModel = f.clip;
+    const auto* trackModel = f.track;
+    const auto colour = f.colour;
     // Ghost notes: the track's other clips at 30%.
     if (trackModel != nullptr && clipModel != nullptr && !paintedGrid.isEmpty())
         for (const auto& other : trackModel->midiClips)
@@ -723,6 +728,13 @@ void PianoRoll::paint(juce::Graphics& g)
             g.drawRoundedRectangle(bounds.toFloat().reduced(0.5f), theme_.radius.sm, 1.0f);
         }
     }
+}
+
+// What a drag shows over the grid (the lasso, the move's pitch tag) and the playhead.
+void PianoRoll::paintGridOverlay(juce::Graphics& g, const PaintFrame& f)
+{
+    const auto& c = theme_.colours;
+    const auto& grid = f.grid;
     if (drag_ == Drag::lasso && draggedFar_)
     {
         g.setColour(c.selectionFill);
@@ -746,8 +758,15 @@ void PianoRoll::paint(juce::Graphics& g)
                         (duplicating_ ? "  copy" : ""),
                     dragPoint_);
     }
-    g.restoreState();
+}
 
+// The keyboard, its sounding and held keys lit.
+void PianoRoll::paintKeys(juce::Graphics& g, const PaintFrame& f)
+{
+    const auto& c = theme_.colours;
+    const auto& keys = f.keys;
+    const auto& painted = f.painted;
+    const auto& key = f.key;
     // Keyboard: white keys surface2, black keys surface0, C labels; keys whose
     // notes sound at the playhead (or are held) light in accent.
     g.saveState();
@@ -782,7 +801,15 @@ void PianoRoll::paint(juce::Graphics& g)
     g.setColour(c.lineSubtle);
     g.fillRect(keyboardWidth - 1, keys.getY(), 1, keys.getHeight());
     g.restoreState();
+}
 
+// The bars ruler over the grid.
+void PianoRoll::paintRuler(juce::Graphics& g, const PaintFrame& f)
+{
+    const auto& c = theme_.colours;
+    const auto& ruler = f.ruler;
+    const auto& painted = f.painted;
+    const auto* clipModel = f.clip;
     // Ruler: bar numbers and beat ticks at timeline positions.
     g.setColour(c.surface0);
     g.fillRect(0, toolbarHeight, getWidth(), rulerHeight_);
@@ -795,7 +822,16 @@ void PianoRoll::paint(juce::Graphics& g)
         paintBarsRuler(g, theme_, tempoMap_, timelineView(*clipModel), ruler.withTrimmedBottom(1));
         g.restoreState();
     }
+}
 
+// The lane row: its label and menu chevron, and the velocity bars (the controller lane is a child).
+void PianoRoll::paintLaneRow(juce::Graphics& g, const PaintFrame& f)
+{
+    const auto& c = theme_.colours;
+    const auto& velocity = f.velocity;
+    const auto& painted = f.painted;
+    const auto* clipModel = f.clip;
+    const auto colour = f.colour;
     // The lane: velocity (a bar per note with a 6 px cap) or a controller; its
     // name opens the menu that picks it.
     g.setColour(c.surface0);
@@ -859,12 +895,38 @@ void PianoRoll::paint(juce::Graphics& g)
         }
         g.restoreState();
     }
+}
 
-    if (clipModel == nullptr)
+void PianoRoll::paint(juce::Graphics& g)
+{
+    g.fillAll(theme_.colours.canvas);
+    // Only what the repaint covers is drawn (a playhead frame is a column and a few keys).
+    PaintFrame f;
+    f.painted = g.getClipBounds();
+    f.grid = gridArea();
+    f.paintedGrid = f.grid.getIntersection(f.painted);
+    f.velocity = velocityArea();
+    f.ruler = rulerArea();
+    f.keys = keysArea();
+    f.clip = clip();
+    f.track = track();
+    f.colour = trackColour();
+    f.key = project_ != nullptr ? project_->key : core::MusicalKey{};
+    paintToolbar(g, f);
+    g.saveState();
+    g.reduceClipRegion(f.grid);
+    paintRows(g, f);
+    paintNotes(g, f);
+    paintGridOverlay(g, f);
+    g.restoreState();
+    paintKeys(g, f);
+    paintRuler(g, f);
+    paintLaneRow(g, f);
+    if (f.clip == nullptr)
     {
-        g.setColour(c.textTertiary);
+        g.setColour(theme_.colours.textTertiary);
         g.setFont(theme_.body());
-        g.drawText("Select a MIDI clip to edit its notes", grid, juce::Justification::centred);
+        g.drawText("Select a MIDI clip to edit its notes", f.grid, juce::Justification::centred);
     }
 }
 
