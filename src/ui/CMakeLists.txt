@@ -183,6 +183,8 @@ add_library(northlight_ui STATIC
     TakeLanes.cpp
     AutomationLanes.h
     AutomationLanes.cpp
+    pianoroll/ControllerLane.h
+    pianoroll/ControllerLane.cpp
     PianoRoll.h
     PianoRoll.cpp
     AudioEditor.h

@@ -6,6 +6,7 @@
 #include "ui/Icons.h"
 #include "ui/Theme.h"
 #include "ui/components/SegmentedControl.h"
+#include "ui/pianoroll/ControllerLane.h"
 #include "ui/timeline/TimelineViewport.h"
 
 #include <juce_gui_basics/juce_gui_basics.h>
@@ -98,19 +99,9 @@ public:
     void transposeSelection(int semitones);
     bool handleEditKey(const juce::KeyPress& key);
 
-    // What the lane under the grid shows: the notes' velocities, or one controller.
-    struct Lane
-    {
-        bool velocity = true;
-        core::MidiControllerType type = core::MidiControllerType::controller;
-        int number = 0; // the controller (control changes only)
-        bool operator==(const Lane&) const = default;
-        static Lane velocities() noexcept { return {}; }
-        static Lane controller(core::MidiControllerType type, int number = 0) noexcept
-        {
-            return {false, type, type == core::MidiControllerType::controller ? number : 0};
-        }
-    };
+    // What the lane under the grid shows: the notes' velocities, or one controller
+    // (drawn and edited by a ControllerLane over the lane row).
+    using Lane = MidiLane;
     void setLane(Lane lane);
     const Lane& lane() const noexcept { return lane_; }
     // "Pitch bend", "CC 74 Cutoff"; brief: "BEND", "CC 74".
@@ -118,7 +109,7 @@ public:
     // A lane by a short key ("velocity", "bend", "mod", "expression", "sustain",
     // "pressure", "cc74"); velocities for anything else.
     static Lane laneForKey(const juce::String& key);
-    const std::vector<core::Id>& controllerSelection() const noexcept { return ctlSelection_; }
+    const std::vector<core::Id>& controllerSelection() const noexcept { return controllerLane_.selection(); }
     void deleteControllerSelection();
     // Shading the rows and keys outside the project key's scale (the Scale toggle).
     void setScaleHighlight(bool on);
@@ -152,15 +143,6 @@ private:
         erase,
         key, // a key held on the keyboard
         pan, // the middle button drags the view
-        ctlDraw,
-        ctlMove,
-        ctlLasso,
-        ctlErase,
-    };
-    struct ControlPoint
-    {
-        core::SamplePosition time = 0;
-        int value = 0;
     };
 
     void scrollBarMoved(juce::ScrollBar* bar, double newRangeStart) override;
@@ -202,23 +184,8 @@ private:
     void drawTooltip(juce::Graphics& g, const juce::String& text, juce::Point<int> at);
     // The controller lane.
     juce::Rectangle<int> laneLabelArea() const noexcept;
-    int yForValue(int value) const noexcept;
-    int valueForY(int y) const noexcept;
-    core::SamplePosition laneTimeForX(int x) const noexcept;
-    core::SamplePosition drawStep() const noexcept;
-    std::vector<core::MidiControllerEvent> laneEvents() const;
-    std::vector<core::MidiControllerEvent> previewLaneEvents() const;
-    const core::MidiControllerEvent* controllerAt(juce::Point<int> p) const noexcept;
-    bool isControllerSelected(core::Id id) const noexcept;
-    juce::String valueText(int value) const;
-    void paintLane(juce::Graphics& g, juce::Rectangle<int> area, juce::Colour colour);
+    int yForValue(int value) const noexcept; // the controller lane's, in this view's coordinates
     void showLaneMenu();
-    void laneMouseDown(const juce::MouseEvent& e);
-    void addDrawSegment(ControlPoint from, ControlPoint to);
-    void finishControllerDraw();
-    void finishControllerMove();
-    void finishControllerLasso();
-    void addControllerAt(juce::Point<int> p);
     void showSnapMenu();
     void showQuantiseMenu();
     void refreshToolbar();
@@ -287,15 +254,7 @@ private:
     // The controller lane.
     Lane lane_;
     bool laneFocus_ = false; // the last click was in the lane (Delete and Ctrl+A act there)
-    std::vector<core::Id> ctlSelection_;
-    std::map<core::SamplePosition, int> ctlDrawPoints_; // the points being drawn, by time
-    ControlPoint ctlDrawStart_, ctlDrawLast_;
-    bool ctlLine_ = false;
-    std::vector<core::Id> ctlErased_;
-    core::Id ctlDragId_ = core::invalidId;
-    core::MidiControllerEvent ctlOriginal_;
-    core::SamplePosition ctlMoveDelta_ = 0;
-    int ctlValueDelta_ = 0;
+    ControllerLane controllerLane_{theme_};
 };
 
 } // namespace northlight::ui
