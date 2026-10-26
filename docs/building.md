@@ -173,6 +173,10 @@ desktop. Use it for captures while someone works or plays on the machine:
 Northlight.exe --offscreen --demo-song "$env:TEMP\demo.northlight" --play --master-gain -120 --capture "$env:TEMP\shots" 6
 ```
 
+A capture starts from an empty settings folder, so it knows no scanned plugins.
+`--capture-plugins` copies the user's `plugins.json` into it first; then `--insert
+vst3:<id>` (the id as `plugins.json` gives it) adds a real VST3 to the capture.
+
 (An earlier `--other-desktop` put the window on another virtual desktop. Windows
 follows a window's activation to its desktop, and the app grabs the keyboard focus
 in places, so it could switch the user's desktop; it was removed.)

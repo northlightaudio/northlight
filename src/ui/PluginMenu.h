@@ -1,6 +1,7 @@
 #pragma once
 
 #include "hosting/PluginRegistry.h"
+#include "ui/Icons.h"
 
 #include <juce_gui_basics/juce_gui_basics.h>
 
@@ -39,6 +40,8 @@ constexpr int effectCategoryCount = static_cast<int>(EffectCategory::other) + 1;
 // An effect's kind: a built-in's by what it is, a scanned plugin's from the
 // category it reports (VST3 subcategories, CLAP features); other when unknown.
 EffectCategory effectCategory(const std::string& type, const hosting::PluginRegistry* registry);
+// The kind's icon (fx-dynamics, fx-eq, ...; plugin for other).
+Icon effectCategoryIcon(EffectCategory category);
 // The kind's name in the menu ("Reverb & Delay").
 const char* effectCategoryName(EffectCategory category);
 

@@ -713,6 +713,21 @@ user should act on.
 `pill` radius, `caption` 600 uppercase, 2×6 padding; colour fills at 20% with
 colour text. Used for plugin format (VST3, CLAP), take numbers, "REC", "LIVE".
 
+### Plugin faceplate
+
+The body of a card for something Northlight cannot draw controls for: a hosted
+plugin with its own window, or one that is not installed. One block centred in the
+body, top to bottom: a `controlLarge` square tile (radius `md`, `accentSubtle`)
+with the plugin's kind icon (`iconLarge`, `accent`; `instrument` for an
+instrument); the name in `label` `textPrimary`, centred, on two lines when one is
+not enough; the maker in `small` `textSecondary`; the format badge with the latency
+after it ("31 smp latency", `caption` `textTertiary`); and a secondary button 160 px
+wide at most (not primary: a chain holds several faceplates, and a primary is the
+one bright thing in a view). Not installed: the tile is `warning` at 15% with the `warning` icon,
+the note after the badge is "Not installed" in `warning`, and there is no button.
+A short body drops the tile first, then the badge line, then the maker; the name
+and the button always stay. Double-clicking the faceplate does what its button does.
+
 ### Table / list
 
 Rows 28 px, `body`, zebra `laneAlt`, hover `surface1`, selected `selectionFill` with

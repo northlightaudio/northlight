@@ -445,6 +445,11 @@ const std::vector<LaunchFlag<LaunchRun>>& LaunchRun::flags()
              r.stopped = true;
          }},
         {"--no-splash", "", 0, "start without the splash screen"},
+        {"--capture-plugins",
+         "",
+         0,
+         "with --capture, start from a copy of the user's scanned plugins, so --insert can add a VST3 or "
+         "CLAP (vst3:<id>, clap:<id>)"},
         {"--offscreen",
          "",
          0,

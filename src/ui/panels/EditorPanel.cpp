@@ -5,7 +5,6 @@
 #include "plugins/EffectPresets.h"
 #include "ui/Db.h"
 #include "ui/Motion.h"
-#include "ui/NorthlightLookAndFeel.h"
 #include "ui/Number.h"
 #include "ui/OnScreen.h"
 #include "ui/PluginMenu.h"
@@ -72,8 +71,13 @@ public:
         };
         addAndMakeVisible(mix_);
         mix_.setVisible(!instrument_); // an instrument has no dry signal to mix
-        open_.setButtonText("Open");
-        open_.getProperties().set(NorthlightLookAndFeel::propertyVariant, "primary");
+        // A hosted plugin's faceplate: its kind and its maker (screens/plugins.md 7.1).
+        if (const auto* info = owner_.registry_ != nullptr ? owner_.registry_->findByType(type_) : nullptr)
+            maker_ = juce::String::fromUTF8(info->manufacturer.c_str());
+        kindIcon_ =
+            instrument_ ? Icon::instrument : effectCategoryIcon(effectCategory(type_, owner_.registry_));
+        open_.setButtonText("Open editor");
+        open_.setTooltip("Open the plugin's own window");
         open_.onClick = [this]
         {
             if (owner_.onOpenEditor)
@@ -184,11 +188,19 @@ public:
             owner_.reorderCard(insertId_, e.getScreenPosition(), true);
         dragging_ = false;
     }
+    // A double-click on a faceplate opens the plugin's window, as its button does.
+    void mouseDoubleClick(const juce::MouseEvent& e) override
+    {
+        if (faceplate_ && !missing_ && e.y >= theme_.sizes.control && owner_.onOpenEditor)
+            owner_.onOpenEditor(channelId_, insertId_);
+    }
 
     // The line under the header for a key chip or the latency. A built-in's own card
     // takes the room when it has neither, so its display does not sit under a gap.
     bool showsInfoLine() const noexcept
     {
+        if (faceplate_)
+            return sidechain_ != core::invalidId; // the latency is on the faceplate
         return body_ == nullptr || sidechain_ != core::invalidId || latency_ > 0;
     }
 
@@ -219,6 +231,8 @@ public:
     // The height its body's layout needs, with the frame's rows.
     int minimumHeight() const
     {
+        if (faceplate_)
+            return frameRows() + faceplateMinimumHeight();
         if (popped_)
             return frameRows() + poppedBodyHeight();
         if (body_ == nullptr)
@@ -238,7 +252,7 @@ public:
     // The card's width at a height: a body that scales to fit narrows with it.
     int preferredWidthAt(int height) const
     {
-        if (popped_)
+        if (popped_ || faceplate_)
             return preferredWidth();
         if (body_ == nullptr)
         {
@@ -258,7 +272,7 @@ public:
 
     int preferredWidth() const
     {
-        if (popped_)
+        if (popped_ || faceplate_) // the same width popped out or not: the chain does not shift
             return poppedWidth();
         if (body_ != nullptr)
             return body_->preferredWidth();
@@ -278,20 +292,10 @@ public:
         header.removeFromRight(theme_.sizes.controlCompact + theme_.spacing.xs);
         if (presets_ != nullptr && presets_->isVisible())
             header.removeFromRight(presets_->getWidth() + theme_.spacing.sm);
-        // Format badge.
-        const auto badge = badgeText();
-        if (badge.isNotEmpty())
+        // Format badge (a faceplate shows it in the body, leaving the name the header).
+        if (const auto badge = badgeText(); badge.isNotEmpty() && !faceplate_)
         {
-            g.setFont(theme_.captionCaps());
-            const int w =
-                juce::GlyphArrangement::getStringWidthInt(g.getCurrentFont(), badge) + 2 * theme_.spacing.sm;
-            auto b = header.removeFromRight(w)
-                         .withSizeKeepingCentre(w, theme_.sizes.icon + theme_.spacing.xxs)
-                         .toFloat();
-            g.setColour(c.accent.withAlpha(0.2f));
-            g.fillRoundedRectangle(b, b.getHeight() * 0.5f);
-            g.setColour(c.accent);
-            g.drawText(badge, b.toNearestInt(), juce::Justification::centred);
+            drawBadge(g, header.removeFromRight(badgeWidth()));
             header.removeFromRight(theme_.spacing.xs);
         }
         // The "open" dot while the editor window is open.
@@ -303,25 +307,8 @@ public:
         }
         g.setFont(theme_.label());
         g.setColour(bypassed_ || missing_ ? c.textTertiary : c.textPrimary);
-        const auto name = owner_.displayName ? juce::String::fromUTF8(owner_.displayName(type_).c_str())
-                                             : juce::String(type_);
+        const auto name = nameText();
         g.drawText(name, header, juce::Justification::centredLeft, true);
-        if (missing_)
-        {
-            auto body = getLocalBounds()
-                            .withTrimmedTop(theme_.sizes.control + theme_.sizes.controlCompact)
-                            .withTrimmedBottom(theme_.sizes.controlCompact);
-            Icons::draw(g,
-                        Icon::warning,
-                        juce::Rectangle<float>(20.0f, 20.0f)
-                            .withCentre({static_cast<float>(body.getCentreX()),
-                                         static_cast<float>(body.getCentreY() - 14)}),
-                        c.warning);
-            g.setColour(c.textTertiary);
-            g.setFont(theme_.small());
-            g.drawText(
-                "Not installed", body.withTrimmedTop(body.getHeight() / 2), juce::Justification::centredTop);
-        }
         if (bypassed_)
         {
             const int w =
@@ -359,7 +346,7 @@ public:
             g.setColour(c.accent);
             g.drawText(text, chip.toNearestInt(), juce::Justification::centred);
         }
-        if (latency_ > 0)
+        if (latency_ > 0 && !faceplate_)
         {
             g.setColour(c.textTertiary);
             g.setFont(theme_.caption());
@@ -367,7 +354,9 @@ public:
         }
         // Built-ins with a card of their own draw it; "No parameters" is only for
         // an insert with nothing to show (it showed through gaps in a card's layout).
-        if (popped_)
+        if (faceplate_)
+            paintFaceplate(g);
+        else if (popped_)
             paintPoppedOut(g);
         else if (cells_.empty() && body_ == nullptr && !open_.isVisible() && !missing_)
         {
@@ -411,6 +400,14 @@ public:
         }
         if (showsInfoLine())
             area.removeFromTop(theme_.sizes.controlCompact); // the info line
+        if (faceplate_)
+        {
+            // Open, or Show window while popped out, in the faceplate's button place.
+            const auto button = faceplateLayout().button;
+            open_.setBounds(button);
+            show_.setBounds(button);
+            return;
+        }
         if (popped_)
         {
             show_.setBounds(poppedArea(area)
@@ -425,11 +422,6 @@ public:
             return;
         }
         area = area.reduced(theme_.spacing.md, theme_.spacing.xs);
-        if (open_.isVisible())
-        {
-            open_.setBounds(area.withSizeKeepingCentre(std::min(area.getWidth(), 120), theme_.sizes.control));
-            return;
-        }
         if (cells_.empty())
             return;
         const int columns = std::min(columnsFor(area.getHeight()), static_cast<int>(cells_.size()));
@@ -500,6 +492,147 @@ private:
         g.drawText("Edit it there", block.removeFromTop(line), juce::Justification::centred, true);
     }
 
+    juce::String nameText() const
+    {
+        return owner_.displayName ? juce::String::fromUTF8(owner_.displayName(type_).c_str())
+                                  : juce::String(type_);
+    }
+
+    // The format badge: a pill in `captionCaps`, `accent` on its 20% tint.
+    int badgeWidth() const
+    {
+        return juce::GlyphArrangement::getStringWidthInt(theme_.captionCaps(), badgeText()) +
+               2 * theme_.spacing.sm;
+    }
+    void drawBadge(juce::Graphics& g, juce::Rectangle<int> area) const
+    {
+        const auto& c = theme_.colours;
+        const auto b = area.withSizeKeepingCentre(area.getWidth(), theme_.sizes.icon + theme_.spacing.xxs);
+        g.setColour(c.accent.withAlpha(0.2f));
+        g.fillRoundedRectangle(b.toFloat(), static_cast<float>(b.getHeight()) * 0.5f);
+        g.setColour(c.accent);
+        g.setFont(theme_.captionCaps());
+        g.drawText(badgeText(), b, juce::Justification::centred);
+    }
+
+    // A hosted plugin's faceplate: its kind in a tile, its name (two lines when it
+    // needs them), its maker, the format badge with the latency, and Open editor
+    // (Show window while popped out). A short dock drops the tile, then the badge
+    // line, then the maker; the name and the button always stay.
+    struct Faceplate
+    {
+        juce::Rectangle<int> tile, name, maker, meta, button;
+        int nameLines = 1;
+    };
+    Faceplate faceplateLayout() const
+    {
+        const auto& s = theme_.spacing;
+        auto body = getLocalBounds().withTrimmedTop(theme_.sizes.control);
+        if (!instrument_)
+            body.removeFromBottom(theme_.sizes.controlCompact);
+        if (showsInfoLine())
+            body.removeFromTop(theme_.sizes.controlCompact);
+        body = body.reduced(s.md, s.md);
+        const int w = body.getWidth();
+        const int labelLine = theme_.lineHeight(theme_.fonts.size.label);
+        const int smallLine = theme_.lineHeight(theme_.fonts.size.small);
+        const int metaH = theme_.sizes.icon + s.xxs;
+        const bool button = !missing_;
+        Faceplate f;
+        f.nameLines = juce::GlyphArrangement::getStringWidthInt(theme_.label(), nameText()) > w ? 2 : 1;
+        bool tile = true, meta = true, maker = maker_.isNotEmpty();
+        const auto height = [&]
+        {
+            int h = f.nameLines * labelLine;
+            if (tile)
+                h += theme_.sizes.controlLarge + s.sm;
+            if (maker)
+                h += smallLine;
+            if (meta)
+                h += s.sm + metaH;
+            if (button)
+                h += s.md + theme_.sizes.control;
+            return h;
+        };
+        if (height() > body.getHeight())
+            tile = false;
+        if (height() > body.getHeight())
+            meta = false;
+        if (height() > body.getHeight())
+            maker = false;
+        auto block = body.withSizeKeepingCentre(w, std::min(body.getHeight(), height()));
+        if (tile)
+        {
+            f.tile = block.removeFromTop(theme_.sizes.controlLarge)
+                         .withSizeKeepingCentre(theme_.sizes.controlLarge, theme_.sizes.controlLarge);
+            block.removeFromTop(s.sm);
+        }
+        f.name = block.removeFromTop(f.nameLines * labelLine);
+        if (maker)
+            f.maker = block.removeFromTop(smallLine);
+        if (meta)
+        {
+            block.removeFromTop(s.sm);
+            f.meta = block.removeFromTop(metaH);
+        }
+        if (button)
+        {
+            block.removeFromTop(s.md);
+            f.button =
+                block.removeFromTop(theme_.sizes.control)
+                    .withSizeKeepingCentre(std::min(w, theme_.sizes.controlLarge * 5), theme_.sizes.control);
+        }
+        return f;
+    }
+    int faceplateMinimumHeight() const
+    {
+        return 2 * theme_.spacing.md + theme_.lineHeight(theme_.fonts.size.label) +
+               (missing_ ? 0 : theme_.spacing.md + theme_.sizes.control);
+    }
+    void paintFaceplate(juce::Graphics& g) const
+    {
+        const auto& c = theme_.colours;
+        const auto f = faceplateLayout();
+        if (!f.tile.isEmpty())
+        {
+            g.setColour(missing_ ? c.warning.withAlpha(0.15f) : c.accentSubtle);
+            g.fillRoundedRectangle(f.tile.toFloat(), theme_.radius.md);
+            const auto icon = static_cast<float>(theme_.sizes.iconLarge);
+            Icons::draw(g,
+                        missing_ ? Icon::warning : kindIcon_,
+                        f.tile.toFloat().withSizeKeepingCentre(icon, icon),
+                        missing_ ? c.warning : c.accent);
+        }
+        g.setFont(theme_.label());
+        g.setColour(missing_ ? c.textSecondary : c.textPrimary);
+        g.drawFittedText(nameText(), f.name, juce::Justification::centred, f.nameLines, 1.0f);
+        if (!f.maker.isEmpty())
+        {
+            g.setFont(theme_.small());
+            g.setColour(c.textSecondary);
+            g.drawText(maker_, f.maker, juce::Justification::centred, true);
+        }
+        if (!f.meta.isEmpty())
+        {
+            const juce::String note = missing_       ? juce::String("Not installed")
+                                      : latency_ > 0 ? juce::String(latency_) + " smp latency"
+                                                     : juce::String();
+            const int bw = badgeWidth();
+            const int nw =
+                note.isEmpty() ? 0 : juce::GlyphArrangement::getStringWidthInt(theme_.caption(), note);
+            const int total = bw + (nw > 0 ? theme_.spacing.xs + nw : 0);
+            auto row = f.meta.withSizeKeepingCentre(std::min(total, f.meta.getWidth()), f.meta.getHeight());
+            drawBadge(g, row.removeFromLeft(bw));
+            if (nw > 0)
+            {
+                row.removeFromLeft(theme_.spacing.xs);
+                g.setFont(theme_.caption());
+                g.setColour(missing_ ? c.warning : c.textTertiary);
+                g.drawText(note, row, juce::Justification::centredLeft, true);
+            }
+        }
+    }
+
     juce::String badgeText() const
     {
         if (type_.rfind("vst3:", 0) == 0)
@@ -515,6 +648,7 @@ private:
         const auto live = owner_.liveInsert ? owner_.liveInsert(insertId_) : nullptr;
         const bool hosted = hosting::PluginRegistry::isHostedType(type_);
         missing_ = live == nullptr && hosted;
+        faceplate_ = missing_;
         if (live == nullptr)
             return;
         if (hosted && (live->parameters().empty() || type_.rfind("vst3:", 0) == 0))
@@ -522,6 +656,7 @@ private:
             // A plugin with its own GUI (every VST3: JUCE gives a GUI-less one a
             // generic editor): open it in its window.
             wantsOpen_ = true;
+            faceplate_ = true;
             open_.setVisible(!popped_);
             return;
         }
@@ -736,6 +871,9 @@ private:
     juce::Slider mix_;
     juce::TextButton open_, show_;
     bool popped_ = false, wantsOpen_ = false;
+    bool faceplate_ = false; // a hosted plugin with its own GUI, or one not installed
+    juce::String maker_;
+    Icon kindIcon_ = Icon::plugin;
     std::vector<Cell> cells_;
     std::unique_ptr<strip::PresetBar> presets_;
     std::vector<float> params_; // the model's values at the last refresh

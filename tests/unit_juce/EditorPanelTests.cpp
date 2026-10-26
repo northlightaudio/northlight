@@ -1,5 +1,6 @@
 #include "core/Command.h"
 #include "core/Model.h"
+#include "engine/Insert.h"
 #include "plugins/BuiltIns.h"
 #include "ui/Theme.h"
 #include "ui/components/Fader.h"
@@ -214,4 +215,101 @@ TEST_CASE("The Editor panel shows an add button in the gap the pointer is in", "
     CHECK(gaps[0]->isShown());
     panel.pointerAt(std::nullopt);
     CHECK_FALSE(gaps[0]->isShown());
+}
+
+namespace
+{
+// A hosted plugin with its own GUI, as far as the card can tell: a VST3 type
+// with a live instance that reports some latency.
+class FakePlugin final : public engine::InsertProcessor
+{
+public:
+    const std::string& typeName() const noexcept override { return type_; }
+    const std::vector<engine::ParameterInfo>& parameters() const noexcept override { return params_; }
+    void prepare(double, int) override {}
+    void setParameter(int, float) noexcept override {}
+    float parameter(int) const noexcept override { return 0.0f; }
+    void process(float*, float*, int) noexcept override {}
+    int latencySamples() const noexcept override { return 31; }
+
+private:
+    std::string type_ = "vst3:Fake";
+    std::vector<engine::ParameterInfo> params_;
+};
+
+core::Project hostedProject()
+{
+    core::Project project;
+    core::Track t;
+    t.id = 1;
+    t.name = "Vox";
+    core::Insert plugin;
+    plugin.id = 5;
+    plugin.type = "vst3:Fake";
+    t.inserts.push_back(plugin);
+    project.tracks.push_back(t);
+    project.nextId = 6;
+    return project;
+}
+} // namespace
+
+// A hosted plugin with its own window shows a faceplate: Open editor opens the
+// window, and popped out the same place brings it forward, at the same width.
+TEST_CASE("A hosted plugin's card opens its window and keeps its width popped out", "[ui]")
+{
+    const juce::ScopedJuceInitialiser_GUI juceInit;
+    auto project = hostedProject();
+    const auto& theme = ui::Theme::dark();
+    ui::EditorPanel panel(theme);
+    panel.setSize(1200, 320);
+    const auto live = std::make_shared<FakePlugin>();
+    panel.liveInsert = [&](core::Id id)
+    { return id == 5 ? std::shared_ptr<engine::InsertProcessor>(live) : nullptr; };
+    panel.displayName = [](const std::string&) { return std::string("Fake Channel Strip"); };
+    bool popped = false;
+    panel.isEditorOpen = [&](core::Id id) { return popped && id == 5; };
+    core::Id opened = core::invalidId;
+    panel.onOpenEditor = [&](core::Id, core::Id insert) { opened = insert; };
+    panel.setProject(&project);
+    panel.setChannel(1);
+
+    auto* open = buttonNamed(panel, "Open editor");
+    auto* show = buttonNamed(panel, "Show window");
+    REQUIRE(open != nullptr);
+    REQUIRE(show != nullptr);
+    CHECK(open->isVisible());
+    CHECK(!show->isVisible());
+    auto* card = open->getParentComponent();
+    REQUIRE(card != nullptr);
+    const int width = card->getWidth();
+    CHECK(width == theme.sizes.controlLarge * 7);
+    // The button sits inside the card, under its header and above its Mix.
+    CHECK(card->getLocalBounds().contains(open->getBounds()));
+    CHECK(open->getY() > theme.sizes.control);
+    open->onClick();
+    CHECK(opened == 5);
+
+    popped = true;
+    panel.editorWindowsChanged();
+    CHECK(!open->isVisible());
+    CHECK(show->isVisible());
+    CHECK(show->getBounds() == open->getBounds());
+    CHECK(card->getWidth() == width);
+}
+
+// A plugin that is not installed shows its faceplate without a button to open.
+TEST_CASE("A missing plugin's card offers nothing to open", "[ui]")
+{
+    const juce::ScopedJuceInitialiser_GUI juceInit;
+    auto project = hostedProject();
+    const auto& theme = ui::Theme::dark();
+    ui::EditorPanel panel(theme);
+    panel.setSize(1200, 320);
+    panel.liveInsert = [](core::Id) { return std::shared_ptr<engine::InsertProcessor>(); };
+    panel.setProject(&project);
+    panel.setChannel(1);
+    auto* open = buttonNamed(panel, "Open editor");
+    REQUIRE(open != nullptr);
+    CHECK(!open->isVisible());
+    CHECK(open->getParentComponent()->getWidth() == theme.sizes.controlLarge * 7);
 }

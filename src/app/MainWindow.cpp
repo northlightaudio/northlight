@@ -2142,9 +2142,10 @@ void MainWindow::showTempoTrack()
         content->tracks_.setTempoTrackShown(true);
 }
 
+// The editor opens in its own window; the dock stays on whatever panel it shows
+// (opening a plugin from the Editor panel keeps the Editor panel up).
 void MainWindow::openInsertEditor(core::Id channelId, core::Id insertId)
 {
-    showMixer();
     if (auto* content = content_)
         content->mixer_.openInsertEditor(channelId, insertId);
 }

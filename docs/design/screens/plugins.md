@@ -18,9 +18,16 @@ strip of device cards, so the whole signal path reads left to right.
   dock; header 28 px with power (bypass) toggle, name in `label`, format badge,
   and a "⋮" menu (replace, remove, presets, sidechain, latency "32 smp").
 - Body: for built-ins, the built-in's own editor (7.2a); for hosted plugins with a
-  GUI, a thumbnail placeholder with an "Open" primary button (opens the plugin
-  window) and the three most important parameters as knobs if the plugin exposes
-  them; for hosted plugins without a GUI, the generic editor.
+  GUI, a plugin faceplate (design-system.md "Plugin faceplate": kind icon, full
+  name, maker, format badge and latency) with an "Open editor" secondary button that
+  opens the plugin window; for hosted plugins without a GUI, the generic editor. A
+  faceplate card is 224 px wide (`controlLarge` × 7), popped out or not, and its
+  header leaves the badge to the faceplate so the name has the room; its latency
+  is on the faceplate, so it has an info line only for a sidechain key. Popped out,
+  the faceplate stays and its button becomes "Show window". A plugin that is not
+  installed shows the faceplate's not-installed form.
+- Opening an editor (the card's button, its menu, a mixer insert) never changes
+  the dock's panel: the window opens over whatever the dock shows.
 - Popped out (its editor open in its own window), a card is edited there, not in
   two places: its body gives way to a note centred in it, the `detach` icon
   (`iconLarge`, `textTertiary`), "Open in its own window" in `small`

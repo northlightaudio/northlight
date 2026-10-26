@@ -13,6 +13,10 @@ Northlight has not had a release yet. The first release, 0.1.0, will include:
 
 ### Added
 
+- A plugin's card in the Editor panel shows a faceplate: its kind, its full name,
+  its maker, the format and its latency, with an Open editor button (or
+  double-click it). A plugin that is not installed says so in the same place.
+
 - Every shortcut comes from one table, so the Shortcuts page, tooltips and menus
   always show the keys that work: the page now lists F8 and F9 (Instruments, Audio
   Editor), cut, copy and paste; Redo shows Ctrl+Y (Ctrl+Shift+Z still works);
@@ -219,6 +223,9 @@ Northlight has not had a release yet. The first release, 0.1.0, will include:
   without Steinberg's ASIO SDK.
 
 ### Fixed
+
+- Opening a plugin's window no longer switches the dock to the mixer: the Editor
+  panel stays up.
 
 - A project with one damaged note, automation point, controller event or comp
   segment opens, without that entry, instead of failing to open at all.

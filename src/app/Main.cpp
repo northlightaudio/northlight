@@ -61,10 +61,15 @@ public:
         if (hasFlag(commandLine, "--capture"))
         {
             capture_ = true;
+            // --capture-plugins: the user's scanned plugins, so a capture can show them.
+            const auto userPlugins = UserSettings().file().getSiblingFile("plugins.json");
             UserSettings::useFolder("Northlight Capture");
             const auto folder = UserSettings().file().getParentDirectory();
             if (folder.getFileName() == "Northlight Capture")
                 folder.deleteRecursively();
+            if (hasFlag(commandLine, "--capture-plugins") && userPlugins.existsAsFile() &&
+                folder.createDirectory())
+                userPlugins.copyFileTo(folder.getChildFile("plugins.json"));
         }
         // The very first launch (no settings file yet) gets the device sheet.
         // Northlight was called Aural: bring its settings and folders across once.

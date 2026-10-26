@@ -160,6 +160,11 @@ std::unique_ptr<juce::Drawable> menuIcon(Icon icon)
 }
 } // namespace
 
+Icon effectCategoryIcon(EffectCategory category)
+{
+    return iconFor(category);
+}
+
 EffectCategory effectCategory(const std::string& type, const hosting::PluginRegistry* registry)
 {
     if (!hosting::PluginRegistry::isHostedType(type))
