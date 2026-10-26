@@ -684,7 +684,7 @@ a scope, a spectrum) has none; one you can drag says what a drag sets ("Drag:
 threshold"); a button, toggle or chip names what it does ("Freeze", "Tempo sync",
 "Kill dry"). A knob has none while it draws its value under it; one too small to
 draw it shows the value. The shortcut (written after two
-spaces, keys joined by "+": "Redo  Ctrl+Shift+Z") shows as key caps at the right of
+spaces, keys joined by "+": "Redo  Ctrl+Y") shows as key caps at the right of
 the first line, one per key: `caption` `textSecondary` on `surface1` with a
 `lineStrong` border, radius `sm`. Delay `tooltipDelayMs`.
 

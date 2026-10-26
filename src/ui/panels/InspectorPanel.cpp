@@ -3,6 +3,7 @@
 #include "core/Command.h"
 #include "ui/Db.h"
 #include "ui/NorthlightLookAndFeel.h"
+#include "ui/Shortcuts.h"
 #include "ui/TrackIcon.h"
 
 #include <cmath>
@@ -71,16 +72,16 @@ InspectorPanel::InspectorPanel(const Theme& theme)
     };
     addAndMakeVisible(pan_);
 
-    const auto toggle = [this](juce::TextButton& b, const char* semantic, const char* tip)
+    const auto toggle = [this](juce::TextButton& b, const char* semantic, const juce::String& tip)
     {
         b.setClickingTogglesState(true);
         b.getProperties().set(NorthlightLookAndFeel::propertySemantic, semantic);
         b.setTooltip(tip);
         addAndMakeVisible(b);
     };
-    toggle(mute_, "mute", "Mute  Shift+M");
-    toggle(solo_, "solo", "Solo  Shift+S");
-    toggle(arm_, "arm", "Arm for recording  Shift+R");
+    toggle(mute_, "mute", Shortcuts::withKey("Mute", Command::muteTrack));
+    toggle(solo_, "solo", Shortcuts::withKey("Solo", Command::soloTrack));
+    toggle(arm_, "arm", Shortcuts::withKey("Arm for recording", Command::armSelected));
     arm_.getProperties().set(NorthlightLookAndFeel::propertyHardOn, true);
     mute_.onClick = [this]
     {

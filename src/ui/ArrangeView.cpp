@@ -10,6 +10,7 @@
 #include "ui/NorthlightLookAndFeel.h"
 #include "ui/PaintStats.h"
 #include "ui/PluginMenu.h"
+#include "ui/Shortcuts.h"
 #include "ui/arrange/ArrangeGestures.h"
 #include "ui/arrange/ArrangePainter.h"
 #include "ui/components/DragTip.h"
@@ -27,19 +28,35 @@ namespace
 {
 constexpr double minSamplesPerPixel = 1.0;
 constexpr double maxSamplesPerPixel = 48000.0 * 16.0; // eight bars per pixel at 120 bpm
+
+// A tool's tooltip with its key, from the shortcut table (pickTool's keys are in the
+// tools' order).
+juce::String toolTip(const juce::String& text, int tool)
+{
+    const auto& keys = Shortcuts::of(Command::pickTool).keys;
+    return tool >= 0 && static_cast<size_t>(tool) < keys.size()
+               ? text + "  " + keys[static_cast<size_t>(tool)].text()
+               : text;
+}
+juce::String toolKeysRange()
+{
+    const auto& keys = Shortcuts::of(Command::pickTool).keys;
+    return keys.front().text() + " to " + keys.back().text();
+}
 } // namespace
 
 ArrangeView::ArrangeView(audio::PeakStore& peaks, const Theme& theme)
     : theme_(theme), peaks_(peaks), addTrack_(theme_, Icon::add, "Add track"),
       rowsSmaller_(theme_, Icon::zoomOut, "Smaller rows"), rowsLarger_(theme_, Icon::zoomIn, "Larger rows"),
-      selectTool_(theme_, Icon::pointer, "Select tool: move, trim and select clips  1"),
-      rangeTool_(theme_, Icon::rangeTool, "Range tool: select a time range across tracks  2"),
-      pencilTool_(theme_, Icon::pencil, "Pencil: draw a MIDI clip on a MIDI track  3"),
-      eraseTool_(theme_, Icon::eraser, "Erase: click or sweep over clips to delete them  4"),
-      splitTool_(theme_, Icon::scissors, "Split: click a clip to cut it there, Shift+click every track  5"),
-      glueTool_(theme_, Icon::glue, "Glue: click a clip to join it with the next  6"),
-      muteTool_(theme_, Icon::muteClip, "Mute: click or sweep over clips to mute or unmute them  7"),
-      toolMenu_(theme_, Icon::pointer, "Tools: 1 to 7")
+      selectTool_(theme_, Icon::pointer, toolTip("Select tool: move, trim and select clips", 0)),
+      rangeTool_(theme_, Icon::rangeTool, toolTip("Range tool: select a time range across tracks", 1)),
+      pencilTool_(theme_, Icon::pencil, toolTip("Pencil: draw a MIDI clip on a MIDI track", 2)),
+      eraseTool_(theme_, Icon::eraser, toolTip("Erase: click or sweep over clips to delete them", 3)),
+      splitTool_(
+          theme_, Icon::scissors, toolTip("Split: click a clip to cut it there, Shift+click every track", 4)),
+      glueTool_(theme_, Icon::glue, toolTip("Glue: click a clip to join it with the next", 5)),
+      muteTool_(theme_, Icon::muteClip, toolTip("Mute: click or sweep over clips to mute or unmute them", 6)),
+      toolMenu_(theme_, Icon::pointer, "Tools: " + toolKeysRange())
 {
     setOpaque(true);
     rulerOnly = theme_.sizes.ruler;

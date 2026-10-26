@@ -54,7 +54,9 @@ until the pointer moves.
 
 ## 10.4 Keyboard map
 
-Defaults; all rebindable in Preferences. Shown in tooltips and menus.
+Defaults; all rebindable in Preferences. Shown in tooltips and menus. As implemented,
+the keys live in one table (`ui/Shortcuts`) that the window, the panels and the arrange
+view dispatch from and the Shortcuts page, tooltips and menus print.
 
 | Action | Key |
 |---|---|
@@ -66,12 +68,12 @@ Defaults; all rebindable in Preferences. Shown in tooltips and menus.
 | Punch on/off | P |
 | Click on/off | C |
 | Previous / next marker | , / . |
-| Add marker / region | M / Shift+M |
+| Add marker / region | M / Alt+M |
 | Zoom in / out / fit / selection | Ctrl+= / Ctrl+- / Z / Shift+Z |
-| Undo / redo | Ctrl+Z / Ctrl+Shift+Z (also Ctrl+Y) |
+| Undo / redo | Ctrl+Z / Ctrl+Y (also Ctrl+Shift+Z) |
 | Cut / copy / paste / duplicate / delete | Ctrl+X / Ctrl+C / Ctrl+V / Ctrl+D / Delete |
 | Select all / none | Ctrl+A / Esc |
-| Split at playhead / at selection | S / Shift+S |
+| Split at playhead / at selection | S / Alt+S |
 | Join | J |
 | Mute / solo / arm selected track | Shift+M / Shift+S / Shift+R |
 | Nudge selection | Alt+Left / Right (grid), Alt+Shift (fine) |
@@ -84,7 +86,7 @@ Defaults; all rebindable in Preferences. Shown in tooltips and menus.
 | New / open / save / save as | Ctrl+N / Ctrl+O / Ctrl+S / Ctrl+Shift+S |
 | Import audio | Ctrl+I |
 | Export (bounce) | Ctrl+E |
-| Mixer / editor / browser / inspector / piano roll / diagnostics | F2 / F3 / F4 / F5 / F6 / F7 (Shift+Fn detaches or reattaches) |
+| Mixer / editor / browser / inspector / piano roll / diagnostics / instruments / audio editor | F2 to F9 (Shift+Fn detaches or reattaches) |
 | Audio setup / plugins / preferences | Ctrl+, (preferences), Ctrl+Shift+A, Ctrl+Shift+P |
 | Add audio / MIDI track / bus | Ctrl+T / Ctrl+Shift+T / Ctrl+B |
 | Rename selected | F2 when a track or clip is selected (overrides mixer toggle) |

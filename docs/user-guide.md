@@ -37,7 +37,7 @@ Ctrl+drag for clip gain. Moves snap to the grid (**G**). **Delete** removes (wit
 ripple on, **E**, later clips close the gap), **Ctrl+D** duplicates, **S** splits at
 the playhead, **J** joins, **X** crossfades overlapping clips, **Ctrl+Shift+N**
 normalises, **Ctrl+M** mutes or unmutes the selected clips. **M** drops a marker,
-**Shift+M** a region from the loop range, and comma and full stop jump between
+**Alt+M** a region from the loop range, and comma and full stop jump between
 markers. Right-click a clip for the same edits in a menu, with Split here.
 
 The tools sit at the top left of the track list, keys **1** to **7**: select, range

@@ -1,6 +1,7 @@
 #include "ui/shell/HeaderBar.h"
 
 #include "ui/NorthlightLookAndFeel.h"
+#include "ui/Shortcuts.h"
 #include "ui/components/Readout.h"
 
 #include <algorithm>
@@ -293,18 +294,25 @@ void TimeDisplay::endTyping(bool commit)
 
 HeaderBar::HeaderBar(const Theme& theme)
     : theme_(theme), app_(theme, Icon::mark, "Northlight: About, Preferences, Audio Setup, Plugins"),
-      project_(theme), undo_(theme, Icon::undo, "Undo  Ctrl+Z"),
-      redo_(theme, Icon::redo, "Redo  Ctrl+Shift+Z"),
-      goToStart_(theme, Icon::goToStart, "Go to start  Enter"), play_(theme, Icon::play, "Play  Space"),
-      stop_(theme, Icon::stop, "Stop  Space"), record_(theme, Icon::record, "Record  R"),
-      loop_(theme, Icon::loop, "Loop  L"), punch_(theme, Icon::punch, "Punch  P"),
-      click_(theme, Icon::metronome, "Click  C"), countIn_(theme, Icon::countIn, "Count-in: 1 bar"),
-      bars_(theme, true), time_(theme, false), tempo_(theme), snap_(theme, Icon::snap, "Snap: Adaptive  N"),
-      ripple_(theme, Icon::ripple, "Ripple  Shift+N"), zoomFit_(theme, Icon::zoomFit, "Zoom to fit  Z"),
+      project_(theme), undo_(theme, Icon::undo, Shortcuts::withKey("Undo", Command::undo)),
+      redo_(theme, Icon::redo, Shortcuts::withKey("Redo", Command::redo)),
+      goToStart_(theme, Icon::goToStart, Shortcuts::withKey("Go to start", Command::returnToStart)),
+      play_(theme, Icon::play, Shortcuts::withKey("Play", Command::playStop)),
+      stop_(theme, Icon::stop, Shortcuts::withKey("Stop", Command::playStop)),
+      record_(theme, Icon::record, Shortcuts::withKey("Record", Command::record)),
+      loop_(theme, Icon::loop, Shortcuts::withKey("Loop", Command::loop)),
+      punch_(theme, Icon::punch, Shortcuts::withKey("Punch", Command::punch)),
+      click_(theme, Icon::metronome, Shortcuts::withKey("Click", Command::click)),
+      countIn_(theme, Icon::countIn, "Count-in: 1 bar"), bars_(theme, true), time_(theme, false),
+      tempo_(theme), snap_(theme, Icon::snap, Shortcuts::withKey("Snap: Adaptive", Command::snap)),
+      ripple_(theme, Icon::ripple, Shortcuts::withKey("Ripple", Command::ripple)),
+      zoomFit_(theme, Icon::zoomFit, Shortcuts::withKey("Zoom to fit", Command::zoomToFit)),
       minimise_(theme, Icon::windowMinimise, "Minimise", false),
       maximise_(theme, Icon::windowMaximise, "Maximise", false),
-      closeWindow_(theme, Icon::close, "Close", true), mixer_(theme, Icon::mixer, "Mixer  F2"),
-      editor_(theme, Icon::inspector, "Editor  F3"), browser_(theme, Icon::browser, "Browser  F4")
+      closeWindow_(theme, Icon::close, "Close", true),
+      mixer_(theme, Icon::mixer, Shortcuts::withKey("Mixer", Command::showMixer)),
+      editor_(theme, Icon::inspector, Shortcuts::withKey("Editor", Command::showEditor)),
+      browser_(theme, Icon::browser, Shortcuts::withKey("Browser", Command::showBrowser))
 {
     setOpaque(true);
     const auto bind = [](IconButton& button, std::function<void()>& action)
@@ -484,27 +492,30 @@ void HeaderBar::refreshFromState()
     project_.setTooltip((s.projectPath.isNotEmpty() ? s.projectPath : juce::String("Not saved yet")) +
                         (s.modified ? juce::String("\nUnsaved changes") : juce::String()));
     undo_.setEnabled(s.canUndo);
-    undo_.setTooltip(s.canUndo ? "Undo " + s.undoName + "  Ctrl+Z" : "Undo  Ctrl+Z");
+    undo_.setTooltip(
+        Shortcuts::withKey(s.canUndo ? "Undo " + s.undoName : juce::String("Undo"), Command::undo));
     redo_.setEnabled(s.canRedo);
-    redo_.setTooltip(s.canRedo ? "Redo " + s.redoName + "  Ctrl+Shift+Z" : "Redo  Ctrl+Shift+Z");
+    redo_.setTooltip(
+        Shortcuts::withKey(s.canRedo ? "Redo " + s.redoName : juce::String("Redo"), Command::redo));
     play_.setIcon(s.playing ? Icon::pause : Icon::play);
-    play_.setTooltip(s.playing ? "Stop  Space" : "Play  Space");
+    play_.setTooltip(Shortcuts::withKey(s.playing ? "Stop" : "Play", Command::playStop));
     play_.setToggleState(s.playing, juce::dontSendNotification);
     stop_.setRestColour(s.playing ? theme_.colours.textSecondary : theme_.colours.textPrimary);
     record_.setToggleState(s.recording, juce::dontSendNotification);
     record_.setEnabled(s.deviceReady);
     play_.setEnabled(s.deviceReady);
     record_.setWarningDot(!s.deviceReady);
-    record_.setTooltip(s.deviceReady ? (s.recording ? "Stop recording  R" : "Record  R")
-                                     : "No audio device: click to open Audio Setup");
+    record_.setTooltip(s.deviceReady
+                           ? Shortcuts::withKey(s.recording ? "Stop recording" : "Record", Command::record)
+                           : "No audio device: click to open Audio Setup");
     loop_.setToggleState(s.loop, juce::dontSendNotification);
     loop_.setEnabled(s.loopPossible);
-    loop_.setTooltip(s.loopPossible ? juce::String(s.loop ? "Loop: on  L" : "Loop: off  L")
+    loop_.setTooltip(s.loopPossible ? Shortcuts::withKey(s.loop ? "Loop: on" : "Loop: off", Command::loop)
                                     : juce::String("Set a loop region in the ruler"));
     punch_.setToggleState(s.punch, juce::dontSendNotification);
-    punch_.setTooltip(s.punch ? "Punch: on  P" : "Punch: off  P");
+    punch_.setTooltip(Shortcuts::withKey(s.punch ? "Punch: on" : "Punch: off", Command::punch));
     click_.setToggleState(s.click, juce::dontSendNotification);
-    click_.setTooltip(s.click ? "Click: on  C" : "Click: off  C");
+    click_.setTooltip(Shortcuts::withKey(s.click ? "Click: on" : "Click: off", Command::click));
     countIn_.setToggleState(s.countInBars > 0, juce::dontSendNotification);
     countIn_.setCornerText(s.countInBars > 0 ? juce::String(s.countInBars) : juce::String());
     countIn_.setTooltip("Count-in: " + juce::String(s.countInBars) + (s.countInBars == 1 ? " bar" : " bars") +
@@ -535,10 +546,11 @@ void HeaderBar::refreshFromState()
         }
     }
     snap_.setToggleState(s.snap, juce::dontSendNotification);
-    snap_.setTooltip("Snap: " + (s.snap ? s.snapName : juce::String("off")) +
-                     "  N\nThe arrow picks the grid");
+    snap_.setTooltip(
+        Shortcuts::withKey("Snap: " + (s.snap ? s.snapName : juce::String("off")), Command::snap) +
+        "\nThe arrow picks the grid");
     ripple_.setToggleState(s.ripple, juce::dontSendNotification);
-    ripple_.setTooltip(s.ripple ? "Ripple: on  Shift+N" : "Ripple: off  Shift+N");
+    ripple_.setTooltip(Shortcuts::withKey(s.ripple ? "Ripple: on" : "Ripple: off", Command::ripple));
     mixer_.setToggleState(s.mixerVisible, juce::dontSendNotification);
     editor_.setToggleState(s.editorVisible, juce::dontSendNotification);
     browser_.setToggleState(s.browserVisible, juce::dontSendNotification);

@@ -582,7 +582,11 @@ The arrange view itself is split by job under `src/ui/arrange/`: `ArrangeLayout`
 paint, for the area repainted), one `ArrangeView::Gesture` per kind of drag
 (`ArrangeGestures`: each keeps its own preview and commits through `ui::edit` on
 release), `ArrangeMenus` (every item carries its action), `MarkerController`
-and `ArrangeKeymap` (the keys as one table). The mixer's strips live in
+and `ArrangeKeymap` (the keys it acts on). Every key the app answers is in one
+table, `ui::Shortcuts` (a command, its keys and whether they are listed): the main
+window dispatches its commands from it, the panels take their F-keys from it, the
+arrange keymap matches through it, and the Shortcuts page, tooltips and menu items
+print its keys. The mixer's strips live in
 `src/ui/mixer/`, the piano roll's controller lane is a component of its own
 (`ui::ControllerLane`), and the audio editor's Correct sheet, pitch grid and
 pitch rules are in `src/ui/audioeditor/`.

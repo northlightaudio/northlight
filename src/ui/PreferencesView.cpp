@@ -2,6 +2,7 @@
 
 #include "ui/Icons.h"
 #include "ui/NorthlightLookAndFeel.h"
+#include "ui/Shortcuts.h"
 #include "ui/components/NumericField.h"
 #include "ui/components/SegmentedControl.h"
 
@@ -22,57 +23,6 @@ constexpr int cardTitleHeight = 22;
 constexpr int badgeHeight = 18;
 constexpr int keyCapHeight = 18;
 const char* const comingSoonTooltip = "Saved now, used in a later version.";
-
-// The keyboard map (interaction.md 10.4 as implemented). Keys are space-separated
-// tokens: a chord ("Ctrl+Shift+S", one cap per key) or a joining word ("/" pairs
-// with the action's own "/", "or" is an alternative, "to" a range).
-struct Shortcut
-{
-    const char* action;
-    const char* keys;
-    const char* group;
-};
-const Shortcut shortcuts[] = {
-    {"Play / stop", "Space", "Transport"},
-    {"Pause", "Shift+Space", "Transport"},
-    {"Record", "R", "Transport"},
-    {"Arm selected track", "Shift+R", "Transport"},
-    {"Return to start", "Return or Home", "Transport"},
-    {"Go to end", "Shift+Return or End", "Transport"},
-    {"Loop", "L", "Transport"},
-    {"Punch", "P", "Transport"},
-    {"Click", "C", "Transport"},
-    {"Zoom in / out", "Ctrl+= / Ctrl+-", "View"},
-    {"Zoom to fit / to selection", "Z / Shift+Z", "View"},
-    {"Snap / ripple", "N / Shift+N", "View"},
-    {"Mixer, Editor, Browser, Inspector, Piano Roll, Diagnostics", "F2 to F7", "View"},
-    {"Detach or reattach a panel", "Shift+F2 to Shift+F7", "View"},
-    {"Mute / solo selected track", "Shift+M / Shift+S", "Tracks"},
-    {"Add audio / MIDI track", "Ctrl+T / Ctrl+Shift+T", "Tracks"},
-    {"Add bus", "Ctrl+B", "Tracks"},
-    {"Delete selection", "Delete or Backspace", "Editing"},
-    {"Duplicate", "Ctrl+D", "Editing"},
-    {"Split at playhead / at selection", "S / Alt+S", "Editing"},
-    {"Join", "J", "Editing"},
-    {"Crossfade", "X", "Editing"},
-    {"Mute / unmute selected clips", "Ctrl+M", "Editing"},
-    {"Select, range, pencil, erase, split, glue, mute tool", "1 to 7", "Editing"},
-    {"Normalise", "Ctrl+Shift+N", "Editing"},
-    {"Nudge left / right", "Left / Right", "Editing"},
-    {"Select all", "Ctrl+A", "Editing"},
-    {"Clear selection", "Esc", "Editing"},
-    {"Add marker / region", "M / Alt+M", "Editing"},
-    {"Previous / next marker", ", / .", "Editing"},
-    {"New project", "Ctrl+N", "Files"},
-    {"Open", "Ctrl+O", "Files"},
-    {"Save / save as", "Ctrl+S / Ctrl+Shift+S", "Files"},
-    {"Import audio", "Ctrl+I", "Files"},
-    {"Export", "Ctrl+E", "Files"},
-    {"Undo / redo", "Ctrl+Z / Ctrl+Y", "Files"},
-    {"Audio Setup", "Ctrl+Shift+A", "App"},
-    {"Plugins", "Ctrl+Shift+P", "App"},
-    {"Preferences", "Ctrl+,", "App"},
-};
 
 juce::String ellipsis()
 {
@@ -694,10 +644,13 @@ public:
     }
 
 private:
+    // The rows come from the shortcut table (ui/Shortcuts.h). Keys are space-separated
+    // tokens: a chord ("Ctrl+Shift+S", one cap per key) or a joining word ("/" pairs
+    // with the action's own "/", "or" is an alternative, "to" a range).
     struct Entry
     {
-        const Shortcut* shortcut = nullptr; // null: a group header
-        const char* group = "";
+        const Shortcuts::Row* shortcut = nullptr; // null: a group header
+        juce::String group;
     };
     class SearchIcon final : public juce::Component
     {
@@ -736,14 +689,13 @@ private:
     {
         rows_.clear();
         const auto needle = search_.getText().trim();
-        const char* group = nullptr;
-        for (const auto& s : shortcuts)
+        juce::String group;
+        for (const auto& s : Shortcuts::pageRows())
         {
-            if (needle.isNotEmpty() && !juce::String(s.action).containsIgnoreCase(needle) &&
-                !juce::String(s.keys).containsIgnoreCase(needle) &&
-                !juce::String(s.group).containsIgnoreCase(needle))
+            if (needle.isNotEmpty() && !s.action.containsIgnoreCase(needle) &&
+                !s.keys.containsIgnoreCase(needle) && !s.group.containsIgnoreCase(needle))
                 continue;
-            if (group == nullptr || juce::String(group) != s.group)
+            if (group != s.group)
             {
                 group = s.group;
                 rows_.push_back({nullptr, s.group});
@@ -837,7 +789,7 @@ private:
         {
             g.setFont(theme_.captionCaps());
             g.setColour(c.textTertiary);
-            g.drawText(juce::String(entry.group).toUpperCase(),
+            g.drawText(entry.group.toUpperCase(),
                        area.reduced(theme_.spacing.md, 0).withTrimmedBottom(theme_.spacing.xs),
                        juce::Justification::bottomLeft,
                        false);

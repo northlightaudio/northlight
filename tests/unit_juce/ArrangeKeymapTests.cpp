@@ -22,7 +22,7 @@ TEST_CASE("Every arrange key reaches a binding that says what it does", "[ui][ar
     using Mods = juce::ModifierKeys;
     for (const auto& key : {Key(Key::deleteKey),
                             Key('m'),
-                            Key('m', Mods::shiftModifier, 0),
+                            Key('m', Mods::altModifier, 0),
                             Key(','),
                             Key('d', Mods::commandModifier, 0),
                             Key('v', Mods::commandModifier, 0),
@@ -36,15 +36,17 @@ TEST_CASE("Every arrange key reaches a binding that says what it does", "[ui][ar
                             Key('a', Mods::commandModifier, 0),
                             Key(Key::escapeKey),
                             Key('s'),
-                            Key('s', Mods::shiftModifier, 0),
+                            Key('s', Mods::altModifier, 0),
                             Key('g'),
                             Key(Key::rightKey)})
         CHECK(firstMatch(key) != nullptr);
     CHECK(firstMatch(juce::KeyPress('q')) == nullptr);
-    // A key two bindings could take goes to the first ('M' typed alone is not Shift+M).
+    // A key two bindings could take goes to the first ('M' typed alone is not Alt+M).
     CHECK(juce::String(firstMatch(juce::KeyPress('m'))) == "Add a marker at the playhead");
-    CHECK(juce::String(firstMatch(juce::KeyPress('m', juce::ModifierKeys::shiftModifier, 0))) ==
+    CHECK(juce::String(firstMatch(juce::KeyPress('m', juce::ModifierKeys::altModifier, 0))) ==
           "Add a region from the loop");
+    // Shift+M is the window's (mute the selected track), so the arrange view leaves it.
+    CHECK(firstMatch(juce::KeyPress('m', juce::ModifierKeys::shiftModifier, 0)) == nullptr);
     for (const auto& binding : ui::ArrangeKeymap::bindings())
         CHECK(juce::String(binding.what).isNotEmpty());
 }

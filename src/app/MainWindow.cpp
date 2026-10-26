@@ -29,6 +29,7 @@
 #include "ui/PluginBrowser.h"
 #include "ui/PreferencesView.h"
 #include "ui/Selection.h"
+#include "ui/Shortcuts.h"
 #include "ui/SplashScreen.h"
 #include "ui/Theme.h"
 #include "ui/components/Knob.h"
@@ -775,199 +776,136 @@ public:
     {
         if (session_.isLoading())
             return true; // the loading sheet holds the window
-        using M = juce::ModifierKeys;
-        const int mods = key.getModifiers().withoutMouseButtons().getRawFlags();
-        const auto is = [&](int code, int with = 0) { return key.getKeyCode() == code && mods == with; };
-        const auto chr = [&](char c, int with = 0)
-        { return key.getTextCharacter() == static_cast<juce::juce_wchar>(c) && mods == with; };
         if (key.getKeyCode() == juce::KeyPress::tabKey)
             ui::NorthlightLookAndFeel::setKeyboardFocusVisible(true);
-        // F2 renames the selected track while the arrange view has the focus
-        // (10.4); elsewhere it is the mixer's panel key.
-        if (key.getKeyCode() == juce::KeyPress::F2Key && mods == 0 && tracks_.hasKeyboardFocus(true) &&
-            selection_.channel() != core::invalidId)
-        {
-            tracks_.renameSelectedTrack();
-            return true;
-        }
-        if (is('F', M::ctrlModifier))
-        {
-            panels_.show(ui::PanelId::browser);
-            browserPanel_.focusSearch();
-            return true;
-        }
+        // The window's commands from the shortcut table (ui/Shortcuts.h), then the
+        // panels' F-keys, then the arrange view's keys.
+        for (const auto command : ui::Shortcuts::windowCommandsFor(key))
+            if (perform(command))
+                return true;
         if (panels_.handleKey(key))
             return true;
-        // Transport.
-        if (is(juce::KeyPress::spaceKey))
-        {
-            session_.togglePlay();
-            return true;
-        }
-        if (is(juce::KeyPress::spaceKey, M::shiftModifier))
-        {
-            session_.stop();
-            return true;
-        }
-        if (chr('r'))
-        {
-            toggleRecord();
-            return true;
-        }
-        if (chr('R', M::shiftModifier))
-        {
-            armSelected();
-            return true;
-        }
-        if (is(juce::KeyPress::returnKey) || is(juce::KeyPress::homeKey))
-        {
-            session_.returnToStart();
-            return true;
-        }
-        if (is(juce::KeyPress::returnKey, M::shiftModifier) || is(juce::KeyPress::endKey))
-        {
-            session_.locate(session_.project().length());
-            return true;
-        }
-        if (chr('l'))
-        {
-            session_.setLoopEnabled(!session_.loopEnabled());
-            return true;
-        }
-        if (chr('p'))
-        {
-            session_.setPunchEnabled(!session_.punchEnabled());
-            return true;
-        }
-        if (chr('c'))
-        {
-            session_.setMetronome(!session_.metronomeEnabled());
-            return true;
-        }
-        // Zoom.
-        if (is('=', M::ctrlModifier) || is('+', M::ctrlModifier))
-        {
-            tracks_.zoomBy(0.75);
-            return true;
-        }
-        if (is('-', M::ctrlModifier))
-        {
-            tracks_.zoomBy(1.0 / 0.75);
-            return true;
-        }
-        if (chr('z'))
-        {
-            tracks_.zoomToFit();
-            return true;
-        }
-        if (chr('Z', M::shiftModifier))
-        {
-            tracks_.zoomToSelection();
-            return true;
-        }
-        // Snap and ripple.
-        if (chr('n'))
-        {
-            tracks_.setSnapEnabled(!tracks_.snapEnabled());
-            refreshHeader();
-            return true;
-        }
-        if (chr('N', M::shiftModifier))
-        {
-            tracks_.setRippleEnabled(!tracks_.rippleEnabled());
-            refreshHeader();
-            return true;
-        }
-        // The selected track's state. (The spec gives Shift+M and Shift+S to both the
-        // track state and the marker region / split at selection; the edits take Alt.)
-        if (chr('M', M::shiftModifier))
-        {
-            if (const auto* t = selectedTrack())
-                session_.execute(std::make_unique<core::SetTrackMute>(t->id, !t->mute));
-            return true;
-        }
-        if (chr('S', M::shiftModifier))
-        {
-            if (const auto* t = selectedTrack())
-                session_.execute(std::make_unique<core::SetTrackSolo>(t->id, !t->solo));
-            return true;
-        }
-        if (is('M', M::altModifier))
-            return tracks_.handleEditKey(juce::KeyPress('M', M::shiftModifier, 0));
-        if (is('S', M::altModifier))
-            return tracks_.handleEditKey(juce::KeyPress('S', M::shiftModifier, 0));
-        // Files and windows.
-        if (is('N', M::ctrlModifier))
-        {
-            newProject();
-            return true;
-        }
-        if (is('O', M::ctrlModifier))
-        {
-            openProject();
-            return true;
-        }
-        if (is('S', M::ctrlModifier))
-        {
-            saveProject(false);
-            return true;
-        }
-        if (is('S', M::ctrlModifier | M::shiftModifier))
-        {
-            saveProject(true);
-            return true;
-        }
-        if (is('I', M::ctrlModifier))
-        {
-            importAudio();
-            return true;
-        }
-        if (is('E', M::ctrlModifier))
-        {
-            showExportSheet();
-            return true;
-        }
-        if (is('Z', M::ctrlModifier))
-        {
-            undo();
-            return true;
-        }
-        if (is('Y', M::ctrlModifier) || is('Z', M::ctrlModifier | M::shiftModifier))
-        {
-            redo();
-            return true;
-        }
-        if (is('A', M::ctrlModifier | M::shiftModifier))
-        {
-            owner_.showAudioSetup();
-            return true;
-        }
-        if (is(',', M::ctrlModifier))
-        {
-            owner_.showPreferences();
-            return true;
-        }
-        if (is('P', M::ctrlModifier | M::shiftModifier))
-        {
-            owner_.showPluginBrowser();
-            return true;
-        }
-        if (is('T', M::ctrlModifier))
-        {
-            addAudioTrack();
-            return true;
-        }
-        if (is('T', M::ctrlModifier | M::shiftModifier))
-        {
-            addMidiTrack({});
-            return true;
-        }
-        if (is('B', M::ctrlModifier))
-        {
-            addBus();
-            return true;
-        }
         return tracks_.handleEditKey(key);
+    }
+
+    // Runs one of the window's keyboard commands; false when it does not apply now
+    // (the key then goes on to the panels and the arrange view).
+    bool perform(ui::Command command)
+    {
+        using C = ui::Command;
+        switch (command)
+        {
+            case C::renameTrack:
+                // F2 renames the selected track while the arrange view has the focus
+                // (10.4); elsewhere it is the mixer's panel key.
+                if (!tracks_.hasKeyboardFocus(true) || selection_.channel() == core::invalidId)
+                    return false;
+                tracks_.renameSelectedTrack();
+                return true;
+            case C::findPlugin:
+                panels_.show(ui::PanelId::browser);
+                browserPanel_.focusSearch();
+                return true;
+            case C::playStop:
+                session_.togglePlay();
+                return true;
+            case C::pause:
+                session_.stop();
+                return true;
+            case C::record:
+                toggleRecord();
+                return true;
+            case C::armSelected:
+                armSelected();
+                return true;
+            case C::returnToStart:
+                session_.returnToStart();
+                return true;
+            case C::goToEnd:
+                session_.locate(session_.project().length());
+                return true;
+            case C::loop:
+                session_.setLoopEnabled(!session_.loopEnabled());
+                return true;
+            case C::punch:
+                session_.setPunchEnabled(!session_.punchEnabled());
+                return true;
+            case C::click:
+                session_.setMetronome(!session_.metronomeEnabled());
+                return true;
+            case C::zoomIn:
+                tracks_.zoomBy(0.75);
+                return true;
+            case C::zoomOut:
+                tracks_.zoomBy(1.0 / 0.75);
+                return true;
+            case C::zoomToFit:
+                tracks_.zoomToFit();
+                return true;
+            case C::zoomToSelection:
+                tracks_.zoomToSelection();
+                return true;
+            case C::snap:
+                tracks_.setSnapEnabled(!tracks_.snapEnabled());
+                refreshHeader();
+                return true;
+            case C::ripple:
+                tracks_.setRippleEnabled(!tracks_.rippleEnabled());
+                refreshHeader();
+                return true;
+            case C::muteTrack:
+                if (const auto* t = selectedTrack())
+                    session_.execute(std::make_unique<core::SetTrackMute>(t->id, !t->mute));
+                return true;
+            case C::soloTrack:
+                if (const auto* t = selectedTrack())
+                    session_.execute(std::make_unique<core::SetTrackSolo>(t->id, !t->solo));
+                return true;
+            case C::newProject:
+                newProject();
+                return true;
+            case C::open:
+                openProject();
+                return true;
+            case C::save:
+                saveProject(false);
+                return true;
+            case C::saveAs:
+                saveProject(true);
+                return true;
+            case C::importAudio:
+                importAudio();
+                return true;
+            case C::exportMix:
+                showExportSheet();
+                return true;
+            case C::undo:
+                undo();
+                return true;
+            case C::redo:
+                redo();
+                return true;
+            case C::audioSetup:
+                owner_.showAudioSetup();
+                return true;
+            case C::preferences:
+                owner_.showPreferences();
+                return true;
+            case C::plugins:
+                owner_.showPluginBrowser();
+                return true;
+            case C::addAudioTrack:
+                addAudioTrack();
+                return true;
+            case C::addMidiTrack:
+                addMidiTrack({});
+                return true;
+            case C::addBus:
+                addBus();
+                return true;
+            default:
+                return false; // a panel's or the arrange view's
+        }
     }
 
     // The custom chrome: what a point in the content is to the window. Only the
@@ -1314,7 +1252,9 @@ private:
         using ui::Icon;
         using ui::PanelId;
         using ui::PanelInfo;
-        const auto key = [](int code) { return juce::KeyPress(code, juce::ModifierKeys(), 0); };
+        // Each panel's key comes from the shortcut table.
+        const auto key = [](ui::Command command)
+        { return ui::Shortcuts::of(command).keys.front().keyPress(); };
         panels_.registerPanel(PanelInfo{PanelId::mixer,
                                         "Mixer",
                                         Icon::mixer,
@@ -1323,7 +1263,7 @@ private:
                                         240,
                                         true,
                                         false,
-                                        key(juce::KeyPress::F2Key)},
+                                        key(ui::Command::showMixer)},
                               mixer_);
         panels_.registerPanel(PanelInfo{PanelId::editor,
                                         "Editor",
@@ -1333,7 +1273,7 @@ private:
                                         200,
                                         true,
                                         true,
-                                        key(juce::KeyPress::F3Key),
+                                        key(ui::Command::showEditor),
                                         [this] { return editor_.minimumHeight(); }},
                               editor_);
         panels_.registerPanel(PanelInfo{PanelId::browser,
@@ -1344,7 +1284,7 @@ private:
                                         200,
                                         true,
                                         true,
-                                        key(juce::KeyPress::F4Key)},
+                                        key(ui::Command::showBrowser)},
                               browserPanel_);
         panels_.registerPanel(PanelInfo{PanelId::inspector,
                                         "Inspector",
@@ -1354,7 +1294,7 @@ private:
                                         200,
                                         false,
                                         true,
-                                        key(juce::KeyPress::F5Key)},
+                                        key(ui::Command::showInspector)},
                               inspector_);
         panels_.registerPanel(PanelInfo{PanelId::pianoRoll,
                                         "Piano Roll",
@@ -1364,7 +1304,7 @@ private:
                                         240,
                                         true,
                                         false,
-                                        key(juce::KeyPress::F6Key)},
+                                        key(ui::Command::showPianoRoll)},
                               pianoRoll_);
         panels_.registerPanel(PanelInfo{PanelId::audioEditor,
                                         "Audio Editor",
@@ -1374,7 +1314,7 @@ private:
                                         260,
                                         true,
                                         false,
-                                        key(juce::KeyPress::F9Key)},
+                                        key(ui::Command::showAudioEditor)},
                               audioEditor_);
         panels_.registerPanel(PanelInfo{PanelId::instruments,
                                         "Instruments",
@@ -1384,7 +1324,7 @@ private:
                                         200,
                                         true,
                                         false,
-                                        key(juce::KeyPress::F8Key)},
+                                        key(ui::Command::showInstruments)},
                               instruments_);
         panels_.registerPanel(PanelInfo{PanelId::diagnostics,
                                         "Diagnostics",
@@ -1394,7 +1334,7 @@ private:
                                         200,
                                         true,
                                         false,
-                                        key(juce::KeyPress::F7Key)},
+                                        key(ui::Command::showDiagnostics)},
                               diagnostics_);
         panels_.setMainWindow(&owner_);
         panels_.onLayoutChanged = [this] { resized(); };

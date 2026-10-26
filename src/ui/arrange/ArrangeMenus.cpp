@@ -7,6 +7,7 @@
 #include "ui/ColourMenu.h"
 #include "ui/Icons.h"
 #include "ui/PluginMenu.h"
+#include "ui/Shortcuts.h"
 
 namespace northlight::ui
 {
@@ -142,23 +143,23 @@ void ArrangeMenus::clipMenu(const edit::ClipRef& ref, juce::Point<int> screen)
             { return selection.size() > 1 ? edit::joinClips(p, selection) : edit::joinWithNext(p, ref); }),
         many ? !edit::joinClips(*project, selection).empty() : edit::canJoinWithNext(*project, ref),
         false,
-        many ? "J" : "");
+        many ? Shortcuts::keyText(Command::join) : juce::String());
     if (!ref.midi)
         items.add("Crossfade",
                   run([selection](const core::Project& p) { return edit::crossfadeClips(p, selection); }),
                   !edit::crossfadeClips(*project, selection).empty(),
                   false,
-                  "X");
+                  Shortcuts::keyText(Command::crossfade));
     items.add(many ? (anyPlaying ? "Mute clips" : "Unmute clips") : (muted ? "Unmute clip" : "Mute clip"),
               run([selection](const core::Project& p) { return edit::toggleMuted(p, selection); }),
               true,
               false,
-              "Ctrl+M");
+              Shortcuts::keyText(Command::muteClips));
     items.add("Duplicate",
               run([selection](const core::Project& p) { return edit::duplicateClips(p, selection); }),
               true,
               false,
-              "Ctrl+D");
+              Shortcuts::keyText(Command::duplicate));
     if (!ref.midi)
         items.add(
             "Normalise",
@@ -169,7 +170,7 @@ void ArrangeMenus::clipMenu(const edit::ClipRef& ref, juce::Point<int> screen)
             },
             static_cast<bool>(v.onNormalise),
             false,
-            "Ctrl+Shift+N");
+            Shortcuts::keyText(Command::normalise));
     menu.addSeparator();
     items.add(
         "Cut",
@@ -180,7 +181,7 @@ void ArrangeMenus::clipMenu(const edit::ClipRef& ref, juce::Point<int> screen)
         },
         true,
         false,
-        "Ctrl+X");
+        Shortcuts::keyText(Command::cut));
     items.add(
         "Copy",
         [safe]
@@ -190,7 +191,7 @@ void ArrangeMenus::clipMenu(const edit::ClipRef& ref, juce::Point<int> screen)
         },
         true,
         false,
-        "Ctrl+C");
+        Shortcuts::keyText(Command::copy));
     items.add(
         "Delete",
         [safe, selection]
@@ -200,7 +201,7 @@ void ArrangeMenus::clipMenu(const edit::ClipRef& ref, juce::Point<int> screen)
         },
         true,
         false,
-        "Delete");
+        Shortcuts::keyText(Command::deleteSelection));
     menu.addSeparator();
     if (clip != nullptr)
     {

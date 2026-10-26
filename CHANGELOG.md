@@ -13,6 +13,12 @@ Northlight has not had a release yet. The first release, 0.1.0, will include:
 
 ### Added
 
+- Every shortcut comes from one table, so the Shortcuts page, tooltips and menus
+  always show the keys that work: the page now lists F8 and F9 (Instruments, Audio
+  Editor), cut, copy and paste; Redo shows Ctrl+Y (Ctrl+Shift+Z still works);
+  Return is called Enter; and a region from the loop and a split at the selection
+  are Alt+M and Alt+S everywhere.
+
 - Preferences marks Recording > Format as coming soon: recordings are always
   32-bit float WAV so far, whatever it showed.
 
