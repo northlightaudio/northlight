@@ -181,6 +181,7 @@ add_library(northlight_ui STATIC
     ArrangeView.cpp
     TakeLanes.h
     TakeLanes.cpp
+    AutomationScale.h
     AutomationLanes.h
     AutomationLanes.cpp
     pianoroll/ControllerLane.h
@@ -189,6 +190,8 @@ add_library(northlight_ui STATIC
     PianoRoll.cpp
     audioeditor/CorrectSheet.h
     audioeditor/CorrectSheet.cpp
+    audioeditor/PitchEditing.h
+    audioeditor/PitchEditing.cpp
     audioeditor/PitchGrid.h
     audioeditor/PitchGrid.cpp
     AudioEditor.h

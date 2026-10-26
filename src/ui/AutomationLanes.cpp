@@ -14,7 +14,6 @@ namespace northlight::ui
 
 namespace
 {
-constexpr float gainTopDb = 6.0f, gainBottomDb = -60.0f;
 constexpr int pointRadius = 4;
 // Menu ids past the parameters' (which count from 1).
 constexpr int deletePointId = 9001, collapseId = 9002, hideId = 9003, clearId = 9004, deleteLaneId = 9005;
@@ -264,56 +263,18 @@ const engine::ParameterInfo* AutomationLanes::infoFor(const core::Channel& track
 
 float AutomationLanes::toNorm(const core::Channel& track, const Key& key, float value) const
 {
-    switch (key.target)
-    {
-        case core::AutomationTarget::gain:
-            if (value <= 1.0e-6f)
-                return 0.0f;
-            return juce::jlimit(0.0f,
-                                1.0f,
-                                (static_cast<float>(db::fromGain(value)) - gainBottomDb) /
-                                    (gainTopDb - gainBottomDb));
-        case core::AutomationTarget::pan:
-            return juce::jlimit(0.0f, 1.0f, (value + 1.0f) * 0.5f);
-        case core::AutomationTarget::insertParameter:
-            if (const auto* info = infoFor(track, key))
-            {
-                if (info->logarithmic && info->minimum > 0.0f)
-                    return juce::jlimit(0.0f,
-                                        1.0f,
-                                        std::log(std::max(info->minimum, value) / info->minimum) /
-                                            std::log(info->maximum / info->minimum));
-                return juce::jlimit(0.0f, 1.0f, (value - info->minimum) / (info->maximum - info->minimum));
-            }
-            return 0.5f;
-    }
-    return 0.0f;
+    return scaleFor(track, key).toNorm(value);
 }
 
 float AutomationLanes::fromNorm(const core::Channel& track, const Key& key, float norm) const
 {
-    norm = juce::jlimit(0.0f, 1.0f, norm);
-    switch (key.target)
-    {
-        case core::AutomationTarget::gain:
-            if (norm <= 0.002f)
-                return 0.0f;
-            return db::toGain(gainBottomDb + norm * (gainTopDb - gainBottomDb));
-        case core::AutomationTarget::pan:
-            return norm * 2.0f - 1.0f;
-        case core::AutomationTarget::insertParameter:
-            if (const auto* info = infoFor(track, key))
-            {
-                float v = info->logarithmic && info->minimum > 0.0f
-                              ? info->minimum * std::pow(info->maximum / info->minimum, norm)
-                              : info->minimum + norm * (info->maximum - info->minimum);
-                if (!info->choices.empty())
-                    v = std::round(v);
-                return v;
-            }
-            return 0.0f;
-    }
-    return 0.0f;
+    return scaleFor(track, key).fromNorm(norm);
+}
+
+AutomationScale AutomationLanes::scaleFor(const core::Channel& track, const Key& key) const
+{
+    return {key.target,
+            key.target == core::AutomationTarget::insertParameter ? infoFor(track, key) : nullptr};
 }
 
 float AutomationLanes::staticValue(const core::Channel& track, const Key& key) const
@@ -432,7 +393,8 @@ int AutomationLanes::pointAt(const Slot& slot, juce::Point<int> p) const
     {
         const auto& pt = lane->points[i];
         const int x = juce::roundToInt(pointX(slot, pt.position));
-        const int y = area.getBottom() - static_cast<int>(toNorm(*track, key, pt.value) * area.getHeight());
+        const int y = static_cast<int>(
+            AutomationScale::yFor(toNorm(*track, key, pt.value), area.getY(), area.getHeight()));
         const int d = std::max(std::abs(x - p.x), std::abs(y - p.y));
         if (d <= bestDistance)
         {
@@ -641,11 +603,10 @@ void AutomationLanes::paintLane(juce::Graphics& g, const Slot& slot) const
     const auto key = keyOf(*lane);
     const auto area = curveArea(slot);
     const bool collapsed = lane->view.collapsed;
-    const float h = static_cast<float>(area.getHeight());
     const bool dragging = dragLane_ == lane->id && dragIndex_ >= 0;
     const auto& points = dragging ? dragPoints_ : lane->points;
     const auto yOf = [&](float value)
-    { return static_cast<float>(area.getBottom()) - toNorm(*track, key, value) * h; };
+    { return AutomationScale::yFor(toNorm(*track, key, value), area.getY(), area.getHeight()); };
     const bool active = track->automationMode != core::AutomationMode::off;
     // The track's own colour, so a lane reads as its track's; grey when the mode is Off.
     const auto colour = !active ? c.textTertiary : geometry.colour ? geometry.colour(slot.row) : c.automation;
@@ -914,7 +875,7 @@ void AutomationLanes::mouseDown(const juce::MouseEvent& e)
         core::AutomationPoint p;
         p.position = std::max<core::SamplePosition>(0, geometry.snap(view_.sampleAt(e.x)));
         p.value = fromNorm(
-            *track, key, static_cast<float>(area.getBottom() - e.y) / static_cast<float>(area.getHeight()));
+            *track, key, AutomationScale::normAt(static_cast<float>(e.y), area.getY(), area.getHeight()));
         auto at = std::upper_bound(dragPoints_.begin(),
                                    dragPoints_.end(),
                                    p.position,
@@ -973,7 +934,7 @@ void AutomationLanes::mouseDrag(const juce::MouseEvent& e)
     else
         p.position = dragPosition_;
     p.value = fromNorm(
-        *track, key, static_cast<float>(area.getBottom() - e.y) / static_cast<float>(area.getHeight()));
+        *track, key, AutomationScale::normAt(static_cast<float>(e.y), area.getY(), area.getHeight()));
     repaint();
 }
 

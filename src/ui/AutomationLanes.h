@@ -3,6 +3,7 @@
 #include "core/CommandFwd.h"
 #include "core/Model.h"
 #include "engine/Insert.h"
+#include "ui/AutomationScale.h"
 #include "ui/Theme.h"
 #include "ui/timeline/TimelineViewport.h"
 
@@ -120,6 +121,8 @@ private:
 
     juce::String keyName(const core::Channel& track, const Key& key) const;
     juce::String rangeText(const core::Channel& track, const Key& key) const;
+    // The lane's vertical scale (AutomationScale) for a parameter.
+    AutomationScale scaleFor(const core::Channel& track, const Key& key) const;
     float toNorm(const core::Channel& track, const Key& key, float value) const;
     float fromNorm(const core::Channel& track, const Key& key, float norm) const;
     float staticValue(const core::Channel& track, const Key& key) const;

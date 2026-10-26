@@ -9,6 +9,7 @@
 #include "ui/NorthlightLookAndFeel.h"
 #include "ui/PaintStats.h"
 #include "ui/audioeditor/CorrectSheet.h"
+#include "ui/audioeditor/PitchEditing.h"
 #include "ui/audioeditor/PitchGrid.h"
 #include "ui/components/DragTip.h"
 #include "ui/timeline/TimeGrid.h"
@@ -39,15 +40,6 @@ double toSourceSpan(const core::AudioClip& c, double timelineSamples) noexcept
 double toTimelineSpan(const core::AudioClip& c, double sourceSamples) noexcept
 {
     return sourceSamples * c.stretch;
-}
-
-juce::String signedCents(float cents)
-{
-    const int c = static_cast<int>(std::lround(cents));
-    return (c > 0   ? "+"
-            : c < 0 ? juce::String::fromUTF8("\xe2\x88\x92")
-                    : "") +
-           juce::String(std::abs(c)) + " ct";
 }
 
 juce::String percent(float amount)
@@ -568,22 +560,12 @@ const core::VocalNote* AudioEditor::noteAt(juce::Point<int> p) const
 {
     if (!gridArea().contains(p))
         return nullptr;
-    const auto s = sourceForX(static_cast<float>(p.x));
-    const auto& edit = shownEdit();
-    const core::VocalNote* best = nullptr;
-    float bestDistance = 1.0e9f;
-    for (const auto& n : edit.notes)
-    {
-        if (s < n.start || s >= n.end)
-            continue;
-        const float d = std::abs(yForCents(n.target) - static_cast<float>(p.y));
-        if (d < static_cast<float>(rowHeight) * 1.2f && d < bestDistance)
-        {
-            best = &n;
-            bestDistance = d;
-        }
-    }
-    return best;
+    return pitchedit::noteAt(
+        shownEdit(),
+        sourceForX(static_cast<float>(p.x)),
+        static_cast<float>(p.y),
+        [this](float cents) { return yForCents(cents); },
+        static_cast<float>(rowHeight));
 }
 
 const core::VocalSegment* AudioEditor::segmentAt(juce::Point<int> p) const
@@ -599,19 +581,13 @@ const core::VocalNote* AudioEditor::joinAt(juce::Point<int> p) const
 {
     if (!gridArea().contains(p))
         return nullptr;
-    const auto& notes = shownEdit().notes;
-    for (size_t i = 0; i + 1 < notes.size(); ++i)
-    {
-        if (notes[i].end != notes[i + 1].start)
-            continue;
-        const float x = xForSource(static_cast<double>(notes[i].end));
-        const float y0 = yForCents(notes[i].target), y1 = yForCents(notes[i + 1].target);
-        if (std::abs(static_cast<float>(p.x) - x) <= 4.0f &&
-            static_cast<float>(p.y) >= std::min(y0, y1) - rowHeight &&
-            static_cast<float>(p.y) <= std::max(y0, y1) + rowHeight)
-            return &notes[i];
-    }
-    return nullptr;
+    return pitchedit::joinAt(
+        shownEdit().notes,
+        static_cast<float>(p.x),
+        static_cast<float>(p.y),
+        [this](double source) { return xForSource(source); },
+        [this](float cents) { return yForCents(cents); },
+        static_cast<float>(rowHeight));
 }
 
 // ----- painting -------------------------------------------------------------------------------
@@ -812,10 +788,7 @@ void AudioEditor::paintNote(juce::Graphics& g, const core::VocalNote& note, juce
     // The label: the note it now plays and how far from it.
     if (x1 - x0 > 44.0f)
     {
-        const float nearest = std::round(note.target / 100.0f) * 100.0f;
-        juce::String label = noteName(note.target);
-        if (std::abs(note.target - nearest) >= 1.0f)
-            label += " " + signedCents(note.target - nearest);
+        juce::String label = pitchedit::label(note.target);
         if (note.muted)
             label += "  muted";
         g.setFont(theme_.caption());
@@ -907,10 +880,11 @@ void AudioEditor::paintInfo(juce::Graphics& g)
         if (const auto* n = edit.findNote(selection_[0]))
         {
             const float nearest = std::round(n->target / 100.0f) * 100.0f;
-            text << noteName(n->target) << "  " << signedCents(n->target - nearest) << "   \xc2\xb7   sung "
-                 << noteName(n->centre) << " "
-                 << signedCents(n->centre - std::round(n->centre / 100.0f) * 100.0f) << "   \xc2\xb7   drift "
-                 << percent(n->drift) << "   \xc2\xb7   vibrato " << percent(n->vibrato) << "   \xc2\xb7   "
+            text << noteName(n->target) << "  " << pitchedit::signedCents(n->target - nearest)
+                 << "   \xc2\xb7   sung " << noteName(n->centre) << " "
+                 << pitchedit::signedCents(n->centre - std::round(n->centre / 100.0f) * 100.0f)
+                 << "   \xc2\xb7   drift " << percent(n->drift) << "   \xc2\xb7   vibrato "
+                 << percent(n->vibrato) << "   \xc2\xb7   "
                  << (n->muted ? juce::String("muted") : decibels(n->gainDb));
         }
     }
@@ -1332,19 +1306,14 @@ void AudioEditor::mouseDrag(const juce::MouseEvent& e)
             const auto* dragged = dragBase_.findNote(dragNote_);
             if (dragged == nullptr)
                 break;
-            float delta = -static_cast<float>(dy) / rowHeight * 100.0f;
-            if (!e.mods.isAltDown())
-                delta = std::round((dragged->target + delta) / 100.0f) * 100.0f - dragged->target;
+            const float delta = pitchedit::dragDelta(
+                dragged->target, -static_cast<float>(dy) / rowHeight * 100.0f, e.mods.isAltDown());
             preview_ = dragBase_;
             for (auto& n : preview_.notes)
                 if (isSelected(n.id))
                     n.target = std::clamp(n.target + delta, 2400.0f, 10800.0f);
             previewing_ = true;
-            const auto* moved = preview_.findNote(dragNote_);
-            const float nearest = std::round(moved->target / 100.0f) * 100.0f;
-            dragTip_ = noteName(moved->target) + (std::abs(moved->target - nearest) >= 1.0f
-                                                      ? " " + signedCents(moved->target - nearest)
-                                                      : juce::String());
+            dragTip_ = pitchedit::label(preview_.findNote(dragNote_)->target);
             break;
         }
         case Drag::transition:
