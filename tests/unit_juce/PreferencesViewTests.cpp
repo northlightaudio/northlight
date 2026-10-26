@@ -177,8 +177,8 @@ TEST_CASE("A setting that is kept but not used yet carries the Coming soon badge
         FAIL_CHECK("no row " << label << " on " << page);
         return false;
     };
-    CHECK(badged("recording", "Pre-roll"));
-    CHECK(badged("recording", "Take names"));
+    CHECK_FALSE(badged("recording", "Pre-roll")); // recordings use them now
+    CHECK_FALSE(badged("recording", "Take names"));
     CHECK(badged("editing", "Fade"));
     CHECK(badged("diagnostics", "Send reports"));
     CHECK_FALSE(badged("recording", "Click level"));
@@ -257,15 +257,15 @@ TEST_CASE("Preferences opened without a page shows General once it is in a windo
     CHECK_FALSE(view.rowLayout().empty());
 }
 
-TEST_CASE("Every setting not read yet carries the Coming soon badge", "[ui][preferences]")
+TEST_CASE("The recording format is read, so it carries no Coming soon badge", "[ui][preferences]")
 {
     Fixture f;
     f.view->showPage("recording");
-    bool formatBadged = false;
+    bool formatBadged = true;
     for (const auto& row : f.view->rowLayout())
         if (row.label == "Format")
             formatBadged = row.badge;
-    CHECK(formatBadged);
+    CHECK_FALSE(formatBadged);
 }
 
 TEST_CASE("Each Preferences page opens by its key, in list order", "[ui][preferences]")

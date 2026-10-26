@@ -169,6 +169,7 @@ private:
 
 class MainWindow::Content final : public juce::Component,
                                   public juce::DragAndDropContainer,
+                                  public juce::FileDragAndDropTarget,
                                   private juce::ChangeListener,
                                   private juce::Timer
 {
@@ -252,6 +253,12 @@ public:
         if (!atLaunch && appearance != appearance_)
             applyAppearance();
         appearance_ = appearance;
+        // Saving, importing and recording (screens/setup.md 8.2, General and Recording).
+        session_.setKeepBackup(read.flag(settings::keepBackup));
+        session_.setCopyImportedMedia(read.flag(settings::copyMedia));
+        session_.setRecordingBits(read.text(settings::recordingFormat) == "24" ? 24 : 32);
+        session_.setTakeNamePattern(read.text(settings::namePattern));
+        session_.setPreRollBars(read.integer(settings::preRoll));
         if (atLaunch)
         {
             session_.setCountInBars(read.integer(settings::countIn));
@@ -667,6 +674,8 @@ private:
             session_.setRegion(start, end);
             session_.setLoopEnabled(true);
         };
+        tracks_.onLocateMedia = [this](const std::string& path)
+        { fileActions_.locateMissing(juce::File(juce::String::fromUTF8(path.c_str()))); };
         tracks_.onEdit = [this](std::vector<std::unique_ptr<core::Command>> commands, const std::string& name)
         { session_.executeGroup(name, std::move(commands)); };
         tracks_.onOpenMidiClip = [this](core::Id trackId, core::Id clipId)
@@ -1070,18 +1079,8 @@ private:
     void refresh()
     {
         const auto s = audio_.status();
-        // The device went away: say what happened, what it means and what to do (10.6).
-        if (lastDeviceOpen_ && !s.open)
-        {
-            const bool wasPlaying = session_.isPlaying();
-            session_.stop();
-            toast(ui::ToastStack::Kind::error,
-                  "The " + juce::String::fromUTF8(lastDeviceName_.c_str()) + " was disconnected. " +
-                      (wasPlaying ? "Playback stopped. " : juce::String()) +
-                      "Reconnect it or choose another device in Audio Setup.",
-                  "Audio Setup",
-                  [this] { owner_.showAudioSetup(); });
-        }
+        // A device that went away is the session's to tell (it stops the transport
+        // and says what happened to a recording): its notices come with the rest.
         lastDeviceOpen_ = s.open;
         if (s.open)
             lastDeviceName_ = s.outputDevice;
@@ -1442,27 +1441,23 @@ private:
     }
 
     // Unsaved changes on close (10.6): a sheet with Save as the primary action.
-    void confirmClose()
+    void confirmClose() { fileActions_.quit(); }
+
+    // A project file dropped anywhere on the window opens (after the unsaved
+    // changes question); audio dropped on the arrange view imports there.
+    bool isInterestedInFileDrag(const juce::StringArray& files) override
     {
-        if (!session_.isModified())
-        {
-            juce::JUCEApplication::getInstance()->quit();
-            return;
-        }
-        sheet_ =
-            ui::Sheet::show(*this,
-                            theme_,
-                            "Save changes to " + fileActions_.projectName() + "?",
-                            "Unsaved changes will be lost if you close without saving.",
-                            {{"Cancel", false, false}, {"Don't save", false, true}, {"Save", true, false}},
-                            [this](int result)
-                            {
-                                sheet_ = nullptr;
-                                if (result == 1)
-                                    juce::JUCEApplication::getInstance()->quit();
-                                else if (result == 2)
-                                    fileActions_.saveProject(false, FileActions::AfterSave::quit);
-                            });
+        return std::any_of(
+            files.begin(), files.end(), [](const juce::String& f) { return FileActions::isProjectFile(f); });
+    }
+    void filesDropped(const juce::StringArray& files, int, int) override
+    {
+        for (const auto& f : files)
+            if (FileActions::isProjectFile(f))
+            {
+                fileActions_.open(f);
+                return;
+            }
     }
 
     // Inserts a plugin type on a track (from the browser, a drop or the chain).
@@ -1753,7 +1748,11 @@ private:
         for (const auto& choice : plugins::fxTrackEffects())
             m.fxTracks.push_back(choice.name);
         m.saved = session_.projectFile() != juce::File();
+        m.canRevert = fileActions_.canRevert();
         m.newProject = whenAlive([](Content& c) { c.fileActions_.newProject(); });
+        m.closeProject = whenAlive([](Content& c) { c.fileActions_.closeProject(); });
+        m.revert = whenAlive([](Content& c) { c.fileActions_.revertToSaved(); });
+        m.clearRecent = whenAlive([](Content& c) { c.fileActions_.clearRecent(); });
         m.open = whenAlive([](Content& c) { c.fileActions_.openProject(); });
         m.save = whenAlive([](Content& c) { c.fileActions_.saveProject(false); });
         m.saveAs = whenAlive([](Content& c) { c.fileActions_.saveProject(true); });
@@ -1775,7 +1774,7 @@ private:
         m.openRecent = [safe](const juce::File& file)
         {
             if (safe != nullptr)
-                safe->fileActions_.openFile(file);
+                safe->fileActions_.open(file);
         };
         m.addFxTrack = [safe](size_t i)
         {
@@ -1955,20 +1954,24 @@ private:
                         { toast(kind, text, action, std::move(onAction)); },
                         [this] { owner_.showAudioSetup(); }}};
     // New, open, save, templates, media, imports and MIDI export (FileActions.h).
-    FileActions fileActions_{{*this,
-                              theme_,
-                              session_,
-                              settings_,
-                              loader_,
-                              sheet_,
-                              [this] { mixer_.closeEditors(); },
-                              [this] { refresh(); },
-                              [this](ui::ToastStack::Kind kind, const juce::String& text)
-                              { toast(kind, text); },
-                              [this](const juce::String& text) { status_.showMessage(text); },
-                              [this] { owner_.offerRecovery(); },
-                              [this] { return selection_.channel(); },
-                              [this] { return midiClipsToExport(); }}};
+    FileActions fileActions_{
+        {*this,
+         theme_,
+         session_,
+         settings_,
+         loader_,
+         sheet_,
+         [this] { mixer_.closeEditors(); },
+         [this] { refresh(); },
+         [this](ui::ToastStack::Kind kind, const juce::String& text) { toast(kind, text); },
+         [this](const juce::String& text) { status_.showMessage(text); },
+         [this] { owner_.offerRecovery(); },
+         [this] { return selection_.channel(); },
+         [this] { return midiClipsToExport(); },
+         [this](ui::ToastStack::Kind kind,
+                const juce::String& text,
+                const juce::String& action,
+                std::function<void()> onAction) { toast(kind, text, action, std::move(onAction)); }}};
     bool lastRecording_ = false;
     int ticks_ = 0;
     std::vector<bool> monitoring_; // which tracks monitor their input, for the headers
@@ -2183,7 +2186,7 @@ void MainWindow::closeButtonPressed()
     if (auto* content = content_)
         content->confirmClose();
     else
-        juce::JUCEApplication::getInstance()->systemRequestedQuit();
+        juce::JUCEApplication::getInstance()->quit(); // systemRequestedQuit comes back here
 }
 
 auto MainWindow::findControlAtPoint(juce::Point<float> point) const -> WindowControlKind
@@ -2528,6 +2531,16 @@ void MainWindow::openWithProgress(const juce::File& file, const juce::String& ho
     else if (holdAt == "engine")
         hold = LoadProgress::Stage::engine;
     content->fileActions_.openFile(file, hold);
+}
+
+void MainWindow::openFromShell(const juce::File& file)
+{
+    if (auto* content = content_)
+    {
+        if (!ui::offscreenMode())
+            toFront(true);
+        content->fileActions_.open(file);
+    }
 }
 
 void MainWindow::notify(const juce::String& message, bool warning)

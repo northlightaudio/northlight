@@ -243,14 +243,55 @@ void ArrangeView::refreshMissingMedia()
                 check.missing = !juce::File(clip.mediaPath).existsAsFile();
                 check.checkedMs = std::max<juce::uint32>(1, now);
             }
-            if (check.missing)
-                missingMedia_.insert(clip.mediaPath);
+            if (check.missing && missingMedia_.count(clip.mediaPath) == 0)
+            {
+                auto text = missingText(clip);
+                const int width = juce::GlyphArrangement::getStringWidthInt(theme_.caption(), text);
+                missingMedia_.emplace(clip.mediaPath, MissingLabel{std::move(text), width});
+            }
         }
 }
 
 bool ArrangeView::mediaMissing(const std::string& path)
 {
     return missingMedia_.count(path) > 0;
+}
+
+const juce::String& ArrangeView::missingLabel(const std::string& path) const
+{
+    static const juce::String none;
+    const auto it = missingMedia_.find(path);
+    return it != missingMedia_.end() ? it->second.text : none;
+}
+
+juce::String ArrangeView::missingText(const core::AudioClip& clip)
+{
+    return "Missing: " + juce::File(juce::String::fromUTF8(clip.mediaPath.c_str())).getFileName();
+}
+
+juce::Rectangle<int> ArrangeView::locateLinkBounds(const core::AudioClip& clip, int row) const
+{
+    const auto lane = rowBounds(row);
+    const int headerH = lane.getHeight() >= 24 ? theme_.sizes.clipHeader : 0;
+    const auto block = spanBounds(clip.start, clip.length, row);
+    const auto text =
+        block.withTrimmedTop(headerH)
+            .getIntersection(lane.withLeft(headerWidth()).withRight(getWidth() - scrollbarWidth))
+            .reduced(theme_.spacing.xs + 2, 0);
+    const auto font = theme_.caption();
+    const auto missing = missingMedia_.find(clip.mediaPath);
+    const int labelWidth = missing != missingMedia_.end()
+                               ? missing->second.width
+                               : juce::GlyphArrangement::getStringWidthInt(font, missingText(clip));
+    if (locateWidth_ < 0)
+        locateWidth_ =
+            juce::GlyphArrangement::getStringWidthInt(font, juce::String::fromUTF8("Locate\xe2\x80\xa6"));
+    const int x = text.getX() + labelWidth + theme_.spacing.sm;
+    const int w = locateWidth_;
+    const int h = static_cast<int>(std::ceil(font.getHeight()));
+    if (text.isEmpty() || x + w > text.getRight() || h > text.getHeight())
+        return {};
+    return {x, text.getCentreY() - h / 2, w, h};
 }
 
 void ArrangeView::setRowHeight(int height)
@@ -1205,6 +1246,13 @@ void ArrangeView::mouseDownLanes(const juce::MouseEvent& e)
 
     const auto at = sampleForX(e.x);
     const auto hit = hitTest(e.getPosition());
+    // A missing clip's Locate… link asks for the file (screens/arrange.md).
+    if (hit.clip != nullptr && !e.mods.isPopupMenu() && onLocateMedia && mediaMissing(hit.clip->mediaPath) &&
+        locateLinkBounds(*hit.clip, hit.row).expanded(2).contains(e.getPosition()))
+    {
+        onLocateMedia(hit.clip->mediaPath);
+        return;
+    }
     // The lane's track: selected (alone, unless it is one of several selected).
     if (hit.track != nullptr)
         pressTrack(hit.track->id, {}, true);

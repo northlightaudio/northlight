@@ -164,9 +164,14 @@ up/down, clips left/right).
 - Needs attention (dropouts over threshold, device lost, plugin failed, recording
   write failure, recoverable recordings): toast with an action; persistent for
   errors.
-- Blocking decisions (unsaved changes on close, overwrite a file, delete a bus that
-  tracks route to): sheet with the consequence in the first line and the destructive
-  action styled Danger.
+- Blocking decisions (unsaved changes on close, quit, New, Open or anything else
+  that replaces the project (screens/shell.md, "Unsaved changes"), overwrite a file,
+  delete a bus that tracks route to): sheet with the consequence in the first line
+  and the destructive action styled Danger.
+- The device going away is a toast with Audio Setup: the transport stops (a
+  fallback device never starts playing out of other speakers), a recording it cut
+  short says how much was saved, and a fallback says which device now plays ("Playing
+  through Speakers until the Volt is back. Press Play to go on.").
 - Error text is three parts in one or two sentences: what happened, what it means,
   what to do. "The Volt was disconnected. Playback stopped; recording was saved up to
   3:12. Reconnect it or choose another device in Audio Setup."

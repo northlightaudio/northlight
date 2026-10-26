@@ -95,15 +95,19 @@ void StatusBar::rebuildSegments()
         Segment format;
         format.text = juce::String(s.sampleRate / 1000.0, 1) + " kHz" + juce::String::fromUTF8(" \xc2\xb7 ") +
                       juce::String(s.bufferSize);
-        format.tooltip = juce::String(s.bufferSize) + " samples = " +
+        // One way: the buffer's own length. The next segment is the round trip
+        // (in and out), the figure Audio Setup's latency row ends with.
+        format.tooltip = "Buffer: " + juce::String(s.bufferSize) + " samples, " +
                          juce::String(s.sampleRate > 0.0 ? 1000.0 * s.bufferSize / s.sampleRate : 0.0, 2) +
-                         " ms";
+                         " ms one way";
         format.colour = c.textSecondary;
         segments_.push_back(format);
         Segment rt;
-        rt.text = juce::String(s.roundTripMs, 1) + " ms RT";
-        rt.tooltip = s.roundTripMeasured ? "Round trip measured by loopback calibration"
-                                         : "Round trip as reported by the driver (not measured)";
+        rt.text = juce::String(s.roundTripMs, 1) + " ms round trip";
+        rt.tooltip = s.roundTripMeasured
+                         ? "Round trip, input to output, measured by loopback calibration"
+                         : "Round trip, input to output: the driver's input and output latency added up "
+                           "(not measured)";
         rt.colour = s.roundTripMeasured ? c.textPrimary : c.textSecondary;
         segments_.push_back(rt);
         Segment load;

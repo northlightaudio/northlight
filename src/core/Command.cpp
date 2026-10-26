@@ -1864,8 +1864,8 @@ SetAutomationPoints::SetAutomationPoints(Id channelId,
     sortPoints(value_);
 }
 
-SetMediaPaths::SetMediaPaths(std::vector<std::pair<std::string, std::string>> renames)
-    : renames_(std::move(renames))
+SetMediaPaths::SetMediaPaths(std::vector<std::pair<std::string, std::string>> renames, std::string name)
+    : renames_(std::move(renames)), name_(std::move(name))
 {
 }
 bool SetMediaPaths::apply(Project& p)
@@ -1888,16 +1888,29 @@ bool SetMediaPaths::apply(Project& p)
         for (auto& g : t.takeGroups)
             for (auto& take : g.takes)
                 repoint(t.id, take.clip);
+        for (const auto& [from, to] : renames_)
+            if (t.isFrozen() && t.frozenMedia == from)
+            {
+                changed_.push_back({t.id, invalidId, t.frozenMedia});
+                t.frozenMedia = to;
+                break;
+            }
     }
     return true;
 }
 bool SetMediaPaths::revert(Project& p)
 {
     for (const auto& change : changed_)
-        if (auto* t = p.findTrack(change.track))
-            if (auto* c = t->findClip(change.clip) != nullptr ? t->findClip(change.clip)
-                                                              : t->findTakeClip(change.clip))
-                c->mediaPath = change.previous;
+    {
+        auto* t = p.findTrack(change.track);
+        if (t == nullptr)
+            continue;
+        if (change.clip == invalidId)
+            t->frozenMedia = change.previous;
+        else if (auto* c = t->findClip(change.clip) != nullptr ? t->findClip(change.clip)
+                                                               : t->findTakeClip(change.clip))
+            c->mediaPath = change.previous;
+    }
     return true;
 }
 

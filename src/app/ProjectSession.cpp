@@ -16,6 +16,7 @@
 #include <cmath>
 #include <cstdio>
 #include <cstring>
+#include <limits>
 #include <map>
 #include <optional>
 #include <vector>
@@ -118,8 +119,14 @@ ProjectSession::~ProjectSession()
 {
     stopTimer();
     hostedAutomation_.stopTimer();
-    removeOwnAutosave(); // a normal close: the user saved or chose not to (waits for a write)
+    closeProject(); // the autosave goes only if the user saved or chose not to (waits for a write)
     autosaveAlive_->store(false);
+    if (autosaveLock_ != nullptr)
+    {
+        const auto lock = autosaveLock_->getFile();
+        autosaveLock_.reset();
+        lock.deleteFile();
+    }
     scanner_.cancel();
     audio_.removeChangeListener(this);
     // Stop new callbacks reaching the engine. This does not wait for one already
@@ -630,18 +637,38 @@ void ProjectSession::stopPreview()
     pumpPreview();
 }
 
+juce::File ProjectSession::takeInMedia(const juce::File& file)
+{
+    if (!copyImportedMedia_ || projectFile_ == juce::File() || !file.existsAsFile())
+        return file;
+    const auto folder = mediaFolder();
+    if (file.isAChildOf(folder) || !folder.createDirectory().wasOk())
+        return file;
+    auto target = folder.getChildFile(file.getFileName());
+    if (target.exists())
+    {
+        // The same file imported twice uses the copy it already has.
+        if (target.getSize() == file.getSize() && target.hasIdenticalContentTo(file))
+            return target;
+        target = folder.getNonexistentChildFile(
+            file.getFileNameWithoutExtension(), file.getFileExtension(), false);
+    }
+    return file.copyFileTo(target) ? target : file;
+}
+
 std::string ProjectSession::importAudioFile(const juce::File& file, core::SamplePosition at, core::Id target)
 {
     std::string error;
     const auto info = loader_.probe(file.getFullPathName().toStdString(), error);
     if (!info.has_value())
         return error;
+    const auto media = takeInMedia(file); // a copy in the project folder, when media is copied
 
     core::Track track;
     track.name = file.getFileNameWithoutExtension().toStdString();
     core::AudioClip clip;
     clip.name = track.name;
-    clip.mediaPath = file.getFullPathName().toStdString();
+    clip.mediaPath = media.getFullPathName().toStdString();
     clip.start = std::max<core::SamplePosition>(0, at);
     clip.length = info->lengthAt(project_.sampleRate);
     // On the audio track it was dropped on, or a track of its own.
@@ -766,7 +793,7 @@ std::string ProjectSession::exportMidiFile(const juce::File& file,
 
 void ProjectSession::newProject()
 {
-    removeOwnAutosave();
+    closeProject();
     hostedSent_.clear();
     untitledStem_.clear();
     reportedCrashes_.clear();
@@ -834,7 +861,10 @@ bool ProjectSession::beginRestore(const Autosave& autosave)
 void ProjectSession::cancelLoad()
 {
     if (canCancelLoad())
-        load_.reset(); // stops between files and waits for the thread
+    {
+        load_.reset();             // stops between files and waits for the thread
+        changesDiscarded_ = false; // the current project stays, and so does its question
+    }
 }
 
 std::string ProjectSession::finishLoadNow()
@@ -848,7 +878,7 @@ std::string ProjectSession::finishLoadNow()
 
 void ProjectSession::commitLoad()
 {
-    removeOwnAutosave();
+    closeProject();
     hostedSent_.clear();
     untitledStem_.clear();
     reportedCrashes_.clear(); // the new project's ids are its own
@@ -871,7 +901,9 @@ void ProjectSession::commitLoad()
         case LoadKind::restore:
             projectFile_ = loadAutosave_.project;
             changedOutsideHistory_ = true; // not saved until the user saves it
-            discardAutosave(loadAutosave_);
+            // The leftover becomes this session's own copy: it stays on disk until
+            // the user saves or discards the changes (the next autosave replaces it).
+            autosaveWritten_ = loadAutosave_.file;
             edited();
             break;
     }
@@ -905,6 +937,7 @@ std::optional<std::string> ProjectSession::stepLoad(double budgetMs)
         {
             auto error = load_->error();
             load_.reset();
+            changesDiscarded_ = false; // the current project stays, and so does its question
             return error;
         }
     }
@@ -975,18 +1008,108 @@ std::optional<std::string> ProjectSession::stepLoad(double budgetMs)
     return std::string{};
 }
 
-std::string ProjectSession::save(const juce::File& file)
+juce::File ProjectSession::backupFileFor(const juce::File& project)
 {
+    return project.withFileExtension("northlight-bak");
+}
+
+std::string ProjectSession::save(const juce::File& file, bool bringMedia)
+{
+    // Media first: the file written must point at where the media will be.
+    const auto media = file.getSiblingFile(file.getFileNameWithoutExtension() + " Media");
+    if (auto error = this->bringMedia(media, bringMedia); !error.empty())
+        return error;
     captureInsertStates();
     const SessionKeys keys(*this);
     const auto text = core::projectToJson(project_, true, &keys);
+    // The version being replaced is kept beside it, so a save over a good file
+    // with a bad edit can still be taken back from Explorer.
+    if (keepBackup_ && file.existsAsFile())
+    {
+        const auto backup = backupFileFor(file);
+        if (!file.copyFileTo(backup))
+            return "could not keep a backup at " + backup.getFullPathName().toStdString();
+    }
+    // replaceWithText writes a temporary file beside the target and then moves it
+    // over the target, so a failed write leaves the previous file as it was.
     if (!file.replaceWithText(juce::String(text)))
         return "could not write " + file.getFullPathName().toStdString();
     projectFile_ = file;
     undo_.markSaved();
     changedOutsideHistory_ = false;
+    changesDiscarded_ = false;
     removeOwnAutosave();
     notify(Change::structure);
+    return {};
+}
+
+std::vector<juce::File> ProjectSession::filesToBring(const juce::File& folder, bool everything) const
+{
+    // An unsaved project's recordings are in the shared folder: they always come
+    // along (nothing else would ever keep them); other media when asked.
+    const bool untitled = projectFile_ == juce::File();
+    const auto shared = sharedRecordingsFolder();
+    std::vector<juce::File> files;
+    const auto consider = [&](const std::string& path)
+    {
+        if (path.empty())
+            return;
+        const juce::File f(juce::String::fromUTF8(path.c_str()));
+        if (f.isAChildOf(folder) || std::find(files.begin(), files.end(), f) != files.end() ||
+            !f.existsAsFile())
+            return;
+        if (everything || (untitled && f.isAChildOf(shared)))
+            files.push_back(f);
+    };
+    for (const auto& t : project_.tracks)
+    {
+        for (const auto& c : t.clips)
+            consider(c.mediaPath);
+        for (const auto& g : t.takeGroups)
+            for (const auto& take : g.takes)
+                consider(take.clip.mediaPath);
+        consider(t.frozenMedia);
+    }
+    return files;
+}
+
+std::pair<int, juce::int64> ProjectSession::mediaToBring(const juce::File& file) const
+{
+    const auto files = filesToBring(file.getSiblingFile(file.getFileNameWithoutExtension() + " Media"), true);
+    juce::int64 bytes = 0;
+    for (const auto& f : files)
+        bytes += f.getSize();
+    return {static_cast<int>(files.size()), bytes};
+}
+
+std::string ProjectSession::bringMedia(const juce::File& folder, bool everything)
+{
+    const auto files = filesToBring(folder, everything);
+    if (files.empty())
+        return {};
+    std::vector<std::pair<std::string, std::string>> renames;
+    std::vector<juce::File> copies;
+    for (const auto& source : files)
+    {
+        // A frozen render keeps its Freeze subfolder.
+        const auto into =
+            source.getParentDirectory().getFileName() == "Freeze" ? folder.getChildFile("Freeze") : folder;
+        if (!into.createDirectory().wasOk())
+            return "could not create " + into.getFullPathName().toStdString();
+        auto target = into.getChildFile(source.getFileName());
+        if (target.exists())
+            target = into.getNonexistentChildFile(
+                source.getFileNameWithoutExtension(), source.getFileExtension(), false);
+        if (!source.copyFileTo(target))
+        {
+            for (const auto& copy : copies)
+                copy.deleteFile(); // all or nothing: the save fails as a whole
+            return "could not copy " + source.getFullPathName().toStdString() + " into the project folder";
+        }
+        copies.push_back(target);
+        renames.emplace_back(source.getFullPathName().toStdString(), target.getFullPathName().toStdString());
+    }
+    execute(std::make_unique<core::SetMediaPaths>(std::move(renames), "Bring media into the project folder"));
     return {};
 }
 
@@ -1104,10 +1227,56 @@ ProjectSession::MediaReport ProjectSession::mediaReport() const
             report.outside.push_back(f);
     }
     if (projectFile_ != juce::File() && folder.isDirectory())
+    {
         for (const auto& f : folder.findChildFiles(juce::File::findFiles, false))
             if (isMediaFile(f) && std::find(used.begin(), used.end(), f) == used.end())
                 report.unused.push_back(f);
+    }
+    else
+    {
+        // The shared folder holds other projects' recordings too: only this
+        // session's own are this project's to remove.
+        for (const auto& path : ownSharedRecordings_)
+            if (const juce::File f(path);
+                f.existsAsFile() && std::find(used.begin(), used.end(), f) == used.end())
+                report.unused.push_back(f);
+    }
     return report;
+}
+
+juce::File ProjectSession::sharedRecordingsFolder() const
+{
+    if (sharedRecordings_ != juce::File())
+        return sharedRecordings_;
+    return juce::File::getSpecialLocation(juce::File::userDocumentsDirectory)
+        .getChildFile("Northlight")
+        .getChildFile("Recordings");
+}
+
+int ProjectSession::missingFilesIn(const juce::File& folder, const juce::File& except) const
+{
+    int found = 0;
+    for (const auto& f : mediaReport().missing)
+        if (f != except && folder.getChildFile(f.getFileName()).existsAsFile())
+            ++found;
+    return found;
+}
+
+int ProjectSession::relinkMedia(const juce::File& missing, const juce::File& found, bool searchFolder)
+{
+    if (!found.existsAsFile())
+        return 0;
+    std::vector<std::pair<std::string, std::string>> renames{
+        {missing.getFullPathName().toStdString(), found.getFullPathName().toStdString()}};
+    if (searchFolder)
+        for (const auto& f : mediaReport().missing)
+            if (const auto candidate = found.getSiblingFile(f.getFileName());
+                f != missing && candidate.existsAsFile())
+                renames.emplace_back(f.getFullPathName().toStdString(),
+                                     candidate.getFullPathName().toStdString());
+    const int count = static_cast<int>(renames.size());
+    execute(std::make_unique<core::SetMediaPaths>(std::move(renames), "Relink media"));
+    return count;
 }
 
 std::string ProjectSession::consolidateMedia(int& copied)
@@ -1135,19 +1304,26 @@ std::string ProjectSession::consolidateMedia(int& copied)
     return {};
 }
 
+bool ProjectSession::trashMedia(const juce::File& f)
+{
+    if (!f.moveToTrash())
+        return false;
+    // Its peak cache goes with it.
+    for (const auto& sidecar :
+         f.getParentDirectory().findChildFiles(juce::File::findFiles, false, f.getFileName() + ".*"))
+        sidecar.moveToTrash();
+    return true;
+}
+
 int ProjectSession::removeUnusedMedia()
 {
     int moved = 0;
     for (const auto& f : mediaReport().unused)
-    {
-        if (!f.moveToTrash())
-            continue;
-        ++moved;
-        // Its peak cache goes with it.
-        for (const auto& sidecar :
-             f.getParentDirectory().findChildFiles(juce::File::findFiles, false, f.getFileName() + ".*"))
-            sidecar.moveToTrash();
-    }
+        if (trashMedia(f))
+        {
+            ++moved;
+            ownSharedRecordings_.erase(f.getFullPathName());
+        }
     return moved;
 }
 
@@ -1165,16 +1341,47 @@ void ProjectSession::setAutosave(juce::File folder, std::function<int()> interva
 {
     autosaveFolder_ = std::move(folder);
     autosaveInterval_ = std::move(intervalSeconds);
+    holdAutosaveLock();
+}
+
+void ProjectSession::holdAutosaveLock()
+{
+    if (autosaveLock_ != nullptr)
+    {
+        const auto old = autosaveLock_->getFile();
+        autosaveLock_.reset();
+        old.deleteFile();
+    }
+    if (autosaveFolder_ == juce::File() || !autosaveFolder_.createDirectory().wasOk())
+        return;
+    // Open for as long as the session lives: Windows refuses to delete a file
+    // another process holds open, so the lock's presence after a delete attempt
+    // says its owner still runs, and a crash (which closes every handle) frees it.
+    auto lock = std::make_unique<juce::FileOutputStream>(autosaveFolder_.getChildFile(instanceId_ + ".lock"));
+    if (lock->openedOk())
+        autosaveLock_ = std::move(lock);
+}
+
+bool ProjectSession::autosaveOwnerRunning(const juce::File& folder, const juce::String& owner)
+{
+    if (owner.isEmpty())
+        return false; // a copy from before instances owned theirs
+    const auto lock = folder.getChildFile(owner + ".lock");
+    // A lock file that can be deleted is stale (its owner closed or crashed).
+    return lock.existsAsFile() && !lock.deleteFile();
 }
 
 juce::File ProjectSession::currentAutosaveFile() const
 {
     if (autosaveFolder_ == juce::File())
         return {};
+    // Named for the project and for this instance, so two instances with the same
+    // project open never write over each other's copy.
     juce::String stem;
     if (projectFile_ != juce::File())
         stem = projectFile_.getFileNameWithoutExtension() + "-" +
-               juce::String::toHexString(projectFile_.getFullPathName().toLowerCase().hashCode64());
+               juce::String::toHexString(projectFile_.getFullPathName().toLowerCase().hashCode64()) + "-" +
+               instanceId_.substring(0, 6);
     else
         stem = "Untitled-" + untitledStem_;
     return autosaveFolder_.getChildFile(juce::File::createLegalFileName(stem) + ".northlight");
@@ -1228,6 +1435,7 @@ struct ProjectSession::AutosaveJob
     core::Project project;
     std::unique_ptr<ResolvedKeys> keys;
     juce::String projectPath;
+    juce::String owner; // the instance that wrote it
     std::string name;
     std::uint64_t generation = 0;
 };
@@ -1246,6 +1454,7 @@ std::shared_ptr<ProjectSession::AutosaveJob> ProjectSession::prepareAutosave()
     job->project = project_;
     job->keys = std::make_unique<ResolvedKeys>(*this);
     job->projectPath = projectFile_.getFullPathName();
+    job->owner = instanceId_;
     job->name = project_.name;
     job->generation = autosaveGeneration_;
     return job;
@@ -1264,6 +1473,7 @@ bool ProjectSession::writeAutosave(const AutosaveJob& job)
     }
     auto meta = std::make_unique<juce::DynamicObject>();
     meta->setProperty("project", job.projectPath);
+    meta->setProperty("owner", job.owner);
     meta->setProperty("name", juce::String::fromUTF8(job.name.c_str()));
     meta->setProperty("time", juce::Time::currentTimeMillis());
     sidecarOf(job.target).replaceWithText(juce::JSON::toString(juce::var(meta.release())));
@@ -1336,6 +1546,48 @@ void ProjectSession::waitForAutosave()
     autosaveWriter_.removeAllJobs(false, 10000);
 }
 
+void ProjectSession::closeProject()
+{
+    const bool keep = isModified() && !changesDiscarded_;
+    if (keep)
+    {
+        // Nobody chose to lose these changes: a fresh copy stays (when autosave is
+        // on, or a copy was already written) and is no longer this project's, so
+        // the next launch offers it.
+        const int interval = autosaveInterval_ ? autosaveInterval_() : 0;
+        if (interval > 0 || autosaveWritten_ != juce::File())
+            autosaveNow();
+        waitForAutosave();
+        ++autosaveGeneration_;
+        autosaveWritten_ = juce::File();
+        dirtySinceMs_ = 0.0;
+    }
+    else
+    {
+        removeOwnAutosave();
+        // The shared folder's recordings this session made that the closing
+        // project does not use (its saved copy uses the copies brought into its
+        // folder; discarded, it uses nothing) can never be used again: they go to
+        // the Recycle Bin rather than pile up.
+        std::set<juce::String> used;
+        if (!changesDiscarded_)
+            for (const auto& t : project_.tracks)
+            {
+                for (const auto& c : t.clips)
+                    used.insert(juce::String::fromUTF8(c.mediaPath.c_str()));
+                for (const auto& g : t.takeGroups)
+                    for (const auto& take : g.takes)
+                        used.insert(juce::String::fromUTF8(take.clip.mediaPath.c_str()));
+            }
+        for (const auto& path : ownSharedRecordings_)
+            if (used.count(path) == 0)
+                if (const juce::File f(path); f.existsAsFile())
+                    trashMedia(f);
+    }
+    ownSharedRecordings_.clear();
+    changesDiscarded_ = false;
+}
+
 void ProjectSession::removeOwnAutosave()
 {
     waitForAutosave(); // a copy being written now would outlive the removal
@@ -1371,11 +1623,17 @@ std::vector<ProjectSession::Autosave> ProjectSession::leftoverAutosaves() const
     {
         if (file == autosaveWritten_)
             continue;
+        // Another running instance's live copy is not a leftover.
+        const auto meta = juce::JSON::parse(sidecarOf(file).loadFileAsString());
+        const auto owner = meta.getDynamicObject() != nullptr
+                               ? meta.getDynamicObject()->getProperty("owner").toString()
+                               : juce::String();
+        if (owner == instanceId_ || autosaveOwnerRunning(autosaveFolder_, owner))
+            continue;
         Autosave a;
         a.file = file;
         a.time = file.getLastModificationTime();
         a.name = file.getFileNameWithoutExtension().toStdString();
-        const auto meta = juce::JSON::parse(sidecarOf(file).loadFileAsString());
         if (const auto* object = meta.getDynamicObject())
         {
             const auto path = object->getProperty("project").toString();
@@ -1559,9 +1817,7 @@ juce::File ProjectSession::mediaFolder() const
 {
     if (projectFile_.existsAsFile() || projectFile_.getFullPathName().isNotEmpty())
         return projectFile_.getSiblingFile(projectFile_.getFileNameWithoutExtension() + " Media");
-    return juce::File::getSpecialLocation(juce::File::userDocumentsDirectory)
-        .getChildFile("Northlight")
-        .getChildFile("Recordings");
+    return sharedRecordingsFolder();
 }
 
 core::SamplePosition ProjectSession::recordingLatencySamples() const
@@ -1713,19 +1969,28 @@ std::string ProjectSession::startRecording()
     const bool looping = loop_ && regionEnd_ > regionStart_;
 
     // Punching in: roll from one bar before the region so the take has a run-up.
+    // Pre-roll: from the bars before the playhead, heard but not captured.
     // (Only once the session is known to start; the locate is harmless otherwise.)
-    const auto rollFrom = punching ? std::max<core::SamplePosition>(0, map.move(regionStart_, {1, 0.0}, -1))
-                                   : engine_.position();
+    const auto here = engine_.position();
+    const auto preRollFrom = !punching && !looping && preRollBars_ > 0
+                                 ? std::max<core::SamplePosition>(0, map.move(here, {1, 0.0}, -preRollBars_))
+                                 : here;
+    const bool preRolling = preRollFrom < here;
+    const auto rollFrom =
+        punching ? std::max<core::SamplePosition>(0, map.move(regionStart_, {1, 0.0}, -1)) : preRollFrom;
     const auto countIn =
         std::max<core::SamplePosition>(0, rollFrom - map.move(rollFrom, {1, 0.0}, -countInBars_));
     // Capture starts at the punch-in point, or wraps to the loop start first when
     // playback is at or past the loop end.
-    core::SamplePosition captureStart = punching ? std::max(regionStart_, rollFrom) : rollFrom;
+    core::SamplePosition captureStart = punching     ? std::max(regionStart_, rollFrom)
+                                        : preRolling ? here
+                                                     : rollFrom;
     if (looping && captureStart >= regionEnd_)
         captureStart = regionStart_;
 
     const auto stamp = juce::Time::getCurrentTime().formatted("%Y%m%d-%H%M%S");
     auto session = std::make_unique<engine::RecordSession>(project_.sampleRate);
+    session->setBitsPerSample(recordingBits_);
     int index = 0;
     for (const auto& t : project_.tracks)
     {
@@ -1759,12 +2024,18 @@ std::string ProjectSession::startRecording()
     if (session->inputs().empty() && session->midiTracks().empty())
         return "arm a track and give it an input first";
 
-    if (punching)
+    if (punching || preRolling)
         engine_.locate(rollFrom);
+    // The pre-roll borrows the engine's punch: capture from the playhead on, with
+    // no end. The session's own punch range comes back when the files are in.
+    if (preRolling)
+        engine_.setPunch(here, std::numeric_limits<core::SamplePosition>::max() / 2, true);
 
     std::string error;
     if (!engine_.startRecording(std::move(session), error, countIn))
     {
+        if (preRolling)
+            engine_.setPunch(regionStart_, regionEnd_, punch_);
         removeOrphanSidecars(folder);
         return error;
     }
@@ -1775,12 +2046,51 @@ std::string ProjectSession::startRecording()
             playStart_ = startedAt;
         paused_ = false;
     }
+    recordingPreRolled_ = preRolling;
+    recordingInFlight_ = true;
     notify(Change::structure);
     return {};
 }
 
+std::string ProjectSession::takeName(const std::string& pattern, const std::string& track, int take)
+{
+    auto name = juce::String::fromUTF8(pattern.c_str())
+                    .replace("{track}", juce::String::fromUTF8(track.c_str()))
+                    .replace("{take}", juce::String(take))
+                    .trim();
+    if (name.isEmpty())
+        name = juce::String::fromUTF8(track.c_str()) + " " + juce::String(take);
+    return name.toStdString();
+}
+
 void ProjectSession::finishRecording(engine::AudioEngine::FinishedRecording finished)
 {
+    // The device stopped under the recording (it was unplugged): the engine ended
+    // it, not the user.
+    const bool cutShort = !engine_.isRunning();
+    recordingInFlight_ = false;
+    if (recordingPreRolled_)
+    {
+        recordingPreRolled_ = false;
+        engine_.setPunch(regionStart_, regionEnd_, punch_);
+    }
+    // Take numbers go on from what each track has already: its clips (not the
+    // ones a comp is made of) and the takes in its take groups.
+    std::map<core::Id, int> takesBefore;
+    for (const auto& t : project_.tracks)
+    {
+        int count = static_cast<int>(t.midiClips.size());
+        for (const auto& c : t.clips)
+            if (std::none_of(t.takeGroups.begin(),
+                             t.takeGroups.end(),
+                             [&](const core::TakeGroup& g) { return g.ownsClip(c.id); }))
+                ++count;
+        for (const auto& g : t.takeGroups)
+            count += static_cast<int>(g.takes.size());
+        takesBefore[t.id] = count;
+    }
+    const bool shared = projectFile_ == juce::File();
+    core::SamplePosition savedUpTo = 0;
     const auto latency = recordingLatencySamples();
     std::uint64_t dropped = 0; // per input the count is cumulative over takes: take the largest
     std::int64_t lost = 0;
@@ -1812,15 +2122,28 @@ void ProjectSession::finishRecording(engine::AudioEngine::FinishedRecording fini
             partial.deleteFile(); // an empty take (stopped at a loop wrap, or punched out at once)
             continue;
         }
-        juce::File final = partial.getSiblingFile(partial.getFileName().replace(partialSuffix, ".wav"))
-                               .getNonexistentSibling(false);
+        // Named by the take pattern (Preferences, Recording): the clip and its file.
+        const auto* track = project_.findTrack(r.trackId);
+        const auto name =
+            track != nullptr
+                ? takeName(takeNamePattern_, track->name, takesBefore[r.trackId] + r.takeIndex + 1)
+                : std::string{};
+        const auto legal = juce::File::createLegalFileName(juce::String::fromUTF8(name.c_str())).trim();
+        juce::File final =
+            (legal.isNotEmpty()
+                 ? partial.getSiblingFile(legal + ".wav")
+                 : partial.getSiblingFile(partial.getFileName().replace(partialSuffix, ".wav")))
+                .getNonexistentSibling(false);
         if (!partial.moveFileTo(final))
             final = partial;
+        if (shared)
+            ownSharedRecordings_.insert(final.getFullPathName());
 
         // Each loop pass is a take, placed at the loop start.
         const auto placement = engine::placeRecording(r.startPosition, r.samplesWritten, latency);
+        savedUpTo = std::max(savedUpTo, placement.start + placement.length);
         core::AudioClip clip;
-        clip.name = final.getFileNameWithoutExtension().toStdString();
+        clip.name = name.empty() ? final.getFileNameWithoutExtension().toStdString() : name;
         clip.mediaPath = final.getFullPathName().toStdString();
         clip.start = placement.start;
         clip.sourceOffset = placement.sourceOffset;
@@ -1853,12 +2176,37 @@ void ProjectSession::finishRecording(engine::AudioEngine::FinishedRecording fini
     int midiClips = 0;
     for (auto& take : engine::buildMidiTakes(
              finished.session->capturedMidi(), finished.session->takeSpans(), midiRecordingLatencySamples()))
-        if (project_.findTrack(take.trackId) != nullptr)
+        if (const auto* track = project_.findTrack(take.trackId))
         {
-            take.clip.name = "Take " + std::to_string(++midiClips);
+            ++midiClips;
+            take.clip.name = takeName(takeNamePattern_, track->name, ++takesBefore[take.trackId]);
+            savedUpTo = std::max(savedUpTo, take.clip.start + take.clip.length);
             run(std::make_unique<core::AddMidiClip>(take.trackId, take.clip), false);
         }
     removeOrphanSidecars(mediaFolder());
+    if (cutShort)
+    {
+        // Error text in three parts (interaction.md 10.6): what happened, what it
+        // means for the take, what to do.
+        const auto seconds = static_cast<int>(static_cast<double>(savedUpTo) / project_.sampleRate);
+        const auto upTo = juce::String(seconds / 60) + ":" + juce::String(seconds % 60).paddedLeft('0', 2);
+        notices_.push(
+            {.kind = Notice::Kind::error,
+             .text = (lastDeviceName_.empty() ? std::string("The audio device") : "The " + lastDeviceName_) +
+                     " stopped. Playback stopped; " +
+                     (savedUpTo > 0 ? "the recording was saved up to " + upTo.toStdString()
+                                    : std::string("nothing had been recorded yet")) +
+                     ". Reconnect it or choose another device in Audio Setup.",
+             .audioSetup = true});
+        deviceLossTold_ = true;
+        if (failures > 0)
+            notices_.push(Notice::Kind::warning,
+                          "Recording failed on " + std::to_string(failures) + " file(s): " +
+                              std::to_string(lost) + " samples never reached the disk; what did is placed");
+        batch.reset(); // ends the step and publishes
+        notify(Change::structure);
+        return;
+    }
 
     if (failures > 0)
         notices_.push(Notice::Kind::warning,
@@ -2343,8 +2691,59 @@ engine::InputPair ProjectSession::resolvedInput(const core::Track& track) const
     return it != inputBuses_.end() ? it->second : engine::InputPair{};
 }
 
+void ProjectSession::watchDevice()
+{
+    const auto s = audio_.status();
+    const std::string device = s.open ? s.deviceType + "\n" + s.outputDevice : std::string{};
+    if (device == lastDevice_)
+        return;
+    const bool wasOpen = !lastDevice_.empty();
+    const auto lost = lastDeviceName_.empty() ? std::string("The audio device") : "The " + lastDeviceName_;
+    if (wasOpen && !s.open)
+    {
+        // Gone (unplugged, or its driver reset). Stop the transport now: a fallback
+        // device that opens later must not start playing out of other speakers. A
+        // recording it cut short says so itself, with how much was saved.
+        deviceLost_ = true;
+        const bool wasPlaying = isPlaying();
+        stop();
+        if (!recordingInFlight_ && !engine_.hasRecordingToCollect() && !deviceLossTold_)
+        {
+            notices_.push({.kind = Notice::Kind::error,
+                           .text = lost + " was disconnected. " + (wasPlaying ? "Playback stopped. " : "") +
+                                   "Reconnect it or choose another device in Audio Setup.",
+                           .audioSetup = true});
+            deviceLossTold_ = true;
+        }
+    }
+    else if (s.open && (deviceLost_ || (wasOpen && s.preferredUnavailable)))
+    {
+        if (!deviceLost_)
+        {
+            // The device manager moved to another device by itself (the list changed).
+            stop();
+            notices_.push({.kind = Notice::Kind::warning,
+                           .text = lost + " is unavailable. Playback stopped; Northlight now plays through " +
+                                   s.outputDevice + ".",
+                           .audioSetup = true});
+        }
+        else if (s.preferredUnavailable)
+            notices_.push(Notice::Kind::info,
+                          "Playing through " + s.outputDevice + " until " + audio_.settings().outputDevice +
+                              " is back. Press Play to go on.");
+        else
+            notices_.push(Notice::Kind::success, s.outputDevice + " is back.");
+        deviceLost_ = false;
+        deviceLossTold_ = false;
+    }
+    lastDevice_ = device;
+    if (s.open)
+        lastDeviceName_ = s.outputDevice;
+}
+
 void ProjectSession::changeListenerCallback(juce::ChangeBroadcaster*)
 {
+    watchDevice();
     const double before = project_.sampleRate;
     matchDeviceSampleRate();
     const bool busesChanged = refreshInputBuses();

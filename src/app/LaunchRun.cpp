@@ -582,6 +582,46 @@ const std::vector<LaunchFlag<LaunchRun>>& LaunchRun::flags()
          "given "
          "before it",
          save},
+        {"--missing-media",
+         "",
+         0,
+         "add an audio track whose clip's file is missing, save the project to a temporary file and open it "
+         "again, so the clip's Locate link, the header's dot and the missing-media toast show",
+         [](LaunchRun& r, Args&)
+         {
+             const auto temp = juce::File::getSpecialLocation(juce::File::tempDirectory);
+             core::Track track;
+             track.name = "Lead vocal";
+             core::AudioClip clip;
+             clip.name = "Lead vocal 1";
+             clip.mediaPath = temp.getChildFile("northlight-missing")
+                                  .getChildFile("Lead vocal 1.wav")
+                                  .getFullPathName()
+                                  .toStdString();
+             clip.start = core::tempoMapOf(r.session.project()).positionAt(4.0);
+             clip.length = core::tempoMapOf(r.session.project()).positionAt(16.0);
+             track.clips.push_back(clip);
+             r.session.execute(std::make_unique<core::AddTrack>(track));
+             const auto file = temp.getChildFile("northlight-missing-media.northlight");
+             if (r.session.save(file).empty())
+                 r.window.openWithProgress(file);
+         }},
+        {"--unsaved-sheet",
+         "",
+         0,
+         "once the window has settled, make an edit and press the close button, so a capture shows the "
+         "unsaved-changes sheet",
+         [](LaunchRun& r, Args&)
+         {
+             whenSettled(r,
+                         [&r]
+                         {
+                             core::Track track;
+                             track.name = "Bass";
+                             r.session.execute(std::make_unique<core::AddTrack>(track));
+                             r.window.closeButtonPressed();
+                         });
+         }},
         {"--recover",
          "",
          0,
@@ -632,8 +672,14 @@ const std::vector<LaunchFlag<LaunchRun>>& LaunchRun::flags()
          "quit the app after s seconds",
          [](LaunchRun& r, Args& a)
          {
+             // An unattended run: no unsaved-changes question, and its changes are not
+             // the user's to keep (the autosave goes, as with Don't save).
              r.schedule.after(std::max(0, a.integer()) * 1000,
-                              [] { juce::JUCEApplication::getInstance()->systemRequestedQuit(); });
+                              [&r]
+                              {
+                                  r.session.discardChanges();
+                                  juce::JUCEApplication::getInstance()->quit();
+                              });
          }},
         {"--loop",
          "<from> <to>",

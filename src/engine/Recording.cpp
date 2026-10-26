@@ -401,7 +401,8 @@ bool RecordWriter::begin(RecordSession& session)
     {
         InputState state;
         state.writer = std::make_unique<WavWriter>();
-        if (!state.writer->open(input->path, input->numChannels(), session.sampleRate()))
+        if (!state.writer->open(
+                input->path, input->numChannels(), session.sampleRate(), session.bitsPerSample()))
             return false;
         states.push_back(std::move(state));
     }
@@ -646,7 +647,8 @@ bool RecordWriter::applyEventsAt(size_t inputIndex)
             state.writer = std::make_unique<WavWriter>();
             if (!state.writer->open(takePath(session_->inputs()[inputIndex]->path, state.takeIndex),
                                     session_->inputs()[inputIndex]->numChannels(),
-                                    session_->sampleRate()))
+                                    session_->sampleRate(),
+                                    session_->bitsPerSample()))
             {
                 fail(inputIndex, 0);
                 return false;

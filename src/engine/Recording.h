@@ -136,6 +136,9 @@ public:
     void addMidiTrack(core::Id trackId);
 
     double sampleRate() const noexcept { return sampleRate_; }
+    // The files' sample format: 32 (IEEE float, the default) or 24 (PCM).
+    void setBitsPerSample(int bits) noexcept { bitsPerSample_ = bits == 24 ? 24 : 32; }
+    int bitsPerSample() const noexcept { return bitsPerSample_; }
     const std::vector<std::unique_ptr<Input>>& inputs() const noexcept { return inputs_; }
     const std::vector<core::Id>& midiTracks() const noexcept { return midiTracks_; }
     bool recordsMidi(core::Id trackId) const noexcept
@@ -183,6 +186,7 @@ public:
 
 private:
     double sampleRate_;
+    int bitsPerSample_ = 32;
     std::size_t ringCapacity_;
     std::vector<std::unique_ptr<Input>> inputs_;
     std::vector<core::Id> midiTracks_;

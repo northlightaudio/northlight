@@ -8,6 +8,7 @@
 #include "core/Command.h"
 #include "core/Comping.h"
 #include "core/ProjectJson.h"
+#include "core/Settings.h"
 #include "core/TempoMap.h"
 #include "engine/Gain.h"
 #include "engine/OutputTap.h"
@@ -41,7 +42,39 @@ public:
     // The full version with its commit (version/Version.h): what crash reports and
     // bug reports need. The About box and splash show version::display().
     const juce::String getApplicationVersion() override { return juce::String(version::full()); }
-    bool moreThanOneInstanceAllowed() override { return true; }
+    // Instances: a launch with developer flags (--capture, --offscreen, ...) is
+    // always an instance of its own. Any other launch takes part in forwarding
+    // (decisions.md): the first holds JUCE's instance lock and listens, and a
+    // later launch with a project file (Explorer's Open with) hands the file to
+    // it and quits, so the project opens in the window already there. A later
+    // launch without one still opens a window of its own.
+    bool moreThanOneInstanceAllowed() override { return true; } // forwarding is done in initialiseApp
+
+    bool initialiseApp() override
+    {
+        const auto commandLine = getCommandLineParameters();
+        if (!hasDeveloperFlags(commandLine))
+        {
+            // Takes the lock when this is the first instance, else tells the first
+            // one this command line (it ignores one without a project).
+            const bool another = sendCommandLineToPreexistingInstance();
+            if (another && launchProjectFile(commandLine) != juce::File())
+                return false; // the running instance opens it
+            primaryInstance_ = !another;
+        }
+        // JUCEApplication's own step only adds the macOS menu bar.
+        return JUCEApplicationBase::initialiseApp();
+    }
+
+    void anotherInstanceStarted(const juce::String& commandLine) override
+    {
+        // Every instance that took part hears the broadcast; only the one holding
+        // the lock (the first) answers it.
+        if (mainWindow_ == nullptr || !primaryInstance_)
+            return;
+        if (const auto file = launchProjectFile(commandLine); file != juce::File())
+            mainWindow_->openFromShell(file);
+    }
 
     // Whether a flag is on the command line as its own argument (not part of a
     // longer flag such as --capture-scale, or of a path).
@@ -131,6 +164,17 @@ public:
         launch_->apply(commandLine);
         if ((firstRun_ && !capture_) || hasFlag(commandLine, "--first-run"))
             mainWindow_->showFirstRun();
+
+        // A project passed by Explorer, else (when Preferences say so) the last one.
+        if (const auto file = launchProjectFile(commandLine); file != juce::File())
+            mainWindow_->openFromShell(file);
+        else if (!hasDeveloperFlags(commandLine) && !firstRun_)
+            if (settings::Reader([this](const std::string& key) { return settings_->value(key); })
+                    .flag(settings::reopenLast))
+                if (const auto last = settings_->value("recent.0"); !last.empty())
+                    if (const juce::File lastFile(juce::String::fromUTF8(last.c_str()));
+                        lastFile.existsAsFile())
+                        mainWindow_->openWithProgress(lastFile);
     }
 
     void shutdown() override
@@ -138,6 +182,10 @@ public:
         // Nothing a launch flag scheduled may run once the window starts going.
         if (launch_ != nullptr)
             launch_->cancel();
+        // A developer run (launch flags: a capture, a benchmark) ends without the
+        // question and its edits are not the user's: no autosave is left to offer.
+        if (session_ != nullptr && hasDeveloperFlags(getCommandLineParameters()))
+            session_->discardChanges();
         mainWindow_.reset();
         audio_->shutdown(); // stop the device before the engine goes away
         if (auto tap = launch_ != nullptr ? launch_->takeOutputTap() : nullptr)
@@ -154,12 +202,23 @@ public:
         lookAndFeel_.reset();
     }
 
-    void systemRequestedQuit() override { quit(); }
+    // The app menu's Quit, and Windows ending the session (WM_QUERYENDSESSION):
+    // the window asks about unsaved changes first. While the sheet waits, Windows
+    // shows Northlight as keeping it from shutting down; if the user forces it,
+    // the autosave written before the sheet came up is offered at the next launch.
+    void systemRequestedQuit() override
+    {
+        if (mainWindow_ != nullptr)
+            mainWindow_->closeButtonPressed();
+        else
+            quit();
+    }
 
 private:
     std::unique_ptr<ui::NorthlightLookAndFeel> lookAndFeel_;
     bool firstRun_ = false;
-    bool capture_ = false; // --capture: its own settings folder, no first-run sheet
+    bool capture_ = false;         // --capture: its own settings folder, no first-run sheet
+    bool primaryInstance_ = false; // holds JUCE's instance lock: hears other launches' files
     std::unique_ptr<UserSettings> settings_;
     std::unique_ptr<audio::AudioDeviceLayer> audio_;
     std::unique_ptr<ProjectSession> session_;

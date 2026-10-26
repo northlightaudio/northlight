@@ -127,7 +127,12 @@ Audio page, shown inline, looks like every other page.
   - *Projects*: Folder (a path field with **Choose…**; when empty it shows the
     default, the Documents folder, as its placeholder; hint "New projects are
     saved here."), Recent (0 to 20, "Shown in the Project menu."), Autosave (0 to
-    60 min, "Keeps unsaved changes for recovery after a crash. 0 turns it off.").
+    60 min, "Keeps unsaved changes for recovery after a crash. 0 turns it off."),
+    Keep backup (checkbox, on; "Saving keeps the version it replaces beside the
+    project, as a .northlight-bak file."), Copy media (checkbox, on; "Imported audio
+    is copied into the project's media folder, so the folder holds everything the
+    project plays."), Reopen last (checkbox, off; "Opens the last project when
+    Northlight starts.").
   - *Appearance*: Theme (segmented Dark | Light, Light disabled with the tooltip
     "The light theme is coming soon."), Accent (**Decision**: user accent override
     is in scope: six presets plus hex), Contrast (segmented Standard | High; "High
@@ -146,12 +151,13 @@ Audio page, shown inline, looks like every other page.
 - **Audio**: the Audio Setup content inline (8.1), its cards on the same left edge
   as every other page's.
 - **Recording**
-  - *Files*: Format (Coming soon; WAV 32-bit float; WAV 24-bit (coming soon)), Take names (a
-    200 px field, Coming soon; "{track} and {take} become the track name and take
-    number.").
+  - *Files*: Format (WAV 32-bit float, WAV 24-bit; "32-bit float cannot clip; 24-bit
+    files are a quarter smaller."), Take names (a 200 px field; "{track} and {take}
+    become the track name and take number."; it names each take's clip and file).
   - *Count-in and click*: Count-in (segmented Off | 1 bar | 2 bars | 4 bars; "Used
     when a project opens."; the header's count-in toggle steps through the same
-    four), Pre-roll (bars, Coming soon), Click level (dB).
+    four), Pre-roll (0 to 8 bars; "Plays these bars before the
+    playhead, unrecorded. Not when punching or looping."), Click level (dB).
   - *Transport*: Return on stop (checkbox, on by default; "Stop takes the playhead
     back to where playback started. Pause (Shift+Space) leaves it where it is.").
 - **Editing**

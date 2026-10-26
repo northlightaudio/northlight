@@ -106,3 +106,46 @@ TEST_CASE("Menu items show their current key from the keyboard map", "[app][menu
     CHECK(keyOf(menus::projectMenu(m), "Save") == "Ctrl+W");
     ui::Shortcuts::resetAll();
 }
+
+TEST_CASE("The project menu lists missing recent files disabled, and offers Clear, Close and Revert",
+          "[app][menus]")
+{
+    const juce::ScopedJuceInitialiser_GUI juceInit;
+    const auto folder = juce::File::getSpecialLocation(juce::File::tempDirectory)
+                            .getChildFile("northlight-menu-tests")
+                            .getChildFile(juce::Uuid().toString());
+    REQUIRE(folder.createDirectory().wasOk());
+    const auto here = folder.getChildFile("Here.northlight");
+    REQUIRE(here.replaceWithText("{}"));
+    menus::ProjectMenu m;
+    m.recent = {here, folder.getChildFile("Gone.northlight")};
+    bool cleared = false, closed = false, reverted = false;
+    juce::File opened;
+    m.openRecent = [&](const juce::File& f) { opened = f; };
+    m.clearRecent = [&] { cleared = true; };
+    m.closeProject = [&] { closed = true; };
+    m.revert = [&] { reverted = true; };
+    std::vector<const juce::PopupMenu::Item*> items;
+    const auto menu = menus::projectMenu(m);
+    collect(menu, items);
+    REQUIRE(find(items, "Here") != nullptr);
+    CHECK(find(items, "Here")->isEnabled);
+    const auto* gone = find(items, "Gone\tNot found");
+    REQUIRE(gone != nullptr);
+    CHECK_FALSE(gone->isEnabled);
+    find(items, "Here")->action();
+    CHECK(opened == here);
+    find(items, "Clear recent")->action();
+    CHECK(cleared);
+    find(items, "Close project")->action();
+    CHECK(closed);
+    CHECK_FALSE(find(items, "Revert to saved...")->isEnabled); // nothing to revert to
+    m.canRevert = true;
+    std::vector<const juce::PopupMenu::Item*> again;
+    const auto withRevert = menus::projectMenu(m);
+    collect(withRevert, again);
+    REQUIRE(find(again, "Revert to saved...")->isEnabled);
+    find(again, "Revert to saved...")->action();
+    CHECK(reverted);
+    folder.deleteRecursively();
+}

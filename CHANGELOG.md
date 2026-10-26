@@ -78,6 +78,32 @@ Northlight has not had a release yet. The first release, 0.1.0, will include:
 - A new marker is named as it is added, and Alt+M makes a region from the time
   selection.
 
+- Northlight asks before anything replaces or closes a project with unsaved changes:
+  New (Ctrl+N), Open, a recent file, New from template, restoring an autosave, Quit
+  in the app menu and Windows shutting down, as the close button already did. The
+  autosave is only deleted once you save or choose Don't save, and a second
+  Northlight window no longer offers (or deletes) the first one's autosave.
+- Close project and Revert to saved in the Project menu; Recent shows projects that
+  are no longer there as "Not found" and has Clear recent; Preferences can reopen
+  the last project at startup.
+- Each save keeps the previous version beside the project as a `.northlight-bak`
+  file (Preferences, General, Keep backup).
+- Projects open from Explorer's Open with and by dropping them on the window; a
+  second launch with a file opens it in the window already running.
+- Imported audio is copied into the project folder (Preferences, General, Copy
+  media), and an unsaved project's media and recordings come into its folder when it
+  is first saved; Save As offers to bring the media along. Remove unused media works
+  for an unsaved project's own recordings, and those left in the shared Recordings
+  folder go to the Recycle Bin once nothing can use them.
+- Missing media: a message when a project opens with files missing, and Locate… on
+  it and on each missing clip relinks the file (and the others in that folder), as
+  one undo step.
+- Recording: WAV 24-bit, take names from a pattern ("{track} {take}") and pre-roll
+  in Preferences now work.
+- When the audio device is unplugged mid-take, the message says how much was saved
+  ("the recording was saved up to 3:12"); when Northlight switches to another device
+  it stays stopped and says which one plays.
+
 - A plugin's card in the Editor panel shows a faceplate: its kind, its full name,
   its maker, the format and its latency, with an Open editor button (or
   double-click it). A plugin that is not installed says so in the same place.
@@ -87,9 +113,6 @@ Northlight has not had a release yet. The first release, 0.1.0, will include:
   Editor), cut, copy and paste; Redo shows Ctrl+Y (Ctrl+Shift+Z still works);
   Return is called Enter; and a region from the loop and a split at the selection
   are Alt+M and Alt+S everywhere.
-
-- Preferences marks Recording > Format as coming soon: recordings are always
-  32-bit float WAV so far, whatever it showed.
 
 - The Audio Setup window, the Preferences Audio page and the first-run sheet can
   be open together and every input and output meter shows the full signal; they
@@ -314,6 +337,11 @@ Northlight has not had a release yet. The first release, 0.1.0, will include:
   the other views do.
 - Ctrl+click on an unselected clip adds it to the selection (it was taken out again
   on release).
+
+- The status bar no longer shows a dropout on a fresh launch with nothing played
+  (the device starting up), and its round trip reads "20.0 ms round trip", with the
+  buffer's one-way length in its tooltip, so it is not mistaken for Audio Setup's
+  buffer length.
 
 - Opening a plugin's window no longer switches the dock to the mixer: the Editor
   panel stays up.

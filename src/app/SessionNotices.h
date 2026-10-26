@@ -7,9 +7,44 @@
 
 #include <cstdint>
 #include <functional>
+#include <string>
 
 namespace northlight
 {
+
+// The dropout count the status bar shows, from the raw counters: driver xruns,
+// callback overruns and disk gaps, each counted from a baseline. A device that
+// has just started (opened, reopened, its rate or buffer changed) glitches
+// while it settles, before anything plays: for `settleMs` after the device
+// changes, the baselines follow the counters, so a fresh launch never shows
+// "1 dropout" with nothing played. A counter that goes down (the callback's
+// statistics reset when the device restarts) counts as a change too.
+class DropoutCounter
+{
+public:
+    struct Raw
+    {
+        std::string device; // what is open, its rate and buffer; empty when nothing is
+        int driverXruns = 0;
+        std::uint64_t overruns = 0;
+        std::uint64_t diskGaps = 0;
+    };
+    static constexpr double settleMs = 2000.0;
+
+    // The dropouts since the last clear (or since the device settled).
+    int count(const Raw& raw, double nowMs);
+    // Those of them that were disk gaps.
+    int diskGaps(const Raw& raw) const;
+    // Start counting again from now.
+    void clear(const Raw& raw);
+
+private:
+    std::string device_;
+    double settleUntilMs_ = 0.0;
+    int xrunBaseline_ = 0;
+    std::uint64_t overrunBaseline_ = 0, diskBaseline_ = 0;
+};
+
 class ProjectSession;
 namespace audio
 {
@@ -48,10 +83,9 @@ public:
     void clearDropouts();
 
 private:
+    DropoutCounter::Raw raw() const;
     Host host_;
-    int dropoutBaseline_ = 0;
-    std::int64_t overrunBaseline_ = 0;
-    std::uint64_t diskBaseline_ = 0;
+    DropoutCounter counter_;
     int dropoutsToasted_ = 0;
     int diskGapsToasted_ = 0;
     double lastDropoutToastMs_ = 0.0;

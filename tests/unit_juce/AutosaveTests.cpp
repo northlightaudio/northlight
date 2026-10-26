@@ -89,6 +89,7 @@ TEST_CASE("Unsaved changes are autosaved and a crashed session's copy can be res
         REQUIRE(session->currentAutosaveFile().copyFileTo(f.folder.getChildFile("kept.northlight")));
         REQUIRE(session->currentAutosaveFile().withFileExtension("json").copyFileTo(
             f.folder.getChildFile("kept.json")));
+        session->discardChanges(); // the close sheet's Don't save
     }
     // The normal close removed it.
     CHECK(f.autosaves.findChildFiles(juce::File::findFiles, false, "*.northlight").isEmpty());

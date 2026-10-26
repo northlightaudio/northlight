@@ -107,6 +107,28 @@ juce::String launchHelp(const std::vector<LaunchFlag<Context>>& flags, int width
     return out;
 }
 
+// Whether the command line has a developer flag ("--anything"): such a launch is
+// an instance of its own and never forwards to (or hears from) another.
+inline bool hasDeveloperFlags(const juce::String& commandLine)
+{
+    for (const auto& arg : juce::ArgumentList("Northlight", commandLine).arguments)
+        if (arg.text.startsWith("--"))
+            return true;
+    return false;
+}
+
+// The project a launch was asked to open: a bare path as the first argument, as
+// Explorer's Open with (or a double-click once the type is registered) passes it.
+// Empty when there is none, or when it is not a project file that exists.
+inline juce::File launchProjectFile(const juce::String& commandLine)
+{
+    const auto arguments = juce::ArgumentList("Northlight", commandLine).arguments;
+    if (arguments.isEmpty() || arguments.getReference(0).text.startsWith("-"))
+        return {};
+    const auto file = arguments.getReference(0).resolveAsFile();
+    return file.hasFileExtension("northlight;aural") && file.existsAsFile() ? file : juce::File();
+}
+
 // Runs the flags on the command line in order. A flag missing its required
 // arguments is skipped with a note on stderr; an unknown token is ignored.
 // `stop` set by a flag ends the run (--time-load quits).

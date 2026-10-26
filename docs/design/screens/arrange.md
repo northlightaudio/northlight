@@ -418,8 +418,15 @@ hides its tracks' lanes too.
 
 - No tracks: the shell empty state (section 3).
 - Missing media: the clip body is `surface2` with a `warning` outline, waveform
-  replaced by "Missing: file.wav" in `caption` and a "Locate…" link; the track header
-  shows a `warning` dot.
+  replaced by "Missing: file.wav" in `caption` `warning` and, `space.sm` after it, a
+  "Locate…" link in `caption` `accent` (underlined while the pointer is on the clip;
+  left out when the clip is too narrow for both); the track header shows a `warning`
+  dot. A project that opens with files missing gets a warning toast ("3 files this
+  project uses are missing. Their clips play silence until you locate them.") with
+  Locate… for the first. Locating a file relinks every clip that uses it; when other
+  missing files are in the same folder under the same names, a sheet offers "Relink
+  the other missing files?" (Just this one, Relink all). One undo step, "Relink
+  media".
 - Recovery: a toast after launch when partial recordings exist, with "Recover" and
   "Set aside" actions, not a dialog.
 

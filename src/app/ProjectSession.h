@@ -22,6 +22,7 @@
 #include <juce_events/juce_events.h>
 #include <juce_gui_basics/juce_gui_basics.h>
 
+#include <algorithm>
 #include <atomic>
 #include <cstdint>
 #include <functional>
@@ -142,9 +143,18 @@ public:
 
     // Adds a track with the file as a clip starting at `at` or, given an audio
     // track (`target`), puts the clip on it there. Returns an error message or
-    // empty on success.
+    // empty on success. The clip uses takeInMedia(file).
     std::string
     importAudioFile(const juce::File& file, core::SamplePosition at, core::Id target = core::invalidId);
+    // Imported media is copied into the project's media folder (Preferences,
+    // General: on by default), so a project folder holds everything it plays.
+    void setCopyImportedMedia(bool copy) noexcept { copyImportedMedia_ = copy; }
+    bool copiesImportedMedia() const noexcept { return copyImportedMedia_; }
+    // The file a new clip should use for `file`: with copying on and a saved
+    // project, a copy in the media folder (the file itself when it is already in
+    // it, or when the copy fails); otherwise the file itself. An unsaved project's
+    // media is brought in when it is first saved (save()).
+    juce::File takeInMedia(const juce::File& file);
     // Imports a Standard MIDI File (type 0 or 1) at `at` (moved back to its bar):
     // a MIDI track per file track (and per channel, where a track uses several),
     // each with one clip, aimed at `target` (an instrument channel, or the one a
@@ -211,7 +221,26 @@ public:
     // opens in steps instead (beginOpen). Returns an error or empty.
     std::string open(const juce::File& file);
 
-    std::string save(const juce::File& file);
+    // Writes the project to `file`. The JSON goes to a temporary file that then
+    // replaces the target, so a failed save never leaves a torn project, and the
+    // file it replaces is kept first as backupFileFor(file) (setKeepBackup). Before
+    // writing, media the project uses is brought into the new media folder as one
+    // undoable step: the recordings an unsaved project made in the shared
+    // Recordings folder always, and every other file outside that folder when
+    // `bringMedia`. Returns an error or empty (nothing is written when bringing
+    // the media failed).
+    std::string save(const juce::File& file, bool bringMedia = false);
+    // The previous version a save keeps: "<name>.northlight-bak" beside it.
+    static juce::File backupFileFor(const juce::File& project);
+    void setKeepBackup(bool keep) noexcept { keepBackup_ = keep; }
+    // How many media files a save to `file` with bringMedia would copy (Save As
+    // asks whether to bring them along), and their total size.
+    std::pair<int, juce::int64> mediaToBring(const juce::File& file) const;
+    // The user chose not to keep the unsaved changes (the sheet's Don't save): the
+    // next project change or close deletes their autosave. Without it, a project
+    // replaced or closed with unsaved changes leaves a fresh autosave behind (the
+    // launch after offers it), so no path that skipped the question loses work.
+    void discardChanges() noexcept { changesDiscarded_ = true; }
     const juce::File& projectFile() const noexcept { return projectFile_; }
     // Unsaved changes: the history is away from the save point, or something changed
     // outside it (a restored autosave, a plugin's own editor).
@@ -237,7 +266,19 @@ public:
         std::vector<juce::File> unused;
         std::vector<juce::File> missing;
     };
+    // An unsaved project has no media folder of its own: its unused media are the
+    // recordings this session made in the shared Recordings folder that no clip uses.
     MediaReport mediaReport() const;
+    // The shared folder an unsaved project records into (Documents/Northlight/Recordings).
+    juce::File sharedRecordingsFolder() const;
+    void setSharedRecordingsFolder(juce::File folder) { sharedRecordings_ = std::move(folder); } // tests
+    // Relinks missing media: every clip, take and frozen track using `missing` is
+    // pointed at `found` and, with `searchFolder`, every other missing file found
+    // by name in `found`'s folder too, as one undoable "Relink media" step.
+    // Returns how many files were relinked (0 when `found` does not exist).
+    int relinkMedia(const juce::File& missing, const juce::File& found, bool searchFolder);
+    // How many of the missing files other than `except` are in `folder` by name.
+    int missingFilesIn(const juce::File& folder, const juce::File& except) const;
     // Copies the outside media into the media folder and points the clips there
     // (one undo step). Needs a saved project. Returns an error or empty;
     // `copied` gets the number of files copied.
@@ -250,7 +291,14 @@ public:
     // `intervalSeconds()` (0 = off), once edits pause for a second. Saving,
     // starting another project or closing normally deletes the copy, so what is
     // left in the folder at launch is what a session that did not close left.
+    //
+    // Several instances share the folder: each holds a lock file there for as long
+    // as it runs ("<instance>.lock", open so no other process can delete it) and
+    // names its copies after itself, so a copy whose owner is still running is
+    // never offered as a leftover or deleted by another instance.
     void setAutosave(juce::File folder, std::function<int()> intervalSeconds);
+    // This session's instance id (its autosaves and lock file carry it).
+    const juce::String& instanceId() const noexcept { return instanceId_; }
     struct Autosave
     {
         juce::File file;    // the project as it was autosaved
@@ -350,6 +398,18 @@ public:
     // Bars of click before a recording starts (0 = none).
     void setCountInBars(int bars);
     int countInBars() const noexcept { return countInBars_; }
+    // Bars played before the recording position, heard but not captured (0 =
+    // none; Preferences, Recording). Not with punch or loop recording, which have
+    // run-ups of their own.
+    void setPreRollBars(int bars) noexcept { preRollBars_ = std::max(0, bars); }
+    int preRollBars() const noexcept { return preRollBars_; }
+    // The recording file format: 32-bit float WAV (32, the default) or 24-bit PCM (24).
+    void setRecordingBits(int bits) noexcept { recordingBits_ = bits == 24 ? 24 : 32; }
+    int recordingBits() const noexcept { return recordingBits_; }
+    // What a recorded take is called (its clip and its file): "{track}" becomes
+    // the track's name and "{take}" the take's number on that track.
+    void setTakeNamePattern(std::string pattern) { takeNamePattern_ = std::move(pattern); }
+    static std::string takeName(const std::string& pattern, const std::string& track, int take);
     // The loop/punch region on the timeline (shared by both).
     void setRegion(core::SamplePosition start, core::SamplePosition end);
     core::SamplePosition regionStart() const noexcept { return regionStart_; }
@@ -492,7 +552,15 @@ private:
     float staticValue(const core::Channel& channel, const AutomationPass& pass) const;
     void edited();
     void removeOwnAutosave();
+    // The current project is going (another replaces it, or the session closes):
+    // its autosave is deleted when it was saved or its changes discarded, else a
+    // fresh copy is written and left for the next launch. The recordings this
+    // session made in the shared folder that nothing can use any more go to the
+    // Recycle Bin.
+    void closeProject();
     void autosaveIfDue();
+    static bool autosaveOwnerRunning(const juce::File& folder, const juce::String& owner);
+    void holdAutosaveLock();
     // Pulls each hosted plugin's current state into the model before a save.
     void captureInsertStates();
 
@@ -575,6 +643,19 @@ private:
     core::SamplePosition playStart_ = 0;
     bool paused_ = false;
     bool returnOnStop_ = true;
+    int preRollBars_ = 0;
+    int recordingBits_ = 32;
+    std::string takeNamePattern_ = "{track} {take}";
+    bool recordingPreRolled_ =
+        false; // the recording in progress borrowed the engine's punch for its pre-roll
+    // The device: what was open (to tell a loss from a change the user made), and
+    // whether the loss has been told already (a recording it cut short tells it).
+    std::string lastDevice_;
+    std::string lastDeviceName_;
+    bool deviceLost_ = false;
+    bool deviceLossTold_ = false;
+    bool recordingInFlight_ = false; // startRecording until its files are collected
+    void watchDevice();
     core::SamplePosition regionStart_ = 0, regionEnd_ = 0;
     bool loop_ = false;
     bool punch_ = false;
@@ -583,8 +664,21 @@ private:
     juce::File autosaveFolder_;
     std::function<int()> autosaveInterval_;
     juce::File autosaveWritten_; // the copy this session last wrote
-    juce::String untitledStem_;  // the autosave name of an unsaved project
-    double dirtySinceMs_ = 0.0;  // unsaved changes not yet autosaved, since
+    juce::String instanceId_ = juce::Uuid().toString().substring(0, 12);
+    std::unique_ptr<juce::FileOutputStream> autosaveLock_; // held open while the session runs
+    bool changesDiscarded_ = false;                        // discardChanges() since the project opened
+    bool keepBackup_ = true;
+    bool copyImportedMedia_ = false;
+    // Recordings this session wrote into the shared folder (an unsaved project's).
+    std::set<juce::String> ownSharedRecordings_;
+    juce::File sharedRecordings_; // tests; empty: Documents/Northlight/Recordings
+    // Brings media into `folder` as one step (save()); an error or empty.
+    std::string bringMedia(const juce::File& folder, bool everything);
+    // Moves a media file and its peak cache to the Recycle Bin.
+    static bool trashMedia(const juce::File& f);
+    std::vector<juce::File> filesToBring(const juce::File& folder, bool everything) const;
+    juce::String untitledStem_; // the autosave name of an unsaved project
+    double dirtySinceMs_ = 0.0; // unsaved changes not yet autosaved, since
     double lastEditMs_ = 0.0;
     Change pending_ = Change::progress; // the widest change notified since the last take
     mutable core::TempoMapCache tempoMapCache_;

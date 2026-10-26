@@ -1920,3 +1920,40 @@ TEST_CASE("Commands that copy tracks or clips report what they keep", "[core][co
     CHECK(remove.footprint() >= before + 1000 * sizeof(VocalNote));
     CHECK(SetTrackGain(id, 0.5f).footprint() < 1024);
 }
+
+TEST_CASE("Relinking media repoints clips, takes and a frozen render, and undo and redo follow",
+          "[core][commands]")
+{
+    Project p;
+    Track t;
+    t.id = 1;
+    AudioClip clip;
+    clip.id = 10;
+    clip.mediaPath = "C:/gone/kick.wav";
+    clip.length = 100;
+    t.clips.push_back(clip);
+    AudioClip other = clip;
+    other.id = 11;
+    other.mediaPath = "C:/gone/snare.wav";
+    t.clips.push_back(other);
+    t.frozenMedia = "C:/gone/Freeze/track.wav";
+    p.tracks.push_back(t);
+    UndoStack stack;
+    stack.execute(p,
+                  std::make_unique<SetMediaPaths>(
+                      std::vector<std::pair<std::string, std::string>>{
+                          {"C:/gone/kick.wav", "D:/found/kick.wav"},
+                          {"C:/gone/Freeze/track.wav", "D:/found/Freeze/track.wav"}},
+                      "Relink media"));
+    CHECK(stack.undoName() == "Relink media");
+    CHECK(p.tracks[0].clips[0].mediaPath == "D:/found/kick.wav");
+    CHECK(p.tracks[0].clips[1].mediaPath == "C:/gone/snare.wav"); // not named: left alone
+    CHECK(p.tracks[0].frozenMedia == "D:/found/Freeze/track.wav");
+    REQUIRE(stack.undo(p));
+    CHECK(p.tracks[0].clips[0].mediaPath == "C:/gone/kick.wav");
+    CHECK(p.tracks[0].frozenMedia == "C:/gone/Freeze/track.wav");
+    REQUIRE(stack.redo(p));
+    CHECK(p.tracks[0].clips[0].mediaPath == "D:/found/kick.wav");
+    CHECK(p.tracks[0].frozenMedia == "D:/found/Freeze/track.wav");
+    CHECK(SetMediaPaths({}).name() == "Consolidate media"); // the default name
+}

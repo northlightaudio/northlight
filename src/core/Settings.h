@@ -37,15 +37,18 @@ struct Setting
 inline constexpr Setting projectFolder{"general.projectFolder", Type::text, ""};
 inline constexpr Setting recentCount{"general.recentCount", Type::number, "8"};
 inline constexpr Setting autosaveMinutes{"general.autosaveMinutes", Type::number, "2"};
+inline constexpr Setting keepBackup{"general.keepBackup", Type::flag, "1"}; // <name>.northlight-bak
+inline constexpr Setting copyMedia{"general.copyMedia", Type::flag, "1"};   // imports into the project folder
+inline constexpr Setting reopenLast{"general.reopenLast", Type::flag, "0"}; // the last project at launch
 inline constexpr Setting theme{"general.theme", Type::choice, "dark"};
 inline constexpr Setting accent{"general.accent", Type::text, ""};
 inline constexpr Setting uiScale{"general.uiScale", Type::choice, "0"}; // percent; 0 follows the system
 inline constexpr Setting contrast{"general.contrast", Type::choice, "standard"};
 // Recording
-inline constexpr Setting recordingFormat{"recording.format", Type::choice, "float", true};
-inline constexpr Setting namePattern{"recording.namePattern", Type::text, "{track} {take}", true};
+inline constexpr Setting recordingFormat{"recording.format", Type::choice, "float"}; // "float" or "24"
+inline constexpr Setting namePattern{"recording.namePattern", Type::text, "{track} {take}"};
 inline constexpr Setting countIn{"recording.countIn", Type::choice, "1"}; // bars
-inline constexpr Setting preRoll{"recording.preRollBars", Type::number, "0", true};
+inline constexpr Setting preRoll{"recording.preRollBars", Type::number, "0"};
 inline constexpr Setting metronomeLevel{"recording.metronomeLevelDb", Type::number, "-6"};
 // Stop returns the playhead to where playback started (Pause keeps it).
 inline constexpr Setting returnOnStop{"transport.returnOnStop", Type::flag, "1"};
@@ -72,7 +75,8 @@ inline const std::vector<const Setting*>& all()
         &projectFolder, &recentCount,     &autosaveMinutes, &theme,        &accent,         &uiScale,
         &contrast,      &recordingFormat, &namePattern,     &countIn,      &preRoll,        &metronomeLevel,
         &snap,          &snapGrid,        &ripple,          &fadeMs,       &followPlayhead, &pluginPaths,
-        &scanOnLaunch,  &pluginsOnTop,    &crashReports,    &returnOnStop, &shortcuts};
+        &scanOnLaunch,  &pluginsOnTop,    &crashReports,    &returnOnStop, &shortcuts,      &keepBackup,
+        &copyMedia,     &reopenLast};
     return list;
 }
 

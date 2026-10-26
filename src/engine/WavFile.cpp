@@ -3,6 +3,7 @@
 #include "engine/rt/RealtimeGuard.h"
 
 #include <algorithm>
+#include <cmath>
 #include <cstring>
 
 #if defined(_WIN32)
@@ -45,22 +46,22 @@ std::uint16_t get16(const unsigned char* p)
     return static_cast<std::uint16_t>(p[0] | (p[1] << 8));
 }
 
-// Builds the 44-byte canonical header for float32 data of `dataBytes`.
-void buildHeader(unsigned char* h, int numChannels, double sampleRate, std::uint32_t dataBytes)
+// Builds the 44-byte canonical header for float32 (or 24-bit PCM) data of `dataBytes`.
+void buildHeader(unsigned char* h, int numChannels, double sampleRate, std::uint32_t dataBytes, int bits)
 {
     const auto rate = static_cast<std::uint32_t>(sampleRate);
-    const auto blockAlign = static_cast<std::uint16_t>(numChannels * 4);
+    const auto blockAlign = static_cast<std::uint16_t>(numChannels * (bits / 8));
     std::memcpy(h, "RIFF", 4);
     put32(h + 4, 36 + dataBytes);
     std::memcpy(h + 8, "WAVE", 4);
     std::memcpy(h + 12, "fmt ", 4);
     put32(h + 16, 16);
-    put16(h + 20, 3); // IEEE float
+    put16(h + 20, bits == 24 ? 1 : 3); // PCM or IEEE float
     put16(h + 22, static_cast<std::uint16_t>(numChannels));
     put32(h + 24, rate);
     put32(h + 28, rate * blockAlign);
     put16(h + 32, blockAlign);
-    put16(h + 34, 32);
+    put16(h + 34, static_cast<std::uint16_t>(bits));
     std::memcpy(h + 36, "data", 4);
     put32(h + 40, dataBytes);
 }
@@ -77,11 +78,13 @@ WavWriter::~WavWriter()
         close();
 }
 
-bool WavWriter::open(const std::string& path, int numChannels, double sampleRate)
+bool WavWriter::open(const std::string& path, int numChannels, double sampleRate, int bitsPerSample)
 {
     NORTHLIGHT_ASSERT_NOT_REALTIME("WavWriter::open");
-    if (file_ != nullptr || numChannels <= 0 || sampleRate <= 0.0)
+    if (file_ != nullptr || numChannels <= 0 || sampleRate <= 0.0 ||
+        (bitsPerSample != 32 && bitsPerSample != 24))
         return false;
+    bitsPerSample_ = bitsPerSample;
     file_ = std::fopen(path.c_str(), "wb");
     if (file_ == nullptr)
         return false;
@@ -101,7 +104,11 @@ bool WavWriter::open(const std::string& path, int numChannels, double sampleRate
 bool WavWriter::writeHeader()
 {
     unsigned char h[headerBytes];
-    buildHeader(h, numChannels_, sampleRate_, clampBytes(samplesWritten_ * numChannels_ * 4));
+    buildHeader(h,
+                numChannels_,
+                sampleRate_,
+                clampBytes(samplesWritten_ * numChannels_ * (bitsPerSample_ / 8)),
+                bitsPerSample_);
     if (NORTHLIGHT_FSEEK(file_, 0, SEEK_SET) != 0)
         return false;
     if (std::fwrite(h, 1, headerBytes, file_) != headerBytes)
@@ -129,7 +136,31 @@ bool WavWriter::writeInterleaved(const float* frames, int numSamples)
     if (file_ == nullptr || numSamples <= 0)
         return file_ != nullptr;
     const auto count = static_cast<size_t>(numSamples) * static_cast<size_t>(numChannels_);
-    if (std::fwrite(frames, sizeof(float), count, file_) != count)
+    if (bitsPerSample_ == 24)
+    {
+        // Rounded to 24 bits with triangular dither (two uniform values a bit
+        // apart), so quiet passages fade into noise rather than distortion.
+        pcmBuffer_.resize(count * 3);
+        constexpr double scale = 8388607.0;
+        const auto uniform = [this]
+        {
+            ditherState_ = ditherState_ * 1664525u + 1013904223u;
+            return static_cast<double>(ditherState_ >> 8) / 16777216.0;
+        };
+        for (size_t i = 0; i < count; ++i)
+        {
+            const double dither = uniform() - uniform();
+            const double v = std::clamp(static_cast<double>(frames[i]) * scale + dither, -scale - 1.0, scale);
+            const auto sample = static_cast<std::int32_t>(std::lround(v));
+            const auto u = static_cast<std::uint32_t>(sample);
+            pcmBuffer_[i * 3] = static_cast<unsigned char>(u & 0xff);
+            pcmBuffer_[i * 3 + 1] = static_cast<unsigned char>((u >> 8) & 0xff);
+            pcmBuffer_[i * 3 + 2] = static_cast<unsigned char>((u >> 16) & 0xff);
+        }
+        if (std::fwrite(pcmBuffer_.data(), 1, pcmBuffer_.size(), file_) != pcmBuffer_.size())
+            return false;
+    }
+    else if (std::fwrite(frames, sizeof(float), count, file_) != count)
         return false;
     samplesWritten_ += numSamples;
     return true;

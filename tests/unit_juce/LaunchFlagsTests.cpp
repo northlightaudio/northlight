@@ -109,3 +109,29 @@ TEST_CASE("Work a launch flag scheduled does nothing once the schedule is cancel
     call();
     CHECK(runs == 1);
 }
+
+TEST_CASE("A bare project path is the file to open; developer flags make an instance of its own",
+          "[app][launch]")
+{
+    const auto folder = juce::File::getSpecialLocation(juce::File::tempDirectory)
+                            .getChildFile("northlight-launch-tests")
+                            .getChildFile(juce::Uuid().toString());
+    REQUIRE(folder.createDirectory().wasOk());
+    const auto song = folder.getChildFile("My Song.northlight");
+    REQUIRE(song.replaceWithText("{}"));
+    const auto quoted = "\"" + song.getFullPathName() + "\"";
+
+    CHECK(launchProjectFile(quoted) == song); // as Explorer passes it, spaces and all
+    CHECK(launchProjectFile("") == juce::File());
+    CHECK(launchProjectFile("--open " + quoted) == juce::File()); // a flag's argument, not a bare path
+    CHECK(launchProjectFile("\"" + folder.getChildFile("gone.northlight").getFullPathName() + "\"") ==
+          juce::File());
+    CHECK(launchProjectFile("\"" + folder.getChildFile("notes.txt").getFullPathName() + "\"") ==
+          juce::File());
+
+    CHECK_FALSE(hasDeveloperFlags(quoted));
+    CHECK_FALSE(hasDeveloperFlags(""));
+    CHECK(hasDeveloperFlags("--offscreen --capture out 4"));
+    CHECK(hasDeveloperFlags(quoted + " --no-splash"));
+    folder.deleteRecursively();
+}

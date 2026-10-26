@@ -89,18 +89,31 @@ juce::PopupMenu projectMenu(const ProjectMenu& m)
     items.add("Open...", m.open, ui::Command::open);
     juce::PopupMenu recent;
     Builder recents(recent, id);
+    // A file that has gone (moved, deleted, a drive not connected) stays listed,
+    // disabled, with "Not found" as its hint; Clear recent empties the list.
     for (const auto& file : m.recent)
-        recents.add(file.getFileNameWithoutExtension(), bind(m.openRecent, file));
+        recents.add(file.existsAsFile() ? file.getFileNameWithoutExtension()
+                                        : file.getFileNameWithoutExtension() + "	Not found",
+                    bind(m.openRecent, file),
+                    file.existsAsFile());
+    if (!m.recent.empty())
+    {
+        recent.addSeparator();
+        recents.add("Clear recent", m.clearRecent);
+    }
     menu.addSubMenu("Recent", recent, !m.recent.empty());
+    items.add("Close project", m.closeProject);
     menu.addSeparator();
     items.add("Save", m.save, ui::Command::save);
     items.add("Save As...", m.saveAs, ui::Command::saveAs);
+    items.add("Revert to saved...", m.revert, m.canRevert);
     items.add("Save as template...", m.saveTemplate);
     menu.addSeparator();
     juce::PopupMenu media;
     Builder mediaItems(media, id);
     mediaItems.add("Gather media into the project folder", m.gatherMedia, m.saved);
-    mediaItems.add("Remove unused media...", m.removeUnusedMedia, m.saved);
+    // An unsaved project's unused media are its own recordings in the shared folder.
+    mediaItems.add("Remove unused media...", m.removeUnusedMedia);
     menu.addSubMenu("Media", media);
     menu.addSeparator();
     items.add("Import audio...", m.importAudio, ui::Command::importAudio);

@@ -1609,21 +1609,24 @@ private:
     bool midi_, value_, previous_ = false;
 };
 
-// Points every clip using a media file at another path (consolidating media
-// into the project folder): old path -> new path.
+// Points every clip, take and frozen track using a media file at another path
+// (consolidating media into the project folder, relinking a missing file):
+// old path -> new path.
 class SetMediaPaths final : public Command
 {
 public:
-    explicit SetMediaPaths(std::vector<std::pair<std::string, std::string>> renames);
-    std::string name() const override { return "Consolidate media"; }
+    explicit SetMediaPaths(std::vector<std::pair<std::string, std::string>> renames,
+                           std::string name = "Consolidate media");
+    std::string name() const override { return name_; }
     bool apply(Project&) override;
     bool revert(Project&) override;
 
 private:
     std::vector<std::pair<std::string, std::string>> renames_;
+    std::string name_;
     struct Changed
     {
-        Id track, clip;
+        Id track, clip; // clip invalidId: the track's frozen render
         std::string previous;
     };
     std::vector<Changed> changed_;

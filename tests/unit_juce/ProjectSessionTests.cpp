@@ -144,8 +144,10 @@ TEST_CASE_METHOD(SessionFixture,
     CHECK(track.clips[0].length == 192);
     CHECK(files("*.partial.wav").isEmpty());
     CHECK(files("*.recording.json").isEmpty());
-    REQUIRE(files("Guitar-*.wav").size() == 1);
-    CHECK(track.clips[0].mediaPath == files("Guitar-*.wav")[0].getFullPathName().toStdString());
+    // Named by the take pattern ("{track} {take}"): the clip and its file.
+    REQUIRE(files("Guitar 1.wav").size() == 1);
+    CHECK(track.clips[0].mediaPath == files("Guitar 1.wav")[0].getFullPathName().toStdString());
+    CHECK(track.clips[0].name == "Guitar 1");
 }
 
 TEST_CASE_METHOD(SessionFixture,
@@ -163,7 +165,26 @@ TEST_CASE_METHOD(SessionFixture,
     const auto& clips = session->project().tracks[0].clips;
     REQUIRE(clips.size() == 2);
     CHECK(clips[0].mediaPath != clips[1].mediaPath);
-    CHECK(files("Guitar-*.wav").size() == 2);
+    CHECK(files("Guitar *.wav").size() == 2);
+    CHECK(clips[1].name == "Guitar 2"); // the take number goes on from the track's clips
+}
+
+TEST_CASE_METHOD(SessionFixture,
+                 "Recordings follow the take pattern and the 24-bit format",
+                 "[app][session][record]")
+{
+    addArmedTrack();
+    prepareDevice(48000.0);
+    session->setTakeNamePattern("{take} {track}");
+    session->setRecordingBits(24);
+    REQUIRE(session->startRecording().empty());
+    runBlocks(2);
+    stopAndCollect();
+    REQUIRE(files("1 Guitar.wav").size() == 1);
+    const auto info = engine::readWavInfo(files("1 Guitar.wav")[0].getFullPathName().toStdString());
+    REQUIRE(info.has_value());
+    CHECK(info->bitsPerSample == 24);
+    CHECK_FALSE(info->isFloat);
 }
 
 TEST_CASE_METHOD(SessionFixture,

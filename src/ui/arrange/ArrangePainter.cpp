@@ -143,10 +143,20 @@ void ArrangeView::Painter::drawClip(juce::Graphics& g,
     {
         g.setColour(c.warning);
         g.setFont(v.theme_.caption());
-        g.drawText("Missing: " + juce::File(clip.mediaPath).getFileName(),
+        g.drawText(v.missingLabel(clip.mediaPath),
                    body.getIntersection(visible).reduced(v.theme_.spacing.xs + 2, 0),
                    juce::Justification::centredLeft,
                    true);
+        // The Locate… link, in accent like a toast's action; underlined while the
+        // pointer is on the clip, since the clip is what the click lands on.
+        if (const auto link = v.locateLinkBounds(clip, v.project_->trackIndex(track.id)); !link.isEmpty())
+        {
+            g.setColour(c.accent.withAlpha(dim));
+            g.drawText(
+                juce::String::fromUTF8("Locate\xe2\x80\xa6"), link, juce::Justification::centredLeft, false);
+            if (hovered)
+                g.fillRect(link.getX(), link.getBottom() - 1, link.getWidth(), 1);
+        }
     }
     else if (const auto wave = body.getIntersection(visible).getIntersection(paintArea_); wave.isEmpty())
     {

@@ -122,6 +122,10 @@ public:
     // With `holdAt` (reading, media, plugins, engine: --show-loading) the load
     // stops once it reaches that stage, so a capture shows the sheet.
     void openWithProgress(const juce::File& file, const juce::String& holdAt = {});
+    // A project passed by Explorer (the command line, or another launch forwarding
+    // its file): the window comes forward and the file opens after the unsaved
+    // changes question.
+    void openFromShell(const juce::File& file);
     // A toast or a status message, for the application's own notices.
     void notify(const juce::String& message, bool warning = false);
 

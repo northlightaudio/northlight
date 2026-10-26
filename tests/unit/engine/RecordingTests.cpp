@@ -9,8 +9,10 @@
 #include <catch2/catch_approx.hpp>
 #include <catch2/catch_test_macros.hpp>
 
+#include <algorithm>
 #include <atomic>
 #include <chrono>
+#include <cmath>
 #include <cstdio>
 #include <filesystem>
 #include <memory>
@@ -85,6 +87,38 @@ TEST_CASE("WAV files round-trip float samples and report their header", "[engine
     REQUIRE(channels.size() == 2);
     CHECK(channels[0] == a);
     CHECK(channels[1] == b);
+}
+
+TEST_CASE("A 24-bit recording format writes PCM that reads back within one step", "[engine][wav]")
+{
+    const auto path = tempPath("pcm24.wav");
+    std::vector<float> a(1000);
+    for (int i = 0; i < 1000; ++i)
+        a[static_cast<size_t>(i)] = static_cast<float>(i - 500) / 400.0f; // past full scale at both ends
+    {
+        engine::WavWriter writer;
+        CHECK_FALSE(writer.open(path, 1, 48000.0, 16)); // only float and 24-bit
+        REQUIRE(writer.open(path, 1, 48000.0, 24));
+        const float* channels[] = {a.data()};
+        REQUIRE(writer.write(channels, 1000));
+        REQUIRE(writer.close());
+    }
+    const auto info = engine::readWavInfo(path);
+    REQUIRE(info.has_value());
+    CHECK(info->bitsPerSample == 24);
+    CHECK_FALSE(info->isFloat);
+    CHECK(info->lengthSamples == 1000);
+    std::vector<std::vector<float>> channels;
+    REQUIRE(engine::readWavSamples(path, channels));
+    REQUIRE(channels.size() == 1);
+    for (size_t i = 0; i < a.size(); ++i)
+    {
+        const float expected = std::clamp(a[i], -1.0f, 1.0f); // clipped at full scale
+        CHECK(std::abs(channels[0][i] - expected) <= 3.0f / 8388608.0f);
+    }
+    // A repaired 24-bit file keeps whole three-byte frames.
+    CHECK(engine::WavWriter::repair(path));
+    CHECK(engine::readWavInfo(path)->lengthSamples == 1000);
 }
 
 TEST_CASE("A file left without a final header is repaired from its size", "[engine][wav]")

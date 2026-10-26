@@ -568,12 +568,46 @@ blocked the message thread; now the longest stall is one plugin.
   setting (`ui::Shortcuts::save`), loaded at launch and whenever it changes. The settings Preferences shows are one schema (`core/Settings.h`: each
   key, its type and its default); Preferences binds its controls to it and the app
   reads them through its typed `settings::Reader`, so no default is written twice.
-- **Autosave** writes unsaved projects to the settings folder while edits pause. A
-  normal close removes them, so anything left at launch is offered back. The plugin
-  states and parameter keys are taken on the message thread; the copy is turned into
-  JSON and written on a worker, and a save or close waits for a write in flight.
-- **Templates** are project files without clips. **Media management** gathers outside
-  media into the project folder and moves unused files to the Recycle Bin.
+- **Autosave** writes unsaved projects to the settings folder while edits pause. The
+  plugin states and parameter keys are taken on the message thread; the copy is
+  turned into JSON and written on a worker, and a save or close waits for a write in
+  flight. A copy is deleted only when the user saved or chose Don't save
+  (`ProjectSession::discardChanges`); a project replaced or closed any other way
+  (Windows ending the session, a path that did not ask) leaves a fresh copy, so
+  anything left at launch is offered back, and a restored copy stays on disk until
+  the project is saved or discarded. Instances share the folder: each holds
+  `<instance>.lock` there open for its lifetime (Windows will not delete a file
+  another process holds open, and a crash closes it), names its copies after itself
+  and records itself as their owner, so another running instance's live copy is
+  never offered or deleted.
+- **Unsaved changes**: everything that replaces or closes the project goes through
+  `FileActions::confirmDiscard` (the close-window sheet): New, Close project, Open,
+  a recent or dropped file, a file from Explorer, New from template, Restore,
+  Revert, the window's close button, the app menu's Quit and Windows ending the
+  session (`systemRequestedQuit`, which writes an autosave before the sheet shows).
+- **Saving** keeps the file it replaces as `<name>.northlight-bak` (Preferences,
+  General) and writes through `File::replaceWithText`, which writes a temporary file
+  beside the target and moves it over, so a failed save leaves the old file whole.
+  Before writing, media is brought into the project's media folder as one undoable
+  step (`SetMediaPaths`, "Bring media into the project folder"): an untitled
+  project's recordings in the shared `Documents\Northlight\Recordings` always, and
+  everything outside the folder when imports are copied (a first save) or Save As
+  was told to bring it along. The originals are copied, not moved, so undo keeps
+  working; the recordings this session made in the shared folder go to the Recycle
+  Bin once the project that used them is closed saved or discarded.
+- **Media**: imports are copied into a saved project's media folder when
+  Preferences say so (`ProjectSession::takeInMedia`). A project that opens with
+  files missing gets a toast with Locate…, as does each missing clip in the arrange
+  view; locating one relinks it (`SetMediaPaths`, "Relink media") and offers to
+  relink the others found by name in the same folder. **Templates** are project
+  files without clips. **Media management** gathers outside media into the project
+  folder and moves unused files to the Recycle Bin (for an untitled project, only
+  its own recordings in the shared folder).
+- **Instances and the shell**: a launch whose only argument is a project path (as
+  Explorer's Open with passes it) hands the path to a running Northlight through
+  JUCE's instance lock and quits; the running one opens it (after the unsaved
+  changes question). Launches with developer flags never take part. Project files
+  dropped on the window open the same way.
 - **Crash reports** are minidumps written to the settings folder from buffers
   prepared at start-up. Nothing is sent anywhere.
 - **Notices** are what the session tells the user once each (a recording's

@@ -102,9 +102,10 @@ public:
         for (auto* button : {&action_, &second_})
             if (button->isVisible())
             {
+                // The look and feel pads a button's text by up to space.md each side.
                 const int w =
                     juce::GlyphArrangement::getStringWidthInt(theme_.label(), button->getButtonText()) +
-                    2 * theme_.spacing.sm;
+                    2 * theme_.spacing.md;
                 button->setBounds(
                     area.removeFromRight(w).withSizeKeepingCentre(w, theme_.sizes.controlCompact));
                 area.removeFromRight(theme_.spacing.xs);

@@ -32,7 +32,9 @@ public:
     WavWriter(const WavWriter&) = delete;
     WavWriter& operator=(const WavWriter&) = delete;
 
-    bool open(const std::string& path, int numChannels, double sampleRate);
+    // `bitsPerSample` 32 writes IEEE float, 24 writes PCM (clipped at full scale,
+    // with triangular dither below the last bit).
+    bool open(const std::string& path, int numChannels, double sampleRate, int bitsPerSample = 32);
     bool isOpen() const noexcept { return file_ != nullptr; }
 
     // Interleaves and appends numSamples from each channel. Not real-time.
@@ -58,8 +60,11 @@ private:
     std::string path_;
     int numChannels_ = 0;
     double sampleRate_ = 0.0;
+    int bitsPerSample_ = 32;
     std::int64_t samplesWritten_ = 0;
     std::vector<float> interleaveBuffer_;
+    std::vector<unsigned char> pcmBuffer_;
+    std::uint32_t ditherState_ = 0x9e3779b9u;
 };
 
 // Header parse (PCM 16/24/32 and float 32 are recognised).

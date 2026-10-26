@@ -1207,6 +1207,19 @@ void PreferencesView::buildGeneral(Page& page)
              makeNumber(settings::autosaveMinutes, 0, 60, 1, "min", 0),
              numberWidth,
              "Keeps unsaved changes for recovery after a crash. 0 turns it off.");
+    page.add("Keep backup",
+             makeCheckbox(settings::keepBackup),
+             theme_.sizes.icon,
+             "Saving keeps the version it replaces beside the project, as a .northlight-bak file.");
+    page.add("Copy media",
+             makeCheckbox(settings::copyMedia),
+             theme_.sizes.icon,
+             "Imported audio is copied into the project's media folder, so the folder holds everything the "
+             "project plays.");
+    page.add("Reopen last",
+             makeCheckbox(settings::reopenLast),
+             theme_.sizes.icon,
+             "Opens the last project when Northlight starts.");
 
     page.addCard("Appearance");
     auto themeControl = makeSegmented({{"Dark", "dark"}, {"Light", "light", true}}, settings::theme);
@@ -1247,12 +1260,11 @@ void PreferencesView::buildAudio(Page& page)
 void PreferencesView::buildRecording(Page& page)
 {
     page.addCard("Files");
-    page.add(
-        "Format",
-        makeCombo({{"WAV 32-bit float", "float"}, {"WAV 24-bit", "24", true}}, settings::recordingFormat),
-        comboWidth,
-        {},
-        settings::recordingFormat.comingSoon);
+    page.add("Format",
+             makeCombo({{"WAV 32-bit float", "float"}, {"WAV 24-bit", "24"}}, settings::recordingFormat),
+             comboWidth,
+             "32-bit float cannot clip; 24-bit files are a quarter smaller.",
+             settings::recordingFormat.comingSoon);
     page.add("Take names",
              makeText(settings::namePattern, "{track} {take}"),
              textWidth,
@@ -1266,7 +1278,7 @@ void PreferencesView::buildRecording(Page& page)
     page.add("Pre-roll",
              makeNumber(settings::preRoll, 0, 8, 1, "bars", 0),
              numberWidth,
-             {},
+             "Plays these bars before the playhead, unrecorded. Not when punching or looping.",
              settings::preRoll.comingSoon);
     page.add("Click level", makeNumber(settings::metronomeLevel, -40, 0, 0.5, "dB", 1), numberWidth);
     page.addCard("Transport");

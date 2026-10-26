@@ -104,6 +104,8 @@ public:
     // (snapped) and the audio track they land on: invalidId when dropped below
     // the last lane (or on a lane that takes no audio), for a new track per file.
     std::function<void(const std::vector<juce::File>&, core::SamplePosition, core::Id track)> onImportFiles;
+    // A missing clip's "Locate…" link was clicked: the media path it looks for.
+    std::function<void(const std::string& mediaPath)> onLocateMedia;
     // Extensions the drop target accepts, e.g. "*.wav;*.flac".
     void setAcceptedExtensions(const juce::String& wildcards);
 
@@ -408,7 +410,14 @@ private:
     juce::Colour clipColour(const core::Track& track, std::uint32_t colour) const;
     juce::Rectangle<int> loopBand() const noexcept; // in the bars row, empty without a region
     bool mediaMissing(const std::string& path);
+    // The "Missing: name" label of a missing clip (empty when it is not missing).
+    const juce::String& missingLabel(const std::string& path) const;
     void refreshMissingMedia();
+    // Where a missing clip's "Locate…" link is drawn and clicked: after the
+    // "Missing: file.wav" line, in the part of the body on screen; empty when the
+    // line leaves it no room.
+    juce::Rectangle<int> locateLinkBounds(const core::AudioClip& clip, int row) const;
+    static juce::String missingText(const core::AudioClip& clip);
     std::vector<const core::Track*> folderChoices(core::Id trackId) const;
     // FX tracks (buses flagged fx) show as rows under the tracks.
     // The rows after the tracks: every bus (groups and FX tracks), then the master.
@@ -590,7 +599,15 @@ private:
     juce::Point<int> dragPoint_;
     core::SamplePosition timeSelStart_ = 0, timeSelEnd_ = 0;
     std::vector<core::Id> timeSelTracks_;
-    std::unordered_set<std::string> missingMedia_;
+    // The missing files, each with its "Missing: name" label and that label's
+    // width, measured once here rather than for every clip on every paint.
+    struct MissingLabel
+    {
+        juce::String text;
+        int width = 0;
+    };
+    std::unordered_map<std::string, MissingLabel> missingMedia_;
+    mutable int locateWidth_ = -1; // "Locate…" in the caption font, measured on first use
     // When each media file was last looked for on disk, and whether it was there.
     struct MediaCheck
     {

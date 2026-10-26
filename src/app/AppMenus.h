@@ -30,11 +30,13 @@ struct ProjectMenu
 {
     // What the menu lists.
     std::vector<juce::File> templates;
-    std::vector<juce::File> recent;    // most recent first, as many as the menu shows
+    std::vector<juce::File> recent;    // most recent first, as many as the menu shows (missing ones disabled)
     std::vector<std::string> fxTracks; // the FX track choices' names, in order
-    bool saved = false;                // the project has a file (media management needs one)
+    bool saved = false;                // the project has a file (gathering media needs one)
+    bool canRevert = false;            // saved, with unsaved changes
     // What its items do.
     std::function<void()> newProject, open, save, saveAs, saveTemplate, gatherMedia, removeUnusedMedia;
+    std::function<void()> closeProject, revert, clearRecent;
     std::function<void()> importAudio, importMidi, addAudioTrack, addMidiTrack, addBus, exportMix, exportMidi;
     std::function<void(const juce::File&)> newFromTemplate, openRecent;
     std::function<void(size_t choice)> addFxTrack; // an index into fxTracks

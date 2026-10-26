@@ -21,7 +21,10 @@ TEST_CASE("Every setting has its own key and a default its type can read", "[cor
             CHECK_FALSE(s->fallback.empty());
     }
     CHECK(settings::pluginsOnTop.key == "plugins.pin"); // files written before the schema keep reading
-    CHECK(settings::recordingFormat.comingSoon);        // shown, read by nothing yet
+    CHECK_FALSE(settings::recordingFormat.comingSoon);  // recordings are written in it
+    CHECK(settings::keepBackup.fallback == "1");        // a save keeps the previous file by default
+    CHECK(settings::copyMedia.fallback == "1");         // and imports are copied into the project
+    CHECK(settings::reopenLast.fallback == "0");
 }
 
 TEST_CASE("A setting reads its stored text, else its default, as its type", "[core][settings]")

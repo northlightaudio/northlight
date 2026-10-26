@@ -27,9 +27,12 @@ audio setup and the plugin browser. The shell has five zones:
   `captionCaps` label, "PROJECT" in `textTertiary`, or "PROJECT · EDITED" in
   `textSecondary` while there are unsaved changes, over the name in `label`
   semibold `textPrimary` with the menu chevron right after it (`textTertiary`).
-  Hover shows a `surface2` face; a click opens the project menu (New, Open, Save,
-  Save As, Recent, Export); the tooltip gives the file's path. Its width fits the
-  name (up to 200 px; 104 px when the bar is short of room). Centre: the transport
+  Hover shows a `surface2` face; a click opens the project menu (New, Open, Recent,
+  Close project, Save, Save As, Revert to saved, Export); the tooltip gives the
+  file's path. Recent lists missing files disabled with "Not found" as their hint,
+  and ends with Clear recent; Revert to saved is enabled while a saved project has
+  unsaved changes and asks first ("Revert to the saved Song?", Revert in Danger).
+  Its width fits the name (up to 200 px; 104 px when the bar is short of room). Centre: the transport
   cluster and time display (section 6). Right: snap and ripple controls, zoom-fit,
   and three view toggles (Mixer, Editor, Browser) as icon toggle buttons.
 - **B Arrange**: fills the remaining area; specified in section 4.
@@ -171,13 +174,17 @@ Left, in `timeSmall` mono, separated by middle dots in `textTertiary`:
 - Driver and device: "ASIO · Universal Audio Volt"; a `warning` dot before it if the
   preferred device is unavailable, click opens Audio Setup.
 - Sample rate and buffer: "48.0 kHz · 64" with the buffer's ms in a tooltip.
-- Round trip: "4.3 ms RT" (measured in `textPrimary`, reported in `textSecondary`,
-  tooltip explains which).
+- Round trip: "4.3 ms round trip" (measured in `textPrimary`, reported in
+  `textSecondary`, tooltip explains which). The buffer's tooltip gives its length as
+  "one way", so the two figures never read as the same number (Audio Setup's latency
+  row ends with the same round trip).
 - Load: "CPU 4%" with p99 and max in the tooltip; turns `warning` above 70%, `danger`
   above 90%.
 - Dropouts: hidden when zero; "2 dropouts" in `warning`, click resets, tooltip shows
   the last one's time. Counts device xruns, late callbacks and disk gaps (a streamed
-  clip that ran dry in steady playback; a locate's silence is not one). The warning
+  clip that ran dry in steady playback; a locate's silence is not one). For two
+  seconds after the device opens or changes (rate, buffer, another device) its
+  glitches are not counted: a device settling is not a dropout. The warning
   toast after ten new dropouts names the disk when most of them are disk gaps, and
   then has no Audio Setup action, since a bigger buffer would not help.
 - Disk: shown only while recording: "Disk 12 MB/s · 2.4 GB free".
@@ -194,6 +201,26 @@ New project with no tracks: the arrange area shows the mark at 48 px in
 `textTertiary`, the heading "Start a project" in `heading`, and three ghost buttons in
 a row: "Add audio track", "Add MIDI track", "Import audio…", plus a `small`
 hint "or drop audio files here". No other chrome changes.
+
+## Unsaved changes
+
+Anything that would replace or close a project with unsaved changes asks first, with
+the close-window sheet (interaction.md 10.6): "Save changes to Song?", "Unsaved
+changes will be lost if you start a new project without saving." (the clause names
+what was asked for: close, quit, open another project, start a new project, restore
+the autosave), and Cancel, Don't save (Danger) and Save (primary). That covers New
+(Ctrl+N), Close project, Open, a recent file, a project dropped on the window or
+passed by Explorer, New from template, Restore, Quit in the app menu, the close
+button and Windows ending the session. Save that needs a file asks for one first;
+cancelling it cancels everything. Only Save and Don't save let the autosave go.
+
+Save As to another folder, when the project uses media outside the new project's
+media folder, asks "Bring the media along?" ("3 files (120 MB) this project uses are
+outside "Song 2 Media"…") with Cancel, Keep where they are and Copy media (primary).
+
+Projects open from Explorer (Open with Northlight passes the file; a second launch
+hands it to the window already open) and by dropping a `.northlight` file anywhere
+on the window.
 
 ## Opening a project
 

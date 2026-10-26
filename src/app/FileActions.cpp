@@ -11,9 +11,22 @@
 namespace northlight
 {
 
+namespace
+{
+juce::String filesText(int count)
+{
+    return juce::String(count) + (count == 1 ? " file" : " files");
+}
+} // namespace
+
 FileActions::FileActions(Host host) : host_(std::move(host)) {}
 
 FileActions::~FileActions() = default;
+
+bool FileActions::isProjectFile(const juce::File& file)
+{
+    return file.hasFileExtension("northlight;aural");
+}
 
 // The folder new projects are saved to and opened from.
 juce::File FileActions::projectFolder() const
@@ -33,36 +46,101 @@ juce::String FileActions::projectName() const
                : juce::String("Untitled");
 }
 
-void FileActions::newProject()
+// ----- unsaved changes ------------------------------------------------------------------------
+
+void FileActions::confirmDiscard(const juce::String& consequence, std::function<void()> then)
 {
-    if (host_.session.isRecording())
+    if (!host_.session.isModified())
+    {
+        then();
+        return;
+    }
+    if (host_.openSheet != nullptr)
+        return; // one question at a time (a second close while the sheet shows)
+    auto shared = std::make_shared<std::function<void()>>(std::move(then));
+    host_.openSheet =
+        ui::Sheet::show(host_.window,
+                        host_.theme,
+                        "Save changes to " + projectName() + "?",
+                        "Unsaved changes will be lost if you " + consequence + " without saving.",
+                        {{"Cancel", false, false}, {"Don't save", false, true}, {"Save", true, false}},
+                        [this, shared](int result)
+                        {
+                            host_.openSheet = nullptr;
+                            if (result == 1)
+                            {
+                                host_.session.discardChanges(); // the user chose: the autosave may go
+                                (*shared)();
+                            }
+                            else if (result == 2)
+                                saveProject(false, [shared] { (*shared)(); });
+                            else
+                                host_.window.grabKeyboardFocus();
+                        });
+}
+
+void FileActions::quit()
+{
+    if (host_.session.isModified())
+        host_.session.autosaveNow(); // Windows may end the session while the sheet waits
+    confirmDiscard("quit", [] { juce::JUCEApplication::getInstance()->quit(); });
+}
+
+// ----- new, open, close, revert -----------------------------------------------------------------
+
+void FileActions::startNewProject(const juce::String& status)
+{
+    if (host_.session.isRecording() || host_.session.isLoading())
         return;
     host_.session.stop();
     host_.closeEditors();
     host_.session.newProject();
+    if (status.isNotEmpty())
+        host_.status(status);
     host_.refresh();
+    host_.window.grabKeyboardFocus();
+}
+
+void FileActions::newProject()
+{
+    if (host_.session.isRecording())
+        return;
+    confirmDiscard("start a new project", [this] { startNewProject({}); });
+}
+
+void FileActions::closeProject()
+{
+    if (host_.session.isRecording())
+        return;
+    const auto name = projectName();
+    confirmDiscard("close it", [this, name] { startNewProject("Closed " + name); });
 }
 
 void FileActions::newFromTemplate(const juce::File& file)
 {
     if (host_.session.isRecording() || host_.session.isLoading())
         return;
-    host_.session.stop();
-    host_.closeEditors();
-    if (!host_.session.beginTemplate(file))
-        return;
-    host_.loader.watch("New project from " + file.getFileNameWithoutExtension(),
-                       [this, file](const std::string& error)
-                       {
-                           if (!error.empty())
-                               host_.toast(ui::ToastStack::Kind::error,
-                                           "Cannot use the template: " +
-                                               juce::String::fromUTF8(error.c_str()));
-                           else
-                               host_.status("New project from " + file.getFileNameWithoutExtension());
-                           host_.refresh();
-                           host_.window.grabKeyboardFocus();
-                       });
+    confirmDiscard("start a new project",
+                   [this, file]
+                   {
+                       if (host_.session.isRecording() || !host_.session.beginTemplate(file))
+                           return;
+                       host_.session.stop();
+                       host_.closeEditors();
+                       host_.loader.watch("New project from " + file.getFileNameWithoutExtension(),
+                                          [this, file](const std::string& error)
+                                          {
+                                              if (!error.empty())
+                                                  host_.toast(ui::ToastStack::Kind::error,
+                                                              "Cannot use the template: " +
+                                                                  juce::String::fromUTF8(error.c_str()));
+                                              else
+                                                  host_.status("New project from " +
+                                                               file.getFileNameWithoutExtension());
+                                              host_.refresh();
+                                              host_.window.grabKeyboardFocus();
+                                          });
+                   });
 }
 
 // Restores a crashed session's autosave (the toast's Restore), with progress.
@@ -70,19 +148,200 @@ void FileActions::restoreAutosave(const ProjectSession::Autosave& autosave)
 {
     if (host_.session.isRecording() || host_.session.isLoading())
         return;
+    confirmDiscard("restore the autosave",
+                   [this, autosave]
+                   {
+                       if (host_.session.isRecording() || !host_.session.beginRestore(autosave))
+                           return;
+                       host_.session.stop();
+                       host_.closeEditors();
+                       host_.loader.watch("Restoring " + juce::String::fromUTF8(autosave.name.c_str()),
+                                          [this](const std::string& error)
+                                          {
+                                              if (!error.empty())
+                                                  host_.toast(ui::ToastStack::Kind::error,
+                                                              "Cannot restore: " +
+                                                                  juce::String::fromUTF8(error.c_str()));
+                                              host_.refresh();
+                                              host_.window.grabKeyboardFocus();
+                                              if (error.empty())
+                                                  offerMissingMedia();
+                                          });
+                   });
+}
+
+void FileActions::openProject()
+{
+    if (host_.session.isRecording())
+        return;
+    chooser_ = std::make_unique<juce::FileChooser>("Open project", projectFolder(), "*.northlight;*.aural");
+    chooser_->launchAsync(juce::FileBrowserComponent::openMode | juce::FileBrowserComponent::canSelectFiles,
+                          [this](const juce::FileChooser& fc)
+                          {
+                              if (const auto file = fc.getResult(); file != juce::File())
+                                  open(file);
+                          });
+}
+
+void FileActions::open(const juce::File& file)
+{
+    if (host_.session.isRecording() || host_.session.isLoading())
+        return;
+    if (!file.existsAsFile())
+    {
+        host_.toast(ui::ToastStack::Kind::error,
+                    "Cannot open " + file.getFileName() +
+                        ": file not found. It may have been moved or deleted.");
+        return;
+    }
+    confirmDiscard("open another project", [this, file] { openFile(file); });
+}
+
+void FileActions::openFile(const juce::File& file, std::optional<LoadProgress::Stage> holdAt)
+{
+    if (host_.session.isLoading())
+        return;
     host_.session.stop();
     host_.closeEditors();
-    if (!host_.session.beginRestore(autosave))
+    if (!host_.session.beginOpen(file))
         return;
-    host_.loader.watch("Restoring " + juce::String::fromUTF8(autosave.name.c_str()),
-                       [this](const std::string& error)
-                       {
-                           if (!error.empty())
-                               host_.toast(ui::ToastStack::Kind::error,
-                                           "Cannot restore: " + juce::String::fromUTF8(error.c_str()));
-                           host_.refresh();
-                           host_.window.grabKeyboardFocus();
-                       });
+    host_.loader.watch(
+        "Opening " + file.getFileNameWithoutExtension(),
+        [this, file](const std::string& error)
+        {
+            if (!error.empty())
+                host_.toast(ui::ToastStack::Kind::error,
+                            "Cannot open " + file.getFileName() + ": " +
+                                juce::String::fromUTF8(error.c_str()));
+            else
+                rememberRecent(file);
+            host_.refresh();
+            host_.window.grabKeyboardFocus();
+            host_.opened();
+            if (error.empty())
+                offerMissingMedia();
+        },
+        holdAt);
+}
+
+bool FileActions::canRevert() const
+{
+    return host_.session.projectFile() != juce::File() && host_.session.projectFile().existsAsFile() &&
+           host_.session.isModified() && !host_.session.isRecording();
+}
+
+void FileActions::revertToSaved()
+{
+    if (!canRevert() || host_.openSheet != nullptr)
+        return;
+    const auto file = host_.session.projectFile();
+    host_.openSheet = ui::Sheet::show(host_.window,
+                                      host_.theme,
+                                      "Revert to the saved " + projectName() + "?",
+                                      "The changes since it was last saved (" +
+                                          file.getLastModificationTime().formatted("%H:%M") +
+                                          ") will be lost. This cannot be undone.",
+                                      {{"Cancel", false, false}, {"Revert", true, true}},
+                                      [this, file](int result)
+                                      {
+                                          host_.openSheet = nullptr;
+                                          if (result != 1)
+                                          {
+                                              host_.window.grabKeyboardFocus();
+                                              return;
+                                          }
+                                          host_.session.discardChanges();
+                                          openFile(file);
+                                      });
+}
+
+// ----- saving -------------------------------------------------------------------------------------
+
+void FileActions::saveProject(bool saveAs, std::function<void()> then)
+{
+    if (!saveAs && host_.session.projectFile().getFullPathName().isNotEmpty())
+    {
+        saveTo(host_.session.projectFile(), false, std::move(then));
+        return;
+    }
+    chooseSaveFile(std::move(then));
+}
+
+void FileActions::chooseSaveFile(std::function<void()> then)
+{
+    const bool untitled = host_.session.projectFile() == juce::File();
+    const auto start =
+        untitled ? projectFolder().getChildFile("Untitled.northlight") : host_.session.projectFile();
+    chooser_ = std::make_unique<juce::FileChooser>("Save project", start, "*.northlight");
+    chooser_->launchAsync(
+        juce::FileBrowserComponent::saveMode | juce::FileBrowserComponent::canSelectFiles |
+            juce::FileBrowserComponent::warnAboutOverwriting,
+        [this, untitled, then = std::move(then)](const juce::FileChooser& fc)
+        {
+            auto file = fc.getResult();
+            if (file == juce::File())
+                return;
+            if (!file.hasFileExtension("northlight"))
+                file = file.withFileExtension("northlight");
+            const auto read =
+                settings::Reader([this](const std::string& key) { return host_.settings.value(key); });
+            // A first save brings the media along when imports are copied (the
+            // recordings in the shared folder always come).
+            if (untitled)
+            {
+                saveTo(file, read.flag(settings::copyMedia), then);
+                host_.window.grabKeyboardFocus();
+                return;
+            }
+            // Save As somewhere else: offer to bring the media along.
+            const auto [count, bytes] = host_.session.mediaToBring(file);
+            if (count == 0 || host_.openSheet != nullptr)
+            {
+                saveTo(file, false, then);
+                host_.window.grabKeyboardFocus();
+                return;
+            }
+            host_.openSheet = ui::Sheet::show(
+                host_.window,
+                host_.theme,
+                "Bring the media along?",
+                filesText(count) + " (" + juce::File::descriptionOfSizeInBytes(bytes) +
+                    ") this project uses " + (count == 1 ? "is" : "are") + " outside \"" +
+                    file.getFileNameWithoutExtension() +
+                    " Media\". Copy them in so the new project's folder holds everything it plays, or keep "
+                    "using them where they are.",
+                {{"Cancel", false, false},
+                 {"Keep where they are", false, false},
+                 {"Copy media", true, false}},
+                [this, file, then](int result)
+                {
+                    host_.openSheet = nullptr;
+                    if (result == 1 || result == 2)
+                        saveTo(file, result == 2, then);
+                    host_.window.grabKeyboardFocus();
+                });
+        });
+}
+
+void FileActions::saveTo(const juce::File& file, bool bringMedia, std::function<void()> then)
+{
+    const auto read = settings::Reader([this](const std::string& key) { return host_.settings.value(key); });
+    host_.session.setKeepBackup(read.flag(settings::keepBackup));
+    const auto error = host_.session.save(file, bringMedia);
+    if (!error.empty())
+    {
+        host_.toast(ui::ToastStack::Kind::error,
+                    "Cannot save: " + juce::String::fromUTF8(error.c_str()) +
+                        ". The project is still open; try Save As to another folder.");
+    }
+    else
+    {
+        host_.status("Saved " + file.getFileName());
+        rememberRecent(file);
+    }
+    host_.refresh();
+    if (error.empty() && then)
+        then();
 }
 
 void FileActions::saveTemplate()
@@ -117,6 +376,8 @@ void FileActions::saveTemplate()
         host_.theme.sizes.control);
 }
 
+// ----- media ----------------------------------------------------------------------------------
+
 void FileActions::gatherMedia()
 {
     int copied = 0;
@@ -128,140 +389,114 @@ void FileActions::gatherMedia()
         host_.toast(ui::ToastStack::Kind::info, "All media is already in the project folder.");
     else
         host_.toast(ui::ToastStack::Kind::success,
-                    "Copied " + juce::String(copied) + (copied == 1 ? " file" : " files") +
-                        " into the project folder. Save to keep the new paths.");
+                    "Copied " + filesText(copied) + " into the project folder. Save to keep the new paths.");
 }
 
 void FileActions::removeUnusedMedia()
 {
     const auto report = host_.session.mediaReport();
+    const bool untitled = host_.session.projectFile() == juce::File();
     if (report.unused.empty())
     {
-        host_.toast(ui::ToastStack::Kind::info, "No unused media in the project folder.");
+        host_.toast(ui::ToastStack::Kind::info,
+                    untitled ? "No unused recordings from this project."
+                             : "No unused media in the project folder.");
         return;
     }
     juce::int64 bytes = 0;
     for (const auto& f : report.unused)
         bytes += f.getSize();
-    host_.openSheet =
-        ui::Sheet::show(host_.window,
-                        host_.theme,
-                        "Remove unused media",
-                        juce::String(static_cast<int>(report.unused.size())) +
-                            (report.unused.size() == 1 ? " file" : " files") + " (" +
-                            juce::File::descriptionOfSizeInBytes(bytes) +
-                            ") in the project folder are not used by any clip. They go to the "
-                            "Recycle Bin, so an undo that brings a clip back can still find them there.",
-                        {{"Cancel", false, false}, {"Move to Recycle Bin", true, true}},
-                        [this](int result)
-                        {
-                            host_.openSheet = nullptr;
-                            if (result != 1)
-                                return;
-                            const int moved = host_.session.removeUnusedMedia();
-                            host_.toast(ui::ToastStack::Kind::success,
-                                        "Moved " + juce::String(moved) + (moved == 1 ? " file" : " files") +
-                                            " to the Recycle Bin.");
-                        });
+    host_.openSheet = ui::Sheet::show(
+        host_.window,
+        host_.theme,
+        "Remove unused media",
+        filesText(static_cast<int>(report.unused.size())) + " (" +
+            juce::File::descriptionOfSizeInBytes(bytes) +
+            (untitled ? ") recorded for this project in the shared Recordings folder are"
+                      : ") in the project folder are") +
+            " not used by any clip. They go to the Recycle Bin, so an undo that brings a clip back can still "
+            "find them there.",
+        {{"Cancel", false, false}, {"Move to Recycle Bin", true, true}},
+        [this](int result)
+        {
+            host_.openSheet = nullptr;
+            if (result != 1)
+                return;
+            const int moved = host_.session.removeUnusedMedia();
+            host_.toast(ui::ToastStack::Kind::success, "Moved " + filesText(moved) + " to the Recycle Bin.");
+        });
 }
 
-void FileActions::openProject()
+void FileActions::offerMissingMedia()
+{
+    const auto missing = host_.session.mediaReport().missing;
+    if (missing.empty() || !host_.actionToast)
+        return;
+    const auto first = missing.front();
+    const int count = static_cast<int>(missing.size());
+    host_.actionToast(ui::ToastStack::Kind::warning,
+                      (count == 1 ? "\"" + first.getFileName() + "\" is missing"
+                                  : filesText(count) + " this project uses are missing") +
+                          ". " + (count == 1 ? "Its clips play" : "Their clips play") +
+                          " silence until you locate " + (count == 1 ? "it." : "them."),
+                      juce::String::fromUTF8("Locate\xe2\x80\xa6"),
+                      [this, first] { locateMissing(first); });
+}
+
+void FileActions::locateMissing(const juce::File& missing)
 {
     if (host_.session.isRecording())
         return;
-    chooser_ = std::make_unique<juce::FileChooser>("Open project", projectFolder(), "*.northlight;*.aural");
-    chooser_->launchAsync(juce::FileBrowserComponent::openMode | juce::FileBrowserComponent::canSelectFiles,
-                          [this](const juce::FileChooser& fc)
-                          {
-                              if (const auto file = fc.getResult(); file != juce::File())
-                                  openFile(file);
-                          });
-}
-
-void FileActions::openFile(const juce::File& file, std::optional<LoadProgress::Stage> holdAt)
-{
-    if (host_.session.isLoading())
-        return;
-    host_.session.stop();
-    host_.closeEditors();
-    if (!host_.session.beginOpen(file))
-        return;
-    host_.loader.watch(
-        "Opening " + file.getFileNameWithoutExtension(),
-        [this, file](const std::string& error)
-        {
-            if (!error.empty())
-                host_.toast(ui::ToastStack::Kind::error,
-                            "Cannot open " + file.getFileName() + ": " +
-                                juce::String::fromUTF8(error.c_str()));
-            else
-                rememberRecent(file);
-            host_.refresh();
-            host_.window.grabKeyboardFocus();
-            host_.opened();
-        },
-        holdAt);
-}
-
-void FileActions::saveProject(bool saveAs, AfterSave after)
-{
-    if (!saveAs && host_.session.projectFile().getFullPathName().isNotEmpty())
-    {
-        saveTo(host_.session.projectFile(), after);
-        return;
-    }
+    // Start where it was, or as near as still exists, else the project's folder.
+    auto start = missing.getParentDirectory();
+    while (start != juce::File() && !start.isDirectory() && start.getParentDirectory() != start)
+        start = start.getParentDirectory();
+    if (!start.isDirectory())
+        start = host_.session.projectFile() != juce::File() ? host_.session.projectFile().getParentDirectory()
+                                                            : projectFolder();
+    const auto extension = missing.getFileExtension();
     chooser_ = std::make_unique<juce::FileChooser>(
-        "Save project", projectFolder().getChildFile("Untitled.northlight"), "*.northlight");
-    chooser_->launchAsync(juce::FileBrowserComponent::saveMode | juce::FileBrowserComponent::canSelectFiles |
-                              juce::FileBrowserComponent::warnAboutOverwriting,
-                          [this, after](const juce::FileChooser& fc)
-                          {
-                              auto file = fc.getResult();
-                              if (file == juce::File())
-                                  return;
-                              if (!file.hasFileExtension("northlight"))
-                                  file = file.withFileExtension("northlight");
-                              saveTo(file, after);
-                              host_.window.grabKeyboardFocus();
-                          });
-}
-
-void FileActions::saveTo(const juce::File& file, AfterSave after)
-{
-    const auto error = host_.session.save(file);
-    if (!error.empty())
-    {
-        host_.toast(ui::ToastStack::Kind::error, "Cannot save: " + juce::String::fromUTF8(error.c_str()));
-    }
-    else
-    {
-        host_.status("Saved " + file.getFileName());
-        rememberRecent(file);
-        if (after == AfterSave::quit)
-            juce::JUCEApplication::getInstance()->quit();
-    }
-    host_.refresh();
-}
-
-std::vector<juce::String> FileActions::recentFiles() const
-{
-    std::vector<juce::String> files;
-    for (int i = 0; i < recentCount; ++i)
-        if (const auto path = host_.settings.value("recent." + std::to_string(i)); !path.empty())
-            files.push_back(juce::String::fromUTF8(path.c_str()));
-    return files;
-}
-
-void FileActions::rememberRecent(const juce::File& file)
-{
-    auto files = recentFiles();
-    files.erase(std::remove(files.begin(), files.end(), file.getFullPathName()), files.end());
-    files.insert(files.begin(), file.getFullPathName());
-    for (int i = 0; i < recentCount; ++i)
-        host_.settings.setValue("recent." + std::to_string(i),
-                                static_cast<size_t>(i) < files.size()
-                                    ? files[static_cast<size_t>(i)].toStdString()
-                                    : std::string{});
+        juce::String::fromUTF8("Locate ") + missing.getFileName(),
+        start.getChildFile(missing.getFileName()),
+        extension.isNotEmpty() ? "*" + extension : host_.session.mediaLoader().supportedExtensions());
+    chooser_->launchAsync(
+        juce::FileBrowserComponent::openMode | juce::FileBrowserComponent::canSelectFiles,
+        [this, missing](const juce::FileChooser& fc)
+        {
+            const auto found = fc.getResult();
+            if (found == juce::File() || !found.existsAsFile())
+                return;
+            const auto relink = [this, missing, found](bool all)
+            {
+                const int relinked = host_.session.relinkMedia(missing, found, all);
+                host_.refresh();
+                host_.window.grabKeyboardFocus();
+                const int left = static_cast<int>(host_.session.mediaReport().missing.size());
+                host_.toast(ui::ToastStack::Kind::success,
+                            "Relinked " + filesText(relinked) + "." +
+                                (left > 0 ? " " + filesText(left) + " still missing." : juce::String()));
+            };
+            const auto folder = found.getParentDirectory();
+            const int others = host_.session.missingFilesIn(folder, missing);
+            if (others == 0 || host_.openSheet != nullptr)
+            {
+                relink(false);
+                return;
+            }
+            host_.openSheet = ui::Sheet::show(
+                host_.window,
+                host_.theme,
+                "Relink the other missing files?",
+                juce::String(others) + " of the other missing files " + (others == 1 ? "is" : "are") +
+                    " in \"" + folder.getFileName() + "\" under the same " +
+                    (others == 1 ? "name" : "names") + ". Relink them as well? You can undo it.",
+                {{"Just this one", false, false}, {"Relink all", true, false}},
+                [this, relink](int result)
+                {
+                    host_.openSheet = nullptr;
+                    relink(result == 1);
+                });
+        });
 }
 
 void FileActions::importAudio()
@@ -283,6 +518,8 @@ void FileActions::importAudio()
 
 void FileActions::importFiles(const std::vector<juce::File>& files, core::SamplePosition at, core::Id track)
 {
+    const auto read = settings::Reader([this](const std::string& key) { return host_.settings.value(key); });
+    host_.session.setCopyImportedMedia(read.flag(settings::copyMedia));
     for (const auto& file : files)
     {
         // A MIDI file plays the track it was dropped on, or the selected
@@ -347,6 +584,40 @@ void FileActions::exportMidi()
                                   host_.toast(ui::ToastStack::Kind::success,
                                               "Exported " + file.getFileName());
                           });
+}
+
+// ----- recent files ---------------------------------------------------------------------------
+
+std::vector<juce::String> FileActions::recentFiles() const
+{
+    std::vector<juce::String> files;
+    for (int i = 0; i < recentCount; ++i)
+        if (const auto path = host_.settings.value("recent." + std::to_string(i)); !path.empty())
+            files.push_back(juce::String::fromUTF8(path.c_str()));
+    return files;
+}
+
+void FileActions::writeRecent(const std::vector<juce::String>& files)
+{
+    for (int i = 0; i < recentCount; ++i)
+        host_.settings.setValue("recent." + std::to_string(i),
+                                static_cast<size_t>(i) < files.size()
+                                    ? files[static_cast<size_t>(i)].toStdString()
+                                    : std::string{});
+}
+
+void FileActions::rememberRecent(const juce::File& file)
+{
+    auto files = recentFiles();
+    files.erase(std::remove(files.begin(), files.end(), file.getFullPathName()), files.end());
+    files.insert(files.begin(), file.getFullPathName());
+    writeRecent(files);
+}
+
+void FileActions::clearRecent()
+{
+    writeRecent({});
+    host_.status("Cleared the recent projects");
 }
 
 } // namespace northlight

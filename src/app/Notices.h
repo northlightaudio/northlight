@@ -34,6 +34,7 @@ struct Notice
     // the message thread when clicked.
     std::string action;
     std::function<void()> onAction;
+    bool audioSetup = false; // the toast offers Audio Setup (the device went away)
 };
 
 class NoticeQueue
@@ -47,6 +48,7 @@ public:
     {
         notices_.push_back({kind, std::move(text), {}, std::move(action), std::move(onAction)});
     }
+    void push(Notice notice) { notices_.push_back(std::move(notice)); }
     // Every notice not yet taken, oldest first.
     std::vector<Notice> take() { return std::exchange(notices_, {}); }
     bool empty() const noexcept { return notices_.empty(); }

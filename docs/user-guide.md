@@ -17,12 +17,27 @@ that device, rate and buffer size, and recordings are placed with it.
 ## Projects
 
 Projects are `.northlight` files: **New**, **Open**, **Save** and **Save As** in the
-project menu (Ctrl+N, Ctrl+O, Ctrl+S, Ctrl+Shift+S). Unsaved changes are autosaved
-every two minutes, and if Northlight closes without saving, the next launch offers to
-restore them. **Save as template** keeps the tracks, routing and processing without
-the clips; **New from template** starts from one. **Gather media** copies media used
-from elsewhere into the project's media folder; **Remove unused media** moves files no
-clip uses to the Recycle Bin.
+project menu (Ctrl+N, Ctrl+O, Ctrl+S, Ctrl+Shift+S), with **Close project** and
+**Revert to saved**. Anything that would replace or close a project with unsaved
+changes asks first: Save, Don't save or Cancel. Unsaved changes are autosaved every
+two minutes, and if Northlight closes without saving, the next launch offers to
+restore them. Each save keeps the version it replaces beside the project as
+`Song.northlight-bak`, which opens like any project. Open a project from Explorer
+with **Open with**, or drop it on the window; if Northlight is already running, the
+file opens there. **Recent** lists the last projects (a missing one shows "Not
+found") and can be cleared, and Preferences can reopen the last project when
+Northlight starts.
+
+Imported audio is copied into the project's media folder (Preferences, General,
+**Copy media**), so the project folder holds everything it plays. A project that has
+not been saved yet copies its media, and its recordings, in when you first save it;
+**Save As** to another folder asks whether to bring the media along. If a project
+opens with files missing, a message says so; click **Locate…** there or on a missing
+clip, find the file, and Northlight relinks it and offers to relink the others it
+finds in the same folder. **Save as template** keeps the tracks, routing and
+processing without the clips; **New from template** starts from one. **Gather
+media** copies media used from elsewhere into the project's media folder; **Remove
+unused media** moves files no clip uses to the Recycle Bin.
 
 ## Playing and editing
 
@@ -92,9 +107,13 @@ name it and choose its left and right inputs. Tracks then list it by name, recor
 to one stereo file and monitor it in stereo. Stereo inputs are kept for each audio
 interface, so every project can use them.
 
-Recordings go to the project's media folder. If Northlight closes during a take, the
-next launch offers to recover the unfinished files and put them back where they were
-recorded.
+Recordings go to the project's media folder, as 32-bit float or 24-bit WAV
+(Preferences, Recording), named by the take pattern ("Vox 3" from `{track} {take}`).
+**Pre-roll** plays a few bars before the playhead without recording them. If
+Northlight closes during a take, the next launch offers to recover the unfinished
+files and put them back where they were recorded. If the audio interface is
+unplugged mid-take, the recording stops and is kept up to that moment, and playback
+stays stopped when Northlight switches to another device.
 
 ## Mixing
 
