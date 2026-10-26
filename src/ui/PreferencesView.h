@@ -11,10 +11,14 @@
 #include <functional>
 #include <memory>
 #include <string>
+#include <utility>
 #include <vector>
 
 namespace northlight::ui
 {
+
+class NumericField;
+class SegmentedControl;
 
 // Preferences (screens/setup.md 8.2): the page list on canvas at the left and the
 // page on surface0, its settings in cards like Audio Setup's. A card row is a label
@@ -79,7 +83,39 @@ private:
     // A setting's stored text, or its default (core/Settings.h).
     std::string get(const settings::Setting& setting) const;
     void set(const settings::Setting& setting, const std::string& value);
+    // The pages in list order (key, title, icon, builder), and each page's builder.
+    struct PageInfo;
+    static const std::vector<PageInfo>& pageTable();
     void buildPages();
+    void buildGeneral(Page& page);
+    void buildAudio(Page& page);
+    void buildRecording(Page& page);
+    void buildEditing(Page& page);
+    void buildPlugins(Page& page);
+    void buildShortcuts(Page& page);
+    void buildDiagnostics(Page& page);
+
+    // The controls a row binds to a setting; each writes it back as it changes.
+    struct Choice
+    {
+        juce::String text;
+        std::string value;
+        bool comingSoon = false;
+    };
+    std::unique_ptr<juce::ComboBox> makeCombo(const std::vector<Choice>& items, const settings::Setting& key);
+    std::unique_ptr<SegmentedControl> makeSegmented(const std::vector<Choice>& items,
+                                                    const settings::Setting& key);
+    std::unique_ptr<juce::ToggleButton> makeCheckbox(const settings::Setting& key);
+    std::unique_ptr<juce::TextEditor> makeText(const settings::Setting& key, const juce::String& placeholder);
+    std::unique_ptr<NumericField> makeNumber(const settings::Setting& key,
+                                             double lo,
+                                             double hi,
+                                             double step,
+                                             const juce::String& unit,
+                                             int decimals);
+    // A button and the width its label needs.
+    std::pair<std::unique_ptr<juce::TextButton>, int> makeButtonRow(const juce::String& label,
+                                                                    std::function<void()> action);
     void writeAccentOverride(const juce::String& hex);
     // Writes the accent and contrast choices to their own token file beside the
     // settings (Theme::initialise reads it at the next launch). The user's

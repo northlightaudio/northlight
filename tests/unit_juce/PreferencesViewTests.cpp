@@ -264,3 +264,17 @@ TEST_CASE("Every setting not read yet carries the Coming soon badge", "[ui][pref
             formatBadged = row.badge;
     CHECK(formatBadged);
 }
+
+TEST_CASE("Each Preferences page opens by its key, in list order", "[ui][preferences]")
+{
+    Fixture f;
+    const auto& keys = ui::PreferencesView::pageKeys();
+    REQUIRE(keys.size() == 7);
+    CHECK(keys.front() == "general");
+    CHECK(keys.back() == "diagnostics");
+    for (const auto& key : keys)
+    {
+        f.view->showPage(key);
+        CHECK(f.view->currentPage() == key);
+    }
+}
