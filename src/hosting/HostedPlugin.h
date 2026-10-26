@@ -1,13 +1,13 @@
 #pragma once
 
 #include "engine/Insert.h"
+#include "hosting/ParameterEditQueue.h"
 #include "hosting/PluginPresets.h"
 
 #include <juce_audio_processors/juce_audio_processors.h>
 
 #include <atomic>
 #include <memory>
-#include <mutex>
 #include <string>
 #include <vector>
 
@@ -108,14 +108,12 @@ public:
     std::vector<std::string> factoryPrograms() const override;
     int currentProgram() const override;
     void setProgram(int index) override;
-    // .vstpreset files: the standard user folder for this plugin
-    // (Documents/VST3 Presets/<manufacturer>/<plugin>), its files, and load/save.
+    // .vstpreset files in the standard user folder for this plugin
+    // (Documents/VST3 Presets/<manufacturer>/<plugin>).
     bool supportsPresetFiles() const override;
-    juce::File userPresetFolder() const override;
-    std::vector<juce::File> userPresetFiles() const override;
+    PresetLocation presetLocation() const override;
     bool loadPresetFile(const juce::File& file) override;
     bool savePresetFile(const juce::File& file) const override;
-    std::string presetFileExtension() const override { return "vstpreset"; }
 
 private:
     std::string typeName_;
@@ -123,7 +121,7 @@ private:
     std::vector<juce::AudioProcessorParameter*> parameterObjects_; // owned by the instance
     std::vector<int> indexOfProcessorParameter_;                   // processor index -> ours (-1 = none)
     // Edits the plugin made (its editor): the listener runs on the message
-    // thread, or sometimes the audio thread, which only ever tries the lock.
+    // thread, or sometimes the audio thread; the queue never blocks either.
     void parameterValueChanged(int parameterIndex, float newValue) override;
     void parameterGestureChanged(int parameterIndex, bool gestureIsStarting) override;
     void pushEdit(const ParameterEdit& edit) noexcept;
@@ -131,11 +129,7 @@ private:
     void audioProcessorParameterChanged(juce::AudioProcessor*, int, float) override {}
     void audioProcessorChanged(juce::AudioProcessor*, const ChangeDetails& details) override;
     std::atomic<bool> stateChanged_{false};
-    static constexpr size_t maxEdits = 4096;
-    std::mutex editsMutex_;
-    std::vector<ParameterEdit> edits_;   // both reserved to maxEdits: swapping keeps the capacity
-    std::vector<ParameterEdit> drained_; // the message thread's copy
-    size_t drainedAt_ = 0;
+    ParameterEditQueue edits_;
     static thread_local bool settingFromHost_; // our own setValue: not an edit
     std::unique_ptr<juce::AudioPluginInstance> instance_;
     void run(float* left, float* right, const float* keyLeft, const float* keyRight, int numSamples) noexcept;

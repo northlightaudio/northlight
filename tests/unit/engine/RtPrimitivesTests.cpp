@@ -1,3 +1,4 @@
+#include "engine/rt/MpscQueue.h"
 #include "engine/rt/RealtimeGuard.h"
 #include "engine/rt/SnapshotPublisher.h"
 #include "engine/rt/SpscQueue.h"
@@ -10,6 +11,7 @@
 #include <cstdint>
 #include <memory>
 #include <thread>
+#include <vector>
 
 using namespace northlight::rt;
 
@@ -67,6 +69,60 @@ TEST_CASE("SPSC queue delivers every item across threads", "[rt][queue]")
     producer.join();
     CHECK(ordered);
     CHECK(expected == count);
+}
+
+TEST_CASE("MPSC queue holds its capacity, preserves order and drops when full", "[rt][queue]")
+{
+    MpscQueue<int> q(3);
+    CHECK(q.capacity() == 4); // rounded up to a power of two
+    int v = 0;
+    CHECK_FALSE(q.pop(v));
+    for (int i = 0; i < 4; ++i)
+        CHECK(q.push(i));
+    CHECK_FALSE(q.push(4)); // full: dropped
+    CHECK(q.pop(v));
+    CHECK(v == 0);
+    CHECK(q.push(5)); // space again
+    for (const int expected : {1, 2, 3, 5})
+    {
+        REQUIRE(q.pop(v));
+        CHECK(v == expected);
+    }
+    CHECK_FALSE(q.pop(v));
+}
+
+TEST_CASE("MPSC queue delivers every item from many producers, each in its order", "[rt][queue]")
+{
+    MpscQueue<std::uint32_t> q(64);
+    constexpr std::uint32_t producers = 4;
+    constexpr std::uint32_t each = 50000;
+    std::vector<std::thread> threads;
+    for (std::uint32_t p = 0; p < producers; ++p)
+        threads.emplace_back(
+            [&q, p]
+            {
+                for (std::uint32_t i = 0; i < each;)
+                    if (q.push(p << 24 | i))
+                        ++i;
+            });
+    std::vector<std::uint32_t> next(producers, 0);
+    bool ordered = true;
+    std::uint32_t received = 0;
+    while (received < producers * each)
+    {
+        std::uint32_t v;
+        if (!q.pop(v))
+            continue;
+        const auto p = v >> 24;
+        ordered = ordered && p < producers && (v & 0xffffff) == next[p];
+        if (p < producers)
+            ++next[p];
+        ++received;
+    }
+    for (auto& t : threads)
+        t.join();
+    CHECK(ordered);
+    CHECK(received == producers * each);
 }
 
 namespace

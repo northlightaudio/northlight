@@ -64,8 +64,6 @@ HostedPlugin::HostedPlugin(std::string typeName,
     acceptsMidi_ = instance_->acceptsMidi();
     // The parameters the plugin shows the host (VST3 bypass and program
     // parameters included), as normalised values.
-    edits_.reserve(maxEdits); // pushEdit never grows it (it may run on the audio thread)
-    drained_.reserve(maxEdits);
     indexOfProcessorParameter_.assign(static_cast<size_t>(instance_->getParameters().size()), -1);
     for (auto* parameter : instance_->getParameters())
     {
@@ -105,10 +103,7 @@ void HostedPlugin::setParameter(int index, float value) noexcept
 
 void HostedPlugin::pushEdit(const ParameterEdit& edit) noexcept
 {
-    std::unique_lock<std::mutex> lock(editsMutex_, std::try_to_lock);
-    if (!lock.owns_lock() || edits_.size() >= maxEdits)
-        return; // dropped: never wait (the audio thread may be the caller)
-    edits_.push_back(edit);
+    edits_.push(edit); // dropped when full: never wait (the audio thread may be the caller)
 }
 
 void HostedPlugin::parameterValueChanged(int parameterIndex, float newValue)
@@ -131,19 +126,7 @@ void HostedPlugin::parameterGestureChanged(int parameterIndex, bool gestureIsSta
 
 bool HostedPlugin::takeParameterEdit(ParameterEdit& edit) noexcept
 {
-    // The queue is swapped out whole (a short hold of the lock the listener
-    // tries) and handed out from the copy.
-    if (drainedAt_ >= drained_.size())
-    {
-        drained_.clear();
-        drainedAt_ = 0;
-        const std::lock_guard<std::mutex> lock(editsMutex_);
-        std::swap(edits_, drained_);
-    }
-    if (drainedAt_ >= drained_.size())
-        return false;
-    edit = drained_[drainedAt_++];
-    return true;
+    return edits_.pop(edit);
 }
 
 float HostedPlugin::parameter(int index) const noexcept
@@ -397,30 +380,13 @@ bool HostedPlugin::supportsPresetFiles() const
     return const_cast<juce::AudioPluginInstance&>(*instance_).getVST3Client() != nullptr;
 }
 
-juce::File HostedPlugin::userPresetFolder() const
+PresetLocation HostedPlugin::presetLocation() const
 {
     const auto description = instance_->getPluginDescription();
-    const auto safe = [](const juce::String& s) { return juce::File::createLegalFileName(s).trim(); };
-    return juce::File::getSpecialLocation(juce::File::userDocumentsDirectory)
-        .getChildFile("VST3 Presets")
-        .getChildFile(safe(description.manufacturerName).isEmpty() ? "Unknown"
-                                                                   : safe(description.manufacturerName))
-        .getChildFile(safe(description.name).isEmpty() ? "Plugin" : safe(description.name));
-}
-
-std::vector<juce::File> HostedPlugin::userPresetFiles() const
-{
-    std::vector<juce::File> files;
-    const auto folder = userPresetFolder();
-    if (!folder.isDirectory())
-        return files;
-    for (const auto& f : folder.findChildFiles(juce::File::findFiles, true, "*.vstpreset"))
-        files.push_back(f);
-    std::sort(files.begin(),
-              files.end(),
-              [](const juce::File& a, const juce::File& b)
-              { return a.getFullPathName().compareIgnoreCase(b.getFullPathName()) < 0; });
-    return files;
+    return {"VST3 Presets",
+            description.manufacturerName.toStdString(),
+            description.name.toStdString(),
+            "vstpreset"};
 }
 
 bool HostedPlugin::loadPresetFile(const juce::File& file)
@@ -442,10 +408,7 @@ bool HostedPlugin::savePresetFile(const juce::File& file) const
     if (client == nullptr)
         return false;
     const auto data = client->getPreset();
-    if (data.getSize() == 0)
-        return false;
-    file.getParentDirectory().createDirectory();
-    return file.replaceWithData(data.getData(), data.getSize());
+    return writePresetFile(file, data.getData(), data.getSize());
 }
 
 std::string HostedPlugin::state() const

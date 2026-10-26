@@ -6,7 +6,6 @@
 #include "core/ProjectJson.h"
 #include "core/TempoMap.h"
 #include "engine/WavFile.h"
-#include "hosting/ClapPlugin.h"
 #include "plugins/Aurora.h"
 #include "plugins/BuiltIns.h"
 #include "plugins/ChannelStrip.h"
@@ -2561,9 +2560,9 @@ void ProjectSession::checkCrashedPlugins()
 void ProjectSession::poll()
 {
     engine_.collectGarbage();
-    // CLAP plugins' main-thread requests (callbacks, latency, flushes while the
+    // Hosted plugins' main-thread requests (callbacks, latency, flushes while the
     // device is stopped, GUI closures).
-    hosting::HostedClapPlugin::serviceAll(engine_.isRunning());
+    hosting::HostFactory::serviceHostedPlugins(engine_.isRunning());
     if (engine_.insertLatencyChanged() || engine_.insertRestartRequested())
         publish(); // a plugin changed its latency or asked for a restart: new snapshot
     checkCrashedPlugins();

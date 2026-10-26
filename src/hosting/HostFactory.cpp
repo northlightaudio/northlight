@@ -1,6 +1,7 @@
 #include "hosting/HostFactory.h"
 
 #include "engine/rt/RealtimeGuard.h"
+#include "hosting/ClapEditor.h"
 #include "hosting/ClapPlugin.h"
 #include "hosting/HostedPlugin.h"
 
@@ -24,6 +25,48 @@ std::string HostFactory::displayName(const std::string& typeName) const
     if (PluginRegistry::isHostedType(typeName))
         return "Missing plugin";
     return plugins::BuiltInFactory::displayName(typeName);
+}
+
+void HostFactory::serviceHostedPlugins(bool engineRunning)
+{
+    HostedClapPlugin::serviceAll(engineRunning);
+}
+
+PluginPresets* HostFactory::presetsFor(engine::InsertProcessor& live) noexcept
+{
+    if (auto* vst3 = dynamic_cast<HostedPlugin*>(&live))
+        return vst3;
+    return dynamic_cast<HostedClapPlugin*>(&live);
+}
+
+std::optional<PluginEditor> HostFactory::createEditor(engine::InsertProcessor& live)
+{
+    NORTHLIGHT_ASSERT_NOT_REALTIME("HostFactory::createEditor");
+    if (auto* vst3 = dynamic_cast<HostedPlugin*>(&live))
+    {
+        auto& instance = vst3->instance();
+        juce::AudioProcessorEditor* raw =
+            instance.hasEditor() ? instance.createEditorAndMakeActive() : nullptr;
+        if (raw == nullptr)
+            raw = new juce::GenericAudioProcessorEditor(instance);
+        PluginEditor editor;
+        editor.resizable = raw->isResizable();
+        editor.component.reset(raw);
+        return editor;
+    }
+    if (auto* clap = dynamic_cast<HostedClapPlugin*>(&live))
+    {
+        PluginEditor editor;
+        if (clap->hasEditor())
+        {
+            auto owned = std::make_unique<ClapEditor>(*clap);
+            editor.events = &owned->events;
+            editor.resizable = owned->isResizable();
+            editor.component = std::move(owned);
+        }
+        return editor;
+    }
+    return std::nullopt;
 }
 
 std::unique_ptr<engine::InsertProcessor> HostFactory::create(const std::string& typeName) const

@@ -223,9 +223,7 @@ add_library(northlight_ui STATIC
     Brand.h
     Brand.cpp
     ExportView.h
-    ExportView.cpp
-    ClapEditor.h
-    ClapEditor.cpp)
+    ExportView.cpp)
 
 target_include_directories(northlight_ui PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/..")
 target_include_directories(northlight_ui PRIVATE "${CMAKE_CURRENT_BINARY_DIR}/generated")

@@ -92,6 +92,13 @@ TEST_CASE("A CLAP plugin loads, delays by its latency, takes parameters and keep
     CHECK(processor->acceptsSidechain());
     CHECK_FALSE(clap->hasEditor());
     processor->prepare(48000.0, 256);
+    // The window reaches it through the factory without knowing the format: its
+    // presets, and no GUI of its own (the generic editor stands in).
+    CHECK(hosting::HostFactory::presetsFor(*processor) == clap);
+    const auto editor = hosting::HostFactory::createEditor(*processor);
+    REQUIRE(editor.has_value());
+    CHECK(editor->component == nullptr);
+    CHECK(editor->events == nullptr);
     CHECK(processor->latencySamples() == 32);
 
     // An impulse comes out 32 samples later at unity gain.
@@ -755,4 +762,53 @@ TEST_CASE("A move in a plugin's own controls is written in touch mode, and kept 
                           [](const core::AutomationPoint& p) { return std::abs(p.value - 0.7f) < 1.0e-4f; }));
     }
     folder.deleteRecursively();
+}
+
+TEST_CASE("A built-in has no hosted editor or presets", "[hosting][clap]")
+{
+    hosting::PluginRegistry registry;
+    hosting::HostFactory factory(registry);
+    auto gain = factory.create("northlight.gain");
+    REQUIRE(gain != nullptr);
+    CHECK(hosting::HostFactory::presetsFor(*gain) == nullptr);
+    CHECK_FALSE(hosting::HostFactory::createEditor(*gain).has_value());
+}
+
+namespace
+{
+struct FakePresets final : hosting::PluginPresets
+{
+    hosting::PresetLocation location;
+    std::string displayName() const override { return "Fake"; }
+    std::vector<std::string> factoryPrograms() const override { return {}; }
+    int currentProgram() const override { return -1; }
+    void setProgram(int) override {}
+    bool supportsPresetFiles() const override { return true; }
+    hosting::PresetLocation presetLocation() const override { return location; }
+    bool loadPresetFile(const juce::File&) override { return false; }
+    bool savePresetFile(const juce::File& file) const override { return writePresetFile(file, "abc", 3); }
+};
+} // namespace
+
+TEST_CASE("Preset files live in Documents/<root>/<vendor>/<plugin>, sorted by path", "[hosting][presets]")
+{
+    FakePresets presets;
+    presets.location = {"Northlight Test Presets", "Ven:dor", "", "fakepreset"};
+    const auto folder = presets.userPresetFolder();
+    CHECK(folder.getParentDirectory().getParentDirectory().getFileName() == "Northlight Test Presets");
+    CHECK(folder.getFileName() == "Plugin"); // an empty name stands in
+    CHECK_FALSE(folder.getParentDirectory().getFileName().containsChar(':'));
+    CHECK(presets.presetFileExtension() == "fakepreset");
+
+    const auto root = folder.getParentDirectory().getParentDirectory();
+    root.deleteRecursively();
+    CHECK(presets.userPresetFiles().empty());
+    REQUIRE(presets.savePresetFile(folder.getChildFile("b.fakepreset")));
+    REQUIRE(presets.savePresetFile(folder.getChildFile("A.fakepreset")));
+    REQUIRE(presets.savePresetFile(folder.getChildFile("other.txt")));
+    const auto files = presets.userPresetFiles();
+    REQUIRE(files.size() == 2);
+    CHECK(files[0].getFileName() == "A.fakepreset");
+    CHECK(files[1].getFileName() == "b.fakepreset");
+    root.deleteRecursively();
 }

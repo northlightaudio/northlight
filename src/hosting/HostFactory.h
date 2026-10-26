@@ -1,6 +1,8 @@
 #pragma once
 
 #include "engine/Insert.h"
+#include "hosting/PluginEditor.h"
+#include "hosting/PluginPresets.h"
 #include "hosting/PluginRegistry.h"
 #include "plugins/BuiltIns.h"
 
@@ -8,6 +10,7 @@
 
 #include <map>
 #include <memory>
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -36,6 +39,17 @@ public:
     // until clearFailures() (after a rescan), so a recompile does not reload DLLs.
     const std::map<std::string, std::string>& failures() const noexcept { return failures_; }
     void clearFailures() { failures_.clear(); }
+    // ----- what the rest of the app needs from a hosted plugin, without knowing
+    // its format (message thread)
+    // The main-thread service hosted plugins need while they live (pending CLAP
+    // callbacks, latency refreshes, GUI closures and, while the engine is not
+    // running, parameter flushes): the session calls it from its poll.
+    static void serviceHostedPlugins(bool engineRunning);
+    // The Presets menu's view of a live hosted plugin; null for a built-in.
+    static PluginPresets* presetsFor(engine::InsertProcessor& live) noexcept;
+    // The plugin's editor (see PluginEditor); nothing for a built-in.
+    static std::optional<PluginEditor> createEditor(engine::InsertProcessor& live);
+
     // How the built-in Sampler decodes its files (the app's media loader).
     void setSampleLoader(plugins::sampler::Loader loader) { builtIns_.setSampleLoader(std::move(loader)); }
 

@@ -2,6 +2,7 @@
 
 #include "engine/Insert.h"
 #include "engine/rt/SpscQueue.h"
+#include "hosting/ParameterEditQueue.h"
 #include "hosting/PluginPresets.h"
 
 #include <juce_core/juce_core.h>
@@ -127,12 +128,10 @@ public:
     int currentProgram() const override { return -1; }
     void setProgram(int) override {}
     bool supportsPresetFiles() const override { return state_ != nullptr; }
-    juce::File userPresetFolder() const override;
-    std::vector<juce::File> userPresetFiles() const override;
+    // Documents/CLAP Presets/<vendor>/<plugin>, each file the base64 state blob.
+    PresetLocation presetLocation() const override { return {"CLAP Presets", vendor_, name_, "clappreset"}; }
     bool loadPresetFile(const juce::File& file) override;
     bool savePresetFile(const juce::File& file) const override;
-    static constexpr const char* presetExtension = "clappreset";
-    std::string presetFileExtension() const override { return presetExtension; }
 
     // ----- editor -----------------------------------------------------------------
     bool hasEditor() const noexcept { return gui_ != nullptr; }
@@ -285,9 +284,9 @@ private:
     std::vector<clap_param_info_t> paramInfos_;
     std::vector<std::atomic<float>> values_;              // last value the host sent or read, per parameter
     std::unique_ptr<rt::SpscQueue<ParamChange>> pending_; // host -> audio thread
-    // Edits the plugin made itself (its output events) -> the message thread. The
-    // producer is process() or, while nothing processes, a flush: never both.
-    std::unique_ptr<rt::SpscQueue<ParameterEdit>> edits_;
+    // Edits the plugin made itself (its output events) -> the message thread: from
+    // process() or, while nothing processes, a flush.
+    std::unique_ptr<ParameterEditQueue> edits_;
     InEvents in_;
     OutEvents out_;
 

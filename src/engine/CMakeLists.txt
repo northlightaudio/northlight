@@ -4,6 +4,8 @@ add_library(northlight_rt STATIC
     rt/RealtimeGuard.h
     rt/RealtimeGuard.cpp
     rt/SpscQueue.h
+    rt/MpscQueue.h
+    rt/MpscQueue.h
     rt/SnapshotPublisher.h
     rt/CallbackStats.h
     rt/Denormals.h

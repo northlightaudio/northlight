@@ -457,6 +457,13 @@ know nothing format-specific.
   loader.
 - **VST3** is hosted through JUCE. **CLAP** is hosted directly against its C ABI,
   following its thread rules, with parameter events queued into the next block.
+  Edits a plugin makes itself (its editor, its output events) reach the message
+  thread through one `hosting::ParameterEditQueue`, a bounded multi-producer queue
+  that never blocks (a VST3 listener can fire on any thread, the audio thread
+  among them). The rest of the app reaches a hosted plugin's editor, presets and
+  main-thread service through `HostFactory` (`createEditor`, `presetsFor`,
+  `serviceHostedPlugins`) without knowing its format; preset files for both
+  formats live in `Documents/<format> Presets/<vendor>/<plugin>`.
 - **Scanning** runs one plugin file per child process with a timeout. A crash, hang
   or bad result blocklists the file with its reason, so a bad plugin cannot take the
   application down while it is inspected. The registry records modification times,

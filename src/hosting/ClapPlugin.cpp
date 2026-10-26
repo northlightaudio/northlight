@@ -306,7 +306,7 @@ bool HostedClapPlugin::initialise(const std::string& path, const std::string& pl
     }
     readParameters();
     pending_ = std::make_unique<rt::SpscQueue<ParamChange>>(pendingCapacity);
-    edits_ = std::make_unique<rt::SpscQueue<ParameterEdit>>(pendingCapacity);
+    edits_ = std::make_unique<ParameterEditQueue>(pendingCapacity);
     in_.list.ctx = &in_;
     in_.list.size = &InEvents::size;
     in_.list.get = &InEvents::get;
@@ -963,32 +963,6 @@ void HostedClapPlugin::setState(const std::string& state)
 
 // ----- presets ----------------------------------------------------------------------------------
 
-juce::File HostedClapPlugin::userPresetFolder() const
-{
-    const auto safe = [](const std::string& s)
-    { return juce::File::createLegalFileName(juce::String::fromUTF8(s.c_str())).trim(); };
-    return juce::File::getSpecialLocation(juce::File::userDocumentsDirectory)
-        .getChildFile("CLAP Presets")
-        .getChildFile(safe(vendor_).isEmpty() ? "Unknown" : safe(vendor_))
-        .getChildFile(safe(name_).isEmpty() ? "Plugin" : safe(name_));
-}
-
-std::vector<juce::File> HostedClapPlugin::userPresetFiles() const
-{
-    std::vector<juce::File> files;
-    const auto folder = userPresetFolder();
-    if (!folder.isDirectory())
-        return files;
-    for (const auto& f :
-         folder.findChildFiles(juce::File::findFiles, true, juce::String("*.") + presetExtension))
-        files.push_back(f);
-    std::sort(files.begin(),
-              files.end(),
-              [](const juce::File& a, const juce::File& b)
-              { return a.getFullPathName().compareIgnoreCase(b.getFullPathName()) < 0; });
-    return files;
-}
-
 bool HostedClapPlugin::loadPresetFile(const juce::File& file)
 {
     NORTHLIGHT_ASSERT_NOT_REALTIME("HostedClapPlugin::loadPresetFile");
@@ -1002,11 +976,8 @@ bool HostedClapPlugin::loadPresetFile(const juce::File& file)
 bool HostedClapPlugin::savePresetFile(const juce::File& file) const
 {
     NORTHLIGHT_ASSERT_NOT_REALTIME("HostedClapPlugin::savePresetFile");
-    const auto blob = state();
-    if (blob.empty())
-        return false;
-    file.getParentDirectory().createDirectory();
-    return file.replaceWithText(juce::String(blob));
+    const auto blob = state(); // base64: plain ASCII
+    return writePresetFile(file, blob.data(), blob.size());
 }
 
 // ----- editor -----------------------------------------------------------------------------------

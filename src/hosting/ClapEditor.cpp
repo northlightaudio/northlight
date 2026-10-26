@@ -1,4 +1,4 @@
-#include "ui/ClapEditor.h"
+#include "hosting/ClapEditor.h"
 
 #if JUCE_WINDOWS
 #ifndef WIN32_LEAN_AND_MEAN
@@ -7,7 +7,7 @@
 #include <windows.h>
 #endif
 
-namespace northlight::ui
+namespace northlight::hosting
 {
 
 ClapEditor::ClapEditor(hosting::HostedClapPlugin& plugin) : plugin_(plugin)
@@ -67,10 +67,10 @@ void ClapEditor::open()
     {
         opened_ = true;
         setSize(w, h);
-        if (onPluginResized)
-            onPluginResized(w, h);
-        if (onResizableKnown)
-            onResizableKnown(plugin_.editorIsResizable());
+        if (events.resized)
+            events.resized(w, h);
+        if (events.resizableKnown)
+            events.resizableKnown(plugin_.editorIsResizable());
         startTimerHz(20);
     }
 #endif
@@ -92,17 +92,17 @@ void ClapEditor::timerCallback()
         // Closed from the plugin's side (host.gui.closed): tell the window once.
         opened_ = false;
         stopTimer();
-        if (onPluginClosed)
-            onPluginClosed();
+        if (events.closed)
+            events.closed();
         return;
     }
     int w = 0, h = 0;
     if (plugin_.takeResizeRequest(w, h) && w > 0 && h > 0)
     {
         setSize(w, h);
-        if (onPluginResized)
-            onPluginResized(w, h);
+        if (events.resized)
+            events.resized(w, h);
     }
 }
 
-} // namespace northlight::ui
+} // namespace northlight::hosting

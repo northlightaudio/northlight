@@ -12,6 +12,16 @@ target_link_libraries(northlight_hosting_core
 
 add_library(northlight_hosting STATIC
     PluginPresets.h
+    PluginPresets.cpp
+    PluginEditor.h
+    ParameterEditQueue.h
+    ClapEditor.h
+    ClapEditor.cpp
+    PluginPresets.cpp
+    PluginEditor.h
+    ParameterEditQueue.h
+    ClapEditor.h
+    ClapEditor.cpp
     PluginScanner.h
     PluginScanner.cpp
     HostedPlugin.h

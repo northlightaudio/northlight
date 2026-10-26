@@ -2,12 +2,10 @@
 
 #include "core/Command.h"
 #include "engine/Meters.h"
-#include "hosting/ClapPlugin.h"
-#include "hosting/HostedPlugin.h"
+#include "hosting/HostFactory.h"
 #include "plugins/BuiltIns.h"
 #include "plugins/ChannelStrip.h"
 #include "plugins/FxTracks.h"
-#include "ui/ClapEditor.h"
 #include "ui/ColourMenu.h"
 #include "ui/Db.h"
 #include "ui/FrameStats.h"
@@ -241,9 +239,8 @@ void MixerView::openInsertEditor(core::Id channelId, core::Id insertId)
     if (hosting::PluginRegistry::isHostedType(insert->type))
     {
         const auto live = liveInsert ? liveInsert(insertId) : nullptr;
-        auto* vst3 = dynamic_cast<hosting::HostedPlugin*>(live.get());
-        auto* clap = dynamic_cast<hosting::HostedClapPlugin*>(live.get());
-        if (vst3 == nullptr && clap == nullptr)
+        auto* presets = live != nullptr ? hosting::HostFactory::presetsFor(*live) : nullptr;
+        if (presets == nullptr)
             return; // not loaded (missing plugin): nothing to show
         const juce::String pluginName = juce::String::fromUTF8(insertDisplayName(insert->type).c_str());
         const juce::String trackName = juce::String::fromUTF8(channel->name.c_str());
@@ -252,37 +249,18 @@ void MixerView::openInsertEditor(core::Id channelId, core::Id insertId)
         { return loadSetting ? loadSetting(key) : std::string{}; };
         const bool pinned = setting("plugins.pin") == "1";
 
-        // The editor component for the format: the VST3's own (or JUCE's generic
-        // one), or the CLAP GUI embedded in a native child window.
-        std::unique_ptr<juce::Component> editor;
-        bool resizable = false;
-        hosting::PluginPresets* presets = nullptr;
-        ClapEditor* clapEditor = nullptr;
-        if (vst3 != nullptr)
+        // The plugin's own editor, whatever its format.
+        auto plugin = hosting::HostFactory::createEditor(*live);
+        if (!plugin)
+            return;
+        std::unique_ptr<juce::Component> editor = std::move(plugin->component);
+        const bool resizable = plugin->resizable;
         {
-            auto& instance = vst3->instance();
-            juce::AudioProcessorEditor* raw =
-                instance.hasEditor() ? instance.createEditorAndMakeActive() : nullptr;
-            if (raw == nullptr)
-                raw = new juce::GenericAudioProcessorEditor(instance);
-            resizable = raw->isResizable();
-            editor.reset(raw);
-            presets = vst3;
-        }
-        else
-        {
-            if (clap->hasEditor())
-            {
-                auto owned = std::make_unique<ClapEditor>(*clap);
-                clapEditor = owned.get();
-                resizable = owned->isResizable();
-                editor = std::move(owned);
-            }
-            else
+            if (editor == nullptr)
             {
                 // No GUI: the generic parameter editor over the model insert.
                 auto generic =
-                    std::make_unique<InsertEditor>(channelId, insertId, *clap, clap->displayName(), true);
+                    std::make_unique<InsertEditor>(channelId, insertId, *live, presets->displayName(), true);
                 generic->onCommand = [this](std::unique_ptr<core::Command> c)
                 {
                     if (onCommand)
@@ -303,7 +281,6 @@ void MixerView::openInsertEditor(core::Id channelId, core::Id insertId)
                 generic->setInsert(*insert);
                 editor = std::move(generic);
             }
-            presets = clap;
         }
         auto window = std::make_unique<PluginWindow>(channelId,
                                                      insertId,
@@ -316,20 +293,20 @@ void MixerView::openInsertEditor(core::Id channelId, core::Id insertId)
                                                      format,
                                                      pinned);
         juce::Component::SafePointer<MixerView> safe(this);
-        if (clapEditor != nullptr)
+        if (plugin->events != nullptr)
         {
             juce::Component::SafePointer<PluginWindow> weak(window.get());
-            clapEditor->onPluginResized = [weak](int w, int h)
+            plugin->events->resized = [weak](int w, int h)
             {
                 if (weak != nullptr)
                     weak->editorSizeChanged(w, h);
             };
-            clapEditor->onResizableKnown = [weak](bool canResize)
+            plugin->events->resizableKnown = [weak](bool canResize)
             {
                 if (weak != nullptr)
                     weak->setResizable(canResize, false);
             };
-            clapEditor->onPluginClosed = [safe, insertId]
+            plugin->events->closed = [safe, insertId]
             {
                 // From the editor's timer: drop the window on the next message.
                 juce::MessageManager::callAsync(

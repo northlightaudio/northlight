@@ -6,12 +6,10 @@
 
 #include "core/Command.h"
 #include "engine/Snapshot.h"
-#include "hosting/ClapPlugin.h"
-#include "hosting/HostedPlugin.h"
+#include "hosting/PluginRegistry.h"
 #include "plugins/BuiltIns.h"
 #include "plugins/ChannelStrip.h"
 #include "plugins/FxTracks.h"
-#include "ui/ClapEditor.h"
 #include "ui/ColourMenu.h"
 #include "ui/Db.h"
 #include "ui/FrameStats.h"
