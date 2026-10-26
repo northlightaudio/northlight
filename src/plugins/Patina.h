@@ -3,6 +3,7 @@
 #include "engine/Insert.h"
 #include "engine/rt/TelemetryRing.h"
 #include "plugins/EffectPresets.h"
+#include "plugins/patina/Curves.h"
 
 #include <array>
 #include <atomic>
@@ -21,6 +22,10 @@
 // stage at once, from untouched to ruined. An output section (tilt, low and
 // high cut, width, gain) finishes it. No latency: Drift delays the signal by
 // its own wobble only, as a tape machine does. JUCE-free.
+//
+// The processor is in Patina.cpp; each stage is a class of its own in
+// plugins/patina/ (Heat, Chamber, Drift, Grain, Wear, Crush), and the curves
+// the processor and the card share are in plugins/patina/Curves.h.
 
 namespace northlight::plugins::patina
 {
@@ -126,37 +131,6 @@ enum Flavour
     mulaw,  // mu-law companding: an 8-bit telephone or drum machine
     jitter, // no filters and an unsteady clock
 };
-
-// The parameter that is each stage's switch, and its main amount.
-int onParam(int stage) noexcept;
-int breathParam(int stage) noexcept;
-
-// Age over an amount (both 0..1, Age 0.5 = the amount as set): below the middle
-// Age scales the amount toward nothing; above it, the amount moves toward full
-// in proportion to how much of it is used, so a light touch stays light and a
-// heavy one heads for ruin.
-float aged(float amount, float ageFraction) noexcept;
-
-// Heat's static curve as the processor runs it (without the emphasis filters):
-// the output for input x at an amount (0..1), level-compensated.
-float heatTransfer(int character, float amount, float x) noexcept;
-// The drive (dB) for an amount.
-float heatDriveDb(float amount) noexcept;
-// The chamber's decay time (seconds to fall 60 dB) for a space and decay (0..1).
-float chamberDecaySeconds(int space, float decay) noexcept;
-// Pace's rate (Hz) for a pace (0..1): 0.05 to 1.5 Hz.
-float paceHz(float pace) noexcept;
-// Drift rate's scale of the machine's wow and flutter for a rate (0..1): 0.5x to 2x.
-float driftRateScale(float rate) noexcept;
-// Vinyl crackle's clicks a second for a texture (0..1): 2 to 300.
-float crackleRate(float texture) noexcept;
-// Wear's high cut (Hz) for a loss (0..1).
-float wearCutoffHz(float loss) noexcept;
-// Crush's bits and rate as an amount (0 = clean .. 1 = the most) and back.
-float crushBitsFor(float amount) noexcept;
-float crushRateFor(float amount) noexcept;
-float crushAmountOfBits(float bits) noexcept;
-float crushAmountOfRate(float hz) noexcept;
 
 // What the card's stage tiles show, live. The real-time thread publishes a
 // frame every 5 ms; the UI reads them (lock-free, like engine::ProcessorFeedback).

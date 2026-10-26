@@ -353,7 +353,12 @@ know nothing format-specific.
   effects (Glue, Patina, Exciter, Bloom, Tape Echo, Stereo Widener, Corona, and the guitar pedals
   Gravity, Flare, Comet, Tide and Polaris, declared together in `plugins/Pedals.h`) each have a file
   of their own and a card in `src/ui/strip`; what their frame values and taps carry
-  is described at the top of each processor. Bloom's reverb core is
+  is described at the top of each processor. Patina (`plugins/Patina.cpp`) composes its six
+  stages, each a class in `plugins/patina/` with its own `prepare`, `reset`, `controls`
+  (once a 32-sample sub-block) and per-sample step: `Heat`, `Chamber` (its room, springs
+  and plate), `Drift`, `Grain`, `Wear` and `Crush`, sharing the small parts in
+  `patina/Parts.h`; the processor keeps the switches' fades, Age and Breath, the output
+  section and the telemetry, and `patina/Curves.h` holds the mappings the card draws. Bloom's reverb core is
   `plugins/FeedbackNetwork`, for any reverb that wants one (Vesper next,
   [plans/vesper.md](plans/vesper.md)): eight modulated lines with an allpass each, a
   Householder mix, input diffusers, damping and low cut as shelves in the loop,

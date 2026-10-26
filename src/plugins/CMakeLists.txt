@@ -53,6 +53,21 @@ add_library(northlight_plugins STATIC
     Orbit.cpp
     Patina.h
     Patina.cpp
+    patina/Curves.h
+    patina/Curves.cpp
+    patina/Parts.h
+    patina/Heat.h
+    patina/Heat.cpp
+    patina/Chamber.h
+    patina/Chamber.cpp
+    patina/Drift.h
+    patina/Drift.cpp
+    patina/Grain.h
+    patina/Grain.cpp
+    patina/Wear.h
+    patina/Wear.cpp
+    patina/Crush.h
+    patina/Crush.cpp
     Exciter.h
     Exciter.cpp
     Yin.h
