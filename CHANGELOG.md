@@ -220,6 +220,13 @@ Northlight has not had a release yet. The first release, 0.1.0, will include:
 
 ### Fixed
 
+- A project with one damaged note, automation point, controller event or comp
+  segment opens, without that entry, instead of failing to open at all.
+- Moving a clip to a track that has just been removed leaves it where it was; before,
+  it could vanish from its own track.
+- The undo history keeps the last 1000 steps (and at most about 256 MB of them), so
+  a long session no longer grows its memory without end; a fader drag is one step
+  that holds one change, not one per pixel.
 - The master's row in the arrange view shows its meter; the arrange view's meters
   no longer depend on the mixer's own timer.
 
