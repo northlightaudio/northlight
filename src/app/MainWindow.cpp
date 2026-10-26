@@ -3,6 +3,7 @@
 #include "CrashReports.h"
 #include "ProjectSession.h"
 #include "UserSettings.h"
+#include "app/Benchmarks.h"
 #include "app/WindowPlacement.h"
 #include "audio/AudioDeviceLayer.h"
 #include "core/Command.h"
@@ -395,300 +396,6 @@ public:
                 session_.scanPlugins(false);
         }
         refreshHeader();
-    }
-
-    // --benchmark-ui (11.8): plays the project with the mixer open, scrolls the
-    // arrange view a screen every second, and after `seconds` prints the frame
-    // interval and paint percentiles to stdout and quits.
-    void runBenchmark(int seconds)
-    {
-        benchmarkEndMs_ = juce::Time::getMillisecondCounterHiRes() + seconds * 1000.0;
-        panels_.show(ui::PanelId::mixer);
-        ui::FrameStats::reset();
-        frames_.clear();
-        session_.returnToStart();
-        session_.play();
-    }
-
-    // --benchmark-panels: with the Editor in the dock, opens and closes the
-    // inspector in the side panel `cycles` times and prints the intervals between
-    // the frames of the slides that reached the screen (16.7 ms is 60 fps), then
-    // quits.
-    void runPanelBenchmark(int cycles)
-    {
-        if (!session_.project().tracks.empty())
-            select(session_.project().tracks.front().id);
-        panels_.show(ui::PanelId::editor);
-        panels_.hide(ui::PanelId::browser);
-        panels_.hide(ui::PanelId::inspector);
-        const double start = juce::Time::getMillisecondCounterHiRes() + 1500.0; // let it settle first
-        auto toggles = std::make_shared<int>(0);
-        dragBenchmark_ = std::make_unique<juce::TimedCallback>(
-            [this, start, cycles, toggles]
-            {
-                if (juce::Time::getMillisecondCounterHiRes() < start)
-                    return;
-                if (*toggles == 0)
-                {
-                    slidePaints_.clear();
-                    sideSplitter_.paintTimes = &slidePaints_;
-                }
-                if (*toggles < 2 * cycles)
-                {
-                    panels_.toggle(ui::PanelId::inspector);
-                    ++*toggles;
-                    return;
-                }
-                dragBenchmark_->stopTimer();
-                sideSplitter_.paintTimes = nullptr;
-                // Intervals within a slide (a gap of over 150 ms is the pause
-                // between one slide and the next).
-                std::vector<double> intervals;
-                for (size_t k = 1; k < slidePaints_.size(); ++k)
-                    if (const double d = slidePaints_[k] - slidePaints_[k - 1]; d < 150.0)
-                        intervals.push_back(d);
-                std::sort(intervals.begin(), intervals.end());
-                const auto at = [&](double q)
-                {
-                    return intervals.empty() ? 0.0
-                                             : intervals[std::min(intervals.size() - 1,
-                                                                  static_cast<size_t>(intervals.size() * q))];
-                };
-                juce::String report;
-                report << "benchmark-panels: " << cycles << " open/close cycles, " << intervals.size()
-                       << " frames shown, " << getWidth() << "x" << getHeight() << "; ms between frames: p50 "
-                       << juce::String(at(0.5), 1) << " p95 " << juce::String(at(0.95), 1) << " max "
-                       << juce::String(intervals.empty() ? 0.0 : intervals.back(), 1) << "\n";
-                std::printf("%s", report.toRawUTF8());
-                std::fflush(stdout);
-                juce::MessageManager::callAsync([] { juce::JUCEApplication::getInstance()->quit(); });
-            });
-        dragBenchmark_->startTimer(450);
-    }
-
-    // --benchmark-strip-drag: a knob drag on the first track's strip EQ (a
-    // parameter command every 8 ms, like a fast mouse) while the strip shows;
-    // prints the intervals between the strip's display ticks, then quits.
-    void runStripDragBenchmark(int seconds)
-    {
-        // The first track whose strip has an EQ; with none, say so and quit (a
-        // benchmark that never quits hangs the script that ran it).
-        core::Id trackId = core::invalidId, eq = core::invalidId;
-        for (const auto& track : session_.project().tracks)
-        {
-            for (const auto& m : track.strip)
-                if (m.type == plugins::strip::types::eq)
-                    eq = m.id;
-            if (eq != core::invalidId)
-            {
-                trackId = track.id;
-                break;
-            }
-        }
-        if (eq == core::invalidId)
-        {
-            std::printf("benchmark-strip-drag: no track has a strip EQ\n");
-            std::fflush(stdout);
-            juce::MessageManager::callAsync([] { juce::JUCEApplication::getInstance()->quit(); });
-            return;
-        }
-        select(trackId);
-        panels_.show(ui::PanelId::editor);
-        const double start = juce::Time::getMillisecondCounterHiRes() + 1000.0; // let it settle first
-        const double end = start + seconds * 1000.0;
-        dragBenchmark_ = std::make_unique<juce::TimedCallback>(
-            [this, trackId, eq, start, end]
-            {
-                const double now = juce::Time::getMillisecondCounterHiRes();
-                if (now < start)
-                    return;
-                if (!dragging_)
-                {
-                    dragging_ = true;
-                    ui::strip::ChannelStripView::startMeasuring();
-                    session_.beginGesture("Band 2 gain");
-                }
-                const int gain =
-                    plugins::strip::eq::paramIndex(plugins::strip::eq::band2, plugins::strip::eq::gain);
-                session_.execute(std::make_unique<core::SetInsertParameter>(
-                    trackId, eq, gain, static_cast<float>(12.0 * std::sin(now * 0.004))));
-                if (now < end)
-                    return;
-                session_.endGesture();
-                dragBenchmark_->stopTimer();
-                auto intervals = ui::strip::ChannelStripView::takeTickIntervals();
-                std::sort(intervals.begin(), intervals.end());
-                const auto at = [&](double q)
-                {
-                    return intervals.empty() ? 0.0
-                                             : intervals[std::min(intervals.size() - 1,
-                                                                  static_cast<size_t>(intervals.size() * q))];
-                };
-                juce::String report;
-                report << "benchmark-strip-drag: " << intervals.size() << " strip ticks in "
-                       << juce::String((end - start) / 1000.0, 1) << " s ("
-                       << juce::String(intervals.size() * 1000.0 / (end - start), 1)
-                       << " per second); interval ms p50 " << juce::String(at(0.5), 1) << " p95 "
-                       << juce::String(at(0.95), 1) << " max "
-                       << juce::String(intervals.empty() ? 0.0 : intervals.back(), 1) << "\n";
-                std::printf("%s", report.toRawUTF8());
-                std::fflush(stdout);
-                juce::MessageManager::callAsync([] { juce::JUCEApplication::getInstance()->quit(); });
-            });
-        dragBenchmark_->startTimer(8);
-    }
-
-    // --benchmark-hover: moves the pointer from knob to knob over the open editor
-    // windows, a knob a frame, for `seconds`, and times every paint of those
-    // windows meanwhile (the body and its children, by the window's own renderer);
-    // prints the percentiles, then quits. The hover goes through the knob's own
-    // handlers, so nothing reaches the desktop.
-    void runHoverBenchmark(int seconds)
-    {
-        const double start = juce::Time::getMillisecondCounterHiRes() + 1500.0; // let it settle first
-        const double end = start + seconds * 1000.0;
-        auto state = std::make_shared<HoverRun>();
-        dragBenchmark_ = std::make_unique<juce::TimedCallback>(
-            [this, start, end, state]
-            {
-                const double now = juce::Time::getMillisecondCounterHiRes();
-                if (now < start)
-                    return;
-                if (state->knobs.empty())
-                {
-                    state->knobs = hoverTargets();
-                    ui::InsertEditor::paintTimes = &state->ms;
-                    if (state->knobs.empty())
-                    {
-                        std::printf("benchmark-hover: no knobs to hover\n");
-                        std::fflush(stdout);
-                        juce::MessageManager::callAsync([] { juce::JUCEApplication::getInstance()->quit(); });
-                        dragBenchmark_->stopTimer();
-                        return;
-                    }
-                }
-                if (now < end)
-                {
-                    auto& knobs = state->knobs;
-                    const auto event = [](juce::Component& c)
-                    {
-                        const auto at = c.getLocalBounds().getCentre().toFloat();
-                        const auto time = juce::Time::getCurrentTime();
-                        return juce::MouseEvent(juce::Desktop::getInstance().getMainMouseSource(),
-                                                at,
-                                                juce::ModifierKeys(),
-                                                0.0f,
-                                                0.0f,
-                                                0.0f,
-                                                0.0f,
-                                                0.0f,
-                                                &c,
-                                                &c,
-                                                time,
-                                                at,
-                                                time,
-                                                0,
-                                                false);
-                    };
-                    if (auto* last = state->previous.getComponent())
-                        last->mouseExit(event(*last));
-                    auto* knob = knobs[state->next++ % knobs.size()].getComponent();
-                    if (knob == nullptr)
-                        return;
-                    knob->mouseEnter(event(*knob));
-                    state->previous = knob;
-                    return;
-                }
-                dragBenchmark_->stopTimer();
-                ui::InsertEditor::paintTimes = nullptr;
-                auto& ms = state->ms;
-                std::sort(ms.begin(), ms.end());
-                const auto at = [&](double q)
-                {
-                    return ms.empty() ? 0.0 : ms[std::min(ms.size() - 1, static_cast<size_t>(ms.size() * q))];
-                };
-                juce::String report;
-                report << "benchmark-hover: " << ms.size() << " hovers over " << state->knobs.size()
-                       << " knobs; editor paint ms p50 " << juce::String(at(0.5), 2) << " p95 "
-                       << juce::String(at(0.95), 2) << " max "
-                       << juce::String(ms.empty() ? 0.0 : ms.back(), 2) << "\n";
-                std::printf("%s", report.toRawUTF8());
-                std::fflush(stdout);
-                juce::MessageManager::callAsync([] { juce::JUCEApplication::getInstance()->quit(); });
-            });
-        dragBenchmark_->startTimer(16);
-    }
-
-    struct HoverRun
-    {
-        std::vector<juce::Component::SafePointer<ui::Knob>> knobs;
-        juce::Component::SafePointer<ui::Knob> previous;
-        size_t next = 0;
-        std::vector<double> ms;
-    };
-
-    // The knobs on the open editor windows.
-    std::vector<juce::Component::SafePointer<ui::Knob>> hoverTargets()
-    {
-        std::vector<juce::Component::SafePointer<ui::Knob>> out;
-        std::function<void(juce::Component&)> collect = [&](juce::Component& c)
-        {
-            for (auto* child : c.getChildren())
-            {
-                if (!child->isVisible())
-                    continue;
-                if (auto* k = dynamic_cast<ui::Knob*>(child))
-                    out.emplace_back(k);
-                collect(*child);
-            }
-        };
-        auto& desktop = juce::Desktop::getInstance();
-        for (int i = 0; i < desktop.getNumComponents(); ++i)
-            if (auto* top = desktop.getComponent(i);
-                top != nullptr && top != getTopLevelComponent() && top->isVisible())
-                collect(*top);
-        return out;
-    }
-
-    void benchmarkTick()
-    {
-        if (benchmarkEndMs_ <= 0.0)
-            return;
-        if (ticks_ % 30 == 0)
-            tracks_.setScroll(tracks_.scrollPosition() + tracks_.visibleSamplesForBenchmark());
-        if (juce::Time::getMillisecondCounterHiRes() < benchmarkEndMs_)
-            return;
-        benchmarkEndMs_ = 0.0;
-        session_.stop();
-        std::vector<double> sorted(frames_.begin(), frames_.end());
-        std::sort(sorted.begin(), sorted.end());
-        const auto at = [&](double q)
-        {
-            return sorted.empty()
-                       ? 0.0
-                       : sorted[std::min(sorted.size() - 1, static_cast<size_t>(sorted.size() * q))];
-        };
-        const auto paints = ui::FrameStats::summary();
-        const auto stats = audio_.callback().stats().summary();
-        juce::String report;
-        report << "benchmark-ui: tracks " << session_.project().tracks.size() << ", " << getWidth() << "x"
-               << getHeight() << " at "
-               << juce::String(juce::Desktop::getInstance().getDisplays().getPrimaryDisplay()->scale * 100.0,
-                               0)
-               << "%\n"
-               << "frame interval ms: p50 " << juce::String(at(0.5), 2) << " p99 "
-               << juce::String(at(0.99), 2) << " max "
-               << juce::String(sorted.empty() ? 0.0 : sorted.back(), 2) << " (" << sorted.size()
-               << " frames)\n"
-               << "paint ms (arrange + mixer): p50 " << juce::String(paints.p50Ms, 2) << " p99 "
-               << juce::String(paints.p99Ms, 2) << " max " << juce::String(paints.maxMs, 2) << " ("
-               << paints.frames << " paints)\n"
-               << "audio load: p50 " << juce::String(stats.p50 * 100.0, 1) << "% p99 "
-               << juce::String(stats.p99 * 100.0, 1) << "% max " << juce::String(stats.max * 100.0, 1)
-               << "%\n";
-        std::printf("%s", report.toRawUTF8());
-        std::fflush(stdout);
-        juce::JUCEApplication::getInstance()->quit();
     }
 
     // The folder new projects are saved to and opened from.
@@ -1661,7 +1368,7 @@ private:
         if (ticks_ % 15 == 0)
             refreshStatus();
         updateHoverHint();
-        benchmarkTick();
+        benchmarks_.tick(ticks_);
         if (recording != lastRecording_)
         {
             lastRecording_ = recording;
@@ -2971,8 +2678,6 @@ private:
     const ui::Theme& theme_ = ui::Theme::dark();
     double lastValuesRefreshMs_ = 0.0;
     bool pendingParametersOnly_ = true; // the values refresh due covers parameters only
-    std::unique_ptr<juce::TimedCallback> dragBenchmark_;
-    bool dragging_ = false;
     bool valuesRefreshPending_ = false;
     ui::HeaderBar header_;
     ui::Selection selection_;         // before the views: they are told about it
@@ -3034,11 +2739,18 @@ private:
     int diskGapsToasted_ = 0;
     std::uint64_t diskBaseline_ = 0;
     double lastDropoutToastMs_ = 0.0;
-    double benchmarkEndMs_ = 0.0;
-    bool slideCached_ = false;        // the views are drawn from cached images during a panel slide
-    std::vector<double> slidePaints_; // --benchmark-panels
+    bool slideCached_ = false; // the views are drawn from cached images during a panel slide
     juce::Component::SafePointer<juce::Component> hoverComponent_;
     double hoverSinceMs_ = 0.0;
+    // The developer benchmarks (Benchmarks.h); last, since they refer to the parts above.
+    Benchmarks benchmarks_{{*this,
+                            session_,
+                            audio_,
+                            tracks_,
+                            panels_,
+                            sideSplitter_.paintTimes,
+                            frames_,
+                            [this](core::Id channel) { select(channel); }}};
 };
 
 // ----- secondary windows -------------------------------------------------------------------
@@ -3401,13 +3113,13 @@ void MainWindow::muteBreathsInEditor()
 void MainWindow::runStripDragBenchmark(int seconds)
 {
     if (auto* content = content_)
-        content->runStripDragBenchmark(seconds);
+        content->benchmarks_.runStripDragBenchmark(seconds);
 }
 
 void MainWindow::runHoverBenchmark(int seconds)
 {
     if (auto* content = content_)
-        content->runHoverBenchmark(seconds);
+        content->benchmarks_.runHoverBenchmark(seconds);
 }
 
 void MainWindow::showAutomation(core::Id trackId)
@@ -3583,13 +3295,13 @@ void MainWindow::removeLastBus()
 void MainWindow::runPanelBenchmark(int cycles)
 {
     if (auto* content = content_)
-        content->runPanelBenchmark(std::max(1, cycles));
+        content->benchmarks_.runPanelBenchmark(std::max(1, cycles));
 }
 
 void MainWindow::runBenchmark(int seconds)
 {
     if (auto* content = content_)
-        content->runBenchmark(std::max(1, seconds));
+        content->benchmarks_.runBenchmark(std::max(1, seconds));
 }
 
 void MainWindow::showFirstRun()
