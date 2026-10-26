@@ -61,19 +61,11 @@ EffectCategory builtInCategory(const std::string& type)
     return it != kinds.end() ? it->second : EffectCategory::other;
 }
 
-// What a guitar built-in is, as a quiet hint beside its name (the names say little).
+// What a built-in is, as a quiet hint beside its name (the names say little:
+// "Reverb" and "Bloom" sit side by side). Its one-line description.
 juce::String builtInHint(const std::string& type)
 {
-    static const std::map<std::string, const char*> hints{
-        {plugins::amp::type, "Amp"},
-        {plugins::gravity::type, "Compressor"},
-        {plugins::flare::type, "Distortion"},
-        {plugins::comet::type, "Delay"},
-        {plugins::tide::type, "Chorus"},
-        {plugins::polaris::type, "Tuner"},
-    };
-    const auto it = hints.find(type);
-    return it != hints.end() ? juce::String(it->second) : juce::String();
+    return juce::String::fromUTF8(plugins::BuiltInFactory::description(type).c_str());
 }
 
 // A scanned plugin's kind from the words in its category ("Fx|Dynamics",
@@ -258,7 +250,7 @@ PluginMenu buildPluginMenu(PluginKind kind,
         menu.addSectionHeader("Built-in");
         for (const auto& type : builtIns)
             if (plugins::BuiltInFactory::isInstrument(type))
-                add(menu, type, plugins::BuiltInFactory::displayName(type));
+                add(menu, type, plugins::BuiltInFactory::displayName(type), builtInHint(type));
     }
     else
     {

@@ -223,6 +223,8 @@ struct Send
     Id bus = invalidId;
     float level = 1.0f;    // linear
     bool preFader = false; // taps before the channel gain (after pan and phase)
+    float pan = 0.0f;      // balance of what is sent, -1 left .. +1 right (on top of the channel's pan)
+    bool mute = false;     // sends nothing; the level is kept
     bool operator==(const Send&) const = default;
 };
 
@@ -246,6 +248,12 @@ struct Insert
     // reconcileParameters); a plugin that is not installed keeps them, so a
     // re-save does not lose them. Empty: `params` is in the processor's order.
     std::vector<std::string> paramKeys;
+    // Its editor window was open when the project was saved: it reopens with the
+    // project. Written at save from the open windows, not through a command.
+    bool windowOpen = false;
+    // A hosted plugin's name as last seen installed (written at save), so one
+    // missing on another machine is still named.
+    std::string pluginName;
     bool operator==(const Insert&) const = default;
 };
 
@@ -365,6 +373,12 @@ struct Channel
     std::uint32_t colour = 0; // 0xAARRGGBB, 0 = default
     int height = 0;           // the arrange row's height in pixels, 0 = the view's default
     Id outputBus = invalidId; // invalidId routes to the master
+    // A device output pair the channel plays to directly, past the master (1 =
+    // outputs 3/4 in callback order; the master has pair 0); -1: none, the
+    // channel goes to outputBus. A pair the device lacks falls back to outputBus.
+    int hardwareOutput = -1;
+    bool soloSafe = false;    // never silenced by another channel's solo
+    bool mixerHidden = false; // the mixer leaves its strip out (it still plays)
     Id group = invalidId;     // fader group membership
     std::vector<Send> sends;
     // An instrument channel's instrument (an empty type: none): the slot ahead
@@ -541,7 +555,9 @@ struct Project
     // 11: inserts on the master.
     // 12: automation lanes' view (height, collapsed, hidden) and whether a
     //     channel's lanes are open in the arrange view.
-    static constexpr int schemaVersion = 15;
+    // 16: send pan and mute; a channel's hardware output, solo safe and hidden
+    //     strip; inserts whose window was open and a hosted plugin's name.
+    static constexpr int schemaVersion = 16;
     static constexpr int oldestReadableVersion = 2; // older files are refused
 
     std::string name = "Untitled";

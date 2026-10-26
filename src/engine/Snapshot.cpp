@@ -199,7 +199,8 @@ std::unique_ptr<Snapshot> compileSnapshot(const core::Project& project,
                                           RuntimeCache* runtimes,
                                           const std::function<int(const std::string&)>& midiSources,
                                           const InputBusResolver& inputBuses,
-                                          int blockSamples)
+                                          int blockSamples,
+                                          int outputPairs)
 {
     NORTHLIGHT_ASSERT_NOT_REALTIME("compileSnapshot");
     auto snapshot = std::make_unique<Snapshot>();
@@ -224,6 +225,12 @@ std::unique_ptr<Snapshot> compileSnapshot(const core::Project& project,
     routing.sendTargets.resize(static_cast<size_t>(trackCount + busCount));
     routing.solo.resize(static_cast<size_t>(trackCount + busCount));
     routing.mute.resize(static_cast<size_t>(trackCount + busCount));
+    std::vector<bool> soloSafe(static_cast<size_t>(trackCount + busCount), false);
+    // A channel's hardware output pair, when the device has it (else -1: the
+    // channel keeps its bus or the master).
+    const int pairs = std::clamp(outputPairs, 0, Snapshot::maxHardwarePairs);
+    const auto hardwareOf = [&](const core::Channel& c)
+    { return c.hardwareOutput >= 0 && c.hardwareOutput < pairs && pairs > 1 ? c.hardwareOutput : -1; };
 
     // Sidechain edges between buses order them like sends do; a key source that
     // would form a cycle is dropped at compile time (the insert runs unkeyed).
@@ -235,7 +242,9 @@ std::unique_ptr<Snapshot> compileSnapshot(const core::Project& project,
 
     const auto channelOf = [&](int index, const core::Channel& c)
     {
-        routing.output[static_cast<size_t>(index)] = project.busIndex(c.outputBus);
+        // A channel played to a hardware output feeds no bus through its output.
+        routing.output[static_cast<size_t>(index)] = hardwareOf(c) >= 0 ? -1 : project.busIndex(c.outputBus);
+        soloSafe[static_cast<size_t>(index)] = c.soloSafe;
         for (const auto& s : c.sends)
         {
             const int bus = project.busIndex(s.bus);
@@ -360,6 +369,10 @@ std::unique_ptr<Snapshot> compileSnapshot(const core::Project& project,
             resolve(routing.channelOfBus(*it));
         for (int t = 0; t < trackCount; ++t)
             resolve(t);
+        // A solo-safe channel stays heard whatever is soloed (mute still wins).
+        for (size_t c = 0; c < soloSafe.size(); ++c)
+            if (soloSafe[c])
+                outputLit[c] = anyLit[c] = true;
     }
 
     DelayCache localDelays; // used only when the caller keeps no cache
@@ -447,6 +460,9 @@ std::unique_ptr<Snapshot> compileSnapshot(const core::Project& project,
         node.runtime->targetGain.store(c.gain, std::memory_order_relaxed);
         node.runtime->targetPan.store(c.pan, std::memory_order_relaxed);
         node.outputBus = routing.output[static_cast<size_t>(index)];
+        node.hardwareOutput = hardwareOf(c);
+        if (node.hardwareOutput >= 0)
+            snapshot->hardwarePairs = std::max(snapshot->hardwarePairs, node.hardwareOutput + 1);
         node.meterSlot = slot;
         for (const auto& s : c.sends)
         {
@@ -454,10 +470,14 @@ std::unique_ptr<Snapshot> compileSnapshot(const core::Project& project,
             const auto& allowed = routing.sendTargets[static_cast<size_t>(index)];
             if (bus >= 0 && std::find(allowed.begin(), allowed.end(), bus) != allowed.end())
             {
-                SendNode send{bus, s.level, s.preFader};
+                // A muted send keeps its edge (and its delay line) at level 0, so
+                // unmuting is a live ramp, not a recompile.
+                const float level = s.mute ? 0.0f : s.level;
+                SendNode send{bus, level, s.preFader, std::clamp(s.pan, -1.0f, 1.0f)};
                 send.keepAliveRuntime = runtimeCache.send(c.id, s.bus);
                 send.runtime = send.keepAliveRuntime.get();
-                send.runtime->targetLevel.store(s.level, std::memory_order_relaxed);
+                send.runtime->targetLevel.store(level, std::memory_order_relaxed);
+                send.runtime->targetPan.store(send.pan, std::memory_order_relaxed);
                 node.sends.push_back(std::move(send));
             }
         }
@@ -778,8 +798,11 @@ std::unique_ptr<Snapshot> compileSnapshot(const core::Project& project,
         const auto destinationIndex = [&](int bus) { return bus >= 0 ? bus : master; };
         const auto offer = [&](const ChannelNode& node, int out)
         {
+            // A hardware output lines up with the master's output after the fact
+            // (below); it holds no destination back.
             auto& slot = arrival[static_cast<size_t>(destinationIndex(node.outputBus))];
-            slot = std::max(slot, out);
+            if (node.hardwareOutput < 0)
+                slot = std::max(slot, out);
             for (const auto& send : node.sends)
             {
                 auto& sendSlot = arrival[static_cast<size_t>(destinationIndex(send.bus))];
@@ -810,9 +833,12 @@ std::unique_ptr<Snapshot> compileSnapshot(const core::Project& project,
         DelayCache& cache = delays != nullptr ? *delays : localDelays;
         const auto attach = [&](ChannelNode& node, core::Id id, int out)
         {
-            const auto line = [&](int bus, bool send)
+            const auto line = [&](int bus, bool send, bool hardware = false)
             {
-                const int needed = arrival[static_cast<size_t>(destinationIndex(bus))] - out;
+                // A hardware output waits to come out with the master; one slower
+                // than the master cannot be pulled earlier and plays late.
+                const int needed = hardware ? std::max(0, snapshot->outputLatency - out)
+                                            : arrival[static_cast<size_t>(destinationIndex(bus))] - out;
                 const core::Id destination =
                     bus >= 0 ? project.buses[static_cast<size_t>(bus)].id : core::invalidId;
                 auto shared = cache.get(DelayKey{id, destination, send}, needed);
@@ -822,7 +848,7 @@ std::unique_ptr<Snapshot> compileSnapshot(const core::Project& project,
                 node.keepAliveDelays.push_back(std::move(shared));
                 return raw;
             };
-            node.outputDelay = line(node.outputBus, false);
+            node.outputDelay = line(node.outputBus, false, node.hardwareOutput >= 0);
             for (auto& send : node.sends)
                 send.delay = line(send.bus, true);
         };

@@ -30,6 +30,36 @@ Northlight has not had a release yet. The first release, 0.1.0, will include:
 
 - Accent and contrast changes in Preferences show at once, without a restart.
 
+- Plugins in trouble say so: a mixer slot or Editor card whose plugin is not
+  installed, failed to load or crashed shows it (with the reason on hover) and
+  offers the way out: Scan for plugins, Retry or Blocklist, or Reload plugin,
+  which restarts a crashed plugin from its last saved state without restarting
+  Northlight. Opening a project with plugins missing or failed tells you once,
+  naming them; a missing plugin keeps its name.
+
+- Inserts move between mixer strips by their drag handle (Ctrl at the drop
+  copies), a plugin dragged from the browser drops onto a strip, and every
+  insert's menu has Copy, Copy chain, Paste after and Replace (effects too). The
+  Editor panel's card menu is now the same menu as the mixer's, with presets,
+  sidechain and the latency, and the card's key chip opens the key menu.
+
+- A hosted plugin's window names its current preset, a preset load is one undo
+  step, its presets are in its card's menu too, a pin keeps that plugin's windows
+  on top, and a toggle shows the generic editor for plugins that have both.
+  "Close all plugin windows" (Ctrl+Shift+W) is in the app menu, and windows open
+  when a project was saved reopen with it.
+
+- Mixing: solo safe (a strip's right-click menu) and exclusive solo (Ctrl+click
+  S); sends have a pan and a mute; a track or bus can play straight to another
+  pair of the audio device's outputs; "+ Send" offers New FX track right there;
+  strips can be hidden and shown again; wide strips add a dB scale and a send pan
+  column; strips show their plugins' delay and the master the project's total
+  delay compensation; a short strip's "3 inserts" and "2 sends" open a list.
+
+- The plugin browser counts the built-ins, describes each one in a line (also in
+  the effects menu), filters by kind of effect, says when nothing matches, keeps
+  16 recent plugins, and a slot's format badge opens it on that plugin.
+
 - A plugin's card in the Editor panel shows a faceplate: its kind, its full name,
   its maker, the format and its latency, with an Open editor button (or
   double-click it). A plugin that is not installed says so in the same place.
@@ -253,6 +283,12 @@ Northlight has not had a release yet. The first release, 0.1.0, will include:
 - The user guide's shortcuts match the app: the Mixer is F2 (Ctrl+M mutes clips),
   snap and ripple are N and Shift+N, and Shift+R arms the selected track. G and E no
   longer duplicate snap and ripple in the track list.
+
+- A mixer strip reads top to bottom as its spec draws it: inserts, sends, pan,
+  the M/S/R/Ø toggles, then the fader, gain and output.
+
+- The send menu no longer sends you to the track list when there is nothing to
+  send to: it offers a new FX track there.
 
 - Opening a plugin's window no longer switches the dock to the mixer: the Editor
   panel stays up.

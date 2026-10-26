@@ -69,6 +69,15 @@ std::optional<PluginEditor> HostFactory::createEditor(engine::InsertProcessor& l
     return std::nullopt;
 }
 
+bool HostFactory::hasOwnEditor(engine::InsertProcessor& live)
+{
+    if (auto* vst3 = dynamic_cast<HostedPlugin*>(&live))
+        return vst3->instance().hasEditor();
+    if (auto* clap = dynamic_cast<HostedClapPlugin*>(&live))
+        return clap->hasEditor();
+    return false;
+}
+
 std::unique_ptr<engine::InsertProcessor> HostFactory::create(const std::string& typeName) const
 {
     NORTHLIGHT_ASSERT_NOT_REALTIME("HostFactory::create");

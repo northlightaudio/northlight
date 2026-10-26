@@ -510,6 +510,9 @@ public:
             case C::plugins:
                 owner_.showPluginBrowser();
                 return true;
+            case C::closePluginWindows:
+                mixer_.closeEditors();
+                return true;
             case C::addAudioTrack:
                 addAudioTrack();
                 return true;
@@ -862,6 +865,33 @@ private:
         editor_.setPluginSources(&pluginSources_);
         instruments_.setPluginSources(&pluginSources_);
         editor_.onInserted = [this](const std::string& type) { browser_.rememberRecent(type); };
+        wirePluginActions();
+    }
+
+    // The insert slots' actions, shared by the mixer and the Editor panel.
+    void wirePluginActions()
+    {
+        auto& a = pluginActions_;
+        a.host = &session_.insertFactory();
+        a.live = [this](core::Id insertId) { return session_.liveInsert(insertId); };
+        a.openEditor = [this](core::Id channelId, core::Id insertId)
+        { owner_.openInsertEditor(channelId, insertId); };
+        a.reload = [this](core::Id insertId) { session_.reloadInsert(insertId); };
+        a.retry = [this](const std::string& type) { session_.retryPlugin(type); };
+        a.blocklist = [this](const std::string& type) { session_.blocklistPlugin(type); };
+        a.scan = [this] { session_.scanPlugins(false); };
+        a.showInBrowser = [this](const std::string& type)
+        {
+            owner_.showPluginBrowser();
+            browser_.showPlugin(type);
+        };
+        a.commands = [this](const std::string& name, std::vector<std::unique_ptr<core::Command>> commands)
+        { session_.executeGroup(name, std::move(commands)); };
+        mixer_.setPluginActions(&a);
+        editor_.setPluginActions(&a);
+        mixer_.onInserted = [this](const std::string& type) { browser_.rememberRecent(type); };
+        mixer_.outputLatency = [this] { return session_.engine().outputLatencySamples(); };
+        session_.isEditorOpen = [this](core::Id insertId) { return mixer_.isEditorOpen(insertId); };
     }
 
     void wirePanels()
@@ -1065,6 +1095,14 @@ private:
                     choices.push_back({in(s.activeInputs[i]), {}, static_cast<int>(i), {}});
             }
             mixer_.setInputChoices(choices, audio_.midi().openInputNames());
+            {
+                // The output pairs, for hardware outputs ("Out 3/4"), in callback order.
+                std::vector<std::string> pairs;
+                for (size_t i = 0; s.open && i + 1 < s.activeOutputs.size(); i += 2)
+                    pairs.push_back("Out " + std::to_string(s.activeOutputs[i] + 1) + "/" +
+                                    std::to_string(s.activeOutputs[i + 1] + 1));
+                mixer_.setOutputChoices(std::move(pairs));
+            }
             tracks_.setInputChoices(std::move(choices));
             tracks_.setMidiInputNames(audio_.midi().openInputNames());
         }
@@ -1673,6 +1711,8 @@ private:
         actions.about = whenAlive([](Content& c) { c.about(); });
         actions.audioSetup = whenAlive([](Content& c) { c.owner_.showAudioSetup(); });
         actions.plugins = whenAlive([](Content& c) { c.owner_.showPluginBrowser(); });
+        actions.closePluginWindows = whenAlive([](Content& c) { c.mixer_.closeEditors(); });
+        actions.pluginWindowsOpen = mixer_.openEditorCount() > 0;
         actions.preferences = whenAlive([](Content& c) { c.owner_.showPreferences(); });
         actions.layout = [safe](const juce::String& preset)
         {
@@ -1831,6 +1871,7 @@ private:
     ui::HeaderBar header_;
     ui::Selection selection_;         // before the views: they are told about it
     ui::PluginSources pluginSources_; // every view's plugin menus read it
+    ui::PluginActions pluginActions_; // what every view's insert slots do beyond commands
     ui::ArrangeView tracks_;
     ui::PanelHost dock_, side_;
     ui::StatusBar status_;
@@ -1873,7 +1914,11 @@ private:
     LoadDriver loader_{{*this,
                         theme_,
                         session_,
-                        [this] { refresh(); },
+                        [this]
+                        {
+                            refresh();
+                            mixer_.reopenSavedWindows(); // as their plugins load
+                        },
                         [this](const juce::String& title)
                         {
                             status_.showMessage("Stopped: " + title);
@@ -2210,6 +2255,18 @@ void MainWindow::showMixer()
 {
     if (auto* content = content_)
         content->panels_.show(ui::PanelId::mixer);
+}
+
+void MainWindow::setMixerWide(bool wide)
+{
+    if (auto* content = content_)
+        content->mixer_.setWideStrips(wide);
+}
+
+void MainWindow::setDockHeight(int height)
+{
+    if (auto* content = content_)
+        content->panels_.setDockHeight(height);
 }
 
 void MainWindow::showTempoTrack()

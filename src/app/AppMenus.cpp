@@ -24,11 +24,11 @@ public:
     }
     // An item with its key from the keyboard map (the current binding, so a
     // rebinding shows the next time the menu opens).
-    void add(const juce::String& text, std::function<void()> action, ui::Command key)
+    void add(const juce::String& text, std::function<void()> action, ui::Command key, bool enabled = true)
     {
         juce::PopupMenu::Item item(text);
         item.itemID = nextId_++;
-        item.isEnabled = action != nullptr;
+        item.isEnabled = enabled && action != nullptr;
         item.action = std::move(action);
         item.shortcutKeyDescription = ui::Shortcuts::keyText(key);
         menu_.addItem(std::move(item));
@@ -57,6 +57,10 @@ juce::PopupMenu appMenu(const AppMenu& a)
     menu.addSeparator();
     items.add("Audio Setup...", a.audioSetup, ui::Command::audioSetup);
     items.add("Plugins...", a.plugins, ui::Command::plugins);
+    items.add("Close all plugin windows",
+              a.closePluginWindows,
+              ui::Command::closePluginWindows,
+              a.pluginWindowsOpen);
     items.add("Preferences...", a.preferences, ui::Command::preferences);
     juce::PopupMenu layout;
     Builder layouts(layout, id);

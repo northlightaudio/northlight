@@ -73,7 +73,8 @@ in editing, effects and controller work. Each item is to become an issue of its 
 2. **Clip mute and fade curves.** The arrange spec draws muted clips, but clips have
    no mute. Fades and crossfades are linear only and dip in level on music; add
    equal-power, logarithmic and S-curve shapes.
-3. **A modulation effect and a stereo utility** (see the effects below).
+3. **Studio modulation effects and a stereo utility** (see the effects below):
+   Tide, the chorus pedal, is the only modulation effect so far.
 4. **MIDI learn.** Map controller knobs, faders and buttons to any parameter and the
    transport, then Mackie Control and HUI for control surfaces.
 5. **Richer automation.** Lanes for send levels and mute, curve shapes between
@@ -95,20 +96,22 @@ in editing, effects and controller work. Each item is to become an issue of its 
 ### Effects
 
 Northlight ships gain, EQ, compressor, opto compressor, glue compressor, limiter,
-reverb and delay, and the effects Patina (retro colour), Exciter, Bloom (effect
-reverb), Tape Echo and Stereo Widener; the channel strip adds a gate, de-esser and
-saturation. Missing:
+reverb and delay, and the effects Patina (retro colour), Exciter, Orbit (tape
+machine), Bloom (effect reverb), Vesper (vocal reverb), Tape Echo and Stereo
+Widener; Corona (guitar amp and cabinet) and the pedals Gravity (compressor), Flare
+(distortion), Comet (delay), Tide (chorus) and Polaris (tuner); the channel strip
+adds a gate, de-esser and saturation. Missing:
 
 | Area | Effects |
 |---|---|
-| Modulation | Chorus, flanger, phaser, tremolo, auto-pan. None exist yet; this is the largest hole |
-| Utility | Mono, channel swap, tuner |
+| Modulation | A studio chorus, flanger, phaser, tremolo and auto-pan. Tide covers chorus as a guitar pedal; the rest is the largest hole |
+| Utility | Mono, channel swap (Polaris is the tuner) |
 | Metering | Spectrum analyser as an insert (the Stereo Widener shows a vectorscope and correlation) |
 | Dynamics | Multiband compressor, transient shaper, clipper |
 | Filter | Resonant filter driven by an LFO or an envelope follower |
 | Pitch | Real-time pitch shifter and harmoniser |
 | Reverb | Convolution reverb that loads impulse responses |
-| Colour | More amps (a bass amp, a British amp) beside Corona, and guitar pedals: tuner, drive, fuzz, chorus, compressor, wah (Patina covers tape, tube, bitcrush and vinyl colour) |
+| Colour | More amps (a bass amp, a British amp) beside Corona, and more guitar pedals: drive, fuzz, wah (Gravity, Flare, Comet, Tide and Polaris ship; Patina covers tape, tube, bitcrush and vinyl colour) |
 | Monitoring | Low-latency monitoring: leave monitored tracks uncompensated and latent inserts on their path out while recording, so a lookahead limiter elsewhere does not delay what a player hears |
 
 The EQ insert has a high-pass and three bands. A fully parametric EQ (six to eight

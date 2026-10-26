@@ -3,6 +3,7 @@
 #include "plugins/BuiltIns.h"
 #include "ui/Icons.h"
 #include "ui/NorthlightLookAndFeel.h"
+#include "ui/PluginMenu.h"
 #include "ui/Shortcuts.h"
 
 #include <algorithm>
@@ -51,6 +52,13 @@ PluginBrowser::PluginBrowser(const hosting::PluginRegistry& registry)
     category_.setSelected(0, juce::dontSendNotification);
     category_.onChange = [this](int) { applyFilter(); };
     addAndMakeVisible(category_);
+    // The kinds the effects menu groups by (VST3 subcategories, CLAP features).
+    kind_.setButtonText("All kinds");
+    kind_.getProperties().set(NorthlightLookAndFeel::propertyVariant, "ghost");
+    kind_.getProperties().set(NorthlightLookAndFeel::propertyMenu, true);
+    kind_.setTooltip("Show one kind of effect");
+    kind_.onClick = [this] { showKindMenu(); };
+    addAndMakeVisible(kind_);
 
     list_.setRowHeight(rowHeight);
     list_.setColour(juce::ListBox::backgroundColourId, theme_.colours.surface0);
@@ -132,9 +140,11 @@ void PluginBrowser::refresh()
         Row row;
         row.type = type;
         row.name = plugins::BuiltInFactory::displayName(type);
-        row.manufacturer = "Built-in";
+        // The badge says Built-in; the maker's place says what it is.
+        row.description = juce::String::fromUTF8(plugins::BuiltInFactory::description(type).c_str());
         row.format = "Built-in";
         row.instrument = plugins::BuiltInFactory::isInstrument(type);
+        row.effectKind = static_cast<int>(effectCategory(type, &registry_));
         plugins_.push_back(std::move(row));
     }
     for (const auto& p : registry_.plugins())
@@ -146,6 +156,7 @@ void PluginBrowser::refresh()
         row.format = juce::String(p.format);
         row.instrument = p.isInstrument;
         row.path = p.path;
+        row.effectKind = static_cast<int>(effectCategory(row.type, &registry_));
         plugins_.push_back(std::move(row));
     }
     for (auto& row : plugins_)
@@ -170,8 +181,8 @@ void PluginBrowser::rememberRecent(const std::string& type)
 {
     recent_.erase(std::remove(recent_.begin(), recent_.end(), type), recent_.end());
     recent_.insert(recent_.begin(), type);
-    if (recent_.size() > 8)
-        recent_.resize(8);
+    if (recent_.size() > recentCount)
+        recent_.resize(recentCount);
     saveList("plugins.recent", recent_);
     applyFilter();
 }
@@ -190,9 +201,94 @@ bool PluginBrowser::rowMatches(const Row& row) const
         return false;
     if (category == 2 && !row.instrument)
         return false;
+    // A kind of effect leaves the instruments out.
+    if (kindFilter_ >= 0 && (row.instrument || row.effectKind != kindFilter_))
+        return false;
     const auto needle = search_.getText().trim();
     return containsIgnoreCase(row.name, needle) || containsIgnoreCase(row.manufacturer, needle) ||
-           containsIgnoreCase(row.format, needle);
+           containsIgnoreCase(row.format, needle) || containsIgnoreCase(row.description, needle);
+}
+
+void PluginBrowser::showKindMenu()
+{
+    juce::PopupMenu menu;
+    menu.addItem(1, "All kinds", true, kindFilter_ < 0);
+    menu.addSeparator();
+    for (int k = 0; k < effectCategoryCount; ++k)
+    {
+        const auto category = static_cast<EffectCategory>(k);
+        // Only kinds something is in.
+        const bool any = std::any_of(plugins_.begin(),
+                                     plugins_.end(),
+                                     [k](const Row& r) { return !r.instrument && r.effectKind == k; });
+        if (any)
+            menu.addItem(k + 2, effectCategoryName(category), true, kindFilter_ == k);
+    }
+    juce::Component::SafePointer<PluginBrowser> safe(this);
+    menu.showMenuAsync(juce::PopupMenu::Options().withTargetComponent(kind_),
+                       [safe](int choice)
+                       {
+                           if (safe == nullptr || choice <= 0)
+                               return;
+                           safe->kindFilter_ = choice - 2;
+                           safe->kind_.setButtonText(
+                               safe->kindFilter_ < 0 ? juce::String("All kinds")
+                                                     : juce::String(effectCategoryName(
+                                                           static_cast<EffectCategory>(safe->kindFilter_))));
+                           safe->resized();
+                           safe->applyFilter();
+                       });
+}
+
+void PluginBrowser::showPlugin(const std::string& type)
+{
+    format_.setSelected(0, juce::dontSendNotification);
+    category_.setSelected(0, juce::dontSendNotification);
+    kindFilter_ = -1;
+    kind_.setButtonText("All kinds");
+    const auto it =
+        std::find_if(plugins_.begin(), plugins_.end(), [&](const Row& r) { return r.type == type; });
+    search_.setText(it != plugins_.end() ? it->name : juce::String(), juce::dontSendNotification);
+    applyFilter();
+    for (size_t i = 0; i < rows_.size(); ++i)
+        if (rows_[i].kind == Row::Kind::plugin && rows_[i].type == type)
+        {
+            list_.selectRow(static_cast<int>(i));
+            break;
+        }
+}
+
+std::vector<juce::String> PluginBrowser::rowTexts() const
+{
+    std::vector<juce::String> texts;
+    for (const auto& row : rows_)
+        texts.push_back(row.title.isNotEmpty() ? row.title : row.name);
+    return texts;
+}
+
+juce::String PluginBrowser::countText() const
+{
+    // Everything the browser lists: the built-ins and the scanned plugins.
+    const auto builtIns =
+        std::count_if(plugins_.begin(), plugins_.end(), [](const Row& r) { return r.format == "Built-in"; });
+    const auto scanned = static_cast<juce::int64>(plugins_.size()) - builtIns;
+    juce::String text = juce::String(builtIns) + " built-in, " + juce::String(scanned) +
+                        (scanned == 1 ? " plugin" : " plugins");
+    if (!registry_.blocked().empty())
+        text << ", " << juce::String(registry_.blocked().size()) << " blocked";
+    return text;
+}
+
+juce::String PluginBrowser::emptyText() const
+{
+    if (!rows_.empty())
+        return {};
+    // VST3 or CLAP asked for and none scanned: say where they come from.
+    const int format = format_.selected();
+    const bool scannedOnly = format == 1 || format == 2;
+    if (scannedOnly && registry_.plugins().empty())
+        return "No plugins found. Scan for them, or add folders in Preferences.";
+    return "No plugins match";
 }
 
 void PluginBrowser::applyFilter()
@@ -309,15 +405,19 @@ void PluginBrowser::paintListBoxItem(int index, juce::Graphics& g, int width, in
     area.removeFromRight(theme_.spacing.sm);
     g.setFont(theme_.body());
     g.setColour(c.textPrimary);
-    // The name takes up to three fifths of the row, and the maker always starts a
-    // gap after it, even where the name ends in an ellipsis.
-    const int nameW = std::min(area.getWidth() * 3 / 5,
-                               juce::GlyphArrangement::getStringWidthInt(theme_.body(), row.name) + 1);
+    // The name first, whole where it fits; the maker (a built-in's description)
+    // takes what is left after a gap and gives way first.
+    const int nameW =
+        std::min(area.getWidth(), juce::GlyphArrangement::getStringWidthInt(theme_.body(), row.name) + 1);
     g.drawText(row.name, area.removeFromLeft(nameW), juce::Justification::centredLeft, true);
     area.removeFromLeft(theme_.spacing.sm);
     g.setFont(theme_.small());
-    g.setColour(c.textSecondary);
-    g.drawText(row.manufacturer, area, juce::Justification::centredLeft, true);
+    g.setColour(row.manufacturer.isNotEmpty() ? c.textSecondary : c.textTertiary);
+    if (area.getWidth() > theme_.spacing.xl)
+        g.drawText(row.manufacturer.isNotEmpty() ? row.manufacturer : row.description,
+                   area,
+                   juce::Justification::centredLeft,
+                   true);
 }
 
 void PluginBrowser::listBoxItemClicked(int index, const juce::MouseEvent& e)
@@ -420,12 +520,18 @@ void PluginBrowser::paint(juce::Graphics& g)
                    juce::Justification::centredLeft,
                    true);
     else
-        g.drawText(juce::String(registry_.plugins().size()) + " plugins" +
-                       (registry_.blocked().empty()
-                            ? juce::String()
-                            : ", " + juce::String(registry_.blocked().size()) + " blocked"),
-                   bottom,
-                   juce::Justification::centredRight);
+        g.drawText(countText(), bottom, juce::Justification::centredRight);
+}
+
+void PluginBrowser::paintOverChildren(juce::Graphics& g)
+{
+    // The empty state, centred in the list.
+    if (const auto text = emptyText(); text.isNotEmpty())
+    {
+        g.setFont(theme_.small());
+        g.setColour(theme_.colours.textTertiary);
+        g.drawFittedText(text, list_.getBounds().reduced(theme_.spacing.md), juce::Justification::centred, 3);
+    }
 }
 
 void PluginBrowser::resized()
@@ -446,6 +552,18 @@ void PluginBrowser::resized()
     else
         filters.removeFromLeft(theme_.spacing.sm);
     category_.setBounds(filters.removeFromLeft(std::min(filters.getWidth(), category_.preferredWidth())));
+    // The kind after the category, or on a line of its own when it does not fit.
+    // Its text in the button's font, the padding either side and the menu chevron.
+    const int kindW = juce::GlyphArrangement::getStringWidthInt(theme_.body(), kind_.getButtonText()) +
+                      2 * theme_.spacing.md + theme_.sizes.icon + theme_.spacing.sm;
+    if (filters.getWidth() < kindW + theme_.spacing.sm)
+    {
+        area.removeFromTop(theme_.spacing.xs);
+        filters = area.removeFromTop(theme_.sizes.controlCompact);
+    }
+    else
+        filters.removeFromLeft(theme_.spacing.sm);
+    kind_.setBounds(filters.removeFromLeft(std::min(filters.getWidth(), kindW)));
     area.removeFromTop(theme_.spacing.sm);
     auto bottom = area.removeFromBottom(theme_.sizes.controlCompact);
     if (scanning_)

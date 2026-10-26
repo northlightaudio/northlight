@@ -76,6 +76,11 @@ void migrate(json& j, int from)
                      // without them a fade is linear, as before
             case 14: // 15: the master gains optional "automation" and "height"; without
                      // them it has no lanes, reads, and has the default row height
+            case 15: // 16: sends gain optional "pan" and "mute", channels optional
+                     // "hardwareOutput", "soloSafe" and "mixerHidden", inserts
+                     // optional "windowOpen" and "pluginName"; without them a send
+                     // is centred and on, a channel plays to its bus, no window
+                     // reopens and a missing plugin is unnamed
                 break;
             default:
                 break;
@@ -255,13 +260,26 @@ void channelToJson(json& j, const Channel& c)
         j["height"] = c.height;
     if (c.outputBus != invalidId)
         j["output"] = c.outputBus;
+    if (c.hardwareOutput >= 0)
+        j["hardwareOutput"] = c.hardwareOutput;
+    if (c.soloSafe)
+        j["soloSafe"] = true;
+    if (c.mixerHidden)
+        j["mixerHidden"] = true;
     if (c.group != invalidId)
         j["group"] = c.group;
     if (!c.sends.empty())
     {
         json sends = json::array();
         for (const auto& s : c.sends)
-            sends.push_back(json{{"bus", s.bus}, {"level", s.level}, {"pre", s.preFader}});
+        {
+            json sj{{"bus", s.bus}, {"level", s.level}, {"pre", s.preFader}};
+            if (s.pan != 0.0f)
+                sj["pan"] = s.pan;
+            if (s.mute)
+                sj["mute"] = true;
+            sends.push_back(std::move(sj));
+        }
         j["sends"] = std::move(sends);
     }
     const auto insertsToJson = [](const std::vector<Insert>& list)
@@ -280,6 +298,10 @@ void channelToJson(json& j, const Channel& c)
                 ij["sidechain"] = i.sidechain;
             if (i.sidechain != invalidId && i.sidechainPostFader)
                 ij["sidechainPostFader"] = true;
+            if (i.windowOpen)
+                ij["windowOpen"] = true;
+            if (!i.pluginName.empty())
+                ij["pluginName"] = i.pluginName;
             inserts.push_back(std::move(ij));
         }
         return inserts;
@@ -359,10 +381,17 @@ void channelFromJson(const json& j, Channel& c)
     c.colour = j.value("colour", std::uint32_t{0});
     c.height = std::max(0, j.value("height", 0));
     c.outputBus = j.value("output", invalidId);
+    c.hardwareOutput = std::max(-1, j.value("hardwareOutput", -1));
+    c.soloSafe = j.value("soloSafe", false);
+    c.mixerHidden = j.value("mixerHidden", false);
     c.group = j.value("group", invalidId);
     if (const auto it = j.find("sends"); it != j.end() && it->is_array())
         for (const auto& s : *it)
-            c.sends.push_back(Send{s.value("bus", invalidId), s.value("level", 1.0f), s.value("pre", false)});
+            c.sends.push_back(Send{s.value("bus", invalidId),
+                                   s.value("level", 1.0f),
+                                   s.value("pre", false),
+                                   std::clamp(s.value("pan", 0.0f), -1.0f, 1.0f),
+                                   s.value("mute", false)});
     const auto insertsFromJson = [](const json& list, std::vector<Insert>& into)
     {
         for (const auto& i : list)
@@ -375,6 +404,8 @@ void channelFromJson(const json& j, Channel& c)
             insert.mix = i.value("mix", 1.0f);
             insert.sidechain = i.value("sidechain", invalidId);
             insert.sidechainPostFader = insert.sidechain != invalidId && i.value("sidechainPostFader", false);
+            insert.windowOpen = i.value("windowOpen", false);
+            insert.pluginName = i.value("pluginName", std::string{});
             if (const auto params = i.find("params"); params != i.end() && params->is_array())
                 for (const auto& v : *params) // positional: a value that is not a number reads 0
                     insert.params.push_back(v.is_number() ? v.get<float>() : 0.0f);

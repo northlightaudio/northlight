@@ -577,6 +577,8 @@ Project freezeRenderProject(const Project& project, Id trackId)
             { return lane.target == AutomationTarget::gain || lane.target == AutomationTarget::pan; });
         c.sends.clear();
         c.solo = false;
+        c.soloSafe = false;
+        c.hardwareOutput = -1; // the render is the master's mix
         c.group = invalidId;
     };
     for (auto& t : copy.tracks)

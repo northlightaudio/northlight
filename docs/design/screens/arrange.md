@@ -225,9 +225,6 @@ Rows at `trackRow` 56 default. Contents, left to right, inside `space.sm` paddin
 - During a move drag: the original stays at 40% alpha, the ghost moves with the
   pointer, snapped; a 1 px `snapGuide` vertical line marks the snap target through
   all lanes; a tooltip shows the new start in bars.beats and the delta.
-- Gain drag: Ctrl+drag on a clip's body up or down sets the clip's gain, the
-  waveform scaling as it goes; one undo step. (So in the arrange view Duplicate is
-  Ctrl+D, not a Ctrl+drag.)
 - Trim drag: the clip edge follows; the waveform does not move (source stays put);
   tooltip shows the new length.
 - Stretch drag: Alt+drag of the right edge stretches the clip to the new end

@@ -37,9 +37,65 @@ namespace northlight::ui
 
 // ----- master -------------------------------------------------------------------------------
 
-class MixerView::MasterStrip final : public juce::Component
+class MixerView::MasterStrip final : public juce::Component,
+                                     public juce::DragAndDropTarget,
+                                     public juce::TooltipClient
 {
 public:
+    // Drops: a browser row or a slot from a strip, at the line.
+    bool isInterestedInDragSource(const SourceDetails& details) override
+    {
+        const auto d = details.description.toString();
+        return d.startsWith("plugin:") || d.startsWith("insert:");
+    }
+    void itemDragEnter(const SourceDetails& details) override { itemDragMove(details); }
+    void itemDragMove(const SourceDetails& details) override
+    {
+        reorderLineY_ = getLocalPoint(&insertsHolder_,
+                                      juce::Point<int>(0, dropIndexAt(details.localPosition) * slotHeight))
+                            .y;
+        repaint();
+    }
+    void itemDragExit(const SourceDetails&) override
+    {
+        reorderLineY_ = -1;
+        repaint();
+    }
+    void itemDropped(const SourceDetails& details) override
+    {
+        const int index = dropIndexAt(details.localPosition);
+        reorderLineY_ = -1;
+        repaint();
+        juce::Component::SafePointer<MixerView> owner(&owner_);
+        const auto description = details.description.toString();
+        const bool copy = juce::ModifierKeys::getCurrentModifiers().isCommandDown();
+        juce::MessageManager::callAsync(
+            [owner, description, index, copy]
+            {
+                if (owner != nullptr)
+                    owner->dropOnStrip(core::masterId, description, index, copy);
+            });
+    }
+
+    // The project's plugin delay compensation, under the gain field.
+    void setLatency(int samples, double sampleRate)
+    {
+        const auto text = samples > 0 ? "PDC " + latencyMs(samples, sampleRate) : juce::String();
+        if (text == latencyText_)
+            return;
+        latencyText_ = text;
+        latencyTip_ = samples > 0 ? "Plugin delay compensation: every path is lined up to the slowest, so "
+                                    "the mix plays " +
+                                        juce::String(samples) + " samples (" +
+                                        latencyMs(samples, sampleRate) + ") late"
+                                  : juce::String();
+        repaint(latencyArea_);
+    }
+    juce::String getTooltip() override
+    {
+        return latencyArea_.contains(getMouseXYRelative()) ? latencyTip_ : juce::String();
+    }
+
     MasterStrip(MixerView& owner, const Theme& theme)
         : owner_(owner), theme_(theme), cap_(theme), addInsert_(theme, "Insert"), fader_(theme),
           meter_(theme, 2, true), value_(theme)
@@ -118,7 +174,18 @@ public:
             if (hosting::PluginRegistry::isHostedType(insert.type))
                 badge = insert.type.rfind("clap:", 0) == 0 ? "CLAP" : "VST3";
             inserts_[i]->set(
-                juce::String::fromUTF8(owner_.insertDisplayName(insert.type).c_str()), badge, insert.bypass);
+                juce::String::fromUTF8(insertName(insert, owner_.actions()).c_str()), badge, insert.bypass);
+            inserts_[i]->setTrouble(insertTrouble(insert, owner_.actions()));
+            if (const auto* actions = owner_.actions();
+                hosting::PluginRegistry::isHostedType(insert.type) && actions->showInBrowser)
+                inserts_[i]->onBadge = [actions, type = insert.type] { actions->showInBrowser(type); };
+            else
+                inserts_[i]->onBadge = nullptr;
+            inserts_[i]->dragDescription = [insertId]
+            {
+                return "insert:" + juce::String(static_cast<juce::int64>(core::masterId)) + ":" +
+                       juce::String(static_cast<juce::int64>(insertId));
+            };
             inserts_[i]->onOpen = [this, insertId] { owner_.openInsertEditor(core::masterId, insertId); };
             inserts_[i]->onBypass = [this, insertId]
             {
@@ -213,6 +280,12 @@ public:
         row("M", loudness_.momentaryLufs, false);
         row("S", loudness_.shortTermLufs, false);
         row("I", loudness_.integratedLufs, true);
+        if (latencyText_.isNotEmpty() && !latencyArea_.isEmpty())
+        {
+            g.setFont(theme_.caption());
+            g.setColour(c.textTertiary);
+            g.drawText(latencyText_, latencyArea_, juce::Justification::centred);
+        }
     }
 
     void resized() override
@@ -223,13 +296,16 @@ public:
         cap_.setBounds(getLocalBounds().withHeight(control));
         area.removeFromTop(control + pad);
         const int loudnessH = 3 * (theme_.lineHeight(theme_.fonts.size.value));
-        const bool aligned =
-            !band_.isEmpty() && valueY_ + control <= getHeight() && band_.getBottom() + loudnessH <= valueY_;
-        // The inserts fill the room above the fader band (lined up with the
+        // Lined up with the channels when their fader band leaves room above it
+        // for the loudness readout (where a channel has its pan and toggles) and
+        // a slot or two for the inserts.
+        const bool aligned = !band_.isEmpty() && valueY_ + control <= getHeight() &&
+                             band_.getY() - loudnessH - 2 * pad - area.getY() >= slotHeight + 4;
+        // The inserts fill the room above the readout (lined up with the
         // channels), or take up to six slots of their own.
         {
             const int wanted = (static_cast<int>(inserts_.size()) + 1) * slotHeight + 4;
-            const int room = aligned ? band_.getY() - area.getY() - pad
+            const int room = aligned ? band_.getY() - loudnessH - 2 * pad - area.getY()
                                      : std::min(wanted, maxVisibleSlots * slotHeight + 4);
             auto insertsArea = area.removeFromTop(std::max(slotHeight + 4, std::min(room, wanted)));
             area.removeFromTop(pad);
@@ -247,11 +323,12 @@ public:
         if (aligned)
         {
             // Lined up with the channels: the same fader band and gain row, the
-            // loudness readout between them.
+            // loudness readout over the meter, the delay compensation under the gain.
             value_.setBounds(area.getX(), valueY_, area.getWidth(), control);
-            loudnessArea_ = juce::Rectangle<int>(
-                                area.getX(), band_.getBottom(), area.getWidth(), valueY_ - band_.getBottom())
-                                .withSizeKeepingCentre(area.getWidth(), loudnessH);
+            latencyArea_ =
+                juce::Rectangle<int>(area.getX(), value_.getBottom() + pad, area.getWidth(), latencyRow);
+            loudnessArea_ =
+                juce::Rectangle<int>(area.getX(), band_.getY() - loudnessH - pad, area.getWidth(), loudnessH);
             auto faderArea =
                 juce::Rectangle<int>(area.getX(), band_.getY(), area.getWidth(), band_.getHeight());
             meter_.setBounds(faderArea.removeFromRight(meter_.barsWidth() + meter_.scaleWidth()));
@@ -259,6 +336,7 @@ public:
             fader_.setBounds(faderArea);
             return;
         }
+        latencyArea_ = area.removeFromBottom(latencyRow);
         value_.setBounds(area.removeFromBottom(control));
         area.removeFromBottom(pad);
         loudnessArea_ = area.removeFromBottom(loudnessH);
@@ -272,6 +350,16 @@ public:
     }
 
 private:
+    int dropIndexAt(juce::Point<int> local) const
+    {
+        const int count = static_cast<int>(inserts_.size());
+        if (!insertsView_.getBounds().contains(local))
+            return count;
+        const auto inHolder = insertsHolder_.getLocalPoint(this, local);
+        return std::clamp(
+            static_cast<int>(std::lround(static_cast<double>(inHolder.y) / slotHeight)), 0, count);
+    }
+
     void reorderInsert(core::Id insertId, juce::Point<int> screen, bool released)
     {
         const auto local = insertsHolder_.getLocalPoint(nullptr, screen);
@@ -307,7 +395,8 @@ private:
     Fader fader_;
     Meter meter_;
     NumericField value_;
-    juce::Rectangle<int> loudnessArea_;
+    juce::Rectangle<int> loudnessArea_, latencyArea_;
+    juce::String latencyText_, latencyTip_;
     juce::Rectangle<int> band_;
     int valueY_ = 0;
     engine::LoudnessMeter::Reading loudness_;

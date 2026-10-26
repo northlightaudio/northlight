@@ -2,6 +2,7 @@
 
 #include <juce_core/juce_core.h>
 
+#include <functional>
 #include <string>
 #include <utility>
 #include <vector>
@@ -29,6 +30,10 @@ struct Notice
     Kind kind = Kind::info;
     std::string text;
     juce::File reveal; // a file the toast offers to show in its folder (an export)
+    // An action the toast offers instead ("Reload plugin", "Blocklist"), run on
+    // the message thread when clicked.
+    std::string action;
+    std::function<void()> onAction;
 };
 
 class NoticeQueue
@@ -36,7 +41,11 @@ class NoticeQueue
 public:
     void push(Notice::Kind kind, std::string text, juce::File reveal = {})
     {
-        notices_.push_back({kind, std::move(text), std::move(reveal)});
+        notices_.push_back({kind, std::move(text), std::move(reveal), {}, {}});
+    }
+    void push(Notice::Kind kind, std::string text, std::string action, std::function<void()> onAction)
+    {
+        notices_.push_back({kind, std::move(text), {}, std::move(action), std::move(onAction)});
     }
     // Every notice not yet taken, oldest first.
     std::vector<Notice> take() { return std::exchange(notices_, {}); }

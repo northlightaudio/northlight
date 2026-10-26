@@ -35,14 +35,22 @@
 namespace northlight::ui
 {
 
-class MixerView::Strip final : public juce::Component
+class MixerView::Strip final : public juce::Component, public juce::DragAndDropTarget
 {
 public:
     Strip(MixerView& owner, const Theme& theme)
         : owner_(owner), theme_(theme), cap_(theme), stripRow_(theme), addInsert_(theme, "Insert"),
-          addSend_(theme, "Send"), pan_(theme), fader_(theme), meter_(theme, 2, true), value_(theme)
+          addSend_(theme, "Send"), insertsSummary_(theme), sendsSummary_(theme), pan_(theme), fader_(theme),
+          meter_(theme, 2, true), value_(theme)
     {
         setOpaque(true);
+        // A short strip's sections, collapsed: a click lists their slots.
+        insertsSummary_.onClick = [this] { showInsertsList(); };
+        insertsSummary_.setTooltip("The inserts: click to list them");
+        addChildComponent(insertsSummary_);
+        sendsSummary_.onClick = [this] { showSendsList(); };
+        sendsSummary_.setTooltip("The sends: click to list them");
+        addChildComponent(sendsSummary_);
         stripRow_.onToggle = [this](core::Id moduleId, bool on)
         {
             if (!updating_)
@@ -136,8 +144,15 @@ public:
             b.setTooltip(tip);
             b.onClick = [this, &b, makeCommand]
             {
-                if (!updating_)
-                    owner_.onCommand(makeCommand(id_, group_, b.getToggleState()));
+                if (updating_)
+                    return;
+                // Ctrl+click on solo: this channel alone (a second one clears it).
+                if (&b == &solo_ && juce::ModifierKeys::getCurrentModifiers().isCommandDown())
+                {
+                    owner_.onCommand(std::make_unique<core::SetExclusiveSolo>(id_));
+                    return;
+                }
+                owner_.onCommand(makeCommand(id_, group_, b.getToggleState()));
             };
             addAndMakeVisible(b);
         };
@@ -154,7 +169,7 @@ public:
         toggle(solo_,
                "S",
                "solo",
-               "Solo",
+               "Solo (Ctrl+click: solo this alone)",
                [](core::Id id, core::Id group, bool on) -> std::unique_ptr<core::Command>
                {
                    if (group != core::invalidId)
@@ -209,6 +224,12 @@ public:
         {
             if (updating_)
                 return;
+            // Ids: 1 the master, 2.. the buses, hardwareBase + pair a device output.
+            if (const int id = output_.getSelectedId(); id >= hardwareBase)
+            {
+                owner_.onCommand(std::make_unique<core::SetHardwareOutput>(id_, id - hardwareBase));
+                return;
+            }
             const int index = output_.getSelectedId() - 2; // id 1 = master
             const core::Id bus = index >= 0 && static_cast<size_t>(index) < busIds_.size()
                                      ? busIds_[static_cast<size_t>(index)]
@@ -216,6 +237,45 @@ public:
             owner_.onCommand(std::make_unique<core::SetOutputBus>(id_, bus));
         };
         addAndMakeVisible(output_);
+    }
+
+    // ----- drops: a browser row or an insert slot, at the line ------------------------------
+    bool isInterestedInDragSource(const SourceDetails& details) override
+    {
+        const auto d = details.description.toString();
+        return d.startsWith("plugin:") || d.startsWith("insert:");
+    }
+    void itemDragEnter(const SourceDetails& details) override { itemDragMove(details); }
+    void itemDragMove(const SourceDetails& details) override
+    {
+        dropIndex_ = dropIndexAt(details.localPosition);
+        reorderLineY_ =
+            collapsed_ ? -1 : getLocalPoint(&insertsHolder_, juce::Point<int>(0, dropIndex_ * slotHeight)).y;
+        dropping_ = true;
+        repaint();
+    }
+    void itemDragExit(const SourceDetails&) override
+    {
+        dropping_ = false;
+        reorderLineY_ = -1;
+        repaint();
+    }
+    void itemDropped(const SourceDetails& details) override
+    {
+        const int index = dropIndexAt(details.localPosition);
+        dropping_ = false;
+        reorderLineY_ = -1;
+        repaint();
+        // After the drop's callback has unwound: the commands rebuild the strips.
+        juce::Component::SafePointer<MixerView> owner(&owner_);
+        const auto description = details.description.toString();
+        const bool copy = juce::ModifierKeys::getCurrentModifiers().isCommandDown();
+        juce::MessageManager::callAsync(
+            [owner, id = id_, description, index, copy]
+            {
+                if (owner != nullptr)
+                    owner->dropOnStrip(id, description, index, copy);
+            });
     }
 
     core::Id id() const noexcept { return id_; }
@@ -241,6 +301,11 @@ public:
             instrument_.setBypassed(channel.instrument.bypass);
         for (size_t i = 0; i < inserts_.size() && i < channel.inserts.size(); ++i)
             inserts_[i]->setBypassed(channel.inserts[i].bypass);
+        for (size_t i = 0; i < sends_.size() && i < channel.sends.size() && i < sendNames_.size(); ++i)
+        {
+            const auto& s = channel.sends[i];
+            sends_[i]->set(sendNames_[i], s.level, s.preFader, s.pan, s.mute);
+        }
     }
 
     void setChannel(const core::Channel& channel, bool isBus, const core::Project& project, int slot)
@@ -314,7 +379,43 @@ public:
         for (size_t i = 0; i < busIds_.size(); ++i)
             if (busIds_[i] == channel.outputBus)
                 selected = static_cast<int>(i) + 2;
+        // The device's other output pairs: straight out, past the master (its own
+        // pair, 1/2, is the master's). One the device lacks stays listed, greyed.
+        const auto& pairs = owner_.outputPairs_;
+        if (pairs.size() > 1 || channel.hardwareOutput >= 0)
+        {
+            output_.addSectionHeading("Hardware outputs");
+            for (size_t p = 1; p < pairs.size(); ++p)
+                output_.addItem(juce::String::fromUTF8(pairs[p].c_str()), hardwareBase + static_cast<int>(p));
+            if (channel.hardwareOutput >= static_cast<int>(std::max<size_t>(pairs.size(), 1)))
+            {
+                const int missing = hardwareBase + channel.hardwareOutput;
+                output_.addItem("Out " + juce::String(outputPairName(channel.hardwareOutput)) +
+                                    " (not on this device)",
+                                missing);
+                output_.setItemEnabled(missing, false);
+            }
+        }
+        if (channel.hardwareOutput >= 0)
+            selected = hardwareBase + channel.hardwareOutput;
         output_.setSelectedId(selected, juce::dontSendNotification);
+        const bool absent = channel.hardwareOutput >= static_cast<int>(std::max<size_t>(pairs.size(), 1));
+        output_.setTooltip(absent ? "Out " + juce::String(outputPairName(channel.hardwareOutput)) +
+                                        " is not on this device: it plays to its bus or the master meanwhile"
+                           : channel.hardwareOutput >= 0
+                               ? "Output: straight to the device, past the master (an export mixes it in)"
+                               : "Output");
+        soloSafe_ = channel.soloSafe;
+        solo_.setTooltip(soloSafe_
+                             ? "Solo (solo safe: other solos never silence it; Ctrl+click: solo this alone)"
+                             : "Solo (Ctrl+click: solo this alone)");
+        // Its plugins' delay (shown when there is one).
+        latency_ = 0;
+        for (const auto* chained : channel.processingChain())
+            if (const auto live = owner_.liveInsert ? owner_.liveInsert(chained->id) : nullptr)
+                latency_ += std::max(0, live->latencySamples());
+        latencyText_ = latency_ > 0 ? "+" + latencyMs(latency_, project.sampleRate) : juce::String();
+        sampleRate_ = project.sampleRate;
 
         stripRow_.set(channel);
         stripRow_.setVisible(stripRow_.hasModules());
@@ -332,7 +433,10 @@ public:
             if (hosting::PluginRegistry::isHostedType(inst.type))
                 badge = inst.type.rfind("clap:", 0) == 0 ? "CLAP" : "VST3";
             instrument_.set(
-                juce::String::fromUTF8(owner_.insertDisplayName(inst.type).c_str()), badge, inst.bypass);
+                juce::String::fromUTF8(insertName(inst, owner_.actions()).c_str()), badge, inst.bypass);
+            instrument_.setTrouble(insertTrouble(inst, owner_.actions()));
+            instrument_.onBadge = badgeAction(inst.type);
+            instrument_.dragDescription = nullptr;
             instrument_.onOpen = [this, instrumentId] { owner_.openInsertEditor(id_, instrumentId); };
             instrument_.onBypass = [this, instrumentId]
             {
@@ -354,6 +458,7 @@ public:
             insertsHolder_.addAndMakeVisible(*made);
             inserts_.push_back(std::move(made));
         }
+        bool troubled = false;
         for (size_t i = 0; i < channel.inserts.size(); ++i)
         {
             const auto& insert = channel.inserts[i];
@@ -370,7 +475,15 @@ public:
             else if (plugins::BuiltInFactory::isInstrument(insert.type))
                 badge = "INST";
             inserts_[i]->set(
-                juce::String::fromUTF8(owner_.insertDisplayName(insert.type).c_str()), badge, insert.bypass);
+                juce::String::fromUTF8(insertName(insert, owner_.actions()).c_str()), badge, insert.bypass);
+            inserts_[i]->setTrouble(insertTrouble(insert, owner_.actions()));
+            troubled = troubled || inserts_[i]->troubled();
+            inserts_[i]->onBadge = badgeAction(insert.type);
+            inserts_[i]->dragDescription = [this, insertId]
+            {
+                return "insert:" + juce::String(static_cast<juce::int64>(id_)) + ":" +
+                       juce::String(static_cast<juce::int64>(insertId));
+            };
             inserts_[i]->onOpen = [this, insertId] { owner_.openInsertEditor(id_, insertId); };
             inserts_[i]->onBypass = [this, insertId]
             {
@@ -384,6 +497,8 @@ public:
             { reorderInsert(insertId, screen, released); };
         }
         insertCount_ = static_cast<int>(channel.inserts.size());
+        insertsSummary_.set(juce::String(insertCount_) + (insertCount_ == 1 ? " insert" : " inserts"),
+                            troubled);
 
         // Send rows.
         while (sends_.size() > channel.sends.size())
@@ -394,6 +509,7 @@ public:
             addAndMakeVisible(*row);
             sends_.push_back(std::move(row));
         }
+        sendNames_.clear();
         for (size_t i = 0; i < channel.sends.size(); ++i)
         {
             const auto& send = channel.sends[i];
@@ -401,27 +517,17 @@ public:
             const core::Id busId = send.bus;
             const bool pre = send.preFader;
             const float level = send.level;
-            sends_[i]->set(
-                juce::String::fromUTF8(bus != nullptr && !bus->name.empty() ? bus->name.c_str() : "Bus"),
-                level,
-                pre);
+            sendNames_.push_back(
+                juce::String::fromUTF8(bus != nullptr && !bus->name.empty() ? bus->name.c_str() : "Bus"));
+            sends_[i]->set(sendNames_.back(), level, pre, send.pan, send.mute);
+            sends_[i]->setShowPan(owner_.wide_);
             sends_[i]->onLevel = [this, busId, pre](float value)
             { owner_.onCommand(std::make_unique<core::SetSend>(id_, busId, value, pre)); };
+            sends_[i]->onPan = [this, busId](float value)
+            { owner_.onCommand(std::make_unique<core::SetSendPan>(id_, busId, value)); };
             sends_[i]->onTogglePre = [this, busId, level, pre]
             { owner_.onCommand(std::make_unique<core::SetSend>(id_, busId, level, !pre)); };
-            sends_[i]->onMenu = [this, busId, row = sends_[i].get()]
-            {
-                juce::PopupMenu menu;
-                menu.addItem(1, "Remove send");
-                juce::Component::SafePointer<Strip> safe(this);
-                menu.showMenuAsync(juce::PopupMenu::Options().withTargetComponent(row),
-                                   [safe, id = id_, busId](int choice)
-                                   {
-                                       if (safe != nullptr && choice == 1)
-                                           safe->owner_.onCommand(
-                                               std::make_unique<core::RemoveSend>(id, busId));
-                                   });
-            };
+            sends_[i]->onMenu = [this, busId, row = sends_[i].get()] { showSendMenu(busId, row); };
             sends_[i]->onGestureBegin = [this]
             {
                 if (owner_.onGestureBegin)
@@ -434,7 +540,10 @@ public:
             };
         }
         sendCount_ = static_cast<int>(channel.sends.size());
-        addSend_.setEnabled(!busIds_.empty());
+        sendsSummary_.set(juce::String(sendCount_) + (sendCount_ == 1 ? " send" : " sends"), false);
+        // Without a bus to send to, the slot offers a new FX track.
+        addSend_.setEnabled(true);
+        meter_.setShowScale(owner_.wide_);
         feedsSoloedBus_ = false;
         for (const auto& b : project.buses)
             if (b.solo && (channel.outputBus == b.id ||
@@ -472,6 +581,7 @@ public:
         rows.instrument = rows.instrument || instrumentSlot_;
         rows.inserts = std::max(rows.inserts, insertCount_);
         rows.sends = std::max(rows.sends, sendCount_);
+        rows.latency = rows.latency || latency_ > 0;
     }
     juce::Rectangle<int> faderBand() const { return fader_.getBounds().getUnion(meter_.getBounds()); }
     int valueY() const { return value_.getY(); }
@@ -511,25 +621,41 @@ public:
             g.setColour(c.solo.withAlpha(0.5f));
             g.drawRoundedRectangle(bounds.reduced(0.5f), theme_.radius.sm, 1.0f);
         }
-        // Section labels and the collapsed summaries.
-        g.setFont(theme_.caption());
-        g.setColour(c.textTertiary);
-        if (collapsed_)
+        // A drop on a collapsed strip goes at the end of its inserts: the summary lights.
+        if (dropping_ && collapsed_)
         {
-            g.drawText(juce::String(insertCount_) + (insertCount_ == 1 ? " insert" : " inserts"),
-                       insertsSummary_,
-                       juce::Justification::centredLeft);
-            g.drawText(juce::String(sendCount_) + (sendCount_ == 1 ? " send" : " sends"),
-                       sendsSummary_,
-                       juce::Justification::centredLeft);
+            g.setColour(c.accent);
+            g.drawRoundedRectangle(
+                insertsSummary_.getBounds().toFloat().expanded(0.5f), theme_.radius.sm, 2.0f);
+        }
+        // Its plugins' delay, under the output.
+        if (!latencyArea_.isEmpty() && latencyText_.isNotEmpty())
+        {
+            g.setFont(theme_.caption());
+            g.setColour(c.textTertiary);
+            g.drawText(latencyText_, latencyArea_, juce::Justification::centred);
         }
         if (hasKeyboardFocus(false))
             if (auto* laf = dynamic_cast<NorthlightLookAndFeel*>(&getLookAndFeel()))
                 laf->drawFocusRing(g, *this, bounds.reduced(1.0f), theme_.radius.sm);
+    }
+
+    void paintOverChildren(juce::Graphics& g) override
+    {
+        const auto& c = theme_.colours;
+        // The insertion line of a drag (a slot or a browser row).
         if (reorderLineY_ >= 0)
         {
             g.setColour(c.accent);
             g.fillRect(insertsView_.getX(), reorderLineY_ - 1, insertsView_.getWidth(), 2);
+        }
+        // Solo safe: a dot in the solo colour in the S button's corner.
+        if (soloSafe_)
+        {
+            const auto b = solo_.getBounds().toFloat();
+            g.setColour(c.solo);
+            g.fillEllipse(
+                juce::Rectangle<float>(5.0f, 5.0f).withCentre({b.getRight() - 5.0f, b.getY() + 5.0f}));
         }
     }
 
@@ -560,11 +686,14 @@ public:
             addInstrument_.setBounds(row.withTrimmedBottom(1));
             area.removeFromTop(pad);
         }
-        // The fixed bottom: pan, toggles, value, output; the fader takes the rest
-        // between 120 and 200 px, and below 120 the sections collapse.
+        // The anatomy (screens/mixer.md): inserts, sends, pan, the toggles, then
+        // the fader, value and output. The fixed rows: pan, toggles, value,
+        // output and, when a strip shows one, the latency line; the fader takes
+        // the rest between 120 and 200 px, and below 120 the sections collapse.
         // (The last term is the room under the output selector.)
-        const int bottom =
-            theme_.sizes.knob + 16 + pad + control + pad + pad + control + pad + control + theme_.spacing.sm;
+        const int latencyH = rows.latency ? latencyRow : 0;
+        const int bottom = theme_.sizes.knob + 16 + pad + control + pad + pad + control + pad + control +
+                           latencyH + theme_.spacing.sm;
         const int insertsFull =
             std::min(std::max(rows.inserts, insertCount_) + 1, maxVisibleSlots) * slotHeight + 4;
         const int sendsFull = (std::max(rows.sends, sendCount_) + 1) * slotHeight + 4;
@@ -578,8 +707,10 @@ public:
         area.removeFromTop(pad);
         auto sendsArea = area.removeFromTop(sendsH);
         area.removeFromTop(pad);
-        insertsSummary_ = insertsArea.withTrimmedLeft(pad);
-        sendsSummary_ = sendsArea.withTrimmedLeft(pad);
+        insertsSummary_.setBounds(insertsArea.withTrimmedBottom(1));
+        sendsSummary_.setBounds(sendsArea.withTrimmedBottom(1));
+        insertsSummary_.setVisible(collapsed_);
+        sendsSummary_.setVisible(collapsed_);
         insertsView_.setVisible(!collapsed_);
         addSend_.setVisible(!collapsed_);
         for (auto& s : sends_)
@@ -601,12 +732,6 @@ public:
             addSend_.setBounds(sendsArea.removeFromTop(slotHeight).withTrimmedBottom(1));
         }
 
-        auto faderArea = area.removeFromTop(faderTravel + 2 * pad);
-        auto meterArea = faderArea.removeFromRight(meter_.barsWidth());
-        meter_.setBounds(meterArea.withTrimmedTop(pad));
-        faderArea.removeFromRight(pad);
-        fader_.setBounds(faderArea);
-        area.removeFromTop(pad);
         pan_.setBounds(area.removeFromTop(theme_.sizes.knob + 16)
                            .withSizeKeepingCentre(theme_.sizes.knob + 16, theme_.sizes.knob + 16));
         area.removeFromTop(pad);
@@ -624,9 +749,20 @@ public:
         }
         phase_.setBounds(toggles);
         area.removeFromTop(pad);
+
+        // The fader and the meter beside it (a wide strip puts the dB scale
+        // between them).
+        auto faderArea = area.removeFromTop(faderTravel + 2 * pad);
+        const int meterW = meter_.barsWidth() + (owner_.wide_ ? meter_.scaleWidth() : 0);
+        auto meterArea = faderArea.removeFromRight(meterW);
+        meter_.setBounds(meterArea.withTrimmedTop(pad));
+        faderArea.removeFromRight(pad);
+        fader_.setBounds(faderArea);
+        area.removeFromTop(pad);
         value_.setBounds(area.removeFromTop(control));
         area.removeFromTop(pad);
         output_.setBounds(area.removeFromTop(control));
+        latencyArea_ = latencyH > 0 ? area.removeFromTop(latencyH) : juce::Rectangle<int>();
     }
 
     bool keyPressed(const juce::KeyPress& key) override
@@ -645,6 +781,167 @@ public:
     void focusLost(FocusChangeType) override { repaint(); }
 
 private:
+    // Where a drop at `local` goes in the inserts: at the slot boundary under it,
+    // or at the end over the rest of the strip (or a collapsed one).
+    int dropIndexAt(juce::Point<int> local) const
+    {
+        if (collapsed_ || !insertsView_.getBounds().contains(local))
+            return insertCount_;
+        const auto inHolder = insertsHolder_.getLocalPoint(this, local);
+        return std::clamp(
+            static_cast<int>(std::lround(static_cast<double>(inHolder.y) / slotHeight)), 0, insertCount_);
+    }
+
+    // A click on a slot's format badge: the plugin browser, searching for it.
+    std::function<void()> badgeAction(const std::string& type)
+    {
+        const auto* actions = owner_.actions();
+        if (!hosting::PluginRegistry::isHostedType(type) || actions == nullptr || !actions->showInBrowser)
+            return nullptr;
+        return [actions, type] { actions->showInBrowser(type); };
+    }
+
+    // The collapsed inserts: each with its menu, the instrument first, then "Add insert".
+    void showInsertsList()
+    {
+        if (owner_.project_ == nullptr)
+            return;
+        const auto* channel = owner_.project_->findChannel(id_);
+        if (channel == nullptr)
+            return;
+        juce::PopupMenu menu;
+        std::vector<std::function<void()>> actions;
+        const auto addSlot = [&](const core::Insert& insert)
+        {
+            juce::PopupMenu sub;
+            addInsertMenuItems(sub, actions, owner_.insertMenuRequest(id_, insert.id, !isBus_));
+            const auto trouble = insertTrouble(insert, owner_.actions());
+            juce::String name = juce::String::fromUTF8(insertName(insert, owner_.actions()).c_str());
+            if (trouble.any())
+                name << "  (" << trouble.label() << ")";
+            else if (insert.bypass)
+                name << "  (bypassed)";
+            menu.addSubMenu(name, sub);
+        };
+        if (channel->hasInstrument())
+            addSlot(channel->instrument);
+        for (const auto& insert : channel->inserts)
+            addSlot(insert);
+        if (!channel->inserts.empty() || channel->hasInstrument())
+            menu.addSeparator();
+        auto built =
+            buildPluginMenu(PluginKind::effect, owner_.pluginSources_, static_cast<int>(actions.size()) + 1);
+        juce::Component::SafePointer<MixerView> owner(&owner_);
+        for (const auto& type : built.types)
+            actions.push_back(
+                [owner, id = id_, type]
+                {
+                    if (owner != nullptr)
+                        owner->addInsert(id, type);
+                });
+        menu.addSubMenu("Add insert", built.menu);
+        showList(menu, actions, insertsSummary_);
+    }
+
+    // The collapsed sends: each with its menu, then "Add send".
+    void showSendsList()
+    {
+        if (owner_.project_ == nullptr)
+            return;
+        const auto* channel = owner_.project_->findChannel(id_);
+        if (channel == nullptr)
+            return;
+        juce::PopupMenu menu;
+        std::vector<std::function<void()>> actions;
+        for (const auto& send : channel->sends)
+        {
+            juce::PopupMenu sub;
+            addSendItems(sub, actions, send);
+            const auto* bus = owner_.project_->findBus(send.bus);
+            juce::String name =
+                juce::String::fromUTF8(bus != nullptr && !bus->name.empty() ? bus->name.c_str() : "Bus");
+            name << "  " << db::gainText(send.level) << " dB" << (send.mute ? " (muted)" : "");
+            menu.addSubMenu(name, sub);
+        }
+        if (!channel->sends.empty())
+            menu.addSeparator();
+        juce::PopupMenu add;
+        addSendTargets(add, actions);
+        menu.addSubMenu("Add send", add);
+        showList(menu, actions, sendsSummary_);
+    }
+
+    static void
+    showList(juce::PopupMenu& menu, std::vector<std::function<void()>>& actions, juce::Component& target)
+    {
+        menu.showMenuAsync(juce::PopupMenu::Options().withTargetComponent(target),
+                           [actions](int result)
+                           {
+                               if (result >= 1 && static_cast<size_t>(result) <= actions.size())
+                                   actions[static_cast<size_t>(result) - 1]();
+                           });
+    }
+
+    // One send's items: where it taps, mute, its pan and removal.
+    void
+    addSendItems(juce::PopupMenu& menu, std::vector<std::function<void()>>& actions, const core::Send& send)
+    {
+        juce::Component::SafePointer<MixerView> owner(&owner_);
+        const core::Id id = id_, busId = send.bus;
+        const auto command = [owner](std::unique_ptr<core::Command> c)
+        {
+            if (owner != nullptr && owner->onCommand)
+                owner->onCommand(std::move(c));
+        };
+        const auto next = [&] { return static_cast<int>(actions.size()) + 1; };
+        menu.addItem(next(), "Pre-fader", true, send.preFader);
+        actions.push_back([command, id, busId, level = send.level, pre = send.preFader]
+                          { command(std::make_unique<core::SetSend>(id, busId, level, !pre)); });
+        menu.addItem(next(), "Mute send", true, send.mute);
+        actions.push_back([command, id, busId, mute = send.mute]
+                          { command(std::make_unique<core::SetSendMute>(id, busId, !mute)); });
+        juce::PopupMenu pan;
+        for (const float p : {-1.0f, -0.5f, 0.0f, 0.5f, 1.0f})
+        {
+            pan.addItem(next(), panText(p), true, std::abs(send.pan - p) < 0.01f);
+            actions.push_back([command, id, busId, p]
+                              { command(std::make_unique<core::SetSendPan>(id, busId, p)); });
+        }
+        menu.addSubMenu("Pan: " + panText(send.pan), pan);
+        menu.addSeparator();
+        menu.addItem(next(), "Remove send");
+        actions.push_back([command, id, busId] { command(std::make_unique<core::RemoveSend>(id, busId)); });
+    }
+
+    // The buses this channel can send to, and a new FX track for it.
+    void addSendTargets(juce::PopupMenu& menu, std::vector<std::function<void()>>& actions)
+    {
+        auto built = buildSendMenu(*owner_.project_, id_, static_cast<int>(actions.size()) + 1);
+        juce::Component::SafePointer<MixerView> owner(&owner_);
+        for (const auto bus : built.targets)
+            actions.push_back(
+                [owner, id = id_, bus]
+                {
+                    if (owner != nullptr && owner->onCommand)
+                        owner->onCommand(std::make_unique<core::SetSend>(id, bus, 1.0f, false));
+                });
+        menu = built.menu;
+        menu.addSeparator();
+        owner_.addFxSendItems(menu, actions, id_);
+    }
+
+    void showSendMenu(core::Id busId, juce::Component* row)
+    {
+        const auto* channel = owner_.project_ != nullptr ? owner_.project_->findChannel(id_) : nullptr;
+        const auto* send = channel != nullptr ? channel->findSend(busId) : nullptr;
+        if (send == nullptr)
+            return;
+        juce::PopupMenu menu;
+        std::vector<std::function<void()>> actions;
+        addSendItems(menu, actions, *send);
+        showList(menu, actions, *row);
+    }
+
     void gainChanged(float gain)
     {
         if (updating_)
@@ -737,6 +1034,36 @@ private:
         actions.resize(actions.size() + static_cast<size_t>(item - firstColour),
                        [] {}); // the items act themselves
         menu.addSubMenu("Colour", colours);
+        menu.addSeparator();
+        // Solo safe: other solos never silence it (an FX return, a click track).
+        const bool safeNow = soloSafe_;
+        menu.addItem(item++, "Solo safe", true, safeNow);
+        actions.push_back([this, id, safeNow]
+                          { owner_.onCommand(std::make_unique<core::SetSoloSafe>(id, !safeNow)); });
+        menu.addItem(item++, "Hide strip");
+        actions.push_back(
+            [this, id]
+            {
+                juce::Component::SafePointer<MixerView> owner(&owner_);
+                juce::MessageManager::callAsync(
+                    [owner, id]
+                    {
+                        if (owner != nullptr && owner->onCommand)
+                            owner->onCommand(std::make_unique<core::SetMixerHidden>(id, true));
+                    });
+            });
+        menu.addItem(item++, "Wide strips", true, owner_.wide_);
+        actions.push_back(
+            [this]
+            {
+                juce::Component::SafePointer<MixerView> owner(&owner_);
+                juce::MessageManager::callAsync(
+                    [owner]
+                    {
+                        if (owner != nullptr)
+                            owner->setWideStrips(!owner->wideStrips());
+                    });
+            });
         if (isBus_)
         {
             menu.addSeparator();
@@ -763,65 +1090,12 @@ private:
                            });
     }
 
+    // An insert's or the instrument slot's menu: the one every slot shares
+    // (ui/InsertMenu.h).
     void showInsertMenu(core::Id insertId)
     {
-        if (owner_.project_ == nullptr)
-            return;
-        const auto* channel = owner_.project_->findChannel(id_);
-        if (channel == nullptr || !channel->hasInstrument() || insertId != channel->instrument.id)
-        {
+        if (owner_.project_ != nullptr)
             owner_.showInsertMenu(id_, insertId, !isBus_);
-            return;
-        }
-        // The instrument slot: open and bypass, then its own items.
-        const bool bypass = channel->instrument.bypass;
-        juce::PopupMenu menu;
-        std::vector<std::function<void()>> actions;
-        int item = 1;
-        menu.addItem(item++, "Open");
-        actions.push_back([this, insertId] { owner_.openInsertEditor(id_, insertId); });
-        menu.addItem(item++, "Bypass", true, bypass);
-        actions.push_back(
-            [this, insertId, bypass]
-            { owner_.onCommand(std::make_unique<core::SetInsertBypass>(id_, insertId, !bypass)); });
-        showInstrumentSlotMenu(menu, actions, item);
-    }
-
-    // The rest of the instrument slot's menu: its outputs as tracks, replace and
-    // remove.
-    void showInstrumentSlotMenu(juce::PopupMenu& menu, std::vector<std::function<void()>>& actions, int item)
-    {
-        const auto* track = owner_.project_->findTrack(id_);
-        if (track == nullptr)
-            return;
-        const auto live = owner_.liveInsert ? owner_.liveInsert(track->instrument.id) : nullptr;
-        if (live != nullptr && live->auxOutputCount() > 0)
-        {
-            juce::PopupMenu outputs;
-            for (int output = 1; output <= live->auxOutputCount(); ++output)
-            {
-                const bool exists = outputTrack(*owner_.project_, *track, output) != nullptr;
-                outputs.addItem(item++, "Track for " + juce::String(outputPairName(output)), !exists, exists);
-                const auto made = makeOutputTrack(*track, output, live->auxOutputName(output - 1));
-                actions.push_back([this, made] { owner_.onCommand(std::make_unique<core::AddTrack>(made)); });
-            }
-            menu.addSubMenu("Outputs", outputs);
-        }
-        menu.addSeparator();
-        auto replace = buildPluginMenu(PluginKind::instrument, owner_.pluginSources_, item);
-        for (const auto& type : replace.types)
-            actions.push_back([this, type] { setInstrument(type); });
-        item = replace.nextItem();
-        menu.addSubMenu("Replace instrument", replace.menu);
-        menu.addItem(item++, "Remove instrument");
-        actions.push_back([this]
-                          { owner_.onCommand(std::make_unique<core::SetInstrument>(id_, core::Insert{})); });
-        menu.showMenuAsync(juce::PopupMenu::Options(),
-                           [actions](int result)
-                           {
-                               if (result >= 1 && static_cast<size_t>(result) <= actions.size())
-                                   actions[static_cast<size_t>(result) - 1]();
-                           });
     }
 
     void setInstrument(const std::string& type)
@@ -851,15 +1125,10 @@ private:
     {
         if (owner_.project_ == nullptr)
             return;
-        auto built = buildSendMenu(*owner_.project_, id_);
-        juce::Component::SafePointer<Strip> safe(this);
-        built.menu.showMenuAsync(
-            juce::PopupMenu::Options().withTargetComponent(addSend_),
-            [safe, built, id = id_](int choice)
-            {
-                if (const auto bus = built.busFor(choice); safe != nullptr && bus != core::invalidId)
-                    safe->owner_.onCommand(std::make_unique<core::SetSend>(id, bus, 1.0f, false));
-            });
+        juce::PopupMenu menu;
+        std::vector<std::function<void()>> actions;
+        addSendTargets(menu, actions);
+        showList(menu, actions, addSend_);
     }
 
     MixerView& owner_;
@@ -888,7 +1157,14 @@ private:
     InsertSlot instrument_{theme_};
     AddSlot addInstrument_{theme_, "Instrument"};
     bool instrumentSlot_ = false; // an instrument channel: the instrument row shows
-    juce::Rectangle<int> insertsSummary_, sendsSummary_;
+    SectionSummary insertsSummary_, sendsSummary_;
+    std::vector<juce::String> sendNames_;
+    bool soloSafe_ = false, dropping_ = false;
+    int dropIndex_ = -1;
+    int latency_ = 0; // samples its chain delays it by
+    double sampleRate_ = 48000.0;
+    juce::String latencyText_;
+    juce::Rectangle<int> latencyArea_;
     Knob pan_;
     juce::TextButton mute_, solo_, arm_, phase_;
     Fader fader_;

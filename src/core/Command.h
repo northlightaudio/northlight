@@ -87,6 +87,10 @@ public:
     // the live plugin state pulled into the model first, so undo brings back
     // what the user had rather than what the last save held.
     virtual bool capturesInsertState() const noexcept { return false; }
+    // A command that changed the opaque state of an insert whose processor owns
+    // it (a hosted plugin's preset undone): the insert's id, so the session hands
+    // the model's state to the live instance. invalidId: none.
+    virtual Id pushesInsertState() const noexcept { return invalidId; }
     // A new track or bus takes these strip modules when it has none (the
     // session supplies its default strip). Before apply only.
     virtual void setDefaultStrip(const std::vector<Insert>&) {}
@@ -861,7 +865,8 @@ private:
     Marker value_, previous_;
 };
 
-// Routes a track or bus to a bus (invalidId = master).
+// Routes a track or bus to a bus (invalidId = master), leaving any hardware
+// output it played to.
 class SetOutputBus final : public Command
 {
 public:
@@ -872,6 +877,7 @@ public:
 
 private:
     Id channelId_, value_, previous_ = invalidId;
+    int previousHardware_ = -1;
 };
 
 // Adds or updates a send from a track or bus to a bus.
@@ -1796,6 +1802,180 @@ public:
 private:
     double value_, previous_ = 120.0;
     MusicalPositions positions_;
+};
+
+// ----- mixer: routing, solo, sends, insert chains -------------------------------------------
+
+// A channel's send to one bus, found by id each time it runs.
+struct OnSend
+{
+    Id channel = invalidId;
+    Id bus = invalidId;
+    Send* find(Project& p) const noexcept
+    {
+        auto* c = p.findChannel(channel);
+        return c != nullptr ? c->findSend(bus) : nullptr;
+    }
+    bool operator==(const OnSend&) const = default;
+};
+
+// A send's balance (-1..1): a live value, ramped like its level.
+class SetSendPan final : public SetField<OnSend, &Send::pan>
+{
+public:
+    SetSendPan(Id channelId, Id busId, float pan) : SetField({channelId, busId}, std::clamp(pan, -1.0f, 1.0f))
+    {
+    }
+    std::string name() const override { return "Set send pan"; }
+    ChangeKind changeKind() const noexcept override { return ChangeKind::values; }
+    Id liveChannel() const noexcept override { return target_.channel; }
+};
+
+// Mutes a send without losing its level: the level ramps to silence and back.
+class SetSendMute final : public SetField<OnSend, &Send::mute>
+{
+public:
+    SetSendMute(Id channelId, Id busId, bool mute) : SetField({channelId, busId}, mute) {}
+    std::string name() const override { return value_ ? "Mute send" : "Unmute send"; }
+    ChangeKind changeKind() const noexcept override { return ChangeKind::values; }
+    Id liveChannel() const noexcept override { return target_.channel; }
+};
+
+// Plays a track or bus straight to a device output pair (Channel::hardwareOutput;
+// -1 returns it to its bus or the master).
+class SetHardwareOutput final : public SetField<OnChannel, &Channel::hardwareOutput>
+{
+public:
+    SetHardwareOutput(Id channelId, int pair) : SetField({channelId}, std::max(-1, pair)) {}
+    std::string name() const override { return "Set output"; }
+    bool apply(Project& p) override
+    {
+        if (target_.channel == masterId)
+            return false; // the master always plays to the first pair
+        return SetField::apply(p);
+    }
+};
+
+// Keeps a channel audible whatever else is soloed (resolved at compile).
+class SetSoloSafe final : public SetField<OnChannel, &Channel::soloSafe>
+{
+public:
+    SetSoloSafe(Id channelId, bool safe) : SetField({channelId}, safe) {}
+    std::string name() const override { return value_ ? "Make solo safe" : "Clear solo safe"; }
+};
+
+// Leaves a channel's strip out of the mixer (or brings it back); it still plays.
+class SetMixerHidden final : public SetField<OnChannel, &Channel::mixerHidden>
+{
+public:
+    SetMixerHidden(Id channelId, bool hidden) : SetField({channelId}, hidden) {}
+    std::string name() const override { return value_ ? "Hide strip" : "Show strip"; }
+    ChangeKind changeKind() const noexcept override { return ChangeKind::cosmetic; }
+    bool rebuildsViews() const noexcept override { return true; }
+};
+
+// Solos one channel alone (Ctrl+click on a solo button): every other track and
+// bus is unsoloed. When it already is the only one soloed, the solo is cleared.
+class SetExclusiveSolo final : public Command
+{
+public:
+    explicit SetExclusiveSolo(Id channelId) : channelId_(channelId) {}
+    std::string name() const override { return "Solo exclusively"; }
+    bool apply(Project&) override;
+    bool revert(Project&) override;
+    std::size_t footprint() const noexcept override { return sizeof(*this) + previous_.capacity() * 16; }
+
+private:
+    Id channelId_;
+    std::vector<std::pair<Id, bool>> previous_; // every track's and bus's solo before
+};
+
+// Moves an insert from one channel's chain to another's at `index` (or the end
+// when index < 0). It keeps its id, so the live instance and its state travel
+// with it, and its automation lanes go along. A key source the new channel
+// cannot use (itself, a loop, the master) is cleared.
+class MoveInsertToChannel final : public Command
+{
+public:
+    MoveInsertToChannel(Id fromChannel, Id insertId, Id toChannel, int index = -1);
+    std::string name() const override { return "Move insert"; }
+    bool apply(Project&) override;
+    bool revert(Project&) override;
+    std::size_t footprint() const noexcept override;
+
+private:
+    Id from_, insertId_, to_;
+    int index_;
+    // Both chains and their lanes as they were, for revert.
+    std::vector<Insert> fromInserts_, toInserts_;
+    std::vector<AutomationLane> fromLanes_, toLanes_;
+};
+
+// Adds copies of inserts (a paste, a Ctrl+drag, a copied chain) at `index` (or
+// the end when index < 0), each with a new id, as one step. A key source the
+// channel cannot use is cleared; the parameters and state are the copies'.
+class AddInserts final : public Command
+{
+public:
+    AddInserts(Id channelId, std::vector<Insert> inserts, int index = -1, std::string name = "Paste inserts");
+    std::string name() const override { return name_; }
+    bool apply(Project&) override;
+    bool revert(Project&) override;
+    // The ids the copies got (known once applied).
+    const std::vector<Insert>& inserts() const noexcept { return inserts_; }
+    std::size_t footprint() const noexcept override { return sizeof(*this) + heapBytes(inserts_); }
+
+private:
+    Id channelId_;
+    std::vector<Insert> inserts_;
+    int index_;
+    std::string name_;
+    bool idsAssigned_ = false;
+};
+
+// Replaces an effect in place with another type: it keeps its id, place, mix
+// and key and takes the replacement's type, parameters and state. The old
+// effect's parameter lanes go with it (and come back on undo).
+class ReplaceInsert final : public Command
+{
+public:
+    bool capturesInsertState() const noexcept override { return true; }
+    ReplaceInsert(Id channelId, Id insertId, Insert replacement);
+    std::string name() const override { return "Replace insert"; }
+    bool apply(Project&) override;
+    bool revert(Project&) override;
+    std::size_t footprint() const noexcept override
+    {
+        return sizeof(*this) + heapBytes(replacement_) + heapBytes(previous_) + heapBytes(previousLanes_);
+    }
+
+private:
+    Id channelId_, insertId_;
+    Insert replacement_, previous_;
+    std::vector<AutomationLane> previousLanes_;
+};
+
+// A hosted plugin's state changed by a preset or a program (loaded through the
+// plugin window or its card): `before` and `after` are the plugin's own state
+// around the load. The first apply only records it (the plugin already has it);
+// undo and redo hand the state back to the live instance (pushesInsertState).
+class SetPluginState final : public Command
+{
+public:
+    SetPluginState(Id channelId, Id insertId, std::string before, std::string after, std::string name);
+    std::string name() const override { return name_; }
+    bool apply(Project&) override;
+    bool revert(Project&) override;
+    Id pushesInsertState() const noexcept override { return replayed_ ? insertId_ : invalidId; }
+    std::size_t footprint() const noexcept override
+    {
+        return sizeof(*this) + heapBytes(before_) + heapBytes(after_) + heapBytes(name_);
+    }
+
+private:
+    Id channelId_, insertId_;
+    std::string before_, after_, name_;
+    bool replayed_ = false; // undone at least once: redo must push the state too
 };
 
 } // namespace northlight::core

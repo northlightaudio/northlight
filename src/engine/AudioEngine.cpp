@@ -43,7 +43,8 @@ void AudioEngine::setProject(const core::Project& project)
         &runtimes_,
         [this](const std::string& name) { return midiSourceIndex(name); },
         [this](const std::string& name) { return inputBus(name); },
-        preparedBlock_.load(std::memory_order_relaxed));
+        preparedBlock_.load(std::memory_order_relaxed),
+        outputPairs_);
     outputLatency_.store(snapshot->outputLatency, std::memory_order_relaxed);
     masterMeterSlot_.store(snapshot->masterMeterSlot, std::memory_order_relaxed);
     publisher_.publish(std::move(snapshot));
@@ -276,7 +277,10 @@ void AudioEngine::applyLiveValues(const core::Project& project, core::Id only)
         }
         for (const auto& s : c.sends)
             if (const auto send = runtimes_.findSend(c.id, s.bus))
-                send->targetLevel.store(s.level, std::memory_order_relaxed);
+            {
+                send->targetLevel.store(s.mute ? 0.0f : s.level, std::memory_order_relaxed);
+                send->targetPan.store(std::clamp(s.pan, -1.0f, 1.0f), std::memory_order_relaxed);
+            }
         for (const auto* chained : c.processingChain())
             if (const auto& i = *chained; const auto instance = inserts_.find(i.id))
             {

@@ -5,6 +5,7 @@
 #include "engine/Insert.h"
 #include "hosting/PluginRegistry.h"
 #include "ui/Icons.h"
+#include "ui/InsertMenu.h"
 #include "ui/PluginMenu.h"
 #include "ui/Theme.h"
 #include "ui/components/AddSlot.h"
@@ -48,6 +49,9 @@ public:
     std::function<void(core::Id midiTrack, const std::string& type)> onPlayNewInstrument;
     void setRegistry(const hosting::PluginRegistry* registry) { registry_ = registry; }
     void setPluginSources(const PluginSources* sources) noexcept { pluginSources_ = sources; }
+    // What a card's menu and trouble buttons do beyond commands (the shell's,
+    // shared with the mixer); may be null.
+    void setPluginActions(const PluginActions* actions) noexcept { actions_ = actions; }
 
     std::function<std::shared_ptr<engine::InsertProcessor>(core::Id)> liveInsert;
     std::function<std::string(const std::string& type)> displayName;
@@ -96,7 +100,9 @@ private:
     void setInstrument(const std::string& type);
     const core::Channel* channel() const;
     int insertIndexForX(int stripX) const;
-    void reorderCard(core::Id insertId, juce::Point<int> screen, bool released);
+    // A card's header dragged: the insertion line, and on release a move (or with
+    // Ctrl a copy) to there.
+    void reorderCard(core::Id insertId, juce::Point<int> screen, bool released, bool copy = false);
     void addInsert(const std::string& type, int index);
     // The sends: one card per send after the inserts and the strip.
     void rebuildSends(const core::Channel* ch, bool& shape);
@@ -106,6 +112,10 @@ private:
     const core::Project* project_ = nullptr;
     const hosting::PluginRegistry* registry_ = nullptr;
     const PluginSources* pluginSources_ = nullptr;
+    const PluginActions* actions_ = nullptr;
+    PluginActions localActions_; // without the shell's: open and live from the panel's callbacks
+    const PluginActions* actions();
+    InsertMenuRequest menuRequest(core::Id insertId, bool instrument);
     void resolveChannel();
     core::Id channelId_ = core::invalidId;
     core::Id selectedId_ = core::invalidId;  // what the selection asked for

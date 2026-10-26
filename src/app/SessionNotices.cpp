@@ -30,6 +30,8 @@ void SessionNotices::show(const Notice& notice)
                                                              : ui::ToastStack::Kind::info;
     if (notice.reveal != juce::File{})
         host_.toast(kind, text, "Show in folder", [file = notice.reveal] { file.revealToUser(); });
+    else if (!notice.action.empty() && notice.onAction)
+        host_.toast(kind, text, juce::String::fromUTF8(notice.action.c_str()), notice.onAction);
     else
         host_.toast(kind, text, {}, {});
 }

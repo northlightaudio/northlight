@@ -73,6 +73,30 @@ private:
 
 // ----- view ---------------------------------------------------------------------------------
 
+void MixerView::addInsert(core::Id channelId, const std::string& type, int index)
+{
+    if (!onCommand || type.empty())
+        return;
+    core::Insert insert;
+    insert.type = type;
+    insert.params = plugins::defaultParameters(type);
+    onCommand(std::make_unique<core::AddInsert>(channelId, insert, index));
+    if (onInserted)
+        onInserted(type);
+}
+
+const PluginActions* MixerView::actions()
+{
+    if (actions_ != nullptr)
+        return actions_;
+    localActions_.host = host_;
+    localActions_.live = liveInsert;
+    localActions_.openEditor = [this](core::Id channelId, core::Id insertId)
+    { openInsertEditor(channelId, insertId); };
+    localActions_.scan = onScanPlugins;
+    return &localActions_;
+}
+
 void MixerView::showAddInsertMenu(core::Id channelId, juce::Component& target)
 {
     // Effects only: an instrument has its own slot.
@@ -84,12 +108,8 @@ void MixerView::showAddInsertMenu(core::Id channelId, juce::Component& target)
         actions.push_back(
             [safe, channelId, type]
             {
-                if (safe == nullptr || !safe->onCommand)
-                    return;
-                core::Insert insert;
-                insert.type = type;
-                insert.params = plugins::defaultParameters(type);
-                safe->onCommand(std::make_unique<core::AddInsert>(channelId, insert));
+                if (safe != nullptr)
+                    safe->addInsert(channelId, type);
             });
     int item = built.nextItem();
     menu.addSeparator();
@@ -115,98 +135,266 @@ void MixerView::showAddInsertMenu(core::Id channelId, juce::Component& target)
                        });
 }
 
-void MixerView::showInsertMenu(core::Id channelId, core::Id insertId, bool offerOutputs)
+InsertMenuRequest MixerView::insertMenuRequest(core::Id channelId, core::Id insertId, bool offerOutputs)
 {
-    if (project_ == nullptr)
-        return;
-    const auto* channel = project_->findChannel(channelId);
-    const auto* insert = channel != nullptr ? channel->findInsert(insertId) : nullptr;
-    if (insert == nullptr)
-        return;
+    InsertMenuRequest r;
+    r.project = project_;
+    r.channelId = channelId;
+    r.insertId = insertId;
+    r.offerOutputs = offerOutputs;
+    r.actions = actions();
+    r.sources = pluginSources_;
     juce::Component::SafePointer<MixerView> safe(this);
-    const auto command = [safe](std::unique_ptr<core::Command> c)
+    r.onCommand = [safe](std::unique_ptr<core::Command> c)
     {
         if (safe != nullptr && safe->onCommand)
             safe->onCommand(std::move(c));
     };
+    if (const auto* channel = project_ != nullptr ? project_->findChannel(channelId) : nullptr;
+        channel != nullptr && channel->hasInstrument() && channel->instrument.id == insertId)
+    {
+        r.instrument = true;
+        r.onReplaceInstrument = [safe, channelId](const std::string& type)
+        {
+            if (safe == nullptr || !safe->onCommand)
+                return;
+            core::Insert instrument;
+            instrument.type = type;
+            instrument.params = plugins::defaultParameters(type);
+            safe->onCommand(std::make_unique<core::SetInstrument>(channelId, instrument));
+            if (safe->onInserted)
+                safe->onInserted(type);
+        };
+    }
+    return r;
+}
+
+void MixerView::showInsertMenu(core::Id channelId,
+                               core::Id insertId,
+                               bool offerOutputs,
+                               juce::Component* target)
+{
+    if (project_ != nullptr)
+        ui::showInsertMenu(insertMenuRequest(channelId, insertId, offerOutputs), target);
+}
+
+void MixerView::dropOnStrip(core::Id channelId, const juce::String& description, int index, bool copy)
+{
+    if (project_ == nullptr || !onCommand)
+        return;
+    const auto* channel = project_->findChannel(channelId);
+    if (channel == nullptr)
+        return;
+    if (description.startsWith("plugin:"))
+    {
+        const auto type = description.fromFirstOccurrenceOf("plugin:", false, false).toStdString();
+        if (isInstrumentType(type, pluginSources_ != nullptr ? pluginSources_->registry : nullptr))
+        {
+            // An instrument goes in (or replaces) an instrument channel's slot;
+            // elsewhere it is refused.
+            const auto* track = project_->findTrack(channelId);
+            if (track == nullptr || !track->isInstrument())
+                return;
+            core::Insert instrument;
+            instrument.type = type;
+            instrument.params = plugins::defaultParameters(type);
+            onCommand(std::make_unique<core::SetInstrument>(channelId, instrument));
+            if (onInserted)
+                onInserted(type);
+            return;
+        }
+        addInsert(channelId, type, index);
+        return;
+    }
+    // "insert:<channel>:<insert>": a slot from a strip (this one or another).
+    const auto parts = juce::StringArray::fromTokens(description, ":", "");
+    if (parts.size() != 3 || parts[0] != "insert")
+        return;
+    const auto from = static_cast<core::Id>(parts[1].getLargeIntValue());
+    const auto insertId = static_cast<core::Id>(parts[2].getLargeIntValue());
+    const auto* source = project_->findChannel(from);
+    const auto* insert = source != nullptr ? source->findInsert(insertId) : nullptr;
+    if (insert == nullptr || source->insertIndex(insertId) < 0)
+        return; // the instrument slot does not move
+    if (copy)
+    {
+        onCommand(std::make_unique<core::AddInserts>(
+            channelId, std::vector{snapshotInsert(*insert, actions())}, index, "Copy insert"));
+        return;
+    }
+    if (from == channelId)
+    {
+        const int at = source->insertIndex(insertId);
+        const int to = index < 0    ? static_cast<int>(source->inserts.size()) - 1
+                       : index > at ? index - 1
+                                    : index;
+        if (to != at)
+            onCommand(std::make_unique<core::MoveInsert>(channelId, insertId, to));
+        return;
+    }
+    onCommand(std::make_unique<core::MoveInsertToChannel>(from, insertId, channelId, index));
+}
+
+void MixerView::addFxSendItems(juce::PopupMenu& menu,
+                               std::vector<std::function<void()>>& actions,
+                               core::Id channelId)
+{
+    // A send needs somewhere to go: an FX track made here, the send to it in the
+    // same step (post-fader, at -6 dB).
+    juce::PopupMenu fx;
+    juce::Component::SafePointer<MixerView> safe(this);
+    for (const auto& choice : plugins::fxTrackEffects())
+    {
+        fx.addItem(static_cast<int>(actions.size()) + 1, juce::String(choice.name));
+        actions.push_back(
+            [safe, channelId, choice]
+            {
+                if (safe == nullptr || safe->project_ == nullptr)
+                    return;
+                auto commands =
+                    plugins::addFxTrackCommands(*safe->project_, choice.type, choice.name, {channelId});
+                if (safe->actions_ != nullptr && safe->actions_->commands)
+                    safe->actions_->commands("New FX track", std::move(commands));
+                else if (safe->onCommand)
+                    for (auto& c : commands)
+                        safe->onCommand(std::move(c));
+            });
+    }
+    menu.addSubMenu(juce::String::fromUTF8("New FX track\xe2\x80\xa6"), fx);
+}
+
+void MixerView::setOutputChoices(std::vector<std::string> pairs)
+{
+    if (pairs == outputPairs_)
+        return;
+    outputPairs_ = std::move(pairs);
+    rebuildStrips();
+}
+
+void MixerView::setWideStrips(bool wide)
+{
+    wideRead_ = true; // chosen now: the setting no longer decides
+    if (wide == wide_)
+        return;
+    wide_ = wide;
+    if (saveSetting)
+        saveSetting("mixer.wideStrips", wide ? "1" : "0");
+    rebuildStrips();
+}
+
+void MixerView::showViewMenu(juce::Component* target)
+{
+    if (project_ == nullptr)
+        return;
     juce::PopupMenu menu;
     std::vector<std::function<void()>> actions;
-    int item = 1;
-    menu.addItem(item++, "Open");
+    juce::Component::SafePointer<MixerView> safe(this);
+    menu.addItem(1, "Wide strips", true, wide_);
     actions.push_back(
-        [safe, channelId, insertId]
+        [safe]
         {
             if (safe != nullptr)
-                safe->openInsertEditor(channelId, insertId);
+                safe->setWideStrips(!safe->wide_);
         });
-    menu.addItem(item++, "Bypass", true, insert->bypass);
-    const bool bypass = insert->bypass;
-    actions.push_back([command, channelId, insertId, bypass]
-                      { command(std::make_unique<core::SetInsertBypass>(channelId, insertId, !bypass)); });
-    const int index = channel->insertIndex(insertId);
-    menu.addItem(item++, "Move up", index > 0);
-    actions.push_back([command, channelId, insertId, index]
-                      { command(std::make_unique<core::MoveInsert>(channelId, insertId, index - 1)); });
-    menu.addItem(item++, "Move down", index + 1 < static_cast<int>(channel->inserts.size()));
-    actions.push_back([command, channelId, insertId, index]
-                      { command(std::make_unique<core::MoveInsert>(channelId, insertId, index + 1)); });
-    juce::PopupMenu mix;
-    for (const int percent : {0, 25, 50, 75, 100})
+    // The hidden strips: each to show again, or all.
+    juce::PopupMenu hidden;
+    std::vector<core::Id> ids;
+    const auto look = [&](const core::Channel& c)
     {
-        mix.addItem(
-            item++, juce::String(percent) + "%", true, std::abs(insert->mix - percent / 100.0f) < 0.01f);
+        if (!c.mixerHidden)
+            return;
+        hidden.addItem(static_cast<int>(actions.size()) + 1, juce::String::fromUTF8(c.name.c_str()));
+        const core::Id id = c.id;
+        ids.push_back(id);
         actions.push_back(
-            [command, channelId, insertId, percent]
-            { command(std::make_unique<core::SetInsertMix>(channelId, insertId, percent / 100.0f)); });
-    }
-    menu.addSubMenu("Wet/dry", mix);
-    // Key (sidechain) source, for inserts that take one: tracks for anyone, buses
-    // too when the channel is a bus. The master's inserts run on the finished mix
-    // and take no key.
-    const auto live = liveInsert ? liveInsert(insertId) : nullptr;
-    if (live != nullptr && live->acceptsSidechain() && channelId != core::masterId)
+            [safe, id]
+            {
+                if (safe != nullptr && safe->onCommand)
+                    safe->onCommand(std::make_unique<core::SetMixerHidden>(id, false));
+            });
+    };
+    for (const auto& t : project_->tracks)
+        if (t.hasAudio())
+            look(t);
+    for (const auto& b : project_->buses)
+        look(b);
+    if (!ids.empty())
     {
-        juce::PopupMenu key;
-        addSidechainItems(key, actions, *project_, channelId, *insert, onCommand);
-        item = static_cast<int>(actions.size()) + 1;
-        menu.addSubMenu("Sidechain", key);
+        hidden.addSeparator();
+        hidden.addItem(static_cast<int>(actions.size()) + 1, "Show all");
+        actions.push_back(
+            [safe, ids]
+            {
+                if (safe == nullptr || safe->project_ == nullptr || !safe->onCommand)
+                    return;
+                std::vector<std::unique_ptr<core::Command>> commands;
+                for (const auto id : ids)
+                    commands.push_back(std::make_unique<core::SetMixerHidden>(id, false));
+                if (safe->actions_ != nullptr && safe->actions_->commands)
+                    safe->actions_->commands("Show strips", std::move(commands));
+                else
+                    for (auto& c : commands)
+                        safe->onCommand(std::move(c));
+            });
     }
-    // Extra outputs of a multi-output instrument: one aux track per pair.
-    if (live != nullptr && live->auxOutputCount() > 0 && offerOutputs)
-    {
-        juce::PopupMenu outputs;
-        for (int output = 1; output <= live->auxOutputCount(); ++output)
-        {
-            bool exists = false;
-            for (const auto& t : project_->tracks)
-                if (t.isAux() && t.auxTrack == channelId && t.auxInsert == insertId && t.auxOutput == output)
-                    exists = true;
-            outputs.addItem(item++, "Track for output " + juce::String(output + 1), !exists, exists);
-            const std::string name = channel->name;
-            actions.push_back(
-                [command, channelId, insertId, output, name]
-                {
-                    core::Track aux;
-                    aux.kind = core::TrackKind::aux;
-                    aux.name = name + " out " + std::to_string(output + 1);
-                    aux.auxTrack = channelId;
-                    aux.auxInsert = insertId;
-                    aux.auxOutput = output;
-                    command(std::make_unique<core::AddTrack>(aux));
-                });
-        }
-        menu.addSubMenu("Outputs", outputs);
-    }
+    menu.addSubMenu("Hidden strips", hidden, !ids.empty());
     menu.addSeparator();
-    menu.addItem(item++, "Remove");
-    actions.push_back([command, channelId, insertId]
-                      { command(std::make_unique<core::RemoveInsert>(channelId, insertId)); });
-    menu.showMenuAsync(juce::PopupMenu::Options(),
+    menu.addItem(static_cast<int>(actions.size()) + 1, "Close all plugin windows", openEditorCount() > 0);
+    actions.push_back(
+        [safe]
+        {
+            if (safe != nullptr)
+                safe->closeEditors();
+        });
+    auto options = juce::PopupMenu::Options();
+    if (target != nullptr)
+        options = options.withTargetComponent(target);
+    menu.showMenuAsync(options,
                        [actions](int result)
                        {
                            if (result >= 1 && static_cast<size_t>(result) <= actions.size())
                                actions[static_cast<size_t>(result) - 1]();
                        });
+}
+
+void MixerView::reopenSavedWindows()
+{
+    pendingWindows_.clear();
+    if (project_ == nullptr)
+        return;
+    const auto look = [&](const core::Channel& c)
+    {
+        if (c.hasInstrument() && c.instrument.windowOpen)
+            pendingWindows_.emplace_back(c.id, c.instrument.id);
+        for (const auto& i : c.inserts)
+            if (i.windowOpen)
+                pendingWindows_.emplace_back(c.id, i.id);
+    };
+    for (const auto& t : project_->tracks)
+        look(t);
+    for (const auto& b : project_->buses)
+        look(b);
+    look(project_->master);
+    openSavedWindows();
+}
+
+void MixerView::openSavedWindows()
+{
+    // A hosted plugin opens once its instance is made (a project loads them in
+    // steps); a built-in at once.
+    std::erase_if(pendingWindows_,
+                  [this](const std::pair<core::Id, core::Id>& w)
+                  {
+                      const auto* channel = project_ != nullptr ? project_->findChannel(w.first) : nullptr;
+                      const auto* insert = channel != nullptr ? channel->findInsert(w.second) : nullptr;
+                      if (insert == nullptr)
+                          return true;
+                      const bool hosted = hosting::PluginRegistry::isHostedType(insert->type);
+                      if (hosted && (!liveInsert || liveInsert(w.second) == nullptr))
+                          return insertTrouble(*insert, actions()).any(); // wait, unless it never comes
+                      openInsertEditor(w.first, w.second);
+                      return true;
+                  });
 }
 
 std::string MixerView::insertDisplayName(const std::string& type) const
@@ -241,21 +429,34 @@ void MixerView::openInsertEditor(core::Id channelId, core::Id insertId)
     {
         const auto live = liveInsert ? liveInsert(insertId) : nullptr;
         auto* presets = live != nullptr ? hosting::HostFactory::presetsFor(*live) : nullptr;
-        if (presets == nullptr)
-            return; // not loaded (missing plugin): nothing to show
+        if (presets == nullptr || live->crashed())
+            return; // not loaded (missing plugin), or crashed (never called again): nothing to show
         const juce::String pluginName = juce::String::fromUTF8(insertDisplayName(insert->type).c_str());
         const juce::String trackName = juce::String::fromUTF8(channel->name.c_str());
         const juce::String format = hosting::PluginRegistry::isClapType(insert->type) ? "CLAP" : "VST3";
         const auto setting = [this](const std::string& key)
         { return loadSetting ? loadSetting(key) : std::string{}; };
-        const bool pinned = settings::Reader(setting).flag(settings::pluginsOnTop);
+        // Pinned per plugin; one never pinned or unpinned follows the preference.
+        const std::string pinKey = "plugins.pin." + insert->type;
+        const auto pinSetting = setting(pinKey);
+        const bool pinned =
+            pinSetting.empty() ? settings::Reader(setting).flag(settings::pluginsOnTop) : pinSetting == "1";
+        // A plugin with a GUI and parameters can show either editor (the bar's toggle).
+        const bool canSwitch = hosting::HostFactory::hasOwnEditor(*live) && !live->parameters().empty();
+        const bool wantsGeneric =
+            canSwitch &&
+            std::find(genericEditors_.begin(), genericEditors_.end(), insertId) != genericEditors_.end();
 
-        // The plugin's own editor, whatever its format.
-        auto plugin = hosting::HostFactory::createEditor(*live);
-        if (!plugin)
-            return;
-        std::unique_ptr<juce::Component> editor = std::move(plugin->component);
-        const bool resizable = plugin->resizable;
+        // The plugin's own editor, whatever its format (or none: the generic one).
+        std::optional<hosting::PluginEditor> plugin;
+        if (!wantsGeneric)
+        {
+            plugin = hosting::HostFactory::createEditor(*live);
+            if (!plugin)
+                return;
+        }
+        std::unique_ptr<juce::Component> editor = plugin ? std::move(plugin->component) : nullptr;
+        const bool resizable = plugin && plugin->resizable;
         {
             if (editor == nullptr)
             {
@@ -292,9 +493,24 @@ void MixerView::openInsertEditor(core::Id channelId, core::Id insertId)
                                                      pluginName,
                                                      trackName,
                                                      format,
-                                                     pinned);
+                                                     pinned,
+                                                     wantsGeneric,
+                                                     canSwitch);
         juce::Component::SafePointer<MixerView> safe(this);
-        if (plugin->events != nullptr)
+        window->onShowGeneric = [safe, channelId, insertId](bool generic)
+        {
+            if (safe == nullptr)
+                return;
+            auto& list = safe->genericEditors_;
+            std::erase(list, insertId);
+            if (generic)
+                list.push_back(insertId);
+            // The other editor in a new window where this one was.
+            std::erase_if(safe->pluginWindows_,
+                          [insertId](const auto& w) { return w->insertId() == insertId; });
+            safe->openInsertEditor(channelId, insertId);
+        };
+        if (plugin && plugin->events != nullptr)
         {
             juce::Component::SafePointer<PluginWindow> weak(window.get());
             plugin->events->resized = [weak](int w, int h)
@@ -334,10 +550,10 @@ void MixerView::openInsertEditor(core::Id channelId, core::Id insertId)
             if (safe != nullptr && safe->onCommand)
                 safe->onCommand(std::move(c));
         };
-        window->onPinChanged = [safe](bool pin)
+        window->onPinChanged = [safe, pinKey](bool pin)
         {
             if (safe != nullptr && safe->saveSetting)
-                safe->saveSetting(std::string(settings::pluginsOnTop.key), settings::flagText(pin));
+                safe->saveSetting(pinKey, pin ? "1" : "0");
         };
         // Where this plugin's window was last left, and its size, per plugin type,
         // if still on screen.
@@ -416,6 +632,12 @@ MixerView::MixerView(const MeterReadings& meters,
     addBus_.setTooltip("Add a bus or an FX track");
     addBus_.onClick = [this] { addBus(); };
     stripsHolder_.addAndMakeVisible(addBus_);
+    hidden_.getProperties().set(NorthlightLookAndFeel::propertyVariant, "ghost");
+    hidden_.getProperties().set(NorthlightLookAndFeel::propertyMenu, true);
+    hidden_.setTooltip("Strips hidden from the mixer: show them again");
+    hidden_.onClick = [this] { showViewMenu(&hidden_); };
+    stripsHolder_.addChildComponent(hidden_);
+    stripsHolder_.onMenu = [this] { showViewMenu(nullptr); };
 }
 MixerView::~MixerView()
 {
@@ -474,6 +696,11 @@ void MixerView::setSelectedChannel(core::Id channelId)
 
 void MixerView::setProject(const core::Project* project, bool valuesOnly)
 {
+    if (!wideRead_ && loadSetting)
+    {
+        wideRead_ = true;
+        wide_ = loadSetting("mixer.wideStrips") == "1";
+    }
     if (valuesOnly && project == project_ && project_ != nullptr)
     {
         for (auto& strip : strips_)
@@ -568,11 +795,24 @@ void MixerView::rebuildStrips()
 {
     // A strip per channel that makes audio: MIDI tracks only make notes (their
     // instrument channels have the strips).
-    size_t audible = 0;
+    // Strips the user hid are left out (they still play).
+    size_t count = 0;
+    hiddenCount_ = 0;
     if (project_ != nullptr)
+    {
+        const auto tally = [&](const core::Channel& c)
+        {
+            if (c.mixerHidden)
+                ++hiddenCount_;
+            else
+                ++count;
+        };
         for (const auto& t : project_->tracks)
-            audible += t.hasAudio() ? 1 : 0;
-    const size_t count = project_ != nullptr ? audible + project_->buses.size() : 0;
+            if (t.hasAudio())
+                tally(t);
+        for (const auto& b : project_->buses)
+            tally(b);
+    }
     while (strips_.size() > count)
         strips_.pop_back();
     while (strips_.size() < count)
@@ -586,31 +826,36 @@ void MixerView::rebuildStrips()
         size_t i = 0;
         for (size_t t = 0; t < project_->tracks.size(); ++t)
         {
-            if (!project_->tracks[t].hasAudio())
+            if (!project_->tracks[t].hasAudio() || project_->tracks[t].mixerHidden)
                 continue;
             strips_[i++]->setChannel(
                 project_->tracks[t], false, *project_, engine::trackMeterSlot(static_cast<int>(t)));
         }
-        for (size_t b = 0; b < project_->buses.size(); ++b, ++i)
-            strips_[i]->setChannel(
-                project_->buses[b], true, *project_, engine::busMeterSlot(*project_, static_cast<int>(b)));
+        for (size_t b = 0; b < project_->buses.size(); ++b)
+            if (!project_->buses[b].mixerHidden)
+                strips_[i++]->setChannel(project_->buses[b],
+                                         true,
+                                         *project_,
+                                         engine::busMeterSlot(*project_, static_cast<int>(b)));
         master_->setMaster(project_->master);
     }
+    hidden_.setButtonText(juce::String(hiddenCount_) + " hidden");
+    hidden_.setVisible(hiddenCount_ > 0);
     layoutStrips();
     repaint();
 }
 void MixerView::layoutStrips()
 {
     // Strips at the strip width with 2 px gaps; the bus group after a lineSubtle
-    // gap; the "+ Bus" ghost at the end.
-    const int width = theme_.sizes.mixerStripWidth;
+    // gap; the "+ Bus" ghost at the end (and the hidden strips' button under it).
+    const int width = wide_ ? theme_.sizes.mixerStripWideWidth : theme_.sizes.mixerStripWidth;
     const int gap = theme_.spacing.xxs;
     // When they are wider than the view its horizontal scrollbar shows along the
     // bottom: the strips stop above it, so it never covers the output selectors.
     const bool anyBus =
         std::any_of(strips_.begin(), strips_.end(), [](const auto& strip) { return strip->isBus(); });
     const int contentWidth =
-        static_cast<int>(strips_.size()) * (width + gap) + (anyBus ? theme_.spacing.sm : 0) + 56 + gap;
+        static_cast<int>(strips_.size()) * (width + gap) + (anyBus ? theme_.spacing.sm : 0) + 96 + gap;
     const int height =
         viewport_.getHeight() - (contentWidth > viewport_.getWidth() ? viewport_.getScrollBarThickness() : 0);
     RowPlan rows;
@@ -637,12 +882,17 @@ void MixerView::layoutStrips()
         master_->alignTo(strips_.front()->faderBand(), strips_.front()->valueY());
     else
         master_->alignTo({}, 0);
-    addBus_.setBounds(x, theme_.spacing.xs, 56, theme_.sizes.controlCompact);
-    stripsHolder_.setSize(std::max(1, x + 56 + gap), std::max(1, height));
+    addBus_.setBounds(x, theme_.spacing.xs, 72, theme_.sizes.controlCompact);
+    hidden_.setBounds(x, addBus_.getBottom() + theme_.spacing.xs, 96, theme_.sizes.controlCompact);
+    stripsHolder_.setSize(std::max(1, x + 96 + gap), std::max(1, height));
 }
 void MixerView::pushMeters()
 {
     const double elapsed = meters_.elapsedMs();
+    if (!pendingWindows_.empty())
+        openSavedWindows();
+    if (outputLatency && project_ != nullptr)
+        master_->setLatency(outputLatency(), project_->sampleRate);
     for (auto& strip : strips_)
         strip->pushMeter(meters_.reading(strip->meterSlot()), elapsed);
     if (project_ != nullptr)
@@ -677,7 +927,10 @@ void MixerView::paint(juce::Graphics& g)
     {
         g.setColour(c.textTertiary);
         g.setFont(theme_.body());
-        g.drawText("Add a track to start mixing", viewport_.getBounds(), juce::Justification::centred);
+        g.drawText(hiddenCount_ > 0 ? juce::String("Every strip is hidden")
+                                    : juce::String("Add a track to start mixing"),
+                   viewport_.getBounds(),
+                   juce::Justification::centred);
     }
 }
 void MixerView::resized()

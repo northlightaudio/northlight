@@ -53,9 +53,10 @@ struct ClipNode
 
 struct SendNode
 {
-    int bus = -1; // index into Snapshot::buses
-    float level = 1.0f;
+    int bus = -1;       // index into Snapshot::buses
+    float level = 1.0f; // 0 for a muted send
     bool preFader = false;
+    float pan = 0.0f;               // balance of what is sent
     DelayLine* delay = nullptr;     // compensation on this edge (null = none)
     SendRuntime* runtime = nullptr; // the live level (ramped); outlives the snapshot
     std::shared_ptr<SendRuntime> keepAliveRuntime;
@@ -109,6 +110,9 @@ struct ChannelNode
     ChannelRuntime* runtime = nullptr; // ramped gain and pan; outlives the snapshot
     std::shared_ptr<ChannelRuntime> keepAliveRuntime;
     int outputBus = -1; // index into Snapshot::buses, -1 = master
+    // A device output pair the output goes to instead (past the master), -1 for
+    // none; only pairs the device has (Snapshot::hardwarePairs).
+    int hardwareOutput = -1;
     int meterSlot = -1;
     std::vector<SendNode> sends;
     std::vector<InsertSlot> inserts;                         // in chain order
@@ -241,6 +245,10 @@ struct Snapshot
     int masterMeterSlot = -1;
     int outputLatency = 0; // samples the master output lags the timeline (plugin delay compensation,
                            // the master's own inserts included)
+    // Channels played straight to device outputs: the pairs written, one past the
+    // highest used (0: none). The renderer holds a buffer per pair up to the cap.
+    static constexpr int maxHardwarePairs = 32;
+    int hardwarePairs = 0;
     std::vector<DelayLine*> allDelays; // every compensation and dry line, for a flush on locate
     std::vector<float> silence;        // blockSamples zeros: the key of an inaudible source
 };
@@ -326,6 +334,9 @@ using InputBusResolver = std::function<InputPair(const std::string& name)>;
 // `delays` keeps compensation delay lines across compiles; without it each
 // snapshot gets fresh (empty) lines. `inputBuses` resolves a track's input bus;
 // without it (or for a name it does not know) the track has no input.
+// `outputPairs` is how many stereo output pairs the device has: a channel's
+// hardware output beyond them (and every one when it is 1, as offline) plays to
+// its bus or the master instead.
 std::unique_ptr<Snapshot> compileSnapshot(const core::Project& project,
                                           MediaCache& media,
                                           InsertCache& inserts,
@@ -333,6 +344,7 @@ std::unique_ptr<Snapshot> compileSnapshot(const core::Project& project,
                                           RuntimeCache* runtimes = nullptr,
                                           const std::function<int(const std::string&)>& midiSources = {},
                                           const InputBusResolver& inputBuses = {},
-                                          int blockSamples = Snapshot::maxBlockSamples);
+                                          int blockSamples = Snapshot::maxBlockSamples,
+                                          int outputPairs = 1);
 
 } // namespace northlight::engine

@@ -50,6 +50,9 @@ struct BuiltInType
     // The factory presets (null for none): an effect's, the first its
     // defaults, and Aurora's, Nebula's and Starbit's.
     std::vector<EffectPreset> (*presets)() = nullptr;
+    // What it is, in one short line for the browser and the effects menu
+    // ("Clean three-band EQ with a high-pass").
+    const char* description = "";
 };
 const std::vector<BuiltInType>& builtInTypes();
 // The registry's entry for a type (null for a strip module or an unknown type).
@@ -67,6 +70,8 @@ public:
 
     // Human-readable name for a type, for menus.
     static std::string displayName(const std::string& typeName);
+    // Its one-line description (empty for an unknown type).
+    static std::string description(const std::string& typeName);
     // Whether a type is an instrument (takes MIDI, makes audio).
     static bool isInstrument(const std::string& typeName);
 

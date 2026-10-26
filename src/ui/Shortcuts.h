@@ -51,6 +51,7 @@ enum class Command
     audioSetup,
     preferences,
     plugins,
+    closePluginWindows,
     addAudioTrack,
     addMidiTrack,
     addBus,
@@ -103,10 +104,10 @@ enum class Command
     pianoRollCoarserGrid,
     pianoRollTransposeUp,
     pianoRollTransposeDown,
-    pianoRollNudge,      // Left / Right (Shift: fine)
-    pianoRollNudgePitch, // Up / Down (Ctrl: an octave)
-                         // The audio editor's (in pitch mode, while it has the focus).
-    audioEditorTool,     // 1 to 5, in the tools' order
+    pianoRollNudge,         // Left / Right (Shift: fine)
+    pianoRollNudgePitch,    // Up / Down (Ctrl: an octave)
+                            // The audio editor's (in pitch mode, while it has the focus).
+    audioEditorTool,        // 1 to 5, in the tools' order
     audioEditorNudgePitch,
     audioEditorMute,
     audioEditorSelectAll,

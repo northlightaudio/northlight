@@ -46,9 +46,11 @@ struct alignas(64) ChannelRuntime
 // pushed here (the renderer ramps to it over the span) instead of recompiling.
 struct SendRuntime
 {
-    std::atomic<float> targetLevel{1.0f};
-    float level = 1.0f;  // real-time: where the ramp is
-    bool primed = false; // real-time: the first span jumps to the target
+    std::atomic<float> targetLevel{1.0f}; // 0 while the send is muted
+    std::atomic<float> targetPan{0.0f};   // the send's balance, -1..1
+    float level = 1.0f;                   // real-time: where the ramp is
+    float pan = 0.0f;                     // real-time
+    bool primed = false;                  // real-time: the first span jumps to the target
 };
 
 // An insert slot's wet/dry mix, kept across compiles like a send's level: a mix

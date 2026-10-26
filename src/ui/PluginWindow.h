@@ -35,7 +35,9 @@ public:
                  const juce::String& pluginName,
                  const juce::String& trackName,
                  const juce::String& format,
-                 bool pinned);
+                 bool pinned,
+                 bool generic = false,
+                 bool canSwitchEditor = false);
     ~PluginWindow() override;
 
     core::Id channelId() const noexcept { return channelId_; }
@@ -52,8 +54,13 @@ public:
 
     std::function<void(std::unique_ptr<core::Command>)> onCommand;
     std::function<void()> onClose;          // called (asynchronously) after the close button
-    std::function<void(bool)> onPinChanged; // the user toggled always-on-top
+    std::function<void(bool)> onPinChanged; // the user toggled always-on-top (this plugin's)
     std::function<void(juce::Rectangle<int>)> onBoundsChanged; // moved or resized by the user
+    // The generic-editor toggle (a plugin with its own GUI and parameters): the
+    // owner reopens the window with the other editor.
+    std::function<void(bool generic)> onShowGeneric;
+    // The bar's Presets button names the current preset; call after a change.
+    void refreshPresetName();
 
     void closeButtonPressed() override;
     void moved() override;

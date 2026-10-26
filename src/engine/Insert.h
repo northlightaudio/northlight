@@ -202,6 +202,11 @@ public:
     // (get() then makes the replacement).
     bool restartRequested() const noexcept;
 
+    // Forgets one instance so the next get() makes a fresh one from the model's
+    // state (reloading a crashed plugin). A crashed instance is kept alive for
+    // good rather than destroyed: its destructor would run the plugin's code.
+    void forget(core::Id insertId);
+
     // Drops instances no snapshot references any more.
     void prune();
     // Forgets every instance (snapshots keep theirs alive until they retire).

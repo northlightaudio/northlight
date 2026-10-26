@@ -30,6 +30,8 @@ add_library(northlight_ui STATIC
     Wells.cpp
     PluginMenu.h
     PluginMenu.cpp
+    InsertMenu.h
+    InsertMenu.cpp
     components/AddSlot.h
     components/Accessibility.h
     components/Fader.h

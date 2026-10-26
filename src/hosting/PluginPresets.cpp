@@ -34,6 +34,17 @@ std::vector<juce::File> PluginPresets::userPresetFiles() const
     return files;
 }
 
+std::string PluginPresets::currentPresetName() const
+{
+    if (!loadedPreset_.empty())
+        return loadedPreset_;
+    const auto programs = factoryPrograms();
+    const int current = currentProgram();
+    if (current >= 0 && static_cast<size_t>(current) < programs.size())
+        return programs[static_cast<size_t>(current)];
+    return {};
+}
+
 bool PluginPresets::writePresetFile(const juce::File& file, const void* data, size_t size)
 {
     if (size == 0)

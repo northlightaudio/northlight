@@ -8,6 +8,7 @@ add_executable(northlight_unit_tests
     core/ModelTests.cpp
     core/SettingsTests.cpp
     core/CommandTests.cpp
+    core/MixerCommandTests.cpp
     core/ProjectJsonTests.cpp
     core/TempoMapTests.cpp
     core/FolderTests.cpp
@@ -29,6 +30,7 @@ add_executable(northlight_unit_tests
     engine/ResamplingTests.cpp
     engine/TakeTests.cpp
     engine/MixerTests.cpp
+    engine/RoutingTests.cpp
     plugins/BuiltInTests.cpp
     plugins/ParameterKeysTests.cpp
     plugins/DspKitTests.cpp

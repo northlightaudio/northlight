@@ -2,6 +2,7 @@
 
 #include "core/Command.h"
 #include "ui/Icons.h"
+#include "ui/InsertMenu.h"
 #include "ui/NorthlightLookAndFeel.h"
 #include "ui/OnScreen.h"
 
@@ -21,11 +22,32 @@ public:
            std::unique_ptr<juce::Component> editor,
            const juce::String& pluginName,
            const juce::String& trackName,
-           const juce::String& format)
+           const juce::String& format,
+           bool generic,
+           bool canSwitchEditor)
         : window_(window), presets_(presets), editor_(std::move(editor)), pluginName_(pluginName),
           trackName_(trackName), format_(format), power_(theme_, Icon::power, "Bypass"),
-          pin_(theme_, Icon::pin, "Keep this window above the others")
+          pin_(theme_, Icon::pin, "Keep this plugin's windows above the others"),
+          generic_(
+              theme_, Icon::settings, generic ? "Show the plugin's own editor" : "Show the generic editor")
     {
+        generic_.setClickingTogglesState(true);
+        generic_.setToggleState(generic, juce::dontSendNotification);
+        generic_.onClick = [this]
+        {
+            if (window_.onShowGeneric)
+            {
+                const bool on = generic_.getToggleState();
+                juce::MessageManager::callAsync(
+                    [w = juce::Component::SafePointer<PluginWindow>(&window_), on]
+                    {
+                        if (w != nullptr && w->onShowGeneric)
+                            w->onShowGeneric(on);
+                    });
+            }
+        };
+        if (canSwitchEditor)
+            addAndMakeVisible(generic_);
         setOpaque(true);
         power_.setClickingTogglesState(true);
         power_.onClick = [this]
@@ -36,7 +58,7 @@ public:
         };
         addAndMakeVisible(power_);
 
-        presetsButton_.setButtonText("Presets");
+        refreshPresetName();
         presetsButton_.getProperties().set(NorthlightLookAndFeel::propertyVariant, "ghost");
         presetsButton_.getProperties().set(NorthlightLookAndFeel::propertyMenu, true);
         presetsButton_.onClick = [this] { showPresetsMenu(); };
@@ -81,89 +103,43 @@ public:
 
     juce::Component& editor() noexcept { return *editor_; }
 
+    // The plugin's programs and preset files (InsertMenu.h): each load is one
+    // undo step, and the button then names it.
     void showPresetsMenu()
     {
         juce::PopupMenu menu;
         std::vector<std::function<void()>> actions;
-        int item = 1;
-        const auto programs = presets_.factoryPrograms();
-        if (!programs.empty())
-        {
-            juce::PopupMenu factory;
-            const int current = presets_.currentProgram();
-            for (size_t i = 0; i < programs.size(); ++i)
-            {
-                factory.addItem(item++,
-                                juce::String::fromUTF8(programs[i].c_str()),
-                                true,
-                                static_cast<int>(i) == current);
-                const int index = static_cast<int>(i);
-                actions.push_back([this, index] { presets_.setProgram(index); });
-            }
-            menu.addSubMenu("Factory", factory);
-        }
-        if (presets_.supportsPresetFiles())
-        {
-            const auto folder = presets_.userPresetFolder();
-            const auto files = presets_.userPresetFiles();
-            const juce::String extension = "." + juce::String(presets_.presetFileExtension());
-            if (!files.empty())
-            {
-                juce::PopupMenu user;
-                for (const auto& file : files)
-                {
-                    user.addItem(
-                        item++,
-                        file.getRelativePathFrom(folder).upToLastOccurrenceOf(extension, false, false));
-                    actions.push_back([this, file] { presets_.loadPresetFile(file); });
-                }
-                menu.addSubMenu("User", user);
-            }
-            if (!programs.empty() || !files.empty())
-                menu.addSeparator();
-            menu.addItem(item++, "Load preset file...");
-            actions.push_back([this] { choosePresetFile(false); });
-            menu.addItem(item++, "Save preset as...");
-            actions.push_back([this] { choosePresetFile(true); });
-        }
-        if (actions.empty())
-            menu.addItem(item++, "No presets", false);
+        juce::Component::SafePointer<PluginWindow> window(&window_);
+        addHostedPresetItems(menu,
+                             actions,
+                             presets_,
+                             window_.keepAlive_,
+                             window_.channelId(),
+                             window_.insertId(),
+                             [window](std::unique_ptr<core::Command> c)
+                             {
+                                 if (window != nullptr && window->onCommand)
+                                     window->onCommand(std::move(c));
+                             });
+        juce::Component::SafePointer<Holder> safe(this);
         menu.showMenuAsync(juce::PopupMenu::Options().withTargetComponent(presetsButton_),
-                           [actions](int chosen)
+                           [actions, safe](int chosen)
                            {
                                if (chosen > 0 && static_cast<size_t>(chosen) <= actions.size())
                                    actions[static_cast<size_t>(chosen - 1)]();
+                               if (safe != nullptr)
+                                   safe->refreshPresetName();
                            });
     }
 
-    void choosePresetFile(bool save)
+    // "Presets" until one is known, then its name ("Warm Pad").
+    void refreshPresetName()
     {
-        const auto folder = presets_.userPresetFolder();
-        folder.createDirectory();
-        const juce::String extension = juce::String(presets_.presetFileExtension());
-        chooser_ = std::make_unique<juce::FileChooser>(save ? "Save preset" : "Load preset",
-                                                       folder.getChildFile("Preset." + extension),
-                                                       "*." + extension);
-        const int mode =
-            save ? (juce::FileBrowserComponent::saveMode | juce::FileBrowserComponent::canSelectFiles |
-                    juce::FileBrowserComponent::warnAboutOverwriting)
-                 : (juce::FileBrowserComponent::openMode | juce::FileBrowserComponent::canSelectFiles);
-        juce::Component::SafePointer<Holder> safe(this);
-        chooser_->launchAsync(mode,
-                              [safe, save, extension](const juce::FileChooser& fc)
-                              {
-                                  auto file = fc.getResult();
-                                  if (safe == nullptr || file == juce::File())
-                                      return;
-                                  if (save)
-                                  {
-                                      if (!file.hasFileExtension(extension))
-                                          file = file.withFileExtension(extension);
-                                      safe->presets_.savePresetFile(file);
-                                  }
-                                  else
-                                      safe->presets_.loadPresetFile(file);
-                              });
+        const auto name = presets_.currentPresetName();
+        presetsButton_.setButtonText(name.empty() ? juce::String("Presets")
+                                                  : juce::String::fromUTF8(name.c_str()));
+        presetsButton_.setTooltip(name.empty() ? juce::String("Presets")
+                                               : "Preset: " + juce::String::fromUTF8(name.c_str()));
     }
 
     void setPinned(bool pinned) { pin_.setToggleState(pinned, juce::dontSendNotification); }
@@ -228,7 +204,13 @@ public:
         bar.removeFromLeft(theme_.spacing.sm);
         pin_.setBounds(bar.removeFromRight(control));
         bar.removeFromRight(theme_.spacing.sm);
-        presetsButton_.setBounds(bar.removeFromRight(84));
+        if (generic_.isVisible())
+        {
+            generic_.setBounds(bar.removeFromRight(control));
+            bar.removeFromRight(theme_.spacing.xs);
+        }
+        // Wide enough for a preset's name; a long one ends in an ellipsis.
+        presetsButton_.setBounds(bar.removeFromRight(std::clamp(bar.getWidth() / 4, 84, 160)));
         bar.removeFromRight(theme_.spacing.sm);
         mixValueArea_ = bar.removeFromRight(36);
         mix_.setBounds(bar.removeFromRight(80));
@@ -264,11 +246,10 @@ private:
     hosting::PluginPresets& presets_;
     std::unique_ptr<juce::Component> editor_;
     juce::String pluginName_, trackName_, format_;
-    IconButton power_, pin_;
+    IconButton power_, pin_, generic_;
     juce::TextButton presetsButton_;
     juce::Slider mix_;
     juce::Rectangle<int> titleArea_, badgeArea_, mixValueArea_;
-    std::unique_ptr<juce::FileChooser> chooser_;
     bool updating_ = false;
     bool layingOut_ = false;
 };
@@ -282,7 +263,9 @@ PluginWindow::PluginWindow(core::Id channelId,
                            const juce::String& pluginName,
                            const juce::String& trackName,
                            const juce::String& format,
-                           bool pinned)
+                           bool pinned,
+                           bool generic,
+                           bool canSwitchEditor)
     : juce::DocumentWindow(trackName.isEmpty() ? pluginName : trackName + " - " + pluginName,
                            Theme::dark().colours.canvas,
                            juce::DocumentWindow::closeButton,
@@ -290,7 +273,8 @@ PluginWindow::PluginWindow(core::Id channelId,
       keepAlive_(std::move(keepAlive)), channelId_(channelId), insertId_(insertId)
 {
     setUsingNativeTitleBar(true);
-    auto holder = std::make_unique<Holder>(*this, presets, std::move(editor), pluginName, trackName, format);
+    auto holder = std::make_unique<Holder>(
+        *this, presets, std::move(editor), pluginName, trackName, format, generic, canSwitchEditor);
     holder_ = holder.get();
     holder_->setPinned(pinned);
     setContentOwned(holder.release(), true);
@@ -308,7 +292,16 @@ PluginWindow::~PluginWindow()
 void PluginWindow::setInsert(const core::Insert& insert)
 {
     if (holder_ != nullptr)
+    {
         holder_->setInsert(insert);
+        holder_->refreshPresetName(); // an undone preset, or one loaded elsewhere
+    }
+}
+
+void PluginWindow::refreshPresetName()
+{
+    if (holder_ != nullptr)
+        holder_->refreshPresetName();
 }
 
 void PluginWindow::editorSizeChanged(int width, int height)

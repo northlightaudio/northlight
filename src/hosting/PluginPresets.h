@@ -42,9 +42,18 @@ public:
     std::vector<juce::File> userPresetFiles() const;
     std::string presetFileExtension() const { return presetLocation().extension; }
 
+    // What the Presets button shows: the preset file or program last loaded
+    // here, else the plugin's current program when it lists programs; empty
+    // when neither is known.
+    std::string currentPresetName() const;
+    void noteLoadedPreset(std::string name) { loadedPreset_ = std::move(name); }
+
 protected:
     // Writes a preset's bytes, making the folder first; false for no data.
     static bool writePresetFile(const juce::File& file, const void* data, size_t size);
+
+private:
+    std::string loadedPreset_;
 };
 
 } // namespace northlight::hosting

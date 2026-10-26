@@ -96,6 +96,16 @@ public:
     // Forgets a blocked file and scans again so it gets another try.
     void retryBlockedPlugin(const std::string& path);
     std::string pluginScanStatus() const { return scanner_.status(); }
+    // Plugin trouble (screens/plugins.md 7.5). A crashed plugin made again from
+    // the state the project last held for it, without a restart; a plugin that
+    // failed to load tried again; one put on the blocklist (never loaded again
+    // until the blocklist is cleared).
+    void reloadInsert(core::Id insertId);
+    void retryPlugin(const std::string& type);
+    void blocklistPlugin(const std::string& type);
+    // Whether an insert's editor window is open (the shell's), so a save records
+    // which windows reopen with the project; may be null.
+    std::function<bool(core::Id insertId)> isEditorOpen;
     audio::PeakStore& peakStore() noexcept { return peaks_; }
 
     // ----- editing ----------------------------------------------------------------
@@ -543,6 +553,13 @@ private:
     NoticeQueue notices_;
     std::set<core::Id> reportedCrashes_; // inserts whose crash the user has been told about
     void checkCrashedPlugins();
+    std::set<std::string> reportedFailures_; // plugin types whose failure to load was told
+    // A command undone or redone that restores a plugin's own state (a preset):
+    // the live instance takes the model's state.
+    void pushInsertState(const core::Command& command);
+    // After a project opens: one notice naming the plugins that are missing or
+    // failed to load (each is then not told again on its own).
+    void reportPluginTrouble();
     std::unique_ptr<BounceJob> bounce_;
     std::unique_ptr<BounceJob> freeze_;
     bool gestureOpen_ = false;

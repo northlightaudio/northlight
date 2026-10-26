@@ -39,6 +39,14 @@ public:
     // until clearFailures() (after a rescan), so a recompile does not reload DLLs.
     const std::map<std::string, std::string>& failures() const noexcept { return failures_; }
     void clearFailures() { failures_.clear(); }
+    // Why a type failed to load (empty: it did not), and forgetting that so the
+    // next compile tries it again (Retry).
+    std::string failure(const std::string& typeName) const
+    {
+        const auto it = failures_.find(typeName);
+        return it != failures_.end() ? it->second : std::string{};
+    }
+    void clearFailure(const std::string& typeName) { failures_.erase(typeName); }
     // ----- what the rest of the app needs from a hosted plugin, without knowing
     // its format (message thread)
     // The main-thread service hosted plugins need while they live (pending CLAP
@@ -49,6 +57,8 @@ public:
     static PluginPresets* presetsFor(engine::InsertProcessor& live) noexcept;
     // The plugin's editor (see PluginEditor); nothing for a built-in.
     static std::optional<PluginEditor> createEditor(engine::InsertProcessor& live);
+    // Whether a hosted plugin has a GUI of its own (without making one).
+    static bool hasOwnEditor(engine::InsertProcessor& live);
 
     // How the built-in Sampler decodes its files (the app's media loader).
     void setSampleLoader(plugins::sampler::Loader loader) { builtIns_.setSampleLoader(std::move(loader)); }

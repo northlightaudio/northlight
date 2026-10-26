@@ -16,7 +16,12 @@ strip of device cards, so the whole signal path reads left to right.
 
 - Card: `surface1`, radius `md`, 1 px `lineSubtle`, min width 160, height fills the
   dock; header 28 px with power (bypass) toggle, name in `label`, format badge,
-  and a "⋮" menu (replace, remove, presets, sidechain, latency "32 smp").
+  and a "⋮" menu: the one every insert slot shares with the mixer (ui/InsertMenu.h):
+  open, bypass, presets (a built-in's library, a hosted plugin's programs and
+  files, "Presets: <name>"), replace, move up/down, wet/dry, sidechain, outputs,
+  copy, copy chain, paste after, show in plugin browser, latency ("32 smp (0.7
+  ms)"), remove; the instrument card's replaces and removes the instrument.
+  Ctrl at the release of a header drag copies the card there instead of moving it.
 - Body: for built-ins, the built-in's own editor (7.2a); for hosted plugins with a
   GUI, a plugin faceplate (design-system.md "Plugin faceplate": kind icon, full
   name, maker, format badge and latency) with an "Open editor" secondary button that
@@ -57,7 +62,8 @@ strip of device cards, so the whole signal path reads left to right.
   then, past a separator, By maker: the scanned plugins by manufacturer. The
   instruments menu keeps its built-ins, then the scanned instruments by maker.
 - Sidechain: a small "key: 02 Hats" chip under the header when set, `accentSubtle`
-  fill, click to change.
+  fill (`accent` at 30% on hover, a pointing cursor), click to change: the key
+  menu (None, the sources, Pre-fader / Post-fader) under the chip.
 
 ## 7.2 Plugin window
 
@@ -71,10 +77,18 @@ Native window with a 32 px Northlight bar above the plugin's own editor:
   `textSecondary`), format badge, wet/dry slider (80 px) with value, presets combo
   (factory programs and user presets, with Save… at the bottom), an "A/B" toggle
   (**Decision**: deferred, keep the slot), pin (always on top) toggle, and a
-  generic-editor toggle for plugins that have both.
+  generic-editor toggle for plugins that have both (the `settings` icon; it
+  reopens the window with the other editor, remembered for the session).
+- The presets button names the current preset (the program or file last loaded,
+  else the plugin's current program; "Presets" while none is known). Loading one
+  is an undo step ("Preset Warm Pad"): undo gives the plugin its state from before.
 - The plugin's editor sits below at its native size; the window follows plugin
   resize requests; DPI scaling is passed through.
-- Position and size remembered per plugin type; pin state remembered.
+- Position and size remembered per plugin type; pin state remembered per plugin
+  type too (one never pinned follows the "plugin windows on top" preference).
+- "Close all plugin windows" (app menu, Ctrl+Shift+W, the mixer's background
+  menu) closes every editor window. Windows open when the project was saved
+  reopen with it, each once its plugin has loaded.
 - Closing the window never unloads the plugin; the card in the chain shows "open" as
   an `accent` dot on its header while the window is open.
 
@@ -1018,11 +1032,20 @@ For GUI-less hosted plugins. A scrollable grid of parameter rows:
 ```
 
 - Search field at the top with a format filter segmented control (All, VST3, CLAP,
-  Built-in) and a category toggle (Effects, Instruments). Type-ahead filters as you
-  type; Enter inserts the highlighted plugin on the selected track.
-- Rows 28 px per the Table component; name `body`, manufacturer `small`
-  `textSecondary`, format badge; star toggles favourite; drag a row to a chain or a
-  track header to insert.
+  Built-in), a category toggle (Effects, Instruments) and a kind button ("All
+  kinds ▾": the effects menu's groups, Dynamics to Other, those with something
+  in them). Type-ahead filters as you type (names, makers, formats and the
+  built-ins' descriptions); Enter inserts the highlighted plugin on the selected
+  track.
+- Rows 28 px per the Table component; name `body` (whole where it fits: the
+  maker gives way first), manufacturer `small` `textSecondary` (a built-in's
+  one-line description in `textTertiary` instead: its badge already says
+  Built-in), format badge; star toggles favourite; drag a row to a chain, a mixer
+  strip or a track header to insert.
+- Recent keeps the last 16. The count at the bottom right: "26 built-in, 41
+  plugins, 1 blocked". Empty: "No plugins match"; VST3 or CLAP asked for with
+  none scanned: "No plugins found. Scan for them, or add folders in Preferences."
+  (`small` `textTertiary`, centred in the list).
 - Blocked section lists blocklisted files with the reason in `small` `warning` and a
   Retry ghost button per row; "Clear blocklist" in the overflow menu.
 - Scan: a ghost button "Scan for changes" with a chevron menu for "Rescan all";
@@ -1096,10 +1119,12 @@ it, when it plays none), or a new MIDI track and instrument channel.
   arm; its lane reads "Instrument channel: Pulsar ← Drums, Fills". An output
   track's lane reads "Output 3/4 of Drums: Pulsar".
 - **Editor panel sends**: a SENDS section ends the strip, after the inserts and
-  the channel strip: a card per send with the bus's colour and name, a vertical
-  fader (the mixer's law) with the level under it, Pre/Post and a remove button,
-  then a "+ Send" slot listing the FX tracks and groups the channel can feed (not
-  ones that would loop back into it; ones it already feeds are ticked). A MIDI
+  the channel strip: a card per send with the bus's colour and name, a mute
+  button (the name struck and the fader at 50% while muted) and a remove
+  button in its header, a vertical fader (the mixer's law) with the level under
+  it, the send's pan knob and Pre/Post, then a "+ Send" slot listing the FX
+  tracks and groups the channel can feed (not ones that would loop back into it;
+  ones it already feeds are ticked) and "New FX track…" (one with the send). A MIDI
   track has no sends; its instrument channel's show instead.
 - **Editor panel**: selecting a MIDI track shows the instrument channel it plays,
   titled "MIDI 1 → Drums: Pulsar"; a MIDI track that plays nothing shows a
@@ -1283,12 +1308,23 @@ envelope moves by Env octaves. Hues: the sample `Lichen`, loop `Gorse`, keys
 
 ## 7.5 States and errors
 
-- Plugin missing on this machine: the chain card shows the name in `textTertiary`
-  with a `warning` icon and "Not installed"; state is preserved; the card can be
-  removed or replaced.
+- Plugin missing on this machine: the chain card shows the name (as it was when
+  the project was saved) in `textTertiary` with a `warning` icon and "Not
+  installed" and a "Scan for plugins…" button; state is preserved; the card can
+  be removed or replaced. The mixer's slot is a "Slot in trouble".
 - Plugin failed to load (layout refused, crash on instantiate): a toast with the
-  reason and a "Blocklist" action; the card shows "Failed" in `danger`.
-- Latency change: no UI beyond the card's latency label updating.
+  reason and a "Blocklist" action; the card shows "Failed" in `danger` with a
+  Retry button, and its menu offers Retry and Blocklist.
+- Plugin crashed while processing: it is never called again and its slot passes
+  audio through. A toast says so with "Reload plugin"; the card shows "Crashed" in
+  `danger` with that button, the mixer slot a danger icon. Reload makes a new
+  instance from the state the project last held (a crash never writes it); the
+  crashed one is kept, never destroyed, since its destructor is its own code.
+- Opening a project with plugins missing or failed: one warning toast naming
+  them ("2 plugins are not installed: DC1A3 and Valhalla Room. Their settings are
+  kept.") with "Scan for plugins"; the failed ones are not toasted again.
+- Latency change: the card's latency label, the strip's latency line and the
+  master's PDC readout update.
 
 ## Acceptance
 

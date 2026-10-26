@@ -3,6 +3,7 @@
 #include "core/Command.h"
 #include "plugins/BuiltIns.h"
 #include "plugins/EffectPresets.h"
+#include "plugins/FxTracks.h"
 #include "ui/Db.h"
 #include "ui/Motion.h"
 #include "ui/Number.h"
@@ -23,7 +24,7 @@ namespace northlight::ui
 
 // ----- a device card ----------------------------------------------------------------------------
 
-class EditorPanel::Card final : public juce::Component
+class EditorPanel::Card final : public juce::Component, public juce::TooltipClient
 {
 public:
     // `instrument`: the track's instrument slot (replaced and removed as one,
@@ -76,6 +77,8 @@ public:
             maker_ = juce::String::fromUTF8(info->manufacturer.c_str());
         kindIcon_ =
             instrument_ ? Icon::instrument : effectCategoryIcon(effectCategory(type_, owner_.registry_));
+        trouble_ = insertTrouble(insert, owner_.actions());
+        name_ = juce::String::fromUTF8(insertName(insert, owner_.actions()).c_str());
         open_.setButtonText("Open editor");
         open_.setTooltip("Open the plugin's own window");
         open_.onClick = [this]
@@ -93,6 +96,10 @@ public:
                 owner_.onOpenEditor(channelId_, insertId_);
         };
         addChildComponent(show_);
+        // A plugin in trouble: the way out in the faceplate's button place
+        // (Reload plugin, Retry, Scan for plugins).
+        fix_.onClick = [this] { fixTrouble(); };
+        addChildComponent(fix_);
         // A built-in's body is its own editor: a display to drag and its knobs.
         host_.onCommand = [this](std::unique_ptr<core::Command> command)
         {
@@ -175,7 +182,31 @@ public:
 
     void mouseDown(const juce::MouseEvent& e) override
     {
+        // The key chip: a click changes the source (screens/plugins.md 7.1).
+        if (chip_.contains(e.getPosition()) && e.mods.isLeftButtonDown())
+        {
+            showKeyMenu();
+            return;
+        }
         dragging_ = e.y < theme_.sizes.control && e.mods.isLeftButtonDown();
+    }
+    void mouseMove(const juce::MouseEvent& e) override
+    {
+        const bool over = chip_.contains(e.getPosition());
+        setMouseCursor(over ? juce::MouseCursor::PointingHandCursor : juce::MouseCursor::NormalCursor);
+        if (over != chipHover_)
+        {
+            chipHover_ = over;
+            repaint(chip_);
+        }
+    }
+    void mouseExit(const juce::MouseEvent&) override
+    {
+        if (chipHover_)
+        {
+            chipHover_ = false;
+            repaint(chip_);
+        }
     }
     void mouseDrag(const juce::MouseEvent& e) override
     {
@@ -184,9 +215,18 @@ public:
     }
     void mouseUp(const juce::MouseEvent& e) override
     {
+        // Ctrl at the release copies the card there instead (interaction.md).
         if (dragging_ && !instrument_ && e.mouseWasDraggedSinceMouseDown())
-            owner_.reorderCard(insertId_, e.getScreenPosition(), true);
+            owner_.reorderCard(insertId_, e.getScreenPosition(), true, e.mods.isCommandDown());
         dragging_ = false;
+    }
+    juce::String getTooltip() override
+    {
+        if (chip_.contains(getMouseXYRelative()))
+            return "Key source: click to change it";
+        if (trouble_.any())
+            return juce::String(trouble_.label()) + ". " + juce::String::fromUTF8(trouble_.reason.c_str());
+        return {};
     }
     // A double-click on a faceplate opens the plugin's window, as its button does.
     void mouseDoubleClick(const juce::MouseEvent& e) override
@@ -208,6 +248,18 @@ public:
     {
         const juce::ScopedValueSetter<bool> guard(updating_, true);
         const bool hadInfoLine = showsInfoLine();
+        name_ = juce::String::fromUTF8(insertName(insert, owner_.actions()).c_str());
+        // A plugin that crashed, or loads after a retry, changes the card's form.
+        if (auto trouble = insertTrouble(insert, owner_.actions());
+            trouble.kind != trouble_.kind || trouble.reason != trouble_.reason)
+        {
+            trouble_ = std::move(trouble);
+            if (body_ == nullptr)
+            {
+                rebuildKnobs();
+                resized();
+            }
+        }
         bypassed_ = insert.bypass;
         power_.setToggleState(!insert.bypass, juce::dontSendNotification);
         power_.setTooltip(insert.bypass ? "Switch on" : "Bypass");
@@ -341,11 +393,14 @@ public:
             const auto chip = info.removeFromLeft(w)
                                   .withSizeKeepingCentre(w, theme_.sizes.icon + theme_.spacing.xxs)
                                   .toFloat();
-            g.setColour(c.accentSubtle);
+            chip_ = chip.toNearestInt();
+            g.setColour(chipHover_ ? c.accent.withAlpha(0.3f) : c.accentSubtle);
             g.fillRoundedRectangle(chip, chip.getHeight() * 0.5f);
             g.setColour(c.accent);
             g.drawText(text, chip.toNearestInt(), juce::Justification::centred);
         }
+        else
+            chip_ = {};
         if (latency_ > 0 && !faceplate_)
         {
             g.setColour(c.textTertiary);
@@ -406,6 +461,7 @@ public:
             const auto button = faceplateLayout().button;
             open_.setBounds(button);
             show_.setBounds(button);
+            fix_.setBounds(button);
             return;
         }
         if (popped_)
@@ -492,10 +548,40 @@ private:
         g.drawText("Edit it there", block.removeFromTop(line), juce::Justification::centred, true);
     }
 
-    juce::String nameText() const
+    juce::String nameText() const { return name_; }
+
+    // The insert's key source, from the chip.
+    void showKeyMenu()
     {
-        return owner_.displayName ? juce::String::fromUTF8(owner_.displayName(type_).c_str())
-                                  : juce::String(type_);
+        const auto* channel = owner_.channel();
+        const auto* insert = channel != nullptr ? channel->findInsert(insertId_) : nullptr;
+        if (insert == nullptr || owner_.project_ == nullptr)
+            return;
+        juce::PopupMenu menu;
+        std::vector<std::function<void()>> actions;
+        addSidechainItems(menu, actions, *owner_.project_, channelId_, *insert, owner_.onCommand);
+        juce::Component::SafePointer<Card> safe(this);
+        menu.showMenuAsync(juce::PopupMenu::Options().withTargetScreenArea(localAreaToGlobal(chip_)),
+                           [actions](int result)
+                           {
+                               if (result >= 1 && static_cast<size_t>(result) <= actions.size())
+                                   actions[static_cast<size_t>(result) - 1]();
+                           });
+    }
+
+    // The trouble form's button: reload a crashed plugin, retry a failed one,
+    // scan for a missing one.
+    void fixTrouble()
+    {
+        const auto* actions = owner_.actions();
+        if (actions == nullptr)
+            return;
+        if (trouble_.kind == InsertTrouble::Kind::crashed && actions->reload)
+            actions->reload(insertId_);
+        else if (trouble_.kind == InsertTrouble::Kind::failed && actions->retry)
+            actions->retry(type_);
+        else if (actions->scan)
+            actions->scan();
     }
 
     // The format badge: a pill in `captionCaps`, `accent` on its 20% tint.
@@ -537,7 +623,7 @@ private:
         const int labelLine = theme_.lineHeight(theme_.fonts.size.label);
         const int smallLine = theme_.lineHeight(theme_.fonts.size.small);
         const int metaH = theme_.sizes.icon + s.xxs;
-        const bool button = !missing_;
+        const bool button = !missing_ || fix_.isVisible();
         Faceplate f;
         f.nameLines = juce::GlyphArrangement::getStringWidthInt(theme_.label(), nameText()) > w ? 2 : 1;
         bool tile = true, meta = true, maker = maker_.isNotEmpty();
@@ -587,7 +673,14 @@ private:
     int faceplateMinimumHeight() const
     {
         return 2 * theme_.spacing.md + theme_.lineHeight(theme_.fonts.size.label) +
-               (missing_ ? 0 : theme_.spacing.md + theme_.sizes.control);
+               (missing_ && !fix_.isVisible() ? 0 : theme_.spacing.md + theme_.sizes.control);
+    }
+    // Missing reads in warning; failed and crashed in danger (screens/plugins.md 7.5).
+    juce::Colour troubleColour() const
+    {
+        return trouble_.kind == InsertTrouble::Kind::failed || trouble_.kind == InsertTrouble::Kind::crashed
+                   ? theme_.colours.danger
+                   : theme_.colours.warning;
     }
     void paintFaceplate(juce::Graphics& g) const
     {
@@ -595,13 +688,13 @@ private:
         const auto f = faceplateLayout();
         if (!f.tile.isEmpty())
         {
-            g.setColour(missing_ ? c.warning.withAlpha(0.15f) : c.accentSubtle);
+            g.setColour(missing_ ? troubleColour().withAlpha(0.15f) : c.accentSubtle);
             g.fillRoundedRectangle(f.tile.toFloat(), theme_.radius.md);
             const auto icon = static_cast<float>(theme_.sizes.iconLarge);
             Icons::draw(g,
                         missing_ ? Icon::warning : kindIcon_,
                         f.tile.toFloat().withSizeKeepingCentre(icon, icon),
-                        missing_ ? c.warning : c.accent);
+                        missing_ ? troubleColour() : c.accent);
         }
         g.setFont(theme_.label());
         g.setColour(missing_ ? c.textSecondary : c.textPrimary);
@@ -614,7 +707,8 @@ private:
         }
         if (!f.meta.isEmpty())
         {
-            const juce::String note = missing_       ? juce::String("Not installed")
+            const juce::String note = trouble_.any() ? juce::String(trouble_.label())
+                                      : missing_     ? juce::String("Not installed")
                                       : latency_ > 0 ? juce::String(latency_) + " smp latency"
                                                      : juce::String();
             const int bw = badgeWidth();
@@ -627,7 +721,7 @@ private:
             {
                 row.removeFromLeft(theme_.spacing.xs);
                 g.setFont(theme_.caption());
-                g.setColour(missing_ ? c.warning : c.textTertiary);
+                g.setColour(missing_ ? troubleColour() : c.textTertiary);
                 g.drawText(note, row, juce::Justification::centredLeft, true);
             }
         }
@@ -647,9 +741,21 @@ private:
         cells_.clear();
         const auto live = owner_.liveInsert ? owner_.liveInsert(insertId_) : nullptr;
         const bool hosted = hosting::PluginRegistry::isHostedType(type_);
-        missing_ = live == nullptr && hosted;
+        // Not loaded (missing, failed) or crashed: the faceplate's trouble form.
+        missing_ = trouble_.any() || (live == nullptr && hosted);
         faceplate_ = missing_;
-        if (live == nullptr)
+        wantsOpen_ = false;
+        open_.setVisible(false);
+        fix_.setButtonText(trouble_.kind == InsertTrouble::Kind::crashed ? "Reload plugin"
+                           : trouble_.kind == InsertTrouble::Kind::failed
+                               ? "Retry"
+                               : juce::String::fromUTF8("Scan for plugins\xe2\x80\xa6"));
+        fix_.setTooltip(trouble_.kind == InsertTrouble::Kind::crashed
+                            ? "Start the plugin again from its last saved state"
+                        : trouble_.kind == InsertTrouble::Kind::failed ? "Try loading the plugin again"
+                                                                       : "Look for newly installed plugins");
+        fix_.setVisible(missing_ && hosted);
+        if (live == nullptr || missing_)
             return;
         if (hosted && (live->parameters().empty() || type_.rfind("vst3:", 0) == 0))
         {
@@ -815,52 +921,9 @@ private:
                 channelId_, insertId_, values, ("Preset " + name).toStdString()));
     }
 
-    void showMenu()
-    {
-        juce::PopupMenu menu;
-        menu.addItem(1, bypassed_ ? "Enable" : "Bypass", !missing_);
-        menu.addItem(2, "Open editor", !missing_);
-        if (instrument_)
-        {
-            menu.addItem(4, "Replace instrument...");
-            menu.addItem(5, "Remove instrument");
-            juce::Component::SafePointer<Card> safe(this);
-            menu.showMenuAsync(juce::PopupMenu::Options().withTargetComponent(menu_),
-                               [safe](int choice)
-                               {
-                                   if (safe == nullptr || choice == 0 || !safe->owner_.onCommand)
-                                       return;
-                                   auto& owner = safe->owner_;
-                                   if (choice == 1)
-                                       owner.onCommand(std::make_unique<core::SetInsertBypass>(
-                                           safe->channelId_, safe->insertId_, !safe->bypassed_));
-                                   else if (choice == 2 && owner.onOpenEditor)
-                                       owner.onOpenEditor(safe->channelId_, safe->insertId_);
-                                   else if (choice == 4)
-                                       owner.showInstrumentMenu(safe->menu_);
-                                   else if (choice == 5)
-                                       owner.onCommand(std::make_unique<core::SetInstrument>(safe->channelId_,
-                                                                                             core::Insert{}));
-                               });
-            return;
-        }
-        menu.addItem(3, "Remove");
-        juce::Component::SafePointer<Card> safe(this);
-        menu.showMenuAsync(juce::PopupMenu::Options().withTargetComponent(menu_),
-                           [safe](int choice)
-                           {
-                               if (safe == nullptr || choice == 0 || !safe->owner_.onCommand)
-                                   return;
-                               if (choice == 1)
-                                   safe->owner_.onCommand(std::make_unique<core::SetInsertBypass>(
-                                       safe->channelId_, safe->insertId_, !safe->bypassed_));
-                               else if (choice == 2 && safe->owner_.onOpenEditor)
-                                   safe->owner_.onOpenEditor(safe->channelId_, safe->insertId_);
-                               else if (choice == 3)
-                                   safe->owner_.onCommand(std::make_unique<core::RemoveInsert>(
-                                       safe->channelId_, safe->insertId_));
-                           });
-    }
+    // The menu every slot shares (ui/InsertMenu.h): the mixer's items, presets,
+    // replace, sidechain, copy and paste, the latency.
+    void showMenu() { ui::showInsertMenu(owner_.menuRequest(insertId_, instrument_), &menu_); }
 
     EditorPanel& owner_;
     const Theme& theme_;
@@ -869,7 +932,11 @@ private:
     bool instrument_ = false;
     IconButton power_, menu_;
     juce::Slider mix_;
-    juce::TextButton open_, show_;
+    juce::TextButton open_, show_, fix_;
+    InsertTrouble trouble_;
+    juce::String name_;
+    juce::Rectangle<int> chip_; // the key chip, where it was painted
+    bool chipHover_ = false;
     bool popped_ = false, wantsOpen_ = false;
     bool faceplate_ = false; // a hosted plugin with its own GUI, or one not installed
     juce::String maker_;
@@ -894,8 +961,45 @@ class EditorPanel::SendCard final : public juce::Component, public juce::Settabl
 public:
     SendCard(EditorPanel& owner, const Theme& theme, core::Id channelId, core::Id busId)
         : owner_(owner), theme_(theme), channelId_(channelId), busId_(busId), fader_(theme), tap_(theme),
-          remove_(theme, Icon::close, "Remove this send")
+          remove_(theme, Icon::close, "Remove this send"), mute_(theme, Icon::mute, "Mute this send"),
+          pan_(theme)
     {
+        mute_.setClickingTogglesState(true);
+        mute_.setOnColour(theme_.colours.mute);
+        mute_.setSize(theme_.sizes.controlCompact, theme_.sizes.controlCompact);
+        mute_.onClick = [this]
+        {
+            if (!updating_ && owner_.onCommand)
+                owner_.onCommand(
+                    std::make_unique<core::SetSendMute>(channelId_, busId_, mute_.getToggleState()));
+        };
+        addAndMakeVisible(mute_);
+        // The send's balance: what reaches the bus, on top of the channel's pan.
+        pan_.setRange(-1.0, 1.0, 0.0);
+        pan_.setShowValue(true);
+        pan_.setTooltip("Send pan");
+        pan_.format = [](double v)
+        {
+            const int percent = static_cast<int>(std::lround(std::abs(v) * 100.0));
+            return percent == 0 ? juce::String("C") : juce::String(v < 0 ? "L" : "R") + juce::String(percent);
+        };
+        pan_.onDragStart = [this]
+        {
+            if (owner_.onGestureBegin)
+                owner_.onGestureBegin("Send pan");
+        };
+        pan_.onDragEnd = [this]
+        {
+            if (owner_.onGestureEnd)
+                owner_.onGestureEnd();
+        };
+        pan_.onValueChanged = [this](double v)
+        {
+            if (!updating_ && owner_.onCommand)
+                owner_.onCommand(
+                    std::make_unique<core::SetSendPan>(channelId_, busId_, static_cast<float>(v)));
+        };
+        addAndMakeVisible(pan_);
         fader_.onDragStart = [this]
         {
             if (owner_.onGestureBegin)
@@ -938,10 +1042,15 @@ public:
         const juce::ScopedValueSetter<bool> guard(updating_, true);
         level_ = send.level;
         pre_ = send.preFader;
+        muted_ = send.mute;
         name_ = juce::String::fromUTF8(bus != nullptr && !bus->name.empty() ? bus->name.c_str() : "Bus");
         colour_ = bus != nullptr && bus->colour != 0 ? juce::Colour(bus->colour) : theme_.colours.accent;
         fader_.setTrackColour(colour_);
         fader_.setGain(send.level, juce::dontSendNotification);
+        fader_.setAlpha(send.mute ? 0.5f : 1.0f);
+        mute_.setToggleState(send.mute, juce::dontSendNotification);
+        mute_.setTooltip(send.mute ? "Unmute this send" : "Mute this send");
+        pan_.setValue(send.pan, juce::dontSendNotification);
         tap_.setSelected(pre_ ? 0 : 1, juce::dontSendNotification);
         setTooltip(name_ + (pre_ ? " (pre-fader: ignores the channel's fader)"
                                  : " (post-fader: follows the channel's fader)"));
@@ -958,14 +1067,20 @@ public:
         g.drawRoundedRectangle(bounds.reduced(0.5f), theme_.radius.md, 1.0f);
         // The header: the bus's colour and name.
         auto header = getLocalBounds().removeFromTop(theme_.sizes.control).reduced(theme_.spacing.sm, 0);
-        header.removeFromRight(theme_.sizes.controlCompact);
+        header.removeFromRight(2 * theme_.sizes.controlCompact);
         const auto dot = header.removeFromLeft(8).toFloat().withSizeKeepingCentre(8.0f, 8.0f);
         g.setColour(colour_);
         g.fillEllipse(dot);
         header.removeFromLeft(theme_.spacing.xs);
         g.setFont(theme_.label());
-        g.setColour(c.textPrimary);
+        g.setColour(muted_ ? c.textTertiary : c.textPrimary);
         g.drawText(name_, header, juce::Justification::centredLeft, true);
+        if (muted_)
+        {
+            const int w =
+                std::min(header.getWidth(), juce::GlyphArrangement::getStringWidthInt(theme_.label(), name_));
+            g.fillRect(header.getX(), header.getCentreY(), w, 1);
+        }
         // The level under the fader.
         g.setFont(theme_.caption());
         g.setColour(c.textSecondary);
@@ -979,20 +1094,23 @@ public:
             area.removeFromTop(theme_.sizes.control)
                 .reduced(theme_.spacing.xs, (theme_.sizes.control - theme_.sizes.controlCompact) / 2);
         remove_.setBounds(header.removeFromRight(theme_.sizes.controlCompact));
+        mute_.setBounds(header.removeFromRight(theme_.sizes.controlCompact));
         area = area.reduced(theme_.spacing.sm, 0);
         tap_.setBounds(area.removeFromBottom(theme_.sizes.controlCompact + theme_.spacing.sm)
                            .withTrimmedBottom(theme_.spacing.sm));
+        pan_.setBounds(area.removeFromBottom(panHeight()).withSizeKeepingCentre(panHeight(), panHeight()));
         area.removeFromBottom(valueHeight); // the value line
         fader_.setBounds(area.withTrimmedBottom(theme_.spacing.xxs));
     }
 
 private:
     static constexpr int valueHeight = 18;
+    int panHeight() const noexcept { return theme_.sizes.knob + 16; }
     juce::Rectangle<int> valueArea() const
     {
         return getLocalBounds()
             .reduced(theme_.spacing.sm, 0)
-            .withTrimmedBottom(theme_.sizes.controlCompact + theme_.spacing.sm)
+            .withTrimmedBottom(theme_.sizes.controlCompact + theme_.spacing.sm + panHeight())
             .removeFromBottom(valueHeight);
     }
 
@@ -1001,11 +1119,12 @@ private:
     core::Id channelId_, busId_;
     Fader fader_;
     SegmentedControl tap_;
-    IconButton remove_;
+    IconButton remove_, mute_;
+    Knob pan_;
     juce::String name_;
     juce::Colour colour_;
     float level_ = 1.0f;
-    bool pre_ = false, updating_ = false;
+    bool pre_ = false, updating_ = false, muted_ = false;
 };
 
 // ----- the panel --------------------------------------------------------------------------------
@@ -1091,6 +1210,39 @@ EditorPanel::~EditorPanel()
 const core::Channel* EditorPanel::channel() const
 {
     return project_ != nullptr ? project_->findChannel(channelId_) : nullptr;
+}
+
+const PluginActions* EditorPanel::actions()
+{
+    if (actions_ != nullptr)
+        return actions_;
+    localActions_.live = liveInsert;
+    localActions_.openEditor = onOpenEditor;
+    return &localActions_;
+}
+
+InsertMenuRequest EditorPanel::menuRequest(core::Id insertId, bool instrument)
+{
+    InsertMenuRequest r;
+    r.project = project_;
+    r.channelId = channelId_;
+    r.insertId = insertId;
+    r.instrument = instrument;
+    r.offerOutputs = instrument;
+    r.actions = actions();
+    r.sources = pluginSources_;
+    juce::Component::SafePointer<EditorPanel> safe(this);
+    r.onCommand = [safe](std::unique_ptr<core::Command> c)
+    {
+        if (safe != nullptr && safe->onCommand)
+            safe->onCommand(std::move(c));
+    };
+    r.onReplaceInstrument = [safe](const std::string& type)
+    {
+        if (safe != nullptr)
+            safe->setInstrument(type);
+    };
+    return r;
 }
 
 void EditorPanel::setProject(const core::Project* project)
@@ -1398,7 +1550,7 @@ void EditorPanel::showInstrumentMenu(juce::Component& target)
                              });
 }
 
-void EditorPanel::reorderCard(core::Id insertId, juce::Point<int> screen, bool released)
+void EditorPanel::reorderCard(core::Id insertId, juce::Point<int> screen, bool released, bool copy)
 {
     const auto local = strip_.getLocalPoint(nullptr, screen);
     const int index = insertIndexForX(local.x);
@@ -1414,6 +1566,13 @@ void EditorPanel::reorderCard(core::Id insertId, juce::Point<int> screen, bool r
     const auto* ch = channel();
     if (ch == nullptr || !onCommand)
         return;
+    if (copy)
+    {
+        if (const auto* insert = ch->findInsert(insertId))
+            onCommand(std::make_unique<core::AddInserts>(
+                channelId_, std::vector{snapshotInsert(*insert, actions())}, index, "Copy insert"));
+        return;
+    }
     const int from = ch->insertIndex(insertId);
     const int to = index > from ? index - 1 : index;
     if (from >= 0 && to != from)
@@ -1614,14 +1773,34 @@ void EditorPanel::showAddSendMenu()
     auto built = buildSendMenu(*project_, ch->id);
     juce::Component::SafePointer<EditorPanel> safe(this);
     const core::Id channelId = ch->id;
-    built.menu.showMenuAsync(juce::PopupMenu::Options().withTargetComponent(addSend_),
-                             [safe, built, channelId](int choice)
-                             {
-                                 if (const auto bus = built.busFor(choice);
-                                     safe != nullptr && bus != core::invalidId && safe->onCommand)
-                                     safe->onCommand(
-                                         std::make_unique<core::SetSend>(channelId, bus, 1.0f, false));
-                             });
+    // "New FX track...": one made with the send to it, one step.
+    const auto fxChoices = plugins::fxTrackEffects();
+    constexpr int fxBase = 100000;
+    juce::PopupMenu fx;
+    for (size_t i = 0; i < fxChoices.size(); ++i)
+        fx.addItem(fxBase + static_cast<int>(i), juce::String(fxChoices[i].name));
+    built.menu.addSeparator();
+    built.menu.addSubMenu(juce::String::fromUTF8("New FX track\xe2\x80\xa6"), fx);
+    built.menu.showMenuAsync(
+        juce::PopupMenu::Options().withTargetComponent(addSend_),
+        [safe, built, channelId, fxChoices](int choice)
+        {
+            if (safe == nullptr || choice <= 0)
+                return;
+            if (choice >= fxBase && static_cast<size_t>(choice - fxBase) < fxChoices.size())
+            {
+                const auto& c = fxChoices[static_cast<size_t>(choice - fxBase)];
+                auto commands = plugins::addFxTrackCommands(*safe->project_, c.type, c.name, {channelId});
+                if (safe->actions_ != nullptr && safe->actions_->commands)
+                    safe->actions_->commands("New FX track", std::move(commands));
+                else if (safe->onCommand)
+                    for (auto& command : commands)
+                        safe->onCommand(std::move(command));
+                return;
+            }
+            if (const auto bus = built.busFor(choice); bus != core::invalidId && safe->onCommand)
+                safe->onCommand(std::make_unique<core::SetSend>(channelId, bus, 1.0f, false));
+        });
 }
 
 void EditorPanel::showAddMenu(juce::Component& target, int index)

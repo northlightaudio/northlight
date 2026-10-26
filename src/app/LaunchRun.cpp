@@ -287,6 +287,30 @@ void insert(LaunchRun& r, Args& a, bool onMaster)
     }
 }
 
+// The mixer's less common states at once, for a capture (--mixer-states).
+void mixerStates(LaunchRun& r, Args&)
+{
+    std::vector<core::Id> tracks;
+    for (const auto& t : r.session.project().tracks)
+        if (t.hasAudio())
+            tracks.push_back(t.id);
+    if (!tracks.empty())
+        r.session.execute(std::make_unique<core::SetSoloSafe>(tracks.front(), true));
+    if (tracks.size() > 1)
+        r.session.execute(std::make_unique<core::SetTrackSolo>(tracks[1], true));
+    if (tracks.size() > 2)
+        r.session.execute(std::make_unique<core::SetHardwareOutput>(tracks[2], 1));
+    if (tracks.size() > 3)
+        r.session.execute(std::make_unique<core::SetMixerHidden>(tracks.back(), true));
+    for (const auto& t : r.session.project().tracks)
+        if (!t.sends.empty())
+        {
+            r.session.execute(std::make_unique<core::SetSendMute>(t.id, t.sends.front().bus, true));
+            r.session.execute(std::make_unique<core::SetSendPan>(t.id, t.sends.front().bus, -0.35f));
+            break;
+        }
+}
+
 // A parameter of the insert the last --insert or --master-insert added, by name
 // (case ignored) or index; a stepped one also takes its choice's text. With a
 // delay, that many seconds after launch (a tail frozen mid-play, for a capture).
@@ -884,6 +908,23 @@ const std::vector<LaunchFlag<LaunchRun>>& LaunchRun::flags()
                      return;
                  }
          }},
+        {"--mixer-wide",
+         "",
+         0,
+         "show the mixer's strips wide (the dB scale, the send pan column)",
+         [](LaunchRun& r, Args&) { r.window.setMixerWide(true); }},
+        {"--dock-height",
+         "<px>",
+         1,
+         "make the dock this tall (a tall mixer shows its insert and send slots)",
+         [](LaunchRun& r, Args& a) { r.window.setDockHeight(a.integer()); }},
+        {"--mixer-states",
+         "",
+         0,
+         "put the mixer in its less common states: the first track solo safe and the second soloed, the "
+         "first "
+         "send muted and panned, the third track on outputs 3/4 and the last one hidden",
+         mixerStates},
         {"--strip-preset",
          "<name>",
          1,

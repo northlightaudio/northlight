@@ -63,6 +63,9 @@ public:
     void removeLastBus();
     // Shows the mixer panel.
     void showMixer();
+    // --mixer-wide: the mixer's wide strips. --dock-height: the dock's height.
+    void setMixerWide(bool wide);
+    void setDockHeight(int height);
     void showTempoTrack();
     // Shows the mixer and opens an insert's editor.
     void openInsertEditor(core::Id channelId, core::Id insertId);

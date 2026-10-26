@@ -724,9 +724,37 @@ not enough; the maker in `small` `textSecondary`; the format badge with the late
 after it ("31 smp latency", `caption` `textTertiary`); and a secondary button 160 px
 wide at most (not primary: a chain holds several faceplates, and a primary is the
 one bright thing in a view). Not installed: the tile is `warning` at 15% with the `warning` icon,
-the note after the badge is "Not installed" in `warning`, and there is no button.
-A short body drops the tile first, then the badge line, then the maker; the name
+the note after the badge is "Not installed" in `warning`, and the button is "Scan
+for plugins…". Failed (installed, but it would not load) and Crashed (switched off
+after a crash while processing) take the same form in `danger`, the note "Failed"
+or "Crashed", the button "Retry" or "Reload plugin"; the card's tooltip gives the
+reason. A short body drops the tile first, then the badge line, then the maker; the name
 and the button always stay. Double-clicking the faceplate does what its button does.
+
+### Slot in trouble
+
+An insert slot (mixer) whose plugin is missing, failed or crashed: the `warning`
+icon (12 px) before the name, in `warning` for missing and `danger` for failed or
+crashed; the name in `textTertiary` with no strike; no power icon or drag handle
+on hover. Any click opens its menu, which starts with a section header naming the
+state ("Crashed · DC1A3") and the way out (Reload plugin; Retry and Blocklist;
+Scan for plugins…). The tooltip is the state and the reason.
+
+### Section summary
+
+A short mixer strip's collapsed inserts or sends: a slot-sized button (20 px,
+`surface2`, radius `sm`, `surface3` on hover) with "3 inserts" in `small`
+`textSecondary` (`textPrimary` on hover), a `chevronDown` at the right in
+`textTertiary`, and the `warning` icon first when a slot in it is in trouble. A
+click lists the section in a menu: each slot as a submenu with its own menu,
+then "Add insert" or "Add send". While a plugin or slot is dragged over a
+collapsed strip, the inserts' summary takes a 2 px `accent` outline (the drop goes
+at the end).
+
+### Solo safe mark
+
+A 5 px dot in `solo` in the top-right corner of a strip's S button: other solos
+never silence this channel. The S button's tooltip says so.
 
 ### Table / list
 

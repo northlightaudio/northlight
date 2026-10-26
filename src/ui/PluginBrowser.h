@@ -46,6 +46,20 @@ public:
     // Remembers a type as recently used (the owner calls it on any insert).
     void rememberRecent(const std::string& type);
     void focusSearch() { search_.grabKeyboardFocus(); }
+    void setSearchText(const juce::String& text)
+    {
+        search_.setText(text, juce::dontSendNotification);
+        applyFilter();
+    }
+    // Shows one plugin: the filters cleared, its name searched, its row selected
+    // (a format badge's click in the mixer).
+    void showPlugin(const std::string& type);
+    // How many recent plugins the Recent section keeps.
+    static constexpr size_t recentCount = 16;
+    // For tests: the rows' text, a header's title or a plugin's name.
+    std::vector<juce::String> rowTexts() const;
+    juce::String countText() const;
+    juce::String emptyText() const;
 
     void paint(juce::Graphics& g) override;
     void resized() override;
@@ -66,10 +80,12 @@ private:
         Kind kind = Kind::plugin;
         juce::String title; // the section title (header rows)
         std::string type;   // the insert type (plugin rows)
-        juce::String name, manufacturer, format, reason;
+        // A built-in's maker column shows its one-line description instead.
+        juce::String name, manufacturer, format, reason, description;
         std::string path; // the file (blocked rows)
         bool instrument = false;
         bool favourite = false;
+        int effectKind = 0; // an effect's EffectCategory
     };
 
     int getNumRows() override;
@@ -90,8 +106,13 @@ private:
     const hosting::PluginRegistry& registry_;
     std::vector<Row> plugins_, blocked_, rows_;
     std::vector<std::string> favourites_, recent_;
+    void paintOverChildren(juce::Graphics& g) override;
     juce::TextEditor search_;
     SegmentedControl format_, category_;
+    // The kind of effect (the effects menu's groups: Dynamics, EQ & Filter, ...).
+    juce::TextButton kind_;
+    int kindFilter_ = -1; // an EffectCategory, -1 for every kind
+    void showKindMenu();
     juce::ListBox list_{"plugins", this};
     juce::TextButton scan_{"Scan for changes"}, cancel_{"Cancel"};
     double progress_ = 0.0;

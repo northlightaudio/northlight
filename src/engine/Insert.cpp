@@ -7,6 +7,18 @@
 namespace northlight::engine
 {
 
+namespace
+{
+// A crashed processor is never freed: the plugin's memory may be damaged and its
+// destructor is its own code. Kept (leaked on purpose) until the process ends.
+void keepIfCrashed(const std::shared_ptr<InsertProcessor>& instance)
+{
+    static auto* kept = new std::vector<std::shared_ptr<InsertProcessor>>();
+    if (instance != nullptr && instance->crashed())
+        kept->push_back(instance);
+}
+} // namespace
+
 std::string InsertProcessor::parameterKey(int index) const
 {
     const auto& infos = parameters();
@@ -47,7 +59,10 @@ std::shared_ptr<InsertProcessor> InsertCache::get(const core::Insert& insert)
     if (const auto it = instances_.find(insert.id); it != instances_.end())
     {
         if (it->second->typeName() != insert.type)
+        {
+            keepIfCrashed(it->second);
             instances_.erase(it);
+        }
         else if (it->second->needsRestart())
         {
             // The plugin asked for a restart: a fresh instance with its current
@@ -103,9 +118,23 @@ std::shared_ptr<InsertProcessor> InsertCache::find(core::Id insertId) const
     return it != instances_.end() ? it->second : nullptr;
 }
 
+void InsertCache::forget(core::Id insertId)
+{
+    NORTHLIGHT_ASSERT_NOT_REALTIME("InsertCache::forget");
+    const auto it = instances_.find(insertId);
+    if (it == instances_.end())
+        return;
+    keepIfCrashed(it->second);
+    instances_.erase(it);
+    latencyAtCompile_.erase(insertId);
+    appliedState_.erase(insertId);
+}
+
 void InsertCache::clear()
 {
     NORTHLIGHT_ASSERT_NOT_REALTIME("InsertCache::clear");
+    for (const auto& [id, instance] : instances_)
+        keepIfCrashed(instance);
     instances_.clear();
     latencyAtCompile_.clear();
     appliedState_.clear();
@@ -130,7 +159,14 @@ bool InsertCache::latencyChanged() const noexcept
 
 void InsertCache::prune()
 {
-    std::erase_if(instances_, [](const auto& entry) { return entry.second.use_count() == 1; });
+    std::erase_if(instances_,
+                  [](const auto& entry)
+                  {
+                      if (entry.second.use_count() != 1)
+                          return false;
+                      keepIfCrashed(entry.second);
+                      return true;
+                  });
     std::erase_if(latencyAtCompile_, [this](const auto& entry) { return !instances_.contains(entry.first); });
     std::erase_if(appliedState_, [this](const auto& entry) { return !instances_.contains(entry.first); });
 }

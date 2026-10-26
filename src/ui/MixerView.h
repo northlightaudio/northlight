@@ -6,6 +6,7 @@
 #include "engine/Meters.h"
 #include "hosting/HostFactory.h"
 #include "ui/InputChoices.h"
+#include "ui/InsertMenu.h"
 #include "ui/MeterReadings.h"
 #include "ui/PluginMenu.h"
 #include "ui/PluginWindow.h"
@@ -77,6 +78,28 @@ public:
     // Names and the plugin list for the inserts menu; may be null (built-ins only).
     void setHost(const hosting::HostFactory* host) noexcept { host_ = host; }
     void setPluginSources(const PluginSources* sources) noexcept { pluginSources_ = sources; }
+    // What the slots' menus do beyond commands (reload, retry, blocklist, the
+    // browser); may be null (the mixer then offers only what it can do itself).
+    void setPluginActions(const PluginActions* actions) noexcept { actions_ = actions; }
+    // An insert was added from the mixer (a menu or a drop): the shell remembers
+    // the type as recent.
+    std::function<void(const std::string& type)> onInserted;
+    // The project's total plugin delay compensation in samples (the master's
+    // readout); may be null.
+    std::function<int()> outputLatency;
+    // The device's stereo output pairs, by name ("Speakers 3/4"), pair 0 first
+    // (the master's): the output selectors offer the others as hardware outputs.
+    void setOutputChoices(std::vector<std::string> pairs);
+    // Wide strips (screens/mixer.md): 112 px with the dB scale beside the meter
+    // and a pan column on the send rows. Remembered in the settings.
+    void setWideStrips(bool wide);
+    bool wideStrips() const noexcept { return wide_; }
+    // Strips the user hid (Channel::mixerHidden), shown again from the mixer's
+    // "Hidden" button or its background menu.
+    int hiddenStripCount() const noexcept { return hiddenCount_; }
+    // The windows a project opened with (Insert::windowOpen) open once their
+    // plugins are loaded; setProject() with a new project arms it.
+    void reopenSavedWindows();
     // The master clipped since the last clear (the header's indicator mirrors it).
     bool masterClipped() const noexcept { return masterClipped_; }
     void clearMasterClip() { masterClipped_ = false; }
@@ -88,8 +111,10 @@ public:
 
     // Opens (or fronts) the parameter editor window for an insert.
     void openInsertEditor(core::Id channelId, core::Id insertId);
-    // Closes every editor window (before a project is replaced).
+    // Closes every editor window (before a project is replaced, and the "Close
+    // all plugin windows" command).
     void closeEditors();
+    int openEditorCount() const noexcept { return static_cast<int>(pluginWindows_.size() + editors_.size()); }
     // Whether an insert's editor (plugin or generic window) is open.
     bool isEditorOpen(core::Id insertId) const;
     // An insert's editor window opened or closed (the Editor panel shows a popped
@@ -110,11 +135,29 @@ private:
     // (the menu opens on `target`), and an insert's own menu (open, bypass, order,
     // wet/dry, its key and, where `offerOutputs`, an instrument's extra outputs).
     void showAddInsertMenu(core::Id channelId, juce::Component& target);
-    void showInsertMenu(core::Id channelId, core::Id insertId, bool offerOutputs);
+    void showInsertMenu(core::Id channelId,
+                        core::Id insertId,
+                        bool offerOutputs,
+                        juce::Component* target = nullptr);
+    InsertMenuRequest insertMenuRequest(core::Id channelId, core::Id insertId, bool offerOutputs);
+    // The shell's plugin actions, or the mixer's own (open, live) without one.
+    const PluginActions* actions();
+    // A drop on a strip: a browser row ("plugin:<type>") or an insert slot
+    // ("insert:<channel>:<insert>", moved, or copied with Ctrl) at `index`.
+    void dropOnStrip(core::Id channelId, const juce::String& description, int index, bool copy);
+    // The menu of the mixer's background: wide strips, the hidden strips.
+    void showViewMenu(juce::Component* target);
+    // An insert added from the mixer (a menu or a drop).
+    void addInsert(core::Id channelId, const std::string& type, int index = -1);
 
     void rebuildStrips();
     void layoutStrips();
     void addBus();
+    // The "New FX track" items of a send menu: a new FX track with a send to it
+    // from `channelId`, one step.
+    void
+    addFxSendItems(juce::PopupMenu& menu, std::vector<std::function<void()>>& actions, core::Id channelId);
+    void openSavedWindows();
 
     const Theme& theme_ = Theme::dark();
     const MeterReadings& meters_;
@@ -129,7 +172,7 @@ private:
     // section (fader, pan, buttons) sits at the same height in all of them.
     struct RowPlan
     {
-        bool input = false, stripRow = false, instrument = false;
+        bool input = false, stripRow = false, instrument = false, latency = false;
         int inserts = 0, sends = 0;
         bool operator==(const RowPlan&) const = default;
     };
@@ -137,12 +180,33 @@ private:
     std::vector<std::unique_ptr<Strip>> strips_;
     std::unique_ptr<MasterStrip> master_;
     juce::Viewport viewport_;
-    juce::Component stripsHolder_;
+    // The strips' holder; a right-click on its empty part shows the view menu.
+    struct Holder final : juce::Component
+    {
+        std::function<void()> onMenu;
+        void mouseDown(const juce::MouseEvent& e) override
+        {
+            if (e.mods.isPopupMenu() && onMenu)
+                onMenu();
+        }
+    };
+    Holder stripsHolder_;
     juce::TextButton addBus_{"+ Bus"};
+    juce::TextButton hidden_; // "2 hidden": shows them again
+    int hiddenCount_ = 0;
+    bool wide_ = false, wideRead_ = false;
+    std::vector<std::string> outputPairs_; // the device's output pairs, pair 0 first
     std::vector<std::unique_ptr<EditorWindow>> editors_;
     std::vector<std::unique_ptr<PluginWindow>> pluginWindows_;
+    // Hosted plugins shown in the generic editor instead of their own (the
+    // window's toggle), for the session.
+    std::vector<core::Id> genericEditors_;
+    // Windows to open once their plugins load (a project just opened).
+    std::vector<std::pair<core::Id, core::Id>> pendingWindows_; // channel, insert
     const hosting::HostFactory* host_ = nullptr;
     const PluginSources* pluginSources_ = nullptr;
+    const PluginActions* actions_ = nullptr;
+    PluginActions localActions_; // without the shell's: open and live from the mixer
 };
 
 } // namespace northlight::ui

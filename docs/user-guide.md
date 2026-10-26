@@ -81,7 +81,13 @@ recorded.
 
 The **Mixer** (F2) has a strip for every track, bus and FX track: inserts, sends,
 pan, mute, solo, phase, fader and meters, with the master's loudness meter. Strips
-can join a fader group, so their faders, mutes and solos move together.
+can join a fader group, so their faders, mutes and solos move together. Ctrl+click
+a solo button to hear that channel alone; **Solo safe** (a strip's right-click
+menu) keeps a channel heard whatever else is soloed. A strip's output can be the
+master, a bus or another pair of your audio device's outputs. Sends have a pan and
+a mute (right-click a send). Right-click a strip to hide it or switch to **wide
+strips**; the mixer's "hidden" button brings hidden strips back. A strip shows how
+much its plugins delay it, and the master the project's total delay compensation.
 
 Every channel has a **channel strip** of six modules (gate, EQ, compressor, de-esser,
 saturation, limiter) that switch on in place. In the **Editor** panel each module
@@ -93,8 +99,12 @@ once.
 
 **FX tracks** hold shared effects such as a reverb or a delay that several channels
 send to. **Inserts** take the built-in processors and any VST3 or CLAP plugin found by
-a scan; a plugin's window has bypass, a wet/dry mix, presets and pin. Compressors can
-be sidechained from another channel. Plugin latency is compensated everywhere,
+a scan; a plugin's window has bypass, a wet/dry mix, presets (named, and undoable)
+and pin. Drag an insert by its handle to another strip to move it, with Ctrl to
+copy it; an insert's menu also copies, pastes and replaces it. A plugin that is
+not installed, failed to load or crashed says so on its slot, with the way out:
+Scan for plugins, Retry, or Reload plugin. Ctrl+Shift+W closes every plugin
+window. Compressors can be sidechained from another channel. Plugin latency is compensated everywhere,
 including in recordings. The master has inserts too, on the whole mix before its
 fader.
 

@@ -177,8 +177,20 @@ automated from the message thread at 50 Hz, since plugins own their parameters.
 
 Solo is in place and resolved at compile: a channel is heard if it is soloed, feeds a
 soloed channel or is fed by one, and a channel heard only through a send keeps the
-send but not its direct output. Folders fold their mute and solo into their tracks.
-Routing cycles are refused when the edit is made.
+send but not its direct output. A solo-safe channel is heard whatever is soloed.
+Folders fold their mute and solo into their tracks. Routing cycles are refused when
+the edit is made.
+
+A send's level, pan (a balance on what it sends) and mute are live values in its
+`SendRuntime`: a mute ramps the level target to zero and back, so it never
+recompiles. A channel on a hardware output (`Channel::hardwareOutput`, a stereo
+pair of the device's active outputs) sums past the master into one of the
+renderer's per-pair buffers (`Snapshot::maxHardwarePairs`, allocated in
+`prepare`), at the span's offset in the block; they are added to the device
+outputs at the end of the block. The compiler is told how many pairs the device
+has (`AudioEngine::setOutputPairs`): a pair beyond them, and every one offline
+(where it is 1), falls back to the channel's bus or the master, so an export
+mixes them in.
 
 ### Delay compensation and sidechains
 
@@ -187,7 +199,9 @@ every edge (an output or a send) gets a fixed delay for the difference between w
 its destination waits for and what its source already lags. Lines are cached by edge
 across recompiles, and a changed delay starts a new line pre-filled from the old one,
 so edits never cause a gap. Bypass keeps a processor's latency, so toggling it never
-re-solves the graph.
+re-solves the graph. A hardware output's edge waits for the master's output latency
+(its inserts included), so it comes out with the master; one slower than the master
+cannot be pulled earlier and plays late.
 
 Sidechain keys can tap a source before or after its fader and are delay compensated.
 Tracks render in dependency levels so a keyed track sees its key source finished in
@@ -483,11 +497,27 @@ know nothing format-specific.
   application down while it is inspected. The registry records modification times,
   so a rescan only inspects new or changed files.
 - **Crash containment.** A hosted plugin's processing call runs under structured
-  exception handling. A plugin that crashes is never called again, its slot passes
-  audio through, and the user is told to save and restart.
+  exception handling (only processing: its editor, state calls and destructor run
+  unguarded on the message thread). A plugin that crashes is never called again,
+  its slot passes audio through, and the user is told, with "Reload plugin":
+  `ProjectSession::reloadInsert` makes the engine forget the instance
+  (`InsertCache::forget`), so the next compile makes a fresh one from the model's
+  state, which a crash never overwrites (`captureInsertStates` skips crashed
+  instances). The crashed instance is never destroyed: the cache moves every
+  crashed instance it lets go of into a list that is never freed.
+- **Load failures.** `HostFactory` remembers why a type failed to load and does not
+  retry it until a rescan or a Retry (`clearFailure`). The slots read the failure,
+  the registry and the instance's crash flag through `ui::insertTrouble`; the
+  session tells the user once per type ("Blocklist" blocks the plugin's file) and,
+  after a project opens, names every plugin missing or failed in one notice.
 - **State.** A hosted plugin owns its parameters and its state. The model keeps the
   plugin's state blob and only the parameters a command touched, so the plugin's own
-  presets survive edits elsewhere.
+  presets survive edits elsewhere. A preset or program loaded from the window or
+  the card's menu is one `SetPluginState` step (the state before and after); undo
+  and redo hand the model's state to the instance (`Command::pushesInsertState`).
+  A save also records each hosted plugin's name (`Insert::pluginName`, so a missing
+  one is still named) and which editor windows are open (`Insert::windowOpen`,
+  reopened with the project once each plugin has loaded).
 
 Plugin instances are created and destroyed on the message thread. A plugin window
 shares ownership of its instance, so the engine dropping it can never free it under
@@ -584,6 +614,18 @@ menus, every item with its action), `SessionNotices` (the session's notices and 
 dropout warnings), `FirstRun` (the first-run sheets), `Benchmarks` (the developer
 benchmarks) and `LaunchRun` (the launch flags). The `MainWindow` facade holds its
 content by a typed pointer.
+
+Every insert slot, wherever it shows (a mixer strip, an Editor panel card, a
+short strip's list), takes its menu, its state and its name from one place,
+`ui/InsertMenu`: `addInsertMenuItems` builds the menu (open, bypass, presets,
+replace, order, wet/dry, sidechain, outputs, copy and paste, latency, the way out
+of trouble), `insertTrouble` says whether its plugin is missing, failed or
+crashed, and the copied inserts live there. What a slot does beyond commands
+(reload, retry, blocklist, the browser, a group of commands) comes through one
+`ui::PluginActions` the shell owns and hands to the mixer and the Editor panel,
+as `ui::PluginSources` gives every view the same plugin lists. Inserts move
+between mixer strips through JUCE's drag and drop ("insert:<channel>:<insert>",
+beside the browser's "plugin:<type>"); the strips and the master are drop targets.
 
 The timeline views (the arrange view and the lanes it hosts, the piano roll, the
 audio editor) map time to pixels through one `ui::TimelineViewport`

@@ -107,6 +107,11 @@ std::vector<Shortcut>& table()
         add(Command::audioSetup, "audioSetup", "Audio Setup", app, {code('A', ctrl | shift)});
         add(Command::preferences, "preferences", "Preferences", app, {code(',', ctrl)});
         add(Command::plugins, "plugins", "Plugins", app, {code('P', ctrl | shift)});
+        add(Command::closePluginWindows,
+            "closePluginWindows",
+            "Close all plugin windows",
+            app,
+            {code('W', ctrl | shift)});
         add(Command::addAudioTrack, "addAudioTrack", "Add an audio track", tracks, {code('T', ctrl)});
         add(Command::addMidiTrack, "addMidiTrack", "Add a MIDI track", tracks, {code('T', ctrl | shift)});
         add(Command::addBus, "addBus", "Add a bus", tracks, {code('B', ctrl)});

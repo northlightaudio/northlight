@@ -19,6 +19,8 @@ namespace northlight::menus
 struct AppMenu
 {
     std::function<void()> about, audioSetup, plugins, preferences;
+    std::function<void()> closePluginWindows; // greyed when none is open
+    bool pluginWindowsOpen = false;
     std::function<void(const juce::String& preset)> layout; // "Edit", "Mix"
     std::function<void()> resetLayout, quit;
 };

@@ -399,7 +399,26 @@ void ProjectSession::undo()
     const auto* undone = undo_.redoTop();
     std::vector<core::Command::ParameterTouch> touches;
     undone->touchedParameters(touches);
+    pushInsertState(*undone);
     finishChange(undone->changeKind(), touches, undone->rebuildsViews(), undone->liveChannel());
+}
+
+void ProjectSession::pushInsertState(const core::Command& command)
+{
+    const auto id = command.pushesInsertState();
+    if (id == core::invalidId)
+        return;
+    const auto live = engine_.insertInstance(id);
+    if (live == nullptr || live->crashed() || !live->ownsParameters())
+        return;
+    if (const auto* insert = project_.master.findInsert(id))
+        live->setState(insert->state);
+    for (const auto& t : project_.tracks)
+        if (const auto* insert = t.findInsert(id))
+            live->setState(insert->state);
+    for (const auto& b : project_.buses)
+        if (const auto* insert = b.findInsert(id))
+            live->setState(insert->state);
 }
 
 void ProjectSession::redo()
@@ -414,6 +433,7 @@ void ProjectSession::redo()
     const auto* redone = undo_.undoTop();
     std::vector<core::Command::ParameterTouch> touches;
     redone->touchedParameters(touches);
+    pushInsertState(*redone);
     finishChange(redone->changeKind(), touches, redone->rebuildsViews(), redone->liveChannel());
 }
 
@@ -735,6 +755,8 @@ void ProjectSession::newProject()
     removeOwnAutosave();
     hostedSent_.clear();
     untitledStem_.clear();
+    reportedCrashes_.clear();
+    reportedFailures_.clear();
     engine_.resetCaches(); // another project's ids must not reuse these instances
     project_ = core::Project{};
     undo_.clear();
@@ -815,6 +837,8 @@ void ProjectSession::commitLoad()
     removeOwnAutosave();
     hostedSent_.clear();
     untitledStem_.clear();
+    reportedCrashes_.clear(); // the new project's ids are its own
+    reportedFailures_.clear();
     engine_.resetCaches(); // another project's ids must not reuse these instances
     project_ = std::move(*load_->project());
     undo_.clear();
@@ -927,6 +951,7 @@ std::optional<std::string> ProjectSession::stepLoad(double budgetMs)
     }
     const double engineStart = nowMs();
     adoptLoadedParameters();
+    reportPluginTrouble();
     load_->timings().engineMs = nowMs() - engineStart;
     load_->report(LoadProgress::Stage::done, 0, 0, {}, 0.0);
     lastLoadTimings_ = load_->timings();
@@ -2123,6 +2148,86 @@ void ProjectSession::retryBlockedPlugin(const std::string& path)
     notify(Change::structure);
 }
 
+void ProjectSession::reloadInsert(core::Id insertId)
+{
+    // The crashed instance is kept (never freed) and the next compile makes a
+    // fresh one from the model's state, which a crash never overwrote.
+    engine_.forgetInsert(insertId);
+    reportedCrashes_.erase(insertId);
+    publish();
+}
+
+void ProjectSession::retryPlugin(const std::string& type)
+{
+    inserts_.clearFailure(type);
+    reportedFailures_.erase(type);
+    publish();
+}
+
+void ProjectSession::blocklistPlugin(const std::string& type)
+{
+    const auto* info = registry_.findByType(type);
+    if (info == nullptr)
+        return;
+    const auto reason = inserts_.failure(type);
+    registry_.block(info->path, reason.empty() ? std::string("failed to load") : reason);
+    saveRegistry();
+    notify(Change::structure);
+}
+
+void ProjectSession::reportPluginTrouble()
+{
+    // The project's hosted plugins that did not load: missing on this machine
+    // (not in the registry) or failed (in it, but refused).
+    std::vector<std::string> missing, failed;
+    const auto look = [&](const core::Insert& insert)
+    {
+        if (!hosting::PluginRegistry::isHostedType(insert.type) ||
+            engine_.insertInstance(insert.id) != nullptr)
+            return;
+        auto& into = registry_.findByType(insert.type) != nullptr ? failed : missing;
+        const auto name = registry_.findByType(insert.type) != nullptr ? inserts_.displayName(insert.type)
+                          : !insert.pluginName.empty()                 ? insert.pluginName
+                                                                       : std::string("an unnamed plugin");
+        if (std::find(into.begin(), into.end(), name) == into.end())
+            into.push_back(name);
+        if (&into == &failed)
+            reportedFailures_.insert(insert.type); // told here, not again one by one
+    };
+    const auto channel = [&](const core::Channel& c)
+    {
+        if (c.hasInstrument())
+            look(c.instrument);
+        for (const auto& i : c.inserts)
+            look(i);
+    };
+    for (const auto& t : project_.tracks)
+        channel(t);
+    for (const auto& b : project_.buses)
+        channel(b);
+    channel(project_.master);
+    if (missing.empty() && failed.empty())
+        return;
+    const auto list = [](const std::vector<std::string>& names)
+    {
+        std::string text;
+        for (size_t i = 0; i < names.size(); ++i)
+            text += (i == 0 ? "" : i + 1 == names.size() ? " and " : ", ") + names[i];
+        return text;
+    };
+    std::string text;
+    if (!missing.empty())
+        text += (missing.size() == 1 ? "1 plugin is not installed: "
+                                     : std::to_string(missing.size()) + " plugins are not installed: ") +
+                list(missing) + ". Their settings are kept.";
+    if (!failed.empty())
+        text += std::string(text.empty() ? "" : " ") +
+                (failed.size() == 1 ? "1 plugin failed to load: "
+                                    : std::to_string(failed.size()) + " plugins failed to load: ") +
+                list(failed) + ".";
+    notices_.push(Notice::Kind::warning, text, "Scan for plugins", [this] { scanPlugins(false); });
+}
+
 void ProjectSession::saveRegistry()
 {
     if (registryFile_.getFullPathName().isEmpty())
@@ -2143,14 +2248,35 @@ void ProjectSession::captureInsertStates()
 {
     const auto capture = [this](core::Channel& channel)
     {
+        // A crashed plugin is never called again: the project keeps the state it
+        // had before the crash.
         if (channel.hasInstrument())
-            if (const auto live = engine_.insertInstance(channel.instrument.id))
+            if (const auto live = engine_.insertInstance(channel.instrument.id);
+                live != nullptr && !live->crashed())
                 if (const auto state = live->state(); !state.empty())
                     channel.instrument.state = state;
         for (auto& insert : channel.inserts)
-            if (const auto live = engine_.insertInstance(insert.id))
+            if (const auto live = engine_.insertInstance(insert.id); live != nullptr && !live->crashed())
                 if (const auto state = live->state(); !state.empty())
                     insert.state = state;
+        // A hosted plugin's name, so it is still named where it is missing.
+        const auto name = [this](core::Insert& insert)
+        {
+            if (const auto* info = registry_.findByType(insert.type))
+                insert.pluginName = info->name;
+        };
+        if (channel.hasInstrument())
+            name(channel.instrument);
+        for (auto& insert : channel.inserts)
+            name(insert);
+        // Which windows are open, so they reopen with the project.
+        if (isEditorOpen)
+        {
+            if (channel.hasInstrument())
+                channel.instrument.windowOpen = isEditorOpen(channel.instrument.id);
+            for (auto& insert : channel.inserts)
+                insert.windowOpen = isEditorOpen(insert.id);
+        }
     };
     for (auto& t : project_.tracks)
         capture(t);
@@ -2184,8 +2310,12 @@ bool ProjectSession::refreshInputBuses()
     if (status.open)
         for (const auto& [name, pair] : audio::resolveInputBuses(audio_.inputBuses(), status.activeInputs))
             buses[name] = engine::InputPair{pair.first, pair.second};
+    // The device's output pairs, for channels played to a hardware output.
+    const int pairs = status.open ? std::max(1, static_cast<int>(status.activeOutputs.size()) / 2) : 1;
+    const bool pairsChanged = pairs != engine_.outputPairs();
+    engine_.setOutputPairs(pairs);
     if (buses == inputBuses_)
-        return false;
+        return pairsChanged;
     inputBuses_ = buses;
     engine_.setInputBuses(std::move(buses));
     return true;
@@ -2622,15 +2752,33 @@ void ProjectSession::checkCrashedPlugins()
         for (const auto& insert : channel.inserts)
             inserts.push_back(&insert);
         for (const auto* insert : inserts)
+        {
             if (const auto live = liveInsert(insert->id);
                 live != nullptr && live->crashed() && reportedCrashes_.insert(insert->id).second)
             {
+                const auto id = insert->id;
                 notices_.push(Notice::Kind::error,
                               inserts_.displayName(insert->type) + " on " + channel.name +
-                                  " crashed and was switched off. Save your project and restart Northlight "
-                                  "to use it again.");
+                                  " crashed and was switched off. Save your project; Reload plugin starts "
+                                  "it again from its last saved state.",
+                              "Reload plugin",
+                              [this, id] { reloadInsert(id); });
                 notify(Change::structure);
             }
+            // A plugin that is installed but would not load (after the project
+            // opened: a new insert, a retry): say why, once, offering the blocklist.
+            if (const auto reason = inserts_.failure(insert->type);
+                !reason.empty() && registry_.findByType(insert->type) != nullptr &&
+                reportedFailures_.insert(insert->type).second)
+            {
+                const auto type = insert->type;
+                notices_.push(Notice::Kind::error,
+                              inserts_.displayName(type) + " failed to load: " + reason + ".",
+                              "Blocklist",
+                              [this, type] { blocklistPlugin(type); });
+                notify(Change::structure);
+            }
+        }
     };
     for (const auto& track : project_.tracks)
         check(track);

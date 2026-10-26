@@ -1321,7 +1321,9 @@ bool SetOutputBus::apply(Project& p)
     if (p.wouldCycle(channelId_, value_))
         return false;
     previous_ = c->outputBus;
+    previousHardware_ = c->hardwareOutput;
     c->outputBus = value_;
+    c->hardwareOutput = -1;
     return true;
 }
 bool SetOutputBus::revert(Project& p)
@@ -1330,6 +1332,7 @@ bool SetOutputBus::revert(Project& p)
     if (c == nullptr)
         return false;
     c->outputBus = previous_;
+    c->hardwareOutput = previousHardware_;
     return true;
 }
 
@@ -1350,6 +1353,8 @@ bool SetSend::apply(Project& p)
     {
         existed_ = true;
         previous_ = *existing;
+        value_.pan = existing->pan; // a level or tap change keeps the send's pan and mute
+        value_.mute = existing->mute;
         *existing = value_;
     }
     else
@@ -2616,6 +2621,235 @@ bool SetClipStretch::revert(Project& p)
     if (found == nullptr)
         return false;
     *found = previous_;
+    return true;
+}
+
+// ----- mixer: routing, solo, sends, insert chains -------------------------------------------
+
+namespace
+{
+// Whether a channel can hold inserts (a track that makes audio, a bus, the master).
+bool holdsInserts(const Project& p, Id channelId)
+{
+    if (channelId == masterId || p.findBus(channelId) != nullptr)
+        return true;
+    const auto* t = p.findTrack(channelId);
+    return t != nullptr && t->hasAudio();
+}
+
+// A key source the channel can use for an insert: not the master's (its inserts
+// take no key), not itself, not one that would loop, and a bus only on a bus.
+Id usableKey(const Project& p, Id channelId, Id source)
+{
+    if (source == invalidId || channelId == masterId || source == channelId)
+        return invalidId;
+    if (p.findChannel(source) == nullptr || p.keyWouldCycle(channelId, source))
+        return invalidId;
+    if (p.findBus(source) != nullptr && p.findBus(channelId) == nullptr)
+        return invalidId;
+    return source;
+}
+
+bool isInsertLane(const AutomationLane& lane, Id insertId)
+{
+    return lane.target == AutomationTarget::insertParameter && lane.insert == insertId;
+}
+} // namespace
+
+bool SetExclusiveSolo::apply(Project& p)
+{
+    if (p.findChannel(channelId_) == nullptr || channelId_ == masterId)
+        return false;
+    previous_.clear();
+    bool othersSoloed = false;
+    bool selfSoloed = false;
+    const auto look = [&](const Channel& c)
+    {
+        previous_.emplace_back(c.id, c.solo);
+        if (c.id == channelId_)
+            selfSoloed = c.solo;
+        else
+            othersSoloed = othersSoloed || c.solo;
+    };
+    for (const auto& t : p.tracks)
+        look(t);
+    for (const auto& b : p.buses)
+        look(b);
+    // Already the only one soloed: a second exclusive click clears it.
+    const bool on = !(selfSoloed && !othersSoloed);
+    for (auto& t : p.tracks)
+        t.solo = on && t.id == channelId_;
+    for (auto& b : p.buses)
+        b.solo = on && b.id == channelId_;
+    return true;
+}
+bool SetExclusiveSolo::revert(Project& p)
+{
+    for (const auto& [id, solo] : previous_)
+        if (auto* c = p.findChannel(id))
+            c->solo = solo;
+    return true;
+}
+
+MoveInsertToChannel::MoveInsertToChannel(Id fromChannel, Id insertId, Id toChannel, int index)
+    : from_(fromChannel), insertId_(insertId), to_(toChannel), index_(index)
+{
+}
+bool MoveInsertToChannel::apply(Project& p)
+{
+    auto* from = p.findChannel(from_);
+    auto* to = p.findChannel(to_);
+    if (from == nullptr || to == nullptr || from_ == to_ || !holdsInserts(p, to_))
+        return false;
+    const int at = from->insertIndex(insertId_);
+    if (at < 0)
+        return false;
+    fromInserts_ = from->inserts;
+    toInserts_ = to->inserts;
+    fromLanes_ = from->automation;
+    toLanes_ = to->automation;
+    Insert moved = from->inserts[static_cast<size_t>(at)];
+    from->inserts.erase(from->inserts.begin() + at);
+    moved.sidechain = usableKey(p, to_, moved.sidechain);
+    if (moved.sidechain == invalidId)
+        moved.sidechainPostFader = false;
+    const int place = index_ < 0 || index_ > static_cast<int>(to->inserts.size())
+                          ? static_cast<int>(to->inserts.size())
+                          : index_;
+    to->inserts.insert(to->inserts.begin() + place, moved);
+    // Its lanes follow it (the master keeps no pan lanes, but parameters it has).
+    for (const auto& lane : from->automation)
+        if (isInsertLane(lane, insertId_))
+            to->automation.push_back(lane);
+    std::erase_if(from->automation,
+                  [this](const AutomationLane& lane) { return isInsertLane(lane, insertId_); });
+    return true;
+}
+bool MoveInsertToChannel::revert(Project& p)
+{
+    auto* from = p.findChannel(from_);
+    auto* to = p.findChannel(to_);
+    if (from == nullptr || to == nullptr)
+        return false;
+    from->inserts = fromInserts_;
+    to->inserts = toInserts_;
+    from->automation = fromLanes_;
+    to->automation = toLanes_;
+    return true;
+}
+std::size_t MoveInsertToChannel::footprint() const noexcept
+{
+    return sizeof(*this) + heapBytes(fromInserts_) + heapBytes(toInserts_) + heapBytes(fromLanes_) +
+           heapBytes(toLanes_);
+}
+
+AddInserts::AddInserts(Id channelId, std::vector<Insert> inserts, int index, std::string name)
+    : channelId_(channelId), inserts_(std::move(inserts)), index_(index), name_(std::move(name))
+{
+}
+bool AddInserts::apply(Project& p)
+{
+    auto* c = p.findChannel(channelId_);
+    if (c == nullptr || inserts_.empty() || !holdsInserts(p, channelId_))
+        return false;
+    if (!idsAssigned_)
+    {
+        for (auto& insert : inserts_)
+        {
+            insert.id = p.allocateId(); // a copy is a processor of its own
+            insert.windowOpen = false;
+            insert.sidechain = usableKey(p, channelId_, insert.sidechain);
+            if (insert.sidechain == invalidId)
+                insert.sidechainPostFader = false;
+        }
+        idsAssigned_ = true;
+    }
+    const int at = index_ < 0 || index_ > static_cast<int>(c->inserts.size())
+                       ? static_cast<int>(c->inserts.size())
+                       : index_;
+    index_ = at;
+    c->inserts.insert(c->inserts.begin() + at, inserts_.begin(), inserts_.end());
+    return true;
+}
+bool AddInserts::revert(Project& p)
+{
+    auto* c = p.findChannel(channelId_);
+    if (c == nullptr)
+        return false;
+    std::erase_if(c->inserts,
+                  [this](const Insert& i)
+                  {
+                      return std::any_of(inserts_.begin(),
+                                         inserts_.end(),
+                                         [&](const Insert& added) { return added.id == i.id; });
+                  });
+    return true;
+}
+
+ReplaceInsert::ReplaceInsert(Id channelId, Id insertId, Insert replacement)
+    : channelId_(channelId), insertId_(insertId), replacement_(std::move(replacement))
+{
+}
+bool ReplaceInsert::apply(Project& p)
+{
+    auto* c = p.findChannel(channelId_);
+    if (c == nullptr || replacement_.type.empty())
+        return false;
+    const int at = c->insertIndex(insertId_);
+    if (at < 0)
+        return false;
+    auto& slot = c->inserts[static_cast<size_t>(at)];
+    previous_ = slot;
+    previousLanes_ = c->automation;
+    Insert next = replacement_;
+    next.id = slot.id;
+    next.mix = slot.mix;
+    next.sidechain = slot.sidechain;
+    next.sidechainPostFader = slot.sidechainPostFader;
+    next.bypass = false;
+    next.windowOpen = false;
+    if (next.type != slot.type)
+        std::erase_if(c->automation,
+                      [this](const AutomationLane& lane) { return isInsertLane(lane, insertId_); });
+    slot = std::move(next);
+    return true;
+}
+bool ReplaceInsert::revert(Project& p)
+{
+    auto* c = p.findChannel(channelId_);
+    if (c == nullptr)
+        return false;
+    const int at = c->insertIndex(insertId_);
+    if (at < 0)
+        return false;
+    c->inserts[static_cast<size_t>(at)] = previous_;
+    c->automation = previousLanes_;
+    return true;
+}
+
+SetPluginState::SetPluginState(
+    Id channelId, Id insertId, std::string before, std::string after, std::string name)
+    : channelId_(channelId), insertId_(insertId), before_(std::move(before)), after_(std::move(after)),
+      name_(std::move(name))
+{
+}
+bool SetPluginState::apply(Project& p)
+{
+    auto* c = p.findChannel(channelId_);
+    auto* insert = c != nullptr ? c->findInsert(insertId_) : nullptr;
+    if (insert == nullptr)
+        return false;
+    insert->state = after_;
+    return true;
+}
+bool SetPluginState::revert(Project& p)
+{
+    auto* c = p.findChannel(channelId_);
+    auto* insert = c != nullptr ? c->findInsert(insertId_) : nullptr;
+    if (insert == nullptr)
+        return false;
+    insert->state = before_;
+    replayed_ = true;
     return true;
 }
 

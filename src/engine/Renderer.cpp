@@ -93,6 +93,7 @@ void Renderer::prepare(int maxBlockSize)
     const auto n = static_cast<size_t>(maxBlockSize_);
     mixLeft_.assign(n, 0.0f);
     mixRight_.assign(n, 0.0f);
+    hardware_.assign(n * 2 * static_cast<size_t>(Snapshot::maxHardwarePairs), 0.0f);
 }
 
 namespace
@@ -179,6 +180,13 @@ void Renderer::render(const Snapshot& snapshot,
     float* right = mixRight_.data();
     std::fill(left, left + numSamples, 0.0f);
     std::fill(right, right + numSamples, 0.0f);
+    // The hardware pairs this snapshot writes (none before prepare).
+    const int hardwarePairs =
+        hardware_.empty() ? 0 : std::clamp(snapshot.hardwarePairs, 0, Snapshot::maxHardwarePairs);
+    for (int p = 0; p < hardwarePairs; ++p)
+        for (int side = 0; side < 2; ++side)
+            std::fill(hardwareChannel(p, side), hardwareChannel(p, side) + numSamples, 0.0f);
+    hwOffset_ = 0;
 
     if (context.countIn)
     {
@@ -213,6 +221,7 @@ void Renderer::render(const Snapshot& snapshot,
             }
             spanContext.sampleClock = context.sampleClock + done;
             spanContext.liveMidiLast = context.liveMidiLast && done + span >= numSamples;
+            hwOffset_ = done;
             renderSpan(snapshot, spanContext, transport.position, left + done, right + done, span, pool);
             renderClicks(snapshot, transport, transport.position, left + done, right + done, span);
             transport.position += span;
@@ -235,6 +244,17 @@ void Renderer::render(const Snapshot& snapshot,
         for (int i = 0; i < numSamples; ++i)
             outputs[0][i] = 0.5f * (left[i] + right[i]);
     }
+    // Channels played straight to a hardware pair, added where the device has it.
+    for (int p = 0; p < hardwarePairs; ++p)
+        for (int side = 0; side < 2; ++side)
+        {
+            const int ch = 2 * p + side;
+            if (ch >= numOutputs || outputs[ch] == nullptr)
+                continue;
+            const float* from = hardwareChannel(p, side);
+            for (int i = 0; i < numSamples; ++i)
+                outputs[ch][i] += from[i];
+        }
 }
 
 void Renderer::renderClicks(const Snapshot& snapshot,
@@ -863,7 +883,15 @@ void Renderer::routeChannel(const Snapshot& snapshot,
 
     float* outL = nullptr;
     float* outR = nullptr;
-    target(channel.outputBus, outL, outR);
+    if (const int pair = channel.hardwareOutput;
+        pair >= 0 && pair < snapshot.hardwarePairs && pair < Snapshot::maxHardwarePairs && !hardware_.empty())
+    {
+        // Past the master, into the pair's buffer at this span's place in the block.
+        outL = hardwareChannel(pair, 0) + hwOffset_;
+        outR = hardwareChannel(pair, 1) + hwOffset_;
+    }
+    else
+        target(channel.outputBus, outL, outR);
     // The fader ramps from where it was to the target across the block.
     const float gain1 = targetGainOf(channel);
     const float gain0 =
@@ -891,24 +919,43 @@ void Renderer::routeChannel(const Snapshot& snapshot,
         const float* l = nullptr;
         const float* r = nullptr;
         delayed(send.delay, l, r);
-        // The level ramps from where it was to its live target over the span.
+        // The level and the balance ramp from where they were to their live
+        // targets over the span.
         float from = send.level, to = send.level;
+        float panFrom = send.pan, panTo = send.pan;
         if (send.runtime != nullptr)
         {
             to = send.runtime->targetLevel.load(std::memory_order_relaxed);
+            panTo = send.runtime->targetPan.load(std::memory_order_relaxed);
             from = send.runtime->primed ? send.runtime->level : to;
+            panFrom = send.runtime->primed ? send.runtime->pan : panTo;
             send.runtime->level = to;
+            send.runtime->pan = panTo;
             send.runtime->primed = true;
         }
         const float step = numSamples > 0 ? (to - from) / static_cast<float>(numSamples) : 0.0f;
-        if (channel.sendsAudible)
-            for (int i = 0; i < numSamples; ++i)
+        if (channel.sendsAudible && (from > 0.0f || to > 0.0f))
+        {
+            if (panFrom == 0.0f && panTo == 0.0f)
+                for (int i = 0; i < numSamples; ++i)
+                {
+                    const float sendLevel = from + step * static_cast<float>(i + 1);
+                    const float level = send.preFader ? sendLevel : sendLevel * gainAt(i);
+                    sl[i] += l[i] * level;
+                    sr[i] += r[i] * level;
+                }
+            else
             {
-                const float sendLevel = from + step * static_cast<float>(i + 1);
-                const float level = send.preFader ? sendLevel : sendLevel * gainAt(i);
-                sl[i] += l[i] * level;
-                sr[i] += r[i] * level;
+                const PanRamp balance(panFrom, panTo, false, numSamples);
+                for (int i = 0; i < numSamples; ++i)
+                {
+                    const float sendLevel = from + step * static_cast<float>(i + 1);
+                    const float level = send.preFader ? sendLevel : sendLevel * gainAt(i);
+                    sl[i] += l[i] * level * balance.left(i);
+                    sr[i] += r[i] * level * balance.right(i);
+                }
             }
+        }
     }
     if (channel.runtime != nullptr)
     {

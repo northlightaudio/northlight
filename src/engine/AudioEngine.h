@@ -14,6 +14,7 @@
 #include "engine/rt/SnapshotPublisher.h"
 #include "engine/rt/SpscQueue.h"
 
+#include <algorithm>
 #include <atomic>
 #include <map>
 #include <memory>
@@ -156,6 +157,15 @@ public:
     // Tracks that choose a bus read these inputs from the next setProject().
     void setInputBuses(std::map<std::string, InputPair> buses);
     InputPair inputBus(const std::string& name) const;
+    // The stereo output pairs the device has (controller thread): channels played
+    // to a hardware output the device lacks go to their bus or the master from the
+    // next setProject(). 1 (the default, and offline) plays every one that way.
+    void setOutputPairs(int pairs) noexcept { outputPairs_ = std::max(1, pairs); }
+    int outputPairs() const noexcept { return outputPairs_; }
+    // Forgets an insert's instance (a crashed plugin being reloaded): the next
+    // setProject() makes a fresh one from the model's state. A crashed instance
+    // is kept alive, never destroyed, so its plugin code is not called again.
+    void forgetInsert(core::Id insertId) { inserts_.forget(insertId); }
 
     // Automation. While the user touches a control to write its lane, the lane
     // is not played (controller thread).
@@ -249,6 +259,7 @@ private:
     size_t liveMidiCount_ = 0;
     std::vector<std::string> midiSourceNames_;    // index = source
     std::map<std::string, InputPair> inputBuses_; // controller thread
+    int outputPairs_ = 1;                         // controller thread
     std::mutex midiMutex_;
     rt::SpscQueue<MidiOutEvent> midiOut_{4096};
     std::int64_t sampleClock_ = 0; // real-time: samples rendered since start

@@ -88,6 +88,7 @@ while the arrange view has the focus and shows the mixer elsewhere.
 | Mixer, Editor, Browser, Inspector, Piano Roll, Diagnostics, Instruments, Audio Editor | F2 to F9; with Shift added, the panel detaches or reattaches |
 | Audio Setup / Plugins / Preferences | Ctrl+Shift+A / Ctrl+Shift+P / Ctrl+, |
 | Search the browser | Ctrl+F |
+| Close all plugin windows | Ctrl+Shift+W |
 
 **Arrange view**
 
@@ -133,7 +134,8 @@ while the arrange view has the focus and shows the mixer elsewhere.
 
 **Not keys**: tap tempo is T while the tempo field is focused; a clip stretches with
 Alt+drag of its right edge, and its gain follows a Ctrl+drag on its body
-(screens/arrange.md).
+(screens/arrange.md). In the mixer, Ctrl+click on a channel's S solos it alone (exclusive solo), and
+Ctrl held at the drop copies an insert instead of moving it (screens/mixer.md).
 
 Focus model: the arrange view owns focus by default; Tab cycles header controls,
 track headers, lanes, dock, side panel, status bar; Esc returns focus to the arrange

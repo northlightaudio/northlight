@@ -137,13 +137,14 @@ private:
                     int numSamples,
                     WorkerPool* pool) noexcept;
 
-    // Applies a channel's fader and routes its post-fader signal and sends.
-    static void routeChannel(const Snapshot& snapshot,
-                             const ChannelNode& channel,
-                             const RenderContext& context,
-                             float* masterLeft,
-                             float* masterRight,
-                             int numSamples) noexcept;
+    // Applies a channel's fader and routes its post-fader signal and sends (a
+    // channel on a hardware output into that pair's buffer at the span's offset).
+    void routeChannel(const Snapshot& snapshot,
+                      const ChannelNode& channel,
+                      const RenderContext& context,
+                      float* masterLeft,
+                      float* masterRight,
+                      int numSamples) noexcept;
 
     void renderClicks(const Snapshot& snapshot,
                       const TransportState& transport,
@@ -154,6 +155,16 @@ private:
 
     int maxBlockSize_ = 0;
     std::vector<float> mixLeft_, mixRight_;
+    // Hardware output pairs (Snapshot::maxHardwarePairs of maxBlockSize_ each,
+    // left then right): what channels played past the master this block, added
+    // to the device outputs at its end. hwOffset_ is the span's start in it.
+    std::vector<float> hardware_;
+    int hwOffset_ = 0;
+    float* hardwareChannel(int pair, int side) noexcept
+    {
+        return hardware_.data() + (static_cast<size_t>(pair) * 2 + static_cast<size_t>(side)) *
+                                      static_cast<size_t>(maxBlockSize_);
+    }
     ClickGenerator click_;
 };
 
