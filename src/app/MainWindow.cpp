@@ -5,6 +5,7 @@
 #include "UserSettings.h"
 #include "app/AppMenus.h"
 #include "app/Benchmarks.h"
+#include "app/ExportController.h"
 #include "app/LoadDriver.h"
 #include "app/WindowPlacement.h"
 #include "audio/AudioDeviceLayer.h"
@@ -20,7 +21,6 @@
 #include "ui/AudioEditor.h"
 #include "ui/AudioSetupView.h"
 #include "ui/Db.h"
-#include "ui/ExportView.h"
 #include "ui/FrameStats.h"
 #include "ui/Icons.h"
 #include "ui/InsertEditor.h"
@@ -586,7 +586,7 @@ public:
                 importAudio();
                 return true;
             case C::exportMix:
-                showExportSheet();
+                exporter_.showSheet();
                 return true;
             case C::undo:
                 undo();
@@ -2117,133 +2117,6 @@ private:
         return ids;
     }
 
-    // The last export's settings, from the user settings ("export.*").
-    engine::ExportSettings exportSettings() const
-    {
-        std::map<std::string, std::string> values;
-        for (const auto& [key, fallback] : engine::ExportSettings{}.toKeyValues())
-            if (auto value = settings_.value(key); !value.empty())
-                values[key] = value;
-        return engine::ExportSettings::fromKeyValues(values);
-    }
-
-    void showExportSheet()
-    {
-        if (sheet_ != nullptr || session_.isBouncing())
-            return;
-        ui::ExportView::Context context;
-        context.hasLoop = session_.regionEnd() > session_.regionStart();
-        std::vector<core::Marker> regions;
-        for (const auto& marker : session_.project().markers)
-            if (marker.isRegion())
-            {
-                regions.push_back(marker);
-                context.regions.push_back(juce::String::fromUTF8(marker.name.c_str()));
-            }
-        context.selectedTracks = static_cast<int>(selectedTrackIds().size());
-        context.projectRate = session_.project().sampleRate;
-        context.oggQualities = juce::OggVorbisAudioFormat().getQualityOptions();
-        auto view = std::make_unique<ui::ExportView>(theme_, exportSettings(), std::move(context));
-        auto* raw = view.get();
-        sheet_ = ui::Sheet::show(
-            *this,
-            theme_,
-            "Export",
-            "Renders offline, faster than real time, with the plugins as they are now.",
-            {{"Cancel", false, false}, {"Export...", true, false}},
-            [this, raw, regions](int result)
-            {
-                sheet_ = nullptr;
-                if (result != 1)
-                    return;
-                const auto chosen = raw->settings();
-                for (const auto& [key, value] : chosen.toKeyValues())
-                    settings_.setValue(key, value);
-                std::optional<core::Marker> region;
-                if (chosen.range == engine::ExportRange::region &&
-                    static_cast<size_t>(raw->region()) < regions.size())
-                    region = regions[static_cast<size_t>(raw->region())];
-                startExport(chosen, region);
-            },
-            std::move(view),
-            ui::ExportView::preferredHeight(theme_));
-    }
-
-    void startExport(const engine::ExportSettings& chosen, std::optional<core::Marker> region)
-    {
-        juce::Component::SafePointer<Content> safe(this);
-        const auto report = [safe](const std::string& error)
-        {
-            if (safe == nullptr)
-                return;
-            if (!error.empty())
-                safe->toast(ui::ToastStack::Kind::error, "Export: " + juce::String::fromUTF8(error.c_str()));
-            safe->refresh();
-        };
-        BounceJob::Options options;
-        options.format = chosen;
-        options.stems = chosen.source != engine::ExportSource::mix;
-        if (chosen.source == engine::ExportSource::selectedStems)
-        {
-            options.stemTracks = selectedTrackIds();
-            if (options.stemTracks.empty())
-            {
-                report("no tracks are selected");
-                return;
-            }
-        }
-        juce::String suffix;
-        if (chosen.range == engine::ExportRange::loop && session_.regionEnd() > session_.regionStart())
-        {
-            options.start = session_.regionStart();
-            options.end = session_.regionEnd();
-            suffix = " loop";
-        }
-        else if (region.has_value())
-        {
-            options.start = region->position;
-            options.end = region->end();
-            suffix =
-                " " + juce::File::createLegalFileName(juce::String::fromUTF8(region->name.c_str())).trim();
-        }
-        const auto documents = projectFolder();
-        const auto base = projectName() + suffix;
-        const auto extension = juce::String(engine::extensionFor(chosen.format));
-        if (options.stems)
-        {
-            chooser_ =
-                std::make_unique<juce::FileChooser>("Stems folder", documents.getChildFile(base + " Stems"));
-            chooser_->launchAsync(juce::FileBrowserComponent::saveMode |
-                                      juce::FileBrowserComponent::canSelectDirectories,
-                                  [this, report, options](const juce::FileChooser& fc) mutable
-                                  {
-                                      const auto folder = fc.getResult();
-                                      if (folder == juce::File())
-                                          return;
-                                      options.output = folder;
-                                      report(session_.startBounce(options));
-                                  });
-            return;
-        }
-        chooser_ = std::make_unique<juce::FileChooser>(
-            "Export mix", documents.getChildFile(base + "." + extension), "*." + extension);
-        chooser_->launchAsync(juce::FileBrowserComponent::saveMode |
-                                  juce::FileBrowserComponent::canSelectFiles |
-                                  juce::FileBrowserComponent::warnAboutOverwriting,
-                              [this, report, options, extension](const juce::FileChooser& fc) mutable
-                              {
-                                  auto file = fc.getResult();
-                                  if (file == juce::File())
-                                      return;
-                                  if (!file.hasFileExtension(extension))
-                                      file = file.withFileExtension(extension);
-                                  options.output = file;
-                                  report(session_.startBounce(options));
-                              });
-    }
-
-    // While a bounce runs its progress is in the status bar; when it ends a toast
-    // gives the outcome (the measured loudness and any gain), with the file to hand.
     // ----- menus (AppMenus.h: every item carries its action) -------------------------------
     // An action that runs on this content if it still exists when the item is clicked.
     std::function<void()> whenAlive(std::function<void(Content&)> f)
@@ -2307,7 +2180,7 @@ private:
         m.addAudioTrack = whenAlive([](Content& c) { c.addAudioTrack(); });
         m.addMidiTrack = whenAlive([](Content& c) { c.addMidiTrack({}); });
         m.addBus = whenAlive([](Content& c) { c.addBus(); });
-        m.exportMix = whenAlive([](Content& c) { c.showExportSheet(); });
+        m.exportMix = whenAlive([](Content& c) { c.exporter_.showSheet(); });
         m.exportMidi = whenAlive([](Content& c) { c.exportMidi(); });
         m.newFromTemplate = [safe](const juce::File& file)
         {
@@ -2510,6 +2383,18 @@ private:
     ui::InspectorPanel inspector_;
     ui::PanelManager panels_; // after the panels: its floating windows go first
     ui::Sheet* sheet_ = nullptr;
+    // The export sheet and the bounce it starts (ExportController.h).
+    ExportController exporter_{{*this,
+                                theme_,
+                                session_,
+                                settings_,
+                                sheet_,
+                                [this] { return selectedTrackIds(); },
+                                [this] { return projectFolder(); },
+                                [this] { return projectName(); },
+                                [this](const juce::String& message)
+                                { toast(ui::ToastStack::Kind::error, message); },
+                                [this] { refresh(); }}};
     // Steps a project load with the loading sheet over the window (LoadDriver.h).
     LoadDriver loader_{{*this,
                         theme_,
@@ -3108,7 +2993,7 @@ void MainWindow::showFirstRun()
 void MainWindow::showExport()
 {
     if (auto* content = content_)
-        content->showExportSheet();
+        content->exporter_.showSheet();
 }
 
 void MainWindow::offerRecovery()

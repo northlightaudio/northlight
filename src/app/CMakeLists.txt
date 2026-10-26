@@ -88,6 +88,8 @@ target_sources(northlight PRIVATE
     Benchmarks.cpp
     LoadDriver.h
     LoadDriver.cpp
+    ExportController.h
+    ExportController.cpp
     MainWindow.h
     MainWindow.cpp)
 
