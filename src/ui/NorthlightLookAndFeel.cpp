@@ -30,7 +30,12 @@ const juce::Identifier NorthlightLookAndFeel::propertyIcon{"icon"};
 
 void NorthlightLookAndFeel::setKeyboardFocusVisible(bool visible) noexcept
 {
-    keyboardFocus.store(visible, std::memory_order_relaxed);
+    if (keyboardFocus.exchange(visible, std::memory_order_relaxed) == visible)
+        return;
+    // Show or clear the ring now, not at the focused component's next repaint.
+    if (juce::MessageManager::existsAndIsCurrentThread())
+        if (auto* focused = juce::Component::getCurrentlyFocusedComponent())
+            focused->repaint();
 }
 
 bool NorthlightLookAndFeel::keyboardFocusVisible() noexcept
@@ -44,9 +49,10 @@ NorthlightLookAndFeel::NorthlightLookAndFeel(const Theme& theme) : theme_(theme)
         setDefaultSansSerifTypeface(theme_.fonts.ui);
     refreshColours();
 
-    // Any click ends keyboard-driven focus rings; a Tab or arrow press (reported
-    // by the window) turns them back on.
+    // Any click ends keyboard-driven focus rings; focus moved by Tab or an arrow,
+    // in any window, turns them back on.
     juce::Desktop::getInstance().addGlobalMouseListener(this);
+    juce::Desktop::getInstance().addFocusChangeListener(this);
 }
 
 void NorthlightLookAndFeel::refreshColours()
@@ -163,12 +169,32 @@ void NorthlightLookAndFeel::remapColours(juce::Component& root,
 
 NorthlightLookAndFeel::~NorthlightLookAndFeel()
 {
+    juce::Desktop::getInstance().removeFocusChangeListener(this);
     juce::Desktop::getInstance().removeGlobalMouseListener(this);
 }
 
 void NorthlightLookAndFeel::mouseDown(const juce::MouseEvent&)
 {
     setKeyboardFocusVisible(false);
+}
+
+void NorthlightLookAndFeel::globalFocusChanged(juce::Component* focused)
+{
+    using Key = juce::KeyPress;
+    const bool byKeyboard = Key::isKeyCurrentlyDown(Key::tabKey) || Key::isKeyCurrentlyDown(Key::leftKey) ||
+                            Key::isKeyCurrentlyDown(Key::rightKey) || Key::isKeyCurrentlyDown(Key::upKey) ||
+                            Key::isKeyCurrentlyDown(Key::downKey);
+    if (byKeyboard)
+        setKeyboardFocusVisible(true);
+    // Move the ring: not every custom component repaints on a focus change.
+    if (keyboardFocusVisible() && lastFocused_.getComponent() != focused)
+    {
+        if (lastFocused_ != nullptr)
+            lastFocused_->repaint();
+        if (focused != nullptr)
+            focused->repaint();
+    }
+    lastFocused_ = focused;
 }
 
 void NorthlightLookAndFeel::drawFocusRing(juce::Graphics& g,
@@ -181,6 +207,18 @@ void NorthlightLookAndFeel::drawFocusRing(juce::Graphics& g,
     const auto ring = static_cast<float>(theme_.sizes.focusRing);
     g.setColour(theme_.colours.lineFocus);
     g.drawRoundedRectangle(bounds.expanded(ring * 0.5f + 1.0f), radius + ring, ring);
+}
+
+void NorthlightLookAndFeel::drawRegionFocusRing(juce::Graphics& g,
+                                                const juce::Component& region,
+                                                juce::Rectangle<int> area,
+                                                bool orChild) const
+{
+    if (!keyboardFocusVisible() || !region.hasKeyboardFocus(orChild))
+        return;
+    const auto ring = static_cast<float>(theme_.sizes.focusRing);
+    g.setColour(theme_.colours.lineFocus);
+    g.drawRect(area.toFloat().reduced(ring * 0.5f), ring);
 }
 
 void NorthlightLookAndFeel::drawControlFace(juce::Graphics& g,

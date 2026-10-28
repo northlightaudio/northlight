@@ -276,7 +276,8 @@ bool Fader::keyPressed(const juce::KeyPress& key)
 
 std::unique_ptr<juce::AccessibilityHandler> Fader::createAccessibilityHandler()
 {
-    return std::make_unique<juce::AccessibilityHandler>(
+    return std::make_unique<TooltipNamedHandler>(
+        *this,
         *this,
         juce::AccessibilityRole::slider,
         juce::AccessibilityActions(),

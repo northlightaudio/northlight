@@ -1,5 +1,7 @@
 #include "ui/TempoLane.h"
 
+#include "ui/NorthlightLookAndFeel.h"
+
 #include <algorithm>
 #include <cmath>
 
@@ -167,6 +169,13 @@ std::optional<int> TempoLane::meterAt(juce::Point<int> p) const
 }
 
 // ----- painting ------------------------------------------------------------------------------
+
+void TempoLane::paintOverChildren(juce::Graphics& g)
+{
+    // Keyboard focus on the editor as a whole: the ring inside its canvas.
+    if (auto* lnf = dynamic_cast<NorthlightLookAndFeel*>(&getLookAndFeel()))
+        lnf->drawRegionFocusRing(g, *this, getLocalBounds());
+}
 
 void TempoLane::paint(juce::Graphics& g)
 {

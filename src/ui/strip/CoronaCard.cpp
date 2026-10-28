@@ -16,6 +16,7 @@
 #include "plugins/Amp.h"
 #include "plugins/Cabinet.h"
 #include "ui/Number.h"
+#include "ui/components/Accessibility.h"
 #include "ui/components/HardwareParts.h"
 #include "ui/components/RenderedFace.h"
 #include "ui/strip/CoronaCabinet.h"
@@ -202,6 +203,10 @@ public:
     {
         setTitle("Power amp drive");
         setTooltip("Power amp drive");
+    }
+    std::unique_ptr<juce::AccessibilityHandler> createAccessibilityHandler() override
+    {
+        return readoutHandler(*this);
     }
 
     void set(float brightness, float drive)

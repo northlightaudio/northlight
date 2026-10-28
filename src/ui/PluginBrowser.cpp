@@ -28,6 +28,7 @@ PluginBrowser::PluginBrowser(const hosting::PluginRegistry& registry)
 {
     setOpaque(true);
     search_.setTextToShowWhenEmpty("Search plugins", theme_.colours.textTertiary);
+    search_.setTitle("Search plugins");
     search_.setFont(theme_.body());
     search_.onTextChange = [this] { applyFilter(); };
     search_.onReturnKey = [this]
@@ -57,6 +58,7 @@ PluginBrowser::PluginBrowser(const hosting::PluginRegistry& registry)
     kind_.getProperties().set(NorthlightLookAndFeel::propertyVariant, "ghost");
     kind_.getProperties().set(NorthlightLookAndFeel::propertyMenu, true);
     kind_.setTooltip("Show one kind of effect");
+    kind_.setTitle("Effect kind");
     kind_.onClick = [this] { showKindMenu(); };
     addAndMakeVisible(kind_);
 
@@ -67,6 +69,7 @@ PluginBrowser::PluginBrowser(const hosting::PluginRegistry& registry)
 
     scan_.getProperties().set(NorthlightLookAndFeel::propertyVariant, "ghost");
     scan_.getProperties().set(NorthlightLookAndFeel::propertyMenu, true);
+    scan_.setTitle("Scan for plugins");
     scan_.setTooltip("Scan the VST3 and CLAP folders for new or changed plugins");
     scan_.onClick = [this] { showScanMenu(); };
     addAndMakeVisible(scan_);
@@ -346,6 +349,30 @@ void PluginBrowser::applyFilter()
 int PluginBrowser::getNumRows()
 {
     return static_cast<int>(rows_.size());
+}
+
+juce::String PluginBrowser::getNameForRow(int index)
+{
+    if (index < 0 || static_cast<size_t>(index) >= rows_.size())
+        return {};
+    const auto& row = rows_[static_cast<size_t>(index)];
+    switch (row.kind)
+    {
+        case Row::Kind::header:
+            return row.title;
+        case Row::Kind::blocked:
+            return row.name + ", blocked: " + row.reason;
+        case Row::Kind::plugin:
+            break;
+    }
+    juce::String name = row.name;
+    if (row.manufacturer.isNotEmpty())
+        name << ", " << row.manufacturer;
+    if (row.format.isNotEmpty())
+        name << ", " << row.format;
+    if (row.favourite)
+        name << ", favourite";
+    return name;
 }
 
 void PluginBrowser::paintListBoxItem(int index, juce::Graphics& g, int width, int height, bool selected)

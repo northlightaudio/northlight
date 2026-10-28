@@ -130,6 +130,10 @@ public:
                 owner_.onCommand(std::make_unique<core::SetMasterGain>(gain));
         };
         addAndMakeVisible(fader_);
+        setTitle("Master");
+        fader_.setTitle("Master gain");
+        meter_.setTitle("Level Master");
+        value_.setTitle("Master gain value");
         meter_.setShowScale(true);
         addAndMakeVisible(meter_);
         value_.setRange(db::silence, maxFaderDb, 0.1);

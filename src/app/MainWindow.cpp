@@ -38,6 +38,7 @@
 #include "ui/Shortcuts.h"
 #include "ui/SplashScreen.h"
 #include "ui/Theme.h"
+#include "ui/components/Accessibility.h"
 #include "ui/components/Knob.h"
 #include "ui/components/Meter.h"
 #include "ui/components/ProgressRow.h"
@@ -2053,6 +2054,7 @@ public:
 
     void closeButtonPressed() override
     {
+        opener_.restore(); // before it goes: the focus goes back where it was
         juce::Component::SafePointer<MainWindow> owner(&owner_);
         juce::MessageManager::callAsync(
             [owner]
@@ -2073,6 +2075,7 @@ public:
     }
 
 private:
+    ui::FocusReturn opener_; // first: taken before the window shows
     MainWindow& owner_;
     std::unique_ptr<ui::AudioSetupView> view_;
 };
@@ -2098,6 +2101,7 @@ public:
     ui::PreferencesView& view() noexcept { return *view_; }
     void closeButtonPressed() override
     {
+        opener_.restore(); // before it goes: the focus goes back where it was
         juce::Component::SafePointer<MainWindow> owner(&owner_);
         juce::MessageManager::callAsync(
             [owner]
@@ -2117,6 +2121,7 @@ public:
     }
 
 private:
+    ui::FocusReturn opener_; // first: taken before the window shows
     MainWindow& owner_;
     ui::PreferencesView* view_;
 };

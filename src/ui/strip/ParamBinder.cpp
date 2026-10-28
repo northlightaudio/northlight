@@ -1,6 +1,7 @@
 #include "ui/strip/ParamBinder.h"
 
 #include "plugins/BuiltIns.h"
+#include "ui/components/Accessibility.h"
 
 #include <cmath>
 
@@ -103,7 +104,7 @@ void ParamBinder::update(const Binding& b)
     if (b.choice != nullptr)
         b.choice->setSelected(static_cast<int>(std::lround(v)), juce::dontSendNotification);
     if (b.toggle != nullptr)
-        b.toggle->setToggleState(v >= 0.5f, juce::dontSendNotification);
+        showToggle(*b.toggle, v >= 0.5f);
 }
 
 juce::Label* ParamBinder::labelFor(const Knob& knob) const

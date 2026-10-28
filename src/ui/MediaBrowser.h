@@ -2,6 +2,7 @@
 
 #include "ui/Icons.h"
 #include "ui/Theme.h"
+#include "ui/components/FocusListBox.h"
 #include "ui/components/SegmentedControl.h"
 
 #include <juce_gui_basics/juce_gui_basics.h>
@@ -90,6 +91,7 @@ private:
 
     int getNumRows() override;
     void paintListBoxItem(int row, juce::Graphics& g, int width, int height, bool selected) override;
+    juce::String getNameForRow(int row) override; // what a screen reader reads
     void listBoxItemClicked(int row, const juce::MouseEvent& e) override;
     void listBoxItemDoubleClicked(int row, const juce::MouseEvent& e) override;
     void returnKeyPressed(int row) override;
@@ -116,7 +118,7 @@ private:
     juce::TextButton up_{juce::String::fromUTF8("\xe2\x86\x91")};
     IconButton add_, stop_;
     juce::Slider volume_;
-    juce::ListBox list_{"files", this};
+    FocusListBox list_{"files", this};
     std::vector<Entry> entries_;
     juce::File root_, folder_;
     juce::File playing_;

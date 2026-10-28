@@ -5,6 +5,7 @@
 #include "ui/InstrumentOutputs.h"
 #include "ui/NorthlightLookAndFeel.h"
 #include "ui/PluginMenu.h"
+#include "ui/components/Accessibility.h"
 
 namespace northlight::ui
 {
@@ -69,7 +70,7 @@ public:
                 playedBy_ << " (ch " << feed->midiChannel << ")";
         }
         bypassed_ = track.instrument.bypass;
-        power_.setToggleState(hasInstrument_ && !bypassed_, juce::dontSendNotification);
+        showToggle(power_, hasInstrument_ && !bypassed_);
         power_.setOnColour(hue_);
         power_.setVisible(hasInstrument_);
         edit_.setVisible(hasInstrument_);

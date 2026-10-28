@@ -2,6 +2,7 @@
 
 #include "ui/Shortcuts.h"
 #include "ui/Theme.h"
+#include "ui/components/FocusListBox.h"
 
 #include <juce_gui_basics/juce_gui_basics.h>
 
@@ -49,6 +50,7 @@ public:
     std::vector<const Shortcut*> listedActions() const;
 
     void paint(juce::Graphics& g) override;
+    void paintOverChildren(juce::Graphics& g) override; // the region focus ring
     void resized() override;
     bool keyPressed(const juce::KeyPress& key) override;
     void focusLost(FocusChangeType cause) override;
@@ -87,7 +89,7 @@ private:
     juce::TextEditor search_;
     std::unique_ptr<SearchIcon> icon_;
     juce::TextButton resetAll_{"Reset all"};
-    juce::ListBox list_;
+    FocusListBox list_;
     std::vector<Entry> rows_;
     std::optional<Command> recording_;
     std::optional<Pending> pending_;

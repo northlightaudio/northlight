@@ -5,6 +5,7 @@
 #include "ui/InsertMenu.h"
 #include "ui/NorthlightLookAndFeel.h"
 #include "ui/OnScreen.h"
+#include "ui/components/Accessibility.h"
 
 #include <functional>
 #include <vector>
@@ -32,7 +33,7 @@ public:
               theme_, Icon::settings, generic ? "Show the plugin's own editor" : "Show the generic editor")
     {
         generic_.setClickingTogglesState(true);
-        generic_.setToggleState(generic, juce::dontSendNotification);
+        showToggle(generic_, generic);
         generic_.onClick = [this]
         {
             if (window_.onShowGeneric)
@@ -142,11 +143,11 @@ public:
                                                : "Preset: " + juce::String::fromUTF8(name.c_str()));
     }
 
-    void setPinned(bool pinned) { pin_.setToggleState(pinned, juce::dontSendNotification); }
+    void setPinned(bool pinned) { showToggle(pin_, pinned); }
     void setInsert(const core::Insert& insert)
     {
         const juce::ScopedValueSetter<bool> guard(updating_, true);
-        power_.setToggleState(!insert.bypass, juce::dontSendNotification);
+        showToggle(power_, !insert.bypass);
         power_.setTooltip(insert.bypass ? "Bypassed: click to enable" : "Enabled: click to bypass");
         mix_.setValue(insert.mix * 100.0, juce::dontSendNotification);
         repaint();
@@ -318,8 +319,21 @@ void PluginWindow::setEditorSize(int width, int height)
     }
 }
 
+bool PluginWindow::keyPressed(const juce::KeyPress& key)
+{
+    // Esc reaches here only from the window's own bar: a plugin's editor takes
+    // its keys first.
+    if (key == juce::KeyPress::escapeKey)
+    {
+        closeButtonPressed();
+        return true;
+    }
+    return juce::DocumentWindow::keyPressed(key);
+}
+
 void PluginWindow::closeButtonPressed()
 {
+    opener_.restore(); // before it goes: the focus goes back where it was
     if (onClose)
         juce::MessageManager::callAsync([close = onClose] { close(); });
 }

@@ -4,6 +4,8 @@
 #include "ui/NorthlightLookAndFeel.h"
 #include "ui/ShortcutEditor.h"
 #include "ui/Shortcuts.h"
+#include "ui/components/Accessibility.h"
+#include "ui/components/FocusListBox.h"
 #include "ui/components/NumericField.h"
 #include "ui/components/SegmentedControl.h"
 #include "ui/timeline/SnapGrids.h"
@@ -579,7 +581,7 @@ private:
 
     const Theme& theme_;
     juce::StringArray folders_;
-    juce::ListBox list_;
+    FocusListBox list_;
     std::unique_ptr<juce::TextButton> add_;
 };
 
@@ -996,7 +998,7 @@ void PreferencesView::writeTokenOverride()
              Theme::accentTokens(juce::Colour::fromString("ff" + accent.substring(1))))
             colours->setProperty(juce::Identifier(key.c_str()), hex(colour));
     if (get(settings::contrast) == "high")
-        for (const auto& [key, colour] : theme_.highContrastTokens())
+        for (const auto& [key, colour] : Theme::highContrastTokens())
             colours->setProperty(juce::Identifier(key.c_str()), hex(colour));
     if (colours->getProperties().isEmpty())
     {
@@ -1135,7 +1137,7 @@ std::unique_ptr<SegmentedControl> PreferencesView::makeSegmented(const std::vect
 std::unique_ptr<juce::ToggleButton> PreferencesView::makeCheckbox(const settings::Setting& key)
 {
     auto t = std::make_unique<juce::ToggleButton>();
-    t->setToggleState(settings::Reader(loadSetting).flag(key), juce::dontSendNotification);
+    showToggle(*t, settings::Reader(loadSetting).flag(key));
     auto* raw = t.get();
     t->onClick = [this, raw, &key] { set(key, settings::flagText(raw->getToggleState())); };
     return t;

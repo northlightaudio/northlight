@@ -222,7 +222,17 @@ double Meter::accessibleValue() const noexcept
 
 std::unique_ptr<juce::AccessibilityHandler> Meter::createAccessibilityHandler()
 {
-    return std::make_unique<juce::AccessibilityHandler>(
+    // Named "Level" unless the owner titles it ("Level Bass").
+    struct Handler final : juce::AccessibilityHandler
+    {
+        using juce::AccessibilityHandler::AccessibilityHandler;
+        juce::String getTitle() const override
+        {
+            const auto title = getComponent().getTitle();
+            return title.isEmpty() ? juce::String("Level") : title;
+        }
+    };
+    return std::make_unique<Handler>(
         *this,
         juce::AccessibilityRole::slider,
         juce::AccessibilityActions(),

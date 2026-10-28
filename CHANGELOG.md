@@ -351,6 +351,16 @@ Northlight has not had a release yet. The first release, 0.1.0, will include:
 
 ### Changed
 
+- Better screen reader support (Narrator and others): the transport and tool
+  buttons say whether they are on, the position counters read out, track header
+  and mixer controls name their track ("Mute Bass" rather than "M"), the browsers
+  read file and plugin names instead of row numbers, and Audio Setup's controls
+  are named. Nothing looks different.
+- Keyboard focus is easier to follow: the focus ring shows in every window once
+  you press Tab or an arrow key, lists and the piano roll, audio editor and tempo
+  lane show a ring when they have the focus, Tab stays inside a dialog, and closing
+  a dialog or window returns the focus to where it was. Esc closes plugin and
+  insert editor windows.
 - In the audio editor's pitch mode a double-click splits a note (on a join, merges
   the two), as the spec says; snapping to the semitone is in the note's menu. In
   wave mode a double-click resets the gain line or removes a fade instead of
@@ -358,6 +368,8 @@ Northlight has not had a release yet. The first release, 0.1.0, will include:
 
 ### Fixed
 
+- Changing the accent colour while High contrast was on made the dimmest text as
+  bright as the main text. High contrast now always raises text by one step.
 - A narrow track header (down to its 160 px minimum) keeps the track's name and a
   whole input select: R, monitor and A move to the second row, next to the input,
   instead of pushing the name out.

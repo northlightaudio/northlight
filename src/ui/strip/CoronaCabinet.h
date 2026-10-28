@@ -129,6 +129,31 @@ public:
     }
     void focusGained(FocusChangeType) override { repaint(); }
     void focusLost(FocusChangeType) override { repaint(); }
+    // A slider for its place across the cone (Left and Right); the description,
+    // which the card keeps, reads the whole placing (11.3).
+    std::unique_ptr<juce::AccessibilityHandler> createAccessibilityHandler() override
+    {
+        struct Place final : juce::AccessibilityValueInterface
+        {
+            explicit Place(MicHandle& owner) : owner_(owner) {}
+            bool isReadOnly() const override { return !owner_.onPosition; }
+            double getCurrentValue() const override { return owner_.position; }
+            juce::String getCurrentValueAsString() const override { return owner_.getDescription(); }
+            void setValue(double value) override
+            {
+                if (owner_.onPosition)
+                    owner_.onPosition(std::clamp(static_cast<float>(value), 0.0f, 1.0f));
+            }
+            void setValueAsString(const juce::String& text) override { setValue(text.getDoubleValue()); }
+            AccessibleValueRange getRange() const override { return {{0.0, 1.0}, 0.05}; }
+            MicHandle& owner_;
+        };
+        return std::make_unique<juce::AccessibilityHandler>(
+            *this,
+            juce::AccessibilityRole::slider,
+            juce::AccessibilityActions(),
+            juce::AccessibilityHandler::Interfaces{std::make_unique<Place>(*this)});
+    }
 
 private:
     // A step nearer the speaker or further from it, an eighth of an octave of distance.

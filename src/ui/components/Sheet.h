@@ -35,7 +35,9 @@ struct SheetOptions
 // A dialog without a modal loop (design-system.md, "Dialog (sheet)"): an
 // overlay over the owning component, a surface0 panel with a title, a body and
 // right-aligned buttons, the primary last. Esc cancels; Enter confirms the
-// primary unless it is destructive. The result arrives through the callback
+// primary unless it is destructive. Tab and Shift+Tab cycle the sheet's own
+// controls and never reach the window behind; closing gives the focus back to
+// what had it when the sheet opened. The result arrives through the callback
 // (the button index, -1 for cancel) and the sheet removes itself.
 class Sheet final : public juce::Component
 {
@@ -110,6 +112,8 @@ private:
     std::unique_ptr<juce::Component> content_;
     int contentHeight_ = 0;
     bool finished_ = false;
+    juce::Component::SafePointer<juce::Component> opener_; // had the focus before
+    void moveFocus(bool forwards);
 };
 
 } // namespace northlight::ui

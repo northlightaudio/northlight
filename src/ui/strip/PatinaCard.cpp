@@ -17,6 +17,7 @@
 #include "ui/Icons.h"
 #include "ui/NorthlightLookAndFeel.h"
 #include "ui/Number.h"
+#include "ui/components/Accessibility.h"
 #include "ui/components/HardwareParts.h"
 #include "ui/components/RenderedFace.h"
 #include "ui/strip/EffectPresetLibrary.h"
@@ -869,7 +870,7 @@ private:
         for (int s = 0; s < pa::stageCount; ++s)
         {
             auto& b = *buttons_[static_cast<size_t>(s)];
-            b.setToggleState(stageOn(s), juce::dontSendNotification);
+            showToggle(b, stageOn(s));
             b.setTooltip(juce::String(stageNames[static_cast<size_t>(s)]) + (stageOn(s) ? ": on" : ": off"));
             windows_[static_cast<size_t>(s)]->repaint();
         }

@@ -6,6 +6,7 @@
 #include "ui/Icons.h"
 #include "ui/NorthlightLookAndFeel.h"
 #include "ui/TrackIcon.h"
+#include "ui/components/Accessibility.h"
 
 #include <cmath>
 
@@ -235,6 +236,20 @@ void TrackHeader::setTrack(const core::Track& track,
     colour_ = theme_.track.forTrack(track.colour, index);
     setTitle("Track " + juce::String(index + 1) + ": " + juce::String::fromUTF8(track.name.c_str()));
     setDescription(trackKindName(track.kind));
+    // Each control names its track: a screen reader moving through the header
+    // hears "Mute Bass", not "M" (accessibility-performance.md 11.3).
+    const auto trackName = juce::String::fromUTF8(track.name.c_str());
+    titleForTrack(mute_, "Mute", trackName);
+    titleForTrack(solo_, "Solo", trackName);
+    titleForTrack(arm_, "Arm", trackName);
+    titleForTrack(monitorButton_, "Monitor", trackName);
+    titleForTrack(automation_, "Automation lanes", trackName);
+    titleForTrack(volume_, track.isMidi() ? "Velocity" : "Volume", trackName);
+    titleForTrack(pan_, "Pan", trackName);
+    titleForTrack(meter_, "Level", trackName);
+    titleForTrack(input_, "Input", trackName);
+    titleForTrack(output_, "Output", trackName);
+    name_.setTitle("Name");
     const bool takesInput = !aux_ && !instrument_ && !folder_; // an instrument channel's MIDI tracks take it
     takesInput_ = takesInput;
     input_.setVisible(takesInput);
@@ -308,8 +323,8 @@ void TrackHeader::setTrack(const core::Track& track,
     output_.setSelectedId(outputId, juce::dontSendNotification);
     sends_ = static_cast<int>(track.sends.size());
 
-    mute_.setToggleState(track.mute, juce::dontSendNotification);
-    solo_.setToggleState(track.solo, juce::dontSendNotification);
+    showToggle(mute_, track.mute);
+    showToggle(solo_, track.solo);
     if (track.armed && !armed_ && isShowing())
     {
         pulse_ = 1.0f;
@@ -317,7 +332,7 @@ void TrackHeader::setTrack(const core::Track& track,
         if (theme_.motion.ms(theme_.motion.toggleMs) > 0)
             startTimerHz(60);
     }
-    arm_.setToggleState(track.armed, juce::dontSendNotification);
+    showToggle(arm_, track.armed);
     armed_ = track.armed;
     monitor_ = track.monitor;
     volume_.setValue(track.gain <= 0.0f ? -60.0 : static_cast<double>(dbOf(track.gain)),
@@ -332,8 +347,8 @@ void TrackHeader::setTrack(const core::Track& track,
 void TrackHeader::setValues(const core::Channel& channel)
 {
     const juce::ScopedValueSetter<bool> guard(updating_, true);
-    mute_.setToggleState(channel.mute, juce::dontSendNotification);
-    solo_.setToggleState(channel.solo, juce::dontSendNotification);
+    showToggle(mute_, channel.mute);
+    showToggle(solo_, channel.solo);
     volume_.setValue(channel.gain <= 0.0f ? -60.0 : static_cast<double>(dbOf(channel.gain)),
                      juce::dontSendNotification);
     pan_.setValue(channel.pan, juce::dontSendNotification);
@@ -342,7 +357,7 @@ void TrackHeader::setValues(const core::Channel& channel)
 
 void TrackHeader::setAutomation(const core::Channel& channel)
 {
-    automation_.setToggleState(channel.automationOpen, juce::dontSendNotification);
+    showToggle(automation_, channel.automationOpen);
     const char* semantic = "automationRead";
     switch (channel.automationMode)
     {
@@ -521,7 +536,7 @@ void TrackHeader::refreshMonitorButton()
 {
     using core::MonitorMode;
     const bool waiting = monitor_ == MonitorMode::automatic && !monitoring_;
-    monitorButton_.setToggleState(monitor_ != MonitorMode::off, juce::dontSendNotification);
+    showToggle(monitorButton_, monitor_ != MonitorMode::off);
     monitorButton_.getProperties().set(NorthlightLookAndFeel::propertySemantic,
                                        waiting ? "monitorAuto" : "monitor");
     monitorButton_.setTooltip(monitor_ == MonitorMode::off  ? "Monitor: off"

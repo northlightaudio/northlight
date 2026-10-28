@@ -2,6 +2,7 @@
 
 #include "core/NoteNames.h"
 #include "ui/NorthlightLookAndFeel.h"
+#include "ui/components/Accessibility.h"
 #include "ui/components/KeyMenu.h"
 
 namespace northlight::ui
@@ -42,7 +43,7 @@ AudioEditor::CorrectSheet::CorrectSheet(AudioEditor& owner, const Theme& theme, 
     slider(drift_, 0, 100, 60, "%");
     slider(vibrato_, 0, 200, 100, "%");
     keepVibrato_.setButtonText("Keep vibrato");
-    keepVibrato_.setToggleState(true, juce::dontSendNotification);
+    showToggle(keepVibrato_, true);
     keepVibrato_.setTooltip("Keep each note's vibrato as sung; off, the slider sets how much is kept");
     keepVibrato_.onClick = [this]
     {

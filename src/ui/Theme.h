@@ -339,7 +339,9 @@ struct Theme
     // The colour tokens Preferences overrides: an accent and its derived states, and
     // the high-contrast lines and text. Key and colour pairs, for the override file.
     static std::vector<std::pair<std::string, juce::Colour>> accentTokens(juce::Colour accent);
-    std::vector<std::pair<std::string, juce::Colour>> highContrastTokens() const;
+    // Built from the token file's colours, not the running theme, so turning High on
+    // again (after an accent change) never brightens text a second step.
+    static std::vector<std::pair<std::string, juce::Colour>> highContrastTokens();
     // Applies a token document (the full file, or a partial override) to a theme.
     // Unknown keys are ignored; a bad value is reported through `error` and skipped.
     static bool apply(const juce::var& tokens, Theme& theme, std::string& error);

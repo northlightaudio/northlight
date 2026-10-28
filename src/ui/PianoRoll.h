@@ -204,6 +204,7 @@ public:
     int verticalScroll() const noexcept { return verticalScroll_; }
 
     void paint(juce::Graphics& g) override;
+    void paintOverChildren(juce::Graphics& g) override; // the region focus ring
     void resized() override;
     void mouseDown(const juce::MouseEvent& e) override;
     void mouseDrag(const juce::MouseEvent& e) override;

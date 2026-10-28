@@ -83,6 +83,11 @@ public:
     std::function<void(core::Id, juce::Rectangle<int> screenArea)> onAutomationMenu;
 
     void paint(juce::Graphics& g) override;
+    // A group named for the track, holding its controls (11.3).
+    std::unique_ptr<juce::AccessibilityHandler> createAccessibilityHandler() override
+    {
+        return std::make_unique<juce::AccessibilityHandler>(*this, juce::AccessibilityRole::group);
+    }
     void paintOverChildren(juce::Graphics& g) override; // the A toggle's lane count
     void resized() override;
     // The bottom edge belongs to the arrange view, which resizes the row there.

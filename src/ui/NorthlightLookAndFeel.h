@@ -18,7 +18,9 @@ namespace northlight::ui
 // component properties (see the `property*` names); dedicated components
 // (fader, knob, meter, segmented control, numeric field, panel header, toast,
 // sheet) live in ui/components and draw themselves from the same tokens.
-class NorthlightLookAndFeel final : public juce::LookAndFeel_V4, private juce::MouseListener
+class NorthlightLookAndFeel final : public juce::LookAndFeel_V4,
+                                    private juce::MouseListener,
+                                    private juce::FocusChangeListener
 {
 public:
     explicit NorthlightLookAndFeel(const Theme& theme);
@@ -46,8 +48,9 @@ public:
     // Icon-only button: square, no label padding.
     static const juce::Identifier propertyIcon;
 
-    // Focus rings are drawn for keyboard focus only: the app reports the last
-    // input kind (a Tab or arrow press turns it on, any click turns it off).
+    // Focus rings are drawn for keyboard focus only: focus moved by Tab or an
+    // arrow key in any window turns them on (as does the main window's Tab), any
+    // click turns them off. A change repaints the focused component.
     static void setKeyboardFocusVisible(bool visible) noexcept;
     static bool keyboardFocusVisible() noexcept;
     // Draws the 2 px lineFocus ring outside `bounds` when the component has
@@ -56,6 +59,14 @@ public:
                        const juce::Component& component,
                        juce::Rectangle<float> bounds,
                        float radius) const;
+    // The ring for a region that takes the focus as a whole (a list, an
+    // editor's canvas): it fills its panel, so the ring lies just inside `area`
+    // (design-system.md 2.7, "Focus on a region"). `orChild` also counts focus
+    // on a child (a list's rows), for regions whose children draw no ring.
+    void drawRegionFocusRing(juce::Graphics& g,
+                             const juce::Component& region,
+                             juce::Rectangle<int> area,
+                             bool orChild = false) const;
 
     // ----- the tactile layer (design-system.md 2.4), shared with components ---
     // A control face: the material gradient (or a flat fill when no material is
@@ -221,10 +232,12 @@ public:
 
 private:
     void mouseDown(const juce::MouseEvent&) override;
+    void globalFocusChanged(juce::Component* focused) override;
     void drawChevron(juce::Graphics& g, juce::Rectangle<float> area, juce::Colour colour, bool down) const;
     void drawCheck(juce::Graphics& g, juce::Rectangle<float> box, juce::Colour colour) const;
 
     const Theme& theme_;
+    juce::Component::SafePointer<juce::Component> lastFocused_;
     struct GlowKey
     {
         int width, height;

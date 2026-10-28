@@ -14,6 +14,7 @@
 #include "ui/NorthlightLookAndFeel.h"
 #include "ui/Number.h"
 #include "ui/OpticalCentre.h"
+#include "ui/components/Accessibility.h"
 #include "ui/strip/CardParts.h"
 #include "ui/strip/FeedbackHistory.h"
 #include "ui/strip/ModuleCard.h"
@@ -1171,7 +1172,7 @@ private:
         space_.selected = choiceOf(param(pv::space), 3);
         space_.repaint();
         const bool held = param(pv::catchTail) >= 0.5f;
-        star_.setToggleState(held, juce::dontSendNotification);
+        showToggle(star_, held);
         preDelayMode_.selected =
             autoPreDelay(*this) ? 0 : 1 + plugins::sync::choiceOf(param(pv::preDelaySync));
         preDelayMode_.repaint();

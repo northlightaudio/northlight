@@ -13,6 +13,7 @@
 
 #include "plugins/BeatSync.h"
 #include "plugins/TapeEcho.h"
+#include "ui/components/Accessibility.h"
 #include "ui/components/HardwareParts.h"
 #include "ui/components/RenderedFace.h"
 #include "ui/strip/FaceParts.h"
@@ -182,6 +183,10 @@ public:
     {
         setInterceptsMouseClicks(true, false);
         setTitle("Loop gain");
+    }
+    std::unique_ptr<juce::AccessibilityHandler> createAccessibilityHandler() override
+    {
+        return readoutHandler(*this);
     }
 
     void set(float loopGain, bool on, double elapsedMs)

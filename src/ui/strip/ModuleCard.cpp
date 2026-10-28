@@ -1,6 +1,7 @@
 #include "ui/strip/ModuleCard.h"
 
 #include "core/Command.h"
+#include "ui/components/Accessibility.h"
 #include "ui/strip/StripStyle.h"
 
 namespace northlight::ui::strip
@@ -253,7 +254,7 @@ SegmentedControl& ModuleCard::addChoice(int index)
 PillToggle& ModuleCard::addToggle(int index, const juce::String& text)
 {
     auto toggle = std::make_unique<PillToggle>(theme_, text, colour_);
-    toggle->setToggleState(param(index) >= 0.5f, juce::dontSendNotification);
+    showToggle(*toggle, param(index) >= 0.5f);
     toggle->setTooltip(info(index).name);
     toggle->onClick = [this, index, t = toggle.get()]
     {

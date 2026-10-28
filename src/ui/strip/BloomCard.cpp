@@ -14,6 +14,7 @@
 #include "plugins/Bloom.h"
 #include "ui/NorthlightLookAndFeel.h"
 #include "ui/Number.h"
+#include "ui/components/Accessibility.h"
 #include "ui/strip/CardParts.h"
 #include "ui/strip/ModuleCard.h"
 #include "ui/strip/StripStyle.h"
@@ -1010,7 +1011,7 @@ private:
         pitch_.selected = static_cast<int>(std::lround(param(pb::pitch)));
         pitch_.repaint();
         const bool held = frozen(*this);
-        seed_.setToggleState(held, juce::dontSendNotification);
+        showToggle(seed_, held);
         // Frozen, the shimmer leaves the loop: its controls stand aside.
         shimmer_->setAlpha(held ? 0.5f : 1.0f);
         pitch_.setAlpha(held ? 0.5f : 1.0f);

@@ -141,6 +141,7 @@ public:
     const engine::pitch::PitchAnalysis* analysis() const noexcept { return analysis_.get(); }
 
     void paint(juce::Graphics& g) override;
+    void paintOverChildren(juce::Graphics& g) override; // the region focus ring
     void resized() override;
     void mouseDown(const juce::MouseEvent& e) override;
     void mouseDrag(const juce::MouseEvent& e) override;

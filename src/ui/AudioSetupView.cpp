@@ -1,6 +1,7 @@
 #include "ui/AudioSetupView.h"
 
 #include "ui/Db.h"
+#include "ui/components/Accessibility.h"
 
 #include <algorithm>
 #include <cmath>
@@ -86,6 +87,12 @@ public:
     }
 
     int getNumRows() override { return static_cast<int>(names_.size()); }
+    juce::String getNameForRow(int row) override
+    {
+        return row >= 0 && row < getNumRows()
+                   ? juce::String::fromUTF8(names_[static_cast<size_t>(row)].c_str())
+                   : juce::String();
+    }
 
     void paintListBoxItem(int /*row*/, juce::Graphics&, int /*w*/, int /*h*/, bool /*selected*/) override {}
 
@@ -105,7 +112,7 @@ public:
         const auto index = static_cast<size_t>(row);
         toggle->setButtonText(numbered_ ? juce::String(row + 1) + ": " + names_[index]
                                         : juce::String::fromUTF8(names_[index].c_str()));
-        toggle->setToggleState(enabled_[index], juce::dontSendNotification);
+        showToggle(*toggle, enabled_[index]);
         toggle->onClick = [this, index, toggle]
         {
             if (index < enabled_.size())
@@ -153,6 +160,9 @@ public:
         rightLabel_.setText("R", juce::dontSendNotification);
         left_.setTooltip("Left input");
         right_.setTooltip("Right input");
+        left_.setTitle("Left input");
+        right_.setTitle("Right input");
+        name_.setTitle("Input bus name");
         for (auto* box : {&left_, &right_})
         {
             box->onChange = [this]
@@ -403,8 +413,25 @@ AudioSetupView::AudioSetupView(audio::AudioDeviceLayer& audio) : audio_(audio), 
     }
     inputMeterLabel_.setText("Input", juce::dontSendNotification);
     outputMeterLabel_.setText("Output", juce::dontSendNotification);
+
+    // The labels sit beside their controls rather than attached to them, so each
+    // control carries its label's text as its accessible name (11.3).
+    deviceTypeBox_.setTitle("Driver type");
+    outputDeviceBox_.setTitle("Output device");
+    inputDeviceBox_.setTitle("Input device");
+    sampleRateBox_.setTitle("Sample rate");
+    bufferSizeBox_.setTitle("Buffer size");
+    inputsList_.setTitle("Input channels");
+    outputsList_.setTitle("Output channels");
+    midiInputsList_.setTitle("MIDI inputs");
+    midiOutputBox_.setTitle("MIDI output");
+    calibrationOutputBox_.setTitle("Loopback output");
+    calibrationInputBox_.setTitle("Loopback input");
+    levelSlider_.setTitle("Level");
     inputMeter_ = std::make_unique<Meter>(theme_, 1, false);
     outputMeter_ = std::make_unique<Meter>(theme_, 1, false);
+    inputMeter_->setTitle("Input level");
+    outputMeter_->setTitle("Output level");
     addAndMakeVisible(*inputMeter_);
     addAndMakeVisible(*outputMeter_);
 
@@ -787,7 +814,7 @@ void AudioSetupView::refreshFromDevice()
     refreshCalibrationChoices(status);
 
     // Monitoring
-    passThroughToggle_.setToggleState(audio_.callback().isPassThroughEnabled(), juce::dontSendNotification);
+    showToggle(passThroughToggle_, audio_.callback().isPassThroughEnabled());
     levelSlider_.setValue(gainToDb(audio_.callback().masterGain()), juce::dontSendNotification);
 
     // Status line: the dot says success, warning or danger.

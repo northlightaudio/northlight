@@ -6,6 +6,7 @@
 #include "ui/NorthlightLookAndFeel.h"
 #include "ui/PaintStats.h"
 #include "ui/Shortcuts.h"
+#include "ui/components/Accessibility.h"
 #include "ui/components/DragTip.h"
 #include "ui/components/KeyMenu.h"
 #include "ui/timeline/GridLines.h"
@@ -93,7 +94,7 @@ PianoRoll::PianoRoll(const Theme& theme)
     followButton_.onClick = [this] { setFollowPlayhead(followButton_.getToggleState()); };
     addAndMakeVisible(followButton_);
     auditionButton_.setClickingTogglesState(true);
-    auditionButton_.setToggleState(audition_, juce::dontSendNotification);
+    showToggle(auditionButton_, audition_);
     auditionButton_.onClick = [this] { setAudition(auditionButton_.getToggleState()); };
     addAndMakeVisible(auditionButton_);
     ghostButton_.setClickingTogglesState(true);
@@ -106,7 +107,7 @@ PianoRoll::PianoRoll(const Theme& theme)
     scaleButton_.getProperties().set(NorthlightLookAndFeel::propertyVariant, "ghost");
     scaleButton_.setTooltip("Shade the notes outside the project key's scale and mark its notes on the keys");
     scaleButton_.setClickingTogglesState(true);
-    scaleButton_.setToggleState(scaleHighlight_, juce::dontSendNotification);
+    showToggle(scaleButton_, scaleHighlight_);
     scaleButton_.onClick = [this] { setScaleHighlight(scaleButton_.getToggleState()); };
     addAndMakeVisible(scaleButton_);
     keyButton_.getProperties().set(NorthlightLookAndFeel::propertyVariant, "ghost");
@@ -288,7 +289,7 @@ void PianoRoll::setTimeView(double samplesPerPixel, core::SamplePosition absolut
 void PianoRoll::setFollowPlayhead(bool on)
 {
     follow_ = on;
-    followButton_.setToggleState(on, juce::dontSendNotification);
+    showToggle(followButton_, on);
 }
 
 void PianoRoll::setTool(Tool tool)
@@ -306,12 +307,12 @@ void PianoRoll::setTool(Tool tool)
 
 void PianoRoll::refreshToolButtons()
 {
-    selectTool_.setToggleState(tool_ == Tool::select, juce::dontSendNotification);
-    pencilTool_.setToggleState(tool_ == Tool::draw, juce::dontSendNotification);
-    eraseTool_.setToggleState(tool_ == Tool::erase, juce::dontSendNotification);
-    splitTool_.setToggleState(tool_ == Tool::split, juce::dontSendNotification);
-    glueTool_.setToggleState(tool_ == Tool::glue, juce::dontSendNotification);
-    muteTool_.setToggleState(tool_ == Tool::mute, juce::dontSendNotification);
+    showToggle(selectTool_, tool_ == Tool::select);
+    showToggle(pencilTool_, tool_ == Tool::draw);
+    showToggle(eraseTool_, tool_ == Tool::erase);
+    showToggle(splitTool_, tool_ == Tool::split);
+    showToggle(glueTool_, tool_ == Tool::glue);
+    showToggle(muteTool_, tool_ == Tool::mute);
 }
 
 juce::MouseCursor PianoRoll::toolCursor() const
@@ -390,7 +391,7 @@ void PianoRoll::refreshNoteNames()
     }
     if (!namedNotes_.any())
         namedOnly_ = false;
-    namedButton_.setToggleState(namedOnly_, juce::dontSendNotification);
+    showToggle(namedButton_, namedOnly_);
     rebuildRows();
 }
 
@@ -444,7 +445,7 @@ void PianoRoll::rebuildRows()
 void PianoRoll::setNamedRowsOnly(bool on)
 {
     namedOnly_ = on && hasNoteNames();
-    namedButton_.setToggleState(namedOnly_, juce::dontSendNotification);
+    showToggle(namedButton_, namedOnly_);
     rebuildRows();
     if (namedOnly_)
         verticalScroll_ = 0;
@@ -457,7 +458,7 @@ void PianoRoll::setNamedRowsOnly(bool on)
 void PianoRoll::setGhostTracks(bool on)
 {
     ghostTracks_ = on;
-    ghostButton_.setToggleState(on, juce::dontSendNotification);
+    showToggle(ghostButton_, on);
     repaint();
 }
 
@@ -620,7 +621,7 @@ void PianoRoll::setAudition(bool on)
     if (!on)
         stopAudition();
     audition_ = on;
-    auditionButton_.setToggleState(on, juce::dontSendNotification);
+    showToggle(auditionButton_, on);
 }
 
 void PianoRoll::auditionNote(int note)
@@ -1526,6 +1527,13 @@ void PianoRoll::paintLanes(juce::Graphics& g, const PaintFrame& f)
         else
             paintVelocityLane(g, f, area.withTrimmedTop(1));
     }
+}
+
+void PianoRoll::paintOverChildren(juce::Graphics& g)
+{
+    // Keyboard focus on the editor as a whole: the ring inside its canvas.
+    if (auto* lnf = dynamic_cast<NorthlightLookAndFeel*>(&getLookAndFeel()))
+        lnf->drawRegionFocusRing(g, *this, gridArea());
 }
 
 void PianoRoll::paint(juce::Graphics& g)
@@ -2982,7 +2990,7 @@ void PianoRoll::deleteControllerSelection()
 void PianoRoll::setScaleHighlight(bool on)
 {
     scaleHighlight_ = on;
-    scaleButton_.setToggleState(on, juce::dontSendNotification);
+    showToggle(scaleButton_, on);
     repaint();
 }
 

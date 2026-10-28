@@ -244,7 +244,15 @@ Honour the OS reduce-motion setting: all durations become 0 except meter ballist
 
 Every component lists its states in the order: rest, hover, pressed, active (on),
 focused, disabled. "Focused" always adds a 2 px `lineFocus` ring outside the
-control; it is only drawn for keyboard focus, never for pointer clicks.
+control; it is only drawn for keyboard focus, never for pointer clicks. Moving the
+focus with Tab or an arrow key, in any window, turns the rings on; any click turns
+them off.
+
+**Focus on a region.** A region that takes the focus as a whole (a list, the piano
+roll's grid, the audio editor's canvas, the tempo lane) fills its panel, so there
+is no room for a ring outside it: its 2 px `lineFocus` ring lies just inside its
+edge, square, under the same keyboard-only rule. A list shows it while the list or
+one of its rows has the focus. Controls inside a region keep their own ring.
 
 ### Button
 
@@ -715,7 +723,9 @@ the first line, one per key: `caption` `textSecondary` on `surface1` with a
 Never a modal loop. A sheet: `overlay` behind, `surface0` panel radius `lg`, title
 `title`, body `body`, buttons right aligned with the primary last. Esc cancels, Enter
 confirms the primary when it is not destructive. Destructive primaries use Danger
-styling and no Enter shortcut.
+styling and no Enter shortcut. Tab and Shift+Tab cycle the sheet's own controls
+(blocking sheets too) and never reach the window behind; closing returns the focus
+to what had it when the sheet opened. Screen readers hear the title and the body.
 
 A **progress sheet** (opening a project, screens/shell.md) is blocking: every key
 stops at it, a click outside the panel does nothing, and Esc cancels only while its

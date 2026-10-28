@@ -17,6 +17,10 @@ Sheet::Sheet(const Theme& theme,
     : theme_(theme), title_(title), body_(body), buttons_(std::move(buttons)), onResult_(std::move(onResult))
 {
     setWantsKeyboardFocus(true);
+    setTitle(title);
+    setDescription(body);
+    // Tab stays inside the sheet (accessibility-performance.md 11.2).
+    setFocusContainerType(FocusContainerType::keyboardFocusContainer);
     for (size_t i = 0; i < buttons_.size(); ++i)
     {
         auto button = std::make_unique<juce::TextButton>(buttons_[i].label);
@@ -53,6 +57,7 @@ Sheet* Sheet::show(juce::Component& host,
         sheet->contentHeight_ = contentHeight;
         sheet->addAndMakeVisible(*sheet->content_);
     }
+    sheet->opener_ = juce::Component::getCurrentlyFocusedComponent();
     host.addAndMakeVisible(sheet);
     sheet->setBounds(host.getLocalBounds());
     sheet->toFront(true);
@@ -134,6 +139,10 @@ void Sheet::finish(int result, bool callBack)
     if (finished_)
         return;
     finished_ = true;
+    // Focus goes back to what opened the sheet, before the callback runs (which
+    // may open the next sheet or move the focus itself).
+    if (hasKeyboardFocus(true) && opener_ != nullptr && opener_->isShowing() && !isParentOf(opener_))
+        opener_->grabKeyboardFocus();
     auto callback = callBack ? std::move(onResult_) : std::function<void(int)>();
     onResult_ = nullptr;
     setInterceptsMouseClicks(false, false); // the window behind is live again at once
@@ -314,8 +323,33 @@ void Sheet::resized()
     }
 }
 
+void Sheet::moveFocus(bool forwards)
+{
+    auto order = juce::KeyboardFocusTraverser().getAllComponents(this);
+    order.erase(std::remove_if(order.begin(),
+                               order.end(),
+                               [](juce::Component* c) { return !c->isShowing() || !c->isEnabled(); }),
+                order.end());
+    if (order.empty())
+        return;
+    auto* current = juce::Component::getCurrentlyFocusedComponent();
+    const auto at = std::find(order.begin(), order.end(), current);
+    const auto count = static_cast<std::ptrdiff_t>(order.size());
+    std::ptrdiff_t next = 0;
+    if (at != order.end())
+        next = ((at - order.begin()) + (forwards ? 1 : count - 1)) % count;
+    else if (!forwards)
+        next = count - 1;
+    order[static_cast<size_t>(next)]->grabKeyboardFocus();
+}
+
 bool Sheet::keyPressed(const juce::KeyPress& key)
 {
+    if (key.getKeyCode() == juce::KeyPress::tabKey)
+    {
+        moveFocus(!key.getModifiers().isShiftDown());
+        return true;
+    }
     if (key == juce::KeyPress::escapeKey)
     {
         const bool canCancel = std::any_of(

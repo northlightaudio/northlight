@@ -1,6 +1,7 @@
 #include "ui/strip/EqGraph.h"
 
 #include "engine/Gain.h"
+#include "ui/components/Accessibility.h"
 #include "ui/strip/StripStyle.h"
 
 #include <cmath>
@@ -61,7 +62,7 @@ EqGraph::EqGraph(ModuleCard& card, EqBands bands)
         { c.setParam(index(band, eq::on), on ? 1.0f : 0.0f); };
     bandDb_.resize(static_cast<size_t>(bands_.count));
     bandKeys_.resize(static_cast<size_t>(bands_.count));
-    analyserToggle_.setToggleState(analyser_, juce::dontSendNotification);
+    showToggle(analyserToggle_, analyser_);
     analyserToggle_.setTooltip("Analyser");
     analyserToggle_.onClick = [this] { setAnalyser(analyserToggle_.getToggleState()); };
     addAndMakeVisible(analyserToggle_);
@@ -85,7 +86,7 @@ void EqGraph::setAnalyser(bool on)
 {
     analyser_ = on;
     analyserPreference() = on;
-    analyserToggle_.setToggleState(on, juce::dontSendNotification);
+    showToggle(analyserToggle_, on);
     if (auto* fb = card_.liveFeedback())
         fb->setTapsEnabled(on);
     spectrum_.clear();

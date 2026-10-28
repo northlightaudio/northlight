@@ -152,3 +152,36 @@ TEST_CASE("An accent change reloads into the running theme, and constructed colo
     CHECK(theme.colours.accent == before.accent);
     folder.deleteRecursively();
 }
+
+TEST_CASE("High contrast raises text one step from the token file, never twice", "[ui][theme][accessibility]")
+{
+    const juce::ScopedJuceInitialiser_GUI juceInit;
+    const auto shipped = ui::Theme::defaults().colours;
+    const auto folder =
+        juce::File::getSpecialLocation(juce::File::tempDirectory).getChildFile("northlight-theme-contrast");
+    folder.deleteRecursively();
+    REQUIRE(folder.createDirectory());
+    const auto appearance = folder.getChildFile(ui::Theme::preferencesOverrideName);
+
+    const auto tokenValue = [](const std::string& key)
+    {
+        for (const auto& [name, colour] : ui::Theme::highContrastTokens())
+            if (name == key)
+                return colour;
+        return juce::Colour();
+    };
+    CHECK(tokenValue("textTertiary") == shipped.textSecondary);
+    CHECK(tokenValue("textSecondary") == shipped.textPrimary);
+
+    // With High already applied to the running theme (as after an accent change
+    // rewrites the preferences file), the tokens stay one step up, not two.
+    REQUIRE(appearance.replaceWithText("{\"color\":{\"textSecondary\":\"#" +
+                                       shipped.textPrimary.toDisplayString(false) + "\"}}"));
+    ui::Theme::reloadColours({}, appearance);
+    REQUIRE(ui::Theme::dark().colours.textSecondary == shipped.textPrimary);
+    CHECK(tokenValue("textTertiary") == shipped.textSecondary);
+
+    appearance.deleteFile();
+    ui::Theme::reloadColours({}, appearance);
+    folder.deleteRecursively();
+}

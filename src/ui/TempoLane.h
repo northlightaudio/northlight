@@ -47,6 +47,7 @@ public:
     std::function<void()> onHide;
 
     void paint(juce::Graphics& g) override;
+    void paintOverChildren(juce::Graphics& g) override; // the region focus ring
     void mouseDown(const juce::MouseEvent& e) override;
     void mouseDrag(const juce::MouseEvent& e) override;
     void mouseUp(const juce::MouseEvent& e) override;

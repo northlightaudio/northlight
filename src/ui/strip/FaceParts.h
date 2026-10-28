@@ -58,6 +58,8 @@ public:
     float angle() const noexcept { return angle_; }
 
     void paint(juce::Graphics& g) override;
+    // Read-only text: the reading in VU (11.3).
+    std::unique_ptr<juce::AccessibilityHandler> createAccessibilityHandler() override;
 
 private:
     const Theme& theme_;

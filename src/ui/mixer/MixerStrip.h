@@ -22,6 +22,7 @@
 #include "ui/PluginMenu.h"
 #include "ui/SendMenu.h"
 #include "ui/SidechainMenu.h"
+#include "ui/components/Accessibility.h"
 #include "ui/components/AddSlot.h"
 #include "ui/mixer/StripParts.h"
 #include "ui/strip/StripStyle.h"
@@ -38,12 +39,19 @@ namespace northlight::ui
 class MixerView::Strip final : public juce::Component, public juce::DragAndDropTarget
 {
 public:
+    // A group named for its channel, holding its controls (11.3).
+    std::unique_ptr<juce::AccessibilityHandler> createAccessibilityHandler() override
+    {
+        return std::make_unique<juce::AccessibilityHandler>(*this, juce::AccessibilityRole::group);
+    }
+
     Strip(MixerView& owner, const Theme& theme)
         : owner_(owner), theme_(theme), cap_(theme), stripRow_(theme), addInsert_(theme, "Insert"),
           addSend_(theme, "Send"), insertsSummary_(theme), sendsSummary_(theme), pan_(theme), fader_(theme),
           meter_(theme, 2, true), value_(theme)
     {
         setOpaque(true);
+        setTitle("Track");
         // A short strip's sections, collapsed: a click lists their slots.
         insertsSummary_.onClick = [this] { showInsertsList(); };
         insertsSummary_.setTooltip("The inserts: click to list them");
@@ -293,9 +301,9 @@ public:
         fader_.setGain(channel.gain, juce::dontSendNotification);
         value_.setValue(db::fromGain(channel.gain), juce::dontSendNotification);
         showPlayed();
-        mute_.setToggleState(channel.mute, juce::dontSendNotification);
-        solo_.setToggleState(channel.solo, juce::dontSendNotification);
-        phase_.setToggleState(channel.phaseInvert, juce::dontSendNotification);
+        showToggle(mute_, channel.mute);
+        showToggle(solo_, channel.solo);
+        showToggle(phase_, channel.phaseInvert);
         stripRow_.set(channel);
         if (channel.hasInstrument())
             instrument_.setBypassed(channel.instrument.bypass);
@@ -327,22 +335,37 @@ public:
         for (size_t i = 0; i < project.groups.size(); ++i)
             if (project.groups[i].id == channel.group)
                 groupNumber = static_cast<int>(i) + 1;
-        cap_.set(
-            juce::String::fromUTF8(channel.name.empty() ? (isBus ? "Bus" : "Track") : channel.name.c_str()),
-            colour_,
-            id_ == owner_.selected_,
-            groupNumber,
-            group != nullptr && group->colour != 0 ? juce::Colour(group->colour) : theme_.colours.accent);
+        const auto stripName =
+            juce::String::fromUTF8(channel.name.empty() ? (isBus ? "Bus" : "Track") : channel.name.c_str());
+        // The strip is a group named for its channel, and each control names it
+        // too ("Mute Bass", not "M"): accessibility-performance.md 11.3.
+        setTitle(stripName);
+        titleForTrack(mute_, "Mute", stripName);
+        titleForTrack(solo_, "Solo", stripName);
+        titleForTrack(arm_, "Arm", stripName);
+        titleForTrack(phase_, "Invert phase", stripName);
+        titleForTrack(fader_, "Gain", stripName);
+        titleForTrack(pan_, "Pan", stripName);
+        titleForTrack(meter_, "Level", stripName);
+        titleForTrack(value_, "Gain value", stripName);
+        titleForTrack(input_, "Input", stripName);
+        titleForTrack(output_, "Output", stripName);
+        cap_.set(stripName,
+                 colour_,
+                 id_ == owner_.selected_,
+                 groupNumber,
+                 group != nullptr && group->colour != 0 ? juce::Colour(group->colour)
+                                                        : theme_.colours.accent);
         pan_.setValue(channel.pan, juce::dontSendNotification);
         currentGain_ = channel.gain;
         fader_.setGain(channel.gain, juce::dontSendNotification);
         value_.setValue(db::fromGain(channel.gain), juce::dontSendNotification);
         showPlayed();
-        mute_.setToggleState(channel.mute, juce::dontSendNotification);
-        solo_.setToggleState(channel.solo, juce::dontSendNotification);
-        phase_.setToggleState(channel.phaseInvert, juce::dontSendNotification);
+        showToggle(mute_, channel.mute);
+        showToggle(solo_, channel.solo);
+        showToggle(phase_, channel.phaseInvert);
         arm_.setVisible(track != nullptr && !aux_ && !track->isInstrument()); // its MIDI tracks arm
-        arm_.setToggleState(track != nullptr && track->armed, juce::dontSendNotification);
+        showToggle(arm_, track != nullptr && track->armed);
 
         // The input (tracks only): audio inputs or MIDI inputs.
         input_.setVisible(track != nullptr && !aux_ && !track->isInstrument());

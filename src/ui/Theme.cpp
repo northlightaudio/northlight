@@ -735,9 +735,10 @@ std::vector<std::pair<std::string, juce::Colour>> Theme::accentTokens(juce::Colo
             {"lineFocus", accent.withAlpha(static_cast<juce::uint8>(0xb3))}};
 }
 
-std::vector<std::pair<std::string, juce::Colour>> Theme::highContrastTokens() const
+std::vector<std::pair<std::string, juce::Colour>> Theme::highContrastTokens()
 {
     // Lines at 24% and 32%, text one step brighter (11.1).
+    const auto colours = defaults().colours;
     return {{"lineSubtle", juce::Colours::white.withAlpha(static_cast<juce::uint8>(0x3d))},
             {"lineStrong", juce::Colours::white.withAlpha(static_cast<juce::uint8>(0x52))},
             {"textSecondary", colours.textPrimary},

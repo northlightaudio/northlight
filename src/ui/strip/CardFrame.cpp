@@ -1,6 +1,7 @@
 #include "ui/strip/CardFrame.h"
 
 #include "plugins/ChannelStrip.h"
+#include "ui/components/Accessibility.h"
 
 namespace northlight::ui::strip
 {
@@ -84,7 +85,7 @@ CardFrame::~CardFrame() = default;
 void CardFrame::setBypass(bool bypass)
 {
     bypass_ = bypass;
-    power_.setToggleState(!bypass_, juce::dontSendNotification);
+    showToggle(power_, !bypass_);
     power_.setTooltip(bypass_ ? "Switch on" : "Switch off");
 }
 

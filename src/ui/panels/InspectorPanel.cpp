@@ -7,6 +7,7 @@
 #include "ui/NorthlightLookAndFeel.h"
 #include "ui/Shortcuts.h"
 #include "ui/TrackIcon.h"
+#include "ui/components/Accessibility.h"
 
 #include <algorithm>
 #include <cmath>
@@ -573,7 +574,7 @@ void InspectorPanel::refresh()
                                      std::max(1.0, map.stepSamples({0, quarters}, at)),
                                  juce::dontSendNotification);
             noteVelocity_.setValue(n.velocity, juce::dontSendNotification);
-            noteMute_.setToggleState(n.muted, juce::dontSendNotification);
+            showToggle(noteMute_, n.muted);
         }
     }
     if (vocalMode)
@@ -591,7 +592,7 @@ void InspectorPanel::refresh()
             slideOut_.setValue(static_cast<double>(n.transitionOut) * 1000.0 / sr,
                                juce::dontSendNotification);
             vocalGain_.setValue(n.gainDb, juce::dontSendNotification);
-            noteMute_.setToggleState(n.muted, juce::dontSendNotification);
+            showToggle(noteMute_, n.muted);
         }
     }
     const auto* t = notesMode || vocalMode ? nullptr : track();
@@ -632,9 +633,9 @@ void InspectorPanel::refresh()
     {
         gain_.setValue(db::fromGain(t->gain), juce::dontSendNotification);
         pan_.setValue(t->pan, juce::dontSendNotification);
-        mute_.setToggleState(t->mute, juce::dontSendNotification);
-        solo_.setToggleState(t->solo, juce::dontSendNotification);
-        arm_.setToggleState(t->armed, juce::dontSendNotification);
+        showToggle(mute_, t->mute);
+        showToggle(solo_, t->solo);
+        showToggle(arm_, t->armed);
     }
     resized();
     repaint();

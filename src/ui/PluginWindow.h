@@ -5,6 +5,7 @@
 #include "engine/Insert.h"
 #include "hosting/PluginPresets.h"
 #include "ui/Theme.h"
+#include "ui/components/Accessibility.h"
 
 #include <juce_gui_basics/juce_gui_basics.h>
 
@@ -63,6 +64,7 @@ public:
     void refreshPresetName();
 
     void closeButtonPressed() override;
+    bool keyPressed(const juce::KeyPress& key) override; // Esc closes
     void moved() override;
     void resized() override;
 
@@ -74,6 +76,7 @@ private:
     std::shared_ptr<engine::InsertProcessor> keepAlive_; // first member: destroyed last, after the editor
     core::Id channelId_, insertId_;
     Holder* holder_ = nullptr;
+    FocusReturn opener_; // what had the focus when the window opened
 };
 
 } // namespace northlight::ui

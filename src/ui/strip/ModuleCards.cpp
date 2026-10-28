@@ -4,6 +4,7 @@
 #include "plugins/BuiltIns.h"
 #include "plugins/ChannelStrip.h"
 #include "ui/SidechainMenu.h"
+#include "ui/components/Accessibility.h"
 #include "ui/strip/CardParts.h"
 #include "ui/strip/EqGraph.h"
 #include "ui/strip/Graphs.h"
@@ -158,7 +159,7 @@ private:
         const bool keyed = insert.sidechain != core::invalidId;
         const auto name = project != nullptr ? sidechainLabel(*project, insert) : juce::String("?");
         sidechain_->setButtonText(keyed ? "Key: " + name : juce::String("Sidechain"));
-        sidechain_->setToggleState(keyed, juce::dontSendNotification);
+        showToggle(*sidechain_, keyed);
         sidechain_->setTooltip(keyed ? "Key: " + name : juce::String("Key input"));
         // Keyed, the input meter and the history's grey trace show the key, and
         // the threshold acts on it.

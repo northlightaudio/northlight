@@ -383,6 +383,13 @@ juce::Rectangle<int> ShortcutEditor::cardBounds() const
                                            theme_.spacing.md);
 }
 
+void ShortcutEditor::paintOverChildren(juce::Graphics& g)
+{
+    // Keyboard focus on the editor as a whole: the ring inside its list.
+    if (auto* lnf = dynamic_cast<NorthlightLookAndFeel*>(&getLookAndFeel()))
+        lnf->drawRegionFocusRing(g, *this, list_.getBounds());
+}
+
 void ShortcutEditor::paint(juce::Graphics& g)
 {
     const auto& c = theme_.colours;

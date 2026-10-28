@@ -12,6 +12,7 @@
 #include "ui/audioeditor/CorrectSheet.h"
 #include "ui/audioeditor/PitchEditing.h"
 #include "ui/audioeditor/PitchGrid.h"
+#include "ui/components/Accessibility.h"
 #include "ui/components/DragTip.h"
 #include "ui/components/KeyMenu.h"
 #include "ui/timeline/TimeGrid.h"
@@ -107,7 +108,7 @@ AudioEditor::AudioEditor(audio::PeakStore& peaks, engine::VocalService& vocal, c
     {
         tools[i]->setIconSize(theme_.sizes.iconSmall);
         tools[i]->onClick = [this, i] { setTool(static_cast<Tool>(i)); };
-        tools[i]->setToggleState(i == 0, juce::dontSendNotification);
+        showToggle(*tools[i], i == 0);
         addChildComponent(*tools[i]);
     }
     for (auto* b : {&correctButton_, &breathsButton_, &keyButton_})
@@ -137,7 +138,7 @@ AudioEditor::AudioEditor(audio::PeakStore& peaks, engine::VocalService& vocal, c
     followButton_.onClick = [this] { setFollowPlayhead(followButton_.getToggleState()); };
     addAndMakeVisible(followButton_);
     auditionButton_.setClickingTogglesState(true);
-    auditionButton_.setToggleState(audition_, juce::dontSendNotification);
+    showToggle(auditionButton_, audition_);
     auditionButton_.onClick = [this] { audition_ = auditionButton_.getToggleState(); };
     addAndMakeVisible(auditionButton_);
     peaks_.addChangeListener(this);
@@ -232,7 +233,7 @@ void AudioEditor::setPlayhead(core::SamplePosition timelinePosition)
 void AudioEditor::setFollowPlayhead(bool on)
 {
     follow_ = on;
-    followButton_.setToggleState(on, juce::dontSendNotification);
+    showToggle(followButton_, on);
 }
 
 void AudioEditor::setSemitoneHeight(float pixels)
@@ -312,7 +313,7 @@ void AudioEditor::stepSelection(int direction, bool extend)
 
 void AudioEditor::setZoomLinked(bool linked)
 {
-    link_.setToggleState(linked, juce::dontSendNotification);
+    showToggle(link_, linked);
     linked_ = linked;
     repaint();
 }
@@ -364,7 +365,7 @@ void AudioEditor::setTool(Tool tool)
     tool_ = tool;
     const auto tools = toolButtons();
     for (size_t i = 0; i < tools.size(); ++i)
-        tools[i]->setToggleState(static_cast<Tool>(i) == tool_, juce::dontSendNotification);
+        showToggle(*tools[i], static_cast<Tool>(i) == tool_);
     repaint();
 }
 
@@ -1189,6 +1190,13 @@ void AudioEditor::paintPitch(juce::Graphics& g)
         g.setColour(c.selectionOutline);
         g.drawRect(lasso_, 1);
     }
+}
+
+void AudioEditor::paintOverChildren(juce::Graphics& g)
+{
+    // Keyboard focus on the editor as a whole: the ring inside its canvas.
+    if (auto* lnf = dynamic_cast<NorthlightLookAndFeel*>(&getLookAndFeel()))
+        lnf->drawRegionFocusRing(g, *this, contentArea());
 }
 
 void AudioEditor::paint(juce::Graphics& g)

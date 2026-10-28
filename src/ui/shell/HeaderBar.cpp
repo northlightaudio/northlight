@@ -2,6 +2,7 @@
 
 #include "ui/NorthlightLookAndFeel.h"
 #include "ui/Shortcuts.h"
+#include "ui/components/Accessibility.h"
 #include "ui/components/Readout.h"
 
 #include <algorithm>
@@ -24,6 +25,25 @@ void TimeDisplay::setText(const juce::String& text)
         return;
     text_ = text;
     repaint();
+}
+
+std::unique_ptr<juce::AccessibilityHandler> TimeDisplay::createAccessibilityHandler()
+{
+    struct Text final : juce::AccessibilityTextValueInterface
+    {
+        explicit Text(TimeDisplay& owner) : owner_(owner) {}
+        bool isReadOnly() const override { return true; }
+        juce::String getCurrentValueAsString() const override { return owner_.text_; }
+        void setValueAsString(const juce::String&) override {}
+        TimeDisplay& owner_;
+    };
+    // Not announced as it changes (it ticks while playing): read on demand.
+    return std::make_unique<juce::AccessibilityHandler>(
+        *this,
+        juce::AccessibilityRole::staticText,
+        juce::AccessibilityActions().addAction(juce::AccessibilityActionType::press,
+                                               [this] { beginTyping(); }),
+        juce::AccessibilityHandler::Interfaces{std::make_unique<Text>(*this)});
 }
 
 void TimeDisplay::setTone(Tone tone)
@@ -442,6 +462,10 @@ HeaderBar::HeaderBar(const Theme& theme)
         }
         return true;
     };
+    bars_.setTitle("Position in bars and beats");
+    time_.setTitle("Position in time");
+    tempo_.setTitle("Tempo");
+    signature_.setTitle("Time signature");
     bars_.setFramed(false);
     time_.setFramed(false);
     time_.setSecondary(true);
@@ -518,24 +542,24 @@ void HeaderBar::refreshFromState()
     // While playing, Play is Pause: it keeps the position (Stop or Space returns).
     play_.setTooltip(s.playing ? Shortcuts::withKey("Pause", Command::pause)
                                : Shortcuts::withKey("Play", Command::playStop));
-    play_.setToggleState(s.playing, juce::dontSendNotification);
+    showToggle(play_, s.playing);
     stop_.setRestColour(s.playing ? theme_.colours.textSecondary : theme_.colours.textPrimary);
-    record_.setToggleState(s.recording, juce::dontSendNotification);
+    showToggle(record_, s.recording);
     record_.setEnabled(s.deviceReady);
     play_.setEnabled(s.deviceReady);
     record_.setWarningDot(!s.deviceReady);
     record_.setTooltip(s.deviceReady
                            ? Shortcuts::withKey(s.recording ? "Stop recording" : "Record", Command::record)
                            : "No audio device: click to open Audio Setup");
-    loop_.setToggleState(s.loop, juce::dontSendNotification);
+    showToggle(loop_, s.loop);
     loop_.setEnabled(s.loopPossible);
     loop_.setTooltip(s.loopPossible ? Shortcuts::withKey(s.loop ? "Loop: on" : "Loop: off", Command::loop)
                                     : juce::String("Set a loop region in the ruler"));
-    punch_.setToggleState(s.punch, juce::dontSendNotification);
+    showToggle(punch_, s.punch);
     punch_.setTooltip(Shortcuts::withKey(s.punch ? "Punch: on" : "Punch: off", Command::punch));
-    click_.setToggleState(s.click, juce::dontSendNotification);
+    showToggle(click_, s.click);
     click_.setTooltip(Shortcuts::withKey(s.click ? "Click: on" : "Click: off", Command::click));
-    countIn_.setToggleState(s.countInBars > 0, juce::dontSendNotification);
+    showToggle(countIn_, s.countInBars > 0);
     countIn_.setCornerText(s.countInBars > 0 ? juce::String(s.countInBars) : juce::String());
     countIn_.setTooltip("Count-in: " + juce::String(s.countInBars) + (s.countInBars == 1 ? " bar" : " bars") +
                         " (click to change)");
@@ -564,15 +588,15 @@ void HeaderBar::refreshFromState()
             signature_.setSelectedItemIndex(signature_.getNumItems() - 1, juce::dontSendNotification);
         }
     }
-    snap_.setToggleState(s.snap, juce::dontSendNotification);
+    showToggle(snap_, s.snap);
     snap_.setTooltip(
         Shortcuts::withKey("Snap: " + (s.snap ? s.snapName : juce::String("off")), Command::snap) +
         "\nThe arrow picks the grid");
-    ripple_.setToggleState(s.ripple, juce::dontSendNotification);
+    showToggle(ripple_, s.ripple);
     ripple_.setTooltip(Shortcuts::withKey(s.ripple ? "Ripple: on" : "Ripple: off", Command::ripple));
-    mixer_.setToggleState(s.mixerVisible, juce::dontSendNotification);
-    editor_.setToggleState(s.editorVisible, juce::dontSendNotification);
-    browser_.setToggleState(s.browserVisible, juce::dontSendNotification);
+    showToggle(mixer_, s.mixerVisible);
+    showToggle(editor_, s.editorVisible);
+    showToggle(browser_, s.browserVisible);
     maximise_.setIcon(s.maximised ? Icon::windowRestore : Icon::windowMaximise);
     maximise_.setTooltip(s.maximised ? "Restore down" : "Maximise");
     if (closeWindow_.isVisible() != s.windowControls)

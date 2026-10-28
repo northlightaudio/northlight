@@ -730,6 +730,18 @@ are in `src/ui/audioeditor/`; the key menu the piano roll, the audio editor and 
 Correct sheet share is `ui::keymenu`. The names an instrument gives its notes (a drum
 kit's pads) come from the built-in registry (`plugins::builtInNoteName`).
 
+Accessibility (design/accessibility-performance.md 11.2 and 11.3) runs through
+JUCE's handlers, which Windows reads as UI Automation. The shared pieces are in
+`ui/components/Accessibility.h`: `AccessibleValue` makes a custom control a slider
+with a readable value, `TooltipNamedHandler` names a control from its tooltip when
+it has no title, `readoutHandler` exposes a lamp or needle as read-only text,
+`showToggle` marks a model-driven button checkable, `titleForTrack` names a
+per-track control after its track, and `FocusReturn` gives the focus back when a
+window closes. `NorthlightLookAndFeel` decides when focus rings show (a focus change
+made with Tab or an arrow key, in any window, turns them on; a click turns them
+off) and draws them, outside a control or inside a region (`drawRegionFocusRing`,
+used by `FocusListBox` and the editors).
+
 The specification for every screen is in [design/](design/README.md).
 
 ## Testing

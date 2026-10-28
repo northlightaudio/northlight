@@ -6,6 +6,7 @@
 #include "ui/NorthlightLookAndFeel.h"
 #include "ui/Number.h"
 #include "ui/OnScreen.h"
+#include "ui/components/Accessibility.h"
 #include "ui/strip/BuiltInCards.h"
 
 #include <cmath>
@@ -225,7 +226,7 @@ void InsertEditor::setParameter(int index, float value)
 void InsertEditor::setInsert(const core::Insert& insert)
 {
     const juce::ScopedValueSetter<bool> guard(updating_, true);
-    bypass_.setToggleState(insert.bypass, juce::dontSendNotification);
+    showToggle(bypass_, insert.bypass);
     mix_.setValue(insert.mix * 100.0, juce::dontSendNotification);
     sidechain_ = insert.sidechain;
     params_ = insert.params;

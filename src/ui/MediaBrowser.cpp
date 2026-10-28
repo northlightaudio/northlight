@@ -150,6 +150,10 @@ MediaBrowser::MediaBrowser()
 
     place_.getProperties().set(NorthlightLookAndFeel::propertyVariant, "ghost");
     place_.getProperties().set(NorthlightLookAndFeel::propertyMenu, true);
+    search_.setTitle("Search files");
+    place_.setTitle("Place");
+    up_.setTitle("Up a folder");
+    volume_.setTitle("Preview volume");
     place_.setTooltip("The place to browse: the project's folder, Music, or a folder you added");
     place_.onClick = [this] { showPlaceMenu(); };
     addAndMakeVisible(place_);
@@ -483,6 +487,19 @@ void MediaBrowser::timerCallback()
 int MediaBrowser::getNumRows()
 {
     return static_cast<int>(entries_.size());
+}
+
+juce::String MediaBrowser::getNameForRow(int index)
+{
+    if (index < 0 || static_cast<size_t>(index) >= entries_.size())
+        return {};
+    const auto& entry = entries_[static_cast<size_t>(index)];
+    juce::String name = entry.folder ? "Folder " + entry.name : entry.name;
+    if (entry.detail.isNotEmpty())
+        name << ", in " << entry.detail;
+    if (!entry.folder && entry.seconds >= 0.0)
+        name << ", " << juce::String(entry.seconds, 1) << " seconds";
+    return name;
 }
 
 void MediaBrowser::paintListBoxItem(int index, juce::Graphics& g, int width, int height, bool selected)

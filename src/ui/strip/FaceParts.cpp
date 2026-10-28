@@ -1,5 +1,6 @@
 #include "ui/strip/FaceParts.h"
 
+#include "ui/components/Accessibility.h"
 #include "ui/components/HardwareParts.h"
 
 #include <algorithm>
@@ -14,6 +15,12 @@ VuNeedleMeter::VuNeedleMeter(const Theme& theme, Look look)
     : theme_(theme), look_(look), angle_(-(look.halfSweep + 3.0f))
 {
     setInterceptsMouseClicks(false, false);
+    setTitle("VU meter");
+}
+
+std::unique_ptr<juce::AccessibilityHandler> VuNeedleMeter::createAccessibilityHandler()
+{
+    return readoutHandler(*this);
 }
 
 void VuNeedleMeter::setReading(float vu)

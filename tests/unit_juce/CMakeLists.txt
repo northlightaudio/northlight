@@ -13,6 +13,7 @@ add_executable(northlight_juce_tests
     BounceTests.cpp
     ExportFormatTests.cpp
     ThemeTests.cpp
+    AccessibilityTests.cpp
     KeyboardMapTests.cpp
     ChannelStripUiTests.cpp
     EditorPanelTests.cpp

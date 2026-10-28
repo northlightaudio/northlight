@@ -14,6 +14,7 @@
 #include "ui/Shortcuts.h"
 #include "ui/arrange/ArrangeGestures.h"
 #include "ui/arrange/ArrangePainter.h"
+#include "ui/components/Accessibility.h"
 #include "ui/components/DragTip.h"
 #include "ui/timeline/ClipPainter.h"
 #include "ui/timeline/TimeGrid.h"
@@ -2114,9 +2115,9 @@ void ArrangeView::refreshToolButtons()
 {
     const auto tools = toolButtons();
     for (size_t i = 0; i < tools.size(); ++i)
-        tools[i]->setToggleState(static_cast<Tool>(i) == tool_, juce::dontSendNotification);
+        showToggle(*tools[i], static_cast<Tool>(i) == tool_);
     toolMenu_.setIcon(tools[static_cast<size_t>(tool_)]->icon());
-    toolMenu_.setToggleState(tool_ != Tool::select, juce::dontSendNotification);
+    showToggle(toolMenu_, tool_ != Tool::select);
 }
 
 const char* ArrangeView::toolName(Tool tool) noexcept

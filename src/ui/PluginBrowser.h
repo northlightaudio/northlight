@@ -2,6 +2,7 @@
 
 #include "hosting/PluginRegistry.h"
 #include "ui/Theme.h"
+#include "ui/components/FocusListBox.h"
 #include "ui/components/SegmentedControl.h"
 
 #include <juce_gui_basics/juce_gui_basics.h>
@@ -90,6 +91,7 @@ private:
 
     int getNumRows() override;
     void paintListBoxItem(int row, juce::Graphics& g, int width, int height, bool selected) override;
+    juce::String getNameForRow(int row) override; // what a screen reader reads
     void listBoxItemClicked(int row, const juce::MouseEvent& e) override;
     void listBoxItemDoubleClicked(int row, const juce::MouseEvent& e) override;
     void returnKeyPressed(int row) override;
@@ -113,7 +115,7 @@ private:
     juce::TextButton kind_;
     int kindFilter_ = -1; // an EffectCategory, -1 for every kind
     void showKindMenu();
-    juce::ListBox list_{"plugins", this};
+    FocusListBox list_{"plugins", this};
     juce::TextButton scan_{"Scan for changes"}, cancel_{"Cancel"};
     double progress_ = 0.0;
     juce::ProgressBar progressBar_{progress_};

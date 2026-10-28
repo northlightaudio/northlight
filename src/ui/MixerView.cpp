@@ -19,6 +19,7 @@
 #include "ui/PluginMenu.h"
 #include "ui/SendMenu.h"
 #include "ui/SidechainMenu.h"
+#include "ui/components/Accessibility.h"
 #include "ui/components/AddSlot.h"
 #include "ui/mixer/MasterStrip.h"
 #include "ui/mixer/MixerStrip.h"
@@ -54,6 +55,7 @@ public:
 
     void closeButtonPressed() override
     {
+        opener_.restore(); // before it goes: the focus goes back where it was
         juce::Component::SafePointer<MixerView> owner(&owner_);
         const auto id = editor_->insertId();
         juce::MessageManager::callAsync(
@@ -66,7 +68,18 @@ public:
             });
     }
 
+    bool keyPressed(const juce::KeyPress& key) override
+    {
+        if (key == juce::KeyPress::escapeKey)
+        {
+            closeButtonPressed();
+            return true;
+        }
+        return juce::DocumentWindow::keyPressed(key);
+    }
+
 private:
+    FocusReturn opener_; // first: taken before the window shows
     MixerView& owner_;
     InsertEditor* editor_;
 };

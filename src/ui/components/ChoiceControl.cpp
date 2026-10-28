@@ -18,6 +18,7 @@ ChoiceControl::ChoiceControl(const Theme& theme,
         segments_ = std::make_unique<SegmentedControl>(theme_);
         segments_->setSegments(labels_);
         segments_->setTooltip(tooltip);
+        segments_->setTitle(tooltip);
         segments_->onChange = [this](int index) { picked(index); };
         addAndMakeVisible(*segments_);
     }

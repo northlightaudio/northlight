@@ -11,6 +11,7 @@
 #include "ui/PluginMenu.h"
 #include "ui/SendMenu.h"
 #include "ui/SidechainMenu.h"
+#include "ui/components/Accessibility.h"
 #include "ui/components/ChoiceControl.h"
 #include "ui/components/Fader.h"
 #include "ui/components/SegmentedControl.h"
@@ -261,7 +262,7 @@ public:
             }
         }
         bypassed_ = insert.bypass;
-        power_.setToggleState(!insert.bypass, juce::dontSendNotification);
+        showToggle(power_, !insert.bypass);
         power_.setTooltip(insert.bypass ? "Switch on" : "Bypass");
         mix_.setValue(insert.mix * 100.0, juce::dontSendNotification);
         sidechain_ = insert.sidechain;
@@ -800,6 +801,7 @@ private:
                 continue;
             }
             auto knob = std::make_unique<Knob>(theme_);
+            knob->setTitle(juce::String(info.name));
             knob->setRange(info.minimum, info.maximum, info.defaultValue);
             // Few figures, so the value fits its cell: fewer decimals as it grows, kHz past 1000 Hz.
             const juce::String unit = info.unit.empty() ? juce::String() : juce::String(info.unit);
@@ -1048,8 +1050,12 @@ public:
         fader_.setTrackColour(colour_);
         fader_.setGain(send.level, juce::dontSendNotification);
         fader_.setAlpha(send.mute ? 0.5f : 1.0f);
-        mute_.setToggleState(send.mute, juce::dontSendNotification);
+        showToggle(mute_, send.mute);
         mute_.setTooltip(send.mute ? "Unmute this send" : "Mute this send");
+        setTitle("Send to " + name_);
+        titleForTrack(fader_, "Send level to", name_);
+        titleForTrack(pan_, "Send pan to", name_);
+        titleForTrack(tap_, "Send tap to", name_);
         pan_.setValue(send.pan, juce::dontSendNotification);
         tap_.setSelected(pre_ ? 0 : 1, juce::dontSendNotification);
         setTooltip(name_ + (pre_ ? " (pre-fader: ignores the channel's fader)"

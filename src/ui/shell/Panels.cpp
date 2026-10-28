@@ -2,6 +2,7 @@
 
 #include "ui/NorthlightLookAndFeel.h"
 #include "ui/OnScreen.h"
+#include "ui/components/Accessibility.h"
 
 #include <cmath>
 
@@ -420,7 +421,7 @@ FloatingPanelWindow::~FloatingPanelWindow()
 
 void FloatingPanelWindow::setPinned(bool pinned)
 {
-    pin_.setToggleState(pinned, juce::dontSendNotification);
+    showToggle(pin_, pinned);
     setAlwaysOnTop(pinned);
 }
 
