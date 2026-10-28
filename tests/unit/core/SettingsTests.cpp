@@ -40,6 +40,19 @@ TEST_CASE("A setting reads its stored text, else its default, as its type", "[co
     CHECK(read.integer(settings::autosaveMinutes) == 2);
     CHECK(read.flag(settings::followPlayhead));
     CHECK(read.text(settings::namePattern) == "{track} {take}");
-    CHECK(settings::Reader({}).text(settings::contrast) == "standard");
+    CHECK(settings::Reader({}).text(settings::contrast) == "system");
+    CHECK(settings::Reader({}).text(settings::reduceMotion) == "system");
     CHECK(settings::flagText(true) == "1");
+}
+
+TEST_CASE("Contrast and reduce-motion follow Windows until the user chooses",
+          "[core][settings][accessibility]")
+{
+    // "system" takes what Windows says; a choice overrides it either way.
+    CHECK(settings::followsOrChooses("system", "high", true));
+    CHECK_FALSE(settings::followsOrChooses("system", "high", false));
+    CHECK(settings::followsOrChooses("high", "high", false));
+    CHECK_FALSE(settings::followsOrChooses("standard", "high", true));
+    CHECK(settings::followsOrChooses("on", "on", false));
+    CHECK_FALSE(settings::followsOrChooses("off", "on", true));
 }

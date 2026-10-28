@@ -965,7 +965,7 @@ void PreferencesView::set(const settings::Setting& setting, const std::string& v
     if (saveSetting)
         saveSetting(std::string(setting.key), value);
     // The token file first: the owner reloads the colours from it on onChanged.
-    if (setting.key == settings::contrast.key || setting.key == settings::accent.key)
+    if (setting.key == settings::accent.key)
         writeTokenOverride();
     if (onChanged)
         onChanged();
@@ -996,9 +996,6 @@ void PreferencesView::writeTokenOverride()
     if (accent.length() == 7 && accent.startsWithChar('#'))
         for (const auto& [key, colour] :
              Theme::accentTokens(juce::Colour::fromString("ff" + accent.substring(1))))
-            colours->setProperty(juce::Identifier(key.c_str()), hex(colour));
-    if (get(settings::contrast) == "high")
-        for (const auto& [key, colour] : Theme::highContrastTokens())
             colours->setProperty(juce::Identifier(key.c_str()), hex(colour));
     if (colours->getProperties().isEmpty())
     {
@@ -1238,9 +1235,22 @@ void PreferencesView::buildGeneral(Page& page)
     };
     const int swatchesWidth = swatches->preferredWidth();
     page.add("Accent", std::move(swatches), swatchesWidth);
-    auto contrast = makeSegmented({{"Standard", "standard"}, {"High", "high"}}, settings::contrast);
+    auto contrast =
+        makeSegmented({{"System", "system"}, {"Standard", "standard"}, {"High", "high"}}, settings::contrast);
     const int contrastWidth = contrast->preferredWidth();
-    page.add("Contrast", std::move(contrast), contrastWidth, "High brightens lines and secondary text.");
+    page.add("Contrast",
+             std::move(contrast),
+             contrastWidth,
+             "High brightens lines, secondary text and the small print on effect faces, and outlines clip "
+             "lights. System turns it on with a Windows contrast theme.");
+    auto motion = makeSegmented({{"System", "system"}, {"On", "on"}, {"Off", "off"}}, settings::reduceMotion);
+    const int motionWidth = motion->preferredWidth();
+    page.add(
+        "Reduce motion",
+        std::move(motion),
+        motionWidth,
+        "On makes panels, sheets and menus appear without sliding and stops animated glows. Meters still "
+        "move. System follows Windows' Show animations.");
     page.add("UI scale",
              makeCombo(
                  {{"Follow system", "0"}, {"100%", "100"}, {"125%", "125"}, {"150%", "150"}, {"200%", "200"}},

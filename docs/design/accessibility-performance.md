@@ -3,16 +3,23 @@
 ## 11.1 Contrast
 
 - Text on its surface: 4.5:1 minimum for `body` and smaller, 3:1 for `title` and
-  larger. `textTertiary` is only 3.6:1 on `surface0`, so it is used only at 13 px or
-  larger or for non-essential hints. The full table is in [contrast.md](contrast.md),
-  generated from the token file.
+  larger. `textTertiary` is 4.72:1 on `surface0` but falls to 3.27:1 on `surface3`,
+  so it is used only at 13 px or larger or for non-essential hints. The full table
+  is in [contrast.md](contrast.md), generated from the token file.
 - Non-text (icons, control outlines, meter zones, focus ring): 3:1 against adjacent
   colour. The focus ring at 70% accent over `surface0` is 4.2:1.
 - Track colours are never the only carrier of meaning: clips also carry names,
   strips carry numbers, and the twelve hues are distinguishable in the three common
   colour-vision deficiencies (check in a simulation; swap any pair that collapses).
-- A "high contrast" variant of the token file (lines at 24%, text one step
-  brighter) is selectable in Preferences.
+- A High contrast variant of the token file (`highContrast` in tokens.json: lines
+  at 24% and 32%, every text token one step brighter, the soft inks on hardware
+  faces in their full ink) is selectable in Preferences > General > Contrast. On
+  System, the default, it follows Windows: a contrast theme turns it on. With it,
+  every text pair passes 4.5:1, tertiary included (contrast.md, "High contrast").
+- Where colour is the only difference between two states, High contrast adds a
+  shape: a lit clip light gets a `textPrimary` rim, and a note Correct flagged gets
+  a dashed outline (a selected note's is solid). The default look keeps colour
+  alone there, as both also say so in text (the clip count, the Correct summary).
 
 ## 11.2 Keyboard and focus
 
@@ -31,7 +38,8 @@
 
 ## 11.4 Motion and flashing
 
-- Honour the OS reduce-motion setting (section 2.6).
+- Honour reduce-motion (section 2.6): Preferences > General > Reduce motion is
+  System (Windows' Show animations, followed while the app runs), On or Off.
 - Nothing flashes faster than 3 Hz; the metronome pulse and the clip indicator are the
   only periodic visuals and both are below that.
 

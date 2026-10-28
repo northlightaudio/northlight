@@ -361,6 +361,14 @@ Northlight has not had a release yet. The first release, 0.1.0, will include:
   lane show a ring when they have the focus, Tab stays inside a dialog, and closing
   a dialog or window returns the focus to where it was. Esc closes plugin and
   insert editor windows.
+- High contrast goes further: disabled text and the small print on effect faces
+  are brighter too, a clip light that has lit gets a bright outline, and a pitch
+  note flagged by Correct gets a dashed outline. Contrast can now follow Windows: on
+  System (the new default) a Windows contrast theme turns High on. Nothing changes
+  unless you or Windows ask for it.
+- Preferences > General has a Reduce motion setting: On makes panels, sheets and
+  menus appear without sliding and stops animated glows. System follows Windows'
+  Show animations, and now notices when it changes while Northlight runs.
 - In the audio editor's pitch mode a double-click splits a note (on a join, merges
   the two), as the spec says; snapping to the semitone is in the note's menu. In
   wave mode a double-click resets the gain line or removes a fade instead of

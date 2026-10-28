@@ -114,8 +114,12 @@ public:
                        getApplicationVersion().toStdString());
         // The design tokens: shipped beside the app, with the user's tokens.json and
         // the accent and contrast Preferences chose beside the settings file on top.
+        // High contrast when chosen, or when it follows Windows and a contrast theme is on.
+        const settings::Reader read([this](const std::string& key) { return settings_->value(key); });
         ui::Theme::initialise(settings_->file().getSiblingFile(ui::Theme::userOverrideName),
-                              settings_->file().getSiblingFile(ui::Theme::preferencesOverrideName));
+                              settings_->file().getSiblingFile(ui::Theme::preferencesOverrideName),
+                              settings::followsOrChooses(
+                                  read.text(settings::contrast), "high", ui::Theme::systemHighContrast()));
         lookAndFeel_ = std::make_unique<ui::NorthlightLookAndFeel>(ui::Theme::dark());
         juce::LookAndFeel::setDefaultLookAndFeel(lookAndFeel_.get());
 

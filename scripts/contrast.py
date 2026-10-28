@@ -30,6 +30,9 @@ PAIRS = [
     ("textSecondary", "surface2", "Secondary text in controls", "body"),
     ("textSecondary", "surface3", "Hovered secondary", "body"),
     ("textTertiary", "surface0", "Hints, inactive tabs (13 px+ or non-essential)", "hint"),
+    ("textTertiary", "surface1", "Hints in a card or a list row", "hint"),
+    ("textTertiary", "surface2", "Units and hints inside a control", "hint"),
+    ("textTertiary", "surface3", "Units and hints in a hovered control", "hint"),
     ("textTertiary", "canvas", "Ruler seconds, empty-state hints", "hint"),
     ("textTertiary", "material.meterWell", "A display's axis labels (micro)", "hint"),
     ("textDisabled", "surface1", "Disabled (exempt from the requirement)", "exempt"),
@@ -147,16 +150,25 @@ def main():
 
     tokens = json.loads(pathlib.Path(args.tokens).read_text(encoding="utf-8"))
     colours = tokens["color"]
+    variant = tokens.get("highContrast", {})
     name = tokens.get("meta", {}).get("name", "tokens")
     canvas = parse(colours["canvas"])
 
-    def colour(key):
+    def colour(key, high=False):
         # "hardware.legend" is a key of another group; a plain key is one of `color`.
+        # With `high`, the highContrast variant's value wins where it has one.
         group, _, name = key.rpartition(".")
-        return parse((tokens[group] if group else colours)[name])
+        group = group or "color"
+        if high and name in variant.get(group, {}):
+            return parse(variant[group][name])
+        return parse(tokens[group][name])
 
-    def opaque(key):
-        return over(colour(key), canvas)
+    def opaque(key, high=False):
+        return over(colour(key, high), canvas)
+
+    def changed(key):
+        group, _, name = key.rpartition(".")
+        return name in variant.get(group or "color", {})
 
     lines = [
         "# Contrast table",
@@ -184,6 +196,34 @@ def main():
         if verdict == "no":
             failures.append((fg_key, bg_key, r, threshold))
         lines.append(f"| {fg_key} | {bg_key} | {r:.2f} | {use} | {verdict} |")
+
+    # High contrast: every pair the variant changes. Its text carries essential
+    # information at any size, so tertiary text must reach 4.5:1 here.
+    if variant:
+        lines += [
+            "",
+            "## High contrast",
+            "",
+            "The `highContrast` variant applied over the tokens (Preferences > General > Contrast, or a Windows "
+            "contrast theme). Every pair it changes; tertiary text must pass 4.5:1 here, disabled text stays exempt.",
+            "",
+            "| Foreground | Background | Ratio | Use | Pass |",
+            "|---|---|---|---|---|",
+        ]
+        for fg_key, bg_key, use, kind in PAIRS:
+            if not (changed(fg_key) or changed(bg_key)):
+                continue
+            kind = "body" if kind == "hint" else kind
+            bg = opaque(bg_key, True)
+            fg = over(colour(fg_key, True), bg)
+            r = ratio(fg, bg)
+            if kind == "exempt":
+                verdict = "n/a"
+            else:
+                verdict = "yes" if r >= THRESHOLDS[kind] else "no"
+            if verdict == "no":
+                failures.append((fg_key + " (high)", bg_key, r, THRESHOLDS[kind]))
+            lines.append(f"| {fg_key} | {bg_key} | {r:.2f} | {use} | {verdict} |")
 
     lines += [
         "",

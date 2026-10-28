@@ -158,7 +158,7 @@ struct Theme
         // animation: reduce-motion leaves it alone.
         int progressDelayMs = 400;
         float meterFallDbPerSec = 20.0f;
-        bool reduceMotion = false; // the OS setting, read at load
+        bool reduceMotion = false; // Preferences' Reduce motion, or Windows' when it follows the system
         // A duration with reduce-motion applied.
         int ms(int duration) const noexcept { return reduceMotion ? 0 : duration; }
     };
@@ -291,6 +291,10 @@ struct Theme
     Elevation elevation;
     Material material;
     Hardware hardware;
+    // The High contrast variant is applied (Preferences, or a Windows contrast
+    // theme). Colours already carry it; a view reads this only for what colour
+    // cannot say, such as a clip square's outline.
+    bool highContrast = false;
 
     // ----- fonts ---------------------------------------------------------------------
     enum class Face
@@ -326,22 +330,31 @@ struct Theme
     // ----- loading -------------------------------------------------------------------
     // The shipped tokens (embedded; replaced by assets/tokens.json beside the
     // executable when present), then the user's hand-edited override file, then the
-    // file Preferences writes (accent and contrast). Call once before the first
-    // window; dark() returns the result.
-    static void initialise(const juce::File& userOverride = {}, const juce::File& preferencesOverride = {});
-    // Loads the colours again from the same sources, into the current theme (whose
-    // address every view holds), leaving everything else: the accent and contrast
-    // apply while the app runs. The owner then repaints (applyLive in the app).
-    static void reloadColours(const juce::File& userOverride, const juce::File& preferencesOverride);
+    // file Preferences writes (the accent), then the High contrast variant when
+    // asked for. Call once before the first window; dark() returns the result.
+    static void initialise(const juce::File& userOverride = {},
+                           const juce::File& preferencesOverride = {},
+                           bool highContrast = false);
+    // Loads the colours (and the hardware inks) again from the same sources, into
+    // the current theme (whose address every view holds), leaving everything else:
+    // the accent and contrast apply while the app runs. The owner then repaints.
+    static void
+    reloadColours(const juce::File& userOverride, const juce::File& preferencesOverride, bool highContrast);
+    // Turns reduce-motion on or off in the current theme; views read it as they animate.
+    static void setReduceMotion(bool reduce);
+    // What Windows asks for: a contrast theme is on, and Show animations is off.
+    static bool systemHighContrast();
+    static bool systemReduceMotion();
     // The names of the two override files, beside the settings file.
     static constexpr const char* userOverrideName = "tokens.json";
     static constexpr const char* preferencesOverrideName = "appearance-tokens.json";
-    // The colour tokens Preferences overrides: an accent and its derived states, and
-    // the high-contrast lines and text. Key and colour pairs, for the override file.
+    // The colour tokens Preferences overrides: an accent and its derived states.
+    // Key and colour pairs, for the override file.
     static std::vector<std::pair<std::string, juce::Colour>> accentTokens(juce::Colour accent);
-    // Built from the token file's colours, not the running theme, so turning High on
-    // again (after an accent change) never brightens text a second step.
-    static std::vector<std::pair<std::string, juce::Colour>> highContrastTokens();
+    // Applies the token file's highContrast variant (a partial token file) to a
+    // theme and marks it. Always the shipped values, applied last, so they never
+    // compound with an accent or with themselves.
+    static void applyHighContrast(Theme& theme);
     // Applies a token document (the full file, or a partial override) to a theme.
     // Unknown keys are ignored; a bad value is reported through `error` and skipped.
     static bool apply(const juce::var& tokens, Theme& theme, std::string& error);

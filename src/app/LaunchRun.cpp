@@ -7,6 +7,7 @@
 #include "core/Command.h"
 #include "core/Comping.h"
 #include "core/ProjectJson.h"
+#include "core/Settings.h"
 #include "core/TempoMap.h"
 #include "engine/Gain.h"
 #include "engine/OutputTap.h"
@@ -584,6 +585,21 @@ const std::vector<LaunchFlag<LaunchRun>>& LaunchRun::flags()
              const int height = size.fromFirstOccurrenceOf("x", false, true).getIntValue();
              if (width > 0 && height > 0)
                  r.window.setSize(width, height);
+         }},
+        {"--contrast",
+         "<system|standard|high>",
+         1,
+         "set Preferences' Contrast (High contrast for a capture)",
+         [](LaunchRun& r, Args& a)
+         { r.window.setPreference(std::string(settings::contrast.key), a.text().unquoted().toStdString()); }},
+        {"--reduce-motion",
+         "<system|on|off>",
+         1,
+         "set Preferences' Reduce motion",
+         [](LaunchRun& r, Args& a)
+         {
+             r.window.setPreference(std::string(settings::reduceMotion.key),
+                                    a.text().unquoted().toStdString());
          }},
         // ----- projects
         {"--open",

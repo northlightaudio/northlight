@@ -1,5 +1,6 @@
 #include "audio/AudioDeviceLayer.h"
 #include "audio/AudioSettings.h"
+#include "core/Settings.h"
 #include "hosting/PluginRegistry.h"
 #include "ui/NorthlightLookAndFeel.h"
 #include "ui/PreferencesView.h"
@@ -121,7 +122,8 @@ TEST_CASE("Preferences controls are only as wide as what they hold", "[ui][prefe
     CHECK(toggles >= 5);
 }
 
-TEST_CASE("Contrast and accent choices go to their own token file, never the user's", "[ui][preferences]")
+TEST_CASE("Contrast and Reduce motion are stored as choices and write no token file",
+          "[ui][preferences][accessibility]")
 {
     Fixture f;
     const auto folder =
@@ -134,20 +136,29 @@ TEST_CASE("Contrast and accent choices go to their own token file, never the use
     f.view->settingsFolder = folder;
     f.view->showPage("general");
     ui::SegmentedControl* contrast = nullptr;
+    ui::SegmentedControl* motion = nullptr;
     for (const auto& row : f.view->rowLayout())
+    {
         if (row.label == "Contrast")
             contrast = dynamic_cast<ui::SegmentedControl*>(row.component);
+        if (row.label == "Reduce motion")
+            motion = dynamic_cast<ui::SegmentedControl*>(row.component);
+    }
     REQUIRE(contrast != nullptr);
+    REQUIRE(motion != nullptr);
 
+    // High is applied from the token file's variant when the app reads the
+    // setting, so nothing is written beside the settings for it.
     const auto appearance = folder.getChildFile(ui::Theme::preferencesOverrideName);
-    contrast->setSelected(1, juce::sendNotificationSync); // High
-    REQUIRE(appearance.existsAsFile());
-    CHECK(appearance.loadFileAsString().contains("lineSubtle"));
-    CHECK(user.loadFileAsString() == handEdited);
-
-    contrast->setSelected(0, juce::sendNotificationSync); // Standard: nothing left to override
+    contrast->setSelected(2, juce::sendNotificationSync); // System | Standard | High
+    CHECK(f.settings[std::string(settings::contrast.key)] == "high");
     CHECK_FALSE(appearance.existsAsFile());
     CHECK(user.loadFileAsString() == handEdited);
+    contrast->setSelected(0, juce::sendNotificationSync);
+    CHECK(f.settings[std::string(settings::contrast.key)] == "system");
+
+    motion->setSelected(1, juce::sendNotificationSync); // System | On | Off
+    CHECK(f.settings[std::string(settings::reduceMotion.key)] == "on");
     folder.deleteRecursively();
 }
 

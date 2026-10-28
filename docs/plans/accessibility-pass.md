@@ -107,7 +107,9 @@ drop the glows").
    Preferences or Audio Setup window brought back keeps its first opener. The three bugs, the five shared screen-reader changes,
    Audio Setup titles, card face handlers, missing focus rings, focus return and Esc
    on windows.
-2. **Opt-in visual.** Contrast table rows; a fuller High contrast (raised-surface
+2. **Opt-in visual.** Done 2026-10-28. Left for later: the Diagnostics load
+   thresholds still use colour alone, and the ModuleCard, EditorPanel and
+   InsertEditor ticks are not gated by reduce-motion. Contrast table rows; a fuller High contrast (raised-surface
    text, `textDisabled`, hardware inks, a shape on the meter clip and flagged note);
    follow Windows High Contrast; a Reduce motion setting (System / On / Off) re-read
    on settings change.

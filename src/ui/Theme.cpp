@@ -47,15 +47,9 @@ bool parseColour(const juce::var& v, juce::Colour& out)
     return true;
 }
 
-bool reduceMotionRequested()
-{
-#if JUCE_WINDOWS
-    BOOL animations = TRUE;
-    if (SystemParametersInfoW(SPI_GETCLIENTAREAANIMATION, 0, &animations, 0))
-        return animations == FALSE;
-#endif
-    return false;
-}
+// The token document the variants come from: the shipped file beside the
+// executable when present, else the embedded copy.
+juce::var shippedTokens();
 
 template <typename T> void readNumber(const juce::var& object, const char* key, T& out, std::string& error)
 {
@@ -722,8 +716,44 @@ Theme Theme::defaults()
     std::string error;
     applyText(embeddedTokens, theme, error);
     jassert(error.empty());
-    theme.motion.reduceMotion = reduceMotionRequested();
+    theme.motion.reduceMotion = systemReduceMotion();
     return theme;
+}
+
+bool Theme::systemReduceMotion()
+{
+#if JUCE_WINDOWS
+    BOOL animations = TRUE;
+    if (SystemParametersInfoW(SPI_GETCLIENTAREAANIMATION, 0, &animations, 0))
+        return animations == FALSE;
+#endif
+    return false;
+}
+
+bool Theme::systemHighContrast()
+{
+#if JUCE_WINDOWS
+    HIGHCONTRASTW contrast{};
+    contrast.cbSize = sizeof(contrast);
+    if (SystemParametersInfoW(SPI_GETHIGHCONTRAST, sizeof(contrast), &contrast, 0))
+        return (contrast.dwFlags & HCF_HIGHCONTRASTON) != 0;
+#endif
+    return false;
+}
+
+void Theme::setReduceMotion(bool reduce)
+{
+    current.motion.reduceMotion = reduce;
+}
+
+void Theme::applyHighContrast(Theme& theme)
+{
+    std::string error;
+    const auto tokens = shippedTokens();
+    if (tokens.isObject() && tokens.hasProperty("highContrast"))
+        apply(tokens["highContrast"], theme, error);
+    jassert(error.empty());
+    theme.highContrast = true;
 }
 
 std::vector<std::pair<std::string, juce::Colour>> Theme::accentTokens(juce::Colour accent)
@@ -735,17 +765,23 @@ std::vector<std::pair<std::string, juce::Colour>> Theme::accentTokens(juce::Colo
             {"lineFocus", accent.withAlpha(static_cast<juce::uint8>(0xb3))}};
 }
 
-std::vector<std::pair<std::string, juce::Colour>> Theme::highContrastTokens()
+namespace
 {
-    // Lines at 24% and 32%, text one step brighter (11.1).
-    const auto colours = defaults().colours;
-    return {{"lineSubtle", juce::Colours::white.withAlpha(static_cast<juce::uint8>(0x3d))},
-            {"lineStrong", juce::Colours::white.withAlpha(static_cast<juce::uint8>(0x52))},
-            {"textSecondary", colours.textPrimary},
-            {"textTertiary", colours.textSecondary}};
+juce::var shippedTokens()
+{
+    const auto shipped = executableAssets().getChildFile("tokens.json");
+    juce::var parsed;
+    if (shipped.existsAsFile() && juce::JSON::parse(shipped.loadFileAsString(), parsed).wasOk() &&
+        parsed.isObject())
+        return parsed;
+    juce::JSON::parse(juce::String::fromUTF8(embeddedTokens), parsed);
+    return parsed;
 }
+} // namespace
 
-void Theme::initialise(const juce::File& userOverride, const juce::File& preferencesOverride)
+void Theme::initialise(const juce::File& userOverride,
+                       const juce::File& preferencesOverride,
+                       bool highContrast)
 {
     current = defaults();
     currentSource = "embedded";
@@ -765,6 +801,8 @@ void Theme::initialise(const juce::File& userOverride, const juce::File& prefere
             applyText(file.loadFileAsString().toStdString(), current, error);
             currentSource += " + " + file.getFullPathName().toStdString();
         }
+    if (highContrast)
+        applyHighContrast(current);
     // Bundled typefaces.
     const auto fonts = executableAssets().getChildFile("fonts");
     current.fonts.ui = loadTypeface(fonts.getChildFile(juce::String(current.fonts.uiFile)));
@@ -776,7 +814,9 @@ void Theme::initialise(const juce::File& userOverride, const juce::File& prefere
         loadTypeface(fonts.getChildFile(juce::String(current.fonts.displayItalicFile)));
 }
 
-void Theme::reloadColours(const juce::File& userOverride, const juce::File& preferencesOverride)
+void Theme::reloadColours(const juce::File& userOverride,
+                          const juce::File& preferencesOverride,
+                          bool highContrast)
 {
     Theme fresh = defaults();
     std::string error;
@@ -786,7 +826,11 @@ void Theme::reloadColours(const juce::File& userOverride, const juce::File& pref
     for (const auto& file : {userOverride, preferencesOverride})
         if (file.existsAsFile())
             applyText(file.loadFileAsString().toStdString(), fresh, error);
+    if (highContrast)
+        applyHighContrast(fresh);
     current.colours = fresh.colours;
+    current.hardware = fresh.hardware;
+    current.highContrast = fresh.highContrast;
 }
 
 const Theme& Theme::dark()

@@ -37,8 +37,8 @@ public:
                     const hosting::PluginRegistry& registry);
     ~PreferencesView() override;
 
-    // The settings folder: the Support page shows it and the accent and contrast
-    // choices are written there. Set before the view is shown.
+    // The settings folder: the Support page shows it and the accent override
+    // is written there. Set before the view is shown.
     juce::File settingsFolder;
     std::function<std::string(const std::string& key)> loadSetting;
     std::function<void(const std::string& key, const std::string& value)> saveSetting;
@@ -64,6 +64,12 @@ public:
         bool badge = false, bare = false;
     };
     std::vector<RowLayout> rowLayout() const;
+    // The height that shows the whole page without scrolling (a capture saves it whole).
+    int fullHeight() const
+    {
+        const auto* page = content_.getViewedComponent();
+        return page != nullptr ? content_.getY() + page->getHeight() : getHeight();
+    }
 
     void paint(juce::Graphics& g) override;
     void resized() override;
@@ -117,7 +123,7 @@ private:
     std::pair<std::unique_ptr<juce::TextButton>, int> makeButtonRow(const juce::String& label,
                                                                     std::function<void()> action);
     void writeAccentOverride(const juce::String& hex);
-    // Writes the accent and contrast choices to their own token file beside the
+    // Writes the accent choice to its own token file beside the
     // settings (Theme::initialise reads it at the next launch). The user's
     // hand-edited tokens.json is never touched.
     void writeTokenOverride();

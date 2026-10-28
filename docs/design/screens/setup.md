@@ -135,10 +135,15 @@ Audio page, shown inline, looks like every other page.
     Northlight starts.").
   - *Appearance*: Theme (segmented Dark | Light, Light disabled with the tooltip
     "The light theme is coming soon."), Accent (**Decision**: user accent override
-    is in scope: six presets plus hex), Contrast (segmented Standard | High; "High
-    brightens lines and secondary text."), UI scale (combo: Follow system, 100% to
-    200%). All three apply at once: the colours load again into the running theme
-    and every window repaints. The Light segment stays disabled (`textDisabled`, no
+    is in scope: six presets plus hex), Contrast (segmented System | Standard | High,
+    System by default; "High brightens lines, secondary text and the small print on
+    effect faces, and outlines clip lights. System turns it on with a Windows
+    contrast theme."), Reduce motion (segmented System | On | Off, System by default;
+    "On makes panels, sheets and menus appear without sliding and stops animated
+    glows. Meters still move. System follows Windows' Show animations."), UI scale
+    (combo: Follow system, 100% to 200%). All apply at once: the colours load again
+    into the running theme and every window repaints, and a change to Windows'
+    contrast theme or animations setting applies the same way while the app runs. The Light segment stays disabled (`textDisabled`, no
     hover, skipped by the arrow keys) with its tooltip until the light theme lands
     (design-system.md 2.9).
   - Accent swatches are 20 px circles `space.sm` apart, from the track palette

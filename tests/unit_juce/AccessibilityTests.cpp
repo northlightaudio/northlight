@@ -155,3 +155,31 @@ TEST_CASE("A sheet keeps Tab to itself and is named by its title", "[ui][accessi
         delete sheet;
     }
 }
+
+TEST_CASE("In High contrast a lit clip light has a bright rim, otherwise it is plain red",
+          "[ui][accessibility]")
+{
+    const juce::ScopedJuceInitialiser_GUI juceInit;
+    for (const bool high : {false, true})
+    {
+        INFO("high contrast " << high);
+        auto theme = ui::Theme::defaults();
+        if (high)
+            ui::Theme::applyHighContrast(theme);
+        ui::Meter meter(theme, 1, true);
+        meter.setSize(theme.sizes.meterWidth, 120);
+        const float over = 2.0f; // above full scale: clips
+        meter.push(&over, 1, 10.0);
+        REQUIRE(meter.clipped());
+        juce::Image image(juce::Image::ARGB, meter.getWidth(), meter.getHeight(), true);
+        {
+            juce::Graphics g(image);
+            meter.paint(g);
+        }
+        // The clip square sits at the top: its corner pixel is the rim or the red.
+        const auto corner = image.getPixelAt(0, 0);
+        const auto centre = image.getPixelAt(theme.sizes.meterWidth / 2, theme.sizes.meterWidth / 2);
+        CHECK(centre == theme.colours.meterClip);
+        CHECK((corner == theme.colours.textPrimary) == high);
+    }
+}

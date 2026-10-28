@@ -920,7 +920,18 @@ void AudioEditor::paintNote(juce::Graphics& g, const core::VocalNote& note, juce
     if (selected || flagged || note.id == hoverNote_)
     {
         g.setColour(flagged ? c.warning : selected ? c.textPrimary : c.textSecondary);
-        g.strokePath(blob, juce::PathStrokeType(selected || flagged ? 1.5f : 1.0f));
+        const juce::PathStrokeType stroke(selected || flagged ? 1.5f : 1.0f);
+        if (flagged && theme_.highContrast)
+        {
+            // High contrast: a flagged note's outline is dashed, so it differs from a
+            // selected one by shape as well as colour (11.1).
+            juce::Path dashed;
+            const float dashes[]{4.0f, 3.0f};
+            stroke.createDashedStroke(dashed, blob, dashes, 2);
+            g.fillPath(dashed);
+        }
+        else
+            g.strokePath(blob, stroke);
     }
     // The label: the note it now plays and how far from it.
     if (x1 - x0 > 44.0f)

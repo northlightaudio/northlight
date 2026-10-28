@@ -171,6 +171,13 @@ void Meter::paint(juce::Graphics& g)
                       : juce::Rectangle<float>(clipRow.getX() + gap, bar.getY(), clipSize, w);
         g.setColour(channel.clipped ? c.meterClip : c.meterTrack);
         g.fillRect(clip);
+        // High contrast: a lit clip light also gets a bright rim, so it does not
+        // rest on its red alone (11.1).
+        if (channel.clipped && theme_.highContrast)
+        {
+            g.setColour(c.textPrimary);
+            g.drawRect(clip, 1.0f);
+        }
     }
     if (!scale.isEmpty())
     {

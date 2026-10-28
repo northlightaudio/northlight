@@ -134,7 +134,7 @@ TEST_CASE("An accent change reloads into the running theme, and constructed colo
     const auto& theme = ui::Theme::dark(); // what every view holds
     const auto before = theme.colours;
     REQUIRE(appearance.replaceWithText(R"({"color":{"accent":"#C25E4A","textTertiary":"#A0A0A0"}})"));
-    ui::Theme::reloadColours({}, appearance);
+    ui::Theme::reloadColours({}, appearance, false);
     CHECK(theme.colours.accent == juce::Colour(0xffc25e4a));
     CHECK(theme.colours.textTertiary == juce::Colour(0xffa0a0a0));
     CHECK(theme.spacing.lg == 16); // only the colours reload
@@ -148,40 +148,56 @@ TEST_CASE("An accent change reloads into the running theme, and constructed colo
     CHECK(hint.findColour(juce::Label::textColourId) == juce::Colour(0xffa0a0a0));
 
     appearance.deleteFile();
-    ui::Theme::reloadColours({}, appearance);
+    ui::Theme::reloadColours({}, appearance, false);
     CHECK(theme.colours.accent == before.accent);
     folder.deleteRecursively();
 }
 
 TEST_CASE("High contrast raises text one step from the token file, never twice", "[ui][theme][accessibility]")
 {
+    const auto shipped = ui::Theme::defaults();
+    auto high = shipped;
+    ui::Theme::applyHighContrast(high);
+    CHECK(high.highContrast);
+    CHECK_FALSE(shipped.highContrast);
+    CHECK(high.colours.textSecondary == shipped.colours.textPrimary);
+    CHECK(high.colours.textTertiary == shipped.colours.textSecondary);
+    CHECK(high.colours.textDisabled == shipped.colours.textTertiary);
+    CHECK(high.colours.lineSubtle.getAlpha() > shipped.colours.lineSubtle.getAlpha());
+    // The soft inks on hardware faces print in their full ink.
+    CHECK(high.hardware.coronaInkSoft == shipped.hardware.coronaInk);
+    CHECK(high.hardware.pedalFlareInkSoft == shipped.hardware.pedalFlareInk);
+    CHECK(high.hardware.displayDim == shipped.hardware.displayText);
+    CHECK(high.colours.accent == shipped.colours.accent); // the accent is the user's
+    // Applying it again (as every reload does) changes nothing: it holds values, not steps.
+    auto twice = high;
+    ui::Theme::applyHighContrast(twice);
+    CHECK(twice.colours.textTertiary == high.colours.textTertiary);
+}
+
+TEST_CASE("Turning High contrast on and off reloads the running theme's colours and inks",
+          "[ui][theme][accessibility]")
+{
     const juce::ScopedJuceInitialiser_GUI juceInit;
-    const auto shipped = ui::Theme::defaults().colours;
-    const auto folder =
-        juce::File::getSpecialLocation(juce::File::tempDirectory).getChildFile("northlight-theme-contrast");
-    folder.deleteRecursively();
-    REQUIRE(folder.createDirectory());
-    const auto appearance = folder.getChildFile(ui::Theme::preferencesOverrideName);
+    const auto shipped = ui::Theme::defaults();
+    const auto& theme = ui::Theme::dark();
+    ui::Theme::reloadColours({}, {}, true);
+    CHECK(theme.highContrast);
+    CHECK(theme.colours.textTertiary == shipped.colours.textSecondary);
+    CHECK(theme.hardware.sageInkSoft == shipped.hardware.sageInk);
+    ui::Theme::reloadColours({}, {}, false);
+    CHECK_FALSE(theme.highContrast);
+    CHECK(theme.colours.textTertiary == shipped.colours.textTertiary);
+    CHECK(theme.hardware.sageInkSoft == shipped.hardware.sageInkSoft);
+}
 
-    const auto tokenValue = [](const std::string& key)
-    {
-        for (const auto& [name, colour] : ui::Theme::highContrastTokens())
-            if (name == key)
-                return colour;
-        return juce::Colour();
-    };
-    CHECK(tokenValue("textTertiary") == shipped.textSecondary);
-    CHECK(tokenValue("textSecondary") == shipped.textPrimary);
-
-    // With High already applied to the running theme (as after an accent change
-    // rewrites the preferences file), the tokens stay one step up, not two.
-    REQUIRE(appearance.replaceWithText("{\"color\":{\"textSecondary\":\"#" +
-                                       shipped.textPrimary.toDisplayString(false) + "\"}}"));
-    ui::Theme::reloadColours({}, appearance);
-    REQUIRE(ui::Theme::dark().colours.textSecondary == shipped.textPrimary);
-    CHECK(tokenValue("textTertiary") == shipped.textSecondary);
-
-    appearance.deleteFile();
-    ui::Theme::reloadColours({}, appearance);
-    folder.deleteRecursively();
+TEST_CASE("Reduce motion turns every animation's duration to zero while on", "[ui][theme][accessibility]")
+{
+    const auto& theme = ui::Theme::dark();
+    const bool was = theme.motion.reduceMotion;
+    ui::Theme::setReduceMotion(true);
+    CHECK(theme.motion.ms(theme.motion.panelMs) == 0);
+    ui::Theme::setReduceMotion(false);
+    CHECK(theme.motion.ms(theme.motion.panelMs) == theme.motion.panelMs);
+    ui::Theme::setReduceMotion(was);
 }

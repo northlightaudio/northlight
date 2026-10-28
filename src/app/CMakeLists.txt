@@ -98,7 +98,9 @@ target_sources(northlight PRIVATE
     FirstRun.h
     FirstRun.cpp
     MainWindow.h
-    MainWindow.cpp)
+    MainWindow.cpp
+    SystemSettingsWatcher.h
+    SystemSettingsWatcher.cpp)
 
 target_compile_definitions(northlight PRIVATE
     JUCE_APPLICATION_NAME_STRING="$<TARGET_PROPERTY:northlight,JUCE_PRODUCT_NAME>")

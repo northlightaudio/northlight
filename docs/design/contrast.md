@@ -11,6 +11,9 @@ Generated from [tokens.json](tokens.json) (Machair Dusk v2) by `scripts/contrast
 | textSecondary | surface2 | 6.37 | Secondary text in controls | yes |
 | textSecondary | surface3 | 5.54 | Hovered secondary | yes |
 | textTertiary | surface0 | 4.72 | Hints, inactive tabs (13 px+ or non-essential) | 3:1 only |
+| textTertiary | surface1 | 4.31 | Hints in a card or a list row | 3:1 only |
+| textTertiary | surface2 | 3.76 | Units and hints inside a control | 3:1 only |
+| textTertiary | surface3 | 3.27 | Units and hints in a hovered control | 3:1 only |
 | textTertiary | canvas | 4.93 | Ruler seconds, empty-state hints | 3:1 only |
 | textTertiary | material.meterWell | 5.11 | A display's axis labels (micro) | 3:1 only |
 | textDisabled | surface1 | 2.09 | Disabled (exempt from the requirement) | n/a |
@@ -79,6 +82,37 @@ Generated from [tokens.json](tokens.json) (Machair Dusk v2) by `scripts/contrast
 | hardware.orbitCounter | hardware.orbitCounterWell | 15.69 | Orbit's tape counter | yes |
 | hardware.orbitKeyInk | hardware.orbitKey | 5.20 | A key's label on Orbit, unlit | yes |
 | hardware.orbitKeyInkLit | hardware.orbitKeyLit | 8.31 | A key's label on Orbit, lit | yes |
+
+## High contrast
+
+The `highContrast` variant applied over the tokens (Preferences > General > Contrast, or a Windows contrast theme). Every pair it changes; tertiary text must pass 4.5:1 here, disabled text stays exempt.
+
+| Foreground | Background | Ratio | Use | Pass |
+|---|---|---|---|---|
+| textSecondary | surface0 | 14.22 | Labels on panels | yes |
+| textSecondary | surface2 | 11.31 | Secondary text in controls | yes |
+| textSecondary | surface3 | 9.85 | Hovered secondary | yes |
+| textTertiary | surface0 | 8.00 | Hints, inactive tabs (13 px+ or non-essential) | yes |
+| textTertiary | surface1 | 7.29 | Hints in a card or a list row | yes |
+| textTertiary | surface2 | 6.37 | Units and hints inside a control | yes |
+| textTertiary | surface3 | 5.54 | Units and hints in a hovered control | yes |
+| textTertiary | canvas | 8.35 | Ruler seconds, empty-state hints | yes |
+| textTertiary | material.meterWell | 8.66 | A display's axis labels (micro) | yes |
+| textDisabled | surface1 | 4.31 | Disabled (exempt from the requirement) | n/a |
+| hardware.displayDim | hardware.displayCentre | 10.25 | A display's preset number | yes |
+| hardware.creamInkSoft | hardware.creamPanel | 9.18 | Small legends on the cream panel | yes |
+| hardware.sageInkSoft | hardware.sagePanel | 6.65 | Values and positions on the sage panel | yes |
+| hardware.patinaInkSoft | hardware.patinaPlate | 7.32 | Values and scales on Patina's stage plates | yes |
+| hardware.patinaPanelInkSoft | hardware.patinaPanel | 8.33 | Small print on Patina's panel | yes |
+| hardware.coronaInkSoft | hardware.coronaPanel | 8.11 | Values and scales on the amp's plate | yes |
+| hardware.pedalGravityInkSoft | hardware.pedalGravity | 7.42 | Values on Gravity | yes |
+| hardware.pedalFlareInkSoft | hardware.pedalFlare | 4.87 | Values on Flare | yes |
+| hardware.pedalCometInkSoft | hardware.pedalComet | 6.81 | Values on Comet | yes |
+| hardware.pedalTideInkSoft | hardware.pedalTide | 8.51 | Values on Tide | yes |
+| hardware.pedalPolarisInkSoft | hardware.pedalPolaris | 10.26 | Values on Polaris | yes |
+| hardware.coronaStripInkSoft | hardware.coronaStrip | 13.15 | Values on the utility strip | yes |
+| hardware.orbitPlateInkSoft | hardware.orbitPlate | 14.03 | The kind and model line on Orbit's nameplate | yes |
+| hardware.orbitPanelInkSoft | hardware.orbitPanelRim | 6.60 | Values and rows on Orbit's panel, in the rim light | yes |
 
 ## Track palette
 

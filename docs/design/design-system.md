@@ -238,7 +238,9 @@ Durations from `motion.*`; one easing (`cubic-bezier(0.2, 0, 0, 1)`, deceleratin
 | Meters, playhead, counters | 0 | Ballistics are in `motion.meterRiseMs`, `meterFallDbPerSec` and `peakHoldMs`, not eased |
 | Clip snap during drag | 0 | Snap is instantaneous; a guide line appears instead |
 
-Honour the OS reduce-motion setting: all durations become 0 except meter ballistics.
+Honour reduce-motion (Preferences > General > Reduce motion: System follows Windows'
+Show animations, re-read when Windows says it changed; On; Off): all durations
+become 0 except meter ballistics.
 
 ## 2.7 Components
 

@@ -572,8 +572,9 @@ blocked the message thread; now the longest stall is one plugin.
 
 - **Settings** are an XML properties file in `%APPDATA%\Northlight`. Design tokens can
   be overridden from a `tokens.json` beside it, which only the user edits; the accent
-  and contrast chosen in Preferences go in `appearance-tokens.json` beside it, applied
-  after it. A change to either applies at once: `Theme::reloadColours` loads the
+  chosen in Preferences goes in `appearance-tokens.json` beside it, applied after it,
+  and High contrast applies the token file's `highContrast` variant last
+  (`Theme::applyHighContrast`), so it never compounds with the accent. A change to either applies at once: `Theme::reloadColours` loads the
   colours again into the one theme every view holds (by reference), the look and feel
   sets its stock colours again, `NorthlightLookAndFeel::remapColours` updates the few
   components handed a token at construction (labels, placeholders), and every window
@@ -741,6 +742,16 @@ window closes. `NorthlightLookAndFeel` decides when focus rings show (a focus ch
 made with Tab or an arrow key, in any window, turns them on; a click turns them
 off) and draws them, outside a control or inside a region (`drawRegionFocusRing`,
 used by `FocusListBox` and the editors).
+
+High contrast and reduce-motion are each a System / on / off choice
+(`settings::followsOrChooses`). The main window resolves them in `applyPreferences`:
+contrast reloads the colours with or without the variant, and reduce-motion sets
+`Theme::Motion::reduceMotion`, which every animation reads as it starts. Windows'
+side comes from `Theme::systemHighContrast` and `systemReduceMotion`;
+`app/SystemSettingsWatcher` keeps a hidden window that receives
+`WM_SETTINGCHANGE` and applies the preferences again when either value changed. A
+view reads `Theme::highContrast` only for what colour cannot say (the clip light's
+rim, a flagged note's dashes).
 
 The specification for every screen is in [design/](design/README.md).
 

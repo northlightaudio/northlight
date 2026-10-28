@@ -10,6 +10,7 @@
 #include "app/FirstRun.h"
 #include "app/LoadDriver.h"
 #include "app/SessionNotices.h"
+#include "app/SystemSettingsWatcher.h"
 #include "app/WindowPlacement.h"
 #include "audio/AudioDeviceLayer.h"
 #include "core/Command.h"
@@ -249,11 +250,16 @@ public:
             shortcutsApplied_ = ui::Shortcuts::generation();
         }
         // Accent and contrast apply at once: the colours load again into the theme
-        // every view holds, and every window repaints.
-        const auto appearance = read.text(settings::accent) + "|" + read.text(settings::contrast);
+        // every view holds, and every window repaints. Contrast and reduce-motion
+        // may follow Windows, whose changes arrive through systemSettings_.
+        const bool highContrast = settings::followsOrChooses(
+            read.text(settings::contrast), "high", ui::Theme::systemHighContrast());
+        const auto appearance = read.text(settings::accent) + (highContrast ? "|high" : "|standard");
         if (!atLaunch && appearance != appearance_)
-            applyAppearance();
+            applyAppearance(highContrast);
         appearance_ = appearance;
+        ui::Theme::setReduceMotion(settings::followsOrChooses(
+            read.text(settings::reduceMotion), "on", ui::Theme::systemReduceMotion()));
         // Saving, importing and recording (screens/setup.md 8.2, General and Recording).
         session_.setKeepBackup(read.flag(settings::keepBackup));
         session_.setCopyImportedMedia(read.flag(settings::copyMedia));
@@ -367,11 +373,12 @@ public:
         return true;
     }
 
-    void applyAppearance()
+    void applyAppearance(bool highContrast)
     {
         const auto before = theme_.colours;
         ui::Theme::reloadColours(settings_.file().getSiblingFile(ui::Theme::userOverrideName),
-                                 settings_.file().getSiblingFile(ui::Theme::preferencesOverrideName));
+                                 settings_.file().getSiblingFile(ui::Theme::preferencesOverrideName),
+                                 highContrast);
         if (auto* lnf = dynamic_cast<ui::NorthlightLookAndFeel*>(&juce::LookAndFeel::getDefaultLookAndFeel()))
             lnf->refreshColours();
         auto& desktop = juce::Desktop::getInstance();
@@ -1992,7 +1999,8 @@ private:
     std::deque<double> frames_;
     bool lastDeviceOpen_ = false;
     std::string lastDeviceName_;
-    std::string appearance_;    // the accent and contrast the colours were last loaded with
+    std::string appearance_; // the accent and contrast the colours were last loaded with
+    SystemSettingsWatcher systemSettings_{[this] { applyPreferences(false); }};
     int shortcutsApplied_ = -1; // the ui::Shortcuts generation applyShortcuts last saw
     bool slideCached_ = false;  // the views are drawn from cached images during a panel slide
     juce::Component::SafePointer<juce::Component> hoverComponent_;
@@ -2279,6 +2287,13 @@ void MainWindow::closePreferences()
     preferencesWindow_.reset();
 }
 
+void MainWindow::setPreference(const std::string& key, const std::string& value)
+{
+    settings_.setValue(key, value);
+    if (auto* content = content_)
+        content->applyPreferences(false);
+}
+
 void MainWindow::showMixer()
 {
     if (auto* content = content_)
@@ -2556,10 +2571,14 @@ juce::StringArray MainWindow::capture(const juce::File& folder, float scale)
     {
         auto& view = preferencesWindow_->view();
         const auto shown = view.currentPage();
+        const auto size = view.getBounds();
         for (const auto& page : ui::PreferencesView::pageKeys())
         {
             view.showPage(page);
+            // Whole: rows below the fold are saved too.
+            view.setSize(size.getWidth(), std::max(size.getHeight(), view.fullHeight()));
             save(view, "preferences-" + page);
+            view.setBounds(size);
         }
         view.showPage(shown);
     }

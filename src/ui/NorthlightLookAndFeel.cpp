@@ -142,6 +142,7 @@ void NorthlightLookAndFeel::remapColours(juce::Component& root,
     const std::pair<juce::Colour, juce::Colour> changed[]{{before.accent, after.accent},
                                                           {before.textSecondary, after.textSecondary},
                                                           {before.textTertiary, after.textTertiary},
+                                                          {before.textDisabled, after.textDisabled},
                                                           {before.lineSubtle, after.lineSubtle},
                                                           {before.lineStrong, after.lineStrong}};
     const auto remap = [&](juce::Component& c, int id)
@@ -283,7 +284,7 @@ void NorthlightLookAndFeel::drawGlow(juce::Graphics& g,
                                      float radius,
                                      const Theme::Shadow& glow) const
 {
-    if (glow.empty() || theme_.motion.reduceMotion)
+    if (glow.empty() || theme_.motion.reduceMotion || theme_.highContrast) // both drop the glows
         return;
     const int pad = static_cast<int>(std::ceil(glow.blur)) + 2;
     const auto key = GlowKey{static_cast<int>(std::ceil(bounds.getWidth())),

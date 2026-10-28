@@ -103,6 +103,8 @@ public:
     void applyLayoutPreset(const juce::String& name);
     // Shows a panel by its key (mixer, editor, pianoRoll, diagnostics, browser, inspector).
     void showPanel(const juce::String& key);
+    // Stores a setting and applies it as Preferences would (--contrast, --reduce-motion).
+    void setPreference(const std::string& key, const std::string& value);
     // Opens a menu as a click would ("project", "add-track", "clip": the first
     // clip's), for checking how menus appear (--show-menu).
     void showMenu(const juce::String& key);

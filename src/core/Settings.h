@@ -43,7 +43,10 @@ inline constexpr Setting reopenLast{"general.reopenLast", Type::flag, "0"}; // t
 inline constexpr Setting theme{"general.theme", Type::choice, "dark"};
 inline constexpr Setting accent{"general.accent", Type::text, ""};
 inline constexpr Setting uiScale{"general.uiScale", Type::choice, "0"}; // percent; 0 follows the system
-inline constexpr Setting contrast{"general.contrast", Type::choice, "standard"};
+// "system" follows Windows (a contrast theme; Show animations), "standard"/"high" and
+// "on"/"off" choose. Neither changes the look until asked for (accessibility-performance.md).
+inline constexpr Setting contrast{"general.contrast", Type::choice, "system"};
+inline constexpr Setting reduceMotion{"general.reduceMotion", Type::choice, "system"};
 // Recording
 inline constexpr Setting recordingFormat{"recording.format", Type::choice, "float"}; // "float" or "24"
 inline constexpr Setting namePattern{"recording.namePattern", Type::text, "{track} {take}"};
@@ -76,8 +79,15 @@ inline const std::vector<const Setting*>& all()
         &contrast,      &recordingFormat, &namePattern,     &countIn,      &preRoll,        &metronomeLevel,
         &snap,          &snapGrid,        &ripple,          &fadeMs,       &followPlayhead, &pluginPaths,
         &scanOnLaunch,  &pluginsOnTop,    &crashReports,    &returnOnStop, &shortcuts,      &keepBackup,
-        &copyMedia,     &reopenLast};
+        &copyMedia,     &reopenLast,      &reduceMotion};
     return list;
+}
+
+// A choice that can follow Windows: "system" takes what Windows says, else it is
+// on when the value is `on`.
+inline bool followsOrChooses(std::string_view value, std::string_view on, bool system)
+{
+    return value == "system" ? system : value == on;
 }
 
 inline std::string flagText(bool on)
