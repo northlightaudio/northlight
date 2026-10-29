@@ -158,6 +158,9 @@ add_library(northlight_ui STATIC
     strip/PulsarEditor.cpp
     strip/NebulaEditor.h
     strip/NebulaEditor.cpp
+    strip/LumenFace.h
+    strip/LumenCard.h
+    strip/LumenCard.cpp
     strip/StarbitEditor.h
     strip/StarbitEditor.cpp
     strip/SamplerEditor.h

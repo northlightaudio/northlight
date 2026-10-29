@@ -24,6 +24,17 @@ Northlight has not had a release yet. The first release, 0.1.0, will include:
   where each key goes in the scale. Recording keeps what you played, so the
   effects can change afterwards; changing a setting while a key is held never
   leaves a note hanging.
+- **Lumen**, a modelled electric piano, joins the bundled instruments. Each note
+  is a hammer striking a tine in front of a magnetic pickup, so a harder strike
+  is brighter as well as louder, with the bell of the tine in the attack and the
+  bark of the pickup when it is played hard. Voice it as a technician would
+  (Bark, Symmetry, Hardness, Bell), age it, and play it through its stereo
+  tremolo, phaser and chorus; the mod wheel rides the tremolo. Seven presets. Its
+  face is the front of a 1970s suitcase piano: a window onto the tines, which
+  vibrate while it plays, a brushed preamp plate, a vibrato lever and two lamps the
+  pan moves between.
+  `--render-phrase` renders a fixed test phrase through any built-in instrument
+  to a WAV.
 
 - Northlight comes as an installer and as a portable zip. The installer installs
   for you alone without administrator rights (or for everyone), adds a Start menu

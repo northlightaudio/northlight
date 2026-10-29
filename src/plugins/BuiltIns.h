@@ -17,8 +17,8 @@
 // (plugins/Orbit.h), the stereo widener
 // (plugins/Widener.h), Corona the amp (plugins/Amp.h) and the guitar pedals (Gravity, Flare,
 // Comet, Tide, Polaris: plugins/Pedals.h) in files of their own; the instruments (Aurora,
-// Pulsar, Nebula, Starbit, Sampler) in theirs; and the MIDI effects (plugins/midi). JUCE-free,
-// real-time safe after prepare().
+// Pulsar, Nebula, Starbit, Lumen, Sampler) in theirs; and the MIDI effects (plugins/midi).
+// JUCE-free, real-time safe after prepare().
 
 namespace northlight::plugins
 {

@@ -102,6 +102,7 @@ inline std::vector<std::string> builtInTypes()
             "northlight.pulsar",
             "northlight.nebula",
             "northlight.starbit",
+            "northlight.lumen",
             "northlight.sampler",
             // The MIDI faces.
             "northlight.arpeggiator",

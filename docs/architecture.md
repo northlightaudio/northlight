@@ -37,7 +37,7 @@ src/engine/rt   Real-time primitives: the guard and allocation hook, SPSC queue,
                 snapshot publisher, callback statistics, denormal flushing.
 src/plugins     The built-in processors behind the engine's insert interface:
                 utilities and effects, the channel strip modules and presets, the
-                instruments (Aurora, Pulsar, Nebula, Starbit, Sampler) and the
+                instruments (Aurora, Pulsar, Nebula, Starbit, Lumen, Sampler) and the
                 MIDI effects (plugins/midi). No JUCE.
 src/hosting     VST3 hosting through JUCE, CLAP hosting against its C ABI, the
                 plugin registry and blocklist, the out-of-process scanner.
@@ -246,6 +246,30 @@ MIDI FX are compiled before the channel's lanes). The Editor panel shows a selec
 its instrument (the five MIDI faces in `ui/strip/MidiFaces.cpp`, the rest a
 settings-rows face, design-system.md), and the shared slot menu
 (`InsertMenuRequest::midiEffect`) acts on the MIDI chain.
+
+The built-in instruments share `plugins/SynthVoices.h`: envelopes, voice
+allocation and the player's expression (bend, mod wheel, pressure, sustain pedal).
+**Lumen**, the electric piano (`plugins/Lumen`), is modelled rather than sampled.
+A voice is four modes of a tine, each a complex one-pole resonator (a rotating
+phasor with its decay), exact in pitch and decay at any rate: the long
+fundamental and three inharmonic beam modes that make the bell. The hammer is a
+Gaussian force pulse whose length follows Hertz's law for a stiffening felt (a
+slower strike stays on longer, so it is darker); its spectrum falls without dips,
+which keeps brightness rising with velocity. The tine's tip moves across a
+pickup whose flux is a bell-shaped (Lorentzian) curve; the voltage is the flux's
+rate of change, taken as the difference of its mean over each sample step
+(first-order antiderivative anti-aliasing, the antiderivative an arctangent, in
+double precision because the difference of two close means would lose a float's
+digits). Bark sets the curve's width against the tine's swing, Symmetry the
+tine's offset from its centre. Per-note values (the ring time, the contact time, the tine's swing) are tables
+measured from jRhodes3d, read between keys on a log scale, and each strike's
+level is evened out so only the timbre follows the register
+(`lumen::noteModel`; the calibration record is in docs/plans/electric-piano.md). After the voices a preamp (shelves and a biased valve
+curve with ADAA), then the modulation parts in `plugins/dsp/Modulation.h`
+(equal-power auto-pan or amplitude tremolo, a four-stage phaser, a short
+chorus), written for other effects to reuse. `plugins/TestPhrase` renders a
+fixed phrase through any built-in instrument for listening and measurement
+(`--render-phrase`, `scripts/analysis/ep-measure.py`).
 
 ### Tempo
 

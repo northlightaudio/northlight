@@ -283,9 +283,11 @@ a plugin's own window, and adds a lane for it if it has none.
 ## Instruments and MIDI
 
 A MIDI track plays an instrument channel, so several MIDI tracks can play one
-instrument. Northlight comes with five instruments: **Aurora**, a polysynth; **Pulsar**,
-a drum synth; **Nebula**, a pad synth; **Starbit**, a chiptune synth; and the
-**Sampler**. VST3 and CLAP instruments work the same way. The **Instruments** panel
+instrument. Northlight comes with six instruments: **Aurora**, a polysynth; **Pulsar**,
+a drum synth; **Nebula**, a pad synth; **Starbit**, a chiptune synth; **Lumen**, an
+electric piano; and the **Sampler**. Lumen is modelled, not sampled: drag across its
+tine to bring it closer to the pickup (more bark when you play hard), up and down to
+move it off the pickup's centre, and use the mod wheel to ride its tremolo. VST3 and CLAP instruments work the same way. The **Instruments** panel
 lists every instrument, who plays it and its outputs; an extra output of a
 multi-output instrument becomes a track of its own in one click. A MIDI track can also
 play an external instrument through a MIDI output.

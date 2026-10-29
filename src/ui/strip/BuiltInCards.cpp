@@ -12,6 +12,7 @@
 #include "plugins/BuiltIns.h"
 #include "plugins/Exciter.h"
 #include "plugins/Glue.h"
+#include "plugins/Lumen.h"
 #include "plugins/Nebula.h"
 #include "plugins/Orbit.h"
 #include "plugins/Patina.h"
@@ -26,6 +27,7 @@
 #include "ui/strip/CardParts.h"
 #include "ui/strip/EqGraph.h"
 #include "ui/strip/Graphs.h"
+#include "ui/strip/LumenCard.h"
 #include "ui/strip/NebulaEditor.h"
 #include "ui/strip/PulsarEditor.h"
 #include "ui/strip/SamplerEditor.h"
@@ -787,6 +789,8 @@ createBuiltInCard(const Theme& theme, CardHost& host, core::Id channelId, const 
         return createNebulaEditor(theme, host, channelId, insert);
     if (insert.type == plugins::starbit::type)
         return createStarbitEditor(theme, host, channelId, insert);
+    if (insert.type == plugins::lumen::type)
+        return createLumenCard(theme, host, channelId, insert);
     if (insert.type == plugins::sampler::type)
         return createSamplerEditor(theme, host, channelId, insert);
     if (auto face = createMidiFaceCard(theme, host, channelId, insert))

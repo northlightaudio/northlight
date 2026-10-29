@@ -16,6 +16,7 @@
 #include "plugins/FxTracks.h"
 #include "plugins/Sampler.h"
 #include "plugins/StripPresets.h"
+#include "plugins/TestPhrase.h"
 #include "ui/ArrangeView.h"
 #include "ui/PianoRoll.h"
 #include "ui/strip/ModuleCard.h"
@@ -72,6 +73,45 @@ void timeLoad(LaunchRun& r, Args& a)
     std::fflush(stdout);
     quitApp();
     r.stopped = true;
+}
+
+// Renders the fixed test phrase through a built-in instrument to a 24-bit WAV
+// at 48 kHz, with its cue sheet beside it (<file>.cues.txt), then quits.
+void renderPhrase(LaunchRun& r, Args& a)
+{
+    const auto type = a.text().unquoted().toStdString();
+    const auto file = a.file();
+    const auto cues = plugins::phrase::standardPhrase();
+    const auto rendered = plugins::phrase::render(type, cues, 48000.0);
+    const auto finish = [&](const juce::String& message)
+    {
+        std::printf("--render-phrase: %s\n", message.toRawUTF8());
+        std::fflush(stdout);
+        quitApp();
+        r.stopped = true;
+    };
+    if (!rendered)
+        return finish(juce::String(type) + " is not a built-in instrument");
+    file.deleteFile(); // the stream would append to an old file
+    std::unique_ptr<juce::OutputStream> stream = file.createOutputStream();
+    if (stream == nullptr)
+        return finish("could not write " + file.getFullPathName());
+    const auto options = juce::AudioFormatWriterOptions{}
+                             .withSampleRate(rendered->sampleRate)
+                             .withNumChannels(2)
+                             .withBitsPerSample(24)
+                             .withSampleFormat(juce::AudioFormatWriterOptions::SampleFormat::integral);
+    auto writer = juce::WavAudioFormat().createWriterFor(stream, options);
+    if (writer == nullptr)
+        return finish("could not write " + file.getFullPathName());
+    const float* channels[] = {rendered->left.data(), rendered->right.data()};
+    if (!writer->writeFromFloatArrays(channels, 2, static_cast<int>(rendered->left.size())))
+        return finish("could not write " + file.getFullPathName());
+    writer.reset();
+    const auto sheet = file.withFileExtension("cues.txt");
+    if (!sheet.replaceWithText(plugins::phrase::cueSheet(cues)))
+        return finish("could not write " + sheet.getFullPathName());
+    finish("wrote " + file.getFullPathName() + " and " + sheet.getFileName());
 }
 
 void record(LaunchRun& r, Args& a)
@@ -660,6 +700,12 @@ const std::vector<LaunchFlag<LaunchRun>>& LaunchRun::flags()
          1,
          "open the file, print how long each stage of the load took, quit",
          timeLoad},
+        {"--render-phrase",
+         "<type> <file.wav>",
+         2,
+         "render the fixed test phrase through a built-in instrument (northlight.lumen) to a WAV, with "
+         "its cue sheet beside it, and quit",
+         renderPhrase},
         {"--show-loading",
          "<file> [stage]",
          1,

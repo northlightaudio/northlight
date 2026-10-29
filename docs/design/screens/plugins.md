@@ -1415,6 +1415,59 @@ top-left, ellipsised short of the chips if it must be.
   lane on a MIDI effect's parameter), built faces for the Arpeggiator and Chord
   Pads, hosted MIDI effects, and Render MIDI FX to clip.
 
+## 7.4i Lumen
+
+The electric piano bundled with Northlight, modelled on a tine piano (no samples;
+docs/plans/electric-piano.md). Each note is a hammer striking a tine in front of a
+magnetic pickup: Hardness (the felt; harder is shorter and brighter) and
+Velocity (how much the strike's speed follows the key); Bell (the tine's
+inharmonic overtones in the attack), Decay (all ring times, 25-400%), Damper (how
+fast a released note stops), Age (each note's fixed detune, up to 5 cents) and
+Tune (A3); Bark (how close the tines sit to the pickups: closer growls when hit
+hard) and Symmetry (the tines' offset from the pickups' centre: centred adds the
+second harmonic, offset the fundamental); Noise (the action's knocks and the
+dampers' thump); Voices (8-64; the quietest released note fades out over 5 ms
+past the limit). After the voices: the preamp's Bass and Treble shelves and
+Drive; the TREMOLO (Pan, the suitcase's stereo auto-pan, or Amplitude; Rate or a
+synced note value; Depth; Shape, sine to square); a four-stage PHASER (Rate,
+Depth, Feedback, Mix); a CHORUS (Rate, Depth, Mix); Level. The mod wheel adds to
+the tremolo's depth; pressure gives the shared vibrato. Presets: Lumen, Ballad,
+Bark, Bell Keys, Phase Funk, Suitcase Pan, Lo-fi Keys.
+
+A hardware face (design-system.md "Hardware face", "Rendered parts"): the front of a
+1970s suitcase piano, rendered for Northlight (assets/lumen, scripts/render/lumen; no
+maker's marks), drawn at 1160 x 600 and scaled to fit, compact below two thirds of its
+size. Every word is printed (`font.legend`), never rendered.
+
+- The case, black tolex above a chrome trim:
+  - The harp window (left): a chromed bezel and glass, and in it four tine assemblies
+    on dark felt, each a brass tone bar over a steel tine with its tuning spring, its
+    tip at a pickup's pole (a coil of copper on a black bobbin), lit warm from inside.
+    While Lumen sounds the tines vibrate, slowed to three swings a second and as wide as
+    the output is loud: nine rendered frames, the nearest two blended, still at rest,
+    when switched off and with reduce motion on.
+  - The nameplate (right): black anodised, LUMEN tracked wide in `lumenNameplateInk`,
+    "ELECTRIC PIANO · SUITCASE SEVENTY-THREE" and "NORTHLIGHT · MODEL LM-73" in
+    `lumenNameplateInkSoft` (dropped in compact).
+  - Under it, the service trims TUNE, AGE and VOICES (small skirted knobs, their names
+    in `lumenCaseInk`, values in `lumenCaseInkSoft`) and the red pilot lamp, POWER,
+    lit while the insert is on.
+- The preamp plate, brushed aluminium, in six sections, each a caption in
+  `lumenPlateInk` between rules (`lumenRule`): HARP (BARK, SYMMETRY, BELL; HARDNESS,
+  DECAY, DAMPER), TOUCH (VELOCITY; NOISE), PREAMP (BASS, TREBLE; DRIVE, VOLUME),
+  VIBRATO, PHASE (RATE, DEPTH; FEEDBACK, MIX) and CHORUS (RATE, DEPTH; MIX). Each knob is
+  a bakelite skirt with a spun aluminium cap and a dark pointer line (the rendered
+  pointer turns; `Knob::Style::rendered`), a printed scale of eleven ticks, its name
+  under it in `lumenPlateInk` and its value under that in `lumenPlateInkSoft`.
+- VIBRATO: a three-way bat-handle lever (the tape echo's render) printed PAN (up), OFF
+  and AMP (down); RATE (dimmed, showing the note value, while SYNC is set), SYNC (a
+  stepped knob: Free, then the note values), DEPTH and SHAPE; and two amber jewel lamps,
+  L and R, lit as each side's level: the light moves between them with the pan, pulses
+  in both with the amplitude tremolo, dark when off. Each lamp is a patch of the lit
+  render, as bright as its side.
+- Keyboard and accessibility are the controls' own: every knob and the lever take
+  focus, keys and their tooltips; the face has no control of its own.
+
 ## 7.5 States and errors
 
 - Plugin missing on this machine: the chain card shows the name (as it was when

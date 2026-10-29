@@ -8,6 +8,7 @@
 #include "plugins/EffectPresetLists.h"
 #include "plugins/Exciter.h"
 #include "plugins/Glue.h"
+#include "plugins/Lumen.h"
 #include "plugins/Nebula.h"
 #include "plugins/Orbit.h"
 #include "plugins/ParamHelpers.h"
@@ -906,6 +907,11 @@ std::vector<EffectPreset> nebulaPresets()
 std::vector<EffectPreset> starbitPresets()
 {
     return starbit::presets();
+}
+
+std::vector<EffectPreset> lumenPresets()
+{
+    return lumen::presets();
 }
 
 } // namespace presetlists
