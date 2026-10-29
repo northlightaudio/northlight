@@ -283,14 +283,29 @@ a plugin's own window, and adds a lane for it if it has none.
 ## Instruments and MIDI
 
 A MIDI track plays an instrument channel, so several MIDI tracks can play one
-instrument. Northlight comes with six instruments: **Aurora**, a polysynth; **Pulsar**,
-a drum synth; **Nebula**, a pad synth; **Starbit**, a chiptune synth; **Lumen**, an
-electric piano; and the **Sampler**. Lumen is modelled, not sampled: drag across its
-tine to bring it closer to the pickup (more bark when you play hard), up and down to
-move it off the pickup's centre, and use the mod wheel to ride its tremolo. VST3 and CLAP instruments work the same way. The **Instruments** panel
-lists every instrument, who plays it and its outputs; an extra output of a
-multi-output instrument becomes a track of its own in one click. A MIDI track can also
-play an external instrument through a MIDI output.
+instrument. Northlight comes with seven instruments: **Aurora**, a polysynth;
+**Pulsar**, a drum synth; **Nebula**, a pad synth; **Starbit**, a chiptune synth;
+**Lumen**, an electric piano; **Cirrus**, an FM synth; and the **Sampler**. Lumen is
+modelled, not sampled: drag across its tine to bring it closer to the pickup (more
+bark when you play hard), up and down to move it off the pickup's centre, and use
+the mod wheel to ride its tremolo. VST3 and CLAP instruments work the same way. The
+**Instruments** panel lists every instrument, who plays it and its outputs; an extra
+output of a multi-output instrument becomes a track of its own in one click. A MIDI
+track can also play an external instrument through a MIDI output.
+
+**Cirrus** makes its sound from four operators: each is a sine (or one of seven
+other waves) at a ratio of the note, or at a fixed frequency. An operator either
+is heard or bends the phase of another, which adds overtones: the louder the
+modulator, the brighter the note. The **algorithm** decides which does which;
+choose one of the eight with the numbered buttons. Every operator is a row of the
+table, edited where its values show; click an operator (its row, or its square in
+the diagram) to see its sidebands or edit its envelope in the display. Velocity
+on a modulator makes harder playing brighter, and key scale keeps high notes from
+turning harsh. **Tone** turns every modulator up or down at once and **Time**
+stretches or shortens every envelope, so a preset can be made brighter or longer
+without editing four operators. Drag the loop on operator 4 for feedback, which
+turns its sine towards a saw. **High** quality runs the voices at twice the rate,
+so high, bright notes stay clean; **Eco** halves the work.
 
 The **piano roll** edits notes and velocities, with controller lanes for pitch bend,
 the mod wheel and any control change; the lane menu stacks up to four lanes and a

@@ -35,6 +35,16 @@ Northlight has not had a release yet. The first release, 0.1.0, will include:
   pan moves between.
   `--render-phrase` renders a fixed test phrase through any built-in instrument
   to a WAV.
+- **Cirrus**, an FM synth: four operators in eight algorithms, each a ratio of the
+  note or a fixed frequency with one of eight waves, its own envelope, velocity
+  and key scaling, and feedback on the fourth. Tone brightens or softens every
+  modulator at once and Time lengthens or shortens every envelope; there are a
+  pitch bend at the start of each note, an LFO (synced to the tempo if you like),
+  Mono with glide, and High quality, which keeps high, bright notes clean. Its
+  face draws the routing you choose and shows what FM does to the note playing:
+  the carrier and its sidebands, as loud as the selected modulator makes them.
+  All four operators sit in one table, every value editable where it shows.
+  Ten presets, from electric pianos and bells to basses, brass and organ.
 
 - Northlight comes as an installer and as a portable zip. The installer installs
   for you alone without administrator rights (or for everyone), adds a Start menu
@@ -218,9 +228,9 @@ Northlight has not had a release yet. The first release, 0.1.0, will include:
 
 - The Limiter insert's header shows its gain reduction while it limits, as the
   channel strip's limiter does.
-- Aurora, Nebula and Starbit's preset bars list your own presets too: save the
-  sound as it is, delete one of yours or show the presets folder, as for the
-  effects. A preset, on an effect or an instrument, is one undo step.
+- Aurora, Nebula, Starbit and Cirrus's preset bars list your own presets too:
+  save the sound as it is, delete one of yours or show the presets folder, as for
+  the effects. A preset, on an effect or an instrument, is one undo step.
 - Every bus and the master have a row in the arrange view, so they can be
   automated like tracks: the master's volume and its effects' parameters, a bus's
   volume, pan and effects. The master fader in the mixer follows its lane and can
@@ -360,8 +370,8 @@ Northlight has not had a release yet. The first release, 0.1.0, will include:
   editable while its lanes are open, and a point at the very start of the song can
   be edited.
 - MIDI and instruments: a piano roll with controller lanes, Standard MIDI File import
-  and export, external MIDI output, and five bundled instruments (Aurora, Pulsar,
-  Nebula, Starbit and the Sampler).
+  and export, external MIDI output, and seven bundled instruments (Aurora,
+  Pulsar, Nebula, Starbit, Lumen, Cirrus and the Sampler).
 - A tempo track, clip time-stretch and transposition, and vocal pitch editing.
 - Clip editing, markers and regions, folder tracks and track freezing.
 - Export to WAV, AIFF, FLAC and Ogg Vorbis with loudness normalisation and dither.

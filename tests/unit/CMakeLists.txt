@@ -62,6 +62,7 @@ add_executable(northlight_unit_tests
     plugins/MidiTimeEffectTests.cpp
     plugins/ChordTests.cpp
     plugins/LumenTests.cpp
+    plugins/CirrusTests.cpp
     engine/LoudnessTests.cpp
     engine/ExportTests.cpp
     engine/WriterTests.cpp

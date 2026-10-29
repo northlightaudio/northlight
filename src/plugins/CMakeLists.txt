@@ -28,6 +28,10 @@ add_library(northlight_plugins STATIC
     Lumen.cpp
     TestPhrase.h
     TestPhrase.cpp
+    Cirrus.h
+    Cirrus.cpp
+    fm/Fm.h
+    fm/Fm.cpp
     SampleLoader.h
     SampleLoader.h
     Sampler.h

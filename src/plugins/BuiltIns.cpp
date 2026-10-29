@@ -5,6 +5,7 @@
 #include "plugins/Aurora.h"
 #include "plugins/Bloom.h"
 #include "plugins/ChannelStrip.h"
+#include "plugins/Cirrus.h"
 #include "plugins/Classic.h"
 #include "plugins/EffectPresetLists.h"
 #include "plugins/Exciter.h"
@@ -164,6 +165,7 @@ const std::vector<BuiltInType>& builtInTypes()
         {nebula::type, "Nebula", instrument, plain<nebula::create>, pl::nebulaPresets, "Airy pad synth"},
         {starbit::type, "Starbit", instrument, plain<starbit::create>, pl::starbitPresets, "Chiptune synth"},
         {lumen::type, "Lumen", instrument, plain<lumen::create>, pl::lumenPresets, "Modelled electric piano"},
+        {cirrus::type, "Cirrus", instrument, plain<cirrus::create>, pl::cirrusPresets, "FM synth"},
         {sampler::type, "Sampler", instrument, sampled, nullptr, "One sample across the keys"},
         {arpeggiator::type,
          "Arpeggiator",

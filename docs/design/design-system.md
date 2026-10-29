@@ -457,6 +457,60 @@ body. Click, Enter or Space toggles it as one undo step; focus draws the ring
 round the light; the hit area is the circle. It may react to the sound (Vesper's
 glow follows the voice) but repaints only itself.
 
+### Routing diagram
+
+For showing which sources feed which (Cirrus's algorithms, screens/plugins.md
+7.4j). The sources are nodes and the connections are lines, laid out so the
+signal runs down the well to an output line at its foot.
+
+- **Nodes**: 24 × 20 px squares, radius `sm`, filled in the source's hue, its
+  number centred in `font.mono` semibold `textOnColour`. A source that is heard
+  sits on the bottom row, over a short line down to a 1.5 px `lineStrong` output
+  line across the well. A source that feeds another sits above it, and sources in
+  a row share it evenly.
+- **Lines**: 1.5 px, from the bottom of the feeding node to the top of the one it
+  feeds, in the feeder's hue at 55%. Two feeds into one node meet it side by side.
+  A line never crosses a node: it bends round one at a right angle with a 4 px
+  radius.
+- **A loop** (a source into itself): a 1.5 px arc from the node's right side back
+  to its top, in its hue. It is thicker (up to 3 px) and brighter with its amount,
+  and a dotted outline at 0.
+- **Live**: a node's halo (its hue at up to 45%, 6 px round it) and its outgoing
+  lines' alpha follow the source's live level. With reduce motion on they follow
+  it too: that is a reading, not an animation.
+- **States**:
+  - Hover: a node gets a 1 px `textPrimary` outline at 30%.
+  - Selected: a 1.5 px `textPrimary` outline 2 px out.
+  - Focus: the focus ring round the selected node; Left and Right move it.
+  - Muted (level 0): the node and its lines at 40%.
+  - A dragged loop shows its value in a tooltip.
+
+### Parameter table
+
+For several parallel units with the same settings that read best side by side
+(Cirrus's operators): a row per unit, a column per setting, every value editable
+where it is shown.
+
+- **Header**: column names in `captionCaps` `textTertiary` on an 18 px row.
+- **Rows**: 26 px, a 1 px `lineSubtle` rule between them. The unit's identity
+  first (its number on a 20 px square in its hue, `font.mono` semibold
+  `textOnColour`). The selected row, when the table selects, is filled
+  `selectionFill`.
+- **A cell** shows a value in `value` (mono) `textPrimary`, secondary values in
+  `textSecondary`; it is 22 px tall with 4 px of inset.
+  - Hover: `surface2` at 50% behind it, radius `sm`.
+  - Drag up or down to change it: 200 px for the whole range (on a log scale
+    when the parameter is), one step per 8 px for a stepped one; Shift for fine.
+    Each drag is one undo step.
+  - The wheel and Up and Down (while focused) step it; double-click resets it.
+  - Focused: the focus ring round the cell. Disabled: `textDisabled`, no hover.
+  - Tooltip: the parameter's name and value.
+- **A bar cell** (a level): a 6 px `surface2` track, radius `pill`, filled in the
+  unit's hue (at 40% for the set value, solid for a live one over it), its value
+  at its right. Click or drag across it to set it.
+- **A menu cell** (a choice of shapes): its value as text after a small drawing of
+  it; a click opens the menu, each item drawn.
+
 ### Hardware face
 
 For an effect whose character is a piece of studio equipment (Patina's rack

@@ -144,7 +144,8 @@ TEST_CASE("Pitch bend moves each melodic synth's pitch by up to two semitones",
           "[plugins][synth][expression]")
 {
     // A4 (440 Hz, a period of ~109 samples); bent fully up, B4 (~97 samples).
-    for (const std::string type : {"northlight.aurora", "northlight.nebula", "northlight.starbit"})
+    for (const std::string type :
+         {"northlight.aurora", "northlight.nebula", "northlight.starbit", "northlight.cirrus"})
     {
         INFO(type);
         const auto play = [&](int bendValue)
@@ -175,8 +176,11 @@ TEST_CASE("Pitch bend moves each melodic synth's pitch by up to two semitones",
 TEST_CASE("A centred bend and a resting mod wheel change nothing; moving them changes the sound",
           "[plugins][synth][expression]")
 {
-    for (const std::string type :
-         {"northlight.aurora", "northlight.nebula", "northlight.starbit", "northlight.pulsar"})
+    for (const std::string type : {"northlight.aurora",
+                                   "northlight.nebula",
+                                   "northlight.starbit",
+                                   "northlight.cirrus",
+                                   "northlight.pulsar"})
     {
         INFO(type);
         const auto play = [&](int bendValue, int mod)

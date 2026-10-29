@@ -17,8 +17,8 @@
 // (plugins/Orbit.h), the stereo widener
 // (plugins/Widener.h), Corona the amp (plugins/Amp.h) and the guitar pedals (Gravity, Flare,
 // Comet, Tide, Polaris: plugins/Pedals.h) in files of their own; the instruments (Aurora,
-// Pulsar, Nebula, Starbit, Lumen, Sampler) in theirs; and the MIDI effects (plugins/midi).
-// JUCE-free, real-time safe after prepare().
+// Pulsar, Nebula, Starbit, Lumen, Cirrus, Sampler) in theirs; and the MIDI effects
+// (plugins/midi). JUCE-free, real-time safe after prepare().
 
 namespace northlight::plugins
 {
@@ -50,7 +50,7 @@ struct BuiltInType
     BuiltInKind kind = BuiltInKind::effect;
     std::unique_ptr<engine::InsertProcessor> (*create)(const sampler::Loader&) = nullptr;
     // The factory presets (null for none): an effect's, the first its
-    // defaults, and Aurora's, Nebula's and Starbit's.
+    // defaults, and Aurora's, Nebula's, Starbit's and Cirrus's.
     std::vector<EffectPreset> (*presets)() = nullptr;
     // What it is, in one short line for the browser and the effects menu
     // ("Clean three-band EQ with a high-pass").

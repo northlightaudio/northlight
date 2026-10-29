@@ -5,6 +5,7 @@
 #include "plugins/Aurora.h"
 #include "plugins/Bloom.h"
 #include "plugins/BuiltIns.h"
+#include "plugins/Cirrus.h"
 #include "plugins/EffectPresetLists.h"
 #include "plugins/Exciter.h"
 #include "plugins/Glue.h"
@@ -912,6 +913,11 @@ std::vector<EffectPreset> starbitPresets()
 std::vector<EffectPreset> lumenPresets()
 {
     return lumen::presets();
+}
+
+std::vector<EffectPreset> cirrusPresets()
+{
+    return cirrus::presets();
 }
 
 } // namespace presetlists

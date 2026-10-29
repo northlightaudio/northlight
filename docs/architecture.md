@@ -37,8 +37,8 @@ src/engine/rt   Real-time primitives: the guard and allocation hook, SPSC queue,
                 snapshot publisher, callback statistics, denormal flushing.
 src/plugins     The built-in processors behind the engine's insert interface:
                 utilities and effects, the channel strip modules and presets, the
-                instruments (Aurora, Pulsar, Nebula, Starbit, Lumen, Sampler) and the
-                MIDI effects (plugins/midi). No JUCE.
+                instruments (Aurora, Pulsar, Nebula, Starbit, Lumen, Cirrus, Sampler)
+                and the MIDI effects (plugins/midi). No JUCE.
 src/hosting     VST3 hosting through JUCE, CLAP hosting against its C ABI, the
                 plugin registry and blocklist, the out-of-process scanner.
 src/audio       The device layer (ASIO, Windows Audio, MIDI devices), the audio
@@ -550,6 +550,18 @@ know nothing format-specific.
   without the audio thread ever owning or freeing one. A user's response file is
   the insert's state (the Sampler's encoding of a path), decoded by the Sampler's
   loader.
+- **Cirrus, the FM synth** (`plugins/Cirrus`, [plans/cirrus.md](plans/cirrus.md)) is four
+  operators of phase modulation over the tables and the algorithm table in
+  `plugins/fm/Fm` (eight waves of 2048 points built at static initialisation,
+  read by a 32-bit phase with linear interpolation; only higher-numbered operators
+  modulate lower ones, so a voice runs them 4 down to 1 in one pass). Every 16
+  samples a control step moves the LFO, the expression, glide and the pitch
+  envelope and sets each operator's level, stepped across the interval; a
+  modulator whose sidebands would pass 0.45 of the running rate is faded
+  (Carson's rule). On High the voices run at twice the rate and one
+  `Oversampler` a channel brings the sum down. Its face reads `cirrus::Activity`,
+  as Pulsar's reads its own: the newest voice's operator levels and modulation
+  depth, atomics written once a control step while an editor watches.
 - **VST3** is hosted through JUCE. **CLAP** is hosted directly against its C ABI,
   following its thread rules, with parameter events queued into the next block.
   Edits a plugin makes itself (its editor, its output events) reach the message

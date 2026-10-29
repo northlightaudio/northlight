@@ -4,6 +4,7 @@
 #include "plugins/Bloom.h"
 #include "plugins/BuiltIns.h"
 #include "plugins/ChannelStrip.h"
+#include "plugins/Cirrus.h"
 #include "plugins/Exciter.h"
 #include "plugins/Glue.h"
 #include "plugins/Lumen.h"
@@ -454,6 +455,7 @@ TEST_CASE("Every built-in has one parameter per entry of its enum", "[plugins][p
         {p::nebula::type, p::nebula::count},
         {p::starbit::type, p::starbit::count},
         {p::lumen::type, p::lumen::count},
+        {p::cirrus::type, p::cirrus::count},
         {p::sampler::type, p::sampler::count},
         {s::types::gate, s::gate::count},
         {s::types::eq, s::eq::count},

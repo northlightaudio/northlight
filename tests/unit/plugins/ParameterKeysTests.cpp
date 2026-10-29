@@ -89,6 +89,17 @@ const std::map<std::string, std::string> goldenKeys{
      "hardness velocity noise bell decay damper age bark symmetry bass treble drive tremolo "
      "tremolo-rate tremolo-sync tremolo-depth tremolo-shape phaser-rate phaser-depth "
      "phaser-feedback phaser-mix chorus-rate chorus-depth chorus-mix voices tune level"},
+    {"northlight.cirrus",
+     "op-1-ratio op-1-fine op-1-detune op-1-fixed op-1-frequency op-1-wave op-1-level "
+     "op-1-attack op-1-decay op-1-sustain op-1-release op-1-velocity op-1-key-scale op-2-ratio "
+     "op-2-fine op-2-detune op-2-fixed op-2-frequency op-2-wave op-2-level op-2-attack "
+     "op-2-decay op-2-sustain op-2-release op-2-velocity op-2-key-scale op-3-ratio op-3-fine "
+     "op-3-detune op-3-fixed op-3-frequency op-3-wave op-3-level op-3-attack op-3-decay "
+     "op-3-sustain op-3-release op-3-velocity op-3-key-scale op-4-ratio op-4-fine op-4-detune "
+     "op-4-fixed op-4-frequency op-4-wave op-4-level op-4-attack op-4-decay op-4-sustain "
+     "op-4-release op-4-velocity op-4-key-scale algorithm feedback voice-mode glide "
+     "pitch-envelope pitch-time lfo-shape lfo-rate lfo-sync lfo-pitch lfo-tone tone time "
+     "high-cut width quality level"},
     {"northlight.sampler",
      "root key-low key-high tune fine velocity attack decay sustain release start end loop "
      "loop-start loop-end loop-fade one-shot cutoff resonance filter-env voices glide level"},

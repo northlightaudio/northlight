@@ -72,6 +72,7 @@ add_executable(northlight_juce_tests
     ExciterCardTests.cpp
     BloomCardTests.cpp
     MidiFaceTests.cpp
+    CirrusCardTests.cpp
     CardSnapshotTests.cpp
     FeedbackHistoryTests.cpp
     ParamBinderTests.cpp
