@@ -85,6 +85,10 @@ const std::map<std::string, std::string> goldenKeys{
      "wave-step-15 wave-step-16 wave-step-17 wave-step-18 wave-step-19 wave-step-20 wave-step-21 "
      "wave-step-22 wave-step-23 wave-step-24 wave-step-25 wave-step-26 wave-step-27 wave-step-28 "
      "wave-step-29 wave-step-30 wave-step-31 wave-step-32 arp-sync"},
+    {"northlight.lumen",
+     "hardness velocity noise bell decay damper age bark symmetry bass treble drive tremolo "
+     "tremolo-rate tremolo-sync tremolo-depth tremolo-shape phaser-rate phaser-depth "
+     "phaser-feedback phaser-mix chorus-rate chorus-depth chorus-mix voices tune level"},
     {"northlight.sampler",
      "root key-low key-high tune fine velocity attack decay sustain release start end loop "
      "loop-start loop-end loop-fade one-shot cutoff resonance filter-env voices glide level"},

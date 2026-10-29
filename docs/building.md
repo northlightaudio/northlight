@@ -246,6 +246,25 @@ with what each does is the table in `src/app/LaunchRun.cpp`; `Northlight.exe --h
 prints it. Work a flag leaves for later (a capture, a save, a pointer once the window
 has settled) goes through one schedule that is dropped as the app shuts down.
 
+### Listening to an instrument
+
+`--render-phrase <type> <file.wav>` renders a fixed phrase through a built-in
+instrument (single notes up the keyboard at three velocities, chords, a repeated
+note, a run under the pedal) to a 24-bit WAV at 48 kHz, writes its cue sheet beside
+it (`<file>.cues.txt`) and quits. Use the Release build: the phrase renders offline,
+but you will want to listen to it. `scripts/analysis/ep-measure.py` measures the
+render's notes (pitch, harmonics, bell, decay and damping) and compares them with
+reference recordings:
+
+```powershell
+Northlight.exe --offscreen --render-phrase northlight.lumen "$env:TEMP\lumen.wav"
+python scripts/analysis/ep-measure.py phrase "$env:TEMP\lumen.wav" --out lumen.csv
+```
+
+`scripts/analysis/lumen-calibrate.ps1 -Listing <notes.csv>` renders Lumen at a
+reference set's notes and velocities (the hidden `[.calibrate]` test of the Release
+unit tests), measures both and prints the difference by register and strike.
+
 ### Captures while the machine is in use
 
 `--offscreen` runs Northlight with no window on screen at all: no splash, and no

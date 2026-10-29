@@ -56,6 +56,7 @@ add_executable(northlight_unit_tests
     plugins/PulsarTests.cpp
     plugins/BeatSyncTests.cpp
     plugins/SamplerTests.cpp
+    plugins/LumenTests.cpp
     engine/LoudnessTests.cpp
     engine/ExportTests.cpp
     engine/WriterTests.cpp

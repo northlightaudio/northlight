@@ -9,6 +9,7 @@
 #include "plugins/EffectPresetLists.h"
 #include "plugins/Exciter.h"
 #include "plugins/Glue.h"
+#include "plugins/Lumen.h"
 #include "plugins/Nebula.h"
 #include "plugins/Orbit.h"
 #include "plugins/Patina.h"
@@ -158,6 +159,7 @@ const std::vector<BuiltInType>& builtInTypes()
          pulsarNoteName},
         {nebula::type, "Nebula", instrument, plain<nebula::create>, pl::nebulaPresets, "Airy pad synth"},
         {starbit::type, "Starbit", instrument, plain<starbit::create>, pl::starbitPresets, "Chiptune synth"},
+        {lumen::type, "Lumen", instrument, plain<lumen::create>, pl::lumenPresets, "Modelled electric piano"},
         {sampler::type, "Sampler", instrument, sampled, nullptr, "One sample across the keys"},
     };
     return list;

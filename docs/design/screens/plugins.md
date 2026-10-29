@@ -1306,6 +1306,58 @@ envelope moves by Env octaves. Hues: the sample `Lichen`, loop `Gorse`, keys
   new instrument channel and MIDI track playing that file, its start and end at
   the part the clip uses.
 
+## 7.4h Lumen
+
+The electric piano bundled with Northlight, modelled on a tine piano (no samples;
+docs/plans/electric-piano.md). Each note is a hammer striking a tine in front of a
+magnetic pickup: Hardness (the felt; harder is shorter and brighter) and
+Velocity (how much the strike's speed follows the key); Bell (the tine's
+inharmonic overtones in the attack), Decay (all ring times, 25-400%), Damper (how
+fast a released note stops), Age (each note's fixed detune, up to 5 cents) and
+Tune (A3); Bark (how close the tines sit to the pickups: closer growls when hit
+hard) and Symmetry (the tines' offset from the pickups' centre: centred adds the
+second harmonic, offset the fundamental); Noise (the action's knocks and the
+dampers' thump); Voices (8-64; the quietest released note fades out over 5 ms
+past the limit). After the voices: the preamp's Bass and Treble shelves and
+Drive; the TREMOLO (Pan, the suitcase's stereo auto-pan, or Amplitude; Rate or a
+synced note value; Depth; Shape, sine to square); a four-stage PHASER (Rate,
+Depth, Feedback, Mix); a CHORUS (Rate, Depth, Mix); Level. The mod wheel adds to
+the tremolo's depth; pressure gives the shared vibrato. Presets: Lumen, Ballad,
+Bark, Bell Keys, Phase Funk, Suitcase Pan, Lo-fi Keys.
+
+- The scene: a dark room lit from below by a lamp, `canvas` graded to `surface0`
+  with a low `Gorse` glow, `Rowan` at its heart, rising from the bottom edge.
+  Still: it does not brighten or move with the sound (only the displays do).
+- The wordmark LUMEN tracked wide in a `Gorse`-to-`Rowan` gradient, "ELECTRIC PIANO ·
+  NORTHLIGHT", the preset bar, and sixteen voice lights in `Gorse` (each a
+  sixteenth of the voices allowed; lit as voices sound).
+- Six glass panels, each a display and its knobs in its hue:
+  - TINE (`Gorse`, the widest): the tine seen from the side, a steel rod from its
+    clamp on the left (the brass tone bar above it) to its tip, in front of the
+    pickup's coil on the right; the pickup's field drawn as a soft bell beside the
+    pole, the tip's swing marked across it. The tip sits as far from the coil as
+    Bark says and as far off its centre as Symmetry says. While Lumen sounds the
+    tine vibrates, slowed down, as wide as the output is loud. Drag across for
+    Bark (towards the coil is closer), up and down for Symmetry. Bark, Symmetry,
+    Bell, Age; Decay, Damper, Tune.
+  - HAMMER (`Rowan`): the velocity curve, key velocity across, strike speed up,
+    with the felt's contact time for a full strike in a corner (`value`, "0.9 ms"
+    at middle C). Drag up and down for Velocity. Hardness, Velocity; Noise, Voices.
+  - TONE (`Straw`): the preamp's response, 20 Hz to 20 kHz, the zero line and the
+    two shelves; drag up and down on the left half for Bass, on the right half
+    for Treble. Bass, Treble; Drive, Level.
+  - TREMOLO (`Loch`): two speakers seen from the front, left and right, each lit
+    as its side's level; in Pan they swap the light, in Amplitude they pulse
+    together, Off both steady and dim. The mode and the sync value in corner
+    chips. Drag up and down for Depth. Rate, Depth; Shape. With a sync value the
+    Rate knob dims and its value shows the note value.
+  - PHASER (`Heather`): the response at the sweep's middle, its two notches, with
+    the reach of the sweep shaded behind them; dim at Mix 0. Rate, Depth;
+    Feedback, Mix.
+  - CHORUS (`Sea grass`): the two sides' delay times as wavering lines, in
+    opposite phase, as deep as Depth; dim at Mix 0. Rate, Depth; Mix.
+- Every display is still with reduce motion on and while Lumen is silent.
+
 ## 7.5 States and errors
 
 - Plugin missing on this machine: the chain card shows the name (as it was when

@@ -13,6 +13,15 @@ Northlight has not had a release yet. The first release, 0.1.0, will include:
 
 ### Added
 
+- **Lumen**, a modelled electric piano, joins the bundled instruments. Each note
+  is a hammer striking a tine in front of a magnetic pickup, so a harder strike
+  is brighter as well as louder, with the bell of the tine in the attack and the
+  bark of the pickup when it is played hard. Voice it as a technician would
+  (Bark, Symmetry, Hardness, Bell), age it, and play it through its stereo
+  tremolo, phaser and chorus; the mod wheel rides the tremolo. Seven presets.
+  `--render-phrase` renders a fixed test phrase through any built-in instrument
+  to a WAV.
+
 - Northlight comes as an installer and as a portable zip. The installer installs
   for you alone without administrator rights (or for everyone), adds a Start menu
   shortcut and opens `.northlight` projects with a double-click. Neither needs the

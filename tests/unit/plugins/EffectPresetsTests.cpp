@@ -1,6 +1,7 @@
 #include "plugins/Aurora.h"
 #include "plugins/BuiltIns.h"
 #include "plugins/EffectPresets.h"
+#include "plugins/Lumen.h"
 #include "plugins/Nebula.h"
 #include "plugins/ParamHelpers.h"
 #include "plugins/Patina.h"
@@ -119,6 +120,7 @@ TEST_CASE("The instruments' and Patina's presets are full and in range", "[plugi
     check(plugins::aurora::type, plugins::aurora::presets());
     check(plugins::nebula::type, plugins::nebula::presets());
     check(plugins::starbit::type, plugins::starbit::presets());
+    check(plugins::lumen::type, plugins::lumen::presets());
     check(plugins::patina::type, plugins::patina::presets());
     CHECK(plugins::factoryPresetErrors().empty());
 }

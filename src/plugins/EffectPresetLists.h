@@ -36,5 +36,6 @@ std::vector<EffectPreset> polarisPresets();
 std::vector<EffectPreset> auroraPresets();
 std::vector<EffectPreset> nebulaPresets();
 std::vector<EffectPreset> starbitPresets();
+std::vector<EffectPreset> lumenPresets();
 
 } // namespace northlight::plugins::presetlists

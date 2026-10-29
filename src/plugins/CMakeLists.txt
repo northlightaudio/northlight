@@ -6,6 +6,7 @@ add_library(northlight_plugins STATIC
     Classic.h
     Classic.cpp
     dsp/DelayLine.h
+    dsp/Modulation.h
     dsp/Denormals.h
     dsp/PolyBlep.h
     dsp/Random.h
@@ -23,6 +24,10 @@ add_library(northlight_plugins STATIC
     Nebula.cpp
     Starbit.h
     Starbit.cpp
+    Lumen.h
+    Lumen.cpp
+    TestPhrase.h
+    TestPhrase.cpp
     SampleLoader.h
     SampleLoader.h
     Sampler.h
