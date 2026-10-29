@@ -1,4 +1,5 @@
 #include "engine/Midi.h"
+#include "engine/rt/RealtimeGuard.h"
 #include "plugins/BuiltIns.h"
 #include "plugins/midi/MidiEffectBase.h"
 #include "plugins/midi/Transpose.h"
@@ -261,4 +262,142 @@ TEST_CASE("MIDI effects are built-ins of their own kind, kept out of the audio l
     CHECK(made->isMidiEffect());
     CHECK(BuiltInFactory::displayName(plugins::transpose::type) == "Transpose");
     CHECK(plugins::defaultParameters(plugins::transpose::type).size() == plugins::transpose::count);
+}
+
+namespace
+{
+#if defined(NORTHLIGHT_RT_CHECKS)
+int effectViolations = 0;
+void countEffectViolation(const rt::Violation&) noexcept
+{
+    ++effectViolations;
+}
+#endif
+
+// Plays an effect hard for a while: keys up and down, the pedal, and (when
+// `moving`) its settings changing. The keys are all up by block 500 and the run
+// ends `tail` blocks later. Returns how many notes it still had sounding then.
+int playHard(const std::string& type, bool moving, int tail)
+{
+    auto effect = plugins::BuiltInFactory().create(type);
+    REQUIRE(effect != nullptr);
+    effect->prepare(48000.0, 256);
+    auto* base = dynamic_cast<plugins::midi::MidiEffectBase*>(effect.get());
+    REQUIRE(base != nullptr);
+    const auto& infos = effect->parameters();
+    MidiEventList in(256), out(8192);
+    engine::PlayHead head;
+    head.keyRoot = 0;
+    head.keyMask = 0b1010'1011'0101;
+    std::uint32_t seed = 12345;
+    const auto next = [&seed]
+    {
+        seed = seed * 1664525u + 1013904223u;
+        return seed >> 8;
+    };
+    bool down[128]{};
+#if defined(NORTHLIGHT_RT_CHECKS)
+    effectViolations = 0;
+    const auto previous = rt::setViolationHandler(&countEffectViolation);
+#endif
+    for (int block = 0; block < 500 + tail; ++block)
+    {
+        in.clear();
+        out.clear();
+        if (moving && block % 37 == 0 && block < 500 && !infos.empty())
+        {
+            const auto index = static_cast<int>(next() % infos.size());
+            const auto& info = infos[static_cast<size_t>(index)];
+            const float t = static_cast<float>(next() % 1000) / 999.0f;
+            // Latch would keep playing after the keys are up; leave it off.
+            if (info.name != "Latch")
+                effect->setParameter(index, info.minimum + t * (info.maximum - info.minimum));
+        }
+        const bool releasing = block >= 480;
+        for (int k = 0; k < 4; ++k)
+        {
+            const int offset = static_cast<int>(next() % 256);
+            const int note = 36 + static_cast<int>(next() % 48);
+            if (down[note])
+            {
+                in.noteOff(offset, note);
+                down[note] = false;
+            }
+            else if (!releasing && next() % 3 == 0)
+            {
+                in.noteOn(offset, note, 1 + static_cast<int>(next() % 127));
+                down[note] = true;
+            }
+        }
+        if (block == 499)
+            for (int note = 0; note < 128; ++note)
+                if (down[note])
+                {
+                    in.noteOff(255, note);
+                    down[note] = false;
+                }
+        if (block % 50 == 7 && block < 480)
+            in.controller(0, 64, block % 100 < 50 ? 127 : 0);
+        if (block == 499)
+            in.controller(255, 64, 0); // the pedal up with the last keys
+        in.sortByTime();
+        {
+            rt::ScopedRealtimeSection section;
+            effect->setPlayHead(head);
+            effect->processMidiEffect(in, out, 256);
+        }
+        for (size_t i = 0; i < out.size(); ++i)
+        {
+            CHECK(out[i].sampleOffset >= 0);
+            CHECK(out[i].sampleOffset < 256);
+            if (i > 0)
+                CHECK(out[i - 1].sampleOffset <= out[i].sampleOffset);
+        }
+    }
+#if defined(NORTHLIGHT_RT_CHECKS)
+    rt::setViolationHandler(previous);
+    CHECK(effectViolations == 0);
+#endif
+    const int sounding = base->soundingCount();
+    // A stop ends whatever is left.
+    in.clear();
+    out.clear();
+    in.allNotesOff(0);
+    effect->processMidiEffect(in, out, 256);
+    CHECK(base->soundingCount() == 0);
+    return sounding;
+}
+} // namespace
+
+TEST_CASE("Every MIDI effect, played hard with its settings moving, never allocates and a stop silences it",
+          "[plugins][midi][stress]")
+{
+    const auto types = plugins::BuiltInFactory::midiEffectTypeNames();
+    REQUIRE(types.size() >= 12);
+    for (const auto& type : types)
+    {
+        CAPTURE(type);
+        const auto effect = plugins::BuiltInFactory().create(type);
+        REQUIRE(effect != nullptr);
+        CHECK(effect->isMidiEffect());
+        CHECK(effect->midiExpansion() >= 1);
+        for (const auto& info : effect->parameters())
+        {
+            CHECK_FALSE(info.name.empty());
+            CHECK(info.minimum <= info.defaultValue);
+            CHECK(info.defaultValue <= info.maximum);
+            if (!info.choices.empty())
+                CHECK(info.maximum == static_cast<float>(info.choices.size() - 1));
+        }
+        playHard(type, true, 20);
+    }
+}
+
+TEST_CASE("Every MIDI effect at its defaults falls silent once the keys are up", "[plugins][midi][stress]")
+{
+    for (const auto& type : plugins::BuiltInFactory::midiEffectTypeNames())
+    {
+        CAPTURE(type);
+        CHECK(playHard(type, false, 600) == 0); // 600 blocks: over three seconds of tail
+    }
 }
