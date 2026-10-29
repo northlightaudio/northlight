@@ -210,6 +210,8 @@ protected:
     virtual void insertChanged(const core::Insert& insert) { juce::ignoreUnused(insert); }
     // New frames arrived (the displays repaint).
     virtual void framesArrived(double elapsedMs) { juce::ignoreUnused(elapsedMs); }
+    // Every tick while the card shows, frames or not (a MIDI face reads its notes).
+    virtual void ticked(double elapsedMs) { juce::ignoreUnused(elapsedMs); }
     // The header's live readout (a gain reduction, "open").
     virtual juce::String headerStatus() const { return {}; }
     virtual juce::Colour headerStatusColour() const { return theme_.colours.textSecondary; }
@@ -281,6 +283,11 @@ createVesperCard(const Theme& theme, CardHost& host, core::Id channelId, const c
 // A guitar pedal's card (the Gravity, Flare, Comet, Tide and Polaris inserts).
 std::unique_ptr<ModuleCard>
 createPedalCard(const Theme& theme, CardHost& host, core::Id channelId, const core::Insert& insert);
+
+// A MIDI effect's face (design-system.md "MIDI face"): the Arpeggiator, Chord,
+// Chord Pads, Velocity and Scale; null for a MIDI effect without one yet.
+std::unique_ptr<ModuleCard>
+createMidiFaceCard(const Theme& theme, CardHost& host, core::Id channelId, const core::Insert& insert);
 
 // Corona's card (the "northlight.amp" insert), and its page: the amp or the cabinet.
 std::unique_ptr<ModuleCard>

@@ -121,6 +121,9 @@ add_library(northlight_ui STATIC
     strip/PedalCard.cpp
     strip/ExciterCard.cpp
     strip/BloomCard.cpp
+    strip/MidiParts.h
+    strip/MidiParts.cpp
+    strip/MidiFaces.cpp
     strip/VesperCard.cpp
     strip/CoronaCard.cpp
     strip/CoronaFace.h

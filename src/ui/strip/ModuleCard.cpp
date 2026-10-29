@@ -1,6 +1,7 @@
 #include "ui/strip/ModuleCard.h"
 
 #include "core/Command.h"
+#include "core/NoteNames.h"
 #include "ui/components/Accessibility.h"
 #include "ui/strip/StripStyle.h"
 
@@ -11,6 +12,16 @@ namespace
 {
 juce::String formatValue(const engine::ParameterInfo& info, double v)
 {
+    // The display hints first: what the minimum means, a note, a whole number.
+    if (!info.minimumText.empty() && v <= info.minimum + 1e-6)
+        return juce::String::fromUTF8(info.minimumText.c_str());
+    if (info.showsNote)
+        return juce::String::fromUTF8(core::noteName(static_cast<int>(std::lround(v))).c_str());
+    if (info.integer && info.choices.empty())
+    {
+        const auto n = static_cast<int>(std::lround(v));
+        return juce::String(n) + (info.unit.empty() ? juce::String() : " " + juce::String(info.unit));
+    }
     if (!info.choices.empty())
     {
         const auto i = static_cast<size_t>(
@@ -182,6 +193,7 @@ void ModuleCard::tick(double elapsedMs)
         paramsChanged();
     if (live_.read(elapsedMs, theme_.motion))
         framesArrived(elapsedMs);
+    ticked(elapsedMs);
     if (frame_.showStatus(headerStatus()))
         repaint(getLocalBounds().removeFromTop(headerHeight));
 }

@@ -117,3 +117,29 @@ TEST_CASE("Chord Pads add the bass note and end everything on release", "[plugin
         sounding += e.isNoteOn() ? 1 : (e.event.type == engine::MidiEvent::Type::noteOff ? -1 : 0);
     CHECK(sounding == 0);
 }
+
+TEST_CASE("Chords are named by root and quality, with the bass after a slash", "[plugins][midi][chord]")
+{
+    using p::chordName;
+    using namespace p::chord;
+    CHECK(chordName(0, byShape(60, major, 0, close)) == "C");
+    CHECK(chordName(2, byShape(62, minor, 0, close)) == "Dm");
+    CHECK(chordName(0, byShape(60, major7, 0, close)) == "Cmaj7");
+    CHECK(chordName(7, byShape(67, dominant7, 0, close)) == "G7");
+    CHECK(chordName(0, byShape(60, major, 1, close)) == "C/E"); // first inversion
+    CHECK(chordName(10, byShape(70, major, 0, close)) == "Bb"); // flats, as charts spell them
+    CHECK(chordName(11, byShape(71, diminished, 0, close)) == "Bdim");
+}
+
+TEST_CASE("Chord Pads name each pad by numeral and chord in the key", "[plugins][midi][chordpads]")
+{
+    using namespace p::chordpads;
+    CHECK(padNumeral(60, 0, cMajor) == "I");
+    CHECK(padNumeral(62, 0, cMajor) == "ii");
+    CHECK(padNumeral(71, 0, cMajor) == "vii\xc2\xb0");
+    CHECK(padNumeral(70, 0, cMajor) == "bVII");
+    CHECK(padName(62, 0, 0, cMajor) == "Dm");
+    CHECK(padName(67, 1, 0, cMajor) == "G7");
+    CHECK(padName(66, 0, 0, cMajor) == "Fm");          // iv, borrowed
+    CHECK(padName(60, 0, 7, 0b1010'1101'0101) == "G"); // in G, C is the I
+}

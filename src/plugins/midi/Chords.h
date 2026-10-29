@@ -5,6 +5,7 @@
 #include <array>
 #include <cstdint>
 #include <memory>
+#include <string>
 
 // The chord tools: Chord (one key plays a chord) and Chord Pads (the keys play
 // the chords of a key, voice-led) (docs/plans/midi-inserts.md). JUCE-free.
@@ -19,6 +20,12 @@ struct ChordNotes
     std::array<int, maxChordNotes> notes{};
     int count = 0;
 };
+
+// A chord's name from its root's pitch class: "C", "Dm", "Bdim", "G7", "Cmaj7",
+// and "/E" after it when its lowest note is not the root. Roots are spelled with
+// flats (Bb, not A#), as pop charts write them. A set it does not know is named
+// by its root alone.
+std::string chordName(int rootPitchClass, const ChordNotes& chord);
 
 namespace chord
 {
@@ -92,6 +99,11 @@ ChordNotes padChord(int note, int size, int root, std::uint16_t mask, int centre
 // The voicing of `chord` (its pitch classes) nearest `previous` (count 0: none),
 // kept within an octave either way of `centre`. Sorted low to high.
 ChordNotes leadFrom(const ChordNotes& chord, const ChordNotes& previous, int centre) noexcept;
+// The pad's numeral in the key, for its triad: I ii iii IV V vi vii° (cased and marked by the
+// chord's quality), and the borrowed bII bIII iv bVI bVII on the black keys.
+std::string padNumeral(int note, int root, std::uint16_t mask);
+// The pad's chord name ("Dm"): the root is the chord's first note.
+std::string padName(int note, int size, int root, std::uint16_t mask);
 std::unique_ptr<engine::InsertProcessor> create();
 } // namespace chordpads
 
