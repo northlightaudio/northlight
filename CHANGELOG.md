@@ -18,6 +18,12 @@ Northlight has not had a release yet. The first release, 0.1.0, will include:
   shortcut and opens `.northlight` projects with a double-click. Neither needs the
   Visual C++ Redistributable.
 
+- Screen readers: clips, take lanes, markers, tempo changes, automation points,
+  piano roll notes and the mixer's insert slots, sends and channel strip modules
+  are now read out, with their position and state; pressing one selects it (or
+  switches the module) and its menu is the right-click's. Nothing changes on
+  screen, and none of it is made unless a screen reader is running.
+
 - Keyboard: Tab now moves through the main window in order (header bar, the
   selected track's header, the arrange view, the dock, the side panel, the status
   bar) and wraps; Up and Down move between tracks with the focus. Ctrl+Left and

@@ -119,6 +119,11 @@ drop the glows").
    and the Menu key in floating panel and plugin windows. Focus containers for the documented Tab cycle; focusable track
    headers and arrange view; clip selection by keys; Shift+F10 menus; note entry and
    velocity keys in the piano roll.
-4. **Screen reader for painted content.** Accessibility handlers (or invisible proxies)
+4. **Screen reader for painted content.** Done 2026-10-29 (`ui::AccessibleItems`), checked
+   with UI Automation from a script, not yet listened to: the Narrator walkthrough
+   of the arrange, mixer and audio setup screens is still to do by ear. Left for
+   later: the audio editor's warp markers and regions, the piano roll's controller
+   lane events and velocity bars, the clip being recorded, and the send rows' pan
+   column (named, but adjustable only by pointer). Accessibility handlers (or invisible proxies)
    for clips, lanes, notes, insert slots and sends. Then the Narrator walkthrough that
    11.3's acceptance asks for.

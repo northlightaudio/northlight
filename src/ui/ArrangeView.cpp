@@ -119,6 +119,8 @@ ArrangeView::ArrangeView(audio::PeakStore& peaks, const Theme& theme)
         repaint();
     };
     addAndMakeVisible(automation_);
+    setTitle("Arrange");
+    addAndMakeVisible(access_);
     // The tempo track sits over the automation overlay so its handles take the mouse.
     tempoLane_.playhead = [this] { return playhead_; };
     tempoLane_.snap = [this](const core::TempoMap& map, core::SamplePosition s) { return snappedOn(map, s); };
@@ -1233,6 +1235,7 @@ void ArrangeView::resized()
 {
     layoutEmptyState();
     automation_.setBounds(getLocalBounds());
+    access_.setBounds(getLocalBounds());
     tempoLane_.setBounds(0, rulerOnly, getWidth() - scrollbarWidth, tempoLaneHeight);
     scrollbar_.setBounds(headerWidth(),
                          getHeight() - scrollbarHeight,
@@ -1803,6 +1806,7 @@ juce::Colour ArrangeView::clipColour(const core::Track& track, std::uint32_t col
 
 void ArrangeView::paint(juce::Graphics& g)
 {
+    access_.invalidate();
     Painter(*this).paint(g);
 }
 

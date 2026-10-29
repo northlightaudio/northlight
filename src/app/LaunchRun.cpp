@@ -527,6 +527,11 @@ const std::vector<LaunchFlag<LaunchRun>>& LaunchRun::flags()
          "run with no window on screen at all (no splash, nothing that can take the focus); windows still "
          "lay "
          "out and paint, so --capture works while someone is using the machine"},
+        {"--screen-reader",
+         "",
+         0,
+         "expose painted content (clips, notes, markers, automation points) to UI Automation as if a screen "
+         "reader were running, to inspect it with Inspect or a script"},
         {"--first-run", "", 0, "show the first-run sheet"},
         // ----- windows
         {"--audio-setup",

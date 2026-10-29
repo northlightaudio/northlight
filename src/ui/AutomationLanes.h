@@ -5,6 +5,7 @@
 #include "engine/Insert.h"
 #include "ui/AutomationScale.h"
 #include "ui/Theme.h"
+#include "ui/components/AccessibleItems.h"
 #include "ui/timeline/TimelineViewport.h"
 
 #include <juce_gui_basics/juce_gui_basics.h>
@@ -96,6 +97,12 @@ public:
 
     bool hitTest(int x, int y) override;
     void paint(juce::Graphics& g) override;
+    void resized() override { access_.setBounds(getLocalBounds()); }
+    // The overlay itself is nothing to a screen reader; its lanes are (access_).
+    std::unique_ptr<juce::AccessibilityHandler> createAccessibilityHandler() override
+    {
+        return std::make_unique<juce::AccessibilityHandler>(*this, juce::AccessibilityRole::ignored);
+    }
     void mouseMove(const juce::MouseEvent& e) override;
     void mouseExit(const juce::MouseEvent& e) override;
     void mouseDown(const juce::MouseEvent& e) override;
@@ -122,6 +129,10 @@ public:
     std::vector<Slot> slotsOf(int row) const;
 
 private:
+    // What a screen reader finds (11.3): each open lane on screen, as a list of its
+    // points on screen.
+    std::vector<AccessibleItem> accessibleItems();
+    AccessibleItems access_{*this, "Automation", [this] { return accessibleItems(); }};
     int laneHeight(const core::AutomationLane& lane) const noexcept;
     std::optional<Slot> slotAt(juce::Point<int> p) const;
     const core::AutomationLane* laneOf(const Slot& slot) const;

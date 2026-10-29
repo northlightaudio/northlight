@@ -4,6 +4,7 @@
 #include "core/Model.h"
 #include "core/TempoMap.h"
 #include "ui/Theme.h"
+#include "ui/components/AccessibleItems.h"
 #include "ui/timeline/TimelineViewport.h"
 
 #include <juce_gui_basics/juce_gui_basics.h>
@@ -55,8 +56,12 @@ public:
     void mouseExit(const juce::MouseEvent& e) override;
     void mouseDoubleClick(const juce::MouseEvent& e) override;
     bool keyPressed(const juce::KeyPress& key) override;
+    void resized() override { access_.setBounds(getLocalBounds()); }
 
 private:
+    // What a screen reader finds (11.3): the tempo at the start and each change,
+    // then each time signature, those on screen.
+    std::vector<AccessibleItem> accessibleItems();
     // A handle: -1 is the song's start, 0.. the tempo changes.
     std::optional<int> handleAt(juce::Point<int> p) const;
     std::optional<int> meterAt(juce::Point<int> p) const;
@@ -92,6 +97,7 @@ private:
     bool movedSideways_ = false;
     double minBpm_ = 60.0, maxBpm_ = 180.0; // the lane's vertical range
     std::unique_ptr<juce::TextEditor> editor_;
+    AccessibleItems access_{*this, "Tempo changes", [this] { return accessibleItems(); }};
 };
 
 } // namespace northlight::ui

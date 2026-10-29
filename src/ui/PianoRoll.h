@@ -7,6 +7,7 @@
 #include "ui/Icons.h"
 #include "ui/KeyboardMenu.h"
 #include "ui/Theme.h"
+#include "ui/components/AccessibleItems.h"
 #include "ui/components/SegmentedControl.h"
 #include "ui/edit/NoteGrid.h"
 #include "ui/edit/NoteOps.h"
@@ -433,6 +434,10 @@ private:
 
     const engine::LiveRecording* live_ = nullptr;
     bool liveShown_ = false; // the last paint drew live notes
+
+    // What a screen reader finds (11.3): the notes on screen, in time order.
+    std::vector<AccessibleItem> accessibleItems();
+    AccessibleItems access_{*this, "Piano roll", [this] { return accessibleItems(); }};
 };
 
 } // namespace northlight::ui

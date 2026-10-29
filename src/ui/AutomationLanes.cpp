@@ -53,6 +53,66 @@ AutomationLanes::AutomationLanes(const Theme& theme, const TimelineViewport& vie
 {
     setInterceptsMouseClicks(true, false);
     setRepaintsOnMouseActivity(false);
+    addAndMakeVisible(access_);
+}
+
+std::vector<AccessibleItem> AutomationLanes::accessibleItems()
+{
+    std::vector<AccessibleItem> items;
+    if (project_ == nullptr || !geometry.rowCount)
+        return items;
+    const auto map = core::tempoMapOf(*project_);
+    const auto lanes = geometry.lanesArea();
+    const auto shown = juce::Rectangle<int>(0, lanes.getY(), lanes.getRight(), lanes.getHeight());
+    for (int row = 0; row < geometry.rowCount(); ++row)
+    {
+        const auto block = geometry.block(row);
+        if (block.isEmpty() || !block.intersects(shown))
+            continue;
+        for (const auto& slot : slotsOf(row))
+        {
+            const auto* track = channelOf(slot);
+            const auto* lane = laneOf(slot);
+            if (track == nullptr || lane == nullptr || !slot.bounds.intersects(shown))
+                continue;
+            const auto key = keyOf(*lane);
+            AccessibleItem group;
+            group.key = "lane:" + juce::String(lane->id);
+            group.role = juce::AccessibilityRole::list;
+            group.title = juce::String::fromUTF8(track->name.c_str()) + " " + keyName(*track, key) +
+                          " automation, " + valueAtPlayhead(*track, *lane) + " at the playhead" +
+                          (lane->view.collapsed ? ", collapsed" : "");
+            group.bounds = slot.bounds.getIntersection(shown);
+            group.showMenu = [this, slot] { showLaneMenu(slot, nameOf(slot), -1); };
+            if (!lane->view.collapsed)
+                for (size_t i = 0; i < lane->points.size(); ++i)
+                {
+                    const auto& point = lane->points[i];
+                    const auto at = pointPosition(slot, *track, key, point).toInt();
+                    if (!lanes.contains(at))
+                        continue;
+                    const int index = static_cast<int>(i);
+                    AccessibleItem item;
+                    item.key = juce::String(index);
+                    item.title =
+                        valueText(*track, key, point.value) + " at " + spokenPosition(map, point.position);
+                    item.bounds = juce::Rectangle<int>(9, 9).withCentre(at);
+                    item.selectable = true;
+                    item.selected = isSelected(lane->id, index);
+                    item.press = [this, channel = track->id, laneId = lane->id, index]
+                    {
+                        activeChannel_ = channel;
+                        activeLane_ = laneId;
+                        select(channel, laneId, {index});
+                    };
+                    item.showMenu = [this, slot, at, index]
+                    { showLaneMenu(slot, juce::Rectangle<int>(at.x, at.y, 1, 1), index); };
+                    group.children.push_back(std::move(item));
+                }
+            items.push_back(std::move(group));
+        }
+    }
+    return items;
 }
 
 void AutomationLanes::setProject(const core::Project* project)
@@ -458,6 +518,7 @@ bool AutomationLanes::hitTest(int x, int y)
 
 void AutomationLanes::paint(juce::Graphics& g)
 {
+    access_.invalidate();
     if (project_ == nullptr || !geometry.rowCount)
         return;
     const auto lanes = geometry.lanesArea();

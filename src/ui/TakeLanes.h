@@ -4,6 +4,7 @@
 #include "core/CommandFwd.h"
 #include "core/Model.h"
 #include "ui/Theme.h"
+#include "ui/components/AccessibleItems.h"
 #include "ui/timeline/TimelineViewport.h"
 
 #include <juce_gui_basics/juce_gui_basics.h>
@@ -83,6 +84,9 @@ public:
     bool cycleTake(const core::Track& track, core::SamplePosition at, int direction);
     // Shows the track's take lanes, or hides them when any show (Alt+T, the track menu).
     bool toggleLanes(const core::Track& track);
+    // What a screen reader finds under the row (11.3): each lane as a list of the
+    // takes in it, with where the comp plays them. The owner's coordinates.
+    std::vector<AccessibleItem> accessibleItems(const Row& row);
 
 private:
     enum class PressKind

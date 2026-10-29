@@ -42,6 +42,8 @@ PianoRoll::PianoRoll(const Theme& theme)
 {
     setOpaque(true);
     setWantsKeyboardFocus(true);
+    setTitle("Piano roll");
+    addAndMakeVisible(access_);
     rulerHeight_ = theme_.sizes.ruler;
     scrollbarSize_ = theme_.sizes.scrollbar;
     for (auto* bar : {&horizontal_, &vertical_})
@@ -834,6 +836,7 @@ void PianoRoll::layoutLanes()
 
 void PianoRoll::resized()
 {
+    access_.setBounds(getLocalBounds());
     if (fitPending_ && gridArea().getWidth() > 16)
         fitToClip();
     auto bar = getLocalBounds()
@@ -1538,6 +1541,7 @@ void PianoRoll::paintOverChildren(juce::Graphics& g)
 
 void PianoRoll::paint(juce::Graphics& g)
 {
+    access_.invalidate();
     g.fillAll(theme_.colours.canvas);
     // Only what the repaint covers is drawn (a playhead frame is a column and a few keys).
     PaintFrame f;
@@ -2176,6 +2180,50 @@ void PianoRoll::changeVelocity(int delta)
 {
     if (const auto* c = clip(); c != nullptr && !selection_.empty() && delta != 0)
         emitEdit(noteops::offsetVelocity(*c, selection_, delta), "Change velocity");
+}
+
+std::vector<AccessibleItem> PianoRoll::accessibleItems()
+{
+    std::vector<AccessibleItem> items;
+    const auto* c = clip();
+    if (c == nullptr)
+        return items;
+    const auto grid = gridArea();
+    AccessibleItem list;
+    list.key = "notes";
+    list.role = juce::AccessibilityRole::list;
+    list.title = juce::String::fromUTF8(c->name.c_str()) + " notes";
+    list.bounds = grid;
+    const auto current = selection_.empty() ? core::invalidId : selection_.back();
+    for (const auto& n : c->notes) // sorted by start
+    {
+        const auto bounds = noteBounds(n);
+        if (!bounds.intersects(grid))
+            continue;
+        AccessibleItem item;
+        item.key = juce::String(n.id);
+        item.title = noteName(n.note) + ", " + spokenPosition(tempoMap_, c->start + n.start) + " to " +
+                     spokenPosition(tempoMap_, c->start + n.end()) + ", velocity " +
+                     juce::String(n.velocity) + (n.muted ? ", muted" : "");
+        item.bounds = bounds;
+        item.selectable = true;
+        item.selected = std::find(selection_.begin(), selection_.end(), n.id) != selection_.end();
+        item.current = n.id == current;
+        item.press = [this, id = n.id]
+        {
+            setSelection({id});
+            grabKeyboardFocus();
+        };
+        item.showMenu = [this, id = n.id]
+        {
+            setSelection({id});
+            grabKeyboardFocus();
+            showKeyboardMenu();
+        };
+        list.children.push_back(std::move(item));
+    }
+    items.push_back(std::move(list));
+    return items;
 }
 
 bool PianoRoll::showKeyboardMenu()

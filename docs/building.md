@@ -258,6 +258,11 @@ desktop. Use it for captures while someone works or plays on the machine:
 Northlight.exe --offscreen --demo-song "$env:TEMP\demo.northlight" --play --master-gain -120 --capture "$env:TEMP\shots" 6
 ```
 
+`--screen-reader` makes the views expose their painted content (clips, notes,
+markers, automation points) to UI Automation as they do when a screen reader is
+running, so Inspect (from the Windows SDK) or a UI Automation script can read the
+tree without Narrator speaking.
+
 A capture starts from an empty settings folder, so it knows no scanned plugins.
 `--capture-plugins` copies the user's `plugins.json` into it first; then `--insert
 vst3:<id>` (the id as `plugins.json` gives it) adds a real VST3 to the capture.

@@ -36,6 +36,17 @@
 - Every control exposes a name (its label), role, value and state. Custom
   components: faders and knobs are sliders with dB/pan values, meters read-only
   values, clips list items with name and position, track headers groups.
+- Painted content reads too, through invisible stand-ins made only while a screen
+  reader (or another UI Automation client) is running, for what is on screen:
+  each track's lane is a list of its clips (name, kind, bars and beats, muted,
+  gain, missing media), then its take lanes (each take and where the comp plays
+  it); the markers and regions; the tempo track's tempos and time signatures; each
+  open automation lane (its value at the playhead) as a list of its points; the
+  piano roll's notes in time order (pitch, position, velocity, muted); the mixer's
+  name caps, insert slots, collapsed sections, sends and channel strip cells.
+  Pressing an item does what a click does (selects it, or switches a strip
+  module), and its menu is the right-click's. When Ctrl+Left / Right selects
+  another clip or note, the reader's focus follows it.
 - Live regions: the status bar's transient message and toasts announce.
 - Verified with Narrator on the arrange, mixer and audio setup screens.
 

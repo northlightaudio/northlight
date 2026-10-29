@@ -19,6 +19,7 @@
 #include "ui/arrange/ArrangeLayout.h"
 #include "ui/arrange/ArrangeMenus.h"
 #include "ui/arrange/MarkerController.h"
+#include "ui/components/AccessibleItems.h"
 #include "ui/edit/ClipOps.h"
 #include "ui/timeline/GridLines.h"
 #include "ui/timeline/TimelineViewport.h"
@@ -724,6 +725,12 @@ private:
     // Take lanes and comping (screens/comping.md): lanes under a track's row, swipes, boundaries.
     TakeLanes takes_{theme_, peaks_, *this, view_};
     TakeLanes::Row takeRow(int row) const; // a track row, for TakeLanes
+    // What a screen reader finds (arrange/ArrangeAccess.cpp, 11.3): the markers, and
+    // each track's lane as a list of its clips on screen, its take lanes after it.
+    std::vector<AccessibleItem> accessibleItems();
+    // A reader pressed a clip (or asked for its menu): as a click on it.
+    void pressForReader(const ClipRef& ref, bool menu);
+    AccessibleItems access_{*this, "Lanes", [this] { return accessibleItems(); }};
 };
 
 } // namespace northlight::ui

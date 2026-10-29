@@ -63,6 +63,61 @@ int TakeLanes::lanesHeight(const core::Track& track) const noexcept
     return laneCount(track) * theme_.sizes.takeLane;
 }
 
+std::vector<AccessibleItem> TakeLanes::accessibleItems(const Row& row)
+{
+    std::vector<AccessibleItem> lanes;
+    if (row.track == nullptr || project_ == nullptr)
+        return lanes;
+    const auto map = core::tempoMapOf(*project_);
+    const auto& track = *row.track;
+    const auto trackName = juce::String::fromUTF8(track.name.c_str());
+    const int count = laneCount(track);
+    for (int lane = 0; lane < count; ++lane)
+    {
+        const auto area = laneBounds(row, lane);
+        AccessibleItem list;
+        list.key = "takes:" + juce::String(lane);
+        list.role = juce::AccessibilityRole::list;
+        list.title = trackName + " take lane " + juce::String(lane + 1);
+        list.bounds = area.withLeft(0);
+        for (const auto& group : track.takeGroups)
+        {
+            const auto* take = takeInLane(group, lane);
+            if (take == nullptr)
+                continue;
+            const auto& clip = take->clip;
+            const int x0 = view_.xOf(clip.start);
+            const int x1 = std::max(x0 + 2, view_.xOf(clip.end()));
+            AccessibleItem item;
+            item.key = juce::String(group.id) + ":" + juce::String(take->id());
+            juce::String used;
+            for (const auto& s : group.comp)
+                if (s.take == take->id())
+                    used << (used.isEmpty() ? ", plays in the comp from " : " and from ")
+                         << spokenPosition(map, s.start) << " to " << spokenPosition(map, s.end);
+            item.title = "Take " + juce::String(take->number) + " " +
+                         juce::String::fromUTF8(clip.name.c_str()) + ", " + spokenPosition(map, clip.start) +
+                         " to " + spokenPosition(map, clip.end()) +
+                         (used.isEmpty() ? juce::String(", not in the comp") : used);
+            item.bounds = {x0, area.getY() + 2, x1 - x0, area.getHeight() - 5};
+            const auto header = juce::Rectangle<int>(0, area.getY(), row.headerWidth, area.getHeight());
+            item.showMenu = [this, trackId = track.id, groupId = group.id, takeId = take->id(), header]
+            {
+                const auto* t = project_ != nullptr ? project_->findTrack(trackId) : nullptr;
+                if (t == nullptr)
+                    return;
+                for (const auto& g : t->takeGroups)
+                    if (g.id == groupId)
+                        if (const auto* k = g.findTake(takeId))
+                            laneMenu(*t, g, *k, header);
+            };
+            list.children.push_back(std::move(item));
+        }
+        lanes.push_back(std::move(list));
+    }
+    return lanes;
+}
+
 const core::Take* TakeLanes::takeInLane(const core::TakeGroup& group, int lane) noexcept
 {
     const int index = static_cast<int>(group.takes.size()) - 1 - lane; // newest on top

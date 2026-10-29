@@ -37,6 +37,8 @@ add_library(northlight_ui STATIC
     InsertMenu.cpp
     components/AddSlot.h
     components/Accessibility.h
+    components/AccessibleItems.h
+    components/AccessibleItems.cpp
     components/Fader.h
     components/Fader.cpp
     components/Knob.h
@@ -178,6 +180,7 @@ add_library(northlight_ui STATIC
     timeline/ClipPainter.cpp
     arrange/ArrangeGestures.h
     arrange/ArrangeGestures.cpp
+    arrange/ArrangeAccess.cpp
     arrange/ArrangePainter.h
     arrange/ArrangePainter.cpp
     arrange/ArrangeKeymap.h

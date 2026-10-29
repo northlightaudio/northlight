@@ -24,6 +24,8 @@
 #include "ui/PluginMenu.h"
 #include "ui/SendMenu.h"
 #include "ui/SidechainMenu.h"
+#include "ui/components/Accessibility.h"
+#include "ui/components/AccessibleItems.h"
 #include "ui/components/AddSlot.h"
 #include "ui/strip/StripStyle.h"
 
@@ -88,6 +90,10 @@ public:
         name_.setMinimumHorizontalScale(1.0f);
         name_.setEditable(false, true, false);
         name_.setInterceptsMouseClicks(false, false);
+        // The cap reads as the name; the label only while it is being edited.
+        name_.setAccessible(false);
+        name_.onEditorShow = [this] { name_.setAccessible(true); };
+        name_.onEditorHide = [this] { name_.setAccessible(false); };
         name_.onTextChange = [this]
         {
             if (onRenamed)
@@ -145,6 +151,46 @@ public:
             onClicked();
     }
     void mouseDoubleClick(const juce::MouseEvent&) override { name_.showEditor(); }
+
+    // A screen reader (11.3): a button named for the channel, selected with it;
+    // pressing selects the channel, its menu is the right-click's.
+    std::unique_ptr<juce::AccessibilityHandler> createAccessibilityHandler() override
+    {
+        struct Handler final : juce::AccessibilityHandler
+        {
+            explicit Handler(NameCap& cap)
+                : juce::AccessibilityHandler(cap,
+                                             juce::AccessibilityRole::button,
+                                             juce::AccessibilityActions()
+                                                 .addAction(juce::AccessibilityActionType::press,
+                                                            [&cap]
+                                                            {
+                                                                if (cap.onClicked)
+                                                                    cap.onClicked();
+                                                            })
+                                                 .addAction(juce::AccessibilityActionType::showMenu,
+                                                            [&cap]
+                                                            {
+                                                                if (cap.onMenu)
+                                                                    cap.onMenu();
+                                                            })),
+                  cap_(cap)
+            {
+            }
+            juce::String getTitle() const override
+            {
+                return cap_.name_.getText() +
+                       (cap_.group_ > 0 ? ", group " + juce::String(cap_.group_) : juce::String());
+            }
+            juce::AccessibleState getCurrentState() const override
+            {
+                auto state = juce::AccessibilityHandler::getCurrentState().withSelectable();
+                return cap_.selected_ ? state.withSelected() : state;
+            }
+            NameCap& cap_;
+        };
+        return std::make_unique<Handler>(*this);
+    }
 
 private:
     const Theme& theme_;
@@ -330,6 +376,35 @@ public:
         handle_ = false;
     }
 
+    // A screen reader (11.3): a button named as the tooltip ("Pro-Q 3 (bypassed)");
+    // pressing opens the insert (or, in trouble, says what is wrong), the menu has
+    // bypass and the rest.
+    std::unique_ptr<juce::AccessibilityHandler> createAccessibilityHandler() override
+    {
+        return std::make_unique<TooltipNamedHandler>(
+            *this,
+            *this,
+            juce::AccessibilityRole::button,
+            juce::AccessibilityActions()
+                .addAction(juce::AccessibilityActionType::press,
+                           [this]
+                           {
+                               if (trouble_.any() ? static_cast<bool>(onMenu) : !static_cast<bool>(onOpen))
+                               {
+                                   if (onMenu)
+                                       onMenu();
+                               }
+                               else if (onOpen)
+                                   onOpen();
+                           })
+                .addAction(juce::AccessibilityActionType::showMenu,
+                           [this]
+                           {
+                               if (onMenu)
+                                   onMenu();
+                           }));
+    }
+
 private:
     void updateTooltip()
     {
@@ -391,6 +466,33 @@ public:
         if (onClick && getLocalBounds().contains(e.getPosition()))
             onClick();
     }
+    // A screen reader (11.3): a button named as it reads ("3 inserts").
+    std::unique_ptr<juce::AccessibilityHandler> createAccessibilityHandler() override
+    {
+        struct Handler final : juce::AccessibilityHandler
+        {
+            explicit Handler(SectionSummary& s)
+                : juce::AccessibilityHandler(
+                      s,
+                      juce::AccessibilityRole::button,
+                      juce::AccessibilityActions().addAction(juce::AccessibilityActionType::press,
+                                                             [&s]
+                                                             {
+                                                                 if (s.onClick)
+                                                                     s.onClick();
+                                                             })),
+                  s_(s)
+            {
+            }
+            juce::String getTitle() const override
+            {
+                return s_.text_ + (s_.troubled_ ? ", one needs attention" : "");
+            }
+            juce::String getHelp() const override { return s_.getTooltip(); }
+            SectionSummary& s_;
+        };
+        return std::make_unique<Handler>(*this);
+    }
 
 private:
     const Theme& theme_;
@@ -445,7 +547,23 @@ public:
         slider_.setAlpha(mute ? 0.4f : 1.0f);
         setTooltip(name + (pre ? " (pre-fader" : " (post-fader") +
                    (pan != 0.0f ? ", pan " + panText(pan) : "") + (mute ? ", muted)" : ")"));
+        slider_.setTitle("Send to " + name);
         repaint();
+    }
+    // A screen reader (11.3): a group named as the tooltip (the bus, pre or post,
+    // pan, muted) around the level slider; its menu holds the rest.
+    std::unique_ptr<juce::AccessibilityHandler> createAccessibilityHandler() override
+    {
+        return std::make_unique<TooltipNamedHandler>(
+            *this,
+            *this,
+            juce::AccessibilityRole::group,
+            juce::AccessibilityActions().addAction(juce::AccessibilityActionType::showMenu,
+                                                   [this]
+                                                   {
+                                                       if (onMenu)
+                                                           onMenu();
+                                                   }));
     }
     void setShowPan(bool show)
     {
@@ -556,7 +674,17 @@ private:
 class StripRow final : public juce::Component, public juce::SettableTooltipClient
 {
 public:
-    explicit StripRow(const Theme& theme) : theme_(theme) { setRepaintsOnMouseActivity(true); }
+    explicit StripRow(const Theme& theme) : theme_(theme)
+    {
+        setRepaintsOnMouseActivity(true);
+        addAndMakeVisible(access_);
+    }
+    void resized() override { access_.setBounds(getLocalBounds()); }
+    // A screen reader finds the cells in access_, not the row around them.
+    std::unique_ptr<juce::AccessibilityHandler> createAccessibilityHandler() override
+    {
+        return std::make_unique<juce::AccessibilityHandler>(*this, juce::AccessibilityRole::ignored);
+    }
 
     std::function<void(core::Id moduleId, bool on)> onToggle;
     std::function<void()> onEdit;
@@ -578,6 +706,7 @@ public:
             cells.push_back(cell);
         }
         cells_ = std::move(cells);
+        access_.invalidate();
         repaint();
     }
 
@@ -701,6 +830,31 @@ private:
         return -1;
     }
 
+    // What a screen reader finds (11.3): each module as a switch.
+    std::vector<AccessibleItem> accessibleItems()
+    {
+        std::vector<AccessibleItem> items;
+        for (size_t i = 0; i < cells_.size(); ++i)
+        {
+            const auto& cell = cells_[i];
+            AccessibleItem item;
+            item.key = juce::String(cell.id);
+            item.role = juce::AccessibilityRole::toggleButton;
+            item.title = juce::String(plugins::strip::displayName(cell.type));
+            item.bounds = cellBounds(static_cast<int>(i));
+            item.checkable = true;
+            item.checked = cell.on;
+            item.press = [this, id = cell.id, on = cell.on]
+            {
+                if (onToggle)
+                    onToggle(id, !on);
+            };
+            item.showMenu = [this] { showMenu(); };
+            items.push_back(std::move(item));
+        }
+        return items;
+    }
+
     void showMenu()
     {
         juce::PopupMenu menu;
@@ -731,6 +885,7 @@ private:
 
     const Theme& theme_;
     std::vector<Cell> cells_;
+    AccessibleItems access_{*this, "Channel strip modules", [this] { return accessibleItems(); }};
     std::vector<std::weak_ptr<engine::InsertProcessor>> watching_; // the processors read, watched for the row
     void stopWatching()
     {

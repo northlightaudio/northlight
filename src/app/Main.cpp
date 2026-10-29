@@ -20,6 +20,7 @@
 #include "ui/PianoRoll.h"
 #include "ui/PreferencesView.h"
 #include "ui/SplashScreen.h"
+#include "ui/components/AccessibleItems.h"
 #include "ui/strip/ModuleCard.h"
 #include "version/Version.h"
 
@@ -123,6 +124,8 @@ public:
         // The splash, once the theme is loaded; it reports each step below.
         // --offscreen: no window of any kind reaches the screen (no splash either).
         ui::offscreenMode() = hasFlag(commandLine, "--offscreen");
+        // --screen-reader: painted content is exposed with no reader running.
+        ui::forceAccessibilityClients(hasFlag(commandLine, "--screen-reader"));
         juce::Component::SafePointer<ui::SplashScreen> splash;
         if (!hasFlag(commandLine, "--no-splash") && !ui::offscreenMode())
             splash = ui::SplashScreen::showStartup(ui::Theme::dark(),

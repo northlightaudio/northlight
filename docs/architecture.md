@@ -753,6 +753,25 @@ state change) asks `ui::KeyboardMenu::showFor` for the menu of the focused
 component or its nearest parent that implements `KeyboardMenu`: the arrange view,
 a track header and the piano roll do.
 
+What a view paints rather than builds from components (clips, notes, markers,
+tempo changes, automation points, take lanes, the mixer's strip cells) reaches
+UI Automation through `ui/components/AccessibleItems`: a transparent layer over
+the view holding one invisible stand-in component per item on screen, each with a
+handler that reads its item (a role, everything spoken in its title, selected or
+checked, and Invoke and Show menu actions that do what a click and a right-click
+do). The view describes its items in a builder (`ArrangeView::accessibleItems` in
+`arrange/ArrangeAccess.cpp`, and one each in `AutomationLanes`, `TempoLane`,
+`TakeLanes`, `PianoRoll` and the mixer's `StripRow`); a list item groups its
+children, which read in the builder's order (by time) rather than JUCE's top to
+bottom. The layer is empty unless a client is listening
+(`ui::accessibilityClientsActive`: Windows' screen reader flag or
+`UiaClientsAreListening`, checked once a second; `--screen-reader` forces it).
+While one listens, the view's paint asks for a rebuild, which runs at most every
+100 ms, reuses stand-ins by key and moves a stand-in only when its bounds change.
+When the item the keyboard is on changes while the view has the keyboard focus,
+the reader's focus moves to its stand-in (the keyboard focus stays on the view),
+so a reader says the clip or note that Ctrl+Left / Right just selected.
+
 High contrast and reduce-motion are each a System / on / off choice
 (`settings::followsOrChooses`). The main window resolves them in `applyPreferences`:
 contrast reloads the colours with or without the variant, and reduce-motion sets

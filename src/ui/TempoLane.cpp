@@ -43,6 +43,62 @@ TempoLane::TempoLane(const Theme& theme, const TimelineViewport& view) : theme_(
 {
     setWantsKeyboardFocus(true);
     setMouseClickGrabsKeyboardFocus(true);
+    setTitle("Tempo track");
+    addAndMakeVisible(access_);
+}
+
+std::vector<AccessibleItem> TempoLane::accessibleItems()
+{
+    std::vector<AccessibleItem> items;
+    if (project_ == nullptr)
+        return items;
+    const auto s = shown();
+    const auto map = mapOf(s, project_->sampleRate);
+    const auto area = lane();
+    const auto positions = handlePositions();
+    for (int index = -1; index < static_cast<int>(s.tempoChanges.size()); ++index)
+    {
+        const auto at = positions[static_cast<size_t>(index + 1)].toInt();
+        AccessibleItem item;
+        item.key = "tempo:" + juce::String(index);
+        if (index < 0)
+            item.title = "Tempo " + bpmText(s.bpm) + " BPM at the start";
+        else
+        {
+            const auto& change = s.tempoChanges[static_cast<size_t>(index)];
+            item.title = "Tempo " + bpmText(change.bpm) + " BPM at " +
+                         spokenPosition(map, map.positionAt(change.quarter)) +
+                         (change.ramp ? ", ramps from the tempo before" : "");
+        }
+        // The start's handle sits on the lane's left edge, half of it under the header.
+        item.bounds = juce::Rectangle<int>(9, 9).withCentre({std::max(at.x, area.getX() + 4), at.y});
+        item.selectable = true;
+        item.selected = item.current = selected_ == index;
+        item.press = [this, index]
+        {
+            selected_ = index;
+            grabKeyboardFocus();
+            repaint();
+        };
+        item.showMenu = [this, index, at] { handleMenu(index, localPointToGlobal(at)); };
+        items.push_back(std::move(item));
+    }
+    const auto& meters = map.meterPoints();
+    for (size_t i = 0; i < meters.size(); ++i)
+    {
+        const int x = view_.xOf(map.positionAt(meters[i].quarter));
+        const int index = static_cast<int>(i) - 1; // -1: the song's start
+        AccessibleItem item;
+        item.key = "meter:" + juce::String(index);
+        item.title =
+            "Time signature " + signatureText(meters[i].signature) +
+            (index < 0 ? juce::String(" at the start") : " at bar " + juce::String(meters[i].bar + 1));
+        item.bounds = {std::max(x, area.getX()), 0, 30, tagRow};
+        item.showMenu = [this, index, x]
+        { meterMenu(index, localPointToGlobal(juce::Point<int>(x, tagRow / 2))); };
+        items.push_back(std::move(item));
+    }
+    return items;
 }
 
 void TempoLane::setProject(const core::Project* project)
@@ -172,6 +228,7 @@ void TempoLane::paintOverChildren(juce::Graphics& g)
 
 void TempoLane::paint(juce::Graphics& g)
 {
+    access_.invalidate();
     const auto& c = theme_.colours;
     const auto area = lane();
     g.setColour(c.laneAlt);
