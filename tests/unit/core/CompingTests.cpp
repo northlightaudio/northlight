@@ -399,8 +399,7 @@ TEST_CASE("Ripple shifts move take groups with their clips", "[core][comping]")
     CHECK(same(p, before));
 }
 
-TEST_CASE("Take groups round-trip through JSON, and version 5 files load without them",
-          "[core][json][comping]")
+TEST_CASE("Take groups round-trip through JSON", "[core][json][comping]")
 {
     UndoStack stack;
     auto p = projectWithTakes(stack, {pass("t1.wav", 0, 48000), pass("t2.wav", 0, 48000)});
@@ -413,14 +412,6 @@ TEST_CASE("Take groups round-trip through JSON, and version 5 files load without
     const auto loaded = projectFromJson(text, &error);
     REQUIRE(loaded.has_value());
     CHECK(*loaded == p);
-
-    const auto old = projectFromJson(R"({"format":"northlight.project","version":5,"tracks":[
-        {"id":1,"name":"A","clips":[{"id":2,"media":"a.wav","start":0,"length":10},
-                                     {"id":3,"media":"b.wav","start":0,"length":10}]}]})",
-                                     &error);
-    REQUIRE(old.has_value());
-    CHECK(old->tracks[0].clips.size() == 2); // overlapping clips stay as they were
-    CHECK(old->tracks[0].takeGroups.empty());
 }
 
 // ----- MIDI takes ------------------------------------------------------------------------------
@@ -637,15 +628,6 @@ TEST_CASE("MIDI take groups and muted notes round-trip through JSON", "[core][js
     CHECK(loaded->tracks[0].midiRecordMode == MidiRecordMode::replace);
     CHECK(loaded->tracks[0].takeGroups[0].midi);
     CHECK(loaded->tracks[0].midiClips[0].notes[0].muted);
-
-    // A version 15 file: notes of five numbers play, groups are audio, passes are takes.
-    const auto old = projectFromJson(R"({"format":"northlight.project","version":15,"tracks":[
-        {"id":1,"name":"K","kind":"midi","clips":[],"midiClips":[{"id":2,"name":"c","start":0,"length":10,
-         "notes":[[3,60,100,0,5]]}]}]})",
-                                     &error);
-    REQUIRE(old.has_value());
-    CHECK_FALSE(old->tracks[0].midiClips[0].notes[0].muted);
-    CHECK(old->tracks[0].midiRecordMode == MidiRecordMode::takes);
 }
 
 TEST_CASE("Setting a MIDI track's record mode applies, undoes and redoes", "[core][command][midi]")

@@ -11,7 +11,7 @@ namespace northlight::engine
 
 namespace
 {
-constexpr char magic[8] = {'A', 'U', 'R', 'P', 'E', 'A', 'K', '1'};
+constexpr char magic[8] = {'N', 'L', 'P', 'E', 'A', 'K', '0', '1'};
 
 template <typename T> void put(std::string& out, const T& value)
 {

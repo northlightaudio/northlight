@@ -36,7 +36,6 @@ public:
               std::function<void()> onAction = {},
               const juce::String& secondAction = {},
               std::function<void()> onSecondAction = {});
-    void dismissAll();
     int count() const noexcept { return static_cast<int>(toasts_.size()); }
     static constexpr int maxShown = 3;
     static constexpr int autoDismissMs = 6000;

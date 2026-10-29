@@ -43,16 +43,8 @@ struct ProjectMenu
 };
 juce::PopupMenu projectMenu(const ProjectMenu& menu);
 
-// The snap grids the header's snap menu offers (ui/timeline/SnapGrids.h codes; 0 is
-// adaptive), in menu order: the straight grids, then triplets and dotted ones.
-struct SnapGrid
-{
-    int divisions;
-    const char* name;
-};
-const std::vector<SnapGrid>& snapGrids();
-// The snap menu: each grid (ticked when snap is on at it) and Off. `chosen` gets a
-// grid's divisions, or -1 for Off.
+// The snap menu: the grids of ui/timeline/SnapGrids.h (0 is adaptive), each ticked
+// when snap is on at it, and Off. `chosen` gets a grid's divisions, or -1 for Off.
 juce::PopupMenu snapMenu(bool snapOn, int grid, std::function<void(int divisions)> chosen);
 
 } // namespace northlight::menus

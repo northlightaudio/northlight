@@ -2112,16 +2112,84 @@ void PianoRoll::addNoteAt(juce::Point<int> p, core::SamplePosition length)
     note.length = std::max(minNoteLength, length);
     if (note.start >= c->length)
         return;
+    addNote(note, "Add note");
+}
+
+void PianoRoll::addNote(const core::MidiNote& note, const std::string& name)
+{
     std::vector<std::unique_ptr<core::Command>> commands;
     auto add = std::make_unique<core::AddNote>(trackId_, clipId_, note);
     const auto* raw = add.get();
     commands.push_back(std::move(add));
-    emit(std::move(commands), "Add note");
+    emit(std::move(commands), name);
     // The command allocated the id when it was applied (the owner executed it).
     selection_.clear();
     if (raw != nullptr && raw->noteId() != core::invalidId)
         selection_.push_back(raw->noteId());
     selectionChanged();
+}
+
+void PianoRoll::insertNote()
+{
+    const auto* c = clip();
+    if (c == nullptr)
+        return;
+    const core::MidiNote* after = nullptr;
+    for (const auto id : selection_)
+        if (const auto* n = c->findNote(id); n != nullptr && (after == nullptr || n->start > after->start))
+            after = n;
+    core::MidiNote note;
+    if (after != nullptr)
+    {
+        note.note = after->note;
+        note.velocity = after->velocity;
+        note.start = after->start + after->length;
+        note.length = after->length;
+    }
+    else
+    {
+        note.note = noteForY(gridArea().getCentreY());
+        note.velocity = velocity_;
+        note.start = snapped(playhead_ >= 0 ? playhead_ : scroll_);
+        note.length = gridSamples(note.start);
+    }
+    note.length = std::max(minNoteLength, note.length);
+    if (note.start >= c->length)
+        return;
+    addNote(note, "Add note");
+    // Keep it in view.
+    const auto grid = gridArea();
+    const int x = xForSample(note.start);
+    if (x < grid.getX() || x > grid.getRight() - 16)
+    {
+        scroll_ = std::max<core::SamplePosition>(
+            0, note.start - static_cast<core::SamplePosition>(grid.getWidth() / 4.0 * samplesPerPixel_));
+        notifyTimeView();
+        updateScrollbars();
+    }
+    auditionNote(note.note);
+    stopAudition();
+    repaint();
+}
+
+void PianoRoll::changeVelocity(int delta)
+{
+    if (const auto* c = clip(); c != nullptr && !selection_.empty() && delta != 0)
+        emitEdit(noteops::offsetVelocity(*c, selection_, delta), "Change velocity");
+}
+
+bool PianoRoll::showKeyboardMenu()
+{
+    const auto* c = clip();
+    if (c == nullptr)
+        return false;
+    auto at = gridArea().getCentre();
+    if (!selection_.empty())
+        if (const auto* n = c->findNote(selection_.front()))
+            if (const auto shown = noteBounds(*n).getIntersection(gridArea()); !shown.isEmpty())
+                at = shown.getCentre();
+    showNoteMenu(at);
+    return true;
 }
 
 void PianoRoll::finishDraw()
@@ -2486,16 +2554,6 @@ void PianoRoll::setGrid(std::size_t index)
     repaint();
 }
 
-void PianoRoll::setGridDivision(int division)
-{
-    // 1 a beat, 2 an eighth, 4 a sixteenth, 8 a thirty-second (in x/4).
-    const double beats = 1.0 / std::clamp(division, 1, 8);
-    for (std::size_t i = 0; i < noteGrids.size(); ++i)
-        if (noteGrids[i].kind == NoteGrid::Kind::beats && noteGrids[i].family == NoteGrid::Family::straight &&
-            std::abs(noteGrids[i].beats - beats) < 1.0e-9)
-            setGrid(i);
-}
-
 void PianoRoll::setSnapEnabled(bool on)
 {
     snap_ = on;
@@ -2641,6 +2699,17 @@ bool PianoRoll::handleEditKey(const juce::KeyPress& key)
     {
         const int step = mods.isCtrlDown() ? 12 : 1;
         nudgeSelection(0, key.getKeyCode() == juce::KeyPress::upKey ? step : -step);
+        return true;
+    }
+    if (is(Command::pianoRollVelocity))
+    {
+        const int step = mods.isShiftDown() ? 1 : 8;
+        changeVelocity(key.getKeyCode() == juce::KeyPress::upKey ? step : -step);
+        return true;
+    }
+    if (is(Command::pianoRollInsertNote))
+    {
+        insertNote();
         return true;
     }
     return false;

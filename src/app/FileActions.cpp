@@ -25,7 +25,7 @@ FileActions::~FileActions() = default;
 
 bool FileActions::isProjectFile(const juce::File& file)
 {
-    return file.hasFileExtension("northlight;aural");
+    return file.hasFileExtension("northlight");
 }
 
 // The folder new projects are saved to and opened from.
@@ -174,7 +174,7 @@ void FileActions::openProject()
 {
     if (host_.session.isRecording())
         return;
-    chooser_ = std::make_unique<juce::FileChooser>("Open project", projectFolder(), "*.northlight;*.aural");
+    chooser_ = std::make_unique<juce::FileChooser>("Open project", projectFolder(), "*.northlight");
     chooser_->launchAsync(juce::FileBrowserComponent::openMode | juce::FileBrowserComponent::canSelectFiles,
                           [this](const juce::FileChooser& fc)
                           {

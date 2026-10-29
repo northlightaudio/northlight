@@ -33,6 +33,9 @@ TrackHeader::TrackHeader(const Theme& theme) : theme_(theme), meter_(theme, 2, f
     setOpaque(true);
     setRepaintsOnMouseActivity(true);
     addMouseListener(&selectOnPress_, true);
+    // A Tab stop when its track is selected (ArrangeView::skippedByTab): Up and
+    // Down move to the next track's header, Shift+F10 opens its menu.
+    setWantsKeyboardFocus(true);
 
     name_.setFont(theme_.label());
     name_.setColour(juce::Label::textColourId, theme_.colours.textPrimary);
@@ -603,8 +606,18 @@ void TrackHeader::paint(juce::Graphics& g)
     g.fillRect(getLocalBounds().removeFromBottom(1));
 }
 
+bool TrackHeader::showKeyboardMenu()
+{
+    if (!onContextMenu || trackId_ == core::invalidId)
+        return false;
+    onContextMenu(trackId_, name_.localPointToGlobal(name_.getLocalBounds().getCentre()));
+    return true;
+}
+
 void TrackHeader::paintOverChildren(juce::Graphics& g)
 {
+    if (auto* lnf = dynamic_cast<NorthlightLookAndFeel*>(&getLookAndFeel()))
+        lnf->drawRegionFocusRing(g, *this, getLocalBounds().withTrimmedBottom(resizeEdge));
     // The A toggle's badge: how many lanes the track has, hidden ones included.
     if (!automation_.isVisible() || automationLanes_ == 0)
         return;

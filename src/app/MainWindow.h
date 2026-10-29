@@ -65,8 +65,6 @@ public:
     // command path (the sheet when channels route to it), for unattended checks.
     void addBus();
     void removeLastBus();
-    // Shows the mixer panel.
-    void showMixer();
     // --mixer-wide: the mixer's wide strips. --dock-height: the dock's height.
     void setMixerWide(bool wide);
     void setDockHeight(int height);

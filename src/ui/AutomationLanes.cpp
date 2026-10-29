@@ -58,7 +58,6 @@ AutomationLanes::AutomationLanes(const Theme& theme, const TimelineViewport& vie
 void AutomationLanes::setProject(const core::Project* project)
 {
     project_ = project;
-    shownValues_.clear();
     // A selection whose lane went, or whose points no longer exist, is dropped.
     const auto* channel = project_ != nullptr ? project_->findChannel(selChannel_) : nullptr;
     const auto* lane = channel != nullptr ? channel->findLane(selLane_) : nullptr;
@@ -542,7 +541,6 @@ void AutomationLanes::paintHeader(juce::Graphics& g, const Slot& slot) const
 
     // The value at the playhead.
     const auto value = valueAtPlayhead(*track, *lane);
-    shownValues_[lane->id] = value;
     g.setFont(collapsed ? theme_.caption() : theme_.value());
     g.setColour(collapsed ? c.textTertiary : c.textSecondary);
     g.drawText(value, valueOf(slot), juce::Justification::centredRight, true);
@@ -747,29 +745,6 @@ void AutomationLanes::paintLane(juce::Graphics& g, const Slot& slot) const
         g.fillRoundedRectangle(box.toFloat(), theme_.radius.sm);
         g.setColour(c.textPrimary);
         g.drawText(text, box, juce::Justification::centred);
-    }
-}
-
-void AutomationLanes::playheadMoved()
-{
-    if (project_ == nullptr || !geometry.rowCount)
-        return;
-    for (int row = 0; row < geometry.rowCount(); ++row)
-    {
-        const auto block = geometry.block(row);
-        if (block.isEmpty() || !block.intersects(geometry.lanesArea().withX(0)))
-            continue;
-        const auto* track = geometry.channelAt(row);
-        for (const auto& slot : slotsOf(row))
-            if (const auto* lane = laneOf(slot))
-            {
-                auto value = valueAtPlayhead(*track, *lane);
-                if (auto& shown = shownValues_[lane->id]; shown != value)
-                {
-                    shown = std::move(value);
-                    repaint(valueOf(slot));
-                }
-            }
     }
 }
 

@@ -285,24 +285,3 @@ TEST_CASE("Send pan and mute, hardware output, solo safe, hidden strips and wind
     CHECK(back->tracks[0].hardwareOutput == -1);
     CHECK(back->tracks[0].sends == p.tracks[0].sends);
 }
-
-TEST_CASE("A version 15 project opens with centred, unmuted sends and no hardware outputs",
-          "[core][json][mixer]")
-{
-    const std::string v15 = R"({"format":"northlight.project","version":15,"name":"Old","sampleRate":48000,
-        "tracks":[{"id":1,"name":"A","gain":1,"pan":0,"mute":false,"solo":false,"kind":"audio",
-                   "sends":[{"bus":10,"level":0.5,"pre":false}]}],
-        "buses":[{"id":10,"name":"FX","gain":1,"pan":0,"mute":false,"solo":false,"fx":true}],
-        "nextId":20})";
-    std::string error;
-    const auto p = projectFromJson(v15, &error);
-    REQUIRE(p.has_value());
-    REQUIRE(p->tracks.size() == 1);
-    REQUIRE(p->tracks[0].sends.size() == 1);
-    CHECK(p->tracks[0].sends[0].pan == 0.0f);
-    CHECK_FALSE(p->tracks[0].sends[0].mute);
-    CHECK(p->tracks[0].hardwareOutput == -1);
-    CHECK_FALSE(p->tracks[0].soloSafe);
-    CHECK_FALSE(p->tracks[0].mixerHidden);
-    CHECK(Project::schemaVersion >= 16);
-}

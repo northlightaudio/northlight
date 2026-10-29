@@ -132,18 +132,6 @@ juce::PopupMenu projectMenu(const ProjectMenu& m)
     return menu;
 }
 
-const std::vector<SnapGrid>& snapGrids()
-{
-    static const std::vector<SnapGrid> grids = []
-    {
-        std::vector<SnapGrid> list;
-        for (const auto& c : ui::snapGridChoices())
-            list.push_back({c.code, c.name});
-        return list;
-    }();
-    return grids;
-}
-
 juce::PopupMenu snapMenu(bool snapOn, int grid, std::function<void(int divisions)> chosen)
 {
     // The straight grids at the top; triplets and dotted grids in submenus

@@ -35,7 +35,6 @@ Generated from [tokens.json](tokens.json) (Machair Dusk v2) by `scripts/contrast
 | meterMid | canvas | 9.38 | Meter zone (non-text) | yes |
 | meterHot | canvas | 6.88 | Meter zone (non-text) | yes |
 | hardware.legend | hardware.panel | 6.74 | Legends on a hardware face's panel | yes |
-| hardware.ink | hardware.plate | 8.25 | Nameplate lettering | yes |
 | hardware.displayText | hardware.displayCentre | 10.25 | An amber display's text | yes |
 | hardware.displayDim | hardware.displayCentre | 5.50 | A display's preset number | 3:1 only |
 | hardware.glassInk | hardware.glassEdge | 6.01 | Readings on a lit meter window, at its edge | yes |
@@ -49,7 +48,6 @@ Generated from [tokens.json](tokens.json) (Machair Dusk v2) by `scripts/contrast
 | hardware.patinaInk | hardware.patinaPlate | 7.32 | Control names on Patina's stage plates | yes |
 | hardware.patinaInkSoft | hardware.patinaPlate | 4.56 | Values and scales on Patina's stage plates | yes |
 | hardware.patinaInk | hardware.patinaNameplate | 10.56 | The name on Patina's nameplate | yes |
-| hardware.patinaPanelInk | hardware.patinaPanel | 8.33 | The model line on Patina's panel | yes |
 | hardware.patinaPanelInkSoft | hardware.patinaPanel | 5.29 | Small print on Patina's panel | yes |
 | hardware.coronaInkSoft | hardware.coronaPanel | 5.79 | Values and scales on the amp's plate | yes |
 | hardware.pedalGravityInk | hardware.pedalGravity | 7.42 | Names on Gravity | yes |

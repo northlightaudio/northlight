@@ -115,6 +115,11 @@ std::vector<Shortcut>& table()
         add(Command::addAudioTrack, "addAudioTrack", "Add an audio track", tracks, {code('T', ctrl)});
         add(Command::addMidiTrack, "addMidiTrack", "Add a MIDI track", tracks, {code('T', ctrl | shift)});
         add(Command::addBus, "addBus", "Add a bus", tracks, {code('B', ctrl)});
+        add(Command::contextMenu,
+            "contextMenu",
+            "Open the menu of what has the focus",
+            view,
+            {code(KP::F10Key, shift)});
         // ----- the panels'
         add(Command::showMixer, "showMixer", "Mixer", view, {code(KP::F2Key)});
         add(Command::showEditor, "showEditor", "Editor", view, {code(KP::F3Key)});
@@ -184,6 +189,14 @@ std::vector<Shortcut>& table()
             {code('S', alt)});
         add(Command::join, "join", "Join", editing, {code('j')});
         add(Command::crossfade, "crossfade", "Crossfade", editing, {code('x')});
+        family(Command::selectClip,
+               "selectClip",
+               "Select the previous or next clip on the track (Shift extends)",
+               editing,
+               {code(KP::leftKey, ctrl),
+                code(KP::rightKey, ctrl),
+                code(KP::leftKey, ctrl | shift, false),
+                code(KP::rightKey, ctrl | shift, false)});
         family(Command::nudge,
                "nudge",
                "Nudge the selected clips by a grid step",
@@ -282,6 +295,19 @@ std::vector<Shortcut>& table()
                 code(KP::downKey),
                 code(KP::upKey, ctrl, false),
                 code(KP::downKey, ctrl, false)});
+        family(Command::pianoRollVelocity,
+               "pianoRollVelocity",
+               "Louder or softer notes (Shift: by one)",
+               pianoRoll,
+               {code(KP::upKey, alt),
+                code(KP::downKey, alt),
+                code(KP::upKey, alt | shift, false),
+                code(KP::downKey, alt | shift, false)});
+        add(Command::pianoRollInsertNote,
+            "pianoRollInsertNote",
+            "Add a note after the selected one (else at the playhead)",
+            pianoRoll,
+            {code(KP::insertKey)});
         // ----- the audio editor's (pitch mode)
         context = Context::audioEditor;
         family(Command::audioEditorTool,

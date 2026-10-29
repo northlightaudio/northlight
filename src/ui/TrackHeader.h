@@ -4,6 +4,7 @@
 #include "core/Model.h"
 #include "engine/Meters.h"
 #include "ui/InputChoices.h"
+#include "ui/KeyboardMenu.h"
 #include "ui/Theme.h"
 #include "ui/components/Knob.h"
 #include "ui/components/Meter.h"
@@ -25,7 +26,10 @@ namespace northlight::ui
 // third row at the large row height. The stripe opens the colour popup, the
 // name renames inline on double-click, the icon drags to reorder, and a
 // right-click opens the track menu.
-class TrackHeader final : public juce::Component, public juce::TooltipClient, private juce::Timer
+class TrackHeader final : public juce::Component,
+                          public juce::TooltipClient,
+                          public KeyboardMenu,
+                          private juce::Timer
 {
 public:
     explicit TrackHeader(const Theme& theme);
@@ -75,6 +79,9 @@ public:
     // Dragging the number: the screen position while it moves and when released.
     std::function<void(core::Id, juce::Point<int> screen, bool released)> onReorderDrag;
     std::function<void(core::Id, juce::Point<int> screen)> onContextMenu;
+    // Shift+F10 or the Menu key while the header has the focus: the menu a
+    // right-click opens, at the header's name.
+    bool showKeyboardMenu() override;
     // A MIDI track's "plays" chip was clicked: choose its instrument channel.
     std::function<void(core::Id, juce::Rectangle<int> screenArea)> onTargetMenu;
     // The A toggle: open or close the track's automation lanes under its row;

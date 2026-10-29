@@ -251,7 +251,8 @@ focus with Tab or an arrow key, in any window, turns the rings on; any click tur
 them off.
 
 **Focus on a region.** A region that takes the focus as a whole (a list, the piano
-roll's grid, the audio editor's canvas, the tempo lane) fills its panel, so there
+roll's grid, the audio editor's canvas, the tempo lane, the arrange view's lanes, a
+track header) fills its panel, so there
 is no room for a ring outside it: its 2 px `lineFocus` ring lies just inside its
 edge, square, under the same keyboard-only rule. A list shows it while the list or
 one of its rows has the focus. Controls inside a region keep their own ring.
@@ -466,7 +467,7 @@ keyboard, focus ring and tooltip, and its text pairs are in contrast.md.
 
 - **Textures** are images under `assets/<effect>/`, made for Northlight (their
   provenance in that folder's README), colour-graded once offline. Each has a
-  flat token fallback (`panel`, `plate`, `lamp`) so the face works without them.
+  flat token fallback (such as `panel`) so the face works without them.
   A static layer (panel, nameplate, recesses, engraved rules) is drawn into an
   image once per size and scale.
 - **Legends** printed on a panel are `legend` with a `legendShadow` copy 1 px
@@ -480,10 +481,6 @@ keyboard, focus ring and tooltip, and its text pairs are in contrast.md.
   under it in `value` `legend`. Hover and drag lighten the body; disabled, the
   scale and value drop to 35-45% and the line to 40%. Same sizes, behaviour and
   keyboard as the knob.
-- **Rotary selector, hardware** (`RotarySelector::setHardware`): the chicken
-  head at 105% of the 34 px body as the pointer, each position a printed dot
-  (`legend` at 70%; the chosen one a 4 px `led`) and its label as a legend (62%,
-  90% under the pointer, 100% chosen). Otherwise the rotary selector.
 - **Recessed parts** (a preset selector, a meter window): a darker slot with a
   shade under its top lip and a faint `highlight` line along its lower edge;
   pressed keys drop 1 px. Lit glass (a display, a meter window) gets a
@@ -674,8 +671,7 @@ Vertical bar `meterWidth` 6 px per channel, `meterGap` 2 px between channels, in
 well (`meterWell`, `meterWellInset`); the signal is LED-segmented at `ledPitchPx`
 with `ledGapPx` dark gaps, zones per `meter.zones` painted as solid colour runs (no
 blur between zones). Peak-hold line 1 px `meterPeakHold` with `peakHoldMs`. Clip
-indicator: a 6×6 square above the bar that turns `meterClip` and stays until clicked
-(`clipHoldMs` for the auto variant on the master). Scale ticks `caption`
+indicator: a 6×6 square above the bar that turns `meterClip` and stays until clicked. Scale ticks `caption`
 `textTertiary` at `meter.scaleTicksDb` on wide strips only. The bar rises over
 `meterRiseMs` (so a lone spike does not jump it) and falls at `meterFallDbPerSec`;
 the peak line and the clip light see the raw peaks. The horizontal variant (track

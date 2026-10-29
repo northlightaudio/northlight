@@ -114,9 +114,9 @@ environment:
   (`#include "engine/rt/RealtimeGuard.h"`), never `../`. No `using namespace juce`.
 - **Portability:** keep MSVC-only code inside `#if` blocks so Clang can still compile it.
 - **Project file format:** a model change that reaches the file raises
-  `Project::schemaVersion` and adds a step to `migrate()` in
-  `src/core/ProjectJson.cpp` (a no-op case when it only adds optional fields), and
-  is covered by the model's round-trip test. Older files must keep opening.
+  `Project::schemaVersion`. New fields must be optional with defaults, so older
+  development files keep opening; there is no upgrade chain until release. The
+  change is covered by the model's round-trip test.
 - **Line endings:** the working tree is CRLF (`.gitattributes` stores LF). Text an
   agent writes may be LF, so normalise before matching multi-line anchors in edit
   scripts.

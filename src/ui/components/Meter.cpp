@@ -40,16 +40,7 @@ void Meter::push(const float* peaks, int numChannels, double elapsedMs)
             c.peakAgeMs = 0.0;
         }
         if (peak >= 1.0f)
-        {
             c.clipped = true;
-            c.clipAgeMs = 0.0;
-        }
-        else if (c.clipped && autoClearClip_)
-        {
-            c.clipAgeMs += elapsedMs;
-            if (c.clipAgeMs > theme_.meter.clipHoldMs)
-                c.clipped = false;
-        }
     }
     // Silence stays silent: no repaint while every channel sits on the floor.
     bool changed = false;

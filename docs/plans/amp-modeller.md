@@ -7,12 +7,13 @@ come later and reuse its parts (oversampler, triode stage, convolver, tuner).
 Working name: **Corona** (fits Aurora, Bloom, Patina; easy to change). Type
 `northlight.amp`.
 
-**Status (2026-10-24):** phases 1-7 built on the `amp-modeller` branch,
-uncommitted. Where the build differs from this plan: the tone stack is solved from
+**Status: done.** Phases 1-7 shipped on `main` (commit 1a7e1c1, "Add Corona");
+see CHANGELOG.md. Where the build differs from this plan: the tone stack is solved from
 the circuit's nodal matrix (Yeh's published polynomial, as transcribed, was off by
 a few percent); the page switch is a pair of keys on the strip and changes
-instantly, with no slide; the master's pull boost is a lever; the follow-ups
-(low-latency monitoring, the tuner, the pedals) are in the roadmap, not built.
+instantly, with no slide; the master's pull boost is a lever. Of the follow-ups,
+the tuner (Polaris) and the first five pedals have since shipped; low-latency
+monitoring and more amp models are in the roadmap, not built.
 The open questions below were answered with the plan's defaults: Corona, one
 channel (Vibrato), silverface features, bass cabinets shipped now.
 

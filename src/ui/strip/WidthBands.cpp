@@ -257,12 +257,6 @@ void WidthBands::mouseDoubleClick(const juce::MouseEvent& e)
     card_.endGesture();
 }
 
-std::optional<float> WidthBands::measuredWidthAt(double hz) const
-{
-    const int band = juce::jlimit(0, spectrumBands - 1, static_cast<int>(std::floor(bandOf(hz))));
-    return widthOf(band);
-}
-
 const std::array<juce::String, 3>& WidthBands::bandNames()
 {
     static const std::array<juce::String, 3> names{"LOW", "MID", "HIGH"};

@@ -26,12 +26,6 @@ void HardwareKey::setLit(bool lit)
     repaint();
 }
 
-void HardwareKey::setLabel(const juce::String& label)
-{
-    label_ = label;
-    repaint();
-}
-
 void HardwareKey::setRendered(Rendered rendered)
 {
     parts_ = std::move(rendered);

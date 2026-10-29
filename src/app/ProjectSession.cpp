@@ -1137,9 +1137,7 @@ juce::File ProjectSession::templatesFolder() const
 std::vector<juce::File> ProjectSession::templates() const
 {
     std::vector<juce::File> found;
-    // Templates (and autosaves) from when Northlight was Aural are ".aural" files.
-    for (const auto& f :
-         templatesFolder().findChildFiles(juce::File::findFiles, false, "*.northlight;*.aural"))
+    for (const auto& f : templatesFolder().findChildFiles(juce::File::findFiles, false, "*.northlight"))
         found.push_back(f);
     std::sort(found.begin(),
               found.end(),
@@ -1628,8 +1626,7 @@ std::vector<ProjectSession::Autosave> ProjectSession::leftoverAutosaves() const
     std::vector<Autosave> found;
     if (!autosaveFolder_.isDirectory())
         return found;
-    for (const auto& file :
-         autosaveFolder_.findChildFiles(juce::File::findFiles, false, "*.northlight;*.aural"))
+    for (const auto& file : autosaveFolder_.findChildFiles(juce::File::findFiles, false, "*.northlight"))
     {
         if (file == autosaveWritten_)
             continue;

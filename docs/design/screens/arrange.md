@@ -287,7 +287,6 @@ Rows at `trackRow` 56 default. Contents, left to right, inside `space.sm` paddin
   appended from the recording peaks, header "● Recording".
 - Takes: a take group's comp plays on the lane as clips with a take badge each; the
   takes expand into lanes under the row for swipe comping (screens/comping.md).
-  Stacked clips from older projects stay stacked, the top one audible.
 
 ## Buses and the master
 

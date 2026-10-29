@@ -136,7 +136,8 @@ user notices rather than by an API:
 
 Until 1.0 the version stays at `0.x`, and moving to 1.0 is a promise: every 1.x opens
 every 1.x project. The project file format has its own version number in the file,
-with step-by-step upgrades. It changes independently of the application's version.
+which changes independently of the application's version. Until release there is no
+upgrade chain: new fields are optional with defaults, so older files still open.
 
 **One source.** The number is set in exactly one place, `project(... VERSION x.y.z)`
 in the top-level `CMakeLists.txt`. A label is added by the `NORTHLIGHT_VERSION_LABEL`

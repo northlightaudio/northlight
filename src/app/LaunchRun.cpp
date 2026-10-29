@@ -553,7 +553,6 @@ const std::vector<LaunchFlag<LaunchRun>>& LaunchRun::flags()
          0,
          "show the plugin browser",
          [](LaunchRun& r, Args&) { r.window.showPluginBrowser(); }},
-        {"--mixer", "", 0, "show the mixer", [](LaunchRun& r, Args&) { r.window.showMixer(); }},
         {"--panel",
          "<name>",
          1,

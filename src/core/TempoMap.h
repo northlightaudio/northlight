@@ -53,8 +53,6 @@ public:
         return bpmAtQuarter(quartersAt(double(position)));
     }
     double samplesPerQuarterAt(SamplePosition position) const noexcept;
-    // The tempo at the song's start.
-    double startBpm() const noexcept { return tempo_.front().bpm0; }
 
     // ----- bars ------------------------------------------------------------------
     static double quartersPerBeat(TimeSignature signature) noexcept;

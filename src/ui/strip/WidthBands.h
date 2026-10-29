@@ -88,9 +88,6 @@ public:
     void mouseUp(const juce::MouseEvent&) override;
     void mouseDoubleClick(const juce::MouseEvent& e) override;
 
-    // For tests: the measured width (%) at a frequency, when there is signal there.
-    std::optional<float> measuredWidthAt(double hz) const;
-
 private:
     enum class Drag
     {

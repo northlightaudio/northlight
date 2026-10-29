@@ -156,15 +156,6 @@ TEST_CASE("Mute from the keys acts on every selected track", "[ui][arrange]")
     CHECK(f.view.selectedTracks() == std::vector<core::Id>{1});
 }
 
-TEST_CASE("Dragging a fade handle sets the fade", "[ui][arrange][gesture]")
-{
-    Fixture f;
-    // The handle is the 8 px square at the clip's top left corner (the block starts 2 px under the row).
-    f.drag({clipLeft + 2, 32 + 2 + 3}, {clipLeft + 12, 32 + 2 + 3});
-    CHECK(f.edits == std::vector<std::string>{"Set fade"});
-    CHECK(f.clip().fadeIn > 0);
-}
-
 TEST_CASE("A lasso over empty space selects the clips it touches", "[ui][arrange][gesture]")
 {
     Fixture f;
@@ -186,13 +177,4 @@ TEST_CASE("A drag in the ruler's bars row sets the loop region on the grid", "[u
     f.drag({260 + 41, 24}, {260 + 99, 24});
     CHECK(from == 48000);
     CHECK(to == 120000);
-}
-
-TEST_CASE("The erase tool removes the clip it is pressed on, on release", "[ui][arrange][gesture]")
-{
-    Fixture f;
-    f.view.setTool(ui::ArrangeView::Tool::erase);
-    f.drag({clipLeft + 10, bodyY}, {clipLeft + 11, bodyY});
-    CHECK(f.project.tracks[0].clips.empty());
-    CHECK(f.edits.size() == 1);
 }

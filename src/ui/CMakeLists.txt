@@ -53,8 +53,6 @@ add_library(northlight_ui STATIC
     components/RotarySelector.cpp
     components/HardwareParts.h
     components/HardwareParts.cpp
-    components/PanelHeader.h
-    components/PanelHeader.cpp
     components/DragTip.h
     components/DragTip.cpp
     components/Toast.h
@@ -74,6 +72,10 @@ add_library(northlight_ui STATIC
     shell/HeaderBar.cpp
     shell/StatusBar.h
     shell/StatusBar.cpp
+    shell/FocusCycle.h
+    shell/FocusCycle.cpp
+    KeyboardMenu.h
+    KeyboardMenu.cpp
     InputChoices.h
     OnScreen.h
     Selection.h

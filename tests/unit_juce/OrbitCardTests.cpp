@@ -252,57 +252,6 @@ TEST_CASE("Orbit's meters, reels and counter follow the machine", "[ui][orbit]")
     CHECK(left->getDescription().getFloatValue() < -15.0f);
 }
 
-// Renders the card in a few states to PNGs at 100% and 200%, for review (not run
-// by default): set NORTHLIGHT_CARD_PNGS to a folder.
-TEST_CASE("Orbit card states to PNG", "[.capture]")
-{
-    const juce::ScopedJuceInitialiser_GUI juceInit;
-    const auto folder = juce::SystemStats::getEnvironmentVariable("NORTHLIGHT_CARD_PNGS", {});
-    REQUIRE(folder.isNotEmpty());
-    struct State
-    {
-        const char* name;
-        std::vector<std::pair<int, float>> params;
-        bool bypass = false;
-    };
-    const std::vector<State> states{
-        {"default", {}},
-        {"driven", {{ob::input, 9.0f}, {ob::level, 2.0f}, {ob::tape, 1.0f}, {ob::bias, -40.0f}}},
-        {"worn",
-         {{ob::speed, 0.0f}, {ob::hiss, 45.0f}, {ob::flutter, 0.15f}, {ob::eq, 1.0f}, {ob::link, 0.0f}}},
-        {"off", {}, true},
-        {"compact", {{ob::input, 4.5f}}},
-    };
-    for (const auto& state : states)
-    {
-        Rig rig;
-        for (const auto& [index, value] : state.params)
-        {
-            rig.insert.params[static_cast<size_t>(index)] = value;
-            rig.live->setParameter(index, value);
-        }
-        rig.insert.bypass = state.bypass;
-        rig.card->refresh(rig.insert);
-        rig.play(400, 0.2f);
-        if (std::string(state.name) == "compact")
-        {
-            // The Editor dock: the face at half its size.
-            const int body = 300 + 2 * ui::Theme::dark().spacing.xs;
-            rig.card->setEmbedded(true);
-            rig.card->setBounds(0, 0, rig.card->preferredWidthAt(body), body);
-        }
-        for (const float scale : {1.0f, 2.0f})
-        {
-            const auto image = rig.card->createComponentSnapshot(rig.card->getLocalBounds(), true, scale);
-            juce::File file(folder + "/orbit-" + state.name + (scale > 1.5f ? "-2x" : "-1x") + ".png");
-            file.deleteFile();
-            juce::FileOutputStream out(file);
-            REQUIRE(out.openedOk());
-            juce::PNGImageFormat().writeImageToStream(image, out);
-        }
-    }
-}
-
 TEST_CASE("Orbit's controls sit on its face, their tooltips brief", "[ui][orbit]")
 {
     const juce::ScopedJuceInitialiser_GUI juceInit;

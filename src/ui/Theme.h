@@ -32,11 +32,11 @@ struct Theme
         // Text
         juce::Colour textPrimary, textSecondary, textTertiary, textDisabled, textOnAccent, textOnColour;
         // Accent
-        juce::Colour accent, accentHover, accentPressed, accentSubtle, selectionFill, selectionOutline;
+        juce::Colour accent, accentHover, accentSubtle, selectionFill, selectionOutline;
         // The primary button: moonlight, with peat text (brand.md)
         juce::Colour primary, primaryHover, primaryPressed, textOnPrimary;
         // Semantic
-        juce::Colour record, recordHover, recordSubtle, danger, warning, success, info;
+        juce::Colour record, recordHover, danger, warning, success, info;
         juce::Colour mute, solo, arm, monitor;
         // Meters
         juce::Colour meterLow, meterMid, meterHot, meterClip, meterTrack, meterPeakHold, loudnessTarget;
@@ -46,11 +46,6 @@ struct Theme
             snapGuide;
         // Data
         juce::Colour automation, midiNote, midiNoteVelocityLow;
-
-        // Names the views used before the token file (each maps onto a token above
-        // and goes away as the screens are restyled).
-        juce::Colour background, surface, surfaceRaised, surfaceHover, border, borderStrong, accentText,
-            focus, meter;
     };
 
     struct TrackColour
@@ -86,8 +81,9 @@ struct Theme
 
     struct Fonts
     {
-        std::string uiFamily = "Inter", uiFile = "Inter-Variable.ttf";
-        std::string monoFamily = "JetBrains Mono", monoFile = "JetBrainsMono-Variable.ttf";
+        // The bundled typefaces load by file name (tokens.json's family names are documentation).
+        std::string uiFile = "Inter-Variable.ttf";
+        std::string monoFile = "JetBrainsMono-Variable.ttf";
         struct Size
         {
             // micro: a display's axis labels and corner chips, never running text.
@@ -101,11 +97,10 @@ struct Theme
         float lineHeight = 1.3f;
         float letterSpacingCaps = 0.04f;
         // Legends printed on a hardware face (the tape echo's console), never the interface.
-        std::string legendFamily = "Barlow Condensed", legendFile = "BarlowCondensed-SemiBold.ttf",
-                    legendBoldFile = "BarlowCondensed-Bold.ttf";
+        std::string legendFile = "BarlowCondensed-SemiBold.ttf", legendBoldFile = "BarlowCondensed-Bold.ttf";
         // The brand's serif: wordmarks set large and sparingly (Vesper's), never controls.
-        std::string displayFamily = "Newsreader", displayFile = "Newsreader-Variable.ttf",
-                    displayItalicFile = "Newsreader-Italic-Variable.ttf";
+        std::string displayFile = "Newsreader-Variable.ttf";
+        std::string displayItalicFile = "Newsreader-Italic-Variable.ttf";
         juce::Typeface::Ptr ui, mono;               // bundled typefaces, null when not bundled
         juce::Typeface::Ptr legend, legendBold;     // the same, for Face::legend
         juce::Typeface::Ptr display, displayItalic; // the same, for displayFont()
@@ -119,14 +114,6 @@ struct Theme
     struct Radius
     {
         float sm = 3.0f, md = 6.0f, lg = 10.0f, pill = 999.0f;
-    };
-
-    // The type scale, as sizes the views pass to juce::FontOptions (kept for the
-    // views not yet restyled; new code uses Theme::font()).
-    struct Type
-    {
-        float caption = 11.0f, small = 12.0f, body = 13.0f, label = 13.0f, title = 16.0f, heading = 20.0f,
-              timeLarge = 22.0f, timeSmall = 13.0f, value = 12.0f;
     };
 
     struct Sizes
@@ -147,13 +134,13 @@ struct Theme
         int meterWidth = 6, meterGap = 2, scrollbar = 10, splitter = 5;
         int panelMin = 240, dockMin = 200, focusRing = 2, tooltipMaxWidth = 320;
         // Pre-token names (see Colours).
-        int controlHeight = 28, rowHeight = 28, labelWidth = 120, meterHeight = 6;
+        int controlHeight = 28, rowHeight = 28, labelWidth = 120;
     };
 
     struct Motion
     {
-        int hoverMs = 100, pressMs = 60, toggleMs = 120, panelMs = 180, menuMs = 120, toastMs = 200,
-            tooltipDelayMs = 500, meterRiseMs = 40, peakHoldMs = 1500;
+        int hoverMs = 100, toggleMs = 120, panelMs = 180, menuMs = 120, toastMs = 200, tooltipDelayMs = 500,
+            meterRiseMs = 40, peakHoldMs = 1500;
         // How long work runs before its progress sheet appears. A delay, not an
         // animation: reduce-motion leaves it alone.
         int progressDelayMs = 400;
@@ -172,10 +159,8 @@ struct Theme
     {
         float floorDb = -60.0f;
         std::vector<MeterZone> zones;
-        int clipHoldMs = 3000;
         std::vector<float> scaleTicksDb;
         float loudnessTargetLufs = -14.0f;
-        float loudnessRangeLow = -36.0f, loudnessRangeHigh = 0.0f;
         // The zone colour for a level.
         juce::Colour colourAt(float db) const;
     };
@@ -187,13 +172,6 @@ struct Theme
         juce::Colour colour;
         bool inset = false;
         bool empty() const noexcept { return colour.isTransparent(); }
-    };
-
-    struct Elevation
-    {
-        float popupShadowRadius = 8.0f;
-        juce::Point<float> popupShadowOffset{0.0f, 8.0f};
-        juce::Colour popupShadow{0x80000000};
     };
 
     // The tactile layer (design-system.md 2.4): panels stay flat, controls get
@@ -220,9 +198,8 @@ struct Theme
     // piece of studio equipment over its own textures (Patina's rack unit).
     struct Hardware
     {
-        juce::Colour panel, panelWear;           // the panel without its texture; the worn edge
+        juce::Colour panel;                      // the panel without its texture
         juce::Colour legend, legendShadow;       // printed legends, and the shade under them
-        juce::Colour plate, ink;                 // a nameplate without its image; its lettering
         juce::Colour bezel, keyTop, keyBottom;   // a recessed slot; a bakelite key's body
         juce::Colour keyGlyph;                   // the arrow on a key
         juce::Colour displayCentre, displayEdge; // a lit amber display's glass
@@ -230,11 +207,8 @@ struct Theme
         juce::Colour glassCentre, glassMid, glassEdge; // a lit meter window
         juce::Colour glassOffCentre, glassOffEdge;     // the same, unlit
         juce::Colour glassInk;                         // what is drawn on the window
-        juce::Colour glassFrameTop, glassFrameBottom;  // the window's bevelled frame
         juce::Colour led, ledHot, ledOff;
-        juce::Colour switchDark, switchLight; // a slide switch's two halves
         juce::Colour knobBody, knobCap, knobPointer;
-        juce::Colour lamp; // a pilot lamp's glow
         juce::Colour shadow, highlight;
         // The tape echo's console (screens/plugins.md 7.2a): its enamel panels without
         // their textures, the ink printed on each, the meter's dial and needle, the
@@ -254,7 +228,7 @@ struct Theme
         // Patina's face: the hammertone panel and the enamel plates, the ink on each,
         // the nameplate's aluminium and the windows' black bezels (flat fallbacks
         // for the renders).
-        juce::Colour patinaPanel, patinaPlate, patinaInk, patinaInkSoft, patinaPanelInk, patinaPanelInkSoft;
+        juce::Colour patinaPanel, patinaPlate, patinaInk, patinaInkSoft, patinaPanelInkSoft;
         juce::Colour patinaNameplate, patinaBezel;
         // The guitar pedals: each enclosure's paint (flat fallbacks for the renders)
         // and the ink printed on it; the tuner's display.
@@ -284,11 +258,9 @@ struct Theme
     Fonts fonts;
     Spacing spacing;
     Radius radius;
-    Type type;
     Sizes sizes;
     Motion motion;
     Meter meter;
-    Elevation elevation;
     Material material;
     Hardware hardware;
     // The High contrast variant is applied (Preferences, or a Windows contrast
@@ -363,8 +335,6 @@ struct Theme
     static Theme defaults();
     // The current theme.
     static const Theme& dark();
-    // The file the tokens came from, for diagnostics ("embedded" when none).
-    static const std::string& source();
     // Parses "x y blur #colour" (optionally led by "inset").
     static bool parseShadow(const juce::String& text, Shadow& out);
 };

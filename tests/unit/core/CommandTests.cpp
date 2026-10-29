@@ -1,3 +1,4 @@
+#include "core/ArrangeCommands.h"
 #include "core/Command.h"
 #include "core/ProjectJson.h"
 
@@ -405,29 +406,6 @@ TEST_CASE("A new command after undo discards the redo history", "[core][command]
     CHECK(p.tempoBpm == 90.0);
 }
 
-TEST_CASE("Moving a track reorders the list and undoes back", "[core][command]")
-{
-    Project p = projectWithTrack();
-    Track second, third;
-    second.name = "Second";
-    third.name = "Third";
-    p.tracks.push_back(second);
-    p.tracks.push_back(third);
-    p.tracks[1].id = p.allocateId();
-    p.tracks[2].id = p.allocateId();
-    const Id first = p.tracks[0].id;
-    UndoStack stack;
-    stack.execute(p, std::make_unique<MoveTrack>(first, 2));
-    CHECK(p.tracks[2].id == first);
-    CHECK(p.tracks[0].name == "Second");
-    stack.undo(p);
-    CHECK(p.tracks[0].id == first);
-    CHECK(p.tracks[2].name == "Third");
-    stack.redo(p);
-    CHECK(p.trackIndex(first) == 2);
-    CHECK_FALSE(stack.execute(p, std::make_unique<MoveTrack>(Id{999999}, 0)));
-}
-
 TEST_CASE("A fader group moves its members together, keeping their balance", "[core][command][group]")
 {
     Project p = projectWithTrack();
@@ -800,7 +778,7 @@ TEST_CASE("MIDI clips and notes are added, moved, trimmed, split, edited, quanti
     CHECK(p.length() == 3000);
     const Id c4 = stored.notes[1].id;
 
-    // Notes: edit, add, remove, quantise.
+    // Notes: edit, add, remove.
     stack.execute(p, std::make_unique<SetNote>(track, clipId, MidiNote{c4, 200, 0, 50, 0}));
     CHECK(p.tracks[0].midiClips[0].notes[1].id == c4);         // re-sorted: 0 then 50
     CHECK(p.tracks[0].midiClips[0].findNote(c4)->note == 127); // clamped
@@ -813,15 +791,6 @@ TEST_CASE("MIDI clips and notes are added, moved, trimmed, split, edited, quanti
     stack.execute(p, std::move(addNote));
     const Id g4 = addNotePtr->noteId();
     REQUIRE(p.tracks[0].midiClips[0].notes.size() == 3);
-    // Quantise to a 500-sample grid: 1000 + 1010 = 2010 -> 2000 -> clip-relative 1000.
-    stack.execute(p, std::make_unique<QuantiseNotes>(track, clipId, std::vector<Id>{g4}, 500));
-    CHECK(p.tracks[0].midiClips[0].findNote(g4)->start == 1000);
-    stack.undo(p);
-    CHECK(p.tracks[0].midiClips[0].findNote(g4)->start == 1010);
-    stack.execute(
-        p, std::make_unique<QuantiseNotes>(track, clipId, std::vector<Id>{}, 500, 0.5f)); // all, halfway
-    CHECK(p.tracks[0].midiClips[0].findNote(g4)->start == 1005);
-    stack.undo(p);
     stack.execute(p, std::make_unique<RemoveNote>(track, clipId, g4));
     CHECK(p.tracks[0].midiClips[0].notes.size() == 2);
     stack.undo(p);
@@ -1180,7 +1149,7 @@ TEST_CASE("Every command undoes to the exact project it started from and redoes 
         make<SetMidiTarget>("SetMidiTarget", Id{2}, invalidId, 3),
         make<RemoveTrack>("RemoveTrack audio", Id{1}),
         make<RemoveTrack>("RemoveTrack instrument", Id{3}),
-        make<MoveTrack>("MoveTrack", Id{1}, 2),
+        make<MoveTracks>("MoveTracks", std::vector<Id>{1}, invalidId, invalidId),
         make<AddBus>("AddBus", Bus{}),
         make<RemoveBus>("RemoveBus", Id{5}),
         make<RemoveGroup>("RemoveGroup", Id{6}),
@@ -1201,8 +1170,6 @@ TEST_CASE("Every command undoes to the exact project it started from and redoes 
         make<AddNote>("AddNote", Id{2}, Id{40}, MidiNote{invalidId, 67, 100, 0, 100}),
         make<RemoveNote>("RemoveNote", Id{2}, Id{40}, Id{41}),
         make<SetNote>("SetNote", Id{2}, Id{40}, MidiNote{41, 61, 90, 20, 100}),
-        make<QuantiseNotes>(
-            "QuantiseNotes", Id{2}, Id{40}, std::vector<Id>{41, 42}, SamplePosition{480}, 1.0f),
         make<AddMarker>("AddMarker", Marker{invalidId, "B", 500, 0}),
         make<RemoveMarker>("RemoveMarker", Id{7}),
         make<SetMarker>("SetMarker", Id{7}, SamplePosition{100}, SamplePosition{0}, std::string("X")),

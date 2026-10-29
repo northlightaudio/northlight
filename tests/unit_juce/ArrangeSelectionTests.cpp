@@ -55,6 +55,41 @@ TEST_CASE("Every change to the arrange view's clip selection is reported once", 
     CHECK(reports == 3);
 }
 
+TEST_CASE("Ctrl+Left and Ctrl+Right step through the selected track's clips",
+          "[ui][arrange][selection][keys]")
+{
+    const juce::ScopedJuceInitialiser_GUI juceInit;
+    audio::PeakStore peaks;
+    ui::ArrangeView view(peaks);
+    view.setSize(900, 600);
+    auto project = twoClips();
+    view.setProject(&project);
+    view.setSelectedTrack(1);
+    using Key = juce::KeyPress;
+    const auto ctrl = juce::ModifierKeys::commandModifier;
+    const auto shift = juce::ModifierKeys::shiftModifier;
+    const auto first = std::vector<ui::ArrangeView::ClipRef>{{1, 10}};
+    const auto second = std::vector<ui::ArrangeView::ClipRef>{{1, 11}};
+
+    // From no selection: the first clip that ends after the playhead (at 0).
+    CHECK(view.handleEditKey(Key(Key::rightKey, ctrl, 0)));
+    CHECK(view.selection() == first);
+    CHECK(view.handleEditKey(Key(Key::rightKey, ctrl, 0)));
+    CHECK(view.selection() == second);
+    CHECK(view.handleEditKey(Key(Key::rightKey, ctrl, 0))); // the last stays
+    CHECK(view.selection() == second);
+    CHECK(view.handleEditKey(Key(Key::leftKey, juce::ModifierKeys(ctrl | shift), 0)));
+    CHECK(view.selection().size() == 2);
+    CHECK(view.handleEditKey(Key(Key::leftKey, ctrl, 0)));
+    CHECK(view.selection() == first);
+    // Before the first clip there is nothing to the left of the playhead.
+    view.clearSelection();
+    CHECK_FALSE(view.stepClipSelection(-1, false));
+    // A track with no clips leaves the key to others.
+    view.setSelectedTrack(99);
+    CHECK_FALSE(view.handleEditKey(Key(Key::rightKey, ctrl, 0)));
+}
+
 TEST_CASE("The arrange view shows the shared selection's track", "[ui][arrange]")
 {
     const juce::ScopedJuceInitialiser_GUI juceInit;

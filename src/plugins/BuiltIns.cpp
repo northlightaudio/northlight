@@ -180,12 +180,6 @@ std::string builtInNoteName(const std::string& typeName, int note)
     return name != nullptr ? std::string(name) : std::string{};
 }
 
-bool builtInNamesNotes(const std::string& typeName)
-{
-    const auto* builtIn = findBuiltIn(typeName);
-    return builtIn != nullptr && builtIn->noteName != nullptr;
-}
-
 std::vector<std::string> BuiltInFactory::typeNames() const
 {
     std::vector<std::string> names;

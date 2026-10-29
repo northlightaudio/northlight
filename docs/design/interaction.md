@@ -94,6 +94,7 @@ while the arrange view has the focus and shows the mixer elsewhere.
 | Audio Setup / Plugins / Preferences | Ctrl+Shift+A / Ctrl+Shift+P / Ctrl+, |
 | Search the browser | Ctrl+F |
 | Close all plugin windows | Ctrl+Shift+W |
+| Open the menu of what has the focus (the selected clip's, else the time selection's, else the selected track's; the piano roll's note menu) | Shift+F10 or the Menu key |
 
 **Arrange view**
 
@@ -112,6 +113,7 @@ while the arrange view has the focus and shows the mixer elsewhere.
 | Open or close the selected track's automation lanes | A |
 | Show / hide take lanes | Alt+T |
 | Tools: select, range, pencil, erase, split, glue, mute | 1 to 7 (fixed) |
+| Select the previous / next clip on the selected track (Shift extends) | Ctrl+Left / Ctrl+Right (fixed) |
 | Nudge the selection | Left / Right (fixed); Alt+Left / Right by a grid step, with Shift a quarter (fixed) |
 | Newer / older take at the playhead (comp) | Alt+Up / Alt+Down (fixed) |
 
@@ -134,6 +136,8 @@ while the arrange view has the focus and shows the mixer elsewhere.
 | Move up or down a semitone (Ctrl: an octave) | Up / Down (fixed) |
 | Select the previous / next note (Shift extends) | Ctrl+Left / Ctrl+Right (fixed) |
 | Shorten / lengthen by a grid step (Shift: fine) | Alt+Left / Alt+Right (fixed) |
+| Louder / softer by 8 (Shift: by 1) | Alt+Up / Alt+Down (fixed) |
+| Add a note after the selected one, at its pitch, length and velocity (with none selected: a grid step at the playhead, on the view's middle row) | Insert |
 
 **Audio editor** (pitch mode, while it has the focus)
 
@@ -150,10 +154,14 @@ Alt+drag of its right edge, Ctrl+drag copies clips, and a clip's gain follows a 
 (screens/arrange.md). In the mixer, Ctrl+click on a channel's S solos it alone (exclusive solo), and
 Ctrl held at the drop copies an insert instead of moving it (screens/mixer.md).
 
-Focus model: the arrange view owns focus by default; Tab cycles header controls,
-track headers, lanes, dock, side panel, status bar; Esc returns focus to the arrange
-and clears selection. Arrow keys inside a focused region move the selection (tracks
-up/down, clips left/right).
+Focus model: the arrange view owns focus by default (a click in it takes it); Tab
+cycles header controls, the selected track's header and its controls, the lanes,
+dock, side panel, status bar, then a toast's actions, and wraps; Shift+Tab goes
+back. Only the selected track's header is a Tab stop: Up and Down move to the
+track above or below, and the focus moves with them. Esc returns focus to the
+arrange and clears selection. In the lanes Up and Down move the track selection
+and Ctrl+Left / Ctrl+Right the clip selection (Left and Right alone nudge, as
+above). Every focus ring shows only for keyboard focus.
 
 ## 10.5 Tooltips and help
 

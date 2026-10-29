@@ -30,8 +30,6 @@ add_library(northlight_app_session STATIC
     CrashReports.cpp
     UserSettings.h
     UserSettings.cpp
-    Migration.h
-    Migration.cpp
     ProjectSession.h
     Notices.h
     ProjectSession.cpp

@@ -43,7 +43,6 @@ TEST_CASE("The embedded tokens load with the design system's values", "[ui][them
     CHECK(theme.meter.colourAt(-1.0f) == theme.colours.meterHot);
     CHECK(theme.meter.scaleTicksDb.size() == 8);
     CHECK(theme.meter.loudnessTargetLufs == -14.0f);
-    CHECK(theme.elevation.popupShadowRadius == 24.0f);
     // The tactile layer.
     CHECK(theme.material.enabled);
     CHECK(theme.material.controlTop == juce::Colour(0xff2a312b));
@@ -55,10 +54,6 @@ TEST_CASE("The embedded tokens load with the design system's values", "[ui][them
     CHECK(theme.material.glowRecord.blur == 12.0f);
     CHECK(theme.material.ledPitchPx == 2);
     CHECK(theme.material.readoutText == juce::Colour(0xff93abc2));
-    // The pre-token aliases map onto tokens.
-    CHECK(theme.colours.background == theme.colours.canvas);
-    CHECK(theme.colours.surfaceRaised == theme.colours.surface2);
-    CHECK(theme.colours.border == theme.colours.lineSubtle);
 }
 
 TEST_CASE("A partial override changes only the keys it holds and reports bad values", "[ui][theme]")
@@ -68,7 +63,6 @@ TEST_CASE("A partial override changes only the keys it holds and reports bad val
     CHECK(ui::Theme::applyText(R"({"color": {"accent": "#FF0000"}, "space": {"lg": 20}})", theme, error));
     CHECK(error.empty());
     CHECK(theme.colours.accent == juce::Colour(0xffff0000));
-    CHECK(theme.colours.accentText == theme.colours.textOnAccent);
     CHECK(theme.spacing.lg == 20);
     CHECK(theme.spacing.md == 12);                           // untouched
     CHECK(theme.colours.canvas == juce::Colour(0xff0f1311)); // untouched
@@ -77,6 +71,15 @@ TEST_CASE("A partial override changes only the keys it holds and reports bad val
     CHECK(theme.colours.accent == juce::Colour(0xffff0000)); // the bad value was skipped
     CHECK_FALSE(ui::Theme::applyText("not json", theme, error));
     CHECK_FALSE(ui::Theme::applyText("[1,2]", theme, error));
+}
+
+TEST_CASE("A track row's tallest size comes from the token file", "[ui][theme]")
+{
+    auto theme = ui::Theme::defaults();
+    std::string error;
+    CHECK(ui::Theme::applyText(R"({"size": {"trackRowMax": 300}})", theme, error));
+    CHECK(theme.sizes.trackRowMax == 300);
+    CHECK(theme.sizes.trackRowMin == 28); // untouched
 }
 
 TEST_CASE("The fader law puts 0 dB at three quarters of the travel and -inf at the bottom", "[ui][fader]")

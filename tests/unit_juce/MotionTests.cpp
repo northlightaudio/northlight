@@ -380,37 +380,6 @@ TEST_CASE("A tooltip with a shortcut is wide enough for its text and key caps", 
     CHECK(withKeys.getHeight() >= plain.getHeight());
 }
 
-// Not run by default ([.]): renders sample tooltips to a PNG for a look.
-TEST_CASE("render sample tooltips", "[.render]")
-{
-    const juce::ScopedJuceInitialiser_GUI juceInit;
-    const auto& theme = ui::Theme::dark();
-    ui::NorthlightLookAndFeel lookAndFeel(theme);
-    juce::Image image(juce::Image::ARGB, 460, 260, true);
-    {
-        juce::Graphics g(image); // drawn into the image when it goes
-        g.fillAll(theme.colours.canvas);
-        int y = 12;
-        for (const juce::String tip : {"Redo  Ctrl+Shift+Z",
-                                       "Play  Space",
-                                       "Pencil: draw a MIDI clip on a MIDI track  3",
-                                       "Ripple: off  Shift+N",
-                                       "UADx Topline Vocal Tune"})
-        {
-            const auto box = lookAndFeel.getTooltipBounds(tip, {0, 0}, {0, 0, 1920, 1080});
-            juce::Graphics::ScopedSaveState state(g);
-            g.setOrigin(12, y);
-            lookAndFeel.drawTooltip(g, tip, box.getWidth(), box.getHeight());
-            y += box.getHeight() + 12;
-        }
-    }
-    const auto out =
-        juce::File::getSpecialLocation(juce::File::tempDirectory).getChildFile("northlight-tooltips.png");
-    out.deleteFile();
-    juce::FileOutputStream stream(out);
-    juce::PNGImageFormat().writeImageToStream(image, stream);
-}
-
 TEST_CASE("A progress sheet waits out its delay unless hurried, and says when it is fully shown",
           "[ui][motion]")
 {

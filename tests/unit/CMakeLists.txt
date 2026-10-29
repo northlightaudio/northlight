@@ -53,8 +53,6 @@ add_executable(northlight_unit_tests
     plugins/StripBenchTests.cpp
     plugins/SynthFingerprintTests.cpp
     plugins/ExpressionTests.cpp
-    plugins/StarbitSpectrumProbe.cpp
-    plugins/PulsarProbe.cpp
     plugins/PulsarTests.cpp
     plugins/BeatSyncTests.cpp
     plugins/SamplerTests.cpp

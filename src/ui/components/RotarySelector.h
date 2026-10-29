@@ -30,13 +30,6 @@ public:
     int selected() const noexcept { return selected_; }
     void setDefault(int index) noexcept { default_ = index; }
     void setHue(juce::Colour hue);
-    // Drawn for a hardware face: a chicken-head pointer with printed legends
-    // (design-system.md "Hardware face").
-    void setHardware(bool hardware)
-    {
-        hardware_ = hardware;
-        repaint();
-    }
 
     // The size the labels need around the body.
     int preferredWidth() const noexcept { return bodySize + 2 * (labelReach + labelHalfWidth); }
@@ -70,7 +63,6 @@ private:
     static constexpr int dragStep = 16;       // pixels per position
 
     juce::Point<float> centre() const;
-    void paintHardware(juce::Graphics& g, bool hover);
     float angleOf(float position) const;
     int positionAt(juce::Point<float> p) const;
     void choose(int index, bool fromUser);
@@ -83,7 +75,7 @@ private:
     int selected_ = 0, default_ = 0, hoverLabel_ = -1;
     float shown_ = 0.0f; // the pointer's position, easing to selected_
     int dragOrigin_ = 0, dragStart_ = 0;
-    bool dragging_ = false, clickedLabel_ = false, hardware_ = false;
+    bool dragging_ = false, clickedLabel_ = false;
 };
 
 } // namespace northlight::ui

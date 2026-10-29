@@ -148,7 +148,6 @@ public:
     // Valid once the editor is open (the spec allows can_resize only after create).
     bool editorIsResizable() const noexcept;
 
-    const clap_plugin_descriptor_t* descriptor() const noexcept { return descriptor_; }
     // The negotiated main-port layout, for tests and diagnostics.
     int mainInputChannels() const noexcept { return mainInChannels_; }
     int mainOutputChannels() const noexcept { return mainOutChannels_; }

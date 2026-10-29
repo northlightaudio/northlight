@@ -294,9 +294,8 @@ public:
     // Drops entries no snapshot references any more.
     void prune();
 
-    // Load errors by path since the last clearErrors().
+    // Load errors by path.
     const std::map<std::string, std::string>& errors() const noexcept { return errors_; }
-    void clearErrors() { errors_.clear(); }
 
 private:
     struct Instance

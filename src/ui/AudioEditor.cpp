@@ -236,13 +236,6 @@ void AudioEditor::setFollowPlayhead(bool on)
     showToggle(followButton_, on);
 }
 
-void AudioEditor::setSemitoneHeight(float pixels)
-{
-    semitoneHeight_ = std::clamp(pixels, minSemitoneHeight, maxSemitoneHeight);
-    updateScrollbars();
-    repaint();
-}
-
 void AudioEditor::zoomPitch(float factor, float aroundY)
 {
     // The pitch under the pointer stays put.

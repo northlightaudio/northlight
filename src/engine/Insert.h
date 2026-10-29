@@ -53,7 +53,6 @@ struct PlayHead
     bool playing = false;          // the position moves (stopped: it holds)
     double sampleRate = 48000.0;
     double quartersPerSample() const noexcept { return tempoBpm / 60.0 / sampleRate; }
-    double samplesPerQuarter() const noexcept { return sampleRate * 60.0 / tempoBpm; }
 };
 
 class InsertProcessor

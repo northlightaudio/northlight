@@ -65,7 +65,6 @@ private:
     // and hit testing walk, instead of a map per handle.
     std::vector<juce::Point<float>> handlePositions() const;
     float yForBpm(double bpm) const noexcept;
-    double bpmForY(float y) const noexcept;
     juce::Rectangle<int> lane() const noexcept;
     core::TempoState shown() const; // the edited state while dragging, else the project's
     void commit(core::TempoState state, const std::string& name);

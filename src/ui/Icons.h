@@ -120,7 +120,6 @@ struct Icons
     // Draws the icon scaled into `bounds` (square, the icon's own padding kept).
     static void draw(juce::Graphics& g, Icon icon, juce::Rectangle<float> bounds, juce::Colour colour);
     static const char* name(Icon icon);
-    static const char* svgPath(Icon icon);
     // An edit tool's icon as its cursor (pencil, eraser, scissors, glue,
     // muteClip): the icon in textPrimary over a canvas outline, with the hot spot
     // where the tool acts. Built once per icon. The arrange view and the piano

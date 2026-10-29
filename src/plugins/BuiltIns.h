@@ -63,7 +63,6 @@ const BuiltInType* findBuiltIn(const std::string& typeName);
 // The name an instrument gives a note ("Snare"), empty when it names none (the
 // piano roll labels its rows with these and can hide the rest).
 std::string builtInNoteName(const std::string& typeName, int note);
-bool builtInNamesNotes(const std::string& typeName);
 
 class BuiltInFactory final : public engine::InsertFactory
 {

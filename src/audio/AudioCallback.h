@@ -48,7 +48,6 @@ public:
     std::uint64_t callbackCount() const noexcept;
     bool isDeviceRunning() const noexcept;
     int numActiveInputs() const noexcept;
-    int numActiveOutputs() const noexcept;
     double currentSampleRate() const noexcept;
 
     // Each block's peak absolute sample, in and out. Every meter keeps its own
@@ -146,7 +145,6 @@ private:
     double secondsPerSample_ = 0.0; // audio thread only
     std::atomic<bool> running_{false};
     std::atomic<int> numInputs_{0};
-    std::atomic<int> numOutputs_{0};
     std::atomic<double> sampleRate_{0.0};
     rt::PeakHistory inputPeaks_;
     rt::PeakHistory outputPeaks_;

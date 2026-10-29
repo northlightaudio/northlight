@@ -28,7 +28,7 @@ rules every real-time path follows are in [rt-rules.md](rt-rules.md).
 
 ```
 src/core        The project model, commands and undo, the tempo map, comping,
-                JSON project files with versioned upgrades. No JUCE.
+                versioned JSON project files. No JUCE.
 src/engine      The audio engine: snapshot compiler, renderer, worker pool,
                 transport, streaming and disk thread, recording, peaks, MIDI
                 scheduling, delay compensation, automation playback, metering and
@@ -45,7 +45,7 @@ src/audio       The device layer (ASIO, Windows Audio, MIDI devices), the audio
 src/ui          Theme (tokens), look and feel, icons, components, the shell
                 (header, status bar, panel hosts) and every view and editor.
 src/app         The application: main window, project session, settings,
-                bounce and export jobs, MIDI files, crash reports, migration.
+                bounce and export jobs, MIDI files, crash reports.
 northlight_plugin_scan   Inspects one plugin file per process for the scanner.
 ```
 
@@ -133,8 +133,9 @@ past either drops the oldest, and a save point dropped with them can no longer b
 reached, so the project stays modified. A test applies, undoes and redoes every command and
 compares the whole project each time.
 
-Project files are versioned JSON (`.northlight`). Each version upgrades step by step
-from the oldest readable one. Processor parameters are saved with stable keys and
+Project files are versioned JSON (`.northlight`). There is no upgrade chain before
+release: fields added since the oldest readable version are optional with defaults,
+so an older file loads as it is. Processor parameters are saved with stable keys and
 reconciled on load, so a processor can gain or reorder parameters without moving
 saved values or automation. A built-in's key comes from its parameter's label unless
 the parameter sets an `id` (`InsertProcessor::parameterKey`), so a label rename
@@ -551,8 +552,8 @@ conversion, measurement and write, so closing during an export waits only that l
 ### Opening a project
 
 A project opens in steps so the window keeps painting (`ProjectSession::beginOpen`
-and `stepLoad`; `app/ProjectLoad`). A thread of its own reads the file, parses and
-migrates it, and decodes each audio file once at the project's rate through the media
+and `stepLoad`; `app/ProjectLoad`). A thread of its own reads the file, parses it,
+and decodes each audio file once at the project's rate through the media
 loader, while the current project stays live. On the message thread a timer then calls
 `stepLoad`: it swaps the project in (the commit point; until then the load can be
 cancelled), hands the decoded sources to the engine's media cache, and makes the
@@ -629,8 +630,6 @@ blocked the message thread; now the longest stall is one plugin.
   outcome, a plugin that crashed, an export or a freeze finishing): it pushes a
   typed `Notice` (kind, text, a file to reveal) and the window drains the queue on
   its next refresh into toasts, or the status bar for one still in progress.
-- **Migration** brings settings and folders across from the project's earlier name,
-  Aural, once.
 
 ## User interface
 
@@ -743,6 +742,17 @@ made with Tab or an arrow key, in any window, turns them on; a click turns them
 off) and draws them, outside a control or inside a region (`drawRegionFocusRing`,
 used by `FocusListBox` and the editors).
 
+The main window's content is a keyboard focus container whose traverser is
+`ui/shell/FocusCycle`: JUCE's order (the regions carry explicit focus orders) with
+the arrange view moved after its own children, so the lanes follow the track
+headers, and every header but the selected track's skipped
+(`ArrangeView::skippedByTab`). The arrange view and each track header take the
+focus themselves; their keys still reach the window's handler, which dispatches
+the keyboard map. Shift+F10 (and the Menu key, which Windows sends only as a key
+state change) asks `ui::KeyboardMenu::showFor` for the menu of the focused
+component or its nearest parent that implements `KeyboardMenu`: the arrange view,
+a track header and the piano roll do.
+
 High contrast and reduce-motion are each a System / on / off choice
 (`settings::followsOrChooses`). The main window resolves them in `applyPreferences`:
 contrast reloads the colours with or without the variant, and reduce-motion sets
@@ -759,7 +769,7 @@ The specification for every screen is in [design/](design/README.md).
 
 | Suite | Covers |
 |---|---|
-| `northlight_unit_tests` | The model and every command's undo and redo, JSON round trips and upgrades, the tempo map, the engine offline (sample-exact playback, loops, routing, delay compensation, MIDI, recording, streaming, export DSP, pitch editing) under the real-time allocation hook |
+| `northlight_unit_tests` | The model and every command's undo and redo, JSON round trips, the tempo map, the engine offline (sample-exact playback, loops, routing, delay compensation, MIDI, recording, streaming, export DSP, pitch editing) under the real-time allocation hook |
 | `northlight_juce_tests` | JUCE-linked code without a device: the audio callback through a fake device, media reading, plugin hosting against a test CLAP, themes, UI components, MIDI files |
 | CTest checks | No literal colours in `src/ui`; formatting |
 | Hardware tools | Loopback latency calibration on a real device; an offline recording soak (many inputs for many minutes through the real record path, verified sample-exactly) |

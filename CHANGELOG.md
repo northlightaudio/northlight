@@ -13,6 +13,13 @@ Northlight has not had a release yet. The first release, 0.1.0, will include:
 
 ### Added
 
+- Keyboard: Tab now moves through the main window in order (header bar, the
+  selected track's header, the arrange view, the dock, the side panel, the status
+  bar) and wraps; Up and Down move between tracks with the focus. Ctrl+Left and
+  Ctrl+Right select clips on the selected track (Shift extends). Shift+F10 or the
+  Menu key opens the menu of what has the focus. In the piano roll, Insert adds a
+  note after the selected one and Alt+Up / Alt+Down make notes louder or softer.
+
 - Shortcuts can be changed: on Preferences > Shortcuts click an action's keys and
   press the new one. A key another action uses names that action and offers
   Replace or Cancel; a changed key has a reset button, and Reset all puts every key

@@ -24,6 +24,9 @@
 ## 11.2 Keyboard and focus
 
 - All functionality reachable without a pointer, per the map in section 10.
+  The Tab cycle, track and clip selection by keys, Shift+F10 menus and piano roll
+  note entry are interaction.md 10.4; a few edits are still pointer-only (see
+  docs/plans/accessibility-pass.md).
 - Focus ring visible on every focusable element; focus order follows the visual
   order; focus is never lost (closing a window returns it to the opener).
 - Modal sheets trap focus; Esc closes.

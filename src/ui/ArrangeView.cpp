@@ -61,6 +61,9 @@ ArrangeView::ArrangeView(audio::PeakStore& peaks, const Theme& theme)
       toolMenu_(theme_, Icon::pointer, "Tools: " + toolKeysRange())
 {
     setOpaque(true);
+    // The arrange view owns the focus by default (interaction.md 10.4): a click
+    // in it, Esc and Tab give it the focus, and its keys reach the window from here.
+    setWantsKeyboardFocus(true);
     rulerOnly = theme_.sizes.ruler;
     rulerHeight = rulerOnly;
     view_.originX = theme_.sizes.trackHeaderWidth;
@@ -503,10 +506,16 @@ void ArrangeView::moveTrackSelection(int direction, bool extend)
     if (next < 0 || next >= rowCount())
         return;
     const auto id = channelAtRow(next)->id;
+    bool headerFocused = false;
+    for (const auto* list : {&headers_, &fxHeaders_})
+        for (const auto& header : *list)
+            headerFocused = headerFocused || header->hasKeyboardFocus(true);
     if (extend)
         pressTrack(id, juce::ModifierKeys(juce::ModifierKeys::shiftModifier), false);
     else
         selectTracks({id});
+    if (auto* header = headerFocused ? headerFor(id) : nullptr)
+        header->grabKeyboardFocus();
     // Keep it in view.
     const auto bounds = rowBounds(next);
     if (bounds.getY() < rulerHeight)
@@ -604,6 +613,112 @@ void ArrangeView::toggleArmSelectedTracks()
     if (focus == nullptr)
         return;
     armTracks(focus->id, !focus->armed);
+}
+
+TrackHeader* ArrangeView::headerFor(core::Id channel) const noexcept
+{
+    for (const auto* list : {&headers_, &fxHeaders_})
+        for (const auto& header : *list)
+            if (header->trackId() == channel)
+                return header.get();
+    return nullptr;
+}
+
+bool ArrangeView::skippedByTab(const juce::Component& component) const
+{
+    // The header the component sits in, if any.
+    const auto* c = &component;
+    while (c != nullptr && c->getParentComponent() != this)
+        c = c->getParentComponent();
+    const auto* header = dynamic_cast<const TrackHeader*>(c);
+    if (header == nullptr)
+        return false;
+    const auto* stop = headerFor(selectedTrack());
+    if (stop == nullptr)
+        stop = !headers_.empty() ? headers_.front().get() : nullptr;
+    return header != stop;
+}
+
+bool ArrangeView::stepClipSelection(int direction, bool extend)
+{
+    const auto* track = project_ != nullptr ? project_->findTrack(selectedTrack()) : nullptr;
+    if (track == nullptr)
+        return false;
+    // The track's clips, audio and MIDI, in time order.
+    std::vector<std::pair<Span, ClipRef>> clips;
+    for (const auto& c : track->clips)
+        clips.push_back({{c.start, c.length}, {track->id, c.id}});
+    for (const auto& m : track->midiClips)
+        clips.push_back({{m.start, m.length}, {track->id, m.id, true}});
+    if (clips.empty())
+        return false;
+    std::stable_sort(clips.begin(),
+                     clips.end(),
+                     [](const auto& a, const auto& b) { return a.first.start < b.first.start; });
+    // From the last selected clip on this track, else from the playhead.
+    int from = -1;
+    for (auto it = selection_.rbegin(); it != selection_.rend() && from < 0; ++it)
+        for (size_t i = 0; i < clips.size(); ++i)
+            if (clips[i].second == *it)
+                from = static_cast<int>(i);
+    int to = -1;
+    if (from >= 0)
+        to = std::clamp(from + direction, 0, static_cast<int>(clips.size()) - 1);
+    else
+    {
+        const auto at = playheadForEdits ? playheadForEdits() : playhead_;
+        if (direction > 0)
+        {
+            for (size_t i = 0; i < clips.size() && to < 0; ++i)
+                if (clips[i].first.end() > at)
+                    to = static_cast<int>(i);
+        }
+        else
+            for (size_t i = clips.size(); i-- > 0 && to < 0;)
+                if (clips[i].first.start < at)
+                    to = static_cast<int>(i);
+        if (to < 0)
+            return false;
+    }
+    const auto& [span, ref] = clips[static_cast<size_t>(to)];
+    select(ref, extend);
+    notifySelection();
+    // Keep it in view.
+    const auto shown = visibleSamples();
+    if (span.start < view_.first || span.start >= view_.first + shown)
+        setScroll(span.start - shown / 8);
+    repaint();
+    return true;
+}
+
+bool ArrangeView::showKeyboardMenu()
+{
+    if (project_ == nullptr)
+        return false;
+    if (!selection_.empty())
+        if (const auto span = spanOf(selection_.front()))
+        {
+            const auto& ref = selection_.front();
+            auto at = spanBounds(span->start, span->length, project_->trackIndex(ref.track))
+                          .getIntersection(lanesBounds());
+            if (at.isEmpty())
+                at = lanesBounds();
+            menus_.clipMenu(ref, localPointToGlobal(at.getCentre()));
+            return true;
+        }
+    if (hasTimeSelection() && !timeSelTracks_.empty())
+    {
+        openRangeMenu();
+        return true;
+    }
+    auto* header = headerFor(selectedTrack());
+    return header != nullptr && header->showKeyboardMenu();
+}
+
+void ArrangeView::paintOverChildren(juce::Graphics& g)
+{
+    if (auto* lnf = dynamic_cast<NorthlightLookAndFeel*>(&getLookAndFeel()))
+        lnf->drawRegionFocusRing(g, *this, lanesBounds());
 }
 
 void ArrangeView::selectTrack(core::Id trackId)

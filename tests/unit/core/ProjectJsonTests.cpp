@@ -112,7 +112,8 @@ TEST_CASE("Missing optional fields take defaults and nextId is repaired", "[core
 {
     const auto p = projectFromJson(R"({
         "format": "northlight.project",
-        "version": 2,
+        "version": )" + std::to_string(Project::schemaVersion) +
+                                   R"(,
         "tracks": [ { "id": 10, "clips": [ { "id": 42, "media": "x.wav", "length": 5 } ] } ]
     })");
     REQUIRE(p.has_value());
@@ -125,6 +126,14 @@ TEST_CASE("Missing optional fields take defaults and nextId is repaired", "[core
     REQUIRE(p->tracks[0].clips.size() == 1);
     CHECK(p->tracks[0].clips[0].id == 42);
     CHECK(p->tracks[0].clips[0].start == 0);
+    CHECK_FALSE(p->tracks[0].clips[0].muted);
+    CHECK(p->tracks[0].clips[0].fadeInCurve == 0.0f);
+    CHECK(p->tracks[0].clips[0].fadeOutCurve == 0.0f);
+    CHECK(p->tracks[0].inputBus.empty());
+    CHECK_FALSE(p->tracks[0].automationOpen);
+    CHECK(p->master.inserts.empty());
+    CHECK(p->master.automation.empty());
+    CHECK(p->master.automationMode == AutomationMode::read);
     CHECK(p->nextId == 43);
 }
 
@@ -338,43 +347,21 @@ TEST_CASE("Parameters without keys are positional, padded with defaults or trimm
     CHECK(p.tracks[0].automation.size() == 2);
 }
 
-TEST_CASE("A version 2 project is upgraded on load and saved as the current version", "[core][json]")
-{
-    auto text = projectToJson(keyedProject());
-    const auto current = "\"version\": " + std::to_string(Project::schemaVersion);
-    const auto at = text.find(current);
-    REQUIRE(at != std::string::npos);
-    text.replace(at, current.size(), "\"version\": 2");
-    const auto loaded = projectFromJson(text);
-    REQUIRE(loaded.has_value());
-    CHECK(projectToJson(*loaded).find(current) != std::string::npos);
-}
-
-TEST_CASE("A post-fader key is saved only with its source; older files load pre-fader",
-          "[core][json][sidechain]")
+TEST_CASE("A post-fader key is saved only with its source", "[core][json][sidechain]")
 {
     const auto text = projectToJson(sampleProject());
     CHECK(text.find("\"sidechainPostFader\"") != std::string::npos);
     std::string error;
-    // A version 4 file has no tap: its keys are pre-fader.
-    const auto old = projectFromJson(R"({"format":"northlight.project","version":4,"tracks":[
-        {"id":1,"name":"Kick"},
-        {"id":2,"name":"Bass","inserts":[{"id":3,"type":"northlight.compressor","sidechain":1}]}],"nextId":4})",
-                                     &error);
-    REQUIRE(old.has_value());
-    REQUIRE(old->tracks[1].inserts.size() == 1);
-    CHECK(old->tracks[1].inserts[0].sidechain == 1);
-    CHECK_FALSE(old->tracks[1].inserts[0].sidechainPostFader);
     // A tap without a source means nothing and does not survive a load.
-    const auto stray = projectFromJson(R"({"format":"northlight.project","version":5,"tracks":[
+    const auto stray = projectFromJson(R"({"format":"northlight.project","version":)" +
+                                           std::to_string(Project::schemaVersion) + R"(,"tracks":[
         {"id":2,"name":"Bass","inserts":[{"id":3,"type":"northlight.compressor","sidechainPostFader":true}]}],"nextId":4})",
                                        &error);
     REQUIRE(stray.has_value());
     CHECK_FALSE(stray->tracks[0].inserts[0].sidechainPostFader);
 }
 
-TEST_CASE("Controller events in MIDI clips round-trip through JSON; version 5 files load without them",
-          "[core][json][midi]")
+TEST_CASE("Controller events in MIDI clips round-trip through JSON", "[core][json][midi]")
 {
     Project p;
     Track t;
@@ -399,20 +386,6 @@ TEST_CASE("Controller events in MIDI clips round-trip through JSON; version 5 fi
     REQUIRE(loaded.has_value());
     CHECK(loaded->tracks[0].midiClips[0] == p.tracks[0].midiClips[0]);
     CHECK(*loaded == p);
-
-    // A version 5 file (no controllers then) loads, and a re-save writes the
-    // current version.
-    auto plain = p;
-    plain.tracks[0].midiClips[0].controllers.clear();
-    auto old = projectToJson(plain);
-    const auto current = "\"version\": " + std::to_string(Project::schemaVersion);
-    const auto at = old.find(current);
-    REQUIRE(at != std::string::npos);
-    old.replace(at, current.size(), "\"version\": 5");
-    const auto loadedOld = projectFromJson(old);
-    REQUIRE(loadedOld.has_value());
-    CHECK(*loadedOld == plain);
-    CHECK(projectToJson(*loadedOld).find(current) != std::string::npos);
 }
 
 TEST_CASE("Unknown controller kinds and out-of-range values in a file are dropped or clamped",
@@ -445,26 +418,7 @@ TEST_CASE("Unknown controller kinds and out-of-range values in a file are droppe
     CHECK(events[0].id != events[1].id);
 }
 
-TEST_CASE("Project files from when Northlight was Aural still open", "[core][json]")
-{
-    // The old format name and built-in processor names.
-    const std::string text = R"({"format": "aural.project", "version": 5, "name": "Old",
-        "tracks": [{"id": 1, "name": "Vox", "inserts": [{"id": 2, "type": "aural.eq", "params": []}],
-                    "strip": {"modules": [{"id": 3, "type": "aural.strip.gate", "params": []}]}}],
-        "nextId": 4})";
-    std::string error;
-    const auto loaded = projectFromJson(text, &error);
-    INFO(error);
-    REQUIRE(loaded.has_value());
-    REQUIRE(loaded->tracks.size() == 1);
-    REQUIRE(loaded->tracks[0].inserts.size() == 1);
-    REQUIRE(loaded->tracks[0].strip.size() == 1);
-    CHECK(loaded->tracks[0].inserts[0].type == "northlight.eq");
-    CHECK(loaded->tracks[0].strip[0].type == "northlight.strip.gate");
-    CHECK(currentTypeName("clap:com.vendor.thing") == "clap:com.vendor.thing"); // others untouched
-}
-
-TEST_CASE("A track's stereo input bus round-trips through JSON; version 9 files keep their input channel",
+TEST_CASE("A track's stereo input bus round-trips through JSON; a track without one writes no key",
           "[core][json]")
 {
     auto p = sampleProject();
@@ -476,20 +430,10 @@ TEST_CASE("A track's stereo input bus round-trips through JSON; version 9 files 
     REQUIRE(restored.has_value());
     CHECK(*restored == p);
 
-    // A track without a bus writes no key, and a file from before buses opens as it was.
-    auto older = projectToJson(sampleProject());
-    CHECK(older.find("\"inputBus\"") == std::string::npos);
-    const auto current = "\"version\": " + std::to_string(Project::schemaVersion);
-    const auto at = older.find(current);
-    REQUIRE(at != std::string::npos);
-    older.replace(at, current.size(), "\"version\": 9");
-    const auto loaded = projectFromJson(older);
-    REQUIRE(loaded.has_value());
-    CHECK(loaded->tracks[1].inputChannel == 2);
-    CHECK(loaded->tracks[1].inputBus.empty());
+    CHECK(projectToJson(sampleProject()).find("\"inputBus\"") == std::string::npos);
 }
 
-TEST_CASE("The master's inserts round-trip; version 10 files load without them", "[core][json][master]")
+TEST_CASE("The master's inserts round-trip and keep ids unique", "[core][json][master]")
 {
     auto p = sampleProject();
     p.master.inserts.push_back(Insert{40, "northlight.glue", false, {-20.0f, 1.0f}, "", 0.8f, 0});
@@ -507,21 +451,9 @@ TEST_CASE("The master's inserts round-trip; version 10 files load without them",
     const auto repaired = projectFromJson(projectToJson(stale));
     REQUIRE(repaired.has_value());
     CHECK(repaired->nextId > 40);
-
-    // Before master inserts: the master has only its gain.
-    auto older = projectToJson(sampleProject());
-    const auto current = "\"version\": " + std::to_string(Project::schemaVersion);
-    const auto at = older.find(current);
-    REQUIRE(at != std::string::npos);
-    older.replace(at, current.size(), "\"version\": 10");
-    const auto loaded = projectFromJson(older);
-    REQUIRE(loaded.has_value());
-    CHECK(loaded->master.inserts.empty());
-    CHECK(loaded->master.gain == 0.8f);
 }
 
-TEST_CASE("Automation lanes' view and open state round-trip; version 11 files load with lanes closed",
-          "[core][json][automation]")
+TEST_CASE("Automation lanes' view and open state round-trip", "[core][json][automation]")
 {
     auto p = sampleProject();
     AutomationLane volume;
@@ -546,19 +478,9 @@ TEST_CASE("Automation lanes' view and open state round-trip; version 11 files lo
     const auto restored = projectFromJson(projectToJson(p));
     REQUIRE(restored.has_value());
     CHECK(*restored == p);
-
-    // Before version 12: no view or open state, which is the default.
-    auto older = projectToJson(sampleProject());
-    const auto current = "\"version\": " + std::to_string(Project::schemaVersion);
-    const auto at = older.find(current);
-    REQUIRE(at != std::string::npos);
-    older.replace(at, current.size(), "\"version\": 11");
-    const auto loaded = projectFromJson(older);
-    REQUIRE(loaded.has_value());
-    CHECK_FALSE(loaded->tracks[1].automationOpen);
 }
 
-TEST_CASE("Muted clips round-trip; version 12 files load with every clip playing", "[core][json]")
+TEST_CASE("Muted clips round-trip; only muted clips write the field", "[core][json]")
 {
     auto p = sampleProject();
     REQUIRE_FALSE(p.tracks.empty());
@@ -580,21 +502,10 @@ TEST_CASE("Muted clips round-trip; version 12 files load with every clip playing
     REQUIRE(restored.has_value());
     CHECK(*restored == p);
 
-    // Only muted clips carry the field, so a version 12 file reads as all playing.
-    auto older = projectToJson(sampleProject());
-    CHECK(older.find("\"muted\"") == std::string::npos);
-    const auto current = "\"version\": " + std::to_string(Project::schemaVersion);
-    const auto at = older.find(current);
-    REQUIRE(at != std::string::npos);
-    older.replace(at, current.size(), "\"version\": 12");
-    const auto loaded = projectFromJson(older);
-    REQUIRE(loaded.has_value());
-    for (const auto& t : loaded->tracks)
-        for (const auto& c : t.clips)
-            CHECK_FALSE(c.muted);
+    CHECK(projectToJson(sampleProject()).find("\"muted\"") == std::string::npos);
 }
 
-TEST_CASE("Fade curves round-trip; version 13 files load with linear fades", "[core][json]")
+TEST_CASE("Fade curves round-trip; linear fades write nothing", "[core][json]")
 {
     auto p = sampleProject();
     AudioClip shaped{95, "s", "s.wav", 20000000, 1000, 0, 1.0f};
@@ -608,23 +519,10 @@ TEST_CASE("Fade curves round-trip; version 13 files load with linear fades", "[c
     REQUIRE(restored.has_value());
     CHECK(*restored == p);
 
-    auto older = projectToJson(sampleProject());
-    CHECK(older.find("Curve") == std::string::npos); // linear fades write nothing
-    const auto current = "\"version\": " + std::to_string(Project::schemaVersion);
-    const auto at = older.find(current);
-    REQUIRE(at != std::string::npos);
-    older.replace(at, current.size(), "\"version\": 13");
-    const auto loaded = projectFromJson(older);
-    REQUIRE(loaded.has_value());
-    for (const auto& t : loaded->tracks)
-        for (const auto& c : t.clips)
-        {
-            CHECK(c.fadeInCurve == 0.0f);
-            CHECK(c.fadeOutCurve == 0.0f);
-        }
+    CHECK(projectToJson(sampleProject()).find("Curve") == std::string::npos);
 }
 
-TEST_CASE("The master's automation round-trips; version 14 files load with none", "[core][json][master]")
+TEST_CASE("The master's automation round-trips", "[core][json][master]")
 {
     auto p = sampleProject();
     AutomationLane volume;
@@ -638,16 +536,6 @@ TEST_CASE("The master's automation round-trips; version 14 files load with none"
     const auto restored = projectFromJson(projectToJson(p));
     REQUIRE(restored.has_value());
     CHECK(*restored == p);
-
-    auto older = projectToJson(sampleProject());
-    const auto current = "\"version\": " + std::to_string(Project::schemaVersion);
-    const auto at = older.find(current);
-    REQUIRE(at != std::string::npos);
-    older.replace(at, current.size(), "\"version\": 14");
-    const auto loaded = projectFromJson(older);
-    REQUIRE(loaded.has_value());
-    CHECK(loaded->master.automation.empty());
-    CHECK(loaded->master.automationMode == AutomationMode::read);
 }
 
 TEST_CASE("A wrongly typed note, point or value in a file is skipped, not the whole file", "[core][json]")

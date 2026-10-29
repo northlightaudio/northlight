@@ -27,7 +27,6 @@ const char* const embeddedTokens =
     ;
 
 Theme current;
-std::string currentSource = "embedded";
 std::vector<std::unique_ptr<juce::MemoryBlock>> fontData; // keeps bundled typefaces' bytes alive
 
 // "#RRGGBB" or "#RRGGBBAA".
@@ -236,7 +235,6 @@ bool Theme::apply(const juce::var& tokens, Theme& theme, std::string& error)
             {"textOnColour", &c.textOnColour},
             {"accent", &c.accent},
             {"accentHover", &c.accentHover},
-            {"accentPressed", &c.accentPressed},
             {"accentSubtle", &c.accentSubtle},
             {"primary", &c.primary},
             {"primaryHover", &c.primaryHover},
@@ -246,7 +244,6 @@ bool Theme::apply(const juce::var& tokens, Theme& theme, std::string& error)
             {"selectionOutline", &c.selectionOutline},
             {"record", &c.record},
             {"recordHover", &c.recordHover},
-            {"recordSubtle", &c.recordSubtle},
             {"danger", &c.danger},
             {"warning", &c.warning},
             {"success", &c.success},
@@ -292,16 +289,6 @@ bool Theme::apply(const juce::var& tokens, Theme& theme, std::string& error)
                 if (!parseColour(property.value, *it->second))
                     error += "colour " + it->first + " is not #RRGGBB or #RRGGBBAA; ";
             }
-        // The pre-token names follow their tokens.
-        c.background = c.canvas;
-        c.surface = c.surface0;
-        c.surfaceRaised = c.surface2;
-        c.surfaceHover = c.surface3;
-        c.border = c.lineSubtle;
-        c.borderStrong = c.lineStrong;
-        c.accentText = c.textOnAccent;
-        c.focus = c.lineFocus;
-        c.meter = c.meterLow;
     }
 
     if (const auto& track = tokens["track"]; track.isObject())
@@ -346,24 +333,16 @@ bool Theme::apply(const juce::var& tokens, Theme& theme, std::string& error)
     {
         auto& f = theme.fonts;
         if (const auto& ui = font["ui"]; ui.isObject())
-        {
-            readString(ui, "family", f.uiFamily);
             readString(ui, "file", f.uiFile);
-        }
         if (const auto& mono = font["mono"]; mono.isObject())
-        {
-            readString(mono, "family", f.monoFamily);
             readString(mono, "file", f.monoFile);
-        }
         if (const auto& display = font["display"]; display.isObject())
         {
-            readString(display, "family", f.displayFamily);
             readString(display, "file", f.displayFile);
             readString(display, "italicFile", f.displayItalicFile);
         }
         if (const auto& legend = font["legend"]; legend.isObject())
         {
-            readString(legend, "family", f.legendFamily);
             readString(legend, "file", f.legendFile);
             readString(legend, "boldFile", f.legendBoldFile);
         }
@@ -388,15 +367,6 @@ bool Theme::apply(const juce::var& tokens, Theme& theme, std::string& error)
         }
         readNumber(font, "lineHeight", f.lineHeight, error);
         readNumber(font, "letterSpacingCaps", f.letterSpacingCaps, error);
-        theme.type.caption = f.size.caption;
-        theme.type.small = f.size.small;
-        theme.type.body = f.size.body;
-        theme.type.label = f.size.label;
-        theme.type.title = f.size.title;
-        theme.type.heading = f.size.heading;
-        theme.type.timeLarge = f.size.timeLarge;
-        theme.type.timeSmall = f.size.timeSmall;
-        theme.type.value = f.size.value;
     }
 
     if (const auto& space = tokens["space"]; space.isObject())
@@ -439,6 +409,7 @@ bool Theme::apply(const juce::var& tokens, Theme& theme, std::string& error)
         readNumber(size, "trackRowMin", s.trackRowMin, error);
         readNumber(size, "trackRow", s.trackRow, error);
         readNumber(size, "trackRowLarge", s.trackRowLarge, error);
+        readNumber(size, "trackRowMax", s.trackRowMax, error);
         readNumber(size, "clipHeader", s.clipHeader, error);
         readNumber(size, "takeLane", s.takeLane, error);
         readNumber(size, "automationLane", s.automationLane, error);
@@ -461,13 +432,11 @@ bool Theme::apply(const juce::var& tokens, Theme& theme, std::string& error)
         readNumber(size, "focusRing", s.focusRing, error);
         readNumber(size, "tooltipMaxWidth", s.tooltipMaxWidth, error);
         s.controlHeight = s.control;
-        s.meterHeight = s.meterWidth;
     }
     if (const auto& motion = tokens["motion"]; motion.isObject())
     {
         auto& m = theme.motion;
         readNumber(motion, "hoverMs", m.hoverMs, error);
-        readNumber(motion, "pressMs", m.pressMs, error);
         readNumber(motion, "toggleMs", m.toggleMs, error);
         readNumber(motion, "panelMs", m.panelMs, error);
         readNumber(motion, "menuMs", m.menuMs, error);
@@ -502,7 +471,6 @@ bool Theme::apply(const juce::var& tokens, Theme& theme, std::string& error)
             if (!parsed.empty())
                 m.zones = std::move(parsed);
         }
-        readNumber(meter, "clipHoldMs", m.clipHoldMs, error);
         if (const auto* ticks = meter["scaleTicksDb"].getArray())
         {
             m.scaleTicksDb.clear();
@@ -510,11 +478,6 @@ bool Theme::apply(const juce::var& tokens, Theme& theme, std::string& error)
                 m.scaleTicksDb.push_back(static_cast<float>(static_cast<double>(t)));
         }
         readNumber(meter, "loudnessTargetLufs", m.loudnessTargetLufs, error);
-        if (const auto* range = meter["loudnessRangeLufs"].getArray(); range != nullptr && range->size() == 2)
-        {
-            m.loudnessRangeLow = static_cast<float>(static_cast<double>((*range)[0]));
-            m.loudnessRangeHigh = static_cast<float>(static_cast<double>((*range)[1]));
-        }
     }
     if (const auto& material = tokens["material"]; material.isObject())
     {
@@ -568,11 +531,8 @@ bool Theme::apply(const juce::var& tokens, Theme& theme, std::string& error)
                 error += std::string("hardware ") + key + " is not a colour; ";
         };
         colour("panel", hw.panel);
-        colour("panelWear", hw.panelWear);
         colour("legend", hw.legend);
         colour("legendShadow", hw.legendShadow);
-        colour("plate", hw.plate);
-        colour("ink", hw.ink);
         colour("bezel", hw.bezel);
         colour("keyTop", hw.keyTop);
         colour("keyBottom", hw.keyBottom);
@@ -588,17 +548,12 @@ bool Theme::apply(const juce::var& tokens, Theme& theme, std::string& error)
         colour("glassOffCentre", hw.glassOffCentre);
         colour("glassOffEdge", hw.glassOffEdge);
         colour("glassInk", hw.glassInk);
-        colour("glassFrameTop", hw.glassFrameTop);
-        colour("glassFrameBottom", hw.glassFrameBottom);
         colour("led", hw.led);
         colour("ledHot", hw.ledHot);
         colour("ledOff", hw.ledOff);
-        colour("switchDark", hw.switchDark);
-        colour("switchLight", hw.switchLight);
         colour("knobBody", hw.knobBody);
         colour("knobCap", hw.knobCap);
         colour("knobPointer", hw.knobPointer);
-        colour("lamp", hw.lamp);
         colour("shadow", hw.shadow);
         colour("highlight", hw.highlight);
         colour("creamPanel", hw.creamPanel);
@@ -619,7 +574,6 @@ bool Theme::apply(const juce::var& tokens, Theme& theme, std::string& error)
         colour("patinaPlate", hw.patinaPlate);
         colour("patinaInk", hw.patinaInk);
         colour("patinaInkSoft", hw.patinaInkSoft);
-        colour("patinaPanelInk", hw.patinaPanelInk);
         colour("patinaPanelInkSoft", hw.patinaPanelInkSoft);
         colour("patinaNameplate", hw.patinaNameplate);
         colour("patinaBezel", hw.patinaBezel);
@@ -683,18 +637,6 @@ bool Theme::apply(const juce::var& tokens, Theme& theme, std::string& error)
         colour("coronaMarkerA", hw.coronaMarkerA);
         colour("coronaMarkerB", hw.coronaMarkerB);
     }
-    if (const auto& elevation = tokens["elevation"]; elevation.isObject())
-        if (const auto& popup = elevation["popup"]; popup.isObject() && popup["shadow"].isString())
-        {
-            // "x y blur #colour"
-            const auto parts = juce::StringArray::fromTokens(popup["shadow"].toString(), " ", "");
-            if (parts.size() == 4)
-            {
-                theme.elevation.popupShadowOffset = {parts[0].getFloatValue(), parts[1].getFloatValue()};
-                theme.elevation.popupShadowRadius = parts[2].getFloatValue();
-                parseColour(juce::var(parts[3]), theme.elevation.popupShadow);
-            }
-        }
     return error.empty();
 }
 
@@ -760,7 +702,6 @@ std::vector<std::pair<std::string, juce::Colour>> Theme::accentTokens(juce::Colo
 {
     return {{"accent", accent},
             {"accentHover", accent.brighter(0.15f)},
-            {"accentPressed", accent.darker(0.15f)},
             {"accentSubtle", accent.withAlpha(static_cast<juce::uint8>(0x1f))},
             {"lineFocus", accent.withAlpha(static_cast<juce::uint8>(0xb3))}};
 }
@@ -784,23 +725,16 @@ void Theme::initialise(const juce::File& userOverride,
                        bool highContrast)
 {
     current = defaults();
-    currentSource = "embedded";
     std::string error;
     // The shipped file beside the executable (a newer token file without a rebuild).
     const auto shipped = executableAssets().getChildFile("tokens.json");
     if (shipped.existsAsFile())
-    {
         applyText(shipped.loadFileAsString().toStdString(), current, error);
-        currentSource = shipped.getFullPathName().toStdString();
-    }
     // The overrides: only the keys each holds. Preferences last, as the latest
     // choice made in the app.
     for (const auto& file : {userOverride, preferencesOverride})
         if (file.existsAsFile())
-        {
             applyText(file.loadFileAsString().toStdString(), current, error);
-            currentSource += " + " + file.getFullPathName().toStdString();
-        }
     if (highContrast)
         applyHighContrast(current);
     // Bundled typefaces.
@@ -843,11 +777,6 @@ const Theme& Theme::dark()
     }();
     (void)initialised;
     return current;
-}
-
-const std::string& Theme::source()
-{
-    return currentSource;
 }
 
 } // namespace northlight::ui

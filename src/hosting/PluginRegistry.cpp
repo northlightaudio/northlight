@@ -141,9 +141,7 @@ std::optional<PluginRegistry> PluginRegistry::fromJson(const std::string& text, 
     json j = json::parse(text, nullptr, false);
     if (j.is_discarded() || !j.is_object())
         return fail("not valid JSON");
-    // "aural.plugins": the list as Northlight saved it when it was called Aural.
-    if (const auto format = j.value("format", std::string{});
-        format != "northlight.plugins" && format != "aural.plugins")
+    if (const auto format = j.value("format", std::string{}); format != "northlight.plugins")
         return fail("not a plugin registry");
     if (j.value("version", 0) != 1)
         return fail("unsupported registry version");

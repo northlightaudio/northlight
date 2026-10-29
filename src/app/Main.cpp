@@ -1,6 +1,5 @@
 #include "CrashReports.h"
 #include "MainWindow.h"
-#include "Migration.h"
 #include "ProjectSession.h"
 #include "UserSettings.h"
 #include "app/LaunchRun.h"
@@ -105,8 +104,6 @@ public:
                 userPlugins.copyFileTo(folder.getChildFile("plugins.json"));
         }
         // The very first launch (no settings file yet) gets the device sheet.
-        // Northlight was called Aural: bring its settings and folders across once.
-        migration::fromAural();
         firstRun_ = !UserSettings().file().existsAsFile();
         settings_ = std::make_unique<UserSettings>();
         // A crash from here on leaves a report in the settings folder.

@@ -42,7 +42,7 @@ class MixerView::EditorWindow final : public juce::DocumentWindow
 public:
     EditorWindow(MixerView& owner, std::unique_ptr<InsertEditor> editor, const juce::String& title)
         : juce::DocumentWindow(
-              title, Theme::dark().colours.background, juce::DocumentWindow::closeButton, !offscreenMode()),
+              title, Theme::dark().colours.canvas, juce::DocumentWindow::closeButton, !offscreenMode()),
           owner_(owner), editor_(editor.get())
     {
         setUsingNativeTitleBar(true);

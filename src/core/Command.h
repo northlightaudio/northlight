@@ -407,20 +407,6 @@ private:
     DetachedReferences detached_;
 };
 
-// Moves a track to another position in the list (the arrange view's reorder).
-class MoveTrack final : public Command
-{
-public:
-    MoveTrack(Id trackId, int newIndex);
-    std::string name() const override { return "Move track"; }
-    bool apply(Project&) override;
-    bool revert(Project&) override;
-
-private:
-    Id trackId_;
-    int newIndex_, oldIndex_ = -1;
-};
-
 class AddBus final : public Command
 {
 public:
@@ -777,41 +763,6 @@ private:
     std::vector<Id> remove_;
     std::string name_;
     std::vector<MidiControllerEvent> previous_;
-};
-
-// Moves note starts towards the nearest grid line (timeline grid, anchored at
-// zero) by `strength` (1 = exactly on the grid); lengths are kept.
-class QuantiseNotes final : public Command
-{
-public:
-    QuantiseNotes(Id trackId, Id clipId, std::vector<Id> noteIds, SamplePosition grid, float strength = 1.0f);
-    // To a grid on the tempo track (bars and beats follow tempo and meter changes).
-    QuantiseNotes(
-        Id trackId, Id clipId, std::vector<Id> noteIds, TempoMap map, GridStep step, float strength = 1.0f);
-    // To a division of the beat (2 = eighths in 4/4), each note's beat counted in
-    // the signature of the bar it falls in (the piano roll's grid).
-    QuantiseNotes(Id trackId,
-                  Id clipId,
-                  std::vector<Id> noteIds,
-                  TempoMap map,
-                  int divisionsPerBeat,
-                  float strength = 1.0f);
-    std::string name() const override { return "Quantise"; }
-    bool apply(Project&) override;
-    bool revert(Project&) override;
-    std::size_t footprint() const noexcept override
-    {
-        return sizeof(*this) + heapBytes(noteIds_) + heapBytes(previous_);
-    }
-
-private:
-    Id trackId_, clipId_;
-    std::vector<Id> noteIds_;
-    SamplePosition grid_ = 1;
-    std::optional<std::pair<TempoMap, GridStep>> tempoGrid_;
-    int divisionsPerBeat_ = 0; // > 0: the step follows each note's signature
-    float strength_;
-    std::vector<std::pair<Id, SamplePosition>> previous_;
 };
 
 // ----- markers -------------------------------------------------------------------------------

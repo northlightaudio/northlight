@@ -143,6 +143,41 @@ TEST_CASE("The piano roll's keys step, lengthen, mute, split and join notes", "[
         CHECK(roll.handleEditKey(key(juce::KeyPress::leftKey, ctrl)));
         CHECK(roll.selection() == std::vector<core::Id>{f.clip().notes[0].id});
     }
+    SECTION("Insert adds a note after the selected one; with none, at the view's start")
+    {
+        roll.setSelection({f.clip().notes[3].id});
+        CHECK(roll.handleEditKey(key(juce::KeyPress::insertKey)));
+        REQUIRE(f.clip().notes.size() == 5);
+        REQUIRE(roll.selection().size() == 1);
+        const auto* added = f.clip().findNote(roll.selection().front());
+        REQUIRE(added != nullptr);
+        CHECK(added->note == 66); // the selected note's pitch, length and velocity
+        CHECK(added->start == 3 * beat + beat / 2);
+        CHECK(added->length == beat / 2);
+        CHECK(added->velocity == 90);
+        CHECK(f.names.back() == "Add note");
+        // Again: the next step, from the note just added.
+        CHECK(roll.handleEditKey(key(juce::KeyPress::insertKey)));
+        CHECK(f.clip().findNote(roll.selection().front())->start == 4 * beat);
+        // With none selected (and no playhead in the clip): a grid step at the view's start.
+        roll.clearSelection();
+        CHECK(roll.handleEditKey(key(juce::KeyPress::insertKey)));
+        const auto* first = f.clip().findNote(roll.selection().front());
+        REQUIRE(first != nullptr);
+        CHECK(first->start == 0);
+        CHECK(first->length == roll.gridSamples(0));
+        CHECK(first->velocity == roll.defaultVelocity());
+    }
+    SECTION("Alt+Up and Alt+Down change the selected notes' velocity; Shift by one")
+    {
+        roll.setSelection({f.clip().notes[0].id});
+        CHECK(roll.handleEditKey(key(juce::KeyPress::upKey, alt)));
+        CHECK(f.clip().notes[0].velocity == 68);
+        CHECK(roll.handleEditKey(key(juce::KeyPress::downKey, alt | shift)));
+        CHECK(f.clip().notes[0].velocity == 67);
+        CHECK(f.clip().notes[1].velocity == 70); // not selected
+        CHECK(f.names.back() == "Change velocity");
+    }
     SECTION("Alt+Right lengthens by a grid step, Alt+Left shortens")
     {
         roll.setSelection({f.clip().notes[0].id});

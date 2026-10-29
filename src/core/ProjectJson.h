@@ -33,13 +33,6 @@ public:
 // their keys (as well as their positions, which files without keys use).
 std::string projectToJson(const Project& project, bool pretty = true, const ParameterKeys* keys = nullptr);
 
-// Northlight was called Aural: its built-in processors were "aural.eq",
-// "aural.strip.gate" and so on, and its project files said "aural.project". A
-// processor name from such a file (or a preset or setting) becomes today's here.
-std::string currentTypeName(std::string type);
-const char* legacyTypePrefix() noexcept;  // "aural."
-const char* currentTypePrefix() noexcept; // "northlight."
-
 // Returns nullopt and fills `error` when the text is not a valid project of a
 // supported schema version.
 std::optional<Project> projectFromJson(const std::string& text, std::string* error = nullptr);

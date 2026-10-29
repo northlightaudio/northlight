@@ -123,7 +123,6 @@ void WorkerPool::run(int count, Job job, void* context) noexcept
         else
         {
             spins = 0;
-            waitYields_.fetch_add(1, std::memory_order_relaxed);
             std::this_thread::yield();
         }
     }

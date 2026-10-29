@@ -164,47 +164,11 @@ double worstAliasDb(engine::InsertProcessor& p, double hz, double sampleRate = r
 }
 } // namespace
 
-TEST_CASE("Probe: the amp's distortion and level across its Volume", "[.probe][ampprobe]")
+// A benchmark, hidden from the default run (northlight_unit_tests "[.bench]"): what
+// the amp costs at each oversampling quality with the cabinet, reverb and tremolo
+// on, in percent of one core at 48 kHz with 64-sample blocks.
+TEST_CASE("Amp cost per quality", "[.bench][amp]")
 {
-    for (float boost : {0.0f, 1.0f})
-        for (float volume : {2.0f, 3.0f, 4.0f, 5.0f, 6.0f, 7.0f, 8.0f, 10.0f})
-        {
-            auto p = makeAmp();
-            p->setParameter(pa::volume, volume);
-            p->setParameter(pa::boost, boost);
-            const auto d = distortion(*p);
-            std::printf("boost %d volume %4.1f: THD %6.2f%%  level %6.1f dB\n",
-                        static_cast<int>(boost),
-                        volume,
-                        d.thd * 100.0,
-                        d.levelDb);
-        }
-    for (float master : {10.0f, 5.0f, 3.0f})
-    {
-        auto p = makeAmp();
-        p->setParameter(pa::volume, 10.0f);
-        p->setParameter(pa::master, master);
-        const auto d = distortion(*p);
-        std::printf(
-            "volume 10 master %4.1f: THD %6.2f%%  level %6.1f dB\n", master, d.thd * 100.0, d.levelDb);
-    }
-    {
-        auto p = makeAmp();
-        p->setParameter(pa::cabinetOn, 1.0f);
-        const auto out = run(*p, sine(220.0, 1.0, 0.25f));
-        std::printf("defaults with the cabinet: peak %.1f dB rms %.1f dB\n",
-                    db(peak(out.left, 24000)),
-                    db(rms(out.left, 24000)));
-    }
-    for (int q = 0; q < 3; ++q)
-    {
-        auto p = makeAmp();
-        p->setParameter(pa::volume, 10.0f);
-        p->setParameter(pa::boost, 1.0f);
-        p->setParameter(pa::quality, static_cast<float>(q));
-        std::printf(
-            "quality %dx: worst alias of 3.1 kHz %.1f dB\n", pa::qualityFactors[q], worstAliasDb(*p, 3100.0));
-    }
     for (int q = 0; q < 3; ++q)
     {
         auto p = makeAmp();
@@ -698,16 +662,3 @@ TEST_CASE("The amp processes without allocating on the real-time thread", "[plug
     CHECK(ampViolations == 0);
 }
 #endif
-
-TEST_CASE("Probe: the cabinet's direct response by mic position", "[.probe][ampprobe]")
-{
-    for (float position : {0.05f, 0.5f, 0.95f})
-    {
-        plugins::cabinet::Mic m;
-        m.position = position;
-        std::printf("position %.2f:", position);
-        for (double hz : {100.0, 300.0, 1000.0, 2000.0, 3000.0, 4000.0, 6000.0, 8000.0})
-            std::printf(" %.0f:%+.1f", hz, plugins::cabinet::directDb(plugins::cabinet::open2x12, m, hz));
-        std::printf("\n");
-    }
-}

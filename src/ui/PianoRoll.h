@@ -5,6 +5,7 @@
 #include "core/TempoMap.h"
 #include "engine/Recording.h"
 #include "ui/Icons.h"
+#include "ui/KeyboardMenu.h"
 #include "ui/Theme.h"
 #include "ui/components/SegmentedControl.h"
 #include "ui/edit/NoteGrid.h"
@@ -68,7 +69,7 @@ namespace northlight::ui
 // double-click adds; Erase removes what it touches; Delete removes the selection.
 // The velocity lane drags a bar's cap: the selection moves with it, each by the
 // same amount (Alt sets them all to the value); dragging across bars ramps them.
-class PianoRoll final : public juce::Component, private juce::ScrollBar::Listener
+class PianoRoll final : public juce::Component, public KeyboardMenu, private juce::ScrollBar::Listener
 {
 public:
     explicit PianoRoll(const Theme& theme = Theme::dark());
@@ -110,8 +111,6 @@ public:
     // The snap grid (edit/NoteGrid.h): an index into noteGrids; snap on/off.
     void setGrid(std::size_t index);
     std::size_t grid() const noexcept { return grid_; }
-    // Compatibility: the grid as a fraction of a beat (1 = a beat, 4 = a sixteenth).
-    void setGridDivision(int division);
     void setSnapEnabled(bool on);
     bool snapEnabled() const noexcept { return snap_; }
     // The grid on the tempo track at a clip-relative position (a fraction of the
@@ -152,6 +151,15 @@ public:
     void transposeSelection(int semitones);
     void stepSelection(int direction, bool extend);
     void changeLength(int steps, bool fine);
+    // Alt+Up / Down: the selected notes louder or softer by `delta` (8, Shift 1).
+    void changeVelocity(int delta);
+    // Insert (step entry, interaction.md 10.4): a note right after the last
+    // selected one, at its pitch, length and velocity; with none selected, a grid
+    // step long at the playhead (else the view's left edge) on the middle row of
+    // the view. The new note is selected and sounds.
+    void insertNote();
+    // Shift+F10 or the Menu key: the note menu, at the first selected note.
+    bool showKeyboardMenu() override;
     void legatoSelection();
     void toggleMuteSelection();
     void splitSelectionAt(core::SamplePosition clipRelative);
@@ -187,10 +195,8 @@ public:
     void deleteControllerSelection();
     // Shading the rows and keys outside the project key's scale (the Scale toggle).
     void setScaleHighlight(bool on);
-    bool scaleHighlight() const noexcept { return scaleHighlight_; }
     // Other MIDI tracks' notes as ghosts (the toolbar's ghost toggle).
     void setGhostTracks(bool on);
-    bool ghostTracks() const noexcept { return ghostTracks_; }
     // An instrument that names its notes: the rows carry the names; with
     // namedRowsOnly, only the named rows (and any with notes) show.
     bool hasNoteNames() const noexcept { return namedNotes_.any(); }
@@ -301,6 +307,7 @@ private:
     void splitAt(juce::Point<int> p);
     void glueAt(juce::Point<int> p);
     void addNoteAt(juce::Point<int> p, core::SamplePosition length);
+    void addNote(const core::MidiNote& note, const std::string& name); // selects it
     void updateScrollbars();
     void fitToClip();
     core::MidiNote previewOf(const core::MidiNote& note) const noexcept;

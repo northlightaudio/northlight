@@ -95,13 +95,3 @@ TEST_CASE("The registry round-trips through JSON and rejects other files", "[hos
     REQUIRE(empty.has_value());
     CHECK(empty->plugins().empty());
 }
-
-TEST_CASE("A plugin list saved by Aural still loads", "[hosting]")
-{
-    PluginRegistry registry;
-    auto text = registry.toJson();
-    const auto at = text.find("northlight.plugins");
-    REQUIRE(at != std::string::npos);
-    text.replace(at, std::string("northlight.plugins").size(), "aural.plugins");
-    CHECK(PluginRegistry::fromJson(text).has_value());
-}

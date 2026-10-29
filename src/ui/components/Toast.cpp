@@ -171,13 +171,6 @@ void ToastStack::show(Kind kind,
     startTimer(250);
 }
 
-void ToastStack::dismissAll()
-{
-    toasts_.clear();
-    leaving_.clear();
-    layout();
-}
-
 void ToastStack::retire(std::unique_ptr<Toast> toast)
 {
     auto* raw = toast.get();

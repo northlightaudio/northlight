@@ -86,7 +86,6 @@ public:
     bool audition() const noexcept { return audition_; }
     // A semitone's height in pitch mode (the vertical zoom).
     float semitoneHeight() const noexcept { return semitoneHeight_; }
-    void setSemitoneHeight(float pixels);
     // The selection changed (the inspector shows the selected notes).
     std::function<void()> onSelectionChanged;
     // While linked, a zoom or scroll here: the timeline samples per pixel and the

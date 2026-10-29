@@ -74,11 +74,6 @@ int AudioCallback::numActiveInputs() const noexcept
     return numInputs_.load(std::memory_order_relaxed);
 }
 
-int AudioCallback::numActiveOutputs() const noexcept
-{
-    return numOutputs_.load(std::memory_order_relaxed);
-}
-
 double AudioCallback::currentSampleRate() const noexcept
 {
     return sampleRate_.load(std::memory_order_relaxed);
@@ -145,7 +140,6 @@ void AudioCallback::audioDeviceAboutToStart(juce::AudioIODevice* device)
 {
     NORTHLIGHT_ASSERT_NOT_REALTIME("AudioCallback::audioDeviceAboutToStart");
     numInputs_.store(device->getActiveInputChannels().countNumberOfSetBits(), std::memory_order_relaxed);
-    numOutputs_.store(device->getActiveOutputChannels().countNumberOfSetBits(), std::memory_order_relaxed);
     sampleRate_.store(device->getCurrentSampleRate(), std::memory_order_relaxed);
     currentGain_ = targetGain_.load(std::memory_order_relaxed);
     secondsPerSample_ = device->getCurrentSampleRate() > 0.0 ? 1.0 / device->getCurrentSampleRate() : 0.0;
@@ -167,7 +161,6 @@ void AudioCallback::audioDeviceStopped()
     calibrationPhase_.store(CalibrationPhase::idle, std::memory_order_release);
     abortRequested_.store(false, std::memory_order_relaxed);
     numInputs_.store(0, std::memory_order_relaxed);
-    numOutputs_.store(0, std::memory_order_relaxed);
 }
 
 void AudioCallback::audioDeviceError(const juce::String& /*errorMessage*/)

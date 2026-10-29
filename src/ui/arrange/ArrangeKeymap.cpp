@@ -120,6 +120,12 @@ const std::vector<ArrangeKey>& ArrangeKeymap::bindings()
         b.push_back(bind(Command::splitAtSelection, always([](ArrangeView& v) { v.splitAtSelection(); })));
         b.push_back(bind(Command::join, always([](ArrangeView& v) { v.joinSelection(); })));
         b.push_back(bind(Command::crossfade, always([](ArrangeView& v) { v.crossfadeSelection(); })));
+        b.push_back(bind(Command::selectClip,
+                         [](ArrangeView& v, const Press& k)
+                         {
+                             return v.stepClipSelection(k.getKeyCode() == Press::leftKey ? -1 : 1,
+                                                        k.getModifiers().isShiftDown());
+                         }));
         b.push_back(bind(Command::nudge,
                          [](ArrangeView& v, const Press& k)
                          {

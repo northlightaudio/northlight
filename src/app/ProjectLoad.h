@@ -47,7 +47,7 @@ struct LoadTimings
 };
 
 // The part of opening a project that needs no message thread, run on a thread of
-// its own: reading the file, parsing (and migrating) the project, and decoding
+// its own: reading the file, parsing the project, and decoding
 // its media at the project's rate. The current project is untouched until the
 // session takes the result, so the load can be cancelled until then. Progress is
 // readable from any thread; the work is weighted so the fraction moves evenly

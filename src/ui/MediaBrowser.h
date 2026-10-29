@@ -56,9 +56,6 @@ public:
     void stopPreview();
     // Shows a folder (a place of its own when it is in none).
     void showFolder(const juce::File& folder);
-    // Whether a listing is still being read (tests).
-    bool isListing() const noexcept { return listing_; }
-    int entryCount() const noexcept { return static_cast<int>(entries_.size()); }
 
     void paint(juce::Graphics& g) override;
     void resized() override;

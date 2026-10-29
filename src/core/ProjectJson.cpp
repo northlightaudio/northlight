@@ -47,54 +47,6 @@ const Insert* findChannelInsert(const Channel& c, Id insertId)
     return const_cast<Channel&>(c).findInsert(insertId);
 }
 
-// Version upgrades, one step at a time from the file's version to the current
-// one. 2 -> 3 only adds optional fields, so it has nothing to rewrite.
-void migrate(json& j, int from)
-{
-    for (int version = from; version < Project::schemaVersion; ++version)
-    {
-        switch (version)
-        {
-            case 2: // 2 -> 3, ..., 6 -> 7 only add optional fields
-            case 3:
-            case 4:
-            case 5:  // 6 adds the tempo track and clip stretch
-            case 6:  // 7 adds take groups; a file without them has none (its clips stay as they are)
-            case 7:  // 8 adds folder tracks and frozen tracks
-            case 8:  // 9: MIDI clips gain an optional "controllers" array; a clip
-                     // without one has no controller events, which is what older
-                     // versions meant
-            case 9:  // 10: tracks gain an optional "inputBus"; without one the
-                     // track takes its single input channel, as before
-            case 10: // 11: the master gains optional "inserts"; without them it has none
-            case 11: // 12: lanes gain an optional "view" and the automation an optional
-                     // "open"; without them a lane shows at the default height and
-                     // the lanes start closed
-            case 12: // 13: audio and MIDI clips gain an optional "muted"; without it
-                     // a clip plays, as before
-            case 13: // 14: audio clips gain optional "fadeInCurve" and "fadeOutCurve";
-                     // without them a fade is linear, as before
-            case 14: // 15: the master gains optional "automation" and "height"; without
-                     // them it has no lanes, reads, and has the default row height
-            case 15: // 16: sends gain optional "pan" and "mute", channels optional
-                     // "hardwareOutput", "soloSafe" and "mixerHidden", inserts
-                     // optional "windowOpen" and "pluginName"; without them a send
-                     // is centred and on, a channel plays to its bus, no window
-                     // reopens and a missing plugin is unnamed
-            case 16: // 17: audio and MIDI clips gain an optional "colour"; without it a
-                     // clip takes its track's colour, as before
-            case 17: // 18: a note may carry a sixth element (muted); a take group an
-                     // optional "midi" with "notes" and "controllers" on its takes;
-                     // a MIDI track an optional "recordMode". Without them notes
-                     // play, groups are audio and passes become takes, as before
-                break;
-            default:
-                break;
-        }
-    }
-    j["version"] = Project::schemaVersion;
-}
-
 const char* controllerTypeName(MidiControllerType type)
 {
     switch (type)
@@ -474,7 +426,7 @@ void channelFromJson(const json& j, Channel& c)
         {
             Insert insert;
             insert.id = i.value("id", invalidId);
-            insert.type = currentTypeName(i.value("type", std::string{}));
+            insert.type = i.value("type", std::string{});
             insert.bypass = i.value("bypass", false);
             insert.state = i.value("state", std::string{});
             insert.mix = i.value("mix", 1.0f);
@@ -847,24 +799,6 @@ std::string projectToJson(const Project& p, bool pretty, const ParameterKeys* ke
     return pretty ? j.dump(2) : j.dump();
 }
 
-const char* legacyTypePrefix() noexcept
-{
-    return "aural.";
-}
-
-const char* currentTypePrefix() noexcept
-{
-    return "northlight.";
-}
-
-std::string currentTypeName(std::string type)
-{
-    const std::string old = legacyTypePrefix();
-    if (type.compare(0, old.size(), old) == 0)
-        type = currentTypePrefix() + type.substr(old.size());
-    return type;
-}
-
 std::optional<Project> projectFromJson(const std::string& text, std::string* error)
 {
     const auto fail = [error](const std::string& message) -> std::optional<Project>
@@ -877,8 +811,7 @@ std::optional<Project> projectFromJson(const std::string& text, std::string* err
     json j = json::parse(text, nullptr, false);
     if (j.is_discarded() || !j.is_object())
         return fail("not valid JSON");
-    if (const auto format = j.value("format", std::string{});
-        format != "northlight.project" && format != "aural.project")
+    if (const auto format = j.value("format", std::string{}); format != "northlight.project")
         return fail("not a Northlight project file");
     const int version = j.value("version", 0);
     if (version < Project::oldestReadableVersion)
@@ -887,7 +820,6 @@ std::optional<Project> projectFromJson(const std::string& text, std::string* err
     if (version > Project::schemaVersion)
         return fail("made by a newer version of Northlight (project version " + std::to_string(version) +
                     ")");
-    migrate(j, version);
 
     try
     {

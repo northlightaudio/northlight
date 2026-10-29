@@ -55,7 +55,8 @@ enum class Command
     addAudioTrack,
     addMidiTrack,
     addBus,
-    // The panels' (with Shift, the key detaches or reattaches the panel).
+    contextMenu, // Shift+F10 (the Menu key too, which arrives as no key press)
+                 // The panels' (with Shift, the key detaches or reattaches the panel).
     showMixer,
     showEditor,
     showBrowser,
@@ -89,6 +90,7 @@ enum class Command
     splitAtSelection,
     join,
     crossfade,
+    selectClip, // Ctrl+Left / Right (Shift extends)
     nudge,
     // The piano roll's (while it has the focus).
     pianoRollDelete,
@@ -118,8 +120,10 @@ enum class Command
     pianoRollStepSelection, // Ctrl+Left / Right (Shift extends)
     pianoRollLength,        // Alt+Left / Right (Shift: fine)
     pianoRollNudgePitch,    // Up / Down (Ctrl: an octave)
-                            // The audio editor's (in pitch mode, while it has the focus).
-    audioEditorTool,        // 1 to 5, in the tools' order
+    pianoRollVelocity,      // Alt+Up / Down (Shift: by one)
+    pianoRollInsertNote,
+    // The audio editor's (in pitch mode, while it has the focus).
+    audioEditorTool, // 1 to 5, in the tools' order
     audioEditorNudgePitch,
     audioEditorStepSelection, // Left / Right (Shift extends)
     audioEditorMute,

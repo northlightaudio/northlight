@@ -484,28 +484,6 @@ bool RemoveTrack::revert(Project& p)
     return true;
 }
 
-MoveTrack::MoveTrack(Id trackId, int newIndex) : trackId_(trackId), newIndex_(newIndex) {}
-
-bool MoveTrack::apply(Project& p)
-{
-    oldIndex_ = p.trackIndex(trackId_);
-    if (oldIndex_ < 0)
-        return false;
-    newIndex_ = std::clamp(newIndex_, 0, static_cast<int>(p.tracks.size()) - 1);
-    Track moved = std::move(p.tracks[static_cast<size_t>(oldIndex_)]);
-    p.tracks.erase(p.tracks.begin() + oldIndex_);
-    p.tracks.insert(p.tracks.begin() + newIndex_, std::move(moved));
-    return true;
-}
-
-bool MoveTrack::revert(Project& p)
-{
-    Track moved = std::move(p.tracks[static_cast<size_t>(newIndex_)]);
-    p.tracks.erase(p.tracks.begin() + newIndex_);
-    p.tracks.insert(p.tracks.begin() + oldIndex_, std::move(moved));
-    return true;
-}
-
 AddBus::AddBus(Bus bus, int index) : bus_(std::move(bus)), index_(index) {}
 
 void AddBus::setDefaultStrip(const std::vector<Insert>& modules)
@@ -1048,66 +1026,6 @@ bool EditMidiControllers::revert(Project& p)
     if (c == nullptr)
         return false;
     c->controllers = previous_;
-    return true;
-}
-
-QuantiseNotes::QuantiseNotes(
-    Id trackId, Id clipId, std::vector<Id> noteIds, SamplePosition grid, float strength)
-    : trackId_(trackId), clipId_(clipId), noteIds_(std::move(noteIds)), grid_(grid), strength_(strength)
-{
-}
-QuantiseNotes::QuantiseNotes(
-    Id trackId, Id clipId, std::vector<Id> noteIds, TempoMap map, GridStep step, float strength)
-    : trackId_(trackId), clipId_(clipId), noteIds_(std::move(noteIds)),
-      tempoGrid_(std::make_pair(std::move(map), step)), strength_(strength)
-{
-}
-QuantiseNotes::QuantiseNotes(
-    Id trackId, Id clipId, std::vector<Id> noteIds, TempoMap map, int divisionsPerBeat, float strength)
-    : trackId_(trackId), clipId_(clipId), noteIds_(std::move(noteIds)),
-      tempoGrid_(std::make_pair(std::move(map), GridStep{})),
-      divisionsPerBeat_(std::max(1, divisionsPerBeat)), strength_(strength)
-{
-}
-bool QuantiseNotes::apply(Project& p)
-{
-    auto* c = findMidiClip(p, trackId_, clipId_);
-    if (c == nullptr)
-        return false;
-    previous_.clear();
-    const float strength = std::clamp(strength_, 0.0f, 1.0f);
-    for (auto& n : c->notes)
-    {
-        if (!noteIds_.empty() && std::find(noteIds_.begin(), noteIds_.end(), n.id) == noteIds_.end())
-            continue;
-        previous_.emplace_back(n.id, n.start);
-        const auto absolute = c->start + n.start;
-        auto target = snapToGrid(absolute, grid_);
-        if (tempoGrid_)
-        {
-            const auto& map = tempoGrid_->first;
-            const auto step =
-                divisionsPerBeat_ > 0
-                    ? GridStep{0, TempoMap::quartersPerBeat(map.signatureAt(absolute)) / divisionsPerBeat_}
-                    : tempoGrid_->second;
-            target = map.snap(absolute, step);
-        }
-        const auto moved =
-            absolute + static_cast<SamplePosition>(std::llround((target - absolute) * strength));
-        n.start = std::max<SamplePosition>(0, moved - c->start);
-    }
-    c->sortNotes();
-    return true;
-}
-bool QuantiseNotes::revert(Project& p)
-{
-    auto* c = findMidiClip(p, trackId_, clipId_);
-    if (c == nullptr)
-        return false;
-    for (const auto& [id, start] : previous_)
-        if (auto* n = c->findNote(id))
-            n->start = start;
-    c->sortNotes();
     return true;
 }
 

@@ -188,7 +188,6 @@ public:
     int dockOpenHeight() const noexcept { return dockSize_; }
     int sideOpenWidth() const noexcept { return sideSize_; }
     bool dockOpen() const noexcept { return !dock_.empty() && dockRequested_ > 0; }
-    bool sideOpen() const noexcept { return !side_.empty() && sideRequested_ > 0; }
     void setDockHeight(int height);
     // The dock's smallest height: its tabs and the tallest minimum of the panels
     // shown in it. enforceDockMinimum grows the dock to it when it is smaller.

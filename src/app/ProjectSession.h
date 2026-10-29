@@ -149,7 +149,6 @@ public:
     // Imported media is copied into the project's media folder (Preferences,
     // General: on by default), so a project folder holds everything it plays.
     void setCopyImportedMedia(bool copy) noexcept { copyImportedMedia_ = copy; }
-    bool copiesImportedMedia() const noexcept { return copyImportedMedia_; }
     // The file a new clip should use for `file`: with copying on and a saved
     // project, a copy in the media folder (the file itself when it is already in
     // it, or when the copy fails); otherwise the file itself. An unsaved project's
@@ -191,8 +190,6 @@ public:
     bool isPreviewing() const noexcept { return engine_.preview().isPlaying(); }
     // Hands the next preview over once the last has faded (a UI timer while previewing).
     void pumpPreview() { engine_.preview().pump(engine_.isRunning()); }
-    // The Sampler's decoded files (the insert factory's loader).
-    SampleFiles& sampleFiles() noexcept { return sampleFiles_; }
     // A plugin chosen for a channel (the browser's double-click or drop). An
     // instrument goes to an instrument channel: the one given, or the one the
     // given MIDI track plays (a new one under it when it plays none), or a new

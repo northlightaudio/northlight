@@ -28,6 +28,7 @@
 #include "ui/FrameStats.h"
 #include "ui/Icons.h"
 #include "ui/InsertEditor.h"
+#include "ui/KeyboardMenu.h"
 #include "ui/MediaBrowser.h"
 #include "ui/MixerView.h"
 #include "ui/NorthlightLookAndFeel.h"
@@ -50,6 +51,7 @@
 #include "ui/panels/EditorPanel.h"
 #include "ui/panels/InspectorPanel.h"
 #include "ui/panels/InstrumentRack.h"
+#include "ui/shell/FocusCycle.h"
 #include "ui/shell/HeaderBar.h"
 #include "ui/shell/Panels.h"
 #include "ui/shell/StatusBar.h"
@@ -204,6 +206,14 @@ public:
         for (auto* c : std::initializer_list<juce::Component*>{
                  &header_, &tracks_, &dock_, &side_, &status_, &dockSplitter_, &sideSplitter_, &toasts_})
             addAndMakeVisible(c);
+        // The Tab cycle (interaction.md 10.4): the header bar, the selected track's
+        // header, the lanes, the dock, the side panel, the status bar, then any
+        // toast's actions (createKeyboardFocusTraverser).
+        setFocusContainerType(FocusContainerType::keyboardFocusContainer);
+        int focusOrder = 1;
+        for (auto* c :
+             std::initializer_list<juce::Component*>{&header_, &tracks_, &dock_, &side_, &status_, &toasts_})
+            c->setExplicitFocusOrder(focusOrder++);
         status_.onDeviceClicked = [this] { owner_.showAudioSetup(); };
         status_.onDropoutsClicked = [this]
         {
@@ -346,6 +356,23 @@ public:
                           status_.getY() - header_.getBottom() - 2 * theme_.spacing.md);
         if (sheet_ != nullptr)
             sheet_->setBounds(getLocalBounds());
+    }
+
+    std::unique_ptr<juce::ComponentTraverser> createKeyboardFocusTraverser() override
+    {
+        return std::make_unique<ui::FocusCycle>(*this,
+                                                ui::FocusCycle::Rules{{&tracks_},
+                                                                      [this](const juce::Component& c)
+                                                                      { return tracks_.skippedByTab(c); }});
+    }
+
+    // The Menu key reaches the window only as a key state change.
+    bool keyStateChanged(bool isKeyDown) override
+    {
+        const bool down = ui::KeyboardMenu::menuKeyDown();
+        const bool pressed = isKeyDown && down && !menuKeyDown_;
+        menuKeyDown_ = down;
+        return pressed && perform(ui::Command::contextMenu);
     }
 
     // ----- the keyboard map (interaction.md 10.4) ---------------------------------------
@@ -535,6 +562,15 @@ public:
             case C::addBus:
                 addBus();
                 return true;
+            case C::contextMenu:
+            {
+                // The focused view's menu; with the focus on the window itself, the
+                // arrange view's (it owns the focus by default).
+                auto* focused = juce::Component::getCurrentlyFocusedComponent();
+                if (focused == nullptr || focused == this)
+                    return ui::KeyboardMenu::showFor(nullptr, &tracks_);
+                return ui::KeyboardMenu::showFor(focused, nullptr);
+            }
             default:
                 return false; // a panel's or the arrange view's
         }
@@ -2002,6 +2038,7 @@ private:
     std::string appearance_; // the accent and contrast the colours were last loaded with
     SystemSettingsWatcher systemSettings_{[this] { applyPreferences(false); }};
     int shortcutsApplied_ = -1; // the ui::Shortcuts generation applyShortcuts last saw
+    bool menuKeyDown_ = false;  // the Menu key, as keyStateChanged last saw it
     bool slideCached_ = false;  // the views are drawn from cached images during a panel slide
     juce::Component::SafePointer<juce::Component> hoverComponent_;
     double hoverSinceMs_ = 0.0;
@@ -2292,12 +2329,6 @@ void MainWindow::setPreference(const std::string& key, const std::string& value)
     settings_.setValue(key, value);
     if (auto* content = content_)
         content->applyPreferences(false);
-}
-
-void MainWindow::showMixer()
-{
-    if (auto* content = content_)
-        content->panels_.show(ui::PanelId::mixer);
 }
 
 void MainWindow::setMixerWide(bool wide)

@@ -8,6 +8,7 @@
 #include "engine/Recording.h"
 #include "ui/AutomationLanes.h"
 #include "ui/Icons.h"
+#include "ui/KeyboardMenu.h"
 #include "ui/PluginMenu.h"
 #include "ui/Selection.h"
 #include "ui/TakeLanes.h"
@@ -65,6 +66,7 @@ namespace northlight::ui
 class ArrangeView final : public juce::Component,
                           public juce::FileDragAndDropTarget,
                           public juce::DragAndDropTarget,
+                          public KeyboardMenu,
                           private juce::ChangeListener,
                           private juce::ScrollBar::Listener
 {
@@ -166,8 +168,20 @@ public:
     // alone when it is the only one.
     std::vector<core::Id> selectedTracks() const;
     void selectTracks(const std::vector<core::Id>& tracks); // the first takes the focus
-    // Up / Down: the track above or below (Shift extends the selection).
+    // Up / Down: the track above or below (Shift extends the selection). Focus on
+    // a track header follows to the new track's header.
     void moveTrackSelection(int direction, bool extend);
+    // Ctrl+Left / Right (interaction.md 10.4): the previous or next clip on the
+    // selected track (Shift extends); with none selected there, the nearest clip
+    // before or after the playhead. Scrolls it into view. False when there is none.
+    bool stepClipSelection(int direction, bool extend);
+    // Shift+F10 or the Menu key: the selected clip's menu, else the time
+    // selection's, else the selected track's, where a right-click would open it.
+    bool showKeyboardMenu() override;
+    // The window's Tab cycle (shell/FocusCycle): of the track headers, only the
+    // selected track's (the first, with none selected) and its controls are
+    // stops; Up and Down move between tracks.
+    bool skippedByTab(const juce::Component& component) const;
     // Shift+M / Shift+S / Shift+R: the selected tracks' mute, solo or arm, all set
     // to the opposite of the focused one's.
     void toggleMuteSelectedTracks();
@@ -283,6 +297,8 @@ public:
     void clearSelection();
 
     void paint(juce::Graphics& g) override;
+    // The lanes' focus ring (keyboard focus only).
+    void paintOverChildren(juce::Graphics& g) override;
     void resized() override;
     void mouseDown(const juce::MouseEvent& e) override;
     void mouseDrag(const juce::MouseEvent& e) override;
@@ -333,7 +349,6 @@ public:
     // The tempo track under the ruler (TempoLane): its edits arrive here as one
     // command each.
     void setTempoTrackShown(bool shown);
-    bool tempoTrackShown() const noexcept { return tempoShown_; }
     std::function<void(core::TempoState, const std::string& name)> onTempoEdit;
     std::function<void(bool shown)> onTempoTrackShownChanged;
 
@@ -704,6 +719,7 @@ private:
         import_{"Import audio\xe2\x80\xa6"};
     void layoutEmptyState();
     void selectTrack(core::Id trackId);
+    TrackHeader* headerFor(core::Id channel) const noexcept;
     const PluginSources* pluginSources_ = nullptr;
     // Take lanes and comping (screens/comping.md): lanes under a track's row, swipes, boundaries.
     TakeLanes takes_{theme_, peaks_, *this, view_};

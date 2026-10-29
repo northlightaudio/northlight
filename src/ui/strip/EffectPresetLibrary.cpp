@@ -87,7 +87,7 @@ std::vector<PresetEntry> EffectPresetLibrary::load(const std::string& type) cons
     for (const auto& file : folderFor(type).findChildFiles(juce::File::findFiles, false, "*.json"))
     {
         const auto json = juce::JSON::parse(file.loadFileAsString());
-        const auto savedType = core::currentTypeName(json.getProperty("type", {}).toString().toStdString());
+        const auto savedType = json.getProperty("type", {}).toString().toStdString();
         const auto* params = json.getProperty("params", {}).getDynamicObject();
         if (savedType != type || params == nullptr)
             continue;

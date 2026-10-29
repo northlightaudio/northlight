@@ -10,7 +10,6 @@
 #include <juce_gui_basics/juce_gui_basics.h>
 
 #include <functional>
-#include <map>
 #include <memory>
 #include <optional>
 #include <string>
@@ -85,8 +84,6 @@ public:
     int blockHeight(const core::Channel& channel) const noexcept;
     // The lanes' backgrounds, under the arrange view's grid.
     void paintBackgrounds(juce::Graphics& g) const;
-    // The playhead moved: repaints the lane headers whose value changed.
-    void playheadMoved();
     // The A toggle's menu for a channel: its mode and its lanes.
     void showChannelMenu(core::Id channelId, juce::Rectangle<int> screenArea);
 
@@ -252,8 +249,6 @@ private:
     {
         return hoverPart_ == part && hoverRow_ == slot.row && hoverSlotLane_ == slot.lane;
     }
-    // The values the headers show, to repaint only those that change as the playhead moves.
-    mutable std::map<core::Id, juce::String> shownValues_;
 };
 
 } // namespace northlight::ui

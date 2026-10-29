@@ -166,11 +166,6 @@ const char* Icons::name(Icon icon)
     return definitions[static_cast<int>(icon)].name;
 }
 
-const char* Icons::svgPath(Icon icon)
-{
-    return definitions[static_cast<int>(icon)].d;
-}
-
 void Icons::draw(juce::Graphics& g, Icon icon, juce::Rectangle<float> bounds, juce::Colour colour)
 {
     bool filled = false;

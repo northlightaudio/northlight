@@ -89,13 +89,6 @@ float TempoLane::yForBpm(double bpm) const noexcept
            static_cast<float>(t) * static_cast<float>(area.getHeight());
 }
 
-double TempoLane::bpmForY(float y) const noexcept
-{
-    const auto area = getLocalBounds().withTrimmedTop(tagRow + 3).withTrimmedBottom(4);
-    const double t = (static_cast<double>(area.getBottom()) - y) / std::max(1, area.getHeight());
-    return minBpm_ + t * (maxBpm_ - minBpm_);
-}
-
 double TempoLane::bpmOf(const core::TempoState& state, int index) const noexcept
 {
     if (index < 0)

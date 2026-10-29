@@ -169,11 +169,6 @@ public:
             r = std::make_shared<AutomationRuntime>();
         return r;
     }
-    std::shared_ptr<AutomationRuntime> findAutomation(core::Id laneId) const
-    {
-        const auto it = automation_.find(laneId);
-        return it != automation_.end() ? it->second : nullptr;
-    }
     // Drops runtimes no snapshot references any more.
     void prune()
     {

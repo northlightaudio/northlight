@@ -126,7 +126,7 @@ inline juce::File launchProjectFile(const juce::String& commandLine)
     if (arguments.isEmpty() || arguments.getReference(0).text.startsWith("-"))
         return {};
     const auto file = arguments.getReference(0).resolveAsFile();
-    return file.hasFileExtension("northlight;aural") && file.existsAsFile() ? file : juce::File();
+    return file.hasFileExtension("northlight") && file.existsAsFile() ? file : juce::File();
 }
 
 // Runs the flags on the command line in order. A flag missing its required

@@ -18,7 +18,11 @@ built: Lookahead, the Long throw, Swell and Catch, and the presets that use them
 Phase 5 is done: the presets were measured and two were tuned (below). Phase 6 is
 built: the face, specified in screens/plugins.md 7.2a (where it differs from this
 plan: no preset bar in the face, a still sky, Lookahead as a segmented control in
-the row of choices, Swell in the TIME group). The rest is not built.
+the row of choices, Swell in the TIME group). Phase 7 is built in the DSP only:
+Halo's strings are `plugins/vesper/HaloBank`, the `Halo` parameter (default 0) is
+tested, but the face has no Halo control and CHANGELOG.md and the user guide do not
+mention it yet. Phase 8 is done: architecture.md (the Listener), decisions.md, the
+user guide, CHANGELOG.md and the roadmap describe Vesper, which is on `main`.
 
 ## The name and the idea
 

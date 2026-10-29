@@ -30,7 +30,6 @@ add_executable(northlight_juce_tests
     CrashReportTests.cpp
     MediaBrowserTests.cpp
     MidiFileTests.cpp
-    MigrationTests.cpp
     InputChoicesTests.cpp
     PreferencesViewTests.cpp
     HeaderBarTests.cpp
@@ -42,6 +41,7 @@ add_executable(northlight_juce_tests
     ArrangeSelectionTests.cpp
     MarkerControllerTests.cpp
     ArrangeKeymapTests.cpp
+    KeyboardModelTests.cpp
     ShortcutsTests.cpp
     LaunchFlagsTests.cpp
     AppMenusTests.cpp

@@ -238,62 +238,6 @@ TEST_CASE("The tape echo's meter, lamp, neons and rollers move as the machine do
           Catch::Approx(0.28 / 0.15));
 }
 
-// Renders the card in a few states to PNGs at 100% and 200%, for review (not run
-// by default): set NORTHLIGHT_CARD_PNGS to a folder.
-TEST_CASE("Tape echo card states to PNG", "[.capture]")
-{
-    const juce::ScopedJuceInitialiser_GUI juceInit;
-    const auto folder = juce::SystemStats::getEnvironmentVariable("NORTHLIGHT_CARD_PNGS", {});
-    REQUIRE(folder.isNotEmpty());
-    struct State
-    {
-        const char* name;
-        std::vector<std::pair<int, float>> params;
-        bool bypass = false;
-    };
-    const std::vector<State> states{
-        {"default", {}},
-        {"selfosc", {{te::feedback, 115.0f}, {te::heads, 7.0f}, {te::bass, 4.0f}, {te::age, 60.0f}}},
-        {"synced", {{te::sync, 9.0f}, {te::stereo, 1.0f}, {te::heads, 6.0f}, {te::drive, 12.0f}}},
-        {"killdry", {{te::sync, 16.0f}, {te::feedback, 0.0f}, {te::killDry, 1.0f}, {te::spring, 50.0f}}},
-        {"off", {}, true},
-    };
-    for (const auto& state : states)
-    {
-        Rig rig;
-        for (const auto& [index, value] : state.params)
-        {
-            rig.insert.params[static_cast<size_t>(index)] = value;
-            rig.live->setParameter(index, value);
-        }
-        rig.insert.bypass = state.bypass;
-        rig.card->refresh(rig.insert);
-        std::vector<float> l(240), r(240);
-        for (int b = 0; b < 600; ++b) // three seconds: hits every 200 ms and a chord
-        {
-            for (int i = 0; i < 240; ++i)
-            {
-                const float t = static_cast<float>(b * 240 + i) / 48000.0f;
-                const float hit = b % 40 < 3 ? 0.7f * std::exp(-static_cast<float>(b % 40) * 0.8f) : 0.0f;
-                l[static_cast<size_t>(i)] = r[static_cast<size_t>(i)] =
-                    hit * std::sin(6.2831853f * 180.0f * t) +
-                    (b > 300 && b < 420 ? 0.2f : 0.0f) * std::sin(6.2831853f * 330.0f * t);
-            }
-            rig.live->process(l.data(), r.data(), 240);
-            rig.card->tick(5.0);
-        }
-        for (const float scale : {1.0f, 2.0f})
-        {
-            const auto image = rig.card->createComponentSnapshot(rig.card->getLocalBounds(), true, scale);
-            juce::File file(folder + "/card-" + state.name + (scale > 1.5f ? "-2x" : "-1x") + ".png");
-            file.deleteFile();
-            juce::FileOutputStream out(file);
-            REQUIRE(out.openedOk());
-            juce::PNGImageFormat().writeImageToStream(image, out);
-        }
-    }
-}
-
 TEST_CASE("The tape echo's controls sit on its console, their tooltips brief", "[ui][tapeecho]")
 {
     const juce::ScopedJuceInitialiser_GUI juceInit;

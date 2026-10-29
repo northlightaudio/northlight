@@ -563,23 +563,8 @@ struct MeterChange
 
 struct Project
 {
-    // 2: instruments moved to instrument channels; MIDI tracks aim at them.
-    // 3: parameters and automation lanes carry stable keys; row heights.
-    // 4: vocal pitch edits on audio clips; the project key.
-    // 5: sidechain keys may tap after the source's fader.
-    // 6: the tempo track (tempo and meter changes); clip stretch, transpose and
-    //    musical time base.
-    // 7: take groups (take lanes and comps) on tracks.
-    // 8: folder tracks; frozen tracks.
-    // 9: controller events (CC, pitch bend, pressure) in MIDI clips.
-    // 10: stereo input buses on tracks.
-    // 11: inserts on the master.
-    // 12: automation lanes' view (height, collapsed, hidden) and whether a
-    //     channel's lanes are open in the arrange view.
-    // 16: send pan and mute; a channel's hardware output, solo safe and hidden
-    //     strip; inserts whose window was open and a hosted plugin's name.
-    // 17: audio and MIDI clips may carry a colour of their own.
-    // 18: muted MIDI notes; MIDI take groups; a MIDI track's record mode.
+    // Raised when a model change reaches the file. New fields are optional with
+    // defaults, so older files load without an upgrade chain (none before 1.0).
     static constexpr int schemaVersion = 18;
     static constexpr int oldestReadableVersion = 2; // older files are refused
 

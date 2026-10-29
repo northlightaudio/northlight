@@ -113,7 +113,10 @@ drop the glows").
    text, `textDisabled`, hardware inks, a shape on the meter clip and flagged note);
    follow Windows High Contrast; a Reduce motion setting (System / On / Off) re-read
    on settings change.
-3. **Keyboard model.** Focus containers for the documented Tab cycle; focusable track
+3. **Keyboard model.** Done 2026-10-29. Left for later: the tempo and automation
+   lanes' menus from the keyboard (they are painted inside the arrange view), the
+   controller lane still refuses the focus, the pointer-only edits listed above,
+   and the Menu key in floating panel and plugin windows. Focus containers for the documented Tab cycle; focusable track
    headers and arrange view; clip selection by keys; Shift+F10 menus; note entry and
    velocity keys in the piano roll.
 4. **Screen reader for painted content.** Accessibility handlers (or invisible proxies)

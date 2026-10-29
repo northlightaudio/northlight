@@ -31,7 +31,6 @@ public:
 
     void setLit(bool lit);
     bool lit() const noexcept { return lit_; }
-    void setLabel(const juce::String& label);
 
     // Drawn from `off` and `on`, patches of the face's renders covering the key's
     // bounds (unlit, and lit with its glow on the panel round it), and while held

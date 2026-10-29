@@ -55,7 +55,6 @@ PAIRS = [
     ("meterHot", "canvas", "Meter zone (non-text)", "nontext"),
     # A hardware face (Patina's rack unit): its own group, "hardware.<key>".
     ("hardware.legend", "hardware.panel", "Legends on a hardware face's panel", "body"),
-    ("hardware.ink", "hardware.plate", "Nameplate lettering", "body"),
     ("hardware.displayText", "hardware.displayCentre", "An amber display's text", "body"),
     ("hardware.displayDim", "hardware.displayCentre", "A display's preset number", "hint"),
     ("hardware.glassInk", "hardware.glassEdge", "Readings on a lit meter window, at its edge", "body"),
@@ -72,7 +71,6 @@ PAIRS = [
     ("hardware.patinaInk", "hardware.patinaPlate", "Control names on Patina's stage plates", "body"),
     ("hardware.patinaInkSoft", "hardware.patinaPlate", "Values and scales on Patina's stage plates", "body"),
     ("hardware.patinaInk", "hardware.patinaNameplate", "The name on Patina's nameplate", "body"),
-    ("hardware.patinaPanelInk", "hardware.patinaPanel", "The model line on Patina's panel", "body"),
     ("hardware.patinaPanelInkSoft", "hardware.patinaPanel", "Small print on Patina's panel", "body"),
     ("hardware.coronaInkSoft", "hardware.coronaPanel", "Values and scales on the amp's plate", "body"),
     # The guitar pedals: names and values printed on each enclosure, the tuner's display.

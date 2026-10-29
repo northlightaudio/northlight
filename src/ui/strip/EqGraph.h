@@ -54,12 +54,10 @@ public:
     explicit EqGraph(ModuleCard& card, EqBands bands = stripEqBands());
     ~EqGraph() override;
 
-    int selectedBand() const noexcept { return selected_; }
     void setSelectedBand(int band);
     std::function<void(int band)> onSelect;
 
     void setAnalyser(bool on);
-    bool analyser() const noexcept { return analyser_; }
 
     // Each UI tick: runs the analyser (about 30 times a second) and repaints.
     void update(double elapsedMs);
