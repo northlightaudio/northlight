@@ -43,6 +43,17 @@ add_library(northlight_plugins STATIC
     Convolver.h
     Convolver.cpp
     ProcessorBase.h
+    midi/MidiEffectBase.h
+    midi/MidiEffectBase.cpp
+    midi/Transpose.h
+    midi/Transpose.cpp
+    midi/MidiTools.h
+    midi/Utilities.h
+    midi/Utilities.cpp
+    midi/TimeEffects.h
+    midi/TimeEffects.cpp
+    midi/Chords.h
+    midi/Chords.cpp
     ChannelStrip.h
     ChannelStrip.cpp
     strip/Modules.h

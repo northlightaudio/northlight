@@ -19,6 +19,10 @@
 #include "plugins/TapeEcho.h"
 #include "plugins/Vesper.h"
 #include "plugins/Widener.h"
+#include "plugins/midi/Chords.h"
+#include "plugins/midi/TimeEffects.h"
+#include "plugins/midi/Transpose.h"
+#include "plugins/midi/Utilities.h"
 
 #include <algorithm>
 #include <map>
@@ -159,6 +163,73 @@ const std::vector<BuiltInType>& builtInTypes()
         {nebula::type, "Nebula", instrument, plain<nebula::create>, pl::nebulaPresets, "Airy pad synth"},
         {starbit::type, "Starbit", instrument, plain<starbit::create>, pl::starbitPresets, "Chiptune synth"},
         {sampler::type, "Sampler", instrument, sampled, nullptr, "One sample across the keys"},
+        {arpeggiator::type,
+         "Arpeggiator",
+         midiEffect,
+         plain<arpeggiator::create>,
+         nullptr,
+         "Plays held notes one at a time, in time"},
+        {chord::type,
+         "Chord",
+         midiEffect,
+         plain<chord::create>,
+         nullptr,
+         "One key plays a chord, strummed or not"},
+        {chordpads::type,
+         "Chord Pads",
+         midiEffect,
+         plain<chordpads::create>,
+         nullptr,
+         "The keys play the chords of the key, voice-led"},
+        {scale::type, "Scale", midiEffect, plain<scale::create>, nullptr, "Keeps notes in a key"},
+        {transpose::type,
+         "Transpose",
+         midiEffect,
+         plain<transpose::create>,
+         nullptr,
+         "Moves notes by steps of the key, semitones or octaves"},
+        {velocity::type,
+         "Velocity",
+         midiEffect,
+         plain<velocity::create>,
+         nullptr,
+         "Reshapes how hard notes play"},
+        {notelength::type,
+         "Note Length",
+         midiEffect,
+         plain<notelength::create>,
+         nullptr,
+         "Sets how long notes last, or holds them with the pedal"},
+        {humanise::type,
+         "Humanise",
+         midiEffect,
+         plain<humanise::create>,
+         nullptr,
+         "Loosens timing and velocity, and drops notes by chance"},
+        {noterepeat::type,
+         "Note Repeat",
+         midiEffect,
+         plain<noterepeat::create>,
+         nullptr,
+         "Repeats held notes in time: rolls and ratchets"},
+        {noteecho::type,
+         "Note Echo",
+         midiEffect,
+         plain<noteecho::create>,
+         nullptr,
+         "Repeats each note, fading"},
+        {keyrange::type,
+         "Key Range",
+         midiEffect,
+         plain<keyrange::create>,
+         nullptr,
+         "Passes the notes inside a range"},
+        {midifilter::type,
+         "MIDI Filter",
+         midiEffect,
+         plain<midifilter::create>,
+         nullptr,
+         "Lets kinds of events through or not; moves a controller"},
     };
     return list;
 }
@@ -184,8 +255,24 @@ std::vector<std::string> BuiltInFactory::typeNames() const
 {
     std::vector<std::string> names;
     for (const auto& builtIn : builtInTypes())
-        names.push_back(builtIn.type);
+        if (builtIn.kind != BuiltInKind::midiEffect)
+            names.push_back(builtIn.type);
     return names;
+}
+
+std::vector<std::string> BuiltInFactory::midiEffectTypeNames()
+{
+    std::vector<std::string> names;
+    for (const auto& builtIn : builtInTypes())
+        if (builtIn.kind == BuiltInKind::midiEffect)
+            names.push_back(builtIn.type);
+    return names;
+}
+
+bool BuiltInFactory::isMidiEffect(const std::string& typeName)
+{
+    const auto* builtIn = findBuiltIn(typeName);
+    return builtIn != nullptr && builtIn->kind == BuiltInKind::midiEffect;
 }
 
 bool BuiltInFactory::isInstrument(const std::string& typeName)

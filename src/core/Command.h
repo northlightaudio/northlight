@@ -913,8 +913,12 @@ class AddInsert final : public Command
 {
 public:
     // Inserts at `index` (or the end when index < 0); the id is allocated on apply.
-    AddInsert(Id channelId, Insert insert, int index = -1);
-    std::string name() const override { return "Add insert"; }
+    // `chain` midi adds to a MIDI track's MIDI FX (refused on any other channel).
+    AddInsert(Id channelId, Insert insert, int index = -1, InsertChain chain = InsertChain::audio);
+    std::string name() const override
+    {
+        return chain_ == InsertChain::midi ? "Add MIDI effect" : "Add insert";
+    }
     bool apply(Project&) override;
     bool revert(Project&) override;
     Id insertId() const noexcept { return insert_.id; }
@@ -923,14 +927,18 @@ private:
     Id channelId_;
     Insert insert_;
     int index_;
+    InsertChain chain_;
 };
 
 class RemoveInsert final : public Command
 {
 public:
     bool capturesInsertState() const noexcept override { return true; }
-    RemoveInsert(Id channelId, Id insertId);
-    std::string name() const override { return "Remove insert"; }
+    RemoveInsert(Id channelId, Id insertId, InsertChain chain = InsertChain::audio);
+    std::string name() const override
+    {
+        return chain_ == InsertChain::midi ? "Remove MIDI effect" : "Remove insert";
+    }
     bool apply(Project&) override;
     bool revert(Project&) override;
     std::size_t footprint() const noexcept override { return sizeof(*this) + heapBytes(removed_); }
@@ -939,6 +947,7 @@ private:
     Id channelId_, insertId_;
     Insert removed_;
     int index_ = -1;
+    InsertChain chain_;
 };
 
 // Sets, replaces or removes (an empty type) a track's instrument. A replacement
@@ -971,14 +980,18 @@ private:
 class MoveInsert final : public Command
 {
 public:
-    MoveInsert(Id channelId, Id insertId, int newIndex);
-    std::string name() const override { return "Move insert"; }
+    MoveInsert(Id channelId, Id insertId, int newIndex, InsertChain chain = InsertChain::audio);
+    std::string name() const override
+    {
+        return chain_ == InsertChain::midi ? "Move MIDI effect" : "Move insert";
+    }
     bool apply(Project&) override;
     bool revert(Project&) override;
 
 private:
     Id channelId_, insertId_;
     int newIndex_, previousIndex_ = -1;
+    InsertChain chain_;
 };
 
 class SetInsertParameter final : public Command
@@ -1881,7 +1894,11 @@ private:
 class AddInserts final : public Command
 {
 public:
-    AddInserts(Id channelId, std::vector<Insert> inserts, int index = -1, std::string name = "Paste inserts");
+    AddInserts(Id channelId,
+               std::vector<Insert> inserts,
+               int index = -1,
+               std::string name = "Paste inserts",
+               InsertChain chain = InsertChain::audio);
     std::string name() const override { return name_; }
     bool apply(Project&) override;
     bool revert(Project&) override;
@@ -1894,6 +1911,7 @@ private:
     std::vector<Insert> inserts_;
     int index_;
     std::string name_;
+    InsertChain chain_;
     bool idsAssigned_ = false;
 };
 
@@ -1904,8 +1922,11 @@ class ReplaceInsert final : public Command
 {
 public:
     bool capturesInsertState() const noexcept override { return true; }
-    ReplaceInsert(Id channelId, Id insertId, Insert replacement);
-    std::string name() const override { return "Replace insert"; }
+    ReplaceInsert(Id channelId, Id insertId, Insert replacement, InsertChain chain = InsertChain::audio);
+    std::string name() const override
+    {
+        return chain_ == InsertChain::midi ? "Replace MIDI effect" : "Replace insert";
+    }
     bool apply(Project&) override;
     bool revert(Project&) override;
     std::size_t footprint() const noexcept override
@@ -1917,6 +1938,7 @@ private:
     Id channelId_, insertId_;
     Insert replacement_, previous_;
     std::vector<AutomationLane> previousLanes_;
+    InsertChain chain_;
 };
 
 // A hosted plugin's state changed by a preset or a program (loaded through the

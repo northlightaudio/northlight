@@ -13,11 +13,13 @@ namespace northlight::ui
 {
 
 // What a plugin slot takes: an insert slot takes effects, an instrument slot
-// (screens/plugins.md 7.4) takes instruments.
+// (screens/plugins.md 7.4) takes instruments, a MIDI track's MIDI FX slot
+// (7.4h) takes MIDI effects.
 enum class PluginKind
 {
     effect,
     instrument,
+    midiEffect,
 };
 
 // Whether a type is an instrument: a built-in synth, or a scanned plugin the

@@ -15,6 +15,7 @@ add_executable(northlight_unit_tests
     core/CompingTests.cpp
     core/ArrangeCommandsTests.cpp
     core/NoteNamesTests.cpp
+    core/MidiFxCommandTests.cpp
     engine/RtPrimitivesTests.cpp
     engine/EngineTests.cpp
     engine/StreamingTests.cpp
@@ -56,6 +57,10 @@ add_executable(northlight_unit_tests
     plugins/PulsarTests.cpp
     plugins/BeatSyncTests.cpp
     plugins/SamplerTests.cpp
+    plugins/MidiEffectTests.cpp
+    plugins/MidiUtilityTests.cpp
+    plugins/MidiTimeEffectTests.cpp
+    plugins/ChordTests.cpp
     engine/LoudnessTests.cpp
     engine/ExportTests.cpp
     engine/WriterTests.cpp

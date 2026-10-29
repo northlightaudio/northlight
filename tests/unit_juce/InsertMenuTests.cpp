@@ -229,7 +229,7 @@ TEST_CASE("The plugin browser counts the built-ins, describes them once and says
     const juce::ScopedJuceInitialiser_GUI juceInit;
     hosting::PluginRegistry registry;
     ui::PluginBrowser browser(registry);
-    const auto builtIns = plugins::builtInTypes().size();
+    const auto builtIns = plugins::BuiltInFactory().typeNames().size(); // MIDI effects are not listed
     CHECK(browser.countText() == juce::String(static_cast<int>(builtIns)) + " built-in, 0 plugins");
     CHECK(browser.emptyText().isEmpty());
     // Every built-in has a description for the browser and the effects menu.
@@ -270,4 +270,90 @@ TEST_CASE("Hidden strips leave the mixer and are counted for showing again", "[u
     project.tracks[1].mixerHidden = false;
     mixer.setProject(&project);
     CHECK(mixer.hiddenStripCount() == 0);
+}
+
+TEST_CASE("A MIDI effect's menu moves, replaces, copies and removes it in the MIDI FX, with no wet/dry",
+          "[ui][inserts][menu][midifx]")
+{
+    const juce::ScopedJuceInitialiser_GUI juceInit;
+    core::Project project;
+    core::Track midi;
+    midi.id = 1;
+    midi.kind = core::TrackKind::midi;
+    for (core::Id id : {core::Id{70}, core::Id{71}})
+    {
+        core::Insert i;
+        i.id = id;
+        i.type = id == 70 ? "northlight.arpeggiator" : "northlight.scale";
+        i.params = plugins::defaultParameters(i.type);
+        midi.midiInserts.push_back(i);
+    }
+    project.tracks.push_back(midi);
+    project.nextId = 100;
+    std::vector<std::unique_ptr<core::Command>> issued;
+    ui::PluginActions actions;
+    ui::InsertMenuRequest request;
+    request.project = &project;
+    request.channelId = 1;
+    request.insertId = 70;
+    request.midiEffect = true;
+    request.actions = &actions;
+    request.onCommand = [&](std::unique_ptr<core::Command> c) { issued.push_back(std::move(c)); };
+    ui::copyInserts({});
+
+    juce::PopupMenu menu;
+    std::vector<std::function<void()>> run;
+    ui::addInsertMenuItems(menu, run, request);
+    std::vector<Found> items;
+    collect(menu, items);
+    for (const char* text : {"Bypass", "Replace", "Move up", "Move down", "Copy", "Remove"})
+        CHECK(find(items, text) != nullptr);
+    CHECK(find(items, "Open") == nullptr);    // edited on its card
+    CHECK(find(items, "Wet/dry") == nullptr); // MIDI has no dry signal
+    CHECK(find(items, "Move down")->enabled);
+    // Replace offers the MIDI effects, and no audio effect.
+    CHECK(findStarting(items, "Chord Pads") != nullptr);
+    CHECK(findStarting(items, "Reverb") == nullptr);
+
+    // Move down: a MoveInsert in the MIDI FX.
+    run[static_cast<size_t>(find(items, "Move down")->id - 1)]();
+    REQUIRE(issued.size() == 1);
+    REQUIRE(issued[0]->apply(project));
+    CHECK(project.tracks[0].midiInserts[1].id == 70);
+
+    // An audio insert copied is not offered for pasting here.
+    core::Insert eq;
+    eq.type = plugins::types::eq;
+    ui::copyInserts({eq});
+    juce::PopupMenu second;
+    std::vector<std::function<void()>> runSecond;
+    ui::addInsertMenuItems(second, runSecond, request);
+    std::vector<Found> secondItems;
+    collect(second, secondItems);
+    CHECK_FALSE(findStarting(secondItems, "Paste")->enabled);
+
+    // Remove: from the MIDI FX.
+    runSecond[static_cast<size_t>(find(secondItems, "Remove")->id - 1)]();
+    REQUIRE(issued.size() == 2);
+    REQUIRE(issued[1]->apply(project));
+    REQUIRE(project.tracks[0].midiInserts.size() == 1);
+    CHECK(project.tracks[0].midiInserts[0].id == 71);
+    ui::copyInserts({});
+}
+
+TEST_CASE("The MIDI effects menu lists every built-in MIDI effect once", "[ui][menu][midifx]")
+{
+    const juce::ScopedJuceInitialiser_GUI juceInit;
+    const auto built =
+        ui::buildPluginMenu(ui::PluginKind::midiEffect, static_cast<const ui::PluginSources*>(nullptr));
+    auto expected = plugins::BuiltInFactory::midiEffectTypeNames();
+    auto listed = built.types;
+    std::sort(expected.begin(), expected.end());
+    std::sort(listed.begin(), listed.end());
+    CHECK(listed == expected);
+    // And the effects menu lists none of them.
+    const auto effects =
+        ui::buildPluginMenu(ui::PluginKind::effect, static_cast<const ui::PluginSources*>(nullptr));
+    for (const auto& type : effects.types)
+        CHECK_FALSE(plugins::BuiltInFactory::isMidiEffect(type));
 }

@@ -65,6 +65,9 @@ std::string insertName(const core::Insert& insert, const PluginActions* actions)
 // paste adds copies of them with new ids.
 const std::vector<core::Insert>& copiedInserts();
 void copyInserts(std::vector<core::Insert> inserts);
+// The copied inserts that fit a chain: the MIDI effects for a MIDI FX chain
+// (`midiEffects`), the rest for an insert chain.
+std::vector<core::Insert> pastableInserts(bool midiEffects);
 // A copy of an insert as it is now: a hosted plugin's state from its instance.
 core::Insert snapshotInsert(const core::Insert& insert, const PluginActions* actions);
 
@@ -75,6 +78,7 @@ struct InsertMenuRequest
     core::Id channelId = core::invalidId;
     core::Id insertId = core::invalidId;
     bool instrument = false;   // the instrument slot: replace and remove it as an instrument
+    bool midiEffect = false;   // a MIDI track's MIDI FX slot: no wet/dry or key, MIDI effects to replace it
     bool offerOutputs = false; // an instrument's extra outputs as output tracks
     const PluginActions* actions = nullptr;
     const PluginSources* sources = nullptr;

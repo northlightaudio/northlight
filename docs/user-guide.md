@@ -307,6 +307,27 @@ Snare...), and the filter button hides the rest; the ghost button shows the othe
 MIDI tracks' notes; the key button at the right sets the project's key. Standard MIDI
 Files import and export.
 
+**MIDI effects** change a MIDI track's notes before its instrument plays them (and
+before its MIDI output). Select the MIDI track and use **+ MIDI effect** in the MIDI
+FX section of the Editor panel; they run left to right, and their menu moves,
+replaces, copies and removes them. **Arpeggiator** plays held notes one at a time, in
+time with the song (with the transport stopped, at the project tempo from the first
+key), up, down, as played, at random or as chords, over up to four octaves, with
+gate, swing and latch. **Chord** turns each key into a chord, by shape or from the
+key's scale, inverted, voiced and strummed. **Chord Pads** plays the chords of the
+project's key on the white keys (C is I, D is ii...) and borrowed chords on the black
+ones, each led smoothly from the last, with an optional bass note. **Note Repeat**
+retriggers held notes in time, for rolls; **Note Echo** repeats each note, fading
+and stepping in pitch. **Scale** keeps notes in a key, or maps the white keys onto
+it; **Transpose** moves notes by steps of the key, semitones or octaves;
+**Velocity** reshapes how hard notes play; **Note Length** sets fixed lengths,
+legato, or holds notes with the sustain pedal; **Humanise** loosens timing and
+velocity and can drop notes by chance (the same seed plays the same way). **Key
+Range** passes only the notes in a range (or folds them in), and **MIDI Filter**
+blocks kinds of events and moves one controller to another. Effects that follow the
+key use the project's key unless set to their own. Recording keeps what you played,
+not what the effects made.
+
 ## Export
 
 **Export** (Ctrl+E) renders the mix or every track as stems, over the whole song or a

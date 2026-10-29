@@ -248,6 +248,14 @@ struct Send
     bool operator==(const Send&) const = default;
 };
 
+// Which of a channel's chains an insert command acts on: the audio inserts, or
+// a MIDI track's MIDI FX (MIDI effects ahead of the instrument it plays).
+enum class InsertChain
+{
+    audio,
+    midi,
+};
+
 // A processor in a channel's insert chain. `type` names a built-in
 // ("northlight.eq") or, later, a hosted plugin; `params` are its parameter values in the
 // processor's own order.
@@ -407,6 +415,11 @@ struct Channel
     // output track (an aux track). Other channels have none.
     Insert instrument;
     std::vector<Insert> inserts; // processed in order, pre-fader
+    // A MIDI track's MIDI FX: MIDI effects (an arpeggiator, a chord tool) that
+    // change its events, in order, before they reach its instrument channel and
+    // its MIDI output. Only MIDI tracks have them; `mix` and `sidechain` do not
+    // apply. Other channels have none.
+    std::vector<Insert> midiInserts;
     // The channel strip: built-in modules every channel has (gate, EQ,
     // compressor, ...), in processing order, switched on and off in place
     // (bypass = off) instead of being added and removed. They are stored as
@@ -425,9 +438,20 @@ struct Channel
     Insert* findInsert(Id insertId) noexcept;
     const Insert* findInsert(Id insertId) const noexcept;
     int insertIndex(Id insertId) const noexcept; // in `inserts` only; -1 for a strip module
-    int stripIndex(Id insertId) const noexcept;  // in `strip` only
-    // Every processor in processing order: the instrument, then the inserts and
-    // the strip modules.
+    // The list an insert command acts on, and an insert's place in it (-1: not there).
+    std::vector<Insert>& chain(InsertChain which) noexcept
+    {
+        return which == InsertChain::midi ? midiInserts : inserts;
+    }
+    const std::vector<Insert>& chain(InsertChain which) const noexcept
+    {
+        return which == InsertChain::midi ? midiInserts : inserts;
+    }
+    int chainIndex(InsertChain which, Id insertId) const noexcept;
+    bool isMidiInsert(Id insertId) const noexcept { return chainIndex(InsertChain::midi, insertId) >= 0; }
+    int stripIndex(Id insertId) const noexcept; // in `strip` only
+    // Every processor in processing order: the MIDI FX, the instrument, then the
+    // inserts and the strip modules.
     std::vector<const Insert*> processingChain() const;
     AutomationLane* findLane(Id laneId) noexcept;
     const AutomationLane* findLane(Id laneId) const noexcept;
@@ -565,7 +589,7 @@ struct Project
 {
     // Raised when a model change reaches the file. New fields are optional with
     // defaults, so older files load without an upgrade chain (none before 1.0).
-    static constexpr int schemaVersion = 18;
+    static constexpr int schemaVersion = 19;
     static constexpr int oldestReadableVersion = 2; // older files are refused
 
     std::string name = "Untitled";

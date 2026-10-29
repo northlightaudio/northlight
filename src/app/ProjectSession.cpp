@@ -2586,8 +2586,9 @@ void ProjectSession::reportPluginTrouble()
     {
         if (c.hasInstrument())
             look(c.instrument);
-        for (const auto& i : c.inserts)
-            look(i);
+        for (const auto* list : {&c.inserts, &c.midiInserts})
+            for (const auto& i : *list)
+                look(i);
     };
     for (const auto& t : project_.tracks)
         channel(t);
@@ -2643,10 +2644,11 @@ void ProjectSession::captureInsertStates()
                 live != nullptr && !live->crashed())
                 if (const auto state = live->state(); !state.empty())
                     channel.instrument.state = state;
-        for (auto& insert : channel.inserts)
-            if (const auto live = engine_.insertInstance(insert.id); live != nullptr && !live->crashed())
-                if (const auto state = live->state(); !state.empty())
-                    insert.state = state;
+        for (auto* list : {&channel.inserts, &channel.midiInserts})
+            for (auto& insert : *list)
+                if (const auto live = engine_.insertInstance(insert.id); live != nullptr && !live->crashed())
+                    if (const auto state = live->state(); !state.empty())
+                        insert.state = state;
         // A hosted plugin's name, so it is still named where it is missing.
         const auto name = [this](core::Insert& insert)
         {
@@ -2655,15 +2657,17 @@ void ProjectSession::captureInsertStates()
         };
         if (channel.hasInstrument())
             name(channel.instrument);
-        for (auto& insert : channel.inserts)
-            name(insert);
+        for (auto* list : {&channel.inserts, &channel.midiInserts})
+            for (auto& insert : *list)
+                name(insert);
         // Which windows are open, so they reopen with the project.
         if (isEditorOpen)
         {
             if (channel.hasInstrument())
                 channel.instrument.windowOpen = isEditorOpen(channel.instrument.id);
-            for (auto& insert : channel.inserts)
-                insert.windowOpen = isEditorOpen(insert.id);
+            for (auto* list : {&channel.inserts, &channel.midiInserts})
+                for (auto& insert : *list)
+                    insert.windowOpen = isEditorOpen(insert.id);
         }
     };
     for (auto& t : project_.tracks)

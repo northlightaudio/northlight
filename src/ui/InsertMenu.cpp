@@ -279,6 +279,15 @@ juce::String latencyText(int samples, double sampleRate)
 
 // ----- the menu ----------------------------------------------------------------------------------
 
+std::vector<core::Insert> pastableInserts(bool midiEffects)
+{
+    std::vector<core::Insert> fit;
+    for (const auto& i : copiedInserts())
+        if (plugins::BuiltInFactory::isMidiEffect(i.type) == midiEffects)
+            fit.push_back(i);
+    return fit;
+}
+
 void addInsertMenuItems(juce::PopupMenu& menu,
                         std::vector<std::function<void()>>& actions,
                         const InsertMenuRequest& r)
@@ -344,13 +353,18 @@ void addInsertMenuItems(juce::PopupMenu& menu,
         menu.addSeparator();
     }
 
-    menu.addItem(next(), "Open", loaded);
-    actions.push_back(
-        [pa, channelId, insertId]
-        {
-            if (pa != nullptr && pa->openEditor)
-                pa->openEditor(channelId, insertId);
-        });
+    const bool midi = r.midiEffect;
+    const auto chain = midi ? core::InsertChain::midi : core::InsertChain::audio;
+    if (!midi) // a MIDI effect is edited on its card
+    {
+        menu.addItem(next(), "Open", loaded);
+        actions.push_back(
+            [pa, channelId, insertId]
+            {
+                if (pa != nullptr && pa->openEditor)
+                    pa->openEditor(channelId, insertId);
+            });
+    }
     const bool bypass = insert->bypass;
     menu.addItem(next(), "Bypass", true, bypass);
     actions.push_back([command, channelId, insertId, bypass]
@@ -412,15 +426,15 @@ void addInsertMenuItems(juce::PopupMenu& menu,
     }
     else
     {
-        auto replace = buildPluginMenu(PluginKind::effect, r.sources, next());
+        auto replace = buildPluginMenu(midi ? PluginKind::midiEffect : PluginKind::effect, r.sources, next());
         for (const auto& t : replace.types)
             actions.push_back(
-                [command, channelId, insertId, t]
+                [command, channelId, insertId, t, chain]
                 {
                     core::Insert replacement;
                     replacement.type = t;
                     replacement.params = plugins::defaultParameters(t);
-                    command(std::make_unique<core::ReplaceInsert>(channelId, insertId, replacement));
+                    command(std::make_unique<core::ReplaceInsert>(channelId, insertId, replacement, chain));
                 });
         menu.addSubMenu("Replace", replace.menu);
     }
@@ -428,13 +442,19 @@ void addInsertMenuItems(juce::PopupMenu& menu,
     if (!r.instrument)
     {
         menu.addSeparator();
-        const int index = channel->insertIndex(insertId);
+        const int index = channel->chainIndex(chain, insertId);
+        const auto size = static_cast<int>(channel->chain(chain).size());
         menu.addItem(next(), "Move up", index > 0);
-        actions.push_back([command, channelId, insertId, index]
-                          { command(std::make_unique<core::MoveInsert>(channelId, insertId, index - 1)); });
-        menu.addItem(next(), "Move down", index + 1 < static_cast<int>(channel->inserts.size()));
-        actions.push_back([command, channelId, insertId, index]
-                          { command(std::make_unique<core::MoveInsert>(channelId, insertId, index + 1)); });
+        actions.push_back(
+            [command, channelId, insertId, index, chain]
+            { command(std::make_unique<core::MoveInsert>(channelId, insertId, index - 1, chain)); });
+        menu.addItem(next(), "Move down", index + 1 < size);
+        actions.push_back(
+            [command, channelId, insertId, index, chain]
+            { command(std::make_unique<core::MoveInsert>(channelId, insertId, index + 1, chain)); });
+    }
+    if (!r.instrument && !midi)
+    {
         juce::PopupMenu mix;
         for (const int percent : {0, 25, 50, 75, 100})
         {
@@ -476,36 +496,44 @@ void addInsertMenuItems(juce::PopupMenu& menu,
             menu.addSubMenu("Outputs", outputs);
         }
 
-    // Copy and paste: the slot, the whole chain, and what was copied after it.
+    // Copy and paste: the slot, the whole chain, and what was copied after it
+    // (only what fits the chain: MIDI effects into MIDI FX, the rest elsewhere).
     if (!r.instrument)
     {
         menu.addSeparator();
         menu.addItem(next(), "Copy");
         actions.push_back([pa, i = *insert] { copyInserts({snapshotInsert(i, pa)}); });
-        menu.addItem(next(), "Copy chain", channel->inserts.size() > 1);
+        const auto& list = channel->chain(chain);
+        menu.addItem(next(), "Copy chain", list.size() > 1);
         actions.push_back(
-            [pa, chain = channel->inserts]
+            [pa, list]
             {
                 std::vector<core::Insert> copies;
-                for (const auto& i : chain)
+                for (const auto& i : list)
                     copies.push_back(snapshotInsert(i, pa));
                 copyInserts(std::move(copies));
             });
-        const auto& copied = copiedInserts();
+        const auto copied = pastableInserts(midi);
+        const auto noun = juce::String(midi ? " MIDI effects" : " inserts");
         const auto pasteName =
             copied.size() == 1
                 ? "Paste " + juce::String::fromUTF8(insertName(copied.front(), pa).c_str()) + " after"
             : copied.empty() ? juce::String("Paste after")
-                             : "Paste " + juce::String(copied.size()) + " inserts after";
+                             : "Paste " + juce::String(copied.size()) + noun + " after";
         menu.addItem(next(), pasteName, !copied.empty());
-        const int after = channel->insertIndex(insertId) + 1;
+        const int after = channel->chainIndex(chain, insertId) + 1;
         actions.push_back(
-            [command, channelId, after]
+            [command, channelId, after, midi, chain]
             {
-                const auto& c = copiedInserts();
+                const auto c = pastableInserts(midi);
                 if (!c.empty())
                     command(std::make_unique<core::AddInserts>(
-                        channelId, c, after, c.size() == 1 ? "Paste insert" : "Paste inserts"));
+                        channelId,
+                        c,
+                        after,
+                        c.size() == 1 ? (midi ? "Paste MIDI effect" : "Paste insert")
+                                      : (midi ? "Paste MIDI effects" : "Paste inserts"),
+                        chain));
             });
     }
     if (hosted && pa != nullptr && pa->showInBrowser)
@@ -529,8 +557,8 @@ void addInsertMenuItems(juce::PopupMenu& menu,
     else
     {
         menu.addItem(next(), "Remove");
-        actions.push_back([command, channelId, insertId]
-                          { command(std::make_unique<core::RemoveInsert>(channelId, insertId)); });
+        actions.push_back([command, channelId, insertId, chain]
+                          { command(std::make_unique<core::RemoveInsert>(channelId, insertId, chain)); });
     }
 }
 

@@ -1,6 +1,7 @@
 #include "ui/TrackHeader.h"
 
 #include "core/Command.h"
+#include "plugins/BuiltIns.h"
 #include "ui/ColourMenu.h"
 #include "ui/Db.h"
 #include "ui/Icons.h"
@@ -274,8 +275,17 @@ void TrackHeader::setTrack(const core::Track& track,
                                    : juce::String("No instrument"));
         if (target != nullptr && track.midiChannel != 1)
             text << "  ch " << track.midiChannel;
+        // Its MIDI FX that are on (screens/plugins.md 7.4h), in the tooltip: the
+        // chip is too narrow to add them without cutting the instrument's name.
+        juce::StringArray effects;
+        for (const auto& insert : track.midiInserts)
+            if (!insert.bypass)
+                effects.add(juce::String(plugins::BuiltInFactory::displayName(insert.type)));
         target_.setButtonText(text);
-        target_.setTooltip("The instrument channel this track plays (click to change)");
+        target_.setTooltip(effects.isEmpty()
+                               ? juce::String("The instrument channel this track plays (click to change)")
+                               : "The instrument channel this track plays, through " +
+                                     effects.joinIntoString(", ") + " (click to change the instrument)");
     }
     // A frozen track's name carries a snowflake.
     name_.setText((track.isFrozen() ? juce::String::fromUTF8("\xe2\x9d\x84 ") : juce::String()) +

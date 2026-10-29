@@ -115,7 +115,11 @@ private:
     const PluginActions* actions_ = nullptr;
     PluginActions localActions_; // without the shell's: open and live from the panel's callbacks
     const PluginActions* actions();
-    InsertMenuRequest menuRequest(core::Id insertId, bool instrument);
+    InsertMenuRequest menuRequest(core::Id insertId, bool instrument, bool midi = false);
+    // A MIDI track's MIDI FX (screens/plugins.md 7.4h): the menu of MIDI effects
+    // from its "+" slot, and adding one at the end.
+    void showMidiMenu();
+    void addMidiEffect(const std::string& type);
     void resolveChannel();
     core::Id channelId_ = core::invalidId;
     core::Id selectedId_ = core::invalidId;  // what the selection asked for
@@ -137,6 +141,11 @@ private:
     bool laidOutPreInserts_ = false;
     std::vector<std::unique_ptr<Card>> cards_;
     AddSlot add_{theme_, "Insert"};
+    std::vector<std::unique_ptr<Card>> midiCards_; // a MIDI track's MIDI FX
+    AddSlot addMidi_{theme_, "MIDI effect"};
+    int midiX_ = 0;
+    std::vector<core::Id> builtMidiOrder_;
+    core::Id builtMidiTrack_ = core::invalidId;
     std::unique_ptr<Card> instrumentCard_; // the instrument slot, filled
     AddSlot addInstrument_{theme_, "Instrument"};
     int instrumentX_ = 0;

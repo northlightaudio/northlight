@@ -37,6 +37,12 @@ struct ParameterInfo
     // A stable key for saved projects and automation; empty: derived from the
     // name (see parameterKey). Set it before renaming a parameter.
     std::string id;
+    // How an editor shows the value: whole numbers only (a count, semitones), as
+    // a note name (60: "C3"), and what the minimum reads as when it means
+    // something else ("Off"); empty: the number.
+    bool integer = false;
+    bool showsNote = false;
+    std::string minimumText;
 };
 
 // Where the song is for a block, for tempo-synced processors (an arpeggio, a
@@ -52,6 +58,11 @@ struct PlayHead
     int bar = 0;                   // that bar, 0-based
     bool playing = false;          // the position moves (stopped: it holds)
     double sampleRate = 48000.0;
+    // The project's key, for MIDI effects that follow it: the root's pitch class
+    // (0 = C .. 11 = B; -1 = no key set) and its scale as a mask (bit n set when
+    // pitch class n is in it; 0 with no key).
+    int keyRoot = -1;
+    std::uint16_t keyMask = 0;
     double quartersPerSample() const noexcept { return tempoBpm / 60.0 / sampleRate; }
 };
 
@@ -138,6 +149,24 @@ public:
     {
         process(left, right, numSamples);
     }
+
+    // MIDI effects (an arpeggiator, a chord tool): MIDI in, MIDI out, no audio.
+    // They sit in a MIDI track's MIDI FX chain, ahead of the instrument it plays
+    // and its MIDI output. Real-time: `in` holds the block's events in time order
+    // and `out` arrives empty; the effect writes what it makes, offsets within the
+    // block. An all-notes-off in `in` marks a discontinuity (stop, jump, loop
+    // wrap): the effect ends what it holds, drops what it was going to play and
+    // passes the all-notes-off on. The default passes everything through.
+    virtual bool isMidiEffect() const noexcept { return false; }
+    virtual void processMidiEffect(const MidiEventList& in, MidiEventList& out, int numSamples) noexcept
+    {
+        (void)numSamples;
+        for (const auto& e : in)
+            out.push(e);
+    }
+    // The most events the effect can make from one it is given (a four-note
+    // chord: 4), so the lists after it are sized to hold them. Not real-time.
+    virtual int midiExpansion() const noexcept { return 1; }
 
     // Extra stereo outputs (a multi-output instrument): after a process call the
     // pairs beyond the main one are read here, index 0 = the first extra pair,

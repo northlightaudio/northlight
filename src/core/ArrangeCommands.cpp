@@ -183,7 +183,7 @@ bool DuplicateTrack::apply(Project& p)
         }
         if (copy_.hasInstrument())
             renew(copy_.instrument.id);
-        for (auto* list : {&copy_.inserts, &copy_.strip})
+        for (auto* list : {&copy_.inserts, &copy_.midiInserts, &copy_.strip})
             for (auto& i : *list)
                 renew(i.id);
         for (auto& l : copy_.automation)
