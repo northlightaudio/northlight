@@ -77,6 +77,7 @@ private:
         for (auto& l : activity.level)
             l.store(0.0f, std::memory_order_relaxed);
         activity.depth.store(0.0f, std::memory_order_relaxed);
+        activity.note.store(-1, std::memory_order_relaxed);
     }
 
     static double noteHz(double note) noexcept { return 440.0 * std::exp2((note - 69.0) / 12.0); }
@@ -326,6 +327,7 @@ private:
             activity.level[o].store(level, std::memory_order_relaxed);
         }
         activity.depth.store(depth, std::memory_order_relaxed);
+        activity.note.store(newest != nullptr ? newest->note : -1, std::memory_order_relaxed);
     }
 
     // A voice's operator steps and levels. `advance` moves its glide and pitch

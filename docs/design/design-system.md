@@ -460,67 +460,56 @@ glow follows the voice) but repaints only itself.
 ### Routing diagram
 
 For showing which sources feed which (Cirrus's algorithms, screens/plugins.md
-7.4h). The sources are discs and the connections are lines, laid out so the
+7.4h). The sources are nodes and the connections are lines, laid out so the
 signal runs down the well to an output line at its foot.
 
-- **Discs**: 22 px, filled in the source's hue at 85%, its number centred in
-  `label` `textOnColour`. A source that is heard sits on the bottom row, over a
-  short line down to a 1.5 px `lineStrong` output line across the well. A
-  source that feeds another sits above it, and sources in a row share it evenly.
-- **Lines**: 1.5 px, from the bottom of the feeding disc to the top of the one
-  it feeds, in the feeder's hue at 55%. Two feeds into one disc meet it side by
-  side. A line never crosses a disc: it bends round one at a right angle with a
-  4 px radius.
-- **A loop** (a source into itself): a 1.5 px arc from the disc's right side
-  back to its top, in its hue. It is thicker (up to 3 px) and brighter with its
-  amount, and a dotted outline at 0.
-- **Live**: a disc's halo (2.2 times its radius, its hue at up to 45%) and its
-  outgoing lines' alpha follow the source's live level. With reduce motion on
-  they follow it too: that is a reading, not an animation.
+- **Nodes**: 24 × 20 px squares, radius `sm`, filled in the source's hue, its
+  number centred in `font.mono` semibold `textOnColour`. A source that is heard
+  sits on the bottom row, over a short line down to a 1.5 px `lineStrong` output
+  line across the well. A source that feeds another sits above it, and sources in
+  a row share it evenly.
+- **Lines**: 1.5 px, from the bottom of the feeding node to the top of the one it
+  feeds, in the feeder's hue at 55%. Two feeds into one node meet it side by side.
+  A line never crosses a node: it bends round one at a right angle with a 4 px
+  radius.
+- **A loop** (a source into itself): a 1.5 px arc from the node's right side back
+  to its top, in its hue. It is thicker (up to 3 px) and brighter with its amount,
+  and a dotted outline at 0.
+- **Live**: a node's halo (its hue at up to 45%, 6 px round it) and its outgoing
+  lines' alpha follow the source's live level. With reduce motion on they follow
+  it too: that is a reading, not an animation.
 - **States**:
-  - Hover: a disc gets a 1 px `textPrimary` ring at 30%.
-  - Selected: a 1.5 px `textPrimary` ring 2 px out.
-  - Focus: the focus ring round the disc.
-  - Muted (level 0): the disc and its lines at 40%.
+  - Hover: a node gets a 1 px `textPrimary` outline at 30%.
+  - Selected: a 1.5 px `textPrimary` outline 2 px out.
+  - Focus: the focus ring round the selected node; Left and Right move it.
+  - Muted (level 0): the node and its lines at 40%.
   - A dragged loop shows its value in a tooltip.
-- **Small form** (a picker of routings): the same drawing in a 36 × 30 cell with
-  6 px discs, no numbers, 1 px lines and no halos. Cells are 4 px apart.
-  - At rest a cell is not filled. Hover fills it `surface2` at 50%.
-  - Chosen: `surface2` with a 1.5 px outline in the panel's hue, radius `sm`,
-    its lines in `textPrimary`.
-  - Focused: the focus ring round the cell. Arrows move the choice, and Enter or
-    a click chooses.
 
-### Operator column
+### Parameter table
 
-A tall, narrow summary of one of several parallel units that each have the same
-controls (Cirrus's operators): the column shows each unit's state, selects it,
-and its controls show once in the panel beside it.
-The column is 48 px wide and as tall as its panel's inner height. From the top:
+For several parallel units with the same settings that read best side by side
+(Cirrus's operators): a row per unit, a column per setting, every value editable
+where it is shown.
 
-- **The tag**: the unit's disc (16 px, as the routing diagram's) and its role
-  under it in `captionCaps` `textTertiary` (OUT, MOD).
-- **The readout**: its main setting in `value` `textPrimary` ("×1", "×3.51";
-  "2.35k" with "Hz" under it in `caption` for a fixed frequency), and an offset
-  under it in `caption` `textTertiary` when one is set ("+3 ct").
-- **The wave**: one cycle, 36 × 12, a 1.25 px line in the hue.
-- **The level bar**: an 8 px groove (`surface0`, radius `pill`) about 70 px tall.
-  It is filled in the hue at 40% to the set level, with the live level as a solid
-  hue fill inside it, and its value under it in `value`.
-  - Drag up or down on the bar to set the level, one step a pixel (Shift for
-    fine, double-click to reset). Each drag is one undo step.
-  - The wheel steps the level, and so do the arrow keys while the column has
-    the focus.
-- **The envelope**: its shape, 40 × 20, a 1 px line in the hue at 70%.
-- **States**: the selected column has the Stage tile's selected look. The others
-  are:
-  - at rest: not filled;
-  - hover: `surface2` at 50%;
-  - focused: the focus ring round the column. Left and Right move the selection,
-    and Enter selects;
-  - muted (level 0): everything but the bar's track at 40%.
-
-  A click anywhere but the bar selects the column.
+- **Header**: column names in `captionCaps` `textTertiary` on an 18 px row.
+- **Rows**: 26 px, a 1 px `lineSubtle` rule between them. The unit's identity
+  first (its number on a 20 px square in its hue, `font.mono` semibold
+  `textOnColour`). The selected row, when the table selects, is filled
+  `selectionFill`.
+- **A cell** shows a value in `value` (mono) `textPrimary`, secondary values in
+  `textSecondary`; it is 22 px tall with 4 px of inset.
+  - Hover: `surface2` at 50% behind it, radius `sm`.
+  - Drag up or down to change it: 200 px for the whole range (on a log scale
+    when the parameter is), one step per 8 px for a stepped one; Shift for fine.
+    Each drag is one undo step.
+  - The wheel and Up and Down (while focused) step it; double-click resets it.
+  - Focused: the focus ring round the cell. Disabled: `textDisabled`, no hover.
+  - Tooltip: the parameter's name and value.
+- **A bar cell** (a level): a 6 px `surface2` track, radius `pill`, filled in the
+  unit's hue (at 40% for the set value, solid for a live one over it), its value
+  at its right. Click or drag across it to set it.
+- **A menu cell** (a choice of shapes): its value as text after a small drawing of
+  it; a click opens the menu, each item drawn.
 
 ### Hardware face
 

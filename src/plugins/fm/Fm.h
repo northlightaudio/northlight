@@ -128,4 +128,9 @@ inline float levelGain(float level) noexcept
     return std::exp2((level - 99.0f) * 0.125f);
 }
 
+// The Bessel function of the first kind, J_n(x): the amplitude of the nth
+// sideband of a sine phase-modulated with index x (radians). Any integer n; x
+// up to a few hundred. For displays and tests, not the audio thread's hot path.
+double besselJ(int n, double x) noexcept;
+
 } // namespace northlight::plugins::fm

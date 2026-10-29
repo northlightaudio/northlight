@@ -631,3 +631,25 @@ TEST_CASE("A watched Cirrus publishes its newest voice's operator levels and mod
     CHECK(activity->level[0].load() == 0.0f);
     CHECK(activity->depth.load() == 0.0f);
 }
+
+TEST_CASE("Bessel functions give FM's sideband amplitudes", "[plugins][cirrus]")
+{
+    // Reference values (Abramowitz and Stegun).
+    CHECK(fm::besselJ(0, 0.0) == 1.0);
+    CHECK(fm::besselJ(3, 0.0) == 0.0);
+    CHECK(fm::besselJ(0, 1.0) == Catch::Approx(0.7651976866).epsilon(1e-8));
+    CHECK(fm::besselJ(1, 1.0) == Catch::Approx(0.4400505857).epsilon(1e-8));
+    CHECK(fm::besselJ(2, 1.0) == Catch::Approx(0.1149034849).epsilon(1e-8));
+    CHECK(fm::besselJ(5, 10.0) == Catch::Approx(-0.2340615282).epsilon(1e-7));
+    CHECK(fm::besselJ(0, 40.0) == Catch::Approx(0.0073668905).epsilon(1e-6));
+    CHECK(std::abs(fm::besselJ(0, 2.404825557695773)) < 1.0e-9); // its first zero
+    // J_-n = (-1)^n J_n, and J_n(-x) = (-1)^n J_n(x).
+    CHECK(fm::besselJ(-1, 1.0) == Catch::Approx(-0.4400505857).epsilon(1e-8));
+    CHECK(fm::besselJ(-2, 1.0) == Catch::Approx(0.1149034849).epsilon(1e-8));
+    CHECK(fm::besselJ(1, -1.0) == Catch::Approx(-0.4400505857).epsilon(1e-8));
+    // The sidebands' power adds up to the carrier's: sum of J_n^2 is 1.
+    double power = 0.0;
+    for (int n = -60; n <= 60; ++n)
+        power += fm::besselJ(n, 12.6) * fm::besselJ(n, 12.6);
+    CHECK(power == Catch::Approx(1.0).epsilon(1e-9));
+}

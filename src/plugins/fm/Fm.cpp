@@ -82,4 +82,46 @@ float waveAt(Wave wave, float phase) noexcept
     return lookup(tables[static_cast<size_t>(wave)], phaseOffset(wrapped));
 }
 
+double besselJ(int n, double x) noexcept
+{
+    // J_-n = (-1)^n J_n, and J_n(-x) = (-1)^n J_n(x).
+    const int order = n < 0 ? -n : n;
+    double sign = (n < 0 && (order % 2) != 0) ? -1.0 : 1.0;
+    if (x < 0.0)
+    {
+        x = -x;
+        if ((order % 2) != 0)
+            sign = -sign;
+    }
+    if (x == 0.0)
+        return order == 0 ? sign : 0.0;
+    // Miller's backward recurrence from well above both the order and x,
+    // normalised by J_0 + 2 (J_2 + J_4 + ...) = 1; stable at any index.
+    const int top =
+        2 * ((std::max(order, static_cast<int>(x)) +
+              static_cast<int>(std::sqrt(40.0 * std::max(order, static_cast<int>(x)) + 40.0)) + 20) /
+             2);
+    double next = 0.0, current = 1.0e-30, result = 0.0, even = 0.0;
+    for (int k = top; k > 0; --k)
+    {
+        const double previous = 2.0 * k / x * current - next;
+        next = current;
+        current = previous;
+        if (std::abs(current) > 1.0e10)
+        {
+            // Keep the numbers in range; the ratio is what matters.
+            current *= 1.0e-10;
+            next *= 1.0e-10;
+            result *= 1.0e-10;
+            even *= 1.0e-10;
+        }
+        if (k - 1 == order)
+            result = current;
+        if ((k - 1) % 2 == 0 && k - 1 > 0)
+            even += current;
+    }
+    const double norm = current + 2.0 * even; // current is now the unnormalised J_0
+    return sign * result / norm;
+}
+
 } // namespace northlight::plugins::fm

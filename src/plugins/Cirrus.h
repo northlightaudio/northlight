@@ -84,11 +84,13 @@ inline double ratioOf(float choice) noexcept
 
 // What the editor reads from a live Cirrus (screens/plugins.md 7.4h), written once
 // per control interval for the newest sounding voice while an editor watches:
-// each operator's level now (0..1: its envelope times its level after velocity
-// and key scale) and the depth, the summed modulation index of its modulators in
-// radians (after Tone, the LFO and the limiter). Null for another processor.
+// its note (-1 when none sounds), each operator's level now (0..1: its envelope
+// times its level after velocity and key scale) and the depth, the summed
+// modulation index of its modulators in radians (after Tone, the LFO and the
+// limiter). Null for another processor.
 struct Activity
 {
+    std::atomic<int> note{-1};
     std::array<std::atomic<float>, fm::operatorCount> level{};
     std::atomic<float> depth{0.0f};
 };

@@ -1,5 +1,5 @@
 // Cirrus's face (screens/plugins.md 7.4h): selecting an operator, choosing an
-// algorithm, and the controls that depend on others.
+// algorithm, and the cells that depend on others.
 #include "core/Command.h"
 #include "core/Model.h"
 #include "engine/Midi.h"
@@ -56,14 +56,20 @@ struct Rig
         card->tick(16.0);
     }
 
-    juce::Component& part(const juce::String& id) const
+    // A part of the face by its ID, `within` another part if given.
+    juce::Component& part(const juce::String& id, const juce::String& within = {}) const
     {
-        auto* c = card->findChildWithID(id);
+        juce::Component* parent = card.get();
+        if (within.isNotEmpty())
+            parent = card->findChildWithID(within);
+        REQUIRE(parent != nullptr);
+        auto* c = parent->findChildWithID(id);
+        INFO(id);
         REQUIRE(c != nullptr);
         return *c;
     }
 
-    // The knob for a parameter (by its name), visible or not.
+    // The knob for a parameter, by its name.
     ui::Knob& knob(int index) const
     {
         const auto name = juce::String(card->info(index).name);
@@ -106,57 +112,55 @@ void click(juce::Component& c, juce::Point<float> at)
 }
 } // namespace
 
-TEST_CASE("Cirrus's face shows the knobs of the operator selected and keeps the choice", "[ui][cirrus]")
+TEST_CASE("Cirrus's face edits the envelope of the operator selected and keeps the choice", "[ui][cirrus]")
 {
     const juce::ScopedJuceInitialiser_GUI juceInit;
     Rig rig(41);
-    CHECK(rig.knob(cr::opParam(0, cr::ratio)).isVisible());
-    CHECK(!rig.knob(cr::opParam(2, cr::ratio)).isVisible());
+    CHECK(rig.part("envelope-attack", "display").getTitle() == "Op 1 attack");
 
-    auto& third = rig.part("operator3");
-    click(third, third.getLocalBounds().getCentre().toFloat().withY(10.0f));
-    CHECK(rig.knob(cr::opParam(2, cr::ratio)).isVisible());
-    CHECK(!rig.knob(cr::opParam(0, cr::ratio)).isVisible());
+    // A click on the third row's number selects it.
+    click(rig.part("operator3"), {12.0f, 13.0f});
+    CHECK(rig.part("envelope-attack", "display").getTitle() == "Op 3 attack");
     CHECK(rig.sent.empty()); // selecting is not an edit
 
     // A card made again for the same insert opens on the same operator.
     rig.make();
-    CHECK(rig.knob(cr::opParam(2, cr::level)).isVisible());
+    CHECK(rig.part("envelope-attack", "display").getTitle() == "Op 3 attack");
 }
 
-TEST_CASE("Clicking an algorithm in Cirrus's picker sets it", "[ui][cirrus]")
+TEST_CASE("Clicking one of Cirrus's algorithm buttons sets it", "[ui][cirrus]")
 {
     const juce::ScopedJuceInitialiser_GUI juceInit;
     Rig rig;
-    auto& picker = rig.part("algorithms");
-    // The second cell of the top row: algorithm 2.
-    click(picker, {36.0f + 4.0f + 18.0f, 15.0f});
+    auto& buttons = rig.part("algorithms");
+    // The second button: algorithm 2.
+    click(buttons, {22.0f + 4.0f + 11.0f, 11.0f});
     REQUIRE(rig.sent.size() == 1);
     CHECK(rig.sent[0].first == cr::algorithm);
     CHECK(rig.sent[0].second == 1.0f);
     // The chosen one again sends nothing.
     rig.sent.clear();
-    click(picker, {36.0f + 4.0f + 18.0f, 15.0f});
+    click(buttons, {22.0f + 4.0f + 11.0f, 11.0f});
     CHECK(rig.sent.empty());
 }
 
-TEST_CASE("Fixed on a Cirrus operator disables its ratio and enables its frequency", "[ui][cirrus]")
+TEST_CASE("Fixed on a Cirrus operator turns its ratio cell to the frequency and disables Fine",
+          "[ui][cirrus]")
 {
     const juce::ScopedJuceInitialiser_GUI juceInit;
     Rig rig;
-    CHECK(rig.knob(cr::opParam(0, cr::ratio)).isEnabled());
-    CHECK(!rig.knob(cr::opParam(0, cr::fixedHz)).isEnabled());
+    CHECK(rig.part("op1-ratio", "operator1").getTitle() == "Op 1 ratio");
+    CHECK(rig.part("op1-fine", "operator1").isEnabled());
     rig.modelChange(cr::opParam(0, cr::fixed), 1.0f);
-    CHECK(!rig.knob(cr::opParam(0, cr::ratio)).isEnabled());
-    CHECK(!rig.knob(cr::opParam(0, cr::fine)).isEnabled());
-    CHECK(rig.knob(cr::opParam(0, cr::fixedHz)).isEnabled());
+    CHECK(rig.part("op1-ratio", "operator1").getTitle() == "Op 1 frequency");
+    CHECK(!rig.part("op1-fine", "operator1").isEnabled());
     // Glide only works in Mono.
     CHECK(!rig.knob(cr::glide).isEnabled());
     rig.modelChange(cr::voiceMode, 1.0f);
     CHECK(rig.knob(cr::glide).isEnabled());
 }
 
-TEST_CASE("Cirrus's face paints while a note plays", "[ui][cirrus]")
+TEST_CASE("Cirrus's face follows a note as it plays", "[ui][cirrus]")
 {
     const juce::ScopedJuceInitialiser_GUI juceInit;
     Rig rig;
@@ -165,12 +169,13 @@ TEST_CASE("Cirrus's face paints while a note plays", "[ui][cirrus]")
     {
         engine::MidiEventList events(8);
         if (b == 0)
-            events.noteOn(0, 60, 110);
+            events.noteOn(0, 67, 110);
         rig.live->processMidi(events, l.data(), r.data(), 256);
         rig.card->tick(16.0);
     }
     const auto* activity = cr::activity(*rig.live);
     REQUIRE(activity != nullptr);
+    CHECK(activity->note.load() == 67);
     CHECK(activity->level[0].load() > 0.0f);
     CHECK(rig.card->createComponentSnapshot(rig.card->getLocalBounds(), true, 2.0f).isValid());
 }
