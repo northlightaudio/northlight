@@ -307,13 +307,6 @@ Snare...), and the filter button hides the rest; the ghost button shows the othe
 MIDI tracks' notes; the key button at the right sets the project's key. Standard MIDI
 Files import and export.
 
-To hear everything together, write and open the demo song, "Northern Drift" (its sung
-voice is written next to it as a WAV):
-
-```powershell
-Northlight.exe --demo-song "$env:USERPROFILE\Music\Northern Drift.northlight"
-```
-
 ## Export
 
 **Export** (Ctrl+E) renders the mix or every track as stems, over the whole song or a

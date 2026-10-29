@@ -158,9 +158,6 @@ Northlight has not had a release yet. The first release, 0.1.0, will include:
   curve as in the arrange view; follow the playhead; Ctrl+Shift+wheel zooms the
   pitches; audition is on by default, as in the piano roll.
 
-- The demo song has a sung voice through the verse, so the audio editor and pitch
-  editing have something to show, and its drum outputs sit in a closed folder.
-
 - A plugin's card in the Editor panel shows a faceplate: its kind, its full name,
   its maker, the format and its latency, with an Open editor button (or
   double-click it). A plugin that is not installed says so in the same place.

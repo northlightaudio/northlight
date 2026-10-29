@@ -219,7 +219,7 @@ machine's baseline:
 
 ```powershell
 .\scripts\build.ps1 -Preset windows-release -Test -Label perf
-.\scripts\perf.ps1
+.\scripts\perf.ps1 -Project <file>
 ```
 
 Two tools under `tests/hardware` need a real device or a long run and are only run by
@@ -236,10 +236,10 @@ hand:
 so a change can be checked, screenshotted or benchmarked from a script. For example:
 
 ```powershell
-Northlight.exe --no-splash --demo-song "$env:TEMP\demo.northlight" --play --master-gain -120
+Northlight.exe --no-splash --open "<project>.northlight" --play --master-gain -120
 ```
 
-writes and opens the demo song, plays it and keeps it silent. The options open
+opens a project, plays it and keeps it silent. The options open
 windows and panels, build example material (tracks, instruments, automation, takes,
 tempo changes), drive the transport and recording, and run benchmarks. The full list
 with what each does is the table in `src/app/LaunchRun.cpp`; `Northlight.exe --help`
@@ -255,7 +255,7 @@ saves the same PNGs, but nothing can appear, take the focus or switch a virtual
 desktop. Use it for captures while someone works or plays on the machine:
 
 ```powershell
-Northlight.exe --offscreen --demo-song "$env:TEMP\demo.northlight" --play --master-gain -120 --capture "$env:TEMP\shots" 6
+Northlight.exe --offscreen --open "<project>.northlight" --play --master-gain -120 --capture "$env:TEMP\shots" 6
 ```
 
 `--screen-reader` makes the views expose their painted content (clips, notes,

@@ -1,5 +1,4 @@
 #include "app/Bounce.h"
-#include "app/DemoSong.h"
 #include "engine/WavFile.h"
 #include "hosting/HostFactory.h"
 #include "hosting/PluginRegistry.h"
@@ -257,62 +256,6 @@ TEST_CASE("Bouncing stems writes one file per track with the others muted", "[ap
     folder.deleteRecursively();
     a.deleteFile();
     b.deleteFile();
-}
-
-TEST_CASE("The demo song bounces to a full, unclipped mix with every section sounding", "[app][bounce][demo]")
-{
-    const juce::ScopedJuceInitialiser_GUI juceInit;
-    const auto song = makeDemoSong();
-    REQUIRE(song.tracks.size() >= 6);
-    REQUIRE(song.buses.size() == 2);
-
-    hosting::PluginRegistry registry;
-    hosting::HostFactory factory(registry);
-    // NORTHLIGHT_DEMO_BOUNCE names where to keep the mix (to listen to it).
-    const auto kept = juce::SystemStats::getEnvironmentVariable("NORTHLIGHT_DEMO_BOUNCE", {});
-    const auto out =
-        kept.isNotEmpty()
-            ? juce::File(kept)
-            : juce::File::getSpecialLocation(juce::File::tempDirectory)
-                  .getNonexistentChildFile("bounce-demo", ".wav", false); // parallel runs must not share it
-    out.deleteFile();
-    BounceJob::Options options;
-    options.output = out;
-    BounceJob job(song, factory, options);
-    const auto result = job.runSynchronously();
-    INFO(result.error);
-    REQUIRE(result.error.empty());
-    CHECK(result.length >= 32 * 4 * 24000);
-    CHECK(result.integratedLufs > -24.0f);
-    CHECK(result.integratedLufs < -8.0f);
-    std::vector<std::vector<float>> channels;
-    REQUIRE(engine::readWavSamples(out.getFullPathName().toStdString(), channels));
-    REQUIRE(channels.size() == 2);
-    float peak = 0.0f;
-    for (const auto& ch : channels)
-        for (float v : ch)
-            peak = std::max(peak, std::abs(v));
-    CHECK(peak < 1.0f);
-    // Each section (intro, verse, chorus, breakdown, finale) is audible.
-    const auto rmsOfBars = [&](int from, int to)
-    {
-        double sum = 0.0;
-        const auto a = static_cast<size_t>(from) * 96000,
-                   b = std::min(channels[0].size(), static_cast<size_t>(to) * 96000);
-        for (size_t i = a; i < b; ++i)
-            sum += channels[0][i] * channels[0][i];
-        return std::sqrt(sum / std::max<double>(1.0, static_cast<double>(b - a)));
-    };
-    for (const auto& [from, to] :
-         {std::pair{1, 4}, std::pair{4, 12}, std::pair{12, 20}, std::pair{20, 24}, std::pair{24, 32}})
-    {
-        INFO("bars " << from << " to " << to);
-        CHECK(rmsOfBars(from, to) > 0.01);
-    }
-    // The choruses are louder than the intro.
-    CHECK(rmsOfBars(12, 20) > rmsOfBars(1, 4));
-    if (kept.isEmpty())
-        out.deleteFile();
 }
 
 TEST_CASE("A cancelled bounce reports it and leaves no file", "[app][bounce]")

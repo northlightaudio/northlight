@@ -129,7 +129,7 @@ behind whatever the user is doing, and clicks land there instead. Instead:
 - **Launch flags** set up any state from the command line: open panels, build demo
   material, drive the transport, run benchmarks. The full list is the table in
   `src/app/LaunchRun.cpp` (`Northlight.exe --help` prints it). Example:
-  `Northlight.exe --no-splash --demo-song "$env:TEMP\demo.northlight" --play --master-gain -120`
+  `Northlight.exe --no-splash --open "<project>.northlight" --play --master-gain -120`
   (`--master-gain -120` keeps it silent). If a screen has no flag, add one.
 - **`--capture <folder> [seconds]`** saves the window and its visible panels as PNGs,
   then quits. It uses its own settings folder (`Northlight Capture`, emptied each

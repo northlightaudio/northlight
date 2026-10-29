@@ -4,7 +4,7 @@ A digital audio workstation for Windows, built for low-latency recording and car
 mixing. Native ASIO, VST3 and CLAP hosting, a lock-free multicore engine, and an
 interface designed before it was built. Free software under the GNU AGPLv3.
 
-![Northlight with the demo song open: the arrange view, the Pulsar drum synth in the Editor panel, and the inspector](docs/images/northlight.png)
+![Northlight with a song open: the arrange view, the Pulsar drum synth in the Editor panel, and the inspector](docs/images/northlight.png)
 
 **Status:** in active development, with no release yet. See the
 [roadmap](docs/roadmap.md) for where it stands.

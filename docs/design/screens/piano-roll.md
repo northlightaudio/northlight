@@ -136,4 +136,4 @@ selected track in a ghosted overlay.
   velocity lane and selected-note styling.
 - Draw, move, resize and lasso look right mid-drag.
 - 1,000 visible notes at 150% scroll at 60 fps.
-- The demo song's drums show the pad names; with named rows only, eight rows.
+- A Pulsar kit's notes show the pad names; with named rows only, eight rows.
