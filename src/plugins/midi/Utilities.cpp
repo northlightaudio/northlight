@@ -50,13 +50,6 @@ ParameterInfo whole(const char* name, const char* unit, float minimum, float max
     return info;
 }
 
-// Its minimum means off.
-ParameterInfo off(ParameterInfo info)
-{
-    info.minimumText = "Off";
-    return info;
-}
-
 // Shown as a note name.
 ParameterInfo note(ParameterInfo info)
 {
@@ -172,8 +165,8 @@ namespace velocity
 {
 int shape(int v, const Settings& s, float random) noexcept
 {
-    if (s.fixed >= 1.0f)
-        return std::clamp(rounded(s.fixed), 1, 127);
+    if (s.fixed)
+        return std::clamp(rounded(s.fixedVelocity), 1, 127);
     double x = s.centre + (static_cast<double>(v) - s.centre) * s.dynamics / 100.0;
     x = x * s.gain / 100.0 + s.offset + random;
     const double lo = std::min(s.minimum, s.maximum), hi = std::max(s.minimum, s.maximum);
@@ -194,20 +187,22 @@ public:
                           whole("Random", "", 0.0f, 64.0f, 0.0f),
                           whole("Minimum", "", 1.0f, 127.0f, 1.0f),
                           whole("Maximum", "", 1.0f, 127.0f, 127.0f),
-                          off(whole("Fixed", "", 0.0f, 127.0f, 0.0f))})
+                          choice("Fixed", {"Off", "On"}),
+                          whole("Fixed velocity", "", 1.0f, 127.0f, 100.0f)})
     {
     }
 
 private:
     void beginBlock() noexcept override
     {
-        settings_ = {value(dynamics),
-                     value(centre),
-                     value(gain),
-                     value(offset),
-                     value(minimum),
-                     value(maximum),
-                     value(fixed)};
+        settings_.dynamics = value(dynamics);
+        settings_.centre = value(centre);
+        settings_.gain = value(gain);
+        settings_.offset = value(offset);
+        settings_.minimum = value(minimum);
+        settings_.maximum = value(maximum);
+        settings_.fixed = rounded(value(fixed)) == 1;
+        settings_.fixedVelocity = value(fixedVelocity);
         random_ = value(random);
     }
     void noteOn(const MidiEvent& e) noexcept override
@@ -297,8 +292,9 @@ public:
                           choice("Pitch bend", blockPass(), 1),
                           choice("Channel pressure", blockPass(), 1),
                           choice("Poly pressure", blockPass(), 1),
-                          off(whole("Move controller", "CC", -1.0f, 127.0f, -1.0f)),
-                          whole("To controller", "CC", 0.0f, 127.0f, 1.0f)})
+                          choice("Move controller", {"Off", "On"}),
+                          whole("From CC", "", 0.0f, 127.0f, 1.0f),
+                          whole("To CC", "", 0.0f, 127.0f, 11.0f)})
     {
     }
 
@@ -307,7 +303,7 @@ private:
     {
         for (int i = notes; i <= polyPressure; ++i)
             pass_[static_cast<size_t>(i)] = rounded(value(i)) == 1;
-        from_ = rounded(value(mapFrom));
+        from_ = rounded(value(move)) == 1 ? rounded(value(mapFrom)) : -1;
         to_ = std::clamp(rounded(value(mapTo)), 0, 127);
     }
     void noteOn(const MidiEvent& e) noexcept override

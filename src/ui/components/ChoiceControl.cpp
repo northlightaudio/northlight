@@ -8,12 +8,14 @@ namespace northlight::ui
 
 ChoiceControl::ChoiceControl(const Theme& theme,
                              const std::vector<std::string>& choices,
-                             const juce::String& tooltip)
+                             const juce::String& tooltip,
+                             int widthLimit)
     : theme_(theme)
 {
     for (const auto& c : choices)
         labels_.push_back(juce::String::fromUTF8(c.c_str()));
-    if (labels_.size() <= static_cast<size_t>(maxSegments))
+    const bool fits = widthLimit <= 0 || SegmentedControl::preferredWidthFor(theme_, labels_) <= widthLimit;
+    if (labels_.size() <= static_cast<size_t>(maxSegments) && fits)
     {
         segments_ = std::make_unique<SegmentedControl>(theme_);
         segments_->setSegments(labels_);

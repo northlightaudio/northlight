@@ -59,11 +59,16 @@ juce::String SegmentedControl::getTooltip()
 
 int SegmentedControl::preferredWidth() const
 {
+    return preferredWidthFor(theme_, labels_);
+}
+
+int SegmentedControl::preferredWidthFor(const Theme& theme, const std::vector<juce::String>& labels)
+{
     // The segments are equal, so each is as wide as the widest label needs.
     int widest = 0;
-    for (const auto& label : labels_)
-        widest = std::max(widest, juce::GlyphArrangement::getStringWidthInt(theme_.label(), label));
-    return 2 * theme_.spacing.xxs + static_cast<int>(labels_.size()) * (widest + 2 * theme_.spacing.md);
+    for (const auto& label : labels)
+        widest = std::max(widest, juce::GlyphArrangement::getStringWidthInt(theme.label(), label));
+    return 2 * theme.spacing.xxs + static_cast<int>(labels.size()) * (widest + 2 * theme.spacing.md);
 }
 
 juce::Rectangle<float> SegmentedControl::segmentBounds(int index) const noexcept
