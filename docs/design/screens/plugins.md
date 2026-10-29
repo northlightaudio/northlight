@@ -1325,38 +1325,39 @@ Depth, Feedback, Mix); a CHORUS (Rate, Depth, Mix); Level. The mod wheel adds to
 the tremolo's depth; pressure gives the shared vibrato. Presets: Lumen, Ballad,
 Bark, Bell Keys, Phase Funk, Suitcase Pan, Lo-fi Keys.
 
-- The scene: a dark room lit from below by a lamp, `canvas` graded to `surface0`
-  with a low `Gorse` glow, `Rowan` at its heart, rising from the bottom edge.
-  Still: it does not brighten or move with the sound (only the displays do).
-- The wordmark LUMEN tracked wide in a `Gorse`-to-`Rowan` gradient, "ELECTRIC PIANO ·
-  NORTHLIGHT", the preset bar, and sixteen voice lights in `Gorse` (each a
-  sixteenth of the voices allowed; lit as voices sound).
-- Six glass panels, each a display and its knobs in its hue:
-  - TINE (`Gorse`, the widest): the tine seen from the side, a steel rod from its
-    clamp on the left (the brass tone bar above it) to its tip, in front of the
-    pickup's coil on the right; the pickup's field drawn as a soft bell beside the
-    pole, the tip's swing marked across it. The tip sits as far from the coil as
-    Bark says and as far off its centre as Symmetry says. While Lumen sounds the
-    tine vibrates, slowed down, as wide as the output is loud. Drag across for
-    Bark (towards the coil is closer), up and down for Symmetry. Bark, Symmetry,
-    Bell, Age; Decay, Damper, Tune.
-  - HAMMER (`Rowan`): the velocity curve, key velocity across, strike speed up,
-    with the felt's contact time for a full strike in a corner (`value`, "0.9 ms"
-    at middle C). Drag up and down for Velocity. Hardness, Velocity; Noise, Voices.
-  - TONE (`Straw`): the preamp's response, 20 Hz to 20 kHz, the zero line and the
-    two shelves; drag up and down on the left half for Bass, on the right half
-    for Treble. Bass, Treble; Drive, Level.
-  - TREMOLO (`Loch`): two speakers seen from the front, left and right, each lit
-    as its side's level; in Pan they swap the light, in Amplitude they pulse
-    together, Off both steady and dim. The mode and the sync value in corner
-    chips. Drag up and down for Depth. Rate, Depth; Shape. With a sync value the
-    Rate knob dims and its value shows the note value.
-  - PHASER (`Heather`): the response at the sweep's middle, its two notches, with
-    the reach of the sweep shaded behind them; dim at Mix 0. Rate, Depth;
-    Feedback, Mix.
-  - CHORUS (`Sea grass`): the two sides' delay times as wavering lines, in
-    opposite phase, as deep as Depth; dim at Mix 0. Rate, Depth; Mix.
-- Every display is still with reduce motion on and while Lumen is silent.
+A hardware face (design-system.md "Hardware face", "Rendered parts"): the front of a
+1970s suitcase piano, rendered for Northlight (assets/lumen, scripts/render/lumen; no
+maker's marks), drawn at 1160 x 600 and scaled to fit, compact below two thirds of its
+size. Every word is printed (`font.legend`), never rendered.
+
+- The case, black tolex above a chrome trim:
+  - The harp window (left): a chromed bezel and glass, and in it four tine assemblies
+    on dark felt, each a brass tone bar over a steel tine with its tuning spring, its
+    tip at a pickup's pole (a coil of copper on a black bobbin), lit warm from inside.
+    While Lumen sounds the tines vibrate, slowed to three swings a second and as wide as
+    the output is loud: nine rendered frames, the nearest two blended, still at rest,
+    when switched off and with reduce motion on.
+  - The nameplate (right): black anodised, LUMEN tracked wide in `lumenNameplateInk`,
+    "ELECTRIC PIANO · SUITCASE SEVENTY-THREE" and "NORTHLIGHT · MODEL LM-73" in
+    `lumenNameplateInkSoft` (dropped in compact).
+  - Under it, the service trims TUNE, AGE and VOICES (small skirted knobs, their names
+    in `lumenCaseInk`, values in `lumenCaseInkSoft`) and the red pilot lamp, POWER,
+    lit while the insert is on.
+- The preamp plate, brushed aluminium, in six sections, each a caption in
+  `lumenPlateInk` between rules (`lumenRule`): HARP (BARK, SYMMETRY, BELL; HARDNESS,
+  DECAY, DAMPER), TOUCH (VELOCITY; NOISE), PREAMP (BASS, TREBLE; DRIVE, VOLUME),
+  VIBRATO, PHASE (RATE, DEPTH; FEEDBACK, MIX) and CHORUS (RATE, DEPTH; MIX). Each knob is
+  a bakelite skirt with a spun aluminium cap and a dark pointer line (the rendered
+  pointer turns; `Knob::Style::rendered`), a printed scale of eleven ticks, its name
+  under it in `lumenPlateInk` and its value under that in `lumenPlateInkSoft`.
+- VIBRATO: a three-way bat-handle lever (the tape echo's render) printed PAN (up), OFF
+  and AMP (down); RATE (dimmed, showing the note value, while SYNC is set), SYNC (a
+  stepped knob: Free, then the note values), DEPTH and SHAPE; and two amber jewel lamps,
+  L and R, lit as each side's level: the light moves between them with the pan, pulses
+  in both with the amplitude tremolo, dark when off. Each lamp is a patch of the lit
+  render, as bright as its side.
+- Keyboard and accessibility are the controls' own: every knob and the lever take
+  focus, keys and their tooltips; the face has no control of its own.
 
 ## 7.5 States and errors
 

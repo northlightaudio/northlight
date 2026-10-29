@@ -250,6 +250,11 @@ struct Theme
         juce::Colour orbitCounter, orbitCounterWell;
         juce::Colour orbitKey, orbitKeyLit, orbitKeyInk, orbitKeyInkLit;
         juce::Colour orbitReel, orbitPack, orbitLamp;
+        // Lumen's suitcase piano (screens/plugins.md 7.4h).
+        juce::Colour lumenCase, lumenCaseInk, lumenCaseInkSoft;
+        juce::Colour lumenPlate, lumenPlateDark, lumenPlateInk, lumenPlateInkSoft, lumenRule;
+        juce::Colour lumenNameplate, lumenNameplateInk, lumenNameplateInkSoft;
+        juce::Colour lumenWindow, lumenTine, lumenToneBar, lumenPickup, lumenLamp, lumenAmber;
     };
 
     std::string name = "Northlight Dark";

@@ -18,7 +18,10 @@ Northlight has not had a release yet. The first release, 0.1.0, will include:
   is brighter as well as louder, with the bell of the tine in the attack and the
   bark of the pickup when it is played hard. Voice it as a technician would
   (Bark, Symmetry, Hardness, Bell), age it, and play it through its stereo
-  tremolo, phaser and chorus; the mod wheel rides the tremolo. Seven presets.
+  tremolo, phaser and chorus; the mod wheel rides the tremolo. Seven presets. Its
+  face is the front of a 1970s suitcase piano: a window onto the tines, which
+  vibrate while it plays, a brushed preamp plate, a vibrato lever and two lamps the
+  pan moves between.
   `--render-phrase` renders a fixed test phrase through any built-in instrument
   to a WAV.
 

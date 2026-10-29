@@ -32,9 +32,11 @@ Where the build differs from this plan:
   phaser; Tide's is left as it is, so the pedal's sound cannot change.
 - The phrase flag is `--render-phrase <type> <file.wav>`, for any built-in
   instrument, not `--lumen-phrase`.
-- The HAMMER display shows the velocity curve and the contact time, without
-  markers for the last notes played (the processor's feedback frame has no room
-  for them). The voice lights are sixteen, each a sixteenth of the voices allowed.
+- The editor is a rendered hardware face, the front of a suitcase piano (the
+  user's choice, after the first editor of glass panels): the harp window's tines
+  vibrate, the vibrato's lever and its two lamps show the tremolo, and every other
+  parameter is a knob. The displays the plan described (the draggable tine, the
+  velocity curve, the tone, the phaser and chorus) are not on it.
 - There is no Model parameter yet: it is added (appended) with the reed model.
 
 ## Goals

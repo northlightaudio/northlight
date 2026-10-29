@@ -56,6 +56,7 @@ add_executable(northlight_juce_tests
     WidenerCardTests.cpp
     TapeEchoCardTests.cpp
     OrbitCardTests.cpp
+    LumenCardTests.cpp
     CoronaCardTests.cpp
     RenderedFaceTests.cpp
     NumberTests.cpp

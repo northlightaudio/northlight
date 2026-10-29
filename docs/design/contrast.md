@@ -80,6 +80,13 @@ Generated from [tokens.json](tokens.json) (Machair Dusk v2) by `scripts/contrast
 | hardware.orbitCounter | hardware.orbitCounterWell | 15.69 | Orbit's tape counter | yes |
 | hardware.orbitKeyInk | hardware.orbitKey | 5.20 | A key's label on Orbit, unlit | yes |
 | hardware.orbitKeyInkLit | hardware.orbitKeyLit | 8.31 | A key's label on Orbit, lit | yes |
+| hardware.lumenPlateInk | hardware.lumenPlate | 7.83 | Names and captions on Lumen's preamp plate | yes |
+| hardware.lumenPlateInk | hardware.lumenPlateDark | 5.10 | Names on Lumen's plate where it is in shadow | yes |
+| hardware.lumenPlateInkSoft | hardware.lumenPlate | 5.11 | Values and positions on Lumen's plate | yes |
+| hardware.lumenCaseInk | hardware.lumenCase | 12.69 | The service trims' names on Lumen's case | yes |
+| hardware.lumenCaseInkSoft | hardware.lumenCase | 7.05 | The service trims' values on Lumen's case | yes |
+| hardware.lumenNameplateInk | hardware.lumenNameplate | 14.20 | LUMEN on its nameplate | yes |
+| hardware.lumenNameplateInkSoft | hardware.lumenNameplate | 7.67 | The kind and model line on Lumen's nameplate | yes |
 
 ## High contrast
 
@@ -111,6 +118,9 @@ The `highContrast` variant applied over the tokens (Preferences > General > Cont
 | hardware.coronaStripInkSoft | hardware.coronaStrip | 13.15 | Values on the utility strip | yes |
 | hardware.orbitPlateInkSoft | hardware.orbitPlate | 14.03 | The kind and model line on Orbit's nameplate | yes |
 | hardware.orbitPanelInkSoft | hardware.orbitPanelRim | 6.60 | Values and rows on Orbit's panel, in the rim light | yes |
+| hardware.lumenPlateInkSoft | hardware.lumenPlate | 7.83 | Values and positions on Lumen's plate | yes |
+| hardware.lumenCaseInkSoft | hardware.lumenCase | 12.69 | The service trims' values on Lumen's case | yes |
+| hardware.lumenNameplateInkSoft | hardware.lumenNameplate | 14.20 | The kind and model line on Lumen's nameplate | yes |
 
 ## Track palette
 

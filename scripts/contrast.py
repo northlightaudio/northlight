@@ -104,6 +104,13 @@ PAIRS = [
     ("hardware.orbitCounter", "hardware.orbitCounterWell", "Orbit's tape counter", "body"),
     ("hardware.orbitKeyInk", "hardware.orbitKey", "A key's label on Orbit, unlit", "body"),
     ("hardware.orbitKeyInkLit", "hardware.orbitKeyLit", "A key's label on Orbit, lit", "body"),
+    ("hardware.lumenPlateInk", "hardware.lumenPlate", "Names and captions on Lumen's preamp plate", "body"),
+    ("hardware.lumenPlateInk", "hardware.lumenPlateDark", "Names on Lumen's plate where it is in shadow", "body"),
+    ("hardware.lumenPlateInkSoft", "hardware.lumenPlate", "Values and positions on Lumen's plate", "body"),
+    ("hardware.lumenCaseInk", "hardware.lumenCase", "The service trims' names on Lumen's case", "body"),
+    ("hardware.lumenCaseInkSoft", "hardware.lumenCase", "The service trims' values on Lumen's case", "body"),
+    ("hardware.lumenNameplateInk", "hardware.lumenNameplate", "LUMEN on its nameplate", "body"),
+    ("hardware.lumenNameplateInkSoft", "hardware.lumenNameplate", "The kind and model line on Lumen's nameplate", "body"),
 ]
 
 THRESHOLDS = {"body": 4.5, "large": 3.0, "nontext": 3.0, "hint": 3.0, "exempt": 0.0}
