@@ -196,6 +196,38 @@ PluginMenu buildPluginMenu(PluginKind kind,
     PluginMenu result;
     result.firstItem = firstItem;
     auto& menu = result.menu;
+    if (kind == PluginKind::midiEffect)
+    {
+        // The built-in MIDI effects, by what they do (screens/plugins.md 7.4h).
+        const auto midiTypes = plugins::BuiltInFactory::midiEffectTypeNames();
+        const auto group = [&](const char* title, std::initializer_list<const char*> types)
+        {
+            menu.addSectionHeader(title);
+            for (const char* type : types)
+                if (std::find(midiTypes.begin(), midiTypes.end(), type) != midiTypes.end())
+                {
+                    juce::PopupMenu::Item item(juce::String(plugins::BuiltInFactory::displayName(type)) +
+                                               "\t" + builtInHint(type));
+                    item.itemID = result.nextItem();
+                    menu.addItem(std::move(item));
+                    result.types.emplace_back(type);
+                }
+        };
+        group("Play",
+              {"northlight.arpeggiator",
+               "northlight.chord",
+               "northlight.chordpads",
+               "northlight.noterepeat",
+               "northlight.noteecho"});
+        group("Shape",
+              {"northlight.scale",
+               "northlight.transpose",
+               "northlight.velocity",
+               "northlight.notelength",
+               "northlight.humanise"});
+        group("Route", {"northlight.keyrange", "northlight.midifilter"});
+        return result;
+    }
     const bool instruments = kind == PluginKind::instrument;
     const auto builtIns = plugins::BuiltInFactory().typeNames(); // a list, not an instance per check
     const auto wanted = [&](const std::string& type)

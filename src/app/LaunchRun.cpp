@@ -104,6 +104,37 @@ void midiTrack(LaunchRun& r, const std::string& type)
     r.session.execute(std::make_unique<core::AddMidiClip>(trackId, clip));
 }
 
+void whenSettled(LaunchRun& r, std::function<void()> action);
+
+// A MIDI effect on the last MIDI track (a new one when there is none), which
+// is then selected, so the Editor panel shows its MIDI FX.
+void midiEffect(LaunchRun& r, Args& a)
+{
+    const auto type = a.text().unquoted().toStdString();
+    const auto last = [&r]
+    {
+        const auto& tracks = r.session.project().tracks;
+        for (auto it = tracks.rbegin(); it != tracks.rend(); ++it)
+            if (it->isMidi())
+                return it->id;
+        return core::invalidId;
+    };
+    if (last() == core::invalidId)
+        midiTrack(r, {});
+    const core::Id trackId = last();
+    core::Insert added;
+    added.type = type;
+    added.params = plugins::defaultParameters(type);
+    r.session.execute(std::make_unique<core::AddInsert>(trackId, added, -1, core::InsertChain::midi));
+    whenSettled(r,
+                [&r, trackId]
+                {
+                    const int row = r.session.project().trackIndex(trackId);
+                    if (auto* view = r.window.arrangeView(); view != nullptr && row >= 0)
+                        view->selectRows(row, row);
+                });
+}
+
 void sampler(LaunchRun& r, Args& a)
 {
     const auto file = a.file();
@@ -814,6 +845,11 @@ const std::vector<LaunchFlag<LaunchRun>>& LaunchRun::flags()
          1,
          "the same with the given instrument type instead",
          [](LaunchRun& r, Args& a) { midiTrack(r, a.text().unquoted().toStdString()); }},
+        {"--midi-fx",
+         "<type>",
+         1,
+         "add a MIDI effect (northlight.arpeggiator, ...) to the last MIDI track and select it",
+         midiEffect},
         {"--sampler",
          "<file> [demo]",
          1,

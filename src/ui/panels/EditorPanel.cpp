@@ -1,6 +1,7 @@
 #include "ui/panels/EditorPanel.h"
 
 #include "core/Command.h"
+#include "core/NoteNames.h"
 #include "plugins/BuiltIns.h"
 #include "plugins/EffectPresets.h"
 #include "plugins/FxTracks.h"
@@ -14,6 +15,7 @@
 #include "ui/components/Accessibility.h"
 #include "ui/components/ChoiceControl.h"
 #include "ui/components/Fader.h"
+#include "ui/components/NumericField.h"
 #include "ui/components/SegmentedControl.h"
 #include "ui/strip/BuiltInCards.h"
 #include "ui/strip/PresetBar.h"
@@ -23,20 +25,41 @@
 namespace northlight::ui
 {
 
+namespace
+{
+// A parameter's value as text, by its display hints: what its minimum means
+// ("Off"), a note name, a whole number, else few figures. With its unit.
+juce::String parameterText(const engine::ParameterInfo& info, double v)
+{
+    if (!info.minimumText.empty() && v <= info.minimum + 1e-6)
+        return juce::String::fromUTF8(info.minimumText.c_str());
+    if (info.showsNote)
+        return juce::String::fromUTF8(core::noteName(static_cast<int>(std::lround(v))).c_str());
+    const juce::String unit = info.unit.empty() ? juce::String() : " " + juce::String(info.unit);
+    if (info.integer)
+        return fixedText(std::round(v), 0) + unit;
+    const double a = std::abs(v);
+    return fixedText(v, a >= 100.0 ? 0 : a >= 10.0 ? 1 : 2) + unit;
+}
+} // namespace
+
 // ----- a device card ----------------------------------------------------------------------------
 
 class EditorPanel::Card final : public juce::Component, public juce::TooltipClient
 {
 public:
     // `instrument`: the track's instrument slot (replaced and removed as one,
-    // not reordered among the inserts).
+    // not reordered among the inserts). `midi`: a MIDI track's MIDI effect
+    // (screens/plugins.md 7.4h): no wet/dry, moved from its menu.
     Card(EditorPanel& owner,
          const Theme& theme,
          core::Id channelId,
          const core::Insert& insert,
-         bool instrument = false)
+         bool instrument = false,
+         bool midi = false)
         : owner_(owner), theme_(theme), channelId_(channelId), insertId_(insert.id), type_(insert.type),
-          instrument_(instrument), power_(theme, Icon::power, "Bypass"), menu_(theme, Icon::menu, "Menu")
+          instrument_(instrument), midi_(midi), power_(theme, Icon::power, "Bypass"),
+          menu_(theme, Icon::menu, "Menu")
     {
         power_.setClickingTogglesState(true);
         power_.setSize(theme_.sizes.controlCompact, theme_.sizes.controlCompact);
@@ -72,12 +95,13 @@ public:
                     channelId_, insertId_, static_cast<float>(mix_.getValue() / 100.0)));
         };
         addAndMakeVisible(mix_);
-        mix_.setVisible(!instrument_); // an instrument has no dry signal to mix
+        mix_.setVisible(!slotOnly()); // an instrument or a MIDI effect has no dry signal to mix
         // A hosted plugin's faceplate: its kind and its maker (screens/plugins.md 7.1).
         if (const auto* info = owner_.registry_ != nullptr ? owner_.registry_->findByType(type_) : nullptr)
             maker_ = juce::String::fromUTF8(info->manufacturer.c_str());
-        kindIcon_ =
-            instrument_ ? Icon::instrument : effectCategoryIcon(effectCategory(type_, owner_.registry_));
+        kindIcon_ = instrument_ ? Icon::instrument
+                    : midi_     ? Icon::trackMidi
+                                : effectCategoryIcon(effectCategory(type_, owner_.registry_));
         trouble_ = insertTrouble(insert, owner_.actions());
         name_ = juce::String::fromUTF8(insertName(insert, owner_.actions()).c_str());
         open_.setButtonText("Open editor");
@@ -211,13 +235,13 @@ public:
     }
     void mouseDrag(const juce::MouseEvent& e) override
     {
-        if (dragging_ && !instrument_ && e.mouseWasDraggedSinceMouseDown())
+        if (dragging_ && !slotOnly() && e.mouseWasDraggedSinceMouseDown())
             owner_.reorderCard(insertId_, e.getScreenPosition(), false);
     }
     void mouseUp(const juce::MouseEvent& e) override
     {
         // Ctrl at the release copies the card there instead (interaction.md).
-        if (dragging_ && !instrument_ && e.mouseWasDraggedSinceMouseDown())
+        if (dragging_ && !slotOnly() && e.mouseWasDraggedSinceMouseDown())
             owner_.reorderCard(insertId_, e.getScreenPosition(), true, e.mods.isCommandDown());
         dragging_ = false;
     }
@@ -240,6 +264,8 @@ public:
     // takes the room when it has neither, so its display does not sit under a gap.
     bool showsInfoLine() const noexcept
     {
+        if (midi_ && body_ == nullptr && !faceplate_)
+            return false; // a MIDI effect has no key and no latency to show
         if (faceplate_)
             return sidechain_ != core::invalidId; // the latency is on the faceplate
         return body_ == nullptr || sidechain_ != core::invalidId || latency_ > 0;
@@ -288,6 +314,8 @@ public:
             return frameRows() + faceplateMinimumHeight();
         if (popped_)
             return frameRows() + poppedBodyHeight();
+        if (rowFace())
+            return frameRows() + rowsHeight();
         if (body_ == nullptr)
             return 0;
         return body_->minimumBodyHeight() + frameRows();
@@ -295,7 +323,7 @@ public:
     int frameRows() const
     {
         int rows = theme_.sizes.control;
-        if (!instrument_)
+        if (!slotOnly())
             rows += theme_.sizes.controlCompact;
         if (showsInfoLine())
             rows += theme_.sizes.controlCompact;
@@ -305,7 +333,7 @@ public:
     // The card's width at a height: a body that scales to fit narrows with it.
     int preferredWidthAt(int height) const
     {
-        if (popped_ || faceplate_)
+        if (popped_ || faceplate_ || rowFace())
             return preferredWidth();
         if (body_ == nullptr)
         {
@@ -316,7 +344,7 @@ public:
             return gridWidth(columnsFor(gridHeight));
         }
         int bodyHeight = height - theme_.sizes.control;
-        if (!instrument_)
+        if (!slotOnly())
             bodyHeight -= theme_.sizes.controlCompact;
         if (showsInfoLine())
             bodyHeight -= theme_.sizes.controlCompact;
@@ -327,6 +355,8 @@ public:
     {
         if (popped_ || faceplate_) // the same width popped out or not: the chain does not shift
             return poppedWidth();
+        if (rowFace())
+            return rowsWidth();
         if (body_ != nullptr)
             return body_->preferredWidth();
         return gridWidth(std::min(minColumns, std::max(1, static_cast<int>(cells_.size()))));
@@ -373,7 +403,7 @@ public:
             getLocalBounds().removeFromBottom(theme_.sizes.controlCompact).reduced(theme_.spacing.md, 0);
         g.setFont(theme_.caption());
         g.setColour(c.textSecondary);
-        if (!instrument_)
+        if (!slotOnly())
             g.drawText("Mix " + juce::String(static_cast<int>(mix_.getValue())) + "%",
                        footer.removeFromLeft(56),
                        juce::Justification::centredLeft);
@@ -448,7 +478,7 @@ public:
             presets_->setVisible(w >= presets_->minimumWidth());
             presets_->setBounds(header.removeFromRight(std::max(0, w)));
         }
-        if (!instrument_)
+        if (!slotOnly())
         {
             auto footer = area.removeFromBottom(theme_.sizes.controlCompact).reduced(theme_.spacing.md, 0);
             footer.removeFromLeft(56);
@@ -481,6 +511,24 @@ public:
         area = area.reduced(theme_.spacing.md, theme_.spacing.xs);
         if (cells_.empty())
             return;
+        if (rowFace())
+        {
+            // One setting a row: its name, then its control, the controls in a column.
+            const int labelW = rowLabelWidth();
+            area.removeFromTop(theme_.spacing.xs);
+            for (auto& c : cells_)
+            {
+                auto row = area.removeFromTop(theme_.sizes.controlCompact);
+                area.removeFromTop(rowGap());
+                c.label->setBounds(row.removeFromLeft(labelW));
+                row.removeFromLeft(theme_.spacing.sm);
+                if (c.choice != nullptr)
+                    c.choice->setBounds(row.withWidth(std::min(row.getWidth(), c.choice->preferredWidth())));
+                else if (c.field != nullptr)
+                    c.field->setBounds(row.withWidth(std::min(row.getWidth(), fieldWidth())));
+            }
+            return;
+        }
         const int columns = std::min(columnsFor(area.getHeight()), static_cast<int>(cells_.size()));
         const int cellW = area.getWidth() / std::max(1, columns);
         const int cellH = cellHeight();
@@ -529,7 +577,7 @@ private:
     {
         const auto& c = theme_.colours;
         auto body = getLocalBounds().withTrimmedTop(theme_.sizes.control);
-        if (!instrument_)
+        if (!slotOnly())
             body.removeFromBottom(theme_.sizes.controlCompact);
         if (showsInfoLine())
             body.removeFromTop(theme_.sizes.controlCompact);
@@ -615,7 +663,7 @@ private:
     {
         const auto& s = theme_.spacing;
         auto body = getLocalBounds().withTrimmedTop(theme_.sizes.control);
-        if (!instrument_)
+        if (!slotOnly())
             body.removeFromBottom(theme_.sizes.controlCompact);
         if (showsInfoLine())
             body.removeFromTop(theme_.sizes.controlCompact);
@@ -776,7 +824,8 @@ private:
             cell.label->setText(info.name, juce::dontSendNotification);
             cell.label->setFont(theme_.caption());
             cell.label->setColour(juce::Label::textColourId, theme_.colours.textSecondary);
-            cell.label->setJustificationType(juce::Justification::centred);
+            cell.label->setJustificationType(midi_ ? juce::Justification::centredLeft
+                                                   : juce::Justification::centred);
             cell.label->setMinimumHorizontalScale(0.7f);
             addAndMakeVisible(*cell.label);
             if (!info.choices.empty())
@@ -800,13 +849,55 @@ private:
                 cells_.push_back(std::move(cell));
                 continue;
             }
+            if (midi_)
+            {
+                // A MIDI effect's number: a field to drag or type (design-system.md).
+                auto field = std::make_unique<NumericField>(theme_);
+                // About 200 px of drag end to end; a whole number in whole steps.
+                const double span = info.maximum - info.minimum;
+                const double step = info.integer ? std::max(1.0, std::round(span / 400.0)) : span / 200.0;
+                field->setRange(info.minimum, info.maximum, step);
+                field->format = [info](double v) { return parameterText(info, v); };
+                field->setTitle(juce::String(info.name));
+                field->setTooltip(juce::String(info.name));
+                field->setValue(live->parameter(index), juce::dontSendNotification);
+                field->onDragStart = [this, index, name = info.name]
+                {
+                    if (const auto l = owner_.liveInsert ? owner_.liveInsert(insertId_) : nullptr)
+                        l->beginParameterGesture(index);
+                    if (owner_.onGestureBegin)
+                        owner_.onGestureBegin(name);
+                };
+                field->onDragEnd = [this, index]
+                {
+                    if (owner_.onGestureEnd)
+                        owner_.onGestureEnd();
+                    if (const auto l = owner_.liveInsert ? owner_.liveInsert(insertId_) : nullptr)
+                        l->endParameterGesture(index);
+                };
+                field->onValueChanged = [this, index, integer = info.integer](double value)
+                {
+                    if (!updating_ && owner_.onCommand)
+                        owner_.onCommand(std::make_unique<core::SetInsertParameter>(
+                            channelId_,
+                            insertId_,
+                            index,
+                            static_cast<float>(integer ? std::round(value) : value)));
+                };
+                addAndMakeVisible(*field);
+                cell.field = std::move(field);
+                cells_.push_back(std::move(cell));
+                continue;
+            }
             auto knob = std::make_unique<Knob>(theme_);
             knob->setTitle(juce::String(info.name));
             knob->setRange(info.minimum, info.maximum, info.defaultValue);
             // Few figures, so the value fits its cell: fewer decimals as it grows, kHz past 1000 Hz.
             const juce::String unit = info.unit.empty() ? juce::String() : juce::String(info.unit);
-            knob->format = [unit](double v)
+            knob->format = [unit, info](double v)
             {
+                if (info.integer || info.showsNote || !info.minimumText.empty())
+                    return parameterText(info, v);
                 if (unit == "Hz" && std::abs(v) >= 1000.0)
                     return fixedText(v / 1000.0, std::abs(v) >= 10000.0 ? 0 : 1) + " kHz";
                 const double a = std::abs(v);
@@ -844,11 +935,14 @@ private:
     {
         std::unique_ptr<Knob> knob;
         std::unique_ptr<ChoiceControl> choice;
+        std::unique_ptr<NumericField> field; // a MIDI effect's row
         std::unique_ptr<juce::Label> label;
         void show(float v) const
         {
             if (choice != nullptr)
                 choice->setValue(v);
+            else if (field != nullptr)
+                field->setValue(v, juce::dontSendNotification);
             else
                 knob->setValue(v, juce::dontSendNotification);
         }
@@ -858,9 +952,42 @@ private:
                 knob->setVisible(visible);
             if (choice != nullptr)
                 choice->setVisible(visible);
+            if (field != nullptr)
+                field->setVisible(visible);
             label->setVisible(visible);
         }
     };
+
+    // A MIDI effect's face (screens/plugins.md 7.4h): a row per setting, its name
+    // and its control, the card as tall as its rows.
+    bool rowFace() const noexcept
+    {
+        return midi_ && body_ == nullptr && !faceplate_ && !popped_ && !cells_.empty();
+    }
+    int rowGap() const noexcept { return theme_.spacing.xs; }
+    int fieldWidth() const noexcept { return theme_.sizes.controlLarge * 2; }
+    int rowLabelWidth() const
+    {
+        int widest = 0;
+        for (const auto& c : cells_)
+            widest = std::max(
+                widest, juce::GlyphArrangement::getStringWidthInt(theme_.caption(), c.label->getText()));
+        return std::min(widest + theme_.spacing.xs, theme_.sizes.controlLarge * 3);
+    }
+    int rowsWidth() const
+    {
+        int control = fieldWidth();
+        for (const auto& c : cells_)
+            if (c.choice != nullptr)
+                control = std::max(control, c.choice->preferredWidth());
+        return std::clamp(rowLabelWidth() + theme_.spacing.sm + control + 2 * theme_.spacing.md, 200, 360);
+    }
+    int rowsHeight() const
+    {
+        const auto n = static_cast<int>(cells_.size());
+        return 2 * theme_.spacing.xs + theme_.spacing.xs + n * theme_.sizes.controlCompact +
+               (n - 1) * rowGap() + theme_.spacing.sm;
+    }
 
     // The generic grid: knobs in cells four or more to a row, a choice spanning
     // as many cells as it needs, more columns when the height runs out.
@@ -925,13 +1052,16 @@ private:
 
     // The menu every slot shares (ui/InsertMenu.h): the mixer's items, presets,
     // replace, sidechain, copy and paste, the latency.
-    void showMenu() { ui::showInsertMenu(owner_.menuRequest(insertId_, instrument_), &menu_); }
+    void showMenu() { ui::showInsertMenu(owner_.menuRequest(insertId_, instrument_, midi_), &menu_); }
+    // A card with no wet/dry footer that is not dragged among the inserts.
+    bool slotOnly() const noexcept { return instrument_ || midi_; }
 
     EditorPanel& owner_;
     const Theme& theme_;
     core::Id channelId_, insertId_;
     std::string type_;
     bool instrument_ = false;
+    bool midi_ = false;
     IconButton power_, menu_;
     juce::Slider mix_;
     juce::TextButton open_, show_, fix_;
@@ -1171,6 +1301,11 @@ EditorPanel::EditorPanel(const Theme& theme) : theme_(theme), stripView_(theme)
             return;
         g.setFont(theme_.captionCaps());
         g.setColour(theme_.colours.textTertiary);
+        if (addMidi_.isVisible())
+            g.drawText("MIDI FX",
+                       juce::Rectangle<int>(
+                           midiX_ + theme_.spacing.xxs, 0, 120, strip::ChannelStripView::captionHeight),
+                       juce::Justification::centredLeft);
         if (addInstrument_.isVisible() || instrumentCard_ != nullptr)
             g.drawText("INSTRUMENT",
                        juce::Rectangle<int>(
@@ -1193,6 +1328,9 @@ EditorPanel::EditorPanel(const Theme& theme) : theme_(theme), stripView_(theme)
     add_.onClick = [this] { showAddMenu(add_, -1); };
     strip_.addAndMakeVisible(add_);
     strip_.addMouseListener(&gapHover_, true);
+    addMidi_.setTooltip("Add a MIDI effect: an arpeggiator, chords, a scale...");
+    addMidi_.onClick = [this] { showMidiMenu(); };
+    strip_.addChildComponent(addMidi_);
     addInstrument_.setTooltip("Choose the instrument this track's MIDI plays");
     addInstrument_.onClick = [this] { showInstrumentMenu(addInstrument_); };
     strip_.addChildComponent(addInstrument_);
@@ -1227,13 +1365,14 @@ const PluginActions* EditorPanel::actions()
     return &localActions_;
 }
 
-InsertMenuRequest EditorPanel::menuRequest(core::Id insertId, bool instrument)
+InsertMenuRequest EditorPanel::menuRequest(core::Id insertId, bool instrument, bool midi)
 {
     InsertMenuRequest r;
     r.project = project_;
-    r.channelId = channelId_;
+    r.channelId = midi ? midiTrackId_ : channelId_;
     r.insertId = insertId;
     r.instrument = instrument;
+    r.midiEffect = midi;
     r.offerOutputs = instrument;
     r.actions = actions();
     r.sources = pluginSources_;
@@ -1339,6 +1478,37 @@ void EditorPanel::rebuild()
     else if (ch != nullptr)
         for (size_t i = 0; i < cards_.size(); ++i)
             cards_[i]->refresh(ch->inserts[i]);
+    // A MIDI track's MIDI FX, ahead of the instrument it plays.
+    const auto* midiTrack = project_ != nullptr ? project_->findTrack(midiTrackId_) : nullptr;
+    std::vector<core::Id> midiOrder;
+    if (midiTrack != nullptr)
+        for (const auto& insert : midiTrack->midiInserts)
+            midiOrder.push_back(insert.id);
+    bool midiSame = !channelChanged && midiOrder == builtMidiOrder_ && builtMidiTrack_ == midiTrackId_;
+    for (size_t i = 0; midiSame && i < midiCards_.size(); ++i)
+        midiSame = midiCards_[i]->type() == midiTrack->midiInserts[i].type;
+    if (!midiSame)
+    {
+        midiCards_.clear();
+        if (midiTrack != nullptr)
+            for (const auto& insert : midiTrack->midiInserts)
+            {
+                auto card = std::make_unique<Card>(*this, theme_, midiTrack->id, insert, false, true);
+                strip_.addAndMakeVisible(*card);
+                midiCards_.push_back(std::move(card));
+            }
+        builtMidiOrder_ = midiOrder;
+        builtMidiTrack_ = midiTrackId_;
+        same = false;
+    }
+    else if (midiTrack != nullptr)
+        for (size_t i = 0; i < midiCards_.size(); ++i)
+            midiCards_[i]->refresh(midiTrack->midiInserts[i]);
+    if (addMidi_.isVisible() != (midiTrack != nullptr))
+    {
+        addMidi_.setVisible(midiTrack != nullptr);
+        same = false;
+    }
     // The instrument slot: an instrument channel's (or a MIDI track's that plays
     // nothing yet, to give it one).
     const auto* track = project_ != nullptr ? project_->findTrack(channelId_) : nullptr;
@@ -1399,6 +1569,8 @@ void EditorPanel::timerCallback()
     {
         if (wasShowing_)
         {
+            for (const auto& card : midiCards_)
+                card->stopWatching();
             if (instrumentCard_ != nullptr)
                 instrumentCard_->stopWatching();
             for (const auto& card : cards_)
@@ -1408,6 +1580,8 @@ void EditorPanel::timerCallback()
         return;
     }
     wasShowing_ = true;
+    for (const auto& card : midiCards_)
+        card->tick(elapsed);
     if (instrumentCard_ != nullptr)
         instrumentCard_->tick(elapsed);
     for (const auto& card : cards_)
@@ -1525,6 +1699,30 @@ void EditorPanel::addInsert(const std::string& type, int index)
         onInserted(type);
 }
 
+void EditorPanel::showMidiMenu()
+{
+    auto built = buildPluginMenu(PluginKind::midiEffect, pluginSources_);
+    juce::Component::SafePointer<EditorPanel> safe(this);
+    built.menu.showMenuAsync(juce::PopupMenu::Options().withTargetComponent(addMidi_),
+                             [safe, built](int choice)
+                             {
+                                 if (safe == nullptr)
+                                     return;
+                                 if (const auto type = built.typeFor(choice); !type.empty())
+                                     safe->addMidiEffect(type);
+                             });
+}
+
+void EditorPanel::addMidiEffect(const std::string& type)
+{
+    if (!onCommand || project_ == nullptr || project_->findTrack(midiTrackId_) == nullptr)
+        return;
+    core::Insert insert;
+    insert.type = type;
+    insert.params = plugins::defaultParameters(type);
+    onCommand(std::make_unique<core::AddInsert>(midiTrackId_, insert, -1, core::InsertChain::midi));
+}
+
 void EditorPanel::setInstrument(const std::string& type)
 {
     const auto* track = project_ != nullptr ? project_->findTrack(channelId_) : nullptr;
@@ -1593,6 +1791,8 @@ int EditorPanel::contentMinimumHeight() const
         h = std::max(h, caption + instrumentCard_->minimumHeight());
     for (const auto& card : cards_)
         h = std::max(h, caption + card->minimumHeight());
+    for (const auto& card : midiCards_)
+        h = std::max(h, caption + card->minimumHeight());
     if (stripView_.isVisible())
         h = std::max(h, stripView_.minimumHeight());
     return h;
@@ -1643,8 +1843,23 @@ void EditorPanel::resized()
         else
             motion::glideIn(c, before, 1.0f, ms);
     };
-    // The instrument, then the strip and the inserts in signal order, each under
-    // its caption.
+    // A MIDI track's MIDI FX, the instrument, then the strip and the inserts in
+    // signal order, each under its caption.
+    midiX_ = x;
+    if (addMidi_.isVisible())
+    {
+        for (auto& card : midiCards_)
+        {
+            const int w = card->preferredWidthAt(h - caption);
+            place(*card,
+                  {x, theme_.spacing.xs + caption, w, h - caption},
+                  "midi:" + std::to_string(card->insertId()));
+            x += w + theme_.spacing.sm;
+        }
+        const int w = theme_.sizes.controlLarge * 3;
+        place(addMidi_, {x, theme_.spacing.xs + caption, w, h - caption}, "addMidi");
+        x += w + theme_.spacing.xl;
+    }
     instrumentX_ = x;
     if (instrumentCard_ != nullptr)
     {
@@ -1731,6 +1946,9 @@ void EditorPanel::rememberBounds()
     previousBounds_.clear();
     for (const auto& card : cards_)
         previousBounds_["insert:" + std::to_string(card->insertId())] = card->getBounds();
+    for (const auto& card : midiCards_)
+        previousBounds_["midi:" + std::to_string(card->insertId())] = card->getBounds();
+    previousBounds_["addMidi"] = addMidi_.getBounds();
     for (const auto& card : sendCards_)
         previousBounds_["send:" + std::to_string(card->busId())] = card->getBounds();
     if (instrumentCard_ != nullptr)
