@@ -13,6 +13,14 @@ Northlight has not had a release yet. The first release, 0.1.0, will include:
 
 ### Added
 
+- MIDI effects: a MIDI track can run its notes through MIDI effects before they
+  reach its instrument (and its MIDI output). Twelve come built in: Arpeggiator,
+  Chord, Chord Pads (the white keys play the chords of the project's key, voice-led),
+  Note Repeat, Note Echo, Scale, Transpose, Velocity, Note Length, Humanise, Key
+  Range and MIDI Filter. Select a MIDI track and add them from the MIDI FX section of
+  the Editor panel. Recording keeps what you played, so the effects can change
+  afterwards; changing a setting while a key is held never leaves a note hanging.
+
 - Northlight comes as an installer and as a portable zip. The installer installs
   for you alone without administrator rights (or for everyone), adds a Start menu
   shortcut and opens `.northlight` projects with a double-click. Neither needs the

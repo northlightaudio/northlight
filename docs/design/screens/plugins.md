@@ -1306,6 +1306,47 @@ envelope moves by Env octaves. Hues: the sample `Lichen`, loop `Gorse`, keys
   new instrument channel and MIDI track playing that file, its start and end at
   the part the clip uses.
 
+## 7.4h MIDI effects: a MIDI track's MIDI FX
+
+MIDI effects change notes before any sound is made: an arpeggiator, chords, a
+scale. They belong to the **MIDI track** (docs/plans/midi-inserts.md), ahead of the
+instrument channel it plays and its MIDI output, so several MIDI tracks playing one
+instrument keep their own effects. The built-ins, in the order the menu groups them:
+
+| Group | Effects |
+|---|---|
+| Play | Arpeggiator, Chord, Chord Pads, Note Repeat, Note Echo |
+| Shape | Scale, Transpose, Velocity, Note Length, Humanise |
+| Route | Key Range, MIDI Filter |
+
+- **Editor panel**: selecting a MIDI track shows a **MIDI FX** section first, under
+  its `captionCaps` caption, before the INSTRUMENT section of the channel it plays:
+  a card per effect in chain order, then a "+ MIDI effect" add slot (`AddSlot`,
+  the inserts' "+" card's size). A MIDI track that plays nothing still shows it.
+- **The card**: the insert card's frame and header (power, name, menu; no format
+  badge for a built-in), with no wet/dry footer and no info line (a MIDI effect
+  has no dry signal, key or latency). Its body is the **settings rows** face
+  (design-system.md "Settings rows"). The card is as wide as its longest row needs
+  (200 to 360 px) and the panel grows to its tallest card, so no row is cut.
+- **The menu** (ui/InsertMenu, `midiEffect`): Bypass, Replace (the MIDI effects
+  menu), Move up, Move down, Copy, Copy chain, Paste after (only copied MIDI
+  effects: an audio insert never pastes into MIDI FX, nor the reverse) and Remove.
+  No Open (the card is the editor), no Wet/dry, no Sidechain. Cards move from the
+  menu; dragging a MIDI effect's header does nothing yet.
+- **The "+ MIDI effect" menu**: the three groups as section headers, each item the
+  effect's name with its one-line description as the quiet hint at the right.
+  MIDI effects are not in the insert menus, the instrument menus or the plugin
+  browser.
+- **Arrange**: the MIDI track's "→ instrument" chip keeps its text; its tooltip
+  names the MIDI FX that are on ("...plays, through Arpeggiator, Scale"). The chip
+  is too narrow to add them without cutting the instrument's name.
+- **Values**: whole-number settings show no decimals; Key Range shows note names
+  (C3 is MIDI 60); a setting whose minimum means off says "Off" (Velocity's Fixed,
+  MIDI Filter's Move controller).
+- Not yet: the arrange view's automation lanes on a MIDI track (the engine plays a
+  lane on a MIDI effect's parameter), built faces for the Arpeggiator and Chord
+  Pads, hosted MIDI effects, and Render MIDI FX to clip.
+
 ## 7.5 States and errors
 
 - Plugin missing on this machine: the chain card shows the name (as it was when

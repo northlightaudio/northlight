@@ -588,6 +588,23 @@ A toggle that sits in a row of knobs takes a knob cell:
 - a live value or "Off" where a knob shows its value;
 - its name on the labels' line.
 
+### Settings rows
+
+A card body for a processor with a handful of plain settings and no display (a
+MIDI effect, screens/plugins.md 7.4h): one setting a row, top to bottom in the
+processor's order.
+
+- Each row is `controlCompact` (24 px) tall with `space.xs` between rows and
+  `space.xs` above the first; the body is inset `space.md` either side.
+- The setting's name in `caption`, `textSecondary`, left-aligned in a column as
+  wide as the longest name (at most three `controlLarge`), then `space.sm`, then
+  the control, left-aligned in a second column so the controls line up.
+- The control: a segmented control for up to four choices, a combo past that
+  (both at their preferred width, on a card track), and a numeric field
+  (two `controlLarge` wide) for a number. Whole numbers show no decimals; a note
+  shows its name; a minimum that means off shows "Off".
+- The card grows to fit every row; a row is never cut or squeezed.
+
 ### Selected points (automation)
 
 A point on a timeline curve that is selected (the arrange view's automation lanes)

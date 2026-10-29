@@ -37,7 +37,8 @@ src/engine/rt   Real-time primitives: the guard and allocation hook, SPSC queue,
                 snapshot publisher, callback statistics, denormal flushing.
 src/plugins     The built-in processors behind the engine's insert interface:
                 utilities and effects, the channel strip modules and presets, the
-                instruments (Aurora, Pulsar, Nebula, Starbit, Sampler). No JUCE.
+                instruments (Aurora, Pulsar, Nebula, Starbit, Sampler) and the
+                MIDI effects (plugins/midi). No JUCE.
 src/hosting     VST3 hosting through JUCE, CLAP hosting against its C ABI, the
                 plugin registry and blocklist, the out-of-process scanner.
 src/audio       The device layer (ASIO, Windows Audio, MIDI devices), the audio
@@ -218,6 +219,29 @@ arrival and placed within the block it lands in, giving a constant one-block del
 instead of jitter. Instrument channels merge the events of every MIDI track that
 plays them. Multi-output instruments expose extra stereo pairs as their own tracks.
 A MIDI track can also drive an external device through the MIDI output queue.
+
+A MIDI track's **MIDI FX** (`Channel::midiInserts`) are MIDI effects: processors
+that take the span's events and give back events (`InsertProcessor::isMidiEffect`,
+`processMidiEffect`). They are inserts in every other way (the insert cache, the
+parameter and bypass commands, saved state), and the insert commands that change a
+chain take `core::InsertChain::midi` to act on them. The renderer runs the chain at
+the end of `scheduleMidi`, passing the events between two lists sized at compile for
+what the chain can make (`midiExpansion`), and leaves the result in the track's
+events, so the instrument channel's merge and the MIDI output both get the changed
+notes. Recording reads the device input, so it keeps what was played. At a
+discontinuity the chain is handed an all-notes-off first: each effect ends what it
+made and drops what it was holding for later, and the track's own note-offs that
+follow end nothing twice. The play head carries the project's key, so an effect
+can follow it. The built-ins derive from `plugins::midi::MidiEffectBase`, which
+counts the output notes that are sounding (a note-off goes out only for a sounding
+note, and only when the last thing holding it lets go), remembers which output
+notes each held input note started, keeps a queue for events in later blocks on its
+own sample clock, and ends everything when bypass changes. The registry lists them
+as `BuiltInKind::midiEffect`, apart from `typeNames()`, which the audio insert
+menus read. A lane on a MIDI effect's parameter binds to it like any insert's (the
+MIDI FX are compiled before the channel's lanes). The Editor panel shows a selected MIDI track's MIDI FX as cards ahead of
+its instrument (a settings-rows face, design-system.md), and the shared slot menu
+(`InsertMenuRequest::midiEffect`) acts on the MIDI chain.
 
 ### Tempo
 
