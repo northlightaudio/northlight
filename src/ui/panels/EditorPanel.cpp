@@ -830,7 +830,10 @@ private:
             addAndMakeVisible(*cell.label);
             if (!info.choices.empty())
             {
-                cell.choice = std::make_unique<ChoiceControl>(theme_, info.choices, juce::String(info.name));
+                // A settings row's control column is at most eight controlLarge:
+                // segments that would not fit there become a menu.
+                cell.choice = std::make_unique<ChoiceControl>(
+                    theme_, info.choices, juce::String(info.name), midi_ ? theme_.sizes.controlLarge * 8 : 0);
                 cell.choice->setOnCard(true);
                 cell.choice->setValue(live->parameter(index));
                 cell.choice->onChange = [this, index](float value)

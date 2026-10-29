@@ -109,6 +109,68 @@ double meanOf(const ChordNotes& c) noexcept
 }
 } // namespace
 
+// ----- names -----------------------------------------------------------------------------
+
+std::string chordName(int rootPitchClass, const ChordNotes& chord)
+{
+    static constexpr const char* roots[12] = {
+        "C", "Db", "D", "Eb", "E", "F", "Gb", "G", "Ab", "A", "Bb", "B"};
+    const int root = ((rootPitchClass % 12) + 12) % 12;
+    if (chord.count == 0)
+        return {};
+    // The pitch classes above the root, as a set.
+    unsigned set = 0;
+    int lowest = chord.notes[0];
+    for (int i = 0; i < chord.count; ++i)
+    {
+        const int n = chord.notes[static_cast<size_t>(i)];
+        lowest = std::min(lowest, n);
+        set |= 1u << (((n - root) % 12 + 12) % 12);
+    }
+    struct Quality
+    {
+        unsigned set;
+        const char* suffix;
+    };
+    const auto bits = [](std::initializer_list<int> steps)
+    {
+        unsigned b = 0;
+        for (int s : steps)
+            b |= 1u << s;
+        return b;
+    };
+    const Quality qualities[] = {
+        {bits({0, 4, 7}), ""},
+        {bits({0, 3, 7}), "m"},
+        {bits({0, 3, 6}), "dim"},
+        {bits({0, 4, 8}), "aug"},
+        {bits({0, 2, 7}), "sus2"},
+        {bits({0, 5, 7}), "sus4"},
+        {bits({0, 4, 7, 10}), "7"},
+        {bits({0, 4, 7, 11}), "maj7"},
+        {bits({0, 3, 7, 10}), "m7"},
+        {bits({0, 3, 6, 10}), "m7b5"},
+        {bits({0, 3, 6, 9}), "dim7"},
+        {bits({0, 3, 7, 11}), "m(maj7)"},
+        {bits({0, 2, 4, 7}), "add9"},
+        {bits({0, 2, 4, 7, 10}), "9"},
+        {bits({0, 2, 4, 7, 11}), "maj9"},
+        {bits({0, 2, 3, 7, 10}), "m9"},
+        {bits({0, 7}), "5"},
+        {bits({0}), ""},
+    };
+    std::string name = roots[root];
+    for (const auto& q : qualities)
+        if (q.set == set)
+        {
+            name += q.suffix;
+            break;
+        }
+    if (const int bass = ((lowest % 12) + 12) % 12; bass != root)
+        name += std::string("/") + roots[bass];
+    return name;
+}
+
 // ----- Chord -----------------------------------------------------------------------------
 
 namespace chord
@@ -283,6 +345,7 @@ private:
             {
                 s.chord.notes[static_cast<size_t>(s.chord.count)] = note;
                 s.starts[static_cast<size_t>(s.chord.count++)] = start;
+                willPlay(note);
             }
         }
     }
@@ -405,6 +468,47 @@ ChordNotes leadFrom(const ChordNotes& chord, const ChordNotes& previous, int cen
     return best;
 }
 
+std::string padNumeral(int note, int root, std::uint16_t mask)
+{
+    const int pc = ((note % 12) + 12) % 12;
+    switch (pc)
+    {
+        case 1:
+            return "bII";
+        case 3:
+            return "bIII";
+        case 6:
+            return "iv";
+        case 8:
+            return "bVI";
+        case 10:
+            return "bVII";
+        default:
+            break;
+    }
+    static constexpr const char* upper[7] = {"I", "II", "III", "IV", "V", "VI", "VII"};
+    static constexpr const char* lower[7] = {"i", "ii", "iii", "iv", "v", "vi", "vii"};
+    static constexpr int whiteIndex[12] = {0, -1, 1, -1, 2, 3, -1, 4, -1, 5, -1, 6};
+    const int degree = whiteIndex[pc];
+    // The quality from the triad's thirds.
+    const auto c = padChord(note, 0, root, mask, 48);
+    const int third = c.count >= 2 ? c.notes[1] - c.notes[0] : 4;
+    const int fifth = c.count >= 3 ? c.notes[2] - c.notes[0] : 7;
+    if (third == 3 && fifth == 6)
+        return std::string(lower[degree]) + "\xc2\xb0"; // vii°
+    if (third == 3)
+        return lower[degree];
+    if (fifth == 8)
+        return std::string(upper[degree]) + "+";
+    return upper[degree];
+}
+
+std::string padName(int note, int size, int root, std::uint16_t mask)
+{
+    const auto c = padChord(note, size, root, mask, 48);
+    return c.count > 0 ? chordName(c.notes[0], c) : std::string{};
+}
+
 namespace
 {
 class ChordPads final : public midi::MidiEffectBase
@@ -418,7 +522,7 @@ public:
                           choice("Size", {"Triad", "Seventh"}),
                           choice("Voice leading", {"Off", "On"}, 1),
                           choice("Bass", {"Off", "On"}),
-                          whole("Octave", "oct", -2.0f, 2.0f, 0.0f)})
+                          whole("Octave", "", -2.0f, 2.0f, 0.0f)})
     {
     }
     int midiExpansion() const noexcept override { return 6; }

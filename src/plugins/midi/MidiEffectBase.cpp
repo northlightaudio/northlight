@@ -103,11 +103,21 @@ void MidiEffectBase::processMidiEffect(const engine::MidiEventList& in,
                 release.velocity = 0;
                 noteOff(release);
             }
+            engine::NoteFeedback::set(notes_.held, e.note, true);
+            notes_.lastInput.store(e.note, std::memory_order_relaxed);
+            capturing_ = true;
+            captured_[0] = captured_[1] = 0;
             noteOn(e);
+            capturing_ = false;
+            if ((captured_[0] | captured_[1]) != 0)
+                engine::NoteFeedback::copy(notes_.last, captured_[0], captured_[1]);
+            notes_.changed();
         }
         else if (off)
         {
             e.type = MidiEvent::Type::noteOff;
+            engine::NoteFeedback::set(notes_.held, e.note, false);
+            notes_.changed();
             noteOff(e);
         }
         else
@@ -152,6 +162,9 @@ bool MidiEffectBase::startNote(const MidiEvent& input, int note, int velocity, i
     on.velocity = static_cast<std::uint8_t>(std::clamp(velocity, 1, 127));
     if (!emit(on))
         return false;
+    const auto ring = notes_.velocityCount.fetch_add(1, std::memory_order_relaxed);
+    notes_.velocities[ring % notes_.velocities.size()].store(
+        static_cast<std::uint16_t>((input.velocity & 127) << 8 | on.velocity), std::memory_order_relaxed);
     h.channel[h.count] = on.channel;
     h.note[h.count] = on.note;
     ++h.count;
@@ -161,6 +174,12 @@ bool MidiEffectBase::startNote(const MidiEvent& input, int note, int velocity, i
 void MidiEffectBase::take(const MidiEvent& input) noexcept
 {
     held(input.channel, input.note).taken = true;
+}
+
+void MidiEffectBase::willPlay(int note) noexcept
+{
+    if (note >= 0 && note <= 127)
+        capture(note);
 }
 
 void MidiEffectBase::releaseNote(const MidiEvent& e) noexcept
@@ -201,6 +220,10 @@ bool MidiEffectBase::emit(MidiEvent e) noexcept
                 return false;
             if (count < 255)
                 ++count;
+            engine::NoteFeedback::set(notes_.sounding, e.note, true);
+            notes_.notesOut.fetch_add(1, std::memory_order_relaxed);
+            notes_.changed();
+            capture(e.note);
             return true;
         }
         case MidiEvent::Type::noteOff:
@@ -217,10 +240,14 @@ bool MidiEffectBase::emit(MidiEvent e) noexcept
             if (!out_->push(e))
                 return false;
             count = 0;
+            engine::NoteFeedback::set(notes_.sounding, e.note, false);
+            notes_.changed();
             return true;
         }
         case MidiEvent::Type::allNotesOff:
             std::fill(sounding_.begin(), sounding_.end(), std::uint8_t{0});
+            engine::NoteFeedback::clear(notes_.sounding);
+            notes_.changed();
             return out_->push(e);
         default:
             return out_->push(e);
@@ -286,6 +313,10 @@ void MidiEffectBase::endEverything(int offset) noexcept
         }
     std::fill(held_.begin(), held_.end(), Held{});
     queued_ = 0;
+    engine::NoteFeedback::clear(notes_.sounding);
+    engine::NoteFeedback::clear(notes_.held);
+    notes_.step.store(-1, std::memory_order_relaxed);
+    notes_.changed();
     reset();
 }
 

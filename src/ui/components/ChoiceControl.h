@@ -21,7 +21,12 @@ class ChoiceControl final : public juce::Component
 public:
     static constexpr int maxSegments = 4;
 
-    ChoiceControl(const Theme& theme, const std::vector<std::string>& choices, const juce::String& tooltip);
+    // `widthLimit` > 0: a menu instead of segments when they would need more than
+    // that at their preferred width (a settings row's control column).
+    ChoiceControl(const Theme& theme,
+                  const std::vector<std::string>& choices,
+                  const juce::String& tooltip,
+                  int widthLimit = 0);
 
     // The parameter's value; it shows the nearest choice.
     void setValue(float value);

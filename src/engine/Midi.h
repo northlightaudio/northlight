@@ -1,5 +1,7 @@
 #pragma once
 
+#include <array>
+#include <atomic>
 #include <cstddef>
 #include <cstdint>
 #include <vector>
@@ -107,6 +109,54 @@ struct MidiOutEvent
 {
     MidiEvent event;
     std::int64_t clock = 0;
+};
+
+// What a MIDI effect's editor shows (design-system.md "MIDI face"): the notes held
+// going in, the notes it is sounding, the notes the last key played started (a
+// chord), an arpeggio's order and step, and the last velocities in and out. The
+// real-time thread writes, the UI reads; atomics only, nothing allocates.
+// `changes` counts every write, so an editor repaints only when it moved.
+struct NoteFeedback
+{
+    using Bits = std::array<std::atomic<std::uint64_t>, 2>; // a bit per note, 0..127
+
+    Bits held{}, sounding{}, last{};
+    std::atomic<int> lastInput{-1}; // the last key pressed, -1 before any
+    std::atomic<std::uint32_t> notesOut{0};
+    std::atomic<std::uint32_t> changes{0};
+    // An arpeggio: the held keys in the order pressed, and the step playing.
+    std::array<std::atomic<std::uint8_t>, 32> order{};
+    std::atomic<int> orderCount{0};
+    std::atomic<std::int64_t> step{-1};
+    // The last velocities, (in << 8) | out, a ring of 16.
+    std::array<std::atomic<std::uint16_t>, 16> velocities{};
+    std::atomic<std::uint32_t> velocityCount{0};
+
+    static void set(Bits& bits, int note, bool on) noexcept
+    {
+        const auto mask = std::uint64_t{1} << (note & 63);
+        auto& word = bits[static_cast<size_t>((note >> 6) & 1)];
+        if (on)
+            word.fetch_or(mask, std::memory_order_relaxed);
+        else
+            word.fetch_and(~mask, std::memory_order_relaxed);
+    }
+    static bool test(const Bits& bits, int note) noexcept
+    {
+        return (bits[static_cast<size_t>((note >> 6) & 1)].load(std::memory_order_relaxed) >> (note & 63) &
+                1u) != 0;
+    }
+    static void clear(Bits& bits) noexcept
+    {
+        bits[0].store(0, std::memory_order_relaxed);
+        bits[1].store(0, std::memory_order_relaxed);
+    }
+    static void copy(Bits& to, std::uint64_t low, std::uint64_t high) noexcept
+    {
+        to[0].store(low, std::memory_order_relaxed);
+        to[1].store(high, std::memory_order_relaxed);
+    }
+    void changed() noexcept { changes.fetch_add(1, std::memory_order_relaxed); }
 };
 
 class MidiEventList

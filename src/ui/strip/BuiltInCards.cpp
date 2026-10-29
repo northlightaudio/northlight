@@ -789,6 +789,8 @@ createBuiltInCard(const Theme& theme, CardHost& host, core::Id channelId, const 
         return createStarbitEditor(theme, host, channelId, insert);
     if (insert.type == plugins::sampler::type)
         return createSamplerEditor(theme, host, channelId, insert);
+    if (auto face = createMidiFaceCard(theme, host, channelId, insert))
+        return face;
     return nullptr;
 }
 

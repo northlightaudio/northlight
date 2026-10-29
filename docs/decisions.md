@@ -221,6 +221,11 @@ For how the pieces fit together see [architecture.md](architecture.md).
 | 2026-10-29 | A MIDI track's MIDI FX show in its chip's tooltip, not its text | The chip is a few words wide; adding an effect's name cut the instrument's, which the design bar forbids. |
 | 2026-10-29 | MIDI effects are built-ins of their own kind, left out of `typeNames()` | The insert menus, the browser and every audio test walk that list; a MIDI effect in an audio chain would do nothing. They have their own list and menu kind. |
 | 2026-10-29 | Chord Pads put borrowed chords on the black keys (bII, bIII, iv, bVI, bVII) | They are the borrowed chords pop writing reaches for most, and the black keys were otherwise idle; the white keys stay the key's own seven. |
+| 2026-10-29 | Every MIDI effect takes Heather, the colour of notes | MIDI FX read as one family in the chain, apart from the audio effects, and Heather is already `midiNote`. A hue per group would have spent three palette colours on a distinction the menu's groups already make. |
+| 2026-10-29 | MIDI effects publish their notes as atomics (`engine::NoteFeedback`), not through the audio feedback | The audio feedback is a level history; a MIDI face needs which notes are held and sounding, the last chord, an arpeggio's order and step. A few relaxed atomics and a change counter cost the audio thread nothing and let a face repaint only when something moved. |
+| 2026-10-29 | A MIDI face shows what the last key plays with the settings as they are now | Changing an inversion or a voicing shows its result at once, without playing again; what actually sounds is lit at full strength. |
+| 2026-10-29 | A setting that does nothing in the current mode stays in place at 50% | Hiding it would move everything after it each time a mode changes; dimmed, the face keeps its layout and still says the setting exists. |
+| 2026-10-29 | An on/off and its value are two parameters (Velocity's Fixed, MIDI Filter's Move controller) | One value whose minimum reads "Off" looked like an error and could not keep its value while off. |
 | 2026-10-29 | MIDI effects have no lookahead | Live input has no future, so an effect cannot move a note earlier; timing randomness is late only and a strum starts on the beat. Reading clips ahead for a declared lookahead is left for later. |
 
 ### Files and settings

@@ -34,6 +34,8 @@ public:
     juce::String getTooltip() override;
     int selected() const noexcept { return selected_; }
     int preferredWidth() const;
+    // The same for a set of labels, before a control is made.
+    static int preferredWidthFor(const Theme& theme, const std::vector<juce::String>& labels);
 
     std::function<void(int)> onChange;
 

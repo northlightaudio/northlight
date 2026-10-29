@@ -56,6 +56,7 @@ public:
 
     // How many output notes are sounding (for tests and the card's activity).
     int soundingCount() const noexcept;
+    const engine::NoteFeedback* noteFeedback() const noexcept final { return &notes_; }
 
 protected:
     // ----- hooks (real-time) -------------------------------------------------------------
@@ -91,6 +92,11 @@ protected:
     bool startNote(const engine::MidiEvent& input, int note, int velocity, int channel) noexcept;
     // The input note is taken and starts nothing (yet): its note-off is swallowed.
     void take(const engine::MidiEvent& input) noexcept;
+    // A note this key will play later (a strum's): the editor shows it with the
+    // chord the key started. Only while handling the key's note-on.
+    void willPlay(int note) noexcept;
+    // For an effect that publishes more (an arpeggio's order and step).
+    engine::NoteFeedback& published() noexcept { return notes_; }
     // Ends, at the note-off's offset, the output notes its note-on started and
     // forgets it. A note-off for a note the effect never took passes through (it
     // ends that note only if it is sounding).
@@ -153,6 +159,15 @@ private:
     int blockLength_ = 0;
     engine::MidiEventList* out_ = nullptr; // the block's output while processing
     bool wasBypassed_ = false;
+    engine::NoteFeedback notes_;
+    // The notes the key being handled starts (for notes_.last), while handling it.
+    bool capturing_ = false;
+    std::uint64_t captured_[2]{};
+    void capture(int note) noexcept
+    {
+        if (capturing_)
+            captured_[(note >> 6) & 1] |= std::uint64_t{1} << (note & 63);
+    }
 };
 
 } // namespace northlight::plugins::midi

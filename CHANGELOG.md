@@ -18,8 +18,12 @@ Northlight has not had a release yet. The first release, 0.1.0, will include:
   Chord, Chord Pads (the white keys play the chords of the project's key, voice-led),
   Note Repeat, Note Echo, Scale, Transpose, Velocity, Note Length, Humanise, Key
   Range and MIDI Filter. Select a MIDI track and add them from the MIDI FX section of
-  the Editor panel. Recording keeps what you played, so the effects can change
-  afterwards; changing a setting while a key is held never leaves a note hanging.
+  the Editor panel. The Arpeggiator, Chord, Chord Pads, Velocity and Scale show
+  what they do as you play: the arpeggio's steps, the chord on a keyboard, the
+  pads named in the key, the velocity curve with your last notes on it, and
+  where each key goes in the scale. Recording keeps what you played, so the
+  effects can change afterwards; changing a setting while a key is held never
+  leaves a note hanging.
 
 - Northlight comes as an installer and as a portable zip. The installer installs
   for you alone without administrator rights (or for everyone), adds a Start menu

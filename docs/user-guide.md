@@ -325,8 +325,11 @@ legato, or holds notes with the sustain pedal; **Humanise** loosens timing and
 velocity and can drop notes by chance (the same seed plays the same way). **Key
 Range** passes only the notes in a range (or folds them in), and **MIDI Filter**
 blocks kinds of events and moves one controller to another. Effects that follow the
-key use the project's key unless set to their own. Recording keeps what you played,
-not what the effects made.
+key use the project's key unless set to their own (the chips in the corner of
+their display). Recording keeps what you played, not what the effects made. The
+Arpeggiator, Chord, Chord Pads, Velocity and Scale draw what they do as you play;
+on Velocity's curve, drag the dashed lines to set the minimum and maximum, and the
+handle on the bottom edge to move the centre.
 
 ## Export
 

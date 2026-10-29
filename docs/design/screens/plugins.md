@@ -1325,9 +1325,77 @@ instrument keep their own effects. The built-ins, in the order the menu groups t
   the inserts' "+" card's size). A MIDI track that plays nothing still shows it.
 - **The card**: the insert card's frame and header (power, name, menu; no format
   badge for a built-in), with no wet/dry footer and no info line (a MIDI effect
-  has no dry signal, key or latency). Its body is the **settings rows** face
-  (design-system.md "Settings rows"). The card is as wide as its longest row needs
-  (200 to 360 px) and the panel grows to its tallest card, so no row is cut.
+  has no dry signal, key or latency). Its body is a **MIDI face**
+  (design-system.md "MIDI face"): the five below have one; the other seven use the
+  settings rows (design-system.md "Settings rows") until theirs are built
+  (docs/plans/midi-effect-faces.md). The panel grows to its tallest card, so
+  nothing is cut.
+
+Every face takes the shared parts of design-system.md "MIDI face". The key
+chips, where a face has them, sit in the display's top-right corner: Own key /
+Project key, then the root and the scale, each as wide as the name it shows; while
+the project's key is followed the root and scale chips show the project's key at
+50% and cannot be chosen. A face's title (a chord's name, a key's mapping) sits
+top-left, ellipsised short of the chips if it must be.
+
+#### Arpeggiator (wide 416)
+
+- **Display**: the step lane for the chord held, in the order the mode plays it,
+  octaves stacked, rows centred in the well; the step playing lit. With no chord
+  held yet, the lane shows a C major triad at 45% and "Hold a chord" in
+  `caption` `textTertiary` top-left. The rate in the corner chip ("1/16 ▾").
+- **MODE**: a pill row of seven, each pill as wide as its label: ↑, ↓, ↑↓, ↓↑,
+  Played, Random, Chord (the row's tooltip names each). Random shows each step's
+  possible notes as faint dots and lights the notes it plays.
+- **Latch**: a pill toggle at the end of the MODE row.
+- **OCTAVES** pills 1 2 3 4; **PLAY**: Gate and Swing buds; **VELOCITY**: a Fixed
+  toggle and its Velocity bud (at 50% while off).
+
+#### Chord (wide 416)
+
+- **Display**: the chord name top-left ("D", "Cmaj7", "C/E" for an inversion),
+  `label` semibold in Heather (60% when the key is up), and "(play a key)" after
+  the C chord it shows before any key is played; the key chips (at 50% unless In
+  key). Below, a keyboard strip of three octaves around the last key with the chord
+  that key plays *with the settings as they are now* (so a change to the
+  inversion or voicing shows at once), full while the key is held, 60% after, 45%
+  before any.
+- **CHORD**: pills Shape / In key, then the Shape menu (a combo); **IN KEY**: Size
+  pills Triad, 7th, 9th. The one the mode does not use is at 50%.
+- **INVERSION**: Root, 1st, 2nd, 3rd. **STRUM**: Off, Up, Down, Alt.
+- **VOICING**: Close, Open, Drop 2, Spread; then the Strum time bud (at 50% while
+  Strum is Off).
+
+#### Chord Pads (wide 416)
+
+- **Display** (150 px, up to 196): the key chips in the top row, the pad map
+  below it, and a keyboard strip of three octaves under the pads with the voicing
+  sounding (full) or last played (45%); before any, the I chord at 45%.
+- **CHORDS**: Size pills Triad / 7th, then Lead (voice leading) and Bass pill
+  toggles. **REGISTER**: pills −2 −1 0 +1 +2.
+
+#### Velocity (wide 416)
+
+- **Display**: the transfer curve, velocity in along the bottom (1 to 127), out
+  up the side, quarter lines in `lineSubtle` and the unchanged line (in = out) in
+  `lineStrong`. The curve in Heather (1.5 px), the random spread a Heather band at
+  15%. Minimum and Maximum as dashed Heather lines (45%) with handles at their
+  right ends (drag up and down); the Centre a handle on the bottom edge (drag
+  across); a handle under the pointer or held shows its halo. The last 16 notes
+  as `textPrimary` dots at (in, out), fading with age. "OUT" top-left and "IN" at
+  the bottom, `micro` `textTertiary`, clear of the handles. Fixed on: the curve is
+  the flat line, the handles go and every other control is at 50%.
+- **SHAPE**: Dynamics, Gain, Offset, Random buds. **FIXED**: the toggle and its
+  Velocity bud. **RANGE**: Minimum, Maximum, Centre buds (the handles' values, for
+  the keyboard).
+
+#### Scale (medium 320)
+
+- **Display**: the last key's mapping top-left ("F3 → F#3", "C#3 → blocked"),
+  the key chips, and a keyboard strip of two octaves from the last key's C with
+  the key's notes dotted, the key played barred and where it went lit.
+- **MODE**: pills Nearest, Up, Down, Block, White (the tooltip says White keys
+  play the scale).
 - **The menu** (ui/InsertMenu, `midiEffect`): Bypass, Replace (the MIDI effects
   menu), Move up, Move down, Copy, Copy chain, Paste after (only copied MIDI
   effects: an audio insert never pastes into MIDI FX, nor the reverse) and Remove.

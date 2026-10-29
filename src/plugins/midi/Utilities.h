@@ -41,20 +41,23 @@ namespace velocity
 inline constexpr const char* type = "northlight.velocity";
 enum Param
 {
-    dynamics, // % around the centre: 100 unchanged, less compresses, more expands
-    centre,   // 1..127
-    gain,     // % scale
-    offset,   // -127..127
-    random,   // 0..64: up to this much either way
-    minimum,  // 1..127
-    maximum,  // 1..127
-    fixed,    // 0 = off, else every note plays at this velocity
+    dynamics,      // % around the centre: 100 unchanged, less compresses, more expands
+    centre,        // 1..127
+    gain,          // % scale
+    offset,        // -127..127
+    random,        // 0..64: up to this much either way
+    minimum,       // 1..127
+    maximum,       // 1..127
+    fixed,         // Off, On: every note plays at the fixed velocity
+    fixedVelocity, // 1..127
     count
 };
 struct Settings
 {
     float dynamics = 100.0f, centre = 64.0f, gain = 100.0f, offset = 0.0f;
-    float minimum = 1.0f, maximum = 127.0f, fixed = 0.0f;
+    float minimum = 1.0f, maximum = 127.0f;
+    bool fixed = false;
+    float fixedVelocity = 100.0f;
 };
 // A velocity through the settings; `random` (in velocity steps) is added
 // before the range clamp, and a fixed velocity overrides everything.
@@ -87,7 +90,8 @@ enum Param
     pitchBend,       // Block, Pass
     channelPressure, // Block, Pass
     polyPressure,    // Block, Pass
-    mapFrom,         // -1 = off, else the controller number moved
+    move,            // Off, On: one controller is moved to another
+    mapFrom,         // 0..127, the controller moved
     mapTo,           // 0..127, where it goes
     count
 };

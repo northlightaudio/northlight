@@ -238,9 +238,13 @@ note, and only when the last thing holding it lets go), remembers which output
 notes each held input note started, keeps a queue for events in later blocks on its
 own sample clock, and ends everything when bypass changes. The registry lists them
 as `BuiltInKind::midiEffect`, apart from `typeNames()`, which the audio insert
-menus read. A lane on a MIDI effect's parameter binds to it like any insert's (the
+menus read. Each effect publishes its notes for its face (`engine::NoteFeedback`:
+the keys held, the notes sounding, the last key's chord, an arpeggio's order and
+step, the last velocities in and out), as relaxed atomics with a change counter
+the face polls each tick (`ModuleCard::ticked`). A lane on a MIDI effect's parameter binds to it like any insert's (the
 MIDI FX are compiled before the channel's lanes). The Editor panel shows a selected MIDI track's MIDI FX as cards ahead of
-its instrument (a settings-rows face, design-system.md), and the shared slot menu
+its instrument (the five MIDI faces in `ui/strip/MidiFaces.cpp`, the rest a
+settings-rows face, design-system.md), and the shared slot menu
 (`InsertMenuRequest::midiEffect`) acts on the MIDI chain.
 
 ### Tempo

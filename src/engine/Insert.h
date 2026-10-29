@@ -167,6 +167,8 @@ public:
     // The most events the effect can make from one it is given (a four-note
     // chord: 4), so the lists after it are sized to hold them. Not real-time.
     virtual int midiExpansion() const noexcept { return 1; }
+    // What its editor shows of the notes going through (null: nothing).
+    virtual const NoteFeedback* noteFeedback() const noexcept { return nullptr; }
 
     // Extra stereo outputs (a multi-output instrument): after a process call the
     // pairs beyond the main one are read here, index 0 = the first extra pair,

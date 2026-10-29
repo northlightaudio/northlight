@@ -73,11 +73,13 @@ TEST_CASE("Velocity shapes note-on velocities and leaves the releases alone", "[
     CHECK(shape(10, s) == 40);
     CHECK(shape(120, s) == 90);
     CHECK(shape(64, s, 100.0f) == 90); // random is clamped too
-    s.fixed = 77.0f;
+    s.fixed = true;
+    s.fixedVelocity = 77.0f;
     CHECK(shape(5, s) == 77);
 
     EffectRunner r(p::velocity::create());
-    r.effect().setParameter(p::velocity::fixed, 33.0f);
+    r.effect().setParameter(p::velocity::fixed, 1.0f);
+    r.effect().setParameter(p::velocity::fixedVelocity, 33.0f);
     const auto out = r.block({noteOn(0, 60, 120), noteOff(10, 60)});
     REQUIRE(out.size() == 2);
     CHECK(out[0].event.velocity == 33);
@@ -103,6 +105,7 @@ TEST_CASE("MIDI Filter blocks kinds of events and moves a controller", "[plugins
 {
     EffectRunner r(p::midifilter::create());
     r.effect().setParameter(p::midifilter::pitchBend, 0.0f);
+    r.effect().setParameter(p::midifilter::move, 1.0f);
     r.effect().setParameter(p::midifilter::mapFrom, 1.0f);
     r.effect().setParameter(p::midifilter::mapTo, 11.0f);
     engine::MidiEvent bend{3, engine::MidiEvent::Type::pitchBend, 0, 0, 64};

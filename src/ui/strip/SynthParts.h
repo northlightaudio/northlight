@@ -106,7 +106,19 @@ public:
     int selected = 3;
     // Words ("Plate") in the label face; numbers ("+12") in the value face, the default.
     bool words = false;
+    // Each pill as wide as its label needs (and an equal share of what is left),
+    // instead of all alike: for a row whose labels differ in length (the
+    // arpeggiator's ↑ beside Random).
+    bool fitLabels = false;
     std::function<void(int)> onChange;
+    // The width the labels need with `fitLabels`, gaps included.
+    int labelsWidth() const
+    {
+        int w = 0;
+        for (const auto& l : labels)
+            w += labelWidth(l);
+        return w + static_cast<int>(gap) * std::max(0, count() - 1);
+    }
 
     void paint(juce::Graphics& g) override
     {
@@ -162,11 +174,28 @@ public:
     }
 
 private:
+    static constexpr float gap = 6.0f;
     int count() const noexcept { return static_cast<int>(labels.size()); }
+    int labelWidth(const juce::String& text) const
+    {
+        return juce::GlyphArrangement::getStringWidthInt(words ? theme_.label() : theme_.value(), text) +
+               2 * theme_.spacing.sm;
+    }
     juce::Rectangle<float> pill(int i) const
     {
-        constexpr float gap = 6.0f;
         const auto area = getLocalBounds().toFloat();
+        if (fitLabels)
+        {
+            const float spare = std::max(0.0f, area.getWidth() - static_cast<float>(labelsWidth())) /
+                                static_cast<float>(std::max(1, count()));
+            float x = area.getX();
+            for (int j = 0; j < i; ++j)
+                x += static_cast<float>(labelWidth(labels[static_cast<size_t>(j)])) + spare + gap;
+            return {x,
+                    area.getY(),
+                    static_cast<float>(labelWidth(labels[static_cast<size_t>(i)])) + spare,
+                    area.getHeight()};
+        }
         const float w =
             (area.getWidth() - gap * static_cast<float>(count() - 1)) / static_cast<float>(count());
         return juce::Rectangle<float>(

@@ -16,8 +16,8 @@ std::vector<engine::ParameterInfo> infos()
 {
     std::vector<engine::ParameterInfo> list(count);
     list[steps] = {"Steps", "", -7.0f, 7.0f, 0.0f};
-    list[semitones] = {"Semitones", "st", -24.0f, 24.0f, 0.0f};
-    list[octaves] = {"Octaves", "oct", -4.0f, 4.0f, 0.0f};
+    list[semitones] = {"Semitones", "", -24.0f, 24.0f, 0.0f};
+    list[octaves] = {"Octaves", "", -4.0f, 4.0f, 0.0f};
     for (auto& info : list)
         info.integer = true;
     return list;
