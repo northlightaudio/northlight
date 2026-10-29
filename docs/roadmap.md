@@ -35,7 +35,7 @@ DAW is in place:
 - **Plugins:** VST3 and CLAP hosting with out-of-process scanning, sidechains and
   automation.
 - **MIDI and instruments:** a piano roll with controller lanes, MIDI file import and
-  export, external MIDI output, and five bundled instruments.
+  export, external MIDI output, and six bundled instruments.
 - **Time and pitch:** a tempo track, clip time-stretch, and vocal pitch editing.
 - **Editing and output:** clip editing and markers, offline export with loudness
   normalisation and dither, track freezing and folders.

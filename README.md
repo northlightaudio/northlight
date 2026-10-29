@@ -18,7 +18,7 @@ interface designed before it was built. Free software under the GNU AGPLv3.
   compensation everywhere, plus a six-module channel strip on every channel.
 - **Hosts** VST3 and CLAP instruments and effects. Plugins are scanned in a separate
   process, so a bad one cannot take Northlight down.
-- **Plays MIDI** through a piano roll with controller lanes, five bundled instruments,
+- **Plays MIDI** through a piano roll with controller lanes, six bundled instruments,
   external MIDI devices and Standard MIDI Files.
 - **Follows the music** with a tempo track, clip time-stretch and transposition, and
   vocal pitch editing.

@@ -967,9 +967,9 @@ ring in the hue. A display's readout is `value` at its top right.
 
 Every built-in effect has presets: a factory list (8 to 14 for most, six levels for
 Gain), the first of them its defaults ("Default", or Patina's "Gentle Age"), and the
-user's own. Aurora, Nebula and Starbit have them too, in the preset bars of their
-faces (7.4b-7.4e): the same list, menu and files, the bar drawn in the face's own
-style (its well, no chevron on the name).
+user's own. Aurora, Nebula, Starbit and Cirrus have them too, in the preset bars of
+their faces (7.4b-7.4e, 7.4h): the same list, menu and files, the bar drawn in the
+face's own style (its well, no chevron on the name).
 
 - **Where.** A preset bar (design-system.md "Preset bar") in the effect card's
   header in the Editor panel, right of the name and before the menu, and in the

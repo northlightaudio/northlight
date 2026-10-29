@@ -17,8 +17,10 @@ default. Phase 3 has all ten presets written as best guesses, each tested to sou
 and stay below full scale across the keyboard; they still need tuning by ear on a
 release build. Phase 4 is written: the face spec (screens/plugins.md 7.4h) and
 two new patterns in design-system.md. Phase 5 is built: `ui/strip/CirrusEditor`,
-with `cirrus::Activity` for its live parts, captured at 100% and 200%. Phase 6
-(the changelog, the user guide and the roadmap) is next.
+with `cirrus::Activity` for its live parts, captured at 100% and 200%. Phase 6 is
+done: the changelog, the user guide, the roadmap, the README and architecture.md.
+What is left is listening: tuning the presets by ear on a release build, then the
+`SynthFingerprintTests` entry once the sound is final.
 
 ## The name and the idea
 

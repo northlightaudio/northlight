@@ -6,7 +6,7 @@
 // The factory presets of the built-in effects (screens/plugins.md 7.2b): for each
 // effect type a list of named settings, each a full set of parameter values in
 // the type's parameter order. The first of an effect's list is its defaults.
-// Aurora, Nebula and Starbit build their lists by index in their own files
+// Aurora, Nebula, Starbit and Cirrus build their lists by index in their own files
 // (aurora::presets() and the like) and are served here too. JUCE-free.
 
 namespace northlight::plugins
