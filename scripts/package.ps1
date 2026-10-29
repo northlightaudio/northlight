@@ -46,7 +46,8 @@
   Build without running the tests.
 
 .PARAMETER InnoSetup
-  Path to ISCC.exe. Default: ISCC on PATH, then the usual install folders.
+  Path to ISCC.exe. Default: $env:NORTHLIGHT_INNO_SETUP, then ISCC on PATH, then
+  the usual install folders.
 
 .PARAMETER Jobs
   Compile at most this many files at once (build.ps1 -Jobs).
@@ -62,7 +63,7 @@ param(
     [string]$SigningMetadata = $env:NORTHLIGHT_SIGNING_METADATA,
     [switch]$SkipBuild,
     [switch]$SkipTests,
-    [string]$InnoSetup = '',
+    [string]$InnoSetup = $env:NORTHLIGHT_INNO_SETUP,
     [ValidateRange(0, 256)]
     [int]$Jobs = 0,
     [switch]$LowPriority
@@ -85,14 +86,13 @@ function Find-InnoSetup {
     $onPath = Get-Command ISCC.exe -ErrorAction SilentlyContinue
     if ($onPath) { return $onPath.Source }
     $candidates = @(
-        'H:\Tools\InnoSetup\ISCC.exe',
         (Join-Path ${env:ProgramFiles(x86)} 'Inno Setup 6\ISCC.exe'),
         (Join-Path $env:ProgramFiles 'Inno Setup 6\ISCC.exe'),
         (Join-Path $env:LOCALAPPDATA 'Programs\Inno Setup 6\ISCC.exe'))
     foreach ($candidate in $candidates) {
         if (Test-Path $candidate) { return $candidate }
     }
-    throw 'Inno Setup 6 (ISCC.exe) was not found. Install it, or pass -InnoSetup <path to ISCC.exe>.'
+    throw 'Inno Setup 6 (ISCC.exe) was not found. Install it, pass -InnoSetup <path to ISCC.exe>, or set NORTHLIGHT_INNO_SETUP.'
 }
 
 function Find-SignTool {

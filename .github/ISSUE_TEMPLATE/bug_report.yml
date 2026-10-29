@@ -1,0 +1,58 @@
+name: Bug report
+description: Something in Northlight doesn't work, crashes or sounds wrong.
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for taking the time. Please search the open issues first, in case it is already known.
+        A security problem goes to the Security tab instead (see SECURITY.md).
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened
+      description: What you saw or heard, and what you expected instead.
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      description: From opening Northlight, the shortest steps that make it happen. Say how often it happens.
+      placeholder: |
+        1. Open a new project and add an audio track.
+        2. ...
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: Northlight version
+      description: From the About box, such as `0.2.0-dev · 1cb6f30`.
+    validations:
+      required: true
+  - type: input
+    id: windows
+    attributes:
+      label: Windows version
+      placeholder: Windows 11 24H2
+    validations:
+      required: true
+  - type: textarea
+    id: audio
+    attributes:
+      label: Audio setup
+      description: The interface and driver (ASIO or Windows Audio), the sample rate and the buffer size. Leave it empty if it has nothing to do with audio.
+      placeholder: Focusrite Scarlett 2i2, Focusrite USB ASIO, 48 kHz, 128 samples
+  - type: textarea
+    id: plugins
+    attributes:
+      label: Plugins involved
+      description: Name, maker, version and format (VST3 or CLAP) of any plugin involved.
+  - type: textarea
+    id: files
+    attributes:
+      label: Crash report, project or recording
+      description: |
+        After a crash, attach the newest `.dmp` and `.txt` from `%APPDATA%\Northlight\Crashes`.
+        A small project that shows the problem helps a lot. Zip files to attach them.

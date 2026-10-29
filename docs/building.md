@@ -144,9 +144,9 @@ installer needs the Visual C++ Redistributable. Settings and recordings stay in
 `%APPDATA%` and `Documents` either way (see [User data](#user-data)), so the zip is
 portable only in that it needs no install.
 
-The installer needs **Inno Setup 6**. The script finds `ISCC.exe` on PATH, in
-`H:\Tools\InnoSetup`, or in the usual install folders; `-InnoSetup <path>` names
-another. The installer:
+The installer needs **Inno Setup 6**. The script uses the `ISCC.exe` that
+`-InnoSetup <path>` or the `NORTHLIGHT_INNO_SETUP` environment variable names,
+otherwise the one on PATH or in the usual install folders. The installer:
 
 - installs for the current user by default (no administrator), with an option
   to install for everyone in Program Files;

@@ -4,7 +4,9 @@ Thanks for your interest. This page covers how to build and check a change, the
 conventions the code follows, and what a good commit looks like.
 
 By contributing you agree that your contribution is licensed under the GNU AGPLv3,
-the project's licence ([LICENSE](LICENSE)).
+the project's licence ([LICENSE](LICENSE)), and to follow the
+[code of conduct](CODE_OF_CONDUCT.md). Report security problems privately, as
+[SECURITY.md](SECURITY.md) describes, not in an issue.
 
 ## Before you start
 

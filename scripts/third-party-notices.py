@@ -14,6 +14,7 @@ test-only.
 
 import argparse
 import os
+import re
 import sys
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -64,6 +65,15 @@ def read(path, cut=None):
     return text.strip("\n")
 
 
+def juce_tag():
+    """The JUCE version CMakeLists.txt fetches, so the notes can link to that tree."""
+    with open(os.path.join(ROOT, "CMakeLists.txt"), encoding="utf-8") as f:
+        match = re.search(r"FetchContent_Declare\(JUCE\b[^)]*?GIT_TAG\s+(\S+)", f.read())
+    if not match:
+        sys.exit("CMakeLists.txt: JUCE's GIT_TAG not found")
+    return match.group(1)
+
+
 def section(name, purpose, licence, text):
     fence = "````"
     return f"### {name}\n\n{purpose}. Licence: {licence}.\n\n{fence}text\n{text}\n{fence}\n"
@@ -104,8 +114,15 @@ def main():
         "Trademarks: VST is a registered trademark and ASIO a trademark of Steinberg Media "
         "Technologies GmbH. They are used here only to name the formats Northlight supports.\n")
     parts.append("## Licence texts\n")
+    tag = juce_tag()
     for name, purpose, licence, rel, cut in ENTRIES:
         parts.append(section(name, purpose, licence, read(os.path.join(args.deps, rel), cut)))
+        if rel == "juce-src/LICENSE.md":
+            # JUCE's licence names its bundled libraries by paths inside its own source
+            # tree; the quote stays verbatim, and this says where those paths are.
+            parts.append(
+                f"The paths above are relative to JUCE's source tree; see them in "
+                f"[JUCE {tag}](https://github.com/juce-framework/JUCE/tree/{tag}).\n")
     parts.append("## Used only to build and test\n")
     parts.append(section(TEST_ONLY[0], TEST_ONLY[1], TEST_ONLY[2], read(os.path.join(args.deps, TEST_ONLY[3]))))
 

@@ -51,6 +51,8 @@ Everything else, ASIO support included, is downloaded on the first build.
 | [docs/user-guide.md](docs/user-guide.md) | A tour of Northlight for users: setup, recording, mixing, instruments, export |
 | [docs/design/](docs/design/README.md) | The brand, the design system and the specification of every screen |
 | [CONTRIBUTING.md](CONTRIBUTING.md) | How to contribute: checks, code conventions, commits |
+| [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md) | How we treat each other in the project |
+| [SECURITY.md](SECURITY.md) | How to report a security problem privately |
 
 ## Licence
 

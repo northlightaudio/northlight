@@ -102,6 +102,8 @@ Dependencies in the build system:
 - [Android Gradle](examples/DemoRunner/Builds/Android/gradle/wrapper/LICENSE-for-gradlewrapper.txt) ([Apache 2.0](examples/DemoRunner/Builds/Android/gradle/wrapper/LICENSE-for-gradlewrapper.txt))
 ````
 
+The paths above are relative to JUCE's source tree; see them in [JUCE 8.0.15](https://github.com/juce-framework/JUCE/tree/8.0.15).
+
 ### VST3 SDK (bundled with JUCE)
 
 Hosting VST3 plugins. Licence: MIT.

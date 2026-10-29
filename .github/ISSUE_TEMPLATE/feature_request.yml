@@ -1,0 +1,27 @@
+name: Feature request
+description: Something Northlight should do that it doesn't.
+labels: [enhancement]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        The [roadmap](https://github.com/northlightaudio/northlight/blob/main/docs/roadmap.md) says where Northlight is going and what it will not try to be, such as macOS, video or VST2. Please check it and the open issues first.
+  - type: textarea
+    id: problem
+    attributes:
+      label: What you are trying to do
+      description: The task in your recording or mixing work, and what gets in the way today.
+    validations:
+      required: true
+  - type: textarea
+    id: idea
+    attributes:
+      label: What would help
+      description: How you picture it working. If another DAW does it well, say which and how.
+    validations:
+      required: true
+  - type: textarea
+    id: workaround
+    attributes:
+      label: What you do now
+      description: Any workaround you use in the meantime.
