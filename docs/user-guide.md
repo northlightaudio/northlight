@@ -294,9 +294,11 @@ track can also play an external instrument through a MIDI output.
 other waves) at a ratio of the note, or at a fixed frequency. An operator either
 is heard or bends the phase of another, which adds overtones: the louder the
 modulator, the brighter the note. The **algorithm** decides which does which;
-click one of the eight in the picker, and click an operator, in the diagram or
-its column, to edit it. Velocity on a modulator makes harder playing brighter,
-and key scale keeps high notes from turning harsh. **Tone** turns every modulator
+choose one of the eight with the numbered buttons. Every operator is a row of the
+table, edited where its values show; click an operator (its row, or its square in
+the diagram) to see its sidebands or edit its envelope in the display. Velocity
+on a modulator makes harder playing brighter, and key scale keeps high notes from
+turning harsh. **Tone** turns every modulator
 up or down at once and **Time** stretches or shortens every envelope, so a preset
 can be made brighter or longer without editing four operators. Drag the loop on
 operator 4 for feedback, which turns its sine towards a saw. **High** quality

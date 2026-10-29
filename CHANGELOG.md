@@ -19,9 +19,10 @@ Northlight has not had a release yet. The first release, 0.1.0, will include:
   modulator at once and Time lengthens or shortens every envelope; there are a
   pitch bend at the start of each note, an LFO (synced to the tempo if you like),
   Mono with glide, and High quality, which keeps high, bright notes clean. Its
-  face draws the routing you choose, a live spectrum of what it plays and an
-  evening sky that catches the colour of the sound. Ten presets, from electric
-  pianos and bells to basses, brass and organ.
+  face draws the routing you choose and shows what FM does to the note playing:
+  the carrier and its sidebands, as loud as the selected modulator makes them.
+  All four operators sit in one table, every value editable where it shows.
+  Ten presets, from electric pianos and bells to basses, brass and organ.
 
 - Northlight comes as an installer and as a portable zip. The installer installs
   for you alone without administrator rights (or for everyone), adds a Start menu

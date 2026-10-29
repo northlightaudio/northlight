@@ -15,9 +15,12 @@ editor. The build went ahead on the plan's
 answers to the open questions: four operators, no patch import, High quality by
 default. Phase 3 has all ten presets written as best guesses, each tested to sound
 and stay below full scale across the keyboard; they still need tuning by ear on a
-release build. Phase 4 is written: the face spec (screens/plugins.md 7.4h) and
-two new patterns in design-system.md. Phase 5 is built: `ui/strip/CirrusEditor`,
-with `cirrus::Activity` for its live parts, captured at 100% and 200%. Phase 6 is
+release build. Phases 4 and 5 are done: the face spec (screens/plugins.md 7.4h),
+its patterns in design-system.md and `ui/strip/CirrusEditor`, with
+`cirrus::Activity` for its live parts, captured at 100% and 200%. The first face,
+an evening sky over glass panels, was replaced by a precise one (four mockups
+were drawn and this one chosen): the sidebands of the selected operator over a
+table of all four. Phase 6 is
 done: the changelog, the user guide, the roadmap, the README and architecture.md.
 What is left is listening: tuning the presets by ear on a release build, then the
 `SynthFingerprintTests` entry once the sound is final.
@@ -34,11 +37,10 @@ brightness changes as a note fades, as the colour on the cloud does. A modulator
 makes sidebands, bright copies of the note either side of it, as the crystals make
 sundogs. The name sits with Aurora and Vesper in the Machair dusk brand.
 
-The picture behind the face: **an evening sky where the sound is the light on the
-cloud.** The harder the modulators work, the more colour the streaks catch and the
-wider the sundogs stand from the sun. The display draws the routing and the
-resulting spectrum literally, so a user can see why turning up a modulator makes
-the sound brighter.
+The face keeps the idea in what it shows rather than in a picture: the display
+draws the sidebands themselves, the copies of the note either side of it, so a
+user can see why turning up a modulator makes the sound brighter, and the
+routing is drawn as a diagram.
 
 ## Goals
 
@@ -163,8 +165,8 @@ carriers' envelopes are all off is inactive.
 
 | Where | What |
 |---|---|
-| `src/plugins/Cirrus.h`, `.cpp` | Parameters, presets, the processor (on `MeteredBuiltIn`, with the output tap for the face's spectrum) |
-| `src/plugins/fm/Fm.h`, `.cpp` | Wave tables, the algorithm table and the level curve. JUCE-free |
+| `src/plugins/Cirrus.h`, `.cpp` | Parameters, presets, the processor (on `MeteredBuiltIn`), and `Activity`, what the face reads live |
+| `src/plugins/fm/Fm.h`, `.cpp` | Wave tables, the algorithm table, the level curve and `besselJ` (the sidebands' amplitudes). JUCE-free |
 | `src/plugins/BuiltIns.cpp` | Registry entry: `{cirrus::type, "Cirrus", instrument, ..., pl::cirrusPresets, "FM synth"}` |
 | `src/plugins/EffectPresetLists.h`, `EffectPresets.cpp` | `cirrusPresets()` |
 | `src/ui/strip/CirrusEditor.h`, `.cpp` | The face |
@@ -176,45 +178,27 @@ needs no new model fields. The ParameterKeys golden list gains Cirrus's entry.
 
 ## The face (specified in screens/plugins.md, 7.4h)
 
-The spec is the definition of done; this section is the brief it was written
-from. Writing it changed four things so the face stays about 1000 px wide like
-the other instruments: the output controls (High cut, Width, Level, Quality)
-joined the spectrum in one TONE panel with the macros. Pitch and the LFO share
-a panel. Feedback has its knob under the algorithm picker, as well as the loop
-to drag on the diagram. The live parts read a `cirrus::Activity`: each
-operator's level and the modulation depth, as Pulsar's does. The routing
-diagram and the operator column are new patterns in design-system.md.
+The spec is the definition of done. The face is a flat, ruled instrument, about
+1000 px wide and 378 px tall:
 
-The brief:
+- **Top bar:** CIRRUS in the mono face, eight algorithm buttons with the routing
+  as text beside them ("2 → 1 · 4 → 3"), the preset bar and sixteen voice lights.
+- **ROUTING:** the chosen algorithm as a diagram, each operator a square in its
+  hue (1 Thrift, 2 Gorse, 3 Sea grass, 4 Loch), op 4's feedback loop to drag, and
+  the Feedback knob. Click an operator to select it.
+- **The display:** the selected operator's pair as the carrier and five sidebands
+  either side, as tall as their Bessel amplitudes at the note being played, or the
+  operator's envelope to drag with its four times as cells.
+- **PITCH · LFO:** Rate, Pitch, Bright, Shape; Bend, Bend time, Glide, Sync; Mono.
+- **The operators' table:** a row per operator (ratio or fixed frequency, fine,
+  detune, wave, level with its live level, envelope, velocity, key scale), every
+  value edited where it shows.
+- **TONE:** Tone and Time large, then High cut, Width and Level, and Quality.
 
-- **Sky:** an early-evening sky graded from Gorse at the horizon through Thrift
-  and Heather to Loch at the top, with a low sun near the horizon and long streaks
-  of cirrus across the upper half. While it plays the streaks catch colour with
-  the output's brightness and a sundog stands either side of the sun, further out
-  as the sidebands spread; still when silent or with reduce motion on.
-- **Header:** the wordmark CIRRUS, light and tracked wide in a Gorse-to-Heather
-  gradient, "FM
-  SYNTH · NORTHLIGHT", the preset bar, sixteen voice lights (two rows of eight).
-- **ALGORITHM panel:** the eight routings as small diagrams in a 4x2 grid, the
-  chosen one lit; above them the chosen routing drawn large, each operator a disc
-  in its hue (1 Thrift, 2 Gorse, 3 Sea grass, 4 Loch) with its connections, the
-  feedback loop on 4, carriers sitting on a baseline. Click an operator to select
-  it; its glow follows its live envelope.
-- **OPERATORS strip:** four columns, one per operator, each with its ratio (or
-  fixed frequency) as a large readout, its wave as a tiny cycle, a level slider and
-  a mini envelope. Click a column to select.
-- **Selected operator panel:** its envelope large (reusing `AdsrDisplay`, drag the
-  handles), Ratio / Fine / Detune / Fixed, Wave as a chip, Level, Velocity, Key
-  scale, and Feedback for operator 4.
-- **SPECTRUM panel:** the output's partials live (`TapSpectrum`), so turning up a
-  modulator visibly spreads sidebands (the sundogs in the sky are the same
-  reading). Tone and Time macro knobs beside it, larger
-  than the rest.
-- **PITCH and LFO panels**, and **OUTPUT** (High cut, Width, Level, Quality chip).
-
-Hues, sizes and type all come from `ui::Theme`; anything the design system lacks
-(the algorithm diagram, the operator column) is added to `design-system.md` first.
-Captured at 100% and 200% and checked by eye before it is done.
+The live parts read a `cirrus::Activity` (the newest voice's note, each
+operator's level and the modulation depth), as Pulsar's does. The routing diagram
+and the parameter table are patterns in design-system.md. Captured at 100% and
+200% and checked by eye.
 
 ## Presets
 
