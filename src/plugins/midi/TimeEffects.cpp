@@ -177,6 +177,23 @@ private:
             }
         if (count_ < static_cast<int>(held_.size()))
             held_[static_cast<size_t>(count_++)] = {e.channel, e.note, e.velocity, 0.0f, at};
+        // The chord as it grows: what the editor shows once the keys are up.
+        std::copy(held_.begin(), held_.begin() + count_, full_.begin());
+        fullCount_ = count_;
+        publishOrder();
+    }
+    // The held keys in the order pressed, for the editor's step lane; with
+    // none held, the last chord at its fullest, so its pattern stays readable.
+    void publishOrder() noexcept
+    {
+        const auto& keys = count_ > 0 ? held_ : full_;
+        const int n = count_ > 0 ? count_ : fullCount_;
+        auto& f = published();
+        for (int i = 0; i < n; ++i)
+            f.order[static_cast<size_t>(i)].store(keys[static_cast<size_t>(i)].note,
+                                                  std::memory_order_relaxed);
+        f.orderCount.store(n, std::memory_order_relaxed);
+        f.changed();
     }
     void noteOff(const MidiEvent& e) noexcept override
     {
@@ -192,6 +209,7 @@ private:
                 --count_;
                 break;
             }
+        publishOrder();
         if (count_ == 0)
             clear();
     }
@@ -222,6 +240,8 @@ private:
                       [](const Key& a, const Key& b) { return a.note < b.note; });
         const int total = count_ * octaves_;
         const int k = step_++;
+        published().step.store(k, std::memory_order_relaxed);
+        published().changed();
         const auto velocityOf = [&](const Key& key)
         { return fixedVelocity_ > 0 ? fixedVelocity_ : key.velocity; };
         if (mode_ == chord)
@@ -248,6 +268,8 @@ private:
     int fixedVelocity_ = 0;
     std::array<Key, 32> held_{};
     int count_ = 0;
+    std::array<Key, 32> full_{}; // the last chord at its fullest (the editor's)
+    int fullCount_ = 0;
     int physical_ = 0; // keys down now (the list can be latched)
     int step_ = 0;
     midi::StepClock clock_;

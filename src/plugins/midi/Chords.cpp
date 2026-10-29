@@ -283,6 +283,7 @@ private:
             {
                 s.chord.notes[static_cast<size_t>(s.chord.count)] = note;
                 s.starts[static_cast<size_t>(s.chord.count++)] = start;
+                willPlay(note);
             }
         }
     }

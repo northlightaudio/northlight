@@ -1,7 +1,9 @@
 #include "engine/Midi.h"
 #include "engine/rt/RealtimeGuard.h"
 #include "plugins/BuiltIns.h"
+#include "plugins/midi/Chords.h"
 #include "plugins/midi/MidiEffectBase.h"
+#include "plugins/midi/TimeEffects.h"
 #include "plugins/midi/Transpose.h"
 
 #include <catch2/catch_test_macros.hpp>
@@ -399,5 +401,59 @@ TEST_CASE("Every MIDI effect at its defaults falls silent once the keys are up",
     {
         CAPTURE(type);
         CHECK(playHard(type, false, 600) == 0); // 600 blocks: over three seconds of tail
+    }
+}
+
+TEST_CASE("A MIDI effect's note feedback shows what is held, what sounds and the last key's notes",
+          "[plugins][midi][feedback]")
+{
+    using engine::NoteFeedback;
+    Runner r(plugins::transpose::create());
+    r.effect->setParameter(plugins::transpose::octaves, 1.0f);
+    const auto* n = r.effect->noteFeedback();
+    REQUIRE(n != nullptr);
+    const auto before = n->changes.load();
+    r.block({on(0, 60, 90)});
+    CHECK(n->changes.load() != before);
+    CHECK(NoteFeedback::test(n->held, 60));
+    CHECK(NoteFeedback::test(n->sounding, 72));
+    CHECK_FALSE(NoteFeedback::test(n->sounding, 60));
+    CHECK(NoteFeedback::test(n->last, 72));
+    CHECK(n->lastInput.load() == 60);
+    REQUIRE(n->velocityCount.load() == 1);
+    CHECK(n->velocities[0].load() == (90 << 8 | 90));
+    r.block({off(0, 60)});
+    CHECK_FALSE(NoteFeedback::test(n->held, 60));
+    CHECK_FALSE(NoteFeedback::test(n->sounding, 72));
+    CHECK(NoteFeedback::test(n->last, 72)); // the last chord stays to be read
+    // A stop clears what sounds.
+    r.block({on(0, 64)});
+    r.block({{0, MidiEvent::Type::allNotesOff, 0, 0, 0}});
+    CHECK_FALSE(NoteFeedback::test(n->sounding, 76));
+}
+
+TEST_CASE("A strummed chord's feedback names all its notes, and the arpeggiator its order and step",
+          "[plugins][midi][feedback]")
+{
+    using engine::NoteFeedback;
+    {
+        Runner r(plugins::chord::create());
+        r.effect->setParameter(plugins::chord::strum, 1.0f);
+        r.block({on(0, 60)});
+        const auto* n = r.effect->noteFeedback();
+        CHECK(NoteFeedback::test(n->last, 60));
+        CHECK(NoteFeedback::test(n->last, 64)); // not played yet, but the key's
+        CHECK(NoteFeedback::test(n->last, 67));
+    }
+    {
+        Runner r(plugins::arpeggiator::create());
+        r.block({on(0, 67), on(0, 60)});
+        const auto* n = r.effect->noteFeedback();
+        REQUIRE(n->orderCount.load() == 2);
+        CHECK(n->order[0].load() == 67); // as pressed
+        CHECK(n->order[1].load() == 60);
+        CHECK(n->step.load() == 0);
+        r.block({off(0, 67), off(0, 60)});
+        CHECK(n->orderCount.load() == 2); // the last chord's pattern stays
     }
 }
