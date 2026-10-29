@@ -13,6 +13,11 @@ Northlight has not had a release yet. The first release, 0.1.0, will include:
 
 ### Added
 
+- Northlight comes as an installer and as a portable zip. The installer installs
+  for you alone without administrator rights (or for everyone), adds a Start menu
+  shortcut and opens `.northlight` projects with a double-click. Neither needs the
+  Visual C++ Redistributable.
+
 - Keyboard: Tab now moves through the main window in order (header bar, the
   selected track's header, the arrange view, the dock, the side panel, the status
   bar) and wraps; Up and Down move between tracks with the focus. Ctrl+Left and

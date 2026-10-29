@@ -44,6 +44,7 @@ ctest --preset windows-debug
 | `windows-debug` | Debug | Real-time checks on |
 | `windows-relwithdebinfo` | RelWithDebInfo | For profiling |
 | `windows-release` | Release | Real-time checks off |
+| `package` | Release | Warnings as errors; built by `scripts/package.ps1` into `build/package` |
 | `ci` | RelWithDebInfo | Warnings as errors |
 
 The application is `build/<preset>/src/app/northlight_artefacts/<config>/Northlight.exe`.
@@ -110,6 +111,90 @@ What is missing on Linux:
 | `NORTHLIGHT_ASIO` | ON | ASIO audio devices (Windows only) |
 | `NORTHLIGHT_ASIO_SDK_DIR` | empty | Optional: an ASIO SDK root whose header replaces the one bundled with JUCE |
 | `NORTHLIGHT_VERSION_LABEL` | `dev` | The version's label: `dev`, a pre-release such as `beta.1`, or empty for a release (see [CONTRIBUTING.md](../CONTRIBUTING.md#versions-and-releases)) |
+
+## Packaging
+
+`scripts/package.ps1` makes what people download: a portable zip and an installer,
+both from the same files.
+
+```powershell
+.\scripts\package.ps1                        # a dev package, unsigned
+.\scripts\package.ps1 -Label ''              # a final release (clean tree, at the tag)
+.\scripts\package.ps1 -Label beta.1 -Sign    # a signed pre-release
+```
+
+It builds the `package` preset (Release, warnings as errors) in `build/package`,
+which no other preset shares, runs the tests except the timed `perf` budgets,
+copies the app folder to `build/package/stage`, signs the executables when asked,
+and writes to `build/package/dist`:
+
+| File | What it is |
+|---|---|
+| `Northlight-<version>-x64.zip` | The portable app: one folder to unzip anywhere and run. The executables, `assets/`, the licence and the notices |
+| `Northlight-<version>-Setup-x64.exe` | The installer ([installer/Northlight.iss](../installer/Northlight.iss), Inno Setup 6) |
+| `SHA256SUMS.txt` | Checksums of both, for `sha256sum -c` |
+
+The version is `0.1.0-dev+1cb6f30` for a dev package, `0.1.0-beta.1` or `0.1.0` for
+the others. Any label other than `dev` refuses to package uncommitted changes, so a
+release is exactly its tag. `-SkipBuild` packages an existing build again and
+`-LowPriority` and `-Jobs` work as in `build.ps1`.
+
+The C++ runtime is linked into the executables, so neither the zip nor the
+installer needs the Visual C++ Redistributable. Settings and recordings stay in
+`%APPDATA%` and `Documents` either way (see [User data](#user-data)), so the zip is
+portable only in that it needs no install.
+
+The installer needs **Inno Setup 6**. The script finds `ISCC.exe` on PATH, in
+`H:\Tools\InnoSetup`, or in the usual install folders; `-InnoSetup <path>` names
+another. The installer:
+
+- installs for the current user by default (no administrator), with an option
+  to install for everyone in Program Files;
+- adds a Start menu shortcut, an optional desktop shortcut, and opens
+  `.northlight` files with Northlight (a task the person can untick);
+- closes a running Northlight before an upgrade, and replaces `assets/` whole so
+  nothing a newer version dropped lingers;
+- leaves settings, plugin lists and recordings when uninstalled.
+
+### Signing
+
+Signing uses [Azure Trusted Signing](https://learn.microsoft.com/azure/trusted-signing/)
+(Microsoft is renaming it Artifact Signing) through `signtool` and its plug-in, so
+there is no certificate file or hardware token. `-Sign` signs both executables
+before they are zipped, then the installer and its uninstaller, every one with an
+RFC 3161 timestamp so the signatures stay valid after the certificate expires,
+and checks each signature. It needs:
+
+- the plug-in, `Azure.CodeSigning.Dlib.dll`, from the
+  `Microsoft.Trusted.Signing.Client` NuGet package: `-SigningDlib` or
+  `NORTHLIGHT_SIGNING_DLIB`;
+- a metadata file naming the account: `-SigningMetadata` or
+  `NORTHLIGHT_SIGNING_METADATA`:
+
+  ```json
+  { "Endpoint": "https://<region>.codesigning.azure.net",
+    "CodeSigningAccountName": "<account>",
+    "CertificateProfileName": "<profile>" }
+  ```
+
+- an Azure sign-in with the *Trusted Signing Certificate Profile Signer* role:
+  `az login` on a PC, or `AZURE_TENANT_ID`, `AZURE_CLIENT_ID` and
+  `AZURE_CLIENT_SECRET` for an app registration.
+
+`signtool` comes with the Windows SDK in the Visual Studio C++ workload.
+
+### Releases from GitHub
+
+Pushing a tag `vX.Y.Z` or `vX.Y.Z-beta.N` runs `.github/workflows/release.yml`: it
+checks the tag against the version in `CMakeLists.txt`, runs `package.ps1` with the
+tag's label and attaches the zip, installer and checksums to a **draft** release to
+be reviewed and published by hand. Running the workflow by hand makes a dev package
+and keeps it as a workflow artifact.
+
+The workflow signs once the repository variable `NORTHLIGHT_SIGNING` is `true`. It
+then reads the account from the variables `TRUSTED_SIGNING_ENDPOINT`,
+`TRUSTED_SIGNING_ACCOUNT` and `TRUSTED_SIGNING_PROFILE`, and signs in with the
+secrets `AZURE_TENANT_ID`, `AZURE_CLIENT_ID` and `AZURE_CLIENT_SECRET`.
 
 ## Tests
 

@@ -22,6 +22,10 @@
   With -Test, run only the tests with this CTest label (perf: the UI paint-time
   budgets, registered in a Release build; docs/ui-performance.md).
 
+.PARAMETER Define
+  Extra CMake cache settings for the configure step, each NAME=VALUE (passed as
+  -DNAME=VALUE). scripts/package.ps1 sets the version label this way.
+
 .PARAMETER Jobs
   Compile at most this many files at once. 0 (the default) uses every core.
 
@@ -32,13 +36,14 @@
 #>
 [CmdletBinding()]
 param(
-    [ValidateSet('windows-debug', 'windows-relwithdebinfo', 'windows-release', 'ci')]
+    [ValidateSet('windows-debug', 'windows-relwithdebinfo', 'windows-release', 'package', 'ci')]
     [string]$Preset = 'windows-debug',
     [switch]$Test,
     [string]$Target = '',
     [string]$Label = '',
     [switch]$Run,
     [switch]$Clean,
+    [string[]]$Define = @(),
     [ValidateRange(0, 256)]
     [int]$Jobs = 0,
     [switch]$LowPriority
@@ -82,7 +87,8 @@ if ($Jobs -gt 0) { $parallel += "$Jobs" }
 
 Push-Location $root
 try {
-    cmake --preset $Preset
+    $defines = @($Define | ForEach-Object { "-D$_" })
+    cmake --preset $Preset @defines
     if ($LASTEXITCODE -ne 0) { throw "configure failed ($LASTEXITCODE)" }
 
     $targets = @()

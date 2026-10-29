@@ -1,0 +1,118 @@
+name: Release
+
+# A tag vX.Y.Z (or vX.Y.Z-beta.N) builds the portable zip and the installer with
+# scripts/package.ps1 and attaches them to a draft GitHub release. Running the
+# workflow by hand builds a dev package and keeps it as a workflow artifact.
+#
+# Signing is off until the repository variable NORTHLIGHT_SIGNING is 'true'. It
+# then also needs (docs/building.md, "Signing"):
+#   variables  TRUSTED_SIGNING_ENDPOINT, TRUSTED_SIGNING_ACCOUNT, TRUSTED_SIGNING_PROFILE
+#   secrets    AZURE_TENANT_ID, AZURE_CLIENT_ID, AZURE_CLIENT_SECRET
+
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  INNO_SETUP_URL: https://github.com/jrsoftware/issrc/releases/download/is-6_7_4/innosetup-6.7.4.exe
+  INNO_SETUP_SHA256: A549929319F9120716677C685535CA4671E4B937B5FDC87E2585F32D8EB30E8C
+  SIGN: ${{ vars.NORTHLIGHT_SIGNING == 'true' }}
+
+jobs:
+  package:
+    name: Package for Windows x64
+    runs-on: windows-latest
+    timeout-minutes: 90
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Work out the version label
+        id: version
+        shell: pwsh
+        run: |
+          $label = 'dev'
+          if ('${{ github.ref_type }}' -eq 'tag') {
+            $tag = '${{ github.ref_name }}'
+            if ($tag -notmatch '^v(\d+\.\d+\.\d+)(?:-(.+))?$') { throw "Tag $tag is not vX.Y.Z or vX.Y.Z-label" }
+            $number = $Matches[1]
+            $label = "$($Matches[2])"
+            $project = Select-String -Path CMakeLists.txt -Pattern '^\s+VERSION\s+(\d+\.\d+\.\d+)' | Select-Object -First 1
+            if ($project.Matches[0].Groups[1].Value -ne $number) {
+              throw "Tag $tag does not match the version in CMakeLists.txt ($($project.Matches[0].Groups[1].Value))"
+            }
+          }
+          "label=$label" >> $env:GITHUB_OUTPUT
+          "prerelease=$([bool]$label)".ToLower() >> $env:GITHUB_OUTPUT
+
+      - name: Cache fetched dependencies
+        uses: actions/cache@v4
+        with:
+          path: build/package/_deps
+          key: deps-package-${{ runner.os }}-${{ hashFiles('CMakeLists.txt') }}
+
+      - name: Install Inno Setup
+        shell: pwsh
+        run: |
+          $installer = Join-Path $env:RUNNER_TEMP 'innosetup.exe'
+          Invoke-WebRequest -Uri $env:INNO_SETUP_URL -OutFile $installer
+          if ((Get-FileHash $installer).Hash -ne $env:INNO_SETUP_SHA256) { throw 'Inno Setup download does not match its checksum' }
+          $dir = Join-Path $env:RUNNER_TEMP 'InnoSetup'
+          Start-Process -FilePath $installer -Wait -ArgumentList '/VERYSILENT', '/SUPPRESSMSGBOXES', '/NORESTART', '/CURRENTUSER', '/PORTABLE=1', "/DIR=$dir", '/NOICONS'
+          if (-not (Test-Path "$dir\ISCC.exe")) { throw 'Inno Setup did not install' }
+          "ISCC=$dir\ISCC.exe" >> $env:GITHUB_ENV
+
+      - name: Set up Trusted Signing
+        if: env.SIGN == 'true'
+        shell: pwsh
+        run: |
+          # The signtool plug-in (Azure.CodeSigning.Dlib.dll) comes in this NuGet package.
+          $tools = Join-Path $env:RUNNER_TEMP 'signing'
+          nuget install Microsoft.Trusted.Signing.Client -OutputDirectory $tools -ExcludeVersion -NonInteractive
+          $dlib = Get-ChildItem -Path $tools -Recurse -Filter Azure.CodeSigning.Dlib.dll | Where-Object { $_.Directory.Name -eq 'x64' } | Select-Object -First 1
+          if (-not $dlib) { throw 'Azure.CodeSigning.Dlib.dll not found in the Trusted Signing client package' }
+          $metadata = Join-Path $tools 'metadata.json'
+          @{
+            Endpoint = '${{ vars.TRUSTED_SIGNING_ENDPOINT }}'
+            CodeSigningAccountName = '${{ vars.TRUSTED_SIGNING_ACCOUNT }}'
+            CertificateProfileName = '${{ vars.TRUSTED_SIGNING_PROFILE }}'
+          } | ConvertTo-Json | Set-Content -Path $metadata -Encoding utf8
+          "NORTHLIGHT_SIGNING_DLIB=$($dlib.FullName)" >> $env:GITHUB_ENV
+          "NORTHLIGHT_SIGNING_METADATA=$metadata" >> $env:GITHUB_ENV
+
+      - name: Build, test and package
+        shell: pwsh
+        env:
+          AZURE_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
+          AZURE_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
+          AZURE_CLIENT_SECRET: ${{ secrets.AZURE_CLIENT_SECRET }}
+        run: |
+          $sign = $env:SIGN -eq 'true'
+          .\scripts\package.ps1 -Label '${{ steps.version.outputs.label }}' -Sign:$sign -InnoSetup $env:ISCC
+
+      - name: Keep the package
+        uses: actions/upload-artifact@v4
+        with:
+          name: northlight-windows-x64
+          path: build/package/dist/*
+          if-no-files-found: error
+
+      - name: Draft the GitHub release
+        if: github.ref_type == 'tag'
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $files = Get-ChildItem build/package/dist -File | ForEach-Object { $_.FullName }
+          $flags = @('--draft', '--verify-tag', '--title', 'Northlight ${{ github.ref_name }}', '--notes', 'See CHANGELOG.md for what changed.')
+          if ('${{ steps.version.outputs.prerelease }}' -eq 'true') { $flags += '--prerelease' }
+          gh release create '${{ github.ref_name }}' @flags @files
+          if ($LASTEXITCODE -ne 0) { throw "gh release create failed ($LASTEXITCODE)" }

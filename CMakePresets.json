@@ -34,6 +34,16 @@
       "cacheVariables": { "CMAKE_BUILD_TYPE": "Release", "NORTHLIGHT_RT_CHECKS": "OFF" }
     },
     {
+      "name": "package",
+      "displayName": "Package (Release, warnings as errors; scripts/package.ps1)",
+      "inherits": "windows-base",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Release",
+        "NORTHLIGHT_RT_CHECKS": "OFF",
+        "NORTHLIGHT_WARNINGS_AS_ERRORS": "ON"
+      }
+    },
+    {
       "name": "ci",
       "displayName": "CI (RelWithDebInfo, warnings as errors)",
       "inherits": "windows-base",
@@ -66,6 +76,7 @@
     { "name": "windows-debug", "configurePreset": "windows-debug" },
     { "name": "windows-relwithdebinfo", "configurePreset": "windows-relwithdebinfo" },
     { "name": "windows-release", "configurePreset": "windows-release" },
+    { "name": "package", "configurePreset": "package" },
     { "name": "ci", "configurePreset": "ci" },
     { "name": "linux-debug", "configurePreset": "linux-debug" },
     { "name": "linux-relwithdebinfo", "configurePreset": "linux-relwithdebinfo" }
@@ -74,6 +85,7 @@
     { "name": "windows-debug", "configurePreset": "windows-debug", "output": { "outputOnFailure": true }, "execution": { "timeout": 300, "jobs": 8 } },
     { "name": "windows-relwithdebinfo", "configurePreset": "windows-relwithdebinfo", "output": { "outputOnFailure": true }, "execution": { "timeout": 300, "jobs": 8 } },
     { "name": "windows-release", "configurePreset": "windows-release", "output": { "outputOnFailure": true }, "execution": { "timeout": 300, "jobs": 8 } },
+    { "name": "package", "configurePreset": "package", "output": { "outputOnFailure": true }, "execution": { "timeout": 300, "jobs": 8 } },
     { "name": "ci", "configurePreset": "ci", "output": { "outputOnFailure": true }, "execution": { "timeout": 300, "jobs": 8 } },
     { "name": "linux-debug", "configurePreset": "linux-debug", "output": { "outputOnFailure": true }, "execution": { "timeout": 300, "jobs": 8 } },
     { "name": "linux-relwithdebinfo", "configurePreset": "linux-relwithdebinfo", "output": { "outputOnFailure": true }, "execution": { "timeout": 300, "jobs": 8 } }

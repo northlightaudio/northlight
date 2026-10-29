@@ -158,8 +158,10 @@ names the commit it came from:
    for the version and the date.
 3. Commit, then tag the commit `vX.Y.Z` (or `vX.Y.Z-beta.N` for a pre-release) with
    an annotated tag.
-4. Build from the tag with `-DNORTHLIGHT_VERSION_LABEL=` (empty, or the pre-release
-   label) and the Release preset.
+4. Push the tag. The release workflow builds the portable zip and the installer
+   from it, signed, and drafts a GitHub release with them; check it and publish.
+   `scripts/package.ps1 -Label ''` (or `-Label beta.N`) makes the same files
+   locally ([docs/building.md](docs/building.md#packaging)).
 5. Raise the version on `main` to the next minor (`X.Y+1.0`) so development builds
    are never mistaken for the release.
 
