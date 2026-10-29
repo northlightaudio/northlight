@@ -600,10 +600,87 @@ processor's order.
   wide as the longest name (at most three `controlLarge`), then `space.sm`, then
   the control, left-aligned in a second column so the controls line up.
 - The control: a segmented control for up to four choices, a combo past that
-  (both at their preferred width, on a card track), and a numeric field
-  (two `controlLarge` wide) for a number. Whole numbers show no decimals; a note
-  shows its name; a minimum that means off shows "Off".
+  or when the segments would not fit at their preferred width in the control
+  column (at most eight `controlLarge`), and a numeric field (two `controlLarge`
+  wide) for a number. Whole numbers show no decimals; a note shows its name. An
+  on/off and a value are two rows, never one value that reads "Off".
 - The card grows to fit every row; a row is never cut or squeezed.
+- It is the fallback for a MIDI effect without a face of its own (and later a
+  hosted one without a GUI), not a design: a built-in MIDI effect gets a MIDI face.
+
+### MIDI face
+
+The body of a built-in MIDI effect's card (screens/plugins.md 7.4h): the card
+language of the channel strip and the built-in effects (a display in a well, then
+controls in the hue), in the MIDI family's hue.
+
+- **Hue: Heather** for every MIDI effect, so the MIDI FX read as one family in the
+  chain. Knobs are buds in Heather, pill rows fill the chosen pill in Heather,
+  toggles light in Heather at 25%, corner chips are Heather on Heather at 20%.
+- **Widths**: a face is one of three body widths, so a chain of them lines up:
+  narrow 224, medium 320, wide 416 (seven, ten and thirteen `controlLarge`).
+- **Display**: across the top, in a well (`drawWell`), its face's height at the
+  preferred size (84 to 150 px). It gives way first in a short dock (to 64 px)
+  and takes a taller dock's spare height, up to its face's largest, so a tall dock
+  shows a larger display rather than empty card. Corner chips in its top right
+  hold the display's own choices (a rate, a key).
+- **Pill rows** size each pill to its label (`PillRow::fitLabels`), so ↑ and
+  Random sit in one row; each group is as wide as its pills.
+- **Controls**: under the display in captioned groups (`KnobGroups`: a
+  `captionCaps` `textTertiary` caption over each, a hairline running on from it),
+  one or two rows. A control that does nothing in the current mode stays in its
+  place at 50% and does not take input (the layout never jumps), as Bloom's
+  pre-delay does while synced.
+- **What moves**: the display shows the notes as they go through, from the
+  effect's note feedback, at the panel's frame rate. Notes going in are
+  `textTertiary`; notes the effect plays are Heather. With nothing held yet, the
+  display shows what the settings would do to a C major triad (C3 E3 G3), its
+  notes in Heather at 45%, so a fresh card is never an empty well.
+
+### Keyboard strip
+
+A display part of a MIDI face: a run of piano keys along the bottom of a well.
+
+- Two or three octaves (14 or 21 white keys) across the display's width, the
+  keys as wide as that allows (at least 8 px); the strip is 36 px tall, growing
+  to 56 px in a taller display; black keys 60% of it.
+- White keys `surface3`, black keys `surface0`, 1 px `canvas` between white keys;
+  radius 2 at the keys' feet only.
+- A note the effect plays: the key filled Heather (black keys too). A note held
+  going in: a 3 px bar along the key's foot in `textTertiary`. A note in the key
+  in use: a 4 px Heather dot at 55% centred 6 px above the key's foot.
+- C keys carry their octave's name ("C3") in `micro`, `textTertiary`, 2 px in
+  from the key's left, above the dot and clear of the black key beside it; where
+  the key is too narrow for the name, it has none (never a cut name).
+- Notes outside the strip's range are shown on its nearest end key with a small
+  chevron (`textTertiary`) pointing the way they went.
+
+### Step lane
+
+A display part of the Arpeggiator: one bar of steps on the song's grid.
+
+- Columns: one per step of the rate in a bar of the project's signature (at most
+  32; past that, the first 32 and a "+n" chip). A step's bar starts at its column
+  (late by the swing on every second step) and is as long as the gate; it sits in
+  the row of its note.
+- Rows: one per distinct note the pattern plays, lowest at the bottom, each 18 px
+  tall at most (fewer, shorter rows when many notes share the well), the block of
+  rows centred in the well.
+- The step playing is Heather at 100%, the rest Heather at 45%; a chord step's
+  notes all light together. Beat lines every quarter in `lineSubtle`, bar ends in
+  `lineStrong`.
+- No chord held: the last chord's pattern stays, at 45%, so it can be read.
+
+### Pad map
+
+A display part of Chord Pads: the keys of one octave as pads.
+
+- Seven pads in a row for the white keys, five above them over the gaps for the
+  black keys, as a keyboard lies. Each pad is a rounded rectangle (`radius.md`) in
+  `surface2`, its chord's numeral in `label` semibold (I, ii, vii°, bVII) over its
+  name in `caption` (C, Dm, Bdim, Bb), both `textSecondary`.
+- The pad playing: filled Heather at 25% with its text Heather, a 1.5 px Heather
+  ring. The last pad played keeps a 1 px Heather ring at 45% until another is.
 
 ### Selected points (automation)
 
