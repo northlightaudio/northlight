@@ -573,12 +573,290 @@ std::vector<engine::ParameterInfo> parameterInfo()
     return p;
 }
 
+namespace
+{
+// One operator in a preset. Ratio is the choice value (0 is 0.5, otherwise the
+// multiple itself); a fixedHz above 0 fixes the operator at that frequency.
+struct PresetOp
+{
+    float ratio = 1.0f, level = 0.0f;
+    float attack = 1.0f, decay = 1000.0f, sustain = 1.0f, release = 300.0f;
+    float velocity = 0.0f, keyScale = 0.0f;
+    float fine = 0.0f, detune = 0.0f, fixedHz = 0.0f;
+    fm::Wave wave = fm::Wave::sine;
+};
+
+// Every operator's settings, then the rest. Spelling out all four operators
+// keeps a preset from inheriting the default sound's envelopes.
+std::vector<PresetBuilder::Setting> patch(int algorithmNumber,
+                                          const std::array<PresetOp, ops>& operators,
+                                          std::initializer_list<PresetBuilder::Setting> rest)
+{
+    std::vector<PresetBuilder::Setting> s{{algorithm, algorithmNumber - 1}};
+    for (int op = 0; op < ops; ++op)
+    {
+        const auto& o = operators[static_cast<size_t>(op)];
+        s.insert(s.end(),
+                 {{opParam(op, ratio), o.ratio},
+                  {opParam(op, fine), o.fine},
+                  {opParam(op, detune), o.detune},
+                  {opParam(op, fixed), o.fixedHz > 0.0f ? 1.0 : 0.0},
+                  {opParam(op, fixedHz), o.fixedHz > 0.0f ? o.fixedHz : 440.0f},
+                  {opParam(op, wave), static_cast<double>(o.wave)},
+                  {opParam(op, level), o.level},
+                  {opParam(op, attack), o.attack},
+                  {opParam(op, decay), o.decay},
+                  {opParam(op, sustain), o.sustain},
+                  {opParam(op, release), o.release},
+                  {opParam(op, velocity), o.velocity},
+                  {opParam(op, keyScale), o.keyScale}});
+    }
+    s.insert(s.end(), rest);
+    return s;
+}
+} // namespace
+
+// Best guesses so far, written from the plan before anyone listened: each still
+// needs tuning by ear on a release build (docs/plans/cirrus.md, phase 3).
 const std::vector<EffectPreset>& presets()
 {
     static const std::vector<EffectPreset> list = []
     {
+        using W = fm::Wave;
         PresetBuilder made(type, parameterInfo());
         made.add("Cirrus", {});
+        // Algorithm 5: 2 into 1 is the body, 4 into 3 the tine; a high, fast
+        // modulator on velocity gives the bark of a hard-struck tine piano.
+        made.add("Ice Crystal Keys",
+                 patch(5,
+                       {{{.ratio = 1,
+                          .level = 99,
+                          .decay = 3000,
+                          .sustain = 0.2f,
+                          .release = 400,
+                          .velocity = 0.4f,
+                          .detune = -3},
+                         {.ratio = 1,
+                          .level = 72,
+                          .decay = 1500,
+                          .sustain = 0.1f,
+                          .release = 400,
+                          .velocity = 0.9f,
+                          .keyScale = -0.3f},
+                         {.ratio = 1,
+                          .level = 90,
+                          .decay = 900,
+                          .sustain = 0.0f,
+                          .release = 300,
+                          .velocity = 0.5f,
+                          .detune = 3},
+                         {.ratio = 14,
+                          .level = 66,
+                          .decay = 140,
+                          .sustain = 0.0f,
+                          .release = 120,
+                          .velocity = 1.0f,
+                          .keyScale = -0.6f}}},
+                       {{width, 50.0f}}));
+        // Algorithm 4: a 3.51 modulator for the bell's clang, a 2:1 stack
+        // slightly detuned for the beating partials.
+        made.add("Evening Bells",
+                 patch(4,
+                       {{{.ratio = 1,
+                          .level = 99,
+                          .decay = 8000,
+                          .sustain = 0.0f,
+                          .release = 6000,
+                          .velocity = 0.3f},
+                         {.ratio = 3,
+                          .level = 78,
+                          .decay = 5000,
+                          .sustain = 0.0f,
+                          .release = 5000,
+                          .velocity = 0.6f,
+                          .keyScale = -0.3f,
+                          .fine = 17},
+                         {.ratio = 2,
+                          .level = 70,
+                          .decay = 3000,
+                          .sustain = 0.0f,
+                          .release = 3000,
+                          .velocity = 0.5f,
+                          .detune = 7},
+                         {.ratio = 7,
+                          .level = 60,
+                          .decay = 1500,
+                          .sustain = 0.0f,
+                          .release = 1500,
+                          .velocity = 0.7f}}},
+                       {{width, 30.0f}, {outputLevel, -4.0f}}));
+        // Algorithm 3: a short 4:1 stack for the bar, a very fast 10:1 for the
+        // mallet's click, and a little pitch drop at the strike.
+        made.add(
+            "Glass Mallets",
+            patch(
+                3,
+                {{{.ratio = 1, .level = 99, .decay = 1400, .sustain = 0.0f, .release = 900, .velocity = 0.4f},
+                  {.ratio = 4,
+                   .level = 70,
+                   .decay = 300,
+                   .sustain = 0.0f,
+                   .release = 200,
+                   .velocity = 0.7f,
+                   .keyScale = -0.3f},
+                  {.ratio = 1, .level = 60, .decay = 200, .sustain = 0.0f, .release = 150},
+                  {.ratio = 10,
+                   .level = 62,
+                   .decay = 60,
+                   .sustain = 0.0f,
+                   .release = 60,
+                   .velocity = 0.9f,
+                   .keyScale = -0.5f}}},
+                {{pitchEnvelope, 2.0f}, {pitchTime, 25.0f}, {width, 30.0f}}));
+        // Algorithm 1: one stack, every ratio 1, with feedback at the top for
+        // grit and a high cut to keep it round.
+        made.add(
+            "Low Sun Bass",
+            patch(
+                1,
+                {{{.ratio = 1, .level = 99, .decay = 2000, .sustain = 0.6f, .release = 120, .velocity = 0.3f},
+                  {.ratio = 1, .level = 80, .decay = 400, .sustain = 0.3f, .release = 120, .velocity = 0.7f},
+                  {.ratio = 1, .level = 70, .decay = 250, .sustain = 0.2f, .release = 120, .velocity = 0.5f},
+                  {.ratio = 1, .level = 65, .decay = 200, .sustain = 0.1f, .release = 120}}},
+                {{feedback, 0.55f}, {highCut, 6000.0f}, {width, 0.0f}, {outputLevel, -2.0f}}));
+        // Algorithm 2: two modulators into the stack, both slow to open, which
+        // is the brass swell; a slight scoop and a little vibrato.
+        made.add("Gold Brass",
+                 patch(2,
+                       {{{.ratio = 1,
+                          .level = 99,
+                          .attack = 40,
+                          .decay = 600,
+                          .sustain = 0.85f,
+                          .release = 200,
+                          .velocity = 0.3f},
+                         {.ratio = 1,
+                          .level = 82,
+                          .attack = 90,
+                          .decay = 800,
+                          .sustain = 0.7f,
+                          .release = 220,
+                          .velocity = 0.6f,
+                          .keyScale = -0.2f},
+                         {.ratio = 1,
+                          .level = 62,
+                          .attack = 120,
+                          .decay = 1000,
+                          .sustain = 0.6f,
+                          .release = 220,
+                          .detune = 5},
+                         {.ratio = 1,
+                          .level = 60,
+                          .attack = 60,
+                          .decay = 400,
+                          .sustain = 0.4f,
+                          .release = 200,
+                          .velocity = 0.5f}}},
+                       {{feedback, 0.35f},
+                        {pitchEnvelope, -1.0f},
+                        {pitchTime, 80.0f},
+                        {lfoRate, 5.5f},
+                        {lfoPitch, 6.0f}}));
+        // Algorithm 8: four sines at 16', 8', 4' and 2' as drawbars; feedback on
+        // the top one, which decays to a lower level, gives the key click.
+        made.add("Drawbar Haze",
+                 patch(8,
+                       {{{.ratio = 0, .level = 99, .decay = 1, .sustain = 1.0f, .release = 60},
+                         {.ratio = 1, .level = 96, .decay = 1, .sustain = 1.0f, .release = 60},
+                         {.ratio = 2, .level = 92, .decay = 1, .sustain = 1.0f, .release = 60},
+                         {.ratio = 4, .level = 88, .decay = 60, .sustain = 0.6f, .release = 60}}},
+                       {{feedback, 0.3f}, {lfoRate, 6.5f}, {lfoPitch, 4.0f}, {width, 60.0f}}));
+        // Algorithm 6: one slow modulator into three detuned carriers, the slow
+        // LFO on Tone drifting the brightness like cloud in the wind.
+        made.add("Mare's Tails",
+                 patch(6,
+                       {{{.ratio = 1,
+                          .level = 99,
+                          .attack = 900,
+                          .decay = 4000,
+                          .sustain = 0.8f,
+                          .release = 2500,
+                          .detune = -7},
+                         {.ratio = 1,
+                          .level = 99,
+                          .attack = 900,
+                          .decay = 4000,
+                          .sustain = 0.8f,
+                          .release = 2500,
+                          .detune = 7},
+                         {.ratio = 2,
+                          .level = 90,
+                          .attack = 1200,
+                          .decay = 4000,
+                          .sustain = 0.8f,
+                          .release = 2500,
+                          .detune = 3},
+                         {.ratio = 1,
+                          .level = 70,
+                          .attack = 1500,
+                          .decay = 6000,
+                          .sustain = 0.6f,
+                          .release = 3000,
+                          .keyScale = -0.3f}}},
+                       {{lfoShape, 0.0f},
+                        {lfoRate, 0.15f},
+                        {lfoTone, 0.4f},
+                        {width, 100.0f},
+                        {outputLevel, -4.0f}}));
+        // Algorithm 1 in Mono: a bright stack with feedback, legato glide and
+        // vibrato.
+        made.add("Jet Stream Lead",
+                 patch(1,
+                       {{{.ratio = 1,
+                          .level = 99,
+                          .attack = 3,
+                          .decay = 1000,
+                          .sustain = 0.9f,
+                          .release = 250,
+                          .velocity = 0.3f},
+                         {.ratio = 1,
+                          .level = 80,
+                          .attack = 3,
+                          .decay = 800,
+                          .sustain = 0.7f,
+                          .release = 250,
+                          .velocity = 0.6f,
+                          .keyScale = -0.3f},
+                         {.ratio = 2, .level = 66, .decay = 500, .sustain = 0.5f, .release = 250},
+                         {.ratio = 1, .level = 55, .decay = 1000, .sustain = 0.6f, .release = 250}}},
+                       {{feedback, 0.5f},
+                        {voiceMode, 1.0f},
+                        {glide, 120.0f},
+                        {lfoRate, 5.5f},
+                        {lfoPitch, 12.0f},
+                        {width, 0.0f}}));
+        // Algorithm 4 with fixed, unrelated modulator frequencies: the same
+        // metallic clang on every key, over a pitched carrier.
+        made.add(
+            "Hail",
+            patch(
+                4,
+                {{{.ratio = 1, .level = 99, .decay = 350, .sustain = 0.0f, .release = 300, .velocity = 0.5f},
+                  {.level = 88,
+                   .decay = 120,
+                   .sustain = 0.0f,
+                   .release = 100,
+                   .velocity = 0.6f,
+                   .fixedHz = 2350},
+                  {.level = 80, .decay = 200, .sustain = 0.0f, .release = 150, .fixedHz = 1730},
+                  {.level = 75,
+                   .decay = 80,
+                   .sustain = 0.0f,
+                   .release = 60,
+                   .velocity = 0.8f,
+                   .fixedHz = 5190,
+                   .wave = W::half}}},
+                {{width, 30.0f}, {outputLevel, -4.0f}}));
         return made.done();
     }();
     return list;

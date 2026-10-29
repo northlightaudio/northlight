@@ -11,9 +11,11 @@ described as "FM synth".
 
 **Status (2026-10-29):** phases 1 and 2 are built on the `cirrus` branch: the FM
 core (`plugins/fm/Fm`) and the instrument (`plugins/Cirrus`) with the generic
-editor and one preset (Cirrus, the defaults). The build went ahead on the plan's
+editor. The build went ahead on the plan's
 answers to the open questions: four operators, no patch import, High quality by
-default. Phase 3 (presets) needs listening on a release build.
+default. Phase 3 has all ten presets written as best guesses, each tested to sound
+and stay below full scale across the keyboard; they still need tuning by ear on a
+release build.
 
 ## The name and the idea
 

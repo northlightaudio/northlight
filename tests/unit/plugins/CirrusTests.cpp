@@ -9,6 +9,7 @@
 #include <catch2/catch_approx.hpp>
 #include <catch2/catch_test_macros.hpp>
 
+#include <algorithm>
 #include <atomic>
 #include <cmath>
 #include <functional>
@@ -562,3 +563,28 @@ TEST_CASE("Cirrus plays and changes its settings without allocating", "[plugins]
     CHECK(cirrusViolations == 0);
 }
 #endif
+
+TEST_CASE("Every Cirrus preset sounds and stays below full scale across the keyboard", "[plugins][cirrus]")
+{
+    constexpr double rate = 48000.0;
+    const auto& list = cr::presets();
+    REQUIRE(list.size() == 10);
+    for (const auto& preset : list)
+    {
+        INFO(preset.name);
+        for (const int note : {24, 48, 60, 72, 96})
+        {
+            INFO("note " << note);
+            auto p = cr::create();
+            p->prepare(rate, block);
+            for (size_t i = 0; i < preset.values.size(); ++i)
+                p->setParameter(static_cast<int>(i), preset.values[i]);
+            const auto out = play(*p, note, 127, 60);
+            float peak = 0.0f;
+            for (size_t i = 0; i < out.left.size(); ++i)
+                peak = std::max({peak, std::abs(out.left[i]), std::abs(out.right[i])});
+            CHECK(peak > 0.01f);
+            CHECK(peak < 1.0f);
+        }
+    }
+}
