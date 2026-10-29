@@ -229,7 +229,7 @@ TEST_CASE("The plugin browser counts the built-ins, describes them once and says
     const juce::ScopedJuceInitialiser_GUI juceInit;
     hosting::PluginRegistry registry;
     ui::PluginBrowser browser(registry);
-    const auto builtIns = plugins::builtInTypes().size();
+    const auto builtIns = plugins::BuiltInFactory().typeNames().size(); // MIDI effects are not listed
     CHECK(browser.countText() == juce::String(static_cast<int>(builtIns)) + " built-in, 0 plugins");
     CHECK(browser.emptyText().isEmpty());
     // Every built-in has a description for the browser and the effects menu.

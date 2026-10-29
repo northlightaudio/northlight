@@ -29,6 +29,9 @@ const Insert* Channel::findInsert(Id insertId) const noexcept
     for (const auto& i : inserts)
         if (i.id == insertId)
             return &i;
+    for (const auto& i : midiInserts)
+        if (i.id == insertId)
+            return &i;
     for (const auto& i : strip)
         if (i.id == insertId)
             return &i;
@@ -40,6 +43,9 @@ Insert* Channel::findInsert(Id insertId) noexcept
     if (hasInstrument() && instrument.id == insertId)
         return &instrument;
     for (auto& i : inserts)
+        if (i.id == insertId)
+            return &i;
+    for (auto& i : midiInserts)
         if (i.id == insertId)
             return &i;
     for (auto& i : strip)
@@ -83,7 +89,9 @@ const AutomationLane* Channel::findLane(AutomationTarget target, Id insertId, in
 std::vector<const Insert*> Channel::processingChain() const
 {
     std::vector<const Insert*> chain;
-    chain.reserve(inserts.size() + strip.size() + 1);
+    chain.reserve(midiInserts.size() + inserts.size() + strip.size() + 1);
+    for (const auto& i : midiInserts)
+        chain.push_back(&i);
     if (hasInstrument())
         chain.push_back(&instrument);
     const auto add = [&](const std::vector<Insert>& list)
@@ -97,6 +105,15 @@ std::vector<const Insert*> Channel::processingChain() const
     if (!stripPreInserts)
         add(strip);
     return chain;
+}
+
+int Channel::chainIndex(InsertChain which, Id insertId) const noexcept
+{
+    const auto& list = chain(which);
+    for (size_t i = 0; i < list.size(); ++i)
+        if (list[i].id == insertId)
+            return static_cast<int>(i);
+    return -1;
 }
 
 int Channel::insertIndex(Id insertId) const noexcept

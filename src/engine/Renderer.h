@@ -85,7 +85,11 @@ public:
     static void scheduleMidi(const TrackNode& track,
                              core::SamplePosition position,
                              int numSamples,
-                             const RenderContext& context) noexcept;
+                             const RenderContext& context,
+                             const PlayHead& head) noexcept;
+    // Passes a MIDI track's scheduled events through its MIDI FX, leaving what
+    // they made in the track's events.
+    static void runMidiEffects(const TrackNode& track, const PlayHead& head, int numSamples) noexcept;
 
     // Renders one track's clips (and monitored input) over
     // [position, position + numSamples) into the track's pre-fader buffers.

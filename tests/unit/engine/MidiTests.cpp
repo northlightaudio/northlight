@@ -5,11 +5,13 @@
 #include "engine/Midi.h"
 #include "engine/Recording.h"
 #include "engine/Snapshot.h"
+#include "engine/rt/RealtimeGuard.h"
 #include "plugins/Aurora.h"
 #include "plugins/BuiltIns.h"
 #include "plugins/Nebula.h"
 #include "plugins/Pulsar.h"
 #include "plugins/Starbit.h"
+#include "plugins/midi/Transpose.h"
 
 #include <catch2/catch_approx.hpp>
 #include <catch2/catch_test_macros.hpp>
@@ -1344,4 +1346,288 @@ TEST_CASE("A muted note stays in its clip and plays nothing", "[engine][midi]")
     for (const float s : sounding.render(4))
         peak = std::max(peak, std::abs(s));
     CHECK(peak > 0.0f);
+}
+
+// ----- MIDI FX ---------------------------------------------------------------------------
+
+namespace
+{
+#if defined(NORTHLIGHT_RT_CHECKS)
+int midiViolations = 0;
+void countMidiViolation(const rt::Violation&) noexcept
+{
+    ++midiViolations;
+}
+#endif
+
+core::Insert transposeBy(core::Id id, float semitones, float octaves = 0.0f, float steps = 0.0f)
+{
+    core::Insert insert;
+    insert.id = id;
+    insert.type = plugins::transpose::type;
+    insert.params = plugins::defaultParameters(plugins::transpose::type);
+    insert.params[plugins::transpose::semitones] = semitones;
+    insert.params[plugins::transpose::octaves] = octaves;
+    insert.params[plugins::transpose::steps] = steps;
+    return insert;
+}
+
+// The notes the logging instrument heard, as (type, note, time).
+struct HeardNote
+{
+    bool on = false;
+    int note = 0;
+    std::int64_t at = 0;
+};
+std::vector<HeardNote> heardNotes()
+{
+    std::vector<HeardNote> out;
+    for (int i = 0; i < eventLog.count; ++i)
+    {
+        const auto& e = eventLog.events[static_cast<size_t>(i)];
+        if (e.event.isNote())
+            out.push_back({e.event.type == engine::MidiEvent::Type::noteOn && e.event.velocity > 0,
+                           e.event.note,
+                           e.at});
+    }
+    return out;
+}
+} // namespace
+
+TEST_CASE("A MIDI track's MIDI FX change its notes before its instrument plays them, in chain order",
+          "[engine][midi][midifx]")
+{
+    core::MidiClip clip;
+    clip.start = 0;
+    clip.length = 1000;
+    clip.notes.push_back({20, 60, 100, 10, 50}); // on at 10, off at 60
+    auto p = keysProject(clip, "test.cc");
+    p.tracks[0].midiInserts.push_back(transposeBy(50, 12.0f));
+    p.tracks[0].midiInserts.push_back(transposeBy(51, 7.0f));
+    Harness h;
+    h.engine.setProject(p);
+    eventLog = {};
+    h.engine.play();
+    h.render(2);
+    const auto notes = heardNotes();
+    REQUIRE(notes.size() == 2);
+    CHECK(notes[0].on);
+    CHECK(notes[0].note == 79); // +12, then +7
+    CHECK(notes[0].at == 10);
+    CHECK_FALSE(notes[1].on);
+    CHECK(notes[1].note == 79);
+    CHECK(notes[1].at == 60);
+
+    // Bypassed in the model, an effect passes its notes untouched.
+    p.tracks[0].midiInserts[1].bypass = true;
+    h.engine.setProject(p);
+    h.engine.locate(0);
+    eventLog = {};
+    h.render(2);
+    const auto bypassed = heardNotes();
+    REQUIRE_FALSE(bypassed.empty());
+    CHECK(bypassed[0].note == 72);
+}
+
+TEST_CASE("A stop ends the notes MIDI FX made, even after their setting changed", "[engine][midi][midifx]")
+{
+    core::MidiClip clip;
+    clip.start = 0;
+    clip.length = 100000;
+    clip.notes.push_back({20, 60, 100, 0, 50000}); // a long note
+    auto p = keysProject(clip, "test.cc");
+    p.tracks[0].midiInserts.push_back(transposeBy(50, 12.0f));
+    Harness h;
+    h.engine.setProject(p);
+    eventLog = {};
+    h.engine.play();
+    h.render(2); // 72 sounding
+    // The setting changes mid-note (a recompile keeps the instance), then stop.
+    p.tracks[0].midiInserts[0].params[plugins::transpose::semitones] = 5.0f;
+    h.engine.setProject(p);
+    h.render(1);
+    h.engine.stop();
+    h.render(2);
+    const auto notes = heardNotes();
+    REQUIRE(notes.size() == 2);
+    CHECK(notes[0].on);
+    CHECK(notes[0].note == 72);
+    CHECK_FALSE(notes[1].on);
+    CHECK(notes[1].note == 72); // not 65: the note that sounds is the one that ends
+    CHECK(notes[1].at == 3 * blockSize);
+}
+
+TEST_CASE("A loop wrap through MIDI FX ends the note and plays it again, nothing hanging",
+          "[engine][midi][midifx]")
+{
+    core::MidiClip clip;
+    clip.start = 0;
+    clip.length = 1000;
+    clip.notes.push_back({20, 60, 127, 0, 900}); // across the loop end at 128
+    auto p = keysProject(clip, "test.cc");
+    p.tracks[0].midiInserts.push_back(transposeBy(50, 0.0f, 1.0f));
+    Harness h;
+    h.engine.setProject(p);
+    h.engine.setLoop(0, 128, true);
+    eventLog = {};
+    h.engine.play();
+    h.render(5); // wraps at 128 and 256
+    int sounding = 0;
+    for (const auto& n : heardNotes())
+    {
+        CHECK(n.note == 72);
+        sounding += n.on ? 1 : -1;
+        CHECK(sounding >= 0);
+        CHECK(sounding <= 1);
+    }
+    CHECK(sounding == 1); // the third pass is still playing
+}
+
+TEST_CASE("MIDI FX follow the project's key from the play head", "[engine][midi][midifx]")
+{
+    core::MidiClip clip;
+    clip.start = 0;
+    clip.length = 1000;
+    clip.notes.push_back({20, 64, 100, 0, 50}); // E
+    auto p = keysProject(clip, "test.cc");
+    p.key.root = 0; // C major
+    p.key.scale = core::ScaleKind::major;
+    p.tracks[0].midiInserts.push_back(transposeBy(50, 0.0f, 0.0f, 2.0f));
+    Harness h;
+    h.engine.setProject(p);
+    eventLog = {};
+    h.engine.play();
+    h.render(1);
+    auto notes = heardNotes();
+    REQUIRE_FALSE(notes.empty());
+    CHECK(notes[0].note == 67); // two steps of C major up from E: G
+
+    // With no key, a step is a semitone.
+    p.key.root = -1;
+    h.engine.setProject(p);
+    h.engine.locate(0);
+    eventLog = {};
+    h.render(1);
+    notes = heardNotes();
+    REQUIRE_FALSE(notes.empty());
+    CHECK(notes[0].note == 66);
+}
+
+TEST_CASE("Live input and the MIDI output go through the MIDI FX", "[engine][midi][midifx]")
+{
+    core::MidiClip clip;
+    clip.start = 0;
+    clip.length = 10;
+    auto p = keysProject(clip, "test.cc");
+    p.tracks[0].armed = true;
+    p.tracks[0].midiOut = true;
+    p.tracks[0].midiOutChannel = 1;
+    p.tracks[0].midiInserts.push_back(transposeBy(50, 12.0f));
+    Harness h;
+    h.engine.setProject(p);
+    eventLog = {};
+    h.engine.pushMidiInput({7, engine::MidiEvent::Type::noteOn, 0, 60, 100}, "");
+    h.render(1); // stopped: monitoring is on while armed
+    const auto notes = heardNotes();
+    REQUIRE(notes.size() == 1);
+    CHECK(notes[0].note == 72);
+    engine::MidiOutEvent sent;
+    REQUIRE(h.engine.popMidiOutput(sent));
+    CHECK(sent.event.note == 72);
+}
+
+TEST_CASE("A MIDI track with MIDI FX renders without allocating", "[engine][midi][midifx][rt]")
+{
+#if defined(NORTHLIGHT_RT_CHECKS)
+    core::MidiClip clip;
+    clip.start = 0;
+    clip.length = 4000;
+    for (int i = 0; i < 40; ++i)
+        clip.notes.push_back({static_cast<core::Id>(200 + i), 48 + i, 100, i * 90, 120});
+    auto p = keysProject(clip);
+    p.tracks[0].midiInserts.push_back(transposeBy(50, 12.0f));
+    p.tracks[0].midiInserts.push_back(transposeBy(51, -5.0f));
+    Harness h;
+    h.engine.setProject(p);
+    h.engine.setLoop(0, 3000, true);
+    h.engine.play();
+    midiViolations = 0;
+    const auto previous = rt::setViolationHandler(&countMidiViolation);
+    for (int block = 0; block < 200; ++block)
+    {
+        if (block % 50 == 25)
+        {
+            p.tracks[0].midiInserts[0].params[plugins::transpose::semitones] = static_cast<float>(block % 7);
+            h.engine.setProject(p); // controller thread, allowed to allocate
+            h.engine.collectGarbage();
+        }
+        rt::ScopedRealtimeSection section;
+        h.engine.process(h.outputs, 2, blockSize);
+    }
+    rt::setViolationHandler(previous);
+    CHECK(midiViolations == 0);
+#else
+    SUCCEED("real-time checks are off in this build");
+#endif
+}
+
+TEST_CASE("Recording a MIDI track with MIDI FX keeps the notes as they were played",
+          "[engine][midi][midifx][record]")
+{
+    core::MidiClip clip;
+    clip.start = 0;
+    clip.length = 10;
+    auto p = keysProject(clip);
+    p.tracks[0].armed = true;
+    p.tracks[0].midiInserts.push_back(transposeBy(50, 12.0f));
+    Harness h;
+    h.engine.setProject(p);
+    auto session = std::make_unique<engine::RecordSession>(48000.0, 0.5);
+    session->addMidiTrack(1);
+    std::string error;
+    REQUIRE(h.engine.startRecording(std::move(session), error));
+    h.render(1);
+    h.engine.pushMidiInput({3, engine::MidiEvent::Type::noteOn, 0, 60, 100}, "");
+    h.render(1);
+    h.engine.pushMidiInput({0, engine::MidiEvent::Type::noteOff, 0, 60, 0}, "");
+    h.render(1);
+    h.engine.stop();
+    h.render(1);
+    while (!h.engine.hasRecordingToCollect())
+        h.render(1);
+    auto finished = h.engine.collectRecording();
+    REQUIRE(finished.has_value());
+    const auto events = finished->session->capturedMidi();
+    REQUIRE(events.size() == 2);
+    CHECK(events[0].event.note == 60); // not 72
+    CHECK(events[1].event.note == 60);
+}
+
+TEST_CASE("An automation lane on a MIDI effect's parameter plays on its MIDI track",
+          "[engine][midi][midifx][automation]")
+{
+    core::MidiClip clip;
+    clip.start = 0;
+    clip.length = 4000;
+    clip.notes.push_back({20, 60, 100, 10, 50});   // before the lane steps
+    clip.notes.push_back({21, 60, 100, 2000, 50}); // after
+    auto p = keysProject(clip, "test.cc");
+    p.tracks[0].midiInserts.push_back(transposeBy(50, 0.0f));
+    core::AutomationLane lane;
+    lane.id = 60;
+    lane.target = core::AutomationTarget::insertParameter;
+    lane.insert = 50;
+    lane.parameter = plugins::transpose::semitones;
+    lane.points = {{0, 0.0f}, {1000, 0.0f}, {1001, 12.0f}};
+    p.tracks[0].automation.push_back(lane);
+    Harness h;
+    h.engine.setProject(p);
+    eventLog = {};
+    h.engine.play();
+    h.render(40);
+    std::vector<int> ons;
+    for (const auto& n : heardNotes())
+        if (n.on)
+            ons.push_back(n.note);
+    CHECK(ons == std::vector<int>{60, 72});
 }

@@ -253,7 +253,8 @@ std::size_t heapBytes(const TakeGroup& group) noexcept
 std::size_t heapBytes(const Channel& channel) noexcept
 {
     return heapBytes(channel.name) + heapBytes(channel.sends) + heapBytes(channel.instrument) +
-           heapBytes(channel.inserts) + heapBytes(channel.strip) + heapBytes(channel.automation);
+           heapBytes(channel.inserts) + heapBytes(channel.midiInserts) + heapBytes(channel.strip) +
+           heapBytes(channel.automation);
 }
 
 std::size_t heapBytes(const Track& track) noexcept
@@ -302,7 +303,7 @@ void allocateProcessorIds(Project& p, Channel& c)
 {
     if (c.hasInstrument() && c.instrument.id == invalidId)
         c.instrument.id = p.allocateId();
-    for (auto* list : {&c.inserts, &c.strip})
+    for (auto* list : {&c.inserts, &c.midiInserts, &c.strip})
         for (auto& i : *list)
             if (i.id == invalidId)
                 i.id = p.allocateId();
@@ -1323,13 +1324,26 @@ bool RemoveSend::revert(Project& p)
     return true;
 }
 
-AddInsert::AddInsert(Id channelId, Insert insert, int index)
-    : channelId_(channelId), insert_(std::move(insert)), index_(index)
+namespace
+{
+// The channel an insert command on `chain` may act on: any channel for the
+// audio inserts; only a MIDI track for MIDI FX.
+Channel* chainOwner(Project& p, Id channelId, InsertChain chain) noexcept
+{
+    if (chain == InsertChain::audio)
+        return p.findChannel(channelId);
+    auto* t = p.findTrack(channelId);
+    return t != nullptr && t->isMidi() ? t : nullptr;
+}
+} // namespace
+
+AddInsert::AddInsert(Id channelId, Insert insert, int index, InsertChain chain)
+    : channelId_(channelId), insert_(std::move(insert)), index_(index), chain_(chain)
 {
 }
 bool AddInsert::apply(Project& p)
 {
-    auto* c = p.findChannel(channelId_);
+    auto* c = chainOwner(p, channelId_, chain_);
     if (c == nullptr)
         return false;
     if (insert_.id == invalidId)
@@ -1347,42 +1361,54 @@ bool AddInsert::apply(Project& p)
         if (p.master.findInsert(insert_.id) != nullptr)
             return false;
     }
-    const int at = index_ < 0 || index_ > static_cast<int>(c->inserts.size())
-                       ? static_cast<int>(c->inserts.size())
-                       : index_;
+    if (chain_ == InsertChain::midi)
+    {
+        // A MIDI effect has no wet/dry and no key.
+        insert_.mix = 1.0f;
+        insert_.sidechain = invalidId;
+        insert_.sidechainPostFader = false;
+    }
+    auto& list = c->chain(chain_);
+    const int at =
+        index_ < 0 || index_ > static_cast<int>(list.size()) ? static_cast<int>(list.size()) : index_;
     index_ = at;
-    c->inserts.insert(c->inserts.begin() + at, insert_);
+    list.insert(list.begin() + at, insert_);
     return true;
 }
 bool AddInsert::revert(Project& p)
 {
-    auto* c = p.findChannel(channelId_);
+    auto* c = chainOwner(p, channelId_, chain_);
     if (c == nullptr)
         return false;
-    std::erase_if(c->inserts, [this](const Insert& i) { return i.id == insert_.id; });
+    std::erase_if(c->chain(chain_), [this](const Insert& i) { return i.id == insert_.id; });
     return true;
 }
 
-RemoveInsert::RemoveInsert(Id channelId, Id insertId) : channelId_(channelId), insertId_(insertId) {}
+RemoveInsert::RemoveInsert(Id channelId, Id insertId, InsertChain chain)
+    : channelId_(channelId), insertId_(insertId), chain_(chain)
+{
+}
 bool RemoveInsert::apply(Project& p)
 {
-    auto* c = p.findChannel(channelId_);
+    auto* c = chainOwner(p, channelId_, chain_);
     if (c == nullptr)
         return false;
-    index_ = c->insertIndex(insertId_);
+    index_ = c->chainIndex(chain_, insertId_);
     if (index_ < 0)
         return false;
-    removed_ = c->inserts[static_cast<size_t>(index_)];
-    c->inserts.erase(c->inserts.begin() + index_);
+    auto& list = c->chain(chain_);
+    removed_ = list[static_cast<size_t>(index_)];
+    list.erase(list.begin() + index_);
     return true;
 }
 bool RemoveInsert::revert(Project& p)
 {
-    auto* c = p.findChannel(channelId_);
+    auto* c = chainOwner(p, channelId_, chain_);
     if (c == nullptr)
         return false;
-    const int at = std::clamp(index_, 0, static_cast<int>(c->inserts.size()));
-    c->inserts.insert(c->inserts.begin() + at, removed_);
+    auto& list = c->chain(chain_);
+    const int at = std::clamp(index_, 0, static_cast<int>(list.size()));
+    list.insert(list.begin() + at, removed_);
     return true;
 }
 
@@ -1426,36 +1452,38 @@ bool SetInstrument::revert(Project& p)
     return true;
 }
 
-MoveInsert::MoveInsert(Id channelId, Id insertId, int newIndex)
-    : channelId_(channelId), insertId_(insertId), newIndex_(newIndex)
+MoveInsert::MoveInsert(Id channelId, Id insertId, int newIndex, InsertChain chain)
+    : channelId_(channelId), insertId_(insertId), newIndex_(newIndex), chain_(chain)
 {
 }
 bool MoveInsert::apply(Project& p)
 {
-    auto* c = p.findChannel(channelId_);
+    auto* c = chainOwner(p, channelId_, chain_);
     if (c == nullptr)
         return false;
-    previousIndex_ = c->insertIndex(insertId_);
+    previousIndex_ = c->chainIndex(chain_, insertId_);
     if (previousIndex_ < 0)
         return false;
-    Insert moved = c->inserts[static_cast<size_t>(previousIndex_)];
-    c->inserts.erase(c->inserts.begin() + previousIndex_);
-    const int at = std::clamp(newIndex_, 0, static_cast<int>(c->inserts.size()));
-    c->inserts.insert(c->inserts.begin() + at, moved);
+    auto& list = c->chain(chain_);
+    Insert moved = list[static_cast<size_t>(previousIndex_)];
+    list.erase(list.begin() + previousIndex_);
+    const int at = std::clamp(newIndex_, 0, static_cast<int>(list.size()));
+    list.insert(list.begin() + at, moved);
     return true;
 }
 bool MoveInsert::revert(Project& p)
 {
-    auto* c = p.findChannel(channelId_);
+    auto* c = chainOwner(p, channelId_, chain_);
     if (c == nullptr)
         return false;
-    const int current = c->insertIndex(insertId_);
+    const int current = c->chainIndex(chain_, insertId_);
     if (current < 0)
         return true;
-    Insert moved = c->inserts[static_cast<size_t>(current)];
-    c->inserts.erase(c->inserts.begin() + current);
-    const int at = std::clamp(previousIndex_, 0, static_cast<int>(c->inserts.size()));
-    c->inserts.insert(c->inserts.begin() + at, moved);
+    auto& list = c->chain(chain_);
+    Insert moved = list[static_cast<size_t>(current)];
+    list.erase(list.begin() + current);
+    const int at = std::clamp(previousIndex_, 0, static_cast<int>(list.size()));
+    list.insert(list.begin() + at, moved);
     return true;
 }
 
@@ -2675,14 +2703,16 @@ std::size_t MoveInsertToChannel::footprint() const noexcept
            heapBytes(toLanes_);
 }
 
-AddInserts::AddInserts(Id channelId, std::vector<Insert> inserts, int index, std::string name)
-    : channelId_(channelId), inserts_(std::move(inserts)), index_(index), name_(std::move(name))
+AddInserts::AddInserts(
+    Id channelId, std::vector<Insert> inserts, int index, std::string name, InsertChain chain)
+    : channelId_(channelId), inserts_(std::move(inserts)), index_(index), name_(std::move(name)),
+      chain_(chain)
 {
 }
 bool AddInserts::apply(Project& p)
 {
-    auto* c = p.findChannel(channelId_);
-    if (c == nullptr || inserts_.empty() || !holdsInserts(p, channelId_))
+    auto* c = chainOwner(p, channelId_, chain_);
+    if (c == nullptr || inserts_.empty() || (chain_ == InsertChain::audio && !holdsInserts(p, channelId_)))
         return false;
     if (!idsAssigned_)
     {
@@ -2690,25 +2720,26 @@ bool AddInserts::apply(Project& p)
         {
             insert.id = p.allocateId(); // a copy is a processor of its own
             insert.windowOpen = false;
-            insert.sidechain = usableKey(p, channelId_, insert.sidechain);
+            insert.sidechain =
+                chain_ == InsertChain::audio ? usableKey(p, channelId_, insert.sidechain) : invalidId;
             if (insert.sidechain == invalidId)
                 insert.sidechainPostFader = false;
         }
         idsAssigned_ = true;
     }
-    const int at = index_ < 0 || index_ > static_cast<int>(c->inserts.size())
-                       ? static_cast<int>(c->inserts.size())
-                       : index_;
+    auto& list = c->chain(chain_);
+    const int at =
+        index_ < 0 || index_ > static_cast<int>(list.size()) ? static_cast<int>(list.size()) : index_;
     index_ = at;
-    c->inserts.insert(c->inserts.begin() + at, inserts_.begin(), inserts_.end());
+    list.insert(list.begin() + at, inserts_.begin(), inserts_.end());
     return true;
 }
 bool AddInserts::revert(Project& p)
 {
-    auto* c = p.findChannel(channelId_);
+    auto* c = chainOwner(p, channelId_, chain_);
     if (c == nullptr)
         return false;
-    std::erase_if(c->inserts,
+    std::erase_if(c->chain(chain_),
                   [this](const Insert& i)
                   {
                       return std::any_of(inserts_.begin(),
@@ -2718,19 +2749,19 @@ bool AddInserts::revert(Project& p)
     return true;
 }
 
-ReplaceInsert::ReplaceInsert(Id channelId, Id insertId, Insert replacement)
-    : channelId_(channelId), insertId_(insertId), replacement_(std::move(replacement))
+ReplaceInsert::ReplaceInsert(Id channelId, Id insertId, Insert replacement, InsertChain chain)
+    : channelId_(channelId), insertId_(insertId), replacement_(std::move(replacement)), chain_(chain)
 {
 }
 bool ReplaceInsert::apply(Project& p)
 {
-    auto* c = p.findChannel(channelId_);
+    auto* c = chainOwner(p, channelId_, chain_);
     if (c == nullptr || replacement_.type.empty())
         return false;
-    const int at = c->insertIndex(insertId_);
+    const int at = c->chainIndex(chain_, insertId_);
     if (at < 0)
         return false;
-    auto& slot = c->inserts[static_cast<size_t>(at)];
+    auto& slot = c->chain(chain_)[static_cast<size_t>(at)];
     previous_ = slot;
     previousLanes_ = c->automation;
     Insert next = replacement_;
@@ -2748,13 +2779,13 @@ bool ReplaceInsert::apply(Project& p)
 }
 bool ReplaceInsert::revert(Project& p)
 {
-    auto* c = p.findChannel(channelId_);
+    auto* c = chainOwner(p, channelId_, chain_);
     if (c == nullptr)
         return false;
-    const int at = c->insertIndex(insertId_);
+    const int at = c->chainIndex(chain_, insertId_);
     if (at < 0)
         return false;
-    c->inserts[static_cast<size_t>(at)] = previous_;
+    c->chain(chain_)[static_cast<size_t>(at)] = previous_;
     c->automation = previousLanes_;
     return true;
 }

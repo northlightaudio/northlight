@@ -94,6 +94,11 @@ void MediaCache::prune()
 
 namespace
 {
+// A MIDI or instrument track's event list for one span, and the most a MIDI FX
+// chain grows it to (an instrument channel's may hold two such feeds' worth).
+constexpr size_t midiListCapacity = 1024;
+constexpr size_t maxMidiListCapacity = 8192;
+
 // Routing graph over channel indices: tracks are 0..T-1, buses T..T+B-1, master is -1.
 struct Routing
 {
@@ -208,6 +213,7 @@ std::unique_ptr<Snapshot> compileSnapshot(const core::Project& project,
     auto snapshot = std::make_unique<Snapshot>();
     snapshot->sampleRate = project.sampleRate;
     snapshot->tempoMap = core::tempoMapOf(project);
+    snapshot->key = project.key;
     RuntimeCache localRuntimes;
     RuntimeCache& runtimeCache = runtimes != nullptr ? *runtimes : localRuntimes;
     snapshot->masterMeterSlot = masterMeterSlot(project);
@@ -400,12 +406,13 @@ std::unique_ptr<Snapshot> compileSnapshot(const core::Project& project,
             if (lane.target == core::AutomationTarget::insertParameter)
             {
                 const auto instance = inserts.find(lane.insert);
+                const bool inChain =
+                    std::any_of(node.inserts.begin(),
+                                node.inserts.end(),
+                                [&](const InsertSlot& s) { return s.processor == instance.get(); }) ||
+                    (instance != nullptr && instance->isMidiEffect() && c.isMidiInsert(lane.insert));
                 if (instance == nullptr || instance->ownsParameters() || lane.parameter < 0 ||
-                    lane.parameter >= static_cast<int>(instance->parameters().size()) ||
-                    std::none_of(
-                        node.inserts.begin(),
-                        node.inserts.end(),
-                        [&](const InsertSlot& s) { return s.processor == instance.get(); }))
+                    lane.parameter >= static_cast<int>(instance->parameters().size()) || !inChain)
                     continue;
                 a.processor = instance.get();
             }
@@ -484,28 +491,30 @@ std::unique_ptr<Snapshot> compileSnapshot(const core::Project& project,
             }
         }
         for (const auto* chained : c.processingChain())
-            if (const auto& i = *chained; auto instance = inserts.get(i))
-            {
-                const bool keyed = instance->acceptsSidechain();
-                auto* s = compileSlot(node, i, std::move(instance));
-                latencyThrough[i.id] = node.chainLatency;
-                // The key source: a track for anyone; a bus only for a bus insert,
-                // and only one that survived the ordering above.
-                int keyTrack = project.trackIndex(i.sidechain);
-                int keyBus = -1;
-                if (keyTrack < 0 && isBus)
+            // The MIDI FX run on a MIDI track's events (below), not in the audio chain.
+            if (const auto& i = *chained; !c.isMidiInsert(i.id))
+                if (auto instance = inserts.get(i))
                 {
-                    const int source = project.busIndex(i.sidechain);
-                    const auto& allowed = busKeySources[static_cast<size_t>(routing.busOfChannel(index))];
-                    if (source >= 0 && std::find(allowed.begin(), allowed.end(), source) != allowed.end())
-                        keyBus = source;
+                    const bool keyed = instance->acceptsSidechain();
+                    auto* s = compileSlot(node, i, std::move(instance));
+                    latencyThrough[i.id] = node.chainLatency;
+                    // The key source: a track for anyone; a bus only for a bus insert,
+                    // and only one that survived the ordering above.
+                    int keyTrack = project.trackIndex(i.sidechain);
+                    int keyBus = -1;
+                    if (keyTrack < 0 && isBus)
+                    {
+                        const int source = project.busIndex(i.sidechain);
+                        const auto& allowed = busKeySources[static_cast<size_t>(routing.busOfChannel(index))];
+                        if (source >= 0 && std::find(allowed.begin(), allowed.end(), source) != allowed.end())
+                            keyBus = source;
+                    }
+                    if (!isBus && keyTrack == index)
+                        keyTrack = -1; // a track keying from itself: meaningless
+                    s->keyTrack = keyed ? keyTrack : -1;
+                    s->keyBus = keyed ? keyBus : -1;
+                    s->keyPostFader = i.sidechainPostFader; // its delay is set with the compensation below
                 }
-                if (!isBus && keyTrack == index)
-                    keyTrack = -1; // a track keying from itself: meaningless
-                s->keyTrack = keyed ? keyTrack : -1;
-                s->keyBus = keyed ? keyBus : -1;
-                s->keyPostFader = i.sidechainPostFader; // its delay is set with the compensation below
-            }
         compileAutomation(node, c);
         // The work buffers, kept per channel across compiles (none allocated for a
         // channel the last snapshot had).
@@ -537,6 +546,7 @@ std::unique_ptr<Snapshot> compileSnapshot(const core::Project& project,
             stripped = model;
             stripped->instrument = core::Insert{};
             stripped->inserts.clear();
+            stripped->midiInserts.clear();
             stripped->strip.clear();
             if (model.isFolder())
                 stripped->sends.clear();
@@ -546,11 +556,33 @@ std::unique_ptr<Snapshot> compileSnapshot(const core::Project& project,
         }
         const auto& track = stripped ? *stripped : model;
         TrackNode node;
+        // The MIDI FX first, so the channel's automation finds their instances.
+        if (track.isMidi() && !track.midiInserts.empty())
+        {
+            // The MIDI FX chain: the effects that are MIDI effects (anything else
+            // in the list does nothing here), each list sized for what the
+            // effects before it can make.
+            size_t capacity = midiListCapacity;
+            for (const auto& i : track.midiInserts)
+                if (auto instance = inserts.get(i); instance != nullptr && instance->isMidiEffect())
+                {
+                    const auto grow = static_cast<size_t>(std::max(1, instance->midiExpansion()));
+                    capacity = std::min(maxMidiListCapacity, capacity * grow);
+                    node.midiEffects.push_back(instance.get());
+                    node.keepAlive.push_back(std::move(instance));
+                }
+            if (!node.midiEffects.empty())
+            {
+                node.events = MidiEventList(capacity);
+                node.midiScratchA = MidiEventList(capacity);
+                node.midiScratchB = MidiEventList(capacity);
+            }
+        }
         fillChannel(node, track, t, trackMeterSlot(t), false);
         node.isMidi = track.isMidi();
         node.isInstrument = track.isInstrument() && !track.isFrozen();
-        if (node.isMidi || node.isInstrument)
-            node.events = MidiEventList(1024);
+        if ((node.isMidi || node.isInstrument) && node.events.capacity() == 0)
+            node.events = MidiEventList(midiListCapacity);
         node.isAux = track.isAux();
         if (track.isAux())
             node.inputChannel = -1;
@@ -709,6 +741,18 @@ std::unique_ptr<Snapshot> compileSnapshot(const core::Project& project,
         if (target >= 0 && project.tracks[static_cast<size_t>(target)].isInstrument() &&
             !project.tracks[static_cast<size_t>(target)].isFrozen())
             snapshot->tracks[static_cast<size_t>(target)].midiFeeds.push_back(t);
+    }
+    // An instrument channel's list holds what every MIDI track feeding it sends.
+    for (auto& node : snapshot->tracks)
+    {
+        if (!node.isInstrument || node.midiFeeds.empty())
+            continue;
+        size_t capacity = 0;
+        for (const int feed : node.midiFeeds)
+            capacity += snapshot->tracks[static_cast<size_t>(feed)].events.capacity();
+        capacity = std::clamp(capacity, midiListCapacity, maxMidiListCapacity * 2);
+        if (capacity > node.events.capacity())
+            node.events = MidiEventList(capacity);
     }
 
     // ----- aux tracks: the instrument they read -------------------------------------

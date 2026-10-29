@@ -16,8 +16,9 @@
 // reverb (plugins/Bloom.h), the tape echo (plugins/TapeEcho.h), Orbit the tape machine
 // (plugins/Orbit.h), the stereo widener
 // (plugins/Widener.h), Corona the amp (plugins/Amp.h) and the guitar pedals (Gravity, Flare,
-// Comet, Tide, Polaris: plugins/Pedals.h) in files of their own; and the instruments (Aurora,
-// Pulsar, Nebula, Starbit, Sampler) in theirs. JUCE-free, real-time safe after prepare().
+// Comet, Tide, Polaris: plugins/Pedals.h) in files of their own; the instruments (Aurora,
+// Pulsar, Nebula, Starbit, Sampler) in theirs; and the MIDI effects (plugins/midi). JUCE-free,
+// real-time safe after prepare().
 
 namespace northlight::plugins
 {
@@ -40,6 +41,7 @@ enum class BuiltInKind
 {
     effect,
     instrument, // takes MIDI, makes audio
+    midiEffect, // takes MIDI, makes MIDI: a MIDI track's MIDI FX chain (plugins/midi)
 };
 struct BuiltInType
 {
@@ -71,7 +73,11 @@ public:
     explicit BuiltInFactory(sampler::Loader sampleLoader = {}) : sampleLoader_(std::move(sampleLoader)) {}
     void setSampleLoader(sampler::Loader loader) { sampleLoader_ = std::move(loader); }
 
+    // The audio processors (effects and instruments), which the insert menus,
+    // the browser and the instrument slots offer. The MIDI effects are listed
+    // apart (midiEffectTypeNames): they go only in a MIDI track's MIDI FX chain.
     std::vector<std::string> typeNames() const override;
+    static std::vector<std::string> midiEffectTypeNames();
     std::unique_ptr<engine::InsertProcessor> create(const std::string& typeName) const override;
 
     // Human-readable name for a type, for menus.
@@ -80,6 +86,8 @@ public:
     static std::string description(const std::string& typeName);
     // Whether a type is an instrument (takes MIDI, makes audio).
     static bool isInstrument(const std::string& typeName);
+    // Whether a type is a MIDI effect (takes MIDI, makes MIDI).
+    static bool isMidiEffect(const std::string& typeName);
 
 private:
     sampler::Loader sampleLoader_;

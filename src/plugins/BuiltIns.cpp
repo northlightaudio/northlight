@@ -19,6 +19,7 @@
 #include "plugins/TapeEcho.h"
 #include "plugins/Vesper.h"
 #include "plugins/Widener.h"
+#include "plugins/midi/Transpose.h"
 
 #include <algorithm>
 #include <map>
@@ -159,6 +160,12 @@ const std::vector<BuiltInType>& builtInTypes()
         {nebula::type, "Nebula", instrument, plain<nebula::create>, pl::nebulaPresets, "Airy pad synth"},
         {starbit::type, "Starbit", instrument, plain<starbit::create>, pl::starbitPresets, "Chiptune synth"},
         {sampler::type, "Sampler", instrument, sampled, nullptr, "One sample across the keys"},
+        {transpose::type,
+         "Transpose",
+         midiEffect,
+         plain<transpose::create>,
+         nullptr,
+         "Moves notes by steps of the key, semitones or octaves"},
     };
     return list;
 }
@@ -184,8 +191,24 @@ std::vector<std::string> BuiltInFactory::typeNames() const
 {
     std::vector<std::string> names;
     for (const auto& builtIn : builtInTypes())
-        names.push_back(builtIn.type);
+        if (builtIn.kind != BuiltInKind::midiEffect)
+            names.push_back(builtIn.type);
     return names;
+}
+
+std::vector<std::string> BuiltInFactory::midiEffectTypeNames()
+{
+    std::vector<std::string> names;
+    for (const auto& builtIn : builtInTypes())
+        if (builtIn.kind == BuiltInKind::midiEffect)
+            names.push_back(builtIn.type);
+    return names;
+}
+
+bool BuiltInFactory::isMidiEffect(const std::string& typeName)
+{
+    const auto* builtIn = findBuiltIn(typeName);
+    return builtIn != nullptr && builtIn->kind == BuiltInKind::midiEffect;
 }
 
 bool BuiltInFactory::isInstrument(const std::string& typeName)

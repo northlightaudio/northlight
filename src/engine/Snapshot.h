@@ -206,8 +206,13 @@ struct TrackNode : ChannelNode
     std::shared_ptr<MidiRuntime> keepAliveMidi;
     // This span's events for the instrument (room only on MIDI and instrument
     // tracks: an audio track has none). Mutable: the renderer fills it on the
-    // audio thread; each track is rendered by one thread per span.
+    // audio thread; each track is rendered by one thread per span. On a MIDI
+    // track with MIDI FX it holds what the chain made.
     mutable MidiEventList events{0};
+    // A MIDI track's MIDI FX, in order (their instances are in keepAlive), and
+    // the two lists the chain passes its events through.
+    std::vector<InsertProcessor*> midiEffects;
+    mutable MidiEventList midiScratchA{0}, midiScratchB{0};
 
     WorkBuffer scratchLeft, scratchRight; // clip read scratch
 };
@@ -230,6 +235,7 @@ struct Snapshot
     std::uint64_t epoch = 0; // set by the publisher
     double sampleRate = 48000.0;
     core::TempoMap tempoMap; // the tempo track: clicks and the play head
+    core::MusicalKey key;    // the project's key, on every play head (MIDI effects follow it)
     std::vector<TrackNode> tracks;
     std::vector<BusNode> buses; // in project order
     std::vector<int> busOrder;  // bus indices in dependency order (feeders before fed)

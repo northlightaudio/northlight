@@ -338,6 +338,8 @@ void channelToJson(json& j, const Channel& c)
         j["instrument"] = insertsToJson({c.instrument}).front();
     if (!c.inserts.empty())
         j["inserts"] = insertsToJson(c.inserts);
+    if (!c.midiInserts.empty())
+        j["midiInserts"] = insertsToJson(c.midiInserts);
     if (!c.strip.empty() || c.stripPreInserts)
         j["strip"] = json{{"pre", c.stripPreInserts}, {"modules", insertsToJson(c.strip)}};
     if (!c.automation.empty() || c.automationMode != AutomationMode::read || c.automationOpen)
@@ -453,6 +455,8 @@ void channelFromJson(const json& j, Channel& c)
     }
     if (const auto it = j.find("inserts"); it != j.end() && it->is_array())
         insertsFromJson(*it, c.inserts);
+    if (const auto it = j.find("midiInserts"); it != j.end() && it->is_array())
+        insertsFromJson(*it, c.midiInserts);
     if (const auto it = j.find("strip"); it != j.end() && it->is_object())
     {
         c.stripPreInserts = it->value("pre", false);
@@ -945,7 +949,7 @@ bool reconcileParameters(Project& project, const ParameterKeys& keys)
         std::vector<Insert*> inserts;
         if (channel.hasInstrument())
             inserts.push_back(&channel.instrument);
-        for (auto* list : {&channel.inserts, &channel.strip})
+        for (auto* list : {&channel.inserts, &channel.midiInserts, &channel.strip})
             for (auto& insert : *list)
                 inserts.push_back(&insert);
         for (auto* insert : inserts)

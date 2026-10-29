@@ -338,7 +338,7 @@ void Renderer::renderTrack(const Snapshot& snapshot,
     {
         // A MIDI track: it schedules its events for the span (clips, live input,
         // auditions); its instrument channel plays them. It makes no audio.
-        scheduleMidi(track, position, numSamples, context);
+        scheduleMidi(track, position, numSamples, context, head);
         return;
     }
     if (track.isInstrument)
@@ -576,7 +576,8 @@ void chaseControllers(const TrackNode& track, MidiRuntime& runtime, core::Sample
 void Renderer::scheduleMidi(const TrackNode& track,
                             core::SamplePosition position,
                             int numSamples,
-                            const RenderContext& context) noexcept
+                            const RenderContext& context,
+                            const PlayHead& head) noexcept
 {
     auto& events = track.events;
     events.clear();
@@ -589,6 +590,10 @@ void Renderer::scheduleMidi(const TrackNode& track,
     const bool discontinuous = context.playing ? held->lastEnd != position : held->wasPlaying;
     if (discontinuous)
     {
+        // The MIDI FX hear it first, so they end what they made and drop what
+        // they were going to play (the note-offs below then end nothing twice).
+        if (!track.midiEffects.empty())
+            events.allNotesOff(0);
         for (int n = 0; n < 128; ++n)
             if (held->held[n] != 0)
             {
@@ -711,6 +716,28 @@ void Renderer::scheduleMidi(const TrackNode& track,
                 held->sent[key] = static_cast<std::int16_t>(value);
         }
     events.sortByTime();
+    if (!track.midiEffects.empty())
+        runMidiEffects(track, head, numSamples);
+}
+
+void Renderer::runMidiEffects(const TrackNode& track, const PlayHead& head, int numSamples) noexcept
+{
+    // Each effect reads one list and writes the other; the first reads the
+    // scheduled events and the result goes back into them.
+    const MidiEventList* in = &track.events;
+    MidiEventList* out = &track.midiScratchA;
+    for (auto* effect : track.midiEffects)
+    {
+        out->clear();
+        effect->setPlayHead(head);
+        effect->processMidiEffect(*in, *out, numSamples);
+        in = out;
+        out = out == &track.midiScratchA ? &track.midiScratchB : &track.midiScratchA;
+    }
+    auto& events = track.events;
+    events.clear();
+    for (const auto& e : *in)
+        events.push(e);
 }
 
 PlayHead Renderer::playHeadAt(const Snapshot& snapshot, core::SamplePosition position, bool playing) noexcept
@@ -727,6 +754,11 @@ PlayHead Renderer::playHeadAt(const Snapshot& snapshot, core::SamplePosition pos
     const auto signature = map.signatureAtBar(head.bar);
     head.numerator = signature.numerator;
     head.denominator = signature.denominator;
+    if (snapshot.key.isSet())
+    {
+        head.keyRoot = snapshot.key.root;
+        head.keyMask = snapshot.key.mask();
+    }
     return head;
 }
 
