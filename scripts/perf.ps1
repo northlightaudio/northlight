@@ -13,16 +13,18 @@
   0.5 ms over its baseline fails the run. Max values are reported, never judged
   (one hitch decides them).
 
-  The benchmarks play and edit a project: -Project names the .northlight file
-  to use. Baselines are only comparable when taken with the same project.
+  The benchmarks play and edit the demo song (a test project the app writes
+  with --demo-song); -Project opens another project instead. Baselines are only
+  comparable when taken with the same project.
 
-  .\scripts\perf.ps1 -Project song.northlight          # the ci build, compared with its baseline
-  .\scripts\perf.ps1 -Project song.northlight -Update  # write this machine's baseline from this run
-  .\scripts\perf.ps1 -Project song.northlight -Preset windows-release  # another build (its exe must exist)
+  .\scripts\perf.ps1                          # the ci build, compared with its baseline
+  .\scripts\perf.ps1 -Update                  # write this machine's baseline from this run
+  .\scripts\perf.ps1 -Preset windows-release  # another build (its exe must exist)
+  .\scripts\perf.ps1 -Project song.northlight # another project
 #>
 param(
-    [Parameter(Mandatory = $true)][string]$Project,
     [string]$Preset = "ci",
+    [string]$Project,
     [switch]$Update,
     [double]$Tolerance = 0.30,
     [double]$SlackMs = 0.5
@@ -35,20 +37,24 @@ if (-not (Test-Path $exe)) { throw "No build at $exe; run .\scripts\build.ps1 -P
 
 $work = Join-Path $env:TEMP "northlight-perf"
 New-Item -ItemType Directory -Force $work | Out-Null
-if (-not (Test-Path $Project)) { throw "No project at $Project" }
-$song = (Resolve-Path $Project).Path
+if ($Project) {
+    if (-not (Test-Path $Project)) { throw "No project at $Project" }
+    $song = @("--open", (Resolve-Path $Project).Path)
+} else {
+    $song = @("--demo-song", (Join-Path $work "demo.northlight"))
+}
 $common = @("--no-splash", "--master-gain", "-120")
 
 # name -> arguments
 $benchmarks = [ordered]@{
-    "ui"           = @("--open", $song, "--benchmark-ui", "10")
-    "panels"       = @("--open", $song, "--benchmark-panels", "6")
-    "strip-drag"   = @("--open", $song, "--benchmark-strip-drag", "5")
-    "hover-patina" = @("--open", $song, "--insert", "northlight.patina", "--insert-editor", "--play", "--benchmark-hover", "5")
-    "hover-corona" = @("--open", $song, "--insert", "northlight.amp", "--insert-editor", "--play", "--benchmark-hover", "5")
-    "hover-tape"   = @("--open", $song, "--insert", "northlight.tapeecho", "--insert-editor", "--play", "--benchmark-hover", "5")
-    "hover-orbit"  = @("--open", $song, "--insert", "northlight.orbit", "--insert-editor", "--play", "--benchmark-hover", "5")
-    "hover-pedal"  = @("--open", $song, "--insert", "northlight.flare", "--insert-editor", "--play", "--benchmark-hover", "5")
+    "ui"           = @($song + @("--benchmark-ui", "10"))
+    "panels"       = @($song + @("--benchmark-panels", "6"))
+    "strip-drag"   = @($song + @("--benchmark-strip-drag", "5"))
+    "hover-patina" = @($song + @("--insert", "northlight.patina", "--insert-editor", "--play", "--benchmark-hover", "5"))
+    "hover-corona" = @($song + @("--insert", "northlight.amp", "--insert-editor", "--play", "--benchmark-hover", "5"))
+    "hover-tape"   = @($song + @("--insert", "northlight.tapeecho", "--insert-editor", "--play", "--benchmark-hover", "5"))
+    "hover-orbit"  = @($song + @("--insert", "northlight.orbit", "--insert-editor", "--play", "--benchmark-hover", "5"))
+    "hover-pedal"  = @($song + @("--insert", "northlight.flare", "--insert-editor", "--play", "--benchmark-hover", "5"))
 }
 
 $results = [ordered]@{}

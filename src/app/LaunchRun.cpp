@@ -1,5 +1,6 @@
 #include "app/LaunchRun.h"
 
+#include "app/DemoSong.h"
 #include "app/MainWindow.h"
 #include "app/ProjectSession.h"
 #include "audio/AudioDeviceLayer.h"
@@ -610,6 +611,19 @@ const std::vector<LaunchFlag<LaunchRun>>& LaunchRun::flags()
          1,
          "open a project file",
          [](LaunchRun& r, Args& a) { r.session.open(a.file()); }},
+        {"--demo-song",
+         "<file>",
+         1,
+         "write the demo song (a test project) to the file and open it",
+         [](LaunchRun& r, Args& a)
+         {
+             const auto file = a.file();
+             file.getParentDirectory().createDirectory();
+             const plugins::BuiltInParameterKeys builtInKeys;
+             const auto song = makeDemoSong();
+             if (file.replaceWithText(juce::String(core::projectToJson(song, true, &builtInKeys))))
+                 r.session.open(file);
+         }},
         {"--time-load",
          "<file>",
          1,

@@ -37,6 +37,8 @@ add_library(northlight_app_session STATIC
     ProjectLoad.cpp
     SampleFiles.h
     SampleFiles.cpp
+    DemoSong.h
+    DemoSong.cpp
     Bounce.h
     Bounce.cpp
     MidiFiles.h

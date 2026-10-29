@@ -80,19 +80,20 @@ CI:
 
 The app's own benchmark flags (`src/app/LaunchRun.cpp`), each in a window (frames must
 reach a screen; not while the machine is in use for a game): `--benchmark-ui`
-(playing and scrolling a project: frame intervals, arrange and mixer paint
+(playing and scrolling the demo song: frame intervals, arrange and mixer paint
 times, audio load), `--benchmark-panels` (sliding the side panel),
 `--benchmark-strip-drag` (dragging a strip EQ band) and `--benchmark-hover` (the
 pointer moving knob to knob over Patina's, Corona's, the tape echo's and a guitar pedal's (Flare's) windows,
 timing every paint of the window). The script compares the medians and p95/p99s
 with `perf/baselines/<computer>.<preset>.json`; one over its baseline by more than
-30% plus 0.5 ms fails. Max values are shown, not judged. The benchmarks open the
-project `-Project` names; a baseline is only comparable with one taken on the same project.
+30% plus 0.5 ms fails. Max values are shown, not judged. The benchmarks use the demo
+song, a test project the app writes with `--demo-song`; `-Project <file>` opens another
+project, and a baseline is only comparable with one taken on the same project.
 
 ```powershell
 .\scripts\build.ps1 -Preset ci
-.\scripts\perf.ps1 -Project <file>            # compare with this machine's baseline
-.\scripts\perf.ps1 -Project <file> -Update    # a new baseline after a deliberate change; commit it
+.\scripts\perf.ps1            # compare with this machine's baseline
+.\scripts\perf.ps1 -Update    # a new baseline after a deliberate change; commit it
 ```
 
 ## When a change touches painting
