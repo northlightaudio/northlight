@@ -4,6 +4,7 @@
 #include "plugins/Aurora.h"
 #include "plugins/Bloom.h"
 #include "plugins/BuiltIns.h"
+#include "plugins/Cirrus.h"
 #include "plugins/Exciter.h"
 #include "plugins/Glue.h"
 #include "plugins/Nebula.h"
@@ -88,6 +89,7 @@ juce::Colour moduleColour(const Theme& theme, const std::string& type)
         {p::pulsar::type, "Rowan"},
         {p::nebula::type, "Thrift"},
         {p::starbit::type, "Machair"},
+        {p::cirrus::type, "Heather"},
         {p::sampler::type, "Lichen"},
     };
     const auto it = hues.find(type);

@@ -15,7 +15,10 @@ editor. The build went ahead on the plan's
 answers to the open questions: four operators, no patch import, High quality by
 default. Phase 3 has all ten presets written as best guesses, each tested to sound
 and stay below full scale across the keyboard; they still need tuning by ear on a
-release build.
+release build. Phase 4 is written: the face spec (screens/plugins.md 7.4h) and
+two new patterns in design-system.md. Phase 5 is built: `ui/strip/CirrusEditor`,
+with `cirrus::Activity` for its live parts, captured at 100% and 200%. Phase 6
+(the changelog, the user guide and the roadmap) is next.
 
 ## The name and the idea
 
@@ -159,7 +162,7 @@ carriers' envelopes are all off is inactive.
 | Where | What |
 |---|---|
 | `src/plugins/Cirrus.h`, `.cpp` | Parameters, presets, the processor (on `MeteredBuiltIn`, with the output tap for the face's spectrum) |
-| `src/plugins/fm/Operator.h` | The operator, wave tables, algorithm table. Header-only, JUCE-free |
+| `src/plugins/fm/Fm.h`, `.cpp` | Wave tables, the algorithm table and the level curve. JUCE-free |
 | `src/plugins/BuiltIns.cpp` | Registry entry: `{cirrus::type, "Cirrus", instrument, ..., pl::cirrusPresets, "FM synth"}` |
 | `src/plugins/EffectPresetLists.h`, `EffectPresets.cpp` | `cirrusPresets()` |
 | `src/ui/strip/CirrusEditor.h`, `.cpp` | The face |
@@ -169,9 +172,18 @@ carriers' envelopes are all off is inactive.
 No project schema change: built-in parameters are saved by key and a new type
 needs no new model fields. The ParameterKeys golden list gains Cirrus's entry.
 
-## The face (to specify in screens/plugins.md, 7.4h)
+## The face (specified in screens/plugins.md, 7.4h)
 
-The same family as Aurora and Nebula, its own look:
+The spec is the definition of done; this section is the brief it was written
+from. Writing it changed four things so the face stays about 1000 px wide like
+the other instruments: the output controls (High cut, Width, Level, Quality)
+joined the spectrum in one TONE panel with the macros. Pitch and the LFO share
+a panel. Feedback has its knob under the algorithm picker, as well as the loop
+to drag on the diagram. The live parts read a `cirrus::Activity`: each
+operator's level and the modulation depth, as Pulsar's does. The routing
+diagram and the operator column are new patterns in design-system.md.
+
+The brief:
 
 - **Sky:** an early-evening sky graded from Gorse at the horizon through Thrift
   and Heather to Loch at the top, with a low sun near the horizon and long streaks
@@ -249,7 +261,7 @@ Shared suites gain an entry: `SynthFingerprintTests` (once the sound is final),
 
 ## Phases
 
-1. **Operator and algorithms.** `fm/Operator.h`, wave tables, the algorithm table,
+1. **Operator and algorithms.** `fm/Fm.h`, wave tables, the algorithm table,
    with the routing, sideband and feedback tests. No registry entry yet.
 2. **The instrument.** `Cirrus.cpp`: voices, envelopes, macros, pitch envelope,
    LFO, Expression, Mono and Glide, the output stage and the 2x oversampling.

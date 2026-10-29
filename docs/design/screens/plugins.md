@@ -99,7 +99,7 @@ Every built-in has an editor in the channel strip's language
 well, then knobs in the module's hue. The same editor is the card's body in the Editor panel
 and the body of its window (under the title, bypass and mix). The hues follow the
 strip: EQ `Overcast`, compressor `Loch`, limiter `Rowan`; gain `Machair`, reverb `Lichen`,
-delay `Gorse`, glue compressor `Thrift`, Patina `Kelp`, exciter `Machair`, Bloom `Heather`, Vesper `Thrift`, tape echo `Rowan`, Orbit `Slate`, stereo widener `Sea grass`, Corona `Straw`; the pedals take their family's: Gravity `Loch`, Flare `Rowan`, Comet `Gorse`, Tide `Sea grass`, Polaris `Overcast`. The instruments (7.4b-7.4e) have faces of their own, Vesper a scene face, and so do Patina, the tape echo, Orbit and Corona, hardware faces (design-system.md "Hardware face").
+delay `Gorse`, glue compressor `Thrift`, Patina `Kelp`, exciter `Machair`, Bloom `Heather`, Vesper `Thrift`, tape echo `Rowan`, Orbit `Slate`, stereo widener `Sea grass`, Corona `Straw`; the pedals take their family's: Gravity `Loch`, Flare `Rowan`, Comet `Gorse`, Tide `Sea grass`, Polaris `Overcast`. The instruments (7.4b-7.4f, 7.4h) have faces of their own, Vesper a scene face, and so do Patina, the tape echo, Orbit and Corona, hardware faces (design-system.md "Hardware face").
 
 - **Gain**: the input and output history with IN and OUT meters; Gain.
 - **EQ**: the strip's EQ graph with the built-in's four bands (a high-pass,
@@ -1305,6 +1305,120 @@ envelope moves by Env octaves. Hues: the sample `Lichen`, loop `Gorse`, keys
 - From the arrange view: right-click an audio clip, **Open in Sampler**, for a
   new instrument channel and MIDI track playing that file, its start and end at
   the part the clip uses.
+
+## 7.4h Cirrus
+
+The FM synth bundled with Northlight (docs/plans/cirrus.md). Four operators, each
+a ratio of the note (0.5, then 1 to 32, plus Fine and Detune) or a Fixed frequency,
+one of eight waves, a Level (0 to 99, 0.75 dB a step: a modulator's depth, a
+carrier's loudness), an ADSR, Velocity and Key scale; eight algorithms in which
+only higher-numbered operators modulate lower ones; Feedback on operator 4. Then
+a pitch envelope (Bend and its time), an LFO to pitch and to the modulators,
+Mono with Glide, two macros (Tone: every modulator at once; Time: every envelope
+at once), High cut, Width, Level and Quality (Eco, or High at twice the rate).
+Sixteen voices. Presets: Cirrus, Ice Crystal Keys, Evening Bells, Glass Mallets,
+Low Sun Bass, Gold Brass, Drawbar Haze, Mare's Tails, Jet Stream Lead, Hail.
+
+The face is an evening sky in which the sound is the light on the cloud. A scene
+face (design-system.md "Scene face"), 340 px of body like the other instruments
+and about 1000 px wide, in this order from the left: ALGORITHM, OPERATORS,
+the selected OPERATOR, TONE, PITCH · LFO. The operators keep one hue each
+wherever they appear: 1 `Thrift`, 2 `Gorse`, 3 `Sea grass`, 4 `Loch`.
+
+- **The sky**: graded from a dusk at the foot (`Gorse` mixed 18% into `canvas`)
+  through `Thrift` and `Heather` (14%) to `Loch` (10%) at the top, drawn once per
+  layout. In the header band, between the wordmark and the preset bar, a low sun
+  sits on the horizon: a `Straw` core under a soft `Gorse` halo. Long, thin
+  cirrus streaks cross the band above it (five or six curved strokes,
+  `textPrimary` at 6 to 10%). While Cirrus sounds, the streaks take colour from
+  the sun (up to 30% `Gorse` and `Thrift`) as the output's level rises, and a
+  sundog stands either side of the sun: a small bright spot with a short
+  vertical flare, further from the sun the harder the modulators work (the
+  Activity's depth, below). Silent or with reduce motion on, the streaks are
+  grey, no sundogs show, and nothing moves. Only the band repaints, at most 30
+  times a second and only while there is something to change.
+- **Header**: the wordmark CIRRUS, in `font.ui` regular and tracked wide in a
+  `Gorse`-to-`Heather` gradient, with "FM SYNTH · NORTHLIGHT" beside it; the
+  preset bar; sixteen voice lights in two rows of eight (6 px dots 9 px apart,
+  `surface3` when idle, lit `textPrimary` with a soft `Straw` glow while a voice
+  sounds).
+- **ALGORITHM** (`Heather`, three columns): the chosen routing drawn large in a
+  well (design-system.md "Routing diagram"). Click a disc to select that
+  operator. Drag op 4's feedback loop up or down to set Feedback; the loop is
+  thicker and brighter as Feedback rises and is a dotted outline at 0. Under the
+  well, a picker of the eight algorithms in a 4×2 grid of small diagrams, the
+  chosen one lit. A click chooses one as one undo step ("Algorithm 4"), and the
+  arrow keys move through them while the grid has the focus. Under the picker,
+  centred, the **Feedback** knob in op 4's hue.
+- **OPERATORS** (four columns of 48 px, design-system.md "Operator column"): one
+  column per operator in its hue. Each shows its number, whether it is heard
+  (OUT) or modulates (MOD), its ratio or fixed frequency, its wave, its level as
+  a bar with the live envelope inside it, and its envelope. Clicking a column, or
+  its disc in the diagram, selects that operator. The selection is part of the
+  face, not a parameter: it is not undone or saved, and it is kept per insert
+  while the app runs. It starts on operator 1.
+- **OPERATOR** (the selected operator's hue, four columns). The caption reads
+  "OP 2 · MODULATOR" or "OP 1 · CARRIER". At its right is the **wave chip**: the
+  wave's name and a tiny cycle, opening a menu of the eight waves, each drawn.
+  - The display is the operator's envelope, to drag (`AdsrDisplay`): filled in
+    the hue at 18% under a 1.5 px line. While the operator sounds, the fill
+    brightens with its live level.
+  - Three rows of knobs. Row 1: Ratio ("×3"), Fine ("+17%"), Detune ("+3 ct"),
+    Level ("78"). Row 2: Attack, Decay, Sustain, Release. Row 3: a **Fixed**
+    pill in a knob cell (design-system.md "Control groups on a card"),
+    Frequency ("2.35 kHz"), Velocity, Key scale ("-30%", bipolar).
+  - While Fixed is on, Ratio and Fine are disabled and Frequency is live. While
+    it is off, it is the other way round.
+  - Each change is one undo step named for the operator ("Op 2 level").
+- **TONE** (`Straw`, three columns). The caption's right holds a **Quality**
+  corner chip (as the LFO shape's): "High" (twice the rate) or "Eco". Its tooltip says
+  what each costs: "High: twice the rate, cleaner high notes. Eco: half the CPU."
+  - The display is the output's spectrum, live (`TapSpectrum` on the output tap),
+    30 Hz to 20 kHz on a log axis: a filled curve in `Straw` at 28% under a
+    1.5 px line, falling away when silent. It is the same reading as the
+    sundogs: turning up a modulator spreads the partials outward.
+  - The High cut is drawn over the spectrum as a dashed `textTertiary` slope with
+    a frequency handle (design-system.md "Frequency handle") to drag across.
+    Above 19.5 kHz it reads "Off".
+  - Under the display, **Tone** and **Time** as 46 px knobs (bipolar arcs from
+    the centre; values "+40%" and "-25%"), each a column and a half wide. Their
+    row is as tall as two knob rows, so their labels sit on the second row's
+    baseline. Under them, High cut, Width and Level.
+- **PITCH · LFO** (`Lichen`, three columns). The caption's right holds a **Mono**
+  pill: "Poly", or "Mono" lit, with "legato" in its tooltip.
+  - The display shows a note's first second, as Starbit's PITCH does. A
+    `textTertiary` line at the note's pitch, ±12 semitones about it. The bend
+    falls from its start back to the note over Bend time. The vibrato rides on
+    it, its shape and depth the LFO's, with the depth shown ×4 so a few cents
+    read.
+  - A dot at the right edge follows the LFO's live value while Cirrus sounds.
+  - In the display's corners are a shape chip (Sine, Tri, Saw, Square, Random)
+    and a **Sync** chip: off (the rate in Hz) or a note value, as the delay's.
+    Synced, the Rate knob dims and shows the note value.
+  - Two rows of knobs at the panel's foot. Row 1: Rate, Pitch (the vibrato,
+    "12 ct"), Bright (the LFO on the modulators, "40%"). Row 2: Bend ("+2 st",
+    bipolar), Bend time, Glide. Glide is disabled in Poly.
+- **What the face reads.** `cirrus::Activity`, as Pulsar's, holds atomics the
+  processor writes once per control interval for the newest sounding voice:
+  - each operator's live level (0..1, its envelope times its level after
+    velocity and key scale);
+  - the depth: the summed modulation index of that voice's modulators, after
+    Tone, the LFO and the limiter.
+
+  The frame's reduction slot carries the voices sounding, and its extra the LFO.
+  Nothing is written while no editor watches.
+- **States.** Every control has hover, pressed, focused and disabled states, as
+  in the design system.
+  - An operator at level 0 dims its column, its disc and its lines to 40%.
+  - A carrier at level 0 also strikes through its OUT tag. It still selects
+    normally.
+  - With Eco chosen, nothing else changes on the face: Quality is a cost choice,
+    not a look.
+  - Narrower than its width (the Editor dock), the panels keep their widths and
+    the card scrolls sideways, as the other instruments' do.
+- **Tooltips**: each operator column "Operator 2: modulates 1. Click to edit."; the
+  algorithm cells "Algorithm 5: 2 into 1, 4 into 3"; the feedback loop
+  "Feedback: drag up or down".
 
 ## 7.5 States and errors
 

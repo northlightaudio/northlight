@@ -41,6 +41,7 @@ struct Voice
     // Each operator's level (velocity, key scale, macros, LFO), stepped towards
     // its next control value across the interval so nothing zips.
     std::array<float, ops> amp{}, ampStep{};
+    std::array<float, ops> shown{};           // level after velocity and key scale, for the editor
     float feedback1 = 0.0f, feedback2 = 0.0f; // operator 4's last two outputs
     bool released = false;
 
@@ -54,6 +55,7 @@ public:
     Cirrus() : MeteredBuiltIn(type, cirrus::parameterInfo(), true) {}
 
     bool acceptsMidi() const noexcept override { return true; }
+    Activity activity;
 
 private:
     void prepareBuiltIn(double, int) override
@@ -72,6 +74,9 @@ private:
         for (auto& f : highCutFilter_)
             f.reset();
         factor_ = 0; // set on the first block
+        for (auto& l : activity.level)
+            l.store(0.0f, std::memory_order_relaxed);
+        activity.depth.store(0.0f, std::memory_order_relaxed);
     }
 
     static double noteHz(double note) noexcept { return 440.0 * std::exp2((note - 69.0) / 12.0); }
@@ -289,6 +294,38 @@ private:
         for (auto& v : voices_)
             if (v.active())
                 updateVoice(v, true, samplesAhead);
+        if (feedback_.watched())
+            publishActivity(samplesAhead);
+    }
+
+    // The newest sounding voice's operator levels and modulation depth, for the
+    // editor (Activity).
+    void publishActivity(int samplesAhead) noexcept
+    {
+        const Voice* newest = nullptr;
+        for (const auto& v : voices_)
+            if (v.active() && (newest == nullptr || v.age > newest->age))
+                newest = &v;
+        float depth = 0.0f;
+        for (int op = 0; op < ops; ++op)
+        {
+            const auto o = static_cast<size_t>(op);
+            float level = 0.0f;
+            if (newest != nullptr)
+            {
+                const float env = newest->envelope[o].value;
+                level = std::min(1.0f, newest->shown[o] * env);
+                if (!s_.algorithm.isCarrier(op))
+                {
+                    // The level the interval steps to, in cycles, as radians.
+                    const float target =
+                        newest->amp[o] + newest->ampStep[o] * static_cast<float>(samplesAhead);
+                    depth += static_cast<float>(twoPi) * target * env;
+                }
+            }
+            activity.level[o].store(level, std::memory_order_relaxed);
+        }
+        activity.depth.store(depth, std::memory_order_relaxed);
     }
 
     // A voice's operator steps and levels. `advance` moves its glide and pitch
@@ -330,6 +367,7 @@ private:
             // Key scale: -1 falls 6 dB an octave above C4, 1 rises as much.
             const float keyGain = std::exp2(s.keyScale[o] * octavesAboveC4);
             float gain = s.levelGain[o] * velocityScale * keyGain;
+            v.shown[o] = gain;
             if (!s.algorithm.isCarrier(op))
             {
                 gain *= modulatorGain;
@@ -507,6 +545,13 @@ std::vector<std::string> ratioNames()
     return names;
 }
 } // namespace
+
+const Activity* activity(const engine::InsertProcessor& processor) noexcept
+{
+    if (const auto* p = dynamic_cast<const Cirrus*>(&processor))
+        return &p->activity;
+    return nullptr;
+}
 
 std::unique_ptr<engine::InsertProcessor> create()
 {

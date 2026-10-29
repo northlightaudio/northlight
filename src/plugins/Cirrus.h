@@ -4,6 +4,8 @@
 #include "plugins/EffectPresets.h"
 #include "plugins/fm/Fm.h"
 
+#include <array>
+#include <atomic>
 #include <memory>
 #include <string>
 #include <vector>
@@ -79,6 +81,18 @@ inline double ratioOf(float choice) noexcept
     const int i = choice < 0.5f ? 0 : static_cast<int>(choice + 0.5f);
     return i <= 0 ? 0.5 : static_cast<double>(i > 32 ? 32 : i);
 }
+
+// What the editor reads from a live Cirrus (screens/plugins.md 7.4h), written once
+// per control interval for the newest sounding voice while an editor watches:
+// each operator's level now (0..1: its envelope times its level after velocity
+// and key scale) and the depth, the summed modulation index of its modulators in
+// radians (after Tone, the LFO and the limiter). Null for another processor.
+struct Activity
+{
+    std::array<std::atomic<float>, fm::operatorCount> level{};
+    std::atomic<float> depth{0.0f};
+};
+const Activity* activity(const engine::InsertProcessor& processor) noexcept;
 
 std::unique_ptr<engine::InsertProcessor> create();
 std::vector<engine::ParameterInfo> parameterInfo();

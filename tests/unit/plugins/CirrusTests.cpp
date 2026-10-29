@@ -588,3 +588,46 @@ TEST_CASE("Every Cirrus preset sounds and stays below full scale across the keyb
         }
     }
 }
+
+TEST_CASE("A watched Cirrus publishes its newest voice's operator levels and modulation depth",
+          "[plugins][cirrus]")
+{
+    auto p = quiet(48000.0);
+    p->setParameter(cr::algorithm, 4.0f); // 2 into 1, 4 into 3
+    p->setParameter(cr::opParam(0, cr::level), 99.0f);
+    p->setParameter(cr::opParam(1, cr::level), 80.0f);
+    const auto* activity = cr::activity(*p);
+    REQUIRE(activity != nullptr);
+    REQUIRE(p->feedback() != nullptr);
+
+    // Unwatched, nothing is written.
+    play(*p, 60, 127, 8);
+    CHECK(activity->level[0].load() == 0.0f);
+
+    p->feedback()->setWatched(true);
+    play(*p, -1, 0, 8);
+    CHECK(activity->level[0].load() == Catch::Approx(1.0f).margin(0.02));
+    CHECK(activity->level[1].load() == Catch::Approx(fm::levelGain(80.0f)).margin(0.02));
+    CHECK(activity->level[2].load() == 0.0f); // silent operators read 0
+    const float depth = activity->depth.load();
+    CHECK(depth ==
+          Catch::Approx(2.0 * std::numbers::pi * fm::maxIndexCycles * fm::levelGain(80.0f)).epsilon(0.05));
+
+    // Deeper modulation reads deeper; silence reads nothing.
+    p->setParameter(cr::opParam(1, cr::level), 90.0f);
+    play(*p, -1, 0, 4);
+    CHECK(activity->depth.load() > depth * 1.5f);
+    for (int op = 0; op < fm::operatorCount; ++op)
+        p->setParameter(cr::opParam(op, cr::release), 1.0f);
+    play(*p,
+         -1,
+         0,
+         40,
+         [](int b, engine::MidiEventList& e)
+         {
+             if (b == 0)
+                 e.noteOff(0, 60);
+         });
+    CHECK(activity->level[0].load() == 0.0f);
+    CHECK(activity->depth.load() == 0.0f);
+}

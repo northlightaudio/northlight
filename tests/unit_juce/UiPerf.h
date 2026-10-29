@@ -83,7 +83,7 @@ inline std::vector<std::string> builtInTypes()
             "northlight.gravity",  "northlight.flare",      "northlight.comet",         "northlight.tide",
             "northlight.polaris",  plugins::types::limiter, plugins::types::reverb,     plugins::types::delay,
             "northlight.tapeecho", "northlight.aurora",     "northlight.pulsar",        "northlight.nebula",
-            "northlight.starbit",  "northlight.sampler"};
+            "northlight.starbit",  "northlight.cirrus",     "northlight.sampler"};
 }
 
 // A card with its processor live, playing a tone into it, at its preferred

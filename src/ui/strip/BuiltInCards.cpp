@@ -10,6 +10,7 @@
 #include "plugins/Biquad.h"
 #include "plugins/Bloom.h"
 #include "plugins/BuiltIns.h"
+#include "plugins/Cirrus.h"
 #include "plugins/Exciter.h"
 #include "plugins/Glue.h"
 #include "plugins/Nebula.h"
@@ -24,6 +25,7 @@
 #include "plugins/Widener.h"
 #include "ui/strip/AuroraEditor.h"
 #include "ui/strip/CardParts.h"
+#include "ui/strip/CirrusEditor.h"
 #include "ui/strip/EqGraph.h"
 #include "ui/strip/Graphs.h"
 #include "ui/strip/NebulaEditor.h"
@@ -787,6 +789,8 @@ createBuiltInCard(const Theme& theme, CardHost& host, core::Id channelId, const 
         return createNebulaEditor(theme, host, channelId, insert);
     if (insert.type == plugins::starbit::type)
         return createStarbitEditor(theme, host, channelId, insert);
+    if (insert.type == plugins::cirrus::type)
+        return createCirrusEditor(theme, host, channelId, insert);
     if (insert.type == plugins::sampler::type)
         return createSamplerEditor(theme, host, channelId, insert);
     return nullptr;

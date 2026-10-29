@@ -157,6 +157,8 @@ add_library(northlight_ui STATIC
     strip/NebulaEditor.cpp
     strip/StarbitEditor.h
     strip/StarbitEditor.cpp
+    strip/CirrusEditor.h
+    strip/CirrusEditor.cpp
     strip/SamplerEditor.h
     strip/SamplerEditor.cpp
     strip/ChannelStripView.h
