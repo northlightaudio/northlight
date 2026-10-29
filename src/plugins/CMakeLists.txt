@@ -23,6 +23,10 @@ add_library(northlight_plugins STATIC
     Nebula.cpp
     Starbit.h
     Starbit.cpp
+    Cirrus.h
+    Cirrus.cpp
+    fm/Fm.h
+    fm/Fm.cpp
     SampleLoader.h
     SampleLoader.h
     Sampler.h

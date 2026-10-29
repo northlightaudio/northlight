@@ -37,7 +37,7 @@ src/engine/rt   Real-time primitives: the guard and allocation hook, SPSC queue,
                 snapshot publisher, callback statistics, denormal flushing.
 src/plugins     The built-in processors behind the engine's insert interface:
                 utilities and effects, the channel strip modules and presets, the
-                instruments (Aurora, Pulsar, Nebula, Starbit, Sampler). No JUCE.
+                instruments (Aurora, Pulsar, Nebula, Starbit, Cirrus, Sampler). No JUCE.
 src/hosting     VST3 hosting through JUCE, CLAP hosting against its C ABI, the
                 plugin registry and blocklist, the out-of-process scanner.
 src/audio       The device layer (ASIO, Windows Audio, MIDI devices), the audio

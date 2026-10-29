@@ -5,6 +5,7 @@
 #include "plugins/Aurora.h"
 #include "plugins/Bloom.h"
 #include "plugins/ChannelStrip.h"
+#include "plugins/Cirrus.h"
 #include "plugins/Classic.h"
 #include "plugins/EffectPresetLists.h"
 #include "plugins/Exciter.h"
@@ -158,6 +159,7 @@ const std::vector<BuiltInType>& builtInTypes()
          pulsarNoteName},
         {nebula::type, "Nebula", instrument, plain<nebula::create>, pl::nebulaPresets, "Airy pad synth"},
         {starbit::type, "Starbit", instrument, plain<starbit::create>, pl::starbitPresets, "Chiptune synth"},
+        {cirrus::type, "Cirrus", instrument, plain<cirrus::create>, pl::cirrusPresets, "FM synth"},
         {sampler::type, "Sampler", instrument, sampled, nullptr, "One sample across the keys"},
     };
     return list;
