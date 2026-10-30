@@ -1,5 +1,7 @@
 #include "plugins/midi/Transpose.h"
 
+#include "plugins/midi/MidiTools.h"
+
 #include <cmath>
 
 namespace northlight::plugins::transpose
@@ -7,11 +9,6 @@ namespace northlight::plugins::transpose
 
 namespace
 {
-bool inScale(int note, std::uint16_t mask) noexcept
-{
-    return (mask >> (((note % 12) + 12) % 12) & 1u) != 0;
-}
-
 std::vector<engine::ParameterInfo> infos()
 {
     std::vector<engine::ParameterInfo> list(count);
@@ -54,15 +51,16 @@ int stepInScale(int note, int steps, std::uint16_t mask) noexcept
     if ((mask & 0x0FFFu) == 0)
         return note + steps;
     // From the scale note at or below, by scale notes, keeping the distance.
+    const midi::Key key{0, mask};
     int base = note;
-    while (!inScale(base, mask))
+    while (!key.contains(base))
         --base;
     const int offset = note - base;
     const int direction = steps > 0 ? 1 : -1;
     for (int left = steps > 0 ? steps : -steps; left > 0; --left)
     {
         base += direction;
-        while (!inScale(base, mask))
+        while (!key.contains(base))
             base += direction;
     }
     return base + offset;

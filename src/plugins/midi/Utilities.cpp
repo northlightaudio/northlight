@@ -1,5 +1,6 @@
 #include "plugins/midi/Utilities.h"
 
+#include "plugins/ParamHelpers.h"
 #include "plugins/midi/MidiEffectBase.h"
 #include "plugins/midi/MidiTools.h"
 
@@ -12,44 +13,10 @@ namespace northlight::plugins
 
 using engine::MidiEvent;
 using engine::ParameterInfo;
+using midi::rounded;
 
 namespace
 {
-int rounded(float v) noexcept
-{
-    return static_cast<int>(std::lround(v));
-}
-
-ParameterInfo choice(const char* name, std::vector<std::string> choices, int defaultIndex = 0)
-{
-    ParameterInfo info;
-    info.name = name;
-    info.minimum = 0.0f;
-    info.maximum = static_cast<float>(choices.size() - 1);
-    info.defaultValue = static_cast<float>(defaultIndex);
-    info.choices = std::move(choices);
-    return info;
-}
-
-ParameterInfo range(const char* name, const char* unit, float minimum, float maximum, float defaultValue)
-{
-    ParameterInfo info;
-    info.name = name;
-    info.unit = unit;
-    info.minimum = minimum;
-    info.maximum = maximum;
-    info.defaultValue = defaultValue;
-    return info;
-}
-
-// A whole-number setting (a count, semitones, a velocity).
-ParameterInfo whole(const char* name, const char* unit, float minimum, float maximum, float defaultValue)
-{
-    auto info = range(name, unit, minimum, maximum, defaultValue);
-    info.integer = true;
-    return info;
-}
-
 // Shown as a note name.
 ParameterInfo note(ParameterInfo info)
 {
@@ -106,7 +73,7 @@ int place(int note, int mode, int root, std::uint16_t mask) noexcept
         {
             // C D E F G A B of each octave play the scale's degrees from the root.
             static constexpr int whiteIndex[12] = {0, -1, 1, -1, 2, 3, -1, 4, -1, 5, -1, 6};
-            const int pc = ((note % 12) + 12) % 12;
+            const int pc = core::pitchClassOf(note);
             if (whiteIndex[pc] < 0)
                 return -1;
             const auto degrees = midi::degreesOf(key);
@@ -207,13 +174,13 @@ private:
     }
     void noteOn(const MidiEvent& e) noexcept override
     {
-        const float r = random_ > 0.0f ? static_cast<float>(rng_.bipolar()) * random_ : 0.0f;
+        const float r = random_ > 0.0f ? rng_.bipolar() * random_ : 0.0f;
         startNote(e, e.note, shape(e.velocity, settings_, r), e.channel);
     }
 
     Settings settings_;
     float random_ = 0.0f;
-    midi::Random rng_;
+    dsp::XorShift32 rng_{midi::randomSeed};
 };
 } // namespace
 
@@ -541,15 +508,16 @@ private:
     void reseed(int s) noexcept
     {
         seededWith_ = s;
-        rng_.seed(static_cast<std::uint32_t>(s) * 2654435761u + 1u);
+        const auto mixed = static_cast<std::uint32_t>(s) * 2654435761u + 1u;
+        rng_ = dsp::XorShift32(mixed != 0 ? mixed : midi::randomSeed);
     }
     void noteOn(const MidiEvent& e) noexcept override
     {
         take(e);
         // Draw all three every note, so changing one amount does not change the
         // others' variations.
-        const double play = rng_.unit();
-        const double late = rng_.unit();
+        const double play = rng_.uniform();
+        const double late = rng_.uniform();
         const double vary = rng_.bipolar();
         if (play >= chance_)
             return; // this note does not play; its release ends nothing
@@ -581,7 +549,7 @@ private:
     double timing_ = 0.0, chance_ = 1.0;
     float velocity_ = 0.0f;
     int seededWith_ = -1;
-    midi::Random rng_;
+    dsp::XorShift32 rng_{midi::randomSeed};
     std::vector<std::int32_t> delays_; // per input note: its delay, -1 when not playing
 };
 } // namespace

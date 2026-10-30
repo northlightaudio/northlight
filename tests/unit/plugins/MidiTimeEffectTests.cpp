@@ -28,6 +28,33 @@ TEST_CASE("The arpeggiator's orders walk up, down and back without repeating the
     CHECK(position(p::arpeggiator::upDown, 5, 1) == 0); // one note: always it
 }
 
+TEST_CASE("An arpeggiator step names its keys and octave, which the editor draws as played",
+          "[plugins][midi][arp]")
+{
+    namespace a = p::arpeggiator;
+    // Three keys over two octaves, going up: keys 0, 1, 2, then 0, 1, 2 an octave up.
+    const auto fourth = a::stepAt(a::up, 3, 3, 2);
+    CHECK(fourth.first == 0);
+    CHECK(fourth.count == 1);
+    CHECK(fourth.octave == 1);
+    CHECK(a::stepAt(a::down, 0, 3, 2).first == 2);
+    CHECK(a::stepAt(a::down, 0, 3, 2).octave == 1);
+    // Chord plays every key, an octave up on each step until the range wraps.
+    const auto chord = a::stepAt(a::chord, 3, 3, 2);
+    CHECK(chord.first == 0);
+    CHECK(chord.count == 3);
+    CHECK(chord.octave == 1);
+    // Random plays the position it drew, kept inside the range.
+    CHECK(a::stepAt(a::random, 0, 3, 2, 4).first == 1);
+    CHECK(a::stepAt(a::random, 0, 3, 2, 4).octave == 1);
+    CHECK(a::stepAt(a::random, 0, 3, 2, 99).octave == 1);
+    // Nothing held plays nothing.
+    CHECK(a::stepAt(a::up, 0, 0, 1).count == 0);
+    // Only As played keeps the order the keys went down in.
+    CHECK_FALSE(a::sortsByPitch(a::asPlayed));
+    CHECK(a::sortsByPitch(a::upDown));
+}
+
 TEST_CASE("Stopped, the arpeggiator plays held notes from the first key at the project tempo",
           "[plugins][midi][arp]")
 {

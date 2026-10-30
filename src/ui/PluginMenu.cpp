@@ -198,34 +198,53 @@ PluginMenu buildPluginMenu(PluginKind kind,
     auto& menu = result.menu;
     if (kind == PluginKind::midiEffect)
     {
-        // The built-in MIDI effects, by what they do (screens/plugins.md 7.4h).
-        const auto midiTypes = plugins::BuiltInFactory::midiEffectTypeNames();
-        const auto group = [&](const char* title, std::initializer_list<const char*> types)
+        // The built-in MIDI effects, by what they do (screens/plugins.md 7.4h):
+        // the sections and their order come from the built-in table, and an
+        // effect the table gives no section goes last, under Other.
+        const auto sectionOf = [](const plugins::BuiltInType& builtIn)
+        { return std::string(*builtIn.menuGroup != 0 ? builtIn.menuGroup : "Other"); };
+        const auto addEffect = [&](const plugins::BuiltInType& builtIn)
         {
-            menu.addSectionHeader(title);
-            for (const char* type : types)
-                if (std::find(midiTypes.begin(), midiTypes.end(), type) != midiTypes.end())
-                {
-                    juce::PopupMenu::Item item(juce::String(plugins::BuiltInFactory::displayName(type)) +
-                                               "\t" + builtInHint(type));
-                    item.itemID = result.nextItem();
-                    menu.addItem(std::move(item));
-                    result.types.emplace_back(type);
-                }
+            juce::PopupMenu::Item item(juce::String(builtIn.displayName) + "\t" + builtInHint(builtIn.type));
+            item.itemID = result.nextItem();
+            menu.addItem(std::move(item));
+            result.types.push_back(builtIn.type);
         };
-        group("Play",
-              {"northlight.arpeggiator",
-               "northlight.chord",
-               "northlight.chordpads",
-               "northlight.noterepeat",
-               "northlight.noteecho"});
-        group("Shape",
-              {"northlight.scale",
-               "northlight.transpose",
-               "northlight.velocity",
-               "northlight.notelength",
-               "northlight.humanise"});
-        group("Route", {"northlight.keyrange", "northlight.midifilter"});
+        // RECENT first, as in every insert menu: the MIDI effects in the shared
+        // recent list (the audio menus pass over them).
+        if (listSetting)
+        {
+            bool any = false;
+            for (const auto& type : listSetting("plugins.recent"))
+                if (const auto* builtIn = plugins::findBuiltIn(type);
+                    builtIn != nullptr && builtIn->kind == plugins::BuiltInKind::midiEffect)
+                {
+                    if (!any)
+                        menu.addSectionHeader("Recent");
+                    any = true;
+                    addEffect(*builtIn);
+                }
+        }
+        std::vector<std::string> sections;
+        for (const auto& builtIn : plugins::builtInTypes())
+            if (builtIn.kind == plugins::BuiltInKind::midiEffect)
+            {
+                const std::string section = sectionOf(builtIn);
+                if (std::find(sections.begin(), sections.end(), section) == sections.end())
+                    sections.push_back(section);
+            }
+        if (const auto other = std::find(sections.begin(), sections.end(), "Other"); other != sections.end())
+            std::rotate(other, other + 1, sections.end());
+        for (const auto& section : sections)
+        {
+            menu.addSectionHeader(section);
+            for (const auto& builtIn : plugins::builtInTypes())
+            {
+                if (builtIn.kind != plugins::BuiltInKind::midiEffect || sectionOf(builtIn) != section)
+                    continue;
+                addEffect(builtIn);
+            }
+        }
         return result;
     }
     const bool instruments = kind == PluginKind::instrument;

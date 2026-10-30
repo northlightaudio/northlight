@@ -1724,6 +1724,8 @@ void EditorPanel::addMidiEffect(const std::string& type)
     insert.type = type;
     insert.params = plugins::defaultParameters(type);
     onCommand(std::make_unique<core::AddInsert>(midiTrackId_, insert, -1, core::InsertChain::midi));
+    if (onInserted)
+        onInserted(type);
 }
 
 void EditorPanel::setInstrument(const std::string& type)

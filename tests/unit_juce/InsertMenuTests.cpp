@@ -357,3 +357,46 @@ TEST_CASE("The MIDI effects menu lists every built-in MIDI effect once", "[ui][m
     for (const auto& type : effects.types)
         CHECK_FALSE(plugins::BuiltInFactory::isMidiEffect(type));
 }
+
+TEST_CASE("The MIDI effects menu groups the effects in the built-in table's order", "[ui][menu][midifx]")
+{
+    const juce::ScopedJuceInitialiser_GUI juceInit;
+    const auto built =
+        ui::buildPluginMenu(ui::PluginKind::midiEffect, static_cast<const ui::PluginSources*>(nullptr));
+    // The table lists each group's effects together, so the menu is its order.
+    CHECK(built.types == plugins::BuiltInFactory::midiEffectTypeNames());
+    std::vector<std::string> headers;
+    for (juce::PopupMenu::MenuItemIterator it(built.menu); it.next();)
+        if (it.getItem().isSectionHeader)
+            headers.push_back(it.getItem().text.toStdString());
+    CHECK(headers == std::vector<std::string>{"Play", "Shape", "Route"});
+    for (const auto& builtIn : plugins::builtInTypes())
+        if (builtIn.kind == plugins::BuiltInKind::midiEffect)
+            CHECK(std::string(builtIn.menuGroup) != "");
+}
+
+TEST_CASE("The MIDI effects menu leads with the MIDI effects used recently", "[ui][menu][midifx]")
+{
+    const juce::ScopedJuceInitialiser_GUI juceInit;
+    // One recent list for every menu: each shows only what it can insert.
+    const auto listSetting = [](const std::string& key)
+    {
+        return key == "plugins.recent"
+                   ? std::vector<std::string>{"northlight.scale", "northlight.glue", "northlight.arpeggiator"}
+                   : std::vector<std::string>{};
+    };
+    const auto midi = ui::buildPluginMenu(ui::PluginKind::midiEffect, nullptr, listSetting);
+    REQUIRE(midi.types.size() >= 2);
+    CHECK(midi.types[0] == "northlight.scale");
+    CHECK(midi.types[1] == "northlight.arpeggiator");
+    juce::PopupMenu::MenuItemIterator it(midi.menu);
+    REQUIRE(it.next());
+    CHECK(it.getItem().isSectionHeader);
+    CHECK(it.getItem().text == "Recent");
+
+    const auto effects = ui::buildPluginMenu(ui::PluginKind::effect, nullptr, listSetting);
+    REQUIRE_FALSE(effects.types.empty());
+    CHECK(effects.types[0] == "northlight.glue");
+    for (const auto& type : effects.types)
+        CHECK_FALSE(plugins::BuiltInFactory::isMidiEffect(type));
+}

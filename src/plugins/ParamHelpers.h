@@ -15,7 +15,8 @@ namespace northlight::plugins
 {
 
 // A stepped parameter: one value per choice, from 0.
-inline engine::ParameterInfo choice(std::string name, std::vector<std::string> choices, float defaultValue)
+inline engine::ParameterInfo
+choice(std::string name, std::vector<std::string> choices, float defaultValue = 0.0f)
 {
     engine::ParameterInfo info;
     info.name = std::move(name);
@@ -37,6 +38,28 @@ inline engine::ParameterInfo
 percent(std::string name, float defaultValue, float minimum = 0.0f, float maximum = 100.0f)
 {
     return {std::move(name), "%", minimum, maximum, defaultValue, false};
+}
+
+// A continuous value in a range, with its unit ("ms", "st", "" for none).
+inline engine::ParameterInfo
+range(std::string name, std::string unit, float minimum, float maximum, float defaultValue)
+{
+    engine::ParameterInfo info;
+    info.name = std::move(name);
+    info.unit = std::move(unit);
+    info.minimum = minimum;
+    info.maximum = maximum;
+    info.defaultValue = defaultValue;
+    return info;
+}
+
+// A whole-number setting (a count, semitones, a velocity).
+inline engine::ParameterInfo
+whole(std::string name, std::string unit, float minimum, float maximum, float defaultValue)
+{
+    auto info = range(std::move(name), std::move(unit), minimum, maximum, defaultValue);
+    info.integer = true;
+    return info;
 }
 
 // Builds a preset list by parameter index: each preset starts from the

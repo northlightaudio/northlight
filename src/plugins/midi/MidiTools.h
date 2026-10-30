@@ -1,7 +1,10 @@
 #pragma once
 
+#include "core/NoteNames.h"
 #include "core/Vocal.h"
 #include "engine/Insert.h"
+#include "plugins/BeatSync.h"
+#include "plugins/dsp/Random.h"
 
 #include <algorithm>
 #include <array>
@@ -12,56 +15,49 @@
 #include <vector>
 
 // What the built-in MIDI effects share: note-value rates, the key an effect
-// plays in, a step clock for tempo-synced effects and a small random generator.
+// plays in, a step clock for tempo-synced effects and a seed for their random
+// numbers.
 // JUCE-free; nothing here allocates on the real-time path.
 
 namespace northlight::plugins::midi
 {
 
+// A stepped or whole-number parameter's value as an int.
+inline int rounded(float v) noexcept
+{
+    return static_cast<int>(std::lround(v));
+}
+
 // ----- note values -----------------------------------------------------------------------
 
-// The rates a synced effect offers, longest first, with their length in quarter notes.
-struct NoteValue
+// A synced effect's rate: one of the shared note values (plugins/BeatSync.h),
+// short to long, without its "Off" (a MIDI effect's rate is always a note
+// value). Choice i is sync::noteValues[i + 1].
+
+// The choice of a note value by its length in quarter notes (0 if none).
+constexpr int noteValueChoice(double quarters) noexcept
 {
-    const char* name;
-    double quarters;
-};
-inline constexpr std::array<NoteValue, 16> noteValues{{
-    {"1/1", 4.0},
-    {"1/2", 2.0},
-    {"1/2 dotted", 3.0},
-    {"1/2 triplet", 4.0 / 3.0},
-    {"1/4", 1.0},
-    {"1/4 dotted", 1.5},
-    {"1/4 triplet", 2.0 / 3.0},
-    {"1/8", 0.5},
-    {"1/8 dotted", 0.75},
-    {"1/8 triplet", 1.0 / 3.0},
-    {"1/16", 0.25},
-    {"1/16 dotted", 0.375},
-    {"1/16 triplet", 1.0 / 6.0},
-    {"1/32", 0.125},
-    {"1/32 triplet", 1.0 / 12.0},
-    {"1/64", 0.0625},
-}};
-// Indices of the common ones, for defaults.
-inline constexpr int noteValueQuarter = 4;
-inline constexpr int noteValueEighth = 7;
-inline constexpr int noteValueSixteenth = 10;
+    for (size_t i = 1; i < sync::noteValues.size(); ++i)
+        if (sync::noteValues[i].quarters == quarters)
+            return static_cast<int>(i) - 1;
+    return 0;
+}
+// The common ones, for defaults.
+inline constexpr int noteValueQuarter = noteValueChoice(1.0);
+inline constexpr int noteValueEighth = noteValueChoice(0.5);
+inline constexpr int noteValueSixteenth = noteValueChoice(0.25);
 
 inline std::vector<std::string> noteValueChoices()
 {
     std::vector<std::string> names;
-    for (const auto& v : noteValues)
-        names.emplace_back(v.name);
+    for (size_t i = 1; i < sync::noteValues.size(); ++i)
+        names.emplace_back(sync::noteValues[i].name);
     return names;
 }
 
 inline double noteValueQuarters(float choice) noexcept
 {
-    const int i =
-        std::clamp(static_cast<int>(std::lround(choice)), 0, static_cast<int>(noteValues.size()) - 1);
-    return noteValues[static_cast<size_t>(i)].quarters;
+    return sync::quarters(static_cast<float>(std::max(0, rounded(choice)) + 1));
 }
 
 // A rate's length in samples at the play head's tempo (at least one sample).
@@ -73,8 +69,6 @@ inline double samplesPerQuarters(const engine::PlayHead& head, double quarters) 
 
 // ----- keys ------------------------------------------------------------------------------
 
-inline constexpr std::array<const char*, 12> pitchClassNames{
-    "C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"};
 inline constexpr std::array<core::ScaleKind, 8> scaleKinds{core::ScaleKind::major,
                                                            core::ScaleKind::minor,
                                                            core::ScaleKind::harmonicMinor,
@@ -86,7 +80,10 @@ inline constexpr std::array<core::ScaleKind, 8> scaleKinds{core::ScaleKind::majo
 
 inline std::vector<std::string> rootChoices()
 {
-    return {pitchClassNames.begin(), pitchClassNames.end()};
+    std::vector<std::string> names;
+    for (int pc = 0; pc < 12; ++pc)
+        names.emplace_back(core::pitchClassName(pc));
+    return names;
 }
 inline std::vector<std::string> scaleChoices()
 {
@@ -107,7 +104,7 @@ struct Key
 {
     int root = 0;
     std::uint16_t mask = 0;
-    bool contains(int note) const noexcept { return (mask >> (((note % 12) + 12) % 12) & 1u) != 0; }
+    bool contains(int note) const noexcept { return (mask >> core::pitchClassOf(note) & 1u) != 0; }
 };
 
 inline Key keyFor(const engine::PlayHead& head, bool followProject, float ownRoot, float ownScale) noexcept
@@ -148,26 +145,9 @@ inline int degreeNote(const Degrees& d, int rootNote, int degree) noexcept
 
 // ----- random ----------------------------------------------------------------------------
 
-// xorshift32: cheap, real-time safe and repeatable from its seed.
-class Random
-{
-public:
-    void seed(std::uint32_t s) noexcept { state_ = s != 0 ? s : 0x9E3779B9u; }
-    std::uint32_t next() noexcept
-    {
-        state_ ^= state_ << 13;
-        state_ ^= state_ >> 17;
-        state_ ^= state_ << 5;
-        return state_;
-    }
-    // 0 <= x < 1.
-    double unit() noexcept { return static_cast<double>(next() >> 8) / static_cast<double>(1u << 24); }
-    // -1 < x < 1.
-    double bipolar() noexcept { return unit() * 2.0 - 1.0; }
-
-private:
-    std::uint32_t state_ = 0x9E3779B9u;
-};
+// The effects' random numbers: the built-ins' shared xorshift32, from this seed
+// unless an effect sets its own.
+inline constexpr std::uint32_t randomSeed = 0x9E3779B9u;
 
 // ----- steps -----------------------------------------------------------------------------
 

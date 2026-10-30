@@ -2,14 +2,6 @@
 
 namespace northlight::core
 {
-namespace
-{
-int pitchClassOf(int midiNote) noexcept
-{
-    return ((midiNote % 12) + 12) % 12;
-}
-} // namespace
-
 const char* pitchClassName(int pitchClass) noexcept
 {
     static const char* const names[] = {"C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"};

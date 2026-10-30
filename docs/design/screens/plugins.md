@@ -1319,6 +1319,12 @@ instrument keep their own effects. The built-ins, in the order the menu groups t
 | Shape | Scale, Transpose, Velocity, Note Length, Humanise |
 | Route | Key Range, MIDI Filter |
 
+- **The menu**: like every insert menu, RECENT first (the MIDI effects in the
+  shared recent list, newest first; the audio menus pass over them), then a
+  section per group above. The groups come from the built-in table
+  (`BuiltInType::menuGroup`), so a new effect lands in its group; one with none
+  goes last, under Other. Synced rates are the shared note values
+  (plugins/BeatSync.h) without "Off": "1/64" to "1/1", each with its T and D.
 - **Editor panel**: selecting a MIDI track shows a **MIDI FX** section first, under
   its `captionCaps` caption, before the INSTRUMENT section of the channel it plays:
   a card per effect in chain order, then a "+ MIDI effect" add slot (`AddSlot`,

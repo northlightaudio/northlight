@@ -58,6 +58,9 @@ struct BuiltInType
     // An instrument that names its notes (a drum kit's pads: Pulsar's "Kick" on
     // 36): the name of a note, or null for one it does not play (null: none named).
     const char* (*noteName)(int note) = nullptr;
+    // A MIDI effect's section of the MIDI FX menu ("Play", "Shape", "Route");
+    // the menu keeps the table's order. Empty: under "Other".
+    const char* menuGroup = "";
 };
 const std::vector<BuiltInType>& builtInTypes();
 // The registry's entry for a type (null for a strip module or an unknown type).

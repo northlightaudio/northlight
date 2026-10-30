@@ -93,22 +93,14 @@ juce::Colour moduleColour(const Theme& theme, const std::string& type)
         {p::lumen::type, "Gorse"}, // the lamp
         {p::cirrus::type, "Heather"},
         {p::sampler::type, "Lichen"},
-        // The MIDI effects: one family, the colour of notes (design-system.md "MIDI face").
-        {"northlight.arpeggiator", "Heather"},
-        {"northlight.chord", "Heather"},
-        {"northlight.chordpads", "Heather"},
-        {"northlight.noterepeat", "Heather"},
-        {"northlight.noteecho", "Heather"},
-        {"northlight.scale", "Heather"},
-        {"northlight.transpose", "Heather"},
-        {"northlight.velocity", "Heather"},
-        {"northlight.notelength", "Heather"},
-        {"northlight.humanise", "Heather"},
-        {"northlight.keyrange", "Heather"},
-        {"northlight.midifilter", "Heather"},
     };
     const auto it = hues.find(type);
-    return it != hues.end() ? paletteColour(theme, it->second) : theme.colours.textSecondary;
+    if (it != hues.end())
+        return paletteColour(theme, it->second);
+    // The MIDI effects: one family, the colour of notes (design-system.md "MIDI face").
+    if (plugins::BuiltInFactory::isMidiEffect(type))
+        return paletteColour(theme, "Heather");
+    return theme.colours.textSecondary;
 }
 
 } // namespace northlight::ui::strip

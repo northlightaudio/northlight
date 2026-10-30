@@ -23,7 +23,8 @@ Northlight has not had a release yet. The first release, 0.1.0, will include:
   pads named in the key, the velocity curve with your last notes on it, and
   where each key goes in the scale. Recording keeps what you played, so the
   effects can change afterwards; changing a setting while a key is held never
-  leaves a note hanging.
+  leaves a note hanging. The MIDI FX menu lists the ones you used last first, and
+  their synced rates read like the other synced effects' ("1/16 T", "1/8 D").
 - **Lumen**, a modelled electric piano, joins the bundled instruments. Each note
   is a hammer striking a tine in front of a magnetic pickup, so a harder strike
   is brighter as well as louder, with the bell of the tine in the attack and the

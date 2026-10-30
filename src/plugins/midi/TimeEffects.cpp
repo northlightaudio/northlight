@@ -1,5 +1,6 @@
 #include "plugins/midi/TimeEffects.h"
 
+#include "plugins/ParamHelpers.h"
 #include "plugins/midi/MidiEffectBase.h"
 #include "plugins/midi/MidiTools.h"
 
@@ -13,43 +14,10 @@ namespace northlight::plugins
 
 using engine::MidiEvent;
 using engine::ParameterInfo;
+using midi::rounded;
 
 namespace
 {
-int rounded(float v) noexcept
-{
-    return static_cast<int>(std::lround(v));
-}
-
-ParameterInfo choice(const char* name, std::vector<std::string> choices, int defaultIndex = 0)
-{
-    ParameterInfo info;
-    info.name = name;
-    info.maximum = static_cast<float>(choices.size() - 1);
-    info.defaultValue = static_cast<float>(defaultIndex);
-    info.choices = std::move(choices);
-    return info;
-}
-
-ParameterInfo range(const char* name, const char* unit, float minimum, float maximum, float defaultValue)
-{
-    ParameterInfo info;
-    info.name = name;
-    info.unit = unit;
-    info.minimum = minimum;
-    info.maximum = maximum;
-    info.defaultValue = defaultValue;
-    return info;
-}
-
-// A whole-number setting (a count, semitones, a velocity).
-ParameterInfo whole(const char* name, const char* unit, float minimum, float maximum, float defaultValue)
-{
-    auto info = range(name, unit, minimum, maximum, defaultValue);
-    info.integer = true;
-    return info;
-}
-
 MidiEvent noteEvent(MidiEvent::Type type, int channel, int note, int velocity) noexcept
 {
     return {0,
@@ -110,6 +78,23 @@ int position(int mode, int step, int total) noexcept
         default:
             return step % total;
     }
+}
+
+bool sortsByPitch(int mode) noexcept
+{
+    return mode != asPlayed;
+}
+
+Step stepAt(int mode, int step, int keyCount, int octaves, int randomPosition) noexcept
+{
+    if (keyCount <= 0)
+        return {};
+    octaves = std::max(1, octaves);
+    if (mode == chord)
+        return {0, keyCount, std::max(0, step) % octaves};
+    const int total = keyCount * octaves;
+    const int p = mode == random ? std::clamp(randomPosition, 0, total - 1) : position(mode, step, total);
+    return {p % keyCount, 1, p / keyCount};
 }
 
 namespace
@@ -230,34 +215,29 @@ private:
         const double stepSamples = midi::samplesPerQuarters(playHead(), rateQuarters_);
         const auto length = static_cast<std::int64_t>(std::max(1.0, gate_ * stepSamples));
         const auto late = (index & 1) != 0 ? static_cast<std::int64_t>(swing_ * 0.5 * stepSamples) : 0;
-        // Ordered views of what is held: by pitch for the up and down modes, as
-        // pressed for As played.
+        // What is held, in the order the mode reads it.
         std::array<Key, 32> order{};
         std::copy(held_.begin(), held_.begin() + count_, order.begin());
-        if (mode_ != asPlayed)
+        if (sortsByPitch(mode_))
             std::sort(order.begin(),
                       order.begin() + count_,
                       [](const Key& a, const Key& b) { return a.note < b.note; });
-        const int total = count_ * octaves_;
         const int k = step_++;
         published().step.store(k, std::memory_order_relaxed);
         published().changed();
-        const auto velocityOf = [&](const Key& key)
-        { return fixedVelocity_ > 0 ? fixedVelocity_ : key.velocity; };
-        if (mode_ == chord)
+        const int drawn = mode_ == random
+                              ? static_cast<int>(rng_.bits() % static_cast<std::uint32_t>(count_ * octaves_))
+                              : 0;
+        const auto s = stepAt(mode_, k, count_, octaves_, drawn);
+        for (int i = s.first; i < s.first + s.count; ++i)
         {
-            const int octave = k % octaves_;
-            for (int i = 0; i < count_; ++i)
-            {
-                const auto& key = order[static_cast<size_t>(i)];
-                play(at + late, length, key.channel, key.note + 12 * octave, velocityOf(key));
-            }
-            return;
+            const auto& key = order[static_cast<size_t>(i)];
+            play(at + late,
+                 length,
+                 key.channel,
+                 key.note + 12 * s.octave,
+                 fixedVelocity_ > 0 ? fixedVelocity_ : key.velocity);
         }
-        const int p = mode_ == random ? static_cast<int>(rng_.next() % static_cast<std::uint32_t>(total))
-                                      : position(mode_, k, total);
-        const auto& key = order[static_cast<size_t>(p % count_)];
-        play(at + late, length, key.channel, key.note + 12 * (p / count_), velocityOf(key));
     }
 
     int mode_ = up;
@@ -273,7 +253,7 @@ private:
     int physical_ = 0; // keys down now (the list can be latched)
     int step_ = 0;
     midi::StepClock clock_;
-    midi::Random rng_;
+    dsp::XorShift32 rng_{midi::randomSeed};
 };
 } // namespace
 

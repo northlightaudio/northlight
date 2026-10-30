@@ -1,5 +1,6 @@
 #include "plugins/midi/Chords.h"
 
+#include "plugins/ParamHelpers.h"
 #include "plugins/midi/MidiEffectBase.h"
 #include "plugins/midi/MidiTools.h"
 
@@ -14,43 +15,10 @@ namespace northlight::plugins
 
 using engine::MidiEvent;
 using engine::ParameterInfo;
+using midi::rounded;
 
 namespace
 {
-int rounded(float v) noexcept
-{
-    return static_cast<int>(std::lround(v));
-}
-
-ParameterInfo choice(const char* name, std::vector<std::string> choices, int defaultIndex = 0)
-{
-    ParameterInfo info;
-    info.name = name;
-    info.maximum = static_cast<float>(choices.size() - 1);
-    info.defaultValue = static_cast<float>(defaultIndex);
-    info.choices = std::move(choices);
-    return info;
-}
-
-ParameterInfo range(const char* name, const char* unit, float minimum, float maximum, float defaultValue)
-{
-    ParameterInfo info;
-    info.name = name;
-    info.unit = unit;
-    info.minimum = minimum;
-    info.maximum = maximum;
-    info.defaultValue = defaultValue;
-    return info;
-}
-
-// A whole-number setting (a count, semitones, a velocity).
-ParameterInfo whole(const char* name, const char* unit, float minimum, float maximum, float defaultValue)
-{
-    auto info = range(name, unit, minimum, maximum, defaultValue);
-    info.integer = true;
-    return info;
-}
-
 ChordNotes fromIntervals(int note, std::initializer_list<int> intervals) noexcept
 {
     ChordNotes c;
@@ -115,7 +83,7 @@ std::string chordName(int rootPitchClass, const ChordNotes& chord)
 {
     static constexpr const char* roots[12] = {
         "C", "Db", "D", "Eb", "E", "F", "Gb", "G", "Ab", "A", "Bb", "B"};
-    const int root = ((rootPitchClass % 12) + 12) % 12;
+    const int root = core::pitchClassOf(rootPitchClass);
     if (chord.count == 0)
         return {};
     // The pitch classes above the root, as a set.
@@ -125,7 +93,7 @@ std::string chordName(int rootPitchClass, const ChordNotes& chord)
     {
         const int n = chord.notes[static_cast<size_t>(i)];
         lowest = std::min(lowest, n);
-        set |= 1u << (((n - root) % 12 + 12) % 12);
+        set |= 1u << core::pitchClassOf(n - root);
     }
     struct Quality
     {
@@ -166,7 +134,7 @@ std::string chordName(int rootPitchClass, const ChordNotes& chord)
             name += q.suffix;
             break;
         }
-    if (const int bass = ((lowest % 12) + 12) % 12; bass != root)
+    if (const int bass = core::pitchClassOf(lowest); bass != root)
         name += std::string("/") + roots[bass];
     return name;
 }
@@ -235,7 +203,7 @@ ChordNotes inKey(int note, int size, int root, std::uint16_t mask, int inversion
     const int offset = note - base;
     const auto degrees = midi::degreesOf(key);
     // The base's degree, counted from the root of its octave.
-    const int rootNote = base - ((base - root) % 12 + 12) % 12;
+    const int rootNote = base - core::pitchClassOf(base - root);
     int degree = 0;
     for (int i = 0; i < degrees.count; ++i)
         if (rootNote + degrees.steps[static_cast<size_t>(i)] == base)
@@ -397,12 +365,12 @@ namespace chordpads
 {
 ChordNotes padChord(int note, int size, int root, std::uint16_t mask, int centre) noexcept
 {
-    const int pc = ((note % 12) + 12) % 12;
+    const int pc = core::pitchClassOf(note);
     // The chord's root in the octave from `centre` up.
     const auto placed = [&](int semitonesAboveKeyRoot)
     {
         const int pitchClass = (root + semitonesAboveKeyRoot) % 12;
-        return centre + ((pitchClass - centre) % 12 + 12) % 12;
+        return centre + core::pitchClassOf(pitchClass - centre);
     };
     const bool seventh = size >= 1;
     switch (pc)
@@ -470,7 +438,7 @@ ChordNotes leadFrom(const ChordNotes& chord, const ChordNotes& previous, int cen
 
 std::string padNumeral(int note, int root, std::uint16_t mask)
 {
-    const int pc = ((note % 12) + 12) % 12;
+    const int pc = core::pitchClassOf(note);
     switch (pc)
     {
         case 1:
@@ -549,8 +517,9 @@ private:
         if (bass_ && c.count < maxChordNotes)
         {
             // The chord's root, an octave below the chord.
-            const int rootPc = ((padChord(e.note, 0, key_.root, key_.mask, centre_).notes[0] % 12) + 12) % 12;
-            const int bassNote = centre_ - 12 + ((rootPc - (centre_ - 12)) % 12 + 12) % 12;
+            const int rootPc =
+                core::pitchClassOf(padChord(e.note, 0, key_.root, key_.mask, centre_).notes[0]);
+            const int bassNote = centre_ - 12 + core::pitchClassOf(rootPc - (centre_ - 12));
             startNote(e, bassNote, e.velocity, e.channel);
         }
         for (int i = 0; i < c.count; ++i)

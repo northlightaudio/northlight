@@ -464,11 +464,10 @@ private:
             l.preview = true;
         }
         const int mode = rounded(param(ap::mode));
-        if (mode != ap::asPlayed)
+        if (ap::sortsByPitch(mode))
             std::sort(keys.begin(), keys.end());
         const int n = static_cast<int>(keys.size());
         const int octaves = std::clamp(rounded(param(ap::octaves)), 1, 4);
-        const int total = n * octaves;
         const std::int64_t k = notes_.step;
         const std::int64_t first = k >= 0 ? (k / l.steps) * l.steps : 0;
         l.playing = k >= 0 && !l.preview ? static_cast<int>(k - first) : -1;
@@ -478,15 +477,11 @@ private:
         {
             std::vector<int> step;
             const auto s = static_cast<int>(first + j);
-            if (mode == ap::chord)
+            if (!l.random) // the same steps the effect plays (arpeggiator::stepAt)
             {
-                for (int key : keys)
-                    step.push_back(key + 12 * (s % octaves));
-            }
-            else if (!l.random)
-            {
-                const int p = ap::position(mode, s, total);
-                step.push_back(keys[static_cast<size_t>(p % n)] + 12 * (p / n));
+                const auto play = ap::stepAt(mode, s, n, octaves);
+                for (int i = play.first; i < play.first + play.count; ++i)
+                    step.push_back(keys[static_cast<size_t>(i)] + 12 * play.octave);
             }
             for (int note : step)
                 rows.insert(note);

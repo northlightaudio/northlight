@@ -39,6 +39,20 @@ enum Mode
 // Which of `total` positions step `step` plays in the order (up/down modes and
 // as played; random and chord are not ordered).
 int position(int mode, int step, int total) noexcept;
+// Whether a mode reads the held keys low to high (else as they were pressed).
+bool sortsByPitch(int mode) noexcept;
+// What one step plays: keys first..first+count-1 of the held keys (in the
+// order sortsByPitch gives), `octave` octaves up. The effect plays this and
+// the editor draws it, so the two always agree.
+struct Step
+{
+    int first = 0;
+    int count = 0; // every key for Chord, else one; none with no keys held
+    int octave = 0;
+};
+// Step `step` of `keyCount` held keys over `octaves` octaves. Random draws its
+// position (0..keyCount * octaves - 1) and passes it in; other modes ignore it.
+Step stepAt(int mode, int step, int keyCount, int octaves, int randomPosition = 0) noexcept;
 std::unique_ptr<engine::InsertProcessor> create();
 } // namespace arpeggiator
 

@@ -1,5 +1,7 @@
 #include "ui/strip/MidiParts.h"
 
+#include "core/NoteNames.h"
+
 #include <algorithm>
 #include <cmath>
 
@@ -91,7 +93,7 @@ void drawKeyboard(juce::Graphics& g,
         }
         footMarks(note, key);
         const auto labelFont = theme.font(Theme::Face::ui, theme.fonts.size.micro, theme.fonts.weight.medium);
-        const juce::String octaveName = "C" + juce::String(note / 12 - 2); // C3 is MIDI 60 (core::noteName)
+        const juce::String octaveName(core::noteName(note));
         // Named only where the name fits beside the black key: never cut.
         if ((note - view.lowNote) % 12 == 0 && static_cast<float>(juce::GlyphArrangement::getStringWidthInt(
                                                    labelFont, octaveName)) <= key.getWidth() * 0.66f - 2.0f)
